@@ -1,6 +1,7 @@
 Build
 Build.bat
 /build*/
+/build-nogui/
 /out/
 CMakeLists.txt.user
 CMakeUserPresets.json
