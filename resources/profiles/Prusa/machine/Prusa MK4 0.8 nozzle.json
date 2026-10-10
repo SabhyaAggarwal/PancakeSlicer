@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "px7zp02QEWKtngFK",
 	"instantiation": "true",
+	"nonplanar_head": "prusa-mk4-nextruder",
 	"gcode_flavor": "marlin2",
 	"printer_model": "Prusa MK4",
 	"default_filament_profile": [

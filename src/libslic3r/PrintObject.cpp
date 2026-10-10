@@ -697,6 +697,13 @@ void PrintObject::ironing()
     }
 }
 
+void PrintObject::nonplanar_shells()
+{
+    if (!this->set_started(posNonplanar))
+        return;
+    this->set_done(posNonplanar);
+}
+
 bool PrintObject::need_z_contouring() const
 {
     size_t num_regions = this->num_printing_regions();
@@ -1530,6 +1537,20 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "precise_outer_wall") {
             steps.emplace_back(posPerimeters);
             steps.emplace_back(posSupportMaterial);
+        } else if (
+               opt_key == "nonplanar_top_shells"
+            || opt_key == "nonplanar_bottom_shells"
+            || opt_key == "nonplanar_shell_layer_height"
+            || opt_key == "nonplanar_max_slope"
+            || opt_key == "nonplanar_max_surface_error"
+            || opt_key == "nonplanar_min_patch_area"
+            || opt_key == "nonplanar_top_pattern"
+            || opt_key == "nonplanar_ironing"
+            || opt_key == "nonplanar_fallback"
+            || opt_key == "nonplanar_surface_resolution"
+            || opt_key == "nonplanar_max_patch_height") {
+            steps.emplace_back(posPerimeters);
+            steps.emplace_back(posSupportMaterial);
         } else if (opt_key == "bridge_flow" || opt_key == "internal_bridge_flow") {
             steps.emplace_back(posPerimeters);
             steps.emplace_back(posInfill);
@@ -1623,15 +1644,19 @@ bool PrintObject::invalidate_step(PrintObjectStep step)
 	bool invalidated = Inherited::invalidate_step(step);
 
     if (step == posPerimeters) {
-		invalidated |= this->invalidate_steps({ posPrepareInfill, posInfill, posIroning, posContouring, posSimplifyPath, posSimplifyInfill });
+		invalidated |= this->invalidate_steps({ posPrepareInfill, posInfill, posIroning, posNonplanar, posContouring, posSimplifyPath, posSimplifyInfill });
         invalidated |= m_print->invalidate_steps({ psSkirtBrim });
     } else if (step == posPrepareInfill) {
-        invalidated |= this->invalidate_steps({ posInfill, posIroning, posContouring, posSimplifyPath, posSimplifyInfill });
+        invalidated |= this->invalidate_steps({ posInfill, posIroning, posNonplanar, posContouring, posSimplifyPath, posSimplifyInfill });
     } else if (step == posInfill) {
-        invalidated |= this->invalidate_steps({ posIroning, posContouring, posSimplifyInfill });
+        invalidated |= this->invalidate_steps({ posIroning, posNonplanar, posContouring, posSimplifyInfill });
         invalidated |= m_print->invalidate_steps({ psSkirtBrim });
+    } else if (step == posIroning) {
+        invalidated |= this->invalidate_steps({ posNonplanar, posContouring });
+    } else if (step == posNonplanar) {
+        invalidated |= this->invalidate_steps({ posContouring });
     } else if (step == posSlice) {
-		invalidated |= this->invalidate_steps({ posPerimeters, posPrepareInfill, posInfill, posIroning, posContouring, posSupportMaterial, posSimplifyPath, posSimplifyInfill, posSimplifySupportPath, posDetectOverhangsForLift });
+		invalidated |= this->invalidate_steps({ posPerimeters, posPrepareInfill, posInfill, posIroning, posNonplanar, posContouring, posSupportMaterial, posSimplifyPath, posSimplifyInfill, posSimplifySupportPath, posDetectOverhangsForLift });
         invalidated |= m_print->invalidate_steps({ psSkirtBrim });
         m_slicing_params.valid = false;
         m_belt_floor_z_shift_cache_valid = false;

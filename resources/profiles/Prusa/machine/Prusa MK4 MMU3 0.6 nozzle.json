@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "gf4NGRIRW2yBCW9l",
 	"instantiation": "true",
+	"nonplanar_head": "prusa-mk4-nextruder",
 	"max_layer_height": [
 		"0.40"
 	],

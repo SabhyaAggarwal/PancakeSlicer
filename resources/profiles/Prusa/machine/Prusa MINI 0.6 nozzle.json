@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "hbKR1QPMz6XlHrau",
 	"instantiation": "true",
+	"nonplanar_head": "prusa-mini",
 	"gcode_flavor": "marlin2",
 	"printer_model": "Prusa MINI",
 	"printer_variant": "0.6",

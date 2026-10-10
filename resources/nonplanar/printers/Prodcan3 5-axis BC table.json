@@ -1,0 +1,100 @@
+{
+	"type": "machine",
+	"name": "Prodcan3 5-axis BC table",
+	"from": "User",
+	"inherits": "",
+	"instantiation": "true",
+	"printer_notes": "UNMEASURED research machine. Values come from curveslice machines/prodcan3/machine.json and printer.urdf: the 60 mm TCP drop (rotary_tool_length), the B/C ranges, the rotary pivot and the nozzle diameter are placeholders, and the head envelope 'prodcan3' is an unmeasured adjustable bound. Calibrate before trusting collision checks. G-code is joint-space XYZBC with G93 inverse-time feed; C is finite +-180 deg. rotary_pivot is where the B axis (about Y through the URDF b_joint origin 91,55.3,102 mm at Y=0) meets the C axis (b_to_c offset 0,-117.95,-6.5 mm), in the URDF base frame.",
+	"printer_technology": "FFF",
+	"printable_area": [
+		"40.000x0.000",
+		"39.658x5.221",
+		"38.637x10.353",
+		"36.955x15.307",
+		"34.641x20.000",
+		"31.734x24.350",
+		"28.284x28.284",
+		"24.350x31.734",
+		"20.000x34.641",
+		"15.307x36.955",
+		"10.353x38.637",
+		"5.221x39.658",
+		"0.000x40.000",
+		"-5.221x39.658",
+		"-10.353x38.637",
+		"-15.307x36.955",
+		"-20.000x34.641",
+		"-24.350x31.734",
+		"-28.284x28.284",
+		"-31.734x24.350",
+		"-34.641x20.000",
+		"-36.955x15.307",
+		"-38.637x10.353",
+		"-39.658x5.221",
+		"-40.000x0.000",
+		"-39.658x-5.221",
+		"-38.637x-10.353",
+		"-36.955x-15.307",
+		"-34.641x-20.000",
+		"-31.734x-24.350",
+		"-28.284x-28.284",
+		"-24.350x-31.734",
+		"-20.000x-34.641",
+		"-15.307x-36.955",
+		"-10.353x-38.637",
+		"-5.221x-39.658",
+		"0.000x-40.000",
+		"5.221x-39.658",
+		"10.353x-38.637",
+		"15.307x-36.955",
+		"20.000x-34.641",
+		"24.350x-31.734",
+		"28.284x-28.284",
+		"31.734x-24.350",
+		"34.641x-20.000",
+		"36.955x-15.307",
+		"38.637x-10.353",
+		"39.658x-5.221"
+	],
+	"printable_height": "69",
+	"nozzle_diameter": [
+		"0.4"
+	],
+	"machine_max_speed_x": [
+		"100",
+		"100"
+	],
+	"machine_max_speed_y": [
+		"80",
+		"80"
+	],
+	"machine_max_speed_z": [
+		"20",
+		"20"
+	],
+	"nonplanar_head": "prodcan3",
+	"nonplanar_kinematics": "table_bc",
+	"rotary_axis_limits": [
+		"-60",
+		"60",
+		"-180",
+		"180"
+	],
+	"rotary_axis_continuous": [
+		"0",
+		"0"
+	],
+	"rotary_max_speed": [
+		"28.6",
+		"57.3"
+	],
+	"rotary_pivot": [
+		"91",
+		"-62.65",
+		"102"
+	],
+	"rotary_tool_length": "60",
+	"rotary_firmware_rtcp": "0",
+	"rotary_inverse_time_feed": "1",
+	"nonplanar_max_tilt": "60"
+}

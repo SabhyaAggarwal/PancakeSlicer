@@ -114,6 +114,13 @@ set(lisbslic3r_sources
     ConnectedBodies.cpp
     ConnectedBodies.hpp
     ContourZ.cpp
+    Nonplanar/Validate.cpp
+    Nonplanar/HeadEnvelope.cpp
+    Nonplanar/HeadEnvelope.hpp
+    Nonplanar/HeightField.cpp
+    Nonplanar/HeightField.hpp
+    Nonplanar/SurfaceClip.cpp
+    Nonplanar/SurfaceClip.hpp
     CustomGCode.cpp
     CustomGCode.hpp
     CutUtils.cpp

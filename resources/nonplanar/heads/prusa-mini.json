@@ -1,0 +1,43 @@
+{
+  "schema": "orca.head_envelope.v1",
+  "id": "prusa-mini",
+  "name": "Prusa MINI / MINI+ (stock hotend, SuperPINDA)",
+  "provenance": "User-measured per-part AABBs from curveslice model/envelopes.tsv (STEP-derived, conservative). Tip frame: machine.json's tool_frame is tool0, which prusa_mini.urdf fixes at the x_carriage origin, and the nozzle_cone rows start at z = 0 on the axis. fixed_x = 1 rows (z_gantry parts) have tip-relative y, z and absolute x, as curveslice clearance.py reads them: those overlapping the 180 mm bed in X (the X rods, lowest 23.59 above the tip) become infinite_x; X-end parts wholly outside the bed are dropped. SuperPINDA_*_assumed boxes are not in the CAD and set the -X limit. Tip allowance r = 3, h = 1 from curveslice machines/prusa-mini/machine.json (user-requested, not hardware calibrated). Nozzle land radius 0.62 [derived]. Converted 2026-10-10. Not calibrated.",
+  "calibrated": false,
+  "nozzle": {
+    "tip_flat_radius": 0.62,
+    "allowance_radius": 3.0,
+    "allowance_height": 1.0
+  },
+  "margin": 0.3,
+  "lateral_margin": 0.3,
+  "boxes": [
+    {"name": "part_022", "min": [-36.483, 16.89, 57.592], "max": [248.533, 24.898, 65.608], "infinite_x": true},
+    {"name": "part_023", "min": [-36.483, 16.892, 23.592], "max": [248.533, 24.896, 31.608], "infinite_x": true},
+    {"name": "part_025", "min": [-18.227, 11.893, 6.192], "max": [13.209, 40.928, 75.601]},
+    {"name": "part_027", "min": [-6.264, -29.143, 20.591], "max": [5.81, 16.911, 75.601]},
+    {"name": "part_034", "min": [-36.921, -9.887, 11.063], "max": [-29.226, 33.57, 23.295]},
+    {"name": "part_035", "min": [-29.921, -9.887, 11.063], "max": [-17.223, 35.893, 23.295]},
+    {"name": "part_040", "min": [-12.475, -29.25, 20.599], "max": [-5.978, 13.394, 82.315]},
+    {"name": "part_041", "min": [-22.252, -27.237, 22.475], "max": [-12.207, 10.016, 59.725]},
+    {"name": "part_042", "min": [-22.269, -28.614, 21.092], "max": [-12.184, 11.401, 61.108]},
+    {"name": "part_081", "min": [-8.052, -15.501, 4.983], "max": [7.962, 7.501, 16.517]},
+    {"name": "part_082", "min": [-1.553, 3.742, 4.991], "max": [1.463, 6.758, 8.008]},
+    {"name": "part_083", "min": [-2.886, -15.886, 3.312], "max": [2.886, -10.114, 15.008]},
+    {"name": "part_085", "min": [-3.013, -3.015, 12.486], "max": [3.012, 3.014, 37.616]},
+    {"name": "part_089", "min": [-6.459, 34.617, 23.84], "max": [4.122, 73.59, 62.788]},
+    {"name": "part_090", "min": [-7.776, 29.59, 11.786], "max": [0.323, 81.09, 67.125]},
+    {"name": "part_091", "min": [-1.233, 29.587, 11.786], "max": [7.337, 81.087, 67.143]},
+    {"name": "part_092", "min": [-12.094, 13.384, 54.084], "max": [11.94, 28.404, 69.116]},
+    {"name": "part_093", "min": [-12.094, 13.377, 20.098], "max": [11.94, 28.411, 35.102]},
+    {"name": "nozzle_cone_0", "min": [-0.642, -0.642, 0.0], "max": [0.642, 0.642, 0.03], "nozzle": true},
+    {"name": "nozzle_cone_0.03", "min": [-0.761, -0.761, 0.03], "max": [0.761, 0.761, 0.2], "nozzle": true},
+    {"name": "nozzle_cone_0.2", "min": [-0.971, -0.971, 0.2], "max": [0.971, 0.971, 0.5], "nozzle": true},
+    {"name": "nozzle_cone_0.5", "min": [-1.321, -1.321, 0.5], "max": [1.321, 1.321, 1.0], "nozzle": true},
+    {"name": "nozzle_cone_1", "min": [-1.671, -1.671, 1.0], "max": [1.671, 1.671, 1.5], "nozzle": true},
+    {"name": "nozzle_cone_1.5", "min": [-2.021, -2.021, 1.5], "max": [2.021, 2.021, 2.0], "nozzle": true},
+    {"name": "nozzle_hex_and_stem", "min": [-3.976, -3.806, 2.0], "max": [3.976, 3.806, 12.514], "nozzle": true},
+    {"name": "SuperPINDA_body_assumed", "min": [-34.977, -8.277, 0.435], "max": [-25.476, 1.863, 42.565]},
+    {"name": "SuperPINDA_cable_exit_assumed", "min": [-36.727, -10.37, 24.0], "max": [-23.726, 3.164, 71.0]}
+  ]
+}

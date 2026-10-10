@@ -1,0 +1,12 @@
+{
+	"type": "process",
+	"name": "0.20mm Non-planar top @MK4S 0.4",
+	"inherits": "0.20mm SPEED @MK4S 0.4",
+	"from": "system",
+	"setting_id": "mQD5oU9QSKzqtxQZ",
+	"instantiation": "true",
+	"description": "0.20mm SPEED with three curved top shells that follow the model surface, ironed along the surface. Requires the non-planar head of the printer profile.",
+	"nonplanar_top_shells": "3",
+	"nonplanar_ironing": "1",
+	"compatible_printers_condition": "printer_notes=~/.*MK4S.*/ and nozzle_diameter[0]==0.4 and printer_notes!~/.*HF_NOZZLE.*/"
+}

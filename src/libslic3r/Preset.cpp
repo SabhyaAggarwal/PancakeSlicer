@@ -1378,6 +1378,9 @@ static std::vector<std::string> s_Preset_print_options{
     "zaa_minimize_perimeter_height",
     "zaa_dont_alternate_fill_direction",
     "zaa_min_z",
+    "nonplanar_top_shells", "nonplanar_bottom_shells", "nonplanar_shell_layer_height", "nonplanar_max_slope",
+    "nonplanar_max_surface_error", "nonplanar_min_patch_area", "nonplanar_top_pattern", "nonplanar_ironing",
+    "nonplanar_fallback", "nonplanar_surface_resolution", "nonplanar_max_patch_height", "nonplanar_collision_check",
     "ironing_expansion",
 };
 
@@ -1452,6 +1455,8 @@ static std::vector<std::string> s_Preset_printer_options {
     "belt_slice_rotation", "belt_slice_rotation_angle",
     "gcode_remap_x", "gcode_remap_y", "gcode_remap_z",
     "belt_frame_tilt_decouple", "belt_frame_tilt_angle",
+    "nonplanar_head", "nonplanar_kinematics", "rotary_axis_limits", "rotary_axis_continuous", "rotary_max_speed",
+    "rotary_pivot", "rotary_tool_length", "rotary_firmware_rtcp", "rotary_inverse_time_feed", "nonplanar_max_tilt",
     "belt_support_floor_offset",
     "enable_belt_purge_tower",
     "gcode_flavor", "gcode_skip_config_block",

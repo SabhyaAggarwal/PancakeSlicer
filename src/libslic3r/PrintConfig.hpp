@@ -236,6 +236,11 @@ enum class ImexVizTheme {
     Count,
 };
 
+enum class RotaryLayout : unsigned char { None, TableBC, TableAC, HeadAB, HeadBC };
+enum class NonplanarTopPattern : unsigned char { Contour, Rectilinear, Concentric };
+enum class NonplanarFallback : unsigned char { ZAA, Planar };
+enum class NonplanarCollisionCheck : unsigned char { Off, Warn, Block };
+
 enum class SurfaceFillOrder {
     Default,
     Outward,
@@ -725,6 +730,10 @@ CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(PowerLossRecoveryMode)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(SurfaceFillOrder)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(TpmsAdaptiveMode)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(TpmsAdaptiveGradient)
+CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(RotaryLayout)
+CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarTopPattern)
+CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarFallback)
+CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarCollisionCheck)
 
 #undef CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS
 
@@ -1223,6 +1232,9 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionBool,  calib_flowrate_topinfill_special_order))
     ((ConfigOptionString,              imex_parallel_mode))
     ((ConfigOptionString,              imex_head_filament_map))
+
+    ((ConfigOptionFloat,               nonplanar_surface_resolution))
+    ((ConfigOptionFloat,               nonplanar_max_patch_height))
 )
 
 PRINT_CONFIG_CLASS_DEFINE(
@@ -1409,6 +1421,16 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionBool, zaa_dont_alternate_fill_direction))
     ((ConfigOptionFloat, zaa_min_z))
     ((ConfigOptionFloat, zaa_minimize_perimeter_height))
+
+    ((ConfigOptionInt,                       nonplanar_top_shells))
+    ((ConfigOptionInt,                       nonplanar_bottom_shells))
+    ((ConfigOptionFloat,                     nonplanar_shell_layer_height))
+    ((ConfigOptionFloat,                     nonplanar_max_slope))
+    ((ConfigOptionFloat,                     nonplanar_max_surface_error))
+    ((ConfigOptionFloat,                     nonplanar_min_patch_area))
+    ((ConfigOptionEnum<NonplanarTopPattern>, nonplanar_top_pattern))
+    ((ConfigOptionBool,                      nonplanar_ironing))
+    ((ConfigOptionEnum<NonplanarFallback>,   nonplanar_fallback))
     )
 
 PRINT_CONFIG_CLASS_DEFINE(
@@ -1692,6 +1714,17 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
     ((ConfigOptionEnum<RemapAxis>,  gcode_remap_x))
     ((ConfigOptionEnum<RemapAxis>,  gcode_remap_y))
     ((ConfigOptionEnum<RemapAxis>,  gcode_remap_z))
+    ((ConfigOptionString,                   nonplanar_head))
+    ((ConfigOptionEnum<RotaryLayout>,       nonplanar_kinematics))
+    ((ConfigOptionFloats,                   rotary_axis_limits))
+    ((ConfigOptionBools,                    rotary_axis_continuous))
+    ((ConfigOptionFloats,                   rotary_max_speed))
+    ((ConfigOptionFloats,                   rotary_pivot))
+    ((ConfigOptionFloat,                    rotary_tool_length))
+    ((ConfigOptionBool,                     rotary_firmware_rtcp))
+    ((ConfigOptionBool,                     rotary_inverse_time_feed))
+    ((ConfigOptionFloat,                    nonplanar_max_tilt))
+    ((ConfigOptionEnum<NonplanarCollisionCheck>, nonplanar_collision_check))
     ((ConfigOptionFloat,                          belt_support_floor_offset))
     ((ConfigOptionFloat,                          belt_purge_tower_width))
     ((ConfigOptionBool,                           enable_belt_purge_tower))

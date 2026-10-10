@@ -64,6 +64,7 @@
 #include "Flow.hpp"
 #include "Geometry/ConvexHull.hpp"
 #include "I18N.hpp"
+#include "Nonplanar/Validate.hpp"
 #include "LifecycleEvents.hpp"
 #include "ShortestPath.hpp"
 #include "Thread.hpp"
@@ -162,6 +163,8 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & , co
         "gcode_remap_x",
         "gcode_remap_y",
         "gcode_remap_z",
+        "rotary_axis_continuous", "rotary_max_speed", "rotary_pivot", "rotary_tool_length",
+        "rotary_firmware_rtcp", "rotary_inverse_time_feed", "nonplanar_collision_check",
         "belt_frame_tilt_decouple", "belt_frame_tilt_angle",
         "belt_printer_infinite_y",
         "additional_cooling_fan_speed",
@@ -475,6 +478,14 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & , co
             osteps.emplace_back(posSimplifyInfill);
             osteps.emplace_back(posSimplifySupportPath);
             steps.emplace_back(psSkirtBrim);
+        }
+        else if (
+               opt_key == "nonplanar_head"
+            || opt_key == "nonplanar_kinematics"
+            || opt_key == "rotary_axis_limits"
+            || opt_key == "nonplanar_max_tilt") {
+            osteps.emplace_back(posPerimeters);
+            osteps.emplace_back(posSupportMaterial);
         }
         else if (opt_key == "z_hop_types") {
             osteps.emplace_back(posDetectOverhangsForLift);
@@ -1777,6 +1788,9 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
             warn(L("A prime tower is required for clumping detection; otherwise, there may be flaws on the model."), "enable_prime_tower");
     }
 
+    if (StringObjectException err = Nonplanar::validate(*this, warnings); !err.string.empty())
+        return err;
+
     if (m_config.spiral_mode) {
         size_t total_copies_count = 0;
         for (const PrintObject* object : m_objects)
@@ -2756,6 +2770,13 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
         }
 
         for (PrintObject *obj : m_objects) {
+            if (need_slicing_objects.count(obj) != 0)
+                obj->nonplanar_shells();
+            else if (obj->set_started(posNonplanar))
+                obj->set_done(posNonplanar);
+        }
+
+        for (PrintObject *obj : m_objects) {
             bool need_contouring = need_slicing_objects.count(obj) != 0 && obj->need_z_contouring();
             if (need_contouring) {
                 const bool was_done = obj->is_step_done(posContouring);
@@ -2820,6 +2841,8 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
                     obj->set_done(posInfill);
                 if (obj->set_started(posIroning))
                     obj->set_done(posIroning);
+                if (obj->set_started(posNonplanar))
+                    obj->set_done(posNonplanar);
                 if (obj->set_started(posContouring))
                     obj->set_done(posContouring);
                 if (obj->set_started(posSupportMaterial))
@@ -2831,6 +2854,7 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
                 obj->make_perimeters();
                 obj->infill();
                 obj->ironing();
+                obj->nonplanar_shells();
                 obj->generate_support_material();
                 obj->detect_overhangs_for_lift();
                 obj->estimate_curled_extrusions();

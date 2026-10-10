@@ -1,0 +1,21 @@
+{
+  "schema": "orca.head_envelope.v1",
+  "id": "prodcan3",
+  "name": "Prodcan3 (5-axis BC table)",
+  "provenance": "curveslice machines/prodcan3/head-bounds.json (UNMEASURED_ADJUSTABLE_BOUND, source: printer.urdf tool proxies): centred component boxes z_mm +/- half_mm and the nozzle bound (r = 4, z = 0.25..6 above TCP). radial_margin_mm and axial_margin_mm map to lateral_margin and margin. Allowance radius covers the nozzle-bound square. UNMEASURED: simulate only until the user confirms the head. Converted 2026-10-10. Not calibrated.",
+  "calibrated": false,
+  "nozzle": {
+    "tip_flat_radius": 0.5,
+    "allowance_radius": 5.7,
+    "allowance_height": 1.0
+  },
+  "margin": 1.0,
+  "lateral_margin": 2.0,
+  "boxes": [
+    {"name": "nozzle_bound", "min": [-4.0, -4.0, 0.25], "max": [4.0, 4.0, 6.0], "nozzle": true},
+    {"name": "neck", "min": [-4.0, -4.0, 6.0], "max": [4.0, 4.0, 13.0]},
+    {"name": "heatsink", "min": [-12.0, -12.0, 20.0], "max": [12.0, 12.0, 42.0]},
+    {"name": "mount", "min": [-10.0, -10.0, 41.0], "max": [10.0, 10.0, 62.0]},
+    {"name": "heatblock", "min": [-8.0, -6.0, 10.0], "max": [8.0, 6.0, 18.0]}
+  ]
+}

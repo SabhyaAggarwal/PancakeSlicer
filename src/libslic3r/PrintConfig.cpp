@@ -708,6 +708,35 @@ static const t_config_enum_values s_keys_map_ImexVizTheme = {
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(ImexVizTheme)
 
+static const t_config_enum_values s_keys_map_RotaryLayout = {
+    { "none",     int(RotaryLayout::None)    },
+    { "table_bc", int(RotaryLayout::TableBC) },
+    { "table_ac", int(RotaryLayout::TableAC) },
+    { "head_ab",  int(RotaryLayout::HeadAB)  },
+    { "head_bc",  int(RotaryLayout::HeadBC)  }
+};
+CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(RotaryLayout)
+
+static const t_config_enum_values s_keys_map_NonplanarTopPattern = {
+    { "contour",     int(NonplanarTopPattern::Contour)     },
+    { "rectilinear", int(NonplanarTopPattern::Rectilinear) },
+    { "concentric",  int(NonplanarTopPattern::Concentric)  }
+};
+CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(NonplanarTopPattern)
+
+static const t_config_enum_values s_keys_map_NonplanarFallback = {
+    { "zaa",    int(NonplanarFallback::ZAA)    },
+    { "planar", int(NonplanarFallback::Planar) }
+};
+CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(NonplanarFallback)
+
+static const t_config_enum_values s_keys_map_NonplanarCollisionCheck = {
+    { "off",   int(NonplanarCollisionCheck::Off)   },
+    { "warn",  int(NonplanarCollisionCheck::Warn)  },
+    { "block", int(NonplanarCollisionCheck::Block) }
+};
+CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(NonplanarCollisionCheck)
+
 static const t_config_enum_values s_keys_map_PrimeVolumeMode = {
     { "Default", pvmDefault },
     { "Saving",  pvmSaving },
@@ -4966,6 +4995,230 @@ void PrintConfigDef::init_fff_params()
     def->max      = 100;
     def->mode     = comExpert;
     def->set_default_value(new ConfigOptionFloat(0.05));
+
+    def = this->add("nonplanar_top_shells", coInt);
+    def->label    = L("Non-planar top shells");
+    def->category = L("Quality");
+    def->tooltip  = L("Number of top shells printed as curved layers that follow the model's upper surface "
+                      "instead of flat steps. The head shape of the printer limits how steep they can be. "
+                      "0 disables non-planar top shells.");
+    def->min      = 0;
+    def->max      = 10;
+    def->mode     = comSimple;
+    def->set_default_value(new ConfigOptionInt(0));
+
+    def = this->add("nonplanar_bottom_shells", coInt);
+    def->label    = L("Non-planar bottom shells");
+    def->category = L("Quality");
+    def->tooltip  = L("Number of bottom shells printed as curved layers that follow the model's underside, "
+                      "usually on top of supports. 0 disables non-planar bottom shells.");
+    def->min      = 0;
+    def->max      = 10;
+    def->mode     = comSimple;
+    def->set_default_value(new ConfigOptionInt(0));
+
+    def = this->add("nonplanar_shell_layer_height", coFloat);
+    def->label    = L("Non-planar shell thickness");
+    def->category = L("Quality");
+    def->tooltip  = L("Vertical thickness of each curved shell. 0 uses the layer height.");
+    def->sidetext = L("mm");
+    def->min      = 0;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
+
+    def = this->add("nonplanar_max_slope", coFloat);
+    def->label    = L("Non-planar maximum slope");
+    def->category = L("Quality");
+    def->tooltip  = L("Steepest surface the curved shells may follow, on top of the limit the print head imposes. "
+                      "Steeper areas fall back to the method chosen below. 0 uses only the head limit.");
+    def->sidetext = u8"°";
+    def->min      = 0;
+    def->max      = 90;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
+
+    def = this->add("nonplanar_max_surface_error", coFloat);
+    def->label    = L("Non-planar surface tolerance");
+    def->category = L("Quality");
+    def->tooltip  = L("How far the curved top surface may deviate from the model where the head forces it "
+                      "to be flattened. Areas that would deviate more fall back to the method chosen below.");
+    def->sidetext = L("mm");
+    def->min      = 0;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0.05));
+
+    def = this->add("nonplanar_min_patch_area", coFloat);
+    def->label    = L("Non-planar minimum area");
+    def->category = L("Quality");
+    def->tooltip  = L("Curved areas smaller than this are printed with the fallback method instead.");
+    def->sidetext = u8"mm²";
+    def->min      = 0;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(16));
+
+    def = this->add("nonplanar_top_pattern", coEnum);
+    def->label    = L("Non-planar top pattern");
+    def->category = L("Quality");
+    def->tooltip  = L("Line pattern of the curved shells. Contour follows the outline of each curved area.");
+    def->enum_keys_map = &ConfigOptionEnum<NonplanarTopPattern>::get_enum_values();
+    def->enum_values.push_back("contour");
+    def->enum_values.push_back("rectilinear");
+    def->enum_values.push_back("concentric");
+    def->enum_labels.push_back(L("Contour"));
+    def->enum_labels.push_back(L("Rectilinear"));
+    def->enum_labels.push_back(L("Concentric"));
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionEnum<NonplanarTopPattern>(NonplanarTopPattern::Contour));
+
+    def = this->add("nonplanar_ironing", coBool);
+    def->label    = L("Non-planar ironing");
+    def->category = L("Quality");
+    def->tooltip  = L("Iron the curved top shells along the surface, using the ironing settings.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("nonplanar_fallback", coEnum);
+    def->label    = L("Non-planar fallback");
+    def->category = L("Quality");
+    def->tooltip  = L("How to print top areas the head cannot follow with curved shells: "
+                      "Z contouring smooths the steps of flat layers, Planar prints them as usual.");
+    def->enum_keys_map = &ConfigOptionEnum<NonplanarFallback>::get_enum_values();
+    def->enum_values.push_back("zaa");
+    def->enum_values.push_back("planar");
+    def->enum_labels.push_back(L("Z contouring"));
+    def->enum_labels.push_back(L("Planar"));
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionEnum<NonplanarFallback>(NonplanarFallback::ZAA));
+
+    def = this->add("nonplanar_surface_resolution", coFloat);
+    def->label    = L("Non-planar surface resolution");
+    def->category = L("Quality");
+    def->tooltip  = L("Grid spacing used to sample the model's surface for curved shells. "
+                      "Smaller is more accurate and slower.");
+    def->sidetext = L("mm");
+    def->min      = 0.05;
+    def->max      = 2;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0.2));
+
+    def = this->add("nonplanar_max_patch_height", coFloat);
+    def->label    = L("Non-planar maximum height");
+    def->category = L("Quality");
+    def->tooltip  = L("Largest height difference within one curved area. Taller areas are split or fall back. "
+                      "0 derives it from the print head clearance.");
+    def->sidetext = L("mm");
+    def->min      = 0;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
+
+    def = this->add("nonplanar_collision_check", coEnum);
+    def->label    = L("Non-planar collision check");
+    def->category = L("Quality");
+    def->tooltip  = L("Checks every move of the exported G-code against the print head shape when curved shells, "
+                      "Z contouring or rotary axes are used. Warn reports collisions, Block also refuses to export.");
+    def->enum_keys_map = &ConfigOptionEnum<NonplanarCollisionCheck>::get_enum_values();
+    def->enum_values.push_back("off");
+    def->enum_values.push_back("warn");
+    def->enum_values.push_back("block");
+    def->enum_labels.push_back(L("Off"));
+    def->enum_labels.push_back(L("Warn"));
+    def->enum_labels.push_back(L("Block export"));
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionEnum<NonplanarCollisionCheck>(NonplanarCollisionCheck::Warn));
+
+    def = this->add("nonplanar_head", coString);
+    def->label    = L("Print head");
+    def->category = L("Non-planar");
+    def->tooltip  = L("Shape of the print head, used to limit how steep curved shells can be and to check for collisions. "
+                      "Empty or unknown uses a conservative generic head.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionString(""));
+
+    def = this->add("nonplanar_kinematics", coEnum);
+    def->label    = L("Rotary axes");
+    def->category = L("Non-planar");
+    def->tooltip  = L("Layout of the printer's rotary axes, if any. Tilting the tool or the bed lets curved shells "
+                      "follow steeper surfaces.");
+    def->enum_keys_map = &ConfigOptionEnum<RotaryLayout>::get_enum_values();
+    def->enum_values.push_back("none");
+    def->enum_values.push_back("table_bc");
+    def->enum_values.push_back("table_ac");
+    def->enum_values.push_back("head_ab");
+    def->enum_values.push_back("head_bc");
+    def->enum_labels.push_back(L("None (3-axis)"));
+    def->enum_labels.push_back(L("BC rotary table"));
+    def->enum_labels.push_back(L("AC rotary table"));
+    def->enum_labels.push_back(L("AB tilting head"));
+    def->enum_labels.push_back(L("BC tilting head"));
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionEnum<RotaryLayout>(RotaryLayout::None));
+
+    def = this->add("rotary_axis_limits", coFloats);
+    def->label    = L("Rotary axis limits");
+    def->category = L("Non-planar");
+    def->tooltip  = L("Travel limits of the two rotary axes: first axis minimum, maximum, then second axis minimum, maximum.");
+    def->sidetext = u8"°";
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloats{ -90., 90., -180., 180. });
+
+    def = this->add("rotary_axis_continuous", coBools);
+    def->label    = L("Continuous rotary axis");
+    def->category = L("Non-planar");
+    def->tooltip  = L("Whether each rotary axis can turn without limit. Limits are ignored for a continuous axis.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBools{ false, false });
+
+    def = this->add("rotary_max_speed", coFloats);
+    def->label    = L("Rotary axis maximum speed");
+    def->category = L("Non-planar");
+    def->tooltip  = L("Maximum speed of each rotary axis. 0 means unlimited.");
+    def->sidetext = u8"°/s";
+    def->min      = 0;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloats{ 0., 0. });
+
+    def = this->add("rotary_pivot", coFloats);
+    def->label    = L("Rotary pivot");
+    def->category = L("Non-planar");
+    def->tooltip  = L("X, Y and Z of the point where the rotary axes intersect, in machine coordinates.");
+    def->sidetext = L("mm");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloats{ 0., 0., 0. });
+
+    def = this->add("rotary_tool_length", coFloat);
+    def->label    = L("Tool length");
+    def->category = L("Non-planar");
+    def->tooltip  = L("Distance from the head's rotation centre to the nozzle tip, for tilting heads.");
+    def->sidetext = L("mm");
+    def->min      = 0;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
+
+    def = this->add("rotary_firmware_rtcp", coBool);
+    def->label    = L("Firmware tool centre point control");
+    def->category = L("Non-planar");
+    def->tooltip  = L("Enable if the firmware compensates rotary moves itself (RTCP/TCPC). The G-code then carries "
+                      "the nozzle tip position instead of joint positions.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("rotary_inverse_time_feed", coBool);
+    def->label    = L("Inverse time feed (G93)");
+    def->category = L("Non-planar");
+    def->tooltip  = L("Write moves that use the rotary axes with inverse time feed rates (G93), as many 5-axis controllers expect.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("nonplanar_max_tilt", coFloat);
+    def->label    = L("Maximum tool tilt");
+    def->category = L("Non-planar");
+    def->tooltip  = L("Largest angle between the tool and the bed normal that rotary printing may use. "
+                      "0 keeps the tool vertical.");
+    def->sidetext = u8"°";
+    def->min      = 0;
+    def->max      = 90;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
 
     def = this->add("layer_change_gcode", coString);
     def->label = L("Layer change G-code");

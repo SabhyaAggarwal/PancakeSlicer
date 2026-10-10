@@ -112,7 +112,9 @@ enum PrintStep {
 
 enum PrintObjectStep {
     posSlice, posPerimeters,posEstimateCurledExtrusions, posPrepareInfill,
-    posInfill, posIroning, posContouring, posSupportMaterial, posSimplifyPath, posSimplifySupportPath,
+    posInfill, posIroning,
+    posNonplanar,
+    posContouring, posSupportMaterial, posSimplifyPath, posSimplifySupportPath,
     posDetectOverhangsForLift,
     posSimplifyWall, posSimplifyInfill,
     posCount,
@@ -450,6 +452,7 @@ private:
     void prepare_infill();
     void infill();
     void ironing();
+    void nonplanar_shells();
     bool need_z_contouring() const;
     void contour_z();
     void generate_support_material(bool with_belt_brim = true);
