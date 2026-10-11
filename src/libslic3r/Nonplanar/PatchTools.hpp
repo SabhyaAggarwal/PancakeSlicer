@@ -51,6 +51,7 @@ int planar_transition_layer(const std::vector<double> &boundaries, double shell_
                             double h_min, double h_max, PatchKind kind);
 
 double top_shell_angle(const ConformalPatch &patch, const PrintRegionConfig &config);
+bool contour_line_angle(const HeightField &surface, double &angle, double min_coherence = 0.1);
 
 Polylines fill_solid(const ExPolygons &area, InfillPattern pattern, double spacing, double angle, bool monotonic,
                      const Flow &flow, double z);
@@ -59,5 +60,10 @@ using LiftFn = std::function<bool(const Vec2d &p, double &z, float &bead_height)
 
 void lift_polylines(const Polylines &polylines, const ExtrusionPath &proto, const LiftFn &at, double host_z, double resample,
                     int patch_id, int shell, ExtrusionEntitiesPtr &out);
+
+double head_band_height(const HeadEnvelope &head);
+
+void cut_into_bands(const ExtrusionEntitiesPtr &paths, double pitch, double tolerance,
+                    const std::function<void(int band, ExtrusionPathConformal *piece)> &sink);
 
 }

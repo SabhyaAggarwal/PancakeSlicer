@@ -300,6 +300,7 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
             pending.clear();
         }
         const Vec3d a = move_tip(last, rotary), b = move_tip(move, rotary);
+        const bool straight_lift = !extruding && a.head<2>() == b.head<2>() && b.z() >= a.z() && move.joints.rot == last.joints.rot;
         double displacement = (b - a).norm();
         if (rotary) {
             const double angle = (std::abs(move.joints.rot[0] - last.joints.rot[0]) + std::abs(move.joints.rot[1] - last.joints.rot[1])) * M_PI / 180.;
@@ -319,7 +320,7 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
             if (gap < best) { best = gap; hit.component = component; hit.tip = tip; }
         };
         auto contact_head = nozzle;
-        if (!extruding && move.nonplanar_patch_shell == 0xFF) contact_head.tip_allowance = {};
+        if (!extruding && !straight_lift && move.nonplanar_patch_shell == 0xFF) contact_head.tip_allowance = {};
         else contact_head.tip_allowance.height = std::max(contact_head.tip_allowance.height, params.bead_eps);
         for (int j = 0; j < count; ++j) {
             if ((j & 1023) == 0 && throw_if_canceled) throw_if_canceled();

@@ -7297,10 +7297,12 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                 this->on_set_origin(&object, offset);
                 m_layer = layer;
                 m_config.apply(region.config());
-                const auto surface_gradient = [&patch](const Vec2d &p) {
-                    const Vec2d g = patch.surface.gradient(p);
-                    return std::isnan(g.x()) || std::isnan(g.y()) ? Vec2d(Vec2d::Zero()) : g;
-                };
+                std::function<Vec2d(const Vec2d &)> surface_gradient;
+                if (patch.band < 0)
+                    surface_gradient = [&patch](const Vec2d &p) {
+                        const Vec2d g = patch.surface.gradient(p);
+                        return std::isnan(g.x()) || std::isnan(g.y()) ? Vec2d(Vec2d::Zero()) : g;
+                    };
                 for (size_t k = 0; k < patch.shell_paths.size(); ++k) {
                     gcode += ";_NONPLANAR_BEGIN patch=" + std::to_string(patch.id) + " shell=" + std::to_string(k) + "\n";
                     for (const ExtrusionEntity *ee : patch.shell_paths[k].entities)
@@ -7318,7 +7320,7 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                 m_max_layer_z = std::max(m_max_layer_z, float(patch.z_max));
             }
     }
-    if (before && !gcode.empty()) {
+    if (!gcode.empty()) {
         const double hop = std::max(this->nonplanar_head().margin,
                                     m_writer.filament() != nullptr ? m_config.z_hop.get_at(m_writer.filament()->id()) : 0.);
         gcode += this->retract();

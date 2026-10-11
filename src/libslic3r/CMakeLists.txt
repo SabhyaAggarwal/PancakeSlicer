@@ -131,6 +131,8 @@ set(lisbslic3r_sources
     Nonplanar/ConformalShells.hpp
     Nonplanar/PatchTools.cpp
     Nonplanar/PatchTools.hpp
+    Nonplanar/ShellPaths.cpp
+    Nonplanar/ShellPaths.hpp
     Nonplanar/HeadEnvelope.cpp
     Nonplanar/HeadEnvelope.hpp
     Nonplanar/HeightField.cpp

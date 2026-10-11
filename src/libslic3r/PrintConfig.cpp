@@ -726,7 +726,8 @@ CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(NonplanarTopPattern)
 
 static const t_config_enum_values s_keys_map_NonplanarFallback = {
     { "zaa",    int(NonplanarFallback::ZAA)    },
-    { "planar", int(NonplanarFallback::Planar) }
+    { "planar", int(NonplanarFallback::Planar) },
+    { "none",   int(NonplanarFallback::None)   }
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(NonplanarFallback)
 
@@ -5072,6 +5073,26 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionEnum<NonplanarTopPattern>(NonplanarTopPattern::Contour));
 
+    def = this->add("nonplanar_top_direction", coFloat);
+    def->label    = L("Non-planar top direction");
+    def->category = L("Quality");
+    def->tooltip  = L("Direction of the lines of the outermost curved top shell, which sets how the surface looks. "
+                      "-1 (auto) lets each curved area choose the direction that keeps its lines most level.");
+    def->sidetext = u8"°";
+    def->min      = -1;
+    def->max      = 360;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(-1));
+
+    def = this->add("nonplanar_surface_spacing", coBool);
+    def->label    = L("Non-planar spacing along the surface");
+    def->category = L("Quality");
+    def->tooltip  = L("Space the lines of the curved shells by the line width measured along the surface instead of "
+                      "seen from above. On slopes the lines then lie closer together and each one carries less "
+                      "material, so the shell keeps its thickness. Applies to line patterns.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(true));
+
     def = this->add("nonplanar_ironing", coBool);
     def->label    = L("Non-planar ironing");
     def->category = L("Quality");
@@ -5083,16 +5104,20 @@ void PrintConfigDef::init_fff_params()
     def = this->add("nonplanar_fallback", coEnum);
     def->label    = L("Non-planar fallback");
     def->category = L("Quality");
-    def->tooltip  = L("Choose how to print top areas excluded from curved shells: Z contouring adjusts the tops of flat "
-                      "layers, while Planar keeps the usual flat paths. This does not disable separately enabled Z "
-                      "contouring.");
+    def->tooltip  = L("How to print top areas the head cannot follow with curved shells. "
+                      "None prints every top area with curved shells, ordered in thin height bands so the head "
+                      "never meets material printed before. Z contouring and Planar restrict the shells to the "
+                      "areas the head can print in any order; Z contouring smooths the steps of the flat layers "
+                      "left elsewhere, Planar prints them as usual. This does not disable separately enabled Z contouring.");
     def->enum_keys_map = &ConfigOptionEnum<NonplanarFallback>::get_enum_values();
+    def->enum_values.push_back("none");
     def->enum_values.push_back("zaa");
     def->enum_values.push_back("planar");
+    def->enum_labels.push_back(L("None"));
     def->enum_labels.push_back(L("Z contouring"));
     def->enum_labels.push_back(L("Planar"));
     def->mode     = comAdvanced;
-    def->set_default_value(new ConfigOptionEnum<NonplanarFallback>(NonplanarFallback::ZAA));
+    def->set_default_value(new ConfigOptionEnum<NonplanarFallback>(NonplanarFallback::None));
 
     def = this->add("nonplanar_surface_resolution", coFloat);
     def->label    = L("Non-planar surface resolution");

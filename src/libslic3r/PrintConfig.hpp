@@ -238,7 +238,7 @@ enum class ImexVizTheme {
 
 enum class RotaryLayout : unsigned char { None, TableBC, TableAC, HeadAB, HeadBC };
 enum class NonplanarTopPattern : unsigned char { Contour, Rectilinear, Concentric };
-enum class NonplanarFallback : unsigned char { ZAA, Planar };
+enum class NonplanarFallback : unsigned char { ZAA, Planar, None };
 enum class NonplanarCollisionCheck : unsigned char { Off, Warn, Block };
 
 enum class SurfaceFillOrder {
@@ -1429,6 +1429,8 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat,                     nonplanar_max_surface_error))
     ((ConfigOptionFloat,                     nonplanar_min_patch_area))
     ((ConfigOptionEnum<NonplanarTopPattern>, nonplanar_top_pattern))
+    ((ConfigOptionFloat,                     nonplanar_top_direction))
+    ((ConfigOptionBool,                      nonplanar_surface_spacing))
     ((ConfigOptionBool,                      nonplanar_ironing))
     ((ConfigOptionEnum<NonplanarFallback>,   nonplanar_fallback))
     )

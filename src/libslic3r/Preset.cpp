@@ -1379,7 +1379,7 @@ static std::vector<std::string> s_Preset_print_options{
     "zaa_dont_alternate_fill_direction",
     "zaa_min_z",
     "nonplanar_top_shells", "nonplanar_bottom_shells", "nonplanar_shell_layer_height", "nonplanar_max_slope",
-    "nonplanar_max_surface_error", "nonplanar_min_patch_area", "nonplanar_top_pattern", "nonplanar_ironing",
+    "nonplanar_max_surface_error", "nonplanar_min_patch_area", "nonplanar_top_pattern", "nonplanar_top_direction", "nonplanar_surface_spacing", "nonplanar_ironing",
     "nonplanar_fallback", "nonplanar_surface_resolution", "nonplanar_max_patch_height", "nonplanar_collision_check",
     "ironing_expansion",
 };

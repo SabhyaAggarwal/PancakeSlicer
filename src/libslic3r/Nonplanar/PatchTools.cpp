@@ -302,9 +302,7 @@ int planar_transition_layer(const std::vector<double> &boundaries, double shell_
     return height() >= h_min ? layer : -1;
 }
 
-namespace {
-
-bool contour_line_angle(const HeightField &surface, double &angle)
+bool contour_line_angle(const HeightField &surface, double &angle, double min_coherence)
 {
     double jxx = 0., jxy = 0., jyy = 0.;
     for (int iy = 0; iy < surface.ny(); ++iy)
@@ -318,12 +316,10 @@ bool contour_line_angle(const HeightField &surface, double &angle)
         }
     const double trace = jxx + jyy;
     const double diff  = std::hypot(jxx - jyy, 2. * jxy);
-    if (trace < 1e-9 || diff < 0.1 * trace)
+    if (trace < 1e-9 || diff < min_coherence * trace)
         return false;
     angle = 0.5 * std::atan2(2. * jxy, jxx - jyy) + 0.5 * PI;
     return true;
-}
-
 }
 
 double top_shell_angle(const ConformalPatch &patch, const PrintRegionConfig &config)
@@ -394,6 +390,91 @@ void lift_polylines(const Polylines &polylines, const ExtrusionPath &proto, cons
                 }
                 pts.emplace_back(coord_t(scale_(p.x())), coord_t(scale_(p.y())), coord_t(scale_(z - host_z)));
                 heights.emplace_back(bead);
+            }
+        }
+        flush();
+    }
+}
+
+double head_band_height(const HeadEnvelope &head)
+{
+    double lowest = std::numeric_limits<double>::infinity();
+    for (const HeadBox &box : head.boxes) {
+        double floor_z = box.min.z();
+        if (box.nozzle) {
+            const double r = std::hypot(std::max(std::abs(box.min.x()), std::abs(box.max.x())),
+                                        std::max(std::abs(box.min.y()), std::abs(box.max.y())));
+            if (r <= head.tip_allowance.radius)
+                floor_z = std::max(floor_z, head.tip_allowance.height);
+            if (floor_z >= box.max.z())
+                continue;
+        } else
+            floor_z -= head.margin;
+        lowest = std::min(lowest, floor_z);
+    }
+    return lowest;
+}
+
+void cut_into_bands(const ExtrusionEntitiesPtr &paths, double pitch, double tolerance,
+                    const std::function<void(int band, ExtrusionPathConformal *piece)> &sink)
+{
+    auto band_of = [pitch](double z) { return int(std::floor(z / pitch)); };
+    auto fits    = [&](double lo, double hi) { return hi <= (band_of(lo) + 1) * pitch + tolerance; };
+    for (const ExtrusionEntity *ee : paths) {
+        const auto *path = dynamic_cast<const ExtrusionPathConformal *>(ee);
+        if (path == nullptr || path->polyline.points.size() < 2)
+            continue;
+        const Points3 &src = path->polyline.points;
+        auto point = [](const Point3 &p) { return Vec3d(unscale<double>(p.x()), unscale<double>(p.y()), unscale<double>(p.z())); };
+
+        Points3            pts;
+        std::vector<float> heights;
+        double             lo = 0., hi = 0.;
+        auto start = [&](const Vec3d &p, float h) {
+            pts.assign(1, Point3(coord_t(scale_(p.x())), coord_t(scale_(p.y())), coord_t(scale_(p.z()))));
+            heights.assign(1, h);
+            lo = hi = p.z();
+        };
+        auto add = [&](const Vec3d &p, float h) {
+            pts.emplace_back(coord_t(scale_(p.x())), coord_t(scale_(p.y())), coord_t(scale_(p.z())));
+            heights.emplace_back(h);
+            lo = std::min(lo, p.z());
+            hi = std::max(hi, p.z());
+        };
+        auto flush = [&]() {
+            if (pts.size() >= 2) {
+                auto *piece     = new ExtrusionPathConformal(Polyline3(pts), *path, std::vector<float>(heights));
+                piece->patch_id = path->patch_id;
+                piece->shell    = path->shell;
+                sink(band_of(lo), piece);
+            }
+        };
+
+        start(point(src.front()), path->bead_height.front());
+        for (size_t i = 1; i < src.size(); ++i) {
+            Vec3d       a  = point(pts.back());
+            float       ha = heights.back();
+            const Vec3d b  = point(src[i]);
+            const float hb = path->bead_height[i];
+            for (int guard = 0; guard < 10000; ++guard) {
+                if (fits(std::min(lo, b.z()), std::max(hi, b.z()))) {
+                    add(b, hb);
+                    break;
+                }
+                double t0 = 0., t1 = 1.;
+                for (int it = 0; it < 40; ++it) {
+                    const double t = 0.5 * (t0 + t1);
+                    const double z = a.z() + t * (b.z() - a.z());
+                    (fits(std::min(lo, z), std::max(hi, z)) ? t0 : t1) = t;
+                }
+                const Vec3d cut = a + t0 * (b - a);
+                const float hc  = ha + float(t0) * (hb - ha);
+                if (t0 > 0.)
+                    add(cut, hc);
+                flush();
+                start(cut, hc);
+                a  = cut;
+                ha = hc;
             }
         }
         flush();

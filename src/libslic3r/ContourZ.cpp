@@ -252,6 +252,8 @@ void Layer::make_contour_z(const sla::IndexedMesh &mesh)
         if (!config.zaa_enabled) {
             if (config.nonplanar_top_shells.value > 0 && config.nonplanar_fallback.value == NonplanarFallback::ZAA)
                 handle_extrusion_collection(region, mesh, region->fills, {erTopSolidInfill, erMixed}, shell_area);
+            if (config.nonplanar_top_shells.value > 0 && config.nonplanar_fallback.value == NonplanarFallback::None)
+                handle_extrusion_collection(region, mesh, region->perimeters, {erPerimeter, erExternalPerimeter, erMixed}, shell_area);
             continue;
         }
 

@@ -26,6 +26,7 @@ struct ConformalPatch
     double     z_min = 0., z_max = 0.;
     size_t     host_layer = 0;
     int        region_id = -1;
+    int        band = -1;
     std::vector<ExtrusionEntityCollection> shell_paths;
     ExtrusionEntityCollection              ironing;
 };

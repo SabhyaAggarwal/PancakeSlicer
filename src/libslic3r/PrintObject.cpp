@@ -748,7 +748,7 @@ bool PrintObject::need_z_contouring() const
     for (size_t region_id = 0; region_id < num_regions; region_id++) {
         const auto &config = this->printing_region(region_id).config();
         if (config.zaa_enabled || (config.nonplanar_top_shells.value > 0 &&
-                                   config.nonplanar_fallback.value == NonplanarFallback::ZAA))
+                                   config.nonplanar_fallback.value != NonplanarFallback::Planar))
             return true;
     }
 
@@ -1575,6 +1575,8 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "nonplanar_max_surface_error"
             || opt_key == "nonplanar_min_patch_area"
             || opt_key == "nonplanar_top_pattern"
+            || opt_key == "nonplanar_top_direction"
+            || opt_key == "nonplanar_surface_spacing"
             || opt_key == "nonplanar_ironing"
             || opt_key == "nonplanar_fallback"
             || opt_key == "nonplanar_surface_resolution"
