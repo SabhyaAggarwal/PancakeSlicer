@@ -17,6 +17,8 @@
 #include "GCode/FanMover.hpp"
 #include "GCode/RetractWhenCrossingPerimeters.hpp"
 #include "GCode/SpiralVase.hpp"
+#include "GCode/ConformalEmit.hpp"
+#include "Nonplanar/HeadEnvelope.hpp"
 #include "GCode/ToolOrdering.hpp"
 #include "GCode/WipeTower.hpp"
 #include "GCode/SeamPlacer.hpp"
@@ -33,6 +35,7 @@
 #include "libslic3r_version.h"
 
 #include <cstddef>
+#include <functional>
 #include <limits>
 #include <cstdio>
 #include <array>
@@ -512,6 +515,14 @@ protected:
     std::string     extrude_perimeters(const Print& print, const std::vector<ObjectByExtruder::Island::Region>& by_region, bool is_first_layer, bool is_infill_first, bool unsupported_loops_only = false);
     std::string     extrude_infill(const Print& print, const std::vector<ObjectByExtruder::Island::Region>& by_region, bool ironing);
     std::string     extrude_support(const ExtrusionEntityCollection& support_fills, const ExtrusionRole support_extrusion_role);
+    std::string     extrude_conformal_patches(const Print &print, const std::vector<LayerToPrint> &layers, unsigned int extruder_id,
+                                              size_t single_object_instance_idx);
+    std::string     extrude_conformal_path(const ExtrusionPathConformal &path, const std::string &description,
+                                           const std::function<Vec2d(const Vec2d &)> &surface_gradient = {});
+    void            emit_conformal_moves(std::string &gcode, const ExtrusionPathConformal &path, double e_per_mm,
+                                         double speed, const std::string &speed_marker, const std::string &description);
+    std::string     rotary_move_safely(const ToolPose *target);
+    const Nonplanar::HeadEnvelope &nonplanar_head();
 
     void compute_farthest_point(const std::vector<LayerToPrint> &layers, int most_used_extruder,
                                 const std::map<std::pair<const SupportLayer *, ExtrusionRole>, unsigned int> &support_filaments);
@@ -627,6 +638,9 @@ protected:
     float                               m_last_height{ 0.0f };
     float                               m_last_layer_z{ 0.0f };
     float                               m_max_layer_z{ 0.0f };
+    double                              m_nonplanar_ceiling{ 0. };
+    std::vector<Nonplanar::ConformalPoint> m_conformal_points;
+    Nonplanar::HeadEnvelope                m_nonplanar_head;
     float                               m_last_width{ 0.0f };
     double                              m_last_layer_accumulated_mass{ 0.0 };
 

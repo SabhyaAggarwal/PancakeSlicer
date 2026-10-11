@@ -4,7 +4,7 @@
 	"from": "User",
 	"inherits": "",
 	"instantiation": "true",
-	"printer_notes": "UNMEASURED research machine. Values come from curveslice machines/prodcan3/machine.json and printer.urdf: the 60 mm TCP drop (rotary_tool_length), the B/C ranges, the rotary pivot and the nozzle diameter are placeholders, and the head envelope 'prodcan3' is an unmeasured adjustable bound. Calibrate before trusting collision checks. G-code is joint-space XYZBC with G93 inverse-time feed; C is finite +-180 deg. rotary_pivot is where the B axis (about Y through the URDF b_joint origin 91,55.3,102 mm at Y=0) meets the C axis (b_to_c offset 0,-117.95,-6.5 mm), in the URDF base frame.",
+	"printer_notes": "UNMEASURED research machine. Values come from curveslice machines/prodcan3/machine.json and printer.urdf: the 60 mm TCP drop (rotary_tool_length), the B/C ranges, the rotary pivot and the nozzle diameter are placeholders, and the head envelope 'prodcan3' is an unmeasured adjustable bound. Calibrate before trusting collision checks. G-code is joint-space XYZBC with G93 inverse-time feed; C is finite +-180 deg. rotary_pivot is where the B axis (about Y through the URDF b_joint origin 91,55.3,102 mm at Y=0) meets the C axis (b_to_c offset 0,-117.95,-6.5 mm), in the URDF base frame. The tool mount is the X-rail centre with every joint at zero (x_origin_x -3, tool_centerline_y 35, z_origin_height 82.05 mm) and the nozzle tip sits the 60 mm placeholder drop below it; the bed surface is 6.5 mm above the pivot (b_to_c -6.5 plus c_to_bed 13); the Y stage carries the table, so joint Y runs opposite to the part.",
 	"printer_technology": "FFF",
 	"printable_area": [
 		"40.000x0.000",
@@ -94,6 +94,17 @@
 		"102"
 	],
 	"rotary_tool_length": "60",
+	"rotary_tool_mount": [
+		"-3",
+		"35",
+		"82.05"
+	],
+	"rotary_table_height": "6.5",
+	"rotary_linear_moves_table": [
+		"0",
+		"1",
+		"0"
+	],
 	"rotary_firmware_rtcp": "0",
 	"rotary_inverse_time_feed": "1",
 	"nonplanar_max_tilt": "60"

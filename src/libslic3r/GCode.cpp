@@ -3,7 +3,12 @@
 #include "Circle.hpp"
 #include "Config.hpp"
 #include "GCode/GCodeProcessor.hpp"
+#include "GCode/ConformalEmit.hpp"
+#include "GCode/ToolKinematics.hpp"
+#include "Nonplanar/HeadEnvelope.hpp"
+#include "Nonplanar/ConformalShells.hpp"
 #include "Flow.hpp"
+#include "Nonplanar/BeadModel.hpp"
 #include "GCode/ThumbnailData.hpp"
 #include "GCode/ToolOrdering.hpp"
 #include "GCode/SpiralVase.hpp"
@@ -1932,6 +1937,7 @@ std::vector<GCode::LayerToPrint> GCode::collect_layers_to_print(const PrintObjec
         layers_to_print.push_back(layer_to_print);
 
         bool has_extrusions = (layer_to_print.object_layer && layer_to_print.object_layer->has_extrusions())
+            || (layer_to_print.object_layer && layer_to_print.object_layer->conformal_covered)
             || (layer_to_print.support_layer && layer_to_print.support_layer->has_extrusions())
             || (layer_to_print.belt_brim_band && ! layer_to_print.belt_brim_band->fills.empty());
 
@@ -2822,6 +2828,15 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
         BoundingBoxf bbox_bed(print.config().printable_area.values);
         m_writer.set_build_volume_max(Vec3d(bbox_bed.max.x(), bbox_bed.max.y(),
                                               print.config().printable_height.value));
+    }
+
+    m_nonplanar_ceiling = 0.;
+    if (print.config().nonplanar_kinematics.value != RotaryLayout::None) {
+        m_writer.set_tool_kinematics(make_tool_kinematics(print.config()));
+        if (std::unique_ptr<MachineKinematics> upright = make_upright_machine_kinematics(print.config())) {
+            m_writer.set_kinematics(std::move(upright));
+            m_writer.set_force_normal_lift(true);
+        }
     }
 
     if (print.config().belt_printer.value) {
@@ -6297,6 +6312,8 @@ LayerResult GCode::process_layer(
             }
         }
 
+        gcode += this->extrude_conformal_patches(print, layers, extruder_id, single_object_instance_idx);
+
         for (const auto &grp : layer_tools.mixed_sub_layer_groups) {
             int sub_idx = -1;
             for (size_t k = 0; k < grp.components_0based.size(); ++k) {
@@ -7237,6 +7254,213 @@ std::string GCode::extrude_infill(const Print &print, const std::vector<ObjectBy
     return gcode;
 }
 
+std::string GCode::extrude_conformal_patches(const Print &print, const std::vector<LayerToPrint> &layers, unsigned int extruder_id,
+                                             size_t single_object_instance_idx)
+{
+    std::string gcode;
+    for (const LayerToPrint &layer_to_print : layers) {
+        const Layer *layer = layer_to_print.object_layer;
+        if (layer == nullptr || layer->conformal_patches_after.empty())
+            continue;
+        const PrintObject                &object    = *layer->object();
+        const Nonplanar::ConformalResult &conformal = object.conformal();
+        const size_t i_begin = single_object_instance_idx == size_t(-1) ? 0 : single_object_instance_idx;
+        const size_t i_end   = single_object_instance_idx == size_t(-1) ? object.instances().size() : single_object_instance_idx + 1;
+        for (size_t instance_id = i_begin; instance_id < i_end; ++instance_id)
+            for (int patch_id : layer->conformal_patches_after) {
+                const Nonplanar::ConformalPatch &patch  = conformal.patches[size_t(patch_id)];
+                const PrintRegion               &region = object.printing_region(size_t(patch.region_id));
+                if (unsigned(region.config().top_surface_filament_id.value - 1) != extruder_id)
+                    continue;
+                const Point &offset = object.instances()[instance_id].shift;
+                m_last_obj_copy     = std::make_pair(&object, offset);
+                this->set_origin(unscale(offset));
+                this->on_set_origin(&object, offset);
+                m_layer = layer;
+                m_config.apply(region.config());
+                const auto surface_gradient = [&patch](const Vec2d &p) {
+                    const Vec2d g = patch.surface.gradient(p);
+                    return std::isnan(g.x()) || std::isnan(g.y()) ? Vec2d(Vec2d::Zero()) : g;
+                };
+                for (size_t k = 0; k < patch.shell_paths.size(); ++k) {
+                    gcode += ";_NONPLANAR_BEGIN patch=" + std::to_string(patch.id) + " shell=" + std::to_string(k) + "\n";
+                    for (const ExtrusionEntity *ee : patch.shell_paths[k].entities)
+                        if (const auto *path = dynamic_cast<const ExtrusionPathConformal*>(ee))
+                            gcode += this->extrude_conformal_path(*path, "conformal shell", surface_gradient);
+                    gcode += ";_NONPLANAR_END\n";
+                }
+                m_max_layer_z = std::max(m_max_layer_z, float(patch.z_max));
+            }
+    }
+    return gcode;
+}
+
+std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, const std::string &description,
+                                          const std::function<Vec2d(const Vec2d &)> &surface_gradient)
+{
+    using namespace Nonplanar;
+    std::string gcode;
+    if (path.polyline.points.size() < 2)
+        return gcode;
+
+    m_conformal_points = conformal_points(path, [this](const Point3 &p) {
+        const Vec2d xy = this->point_to_gcode(p.to_point());
+        return Vec3d(xy.x(), xy.y(), m_nominal_z + unscale<double>(p.z()));
+    });
+    const ToolKinematics &kinematics = m_writer.tool_kinematics();
+    const bool            rotary     = kinematics.rotary_count() > 0;
+    if (rotary && surface_gradient) {
+        MinimalTiltParams tilt;
+        tilt.slope_limit = this->nonplanar_head().slope_map(72, path.height);
+        double rate = 0.;
+        for (const RotaryAxis &axis : kinematics.rotary_axes())
+            if (axis.max_speed_deg_s > 0.)
+                rate = rate == 0. ? axis.max_speed_deg_s : std::min(rate, axis.max_speed_deg_s);
+        const double nominal = m_config.top_surface_speed.get_at(get_nozzle_config_index(m_writer.filament()->id()));
+        tilt.max_rate        = rate > 0. && nominal > 0. ? Geometry::deg2rad(rate) / nominal : 0.;
+        const Vec2d origin   = this->point_to_gcode(Point(0, 0));
+        apply_minimal_tilt(m_conformal_points, [&surface_gradient, &origin](const Vec2d &p) { return surface_gradient(p - origin); },
+                           kinematics, tilt);
+    }
+
+    const ToolPose &start = m_conformal_points.front().pose;
+    const Vec3d    &here  = m_writer.get_position();
+    if (! m_last_pos_defined || (here - start.tip).norm() > EPSILON || (m_writer.get_tool_axis() - start.axis).norm() > EPSILON) {
+        gcode += this->retract();
+        if (rotary && (start.axis.z() < 1. - EPSILON || m_writer.get_tool_axis().z() < 1. - EPSILON)) {
+            gcode += this->rotary_move_safely(&start);
+        } else {
+            const double hop  = std::max(this->nonplanar_head().margin,
+                                         m_writer.filament() != nullptr ? m_config.z_hop.get_at(m_writer.filament()->id()) : 0.);
+            const double safe = std::max({ here.z(), start.tip.z(), std::max(m_nonplanar_ceiling, double(m_max_layer_z)) + hop });
+            gcode += m_writer.travel_to_z(safe, "lift over conformal shells", true);
+            gcode += m_writer.travel_to_xy(start.tip.head<2>(), "move to conformal path");
+            gcode += m_writer.travel_to_z(start.tip.z(), "lower onto conformal path", true);
+        }
+        this->set_last_pos(path.first_point());
+        m_need_change_layer_lift_z = false;
+    }
+    gcode += this->_extrude(path, description);
+    gcode += m_writer.end_inverse_time();
+    if (rotary)
+        gcode += this->rotary_move_safely(nullptr);
+    m_conformal_points.clear();
+    return gcode;
+}
+
+void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConformal &path, double e_per_mm, double speed,
+                                 const std::string &speed_marker, const std::string &description)
+{
+    using namespace Nonplanar;
+    if (m_conformal_points.size() != path.polyline.points.size())
+        m_conformal_points = conformal_points(path, [this](const Point3 &p) {
+            const Vec2d xy = this->point_to_gcode(p.to_point());
+            return Vec3d(xy.x(), xy.y(), m_nominal_z + unscale<double>(p.z()));
+        });
+
+    ConformalEmitParams params;
+    params.nominal_speed = speed;
+    params.e_per_mm3     = path.mm3_per_mm > 0. ? e_per_mm / path.mm3_per_mm : 0.;
+    params.comment       = description;
+    params.speed_marker  = speed_marker;
+    auto first_value     = [](const ConfigOptionFloats &opt) { return opt.values.empty() ? 0. : opt.values.front(); };
+    auto lower_limit     = [](double a, double b) { return a > 0. && b > 0. ? std::min(a, b) : std::max(a, b); };
+    params.limits.max_v_xy = lower_limit(first_value(m_config.machine_max_speed_x), first_value(m_config.machine_max_speed_y));
+    params.limits.max_a_xy = lower_limit(first_value(m_config.machine_max_acceleration_x), first_value(m_config.machine_max_acceleration_y));
+    params.limits.max_v_z  = first_value(m_config.machine_max_speed_z);
+    params.limits.max_a_z  = first_value(m_config.machine_max_acceleration_z);
+
+    emit_conformal_extrusion(m_writer, m_conformal_points, path.width, params, m_last_height, gcode,
+                             [this](const Vec3d &a, const Vec3d &b, double) {
+                                 m_nonplanar_ceiling = std::max({ m_nonplanar_ceiling, a.z(), b.z() });
+                             });
+}
+
+const Nonplanar::HeadEnvelope &GCode::nonplanar_head()
+{
+    if (m_nonplanar_head.empty())
+        m_nonplanar_head = Nonplanar::resolve_head_envelope(m_config);
+    return m_nonplanar_head;
+}
+
+std::string GCode::rotary_move_safely(const ToolPose *target)
+{
+    const auto *kinematics = dynamic_cast<const RotaryKinematics *>(&m_writer.tool_kinematics());
+    if (kinematics == nullptr)
+        return {};
+    const RotaryGeometry &geo     = kinematics->geometry();
+    const JointPose       current = m_writer.get_joints();
+    JointPose             goal;
+    if (target == nullptr) {
+        for (int i = 0; i < 2; ++i)
+            goal.rot[i] = kinematics->machine_angle(i, 0.);
+        if (std::abs(current.rot[0] - goal.rot[0]) < 1e-4 && std::abs(current.rot[1] - goal.rot[1]) < 1e-4)
+            return {};
+    } else if (! kinematics->inverse(*target, &current, goal))
+        throw Slic3r::SlicingError(_u8L("Non-planar: a curved shell needs a tool tilt the rotary axes cannot reach."));
+
+    const double ceiling = std::max(m_nonplanar_ceiling, double(m_max_layer_z));
+    const double clear   = 5.;
+    const bool   table   = layout_is_table(kinematics->layout()) && ! geo.firmware_rtcp;
+    const Vec3d  o(0., 0., geo.table_height);
+    double       high;
+    if (table) {
+        BoundingBoxf bed(m_config.printable_area.values);
+        double       bed_radius = 0.;
+        for (const Vec2d &c : { bed.min, bed.max, Vec2d(bed.min.x(), bed.max.y()), Vec2d(bed.max.x(), bed.min.y()) })
+            bed_radius = std::max(bed_radius, c.norm());
+        high = std::hypot(bed_radius, ceiling + geo.table_height) + clear;
+    } else {
+        double swing = geo.tool_length;
+        if (geo.firmware_rtcp) {
+            swing = 0.;
+            for (const Nonplanar::HeadBox &box : this->nonplanar_head().boxes)
+                if (! box.infinite_x && ! box.infinite_y)
+                    swing = std::max(swing, Vec3d(std::max(-box.min.x(), box.max.x()), std::max(-box.min.y(), box.max.y()),
+                                                  std::max(-box.min.z(), box.max.z())).norm());
+        }
+        high = ceiling + swing + clear;
+    }
+    auto joints_at = [&](const Vec3d &point, const JointPose &rot) {
+        JointPose      out = rot;
+        const ToolPose pose = kinematics->forward(rot);
+        const Vec3d    tip  = table ? Vec3d(kinematics->head_frame(rot).transpose() * point - o) : point;
+        if (! kinematics->inverse({ tip, pose.axis }, &rot, out))
+            throw Slic3r::SlicingError(_u8L("Non-planar: the head cannot reach a safe height to turn the rotary axes."));
+        return out;
+    };
+    auto lifted = [&](const JointPose &j) {
+        const ToolPose pose = kinematics->forward(j);
+        if (table) {
+            Vec3d r = kinematics->head_frame(j) * (pose.tip + o);
+            r.z()   = std::max(r.z(), high);
+            return r;
+        }
+        return Vec3d(pose.tip.x(), pose.tip.y(), std::max(pose.tip.z(), high));
+    };
+
+    std::string gcode;
+    const JointPose up = joints_at(lifted(current), current);
+    m_writer.move_to_joints(gcode, up, "lift to turn the rotary axes");
+    JointPose turned = up;
+    turned.rot       = goal.rot;
+    m_writer.move_to_joints(gcode, turned, "turn the rotary axes");
+    if (target != nullptr) {
+        Vec3d above;
+        if (table) {
+            above = kinematics->head_frame(goal) * (target->tip + o);
+            above.z() = std::max(above.z(), high);
+        } else {
+            const double t = target->axis.z() > EPSILON ? std::max(0., (high - target->tip.z()) / target->axis.z()) : 0.;
+            above          = target->tip + t * target->axis;
+        }
+        m_writer.move_to_joints(gcode, joints_at(above, goal), "move above the curved shell");
+        m_writer.move_to_joints(gcode, goal, "lower onto the curved shell");
+    }
+    gcode += m_writer.end_inverse_time();
+    return gcode;
+}
+
 std::string GCode::extrude_support(const ExtrusionEntityCollection &support_fills, const ExtrusionRole support_extrusion_role)
 {
     static constexpr const char* support_label            = "support material";
@@ -8029,14 +8253,18 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
 
                 apply_role_based_fan_speed();
             }
-            if (!m_config.enable_arc_fitting || path.polyline.fitting_result.empty() || m_config.spiral_mode || sloped != nullptr || path.z_contoured || this->should_disable_arc_fitting()) {
+            if (const auto *conformal = dynamic_cast<const ExtrusionPathConformal *>(&path)) {
+                this->emit_conformal_moves(gcode, *conformal, e_per_mm, speed, comment, description);
+            } else if (!m_config.enable_arc_fitting || path.polyline.fitting_result.empty() || m_config.spiral_mode || sloped != nullptr || path.z_contoured || this->should_disable_arc_fitting()) {
                 double path_length = 0.;
                 double total_length = sloped == nullptr ? 0. : path.polyline.length() * SCALING_FACTOR;
                 double saved_z      = m_writer.get_position().z();
 
                 for (const Line3& line : path.polyline.lines()) {
                     std::string flow_description;
-                    const double line_length = line.length() * SCALING_FACTOR;
+                    const double line_length = path.z_contoured
+                        ? Nonplanar::charge_length(line.a.cast<double>(), line.b.cast<double>()) * SCALING_FACTOR
+                        : line.length() * SCALING_FACTOR;
                     if (line_length < EPSILON)
                         continue;
                     path_length += line_length;

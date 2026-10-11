@@ -1456,7 +1456,7 @@ static std::vector<std::string> s_Preset_printer_options {
     "gcode_remap_x", "gcode_remap_y", "gcode_remap_z",
     "belt_frame_tilt_decouple", "belt_frame_tilt_angle",
     "nonplanar_head", "nonplanar_kinematics", "rotary_axis_limits", "rotary_axis_continuous", "rotary_max_speed",
-    "rotary_pivot", "rotary_tool_length", "rotary_firmware_rtcp", "rotary_inverse_time_feed", "nonplanar_max_tilt",
+    "rotary_pivot", "rotary_tool_length", "rotary_firmware_rtcp", "rotary_inverse_time_feed", "nonplanar_max_tilt", "rotary_axis_reversed", "rotary_axis_home", "rotary_linear_moves_table", "rotary_table_height", "rotary_tool_mount",
     "belt_support_floor_offset",
     "enable_belt_purge_tower",
     "gcode_flavor", "gcode_skip_config_block",

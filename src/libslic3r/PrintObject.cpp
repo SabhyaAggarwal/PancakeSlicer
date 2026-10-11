@@ -16,6 +16,7 @@
 #include "Geometry.hpp"
 #include "I18N.hpp"
 #include "Layer.hpp"
+#include "Nonplanar/ConformalShells.hpp"
 #include "MutablePolygon.hpp"
 #include "PrintBase.hpp"
 #include "PrintConfig.hpp"
@@ -701,14 +702,40 @@ void PrintObject::nonplanar_shells()
 {
     if (!this->set_started(posNonplanar))
         return;
+    bool enabled = false;
+    for (size_t region_id = 0; region_id < this->num_printing_regions(); ++region_id)
+        enabled |= this->printing_region(region_id).config().nonplanar_top_shells.value > 0;
+    if (enabled)
+        m_print->set_status(40, L("Generating curved top shells"));
+    m_conformal = std::make_unique<Nonplanar::ConformalResult>(Nonplanar::build_conformal_shells(*this));
+    m_print->throw_if_canceled();
     this->set_done(posNonplanar);
+}
+
+TriangleMesh PrintObject::object_frame_mesh(double &ground_offset) const
+{
+    TriangleMesh mesh = m_model_object->raw_mesh();
+    const ModelInstance *inst = m_instances.front().model_instance;
+    Geometry::Transformation trans = inst->get_transformation();
+    trans.set_offset(Vec3d(-unscale<double>(m_center_offset.x()), -unscale<double>(m_center_offset.y()), 0));
+    mesh.transform(trans.get_matrix());
+    ground_offset = -m_model_object->min_z();
+    return mesh;
+}
+
+const Nonplanar::ConformalResult& PrintObject::conformal() const
+{
+    static const Nonplanar::ConformalResult empty;
+    return m_conformal ? *m_conformal : empty;
 }
 
 bool PrintObject::need_z_contouring() const
 {
     size_t num_regions = this->num_printing_regions();
     for (size_t region_id = 0; region_id < num_regions; region_id++) {
-        if (this->printing_region(region_id).config().zaa_enabled)
+        const auto &config = this->printing_region(region_id).config();
+        if (config.zaa_enabled || (config.nonplanar_top_shells.value > 0 &&
+                                   config.nonplanar_fallback.value == NonplanarFallback::ZAA))
             return true;
     }
 
@@ -724,21 +751,10 @@ void PrintObject::contour_z()
     m_print->set_status(40, L("Z contouring"));
     BOOST_LOG_TRIVIAL(debug) << "Contouring in parallel - start";
 
-    TriangleMesh mesh = this->m_model_object->raw_mesh();
-    if (m_model_object->instances.size() != 1) {
-        throw RuntimeError("ContourZ: unexpected number of instances");
-    }
-
-    ModelInstance *inst = m_model_object->instances.front();
-    Point                    center_offset = this->center_offset();
-    Geometry::Transformation trans = inst->get_transformation();
-
-    double z = this->m_model_object->min_z();
-    trans.set_offset(Vec3d(-unscale<double>(center_offset.x()), -unscale<double>(center_offset.y()), 0));
-    mesh.transform(trans.get_matrix());
-
+    double           ground_offset = 0.;
+    TriangleMesh     mesh          = this->object_frame_mesh(ground_offset);
     sla::IndexedMesh imesh(mesh);
-    imesh.ground_level_offset(-z);
+    imesh.ground_level_offset(ground_offset);
 
     std::mutex mtx;
     size_t completed = 0;

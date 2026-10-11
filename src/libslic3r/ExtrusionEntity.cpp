@@ -711,4 +711,70 @@ void ExtrusionPathContoured::reverse() {
     std::reverse(this->z_diffs.begin(), this->z_diffs.end());
 }
 
+
+ExtrusionPathConformal::ExtrusionPathConformal(Polyline3 &&polyline, const ExtrusionPath &rhs, std::vector<float> &&bead_height,
+                                               std::vector<Vec3f> &&tool_axis)
+    : ExtrusionPath(std::move(polyline), rhs), bead_height(std::move(bead_height)), tool_axis(std::move(tool_axis))
+{
+    assert(this->bead_height.size() == this->polyline.points.size());
+    assert(this->tool_axis.empty() || this->tool_axis.size() == this->polyline.points.size());
+    this->z_contoured = true;
+}
+
+void ExtrusionPathConformal::reverse()
+{
+    this->polyline.reverse();
+    std::reverse(this->bead_height.begin(), this->bead_height.end());
+    std::reverse(this->tool_axis.begin(), this->tool_axis.end());
+}
+
+void ExtrusionPathConformal::simplify(double tolerance)
+{
+    const Points3 &pts = this->polyline.points;
+    if (pts.size() < 3)
+        return;
+    const double  tol = scale_(tolerance);
+    std::vector<char> keep(pts.size(), 0);
+    keep.front() = keep.back() = 1;
+    std::vector<std::pair<size_t, size_t>> stack { { 0, pts.size() - 1 } };
+    while (!stack.empty()) {
+        const auto [a, b] = stack.back();
+        stack.pop_back();
+        const Vec3d  pa  = pts[a].cast<double>(), pb = pts[b].cast<double>();
+        const Vec3d  ab  = pb - pa;
+        const double len = ab.squaredNorm();
+        double       worst = 0.;
+        size_t       worst_idx = a;
+        for (size_t i = a + 1; i < b; ++i) {
+            const double t    = len > 0. ? std::clamp((pts[i].cast<double>() - pa).dot(ab) / len, 0., 1.) : 0.;
+            const double dist = (pa + t * ab - pts[i].cast<double>()).norm();
+            const double dh   = std::abs(scale_(this->bead_height[i] - (1. - t) * this->bead_height[a] - t * this->bead_height[b]));
+            const double d    = std::max(dist, dh);
+            if (d > worst) {
+                worst     = d;
+                worst_idx = i;
+            }
+        }
+        if (worst > tol) {
+            keep[worst_idx] = 1;
+            stack.emplace_back(a, worst_idx);
+            stack.emplace_back(worst_idx, b);
+        }
+    }
+    Points3            new_pts;
+    std::vector<float> new_heights;
+    std::vector<Vec3f> new_axes;
+    for (size_t i = 0; i < pts.size(); ++i)
+        if (keep[i]) {
+            new_pts.emplace_back(pts[i]);
+            new_heights.emplace_back(this->bead_height[i]);
+            if (!this->tool_axis.empty())
+                new_axes.emplace_back(this->tool_axis[i]);
+        }
+    this->polyline.points = std::move(new_pts);
+    this->polyline.fitting_result.clear();
+    this->bead_height     = std::move(new_heights);
+    this->tool_axis       = std::move(new_axes);
+}
+
 }

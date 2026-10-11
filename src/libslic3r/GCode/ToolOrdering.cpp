@@ -6,6 +6,7 @@
 #include "libslic3r/FilamentGroup.hpp"
 #include "Print.hpp"
 #include "ToolOrdering.hpp"
+#include "libslic3r/Nonplanar/ConformalShells.hpp"
 #include "Layer.hpp"
 #include "ClipperUtils.hpp"
 #include "ParameterUtils.hpp"
@@ -809,6 +810,12 @@ void ToolOrdering::collect_extruders(const PrintObject &object, const std::vecto
             }
             if (has_internal_solid || has_top_solid_surface || has_bottom_surface || has_infill)
                 layer_tools.has_object = true;
+        }
+
+        for (int patch_id : layer->conformal_patches_after) {
+            const Nonplanar::ConformalPatch &patch = object.conformal().patches[size_t(patch_id)];
+            layer_tools.extruders.emplace_back(object.printing_region(size_t(patch.region_id)).config().top_surface_filament_id.value);
+            layer_tools.has_object = true;
         }
 
         if (!mixed_slots_1based.empty()) {

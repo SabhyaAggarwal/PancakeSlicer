@@ -1,8 +1,11 @@
+#include "ClipperUtils.hpp"
 #include "Exception.hpp"
+#include "ExPolygon.hpp"
 #include "ExtrusionEntity.hpp"
 #include "ExtrusionEntityCollection.hpp"
 #include "Layer.hpp"
 #include "Line.hpp"
+#include "Nonplanar/ConformalShells.hpp"
 #include "Point.hpp"
 #include "Print.hpp"
 #include "SLA/IndexedMesh.hpp"
@@ -37,20 +40,25 @@ static double slope_from_normal(const Eigen::Vector3d& normal)
 
 static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &mesh, ExtrusionPath &path)
 {
+    if (!region->region().config().zaa_enabled && path.role() != erTopSolidInfill)
+        return false;
+
     if (path.role() != erTopSolidInfill && path.role() != erIroning && path.role() != erExternalPerimeter && path.role() != erPerimeter) {
 		return false;
 	}
 	
 	Layer *layer = region->layer();
 	coordf_t mesh_slice_z = layer->slice_z + mesh.ground_level();
-	coordf_t min_z = region->region().config().zaa_min_z;
+    const auto &config = region->region().config().zaa_enabled
+        ? region->region().config() : PrintRegionConfig::defaults();
+	coordf_t min_z = config.zaa_min_z;
 
 	const Points3 &points = path.polyline.points;
 	double resolution_mm = 0.1;
 
 	coordf_t height = layer->height;
 
-	double minimize_perimeter_height_angle = region->region().config().zaa_minimize_perimeter_height;
+	double minimize_perimeter_height_angle = config.zaa_minimize_perimeter_height;
 
 	Pointf3s contoured_points;
 	bool was_contoured = false;
@@ -177,6 +185,9 @@ static void contour_extrusion_entitiy_collection(LayerRegion *region, const sla:
 
 static void contour_extrusion_entity(LayerRegion *region, const sla::IndexedMesh &mesh, ExtrusionEntity *extr)
 {
+	if (dynamic_cast<const ExtrusionPathConformal*>(extr) != nullptr)
+		return;
+
 	const ExtrusionPathSloped *sloped = dynamic_cast<const ExtrusionPathSloped*>(extr);
 	if (sloped != nullptr) {
 		throw RuntimeError("ExtrusionPathSloped not implemented");
@@ -217,11 +228,13 @@ static void contour_extrusion_entity(LayerRegion *region, const sla::IndexedMesh
 	return;
 }
 
-static void handle_extrusion_collection(LayerRegion *region, const sla::IndexedMesh &mesh, ExtrusionEntityCollection &collection, std::initializer_list<ExtrusionRole> roles) {
+static void handle_extrusion_collection(LayerRegion *region, const sla::IndexedMesh &mesh, ExtrusionEntityCollection &collection, std::initializer_list<ExtrusionRole> roles, const ExPolygons &shell_area) {
     for (ExtrusionEntity* extr : collection.entities) {
         if (!contains(roles, extr->role())) {
 			continue;
 		}
+		if (!shell_area.empty() && diff_pl(extr->as_polylines(), shell_area).empty())
+			continue;
 
 		contour_extrusion_entity(region, mesh, extr);
     }
@@ -229,12 +242,20 @@ static void handle_extrusion_collection(LayerRegion *region, const sla::IndexedM
 
 void Layer::make_contour_z(const sla::IndexedMesh &mesh)
 {
-	for (LayerRegion *region : this->regions()) {
-        if (!region->region().config().zaa_enabled)
-            continue;
+	ExPolygons shell_area;
+	for (const Nonplanar::ConformalPatch &patch : this->object()->conformal().patches)
+		append(shell_area, diff_ex(patch.footprint, patch.wall_band));
 
-        handle_extrusion_collection(region, mesh, region->fills, {erTopSolidInfill, erIroning, erPerimeter, erExternalPerimeter, erMixed});
-        handle_extrusion_collection(region, mesh, region->perimeters, {erPerimeter, erExternalPerimeter, erMixed});
+	for (LayerRegion *region : this->regions()) {
+        const auto &config = region->region().config();
+        if (!config.zaa_enabled) {
+            if (config.nonplanar_top_shells.value > 0 && config.nonplanar_fallback.value == NonplanarFallback::ZAA)
+                handle_extrusion_collection(region, mesh, region->fills, {erTopSolidInfill, erMixed}, shell_area);
+            continue;
+        }
+
+        handle_extrusion_collection(region, mesh, region->fills, {erTopSolidInfill, erIroning, erPerimeter, erExternalPerimeter, erMixed}, shell_area);
+        handle_extrusion_collection(region, mesh, region->perimeters, {erPerimeter, erExternalPerimeter, erMixed}, shell_area);
     }
 }
 }

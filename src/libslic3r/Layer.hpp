@@ -135,6 +135,10 @@ public:
 
     ExPolygons              loverhangs;
     BoundingBox             loverhangs_bbox;
+
+    std::vector<int>        conformal_patches_before;
+    std::vector<int>        conformal_patches_after;
+    bool                    conformal_covered { false };
     size_t                  region_count() const { return m_regions.size(); }
     const LayerRegion*      get_region(int idx) const { return m_regions[idx]; }
     LayerRegion*            get_region(int idx) { return m_regions[idx]; }
@@ -172,7 +176,11 @@ public:
     void                    export_region_slices_to_svg_debug(const char *name) const;
     void                    export_region_fill_surfaces_to_svg_debug(const char *name) const;
 
-    virtual bool            has_extrusions() const { for (auto layerm : m_regions) if (layerm->has_extrusions()) return true; return false; }
+    virtual bool            has_extrusions() const {
+        if (!conformal_patches_before.empty() || !conformal_patches_after.empty()) return true;
+        for (auto layerm : m_regions) if (layerm->has_extrusions()) return true;
+        return false;
+    }
 
     void simplify_wall_extrusion_path() { for (auto layerm : m_regions) layerm->simplify_wall_extrusion_entity();}
     void simplify_infill_extrusion_path() { for (auto layerm : m_regions) layerm->simplify_infill_extrusion_entity(); }

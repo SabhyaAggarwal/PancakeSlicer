@@ -345,6 +345,22 @@ public:
     bool is_flat() const { return is_approx(slope_begin.z_ratio, slope_end.z_ratio); }
 };
 
+class ExtrusionPathConformal : public ExtrusionPath
+{
+public:
+    std::vector<float> bead_height;
+    std::vector<Vec3f> tool_axis;
+    int                patch_id = -1;
+    int                shell    = -1;
+
+    ExtrusionPathConformal(Polyline3 &&polyline, const ExtrusionPath &rhs,
+                           std::vector<float> &&bead_height, std::vector<Vec3f> &&tool_axis = {});
+    ExtrusionEntity *clone() const override { return new ExtrusionPathConformal(*this); }
+    ExtrusionEntity *clone_move() override { return new ExtrusionPathConformal(std::move(*this)); }
+    void reverse() override;
+    void simplify(double tolerance) override;
+};
+
 class ExtrusionPathOriented : public ExtrusionPath
 {
 public:

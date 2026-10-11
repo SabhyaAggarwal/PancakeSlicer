@@ -14,6 +14,7 @@
 #include "libslic3r/CustomGCode.hpp"
 #include "libslic3r/MultiNozzleUtils.hpp"
 #include "libslic3r/GCode/MachineFrameTransform.hpp"
+#include "libslic3r/GCode/ToolKinematics.hpp"
 
 #include <cstddef>
 #include <cassert>
@@ -240,6 +241,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
 
             int  object_label_id{-1};
             float print_z{0.0f};
+            unsigned char nonplanar_patch_shell{ 0xFF };
 
             float volumetric_rate() const { return feedrate * mm3_per_mm; }
             float actual_volumetric_rate() const { return actual_feedrate * mm3_per_mm; }
@@ -1006,6 +1008,10 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         std::vector<Vec3f> m_extruder_offsets;
         GCodeFlavor m_flavor;
         std::vector<float> m_nozzle_volume;
+        std::unique_ptr<ToolKinematics> m_tool_kinematics;
+        JointPose                       m_joints;
+        bool                            m_inverse_time{ false };
+        unsigned char                   m_nonplanar_patch_shell{ 0xFF };
         AxisCoords m_start_position;
         AxisCoords m_end_position;
         AxisCoords m_origin;
@@ -1195,6 +1201,9 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
 
         void process_G0(const GCodeReader::GCodeLine& line);
         void process_G1(const GCodeReader::GCodeLine& line, const std::optional<unsigned int>& remaining_internal_g1_lines = std::nullopt);
+        void process_rotary_G1(const GCodeReader::GCodeLine& line);
+        void process_G93(const GCodeReader::GCodeLine&) { m_inverse_time = true; }
+        void process_G94(const GCodeReader::GCodeLine&) { m_inverse_time = false; }
         enum class G1DiscretizationOrigin {
             G1,
             G2G3,

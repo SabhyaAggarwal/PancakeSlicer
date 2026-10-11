@@ -18,6 +18,7 @@
 #include "PrintConfig.hpp"
 #include "Config.hpp"
 #include "GCode/MachineKinematics.hpp"
+#include "GCode/ToolKinematics.hpp"
 #include <memory>
 
 namespace Slic3r {
@@ -35,6 +36,7 @@ public:
         m_to_lift_type(LiftType::NormalLift),
         m_is_first_layer(true), m_current_speed(3600),
         m_kinematics(std::make_unique<CartesianKinematics>()),
+        m_tool_kinematics(std::make_unique<ThreeAxisKinematics>()),
         m_cached_extruder_idx(0),
         m_curr_filament_extruder(MAXIMUM_EXTRUDER_NUMBER, nullptr),
         m_curr_extruder_id (-1),
@@ -143,6 +145,17 @@ public:
     void set_force_normal_lift(bool force) { m_force_normal_lift = force; }
 
     static bool supports_separate_travel_acceleration(GCodeFlavor flavor);
+
+    void                  set_tool_kinematics(std::unique_ptr<ToolKinematics> kinematics);
+    const ToolKinematics &tool_kinematics() const { return *m_tool_kinematics; }
+    void        extrude_to_pose(std::string &out, const ToolPose &pose, double dE, const std::string &comment = {});
+    std::string travel_to_pose(const ToolPose &pose, const std::string &comment = {});
+    void        move_to_joints(std::string &out, const JointPose &joints, const std::string &comment = {});
+    void        set_pose_speed(double F) { m_current_speed = F; }
+    std::string end_inverse_time();
+    const Vec3d     &get_tool_axis() const { return m_tool_axis; }
+    JointPose        get_joints() const;
+    static constexpr double max_tip_deviation = 0.02;
 protected:
     Vec3d           m_pos = Vec3d::Zero();
     double          m_x_offset{ 0 };
@@ -166,6 +179,17 @@ protected:
     bool                   m_force_normal_lift = false;
 
     std::unique_ptr<MachineKinematics> m_kinematics;
+
+    std::unique_ptr<ToolKinematics> m_tool_kinematics;
+    Vec3d                           m_tool_axis { Vec3d::UnitZ() };
+    JointPose                       m_joints;
+    bool                            m_joints_valid = false;
+    bool                            m_inverse_time = false;
+    bool                            m_rotary_written = false;
+    Vec3d                           m_max_joint_speed { Vec3d::Zero() };
+    void        write_joint_move(std::string &out, const JointPose &joints, double tip_length, double tip_speed,
+                                 double dE, const std::string &comment);
+    void        pose_move(std::string &out, const ToolPose &pose, double dE, const std::string &comment, bool travel);
 
     int             m_remap_x = 0;
     int             m_remap_y = 1;

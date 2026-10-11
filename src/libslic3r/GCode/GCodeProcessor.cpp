@@ -2416,6 +2416,8 @@ void GCodeProcessor::register_commands()
         {"G90", [this](const GCodeReader::GCodeLine& line) { process_G90(line); }},
         {"G91", [this](const GCodeReader::GCodeLine& line) { process_G91(line); }},
         {"G92", [this](const GCodeReader::GCodeLine& line) { process_G92(line); }},
+        {"G93", [this](const GCodeReader::GCodeLine& line) { process_G93(line); }},
+        {"G94", [this](const GCodeReader::GCodeLine& line) { process_G94(line); }},
 
         {"M1", [this](const GCodeReader::GCodeLine& line) { process_M1(line); }},
 
@@ -2778,6 +2780,10 @@ void GCodeProcessor::apply_config(const PrintConfig& config)
     if (z_offset != nullptr)
         m_z_offset = z_offset->value;
 
+    if (config.nonplanar_kinematics.value != RotaryLayout::None) {
+        m_tool_kinematics = make_tool_kinematics(config);
+        m_tool_kinematics->inverse({ Vec3d::Zero(), Vec3d::UnitZ() }, nullptr, m_joints);
+    }
 }
 
 void GCodeProcessor::apply_config(const DynamicPrintConfig& config)
@@ -3180,6 +3186,14 @@ void GCodeProcessor::apply_config(const DynamicPrintConfig& config)
     if (z_offset != nullptr)
         m_z_offset = z_offset->value;
 
+    if (const auto *layout = config.option<ConfigOptionEnum<RotaryLayout>>("nonplanar_kinematics");
+        layout != nullptr && layout->value != RotaryLayout::None) {
+        PrintConfig print_config;
+        print_config.apply(config, true);
+        m_tool_kinematics = make_tool_kinematics(print_config);
+        m_tool_kinematics->inverse({ Vec3d::Zero(), Vec3d::UnitZ() }, nullptr, m_joints);
+    }
+
     ensure_nozzle_group_result(static_cast<int>(m_result.filaments_count));
 }
 
@@ -3190,6 +3204,10 @@ void GCodeProcessor::enable_stealth_time_estimator(bool enabled)
 
 void GCodeProcessor::reset()
 {
+    m_tool_kinematics.reset();
+    m_joints        = JointPose();
+    m_inverse_time  = false;
+    m_nonplanar_patch_shell = 0xFF;
     m_units = EUnits::Millimeters;
     m_global_positioning_type = EPositioningType::Absolute;
     m_e_local_positioning_type = EPositioningType::Absolute;
@@ -3796,6 +3814,17 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
         if (m_extrusion_role == erExternalPerimeter)
             m_seams_detector.activate(true);
         m_processing_start_custom_gcode = (m_extrusion_role == erCustom && m_g1_line_id == 0);
+        return;
+    }
+
+    if (boost::starts_with(comment, "_NONPLANAR_BEGIN")) {
+        const size_t pos   = comment.find("shell=");
+        const int    shell = pos == comment.npos ? 0 : std::atoi(std::string(comment.substr(pos + 6)).c_str());
+        m_nonplanar_patch_shell = static_cast<unsigned char>(std::clamp(shell, 0, 0xFE));
+        return;
+    }
+    if (boost::starts_with(comment, "_NONPLANAR_END")) {
+        m_nonplanar_patch_shell = 0xFF;
         return;
     }
 
@@ -4462,6 +4491,10 @@ void GCodeProcessor::process_G0(const GCodeReader::GCodeLine& line)
 
 void GCodeProcessor::process_G1(const GCodeReader::GCodeLine& line, const std::optional<unsigned int>& remaining_internal_g1_lines)
 {
+    if (m_tool_kinematics) {
+        process_rotary_G1(line);
+        return;
+    }
     std::array<std::optional<double>, 4> g1_axes = { std::nullopt, std::nullopt, std::nullopt, std::nullopt };
     if (line.has_x()) g1_axes[X] = (double)line.x();
     if (line.has_y()) g1_axes[Y] = (double)line.y();
@@ -4469,6 +4502,37 @@ void GCodeProcessor::process_G1(const GCodeReader::GCodeLine& line, const std::o
     if (line.has_e()) g1_axes[E] = (double)line.e();
     std::optional<double> g1_feedrate = std::nullopt;
     if (line.has_f()) g1_feedrate = (double)line.f();
+    process_G1(g1_axes, g1_feedrate);
+}
+
+void GCodeProcessor::process_rotary_G1(const GCodeReader::GCodeLine& line)
+{
+    const ToolKinematics &kin      = *m_tool_kinematics;
+    const bool            relative = m_global_positioning_type == EPositioningType::Relative;
+    const double          scale    = (m_units == EUnits::Inches) ? double(INCHES_TO_MM) : 1.0;
+    JointPose             joints   = m_joints;
+    for (int i = 0; i < 3; ++i)
+        if (line.has(Axis(i)))
+            joints.xyz[i] = (relative ? joints.xyz[i] : 0.) + scale * line.value(Axis(i));
+    for (int i = 0; i < 2; ++i)
+        if (float v; line.has_value(kin.rotary_axes()[i].letter, v))
+            joints.rot[i] = (relative ? joints.rot[i] : 0.) + v;
+    const Vec3d from = kin.forward(m_joints).tip;
+    const Vec3d to   = kin.forward(joints).tip;
+    m_joints         = joints;
+
+    std::array<std::optional<double>, 4> g1_axes;
+    for (int i = 0; i < 3; ++i)
+        g1_axes[i] = relative ? to[i] - from[i] : to[i] - m_origin[i];
+    if (line.has_e())
+        g1_axes[E] = (double)line.e();
+    std::optional<double> g1_feedrate;
+    if (line.has_f()) {
+        if (! m_inverse_time)
+            g1_feedrate = (double)line.f();
+        else if (const double length = (to - from).norm(); length > EPSILON)
+            g1_feedrate = length * line.f();
+    }
     process_G1(g1_axes, g1_feedrate);
 }
 
@@ -6407,6 +6471,7 @@ void GCodeProcessor::store_move_vertex(EMoveType type, EMovePathType path_type, 
         m_object_label_id,
         m_print_z
     });
+    m_result.moves.back().nonplanar_patch_shell = m_nonplanar_patch_shell;
 
     if (type == EMoveType::Seam) {
         m_seams_count++;

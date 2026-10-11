@@ -1,5 +1,6 @@
 #include "GCodeWriter.hpp"
 #include "Config.hpp"
+#include "Exception.hpp"
 #include "Extruder.hpp"
 #include "Geometry.hpp"
 #include "I18N.hpp"
@@ -162,6 +163,10 @@ void GCodeWriter::apply_print_config(const PrintConfig &print_config)
     m_max_jerk_z = LIMITS(machine_max_jerk_z);
     m_max_jerk_e = LIMITS(machine_max_jerk_e);
     m_resolution = print_config.resolution.value;
+    for (int i = 0; i < 3; ++i) {
+        const std::vector<double> v = i == 0 ? LIMITS(machine_max_speed_x) : i == 1 ? LIMITS(machine_max_speed_y) : LIMITS(machine_max_speed_z);
+        m_max_joint_speed[i]        = v.empty() ? 0. : v.front();
+    }
 #undef LIMITS
 #undef LIMITS_UINT
     auto to_scaled_polygon = [](const Pointfs &pts) {
@@ -1225,6 +1230,154 @@ void GCodeWriter::extrude_to_xyz(std::string &out, const Vec3d &point, double dE
         w.emit_e(filament()->E());
     w.emit_comment(GCodeWriter::full_gcode_comment, comment);
     w.append_to(out);
+}
+
+void GCodeWriter::set_tool_kinematics(std::unique_ptr<ToolKinematics> kinematics)
+{
+    assert(kinematics);
+    m_tool_kinematics = std::move(kinematics);
+    m_joints_valid    = false;
+    m_rotary_written  = false;
+}
+
+JointPose GCodeWriter::get_joints() const
+{
+    const ToolPose pose { m_pos - Vec3d(m_x_offset, m_y_offset, 0.), m_tool_axis };
+    if (m_joints_valid && (m_tool_kinematics->forward(m_joints).tip - pose.tip).norm() < EPSILON)
+        return m_joints;
+    JointPose joints;
+    if (! m_tool_kinematics->inverse(pose, m_joints_valid ? &m_joints : nullptr, joints))
+        m_tool_kinematics->inverse({ pose.tip, Vec3d::UnitZ() }, nullptr, joints);
+    return joints;
+}
+
+std::string GCodeWriter::end_inverse_time()
+{
+    if (! m_inverse_time)
+        return {};
+    m_inverse_time = false;
+    return "G94\n";
+}
+
+void GCodeWriter::extrude_to_pose(std::string &out, const ToolPose &pose, double dE, const std::string &comment)
+{
+    this->pose_move(out, pose, dE, comment, false);
+}
+
+std::string GCodeWriter::travel_to_pose(const ToolPose &pose, const std::string &comment)
+{
+    std::string out;
+    this->pose_move(out, pose, 0., comment, true);
+    return out;
+}
+
+void GCodeWriter::pose_move(std::string &out, const ToolPose &pose, double dE, const std::string &comment, bool travel)
+{
+    const ToolKinematics &kin = *m_tool_kinematics;
+    if (kin.rotary_count() == 0) {
+        assert(pose.axis.z() > 1. - 1e-6);
+        if (travel) {
+            GCodeG1Formatter w;
+            w.emit_xyz(apply_axis_remap(Vec3d(pose.tip.x() - m_x_offset, pose.tip.y() - m_y_offset, pose.tip.z())));
+            w.emit_f(this->config.travel_speed.get_at(m_cached_extruder_idx) * 60.);
+            w.emit_comment(GCodeWriter::full_gcode_comment, comment);
+            w.append_to(out);
+            m_pos    = pose.tip;
+            m_lifted = 0.;
+            this->set_current_position_clear(true);
+        } else {
+            this->extrude_to_xyz(out, pose.tip, dE, comment);
+        }
+        return;
+    }
+
+    const Vec3d    offset(m_x_offset, m_y_offset, 0.);
+    const ToolPose from { m_pos - offset, m_tool_axis };
+    const ToolPose to { pose.tip - offset, pose.axis.normalized() };
+    m_joints       = this->get_joints();
+    m_joints_valid = true;
+    std::vector<JointPose> joints;
+    kin.linearize(m_joints, from, to, max_tip_deviation, joints);
+
+    const double tip_speed = travel ? this->config.travel_speed.get_at(m_cached_extruder_idx) : m_current_speed / 60.;
+    const double total     = (to.tip - from.tip).norm();
+    Vec3d        prev_tip  = from.tip;
+    for (const JointPose &j : joints) {
+        const Vec3d  tip = &j == &joints.back() ? to.tip : kin.forward(j).tip;
+        const double len = (tip - prev_tip).norm();
+        const double part = total > 0. ? dE * len / total : dE / double(joints.size());
+        this->write_joint_move(out, j, len, tip_speed, travel ? 0. : part, comment);
+        prev_tip = tip;
+    }
+    m_pos       = pose.tip;
+    m_tool_axis = to.axis;
+    m_lifted    = 0.;
+    this->set_current_position_clear(true);
+}
+
+void GCodeWriter::move_to_joints(std::string &out, const JointPose &joints, const std::string &comment)
+{
+    const ToolKinematics &kin = *m_tool_kinematics;
+    assert(kin.rotary_count() > 0);
+    m_joints       = this->get_joints();
+    m_joints_valid = true;
+    const ToolPose from = kin.forward(m_joints);
+    const ToolPose to   = kin.forward(joints);
+    this->write_joint_move(out, joints, (to.tip - from.tip).norm(), this->config.travel_speed.get_at(m_cached_extruder_idx), 0., comment);
+    m_pos       = to.tip + Vec3d(m_x_offset, m_y_offset, 0.);
+    m_tool_axis = to.axis;
+    m_lifted    = 0.;
+    this->set_current_position_clear(true);
+}
+
+void GCodeWriter::write_joint_move(std::string &out, const JointPose &joints, double tip_length, double tip_speed,
+                                   double dE, const std::string &comment)
+{
+    const ToolKinematics            &kin  = *m_tool_kinematics;
+    const std::array<RotaryAxis, 2> &axes = kin.rotary_axes();
+    double       t      = tip_speed > 0. ? tip_length / tip_speed : 0.;
+    const Vec3d  dq     = joints.xyz - m_joints.xyz;
+    for (int i = 0; i < 3; ++i)
+        if (m_max_joint_speed[i] > 0.)
+            t = std::max(t, std::abs(dq[i]) / m_max_joint_speed[i]);
+    double rotary_travel = 0.;
+    for (int i = 0; i < 2; ++i) {
+        const double d = std::abs(joints.rot[i] - m_joints.rot[i]);
+        rotary_travel += d * d;
+        if (axes[i].max_speed_deg_s > 0.)
+            t = std::max(t, d / axes[i].max_speed_deg_s);
+    }
+    if (t <= 0.) {
+        m_joints = joints;
+        return;
+    }
+    if (kin.inverse_time_feed() && ! m_inverse_time) {
+        out += "G93\n";
+        m_inverse_time = true;
+    }
+
+    GCodeG1Formatter w;
+    w.emit_xyz(joints.xyz);
+    static constexpr int ROTARY_DIGITS = 4;
+    for (int i = 0; i < 2; ++i)
+        if (! m_rotary_written || GCodeFormatter::quantize(joints.rot[i], ROTARY_DIGITS) != GCodeFormatter::quantize(m_joints.rot[i], ROTARY_DIGITS))
+            w.emit_axis(axes[i].letter, joints.rot[i], ROTARY_DIGITS);
+    m_rotary_written = true;
+    if (dE != 0.) {
+        this->filament()->extrude(dE);
+        w.emit_e(this->filament()->E());
+    }
+    double F;
+    if (kin.inverse_time_feed())
+        F = 60. / std::max(t, 1e-4);
+    else if (kin.firmware_rtcp() && tip_length > EPSILON)
+        F = 60. * tip_length / t;
+    else
+        F = 60. * (dq.norm() > EPSILON ? dq.norm() : std::sqrt(rotary_travel)) / t;
+    w.emit_f(F);
+    w.emit_comment(GCodeWriter::full_gcode_comment, comment);
+    w.append_to(out);
+    m_joints = joints;
 }
 
 std::string GCodeWriter::retract(bool before_wipe, double retract_length)

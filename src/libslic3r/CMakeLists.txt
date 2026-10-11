@@ -114,7 +114,15 @@ set(lisbslic3r_sources
     ConnectedBodies.cpp
     ConnectedBodies.hpp
     ContourZ.cpp
+    Nonplanar/BeadModel.cpp
+    Nonplanar/BeadModel.hpp
+    GCode/ToolKinematics.cpp
+    GCode/ToolKinematics.hpp
+    GCode/ConformalEmit.cpp
+    GCode/ConformalEmit.hpp
     Nonplanar/Validate.cpp
+    Nonplanar/ConformalShells.cpp
+    Nonplanar/ConformalShells.hpp
     Nonplanar/HeadEnvelope.cpp
     Nonplanar/HeadEnvelope.hpp
     Nonplanar/HeightField.cpp

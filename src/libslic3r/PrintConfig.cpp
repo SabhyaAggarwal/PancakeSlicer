@@ -5194,6 +5194,49 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(0));
 
+    def = this->add("rotary_tool_mount", coFloats);
+    def->label    = L("Tool mount");
+    def->category = L("Non-planar");
+    def->tooltip  = L("For rotary tables: X, Y and Z, in machine coordinates with every linear axis at zero, of the point "
+                      "the tool length is measured down from. The nozzle tip sits one tool length below it.");
+    def->sidetext = L("mm");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloats{ 0., 0., 0. });
+
+    def = this->add("rotary_table_height", coFloat);
+    def->label    = L("Bed height above pivot");
+    def->category = L("Non-planar");
+    def->tooltip  = L("For rotary tables: height of the bed surface above the rotary pivot, measured along the turntable axis. "
+                      "The bed origin is where that axis meets the bed surface.");
+    def->sidetext = L("mm");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
+
+    def = this->add("rotary_linear_moves_table", coBools);
+    def->label    = L("Linear axis carries the table");
+    def->category = L("Non-planar");
+    def->tooltip  = L("For rotary tables written in joint coordinates: the linear axes whose carriage moves the rotary table "
+                      "instead of the tool. A positive move of such an axis moves the nozzle the other way relative to the part.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBools{ false, false, false });
+
+    def = this->add("rotary_axis_home", coFloats);
+    def->label    = L("Rotary axis upright angle");
+    def->category = L("Non-planar");
+    def->tooltip  = L("Angle the firmware reports for each rotary axis when the tool is upright and the table unturned. "
+                      "Some machines use -90 for the tilt axis.");
+    def->sidetext = u8"°";
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloats{ 0., 0. });
+
+    def = this->add("rotary_axis_reversed", coBools);
+    def->label    = L("Reverse rotary axis");
+    def->category = L("Non-planar");
+    def->tooltip  = L("Reverse the direction of a rotary axis, for firmware whose positive angle turns against the right-hand rule "
+                      "about its machine axis.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBools{ false, false });
+
     def = this->add("rotary_firmware_rtcp", coBool);
     def->label    = L("Firmware tool centre point control");
     def->category = L("Non-planar");

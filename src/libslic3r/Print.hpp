@@ -55,6 +55,8 @@
 
 namespace Slic3r {
 
+namespace Nonplanar { struct ConformalResult; }
+
 class SlicingErrors;
 
 class GCode;
@@ -332,6 +334,8 @@ public:
     double                      max_z() const         { return m_max_z; }
     const Point& 			     center_offset() const  { return m_center_offset; }
     const TpmsRadialField*       tpms_radial_field(TpmsAdaptiveMode mode) const { return m_tpms_radial_fields[size_t(mode)].get(); }
+    TriangleMesh                 object_frame_mesh(double &ground_offset) const;
+    const Nonplanar::ConformalResult& conformal() const;
 
     void generate_support_preview();
     const std::vector<VolumeSlices>& firstLayerObjSlice() const { return firstLayerObjSliceByVolume; }
@@ -514,6 +518,7 @@ private:
     std::vector<ExPolygons>                 m_belt_brim_areas_by_layer;
     std::vector<BeltBrimBand>               m_belt_brim_prologue;
     std::shared_ptr<TreeSupportData>        m_tree_support_preview_cache;
+    std::unique_ptr<Nonplanar::ConformalResult> m_conformal;
 
     bool                    				m_typed_slices = false;
 

@@ -1,0 +1,23 @@
+#pragma once
+#include "libslic3r/Point.hpp"
+#include <vector>
+
+namespace Slic3r::Nonplanar {
+
+double charge_length(const Vec3d &a, const Vec3d &b, const Vec3d &tool_axis = Vec3d::UnitZ());
+
+double bead_area(double width, double height);
+
+double segment_volume(const Vec3d &a, const Vec3d &b, double width, float height_a, float height_b,
+                      const Vec3d &tool_axis = Vec3d::UnitZ());
+
+struct MotionLimits
+{
+    double max_v_xy = 0., max_a_xy = 0.;
+    double max_v_z  = 0., max_a_z  = 0.;
+};
+
+std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, double nominal,
+                                    const MotionLimits &limits, double quantum = 0.05);
+
+}
