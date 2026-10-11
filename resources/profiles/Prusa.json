@@ -1,6 +1,6 @@
 {
 	"name": "Prusa",
-	"version": "02.04.00.17",
+	"version": "02.04.00.19",
 	"force_update": "0",
 	"description": "Prusa configurations",
 	"machine_model_list": [
@@ -233,6 +233,10 @@
 		{
 			"name": "0.55mm Draft @MK3S 0.8",
 			"sub_path": "process/0.55mm Draft @MK3S 0.8.json"
+		},
+		{
+			"name": "0.20mm Non-planar top @MINI",
+			"sub_path": "process/0.20mm Non-planar top @MINI.json"
 		},
 		{
 			"name": "0.15mm Standard @MK3.5 0.6",
@@ -643,6 +647,10 @@
 			"sub_path": "process/0.25mm Speed @MK3.5.json"
 		},
 		{
+			"name": "0.20mm Non-planar top @MINIIS",
+			"sub_path": "process/0.20mm Non-planar top @MINIIS.json"
+		},
+		{
 			"name": "0.05mm Detail @MINIIS",
 			"sub_path": "process/0.05mm Detail @MINIIS.json"
 		},
@@ -721,6 +729,10 @@
 		{
 			"name": "0.25mm Speed @MINIIS",
 			"sub_path": "process/0.25mm Speed @MINIIS.json"
+		},
+		{
+			"name": "0.20mm Non-planar top @MK4",
+			"sub_path": "process/0.20mm Non-planar top @MK4.json"
 		},
 		{
 			"name": "fdm_process_mk4_mmu3",
@@ -869,6 +881,10 @@
 		{
 			"name": "0.20mm STRUCTURAL @MK4S 0.6",
 			"sub_path": "process/0.20mm STRUCTURAL @MK4S 0.6.json"
+		},
+		{
+			"name": "0.20mm Non-planar top @MK4S HF0.4",
+			"sub_path": "process/0.20mm Non-planar top @MK4S HF0.4.json"
 		},
 		{
 			"name": "0.20mm SPEED @CORE One HF 0.4",
@@ -1299,6 +1315,10 @@
 			"sub_path": "process/0.20mm STRUCTURAL @CORE One L 0.6.json"
 		},
 		{
+			"name": "0.20mm Non-planar top @CORE One HF 0.4",
+			"sub_path": "process/0.20mm Non-planar top @CORE One HF 0.4.json"
+		},
+		{
 			"name": "fdm_process_coreone_indx",
 			"sub_path": "process/fdm_process_coreone_indx.json"
 		},
@@ -1309,6 +1329,10 @@
 		{
 			"name": "0.15mm STRUCTURAL @CORE One L 0.4",
 			"sub_path": "process/0.15mm STRUCTURAL @CORE One L 0.4.json"
+		},
+		{
+			"name": "0.20mm Non-planar top @CORE One 0.4",
+			"sub_path": "process/0.20mm Non-planar top @CORE One 0.4.json"
 		},
 		{
 			"name": "0.20mm STRUCTURAL @COREONE0.4 + MMU3",
@@ -1427,6 +1451,14 @@
 			"sub_path": "process/0.55mm SPEED @CORE One L HF 0.8.json"
 		},
 		{
+			"name": "0.20mm Non-planar top @MK4 MMU3 0.4",
+			"sub_path": "process/0.20mm Non-planar top @MK4 MMU3 0.4.json"
+		},
+		{
+			"name": "0.20mm Non-planar top @MK4 MMU3 HF0.4",
+			"sub_path": "process/0.20mm Non-planar top @MK4 MMU3 HF0.4.json"
+		},
+		{
 			"name": "0.05mm DETAIL @COREONE0.25 + MMU3",
 			"sub_path": "process/0.05mm DETAIL @COREONE0.25 + MMU3.json"
 		},
@@ -1521,6 +1553,10 @@
 		{
 			"name": "0.15mm STRUCTURAL @COREONE0.4 + MMU3",
 			"sub_path": "process/0.15mm STRUCTURAL @COREONE0.4 + MMU3.json"
+		},
+		{
+			"name": "0.20mm Non-planar top @COREONE0.4 + MMU3",
+			"sub_path": "process/0.20mm Non-planar top @COREONE0.4 + MMU3.json"
 		},
 		{
 			"name": "0.25mm STRUCTURAL @COREONE0.4 + MMU3",
@@ -3039,26 +3075,6 @@
 			"sub_path": "machine/Prusa CORE One L HF 0.4 nozzle.json"
 		},
 		{
-			"name": "Prusa MINI 0.25 nozzle",
-			"sub_path": "machine/Prusa MINI 0.25 nozzle.json"
-		},
-		{
-			"name": "Prusa MINI 0.4 nozzle",
-			"sub_path": "machine/Prusa MINI 0.4 nozzle.json"
-		},
-		{
-			"name": "Prusa MINI 0.6 nozzle",
-			"sub_path": "machine/Prusa MINI 0.6 nozzle.json"
-		},
-		{
-			"name": "Prusa MINI 0.8 nozzle",
-			"sub_path": "machine/Prusa MINI 0.8 nozzle.json"
-		},
-		{
-			"name": "Prusa MINIIS 0.4 nozzle",
-			"sub_path": "machine/Prusa MINIIS 0.4 nozzle.json"
-		},
-		{
 			"name": "Prusa MK3.5 0.4 nozzle",
 			"sub_path": "machine/Prusa MK3.5 0.4 nozzle.json"
 		},
@@ -3079,16 +3095,12 @@
 			"sub_path": "machine/Prusa MK3S 0.8 nozzle.json"
 		},
 		{
-			"name": "Prusa MK4 0.25 nozzle",
-			"sub_path": "machine/Prusa MK4 0.25 nozzle.json"
+			"name": "fdm_machine_common_mini",
+			"sub_path": "machine/fdm_machine_common_mini.json"
 		},
 		{
-			"name": "Prusa MK4 0.6 nozzle",
-			"sub_path": "machine/Prusa MK4 0.6 nozzle.json"
-		},
-		{
-			"name": "Prusa MK4 0.8 nozzle",
-			"sub_path": "machine/Prusa MK4 0.8 nozzle.json"
+			"name": "fdm_machine_common_mk4",
+			"sub_path": "machine/fdm_machine_common_mk4.json"
 		},
 		{
 			"name": "fdm_machine_common_nextruder",
@@ -3115,18 +3127,6 @@
 			"sub_path": "machine/Prusa CORE One L HF 0.8 nozzle.json"
 		},
 		{
-			"name": "Prusa MINIIS 0.25 nozzle",
-			"sub_path": "machine/Prusa MINIIS 0.25 nozzle.json"
-		},
-		{
-			"name": "Prusa MINIIS 0.6 nozzle",
-			"sub_path": "machine/Prusa MINIIS 0.6 nozzle.json"
-		},
-		{
-			"name": "Prusa MINIIS 0.8 nozzle",
-			"sub_path": "machine/Prusa MINIIS 0.8 nozzle.json"
-		},
-		{
 			"name": "Prusa MK3.5 0.25 nozzle",
 			"sub_path": "machine/Prusa MK3.5 0.25 nozzle.json"
 		},
@@ -3137,6 +3137,38 @@
 		{
 			"name": "Prusa MK3.5 0.8 nozzle",
 			"sub_path": "machine/Prusa MK3.5 0.8 nozzle.json"
+		},
+		{
+			"name": "Prusa MINI 0.25 nozzle",
+			"sub_path": "machine/Prusa MINI 0.25 nozzle.json"
+		},
+		{
+			"name": "Prusa MINI 0.4 nozzle",
+			"sub_path": "machine/Prusa MINI 0.4 nozzle.json"
+		},
+		{
+			"name": "Prusa MINI 0.6 nozzle",
+			"sub_path": "machine/Prusa MINI 0.6 nozzle.json"
+		},
+		{
+			"name": "Prusa MINI 0.8 nozzle",
+			"sub_path": "machine/Prusa MINI 0.8 nozzle.json"
+		},
+		{
+			"name": "Prusa MINIIS 0.4 nozzle",
+			"sub_path": "machine/Prusa MINIIS 0.4 nozzle.json"
+		},
+		{
+			"name": "Prusa MK4 0.25 nozzle",
+			"sub_path": "machine/Prusa MK4 0.25 nozzle.json"
+		},
+		{
+			"name": "Prusa MK4 0.6 nozzle",
+			"sub_path": "machine/Prusa MK4 0.6 nozzle.json"
+		},
+		{
+			"name": "Prusa MK4 0.8 nozzle",
+			"sub_path": "machine/Prusa MK4 0.8 nozzle.json"
 		},
 		{
 			"name": "Prusa CORE One HF 0.4 nozzle",
@@ -3189,6 +3221,18 @@
 		{
 			"name": "Prusa CORE One L 0.8 nozzle",
 			"sub_path": "machine/Prusa CORE One L 0.8 nozzle.json"
+		},
+		{
+			"name": "Prusa MINIIS 0.25 nozzle",
+			"sub_path": "machine/Prusa MINIIS 0.25 nozzle.json"
+		},
+		{
+			"name": "Prusa MINIIS 0.6 nozzle",
+			"sub_path": "machine/Prusa MINIIS 0.6 nozzle.json"
+		},
+		{
+			"name": "Prusa MINIIS 0.8 nozzle",
+			"sub_path": "machine/Prusa MINIIS 0.8 nozzle.json"
 		},
 		{
 			"name": "Prusa CORE One 0.25 nozzle",

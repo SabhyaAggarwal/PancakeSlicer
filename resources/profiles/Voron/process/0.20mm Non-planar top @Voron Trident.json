@@ -1,0 +1,16 @@
+{
+	"type": "process",
+	"name": "0.20mm Non-planar top @Voron Trident",
+	"inherits": "0.20mm Standard @Voron",
+	"from": "system",
+	"setting_id": "zJEYcjy5XYFqQQmc",
+	"instantiation": "true",
+	"nonplanar_top_shells": "3",
+	"nonplanar_ironing": "1",
+	"ironing_type": "top",
+	"compatible_printers": [
+		"Voron Trident 250 0.4 nozzle",
+		"Voron Trident 300 0.4 nozzle",
+		"Voron Trident 350 0.4 nozzle"
+	]
+}

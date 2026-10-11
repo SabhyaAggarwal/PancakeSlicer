@@ -1,7 +1,7 @@
 {
 	"type": "machine",
 	"name": "Voron Switchwire 250 0.8 nozzle",
-	"inherits": "fdm_klipper_common",
+	"inherits": "fdm_klipper_common_stealthburner",
 	"from": "system",
 	"setting_id": "wNEUMNpyafB7yN8O",
 	"instantiation": "true",

@@ -1,0 +1,12 @@
+{
+	"type": "process",
+	"name": "0.20mm Non-planar top @MK4S HF0.4",
+	"inherits": "0.20mm SPEED @MK4S HF0.4",
+	"from": "system",
+	"setting_id": "POk6GvUDIwLeiTCQ",
+	"instantiation": "true",
+	"nonplanar_top_shells": "3",
+	"nonplanar_ironing": "1",
+	"ironing_type": "top",
+	"compatible_printers_condition": "printer_notes=~/.*MK4S.*/ and nozzle_diameter[0]==0.4 and printer_notes=~/.*HF_NOZZLE.*/"
+}

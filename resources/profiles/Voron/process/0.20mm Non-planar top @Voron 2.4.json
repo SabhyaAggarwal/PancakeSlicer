@@ -1,0 +1,16 @@
+{
+	"type": "process",
+	"name": "0.20mm Non-planar top @Voron 2.4",
+	"inherits": "0.20mm Standard @Voron",
+	"from": "system",
+	"setting_id": "LWkkuCbgfYG6BFiC",
+	"instantiation": "true",
+	"nonplanar_top_shells": "3",
+	"nonplanar_ironing": "1",
+	"ironing_type": "top",
+	"compatible_printers": [
+		"Voron 2.4 250 0.4 nozzle",
+		"Voron 2.4 300 0.4 nozzle",
+		"Voron 2.4 350 0.4 nozzle"
+	]
+}

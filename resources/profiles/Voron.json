@@ -1,6 +1,6 @@
 {
 	"name": "Voron",
-	"version": "02.04.00.03",
+	"version": "02.04.00.04",
 	"force_update": "0",
 	"description": "Voron configurations",
 	"machine_model_list": [
@@ -97,6 +97,18 @@
 		{
 			"name": "fdm_process_voron_common_1_0",
 			"sub_path": "process/fdm_process_voron_common_1_0.json"
+		},
+		{
+			"name": "0.20mm Non-planar top @Voron 2.4",
+			"sub_path": "process/0.20mm Non-planar top @Voron 2.4.json"
+		},
+		{
+			"name": "0.20mm Non-planar top @Voron Switchwire",
+			"sub_path": "process/0.20mm Non-planar top @Voron Switchwire.json"
+		},
+		{
+			"name": "0.20mm Non-planar top @Voron Trident",
+			"sub_path": "process/0.20mm Non-planar top @Voron Trident.json"
 		},
 		{
 			"name": "0.05mm Fine 0.15 nozzle @Voron",
@@ -280,6 +292,10 @@
 		{
 			"name": "Voron 0.1 1.0 nozzle",
 			"sub_path": "machine/Voron 0.1 1.0 nozzle.json"
+		},
+		{
+			"name": "fdm_klipper_common_stealthburner",
+			"sub_path": "machine/fdm_klipper_common_stealthburner.json"
 		},
 		{
 			"name": "Voron 2.4 250 0.15 nozzle",

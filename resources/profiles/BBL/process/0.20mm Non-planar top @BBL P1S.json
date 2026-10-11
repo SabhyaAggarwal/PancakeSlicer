@@ -1,0 +1,15 @@
+{
+	"type": "process",
+	"name": "0.20mm Non-planar top @BBL P1S",
+	"inherits": "0.20mm Standard @BBL X1C",
+	"from": "system",
+	"setting_id": "7tAJhJpGlglvanmU",
+	"instantiation": "true",
+	"description": "0.20mm Standard tuning for P1S with three curved top shells and ironing. Uses the bundled bambu-x1-p1 head.",
+	"nonplanar_top_shells": "3",
+	"nonplanar_ironing": "1",
+	"ironing_type": "top",
+	"compatible_printers": [
+		"Bambu Lab P1S 0.4 nozzle"
+	]
+}

@@ -1,0 +1,14 @@
+{
+	"type": "process",
+	"name": "0.20mm Non-planar top @BBL H2D",
+	"inherits": "0.20mm Standard @BBL H2D",
+	"from": "system",
+	"setting_id": "mzWCmkrj2gaFFLFf",
+	"instantiation": "true",
+	"nonplanar_top_shells": "3",
+	"nonplanar_ironing": "1",
+	"ironing_type": "top",
+	"compatible_printers": [
+		"Bambu Lab H2D 0.4 nozzle"
+	]
+}

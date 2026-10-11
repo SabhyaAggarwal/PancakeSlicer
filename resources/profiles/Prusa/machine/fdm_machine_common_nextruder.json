@@ -3,5 +3,6 @@
 	"name": "fdm_machine_common_nextruder",
 	"inherits": "fdm_machine_common",
 	"from": "system",
-	"instantiation": "false"
+	"instantiation": "false",
+	"nonplanar_head": "prusa-mk4-nextruder"
 }

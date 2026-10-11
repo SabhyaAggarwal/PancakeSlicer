@@ -1,7 +1,7 @@
 {
 	"type": "machine",
 	"name": "Voron Trident 300 1.0 nozzle",
-	"inherits": "fdm_klipper_common",
+	"inherits": "fdm_klipper_common_stealthburner",
 	"from": "system",
 	"setting_id": "Ei7VU82mjgq6MrVA",
 	"instantiation": "true",

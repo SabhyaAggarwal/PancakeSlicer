@@ -1,11 +1,10 @@
 {
 	"type": "machine",
 	"name": "Prusa MINI 0.25 nozzle",
-	"inherits": "fdm_machine_common",
+	"inherits": "fdm_machine_common_mini",
 	"from": "system",
 	"setting_id": "vfeRNEIxeQSNHeJB",
 	"instantiation": "true",
-	"nonplanar_head": "prusa-mini",
 	"gcode_flavor": "marlin2",
 	"printer_model": "Prusa MINI",
 	"printer_variant": "0.25",

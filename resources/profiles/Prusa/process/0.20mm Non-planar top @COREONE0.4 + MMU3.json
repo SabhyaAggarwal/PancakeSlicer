@@ -1,0 +1,15 @@
+{
+	"type": "process",
+	"name": "0.20mm Non-planar top @COREONE0.4 + MMU3",
+	"inherits": "0.20mm STRUCTURAL @COREONE0.4 + MMU3",
+	"from": "system",
+	"setting_id": "LBhaek87iWRO42k9",
+	"instantiation": "true",
+	"nonplanar_top_shells": "3",
+	"nonplanar_ironing": "1",
+	"ironing_type": "top",
+	"compatible_printers": [
+		"Prusa CORE One MMU3 0.4 nozzle"
+	],
+	"compatible_printers_condition": ""
+}

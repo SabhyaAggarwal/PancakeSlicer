@@ -1,7 +1,7 @@
 {
 	"type": "machine",
 	"name": "Voron Trident 250 0.6 nozzle",
-	"inherits": "fdm_klipper_common",
+	"inherits": "fdm_klipper_common_stealthburner",
 	"from": "system",
 	"setting_id": "DOssK38zCrPwJUw3",
 	"instantiation": "true",

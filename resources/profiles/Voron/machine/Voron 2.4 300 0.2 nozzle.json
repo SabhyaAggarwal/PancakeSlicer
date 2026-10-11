@@ -1,7 +1,7 @@
 {
 	"type": "machine",
 	"name": "Voron 2.4 300 0.2 nozzle",
-	"inherits": "fdm_klipper_common",
+	"inherits": "fdm_klipper_common_stealthburner",
 	"from": "system",
 	"setting_id": "w6cGdRGVU2mdjr0r",
 	"instantiation": "true",

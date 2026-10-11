@@ -1,0 +1,8 @@
+{
+	"type": "machine",
+	"name": "fdm_klipper_common_stealthburner",
+	"inherits": "fdm_klipper_common",
+	"from": "system",
+	"instantiation": "false",
+	"nonplanar_head": "voron-stealthburner-v6"
+}

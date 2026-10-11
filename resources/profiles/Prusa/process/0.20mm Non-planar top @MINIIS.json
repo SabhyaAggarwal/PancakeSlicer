@@ -1,0 +1,15 @@
+{
+	"type": "process",
+	"name": "0.20mm Non-planar top @MINIIS",
+	"inherits": "0.20mm Standard @MINIIS",
+	"from": "system",
+	"setting_id": "UvbfEPAWPqokM3Dx",
+	"instantiation": "true",
+	"nonplanar_top_shells": "3",
+	"nonplanar_ironing": "1",
+	"ironing_type": "top",
+	"compatible_printers": [
+		"Prusa MINIIS 0.4 nozzle"
+	],
+	"description": "0.20mm Standard for Prusa MINI/MINI+ with input shaping with three curved top shells and ironing. Uses the shared prusa-mini head."
+}

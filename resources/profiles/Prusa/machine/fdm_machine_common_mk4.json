@@ -1,0 +1,8 @@
+{
+	"type": "machine",
+	"name": "fdm_machine_common_mk4",
+	"inherits": "fdm_machine_common",
+	"from": "system",
+	"instantiation": "false",
+	"nonplanar_head": "prusa-mk4-nextruder"
+}
