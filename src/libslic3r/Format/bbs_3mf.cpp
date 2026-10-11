@@ -15,6 +15,7 @@
 #include "libslic3r/Point.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
 #include "libslic3r/PrintConfig.hpp"
+#include "libslic3r/Nonplanar/HeadEnvelope.hpp"
 #include "libslic3r/MultiNozzleUtils.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 #include "libslic3r/ObjectID.hpp"
@@ -79,6 +80,7 @@
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/filesystem/operations.hpp>
+#include <boost/filesystem/path.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/nowide/fstream.hpp>
 #include <boost/nowide/cstdio.hpp>
@@ -206,6 +208,7 @@ const std::string PRINTER_THUMBNAIL_MIDDLE_FILE = "/Auxiliaries/.thumbnails/thum
 const std::string _3MF_COVER_FILE = "/Auxiliaries/.thumbnails/thumbnail_3mf.png";
 const std::string BBS_PRINT_CONFIG_FILE = "Metadata/print_profile.config";
 const std::string BBS_PROJECT_CONFIG_FILE = "Metadata/project_settings.config";
+const std::string NONPLANAR_HEAD_FILE = "Metadata/nonplanar_head.json";
 const std::string BBS_MODEL_CONFIG_FILE = "Metadata/model_settings.config";
 const std::string BBS_MODEL_CONFIG_RELS_FILE = "Metadata/_rels/model_settings.config.rels";
 const std::string SLICE_INFO_CONFIG_FILE = "Metadata/slice_info.config";
@@ -746,6 +749,8 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
                 BOOST_LOG_TRIVIAL(error) << error;
         }
     };
+
+    static void restore_nonplanar_head(mz_zip_archive &archive, const mz_zip_archive_file_stat &stat);
 
     class _BBS_3MF_Importer : public _BBS_3MF_Base
     {
@@ -1830,6 +1835,9 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
                 if (!dont_load_config && boost::algorithm::iequals(name, BBS_PROJECT_CONFIG_FILE)) {
                     _extract_project_config_from_archive(archive, stat, config, config_substitutions, model);
                 }
+                else if (!dont_load_config && boost::algorithm::iequals(name, NONPLANAR_HEAD_FILE)) {
+                    restore_nonplanar_head(archive, stat);
+                }
                 else if (boost::algorithm::iequals(name, ORCA_CAD_RECIPE_FILE)
                       || boost::algorithm::iequals(name, LEGACY_CAD_RECIPE_FILE)) {
                     constexpr mz_uint64 kMaxCadRecipe = mz_uint64(1) << 30;
@@ -2482,6 +2490,37 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
                 return;
             }
             ConfigBase::load_from_gcode_string_legacy(config, buffer.data(), config_substitutions);
+        }
+    }
+
+    static void restore_nonplanar_head(mz_zip_archive &archive, const mz_zip_archive_file_stat &stat)
+    {
+        try {
+            constexpr mz_uint64 max_head_size = 1024 * 1024;
+            if (stat.m_uncomp_size == 0 || stat.m_uncomp_size > max_head_size)
+                throw RuntimeError("Invalid embedded non-planar head size");
+            std::string text(size_t(stat.m_uncomp_size), '\0');
+            if (!mz_zip_reader_extract_to_mem(&archive, stat.m_file_index, text.data(), text.size(), 0))
+                throw RuntimeError("Cannot extract embedded non-planar head");
+            const auto head = Nonplanar::load_head_envelope(text);
+            auto &library = Nonplanar::HeadLibrary::instance();
+            if (library.find(head.id)) {
+                BOOST_LOG_TRIVIAL(debug) << "3MF: keeping local non-planar head " << head.id;
+                return;
+            }
+            if (data_dir().empty())
+                throw RuntimeError("No user directory for embedded non-planar head");
+            const auto dir = boost::filesystem::path(data_dir()) / "nonplanar" / "heads";
+            boost::filesystem::create_directories(dir);
+            const auto file = dir / boost::filesystem::unique_path("project-%%%%-%%%%-%%%%.json");
+            boost::nowide::ofstream out(file.string(), std::ios::binary);
+            out << Nonplanar::save_head_envelope(head);
+            out.close();
+            if (!out)
+                throw RuntimeError("Cannot write embedded non-planar head");
+            library.reload();
+        } catch (const std::exception &err) {
+            BOOST_LOG_TRIVIAL(warning) << "3MF: cannot restore non-planar head: " << err.what();
         }
     }
 
@@ -5183,7 +5222,7 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
         bool _add_sla_support_points_file_to_archive(mz_zip_archive& archive, Model& model);
         bool _add_sla_drain_holes_file_to_archive(mz_zip_archive& archive, Model& model);
         bool _add_print_config_file_to_archive(mz_zip_archive& archive, const DynamicPrintConfig &config);
-        bool _add_project_config_file_to_archive(mz_zip_archive& archive, const DynamicPrintConfig &config, Model& model);
+        bool _add_project_config_file_to_archive(mz_zip_archive& archive, const DynamicPrintConfig &config, Model& model, const std::vector<Preset*> &project_presets);
         bool _add_project_embedded_presets_to_archive(mz_zip_archive& archive, Model& model, std::vector<Preset*> project_presets);
         bool _add_model_config_file_to_archive(mz_zip_archive& archive, const Model& model, PlateDataPtrs& plate_data_list, const ObjectToObjectDataMap &objects_data, const DynamicPrintConfig& config, int export_plate_idx = -1, bool save_gcode = true, bool use_loaded_id = false);
         bool _add_cut_information_file_to_archive(mz_zip_archive &archive, Model &model);
@@ -5582,7 +5621,7 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
             }
 
             if (config != nullptr && !m_minimal_published) {
-                if (!_add_project_config_file_to_archive(archive, *config, model)) { return false; }
+                if (!_add_project_config_file_to_archive(archive, *config, model, project_presets)) { return false; }
             }
 
             BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ":" << __LINE__ << boost::format(", before add project embedded settings\n");
@@ -6734,11 +6773,31 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
         return true;
     }
 
-    bool _BBS_3MF_Exporter::_add_project_config_file_to_archive(mz_zip_archive& archive, const DynamicPrintConfig &config, Model& model)
+    bool _BBS_3MF_Exporter::_add_project_config_file_to_archive(mz_zip_archive& archive, const DynamicPrintConfig &config, Model& model, const std::vector<Preset*> &project_presets)
     {
+        DynamicPrintConfig project_config(config);
+        const auto *head_id = config.option<ConfigOptionString>("nonplanar_head");
+        for (const Preset *preset : project_presets)
+            if (preset->type == Preset::TYPE_PRINTER) {
+                if (const auto *preset_head = preset->config.option<ConfigOptionString>("nonplanar_head"))
+                    head_id = preset_head;
+                break;
+            }
+        if (head_id && !head_id->value.empty()) {
+            project_config.set_key_value("nonplanar_head", new ConfigOptionString(head_id->value));
+            if (const auto *head = Nonplanar::HeadLibrary::instance().find(head_id->value)) {
+                const std::string text = Nonplanar::save_head_envelope(*head);
+                if (!mz_zip_writer_add_mem(&archive, NONPLANAR_HEAD_FILE.c_str(), text.data(), text.size(), MZ_DEFAULT_COMPRESSION)) {
+                    add_error("Unable to add non-planar head to archive");
+                    return false;
+                }
+            }
+        } else {
+            project_config.erase("nonplanar_head");
+        }
         const std::string& temp_path = model.get_backup_path();
         std::string temp_file = temp_path + std::string("/") + "_temp_1.config";
-        config.save_to_json(temp_file, std::string("project_settings"), std::string("project"), std::string(SLIC3R_VERSION));
+        project_config.save_to_json(temp_file, std::string("project_settings"), std::string("project"), std::string(SLIC3R_VERSION));
         return _add_file_to_archive(archive, BBS_PROJECT_CONFIG_FILE, temp_file);
     }
 

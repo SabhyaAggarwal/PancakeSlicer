@@ -26,6 +26,7 @@
 #include <chrono>
 #include <cmath>
 #include <functional>
+#include <initializer_list>
 #include <limits>
 #include <string>
 #include <utility>
@@ -126,10 +127,17 @@ HeightField sample_top_surface(const sla::IndexedMesh &mesh, double ray_z, doubl
             if (throw_if_canceled)
                 throw_if_canceled();
             for (int ix = 0; ix < S.nx(); ++ix) {
-                const Vec2d p   = S.node(ix, iy);
-                const auto  hit = mesh.query_ray_hit(Vec3d(p.x(), p.y(), ray_z), Vec3d(0., 0., -1.));
-                S.at(ix, iy) = hit.is_hit() && hit.normal().normalized().z() > 0.05 ?
-                                   float(hit.position().z() - mesh.ground_level() + z_offset) : HeightField::NoData;
+                const Vec2d p = S.node(ix, iy);
+                S.at(ix, iy) = HeightField::NoData;
+                for (const Vec2d &q : { p, Vec2d(p + Vec2d(1e-4, 1.7e-4)) }) {
+                    const auto hit = mesh.query_ray_hit(Vec3d(q.x(), q.y(), ray_z), Vec3d(0., 0., -1.));
+                    if (hit.is_hit() && hit.normal().normalized().z() > 0.05) {
+                        const Vec3d n = hit.normal();
+                        const double z = hit.position().z() + (n.x() * (q.x() - p.x()) + n.y() * (q.y() - p.y())) / n.z();
+                        S.at(ix, iy) = float(z - mesh.ground_level() + z_offset);
+                        break;
+                    }
+                }
             }
         }
     });
@@ -201,21 +209,8 @@ ConformalResult build_conformal_shells(PrintObject &object)
     Mask mask(n_nodes, 0);
     for (size_t i = 0; i < n_nodes; ++i)
         mask[i] = cand_mask[i] && !std::isnan(S0.data()[i]);
-    drop_steep_nodes(S0, head, h_c, grid, mask);
-
-    HeadEnvelope neighbour_head = head;
-    {
-        std::vector<HeadBox> boxes;
-        for (HeadBox box : head.boxes) {
-            const double r = std::hypot(std::max(std::abs(box.min.x()), std::abs(box.max.x())),
-                                        std::max(std::abs(box.min.y()), std::abs(box.max.y())));
-            if (box.nozzle && r <= head.tip_allowance.radius)
-                box.min.z() = std::max(box.min.z(), head.tip_allowance.height);
-            if (box.min.z() < box.max.z())
-                boxes.emplace_back(std::move(box));
-        }
-        neighbour_head.boxes = std::move(boxes);
-    }
+    std::vector<int> limiting_components;
+    drop_unsafe_nodes(S0, head, h_c, settings.max_error, mask, &limiting_components);
 
     HeightField S1 = grid;
     bool        converged = false;
@@ -272,7 +267,7 @@ ConformalResult build_conformal_shells(PrintObject &object)
                     if ((label[i] != c || !mask[i] || band_mask[i]) && !std::isnan(S.data()[i]))
                         H.data()[i] = std::min(S.data()[i], e.zcap);
                 const HeightField like   = component_field(S1, c);
-                const HeightField z_safe = min_safe_tip_height(H, neighbour_head, like);
+                const HeightField z_safe = min_safe_tip_height(H, head, like, nullptr, true);
                 for (int iy = 0; iy < like.ny(); ++iy)
                     for (int ix = 0; ix < like.nx(); ++ix) {
                         const size_t i = size_t(e.iy0 + iy) * grid.nx() + e.ix0 + ix;
@@ -405,6 +400,7 @@ ConformalResult build_conformal_shells(PrintObject &object)
                 if (!std::isnan(g.x()) && !std::isnan(g.y()))
                     diag.max_slope_deg = std::max(diag.max_slope_deg, Geometry::rad2deg(std::atan(g.norm())));
             }
+        diag.limiting_component = most_limiting_component(head, limiting_components, pmask);
         diag.rms_surface_error = err_n > 0 ? std::sqrt(err_sq / err_n) : 0.;
         pad_lowest(patch.surface, pad);
         pad_lowest(patch.base, pad);
@@ -451,6 +447,7 @@ ConformalResult build_conformal_shells(PrintObject &object)
         else if (fallback > 0.) {
             PatchDiagnostics diag;
             diag.fallback_area = fallback;
+            diag.limiting_component = most_limiting_component(head, limiting_components, rasterize({ cand }, grid));
             result.diagnostics.emplace_back(std::move(diag));
         }
     }

@@ -1,16 +1,16 @@
 {
   "schema": "orca.head_envelope.v1",
   "id": "bambu-p1s",
-  "name": "Bambu Lab P1S (estimated shroud; published gantry clearance)",
-  "provenance": "P1S-specific estimated stock envelope. Finite hotend CAD bands imported from community https://www.printables.com/model/533213 , Hotend.STEP (shared X1/P1 hotend geometry). Full stock housing/nozzle registration is NOT measured. Sources: https://us.store.bambulab.com/products/front-housing-assembly-p1p ; https://au.store.bambulab.com/products/front-housing-assembly-x1-series ; https://forum.bambulab.com/t/front-housing-assembly-x1-vs-p1s/67678 . Bambu specifies different housing connectors; community reports shell fit but different fan/LED wiring. That does not certify equal collision geometry. P1S has no X1 lidar, so none is included. All assumed_* heater/sock/duct/fan/shroud/carriage bounds are author estimates, not dimensions obtained from these sources. Published gantry clearance: P1S inherits lower-rod height 34 mm and farther edge 33 mm from fdm_machine_common.json in BambuStudio https://github.com/bambulab/BambuStudio/tree/47a13eeb1d9af65ef2371e361c856e21d4f6ca72/resources/profiles/BBL/machine ; unknown near edge is over-approximated with symmetric Y span -33..33 mm, infinite X, top 100 mm. Door/enclosure and stationary auxiliary fan are machine-frame obstacles outside this moving head model, not nozzle-relative parts; this file assumes printing inside the nominal workspace and does not validate enclosure or out-of-workspace travel. Nozzle-tip frame: +X right, +Y rear, +Z up, mm. 1 mm vertical/lateral margins do not certify the estimated body as safe. Tip allowance 3 mm/1 mm; external nozzle land radius 0.3 mm is from the CAD z=0 section, not the 0.4 mm bore. Only nozzle_land reaches z=0 (0..0.05 mm); next-section radii are confined to positive-Z finite bands. Body lower heights: sock 4, heater 5, ducts/shroud 5, fan 15, carriage 20, gantry 34 mm. Duct/shroud floor 5 mm replaces the unsupported 2 mm generic skirt assumption; it remains an unmeasured estimate, not a measured clearance increase. Not calibrated. Authored 2026-10-10.",
+  "name": "Bambu Lab P1S (stock hotend and segmented ducts)",
+  "provenance": "Finite OEM hotend replica CAD bands from https://www.printables.com/model/533213 Hotend.STEP; land radius 0.3 mm at Z=0..0.05, finite 0.25 mm bands above; retain all registered source sections. OEM assembly diagram https://wiki.bambulab.com/x1/maintenance/replace-hotend/complete-hotend-p1.jpg and assembly instructions https://wiki.bambulab.com/en/x1/maintenance/replace-hotend : ceramic heater, clip and sock hug the 7 mm hotend stem, not a 24 mm square V6 block. Sock half-extents 4.5/5.2 mm at Z=4, heater clip 4/5 at Z=5. Front housing photo https://us.store.bambulab.com/products/front-housing-assembly-p1p (P1P_2.png) shows separate narrow duct outlets and raised full-width shell. Registered stock assembly https://wiki.bambulab.com/p1/maintenance/toolhead-enclosure/front_cover_installed.jpg and https://wiki.bambulab.com/p1/maintenance/extruder-unit/hotend_installed.jpg inform positioning. Choose 70 mm full shell width, outlets at X=+-10..24 and Y=-13..5, Z=5; outer walls to X=+-30 at Z=8; risers to X=+-35 at Z=14; cover Y=-25..0 at Z=18. Photo-derived engineering estimates; the photos do not provide a dimensioned nozzle registration. No full-width skirt at Z=2 or Z=5. P1S has no X1 lidar. Carriage Y=8..33 at Z=24 follows the rod-side assembly, not Y=60. BambuStudio gantry underside 34 mm, symmetric Y span +-33 mm, infinite X. Body axial/lateral margins 0.3 mm. Nozzle-tip frame +X right, +Y rear, +Z up, mm. Best geometry estimate selected 2026-10-10; calibrated=false.",
   "calibrated": false,
   "nozzle": {
     "tip_flat_radius": 0.3,
     "allowance_radius": 3.0,
     "allowance_height": 1.0
   },
-  "margin": 1.0,
-  "lateral_margin": 1.0,
+  "margin": 0.3,
+  "lateral_margin": 0.3,
   "boxes": [
     {"name": "nozzle_land", "min": [-0.3, -0.3, 0.0], "max": [0.3, 0.3, 0.05], "nozzle": true},
     {"name": "hotend_z0.05_0", "min": [-0.352, -0.47, 0.05], "max": [0.352, -0.313, 0.25], "nozzle": true},
@@ -78,13 +78,18 @@
     {"name": "hotend_z40.00_0", "min": [-3.723, -6.0, 40.0], "max": [3.723, -5.908, 50.0]},
     {"name": "hotend_z40.00_1", "min": [-3.75, -5.909, 40.0], "max": [3.75, 5.909, 50.0]},
     {"name": "hotend_z40.00_2", "min": [-3.723, 5.908, 40.0], "max": [3.723, 6.0, 50.0]},
-    {"name": "assumed_heater_block", "min": [-10.0, -10.0, 5.0], "max": [10.0, 10.0, 22.0]},
-    {"name": "assumed_silicone_sock", "min": [-12.0, -12.0, 4.0], "max": [12.0, 12.0, 24.0]},
-    {"name": "assumed_part_cooling_shroud", "min": [-35.0, -35.0, 5.0], "max": [35.0, 40.0, 80.0]},
-    {"name": "assumed_left_part_cooling_duct", "min": [-35.0, -35.0, 5.0], "max": [-5.0, 15.0, 30.0]},
-    {"name": "assumed_right_part_cooling_duct", "min": [5.0, -35.0, 5.0], "max": [35.0, 15.0, 30.0]},
-    {"name": "assumed_hotend_fan", "min": [-20.0, -10.0, 15.0], "max": [20.0, 20.0, 55.0]},
-    {"name": "assumed_carriage", "min": [-35.0, 15.0, 20.0], "max": [35.0, 60.0, 100.0]},
+    {"name": "silicone_sock", "min": [-4.5, -5.2, 4.0], "max": [4.5, 4.5, 17.0]},
+    {"name": "ceramic_heater_clip", "min": [-4.0, -5.0, 5.0], "max": [4.0, 4.0, 17.0]},
+    {"name": "left_duct_outlet", "min": [-24.0, -13.0, 5.0], "max": [-10.0, 5.0, 10.0]},
+    {"name": "right_duct_outlet", "min": [10.0, -13.0, 5.0], "max": [24.0, 5.0, 10.0]},
+    {"name": "left_duct_outer_wall", "min": [-30.0, -15.0, 8.0], "max": [-24.0, 8.0, 18.0]},
+    {"name": "right_duct_outer_wall", "min": [24.0, -15.0, 8.0], "max": [30.0, 8.0, 18.0]},
+    {"name": "left_duct_riser", "min": [-35.0, -20.0, 14.0], "max": [-10.0, 12.0, 30.0]},
+    {"name": "right_duct_riser", "min": [10.0, -20.0, 14.0], "max": [35.0, 12.0, 30.0]},
+    {"name": "front_housing", "min": [-35.0, -25.0, 18.0], "max": [35.0, 0.0, 80.0]},
+    {"name": "part_cooling_fan", "min": [-22.0, -23.0, 22.0], "max": [22.0, -5.0, 63.0]},
+    {"name": "hotend_fan", "min": [-14.25, -8.0, 15.0], "max": [10.75, 8.0, 40.0]},
+    {"name": "carriage", "min": [-35.0, 8.0, 24.0], "max": [35.0, 33.0, 100.0]},
     {"name": "x_gantry", "min": [0.0, -33.0, 34.0], "max": [0.0, 33.0, 100.0], "infinite_x": true}
   ]
 }

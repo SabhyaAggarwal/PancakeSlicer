@@ -16,8 +16,8 @@ ROOT = Path(__file__).resolve().parents[2]
 PRESETS = {
     "mini": ("prusa-mini", 180.0, 180.0),
     "a1": ("bambu-a1", 256.0, 256.0),
-    "a1-mini": ("bambu-a1", 180.0, 180.0),
-    "p1s": ("bambu-x1-p1", 256.0, 256.0),
+    "a1-mini": ("bambu-a1-mini", 180.0, 180.0),
+    "p1s": ("bambu-p1s", 256.0, 256.0),
 }
 R0, R1, BASE, WIDTH, PITCH = 6.0, 30.0, 2.0, 4.0, 0.4
 

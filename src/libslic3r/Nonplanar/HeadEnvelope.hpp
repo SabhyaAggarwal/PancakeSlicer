@@ -51,6 +51,8 @@ struct HeadEnvelope
 
     double max_slope(double phi, double gap) const;
 
+    double max_slope(double phi, double gap, std::string *limiting_component) const;
+
     std::vector<double> slope_map(int n, double gap) const;
 
     static HeadEnvelope from_slope_star(const HeadEnvelope &base, const SlopeStarReading &reading, float layer_height);

@@ -2,7 +2,7 @@
   "schema": "orca.head_envelope.v1",
   "id": "voron-stealthburner-v6",
   "name": "Voron Stealthburner (E3D V6, CW2)",
-  "provenance": "Confidence: medium (V6 printed front/rear are official; V6 hotend stack estimated). Sources: github.com/VoronDesign/Voron-Stealthburner  CAD/Printheads/Stealthburner_Printhead_V6.stp (front + rear CW2) + CW2 assembly hardware. Envelope: measured printed parts + CW2 hardware; V6 hotend stack estimated. Nozzle: [estimated] 0.5 mm face radius, 30 deg cone (generic E3D V6 estimate). Gantry: not in model. Converted by scripts/nonplanar_heads/import_envelopes.py from research/head-envelopes/voron-stealthburner-v6.json (2026-10-10). Not calibrated.",
+  "provenance": "Confidence: medium (V6 printed front/rear are official; V6 hotend stack estimated). Sources: github.com/VoronDesign/Voron-Stealthburner  CAD/Printheads/Stealthburner_Printhead_V6.stp (front + rear CW2) + CW2 assembly hardware. Envelope: measured printed parts + CW2 hardware; V6 hotend stack estimated. Nozzle: [estimated] 0.5 mm face radius, 30 deg cone (generic E3D V6 estimate). Gantry: not in model. Converted by scripts/nonplanar_heads/import_envelopes.py from research/head-envelopes/voron-stealthburner-v6.json (2026-10-10). Coverage audit 2026-10-10: slab upper-section reaches are lowered to the slab floor; convex support polygons and their three-rectangle covers include empty space between parts. These are conservative bounds, not exact underside geometry. The 0.3 mm vertical margin is additional. Not calibrated.",
   "calibrated": false,
   "nozzle": {
     "tip_flat_radius": 0.5,

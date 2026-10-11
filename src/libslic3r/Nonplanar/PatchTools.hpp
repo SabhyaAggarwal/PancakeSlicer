@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <string>
 #include <vector>
 
 namespace Slic3r {
@@ -38,6 +39,11 @@ void pad_lowest(HeightField &field, int iterations);
 std::vector<int> label_components(const Mask &mask, int nx, int ny, int &count);
 
 void drop_steep_nodes(const HeightField &surface, const HeadEnvelope &head, double gap, const HeightField &grid, Mask &mask);
+
+void drop_unsafe_nodes(const HeightField &surface, const HeadEnvelope &head, double gap, double max_error,
+                       Mask &mask, std::vector<int> *limiting_components = nullptr);
+std::string most_limiting_component(const HeadEnvelope &head, const std::vector<int> &limiting_components,
+                                    const Mask &area);
 
 void clip_extrusions(ExtrusionEntityCollection &collection, const ExPolygons &area, const BoundingBox &area_bbox);
 

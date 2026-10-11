@@ -2,7 +2,7 @@
   "schema": "orca.head_envelope.v1",
   "id": "voron-stealthburner-revo",
   "name": "Voron Stealthburner (Revo Voron, CW2)",
-  "provenance": "Confidence: high (official Voron CAD, tip at assembly origin). Sources: github.com/VoronDesign/Voron-Stealthburner  CAD/Stealthburner_CW2_Assembly.step (Revo Voron hotend + CW2 + x-carriage frames). Envelope: measured (STEP/mesh sections, 0.25-1 mm z-steps). Nozzle: [measured] Revo nozzle part: flat radius 0.77 mm, 35 deg cone. Gantry: not in model (MGN9 rail / extrusion absent); X-carriage frame plates bottom z=9.9 are included in the head. Converted by scripts/nonplanar_heads/import_envelopes.py from research/head-envelopes/voron-stealthburner-revo.json (2026-10-10). Not calibrated.",
+  "provenance": "Confidence: high (official Voron CAD, tip at assembly origin). Sources: github.com/VoronDesign/Voron-Stealthburner  CAD/Stealthburner_CW2_Assembly.step (Revo Voron hotend + CW2 + x-carriage frames). Envelope: measured (STEP/mesh sections, 0.25-1 mm z-steps). Nozzle: [measured] Revo nozzle part: flat radius 0.77 mm, 35 deg cone. Gantry: not in model (MGN9 rail / extrusion absent); X-carriage frame plates bottom z=9.9 are included in the head. Converted by scripts/nonplanar_heads/import_envelopes.py from research/head-envelopes/voron-stealthburner-revo.json (2026-10-10). Coverage audit 2026-10-10: slab upper-section reaches are lowered to the slab floor; convex support polygons and their three-rectangle covers include empty space between parts. These are conservative bounds, not exact underside geometry. The 0.3 mm vertical margin is additional. Not calibrated.",
   "calibrated": false,
   "nozzle": {
     "tip_flat_radius": 0.771,

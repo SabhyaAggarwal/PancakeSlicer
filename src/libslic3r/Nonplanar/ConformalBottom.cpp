@@ -218,7 +218,8 @@ void build_conformal_bottom(PrintObject &object, ConformalResult &result)
     Mask mask(n_nodes, 0);
     for (size_t i = 0; i < n_nodes; ++i)
         mask[i] = cand_mask[i] && !std::isnan(S0.data()[i]);
-    drop_steep_nodes(S0, head, h_c, grid, mask);
+    std::vector<int> limiting_components;
+    drop_unsafe_nodes(S0, head, h_c, settings.max_error, mask, &limiting_components);
     HeightField S1 = component_minorant(S0, mask, head, cancel);
     for (size_t i = 0; i < n_nodes; ++i)
         if (mask[i] && (std::isnan(S1.data()[i]) || Sb.data()[i] - S1.data()[i] > settings.max_error))
@@ -330,6 +331,7 @@ void build_conformal_bottom(PrintObject &object, ConformalResult &result)
 
             PatchDiagnostics diag;
             diag.patch_id = patch.id;
+            diag.limiting_component = most_limiting_component(head, limiting_components, bmask);
             double err_sq = 0.;
             size_t err_n  = 0;
             for (int iy = 0; iy < surface.ny(); ++iy)
@@ -357,6 +359,7 @@ void build_conformal_bottom(PrintObject &object, ConformalResult &result)
     if (const double fallback = std::max(0., area(candidate) - covered) * SCALING_FACTOR * SCALING_FACTOR; fallback > 0.) {
         PatchDiagnostics diag;
         diag.fallback_area = fallback;
+        diag.limiting_component = most_limiting_component(head, limiting_components, cand_mask);
         result.diagnostics.emplace_back(std::move(diag));
     }
     if (result.patches.size() == first_patch) {

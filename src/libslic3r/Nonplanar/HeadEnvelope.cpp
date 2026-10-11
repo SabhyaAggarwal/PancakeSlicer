@@ -188,6 +188,13 @@ double HeadEnvelope::underside_height(const Vec2d &d) const
 
 double HeadEnvelope::max_slope(double phi, double gap) const
 {
+    return max_slope(phi, gap, nullptr);
+}
+
+double HeadEnvelope::max_slope(double phi, double gap, std::string *limiting_component) const
+{
+    if (limiting_component)
+        limiting_component->clear();
     const Vec2d u(std::cos(phi), std::sin(phi));
     double      tan_min = Inf;
     for (const HeadBox &box : boxes) {
@@ -202,10 +209,12 @@ double HeadEnvelope::max_slope(double phi, double gap) const
         if (pmax <= 0.)
             continue;
         const double num = gap + box.min.z() - (box.nozzle ? 0. : margin);
-        if (num >= 0.)
-            tan_min = std::min(tan_min, num / pmax);
-        else
-            tan_min = pmin > 0. ? std::min(tan_min, num / pmin) : -Inf;
+        const double limit = num >= 0. ? num / pmax : pmin > 0. ? num / pmin : -Inf;
+        if (limit < tan_min) {
+            tan_min = limit;
+            if (limiting_component)
+                *limiting_component = box.name;
+        }
     }
     return tan_min == Inf ? 0.5 * PI : std::atan(std::max(0., tan_min));
 }
