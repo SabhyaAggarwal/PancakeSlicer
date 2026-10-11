@@ -23,6 +23,7 @@ namespace Slic3r::Nonplanar {
 
 class HeadEnvelope;
 struct ConformalPatch;
+enum class PatchKind : unsigned char;
 
 using Mask = std::vector<uint8_t>;
 
@@ -39,6 +40,9 @@ std::vector<int> label_components(const Mask &mask, int nx, int ny, int &count);
 void drop_steep_nodes(const HeightField &surface, const HeadEnvelope &head, double gap, const HeightField &grid, Mask &mask);
 
 void clip_extrusions(ExtrusionEntityCollection &collection, const ExPolygons &area, const BoundingBox &area_bbox);
+
+int planar_transition_layer(const std::vector<double> &boundaries, double shell_face, double shell_height,
+                            double h_min, double h_max, PatchKind kind);
 
 double top_shell_angle(const ConformalPatch &patch, const PrintRegionConfig &config);
 

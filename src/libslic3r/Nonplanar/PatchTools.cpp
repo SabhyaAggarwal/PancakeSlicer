@@ -248,6 +248,25 @@ void clip_extrusions(ExtrusionEntityCollection &collection, const ExPolygons &ar
     collection.entities = std::move(out);
 }
 
+int planar_transition_layer(const std::vector<double> &boundaries, double shell_face, double shell_height,
+                            double h_min, double h_max, PatchKind kind)
+{
+    if (boundaries.empty())
+        return -1;
+    const bool top = kind == PatchKind::Top;
+    const double target = shell_face + (top ? -1. : 1.) * (shell_height + h_min);
+    int layer = top ? int(std::upper_bound(boundaries.begin(), boundaries.end(), target + EPSILON) - boundaries.begin()) - 1 :
+                      int(std::lower_bound(boundaries.begin(), boundaries.end(), target - EPSILON) - boundaries.begin());
+    layer = std::clamp(layer, 0, int(boundaries.size()) - 1);
+    auto height = [&]() { return top ? shell_face - boundaries[size_t(layer)] : boundaries[size_t(layer)] - shell_face; };
+    while (height() > h_max) {
+        layer += top ? 1 : -1;
+        if (layer < 0 || layer >= int(boundaries.size()))
+            return -1;
+    }
+    return height() >= h_min ? layer : -1;
+}
+
 namespace {
 
 bool contour_line_angle(const HeightField &surface, double &angle)

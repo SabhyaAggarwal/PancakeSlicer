@@ -103,9 +103,10 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
         z    = s - drop;
         bead = float(patch.shell_height);
         if (k == 1) {
-            const float base = patch.base.sample(p), floor_z = top_of_planar.sample(p);
-            if (!std::isnan(base) && !std::isnan(floor_z))
-                bead = float(std::max(patch.shell_height, base + patch.shell_height - double(floor_z)));
+            const float floor_z = top_of_planar.sample(p);
+            if (std::isnan(floor_z))
+                return false;
+            bead = float(z - floor_z);
         }
         return true;
     };
@@ -186,6 +187,9 @@ ConformalResult build_conformal_shells(PrintObject &object)
     const Mask         band_mask    = rasterize(band_cand, grid);
     const double       h_c          = settings.shell_height;
     const double       h_min        = 0.5 * h_c;
+    const double       h_max        = 0.8 * region.flow(object, settings.shells == 1 ? frTopSolidInfill : frSolidInfill, h_c).nozzle_diameter();
+    if (h_c > h_max)
+        return result;
     const double       first_top    = layers.front()->print_z;
 
     HeightField S0 = S;
@@ -301,6 +305,46 @@ ConformalResult build_conformal_shells(PrintObject &object)
         components = std::move(kept);
     }
 
+    if (settings.max_patch_height > 0.) {
+        ExPolygons bands;
+        for (const ExPolygon &component : components) {
+            const Mask pmask = rasterize({ component }, grid);
+            float zlo = Inf, zhi = -Inf;
+            for (size_t i = 0; i < n_nodes; ++i)
+                if (pmask[i] && !std::isnan(S1.data()[i])) {
+                    zlo = std::min(zlo, S1.data()[i]);
+                    zhi = std::max(zhi, S1.data()[i]);
+                }
+            if (zhi - zlo <= settings.max_patch_height) {
+                bands.emplace_back(component);
+                continue;
+            }
+            const int count = int(std::ceil((zhi - zlo) / settings.max_patch_height));
+            const double band_height = (zhi - zlo) / count;
+            for (int band = 0; band < count; ++band) {
+                Mask selected(n_nodes, 0);
+                for (size_t i = 0; i < n_nodes; ++i)
+                    if (pmask[i] && !std::isnan(S1.data()[i])) {
+                        const int owner = std::min(count - 1, int((S1.data()[i] - zlo) / band_height));
+                        selected[i] = owner == band;
+                    }
+                append(bands, intersection_ex(mask_to_expolygons(selected, grid), ExPolygons{ component }));
+            }
+        }
+        components = std::move(bands);
+        auto highest = [&](const ExPolygon &component) {
+            const Mask pmask = rasterize({ component }, grid);
+            float z = -Inf;
+            for (size_t i = 0; i < n_nodes; ++i)
+                if (pmask[i] && !std::isnan(S1.data()[i]))
+                    z = std::max(z, S1.data()[i]);
+            return z;
+        };
+        std::stable_sort(components.begin(), components.end(), [&](const ExPolygon &a, const ExPolygon &b) {
+            return highest(a) < highest(b);
+        });
+    }
+
     std::vector<double> layer_z(layers.size());
     for (size_t i = 0; i < layers.size(); ++i)
         layer_z[i] = layers[i]->print_z;
@@ -352,9 +396,6 @@ ConformalResult build_conformal_shells(PrintObject &object)
                     continue;
                 const double b = s1 - settings.shells * h_c;
                 patch.base.at(ix, iy) = float(b);
-                const auto it  = std::upper_bound(layer_z.begin(), layer_z.end(), b - h_min + EPSILON);
-                top.at(ix, iy) = it == layer_z.begin() ? float(first_top) : float(*std::prev(it));
-                patch.z_min    = std::min(patch.z_min, double(top.at(ix, iy)));
                 patch.z_max    = std::max(patch.z_max, double(s1));
                 const double e = S.at(ix0 + ix, iy0 + iy) - s1;
                 diag.max_surface_error = std::max(diag.max_surface_error, e);
@@ -367,7 +408,21 @@ ConformalResult build_conformal_shells(PrintObject &object)
         diag.rms_surface_error = err_n > 0 ? std::sqrt(err_sq / err_n) : 0.;
         pad_lowest(patch.surface, pad);
         pad_lowest(patch.base, pad);
-        pad_lowest(top, pad);
+        bool printable = true;
+        for (size_t i = 0; i < top.data().size(); ++i) {
+            const double shell_z = patch.surface.data()[i] - (settings.shells - 1) * h_c;
+            if (std::isnan(shell_z))
+                continue;
+            const int layer = planar_transition_layer(layer_z, shell_z, h_c, h_min, h_max, PatchKind::Top);
+            if (layer < 0) {
+                printable = false;
+                break;
+            }
+            top.data()[i] = float(layer_z[size_t(layer)]);
+            patch.z_min = std::min(patch.z_min, layer_z[size_t(layer)]);
+        }
+        if (!printable)
+            continue;
 
         patch.host_layer = size_t(std::lower_bound(layer_z.begin(), layer_z.end(), patch.z_max - EPSILON) - layer_z.begin());
         if (patch.host_layer >= layers.size())
@@ -445,11 +500,11 @@ ConformalResult build_conformal_shells(PrintObject &object)
                 const ConformalPatch &patch = result.patches[idx];
                 if (i > patch.host_layer || layer_z[i] <= patch.z_min - EPSILON)
                     continue;
-                const HeightField &B = patch.base;
+                const HeightField &B = planar_tops[idx];
                 Mask               above(B.data().size(), 0);
                 bool               any = false;
                 for (size_t n = 0; n < above.size(); ++n)
-                    if (!std::isnan(B.data()[n]) && layer_z[i] > B.data()[n] - h_min + EPSILON) {
+                    if (!std::isnan(B.data()[n]) && layer_z[i] > B.data()[n] + EPSILON) {
                         above[n] = 1;
                         any      = true;
                     }

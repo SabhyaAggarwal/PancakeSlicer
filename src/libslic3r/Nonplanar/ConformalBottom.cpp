@@ -160,6 +160,10 @@ void build_conformal_bottom(PrintObject &object, ConformalResult &result)
 
     const double h_c   = settings.shell_height;
     const double h_min = 0.5 * h_c;
+    const PrintRegion &region = object.printing_region(size_t(settings.region_id));
+    const double h_max = 0.8 * region.flow(object, frSolidInfill, h_c).nozzle_diameter();
+    if (h_c > h_max)
+        return;
     const double gap   = object.config().support_top_z_distance.value;
     const double pitch = settings.pitch;
     auto         cancel = [&object]() { throw_if_canceled(object); };
@@ -228,15 +232,12 @@ void build_conformal_bottom(PrintObject &object, ConformalResult &result)
     for (size_t i = 0; i < n_nodes; ++i) {
         if (!mask[i] || std::isnan(S1.data()[i]))
             continue;
-        const auto it = std::lower_bound(layer_bottom.begin(), layer_bottom.end(),
-                                         S1.data()[i] + settings.shells * h_c + h_min - EPSILON);
-        if (it == layer_bottom.end())
+        floor_layer[i] = planar_transition_layer(layer_bottom, S1.data()[i] + (settings.shells - 1) * h_c,
+                                                  h_c, h_min, h_max, PatchKind::Bottom);
+        if (floor_layer[i] < 0)
             mask[i] = 0;
-        else
-            floor_layer[i] = int(it - layer_bottom.begin());
     }
     throw_if_canceled(object);
-    const PrintRegion &region     = object.printing_region(size_t(settings.region_id));
     const double       line_width = region.flow(object, frSolidInfill, h_c).width();
     const double       wall_width = std::max(0, region.config().wall_loops.value) *
                                 region.flow(object, frPerimeter, object.config().layer_height.value).width();
@@ -247,7 +248,9 @@ void build_conformal_bottom(PrintObject &object, ConformalResult &result)
     ExPolygons components = opening_ex(mask_to_expolygons(mask, grid), float(scale_(line_width)));
     components            = intersection_ex(offset_ex(expolygons_simplify(components, scale_(pitch)), -float(scale_(pitch))),
                                             candidate);
-    const double band_relief = std::max(h_c, settings.shells * h_c + gap - settings.max_error);
+    double band_relief = std::max(h_c, (settings.shells - 1) * h_c + h_min + gap - settings.max_error);
+    if (object.config().nonplanar_max_patch_height.value > 0.)
+        band_relief = std::min(band_relief, object.config().nonplanar_max_patch_height.value);
     const size_t first_patch = result.patches.size();
     std::vector<HeightField> floors;
     double                   covered = 0.;
@@ -280,7 +283,20 @@ void build_conformal_bottom(PrintObject &object, ConformalResult &result)
                     component_floor.at(ix, iy) = float(layer_bottom[size_t(floor_layer[size_t(iy0 + iy) * grid.nx() + ix0 + ix])]);
         HeightField padded = surface, padded_floor = component_floor;
         pad_lowest(padded, pad);
-        pad_lowest(padded_floor, pad);
+        bool printable = true;
+        for (size_t i = 0; i < padded.data().size(); ++i) {
+            if (std::isnan(padded.data()[i]))
+                continue;
+            const int layer = planar_transition_layer(layer_bottom, padded.data()[i] + (settings.shells - 1) * h_c,
+                                                       h_c, h_min, h_max, PatchKind::Bottom);
+            if (layer < 0) {
+                printable = false;
+                break;
+            }
+            padded_floor.data()[i] = float(layer_bottom[size_t(layer)]);
+        }
+        if (!printable)
+            continue;
 
         const int    n_bands = std::max(1, int(std::ceil((zhi - zlo) / band_relief - 1e-6)));
         const double band_h  = (zhi - zlo) / n_bands;
@@ -381,8 +397,11 @@ void build_conformal_bottom(PrintObject &object, ConformalResult &result)
                         return false;
                     z    = s + k * h_c;
                     bead = float(h_c);
-                    if (const float f = patch.base.sample(p); outer && !std::isnan(f)) {
-                        z    = std::max(z, double(f));
+                    if (outer) {
+                        const float f = patch.base.sample(p);
+                        if (std::isnan(f))
+                            return false;
+                        z    = f;
                         bead = float(z - (s + (k - 1) * h_c));
                     }
                     return true;
