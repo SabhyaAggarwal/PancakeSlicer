@@ -18,6 +18,7 @@
 #include "GCode/RetractWhenCrossingPerimeters.hpp"
 #include "GCode/SpiralVase.hpp"
 #include "GCode/ConformalEmit.hpp"
+#include "GCode/ClearanceVerifier.hpp"
 #include "Nonplanar/HeadEnvelope.hpp"
 #include "GCode/ToolOrdering.hpp"
 #include "GCode/WipeTower.hpp"
@@ -516,7 +517,7 @@ protected:
     std::string     extrude_infill(const Print& print, const std::vector<ObjectByExtruder::Island::Region>& by_region, bool ironing);
     std::string     extrude_support(const ExtrusionEntityCollection& support_fills, const ExtrusionRole support_extrusion_role);
     std::string     extrude_conformal_patches(const Print &print, const std::vector<LayerToPrint> &layers, unsigned int extruder_id,
-                                              size_t single_object_instance_idx);
+                                              size_t single_object_instance_idx, bool before = false);
     std::string     extrude_conformal_path(const ExtrusionPathConformal &path, const std::string &description,
                                            const std::function<Vec2d(const Vec2d &)> &surface_gradient = {});
     void            emit_conformal_moves(std::string &gcode, const ExtrusionPathConformal &path, double e_per_mm,
@@ -639,6 +640,8 @@ protected:
     float                               m_last_layer_z{ 0.0f };
     float                               m_max_layer_z{ 0.0f };
     double                              m_nonplanar_ceiling{ 0. };
+    std::unique_ptr<MaterialColumns>      m_material_columns;
+    bool                                m_track_nonplanar_material{ false };
     std::vector<Nonplanar::ConformalPoint> m_conformal_points;
     Nonplanar::HeadEnvelope                m_nonplanar_head;
     float                               m_last_width{ 0.0f };

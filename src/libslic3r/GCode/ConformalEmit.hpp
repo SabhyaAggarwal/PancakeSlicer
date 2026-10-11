@@ -9,7 +9,9 @@
 
 namespace Slic3r {
 
+class ExtrusionPath;
 class ExtrusionPathConformal;
+class MaterialColumns;
 class GCodeWriter;
 
 namespace Nonplanar {
@@ -37,6 +39,9 @@ using DepositFn = std::function<void(const Vec3d &, const Vec3d &, double)>;
 double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<ConformalPoint> &points, double width,
                                 const ConformalEmitParams &params, float &last_height, std::string &out,
                                 const DepositFn &deposit = {});
+
+void deposit_material_path(MaterialColumns &columns, const ExtrusionPath &path, const ToWriterFrame &to_writer,
+                           const std::function<double(double)> &z_at_fraction = {});
 
 struct MinimalTiltParams
 {

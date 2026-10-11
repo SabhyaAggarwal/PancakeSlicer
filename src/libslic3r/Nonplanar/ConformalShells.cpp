@@ -1,12 +1,12 @@
 #include "ConformalShells.hpp"
 
 #include "HeadEnvelope.hpp"
+#include "PatchTools.hpp"
 #include "SurfaceClip.hpp"
 
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
-#include "libslic3r/Fill/FillBase.hpp"
 #include "libslic3r/Flow.hpp"
 #include "libslic3r/Layer.hpp"
 #include "libslic3r/Print.hpp"
@@ -25,10 +25,8 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#include <cstdint>
 #include <functional>
 #include <limits>
-#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -36,8 +34,6 @@
 namespace Slic3r::Nonplanar {
 
 namespace {
-
-using Mask = std::vector<uint8_t>;
 
 constexpr float Inf = std::numeric_limits<float>::infinity();
 
@@ -49,142 +45,9 @@ struct ShellSettings
     double               max_slope = 0.;
     double               max_error = 0.;
     double               min_area = 0.;
-    NonplanarTopPattern  pattern = NonplanarTopPattern::Contour;
     double               pitch = 0.2;
     double               max_patch_height = 0.;
 };
-
-void throw_if_canceled(const PrintObject &object)
-{
-    if (object.print()->canceled())
-        throw CanceledException();
-}
-
-Mask rasterize(const ExPolygons &area, const HeightField &grid)
-{
-    Mask                             mask(size_t(grid.nx()) * grid.ny(), 0);
-    std::vector<std::vector<double>> crossings(grid.ny());
-    const double                     p  = grid.pitch();
-    const Vec2d                      o  = grid.origin();
-    auto add_polygon = [&](const Polygon &poly) {
-        const Points &pts = poly.points;
-        for (size_t i = 0; i < pts.size(); ++i) {
-            Vec2d a = unscale(pts[i]), b = unscale(pts[(i + 1) % pts.size()]);
-            if (a.y() == b.y())
-                continue;
-            if (a.y() > b.y())
-                std::swap(a, b);
-            const int iy0 = std::max(0, int(std::ceil((a.y() - o.y()) / p)));
-            const int iy1 = std::min(grid.ny() - 1, int(std::ceil((b.y() - o.y()) / p)) - 1);
-            for (int iy = iy0; iy <= iy1; ++iy) {
-                const double y = o.y() + iy * p;
-                if (y < a.y() || y >= b.y())
-                    continue;
-                crossings[iy].emplace_back(a.x() + (y - a.y()) * (b.x() - a.x()) / (b.y() - a.y()));
-            }
-        }
-    };
-    for (const ExPolygon &expoly : area) {
-        add_polygon(expoly.contour);
-        for (const Polygon &hole : expoly.holes)
-            add_polygon(hole);
-    }
-    for (int iy = 0; iy < grid.ny(); ++iy) {
-        std::vector<double> &xs = crossings[iy];
-        std::sort(xs.begin(), xs.end());
-        for (size_t i = 0; i + 1 < xs.size(); i += 2) {
-            const int ix0 = std::max(0, int(std::ceil((xs[i] - o.x()) / p)));
-            const int ix1 = std::min(grid.nx() - 1, int(std::floor((xs[i + 1] - o.x()) / p)));
-            for (int ix = ix0; ix <= ix1; ++ix)
-                mask[size_t(iy) * grid.nx() + ix] = 1;
-        }
-    }
-    return mask;
-}
-
-ExPolygons mask_to_expolygons(const Mask &mask, const HeightField &grid)
-{
-    Polygons     cells;
-    const double h   = 0.5 * grid.pitch();
-    const coord_t eps = 10;
-    for (int iy = 0; iy < grid.ny(); ++iy)
-        for (int ix = 0; ix < grid.nx();) {
-            if (!mask[size_t(iy) * grid.nx() + ix]) {
-                ++ix;
-                continue;
-            }
-            int end = ix;
-            while (end + 1 < grid.nx() && mask[size_t(iy) * grid.nx() + end + 1])
-                ++end;
-            const Vec2d lo = grid.node(ix, iy) - Vec2d(h, h), hi = grid.node(end, iy) + Vec2d(h, h);
-            const Point plo = Point::new_scale(lo.x(), lo.y()) - Point(eps, eps);
-            const Point phi = Point::new_scale(hi.x(), hi.y()) + Point(eps, eps);
-            cells.emplace_back(Polygon({ plo, Point(phi.x(), plo.y()), phi, Point(plo.x(), phi.y()) }));
-            ix = end + 1;
-        }
-    return union_ex(cells);
-}
-
-HeightField crop(const HeightField &src, int ix0, int iy0, int ix1, int iy1)
-{
-    HeightField out(BoundingBoxf(src.node(ix0, iy0), src.node(ix1, iy1)), src.pitch());
-    for (int iy = 0; iy < out.ny(); ++iy)
-        for (int ix = 0; ix < out.nx(); ++ix)
-            out.at(ix, iy) = src.at(ix0 + ix, iy0 + iy);
-    return out;
-}
-
-void pad_lowest(HeightField &field, int iterations)
-{
-    for (int it = 0; it < iterations; ++it) {
-        HeightField next = field;
-        for (int iy = 0; iy < field.ny(); ++iy)
-            for (int ix = 0; ix < field.nx(); ++ix) {
-                if (!std::isnan(field.at(ix, iy)))
-                    continue;
-                float lowest = Inf;
-                for (auto [dx, dy] : { std::pair{ 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }) {
-                    const int x = ix + dx, y = iy + dy;
-                    if (x >= 0 && y >= 0 && x < field.nx() && y < field.ny() && !std::isnan(field.at(x, y)))
-                        lowest = std::min(lowest, field.at(x, y));
-                }
-                if (lowest < Inf)
-                    next.at(ix, iy) = lowest;
-            }
-        field = std::move(next);
-    }
-}
-
-std::vector<int> label_components(const Mask &mask, int nx, int ny, int &count)
-{
-    std::vector<int>    label(mask.size(), -1);
-    std::vector<size_t> stack;
-    count = 0;
-    for (size_t seed = 0; seed < mask.size(); ++seed) {
-        if (!mask[seed] || label[seed] >= 0)
-            continue;
-        label[seed] = count;
-        stack.assign(1, seed);
-        while (!stack.empty()) {
-            const size_t i = stack.back();
-            stack.pop_back();
-            const int ix = int(i % size_t(nx)), iy = int(i / size_t(nx));
-            for (int dy = -1; dy <= 1; ++dy)
-                for (int dx = -1; dx <= 1; ++dx) {
-                    const int x = ix + dx, y = iy + dy;
-                    if (x < 0 || y < 0 || x >= nx || y >= ny)
-                        continue;
-                    const size_t j = size_t(y) * nx + x;
-                    if (mask[j] && label[j] < 0) {
-                        label[j] = count;
-                        stack.emplace_back(j);
-                    }
-                }
-        }
-        ++count;
-    }
-    return label;
-}
 
 ShellSettings shell_settings(const PrintObject &object)
 {
@@ -200,7 +63,6 @@ ShellSettings shell_settings(const PrintObject &object)
         s.max_slope        = Geometry::deg2rad(cfg.nonplanar_max_slope.value);
         s.max_error        = cfg.nonplanar_max_surface_error.value;
         s.min_area         = cfg.nonplanar_min_patch_area.value;
-        s.pattern          = cfg.nonplanar_top_pattern.value;
         s.pitch            = std::max(0.05, object.config().nonplanar_surface_resolution.value);
         s.max_patch_height = object.config().nonplanar_max_patch_height.value;
         break;
@@ -221,154 +83,34 @@ ExPolygons candidate_top_area(const PrintObject &object)
     return offset_ex(union_ex(offset(tops, seam)), -seam);
 }
 
-void clip_extrusions(ExtrusionEntityCollection &collection, const ExPolygons &area, const BoundingBox &area_bbox)
-{
-    ExtrusionEntitiesPtr out;
-    out.reserve(collection.entities.size());
-    for (ExtrusionEntity *ee : collection.entities) {
-        if (auto *sub = dynamic_cast<ExtrusionEntityCollection *>(ee)) {
-            clip_extrusions(*sub, area, area_bbox);
-            if (sub->entities.empty())
-                delete ee;
-            else
-                out.emplace_back(ee);
-            continue;
-        }
-        const ExtrusionPaths *paths = nullptr;
-        ExtrusionPaths        single;
-        if (auto *loop = dynamic_cast<ExtrusionLoop *>(ee))
-            paths = &loop->paths;
-        else if (auto *multi = dynamic_cast<ExtrusionMultiPath *>(ee))
-            paths = &multi->paths;
-        else if (auto *path = dynamic_cast<ExtrusionPath *>(ee); path != nullptr && typeid(*path) == typeid(ExtrusionPath)) {
-            single.emplace_back(*path);
-            paths = &single;
-        }
-        if (paths == nullptr || !get_extents(ee->as_polylines()).overlap(area_bbox)) {
-            out.emplace_back(ee);
-            continue;
-        }
-        bool                      cut = false;
-        ExtrusionEntityCollection pieces;
-        for (const ExtrusionPath &path : *paths) {
-            const Polylines src { path.polyline.to_polyline() };
-            if (intersection_pl(src, area).empty()) {
-                pieces.entities.emplace_back(new ExtrusionPath(path));
-                continue;
-            }
-            cut = true;
-            for (Polyline &pl : diff_pl(src, area))
-                if (pl.is_valid())
-                    pieces.entities.emplace_back(new ExtrusionPath(Polyline3(pl), path));
-        }
-        if (!cut) {
-            out.emplace_back(ee);
-            continue;
-        }
-        delete ee;
-        for (ExtrusionEntity *piece : pieces.entities)
-            out.emplace_back(piece->clone_move());
-    }
-    collection.entities = std::move(out);
-}
-
-bool contour_line_angle(const HeightField &surface, double &angle)
-{
-    double jxx = 0., jxy = 0., jyy = 0.;
-    for (int iy = 0; iy < surface.ny(); ++iy)
-        for (int ix = 0; ix < surface.nx(); ++ix) {
-            const Vec2d g = surface.gradient(surface.node(ix, iy));
-            if (std::isnan(g.x()) || std::isnan(g.y()))
-                continue;
-            jxx += g.x() * g.x();
-            jxy += g.x() * g.y();
-            jyy += g.y() * g.y();
-        }
-    const double trace = jxx + jyy;
-    const double diff  = std::hypot(jxx - jyy, 2. * jxy);
-    if (trace < 1e-9 || diff < 0.1 * trace)
-        return false;
-    angle = 0.5 * std::atan2(2. * jxy, jxx - jyy) + 0.5 * PI;
-    return true;
-}
-
 ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalPatch &patch, const HeightField &top_of_planar,
                                      const ExPolygons &area, int k, double line_angle, double host_z, double resample)
 {
-    const PrintRegion       &region   = object.printing_region(size_t(patch.region_id));
-    const PrintRegionConfig &cfg      = region.config();
-    const bool               outer    = k == patch.shells;
-    const Flow               flow     = region.flow(object, outer ? frTopSolidInfill : frSolidInfill, patch.shell_height);
-    const ExtrusionRole      role     = outer ? erTopSolidInfill : erSolidInfill;
-    const NonplanarTopPattern pattern = cfg.nonplanar_top_pattern.value;
-
-    std::unique_ptr<Fill> fill(Fill::new_from_type(pattern == NonplanarTopPattern::Concentric ? ipConcentric :
-                                                   outer                                       ? ipMonotonic :
-                                                                                                 ipRectilinear));
-    fill->layer_id        = 0;
-    fill->z               = host_z;
-    fill->spacing         = flow.spacing();
-    fill->overlap         = 0.;
-    fill->angle           = float(line_angle + (patch.shells - k) * 0.5 * PI);
-    fill->fixed_angle     = true;
-    fill->link_max_length = coord_t(scale_(3. * fill->spacing));
-    fill->bounding_box    = get_extents(area);
-    FillParams params;
-    params.density     = 1.f;
-    params.dont_adjust = false;
-    params.monotonic   = outer;
-    params.flow        = flow;
+    const PrintRegion        &region  = object.printing_region(size_t(patch.region_id));
+    const bool                outer   = k == patch.shells;
+    const Flow                flow    = region.flow(object, outer ? frTopSolidInfill : frSolidInfill, patch.shell_height);
+    const ExtrusionRole       role    = outer ? erTopSolidInfill : erSolidInfill;
+    const NonplanarTopPattern pattern = region.config().nonplanar_top_pattern.value;
+    const Polylines polylines = fill_solid(area, pattern == NonplanarTopPattern::Concentric ? ipConcentric : outer ? ipMonotonic : ipRectilinear,
+                                           flow.spacing(), line_angle + (patch.shells - k) * 0.5 * PI, outer, flow, host_z);
 
     const ExtrusionPath proto(role, flow.mm3_per_mm(), float(flow.width()), float(patch.shell_height));
     const double        drop = (patch.shells - k) * patch.shell_height;
-
+    auto at = [&](const Vec2d &p, double &z, float &bead) {
+        const float s = patch.surface.sample(p);
+        if (std::isnan(s))
+            return false;
+        z    = s - drop;
+        bead = float(patch.shell_height);
+        if (k == 1) {
+            const float base = patch.base.sample(p), floor_z = top_of_planar.sample(p);
+            if (!std::isnan(base) && !std::isnan(floor_z))
+                bead = float(std::max(patch.shell_height, base + patch.shell_height - double(floor_z)));
+        }
+        return true;
+    };
     ExtrusionEntityCollection out;
-    Surface                   surface(stTop, ExPolygon());
-    for (const ExPolygon &expoly : area) {
-        surface.expolygon = expoly;
-        Polylines polylines;
-        try {
-            polylines = fill->fill_surface(&surface, params);
-        } catch (InfillFailedException &) {
-        }
-        for (const Polyline &pl : polylines) {
-            Points3            pts;
-            std::vector<float> heights;
-            auto flush = [&]() {
-                if (pts.size() >= 2) {
-                    auto *path = new ExtrusionPathConformal(Polyline3(pts), proto, std::move(heights));
-                    path->patch_id = patch.id;
-                    path->shell    = k - 1;
-                    path->simplify(0.01);
-                    out.entities.emplace_back(path);
-                }
-                pts.clear();
-                heights.clear();
-            };
-            for (size_t i = 0; i + 1 < pl.points.size(); ++i) {
-                const Vec2d a = unscale(pl.points[i]), b = unscale(pl.points[i + 1]);
-                const int   n = std::max(1, int(std::ceil((b - a).norm() / resample)));
-                for (int j = i == 0 ? 0 : 1; j <= n; ++j) {
-                    const Vec2d p = a + (b - a) * (double(j) / n);
-                    const float s = patch.surface.sample(p);
-                    if (std::isnan(s)) {
-                        flush();
-                        continue;
-                    }
-                    const double z = s - drop;
-                    double bead = patch.shell_height;
-                    if (k == 1) {
-                        const float base = patch.base.sample(p), floor_z = top_of_planar.sample(p);
-                        if (!std::isnan(base) && !std::isnan(floor_z))
-                            bead = std::max(patch.shell_height, base + patch.shell_height - double(floor_z));
-                    }
-                    pts.emplace_back(coord_t(scale_(p.x())), coord_t(scale_(p.y())), coord_t(scale_(z - host_z)));
-                    heights.emplace_back(float(bead));
-                }
-            }
-            flush();
-        }
-    }
+    lift_polylines(polylines, proto, at, host_z, resample, patch.id, k - 1, out.entities);
     return out;
 }
 
@@ -417,19 +159,10 @@ ConformalResult build_conformal_shells(PrintObject &object)
     if (!head_warning.empty())
         BOOST_LOG_TRIVIAL(warning) << "Non-planar: " << head_warning;
 
-    const double pitch = settings.pitch;
-    BoundingBox  obj_bbox;
-    Polygons     silhouette_src;
-    for (const Layer *layer : layers)
-        for (const ExPolygon &expoly : layer->lslices) {
-            obj_bbox.merge(get_extents(expoly.contour));
-            silhouette_src.emplace_back(expoly.contour);
-        }
-    const BoundingBoxf bbf(unscale(obj_bbox.min), unscale(obj_bbox.max));
-    const BoundingBoxf grid_bbox(Vec2d(std::floor(bbf.min.x() / pitch) - 1., std::floor(bbf.min.y() / pitch) - 1.) * pitch,
-                                 Vec2d(std::ceil(bbf.max.x() / pitch) + 1., std::ceil(bbf.max.y() / pitch) + 1.) * pitch);
-    const HeightField  grid(grid_bbox, pitch);
-    const size_t       n_nodes = grid.data().size();
+    const double      pitch = settings.pitch;
+    Polygons          silhouette_src;
+    const HeightField grid    = object_grid(object, pitch, &silhouette_src);
+    const size_t      n_nodes = grid.data().size();
 
     auto cancel = [&object]() { throw_if_canceled(object); };
     HeightField S;
@@ -464,30 +197,7 @@ ConformalResult build_conformal_shells(PrintObject &object)
     Mask mask(n_nodes, 0);
     for (size_t i = 0; i < n_nodes; ++i)
         mask[i] = cand_mask[i] && !std::isnan(S0.data()[i]);
-    {
-        const int                 n_az   = 72;
-        const std::vector<double> limits = head.slope_map(n_az, h_c);
-        Mask                      steep(n_nodes, 0);
-        for (int iy = 0; iy < grid.ny(); ++iy)
-            for (int ix = 0; ix < grid.nx(); ++ix) {
-                const size_t i = size_t(iy) * grid.nx() + ix;
-                if (!mask[i])
-                    continue;
-                const Vec2d g = S0.gradient(grid.node(ix, iy));
-                if (std::isnan(g.x()) || std::isnan(g.y())) {
-                    steep[i] = 1;
-                    continue;
-                }
-                if (g.norm() < 1e-9)
-                    continue;
-                const double phi = std::atan2(g.y(), g.x());
-                const int    k   = (int(std::lround(phi / (2. * PI) * n_az)) % n_az + n_az) % n_az;
-                steep[i]         = std::atan(g.norm()) > limits[size_t(k)];
-            }
-        for (size_t i = 0; i < n_nodes; ++i)
-            if (steep[i])
-                mask[i] = 0;
-    }
+    drop_steep_nodes(S0, head, h_c, grid, mask);
 
     HeadEnvelope neighbour_head = head;
     {
@@ -698,9 +408,7 @@ ConformalResult build_conformal_shells(PrintObject &object)
         for (size_t idx = range.begin(); idx < range.end(); ++idx) {
             ConformalPatch &patch = result.patches[idx];
             const double    host_z = layers[patch.host_layer]->print_z;
-            double          line_angle = Geometry::deg2rad(region.config().solid_infill_direction.value);
-            if (settings.pattern == NonplanarTopPattern::Contour && !contour_line_angle(patch.surface, line_angle))
-                line_angle = Geometry::deg2rad(region.config().solid_infill_direction.value);
+            const double    line_angle = top_shell_angle(patch, region.config());
             const double overlap = 0.01 * region.config().top_bottom_infill_wall_overlap.value * line_width;
             const ExPolygons area = intersection_ex(offset_ex(shell_areas[idx], float(scale_(overlap))), patch.footprint);
             Point start;

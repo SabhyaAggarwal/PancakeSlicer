@@ -16,6 +16,8 @@
 #include "Geometry.hpp"
 #include "I18N.hpp"
 #include "Layer.hpp"
+#include "Nonplanar/ConformalBottom.hpp"
+#include "Nonplanar/ConformalIroning.hpp"
 #include "Nonplanar/ConformalShells.hpp"
 #include "MutablePolygon.hpp"
 #include "PrintBase.hpp"
@@ -704,10 +706,13 @@ void PrintObject::nonplanar_shells()
         return;
     bool enabled = false;
     for (size_t region_id = 0; region_id < this->num_printing_regions(); ++region_id)
-        enabled |= this->printing_region(region_id).config().nonplanar_top_shells.value > 0;
+        enabled |= this->printing_region(region_id).config().nonplanar_top_shells.value > 0 ||
+                   this->printing_region(region_id).config().nonplanar_bottom_shells.value > 0;
     if (enabled)
         m_print->set_status(40, L("Generating curved top shells"));
     m_conformal = std::make_unique<Nonplanar::ConformalResult>(Nonplanar::build_conformal_shells(*this));
+    Nonplanar::build_conformal_bottom(*this, *m_conformal);
+    Nonplanar::build_conformal_ironing(*this, *m_conformal);
     m_print->throw_if_canceled();
     this->set_done(posNonplanar);
 }
@@ -857,6 +862,7 @@ void PrintObject::generate_support_material(bool with_belt_brim)
             m_print->set_status(50, L("Generating support"));
 
             this->_generate_support_material();
+            Nonplanar::contour_support_interface(*this);
             m_print->throw_if_canceled();
         }
         m_belt_brim_pending = true;
@@ -1681,6 +1687,13 @@ bool PrintObject::invalidate_step(PrintObjectStep step)
         invalidated |= m_print->invalidate_steps({ psSkirtBrim });
         m_slicing_params.valid = false;
     }
+
+    if (step >= posPerimeters && step <= posNonplanar)
+        for (size_t region_id = 0; region_id < this->num_printing_regions(); ++region_id)
+            if (this->printing_region(region_id).config().nonplanar_bottom_shells.value > 0) {
+                invalidated |= this->invalidate_step(posSupportMaterial);
+                break;
+            }
 
     invalidated |= m_print->invalidate_step(psWipeTower);
     invalidated |= m_print->invalidate_step(psGCodeExport);

@@ -2276,6 +2276,9 @@ void GCodeProcessorResult::reset() {
     lock();
 
     moves.clear();
+    clearance.clear();
+    nonplanar = false;
+    clearance_report = {};
     plate_mass = {};
     object_masses.clear();
     body_masses.clear();
@@ -3820,6 +3823,7 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
     if (boost::starts_with(comment, "_NONPLANAR_BEGIN")) {
         const size_t pos   = comment.find("shell=");
         const int    shell = pos == comment.npos ? 0 : std::atoi(std::string(comment.substr(pos + 6)).c_str());
+        m_result.nonplanar = true;
         m_nonplanar_patch_shell = static_cast<unsigned char>(std::clamp(shell, 0, 0xFE));
         return;
     }
@@ -4517,6 +4521,7 @@ void GCodeProcessor::process_rotary_G1(const GCodeReader::GCodeLine& line)
     for (int i = 0; i < 2; ++i)
         if (float v; line.has_value(kin.rotary_axes()[i].letter, v))
             joints.rot[i] = (relative ? joints.rot[i] : 0.) + v;
+    const auto old_rot = m_joints.rot;
     const Vec3d from = kin.forward(m_joints).tip;
     const Vec3d to   = kin.forward(joints).tip;
     m_joints         = joints;
@@ -4533,7 +4538,12 @@ void GCodeProcessor::process_rotary_G1(const GCodeReader::GCodeLine& line)
         else if (const double length = (to - from).norm(); length > EPSILON)
             g1_feedrate = length * line.f();
     }
+    const size_t previous_moves = m_result.moves.size();
     process_G1(g1_axes, g1_feedrate);
+    if (old_rot != joints.rot) {
+        m_result.nonplanar = true;
+        if (m_result.moves.size() == previous_moves) store_move_vertex(EMoveType::Travel);
+    }
 }
 
 void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes, const std::optional<double>& feedrate,
@@ -6472,6 +6482,10 @@ void GCodeProcessor::store_move_vertex(EMoveType type, EMovePathType path_type, 
         m_print_z
     });
     m_result.moves.back().nonplanar_patch_shell = m_nonplanar_patch_shell;
+    m_result.moves.back().joints = m_joints;
+    if (!m_tool_kinematics)
+        m_result.moves.back().joints.xyz = Vec3d(m_end_position[X], m_end_position[Y], m_end_position[Z]);
+    m_result.moves.back().has_joints = true;
 
     if (type == EMoveType::Seam) {
         m_seams_count++;

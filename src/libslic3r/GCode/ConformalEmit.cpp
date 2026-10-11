@@ -1,4 +1,5 @@
 #include "ConformalEmit.hpp"
+#include "ClearanceVerifier.hpp"
 
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
@@ -64,6 +65,26 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
             deposit(a.pose.tip, b.pose.tip, width);
     }
     return volume;
+}
+
+void deposit_material_path(MaterialColumns &columns, const ExtrusionPath &path, const ToWriterFrame &to_writer,
+                           const std::function<double(double)> &z_at_fraction)
+{
+    const double length = z_at_fraction ? path.polyline.length() * SCALING_FACTOR : 0.;
+    double distance = 0.;
+    Vec3d previous;
+    for (size_t i = 0; i < path.polyline.points.size(); ++i) {
+        Vec3d current = to_writer(path.polyline.points[i]);
+        if (i != 0) distance += (current.head<2>() - previous.head<2>()).norm();
+        if (z_at_fraction) current.z() = z_at_fraction(length > 0. ? distance / length : 0.);
+        if (i != 0) {
+            const int count = std::max(1, int(std::ceil((current - previous).norm() / 0.25)));
+            for (int k = 0; k < count; ++k)
+                columns.deposit(previous + double(k) / count * (current - previous),
+                                previous + double(k + 1) / count * (current - previous), path.width);
+        }
+        previous = current;
+    }
 }
 
 namespace {

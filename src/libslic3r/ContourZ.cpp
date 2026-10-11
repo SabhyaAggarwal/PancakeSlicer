@@ -244,7 +244,8 @@ void Layer::make_contour_z(const sla::IndexedMesh &mesh)
 {
 	ExPolygons shell_area;
 	for (const Nonplanar::ConformalPatch &patch : this->object()->conformal().patches)
-		append(shell_area, diff_ex(patch.footprint, patch.wall_band));
+		if (patch.kind == Nonplanar::PatchKind::Top)
+			append(shell_area, diff_ex(patch.footprint, patch.wall_band));
 
 	for (LayerRegion *region : this->regions()) {
         const auto &config = region->region().config();

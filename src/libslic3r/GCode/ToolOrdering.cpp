@@ -6,6 +6,7 @@
 #include "libslic3r/FilamentGroup.hpp"
 #include "Print.hpp"
 #include "ToolOrdering.hpp"
+#include "libslic3r/Nonplanar/ConformalBottom.hpp"
 #include "libslic3r/Nonplanar/ConformalShells.hpp"
 #include "Layer.hpp"
 #include "ClipperUtils.hpp"
@@ -22,6 +23,7 @@
 #include "../BeltBrim.hpp"
 
 #include <boost/log/trivial.hpp>
+#include <initializer_list>
 #include <vector>
 #include <string>
 #include <utility>
@@ -812,11 +814,11 @@ void ToolOrdering::collect_extruders(const PrintObject &object, const std::vecto
                 layer_tools.has_object = true;
         }
 
-        for (int patch_id : layer->conformal_patches_after) {
-            const Nonplanar::ConformalPatch &patch = object.conformal().patches[size_t(patch_id)];
-            layer_tools.extruders.emplace_back(object.printing_region(size_t(patch.region_id)).config().top_surface_filament_id.value);
-            layer_tools.has_object = true;
-        }
+        for (const std::vector<int> *patch_ids : { &layer->conformal_patches_before, &layer->conformal_patches_after })
+            for (int patch_id : *patch_ids) {
+                layer_tools.extruders.emplace_back(Nonplanar::patch_filament_id(object, object.conformal().patches[size_t(patch_id)]));
+                layer_tools.has_object = true;
+            }
 
         if (!mixed_slots_1based.empty()) {
             size_t layer_idx = static_cast<size_t>(&layer_tools - m_layer_tools.data());

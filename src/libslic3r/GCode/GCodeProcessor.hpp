@@ -15,6 +15,7 @@
 #include "libslic3r/MultiNozzleUtils.hpp"
 #include "libslic3r/GCode/MachineFrameTransform.hpp"
 #include "libslic3r/GCode/ToolKinematics.hpp"
+#include "libslic3r/GCode/ClearanceVerifier.hpp"
 
 #include <cstddef>
 #include <cassert>
@@ -242,6 +243,8 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             int  object_label_id{-1};
             float print_z{0.0f};
             unsigned char nonplanar_patch_shell{ 0xFF };
+            JointPose joints;
+            bool has_joints = false;
 
             float volumetric_rate() const { return feedrate * mm3_per_mm; }
             float actual_volumetric_rate() const { return actual_feedrate * mm3_per_mm; }
@@ -282,6 +285,9 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         std::string filename;
         unsigned int id;
         std::vector<MoveVertex> moves;
+        std::vector<float> clearance;
+        bool nonplanar = false;
+        ClearanceReport clearance_report;
         ObjectMass plate_mass;
         std::vector<ObjectMass> object_masses;
         std::vector<ObjectMass> body_masses;
@@ -342,6 +348,9 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             filename = std::forward<Other>(other).filename;
             id = std::forward<Other>(other).id;
             moves = std::forward<Other>(other).moves;
+            clearance = std::forward<Other>(other).clearance;
+            nonplanar = other.nonplanar;
+            clearance_report = std::forward<Other>(other).clearance_report;
             plate_mass = std::forward<Other>(other).plate_mass;
             object_masses = std::forward<Other>(other).object_masses;
             body_masses = std::forward<Other>(other).body_masses;

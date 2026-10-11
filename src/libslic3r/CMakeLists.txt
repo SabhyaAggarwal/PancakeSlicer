@@ -118,11 +118,19 @@ set(lisbslic3r_sources
     Nonplanar/BeadModel.hpp
     GCode/ToolKinematics.cpp
     GCode/ToolKinematics.hpp
+    GCode/ClearanceVerifier.cpp
+    GCode/ClearanceVerifier.hpp
     GCode/ConformalEmit.cpp
     GCode/ConformalEmit.hpp
     Nonplanar/Validate.cpp
+    Nonplanar/ConformalBottom.cpp
+    Nonplanar/ConformalBottom.hpp
+    Nonplanar/ConformalIroning.cpp
+    Nonplanar/ConformalIroning.hpp
     Nonplanar/ConformalShells.cpp
     Nonplanar/ConformalShells.hpp
+    Nonplanar/PatchTools.cpp
+    Nonplanar/PatchTools.hpp
     Nonplanar/HeadEnvelope.cpp
     Nonplanar/HeadEnvelope.hpp
     Nonplanar/HeightField.cpp
