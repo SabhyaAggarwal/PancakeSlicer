@@ -1235,6 +1235,7 @@ PRINT_CONFIG_CLASS_DEFINE(
 
     ((ConfigOptionFloat,               nonplanar_surface_resolution))
     ((ConfigOptionFloat,               nonplanar_max_patch_height))
+    ((ConfigOptionString,              nonplanar_atom_toolpath))
 )
 
 PRINT_CONFIG_CLASS_DEFINE(

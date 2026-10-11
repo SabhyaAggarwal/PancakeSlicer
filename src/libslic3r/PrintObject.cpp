@@ -18,6 +18,7 @@
 #include "Layer.hpp"
 #include "Nonplanar/ConformalBottom.hpp"
 #include "Nonplanar/ConformalIroning.hpp"
+#include "Nonplanar/AtomToolpath.hpp"
 #include "Nonplanar/ConformalShells.hpp"
 #include "Nonplanar/ConformalVolume.hpp"
 #include "MutablePolygon.hpp"
@@ -705,7 +706,7 @@ void PrintObject::nonplanar_shells()
 {
     if (!this->set_started(posNonplanar))
         return;
-    bool enabled = false;
+    bool enabled = !m_config.nonplanar_atom_toolpath.value.empty();
     for (size_t region_id = 0; region_id < this->num_printing_regions(); ++region_id)
         enabled |= this->printing_region(region_id).config().nonplanar_top_shells.value > 0 ||
                    this->printing_region(region_id).config().nonplanar_bottom_shells.value > 0 ||
@@ -716,6 +717,11 @@ void PrintObject::nonplanar_shells()
         Nonplanar::build_conformal_bottom(*this, *m_conformal);
         Nonplanar::build_conformal_ironing(*this, *m_conformal);
         Nonplanar::build_conformal_volume(*this, *m_conformal);
+        if (!m_config.nonplanar_atom_toolpath.value.empty()) {
+            m_print->set_status(40, L("Importing the Atomizer toolpath"));
+            for (const std::string &warning : Nonplanar::apply_atom_toolpath(*this, *m_conformal))
+                this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, warning);
+        }
     } else if (m_conformal) {
         for (Layer *layer : m_layers) {
             layer->conformal_patches_before.clear();
@@ -1584,7 +1590,8 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "nonplanar_fallback"
             || opt_key == "nonplanar_full_conformal_max_thickness"
             || opt_key == "nonplanar_surface_resolution"
-            || opt_key == "nonplanar_max_patch_height") {
+            || opt_key == "nonplanar_max_patch_height"
+            || opt_key == "nonplanar_atom_toolpath") {
             steps.emplace_back(posPerimeters);
             steps.emplace_back(posSupportMaterial);
         } else if (opt_key == "bridge_flow" || opt_key == "internal_bridge_flow") {

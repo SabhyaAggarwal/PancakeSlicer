@@ -114,6 +114,8 @@ set(lisbslic3r_sources
     ConnectedBodies.cpp
     ConnectedBodies.hpp
     ContourZ.cpp
+    Nonplanar/AtomToolpath.cpp
+    Nonplanar/AtomToolpath.hpp
     Nonplanar/BeadModel.cpp
     Nonplanar/BeadModel.hpp
     GCode/ToolKinematics.cpp

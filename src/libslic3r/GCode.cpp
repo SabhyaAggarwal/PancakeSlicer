@@ -7262,7 +7262,8 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                     gcode += ";_NONPLANAR_BEGIN patch=" + std::to_string(patch.id) + " shell=" + std::to_string(k) + "\n";
                     for (const ExtrusionEntity *ee : patch.shell_paths[k].entities)
                         if (const auto *path = dynamic_cast<const ExtrusionPathConformal*>(ee))
-                            gcode += this->extrude_conformal_path(*path, "conformal shell", surface_gradient);
+                            gcode += this->extrude_conformal_path(*path, "conformal shell",
+                                                                  patch.surface.empty() ? std::function<Vec2d(const Vec2d &)>() : surface_gradient);
                     gcode += ";_NONPLANAR_END\n";
                 }
                 if (!patch.ironing.empty()) {

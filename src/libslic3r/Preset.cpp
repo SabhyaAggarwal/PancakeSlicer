@@ -1381,6 +1381,7 @@ static std::vector<std::string> s_Preset_print_options{
     "nonplanar_top_shells", "nonplanar_bottom_shells", "nonplanar_shell_layer_height", "nonplanar_max_slope",
     "nonplanar_max_surface_error", "nonplanar_min_patch_area", "nonplanar_top_pattern", "nonplanar_top_direction", "nonplanar_surface_spacing", "nonplanar_ironing",
     "nonplanar_fallback", "nonplanar_full_conformal_max_thickness", "nonplanar_surface_resolution", "nonplanar_max_patch_height", "nonplanar_collision_check",
+    "nonplanar_atom_toolpath",
     "ironing_expansion",
 };
 

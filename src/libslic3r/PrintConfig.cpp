@@ -5152,6 +5152,14 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(0));
 
+    def = this->add("nonplanar_atom_toolpath", coString);
+    def->label    = L("Atomizer toolpath");
+    def->category = L("Quality");
+    def->tooltip  = L("Path of a toolpath written by Atomizer (.poses or .npz) for this object. When set, the "
+                      "object prints that whole-part curved toolpath instead of its layers. Empty slices normally.");
+    def->mode     = comDevelop;
+    def->set_default_value(new ConfigOptionString(""));
+
     def = this->add("nonplanar_collision_check", coEnum);
     def->label    = L("Non-planar collision check");
     def->category = L("Quality");
