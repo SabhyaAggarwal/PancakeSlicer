@@ -2,10 +2,12 @@
 
 #include "libslic3r/Config.hpp"
 #include "libslic3r/Exception.hpp"
+#include "libslic3r/I18N.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/libslic3r.h"
 
+#include <boost/format.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <boost/filesystem/path.hpp>
 #include <boost/log/trivial.hpp>
@@ -617,13 +619,21 @@ void HeadLibrary::load_locked() const
                 files.emplace_back(it->path());
         std::sort(files.begin(), files.end());
         for (const fs::path &file : files) {
+            std::string json_text;
             try {
                 boost::nowide::ifstream in(file.string());
                 std::stringstream       ss;
                 ss << in.rdbuf();
-                HeadEnvelope head = load_head_envelope(ss.str());
+                json_text = ss.str();
+                HeadEnvelope head = load_head_envelope(json_text);
                 m_heads[head.id]  = std::move(head);
             } catch (const std::exception &err) {
+                const auto json = nlohmann::json::parse(json_text, nullptr, false);
+                std::string id = json.is_object() && json.contains("id") && json["id"].is_string() ?
+                                     json["id"].get<std::string>() : file.stem().string();
+                if (id.empty())
+                    id = file.stem().string();
+                m_heads.erase(id);
                 BOOST_LOG_TRIVIAL(error) << "Skipping non-planar head " << file.string() << ": " << err.what();
             }
         }
@@ -690,8 +700,8 @@ HeadEnvelope resolve_head_envelope(const PrintConfig &config, std::string *warni
         if (const HeadEnvelope *head = HeadLibrary::instance().find(id))
             return *head;
     if (warning != nullptr)
-        *warning = id.empty() ? std::string("No non-planar head is set for this printer; using the generic conservative head.")
-                              : "Non-planar head \"" + id + "\" is not in the head library; using the generic conservative head.";
+        *warning = id.empty() ? _u8L("No non-planar head is set for this printer; using the generic conservative head.")
+                              : (boost::format(_u8L("Non-planar head \"%1%\" is missing from the head library or could not be loaded; using the generic conservative head.")) % id).str();
     return HeadLibrary::generic_conservative();
 }
 

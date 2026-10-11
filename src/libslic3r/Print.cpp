@@ -2589,6 +2589,7 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": this=%1%, enter, use_cache=%2%, object size=%3%")%this%use_cache%m_objects.size();
     if (m_objects.empty())
         return;
+    Nonplanar::report_head(*this);
 
     if (!this->is_step_done(psWipeTower))
         for (PrintObject *obj : m_objects)

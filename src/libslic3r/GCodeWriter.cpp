@@ -990,7 +990,7 @@ std::string GCodeWriter::travel_to_xyz(const Vec3d &point, const std::string &co
     return out_string;
 }
 
-std::string GCodeWriter::travel_to_z(double z, const std::string &comment, bool force)
+std::string GCodeWriter::travel_to_z(double z, const std::string &comment, bool force, double max_speed)
 {
     if (!force && !this->will_move_z(z)) {
         double nominal_z = m_pos(2) - m_lifted;
@@ -1001,10 +1001,10 @@ std::string GCodeWriter::travel_to_z(double z, const std::string &comment, bool 
     }
 
     m_lifted = 0;
-    return this->_travel_to_z(z, comment);
+    return this->_travel_to_z(z, comment, max_speed);
 }
 
-std::string GCodeWriter::_travel_to_z(double z, const std::string &comment)
+std::string GCodeWriter::_travel_to_z(double z, const std::string &comment, double max_speed)
 {
     m_pos(2) = z;
 
@@ -1014,6 +1014,8 @@ std::string GCodeWriter::_travel_to_z(double z, const std::string &comment)
                     ? this->config.get_abs_value_at("initial_layer_travel_speed", m_cached_extruder_idx)
                     : this->config.travel_speed.get_at(m_cached_extruder_idx);
     }
+    if (max_speed > 0.)
+        speed = std::min(speed, max_speed);
 
     GCodeG1Formatter w;
     if (has_axis_remap()) {

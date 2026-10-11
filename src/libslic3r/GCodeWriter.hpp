@@ -86,7 +86,8 @@ public:
     double      get_current_speed() const { return m_current_speed;}
     std::string travel_to_xy(const Vec2d &point, const std::string &comment = std::string());
     std::string travel_to_xyz(const Vec3d &point, const std::string &comment = std::string(), bool force_z = false);
-    std::string travel_to_z(double z, const std::string &comment = std::string(), bool force = false);
+    std::string travel_to_z(double z, const std::string &comment = std::string(), bool force = false, double max_speed = 0.);
+    double      max_speed_z() const { return m_max_joint_speed.z(); }
     bool        will_move_z(double z) const;
     std::string extrude_to_xy(const Vec2d &point, double dE, const std::string &comment = std::string(), bool force_no_extrusion = false);
     std::string extrude_arc_to_xy(const Vec2d &point, const Vec2d &center_offset, double dE, const bool is_ccw, const std::string &comment = std::string(), bool force_no_extrusion = false);
@@ -166,7 +167,7 @@ protected:
     bool            m_is_current_pos_clear = false;
     double          m_current_speed;
 
-    std::string _travel_to_z(double z, const std::string &comment);
+    std::string _travel_to_z(double z, const std::string &comment, double max_speed = 0.);
 
     bool point_on_first_layer(const Vec3d &point_logical) const;
 

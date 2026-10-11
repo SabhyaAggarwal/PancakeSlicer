@@ -10,6 +10,7 @@
 #include "Nonplanar/ConformalShells.hpp"
 #include "Flow.hpp"
 #include "Nonplanar/BeadModel.hpp"
+#include "Nonplanar/Validate.hpp"
 #include "GCode/ThumbnailData.hpp"
 #include "GCode/ToolOrdering.hpp"
 #include "GCode/SpiralVase.hpp"
@@ -2327,6 +2328,9 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
         return;
 
     BOOST_LOG_TRIVIAL(info) << boost::format("Will export G-code to %1% soon")%path;
+
+    if (const StringObjectException err = Nonplanar::validate_layer_gcodes(*print, nullptr); ! err.string.empty())
+        throw Slic3r::SlicingError(err.string, err.object != nullptr ? err.object->id().id : 0);
 
     GCodeProcessor::s_IsBBLPrinter = print->is_BBL_printer();
     m_writer.set_is_bbl_machine(print->is_BBL_printer());
@@ -6177,24 +6181,8 @@ LayerResult GCode::process_layer(
                              " id:" + std::to_string(instance_to_print.print_object.get_id()) + " copy " +
                              std::to_string(inst.id) + "\n";
                 }
-                if (m_enable_exclude_object) {
-                    if (is_BBL_Printer()) {
-                        m_writer.set_object_start_str(
-                            std::string("; start printing object, unique label id: ") +
-                            std::to_string(instance_to_print.label_object_id) + "\n" + "M624 " +
-                            _encode_label_ids_to_base64({instance_to_print.label_object_id}) + "\n");
-                    } else {
-                        const auto gflavor = print.config().gcode_flavor.value;
-                        if (gflavor == gcfKlipper) {
-                            m_writer.set_object_start_str(std::string("EXCLUDE_OBJECT_START NAME=") +
-                                                          instance_name(inst) + "\n");
-                        }
-                        else if (gflavor == gcfMarlinLegacy || gflavor == gcfMarlinFirmware || gflavor == gcfRepRapFirmware) {
-                            std::string str = std::string("M486 S") + std::to_string(inst.unique_id) + "\n";
-                            m_writer.set_object_start_str(str);
-                        }
-                    }
-                }
+                if (m_enable_exclude_object)
+                    m_writer.set_object_start_str(this->object_exclude_start(inst));
 
                 m_extrusion_quality_estimator.set_current_object(&instance_to_print.print_object);
 
@@ -6313,19 +6301,7 @@ LayerResult GCode::process_layer(
                 if (!m_writer.is_object_start_str_empty()) {
                     m_writer.set_object_start_str("");
                 } else if (m_enable_exclude_object) {
-                    if (is_BBL_Printer()) {
-                        m_writer.set_object_end_str(std::string("; stop printing object, unique label id: ") +
-                                                    std::to_string(instance_to_print.label_object_id) + "\n" +
-                                                    "M625\n");
-                    } else {
-                        const auto gflavor = print.config().gcode_flavor.value;
-                        if (gflavor == gcfKlipper) {
-                            m_writer.set_object_end_str(std::string("EXCLUDE_OBJECT_END NAME=") +
-                                                        instance_name(inst) + "\n");
-                        } else if (gflavor == gcfMarlinLegacy || gflavor == gcfMarlinFirmware || gflavor == gcfRepRapFirmware) {
-                            m_writer.set_object_end_str(std::string("M486 S-1\n"));
-                        }
-                    }
+                    m_writer.set_object_end_str(this->object_exclude_end(inst));
                 }
             }
         }
@@ -6383,22 +6359,8 @@ LayerResult GCode::process_layer(
                              " id:" + std::to_string(instance_to_print.print_object.get_id()) + " copy " +
                              std::to_string(inst.id) + "\n";
                 }
-                if (m_enable_exclude_object) {
-                    if (is_BBL_Printer()) {
-                        m_writer.set_object_start_str(
-                            std::string("; start printing object, unique label id: ") +
-                            std::to_string(instance_to_print.label_object_id) + "\n" + "M624 " +
-                            _encode_label_ids_to_base64({instance_to_print.label_object_id}) + "\n");
-                    } else {
-                        const auto gflavor = print.config().gcode_flavor.value;
-                        if (gflavor == gcfKlipper) {
-                            m_writer.set_object_start_str(std::string("EXCLUDE_OBJECT_START NAME=") +
-                                                          instance_name(inst) + "\n");
-                        } else if (gflavor == gcfMarlinLegacy || gflavor == gcfMarlinFirmware || gflavor == gcfRepRapFirmware) {
-                            m_writer.set_object_start_str(std::string("M486 S") + std::to_string(inst.unique_id) + "\n");
-                        }
-                    }
-                }
+                if (m_enable_exclude_object)
+                    m_writer.set_object_start_str(this->object_exclude_start(inst));
 
                 m_extrusion_quality_estimator.set_current_object(&instance_to_print.print_object);
 
@@ -6590,19 +6552,7 @@ LayerResult GCode::process_layer(
                 if (!m_writer.is_object_start_str_empty()) {
                     m_writer.set_object_start_str("");
                 } else if (m_enable_exclude_object) {
-                    if (is_BBL_Printer()) {
-                        m_writer.set_object_end_str(std::string("; stop printing object, unique label id: ") +
-                                                    std::to_string(instance_to_print.label_object_id) + "\n" +
-                                                    "M625\n");
-                    } else {
-                        const auto gflavor = print.config().gcode_flavor.value;
-                        if (gflavor == gcfKlipper) {
-                            m_writer.set_object_end_str(std::string("EXCLUDE_OBJECT_END NAME=") +
-                                                        instance_name(inst) + "\n");
-                        } else if (gflavor == gcfMarlinLegacy || gflavor == gcfMarlinFirmware || gflavor == gcfRepRapFirmware) {
-                            m_writer.set_object_end_str(std::string("M486 S-1\n"));
-                        }
-                    }
+                    m_writer.set_object_end_str(this->object_exclude_end(inst));
                 }
             }
 
@@ -7287,13 +7237,16 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
         const Nonplanar::ConformalResult &conformal = object.conformal();
         const size_t i_begin = single_object_instance_idx == size_t(-1) ? 0 : single_object_instance_idx;
         const size_t i_end   = single_object_instance_idx == size_t(-1) ? object.instances().size() : single_object_instance_idx + 1;
-        for (size_t instance_id = i_begin; instance_id < i_end; ++instance_id)
+        for (size_t instance_id = i_begin; instance_id < i_end; ++instance_id) {
+            const PrintInstance &instance = object.instances()[instance_id];
+            if (m_enable_exclude_object)
+                m_writer.set_object_start_str(this->object_exclude_start(instance));
             for (int patch_id : patch_ids) {
                 const Nonplanar::ConformalPatch &patch  = conformal.patches[size_t(patch_id)];
                 const PrintRegion               &region = object.printing_region(size_t(patch.region_id));
                 if (unsigned(Nonplanar::patch_filament_id(object, patch) - 1) != extruder_id)
                     continue;
-                const Point &offset = object.instances()[instance_id].shift;
+                const Point &offset = instance.shift;
                 m_last_obj_copy     = std::make_pair(&object, offset);
                 this->set_origin(unscale(offset));
                 this->on_set_origin(&object, offset);
@@ -7319,15 +7272,18 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                             gcode += this->extrude_conformal_path(*path, "conformal ironing", surface_gradient);
                     gcode += ";_NONPLANAR_END\n";
                 }
-                m_max_layer_z = std::max(m_max_layer_z, float(patch.z_max));
+                m_max_layer_z = std::max({ m_max_layer_z, float(patch.z_max), float(m_nonplanar_ceiling - m_config.z_offset.value) });
             }
+            if (! m_writer.is_object_start_str_empty())
+                m_writer.set_object_start_str("");
+            else if (m_enable_exclude_object)
+                m_writer.set_object_end_str(this->object_exclude_end(instance));
+        }
     }
     if (!gcode.empty()) {
-        const double hop = std::max(this->nonplanar_head().margin,
-                                    m_writer.filament() != nullptr ? m_config.z_hop.get_at(m_writer.filament()->id()) : 0.);
         gcode += this->retract();
-        gcode += m_writer.travel_to_z(std::max({ m_writer.get_position().z(), m_nominal_z, m_nonplanar_ceiling }) + hop,
-                                      "lift over conformal shells", true);
+        gcode += m_writer.travel_to_z(std::max({ m_writer.get_position().z(), m_nominal_z + this->nonplanar_hop(), this->nonplanar_travel_z() }),
+                                      "lift over conformal shells", true, m_writer.max_speed_z());
     }
     return gcode;
 }
@@ -7364,17 +7320,15 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
     const Vec3d    &here  = m_writer.get_position();
     if (! m_last_pos_defined || (here - start.tip).norm() > EPSILON || (m_writer.get_tool_axis() - start.axis).norm() > EPSILON) {
         gcode += this->retract();
+        m_writer.add_object_change_labels(gcode);
         if (rotary && (start.axis.z() < 1. - EPSILON || m_writer.get_tool_axis().z() < 1. - EPSILON)) {
             gcode += this->rotary_move_safely(&start);
         } else {
-            const double hop  = std::max(this->nonplanar_head().margin,
-                                         m_writer.filament() != nullptr ? m_config.z_hop.get_at(m_writer.filament()->id()) : 0.);
-            const double travel_z = m_material_columns ? safe_travel_z(*m_material_columns, this->nonplanar_head(), here.head<2>(), start.tip.head<2>(), hop) :
-                                                        std::max(m_nonplanar_ceiling, double(m_max_layer_z)) + hop;
-            const double safe = std::max({ here.z(), start.tip.z(), travel_z });
-            gcode += m_writer.travel_to_z(safe, "lift over conformal shells", true);
+            const Vec2d  from = here.head<2>(), to = start.tip.head<2>();
+            const double safe = std::max({ here.z(), start.tip.z(), this->nonplanar_travel_z(&from, &to) });
+            gcode += m_writer.travel_to_z(safe, "lift over conformal shells", true, m_writer.max_speed_z());
             gcode += m_writer.travel_to_xy(start.tip.head<2>(), "move to conformal path");
-            gcode += m_writer.travel_to_z(start.tip.z(), "lower onto conformal path", true);
+            gcode += m_writer.travel_to_z(start.tip.z(), "lower onto conformal path", true, m_writer.max_speed_z());
         }
         this->set_last_pos(path.first_point());
         m_need_change_layer_lift_z = false;
@@ -7414,6 +7368,20 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
                                  m_nonplanar_ceiling = std::max({ m_nonplanar_ceiling, a.z(), b.z() });
                                  if (m_material_columns) m_material_columns->deposit(a, b, width);
                              });
+}
+
+double GCode::nonplanar_hop()
+{
+    return std::max(this->nonplanar_head().margin, m_writer.filament() != nullptr ? m_config.z_hop.get_at(m_writer.filament()->id()) : 0.);
+}
+
+double GCode::nonplanar_travel_z(const Vec2d *from, const Vec2d *to)
+{
+    const double hop = this->nonplanar_hop();
+    const double z   = m_material_columns && from != nullptr && to != nullptr ?
+                           safe_travel_z(*m_material_columns, this->nonplanar_head(), *from, *to, hop) :
+                           std::max(m_nonplanar_ceiling, double(m_max_layer_z)) + hop;
+    return m_config.printable_height.value > 0. ? std::min(z, m_config.printable_height.value + m_config.z_offset.value) : z;
 }
 
 const Nonplanar::HeadEnvelope &GCode::nonplanar_head()
@@ -8634,6 +8602,33 @@ std::string encodeBase64(uint64_t value)
     dest.resize(boost::beast::detail::base64::encoded_size(sizeof(src)));
     dest.resize(boost::beast::detail::base64::encode(&dest[0], src, sizeof(src)));
     return dest;
+}
+
+std::string GCode::object_exclude_start(const PrintInstance &inst)
+{
+    if (is_BBL_Printer()) {
+        const size_t label_id = inst.model_instance->get_labeled_id();
+        return "; start printing object, unique label id: " + std::to_string(label_id) + "\n" + "M624 " +
+               _encode_label_ids_to_base64({ label_id }) + "\n";
+    }
+    const auto gflavor = m_config.gcode_flavor.value;
+    if (gflavor == gcfKlipper)
+        return "EXCLUDE_OBJECT_START NAME=" + instance_name(inst) + "\n";
+    if (gflavor == gcfMarlinLegacy || gflavor == gcfMarlinFirmware || gflavor == gcfRepRapFirmware)
+        return "M486 S" + std::to_string(inst.unique_id) + "\n";
+    return {};
+}
+
+std::string GCode::object_exclude_end(const PrintInstance &inst)
+{
+    if (is_BBL_Printer())
+        return "; stop printing object, unique label id: " + std::to_string(inst.model_instance->get_labeled_id()) + "\nM625\n";
+    const auto gflavor = m_config.gcode_flavor.value;
+    if (gflavor == gcfKlipper)
+        return "EXCLUDE_OBJECT_END NAME=" + instance_name(inst) + "\n";
+    if (gflavor == gcfMarlinLegacy || gflavor == gcfMarlinFirmware || gflavor == gcfRepRapFirmware)
+        return "M486 S-1\n";
+    return {};
 }
 
 std::string GCode::_encode_label_ids_to_base64(std::vector<size_t> ids)

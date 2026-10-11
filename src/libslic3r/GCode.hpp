@@ -524,6 +524,8 @@ protected:
                                          double speed, const std::string &speed_marker, const std::string &description);
     std::string     rotary_move_safely(const ToolPose *target);
     const Nonplanar::HeadEnvelope &nonplanar_head();
+    double          nonplanar_hop();
+    double          nonplanar_travel_z(const Vec2d *from = nullptr, const Vec2d *to = nullptr);
 
     void compute_farthest_point(const std::vector<LayerToPrint> &layers, int most_used_extruder,
                                 const std::map<std::pair<const SupportLayer *, ExtrusionRole>, unsigned int> &support_filaments);
@@ -626,6 +628,8 @@ protected:
     std::unordered_map<const PrintInstance*, std::string> m_instance_names;
     const std::string& instance_name(const PrintInstance &instance);
     std::string _encode_label_ids_to_base64(std::vector<size_t> ids);
+    std::string object_exclude_start(const PrintInstance &inst);
+    std::string object_exclude_end(const PrintInstance &inst);
     std::array<bool, ExtrusionRole::erCount> m_is_role_based_fan_on;
     std::array<int, ExtrusionRole::erCount>  m_role_based_fan_marker_layer;
     bool                                m_enable_extrusion_role_markers;
