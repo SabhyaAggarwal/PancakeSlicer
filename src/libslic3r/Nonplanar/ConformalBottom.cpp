@@ -467,7 +467,7 @@ void contour_support_interface(PrintObject &object)
     std::vector<const ConformalPatch *> patches;
     double                              z_lo = Inf, z_hi = -Inf;
     for (const ConformalPatch &patch : conformal.patches)
-        if (patch.kind == PatchKind::Bottom) {
+        if (patch.kind != PatchKind::Top) {
             patches.emplace_back(&patch);
             z_lo = std::min(z_lo, patch.z_min);
             z_hi = std::max(z_hi, patch.z_max);
@@ -476,6 +476,9 @@ void contour_support_interface(PrintObject &object)
     if (patches.empty() || support_layers.empty())
         return;
     const double gap = object.config().support_top_z_distance.value;
+    auto underside = [](const ConformalPatch &patch) -> const HeightField & {
+        return patch.kind == PatchKind::Volume ? patch.base : patch.surface;
+    };
     std::vector<std::vector<BoundingBox>> footprint_bboxes;
     for (const ConformalPatch *patch : patches)
         footprint_bboxes.emplace_back(extents(patch->footprint));
@@ -505,7 +508,7 @@ void contour_support_interface(PrintObject &object)
                     return 0.;
                 for (size_t k = 0; k < patches.size(); ++k)
                     if (contains(patches[k]->footprint, footprint_bboxes[k], pt))
-                        if (const float s = patches[k]->surface.sample(p); !std::isnan(s)) {
+                        if (const float s = underside(*patches[k]).sample(p); !std::isnan(s)) {
                             const double dz = s - gap - z_s;
                             return std::abs(dz) <= h_s ? dz : 0.;
                         }
@@ -556,7 +559,12 @@ void contour_support_interface(PrintObject &object)
 int patch_filament_id(const PrintObject &object, const ConformalPatch &patch)
 {
     const PrintRegionConfig &cfg = object.printing_region(size_t(patch.region_id)).config();
-    return patch.kind == PatchKind::Top ? cfg.top_surface_filament_id.value : cfg.bottom_surface_filament_id.value;
+    switch (patch.kind) {
+    case PatchKind::Top: return cfg.top_surface_filament_id.value;
+    case PatchKind::Bottom: return cfg.bottom_surface_filament_id.value;
+    case PatchKind::Volume: break;
+    }
+    return cfg.outer_wall_filament_id.value;
 }
 
 }

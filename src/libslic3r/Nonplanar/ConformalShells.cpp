@@ -251,142 +251,6 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
     return out;
 }
 
-constexpr double MinBandReach = 0.05;
-
-std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const HeightField &S, const std::vector<double> &layer_z,
-                                             double pitch, double tolerance)
-{
-    std::vector<ConformalPatch>   components = std::move(result.patches);
-    std::vector<PatchDiagnostics> comp_diag  = std::move(result.diagnostics);
-    result.patches.clear();
-    result.diagnostics.clear();
-    for (PatchDiagnostics &diag : comp_diag)
-        if (diag.patch_id < 0)
-            result.diagnostics.emplace_back(std::move(diag));
-
-    struct Band
-    {
-        int              band;
-        size_t           comp;
-        ConformalPatch   patch;
-        PatchDiagnostics diag;
-        double           err_sq = 0.;
-        size_t           err_n  = 0;
-    };
-    std::vector<Band> bands;
-    auto band_of = [pitch](double z) { return int(std::floor(z / pitch)); };
-    for (size_t c = 0; c < components.size(); ++c) {
-        ConformalPatch       &comp = components[c];
-        std::map<int, size_t> index;
-        auto band = [&](int b) -> Band & {
-            const auto [it, inserted] = index.try_emplace(b, bands.size());
-            if (inserted) {
-                Band nb{ b, c, {}, {} };
-                ConformalPatch &p = nb.patch;
-                p.kind         = comp.kind;
-                p.surface      = comp.surface;
-                p.base         = comp.base;
-                p.shells       = comp.shells;
-                p.shell_height = comp.shell_height;
-                p.region_id    = comp.region_id;
-                p.z_min        = Inf;
-                p.z_max        = -Inf;
-                p.shell_paths.assign(size_t(comp.shells), ExtrusionEntityCollection());
-                bands.emplace_back(std::move(nb));
-            }
-            return bands[it->second];
-        };
-        for (size_t k = 0; k < comp.shell_paths.size(); ++k)
-            cut_into_bands(comp.shell_paths[k].entities, pitch, tolerance, [&](int b, ExtrusionPathConformal *piece) {
-                ConformalPatch &p = band(b).patch;
-                for (const Point3 &pt : piece->polyline.points) {
-                    p.z_min = std::min(p.z_min, unscale<double>(pt.z()));
-                    p.z_max = std::max(p.z_max, unscale<double>(pt.z()));
-                }
-                p.shell_paths[k].entities.emplace_back(piece);
-            });
-        comp.shell_paths.clear();
-
-        const HeightField &F  = comp.surface;
-        const Mask         in = rasterize(comp.footprint, F);
-        std::map<int, Mask> cells;
-        for (int iy = 0; iy < F.ny(); ++iy)
-            for (int ix = 0; ix < F.nx(); ++ix) {
-                const size_t n = size_t(iy) * F.nx() + ix;
-                const float  z = F.data()[n];
-                if (!in[n] || std::isnan(z))
-                    continue;
-                const int b    = band_of(z);
-                Mask     &mask = cells[b];
-                mask.resize(in.size(), 0);
-                mask[n] = 1;
-                Band       &bd = band(b);
-                const Vec2d  p = F.node(ix, iy);
-                const Vec2d  g = F.gradient(p);
-                const Vec2d  o = (p - S.origin()) / S.pitch();
-                const double e = S.at(int(std::lround(o.x())), int(std::lround(o.y()))) - z;
-                if (!std::isnan(e)) {
-                    bd.diag.max_surface_error = std::max(bd.diag.max_surface_error, e);
-                    bd.err_sq += e * e;
-                    ++bd.err_n;
-                }
-                if (!std::isnan(g.x()) && !std::isnan(g.y()))
-                    bd.diag.max_slope_deg = std::max(bd.diag.max_slope_deg, Geometry::rad2deg(std::atan(g.norm())));
-                bd.patch.z_max = std::max(bd.patch.z_max, double(z));
-            }
-        for (const auto &[b, mask] : cells) {
-            ConformalPatch &p = band(b).patch;
-            p.footprint       = intersection_ex(comp.footprint, mask_to_expolygons(mask, F));
-            p.wall_band       = intersection_ex(p.footprint, comp.wall_band);
-        }
-        if (!index.empty())
-            bands[index.begin()->second].diag.fallback_area = comp_diag[c].fallback_area;
-    }
-
-    std::stable_sort(bands.begin(), bands.end(), [](const Band &a, const Band &b) { return a.band < b.band; });
-    for (Band &bd : bands) {
-        ConformalPatch &p = bd.patch;
-        p.id              = int(result.patches.size());
-        p.band            = bd.band;
-        const auto it     = std::upper_bound(layer_z.begin(), layer_z.end(), (bd.band + 1) * pitch + tolerance + EPSILON);
-        p.host_layer      = it == layer_z.begin() ? 0 : size_t(it - layer_z.begin()) - 1;
-        const coord_t dz  = coord_t(scale_(layer_z[p.host_layer]));
-        for (ExtrusionEntityCollection &shell : p.shell_paths) {
-            std::vector<std::pair<coord_t, ExtrusionEntity *>> order;
-            for (ExtrusionEntity *ee : shell.entities) {
-                auto *path     = static_cast<ExtrusionPathConformal *>(ee);
-                path->patch_id = p.id;
-                coord_t lowest = std::numeric_limits<coord_t>::max();
-                for (Point3 &pt : path->polyline.points) {
-                    pt.z() -= dz;
-                    lowest = std::min(lowest, pt.z());
-                }
-                order.emplace_back(lowest, ee);
-            }
-            std::stable_sort(order.begin(), order.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
-            for (size_t i = 0; i < order.size(); ++i) {
-                shell.entities[i] = order[i].second;
-                if (i > 0) {
-                    const Point last = shell.entities[i - 1]->last_point();
-                    if ((shell.entities[i]->last_point() - last).cast<double>().squaredNorm() <
-                        (shell.entities[i]->first_point() - last).cast<double>().squaredNorm())
-                        shell.entities[i]->reverse();
-                }
-            }
-            shell.no_sort = true;
-        }
-        if (p.z_min > p.z_max)
-            p.z_min = p.z_max;
-        ConformalPatch &comp = components[bd.comp];
-        comp.host_layer      = std::max(comp.host_layer, p.host_layer);
-        bd.diag.patch_id          = p.id;
-        bd.diag.rms_surface_error = bd.err_n > 0 ? std::sqrt(bd.err_sq / bd.err_n) : 0.;
-        result.diagnostics.emplace_back(std::move(bd.diag));
-        result.patches.emplace_back(std::move(p));
-    }
-    return components;
-}
-
 }
 
 HeightField sample_top_surface(const sla::IndexedMesh &mesh, double ray_z, double z_offset, const HeightField &like,
@@ -781,14 +645,9 @@ ConformalResult build_conformal_shells(PrintObject &object)
 
     std::vector<ConformalPatch> component_patches;
     if (settings.banded) {
-        const double reach = head_band_height(head);
-        const double cap = settings.max_patch_height > 0. ? std::min(reach, settings.max_patch_height) : reach;
-        const double band_reach = std::max(cap, MinBandReach);
-        if (cap < MinBandReach)
-            BOOST_LOG_TRIVIAL(warning) << "Non-planar: head " << head.id << " leaves " << cap
-                                       << " mm of clearance above the tip; Z bands use " << MinBandReach << " mm";
-        const double tolerance = std::min(0.5 * band_reach, 0.45 * h_c);
-        component_patches = split_into_bands(result, S, layer_z, band_reach - tolerance, tolerance);
+        double pitch = 0., tolerance = 0.;
+        band_schedule(head, h_c, settings.max_patch_height, pitch, tolerance);
+        component_patches = split_into_bands(result, S, layer_z, pitch, tolerance);
     }
     std::vector<ConformalPatch> &units = settings.banded ? component_patches : result.patches;
 

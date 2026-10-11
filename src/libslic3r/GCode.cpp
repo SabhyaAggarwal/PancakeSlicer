@@ -2845,6 +2845,8 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
         const auto &config = print.get_print_region(i).config();
         m_track_nonplanar_material |= config.nonplanar_top_shells.value > 0 || config.nonplanar_bottom_shells.value > 0;
     }
+    for (const PrintObject *object : print.objects())
+        m_track_nonplanar_material |= !object->conformal().patches.empty();
     if (print.config().nonplanar_kinematics.value != RotaryLayout::None) {
         m_writer.set_tool_kinematics(make_tool_kinematics(print.config()));
         if (std::unique_ptr<MachineKinematics> upright = make_upright_machine_kinematics(print.config())) {
@@ -8011,7 +8013,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
         (FILAMENT_CONFIG(enable_overhang_bridge_fan) && m_enable_cooling_markers);
 
     if (need_overhang_detection && !path_on_first_layer && !object_layer_over_raft() &&
-        (is_bridge(path.role()) || is_perimeter(path.role()))) {
+        (is_bridge(path.role()) || is_perimeter(path.role())) && dynamic_cast<const ExtrusionPathConformal *>(&path) == nullptr) {
             bool is_external = is_external_perimeter(path.role());
             double ref_speed   = is_external ? NOZZLE_CONFIG(outer_wall_speed) : NOZZLE_CONFIG(inner_wall_speed);
             if (ref_speed == 0)

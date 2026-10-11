@@ -5119,6 +5119,18 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionEnum<NonplanarFallback>(NonplanarFallback::None));
 
+    def = this->add("nonplanar_full_conformal_max_thickness", coFloat);
+    def->label    = L("Full conformal maximum thickness");
+    def->category = L("Quality");
+    def->tooltip  = L("Prints thin parts of the model entirely in curved layers that blend from its underside "
+                      "to its top surface, with curved walls and infill and no flat layers: shells such as wing skins, "
+                      "domes, canopies or panels. Applies where the model is at most this thick vertically and the head "
+                      "can follow both surfaces; thicker or steeper areas stay planar. 0 disables it.");
+    def->sidetext = L("mm");
+    def->min      = 0;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
+
     def = this->add("nonplanar_surface_resolution", coFloat);
     def->label    = L("Non-planar surface resolution");
     def->category = L("Quality");

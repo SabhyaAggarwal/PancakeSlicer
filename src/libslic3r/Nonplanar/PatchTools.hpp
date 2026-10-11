@@ -66,4 +66,10 @@ double head_band_height(const HeadEnvelope &head);
 void cut_into_bands(const ExtrusionEntitiesPtr &paths, double pitch, double tolerance,
                     const std::function<void(int band, ExtrusionPathConformal *piece)> &sink);
 
+void band_schedule(const HeadEnvelope &head, double shell_height, double max_patch_height, double &pitch, double &tolerance);
+
+struct ConformalResult;
+std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const HeightField &S, const std::vector<double> &layer_z,
+                                             double pitch, double tolerance);
+
 }

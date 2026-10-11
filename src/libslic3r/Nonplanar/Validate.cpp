@@ -23,6 +23,9 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
         instances += object->instances().size();
         for (size_t region_id = 0; region_id < object->num_printing_regions(); ++region_id) {
             const PrintRegionConfig &region = object->printing_region(region_id).config();
+            if (config.spiral_mode && region.nonplanar_full_conformal_max_thickness.value > 0.)
+                return { L("Full conformal layers cannot be combined with spiral vase mode."), object,
+                         "nonplanar_full_conformal_max_thickness" };
             if (region.nonplanar_top_shells.value <= 0 && region.nonplanar_bottom_shells.value <= 0)
                 continue;
             if (config.spiral_mode)

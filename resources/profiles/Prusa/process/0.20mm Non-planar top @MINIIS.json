@@ -5,11 +5,12 @@
 	"from": "system",
 	"setting_id": "UvbfEPAWPqokM3Dx",
 	"instantiation": "true",
+	"nonplanar_full_conformal_max_thickness": "3",
 	"nonplanar_top_shells": "3",
 	"nonplanar_ironing": "1",
 	"ironing_type": "top",
 	"compatible_printers": [
 		"Prusa MINIIS 0.4 nozzle"
 	],
-	"description": "0.20mm Standard for Prusa MINI/MINI+ with input shaping with three curved top shells and ironing. Uses the shared prusa-mini head."
+	"description": "0.20mm Standard for Prusa MINI/MINI+ with input shaping with three curved top shells, thin curved parts (up to 3 mm) in curved layers throughout, and ironing. Uses the shared prusa-mini head."
 }

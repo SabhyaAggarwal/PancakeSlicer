@@ -16,7 +16,7 @@
     "default_filament_profile": [
         "Bambu PLA Basic @BBL A1"
     ],
-    "default_print_profile": "0.20mm Standard @BBL A1",
+    "default_print_profile": "0.20mm Non-planar top @BBL A1",
     "enable_long_retraction_when_cut": "2",
     "extruder_clearance_dist_to_rod": "56.5",
     "extruder_clearance_height_to_lid": "256",

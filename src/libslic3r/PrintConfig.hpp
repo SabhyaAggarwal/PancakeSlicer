@@ -1433,6 +1433,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionBool,                      nonplanar_surface_spacing))
     ((ConfigOptionBool,                      nonplanar_ironing))
     ((ConfigOptionEnum<NonplanarFallback>,   nonplanar_fallback))
+    ((ConfigOptionFloat,                     nonplanar_full_conformal_max_thickness))
     )
 
 PRINT_CONFIG_CLASS_DEFINE(

@@ -5,11 +5,12 @@
 	"from": "system",
 	"setting_id": "2f14dUeI1q3W7SAA",
 	"instantiation": "true",
+	"nonplanar_full_conformal_max_thickness": "3",
 	"nonplanar_top_shells": "3",
 	"nonplanar_ironing": "1",
 	"ironing_type": "top",
 	"compatible_printers": [
 		"Bambu Lab A1 0.4 nozzle"
 	],
-	"description": "0.20mm Standard for A1 with three curved top shells and ironing. Uses the bundled bambu-a1 head; stock process defaults remain unchanged."
+	"description": "0.20mm Standard for A1 with three curved top shells, thin curved parts (up to 3 mm) in curved layers throughout, and ironing. Uses the bundled bambu-a1 head; stock process defaults remain unchanged."
 }

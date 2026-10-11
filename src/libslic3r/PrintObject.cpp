@@ -19,6 +19,7 @@
 #include "Nonplanar/ConformalBottom.hpp"
 #include "Nonplanar/ConformalIroning.hpp"
 #include "Nonplanar/ConformalShells.hpp"
+#include "Nonplanar/ConformalVolume.hpp"
 #include "MutablePolygon.hpp"
 #include "PrintBase.hpp"
 #include "PrintConfig.hpp"
@@ -707,12 +708,14 @@ void PrintObject::nonplanar_shells()
     bool enabled = false;
     for (size_t region_id = 0; region_id < this->num_printing_regions(); ++region_id)
         enabled |= this->printing_region(region_id).config().nonplanar_top_shells.value > 0 ||
-                   this->printing_region(region_id).config().nonplanar_bottom_shells.value > 0;
+                   this->printing_region(region_id).config().nonplanar_bottom_shells.value > 0 ||
+                   this->printing_region(region_id).config().nonplanar_full_conformal_max_thickness.value > 0.;
     if (enabled) {
         m_print->set_status(40, L("Generating curved top shells"));
         m_conformal = std::make_unique<Nonplanar::ConformalResult>(Nonplanar::build_conformal_shells(*this));
         Nonplanar::build_conformal_bottom(*this, *m_conformal);
         Nonplanar::build_conformal_ironing(*this, *m_conformal);
+        Nonplanar::build_conformal_volume(*this, *m_conformal);
     } else if (m_conformal) {
         for (Layer *layer : m_layers) {
             layer->conformal_patches_before.clear();
@@ -1579,6 +1582,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "nonplanar_surface_spacing"
             || opt_key == "nonplanar_ironing"
             || opt_key == "nonplanar_fallback"
+            || opt_key == "nonplanar_full_conformal_max_thickness"
             || opt_key == "nonplanar_surface_resolution"
             || opt_key == "nonplanar_max_patch_height") {
             steps.emplace_back(posPerimeters);
@@ -1700,7 +1704,8 @@ bool PrintObject::invalidate_step(PrintObjectStep step)
 
     if (step >= posPerimeters && step <= posNonplanar)
         for (size_t region_id = 0; region_id < this->num_printing_regions(); ++region_id)
-            if (this->printing_region(region_id).config().nonplanar_bottom_shells.value > 0) {
+            if (this->printing_region(region_id).config().nonplanar_bottom_shells.value > 0 ||
+                this->printing_region(region_id).config().nonplanar_full_conformal_max_thickness.value > 0.) {
                 invalidated |= this->invalidate_step(posSupportMaterial);
                 break;
             }
