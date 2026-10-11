@@ -36,7 +36,6 @@ public:
         m_to_lift_type(LiftType::NormalLift),
         m_is_first_layer(true), m_current_speed(3600),
         m_kinematics(std::make_unique<CartesianKinematics>()),
-        m_tool_kinematics(std::make_unique<ThreeAxisKinematics>()),
         m_cached_extruder_idx(0),
         m_curr_filament_extruder(MAXIMUM_EXTRUDER_NUMBER, nullptr),
         m_curr_extruder_id (-1),
@@ -147,7 +146,7 @@ public:
     static bool supports_separate_travel_acceleration(GCodeFlavor flavor);
 
     void                  set_tool_kinematics(std::unique_ptr<ToolKinematics> kinematics);
-    const ToolKinematics &tool_kinematics() const { return *m_tool_kinematics; }
+    const ToolKinematics &tool_kinematics() const;
     void        extrude_to_pose(std::string &out, const ToolPose &pose, double dE, const std::string &comment = {});
     std::string travel_to_pose(const ToolPose &pose, const std::string &comment = {});
     void        move_to_joints(std::string &out, const JointPose &joints, const std::string &comment = {});

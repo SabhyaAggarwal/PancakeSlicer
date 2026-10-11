@@ -125,10 +125,14 @@ bool RotaryKinematics::inverse(const ToolPose &pose, const JointPose *prev, Join
             const double      m  = this->machine_angle(i, kin[i]);
             if (ra.continuous)
                 options[i].push_back(m + 360. * std::round((from.rot[i] - m) / 360.));
-            else
-                for (int k = -1; k <= 1; ++k)
-                    if (double v = m + 360. * k; v >= ra.min_deg - 1e-9 && v <= ra.max_deg + 1e-9)
-                        options[i].push_back(v);
+            else {
+                const double first_turn = std::ceil((ra.min_deg - m - 1e-9) / 360.);
+                const double last_turn  = std::floor((ra.max_deg - m + 1e-9) / 360.);
+                if (first_turn <= last_turn) {
+                    const double turn = std::clamp(std::round((from.rot[i] - m) / 360.), first_turn, last_turn);
+                    options[i].push_back(m + 360. * turn);
+                }
+            }
         }
         const bool flips = free >= 0 && std::abs(from_kin[1 - free]) > 1e-9 && kin[1 - free] * from_kin[1 - free] < 0.;
         for (double m0 : options[0])

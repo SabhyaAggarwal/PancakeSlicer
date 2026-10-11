@@ -164,7 +164,8 @@ void GCodeWriter::apply_print_config(const PrintConfig &print_config)
     m_max_jerk_e = LIMITS(machine_max_jerk_e);
     m_resolution = print_config.resolution.value;
     for (int i = 0; i < 3; ++i) {
-        const std::vector<double> v = i == 0 ? LIMITS(machine_max_speed_x) : i == 1 ? LIMITS(machine_max_speed_y) : LIMITS(machine_max_speed_z);
+        const std::vector<double> &v = i == 0 ? print_config.machine_max_speed_x.values :
+                                         i == 1 ? print_config.machine_max_speed_y.values : print_config.machine_max_speed_z.values;
         m_max_joint_speed[i]        = v.empty() ? 0. : v.front();
     }
 #undef LIMITS
@@ -1232,6 +1233,14 @@ void GCodeWriter::extrude_to_xyz(std::string &out, const Vec3d &point, double dE
     w.append_to(out);
 }
 
+const ToolKinematics &GCodeWriter::tool_kinematics() const
+{
+    static const ThreeAxisKinematics planar;
+    if (m_tool_kinematics)
+        return *m_tool_kinematics;
+    return planar;
+}
+
 void GCodeWriter::set_tool_kinematics(std::unique_ptr<ToolKinematics> kinematics)
 {
     assert(kinematics);
@@ -1243,11 +1252,11 @@ void GCodeWriter::set_tool_kinematics(std::unique_ptr<ToolKinematics> kinematics
 JointPose GCodeWriter::get_joints() const
 {
     const ToolPose pose { m_pos - Vec3d(m_x_offset, m_y_offset, 0.), m_tool_axis };
-    if (m_joints_valid && (m_tool_kinematics->forward(m_joints).tip - pose.tip).norm() < EPSILON)
+    if (m_joints_valid && (this->tool_kinematics().forward(m_joints).tip - pose.tip).norm() < EPSILON)
         return m_joints;
     JointPose joints;
-    if (! m_tool_kinematics->inverse(pose, m_joints_valid ? &m_joints : nullptr, joints))
-        m_tool_kinematics->inverse({ pose.tip, Vec3d::UnitZ() }, nullptr, joints);
+    if (! this->tool_kinematics().inverse(pose, m_joints_valid ? &m_joints : nullptr, joints))
+        this->tool_kinematics().inverse({ pose.tip, Vec3d::UnitZ() }, nullptr, joints);
     return joints;
 }
 
@@ -1273,7 +1282,7 @@ std::string GCodeWriter::travel_to_pose(const ToolPose &pose, const std::string 
 
 void GCodeWriter::pose_move(std::string &out, const ToolPose &pose, double dE, const std::string &comment, bool travel)
 {
-    const ToolKinematics &kin = *m_tool_kinematics;
+    const ToolKinematics &kin = this->tool_kinematics();
     if (kin.rotary_count() == 0) {
         assert(pose.axis.z() > 1. - 1e-6);
         if (travel) {
@@ -1317,7 +1326,7 @@ void GCodeWriter::pose_move(std::string &out, const ToolPose &pose, double dE, c
 
 void GCodeWriter::move_to_joints(std::string &out, const JointPose &joints, const std::string &comment)
 {
-    const ToolKinematics &kin = *m_tool_kinematics;
+    const ToolKinematics &kin = this->tool_kinematics();
     assert(kin.rotary_count() > 0);
     m_joints       = this->get_joints();
     m_joints_valid = true;
@@ -1333,7 +1342,7 @@ void GCodeWriter::move_to_joints(std::string &out, const JointPose &joints, cons
 void GCodeWriter::write_joint_move(std::string &out, const JointPose &joints, double tip_length, double tip_speed,
                                    double dE, const std::string &comment)
 {
-    const ToolKinematics            &kin  = *m_tool_kinematics;
+    const ToolKinematics            &kin  = this->tool_kinematics();
     const std::array<RotaryAxis, 2> &axes = kin.rotary_axes();
     double       t      = tip_speed > 0. ? tip_length / tip_speed : 0.;
     const Vec3d  dq     = joints.xyz - m_joints.xyz;
@@ -1348,6 +1357,8 @@ void GCodeWriter::write_joint_move(std::string &out, const JointPose &joints, do
             t = std::max(t, d / axes[i].max_speed_deg_s);
     }
     if (t <= 0.) {
+        if (rotary_travel > 0.)
+            throw RuntimeError("Non-planar: an angular-only move needs a positive rotary axis speed limit.");
         m_joints = joints;
         return;
     }

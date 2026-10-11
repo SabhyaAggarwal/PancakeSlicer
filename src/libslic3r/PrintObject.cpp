@@ -708,11 +708,19 @@ void PrintObject::nonplanar_shells()
     for (size_t region_id = 0; region_id < this->num_printing_regions(); ++region_id)
         enabled |= this->printing_region(region_id).config().nonplanar_top_shells.value > 0 ||
                    this->printing_region(region_id).config().nonplanar_bottom_shells.value > 0;
-    if (enabled)
+    if (enabled) {
         m_print->set_status(40, L("Generating curved top shells"));
-    m_conformal = std::make_unique<Nonplanar::ConformalResult>(Nonplanar::build_conformal_shells(*this));
-    Nonplanar::build_conformal_bottom(*this, *m_conformal);
-    Nonplanar::build_conformal_ironing(*this, *m_conformal);
+        m_conformal = std::make_unique<Nonplanar::ConformalResult>(Nonplanar::build_conformal_shells(*this));
+        Nonplanar::build_conformal_bottom(*this, *m_conformal);
+        Nonplanar::build_conformal_ironing(*this, *m_conformal);
+    } else if (m_conformal) {
+        for (Layer *layer : m_layers) {
+            layer->conformal_patches_before.clear();
+            layer->conformal_patches_after.clear();
+            layer->conformal_covered = false;
+        }
+        m_conformal.reset();
+    }
     m_print->throw_if_canceled();
     this->set_done(posNonplanar);
 }

@@ -144,11 +144,11 @@ ConformalResult build_conformal_shells(PrintObject &object)
         layer->conformal_patches_after.clear();
         layer->conformal_covered = false;
     }
-    result.planar_exclusion.assign(layers.size(), ExPolygons());
-
     const ShellSettings settings = shell_settings(object);
     if (settings.shells <= 0 || layers.empty())
         return result;
+
+    result.planar_exclusion.assign(layers.size(), ExPolygons());
 
     const ExPolygons candidate = candidate_top_area(object);
     if (candidate.empty())

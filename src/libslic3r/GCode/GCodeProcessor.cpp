@@ -4528,7 +4528,7 @@ void GCodeProcessor::process_rotary_G1(const GCodeReader::GCodeLine& line)
 
     std::array<std::optional<double>, 4> g1_axes;
     for (int i = 0; i < 3; ++i)
-        g1_axes[i] = relative ? to[i] - from[i] : to[i] - m_origin[i];
+        g1_axes[i] = (relative ? to[i] - from[i] : to[i] - m_origin[i]) / scale;
     if (line.has_e())
         g1_axes[E] = (double)line.e();
     std::optional<double> g1_feedrate;

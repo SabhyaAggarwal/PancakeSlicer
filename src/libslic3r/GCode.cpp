@@ -8460,7 +8460,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
                 apply_role_based_fan_speed();
             }
 
-            const double line_length = (p - prev).norm();
+            const double line_length = path.z_contoured ? (p - prev).head<2>().norm() : (p - prev).norm();
             if(line_length < EPSILON)
                 continue;
             path_length += line_length;
