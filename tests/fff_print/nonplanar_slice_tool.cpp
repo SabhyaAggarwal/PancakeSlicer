@@ -5,6 +5,8 @@
 
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/Config.hpp"
+#include "libslic3r/ExtrusionEntity.hpp"
+#include "libslic3r/FlushVolCalc.hpp"
 #include "libslic3r/GCode/ClearanceVerifier.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
 #include "libslic3r/Model.hpp"
@@ -14,6 +16,8 @@
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
+#include "libslic3r/TriangleMesh.hpp"
+#include "libslic3r/TriangleSelector.hpp"
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/libslic3r.h"
 
@@ -28,6 +32,7 @@
 #include <cstdlib>
 #include <exception>
 #include <iostream>
+#include <map>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -36,13 +41,26 @@
 using namespace Slic3r;
 namespace fs = boost::filesystem;
 
+void RGB2HSV(float r, float g, float b, float *h, float *s, float *v)
+{
+    const float cmax = std::max({ r, g, b }), cmin = std::min({ r, g, b }), delta = cmax - cmin;
+    if (std::abs(delta) < 0.001f) *h = 0.f;
+    else if (cmax == r) *h = 60.f * std::fmod((g - b) / delta, 6.f);
+    else if (cmax == g) *h = 60.f * ((b - r) / delta + 2);
+    else *h = 60.f * ((r - g) / delta + 4);
+    *s = std::abs(cmax) < 0.001f ? 0.f : delta / cmax;
+    *v = cmax;
+}
+
 namespace {
 
 struct Args
 {
     std::string profiles = std::string(PROFILES_DIR);
     std::string vendor   = "Prusa";
-    std::string printer, process, filament, datadir, output, model, config_out;
+    std::string printer, process, datadir, output, model, config_out, paint;
+    std::vector<std::string> filaments, colours;
+    std::vector<std::pair<std::string, int>> parts;
     std::vector<std::pair<std::string, std::string>> overrides;
     bool        center_set = false;
     Vec2d       center     = Vec2d::Zero();
@@ -69,7 +87,21 @@ Args parse_args(int argc, char **argv)
         };
         if (arg == "--printer") a.printer = next();
         else if (arg == "--process") a.process = next();
-        else if (arg == "--filament") a.filament = next();
+        else if (arg == "--filament") a.filaments.push_back(next());
+        else if (arg == "--colours") {
+            std::string list = next();
+            for (size_t pos = 0; pos <= list.size();) {
+                const size_t end = std::min(list.find(',', pos), list.size());
+                a.colours.push_back(list.substr(pos, end - pos));
+                pos = end + 1;
+            }
+        } else if (arg == "--part") {
+            const std::string spec = next();
+            const size_t      pos  = spec.rfind(':');
+            if (pos == std::string::npos)
+                usage("--part expects FILE:EXTRUDER");
+            a.parts.emplace_back(spec.substr(0, pos), std::atoi(spec.c_str() + pos + 1));
+        } else if (arg == "--paint") a.paint = next();
         else if (arg == "--vendor") a.vendor = next();
         else if (arg == "--profiles") a.profiles = next();
         else if (arg == "--datadir") a.datadir = next();
@@ -91,7 +123,7 @@ Args parse_args(int argc, char **argv)
         else
             a.model = arg;
     }
-    if (a.printer.empty() || a.process.empty() || a.filament.empty() || a.output.empty() || a.model.empty())
+    if (a.printer.empty() || a.process.empty() || a.filaments.empty() || a.output.empty() || a.model.empty())
         usage("--printer, --process, --filament, -o and a model are required");
     return a;
 }
@@ -141,6 +173,85 @@ std::pair<double, double> max_vz(const GCodeProcessorResult &result)
     return { commanded, actual };
 }
 
+void apply_filaments(PresetBundle &bundle, const Args &a, DynamicPrintConfig &config)
+{
+    const size_t n = a.filaments.size();
+    std::vector<DynamicPrintConfig> slots;
+    for (const std::string &name : a.filaments)
+        slots.emplace_back(resolve(bundle, a, "filament", Preset::TYPE_FILAMENT, name));
+    config.apply(slots.front());
+    if (n == 1 && a.colours.empty())
+        return;
+    for (const std::string &key : slots.front().keys())
+        if (auto *dst = dynamic_cast<ConfigOptionVectorBase *>(config.optptr(key))) {
+            const auto *first = dynamic_cast<const ConfigOptionVectorBase *>(slots.front().optptr(key));
+            if (first == nullptr || first->empty())
+                continue;
+            dst->resize(n, first);
+            for (size_t i = 0; i < n; ++i)
+                if (const ConfigOption *src = slots[i].optptr(key))
+                    dst->set_at(src, i, 0);
+        }
+    static const char *defaults[] = { "#F2F2F2", "#D02020", "#2050D0", "#20A040", "#E0C020", "#202020", "#E07020", "#9040C0" };
+    std::vector<std::string> colours;
+    for (size_t i = 0; i < n; ++i)
+        colours.push_back(i < a.colours.size() ? a.colours[i] : defaults[i % 8]);
+    config.option<ConfigOptionStrings>("filament_colour", true)->values = colours;
+    if (auto *map = config.option<ConfigOptionInts>("filament_map", true))
+        map->values.assign(n, 1);
+    auto rgb = [](const std::string &hex, unsigned char out[3]) {
+        for (int c = 0; c < 3; ++c)
+            out[c] = (unsigned char) std::strtol(hex.substr(1 + 2 * c, 2).c_str(), nullptr, 16);
+    };
+    const auto *volume  = config.option<ConfigOptionFloats>("nozzle_volume");
+    const auto *dataset = config.option<ConfigOptionInts>("nozzle_flush_dataset");
+    const int   min_vol = volume != nullptr && !volume->values.empty() ? int(volume->values.front()) : 0;
+    FlushVolCalculator calculator(min_vol, g_max_flush_volume, dataset != nullptr && !dataset->values.empty() ? dataset->values.front() : 0);
+    std::vector<double> &matrix = config.option<ConfigOptionFloats>("flush_volumes_matrix", true)->values;
+    matrix.assign(n * n, 0.);
+    for (size_t from = 0; from < n; ++from)
+        for (size_t to = 0; to < n; ++to)
+            if (from != to) {
+                unsigned char f[3], t[3];
+                rgb(colours[from], f);
+                rgb(colours[to], t);
+                matrix[from * n + to] = calculator.calc_flush_vol(255, f[0], f[1], f[2], 255, t[0], t[1], t[2]);
+            }
+    config.option<ConfigOptionFloats>("flush_multiplier", true)->values.resize(1, 1.);
+    config.option<ConfigOptionFloats>("flush_volumes_vector", true)->values.assign(2 * n, 140.);
+}
+
+void apply_multi_material(const Args &a, Model &model)
+{
+    ModelObject *object = model.objects.front();
+    if (!a.paint.empty()) {
+        ModelVolume            *volume = object->volumes.front();
+        boost::nowide::ifstream in(a.paint);
+        std::vector<int>        ids;
+        for (int id; in >> id;)
+            ids.push_back(id);
+        if (ids.size() != volume->mesh().its.indices.size())
+            throw std::runtime_error("--paint has " + std::to_string(ids.size()) + " entries, the mesh " +
+                                     std::to_string(volume->mesh().its.indices.size()) + " triangles");
+        TriangleSelector selector(volume->mesh());
+        for (size_t i = 0; i < ids.size(); ++i)
+            if (ids[i] > 0)
+                selector.set_facet(int(i), EnforcerBlockerType(ids[i]));
+        volume->mmu_segmentation_facets.set(selector);
+    }
+    for (const auto &[file, extruder] : a.parts) {
+        Model part = Model::read_from_file(file, nullptr, nullptr, LoadStrategy::LoadModel | LoadStrategy::AddDefaultInstances);
+        if (part.objects.empty())
+            throw std::runtime_error("no objects in " + file);
+        const ModelVolume *src    = part.objects.front()->volumes.front();
+        ModelVolume       *volume = object->add_volume(src->mesh());
+        volume->set_transformation(src->get_transformation());
+        volume->config.set("extruder", extruder);
+    }
+    if (!a.parts.empty())
+        object->volumes.front()->config.set("extruder", 1);
+}
+
 }
 
 int main(int argc, char **argv)
@@ -158,7 +269,7 @@ int main(int argc, char **argv)
         DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
         config.apply(resolve(bundle, args, "machine", Preset::TYPE_PRINTER, args.printer));
         config.apply(resolve(bundle, args, "process", Preset::TYPE_PRINT, args.process));
-        config.apply(resolve(bundle, args, "filament", Preset::TYPE_FILAMENT, args.filament));
+        apply_filaments(bundle, args, config);
         for (const auto &[key, value] : args.overrides)
             config.set_deserialize_strict(key, value);
         if (! args.config_out.empty())
@@ -167,6 +278,7 @@ int main(int argc, char **argv)
         Model model = Model::read_from_file(args.model, nullptr, nullptr, LoadStrategy::LoadModel | LoadStrategy::AddDefaultInstances);
         if (model.objects.empty())
             throw std::runtime_error("no objects in " + args.model);
+        apply_multi_material(args, model);
         Vec2d center = args.center;
         if (! args.center_set) {
             const BoundingBoxf bed(config.opt<ConfigOptionPoints>("printable_area")->values);
@@ -197,6 +309,32 @@ int main(int argc, char **argv)
                   << "max_vz_commanded " << vz << "\n"
                   << "max_vz_planned " << vz_actual << "\n"
                   << "machine_max_speed_z " << config.opt<ConfigOptionFloats>("machine_max_speed_z")->get_at(0) << "\n";
+        double np_extrude = 0., np_other = 0.;
+        std::map<std::string, double> np_kind;
+        for (size_t i = 0; i < result.moves.size(); ++i) {
+            const auto &m = result.moves[i];
+            if (m.nonplanar_patch_shell == 0xFF)
+                continue;
+            const double t = m.time[size_t(PrintEstimatedStatistics::ETimeMode::Normal)];
+            if (m.type == EMoveType::Extrude) {
+                np_extrude += t;
+                continue;
+            }
+            np_other += t;
+            const Vec3f d = i > 0 ? Vec3f(m.position - result.moves[i - 1].position) : Vec3f::Zero();
+            const bool  xy = std::abs(d.x()) + std::abs(d.y()) > 1e-4f, z = std::abs(d.z()) > 1e-4f;
+            np_kind[m.type == EMoveType::Retract || m.type == EMoveType::Unretract ? "retract" : xy && z ? "xyz" : xy ? "xy" : z ? "z" : "other"] += t;
+        }
+        for (const auto &[kind, t] : np_kind)
+            std::cout << "nonplanar_other_kind_s " << t << " " << kind << "\n";
+        std::map<std::string, double> role_time;
+        for (const auto &m : result.moves)
+            role_time[m.type == EMoveType::Extrude ? ExtrusionEntity::role_to_string(m.extrusion_role) : std::string("Travel and other")] +=
+                m.time[size_t(PrintEstimatedStatistics::ETimeMode::Normal)];
+        for (const auto &[role, t] : role_time)
+            std::cout << "role_time_s " << t << " " << role << "\n";
+        std::cout << "nonplanar_extrude_time_s " << np_extrude << "\n"
+                  << "nonplanar_other_time_s " << np_other << "\n";
         const ClearanceReport &clearance = result.clearance_report;
         std::cout << "clearance_checked " << clearance.ran << "\n";
         if (clearance.ran) {

@@ -556,6 +556,12 @@ void contour_support_interface(PrintObject &object)
     });
 }
 
+bool patch_has_extrusions(const ConformalPatch &patch)
+{
+    return !patch.ironing.empty() ||
+           std::any_of(patch.shell_paths.begin(), patch.shell_paths.end(), [](const ExtrusionEntityCollection &shell) { return !shell.empty(); });
+}
+
 int patch_filament_id(const PrintObject &object, const ConformalPatch &patch)
 {
     const PrintRegionConfig &cfg = object.printing_region(size_t(patch.region_id)).config();
@@ -563,6 +569,7 @@ int patch_filament_id(const PrintObject &object, const ConformalPatch &patch)
     case PatchKind::Top: return cfg.top_surface_filament_id.value;
     case PatchKind::Bottom:
     case PatchKind::Overhang: return cfg.bottom_surface_filament_id.value;
+    case PatchKind::Chunk:
     case PatchKind::Volume: break;
     }
     return cfg.outer_wall_filament_id.value;

@@ -928,7 +928,7 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
 
         double current_z = gcodegen.writer().get_position().z();
         if (z == -1.)
-            z = current_z;
+            z = gcodegen.tower_layer_z();
         const bool defer_compacted_descend = m_sparse_layers_skipped
             && !tcr.priming && !tcr.is_finish_first && (current_z - z) > EPSILON;
         if (!is_approx(z, current_z) && !defer_compacted_descend) {
@@ -1361,7 +1361,7 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
 
 
         if (z == -1.)
-            z = current_z;
+            z = gcodegen.tower_layer_z();
 
         const bool needs_toolchange = gcodegen.writer().need_toolchange(new_extruder_id);
         const bool will_go_down     = !is_approx(z, current_z);
@@ -6816,6 +6816,7 @@ std::string GCode::change_layer(coordf_t print_z)
 
     m_nominal_z = z;
     m_writer.get_position().z() = z;
+    m_conformal_lift = false;
 
     return gcode;
 }
@@ -7244,7 +7245,7 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
             for (int patch_id : patch_ids) {
                 const Nonplanar::ConformalPatch &patch  = conformal.patches[size_t(patch_id)];
                 const PrintRegion               &region = object.printing_region(size_t(patch.region_id));
-                if (unsigned(Nonplanar::patch_filament_id(object, patch) - 1) != extruder_id)
+                if (unsigned(Nonplanar::patch_filament_id(object, patch) - 1) != extruder_id || !Nonplanar::patch_has_extrusions(patch))
                     continue;
                 const Point &offset = instance.shift;
                 m_last_obj_copy     = std::make_pair(&object, offset);
@@ -7252,6 +7253,11 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                 this->on_set_origin(&object, offset);
                 m_layer = layer;
                 m_config.apply(region.config());
+                if (patch.kind == Nonplanar::PatchKind::Chunk) {
+                    gcode += this->extrude_multiplanar_chunk(patch);
+                    m_max_layer_z = std::max(m_max_layer_z, float(patch.z_max));
+                    continue;
+                }
                 std::function<Vec2d(const Vec2d &)> surface_gradient;
                 if (patch.band < 0)
                     surface_gradient = [&patch](const Vec2d &p) {
@@ -7268,6 +7274,8 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                         if (const auto *path = dynamic_cast<const ExtrusionPathConformal *>(ee))
                             order.emplace_back(path);
                 size_t next = 0;
+                m_conformal_band_patch = patch.band >= 0 ? patch.id : -1;
+                m_conformal_prev       = nullptr;
                 for (size_t k = 0; k < passes; ++k) {
                     const bool ironing = k == patch.shell_paths.size();
                     gcode += ";_NONPLANAR_BEGIN patch=" + std::to_string(patch.id) + " shell=" + std::to_string(k) + "\n";
@@ -7280,6 +7288,8 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                         }
                     gcode += ";_NONPLANAR_END\n";
                 }
+                m_conformal_band_patch = -1;
+                m_conformal_prev       = nullptr;
                 m_max_layer_z = std::max({ m_max_layer_z, float(patch.z_max + Nonplanar::GlideLift),
                                           float(m_nonplanar_ceiling - m_config.z_offset.value) });
             }
@@ -7293,6 +7303,7 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
         gcode += this->retract();
         gcode += m_writer.travel_to_z(std::max({ m_writer.get_position().z(), m_nominal_z + this->nonplanar_hop(), this->nonplanar_travel_z() }),
                                       "lift over conformal shells", true, m_writer.max_speed_z());
+        m_conformal_lift = true;
     }
     return gcode;
 }
@@ -7334,8 +7345,9 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
         if (rotary && (start.axis.z() < 1. - EPSILON || m_writer.get_tool_axis().z() < 1. - EPSILON)) {
             gcode += this->rotary_move_safely(&start);
         } else {
+            const bool   in_band = this->conformal_in_band(m_conformal_prev, &path);
             const Vec2d  from = here.head<2>(), to = start.tip.head<2>();
-            const double safe = std::max({ here.z(), start.tip.z(), this->nonplanar_travel_z(&from, &to) });
+            const double safe = std::max({ here.z(), start.tip.z(), this->nonplanar_travel_z(&from, &to, in_band) });
             gcode += m_writer.travel_to_z(safe, "lift over conformal shells", true, m_writer.max_speed_z());
             gcode += m_writer.travel_to_xy(start.tip.head<2>(), "move to conformal path");
             gcode += m_writer.travel_to_z(start.tip.z(), "lower onto conformal path", true, m_writer.max_speed_z());
@@ -7344,12 +7356,121 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
         m_need_change_layer_lift_z = false;
     }
     gcode += this->_extrude(path, description);
-    if (next == nullptr || next->polyline.points.front() != path.polyline.points.back())
+    Vec3d      hop_to;
+    const bool glide_on = next != nullptr && next->polyline.points.front() == path.polyline.points.back();
+    const bool hop      = !glide_on && this->conformal_short_hop(path, next, hop_to);
+    if (!glide_on && !hop)
         gcode += this->wipe_conformal_path();
     gcode += m_writer.end_inverse_time();
     if (rotary)
         gcode += this->rotary_move_safely(nullptr);
+    if (hop) {
+        m_writer.add_object_change_labels(gcode);
+        gcode += m_writer.travel_to_xyz(hop_to, "hop to conformal path", true);
+        this->set_last_pos(next->first_point());
+        m_wipe.reset_path();
+    }
     m_conformal_points.clear();
+    m_conformal_prev = &path;
+    return gcode;
+}
+
+bool GCode::conformal_in_band(const ExtrusionPathConformal *prev, const ExtrusionPathConformal *path) const
+{
+    return prev != nullptr && path != nullptr && m_conformal_band_patch >= 0 && prev->patch_id == m_conformal_band_patch &&
+           path->patch_id == m_conformal_band_patch;
+}
+
+bool GCode::conformal_short_hop(const ExtrusionPathConformal &path, const ExtrusionPathConformal *next, Vec3d &to)
+{
+    using namespace Nonplanar;
+    if (!this->conformal_in_band(&path, next) || !m_material_columns || m_writer.filament() == nullptr || !next->tool_axis.empty() ||
+        m_writer.get_tool_axis().z() < 1. - EPSILON || next->polyline.points.size() < 2)
+        return false;
+    const Vec2d  xy   = this->point_to_gcode(next->first_point());
+    const Vec3d &here = m_writer.get_position();
+    to                = Vec3d(xy.x(), xy.y(), m_nominal_z + unscale<double>(next->polyline.points.front().z()));
+    if ((to - here).head<2>().norm() >= m_config.retraction_minimum_travel.get_at(m_writer.filament()->id()))
+        return false;
+    const HeadEnvelope &head = this->nonplanar_head();
+    HeadEnvelope        land;
+    const double        r = head.tip_flat_radius + 0.1;
+    land.boxes.push_back({ "nozzle_land", Vec3d(-r, -r, 0.), Vec3d(r, r, std::max(head.tip_allowance.height, 1.)), false, false, true });
+    auto depth = [&](const Vec3d &a, const Vec3d &b) { return -m_material_columns->swept_clearance(a, b, land); };
+    const double accepted = std::max({ depth(here, here), depth(to, to), 0. }) + 0.01;
+    const int    steps    = std::max(1, int(std::ceil((to - here).head<2>().norm() / 0.1)));
+    for (int k = 0; k < steps; ++k)
+        if (depth(here + (to - here) * (double(k) / steps), here + (to - here) * (double(k + 1) / steps)) > accepted)
+            return false;
+    return true;
+}
+
+std::string GCode::extrude_multiplanar_chunk(const Nonplanar::ConformalPatch &patch)
+{
+    using namespace Nonplanar;
+    std::string  gcode;
+    const bool   rotary  = m_writer.tool_kinematics().rotary_count() > 0;
+    const double hop     = std::max(this->nonplanar_head().margin,
+                                    m_writer.filament() != nullptr ? m_config.z_hop.get_at(m_writer.filament()->id()) : 0.);
+    bool         entered = false;
+    double       top     = -std::numeric_limits<double>::infinity();
+    m_wipe.reset_path();
+    double       ceiling = -std::numeric_limits<double>::infinity();
+    for (size_t k = 0; k < patch.shell_paths.size(); ++k) {
+        gcode += ";_NONPLANAR_BEGIN patch=" + std::to_string(patch.id) + " shell=" + std::to_string(k) + "\n";
+        for (const ExtrusionEntity *ee : patch.shell_paths[k].entities) {
+            const auto *path = dynamic_cast<const ExtrusionPathConformal *>(ee);
+            if (path == nullptr || path->polyline.points.size() < 2)
+                continue;
+            m_conformal_points = conformal_points(*path, [this](const Point3 &p) {
+                const Vec2d xy = this->point_to_gcode(p.to_point());
+                return Vec3d(xy.x(), xy.y(), m_nominal_z + unscale<double>(p.z()));
+            });
+            const ToolPose &start = m_conformal_points.front().pose;
+            const Vec3d    &axis  = start.axis;
+            const Vec3d     here  = m_writer.get_position();
+            if (! entered || (here - start.tip).norm() > EPSILON) {
+                gcode += this->retract();
+                if (axis.z() > 1. - EPSILON) {
+                    const double travel_z = m_material_columns ?
+                        safe_travel_z(*m_material_columns, this->nonplanar_head(), here.head<2>(), start.tip.head<2>(), hop) :
+                        std::max(m_nonplanar_ceiling, double(m_max_layer_z)) + hop;
+                    gcode += m_writer.travel_to_z(std::max({ here.z(), start.tip.z(), travel_z }), "lift over the chunks", true);
+                    gcode += m_writer.travel_to_xy(start.tip.head<2>(), "move in the chunk");
+                    gcode += m_writer.travel_to_z(start.tip.z(), "lower onto the chunk", true);
+                } else if (! entered) {
+                    gcode += this->rotary_move_safely(&start);
+                } else {
+                    const double level = std::max({ axis.dot(here), axis.dot(start.tip), ceiling + hop });
+                    gcode += m_writer.travel_to_pose({ here + (level - axis.dot(here)) * axis, axis }, "lift along the tool");
+                    gcode += m_writer.travel_to_pose({ start.tip + (level - axis.dot(start.tip)) * axis, axis }, "move in the chunk");
+                    gcode += m_writer.travel_to_pose(start, "lower along the tool");
+                }
+            }
+            if (! entered) {
+                ceiling = axis.dot(start.tip);
+                entered = true;
+            }
+            for (const ConformalPoint &p : m_conformal_points) {
+                ceiling = std::max(ceiling, axis.dot(p.pose.tip));
+                top     = std::max(top, p.pose.tip.z());
+            }
+            this->set_last_pos(path->first_point());
+            m_need_change_layer_lift_z = false;
+            gcode += this->_extrude(*path, "multiplanar chunk");
+            gcode += this->wipe_conformal_path();
+            gcode += m_writer.end_inverse_time();
+            m_conformal_points.clear();
+        }
+        gcode += ";_NONPLANAR_END\n";
+    }
+    if (rotary)
+        gcode += this->rotary_move_safely(nullptr);
+    else if (entered) {
+        gcode += this->retract();
+        gcode += m_writer.travel_to_z(std::max(m_writer.get_position().z(), top + hop), "lift off the chunk", true);
+    }
+    gcode += m_writer.end_inverse_time();
     return gcode;
 }
 
@@ -7366,15 +7487,33 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
     ConformalEmitParams params;
     params.nominal_speed = speed;
     params.taper_length  = ConformalTaper;
+    if (m_writer.filament() != nullptr)
+        params.glide_speed = m_config.travel_speed.get_at(get_nozzle_config_index(m_writer.filament()->id()));
     params.e_per_mm3     = path.mm3_per_mm > 0. ? e_per_mm / path.mm3_per_mm : 0.;
     params.comment       = description;
     params.speed_marker  = speed_marker;
     auto first_value     = [](const ConfigOptionFloats &opt) { return opt.values.empty() ? 0. : opt.values.front(); };
     auto lower_limit     = [](double a, double b) { return a > 0. && b > 0. ? std::min(a, b) : std::max(a, b); };
+    auto lowest_value    = [&lower_limit](const ConfigOptionFloats &opt) {
+        double v = 0.;
+        for (double x : opt.values)
+            v = lower_limit(v, x);
+        return v;
+    };
     params.limits.max_v_xy = lower_limit(first_value(m_config.machine_max_speed_x), first_value(m_config.machine_max_speed_y));
     params.limits.max_a_xy = lower_limit(first_value(m_config.machine_max_acceleration_x), first_value(m_config.machine_max_acceleration_y));
-    params.limits.max_v_z  = first_value(m_config.machine_max_speed_z);
-    params.limits.max_a_z  = first_value(m_config.machine_max_acceleration_z);
+    params.limits.max_v_z  = 0.8 * lowest_value(m_config.machine_max_speed_z);
+    params.limits.max_a_z  = lowest_value(m_config.machine_max_acceleration_z);
+    params.limits.max_jerk_xy = lower_limit(first_value(m_config.machine_max_jerk_x), first_value(m_config.machine_max_jerk_y));
+    params.limits.max_jerk_z  = lowest_value(m_config.machine_max_jerk_z);
+    const GCodeFlavor flavor = m_config.gcode_flavor.value;
+    if (flavor == gcfKlipper) {
+        if (params.limits.max_a_xy > 0.)
+            params.limits.junction_deviation = sqr(params.limits.max_jerk_xy) * (std::sqrt(2.) - 1.) / params.limits.max_a_xy;
+    } else if (flavor == gcfMarlinFirmware)
+        params.limits.junction_deviation = first_value(m_config.machine_max_junction_deviation);
+    params.limits.segment_rate = planner_segment_rate(m_config.nonplanar_segment_rate.value, flavor, m_print != nullptr && m_print->is_BBL_printer());
+    params.condition.target_length = std::max(0.15, params.nominal_speed / params.limits.segment_rate);
 
     emit_conformal_extrusion(m_writer, m_conformal_points, path.width, params, m_last_height, gcode,
                              [this](const Vec3d &a, const Vec3d &b, double width) {
@@ -7383,17 +7522,31 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
                              });
 }
 
+double GCode::tower_layer_z() const
+{
+    const double z = m_writer.get_position().z();
+    return m_conformal_lift && z > m_nominal_z + EPSILON ? m_nominal_z : z;
+}
+
 double GCode::nonplanar_hop()
 {
     return std::max(this->nonplanar_head().margin, m_writer.filament() != nullptr ? m_config.z_hop.get_at(m_writer.filament()->id()) : 0.);
 }
 
-double GCode::nonplanar_travel_z(const Vec2d *from, const Vec2d *to)
+double GCode::nonplanar_travel_z(const Vec2d *from, const Vec2d *to, bool nozzle_only)
 {
-    const double hop = this->nonplanar_hop();
-    const double z   = m_material_columns && from != nullptr && to != nullptr ?
-                           safe_travel_z(*m_material_columns, this->nonplanar_head(), *from, *to, hop) :
-                           std::max(m_nonplanar_ceiling, double(m_max_layer_z)) + hop;
+    double z;
+    if (m_material_columns && from != nullptr && to != nullptr && nozzle_only) {
+        Nonplanar::HeadEnvelope nozzle = this->nonplanar_head();
+        nozzle.boxes.erase(std::remove_if(nozzle.boxes.begin(), nozzle.boxes.end(), [](const Nonplanar::HeadBox &b) { return !b.nozzle; }),
+                           nozzle.boxes.end());
+        z = safe_travel_z(*m_material_columns, nozzle, *from, *to,
+                          std::max(0.1, m_writer.filament() != nullptr ? m_config.z_hop.get_at(m_writer.filament()->id()) : 0.));
+    } else {
+        const double hop = this->nonplanar_hop();
+        z = m_material_columns && from != nullptr && to != nullptr ? safe_travel_z(*m_material_columns, this->nonplanar_head(), *from, *to, hop) :
+                                                                     std::max(m_nonplanar_ceiling, double(m_max_layer_z)) + hop;
+    }
     return m_config.printable_height.value > 0. ? std::min(z, m_config.printable_height.value + m_config.z_offset.value) : z;
 }
 

@@ -74,6 +74,7 @@
 		"20"
 	],
 	"nonplanar_head": "prodcan3",
+	"nonplanar_segment_rate": "150",
 	"nonplanar_kinematics": "table_bc",
 	"rotary_axis_limits": [
 		"-60",

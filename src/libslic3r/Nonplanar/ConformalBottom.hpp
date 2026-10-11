@@ -20,4 +20,6 @@ void contour_support_interface(PrintObject &object);
 
 int patch_filament_id(const PrintObject &object, const ConformalPatch &patch);
 
+bool patch_has_extrusions(const ConformalPatch &patch);
+
 }

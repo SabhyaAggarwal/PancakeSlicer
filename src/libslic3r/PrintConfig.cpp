@@ -731,6 +731,12 @@ static const t_config_enum_values s_keys_map_NonplanarFallback = {
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(NonplanarFallback)
 
+static const t_config_enum_values s_keys_map_NonplanarMode = {
+    { "conformal",   int(NonplanarMode::Conformal)   },
+    { "multiplanar", int(NonplanarMode::Multiplanar) }
+};
+CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(NonplanarMode)
+
 static const t_config_enum_values s_keys_map_NonplanarCollisionCheck = {
     { "off",   int(NonplanarCollisionCheck::Off)   },
     { "warn",  int(NonplanarCollisionCheck::Warn)  },
@@ -5175,6 +5181,40 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(0));
 
+    def = this->add("nonplanar_mode", coEnum);
+    def->label    = L("Non-planar mode");
+    def->category = L("Quality");
+    def->tooltip  = L("Conformal prints curved top and bottom shells. Multiplanar cuts the object with automatically "
+                      "placed planes into chunks of flat layers, each built along its own direction, so overhangs "
+                      "print without support: tilted layers within the head's slope limit on 3-axis printers, "
+                      "a tilted tool on rotary printers.");
+    def->enum_keys_map = &ConfigOptionEnum<NonplanarMode>::get_enum_values();
+    def->enum_values.push_back("conformal");
+    def->enum_values.push_back("multiplanar");
+    def->enum_labels.push_back(L("Conformal"));
+    def->enum_labels.push_back(L("Multiplanar"));
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionEnum<NonplanarMode>(NonplanarMode::Conformal));
+
+    def = this->add("multiplanar_max_planes", coInt);
+    def->label    = L("Multiplanar maximum planes");
+    def->category = L("Quality");
+    def->tooltip  = L("Largest number of cut planes placed in one object. Each plane starts a new chunk.");
+    def->min      = 1;
+    def->max      = 16;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionInt(3));
+
+    def = this->add("multiplanar_overhang_threshold", coFloat);
+    def->label    = L("Multiplanar overhang threshold");
+    def->category = L("Quality");
+    def->tooltip  = L("Surfaces flatter than this angle, measured from the layers of the chunk they belong to, "
+                      "count as overhangs that a cut plane should remove.");
+    def->sidetext = u8"°";
+    def->min      = 5;
+    def->max      = 85;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(45));
     def = this->add("nonplanar_atom_toolpath", coString);
     def->label    = L("Atomizer toolpath");
     def->category = L("Quality");
@@ -5206,6 +5246,17 @@ void PrintConfigDef::init_fff_params()
                       "checked against your printer.");
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionString(""));
+
+    def = this->add("nonplanar_segment_rate", coFloat);
+    def->label    = L("Segment rate");
+    def->category = L("Non-planar");
+    def->tooltip  = L("How many moves per second the firmware can plan without its move buffer running empty. Curved "
+                      "shells are made of short moves; they are joined and slowed down so that this rate is never "
+                      "exceeded, which avoids stuttering. 0 picks a value from the G-code flavor and printer.");
+    def->sidetext = L("1/s");
+    def->min      = 0;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
 
     def = this->add("nonplanar_kinematics", coEnum);
     def->label    = L("Rotary axes");

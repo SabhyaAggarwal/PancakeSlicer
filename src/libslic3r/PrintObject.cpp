@@ -20,8 +20,10 @@
 #include "Nonplanar/ConformalIroning.hpp"
 #include "Nonplanar/AtomToolpath.hpp"
 #include "Nonplanar/ConformalShells.hpp"
+#include "Nonplanar/Multiplanar.hpp"
 #include "Nonplanar/ConformalVolume.hpp"
 #include "Nonplanar/CurvedOverhang.hpp"
+#include "Nonplanar/PatchTools.hpp"
 #include "MutablePolygon.hpp"
 #include "PrintBase.hpp"
 #include "PrintConfig.hpp"
@@ -713,6 +715,16 @@ void PrintObject::nonplanar_shells()
                    this->printing_region(region_id).config().nonplanar_bottom_shells.value > 0 ||
                    this->printing_region(region_id).config().nonplanar_full_conformal_max_thickness.value > 0. ||
                    this->printing_region(region_id).config().nonplanar_overhangs.value;
+    if (m_multiplanar && m_config.nonplanar_atom_toolpath.value.empty()) {
+        m_print->set_status(40, L("Slicing multiplanar chunks"));
+        for (Layer *layer : m_layers)
+            layer->conformal_patches_after.clear();
+        m_conformal = std::make_unique<Nonplanar::ConformalResult>();
+        Nonplanar::build_multiplanar_chunks(*this, *m_multiplanar, *m_conformal);
+        m_print->throw_if_canceled();
+        this->set_done(posNonplanar);
+        return;
+    }
     if (enabled) {
         m_print->set_status(40, L("Generating curved top shells"));
         m_conformal = std::make_unique<Nonplanar::ConformalResult>(Nonplanar::build_conformal_shells(*this));
@@ -720,6 +732,7 @@ void PrintObject::nonplanar_shells()
         Nonplanar::build_curved_overhangs(*this, *m_conformal);
         Nonplanar::build_conformal_ironing(*this, *m_conformal);
         Nonplanar::build_conformal_volume(*this, *m_conformal);
+        Nonplanar::group_hosts_by_filament(*this, *m_conformal);
         if (!m_config.nonplanar_atom_toolpath.value.empty()) {
             m_print->set_status(40, L("Importing the Atomizer toolpath"));
             for (const std::string &warning : Nonplanar::apply_atom_toolpath(*this, *m_conformal))
@@ -1332,7 +1345,11 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "wipe_speed") {
             steps.emplace_back(posPerimeters);
         } else if (
-            opt_key == "small_area_infill_flow_compensation_model") {
+            opt_key == "small_area_infill_flow_compensation_model"
+            || opt_key == "nonplanar_mode"
+            || opt_key == "multiplanar_max_planes"
+            || opt_key == "multiplanar_overhang_threshold"
+            || opt_key == "nonplanar_atom_toolpath") {
             steps.emplace_back(posSlice);
         } else if (opt_key == "gap_infill_speed"
             || opt_key == "filter_out_gap_fill" ) {
@@ -1595,8 +1612,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "nonplanar_fallback"
             || opt_key == "nonplanar_full_conformal_max_thickness"
             || opt_key == "nonplanar_surface_resolution"
-            || opt_key == "nonplanar_max_patch_height"
-            || opt_key == "nonplanar_atom_toolpath") {
+            || opt_key == "nonplanar_max_patch_height") {
             steps.emplace_back(posPerimeters);
             steps.emplace_back(posSupportMaterial);
         } else if (opt_key == "bridge_flow" || opt_key == "internal_bridge_flow") {

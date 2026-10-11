@@ -37,7 +37,8 @@ ConformalPoint interpolate(const ConformalPoint &a, const ConformalPoint &b, dou
     return p;
 }
 
-std::vector<ConformalPoint> taper_runs(const std::vector<ConformalPoint> &points, double length, std::vector<double> &flow)
+std::vector<ConformalPoint> taper_runs(const std::vector<ConformalPoint> &points, double length, double min_piece,
+                                       std::vector<double> &flow)
 {
     const size_t n = points.size();
     std::vector<ConformalPoint> out;
@@ -59,7 +60,7 @@ std::vector<ConformalPoint> taper_runs(const std::vector<ConformalPoint> &points
             ++j;
         }
         const double taper = std::min(length, 0.25 * run);
-        const double piece = taper / 5.;
+        const double piece = std::min(taper, std::max(taper / 5., min_piece));
         double       left  = run;
         for (size_t k = i; k < j; ++k) {
             const ConformalPoint &a = points[k], &b = points[k + 1];
@@ -94,23 +95,97 @@ std::vector<ConformalPoint> taper_runs(const std::vector<ConformalPoint> &points
 
 }
 
+double planner_segment_rate(double configured, GCodeFlavor flavor, bool bbl_printer)
+{
+    if (configured > 0.)
+        return configured;
+    if (flavor == gcfKlipper)
+        return 400.;
+    if (flavor == gcfRepRapFirmware)
+        return 250.;
+    if (bbl_printer)
+        return 200.;
+    if (flavor == gcfMarlinFirmware)
+        return 120.;
+    return 100.;
+}
+
+void condition_path(std::vector<ConformalPoint> &points, const ConditionParams &params)
+{
+    const size_t n = points.size();
+    if (n < 3)
+        return;
+
+    auto chord_ok = [&](size_t i, size_t j) {
+        const Vec3d  a = points[i].pose.tip, b = points[j].pose.tip;
+        const Vec3d  d = b - a;
+        const double len = d.norm();
+        const bool extruded = points[i].bead_height > 0.f;
+        for (size_t k = i + 1; k <= j; ++k)
+            if ((points[k].bead_height > 0.f) != extruded)
+                return false;
+        if (std::abs(d.z()) > 1e-4 && len > params.max_length)
+            return false;
+        if (std::acos(std::clamp(points[i].pose.axis.dot(points[j].pose.axis), -1., 1.)) > params.axis_tolerance)
+            return false;
+        const bool   loose = len < params.target_length;
+        const double tol   = loose ? params.min_tolerance : params.tolerance;
+        const double ztol  = extruded ? (loose ? params.min_z_tolerance : params.z_tolerance) : params.glide_z_tolerance;
+        const Vec2d  dxy   = d.head<2>();
+        const double l2    = dxy.squaredNorm();
+        for (size_t k = i + 1; k < j; ++k) {
+            const Vec3d &p = points[k].pose.tip;
+            const double t = l2 > 0. ? std::clamp((p - a).head<2>().dot(dxy) / l2, 0., 1.) : 0.;
+            const Vec3d  q = a + t * d;
+            if ((p - q).head<2>().norm() > tol || std::abs(p.z() - q.z()) > ztol)
+                return false;
+            const Vec3d axis = ((1. - t) * points[i].pose.axis + t * points[j].pose.axis).normalized();
+            if (std::acos(std::clamp(axis.dot(points[k].pose.axis), -1., 1.)) > params.axis_tolerance)
+                return false;
+        }
+        return true;
+    };
+    std::vector<ConformalPoint> out;
+    out.reserve(n);
+    out.push_back(points.front());
+    for (size_t i = 0; i + 1 < n;) {
+        size_t j = i + 1;
+        while (j + 1 < n && chord_ok(i, j + 1))
+            ++j;
+        out.push_back(points[j]);
+        i = j;
+    }
+    points.swap(out);
+}
+
 double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<ConformalPoint> &points_in, double width,
                                 const ConformalEmitParams &params, float &last_height, std::string &out,
                                 const DepositFn &deposit)
 {
     if (points_in.size() < 2)
         return 0.;
+    std::vector<ConformalPoint> conditioned;
+    if (params.condition.target_length > 0.) {
+        conditioned = points_in;
+        condition_path(conditioned, params.condition);
+    }
+    const std::vector<ConformalPoint> &merged = params.condition.target_length > 0. ? conditioned : points_in;
     const bool rotary = writer.tool_kinematics().rotary_count() > 0;
     std::vector<double>                flow;
     std::vector<ConformalPoint>        tapered;
     if (params.taper_length > 0.)
-        tapered = taper_runs(points_in, params.taper_length, flow);
-    const std::vector<ConformalPoint> &points = params.taper_length > 0. ? tapered : points_in;
+        tapered = taper_runs(merged, params.taper_length, params.condition.target_length, flow);
+    const std::vector<ConformalPoint> &points = params.taper_length > 0. ? tapered : merged;
 
     std::vector<Vec3d> tips(points.size());
     for (size_t i = 0; i < points.size(); ++i)
         tips[i] = points[i].pose.tip;
-    const std::vector<double> speeds = limit_feedrates(tips, params.nominal_speed, params.limits);
+    auto glide = [&points](size_t i) { return points[i].bead_height <= 0.f && points[i + 1].bead_height <= 0.f; };
+    std::vector<double> nominal(points.size() - 1, params.nominal_speed);
+    for (size_t i = 0; i < nominal.size(); ++i)
+        if (glide(i))
+            nominal[i] = std::max(params.nominal_speed, params.glide_speed);
+    const std::vector<double> speeds = limit_feedrates(tips, nominal, params.limits);
 
     double volume = 0.;
     char   buf[64];
@@ -134,10 +209,10 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
             if (rotary)
                 writer.set_pose_speed(F);
             else
-                writer.set_speed(out, F, "", params.speed_marker);
+                writer.set_speed(out, F, "", glide(i) ? std::string() : params.speed_marker);
         }
         writer.extrude_to_pose(out, b.pose, v * params.e_per_mm3, params.comment);
-        if (deposit)
+        if (deposit && !glide(i))
             deposit(a.pose.tip, b.pose.tip, width);
     }
     return volume;

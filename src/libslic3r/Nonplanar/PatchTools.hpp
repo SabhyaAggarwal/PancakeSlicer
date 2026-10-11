@@ -7,9 +7,12 @@
 #include "libslic3r/Polyline.hpp"
 #include "libslic3r/PrintConfig.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Slic3r {
@@ -69,7 +72,14 @@ void cut_into_bands(const ExtrusionEntitiesPtr &paths, double pitch, double tole
                     const std::function<void(int band, ExtrusionPathConformal *piece)> &sink,
                     const std::function<int(const Point3 &)> &cut_rank = {});
 
+void cut_by_colour(const ExtrusionEntitiesPtr &paths, const std::function<int(const Vec3d &)> &colour, double pullback,
+                   double min_length, const std::function<void(int colour, ExtrusionPathConformal *piece)> &sink);
+
 void band_schedule(const HeadEnvelope &head, double shell_height, double max_patch_height, double &pitch, double &tolerance);
+
+bool prints_several_filaments(const PrintObject &object);
+
+double multi_material_patch_height(const PrintObject &object, const HeadEnvelope &head, double max_patch_height);
 
 struct BandSeams
 {
@@ -84,7 +94,32 @@ struct BandSeams
 };
 
 struct ConformalResult;
+void group_hosts_by_filament(PrintObject &object, ConformalResult &result);
+
+struct TopColours
+{
+    std::vector<int>        region_ids;
+    std::vector<int>        filaments;
+    std::vector<ExPolygons> areas;
+    HeightField             lookup;
+
+    int at(const Vec2d &p) const
+    {
+        const Vec2d o  = (p - lookup.origin()) / lookup.pitch();
+        const int   ix = std::clamp(int(std::lround(o.x())), 0, lookup.nx() - 1);
+        const int   iy = std::clamp(int(std::lround(o.y())), 0, lookup.ny() - 1);
+        const float c  = lookup.at(ix, iy);
+        return std::isnan(c) ? 0 : int(c);
+    }
+};
+
+TopColours top_colours(const PrintObject &object, const ExPolygons &candidate);
+
+std::vector<std::pair<size_t, size_t>> split_by_colour(ConformalResult &result, const TopColours &colours,
+                                                       const std::function<int(const Vec3d &)> &colour = {});
+
 std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const HeightField &S, const std::vector<double> &layer_z,
-                                             double pitch, double tolerance, const BandSeams *seams = nullptr);
+                                             double pitch, double tolerance, const BandSeams *seams = nullptr,
+                                             bool host_above = false);
 
 }

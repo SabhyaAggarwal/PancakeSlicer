@@ -190,10 +190,20 @@ double HeadEnvelope::underside_height(const Vec2d &d) const
 
 double HeadEnvelope::max_slope(double phi, double gap) const
 {
-    return max_slope(phi, gap, nullptr);
+    return max_slope(phi, gap, Inf, nullptr);
+}
+
+double HeadEnvelope::max_slope(double phi, double gap, double reach) const
+{
+    return max_slope(phi, gap, reach, nullptr);
 }
 
 double HeadEnvelope::max_slope(double phi, double gap, std::string *limiting_component) const
+{
+    return max_slope(phi, gap, Inf, limiting_component);
+}
+
+double HeadEnvelope::max_slope(double phi, double gap, double reach, std::string *limiting_component) const
 {
     if (limiting_component)
         limiting_component->clear();
@@ -208,8 +218,9 @@ double HeadEnvelope::max_slope(double phi, double gap, std::string *limiting_com
             pmin = std::min(pmin, c.dot(u));
             pmax = std::max(pmax, c.dot(u));
         }
-        if (pmax <= 0.)
+        if (pmax <= 0. || pmin > reach)
             continue;
+        pmax = std::min(pmax, reach);
         const double num = gap + box.min.z() - (box.nozzle ? 0. : margin);
         const double limit = num >= 0. ? num / pmax : pmin > 0. ? num / pmin : -Inf;
         if (limit < tan_min) {

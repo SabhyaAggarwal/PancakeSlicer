@@ -109,6 +109,31 @@ ExPolygons candidate_top_area(const PrintObject &object)
     return offset_ex(union_ex(offset(tops, seam)), -seam);
 }
 
+void split_by_colour(ConformalResult &result, std::vector<HeightField> &planar_tops, std::vector<HeightField> &stack_layers,
+                     std::vector<ExPolygons> &shell_areas,
+                     std::vector<ExPolygons> &fill_areas, std::vector<Point> &seams, std::vector<Polyline> &seam_lines,
+                     const TopColours &colours)
+{
+    std::vector<HeightField> tops, depths;
+    std::vector<ExPolygons>  areas, fills;
+    std::vector<Point>       new_seams;
+    std::vector<Polyline>    lines;
+    for (const auto &[idx, c] : split_by_colour(result, colours)) {
+        tops.emplace_back(planar_tops[idx]);
+        depths.emplace_back(stack_layers[idx]);
+        areas.emplace_back(intersection_ex(shell_areas[idx], colours.areas[c]));
+        fills.emplace_back(intersection_ex(fill_areas[idx], colours.areas[c]));
+        new_seams.emplace_back(seams[idx]);
+        lines.emplace_back(seam_lines[idx]);
+    }
+    planar_tops = std::move(tops);
+    stack_layers = std::move(depths);
+    shell_areas = std::move(areas);
+    fill_areas  = std::move(fills);
+    seams       = std::move(new_seams);
+    seam_lines  = std::move(lines);
+}
+
 constexpr double ContourStripHeight = 2.;
 constexpr int ContourDirectionBins = 12;
 constexpr double ContourDirectionWindow = 2.;
@@ -740,13 +765,20 @@ ConformalResult build_conformal_shells(PrintObject &object)
         }
     });
 
+    if (const TopColours colours = top_colours(object, candidate); colours.areas.size() > 1) {
+        split_by_colour(result, planar_tops, stack_layers, shell_areas, fill_areas, seams, seam_lines, colours);
+        BOOST_LOG_TRIVIAL(info) << "Non-planar: " << colours.areas.size() << " top colours in " << object.model_object()->name;
+    }
+
     std::vector<ConformalPatch> component_patches;
     if (settings.banded) {
         double pitch = 0., tolerance = 0.;
-        band_schedule(head, h_c, settings.max_patch_height, pitch, tolerance);
+        const double max_patch_height = multi_material_patch_height(object, head, settings.max_patch_height);
+        band_schedule(head, h_c, max_patch_height, pitch, tolerance);
         const BandSeams band_seams{ fill_areas, seams, seam_lines, line_width, MaxGlide, spans_wall,
                                     settings.shells - settings.top_shells, &stack_layers };
-        component_patches = split_into_bands(result, S, layer_z, pitch, tolerance, &band_seams);
+        component_patches = split_into_bands(result, S, layer_z, pitch, tolerance, &band_seams,
+                                             max_patch_height != settings.max_patch_height);
     }
     std::vector<ConformalPatch> &units = settings.banded ? component_patches : result.patches;
 

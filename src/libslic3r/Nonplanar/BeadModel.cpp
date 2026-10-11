@@ -27,10 +27,16 @@ double segment_volume(const Vec3d &a, const Vec3d &b, double width, float height
 std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, double nominal,
                                     const MotionLimits &limits, double quantum)
 {
+    return limit_feedrates(pts, std::vector<double>(pts.size() < 2 ? 0 : pts.size() - 1, nominal), limits, quantum);
+}
+
+std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, const std::vector<double> &nominal,
+                                    const MotionLimits &limits, double quantum)
+{
     if (pts.size() < 2)
         return {};
     const size_t n = pts.size() - 1;
-    std::vector<double> length(n), slope(n), v(n, nominal);
+    std::vector<double> length(n), slope(n), v = nominal;
     for (size_t i = 0; i < n; ++i) {
         const Vec3d d = pts[i + 1] - pts[i];
         length[i]     = d.norm();
@@ -59,6 +65,39 @@ std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, double nomina
             v[i]             = std::min(v[i], cap);
         }
 
+    if (limits.segment_rate > 0.)
+        for (size_t i = 0; i < n; ++i)
+            if (length[i] > 0.)
+                v[i] = std::min(v[i], limits.segment_rate * length[i]);
+
+    const double cos_shallow = std::cos(M_PI / 4.);
+    for (size_t i = 1; i < n; ++i) {
+        if (length[i - 1] <= 0. || length[i] <= 0.)
+            continue;
+        const Vec3d u0 = (pts[i] - pts[i - 1]) / length[i - 1];
+        const Vec3d u1 = (pts[i + 1] - pts[i]) / length[i];
+        const double c = u0.dot(u1);
+        if (c < cos_shallow || c > 1. - 1e-12)
+            continue;
+        double cap = std::numeric_limits<double>::infinity();
+        const double sin_half = std::sqrt(0.5 * (1. - c));
+        if (limits.junction_deviation > 0. && limits.max_a_xy > 0.) {
+            const double s = std::min(std::sqrt(0.5 * (1. + c)), 1. - 1e-9);
+            cap = std::sqrt(limits.max_a_xy * limits.junction_deviation * s / (1. - s));
+        }
+        else {
+            const Vec3d dv = (u1 - u0).cwiseAbs();
+            if (limits.max_jerk_xy > 0.)
+                cap = std::min(cap, limits.max_jerk_xy / std::max({ dv.x(), dv.y(), 1e-12 }));
+            if (limits.max_jerk_z > 0. && dv.z() > 1e-12)
+                cap = std::min(cap, limits.max_jerk_z / dv.z());
+        }
+        if (limits.max_a_xy > 0. && sin_half > 1e-9)
+            cap = std::min(cap, std::sqrt(limits.max_a_xy * 0.25 * (length[i - 1] + length[i]) / sin_half));
+        v[i - 1] = std::min(v[i - 1], cap);
+        v[i]     = std::min(v[i], cap);
+    }
+
     auto tangential_accel = [&](size_t i) {
         double a = limits.max_a_xy > 0. ? limits.max_a_xy : std::numeric_limits<double>::infinity();
         if (limits.max_a_z > 0. && std::abs(slope[i]) > 0.)
@@ -76,15 +115,18 @@ std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, double nomina
             v[i - 1] = std::min(v[i - 1], std::sqrt(v[i] * v[i] + 2. * a * length[i]));
     }
 
-    if (quantum > 0. && quantum < 1. && nominal > 0.) {
+    if (quantum > 0. && quantum < 1.) {
         const double step = std::log(1. - quantum);
-        for (double &s : v) {
-            if (s >= nominal * (1. - 1e-9)) {
-                s = nominal;
+        for (size_t i = 0; i < n; ++i) {
+            double &s = v[i];
+            if (nominal[i] <= 0.)
+                continue;
+            if (s >= nominal[i] * (1. - 1e-9)) {
+                s = nominal[i];
                 continue;
             }
-            const double k = std::ceil(std::log(std::max(s, 1e-6) / nominal) / step - 1e-9);
-            s              = nominal * std::exp(k * step);
+            const double k = std::ceil(std::log(std::max(s, 1e-6) / nominal[i]) / step - 1e-9);
+            s              = nominal[i] * std::exp(k * step);
         }
     }
     return v;

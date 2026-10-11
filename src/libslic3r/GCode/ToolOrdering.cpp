@@ -816,7 +816,10 @@ void ToolOrdering::collect_extruders(const PrintObject &object, const std::vecto
 
         for (const std::vector<int> *patch_ids : { &layer->conformal_patches_before, &layer->conformal_patches_after })
             for (int patch_id : *patch_ids) {
-                layer_tools.extruders.emplace_back(Nonplanar::patch_filament_id(object, object.conformal().patches[size_t(patch_id)]));
+                const Nonplanar::ConformalPatch &patch = object.conformal().patches[size_t(patch_id)];
+                if (!Nonplanar::patch_has_extrusions(patch))
+                    continue;
+                layer_tools.extruders.emplace_back(Nonplanar::patch_filament_id(object, patch));
                 layer_tools.has_object = true;
             }
 

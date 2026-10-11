@@ -56,6 +56,7 @@
 #include "BeltBrim.hpp"
 
 namespace Slic3r { class ExtrusionEntityCollection; }
+namespace Slic3r::Nonplanar { struct ConformalPatch; }
 
 namespace Slic3r {
 
@@ -518,16 +519,20 @@ protected:
     std::string     extrude_support(const ExtrusionEntityCollection& support_fills, const ExtrusionRole support_extrusion_role);
     std::string     extrude_conformal_patches(const Print &print, const std::vector<LayerToPrint> &layers, unsigned int extruder_id,
                                               size_t single_object_instance_idx, bool before = false);
+    double          tower_layer_z() const;
     std::string     extrude_conformal_path(const ExtrusionPathConformal &path, const std::string &description,
                                            const std::function<Vec2d(const Vec2d &)> &surface_gradient = {},
                                            const ExtrusionPathConformal *next = nullptr);
+    bool            conformal_in_band(const ExtrusionPathConformal *prev, const ExtrusionPathConformal *path) const;
+    bool            conformal_short_hop(const ExtrusionPathConformal &path, const ExtrusionPathConformal *next, Vec3d &to);
+    std::string     extrude_multiplanar_chunk(const Nonplanar::ConformalPatch &patch);
     void            emit_conformal_moves(std::string &gcode, const ExtrusionPathConformal &path, double e_per_mm,
                                          double speed, const std::string &speed_marker, const std::string &description);
     std::string     wipe_conformal_path();
     std::string     rotary_move_safely(const ToolPose *target);
     const Nonplanar::HeadEnvelope &nonplanar_head();
     double          nonplanar_hop();
-    double          nonplanar_travel_z(const Vec2d *from = nullptr, const Vec2d *to = nullptr);
+    double          nonplanar_travel_z(const Vec2d *from = nullptr, const Vec2d *to = nullptr, bool nozzle_only = false);
 
     void compute_farthest_point(const std::vector<LayerToPrint> &layers, int most_used_extruder,
                                 const std::map<std::pair<const SupportLayer *, ExtrusionRole>, unsigned int> &support_filaments);
@@ -648,7 +653,10 @@ protected:
     double                              m_nonplanar_ceiling{ 0. };
     std::unique_ptr<MaterialColumns>      m_material_columns;
     bool                                m_track_nonplanar_material{ false };
+    bool m_conformal_lift { false };
     std::vector<Nonplanar::ConformalPoint> m_conformal_points;
+    int                                    m_conformal_band_patch{ -1 };
+    const ExtrusionPathConformal          *m_conformal_prev{ nullptr };
     Nonplanar::HeadEnvelope                m_nonplanar_head;
     float                               m_last_width{ 0.0f };
     double                              m_last_layer_accumulated_mass{ 0.0 };

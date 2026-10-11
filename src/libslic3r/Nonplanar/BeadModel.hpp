@@ -15,9 +15,13 @@ struct MotionLimits
 {
     double max_v_xy = 0., max_a_xy = 0.;
     double max_v_z  = 0., max_a_z  = 0.;
+    double max_jerk_xy = 0., max_jerk_z = 0., junction_deviation = 0.;
+    double segment_rate = 0.;
 };
 
 std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, double nominal,
+                                    const MotionLimits &limits, double quantum = 0.05);
+std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, const std::vector<double> &nominal,
                                     const MotionLimits &limits, double quantum = 0.05);
 
 }

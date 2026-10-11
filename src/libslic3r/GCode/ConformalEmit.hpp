@@ -2,6 +2,7 @@
 #include "libslic3r/GCode/ToolKinematics.hpp"
 #include "libslic3r/Nonplanar/BeadModel.hpp"
 #include "libslic3r/Point.hpp"
+#include "libslic3r/PrintConfig.hpp"
 
 #include <functional>
 #include <string>
@@ -28,14 +29,30 @@ constexpr double GlideLift = 0.1;
 
 std::vector<ConformalPoint> conformal_points(const ExtrusionPathConformal &path, const ToWriterFrame &to_writer);
 
+struct ConditionParams
+{
+    double target_length   = 0.15;
+    double max_length      = 2.;
+    double tolerance       = 0.01;
+    double z_tolerance     = 0.005;
+    double min_tolerance   = 0.03;
+    double min_z_tolerance = 0.005;
+    double axis_tolerance  = 0.01;
+    double glide_z_tolerance = 0.5 * GlideLift;
+};
+void condition_path(std::vector<ConformalPoint> &points, const ConditionParams &params);
+
+double planner_segment_rate(double configured, GCodeFlavor flavor, bool bbl_printer);
 constexpr double ConformalTaper = 1.;
 constexpr double ConformalWipe  = 1.;
 
 struct ConformalEmitParams
 {
     double       nominal_speed = 0.;
+    double       glide_speed   = 0.;
     double       e_per_mm3     = 0.;
     MotionLimits limits;
+    ConditionParams condition;
     std::string  comment;
     std::string  speed_marker;
     double       taper_length  = 0.;

@@ -35,9 +35,17 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
 
     bool needs_head = config.nonplanar_collision_check.value == NonplanarCollisionCheck::Block;
     bool enabled = needs_head || config.nonplanar_kinematics.value != RotaryLayout::None;
-    size_t instances = 0;
+    size_t instances = 0, multiplanar_instances = 0;
     for (const PrintObject *object : print.objects()) {
         instances += object->instances().size();
+        if (object->config().nonplanar_mode.value == NonplanarMode::Multiplanar) {
+            multiplanar_instances += object->instances().size();
+            needs_head = enabled = true;
+            if (config.spiral_mode)
+                return { L("Multiplanar chunks cannot be combined with spiral vase mode."), object, "nonplanar_mode" };
+            if (config.belt_printer)
+                return { L("Multiplanar chunks cannot be combined with a belt printer."), object, "nonplanar_mode" };
+        }
         for (size_t region_id = 0; region_id < object->num_printing_regions(); ++region_id) {
             const PrintRegionConfig &region = object->printing_region(region_id).config();
             if (config.spiral_mode && region.nonplanar_full_conformal_max_thickness.value > 0.)
@@ -64,6 +72,9 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
                 return { L("Non-planar shells do not support variable layer heights."), object, "layer_height" };
         }
     }
+
+    if (multiplanar_instances > 0 && instances > 1 && config.print_sequence != PrintSequence::ByObject)
+        return { L("Multiplanar objects can only be printed with other objects in \"By object\" sequence."), nullptr, "print_sequence" };
 
     if (config.nonplanar_kinematics.value != RotaryLayout::None) {
         const auto valid_floats = [](const ConfigOptionFloats &option, size_t size) {

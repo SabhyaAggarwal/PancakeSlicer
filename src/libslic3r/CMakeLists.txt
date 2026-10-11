@@ -145,6 +145,8 @@ set(lisbslic3r_sources
     Nonplanar/HeadEnvelope.hpp
     Nonplanar/HeightField.cpp
     Nonplanar/HeightField.hpp
+    Nonplanar/Multiplanar.cpp
+    Nonplanar/Multiplanar.hpp
     Nonplanar/SurfaceClip.cpp
     Nonplanar/SurfaceClip.hpp
     CustomGCode.cpp

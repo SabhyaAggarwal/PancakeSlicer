@@ -50,6 +50,8 @@ struct HeadEnvelope
     double underside_height(const Vec2d &d) const;
 
     double max_slope(double phi, double gap) const;
+    double max_slope(double phi, double gap, double reach) const;
+    double max_slope(double phi, double gap, double reach, std::string *limiting_component) const;
 
     double max_slope(double phi, double gap, std::string *limiting_component) const;
 

@@ -55,7 +55,7 @@
 
 namespace Slic3r {
 
-namespace Nonplanar { struct ConformalResult; }
+namespace Nonplanar { struct ConformalResult; struct MultiplanarPlan; }
 
 class SlicingErrors;
 
@@ -519,6 +519,7 @@ private:
     std::vector<BeltBrimBand>               m_belt_brim_prologue;
     std::shared_ptr<TreeSupportData>        m_tree_support_preview_cache;
     std::unique_ptr<Nonplanar::ConformalResult> m_conformal;
+    std::shared_ptr<const Nonplanar::MultiplanarPlan> m_multiplanar;
 
     bool                    				m_typed_slices = false;
 

@@ -11,7 +11,7 @@ namespace Slic3r::sla { class IndexedMesh; }
 
 namespace Slic3r::Nonplanar {
 
-enum class PatchKind : unsigned char { Top, Bottom, Volume, Overhang };
+enum class PatchKind : unsigned char { Top, Bottom, Volume, Overhang, Chunk };
 
 struct ConformalPatch
 {

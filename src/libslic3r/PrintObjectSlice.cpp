@@ -23,6 +23,7 @@
 #include "I18N.hpp"
 #include "Layer.hpp"
 #include "Model.hpp"
+#include "Nonplanar/Multiplanar.hpp"
 #include "MultiMaterialSegmentation.hpp"
 #include "ObjectID.hpp"
 #include "Point.hpp"
@@ -1072,6 +1073,7 @@ void PrintObject::slice_volumes()
             m_layers[layer_id]->regions()[region_id]->slices.append(std::move(by_layer[layer_id]), stInternal);
     }
     region_slices.clear();
+    m_multiplanar = Nonplanar::clip_multiplanar_slices(*this);
 
     BOOST_LOG_TRIVIAL(debug) << "Slicing volumes - removing top empty layers";
     while (! m_layers.empty()) {

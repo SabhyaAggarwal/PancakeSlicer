@@ -240,6 +240,7 @@ enum class RotaryLayout : unsigned char { None, TableBC, TableAC, HeadAB, HeadBC
 enum class NonplanarTopPattern : unsigned char { Contour, Rectilinear, Concentric };
 enum class NonplanarFallback : unsigned char { ZAA, Planar, None };
 enum class NonplanarCollisionCheck : unsigned char { Off, Warn, Block };
+enum class NonplanarMode : unsigned char { Conformal, Multiplanar };
 
 enum class SurfaceFillOrder {
     Default,
@@ -734,6 +735,7 @@ CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(RotaryLayout)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarTopPattern)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarFallback)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarCollisionCheck)
+CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarMode)
 
 #undef CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS
 
@@ -1235,6 +1237,9 @@ PRINT_CONFIG_CLASS_DEFINE(
 
     ((ConfigOptionFloat,               nonplanar_surface_resolution))
     ((ConfigOptionFloat,               nonplanar_max_patch_height))
+    ((ConfigOptionEnum<NonplanarMode>, nonplanar_mode))
+    ((ConfigOptionInt,                 multiplanar_max_planes))
+    ((ConfigOptionFloat,               multiplanar_overhang_threshold))
     ((ConfigOptionString,              nonplanar_atom_toolpath))
 )
 
@@ -1721,6 +1726,7 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
     ((ConfigOptionEnum<RemapAxis>,  gcode_remap_y))
     ((ConfigOptionEnum<RemapAxis>,  gcode_remap_z))
     ((ConfigOptionString,                   nonplanar_head))
+    ((ConfigOptionFloat,                    nonplanar_segment_rate))
     ((ConfigOptionEnum<RotaryLayout>,       nonplanar_kinematics))
     ((ConfigOptionFloats,                   rotary_axis_limits))
     ((ConfigOptionBools,                    rotary_axis_continuous))
