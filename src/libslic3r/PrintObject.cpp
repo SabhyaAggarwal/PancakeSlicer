@@ -21,6 +21,7 @@
 #include "Nonplanar/AtomToolpath.hpp"
 #include "Nonplanar/ConformalShells.hpp"
 #include "Nonplanar/ConformalVolume.hpp"
+#include "Nonplanar/CurvedOverhang.hpp"
 #include "MutablePolygon.hpp"
 #include "PrintBase.hpp"
 #include "PrintConfig.hpp"
@@ -710,11 +711,13 @@ void PrintObject::nonplanar_shells()
     for (size_t region_id = 0; region_id < this->num_printing_regions(); ++region_id)
         enabled |= this->printing_region(region_id).config().nonplanar_top_shells.value > 0 ||
                    this->printing_region(region_id).config().nonplanar_bottom_shells.value > 0 ||
-                   this->printing_region(region_id).config().nonplanar_full_conformal_max_thickness.value > 0.;
+                   this->printing_region(region_id).config().nonplanar_full_conformal_max_thickness.value > 0. ||
+                   this->printing_region(region_id).config().nonplanar_overhangs.value;
     if (enabled) {
         m_print->set_status(40, L("Generating curved top shells"));
         m_conformal = std::make_unique<Nonplanar::ConformalResult>(Nonplanar::build_conformal_shells(*this));
         Nonplanar::build_conformal_bottom(*this, *m_conformal);
+        Nonplanar::build_curved_overhangs(*this, *m_conformal);
         Nonplanar::build_conformal_ironing(*this, *m_conformal);
         Nonplanar::build_conformal_volume(*this, *m_conformal);
         if (!m_config.nonplanar_atom_toolpath.value.empty()) {
@@ -1587,6 +1590,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "nonplanar_top_direction"
             || opt_key == "nonplanar_surface_spacing"
             || opt_key == "nonplanar_ironing"
+            || opt_key == "nonplanar_overhangs"
             || opt_key == "nonplanar_fallback"
             || opt_key == "nonplanar_full_conformal_max_thickness"
             || opt_key == "nonplanar_surface_resolution"

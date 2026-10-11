@@ -5,6 +5,7 @@
     "from": "system",
     "setting_id": "GP000",
     "instantiation": "true",
+    "nonplanar_overhangs": "1",
     "description": "It has a general layer height, and results in general layer lines and printing quality. It is suitable for most general printing cases.",
     "default_acceleration": [
         "6000"

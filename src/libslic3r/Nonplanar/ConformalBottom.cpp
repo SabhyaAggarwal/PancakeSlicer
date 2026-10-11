@@ -467,7 +467,7 @@ void contour_support_interface(PrintObject &object)
     std::vector<const ConformalPatch *> patches;
     double                              z_lo = Inf, z_hi = -Inf;
     for (const ConformalPatch &patch : conformal.patches)
-        if (patch.kind != PatchKind::Top) {
+        if (patch.kind == PatchKind::Bottom || patch.kind == PatchKind::Volume) {
             patches.emplace_back(&patch);
             z_lo = std::min(z_lo, patch.z_min);
             z_hi = std::max(z_hi, patch.z_max);
@@ -561,7 +561,8 @@ int patch_filament_id(const PrintObject &object, const ConformalPatch &patch)
     const PrintRegionConfig &cfg = object.printing_region(size_t(patch.region_id)).config();
     switch (patch.kind) {
     case PatchKind::Top: return cfg.top_surface_filament_id.value;
-    case PatchKind::Bottom: return cfg.bottom_surface_filament_id.value;
+    case PatchKind::Bottom:
+    case PatchKind::Overhang: return cfg.bottom_surface_filament_id.value;
     case PatchKind::Volume: break;
     }
     return cfg.outer_wall_filament_id.value;

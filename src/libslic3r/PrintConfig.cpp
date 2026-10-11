@@ -5101,6 +5101,16 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionBool(false));
 
+    def = this->add("nonplanar_overhangs", coBool);
+    def->label    = L("Curved overhangs");
+    def->category = L("Quality");
+    def->tooltip  = L("Print sloped overhangs too steep for flat layers without support: under the overhang the "
+                      "layers bend down and away from the supported part, so every layer reaches out only a "
+                      "fraction of a line width beyond the one below. Flat roofs and bridges keep their usual "
+                      "handling.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
+
     def = this->add("nonplanar_fallback", coEnum);
     def->label    = L("Non-planar fallback");
     def->category = L("Quality");
