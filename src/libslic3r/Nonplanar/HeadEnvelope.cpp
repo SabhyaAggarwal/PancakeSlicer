@@ -219,6 +219,147 @@ std::vector<double> HeadEnvelope::slope_map(int n, double gap) const
     return out;
 }
 
+namespace {
+
+void validate_reading(const SlopeStarReading &reading)
+{
+    const auto &date = reading.date;
+    if (date.size() != 10 || date[4] != '-' || date[7] != '-' ||
+        date.substr(0, 4).find_first_not_of("0123456789") != std::string::npos ||
+        date.substr(5, 2).find_first_not_of("0123456789") != std::string::npos ||
+        date.substr(8, 2).find_first_not_of("0123456789") != std::string::npos)
+        throw RuntimeError("Slope star: date must be YYYY-MM-DD");
+    const int year = std::stoi(date.substr(0, 4)), month = std::stoi(date.substr(5, 2)), day = std::stoi(date.substr(8, 2));
+    const int days[] = {31, 28 + (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)), 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    if (year == 0 || month < 1 || month > 12 || day < 1 || day > days[month - 1])
+        throw RuntimeError("Slope star: date must be a valid calendar date");
+    if (reading.samples.size() < 3)
+        throw RuntimeError("Slope star: report at least three azimuths around the head");
+    std::set<double> azimuths;
+    for (const SlopeStarSample &sample : reading.samples) {
+        if (!std::isfinite(sample.azimuth) || sample.azimuth < 0. || sample.azimuth >= 2. * PI ||
+            !azimuths.insert(sample.azimuth).second)
+            throw RuntimeError("Slope star: azimuths must be unique and in [0, 360) degrees");
+        if (!std::isfinite(sample.max_clean_slope) || sample.max_clean_slope < 0. || sample.max_clean_slope >= 0.5 * PI)
+            throw RuntimeError("Slope star: clean slopes must be in [0, 90) degrees");
+    }
+}
+
+double box_projection(const HeadBox &box, double grow, const Vec2d &u)
+{
+    const auto [lo, hi] = footprint(box, grow);
+    return (u.x() >= 0. ? hi.x() : lo.x()) * u.x() + (u.y() >= 0. ? hi.y() : lo.y()) * u.y();
+}
+
+}
+
+HeadEnvelope HeadEnvelope::from_slope_star(const HeadEnvelope &base, const SlopeStarReading &reading, float layer_height)
+{
+    validate_reading(reading);
+    if (!std::isfinite(layer_height) || layer_height <= 0. || base.empty())
+        throw RuntimeError("Slope star: select a nonempty base head and a positive layer height");
+    HeadEnvelope out = base;
+    for (HeadBox &box : out.boxes) {
+        if (box.infinite_x || box.infinite_y)
+            continue;
+        double floor = box.min.z();
+        for (const SlopeStarSample &sample : reading.samples) {
+            const Vec2d u(std::cos(sample.azimuth), std::sin(sample.azimuth));
+            const double projection = box_projection(box, out.lateral_margin, u);
+            if (projection > 0.)
+                floor = std::max(floor, std::tan(sample.max_clean_slope) * projection - layer_height + (box.nozzle ? 0. : out.margin));
+        }
+        box.min.z() = floor;
+        box.max.z() = std::max(box.max.z(), floor);
+    }
+    for (const SlopeStarSample &sample : reading.samples) {
+        if (out.max_slope(sample.azimuth, layer_height) <= sample.max_clean_slope)
+            continue;
+        const Vec2d u(std::cos(sample.azimuth), std::sin(sample.azimuth));
+        HeadBox *binding = nullptr;
+        double best = Inf, projection = 0.;
+        for (HeadBox &box : out.boxes) {
+            if (box.infinite_x || box.infinite_y)
+                continue;
+            const double p = box_projection(box, out.lateral_margin, u);
+            if (p <= 0.)
+                continue;
+            const double limit = (layer_height + box.min.z() - (box.nozzle ? 0. : out.margin)) / p;
+            if (limit < best) {
+                best = limit;
+                binding = &box;
+                projection = p;
+            }
+        }
+        if (binding == nullptr)
+            throw RuntimeError("Slope star: base head has no finite component toward a reported azimuth");
+        binding->min.z() = std::tan(sample.max_clean_slope) * projection - layer_height +
+                           (binding->nozzle ? 0. : out.margin) - 1e-10;
+    }
+    out.calibrated = true;
+    out.provenance = "slope star " + reading.date + ", base " + base.id;
+    return out;
+}
+
+SlopeStarReading load_slope_star_reading(const std::string &json_text)
+{
+    try {
+        const auto j = nlohmann::json::parse(json_text);
+        if (!j.is_object() || j.value("schema", std::string()) != "orca.slope_star_reading.v1")
+            throw RuntimeError("Slope star JSON: expected schema orca.slope_star_reading.v1");
+        SlopeStarReading reading;
+        reading.date = j.at("date").get<std::string>();
+        const auto &arms = j.at("arms");
+        if (!arms.is_array())
+            throw RuntimeError("Slope star JSON: arms must be an array");
+        for (const auto &arm : arms) {
+            const double azimuth = arm.at("azimuth_deg").get<double>();
+            double limit = 0.;
+            if (arm.contains("max_clean_slope_deg") == arm.contains("steps"))
+                throw RuntimeError("Slope star JSON: each arm needs either max_clean_slope_deg or steps");
+            if (arm.contains("max_clean_slope_deg"))
+                limit = arm.at("max_clean_slope_deg").get<double>();
+            else {
+                const auto &steps = arm.at("steps");
+                if (!steps.is_array() || steps.empty())
+                    throw RuntimeError("Slope star JSON: steps must be a nonempty array");
+                double previous = -1.;
+                bool failed = false;
+                for (const auto &step : steps) {
+                    const double slope = step.at("slope_deg").get<double>();
+                    const auto &passed = step.at("passed");
+                    if (!std::isfinite(slope) || slope < 0. || slope >= 90. || slope <= previous || !passed.is_boolean())
+                        throw RuntimeError("Slope star JSON: steps need ascending slopes in [0, 90) and boolean passed");
+                    previous = slope;
+                    if (!passed.get<bool>())
+                        failed = true;
+                    else if (failed)
+                        throw RuntimeError("Slope star JSON: a clean step after a failed step needs reinspection");
+                    else
+                        limit = slope;
+                }
+            }
+            reading.samples.push_back({azimuth * PI / 180., limit * PI / 180.});
+        }
+        validate_reading(reading);
+        return reading;
+    } catch (const nlohmann::json::exception &err) {
+        throw RuntimeError(std::string("Slope star JSON: ") + err.what());
+    }
+}
+
+std::string save_slope_star_reading(const SlopeStarReading &reading)
+{
+    validate_reading(reading);
+    nlohmann::ordered_json j;
+    j["schema"] = "orca.slope_star_reading.v1";
+    j["date"] = reading.date;
+    j["arms"] = nlohmann::ordered_json::array();
+    for (const SlopeStarSample &sample : reading.samples)
+        j["arms"].push_back({{"azimuth_deg", sample.azimuth * 180. / PI}, {"max_clean_slope_deg", sample.max_clean_slope * 180. / PI}});
+    return j.dump(2);
+}
+
 double HeadEnvelope::gantry_clearance() const
 {
     double z = Inf;

@@ -26,6 +26,13 @@ struct TipAllowance
     double height = 0.;
 };
 
+struct SlopeStarSample { double azimuth, max_clean_slope; };
+struct SlopeStarReading
+{
+    std::string date;
+    std::vector<SlopeStarSample> samples;
+};
+
 struct HeadEnvelope
 {
     std::string          id;
@@ -45,6 +52,8 @@ struct HeadEnvelope
     double max_slope(double phi, double gap) const;
 
     std::vector<double> slope_map(int n, double gap) const;
+
+    static HeadEnvelope from_slope_star(const HeadEnvelope &base, const SlopeStarReading &reading, float layer_height);
 
     double gantry_clearance() const;
 
@@ -66,6 +75,9 @@ std::vector<HeadBox> boxes_from_n_side_profile(const std::vector<NSideProfileRow
 
 HeadEnvelope load_head_envelope(const std::string &json_text);
 std::string  save_head_envelope(const HeadEnvelope &envelope);
+
+SlopeStarReading load_slope_star_reading(const std::string &json_text);
+std::string save_slope_star_reading(const SlopeStarReading &reading);
 
 class HeadLibrary
 {

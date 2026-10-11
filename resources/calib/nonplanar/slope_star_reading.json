@@ -1,0 +1,38 @@
+{
+  "schema": "orca.slope_star_reading.v1",
+  "date": "2026-10-10",
+  "arms": [
+    {
+      "azimuth_deg": 0,
+      "max_clean_slope_deg": 0
+    },
+    {
+      "azimuth_deg": 45,
+      "max_clean_slope_deg": 0
+    },
+    {
+      "azimuth_deg": 90,
+      "max_clean_slope_deg": 0
+    },
+    {
+      "azimuth_deg": 135,
+      "max_clean_slope_deg": 0
+    },
+    {
+      "azimuth_deg": 180,
+      "max_clean_slope_deg": 0
+    },
+    {
+      "azimuth_deg": 225,
+      "max_clean_slope_deg": 0
+    },
+    {
+      "azimuth_deg": 270,
+      "max_clean_slope_deg": 0
+    },
+    {
+      "azimuth_deg": 315,
+      "max_clean_slope_deg": 0
+    }
+  ]
+}
