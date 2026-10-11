@@ -55,6 +55,8 @@ bool contour_line_angle(const HeightField &surface, double &angle, double min_co
 
 Polylines fill_solid(const ExPolygons &area, InfillPattern pattern, double spacing, double angle, bool monotonic,
                      const Flow &flow, double z);
+Polylines fill_sparse(const ExPolygons &area, InfillPattern pattern, double spacing, double density, double angle, bool monotonic,
+                      const Flow &flow, double z);
 
 using LiftFn = std::function<bool(const Vec2d &p, double &z, float &bead_height)>;
 
@@ -64,12 +66,25 @@ void lift_polylines(const Polylines &polylines, const ExtrusionPath &proto, cons
 double head_band_height(const HeadEnvelope &head);
 
 void cut_into_bands(const ExtrusionEntitiesPtr &paths, double pitch, double tolerance,
-                    const std::function<void(int band, ExtrusionPathConformal *piece)> &sink);
+                    const std::function<void(int band, ExtrusionPathConformal *piece)> &sink,
+                    const std::function<int(const Point3 &)> &cut_rank = {});
 
 void band_schedule(const HeadEnvelope &head, double shell_height, double max_patch_height, double &pitch, double &tolerance);
 
+struct BandSeams
+{
+    const std::vector<ExPolygons>                            &areas;
+    const std::vector<Point>                                 &seams;
+    const std::vector<Polyline>                              &seam_lines;
+    double                                                    spacing;
+    double                                                    max_glide;
+    std::function<bool(const HeightField &, const Vec2d &)>   wall;
+    int                                                       hidden = 0;
+    const std::vector<HeightField>                           *layers = nullptr;
+};
+
 struct ConformalResult;
 std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const HeightField &S, const std::vector<double> &layer_z,
-                                             double pitch, double tolerance);
+                                             double pitch, double tolerance, const BandSeams *seams = nullptr);
 
 }

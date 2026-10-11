@@ -3,11 +3,13 @@
 #include "BeadModel.hpp"
 #include "ConformalShells.hpp"
 #include "HeightField.hpp"
+#include "Seams.hpp"
 
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/Flow.hpp"
 #include "libslic3r/Geometry.hpp"
+#include "libslic3r/Line.hpp"
 #include "libslic3r/Polygon.hpp"
 #include "libslic3r/ShortestPath.hpp"
 #include "libslic3r/libslic3r.h"
@@ -122,6 +124,22 @@ Polyline glide_route(const Point &a, const Point &b, const ExPolygons &inside, c
             }
         }
     }
+    return best;
+}
+
+Point crossing_near(const Polygon &loop, const Polyline &line, const Point &near)
+{
+    Point  best = near;
+    double dist = std::numeric_limits<double>::max();
+    for (const Line &edge : loop.lines())
+        for (const Line &seg : line.lines()) {
+            Point p;
+            if (edge.intersection(seg, &p))
+                if (const double d = (p - near).cast<double>().squaredNorm(); d < dist) {
+                    dist = d;
+                    best = p;
+                }
+        }
     return best;
 }
 
@@ -351,36 +369,7 @@ std::vector<ShellFill> plan_shell_fills(const ConformalPatch &patch, const Print
     return fills;
 }
 
-Point shell_seam(const ExPolygons &area, const HeightField &surface, SeamPosition seam, unsigned salt)
-{
-    Points outline;
-    for (const ExPolygon &expoly : area)
-        append(outline, expoly.contour.points);
-    if (outline.empty())
-        return Point(0, 0);
-    if (seam == spRandom) {
-        const unsigned h = (salt + 1u) * 2654435761u;
-        return outline[size_t(h % outline.size())];
-    }
-    const bool rear   = seam == spRear || seam == spAlignedBack;
-    size_t     best   = 0;
-    double     best_z = std::numeric_limits<double>::max(), best_y = -std::numeric_limits<double>::max();
-    for (size_t i = 0; i < outline.size(); ++i) {
-        const float  s = surface.sample(unscale(outline[i]));
-        const double z = std::isnan(s) ? std::numeric_limits<double>::max() : double(s);
-        const double y = unscale<double>(outline[i].y());
-        const bool   take = rear ? y > best_y + 0.01 || (y >= best_y - 0.01 && z < best_z) :
-                                   z < best_z - 0.02 || (z <= best_z + 0.02 && y > best_y);
-        if (take) {
-            best   = i;
-            best_z = z;
-            best_y = y;
-        }
-    }
-    return outline[best];
-}
-
-Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam)
+Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam, const Polyline *seam_line)
 {
     const coord_t step = coord_t(scale_(spacing));
     if (step <= 0)
@@ -397,7 +386,7 @@ Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam)
     for (const Polygon &loop : loops) {
         if (loop.points.size() < 3)
             continue;
-        Polyline pl = open_loop_at(loop, pos);
+        Polyline pl = open_loop_at(loop, out.empty() || seam_line == nullptr ? pos : crossing_near(loop, *seam_line, pos));
         pl.clip_end(double(step));
         if (!pl.is_valid())
             continue;
@@ -409,11 +398,11 @@ Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam)
 
 std::vector<Polylines> shell_polylines(const ExPolygons &area, const ShellFill &fill, InfillPattern line_pattern, double spacing,
                                        bool monotonic, const Flow &flow, double z, const Point &start, double max_glide,
-                                       const HeightField *surface_spaced)
+                                       const HeightField *surface_spaced, const Polyline *seam_line)
 {
     Polylines paths;
     if (fill.spiral) {
-        paths = fill_spiral(area, spacing, start);
+        paths = fill_spiral(area, spacing, start, seam_line);
         if (fill.outward)
             reverse_order(paths);
     } else {
@@ -440,11 +429,75 @@ std::vector<Polylines> shell_polylines(const ExPolygons &area, const ShellFill &
         });
         paths.insert(paths.begin(), std::make_move_iterator(outline.begin()), std::make_move_iterator(outline.end()));
     }
+    return link_paths(std::move(paths), area, spacing, max_glide);
+}
 
+Polylines chain_nearest(Polylines &&polylines, const Point &start)
+{
+    Polylines out;
+    out.reserve(polylines.size());
+    polylines.erase(std::remove_if(polylines.begin(), polylines.end(), [](const Polyline &pl) { return !pl.is_valid(); }), polylines.end());
+    const size_t n = polylines.size();
+    if (n == 0)
+        return out;
+    BoundingBox bb;
+    for (const Polyline &pl : polylines) {
+        bb.merge(pl.first_point());
+        bb.merge(pl.last_point());
+    }
+    const Vec2d   size  = (bb.max - bb.min).cast<double>();
+    const coord_t cell  = std::max<coord_t>(coord_t(scale_(0.5)), coord_t(std::sqrt(std::max(1., size.x() * size.y() / double(2 * n)))));
+    const int     gx    = int(size.x() / cell) + 1, gy = int(size.y() / cell) + 1;
+    std::vector<std::vector<size_t>> grid(size_t(gx) * gy);
+    auto end_point = [&polylines](size_t e) -> const Point & { return e % 2 == 0 ? polylines[e / 2].first_point() : polylines[e / 2].last_point(); };
+    auto cell_of   = [&](const Point &p, int &ix, int &iy) {
+        ix = std::clamp(int((p.x() - bb.min.x()) / cell), 0, gx - 1);
+        iy = std::clamp(int((p.y() - bb.min.y()) / cell), 0, gy - 1);
+    };
+    for (size_t e = 0; e < 2 * n; ++e) {
+        int ix, iy;
+        cell_of(end_point(e), ix, iy);
+        grid[size_t(iy) * gx + ix].emplace_back(e);
+    }
+    std::vector<bool> used(n, false);
+    Point             cursor = start;
+    for (size_t left = n; left > 0; --left) {
+        int cx, cy;
+        cell_of(cursor, cx, cy);
+        size_t best = size_t(-1);
+        double best_d = std::numeric_limits<double>::max();
+        for (int r = 0; r <= std::max(gx, gy); ++r) {
+            if (best != size_t(-1) && double(r - 1) * double(cell) > std::sqrt(best_d))
+                break;
+            for (int iy = cy - r; iy <= cy + r; ++iy)
+                for (int ix = cx - r; ix <= cx + r; ++ix) {
+                    if (ix < 0 || iy < 0 || ix >= gx || iy >= gy || (std::abs(ix - cx) != r && std::abs(iy - cy) != r))
+                        continue;
+                    std::vector<size_t> &bucket = grid[size_t(iy) * gx + ix];
+                    bucket.erase(std::remove_if(bucket.begin(), bucket.end(), [&used](size_t e) { return used[e / 2]; }), bucket.end());
+                    for (const size_t e : bucket)
+                        if (const double d = (end_point(e) - cursor).cast<double>().squaredNorm(); d < best_d) {
+                            best_d = d;
+                            best   = e;
+                        }
+                }
+        }
+        used[best / 2] = true;
+        out.emplace_back(std::move(polylines[best / 2]));
+        if (best % 2 == 1)
+            out.back().reverse();
+        cursor = out.back().last_point();
+    }
+    return out;
+}
+
+std::vector<Polylines> link_paths(Polylines &&paths, const ExPolygons &area, double spacing, double max_glide)
+{
     const ExPolygons inside       = offset_ex(area, float(scale_(0.25 * spacing)));
     const double     extrude_link = scale_(2. * spacing);
     const double     glide_link   = scale_(max_glide);
-    const Polygons   rails        = to_polygons(offset_ex(area, -float(scale_(0.25 * spacing))));
+    const Polygons   rails        = to_polygons(offset_ex(area, -float(scale_(spacing))));
+    RoadGrid               roads;
     std::vector<Polylines> out;
     for (Polyline &pl : paths) {
         if (!pl.is_valid())
@@ -453,16 +506,20 @@ std::vector<Polylines> shell_polylines(const ExPolygons &area, const ShellFill &
             Polyline     &last = out.back().back();
             const Point   a    = last.last_point(), b = pl.first_point();
             const double  d    = (b - a).cast<double>().norm();
-            if (d <= extrude_link && link_inside(a, b, inside)) {
+            if (d <= extrude_link && link_inside(a, b, inside) && !roads.crosses(a, b)) {
+                roads.add(a, b);
+                roads.add(pl);
                 last.points.insert(last.points.end(), pl.points.begin() + (a == b ? 1 : 0), pl.points.end());
                 continue;
             }
-            if (Polyline route = glide_route(a, b, inside, rails, 3. * scale_(spacing), glide_link); route.is_valid()) {
+            if (Polyline route = glide_route(a, b, inside, rails, 3. * scale_(spacing), glide_link); route.is_valid() && !roads.crosses(route)) {
+                roads.add(pl);
                 out.back().emplace_back(std::move(route));
                 out.back().emplace_back(std::move(pl));
                 continue;
             }
         }
+        roads.add(pl);
         out.emplace_back(Polylines{ std::move(pl) });
     }
     return out;

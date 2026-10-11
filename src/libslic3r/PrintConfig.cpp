@@ -5093,6 +5093,19 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionBool(true));
 
+    def = this->add("nonplanar_infill_depth", coFloat);
+    def->label    = L("Non-planar infill depth");
+    def->category = L("Quality");
+    def->tooltip  = L("Depth of sparse infill under the curved top shells that follows the surface too. The top solid "
+                      "layers and this much sparse infill are printed as layers parallel to the surface, so the curved "
+                      "shells rest on a curved base instead of the steps of the flat layers. The step to the flat "
+                      "layers moves into the sparse infill, where it does not show. 0 keeps only the curved top shells.");
+    def->sidetext = L("mm");
+    def->min      = 0;
+    def->max      = 20;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(2.));
+
     def = this->add("nonplanar_ironing", coBool);
     def->label    = L("Non-planar ironing");
     def->category = L("Quality");

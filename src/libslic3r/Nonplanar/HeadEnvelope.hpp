@@ -88,6 +88,7 @@ public:
     const HeadEnvelope      *find(const std::string &id) const;
     std::vector<std::string> ids() const;
     void                     reload();
+    void                     save_user_head(const HeadEnvelope &head);
     static const HeadEnvelope &generic_conservative();
 
 private:

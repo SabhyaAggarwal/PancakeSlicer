@@ -2,6 +2,7 @@
 
 #include "HeadEnvelope.hpp"
 #include "PatchTools.hpp"
+#include "Seams.hpp"
 #include "ShellPaths.hpp"
 #include "SurfaceClip.hpp"
 
@@ -15,6 +16,7 @@
 #include "libslic3r/PrintBase.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/SLA/IndexedMesh.hpp"
+#include "libslic3r/ShortestPath.hpp"
 #include "libslic3r/Surface.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 #include "libslic3r/libslic3r.h"
@@ -45,6 +47,12 @@ struct ShellSettings
 {
     int                  region_id = -1;
     int                  shells = 0;
+    int                  top_shells = 0;
+    int                  sparse = 0;
+    double               sparse_density = 0.;
+    InfillPattern        sparse_pattern = ipRectilinear;
+    double               sparse_angle = 0.;
+    double               bottom_keep = 0.;
     double               shell_height = 0.;
     double               max_slope = 0.;
     double               max_error = 0.;
@@ -71,6 +79,18 @@ ShellSettings shell_settings(const PrintObject &object)
         s.pitch            = std::max(0.05, object.config().nonplanar_surface_resolution.value);
         s.max_patch_height = object.config().nonplanar_max_patch_height.value;
         s.banded           = cfg.nonplanar_fallback.value == NonplanarFallback::None;
+        s.top_shells       = s.shells;
+        if (s.banded && cfg.nonplanar_infill_depth.value > 0.) {
+            const int top_solid = std::max(cfg.top_shell_layers.value, int(std::ceil(cfg.top_shell_thickness.value / s.shell_height - EPSILON)));
+            s.shells            = std::max(s.shells, top_solid);
+            s.sparse_density    = std::min(1., 0.01 * cfg.sparse_infill_density.value);
+            if (s.sparse_density > 0.)
+                s.sparse = int(std::lround(cfg.nonplanar_infill_depth.value / s.shell_height));
+            s.shells        += s.sparse;
+            s.sparse_pattern = cfg.sparse_infill_pattern.value == ipGyroid ? ipGyroid : ipRectilinear;
+            s.sparse_angle   = Geometry::deg2rad(cfg.infill_direction.value);
+            s.bottom_keep    = std::max(cfg.bottom_shell_layers.value * object.config().layer_height.value, cfg.bottom_shell_thickness.value);
+        }
         break;
     }
     return s;
@@ -203,27 +223,44 @@ constexpr double BandedTopWidth = 0.75;
 struct BandedFill
 {
     bool strips = false;
+    const HeightField *layers = nullptr;
+    int                sparse = 0;
+    double             density = 1.;
+    InfillPattern      pattern = ipRectilinear;
+    double             angle = 0.;
 };
+
+float nearest(const HeightField &field, const Vec2d &p)
+{
+    const Vec2d o  = (p - field.origin()) / field.pitch();
+    const int   ix = int(std::lround(o.x())), iy = int(std::lround(o.y()));
+    return ix < 0 || iy < 0 || ix >= field.nx() || iy >= field.ny() ? HeightField::NoData : field.at(ix, iy);
+}
 
 ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalPatch &patch, const HeightField &top_of_planar,
                                      const ExPolygons &area, int k, const ShellFill &fill, const Point &start, const Point3 *from,
-                                     double host_z, double resample, const BandedFill *banded = nullptr)
+                                     double host_z, double resample, const Polyline &seam_line, const BandedFill *banded = nullptr)
 {
     const PrintRegion        &region  = object.printing_region(size_t(patch.region_id));
     const bool                outer   = k == patch.shells;
-    Flow                      flow    = region.flow(object, outer ? frTopSolidInfill : frSolidInfill, patch.shell_height);
+    const bool                sparse  = banded != nullptr && k <= banded->sparse;
+    Flow                      flow    = region.flow(object, outer ? frTopSolidInfill : sparse ? frInfill : frSolidInfill, patch.shell_height);
     if (banded != nullptr && outer)
         flow = flow.with_width(std::min(flow.width(), float(BandedTopWidth * flow.nozzle_diameter())));
-    const ExtrusionRole       role    = outer ? erTopSolidInfill : erSolidInfill;
+    const ExtrusionRole       role    = outer ? erTopSolidInfill : sparse ? erInternalInfill : erSolidInfill;
     const double drop = (patch.shells - k) * patch.shell_height;
-    const bool   surface_spaced = region.config().nonplanar_surface_spacing.value && !fill.spiral && !(banded != nullptr && banded->strips);
+    const bool   surface_spaced = region.config().nonplanar_surface_spacing.value && !fill.spiral && !(banded != nullptr && banded->strips) && !sparse;
     std::vector<Polylines> linked;
-    if (banded != nullptr && banded->strips)
-        for (Polyline &pl : contour_fill(patch.surface, area, drop, flow, outer, host_z))
+    if (sparse) {
+        for (Polyline &pl : fill_sparse(area, banded->pattern, flow.spacing(), banded->density, banded->angle + (k % 2) * 0.5 * PI, false,
+                                        flow, k * patch.shell_height))
             linked.push_back({ std::move(pl) });
+    } else if (banded != nullptr && banded->strips)
+        linked = link_paths(chain_nearest(contour_fill(patch.surface, area, drop, flow, outer, host_z), start), area, flow.spacing(),
+                            MaxGlide);
     else
         linked = shell_polylines(area, fill, outer ? ipMonotonic : ipRectilinear, flow.spacing(), outer, flow, host_z, start, MaxGlide,
-                                 surface_spaced ? &patch.surface : nullptr);
+                                 surface_spaced ? &patch.surface : nullptr, &seam_line);
 
     const ExtrusionPath proto(role, flow.mm3_per_mm(), float(flow.width()), float(patch.shell_height));
     auto at = [&](const Vec2d &p, double &z, float &bead) {
@@ -232,7 +269,18 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
             return false;
         z    = s - drop;
         bead = float(patch.shell_height);
-        if (k == 1) {
+        if (banded != nullptr && banded->layers != nullptr) {
+            const float layers = nearest(*banded->layers, p);
+            const int   above  = patch.shells - k;
+            if (std::isnan(layers) || above >= int(layers))
+                return false;
+            if (above == int(layers) - 1) {
+                const float floor_z = nearest(top_of_planar, p);
+                if (std::isnan(floor_z))
+                    return false;
+                bead = float(z - floor_z);
+            }
+        } else if (k == 1) {
             const float floor_z = top_of_planar.sample(p);
             if (std::isnan(floor_z))
                 return false;
@@ -279,6 +327,25 @@ HeightField sample_top_surface(const sla::IndexedMesh &mesh, double ray_z, doubl
     return S;
 }
 
+HeightField sample_underside(const sla::IndexedMesh &mesh, double z_offset, const HeightField &S, const std::function<void()> &throw_if_canceled)
+{
+    HeightField U = S;
+    tbb::parallel_for(tbb::blocked_range<int>(0, U.ny()), [&](const tbb::blocked_range<int> &range) {
+        for (int iy = range.begin(); iy < range.end(); ++iy) {
+            throw_if_canceled();
+            for (int ix = 0; ix < U.nx(); ++ix) {
+                const float s = S.at(ix, iy);
+                if (std::isnan(s))
+                    continue;
+                const Vec2d p   = U.node(ix, iy);
+                const auto  hit = mesh.query_ray_hit(Vec3d(p.x(), p.y(), s - z_offset + mesh.ground_level() - 0.01), Vec3d(0., 0., -1.));
+                U.at(ix, iy)    = float(hit.is_hit() ? hit.position().z() - mesh.ground_level() + z_offset : z_offset);
+            }
+        }
+    });
+    return U;
+}
+
 ConformalResult build_conformal_shells(PrintObject &object)
 {
     ConformalResult result;
@@ -309,13 +376,15 @@ ConformalResult build_conformal_shells(PrintObject &object)
     const size_t      n_nodes = grid.data().size();
 
     auto cancel = [&object]() { throw_if_canceled(object); };
-    HeightField S;
+    HeightField S, U;
     {
         double             ground_offset = 0.;
         const TriangleMesh mesh          = object.object_frame_mesh(ground_offset);
         sla::IndexedMesh   imesh(mesh);
         imesh.ground_level_offset(ground_offset);
         S = sample_top_surface(imesh, mesh.bounding_box().max.z() + 1., object.slicing_parameters().object_print_z_min, grid, cancel);
+        if (settings.shells > settings.top_shells)
+            U = sample_underside(imesh, object.slicing_parameters().object_print_z_min, S, cancel);
     }
     const Mask        cand_mask = rasterize(candidate, grid);
     throw_if_canceled(object);
@@ -346,7 +415,7 @@ ConformalResult build_conformal_shells(PrintObject &object)
         mask[i] = cand_mask[i] && !std::isnan(S0.data()[i]);
     if (settings.banded)
         for (size_t i = 0; i < n_nodes; ++i)
-            if (mask[i] && S0.data()[i] - settings.shells * h_c - h_min < first_top)
+            if (mask[i] && S0.data()[i] - settings.top_shells * h_c - h_min < first_top)
                 mask[i] = 0;
     std::vector<int> limiting_components(n_nodes, -1);
     if (!settings.banded)
@@ -488,7 +557,9 @@ ConformalResult build_conformal_shells(PrintObject &object)
         layer_z[i] = layers[i]->print_z;
 
     std::vector<HeightField> planar_tops;
+    std::vector<HeightField> stack_layers;
     std::vector<ExPolygons>  shell_areas;
+    const int                solid_layers = settings.shells - settings.sparse;
     for (ExPolygon &component : components) {
         const Mask pmask = rasterize({ component }, grid);
         int        ix0 = grid.nx(), iy0 = grid.ny(), ix1 = -1, iy1 = -1;
@@ -547,17 +618,28 @@ ConformalResult build_conformal_shells(PrintObject &object)
         diag.rms_surface_error = err_n > 0 ? std::sqrt(err_sq / err_n) : 0.;
         pad_lowest(patch.surface, pad);
         pad_lowest(patch.base, pad);
-        bool printable = true;
+        bool        printable = true;
+        HeightField count     = top;
         for (size_t i = 0; i < top.data().size(); ++i) {
-            const double shell_z = patch.surface.data()[i] - (settings.shells - 1) * h_c;
-            if (std::isnan(shell_z))
+            const float s = patch.surface.data()[i];
+            if (std::isnan(s))
                 continue;
-            const int layer = planar_transition_layer(layer_z, shell_z, h_c, h_min, h_max, PatchKind::Top);
+            int layer = -1, m = settings.shells;
+            for (; m >= settings.top_shells; --m) {
+                if (m > settings.top_shells) {
+                    const float u = U.at(ix0 + int(i % size_t(top.nx())), iy0 + int(i / size_t(top.nx())));
+                    if (std::isnan(u) || s - m * h_c - h_min < u + (m > solid_layers ? settings.bottom_keep : h_c))
+                        continue;
+                }
+                if ((layer = planar_transition_layer(layer_z, s - (m - 1) * h_c, h_c, h_min, h_max, PatchKind::Top)) >= 0)
+                    break;
+            }
             if (layer < 0) {
                 printable = false;
                 break;
             }
-            top.data()[i] = float(layer_z[size_t(layer)]);
+            count.data()[i] = float(m);
+            top.data()[i]   = float(layer_z[size_t(layer)]);
             patch.z_min = std::min(patch.z_min, layer_z[size_t(layer)]);
         }
         if (!printable)
@@ -568,6 +650,7 @@ ConformalResult build_conformal_shells(PrintObject &object)
             patch.host_layer = layers.size() - 1;
 
         planar_tops.emplace_back(std::move(top));
+        stack_layers.emplace_back(std::move(count));
         shell_areas.emplace_back(diff_ex(patch.footprint, patch.wall_band));
         result.diagnostics.emplace_back(std::move(diag));
         result.patches.emplace_back(std::move(patch));
@@ -599,6 +682,10 @@ ConformalResult build_conformal_shells(PrintObject &object)
         return result;
     }
 
+    const SeamPaint       paint = seam_paint(object);
+    std::vector<Point>    seams(result.patches.size());
+    std::vector<Polyline> seam_lines(result.patches.size());
+    std::vector<ExPolygons> fill_areas(result.patches.size());
     tbb::parallel_for(tbb::blocked_range<size_t>(0, result.patches.size()), [&](const tbb::blocked_range<size_t> &range) {
         for (size_t idx = range.begin(); idx < range.end(); ++idx) {
             ConformalPatch &patch = result.patches[idx];
@@ -623,9 +710,19 @@ ConformalResult build_conformal_shells(PrintObject &object)
                 else
                     banded.strips = true;
             }
+            if (settings.shells > settings.top_shells) {
+                banded.layers  = &stack_layers[idx];
+                banded.sparse  = settings.sparse;
+                banded.density = settings.sparse_density;
+                banded.pattern = settings.sparse_pattern;
+                banded.angle   = settings.sparse_angle;
+            }
             const SeamPosition          seam_position = object.config().seam_position.value;
             patch.shell_paths.reserve(patch.shells);
-            const Point                 seam          = shell_seam(area, patch.surface, seam_position, unsigned(patch.id));
+            const Point                 seam          = shell_seam(area, patch.surface, seam_position, unsigned(patch.id), &paint);
+            seams[idx]                                = seam;
+            seam_lines[idx]                           = seam_line(patch.surface, seam, area);
+            fill_areas[idx]                           = area;
             std::optional<Point3>       from;
             for (int k = 1; k <= patch.shells; ++k) {
                 throw_if_canceled(object);
@@ -634,7 +731,7 @@ ConformalResult build_conformal_shells(PrintObject &object)
                     fill = banded_fills[size_t(k - 1)];
                 const Point start = fill.spiral || !from ? seam : from->to_point();
                 patch.shell_paths.emplace_back(make_shell(object, patch, planar_tops[idx], area, k, fill, start, from ? &*from : nullptr, host_z,
-                                                          pitch, settings.banded ? &banded : nullptr));
+                                                          pitch, seam_lines[idx], settings.banded ? &banded : nullptr));
                 const ExtrusionEntitiesPtr &entities = patch.shell_paths.back().entities;
                 from.reset();
                 if (!entities.empty() && !settings.banded)
@@ -647,7 +744,9 @@ ConformalResult build_conformal_shells(PrintObject &object)
     if (settings.banded) {
         double pitch = 0., tolerance = 0.;
         band_schedule(head, h_c, settings.max_patch_height, pitch, tolerance);
-        component_patches = split_into_bands(result, S, layer_z, pitch, tolerance);
+        const BandSeams band_seams{ fill_areas, seams, seam_lines, line_width, MaxGlide, spans_wall,
+                                    settings.shells - settings.top_shells, &stack_layers };
+        component_patches = split_into_bands(result, S, layer_z, pitch, tolerance, &band_seams);
     }
     std::vector<ConformalPatch> &units = settings.banded ? component_patches : result.patches;
 

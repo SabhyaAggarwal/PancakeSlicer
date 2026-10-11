@@ -1589,6 +1589,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "nonplanar_top_pattern"
             || opt_key == "nonplanar_top_direction"
             || opt_key == "nonplanar_surface_spacing"
+            || opt_key == "nonplanar_infill_depth"
             || opt_key == "nonplanar_ironing"
             || opt_key == "nonplanar_overhangs"
             || opt_key == "nonplanar_fallback"

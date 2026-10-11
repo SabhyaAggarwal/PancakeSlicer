@@ -3,6 +3,7 @@
 #include "ConformalBottom.hpp"
 #include "ConformalShells.hpp"
 #include "PatchTools.hpp"
+#include "Seams.hpp"
 #include "ShellPaths.hpp"
 
 #include "libslic3r/ClipperUtils.hpp"

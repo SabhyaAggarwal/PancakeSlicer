@@ -137,6 +137,8 @@ set(lisbslic3r_sources
     Nonplanar/ConformalVolume.hpp
     Nonplanar/PatchTools.cpp
     Nonplanar/PatchTools.hpp
+    Nonplanar/Seams.cpp
+    Nonplanar/Seams.hpp
     Nonplanar/ShellPaths.cpp
     Nonplanar/ShellPaths.hpp
     Nonplanar/HeadEnvelope.cpp

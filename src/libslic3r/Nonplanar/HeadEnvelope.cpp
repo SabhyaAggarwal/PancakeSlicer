@@ -666,6 +666,38 @@ void HeadLibrary::reload()
     this->load_locked();
 }
 
+void HeadLibrary::save_user_head(const HeadEnvelope &head)
+{
+    if (head.id.empty() || head.id == "." || head.id == ".." ||
+        head.id.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_") != std::string::npos)
+        throw RuntimeError("Head id must contain only letters, digits, hyphens and underscores.");
+    const std::string json = save_head_envelope(head);
+    load_head_envelope(json);
+    if (data_dir().empty())
+        throw RuntimeError("The user data directory is not available.");
+    namespace fs = boost::filesystem;
+    const fs::path dir = fs::path(data_dir()) / "nonplanar" / "heads";
+    fs::create_directories(dir);
+    const fs::path path = dir / (head.id + ".json");
+    if (find(head.id) != nullptr || fs::exists(path))
+        throw RuntimeError("A head with this id already exists. Choose a new user head id.");
+    const fs::path temporary = dir / fs::unique_path("head-%%%%-%%%%.tmp");
+    try {
+        boost::nowide::ofstream stream(temporary.string());
+        stream << json << '\n';
+        stream.close();
+        if (!stream)
+            throw RuntimeError("Could not write the user head file.");
+        fs::rename(temporary, path);
+    } catch (...) {
+        boost::system::error_code ignored;
+        fs::remove(temporary, ignored);
+        throw;
+    }
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_heads.emplace(head.id, head);
+}
+
 const HeadEnvelope &HeadLibrary::generic_conservative()
 {
     static const HeadEnvelope head = [] {

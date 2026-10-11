@@ -519,9 +519,11 @@ protected:
     std::string     extrude_conformal_patches(const Print &print, const std::vector<LayerToPrint> &layers, unsigned int extruder_id,
                                               size_t single_object_instance_idx, bool before = false);
     std::string     extrude_conformal_path(const ExtrusionPathConformal &path, const std::string &description,
-                                           const std::function<Vec2d(const Vec2d &)> &surface_gradient = {});
+                                           const std::function<Vec2d(const Vec2d &)> &surface_gradient = {},
+                                           const ExtrusionPathConformal *next = nullptr);
     void            emit_conformal_moves(std::string &gcode, const ExtrusionPathConformal &path, double e_per_mm,
                                          double speed, const std::string &speed_marker, const std::string &description);
+    std::string     wipe_conformal_path();
     std::string     rotary_move_safely(const ToolPose *target);
     const Nonplanar::HeadEnvelope &nonplanar_head();
     double          nonplanar_hop();

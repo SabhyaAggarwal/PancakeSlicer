@@ -4,6 +4,7 @@
 #include "HeadEnvelope.hpp"
 #include "HeightField.hpp"
 #include "PatchTools.hpp"
+#include "Seams.hpp"
 #include "ShellPaths.hpp"
 #include "SurfaceClip.hpp"
 
