@@ -48,6 +48,7 @@ struct BottomSettings
     double max_error    = 0.;
     double min_area     = 0.;
     double pitch        = 0.2;
+    bool   banded       = false;
 };
 
 BottomSettings bottom_settings(const PrintObject &object)
@@ -65,6 +66,7 @@ BottomSettings bottom_settings(const PrintObject &object)
         s.max_error    = cfg.nonplanar_max_surface_error.value;
         s.min_area     = cfg.nonplanar_min_patch_area.value;
         s.pitch        = std::max(0.05, object.config().nonplanar_surface_resolution.value);
+        s.banded       = cfg.nonplanar_fallback.value == NonplanarFallback::None;
         break;
     }
     return s;
@@ -218,13 +220,26 @@ void build_conformal_bottom(PrintObject &object, ConformalResult &result)
     Mask mask(n_nodes, 0);
     for (size_t i = 0; i < n_nodes; ++i)
         mask[i] = cand_mask[i] && !std::isnan(S0.data()[i]);
-    std::vector<int> limiting_components;
-    drop_unsafe_nodes(S0, head, h_c, settings.max_error, mask, &limiting_components);
-    HeightField S1 = component_minorant(S0, mask, head, cancel);
-    for (size_t i = 0; i < n_nodes; ++i)
-        if (mask[i] && (std::isnan(S1.data()[i]) || Sb.data()[i] - S1.data()[i] > settings.max_error))
-            mask[i] = 0;
-    S1 = component_minorant(S0, mask, head, cancel);
+    if (settings.banded) {
+        const double wall = std::tan(Geometry::deg2rad(60.));
+        for (int iy = 0; iy < grid.ny(); ++iy)
+            for (int ix = 0; ix < grid.nx(); ++ix)
+                if (const size_t i = size_t(iy) * grid.nx() + ix; mask[i]) {
+                    const Vec2d gr = S0.gradient(grid.node(ix, iy));
+                    if (!std::isnan(gr.x()) && !std::isnan(gr.y()) && gr.norm() > wall)
+                        mask[i] = 0;
+                }
+    }
+    std::vector<int> limiting_components(n_nodes, -1);
+    HeightField      S1 = S0;
+    if (!settings.banded) {
+        drop_unsafe_nodes(S0, head, h_c, settings.max_error, mask, &limiting_components);
+        S1 = component_minorant(S0, mask, head, cancel);
+        for (size_t i = 0; i < n_nodes; ++i)
+            if (mask[i] && (std::isnan(S1.data()[i]) || Sb.data()[i] - S1.data()[i] > settings.max_error))
+                mask[i] = 0;
+        S1 = component_minorant(S0, mask, head, cancel);
+    }
 
     std::vector<double> layer_bottom(layers.size());
     for (size_t i = 0; i < layers.size(); ++i)
@@ -247,16 +262,19 @@ void build_conformal_bottom(PrintObject &object, ConformalResult &result)
                                         ExPolygons();
 
     ExPolygons components = opening_ex(mask_to_expolygons(mask, grid), float(scale_(line_width)));
-    components            = intersection_ex(offset_ex(expolygons_simplify(components, scale_(pitch)), -float(scale_(pitch))),
-                                            candidate);
+    components            = settings.banded ? intersection_ex(components, candidate) :
+                                              intersection_ex(offset_ex(expolygons_simplify(components, scale_(pitch)), -float(scale_(pitch))),
+                                                              candidate);
     double band_relief = std::max(h_c, (settings.shells - 1) * h_c + h_min + gap - settings.max_error);
     if (object.config().nonplanar_max_patch_height.value > 0.)
         band_relief = std::min(band_relief, object.config().nonplanar_max_patch_height.value);
+    if (settings.banded)
+        band_relief = std::max(h_c, std::min(band_relief, head_band_height(head)));
     const size_t first_patch = result.patches.size();
     std::vector<HeightField> floors;
     double                   covered = 0.;
     for (const ExPolygon &component : components) {
-        if (component.area() * SCALING_FACTOR * SCALING_FACTOR < settings.min_area)
+        if (!settings.banded && component.area() * SCALING_FACTOR * SCALING_FACTOR < settings.min_area)
             continue;
         const Mask cmask = rasterize({ component }, grid);
         int        ix0 = grid.nx(), iy0 = grid.ny(), ix1 = -1, iy1 = -1;
@@ -326,6 +344,8 @@ void build_conformal_bottom(PrintObject &object, ConformalResult &result)
             patch.surface      = padded;
             patch.base         = padded_floor;
             patch.host_layer   = host;
+            if (settings.banded)
+                patch.band = band;
             patch.z_min        = Inf;
             patch.z_max        = -Inf;
 
@@ -391,9 +411,11 @@ void build_conformal_bottom(PrintObject &object, ConformalResult &result)
                 throw_if_canceled(object);
                 const bool          outer = k == patch.shells;
                 const ExtrusionRole role  = k == 1 ? erBottomSurface : erSolidInfill;
-                const Polylines polylines = fill_solid(area, k == 1 ? ipMonotonic : ipRectilinear, flow.spacing(),
-                                                       base_angle + (k - 1) * 0.5 * PI, k == 1, flow, host_z);
-                const ExtrusionPath proto(role, flow.mm3_per_mm(), float(flow.width()), float(h_c));
+                const Flow      kflow     = settings.banded && k == 1 ?
+                                                flow.with_width(std::min(flow.width(), float(0.75 * flow.nozzle_diameter()))) : flow;
+                const Polylines polylines = fill_solid(area, k == 1 ? ipMonotonic : ipRectilinear, kflow.spacing(),
+                                                       base_angle + (k - 1) * 0.5 * PI, k == 1, kflow, host_z);
+                const ExtrusionPath proto(role, kflow.mm3_per_mm(), float(kflow.width()), float(h_c));
                 auto at = [&](const Vec2d &p, double &z, float &bead) {
                     const float s = patch.surface.sample(p);
                     if (std::isnan(s))

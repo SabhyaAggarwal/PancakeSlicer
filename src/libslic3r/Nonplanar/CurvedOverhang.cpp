@@ -268,7 +268,8 @@ void build_curved_overhangs(PrintObject &object, ConformalResult &result)
     for (int iy = 0; iy < grid.ny(); ++iy)
         for (int ix = 0; ix < grid.nx(); ++ix) {
             const size_t i = size_t(iy) * grid.nx() + ix;
-            if (!cand_mask[i] || std::isnan(Sb.data()[i]) || !(top.data()[i] - Sb.data()[i] >= 0.5 * g))
+            if (!cand_mask[i] || std::isnan(Sb.data()[i]) || !(top.data()[i] - Sb.data()[i] >= 0.5 * g) ||
+                !(Sb.data()[i] >= layer_top.front() + 0.5 * g))
                 continue;
             const Vec2d gr = node_gradient(Sb, ix, iy);
             if (std::isnan(gr.x()) || std::isnan(gr.y()))
@@ -461,16 +462,18 @@ void build_curved_overhangs(PrintObject &object, ConformalResult &result)
                 bool        any = false;
                 double      z_top = -Inf;
                 for (size_t i = 0; i < f1.data().size(); ++i) {
-                    if (in_c[i]) {
-                        const double b = S_c.data()[i], L = k * g - D_c.data()[i];
-                        f1.data()[i]   = float(L - 0.5 * g - b);
-                        f2.data()[i]   = float(F_c.data()[i] - (L - 0.5 * g));
-                        if (f1.data()[i] >= -g && f2.data()[i] > 0.f) {
-                            any   = true;
-                            z_top = std::max(z_top, std::min(L, double(F_c.data()[i])) - 0.5 * g);
-                        }
-                    } else
-                        f1.data()[i] = f2.data()[i] = band_c[i] ? 1.f : HeightField::NoData;
+                    if (!in_c[i] && !band_c[i]) {
+                        f1.data()[i] = f2.data()[i] = HeightField::NoData;
+                        continue;
+                    }
+                    const double b = S_pad.data()[i], L = k * g - D_pad.data()[i];
+                    const double F = in_c[i] ? F_c.data()[i] : floor_at(S_c.node(i % S_c.nx(), int(i / S_c.nx())));
+                    f1.data()[i]   = float(L - 0.5 * g - b);
+                    f2.data()[i]   = float(F - (L - 0.5 * g));
+                    if (in_c[i] && f1.data()[i] >= -g && f2.data()[i] > 0.f) {
+                        any   = true;
+                        z_top = std::max(z_top, std::min(L, F) - 0.5 * g);
+                    }
                 }
                 if (!any)
                     continue;
@@ -486,14 +489,16 @@ void build_curved_overhangs(PrintObject &object, ConformalResult &result)
                     if (std::isnan(b) || std::isnan(D) || std::isnan(F))
                         return false;
                     const double L = k * g - D;
-                    z              = L;
-                    bead           = float(g);
-                    capped         = L + 0.5 * g >= F;
+                    if (L < b)
+                        return false;
+                    z      = L;
+                    bead   = float(g);
+                    capped = L + 0.5 * g >= F;
                     if (capped) {
                         z    = std::min(L + 0.5 * g, double(F));
                         bead = float(std::max(0.25 * g, z - (L - g)));
                     }
-                    return true;
+                    return z - bead >= layer_top.front() - EPSILON;
                 };
                 std::vector<Piece> &out  = per_k[size_t(k - k_first)];
                 auto                emit = [&](const ExtrusionPath &proto, const Polyline &pl) {

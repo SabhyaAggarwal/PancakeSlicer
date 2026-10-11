@@ -7277,12 +7277,14 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                 m_conformal_band_patch = patch.band >= 0 ? patch.id : -1;
                 m_conformal_prev       = nullptr;
                 for (size_t k = 0; k < passes; ++k) {
-                    const bool ironing = k == patch.shell_paths.size();
+                    const bool  ironing = k == patch.shell_paths.size();
+                    const char *what    = ironing ? "conformal ironing" :
+                                          patch.kind == Nonplanar::PatchKind::Overhang ? "conformal overhang" : "conformal shell";
                     gcode += ";_NONPLANAR_BEGIN patch=" + std::to_string(patch.id) + " shell=" + std::to_string(k) + "\n";
                     for (const ExtrusionEntity *ee : pass(k).entities)
                         if (const auto *path = dynamic_cast<const ExtrusionPathConformal*>(ee)) {
                             ++next;
-                            gcode += this->extrude_conformal_path(*path, ironing ? "conformal ironing" : "conformal shell",
+                            gcode += this->extrude_conformal_path(*path, what,
                                                                   patch.surface.empty() ? std::function<Vec2d(const Vec2d &)>() : surface_gradient,
                                                                   next < order.size() ? order[next] : nullptr);
                         }
@@ -7483,6 +7485,15 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
             const Vec2d xy = this->point_to_gcode(p.to_point());
             return Vec3d(xy.x(), xy.y(), m_nominal_z + unscale<double>(p.z()));
         });
+
+    const double first_layer_z = m_config.initial_layer_print_height.value + m_config.z_offset.value;
+    for (const ConformalPoint &pt : m_conformal_points)
+        if (pt.pose.tip.z() < first_layer_z - ConformalBelowFirstLayerTolerance)
+            throw Slic3r::SlicingError(
+                format("Non-planar: refusing to emit a conformal extrusion (%1%) at Z = %2$.3f mm, below the first layer at Z = %3$.3f mm. "
+                       "This is a toolpath bug; slice without non-planar overhangs or shells and report it.",
+                       description, pt.pose.tip.z(), first_layer_z),
+                m_layer != nullptr && m_layer->object() != nullptr ? m_layer->object()->id().id : 0);
 
     ConformalEmitParams params;
     params.nominal_speed = speed;
@@ -8725,6 +8736,9 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
         std::function<double(double)> slope_z;
         if (sloped) slope_z = [sloped, &get_sloped_z](double t) { return get_sloped_z(sloped->interpolate(t).z_ratio); };
         Nonplanar::deposit_material_path(*m_material_columns, path, to_writer, slope_z);
+        if (path.z_contoured)
+            for (const Point3 &p : path.polyline.points)
+                m_nonplanar_ceiling = std::max(m_nonplanar_ceiling, to_writer(p).z());
     }
     this->set_last_pos(path.last_point());
     return gcode;
@@ -8929,6 +8943,21 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
 
     m_writer.add_object_change_labels(gcode);
 
+    if (travel.size() >= 2 && this->below_conformal_material()) {
+        const Vec2d from = this->point_to_gcode(travel.points.front()), to = this->point_to_gcode(travel.points.back());
+        const double z_to = z == DBL_MAX ? m_nominal_z : z;
+        if (const double safe = this->nonplanar_travel_z(&from, &to); safe > z_to + EPSILON) {
+            if (!needs_retraction)
+                gcode += this->retract(false, false, LiftType::NormalLift, false, role);
+            gcode += m_writer.travel_to_z(std::max(safe, m_writer.get_position().z()), "lift over conformal shells", true);
+            gcode += m_writer.travel_to_xy(to, comment);
+            gcode += m_writer.travel_to_z(z_to, comment, true);
+            m_need_change_layer_lift_z = false;
+            this->set_last_pos(travel.points.back());
+            return gcode;
+        }
+    }
+
     if (travel.size() >= 2) {
         if (false ) {
             for (size_t i = 1; i < travel.size(); ++i) {
@@ -9092,7 +9121,8 @@ std::string GCode::retract(bool toolchange, bool is_last_retraction, LiftType li
     if (m_writer.filament() == nullptr)
         return gcode;
 
-    if (FILAMENT_CONFIG(wipe) && m_wipe.has_path() && scale_(FILAMENT_CONFIG(wipe_distance)) > SCALED_EPSILON) {
+    if (FILAMENT_CONFIG(wipe) && m_wipe.has_path() && scale_(FILAMENT_CONFIG(wipe_distance)) > SCALED_EPSILON &&
+        !this->below_conformal_material()) {
         Wipe::RetractionValues wipeRetractions = m_wipe.calculateWipeRetractionLengths(*this, toolchange);
         gcode += toolchange ? m_writer.retract_for_toolchange(true, wipeRetractions.retraction_length_before_wipe) :
                               m_writer.retract(true, wipeRetractions.retraction_length_before_wipe);

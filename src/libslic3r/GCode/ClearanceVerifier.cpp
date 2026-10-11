@@ -300,7 +300,7 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
             pending.clear();
         }
         const Vec3d a = move_tip(last, rotary), b = move_tip(move, rotary);
-        const bool straight_lift = !extruding && a.head<2>() == b.head<2>() && b.z() >= a.z() && move.joints.rot == last.joints.rot;
+        const bool straight_lift = !extruding && a.head<2>() == b.head<2>() && move.joints.rot == last.joints.rot;
         double displacement = (b - a).norm();
         if (rotary) {
             const double angle = (std::abs(move.joints.rot[0] - last.joints.rot[0]) + std::abs(move.joints.rot[1] - last.joints.rot[1])) * M_PI / 180.;

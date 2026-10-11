@@ -406,7 +406,7 @@ std::vector<Polylines> shell_polylines(const ExPolygons &area, const ShellFill &
         if (fill.outward)
             reverse_order(paths);
     } else {
-        const ExPolygons inner = offset_ex(area, -float(scale_(spacing)));
+        const ExPolygons inner = fill.outline ? offset_ex(area, -float(scale_(spacing))) : area;
         paths = surface_spaced != nullptr ?
                     fill_surface_spaced(inner, *surface_spaced, line_pattern, spacing, fill.angle, monotonic, flow, z) :
                     fill_solid(inner, line_pattern, spacing, fill.angle, monotonic, flow, z);
@@ -418,7 +418,7 @@ std::vector<Polylines> shell_polylines(const ExPolygons &area, const ShellFill &
             paths = chain_polylines(std::move(paths), &start);
         const Point lines_start = paths.empty() ? start : paths.front().first_point();
         Polylines   outline;
-        for (const Polygon &loop : to_polygons(offset_ex(area, -0.5f * float(scale_(spacing))))) {
+        for (const Polygon &loop : fill.outline ? to_polygons(offset_ex(area, -0.5f * float(scale_(spacing)))) : Polygons()) {
             Polyline pl = open_loop_at(loop, lines_start);
             pl.clip_end(0.2 * scale_(spacing));
             if (pl.is_valid())

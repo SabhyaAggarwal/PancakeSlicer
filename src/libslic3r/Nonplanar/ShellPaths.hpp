@@ -30,6 +30,7 @@ struct ShellFill
     bool   spiral  = false;
     bool   outward = false;
     double angle   = 0.;
+    bool   outline = true;
 };
 
 std::vector<ShellFill> plan_shell_fills(const ConformalPatch &patch, const PrintRegionConfig &config, double spacing);

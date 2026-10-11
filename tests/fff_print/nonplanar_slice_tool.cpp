@@ -150,9 +150,16 @@ std::string find_preset_file(const Args &a, const char *kind, const std::string 
 
 DynamicPrintConfig resolve(PresetBundle &bundle, const Args &a, const char *kind, Preset::Type type, const std::string &name)
 {
-    const std::string  file = find_preset_file(a, kind, name);
     DynamicPrintConfig config;
     std::string        error;
+    if (fs::path(name).extension() == ".json" && fs::is_regular_file(name)) {
+        std::map<std::string, std::string> key_values;
+        config.load_from_json(name, ForwardCompatibilitySubstitutionRule::EnableSilent, key_values, error);
+        if (! error.empty())
+            throw std::runtime_error("cannot load " + name + ": " + error);
+        return config;
+    }
+    const std::string  file = find_preset_file(a, kind, name);
     if (! bundle.resolve_preset_config(config, type, file, ForwardCompatibilitySubstitutionRule::EnableSilent, error))
         throw std::runtime_error("cannot resolve " + file + ": " + error);
     return config;

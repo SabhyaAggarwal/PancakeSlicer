@@ -45,6 +45,7 @@ void condition_path(std::vector<ConformalPoint> &points, const ConditionParams &
 double planner_segment_rate(double configured, GCodeFlavor flavor, bool bbl_printer);
 constexpr double ConformalTaper = 1.;
 constexpr double ConformalWipe  = 1.;
+constexpr double ConformalBelowFirstLayerTolerance = 0.005;
 
 struct ConformalEmitParams
 {

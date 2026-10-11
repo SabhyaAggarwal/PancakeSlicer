@@ -533,6 +533,8 @@ protected:
     const Nonplanar::HeadEnvelope &nonplanar_head();
     double          nonplanar_hop();
     double          nonplanar_travel_z(const Vec2d *from = nullptr, const Vec2d *to = nullptr, bool nozzle_only = false);
+    bool            below_conformal_material() const
+    { return m_material_columns && m_nonplanar_ceiling > m_nominal_z + EPSILON; }
 
     void compute_farthest_point(const std::vector<LayerToPrint> &layers, int most_used_extruder,
                                 const std::map<std::pair<const SupportLayer *, ExtrusionRole>, unsigned int> &support_filaments);
