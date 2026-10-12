@@ -7549,8 +7549,9 @@ bool GCode::conformal_short_hop(const ExtrusionPathConformal &path, const Extrus
     const Vec2d  xy   = this->point_to_gcode(next->first_point());
     const Vec3d &here = m_writer.get_position();
     to                = Vec3d(xy.x(), xy.y(), m_nominal_z + unscale<double>(next->polyline.points.front().z()));
-    const double minimum = m_config.retraction_minimum_travel.get_at(m_writer.filament()->id());
-    if ((to - here).head<2>().norm() >= (in_band ? minimum : std::min(minimum, 1.)))
+    constexpr double ShortGlide = 5.;
+    const double     minimum    = m_config.retraction_minimum_travel.get_at(m_writer.filament()->id());
+    if ((to - here).head<2>().norm() >= (in_band ? std::max(minimum, ShortGlide) : std::min(minimum, 1.)))
         return false;
     const HeadEnvelope &head = this->nonplanar_head();
     const HeadEnvelope  land = nozzle_land(head);

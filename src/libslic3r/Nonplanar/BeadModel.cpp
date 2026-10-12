@@ -96,17 +96,19 @@ double road_speed(const std::vector<double> &soft, const std::vector<double> &le
 }
 
 std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, const std::vector<double> &nominal,
-                                    const MotionLimits &limits, double quantum, const std::vector<double> *caps)
+                                    const MotionLimits &limits, double quantum, const std::vector<double> *caps,
+                                    const std::vector<bool> *glides)
 {
     if (pts.size() < 2)
         return {};
     const size_t n = pts.size() - 1;
+    auto glide = [glides](size_t i) { return glides != nullptr && i < glides->size() && (*glides)[i]; };
     std::vector<double> length(n), slope(n), hard = nominal, soft = nominal;
     for (size_t i = 0; i < n; ++i) {
         const Vec3d d = pts[i + 1] - pts[i];
         length[i]     = d.norm() < EPSILON ? 0. : d.norm();
         slope[i]      = length[i] > 0. ? d.z() / length[i] : 0.;
-        if (caps != nullptr && i < caps->size())
+        if (caps != nullptr && i < caps->size() && !glide(i))
             hard[i] = std::min(hard[i], (*caps)[i]);
         if (length[i] <= 0.)
             continue;
@@ -137,7 +139,8 @@ std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, const std::ve
             soft[i] = std::min(soft[i], limits.segment_rate * length[i]);
     const std::vector<double> junction = shallow_junction_caps(pts, length, limits);
     for (size_t i = 0; i < n; ++i)
-        soft[i] = std::min({ soft[i], junction[i], junction[i + 1] });
+        if (!glide(i))
+            soft[i] = std::min({ soft[i], junction[i], junction[i + 1] });
 
     std::vector<double> v(n);
     for (size_t begin = 0; begin < n;) {

@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstdio>
 #include <limits>
+#include <vector>
 
 namespace Slic3r::Nonplanar {
 
@@ -217,11 +218,14 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
         tips[i] = (points[i].pose.tip * 1000.).array().round() / 1000.;
     auto glide = [&points](size_t i) { return points[i].bead_height <= 0.f && points[i + 1].bead_height <= 0.f; };
     std::vector<double> nominal(points.size() - 1, params.nominal_speed);
+    std::vector<bool>   glides(points.size() - 1, false);
     for (size_t i = 0; i < nominal.size(); ++i)
-        if (glide(i))
+        if (glide(i)) {
             nominal[i] = std::max(params.nominal_speed, params.glide_speed);
+            glides[i]  = true;
+        }
     const std::vector<double> caps   = params.speed_caps ? params.speed_caps(points) : std::vector<double>();
-    const std::vector<double> speeds = limit_feedrates(tips, nominal, params.limits, 0.05, caps.empty() ? nullptr : &caps);
+    const std::vector<double> speeds = limit_feedrates(tips, nominal, params.limits, 0.05, caps.empty() ? nullptr : &caps, &glides);
 
     std::vector<double> prime(points.size() - 1, 0.);
     auto primes = [&](size_t i) {

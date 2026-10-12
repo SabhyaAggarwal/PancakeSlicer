@@ -5,6 +5,7 @@
 
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/Config.hpp"
+#include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/FlushVolCalc.hpp"
 #include "libslic3r/GCode/ClearanceVerifier.hpp"
@@ -133,6 +134,8 @@ Args parse_args(int argc, char **argv)
 
 std::string find_preset_file(const Args &a, const char *kind, const std::string &name)
 {
+    if (fs::is_regular_file(name))
+        return name;
     std::vector<fs::path> dirs = { fs::path(a.profiles) / a.vendor / kind };
     if (std::string(kind) == "filament")
         dirs.push_back(fs::path(a.profiles) / "OrcaFilamentLibrary" / kind);
@@ -390,6 +393,24 @@ int main(int argc, char **argv)
                 std::cout << "clearance_hit line " << hit.gcode_line << " " << hit.component << " " << hit.penetration << " mm\n";
             for (const std::string &omission : clearance.omissions)
                 std::cout << "clearance_omission " << omission << "\n";
+        }
+        for (const PrintObject *object : print.objects()) {
+            const Nonplanar::ConformalResult &conformal = object->conformal();
+            size_t top = 0, bands = 0;
+            double footprint = 0.;
+            for (const Nonplanar::ConformalPatch &patch : conformal.patches)
+                if (patch.kind == Nonplanar::PatchKind::Top) {
+                    ++top;
+                    bands     = std::max(bands, size_t(patch.band + 1));
+                    footprint += area(patch.footprint) * SCALING_FACTOR * SCALING_FACTOR;
+                }
+            std::cout << "nonplanar_top_patches " << top << "\n"
+                      << "nonplanar_bands " << bands << "\n"
+                      << "nonplanar_top_footprint_mm2 " << footprint << "\n";
+            for (const Nonplanar::PatchDiagnostics &diag : conformal.diagnostics)
+                if (diag.fallback_area > 0.)
+                    std::cout << "nonplanar_fallback untagged "
+                              << diag.fallback_area << " patch " << diag.patch_id << "\n";
         }
     } catch (const std::exception &e) {
         std::cerr << "error: " << e.what() << "\n";
