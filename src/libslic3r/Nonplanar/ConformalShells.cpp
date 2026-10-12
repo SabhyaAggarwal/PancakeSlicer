@@ -467,13 +467,13 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
                 return false;
             if (above == int(layers) - 1) {
                 const float floor_z = nearest(top_of_planar, p);
-                if (std::isnan(floor_z))
+                if (!std::isfinite(floor_z))
                     return false;
                 bead = float(z - floor_z);
             }
         } else if (k == 1) {
             const float floor_z = top_of_planar.sample(p);
-            if (std::isnan(floor_z))
+            if (!std::isfinite(floor_z))
                 return false;
             bead = float(z - floor_z);
         }
@@ -509,8 +509,9 @@ HeightField sample_top_surface(const sla::IndexedMesh &mesh, double ray_z, doubl
                     if (hit.is_hit() && hit.normal().normalized().z() > 0.05) {
                         const Vec3d n = hit.normal();
                         const double z = hit.position().z() + (n.x() * (q.x() - p.x()) + n.y() * (q.y() - p.y())) / n.z();
-                        S.at(ix, iy) = float(z - mesh.ground_level() + z_offset);
-                        break;
+                        const float  s = float(z - mesh.ground_level() + z_offset);
+                        if (!(S.at(ix, iy) >= s))
+                            S.at(ix, iy) = s;
                     }
                 }
             }
@@ -922,14 +923,19 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
         pad_lowest(patch.base, pad);
         ExPolygons  shell_area = diff_ex(patch.footprint, patch.wall_band);
         Mask        stacks     = rasterize(offset_ex(shell_area, -float(scale_(line_width))), top);
+        Mask        at_wall(stacks.size(), 0);
         {
             const int nx = top.nx(), ny = top.ny(), reach = int(std::ceil(line_width / top.pitch()));
             for (int iy = 0; iy + 1 < ny; ++iy)
                 for (int ix = 0; ix + 1 < nx; ++ix)
-                    if (spans_wall(S, top.node(ix, iy) + Vec2d(0.5 * top.pitch(), 0.5 * top.pitch())))
+                    if (spans_wall(S, top.node(ix, iy) + Vec2d(0.5 * top.pitch(), 0.5 * top.pitch()))) {
+                        for (int jy = iy; jy <= iy + 1; ++jy)
+                            for (int jx = ix; jx <= ix + 1; ++jx)
+                                at_wall[size_t(jy) * nx + jx] = 1;
                         for (int jy = std::max(0, iy - reach); jy <= std::min(ny - 1, iy + 1 + reach); ++jy)
                             for (int jx = std::max(0, ix - reach); jx <= std::min(nx - 1, ix + 1 + reach); ++jx)
                                 stacks[size_t(jy) * nx + jx] = 0;
+                    }
         }
         bool        printable = true;
         HeightField count     = top;
@@ -956,6 +962,10 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
             top.data()[i]   = float(layer_z[size_t(layer)]);
             patch.z_min = std::min(patch.z_min, layer_z[size_t(layer)]);
         }
+        if (settings.banded)
+            for (size_t i = 0; i < at_wall.size(); ++i)
+                if (at_wall[i] && !std::isnan(top.data()[i]))
+                    top.data()[i] = Inf;
         if (!printable)
             continue;
 

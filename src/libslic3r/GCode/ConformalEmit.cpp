@@ -1,6 +1,8 @@
 #include "ConformalEmit.hpp"
 #include "ClearanceVerifier.hpp"
 
+#include "libslic3r/Nonplanar/ShellSeams.hpp"
+
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
 #include "libslic3r/GCodeWriter.hpp"
@@ -39,62 +41,6 @@ ConformalPoint interpolate(const ConformalPoint &a, const ConformalPoint &b, dou
     p.bead_height = a.bead_height + float(t) * (b.bead_height - a.bead_height);
     p.width       = a.width + float(t) * (b.width - a.width);
     return p;
-}
-
-std::vector<ConformalPoint> taper_runs(const std::vector<ConformalPoint> &points, double length, double min_piece,
-                                       std::vector<double> &flow)
-{
-    const size_t n = points.size();
-    std::vector<ConformalPoint> out;
-    flow.clear();
-    out.reserve(n + 16);
-    out.emplace_back(points.front());
-    auto extruded = [&points](size_t i) { return points[i].bead_height > 0.f && points[i + 1].bead_height > 0.f; };
-    for (size_t i = 0; i + 1 < n;) {
-        if (!extruded(i)) {
-            out.emplace_back(points[i + 1]);
-            flow.emplace_back(1.);
-            ++i;
-            continue;
-        }
-        size_t j   = i;
-        double run = 0.;
-        while (j + 1 < n && extruded(j)) {
-            run += (points[j + 1].pose.tip - points[j].pose.tip).norm();
-            ++j;
-        }
-        const double taper = std::min(length, 0.25 * run);
-        const double piece = std::min(taper, std::max(taper / 5., min_piece));
-        double       left  = run;
-        for (size_t k = i; k < j; ++k) {
-            const ConformalPoint &a = points[k], &b = points[k + 1];
-            const double          l = (b.pose.tip - a.pose.tip).norm();
-            if (taper <= 0. || left - l >= taper || l <= 0.) {
-                out.emplace_back(b);
-                flow.emplace_back(1.);
-                left -= l;
-                continue;
-            }
-            const double s0    = std::max(0., left - taper);
-            double       s     = 0.;
-            const int    count = std::max(1, int(std::ceil((l - s0) / piece)));
-            if (s0 > 0.) {
-                out.emplace_back(interpolate(a, b, s0 / l));
-                flow.emplace_back(1.);
-                s = s0;
-            }
-            for (int m = 1; m <= count; ++m) {
-                const double e   = s0 + (l - s0) * double(m) / count;
-                const double mid = left - 0.5 * (s + e);
-                out.emplace_back(m == count ? b : interpolate(a, b, e / l));
-                flow.emplace_back(std::clamp(mid / taper, 0., 1.));
-                s = e;
-            }
-            left -= l;
-        }
-        i = j;
-    }
-    return out;
 }
 
 }
@@ -183,10 +129,12 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
     const std::vector<ConformalPoint> &merged = params.condition.target_length > 0. ? conditioned : points_in;
     const bool rotary = writer.tool_kinematics().rotary_count() > 0;
     std::vector<double>                flow;
-    std::vector<ConformalPoint>        tapered;
-    if (params.taper_length > 0.)
-        tapered = taper_runs(merged, params.taper_length, params.condition.target_length, flow);
-    const std::vector<ConformalPoint> &staged = params.taper_length > 0. ? tapered : merged;
+    std::vector<ConformalPoint>        shaped;
+    const bool shape = params.ramp_length > 0. || params.taper_length > 0. || params.coast_length > 0.;
+    if (shape)
+        shaped = shape_runs(merged, { params.ramp_length, params.taper_length, params.coast_length, params.open_end },
+                            params.condition.target_length, flow);
+    const std::vector<ConformalPoint> &staged = shape ? shaped : merged;
 
     constexpr double            StubLength = 0.01;
     std::vector<ConformalPoint> points;
@@ -277,6 +225,8 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
             std::snprintf(buf, sizeof(buf), ";%s%g\n", GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Height).c_str(), last_height);
             out += buf;
         }
+        if (params.pressure_advance != nullptr && !glide(i))
+            params.pressure_advance->update(height, out);
         const double v = a.bead_height > 0.f && b.bead_height > 0.f ?
                              segment_volume(a.pose.tip, b.pose.tip, seg_width, a.bead_height, b.bead_height, axis) * (flow.empty() ? 1. : flow[i]) :
                              0.;

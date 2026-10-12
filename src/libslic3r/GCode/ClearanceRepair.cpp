@@ -312,19 +312,11 @@ bool ClearanceRepair::plan(const GCodeProcessorResult &result, const ClearanceRe
         return size_t(0);
     };
 
-    size_t caps = 0, bands = 0, drops = 0, lifts = 0, unrepaired = 0, machine = 0;
+    size_t caps = 0, bands = 0, drops = 0, lifts = 0, unrepaired = 0;
     std::map<std::string, size_t> unrepaired_by_cause;
-    size_t first_print = result.moves.size(), last_print = 0;
-    for (size_t i = 0; i < result.moves.size(); ++i)
-        if (const MoveVertex &mv = result.moves[i]; mv.type == EMoveType::Extrude && mv.extrusion_role != erCustom && mv.extrusion_role != erNone)
-            first_print = std::min(first_print, i), last_print = i;
     for (const ClearanceHit &hit : report.worst) {
         size_t move_id = hit.move_id;
         const MoveVertex *m = &result.moves[move_id];
-        if (move_id < first_print || move_id > last_print || m->extrusion_role == erCustom) {
-            ++machine;
-            continue;
-        }
         const bool extruding = m->type == EMoveType::Extrude;
         const size_t prev = previous_physical(move_id);
         const Vec3d  a = tip_of(result.moves[prev]), b = tip_of(*m);
@@ -422,7 +414,7 @@ bool ClearanceRepair::plan(const GCodeProcessorResult &result, const ClearanceRe
     if (lifts) action << ", " << lifts << " travel lifted";
     if (drops) action << ", " << drops << " ironing dropped";
     for (const auto &[cause, n] : unrepaired_by_cause) action << ", " << n << " unrepaired (" << cause << ")";
-    if (machine) action << ", " << machine << " in start/end G-code (not repairable)";
+    if (report.machine_hit_moves) action << ", " << report.machine_hit_moves << " in start/end G-code (not repairable)";
     m_actions.emplace_back(action.str());
     BOOST_LOG_TRIVIAL(info) << "Non-planar repair " << m_actions.back();
     return caps + bands + lifts + drops > 0;

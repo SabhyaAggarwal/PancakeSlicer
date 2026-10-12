@@ -500,7 +500,8 @@ void contour_support_interface(PrintObject &object)
     SupportLayerPtrs &support_layers = object.support_layers();
     if (patches.empty() || support_layers.empty())
         return;
-    const double gap = object.config().support_top_z_distance.value;
+    const double gap     = object.config().support_top_z_distance.value;
+    const double z_first = support_layers.front()->print_z;
     auto underside = [](const ConformalPatch &patch) -> const HeightField & {
         return patch.kind == PatchKind::Volume ? patch.base : patch.surface;
     };
@@ -538,7 +539,7 @@ void contour_support_interface(PrintObject &object)
                         if (const float s = underside(*patches[k]).sample(p); !std::isnan(s)) {
                             const double min_bead = object.printing_region(size_t(patches[k]->region_id)).config().zaa_min_z.value;
                             const double max_down = std::max(0., h_s - min_bead);
-                            const double dz = s - gap - z_s;
+                            const double dz       = std::max(s - gap - z_s, z_first - z_s);
                             return std::abs(dz) <= h_s ? std::max(dz, -max_down) : 0.;
                         }
                 return 0.;

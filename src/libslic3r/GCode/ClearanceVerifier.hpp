@@ -67,6 +67,7 @@ struct ClearanceReport
 {
     bool ran = false;
     size_t hit_moves = 0;
+    size_t machine_hit_moves = 0;
     double min_clearance = std::numeric_limits<double>::infinity();
     std::vector<float> per_move;
     std::vector<ClearanceHit> worst;

@@ -16,6 +16,7 @@
 #include "Flow.hpp"
 #include "Nonplanar/BeadModel.hpp"
 #include "Nonplanar/Validate.hpp"
+#include "Nonplanar/ShellSeams.hpp"
 #include "GCode/ThumbnailData.hpp"
 #include "GCode/ToolOrdering.hpp"
 #include "GCode/SpiralVase.hpp"
@@ -1325,6 +1326,7 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
             config.set_key_value("nozzle_diameter_at_nozzle_id", new ConfigOptionFloats(get_nozzle_diameters_by_nozzle_id(group_result.get())));
             config.set_key_value("nozzle_volume_types", new ConfigOptionStrings(get_nozzle_volume_types_by_nozzle_id(group_result.get())));
             start_filament_gcode_str = gcodegen.placeholder_parser_process("filament_start_gcode", filament_start_gcode, new_filament_id, &config);
+            gcodegen.m_start_gcode_pa[new_filament_id] = Nonplanar::parse_pressure_advance(start_filament_gcode_str);
             if (add_change_filament_624) {
                 start_filament_gcode_str += "M625\n";
                 add_change_filament_624 = false;
@@ -3603,6 +3605,7 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
     }
 
     std::string machine_start_gcode = this->placeholder_parser_process("machine_start_gcode", print.config().machine_start_gcode.value, initial_extruder_id);
+    m_machine_start_pa = Nonplanar::parse_pressure_advance(machine_start_gcode);
     if (print.config().gcode_flavor != gcfKlipper) {
         this->_print_first_layer_bed_temperature(file, print, machine_start_gcode, initial_extruder_id, true);
         this->_print_first_layer_extruder_temperatures(file, print, machine_start_gcode, initial_extruder_id, false);
@@ -3638,6 +3641,7 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
             config.set_key_value("nozzle_volume_types", new ConfigOptionStrings(get_nozzle_volume_types_by_nozzle_id(group_result.get())));
             config.set_key_value("layer_num", new ConfigOptionInt(m_layer_index));
             std::string filament_start_gcode = this->placeholder_parser_process("filament_start_gcode", print.config().filament_start_gcode.values.at(initial_non_support_extruder_id), initial_non_support_extruder_id,&config);
+            m_start_gcode_pa[initial_non_support_extruder_id] = Nonplanar::parse_pressure_advance(filament_start_gcode);
             file.writeln(filament_start_gcode);
             if (is_multi_nozzle_printer(m_config)) {
                 int initial_nozzle_id = -1;
@@ -6900,8 +6904,17 @@ std::string GCode::change_layer(coordf_t print_z)
 
     m_need_change_layer_lift_z = true;
 
+    double tip_z = z;
+    if (this->below_conformal_material()) {
+        m_wipe.reset_path();
+        tip_z = std::max(z, m_nonplanar_ceiling);
+        gcode += m_writer.travel_to_z(std::max(tip_z, m_writer.get_position().z()), "lift over conformal material", true,
+                                      this->conformal_max_speed_z());
+        tip_z = m_writer.get_position().z();
+    }
+
     m_nominal_z = z;
-    m_writer.get_position().z() = z;
+    m_writer.get_position().z() = tip_z;
     m_conformal_lift = false;
 
     return gcode;
@@ -7362,14 +7375,25 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                     return k < patch.shell_paths.size() ? patch.shell_paths[k] : patch.ironing;
                 };
                 std::vector<const ExtrusionPathConformal *> order;
-                for (size_t k = 0; k < passes; ++k)
+                std::vector<size_t>                         pass_end;
+                for (size_t k = 0; k < passes; ++k) {
                     for (const ExtrusionEntity *ee : pass(k).entities)
                         if (const auto *path = dynamic_cast<const ExtrusionPathConformal *>(ee))
                             order.emplace_back(path);
+                    pass_end.emplace_back(order.size());
+                }
+                std::vector<ExtrusionPathConformal> oriented;
+                Nonplanar::orient_free_roads(order, oriented);
                 size_t next = 0;
                 m_conformal_band_patch = patch.band >= 0 ? patch.id : -1;
                 m_conformal_prev       = nullptr;
                 m_conformal_surface    = patch.kind == Nonplanar::PatchKind::Top && !patch.surface.empty() ? &patch.surface : nullptr;
+                if (!order.empty()) {
+                    m_conformal_pa_tracker = std::make_unique<Nonplanar::PressureAdvanceTracker>(m_writer, this->conformal_pressure_advance(),
+                                                                                                 order.front()->height);
+                    m_conformal_pa_tracker->set_along_road(m_config.gcode_flavor.value == gcfKlipper ||
+                                                           m_config.gcode_flavor.value == gcfRepRapFirmware);
+                }
                 for (size_t k = 0; k < passes; ++k) {
                     const bool  ironing = k == patch.shell_paths.size();
                     const char *what    = ironing ? "conformal ironing" :
@@ -7377,17 +7401,19 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                                           patch.kind == Nonplanar::PatchKind::SupportInterface ? "conformal support interface" : "conformal shell";
                     gcode += ";_NONPLANAR_BEGIN patch=" + std::to_string(patch.id) + " shell=" + std::to_string(k) +
                              " rate=" + std::to_string(std::lround(this->conformal_segment_rate())) + "\n";
-                    for (const ExtrusionEntity *ee : pass(k).entities)
-                        if (const auto *path = dynamic_cast<const ExtrusionPathConformal*>(ee)) {
-                            ++next;
-                            gcode += this->extrude_conformal_path(*path, what,
-                                                                  patch.surface.empty() ? std::function<Vec2d(const Vec2d &)>() : surface_gradient,
-                                                                  next < order.size() ? order[next] : nullptr,
-                                                                  !ironing && patch.kind == Nonplanar::PatchKind::Top && !patch.surface.empty() ?
-                                                                      slope_gradient : nullptr);
-                        }
+                    while (next < pass_end[k]) {
+                        const ExtrusionPathConformal &path = *order[next++];
+                        gcode += this->extrude_conformal_path(path, what,
+                                                              patch.surface.empty() ? std::function<Vec2d(const Vec2d &)>() : surface_gradient,
+                                                              next < order.size() ? order[next] : nullptr,
+                                                              !ironing && patch.kind == Nonplanar::PatchKind::Top && !patch.surface.empty() ?
+                                                                  slope_gradient : nullptr);
+                    }
                     gcode += ";_NONPLANAR_END\n";
                 }
+                if (m_conformal_pa_tracker)
+                    m_conformal_pa_tracker->restore(gcode);
+                m_conformal_pa_tracker.reset();
                 m_conformal_band_patch = -1;
                 m_conformal_prev       = nullptr;
                 m_conformal_surface    = nullptr;
@@ -7475,6 +7501,11 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
             gcode += m_writer.travel_to_xy(start.tip.head<2>(), "move to conformal path");
             gcode += m_writer.travel_to_z(start.tip.z(), "lower onto conformal path", true, this->conformal_max_speed_z());
         }
+        m_conformal_ramp = true;
+        if (m_conformal_pa_tracker && path.role() == erIroning)
+            m_conformal_pa_tracker->restore(gcode);
+        else if (m_conformal_pa_tracker && !m_conformal_pa_tracker->along_road())
+            m_conformal_pa_tracker->update(mean_bead_height(m_conformal_points), gcode);
     }
     this->set_last_pos(path.first_point());
     m_need_change_layer_lift_z = false;
@@ -7482,10 +7513,14 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
         const Vec2d origin   = this->point_to_gcode(Point(0, 0));
         m_conformal_gradient = [&slope_gradient, origin](const Vec2d &p) { return slope_gradient(p - origin); };
     }
-    gcode += this->_extrude(path, description);
-    m_conformal_gradient = nullptr;
     Vec3d      hop_to;
     const bool glide_on = next != nullptr && next->polyline.points.front() == path.polyline.points.back();
+    m_conformal_open_end = glide_on && next->polyline.points.size() >= 2 &&
+                           (next->bead_height.size() < 2 || (next->bead_height[0] > 0.f && next->bead_height[1] > 0.f));
+    gcode += this->_extrude(path, description);
+    m_conformal_gradient = nullptr;
+    m_conformal_ramp     = false;
+    m_conformal_open_end = false;
     const bool hop      = !glide_on && this->conformal_short_hop(path, next, hop_to);
     if (!glide_on && !hop) {
         gcode += this->wipe_conformal_path();
@@ -7661,7 +7696,12 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
 
     ConformalEmitParams params;
     params.nominal_speed = speed;
-    params.taper_length  = ConformalTaper;
+    params.ramp_length   = m_conformal_ramp ? StartRamp : 0.;
+    params.taper_length  = EndTaper;
+    params.coast_length  = EndCoast;
+    params.open_end      = m_conformal_open_end;
+    if (m_conformal_pa_tracker && m_conformal_pa_tracker->along_road() && path.role() != erIroning)
+        params.pressure_advance = m_conformal_pa_tracker.get();
     if (m_writer.filament() != nullptr)
         params.glide_speed = m_config.travel_speed.get_at(get_nozzle_config_index(m_writer.filament()->id()));
     params.e_per_mm3     = path.mm3_per_mm > 0. ? e_per_mm / path.mm3_per_mm : 0.;
@@ -7903,6 +7943,24 @@ std::string GCode::wipe_conformal_path()
         this->set_last_pos(this->gcode_to_point(end.head<2>()));
     m_wipe.reset_path();
     return gcode;
+}
+
+Nonplanar::PressureAdvance GCode::conformal_pressure_advance() const
+{
+    if (m_writer.filament() == nullptr)
+        return {};
+    const unsigned int id = m_writer.filament()->id();
+    const size_t       fi = get_filament_config_index(id);
+    if (m_config.enable_pressure_advance.get_at(fi)) {
+        if (m_config.adaptive_pressure_advance.get_at(fi))
+            return {};
+        return { m_config.pressure_advance.get_at(fi), {} };
+    }
+    if (m_print != nullptr && m_print->is_BBL_printer())
+        return {};
+    auto                       it = m_start_gcode_pa.find(id);
+    Nonplanar::PressureAdvance pa = it != m_start_gcode_pa.end() && it->second.value >= 0. ? it->second : m_machine_start_pa;
+    return pa.value > 0. ? pa : Nonplanar::PressureAdvance();
 }
 
 const Nonplanar::HeadEnvelope &GCode::nonplanar_head()
@@ -9280,9 +9338,10 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
         if (const double safe = this->nonplanar_travel_z(&from, &to); safe > z_to + EPSILON) {
             if (!needs_retraction)
                 gcode += this->retract(false, false, LiftType::NormalLift, false, role);
-            gcode += m_writer.travel_to_z(std::max(safe, m_writer.get_position().z()), "lift over conformal shells", true);
+            gcode += m_writer.travel_to_z(std::max(safe, m_writer.get_position().z()), "lift over conformal shells", true,
+                                          this->conformal_max_speed_z());
             gcode += m_writer.travel_to_xy(to, comment);
-            gcode += m_writer.travel_to_z(z_to, comment, true);
+            gcode += m_writer.travel_to_z(z_to, comment, true, this->conformal_max_speed_z());
             m_need_change_layer_lift_z = false;
             this->set_last_pos(travel.points.back());
             return gcode;
@@ -9495,6 +9554,8 @@ std::string GCode::retract(bool toolchange, bool is_last_retraction, LiftType li
     }
 
     if (needs_lift && can_lift) {
+        if (this->below_conformal_material())
+            lift_type = LiftType::NormalLift;
         if (apply_instantly)
             gcode += m_writer.eager_lift(lift_type);
         else
@@ -9618,7 +9679,9 @@ std::string GCode::set_extruder(unsigned int new_filament_id, double print_z, bo
                 config.set_key_value("long_retraction_when_cut", new ConfigOptionBool(m_config.long_retractions_when_cut.get_at(fi)));
             }
 
-            gcode += this->placeholder_parser_process("filament_start_gcode", filament_start_gcode, new_filament_id, &config);
+            const std::string start = this->placeholder_parser_process("filament_start_gcode", filament_start_gcode, new_filament_id, &config);
+            m_start_gcode_pa[new_filament_id] = Nonplanar::parse_pressure_advance(start);
+            gcode += start;
             check_add_eol(gcode);
         }
         gcode += set_filament_pressure_advance(new_filament_id,
@@ -9958,7 +10021,9 @@ std::string GCode::set_extruder(unsigned int new_filament_id, double print_z, bo
             config.set_key_value("first_layer_temperature", new ConfigOptionInts(first_layer_temps));
             config.set_key_value("nozzle_temperature_initial_layer", new ConfigOptionInts(first_layer_temps));
         }
-        gcode += this->placeholder_parser_process("filament_start_gcode", filament_start_gcode, new_filament_id, &config);
+        const std::string start = this->placeholder_parser_process("filament_start_gcode", filament_start_gcode, new_filament_id, &config);
+        m_start_gcode_pa[new_filament_id] = Nonplanar::parse_pressure_advance(start);
+        gcode += start;
         if (add_change_filament_624) {
             gcode += "M625\n";
             add_change_filament_624 = false;

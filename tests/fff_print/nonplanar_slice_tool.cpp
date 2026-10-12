@@ -10,6 +10,7 @@
 #include "libslic3r/FlushVolCalc.hpp"
 #include "libslic3r/GCode/ClearanceVerifier.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
+#include "libslic3r/GCode/ToolKinematics.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Nonplanar/ConformalShells.hpp"
 #include "libslic3r/Nonplanar/FlowMod.hpp"
@@ -67,6 +68,7 @@ struct Args
     std::vector<std::pair<std::string, int>> parts;
     std::vector<std::pair<std::string, std::string>> overrides;
     bool        center_set = false;
+    bool        verify     = false;
     Vec2d       center     = Vec2d::Zero();
 };
 
@@ -75,7 +77,7 @@ struct Args
     std::cerr << "error: " << error << "\n"
               << "usage: nonplanar_slice_tool --printer NAME --process NAME --filament NAME [--vendor Prusa]\n"
                  "       [--profiles DIR] [--datadir DIR] [--set key=value]... [--center X,Y]\n"
-                 "       [--config-out FILE] -o OUT.gcode MODEL\n";
+                 "       [--config-out FILE] [--verify] -o OUT.gcode MODEL\n";
     std::exit(2);
 }
 
@@ -110,6 +112,7 @@ Args parse_args(int argc, char **argv)
         else if (arg == "--profiles") a.profiles = next();
         else if (arg == "--datadir") a.datadir = next();
         else if (arg == "--config-out") a.config_out = next();
+        else if (arg == "--verify") a.verify = true;
         else if (arg == "-o" || arg == "--output") a.output = next();
         else if (arg == "--set") {
             const std::string kv  = next();
@@ -384,10 +387,16 @@ int main(int argc, char **argv)
             std::cout << "feature_time_s " << t << " " << kind << "\n";
         std::cout << "nonplanar_extrude_time_s " << np_extrude << "\n"
                   << "nonplanar_other_time_s " << np_other << "\n";
+        if (args.verify && !result.clearance_report.ran) {
+            ClearanceParams params;
+            params.head               = Nonplanar::resolve_head_envelope(print.config());
+            result.clearance_report   = verify_clearance(result, params, *make_tool_kinematics(print.config()));
+        }
         const ClearanceReport &clearance = result.clearance_report;
         std::cout << "clearance_checked " << clearance.ran << "\n";
         if (clearance.ran) {
             std::cout << "clearance_hit_moves " << clearance.hit_moves << "\n"
+                      << "clearance_machine_hit_moves " << clearance.machine_hit_moves << "\n"
                       << "clearance_min_mm " << clearance.min_clearance << "\n";
             for (const ClearanceHit &hit : clearance.worst)
                 std::cout << "clearance_hit line " << hit.gcode_line << " " << hit.component << " " << hit.penetration << " mm\n";

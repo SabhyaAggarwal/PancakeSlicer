@@ -155,6 +155,8 @@ set(lisbslic3r_sources
     Nonplanar/Seams.hpp
     Nonplanar/ShellPaths.cpp
     Nonplanar/ShellPaths.hpp
+    Nonplanar/ShellSeams.cpp
+    Nonplanar/ShellSeams.hpp
     Nonplanar/HeadEnvelope.cpp
     Nonplanar/HeadEnvelope.hpp
     Nonplanar/HeightField.cpp

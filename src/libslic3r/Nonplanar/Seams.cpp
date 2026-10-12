@@ -1,4 +1,5 @@
 #include "Seams.hpp"
+#include "ShellSeams.hpp"
 
 #include "HeightField.hpp"
 
@@ -225,33 +226,48 @@ Point shell_seam(const ExPolygons &area, const HeightField &surface, SeamPositio
                 corners.emplace_back(c);
         return std::min_element(corners.begin(), corners.end(), lowest_then_rear)->p;
     }
-    return std::min_element(cands.begin(), cands.end(), lowest_then_rear)->p;
+    double y_min = std::numeric_limits<double>::max(), y_max = -y_min;
+    for (const Candidate &c : cands) {
+        y_min = std::min(y_min, c.y);
+        y_max = std::max(y_max, c.y);
+    }
+    std::vector<double> rear, curvature, z;
+    for (const Candidate &c : cands) {
+        rear.emplace_back(y_max > y_min ? (c.y - y_min) / (y_max - y_min) : 1.);
+        curvature.emplace_back(rear.back() >= 0.75 ? meridian_curvature(surface, seam_line(surface, c.p, area)) : 0.);
+        z.emplace_back(c.z);
+    }
+    return cands[convex_seam(rear, curvature, z)].p;
 }
 
 Polyline seam_line(const HeightField &surface, const Point &seam, const ExPolygons &area)
 {
-    Polyline out;
-    out.points.emplace_back(seam);
-    const double step = surface.pitch();
-    Vec2d        p    = unscale(seam);
-    float        z    = surface.sample(p);
-    if (std::isnan(z))
+    auto trace = [&](double dir) {
+        Polyline out;
+        out.points.emplace_back(seam);
+        const double step = surface.pitch();
+        Vec2d        p    = unscale(seam);
+        float        z    = surface.sample(p);
+        if (std::isnan(z))
+            return out;
+        for (int i = 0; i < 100000; ++i) {
+            const Vec2d g = surface.gradient(p);
+            if (std::isnan(g.x()) || std::isnan(g.y()) || g.norm() < 1e-3)
+                break;
+            const Vec2d q  = p + dir * step * g.normalized();
+            const float zq = surface.sample(q);
+            const Point pq = Point::new_scale(q.x(), q.y());
+            if (std::isnan(zq) || dir * (zq - z) <= 0.f ||
+                (i > 0 && std::none_of(area.begin(), area.end(), [&pq](const ExPolygon &e) { return e.contains(pq); })))
+                break;
+            p = q;
+            z = zq;
+            out.points.emplace_back(pq);
+        }
         return out;
-    for (int i = 0; i < 100000; ++i) {
-        const Vec2d g = surface.gradient(p);
-        if (std::isnan(g.x()) || std::isnan(g.y()) || g.norm() < 1e-3)
-            break;
-        const Vec2d q  = p + step * g.normalized();
-        const float zq = surface.sample(q);
-        const Point pq = Point::new_scale(q.x(), q.y());
-        if (std::isnan(zq) || zq <= z ||
-            (i > 0 && std::none_of(area.begin(), area.end(), [&pq](const ExPolygon &e) { return e.contains(pq); })))
-            break;
-        p = q;
-        z = zq;
-        out.points.emplace_back(pq);
-    }
-    return out;
+    };
+    Polyline up = trace(1.);
+    return up.points.size() > 1 ? up : trace(-1.);
 }
 
 namespace {

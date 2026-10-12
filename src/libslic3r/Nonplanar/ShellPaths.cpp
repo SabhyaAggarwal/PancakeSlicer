@@ -9,6 +9,7 @@
 
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ClipperUtils.hpp"
+#include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/Flow.hpp"
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/Line.hpp"
@@ -518,10 +519,15 @@ Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam,
     if (step <= 0)
         return {};
     Polygons   loops;
+    Polylines  centres;
     ExPolygons level = offset_ex(area, -0.5f * float(step));
     while (!level.empty()) {
         append(loops, to_polygons(level));
-        level = offset2_ex(level, -float(step) - 0.5f * float(step), 0.5f * float(step));
+        ExPolygons next = offset2_ex(level, -float(step) - 0.5f * float(step), 0.5f * float(step));
+        for (const ExPolygon &piece : level)
+            if (!offset_ex(piece, -0.75f * float(step)).empty() && intersection_ex(ExPolygons{ piece }, next).empty())
+                append(centres, piece.medial_axis(0.5 * double(step), 3.5 * double(step)));
+        level = std::move(next);
     }
     loops = union_pt_chained_outside_in(loops);
     Polylines out;
@@ -536,6 +542,7 @@ Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam,
         pos = pl.last_point();
         out.emplace_back(std::move(pl));
     }
+    append(out, chain_polylines(std::move(centres), &pos));
     return out;
 }
 

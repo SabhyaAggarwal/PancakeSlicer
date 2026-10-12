@@ -371,6 +371,10 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
         head_lever = std::max(head_lever, box.min.cwiseAbs().cwiseMax(box.max.cwiseAbs()).norm());
         infinite_head |= box.infinite_x || box.infinite_y;
     }
+    size_t first_print = result.moves.size(), last_print = 0;
+    for (size_t i = 0; i < result.moves.size(); ++i)
+        if (const auto &mv = result.moves[i]; mv.type == EMoveType::Extrude && mv.extrusion_role != erCustom && mv.extrusion_role != erNone)
+            first_print = std::min(first_print, i), last_print = i;
 
     struct Checked { uint32_t move, last, run, beads; bool extruding; };
     std::vector<Checked> checked;
@@ -541,14 +545,22 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
     size_t hit_at = 0;
     for (size_t k = 0; k < checked.size(); ++k) {
         const double best = bests[k];
-        report.per_move[checked[k].move] = float(best);
-        report.min_clearance = std::min(report.min_clearance, best);
+        const size_t i    = checked[k].move;
+        report.per_move[i] = float(best);
+        ClearanceHit *hit = nullptr;
         if (best < -ContactTolerance) {
             while (hit_at == hit_it->size()) { ++hit_it; hit_at = 0; }
-            ClearanceHit &hit = (*hit_it)[hit_at++].second;
+            hit = &(*hit_it)[hit_at++].second;
+        }
+        if (result.moves[i].extrusion_role == erCustom && (i < first_print || i > last_print)) {
+            report.machine_hit_moves += hit != nullptr;
+            continue;
+        }
+        report.min_clearance = std::min(report.min_clearance, best);
+        if (hit != nullptr) {
             ++report.hit_moves;
-            hit.penetration = -best;
-            report.worst.push_back(std::move(hit));
+            hit->penetration = -best;
+            report.worst.push_back(std::move(*hit));
             std::sort(report.worst.begin(), report.worst.end(), [](const auto &x, const auto &y) { return x.penetration > y.penetration; });
             if (report.worst.size() > 256) report.worst.resize(256);
         }

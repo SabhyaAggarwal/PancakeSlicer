@@ -22,6 +22,7 @@
 #include "GCode/ClearanceVerifier.hpp"
 #include "Nonplanar/HeadEnvelope.hpp"
 #include "Nonplanar/HeightField.hpp"
+#include "Nonplanar/ShellSeams.hpp"
 #include "GCode/ToolOrdering.hpp"
 #include "GCode/WipeTower.hpp"
 #include "GCode/SeamPlacer.hpp"
@@ -37,6 +38,7 @@
 #include "GCode/TimelapsePosPicker.hpp"
 #include "libslic3r_version.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <functional>
 #include <limits>
@@ -535,6 +537,7 @@ protected:
     void            emit_conformal_moves(std::string &gcode, const ExtrusionPathConformal &path, double e_per_mm,
                                          double speed, const std::string &speed_marker, const std::string &description);
     std::string     wipe_conformal_path();
+    Nonplanar::PressureAdvance conformal_pressure_advance() const;
     std::string     surface_travel(const Vec3d &to, bool from_on_bead, bool to_on_bead, bool in_band, const std::string &comment);
     std::string     conformal_retract();
     double          conformal_clearance();
@@ -547,7 +550,7 @@ protected:
     double          conformal_segment_rate() const;
     double          nonplanar_travel_z(const Vec2d *from = nullptr, const Vec2d *to = nullptr, bool nozzle_only = false);
     bool            below_conformal_material() const
-    { return m_material_columns && m_nonplanar_ceiling > m_nominal_z + EPSILON; }
+    { return m_material_columns && m_nonplanar_ceiling > std::min(m_nominal_z, m_writer.get_position().z()) + EPSILON; }
 
     void compute_farthest_point(const std::vector<LayerToPrint> &layers, int most_used_extruder,
                                 const std::map<std::pair<const SupportLayer *, ExtrusionRole>, unsigned int> &support_filaments);
@@ -674,6 +677,11 @@ protected:
     std::function<Vec2d(const Vec2d &)>    m_conformal_gradient;
     int                                    m_conformal_band_patch{ -1 };
     const ExtrusionPathConformal          *m_conformal_prev{ nullptr };
+    bool                                   m_conformal_ramp{ false };
+    bool                                   m_conformal_open_end{ false };
+    std::map<unsigned int, Nonplanar::PressureAdvance> m_start_gcode_pa;
+    Nonplanar::PressureAdvance                         m_machine_start_pa;
+    std::unique_ptr<Nonplanar::PressureAdvanceTracker> m_conformal_pa_tracker;
     bool                                   m_conformal_on_bead{ false };
     double                                 m_conformal_retract{ 0. };
     double                                 m_conformal_prime{ 0. };

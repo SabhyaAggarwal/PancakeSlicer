@@ -50,14 +50,19 @@ void throw_if_canceled(const PrintObject &object)
 
 double vertical_ray_hit(const sla::IndexedMesh &mesh, const Vec2d &p, double z, double dir_z, bool from_inside)
 {
+    double best = std::numeric_limits<double>::quiet_NaN();
+    int    n    = 0;
     for (const Vec2d &nudge : { Vec2d(0., 0.), Vec2d(1e-4, 0.618e-4), Vec2d(-0.707e-4, 1e-4),
                               Vec2d(-1e-4, -0.618e-4), Vec2d(0.707e-4, -1e-4) }) {
         const Vec2d q   = p + nudge;
         const auto  hit = mesh.query_ray_hit(Vec3d(q.x(), q.y(), z), Vec3d(0., 0., dir_z));
-        if (hit.is_hit() && hit.normal().normalized().z() * dir_z * (from_inside ? -1. : 1.) < -0.05)
-            return hit.position().z();
+        if (hit.is_hit() && hit.normal().normalized().z() * dir_z * (from_inside ? -1. : 1.) < -0.05 &&
+            !((hit.position().z() - best) * dir_z >= 0.))
+            best = hit.position().z();
+        if (++n >= 2 && !std::isnan(best))
+            break;
     }
-    return std::numeric_limits<double>::quiet_NaN();
+    return best;
 }
 
 bool requests_conformal_shells(const Print &print)
@@ -166,8 +171,8 @@ Mask rasterize(const ExPolygons &area, const HeightField &grid)
                 continue;
             if (a.y() > b.y())
                 std::swap(a, b);
-            const int iy0 = std::max(0, int(std::ceil((a.y() - o.y()) / p)));
-            const int iy1 = std::min(grid.ny() - 1, int(std::ceil((b.y() - o.y()) / p)) - 1);
+            const int iy0 = std::max(0, int(std::ceil((a.y() - o.y()) / p)) - 1);
+            const int iy1 = std::min(grid.ny() - 1, int(std::ceil((b.y() - o.y()) / p)));
             for (int iy = iy0; iy <= iy1; ++iy) {
                 const double y = o.y() + iy * p;
                 if (y < a.y() || y >= b.y())
@@ -185,8 +190,10 @@ Mask rasterize(const ExPolygons &area, const HeightField &grid)
         std::vector<double> &xs = crossings[iy];
         std::sort(xs.begin(), xs.end());
         for (size_t i = 0; i + 1 < xs.size(); i += 2) {
-            const int ix0 = std::max(0, int(std::ceil((xs[i] - o.x()) / p)));
-            const int ix1 = std::min(grid.nx() - 1, int(std::floor((xs[i + 1] - o.x()) / p)));
+            int ix0 = std::max(0, int(std::ceil((xs[i] - o.x()) / p)) - 1);
+            int ix1 = std::min(grid.nx() - 1, int(std::floor((xs[i + 1] - o.x()) / p)) + 1);
+            for (; ix0 <= ix1 && o.x() + ix0 * p < xs[i]; ++ix0) ;
+            for (; ix1 >= ix0 && o.x() + ix1 * p > xs[i + 1]; --ix1) ;
             for (int ix = ix0; ix <= ix1; ++ix)
                 mask[size_t(iy) * grid.nx() + ix] = 1;
         }

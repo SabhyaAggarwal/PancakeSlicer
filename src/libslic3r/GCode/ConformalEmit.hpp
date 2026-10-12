@@ -17,6 +17,8 @@ class GCodeWriter;
 
 namespace Nonplanar {
 
+class PressureAdvanceTracker;
+
 struct ConformalPoint
 {
     ToolPose pose;
@@ -45,7 +47,6 @@ struct ConditionParams
 void condition_path(std::vector<ConformalPoint> &points, const ConditionParams &params);
 
 double planner_segment_rate(double configured, GCodeFlavor flavor, bool bbl_printer);
-constexpr double ConformalTaper = 1.;
 constexpr double ConformalWipe  = 1.;
 constexpr double ConformalPrime = 0.5;
 constexpr double ConformalBelowFirstLayerTolerance = 0.005;
@@ -61,11 +62,15 @@ struct ConformalEmitParams
     std::string  comment;
     std::string  speed_marker;
     std::function<std::vector<double>(const std::vector<ConformalPoint> &)> speed_caps;
-    double       taper_length  = 0.;
     double       prime         = 0.;
     double       prime_length  = 0.;
     double       prime_speed   = 0.;
     float       *last_width = nullptr;
+    double       ramp_length   = 0.;
+    double       taper_length  = 0.;
+    double       coast_length  = 0.;
+    bool         open_end      = false;
+    PressureAdvanceTracker *pressure_advance = nullptr;
 };
 
 struct ConformalSpeedParams
