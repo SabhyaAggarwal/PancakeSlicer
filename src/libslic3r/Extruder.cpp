@@ -121,6 +121,15 @@ void Extruder::set_retracted(double retracted, double restart_extra)
     }
 }
 
+double Extruder::take_retraction()
+{
+    double &retracted = m_share_extruder ? m_share_retracted[extruder_id()] : m_retracted;
+    const double prime = retracted + m_restart_extra;
+    retracted       = 0.;
+    m_restart_extra = 0.;
+    return prime;
+}
+
 double Extruder::extruded_volume() const
 {
     if (m_share_extruder) {

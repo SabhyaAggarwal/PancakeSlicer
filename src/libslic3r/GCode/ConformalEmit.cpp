@@ -222,6 +222,36 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
     const std::vector<double> caps   = params.speed_caps ? params.speed_caps(points) : std::vector<double>();
     const std::vector<double> speeds = limit_feedrates(tips, nominal, params.limits, 0.05, caps.empty() ? nullptr : &caps);
 
+    std::vector<double> prime(points.size() - 1, 0.);
+    auto primes = [&](size_t i) {
+        return points[i].bead_height > 0.f && points[i + 1].bead_height > 0.f && (points[i + 1].pose.tip - points[i].pose.tip).norm() >= 0.05;
+    };
+    if (params.prime > 0.) {
+        double road = 0.;
+        for (size_t i = 0; i + 1 < points.size(); ++i)
+            if (primes(i))
+                road += (points[i + 1].pose.tip - points[i].pose.tip).norm();
+        const double length = std::min(road, std::max(params.prime_length, EPSILON));
+        if (length <= EPSILON) {
+            if (params.prime_speed > 0.) {
+                if (rotary)
+                    writer.set_pose_speed(params.prime_speed * 60.);
+                else
+                    writer.set_speed(out, params.prime_speed * 60.);
+            }
+            writer.extrude_to_pose(out, points.front().pose, params.prime, "prime");
+        }
+        else {
+            double done = 0.;
+            for (size_t i = 0; i + 1 < points.size() && done < length; ++i)
+                if (primes(i)) {
+                    const double run = std::min((points[i + 1].pose.tip - points[i].pose.tip).norm(), length - done);
+                    prime[i] = params.prime * run / length;
+                    done += run;
+                }
+        }
+    }
+
     double volume = 0.;
     char   buf[64];
     for (size_t i = 0; i + 1 < points.size(); ++i) {
@@ -248,6 +278,9 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
         double speed = speeds[i];
         if (params.max_volume_per_second > 0. && v > 0.)
             speed = std::min(speed, params.max_volume_per_second * (b.pose.tip - a.pose.tip).norm() / v);
+        const double dE = v * params.e_per_mm3 + prime[i];
+        if (prime[i] > 0. && params.prime_speed > 0.)
+            speed = std::min(speed, params.prime_speed * (b.pose.tip - a.pose.tip).norm() / dE);
         const double F = speed * 60.;
         if (std::abs(writer.get_current_speed() - F) > EPSILON) {
             if (rotary)
@@ -255,7 +288,7 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
             else
                 writer.set_speed(out, F, "", glide(i) ? std::string() : params.speed_marker);
         }
-        writer.extrude_to_pose(out, b.pose, v * params.e_per_mm3, params.comment);
+        writer.extrude_to_pose(out, b.pose, dE, params.comment);
         if (deposit && !glide(i))
             deposit(a.pose.tip, b.pose.tip, seg_width);
     }

@@ -47,6 +47,7 @@ void condition_path(std::vector<ConformalPoint> &points, const ConditionParams &
 double planner_segment_rate(double configured, GCodeFlavor flavor, bool bbl_printer);
 constexpr double ConformalTaper = 1.;
 constexpr double ConformalWipe  = 1.;
+constexpr double ConformalPrime = 0.5;
 constexpr double ConformalBelowFirstLayerTolerance = 0.005;
 
 struct ConformalEmitParams
@@ -61,6 +62,9 @@ struct ConformalEmitParams
     std::string  speed_marker;
     std::function<std::vector<double>(const std::vector<ConformalPoint> &)> speed_caps;
     double       taper_length  = 0.;
+    double       prime         = 0.;
+    double       prime_length  = 0.;
+    double       prime_speed   = 0.;
     float       *last_width = nullptr;
 };
 

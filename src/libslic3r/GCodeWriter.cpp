@@ -1275,14 +1275,14 @@ void GCodeWriter::extrude_to_pose(std::string &out, const ToolPose &pose, double
     this->pose_move(out, pose, dE, comment, false);
 }
 
-std::string GCodeWriter::travel_to_pose(const ToolPose &pose, const std::string &comment)
+std::string GCodeWriter::travel_to_pose(const ToolPose &pose, const std::string &comment, double speed)
 {
     std::string out;
-    this->pose_move(out, pose, 0., comment, true);
+    this->pose_move(out, pose, 0., comment, true, speed);
     return out;
 }
 
-void GCodeWriter::pose_move(std::string &out, const ToolPose &pose, double dE, const std::string &comment, bool travel)
+void GCodeWriter::pose_move(std::string &out, const ToolPose &pose, double dE, const std::string &comment, bool travel, double speed)
 {
     const ToolKinematics &kin = this->tool_kinematics();
     if (kin.rotary_count() == 0) {
@@ -1290,7 +1290,7 @@ void GCodeWriter::pose_move(std::string &out, const ToolPose &pose, double dE, c
         if (travel) {
             GCodeG1Formatter w;
             w.emit_xyz(apply_axis_remap(Vec3d(pose.tip.x() - m_x_offset, pose.tip.y() - m_y_offset, pose.tip.z())));
-            w.emit_f(this->config.travel_speed.get_at(m_cached_extruder_idx) * 60.);
+            w.emit_f((speed > 0. ? speed : this->config.travel_speed.get_at(m_cached_extruder_idx)) * 60.);
             w.emit_comment(GCodeWriter::full_gcode_comment, comment);
             w.append_to(out);
             m_pos    = pose.tip;

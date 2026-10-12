@@ -149,7 +149,7 @@ public:
     void                  set_tool_kinematics(std::unique_ptr<ToolKinematics> kinematics);
     const ToolKinematics &tool_kinematics() const;
     void        extrude_to_pose(std::string &out, const ToolPose &pose, double dE, const std::string &comment = {});
-    std::string travel_to_pose(const ToolPose &pose, const std::string &comment = {});
+    std::string travel_to_pose(const ToolPose &pose, const std::string &comment = {}, double speed = 0.);
     void        move_to_joints(std::string &out, const JointPose &joints, const std::string &comment = {});
     void        set_pose_speed(double F) { m_current_speed = F; }
     std::string end_inverse_time();
@@ -189,7 +189,7 @@ protected:
     Vec3d                           m_max_joint_speed { Vec3d::Zero() };
     void        write_joint_move(std::string &out, const JointPose &joints, double tip_length, double tip_speed,
                                  double dE, const std::string &comment);
-    void        pose_move(std::string &out, const ToolPose &pose, double dE, const std::string &comment, bool travel);
+    void        pose_move(std::string &out, const ToolPose &pose, double dE, const std::string &comment, bool travel, double speed = 0.);
 
     int             m_remap_x = 0;
     int             m_remap_y = 1;

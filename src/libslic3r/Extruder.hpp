@@ -50,6 +50,7 @@ public:
     double get_share_retracted_length() const { return m_share_retracted[extruder_id()]; }
     void   set_position(double e) { m_E = e; }
     void   set_retracted(double retracted, double restart_extra);
+    double take_retraction();
     
     double filament_diameter() const;
     double filament_crossection() const { return this->filament_diameter() * this->filament_diameter() * 0.25 * PI; }

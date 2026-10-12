@@ -128,6 +128,8 @@ set(lisbslic3r_sources
     GCode/ClearanceVerifier.hpp
     GCode/ConformalEmit.cpp
     GCode/ConformalEmit.hpp
+    GCode/ConformalTravel.cpp
+    GCode/ConformalTravel.hpp
     Nonplanar/Validate.cpp
     Nonplanar/ConformalBottom.cpp
     Nonplanar/ConformalBottom.hpp

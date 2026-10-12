@@ -18,6 +18,7 @@
 #include "GCode/RetractWhenCrossingPerimeters.hpp"
 #include "GCode/SpiralVase.hpp"
 #include "GCode/ConformalEmit.hpp"
+#include "GCode/ConformalTravel.hpp"
 #include "GCode/ClearanceVerifier.hpp"
 #include "Nonplanar/HeadEnvelope.hpp"
 #include "GCode/ToolOrdering.hpp"
@@ -533,6 +534,11 @@ protected:
     void            emit_conformal_moves(std::string &gcode, const ExtrusionPathConformal &path, double e_per_mm,
                                          double speed, const std::string &speed_marker, const std::string &description);
     std::string     wipe_conformal_path();
+    std::string     surface_travel(const Vec3d &to, bool from_on_bead, bool to_on_bead, bool in_band, const std::string &comment);
+    std::string     conformal_retract();
+    double          conformal_clearance();
+    double          nonplanar_repair_lift() const;
+    void            ensure_material_columns(const ExtrusionPath &path);
     std::string     rotary_move_safely(const ToolPose *target);
     const Nonplanar::HeadEnvelope &nonplanar_head();
     double          nonplanar_hop();
@@ -665,6 +671,11 @@ protected:
     std::function<Vec2d(const Vec2d &)>    m_conformal_gradient;
     int                                    m_conformal_band_patch{ -1 };
     const ExtrusionPathConformal          *m_conformal_prev{ nullptr };
+    bool                                   m_conformal_on_bead{ false };
+    double                                 m_conformal_retract{ 0. };
+    double                                 m_conformal_prime{ 0. };
+    double                                 m_print_clock{ 0. };
+    Nonplanar::FreshBeads                  m_fresh_beads;
     Nonplanar::HeadEnvelope                m_nonplanar_head;
     float                               m_last_width{ 0.0f };
     double                              m_last_layer_accumulated_mass{ 0.0 };
