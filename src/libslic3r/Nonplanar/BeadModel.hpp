@@ -21,8 +21,10 @@ struct MotionLimits
 };
 
 std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, double nominal,
-                                    const MotionLimits &limits, double quantum = 0.05);
+                                    const MotionLimits &limits, double quantum = 0.05,
+                                    const std::vector<double> *caps = nullptr);
 std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, const std::vector<double> &nominal,
-                                    const MotionLimits &limits, double quantum = 0.05);
+                                    const MotionLimits &limits, double quantum = 0.05,
+                                    const std::vector<double> *caps = nullptr);
 
 }

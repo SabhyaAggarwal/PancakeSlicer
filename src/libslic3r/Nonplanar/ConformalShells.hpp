@@ -1,4 +1,5 @@
 #pragma once
+#include "FlowMod.hpp"
 #include "HeightField.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
@@ -48,6 +49,7 @@ struct ConformalResult
     std::vector<ConformalPatch>   patches;
     std::vector<PatchDiagnostics> diagnostics;
     std::vector<ExPolygons>       planar_exclusion;
+    FlowModStats                  flow_mod;
 };
 
 HeightField sample_top_surface(const sla::IndexedMesh &mesh, double ray_z, double z_offset, const HeightField &like,

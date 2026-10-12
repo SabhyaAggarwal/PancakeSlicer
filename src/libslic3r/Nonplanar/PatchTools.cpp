@@ -1050,7 +1050,7 @@ double multi_material_patch_height(const PrintObject &object, const HeadEnvelope
 }
 
 std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const HeightField &S, const std::vector<double> &layer_z,
-                                             double pitch, double tolerance, const BandSeams *seams, bool host_above, int patch_offset)
+                                             double pitch, double tolerance, const BandSeams *seams, bool host_above, int patch_offset, std::vector<size_t> *band_component)
 {
     std::vector<ConformalPatch>   components = std::move(result.patches);
     std::vector<PatchDiagnostics> comp_diag  = std::move(result.diagnostics);
@@ -1266,6 +1266,8 @@ std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const Heig
             p.z_min = p.z_max;
         ConformalPatch &comp = components[bd.comp];
         comp.host_layer      = std::max(comp.host_layer, p.host_layer);
+        if (band_component != nullptr)
+            band_component->emplace_back(bd.comp);
         bd.diag.patch_id          = p.id;
         bd.diag.rms_surface_error = bd.err_n > 0 ? std::sqrt(bd.err_sq / bd.err_n) : 0.;
         result.diagnostics.emplace_back(std::move(bd.diag));

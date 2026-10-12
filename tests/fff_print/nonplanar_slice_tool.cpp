@@ -10,6 +10,8 @@
 #include "libslic3r/GCode/ClearanceVerifier.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
 #include "libslic3r/Model.hpp"
+#include "libslic3r/Nonplanar/ConformalShells.hpp"
+#include "libslic3r/Nonplanar/FlowMod.hpp"
 #include "libslic3r/Nonplanar/HeadEnvelope.hpp"
 #include "libslic3r/Point.hpp"
 #include "libslic3r/Preset.hpp"
@@ -318,6 +320,15 @@ int main(int argc, char **argv)
                   << "machine_max_speed_z " << config.opt<ConfigOptionFloats>("machine_max_speed_z")->get_at(0) << "\n";
         for (const auto &warning : print.step_state_with_warnings(psGCodeExport).warnings)
             std::cout << "export_warning " << warning.message << "\n";
+        Nonplanar::FlowModStats flow;
+        for (const PrintObject *object : print.objects())
+            flow.merge(object->conformal().flow_mod);
+        if (flow.points > 0)
+            std::cout << "flow_points " << flow.points << "\n"
+                      << "flow_normal_gap_mm " << flow.min_gap << " " << flow.max_gap << "\n"
+                      << "flow_laid_mm " << flow.min_laid << " " << flow.max_laid << "\n"
+                      << "flow_clamped thick " << flow.max_clamped << " thin " << flow.min_clamped << " dragged " << flow.dragged
+                      << " contact " << flow.contact << "\n";
         double np_extrude = 0., np_other = 0.;
         std::map<std::string, double> np_kind;
         for (size_t i = 0; i < result.moves.size(); ++i) {

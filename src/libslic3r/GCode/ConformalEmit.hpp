@@ -39,6 +39,7 @@ struct ConditionParams
     double min_tolerance   = 0.03;
     double min_z_tolerance = 0.005;
     double axis_tolerance  = 0.01;
+    double bead_tolerance  = 0.005;
     double glide_z_tolerance = 0.5 * GlideLift;
 };
 void condition_path(std::vector<ConformalPoint> &points, const ConditionParams &params);
@@ -58,9 +59,22 @@ struct ConformalEmitParams
     ConditionParams condition;
     std::string  comment;
     std::string  speed_marker;
+    std::function<std::vector<double>(const std::vector<ConformalPoint> &)> speed_caps;
     double       taper_length  = 0.;
     float       *last_width = nullptr;
 };
+
+struct ConformalSpeedParams
+{
+    double nominal_speed    = 0.;
+    double max_volumetric   = 0.;
+    double reference_height = 0.;
+    double min_ratio        = 0.5;
+    Vec3d  max_joint_speed  { Vec3d::Zero() };
+};
+std::vector<double> conformal_speed_caps(const std::vector<ConformalPoint> &points, double width,
+                                         const std::function<Vec2d(const Vec2d &)> &gradient, const ToolKinematics &kinematics,
+                                         const JointPose &start, const Vec3d &writer_offset, const ConformalSpeedParams &params);
 
 using DepositFn = std::function<void(const Vec3d &, const Vec3d &, double)>;
 double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<ConformalPoint> &points, double width,

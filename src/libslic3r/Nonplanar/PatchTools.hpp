@@ -128,7 +128,7 @@ std::vector<std::pair<size_t, size_t>> split_by_colour(ConformalResult &result, 
 
 std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const HeightField &S, const std::vector<double> &layer_z,
                                              double pitch, double tolerance, const BandSeams *seams = nullptr,
-                                             bool host_above = false, int patch_offset = 0);
+                                             bool host_above = false, int patch_offset = 0, std::vector<size_t> *band_component = nullptr);
 
 bool spans_wall(const HeightField &surface, const Vec2d &p);
 

@@ -931,13 +931,54 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
     }
 
     std::vector<ConformalPatch> component_patches;
+    std::vector<size_t>         patch_component;
     if (settings.banded) {
         const BandSeams band_seams{ fill_areas, seams, seam_lines, line_width, MaxGlide, spans_wall,
                                     settings.shells - settings.top_shells, &stack_layers };
         component_patches = split_into_bands(result, S, layer_z, band_pitch, band_tolerance, &band_seams,
-                                             material_max_patch_height != settings.max_patch_height, patch_offset);
+                                             material_max_patch_height != settings.max_patch_height, patch_offset, &patch_component);
     }
     std::vector<ConformalPatch> &units = settings.banded ? component_patches : result.patches;
+
+    if (region.config().nonplanar_flow_mod.value) {
+        const double  nozzle = region.flow(object, frSolidInfill, h_c).nozzle_diameter();
+        FlowModParams params;
+        params.land_radius = head.tip_flat_radius;
+        params.max_height  = FlowModMaxThickness * nozzle;
+        params.smoothing   = FlowModSmoothing * nozzle;
+        params.resample    = pitch;
+        std::vector<std::vector<size_t>> groups(units.size());
+        for (size_t i = 0; i < result.patches.size(); ++i)
+            groups[settings.banded ? patch_component[i] : i].emplace_back(i);
+        std::vector<FlowModStats> stats(groups.size());
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, groups.size()), [&](const tbb::blocked_range<size_t> &range) {
+            for (size_t c = range.begin(); c < range.end(); ++c) {
+                if (groups[c].empty())
+                    continue;
+                throw_if_canceled(object);
+                const HeightField &surface = result.patches[groups[c].front()].surface;
+                std::optional<ShellDeficit> below;
+                for (int k = 0; k < settings.shells; ++k) {
+                    const bool   sparse = k < settings.sparse;
+                    ShellDeficit laid(surface);
+                    for (size_t idx : groups[c])
+                        for (ExtrusionEntity *ee : result.patches[idx].shell_paths[size_t(k)].entities)
+                            modulate_flow(*static_cast<ExtrusionPathConformal *>(ee), surface, below && !sparse ? &*below : nullptr,
+                                          sparse ? nullptr : &laid, params, stats[c]);
+                    if (sparse)
+                        below.reset();
+                    else
+                        below.emplace(std::move(laid));
+                }
+            }
+        });
+        for (const FlowModStats &s : stats)
+            result.flow_mod.merge(s);
+        const FlowModStats &fm = result.flow_mod;
+        BOOST_LOG_TRIVIAL(info) << "Non-planar flow: " << fm.points << " points, normal gap " << fm.min_gap << ".." << fm.max_gap
+                                << " mm, laid " << fm.min_laid << ".." << fm.max_laid << " mm; clamped " << fm.max_clamped << " thick, "
+                                << fm.min_clamped << " thin; " << fm.dragged << " dragged, " << fm.contact << " in tip contact";
+    }
 
     for (const ConformalPatch &patch : result.patches)
         layers[patch.host_layer]->conformal_patches_after.emplace_back(patch.id);
@@ -992,6 +1033,7 @@ ConformalResult build_conformal_shells(PrintObject &object)
     }
     for (size_t region_id = 0; region_id < object.num_printing_regions(); ++region_id) {
         ConformalResult region = build_region_shells(object, region_id, int(result.patches.size()));
+        result.flow_mod.merge(region.flow_mod);
         for (ConformalPatch &patch : region.patches)
             result.patches.emplace_back(std::move(patch));
         for (PatchDiagnostics &diag : region.diagnostics)

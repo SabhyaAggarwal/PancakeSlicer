@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 
 namespace Slic3r::Nonplanar {
 
@@ -143,6 +144,9 @@ void condition_path(std::vector<ConformalPoint> &points, const ConditionParams &
             const Vec3d  q = a + t * d;
             if ((p - q).head<2>().norm() > tol || std::abs(p.z() - q.z()) > ztol)
                 return false;
+            const double bead = (1. - t) * points[i].bead_height + t * points[j].bead_height;
+            if (std::abs(points[k].bead_height - bead) > params.bead_tolerance)
+                return false;
             const Vec3d axis = ((1. - t) * points[i].pose.axis + t * points[j].pose.axis).normalized();
             if (std::acos(std::clamp(axis.dot(points[k].pose.axis), -1., 1.)) > params.axis_tolerance)
                 return false;
@@ -215,7 +219,8 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
     for (size_t i = 0; i < nominal.size(); ++i)
         if (glide(i))
             nominal[i] = std::max(params.nominal_speed, params.glide_speed);
-    const std::vector<double> speeds = limit_feedrates(tips, nominal, params.limits);
+    const std::vector<double> caps   = params.speed_caps ? params.speed_caps(points) : std::vector<double>();
+    const std::vector<double> speeds = limit_feedrates(tips, nominal, params.limits, 0.05, caps.empty() ? nullptr : &caps);
 
     double volume = 0.;
     char   buf[64];
@@ -255,6 +260,49 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
             deposit(a.pose.tip, b.pose.tip, seg_width);
     }
     return volume;
+}
+
+std::vector<double> conformal_speed_caps(const std::vector<ConformalPoint> &points, double width,
+                                         const std::function<Vec2d(const Vec2d &)> &gradient, const ToolKinematics &kinematics,
+                                         const JointPose &start, const Vec3d &writer_offset, const ConformalSpeedParams &params)
+{
+    constexpr double    inf = std::numeric_limits<double>::infinity();
+    std::vector<double> caps(points.size() < 2 ? 0 : points.size() - 1, inf);
+    const bool          rotary = kinematics.rotary_count() > 0;
+    JointPose           prev   = start;
+    bool                joints = rotary;
+    for (size_t i = 0; i < caps.size(); ++i) {
+        const ConformalPoint &a = points[i], &b = points[i + 1];
+        const double          len = (b.pose.tip - a.pose.tip).norm();
+        if (len < EPSILON)
+            continue;
+        const Vec3d  axis   = (a.pose.axis + b.pose.axis).normalized();
+        const double volume = segment_volume(a.pose.tip, b.pose.tip, width, a.bead_height, b.bead_height, axis);
+        if (params.max_volumetric > 0. && volume > 0.)
+            caps[i] = std::min(caps[i], params.max_volumetric * len / volume);
+        if (params.reference_height > 0. && volume > 0. && gradient) {
+            const Vec2d  g      = gradient(0.5 * (a.pose.tip + b.pose.tip).head<2>());
+            const Vec3d  normal = Vec3d(-g.x(), -g.y(), 1.).normalized();
+            const double normal_thickness = 0.5 * (a.bead_height + b.bead_height) * std::max(0., axis.dot(normal));
+            caps[i] = std::min(caps[i], params.nominal_speed * std::clamp(normal_thickness / params.reference_height, params.min_ratio, 1.));
+        }
+        if (joints) {
+            JointPose next;
+            if (!kinematics.inverse({ b.pose.tip - writer_offset, b.pose.axis.normalized() }, &prev, next)) {
+                joints = false;
+                continue;
+            }
+            const std::array<RotaryAxis, 2> &axes = kinematics.rotary_axes();
+            for (int k = 0; k < 2; ++k)
+                if (const double d = std::abs(next.rot[k] - prev.rot[k]); axes[k].max_speed_deg_s > 0. && d > 1e-9)
+                    caps[i] = std::min(caps[i], axes[k].max_speed_deg_s * len / d);
+            for (int k = 0; k < 3; ++k)
+                if (const double d = std::abs(next.xyz[k] - prev.xyz[k]); params.max_joint_speed[k] > 0. && d > 1e-9)
+                    caps[i] = std::min(caps[i], params.max_joint_speed[k] * len / d);
+            prev = next;
+        }
+    }
+    return caps;
 }
 
 bool emit_conformal_wipe(GCodeWriter &writer, const std::vector<ConformalPoint> &points, const ConformalWipeParams &params,

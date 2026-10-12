@@ -5099,6 +5099,16 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionBool(true));
 
+    def = this->add("nonplanar_flow_mod", coBool);
+    def->label    = L("Non-planar flow modulation");
+    def->category = L("Quality");
+    def->tooltip  = L("Extrude each curved shell line by the bead the nozzle can actually lay there: the local "
+                      "thickness above the material below, how far the flat nozzle tip reaches on a slope, and a "
+                      "smooth transition along the line. Thin and steep parts of the shells are printed slower, "
+                      "within the filament's maximum volumetric speed.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(true));
+
     def = this->add("nonplanar_infill_depth", coFloat);
     def->label    = L("Non-planar infill depth");
     def->category = L("Quality");

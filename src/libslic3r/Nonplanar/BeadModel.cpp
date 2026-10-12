@@ -1,5 +1,7 @@
 #include "BeadModel.hpp"
 
+#include "libslic3r/libslic3r.h"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -32,13 +34,13 @@ double segment_volume(const Vec3d &a, const Vec3d &b, double width, float height
 }
 
 std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, double nominal,
-                                    const MotionLimits &limits, double quantum)
+                                    const MotionLimits &limits, double quantum, const std::vector<double> *caps)
 {
-    return limit_feedrates(pts, std::vector<double>(pts.size() < 2 ? 0 : pts.size() - 1, nominal), limits, quantum);
+    return limit_feedrates(pts, std::vector<double>(pts.size() < 2 ? 0 : pts.size() - 1, nominal), limits, quantum, caps);
 }
 
 std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, const std::vector<double> &nominal,
-                                    const MotionLimits &limits, double quantum)
+                                    const MotionLimits &limits, double quantum, const std::vector<double> *caps)
 {
     if (pts.size() < 2)
         return {};
@@ -46,8 +48,10 @@ std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, const std::ve
     std::vector<double> length(n), slope(n), v = nominal;
     for (size_t i = 0; i < n; ++i) {
         const Vec3d d = pts[i + 1] - pts[i];
-        length[i]     = d.norm();
+        length[i]     = d.norm() < EPSILON ? 0. : d.norm();
         slope[i]      = length[i] > 0. ? d.z() / length[i] : 0.;
+        if (caps != nullptr && i < caps->size())
+            v[i] = std::min(v[i], (*caps)[i]);
         if (length[i] <= 0.)
             continue;
         if (limits.max_v_z > 0. && std::abs(slope[i]) > 0.)

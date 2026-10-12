@@ -524,7 +524,8 @@ protected:
     double          tower_layer_z() const;
     std::string     extrude_conformal_path(const ExtrusionPathConformal &path, const std::string &description,
                                            const std::function<Vec2d(const Vec2d &)> &surface_gradient = {},
-                                           const ExtrusionPathConformal *next = nullptr);
+                                           const ExtrusionPathConformal *next = nullptr,
+                                           const std::function<Vec2d(const Vec2d &)> &slope_gradient = {});
     bool            conformal_in_band(const ExtrusionPathConformal *prev, const ExtrusionPathConformal *path) const;
     bool            conformal_short_hop(const ExtrusionPathConformal &path, const ExtrusionPathConformal *next, Vec3d &to);
     std::string     extrude_multiplanar_chunk(const Nonplanar::ConformalPatch &patch);
@@ -661,6 +662,7 @@ protected:
     bool                                m_track_nonplanar_material{ false };
     bool m_conformal_lift { false };
     std::vector<Nonplanar::ConformalPoint> m_conformal_points;
+    std::function<Vec2d(const Vec2d &)>    m_conformal_gradient;
     int                                    m_conformal_band_patch{ -1 };
     const ExtrusionPathConformal          *m_conformal_prev{ nullptr };
     Nonplanar::HeadEnvelope                m_nonplanar_head;

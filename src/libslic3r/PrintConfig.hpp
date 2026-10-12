@@ -1438,6 +1438,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionEnum<NonplanarTopPattern>, nonplanar_top_pattern))
     ((ConfigOptionFloat,                     nonplanar_top_direction))
     ((ConfigOptionBool,                      nonplanar_surface_spacing))
+    ((ConfigOptionBool,                      nonplanar_flow_mod))
     ((ConfigOptionFloat,                     nonplanar_infill_depth))
     ((ConfigOptionBool,                      nonplanar_ironing))
     ((ConfigOptionBool,                      nonplanar_overhangs))

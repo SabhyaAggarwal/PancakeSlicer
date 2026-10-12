@@ -118,6 +118,8 @@ set(lisbslic3r_sources
     Nonplanar/AtomToolpath.hpp
     Nonplanar/BeadModel.cpp
     Nonplanar/BeadModel.hpp
+    Nonplanar/FlowMod.cpp
+    Nonplanar/FlowMod.hpp
     GCode/ToolKinematics.cpp
     GCode/ToolKinematics.hpp
     GCode/ClearanceRepair.cpp

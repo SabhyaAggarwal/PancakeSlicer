@@ -7346,12 +7346,13 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                     m_max_layer_z = std::max(m_max_layer_z, float(patch.z_max));
                     continue;
                 }
+                const std::function<Vec2d(const Vec2d &)> slope_gradient = [&patch](const Vec2d &p) {
+                    const Vec2d g = patch.surface.gradient(p);
+                    return std::isnan(g.x()) || std::isnan(g.y()) ? Vec2d(Vec2d::Zero()) : g;
+                };
                 std::function<Vec2d(const Vec2d &)> surface_gradient;
                 if (patch.band < 0)
-                    surface_gradient = [&patch](const Vec2d &p) {
-                        const Vec2d g = patch.surface.gradient(p);
-                        return std::isnan(g.x()) || std::isnan(g.y()) ? Vec2d(Vec2d::Zero()) : g;
-                    };
+                    surface_gradient = slope_gradient;
                 const size_t passes = patch.shell_paths.size() + (patch.ironing.empty() ? 0 : 1);
                 auto         pass   = [&patch](size_t k) -> const ExtrusionEntityCollection & {
                     return k < patch.shell_paths.size() ? patch.shell_paths[k] : patch.ironing;
@@ -7375,7 +7376,9 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                             ++next;
                             gcode += this->extrude_conformal_path(*path, what,
                                                                   patch.surface.empty() ? std::function<Vec2d(const Vec2d &)>() : surface_gradient,
-                                                                  next < order.size() ? order[next] : nullptr);
+                                                                  next < order.size() ? order[next] : nullptr,
+                                                                  !ironing && patch.kind == Nonplanar::PatchKind::Top && !patch.surface.empty() ?
+                                                                      slope_gradient : nullptr);
                         }
                     gcode += ";_NONPLANAR_END\n";
                 }
@@ -7413,7 +7416,8 @@ std::string GCode::travel_above_nonplanar(const Polyline &travel, const std::str
 
 std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, const std::string &description,
                                           const std::function<Vec2d(const Vec2d &)> &surface_gradient,
-                                          const ExtrusionPathConformal *next)
+                                          const ExtrusionPathConformal *next,
+                                          const std::function<Vec2d(const Vec2d &)> &slope_gradient)
 {
     using namespace Nonplanar;
     std::string gcode;
@@ -7463,7 +7467,12 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
     }
     this->set_last_pos(path.first_point());
     m_need_change_layer_lift_z = false;
+    if (slope_gradient && m_config.nonplanar_flow_mod.value) {
+        const Vec2d origin   = this->point_to_gcode(Point(0, 0));
+        m_conformal_gradient = [&slope_gradient, origin](const Vec2d &p) { return slope_gradient(p - origin); };
+    }
     gcode += this->_extrude(path, description);
+    m_conformal_gradient = nullptr;
     Vec3d      hop_to;
     const bool glide_on = next != nullptr && next->polyline.points.front() == path.polyline.points.back();
     const bool hop      = !glide_on && this->conformal_short_hop(path, next, hop_to);
@@ -7652,6 +7661,19 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
         params.limits.junction_deviation = first_value(m_config.machine_max_junction_deviation);
     params.limits.segment_rate = planner_segment_rate(m_config.nonplanar_segment_rate.value, flavor, m_print != nullptr && m_print->is_BBL_printer());
     params.condition.target_length = std::max(0.15, params.nominal_speed / params.limits.segment_rate);
+    if (m_config.nonplanar_flow_mod.value) {
+        ConformalSpeedParams caps;
+        caps.nominal_speed    = speed;
+        caps.max_volumetric   = FILAMENT_CONFIG(filament_max_volumetric_speed);
+        caps.reference_height = m_conformal_gradient ? path.height : 0.;
+        caps.max_joint_speed  = Vec3d(first_value(m_config.machine_max_speed_x), first_value(m_config.machine_max_speed_y),
+                                      first_value(m_config.machine_max_speed_z));
+        const Vec2f  offset   = m_writer.get_xy_offset();
+        const Vec3d  shift(offset.x(), offset.y(), 0.);
+        params.speed_caps     = [this, &path, caps, shift](const std::vector<ConformalPoint> &points) {
+            return conformal_speed_caps(points, path.width, m_conformal_gradient, m_writer.tool_kinematics(), m_writer.get_joints(), shift, caps);
+        };
+    }
 
     emit_conformal_extrusion(m_writer, m_conformal_points, path.width, params, m_last_height, gcode,
                              [this](const Vec3d &a, const Vec3d &b, double width) {
