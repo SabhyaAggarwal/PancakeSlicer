@@ -915,15 +915,16 @@ constexpr double WallSlope = 60.;
 
 }
 
-bool spans_wall(const HeightField &surface, const Vec2d &p)
+bool spans_slope(const HeightField &surface, const Vec2d &p, double slope_deg)
 {
     const Vec2d o  = (p - surface.origin()) / surface.pitch();
     const int   ix = std::clamp(int(std::floor(o.x())), 0, surface.nx() - 2);
     const int   iy = std::clamp(int(std::floor(o.y())), 0, surface.ny() - 2);
     const float z[4] = { surface.at(ix, iy), surface.at(ix + 1, iy), surface.at(ix, iy + 1), surface.at(ix + 1, iy + 1) };
-    static const double rise = std::tan(Geometry::deg2rad(WallSlope)) * std::sqrt(2.);
-    return *std::max_element(z, z + 4) - *std::min_element(z, z + 4) > rise * surface.pitch();
+    return *std::max_element(z, z + 4) - *std::min_element(z, z + 4) > std::tan(Geometry::deg2rad(slope_deg)) * std::sqrt(2.) * surface.pitch();
 }
+
+bool spans_wall(const HeightField &surface, const Vec2d &p) { return spans_slope(surface, p, WallSlope); }
 
 void band_schedule(const HeadEnvelope &head, double shell_height, double max_patch_height, double &pitch, double &tolerance)
 {

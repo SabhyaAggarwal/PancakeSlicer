@@ -85,9 +85,11 @@ public:
     std::string set_speed(double F, const std::string &comment = std::string(), const std::string &cooling_marker = std::string());
     double      get_current_speed() const { return m_current_speed;}
     std::string travel_to_xy(const Vec2d &point, const std::string &comment = std::string());
-    std::string travel_to_xyz(const Vec3d &point, const std::string &comment = std::string(), bool force_z = false);
+    std::string travel_to_xyz(const Vec3d &point, const std::string &comment = std::string(), bool force_z = false, double max_speed_z = 0.,
+                              double max_speed = 0.);
     std::string travel_to_z(double z, const std::string &comment = std::string(), bool force = false, double max_speed = 0.);
     double      max_speed_z() const { return m_max_joint_speed.z(); }
+    void        set_z_travel_cap(double speed) { m_z_travel_cap = speed; }
     bool        will_move_z(double z) const;
     std::string extrude_to_xy(const Vec2d &point, double dE, const std::string &comment = std::string(), bool force_no_extrusion = false);
     std::string extrude_arc_to_xy(const Vec2d &point, const Vec2d &center_offset, double dE, const bool is_ccw, const std::string &comment = std::string(), bool force_no_extrusion = false);
@@ -189,6 +191,7 @@ protected:
     bool                            m_joint_feed_written = false;
     bool                            m_rotary_written = false;
     Vec3d                           m_max_joint_speed { Vec3d::Zero() };
+    double                          m_z_travel_cap { 0. };
     double                          m_min_joint_move_time = 0.;
     void        write_joint_move(std::string &out, const JointPose &joints, double tip_length, double tip_speed,
                                  double dE, const std::string &comment);

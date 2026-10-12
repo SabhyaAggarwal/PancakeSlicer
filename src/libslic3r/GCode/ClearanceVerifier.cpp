@@ -2,6 +2,7 @@
 #include "GCodeProcessor.hpp"
 #include "ToolKinematics.hpp"
 #include "libslic3r/Exception.hpp"
+#include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/Nonplanar/AutoMode.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
@@ -537,7 +538,7 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
             bests[k] = best;
             if (best < -ContactTolerance) hits->emplace_back(k, std::move(hit));
         }
-        if (extruding) {
+        if (extruding && move.extrusion_role != erCustom) {
             for (int j = 0; j < count; ++j) {
                 const double t0 = double(j) / count, t1 = double(j + 1) / count;
                 const Vec3d p0 = a + t0 * (b - a), p1 = a + t1 * (b - a);
@@ -575,7 +576,8 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
                 if (k == starts[r]) copies.push_back(sweep);
                 c.beads = uint32_t(beads.size());
                 step(sweep, beads, k, nullptr);
-                if (c.extruding && !nozzle.boxes.empty()) beads.deposit_upright(c.move, c.last, c.run);
+                if (c.extruding && result.moves[c.move].extrusion_role != erCustom && !nozzle.boxes.empty())
+                    beads.deposit_upright(c.move, c.last, c.run);
             }
         sweep = Sweep { MaterialColumns(bounds, params.pitch), MaterialColumns(bounds, params.pitch) };
         hits.resize(copies.size());

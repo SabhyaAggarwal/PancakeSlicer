@@ -50,6 +50,8 @@ void condition_path(std::vector<ConformalPoint> &points, const ConditionParams &
 
 double planner_segment_rate(double configured, GCodeFlavor flavor, bool bbl_printer);
 constexpr double ConformalWipe  = 1.;
+constexpr double ConformalMinSegment = 0.05;
+constexpr double ConformalMinPath = 0.1;
 constexpr double ConformalPrime = 0.5;
 constexpr double ConformalBelowFirstLayerTolerance = 0.005;
 
@@ -99,6 +101,7 @@ struct ConformalWipeParams
     double       retract  = 0.;
     double       speed    = 0.;
     MotionLimits limits;
+    double       max_v_e  = 0.;
     std::string  speed_marker;
 };
 bool emit_conformal_wipe(GCodeWriter &writer, const std::vector<ConformalPoint> &points, const ConformalWipeParams &params,

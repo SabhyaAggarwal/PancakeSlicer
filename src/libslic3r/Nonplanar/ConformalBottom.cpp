@@ -1,3 +1,4 @@
+#include "libslic3r/GCode/ConformalEmit.hpp"
 #include "ConformalBottom.hpp"
 
 #include "AutoMode.hpp"
@@ -586,10 +587,18 @@ void contour_support_interface(PrintObject &object)
     });
 }
 
+bool pass_prints(const ExtrusionEntityCollection &pass)
+{
+    return std::any_of(pass.entities.begin(), pass.entities.end(), [](const ExtrusionEntity *ee) {
+        const auto *path = dynamic_cast<const ExtrusionPathConformal *>(ee);
+        return path != nullptr && unscale<double>(path->polyline.length()) >= ConformalMinPath;
+    });
+}
+
 bool patch_has_extrusions(const ConformalPatch &patch)
 {
-    return !patch.ironing.empty() ||
-           std::any_of(patch.shell_paths.begin(), patch.shell_paths.end(), [](const ExtrusionEntityCollection &shell) { return !shell.empty(); });
+    return pass_prints(patch.ironing) || std::any_of(patch.shell_paths.begin(), patch.shell_paths.end(),
+                                                     [](const ExtrusionEntityCollection &shell) { return pass_prints(shell); });
 }
 
 int patch_filament_id(const PrintObject &object, const ConformalPatch &patch)

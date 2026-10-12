@@ -161,5 +161,6 @@ std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const Heig
                                              bool host_above = false, int patch_offset = 0, std::vector<size_t> *band_component = nullptr);
 
 bool spans_wall(const HeightField &surface, const Vec2d &p);
+bool spans_slope(const HeightField &surface, const Vec2d &p, double slope_deg);
 
 }

@@ -3,14 +3,20 @@
 #define NANOSVGRAST_IMPLEMENTATION
 #include "nanosvg/nanosvgrast.h"
 
+#include "admesh/stl.h"
+
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/Config.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/FlushVolCalc.hpp"
+#include "libslic3r/Format/bbs_3mf.hpp"
 #include "libslic3r/GCode/ClearanceVerifier.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
+#include "libslic3r/GCode/ThumbnailData.hpp"
 #include "libslic3r/GCode/ToolKinematics.hpp"
+#include "libslic3r/GCode/WipeTower.hpp"
+#include "libslic3r/GCode/WipeTowerEstimate.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Nonplanar/ConformalShells.hpp"
 #include "libslic3r/Nonplanar/FlowMod.hpp"
@@ -37,7 +43,9 @@
 #include <cstdlib>
 #include <exception>
 #include <iostream>
+#include <limits>
 #include <map>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -63,7 +71,7 @@ struct Args
 {
     std::string profiles = std::string(PROFILES_DIR);
     std::string vendor   = "Prusa";
-    std::string printer, process, datadir, output, model, config_out, paint;
+    std::string printer, process, datadir, output, model, config_out, paint, gcode_3mf;
     std::vector<std::string> filaments, colours;
     std::vector<std::pair<std::string, int>> parts;
     std::vector<std::pair<std::string, std::string>> overrides;
@@ -77,7 +85,7 @@ struct Args
     std::cerr << "error: " << error << "\n"
               << "usage: nonplanar_slice_tool --printer NAME --process NAME --filament NAME [--vendor Prusa]\n"
                  "       [--profiles DIR] [--datadir DIR] [--set key=value]... [--center X,Y]\n"
-                 "       [--config-out FILE] [--verify] -o OUT.gcode MODEL\n";
+                 "       [--config-out FILE] [--gcode-3mf FILE] [--verify] -o OUT.gcode MODEL\n";
     std::exit(2);
 }
 
@@ -112,6 +120,7 @@ Args parse_args(int argc, char **argv)
         else if (arg == "--profiles") a.profiles = next();
         else if (arg == "--datadir") a.datadir = next();
         else if (arg == "--config-out") a.config_out = next();
+        else if (arg == "--gcode-3mf") a.gcode_3mf = next();
         else if (arg == "--verify") a.verify = true;
         else if (arg == "-o" || arg == "--output") a.output = next();
         else if (arg == "--set") {
@@ -174,7 +183,7 @@ DynamicPrintConfig resolve(PresetBundle &bundle, const Args &a, const char *kind
     return config;
 }
 
-std::pair<double, double> max_vz(const GCodeProcessorResult &result)
+std::pair<double, double> max_vz(const GCodeProcessorResult &result, size_t *actual_line = nullptr)
 {
     double commanded = 0., actual = 0.;
     for (size_t i = 1; i < result.moves.size(); ++i) {
@@ -184,9 +193,188 @@ std::pair<double, double> max_vz(const GCodeProcessorResult &result)
         if (l < 1e-6 || (m.type != EMoveType::Extrude && m.type != EMoveType::Travel))
             continue;
         commanded = std::max(commanded, std::abs(d.z()) / l * m.feedrate);
-        actual    = std::max(actual, std::abs(d.z()) / l * m.actual_feedrate);
+        if (const double v = std::abs(d.z()) / l * m.actual_feedrate; v > actual) {
+            actual = v;
+            if (actual_line)
+                *actual_line = m.gcode_id;
+        }
     }
     return { commanded, actual };
+}
+
+indexed_triangle_set plate_mesh(const Model &model)
+{
+    indexed_triangle_set out;
+    for (const ModelObject *object : model.objects)
+        for (const ModelInstance *instance : object->instances) {
+            indexed_triangle_set its = object->raw_indexed_triangle_set();
+            its_transform(its, instance->get_matrix());
+            its_merge(out, its);
+        }
+    return out;
+}
+
+ThumbnailData render_thumbnail(const indexed_triangle_set &mesh, unsigned width, unsigned height, bool top)
+{
+    ThumbnailData thumb;
+    thumb.set(width, height);
+    std::fill(thumb.pixels.begin(), thumb.pixels.end(), 0);
+    const double c = top ? 0. : std::sqrt(0.5);
+    const Vec3d  right(1., 0., 0.), up = top ? Vec3d(0., 1., 0.) : Vec3d(0., c, c), toward = right.cross(up);
+    const Vec3d  light = Vec3d(-0.3, -0.5, 1.).normalized();
+    std::vector<Vec3d> p(mesh.vertices.size());
+    BoundingBoxf       box;
+    for (size_t i = 0; i < p.size(); ++i) {
+        const Vec3d v = mesh.vertices[i].cast<double>();
+        p[i]          = Vec3d(v.dot(right), v.dot(up), v.dot(toward));
+        box.merge(Vec2d(p[i].x(), p[i].y()));
+    }
+    if (! box.defined)
+        return thumb;
+    const double scale = 0.9 * std::min(width / std::max(box.size().x(), 1e-3), height / std::max(box.size().y(), 1e-3));
+    const Vec2d  mid   = box.center();
+    for (Vec3d &q : p)
+        q = Vec3d((q.x() - mid.x()) * scale + 0.5 * width, (q.y() - mid.y()) * scale + 0.5 * height, q.z());
+    std::vector<double> depth(size_t(width) * height, -std::numeric_limits<double>::max());
+    for (const stl_triangle_vertex_indices &f : mesh.indices) {
+        const Vec3d &a = p[f[0]], &b = p[f[1]], &d = p[f[2]];
+        const double area = (b.x() - a.x()) * (d.y() - a.y()) - (d.x() - a.x()) * (b.y() - a.y());
+        if (std::abs(area) < 1e-12)
+            continue;
+        const Vec3d  n     = (mesh.vertices[f[1]] - mesh.vertices[f[0]]).cast<double>().cross((mesh.vertices[f[2]] - mesh.vertices[f[0]]).cast<double>()).normalized();
+        const double shade = 0.35 + 0.65 * std::abs(n.dot(light));
+        const int    x0 = std::max(0, int(std::floor(std::min({ a.x(), b.x(), d.x() })))), x1 = std::min(int(width) - 1, int(std::ceil(std::max({ a.x(), b.x(), d.x() }))));
+        const int    y0 = std::max(0, int(std::floor(std::min({ a.y(), b.y(), d.y() })))), y1 = std::min(int(height) - 1, int(std::ceil(std::max({ a.y(), b.y(), d.y() }))));
+        for (int y = y0; y <= y1; ++y)
+            for (int x = x0; x <= x1; ++x) {
+                const double px = x + 0.5, py = y + 0.5;
+                const double w0 = ((b.x() - px) * (d.y() - py) - (d.x() - px) * (b.y() - py)) / area;
+                const double w1 = ((d.x() - px) * (a.y() - py) - (a.x() - px) * (d.y() - py)) / area;
+                const double w2 = 1. - w0 - w1;
+                if (w0 < 0. || w1 < 0. || w2 < 0.)
+                    continue;
+                const double z = w0 * a.z() + w1 * b.z() + w2 * d.z();
+                double      &zb = depth[size_t(y) * width + x];
+                if (z <= zb)
+                    continue;
+                zb                = z;
+                unsigned char *px4 = &thumb.pixels[4 * (size_t(y) * width + x)];
+                px4[0] = (unsigned char) (0x00 * shade);
+                px4[1] = (unsigned char) (0xAE * shade);
+                px4[2] = (unsigned char) (0x42 * shade);
+                px4[3] = 255;
+            }
+    }
+    return thumb;
+}
+
+std::string vendor_json_value(const std::vector<fs::path> &dirs, std::string name, const std::string &key)
+{
+    for (int depth = 0; depth < 8 && ! name.empty(); ++depth) {
+        std::string inherits;
+        for (const fs::path &dir : dirs) {
+            if (! fs::is_directory(dir))
+                continue;
+            for (const fs::directory_entry &entry : fs::recursive_directory_iterator(dir)) {
+                if (entry.path().extension() != ".json")
+                    continue;
+                boost::nowide::ifstream in(entry.path().string());
+                const nlohmann::json    j = nlohmann::json::parse(in, nullptr, false);
+                if (! j.is_object() || j.value("name", std::string()) != name)
+                    continue;
+                if (j.contains(key) && j[key].is_string())
+                    return j[key].get<std::string>();
+                inherits = j.value("inherits", std::string());
+                break;
+            }
+            if (! inherits.empty())
+                break;
+        }
+        name = inherits;
+    }
+    return {};
+}
+
+void write_gcode_3mf(const Args &args, Model &model, Print &print, DynamicPrintConfig &config, GCodeProcessorResult &result,
+                     const fs::path &datadir)
+{
+    auto plate                     = std::make_unique<PlateData>();
+    plate->plate_index             = 0;
+    for (size_t i = 0; i < model.objects.size(); ++i)
+        for (size_t j = 0; j < model.objects[i]->instances.size(); ++j)
+            plate->objects_and_instances.emplace_back(int(i), int(j));
+    plate->gcode_file              = args.output;
+    plate->is_sliced_valid         = true;
+    plate->toolpath_outside        = result.toolpath_outside;
+    plate->timelapse_warning_code  = result.timelapse_warning_code;
+    plate->is_label_object_enabled = result.label_object_enabled;
+    plate->is_support_used         = print.is_support_used();
+    plate->printer_model_id = vendor_json_value({ fs::path(args.profiles) / args.vendor / "machine" }, config.opt_string("printer_model"), "model_id");
+    plate->nozzle_diameters = config.option("nozzle_diameter")->serialize();
+    plate->gcode_prediction = std::to_string(int(result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)].time));
+    plate->first_layer_time = std::to_string(result.initial_layer_time);
+    plate->parse_filament_info(&result);
+    nlohmann::json bambu_ids;
+    {
+        boost::nowide::ifstream in((fs::path(resources_dir()) / "printers" / "bambu_filament_ids.json").string());
+        bambu_ids = nlohmann::json::parse(in, nullptr, false);
+    }
+    for (FilamentInfo &info : plate->slice_filaments_info) {
+        std::string display_type;
+        info.type        = config.get_filament_type(display_type, int(info.id));
+        info.color       = config.option<ConfigOptionStrings>("filament_colour")->get_at(info.id);
+        info.filament_id = vendor_json_value({ fs::path(args.profiles) / args.vendor / "filament",
+                                               fs::path(args.profiles) / "OrcaFilamentLibrary" / "filament" },
+                                             args.filaments[std::min(size_t(info.id), args.filaments.size() - 1)], "filament_id");
+        if (bambu_ids.is_object() && bambu_ids["filaments"].contains(info.filament_id))
+            info.filament_id = bambu_ids["filaments"][info.filament_id].value("bambu_id", info.filament_id);
+    }
+    char weight[32];
+    std::snprintf(weight, sizeof(weight), "%.2f", print.print_statistics().total_weight);
+    plate->gcode_weight = weight;
+
+    const indexed_triangle_set mesh     = plate_mesh(model);
+    ThumbnailData              plate_png = render_thumbnail(mesh, 512, 512, false), top_png = render_thumbnail(mesh, 512, 512, true);
+    plate->plate_thumbnail.load_from(plate_png);
+
+    PlateBBoxData bboxes;
+    bboxes.is_seq_print     = config.opt_enum<PrintSequence>("print_sequence") == PrintSequence::ByObject;
+    bboxes.first_extruder   = print.get_tool_ordering().first_extruder();
+    bboxes.nozzle_diameter  = float(config.option<ConfigOptionFloats>("nozzle_diameter")->get_at(0));
+    bboxes.bed_type         = bed_type_to_gcode_string(config.opt_enum<BedType>("curr_bed_type"));
+    bboxes.first_layer_time = result.initial_layer_time;
+    BoundingBoxf all;
+    for (PrintObject *object : print.objects()) {
+        BBoxData   data;
+        const auto b = unscaled(object->get_first_layer_bbox(data.area, data.layer_height, data.name));
+        all.merge(BoundingBoxf(b.min, b.max));
+        data.area *= float(SCALING_FACTOR * SCALING_FACTOR);
+        data.id   = int(object->id().id);
+        data.bbox = { b.min.x(), b.min.y(), b.max.x(), b.max.y() };
+        bboxes.bbox_objs.push_back(data);
+    }
+    bboxes.bbox_all = { all.min.x(), all.min.y(), all.max.x(), all.max.y() };
+    for (const FilamentInfo &info : plate->slice_filaments_info) {
+        bboxes.filament_ids.push_back(info.id);
+        bboxes.filament_colors.push_back(info.color);
+    }
+
+    model.set_backup_path((datadir / "backup").string());
+    StoreParams params;
+    params.path                    = args.gcode_3mf;
+    params.model                   = &model;
+    params.plate_data_list         = { plate.get() };
+    params.export_plate_idx        = 0;
+    params.config                  = &config;
+    params.thumbnail_data          = { &plate_png };
+    params.no_light_thumbnail_data = { &plate_png };
+    params.top_thumbnail_data      = { &top_png };
+    params.pick_thumbnail_data     = { &top_png };
+    params.id_bboxes               = { &bboxes };
+    params.strategy = SaveStrategy::Silence | SaveStrategy::WithGcode | SaveStrategy::SplitModel | SaveStrategy::ShareMesh |
+                      SaveStrategy::SkipModel;
+    if (! store_bbs_3mf(params))
+        throw std::runtime_error("cannot write " + args.gcode_3mf);
 }
 
 void apply_filaments(PresetBundle &bundle, const Args &a, DynamicPrintConfig &config)
@@ -268,6 +456,31 @@ void apply_multi_material(const Args &a, Model &model)
         object->volumes.front()->config.set("extruder", 1);
 }
 
+void place_wipe_tower(DynamicPrintConfig &config, const Model &model, size_t filaments)
+{
+    double x = 165., y = 250.;
+    if (const auto *structure = config.option<ConfigOptionEnum<PrinterStructure>>("printer_structure");
+        structure != nullptr && structure->value == PrinterStructure::psI3)
+        x = 0.;
+    std::vector<unsigned int> ids(filaments);
+    for (size_t i = 0; i < filaments; ++i)
+        ids[i] = unsigned(i);
+    double height = 0.;
+    for (const ModelObject *object : model.objects)
+        height = std::max(height, object->bounding_box_exact().size().z());
+    const WipeTowerFootprint fp = estimate_wipe_tower_footprint(config, resolve_wipe_tower_type(config), ids,
+                                                                config.opt_float("layer_height"), height);
+    const BoundingBoxf bed(config.opt<ConfigOptionPoints>("printable_area")->values);
+    const double       margin = WIPE_TOWER_AUTO_MARGIN + fp.brim_width;
+    x = std::clamp(x, bed.min.x() + margin, std::max(bed.min.x() + margin, bed.max.x() - fp.width - margin));
+    y = std::clamp(y, bed.min.y() + margin, std::max(bed.min.y() + margin, bed.max.y() - fp.depth - margin));
+    Polygons outline{ Polygon::new_scale(config.opt<ConfigOptionPoints>("printable_area")->values) };
+    const Vec2f move = WipeTower::move_box_inside_polygon(BoundingBox(Point::new_scale(x, y), Point::new_scale(x + fp.width, y + fp.depth)),
+                                                          outline, scaled<coord_t>(margin));
+    config.option<ConfigOptionFloats>("wipe_tower_x", true)->values = { x + move.x() };
+    config.option<ConfigOptionFloats>("wipe_tower_y", true)->values = { y + move.y() };
+}
+
 }
 
 int main(int argc, char **argv)
@@ -279,6 +492,7 @@ int main(int argc, char **argv)
                                                         fs::path(args.datadir);
         fs::create_directories(datadir);
         set_data_dir(datadir.string());
+        set_temporary_dir(datadir.string());
         Nonplanar::HeadLibrary::instance().reload();
 
         PresetBundle       bundle;
@@ -303,6 +517,8 @@ int main(int argc, char **argv)
         for (ModelObject *object : model.objects)
             object->ensure_on_bed();
         model.center_instances_around_point(center);
+        if (std::none_of(args.overrides.begin(), args.overrides.end(), [](const auto &kv) { return kv.first.rfind("wipe_tower_", 0) == 0; }))
+            place_wipe_tower(config, model, args.filaments.size());
 
         Print print;
         print.is_BBL_printer() = args.printer.rfind("Bambu Lab", 0) == 0;
@@ -318,10 +534,17 @@ int main(int argc, char **argv)
         print.process();
         const auto t_export = std::chrono::steady_clock::now();
         GCodeProcessorResult result;
-        print.export_gcode(args.output, &result, nullptr);
+        const indexed_triangle_set mesh = plate_mesh(model);
+        print.export_gcode(args.output, &result, [&mesh](const ThumbnailsParams &params) {
+            ThumbnailsList list;
+            for (const Vec2d &size : params.sizes)
+                list.push_back(render_thumbnail(mesh, unsigned(size.x()), unsigned(size.y()), false));
+            return list;
+        });
         const auto t_done = std::chrono::steady_clock::now();
 
-        const auto [vz, vz_actual] = max_vz(result);
+        size_t     vz_line         = 0;
+        const auto [vz, vz_actual] = max_vz(result, &vz_line);
         const auto &normal         = result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)];
         std::cout << "time_process_s " << std::chrono::duration<double>(t_export - t_process).count() << "\n"
                   << "time_export_s " << std::chrono::duration<double>(t_done - t_export).count() << "\n"
@@ -329,6 +552,7 @@ int main(int argc, char **argv)
                   << "estimated_time_s " << normal.time << "\n"
                   << "max_vz_commanded " << vz << "\n"
                   << "max_vz_planned " << vz_actual << "\n"
+                  << "max_vz_planned_line " << vz_line << "\n"
                   << "machine_max_speed_z " << config.opt<ConfigOptionFloats>("machine_max_speed_z")->get_at(0) << "\n";
         for (const auto &warning : print.step_state_with_warnings(psGCodeExport).warnings)
             std::cout << "export_warning " << warning.message << "\n";
@@ -402,6 +626,10 @@ int main(int argc, char **argv)
                 std::cout << "clearance_hit line " << hit.gcode_line << " " << hit.component << " " << hit.penetration << " mm\n";
             for (const std::string &omission : clearance.omissions)
                 std::cout << "clearance_omission " << omission << "\n";
+        }
+        if (! args.gcode_3mf.empty()) {
+            write_gcode_3mf(args, model, print, config, result, datadir);
+            std::cout << "gcode_3mf " << args.gcode_3mf << "\n";
         }
         for (const PrintObject *object : print.objects()) {
             const Nonplanar::ConformalResult &conformal = object->conformal();

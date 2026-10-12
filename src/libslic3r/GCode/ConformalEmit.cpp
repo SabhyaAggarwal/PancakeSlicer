@@ -23,6 +23,10 @@
 
 namespace Slic3r::Nonplanar {
 
+namespace {
+constexpr float TagStep = 0.002f;
+}
+
 std::vector<ConformalPoint> conformal_points(const ExtrusionPathConformal &path, const ToWriterFrame &to_writer)
 {
     const Points3              &pts = path.polyline.points;
@@ -39,6 +43,26 @@ std::vector<ConformalPoint> conformal_points(const ExtrusionPathConformal &path,
 }
 
 namespace {
+
+double printed_length(const Vec3d &a, const Vec3d &b)
+{
+    return (Vec3d((b * 1000.).array().round() / 1000.) - Vec3d((a * 1000.).array().round() / 1000.)).norm();
+}
+
+double axis_limited_speed(const Vec3d &a, const Vec3d &b, double v, const MotionLimits &limits)
+{
+    const Vec3d  d = (Vec3d(GCodeFormatter::quantize_xyzf(b.x()), GCodeFormatter::quantize_xyzf(b.y()), GCodeFormatter::quantize_xyzf(b.z())) -
+                      Vec3d(GCodeFormatter::quantize_xyzf(a.x()), GCodeFormatter::quantize_xyzf(a.y()), GCodeFormatter::quantize_xyzf(a.z())));
+    const double l = d.norm();
+    if (l < EPSILON)
+        return v;
+    if (limits.max_v_z > 0. && std::abs(d.z()) > EPSILON)
+        v = std::min(v, limits.max_v_z * l / std::abs(d.z()));
+    const double xy = std::max(std::abs(d.x()), std::abs(d.y()));
+    if (limits.max_v_xy > 0. && xy > EPSILON)
+        v = std::min(v, limits.max_v_xy * l / xy);
+    return v;
+}
 
 ConformalPoint interpolate(const ConformalPoint &a, const ConformalPoint &b, double t)
 {
@@ -155,6 +179,8 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
             points.emplace_back(staged[i]);
             if (!flow.empty())
                 stub_flow.emplace_back(flow[i - 1]);
+        } else if (points.back().bead_height <= 0.f && staged[i].bead_height > 0.f) {
+            points.back() = staged[i];
         } else if (points.size() > 1 &&
                    (last || (staged[i].bead_height > 0.f) != (staged[i + 1].bead_height > 0.f))) {
             points.back() = staged[i];
@@ -168,6 +194,26 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
             stub_flow.emplace_back(flow.back());
     }
     flow.swap(stub_flow);
+
+    {
+        std::vector<ConformalPoint> moves{ points.front() };
+        std::vector<double>         move_flow;
+        for (size_t i = 0; i + 1 < points.size(); ++i) {
+            const ConformalPoint &a = moves.back();
+            const ConformalPoint &b = points[i + 1];
+            const double          l = (b.pose.tip - a.pose.tip).norm();
+            if (l < EPSILON || (l < ConformalMinSegment && i + 2 < points.size() && (points[i + 2].bead_height > 0.f) == (b.bead_height > 0.f) &&
+                                (a.bead_height > 0.f) == (b.bead_height > 0.f)))
+                continue;
+            if (!flow.empty())
+                move_flow.emplace_back(flow[i]);
+            moves.emplace_back(b);
+        }
+        if (moves.size() < 2)
+            return 0.;
+        points.swap(moves);
+        flow.swap(move_flow);
+    }
 
     std::vector<Vec3d> tips(points.size());
     for (size_t i = 0; i < points.size(); ++i)
@@ -215,19 +261,21 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
 
     double volume = 0.;
     char   buf[64];
+    bool   speed_block_open = ! params.speed_marker.empty();
     for (size_t i = 0; i + 1 < points.size(); ++i) {
+        double                speed = speeds[i];
         const ConformalPoint &a = points[i];
         const ConformalPoint &b = points[i + 1];
         if ((b.pose.tip - a.pose.tip).norm() < EPSILON)
             continue;
         const float height = 0.5f * (a.bead_height + b.bead_height);
         const double seg_width = a.width > 0.f && b.width > 0.f ? 0.5 * (double(a.width) + double(b.width)) : width;
-        if (params.last_width != nullptr && std::abs(float(seg_width) - *params.last_width) > 0.01f) {
+        if (params.last_width != nullptr && std::abs(float(seg_width) - *params.last_width) > TagStep) {
             *params.last_width = float(seg_width);
             std::snprintf(buf, sizeof(buf), ";%s%g\n", GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Width).c_str(), *params.last_width);
             out += buf;
         }
-        if (std::abs(height - last_height) > 0.01f) {
+        if (std::abs(height - last_height) > TagStep) {
             last_height = height;
             std::snprintf(buf, sizeof(buf), ";%s%g\n", GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Height).c_str(), last_height);
             out += buf;
@@ -241,18 +289,24 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
                               segment_volume(a.pose.tip, b.pose.tip, seg_width, a.bead_height, b.bead_height, axis)) *
                              (flow.empty() ? 1. : flow[i]);
         volume += v;
-        double speed = speeds[i];
         if (params.max_volume_per_second > 0. && v > 0.)
             speed = std::min(speed, params.max_volume_per_second * (b.pose.tip - a.pose.tip).norm() / v);
         const double dE = v * params.e_per_mm3 + prime[i];
         if (prime[i] > 0. && params.prime_speed > 0.)
-            speed = std::min(speed, params.prime_speed * (b.pose.tip - a.pose.tip).norm() / dE);
-        const double F = speed * 60.;
+            speed = std::min(speed, params.prime_speed * printed_length(a.pose.tip, b.pose.tip) / dE);
+        if (params.limits.segment_rate > 0.)
+            speed = std::min(speed, params.limits.segment_rate * (b.pose.tip - a.pose.tip).norm());
+        const double F = (rotary ? speed : axis_limited_speed(a.pose.tip, b.pose.tip, speed, params.limits)) * 60.;
         if (std::abs(writer.get_current_speed() - F) > EPSILON) {
             if (rotary)
                 writer.set_pose_speed(F);
-            else
-                writer.set_speed(out, F, "", glide(i) ? std::string() : params.speed_marker);
+            else {
+                const std::string &marker = glide(i) ? std::string() : params.speed_marker;
+                if (marker.empty() && speed_block_open)
+                    out += ";_EXTRUDE_END\n";
+                speed_block_open = ! marker.empty();
+                writer.set_speed(out, F, "", marker);
+            }
         }
         writer.extrude_to_pose(out, b.pose, dE, params.comment);
         if (deposit && !glide(i))
@@ -325,15 +379,29 @@ bool emit_conformal_wipe(GCodeWriter &writer, const std::vector<ConformalPoint> 
         route.emplace_back(b);
         length += l;
     }
-    if (length <= EPSILON)
+    const bool                  rotary_route = writer.tool_kinematics().rotary_count() > 0;
+    std::vector<ConformalPoint> kept{ route.front() };
+    for (size_t i = 1; i < route.size(); ++i) {
+        const Vec3d &a = kept.back().pose.tip, &p = route[i].pose.tip;
+        if ((p - a).norm() < ConformalMinSegment) {
+            if (i + 1 == route.size() && kept.size() > 1)
+                kept.back() = route[i];
+            continue;
+        }
+        if (i + 1 < route.size() && ! rotary_route) {
+            const Vec3d  c = route[i + 1].pose.tip - a;
+            const double t = c.squaredNorm() > 0. ? std::clamp((p - a).dot(c) / c.squaredNorm(), 0., 1.) : 0.;
+            if ((a + t * c - p).norm() < 0.01)
+                continue;
+        }
+        kept.emplace_back(route[i]);
+    }
+    route.swap(kept);
+    if (route.size() < 2)
         return false;
-    for (size_t i = 1; i + 1 < route.size();)
-        if ((route[i].pose.tip - route[i - 1].pose.tip).norm() < 0.01)
-            route.erase(route.begin() + i);
-        else
-            ++i;
-    if (route.size() > 2 && (route.back().pose.tip - route[route.size() - 2].pose.tip).norm() < 0.01)
-        route.erase(route.end() - 2);
+    length = 0.;
+    for (size_t i = 0; i + 1 < route.size(); ++i)
+        length += (route[i + 1].pose.tip - route[i].pose.tip).norm();
     const bool rotary = writer.tool_kinematics().rotary_count() > 0;
     out += ";" + GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Wipe_Start) + "\n";
     for (size_t i = 0; i + 1 < route.size(); ++i) {
@@ -342,11 +410,15 @@ bool emit_conformal_wipe(GCodeWriter &writer, const std::vector<ConformalPoint> 
         const double l = (route[i + 1].pose.tip - route[i].pose.tip).norm();
         if (l < EPSILON)
             continue;
-        double v = params.speed;
-        if (params.limits.max_v_z > 0. && std::abs(d.z()) > EPSILON)
-            v = std::min(v, params.limits.max_v_z * d.norm() / std::abs(d.z()));
+        double v = rotary ? params.speed : axis_limited_speed(route[i].pose.tip, route[i + 1].pose.tip, params.speed, params.limits);
+        if (rotary && params.limits.max_v_z > 0. && std::abs(d.z()) > EPSILON)
+            v = std::min(v, params.limits.max_v_z * l / std::abs(d.z()));
+        if (params.max_v_e > 0. && params.retract > EPSILON)
+            v = std::min(v, params.max_v_e * length / params.retract);
+        if (params.limits.segment_rate > 0.)
+            v = std::min(v, l * params.limits.segment_rate);
         const double F = v * 60.;
-        if (std::abs(writer.get_current_speed() - F) > EPSILON) {
+        if (i == 0 || std::abs(writer.get_current_speed() - F) > EPSILON) {
             if (rotary)
                 writer.set_pose_speed(F);
             else

@@ -2933,12 +2933,23 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
 
     m_layer_count = 0;
     const bool belt = print.config().belt_printer.value;
+    auto object_layer_counts = [belt](const PrintObject &object, const Layer &layer) {
+        if (belt)
+            return belt_object_layer_prints_something(object, layer);
+        if (object.conformal().patches.empty() || layer.has_extrusions())
+            return true;
+        for (const std::vector<int> *ids : { &layer.conformal_patches_before, &layer.conformal_patches_after })
+            for (int id : *ids)
+                if (Nonplanar::patch_has_extrusions(object.conformal().patches[size_t(id)]))
+                    return true;
+        return false;
+    };
     if (print.config().print_sequence == PrintSequence::ByObject) {
         for (auto object : print.objects()) {
             std::vector<coordf_t> zs;
             zs.reserve(object->layers().size() + object->support_layers().size());
             for (auto layer : object->layers())
-                if (! belt || belt_object_layer_prints_something(*object, *layer))
+                if (object_layer_counts(*object, *layer))
                     zs.push_back(layer->print_z);
             for (auto layer : object->support_layers())
                 if (! belt || layer->has_extrusions())
@@ -2961,7 +2972,7 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
         for (auto object : print.objects()) {
             zs.reserve(zs.size() + object->layers().size() + object->support_layers().size());
             for (auto layer : object->layers())
-                if (! belt || belt_object_layer_prints_something(*object, *layer))
+                if (object_layer_counts(*object, *layer))
                     zs.push_back(layer->print_z);
             for (auto layer : object->support_layers())
                 if (! belt || layer->has_extrusions())
@@ -3521,8 +3532,12 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
         file.writeln(filament_diameter_list);
 
         coordf_t max_height_z = -1;
-        for (const auto& object : print.objects())
+        for (const auto& object : print.objects()) {
             max_height_z = std::max(object->layers().back()->print_z, max_height_z);
+            for (const Nonplanar::ConformalPatch &patch : object->conformal().patches)
+                if (patch.z_max + Nonplanar::GlideLift > max_height_z)
+                    max_height_z = std::ceil((patch.z_max + Nonplanar::GlideLift) * 100. - EPSILON) / 100.;
+        }
 
         std::ostringstream max_height_z_tip;
         max_height_z_tip<<"; max_z_height: " << std::fixed << std::setprecision(2) << max_height_z << '\n';
@@ -7332,6 +7347,8 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                                              size_t single_object_instance_idx, bool before)
 {
     std::string gcode;
+    m_writer.set_z_travel_cap(m_writer.max_speed_z());
+    struct ResetCap { GCodeWriter &w; ~ResetCap() { w.set_z_travel_cap(0.); } } reset_cap{ m_writer };
     for (const LayerToPrint &layer_to_print : layers) {
         const Layer *layer = layer_to_print.object_layer;
         if (layer == nullptr)
@@ -7377,11 +7394,15 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                 auto         pass   = [&patch](size_t k) -> const ExtrusionEntityCollection & {
                     return k < patch.shell_paths.size() ? patch.shell_paths[k] : patch.ironing;
                 };
+                auto printed = [](const ExtrusionEntity *ee) -> const ExtrusionPathConformal * {
+                    const auto *path = dynamic_cast<const ExtrusionPathConformal *>(ee);
+                    return path != nullptr && unscale<double>(path->polyline.length()) >= Nonplanar::ConformalMinPath ? path : nullptr;
+                };
                 std::vector<const ExtrusionPathConformal *> order;
                 std::vector<size_t>                         pass_end;
                 for (size_t k = 0; k < passes; ++k) {
                     for (const ExtrusionEntity *ee : pass(k).entities)
-                        if (const auto *path = dynamic_cast<const ExtrusionPathConformal *>(ee))
+                        if (const auto *path = printed(ee))
                             order.emplace_back(path);
                     pass_end.emplace_back(order.size());
                 }
@@ -7391,7 +7412,9 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                 m_conformal_band_patch = patch.band >= 0 ? patch.id : -1;
                 m_conformal_prev       = nullptr;
                 m_conformal_surface    = patch.kind == Nonplanar::PatchKind::Top && !patch.surface.empty() ? &patch.surface : nullptr;
-                if (!order.empty()) {
+                if (! order.empty()) {
+                    gcode += this->retract();
+                    m_wipe.reset_path();
                     m_conformal_pa_tracker = std::make_unique<Nonplanar::PressureAdvanceTracker>(m_writer, this->conformal_pressure_advance(),
                                                                                                  order.front()->height);
                     m_conformal_pa_tracker->set_along_road(m_config.gcode_flavor.value == gcfKlipper ||
@@ -7404,6 +7427,8 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                                           patch.kind == Nonplanar::PatchKind::Overhang ? "conformal overhang" :
                                           patch.kind == Nonplanar::PatchKind::Bridge ? "conformal bridge" :
                                           patch.kind == Nonplanar::PatchKind::SupportInterface ? "conformal support interface" : "conformal shell";
+                    if (! Nonplanar::pass_prints(pass(k)))
+                        continue;
                     gcode += ";_NONPLANAR_BEGIN patch=" + std::to_string(patch.id) + " shell=" + std::to_string(k) + " band=" + std::to_string(patch.band) +
                              " rate=" + std::to_string(std::lround(this->conformal_segment_rate())) + "\n";
                     while (next < pass_end[k]) {
@@ -7556,6 +7581,7 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
             m_conformal_gradient = [&slope_gradient, origin](const Vec2d &p) { return slope_gradient(p - origin); };
         }
         m_conformal_open_end = r + 1 == runs.size() && open_end;
+        gcode += ";_NONPLANAR_PATH\n";
         gcode += this->_extrude(sub, description);
         m_conformal_gradient = nullptr;
         m_conformal_ramp     = false;
@@ -7598,6 +7624,8 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
         double       v      = m_config.travel_speed.get_at(get_nozzle_config_index(m_writer.filament()->id()));
         if (vz_max > 0. && std::abs(d.z()) > EPSILON)
             v = std::min(v, 0.99 * vz_max * d.norm() / std::abs(d.z()));
+        v = std::min(v, d.norm() * Nonplanar::planner_segment_rate(m_config.nonplanar_segment_rate.value, m_config.gcode_flavor.value,
+                                                                    m_print != nullptr && m_print->is_BBL_printer()));
         m_writer.set_speed(gcode, v * 60.);
         m_writer.extrude_to_pose(gcode, ToolPose{ hop_to, Vec3d::UnitZ() }, 0., "hop to conformal path");
         this->set_last_pos(next->first_point());
@@ -7913,14 +7941,28 @@ std::string GCode::surface_travel(const Vec3d &to, bool from_on_bead, bool to_on
     const Vec3d         from   = m_writer.get_position();
     const SurfaceTravel travel = plan_surface_travel(*m_material_columns, from, to, from_on_bead, to_on_bead, params);
     std::string  gcode;
+    if (m_need_change_layer_lift_z) {
+        gcode += m_writer.travel_to_z(from.z(), "layer change", true, this->conformal_max_speed_z());
+        m_need_change_layer_lift_z = false;
+    }
     Vec3d        last   = from;
     const double vz_max = this->conformal_max_speed_z();
+    const double rate   = this->conformal_segment_rate();
     for (size_t i = 0; i < travel.points.size(); ++i) {
         const Vec3d &p = travel.points[i];
-        const Vec3d d = p - last;
+        if (i + 1 < travel.points.size()) {
+            const Vec3d  c = travel.points[i + 1] - last;
+            const double t = c.squaredNorm() > 0. ? std::clamp((p - last).dot(c) / c.squaredNorm(), 0., 1.) : 0.;
+            if ((last + t * c - p).norm() < 0.01)
+                continue;
+        }
+        auto        printed = [](const Vec3d &q) { return Vec3d((q * 1000.).array().round() / 1000.); };
+        const Vec3d d = printed(p) - printed(last);
         double      v = travel_speed;
         if (vz_max > 0. && std::abs(d.z()) > EPSILON)
             v = std::min(v, 0.99 * vz_max * d.norm() / std::abs(d.z()));
+        if (rate > 0.)
+            v = std::min(v, rate * d.norm());
         gcode += m_writer.travel_to_pose({ p, Vec3d::UnitZ() }, i + 1 == travel.points.size() ? comment : "travel over the surface", v);
         m_print_clock += d.norm() / std::max(1., v);
         last = p;
@@ -7983,7 +8025,12 @@ std::string GCode::wipe_conformal_path()
     params.distance        = wipe ? FILAMENT_CONFIG(wipe_distance) : Nonplanar::ConformalWipe;
     params.retract         = std::max(0., length - before - after);
     params.speed           = std::max(10., m_config.get_abs_value("wipe_speed", m_config.travel_speed.get_at(get_nozzle_config_index(filament.id()))));
-    params.limits.max_v_z  = m_config.machine_max_speed_z.values.empty() ? 0. : 0.99 * m_config.machine_max_speed_z.values.front();
+    auto first_value       = [](const ConfigOptionFloats &opt) { return opt.values.empty() ? 0. : opt.values.front(); };
+    params.limits.max_v_xy = std::min(first_value(m_config.machine_max_speed_x), first_value(m_config.machine_max_speed_y));
+    params.limits.max_v_z  = 0.99 * first_value(m_config.machine_max_speed_z);
+    params.max_v_e         = first_value(m_config.machine_max_speed_e);
+    params.limits.segment_rate = Nonplanar::planner_segment_rate(m_config.nonplanar_segment_rate.value, m_config.gcode_flavor.value,
+                                                      m_print != nullptr && m_print->is_BBL_printer());
     params.speed_marker    = this->enable_cooling_markers() ? ";_WIPE" : "";
     if (before > EPSILON)
         gcode += m_writer.retract(true, before);
@@ -9645,7 +9692,8 @@ std::string GCode::retract(bool toolchange, bool is_last_retraction, LiftType li
                               m_writer.retract(true, wipeRetractions.retraction_length_before_wipe);
         gcode += m_wipe.wipe(*this, wipeRetractions.retraction_length_during_wipe, toolchange, is_last_retraction);
 
-    }
+    } else if (this->below_conformal_material())
+        m_wipe.reset_path();
 
     if ((!this->on_first_layer()  || this->config().bottom_surface_pattern != InfillPattern::ipHilbertCurve) &&
 	    (role != erTopSolidInfill || this->config().top_surface_pattern    != InfillPattern::ipHilbertCurve))

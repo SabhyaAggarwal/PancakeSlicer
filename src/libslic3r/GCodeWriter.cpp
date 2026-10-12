@@ -876,14 +876,20 @@ std::string GCodeWriter::eager_lift(const LiftType type) {
     return lift_move;
 }
 
-std::string GCodeWriter::travel_to_xyz(const Vec3d &point, const std::string &comment, bool force_z)
+std::string GCodeWriter::travel_to_xyz(const Vec3d &point, const std::string &comment, bool force_z, double max_speed_z, double max_speed)
 {
     Vec3d dest_point = point;
     auto travel_speed =
         this->point_on_first_layer(Vec3d(point.x() - m_x_offset, point.y() - m_y_offset, point.z())) ? this->config.get_abs_value_at("initial_layer_travel_speed", m_cached_extruder_idx) : this->config.travel_speed.get_at(m_cached_extruder_idx);
-    const double final_travel_speed = this->uses_pointwise_travel_speed()
+    double final_travel_speed = this->uses_pointwise_travel_speed()
         ? travel_speed
         : this->config.travel_speed.get_at(m_cached_extruder_idx);
+    if (const Vec3d delta = point - m_pos; max_speed_z > 0. && std::abs(delta.z()) > EPSILON)
+        final_travel_speed = std::min(final_travel_speed, max_speed_z * delta.norm() / std::abs(delta.z()));
+    if (max_speed > 0.)
+        final_travel_speed = std::min(final_travel_speed, max_speed);
+    if (const Vec3d delta = point - m_pos; m_z_travel_cap > 0. && std::abs(delta.z()) > EPSILON)
+        final_travel_speed = std::min(final_travel_speed, m_z_travel_cap * delta.norm() / std::abs(delta.z()));
     if (std::abs(m_to_lift) > EPSILON) {
         assert(std::abs(m_lifted) < EPSILON);
         if ((!this->is_current_position_clear() || m_pos != dest_point) &&
@@ -1016,6 +1022,8 @@ std::string GCodeWriter::_travel_to_z(double z, const std::string &comment, doub
     }
     if (max_speed > 0.)
         speed = std::min(speed, max_speed);
+    if (m_z_travel_cap > 0.)
+        speed = std::min(speed, m_z_travel_cap);
 
     GCodeG1Formatter w;
     if (has_axis_remap()) {

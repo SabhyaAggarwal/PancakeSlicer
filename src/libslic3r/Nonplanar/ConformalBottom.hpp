@@ -1,4 +1,5 @@
 #pragma once
+#include "libslic3r/ExtrusionEntityCollection.hpp"
 #include "HeightField.hpp"
 
 #include <functional>
@@ -20,6 +21,7 @@ void contour_support_interface(PrintObject &object);
 
 int patch_filament_id(const PrintObject &object, const ConformalPatch &patch);
 
+bool pass_prints(const ExtrusionEntityCollection &pass);
 bool patch_has_extrusions(const ConformalPatch &patch);
 
 }

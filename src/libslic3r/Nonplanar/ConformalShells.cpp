@@ -182,6 +182,7 @@ void arachne_roads(const ExPolygon &piece, const Flow &flow, double layer_height
     const float      min_spacing = std::max(params.min_feature_size, float(layer_height));
     const double     link_max = 2. * flow.spacing();
     const ExPolygons link_area{ piece };
+    const size_t         first = out.polylines.size();
     std::optional<Point> last;
     while (!lines.empty()) {
         size_t best = 0;
@@ -257,7 +258,7 @@ void arachne_roads(const ExPolygon &piece, const Flow &flow, double layer_height
             append(out.polylines.back().points, std::move(pl.points));
             append(out.widths.back(), std::move(w));
         } else {
-            if (!out.polylines.empty() && out.polylines.back().length() < scale_(link_max)) {
+            if (out.polylines.size() > first && out.polylines.back().length() < scale_(link_max)) {
                 out.polylines.pop_back();
                 out.widths.pop_back();
             }
@@ -266,7 +267,7 @@ void arachne_roads(const ExPolygon &piece, const Flow &flow, double layer_height
         }
         last = out.polylines.back().points.back();
     }
-    if (!out.polylines.empty() && out.polylines.back().length() < scale_(link_max)) {
+    if (out.polylines.size() > first + 1 && out.polylines.back().length() < scale_(link_max)) {
         out.polylines.pop_back();
         out.widths.pop_back();
     }
@@ -392,6 +393,8 @@ bool is_round(const ExPolygons &footprint)
     return p > 0. && 4. * PI * a / (p * p) >= 0.5;
 }
 
+constexpr double SparseWallSlope = 45.;
+
 constexpr double BandedTopWidth = 0.75;
 
 struct BandedFill
@@ -456,7 +459,7 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
     const ExtrusionPath proto(role, flow.mm3_per_mm(), float(flow.width()), float(patch.shell_height));
     auto at = [&](const Vec2d &p, double &z, float &bead) {
         const float s = patch.surface.sample(p);
-        if (std::isnan(s) || (banded != nullptr && spans_wall(patch.surface, p)))
+        if (std::isnan(s) || (banded != nullptr && (sparse ? spans_slope(patch.surface, p, SparseWallSlope) : spans_wall(patch.surface, p))))
             return false;
         z    = s - drop;
         bead = float(patch.shell_height);
