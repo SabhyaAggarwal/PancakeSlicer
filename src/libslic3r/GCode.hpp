@@ -153,6 +153,8 @@ public:
 
 private:
     WipeTowerIntegration& operator=(const WipeTowerIntegration&);
+    std::string prepare_nonplanar_visit(GCode &gcodegen, const WipeTower::ToolChangeResult &tcr,
+                                       const Point &start, double &z) const;
     std::string append_tcr(GCode &gcodegen, const WipeTower::ToolChangeResult &tcr, int new_extruder_id, double z = -1.) const;
     std::string tower_height_tag(GCode &gcodegen, const WipeTower::ToolChangeResult &tcr, const std::string &tcr_gcode) const;
     Polyline generate_path_to_wipe_tower(const Point &start_pos, const Point &end_pos, const BoundingBox &avoid_polygon, const Polygons &bed_polygons) const;
@@ -526,6 +528,7 @@ protected:
     bool            conformal_in_band(const ExtrusionPathConformal *prev, const ExtrusionPathConformal *path) const;
     bool            conformal_short_hop(const ExtrusionPathConformal &path, const ExtrusionPathConformal *next, Vec3d &to);
     std::string     extrude_multiplanar_chunk(const Nonplanar::ConformalPatch &patch);
+    std::string     travel_above_nonplanar(const Polyline &travel, const std::string &comment, double z);
     void            emit_conformal_moves(std::string &gcode, const ExtrusionPathConformal &path, double e_per_mm,
                                          double speed, const std::string &speed_marker, const std::string &description);
     std::string     wipe_conformal_path();

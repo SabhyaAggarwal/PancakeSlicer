@@ -204,7 +204,10 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
         const double v = segment_volume(a.pose.tip, b.pose.tip, width, a.bead_height, b.bead_height, axis) *
                          (flow.empty() ? 1. : flow[i]);
         volume += v;
-        const double F = speeds[i] * 60.;
+        double speed = speeds[i];
+        if (params.max_volume_per_second > 0. && v > 0.)
+            speed = std::min(speed, params.max_volume_per_second * (b.pose.tip - a.pose.tip).norm() / v);
+        const double F = speed * 60.;
         if (std::abs(writer.get_current_speed() - F) > EPSILON) {
             if (rotary)
                 writer.set_pose_speed(F);

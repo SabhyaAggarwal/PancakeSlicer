@@ -5,6 +5,7 @@
 #include "libslic3r/ObjectID.hpp"
 #include "libslic3r/FilamentGroup.hpp"
 #include "Print.hpp"
+#include "libslic3r/GCode.hpp"
 #include "ToolOrdering.hpp"
 #include "libslic3r/Nonplanar/ConformalBottom.hpp"
 #include "libslic3r/Nonplanar/ConformalShells.hpp"
@@ -494,6 +495,74 @@ ToolOrdering::ToolOrdering(const PrintObject &object, unsigned int first_extrude
     double max_layer_height = calc_max_layer_height(object.print()->config(), object.config().layer_height);
 
     this->mark_skirt_layers(object.print()->config(), max_layer_height);
+}
+
+void ToolOrdering::build_sequential_wipe_tower(const Print &print, bool prime_multi_material)
+{
+    std::vector<LayerTools> layers;
+    std::vector<std::vector<int>> nozzle_maps;
+    std::vector<std::vector<unsigned int>> sequences;
+    std::map<int, MultiNozzleUtils::NozzleInfo> nozzles;
+    double offset = 0., previous_z = 0.;
+    unsigned int previous_filament = (unsigned int)-1;
+    for (const PrintInstance *instance : sort_object_instances_by_model_order(print)) {
+        PrintObject &object = *const_cast<PrintObject *>(instance->print_object);
+        ToolOrdering phase(object, previous_filament);
+        phase.sort_and_build_data(object, previous_filament);
+        if (phase.empty())
+            continue;
+        for (const auto &nozzle : phase.m_nozzle_group_result.get_used_nozzles_in_extruder())
+            nozzles.emplace(nozzle.group_id, nozzle);
+        for (size_t i = 0; i < phase.m_layer_tools.size(); ++i) {
+            LayerTools &layer = phase.m_layer_tools[i];
+            if (!layer.has_object && !layer.has_support) {
+                auto &support = object.support_layers();
+                auto at = std::lower_bound(support.begin(), support.end(), layer.print_z,
+                    [](const SupportLayer *l, double z) { return l->print_z < z - EPSILON; });
+                if (at == support.end() || std::abs((*at)->print_z - layer.print_z) > EPSILON) {
+                    const double height = layer.print_z - (i == 0 ? 0. : previous_z - offset);
+                    object.insert_support_layer(at, -1, 0, height, layer.print_z, layer.print_z - 0.5 * height);
+                }
+                layer.has_support = true;
+            }
+            nozzle_maps.push_back(phase.m_nozzle_group_result.get_nozzle_map(int(i)));
+            sequences.push_back(layer.extruders);
+            layer.print_z += offset;
+            layer.wipe_tower_layer_height = layer.print_z - previous_z;
+            layer.has_wipe_tower = true;
+            layer.wipe_tower_partitions = std::max(size_t(1), layer.wipe_tower_partitions);
+            previous_z = layer.print_z;
+            layers.emplace_back(std::move(layer));
+        }
+        previous_filament = phase.last_extruder();
+        offset = previous_z;
+    }
+    unsigned int current = (unsigned int)-1;
+    for (LayerTools &layer : layers) {
+        layer.wipe_tower_partitions = layer.extruders.size();
+        if (!layer.extruders.empty()) {
+            if (current == (unsigned int)-1 || current == layer.extruders.front())
+                --layer.wipe_tower_partitions;
+            current = layer.extruders.back();
+        }
+        layer.wipe_tower_partitions = std::max(size_t(1), layer.wipe_tower_partitions);
+    }
+    for (size_t i = layers.size(); i > 1; --i)
+        layers[i - 2].wipe_tower_partitions = std::max(layers[i - 2].wipe_tower_partitions, layers[i - 1].wipe_tower_partitions);
+    m_layer_tools = std::move(layers);
+    this->collect_extruder_statistics(prime_multi_material);
+    if (m_all_printing_extruders.size() < 2 && print.config().timelapse_type != TimelapseType::tlSmooth &&
+        !print.config().enable_wrapping_detection)
+        for (LayerTools &layer : m_layer_tools) {
+            layer.has_wipe_tower = false;
+            layer.wipe_tower_partitions = 0;
+        }
+    std::vector<MultiNozzleUtils::NozzleInfo> nozzle_list;
+    for (const auto &entry : nozzles)
+        nozzle_list.push_back(entry.second);
+    if (auto groups = MultiNozzleUtils::LayeredNozzleGroupResult::create(nozzle_maps, nozzle_list, m_all_printing_extruders, sequences))
+        m_nozzle_group_result = std::move(*groups);
+    m_sorted = true;
 }
 
 ToolOrdering::ToolOrdering(const Print &print, unsigned int first_extruder, bool prime_multi_material)

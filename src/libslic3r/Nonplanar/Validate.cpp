@@ -1,6 +1,7 @@
 #include "Validate.hpp"
 
 #include "HeadEnvelope.hpp"
+#include "PatchTools.hpp"
 #include "libslic3r/Config.hpp"
 #include "libslic3r/I18N.hpp"
 #include "libslic3r/Geometry.hpp"
@@ -11,6 +12,7 @@
 #include "libslic3r/Nonplanar/ConformalShells.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
+#include "libslic3r/libslic3r.h"
 
 #include <boost/format.hpp>
 #include <boost/log/trivial.hpp>
@@ -18,6 +20,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <initializer_list>
 #include <string>
 #include <utility>
 #include <vector>
@@ -56,11 +59,20 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
             enabled |= shells || region.nonplanar_ironing.value;
             if (!shells)
                 continue;
-            if (config.spiral_mode)
-                return { L("Non-planar shells cannot be combined with spiral vase mode."), object,
-                         region.nonplanar_top_shells.value > 0 ? "nonplanar_top_shells" : "nonplanar_bottom_shells" };
+            for (const ModelVolume *volume : object->model_object()->volumes) {
+                if (volume->is_modifier() && volume->config.has("layer_height") &&
+                    std::abs(volume->config.opt_float("layer_height") - object->config().layer_height.value) > EPSILON)
+                    return { L("Non-planar shells cannot use a spatial modifier with a different layer height. Use the object's variable layer height profile instead."),
+                             object, "layer_height" };
+            }
+            for (int filament : { region.nonplanar_top_shells.value > 0 ? region.top_surface_filament_id.value : 0,
+                                  region.nonplanar_bottom_shells.value > 0 ? region.bottom_surface_filament_id.value : 0 })
+                if (filament > 0 && size_t(filament) <= config.filament_is_mixed.values.size() &&
+                    config.filament_is_mixed.values[size_t(filament - 1)])
+                    return { L("Non-planar shells require a single physical filament for each patch. Select a non-mixed surface filament."),
+                             object, "top_surface_filament_id" };
             const double height = region.nonplanar_shell_layer_height.value > 0. ? region.nonplanar_shell_layer_height.value :
-                                                                                 object->config().layer_height.value;
+                                                                                 automatic_shell_height(*object);
             if (min_nozzle > 0. && height > 0.75 * min_nozzle)
                 return { L("Non-planar shell layer height must not exceed 75% of the nozzle diameter."), object,
                          "nonplanar_shell_layer_height" };
@@ -68,8 +80,6 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
                 object->config().nonplanar_max_patch_height.value < std::max(height, object->config().layer_height.value))
                 return { L("Non-planar maximum patch height must be at least the layer height and the shell layer height."), object,
                          "nonplanar_max_patch_height" };
-            if (object->model_object()->has_custom_layering())
-                return { L("Non-planar shells do not support variable layer heights."), object, "layer_height" };
         }
     }
 

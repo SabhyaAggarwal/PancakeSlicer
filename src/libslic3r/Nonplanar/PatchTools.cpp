@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <initializer_list>
 #include <functional>
 #include <string>
 #include <limits>
@@ -38,6 +39,71 @@ void throw_if_canceled(const PrintObject &object)
 {
     if (object.print()->canceled())
         throw CanceledException();
+}
+
+bool requests_conformal_shells(const Print &print)
+{
+    for (const PrintObject *object : print.objects()) {
+        if (object->shared_regions() == nullptr) {
+            const auto &config = print.default_region_config();
+            if (config.nonplanar_top_shells.value > 0 || config.nonplanar_bottom_shells.value > 0)
+                return true;
+            continue;
+        }
+        for (size_t r = 0; r < object->num_printing_regions(); ++r) {
+            const auto &config = object->printing_region(r).config();
+            if (config.nonplanar_top_shells.value > 0 || config.nonplanar_bottom_shells.value > 0)
+                return true;
+        }
+    }
+    return false;
+}
+
+bool sequential_shell_tower(const Print &print)
+{
+    return print.config().print_sequence == PrintSequence::ByObject &&
+           requests_conformal_shells(print) && print.has_wipe_tower();
+}
+
+bool vase_with_conformal_roof(const PrintObject &object)
+{
+    if (!object.print()->config().spiral_mode)
+        return false;
+    for (size_t r = 0; r < object.num_printing_regions(); ++r)
+        if (object.printing_region(r).config().nonplanar_top_shells.value > 0)
+            return true;
+    return false;
+}
+
+void prepare_vase_closure(PrintObject &object)
+{
+    if (!vase_with_conformal_roof(object))
+        return;
+    for (size_t r = 0; r < object.num_printing_regions(); ++r) {
+        const auto &config = object.printing_region(r).config();
+        if (config.nonplanar_top_shells.value <= 0)
+            continue;
+        size_t roof = object.layers().size();
+        for (size_t i = 0; i < object.layers().size(); ++i)
+            for (const Surface &surface : object.layers()[i]->get_region(int(r))->slices.surfaces)
+                if (surface.is_top())
+                    roof = std::min(roof, i);
+        for (size_t i = roof; i < object.layers().size(); ++i)
+            for (Surface &surface : object.layers()[i]->get_region(int(r))->fill_surfaces.surfaces) {
+                surface.surface_type = i == roof ? stInternalBridge : stInternalSolid;
+                if (i == roof)
+                    surface.bridge_angle = Geometry::deg2rad(config.infill_direction.value);
+            }
+    }
+}
+
+double automatic_shell_height(const PrintObject &object)
+{
+    double height = std::numeric_limits<double>::infinity();
+    for (const Layer *layer : object.layers())
+        if (layer->height > 0.)
+            height = std::min(height, layer->height);
+    return std::isfinite(height) ? height : object.config().layer_height.value;
 }
 
 HeightField object_grid(const PrintObject &object, double pitch, Polygons *silhouette)
@@ -941,7 +1007,7 @@ double multi_material_patch_height(const PrintObject &object, const HeadEnvelope
 }
 
 std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const HeightField &S, const std::vector<double> &layer_z,
-                                             double pitch, double tolerance, const BandSeams *seams, bool host_above)
+                                             double pitch, double tolerance, const BandSeams *seams, bool host_above, int patch_offset)
 {
     std::vector<ConformalPatch>   components = std::move(result.patches);
     std::vector<PatchDiagnostics> comp_diag  = std::move(result.diagnostics);
@@ -1053,7 +1119,7 @@ std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const Heig
     std::stable_sort(bands.begin(), bands.end(), [](const Band &a, const Band &b) { return a.band < b.band; });
     for (Band &bd : bands) {
         ConformalPatch &p = bd.patch;
-        p.id              = int(result.patches.size());
+        p.id              = patch_offset + int(result.patches.size());
         p.band            = bd.band;
         const double top  = (bd.band + 1) * pitch + tolerance;
         if (host_above) {

@@ -50,6 +50,7 @@ constexpr double ConformalBelowFirstLayerTolerance = 0.005;
 struct ConformalEmitParams
 {
     double       nominal_speed = 0.;
+    double       max_volume_per_second = 0.;
     double       glide_speed   = 0.;
     double       e_per_mm3     = 0.;
     MotionLimits limits;

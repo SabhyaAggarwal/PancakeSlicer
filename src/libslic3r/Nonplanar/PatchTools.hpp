@@ -19,6 +19,7 @@ namespace Slic3r {
 class BoundingBox;
 class ExtrusionEntityCollection;
 class Flow;
+class Print;
 class PrintObject;
 class PrintRegionConfig;
 }
@@ -32,6 +33,13 @@ enum class PatchKind : unsigned char;
 using Mask = std::vector<uint8_t>;
 
 void throw_if_canceled(const PrintObject &object);
+
+bool requests_conformal_shells(const Print &print);
+bool sequential_shell_tower(const Print &print);
+bool vase_with_conformal_roof(const PrintObject &object);
+void prepare_vase_closure(PrintObject &object);
+
+double automatic_shell_height(const PrintObject &object);
 
 HeightField object_grid(const PrintObject &object, double pitch, Polygons *silhouette = nullptr);
 
@@ -120,6 +128,6 @@ std::vector<std::pair<size_t, size_t>> split_by_colour(ConformalResult &result, 
 
 std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const HeightField &S, const std::vector<double> &layer_z,
                                              double pitch, double tolerance, const BandSeams *seams = nullptr,
-                                             bool host_above = false);
+                                             bool host_above = false, int patch_offset = 0);
 
 }

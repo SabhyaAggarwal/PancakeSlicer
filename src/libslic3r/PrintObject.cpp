@@ -20,6 +20,7 @@
 #include "Nonplanar/ConformalIroning.hpp"
 #include "Nonplanar/AtomToolpath.hpp"
 #include "Nonplanar/ConformalShells.hpp"
+#include "Nonplanar/PatchTools.hpp"
 #include "Nonplanar/Multiplanar.hpp"
 #include "Nonplanar/ConformalSupport.hpp"
 #include "Nonplanar/ConformalVolume.hpp"
@@ -669,6 +670,7 @@ void PrintObject::infill()
     this->prepare_infill();
 
     if (this->set_started(posInfill)) {
+        Nonplanar::prepare_vase_closure(*this);
         m_print->set_status(35, L("Generating infill toolpath"));
 
         BOOST_LOG_TRIVIAL(debug) << "Filling layers in parallel - start";
@@ -1793,7 +1795,7 @@ void PrintObject::detect_surfaces_type()
 {
     BOOST_LOG_TRIVIAL(info) << "Detecting solid surfaces..." << log_memory_info();
 
-    bool spiral_mode      = this->print()->config().spiral_mode.value;
+    bool spiral_mode      = this->print()->config().spiral_mode.value && !Nonplanar::vase_with_conformal_roof(*this);
     bool interface_shells = ! spiral_mode && m_config.interface_shells.value;
     size_t num_layers     = spiral_mode ? std::min(size_t(this->printing_region(0).config().bottom_shell_layers), m_layers.size()) : m_layers.size();
 

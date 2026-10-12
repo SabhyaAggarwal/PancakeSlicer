@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <limits>
 #include <string>
 #include <typeinfo>
@@ -51,24 +52,19 @@ struct BottomSettings
     bool   banded       = false;
 };
 
-BottomSettings bottom_settings(const PrintObject &object)
+BottomSettings bottom_settings(const PrintObject &object, size_t region_id)
 {
     BottomSettings s;
-    for (size_t region_id = 0; region_id < object.num_printing_regions(); ++region_id) {
-        const PrintRegionConfig &cfg = object.printing_region(region_id).config();
-        if (cfg.nonplanar_bottom_shells.value <= 0)
-            continue;
-        s.region_id    = int(region_id);
-        s.shells       = cfg.nonplanar_bottom_shells.value;
-        s.shell_height = cfg.nonplanar_shell_layer_height.value > 0. ? cfg.nonplanar_shell_layer_height.value :
-                                                                        object.config().layer_height.value;
-        s.max_slope    = Geometry::deg2rad(cfg.nonplanar_max_slope.value);
-        s.max_error    = cfg.nonplanar_max_surface_error.value;
-        s.min_area     = cfg.nonplanar_min_patch_area.value;
-        s.pitch        = std::max(0.05, object.config().nonplanar_surface_resolution.value);
-        s.banded       = cfg.nonplanar_fallback.value == NonplanarFallback::None;
-        break;
-    }
+    const PrintRegionConfig &cfg = object.printing_region(region_id).config();
+    s.region_id    = int(region_id);
+    s.shells       = cfg.nonplanar_bottom_shells.value;
+    s.shell_height = cfg.nonplanar_shell_layer_height.value > 0. ? cfg.nonplanar_shell_layer_height.value :
+                                                                    automatic_shell_height(object);
+    s.max_slope    = Geometry::deg2rad(cfg.nonplanar_max_slope.value);
+    s.max_error    = cfg.nonplanar_max_surface_error.value;
+    s.min_area     = cfg.nonplanar_min_patch_area.value;
+    s.pitch        = std::max(0.05, object.config().nonplanar_surface_resolution.value);
+    s.banded = cfg.nonplanar_fallback.value == NonplanarFallback::None;
     return s;
 }
 
@@ -149,12 +145,10 @@ HeightField sample_bottom_surface(const sla::IndexedMesh &mesh, const HeightFiel
     return S;
 }
 
-void build_conformal_bottom(PrintObject &object, ConformalResult &result)
+static void build_region_bottom(PrintObject &object, ConformalResult &result, size_t region_id)
 {
     LayerPtrs &layers = object.layers();
-    for (Layer *layer : layers)
-        layer->conformal_patches_before.clear();
-    const BottomSettings settings = bottom_settings(object);
+    const BottomSettings settings = bottom_settings(object, region_id);
     if (settings.shells <= 0 || layers.size() < 2)
         return;
     if (result.planar_exclusion.size() != layers.size())
@@ -178,7 +172,7 @@ void build_conformal_bottom(PrintObject &object, ConformalResult &result)
     for (size_t i = 1; i < layers.size(); ++i) {
         ExPolygons layer_bottoms;
         for (const LayerRegion *layerm : layers[i]->regions())
-            if (layerm->region().config().nonplanar_bottom_shells.value > 0)
+            if (&layerm->region() == &object.printing_region(region_id))
                 for (const Surface &surface : layerm->slices.surfaces)
                     if (surface.surface_type == stBottom || surface.surface_type == stBottomBridge)
                         layer_bottoms.emplace_back(surface.expolygon);
@@ -256,7 +250,7 @@ void build_conformal_bottom(PrintObject &object, ConformalResult &result)
     throw_if_canceled(object);
     const double       line_width = region.flow(object, frSolidInfill, h_c).width();
     const double       wall_width = std::max(0, region.config().wall_loops.value) *
-                                region.flow(object, frPerimeter, object.config().layer_height.value).width();
+                                region.flow(object, frPerimeter, settings.shell_height).width();
     const ExPolygons   band_cand  = wall_width > 0. ?
                                         diff_ex(candidate, offset_ex(union_ex(silhouette), float(-scale_(wall_width)))) :
                                         ExPolygons();
@@ -481,6 +475,14 @@ void build_conformal_bottom(PrintObject &object, ConformalResult &result)
 
     BOOST_LOG_TRIVIAL(info) << "Non-planar: " << result.patches.size() - first_patch << " curved bottom patch(es) in "
                             << object.model_object()->name;
+}
+
+void build_conformal_bottom(PrintObject &object, ConformalResult &result)
+{
+    for (Layer *layer : object.layers())
+        layer->conformal_patches_before.clear();
+    for (size_t region_id = 0; region_id < object.num_printing_regions(); ++region_id)
+        build_region_bottom(object, result, region_id);
 }
 
 void contour_support_interface(PrintObject &object)

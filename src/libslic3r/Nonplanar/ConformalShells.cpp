@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <functional>
 #include <initializer_list>
 #include <limits>
@@ -65,46 +66,43 @@ struct ShellSettings
     bool                 banded = false;
 };
 
-ShellSettings shell_settings(const PrintObject &object)
+ShellSettings shell_settings(const PrintObject &object, size_t region_id)
 {
     ShellSettings s;
-    for (size_t region_id = 0; region_id < object.num_printing_regions(); ++region_id) {
-        const PrintRegionConfig &cfg = object.printing_region(region_id).config();
-        if (cfg.nonplanar_top_shells.value <= 0)
-            continue;
-        s.region_id        = int(region_id);
-        s.shells           = cfg.nonplanar_top_shells.value;
-        s.shell_height     = cfg.nonplanar_shell_layer_height.value > 0. ? cfg.nonplanar_shell_layer_height.value :
-                                                                            object.config().layer_height.value;
-        s.max_slope        = Geometry::deg2rad(cfg.nonplanar_max_slope.value);
-        s.max_error        = cfg.nonplanar_max_surface_error.value;
-        s.min_area         = cfg.nonplanar_min_patch_area.value;
-        s.pitch            = std::max(0.05, object.config().nonplanar_surface_resolution.value);
-        s.max_patch_height = object.config().nonplanar_max_patch_height.value;
-        s.banded           = cfg.nonplanar_fallback.value == NonplanarFallback::None;
-        s.top_shells       = s.shells;
-        if (s.banded && cfg.nonplanar_infill_depth.value > 0.) {
-            const int top_solid = std::max(cfg.top_shell_layers.value, int(std::ceil(cfg.top_shell_thickness.value / s.shell_height - EPSILON)));
-            s.shells            = std::max(s.shells, top_solid);
-            s.sparse_density    = std::min(1., 0.01 * cfg.sparse_infill_density.value);
-            if (s.sparse_density > 0.)
-                s.sparse = int(std::lround(cfg.nonplanar_infill_depth.value / s.shell_height));
-            s.shells        += s.sparse;
-            s.sparse_pattern = cfg.sparse_infill_pattern.value == ipGyroid ? ipGyroid : ipRectilinear;
-            s.sparse_angle   = Geometry::deg2rad(cfg.infill_direction.value);
-            s.bottom_keep    = std::max(cfg.bottom_shell_layers.value * object.config().layer_height.value, cfg.bottom_shell_thickness.value);
-        }
-        break;
+    const PrintRegionConfig &cfg = object.printing_region(region_id).config();
+    if (cfg.nonplanar_top_shells.value <= 0)
+        return s;
+    s.region_id        = int(region_id);
+    s.shells           = cfg.nonplanar_top_shells.value;
+    s.shell_height     = cfg.nonplanar_shell_layer_height.value > 0. ? cfg.nonplanar_shell_layer_height.value :
+                                                                        automatic_shell_height(object);
+    s.max_slope        = Geometry::deg2rad(cfg.nonplanar_max_slope.value);
+    s.max_error        = cfg.nonplanar_max_surface_error.value;
+    s.min_area         = cfg.nonplanar_min_patch_area.value;
+    s.pitch            = std::max(0.05, object.config().nonplanar_surface_resolution.value);
+    s.max_patch_height = object.config().nonplanar_max_patch_height.value;
+    s.banded           = cfg.nonplanar_fallback.value == NonplanarFallback::None;
+    s.top_shells       = s.shells;
+    if (s.banded && cfg.nonplanar_infill_depth.value > 0.) {
+        const int top_solid = std::max(cfg.top_shell_layers.value, int(std::ceil(cfg.top_shell_thickness.value / s.shell_height - EPSILON)));
+        s.shells            = std::max(s.shells, top_solid);
+        s.sparse_density    = std::min(1., 0.01 * cfg.sparse_infill_density.value);
+        if (s.sparse_density > 0.)
+            s.sparse = int(std::lround(cfg.nonplanar_infill_depth.value / s.shell_height));
+        s.shells        += s.sparse;
+        s.sparse_pattern = cfg.sparse_infill_pattern.value == ipGyroid ? ipGyroid : ipRectilinear;
+        s.sparse_angle   = Geometry::deg2rad(cfg.infill_direction.value);
+        s.bottom_keep    = std::max(cfg.bottom_shell_layers.value * object.config().layer_height.value, cfg.bottom_shell_thickness.value);
     }
     return s;
 }
 
-ExPolygons candidate_top_area(const PrintObject &object)
+ExPolygons candidate_top_area(const PrintObject &object, size_t region_id)
 {
     Polygons tops;
     for (const Layer *layer : object.layers())
         for (const LayerRegion *layerm : layer->regions())
-            if (layerm->region().config().nonplanar_top_shells.value > 0)
+            if (&layerm->region() == &object.printing_region(region_id))
                 for (const Surface &surface : layerm->slices.surfaces)
                     if (surface.surface_type == stTop)
                         polygons_append(tops, to_polygons(surface.expolygon));
@@ -359,22 +357,18 @@ HeightField sample_underside(const sla::IndexedMesh &mesh, double z_offset, cons
     return U;
 }
 
-ConformalResult build_conformal_shells(PrintObject &object)
+static ConformalResult build_region_shells(PrintObject &object, size_t region_id, int patch_offset)
 {
     ConformalResult result;
     const auto      t_start = std::chrono::steady_clock::now();
     LayerPtrs      &layers  = object.layers();
-    for (Layer *layer : layers) {
-        layer->conformal_patches_after.clear();
-        layer->conformal_covered = false;
-    }
-    const ShellSettings settings = shell_settings(object);
+    result.planar_exclusion.assign(layers.size(), ExPolygons());
+
+    const ShellSettings settings = shell_settings(object, region_id);
     if (settings.shells <= 0 || layers.empty())
         return result;
 
-    result.planar_exclusion.assign(layers.size(), ExPolygons());
-
-    const ExPolygons candidate = candidate_top_area(object);
+    const ExPolygons candidate = candidate_top_area(object, region_id);
     if (candidate.empty())
         return result;
 
@@ -405,7 +399,7 @@ ConformalResult build_conformal_shells(PrintObject &object)
     const PrintRegion &region       = object.printing_region(size_t(settings.region_id));
     const double       line_width   = region.flow(object, frTopSolidInfill, settings.shell_height).width();
     const double       wall_width   = std::max(0, region.config().wall_loops.value) *
-                                region.flow(object, frPerimeter, object.config().layer_height.value).width();
+                                region.flow(object, frPerimeter, settings.shell_height).width();
     const ExPolygons   band_cand    = wall_width > 0. ?
                                           diff_ex(candidate, offset_ex(union_ex(silhouette_src), float(-scale_(wall_width)))) :
                                           ExPolygons();
@@ -416,6 +410,9 @@ ConformalResult build_conformal_shells(PrintObject &object)
     if (h_c > h_max)
         return result;
     const double       first_top    = layers.front()->print_z;
+    std::vector<double> layer_z(layers.size());
+    for (size_t i = 0; i < layers.size(); ++i)
+        layer_z[i] = layers[i]->print_z;
 
     HeightField S0 = S;
     for (size_t i = 0; i < n_nodes; ++i)
@@ -486,7 +483,8 @@ ConformalResult build_conformal_shells(PrintObject &object)
                 continue;
             const float s1 = S1.data()[i];
             if (std::isnan(s1) || S.data()[i] - (cap.empty() ? s1 : S1u.data()[i]) > settings.max_error ||
-                s1 - settings.shells * h_c - h_min < first_top) {
+                s1 - settings.shells * h_c - h_min < first_top ||
+                planar_transition_layer(layer_z, s1 - (settings.shells - 1) * h_c, h_c, h_min, h_max, PatchKind::Top) < 0) {
                 mask[i] = 0;
                 changed = true;
             } else
@@ -590,10 +588,6 @@ ConformalResult build_conformal_shells(PrintObject &object)
         });
     }
 
-    std::vector<double> layer_z(layers.size());
-    for (size_t i = 0; i < layers.size(); ++i)
-        layer_z[i] = layers[i]->print_z;
-
     std::vector<HeightField> planar_tops;
     std::vector<HeightField> stack_layers;
     std::vector<ExPolygons>  shell_areas;
@@ -615,7 +609,7 @@ ConformalResult build_conformal_shells(PrintObject &object)
         ix1 = std::min(grid.nx() - 1, ix1 + pad), iy1 = std::min(grid.ny() - 1, iy1 + pad);
 
         ConformalPatch patch;
-        patch.id           = int(result.patches.size());
+        patch.id           = patch_offset + int(result.patches.size());
         patch.kind         = PatchKind::Top;
         patch.footprint    = { component };
         patch.wall_band    = intersection_ex(patch.footprint, band_cand);
@@ -712,7 +706,7 @@ ConformalResult build_conformal_shells(PrintObject &object)
                 }
         const double fallback = std::max(0., cand.area() - covered) * SCALING_FACTOR * SCALING_FACTOR;
         if (owner >= 0)
-            result.diagnostics[size_t(owner)].fallback_area += fallback;
+            result.diagnostics[size_t(owner - patch_offset)].fallback_area += fallback;
         else if (fallback > 0.) {
             PatchDiagnostics diag;
             diag.fallback_area = fallback;
@@ -798,6 +792,16 @@ ConformalResult build_conformal_shells(PrintObject &object)
 
     if (const TopColours colours = top_colours(object, candidate); colours.areas.size() > 1) {
         split_by_colour(result, planar_tops, stack_layers, shell_areas, fill_areas, seams, seam_lines, colours);
+        for (ConformalPatch &patch : result.patches) {
+            patch.region_id = int(region_id);
+            patch.id += patch_offset;
+            for (ExtrusionEntityCollection &shell : patch.shell_paths)
+                for (ExtrusionEntity *entity : shell.entities)
+                    static_cast<ExtrusionPathConformal *>(entity)->patch_id = patch.id;
+        }
+        for (PatchDiagnostics &diag : result.diagnostics)
+            if (diag.patch_id >= 0)
+                diag.patch_id += patch_offset;
         BOOST_LOG_TRIVIAL(info) << "Non-planar: " << colours.areas.size() << " top colours in " << object.model_object()->name;
     }
 
@@ -806,7 +810,7 @@ ConformalResult build_conformal_shells(PrintObject &object)
         const BandSeams band_seams{ fill_areas, seams, seam_lines, line_width, MaxGlide, spans_wall,
                                     settings.shells - settings.top_shells, &stack_layers };
         component_patches = split_into_bands(result, S, layer_z, band_pitch, band_tolerance, &band_seams,
-                                             material_max_patch_height != settings.max_patch_height);
+                                             material_max_patch_height != settings.max_patch_height, patch_offset);
     }
     std::vector<ConformalPatch> &units = settings.banded ? component_patches : result.patches;
 
@@ -850,6 +854,26 @@ ConformalResult build_conformal_shells(PrintObject &object)
     BOOST_LOG_TRIVIAL(info) << "Non-planar: " << result.patches.size() << " curved top patch(es) in " << object.model_object()->name
                             << ", " << grid.nx() << "x" << grid.ny() << " nodes, "
                             << std::chrono::duration<double>(std::chrono::steady_clock::now() - t_start).count() << " s";
+    return result;
+}
+
+ConformalResult build_conformal_shells(PrintObject &object)
+{
+    ConformalResult result;
+    result.planar_exclusion.resize(object.layers().size());
+    for (Layer *layer : object.layers()) {
+        layer->conformal_patches_after.clear();
+        layer->conformal_covered = false;
+    }
+    for (size_t region_id = 0; region_id < object.num_printing_regions(); ++region_id) {
+        ConformalResult region = build_region_shells(object, region_id, int(result.patches.size()));
+        for (ConformalPatch &patch : region.patches)
+            result.patches.emplace_back(std::move(patch));
+        for (PatchDiagnostics &diag : region.diagnostics)
+            result.diagnostics.emplace_back(std::move(diag));
+        for (size_t i = 0; i < result.planar_exclusion.size(); ++i)
+            result.planar_exclusion[i] = union_ex(result.planar_exclusion[i], region.planar_exclusion[i]);
+    }
     return result;
 }
 

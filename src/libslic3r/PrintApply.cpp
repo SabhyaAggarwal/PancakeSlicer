@@ -7,6 +7,7 @@
 #include "Point.hpp"
 #include "Polygon.hpp"
 #include "Print.hpp"
+#include "Nonplanar/PatchTools.hpp"
 #include "BeltTransform.hpp"
 #include "FilamentMixer.hpp"
 #include "Slicing.hpp"
@@ -1089,6 +1090,8 @@ static PrintObjectRegions* generate_print_object_regions(
 
 Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_config, bool extruder_applied)
 {
+    const auto *tower_requested = new_full_config.option<ConfigOptionBool>("enable_prime_tower");
+    const bool keep_conformal_tower = tower_requested != nullptr && tower_requested->value;
 #ifdef _DEBUG
     check_model_ids_validity(model);
 #endif
@@ -1637,6 +1640,12 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
 
     int new_used_filaments = this->extruders(true).size();
     t_config_option_keys new_changed_keys = new_full_config.normalize_fdm_2(objects().size(), new_used_filaments);
+    if (keep_conformal_tower && new_full_config.option<ConfigOptionFloats>("filament_diameter")->values.size() > 1 &&
+        Nonplanar::requests_conformal_shells(*this)) {
+        new_full_config.option<ConfigOptionBool>("enable_prime_tower")->value = true;
+        if (!m_config.enable_prime_tower && std::find(new_changed_keys.begin(), new_changed_keys.end(), "enable_prime_tower") == new_changed_keys.end())
+            new_changed_keys.emplace_back("enable_prime_tower");
+    }
     if (new_changed_keys.size() > 0) {
         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(", got new_changed_keys, size=%1%")%new_changed_keys.size();
         for (int i = 0; i < new_changed_keys.size(); i++)

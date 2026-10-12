@@ -16,6 +16,7 @@
 #include <initializer_list>
 #include <math.h>
 #include <string>
+#include <typeinfo>
 #include <utility>
 #include "Config.hpp"
 #include "Polyline.hpp"
@@ -228,16 +229,63 @@ static void contour_extrusion_entity(LayerRegion *region, const sla::IndexedMesh
 	return;
 }
 
-static void handle_extrusion_collection(LayerRegion *region, const sla::IndexedMesh &mesh, ExtrusionEntityCollection &collection, std::initializer_list<ExtrusionRole> roles, const ExPolygons &shell_area) {
-    for (ExtrusionEntity* extr : collection.entities) {
-        if (!contains(roles, extr->role())) {
-			continue;
-		}
-		if (!shell_area.empty() && diff_pl(extr->as_polylines(), shell_area).empty())
-			continue;
-
-		contour_extrusion_entity(region, mesh, extr);
+static void handle_extrusion_collection(LayerRegion *region, const sla::IndexedMesh &mesh, ExtrusionEntityCollection &collection,
+                                        std::initializer_list<ExtrusionRole> roles, const ExPolygons &shell_area)
+{
+    ExtrusionEntitiesPtr out;
+    out.reserve(collection.entities.size());
+    for (ExtrusionEntity *extr : collection.entities) {
+        if (!contains(roles, extr->role()) || dynamic_cast<ExtrusionPathConformal *>(extr) != nullptr) {
+            out.push_back(extr);
+            continue;
+        }
+        if (auto *nested = dynamic_cast<ExtrusionEntityCollection *>(extr)) {
+            handle_extrusion_collection(region, mesh, *nested, roles, shell_area);
+            if (nested->empty())
+                delete nested;
+            else
+                out.push_back(nested);
+            continue;
+        }
+        if (shell_area.empty() || intersection_pl(extr->as_polylines(), shell_area).empty()) {
+            contour_extrusion_entity(region, mesh, extr);
+            out.push_back(extr);
+            continue;
+        }
+        const ExtrusionPaths *paths = nullptr;
+        ExtrusionPaths single;
+        if (auto *loop = dynamic_cast<ExtrusionLoop *>(extr))
+            paths = &loop->paths;
+        else if (auto *multi = dynamic_cast<ExtrusionMultiPath *>(extr))
+            paths = &multi->paths;
+        else if (auto *path = dynamic_cast<ExtrusionPath *>(extr); path &&
+                 (typeid(*path) == typeid(ExtrusionPath) || typeid(*path) == typeid(ExtrusionPathOriented))) {
+            single.push_back(*path);
+            if (!path->can_reverse())
+                single.back().set_reverse();
+            paths = &single;
+        }
+        if (!paths) {
+            contour_extrusion_entity(region, mesh, extr);
+            out.push_back(extr);
+            continue;
+        }
+        for (const ExtrusionPath &path : *paths) {
+            if (!contains(roles, path.role())) {
+                out.push_back(path.clone());
+                continue;
+            }
+            for (Polyline &line : diff_pl(Polylines{path.polyline.to_polyline()}, shell_area)) {
+                if (!line.is_valid())
+                    continue;
+                auto *piece = new ExtrusionPath(Polyline3(line), path);
+                contour_extrusion_path(region, mesh, *piece);
+                out.push_back(piece);
+            }
+        }
+        delete extr;
     }
+    collection.entities = std::move(out);
 }
 
 void Layer::make_contour_z(const sla::IndexedMesh &mesh)

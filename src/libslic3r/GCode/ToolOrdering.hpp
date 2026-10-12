@@ -233,6 +233,7 @@ public:
 
     void sort_and_build_data(const PrintObject &object, unsigned int first_extruder, bool prime_multi_material = false);
     void sort_and_build_data(const Print& print, unsigned int first_extruder, bool prime_multi_material = false);
+    void build_sequential_wipe_tower(const Print &print, bool prime_multi_material);
 
     void    clear() {
         m_layer_tools.clear();

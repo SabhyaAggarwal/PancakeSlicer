@@ -10,6 +10,7 @@
 #include "Nonplanar/HeadEnvelope.hpp"
 #include "Nonplanar/ConformalBottom.hpp"
 #include "Nonplanar/ConformalShells.hpp"
+#include "Nonplanar/PatchTools.hpp"
 #include "Flow.hpp"
 #include "Nonplanar/BeadModel.hpp"
 #include "Nonplanar/Validate.hpp"
@@ -862,8 +863,10 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
 
         Polyline    travel_polyline = generate_path_to_wipe_tower(route_start, start_wipe_pos, avoid_bbx, bed);
         std::string gcode;
+        const double route_z = gcodegen.m_nonplanar_ceiling > 0. ?
+            std::max(gcodegen.writer().get_position().z(), gcodegen.nonplanar_travel_z()) : DBL_MAX;
         for (size_t i = 0; i + 1 < travel_polyline.points.size(); ++i)
-            gcode += gcodegen.travel_to(travel_polyline.points[i], erMixed, "Travel to a Wipe Tower");
+            gcode += gcodegen.travel_to(travel_polyline.points[i], erMixed, "Travel to a Wipe Tower", route_z);
         return gcode;
     }
 
@@ -878,6 +881,28 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
         char buf[64];
         sprintf(buf, "%s%g\n", tag.c_str(), tcr.layer_height);
         return buf;
+    }
+
+    std::string WipeTowerIntegration::prepare_nonplanar_visit(GCode &gcodegen, const WipeTower::ToolChangeResult &tcr,
+                                                               const Point &start, double &z) const
+    {
+        if ((gcodegen.m_nonplanar_ceiling <= 0. && !Nonplanar::requests_conformal_shells(*gcodegen.m_print)) || tcr.priming)
+            return {};
+        if (z == -1.)
+            z = tcr.print_z + gcodegen.config().z_offset.value;
+        if (Nonplanar::sequential_shell_tower(*gcodegen.m_print))
+            gcodegen.m_nonplanar_ceiling = std::max(gcodegen.m_nonplanar_ceiling, z);
+        gcodegen.m_max_layer_z = std::max(gcodegen.m_max_layer_z, float(z - gcodegen.config().z_offset.value));
+        gcodegen.m_wipe.reset_path();
+        std::string gcode = gcodegen.retract();
+        const double safe = std::max({ gcodegen.writer().get_position().z(), z, gcodegen.nonplanar_travel_z() });
+        gcode += gcodegen.writer().travel_to_z(safe, "lift over shells for wipe tower", true, gcodegen.writer().max_speed_z());
+        if (gcodegen.wipe_tower_type() == WipeTowerType::Type2 && gcodegen.last_pos_defined())
+            gcode += travel_to_tower_gap(gcodegen, gcodegen.last_pos(), start);
+        gcode += gcodegen.writer().travel_to_xy(gcodegen.point_to_gcode(start), "move above planar wipe tower");
+        gcodegen.set_last_pos(start);
+        gcode += gcodegen.writer().travel_to_z(z, "restore planar wipe tower Z", true, gcodegen.writer().max_speed_z());
+        return gcode;
     }
 
     std::string WipeTowerIntegration::append_tcr(GCode& gcodegen, const WipeTower::ToolChangeResult& tcr, int new_filament_id, double z) const
@@ -919,11 +944,16 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
 
         Vec2f plate_origin_2d(m_plate_origin(0), m_plate_origin(1));
 
+        gcode += prepare_nonplanar_visit(gcodegen, tcr,
+            wipe_tower_point_to_object_point(gcodegen, tool_change_start_pos + plate_origin_2d), z);
+        const double travel_target_z = !tcr.priming &&
+            (gcodegen.m_nonplanar_ceiling > 0. || Nonplanar::requests_conformal_shells(*gcodegen.m_print)) ? z : DBL_MAX;
+
         if (!tcr.priming && tcr.is_finish_first) {
             gcode += gcodegen.retract();
             gcodegen.m_avoid_crossing_perimeters.use_external_mp_once();
             gcode += gcodegen.travel_to(wipe_tower_point_to_object_point(gcodegen, start_pos + plate_origin_2d), erMixed,
-                                        "Travel to a Wipe Tower");
+                                        "Travel to a Wipe Tower", travel_target_z);
             gcode += gcodegen.unretract();
         }
 
@@ -987,7 +1017,8 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
                 && (tcr.print_z - gcodegen.writer().get_position().z()) > EPSILON;
             std::string start_pos_str;
             start_pos_str = gcodegen.travel_to(wipe_tower_point_to_object_point(gcodegen, transform_wt_pt(tcr.nozzle_change_result.start_pos) + plate_origin_2d), erMixed,
-                "Move to nozzle change start pos", compact_intower_nc_travel ? z : DBL_MAX);
+                "Move to nozzle change start pos", travel_target_z != DBL_MAX ? travel_target_z :
+                    (compact_intower_nc_travel ? z : DBL_MAX));
             check_add_eol(start_pos_str);
             nozzle_change_gcode_trans += start_pos_str;
             if (!compact_intower_nc_travel && compacted_below_object) {
@@ -1039,6 +1070,9 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
             config.set_key_value("layer_num", new ConfigOptionInt(gcodegen.m_layer_index));
             config.set_key_value("layer_z", new ConfigOptionFloat(tcr.print_z));
             config.set_key_value("toolchange_z", new ConfigOptionFloat(z));
+            if (gcodegen.m_nonplanar_ceiling > 0.)
+                config.set_key_value("max_layer_z", new ConfigOptionFloat(std::max(gcodegen.m_nonplanar_ceiling,
+                    double(gcodegen.m_max_layer_z) + gcodegen.config().z_offset.value)));
             {
                 GCodeWriter& gcode_writer = gcodegen.m_writer;
                 FullPrintConfig& full_config = gcodegen.m_config;
@@ -1122,7 +1156,10 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
                 }
                 config.set_key_value("x_after_toolchange", new ConfigOptionFloat(tool_change_start_pos(0)));
                 config.set_key_value("y_after_toolchange", new ConfigOptionFloat(tool_change_start_pos(1)));
-                config.set_key_value("z_after_toolchange", new ConfigOptionFloat(nozzle_pos(2)));
+                const double return_z = gcodegen.m_nonplanar_ceiling > 0. && !tcr.priming ?
+                    std::max({ nozzle_pos(2), gcodegen.m_nonplanar_ceiling,
+                               double(gcodegen.m_max_layer_z) + full_config.z_offset.value }) + gcodegen.nonplanar_head().margin : nozzle_pos(2);
+                config.set_key_value("z_after_toolchange", new ConfigOptionFloat(return_z));
                 config.set_key_value("first_flush_volume", new ConfigOptionFloat(purge_length / 2.f));
                 config.set_key_value("second_flush_volume", new ConfigOptionFloat(purge_length / 2.f));
                 config.set_key_value("old_filament_e_feedrate", new ConfigOptionInt(old_filament_e_feedrate));
@@ -1208,7 +1245,7 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
 
         if (need_travel_after_change_filament_gcode) {
             if (!is_used_travel_avoid_perimeter) {
-                std::string start_pos_str = gcodegen.travel_to(wipe_tower_point_to_object_point(gcodegen, tool_change_start_pos + plate_origin_2d), erMixed, "Move to start pos");
+                std::string start_pos_str = gcodegen.travel_to(wipe_tower_point_to_object_point(gcodegen, tool_change_start_pos + plate_origin_2d), erMixed, "Move to start pos", travel_target_z);
                 check_add_eol(start_pos_str);
                 wipe_next_start_point_str = start_pos_str;
             } else {
@@ -1230,14 +1267,17 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
                 std::string travel_to_wipe_tower_gcode;
                 Polyline    travel_polyline = generate_path_to_wipe_tower(gcode_last_pos2d_object, start_wipe_pos, avoid_bbx, shared_printable_area(gcodegen));
 
+                const double route_z = gcodegen.m_nonplanar_ceiling > 0. ?
+                    std::max({ gcodegen.writer().get_position().z(), gcodegen.m_nonplanar_ceiling,
+                               double(gcodegen.m_max_layer_z) + gcodegen.config().z_offset.value }) + gcodegen.nonplanar_head().margin : DBL_MAX;
                 for (size_t i = 0; i < travel_polyline.points.size(); ++i) {
                     const auto &p = travel_polyline.points[i];
                     if (i == travel_polyline.points.size() - 1) {
-                        wipe_next_start_point_str = gcodegen.travel_to(p, erMixed, "Move to start pos");
+                        wipe_next_start_point_str = gcodegen.travel_to(p, erMixed, "Move to start pos", travel_target_z);
                         check_add_eol(wipe_next_start_point_str);
                         break;
                     }
-                    travel_to_wipe_tower_gcode += gcodegen.travel_to(p, erMixed, "Move to start pos");
+                    travel_to_wipe_tower_gcode += gcodegen.travel_to(p, erMixed, "Move to start pos", route_z);
                     check_add_eol(travel_to_wipe_tower_gcode);
                 }
                 toolchange_gcode_str += travel_to_wipe_tower_gcode;
@@ -1357,6 +1397,11 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
 
         std::string tcr_rotated_gcode = post_process_wipe_tower_moves(tcr, wipe_tower_offset, wipe_tower_rotation);
 
+        gcode += prepare_nonplanar_visit(gcodegen, tcr,
+            wipe_tower_point_to_object_point(gcodegen, start_pos + plate_origin_2d), z);
+        const double travel_target_z = !tcr.priming &&
+            (gcodegen.m_nonplanar_ceiling > 0. || Nonplanar::requests_conformal_shells(*gcodegen.m_print)) ? z : DBL_MAX;
+
         gcode += gcodegen.writer().unlift();
 
         double current_z = gcodegen.writer().get_position().z();
@@ -1392,7 +1437,7 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
             gcodegen.m_avoid_crossing_perimeters.use_external_mp_once();
             if (!tcr.priming && gcodegen.last_pos_defined())
                 gcode += travel_to_tower_gap(gcodegen, gcodegen.last_pos(), start_wipe_pos);
-            gcode += gcodegen.travel_to(start_wipe_pos, erMixed, "Travel to a Wipe Tower");
+            gcode += gcodegen.travel_to(start_wipe_pos, erMixed, "Travel to a Wipe Tower", travel_target_z);
             gcode += gcodegen.unretract();
         } else {
         }
@@ -1433,7 +1478,7 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
                     gcodegen.set_last_pos(route_start);
                     gcodegen.m_avoid_crossing_perimeters.use_external_mp_once();
                     std::string travel = travel_to_tower_gap(gcodegen, route_start, start_wipe_pos);
-                    travel += gcodegen.travel_to(start_wipe_pos, erMixed, "Travel to a Wipe Tower");
+                    travel += gcodegen.travel_to(start_wipe_pos, erMixed, "Travel to a Wipe Tower", travel_target_z);
                     check_add_eol(travel);
                     toolchange_gcode_str += travel;
                     gcodegen.set_last_pos(start_wipe_pos);
@@ -1758,9 +1803,16 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
     {
         std::string gcode;
         if (gcodegen.wipe_tower_type() == WipeTowerType::Type2 && !m_final_purge.gcode.empty()) {
-            if (std::abs(gcodegen.writer().get_position().z() - m_final_purge.print_z) > EPSILON)
-                gcode += gcodegen.change_layer(m_final_purge.print_z);
-            gcode += append_tcr2(gcodegen, m_final_purge, -1);
+            if (m_sparse_layers_skipped && Nonplanar::requests_conformal_shells(*gcodegen.m_print)) {
+                const bool new_layer = !m_tool_changes.empty() && !m_tool_changes.back().empty() &&
+                    m_final_purge.print_z > m_tool_changes.back().front().print_z + EPSILON;
+                gcode += append_tcr2(gcodegen, m_final_purge, -1,
+                    m_last_wipe_tower_print_z + (new_layer ? m_final_purge.layer_height : 0.));
+            } else {
+                if (std::abs(gcodegen.writer().get_position().z() - m_final_purge.print_z) > EPSILON)
+                    gcode += gcodegen.change_layer(m_final_purge.print_z);
+                gcode += append_tcr2(gcodegen, m_final_purge, -1);
+            }
         }
 
         return gcode;
@@ -2993,7 +3045,8 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
             throw Slic3r::SlicingError(_(L("No object can be printed. It may be too small.")));
         this->set_extruders(print.extruders());
 
-        has_wipe_tower = print.has_wipe_tower() && tool_ordering.has_wipe_tower();
+        has_wipe_tower = print.has_wipe_tower() &&
+            (Nonplanar::sequential_shell_tower(print) ? print.wipe_tower_data().tool_ordering.has_wipe_tower() : tool_ordering.has_wipe_tower());
     } else {
         tool_ordering = print.tool_ordering();
         tool_ordering.assign_custom_gcodes(print);
@@ -3720,13 +3773,28 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
             file.write("M981 S1 P20000 ;open spaghetti detector\n");
         }
 
-        if (print.config().print_sequence == PrintSequence::ByObject && !has_wipe_tower) {
+        const auto initialize_wipe_tower = [&]() {
+            static const std::vector<WipeTower::ToolChangeResult> empty_priming;
+            const auto &data = print.wipe_tower_data();
+            m_wipe_tower.reset(new WipeTowerIntegration(print.config(), print.get_plate_index(), print.get_plate_origin(),
+                data.priming ? *data.priming : empty_priming, data.tool_changes, *data.final_purge, print.get_slice_used_filaments(false)));
+            m_wipe_tower->set_wipe_tower_depth(print.get_wipe_tower_depth());
+            m_wipe_tower->set_wipe_tower_bbx(print.get_wipe_tower_bbx());
+            m_wipe_tower->set_rib_offset(print.get_rib_offset());
+        };
+        if (has_wipe_tower && Nonplanar::sequential_shell_tower(print)) {
+            initialize_wipe_tower();
+            file.write(m_writer.travel_to_z(initial_layer_print_height + m_config.z_offset.value, "Move to the first layer height"));
+            if (wipe_tower_type == WipeTowerType::Type2 && print.config().single_extruder_multi_material_priming)
+                file.write(m_wipe_tower->prime(*this));
+        }
+        if (print.config().print_sequence == PrintSequence::ByObject && (!has_wipe_tower || Nonplanar::sequential_shell_tower(print))) {
             size_t finished_objects = 0;
             print_object_instance_sequential_active = first_has_extrude_print_object;
             const PrintObject *prev_object = (*print_object_instance_sequential_active)->print_object;
             for (; print_object_instance_sequential_active != print_object_instances_ordering.end(); ++ print_object_instance_sequential_active) {
                 const PrintObject &object = *(*print_object_instance_sequential_active)->print_object;
-                if (&object != prev_object || tool_ordering.first_extruder() != final_extruder_id) {
+                if (Nonplanar::sequential_shell_tower(print) || &object != prev_object || tool_ordering.first_extruder() != final_extruder_id) {
                     auto cached_ordering = use_seq_dynamic_cache ? seq_dynamic_orderings.find(&object) : seq_dynamic_orderings.end();
                     if (cached_ordering != seq_dynamic_orderings.end()) {
                         tool_ordering = cached_ordering->second;
@@ -3750,7 +3818,7 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
                 if (finished_objects > 0) {
                     m_enable_cooling_markers = false;
                     m_avoid_crossing_perimeters.use_external_mp_once();
-                    if (m_writer.need_toolchange(initial_extruder_id)) {
+                    if (m_writer.need_toolchange(initial_extruder_id) && !m_wipe_tower) {
                         const PrintObjectConfig& object_config = object.config();
                         coordf_t initial_layer_print_height = print.config().initial_layer_print_height.value;
 
@@ -3763,7 +3831,8 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
                     } else {
                         file.write(this->retract());
                     }
-                    file.write(m_writer.travel_to_z(m_max_layer_z + m_writer.config.z_hop.get_at(get_filament_config_index((int)initial_extruder_id))));
+                    if (m_nonplanar_ceiling <= 0.)
+                        file.write(m_writer.travel_to_z(m_max_layer_z + m_writer.config.z_hop.get_at(get_filament_config_index((int)initial_extruder_id))));
                     file.write(this->travel_to(Point(0, 0), erNone, "move to origin position for next object"));
                     m_enable_cooling_markers = true;
                     m_avoid_crossing_perimeters.disable_once();
@@ -3802,11 +3871,7 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
         } else {
             std::vector<std::pair<coordf_t, std::vector<LayerToPrint>>> layers_to_print = collect_layers_to_print(print);
             if (has_wipe_tower && ! layers_to_print.empty()) {
-                m_wipe_tower.reset(new WipeTowerIntegration(print.config(), print.get_plate_index(), print.get_plate_origin(), *print.wipe_tower_data().priming.get(),
-                                                            print.wipe_tower_data().tool_changes, *print.wipe_tower_data().final_purge.get(), print.get_slice_used_filaments(false)));
-                m_wipe_tower->set_wipe_tower_depth(print.get_wipe_tower_depth());
-                m_wipe_tower->set_wipe_tower_bbx(print.get_wipe_tower_bbx());
-                m_wipe_tower->set_rib_offset(print.get_rib_offset());
+                initialize_wipe_tower();
                 file.write(m_writer.travel_to_z(initial_layer_print_height + m_config.z_offset.value, "Move to the first layer height"));
 
                 if (wipe_tower_type == WipeTowerType::Type2 && print.config().single_extruder_multi_material_priming) {
@@ -4257,7 +4322,13 @@ void GCode::process_layers(
             check_placeholder_parser_failed();
             print.throw_if_canceled();
             m_extrusion_quality_estimator.set_precomputed_layers(std::move(precomputed.overhang_layers));
-            return this->process_layer(print, { std::move(layer) }, tool_ordering.tools_for_layer(layer.print_z()), &layer == &layers_to_print.back(), nullptr, tool_ordering.get_most_used_extruder(), single_object_idx, prime_extruder);
+            LayerTools tools = tool_ordering.tools_for_layer(layer.print_z());
+            if (m_wipe_tower && Nonplanar::sequential_shell_tower(print)) {
+                tools.has_wipe_tower = true;
+                tools.wipe_tower_partitions = std::max(size_t(1), tools.wipe_tower_partitions);
+                m_wipe_tower->next_layer();
+            }
+            return this->process_layer(print, { std::move(layer) }, tools, &layer == &layers_to_print.back(), nullptr, tool_ordering.get_most_used_extruder(), single_object_idx, prime_extruder);
         });
     if (m_spiral_vase) {
         float nozzle_diameter  = EXTRUDER_CONFIG(nozzle_diameter);
@@ -5344,12 +5415,22 @@ LayerResult GCode::process_layer(
 
     m_enable_loop_clipping = true;
     if (m_spiral_vase && layers.size() == 1 && support_layer == nullptr) {
-        bool enable = (layer.id() > 0 || !print.has_brim()) && (layer.id() >= (size_t)print.config().skirt_height.value && ! print.has_infinite_skirt());
+        bool enable = layer_tools.extruders.size() == 1 && (layer.id() > 0 || !print.has_brim()) && (layer.id() >= (size_t)print.config().skirt_height.value && ! print.has_infinite_skirt());
         if (enable) {
             for (const LayerRegion *layer_region : layer.regions())
                 if (size_t(layer_region->region().config().bottom_shell_layers.value) > layer.id() ||
                     layer_region->perimeters.items_count() > 1u ||
                     layer_region->fills.items_count() > 0) {
+                    enable = false;
+                    break;
+                }
+        }
+        if (enable && object_layer != nullptr) {
+            const PrintObject &object = *object_layer->object();
+            if (!object_layer->conformal_patches_before.empty() || !object_layer->conformal_patches_after.empty())
+                enable = false;
+            for (const auto &patch : object.conformal().patches)
+                if (patch.kind == Nonplanar::PatchKind::Top && object.layers()[patch.host_layer]->print_z <= print_z + EPSILON) {
                     enable = false;
                     break;
                 }
@@ -7257,6 +7338,8 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                 this->set_origin(unscale(offset));
                 this->on_set_origin(&object, offset);
                 m_layer = layer;
+                m_config.apply(print.default_region_config());
+                m_config.apply(object.config(), true);
                 m_config.apply(region.config());
                 if (patch.kind == Nonplanar::PatchKind::Chunk) {
                     gcode += this->extrude_multiplanar_chunk(patch);
@@ -7316,6 +7399,18 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
     return gcode;
 }
 
+std::string GCode::travel_above_nonplanar(const Polyline &travel, const std::string &comment, double z)
+{
+    const double target_z = z == DBL_MAX ? m_nominal_z : z;
+    const double safe = std::max({ m_writer.get_position().z(), target_z, this->nonplanar_travel_z() });
+    std::string gcode = m_writer.travel_to_z(safe, "lift over deposited material", true, m_writer.max_speed_z());
+    for (size_t i = 1; i < travel.size(); ++i)
+        gcode += m_writer.travel_to_xy(this->point_to_gcode(travel.points[i]), comment);
+    gcode += m_writer.travel_to_z(target_z, "lower after non-planar travel", true, m_writer.max_speed_z());
+    m_need_change_layer_lift_z = false;
+    return gcode;
+}
+
 std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, const std::string &description,
                                           const std::function<Vec2d(const Vec2d &)> &surface_gradient,
                                           const ExtrusionPathConformal *next)
@@ -7345,6 +7440,8 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
                            kinematics, tilt);
     }
 
+    m_wipe.reset_path();
+
     const ToolPose &start = m_conformal_points.front().pose;
     const Vec3d    &here  = m_writer.get_position();
     if (! m_last_pos_defined || (here - start.tip).norm() > EPSILON || (m_writer.get_tool_axis() - start.axis).norm() > EPSILON) {
@@ -7356,7 +7453,9 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
         } else {
             const bool   in_band = this->conformal_in_band(m_conformal_prev, &path);
             const Vec2d  from = here.head<2>(), to = start.tip.head<2>();
-            const double safe = std::max({ here.z(), start.tip.z(), this->nonplanar_travel_z(&from, &to, in_band) });
+            double safe = std::max({ here.z(), start.tip.z(), this->nonplanar_travel_z(&from, &to, in_band) });
+            if (!in_band && m_print->has_wipe_tower())
+                safe = std::max(safe, this->nonplanar_travel_z());
             gcode += m_writer.travel_to_z(safe, "lift over conformal shells", true, m_writer.max_speed_z());
             gcode += m_writer.travel_to_xy(start.tip.head<2>(), "move to conformal path");
             gcode += m_writer.travel_to_z(start.tip.z(), "lower onto conformal path", true, m_writer.max_speed_z());
@@ -7513,6 +7612,10 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
     if (m_writer.filament() != nullptr)
         params.glide_speed = m_config.travel_speed.get_at(get_nozzle_config_index(m_writer.filament()->id()));
     params.e_per_mm3     = path.mm3_per_mm > 0. ? e_per_mm / path.mm3_per_mm : 0.;
+    const double diameter = FILAMENT_CONFIG(filament_diameter);
+    const double volume_ratio = params.e_per_mm3 * PI * diameter * diameter * 0.25;
+    if (volume_ratio > 0.)
+        params.max_volume_per_second = FILAMENT_CONFIG(filament_max_volumetric_speed) / volume_ratio;
     params.comment       = description;
     params.speed_marker  = speed_marker;
     auto first_value     = [](const ConfigOptionFloats &opt) { return opt.values.empty() ? 0. : opt.values.front(); };
@@ -7573,7 +7676,7 @@ double GCode::nonplanar_travel_z(const Vec2d *from, const Vec2d *to, bool nozzle
     } else {
         const double hop = this->nonplanar_hop();
         z = m_material_columns && from != nullptr && to != nullptr ? safe_travel_z(*m_material_columns, this->nonplanar_head(), *from, *to, hop) :
-                                                                     std::max(m_nonplanar_ceiling, double(m_max_layer_z)) + hop;
+                                                                     std::max(m_nonplanar_ceiling, double(m_max_layer_z) + m_config.z_offset.value) + hop;
     }
     return m_config.printable_height.value > 0. ? std::min(z, m_config.printable_height.value + m_config.z_offset.value) : z;
 }
@@ -8884,6 +8987,7 @@ std::string GCode::_encode_label_ids_to_base64(std::vector<size_t> ids)
 
 std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string comment, double z )
 {
+    const bool nonplanar_travel = m_nonplanar_ceiling > 0.;
     Polyline travel { this->last_pos(), point };
 
     LiftType lift_type = LiftType::SpiralLift;
@@ -8952,7 +9056,7 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
 
     m_avoid_crossing_perimeters.reset_once_modifiers();
 
-    if (needs_retraction) {
+    if (needs_retraction || nonplanar_travel) {
 
         Point last_post_before_retract = this->last_pos();
         gcode += this->retract(false, false, lift_type, false, role);
@@ -8987,7 +9091,9 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
     }
 
     if (travel.size() >= 2) {
-        if (false ) {
+        if (nonplanar_travel) {
+            gcode += this->travel_above_nonplanar(travel, comment, z);
+        } else if (false ) {
             for (size_t i = 1; i < travel.size(); ++i) {
                 gcode += m_writer.travel_to_xy(this->point_to_gcode(travel.points[i]), comment);
             }
@@ -9148,6 +9254,9 @@ std::string GCode::retract(bool toolchange, bool is_last_retraction, LiftType li
 
     if (m_writer.filament() == nullptr)
         return gcode;
+
+    if (m_nonplanar_ceiling > 0.)
+        m_wipe.reset_path();
 
     if (FILAMENT_CONFIG(wipe) && m_wipe.has_path() && scale_(FILAMENT_CONFIG(wipe_distance)) > SCALED_EPSILON &&
         !this->below_conformal_material()) {
@@ -9470,7 +9579,8 @@ std::string GCode::set_extruder(unsigned int new_filament_id, double print_z, bo
         new ConfigOptionFloat(m_writer.get_extruder_retracted_length((int) new_filament_id)));
     dyn_config.set_key_value("layer_num", new ConfigOptionInt(m_layer_index));
     dyn_config.set_key_value("layer_z", new ConfigOptionFloat(print_z));
-    dyn_config.set_key_value("max_layer_z", new ConfigOptionFloat(m_max_layer_z));
+    dyn_config.set_key_value("max_layer_z", new ConfigOptionFloat(m_nonplanar_ceiling > 0. ?
+        std::max(m_nonplanar_ceiling, double(m_max_layer_z) + m_config.z_offset.value) : m_max_layer_z));
     dyn_config.set_key_value("relative_e_axis", new ConfigOptionBool(m_config.use_relative_e_distances));
     dyn_config.set_key_value("toolchange_count", new ConfigOptionInt((int)m_toolchange_count));
     dyn_config.set_key_value("fan_speed", new ConfigOptionInt((int)0));
@@ -9482,7 +9592,9 @@ std::string GCode::set_extruder(unsigned int new_filament_id, double print_z, bo
     dyn_config.set_key_value("new_filament_temp", new ConfigOptionInt(new_filament_temp));
     dyn_config.set_key_value("x_after_toolchange", new ConfigOptionFloat(nozzle_pos(0)));
     dyn_config.set_key_value("y_after_toolchange", new ConfigOptionFloat(nozzle_pos(1)));
-    dyn_config.set_key_value("z_after_toolchange", new ConfigOptionFloat(nozzle_pos(2)));
+    const double return_z = m_nonplanar_ceiling > 0. ?
+        std::max({ nozzle_pos(2), m_nonplanar_ceiling, double(m_max_layer_z) + m_config.z_offset.value }) + nonplanar_head().margin : nozzle_pos(2);
+    dyn_config.set_key_value("z_after_toolchange", new ConfigOptionFloat(return_z));
     dyn_config.set_key_value("first_flush_volume", new ConfigOptionFloat(wipe_length / 2.f));
     dyn_config.set_key_value("second_flush_volume", new ConfigOptionFloat(wipe_length / 2.f));
     dyn_config.set_key_value("old_filament_e_feedrate", new ConfigOptionInt(old_filament_e_feedrate));

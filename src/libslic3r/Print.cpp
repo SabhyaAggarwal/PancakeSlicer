@@ -65,6 +65,8 @@
 #include "Geometry/ConvexHull.hpp"
 #include "I18N.hpp"
 #include "Nonplanar/Validate.hpp"
+#include "Nonplanar/ConformalShells.hpp"
+#include "Nonplanar/PatchTools.hpp"
 #include "LifecycleEvents.hpp"
 #include "ShortestPath.hpp"
 #include "Thread.hpp"
@@ -921,7 +923,10 @@ StringObjectException Print::sequential_print_clearance_valid(const Print &print
                     break;
                 }
             }
-            if (height < inst->print_object->max_z())
+            double finished_z = inst->print_object->max_z();
+            for (const auto &patch : inst->print_object->conformal().patches)
+                finished_z = std::max(finished_z, double(scale_(patch.z_max)));
+            if (height < finished_z)
                 too_tall_instances[inst] = std::make_pair(print_instance_with_bounding_box[k].hull_polygon, unscaled<double>(height));
         }
 
@@ -1294,8 +1299,11 @@ static StringObjectException layered_print_cleareance_valid(const Print &print, 
     Polygons tower_polys_estimated;
     if (!exact_footprint && !convex_hulls_temp.empty()) {
         double max_height = 0.;
-        for (const PrintObject *object : print.objects())
-            max_height = std::max(max_height, unscale_(object->size().z()));
+        const bool sequential_tower = Nonplanar::sequential_shell_tower(print);
+        for (const PrintObject *object : print.objects()) {
+            const double height = unscale_(object->size().z());
+            max_height = sequential_tower ? max_height + height * object->instances().size() : std::max(max_height, height);
+        }
         Polygon base = estimate_wipe_tower_first_layer_outline(config, print.wipe_tower_type(), width, depth, max_height);
         base.rotate(Geometry::deg2rad(a));
         base.translate(Point(scale_(x), scale_(y)));
@@ -1804,7 +1812,7 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
                     return {L("Spiral (vase) mode does not work when an object contains more than one material."), nullptr, "spiral_mode"};
         assert(m_objects.size() == 1);
         const auto all_regions = m_objects.front()->all_regions();
-        if (all_regions.size() > 1) {
+        if (all_regions.size() > 1 && !Nonplanar::requests_conformal_shells(*this)) {
             if (std::any_of(all_regions.begin() + 1, all_regions.end(), [this, ra = all_regions.front()](const auto rb) {
                 return !Layer::is_perimeter_compatible(*this, ra, rb);
             })) {
@@ -1826,6 +1834,7 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
 
     const bool belt_printer = this->config().belt_printer.value;
     const double shrinkage_compensation_z = this->shrinkage_compensation().z();
+    double sequential_tower_height = 0.;
     for (size_t print_object_idx = 0; print_object_idx < m_objects.size(); ++ print_object_idx) {
         const PrintObject &print_object = *m_objects[print_object_idx];
 
@@ -1850,6 +1859,8 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
         if (!have_height)
             continue;
 
+        sequential_tower_height += effective_max_z * print_object.instances().size();
+
         if (shrinkage_compensation_z != 1. && effective_max_z > (this->config().printable_height / shrinkage_compensation_z + EPSILON)) {
             return StringObjectException{
                 Slic3r::format(_u8L("While the object %1% itself fits the build volume, it exceeds the maximum build volume height because of material shrinkage compensation."), print_object.model_object()->name),
@@ -1867,6 +1878,10 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
             };
         }
     }
+
+    if (Nonplanar::sequential_shell_tower(*this) && !wipe_tower_sparse_layers_skipped(m_config) &&
+        sequential_tower_height > this->config().printable_height + EPSILON)
+        return { L("The sequential prime tower exceeds the maximum build volume height. Reduce the number of objects or disable the prime tower."), nullptr, "enable_prime_tower" };
 
     bool has_custom_layering = std::find_if(m_objects.begin(), m_objects.end(), 
         [](const PrintObject *object) { return object->model_object()->has_custom_layering(); }) 
@@ -1935,7 +1950,7 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
         }
 #endif
 
-        if (m_objects.size() > 1) {
+        if (m_objects.size() > 1 && !Nonplanar::sequential_shell_tower(*this)) {
             const SlicingParameters &slicing_params0 = m_objects.front()->slicing_parameters();
             size_t                  tallest_object_idx = 0;
             for (size_t i = 1; i < m_objects.size(); ++ i) {
@@ -3155,7 +3170,7 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
         using Clock                 = std::chrono::high_resolution_clock;
         auto            startTime   = Clock::now();
         std::optional<const FakeWipeTower *> wipe_tower_opt = {};
-        if (this->has_wipe_tower()) {
+        if (this->has_wipe_tower() && !m_wipe_tower_data.tool_changes.empty()) {
             m_fake_wipe_tower.set_pos({m_config.wipe_tower_x.get_at(m_plate_index), m_config.wipe_tower_y.get_at(m_plate_index)});
             wipe_tower_opt = std::make_optional<const FakeWipeTower *>(&m_fake_wipe_tower);
         }
@@ -4179,7 +4194,8 @@ bool Print::has_wipe_tower() const
         if (enable_timelapse_print())
             return true;
 
-        return !m_config.spiral_mode.value && m_config.filament_diameter.values.size() > 1;
+        return (!m_config.spiral_mode.value || Nonplanar::requests_conformal_shells(*this)) &&
+               m_config.filament_diameter.values.size() > 1;
     }
     return false;
 }
@@ -4192,8 +4208,10 @@ const WipeTowerData &Print::wipe_tower_data(size_t filaments_cnt) const
 
     double max_height   = 0.;
     double layer_height = std::numeric_limits<double>::max();
+    const bool sequential_tower = Nonplanar::sequential_shell_tower(*this);
     for (const PrintObject *object : m_objects) {
-        max_height   = std::max(max_height, unscale_(double(object->size().z())));
+        const double height = unscale_(double(object->size().z()));
+        max_height   = sequential_tower ? max_height + height * object->instances().size() : std::max(max_height, height);
         layer_height = std::min(layer_height, object->config().layer_height.value);
     }
     if (max_height < EPSILON)
@@ -4219,14 +4237,24 @@ void Print::_make_wipe_tower()
 
     const unsigned int number_of_extruders = (unsigned int)(m_config.filament_colour.values.size());
 
+    const bool sequential_shells = Nonplanar::sequential_shell_tower(*this);
+    if (sequential_shells && m_config.nozzle_diameter.size() == 1) {
+        auto volumes = m_config.filament_volume_map.values;
+        volumes.resize(number_of_extruders, int(nvtStandard));
+        update_filament_maps_to_config(std::vector<int>(number_of_extruders, 1), volumes,
+                                       std::vector<int>(number_of_extruders, 0));
+    }
     const bool is_wipe_tower_type2 = this->wipe_tower_type() == WipeTowerType::Type2;
     m_wipe_tower_data.tool_ordering = ToolOrdering(*this, (unsigned int) -1, is_wipe_tower_type2);
     m_wipe_tower_data.tool_ordering.sort_and_build_data(*this, (unsigned int)-1, is_wipe_tower_type2);
 
+    if (sequential_shells)
+        m_wipe_tower_data.tool_ordering.build_sequential_wipe_tower(*this, is_wipe_tower_type2);
+
     if (!m_wipe_tower_data.tool_ordering.has_wipe_tower())
         return;
 
-    {
+    if (!sequential_shells) {
         auto &support_layers = m_objects.front()->support_layers();
         auto it_layer = support_layers.begin();
         const size_t idx_end = m_wipe_tower_data.tool_ordering.layer_tools().size();
@@ -4334,7 +4362,7 @@ void Print::_make_wipe_tower()
                                 ? m_config.flush_multiplier_fast.get_at(extruder_id)
                                 : m_config.flush_multiplier.get_at(extruder_id);
                             volume_to_purge *= flush_multiplier;
-                            volume_to_purge = layer_tools.wiping_extrusions().mark_wiping_extrusions(
+                            volume_to_purge = sequential_shells ? volume_to_purge : layer_tools.wiping_extrusions().mark_wiping_extrusions(
                                 *this, current_filament_id, filament_id, volume_to_purge);
                         }
                         nozzle_recorder.set_nozzle_status(nozzle_id, filament_id, extruder_id);
@@ -4384,6 +4412,8 @@ void Print::_make_wipe_tower()
         wipe_tower.generate_new(m_wipe_tower_data.tool_changes);
         m_wipe_tower_data.depth      = wipe_tower.get_depth();
         m_wipe_tower_data.width      = wipe_tower.width();
+        if (sequential_shells)
+            m_wipe_tower_data.height = wipe_tower.get_height();
         m_wipe_tower_data.brim_width = wipe_tower.get_brim_width();
         m_wipe_tower_data.bbx = wipe_tower.get_bbx();
         m_wipe_tower_data.rib_offset = wipe_tower.get_rib_offset();
@@ -4455,7 +4485,7 @@ void Print::_make_wipe_tower()
                             volume_to_wipe *= m_config.flush_multiplier.get_at(0);
                             volume_to_wipe -= (float) m_config.filament_minimal_purge_on_wipe_tower.get_at(extruder_id);
 
-                            volume_to_wipe = layer_tools.wiping_extrusions().mark_wiping_extrusions(*this, current_extruder_id, extruder_id,
+                            volume_to_wipe = sequential_shells ? volume_to_wipe : layer_tools.wiping_extrusions().mark_wiping_extrusions(*this, current_extruder_id, extruder_id,
                                                                                                     volume_to_wipe);
 
                             volume_to_wipe += (float) m_config.filament_minimal_purge_on_wipe_tower.get_at(extruder_id);
@@ -4515,6 +4545,16 @@ void Print::_make_wipe_tower()
                                                   m_wipe_tower_data.z_and_depth_pairs, m_wipe_tower_data.brim_width,
                                                   config().wipe_tower_rotation_angle, config().wipe_tower_cone_angle,
                                                   {scale_(origin.x()), scale_(origin.y())});
+    }
+
+    if (sequential_shells) {
+        double height = m_wipe_tower_data.height;
+        if (wipe_tower_sparse_layers_skipped(m_config)) {
+            const auto compacted_z = compute_compacted_wipe_tower_z(m_wipe_tower_data.tool_changes);
+            height = compacted_z.empty() ? 0. : compacted_z.back();
+        }
+        if (height > m_config.printable_height + EPSILON)
+            throw Slic3r::SlicingError(L("The sequential prime tower exceeds the maximum build volume height. Reduce the number of objects or disable the prime tower."));
     }
 
     if (m_wipe_tower_data.wipe_tower_mesh_data) {
