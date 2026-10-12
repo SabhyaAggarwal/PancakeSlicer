@@ -87,9 +87,9 @@ void PrintRegion::collect_object_printing_extruders(const PrintConfig &print_con
     	emplace_extruder(region_config.sparse_infill_filament_id);
     if (region_config.sparse_infill_density.value > 0 || region_config.top_shell_layers.value > 0 || region_config.bottom_shell_layers.value > 0)
     	emplace_extruder(region_config.internal_solid_filament_id);
-    if (region_config.top_shell_layers.value > 0 || region_config.nonplanar_top_shells.value > 0)
+    if (region_config.top_shell_layers.value > 0 || region_config.nonplanar_top_shells.value != 0)
     	emplace_extruder(region_config.top_surface_filament_id);
-    if (region_config.bottom_shell_layers.value > 0 || region_config.nonplanar_bottom_shells.value > 0)
+    if (region_config.bottom_shell_layers.value > 0 || region_config.nonplanar_bottom_shells.value != 0)
     	emplace_extruder(region_config.bottom_surface_filament_id);
 }
 

@@ -1,5 +1,6 @@
 #include "ConformalVolume.hpp"
 
+#include "AutoMode.hpp"
 #include "ConformalShells.hpp"
 #include "HeadEnvelope.hpp"
 #include "HeightField.hpp"
@@ -64,19 +65,19 @@ VolumeSettings volume_settings(const PrintObject &object)
     VolumeSettings s;
     for (size_t region_id = 0; region_id < object.num_printing_regions(); ++region_id) {
         const PrintRegionConfig &cfg = object.printing_region(region_id).config();
-        if (cfg.nonplanar_full_conformal_max_thickness.value <= 0.)
+        if (full_conformal_thickness(cfg, object.config()) <= 0.)
             continue;
         double nozzle = 0.;
         for (double d : object.print()->config().nozzle_diameter.values)
             if (d > 0. && (nozzle == 0. || d < nozzle))
                 nozzle = d;
         s.region_id     = int(region_id);
-        s.max_thickness = cfg.nonplanar_full_conformal_max_thickness.value;
+        s.max_thickness = full_conformal_thickness(cfg, object.config());
         s.h             = cfg.nonplanar_shell_layer_height.value > 0. ? cfg.nonplanar_shell_layer_height.value :
                                                                         object.config().layer_height.value;
         s.h_min         = 0.5 * s.h;
         s.h_max         = nozzle > 0. ? std::min(1.5 * s.h, 0.8 * nozzle) : 1.5 * s.h;
-        s.max_slope     = Geometry::deg2rad(cfg.nonplanar_max_slope.value);
+        s.max_slope     = object.config().nonplanar_mode.value == NonplanarMode::Auto ? 0. : Geometry::deg2rad(cfg.nonplanar_max_slope.value);
         s.pitch         = std::max(0.05, object.config().nonplanar_surface_resolution.value);
         break;
     }
@@ -245,7 +246,7 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
 
     bool mixed = false;
     for (size_t region_id = 0; region_id < object.num_printing_regions(); ++region_id)
-        mixed |= object.printing_region(region_id).config().nonplanar_full_conformal_max_thickness.value <= 0.;
+        mixed |= full_conformal_thickness(object.printing_region(region_id).config(), object.config()) <= 0.;
     std::vector<Mask> region_mask;
     if (mixed) {
         region_mask.resize(layers.size());
@@ -253,7 +254,7 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
             for (size_t i = range.begin(); i < range.end(); ++i) {
                 ExPolygons slices;
                 for (const LayerRegion *layerm : layers[i]->regions())
-                    if (layerm->region().config().nonplanar_full_conformal_max_thickness.value > 0.)
+                    if (full_conformal_thickness(layerm->region().config(), object.config()) > 0.)
                         for (const Surface &surface : layerm->slices.surfaces)
                             slices.emplace_back(surface.expolygon);
                 region_mask[i] = rasterize(slices, grid);

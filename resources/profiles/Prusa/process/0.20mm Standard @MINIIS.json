@@ -6,6 +6,7 @@
 	"setting_id": "kzZbOFDyAMKrDA3k",
 	"instantiation": "true",
 	"nonplanar_overhangs": "1",
+	"nonplanar_mode": "auto",
 	"compatible_printers": [
 		"Prusa MINIIS 0.4 nozzle"
 	],

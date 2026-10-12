@@ -1,5 +1,6 @@
 #include "ConformalBottom.hpp"
 
+#include "AutoMode.hpp"
 #include "ConformalShells.hpp"
 #include "HeadEnvelope.hpp"
 #include "PatchTools.hpp"
@@ -56,6 +57,8 @@ BottomSettings bottom_settings(const PrintObject &object, size_t region_id)
 {
     BottomSettings s;
     const PrintRegionConfig &cfg = object.printing_region(region_id).config();
+    if (!bottom_shells_enabled(cfg, object.config()))
+        return s;
     s.region_id    = int(region_id);
     s.shells       = cfg.nonplanar_bottom_shells.value;
     s.shell_height = cfg.nonplanar_shell_layer_height.value > 0. ? cfg.nonplanar_shell_layer_height.value :
@@ -64,7 +67,16 @@ BottomSettings bottom_settings(const PrintObject &object, size_t region_id)
     s.max_error    = cfg.nonplanar_max_surface_error.value;
     s.min_area     = cfg.nonplanar_min_patch_area.value;
     s.pitch        = std::max(0.05, object.config().nonplanar_surface_resolution.value);
-    s.banded = cfg.nonplanar_fallback.value == NonplanarFallback::None;
+    s.banded       = effective_fallback(cfg, object.config()) == NonplanarFallback::None;
+    if (const bool full = object.config().nonplanar_mode.value == NonplanarMode::Auto; full || s.shells < 0) {
+        const AutoObjectSettings a = auto_object_settings(object, object.printing_region(region_id), s.shell_height);
+        s.shells = a.bottom_shells;
+        if (full) {
+            s.max_slope = 0.;
+            s.max_error = a.max_error;
+            s.min_area  = a.min_area;
+        }
+    }
     return s;
 }
 

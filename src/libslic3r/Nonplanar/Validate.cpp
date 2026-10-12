@@ -1,5 +1,6 @@
 #include "Validate.hpp"
 
+#include "AutoMode.hpp"
 #include "HeadEnvelope.hpp"
 #include "PatchTools.hpp"
 #include "libslic3r/Config.hpp"
@@ -51,12 +52,13 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
         }
         for (size_t region_id = 0; region_id < object->num_printing_regions(); ++region_id) {
             const PrintRegionConfig &region = object->printing_region(region_id).config();
-            if (config.spiral_mode && region.nonplanar_full_conformal_max_thickness.value > 0.)
+            if (config.spiral_mode && full_conformal_thickness(region, object->config()) > 0.)
                 return { L("Full conformal layers cannot be combined with spiral vase mode."), object,
                          "nonplanar_full_conformal_max_thickness" };
-            const bool shells = region.nonplanar_top_shells.value > 0 || region.nonplanar_bottom_shells.value > 0;
-            needs_head |= shells || region.nonplanar_ironing.value;
-            enabled |= shells || region.nonplanar_ironing.value;
+            const bool shells  = top_shells_enabled(region, object->config()) || bottom_shells_enabled(region, object->config());
+            const bool ironing = object->config().nonplanar_mode.value == NonplanarMode::Manual && region.nonplanar_ironing.value;
+            needs_head |= shells || ironing;
+            enabled |= shells || ironing;
             if (!shells)
                 continue;
             for (const ModelVolume *volume : object->model_object()->volumes) {
@@ -65,8 +67,8 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
                     return { L("Non-planar shells cannot use a spatial modifier with a different layer height. Use the object's variable layer height profile instead."),
                              object, "layer_height" };
             }
-            for (int filament : { region.nonplanar_top_shells.value > 0 ? region.top_surface_filament_id.value : 0,
-                                  region.nonplanar_bottom_shells.value > 0 ? region.bottom_surface_filament_id.value : 0 })
+            for (int filament : { top_shells_enabled(region, object->config()) ? region.top_surface_filament_id.value : 0,
+                                  bottom_shells_enabled(region, object->config()) ? region.bottom_surface_filament_id.value : 0 })
                 if (filament > 0 && size_t(filament) <= config.filament_is_mixed.values.size() &&
                     config.filament_is_mixed.values[size_t(filament - 1)])
                     return { L("Non-planar shells require a single physical filament for each patch. Select a non-mixed surface filament."),
@@ -180,7 +182,8 @@ void report_head(const Print &print)
     for (const PrintObject *object : print.objects())
         for (size_t i = 0; i < object->num_printing_regions(); ++i) {
             const PrintRegionConfig &region = object->printing_region(i).config();
-            if (region.nonplanar_top_shells.value <= 0 && region.nonplanar_bottom_shells.value <= 0 && !region.nonplanar_ironing.value)
+            if (!top_shells_enabled(region, object->config()) && !bottom_shells_enabled(region, object->config()) &&
+                !(object->config().nonplanar_mode.value == NonplanarMode::Manual && region.nonplanar_ironing.value))
                 continue;
             enabled = true;
             const double height = region.nonplanar_shell_layer_height.value > 0. ? region.nonplanar_shell_layer_height.value :

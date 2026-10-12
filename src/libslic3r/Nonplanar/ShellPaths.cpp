@@ -1,5 +1,7 @@
 #include "ShellPaths.hpp"
 
+#include "AutoMode.hpp"
+
 #include "BeadModel.hpp"
 #include "ConformalShells.hpp"
 #include "HeightField.hpp"
@@ -451,8 +453,8 @@ std::vector<ShellFill> plan_shell_fills(const ConformalPatch &patch, const Print
 {
     const int                 n       = patch.shells;
     std::vector<ShellFill>    fills(size_t(std::max(0, n)));
-    const NonplanarTopPattern pattern = config.nonplanar_top_pattern.value;
-    const double              user    = config.nonplanar_top_direction.value;
+    const NonplanarTopPattern pattern = top_pattern(patch, config);
+    const double              user    = patch.automatic ? -1. : config.nonplanar_top_direction.value;
     auto spirals = [&fills, n]() {
         for (int k = 1; k <= n; ++k) {
             fills[size_t(k - 1)].spiral  = true;

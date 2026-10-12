@@ -4,5 +4,13 @@
 	"inherits": "fdm_machine_common",
 	"from": "system",
 	"instantiation": "false",
+	"machine_max_jerk_z": [
+		"2",
+		"2"
+	],
+	"machine_max_junction_deviation": [
+		"0",
+		"0"
+	],
 	"nonplanar_head": "prusa-mini"
 }

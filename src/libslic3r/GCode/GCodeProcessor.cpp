@@ -361,6 +361,28 @@ void GCodeProcessor::TimeMachine::reset()
     first_layer_time = 0.0f;
     prepare_time = 0.0f;
     m_additional_time_buffer.clear();
+    host_feed = HostFeed();
+}
+
+float GCodeProcessor::TimeMachine::HostFeed::stall(const TimeBlock& block, double now)
+{
+    if (block.feed_interval <= 0.0f)
+        return 0.0f;
+    double arrival = last_arrival + block.feed_interval;
+    if (starts.size() == PlannerBlocks)
+        arrival = std::max(arrival, starts.front());
+    float  stall = 0.0f;
+    double start = now;
+    if (block.flags.nonplanar && arrival > now) {
+        stall = float(arrival - now);
+        start = arrival;
+    } else
+        arrival = std::min(arrival, now);
+    last_arrival = arrival;
+    starts.push_back(start);
+    if (starts.size() > PlannerBlocks)
+        starts.pop_front();
+    return stall;
 }
 
 static void planner_forward_pass_kernel(const GCodeProcessor::TimeBlock& prev, GCodeProcessor::TimeBlock& curr)
@@ -466,7 +488,7 @@ void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult& result, P
     size_t additional_buffer_idx = 0;
     for (size_t i = 0; i < n_blocks_process; ++i) {
         const TimeBlock& block = blocks[i];
-        float block_time = block.time();
+        float block_time = block.time() + host_feed.stall(block, time);
         if (additional_buffer_idx < additional_buffer.size()) {
             const EMoveType buf_move_type = additional_buffer[additional_buffer_idx].first;
             if (buf_move_type == EMoveType::Noop || buf_move_type == block.move_type) {
@@ -3211,6 +3233,7 @@ void GCodeProcessor::reset()
     m_joints        = JointPose();
     m_inverse_time  = false;
     m_nonplanar_patch_shell = 0xFF;
+    m_nonplanar_feed_interval = 0.f;
     m_units = EUnits::Millimeters;
     m_global_positioning_type = EPositioningType::Absolute;
     m_e_local_positioning_type = EPositioningType::Absolute;
@@ -3825,6 +3848,9 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
         const int    shell = pos == comment.npos ? 0 : std::atoi(std::string(comment.substr(pos + 6)).c_str());
         m_result.nonplanar = true;
         m_nonplanar_patch_shell = static_cast<unsigned char>(std::clamp(shell, 0, 0xFE));
+        const size_t rate_pos = comment.find("rate=");
+        const double rate     = rate_pos == comment.npos ? 0. : std::atof(std::string(comment.substr(rate_pos + 5)).c_str());
+        m_nonplanar_feed_interval = rate > 0. && m_flavor != gcfKlipper ? float(1. / rate) : 0.f;
         return;
     }
     if (boost::starts_with(comment, "_NONPLANAR_END")) {
@@ -4718,6 +4744,8 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
         block.remaining_internal_g1_lines = remaining_internal_g1_lines.has_value() ? *remaining_internal_g1_lines : 0;
         block.layer_id = std::max<unsigned int>(1, m_layer_id);
         block.flags.prepare_stage = m_processing_start_custom_gcode;
+        block.flags.nonplanar = m_nonplanar_patch_shell != 0xFF;
+        block.feed_interval = m_nonplanar_feed_interval;
 
         if ((prev.exit_direction(0) != 0.0f || prev.exit_direction(1) != 0.0f) &&
             (curr.enter_direction(0) != 0.0f || curr.enter_direction(1) != 0.0f)) {
@@ -5050,6 +5078,8 @@ void GCodeProcessor::process_VG1(const GCodeReader::GCodeLine& line)
         block.g1_line_id = m_g1_line_id;
         block.layer_id = std::max<unsigned int>(1, m_layer_id);
         block.flags.prepare_stage = m_processing_start_custom_gcode;
+        block.flags.nonplanar = m_nonplanar_patch_shell != 0xFF;
+        block.feed_interval = m_nonplanar_feed_interval;
 
         if ((prev.exit_direction(0) != 0.0f || prev.exit_direction(1) != 0.0f) &&
             (curr.enter_direction(0) != 0.0f || curr.enter_direction(1) != 0.0f)) {
@@ -6293,6 +6323,8 @@ void GCodeProcessor::process_filament_change(int id, int nozzle_id)
         block.layer_id            = std::max<unsigned int>(1, m_layer_id);
         block.g1_line_id          = m_g1_line_id;
         block.flags.prepare_stage = m_processing_start_custom_gcode;
+        block.flags.nonplanar = m_nonplanar_patch_shell != 0xFF;
+        block.feed_interval = m_nonplanar_feed_interval;
         block.distance            = 0.0f;
         block.calculate_trapezoid();
         machine.blocks.push_back(block);
@@ -6398,6 +6430,8 @@ void GCodeProcessor::process_filament_change(int id)
         block.layer_id            = std::max<unsigned int>(1, m_layer_id);
         block.g1_line_id          = m_g1_line_id;
         block.flags.prepare_stage = m_processing_start_custom_gcode;
+        block.flags.nonplanar = m_nonplanar_patch_shell != 0xFF;
+        block.feed_interval = m_nonplanar_feed_interval;
         block.distance            = 0.0f;
         block.calculate_trapezoid();
         machine.blocks.push_back(block);

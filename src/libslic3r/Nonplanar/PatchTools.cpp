@@ -1,5 +1,6 @@
 #include "PatchTools.hpp"
 
+#include "AutoMode.hpp"
 #include "ConformalBottom.hpp"
 #include "ConformalShells.hpp"
 #include "HeadEnvelope.hpp"
@@ -62,13 +63,13 @@ bool requests_conformal_shells(const Print &print)
     for (const PrintObject *object : print.objects()) {
         if (object->shared_regions() == nullptr) {
             const auto &config = print.default_region_config();
-            if (config.nonplanar_top_shells.value > 0 || config.nonplanar_bottom_shells.value > 0)
+            if (top_shells_enabled(config, object->config()) || bottom_shells_enabled(config, object->config()))
                 return true;
             continue;
         }
         for (size_t r = 0; r < object->num_printing_regions(); ++r) {
             const auto &config = object->printing_region(r).config();
-            if (config.nonplanar_top_shells.value > 0 || config.nonplanar_bottom_shells.value > 0)
+            if (top_shells_enabled(config, object->config()) || bottom_shells_enabled(config, object->config()))
                 return true;
         }
     }
@@ -86,7 +87,7 @@ bool vase_with_conformal_roof(const PrintObject &object)
     if (!object.print()->config().spiral_mode)
         return false;
     for (size_t r = 0; r < object.num_printing_regions(); ++r)
-        if (object.printing_region(r).config().nonplanar_top_shells.value > 0)
+        if (top_shells_enabled(object.printing_region(r).config(), object.config()))
             return true;
     return false;
 }
@@ -97,7 +98,7 @@ void prepare_vase_closure(PrintObject &object)
         return;
     for (size_t r = 0; r < object.num_printing_regions(); ++r) {
         const auto &config = object.printing_region(r).config();
-        if (config.nonplanar_top_shells.value <= 0)
+        if (!top_shells_enabled(config, object.config()))
             continue;
         size_t roof = object.layers().size();
         for (size_t i = 0; i < object.layers().size(); ++i)
@@ -547,7 +548,7 @@ bool contour_line_angle(const HeightField &surface, double &angle, double min_co
 double top_shell_angle(const ConformalPatch &patch, const PrintRegionConfig &config)
 {
     double angle = Geometry::deg2rad(config.solid_infill_direction.value);
-    if (config.nonplanar_top_pattern.value == NonplanarTopPattern::Contour && !contour_line_angle(patch.surface, angle))
+    if (top_pattern(patch, config) == NonplanarTopPattern::Contour && !contour_line_angle(patch.surface, angle))
         angle = Geometry::deg2rad(config.solid_infill_direction.value);
     return angle;
 }
@@ -1265,6 +1266,7 @@ std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const Heig
                 p.shells       = comp.shells;
                 p.shell_height = comp.shell_height;
                 p.region_id    = comp.region_id;
+                p.automatic    = comp.automatic;
                 p.z_min        = Inf;
                 p.z_max        = -Inf;
                 p.shell_paths.assign(size_t(comp.shells), ExtrusionEntityCollection());

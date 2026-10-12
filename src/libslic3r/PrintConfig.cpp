@@ -731,18 +731,20 @@ static const t_config_enum_values s_keys_map_NonplanarFallback = {
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(NonplanarFallback)
 
-static const t_config_enum_values s_keys_map_NonplanarMode = {
-    { "conformal",   int(NonplanarMode::Conformal)   },
-    { "multiplanar", int(NonplanarMode::Multiplanar) }
-};
-CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(NonplanarMode)
-
 static const t_config_enum_values s_keys_map_NonplanarCollisionCheck = {
     { "off",   int(NonplanarCollisionCheck::Off)   },
     { "warn",  int(NonplanarCollisionCheck::Warn)  },
     { "block", int(NonplanarCollisionCheck::Block) }
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(NonplanarCollisionCheck)
+
+static const t_config_enum_values s_keys_map_NonplanarMode = {
+    { "off",    int(NonplanarMode::Off)    },
+    { "auto",   int(NonplanarMode::Auto)   },
+    { "manual", int(NonplanarMode::Manual) },
+    { "multiplanar", int(NonplanarMode::Multiplanar) }
+};
+CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(NonplanarMode)
 
 static const t_config_enum_values s_keys_map_PrimeVolumeMode = {
     { "Default", pvmDefault },
@@ -5007,8 +5009,9 @@ void PrintConfigDef::init_fff_params()
     def->label    = L("Non-planar top shells");
     def->category = L("Quality");
     def->tooltip  = L("Print this many curved shells along the model's upper surface, within the print head's slope limits. "
-                      "Set to 0 to disable curved top shells.");
-    def->min      = 0;
+                      "Set to 0 to disable curved top shells, or -1 (auto) to choose the number for each curved area "
+                      "from its slope and size.");
+    def->min      = -1;
     def->max      = 10;
     def->mode     = comSimple;
     def->set_default_value(new ConfigOptionInt(0));
@@ -5017,8 +5020,9 @@ void PrintConfigDef::init_fff_params()
     def->label    = L("Non-planar bottom shells");
     def->category = L("Quality");
     def->tooltip  = L("Print this many curved shells along the model's underside, usually over supports. Set to 0 to "
-                      "disable curved bottom shells.");
-    def->min      = 0;
+                      "disable curved bottom shells, or -1 (auto) to choose the number from the nozzle and the shell "
+                      "thickness.");
+    def->min      = -1;
     def->max      = 10;
     def->mode     = comSimple;
     def->set_default_value(new ConfigOptionInt(0));
@@ -5206,17 +5210,22 @@ void PrintConfigDef::init_fff_params()
     def = this->add("nonplanar_mode", coEnum);
     def->label    = L("Non-planar mode");
     def->category = L("Quality");
-    def->tooltip  = L("Conformal prints curved top and bottom shells. Multiplanar cuts the object with automatically "
-                      "placed planes into chunks of flat layers, each built along its own direction, so overhangs "
-                      "print without support: tilted layers within the head's slope limit on 3-axis printers, "
-                      "a tilted tool on rotary printers.");
+    def->tooltip  = L("Auto prints curved top shells wherever the print head can follow the surface, and chooses "
+                      "the number of shells, the pattern, the tolerance and ironing for each curved area from its "
+                      "shape and the print head. Manual uses the non-planar settings below as set. Multiplanar cuts "
+                      "the object with automatically placed planes into chunks of flat layers, each built along its "
+                      "own direction, so overhangs print without support. Off prints every layer flat.");
     def->enum_keys_map = &ConfigOptionEnum<NonplanarMode>::get_enum_values();
-    def->enum_values.push_back("conformal");
+    def->enum_values.push_back("off");
+    def->enum_values.push_back("auto");
+    def->enum_values.push_back("manual");
     def->enum_values.push_back("multiplanar");
-    def->enum_labels.push_back(L("Conformal"));
+    def->enum_labels.push_back(L("Off"));
+    def->enum_labels.push_back(L("Auto"));
+    def->enum_labels.push_back(L("Manual"));
     def->enum_labels.push_back(L("Multiplanar"));
-    def->mode     = comAdvanced;
-    def->set_default_value(new ConfigOptionEnum<NonplanarMode>(NonplanarMode::Conformal));
+    def->mode     = comSimple;
+    def->set_default_value(new ConfigOptionEnum<NonplanarMode>(NonplanarMode::Manual));
 
     def = this->add("multiplanar_max_planes", coInt);
     def->label    = L("Multiplanar maximum planes");
@@ -9474,6 +9483,10 @@ void PrintConfigDef::init_sla_params()
 
 void PrintConfigDef::handle_legacy(t_config_option_key &opt_key, std::string &value)
 {
+    if ((opt_key == "nonplanar_top_shells" || opt_key == "nonplanar_bottom_shells") && value == "auto")
+        value = "-1";
+    if (opt_key == "nonplanar_mode" && value == "conformal")
+        value = "manual";
     if (opt_key == "curr_bed_type" && value == "SuperTack Plate") {
         value = "Supertack Plate";
     } else if (opt_key == "enable_wipe_tower") {

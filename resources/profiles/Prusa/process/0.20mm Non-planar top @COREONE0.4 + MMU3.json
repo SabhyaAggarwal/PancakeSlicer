@@ -5,8 +5,7 @@
 	"from": "system",
 	"setting_id": "LBhaek87iWRO42k9",
 	"instantiation": "true",
-	"nonplanar_top_shells": "3",
-	"nonplanar_ironing": "1",
+	"nonplanar_mode": "auto",
 	"ironing_type": "top",
 	"compatible_printers": [
 		"Prusa CORE One MMU3 0.4 nozzle"

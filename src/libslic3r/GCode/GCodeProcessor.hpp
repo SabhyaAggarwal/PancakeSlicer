@@ -21,6 +21,7 @@
 #include <cassert>
 #include <cstdint>
 #include <array>
+#include <deque>
 #include <unordered_map>
 #include <utility>
 #include <map>
@@ -592,6 +593,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
                 bool recalculate{ false };
                 bool nominal_length{ false };
                 bool prepare_stage{ false };
+                bool nonplanar{ false };
             };
 
             EMoveType move_type{ EMoveType::Noop };
@@ -605,6 +607,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             float acceleration{ 0.0f };
             float max_entry_speed{ 0.0f };
             float safe_feedrate{ 0.0f };
+            float feed_interval{ 0.0f };
             Flags flags;
             FeedrateProfile feedrate_profile;
             Trapezoid trapezoid;
@@ -694,6 +697,15 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             using AdditionalBufferBlock = std::pair<EMoveType, float>;
             using AdditionalBuffer      = std::vector<AdditionalBufferBlock>;
             AdditionalBuffer m_additional_time_buffer;
+
+            struct HostFeed
+            {
+                static constexpr size_t PlannerBlocks = 32;
+                double             last_arrival{ 0. };
+                std::deque<double> starts;
+                float stall(const TimeBlock& block, double now);
+            };
+            HostFeed host_feed;
 
             void reset();
 
@@ -1021,6 +1033,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         JointPose                       m_joints;
         bool                            m_inverse_time{ false };
         unsigned char                   m_nonplanar_patch_shell{ 0xFF };
+        float                           m_nonplanar_feed_interval{ 0.f };
         AxisCoords m_start_position;
         AxisCoords m_end_position;
         AxisCoords m_origin;

@@ -39,27 +39,83 @@ std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, double nomina
     return limit_feedrates(pts, std::vector<double>(pts.size() < 2 ? 0 : pts.size() - 1, nominal), limits, quantum, caps);
 }
 
+namespace {
+
+std::vector<double> shallow_junction_caps(const std::vector<Vec3d> &pts, const std::vector<double> &length,
+                                          const MotionLimits &limits)
+{
+    const size_t        n = length.size();
+    std::vector<double> cap(n + 1, std::numeric_limits<double>::infinity());
+    const double        cos_shallow = std::cos(M_PI / 4.);
+    for (size_t i = 1; i < n; ++i) {
+        if (length[i - 1] <= 0. || length[i] <= 0.)
+            continue;
+        const Vec3d  u0 = (pts[i] - pts[i - 1]) / length[i - 1];
+        const Vec3d  u1 = (pts[i + 1] - pts[i]) / length[i];
+        const double c  = u0.dot(u1);
+        if (c < cos_shallow || c > 1. - 1e-12)
+            continue;
+        double       v        = std::numeric_limits<double>::infinity();
+        const double sin_half = std::sqrt(0.5 * (1. - c));
+        if (limits.junction_deviation > 0. && limits.max_a_xy > 0.) {
+            const double s = std::min(std::sqrt(0.5 * (1. + c)), 1. - 1e-9);
+            v = std::sqrt(limits.max_a_xy * limits.junction_deviation * s / (1. - s));
+        } else {
+            const Vec3d dv = (u1 - u0).cwiseAbs();
+            if (limits.max_jerk_xy > 0.)
+                v = std::min(v, limits.max_jerk_xy / std::max({ dv.x(), dv.y(), 1e-12 }));
+            if (limits.max_jerk_z > 0. && dv.z() > 1e-12)
+                v = std::min(v, limits.max_jerk_z / dv.z());
+        }
+        if (limits.max_a_xy > 0. && sin_half > 1e-9)
+            v = std::min(v, std::sqrt(limits.max_a_xy * 0.25 * (length[i - 1] + length[i]) / sin_half));
+        cap[i] = v;
+    }
+    return cap;
+}
+
+double road_speed(const std::vector<double> &soft, const std::vector<double> &length, size_t begin, size_t end, double fraction)
+{
+    std::vector<std::pair<double, double>> v;
+    double                                 total = 0.;
+    for (size_t i = begin; i < end; ++i)
+        if (length[i] > 0.) {
+            v.emplace_back(soft[i], length[i]);
+            total += length[i];
+        }
+    if (v.empty())
+        return soft[begin];
+    std::sort(v.begin(), v.end());
+    double below = 0.;
+    for (const auto &[speed, l] : v)
+        if ((below += l) >= (1. - fraction) * total)
+            return speed;
+    return v.back().first;
+}
+
+}
+
 std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, const std::vector<double> &nominal,
                                     const MotionLimits &limits, double quantum, const std::vector<double> *caps)
 {
     if (pts.size() < 2)
         return {};
     const size_t n = pts.size() - 1;
-    std::vector<double> length(n), slope(n), v = nominal;
+    std::vector<double> length(n), slope(n), hard = nominal, soft = nominal;
     for (size_t i = 0; i < n; ++i) {
         const Vec3d d = pts[i + 1] - pts[i];
         length[i]     = d.norm() < EPSILON ? 0. : d.norm();
         slope[i]      = length[i] > 0. ? d.z() / length[i] : 0.;
         if (caps != nullptr && i < caps->size())
-            v[i] = std::min(v[i], (*caps)[i]);
+            hard[i] = std::min(hard[i], (*caps)[i]);
         if (length[i] <= 0.)
             continue;
         if (limits.max_v_z > 0. && std::abs(slope[i]) > 0.)
-            v[i] = std::min(v[i], limits.max_v_z / std::abs(slope[i]));
+            hard[i] = std::min(hard[i], limits.max_v_z / std::abs(slope[i]));
         if (limits.max_v_xy > 0.) {
             const double xy = d.head<2>().norm() / length[i];
             if (xy > 0.)
-                v[i] = std::min(v[i], limits.max_v_xy / xy);
+                hard[i] = std::min(hard[i], limits.max_v_xy / xy);
         }
     }
 
@@ -72,58 +128,26 @@ std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, const std::ve
             if (curvature <= 0.)
                 continue;
             const double cap = std::sqrt(limits.max_a_z / curvature);
-            v[i - 1]         = std::min(v[i - 1], cap);
-            v[i]             = std::min(v[i], cap);
+            hard[i - 1]      = std::min(hard[i - 1], cap);
+            hard[i]          = std::min(hard[i], cap);
         }
 
     if (limits.segment_rate > 0.)
         for (size_t i = 0; i < n; ++i)
-            if (length[i] > 1e-3)
-                v[i] = std::min(v[i], limits.segment_rate * length[i]);
+            soft[i] = std::min(soft[i], limits.segment_rate * length[i]);
+    const std::vector<double> junction = shallow_junction_caps(pts, length, limits);
+    for (size_t i = 0; i < n; ++i)
+        soft[i] = std::min({ soft[i], junction[i], junction[i + 1] });
 
-    const double cos_shallow = std::cos(M_PI / 4.);
-    for (size_t i = 1; i < n; ++i) {
-        if (length[i - 1] <= 0. || length[i] <= 0.)
-            continue;
-        const Vec3d u0 = (pts[i] - pts[i - 1]) / length[i - 1];
-        const Vec3d u1 = (pts[i + 1] - pts[i]) / length[i];
-        const double c = u0.dot(u1);
-        if (c < cos_shallow || c > 1. - 1e-12)
-            continue;
-        double cap = std::numeric_limits<double>::infinity();
-        const double sin_half = std::sqrt(0.5 * (1. - c));
-        if (limits.junction_deviation > 0. && limits.max_a_xy > 0.) {
-            const double s = std::min(std::sqrt(0.5 * (1. + c)), 1. - 1e-9);
-            cap = std::sqrt(limits.max_a_xy * limits.junction_deviation * s / (1. - s));
-        }
-        else {
-            const Vec3d dv = (u1 - u0).cwiseAbs();
-            if (limits.max_jerk_xy > 0.)
-                cap = std::min(cap, limits.max_jerk_xy / std::max({ dv.x(), dv.y(), 1e-12 }));
-            if (limits.max_jerk_z > 0. && dv.z() > 1e-12)
-                cap = std::min(cap, limits.max_jerk_z / dv.z());
-        }
-        if (limits.max_a_xy > 0. && sin_half > 1e-9)
-            cap = std::min(cap, std::sqrt(limits.max_a_xy * 0.25 * (length[i - 1] + length[i]) / sin_half));
-        v[i - 1] = std::min(v[i - 1], cap);
-        v[i]     = std::min(v[i], cap);
-    }
-
-    auto tangential_accel = [&](size_t i) {
-        double a = limits.max_a_xy > 0. ? limits.max_a_xy : std::numeric_limits<double>::infinity();
-        if (limits.max_a_z > 0. && std::abs(slope[i]) > 0.)
-            a = std::min(a, limits.max_a_z / std::abs(slope[i]));
-        return a;
-    };
-    for (size_t i = 1; i < n; ++i) {
-        const double a = tangential_accel(i);
-        if (std::isfinite(a))
-            v[i] = std::min(v[i], std::sqrt(v[i - 1] * v[i - 1] + 2. * a * length[i - 1]));
-    }
-    for (size_t i = n - 1; i > 0; --i) {
-        const double a = tangential_accel(i - 1);
-        if (std::isfinite(a))
-            v[i - 1] = std::min(v[i - 1], std::sqrt(v[i] * v[i] + 2. * a * length[i]));
+    std::vector<double> v(n);
+    for (size_t begin = 0; begin < n;) {
+        size_t end = begin + 1;
+        while (end < n && nominal[end] == nominal[begin])
+            ++end;
+        const double road = road_speed(soft, length, begin, end, 0.5);
+        for (size_t i = begin; i < end; ++i)
+            v[i] = std::min(road, hard[i]);
+        begin = end;
     }
 
     if (quantum > 0. && quantum < 1.) {

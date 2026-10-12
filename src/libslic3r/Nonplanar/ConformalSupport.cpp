@@ -112,7 +112,8 @@ HeightField masked(const HeightField &field, const Mask &mask, int pad)
 
 bool conformal_support_configured(const PrintObject &object)
 {
-    return object.config().nonplanar_support_interface.value && !object.print()->config().nonplanar_head.value.empty();
+    return object.config().nonplanar_mode.value != NonplanarMode::Off && object.config().nonplanar_support_interface.value &&
+           !object.print()->config().nonplanar_head.value.empty();
 }
 
 bool conformal_support_wanted(const PrintObject &object)

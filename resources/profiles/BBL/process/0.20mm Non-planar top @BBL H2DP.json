@@ -5,8 +5,7 @@
 	"from": "system",
 	"setting_id": "hxxZp451t8dc8Mb9",
 	"instantiation": "true",
-	"nonplanar_top_shells": "3",
-	"nonplanar_ironing": "1",
+	"nonplanar_mode": "auto",
 	"ironing_type": "top",
 	"compatible_printers": [
 		"Bambu Lab H2D Pro 0.4 nozzle"

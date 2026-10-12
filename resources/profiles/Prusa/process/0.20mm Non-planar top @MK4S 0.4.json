@@ -5,8 +5,7 @@
 	"from": "system",
 	"setting_id": "mQD5oU9QSKzqtxQZ",
 	"instantiation": "true",
-	"description": "0.20mm SPEED with three curved top shells that follow the model surface, ironed along the surface. Requires the non-planar head of the printer profile.",
-	"nonplanar_top_shells": "3",
-	"nonplanar_ironing": "1",
+	"description": "0.20mm SPEED with curved top shells that follow the model surface. The number of shells, the pattern and ironing are chosen for each curved area from its shape and the non-planar head of the printer profile.",
+	"nonplanar_mode": "auto",
 	"compatible_printers_condition": "printer_notes=~/.*MK4S.*/ and nozzle_diameter[0]==0.4 and printer_notes!~/.*HF_NOZZLE.*/"
 }

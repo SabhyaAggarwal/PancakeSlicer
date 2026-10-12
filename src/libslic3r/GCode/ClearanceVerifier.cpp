@@ -2,6 +2,7 @@
 #include "GCodeProcessor.hpp"
 #include "ToolKinematics.hpp"
 #include "libslic3r/Exception.hpp"
+#include "libslic3r/Nonplanar/AutoMode.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/PrintBase.hpp"
@@ -556,7 +557,7 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
 }
 void check_export_clearance(Print &print, GCodeProcessorResult &result)
 {
-    const auto mode = print.config().nonplanar_collision_check.value;
+    const auto mode = Nonplanar::effective_collision_check(print);
     if (!result.nonplanar || mode == NonplanarCollisionCheck::Off) return;
     ClearanceParams params;
     params.head = Nonplanar::resolve_head_envelope(print.config());

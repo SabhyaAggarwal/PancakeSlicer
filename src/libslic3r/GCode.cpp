@@ -8,6 +8,7 @@
 #include "Nonplanar/Repair.hpp"
 #include "GCode/ToolKinematics.hpp"
 #include "Nonplanar/HeadEnvelope.hpp"
+#include "Nonplanar/AutoMode.hpp"
 #include "Nonplanar/HeightField.hpp"
 #include "Nonplanar/ConformalBottom.hpp"
 #include "Nonplanar/ConformalShells.hpp"
@@ -2898,12 +2899,13 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
 
     m_nonplanar_ceiling = 0.;
     m_material_columns.reset();
-    m_track_nonplanar_material = print.default_region_config().nonplanar_top_shells.value > 0 ||
-                                print.default_region_config().nonplanar_bottom_shells.value > 0;
-    for (size_t i = 0; i < print.num_print_regions(); ++i) {
-        const auto &config = print.get_print_region(i).config();
-        m_track_nonplanar_material |= config.nonplanar_top_shells.value > 0 || config.nonplanar_bottom_shells.value > 0;
-    }
+    m_track_nonplanar_material = false;
+    for (const PrintObject *object : print.objects())
+        for (size_t i = 0; i < object->num_printing_regions(); ++i) {
+            const PrintRegionConfig &config = object->printing_region(i).config();
+            m_track_nonplanar_material |= Nonplanar::top_shells_enabled(config, object->config()) ||
+                                          Nonplanar::bottom_shells_enabled(config, object->config());
+        }
     for (const PrintObject *object : print.objects())
         m_track_nonplanar_material |= !object->conformal().patches.empty();
     if (print.config().nonplanar_kinematics.value != RotaryLayout::None) {
@@ -7354,6 +7356,7 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                 std::function<Vec2d(const Vec2d &)> surface_gradient;
                 if (patch.band < 0)
                     surface_gradient = slope_gradient;
+                gcode += Nonplanar::auto_comment(patch);
                 const size_t passes = patch.shell_paths.size() + (patch.ironing.empty() ? 0 : 1);
                 auto         pass   = [&patch](size_t k) -> const ExtrusionEntityCollection & {
                     return k < patch.shell_paths.size() ? patch.shell_paths[k] : patch.ironing;
@@ -7372,7 +7375,8 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                     const char *what    = ironing ? "conformal ironing" :
                                           patch.kind == Nonplanar::PatchKind::Overhang ? "conformal overhang" :
                                           patch.kind == Nonplanar::PatchKind::SupportInterface ? "conformal support interface" : "conformal shell";
-                    gcode += ";_NONPLANAR_BEGIN patch=" + std::to_string(patch.id) + " shell=" + std::to_string(k) + "\n";
+                    gcode += ";_NONPLANAR_BEGIN patch=" + std::to_string(patch.id) + " shell=" + std::to_string(k) +
+                             " rate=" + std::to_string(std::lround(this->conformal_segment_rate())) + "\n";
                     for (const ExtrusionEntity *ee : pass(k).entities)
                         if (const auto *path = dynamic_cast<const ExtrusionPathConformal*>(ee)) {
                             ++next;
@@ -7577,7 +7581,8 @@ std::string GCode::extrude_multiplanar_chunk(const Nonplanar::ConformalPatch &pa
     m_wipe.reset_path();
     double       ceiling = -std::numeric_limits<double>::infinity();
     for (size_t k = 0; k < patch.shell_paths.size(); ++k) {
-        gcode += ";_NONPLANAR_BEGIN patch=" + std::to_string(patch.id) + " shell=" + std::to_string(k) + "\n";
+        gcode += ";_NONPLANAR_BEGIN patch=" + std::to_string(patch.id) + " shell=" + std::to_string(k) +
+                 " rate=" + std::to_string(std::lround(this->conformal_segment_rate())) + "\n";
         for (const ExtrusionEntity *ee : patch.shell_paths[k].entities) {
             const auto *path = dynamic_cast<const ExtrusionPathConformal *>(ee);
             if (path == nullptr || path->polyline.points.size() < 2)
@@ -7706,7 +7711,7 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
             params.limits.junction_deviation = sqr(params.limits.max_jerk_xy) * (std::sqrt(2.) - 1.) / params.limits.max_a_xy;
     } else if (flavor == gcfMarlinFirmware)
         params.limits.junction_deviation = first_value(m_config.machine_max_junction_deviation);
-    params.limits.segment_rate = planner_segment_rate(m_config.nonplanar_segment_rate.value, flavor, m_print != nullptr && m_print->is_BBL_printer());
+    params.limits.segment_rate = this->conformal_segment_rate();
     params.condition.target_length = std::max(0.15, params.nominal_speed / params.limits.segment_rate);
     if (m_config.nonplanar_flow_mod.value) {
         ConformalSpeedParams caps;
@@ -7742,6 +7747,12 @@ double GCode::tower_layer_z() const
 {
     const double z = m_writer.get_position().z();
     return m_conformal_lift && z > m_nominal_z + EPSILON ? m_nominal_z : z;
+}
+
+double GCode::conformal_segment_rate() const
+{
+    return Nonplanar::planner_segment_rate(m_config.nonplanar_segment_rate.value, m_config.gcode_flavor.value,
+                                           m_print != nullptr && m_print->is_BBL_printer());
 }
 
 void GCode::ensure_material_columns(const ExtrusionPath &path)

@@ -240,7 +240,7 @@ enum class RotaryLayout : unsigned char { None, TableBC, TableAC, HeadAB, HeadBC
 enum class NonplanarTopPattern : unsigned char { Contour, Rectilinear, Concentric };
 enum class NonplanarFallback : unsigned char { ZAA, Planar, None };
 enum class NonplanarCollisionCheck : unsigned char { Off, Warn, Block };
-enum class NonplanarMode : unsigned char { Conformal, Multiplanar };
+enum class NonplanarMode : unsigned char { Off, Auto, Manual, Multiplanar };
 
 enum class SurfaceFillOrder {
     Default,

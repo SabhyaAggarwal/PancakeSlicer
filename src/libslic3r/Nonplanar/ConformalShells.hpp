@@ -13,6 +13,8 @@ namespace Slic3r::sla { class IndexedMesh; }
 
 namespace Slic3r::Nonplanar {
 
+struct AutoPatchSettings;
+
 enum class PatchKind : unsigned char { Top, Bottom, Volume, Overhang, Chunk, SupportInterface };
 
 struct ConformalPatch
@@ -29,6 +31,8 @@ struct ConformalPatch
     size_t     host_layer = 0;
     int        region_id = -1;
     int        band = -1;
+    std::shared_ptr<const AutoPatchSettings> automatic;
+
     std::vector<ExtrusionEntityCollection> shell_paths;
     ExtrusionEntityCollection              ironing;
 };

@@ -411,7 +411,7 @@ DynamicPrintConfig chunk_print_config(const PrintObject &object)
         if (config.option(key) != nullptr)
             config.set_deserialize_strict(key, value);
     };
-    set("nonplanar_mode", "conformal");
+    set("nonplanar_mode", "manual");
     set("nonplanar_top_shells", "0");
     set("nonplanar_bottom_shells", "0");
     set("nonplanar_full_conformal_max_thickness", "0");

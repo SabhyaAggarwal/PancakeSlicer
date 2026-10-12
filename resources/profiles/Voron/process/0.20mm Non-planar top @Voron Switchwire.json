@@ -5,8 +5,7 @@
 	"from": "system",
 	"setting_id": "8wEytWuFBhOWkxLb",
 	"instantiation": "true",
-	"nonplanar_top_shells": "3",
-	"nonplanar_ironing": "1",
+	"nonplanar_mode": "auto",
 	"ironing_type": "top",
 	"compatible_printers": [
 		"Voron Switchwire 250 0.4 nozzle"

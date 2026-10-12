@@ -1,5 +1,6 @@
 #include "ConformalIroning.hpp"
 
+#include "AutoMode.hpp"
 #include "ConformalBottom.hpp"
 #include "ConformalShells.hpp"
 #include "HeadEnvelope.hpp"
@@ -91,7 +92,7 @@ ExtrusionEntityCollection make_conformal_ironing(const PrintObject &object, cons
             angle = Geometry::deg2rad(cfg.ironing_angle.value);
         else {
             const double cross = cfg.ironing_angle.value != 0. ? Geometry::deg2rad(cfg.ironing_angle.value) : ironing_cross(patch.surface, area);
-            if (banded && cfg.nonplanar_top_pattern.value == NonplanarTopPattern::Contour) {
+            if (banded && top_pattern(patch, cfg) == NonplanarTopPattern::Contour) {
                 double contour = 0.;
                 piecewise      = !contour_line_angle(patch.surface, contour, 0.9);
                 angle          = contour + cross;
@@ -161,7 +162,8 @@ void build_conformal_ironing(const PrintObject &object, ConformalResult &result)
     for (ConformalPatch &patch : result.patches) {
         if (patch.kind != PatchKind::Top || patch.band >= 0 || patch.shell_paths.empty() || patch.shell_paths.back().entities.empty())
             continue;
-        if (!conformal_ironing_enabled(object.printing_region(size_t(patch.region_id)).config()))
+        const PrintRegionConfig &cfg = object.printing_region(size_t(patch.region_id)).config();
+        if (!ironing_enabled(patch, cfg))
             continue;
         const ExPolygons area   = diff_ex(patch.footprint, patch.wall_band);
         const double     host_z = object.layers()[patch.host_layer]->print_z;

@@ -5,8 +5,7 @@
 	"from": "system",
 	"setting_id": "kMFBzFPCq5yXRuen",
 	"instantiation": "true",
-	"nonplanar_top_shells": "3",
-	"nonplanar_ironing": "1",
+	"nonplanar_mode": "auto",
 	"ironing_type": "top",
 	"compatible_printers": [
 		"Prusa MK4 MMU3 HF0.4 nozzle"

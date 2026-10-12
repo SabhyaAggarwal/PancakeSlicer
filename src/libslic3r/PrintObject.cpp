@@ -16,6 +16,7 @@
 #include "Geometry.hpp"
 #include "I18N.hpp"
 #include "Layer.hpp"
+#include "Nonplanar/AutoMode.hpp"
 #include "Nonplanar/ConformalBottom.hpp"
 #include "Nonplanar/ConformalIroning.hpp"
 #include "Nonplanar/AtomToolpath.hpp"
@@ -714,10 +715,10 @@ void PrintObject::nonplanar_shells()
         return;
     bool enabled = !m_config.nonplanar_atom_toolpath.value.empty();
     for (size_t region_id = 0; region_id < this->num_printing_regions(); ++region_id)
-        enabled |= this->printing_region(region_id).config().nonplanar_top_shells.value > 0 ||
-                   this->printing_region(region_id).config().nonplanar_bottom_shells.value > 0 ||
-                   this->printing_region(region_id).config().nonplanar_full_conformal_max_thickness.value > 0. ||
-                   this->printing_region(region_id).config().nonplanar_overhangs.value;
+        enabled |= Nonplanar::top_shells_enabled(this->printing_region(region_id).config(), this->config()) ||
+                   Nonplanar::bottom_shells_enabled(this->printing_region(region_id).config(), this->config()) ||
+                   Nonplanar::full_conformal_thickness(this->printing_region(region_id).config(), this->config()) > 0. ||
+                   Nonplanar::overhangs_enabled(this->printing_region(region_id).config(), this->config());
     if (m_multiplanar && m_config.nonplanar_atom_toolpath.value.empty()) {
         m_print->set_status(40, L("Slicing multiplanar chunks"));
         for (Layer *layer : m_layers)
@@ -784,8 +785,8 @@ bool PrintObject::need_z_contouring() const
     size_t num_regions = this->num_printing_regions();
     for (size_t region_id = 0; region_id < num_regions; region_id++) {
         const auto &config = this->printing_region(region_id).config();
-        if (config.zaa_enabled || (config.nonplanar_top_shells.value > 0 &&
-                                   config.nonplanar_fallback.value != NonplanarFallback::Planar))
+        if (config.zaa_enabled || (Nonplanar::top_shells_enabled(config, this->config()) &&
+                                   Nonplanar::effective_fallback(config, this->config()) != NonplanarFallback::Planar))
             return true;
     }
 
@@ -1428,17 +1429,17 @@ bool PrintObject::invalidate_state_by_config_options(
         } else if (opt_key == "nonplanar_support_interface") {
             steps.emplace_back(posSupportMaterial);
             for (size_t region_id = 0; region_id < this->num_printing_regions(); ++region_id)
-                if (this->printing_region(region_id).config().nonplanar_overhangs.value) {
+                if (Nonplanar::overhangs_enabled(this->printing_region(region_id).config(), m_config)) {
                     steps.emplace_back(posPerimeters);
                     break;
                 }
         } else if (opt_key == "enable_support") {
             steps.emplace_back(posSupportMaterial);
-            for (size_t region_id = 0; region_id < this->num_printing_regions(); ++region_id)
-                if (this->printing_region(region_id).config().nonplanar_overhangs.value) {
-                    steps.emplace_back(posPerimeters);
-                    break;
-                }
+            bool clip = m_config.nonplanar_mode.value == NonplanarMode::Auto;
+            for (size_t region_id = 0; region_id < this->num_printing_regions() && !clip; ++region_id)
+                clip = Nonplanar::overhangs_enabled(this->printing_region(region_id).config(), m_config);
+            if (clip)
+                steps.emplace_back(posPerimeters);
             if (m_config.support_top_z_distance == 0.) {
 	            steps.emplace_back(posSlice);
 	        }
@@ -1772,8 +1773,8 @@ bool PrintObject::invalidate_step(PrintObjectStep step)
         invalidated |= this->invalidate_step(posSupportMaterial);
     else if (step >= posPerimeters && step <= posNonplanar)
         for (size_t region_id = 0; region_id < this->num_printing_regions(); ++region_id)
-            if (this->printing_region(region_id).config().nonplanar_bottom_shells.value > 0 ||
-                this->printing_region(region_id).config().nonplanar_full_conformal_max_thickness.value > 0.) {
+            if (Nonplanar::bottom_shells_enabled(this->printing_region(region_id).config(), this->config()) ||
+                Nonplanar::full_conformal_thickness(this->printing_region(region_id).config(), this->config()) > 0.) {
                 invalidated |= this->invalidate_step(posSupportMaterial);
                 break;
             }

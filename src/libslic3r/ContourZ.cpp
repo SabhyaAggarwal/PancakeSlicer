@@ -5,6 +5,7 @@
 #include "ExtrusionEntityCollection.hpp"
 #include "Layer.hpp"
 #include "Line.hpp"
+#include "Nonplanar/AutoMode.hpp"
 #include "Nonplanar/ConformalShells.hpp"
 #include "Point.hpp"
 #include "Print.hpp"
@@ -301,9 +302,10 @@ void Layer::make_contour_z(const sla::IndexedMesh &mesh)
 	for (LayerRegion *region : this->regions()) {
         const auto &config = region->region().config();
         if (!config.zaa_enabled) {
-            if (config.nonplanar_top_shells.value > 0 && config.nonplanar_fallback.value == NonplanarFallback::ZAA)
+            if (Nonplanar::zaa_fallback(config, this->object()->config()))
                 handle_extrusion_collection(region, mesh, region->fills, {erTopSolidInfill, erMixed}, shell_area);
-            if (config.nonplanar_top_shells.value > 0 && config.nonplanar_fallback.value == NonplanarFallback::None)
+            if (Nonplanar::top_shells_enabled(config, this->object()->config()) &&
+                Nonplanar::effective_fallback(config, this->object()->config()) == NonplanarFallback::None)
                 handle_extrusion_collection(region, mesh, region->perimeters, {erPerimeter, erExternalPerimeter, erMixed}, shell_area);
             continue;
         }

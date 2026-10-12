@@ -116,6 +116,8 @@ set(lisbslic3r_sources
     ContourZ.cpp
     Nonplanar/AtomToolpath.cpp
     Nonplanar/AtomToolpath.hpp
+    Nonplanar/AutoMode.cpp
+    Nonplanar/AutoMode.hpp
     Nonplanar/BeadModel.cpp
     Nonplanar/BeadModel.hpp
     Nonplanar/FlowMod.cpp

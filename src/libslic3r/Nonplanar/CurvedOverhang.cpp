@@ -1,5 +1,7 @@
 #include "CurvedOverhang.hpp"
 
+#include "AutoMode.hpp"
+
 #include "ConformalBottom.hpp"
 #include "ConformalShells.hpp"
 #include "HeadEnvelope.hpp"
@@ -65,11 +67,11 @@ OverhangSettings overhang_settings(const PrintObject &object)
     const double     g = object.config().layer_height.value;
     for (size_t region_id = 0; region_id < object.num_printing_regions(); ++region_id) {
         const PrintRegionConfig &cfg = object.printing_region(region_id).config();
-        if (!cfg.nonplanar_overhangs.value)
+        if (!overhangs_enabled(cfg, object.config()))
             continue;
         s.region_id = int(region_id);
         s.pitch     = std::max(0.05, object.config().nonplanar_surface_resolution.value);
-        s.max_bend  = Geometry::deg2rad(cfg.nonplanar_max_slope.value > 0. ? cfg.nonplanar_max_slope.value : DefaultMaxBend);
+        s.max_bend  = Geometry::deg2rad(cfg.nonplanar_max_slope.value > 0. && object.config().nonplanar_mode.value != NonplanarMode::Auto ? cfg.nonplanar_max_slope.value : DefaultMaxBend);
         s.min_area  = cfg.nonplanar_min_patch_area.value;
         s.skin      = std::max({ 2. * g, cfg.bottom_shell_layers.value * g, cfg.bottom_shell_thickness.value });
         break;
@@ -228,7 +230,7 @@ void build_curved_overhangs(PrintObject &object, ConformalResult &result)
     for (size_t i = 1; i < layers.size(); ++i) {
         ExPolygons layer_bottoms;
         for (const LayerRegion *layerm : layers[i]->regions())
-            if (layerm->region().config().nonplanar_overhangs.value)
+            if (overhangs_enabled(layerm->region().config(), object.config()))
                 for (const Surface &surface : layerm->slices.surfaces)
                     if (surface.surface_type == stBottom || surface.surface_type == stBottomBridge)
                         layer_bottoms.emplace_back(surface.expolygon);
