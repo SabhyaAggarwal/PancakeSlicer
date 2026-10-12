@@ -56,8 +56,7 @@ struct ShellSettings
     int                  top_shells = 0;
     int                  sparse = 0;
     double               sparse_density = 0.;
-    InfillPattern        sparse_pattern = ipRectilinear;
-    double               sparse_angle = 0.;
+    double               solid_angle = 0.;
     double               bottom_keep = 0.;
     double               shell_height = 0.;
     double               max_slope = 0.;
@@ -96,14 +95,12 @@ ShellSettings shell_settings(const PrintObject &object, size_t region_id)
     s.top_shells       = s.shells;
     if (s.banded && infill_depth(cfg, object.config()) > 0.) {
         const int top_solid = std::max(cfg.top_shell_layers.value, int(std::ceil(cfg.top_shell_thickness.value / s.shell_height - EPSILON)));
-        s.shells            = std::max(s.shells, top_solid);
         s.sparse_density    = std::min(1., 0.01 * cfg.sparse_infill_density.value);
         if (s.sparse_density > 0.)
             s.sparse = int(std::lround(infill_depth(cfg, object.config()) / s.shell_height));
-        s.shells        += s.sparse;
-        s.sparse_pattern = cfg.sparse_infill_pattern.value == ipGyroid ? ipGyroid : ipRectilinear;
-        s.sparse_angle   = Geometry::deg2rad(cfg.infill_direction.value);
-        s.bottom_keep    = std::max(cfg.bottom_shell_layers.value * object.config().layer_height.value, cfg.bottom_shell_thickness.value);
+        s.shells      = std::max(s.shells + (s.sparse > 0 ? 1 : 0), top_solid) + s.sparse;
+        s.solid_angle = Geometry::deg2rad(cfg.infill_direction.value);
+        s.bottom_keep = std::max(cfg.bottom_shell_layers.value * object.config().layer_height.value, cfg.bottom_shell_thickness.value);
     }
     return s;
 }
@@ -332,6 +329,30 @@ ExPolygons lengthwise_strips(const ExPolygons &area, double line_width)
     return out;
 }
 
+Polylines sparse_strip_fill(const HeightField &surface, const ExPolygons &area, double drop, double strip_height, double spacing,
+                            const Point &start)
+{
+    std::map<int, Mask> strips;
+    for (size_t n = 0; n < surface.data().size(); ++n)
+        if (const float s = surface.data()[n]; !std::isnan(s)) {
+            Mask &mask = strips[int(std::floor((s - drop) / strip_height))];
+            mask.resize(surface.data().size(), 0);
+            mask[n] = 1;
+        }
+    Polylines out;
+    for (const auto &[strip, mask] : strips)
+        for (const ExPolygon &piece : intersection_ex(area, mask_to_expolygons(mask, surface)))
+            for (double inset = 0.5 * spacing;; inset += spacing) {
+                const Polygons rings = to_polygons(offset_ex(ExPolygons{ piece }, -float(scale_(inset))));
+                if (rings.empty())
+                    break;
+                for (const Polygon &ring : rings)
+                    if (ring.size() >= 3)
+                        out.emplace_back(ring.split_at_index(ring.closest_point_index(start)));
+            }
+    return out;
+}
+
 bool outline_is_contour(const ConformalPatch &patch, double tolerance)
 {
     const double pitch = patch.surface.pitch();
@@ -381,8 +402,8 @@ struct BandedFill
     ExPolygons lengthwise;
     const HeightField *layers = nullptr;
     int                sparse = 0;
+    int                hidden = 0;
     double             density = 1.;
-    InfillPattern      pattern = ipRectilinear;
     double             angle = 0.;
 };
 
@@ -400,25 +421,35 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
     const PrintRegion        &region  = object.printing_region(size_t(patch.region_id));
     const bool                outer   = k == patch.shells;
     const bool                sparse  = banded != nullptr && k <= banded->sparse;
+    const bool                plug    = banded != nullptr && !sparse && k <= banded->hidden;
     Flow                      flow    = region.flow(object, outer ? frTopSolidInfill : sparse ? frInfill : frSolidInfill, patch.shell_height);
     if (banded != nullptr && outer)
         flow = flow.with_width(std::min(flow.width(), float(BandedTopWidth * flow.nozzle_diameter())));
     const ExtrusionRole       role    = outer ? erTopSolidInfill : sparse ? erInternalInfill : erSolidInfill;
     const double drop = (patch.shells - k) * patch.shell_height;
-    const bool   surface_spaced = region.config().nonplanar_surface_spacing.value && !fill.spiral && !(banded != nullptr && banded->strips) && !sparse;
+    const bool   surface_spaced = region.config().nonplanar_surface_spacing.value && !fill.spiral && !(banded != nullptr && banded->strips) &&
+                                !sparse && !plug;
     std::vector<Polylines> linked;
     WidthRoads             roads;
-    if (sparse) {
-        const ExPolygons sparse_area = banded->lengthwise.empty() ? area : union_ex(area, banded->lengthwise);
-        for (Polyline &pl : fill_sparse(sparse_area, banded->pattern, flow.spacing(), banded->density, banded->angle + (k % 2) * 0.5 * PI, false,
-                                        flow, k * patch.shell_height))
-            linked.push_back({ std::move(pl) });
+    const ExPolygons whole = banded == nullptr || banded->lengthwise.empty() ? area : union_ex(area, banded->lengthwise);
+    if (plug) {
+        ShellFill cross;
+        cross.angle   = banded->angle + ((banded->hidden - k) % 2 == 0 ? 0.5 * PI : 0.);
+        cross.outline = false;
+        linked        = shell_polylines(whole, cross, ipRectilinear, flow.spacing(), false, flow, host_z, start, MaxGlide, nullptr, &seam_line);
+    } else if (sparse) {
+        const double spacing = flow.spacing() / banded->density;
+        if (banded->strips)
+            for (Polyline &pl : sparse_strip_fill(patch.surface, whole, drop, banded->strip_height, spacing, start))
+                linked.push_back({ std::move(pl) });
+        else
+            linked = shell_polylines(whole, fill, ipRectilinear, spacing, false, flow, host_z, start, MaxGlide, nullptr, &seam_line);
     } else if (banded != nullptr && banded->strips)
         contour_fill(patch.surface, area, drop, banded->strip_height, banded->strip_offset, flow, patch.shell_height, fill.angle, outer, host_z, roads, linked);
     else if (!area.empty())
         linked = shell_polylines(area, fill, outer ? ipMonotonic : ipRectilinear, flow.spacing(), outer, flow, host_z, start, MaxGlide,
                                  surface_spaced ? &patch.surface : nullptr, &seam_line);
-    if (banded != nullptr && !sparse)
+    if (banded != nullptr && !sparse && !plug)
         for (const ExPolygon &strip : banded->lengthwise)
             arachne_roads(strip, flow, patch.shell_height, 0, roads);
 
@@ -519,7 +550,7 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
     if (settings.shells <= 0 || layers.empty())
         return result;
 
-    const ExPolygons candidate = candidate_top_area(object, region_id);
+    ExPolygons candidate = candidate_top_area(object, region_id);
     if (candidate.empty())
         return result;
 
@@ -540,6 +571,20 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
         S = sample_top_surface(mesh.imesh, mesh.mesh.bounding_box().max.z() + 1., object.slicing_parameters().object_print_z_min, grid, cancel);
         if (settings.shells > settings.top_shells)
             U = sample_underside(mesh.imesh, object.slicing_parameters().object_print_z_min, S, cancel);
+    }
+    {
+        Mask smooth(n_nodes, 0);
+        for (int iy = 0; iy < grid.ny(); ++iy)
+            for (int ix = 0; ix < grid.nx(); ++ix) {
+                const Vec2d  p = grid.node(ix, iy);
+                const double h = 0.5 * pitch;
+                smooth[size_t(iy) * grid.nx() + ix] = !std::isnan(S.at(ix, iy)) && !spans_wall(S, p + Vec2d(-h, -h)) &&
+                                                      !spans_wall(S, p + Vec2d(h, -h)) && !spans_wall(S, p + Vec2d(-h, h)) &&
+                                                      !spans_wall(S, p + Vec2d(h, h));
+            }
+        const float slit = float(scale_(0.5));
+        candidate        = union_ex(candidate, intersection_ex(diff_ex(closing_ex(to_polygons(candidate), slit), candidate),
+                                                                mask_to_expolygons(smooth, grid)));
     }
     const Mask        cand_mask = rasterize(candidate, grid);
     throw_if_canceled(object);
@@ -875,6 +920,17 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
         diag.rms_surface_error = err_n > 0 ? std::sqrt(err_sq / err_n) : 0.;
         pad_lowest(patch.surface, pad);
         pad_lowest(patch.base, pad);
+        ExPolygons  shell_area = diff_ex(patch.footprint, patch.wall_band);
+        Mask        stacks     = rasterize(offset_ex(shell_area, -float(scale_(line_width))), top);
+        {
+            const int nx = top.nx(), ny = top.ny(), reach = int(std::ceil(line_width / top.pitch()));
+            for (int iy = 0; iy + 1 < ny; ++iy)
+                for (int ix = 0; ix + 1 < nx; ++ix)
+                    if (spans_wall(S, top.node(ix, iy) + Vec2d(0.5 * top.pitch(), 0.5 * top.pitch())))
+                        for (int jy = std::max(0, iy - reach); jy <= std::min(ny - 1, iy + 1 + reach); ++jy)
+                            for (int jx = std::max(0, ix - reach); jx <= std::min(nx - 1, ix + 1 + reach); ++jx)
+                                stacks[size_t(jy) * nx + jx] = 0;
+        }
         bool        printable = true;
         HeightField count     = top;
         const int   n_top     = settings.shells > settings.top_shells ? settings.top_shells : patch.shells;
@@ -882,7 +938,7 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
             const float s = patch.surface.data()[i];
             if (std::isnan(s))
                 continue;
-            int layer = -1, m = patch.shells;
+            int layer = -1, m = stacks[i] ? patch.shells : n_top;
             for (; m >= n_top; --m) {
                 if (m > n_top) {
                     const float u = U.at(ix0 + int(i % size_t(top.nx())), iy0 + int(i / size_t(top.nx())));
@@ -909,7 +965,7 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
 
         planar_tops.emplace_back(std::move(top));
         stack_layers.emplace_back(std::move(count));
-        shell_areas.emplace_back(diff_ex(patch.footprint, patch.wall_band));
+        shell_areas.emplace_back(std::move(shell_area));
         result.diagnostics.emplace_back(std::move(diag));
         result.patches.emplace_back(std::move(patch));
     }
@@ -990,9 +1046,10 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
             if (settings.shells > settings.top_shells) {
                 banded.layers  = &stack_layers[idx];
                 banded.sparse  = settings.sparse;
+                banded.hidden  = settings.shells - settings.top_shells;
                 banded.density = settings.sparse_density;
-                banded.pattern = settings.sparse_pattern;
-                banded.angle   = settings.sparse_angle;
+                const ShellFill &outermost = settings.banded ? banded_fills.back() : fills.back();
+                banded.angle = outermost.spiral || banded.strips ? settings.solid_angle : outermost.angle;
             }
             const ExPolygons fill_area = banded.lengthwise.empty() ? area : diff_ex(area, banded.lengthwise);
             const SeamPosition          seam_position = object.config().seam_position.value;

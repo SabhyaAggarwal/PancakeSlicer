@@ -558,7 +558,7 @@ std::vector<Polylines> shell_polylines(const ExPolygons &area, const ShellFill &
                                       (paths.front().first_point() - start).cast<double>().norm())
                 reverse_order(paths);
         } else
-            paths = chain_polylines(std::move(paths), &start);
+            paths = chain_nearest(std::move(paths), start);
         const Point lines_start = paths.empty() ? start : paths.front().first_point();
         Polylines   outline;
         for (const Polygon &loop : fill.outline ? to_polygons(offset_ex(area, -0.5f * float(scale_(spacing)))) : Polygons()) {

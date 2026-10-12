@@ -6,6 +6,7 @@
     "setting_id": "GM030",
     "instantiation": "true",
     "nonplanar_head": "bambu-a1",
+    "nonplanar_segment_rate": "200",
     "nozzle_diameter": [
         "0.4"
     ],

@@ -5,11 +5,14 @@
 	"from": "system",
 	"setting_id": "lK3lFgyo7ri70liv",
 	"instantiation": "true",
+	"nonplanar_flow_mod": "1",
+	"nonplanar_surface_spacing": "1",
+	"nonplanar_top_finish_flow": "0.95",
 	"nonplanar_full_conformal_max_thickness": "3",
 	"nonplanar_mode": "auto",
 	"ironing_type": "top",
 	"compatible_printers": [
 		"Bambu Lab A1 mini 0.4 nozzle"
 	],
-	"description": "0.20mm Standard for A1 mini with curved top shells, thin curved parts (up to 3 mm) in curved layers throughout; the shell count, pattern and ironing are chosen for each curved area. Requires the bambu-a1-mini head from the head library."
+	"description": "0.20mm Standard for A1 mini with curved top shells, thin curved parts (up to 3 mm) in curved layers throughout; the shell count, pattern and ironing are chosen for each curved area. Uses the bundled bambu-a1-mini head."
 }

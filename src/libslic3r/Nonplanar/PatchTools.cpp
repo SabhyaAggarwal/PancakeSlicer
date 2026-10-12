@@ -558,12 +558,6 @@ double top_shell_angle(const ConformalPatch &patch, const PrintRegionConfig &con
 Polylines fill_solid(const ExPolygons &area, InfillPattern pattern, double spacing, double angle, bool monotonic,
                      const Flow &flow, double z)
 {
-    return fill_sparse(area, pattern, spacing, 1., angle, monotonic, flow, z);
-}
-
-Polylines fill_sparse(const ExPolygons &area, InfillPattern pattern, double spacing, double density, double angle, bool monotonic,
-                      const Flow &flow, double z)
-{
     std::unique_ptr<Fill> fill(Fill::new_from_type(pattern));
     fill->layer_id        = 0;
     fill->z               = z;
@@ -574,7 +568,7 @@ Polylines fill_sparse(const ExPolygons &area, InfillPattern pattern, double spac
     fill->link_max_length = coord_t(scale_(3. * spacing));
     fill->bounding_box    = get_extents(area);
     FillParams params;
-    params.density     = float(density);
+    params.density     = 1.f;
     params.dont_adjust = false;
     params.monotonic   = monotonic;
     params.flow        = flow;
@@ -1234,7 +1228,8 @@ double multi_material_patch_height(const PrintObject &object, const HeadEnvelope
 
 namespace {
 
-constexpr double SparseStub = 2.;
+constexpr double SparseStub     = 2.;
+constexpr double MinSparsePiece = 2.;
 
 double extruded_length(const ExtrusionPathConformal &path)
 {
@@ -1529,7 +1524,8 @@ std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const Heig
         }
         for (size_t k = 0; k < comp.shell_paths.size(); ++k)
             cut_into_bands(comp.shell_paths[k].entities, pitch, tolerance, [&](int b, ExtrusionPathConformal *piece) {
-                if (seams != nullptr && piece->role() == erInternalInfill && extruded_length(*piece) < SparseStub * piece->width) {
+                if (seams != nullptr && piece->role() == erInternalInfill &&
+                    extruded_length(*piece) < std::max(SparseStub * piece->width, MinSparsePiece)) {
                     delete piece;
                     return;
                 }

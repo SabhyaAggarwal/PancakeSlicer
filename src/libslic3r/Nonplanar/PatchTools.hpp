@@ -97,8 +97,6 @@ bool contour_line_angle(const HeightField &surface, double &angle, double min_co
 
 Polylines fill_solid(const ExPolygons &area, InfillPattern pattern, double spacing, double angle, bool monotonic,
                      const Flow &flow, double z);
-Polylines fill_sparse(const ExPolygons &area, InfillPattern pattern, double spacing, double density, double angle, bool monotonic,
-                      const Flow &flow, double z);
 
 using LiftFn = std::function<bool(const Vec2d &p, double &z, float &bead_height)>;
 
