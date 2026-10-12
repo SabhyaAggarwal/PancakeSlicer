@@ -67,7 +67,7 @@ std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, const std::ve
 
     if (limits.segment_rate > 0.)
         for (size_t i = 0; i < n; ++i)
-            if (length[i] > 0.)
+            if (length[i] > 1e-3)
                 v[i] = std::min(v[i], limits.segment_rate * length[i]);
 
     const double cos_shallow = std::cos(M_PI / 4.);

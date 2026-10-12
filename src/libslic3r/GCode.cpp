@@ -7393,7 +7393,7 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
     if (!gcode.empty()) {
         gcode += this->retract();
         gcode += m_writer.travel_to_z(std::max({ m_writer.get_position().z(), m_nominal_z + this->nonplanar_hop(), this->nonplanar_travel_z() }),
-                                      "lift over conformal shells", true, m_writer.max_speed_z());
+                                      "lift over conformal shells", true, this->conformal_max_speed_z());
         m_conformal_lift = true;
     }
     return gcode;
@@ -7456,13 +7456,13 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
             double safe = std::max({ here.z(), start.tip.z(), this->nonplanar_travel_z(&from, &to, in_band) });
             if (!in_band && m_print->has_wipe_tower())
                 safe = std::max(safe, this->nonplanar_travel_z());
-            gcode += m_writer.travel_to_z(safe, "lift over conformal shells", true, m_writer.max_speed_z());
+            gcode += m_writer.travel_to_z(safe, "lift over conformal shells", true, this->conformal_max_speed_z());
             gcode += m_writer.travel_to_xy(start.tip.head<2>(), "move to conformal path");
-            gcode += m_writer.travel_to_z(start.tip.z(), "lower onto conformal path", true, m_writer.max_speed_z());
+            gcode += m_writer.travel_to_z(start.tip.z(), "lower onto conformal path", true, this->conformal_max_speed_z());
         }
-        this->set_last_pos(path.first_point());
-        m_need_change_layer_lift_z = false;
     }
+    this->set_last_pos(path.first_point());
+    m_need_change_layer_lift_z = false;
     gcode += this->_extrude(path, description);
     Vec3d      hop_to;
     const bool glide_on = next != nullptr && next->polyline.points.front() == path.polyline.points.back();
@@ -7474,7 +7474,14 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
         gcode += this->rotary_move_safely(nullptr);
     if (hop) {
         m_writer.add_object_change_labels(gcode);
-        gcode += m_writer.travel_to_xyz(hop_to, "hop to conformal path", true);
+        auto        printed = [](const Vec3d &p) { return Vec3d((p * 1000.).array().round() / 1000.); };
+        const Vec3d d       = printed(hop_to) - printed(m_writer.get_position());
+        const double vz_max = this->conformal_max_speed_z();
+        double       v      = m_config.travel_speed.get_at(get_nozzle_config_index(m_writer.filament()->id()));
+        if (vz_max > 0. && std::abs(d.z()) > EPSILON)
+            v = std::min(v, 0.99 * vz_max * d.norm() / std::abs(d.z()));
+        m_writer.set_speed(gcode, v * 60.);
+        m_writer.extrude_to_pose(gcode, ToolPose{ hop_to, Vec3d::UnitZ() }, 0., "hop to conformal path");
         this->set_last_pos(next->first_point());
         m_wipe.reset_path();
     }
@@ -7620,7 +7627,12 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
     params.speed_marker  = speed_marker;
     auto first_value     = [](const ConfigOptionFloats &opt) { return opt.values.empty() ? 0. : opt.values.front(); };
     auto lower_limit     = [](double a, double b) { return a > 0. && b > 0. ? std::min(a, b) : std::max(a, b); };
-    auto lowest_value    = [&lower_limit](const ConfigOptionFloats &opt) {
+    const GCodeFlavor flavor  = m_config.gcode_flavor.value;
+    const bool        emitted = m_config.emit_machine_limits_to_gcode.value &&
+                         (flavor == gcfMarlinLegacy || flavor == gcfMarlinFirmware || flavor == gcfRepRapFirmware);
+    auto z_value         = [&lower_limit, &first_value, emitted](const ConfigOptionFloats &opt) {
+        if (emitted)
+            return first_value(opt);
         double v = 0.;
         for (double x : opt.values)
             v = lower_limit(v, x);
@@ -7628,11 +7640,10 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
     };
     params.limits.max_v_xy = lower_limit(first_value(m_config.machine_max_speed_x), first_value(m_config.machine_max_speed_y));
     params.limits.max_a_xy = lower_limit(first_value(m_config.machine_max_acceleration_x), first_value(m_config.machine_max_acceleration_y));
-    params.limits.max_v_z  = 0.8 * lowest_value(m_config.machine_max_speed_z);
-    params.limits.max_a_z  = lowest_value(m_config.machine_max_acceleration_z);
+    params.limits.max_v_z  = (emitted ? 0.99 : 0.8) * z_value(m_config.machine_max_speed_z);
+    params.limits.max_a_z  = z_value(m_config.machine_max_acceleration_z);
     params.limits.max_jerk_xy = lower_limit(first_value(m_config.machine_max_jerk_x), first_value(m_config.machine_max_jerk_y));
-    params.limits.max_jerk_z  = lowest_value(m_config.machine_max_jerk_z);
-    const GCodeFlavor flavor = m_config.gcode_flavor.value;
+    params.limits.max_jerk_z  = z_value(m_config.machine_max_jerk_z);
     if (flavor == gcfKlipper) {
         if (params.limits.max_a_xy > 0.)
             params.limits.junction_deviation = sqr(params.limits.max_jerk_xy) * (std::sqrt(2.) - 1.) / params.limits.max_a_xy;
@@ -7652,6 +7663,12 @@ double GCode::tower_layer_z() const
 {
     const double z = m_writer.get_position().z();
     return m_conformal_lift && z > m_nominal_z + EPSILON ? m_nominal_z : z;
+}
+
+double GCode::conformal_max_speed_z() const
+{
+    return m_writer.max_speed_z() > 0. ? m_writer.max_speed_z() :
+           m_config.machine_max_speed_z.values.empty() ? 0. : m_config.machine_max_speed_z.values.front();
 }
 
 double GCode::nonplanar_hop()
@@ -7695,7 +7712,7 @@ std::string GCode::wipe_conformal_path()
     params.distance        = wipe ? FILAMENT_CONFIG(wipe_distance) : Nonplanar::ConformalWipe;
     params.retract         = std::max(0., length - before - after);
     params.speed           = std::max(10., m_config.get_abs_value("wipe_speed", m_config.travel_speed.get_at(get_nozzle_config_index(filament.id()))));
-    params.limits.max_v_z  = m_config.machine_max_speed_z.values.empty() ? 0. : m_config.machine_max_speed_z.values.front();
+    params.limits.max_v_z  = m_config.machine_max_speed_z.values.empty() ? 0. : 0.99 * m_config.machine_max_speed_z.values.front();
     params.speed_marker    = this->enable_cooling_markers() ? ";_WIPE" : "";
     if (before > EPSILON)
         gcode += m_writer.retract(true, before);

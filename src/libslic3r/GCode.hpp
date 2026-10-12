@@ -535,6 +535,7 @@ protected:
     std::string     rotary_move_safely(const ToolPose *target);
     const Nonplanar::HeadEnvelope &nonplanar_head();
     double          nonplanar_hop();
+    double          conformal_max_speed_z() const;
     double          nonplanar_travel_z(const Vec2d *from = nullptr, const Vec2d *to = nullptr, bool nozzle_only = false);
     bool            below_conformal_material() const
     { return m_material_columns && m_nonplanar_ceiling > m_nominal_z + EPSILON; }

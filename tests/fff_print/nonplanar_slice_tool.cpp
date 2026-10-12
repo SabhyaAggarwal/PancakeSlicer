@@ -342,6 +342,26 @@ int main(int argc, char **argv)
                 m.time[size_t(PrintEstimatedStatistics::ETimeMode::Normal)];
         for (const auto &[role, t] : role_time)
             std::cout << "role_time_s " << t << " " << role << "\n";
+        std::map<std::string, double> feature_time;
+        for (size_t i = 0; i < result.moves.size(); ++i) {
+            const auto &m  = result.moves[i];
+            const bool  np = m.nonplanar_patch_shell != 0xFF;
+            std::string kind;
+            if (m.type == EMoveType::Extrude)
+                kind = ExtrusionEntity::role_to_string(m.extrusion_role);
+            else {
+                const Vec3f d  = i > 0 ? Vec3f(m.position - result.moves[i - 1].position) : Vec3f::Zero();
+                const bool  xy = std::abs(d.x()) + std::abs(d.y()) > 1e-4f, z = std::abs(d.z()) > 1e-4f;
+                kind = m.type == EMoveType::Retract || m.type == EMoveType::Unretract ? "retract" :
+                       xy && z                                                       ? "move xyz" :
+                       xy                                                            ? "move xy" :
+                       z                                                             ? "move z" :
+                                                                                       "other";
+            }
+            feature_time[(np ? "np " : "planar ") + kind] += m.time[size_t(PrintEstimatedStatistics::ETimeMode::Normal)];
+        }
+        for (const auto &[kind, t] : feature_time)
+            std::cout << "feature_time_s " << t << " " << kind << "\n";
         std::cout << "nonplanar_extrude_time_s " << np_extrude << "\n"
                   << "nonplanar_other_time_s " << np_other << "\n";
         const ClearanceReport &clearance = result.clearance_report;

@@ -382,6 +382,8 @@ std::vector<PerExtruderAdjustments> CoolingBuffer::parse_layer_gcode(const std::
             bool adjust_external = true;
             if(adjustment->dont_slow_down_outer_wall && external_perimeter) adjust_external = false;
             
+            if ((line.type & CoolingLine::TYPE_HAS_F) && ! boost::contains(sline, ";_EXTRUDE_SET_SPEED"))
+                active_speed_modifier = size_t(-1);
             if (boost::contains(sline, ";_EXTRUDE_SET_SPEED") && ! wipe && adjust_external) {
                 line.type |= CoolingLine::TYPE_ADJUSTABLE;
                 active_speed_modifier = adjustment->lines.size();

@@ -175,11 +175,35 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
     std::vector<ConformalPoint>        tapered;
     if (params.taper_length > 0.)
         tapered = taper_runs(merged, params.taper_length, params.condition.target_length, flow);
-    const std::vector<ConformalPoint> &points = params.taper_length > 0. ? tapered : merged;
+    const std::vector<ConformalPoint> &staged = params.taper_length > 0. ? tapered : merged;
+
+    constexpr double            StubLength = 0.01;
+    std::vector<ConformalPoint> points;
+    std::vector<double>         stub_flow;
+    points.reserve(staged.size());
+    points.emplace_back(staged.front());
+    for (size_t i = 1; i < staged.size(); ++i) {
+        const bool last = i + 1 == staged.size();
+        if ((staged[i].pose.tip - points.back().pose.tip).norm() >= StubLength) {
+            points.emplace_back(staged[i]);
+            if (!flow.empty())
+                stub_flow.emplace_back(flow[i - 1]);
+        } else if (last && points.size() > 1) {
+            points.back() = staged[i];
+            if (!flow.empty())
+                stub_flow.back() = std::min(stub_flow.back(), flow[i - 1]);
+        }
+    }
+    if (points.size() < 2) {
+        points.emplace_back(staged.back());
+        if (!flow.empty())
+            stub_flow.emplace_back(flow.back());
+    }
+    flow.swap(stub_flow);
 
     std::vector<Vec3d> tips(points.size());
     for (size_t i = 0; i < points.size(); ++i)
-        tips[i] = points[i].pose.tip;
+        tips[i] = (points[i].pose.tip * 1000.).array().round() / 1000.;
     auto glide = [&points](size_t i) { return points[i].bead_height <= 0.f && points[i + 1].bead_height <= 0.f; };
     std::vector<double> nominal(points.size() - 1, params.nominal_speed);
     for (size_t i = 0; i < nominal.size(); ++i)
@@ -244,16 +268,24 @@ bool emit_conformal_wipe(GCodeWriter &writer, const std::vector<ConformalPoint> 
     }
     if (length <= EPSILON)
         return false;
+    for (size_t i = 1; i + 1 < route.size();)
+        if ((route[i].pose.tip - route[i - 1].pose.tip).norm() < 0.01)
+            route.erase(route.begin() + i);
+        else
+            ++i;
+    if (route.size() > 2 && (route.back().pose.tip - route[route.size() - 2].pose.tip).norm() < 0.01)
+        route.erase(route.end() - 2);
     const bool rotary = writer.tool_kinematics().rotary_count() > 0;
     out += ";" + GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Wipe_Start) + "\n";
     for (size_t i = 0; i + 1 < route.size(); ++i) {
-        const Vec3d  d = route[i + 1].pose.tip - route[i].pose.tip;
-        const double l = d.norm();
+        const Vec3d  d = Vec3d((route[i + 1].pose.tip * 1000.).array().round() / 1000.) -
+                         Vec3d((route[i].pose.tip * 1000.).array().round() / 1000.);
+        const double l = (route[i + 1].pose.tip - route[i].pose.tip).norm();
         if (l < EPSILON)
             continue;
         double v = params.speed;
         if (params.limits.max_v_z > 0. && std::abs(d.z()) > EPSILON)
-            v = std::min(v, params.limits.max_v_z * l / std::abs(d.z()));
+            v = std::min(v, params.limits.max_v_z * d.norm() / std::abs(d.z()));
         const double F = v * 60.;
         if (std::abs(writer.get_current_speed() - F) > EPSILON) {
             if (rotary)
