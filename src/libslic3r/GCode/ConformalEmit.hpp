@@ -4,6 +4,7 @@
 #include "libslic3r/Point.hpp"
 #include "libslic3r/PrintConfig.hpp"
 
+#include <cstddef>
 #include <functional>
 #include <string>
 #include <vector>
@@ -23,6 +24,7 @@ struct ConformalPoint
 {
     ToolPose pose;
     float    bead_height = 0.f;
+    float    vertical_height = 0.f;
     float    width       = 0.f;
 };
 
@@ -70,6 +72,7 @@ struct ConformalEmitParams
     double       taper_length  = 0.;
     double       coast_length  = 0.;
     bool         open_end      = false;
+    bool         scored        = false;
     PressureAdvanceTracker *pressure_advance = nullptr;
 };
 
@@ -104,12 +107,25 @@ bool emit_conformal_wipe(GCodeWriter &writer, const std::vector<ConformalPoint> 
 void deposit_material_path(MaterialColumns &columns, const ExtrusionPath &path, const ToWriterFrame &to_writer,
                            const std::function<double(double)> &z_at_fraction = {});
 
+bool densify_conformal_path(const ExtrusionPathConformal &path, double max_segment, ExtrusionPathConformal &out);
+
+struct RotaryRun
+{
+    size_t    begin = 0, end = 0;
+    JointPose seed;
+};
+std::vector<RotaryRun> plan_rotary_runs(const ToolKinematics &kinematics, const std::vector<ConformalPoint> &points,
+                                        const JointPose &from, double max_jump_deg = 90.);
+
 struct MinimalTiltParams
 {
     std::vector<double> slope_limit;
     double              margin    = 3. * M_PI / 180.;
     double              smoothing = 2.;
     double              max_rate  = 0.;
+    double              max_tilt  = 0.5 * M_PI;
+    std::function<double(const Vec3d &tip, const Vec3d &axis)> clearance;
+    double              clearance_margin = 0.;
 };
 void apply_minimal_tilt(std::vector<ConformalPoint> &points, const std::function<Vec2d(const Vec2d &)> &gradient,
                         const ToolKinematics &kinematics, const MinimalTiltParams &params);

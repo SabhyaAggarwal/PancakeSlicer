@@ -3233,6 +3233,8 @@ void GCodeProcessor::reset()
     m_joints        = JointPose();
     m_inverse_time  = false;
     m_nonplanar_patch_shell = 0xFF;
+    m_nonplanar_patch = -1;
+    m_nonplanar_band = -1;
     m_nonplanar_feed_interval = 0.f;
     m_units = EUnits::Millimeters;
     m_global_positioning_type = EPositioningType::Absolute;
@@ -3348,7 +3350,8 @@ DynamicConfig GCodeProcessor::export_config_for_render() const
     config.set_key_value("filament_is_support", new ConfigOptionBools(m_parser.get_config().filament_is_support.values));
     config.set_key_value("filament_type", new ConfigOptionStrings(m_parser.get_config().filament_type.values));
     config.set_key_value("filament_map", new ConfigOptionInts(m_parser.get_config().filament_map.values));
-    config.apply(m_belt_render_config);
+    for (const std::string &key : m_belt_render_config.keys())
+        config.set_key_value(key, m_belt_render_config.option(key)->clone());
     return config;
 }
 
@@ -3844,10 +3847,14 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
     }
 
     if (boost::starts_with(comment, "_NONPLANAR_BEGIN")) {
-        const size_t pos   = comment.find("shell=");
-        const int    shell = pos == comment.npos ? 0 : std::atoi(std::string(comment.substr(pos + 6)).c_str());
+        auto value = [comment](std::string_view key, int missing) {
+            const size_t pos = comment.find(key);
+            return pos == comment.npos ? missing : std::atoi(std::string(comment.substr(pos + key.size())).c_str());
+        };
         m_result.nonplanar = true;
-        m_nonplanar_patch_shell = static_cast<unsigned char>(std::clamp(shell, 0, 0xFE));
+        m_nonplanar_patch_shell = static_cast<unsigned char>(std::clamp(value("shell=", 0), 0, 0xFE));
+        m_nonplanar_patch       = static_cast<short>(std::clamp(value("patch=", -1), -1, 0x7FFF));
+        m_nonplanar_band        = static_cast<signed char>(std::clamp(value("band=", -1), -1, 0x7F));
         const size_t rate_pos = comment.find("rate=");
         const double rate     = rate_pos == comment.npos ? 0. : std::atof(std::string(comment.substr(rate_pos + 5)).c_str());
         m_nonplanar_feed_interval = rate > 0. && m_flavor != gcfKlipper ? float(1. / rate) : 0.f;
@@ -3855,6 +3862,8 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
     }
     if (boost::starts_with(comment, "_NONPLANAR_END")) {
         m_nonplanar_patch_shell = 0xFF;
+        m_nonplanar_patch       = -1;
+        m_nonplanar_band        = -1;
         return;
     }
 
@@ -6516,6 +6525,8 @@ void GCodeProcessor::store_move_vertex(EMoveType type, EMovePathType path_type, 
         m_print_z
     });
     m_result.moves.back().nonplanar_patch_shell = m_nonplanar_patch_shell;
+    m_result.moves.back().nonplanar_patch = m_nonplanar_patch;
+    m_result.moves.back().nonplanar_band = m_nonplanar_band;
     m_result.moves.back().joints = m_joints;
     if (!m_tool_kinematics)
         m_result.moves.back().joints.xyz = Vec3d(m_end_position[X], m_end_position[Y], m_end_position[Z]);

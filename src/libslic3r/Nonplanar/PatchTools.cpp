@@ -634,23 +634,54 @@ void lift_polylines(const Polylines &polylines, const ExtrusionPath &proto, cons
     }
 }
 
-double head_band_height(const HeadEnvelope &head)
+double head_band_height(const HeadEnvelope &head, double tilt)
 {
-    double lowest = std::numeric_limits<double>::infinity();
+    const double c = std::cos(tilt), s = std::sin(tilt);
+    const double allowance_r = head.tip_allowance.radius, allowance_h = head.tip_allowance.height;
+    double       lowest = std::numeric_limits<double>::infinity();
     for (const HeadBox &box : head.boxes) {
-        double floor_z = box.min.z();
-        if (box.nozzle) {
-            const double r = std::hypot(std::max(std::abs(box.min.x()), std::abs(box.max.x())),
-                                        std::max(std::abs(box.min.y()), std::abs(box.max.y())));
-            if (r <= head.tip_allowance.radius)
-                floor_z = std::max(floor_z, head.tip_allowance.height);
-            if (floor_z >= box.max.z())
+        const double z0 = box.min.z(), z1 = box.max.z();
+        const double half_x = std::max(std::abs(box.min.x()), std::abs(box.max.x()));
+        const double half_y = std::max(std::abs(box.min.y()), std::abs(box.max.y()));
+        double       floor_z;
+        if (tilt <= 0.) {
+            floor_z = z0;
+            if (box.nozzle) {
+                if (std::hypot(half_x, half_y) <= allowance_r)
+                    floor_z = std::max(floor_z, allowance_h);
+                if (floor_z >= z1)
+                    continue;
+            } else
+                floor_z -= head.margin;
+        } else if (box.nozzle) {
+            const double r = std::max(half_x, half_y);
+            if (r * c + z1 * s <= allowance_r)
+                floor_z = std::max(z0 * c - r * s, allowance_h);
+            else {
+                const double z_out = s > 0. ? std::max(z0, (allowance_r - r * c) / s) : z0;
+                floor_z            = z_out * c - r * s;
+                if (r * c + z0 * s <= allowance_r)
+                    floor_z = std::min(floor_z, std::max(z0 * c - r * s, allowance_h));
+            }
+            if (floor_z >= z1 * c + r * s)
                 continue;
         } else
-            floor_z -= head.margin;
+            floor_z = z0 * c - std::hypot(half_x + head.lateral_margin, half_y + head.lateral_margin) * s - head.margin;
         lowest = std::min(lowest, floor_z);
     }
     return lowest;
+}
+
+double head_band_tilt_limit(const HeadEnvelope &head)
+{
+    const double upright = head_band_height(head);
+    if (! std::isfinite(upright) || upright <= 0.)
+        return 0.;
+    constexpr double step = 0.25 * M_PI / 180.;
+    double           tilt = 0.;
+    while (tilt + step < 0.5 * M_PI && head_band_height(head, tilt + step) >= upright - EPSILON)
+        tilt += step;
+    return tilt;
 }
 
 void cut_into_bands(const ExtrusionEntitiesPtr &paths, double pitch, double tolerance,

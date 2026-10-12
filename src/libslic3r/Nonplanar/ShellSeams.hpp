@@ -20,10 +20,13 @@ struct FlowShape
     double taper = 0.;
     double coast = 0.;
     bool   open_end = false;
+    bool   scored   = false;
 };
 constexpr double StartRamp = 1.;
 constexpr double EndTaper  = 0.5;
 constexpr double EndCoast  = 0.5;
+constexpr double CoastMinRun    = 5.;
+constexpr double SoftTaperFloor = 0.02;
 
 std::vector<ConformalPoint> shape_runs(const std::vector<ConformalPoint> &points, const FlowShape &shape, double min_piece,
                                        std::vector<double> &flow);

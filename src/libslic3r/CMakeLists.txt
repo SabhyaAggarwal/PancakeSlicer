@@ -165,6 +165,8 @@ set(lisbslic3r_sources
     Nonplanar/Multiplanar.hpp
     Nonplanar/SurfaceClip.cpp
     Nonplanar/SurfaceClip.hpp
+    Nonplanar/TiltBudget.cpp
+    Nonplanar/TiltBudget.hpp
     CustomGCode.cpp
     CustomGCode.hpp
     CutUtils.cpp

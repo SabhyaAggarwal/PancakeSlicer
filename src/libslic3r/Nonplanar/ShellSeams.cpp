@@ -65,7 +65,9 @@ std::vector<ConformalPoint> shape_runs(const std::vector<ConformalPoint> &points
         const double ramp = first_run ? std::min(shape.ramp, 0.25 * run) : 0.;
         const double end   = shape.open_end && j + 1 == n ? 0. : shape.taper + shape.coast;
         const double scale = end > 0.25 * run && end > 0. ? 0.25 * run / end : 1.;
-        const double taper = end > 0. ? shape.taper * scale : 0., coast = end > 0. ? shape.coast * scale : 0.;
+        const bool   soft  = shape.scored || run < CoastMinRun;
+        const double taper = end > 0. ? (soft ? end : shape.taper) * scale : 0.;
+        const double coast = end > 0. && !soft ? shape.coast * scale : 0.;
         first_run          = false;
         auto factor        = [&](double t) {
             double f = ramp > 0. ? std::clamp(t / ramp, 0., 1.) : 1.;
@@ -73,7 +75,7 @@ std::vector<ConformalPoint> shape_runs(const std::vector<ConformalPoint> &points
             if (left < coast)
                 f = 0.;
             else if (taper > 0. && left < coast + taper)
-                f = std::min(f, (left - coast) / taper);
+                f = std::min(f, soft ? std::max(std::pow(left / taper, 3.), SoftTaperFloor) : (left - coast) / taper);
             return f;
         };
         std::vector<double> breaks;

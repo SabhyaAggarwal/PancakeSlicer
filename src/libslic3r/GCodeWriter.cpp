@@ -1264,10 +1264,18 @@ JointPose GCodeWriter::get_joints() const
 
 std::string GCodeWriter::end_inverse_time()
 {
-    if (! m_inverse_time)
-        return {};
-    m_inverse_time = false;
-    return "G94\n";
+    std::string out;
+    if (m_inverse_time) {
+        m_inverse_time = false;
+        out += "G94\n";
+    }
+    if (m_joint_feed_written) {
+        m_joint_feed_written = false;
+        GCodeG1Formatter w;
+        w.emit_f(m_current_speed);
+        w.append_to(out);
+    }
+    return out;
 }
 
 void GCodeWriter::extrude_to_pose(std::string &out, const ToolPose &pose, double dE, const std::string &comment)
@@ -1358,6 +1366,10 @@ void GCodeWriter::write_joint_move(std::string &out, const JointPose &joints, do
         if (axes[i].max_speed_deg_s > 0.)
             t = std::max(t, d / axes[i].max_speed_deg_s);
     }
+    if (t <= 0. && dE != 0. && m_current_speed > 0.)
+        t = std::abs(dE) / (m_current_speed / 60.);
+    if (t > 0.)
+        t = std::max(t, m_min_joint_move_time);
     if (t <= 0.) {
         if (rotary_travel > 0.)
             throw RuntimeError("Non-planar: an angular-only move needs a positive rotary axis speed limit.");
@@ -1390,7 +1402,8 @@ void GCodeWriter::write_joint_move(std::string &out, const JointPose &joints, do
     w.emit_f(F);
     w.emit_comment(GCodeWriter::full_gcode_comment, comment);
     w.append_to(out);
-    m_joints = joints;
+    m_joints             = joints;
+    m_joint_feed_written = true;
 }
 
 std::string GCodeWriter::retract(bool before_wipe, double retract_length)

@@ -324,6 +324,55 @@ double MaterialColumns::swept_clearance(const Vec3d &a, const Vec3d &b, const Pr
     return found >= 0 ? best : bound;
 }
 
+double MaterialColumns::tilted_clearance(const Vec3d &tip, const Matrix3d &frame, const Nonplanar::HeadEnvelope &head) const
+{
+    double best = Inf;
+    if (m_ceiling == -Inf) return best;
+    const Vec3d up = frame.col(2);
+    for (const auto &raw : head.boxes) {
+        if (raw.infinite_x || raw.infinite_y) continue;
+        const auto box = prepared_box(raw, head);
+        if (box.min.z() > box.max.z()) continue;
+        Vec3d lo = Vec3d::Constant(Inf), hi = Vec3d::Constant(-Inf);
+        for (int k = 0; k < 8; ++k) {
+            const Vec3d v = tip + frame.transpose() * Vec3d(k & 1 ? box.max.x() : box.min.x(), k & 2 ? box.max.y() : box.min.y(),
+                                                            k & 4 ? box.max.z() : box.min.z());
+            lo = lo.cwiseMin(v), hi = hi.cwiseMax(v);
+        }
+        if (lo.z() - m_ceiling >= best) continue;
+        const BoundingBoxf rect(lo.head<2>(), hi.head<2>());
+        if (! box.nozzle) {
+            best = std::min(best, lo.z() - top_in_rect(rect));
+            continue;
+        }
+        Vec3d bmin = box.min, bmax = box.max;
+        bmin.head<2>().array() -= 0.71 * m_pitch;
+        bmax.head<2>().array() += 0.71 * m_pitch;
+        int x0, y0, x1, y1;
+        cells(BoundingBoxf(rect.min - Vec2d::Constant(m_pitch), rect.max + Vec2d::Constant(m_pitch)), x0, y0, x1, y1);
+        for (int y = y0; y < y1; ++y)
+            for (int x = x0; x < x1; ++x) {
+                const double top = cell_top(x, y);
+                if (top == -Inf || lo.z() - top >= best) continue;
+                const Vec3d m = frame * (Vec3d(m_bbox.min.x() + (x + 0.5) * m_pitch, m_bbox.min.y() + (y + 0.5) * m_pitch, top) - tip);
+                double t0 = -Inf, t1 = Inf;
+                bool   miss = false;
+                for (int a = 0; a < 3 && ! miss; ++a) {
+                    if (std::abs(up[a]) < 1e-12) {
+                        miss = m[a] < bmin[a] || m[a] > bmax[a];
+                        continue;
+                    }
+                    double p0 = (bmin[a] - m[a]) / up[a], p1 = (bmax[a] - m[a]) / up[a];
+                    if (p0 > p1) std::swap(p0, p1);
+                    t0 = std::max(t0, p0), t1 = std::min(t1, p1);
+                }
+                if (! miss && t0 <= t1)
+                    best = std::min(best, t0);
+            }
+    }
+    return best;
+}
+
 double safe_travel_z(const MaterialColumns &columns, const Nonplanar::HeadEnvelope &head, const Vec2d &a, const Vec2d &b, double hop)
 {
     auto travel_head = head;

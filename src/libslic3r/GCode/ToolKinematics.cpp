@@ -63,10 +63,11 @@ void ToolKinematics::linearize(const JointPose &ja, const ToolPose &pa, const To
             }
             if (depth >= max_depth)
                 throw RuntimeError("Non-planar: a rotary move needs too many subdivisions to stay on the tool path.");
-            ToolPose pm;
+            JointPose turned = lerp(j0, j1, 0.5);
+            ToolPose  pm;
             pm.tip  = 0.5 * (p0.tip + p1.tip);
-            pm.axis = (p0.axis + p1.axis).normalized();
-            const JointPose jm = solve(pm, j0);
+            pm.axis = this->forward(turned).axis;
+            const JointPose jm = solve(pm, turned);
             subdivide(j0, p0, jm, pm, depth + 1);
             subdivide(jm, pm, j1, p1, depth + 1);
         };

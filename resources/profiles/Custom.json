@@ -1,6 +1,6 @@
 {
 	"name": "Custom Printer",
-	"version": "02.04.00.08",
+	"version": "02.04.00.11",
 	"force_update": "0",
 	"description": "My configurations",
 	"machine_model_list": [
@@ -27,6 +27,10 @@
 		{
 			"name": "Generic ToolChanger Printer",
 			"sub_path": "machine/MyToolChanger.json"
+		},
+		{
+			"name": "Prodcan3 5-axis BC table",
+			"sub_path": "machine/Prodcan3 5-axis BC table.json"
 		}
 	],
 	"process_list": [
@@ -193,6 +197,10 @@
 		{
 			"name": "0.56mm Standard @MyToolChanger",
 			"sub_path": "process/0.56mm Extra Draft @MyToolChanger.json"
+		},
+		{
+			"name": "0.20mm Non-planar top @Prodcan3",
+			"sub_path": "process/0.20mm Non-planar top @Prodcan3.json"
 		}
 	],
 	"filament_list": [
@@ -223,6 +231,10 @@
 		{
 			"name": "Generic PLA @MyToolChanger",
 			"sub_path": "filament/Generic PLA @MyToolChanger.json"
+		},
+		{
+			"name": "Generic PLA @Prodcan3",
+			"sub_path": "filament/Generic PLA @Prodcan3.json"
 		},
 		{
 			"name": "Generic PLA-CF @MyToolChanger",
@@ -321,6 +333,10 @@
 		{
 			"name": "MyToolChanger 0.8 nozzle",
 			"sub_path": "machine/MyToolChanger 0.8 nozzle.json"
+		},
+		{
+			"name": "Prodcan3 5-axis BC table 0.4 nozzle",
+			"sub_path": "machine/Prodcan3 5-axis BC table 0.4 nozzle.json"
 		}
 	]
 }

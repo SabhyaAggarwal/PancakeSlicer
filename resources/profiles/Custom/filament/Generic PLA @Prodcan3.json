@@ -1,0 +1,20 @@
+{
+	"type": "filament",
+	"name": "Generic PLA @Prodcan3",
+	"inherits": "Generic PLA @System",
+	"from": "system",
+	"setting_id": "NhT0vifDcAuxEo14",
+	"instantiation": "true",
+	"filament_type": [
+		"PLA"
+	],
+	"filament_extruder_id": [
+		"1"
+	],
+	"filament_extruder_variant": [
+		"Direct Drive Standard"
+	],
+	"compatible_printers": [
+		"Prodcan3 5-axis BC table 0.4 nozzle"
+	]
+}

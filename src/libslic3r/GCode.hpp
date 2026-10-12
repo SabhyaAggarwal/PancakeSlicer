@@ -543,7 +543,9 @@ protected:
     double          conformal_clearance();
     double          nonplanar_repair_lift() const;
     void            ensure_material_columns(const ExtrusionPath &path);
-    std::string     rotary_move_safely(const ToolPose *target);
+    std::string     rotary_move_safely(const ToolPose *target, const JointPose *seed = nullptr);
+    bool            rotary_at_home() const;
+    std::string     rotary_hop(const ToolPose *target, const JointPose *seed = nullptr);
     const Nonplanar::HeadEnvelope &nonplanar_head();
     double          nonplanar_hop();
     double          conformal_max_speed_z() const;
@@ -679,6 +681,7 @@ protected:
     const ExtrusionPathConformal          *m_conformal_prev{ nullptr };
     bool                                   m_conformal_ramp{ false };
     bool                                   m_conformal_open_end{ false };
+    bool                                   m_conformal_scored{ false };
     std::map<unsigned int, Nonplanar::PressureAdvance> m_start_gcode_pa;
     Nonplanar::PressureAdvance                         m_machine_start_pa;
     std::unique_ptr<Nonplanar::PressureAdvanceTracker> m_conformal_pa_tracker;
@@ -688,6 +691,7 @@ protected:
     double                                 m_print_clock{ 0. };
     Nonplanar::FreshBeads                  m_fresh_beads;
     Nonplanar::HeadEnvelope                m_nonplanar_head;
+    double                                 m_band_tilt_limit{ -1. };
     float                               m_last_width{ 0.0f };
     double                              m_last_layer_accumulated_mass{ 0.0 };
 

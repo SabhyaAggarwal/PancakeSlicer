@@ -89,6 +89,7 @@ struct CoolingLine
         TYPE_IRONING_FAN_END           = 1 << 20,
         TYPE_BELT_BAND_START           = 1 << 21,
         TYPE_BELT_BAND_END             = 1 << 22,
+        TYPE_KEEP_VERBATIM             = 1 << 23,
     };
 
     CoolingLine(unsigned int type, size_t  line_start, size_t  line_end) :
@@ -296,7 +297,7 @@ std::string CoolingBuffer::process_layer(std::string &&gcode, size_t layer_id, b
 
     std::string out;
     if (flush) {
-        std::vector<PerExtruderAdjustments> per_extruder_adjustments = this->parse_layer_gcode(m_gcode, m_current_pos);
+        std::vector<PerExtruderAdjustments> per_extruder_adjustments = this->parse_layer_gcode(m_gcode, m_current_pos, m_inverse_time);
         float layer_time_stretched = this->calculate_layer_slowdown(per_extruder_adjustments);
         out = this->apply_layer_cooldown(m_gcode, layer_id, layer_time_stretched, per_extruder_adjustments);
         m_gcode.clear();
@@ -304,7 +305,7 @@ std::string CoolingBuffer::process_layer(std::string &&gcode, size_t layer_id, b
     return out;
 }
 
-std::vector<PerExtruderAdjustments> CoolingBuffer::parse_layer_gcode(const std::string &gcode, std::vector<float> &current_pos) const
+std::vector<PerExtruderAdjustments> CoolingBuffer::parse_layer_gcode(const std::string &gcode, std::vector<float> &current_pos, bool &inverse_time) const
 {
     std::vector<PerExtruderAdjustments> per_extruder_adjustments(m_extruder_ids.size());
     std::vector<size_t>                 map_extruder_to_per_extruder_adjustment(m_num_extruders, 0);
@@ -326,6 +327,8 @@ std::vector<PerExtruderAdjustments> CoolingBuffer::parse_layer_gcode(const std::
     size_t            active_speed_modifier = size_t(-1);
 
     bool layer_had_extrusion = false;
+    const bool rotary_printer  = m_config.nonplanar_kinematics.value != RotaryLayout::None;
+    bool       nonplanar_block = false;
 
     for (; *line_start != 0; line_start = line_end)
     {
@@ -345,9 +348,19 @@ std::vector<PerExtruderAdjustments> CoolingBuffer::parse_layer_gcode(const std::
             line.type = CoolingLine::TYPE_G2;
         else if (boost::starts_with(sline, "G3 "))
             line.type = CoolingLine::TYPE_G3;
+        if (boost::starts_with(sline, "G93"))
+            inverse_time = true;
+        else if (boost::starts_with(sline, "G94"))
+            inverse_time = false;
+        else if (boost::starts_with(sline, ";_NONPLANAR_BEGIN"))
+            nonplanar_block = true;
+        else if (boost::starts_with(sline, ";_NONPLANAR_END"))
+            nonplanar_block = false;
         if (line.type) {
             std::vector<float> new_pos(current_pos);
             const char *c = sline.data() + 3;
+            bool  rotary = false;
+            float inline_f = 0.f;
             for (;;) {
                 for (; *c == ' ' || *c == '\t'; ++ c);
                 if (*c == 0 || *c == ';')
@@ -356,10 +369,13 @@ std::vector<PerExtruderAdjustments> CoolingBuffer::parse_layer_gcode(const std::
                 size_t axis = (*c >= 'X' && *c <= 'Z') ? (*c - 'X') :
                               (*c == 'E') ? 3 : (*c == 'F') ? 4 :
                               (*c == 'I') ? 5 : (*c == 'J') ? 6 : size_t(-1);
+                if (*c >= 'A' && *c <= 'C')
+                    rotary = true;
                 if (axis != size_t(-1)) {
                     ++ c;
                     new_pos[axis] = float(atof_decimal_point(std::string_view(c, sline.data() + sline.size() - c)));
                     if (axis == 4) {
+                        inline_f = new_pos[4];
                         new_pos[4] /= 60.f;
                         if ((line.type & CoolingLine::TYPE_G92) == 0)
                             line.type |= CoolingLine::TYPE_HAS_F;
@@ -368,6 +384,21 @@ std::vector<PerExtruderAdjustments> CoolingBuffer::parse_layer_gcode(const std::
                     }
                 }
                 for (; *c != ' ' && *c != '\t' && *c != 0; ++ c);
+            }
+            if ((line.type & CoolingLine::TYPE_G92) == 0 && rotary_printer && (inverse_time || rotary || nonplanar_block)) {
+                line.type = CoolingLine::TYPE_G1 | CoolingLine::TYPE_KEEP_VERBATIM;
+                const float feed = inline_f > 0.f ? inline_f : 60.f * current_pos[4];
+                if (inverse_time)
+                    line.time = inline_f > 0.f ? 60.f / inline_f : 0.f;
+                else if (feed > 0.f)
+                    line.time = 60.f * Vec3f(new_pos[0] - current_pos[0], new_pos[1] - current_pos[1], new_pos[2] - current_pos[2]).norm() / feed;
+                line.time_max = line.time;
+                new_pos[4]    = current_pos[4];
+                current_pos   = std::move(new_pos);
+                if (!layer_had_extrusion)
+                    line.time = line.time_max = 0;
+                adjustment->lines.emplace_back(std::move(line));
+                continue;
             }
             bool external_perimeter = boost::contains(sline, ";_EXTERNAL_PERIMETER");
             bool wipe               = boost::contains(sline, ";_WIPE");
@@ -810,6 +841,11 @@ std::string CoolingBuffer::apply_layer_cooldown(
             need_set_fan       = true;
         }
         else if (line->type & CoolingLine::TYPE_EXTRUDE_END) {
+        } else if (line->type & CoolingLine::TYPE_KEEP_VERBATIM) {
+            std::string kept(line_start, line_end);
+            boost::replace_all(kept, ";_EXTRUDE_SET_SPEED", "");
+            new_gcode += kept;
+            current_feedrate = 0;
         } else if (line->type & (CoolingLine::TYPE_ADJUSTABLE | CoolingLine::TYPE_EXTERNAL_PERIMETER | CoolingLine::TYPE_WIPE | CoolingLine::TYPE_HAS_F)) {
             const char *end = line_start;
             for (; end < line_end && *end != ';'; ++ end);

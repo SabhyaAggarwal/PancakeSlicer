@@ -147,6 +147,7 @@ public:
     static bool supports_separate_travel_acceleration(GCodeFlavor flavor);
 
     void                  set_tool_kinematics(std::unique_ptr<ToolKinematics> kinematics);
+    void                  set_min_joint_move_time(double seconds) { m_min_joint_move_time = seconds; }
     const ToolKinematics &tool_kinematics() const;
     void        extrude_to_pose(std::string &out, const ToolPose &pose, double dE, const std::string &comment = {});
     std::string travel_to_pose(const ToolPose &pose, const std::string &comment = {}, double speed = 0.);
@@ -185,8 +186,10 @@ protected:
     JointPose                       m_joints;
     bool                            m_joints_valid = false;
     bool                            m_inverse_time = false;
+    bool                            m_joint_feed_written = false;
     bool                            m_rotary_written = false;
     Vec3d                           m_max_joint_speed { Vec3d::Zero() };
+    double                          m_min_joint_move_time = 0.;
     void        write_joint_move(std::string &out, const JointPose &joints, double tip_length, double tip_speed,
                                  double dE, const std::string &comment);
     void        pose_move(std::string &out, const ToolPose &pose, double dE, const std::string &comment, bool travel, double speed = 0.);

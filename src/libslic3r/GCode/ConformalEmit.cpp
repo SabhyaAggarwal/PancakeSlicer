@@ -6,9 +6,16 @@
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
 #include "libslic3r/GCodeWriter.hpp"
+#include "libslic3r/Nonplanar/TiltBudget.hpp"
 #include "libslic3r/libslic3r.h"
 
+#include <Eigen/Geometry>
+
 #include <algorithm>
+#include <array>
+#include <functional>
+#include <string>
+#include <vector>
 #include <cmath>
 #include <cstdio>
 #include <limits>
@@ -39,6 +46,7 @@ ConformalPoint interpolate(const ConformalPoint &a, const ConformalPoint &b, dou
     p.pose.tip    = a.pose.tip + t * (b.pose.tip - a.pose.tip);
     p.pose.axis   = (a.pose.axis + t * (b.pose.axis - a.pose.axis)).normalized();
     p.bead_height = a.bead_height + float(t) * (b.bead_height - a.bead_height);
+    p.vertical_height = a.vertical_height + float(t) * (b.vertical_height - a.vertical_height);
     p.width       = a.width + float(t) * (b.width - a.width);
     return p;
 }
@@ -132,7 +140,7 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
     std::vector<ConformalPoint>        shaped;
     const bool shape = params.ramp_length > 0. || params.taper_length > 0. || params.coast_length > 0.;
     if (shape)
-        shaped = shape_runs(merged, { params.ramp_length, params.taper_length, params.coast_length, params.open_end },
+        shaped = shape_runs(merged, { params.ramp_length, params.taper_length, params.coast_length, params.open_end, params.scored },
                             params.condition.target_length, flow);
     const std::vector<ConformalPoint> &staged = shape ? shaped : merged;
 
@@ -212,7 +220,6 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
         const ConformalPoint &b = points[i + 1];
         if ((b.pose.tip - a.pose.tip).norm() < EPSILON)
             continue;
-        const Vec3d axis   = (a.pose.axis + b.pose.axis).normalized();
         const float height = 0.5f * (a.bead_height + b.bead_height);
         const double seg_width = a.width > 0.f && b.width > 0.f ? 0.5 * (double(a.width) + double(b.width)) : width;
         if (params.last_width != nullptr && std::abs(float(seg_width) - *params.last_width) > 0.01f) {
@@ -227,9 +234,12 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
         }
         if (params.pressure_advance != nullptr && !glide(i))
             params.pressure_advance->update(height, out);
-        const double v = a.bead_height > 0.f && b.bead_height > 0.f ?
-                             segment_volume(a.pose.tip, b.pose.tip, seg_width, a.bead_height, b.bead_height, axis) * (flow.empty() ? 1. : flow[i]) :
-                             0.;
+        const Vec3d axis = (a.pose.axis + b.pose.axis).normalized();
+        const double v = a.bead_height <= 0.f || b.bead_height <= 0.f ? 0. :
+                         (a.vertical_height > 0.f && b.vertical_height > 0.f ?
+                              segment_volume(a.pose.tip, b.pose.tip, seg_width, a.vertical_height, b.vertical_height) :
+                              segment_volume(a.pose.tip, b.pose.tip, seg_width, a.bead_height, b.bead_height, axis)) *
+                             (flow.empty() ? 1. : flow[i]);
         volume += v;
         double speed = speeds[i];
         if (params.max_volume_per_second > 0. && v > 0.)
@@ -369,17 +379,88 @@ void deposit_material_path(MaterialColumns &columns, const ExtrusionPath &path, 
     }
 }
 
-namespace {
-
-double periodic_lookup(const std::vector<double> &table, double phi)
+bool densify_conformal_path(const ExtrusionPathConformal &path, double max_segment, ExtrusionPathConformal &out)
 {
-    const size_t n = table.size();
-    double       u = phi / (2. * M_PI) * double(n);
-    u -= std::floor(u / double(n)) * double(n);
-    const size_t i = size_t(u) % n;
-    const double t = u - std::floor(u);
-    return (1. - t) * table[i] + t * table[(i + 1) % n];
+    const Points3 &pts  = path.polyline.points;
+    const double   step = scale_(max_segment);
+    bool           long_segment = false;
+    for (size_t i = 1; i < pts.size() && ! long_segment; ++i)
+        long_segment = (pts[i] - pts[i - 1]).cast<double>().norm() > step;
+    if (! long_segment)
+        return false;
+    out = path;
+    Points3            &dense_pts = out.polyline.points;
+    std::vector<float> &heights   = out.bead_height;
+    std::vector<Vec3f> &axes      = out.tool_axis;
+    dense_pts.clear(), heights.clear(), axes.clear();
+    for (size_t i = 0; i < pts.size(); ++i) {
+        const float h = i < path.bead_height.size() ? path.bead_height[i] : path.height;
+        if (i > 0) {
+            const int n = int(std::ceil((pts[i] - pts[i - 1]).cast<double>().norm() / step));
+            const float previous_height = i - 1 < path.bead_height.size() ? path.bead_height[i - 1] : path.height;
+            for (int k = 1; k < n; ++k) {
+                const double t = double(k) / n;
+                dense_pts.emplace_back((pts[i - 1].cast<double>() + t * (pts[i] - pts[i - 1]).cast<double>()).cast<coord_t>());
+                heights.emplace_back(previous_height <= 0.f || h <= 0.f ? 0.f : float((1. - t) * previous_height + t * h));
+                if (! path.tool_axis.empty())
+                    axes.emplace_back(((1. - t) * path.tool_axis[i - 1] + t * path.tool_axis[i]).normalized());
+            }
+        }
+        dense_pts.emplace_back(pts[i]);
+        heights.emplace_back(h);
+        if (! path.tool_axis.empty())
+            axes.emplace_back(path.tool_axis[i]);
+    }
+    return true;
 }
+
+std::vector<RotaryRun> plan_rotary_runs(const ToolKinematics &kinematics, const std::vector<ConformalPoint> &points,
+                                        const JointPose &from, double max_jump_deg)
+{
+    std::vector<RotaryRun> runs;
+    RotaryRun              run;
+    run.seed = from;
+    run.end  = points.empty() ? 0 : points.size() - 1;
+    const auto *rotary = dynamic_cast<const RotaryKinematics *>(&kinematics);
+    JointPose   prev;
+    if (rotary == nullptr || points.size() < 2 || ! kinematics.inverse(points.front().pose, &from, prev))
+        return { run };
+    auto other_branch = [rotary](const JointPose &j) {
+        const std::array<double, 2> kin = rotary->kinematic_angles(j);
+        JointPose                   out = j;
+        out.rot[0] = rotary->machine_angle(0, -kin[0]);
+        out.rot[1] = rotary->machine_angle(1, kin[1] + M_PI);
+        return out;
+    };
+    auto jump = [](const JointPose &a, const JointPose &b) { return std::max(std::abs(a.rot[0] - b.rot[0]), std::abs(a.rot[1] - b.rot[1])); };
+    for (size_t i = 1; i < points.size(); ++i) {
+        JointPose next;
+        if (! kinematics.inverse(points[i].pose, &prev, next))
+            break;
+        if (jump(prev, next) > max_jump_deg) {
+            const JointPose seed = other_branch(prev);
+            JointPose       start, after;
+            if (kinematics.inverse(points[i - 1].pose, &seed, start) && kinematics.inverse(points[i].pose, &start, after) &&
+                jump(start, after) <= max_jump_deg) {
+                if (i - 1 == run.begin)
+                    run.seed = seed;
+                else {
+                    run.end = i - 1;
+                    runs.emplace_back(run);
+                    run.begin = i - 1;
+                    run.seed  = seed;
+                }
+                next = after;
+            }
+        }
+        prev = next;
+    }
+    run.end = points.size() - 1;
+    runs.emplace_back(run);
+    return runs;
+}
+
+namespace {
 
 Vec3d rotate_toward(const Vec3d &from, const Vec3d &to, double max_angle)
 {
@@ -400,31 +481,13 @@ void apply_minimal_tilt(std::vector<ConformalPoint> &points, const std::function
     if (points.empty() || kinematics.rotary_count() == 0)
         return;
 
-    constexpr int       n_reach = 72;
-    std::vector<double> reach(n_reach);
-    for (int k = 0; k < n_reach; ++k)
-        reach[k] = kinematics.max_tilt(2. * M_PI * k / n_reach);
-    auto reachable = [&reach](double phi) {
-        double u = phi / (2. * M_PI) * n_reach;
-        u -= std::floor(u / n_reach) * n_reach;
-        const int i = int(u) % n_reach;
-        return std::min(reach[i], reach[(i + 1) % n_reach]);
-    };
-
+    const TiltBudget   budget(kinematics, params.slope_limit, params.margin, params.max_tilt);
     const size_t       n = points.size();
     std::vector<Vec3d> normals(n), axes(n);
     for (size_t i = 0; i < n; ++i) {
-        const Vec2d  g     = gradient(points[i].pose.tip.head<2>());
-        normals[i]         = Vec3d(-g.x(), -g.y(), 1.).normalized();
-        const double beta  = std::atan(g.norm());
-        if (beta <= 0.) {
-            axes[i] = Vec3d::UnitZ();
-            continue;
-        }
-        const double phi   = std::atan2(g.y(), g.x());
-        const double alpha = params.slope_limit.empty() ? 0.5 * M_PI : periodic_lookup(params.slope_limit, phi);
-        const double tilt  = std::clamp(beta - alpha + params.margin, 0., std::min(beta, reachable(phi + M_PI)));
-        axes[i]            = Vec3d(-std::sin(tilt) * std::cos(phi), -std::sin(tilt) * std::sin(phi), std::cos(tilt));
+        const Vec2d g = gradient(points[i].pose.tip.head<2>());
+        normals[i]    = Vec3d(-g.x(), -g.y(), 1.).normalized();
+        axes[i]       = budget.axis(g);
     }
 
     std::vector<double> s(n, 0.);
@@ -451,8 +514,31 @@ void apply_minimal_tilt(std::vector<ConformalPoint> &points, const std::function
             axes[i - 1] = rotate_toward(axes[i], axes[i - 1], params.max_rate * (s[i] - s[i - 1]));
     }
 
+    if (params.clearance)
+        for (size_t i = 0; i < n; ++i) {
+            if (axes[i].z() > 1. - EPSILON)
+                continue;
+            const Vec3d &tip = points[i].pose.tip;
+            if (params.clearance(tip, axes[i]) >= params.clearance_margin)
+                continue;
+            const double floor = params.clearance_margin - 1e-3;
+            const Vec3d  full  = axes[i];
+            axes[i]            = Vec3d::UnitZ();
+            for (int k = 3; k > 0; --k) {
+                const Vec3d axis = Eigen::Quaterniond::Identity().slerp(0.25 * k, Eigen::Quaterniond::FromTwoVectors(Vec3d::UnitZ(), full)) *
+                                   Vec3d::UnitZ();
+                if (params.clearance(tip, axis) >= floor) {
+                    axes[i] = axis;
+                    break;
+                }
+            }
+        }
+
     for (size_t i = 0; i < n; ++i) {
         const double along   = normals[i].z() / std::max(axes[i].dot(normals[i]), 1e-6);
+        points[i].vertical_height = points[i].bead_height;
+        if (points[i].bead_height <= 0.f && i > 0 && i + 1 < n)
+            points[i].pose.tip += GlideLift * (axes[i] - points[i].pose.axis);
         points[i].pose.axis  = axes[i];
         points[i].bead_height = float(points[i].bead_height * along);
     }

@@ -103,7 +103,8 @@ using LiftFn = std::function<bool(const Vec2d &p, double &z, float &bead_height)
 void lift_polylines(const Polylines &polylines, const ExtrusionPath &proto, const LiftFn &at, double host_z, double resample,
                     int patch_id, int shell, ExtrusionEntitiesPtr &out, const std::vector<std::vector<float>> *widths = nullptr);
 
-double head_band_height(const HeadEnvelope &head);
+double head_band_height(const HeadEnvelope &head, double tilt = 0.);
+double head_band_tilt_limit(const HeadEnvelope &head);
 
 void cut_into_bands(const ExtrusionEntitiesPtr &paths, double pitch, double tolerance,
                     const std::function<void(int band, ExtrusionPathConformal *piece)> &sink,

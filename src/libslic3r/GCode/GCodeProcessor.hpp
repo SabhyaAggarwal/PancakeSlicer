@@ -244,6 +244,8 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             int  object_label_id{-1};
             float print_z{0.0f};
             unsigned char nonplanar_patch_shell{ 0xFF };
+            short nonplanar_patch{ -1 };
+            signed char nonplanar_band{ -1 };
             JointPose joints;
             bool has_joints = false;
 
@@ -1033,6 +1035,8 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         JointPose                       m_joints;
         bool                            m_inverse_time{ false };
         unsigned char                   m_nonplanar_patch_shell{ 0xFF };
+        short                           m_nonplanar_patch{ -1 };
+        signed char                     m_nonplanar_band{ -1 };
         float                           m_nonplanar_feed_interval{ 0.f };
         AxisCoords m_start_position;
         AxisCoords m_end_position;
