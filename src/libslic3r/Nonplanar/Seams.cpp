@@ -250,7 +250,7 @@ Polyline seam_line(const HeightField &surface, const Point &seam, const ExPolygo
 }
 
 void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &band_roads, const GlideZ &glide_z, double max_glide,
-                       double step, bool hidden)
+                       double step, bool hidden, double floor, double ceiling)
 {
     std::vector<ExtrusionPathConformal *> todo;
     for (ExtrusionEntity *ee : pieces)
@@ -345,13 +345,21 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
                     if (g0 < 2) {
                         pts = std::move(tail);
                         h   = std::move(tail_h);
+                        if (!path->bead_width.empty())
+                            path->bead_width.erase(path->bead_width.begin(), path->bead_width.begin() + g1);
                         i   = size_t(-1);
                         continue;
+                    }
+                    std::vector<float> tail_w;
+                    if (!path->bead_width.empty()) {
+                        tail_w.assign(path->bead_width.begin() + g1, path->bead_width.end());
+                        path->bead_width.resize(g0);
                     }
                     pts.resize(g0);
                     h.resize(g0);
                     if (tail.size() >= 2) {
-                        auto *rest     = new ExtrusionPathConformal(Polyline3(std::move(tail)), *path, std::move(tail_h));
+                        auto *rest       = new ExtrusionPathConformal(Polyline3(std::move(tail)), *path, std::move(tail_h));
+                        rest->bead_width = std::move(tail_w);
                         rest->patch_id = path->patch_id;
                         rest->shell    = path->shell;
                         todo.emplace_back(rest);
@@ -373,7 +381,27 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
         std::vector<float> &heights = current->bead_height;
         const Point3        a       = pts.back();
         const Point3        b       = path->polyline.points.front();
-        if (a != b) {
+        std::vector<float> &widths  = current->bead_width;
+        const size_t        n_before = pts.size();
+        if (!widths.empty() || !path->bead_width.empty()) {
+            if (widths.empty())
+                widths.assign(pts.size(), float(current->width));
+            if (path->bead_width.empty())
+                path->bead_width.assign(path->polyline.points.size(), float(path->width));
+        }
+        auto in_band = [floor, ceiling](const Point3 &q) { return unscale<double>(q.z()) >= floor && unscale<double>(q.z()) <= ceiling; };
+        bool extrude = (unscale(b.to_point()) - unscale(a.to_point())).norm() <= 2. * current->width && in_band(a) && in_band(b);
+        for (const Point3 &q : route)
+            extrude = extrude && in_band(q);
+        if (extrude && a != b) {
+            const float ha = heights.back(), hb = path->bead_height.front();
+            const Vec2d pa = unscale(a.to_point());
+            const double l = (unscale(b.to_point()) - pa).norm();
+            for (const Point3 &q : route) {
+                pts.emplace_back(q);
+                heights.emplace_back(ha + (hb - ha) * float((unscale(q.to_point()) - pa).norm() / l));
+            }
+        } else if (a != b) {
             pts.emplace_back(a);
             heights.emplace_back(0.f);
             for (const Point3 &q : route) {
@@ -383,7 +411,11 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
             pts.emplace_back(b);
             heights.emplace_back(0.f);
         }
-        const bool same = a == b && heights.back() == path->bead_height.front();
+        const bool same = (a == b || extrude) && heights.back() == path->bead_height.front() && pts.back() == b;
+        if (!widths.empty()) {
+            widths.insert(widths.end(), pts.size() - n_before, widths.back());
+            widths.insert(widths.end(), path->bead_width.begin() + (same ? 1 : 0), path->bead_width.end());
+        }
         pts.insert(pts.end(), path->polyline.points.begin() + (same ? 1 : 0), path->polyline.points.end());
         heights.insert(heights.end(), path->bead_height.begin() + (same ? 1 : 0), path->bead_height.end());
         delete path;
@@ -416,6 +448,8 @@ bool glide_from(ExtrusionPathConformal &path, const Point3 &from, const GlideZ &
     pts.emplace_back(to);
     path.polyline.points.insert(path.polyline.points.begin(), pts.begin(), pts.end());
     path.bead_height.insert(path.bead_height.begin(), pts.size(), 0.f);
+    if (!path.bead_width.empty())
+        path.bead_width.insert(path.bead_width.begin(), pts.size(), path.bead_width.front());
     return true;
 }
 

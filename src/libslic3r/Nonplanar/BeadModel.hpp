@@ -7,6 +7,7 @@ namespace Slic3r::Nonplanar {
 double charge_length(const Vec3d &a, const Vec3d &b, const Vec3d &tool_axis = Vec3d::UnitZ());
 
 double bead_area(double width, double height);
+double bead_height_for_area(double width, double area);
 
 double segment_volume(const Vec3d &a, const Vec3d &b, double width, float height_a, float height_b,
                       const Vec3d &tool_axis = Vec3d::UnitZ());

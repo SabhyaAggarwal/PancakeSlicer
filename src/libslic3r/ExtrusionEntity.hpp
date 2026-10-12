@@ -350,6 +350,7 @@ class ExtrusionPathConformal : public ExtrusionPath
 public:
     std::vector<float> bead_height;
     std::vector<Vec3f> tool_axis;
+    std::vector<float> bead_width;
     int                patch_id = -1;
     int                shell    = -1;
 

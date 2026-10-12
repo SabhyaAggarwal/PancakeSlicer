@@ -20,6 +20,7 @@ std::vector<ConformalPoint> conformal_points(const ExtrusionPathConformal &path,
         out[i].pose.tip     = to_writer(pts[i]);
         out[i].pose.axis    = i < path.tool_axis.size() ? Vec3d(path.tool_axis[i].cast<double>().normalized()) : Vec3d::UnitZ();
         out[i].bead_height  = i < path.bead_height.size() ? path.bead_height[i] : path.height;
+        out[i].width        = path.bead_width.size() == pts.size() ? path.bead_width[i] : 0.f;
         if (out[i].bead_height <= 0.f && i > 0 && i + 1 < pts.size())
             out[i].pose.tip += GlideLift * out[i].pose.axis;
     }
@@ -34,6 +35,7 @@ ConformalPoint interpolate(const ConformalPoint &a, const ConformalPoint &b, dou
     p.pose.tip    = a.pose.tip + t * (b.pose.tip - a.pose.tip);
     p.pose.axis   = (a.pose.axis + t * (b.pose.axis - a.pose.axis)).normalized();
     p.bead_height = a.bead_height + float(t) * (b.bead_height - a.bead_height);
+    p.width       = a.width + float(t) * (b.width - a.width);
     return p;
 }
 
@@ -110,6 +112,8 @@ double planner_segment_rate(double configured, GCodeFlavor flavor, bool bbl_prin
     return 100.;
 }
 
+constexpr double ConditionWidthTolerance = 0.02;
+
 void condition_path(std::vector<ConformalPoint> &points, const ConditionParams &params)
 {
     const size_t n = points.size();
@@ -141,6 +145,8 @@ void condition_path(std::vector<ConformalPoint> &points, const ConditionParams &
                 return false;
             const Vec3d axis = ((1. - t) * points[i].pose.axis + t * points[j].pose.axis).normalized();
             if (std::acos(std::clamp(axis.dot(points[k].pose.axis), -1., 1.)) > params.axis_tolerance)
+                return false;
+            if (std::abs(double(points[k].width) - ((1. - t) * double(points[i].width) + t * double(points[j].width))) > ConditionWidthTolerance)
                 return false;
         }
         return true;
@@ -220,12 +226,18 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
             continue;
         const Vec3d axis   = (a.pose.axis + b.pose.axis).normalized();
         const float height = 0.5f * (a.bead_height + b.bead_height);
+        const double seg_width = a.width > 0.f && b.width > 0.f ? 0.5 * (double(a.width) + double(b.width)) : width;
+        if (params.last_width != nullptr && std::abs(float(seg_width) - *params.last_width) > 0.01f) {
+            *params.last_width = float(seg_width);
+            std::snprintf(buf, sizeof(buf), ";%s%g\n", GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Width).c_str(), *params.last_width);
+            out += buf;
+        }
         if (std::abs(height - last_height) > 0.01f) {
             last_height = height;
             std::snprintf(buf, sizeof(buf), ";%s%g\n", GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Height).c_str(), last_height);
             out += buf;
         }
-        const double v = segment_volume(a.pose.tip, b.pose.tip, width, a.bead_height, b.bead_height, axis) *
+        const double v = segment_volume(a.pose.tip, b.pose.tip, seg_width, a.bead_height, b.bead_height, axis) *
                          (flow.empty() ? 1. : flow[i]);
         volume += v;
         double speed = speeds[i];
@@ -240,7 +252,7 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
         }
         writer.extrude_to_pose(out, b.pose, v * params.e_per_mm3, params.comment);
         if (deposit && !glide(i))
-            deposit(a.pose.tip, b.pose.tip, width);
+            deposit(a.pose.tip, b.pose.tip, seg_width);
     }
     return volume;
 }

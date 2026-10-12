@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -57,7 +58,8 @@ private:
 using GlideZ = std::function<bool(const Vec2d &p, double &z)>;
 
 void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &band_roads, const GlideZ &glide_z, double max_glide,
-                       double step, bool hidden = false);
+                       double step, bool hidden = false, double floor = std::numeric_limits<double>::infinity(),
+                       double ceiling = -std::numeric_limits<double>::infinity());
 
 bool glide_from(ExtrusionPathConformal &path, const Point3 &from, const GlideZ &glide_z, double max_glide, double step);
 

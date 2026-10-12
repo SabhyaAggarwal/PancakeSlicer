@@ -7625,6 +7625,7 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
         params.max_volume_per_second = FILAMENT_CONFIG(filament_max_volumetric_speed) / volume_ratio;
     params.comment       = description;
     params.speed_marker  = speed_marker;
+    params.last_width    = &m_last_width;
     auto first_value     = [](const ConfigOptionFloats &opt) { return opt.values.empty() ? 0. : opt.values.front(); };
     auto lower_limit     = [](double a, double b) { return a > 0. && b > 0. ? std::min(a, b) : std::max(a, b); };
     const GCodeFlavor flavor  = m_config.gcode_flavor.value;

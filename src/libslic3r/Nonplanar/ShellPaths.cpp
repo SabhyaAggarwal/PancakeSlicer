@@ -272,10 +272,7 @@ float surface_spaced_bead(float height, double width, const Vec2d &gradient, dou
     if (std::isnan(gradient.x()) || std::isnan(gradient.y()))
         return height;
     const double s      = gradient.dot(Vec2d(-std::sin(angle), std::cos(angle)));
-    const double target = bead_area(width, height) / std::sqrt(1. + s * s);
-    const double a      = 1. - 0.25 * PI;
-    const double disc   = width * width - 4. * a * target;
-    return disc < 0. ? height : float((width - std::sqrt(disc)) / (2. * a));
+    return float(bead_height_for_area(width, bead_area(width, height) / std::sqrt(1. + s * s)));
 }
 
 PathTilt path_tilt(const Polylines &polylines, const HeightField &surface, double step)
@@ -611,6 +608,8 @@ bool prepend_glide(ExtrusionPathConformal &path, const Point3 &from, const ExPol
     heights.emplace_back(0.f);
     path.polyline.points.insert(path.polyline.points.begin(), pts.begin(), pts.end());
     path.bead_height.insert(path.bead_height.begin(), heights.begin(), heights.end());
+    if (!path.bead_width.empty())
+        path.bead_width.insert(path.bead_width.begin(), pts.size(), path.bead_width.front());
     if (!path.tool_axis.empty())
         path.tool_axis.insert(path.tool_axis.begin(), pts.size(), path.tool_axis.front());
     return true;

@@ -21,6 +21,7 @@ struct ConformalPoint
 {
     ToolPose pose;
     float    bead_height = 0.f;
+    float    width       = 0.f;
 };
 
 using ToWriterFrame = std::function<Vec3d(const Point3 &)>;
@@ -58,6 +59,7 @@ struct ConformalEmitParams
     std::string  comment;
     std::string  speed_marker;
     double       taper_length  = 0.;
+    float       *last_width = nullptr;
 };
 
 using DepositFn = std::function<void(const Vec3d &, const Vec3d &, double)>;

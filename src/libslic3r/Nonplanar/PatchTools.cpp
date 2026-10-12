@@ -4,6 +4,7 @@
 #include "ConformalShells.hpp"
 #include "HeadEnvelope.hpp"
 #include "Seams.hpp"
+#include "ShellPaths.hpp"
 #include "SurfaceClip.hpp"
 
 #include "libslic3r/BoundingBox.hpp"
@@ -445,21 +446,25 @@ Polylines fill_sparse(const ExPolygons &area, InfillPattern pattern, double spac
 }
 
 void lift_polylines(const Polylines &polylines, const ExtrusionPath &proto, const LiftFn &at, double host_z, double resample,
-                    int patch_id, int shell, ExtrusionEntitiesPtr &out)
+                    int patch_id, int shell, ExtrusionEntitiesPtr &out, const std::vector<std::vector<float>> *widths)
 {
-    for (const Polyline &pl : polylines) {
+    for (size_t ipl = 0; ipl < polylines.size(); ++ipl) {
+        const Polyline           &pl    = polylines[ipl];
+        const std::vector<float> *width = widths != nullptr ? &(*widths)[ipl] : nullptr;
         Points3            pts;
-        std::vector<float> heights;
+        std::vector<float> heights, bead_widths;
         auto flush = [&]() {
             if (pts.size() >= 2) {
                 auto *path = new ExtrusionPathConformal(Polyline3(pts), proto, std::move(heights));
-                path->patch_id = patch_id;
-                path->shell    = shell;
+                path->bead_width = std::move(bead_widths);
+                path->patch_id   = patch_id;
+                path->shell      = shell;
                 path->simplify(0.01);
                 out.emplace_back(path);
             }
             pts.clear();
             heights.clear();
+            bead_widths.clear();
         };
         for (size_t i = 0; i + 1 < pl.points.size(); ++i) {
             const Vec2d a = unscale(pl.points[i]), b = unscale(pl.points[i + 1]);
@@ -472,6 +477,8 @@ void lift_polylines(const Polylines &polylines, const ExtrusionPath &proto, cons
                     flush();
                     continue;
                 }
+                if (width != nullptr)
+                    bead_widths.emplace_back((*width)[i] + float(double(j) / n) * ((*width)[i + 1] - (*width)[i]));
                 pts.emplace_back(coord_t(scale_(p.x())), coord_t(scale_(p.y())), coord_t(scale_(z - host_z)));
                 heights.emplace_back(bead);
             }
@@ -512,39 +519,47 @@ void cut_into_bands(const ExtrusionEntitiesPtr &paths, double pitch, double tole
         const Points3 &src = path->polyline.points;
         auto point = [](const Point3 &p) { return Vec3d(unscale<double>(p.x()), unscale<double>(p.y()), unscale<double>(p.z())); };
 
+        const bool         widths = !path->bead_width.empty();
         Points3            pts;
-        std::vector<float> heights;
+        std::vector<float> heights, bead_widths;
         double             lo = 0., hi = 0.;
-        auto start = [&](const Vec3d &p, float h) {
+        auto start = [&](const Vec3d &p, float h, float w) {
             pts.assign(1, Point3(coord_t(scale_(p.x())), coord_t(scale_(p.y())), coord_t(scale_(p.z()))));
             heights.assign(1, h);
+            bead_widths.assign(widths ? 1 : 0, w);
             lo = hi = p.z();
         };
-        auto add = [&](const Vec3d &p, float h) {
+        auto add = [&](const Vec3d &p, float h, float w) {
             pts.emplace_back(coord_t(scale_(p.x())), coord_t(scale_(p.y())), coord_t(scale_(p.z())));
             heights.emplace_back(h);
+            if (widths)
+                bead_widths.emplace_back(w);
             lo = std::min(lo, p.z());
             hi = std::max(hi, p.z());
         };
         auto flush = [&]() {
             if (pts.size() >= 2) {
-                auto *piece     = new ExtrusionPathConformal(Polyline3(pts), *path, std::vector<float>(heights));
-                piece->patch_id = path->patch_id;
-                piece->shell    = path->shell;
+                auto *piece       = new ExtrusionPathConformal(Polyline3(pts), *path, std::vector<float>(heights));
+                piece->bead_width = bead_widths;
+                piece->patch_id   = path->patch_id;
+                piece->shell      = path->shell;
                 sink(band_of(lo), piece);
             }
         };
 
-        start(point(src.front()), path->bead_height.front());
+        auto width_at = [&](size_t i) { return widths ? path->bead_width[i] : 0.f; };
+        start(point(src.front()), path->bead_height.front(), width_at(0));
         for (size_t i = 1; i < src.size(); ++i) {
             Vec3d       a  = point(pts.back());
             float       ha = heights.back();
+            float       wa = widths ? bead_widths.back() : 0.f;
             const Vec3d b  = point(src[i]);
             const float hb = path->bead_height[i];
-            bool snapped = false;
+            const float wb = width_at(i);
+            bool        snapped = false;
             for (int guard = 0; guard < 10000; ++guard) {
                 if (fits(std::min(lo, b.z()), std::max(hi, b.z()))) {
-                    add(b, hb);
+                    add(b, hb, wb);
                     break;
                 }
                 if (cut_rank && !snapped) {
@@ -567,11 +582,15 @@ void cut_into_bands(const ExtrusionEntitiesPtr &paths, double pitch, double tole
                     if (cut > 0) {
                         Points3            tail(pts.begin() + cut, pts.end());
                         std::vector<float> tail_h(heights.begin() + cut, heights.end());
+                        std::vector<float> tail_w(widths ? bead_widths.begin() + cut : bead_widths.end(), bead_widths.end());
                         pts.resize(cut + 1);
                         heights.resize(cut + 1);
+                        if (widths)
+                            bead_widths.resize(cut + 1);
                         flush();
-                        pts     = std::move(tail);
-                        heights = std::move(tail_h);
+                        pts         = std::move(tail);
+                        heights     = std::move(tail_h);
+                        bead_widths = std::move(tail_w);
                         lo = std::numeric_limits<double>::infinity();
                         hi = -lo;
                         for (const Point3 &q : pts) {
@@ -580,6 +599,7 @@ void cut_into_bands(const ExtrusionEntitiesPtr &paths, double pitch, double tole
                         }
                         a  = point(pts.back());
                         ha = heights.back();
+                        wa = widths ? bead_widths.back() : 0.f;
                         continue;
                     }
                 }
@@ -591,12 +611,14 @@ void cut_into_bands(const ExtrusionEntitiesPtr &paths, double pitch, double tole
                 }
                 const Vec3d cut = a + t0 * (b - a);
                 const float hc  = ha + float(t0) * (hb - ha);
+                const float wc  = wa + float(t0) * (wb - wa);
                 if (t0 > 0.)
-                    add(cut, hc);
+                    add(cut, hc, wc);
                 flush();
-                start(cut, hc);
+                start(cut, hc, wc);
                 a  = cut;
                 ha = hc;
+                wa = wc;
             }
         }
         flush();
@@ -606,7 +628,7 @@ void cut_into_bands(const ExtrusionEntitiesPtr &paths, double pitch, double tole
 void cut_by_colour(const ExtrusionEntitiesPtr &paths, const std::function<int(const Vec3d &)> &colour, double pullback,
                    double min_length, const std::function<void(int colour, ExtrusionPathConformal *piece)> &sink)
 {
-    struct Sample { Vec3d p; float h; };
+    struct Sample { Vec3d p; float h; float w; };
     auto point = [](const Point3 &p) { return Vec3d(unscale<double>(p.x()), unscale<double>(p.y()), unscale<double>(p.z())); };
     auto trim = [](std::vector<Sample> &run, double length, bool front) {
         if (front)
@@ -619,6 +641,7 @@ void cut_by_colour(const ExtrusionEntitiesPtr &paths, const std::function<int(co
                 const double t = length / l;
                 last.p = last.p + t * (prev.p - last.p);
                 last.h = last.h + float(t) * (prev.h - last.h);
+                last.w = last.w + float(t) * (prev.w - last.w);
                 break;
             }
             length -= l;
@@ -632,7 +655,9 @@ void cut_by_colour(const ExtrusionEntitiesPtr &paths, const std::function<int(co
         if (path == nullptr || path->polyline.points.size() < 2)
             continue;
         const Points3       &src = path->polyline.points;
-        std::vector<Sample>  run{ { point(src.front()), path->bead_height.front() } };
+        const bool           widths = path->bead_width.size() == src.size();
+        auto width_at = [&](size_t i) { return widths ? path->bead_width[i] : 0.f; };
+        std::vector<Sample>  run{ { point(src.front()), path->bead_height.front(), width_at(0) } };
         int                  run_colour = colour(run.front().p);
         bool                 cut_front  = false;
         auto flush = [&](bool cut_back) {
@@ -645,19 +670,22 @@ void cut_by_colour(const ExtrusionEntitiesPtr &paths, const std::function<int(co
                 length += (run[i].p - run[i - 1].p).head<2>().norm();
             if (run.size() >= 2 && length >= min_length) {
                 Points3            pts;
-                std::vector<float> heights;
+                std::vector<float> heights, bead_widths;
                 for (const Sample &s : run) {
                     pts.emplace_back(coord_t(scale_(s.p.x())), coord_t(scale_(s.p.y())), coord_t(scale_(s.p.z())));
                     heights.emplace_back(s.h);
+                    if (widths)
+                        bead_widths.emplace_back(s.w);
                 }
-                auto *piece     = new ExtrusionPathConformal(Polyline3(std::move(pts)), *path, std::move(heights));
+                auto *piece       = new ExtrusionPathConformal(Polyline3(std::move(pts)), *path, std::move(heights));
+                piece->bead_width = std::move(bead_widths);
                 piece->patch_id = path->patch_id;
                 piece->shell    = path->shell;
                 sink(run_colour, piece);
             }
         };
         for (size_t i = 1; i < src.size(); ++i) {
-            const Sample b{ point(src[i]), path->bead_height[i] };
+            const Sample b{ point(src[i]), path->bead_height[i], width_at(i) };
             const int    cb = colour(b.p);
             if (cb != run_colour) {
                 const Sample a = run.back();
@@ -666,7 +694,7 @@ void cut_by_colour(const ExtrusionEntitiesPtr &paths, const std::function<int(co
                     const double t = 0.5 * (t0 + t1);
                     (colour(a.p + t * (b.p - a.p)) == run_colour ? t0 : t1) = t;
                 }
-                const Sample cut{ a.p + t0 * (b.p - a.p), a.h + float(t0) * (b.h - a.h) };
+                const Sample cut{ a.p + t0 * (b.p - a.p), a.h + float(t0) * (b.h - a.h), a.w + float(t0) * (b.w - a.w) };
                 run.push_back(cut);
                 flush(true);
                 run.assign(1, cut);
@@ -682,6 +710,21 @@ void cut_by_colour(const ExtrusionEntitiesPtr &paths, const std::function<int(co
 namespace {
 constexpr double MinBandReach = 0.05;
 constexpr float  Inf          = std::numeric_limits<float>::infinity();
+}
+
+namespace {
+constexpr double WallSlope = 60.;
+
+}
+
+bool spans_wall(const HeightField &surface, const Vec2d &p)
+{
+    const Vec2d o  = (p - surface.origin()) / surface.pitch();
+    const int   ix = std::clamp(int(std::floor(o.x())), 0, surface.nx() - 2);
+    const int   iy = std::clamp(int(std::floor(o.y())), 0, surface.ny() - 2);
+    const float z[4] = { surface.at(ix, iy), surface.at(ix + 1, iy), surface.at(ix, iy + 1), surface.at(ix + 1, iy + 1) };
+    static const double rise = std::tan(Geometry::deg2rad(WallSlope)) * std::sqrt(2.);
+    return *std::max_element(z, z + 4) - *std::min_element(z, z + 4) > rise * surface.pitch();
 }
 
 void band_schedule(const HeadEnvelope &head, double shell_height, double max_patch_height, double &pitch, double &tolerance)
@@ -1158,7 +1201,8 @@ std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const Heig
                     z             = s - drop;
                     return !std::isnan(s) && z >= floor - 0.01 && z <= roof + 0.01;
                 };
-                order_band_pieces(shell.entities, cursor, roads, glide_z, seams->max_glide, G.pitch(), hidden);
+                order_band_pieces(shell.entities, cursor, roads, glide_z, seams->max_glide, G.pitch(), hidden, floor,
+                                  (bd.band + 1) * pitch + tolerance);
                 if (k > 0 && !shell.entities.empty() && !p.shell_paths[k - 1].entities.empty())
                     glide_from(*static_cast<ExtrusionPathConformal *>(shell.entities.front()),
                                static_cast<const ExtrusionPathConformal *>(p.shell_paths[k - 1].entities.back())->polyline.points.back(),

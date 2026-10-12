@@ -725,6 +725,7 @@ void ExtrusionPathConformal::reverse()
 {
     this->polyline.reverse();
     std::reverse(this->bead_height.begin(), this->bead_height.end());
+    std::reverse(this->bead_width.begin(), this->bead_width.end());
     std::reverse(this->tool_axis.begin(), this->tool_axis.end());
 }
 
@@ -749,7 +750,9 @@ void ExtrusionPathConformal::simplify(double tolerance)
             const double t    = len > 0. ? std::clamp((pts[i].cast<double>() - pa).dot(ab) / len, 0., 1.) : 0.;
             const double dist = (pa + t * ab - pts[i].cast<double>()).norm();
             const double dh   = std::abs(scale_(this->bead_height[i] - (1. - t) * this->bead_height[a] - t * this->bead_height[b]));
-            const double d    = std::max(dist, dh);
+            const double dw   = this->bead_width.empty() ? 0. :
+                                    std::abs(scale_(this->bead_width[i] - (1. - t) * this->bead_width[a] - t * this->bead_width[b]));
+            const double d    = std::max({ dist, dh, dw });
             if (d > worst) {
                 worst     = d;
                 worst_idx = i;
@@ -764,10 +767,13 @@ void ExtrusionPathConformal::simplify(double tolerance)
     Points3            new_pts;
     std::vector<float> new_heights;
     std::vector<Vec3f> new_axes;
+    std::vector<float> new_widths;
     for (size_t i = 0; i < pts.size(); ++i)
         if (keep[i]) {
             new_pts.emplace_back(pts[i]);
             new_heights.emplace_back(this->bead_height[i]);
+            if (!this->bead_width.empty())
+                new_widths.emplace_back(this->bead_width[i]);
             if (!this->tool_axis.empty())
                 new_axes.emplace_back(this->tool_axis[i]);
         }
@@ -775,6 +781,7 @@ void ExtrusionPathConformal::simplify(double tolerance)
     this->polyline.fitting_result.clear();
     this->bead_height     = std::move(new_heights);
     this->tool_axis       = std::move(new_axes);
+    this->bead_width      = std::move(new_widths);
 }
 
 }

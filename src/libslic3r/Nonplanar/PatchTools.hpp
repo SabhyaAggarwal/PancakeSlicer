@@ -72,7 +72,7 @@ Polylines fill_sparse(const ExPolygons &area, InfillPattern pattern, double spac
 using LiftFn = std::function<bool(const Vec2d &p, double &z, float &bead_height)>;
 
 void lift_polylines(const Polylines &polylines, const ExtrusionPath &proto, const LiftFn &at, double host_z, double resample,
-                    int patch_id, int shell, ExtrusionEntitiesPtr &out);
+                    int patch_id, int shell, ExtrusionEntitiesPtr &out, const std::vector<std::vector<float>> *widths = nullptr);
 
 double head_band_height(const HeadEnvelope &head);
 
@@ -129,5 +129,7 @@ std::vector<std::pair<size_t, size_t>> split_by_colour(ConformalResult &result, 
 std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const HeightField &S, const std::vector<double> &layer_z,
                                              double pitch, double tolerance, const BandSeams *seams = nullptr,
                                              bool host_above = false, int patch_offset = 0);
+
+bool spans_wall(const HeightField &surface, const Vec2d &p);
 
 }

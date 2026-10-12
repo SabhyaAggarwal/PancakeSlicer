@@ -110,6 +110,11 @@ ExPolygons candidate_top_area(const PrintObject &object, size_t region_id)
     return offset_ex(union_ex(offset(tops, seam)), -seam);
 }
 
+constexpr size_t ContourLoops = 8;
+constexpr int ContourRefine = 4;
+constexpr double LengthwiseMaxLines = 4.;
+constexpr double LengthwiseMinAspect = 4.;
+
 void split_by_colour(ConformalResult &result, std::vector<HeightField> &planar_tops, std::vector<HeightField> &stack_layers,
                      std::vector<ExPolygons> &shell_areas,
                      std::vector<ExPolygons> &fill_areas, std::vector<Point> &seams, std::vector<Polyline> &seam_lines,
@@ -135,59 +140,183 @@ void split_by_colour(ConformalResult &result, std::vector<HeightField> &planar_t
     seam_lines  = std::move(lines);
 }
 
-struct WidthRun
+struct WidthRoads
 {
-    Polyline polyline;
-    float    width;
+    Polylines                       polylines;
+    std::vector<std::vector<float>> widths;
 };
 
-std::vector<WidthRun> ribbon_fill(const HeightField &surface, const ExPolygons &area, double drop, double strip_height, const Flow &flow,
-                                  double layer_height)
+void arachne_roads(const ExPolygon &piece, const Flow &flow, double layer_height, size_t max_loops, WidthRoads &out, Polygons *inner = nullptr)
 {
-    std::map<int, Mask> strips;
-    for (size_t n = 0; n < surface.data().size(); ++n)
-        if (const float s = surface.data()[n]; !std::isnan(s)) {
-            Mask &mask = strips[int(std::floor((s - drop) / strip_height))];
-            mask.resize(surface.data().size(), 0);
-            mask[n] = 1;
-        }
-    const coord_t               bead = coord_t(scale_(flow.spacing()));
+    const float    eps     = float(scale_(0.005));
+    const Polygons outline = offset(offset_ex(expolygons_simplify({ piece }, scale_(0.01)), -eps), eps);
+    if (outline.empty())
+        return;
+    const coord_t                bead = coord_t(scale_(flow.spacing()));
     Arachne::WallToolPathsParams params;
-    params.min_bead_width                   = float(0.85 * flow.width());
+    params.min_bead_width                   = float(0.5 * flow.width());
     params.min_feature_size                 = float(0.25 * flow.nozzle_diameter());
-    params.wall_transition_length           = float(flow.nozzle_diameter());
+    params.wall_transition_length           = float(3. * flow.nozzle_diameter());
     params.wall_transition_angle            = 10.f;
-    params.wall_transition_filter_deviation = float(0.25 * flow.nozzle_diameter());
+    params.wall_transition_filter_deviation = float(flow.spacing());
     params.wall_distribution_count          = 1;
-    std::vector<WidthRun> out;
-    for (const auto &[strip, mask] : strips)
-        for (const ExPolygon &piece : intersection_ex(area, mask_to_expolygons(mask, surface))) {
-            const float    eps     = float(scale_(0.005));
-            const Polygons outline = offset(offset_ex(expolygons_simplify({ piece }, scale_(0.01)), -eps), eps);
-            if (outline.empty())
-                continue;
-            const BoundingBox bb    = get_extents(outline);
-            const size_t      loops = size_t(std::max(bb.size().x(), bb.size().y()) / std::max<coord_t>(bead, 1)) + 1;
-            Arachne::WallToolPaths paths(outline, bead, bead, loops, 0, layer_height, params);
-            for (const Arachne::VariableWidthLines &lines : paths.getToolPaths())
-                for (const Arachne::ExtrusionLine &line : lines) {
-                    if (line.junctions.size() < 2)
-                        continue;
-                    WidthRun run{ Polyline(), 0.f };
-                    for (size_t i = 0; i + 1 < line.junctions.size(); ++i) {
-                        const float w = float(unscale<double>(0.5 * (line.junctions[i].w + line.junctions[i + 1].w)));
-                        if (run.polyline.points.empty() || std::abs(w - run.width) > 0.1f * run.width) {
-                            if (run.polyline.points.size() >= 2)
-                                out.emplace_back(std::move(run));
-                            run = WidthRun{ Polyline(), w };
-                            run.polyline.points.emplace_back(line.junctions[i].p);
-                        }
-                        run.polyline.points.emplace_back(line.junctions[i + 1].p);
-                    }
-                    if (run.polyline.points.size() >= 2)
-                        out.emplace_back(std::move(run));
-                }
+    const BoundingBox      bb    = get_extents(outline);
+    const size_t           loops = max_loops > 0 ? max_loops : size_t(std::max(bb.size().x(), bb.size().y()) / std::max<coord_t>(bead, 1)) + 1;
+    Arachne::WallToolPaths paths(outline, bead, bead, loops, 0, layer_height, params);
+
+    std::vector<const Arachne::ExtrusionLine *> lines;
+    for (const Arachne::VariableWidthLines &inset : paths.getToolPaths())
+        for (const Arachne::ExtrusionLine &line : inset)
+            if (line.junctions.size() >= 2)
+                lines.emplace_back(&line);
+    std::stable_sort(lines.begin(), lines.end(), [](const auto *a, const auto *b) { return a->inset_idx > b->inset_idx; });
+    const float      to_width = float(flow.width() - flow.spacing());
+    const double     link_max = 2. * flow.spacing();
+    const ExPolygons link_area{ piece };
+    std::optional<Point> last;
+    while (!lines.empty()) {
+        size_t best = 0;
+        double best_d = std::numeric_limits<double>::max();
+        for (size_t i = 0; i < lines.size() && lines[i]->inset_idx == lines.front()->inset_idx; ++i) {
+            const auto &js = lines[i]->junctions;
+            double      d  = 0.;
+            if (last) {
+                d = std::min((js.front().p - *last).cast<double>().squaredNorm(), (js.back().p - *last).cast<double>().squaredNorm());
+                if (lines[i]->is_closed)
+                    for (size_t j = 0; j + 1 < js.size(); ++j)
+                        d = std::min(d, Line(js[j].p, js[j + 1].p).distance_to_squared(*last));
+            }
+            if (d < best_d) {
+                best_d = d;
+                best   = i;
+            }
         }
+        const Arachne::ExtrusionLine &line = *lines[best];
+        lines.erase(lines.begin() + best);
+        Polyline           pl;
+        std::vector<float> w;
+        for (const Arachne::ExtrusionJunction &j : line.junctions) {
+            pl.points.emplace_back(j.p);
+            w.emplace_back(float(unscale<double>(j.w)) + to_width);
+        }
+        if (line.is_closed) {
+            size_t start = 0;
+            if (last) {
+                double best_seg = std::numeric_limits<double>::max();
+                Point  foot;
+                for (size_t j = 0; j + 1 < pl.points.size(); ++j) {
+                    Point        f;
+                    const double d = Line(pl.points[j], pl.points[j + 1]).distance_to_squared(*last, &f);
+                    if (d < best_seg) {
+                        best_seg = d;
+                        start    = j + 1;
+                        foot     = f;
+                    }
+                }
+                const double seg = (pl.points[start] - pl.points[start - 1]).cast<double>().norm();
+                if (const double t = seg > 0. ? (foot - pl.points[start - 1]).cast<double>().norm() / seg : 0.; t > 0.01 && t < 0.99) {
+                    pl.points.insert(pl.points.begin() + start, foot);
+                    w.insert(w.begin() + start, float(w[start - 1] + t * (w[start] - w[start - 1])));
+                } else if (t <= 0.01)
+                    --start;
+            }
+            pl.points.pop_back();
+            w.pop_back();
+            start %= pl.points.size();
+            std::rotate(pl.points.begin(), pl.points.begin() + start, pl.points.end());
+            std::rotate(w.begin(), w.begin() + start, w.end());
+            pl.points.emplace_back(pl.points.front());
+            w.emplace_back(w.front());
+            double cut = scale_(flow.spacing());
+            while (pl.points.size() > 2 && cut > 0.) {
+                const double seg = (pl.points.back() - pl.points[pl.points.size() - 2]).cast<double>().norm();
+                if (seg > cut) {
+                    const Vec2d a = pl.points[pl.points.size() - 2].cast<double>(), b = pl.points.back().cast<double>();
+                    pl.points.back() = (b + (a - b) * (cut / seg)).cast<coord_t>();
+                    break;
+                }
+                cut -= seg;
+                pl.points.pop_back();
+                w.pop_back();
+            }
+        } else if (last && (pl.points.back() - *last).cast<double>().squaredNorm() < (pl.points.front() - *last).cast<double>().squaredNorm()) {
+            pl.reverse();
+            std::reverse(w.begin(), w.end());
+        }
+        if (last && !out.polylines.empty() && (pl.points.front() - *last).cast<double>().norm() <= scale_(link_max) &&
+            diff_pl(Polylines{ Polyline(*last, pl.points.front()) }, offset_ex(link_area, float(scale_(0.25 * flow.spacing())))).empty()) {
+            append(out.polylines.back().points, std::move(pl.points));
+            append(out.widths.back(), std::move(w));
+        } else {
+            if (!out.polylines.empty() && out.polylines.back().length() < scale_(link_max)) {
+                out.polylines.pop_back();
+                out.widths.pop_back();
+            }
+            out.polylines.emplace_back(std::move(pl));
+            out.widths.emplace_back(std::move(w));
+        }
+        last = out.polylines.back().points.back();
+    }
+    if (!out.polylines.empty() && out.polylines.back().length() < scale_(link_max)) {
+        out.polylines.pop_back();
+        out.widths.pop_back();
+    }
+    if (inner != nullptr && max_loops > 0)
+        append(*inner, paths.getInnerContour());
+}
+
+void contour_fill(const HeightField &surface, const ExPolygons &area, double drop, double strip_height, double strip_offset, const Flow &flow, double layer_height,
+                  double angle, bool outer, double z, WidthRoads &roads, std::vector<Polylines> &lines)
+{
+    const HeightField fine(BoundingBoxf(surface.origin(), surface.node(surface.nx() - 1, surface.ny() - 1)), surface.pitch() / ContourRefine);
+    std::map<int, Mask> strips;
+    for (int iy = 0; iy < fine.ny(); ++iy)
+        for (int ix = 0; ix < fine.nx(); ++ix)
+            if (const float s = surface.sample(fine.node(ix, iy)); !std::isnan(s) && !spans_wall(surface, fine.node(ix, iy))) {
+                Mask &mask = strips[int(std::floor((s - drop - strip_offset) / strip_height))];
+                mask.resize(fine.data().size(), 0);
+                mask[size_t(iy) * fine.nx() + ix] = 1;
+            }
+    for (const auto &[strip, mask] : strips)
+        for (const ExPolygon &piece : expolygons_simplify(intersection_ex(area, mask_to_expolygons(mask, fine)), scale_(0.5 * fine.pitch()))) {
+            Polygons inner;
+            arachne_roads(piece, flow, layer_height, ContourLoops, roads, &inner);
+            const ExPolygons middle = intersection_ex(union_ex(inner), ExPolygons{ piece });
+            if (middle.empty())
+                continue;
+            double a = angle;
+            {
+                const BoundingBox bb  = get_extents(middle);
+                const Vec2d       lo  = (unscale(bb.min) - surface.origin()) / surface.pitch();
+                const Vec2d       hi  = (unscale(bb.max) - surface.origin()) / surface.pitch();
+                const int         ix0 = std::clamp(int(std::floor(lo.x())), 0, surface.nx() - 1), iy0 = std::clamp(int(std::floor(lo.y())), 0, surface.ny() - 1);
+                const int         ix1 = std::clamp(int(std::ceil(hi.x())), 0, surface.nx() - 1), iy1 = std::clamp(int(std::ceil(hi.y())), 0, surface.ny() - 1);
+                HeightField       local  = crop(surface, ix0, iy0, ix1, iy1);
+                const Mask        inside = rasterize(middle, local);
+                for (size_t n = 0; n < inside.size(); ++n)
+                    if (!inside[n])
+                        local.data()[n] = HeightField::NoData;
+                contour_line_angle(local, a, 0.5);
+            }
+            if (Polylines pl = fill_solid(middle, outer ? ipMonotonic : ipRectilinear, flow.spacing(), a, outer, flow, z); !pl.empty())
+                append(lines, link_paths(chain_polylines(std::move(pl)), offset_ex(middle, float(scale_(0.5 * flow.spacing()))), flow.spacing(),
+                                             MaxGlide));
+        }
+}
+
+ExPolygons lengthwise_strips(const ExPolygons &area, double line_width)
+{
+    ExPolygons out;
+    for (ExPolygon &narrow : diff_ex(area, opening_ex(area, float(scale_(0.5 * LengthwiseMaxLines * line_width))))) {
+        const double a    = narrow.area() * SCALING_FACTOR * SCALING_FACTOR;
+        const double p    = narrow.contour.length() * SCALING_FACTOR;
+        const double disc = 0.0625 * p * p - a;
+        if (disc <= 0.)
+            continue;
+        const double l = 0.25 * p + std::sqrt(disc), w = std::max(0.25 * p - std::sqrt(disc), line_width);
+        if (l >= LengthwiseMinAspect * w)
+            out.emplace_back(std::move(narrow));
+    }
     return out;
 }
 
@@ -210,24 +339,14 @@ bool outline_is_contour(const ConformalPatch &patch, double tolerance)
     return hi >= lo && hi - lo <= tolerance;
 }
 
-constexpr double WallSlope = 60.;
-
-bool spans_wall(const HeightField &surface, const Vec2d &p)
-{
-    const Vec2d o  = (p - surface.origin()) / surface.pitch();
-    const int   ix = std::clamp(int(std::floor(o.x())), 0, surface.nx() - 2);
-    const int   iy = std::clamp(int(std::floor(o.y())), 0, surface.ny() - 2);
-    const float z[4] = { surface.at(ix, iy), surface.at(ix + 1, iy), surface.at(ix, iy + 1), surface.at(ix + 1, iy + 1) };
-    static const double rise = std::tan(Geometry::deg2rad(WallSlope)) * std::sqrt(2.);
-    return *std::max_element(z, z + 4) - *std::min_element(z, z + 4) > rise * surface.pitch();
-}
-
 constexpr double BandedTopWidth = 0.75;
 
 struct BandedFill
 {
-    bool   strips       = false;
-    double strip_height = 2.;
+    bool       strips       = false;
+    double     strip_height = 0.;
+    double     strip_offset = 0.;
+    ExPolygons lengthwise;
     const HeightField *layers = nullptr;
     int                sparse = 0;
     double             density = 1.;
@@ -256,13 +375,20 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
     const double drop = (patch.shells - k) * patch.shell_height;
     const bool   surface_spaced = region.config().nonplanar_surface_spacing.value && !fill.spiral && !(banded != nullptr && banded->strips) && !sparse;
     std::vector<Polylines> linked;
+    WidthRoads             roads;
     if (sparse) {
-        for (Polyline &pl : fill_sparse(area, banded->pattern, flow.spacing(), banded->density, banded->angle + (k % 2) * 0.5 * PI, false,
+        const ExPolygons sparse_area = banded->lengthwise.empty() ? area : union_ex(area, banded->lengthwise);
+        for (Polyline &pl : fill_sparse(sparse_area, banded->pattern, flow.spacing(), banded->density, banded->angle + (k % 2) * 0.5 * PI, false,
                                         flow, k * patch.shell_height))
             linked.push_back({ std::move(pl) });
-    } else if (banded == nullptr || !banded->strips)
+    } else if (banded != nullptr && banded->strips)
+        contour_fill(patch.surface, area, drop, banded->strip_height, banded->strip_offset, flow, patch.shell_height, fill.angle, outer, host_z, roads, linked);
+    else if (!area.empty())
         linked = shell_polylines(area, fill, outer ? ipMonotonic : ipRectilinear, flow.spacing(), outer, flow, host_z, start, MaxGlide,
                                  surface_spaced ? &patch.surface : nullptr, &seam_line);
+    if (banded != nullptr && !sparse)
+        for (const ExPolygon &strip : banded->lengthwise)
+            arachne_roads(strip, flow, patch.shell_height, 0, roads);
 
     const ExtrusionPath proto(role, flow.mm3_per_mm(), float(flow.width()), float(patch.shell_height));
     auto at = [&](const Vec2d &p, double &z, float &bead) {
@@ -293,15 +419,7 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
         return true;
     };
     ExtrusionEntityCollection out;
-    if (banded != nullptr && banded->strips && !sparse) {
-        for (const WidthRun &run : ribbon_fill(patch.surface, area, drop, banded->strip_height, flow, patch.shell_height)) {
-            const Flow          wflow = flow.with_spacing(run.width);
-            const ExtrusionPath wproto(role, wflow.mm3_per_mm(), float(wflow.width()), float(patch.shell_height));
-            lift_polylines({ run.polyline }, wproto, at, host_z, resample, patch.id, k - 1, out.entities);
-        }
-        out.no_sort = true;
-        return out;
-    }
+    lift_polylines(roads.polylines, proto, at, host_z, resample, patch.id, k - 1, out.entities, &roads.widths);
     lift_linked(linked, proto, at, host_z, resample, patch.id, k - 1, out.entities);
     if (from != nullptr && !out.entities.empty())
         prepend_glide(*static_cast<ExtrusionPathConformal *>(out.entities.front()), *from,
@@ -719,13 +837,13 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
         return result;
     }
 
-    double band_pitch = 1., band_tolerance = 0.;
     const double material_max_patch_height = settings.banded ?
         multi_material_patch_height(object, head, settings.max_patch_height) : settings.max_patch_height;
     double band_max_patch_height = material_max_patch_height;
     if (settings.banded && repair != nullptr)
         for (const RepairHints::OrderBand &band : repair->order_bands)
             band_max_patch_height = std::min(band_max_patch_height > 0. ? band_max_patch_height : Inf, band.height);
+    double band_pitch = 0., band_tolerance = 0.;
     if (settings.banded)
         band_schedule(head, h_c, band_max_patch_height, band_pitch, band_tolerance);
 
@@ -742,14 +860,15 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
             const std::vector<ShellFill> fills = plan_shell_fills(patch, region.config(), line_width);
             std::vector<ShellFill> banded_fills = fills;
             BandedFill             banded;
-            banded.strip_height = 2. * band_pitch;
+            banded.strip_height = band_pitch;
+            banded.strip_offset = 0.5 * band_tolerance;
             if (settings.banded && region.config().nonplanar_top_pattern.value == NonplanarTopPattern::Contour) {
                 double angle = 0.;
                 for (size_t k = 0; k < banded_fills.size(); ++k)
                     banded_fills[k] = ShellFill();
                 if (contour_line_angle(patch.surface, angle, 0.9))
                     for (ShellFill &f : banded_fills) {
-                        f.angle   = angle;
+                        f.angle = angle;
                         f.outline = false;
                     }
                 else if (outline_is_contour(patch, h_c))
@@ -757,8 +876,13 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
                         banded_fills[k].spiral = true;
                         banded_fills[k].outward = (banded_fills.size() - 1 - k) % 2 == 1;
                     }
-                else
+                else {
                     banded.strips = true;
+                    for (size_t k = 0; k < banded_fills.size(); ++k)
+                        banded_fills[k].angle = fills[k].angle;
+                }
+                if (!banded_fills.front().spiral)
+                    banded.lengthwise = lengthwise_strips(area, line_width);
             }
             if (settings.shells > settings.top_shells) {
                 banded.layers  = &stack_layers[idx];
@@ -767,6 +891,7 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
                 banded.pattern = settings.sparse_pattern;
                 banded.angle   = settings.sparse_angle;
             }
+            const ExPolygons fill_area = banded.lengthwise.empty() ? area : diff_ex(area, banded.lengthwise);
             const SeamPosition          seam_position = object.config().seam_position.value;
             patch.shell_paths.reserve(patch.shells);
             const Point                 seam          = shell_seam(area, patch.surface, seam_position, unsigned(patch.id), &paint);
@@ -780,7 +905,7 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
                 if (settings.banded)
                     fill = banded_fills[size_t(k - 1)];
                 const Point start = fill.spiral || !from ? seam : from->to_point();
-                patch.shell_paths.emplace_back(make_shell(object, patch, planar_tops[idx], area, k, fill, start, from ? &*from : nullptr, host_z,
+                patch.shell_paths.emplace_back(make_shell(object, patch, planar_tops[idx], fill_area, k, fill, start, from ? &*from : nullptr, host_z,
                                                           pitch, seam_lines[idx], settings.banded ? &banded : nullptr));
                 const ExtrusionEntitiesPtr &entities = patch.shell_paths.back().entities;
                 from.reset();

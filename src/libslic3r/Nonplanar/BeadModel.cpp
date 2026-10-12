@@ -17,6 +17,13 @@ double bead_area(double width, double height)
     return height * (width - height * (1. - 0.25 * M_PI));
 }
 
+double bead_height_for_area(double width, double area)
+{
+    const double a    = 1. - 0.25 * M_PI;
+    const double disc = width * width - 4. * a * area;
+    return (width - std::sqrt(std::max(0., disc))) / (2. * a);
+}
+
 double segment_volume(const Vec3d &a, const Vec3d &b, double width, float height_a, float height_b,
                       const Vec3d &tool_axis)
 {
