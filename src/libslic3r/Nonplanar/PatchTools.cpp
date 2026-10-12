@@ -23,6 +23,8 @@
 #include <boost/log/trivial.hpp>
 
 #include <algorithm>
+#include <tuple>
+#include <numeric>
 #include <cmath>
 #include <cstddef>
 #include <initializer_list>
@@ -1230,6 +1232,241 @@ double multi_material_patch_height(const PrintObject &object, const HeadEnvelope
     return max_patch_height > 0. ? std::min(max_patch_height, reach) : reach;
 }
 
+namespace {
+
+constexpr double SparseStub = 2.;
+
+double extruded_length(const ExtrusionPathConformal &path)
+{
+    double length = 0.;
+    for (size_t i = 0; i + 1 < path.polyline.points.size(); ++i)
+        if (path.bead_height[i] > 0.f && path.bead_height[i + 1] > 0.f)
+            length += unscale<double>((path.polyline.points[i + 1].to_point() - path.polyline.points[i].to_point()).cast<double>().norm());
+    return length;
+}
+
+constexpr double PartCell = 5.;
+
+std::vector<ConformalPatch> split_by_reach(ConformalPatch &&p, const ExPolygons &area, double floor,
+                                           const std::function<bool(const HeightField &, const Vec2d &)> &wall)
+{
+    const HeightField &G      = p.surface;
+    const Mask         inside = rasterize(area, G);
+    Mask               reach(inside.size(), 0);
+    for (int iy = 0; iy < G.ny(); ++iy)
+        for (int ix = 0; ix < G.nx(); ++ix) {
+            const size_t n = size_t(iy) * G.nx() + ix;
+            const float  z = G.at(ix, iy);
+            reach[n] = inside[n] && !std::isnan(z) && z >= floor - 0.01 && !(wall && wall(G, G.node(ix, iy)));
+        }
+    int                    count = 0;
+    const std::vector<int> label = label_components(reach, G.nx(), G.ny(), count);
+    auto component_of = [&](const ExtrusionPathConformal &path) {
+        for (const Point3 &pt : path.polyline.points) {
+            const Vec2d o  = (unscale(pt.to_point()) - G.origin()) / G.pitch();
+            const int   cx = int(std::lround(o.x())), cy = int(std::lround(o.y()));
+            for (int r = 0; r <= 2; ++r)
+                for (int iy = std::max(0, cy - r); iy <= std::min(G.ny() - 1, cy + r); ++iy)
+                    for (int ix = std::max(0, cx - r); ix <= std::min(G.nx() - 1, cx + r); ++ix)
+                        if (const int l = label[size_t(iy) * G.nx() + ix]; l >= 0)
+                            return l;
+        }
+        return 0;
+    };
+    std::vector<std::pair<size_t, ExtrusionPathConformal *>> pieces;
+    for (size_t k = 0; k < p.shell_paths.size(); ++k)
+        for (ExtrusionEntity *ee : p.shell_paths[k].entities)
+            pieces.emplace_back(k, static_cast<ExtrusionPathConformal *>(ee));
+    for (ExtrusionEntity *ee : p.ironing.entities)
+        pieces.emplace_back(p.shell_paths.size(), static_cast<ExtrusionPathConformal *>(ee));
+    std::vector<size_t> parent(pieces.size());
+    std::iota(parent.begin(), parent.end(), size_t(0));
+    auto find = [&parent](size_t i) {
+        while (parent[i] != i)
+            i = parent[i] = parent[parent[i]];
+        return i;
+    };
+    std::map<std::tuple<int, int64_t, int64_t>, size_t> owner;
+    for (size_t i = 0; i < pieces.size(); ++i) {
+        const int      l   = count > 1 ? component_of(*pieces[i].second) : 0;
+        const Points3 &pts = pieces[i].second->polyline.points;
+        auto visit = [&](const Vec2d &q) {
+            const int64_t cx = int64_t(std::floor(q.x() / PartCell)), cy = int64_t(std::floor(q.y() / PartCell));
+            for (int64_t dy = -1; dy <= 1; ++dy)
+                for (int64_t dx = -1; dx <= 1; ++dx)
+                    if (const auto it = owner.find({ l, cx + dx, cy + dy }); it != owner.end())
+                        parent[find(it->second)] = find(i);
+            owner.try_emplace({ l, cx, cy }, i);
+        };
+        for (size_t j = 0; j < pts.size(); ++j) {
+            const Vec2d q = unscale(pts[j].to_point());
+            if (j == 0)
+                visit(q);
+            else {
+                const Vec2d a = unscale(pts[j - 1].to_point());
+                const int   n = std::max(1, int(std::ceil((q - a).norm() / PartCell)));
+                for (int t = 1; t <= n; ++t)
+                    visit(a + (q - a) * (double(t) / n));
+            }
+        }
+    }
+    std::map<size_t, size_t> part_index;
+    std::vector<ConformalPatch> parts;
+    const size_t n_shells = p.shell_paths.size();
+    for (size_t i = 0; i < pieces.size(); ++i) {
+        const auto [it, inserted] = part_index.try_emplace(find(i), parts.size());
+        if (inserted) {
+            ConformalPatch &part = parts.emplace_back();
+            part.shell_paths.resize(n_shells);
+            for (ExtrusionEntityCollection &shell : part.shell_paths)
+                shell.no_sort = true;
+            part.ironing.no_sort = true;
+        }
+        ConformalPatch &part = parts[it->second];
+        (pieces[i].first < n_shells ? part.shell_paths[pieces[i].first] : part.ironing).entities.emplace_back(pieces[i].second);
+    }
+    if (parts.size() <= 1) {
+        for (ConformalPatch &part : parts) {
+            for (ExtrusionEntityCollection &shell : part.shell_paths)
+                shell.entities.clear();
+            part.ironing.entities.clear();
+        }
+        parts.clear();
+        parts.emplace_back(std::move(p));
+        return parts;
+    }
+    for (ExtrusionEntityCollection &shell : p.shell_paths)
+        shell.entities.clear();
+    p.ironing.entities.clear();
+    std::vector<int>    owner_of(size_t(G.nx()) * G.ny(), -1);
+    std::vector<size_t> queue;
+    for (size_t i = 0; i < parts.size(); ++i)
+        for (const ExtrusionEntityCollection &shell : parts[i].shell_paths)
+            for (const ExtrusionEntity *ee : shell.entities)
+                for (const Point3 &pt : static_cast<const ExtrusionPathConformal *>(ee)->polyline.points) {
+                    const Vec2d o  = (unscale(pt.to_point()) - G.origin()) / G.pitch();
+                    const int   ix = int(std::lround(o.x())), iy = int(std::lround(o.y()));
+                    if (ix >= 0 && iy >= 0 && ix < G.nx() && iy < G.ny() && owner_of[size_t(iy) * G.nx() + ix] < 0) {
+                        owner_of[size_t(iy) * G.nx() + ix] = int(i);
+                        queue.emplace_back(size_t(iy) * G.nx() + ix);
+                    }
+                }
+    for (size_t head = 0; head < queue.size(); ++head) {
+        const size_t n  = queue[head];
+        const int    ix = int(n % G.nx()), iy = int(n / G.nx());
+        for (const auto &[dx, dy] : { std::pair{ 1, 0 }, std::pair{ -1, 0 }, std::pair{ 0, 1 }, std::pair{ 0, -1 } }) {
+            const int jx = ix + dx, jy = iy + dy;
+            if (jx < 0 || jy < 0 || jx >= G.nx() || jy >= G.ny() || owner_of[size_t(jy) * G.nx() + jx] >= 0)
+                continue;
+            owner_of[size_t(jy) * G.nx() + jx] = owner_of[n];
+            queue.emplace_back(size_t(jy) * G.nx() + jx);
+        }
+    }
+    for (size_t i = 0; i < parts.size(); ++i) {
+        ConformalPatch                        &part  = parts[i];
+        std::vector<ExtrusionEntityCollection> paths   = std::move(part.shell_paths);
+        ExtrusionEntityCollection              ironing = std::move(part.ironing);
+        part             = p;
+        part.shell_paths = std::move(paths);
+        part.ironing     = std::move(ironing);
+        Mask mine(owner_of.size(), 0);
+        for (size_t n = 0; n < owner_of.size(); ++n)
+            mine[n] = owner_of[n] == int(i);
+        part.footprint = intersection_ex(p.footprint, mask_to_expolygons(mine, G));
+        part.wall_band = intersection_ex(part.footprint, p.wall_band);
+    }
+    return parts;
+}
+
+void order_band_part(ConformalPatch &p, const BandSeams &seams, size_t comp, int band, double pitch, double tolerance, Point &cursor)
+{
+    const HeightField &G      = p.surface;
+    const Mask         inside = rasterize(seams.areas[comp], G);
+    RoadGrid           roads;
+    const double       floor  = band * pitch;
+    const double       top    = (band + 1) * pitch + tolerance;
+    for (size_t k = 0; k <= p.shell_paths.size(); ++k) {
+        const bool                 ironing = k == p.shell_paths.size();
+        ExtrusionEntityCollection &shell   = ironing ? p.ironing : p.shell_paths[k];
+        const double               drop    = ironing ? 0. : double(p.shells - 1 - int(k)) * p.shell_height;
+        const bool                 hidden  = !ironing && int(k) < seams.hidden;
+        const HeightField *count = hidden && seams.layers != nullptr ? &(*seams.layers)[comp] : nullptr;
+        auto glide_z = [&](const Vec2d &q, double &z) {
+            const Vec2d o  = (q - G.origin()) / G.pitch();
+            const int   ix = int(std::lround(o.x())), iy = int(std::lround(o.y()));
+            if (ix < 0 || iy < 0 || ix >= G.nx() || iy >= G.ny() || !inside[size_t(iy) * G.nx() + ix] || (seams.wall && seams.wall(G, q)))
+                return GlideAt::No;
+            if (count != nullptr) {
+                const Vec2d c  = (q - count->origin()) / count->pitch();
+                const int   cx = int(std::lround(c.x())), cy = int(std::lround(c.y()));
+                if (cx < 0 || cy < 0 || cx >= count->nx() || cy >= count->ny() || !(count->at(cx, cy) > float(p.shells - 1 - int(k))))
+                    return GlideAt::No;
+            }
+            const float s = G.sample(q);
+            if (std::isnan(s))
+                return GlideAt::No;
+            z = s - drop;
+            if (hidden)
+                z = z < floor ? floor + tolerance : std::min(z, top);
+            return z >= floor - 0.01 ? GlideAt::Ok : GlideAt::Range;
+        };
+        const ExtrusionEntityCollection *below = nullptr;
+        for (size_t j = k; j-- > 0 && below == nullptr;) {
+            if (!p.shell_paths[j].entities.empty())
+                below = &p.shell_paths[j];
+            if (!ironing)
+                break;
+        }
+        const Point3 *from = below != nullptr ? &static_cast<const ExtrusionPathConformal *>(below->entities.back())->polyline.points.back() :
+                                                nullptr;
+        order_band_pieces(shell.entities, cursor, roads, glide_z, seams.max_glide, G.pitch(), hidden || ironing, floor, top, &G, from);
+        shell.no_sort = true;
+    }
+}
+
+void order_nearest_from_lowest(ExtrusionEntityCollection &shell)
+{
+    ExtrusionEntity *lowest_piece = nullptr;
+    coord_t          lowest_z     = std::numeric_limits<coord_t>::max();
+    for (ExtrusionEntity *ee : shell.entities) {
+        for (const Point3 &pt : static_cast<const ExtrusionPathConformal *>(ee)->polyline.points) {
+            if (pt.z() < lowest_z) {
+                lowest_z     = pt.z();
+                lowest_piece = ee;
+            }
+        }
+    }
+    ExtrusionEntitiesPtr left = std::move(shell.entities);
+    shell.entities.clear();
+    if (lowest_piece != nullptr) {
+        std::swap(*std::find(left.begin(), left.end(), lowest_piece), left.front());
+        shell.entities.push_back(left.front());
+        left.erase(left.begin());
+    }
+    while (!left.empty()) {
+        const Point last    = shell.entities.back()->last_point();
+        size_t      best    = 0;
+        bool        flip    = false;
+        double      best_d2 = std::numeric_limits<double>::max();
+        for (size_t j = 0; j < left.size(); ++j) {
+            const double d_first = (left[j]->first_point() - last).cast<double>().squaredNorm();
+            const double d_last  = (left[j]->last_point() - last).cast<double>().squaredNorm();
+            if (std::min(d_first, d_last) < best_d2) {
+                best_d2 = std::min(d_first, d_last);
+                best    = j;
+                flip    = d_last < d_first;
+            }
+        }
+        if (flip)
+            left[best]->reverse();
+        shell.entities.push_back(left[best]);
+        std::swap(left[best], left.back());
+        left.pop_back();
+    }
+    shell.no_sort = true;
+}
+
+}
 std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const HeightField &S, const std::vector<double> &layer_z,
                                              double pitch, double tolerance, const BandSeams *seams, bool host_above, int patch_offset, std::vector<size_t> *band_component)
 {
@@ -1292,6 +1529,10 @@ std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const Heig
         }
         for (size_t k = 0; k < comp.shell_paths.size(); ++k)
             cut_into_bands(comp.shell_paths[k].entities, pitch, tolerance, [&](int b, ExtrusionPathConformal *piece) {
+                if (seams != nullptr && piece->role() == erInternalInfill && extruded_length(*piece) < SparseStub * piece->width) {
+                    delete piece;
+                    return;
+                }
                 ConformalPatch &p = band(b).patch;
                 for (const Point3 &pt : piece->polyline.points) {
                     p.z_min = std::min(p.z_min, unscale<double>(pt.z()));
@@ -1348,7 +1589,6 @@ std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const Heig
     std::stable_sort(bands.begin(), bands.end(), [](const Band &a, const Band &b) { return a.band < b.band; });
     for (Band &bd : bands) {
         ConformalPatch &p = bd.patch;
-        p.id              = patch_offset + int(result.patches.size());
         p.band            = bd.band;
         const double top  = (bd.band + 1) * pitch + tolerance;
         if (host_above) {
@@ -1359,115 +1599,57 @@ std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const Heig
             p.host_layer  = it == layer_z.begin() ? 0 : size_t(it - layer_z.begin()) - 1;
         }
         const coord_t dz  = coord_t(scale_(layer_z[p.host_layer]));
-        if (seams != nullptr) {
-            const HeightField &G      = p.surface;
-            const Mask         inside = rasterize(seams->areas[bd.comp], G);
-            Point              cursor = seams->seams[bd.comp];
-            RoadGrid           roads;
-            const size_t passes_n = p.shell_paths.size() + 1;
-            for (size_t k = 0; k < passes_n; ++k) {
-                const bool                 ironing = k == p.shell_paths.size();
-                ExtrusionEntityCollection &shell   = ironing ? p.ironing : p.shell_paths[k];
-                const double drop   = ironing ? 0. : double(p.shells - 1 - int(k)) * p.shell_height;
-                const double floor  = bd.band * pitch;
-                const bool   hidden = !ironing && int(k) < seams->hidden;
-                const double roof   = hidden ? (bd.band + 1) * pitch + tolerance : Inf;
-                const HeightField *count = hidden && seams->layers != nullptr ? &(*seams->layers)[bd.comp] : nullptr;
-                auto glide_z = [&](const Vec2d &q, double &z) {
-                    const Vec2d o  = (q - G.origin()) / G.pitch();
-                    const int   ix = int(std::lround(o.x())), iy = int(std::lround(o.y()));
-                    if (ix < 0 || iy < 0 || ix >= G.nx() || iy >= G.ny() || !inside[size_t(iy) * G.nx() + ix] ||
-                        (seams->wall && seams->wall(G, q)))
-                        return false;
-                    if (count != nullptr) {
-                        const Vec2d c  = (q - count->origin()) / count->pitch();
-                        const int   cx = int(std::lround(c.x())), cy = int(std::lround(c.y()));
-                        if (cx < 0 || cy < 0 || cx >= count->nx() || cy >= count->ny() || !(count->at(cx, cy) > float(p.shells - 1 - int(k))))
-                            return false;
-                    }
-                    const float s = G.sample(q);
-                    z             = s - drop;
-                    return !std::isnan(s) && z >= floor - 0.01 && z <= roof + 0.01;
-                };
-                order_band_pieces(shell.entities, cursor, roads, glide_z, seams->max_glide, G.pitch(), hidden || ironing, floor,
-                                  (bd.band + 1) * pitch + tolerance);
-                const ExtrusionEntityCollection *below = nullptr;
-                for (size_t j = k; j-- > 0 && below == nullptr;) {
-                    if (!p.shell_paths[j].entities.empty())
-                        below = &p.shell_paths[j];
-                    if (!ironing)
-                        break;
-                }
-                if (below != nullptr && !shell.entities.empty())
-                    glide_from(*static_cast<ExtrusionPathConformal *>(shell.entities.front()),
-                               static_cast<const ExtrusionPathConformal *>(below->entities.back())->polyline.points.back(),
-                               glide_z, seams->max_glide, G.pitch());
-                shell.no_sort = true;
+        std::vector<ConformalPatch> parts;
+        if (seams != nullptr)
+            parts = split_by_reach(std::move(p), seams->areas[bd.comp], bd.band * pitch, seams->wall);
+        else
+            parts.emplace_back(std::move(p));
+        Point cursor = seams != nullptr ? seams->seams[bd.comp] : Point(0, 0);
+        for (size_t left = parts.size(); left > 0; --left) {
+            size_t next = parts.size() - left;
+            if (seams != nullptr) {
+                double best = std::numeric_limits<double>::max();
+                for (size_t i = parts.size() - left; i < parts.size(); ++i)
+                    for (const ExtrusionEntityCollection &shell : parts[i].shell_paths)
+                        for (const ExtrusionEntity *ee : shell.entities)
+                            for (const Point &end : { ee->first_point(), ee->last_point() })
+                                if (const double d = (end - cursor).cast<double>().squaredNorm(); d < best) {
+                                    best = d;
+                                    next = i;
+                                }
+                std::swap(parts[next], parts[parts.size() - left]);
             }
-            for (ExtrusionEntityCollection *pass : passes(p))
+            ConformalPatch &part = parts[parts.size() - left];
+            part.id              = patch_offset + int(result.patches.size());
+            if (seams != nullptr)
+                order_band_part(part, *seams, bd.comp, bd.band, pitch, tolerance, cursor);
+            for (ExtrusionEntityCollection *pass : passes(part))
                 for (ExtrusionEntity *ee : pass->entities) {
                     auto *path     = static_cast<ExtrusionPathConformal *>(ee);
-                    path->patch_id = p.id;
+                    path->patch_id = part.id;
                     for (Point3 &pt : path->polyline.points)
                         pt.z() -= dz;
                 }
+            if (seams == nullptr)
+                for (ExtrusionEntityCollection *pass : passes(part))
+                    order_nearest_from_lowest(*pass);
+            if (part.z_min > part.z_max)
+                part.z_min = part.z_max;
+            ConformalPatch &comp = components[bd.comp];
+            comp.host_layer      = std::max(comp.host_layer, part.host_layer);
+            if (band_component != nullptr)
+                band_component->emplace_back(bd.comp);
+            PatchDiagnostics diag = bd.diag;
+            diag.patch_id          = part.id;
+            diag.rms_surface_error = bd.err_n > 0 ? std::sqrt(bd.err_sq / bd.err_n) : 0.;
+            if (left < parts.size()) {
+                diag.fallback_area   = 0.;
+                diag.repaired_nodes  = 0;
+                diag.repair_lowering = 0.;
+            }
+            result.diagnostics.emplace_back(std::move(diag));
+            result.patches.emplace_back(std::move(part));
         }
-        for (ExtrusionEntityCollection *pass : passes(p)) {
-            if (seams != nullptr)
-                break;
-            ExtrusionEntityCollection &shell = *pass;
-            ExtrusionEntity *lowest_piece = nullptr;
-            coord_t          lowest_z     = std::numeric_limits<coord_t>::max();
-            for (ExtrusionEntity *ee : shell.entities) {
-                auto *path     = static_cast<ExtrusionPathConformal *>(ee);
-                path->patch_id = p.id;
-                for (Point3 &pt : path->polyline.points) {
-                    pt.z() -= dz;
-                    if (pt.z() < lowest_z) {
-                        lowest_z     = pt.z();
-                        lowest_piece = ee;
-                    }
-                }
-            }
-            ExtrusionEntitiesPtr left = std::move(shell.entities);
-            shell.entities.clear();
-            if (lowest_piece != nullptr) {
-                std::swap(*std::find(left.begin(), left.end(), lowest_piece), left.front());
-                shell.entities.push_back(left.front());
-                left.erase(left.begin());
-            }
-            while (!left.empty()) {
-                const Point last    = shell.entities.back()->last_point();
-                size_t      best    = 0;
-                bool        flip    = false;
-                double      best_d2 = std::numeric_limits<double>::max();
-                for (size_t j = 0; j < left.size(); ++j) {
-                    const double d_first = (left[j]->first_point() - last).cast<double>().squaredNorm();
-                    const double d_last  = (left[j]->last_point() - last).cast<double>().squaredNorm();
-                    if (std::min(d_first, d_last) < best_d2) {
-                        best_d2 = std::min(d_first, d_last);
-                        best    = j;
-                        flip    = d_last < d_first;
-                    }
-                }
-                if (flip)
-                    left[best]->reverse();
-                shell.entities.push_back(left[best]);
-                std::swap(left[best], left.back());
-                left.pop_back();
-            }
-            shell.no_sort = true;
-        }
-        if (p.z_min > p.z_max)
-            p.z_min = p.z_max;
-        ConformalPatch &comp = components[bd.comp];
-        comp.host_layer      = std::max(comp.host_layer, p.host_layer);
-        if (band_component != nullptr)
-            band_component->emplace_back(bd.comp);
-        bd.diag.patch_id          = p.id;
-        bd.diag.rms_surface_error = bd.err_n > 0 ? std::sqrt(bd.err_sq / bd.err_n) : 0.;
-        result.diagnostics.emplace_back(std::move(bd.diag));
-        result.patches.emplace_back(std::move(p));
     }
     return components;
 }

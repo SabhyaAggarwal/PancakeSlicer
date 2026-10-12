@@ -336,7 +336,16 @@ bool outline_is_contour(const ConformalPatch &patch, double tolerance)
 {
     const double pitch = patch.surface.pitch();
     float        lo = std::numeric_limits<float>::max(), hi = std::numeric_limits<float>::lowest();
-    for (const ExPolygon &expoly : offset_ex(patch.footprint, -float(scale_(2. * pitch)))) {
+    float        zmin = std::numeric_limits<float>::max(), zmax = std::numeric_limits<float>::lowest();
+    for (const float s : patch.surface.data())
+        if (!std::isnan(s)) {
+            zmin = std::min(zmin, s);
+            zmax = std::max(zmax, s);
+        }
+    ExPolygons inset = offset_ex(patch.footprint, -float(scale_(std::max(2. * pitch, 1.))));
+    if (inset.empty())
+        inset = offset_ex(patch.footprint, -float(scale_(2. * pitch)));
+    for (const ExPolygon &expoly : inset) {
         const Points &pts = expoly.contour.points;
         for (size_t i = 0; i < pts.size(); ++i) {
             const Vec2d a = unscale(pts[i]), b = unscale(pts[(i + 1) % pts.size()]);
@@ -348,7 +357,18 @@ bool outline_is_contour(const ConformalPatch &patch, double tolerance)
                 }
         }
     }
-    return hi >= lo && hi - lo <= tolerance;
+    return hi >= lo && hi - lo <= std::max(tolerance, 0.1 * double(zmax - zmin));
+}
+
+bool is_round(const ExPolygons &footprint)
+{
+    double a = 0., p = 0.;
+    for (const ExPolygon &expoly : footprint) {
+        a += expoly.area();
+        for (const Polygon &poly : to_polygons(expoly))
+            p += poly.length();
+    }
+    return p > 0. && 4. * PI * a / (p * p) >= 0.5;
 }
 
 constexpr double BandedTopWidth = 0.75;
@@ -954,7 +974,7 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
                         f.angle = angle;
                         f.outline = false;
                     }
-                else if (outline_is_contour(patch, h_c))
+                else if (is_round(patch.footprint) && outline_is_contour(patch, h_c))
                     for (size_t k = 0; k < banded_fills.size(); ++k) {
                         banded_fills[k].spiral = true;
                         banded_fills[k].outward = (banded_fills.size() - 1 - k) % 2 == 1;

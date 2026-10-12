@@ -1,5 +1,7 @@
 #include "Seams.hpp"
 
+#include "HeightField.hpp"
+
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/Line.hpp"
 #include "libslic3r/Model.hpp"
@@ -11,7 +13,10 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <functional>
 #include <memory>
+#include <optional>
+#include <queue>
 #include <unordered_map>
 #include <utility>
 
@@ -249,8 +254,218 @@ Polyline seam_line(const HeightField &surface, const Point &seam, const ExPolygo
     return out;
 }
 
+namespace {
+
+template<typename Fn> bool each_inner_sample(const Vec2d &a, const Vec2d &b, double step, Fn &&fn)
+{
+    const int k = std::max(1, int(std::ceil((b - a).norm() / step)));
+    for (int j = 1; j < k; ++j)
+        if (!fn(a + (b - a) * (double(j) / k)))
+            return false;
+    return true;
+}
+
+class GlideRouter
+{
+public:
+    static constexpr double EndSlack = 0.75;
+
+    GlideRouter(const HeightField &grid, const GlideZ &glide_z, double step) : m_grid(grid), m_glide_z(glide_z), m_step(step) {}
+
+    bool route(const Vec2d &a, const Vec2d &b, double cap, Points3 &route)
+    {
+        route.clear();
+        const int nx = m_grid.nx(), ny = m_grid.ny();
+        if (nx <= 0 || ny <= 0 || cap <= 0.)
+            return false;
+        if (m_verdict.empty()) {
+            m_verdict.assign(size_t(nx) * ny, Unknown);
+            m_g.assign(size_t(nx) * ny, std::numeric_limits<float>::infinity());
+            m_parent.assign(size_t(nx) * ny, -1);
+        }
+        const double pitch = m_grid.pitch(), diagonal = std::sqrt(2.) * pitch;
+        auto snaps = [&](const Vec2d &p, std::vector<std::pair<int, float>> &out) {
+            out.clear();
+            const Vec2d o = (p - m_grid.origin()) / pitch;
+            const int   r = int(std::ceil(RouteSnap / pitch));
+            const int   cx = int(std::lround(o.x())), cy = int(std::lround(o.y()));
+            for (int iy = std::max(0, cy - r); iy <= std::min(ny - 1, cy + r); ++iy)
+                for (int ix = std::max(0, cx - r); ix <= std::min(nx - 1, cx + r); ++ix) {
+                    const int    n = iy * nx + ix;
+                    const double d = (m_grid.node(ix, iy) - p).norm();
+                    if (d <= RouteSnap && this->ok(n) && this->step_clear(p, m_grid.node(ix, iy)))
+                        out.emplace_back(n, float(d));
+                }
+        };
+        snaps(a, m_seeds);
+        if (m_seeds.empty())
+            return false;
+        snaps(b, m_goals);
+        if (m_goals.empty())
+            return false;
+        for (const auto &[n, d] : m_goals)
+            m_goal_cost[n] = d;
+
+        using Item = std::pair<float, int>;
+        std::priority_queue<Item, std::vector<Item>, std::greater<Item>> open;
+        auto h = [&](int n) { return float((m_grid.node(n % nx, n / nx) - b).norm()); };
+        auto touch = [&](int n, float g, int parent) {
+            if (m_g[size_t(n)] == std::numeric_limits<float>::infinity())
+                m_touched.emplace_back(n);
+            m_g[size_t(n)]      = g;
+            m_parent[size_t(n)] = parent;
+        };
+        for (const auto &[n, d] : m_seeds)
+            if (d < m_g[size_t(n)] && d + h(n) <= cap) {
+                touch(n, d, -1);
+                open.emplace(d + h(n), n);
+            }
+        int found = -1;
+        while (!open.empty()) {
+            const auto [f, n] = open.top();
+            open.pop();
+            if (n < 0) {
+                found = -1 - n;
+                break;
+            }
+            const float g = m_g[size_t(n)];
+            if (f > g + h(n) + 1e-4f)
+                continue;
+            if (const auto it = m_goal_cost.find(n); it != m_goal_cost.end() && g + it->second <= cap)
+                open.emplace(g + it->second, -1 - n);
+            const int ix = n % nx, iy = n / nx;
+            for (int dy = -1; dy <= 1; ++dy)
+                for (int dx = -1; dx <= 1; ++dx) {
+                    const int jx = ix + dx, jy = iy + dy;
+                    if ((dx == 0 && dy == 0) || jx < 0 || jy < 0 || jx >= nx || jy >= ny)
+                        continue;
+                    const int m = jy * nx + jx;
+                    if (!this->ok(m) || (dx != 0 && dy != 0 && !(this->ok(iy * nx + jx) && this->ok(jy * nx + ix))))
+                        continue;
+                    const float gm = g + float(dx != 0 && dy != 0 ? diagonal : pitch);
+                    if (gm < m_g[size_t(m)] && gm + h(m) <= cap) {
+                        touch(m, gm, n);
+                        open.emplace(gm + h(m), m);
+                    }
+                }
+        }
+        std::vector<Vec2d> nodes;
+        for (int n = found; n >= 0; n = m_parent[size_t(n)])
+            nodes.emplace_back(m_grid.node(n % nx, n / nx));
+        for (const int n : m_touched) {
+            m_g[size_t(n)]      = std::numeric_limits<float>::infinity();
+            m_parent[size_t(n)] = -1;
+        }
+        m_touched.clear();
+        m_goal_cost.clear();
+        if (nodes.empty())
+            return false;
+        std::reverse(nodes.begin(), nodes.end());
+        std::vector<Vec2d> pulled{ nodes.front() };
+        for (size_t i = 0; i + 1 < nodes.size();) {
+            size_t j = nodes.size() - 1;
+            while (j > i + 1 && !this->clear(nodes[i], nodes[j]))
+                --j;
+            pulled.emplace_back(nodes[j]);
+            i = j;
+        }
+        for (size_t i = 0; i < pulled.size(); ++i)
+            if ((i > 0 && !each_inner_sample(pulled[i - 1], pulled[i], m_step, [&](const Vec2d &p) { return this->emit(p, route); })) ||
+                !this->emit(pulled[i], route)) {
+                route.clear();
+                return false;
+            }
+        return true;
+    }
+
+private:
+    enum : int8_t { Unknown = -1, No = 0, Range = 1, Ok = 2 };
+
+    int8_t verdict(int n)
+    {
+        int8_t &v = m_verdict[size_t(n)];
+        if (v == Unknown) {
+            double z = 0.;
+            const GlideAt at = m_glide_z(m_grid.node(n % m_grid.nx(), n / m_grid.nx()), z);
+            v = at == GlideAt::Ok ? Ok : at == GlideAt::Range ? Range : No;
+        }
+        return v;
+    }
+    bool ok(int n) { return this->verdict(n) == Ok; }
+    bool clear(const Vec2d &a, const Vec2d &b)
+    {
+        return each_inner_sample(a, b, m_step, [&](const Vec2d &p) {
+            double z = 0.;
+            return m_glide_z(p, z) == GlideAt::Ok;
+        });
+    }
+    bool step_clear(const Vec2d &a, const Vec2d &b)
+    {
+        return each_inner_sample(a, b, 0.5 * m_step, [&](const Vec2d &p) {
+            double z = 0.;
+            return (p - a).squaredNorm() <= EndSlack * EndSlack || m_glide_z(p, z) != GlideAt::No;
+        });
+    }
+    bool emit(const Vec2d &p, Points3 &out)
+    {
+        double z = 0.;
+        if (m_glide_z(p, z) != GlideAt::Ok)
+            return false;
+        out.emplace_back(coord_t(scale_(p.x())), coord_t(scale_(p.y())), coord_t(scale_(z)));
+        return true;
+    }
+
+    const HeightField                      &m_grid;
+    const GlideZ                           &m_glide_z;
+    double                                  m_step;
+    std::vector<int8_t>                     m_verdict;
+    std::vector<float>                      m_g;
+    std::vector<int>                        m_parent;
+    std::vector<int>                        m_touched;
+    std::vector<std::pair<int, float>>      m_seeds, m_goals;
+    std::unordered_map<int, float>          m_goal_cost;
+};
+
+bool glide_route_from(const Point3 &from, const Point3 &to, const GlideZ &glide_z, double max_glide, double step,
+                      std::optional<GlideRouter> &router, Points3 &pts)
+{
+    const Vec2d  pa = unscale(from.to_point()), pb = unscale(to.to_point());
+    const double l  = (pb - pa).norm();
+    if (l > (router ? std::max(max_glide, MaxRoute) : max_glide))
+        return false;
+    pts.assign(1, from);
+    auto straight = [&]() {
+        if (l > max_glide)
+            return false;
+        const int k = std::max(1, int(std::ceil(l / step)));
+        for (int j = 0; j < k; ++j) {
+            const Vec2d p = pa + (pb - pa) * (double(j) / k);
+            double      z = 0.;
+            if (glide_z(p, z) != GlideAt::Ok)
+                return false;
+            const Point3 q(coord_t(scale_(p.x())), coord_t(scale_(p.y())), coord_t(scale_(z)));
+            if (j == 0 && q.z() < from.z())
+                return false;
+            if (q != pts.back())
+                pts.emplace_back(q);
+        }
+        return true;
+    };
+    if (!straight()) {
+        Points3 route;
+        if (!router || !router->route(pa, pb, std::min(RouteRatio * l + RouteSnap, MaxRoute), route))
+            return false;
+        pts.assign(1, from);
+        pts.insert(pts.end(), route.begin(), route.end());
+    }
+    pts.emplace_back(to);
+    return true;
+}
+
+}
+
 void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &band_roads, const GlideZ &glide_z, double max_glide,
-                       double step, bool hidden, double floor, double ceiling)
+                       double step, bool hidden, double floor, double ceiling, const HeightField *grid, const Point3 *from)
 {
     std::vector<ExtrusionPathConformal *> todo;
     for (ExtrusionEntity *ee : pieces)
@@ -259,7 +474,8 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
     ExtrusionEntitiesPtr out;
     ExtrusionPathConformal *current = nullptr;
     RoadGrid           roads;
-    const double       reach = scale_(max_glide);
+    const double       reach_mm = grid != nullptr ? std::max(max_glide, MaxRoute) : max_glide;
+    const double       reach    = scale_(reach_mm);
     constexpr size_t   Tries = 8;
 
     struct End
@@ -269,25 +485,126 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
         bool   reversed;
     };
     std::vector<End> ends;
+    std::optional<GlideRouter> router;
+    if (grid != nullptr)
+        router.emplace(*grid, glide_z, step);
     auto glide_to = [&](const Point3 &a, const Point3 &b, Points3 &route) {
         route.clear();
         const Vec2d  pa = unscale(a.to_point()), pb = unscale(b.to_point());
         const double l  = (pb - pa).norm();
-        if (l > max_glide || (!hidden && roads.crosses(a.to_point(), b.to_point())))
+        if (l > reach_mm)
             return false;
-        const int k = std::max(1, int(std::ceil(l / step)));
-        for (int j = 1; j < k; ++j) {
-            const Vec2d p = pa + (pb - pa) * (double(j) / k);
-            double      z = 0.;
-            if (!glide_z(p, z))
+        if (l <= max_glide && (hidden || !roads.crosses(a.to_point(), b.to_point())) && each_inner_sample(pa, pb, step, [&](const Vec2d &p) {
+                double z = 0.;
+                if (glide_z(p, z) != GlideAt::Ok)
+                    return false;
+                route.emplace_back(coord_t(scale_(p.x())), coord_t(scale_(p.y())), coord_t(scale_(z)));
+                return true;
+            }))
+            return true;
+        if (!router || !router->route(pa, pb, std::min(RouteRatio * l + RouteSnap, MaxRoute), route))
+            return false;
+        if (!hidden) {
+            Polyline xy;
+            xy.points.reserve(route.size() + 2);
+            xy.points.emplace_back(a.to_point());
+            for (const Point3 &q : route)
+                xy.points.emplace_back(q.to_point());
+            xy.points.emplace_back(b.to_point());
+            if (roads.crosses(xy))
                 return false;
-            route.emplace_back(coord_t(scale_(p.x())), coord_t(scale_(p.y())), coord_t(scale_(z)));
         }
         return true;
     };
     auto mergeable = [](const ExtrusionPathConformal &a, const ExtrusionPathConformal &b) {
         return a.role() == b.role() && a.width == b.width && a.mm3_per_mm == b.mm3_per_mm && a.tool_axis.empty() && b.tool_axis.empty();
     };
+
+    auto splice = [&](ExtrusionPathConformal &piece) {
+        struct Slot
+        {
+            double                  cost;
+            ExtrusionPathConformal *path;
+            size_t                  g0, g1;
+            bool                    reversed;
+        };
+        std::vector<Slot> slots;
+        auto dist = [](const Point3 &a, const Point3 &b) { return unscale<double>((a.to_point() - b.to_point()).cast<double>().norm()); };
+        for (ExtrusionEntity *ee : out) {
+            auto *path = static_cast<ExtrusionPathConformal *>(ee);
+            if (!mergeable(*path, piece))
+                continue;
+            const Points3            &pts = path->polyline.points;
+            const std::vector<float> &h   = path->bead_height;
+            for (size_t g0 = 1; g0 < pts.size(); ++g0) {
+                if (h[g0] != 0.f || h[g0 - 1] == 0.f)
+                    continue;
+                size_t g1 = g0;
+                while (g1 + 1 < pts.size() && h[g1 + 1] == 0.f)
+                    ++g1;
+                if (g1 + 1 == pts.size())
+                    break;
+                const Point3 &x = pts[g0 - 1], &y = pts[g1 + 1];
+                for (const bool reversed : { false, true }) {
+                    if (reversed && !piece.can_reverse())
+                        continue;
+                    const Point3 &s0 = reversed ? piece.polyline.points.back() : piece.polyline.points.front();
+                    const Point3 &s1 = reversed ? piece.polyline.points.front() : piece.polyline.points.back();
+                    if (dist(x, s0) <= reach_mm && dist(s1, y) <= reach_mm)
+                        slots.push_back({ dist(x, s0) + dist(s1, y) - dist(x, y), path, g0, g1, reversed });
+                }
+                g0 = g1;
+            }
+        }
+        std::sort(slots.begin(), slots.end(), [](const Slot &a, const Slot &b) { return a.cost < b.cost; });
+        constexpr size_t SpliceTries = 6;
+        Points3          in, back;
+        for (size_t t = 0; t < std::min(slots.size(), SpliceTries); ++t) {
+            const Slot   &slot = slots[t];
+            Points3      &pts  = slot.path->polyline.points;
+            const Point3 &s0   = slot.reversed ? piece.polyline.points.back() : piece.polyline.points.front();
+            const Point3 &s1   = slot.reversed ? piece.polyline.points.front() : piece.polyline.points.back();
+            if (!glide_to(pts[slot.g0 - 1], s0, in) || !glide_to(s1, pts[slot.g1 + 1], back))
+                continue;
+            if (slot.reversed)
+                piece.reverse();
+            roads.add(piece);
+            band_roads.add(piece);
+            Points3            mid{ pts[slot.g0 - 1] };
+            std::vector<float> mid_h{ 0.f };
+            auto glide_points = [&](const Points3 &route, const Point3 &to) {
+                mid.insert(mid.end(), route.begin(), route.end());
+                mid.emplace_back(to);
+                mid_h.resize(mid.size(), 0.f);
+            };
+            glide_points(in, piece.polyline.points.front());
+            mid.insert(mid.end(), piece.polyline.points.begin(), piece.polyline.points.end());
+            mid_h.insert(mid_h.end(), piece.bead_height.begin(), piece.bead_height.end());
+            mid.emplace_back(piece.polyline.points.back());
+            mid_h.emplace_back(0.f);
+            glide_points(back, pts[slot.g1 + 1]);
+            std::vector<float> &h = slot.path->bead_height;
+            std::vector<float> &w = slot.path->bead_width;
+            if (!w.empty() || !piece.bead_width.empty()) {
+                if (w.empty())
+                    w.assign(pts.size(), float(slot.path->width));
+                std::vector<float> mid_w(mid.size(), w[slot.g0 - 1]);
+                const size_t       s0 = in.size() + 2;
+                for (size_t i = 0; i < piece.polyline.points.size(); ++i)
+                    mid_w[s0 - 1 + i] = piece.bead_width.empty() ? float(piece.width) : piece.bead_width[i];
+                std::fill(mid_w.begin() + (s0 - 1 + piece.polyline.points.size()), mid_w.end(), mid_w[s0 - 2 + piece.polyline.points.size()]);
+                w.erase(w.begin() + slot.g0, w.begin() + slot.g1 + 1);
+                w.insert(w.begin() + slot.g0, mid_w.begin(), mid_w.end());
+            }
+            pts.erase(pts.begin() + slot.g0, pts.begin() + slot.g1 + 1);
+            h.erase(h.begin() + slot.g0, h.begin() + slot.g1 + 1);
+            pts.insert(pts.begin() + slot.g0, mid.begin(), mid.end());
+            h.insert(h.begin() + slot.g0, mid_h.begin(), mid_h.end());
+            return true;
+        }
+        return false;
+    };
+    constexpr size_t SpliceLeft = 4;
 
     Points3 route;
     for (size_t left = todo.size(); left > 0; --left) {
@@ -303,6 +620,17 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
 
         int  pick  = -1;
         bool glide = false;
+        Points3 lead;
+        if (current == nullptr && out.empty() && from != nullptr)
+            for (size_t k = 0; k < head && ends[k].d <= reach && pick < 0; ++k) {
+                const ExtrusionPathConformal &cand = *todo[ends[k].i];
+                if (cand.tool_axis.empty() &&
+                    glide_route_from(*from, ends[k].reversed ? cand.polyline.points.back() : cand.polyline.points.front(), glide_z,
+                                     max_glide, step, router, lead))
+                    pick = int(k);
+            }
+        if (pick < 0)
+            lead.clear();
         if (current != nullptr)
             for (size_t k = 0; k < head && ends[k].d <= reach; ++k) {
                 ExtrusionPathConformal &cand = *todo[ends[k].i];
@@ -315,6 +643,19 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
                     break;
                 }
             }
+        if (pick < 0 && hidden && current != nullptr && left <= SpliceLeft) {
+            size_t spliced = 0;
+            for (size_t i = 0; i < todo.size(); ++i)
+                if (!used[i] && splice(*todo[i])) {
+                    used[i] = true;
+                    delete todo[i];
+                    ++spliced;
+                }
+            if (spliced > 0) {
+                left -= spliced - 1;
+                continue;
+            }
+        }
         if (pick < 0) {
             for (size_t k = 0; k < head && pick < 0; ++k) {
                 const ExtrusionPathConformal &cand = *todo[ends[k].i];
@@ -330,6 +671,12 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
         ExtrusionPathConformal *path = todo[e.i];
         if (e.reversed)
             path->reverse();
+        if (!lead.empty()) {
+            path->polyline.points.insert(path->polyline.points.begin(), lead.begin(), lead.end());
+            path->bead_height.insert(path->bead_height.begin(), lead.size(), 0.f);
+            if (!path->bead_width.empty())
+                path->bead_width.insert(path->bead_width.begin(), lead.size(), path->bead_width.front());
+        }
         {
             Points3            &pts = path->polyline.points;
             std::vector<float> &h   = path->bead_height;
@@ -421,36 +768,6 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
         delete path;
     }
     pieces = std::move(out);
-}
-
-bool glide_from(ExtrusionPathConformal &path, const Point3 &from, const GlideZ &glide_z, double max_glide, double step)
-{
-    if (path.polyline.points.empty() || !path.tool_axis.empty())
-        return false;
-    const Point3 to = path.polyline.points.front();
-    const Vec2d  pa = unscale(from.to_point()), pb = unscale(to.to_point());
-    const double l  = (pb - pa).norm();
-    if (l > max_glide)
-        return false;
-    Points3      pts{ from };
-    const int    k = std::max(1, int(std::ceil(l / step)));
-    for (int j = 0; j < k; ++j) {
-        const Vec2d p = pa + (pb - pa) * (double(j) / k);
-        double      z = 0.;
-        if (!glide_z(p, z))
-            return false;
-        const Point3 q(coord_t(scale_(p.x())), coord_t(scale_(p.y())), coord_t(scale_(z)));
-        if (j == 0 && q.z() < from.z())
-            return false;
-        if (q != pts.back())
-            pts.emplace_back(q);
-    }
-    pts.emplace_back(to);
-    path.polyline.points.insert(path.polyline.points.begin(), pts.begin(), pts.end());
-    path.bead_height.insert(path.bead_height.begin(), pts.size(), 0.f);
-    if (!path.bead_width.empty())
-        path.bead_width.insert(path.bead_width.begin(), pts.size(), path.bead_width.front());
-    return true;
 }
 
 }

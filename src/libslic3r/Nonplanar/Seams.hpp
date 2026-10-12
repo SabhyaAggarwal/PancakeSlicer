@@ -55,12 +55,16 @@ private:
     std::unordered_map<uint64_t, std::vector<std::pair<Point, Point>>> m_cells;
 };
 
-using GlideZ = std::function<bool(const Vec2d &p, double &z)>;
+enum class GlideAt { No, Range, Ok };
+using GlideZ = std::function<GlideAt(const Vec2d &p, double &z)>;
+
+constexpr double MaxRoute   = 40.;
+constexpr double RouteRatio = 3.;
+constexpr double RouteSnap  = 1.5;
 
 void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &band_roads, const GlideZ &glide_z, double max_glide,
                        double step, bool hidden = false, double floor = std::numeric_limits<double>::infinity(),
-                       double ceiling = -std::numeric_limits<double>::infinity());
-
-bool glide_from(ExtrusionPathConformal &path, const Point3 &from, const GlideZ &glide_z, double max_glide, double step);
+                       double ceiling = -std::numeric_limits<double>::infinity(), const HeightField *grid = nullptr,
+                       const Point3 *from = nullptr);
 
 }
