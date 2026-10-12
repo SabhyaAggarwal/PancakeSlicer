@@ -5215,6 +5215,15 @@ void PrintConfigDef::init_fff_params()
     def->max      = 85;
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(45));
+    def = this->add("nonplanar_support_interface", coBool);
+    def->label    = L("Curved support interface");
+    def->category = L("Support");
+    def->tooltip  = L("Under a curved underside, print the top support interface layers along the underside, offset down by "
+                      "the top Z distance, and the first bottom layer over them as a curved layer. The support body below "
+                      "stays planar. Needs a print head set in the printer's non-planar settings.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(true));
+
     def = this->add("nonplanar_atom_toolpath", coString);
     def->label    = L("Atomizer toolpath");
     def->category = L("Quality");
@@ -5237,6 +5246,17 @@ void PrintConfigDef::init_fff_params()
     def->enum_labels.push_back(L("Block export"));
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionEnum<NonplanarCollisionCheck>(NonplanarCollisionCheck::Warn));
+
+    def = this->add("nonplanar_repair_iterations", coInt);
+    def->label    = L("Non-planar repair passes");
+    def->category = L("Quality");
+    def->tooltip  = L("When the collision check finds the print head hitting printed material, regenerate the curved "
+                      "shells and the G-code with local repairs (lower surface, higher travel, fewer ironing lines) "
+                      "up to this many times. 0 only reports the collisions.");
+    def->min      = 0;
+    def->max      = 10;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionInt(3));
 
     def = this->add("nonplanar_head", coString);
     def->label    = L("Print head");

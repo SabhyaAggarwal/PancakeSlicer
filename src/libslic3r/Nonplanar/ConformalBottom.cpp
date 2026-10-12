@@ -593,6 +593,14 @@ int patch_filament_id(const PrintObject &object, const ConformalPatch &patch)
     case PatchKind::Overhang: return cfg.bottom_surface_filament_id.value;
     case PatchKind::Chunk:
     case PatchKind::Volume: break;
+    case PatchKind::SupportInterface: {
+        const PrintObjectConfig &ocfg = object.config();
+        if (ocfg.support_interface_filament.value > 0)
+            return ocfg.support_interface_filament.value;
+        if (ocfg.support_filament.value > 0)
+            return ocfg.support_filament.value;
+        break;
+    }
     }
     return cfg.outer_wall_filament_id.value;
 }

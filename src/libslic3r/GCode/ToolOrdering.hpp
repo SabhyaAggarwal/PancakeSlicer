@@ -299,6 +299,7 @@ private:
     void                reorder_extruders_for_minimum_flush_volume(bool reorder_first_layer);
     void                resolve_mixed_filaments(const PrintConfig &config);
     void                enforce_mixed_component_order();
+    void                enforce_conformal_support_order();
 
     std::vector<unsigned int> generate_first_layer_tool_order(const Print& print);
     std::vector<unsigned int> generate_first_layer_tool_order(const PrintObject& object);

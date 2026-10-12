@@ -120,6 +120,8 @@ set(lisbslic3r_sources
     Nonplanar/BeadModel.hpp
     GCode/ToolKinematics.cpp
     GCode/ToolKinematics.hpp
+    GCode/ClearanceRepair.cpp
+    GCode/ClearanceRepair.hpp
     GCode/ClearanceVerifier.cpp
     GCode/ClearanceVerifier.hpp
     GCode/ConformalEmit.cpp
@@ -127,6 +129,8 @@ set(lisbslic3r_sources
     Nonplanar/Validate.cpp
     Nonplanar/ConformalBottom.cpp
     Nonplanar/ConformalBottom.hpp
+    Nonplanar/ConformalSupport.cpp
+    Nonplanar/ConformalSupport.hpp
     Nonplanar/CurvedOverhang.cpp
     Nonplanar/CurvedOverhang.hpp
     Nonplanar/ConformalIroning.cpp
@@ -137,6 +141,8 @@ set(lisbslic3r_sources
     Nonplanar/ConformalVolume.hpp
     Nonplanar/PatchTools.cpp
     Nonplanar/PatchTools.hpp
+    Nonplanar/Repair.cpp
+    Nonplanar/Repair.hpp
     Nonplanar/Seams.cpp
     Nonplanar/Seams.hpp
     Nonplanar/ShellPaths.cpp

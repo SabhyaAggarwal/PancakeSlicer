@@ -3,6 +3,7 @@
 #include "ConformalBottom.hpp"
 #include "ConformalShells.hpp"
 #include "PatchTools.hpp"
+#include "Repair.hpp"
 #include "Seams.hpp"
 #include "ShellPaths.hpp"
 
@@ -12,12 +13,16 @@
 #include "libslic3r/Flow.hpp"
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/Layer.hpp"
+#include "libslic3r/Polygon.hpp"
+#include "libslic3r/Polyline.hpp"
+#include "libslic3r/Point.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/libslic3r.h"
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace Slic3r::Nonplanar {
 
@@ -48,9 +53,20 @@ void build_conformal_ironing(const PrintObject &object, ConformalResult &result)
         const auto     &top    = static_cast<const ExtrusionPathConformal &>(*patch.shell_paths.back().entities.back());
         const Point3   &from   = top.polyline.points.back();
         const Point     seam   = shell_seam(area, patch.surface, object.config().seam_position.value, unsigned(patch.id));
-        const std::vector<Polylines> lines = shell_polylines(area, fill, cfg.ironing_pattern.value, spacing, true,
+        std::vector<Polylines> lines = shell_polylines(area, fill, cfg.ironing_pattern.value, spacing, true,
                                                              Flow(width, float(height), float(nozzle)), host_z,
                                                              fill.spiral ? seam : from.to_point(), MaxGlide);
+        if (const RepairHints *hints = object.nonplanar_repair(); hints != nullptr && !hints->ironing_drops.empty()) {
+            Polygons discs;
+            for (const RepairHints::Disc &d : hints->ironing_drops) {
+                Polygon disc;
+                for (int k = 0; k < 16; ++k)
+                    disc.points.emplace_back(Point::new_scale(d.p.x() + d.radius * std::cos(k * PI / 8.), d.p.y() + d.radius * std::sin(k * PI / 8.)));
+                discs.emplace_back(std::move(disc));
+            }
+            for (Polylines &group : lines)
+                group = diff_pl(group, discs);
+        }
 
         const ExtrusionPath proto(erIroning, nozzle * height, width, float(height));
         auto at = [&patch, height](const Vec2d &p, double &z, float &bead) {

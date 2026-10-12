@@ -6,6 +6,7 @@
 #include <tbb/parallel_for.h>
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <functional>
@@ -273,6 +274,16 @@ HeightField slope_cap_minorant(const HeightField &S, double max_slope)
                 for (int s = 0; s < 8; ++s)
                     changed |= relax(x, y, -steps[s][0], -steps[s][1], weight[s]);
     }
+    return out;
+}
+
+HeightField apply_surface_cap(const HeightField &S, const HeightField &cap)
+{
+    assert(S.nx() == cap.nx() && S.ny() == cap.ny());
+    HeightField out = S;
+    for (size_t i = 0; i < out.data().size(); ++i)
+        if (!std::isnan(cap.data()[i]) && !std::isnan(out.data()[i]))
+            out.data()[i] = std::min(out.data()[i], cap.data()[i]);
     return out;
 }
 

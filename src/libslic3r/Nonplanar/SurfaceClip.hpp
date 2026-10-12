@@ -22,4 +22,6 @@ HeightField min_safe_tip_height(const HeightField &material, const HeadEnvelope 
 
 HeightField slope_cap_minorant(const HeightField &S, double max_slope);
 
+HeightField apply_surface_cap(const HeightField &S, const HeightField &cap);
+
 }

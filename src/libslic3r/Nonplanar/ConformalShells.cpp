@@ -2,6 +2,7 @@
 
 #include "HeadEnvelope.hpp"
 #include "PatchTools.hpp"
+#include "Repair.hpp"
 #include "Seams.hpp"
 #include "ShellPaths.hpp"
 #include "SurfaceClip.hpp"
@@ -433,8 +434,16 @@ ConformalResult build_conformal_shells(PrintObject &object)
     if (!settings.banded)
         drop_unsafe_nodes(S0, head, h_c, settings.max_error, mask, &limiting_components);
 
+    HeightField cap, S1u;
+    if (const RepairHints *hints = object.nonplanar_repair(); hints != nullptr && !hints->surface_caps.empty())
+        cap = surface_cap_field(*hints, grid), S1u = grid;
+
     HeightField S1        = settings.banded ? S0 : grid;
     bool        converged = settings.banded;
+    if (settings.banded && !cap.empty()) {
+        S1u = S0;
+        S1 = apply_surface_cap(S0, cap);
+    }
     for (int round = 0; round < 16 && !converged; ++round) {
         int                    n_comp = 0;
         const std::vector<int> label  = label_components(mask, grid.nx(), grid.ny(), n_comp);
@@ -459,11 +468,16 @@ ConformalResult build_conformal_shells(PrintObject &object)
         tbb::parallel_for(tbb::blocked_range<int>(0, n_comp), [&](const tbb::blocked_range<int> &range) {
             for (int c = range.begin(); c < range.end(); ++c) {
                 const Extent     &e  = ext[size_t(c)];
-                const HeightField s1 = head_lipschitz_minorant(component_field(S0, c), head, 8, cancel);
+                const HeightField s0 = component_field(S0, c);
+                const HeightField s1 = head_lipschitz_minorant(cap.empty() ? s0 : apply_surface_cap(s0, component_field(cap, c)), head, 8, cancel);
+                const HeightField s1u = cap.empty() ? HeightField() : head_lipschitz_minorant(s0, head, 8, cancel);
                 for (int iy = 0; iy < s1.ny(); ++iy)
                     for (int ix = 0; ix < s1.nx(); ++ix)
-                        if (label[size_t(e.iy0 + iy) * grid.nx() + e.ix0 + ix] == c)
+                        if (label[size_t(e.iy0 + iy) * grid.nx() + e.ix0 + ix] == c) {
                             S1.at(e.ix0 + ix, e.iy0 + iy) = s1.at(ix, iy);
+                            if (!cap.empty())
+                                S1u.at(e.ix0 + ix, e.iy0 + iy) = s1u.at(ix, iy);
+                        }
             }
         });
         bool changed = false;
@@ -471,30 +485,36 @@ ConformalResult build_conformal_shells(PrintObject &object)
             if (!mask[i])
                 continue;
             const float s1 = S1.data()[i];
-            if (std::isnan(s1) || S.data()[i] - s1 > settings.max_error || s1 - settings.shells * h_c - h_min < first_top) {
+            if (std::isnan(s1) || S.data()[i] - (cap.empty() ? s1 : S1u.data()[i]) > settings.max_error ||
+                s1 - settings.shells * h_c - h_min < first_top) {
                 mask[i] = 0;
                 changed = true;
             } else
                 ext[size_t(label[i])].zcap = std::max(ext[size_t(label[i])].zcap, s1);
         }
         std::vector<std::vector<size_t>> drops(static_cast<size_t>(n_comp));
+        auto host_print_z = [&layers](float z) {
+            const auto it = std::lower_bound(layers.begin(), layers.end(), double(z) - EPSILON,
+                                             [](const Layer *layer, double v) { return layer->print_z < v; });
+            return float(it == layers.end() ? layers.back()->print_z : (*it)->print_z);
+        };
         tbb::parallel_for(tbb::blocked_range<int>(0, n_comp), [&](const tbb::blocked_range<int> &range) {
             for (int c = range.begin(); c < range.end(); ++c) {
                 const Extent &e = ext[size_t(c)];
                 if (e.zcap == -Inf)
                     continue;
                 HeightField H = grid;
+                const float host_z = host_print_z(e.zcap);
                 for (size_t i = 0; i < n_nodes; ++i)
                     if ((label[i] != c || !mask[i] || band_mask[i]) && !std::isnan(S.data()[i]))
-                        H.data()[i] = std::min(S.data()[i], e.zcap);
+                        H.data()[i] = std::min(S.data()[i], host_z);
                 const HeightField like   = component_field(S1, c);
                 const HeightField z_safe = min_safe_tip_height(H, head, like, nullptr, true);
                 const double lowest_shell = (settings.shells - 1) * h_c;
                 for (int iy = 0; iy < like.ny(); ++iy)
                     for (int ix = 0; ix < like.nx(); ++ix) {
                         const size_t i = size_t(e.iy0 + iy) * grid.nx() + e.ix0 + ix;
-                        if (label[i] == c && mask[i] && !band_mask[i] &&
-                            like.at(ix, iy) - lowest_shell < z_safe.at(ix, iy) - settings.max_error)
+                        if (label[i] == c && mask[i] && !band_mask[i] && like.at(ix, iy) - lowest_shell < z_safe.at(ix, iy))
                             drops[size_t(c)].emplace_back(i);
                     }
             }
@@ -524,9 +544,15 @@ ConformalResult build_conformal_shells(PrintObject &object)
         components = std::move(kept);
     }
 
-    if (settings.max_patch_height > 0. && !settings.banded) {
+    const RepairHints *repair = object.nonplanar_repair();
+    if (!settings.banded && (settings.max_patch_height > 0. || (repair != nullptr && !repair->order_bands.empty()))) {
         ExPolygons bands;
         for (const ExPolygon &component : components) {
+            double max_height = settings.max_patch_height > 0. ? settings.max_patch_height : Inf;
+            if (repair != nullptr)
+                for (const RepairHints::OrderBand &b : repair->order_bands)
+                    if (component.contains(Point::new_scale(b.p.x(), b.p.y())))
+                        max_height = std::min(max_height, b.height);
             const Mask pmask = rasterize({ component }, grid);
             float zlo = Inf, zhi = -Inf;
             for (size_t i = 0; i < n_nodes; ++i)
@@ -534,11 +560,11 @@ ConformalResult build_conformal_shells(PrintObject &object)
                     zlo = std::min(zlo, S1.data()[i]);
                     zhi = std::max(zhi, S1.data()[i]);
                 }
-            if (zhi - zlo <= settings.max_patch_height) {
+            if (zhi - zlo <= max_height) {
                 bands.emplace_back(component);
                 continue;
             }
-            const int count = int(std::ceil((zhi - zlo) / settings.max_patch_height));
+            const int count = int(std::ceil((zhi - zlo) / max_height));
             const double band_height = (zhi - zlo) / count;
             for (int band = 0; band < count; ++band) {
                 Mask selected(n_nodes, 0);
@@ -619,6 +645,11 @@ ConformalResult build_conformal_shells(PrintObject &object)
                 patch.base.at(ix, iy) = float(b);
                 patch.z_max    = std::max(patch.z_max, double(s1));
                 const double e = S.at(ix0 + ix, iy0 + iy) - s1;
+                if (!cap.empty())
+                    if (const double lowered = S1u.at(ix0 + ix, iy0 + iy) - s1; lowered > 1e-4) {
+                        ++diag.repaired_nodes;
+                        diag.repair_lowering = std::max(diag.repair_lowering, lowered);
+                    }
                 diag.max_surface_error = std::max(diag.max_surface_error, e);
                 err_sq += e * e;
                 ++err_n;
@@ -695,8 +726,12 @@ ConformalResult build_conformal_shells(PrintObject &object)
     }
 
     double band_pitch = 1., band_tolerance = 0.;
-    const double band_max_patch_height = settings.banded ?
+    const double material_max_patch_height = settings.banded ?
         multi_material_patch_height(object, head, settings.max_patch_height) : settings.max_patch_height;
+    double band_max_patch_height = material_max_patch_height;
+    if (settings.banded && repair != nullptr)
+        for (const RepairHints::OrderBand &band : repair->order_bands)
+            band_max_patch_height = std::min(band_max_patch_height > 0. ? band_max_patch_height : Inf, band.height);
     if (settings.banded)
         band_schedule(head, h_c, band_max_patch_height, band_pitch, band_tolerance);
 
@@ -771,7 +806,7 @@ ConformalResult build_conformal_shells(PrintObject &object)
         const BandSeams band_seams{ fill_areas, seams, seam_lines, line_width, MaxGlide, spans_wall,
                                     settings.shells - settings.top_shells, &stack_layers };
         component_patches = split_into_bands(result, S, layer_z, band_pitch, band_tolerance, &band_seams,
-                                             band_max_patch_height != settings.max_patch_height);
+                                             material_max_patch_height != settings.max_patch_height);
     }
     std::vector<ConformalPatch> &units = settings.banded ? component_patches : result.patches;
 

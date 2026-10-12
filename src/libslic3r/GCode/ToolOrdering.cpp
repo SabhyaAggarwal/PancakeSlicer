@@ -404,6 +404,7 @@ void ToolOrdering::sort_and_build_data(const Print& print, unsigned int first_ex
     this->resolve_mixed_filaments(print.config());
     reorder_extruders_for_minimum_flush_volume(reorder_first_layer);
     this->enforce_mixed_component_order();
+    this->enforce_conformal_support_order();
     m_sorted = true;
 
     double max_layer_height = 0.;
@@ -424,6 +425,7 @@ void ToolOrdering::sort_and_build_data(const Print& print, unsigned int first_ex
     if (this->insert_wipe_tower_extruder()) {
         reorder_extruders_for_minimum_flush_volume(reorder_first_layer);
         this->enforce_mixed_component_order();
+        this->enforce_conformal_support_order();
         this->fill_wipe_tower_partitions(print.config(), object_bottom_z, max_layer_height);
     }
 
@@ -436,6 +438,7 @@ void ToolOrdering::sort_and_build_data(const PrintObject& object , unsigned int 
     this->resolve_mixed_filaments(object.print()->config());
     reorder_extruders_for_minimum_flush_volume(reorder_first_layer);
     this->enforce_mixed_component_order();
+    this->enforce_conformal_support_order();
     m_sorted = true;
 
     double max_layer_height = calc_max_layer_height(object.print()->config(), object.config().layer_height);
@@ -444,6 +447,7 @@ void ToolOrdering::sort_and_build_data(const PrintObject& object , unsigned int 
     if (this->insert_wipe_tower_extruder()) {
         reorder_extruders_for_minimum_flush_volume(reorder_first_layer);
         this->enforce_mixed_component_order();
+        this->enforce_conformal_support_order();
         this->fill_wipe_tower_partitions(object.print()->config(), object.layers().front()->print_z - object.layers().front()->height, max_layer_height);
     }
 
@@ -2371,6 +2375,27 @@ void ToolOrdering::resolve_mixed_filaments(const PrintConfig &config)
         }
 
         prev_print_z = lt.print_z;
+    }
+}
+
+void ToolOrdering::enforce_conformal_support_order()
+{
+    if (m_print == nullptr)
+        return;
+    for (const PrintObject *object : m_print->objects()) {
+        if (!object->has_conformal_support())
+            continue;
+        for (const Layer *layer : object->layers())
+            for (int patch_id : layer->conformal_patches_before) {
+                const Nonplanar::ConformalPatch &patch = object->conformal().patches[size_t(patch_id)];
+                if (patch.kind != Nonplanar::PatchKind::SupportInterface)
+                    continue;
+                std::vector<unsigned int> &extruders = this->tools_for_layer(layer->print_z).extruders;
+                const auto it = std::find(extruders.begin(), extruders.end(), unsigned(Nonplanar::patch_filament_id(*object, patch) - 1));
+                if (it != extruders.end())
+                    std::rotate(extruders.begin(), it, it + 1);
+                break;
+            }
     }
 }
 

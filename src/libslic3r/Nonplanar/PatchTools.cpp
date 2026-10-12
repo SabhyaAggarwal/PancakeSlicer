@@ -1042,8 +1042,12 @@ std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const Heig
             p.footprint       = intersection_ex(comp.footprint, mask_to_expolygons(mask, F));
             p.wall_band       = intersection_ex(p.footprint, comp.wall_band);
         }
-        if (!index.empty())
-            bands[index.begin()->second].diag.fallback_area = comp_diag[c].fallback_area;
+        if (!index.empty()) {
+            PatchDiagnostics &diag = bands[index.begin()->second].diag;
+            diag.fallback_area = comp_diag[c].fallback_area;
+            diag.repaired_nodes = comp_diag[c].repaired_nodes;
+            diag.repair_lowering = comp_diag[c].repair_lowering;
+        }
     }
 
     std::stable_sort(bands.begin(), bands.end(), [](const Band &a, const Band &b) { return a.band < b.band; });

@@ -21,6 +21,7 @@
 #include "Nonplanar/AtomToolpath.hpp"
 #include "Nonplanar/ConformalShells.hpp"
 #include "Nonplanar/Multiplanar.hpp"
+#include "Nonplanar/ConformalSupport.hpp"
 #include "Nonplanar/ConformalVolume.hpp"
 #include "Nonplanar/CurvedOverhang.hpp"
 #include "Nonplanar/PatchTools.hpp"
@@ -729,7 +730,8 @@ void PrintObject::nonplanar_shells()
         m_print->set_status(40, L("Generating curved top shells"));
         m_conformal = std::make_unique<Nonplanar::ConformalResult>(Nonplanar::build_conformal_shells(*this));
         Nonplanar::build_conformal_bottom(*this, *m_conformal);
-        Nonplanar::build_curved_overhangs(*this, *m_conformal);
+        if (!(m_config.enable_support.value && Nonplanar::conformal_support_configured(*this)))
+            Nonplanar::build_curved_overhangs(*this, *m_conformal);
         Nonplanar::build_conformal_ironing(*this, *m_conformal);
         Nonplanar::build_conformal_volume(*this, *m_conformal);
         Nonplanar::group_hosts_by_filament(*this, *m_conformal);
@@ -759,6 +761,13 @@ TriangleMesh PrintObject::object_frame_mesh(double &ground_offset) const
     mesh.transform(trans.get_matrix());
     ground_offset = -m_model_object->min_z();
     return mesh;
+}
+
+bool PrintObject::has_conformal_support() const
+{
+    return m_conformal && std::any_of(m_conformal->patches.begin(), m_conformal->patches.end(), [](const Nonplanar::ConformalPatch &patch) {
+               return patch.kind == Nonplanar::PatchKind::SupportInterface;
+           });
 }
 
 const Nonplanar::ConformalResult& PrintObject::conformal() const
@@ -896,6 +905,14 @@ void PrintObject::generate_support_material(bool with_belt_brim)
 
             this->_generate_support_material();
             Nonplanar::contour_support_interface(*this);
+            if (Nonplanar::conformal_support_wanted(*this)) {
+                const bool fresh = !m_conformal;
+                if (fresh)
+                    m_conformal = std::make_unique<Nonplanar::ConformalResult>();
+                Nonplanar::build_conformal_support(*this, *m_conformal);
+                if (fresh && m_conformal->patches.empty())
+                    m_conformal.reset();
+            }
             m_print->throw_if_canceled();
         }
         m_belt_brim_pending = true;
@@ -1405,8 +1422,20 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "hole_to_polyhole_max_edges"
             ) {
             steps.emplace_back(posSlice);
+        } else if (opt_key == "nonplanar_support_interface") {
+            steps.emplace_back(posSupportMaterial);
+            for (size_t region_id = 0; region_id < this->num_printing_regions(); ++region_id)
+                if (this->printing_region(region_id).config().nonplanar_overhangs.value) {
+                    steps.emplace_back(posPerimeters);
+                    break;
+                }
         } else if (opt_key == "enable_support") {
             steps.emplace_back(posSupportMaterial);
+            for (size_t region_id = 0; region_id < this->num_printing_regions(); ++region_id)
+                if (this->printing_region(region_id).config().nonplanar_overhangs.value) {
+                    steps.emplace_back(posPerimeters);
+                    break;
+                }
             if (m_config.support_top_z_distance == 0.) {
 	            steps.emplace_back(posSlice);
 	        }
@@ -1698,6 +1727,8 @@ bool PrintObject::invalidate_state_by_config_options(
     }
 
     sort_remove_duplicates(steps);
+    if (!steps.empty() && steps.front() <= posNonplanar)
+        m_nonplanar_repair.reset();
     for (PrintObjectStep step : steps)
         invalidated |= this->invalidate_step(step);
     return invalidated;
@@ -1726,11 +1757,15 @@ bool PrintObject::invalidate_step(PrintObjectStep step)
         m_belt_floor_z_shift_cache_valid = false;
     } else if (step == posSupportMaterial) {
         invalidated |= this->invalidate_steps({ posSimplifySupportPath });
+        if (this->has_conformal_support() && (this->is_step_done_unguarded(posPerimeters) || this->is_step_started_unguarded(posPerimeters)))
+            invalidated |= this->invalidate_step(posPerimeters);
         invalidated |= m_print->invalidate_steps({ psSkirtBrim });
         m_slicing_params.valid = false;
     }
 
-    if (step >= posPerimeters && step <= posNonplanar)
+    if (step >= posPerimeters && step <= posNonplanar && this->has_conformal_support())
+        invalidated |= this->invalidate_step(posSupportMaterial);
+    else if (step >= posPerimeters && step <= posNonplanar)
         for (size_t region_id = 0; region_id < this->num_printing_regions(); ++region_id)
             if (this->printing_region(region_id).config().nonplanar_bottom_shells.value > 0 ||
                 this->printing_region(region_id).config().nonplanar_full_conformal_max_thickness.value > 0.) {
@@ -1750,6 +1785,7 @@ bool PrintObject::invalidate_all_steps()
     bool result = inherited_invalidated || print_invalidated;
 	m_slicing_params.valid = false;
 	m_belt_floor_z_shift_cache_valid = false;
+    m_nonplanar_repair.reset();
 	return result;
 }
 

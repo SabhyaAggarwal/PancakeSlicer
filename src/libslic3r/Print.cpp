@@ -73,6 +73,7 @@
 #include "BeltGCode.hpp"
 #include "BeltTransform.hpp"
 #include "GCode/WipeTower.hpp"
+#include "GCode/ClearanceRepair.hpp"
 #include "GCode/WipeTower2.hpp"
 #include "GCode/WipeTowerEstimate.hpp"
 #include "Utils.hpp"
@@ -164,7 +165,7 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & , co
         "gcode_remap_y",
         "gcode_remap_z",
         "rotary_axis_continuous", "rotary_max_speed", "rotary_pivot", "rotary_tool_length",
-        "rotary_firmware_rtcp", "rotary_inverse_time_feed", "nonplanar_collision_check", "nonplanar_segment_rate", "rotary_axis_reversed", "rotary_axis_home", "rotary_linear_moves_table", "rotary_table_height", "rotary_tool_mount",
+        "rotary_firmware_rtcp", "rotary_inverse_time_feed", "nonplanar_collision_check", "nonplanar_repair_iterations", "nonplanar_segment_rate", "rotary_axis_reversed", "rotary_axis_home", "rotary_linear_moves_table", "rotary_table_height", "rotary_tool_mount",
         "belt_frame_tilt_decouple", "belt_frame_tilt_angle",
         "belt_printer_infinite_y",
         "additional_cooling_fan_speed",
@@ -3193,16 +3194,22 @@ std::string Print::export_gcode(const std::string& path_template, GCodeProcessor
         message = L("Generating G-code");
     this->set_status(80, message);
 
+    Nonplanar::ClearanceRepair repair(*this);
     std::unique_ptr<GCode> gcode;
-    if (m_config.belt_printer.value)
-        gcode = std::make_unique<BeltGCode>();
-    else
-        gcode = std::make_unique<GCode>();
-    const Vec3d origin = this->get_plate_origin();
-    this->update_imex_slice_offset();
-    const Vec2d imex_off = this->get_imex_slice_offset();
-    gcode->set_gcode_offset_with_imex_shift(origin(0), origin(1), imex_off.x(), imex_off.y());
-    gcode->do_export(this, path.c_str(), result, thumbnail_cb);
+    for (;;) {
+        if (m_config.belt_printer.value)
+            gcode = std::make_unique<BeltGCode>();
+        else
+            gcode = std::make_unique<GCode>();
+        const Vec3d origin = this->get_plate_origin();
+        this->update_imex_slice_offset();
+        const Vec2d imex_off = this->get_imex_slice_offset();
+        gcode->set_gcode_offset_with_imex_shift(origin(0), origin(1), imex_off.x(), imex_off.y());
+        gcode->do_export(this, path.c_str(), result, thumbnail_cb);
+        if (!repair.apply())
+            break;
+        this->process();
+    }
     gcode->export_layer_filaments(result);
     if (result != nullptr) {
         result->conflict_result = m_conflict_result;

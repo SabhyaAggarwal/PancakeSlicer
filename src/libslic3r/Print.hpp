@@ -55,7 +55,7 @@
 
 namespace Slic3r {
 
-namespace Nonplanar { struct ConformalResult; struct MultiplanarPlan; }
+namespace Nonplanar { struct ConformalResult; struct RepairHints; class ClearanceRepair; struct MultiplanarPlan; }
 
 class SlicingErrors;
 
@@ -336,6 +336,8 @@ public:
     const TpmsRadialField*       tpms_radial_field(TpmsAdaptiveMode mode) const { return m_tpms_radial_fields[size_t(mode)].get(); }
     TriangleMesh                 object_frame_mesh(double &ground_offset) const;
     const Nonplanar::ConformalResult& conformal() const;
+    const Nonplanar::RepairHints*     nonplanar_repair() const { return m_nonplanar_repair.get(); }
+    bool has_conformal_support() const;
 
     void generate_support_preview();
     const std::vector<VolumeSlices>& firstLayerObjSlice() const { return firstLayerObjSliceByVolume; }
@@ -436,6 +438,7 @@ public:
 
   private:
     friend class Print;
+    friend class Nonplanar::ClearanceRepair;
 
 	PrintObject(Print* print, ModelObject* model_object, const Transform3d& trafo, PrintInstances&& instances);
 	~PrintObject();
@@ -519,6 +522,7 @@ private:
     std::vector<BeltBrimBand>               m_belt_brim_prologue;
     std::shared_ptr<TreeSupportData>        m_tree_support_preview_cache;
     std::unique_ptr<Nonplanar::ConformalResult> m_conformal;
+    std::shared_ptr<Nonplanar::RepairHints>     m_nonplanar_repair;
     std::shared_ptr<const Nonplanar::MultiplanarPlan> m_multiplanar;
 
     bool                    				m_typed_slices = false;
@@ -1177,7 +1181,10 @@ private:
 
     bool m_need_check_multi_filaments_compatibility{true};
 
+    Nonplanar::ClearanceRepair *m_clearance_repair{ nullptr };
+
     friend class GCode;
+    friend class Nonplanar::ClearanceRepair;
     friend class PrintObject;
 
 public:

@@ -1240,6 +1240,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionEnum<NonplanarMode>, nonplanar_mode))
     ((ConfigOptionInt,                 multiplanar_max_planes))
     ((ConfigOptionFloat,               multiplanar_overhang_threshold))
+    ((ConfigOptionBool,                nonplanar_support_interface))
     ((ConfigOptionString,              nonplanar_atom_toolpath))
 )
 
@@ -1742,6 +1743,7 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
     ((ConfigOptionBool,                     rotary_inverse_time_feed))
     ((ConfigOptionFloat,                    nonplanar_max_tilt))
     ((ConfigOptionEnum<NonplanarCollisionCheck>, nonplanar_collision_check))
+    ((ConfigOptionInt,                            nonplanar_repair_iterations))
     ((ConfigOptionFloat,                          belt_support_floor_offset))
     ((ConfigOptionFloat,                          belt_purge_tower_width))
     ((ConfigOptionBool,                           enable_belt_purge_tower))

@@ -11,7 +11,7 @@ namespace Slic3r::sla { class IndexedMesh; }
 
 namespace Slic3r::Nonplanar {
 
-enum class PatchKind : unsigned char { Top, Bottom, Volume, Overhang, Chunk };
+enum class PatchKind : unsigned char { Top, Bottom, Volume, Overhang, Chunk, SupportInterface };
 
 struct ConformalPatch
 {
@@ -39,6 +39,8 @@ struct PatchDiagnostics
     double max_slope_deg = 0.;
     double fallback_area = 0.;
     std::string limiting_component;
+    int    repaired_nodes = 0;
+    double repair_lowering = 0.;
 };
 
 struct ConformalResult

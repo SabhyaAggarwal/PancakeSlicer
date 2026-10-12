@@ -4,6 +4,8 @@
 #include "Config.hpp"
 #include "GCode/GCodeProcessor.hpp"
 #include "GCode/ConformalEmit.hpp"
+#include "GCode/ClearanceRepair.hpp"
+#include "Nonplanar/Repair.hpp"
 #include "GCode/ToolKinematics.hpp"
 #include "Nonplanar/HeadEnvelope.hpp"
 #include "Nonplanar/ConformalBottom.hpp"
@@ -2484,7 +2486,7 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
 
     m_processor.finalize(true);
     try {
-        check_export_clearance(*print, m_processor.result());
+        Nonplanar::ClearanceRepair::check_export(*print, m_processor.result());
     } catch (...) {
         boost::nowide::remove(path_tmp.c_str());
         throw;
@@ -7145,6 +7147,9 @@ std::string GCode::extrude_path(const ExtrusionPath& path, const std::string& de
             }
         } else
             m_wipe.path.reverse();
+        if (const Nonplanar::RepairHints *hints = m_layer != nullptr ? m_layer->object()->nonplanar_repair() : nullptr;
+            (path.z_contoured || path.role() == erTopSolidInfill) && hints != nullptr && hints->travel_lift > 0.)
+            m_wipe.reset_path();
     }
 
     return gcode;
@@ -7279,7 +7284,8 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                 for (size_t k = 0; k < passes; ++k) {
                     const bool  ironing = k == patch.shell_paths.size();
                     const char *what    = ironing ? "conformal ironing" :
-                                          patch.kind == Nonplanar::PatchKind::Overhang ? "conformal overhang" : "conformal shell";
+                                          patch.kind == Nonplanar::PatchKind::Overhang ? "conformal overhang" :
+                                          patch.kind == Nonplanar::PatchKind::SupportInterface ? "conformal support interface" : "conformal shell";
                     gcode += ";_NONPLANAR_BEGIN patch=" + std::to_string(patch.id) + " shell=" + std::to_string(k) + "\n";
                     for (const ExtrusionEntity *ee : pass(k).entities)
                         if (const auto *path = dynamic_cast<const ExtrusionPathConformal*>(ee)) {
@@ -7342,6 +7348,7 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
     const ToolPose &start = m_conformal_points.front().pose;
     const Vec3d    &here  = m_writer.get_position();
     if (! m_last_pos_defined || (here - start.tip).norm() > EPSILON || (m_writer.get_tool_axis() - start.axis).norm() > EPSILON) {
+        m_wipe.reset_path();
         gcode += this->retract();
         m_writer.add_object_change_labels(gcode);
         if (rotary && (start.axis.z() < 1. - EPSILON || m_writer.get_tool_axis().z() < 1. - EPSILON)) {
@@ -7379,8 +7386,13 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
 
 bool GCode::conformal_in_band(const ExtrusionPathConformal *prev, const ExtrusionPathConformal *path) const
 {
-    return prev != nullptr && path != nullptr && m_conformal_band_patch >= 0 && prev->patch_id == m_conformal_band_patch &&
-           path->patch_id == m_conformal_band_patch;
+    if (prev == nullptr || path == nullptr || m_conformal_band_patch < 0 || prev->patch_id != m_conformal_band_patch ||
+        path->patch_id != m_conformal_band_patch)
+        return false;
+    for (const PrintObject *object : m_print->objects())
+        if (const Nonplanar::RepairHints *hints = object->nonplanar_repair(); hints != nullptr && hints->travel_lift > 0.)
+            return false;
+    return true;
 }
 
 bool GCode::conformal_short_hop(const ExtrusionPathConformal &path, const ExtrusionPathConformal *next, Vec3d &to)
@@ -7541,7 +7553,12 @@ double GCode::tower_layer_z() const
 
 double GCode::nonplanar_hop()
 {
-    return std::max(this->nonplanar_head().margin, m_writer.filament() != nullptr ? m_config.z_hop.get_at(m_writer.filament()->id()) : 0.);
+    double lift = 0.;
+    for (const PrintObject *object : m_print->objects())
+        if (const Nonplanar::RepairHints *hints = object->nonplanar_repair())
+            lift = std::max(lift, hints->travel_lift);
+    return lift + std::max(this->nonplanar_head().margin,
+                           m_writer.filament() != nullptr ? m_config.z_hop.get_at(m_writer.filament()->id()) : 0.);
 }
 
 double GCode::nonplanar_travel_z(const Vec2d *from, const Vec2d *to, bool nozzle_only)
@@ -7911,7 +7928,18 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
             z = unscale_(path.polyline.lines().begin()->a.z()) + m_nominal_z;
         }
 
-        gcode += this->travel_to(first_point, path.role(), "move to first " + description + " point", z);
+        const Nonplanar::RepairHints *hints  = m_layer != nullptr ? m_layer->object()->nonplanar_repair() : nullptr;
+        const double                  target = z != DBL_MAX ? z : m_nominal_z;
+        if (hints != nullptr && hints->travel_lift > 0. && sloped == nullptr &&
+            (m_need_change_layer_lift_z || path.z_contoured || path.role() == erTopSolidInfill ||
+             m_last_processor_extrusion_role == erTopSolidInfill ||
+             std::binary_search(hints->travel_layers.begin(), hints->travel_layers.end(), m_layer->id()) ||
+             std::abs(m_writer.get_position().z() - m_nominal_z) > EPSILON)) {
+            const double over = std::max({ m_writer.get_position().z(), target, this->nonplanar_travel_z() });
+            gcode += m_writer.travel_to_z(over, "lift over contoured surface", true, m_writer.max_speed_z());
+            gcode += this->travel_to(first_point, path.role(), "move to first " + description + " point", over);
+        } else
+            gcode += this->travel_to(first_point, path.role(), "move to first " + description + " point", z);
 
         if (!slope_need_z_travel && (_last_pos_undefined || m_need_change_layer_lift_z)) {
             const std::string z_sync_comment = _last_pos_undefined ?

@@ -316,6 +316,8 @@ int main(int argc, char **argv)
                   << "max_vz_commanded " << vz << "\n"
                   << "max_vz_planned " << vz_actual << "\n"
                   << "machine_max_speed_z " << config.opt<ConfigOptionFloats>("machine_max_speed_z")->get_at(0) << "\n";
+        for (const auto &warning : print.step_state_with_warnings(psGCodeExport).warnings)
+            std::cout << "export_warning " << warning.message << "\n";
         double np_extrude = 0., np_other = 0.;
         std::map<std::string, double> np_kind;
         for (size_t i = 0; i < result.moves.size(); ++i) {
