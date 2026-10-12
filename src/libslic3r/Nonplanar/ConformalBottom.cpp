@@ -130,15 +130,8 @@ HeightField sample_bottom_surface(const sla::IndexedMesh &mesh, const HeightFiel
                 const float start = ray_start.at(ix, iy);
                 if (std::isnan(start))
                     continue;
-                const Vec2d p = S.node(ix, iy);
-                S.at(ix, iy)  = HeightField::NoData;
-                for (const Vec2d &q : { p, Vec2d(p + Vec2d(1e-4, 1e-4)) }) {
-                    const auto hit = mesh.query_ray_hit(Vec3d(q.x(), q.y(), start + mesh.ground_level()), Vec3d(0., 0., 1.));
-                    if (hit.is_hit() && hit.normal().normalized().z() < -0.05) {
-                        S.at(ix, iy) = float(hit.position().z() - mesh.ground_level() + z_offset);
-                        break;
-                    }
-                }
+                const double z = vertical_ray_hit(mesh, S.node(ix, iy), start + mesh.ground_level(), 1.);
+                S.at(ix, iy)   = float(z - mesh.ground_level() + z_offset);
             }
         }
     });
@@ -519,6 +512,8 @@ void contour_support_interface(PrintObject &object)
             if (!in_range(layer))
                 continue;
             const double                    z_s          = layer.print_z, h_s = layer.height;
+            if (z_s - h_s < EPSILON)
+                continue;
             const ExPolygons               &above        = covered_above[j];
             const std::vector<BoundingBox>  above_bboxes = extents(above);
 
@@ -529,8 +524,10 @@ void contour_support_interface(PrintObject &object)
                 for (size_t k = 0; k < patches.size(); ++k)
                     if (contains(patches[k]->footprint, footprint_bboxes[k], pt))
                         if (const float s = underside(*patches[k]).sample(p); !std::isnan(s)) {
+                            const double min_bead = object.printing_region(size_t(patches[k]->region_id)).config().zaa_min_z.value;
+                            const double max_down = std::max(0., h_s - min_bead);
                             const double dz = s - gap - z_s;
-                            return std::abs(dz) <= h_s ? dz : 0.;
+                            return std::abs(dz) <= h_s ? std::max(dz, -max_down) : 0.;
                         }
                 return 0.;
             };

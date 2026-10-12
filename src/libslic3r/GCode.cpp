@@ -8,6 +8,7 @@
 #include "Nonplanar/Repair.hpp"
 #include "GCode/ToolKinematics.hpp"
 #include "Nonplanar/HeadEnvelope.hpp"
+#include "Nonplanar/HeightField.hpp"
 #include "Nonplanar/ConformalBottom.hpp"
 #include "Nonplanar/ConformalShells.hpp"
 #include "Nonplanar/PatchTools.hpp"
@@ -7365,6 +7366,7 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                 size_t next = 0;
                 m_conformal_band_patch = patch.band >= 0 ? patch.id : -1;
                 m_conformal_prev       = nullptr;
+                m_conformal_surface    = patch.kind == Nonplanar::PatchKind::Top && !patch.surface.empty() ? &patch.surface : nullptr;
                 for (size_t k = 0; k < passes; ++k) {
                     const bool  ironing = k == patch.shell_paths.size();
                     const char *what    = ironing ? "conformal ironing" :
@@ -7384,8 +7386,9 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                 }
                 m_conformal_band_patch = -1;
                 m_conformal_prev       = nullptr;
+                m_conformal_surface    = nullptr;
                 m_max_layer_z = std::max({ m_max_layer_z, float(patch.z_max + Nonplanar::GlideLift),
-                                          float(m_nonplanar_ceiling - m_config.z_offset.value) });
+                                           float(m_nonplanar_ceiling - m_config.z_offset.value) });
             }
             if (! m_writer.is_object_start_str_empty())
                 m_writer.set_object_start_str("");
@@ -7656,6 +7659,22 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
     if (m_writer.filament() != nullptr)
         params.glide_speed = m_config.travel_speed.get_at(get_nozzle_config_index(m_writer.filament()->id()));
     params.e_per_mm3     = path.mm3_per_mm > 0. ? e_per_mm / path.mm3_per_mm : 0.;
+    if (path.role() == erTopSolidInfill && path.patch_id >= 0) {
+        params.e_per_mm3 *= m_config.nonplanar_top_finish_flow.value;
+        if (m_conformal_surface != nullptr && !m_config.nonplanar_flow_mod.value) {
+            double slope = 0.;
+            size_t n     = 0;
+            for (size_t i = 0; i < path.polyline.points.size(); ++i)
+                if (path.bead_height[i] > 0.f)
+                    if (const Vec2d g = m_conformal_surface->gradient(unscale(path.polyline.points[i].to_point()));
+                        !std::isnan(g.x()) && !std::isnan(g.y())) {
+                        slope += std::atan(g.norm());
+                        ++n;
+                    }
+            if (n > 0)
+                params.nominal_speed *= std::clamp(std::cos(slope / double(n)) / std::cos(Geometry::deg2rad(25.)), 0.7, 1.);
+        }
+    }
     const double diameter = FILAMENT_CONFIG(filament_diameter);
     const double volume_ratio = params.e_per_mm3 * PI * diameter * diameter * 0.25;
     if (volume_ratio > 0.)

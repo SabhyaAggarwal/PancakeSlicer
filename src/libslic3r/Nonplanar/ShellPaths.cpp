@@ -19,6 +19,7 @@
 #include <cmath>
 #include <iterator>
 #include <limits>
+#include <map>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -231,6 +232,18 @@ template<typename Map> Points map_resampled(const Points &pts, bool closed, doub
     return out;
 }
 
+constexpr int ContourDirectionBins = 12;
+constexpr double ContourDirectionWindow = 2.;
+
+Polylines fill_piece(const ExPolygons &piece, const ExPolygons &area, double angle, double spacing, const Flow &flow, bool monotonic,
+                     double z)
+{
+    BoundingBox bb = get_extents(piece);
+    bb.offset(scale_(2. * spacing));
+    const ExPolygons grown = intersection_ex(area, ExPolygons{ ExPolygon(bb.polygon()) });
+    return intersection_pl(fill_solid(grown, monotonic ? ipMonotonic : ipRectilinear, spacing, angle, monotonic, flow, z), piece);
+}
+
 }
 
 Polylines fill_surface_spaced(const ExPolygons &area, const HeightField &surface, InfillPattern pattern, double spacing, double angle,
@@ -304,6 +317,134 @@ PathTilt path_tilt(const Polylines &polylines, const HeightField &surface, doubl
         }
     tilt.mean = length > 0. ? rise / length : 0.;
     return tilt;
+}
+
+Polylines contour_fill(const HeightField &surface, const ExPolygons &area, double drop, double spacing, const Flow &flow, bool monotonic,
+                       double z, double cross, double strip_height)
+{
+    const int nx = surface.nx(), ny = surface.ny();
+    std::vector<double> sxx(size_t(nx + 1) * (ny + 1), 0.), sxy(sxx.size(), 0.), syy(sxx.size(), 0.);
+    auto at = [nx](std::vector<double> &v, int ix, int iy) -> double & { return v[size_t(iy) * (nx + 1) + ix]; };
+    for (int iy = 0; iy < ny; ++iy)
+        for (int ix = 0; ix < nx; ++ix) {
+            Vec2d g = surface.gradient(surface.node(ix, iy));
+            if (std::isnan(g.x()) || std::isnan(g.y()))
+                g = Vec2d::Zero();
+            at(sxx, ix + 1, iy + 1) = g.x() * g.x() + at(sxx, ix, iy + 1) + at(sxx, ix + 1, iy) - at(sxx, ix, iy);
+            at(sxy, ix + 1, iy + 1) = g.x() * g.y() + at(sxy, ix, iy + 1) + at(sxy, ix + 1, iy) - at(sxy, ix, iy);
+            at(syy, ix + 1, iy + 1) = g.y() * g.y() + at(syy, ix, iy + 1) + at(syy, ix + 1, iy) - at(syy, ix, iy);
+        }
+    const int        half = std::max(1, int(std::lround(0.5 * ContourDirectionWindow / surface.pitch())));
+    std::vector<int> direction(size_t(nx) * ny, 0);
+    for (int iy = 0; iy < ny; ++iy)
+        for (int ix = 0; ix < nx; ++ix) {
+            const int x0 = std::max(0, ix - half), x1 = std::min(nx, ix + half + 1), y0 = std::max(0, iy - half), y1 = std::min(ny, iy + half + 1);
+            auto box = [&](std::vector<double> &v) { return at(v, x1, y1) - at(v, x0, y1) - at(v, x1, y0) + at(v, x0, y0); };
+            const double jxx = box(sxx), jxy = box(sxy), jyy = box(syy);
+            if (jxx + jyy > 1e-12) {
+                const double contour = std::fmod(0.5 * std::atan2(2. * jxy, jxx - jyy) + 1.5 * PI, PI);
+                direction[size_t(iy) * nx + ix] = std::min(ContourDirectionBins - 1, int(contour / PI * ContourDirectionBins));
+            }
+        }
+
+    std::map<int, Mask> strips;
+    for (size_t n = 0; n < surface.data().size(); ++n)
+        if (const float s = surface.data()[n]; !std::isnan(s)) {
+            Mask &mask = strips[std::isfinite(strip_height) ? int(std::floor((s - drop) / strip_height)) : 0];
+            mask.resize(surface.data().size(), 0);
+            mask[n] = 1;
+        }
+    Polylines out;
+    for (const auto &[strip, mask] : strips)
+        for (const ExPolygon &piece : intersection_ex(area, mask_to_expolygons(mask, surface))) {
+            const BoundingBox bb  = get_extents(piece);
+            const Vec2d       lo  = (unscale(bb.min) - surface.origin()) / surface.pitch();
+            const Vec2d       hi  = (unscale(bb.max) - surface.origin()) / surface.pitch();
+            const int         ix0 = std::clamp(int(std::floor(lo.x())), 0, nx - 1), iy0 = std::clamp(int(std::floor(lo.y())), 0, ny - 1);
+            const int         ix1 = std::clamp(int(std::ceil(hi.x())), 0, nx - 1), iy1 = std::clamp(int(std::ceil(hi.y())), 0, ny - 1);
+            HeightField       local  = crop(surface, ix0, iy0, ix1, iy1);
+            const Mask        inside = rasterize({ piece }, local);
+            for (size_t n = 0; n < inside.size(); ++n)
+                if (!inside[n])
+                    local.data()[n] = HeightField::NoData;
+            double angle = 0.;
+            if (contour_line_angle(local, angle, 0.5)) {
+                append(out, fill_piece({ piece }, area, angle + cross, spacing, flow, monotonic, z));
+                continue;
+            }
+            std::vector<Mask> classes(ContourDirectionBins);
+            for (int iy = 0; iy < local.ny(); ++iy)
+                for (int ix = 0; ix < local.nx(); ++ix)
+                    if (inside[size_t(iy) * local.nx() + ix]) {
+                        Mask &m = classes[size_t(direction[size_t(iy0 + iy) * nx + ix0 + ix])];
+                        m.resize(inside.size(), 0);
+                        m[size_t(iy) * local.nx() + ix] = 1;
+                    }
+            for (int bin = 0; bin < ContourDirectionBins; ++bin)
+                if (!classes[size_t(bin)].empty())
+                    append(out, fill_piece(intersection_ex(ExPolygons{ piece }, mask_to_expolygons(classes[size_t(bin)], local)), area,
+                                           (bin + 0.5) * PI / ContourDirectionBins + cross, spacing, flow, monotonic, z));
+        }
+    return out;
+}
+
+Polylines chain_nearest(Polylines &&polylines, const Point &start)
+{
+    Polylines out;
+    out.reserve(polylines.size());
+    polylines.erase(std::remove_if(polylines.begin(), polylines.end(), [](const Polyline &pl) { return !pl.is_valid(); }), polylines.end());
+    const size_t n = polylines.size();
+    if (n == 0)
+        return out;
+    BoundingBox bb;
+    for (const Polyline &pl : polylines) {
+        bb.merge(pl.first_point());
+        bb.merge(pl.last_point());
+    }
+    const Vec2d   size  = (bb.max - bb.min).cast<double>();
+    const coord_t cell  = std::max<coord_t>(coord_t(scale_(0.5)), coord_t(std::sqrt(std::max(1., size.x() * size.y() / double(2 * n)))));
+    const int     gx    = int(size.x() / cell) + 1, gy = int(size.y() / cell) + 1;
+    std::vector<std::vector<size_t>> grid(size_t(gx) * gy);
+    auto end_point = [&polylines](size_t e) -> const Point & { return e % 2 == 0 ? polylines[e / 2].first_point() : polylines[e / 2].last_point(); };
+    auto cell_of   = [&](const Point &p, int &ix, int &iy) {
+        ix = std::clamp(int((p.x() - bb.min.x()) / cell), 0, gx - 1);
+        iy = std::clamp(int((p.y() - bb.min.y()) / cell), 0, gy - 1);
+    };
+    for (size_t e = 0; e < 2 * n; ++e) {
+        int ix, iy;
+        cell_of(end_point(e), ix, iy);
+        grid[size_t(iy) * gx + ix].emplace_back(e);
+    }
+    std::vector<bool> used(n, false);
+    Point             cursor = start;
+    for (size_t left = n; left > 0; --left) {
+        int cx, cy;
+        cell_of(cursor, cx, cy);
+        size_t best = size_t(-1);
+        double best_d = std::numeric_limits<double>::max();
+        for (int r = 0; r <= std::max(gx, gy); ++r) {
+            if (best != size_t(-1) && double(r - 1) * double(cell) > std::sqrt(best_d))
+                break;
+            for (int iy = cy - r; iy <= cy + r; ++iy)
+                for (int ix = cx - r; ix <= cx + r; ++ix) {
+                    if (ix < 0 || iy < 0 || ix >= gx || iy >= gy || (std::abs(ix - cx) != r && std::abs(iy - cy) != r))
+                        continue;
+                    std::vector<size_t> &bucket = grid[size_t(iy) * gx + ix];
+                    bucket.erase(std::remove_if(bucket.begin(), bucket.end(), [&used](size_t e) { return used[e / 2]; }), bucket.end());
+                    for (const size_t e : bucket)
+                        if (const double d = (end_point(e) - cursor).cast<double>().squaredNorm(); d < best_d) {
+                            best_d = d;
+                            best   = e;
+                        }
+                }
+        }
+        used[best / 2] = true;
+        out.emplace_back(std::move(polylines[best / 2]));
+        if (best % 2 == 1)
+            out.back().reverse();
+        cursor = out.back().last_point();
+    }
+    return out;
 }
 
 std::vector<ShellFill> plan_shell_fills(const ConformalPatch &patch, const PrintRegionConfig &config, double spacing)
@@ -430,65 +571,6 @@ std::vector<Polylines> shell_polylines(const ExPolygons &area, const ShellFill &
         paths.insert(paths.begin(), std::make_move_iterator(outline.begin()), std::make_move_iterator(outline.end()));
     }
     return link_paths(std::move(paths), area, spacing, max_glide);
-}
-
-Polylines chain_nearest(Polylines &&polylines, const Point &start)
-{
-    Polylines out;
-    out.reserve(polylines.size());
-    polylines.erase(std::remove_if(polylines.begin(), polylines.end(), [](const Polyline &pl) { return !pl.is_valid(); }), polylines.end());
-    const size_t n = polylines.size();
-    if (n == 0)
-        return out;
-    BoundingBox bb;
-    for (const Polyline &pl : polylines) {
-        bb.merge(pl.first_point());
-        bb.merge(pl.last_point());
-    }
-    const Vec2d   size  = (bb.max - bb.min).cast<double>();
-    const coord_t cell  = std::max<coord_t>(coord_t(scale_(0.5)), coord_t(std::sqrt(std::max(1., size.x() * size.y() / double(2 * n)))));
-    const int     gx    = int(size.x() / cell) + 1, gy = int(size.y() / cell) + 1;
-    std::vector<std::vector<size_t>> grid(size_t(gx) * gy);
-    auto end_point = [&polylines](size_t e) -> const Point & { return e % 2 == 0 ? polylines[e / 2].first_point() : polylines[e / 2].last_point(); };
-    auto cell_of   = [&](const Point &p, int &ix, int &iy) {
-        ix = std::clamp(int((p.x() - bb.min.x()) / cell), 0, gx - 1);
-        iy = std::clamp(int((p.y() - bb.min.y()) / cell), 0, gy - 1);
-    };
-    for (size_t e = 0; e < 2 * n; ++e) {
-        int ix, iy;
-        cell_of(end_point(e), ix, iy);
-        grid[size_t(iy) * gx + ix].emplace_back(e);
-    }
-    std::vector<bool> used(n, false);
-    Point             cursor = start;
-    for (size_t left = n; left > 0; --left) {
-        int cx, cy;
-        cell_of(cursor, cx, cy);
-        size_t best = size_t(-1);
-        double best_d = std::numeric_limits<double>::max();
-        for (int r = 0; r <= std::max(gx, gy); ++r) {
-            if (best != size_t(-1) && double(r - 1) * double(cell) > std::sqrt(best_d))
-                break;
-            for (int iy = cy - r; iy <= cy + r; ++iy)
-                for (int ix = cx - r; ix <= cx + r; ++ix) {
-                    if (ix < 0 || iy < 0 || ix >= gx || iy >= gy || (std::abs(ix - cx) != r && std::abs(iy - cy) != r))
-                        continue;
-                    std::vector<size_t> &bucket = grid[size_t(iy) * gx + ix];
-                    bucket.erase(std::remove_if(bucket.begin(), bucket.end(), [&used](size_t e) { return used[e / 2]; }), bucket.end());
-                    for (const size_t e : bucket)
-                        if (const double d = (end_point(e) - cursor).cast<double>().squaredNorm(); d < best_d) {
-                            best_d = d;
-                            best   = e;
-                        }
-                }
-        }
-        used[best / 2] = true;
-        out.emplace_back(std::move(polylines[best / 2]));
-        if (best % 2 == 1)
-            out.back().reverse();
-        cursor = out.back().last_point();
-    }
-    return out;
 }
 
 std::vector<Polylines> link_paths(Polylines &&paths, const ExPolygons &area, double spacing, double max_glide)

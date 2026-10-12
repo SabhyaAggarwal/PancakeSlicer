@@ -1,5 +1,6 @@
 #include "Multiplanar.hpp"
 
+#include "ConformalIroning.hpp"
 #include "ConformalShells.hpp"
 #include "PatchTools.hpp"
 
@@ -417,6 +418,9 @@ DynamicPrintConfig chunk_print_config(const PrintObject &object)
     set("nonplanar_overhangs", "0");
     set("nonplanar_atom_toolpath", "");
     set("nonplanar_ironing", "0");
+    if (conformal_ironing_enabled(object.printing_region(0).config()) &&
+        object.printing_region(0).config().ironing_type.value == IroningType::NoIroning)
+        set("ironing_type", "top");
     set("nonplanar_kinematics", "none");
     set("zaa_enabled", "0");
     set("enable_support", "0");
@@ -555,6 +559,20 @@ void build_multiplanar_chunks(PrintObject &object, const MultiplanarPlan &plan, 
                 const Points3 &pts = path->polyline.points;
                 if (pts.size() < 2)
                     continue;
+                if (path->role() == erIroning) {
+                    size_t covered = 0;
+                    for (const Point3 &pt : pts) {
+                        const Vec3d p = to_object * Vec3d(unscale<double>(pt.x()) + center.x(), unscale<double>(pt.y()) + center.y(),
+                                                          layer->print_z + chunk.base);
+                        for (size_t k = 0; k < chunk.clips.size(); ++k)
+                            if (int(k) != chunk.base_clip && std::abs(chunk.clips[k].normal.dot(p) - chunk.clips[k].offset) <= 0.75 * h) {
+                                ++covered;
+                                break;
+                            }
+                    }
+                    if (2 * covered > pts.size())
+                        continue;
+                }
                 std::vector<Vec3d> tips(pts.size());
                 for (size_t i = 0; i < pts.size(); ++i) {
                     const Vec3d in_chunk(unscale<double>(pts[i].x()) + center.x(), unscale<double>(pts[i].y()) + center.y(),

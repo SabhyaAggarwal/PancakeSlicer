@@ -21,6 +21,7 @@
 #include "GCode/ConformalTravel.hpp"
 #include "GCode/ClearanceVerifier.hpp"
 #include "Nonplanar/HeadEnvelope.hpp"
+#include "Nonplanar/HeightField.hpp"
 #include "GCode/ToolOrdering.hpp"
 #include "GCode/WipeTower.hpp"
 #include "GCode/SeamPlacer.hpp"
@@ -668,6 +669,7 @@ protected:
     bool                                m_track_nonplanar_material{ false };
     bool m_conformal_lift { false };
     std::vector<Nonplanar::ConformalPoint> m_conformal_points;
+    const Nonplanar::HeightField          *m_conformal_surface{ nullptr };
     std::function<Vec2d(const Vec2d &)>    m_conformal_gradient;
     int                                    m_conformal_band_patch{ -1 };
     const ExtrusionPathConformal          *m_conformal_prev{ nullptr };

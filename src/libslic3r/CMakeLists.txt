@@ -141,6 +141,8 @@ set(lisbslic3r_sources
     Nonplanar/ConformalIroning.hpp
     Nonplanar/ConformalShells.cpp
     Nonplanar/ConformalShells.hpp
+    Nonplanar/PatchPreview.cpp
+    Nonplanar/PatchPreview.hpp
     Nonplanar/ConformalVolume.cpp
     Nonplanar/ConformalVolume.hpp
     Nonplanar/PatchTools.cpp

@@ -1700,6 +1700,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "print_flow_ratio"
             || opt_key == "first_layer_flow_ratio"
             || opt_key == "top_solid_infill_flow_ratio"
+            || opt_key == "nonplanar_top_finish_flow"
             || opt_key == "bottom_solid_infill_flow_ratio"
             || opt_key == "outer_wall_flow_ratio"
             || opt_key == "inner_wall_flow_ratio"

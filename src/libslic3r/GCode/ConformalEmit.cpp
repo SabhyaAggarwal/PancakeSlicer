@@ -198,7 +198,8 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
             points.emplace_back(staged[i]);
             if (!flow.empty())
                 stub_flow.emplace_back(flow[i - 1]);
-        } else if (last && points.size() > 1) {
+        } else if (points.size() > 1 &&
+                   (last || (staged[i].bead_height > 0.f) != (staged[i + 1].bead_height > 0.f))) {
             points.back() = staged[i];
             if (!flow.empty())
                 stub_flow.back() = std::min(stub_flow.back(), flow[i - 1]);
@@ -272,8 +273,9 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
             std::snprintf(buf, sizeof(buf), ";%s%g\n", GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Height).c_str(), last_height);
             out += buf;
         }
-        const double v = segment_volume(a.pose.tip, b.pose.tip, seg_width, a.bead_height, b.bead_height, axis) *
-                         (flow.empty() ? 1. : flow[i]);
+        const double v = a.bead_height > 0.f && b.bead_height > 0.f ?
+                             segment_volume(a.pose.tip, b.pose.tip, seg_width, a.bead_height, b.bead_height, axis) * (flow.empty() ? 1. : flow[i]) :
+                             0.;
         volume += v;
         double speed = speeds[i];
         if (params.max_volume_per_second > 0. && v > 0.)

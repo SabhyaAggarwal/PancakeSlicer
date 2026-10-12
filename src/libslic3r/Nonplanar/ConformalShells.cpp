@@ -1,5 +1,6 @@
 #include "ConformalShells.hpp"
 
+#include "ConformalIroning.hpp"
 #include "HeadEnvelope.hpp"
 #include "PatchTools.hpp"
 #include "Repair.hpp"
@@ -171,6 +172,7 @@ void arachne_roads(const ExPolygon &piece, const Flow &flow, double layer_height
                 lines.emplace_back(&line);
     std::stable_sort(lines.begin(), lines.end(), [](const auto *a, const auto *b) { return a->inset_idx > b->inset_idx; });
     const float      to_width = float(flow.width() - flow.spacing());
+    const float      min_spacing = std::max(params.min_feature_size, float(layer_height));
     const double     link_max = 2. * flow.spacing();
     const ExPolygons link_area{ piece };
     std::optional<Point> last;
@@ -197,7 +199,7 @@ void arachne_roads(const ExPolygon &piece, const Flow &flow, double layer_height
         std::vector<float> w;
         for (const Arachne::ExtrusionJunction &j : line.junctions) {
             pl.points.emplace_back(j.p);
-            w.emplace_back(float(unscale<double>(j.w)) + to_width);
+            w.emplace_back(std::max(min_spacing, float(unscale<double>(j.w))) + to_width);
         }
         if (line.is_closed) {
             size_t start = 0;
@@ -467,8 +469,8 @@ HeightField sample_underside(const sla::IndexedMesh &mesh, double z_offset, cons
                 if (std::isnan(s))
                     continue;
                 const Vec2d p   = U.node(ix, iy);
-                const auto  hit = mesh.query_ray_hit(Vec3d(p.x(), p.y(), s - z_offset + mesh.ground_level() - 0.01), Vec3d(0., 0., -1.));
-                U.at(ix, iy)    = float(hit.is_hit() ? hit.position().z() - mesh.ground_level() + z_offset : z_offset);
+                const double z = vertical_ray_hit(mesh, p, s - z_offset + mesh.ground_level() - 0.01, -1., true);
+                U.at(ix, iy)    = float(std::isnan(z) ? z_offset : z - mesh.ground_level() + z_offset);
             }
         }
     });
@@ -546,6 +548,43 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
     std::vector<int> limiting_components(n_nodes, -1);
     if (!settings.banded)
         drop_unsafe_nodes(S0, head, h_c, settings.max_error, mask, &limiting_components);
+    if (!settings.banded) {
+        int                    n_comp = 0;
+        const std::vector<int> label  = label_components(mask, grid.nx(), grid.ny(), n_comp);
+        std::vector<int>       ix0(size_t(n_comp), grid.nx()), iy0(size_t(n_comp), grid.ny()), ix1(size_t(n_comp), -1), iy1(size_t(n_comp), -1);
+        for (int iy = 0; iy < grid.ny(); ++iy)
+            for (int ix = 0; ix < grid.nx(); ++ix)
+                if (const int c = label[size_t(iy) * grid.nx() + ix]; c >= 0) {
+                    ix0[size_t(c)] = std::min(ix0[size_t(c)], ix), iy0[size_t(c)] = std::min(iy0[size_t(c)], iy);
+                    ix1[size_t(c)] = std::max(ix1[size_t(c)], ix), iy1[size_t(c)] = std::max(iy1[size_t(c)], iy);
+                }
+        std::vector<std::vector<size_t>> low(static_cast<size_t>(n_comp));
+        tbb::parallel_for(tbb::blocked_range<int>(0, n_comp), [&](const tbb::blocked_range<int> &range) {
+            for (int c = range.begin(); c < range.end(); ++c) {
+                const size_t k = size_t(c);
+                HeightField  own = crop(S0, ix0[k], iy0[k], ix1[k], iy1[k]);
+                for (int iy = 0; iy < own.ny(); ++iy)
+                    for (int ix = 0; ix < own.nx(); ++ix)
+                        if (label[size_t(iy0[k] + iy) * grid.nx() + ix0[k] + ix] != c)
+                            own.at(ix, iy) = HeightField::NoData;
+                const HeightField safe  = min_safe_tip_height(own, head, own, nullptr, true);
+                const HeightField lower = head_lipschitz_minorant(own, head, 8, cancel);
+                size_t            high  = 0;
+                for (int iy = 0; iy < own.ny(); ++iy)
+                    for (int ix = 0; ix < own.nx(); ++ix)
+                        if (const float z = own.at(ix, iy); !std::isnan(z)) {
+                            high += !(z - lower.at(ix, iy) <= settings.max_error);
+                            if (z < safe.at(ix, iy) - settings.max_error)
+                                low[k].emplace_back(size_t(iy0[k] + iy) * grid.nx() + ix0[k] + ix);
+                        }
+                if (low[k].size() >= high)
+                    low[k].clear();
+            }
+        });
+        for (const std::vector<size_t> &l : low)
+            for (size_t i : l)
+                mask[i] = 0;
+    }
 
     HeightField cap, S1u;
     if (const RepairHints *hints = object.nonplanar_repair(); hints != nullptr && !hints->surface_caps.empty())
@@ -617,14 +656,37 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
                 const Extent &e = ext[size_t(c)];
                 if (e.zcap == -Inf)
                     continue;
-                HeightField H = grid;
                 const float host_z = host_print_z(e.zcap);
-                for (size_t i = 0; i < n_nodes; ++i)
-                    if ((label[i] != c || !mask[i] || band_mask[i]) && !std::isnan(S.data()[i]))
-                        H.data()[i] = std::min(S.data()[i], host_z);
-                const HeightField like   = component_field(S1, c);
-                const HeightField z_safe = min_safe_tip_height(H, head, like, nullptr, true);
                 const double lowest_shell = (settings.shells - 1) * h_c;
+                const HeightField like = component_field(S1, c);
+                float like_min = Inf;
+                for (float z : like.data())
+                    if (!std::isnan(z))
+                        like_min = std::min(like_min, z);
+                HeadEnvelope near_head = head;
+                near_head.boxes.clear();
+                bool all_x = false, all_y = false;
+                double rx = 0., ry = 0.;
+                for (const HeadBox &box : head.boxes)
+                    if (box.min.z() - head.margin <= host_z - like_min + lowest_shell) {
+                        const double lx = std::max(std::abs(box.min.x()), std::abs(box.max.x())) + head.lateral_margin;
+                        const double ly = std::max(std::abs(box.min.y()), std::abs(box.max.y())) + head.lateral_margin;
+                        box.infinite_x ? void(all_x = true) : void(rx = std::max(rx, lx));
+                        box.infinite_y ? void(all_y = true) : void(ry = std::max(ry, ly));
+                        near_head.boxes.emplace_back(box);
+                    }
+                if (near_head.boxes.empty())
+                    continue;
+                const int wnx = int(std::ceil(rx / pitch)) + 2, wny = int(std::ceil(ry / pitch)) + 2;
+                const int wx0 = all_x ? 0 : std::max(0, e.ix0 - wnx), wx1 = all_x ? grid.nx() - 1 : std::min(grid.nx() - 1, e.ix1 + wnx);
+                const int wy0 = all_y ? 0 : std::max(0, e.iy0 - wny), wy1 = all_y ? grid.ny() - 1 : std::min(grid.ny() - 1, e.iy1 + wny);
+                HeightField H = crop(grid, wx0, wy0, wx1, wy1);
+                for (int iy = wy0; iy <= wy1; ++iy)
+                    for (int ix = wx0; ix <= wx1; ++ix)
+                        if (const size_t i = size_t(iy) * grid.nx() + ix;
+                            (label[i] != c || !mask[i] || band_mask[i]) && !std::isnan(S.data()[i]))
+                            H.at(ix - wx0, iy - wy0) = std::min(S.data()[i], host_z);
+                const HeightField z_safe = min_safe_tip_height(H, near_head, like, nullptr, true);
                 for (int iy = 0; iy < like.ny(); ++iy)
                     for (int ix = 0; ix < like.nx(); ++ix) {
                         const size_t i = size_t(e.iy0 + iy) * grid.nx() + e.ix0 + ix;
@@ -646,15 +708,24 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
         std::fill(mask.begin(), mask.end(), 0);
     }
 
-    ExPolygons components = opening_ex(mask_to_expolygons(mask, grid), float(scale_(line_width)));
+    ExPolygons components = opening_ex(mask_to_expolygons(mask, grid), float(scale_(0.5 * line_width)));
     components            = settings.banded ? intersection_ex(components, candidate) :
                                               intersection_ex(offset_ex(expolygons_simplify(components, scale_(pitch)), -float(scale_(pitch))),
                                                               candidate);
     {
+        std::vector<BoundingBox> island_bboxes;
+        for (const ExPolygon &island : candidate)
+            island_bboxes.emplace_back(get_extents(island.contour));
         ExPolygons kept;
-        for (ExPolygon &c : components)
-            if (settings.banded || c.area() * SCALING_FACTOR * SCALING_FACTOR >= settings.min_area)
+        for (ExPolygon &c : components) {
+            const double a = c.area() * SCALING_FACTOR * SCALING_FACTOR;
+            bool         keep = settings.banded || a >= settings.min_area;
+            for (size_t k = 0; !keep && a >= 1. && k < candidate.size(); ++k)
+                if (island_bboxes[k].contains(c.contour.points.front()) && candidate[k].contains(c.contour.points.front()))
+                    keep = a >= 0.25 * candidate[k].area() * SCALING_FACTOR * SCALING_FACTOR;
+            if (keep)
                 kept.emplace_back(std::move(c));
+        }
         components = std::move(kept);
     }
 
@@ -907,10 +978,9 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
                 });
                 for (ExtrusionEntityCollection &shell : shells)
                     patch.shell_paths.emplace_back(std::move(shell));
-                continue;
             }
             std::optional<Point3>       from;
-            for (int k = 1; k <= patch.shells; ++k) {
+            for (int k = 1; k <= patch.shells && !settings.banded; ++k) {
                 throw_if_canceled(object);
                 ShellFill fill = fills[size_t(k - 1)];
                 if (settings.banded)
@@ -923,6 +993,8 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
                 if (!entities.empty() && !settings.banded)
                     from = static_cast<const ExtrusionPathConformal *>(entities.back())->polyline.points.back();
             }
+            if (settings.banded && conformal_ironing_enabled(region.config()))
+                patch.ironing = make_conformal_ironing(object, patch, area, seam, seam_lines[idx], host_z, true, spans_wall);
         }
     });
 

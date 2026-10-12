@@ -291,8 +291,11 @@ static void handle_extrusion_collection(LayerRegion *region, const sla::IndexedM
 void Layer::make_contour_z(const sla::IndexedMesh &mesh)
 {
 	ExPolygons shell_area;
-	for (const Nonplanar::ConformalPatch &patch : this->object()->conformal().patches)
-		if (patch.kind == Nonplanar::PatchKind::Top || patch.kind == Nonplanar::PatchKind::Volume)
+	const PrintObject &object = *this->object();
+	for (const Nonplanar::ConformalPatch &patch : object.conformal().patches)
+		if ((patch.kind == Nonplanar::PatchKind::Top || patch.kind == Nonplanar::PatchKind::Volume) &&
+			this->print_z > patch.z_min + EPSILON &&
+			this->print_z <= object.get_layer(int(patch.host_layer))->print_z + EPSILON)
 			append(shell_area, diff_ex(patch.footprint, patch.wall_band));
 
 	for (LayerRegion *region : this->regions()) {

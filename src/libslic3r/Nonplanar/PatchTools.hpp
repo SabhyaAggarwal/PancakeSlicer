@@ -19,6 +19,7 @@
 #include <vector>
 
 namespace Slic3r {
+namespace sla { class IndexedMesh; }
 class BoundingBox;
 class ExtrusionEntityCollection;
 class Flow;
@@ -36,6 +37,8 @@ enum class PatchKind : unsigned char;
 using Mask = std::vector<uint8_t>;
 
 void throw_if_canceled(const PrintObject &object);
+
+double vertical_ray_hit(const sla::IndexedMesh &mesh, const Vec2d &p, double z, double dir_z, bool from_inside = false);
 
 bool requests_conformal_shells(const Print &print);
 bool sequential_shell_tower(const Print &print);

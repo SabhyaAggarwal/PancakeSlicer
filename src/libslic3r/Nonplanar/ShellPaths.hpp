@@ -42,11 +42,16 @@ Polylines fill_surface_spaced(const ExPolygons &area, const HeightField &surface
 
 float surface_spaced_bead(float height, double width, const Vec2d &gradient, double angle);
 
+constexpr double ContourStripHeight = 2.;
+
+Polylines contour_fill(const HeightField &surface, const ExPolygons &area, double drop, double spacing, const Flow &flow, bool monotonic,
+                       double z, double cross = 0., double strip_height = ContourStripHeight);
+
+Polylines chain_nearest(Polylines &&polylines, const Point &start);
+
 std::vector<Polylines> shell_polylines(const ExPolygons &area, const ShellFill &fill, InfillPattern line_pattern, double spacing,
                                        bool monotonic, const Flow &flow, double z, const Point &start, double max_glide,
                                        const HeightField *surface_spaced = nullptr, const Polyline *seam_line = nullptr);
-
-Polylines chain_nearest(Polylines &&polylines, const Point &start);
 
 std::vector<Polylines> link_paths(Polylines &&paths, const ExPolygons &area, double spacing, double max_glide);
 

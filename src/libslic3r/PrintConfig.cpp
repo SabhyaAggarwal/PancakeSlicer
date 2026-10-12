@@ -5126,9 +5126,21 @@ void PrintConfigDef::init_fff_params()
     def->label    = L("Non-planar ironing");
     def->category = L("Quality");
     def->tooltip  = L("Add an ironing pass that follows the curved top shell after it is printed. Uses the process ironing "
-                      "pattern, spacing, flow, speed and inset.");
+                      "pattern, spacing, flow, speed and inset. Ironing type other than \"No ironing\" irons the curved top "
+                      "shells too.");
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("nonplanar_top_finish_flow", coFloat);
+    def->label    = L("Non-planar top finish flow");
+    def->category = L("Quality");
+    def->tooltip  = L("Flow multiplier of the outermost curved top shell, on top of the top surface flow ratio. Slightly "
+                      "less material leaves the beads of the visible surface without ridges. The outermost shell also "
+                      "slows down on slopes steeper than 25 degrees, where its beads stand tall.");
+    def->min      = 0.5;
+    def->max      = 1.2;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0.95));
 
     def = this->add("nonplanar_overhangs", coBool);
     def->label    = L("Curved overhangs");
