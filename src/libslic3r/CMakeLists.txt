@@ -137,6 +137,8 @@ set(lisbslic3r_sources
     Nonplanar/ConformalBottom.hpp
     Nonplanar/ConformalSupport.cpp
     Nonplanar/ConformalSupport.hpp
+    Nonplanar/CurvedBridge.cpp
+    Nonplanar/CurvedBridge.hpp
     Nonplanar/CurvedOverhang.cpp
     Nonplanar/CurvedOverhang.hpp
     Nonplanar/ConformalIroning.cpp

@@ -454,7 +454,6 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
         return f.with_width(std::min(f.width(), float(0.75 * f.nozzle_diameter())));
     }();
     const int    loops   = std::max(0, rcfg.wall_loops.value);
-    const double walls   = loops == 0 ? 0. : ext.spacing() + (loops - 1) * per.spacing();
     const double overlap_w = 0.01 * rcfg.top_bottom_infill_wall_overlap.value * solid.width();
     const double density = 0.01 * rcfg.sparse_infill_density.value;
     const bool   surface_spacing = rcfg.nonplanar_surface_spacing.value;
@@ -533,7 +532,17 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
             pad_lowest(patch.base, pad);
 
             const int        L           = patch.shells;
-            const ExPolygons infill_area = loops == 0 ? patch.footprint : offset_ex(patch.footprint, -float(scale_(walls - overlap_w)));
+            ExPolygons infill_area = loops == 0 ? patch.footprint : ExPolygons();
+            for (int i = 0; i < loops; ++i) {
+                const double inner = ext.spacing() + i * per.spacing();
+                ExPolygons   area  = offset_ex(patch.footprint, -float(scale_(inner - overlap_w)));
+                if (i + 1 < loops)
+                    area = diff_ex(area, offset_ex(offset_ex(patch.footprint, -float(scale_(inner + 0.5 * per.spacing()))),
+                                                   float(scale_(0.5 * per.spacing() + overlap_w))));
+                append(infill_area, std::move(area));
+            }
+            if (loops > 1)
+                infill_area = union_ex(infill_area);
             bool on_air = false;
             for (const float b : patch.base.data())
                 on_air |= !std::isnan(b) && b > first_top + EPSILON;

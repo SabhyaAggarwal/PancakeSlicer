@@ -15,7 +15,7 @@ namespace Slic3r::Nonplanar {
 
 struct AutoPatchSettings;
 
-enum class PatchKind : unsigned char { Top, Bottom, Volume, Overhang, Chunk, SupportInterface };
+enum class PatchKind : unsigned char { Top, Bottom, Volume, Overhang, Chunk, SupportInterface, Bridge };
 
 struct ConformalPatch
 {
@@ -56,6 +56,7 @@ struct ConformalResult
     std::vector<ConformalPatch>   patches;
     std::vector<PatchDiagnostics> diagnostics;
     std::vector<ExPolygons>       planar_exclusion;
+    std::vector<ExPolygons>       bridged;
     FlowModStats                  flow_mod;
     std::shared_ptr<ObjectMesh>   mesh;
 };

@@ -5160,6 +5160,15 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionBool(false));
 
+    def = this->add("nonplanar_bridges", coBool);
+    def->label    = L("Curved bridges");
+    def->category = L("Quality");
+    def->tooltip  = L("Print bridges up to about 40 mm as shallow catenaries that sag from both anchors, the "
+                      "shape the hot bead settles into, instead of straight roads that droop after they are laid. "
+                      "The layers above flatten the sag back to the planar top with thicker beads.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
+
     def = this->add("nonplanar_fallback", coEnum);
     def->label    = L("Non-planar fallback");
     def->category = L("Quality");

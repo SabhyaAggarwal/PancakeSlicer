@@ -1443,6 +1443,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionBool,                      nonplanar_ironing))
     ((ConfigOptionFloat,                     nonplanar_top_finish_flow))
     ((ConfigOptionBool,                      nonplanar_overhangs))
+    ((ConfigOptionBool,                      nonplanar_bridges))
     ((ConfigOptionEnum<NonplanarFallback>,   nonplanar_fallback))
     ((ConfigOptionFloat,                     nonplanar_full_conformal_max_thickness))
     )

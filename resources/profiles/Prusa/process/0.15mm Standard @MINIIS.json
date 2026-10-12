@@ -6,6 +6,7 @@
 	"setting_id": "15ygzQ1DiW2HtpPe",
 	"instantiation": "true",
 	"nonplanar_overhangs": "1",
+	"nonplanar_bridges": "1",
 	"line_width": "0.45",
 	"inner_wall_line_width": "0.45",
 	"outer_wall_line_width": "0.45",

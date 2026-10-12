@@ -7402,6 +7402,7 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                     m_conformal_scored  = k + 1 == patch.shell_paths.size();
                     const char *what    = ironing ? "conformal ironing" :
                                           patch.kind == Nonplanar::PatchKind::Overhang ? "conformal overhang" :
+                                          patch.kind == Nonplanar::PatchKind::Bridge ? "conformal bridge" :
                                           patch.kind == Nonplanar::PatchKind::SupportInterface ? "conformal support interface" : "conformal shell";
                     gcode += ";_NONPLANAR_BEGIN patch=" + std::to_string(patch.id) + " shell=" + std::to_string(k) + " band=" + std::to_string(patch.band) +
                              " rate=" + std::to_string(std::lround(this->conformal_segment_rate())) + "\n";

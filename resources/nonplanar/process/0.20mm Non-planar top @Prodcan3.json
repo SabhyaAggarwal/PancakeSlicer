@@ -159,6 +159,7 @@
 	"nonplanar_full_conformal_max_thickness": "3",
 	"nonplanar_top_shells": "3",
 	"nonplanar_ironing": "1",
+	"nonplanar_bridges": "1",
 	"compatible_printers": [
 		"Prodcan3 5-axis BC table"
 	]

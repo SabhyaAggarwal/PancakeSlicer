@@ -25,6 +25,7 @@
 #include "Nonplanar/Multiplanar.hpp"
 #include "Nonplanar/ConformalSupport.hpp"
 #include "Nonplanar/ConformalVolume.hpp"
+#include "Nonplanar/CurvedBridge.hpp"
 #include "Nonplanar/CurvedOverhang.hpp"
 #include "Nonplanar/PatchTools.hpp"
 #include "MutablePolygon.hpp"
@@ -718,7 +719,8 @@ void PrintObject::nonplanar_shells()
         enabled |= Nonplanar::top_shells_enabled(this->printing_region(region_id).config(), this->config()) ||
                    Nonplanar::bottom_shells_enabled(this->printing_region(region_id).config(), this->config()) ||
                    Nonplanar::full_conformal_thickness(this->printing_region(region_id).config(), this->config()) > 0. ||
-                   Nonplanar::overhangs_enabled(this->printing_region(region_id).config(), this->config());
+                   Nonplanar::overhangs_enabled(this->printing_region(region_id).config(), this->config()) ||
+                   Nonplanar::bridges_enabled(this->printing_region(region_id).config(), this->config());
     if (m_multiplanar && m_config.nonplanar_atom_toolpath.value.empty()) {
         m_print->set_status(40, L("Slicing multiplanar chunks"));
         for (Layer *layer : m_layers)
@@ -733,6 +735,7 @@ void PrintObject::nonplanar_shells()
         m_print->set_status(40, L("Generating curved top shells"));
         m_conformal = std::make_unique<Nonplanar::ConformalResult>(Nonplanar::build_conformal_shells(*this));
         Nonplanar::build_conformal_bottom(*this, *m_conformal);
+        Nonplanar::build_curved_bridges(*this, *m_conformal);
         if (!(m_config.enable_support.value && Nonplanar::conformal_support_configured(*this)))
             Nonplanar::build_curved_overhangs(*this, *m_conformal);
         Nonplanar::build_conformal_ironing(*this, *m_conformal);
@@ -1437,7 +1440,8 @@ bool PrintObject::invalidate_state_by_config_options(
             steps.emplace_back(posSupportMaterial);
             bool clip = m_config.nonplanar_mode.value == NonplanarMode::Auto;
             for (size_t region_id = 0; region_id < this->num_printing_regions() && !clip; ++region_id)
-                clip = Nonplanar::overhangs_enabled(this->printing_region(region_id).config(), m_config);
+                clip = Nonplanar::overhangs_enabled(this->printing_region(region_id).config(), m_config) ||
+                       Nonplanar::bridges_enabled(this->printing_region(region_id).config(), m_config);
             if (clip)
                 steps.emplace_back(posPerimeters);
             if (m_config.support_top_z_distance == 0.) {
@@ -1643,6 +1647,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "nonplanar_infill_depth"
             || opt_key == "nonplanar_ironing"
             || opt_key == "nonplanar_overhangs"
+            || opt_key == "nonplanar_bridges"
             || opt_key == "nonplanar_fallback"
             || opt_key == "nonplanar_full_conformal_max_thickness"
             || opt_key == "nonplanar_surface_resolution"

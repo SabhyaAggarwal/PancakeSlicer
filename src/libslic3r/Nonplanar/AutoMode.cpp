@@ -82,6 +82,11 @@ bool overhangs_enabled(const PrintRegionConfig &config, const PrintObjectConfig 
     return is_auto(object) || (is_manual(object) && config.nonplanar_overhangs.value);
 }
 
+bool bridges_enabled(const PrintRegionConfig &config, const PrintObjectConfig &object)
+{
+    return is_auto(object) || (is_manual(object) && config.nonplanar_bridges.value);
+}
+
 double infill_depth(const PrintRegionConfig &config, const PrintObjectConfig &object)
 {
     return is_auto(object) ? 2. : is_manual(object) ? config.nonplanar_infill_depth.value : 0.;

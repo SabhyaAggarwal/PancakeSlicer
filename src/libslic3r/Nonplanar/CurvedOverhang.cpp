@@ -234,6 +234,8 @@ void build_curved_overhangs(PrintObject &object, ConformalResult &result)
                 for (const Surface &surface : layerm->slices.surfaces)
                     if (surface.surface_type == stBottom || surface.surface_type == stBottomBridge)
                         layer_bottoms.emplace_back(surface.expolygon);
+        if (i < result.bridged.size() && !result.bridged[i].empty())
+            layer_bottoms = diff_ex(layer_bottoms, offset(result.bridged[i], float(scale_(0.5 * w))));
         if (layer_bottoms.empty())
             continue;
         const Mask  m     = rasterize(layer_bottoms, grid);
