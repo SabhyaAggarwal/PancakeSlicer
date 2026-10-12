@@ -6,6 +6,7 @@
 #include <Eigen/Core>
 #include <algorithm>
 #include <cstddef>
+#include <cmath>
 #include <cassert>
 #include <limits>
 #include <type_traits>
@@ -212,6 +213,10 @@ namespace detail {
   		Eigen::AlignedBox<Scalar,3> 			 box,
   		const Scalar 							&t0,
   		const Scalar 							&t1) {
+        if (std::isinf(inv_dir.x()) && (origin.x() < box.min().x() || origin.x() > box.max().x()))
+            return false;
+        if (std::isinf(inv_dir.y()) && (origin.y() < box.min().y() || origin.y() > box.max().y()))
+            return false;
 		if (inv_dir.x() < 0)
 			std::swap(box.min().x(), box.max().x());
 		if (inv_dir.y() < 0)

@@ -24,6 +24,7 @@
 #include <cmath>
 #include <cstddef>
 #include <initializer_list>
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <limits>
@@ -105,6 +106,18 @@ double automatic_shell_height(const PrintObject &object)
         if (layer->height > 0.)
             height = std::min(height, layer->height);
     return std::isfinite(height) ? height : object.config().layer_height.value;
+}
+
+ObjectMesh::ObjectMesh(const PrintObject &object) : mesh(object.object_frame_mesh(ground_offset)), imesh(mesh)
+{
+    imesh.ground_level_offset(ground_offset);
+}
+
+const ObjectMesh &object_mesh(const PrintObject &object, ConformalResult &result)
+{
+    if (!result.mesh)
+        result.mesh = std::make_shared<ObjectMesh>(object);
+    return *result.mesh;
 }
 
 HeightField object_grid(const PrintObject &object, double pitch, Polygons *silhouette)
@@ -307,59 +320,173 @@ std::string most_limiting_component(const HeadEnvelope &head, const std::vector<
     return most != counts.end() && *most > 0 ? head.boxes[size_t(most - counts.begin())].name : std::string();
 }
 
-void clip_extrusions(ExtrusionEntityCollection &collection, const ExPolygons &area, const BoundingBox &area_bbox)
+namespace {
+
+const coord_t     AreaCell  = coord_t(scale_(1.));
+constexpr coord_t AreaClear = 10;
+
+template<typename Fn> bool visit_cells(const Point &a, const Point &b, coord_t pad, Fn &&fn)
 {
+    auto cell = [](coord_t v) { return int64_t(std::floor(double(v) / AreaCell)); };
+    const int64_t x0 = cell(std::min(a.x(), b.x()) - pad), x1 = cell(std::max(a.x(), b.x()) + pad);
+    const int64_t y0 = cell(std::min(a.y(), b.y()) - pad), y1 = cell(std::max(a.y(), b.y()) + pad);
+    for (int64_t ix = x0; ix <= x1; ++ix)
+        for (int64_t iy = y0; iy <= y1; ++iy)
+            if (fn((uint64_t(uint32_t(ix)) << 32) | uint32_t(iy)))
+                return true;
+    return false;
+}
+
+double point_segment_distance2(const Vec2d &p, const Vec2d &a, const Vec2d &b)
+{
+    const Vec2d  d = b - a;
+    const double t = d.squaredNorm() > 0. ? std::clamp((p - a).dot(d) / d.squaredNorm(), 0., 1.) : 0.;
+    return (a + t * d - p).squaredNorm();
+}
+
+double segment_distance2(const Point &a, const Point &b, const Point &c, const Point &d)
+{
+    auto orient = [](const Point &p, const Point &q, const Point &r) {
+        const double v = double(q.x() - p.x()) * double(r.y() - p.y()) - double(q.y() - p.y()) * double(r.x() - p.x());
+        return (v > 0.) - (v < 0.);
+    };
+    if (orient(a, b, c) * orient(a, b, d) <= 0 && orient(c, d, a) * orient(c, d, b) <= 0)
+        return 0.;
+    const Vec2d pa = a.cast<double>(), pb = b.cast<double>(), pc = c.cast<double>(), pd = d.cast<double>();
+    return std::min({ point_segment_distance2(pa, pc, pd), point_segment_distance2(pb, pc, pd), point_segment_distance2(pc, pa, pb),
+                      point_segment_distance2(pd, pa, pb) });
+}
+
+}
+
+AreaEdges::AreaEdges(const ExPolygons &area) : m_area(area)
+{
+    auto add = [this](const Polygon &poly) {
+        for (size_t i = 0; i < poly.points.size(); ++i) {
+            const Point &a = poly.points[i], &b = poly.points[(i + 1) % poly.points.size()];
+            visit_cells(a, b, 0, [&](uint64_t key) { m_cells[key].emplace_back(a, b); return false; });
+        }
+    };
+    for (const ExPolygon &expoly : area) {
+        add(expoly.contour);
+        for (const Polygon &hole : expoly.holes)
+            add(hole);
+    }
+}
+
+bool AreaEdges::near_edge(const Point &a, const Point &b) const
+{
+    return visit_cells(a, b, AreaClear, [&](uint64_t key) {
+        const auto it = m_cells.find(key);
+        if (it != m_cells.end())
+            for (const auto &[c, d] : it->second)
+                if (segment_distance2(a, b, c, d) <= double(AreaClear) * double(AreaClear))
+                    return true;
+        return false;
+    });
+}
+
+int AreaEdges::side(const Point &p) const
+{
+    for (const ExPolygon &expoly : m_area)
+        if (expoly.contains(p))
+            return 1;
+    return 0;
+}
+
+int AreaEdges::classify(const Point &a, const Point &b) const { return near_edge(a, b) ? -1 : side(a); }
+
+int AreaEdges::classify(const Points &points) const
+{
+    for (size_t i = 0; i + 1 < points.size(); ++i)
+        if (near_edge(points[i], points[i + 1]))
+            return -1;
+    return points.size() == 1 && near_edge(points.front(), points.front()) ? -1 : side(points.front());
+}
+
+namespace {
+
+void clip_extrusions(ExtrusionEntityCollection &collection, const AreaEdges &edges, const BoundingBox &area_bbox)
+{
+    const ExPolygons &area = edges.area();
     ExtrusionEntitiesPtr out;
     out.reserve(collection.entities.size());
     bool any_cut = false;
     for (ExtrusionEntity *ee : collection.entities) {
         if (auto *sub = dynamic_cast<ExtrusionEntityCollection *>(ee)) {
-            clip_extrusions(*sub, area, area_bbox);
+            clip_extrusions(*sub, edges, area_bbox);
             if (sub->entities.empty())
                 delete ee;
             else
                 out.emplace_back(ee);
             continue;
         }
+        const ExtrusionPath *single = nullptr;
         const ExtrusionPaths *paths = nullptr;
-        ExtrusionPaths        single;
         if (auto *loop = dynamic_cast<ExtrusionLoop *>(ee))
             paths = &loop->paths;
         else if (auto *multi = dynamic_cast<ExtrusionMultiPath *>(ee))
             paths = &multi->paths;
-        else if (auto *path = dynamic_cast<ExtrusionPath *>(ee); path != nullptr && typeid(*path) == typeid(ExtrusionPath)) {
-            single.emplace_back(*path);
-            paths = &single;
-        }
-        if (paths == nullptr || !get_extents(ee->as_polylines()).overlap(area_bbox)) {
+        else if (auto *path = dynamic_cast<ExtrusionPath *>(ee); path != nullptr && typeid(*path) == typeid(ExtrusionPath))
+            single = path;
+        auto bounds = [](const ExtrusionPath &path) {
+            BoundingBox bb;
+            for (const Point3 &p : path.polyline.points)
+                bb.merge(p.to_point());
+            return bb;
+        };
+        bool overlaps = false;
+        if (single != nullptr)
+            overlaps = bounds(*single).overlap(area_bbox);
+        else if (paths != nullptr)
+            for (const ExtrusionPath &path : *paths)
+                overlaps |= bounds(path).overlap(area_bbox);
+        if (!overlaps) {
             out.emplace_back(ee);
             continue;
         }
         bool                      cut = false;
         ExtrusionEntityCollection pieces;
-        for (const ExtrusionPath &path : *paths) {
+        auto clip_path = [&](const ExtrusionPath &path) {
             const Polylines src { path.polyline.to_polyline() };
-            if (intersection_pl(src, area).empty()) {
+            const int       side = bounds(path).overlap(area_bbox) ? edges.classify(src.front().points) : 0;
+            if (side == 1 && src.front().length() > SCALED_EPSILON) {
+                cut = true;
+                return;
+            }
+            if (side == 0 || intersection_pl(src, area).empty()) {
                 pieces.entities.emplace_back(new ExtrusionPath(path));
-                continue;
+                return;
             }
             cut = true;
             for (Polyline &pl : diff_pl(src, area))
                 if (pl.is_valid() && pl.length() >= scale_(2. * path.width))
                     pieces.entities.emplace_back(new ExtrusionPath(Polyline3(pl), path));
-        }
+        };
+        if (single != nullptr)
+            clip_path(*single);
+        else
+            for (const ExtrusionPath &path : *paths)
+                clip_path(path);
         if (!cut) {
             out.emplace_back(ee);
             continue;
         }
         any_cut = true;
         delete ee;
-        for (ExtrusionEntity *piece : pieces.entities)
-            out.emplace_back(piece->clone_move());
+        out.insert(out.end(), pieces.entities.begin(), pieces.entities.end());
+        pieces.entities.clear();
     }
     collection.entities = std::move(out);
     if (any_cut)
         collection.no_sort = false;
+}
+
+}
+
+void clip_extrusions(ExtrusionEntityCollection &collection, const ExPolygons &area, const BoundingBox &area_bbox)
+{
+    clip_extrusions(collection, AreaEdges(area), area_bbox);
 }
 
 int planar_transition_layer(const std::vector<double> &boundaries, double shell_face, double shell_height,
@@ -386,6 +513,8 @@ bool contour_line_angle(const HeightField &surface, double &angle, double min_co
     double jxx = 0., jxy = 0., jyy = 0.;
     for (int iy = 0; iy < surface.ny(); ++iy)
         for (int ix = 0; ix < surface.nx(); ++ix) {
+            if (std::isnan(surface.at(ix, iy)))
+                continue;
             const Vec2d g = surface.gradient(surface.node(ix, iy));
             if (std::isnan(g.x()) || std::isnan(g.y()))
                 continue;

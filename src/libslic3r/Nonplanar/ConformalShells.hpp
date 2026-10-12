@@ -4,6 +4,7 @@
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -44,12 +45,15 @@ struct PatchDiagnostics
     double repair_lowering = 0.;
 };
 
+struct ObjectMesh;
+
 struct ConformalResult
 {
     std::vector<ConformalPatch>   patches;
     std::vector<PatchDiagnostics> diagnostics;
     std::vector<ExPolygons>       planar_exclusion;
     FlowModStats                  flow_mod;
+    std::shared_ptr<ObjectMesh>   mesh;
 };
 
 HeightField sample_top_surface(const sla::IndexedMesh &mesh, double ray_z, double z_offset, const HeightField &like,

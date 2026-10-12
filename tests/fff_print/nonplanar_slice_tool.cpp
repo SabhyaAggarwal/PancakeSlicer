@@ -29,6 +29,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -307,13 +308,18 @@ int main(int argc, char **argv)
             throw std::runtime_error("validate: " + err.string);
         for (const StringObjectException &w : warnings)
             std::cerr << "warning: " << w.string << "\n";
+        const auto t_process = std::chrono::steady_clock::now();
         print.process();
+        const auto t_export = std::chrono::steady_clock::now();
         GCodeProcessorResult result;
         print.export_gcode(args.output, &result, nullptr);
+        const auto t_done = std::chrono::steady_clock::now();
 
         const auto [vz, vz_actual] = max_vz(result);
         const auto &normal         = result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)];
-        std::cout << "gcode " << args.output << "\n"
+        std::cout << "time_process_s " << std::chrono::duration<double>(t_export - t_process).count() << "\n"
+                  << "time_export_s " << std::chrono::duration<double>(t_done - t_export).count() << "\n"
+                  << "gcode " << args.output << "\n"
                   << "estimated_time_s " << normal.time << "\n"
                   << "max_vz_commanded " << vz << "\n"
                   << "max_vz_planned " << vz_actual << "\n"

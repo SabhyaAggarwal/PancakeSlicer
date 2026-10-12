@@ -475,9 +475,10 @@ HeightField sample_underside(const sla::IndexedMesh &mesh, double z_offset, cons
     return U;
 }
 
-static ConformalResult build_region_shells(PrintObject &object, size_t region_id, int patch_offset)
+static ConformalResult build_region_shells(PrintObject &object, size_t region_id, int patch_offset, std::shared_ptr<ObjectMesh> &mesh)
 {
     ConformalResult result;
+    result.mesh = mesh;
     const auto      t_start = std::chrono::steady_clock::now();
     LayerPtrs      &layers  = object.layers();
     result.planar_exclusion.assign(layers.size(), ExPolygons());
@@ -503,13 +504,10 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
     auto cancel = [&object]() { throw_if_canceled(object); };
     HeightField S, U;
     {
-        double             ground_offset = 0.;
-        const TriangleMesh mesh          = object.object_frame_mesh(ground_offset);
-        sla::IndexedMesh   imesh(mesh);
-        imesh.ground_level_offset(ground_offset);
-        S = sample_top_surface(imesh, mesh.bounding_box().max.z() + 1., object.slicing_parameters().object_print_z_min, grid, cancel);
+        const ObjectMesh &mesh = object_mesh(object, result);
+        S = sample_top_surface(mesh.imesh, mesh.mesh.bounding_box().max.z() + 1., object.slicing_parameters().object_print_z_min, grid, cancel);
         if (settings.shells > settings.top_shells)
-            U = sample_underside(imesh, object.slicing_parameters().object_print_z_min, S, cancel);
+            U = sample_underside(mesh.imesh, object.slicing_parameters().object_print_z_min, S, cancel);
     }
     const Mask        cand_mask = rasterize(candidate, grid);
     throw_if_canceled(object);
@@ -898,6 +896,19 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
             seams[idx]                                = seam;
             seam_lines[idx]                           = seam_line(patch.surface, seam, area);
             fill_areas[idx]                           = area;
+            if (settings.banded) {
+                std::vector<ExtrusionEntityCollection> shells(size_t(patch.shells));
+                tbb::parallel_for(tbb::blocked_range<int>(0, patch.shells, 1), [&](const tbb::blocked_range<int> &range) {
+                    for (int k = range.begin() + 1; k <= range.end(); ++k) {
+                        throw_if_canceled(object);
+                        shells[size_t(k - 1)] = make_shell(object, patch, planar_tops[idx], fill_area, k, banded_fills[size_t(k - 1)], seam, nullptr,
+                                                           host_z, pitch, seam_lines[idx], &banded);
+                    }
+                });
+                for (ExtrusionEntityCollection &shell : shells)
+                    patch.shell_paths.emplace_back(std::move(shell));
+                continue;
+            }
             std::optional<Point3>       from;
             for (int k = 1; k <= patch.shells; ++k) {
                 throw_if_canceled(object);
@@ -1032,7 +1043,8 @@ ConformalResult build_conformal_shells(PrintObject &object)
         layer->conformal_covered = false;
     }
     for (size_t region_id = 0; region_id < object.num_printing_regions(); ++region_id) {
-        ConformalResult region = build_region_shells(object, region_id, int(result.patches.size()));
+        ConformalResult region = build_region_shells(object, region_id, int(result.patches.size()), result.mesh);
+        result.mesh            = region.mesh;
         result.flow_mod.merge(region.flow_mod);
         for (ConformalPatch &patch : region.patches)
             result.patches.emplace_back(std::move(patch));

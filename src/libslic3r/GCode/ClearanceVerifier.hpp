@@ -23,12 +23,25 @@ public:
     double clearance(const Vec3d &tip, const Nonplanar::HeadEnvelope &head, std::string *component = nullptr) const;
     double swept_clearance(const Vec3d &a, const Vec3d &b, const Nonplanar::HeadEnvelope &head,
                            std::string *component = nullptr) const;
+    struct PreparedBox { Vec3d min, max; bool infinite_x, infinite_y; size_t index; };
+    struct PreparedHead
+    {
+        std::vector<PreparedBox> boxes;
+        Vec2d finite_min { Vec2d::Constant(std::numeric_limits<double>::infinity()) };
+        Vec2d finite_max { Vec2d::Constant(-std::numeric_limits<double>::infinity()) };
+    };
+    static PreparedHead prepare(const Nonplanar::HeadEnvelope &head);
+    double swept_clearance(const Vec3d &a, const Vec3d &b, const PreparedHead &head, double bound, int *box = nullptr,
+                           int hint = -1) const;
 private:
     void cells(const BoundingBoxf &rect, int &x0, int &y0, int &x1, int &y1) const;
+    double tile_bound(const BoundingBoxf &rect) const;
+    double top_above(const BoundingBoxf &rect, double floor) const;
     BoundingBoxf m_bbox;
     double m_pitch;
     int m_nx, m_ny, m_tile, m_tx;
-    std::vector<double> m_top, m_tiles;
+    std::vector<double> m_tiles;
+    std::vector<std::vector<double>> m_blocks;
     double m_ceiling = -std::numeric_limits<double>::infinity();
 };
 

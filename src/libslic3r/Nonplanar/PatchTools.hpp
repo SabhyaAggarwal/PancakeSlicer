@@ -6,12 +6,15 @@
 #include "libslic3r/Point.hpp"
 #include "libslic3r/Polyline.hpp"
 #include "libslic3r/PrintConfig.hpp"
+#include "libslic3r/SLA/IndexedMesh.hpp"
+#include "libslic3r/TriangleMesh.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -41,6 +44,16 @@ void prepare_vase_closure(PrintObject &object);
 
 double automatic_shell_height(const PrintObject &object);
 
+struct ConformalResult;
+struct ObjectMesh
+{
+    explicit ObjectMesh(const PrintObject &object);
+    double           ground_offset = 0.;
+    TriangleMesh     mesh;
+    sla::IndexedMesh imesh;
+};
+const ObjectMesh &object_mesh(const PrintObject &object, ConformalResult &result);
+
 HeightField object_grid(const PrintObject &object, double pitch, Polygons *silhouette = nullptr);
 
 Mask rasterize(const ExPolygons &area, const HeightField &grid);
@@ -55,6 +68,21 @@ void drop_unsafe_nodes(const HeightField &surface, const HeadEnvelope &head, dou
                        Mask &mask, std::vector<int> *limiting_components = nullptr);
 std::string most_limiting_component(const HeadEnvelope &head, const std::vector<int> &limiting_components,
                                     const Mask &area);
+
+class AreaEdges
+{
+public:
+    explicit AreaEdges(const ExPolygons &area);
+    const ExPolygons &area() const { return m_area; }
+    int classify(const Point &a, const Point &b) const;
+    int classify(const Points &points) const;
+
+private:
+    bool near_edge(const Point &a, const Point &b) const;
+    int  side(const Point &p) const;
+    const ExPolygons                                                   &m_area;
+    std::unordered_map<uint64_t, std::vector<std::pair<Point, Point>>> m_cells;
+};
 
 void clip_extrusions(ExtrusionEntityCollection &collection, const ExPolygons &area, const BoundingBox &area_bbox);
 

@@ -21,6 +21,7 @@
 #include <limits>
 #include <memory>
 #include <utility>
+#include <vector>
 
 namespace Slic3r::Nonplanar {
 
@@ -29,11 +30,13 @@ namespace {
 constexpr int    LineAngles = 12;
 constexpr double AngleStep  = PI / LineAngles;
 
-bool link_inside(const Point &a, const Point &b, const ExPolygons &area)
+bool link_inside(const Point &a, const Point &b, const AreaEdges &area)
 {
     if (a == b)
         return true;
-    for (const Polyline &outside : diff_pl(Polylines{ Polyline(a, b) }, area))
+    if (const int side = area.classify(a, b); side >= 0)
+        return side == 1 || !(Polyline(a, b).length() > SCALED_EPSILON);
+    for (const Polyline &outside : diff_pl(Polylines{ Polyline(a, b) }, area.area()))
         if (outside.length() > SCALED_EPSILON)
             return false;
     return true;
@@ -88,7 +91,7 @@ std::pair<Point, size_t> project_on(const Polygon &rail, const Point &p)
     return { Point(coord_t(std::lround(foot.x())), coord_t(std::lround(foot.y()))), best };
 }
 
-Polyline glide_route(const Point &a, const Point &b, const ExPolygons &inside, const Polygons &rails, double reach, double max_length)
+Polyline glide_route(const Point &a, const Point &b, const AreaEdges &inside, const Polygons &rails, double reach, double max_length)
 {
     if ((b - a).cast<double>().norm() <= max_length && link_inside(a, b, inside))
         return Polyline(a, b);
@@ -490,7 +493,8 @@ Polylines chain_nearest(Polylines &&polylines, const Point &start)
 
 std::vector<Polylines> link_paths(Polylines &&paths, const ExPolygons &area, double spacing, double max_glide)
 {
-    const ExPolygons inside       = offset_ex(area, float(scale_(0.25 * spacing)));
+    const ExPolygons inside_area  = offset_ex(area, float(scale_(0.25 * spacing)));
+    const AreaEdges  inside(inside_area);
     const double     extrude_link = scale_(2. * spacing);
     const double     glide_link   = scale_(max_glide);
     const Polygons   rails        = to_polygons(offset_ex(area, -float(scale_(spacing))));
@@ -580,7 +584,7 @@ bool prepend_glide(ExtrusionPathConformal &path, const Point3 &from, const ExPol
 {
     if (path.polyline.points.empty())
         return false;
-    const Polyline route = glide_route(from.to_point(), path.polyline.points.front().to_point(), area,
+    const Polyline route = glide_route(from.to_point(), path.polyline.points.front().to_point(), AreaEdges(area),
                                        to_polygons(offset_ex(area, -float(scale_(0.5)))), scale_(1.5), scale_(max_glide));
     if (!route.is_valid())
         return false;

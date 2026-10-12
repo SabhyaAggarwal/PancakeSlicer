@@ -737,6 +737,7 @@ void PrintObject::nonplanar_shells()
         Nonplanar::build_conformal_ironing(*this, *m_conformal);
         Nonplanar::build_conformal_volume(*this, *m_conformal);
         Nonplanar::group_hosts_by_filament(*this, *m_conformal);
+        m_conformal->mesh.reset();
         if (!m_config.nonplanar_atom_toolpath.value.empty()) {
             m_print->set_status(40, L("Importing the Atomizer toolpath"));
             for (const std::string &warning : Nonplanar::apply_atom_toolpath(*this, *m_conformal))

@@ -193,11 +193,7 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
 
     HeightField Sb;
     {
-        double             ground_offset = 0.;
-        const TriangleMesh mesh          = object.object_frame_mesh(ground_offset);
-        sla::IndexedMesh   imesh(mesh);
-        imesh.ground_level_offset(ground_offset);
-        Sb = sample_bottom_surface(imesh, ray_start, object.slicing_parameters().object_print_z_min, cancel);
+        Sb = sample_bottom_surface(object_mesh(object, result).imesh, ray_start, object.slicing_parameters().object_print_z_min, cancel);
     }
 
     std::string        head_warning;

@@ -240,11 +240,7 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
 
     std::vector<std::vector<Interval>> columns;
     {
-        double             ground_offset = 0.;
-        const TriangleMesh mesh          = object.object_frame_mesh(ground_offset);
-        sla::IndexedMesh   imesh(mesh);
-        imesh.ground_level_offset(ground_offset);
-        columns = sample_columns(imesh, object.slicing_parameters().object_print_z_min, grid, cancel);
+        columns = sample_columns(object_mesh(object, result).imesh, object.slicing_parameters().object_print_z_min, grid, cancel);
     }
 
     bool mixed = false;

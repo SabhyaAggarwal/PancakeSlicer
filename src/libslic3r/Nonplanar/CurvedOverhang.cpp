@@ -249,10 +249,7 @@ void build_curved_overhangs(PrintObject &object, ConformalResult &result)
 
     HeightField Sb, top;
     {
-        double             ground_offset = 0.;
-        const TriangleMesh mesh          = object.object_frame_mesh(ground_offset);
-        sla::IndexedMesh   imesh(mesh);
-        imesh.ground_level_offset(ground_offset);
+        const sla::IndexedMesh &imesh = object_mesh(object, result).imesh;
         const double z_offset = object.slicing_parameters().object_print_z_min;
         for (size_t n = 0; n < n_nodes; ++n)
             if (!cand_mask[n])
