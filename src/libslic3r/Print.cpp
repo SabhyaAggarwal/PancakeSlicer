@@ -167,7 +167,7 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & , co
         "gcode_remap_y",
         "gcode_remap_z",
         "rotary_axis_continuous", "rotary_max_speed", "rotary_pivot", "rotary_tool_length",
-        "rotary_firmware_rtcp", "rotary_inverse_time_feed", "nonplanar_collision_check", "nonplanar_repair_iterations", "nonplanar_segment_rate", "rotary_axis_reversed", "rotary_axis_home", "rotary_linear_moves_table", "rotary_table_height", "rotary_tool_mount",
+        "rotary_firmware_rtcp", "rotary_inverse_time_feed", "nonplanar_collision_check", "nonplanar_repair_iterations", "nonplanar_road_cooling", "nonplanar_segment_rate", "rotary_axis_reversed", "rotary_axis_home", "rotary_linear_moves_table", "rotary_table_height", "rotary_tool_mount",
         "belt_frame_tilt_decouple", "belt_frame_tilt_angle",
         "belt_printer_infinite_y",
         "additional_cooling_fan_speed",

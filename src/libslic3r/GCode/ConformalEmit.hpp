@@ -76,6 +76,7 @@ struct ConformalEmitParams
     bool         open_end      = false;
     bool         scored        = false;
     PressureAdvanceTracker *pressure_advance = nullptr;
+    std::function<std::vector<std::string>(const std::vector<ConformalPoint> &, const std::vector<double> &)> segment_tags;
 };
 
 struct ConformalSpeedParams
@@ -84,6 +85,7 @@ struct ConformalSpeedParams
     double max_volumetric   = 0.;
     double reference_height = 0.;
     double min_ratio        = 0.5;
+    double min_speed        = 0.;
     Vec3d  max_joint_speed  { Vec3d::Zero() };
 };
 std::vector<double> conformal_speed_caps(const std::vector<ConformalPoint> &points, double width,

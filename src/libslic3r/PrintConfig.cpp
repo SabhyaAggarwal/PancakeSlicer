@@ -5309,6 +5309,19 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionInt(3));
 
+    def = this->add("nonplanar_road_cooling", coBool);
+    def->label    = L("Non-planar road cooling");
+    def->category = L("Cooling");
+    def->tooltip  = L("Cool and pace each curved line by what it needs. The part fan (and the auxiliary fan) rises "
+                      "toward the overhang fan speed with the share of the line that has no material under it and "
+                      "on lines running steeply downhill, ahead of time so the fan is up when the line arrives. Top "
+                      "surfaces never print faster than the top surface speed and lines shorter than 2 mm print at "
+                      "the small perimeter speed. When one pass of a small curved patch takes less than the "
+                      "filament's minimum layer time, it is slowed down and, below the minimum print speed, the "
+                      "nozzle waits above the patch with the fan at full speed before the next pass.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(true));
+
     def = this->add("nonplanar_head", coString);
     def->label    = L("Print head");
     def->category = L("Non-planar");

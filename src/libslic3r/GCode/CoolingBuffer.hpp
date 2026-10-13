@@ -26,6 +26,7 @@ private:
 	CoolingBuffer& operator=(const CoolingBuffer&) = delete;
     std::vector<PerExtruderAdjustments> parse_layer_gcode(const std::string &gcode, std::vector<float> &current_pos, bool &inverse_time) const;
     float       calculate_layer_slowdown(std::vector<PerExtruderAdjustments> &per_extruder_adjustments);
+    float       apply_nonplanar_pass_time(std::vector<PerExtruderAdjustments> &per_extruder_adjustments);
     std::string apply_layer_cooldown(const std::string &gcode, size_t layer_id, float layer_time, std::vector<PerExtruderAdjustments> &per_extruder_adjustments);
 
     std::string                 m_gcode;

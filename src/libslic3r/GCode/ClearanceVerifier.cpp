@@ -208,6 +208,23 @@ void MaterialColumns::cells(const BoundingBoxf &rect, int &x0, int &y0, int &x1,
     x1 = bound(rect.max.x(), m_bbox.min.x(), m_nx, true); y1 = bound(rect.max.y(), m_bbox.min.y(), m_ny, true);
 }
 
+std::vector<double> MaterialColumns::tops(const BoundingBoxf &rect, Vec2d &origin, int &nx, double &pitch) const
+{
+    int x0, y0, x1, y1;
+    cells(rect, x0, y0, x1, y1);
+    pitch  = m_pitch;
+    nx     = std::max(0, x1 - x0);
+    origin = m_bbox.min + m_pitch * Vec2d(x0, y0);
+    std::vector<double> out;
+    if (x0 >= x1 || y0 >= y1)
+        return out;
+    out.reserve(size_t(nx) * size_t(y1 - y0));
+    for (int y = y0; y < y1; ++y)
+        for (int x = x0; x < x1; ++x)
+            out.push_back(cell_top(x, y));
+    return out;
+}
+
 void MaterialColumns::deposit(const Vec3d &a, const Vec3d &b, double width)
 {
     const Vec2d r = Vec2d::Constant(0.5 * std::max(0., width));

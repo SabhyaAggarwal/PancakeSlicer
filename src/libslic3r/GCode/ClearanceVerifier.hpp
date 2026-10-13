@@ -19,6 +19,7 @@ public:
     MaterialColumns(const BoundingBoxf &bbox, double pitch);
     void deposit(const Vec3d &a, const Vec3d &b, double width);
     double top_in_rect(const BoundingBoxf &rect) const;
+    std::vector<double> tops(const BoundingBoxf &rect, Vec2d &origin, int &nx, double &pitch) const;
     double ceiling() const { return m_ceiling; }
     double clearance(const Vec3d &tip, const Nonplanar::HeadEnvelope &head, std::string *component = nullptr) const;
     double swept_clearance(const Vec3d &a, const Vec3d &b, const Nonplanar::HeadEnvelope &head,

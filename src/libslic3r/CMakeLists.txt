@@ -128,6 +128,8 @@ set(lisbslic3r_sources
     GCode/ClearanceRepair.hpp
     GCode/ClearanceVerifier.cpp
     GCode/ClearanceVerifier.hpp
+    GCode/ConformalCooling.cpp
+    GCode/ConformalCooling.hpp
     GCode/ConformalEmit.cpp
     GCode/ConformalEmit.hpp
     GCode/ConformalTravel.cpp

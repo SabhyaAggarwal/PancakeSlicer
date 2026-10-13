@@ -17,6 +17,7 @@
 #include "GCode/FanMover.hpp"
 #include "GCode/RetractWhenCrossingPerimeters.hpp"
 #include "GCode/SpiralVase.hpp"
+#include "GCode/ConformalCooling.hpp"
 #include "GCode/ConformalEmit.hpp"
 #include "GCode/ConformalTravel.hpp"
 #include "GCode/ClearanceVerifier.hpp"
@@ -550,6 +551,9 @@ protected:
     double          nonplanar_hop();
     double          conformal_max_speed_z() const;
     double          conformal_segment_rate() const;
+    void            nonplanar_pass_start(const ExPolygons &footprint, bool ironing);
+    std::string     nonplanar_pass_hold(const ExtrusionPathConformal *next);
+    std::string     nonplanar_patch_end();
     double          nonplanar_travel_z(const Vec2d *from = nullptr, const Vec2d *to = nullptr, bool nozzle_only = false);
     bool            below_conformal_material() const
     { return m_material_columns && m_nonplanar_ceiling > std::min(m_nominal_z, m_writer.get_position().z()) + EPSILON; }
@@ -685,6 +689,8 @@ protected:
     std::map<unsigned int, Nonplanar::PressureAdvance> m_start_gcode_pa;
     Nonplanar::PressureAdvance                         m_machine_start_pa;
     std::unique_ptr<Nonplanar::PressureAdvanceTracker> m_conformal_pa_tracker;
+    Nonplanar::SupportSnapshot             m_np_support;
+    float                                  m_np_fan_level{ 0.f };
     bool                                   m_conformal_on_bead{ false };
     double                                 m_conformal_retract{ 0. };
     double                                 m_conformal_prime{ 0. };

@@ -1747,6 +1747,7 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
     ((ConfigOptionFloat,                    nonplanar_max_tilt))
     ((ConfigOptionEnum<NonplanarCollisionCheck>, nonplanar_collision_check))
     ((ConfigOptionInt,                            nonplanar_repair_iterations))
+    ((ConfigOptionBool,                           nonplanar_road_cooling))
     ((ConfigOptionFloat,                          belt_support_floor_offset))
     ((ConfigOptionFloat,                          belt_purge_tower_width))
     ((ConfigOptionBool,                           enable_belt_purge_tower))

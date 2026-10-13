@@ -229,6 +229,7 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
     const std::vector<double> caps   = params.speed_caps ? params.speed_caps(points) : std::vector<double>();
     const std::vector<double> speeds = limit_feedrates(tips, nominal, params.limits, 0.05, caps.empty() ? nullptr : &caps, &glides);
 
+    const std::vector<std::string> tags = params.segment_tags ? params.segment_tags(points, speeds) : std::vector<std::string>();
     std::vector<double> prime(points.size() - 1, 0.);
     auto primes = [&](size_t i) {
         return points[i].bead_height > 0.f && points[i + 1].bead_height > 0.f && (points[i + 1].pose.tip - points[i].pose.tip).norm() >= 0.05;
@@ -268,6 +269,8 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
         const ConformalPoint &b = points[i + 1];
         if ((b.pose.tip - a.pose.tip).norm() < EPSILON)
             continue;
+        if (i < tags.size())
+            out += tags[i];
         const float height = 0.5f * (a.bead_height + b.bead_height);
         const double seg_width = a.width > 0.f && b.width > 0.f ? 0.5 * (double(a.width) + double(b.width)) : width;
         if (params.last_width != nullptr && std::abs(float(seg_width) - *params.last_width) > TagStep) {
@@ -337,7 +340,8 @@ std::vector<double> conformal_speed_caps(const std::vector<ConformalPoint> &poin
             const Vec2d  g      = gradient(0.5 * (a.pose.tip + b.pose.tip).head<2>());
             const Vec3d  normal = Vec3d(-g.x(), -g.y(), 1.).normalized();
             const double normal_thickness = 0.5 * (a.bead_height + b.bead_height) * std::max(0., axis.dot(normal));
-            caps[i] = std::min(caps[i], params.nominal_speed * std::clamp(normal_thickness / params.reference_height, params.min_ratio, 1.));
+            const double thin = params.nominal_speed * std::clamp(normal_thickness / params.reference_height, params.min_ratio, 1.);
+            caps[i] = std::min(caps[i], std::max(thin, std::min(params.min_speed, params.nominal_speed)));
         }
         if (joints) {
             JointPose next;

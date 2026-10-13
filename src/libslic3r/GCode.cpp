@@ -7429,6 +7429,9 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                                           patch.kind == Nonplanar::PatchKind::SupportInterface ? "conformal support interface" : "conformal shell";
                     if (! Nonplanar::pass_prints(pass(k)))
                         continue;
+                    if (k > 0 && !ironing && Nonplanar::pass_is_solid(pass(k - 1)) && Nonplanar::pass_is_top(pass(k)))
+                        gcode += this->nonplanar_pass_hold(next < order.size() ? order[next] : nullptr);
+                    this->nonplanar_pass_start(patch.footprint, ironing);
                     gcode += ";_NONPLANAR_BEGIN patch=" + std::to_string(patch.id) + " shell=" + std::to_string(k) + " band=" + std::to_string(patch.band) +
                              " rate=" + std::to_string(std::lround(this->conformal_segment_rate())) + "\n";
                     while (next < pass_end[k]) {
@@ -7444,6 +7447,7 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                 if (m_conformal_pa_tracker)
                     m_conformal_pa_tracker->restore(gcode);
                 m_conformal_pa_tracker.reset();
+                gcode += this->nonplanar_patch_end();
                 gcode += this->rotary_hop(nullptr);
                 m_conformal_scored = false;
                 m_conformal_band_patch = -1;
@@ -7768,6 +7772,19 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
                        description, pt.pose.tip.z(), first_layer_z),
                 m_layer != nullptr && m_layer->object() != nullptr ? m_layer->object()->id().id : 0);
 
+    const bool road_cooling = m_config.nonplanar_road_cooling.value && m_writer.filament() != nullptr;
+    if (road_cooling) {
+        if (path.role() == erTopSolidInfill && NOZZLE_CONFIG(top_surface_speed) > 0.)
+            speed = std::min(speed, double(NOZZLE_CONFIG(top_surface_speed)));
+        if (path.role() != erIroning && unscale<double>(path.polyline.length()) < SmallRoadLength) {
+            const double outer = NOZZLE_CONFIG(outer_wall_speed);
+            const double small = NOZZLE_CONFIG(small_perimeter_speed).value == 0 ? 0.5 * outer :
+                                                                                     NOZZLE_CONFIG(small_perimeter_speed).get_abs_value(outer);
+            if (small > 0.)
+                speed = std::min(speed, small);
+        }
+    }
+
     ConformalEmitParams params;
     params.nominal_speed = speed;
     params.ramp_length   = m_conformal_ramp ? StartRamp : 0.;
@@ -7836,6 +7853,8 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
         caps.nominal_speed    = speed;
         caps.max_volumetric   = FILAMENT_CONFIG(filament_max_volumetric_speed);
         caps.reference_height = m_conformal_gradient ? path.height : 0.;
+        if (road_cooling)
+            caps.min_speed = FILAMENT_CONFIG(slow_down_min_speed);
         caps.max_joint_speed  = Vec3d(first_value(m_config.machine_max_speed_x), first_value(m_config.machine_max_speed_y),
                                       first_value(m_config.machine_max_speed_z));
         const Vec2f  offset   = m_writer.get_xy_offset();
@@ -7845,6 +7864,13 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
         };
     }
 
+    if (road_cooling && m_enable_cooling_markers && path.role() != erIroning)
+        params.segment_tags = [this, &path](const std::vector<ConformalPoint> &points, const std::vector<double> &speeds) {
+            std::vector<float> demand = road_fan_demand(points, speeds, path.width, m_np_support, m_conformal_gradient, RoadFanParams());
+            if (path.role() == erInternalInfill)
+                std::fill(demand.begin(), demand.end(), 0.f);
+            return road_fan_tags(demand, m_np_fan_level);
+        };
     params.prime         = m_conformal_prime;
     params.prime_length  = ConformalPrime;
     if (m_writer.filament() != nullptr)
@@ -7865,6 +7891,62 @@ double GCode::tower_layer_z() const
 {
     const double z = m_writer.get_position().z();
     return m_conformal_lift && z > m_nominal_z + EPSILON ? m_nominal_z : z;
+}
+
+void GCode::nonplanar_pass_start(const ExPolygons &footprint, bool ironing)
+{
+    using namespace Nonplanar;
+    if (m_writer.filament() == nullptr || ironing)
+        return;
+    m_np_support = SupportSnapshot();
+    if (m_config.nonplanar_road_cooling.value && m_enable_cooling_markers && m_material_columns && !footprint.empty()) {
+        const BoundingBox bbox = get_extents(footprint);
+        BoundingBoxf      area(this->point_to_gcode(bbox.min), this->point_to_gcode(bbox.max));
+        area.min.array() -= 1.;
+        area.max.array() += 1.;
+        m_np_support = SupportSnapshot(*m_material_columns, area);
+    }
+}
+
+std::string GCode::nonplanar_pass_hold(const ExtrusionPathConformal *next)
+{
+    using namespace Nonplanar;
+    if (!m_config.nonplanar_road_cooling.value || !m_enable_cooling_markers || m_writer.filament() == nullptr ||
+        m_writer.filament()->retracted() <= 0. || m_writer.tool_kinematics().rotary_count() > 0)
+        return {};
+    const Vec3d &here = m_writer.get_position();
+    const Vec2d  xy   = here.head<2>();
+    if (next != nullptr && !next->polyline.points.empty()) {
+        const Point3 &p = next->polyline.points.front();
+        const Vec2d   s = this->point_to_gcode(p.to_point());
+        if ((s - xy).norm() < 0.01 && std::abs(m_nominal_z + unscale<double>(p.z()) - here.z()) < 0.01)
+            return {};
+    }
+    double       z    = std::max(here.z(), this->nonplanar_travel_z(&xy, &xy)) + 1.;
+    if (m_config.printable_height.value > 0.)
+        z = std::min(z, m_config.printable_height.value + m_config.z_offset.value);
+    if (z <= here.z() + EPSILON)
+        return {};
+    double speed = this->conformal_max_speed_z();
+    if (speed <= 0.)
+        speed = m_config.travel_speed_z.get_at(get_nozzle_config_index(m_writer.filament()->id()));
+    if (speed <= 0.)
+        speed = 10.;
+    char buf[96];
+    std::snprintf(buf, sizeof(buf), "%s Z%.3f F%.0f\n", NpPassHoldTag, z, 60. * speed);
+    return buf;
+}
+
+std::string GCode::nonplanar_patch_end()
+{
+    std::string gcode;
+    m_np_support = Nonplanar::SupportSnapshot();
+    if (m_np_fan_level > 0.f) {
+        gcode += Nonplanar::NpFanEndTag;
+        gcode += "\n";
+    }
+    m_np_fan_level = 0.f;
+    return gcode;
 }
 
 double GCode::conformal_segment_rate() const
