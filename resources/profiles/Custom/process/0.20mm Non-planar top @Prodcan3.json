@@ -156,6 +156,7 @@
 	],
 	"support_style": "default",
 	"nonplanar_full_conformal_max_thickness": "3",
+	"nonplanar_mode": "auto",
 	"nonplanar_top_shells": "3",
 	"nonplanar_ironing": "1",
 	"compatible_printers": [

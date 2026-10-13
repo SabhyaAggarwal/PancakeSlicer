@@ -1393,19 +1393,19 @@ std::vector<ConformalPatch> split_by_reach(ConformalPatch &&p, const ExPolygons 
         }
     }
     std::map<size_t, size_t> part_index;
-    std::vector<ConformalPatch> parts;
-    parts.reserve(pieces.size());
+    for (size_t i = 0; i < pieces.size(); ++i)
+        part_index.try_emplace(find(i), part_index.size());
+    std::vector<ConformalPatch> parts(part_index.size());
+
     const size_t n_shells = p.shell_paths.size();
+    for (ConformalPatch &part : parts) {
+        part.shell_paths.resize(n_shells);
+        for (ExtrusionEntityCollection &shell : part.shell_paths)
+            shell.no_sort = true;
+        part.ironing.no_sort = true;
+    }
     for (size_t i = 0; i < pieces.size(); ++i) {
-        const auto [it, inserted] = part_index.try_emplace(find(i), parts.size());
-        if (inserted) {
-            ConformalPatch &part = parts.emplace_back();
-            part.shell_paths.resize(n_shells);
-            for (ExtrusionEntityCollection &shell : part.shell_paths)
-                shell.no_sort = true;
-            part.ironing.no_sort = true;
-        }
-        ConformalPatch &part = parts[it->second];
+        ConformalPatch &part = parts[part_index.at(find(i))];
         (pieces[i].first < n_shells ? part.shell_paths[pieces[i].first] : part.ironing).entities.emplace_back(pieces[i].second);
     }
     for (size_t pa = 0; pa < parts.size() && parts.size() > 1; ++pa)

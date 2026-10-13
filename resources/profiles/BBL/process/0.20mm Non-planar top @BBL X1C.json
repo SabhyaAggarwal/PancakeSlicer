@@ -6,6 +6,7 @@
 	"setting_id": "37MJWnqW4WuHhsVk",
 	"instantiation": "true",
 	"nonplanar_mode": "auto",
+	"nonplanar_ironing": "1",
 	"ironing_type": "top",
 	"compatible_printers": [
 		"Bambu Lab X1 Carbon 0.4 nozzle",

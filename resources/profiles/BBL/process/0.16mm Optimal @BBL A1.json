@@ -5,6 +5,7 @@
     "from": "system",
     "setting_id": "GP078",
     "instantiation": "true",
+    "nonplanar_mode": "auto",
     "nonplanar_overhangs": "1",
     "nonplanar_bridges": "1",
     "description": "Compared with the default profile of a 0.4 mm nozzle, it has a smaller layer height, and results in less apparent layer lines and higher printing quality, but longer printing time.",

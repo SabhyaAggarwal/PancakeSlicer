@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "eAFe5ATddc99VxqO",
 	"instantiation": "true",
+	"nonplanar_mode": "auto",
 	"nonplanar_overhangs": "1",
 	"nonplanar_bridges": "1",
 	"line_width": "0.45",

@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "GP029",
 	"instantiation": "true",
+	"nonplanar_mode": "auto",
 	"description": "Compared with the default profile of a 0.6 mm nozzle, it has a smaller layer height, and results in less apparent layer lines and slight higher printing quality, but longer printing time.",
 	"bridge_speed": [
 		"30",

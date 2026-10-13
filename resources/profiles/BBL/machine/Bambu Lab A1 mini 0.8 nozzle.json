@@ -5,6 +5,7 @@
     "from": "system",
     "setting_id": "GM023",
     "instantiation": "true",
+    "nonplanar_head": "bambu-a1-mini-nozzle-08",
     "nozzle_diameter": [
         "0.8"
     ],

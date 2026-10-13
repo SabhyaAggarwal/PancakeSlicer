@@ -1,9 +1,12 @@
 #include "ClearanceVerifier.hpp"
 #include "GCodeProcessor.hpp"
 #include "ToolKinematics.hpp"
+#include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/Nonplanar/AutoMode.hpp"
+#include "libslic3r/Nonplanar/HeadEnvelope.hpp"
+#include "libslic3r/Point.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/PrintBase.hpp"
@@ -74,7 +77,12 @@ Corners bead_corners(const ToolPose &a, const ToolPose &b, double width, double 
     }
     return corners;
 }
-struct Bead { Corners corners; size_t run; };
+struct Bead
+{
+    Corners corners;
+    size_t run;
+    Vec3d min = Vec3d::Constant(Inf), max = Vec3d::Constant(-Inf);
+};
 struct UprightBead { uint32_t move, last, run; uint16_t piece, pieces; };
 class BeadGrid
 {
@@ -85,7 +93,14 @@ public:
     void deposit(const ToolPose &a, const ToolPose &b, double width, double height, size_t run)
     {
         m_beads.push_back({ bead_corners(a, b, width, height), run });
-        index(m_beads.back().corners);
+        Bead &bead = m_beads.back();
+        for (const Vec3d &v : bead.corners) {
+            bead.min = bead.min.cwiseMin(v);
+            bead.max = bead.max.cwiseMax(v);
+        }
+        m_material_min = m_material_min.cwiseMin(bead.min);
+        m_material_max = m_material_max.cwiseMax(bead.max);
+        index(bead.corners);
     }
     void deposit_upright(size_t move, size_t last, size_t run, int piece = 0, int pieces = 1)
     {
@@ -110,6 +125,10 @@ public:
                     const Vec3d v = pose.tip + frame.transpose() * Vec3d(k & 1 ? hi.x() : lo.x(), k & 2 ? hi.y() : lo.y(), k & 4 ? hi.z() : lo.z());
                     work_lo = work_lo.cwiseMin(v); work_hi = work_hi.cwiseMax(v);
                 }
+                if (m_rotary &&
+                    ((m_material_max.array() < work_lo.array() - ContactTolerance).any() ||
+                     (m_material_min.array() > work_hi.array() + ContactTolerance).any()))
+                    continue;
                 candidates.clear();
                 visit(work_lo, work_hi, [&](uint64_t cell) {
                     auto it = m_grid.find(cell);
@@ -122,6 +141,10 @@ public:
             }
             for (uint32_t id : candidates) {
                 if (box.nozzle && extruding && bead_run(id) == run) continue;
+                if (m_rotary && !box.infinite_x && !box.infinite_y &&
+                    ((m_beads[id].max.array() < work_lo.array() - ContactTolerance).any() ||
+                     (m_beads[id].min.array() > work_hi.array() + ContactTolerance).any()))
+                    continue;
                 Vec3d bl = Vec3d::Constant(Inf), bh = Vec3d::Constant(-Inf);
                 for (const Vec3d &v : corners(id)) {
                     const Vec3d q = frame * (v - pose.tip);
@@ -170,6 +193,7 @@ private:
     const std::vector<GCodeProcessorResult::MoveVertex> &m_moves;
     bool                                                 m_rotary;
     std::vector<Bead>                                    m_beads;
+    Vec3d                                                m_material_min = Vec3d::Constant(Inf), m_material_max = Vec3d::Constant(-Inf);
     std::vector<UprightBead>                             m_upright;
     std::unordered_map<uint64_t, std::vector<uint32_t>>  m_grid;
 };

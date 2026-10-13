@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "P1Z1TjcycB4aOjUT",
 	"instantiation": "true",
+	"nonplanar_mode": "auto",
 	"layer_height": "0.20",
 	"initial_layer_print_height": "0.25",
 	"line_width": "0.68",

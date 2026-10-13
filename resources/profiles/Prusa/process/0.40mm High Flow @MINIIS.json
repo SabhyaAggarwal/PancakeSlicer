@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "KcQJxT8hm45mCecB",
 	"instantiation": "true",
+	"nonplanar_mode": "auto",
 	"line_width": "0.9",
 	"inner_wall_line_width": "0.9",
 	"outer_wall_line_width": "0.9",

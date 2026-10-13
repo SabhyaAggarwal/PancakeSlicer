@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "7tAJhJpGlglvanmU",
 	"instantiation": "true",
+	"nonplanar_ironing": "1",
 	"nonplanar_flow_mod": "1",
 	"nonplanar_surface_spacing": "1",
 	"nonplanar_top_finish_flow": "0.95",

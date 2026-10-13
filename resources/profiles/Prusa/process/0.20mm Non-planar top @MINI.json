@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "JPNBmdUJjJqybPji",
 	"instantiation": "true",
+	"nonplanar_ironing": "1",
 	"nonplanar_full_conformal_max_thickness": "3",
 	"nonplanar_mode": "auto",
 	"ironing_type": "top",

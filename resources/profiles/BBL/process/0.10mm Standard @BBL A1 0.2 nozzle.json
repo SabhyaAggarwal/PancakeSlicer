@@ -5,6 +5,7 @@
     "from": "system",
     "setting_id": "GP083",
     "instantiation": "true",
+    "nonplanar_mode": "auto",
     "description": "It has a small layer height, and results in almost negligible layer lines and high printing quality. It is suitable for most general printing cases.",
     "default_acceleration": [
         "6000"

@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "GP009",
 	"instantiation": "true",
+	"nonplanar_mode": "auto",
 	"description": "It has a very big layer height, and results in very apparent layer lines, low printing quality and general printing time.",
 	"bridge_speed": [
 		"30",

@@ -1239,8 +1239,13 @@ void GCodeWriter::extrude_to_xyz(std::string &out, const Vec3d &point, double dE
     } else {
         w.emit_xy(Vec2d(point_on_plate.x(), point_on_plate.y()));
     }
-    if (!force_no_extrusion)
-        w.emit_e(filament()->E());
+    if (!force_no_extrusion) {
+        const double e = filament()->E();
+        if (dE > 0. && e > 0. && GCodeFormatter::quantize_e(e) == 0.)
+            w.emit_axis('E', e, 7);
+        else
+            w.emit_e(e);
+    }
     w.emit_comment(GCodeWriter::full_gcode_comment, comment);
     w.append_to(out);
 }
