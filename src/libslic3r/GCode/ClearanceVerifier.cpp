@@ -174,6 +174,251 @@ private:
     std::unordered_map<uint64_t, std::vector<uint32_t>>  m_grid;
 };
 
+class TiltedBeads
+{
+public:
+    struct Prefix { uint32_t beads = 0; double ceiling = -Inf, radius = 0.; Vec3d half { Vec3d::Zero() }; };
+    struct Scratch
+    {
+        std::vector<uint32_t> seen;
+        uint32_t query = 0;
+        std::vector<std::pair<double, const void *>> cells;
+        std::vector<std::pair<Vec3d, Vec3d>> bands;
+    };
+    Prefix prefix() const { return m_prefix; }
+    explicit TiltedBeads(const Nonplanar::HeadEnvelope &head)
+    {
+        Group nozzle;
+        for (const auto &raw : head.boxes) {
+            const auto box = prepared_box(raw, head);
+            if (box.min.z() > box.max.z()) continue;
+            const size_t id = m_boxes.size();
+            m_boxes.push_back({ box.min, box.max, raw.name, box.nozzle, box.infinite_x, box.infinite_y });
+            const bool finite_nozzle = box.nozzle && !box.infinite_x && !box.infinite_y;
+            Group &group = finite_nozzle ? nozzle : m_groups.emplace_back();
+            group.infinite = box.infinite_x || box.infinite_y;
+            group.nozzle = box.nozzle;
+            group.add(id, box.min, box.max, finite_nozzle);
+        }
+        if (!nozzle.bands.empty()) m_groups.insert(m_groups.begin(), std::move(nozzle));
+    }
+    void deposit(const ToolPose &a, const ToolPose &b, double width, double height, size_t run)
+    {
+        Road bead { bead_corners(a, b, width, std::min(height, width)), Vec3d::Constant(Inf), Vec3d::Constant(-Inf), run };
+        for (const Vec3d &v : bead.corners) {
+            bead.lo = bead.lo.cwiseMin(v); bead.hi = bead.hi.cwiseMax(v);
+            m_prefix.radius = std::max(m_prefix.radius, v.norm());
+        }
+        m_prefix.ceiling = std::max(m_prefix.ceiling, bead.hi.z());
+        m_prefix.half = m_prefix.half.cwiseMax(0.5 * (bead.hi - bead.lo));
+        const uint32_t id = uint32_t(m_beads.size());
+        m_beads.push_back(bead);
+        ++m_prefix.beads;
+        Axes axes;
+        const Vec3d n = a.axis.normalized();
+        Vec3d side = n.cross(b.tip - a.tip);
+        side = side.squaredNorm() < 1e-20 ? n.unitOrthogonal() : side.normalized();
+        axes.u.row(0) = n; axes.u.row(1) = side; axes.u.row(2) = side.cross(n);
+        axes.lo = Vec3d::Constant(Inf); axes.hi = Vec3d::Constant(-Inf);
+        for (const Vec3d &v : bead.corners) {
+            const Vec3d p = axes.u * v;
+            axes.lo = axes.lo.cwiseMin(p); axes.hi = axes.hi.cwiseMax(p);
+        }
+        m_axes.push_back(axes);
+        if (m_chunks.empty() || m_chunks.back().run != run || m_chunks.back().count == ChunkBeads ||
+            (m_chunks.back().hi.cwiseMax(bead.hi) - m_chunks.back().lo.cwiseMin(bead.lo)).maxCoeff() > ChunkSize + (bead.hi - bead.lo).maxCoeff()) {
+            m_chunks.push_back({ bead.lo, bead.hi, id, 0, run });
+        }
+        Chunk &chunk = m_chunks.back();
+        ++chunk.count;
+        chunk.lo = chunk.lo.cwiseMin(bead.lo);
+        chunk.hi = chunk.hi.cwiseMax(bead.hi);
+        const uint32_t chunk_id = uint32_t(m_chunks.size() - 1);
+        for (Grid *grid : { &m_fine, &m_coarse })
+            visit(*grid, bead.lo, bead.hi, [&](Slot &cell) {
+                cell.lo = cell.lo.cwiseMin(bead.lo);
+                cell.hi = cell.hi.cwiseMax(bead.hi);
+                if (cell.chunks.empty() || cell.chunks.back() != chunk_id) {
+                    if (cell.blocks.empty() || cell.blocks.back().end - cell.blocks.back().begin == BlockChunks)
+                        cell.blocks.push_back({ Vec3d::Constant(Inf), Vec3d::Constant(-Inf), uint32_t(cell.chunks.size()), uint32_t(cell.chunks.size()) });
+                    cell.chunks.push_back(chunk_id);
+                    ++cell.blocks.back().end;
+                }
+                Block &block = cell.blocks.back();
+                block.lo = block.lo.cwiseMin(bead.lo);
+                block.hi = block.hi.cwiseMax(bead.hi);
+            });
+    }
+    double clearance(const Prefix &laid, Scratch &scratch, const ToolPose &pose, const Matrix3d &frame, const Vec3d &sweep, double turn,
+                     size_t run, bool extruding, double cutoff, std::string &component) const
+    {
+        double best = cutoff;
+        size_t best_box = std::numeric_limits<size_t>::max();
+        if (laid.beads == 0) return Inf;
+        scratch.seen.resize(m_chunks.size(), 0);
+        const Matrix3d to_work = frame.transpose(), abs_frame = frame.cwiseAbs();
+        const Vec3d slack = (abs_frame.transpose() * abs_frame - Matrix3d::Identity()) * laid.half;
+        auto bound_head = [&](const Vec3d &bl, const Vec3d &bh, const Box *axes, double limit) {
+            double g = Inf;
+            for (const auto &[band_lo, band_hi] : scratch.bands) {
+                g = std::min(g, axes ? gap(band_lo, band_hi, bl, bh, axes) : (band_lo - bh).cwiseMax(bl - band_hi).maxCoeff());
+                if (g <= limit) break;
+            }
+            return g;
+        };
+        auto bound = [&](const Vec3d &lo, const Vec3d &hi, const Box *axes, double limit = -Inf) {
+            const Vec3d centre = frame * (0.5 * (lo + hi) - pose.tip), half = abs_frame * (0.5 * (hi - lo));
+            return bound_head(centre - half, centre + half, axes, limit);
+        };
+        for (const Group &group : m_groups) {
+            const double reach = group.infinite ? laid.radius + pose.tip.norm() : group.radius;
+            const Vec3d grow = sweep + Vec3d::Constant(0.5 * turn * reach);
+            const Vec3d glo = group.lo - grow, ghi = group.hi + grow;
+            const Box *axes = group.infinite ? &m_boxes[group.bands.front().boxes.front()] : nullptr;
+            const bool own_run_clear = group.nozzle && extruding;
+            scratch.bands.clear();
+            for (const Band &band : group.bands) scratch.bands.emplace_back(band.lo - grow, band.hi + grow);
+            Vec3d work_lo = Vec3d::Constant(-Inf), work_hi = Vec3d::Constant(Inf);
+            auto measure = [&](uint32_t chunk_id) {
+                const Chunk &chunk = m_chunks[chunk_id];
+                if (chunk.first >= laid.beads || (own_run_clear && chunk.run == run)) return;
+                if (!((chunk.lo.array() <= work_hi.array()).all() && (chunk.hi.array() >= work_lo.array()).all()) ||
+                    bound(chunk.lo, chunk.hi, axes, best) > best) return;
+                for (uint32_t id = chunk.first; id < std::min(chunk.first + chunk.count, laid.beads); ++id) {
+                    const Road &bead = m_beads[id];
+                    if (!((bead.lo.array() <= work_hi.array()).all() && (bead.hi.array() >= work_lo.array()).all())) continue;
+                    {
+                        const Axes &road = m_axes[id];
+                        const Matrix3d turn_road = frame * road.u.transpose();
+                        const Vec3d centre = turn_road * (0.5 * (road.lo + road.hi)) - frame * pose.tip;
+                        const Vec3d half = turn_road.cwiseAbs() * (0.5 * (road.hi - road.lo));
+                        if (bound_head(centre - half, centre + half, axes, best) > best) continue;
+                    }
+                    Vec3d bl = Vec3d::Constant(Inf), bh = Vec3d::Constant(-Inf);
+                    for (const Vec3d &v : bead.corners) {
+                        const Vec3d q = frame * (v - pose.tip);
+                        bl = bl.cwiseMin(q); bh = bh.cwiseMax(q);
+                    }
+                    for (size_t b = 0; b < group.bands.size(); ++b) {
+                        const auto &[band_lo, band_hi] = scratch.bands[b];
+                        if (gap(band_lo, band_hi, bl, bh, axes) > best) continue;
+                        for (size_t index : group.bands[b].boxes) {
+                            const Box &box = m_boxes[index];
+                            if (box.nozzle && extruding && bead.run == run) continue;
+                            double g = gap(box.lo - grow, box.hi + grow, bl, bh, &box);
+                            if ((g < best || (g == best && index < best_box)) && !box.infinite_x && !box.infinite_y) {
+                                const Axes &road = m_axes[id];
+                                const Vec3d centre = 0.5 * (box.lo + box.hi), half = 0.5 * (box.hi - box.lo) + grow;
+                                const Vec3d tip = road.u * pose.tip;
+                                for (int k = 0; k < 3; ++k) {
+                                    const Vec3d u = frame * road.u.row(k).transpose();
+                                    const double c = u.dot(centre), r = u.cwiseAbs().dot(half);
+                                    g = std::max(g, std::max(road.lo[k] - tip[k] - (c + r), c - r - (road.hi[k] - tip[k])));
+                                }
+                            }
+                            if (g < best || (g == best && index < best_box)) { best = g; best_box = index; }
+                        }
+                    }
+                }
+            };
+            if (group.infinite) {
+                for (uint32_t id = 0; id < m_chunks.size() && m_chunks[id].first < laid.beads; ++id) measure(id);
+                continue;
+            }
+            work_lo = Vec3d::Constant(Inf); work_hi = Vec3d::Constant(-Inf);
+            for (int k = 0; k < 8; ++k) {
+                const Vec3d v = pose.tip + to_work * Vec3d(k & 1 ? ghi.x() : glo.x(), k & 2 ? ghi.y() : glo.y(), k & 4 ? ghi.z() : glo.z());
+                work_lo = work_lo.cwiseMin(v); work_hi = work_hi.cwiseMax(v);
+            }
+            work_lo -= slack; work_hi += slack;
+            if (work_lo.z() > laid.ceiling) continue;
+            const uint32_t query = ++scratch.query;
+            const Vec3d extent = (work_hi - work_lo) / FineCell;
+            const Grid &grid = (extent.x() + 2.) * (extent.y() + 2.) * (extent.z() + 2.) <= 4096. ? m_fine : m_coarse;
+            scratch.cells.clear();
+            visit_find(grid, work_lo, work_hi, [&](const Slot &cell) {
+                if ((cell.lo.array() <= work_hi.array()).all() && (cell.hi.array() >= work_lo.array()).all())
+                    scratch.cells.emplace_back(bound(cell.lo, cell.hi, axes), &cell);
+            });
+            std::sort(scratch.cells.begin(), scratch.cells.end(), [](const auto &x, const auto &y) { return x.first < y.first; });
+            for (const auto &[cell_bound, address] : scratch.cells) {
+                if (cell_bound > best) break;
+                const Slot &cell = *static_cast<const Slot *>(address);
+                for (const Block &block : cell.blocks) {
+                    if (m_chunks[cell.chunks[block.begin]].first >= laid.beads) break;
+                    if (bound(block.lo, block.hi, axes, best) > best) continue;
+                    for (uint32_t k = block.begin; k < block.end; ++k)
+                        if (const uint32_t id = cell.chunks[k]; scratch.seen[id] != query) { scratch.seen[id] = query; measure(id); }
+                }
+            }
+        }
+        if (best_box == std::numeric_limits<size_t>::max()) return Inf;
+        component = m_boxes[best_box].name;
+        return best;
+    }
+private:
+    static constexpr double FineCell = 1., CoarseCell = 4., ChunkSize = 1.;
+    static constexpr uint32_t ChunkBeads = 16, BlockChunks = 16;
+    struct Box { Vec3d lo, hi; std::string name; bool nozzle, infinite_x, infinite_y; };
+    struct Band { Vec3d lo { Vec3d::Constant(Inf) }, hi { Vec3d::Constant(-Inf) }; std::vector<size_t> boxes; };
+    struct Group
+    {
+        Vec3d lo { Vec3d::Constant(Inf) }, hi { Vec3d::Constant(-Inf) };
+        std::vector<Band> bands;
+        bool infinite = false, nozzle = false;
+        double radius = 0.;
+        void add(size_t id, const Vec3d &min, const Vec3d &max, bool banded)
+        {
+            auto it = std::find_if(bands.begin(), bands.end(), [&](const Band &b) {
+                return banded && b.lo.z() == min.z() && b.hi.z() == max.z(); });
+            Band &band = it != bands.end() ? *it : bands.emplace_back();
+            band.boxes.push_back(id);
+            band.lo = band.lo.cwiseMin(min); band.hi = band.hi.cwiseMax(max);
+            lo = lo.cwiseMin(min); hi = hi.cwiseMax(max);
+            radius = std::max(radius, min.cwiseAbs().cwiseMax(max.cwiseAbs()).norm());
+        }
+    };
+    struct Chunk { Vec3d lo, hi; uint32_t first, count; size_t run; };
+    struct Block { Vec3d lo, hi; uint32_t begin, end; };
+    struct Slot { Vec3d lo { Vec3d::Constant(Inf) }, hi { Vec3d::Constant(-Inf) }; std::vector<uint32_t> chunks; std::vector<Block> blocks; };
+    struct Grid { double cell; std::unordered_map<uint64_t, Slot> cells; };
+    static double gap(const Vec3d &lo, const Vec3d &hi, const Vec3d &bl, const Vec3d &bh, const Box *box)
+    {
+        if (!box || !(box->infinite_x || box->infinite_y)) return (lo - bh).cwiseMax(bl - hi).maxCoeff();
+        double g = -Inf;
+        for (int axis = 0; axis < 3; ++axis) {
+            if (box && ((axis == 0 && box->infinite_x) || (axis == 1 && box->infinite_y))) continue;
+            g = std::max(g, std::max(lo[axis] - bh[axis], bl[axis] - hi[axis]));
+        }
+        return g;
+    }
+    static uint64_t key(int x, int y, int z)
+    { return (uint64_t(uint32_t(x) & 0x1FFFFF) << 42) | (uint64_t(uint32_t(y) & 0x1FFFFF) << 21) | uint64_t(uint32_t(z) & 0x1FFFFF); }
+    template<class Fn> static void visit(Grid &grid, const Vec3d &lo, const Vec3d &hi, Fn fn)
+    {
+        for (int z = int(std::floor(lo.z() / grid.cell)); z <= int(std::floor(hi.z() / grid.cell)); ++z)
+            for (int y = int(std::floor(lo.y() / grid.cell)); y <= int(std::floor(hi.y() / grid.cell)); ++y)
+                for (int x = int(std::floor(lo.x() / grid.cell)); x <= int(std::floor(hi.x() / grid.cell)); ++x)
+                    fn(grid.cells[key(x, y, z)]);
+    }
+    template<class Fn> static void visit_find(const Grid &grid, const Vec3d &lo, const Vec3d &hi, Fn fn)
+    {
+        for (int z = int(std::floor(lo.z() / grid.cell)); z <= int(std::floor(hi.z() / grid.cell)); ++z)
+            for (int y = int(std::floor(lo.y() / grid.cell)); y <= int(std::floor(hi.y() / grid.cell)); ++y)
+                for (int x = int(std::floor(lo.x() / grid.cell)); x <= int(std::floor(hi.x() / grid.cell)); ++x)
+                    if (auto it = grid.cells.find(key(x, y, z)); it != grid.cells.end()) fn(it->second);
+    }
+    std::vector<Box> m_boxes;
+    std::vector<Group> m_groups;
+    struct Road { Corners corners; Vec3d lo, hi; size_t run; };
+    std::vector<Road> m_beads;
+    std::vector<Chunk> m_chunks;
+    struct Axes { Matrix3d u; Vec3d lo, hi; };
+    std::vector<Axes> m_axes;
+    Grid m_fine { FineCell, {} }, m_coarse { CoarseCell, {} };
+    Prefix m_prefix;
+};
+
 JointPose interpolate(const JointPose &a, const JointPose &b, double t)
 {
     JointPose q;
@@ -481,20 +726,25 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
     BeadGrid beads(result.moves, rotary);
     using Hits = std::vector<std::pair<size_t, ClearanceHit>>;
     std::vector<double> bests(checked.size(), Inf);
-    auto step = [&](Sweep &sweep, BeadGrid &bead_grid, size_t k, Hits *hits) {
+    TiltedBeads tilted(params.head);
+    std::vector<TiltedBeads::Prefix> laid_before;
+    auto step = [&](Sweep &sweep, BeadGrid &bead_grid, size_t k, Hits *hits, TiltedBeads::Scratch *scratch = nullptr) {
         const Checked &c = checked[k];
         if (throw_if_canceled) throw_if_canceled();
         const auto &move = result.moves[c.move], &last = result.moves[c.last];
         const bool extruding = c.extruding;
         const Vec3d a = move_tip(last, rotary), b = move_tip(move, rotary);
         const bool straight_lift = !extruding && a.head<2>() == b.head<2>() && b.z() >= a.z() && move.joints.rot == last.joints.rot;
-        double displacement = (b - a).norm();
+        double displacement = (b - a).norm(), turn = 0., tip_lever = 0.;
+        const TiltedBeads::Prefix &laid = rotary ? laid_before[k] : TiltedBeads::Prefix {};
         if (rotary) {
             const double angle = (std::abs(move.joints.rot[0] - last.joints.rot[0]) + std::abs(move.joints.rot[1] - last.joints.rot[1])) * M_PI / 180.;
-            double lever = std::max(a.norm(), b.norm()) + head_lever;
-            if (infinite_head) lever += bead_grid.material_radius;
+            tip_lever = std::max(a.norm(), b.norm());
             if (const auto *kin = dynamic_cast<const RotaryKinematics *>(&kinematics))
-                lever += kin->geometry().pivot.norm() + kin->geometry().tool_mount.norm() + kin->geometry().tool_length + std::abs(kin->geometry().table_height);
+                tip_lever += kin->geometry().pivot.norm() + kin->geometry().tool_mount.norm() + kin->geometry().tool_length + std::abs(kin->geometry().table_height);
+            double lever = tip_lever + head_lever;
+            if (infinite_head) lever += laid.radius;
+            turn = angle;
             displacement = (move.joints.xyz - last.joints.xyz).norm() + angle * lever;
         }
         if (!std::isfinite(displacement) || displacement / params.sweep > 50000000.)
@@ -521,6 +771,7 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
             const Nonplanar::HeadEnvelope &contact_head = strict ? contact_strict : contact_allowed;
             const auto &contact_boxes = strict ? strict_boxes : allowed_boxes;
             const size_t bead_limit = rotary ? bead_grid.size() : c.beads;
+            Vec3d sample_start = rotary ? kinematics.forward(last.joints).tip : a;
             for (int j = 0; j < count; ++j) {
                 if ((j & 1023) == 0 && throw_if_canceled) throw_if_canceled();
                 const double t0 = double(j) / count, t1 = double(j + 1) / count;
@@ -529,8 +780,13 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
                 if (rotary) {
                     const JointPose q = interpolate(last.joints, move.joints, 0.5 * (t0 + t1));
                     const ToolPose pose = kinematics.forward(q);
-                    record(bead_grid.clearance(pose, kinematics.head_frame(q), params.head, displacement / (2. * count), c.run, extruding, component, bead_limit),
-                           component, pose.tip);
+                    const Matrix3d frame = kinematics.head_frame(q);
+                    const Vec3d sample_end = kinematics.forward(interpolate(last.joints, move.joints, t1)).tip;
+                    const double theta = turn / count, stride = (move.joints.xyz - last.joints.xyz).norm() / count;
+                    const Vec3d grow = 0.5 * (frame * (sample_end - sample_start)).cwiseAbs() +
+                                       Vec3d::Constant((theta * theta * tip_lever + 2. * theta * stride) / 8.);
+                    sample_start = sample_end;
+                    record(tilted.clearance(laid, *scratch, pose, frame, grow, theta, c.run, extruding, best, component), component, pose.tip);
                 } else {
                     int index = -1;
                     const double body_gap = sweep.columns.swept_clearance(p0, p1, body_boxes, best, &index, sweep.body_hint);
@@ -559,12 +815,12 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
             bests[k] = best;
             if (best < -ContactTolerance) hits->emplace_back(k, std::move(hit));
         }
-        if (extruding && move.extrusion_role != erCustom) {
+        if (extruding && move.extrusion_role != erCustom && !(rotary && hits != nullptr)) {
             for (int j = 0; j < count; ++j) {
                 const double t0 = double(j) / count, t1 = double(j + 1) / count;
                 const Vec3d p0 = a + t0 * (b - a), p1 = a + t1 * (b - a);
-                if (rotary) bead_grid.deposit(kinematics.forward(interpolate(last.joints, move.joints, t0)),
-                                              kinematics.forward(interpolate(last.joints, move.joints, t1)), move.width, move.height, c.run);
+                if (rotary) tilted.deposit(kinematics.forward(interpolate(last.joints, move.joints, t0)),
+                                           kinematics.forward(interpolate(last.joints, move.joints, t1)), move.width, move.height, c.run);
                 else {
                     sweep.columns.deposit(p0, p1, move.width);
                     if (!nozzle.boxes.empty()) sweep.pending.push_back({ p0, p1, move.width });
@@ -576,11 +832,21 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
     std::vector<Hits> hits;
     if (rotary) {
         Sweep sweep { MaterialColumns(bounds, params.pitch), MaterialColumns(bounds, params.pitch) };
-        hits.resize(1);
+        laid_before.resize(checked.size());
         for (size_t k = 0; k < checked.size(); ++k) {
-            if (!checked[k].extruding) sweep.flush();
-            step(sweep, beads, k, &hits.front());
+            laid_before[k] = tilted.prefix();
+            step(sweep, beads, k, nullptr);
         }
+        const size_t target = std::max<size_t>(256, checked.size() / size_t(8 * tbb::this_task_arena::max_concurrency()));
+        const size_t ranges = (checked.size() + target - 1) / target;
+        hits.resize(ranges);
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, ranges, 1), [&](const tbb::blocked_range<size_t> &range) {
+            Sweep own { MaterialColumns(bounds, params.pitch), MaterialColumns(bounds, params.pitch) };
+            TiltedBeads::Scratch scratch;
+            for (size_t r = range.begin(); r < range.end(); ++r)
+                for (size_t k = r * target; k < std::min(checked.size(), (r + 1) * target); ++k)
+                    step(own, beads, k, &hits[r], &scratch);
+        });
     } else {
         const size_t target = std::max<size_t>(512, checked.size() / size_t(2 * tbb::this_task_arena::max_concurrency()));
         std::vector<size_t> starts { 0 };

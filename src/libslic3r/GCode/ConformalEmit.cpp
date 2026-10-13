@@ -611,7 +611,7 @@ void apply_minimal_tilt(std::vector<ConformalPoint> &points, const std::function
         }
 
     for (size_t i = 0; i < n; ++i) {
-        const double along   = normals[i].z() / std::max(axes[i].dot(normals[i]), 1e-6);
+        const double along   = std::min(normals[i].z() / std::max(axes[i].dot(normals[i]), 1e-6), 1. / std::max(axes[i].z(), 1e-6));
         points[i].vertical_height = points[i].bead_height;
         if (points[i].bead_height <= 0.f && i > 0 && i + 1 < n)
             points[i].pose.tip += GlideLift * (axes[i] - points[i].pose.axis);
