@@ -11,6 +11,7 @@
 #include "libslic3r/libslic3r.h"
 
 #include <algorithm>
+#include <tuple>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -480,6 +481,163 @@ bool glide_route_from(const Point3 &from, const Point3 &to, const GlideZ &glide_
 
 }
 
+namespace {
+
+size_t first_bead(const ExtrusionPathConformal &p)
+{
+    size_t i = 0;
+    while (i + 1 < p.bead_height.size() && p.bead_height[i] == 0.f)
+        ++i;
+    return i;
+}
+size_t last_bead(const ExtrusionPathConformal &p)
+{
+    size_t i = p.bead_height.size() - 1;
+    while (i > 0 && p.bead_height[i] == 0.f)
+        --i;
+    return i;
+}
+bool extruded(const ExtrusionPathConformal &p)
+{
+    return p.polyline.points.size() >= 2 && std::any_of(p.bead_height.begin(), p.bead_height.end(), [](float h) { return h > 0.f; });
+}
+
+bool joint(const ExtrusionPathConformal &s, const ExtrusionPathConformal &o, double &distance, int &mode, Point &a, Point &b)
+{
+    if (&s == &o || !extruded(s) || !extruded(o) || unscale<double>(s.polyline.length()) >= ShortRoad || s.role() != o.role() ||
+        s.width != o.width || s.mm3_per_mm != o.mm3_per_mm || !s.tool_axis.empty() || !o.tool_axis.empty())
+        return false;
+    const Point ss = s.polyline.points[first_bead(s)].to_point(), se = s.polyline.points[last_bead(s)].to_point();
+    const Point os = o.polyline.points[first_bead(o)].to_point(), oe = o.polyline.points[last_bead(o)].to_point();
+    const std::tuple<double, int, Point, Point> cand[4] = {
+        { (ss - oe).cast<double>().norm(), 0, oe, ss },
+        { (se - oe).cast<double>().norm(), 1, oe, se },
+        { (os - se).cast<double>().norm(), 2, os, se },
+        { (os - ss).cast<double>().norm(), 3, os, ss },
+    };
+    distance = 2. * scale_(s.width);
+    bool found = false;
+    for (const auto &[d, m, pa, pb] : cand)
+        if (d <= distance) {
+            distance = d;
+            mode     = m;
+            a        = pa;
+            b        = pb;
+            found    = true;
+        }
+    return found;
+}
+
+}
+
+bool short_road_joint(const ExtrusionPathConformal &s, const ExtrusionPathConformal &o, double &distance, Point &a, Point &b)
+{
+    int mode = 0;
+    return joint(s, o, distance, mode, a, b);
+}
+
+void extrude_short_glides(ExtrusionEntitiesPtr &paths, double floor, double ceiling)
+{
+    RoadGrid roads;
+    for (const ExtrusionEntity *ee : paths)
+        roads.add(*static_cast<const ExtrusionPathConformal *>(ee));
+    const coord_t lo = coord_t(std::ceil(scale_(floor))), hi = coord_t(std::floor(scale_(ceiling)));
+    for (ExtrusionEntity *ee : paths) {
+        auto &path = *static_cast<ExtrusionPathConformal *>(ee);
+        if (!path.tool_axis.empty())
+            continue;
+        Points3            &pts = path.polyline.points;
+        std::vector<float> &h   = path.bead_height;
+        for (size_t i = 1; i + 1 < pts.size(); ++i) {
+            if (h[i] > 0.f || h[i - 1] <= 0.f)
+                continue;
+            size_t j = i;
+            while (j < pts.size() && h[j] == 0.f)
+                ++j;
+            if (j == pts.size())
+                break;
+            const Point  a = pts[i - 1].to_point(), b = pts[j].to_point();
+            const double d = (b - a).cast<double>().norm();
+            if (d > ExtrudedJoin * scale_(path.width) || roads.crosses(a, b)) {
+                i = j;
+                continue;
+            }
+            const float ha = h[i - 1], hb = h[j];
+            double      run = 0., total = 0.;
+            for (size_t k = i; k <= j; ++k)
+                total += (pts[k].to_point() - pts[k - 1].to_point()).cast<double>().norm();
+            for (size_t k = i; k < j; ++k) {
+                run += (pts[k].to_point() - pts[k - 1].to_point()).cast<double>().norm();
+                h[k]          = ha + (hb - ha) * float(total > 0. ? run / total : 0.5);
+                pts[k].z()    = std::clamp(pts[k].z(), lo, hi);
+            }
+            roads.add(a, b);
+            i = j;
+        }
+    }
+}
+
+void absorb_short_roads(ExtrusionEntitiesPtr &paths)
+{
+    auto trim = [](ExtrusionPathConformal &p, size_t from, size_t to) {
+        auto cut = [from, to](auto &v) {
+            if (!v.empty()) {
+                v.erase(v.begin() + to + 1, v.end());
+                v.erase(v.begin(), v.begin() + from);
+            }
+        };
+        cut(p.polyline.points);
+        cut(p.bead_height);
+        cut(p.bead_width);
+    };
+    auto splice = [&](ExtrusionPathConformal &head, ExtrusionPathConformal &tail) {
+        trim(head, 0, last_bead(head));
+        trim(tail, first_bead(tail), tail.polyline.points.size() - 1);
+        if (!head.bead_width.empty() || !tail.bead_width.empty())
+            for (ExtrusionPathConformal *path : { &head, &tail })
+                if (path->bead_width.empty())
+                    path->bead_width.assign(path->polyline.points.size(), float(path->width));
+        append(head.polyline.points, tail.polyline.points);
+        append(head.bead_height, tail.bead_height);
+        if (!head.bead_width.empty())
+            append(head.bead_width, tail.bead_width);
+    };
+    for (bool changed = true; changed;) {
+        changed = false;
+        for (size_t i = 0; i < paths.size() && !changed; ++i) {
+            auto  *s    = static_cast<ExtrusionPathConformal *>(paths[i]);
+            size_t best = paths.size();
+            int    mode = 0;
+            double best_d = std::numeric_limits<double>::max();
+            for (size_t j = 0; j < paths.size(); ++j) {
+                double d = 0.;
+                int    m = 0;
+                Point  pa, pb;
+                if (j != i && joint(*s, *static_cast<ExtrusionPathConformal *>(paths[j]), d, m, pa, pb) && d < best_d) {
+                    best_d = d;
+                    best   = j;
+                    mode   = m;
+                }
+            }
+            if (best == paths.size())
+                continue;
+            auto *o = static_cast<ExtrusionPathConformal *>(paths[best]);
+            if (mode == 1 || mode == 3)
+                s->reverse();
+            if (mode <= 1) {
+                splice(*o, *s);
+                delete s;
+            } else {
+                splice(*s, *o);
+                delete o;
+                paths[best] = s;
+            }
+            paths.erase(paths.begin() + i);
+            changed = true;
+        }
+    }
+}
+
 void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &band_roads, const GlideZ &glide_z, double max_glide,
                        double step, bool hidden, double floor, double ceiling, const HeightField *grid, const Point3 *from)
 {
@@ -752,15 +910,20 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
             if (path->bead_width.empty())
                 path->bead_width.assign(path->polyline.points.size(), float(path->width));
         }
-        auto in_band = [floor, ceiling](const Point3 &q) { return unscale<double>(q.z()) >= floor && unscale<double>(q.z()) <= ceiling; };
-        bool extrude = (unscale(b.to_point()) - unscale(a.to_point())).norm() <= 2. * current->width && in_band(a) && in_band(b);
+        constexpr double JoinClamp = 0.02;
+        auto in_band = [floor, ceiling](const Point3 &q, double slack) {
+            return unscale<double>(q.z()) >= floor - slack && unscale<double>(q.z()) <= ceiling + slack;
+        };
+        bool extrude = (unscale(b.to_point()) - unscale(a.to_point())).norm() <= ExtrudedJoin * current->width && in_band(a, JoinClamp) &&
+                       in_band(b, JoinClamp);
         for (const Point3 &q : route)
-            extrude = extrude && in_band(q);
+            extrude = extrude && in_band(q, JoinClamp);
         if (extrude && a != b) {
             const float ha = heights.back(), hb = path->bead_height.front();
             const Vec2d pa = unscale(a.to_point());
             const double l = (unscale(b.to_point()) - pa).norm();
-            for (const Point3 &q : route) {
+            for (Point3 q : route) {
+                q.z() = std::clamp(q.z(), coord_t(std::ceil(scale_(floor))), coord_t(std::floor(scale_(ceiling))));
                 pts.emplace_back(q);
                 heights.emplace_back(ha + (hb - ha) * float((unscale(q.to_point()) - pa).norm() / l));
             }
@@ -784,6 +947,10 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
         delete path;
     }
     pieces = std::move(out);
+    if (floor <= ceiling) {
+        absorb_short_roads(pieces);
+        extrude_short_glides(pieces, floor, ceiling);
+    }
 }
 
 }

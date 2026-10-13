@@ -61,6 +61,12 @@ using GlideZ = std::function<GlideAt(const Vec2d &p, double &z)>;
 constexpr double MaxRoute   = 40.;
 constexpr double RouteRatio = 3.;
 constexpr double RouteSnap  = 1.5;
+constexpr double ShortRoad = 3.;
+void absorb_short_roads(ExtrusionEntitiesPtr &paths);
+constexpr double ExtrudedJoin = 3.;
+void extrude_short_glides(ExtrusionEntitiesPtr &paths, double floor, double ceiling);
+bool short_road_joint(const ExtrusionPathConformal &s, const ExtrusionPathConformal &o, double &distance, Point &a, Point &b);
+
 
 void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &band_roads, const GlideZ &glide_z, double max_glide,
                        double step, bool hidden = false, double floor = std::numeric_limits<double>::infinity(),

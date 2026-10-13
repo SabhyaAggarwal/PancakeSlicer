@@ -1359,6 +1359,47 @@ std::vector<ConformalPatch> split_by_reach(ConformalPatch &&p, const ExPolygons 
         ConformalPatch &part = parts[it->second];
         (pieces[i].first < n_shells ? part.shell_paths[pieces[i].first] : part.ironing).entities.emplace_back(pieces[i].second);
     }
+    for (size_t pa = 0; pa < parts.size() && parts.size() > 1; ++pa)
+        for (size_t k = 0; k <= n_shells; ++k) {
+            ExtrusionEntitiesPtr &mine = k < n_shells ? parts[pa].shell_paths[k].entities : parts[pa].ironing.entities;
+            for (size_t i = 0; i < mine.size();) {
+                const auto *s     = static_cast<const ExtrusionPathConformal *>(mine[i]);
+                size_t      to    = parts.size();
+                double      best  = std::numeric_limits<double>::max();
+                for (size_t pb = 0; pb < parts.size(); ++pb) {
+                    if (pb == pa)
+                        continue;
+                    for (const ExtrusionEntity *ee : k < n_shells ? parts[pb].shell_paths[k].entities : parts[pb].ironing.entities) {
+                        double d = 0.;
+                        Point  ja, jb;
+                        if (!short_road_joint(*s, *static_cast<const ExtrusionPathConformal *>(ee), d, ja, jb) || d >= best)
+                            continue;
+                        bool across_wall = false;
+                        const Vec2d qa = unscale(ja), qb = unscale(jb);
+                        const int   n  = std::max(1, int(std::ceil((qb - qa).norm() / (0.5 * G.pitch()))));
+                        for (int t = 0; t <= n && wall && !across_wall; ++t)
+                            across_wall = wall(G, qa + (qb - qa) * (double(t) / n));
+                        if (!across_wall) {
+                            best = d;
+                            to   = pb;
+                        }
+                    }
+                }
+                if (to == parts.size()) {
+                    ++i;
+                    continue;
+                }
+                (k < n_shells ? parts[to].shell_paths[k].entities : parts[to].ironing.entities).emplace_back(mine[i]);
+                mine.erase(mine.begin() + i);
+            }
+        }
+    parts.erase(std::remove_if(parts.begin(), parts.end(),
+                               [](const ConformalPatch &part) {
+                                   return part.ironing.entities.empty() &&
+                                          std::all_of(part.shell_paths.begin(), part.shell_paths.end(),
+                                                      [](const ExtrusionEntityCollection &shell) { return shell.entities.empty(); });
+                               }),
+                parts.end());
     if (parts.size() <= 1) {
         for (ConformalPatch &part : parts) {
             for (ExtrusionEntityCollection &shell : part.shell_paths)
@@ -1472,9 +1513,11 @@ void order_nearest_from_lowest(ExtrusionEntityCollection &shell)
     }
     ExtrusionEntitiesPtr left = std::move(shell.entities);
     shell.entities.clear();
+    RoadGrid             roads;
     if (lowest_piece != nullptr) {
         std::swap(*std::find(left.begin(), left.end(), lowest_piece), left.front());
         shell.entities.push_back(left.front());
+        roads.add(*static_cast<const ExtrusionPathConformal *>(left.front()));
         left.erase(left.begin());
     }
     while (!left.empty()) {
@@ -1493,10 +1536,30 @@ void order_nearest_from_lowest(ExtrusionEntityCollection &shell)
         }
         if (flip)
             left[best]->reverse();
-        shell.entities.push_back(left[best]);
+        auto *prev = static_cast<ExtrusionPathConformal *>(shell.entities.back());
+        auto *next = static_cast<ExtrusionPathConformal *>(left[best]);
         std::swap(left[best], left.back());
         left.pop_back();
+        const Point3 a = prev->polyline.points.back(), b = next->polyline.points.front();
+        if ((unscale(b.to_point()) - unscale(a.to_point())).norm() <= 2. * std::min(prev->width, next->width) && prev->role() == next->role() &&
+            prev->width == next->width && prev->mm3_per_mm == next->mm3_per_mm && prev->tool_axis.empty() && next->tool_axis.empty() &&
+            prev->bead_height.back() > 0.f && next->bead_height.front() > 0.f && !roads.crosses(a.to_point(), b.to_point())) {
+            if (!prev->bead_width.empty() || !next->bead_width.empty()) {
+                for (ExtrusionPathConformal *path : { prev, next })
+                    if (path->bead_width.empty())
+                        path->bead_width.assign(path->polyline.points.size(), float(path->width));
+                append(prev->bead_width, next->bead_width);
+            }
+            append(prev->polyline.points, next->polyline.points);
+            append(prev->bead_height, next->bead_height);
+            roads.add(*next);
+            delete next;
+            continue;
+        }
+        roads.add(*next);
+        shell.entities.push_back(next);
     }
+    absorb_short_roads(shell.entities);
     shell.no_sort = true;
 }
 
