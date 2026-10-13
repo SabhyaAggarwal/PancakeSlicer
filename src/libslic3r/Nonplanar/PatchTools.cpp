@@ -21,6 +21,8 @@
 #include "libslic3r/libslic3r.h"
 
 #include <boost/log/trivial.hpp>
+#include <tbb/blocked_range.h>
+#include <tbb/parallel_for.h>
 
 #include <algorithm>
 #include <tuple>
@@ -146,11 +148,37 @@ HeightField object_grid(const PrintObject &object, double pitch, Polygons *silho
 {
     BoundingBox obj_bbox;
     for (const Layer *layer : object.layers())
-        for (const ExPolygon &expoly : layer->lslices) {
+        for (const ExPolygon &expoly : layer->lslices)
             obj_bbox.merge(get_extents(expoly.contour));
-            if (silhouette != nullptr)
-                silhouette->emplace_back(expoly.contour);
+    if (silhouette != nullptr) {
+        constexpr size_t Chunk = 16;
+        const size_t     n     = object.layers().size();
+        std::vector<Polygons> parts((n + Chunk - 1) / Chunk);
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, parts.size()), [&](const tbb::blocked_range<size_t> &range) {
+            for (size_t c = range.begin(); c < range.end(); ++c) {
+                Polygons contours;
+                for (size_t l = c * Chunk; l < std::min(n, (c + 1) * Chunk); ++l)
+                    for (const ExPolygon &expoly : object.layers()[l]->lslices)
+                        contours.emplace_back(expoly.contour);
+                parts[c] = to_polygons(union_ex(contours));
+            }
+        });
+        while (parts.size() > 1) {
+            std::vector<Polygons> merged((parts.size() + 1) / 2);
+            tbb::parallel_for(tbb::blocked_range<size_t>(0, merged.size()), [&](const tbb::blocked_range<size_t> &range) {
+                for (size_t i = range.begin(); i < range.end(); ++i) {
+                    merged[i] = std::move(parts[2 * i]);
+                    if (2 * i + 1 < parts.size()) {
+                        append(merged[i], std::move(parts[2 * i + 1]));
+                        merged[i] = to_polygons(union_ex(merged[i]));
+                    }
+                }
+            });
+            parts = std::move(merged);
         }
+        if (!parts.empty())
+            append(*silhouette, std::move(parts.front()));
+    }
     const BoundingBoxf bbf(unscale(obj_bbox.min), unscale(obj_bbox.max));
     const BoundingBoxf grid_bbox(Vec2d(std::floor(bbf.min.x() / pitch) - 1., std::floor(bbf.min.y() / pitch) - 1.) * pitch,
                                  Vec2d(std::ceil(bbf.max.x() / pitch) + 1., std::ceil(bbf.max.y() / pitch) + 1.) * pitch);
@@ -1346,6 +1374,7 @@ std::vector<ConformalPatch> split_by_reach(ConformalPatch &&p, const ExPolygons 
     }
     std::map<size_t, size_t> part_index;
     std::vector<ConformalPatch> parts;
+    parts.reserve(pieces.size());
     const size_t n_shells = p.shell_paths.size();
     for (size_t i = 0; i < pieces.size(); ++i) {
         const auto [it, inserted] = part_index.try_emplace(find(i), parts.size());

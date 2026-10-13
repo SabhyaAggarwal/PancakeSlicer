@@ -8,6 +8,7 @@
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/Config.hpp"
 #include "libslic3r/ExPolygon.hpp"
+#include "libslic3r/Exception.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/FlushVolCalc.hpp"
 #include "libslic3r/Format/bbs_3mf.hpp"
@@ -557,7 +558,11 @@ int main(int argc, char **argv)
         for (const StringObjectException &w : warnings)
             std::cerr << "warning: " << w.string << "\n";
         const auto t_process = std::chrono::steady_clock::now();
-        print.process();
+        try {
+            print.process();
+        } catch (const SlicingErrors &errors) {
+            throw std::runtime_error(print.slicing_errors_message(errors));
+        }
         const auto t_export = std::chrono::steady_clock::now();
         GCodeProcessorResult result;
         const indexed_triangle_set mesh = plate_mesh(model);

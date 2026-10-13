@@ -222,8 +222,7 @@ void build_curved_overhangs(PrintObject &object, ConformalResult &result)
                                           ptrdiff_t(layer_top.size()) - 1));
     };
 
-    Polygons          silhouette;
-    const HeightField grid      = object_grid(object, pitch, &silhouette);
+    const HeightField grid      = object_grid(object, pitch);
     const size_t      n_nodes   = grid.data().size();
     HeightField       ray_start = grid;
     Polygons          bottoms;
