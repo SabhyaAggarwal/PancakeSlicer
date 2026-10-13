@@ -1,5 +1,6 @@
 #include "PatchPreview.hpp"
 
+#include "AutoMode.hpp"
 #include "ConformalShells.hpp"
 #include "HeadEnvelope.hpp"
 #include "PatchTools.hpp"
@@ -57,11 +58,15 @@ PatchPreviewParams patch_preview_params(const DynamicPrintConfig &config)
         double       w       = config.has(key) ? Flow::extrusion_width(key, config) : 0.;
         return w > 0. ? w : double(Flow::auto_extrusion_width(role, float(nozzle)));
     };
+    const auto  *mode_opt = config.option<ConfigOptionEnum<NonplanarMode>>("nonplanar_mode");
+    const auto   mode     = mode_opt != nullptr ? mode_opt->value : NonplanarMode::Manual;
     if (const auto *fallback = config.option<ConfigOptionEnum<NonplanarFallback>>("nonplanar_fallback"))
-        p.banded = fallback->value == NonplanarFallback::None;
+        p.banded = mode == NonplanarMode::Auto || fallback->value == NonplanarFallback::None;
     const double layer_height = num("layer_height", 0.2);
     if (const auto *opt = config.option<ConfigOptionInt>("nonplanar_top_shells"))
-        p.shells = std::max(0, opt->value);
+        p.shells = mode == NonplanarMode::Auto || opt->value < 0 ? AutoMinShells : opt->value;
+    if (mode == NonplanarMode::Off)
+        p.shells = 0;
     const double shell_height = num("nonplanar_shell_layer_height", 0.);
     p.shell_height       = shell_height > 0. ? shell_height : layer_height;
     p.top_shells         = p.shells;

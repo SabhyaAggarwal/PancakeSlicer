@@ -8,6 +8,7 @@
 #include "Repair.hpp"
 #include "Seams.hpp"
 #include "ShellPaths.hpp"
+#include "SpiralTop.hpp"
 #include "SurfaceClip.hpp"
 
 #include "libslic3r/Arachne/WallToolPaths.hpp"
@@ -473,6 +474,7 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
     const bool   surface_spaced = region.config().nonplanar_surface_spacing.value && !fill.spiral && !(banded != nullptr && banded->strips) &&
                                 !sparse && !plug;
     std::vector<Polylines> linked;
+    HelixRamp              ramp;
     WidthRoads             roads;
     const ExPolygons whole = banded == nullptr || banded->lengthwise.empty() ? area : union_ex(area, banded->lengthwise);
     if (plug) {
@@ -491,7 +493,7 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
         contour_fill(patch.surface, area, drop, banded->strip_height, banded->strip_offset, flow, height, fill.angle, outer, host_z, roads, linked);
     else if (!area.empty())
         linked = shell_polylines(area, fill, outer ? ipMonotonic : ipRectilinear, flow.spacing(), outer, flow, host_z, start, MaxGlide,
-                                 surface_spaced ? &patch.surface : nullptr, &seam_line);
+                                 surface_spaced ? &patch.surface : nullptr, &seam_line, &ramp);
     if (banded != nullptr && !sparse && !plug)
         for (const ExPolygon &strip : banded->lengthwise)
             arachne_roads(strip, flow, height, 0, roads);
@@ -540,6 +542,8 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
     ExtrusionEntityCollection out;
     lift_polylines(roads.polylines, proto, at, host_z, resample, patch.id, k - 1, out.entities, &roads.widths);
     lift_linked(linked, proto, at, host_z, resample, patch.id, k - 1, out.entities);
+    if (out.entities.size() == 1)
+        ramp_helix_flow(*static_cast<ExtrusionPathConformal *>(out.entities.front()), ramp, fill.outward);
     if (from != nullptr && !out.entities.empty())
         prepend_glide(*static_cast<ExtrusionPathConformal *>(out.entities.front()), *from,
                       offset_ex(area, float(scale_(0.25 * flow.spacing()))), at, host_z, resample, MaxGlide);
@@ -1166,7 +1170,10 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
             const double    host_z = settings.banded ? 0. : layers[patch.host_layer]->print_z;
             const double overlap = 0.01 * region.config().top_bottom_infill_wall_overlap.value * line_width;
             const ExPolygons area = intersection_ex(offset_ex(shell_areas[idx], float(scale_(overlap))), patch.footprint);
-            const std::vector<ShellFill> fills = plan_shell_fills(patch, region.config(), line_width);
+            std::vector<ShellFill> fills = plan_shell_fills(patch, region.config(), line_width);
+            const bool helix = region.config().nonplanar_spiral_top.value && helix_worthwhile(patch.surface, area);
+            if (!fills.empty())
+                fills.back().helix = fills.back().spiral && helix;
             std::vector<ShellFill> banded_fills = fills;
             BandedFill             banded;
             banded.strip_height = band_pitch;
@@ -1185,6 +1192,7 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
                     for (size_t k = 0; k < banded_fills.size(); ++k) {
                         banded_fills[k].spiral = true;
                         banded_fills[k].outward = (banded_fills.size() - 1 - k) % 2 == 1;
+                        banded_fills[k].helix   = k + 1 == banded_fills.size() && helix;
                     }
                 else {
                     banded.strips = true;

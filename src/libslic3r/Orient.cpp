@@ -525,6 +525,16 @@ public:
     }
 };
 
+static void orient_nonplanar(OrientMesh &mesh)
+{
+    const Nonplanar::OrientResult res = Nonplanar::auto_orient(mesh.mesh.its, mesh.nonplanar_params);
+    mesh.orientation                  = res.chosen.up;
+    Geometry::rotation_from_two_vectors(mesh.orientation, { 0, 0, 1 }, mesh.axis, mesh.angle, &mesh.rotation_matrix);
+    mesh.euler_angles = Geometry::extract_euler_angles(mesh.rotation_matrix);
+    BOOST_LOG_TRIVIAL(info) << mesh.name << ": non-planar orientation " << mesh.orientation.transpose() << (res.rotated ? " (turned)" : " (kept)")
+                            << ", cost " << res.chosen.cost << " against " << res.original.cost;
+}
+
 void _orient(OrientMeshs& meshs_,
         const OrientParams           &params,
         std::function<void(unsigned, std::string)> progressfn,
@@ -535,6 +545,10 @@ void _orient(OrientMeshs& meshs_,
         for (size_t i = 0; i != meshs_.size(); ++i) {
             auto& mesh_ = meshs_[i];
             progressfn(i, mesh_.name);
+            if (mesh_.nonplanar) {
+                orient_nonplanar(mesh_);
+                continue;
+            }
             AutoOrienter orienter(&mesh_, params, {}, stopfn);
             mesh_.orientation = orienter.process();
             Geometry::rotation_from_two_vectors(mesh_.orientation, { 0,0,1 }, mesh_.axis, mesh_.angle, &mesh_.rotation_matrix);
@@ -546,6 +560,10 @@ void _orient(OrientMeshs& meshs_,
             for (size_t i = range.begin(); i != range.end(); ++i) {
                 auto& mesh_ = meshs_[i];
                 progressfn(i, mesh_.name);
+                if (mesh_.nonplanar) {
+                    orient_nonplanar(mesh_);
+                    continue;
+                }
                 AutoOrienter orienter(&mesh_, params, {}, stopfn);
                 mesh_.orientation = orienter.process();
                 Geometry::rotation_from_two_vectors(mesh_.orientation, { 0,0,1 }, mesh_.axis, mesh_.angle, &mesh_.rotation_matrix);

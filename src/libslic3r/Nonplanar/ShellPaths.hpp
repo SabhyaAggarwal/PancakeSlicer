@@ -1,5 +1,6 @@
 #pragma once
 #include "PatchTools.hpp"
+#include "SpiralTop.hpp"
 
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
@@ -29,6 +30,7 @@ struct ShellFill
 {
     bool   spiral  = false;
     bool   outward = false;
+    bool   helix   = false;
     double angle   = 0.;
     bool   outline = true;
 };
@@ -51,7 +53,8 @@ Polylines chain_nearest(Polylines &&polylines, const Point &start);
 
 std::vector<Polylines> shell_polylines(const ExPolygons &area, const ShellFill &fill, InfillPattern line_pattern, double spacing,
                                        bool monotonic, const Flow &flow, double z, const Point &start, double max_glide,
-                                       const HeightField *surface_spaced = nullptr, const Polyline *seam_line = nullptr);
+                                       const HeightField *surface_spaced = nullptr, const Polyline *seam_line = nullptr,
+                                       HelixRamp *helix_ramp = nullptr);
 
 std::vector<Polylines> link_paths(Polylines &&paths, const ExPolygons &area, double spacing, double max_glide);
 

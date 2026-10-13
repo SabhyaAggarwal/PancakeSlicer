@@ -28,6 +28,7 @@
 #include "Nonplanar/CurvedBridge.hpp"
 #include "Nonplanar/CurvedOverhang.hpp"
 #include "Nonplanar/PatchTools.hpp"
+#include "Nonplanar/SpiralTop.hpp"
 #include "MutablePolygon.hpp"
 #include "PrintBase.hpp"
 #include "PrintConfig.hpp"
@@ -731,7 +732,14 @@ void PrintObject::nonplanar_shells()
         this->set_done(posNonplanar);
         return;
     }
-    if (enabled) {
+    std::unique_ptr<Nonplanar::ConformalResult> lid;
+    if (enabled && m_print->config().spiral_mode.value) {
+        lid = std::make_unique<Nonplanar::ConformalResult>();
+        Nonplanar::build_vase_lid(*this, *lid);
+    }
+    if (lid && !lid->patches.empty()) {
+        m_conformal = std::move(lid);
+    } else if (enabled) {
         m_print->set_status(40, L("Generating curved top shells"));
         m_conformal = std::make_unique<Nonplanar::ConformalResult>(Nonplanar::build_conformal_shells(*this));
         Nonplanar::build_conformal_bottom(*this, *m_conformal);
@@ -1646,6 +1654,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "nonplanar_top_pattern"
             || opt_key == "nonplanar_top_direction"
             || opt_key == "nonplanar_surface_spacing"
+            || opt_key == "nonplanar_spiral_top"
             || opt_key == "nonplanar_flow_mod"
             || opt_key == "nonplanar_adaptive_bands"
             || opt_key == "nonplanar_infill_depth"

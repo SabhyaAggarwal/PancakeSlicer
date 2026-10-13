@@ -20,6 +20,7 @@
 #include "libslic3r/GCode/WipeTowerEstimate.hpp"
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/Model.hpp"
+#include "libslic3r/Nonplanar/AutoOrient.hpp"
 #include "libslic3r/Nonplanar/ConformalShells.hpp"
 #include "libslic3r/Nonplanar/FlowMod.hpp"
 #include "libslic3r/Nonplanar/HeadEnvelope.hpp"
@@ -44,11 +45,13 @@
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <initializer_list>
 #include <iostream>
 #include <limits>
 #include <map>
 #include <memory>
 #include <stdexcept>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -79,6 +82,10 @@ struct Args
     std::vector<std::pair<std::string, std::string>> overrides;
     bool        center_set = false;
     bool        verify     = false;
+    bool        auto_orient = false;
+    bool        orient_only = false;
+    std::string confirm_up;
+    std::vector<std::string> argv;
     Vec2d       center     = Vec2d::Zero();
 };
 
@@ -87,7 +94,7 @@ struct Args
     std::cerr << "error: " << error << "\n"
               << "usage: nonplanar_slice_tool --printer NAME --process NAME --filament NAME [--vendor Prusa]\n"
                  "       [--profiles DIR] [--datadir DIR] [--set key=value]... [--center X,Y]\n"
-                 "       [--config-out FILE] [--gcode-3mf FILE] [--json FILE] [--verify]\n"
+                 "       [--config-out FILE] [--gcode-3mf FILE] [--json FILE] [--verify] [--auto-orient | --orient-only]\n"
                  "       -o OUT.gcode (MODEL | --plate PLATE.json)\n";
     std::exit(2);
 }
@@ -95,6 +102,7 @@ struct Args
 Args parse_args(int argc, char **argv)
 {
     Args a;
+    a.argv.assign(argv, argv + argc);
     for (int i = 1; i < argc; ++i) {
         const std::string arg  = argv[i];
         auto              next = [&]() -> std::string {
@@ -127,6 +135,9 @@ Args parse_args(int argc, char **argv)
         else if (arg == "--json") a.json = next();
         else if (arg == "--plate") a.plate = next();
         else if (arg == "--verify") a.verify = true;
+        else if (arg == "--auto-orient") a.auto_orient = true;
+        else if (arg == "--orient-only") a.auto_orient = a.orient_only = true;
+        else if (arg == "--confirm-up") a.confirm_up = next();
         else if (arg == "-o" || arg == "--output") a.output = next();
         else if (arg == "--set") {
             const std::string kv  = next();
@@ -144,7 +155,8 @@ Args parse_args(int argc, char **argv)
         else
             a.model = arg;
     }
-    if (a.printer.empty() || a.process.empty() || a.filaments.empty() || a.output.empty() || a.model.empty() == a.plate.empty())
+    if (a.printer.empty() || a.process.empty() || a.filaments.empty() || (a.output.empty() && ! a.orient_only && a.confirm_up.empty()) ||
+        a.model.empty() == a.plate.empty())
         usage("--printer, --process, --filament, -o and a model or --plate are required");
     return a;
 }
@@ -497,6 +509,191 @@ void place_wipe_tower(DynamicPrintConfig &config, const Model &model, size_t fil
     config.option<ConfigOptionFloats>("wipe_tower_y", true)->values = { y + move.y() };
 }
 
+void place(const Args &args, Model &model, DynamicPrintConfig &config)
+{
+    if (args.plate.empty()) {
+        Vec2d center = args.center;
+        if (! args.center_set) {
+            const BoundingBoxf bed(config.opt<ConfigOptionPoints>("printable_area")->values);
+            center = bed.center();
+        }
+        for (ModelObject *object : model.objects)
+            object->ensure_on_bed();
+        model.center_instances_around_point(center);
+    }
+    if (std::none_of(args.overrides.begin(), args.overrides.end(), [](const auto &kv) { return kv.first.rfind("wipe_tower_", 0) == 0; }))
+        place_wipe_tower(config, model, args.filaments.size());
+}
+
+void rotate_model(Model &model, const Matrix3d &rotation)
+{
+    const Eigen::AngleAxisd aa(rotation);
+    if (std::abs(aa.angle()) < 1e-9)
+        return;
+    for (ModelObject *object : model.objects)
+        object->rotate(aa.angle(), aa.axis());
+}
+
+struct OrientSlice
+{
+    bool        ok = false;
+    double      time_s = 0., footprint = 0., support = 0.;
+    size_t      hits = 0;
+    std::string error;
+};
+
+OrientSlice slice_orientation(const Args &args, const Model &source, const Matrix3d &rotation, const DynamicPrintConfig &config_in,
+                              const fs::path &dir)
+{
+    OrientSlice out;
+    try {
+        Model              model(source);
+        DynamicPrintConfig config = config_in;
+        rotate_model(model, rotation);
+        place(args, model, config);
+        Print print;
+        print.is_BBL_printer() = args.printer.rfind("Bambu Lab", 0) == 0;
+        for (ModelObject *object : model.objects)
+            print.auto_assign_extruders(object);
+        print.apply(model, config);
+        if (const StringObjectException err = print.validate(); ! err.string.empty())
+            throw std::runtime_error("validate: " + err.string);
+        print.process();
+        GCodeProcessorResult result;
+        const fs::path       gcode = dir / fs::unique_path("orient_%%%%%%%%.gcode");
+        print.export_gcode(gcode.string(), &result, nullptr);
+        fs::remove(gcode);
+        out.time_s = result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)].time;
+        out.hits   = result.clearance_report.ran ? result.clearance_report.hit_moves : 0;
+        for (const auto &[extruder, volume] : result.print_statistics.support_volumes_per_extruder)
+            out.support += volume;
+        for (const PrintObject *object : print.objects())
+            for (const Nonplanar::ConformalPatch &patch : object->conformal().patches)
+                if (patch.kind == Nonplanar::PatchKind::Top)
+                    out.footprint += area(patch.footprint) * SCALING_FACTOR * SCALING_FACTOR;
+        out.ok = true;
+    } catch (const std::exception &e) {
+        out.error = e.what();
+    }
+    return out;
+}
+
+OrientSlice slice_orientation_child(const Args &args, const Vec3d &up, const fs::path &dir)
+{
+    const auto quote = [](const std::string &v) {
+#ifdef _WIN32
+        return "\"" + v + "\"";
+#else
+        std::string q = "'";
+        for (char c : v)
+            q += c == '\'' ? std::string("'\\''") : std::string(1, c);
+        return q + "'";
+#endif
+    };
+    const fs::path out = dir / fs::unique_path("orient_%%%%%%%%.txt");
+    std::string    cmd;
+    for (size_t i = 0; i < args.argv.size(); ++i)
+        if (args.argv[i] == "--json")
+            ++i;
+        else
+            cmd += quote(args.argv[i]) + " ";
+    std::ostringstream u;
+    u.precision(17);
+    u << up.x() << "," << up.y() << "," << up.z();
+    cmd += "--confirm-up " + quote(u.str()) + " > " + quote(out.string());
+#ifdef _WIN32
+    cmd = "\"" + cmd + "\"";
+#endif
+    const int   rc = std::system(cmd.c_str());
+    OrientSlice sl;
+    boost::nowide::ifstream in(out.string());
+    for (std::string line; std::getline(in, line);) {
+        std::istringstream ls(line);
+        std::string        key;
+        ls >> key;
+        if (key == "orient_slice")
+            ls >> sl.ok >> sl.time_s >> sl.footprint >> sl.support >> sl.hits;
+        else if (key == "orient_slice_error")
+            std::getline(ls, sl.error);
+    }
+    in.close();
+    fs::remove(out);
+    if (! sl.ok && sl.error.empty())
+        sl.error = "slice exited with status " + std::to_string(rc);
+    return sl;
+}
+
+void print_orient_score(const char *tag, const Nonplanar::OrientScore &s)
+{
+    std::cout << tag << " up " << s.up.x() << "," << s.up.y() << "," << s.up.z() << " cost " << s.cost << " time_s " << s.time_s
+              << " defect " << s.defect << " curved_share " << s.curved_share << " flat " << s.flat_top << " curved " << s.curved_top << " steep " << s.steep_top
+              << " support_area " << s.support_area << " support_volume " << s.support_volume << " bed " << s.bed
+              << " height " << s.height << " stable " << s.stable << "\n";
+}
+
+Matrix3d choose_orientation(const Args &args, const Model &model, const DynamicPrintConfig &config, const fs::path &dir)
+{
+    if (model.objects.size() != 1) {
+        std::cout << "auto_orient skipped: " << model.objects.size() << " objects\n";
+        return Matrix3d::Identity();
+    }
+    const Nonplanar::OrientParams params = Nonplanar::orient_params(config);
+    const auto                    t0     = std::chrono::steady_clock::now();
+    const TriangleMesh            mesh   = model.objects.front()->raw_mesh();
+    const Nonplanar::OrientResult res    = Nonplanar::auto_orient(mesh.its, params);
+    std::cout << "auto_orient_mesh_s " << std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() << "\n";
+    print_orient_score("auto_orient_original", res.original);
+    for (const Nonplanar::OrientScore &s : res.ranked)
+        print_orient_score("auto_orient_candidate", s);
+    Nonplanar::OrientScore chosen = res.original;
+    std::vector<Nonplanar::OrientScore> trial{ res.original };
+    std::vector<Nonplanar::OrientScore> pool;
+    if (! res.ranked.empty())
+        pool.push_back(res.ranked.front());
+    std::vector<Nonplanar::OrientScore> axes;
+    for (const Vec3d &a : std::initializer_list<Vec3d>{ Vec3d::UnitX(), -Vec3d::UnitX(), Vec3d::UnitY(), -Vec3d::UnitY(), -Vec3d::UnitZ() })
+        axes.push_back(Nonplanar::score_orientation(mesh.its, a, params));
+    std::sort(axes.begin(), axes.end(), [](const auto &l, const auto &r) { return l.cost < r.cost; });
+    pool.insert(pool.end(), axes.begin(), axes.end());
+    pool.insert(pool.end(), res.ranked.begin(), res.ranked.end());
+    for (const Nonplanar::OrientScore &s : pool)
+        if (trial.size() < 6 && s.stable && (! res.original.stable || s.height <= 1.25 * res.original.height) &&
+            std::none_of(trial.begin(), trial.end(), [&](const auto &t) { return t.up.dot(s.up) > std::cos(2. * M_PI / 180.); }))
+            trial.push_back(s);
+    if (trial.size() > 1) {
+        for (Nonplanar::OrientScore &s : trial) {
+            const OrientSlice sl = slice_orientation_child(args, s.up, dir);
+            std::cout << "auto_orient_slice up " << s.up.x() << "," << s.up.y() << "," << s.up.z() << " ok " << sl.ok << " time_s "
+                      << sl.time_s << " footprint " << sl.footprint << " support " << sl.support << " hits " << sl.hits
+                      << (sl.error.empty() ? "" : " error " + sl.error) << "\n";
+            if (! sl.ok || sl.hits > 0) {
+                s.stable = false;
+                s.cost   = std::numeric_limits<double>::max();
+                continue;
+            }
+            s.measured        = true;
+            s.time_s          = sl.time_s;
+            s.printed_support = sl.support;
+            s.curved_share    = s.curved_top > 0. ? std::min(1., sl.footprint / s.curved_top) : 1.;
+            Nonplanar::rescore(s);
+        }
+        const Nonplanar::OrientScore &original = trial.front();
+        for (size_t i = 1; i < trial.size(); ++i)
+            if (trial[i].cost < std::numeric_limits<double>::max() && Nonplanar::replaces(trial[i], original) &&
+                (chosen.up == res.original.up || trial[i].cost < chosen.cost))
+                chosen = trial[i];
+    }
+    const Matrix3d r = Nonplanar::rotation_to_z(chosen.up);
+    print_orient_score("auto_orient_chosen", chosen);
+    std::cout << "auto_orient_rotated " << (chosen.up == res.original.up ? 0 : 1) << "\n"
+              << "auto_orient_rotation";
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+            std::cout << " " << r(i, j);
+    std::cout << "\n";
+    return r;
+}
+
 Model load_plate(const std::string &path)
 {
     boost::nowide::ifstream in(path);
@@ -573,18 +770,21 @@ int main(int argc, char **argv)
         if (model.objects.empty())
             throw std::runtime_error("no objects in " + args.model);
         apply_multi_material(args, model);
-        if (args.plate.empty()) {
-            Vec2d center = args.center;
-            if (! args.center_set) {
-                const BoundingBoxf bed(config.opt<ConfigOptionPoints>("printable_area")->values);
-                center = bed.center();
-            }
-            for (ModelObject *object : model.objects)
-                object->ensure_on_bed();
-            model.center_instances_around_point(center);
+        if (! args.confirm_up.empty()) {
+            Vec3d up;
+            if (std::sscanf(args.confirm_up.c_str(), "%lf,%lf,%lf", &up.x(), &up.y(), &up.z()) != 3)
+                usage("--confirm-up expects X,Y,Z");
+            const OrientSlice sl = slice_orientation(args, model, Nonplanar::rotation_to_z(up), config, datadir);
+            std::cout << "orient_slice " << sl.ok << " " << sl.time_s << " " << sl.footprint << " " << sl.support << " " << sl.hits << "\n";
+            if (! sl.error.empty())
+                std::cout << "orient_slice_error " << sl.error << "\n";
+            return 0;
         }
-        if (std::none_of(args.overrides.begin(), args.overrides.end(), [](const auto &kv) { return kv.first.rfind("wipe_tower_", 0) == 0; }))
-            place_wipe_tower(config, model, args.filaments.size());
+        if (args.auto_orient)
+            rotate_model(model, choose_orientation(args, model, config, datadir));
+        if (args.orient_only)
+            return 0;
+        place(args, model, config);
 
         Print print;
         print.is_BBL_printer() = args.printer.rfind("Bambu Lab", 0) == 0;

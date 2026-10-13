@@ -69,6 +69,22 @@ std::string SpiralVase::process_layer(const std::string &gcode, bool last_layer)
         m_reader.parse_buffer(gcode);
         return gcode;
     }
+
+    if (size_t lid = gcode.find(";_NONPLANAR_BEGIN"); lid != std::string::npos) {
+        while (lid > 0) {
+            const size_t line_end   = gcode[lid - 1] == '\n' ? lid - 1 : lid;
+            const size_t newline    = line_end == 0 ? std::string::npos : gcode.rfind('\n', line_end - 1);
+            const size_t line_start = newline == std::string::npos ? 0 : newline + 1;
+            const std::string line  = gcode.substr(line_start, line_end - line_start);
+            if (line.rfind("G1 ", 0) == 0 && line.find(" E") != std::string::npos && line.find(" E-") == std::string::npos)
+                break;
+            lid = line_start;
+        }
+        std::string out = this->process_layer(gcode.substr(0, lid), false);
+        const std::string tail = gcode.substr(lid);
+        m_reader.parse_buffer(tail);
+        return out + tail;
+    }
     
     float total_layer_length = 0;
     float layer_height = 0;

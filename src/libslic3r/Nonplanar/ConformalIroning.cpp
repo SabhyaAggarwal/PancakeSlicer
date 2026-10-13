@@ -8,6 +8,7 @@
 #include "Repair.hpp"
 #include "Seams.hpp"
 #include "ShellPaths.hpp"
+#include "SpiralTop.hpp"
 
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/ExPolygon.hpp"
@@ -84,6 +85,7 @@ ExtrusionEntityCollection make_conformal_ironing(const PrintObject &object, cons
     if (cfg.ironing_pattern.value == ipConcentric) {
         ShellFill spiral;
         spiral.spiral = true;
+        spiral.helix  = cfg.nonplanar_spiral_top.value && helix_worthwhile(patch.surface, area);
         linked        = shell_polylines(area, spiral, ipRectilinear, spacing, false, flow, host_z, seam, MaxGlide, nullptr, &seam_line);
     } else {
         double angle     = 0.;

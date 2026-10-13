@@ -221,7 +221,7 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
 {
     const VolumeSettings settings = volume_settings(object);
     LayerPtrs           &layers   = object.layers();
-    if (settings.region_id < 0 || layers.size() < 2)
+    if (settings.region_id < 0 || layers.size() < 2 || object.print()->config().spiral_mode.value)
         return;
     const auto t_start = std::chrono::steady_clock::now();
     if (result.planar_exclusion.size() != layers.size())

@@ -5107,6 +5107,16 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionBool(true));
 
+    def = this->add("nonplanar_spiral_top", coBool);
+    def->label    = L("Non-planar spiral top");
+    def->category = L("Quality");
+    def->tooltip  = L("Print a curved top whose rings close around one centre, such as a dome or a bowl, as one "
+                      "continuous spiral that climbs the surface from the rim to the apex, with no seam and no "
+                      "retraction. In spiral vase mode the wall carries on into a closed curved lid in the same "
+                      "extrusion. Curved tops of any other shape are not affected.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(true));
+
     def = this->add("nonplanar_flow_mod", coBool);
     def->label    = L("Non-planar flow modulation");
     def->category = L("Quality");

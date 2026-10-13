@@ -6,6 +6,7 @@
 #include "ConformalShells.hpp"
 #include "HeightField.hpp"
 #include "Seams.hpp"
+#include "SpiralTop.hpp"
 
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ClipperUtils.hpp"
@@ -548,11 +549,14 @@ Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam,
 
 std::vector<Polylines> shell_polylines(const ExPolygons &area, const ShellFill &fill, InfillPattern line_pattern, double spacing,
                                        bool monotonic, const Flow &flow, double z, const Point &start, double max_glide,
-                                       const HeightField *surface_spaced, const Polyline *seam_line)
+                                       const HeightField *surface_spaced, const Polyline *seam_line, HelixRamp *helix_ramp)
 {
     Polylines paths;
     if (fill.spiral) {
-        paths = fill_spiral(area, spacing, start, seam_line);
+        if (Polyline helix = fill.helix ? fill_helix(area, spacing, start, false, helix_ramp) : Polyline(); helix.is_valid())
+            paths.emplace_back(std::move(helix));
+        else
+            paths = fill_spiral(area, spacing, start, seam_line);
         if (fill.outward)
             reverse_order(paths);
     } else {

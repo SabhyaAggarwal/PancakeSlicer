@@ -96,6 +96,8 @@ set(lisbslic3r_sources
     Brim.cpp
     BrimEarsPoint.hpp
     Brim.hpp
+    BuildLabel.cpp
+    BuildLabel.hpp
     BuildVolume.cpp
     BuildVolume.hpp
     calib.cpp
@@ -120,6 +122,8 @@ set(lisbslic3r_sources
     Nonplanar/AtomToolpath.hpp
     Nonplanar/AutoMode.cpp
     Nonplanar/AutoMode.hpp
+    Nonplanar/AutoOrient.cpp
+    Nonplanar/AutoOrient.hpp
     Nonplanar/BeadModel.cpp
     Nonplanar/BeadModel.hpp
     Nonplanar/FlowMod.cpp
@@ -163,6 +167,8 @@ set(lisbslic3r_sources
     Nonplanar/ShellPaths.hpp
     Nonplanar/ShellSeams.cpp
     Nonplanar/ShellSeams.hpp
+    Nonplanar/SpiralTop.cpp
+    Nonplanar/SpiralTop.hpp
     Nonplanar/HeadEnvelope.cpp
     Nonplanar/HeadEnvelope.hpp
     Nonplanar/HeightField.cpp
@@ -715,6 +721,16 @@ if (USE_SLIC3R_CONSOLE_LOG)
 endif()
 target_include_directories(libslic3r PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/TextureToColor PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 target_include_directories(libslic3r SYSTEM PUBLIC ${EXPAT_INCLUDE_DIRS})
+
+set(_git_commit_hash_header "${CMAKE_CURRENT_BINARY_DIR}/git_commit_hash.h")
+add_custom_target(git_commit_hash_header
+    BYPRODUCTS "${_git_commit_hash_header}"
+    COMMAND ${CMAKE_COMMAND}
+        "-DSOURCE_DIR=${CMAKE_SOURCE_DIR}"
+        "-DOUT_FILE=${_git_commit_hash_header}"
+        -P "${CMAKE_CURRENT_LIST_DIR}/GitCommitHash.cmake"
+    COMMENT "Resolving the git commit hash")
+add_dependencies(libslic3r git_commit_hash_header)
 
 set(OpenCASCADE_DIR "${CMAKE_PREFIX_PATH}/lib/cmake/occt")
 find_package(OpenCASCADE REQUIRED)

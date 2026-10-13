@@ -4,6 +4,7 @@
 #include "TriangleMesh.hpp"
 #include "Point.hpp"
 #include "PrintConfig.hpp"
+#include "Nonplanar/AutoOrient.hpp"
 #include <string>
 #include <functional>
 #include <Eigen/Core>
@@ -34,6 +35,8 @@ struct OrientMesh {
     Vec3d euler_angles_vertical = {0, 0, 0};
     Vec3d cooling_direction = {0, 0, 0};
     bool has_cooling_fan{false};
+    bool nonplanar{false};
+    Nonplanar::OrientParams nonplanar_params;
 
     std::string name;
 
