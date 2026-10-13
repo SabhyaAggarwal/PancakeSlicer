@@ -10,9 +10,10 @@ namespace Slic3r {
 
 class ExtrusionPathConformal;
 class GCodeWriter;
-class HeightField;
 
 namespace Nonplanar {
+
+class HeightField;
 
 struct FlowShape
 {

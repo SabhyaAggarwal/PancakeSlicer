@@ -1,5 +1,7 @@
 #include "ConformalTravel.hpp"
 
+#include "libslic3r/Exception.hpp"
+
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/GCode/ClearanceVerifier.hpp"
 #include "libslic3r/libslic3r.h"
@@ -178,8 +180,9 @@ SurfaceTravel plan_surface_travel(const MaterialColumns &columns, const Vec3d &f
     for (size_t i = n - 1; i > 0; --i)
         z[i - 1] = std::max(z[i - 1], z[i] - params.max_grade * (xy[i] - xy[i - 1]).norm());
     if (params.ceiling > 0.)
-        for (double &v : z)
-            v = std::min(v, params.ceiling);
+        for (double v : z)
+            if (v > params.ceiling + EPSILON)
+                throw RuntimeError("Non-planar travel cannot clear printed material within the printer height. Reduce the model height or move the objects apart.");
 
     out.max_hop = std::max(dep.z() - from.z(), arr.z() - to.z());
     for (size_t i = 0; i + 1 < n; ++i)

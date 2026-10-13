@@ -1,5 +1,6 @@
 #include "SurfaceClip.hpp"
 
+#include "libslic3r/Exception.hpp"
 #include "libslic3r/libslic3r.h"
 
 #include <tbb/blocked_range.h>
@@ -9,6 +10,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <vector>
@@ -48,6 +50,12 @@ std::vector<KernelBox> kernel_boxes(const HeadEnvelope &head, double pitch, bool
 {
     constexpr double       eps = 1e-6;
     std::vector<KernelBox> out;
+    auto offset = [](double value) {
+        const double limit = std::numeric_limits<int>::max();
+        if (!std::isfinite(value) || value < -limit || value > limit)
+            throw RuntimeError("Head envelope reach is too large for the non-planar grid. Check the head dimensions or increase the grid spacing.");
+        return int(value);
+    };
     for (size_t component = 0; component < head.boxes.size(); ++component) {
         const HeadBox &box = head.boxes[component];
         const double grow = box.nozzle ? 0. : head.lateral_margin;
@@ -64,13 +72,16 @@ std::vector<KernelBox> kernel_boxes(const HeadEnvelope &head, double pitch, bool
         k.component = int(component);
         k.inf_x = box.infinite_x;
         k.inf_y = box.infinite_y;
-        k.i0    = int(std::ceil((box.min.x() - grow) / pitch - eps));
-        k.i1    = int(std::floor((box.max.x() + grow) / pitch + eps));
-        k.j0    = int(std::ceil((box.min.y() - grow) / pitch - eps));
-        k.j1    = int(std::floor((box.max.y() + grow) / pitch + eps));
+        k.i0    = k.inf_x ? 0 : offset(std::ceil((box.min.x() - grow) / pitch - eps));
+        k.i1    = k.inf_x ? 0 : offset(std::floor((box.max.x() + grow) / pitch + eps));
+        k.j0    = k.inf_y ? 0 : offset(std::ceil((box.min.y() - grow) / pitch - eps));
+        k.j1    = k.inf_y ? 0 : offset(std::floor((box.max.y() + grow) / pitch + eps));
         if ((!k.inf_x && k.i0 > k.i1) || (!k.inf_y && k.j0 > k.j1))
             continue;
-        k.z = float(zmin - (box.nozzle ? 0. : head.margin));
+        const double height = zmin - (box.nozzle ? 0. : head.margin);
+        if (!std::isfinite(height) || std::abs(height) > std::numeric_limits<float>::max())
+            throw RuntimeError("Head envelope clearance height is too large. Check the head dimensions and margin.");
+        k.z = float(height);
         auto it = std::find_if(out.begin(), out.end(), [&k](const KernelBox &o) { return o.same_window(k); });
         if (it == out.end())
             out.emplace_back(k);
@@ -89,18 +100,18 @@ void sliding_lines(const float *in, int n, int lanes, int a, int b, float *out, 
         std::fill(out, out + size_t(n) * lanes, Op::identity);
         return;
     }
-    const int w = b - a + 1;
-    const int L = n + w - 1;
+    const int64_t w = int64_t(b) - a + 1;
+    const int64_t L = int64_t(n) + w - 1;
     g.resize(size_t(L) * lanes);
     h.resize(size_t(L) * lanes);
-    auto src = [&](int m, int lane) {
-        const int idx = m + a;
+    auto src = [&](int64_t m, int lane) {
+        const int64_t idx = m + a;
         return idx >= 0 && idx < n ? in[size_t(idx) * lanes + lane] : Op::identity;
     };
-    for (int m = 0; m < L; ++m)
+    for (int64_t m = 0; m < L; ++m)
         for (int l = 0; l < lanes; ++l)
             g[size_t(m) * lanes + l] = m % w == 0 ? src(m, l) : Op::apply(g[size_t(m - 1) * lanes + l], src(m, l));
-    for (int m = L - 1; m >= 0; --m)
+    for (int64_t m = L - 1; m >= 0; --m)
         for (int l = 0; l < lanes; ++l)
             h[size_t(m) * lanes + l] = (m % w == w - 1 || m == L - 1) ? src(m, l) : Op::apply(h[size_t(m + 1) * lanes + l], src(m, l));
     for (int k = 0; k < n; ++k)
@@ -117,7 +128,7 @@ std::vector<float> rect_sliding(const std::vector<float> &in, int nx, int ny, in
     if (inf_x)
         a = -(nx - 1), b = nx - 1;
     constexpr int block = 64;
-    tbb::parallel_for(tbb::blocked_range<int>(0, (nx + block - 1) / block), [&](const tbb::blocked_range<int> &range) {
+    tbb::parallel_for(tbb::blocked_range<int>(0, int((int64_t(nx) + block - 1) / block)), [&](const tbb::blocked_range<int> &range) {
         std::vector<float> lane_in, lane_out, g, h;
         for (int blk = range.begin(); blk < range.end(); ++blk) {
             const int x0 = blk * block, lanes = std::min(block, nx - x0);

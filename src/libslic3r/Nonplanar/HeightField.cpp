@@ -1,18 +1,27 @@
 #include "HeightField.hpp"
 
+#include "libslic3r/Exception.hpp"
+
 #include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 
 namespace Slic3r::Nonplanar {
 
 HeightField::HeightField(const BoundingBoxf &bbox, double pitch, float init) : m_origin(bbox.min), m_pitch(pitch)
 {
-    assert(pitch > 0.);
-    const Vec2d size = bbox.max - bbox.min;
-    m_nx             = std::max(1, int(std::floor(size.x() / pitch + 1e-9)) + 1);
-    m_ny             = std::max(1, int(std::floor(size.y() / pitch + 1e-9)) + 1);
+    if (!std::isfinite(pitch) || pitch <= 0. || !bbox.min.allFinite() || !bbox.max.allFinite() ||
+        (bbox.max - bbox.min).minCoeff() < 0.)
+        throw RuntimeError("Invalid non-planar surface bounds or grid resolution.");
+    const Vec2d rounded = ((bbox.max - bbox.min) / pitch + Vec2d::Constant(1e-9)).array().floor() + 1.;
+    if (!rounded.allFinite() || rounded.maxCoeff() > std::numeric_limits<int>::max())
+        throw RuntimeError("Non-planar surface grid is too large. Increase the grid spacing or reduce the model size.");
+    m_nx = std::max(1, int(rounded.x()));
+    m_ny = std::max(1, int(rounded.y()));
+    if (size_t(m_ny) > m_z.max_size() / size_t(m_nx))
+        throw RuntimeError("Non-planar surface grid is too large. Increase the grid spacing or reduce the model size.");
     m_z.assign(size_t(m_nx) * size_t(m_ny), init);
 }
 
@@ -27,7 +36,7 @@ float HeightField::sample(const Vec2d &p) const
         return NoData;
     const Vec2d u  = (p - m_origin) / m_pitch;
     const double fx = std::floor(u.x()), fy = std::floor(u.y());
-    if (u.x() < 0. || u.y() < 0. || u.x() > m_nx - 1 || u.y() > m_ny - 1)
+    if (!u.allFinite() || u.x() < 0. || u.y() < 0. || u.x() > m_nx - 1 || u.y() > m_ny - 1)
         return NoData;
     const int    ix = std::min(int(fx), std::max(0, m_nx - 2));
     const int    iy = std::min(int(fy), std::max(0, m_ny - 2));

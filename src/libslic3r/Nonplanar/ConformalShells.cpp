@@ -1297,7 +1297,7 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
                 throw_if_canceled(object);
                 const HeightField &surface = result.patches[groups[c].front()].surface;
                 std::optional<ShellDeficit> below;
-                const int n_shells = settings.adaptive ? result.patches[groups[c].front()].shells : settings.shells;
+                const int n_shells = settings.adaptive ? result.patches[groups[c].front()].shells : units[c].shells;
                 for (int k = 0; k < n_shells; ++k) {
                     const bool   sparse = k < settings.sparse;
                     ShellDeficit laid(surface);

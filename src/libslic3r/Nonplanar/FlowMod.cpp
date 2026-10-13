@@ -56,8 +56,8 @@ void deposit_deficit(ShellDeficit &field, const Vec2d &a, const Vec2d &b, double
         }
 }
 
-void mark_simplified(const Points3 &pts, const std::vector<float> &heights, size_t first, size_t last, double tolerance,
-                     std::vector<char> &keep)
+void mark_simplified(const Points3 &pts, const std::vector<float> &heights, const std::vector<float> &widths,
+                     size_t first, size_t last, double tolerance, std::vector<char> &keep)
 {
     const double tol = scale_(tolerance);
     std::vector<std::pair<size_t, size_t>> stack { { first, last } };
@@ -70,8 +70,10 @@ void mark_simplified(const Points3 &pts, const std::vector<float> &heights, size
         size_t       worst_idx = a;
         for (size_t i = a + 1; i < b; ++i) {
             const double t  = len > 0. ? std::clamp((pts[i].cast<double>() - pa).dot(ab) / len, 0., 1.) : 0.;
-            const double d  = std::max((pa + t * ab - pts[i].cast<double>()).norm(),
+            double       d  = std::max((pa + t * ab - pts[i].cast<double>()).norm(),
                                        std::abs(scale_(heights[i] - (1. - t) * heights[a] - t * heights[b])));
+            if (!widths.empty())
+                d = std::max(d, std::abs(scale_(widths[i] - (1. - t) * widths[a] - t * widths[b])));
             if (d > worst) {
                 worst     = d;
                 worst_idx = i;
@@ -94,12 +96,15 @@ void modulate_flow(ExtrusionPathConformal &path, const HeightField &surface, con
         return;
 
     Points3            pts;
-    std::vector<float> h;
+    std::vector<float> h, widths;
+    const bool         variable_width = path.bead_width.size() == path.polyline.points.size();
     {
         const Points3            &src = path.polyline.points;
         const std::vector<float> &bh  = path.bead_height;
         pts.reserve(src.size());
         h.reserve(src.size());
+        if (variable_width)
+            widths.reserve(src.size());
         for (size_t i = 0; i < src.size(); ++i) {
             if (i > 0 && bh[i - 1] > 0.f && bh[i] > 0.f) {
                 const Vec3d a = src[i - 1].cast<double>(), b = src[i].cast<double>();
@@ -109,10 +114,14 @@ void modulate_flow(ExtrusionPathConformal &path, const HeightField &surface, con
                     const Vec3d  q = a + t * (b - a);
                     pts.emplace_back(coord_t(std::lround(q.x())), coord_t(std::lround(q.y())), coord_t(std::lround(q.z())));
                     h.emplace_back(float((1. - t) * bh[i - 1] + t * bh[i]));
+                    if (variable_width)
+                        widths.emplace_back(float((1. - t) * path.bead_width[i - 1] + t * path.bead_width[i]));
                 }
             }
             pts.emplace_back(src[i]);
             h.emplace_back(bh[i]);
+            if (variable_width)
+                widths.emplace_back(path.bead_width[i]);
         }
     }
 
@@ -191,19 +200,22 @@ void modulate_flow(ExtrusionPathConformal &path, const HeightField &surface, con
                 deposit_deficit(*deficit, xy[i], xy[i + 1], gap[i] - h[i], gap[i + 1] - h[i + 1], 0.5 * width);
 
         std::fill(keep.begin() + b + 1, keep.begin() + e, 0);
-        mark_simplified(pts, h, b, e, 0.01, keep);
+        mark_simplified(pts, h, widths, b, e, 0.01, keep);
         b = e + 1;
     }
 
     Points3            out_pts;
-    std::vector<float> out_h;
+    std::vector<float> out_h, out_widths;
     for (size_t i = 0; i < n; ++i)
         if (keep[i]) {
             out_pts.emplace_back(pts[i]);
             out_h.emplace_back(h[i]);
+            if (variable_width)
+                out_widths.emplace_back(widths[i]);
         }
     path.polyline.points = std::move(out_pts);
     path.bead_height     = std::move(out_h);
+    path.bead_width      = std::move(out_widths);
 }
 
 }

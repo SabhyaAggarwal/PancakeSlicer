@@ -21,6 +21,7 @@ ConformalPoint interpolate(const ConformalPoint &a, const ConformalPoint &b, dou
     p.pose.tip    = a.pose.tip + t * (b.pose.tip - a.pose.tip);
     p.pose.axis   = (a.pose.axis + t * (b.pose.axis - a.pose.axis)).normalized();
     p.bead_height = a.bead_height + float(t) * (b.bead_height - a.bead_height);
+    p.vertical_height = a.vertical_height + float(t) * (b.vertical_height - a.vertical_height);
     p.width       = a.width + float(t) * (b.width - a.width);
     return p;
 }

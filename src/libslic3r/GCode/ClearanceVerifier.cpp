@@ -482,8 +482,8 @@ void MaterialColumns::deposit(const Vec3d &a, const Vec3d &b, double width)
             const size_t t  = size_t(y / m_tile) * m_tx + tx;
             std::vector<double> &block = m_blocks[t];
             if (block.empty()) block.assign(size_t(m_tile) * m_tile, -Inf);
-            double *row = block.data() + size_t(y % m_tile) * m_tile - tx * m_tile;
-            for (; x < end; ++x) row[x] = std::max(row[x], z);
+            double *row = block.data() + size_t(y % m_tile) * m_tile;
+            for (; x < end; ++x) row[x - tx * m_tile] = std::max(row[x - tx * m_tile], z);
             m_tiles[t] = std::max(m_tiles[t], z);
         }
     if (x0 < x1 && y0 < y1) m_ceiling = std::max(m_ceiling, z);
@@ -518,8 +518,8 @@ double MaterialColumns::top_above(const BoundingBoxf &rect, double floor) const
                 ay == ty * m_tile && by == std::min(m_ny, (ty + 1) * m_tile)) { best = tile; continue; }
             const double *block = m_blocks[size_t(ty) * m_tx + tx].data();
             for (int y = ay; y < by; ++y) {
-                const double *row = block + size_t(y - ty * m_tile) * m_tile - tx * m_tile;
-                for (int x = ax; x < bx; ++x) best = std::max(best, row[x]);
+                const double *row = block + size_t(y - ty * m_tile) * m_tile;
+                for (int x = ax; x < bx; ++x) best = std::max(best, row[x - tx * m_tile]);
             }
         }
     return best;
@@ -663,7 +663,18 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
     bool turned = false;
     for (const auto &move : result.moves)
         turned |= move.has_joints && (move.joints.rot[0] != 0. || move.joints.rot[1] != 0.);
-    const bool rotary = kinematics.rotary_count() != 0 && turned;
+    bool direct_upright = true;
+    if (kinematics.rotary_count() != 0 && !turned) {
+        const JointPose zero;
+        direct_upright = kinematics.head_frame(zero).isApprox(Matrix3d::Identity(), 1e-9) &&
+                         kinematics.forward(zero).tip.isZero(1e-9);
+        for (int axis = 0; axis < 3 && direct_upright; ++axis) {
+            JointPose probe;
+            probe.xyz[axis] = 1.;
+            direct_upright = kinematics.forward(probe).tip.isApprox(probe.xyz, 1e-9);
+        }
+    }
+    const bool rotary = kinematics.rotary_count() != 0 && (turned || !direct_upright);
     for (const auto &move : result.moves) {
         if (!move.position.allFinite()) throw RuntimeError("Clearance verification found a non-finite G-code position.");
         bounds.merge(Vec2d(move_tip(move, rotary).head<2>()));
@@ -866,7 +877,7 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
                 if (c.extruding && result.moves[c.move].extrusion_role != erCustom && !nozzle.boxes.empty()) {
                     const Vec3d a = move_tip(result.moves[c.last], rotary), b = move_tip(result.moves[c.move], rotary);
                     const int   samples = int(std::min(65535., std::max(1., std::ceil((b - a).norm() / params.sweep))));
-                    const int   pieces  = std::clamp(int(std::ceil(std::abs(b.z() - a.z()) / std::max(params.bead_eps, EPSILON))), 1, samples);
+                    const int   pieces  = int(std::clamp(std::ceil(std::abs(b.z() - a.z()) / std::max(params.bead_eps, EPSILON)), 1., double(samples)));
                     for (int piece = 0; piece < pieces; ++piece)
                         beads.deposit_upright(c.move, c.last, c.run, piece, pieces);
                 }

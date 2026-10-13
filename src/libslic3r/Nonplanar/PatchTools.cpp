@@ -11,6 +11,7 @@
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
+#include "libslic3r/Exception.hpp"
 #include "libslic3r/Flow.hpp"
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/Layer.hpp"
@@ -945,11 +946,17 @@ constexpr double WallSlope = 60.;
 
 bool spans_slope(const HeightField &surface, const Vec2d &p, double slope_deg)
 {
-    const Vec2d o  = (p - surface.origin()) / surface.pitch();
-    const int   ix = std::clamp(int(std::floor(o.x())), 0, surface.nx() - 2);
-    const int   iy = std::clamp(int(std::floor(o.y())), 0, surface.ny() - 2);
-    const float z[4] = { surface.at(ix, iy), surface.at(ix + 1, iy), surface.at(ix, iy + 1), surface.at(ix + 1, iy + 1) };
-    return *std::max_element(z, z + 4) - *std::min_element(z, z + 4) > std::tan(Geometry::deg2rad(slope_deg)) * std::sqrt(2.) * surface.pitch();
+    if (surface.empty())
+        throw RuntimeError("Cannot classify a slope on an empty non-planar surface grid.");
+    const Vec2d o = (p - surface.origin()) / surface.pitch();
+    if (!o.allFinite() || !std::isfinite(slope_deg))
+        throw RuntimeError("Non-planar slope classification requires finite coordinates and slope limit.");
+    const int ix = int(std::clamp(std::floor(o.x()), 0., double(std::max(0, surface.nx() - 2))));
+    const int iy = int(std::clamp(std::floor(o.y()), 0., double(std::max(0, surface.ny() - 2))));
+    const int ix1 = std::min(ix + 1, surface.nx() - 1), iy1 = std::min(iy + 1, surface.ny() - 1);
+    const float z[4] = { surface.at(ix, iy), surface.at(ix1, iy), surface.at(ix, iy1), surface.at(ix1, iy1) };
+    const double span = std::sqrt(double((ix1 - ix) + (iy1 - iy))) * surface.pitch();
+    return *std::max_element(z, z + 4) - *std::min_element(z, z + 4) > std::tan(Geometry::deg2rad(slope_deg)) * span;
 }
 
 bool spans_wall(const HeightField &surface, const Vec2d &p) { return spans_slope(surface, p, WallSlope); }
@@ -958,10 +965,9 @@ void band_schedule(const HeadEnvelope &head, double shell_height, double max_pat
 {
     const double reach = head_band_height(head);
     const double cap        = max_patch_height > 0. ? std::min(reach, max_patch_height) : reach;
-    const double band_reach = std::max(cap, MinBandReach);
-    if (cap < MinBandReach)
-        BOOST_LOG_TRIVIAL(warning) << "Non-planar: head " << head.id << " leaves " << cap
-                                   << " mm of clearance above the tip; Z bands use " << MinBandReach << " mm";
+    if (!std::isfinite(cap) || cap < MinBandReach)
+        throw RuntimeError("Head clearance cannot support non-planar bands. Check the head model and margin, or set a finite maximum patch height.");
+    const double band_reach = cap;
     tolerance = std::min(0.5 * band_reach, 0.45 * shell_height);
     pitch     = band_reach - tolerance;
 }
@@ -1112,6 +1118,7 @@ std::vector<std::pair<size_t, size_t>> split_by_colour(ConformalResult &result, 
                 p.host_layer   = comp.host_layer;
                 p.region_id    = colours.region_ids[size_t(c)];
                 p.band         = comp.band;
+                p.automatic    = comp.automatic;
                 p.shell_paths.assign(comp.shell_paths.size(), ExtrusionEntityCollection());
                 for (ExtrusionEntityCollection &shell : p.shell_paths)
                     shell.no_sort = true;

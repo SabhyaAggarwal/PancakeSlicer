@@ -4,6 +4,7 @@
 #include "libslic3r/Nonplanar/ShellSeams.hpp"
 
 #include "libslic3r/ExtrusionEntity.hpp"
+#include "libslic3r/Exception.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
 #include "libslic3r/GCodeWriter.hpp"
 #include "libslic3r/Nonplanar/TiltBudget.hpp"
@@ -572,6 +573,8 @@ void apply_minimal_tilt(std::vector<ConformalPoint> &points, const std::function
     std::vector<Vec3d> normals(n), axes(n);
     for (size_t i = 0; i < n; ++i) {
         const Vec2d g = gradient(points[i].pose.tip.head<2>());
+        if (!g.allFinite())
+            throw RuntimeError("Non-planar rotary path has no finite surface gradient. Repair the model or regenerate its non-planar paths.");
         normals[i]    = Vec3d(-g.x(), -g.y(), 1.).normalized();
         axes[i]       = budget.axis(g);
     }

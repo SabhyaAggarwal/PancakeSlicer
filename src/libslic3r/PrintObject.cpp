@@ -4,6 +4,7 @@
 #include "Line.hpp"
 #include "Flow.hpp"
 #include "Model.hpp"
+#include "ObjectID.hpp"
 #include "Point.hpp"
 #include "Polygon.hpp"
 #include "Polyline.hpp"
@@ -136,7 +137,8 @@ namespace Slic3r {
 PrintObject::PrintObject(Print* print, ModelObject* model_object, const Transform3d& trafo, PrintInstances&& instances) :
     PrintObjectBaseWithState(print, model_object),
     m_trafo(trafo),
-    m_tree_support_preview_cache(nullptr)
+    m_tree_support_preview_cache(nullptr),
+    m_id(model_object->id().id)
 {
     BoundingBoxf3  bbox        = model_object->raw_bounding_box();
     Vec3d 		   bbox_center = bbox.center();
@@ -724,8 +726,10 @@ void PrintObject::nonplanar_shells()
                    Nonplanar::bridges_enabled(this->printing_region(region_id).config(), this->config());
     if (m_multiplanar && m_config.nonplanar_atom_toolpath.value.empty()) {
         m_print->set_status(40, L("Slicing multiplanar chunks"));
-        for (Layer *layer : m_layers)
+        for (Layer *layer : m_layers) {
+            layer->conformal_patches_before.clear();
             layer->conformal_patches_after.clear();
+        }
         m_conformal = std::make_unique<Nonplanar::ConformalResult>();
         Nonplanar::build_multiplanar_chunks(*this, *m_multiplanar, *m_conformal);
         m_print->throw_if_canceled();

@@ -251,8 +251,8 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
 
     auto frame_of = [](const MultiplanarChunk &c) { return Frame{ c.build_dir, c.parent < 0 ? 0. : c.base, c.parent < 0 }; };
     auto evaluate = [&](const std::vector<HalfSpace> &clips, const Frame &frame) {
-        return tbb::parallel_reduce(
-            tbb::blocked_range<size_t>(0, n_facets), Score{},
+        return tbb::parallel_deterministic_reduce(
+            tbb::blocked_range<size_t>(0, n_facets, 1024), Score{},
             [&](const tbb::blocked_range<size_t> &range, Score s) {
                 for (size_t i = range.begin(); i < range.end(); ++i)
                     if (inside(clips, f.centroid[i])) {
@@ -389,7 +389,7 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
                     continue;
                 const std::pair<int, int> key(int(std::lround(tilt / TopBinTilt)),
                                               int(std::lround(std::atan2(n.y(), n.x()) / AzimuthStep)) % n_azimuth);
-                auto &bin = bins[key];
+                auto &bin = bins.try_emplace(key, 0., Vec3d::Zero()).first->second;
                 bin.first += a;
                 bin.second += f.area[i] * f.normal[i];
                 bin_of[i] = key;

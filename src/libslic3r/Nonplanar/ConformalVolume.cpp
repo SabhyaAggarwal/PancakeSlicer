@@ -153,8 +153,10 @@ void erase_conformal(ExtrusionEntityCollection &collection, double host_z, doubl
         }
         Points3            pts;
         std::vector<float> beads;
+        std::vector<float> widths;
         std::vector<Vec3f> axes;
         const Points3     &src = path->polyline.points;
+        const bool         variable_width = path->bead_width.size() == src.size();
         for (size_t i = 0; i < src.size(); ++i) {
             const int n = i + 1 < src.size() ? std::max(1, int(std::ceil(unscale<double>((src[i + 1] - src[i]).cast<double>().norm()) / step))) : 1;
             for (int j = 0; j < n; ++j) {
@@ -162,6 +164,8 @@ void erase_conformal(ExtrusionEntityCollection &collection, double host_z, doubl
                 const size_t k = std::min(i + 1, src.size() - 1);
                 pts.emplace_back((src[i].cast<double>() + f * (src[k] - src[i]).cast<double>()).cast<coord_t>());
                 beads.emplace_back(float((1. - f) * path->bead_height[i] + f * path->bead_height[k]));
+                if (variable_width)
+                    widths.emplace_back(float((1. - f) * path->bead_width[i] + f * path->bead_width[k]));
                 if (!path->tool_axis.empty())
                     axes.emplace_back(((1.f - float(f)) * path->tool_axis[i] + float(f) * path->tool_axis[k]).normalized());
             }
@@ -190,6 +194,8 @@ void erase_conformal(ExtrusionEntityCollection &collection, double host_z, doubl
                     axis.assign(axes.begin() + first, axes.begin() + last);
                 auto *piece     = new ExtrusionPathConformal(Polyline3(Points3(pts.begin() + first, pts.begin() + last)), *path, std::move(bead),
                                                              std::move(axis));
+                if (variable_width)
+                    piece->bead_width.assign(widths.begin() + first, widths.begin() + last);
                 piece->patch_id = path->patch_id;
                 piece->shell    = path->shell;
                 piece->simplify(0.01);

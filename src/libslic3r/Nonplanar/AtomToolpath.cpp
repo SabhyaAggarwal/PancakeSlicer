@@ -11,6 +11,7 @@
 #include "libslic3r/Polyline.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 #include "libslic3r/miniz_extension.hpp"
+#include "libslic3r/libslic3r.h"
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/format.hpp>
@@ -20,6 +21,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <sstream>
 
@@ -40,7 +42,11 @@ struct NpyArray
     size_t              count() const
     {
         size_t n = 1;
-        for (size_t s : shape) n *= s;
+        for (size_t s : shape) {
+            if (s != 0 && n > std::numeric_limits<size_t>::max() / s)
+                fail("array shape is too large");
+            n *= s;
+        }
         return n;
     }
 };
@@ -59,7 +65,7 @@ NpyArray parse_npy(const std::string &name, const unsigned char *data, size_t si
         header_len = size_t(data[8]) | (size_t(data[9]) << 8) | (size_t(data[10]) << 16) | (size_t(data[11]) << 24);
         offset     = 12;
     }
-    if (offset + header_len > size)
+    if (header_len > size - offset)
         fail(name + " is truncated");
     const std::string header(reinterpret_cast<const char *>(data + offset), header_len);
     offset += header_len;
@@ -89,7 +95,7 @@ NpyArray parse_npy(const std::string &name, const unsigned char *data, size_t si
     const char   kind  = descr[1];
     const size_t bytes = size_t(std::stoul(descr.substr(2)));
     const size_t n     = out.count();
-    if (offset + n * bytes > size)
+    if (bytes == 0 || n > (size - offset) / bytes)
         fail(name + " is truncated");
     out.values.resize(n);
     const unsigned char *p = data + offset;
@@ -155,8 +161,9 @@ BoundingBoxf3 AtomToolpath::deposition_bbox() const
 
 AtomToolpath read_atom_poses(std::istream &in, double width, double height)
 {
-    if (! (width > 0.) || ! (height > 0.))
-        fail("the native format carries no bead size; width and height must be positive");
+    if (!std::isfinite(width) || !std::isfinite(height) || !(width > 0.) || !(height > 0.) ||
+        width > std::numeric_limits<float>::max() || height > std::numeric_limits<float>::max())
+        fail("the native format carries no bead size; width and height must be positive representable lengths");
     AtomToolpath out;
     std::string  line;
     long long    count = -1;
@@ -215,7 +222,10 @@ AtomToolpath load_atom_pathdata(const std::string &npz_path)
 
     if (point_count.values.size() != 1)
         fail("point_count must be a scalar");
-    const size_t n = size_t(point_count.values.front());
+    const double count = point_count.values.front();
+    if (!std::isfinite(count) || count < 2. || std::floor(count) != count || count >= double(std::numeric_limits<size_t>::max()))
+        fail("point_count must be a representable integer of at least 2");
+    const size_t n = size_t(count);
     auto check = [n](const NpyArray &a, const std::string &name, size_t cols) {
         if (a.shape.empty() || a.shape[0] < n || (cols > 1 ? a.shape.size() != 2 || a.shape[1] != cols : a.shape.size() != 1))
             fail("array '" + name + "' does not hold point_count rows of " + std::to_string(cols));
@@ -243,8 +253,9 @@ AtomToolpath load_atom_pathdata(const std::string &npz_path)
             fail("travel_type must be 0 (deposition) or 1 (travel), row " + std::to_string(i));
         p.deposit = t == 0. && i > 0;
         if (! p.tip.allFinite() || ! p.axis.allFinite() || ! std::isfinite(p.width) || ! std::isfinite(p.height) ||
-            p.width < 0. || p.height < 0. || (p.deposit && (p.width <= 0. || p.height <= 0.)))
-            fail("row " + std::to_string(i) + " has a nonfinite value or a nonpositive bead");
+            p.width < 0. || p.height < 0. || p.width > std::numeric_limits<float>::max() || p.height > std::numeric_limits<float>::max() ||
+            (p.deposit && (p.width <= 0. || p.height <= 0.)))
+            fail("row " + std::to_string(i) + " has a nonfinite value or an invalid bead size");
     }
     return out;
 }
@@ -274,6 +285,9 @@ ExtrusionEntityCollection atom_conformal_paths(const AtomToolpath &toolpath, con
     auto add_point = [&](const AtomPoint &p, double height) {
         const Vec3d   tip  = placement.rotation * p.tip + placement.offset;
         const Vec3d   axis = (placement.rotation * p.axis).normalized();
+        const Vec3d scaled(tip.x() / SCALING_FACTOR, tip.y() / SCALING_FACTOR, (tip.z() - host_z) / SCALING_FACTOR);
+        if (!scaled.allFinite() || scaled.cwiseAbs().maxCoeff() >= 0.5 * double(std::numeric_limits<coord_t>::max()))
+            fail("the placed toolpath exceeds the coordinate range; check its coordinates and units");
         const Point3  q(scale_(tip.x()), scale_(tip.y()), scale_(tip.z() - host_z));
         if (! poly.empty() && poly.back() == q && (axes.empty() || (axes.back().cast<double>() - axis).norm() < 1e-9))
             return;
