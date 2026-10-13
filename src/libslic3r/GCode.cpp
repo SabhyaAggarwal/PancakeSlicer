@@ -8185,10 +8185,11 @@ std::string GCode::surface_travel(const Vec3d &to, bool from_on_bead, bool to_on
 
 static void extrude_contoured(GCodeWriter &writer, std::string &gcode, const Vec3d &to, double e, const std::string &comment, double vz_max)
 {
-    const Vec3d  from  = writer.get_position();
-    const double dz    = std::abs(to.z() - from.z());
+    auto         printed = [](const Vec3d &q) { return Vec3d((q * 1000.).array().round() / 1000.); };
+    const Vec3d  d     = printed(to) - printed(writer.get_position());
+    const double dz    = std::abs(d.z());
     const double F_set = writer.get_current_speed();
-    const double F_cap = vz_max > 0. && dz > EPSILON ? std::min(F_set, 0.95 * vz_max * 60. * (to - from).norm() / dz) : F_set;
+    const double F_cap = vz_max > 0. && dz > EPSILON ? std::min(F_set, 0.95 * vz_max * 60. * d.norm() / dz) : F_set;
     if (F_cap < F_set - EPSILON)
         writer.set_speed(gcode, F_cap);
     writer.extrude_to_xyz(gcode, to, e, comment);

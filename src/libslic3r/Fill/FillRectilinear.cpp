@@ -1695,7 +1695,8 @@ static float montonous_region_path_length(const MonotonicRegion &region, bool di
         	break;
 
         int inext = it->right_horizontal();
-        assert(iright != -1);
+        if (iright == -1)
+            break;
         assert(inext == -1 || inext == iright);
 
         const SegmentedIntersectionLine &vline_right = segs[i_vline + 1];
@@ -2243,7 +2244,12 @@ static void polylines_from_paths(const std::vector<MonotonicRegionLink> &path, c
 	        	break;
 
             int inext = it->right_horizontal();
-            assert(iright != -1);
+            if (iright == -1) {
+                going_up ? ++ it : -- it;
+                polyline->points.back() = Point(vline.pos, it->pos());
+                finish_polyline();
+                break;
+            }
             assert(inext == -1 || inext == iright);
 
             const SegmentedIntersectionLine &vline_right = segs[i_vline + 1];
