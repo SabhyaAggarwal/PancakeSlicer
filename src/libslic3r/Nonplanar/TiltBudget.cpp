@@ -22,8 +22,9 @@ double table_position(double phi, size_t n)
 
 }
 
-TiltBudget::TiltBudget(const ToolKinematics &kinematics, std::vector<double> slope_limit, double margin, double max_tilt)
-    : m_slope_limit(std::move(slope_limit)), m_margin(margin)
+TiltBudget::TiltBudget(const ToolKinematics &kinematics, std::vector<double> slope_limit, double margin, double max_tilt,
+                       double max_residual)
+    : m_slope_limit(std::move(slope_limit)), m_margin(margin), m_max_residual(max_residual)
 {
     if (kinematics.rotary_count() == 0)
         return;
@@ -57,7 +58,8 @@ double TiltBudget::tilt(const Vec2d &g) const
     if (beta <= 0. || this->empty())
         return 0.;
     const double phi = std::atan2(g.y(), g.x());
-    return std::clamp(beta - this->slope_limit(phi) + m_margin, 0., std::min(beta, this->reach(phi + M_PI)));
+    return std::clamp(std::max(beta - this->slope_limit(phi) + m_margin, beta - m_max_residual), 0.,
+                      std::min(beta, this->reach(phi + M_PI)));
 }
 
 Vec3d TiltBudget::axis(const Vec2d &g) const

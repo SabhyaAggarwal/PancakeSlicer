@@ -36,6 +36,16 @@ namespace {
 using MoveVertex = GCodeProcessorResult::MoveVertex;
 
 constexpr double Inf = std::numeric_limits<double>::infinity();
+constexpr double UniformRadius = 3.;
+
+bool adaptive_top(const PrintObject &object, int patch)
+{
+    if (patch < 0)
+        return false;
+    const ConformalPatch &p = object.conformal().patches[size_t(patch)];
+    return p.kind == PatchKind::Top && p.region_id >= 0 &&
+           object.printing_region(size_t(p.region_id)).config().nonplanar_adaptive_bands.value;
+}
 constexpr double Extra = 0.05;
 constexpr double CellSlack = 0.25;
 
@@ -337,6 +347,8 @@ bool ClearanceRepair::plan(const GCodeProcessorResult &result, const ClearanceRe
                     site.object = locator.object_at(b, m->extruder_id);
                 if (site.object != nullptr) {
                     RepairHints &h = hints_of(site.object);
+                    if (adaptive_top(*site.object, site.patch))
+                        h.uniform_beads.push_back({ site.xy, UniformRadius });
                     const double base = site.object->nonplanar_repair() ? site.object->nonplanar_repair()->travel_lift : 0.;
                     h.travel_lift = std::max(h.travel_lift, base + penetration + Extra);
                     const auto &layers = site.object->layers();
@@ -376,6 +388,10 @@ bool ClearanceRepair::plan(const GCodeProcessorResult &result, const ClearanceRe
             const double drop = std::max(0, patch.shells - 1 - std::min(source.shell, patch.shells - 1)) * patch.shell_height;
             const double cap  = locator.to_object_z(what.floor - 2. * Extra) + drop;
             RepairHints &h    = hints_of(source.object);
+            if (adaptive_top(*source.object, source.patch))
+                h.uniform_beads.push_back({ source.xy, UniformRadius });
+            if (site.object == source.object && adaptive_top(*site.object, site.patch))
+                h.uniform_beads.push_back({ site.xy, UniformRadius });
             const Vec3d sa = what.culprit->a, sb = what.culprit->b;
             const int   n  = std::max(1, int(std::ceil((sb - sa).head<2>().norm() / 0.2)));
             const double radius = what.culprit->half_width + patch.surface.pitch();
@@ -401,6 +417,8 @@ bool ClearanceRepair::plan(const GCodeProcessorResult &result, const ClearanceRe
                 continue;
             }
             hints_of(site.object).order_bands.push_back({ site.xy, height });
+            if (adaptive_top(*site.object, site.patch))
+                hints_of(site.object).uniform_beads.push_back({ site.xy, UniformRadius });
             ++bands;
         } else {
             ++unrepaired, ++unrepaired_by_cause[extruding ? "planar extrusion" : "travel"];
@@ -429,10 +447,12 @@ bool ClearanceRepair::apply()
         if (!object.m_nonplanar_repair)
             object.m_nonplanar_repair = std::make_shared<RepairHints>();
         RepairHints &h = *object.m_nonplanar_repair;
-        const bool regenerate = !p.hints.surface_caps.empty() || !p.hints.ironing_drops.empty() || !p.hints.order_bands.empty();
+        const bool regenerate = !p.hints.surface_caps.empty() || !p.hints.ironing_drops.empty() || !p.hints.order_bands.empty() ||
+                                !p.hints.uniform_beads.empty();
         h.surface_caps.insert(h.surface_caps.end(), p.hints.surface_caps.begin(), p.hints.surface_caps.end());
         h.ironing_drops.insert(h.ironing_drops.end(), p.hints.ironing_drops.begin(), p.hints.ironing_drops.end());
         h.order_bands.insert(h.order_bands.end(), p.hints.order_bands.begin(), p.hints.order_bands.end());
+        h.uniform_beads.insert(h.uniform_beads.end(), p.hints.uniform_beads.begin(), p.hints.uniform_beads.end());
         h.travel_lift = std::max(h.travel_lift, p.hints.travel_lift);
         h.travel_layers.insert(h.travel_layers.end(), p.hints.travel_layers.begin(), p.hints.travel_layers.end());
         std::sort(h.travel_layers.begin(), h.travel_layers.end());
@@ -471,6 +491,8 @@ std::string ClearanceRepair::summary(size_t hits_now) const
             out << "; travel lifted " << hints->travel_lift << " mm";
         if (!hints->ironing_drops.empty())
             out << "; " << hints->ironing_drops.size() << " ironing spots dropped";
+        if (!hints->uniform_beads.empty())
+            out << "; " << hints->uniform_beads.size() << " spots at the uniform shell height";
     }
     out << " (" ;
     for (size_t i = 0; i < m_actions.size(); ++i) out << (i ? "; " : "") << m_actions[i];

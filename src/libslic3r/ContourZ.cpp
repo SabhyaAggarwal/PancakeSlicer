@@ -42,7 +42,11 @@ static double slope_from_normal(const Eigen::Vector3d& normal)
 
 static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &mesh, ExtrusionPath &path)
 {
-    if (!region->region().config().zaa_enabled && path.role() != erTopSolidInfill)
+    const PrintRegionConfig &rcfg   = region->region().config();
+    const PrintObjectConfig &ocfg   = region->layer()->object()->config();
+    const bool               banded = Nonplanar::top_shells_enabled(rcfg, ocfg) &&
+                                      Nonplanar::effective_fallback(rcfg, ocfg) == NonplanarFallback::None;
+    if (!rcfg.zaa_enabled && !banded && path.role() != erTopSolidInfill)
         return false;
 
     if (path.role() != erTopSolidInfill && path.role() != erIroning && path.role() != erExternalPerimeter && path.role() != erPerimeter) {
@@ -50,17 +54,18 @@ static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &
 	}
 	
 	Layer *layer = region->layer();
-	coordf_t mesh_slice_z = layer->slice_z + mesh.ground_level();
     const auto &config = region->region().config().zaa_enabled
         ? region->region().config() : PrintRegionConfig::defaults();
 	coordf_t min_z = config.zaa_min_z;
+	const coordf_t ray_z = rcfg.zaa_enabled || !banded ? layer->slice_z : layer->bottom_z() + min_z;
+	coordf_t mesh_slice_z = ray_z + mesh.ground_level();
 
 	const Points3 &points = path.polyline.points;
 	double resolution_mm = 0.1;
 
 	coordf_t height = layer->height;
 
-	double minimize_perimeter_height_angle = config.zaa_minimize_perimeter_height;
+	double minimize_perimeter_height_angle = rcfg.zaa_enabled ? config.zaa_minimize_perimeter_height.value : 0.;
 
 	Pointf3s contoured_points;
 	bool was_contoured = false;
@@ -90,7 +95,7 @@ static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &
 
 			sla::IndexedMesh::hit_result hit_up = mesh.query_ray_hit({x, y, mesh_slice_z}, {0.0, 0.0, 1.0});
 
-			double d = hit_up.distance() - (layer->print_z - layer->slice_z);
+			double d = hit_up.distance() - (layer->print_z - ray_z);
 
 			double max_up = min_z;
 			double min_down = -(height - min_z);
@@ -306,7 +311,10 @@ void Layer::make_contour_z(const sla::IndexedMesh &mesh)
                 handle_extrusion_collection(region, mesh, region->fills, {erTopSolidInfill, erMixed}, shell_area);
             if (Nonplanar::top_shells_enabled(config, this->object()->config()) &&
                 Nonplanar::effective_fallback(config, this->object()->config()) == NonplanarFallback::None)
-                handle_extrusion_collection(region, mesh, region->perimeters, {erPerimeter, erExternalPerimeter, erMixed}, shell_area);
+            {
+                handle_extrusion_collection(region, mesh, region->fills, {erTopSolidInfill, erMixed}, shell_area);
+                handle_extrusion_collection(region, mesh, region->perimeters, {erPerimeter, erExternalPerimeter, erMixed}, {});
+            }
             continue;
         }
 

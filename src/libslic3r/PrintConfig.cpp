@@ -5117,6 +5117,16 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionBool(true));
 
+    def = this->add("nonplanar_adaptive_bands", coBool);
+    def->label    = L("Non-planar adaptive shell height");
+    def->category = L("Quality");
+    def->tooltip  = L("Adapt the thickness of the curved top shells to the surface, as adaptive layer height does for "
+                      "flat layers: thin, narrow outermost beads where the slope or curvature of the surface would "
+                      "leave steps larger than the non-planar surface tolerance, thick beads on gentle slopes. The "
+                      "curved top shells keep their total thickness, so gentle areas need fewer shells.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
+
     def = this->add("nonplanar_infill_depth", coFloat);
     def->label    = L("Non-planar infill depth");
     def->category = L("Quality");

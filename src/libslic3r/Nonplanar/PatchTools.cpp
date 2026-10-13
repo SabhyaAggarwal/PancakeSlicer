@@ -966,6 +966,19 @@ void band_schedule(const HeadEnvelope &head, double shell_height, double max_pat
     pitch     = band_reach - tolerance;
 }
 
+double rotary_band_reach(const PrintObject &object, const HeadEnvelope &head, double layer_height)
+{
+    const PrintConfig &config = object.print()->config();
+    if (config.nonplanar_kinematics.value == RotaryLayout::None)
+        return 0.;
+    double width = 0.;
+    for (size_t i = 0; i < object.num_printing_regions(); ++i)
+        for (const FlowRole role : { frExternalPerimeter, frPerimeter, frInfill, frSolidInfill, frTopSolidInfill })
+            width = std::max(width, double(object.printing_region(i).flow(object, role, layer_height).width()));
+    const double tilt = std::clamp(Geometry::deg2rad(config.nonplanar_max_tilt.value), 0., 0.5 * M_PI);
+    return std::max(MinBandReach, head_band_height(head) - 0.5 * width * std::sin(tilt));
+}
+
 namespace {
 constexpr double ColourPitch = 0.05;
 constexpr double ColourMinWidth = 0.4;
@@ -1500,7 +1513,11 @@ void order_band_part(ConformalPatch &p, const BandSeams &seams, size_t comp, int
             const int   ix = int(std::lround(o.x())), iy = int(std::lround(o.y()));
             if (ix < 0 || iy < 0 || ix >= G.nx() || iy >= G.ny() || !inside[size_t(iy) * G.nx() + ix] || (seams.wall && seams.wall(G, q)))
                 return GlideAt::No;
-            if (count != nullptr) {
+            double d = drop;
+            if (!ironing && seams.drop) {
+                if (!seams.drop(comp, int(k), q, d))
+                    return GlideAt::No;
+            } else if (count != nullptr) {
                 const Vec2d c  = (q - count->origin()) / count->pitch();
                 const int   cx = int(std::lround(c.x())), cy = int(std::lround(c.y()));
                 if (cx < 0 || cy < 0 || cx >= count->nx() || cy >= count->ny() || !(count->at(cx, cy) > float(p.shells - 1 - int(k))))
@@ -1509,7 +1526,7 @@ void order_band_part(ConformalPatch &p, const BandSeams &seams, size_t comp, int
             const float s = G.sample(q);
             if (std::isnan(s))
                 return GlideAt::No;
-            z = s - drop;
+            z = s - d;
             if (hidden)
                 z = z < floor ? floor + tolerance : std::min(z, top);
             return z >= floor - 0.01 ? GlideAt::Ok : GlideAt::Range;

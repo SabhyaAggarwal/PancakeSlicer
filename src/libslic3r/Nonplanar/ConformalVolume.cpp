@@ -65,14 +65,14 @@ VolumeSettings volume_settings(const PrintObject &object)
     VolumeSettings s;
     for (size_t region_id = 0; region_id < object.num_printing_regions(); ++region_id) {
         const PrintRegionConfig &cfg = object.printing_region(region_id).config();
-        if (full_conformal_thickness(cfg, object.config()) <= 0.)
+        if (full_conformal_thickness(cfg, object) <= 0.)
             continue;
         double nozzle = 0.;
         for (double d : object.print()->config().nozzle_diameter.values)
             if (d > 0. && (nozzle == 0. || d < nozzle))
                 nozzle = d;
         s.region_id     = int(region_id);
-        s.max_thickness = full_conformal_thickness(cfg, object.config());
+        s.max_thickness = full_conformal_thickness(cfg, object);
         s.h             = cfg.nonplanar_shell_layer_height.value > 0. ? cfg.nonplanar_shell_layer_height.value :
                                                                         object.config().layer_height.value;
         s.h_min         = 0.5 * s.h;
@@ -246,7 +246,7 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
 
     bool mixed = false;
     for (size_t region_id = 0; region_id < object.num_printing_regions(); ++region_id)
-        mixed |= full_conformal_thickness(object.printing_region(region_id).config(), object.config()) <= 0.;
+        mixed |= full_conformal_thickness(object.printing_region(region_id).config(), object) <= 0.;
     std::vector<Mask> region_mask;
     if (mixed) {
         region_mask.resize(layers.size());
@@ -254,7 +254,7 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
             for (size_t i = range.begin(); i < range.end(); ++i) {
                 ExPolygons slices;
                 for (const LayerRegion *layerm : layers[i]->regions())
-                    if (full_conformal_thickness(layerm->region().config(), object.config()) > 0.)
+                    if (full_conformal_thickness(layerm->region().config(), object) > 0.)
                         for (const Surface &surface : layerm->slices.surfaces)
                             slices.emplace_back(surface.expolygon);
                 region_mask[i] = rasterize(slices, grid);
@@ -444,7 +444,9 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
     double band_pitch = 0., band_tolerance = 0.;
     const double max_patch_height = multi_material_patch_height(object, head, object.config().nonplanar_max_patch_height.value);
     const bool   host_above       = max_patch_height != object.config().nonplanar_max_patch_height.value;
-    band_schedule(head, h, max_patch_height, band_pitch, band_tolerance);
+    const double rotary           = rotary_band_reach(object, head, h);
+    band_schedule(head, h, rotary > 0. ? (max_patch_height > 0. ? std::min(max_patch_height, rotary) : rotary) : max_patch_height,
+                  band_pitch, band_tolerance);
     const Flow ext    = region.flow(object, frExternalPerimeter, h);
     const Flow per    = region.flow(object, frPerimeter, h);
     const Flow solid  = region.flow(object, frSolidInfill, h);

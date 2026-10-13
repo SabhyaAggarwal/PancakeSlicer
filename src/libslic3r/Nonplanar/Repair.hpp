@@ -15,6 +15,7 @@ struct RepairHints
     std::vector<SurfaceCap> surface_caps;
     std::vector<Disc>       ironing_drops;
     std::vector<OrderBand>  order_bands;
+    std::vector<Disc>       uniform_beads;
     double                  travel_lift = 0.;
     std::vector<size_t>     travel_layers;
 };

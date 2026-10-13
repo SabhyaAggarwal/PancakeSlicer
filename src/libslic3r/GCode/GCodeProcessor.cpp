@@ -4757,7 +4757,8 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
         block.feed_interval = m_nonplanar_feed_interval;
 
         if ((prev.exit_direction(0) != 0.0f || prev.exit_direction(1) != 0.0f) &&
-            (curr.enter_direction(0) != 0.0f || curr.enter_direction(1) != 0.0f)) {
+            (curr.enter_direction(0) != 0.0f || curr.enter_direction(1) != 0.0f) &&
+            std::hypot(delta_pos[X], delta_pos[Y]) > 1e-4) {
             Vec3f v1 = prev.exit_direction;
             v1(2, 0) = 0.0f;
             v1.normalize();
@@ -5091,7 +5092,8 @@ void GCodeProcessor::process_VG1(const GCodeReader::GCodeLine& line)
         block.feed_interval = m_nonplanar_feed_interval;
 
         if ((prev.exit_direction(0) != 0.0f || prev.exit_direction(1) != 0.0f) &&
-            (curr.enter_direction(0) != 0.0f || curr.enter_direction(1) != 0.0f)) {
+            (curr.enter_direction(0) != 0.0f || curr.enter_direction(1) != 0.0f) &&
+            std::hypot(delta_pos[X], delta_pos[Y]) > 1e-4) {
             Vec3f v1 = prev.exit_direction;
             v1(2, 0) = 0.0f;
             v1.normalize();

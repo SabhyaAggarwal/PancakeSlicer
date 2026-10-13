@@ -115,6 +115,8 @@ void cut_by_colour(const ExtrusionEntitiesPtr &paths, const std::function<int(co
 
 void band_schedule(const HeadEnvelope &head, double shell_height, double max_patch_height, double &pitch, double &tolerance);
 
+double rotary_band_reach(const PrintObject &object, const HeadEnvelope &head, double layer_height);
+
 bool prints_several_filaments(const PrintObject &object);
 
 double multi_material_patch_height(const PrintObject &object, const HeadEnvelope &head, double max_patch_height);
@@ -129,6 +131,7 @@ struct BandSeams
     std::function<bool(const HeightField &, const Vec2d &)>   wall;
     int                                                       hidden = 0;
     const std::vector<HeightField>                           *layers = nullptr;
+    std::function<bool(size_t c, int k, const Vec2d &q, double &drop)> drop;
 };
 
 struct ConformalResult;

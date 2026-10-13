@@ -718,7 +718,7 @@ void PrintObject::nonplanar_shells()
     for (size_t region_id = 0; region_id < this->num_printing_regions(); ++region_id)
         enabled |= Nonplanar::top_shells_enabled(this->printing_region(region_id).config(), this->config()) ||
                    Nonplanar::bottom_shells_enabled(this->printing_region(region_id).config(), this->config()) ||
-                   Nonplanar::full_conformal_thickness(this->printing_region(region_id).config(), this->config()) > 0. ||
+                   Nonplanar::full_conformal_thickness(this->printing_region(region_id).config(), *this) > 0. ||
                    Nonplanar::overhangs_enabled(this->printing_region(region_id).config(), this->config()) ||
                    Nonplanar::bridges_enabled(this->printing_region(region_id).config(), this->config());
     if (m_multiplanar && m_config.nonplanar_atom_toolpath.value.empty()) {
@@ -1647,6 +1647,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "nonplanar_top_direction"
             || opt_key == "nonplanar_surface_spacing"
             || opt_key == "nonplanar_flow_mod"
+            || opt_key == "nonplanar_adaptive_bands"
             || opt_key == "nonplanar_infill_depth"
             || opt_key == "nonplanar_ironing"
             || opt_key == "nonplanar_overhangs"
@@ -1782,7 +1783,7 @@ bool PrintObject::invalidate_step(PrintObjectStep step)
     else if (step >= posPerimeters && step <= posNonplanar)
         for (size_t region_id = 0; region_id < this->num_printing_regions(); ++region_id)
             if (Nonplanar::bottom_shells_enabled(this->printing_region(region_id).config(), this->config()) ||
-                Nonplanar::full_conformal_thickness(this->printing_region(region_id).config(), this->config()) > 0.) {
+                Nonplanar::full_conformal_thickness(this->printing_region(region_id).config(), *this) > 0.) {
                 invalidated |= this->invalidate_step(posSupportMaterial);
                 break;
             }

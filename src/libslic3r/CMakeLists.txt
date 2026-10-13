@@ -114,6 +114,8 @@ set(lisbslic3r_sources
     ConnectedBodies.cpp
     ConnectedBodies.hpp
     ContourZ.cpp
+    Nonplanar/AdaptiveBands.cpp
+    Nonplanar/AdaptiveBands.hpp
     Nonplanar/AtomToolpath.cpp
     Nonplanar/AtomToolpath.hpp
     Nonplanar/AutoMode.cpp

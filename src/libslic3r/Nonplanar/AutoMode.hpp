@@ -18,7 +18,7 @@ constexpr int AutoMinShells = 2;
 
 bool top_shells_enabled(const PrintRegionConfig &config, const PrintObjectConfig &object);
 bool bottom_shells_enabled(const PrintRegionConfig &config, const PrintObjectConfig &object);
-double full_conformal_thickness(const PrintRegionConfig &config, const PrintObjectConfig &object);
+double full_conformal_thickness(const PrintRegionConfig &config, const PrintObject &object);
 bool overhangs_enabled(const PrintRegionConfig &config, const PrintObjectConfig &object);
 bool bridges_enabled(const PrintRegionConfig &config, const PrintObjectConfig &object);
 double infill_depth(const PrintRegionConfig &config, const PrintObjectConfig &object);

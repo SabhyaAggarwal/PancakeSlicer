@@ -697,7 +697,6 @@ protected:
     double                                 m_print_clock{ 0. };
     Nonplanar::FreshBeads                  m_fresh_beads;
     Nonplanar::HeadEnvelope                m_nonplanar_head;
-    double                                 m_band_tilt_limit{ -1. };
     float                               m_last_width{ 0.0f };
     double                              m_last_layer_accumulated_mass{ 0.0 };
 

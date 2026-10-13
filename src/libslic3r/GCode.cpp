@@ -900,12 +900,12 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
         gcodegen.m_wipe.reset_path();
         std::string gcode = gcodegen.retract();
         const double safe = std::max({ gcodegen.writer().get_position().z(), z, gcodegen.nonplanar_travel_z() });
-        gcode += gcodegen.writer().travel_to_z(safe, "lift over shells for wipe tower", true, gcodegen.writer().max_speed_z());
+        gcode += gcodegen.writer().travel_to_z(safe, "lift over shells for wipe tower", true, gcodegen.conformal_max_speed_z());
         if (gcodegen.wipe_tower_type() == WipeTowerType::Type2 && gcodegen.last_pos_defined())
             gcode += travel_to_tower_gap(gcodegen, gcodegen.last_pos(), start);
         gcode += gcodegen.writer().travel_to_xy(gcodegen.point_to_gcode(start), "move above planar wipe tower");
         gcodegen.set_last_pos(start);
-        gcode += gcodegen.writer().travel_to_z(z, "restore planar wipe tower Z", true, gcodegen.writer().max_speed_z());
+        gcode += gcodegen.writer().travel_to_z(z, "restore planar wipe tower Z", true, gcodegen.conformal_max_speed_z());
         return gcode;
     }
 
@@ -6851,7 +6851,10 @@ void GCode::append_full_config(const Print &print, std::string &str)
         "printhost_password"sv,
         "printhost_port"sv
     });
-    auto is_banned = [](const std::string &key) {
+    auto is_banned = [&cfg](const std::string &key) {
+        if (key == "nonplanar_adaptive_bands")
+            if (const auto *opt = cfg.option<ConfigOptionBool>(key); opt != nullptr && !opt->value)
+                return true;
         return banned_keys.find(key) != banned_keys.end();
     };
     std::ostringstream ss;
@@ -7428,8 +7431,10 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                                           patch.kind == Nonplanar::PatchKind::Overhang ? "conformal overhang" :
                                           patch.kind == Nonplanar::PatchKind::Bridge ? "conformal bridge" :
                                           patch.kind == Nonplanar::PatchKind::SupportInterface ? "conformal support interface" : "conformal shell";
-                    if (! Nonplanar::pass_prints(pass(k)))
+                    if (! Nonplanar::pass_prints(pass(k))) {
+                        next = pass_end[k];
                         continue;
+                    }
                     if (k > 0 && !ironing && Nonplanar::pass_is_solid(pass(k - 1)) && Nonplanar::pass_is_top(pass(k)))
                         gcode += this->nonplanar_pass_hold(next < order.size() ? order[next] : nullptr);
                     this->nonplanar_pass_start(patch.footprint, ironing);
@@ -7476,10 +7481,10 @@ std::string GCode::travel_above_nonplanar(const Polyline &travel, const std::str
 {
     const double target_z = z == DBL_MAX ? m_nominal_z : z;
     const double safe = std::max({ m_writer.get_position().z(), target_z, this->nonplanar_travel_z() });
-    std::string gcode = m_writer.travel_to_z(safe, "lift over deposited material", true, m_writer.max_speed_z());
+    std::string gcode = m_writer.travel_to_z(safe, "lift over deposited material", true, this->conformal_max_speed_z());
     for (size_t i = 1; i < travel.size(); ++i)
         gcode += m_writer.travel_to_xy(this->point_to_gcode(travel.points[i]), comment);
-    gcode += m_writer.travel_to_z(target_z, "lower after non-planar travel", true, m_writer.max_speed_z());
+    gcode += m_writer.travel_to_z(target_z, "lower after non-planar travel", true, this->conformal_max_speed_z());
     m_need_change_layer_lift_z = false;
     return gcode;
 }
@@ -7511,9 +7516,7 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
         MinimalTiltParams tilt;
         tilt.slope_limit = this->nonplanar_head().slope_map(72, path.height);
         tilt.max_rate      = 10. * M_PI / 180.;
-        if (m_band_tilt_limit < 0.)
-            m_band_tilt_limit = head_band_tilt_limit(this->nonplanar_head());
-        tilt.max_tilt      = m_band_tilt_limit;
+        tilt.max_residual  = 10. * M_PI / 180.;
         tilt.clearance_margin = this->nonplanar_head().margin;
         if (m_material_columns)
             tilt.clearance = [this](const Vec3d &tip, const Vec3d &axis) {
@@ -7717,9 +7720,9 @@ std::string GCode::extrude_multiplanar_chunk(const Nonplanar::ConformalPatch &pa
                     const double travel_z = m_material_columns ?
                         safe_travel_z(*m_material_columns, this->nonplanar_head(), here.head<2>(), start.tip.head<2>(), hop) :
                         std::max(m_nonplanar_ceiling, double(m_max_layer_z)) + hop;
-                    gcode += m_writer.travel_to_z(std::max({ here.z(), start.tip.z(), travel_z }), "lift over the chunks", true);
+                    gcode += m_writer.travel_to_z(std::max({ here.z(), start.tip.z(), travel_z }), "lift over the chunks", true, this->conformal_max_speed_z());
                     gcode += m_writer.travel_to_xy(start.tip.head<2>(), "move in the chunk");
-                    gcode += m_writer.travel_to_z(start.tip.z(), "lower onto the chunk", true);
+                    gcode += m_writer.travel_to_z(start.tip.z(), "lower onto the chunk", true, this->conformal_max_speed_z());
                 } else if (! entered) {
                     gcode += this->rotary_move_safely(&start);
                 } else {
@@ -7750,7 +7753,7 @@ std::string GCode::extrude_multiplanar_chunk(const Nonplanar::ConformalPatch &pa
         gcode += this->rotary_move_safely(nullptr);
     else if (entered) {
         gcode += this->retract();
-        gcode += m_writer.travel_to_z(std::max(m_writer.get_position().z(), top + hop), "lift off the chunk", true);
+        gcode += m_writer.travel_to_z(std::max(m_writer.get_position().z(), top + hop), "lift off the chunk", true, this->conformal_max_speed_z());
     }
     gcode += m_writer.end_inverse_time();
     return gcode;
@@ -8054,6 +8057,19 @@ std::string GCode::surface_travel(const Vec3d &to, bool from_on_bead, bool to_on
     }
     m_conformal_on_bead = false;
     return gcode;
+}
+
+static void extrude_contoured(GCodeWriter &writer, std::string &gcode, const Vec3d &to, double e, const std::string &comment, double vz_max)
+{
+    const Vec3d  from  = writer.get_position();
+    const double dz    = std::abs(to.z() - from.z());
+    const double F_set = writer.get_current_speed();
+    const double F_cap = vz_max > 0. && dz > EPSILON ? std::min(F_set, 0.95 * vz_max * 60. * (to - from).norm() / dz) : F_set;
+    if (F_cap < F_set - EPSILON)
+        writer.set_speed(gcode, F_cap);
+    writer.extrude_to_xyz(gcode, to, e, comment);
+    if (F_cap < F_set - EPSILON)
+        writer.set_speed(gcode, F_set);
 }
 
 double GCode::conformal_max_speed_z() const
@@ -8497,6 +8513,8 @@ static float overhang_fan_overlap_threshold(int overhang_fan_threshold)
 std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_description, double speed)
 {
     std::string gcode;
+    if (path.z_contoured && path.polyline.length() < scale_(0.05))
+        return gcode;
     this->ensure_material_columns(path);
 
     const std::string  bridge_description = is_bridge(path.role()) ? path_description + " (bridge)" : std::string();
@@ -8542,7 +8560,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
              std::binary_search(hints->travel_layers.begin(), hints->travel_layers.end(), m_layer->id()) ||
              std::abs(m_writer.get_position().z() - m_nominal_z) > EPSILON)) {
             const double over = std::max({ m_writer.get_position().z(), target, this->nonplanar_travel_z() });
-            gcode += m_writer.travel_to_z(over, "lift over contoured surface", true, m_writer.max_speed_z());
+            gcode += m_writer.travel_to_z(over, "lift over contoured surface", true, this->conformal_max_speed_z());
             gcode += this->travel_to(first_point, path.role(), "move to first " + description + " point", over);
         } else
             gcode += this->travel_to(first_point, path.role(), "move to first " + description + " point", z);
@@ -8559,13 +8577,13 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
         double current_z = m_writer.get_position().z();
         double first_z = unscale_(path.polyline.lines().begin()->a.z()) + m_nominal_z;
         if (GCodeFormatter::quantize_xyzf(first_z) != GCodeFormatter::quantize_xyzf(current_z)) {
-            gcode += m_writer.travel_to_z(first_z, "set Z for contouring", true);
+            gcode += m_writer.travel_to_z(first_z, "set Z for contouring", true, Nonplanar::requests_conformal_shells(*m_print) ? this->conformal_max_speed_z() : 0.);
         }
     }
     if (!path.z_contoured && sloped == nullptr) {
         double current_z = m_writer.get_position().z();
         if (GCodeFormatter::quantize_xyzf(current_z) != GCodeFormatter::quantize_xyzf(m_nominal_z)) {
-            gcode += this->writer().travel_to_z(m_nominal_z, "reset Z after contouring", true);
+            gcode += this->writer().travel_to_z(m_nominal_z, "reset Z after contouring", true, Nonplanar::requests_conformal_shells(*m_print) ? this->conformal_max_speed_z() : 0.);
         }
     }
 
@@ -9116,6 +9134,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
             if (const auto *conformal = dynamic_cast<const ExtrusionPathConformal *>(&path)) {
                 this->emit_conformal_moves(gcode, *conformal, e_per_mm, speed, comment, description);
             } else if (!m_config.enable_arc_fitting || path.polyline.fitting_result.empty() || m_config.spiral_mode || sloped != nullptr || path.z_contoured || this->should_disable_arc_fitting()) {
+                const bool z_cap = path.z_contoured && Nonplanar::requests_conformal_shells(*m_print);
                 double path_length = 0.;
                 double total_length = sloped == nullptr ? 0. : path.polyline.length() * SCALING_FACTOR;
                 double saved_z      = m_writer.get_position().z();
@@ -9153,8 +9172,8 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
                         if (z < 0.1) {
                             throw RuntimeError("GCode: very low z");
                         }
-                        m_writer.extrude_to_xyz(gcode, Vec3d(dest2d.x(), dest2d.y(), z), e,
-                                                flow_description.empty() ? description : flow_description);
+                        extrude_contoured(m_writer, gcode, Vec3d(dest2d.x(), dest2d.y(), z), e,
+                                          flow_description.empty() ? description : flow_description, z_cap ? this->conformal_max_speed_z() : 0.);
 
                     } else if (sloped == nullptr) {
                         m_writer.extrude_to_xy(gcode,
@@ -9345,8 +9364,9 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
                 if (z < 0.1) {
                     throw RuntimeError("GCode: very low z");
                 }
-                m_writer.extrude_to_xyz(gcode, Vec3d(dest2d.x(), dest2d.y(), z), e,
-                                        flow_description.empty() ? description : flow_description);
+                extrude_contoured(m_writer, gcode, Vec3d(dest2d.x(), dest2d.y(), z), e,
+                                  flow_description.empty() ? description : flow_description,
+                                  Nonplanar::requests_conformal_shells(*m_print) ? this->conformal_max_speed_z() : 0.);
             } else if (sloped == nullptr) {
                 m_writer.extrude_to_xy(gcode, p.head<2>(), dE, flow_description.empty() ? description : flow_description);
             } else {
@@ -9809,6 +9829,8 @@ std::string GCode::retract(bool toolchange, bool is_last_retraction, LiftType li
     }
 
     if (needs_lift && can_lift) {
+        if (m_writer.get_position().z() < m_nominal_z - EPSILON && Nonplanar::requests_conformal_shells(*m_print))
+            gcode += m_writer.travel_to_z(m_nominal_z, "rise to layer Z before lift", true, this->conformal_max_speed_z());
         if (this->below_conformal_material())
             lift_type = LiftType::NormalLift;
         if (apply_instantly)

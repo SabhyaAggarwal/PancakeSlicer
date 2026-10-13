@@ -320,7 +320,7 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
             }
         }
         writer.extrude_to_pose(out, b.pose, dE, params.comment);
-        if (deposit && !glide(i))
+        if (deposit && v > 0.)
             deposit(a.pose.tip, b.pose.tip, seg_width);
     }
     return volume;
@@ -567,7 +567,7 @@ void apply_minimal_tilt(std::vector<ConformalPoint> &points, const std::function
     if (points.empty() || kinematics.rotary_count() == 0)
         return;
 
-    const TiltBudget   budget(kinematics, params.slope_limit, params.margin, params.max_tilt);
+    const TiltBudget   budget(kinematics, params.slope_limit, params.margin, params.max_tilt, params.max_residual);
     const size_t       n = points.size();
     std::vector<Vec3d> normals(n), axes(n);
     for (size_t i = 0; i < n; ++i) {
@@ -600,25 +600,50 @@ void apply_minimal_tilt(std::vector<ConformalPoint> &points, const std::function
             axes[i - 1] = rotate_toward(axes[i], axes[i - 1], params.max_rate * (s[i] - s[i - 1]));
     }
 
-    if (params.clearance)
-        for (size_t i = 0; i < n; ++i) {
-            if (axes[i].z() > 1. - EPSILON)
-                continue;
-            const Vec3d &tip = points[i].pose.tip;
-            if (params.clearance(tip, axes[i]) >= params.clearance_margin)
-                continue;
-            const double floor = params.clearance_margin - 1e-3;
-            const Vec3d  full  = axes[i];
-            axes[i]            = Vec3d::UnitZ();
-            for (int k = 3; k > 0; --k) {
-                const Vec3d axis = Eigen::Quaterniond::Identity().slerp(0.25 * k, Eigen::Quaterniond::FromTwoVectors(Vec3d::UnitZ(), full)) *
-                                   Vec3d::UnitZ();
-                if (params.clearance(tip, axis) >= floor) {
-                    axes[i] = axis;
-                    break;
+    if (params.clearance) {
+        auto tilt_of = [](const Vec3d &axis) { return std::acos(std::clamp(axis.z(), -1., 1.)); };
+        auto shrink = [&tilt_of](const Vec3d &axis, double tilt) {
+            const double full = tilt_of(axis);
+            if (full <= tilt)
+                return axis;
+            return Vec3d(Eigen::Quaterniond::Identity().slerp(tilt / full, Eigen::Quaterniond::FromTwoVectors(Vec3d::UnitZ(), axis)) *
+                         Vec3d::UnitZ());
+        };
+        std::vector<Vec3d> cleared(n, Vec3d::UnitZ());
+        for (int round = 0; round < 16; ++round) {
+            bool changed = false;
+            for (size_t i = 0; i < n; ++i) {
+                if (axes[i].z() > 1. - EPSILON || axes[i] == cleared[i])
+                    continue;
+                const Vec3d &tip = points[i].pose.tip;
+                if (params.clearance(tip, axes[i]) >= params.clearance_margin) {
+                    cleared[i] = axes[i];
+                    continue;
                 }
+                const double floor = params.clearance_margin - 1e-3;
+                const Vec3d  full  = axes[i];
+                axes[i]            = Vec3d::UnitZ();
+                for (int k = 3; k > 0; --k) {
+                    const Vec3d axis = shrink(full, 0.25 * k * tilt_of(full));
+                    if (params.clearance(tip, axis) >= floor) {
+                        axes[i] = axis;
+                        break;
+                    }
+                }
+                cleared[i] = axes[i];
+                changed    = true;
             }
+            if (! changed || params.max_rate <= 0.)
+                break;
+            for (size_t i = 1; i < n; ++i)
+                axes[i] = shrink(axes[i], tilt_of(axes[i - 1]) + params.max_rate * (s[i] - s[i - 1]));
+            for (size_t i = n - 1; i > 0; --i)
+                axes[i - 1] = shrink(axes[i - 1], tilt_of(axes[i]) + params.max_rate * (s[i] - s[i - 1]));
         }
+        for (size_t i = 0; i < n; ++i)
+            if (axes[i] != cleared[i])
+                axes[i] = Vec3d::UnitZ();
+    }
 
     for (size_t i = 0; i < n; ++i) {
         const double along   = std::min(normals[i].z() / std::max(axes[i].dot(normals[i]), 1e-6), 1. / std::max(axes[i].z(), 1e-6));

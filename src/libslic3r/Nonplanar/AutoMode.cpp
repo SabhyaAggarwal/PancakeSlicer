@@ -9,8 +9,10 @@
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/Flow.hpp"
 #include "libslic3r/Geometry.hpp"
+#include "libslic3r/Model.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
+#include "libslic3r/TriangleMesh.hpp"
 #include "libslic3r/libslic3r.h"
 
 #include <boost/log/trivial.hpp>
@@ -28,7 +30,6 @@ namespace {
 
 constexpr int    MaxShells      = 6;
 constexpr double LargeArea      = 400.;
-constexpr double MaxCurvature   = 0.2;
 constexpr double MinCoherence   = 0.1;
 constexpr double MaxRoundAspect = 1.5;
 
@@ -68,14 +69,23 @@ bool bottom_shells_enabled(const PrintRegionConfig &config, const PrintObjectCon
     return is_auto(object) ? object.enable_support.value : is_manual(object) && config.nonplanar_bottom_shells.value != 0;
 }
 
-double full_conformal_thickness(const PrintRegionConfig &config, const PrintObjectConfig &object)
+double full_conformal_thickness(const PrintRegionConfig &config, const PrintObject &object)
 {
     const double set = config.nonplanar_full_conformal_max_thickness.value;
-    if (!is_auto(object))
-        return is_manual(object) ? set : 0.;
+    if (!is_auto(object.config()))
+        return is_manual(object.config()) ? set : 0.;
+    size_t open_edges = 0, facets = 0;
+    for (const ModelVolume *volume : object.model_object()->volumes)
+        if (volume->is_model_part()) {
+            open_edges += size_t(std::max(0, volume->mesh().stats().open_edges));
+            facets += volume->mesh().facets_count();
+        }
+    const bool open = open_edges > facets / 100;
+    if (!open)
+        return 0.;
     if (set > 0.)
         return set;
-    const double h = config.nonplanar_shell_layer_height.value > 0. ? config.nonplanar_shell_layer_height.value : object.layer_height.value;
+    const double h = config.nonplanar_shell_layer_height.value > 0. ? config.nonplanar_shell_layer_height.value : object.config().layer_height.value;
     return 15. * h;
 }
 
@@ -185,6 +195,7 @@ void choose_patch_settings(const PrintObject &object, const HeadEnvelope &head, 
         }
     a.slope90     = percentile(slopes, 0.9);
     a.curvature95 = percentile(curvatures, 0.95);
+    const double curvature80 = percentile(curvatures, 0.8);
     const double trace = jxx + jyy;
     a.coherence = trace > 1e-9 ? std::hypot(jxx - jyy, 2. * jxy) / trace : 0.;
     if (n > 0.) {
@@ -206,7 +217,8 @@ void choose_patch_settings(const PrintObject &object, const HeadEnvelope &head, 
     a.pattern = banded || a.coherence >= MinCoherence ? NonplanarTopPattern::Contour :
                 a.aspect <= MaxRoundAspect            ? NonplanarTopPattern::Concentric :
                                                         NonplanarTopPattern::Rectilinear;
-    a.ironing = large && head.tip_flat_radius * std::tan(a.slope90) <= h_c && a.curvature95 <= MaxCurvature;
+    const double r = head.tip_flat_radius;
+    a.ironing = conformal_ironing_enabled(config) && 0.5 * r * r * curvature80 <= 0.25 * h_c;
 
     patch.automatic = std::make_shared<const AutoPatchSettings>(a);
     BOOST_LOG_TRIVIAL(info) << "Non-planar auto: patch " << patch.id << " area " << a.shell_area << " mm2, slope90 "
