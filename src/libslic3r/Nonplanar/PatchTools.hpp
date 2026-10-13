@@ -89,6 +89,8 @@ private:
 
 void clip_extrusions(ExtrusionEntityCollection &collection, const ExPolygons &area, const BoundingBox &area_bbox);
 
+void erase_conformal(ExtrusionEntityCollection &collection, double host_z, double step, const std::function<bool(const Vec3d &)> &inside);
+
 int planar_transition_layer(const std::vector<double> &boundaries, double shell_face, double shell_height,
                             double h_min, double h_max, PatchKind kind);
 
@@ -165,5 +167,9 @@ std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const Heig
 
 bool spans_wall(const HeightField &surface, const Vec2d &p);
 bool spans_slope(const HeightField &surface, const Vec2d &p, double slope_deg);
+
+double max_shell_slope(double h, double w);
+
+Mask steep_nodes(const HeightField &surface, double max_tan, double min_width);
 
 }

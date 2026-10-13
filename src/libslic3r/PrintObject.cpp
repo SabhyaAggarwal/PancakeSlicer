@@ -746,10 +746,18 @@ void PrintObject::nonplanar_shells()
     } else if (enabled) {
         m_print->set_status(40, L("Generating curved top shells"));
         m_conformal = std::make_unique<Nonplanar::ConformalResult>(Nonplanar::build_conformal_shells(*this));
-        Nonplanar::build_conformal_bottom(*this, *m_conformal);
-        Nonplanar::build_curved_bridges(*this, *m_conformal);
-        if (!(m_config.enable_support.value && Nonplanar::conformal_support_configured(*this)))
+        for (Layer *layer : m_layers)
+            layer->conformal_patches_before.clear();
+        if (Nonplanar::support_free(m_config)) {
+            Nonplanar::build_curved_bridges(*this, *m_conformal);
             Nonplanar::build_curved_overhangs(*this, *m_conformal);
+            Nonplanar::build_conformal_bottom(*this, *m_conformal);
+        } else {
+            Nonplanar::build_conformal_bottom(*this, *m_conformal);
+            Nonplanar::build_curved_bridges(*this, *m_conformal);
+            if (!(m_config.enable_support.value && Nonplanar::conformal_support_configured(*this)))
+                Nonplanar::build_curved_overhangs(*this, *m_conformal);
+        }
         Nonplanar::build_conformal_ironing(*this, *m_conformal);
         Nonplanar::build_conformal_volume(*this, *m_conformal);
         Nonplanar::group_hosts_by_filament(*this, *m_conformal);
@@ -1798,7 +1806,7 @@ bool PrintObject::invalidate_step(PrintObjectStep step)
         m_slicing_params.valid = false;
     }
 
-    if (step >= posPerimeters && step <= posNonplanar && this->has_conformal_support())
+    if (step >= posPerimeters && step <= posNonplanar && (this->has_conformal_support() || Nonplanar::support_free(m_config)))
         invalidated |= this->invalidate_step(posSupportMaterial);
     else if (step >= posPerimeters && step <= posNonplanar)
         for (size_t region_id = 0; region_id < this->num_printing_regions(); ++region_id)
@@ -4510,6 +4518,11 @@ void PrintObject::project_and_append_custom_facets(
                 }
             }
         }
+    if (! seam && type == EnforcerBlockerType::BLOCKER && m_conformal && ! m_conformal->self_supported.empty()) {
+        out.resize(std::max(out.size(), m_layers.size()));
+        for (size_t i = 0; i < m_conformal->self_supported.size() && i < out.size(); ++ i)
+            polygons_append(out[i], to_polygons(m_conformal->self_supported[i]));
+    }
 }
 
 const Layer* PrintObject::get_layer_at_printz(coordf_t print_z) const {

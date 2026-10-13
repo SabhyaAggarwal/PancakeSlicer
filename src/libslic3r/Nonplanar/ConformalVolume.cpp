@@ -142,73 +142,6 @@ struct Slab
     ExPolygons       footprint;
 };
 
-void erase_conformal(ExtrusionEntityCollection &collection, double host_z, double step, const std::function<bool(const Vec3d &)> &inside)
-{
-    ExtrusionEntitiesPtr out;
-    out.reserve(collection.entities.size());
-    for (ExtrusionEntity *ee : collection.entities) {
-        auto *path = dynamic_cast<ExtrusionPathConformal *>(ee);
-        if (path == nullptr) {
-            out.emplace_back(ee);
-            continue;
-        }
-        Points3            pts;
-        std::vector<float> beads;
-        std::vector<float> widths;
-        std::vector<Vec3f> axes;
-        const Points3     &src = path->polyline.points;
-        const bool         variable_width = path->bead_width.size() == src.size();
-        for (size_t i = 0; i < src.size(); ++i) {
-            const int n = i + 1 < src.size() ? std::max(1, int(std::ceil(unscale<double>((src[i + 1] - src[i]).cast<double>().norm()) / step))) : 1;
-            for (int j = 0; j < n; ++j) {
-                const double f = double(j) / n;
-                const size_t k = std::min(i + 1, src.size() - 1);
-                pts.emplace_back((src[i].cast<double>() + f * (src[k] - src[i]).cast<double>()).cast<coord_t>());
-                beads.emplace_back(float((1. - f) * path->bead_height[i] + f * path->bead_height[k]));
-                if (variable_width)
-                    widths.emplace_back(float((1. - f) * path->bead_width[i] + f * path->bead_width[k]));
-                if (!path->tool_axis.empty())
-                    axes.emplace_back(((1.f - float(f)) * path->tool_axis[i] + float(f) * path->tool_axis[k]).normalized());
-            }
-        }
-        std::vector<char> drop(pts.size(), 0);
-        bool              any = false;
-        for (size_t i = 0; i < pts.size(); ++i)
-            any |= drop[i] = inside(Vec3d(unscale<double>(pts[i].x()), unscale<double>(pts[i].y()), host_z + unscale<double>(pts[i].z())));
-        if (!any) {
-            out.emplace_back(ee);
-            continue;
-        }
-        for (size_t i = 0; i < pts.size();) {
-            if (drop[i]) {
-                ++i;
-                continue;
-            }
-            size_t j = i;
-            while (j < pts.size() && !drop[j])
-                ++j;
-            const size_t first = i > 0 ? i - 1 : i, last = std::min(j + 1, pts.size());
-            if (last - first >= 2) {
-                std::vector<float> bead(beads.begin() + first, beads.begin() + last);
-                std::vector<Vec3f> axis;
-                if (!axes.empty())
-                    axis.assign(axes.begin() + first, axes.begin() + last);
-                auto *piece     = new ExtrusionPathConformal(Polyline3(Points3(pts.begin() + first, pts.begin() + last)), *path, std::move(bead),
-                                                             std::move(axis));
-                if (variable_width)
-                    piece->bead_width.assign(widths.begin() + first, widths.begin() + last);
-                piece->patch_id = path->patch_id;
-                piece->shell    = path->shell;
-                piece->simplify(0.01);
-                out.emplace_back(piece);
-            }
-            i = j;
-        }
-        delete ee;
-    }
-    collection.entities = std::move(out);
-}
-
 struct UnionFind
 {
     std::vector<int> parent;
@@ -268,6 +201,12 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
             }
         });
     }
+    std::vector<Mask> skin_mask(result.self_supported.size());
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, skin_mask.size()), [&](const tbb::blocked_range<size_t> &range) {
+        for (size_t i = range.begin(); i < range.end(); ++i)
+            if (!result.self_supported[i].empty())
+                skin_mask[i] = rasterize(result.self_supported[i], grid);
+    });
     std::vector<Item>             items;
     std::vector<std::vector<int>> node_items(n_nodes);
     for (size_t n = 0; n < n_nodes; ++n)
@@ -298,6 +237,8 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
     const PrintRegionConfig &rcfg       = region.config();
     const double             line_width = region.flow(object, frSolidInfill, settings.h).width();
     const double             h          = settings.h;
+    const Flow               top_flow   = region.flow(object, frTopSolidInfill, h);
+    const double             steep_tan  = 2. * max_shell_slope(h, std::min(double(top_flow.width()), 0.75 * top_flow.nozzle_diameter()));
 
     auto kill = [&](int item) {
         bool      &alive = items[size_t(item)].alive;
@@ -408,6 +349,16 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
                     slab.top    = slope_cap_minorant(slab.top, settings.max_slope);
                     slab.bottom = slope_cap_minorant(slab.bottom, settings.max_slope);
                 }
+                {
+                    HeightField top = slab.top;
+                    std::fill(top.data().begin(), top.data().end(), HeightField::NoData);
+                    for (int i : slab.items)
+                        top.data()[local_index(slab, items[size_t(i)])] = slab.top.data()[local_index(slab, items[size_t(i)])];
+                    const Mask steep = steep_nodes(top, steep_tan, 2. * line_width);
+                    for (int i : slab.items)
+                        if (steep[local_index(slab, items[size_t(i)])])
+                            dropped[s] |= kill(i);
+                }
                 float tlo = Inf, thi = -Inf, blo = Inf, bhi = -Inf;
                 std::vector<float> thickness;
                 for (int i : slab.items) {
@@ -442,7 +393,19 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
         });
         changed = std::find(dropped.begin(), dropped.end(), 1) != dropped.end();
     }
-    slabs.erase(std::remove_if(slabs.begin(), slabs.end(), [](const Slab &slab) { return slab.footprint.empty(); }), slabs.end());
+    auto skin_owned = [&](const Slab &slab) {
+        size_t alive = 0, owned = 0;
+        for (int i : slab.items)
+            if (const Item &it = items[size_t(i)]; it.alive) {
+                ++alive;
+                const size_t l = std::min(skin_mask.size() - 1, size_t(std::lower_bound(layer_z.begin(), layer_z.end(), double(face_b(it))) - layer_z.begin()));
+                owned += !skin_mask[l].empty() && skin_mask[l][it.node];
+            }
+        return 2 * owned >= alive;
+    };
+    slabs.erase(std::remove_if(slabs.begin(), slabs.end(), [&](const Slab &slab) {
+                    return slab.footprint.empty() || (!skin_mask.empty() && skin_owned(slab));
+                }), slabs.end());
     if (slabs.empty()) {
         BOOST_LOG_TRIVIAL(info) << "Non-planar: no full conformal slab in " << object.model_object()->name;
         return;
@@ -661,6 +624,18 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
             erase_conformal(patch.ironing, host_z, 0.25 * pitch, in_slab);
         }
     });
+    if (!result.self_supported.empty())
+        for (const Slab &slab : slabs) {
+            float lo = std::numeric_limits<float>::infinity(), hi = -lo;
+            for (float b : slab.bottom.data())
+                if (!std::isnan(b))
+                    lo = std::min(lo, b), hi = std::max(hi, b);
+            const ExPolygons grown = offset_ex(slab.footprint, float(scale_(pitch)));
+            for (size_t l = 0; l < layers.size() && l < result.self_supported.size(); ++l)
+                if (!result.self_supported[l].empty() && layers[l]->print_z >= lo - layers[l]->height &&
+                    layers[l]->print_z - layers[l]->height <= hi + layers[l]->height)
+                    result.self_supported[l] = diff_ex(result.self_supported[l], grown);
+        }
 
     for (ConformalResult &bands : banded) {
         const int offset = int(result.patches.size());

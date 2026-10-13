@@ -5,6 +5,7 @@
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/Point.hpp"
+#include "libslic3r/Polygon.hpp"
 #include "libslic3r/Polyline.hpp"
 #include "libslic3r/PrintConfig.hpp"
 
@@ -57,6 +58,13 @@ std::vector<Polylines> shell_polylines(const ExPolygons &area, const ShellFill &
                                        HelixRamp *helix_ramp = nullptr);
 
 std::vector<Polylines> link_paths(Polylines &&paths, const ExPolygons &area, double spacing, double max_glide);
+
+Polygons linked_cover(const std::vector<Polylines> &linked, double width);
+
+bool cover_has_gaps(const ExPolygons &inner, const std::vector<Polylines> &linked, double width, const Polylines &variable,
+                    const std::vector<std::vector<float>> &widths, double spacing);
+
+Polylines pinhole_roads(const ExPolygons &area, Polygons cover, double width, double spacing);
 
 void lift_linked(const std::vector<Polylines> &linked, const ExtrusionPath &proto, const LiftFn &at, double host_z, double resample,
                  int patch_id, int shell, ExtrusionEntitiesPtr &out);

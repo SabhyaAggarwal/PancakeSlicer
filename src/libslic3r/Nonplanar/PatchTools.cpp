@@ -542,6 +542,85 @@ void clip_extrusions(ExtrusionEntityCollection &collection, const ExPolygons &ar
     clip_extrusions(collection, AreaEdges(area), area_bbox);
 }
 
+void erase_conformal(ExtrusionEntityCollection &collection, double host_z, double step, const std::function<bool(const Vec3d &)> &inside)
+{
+    ExtrusionEntitiesPtr out;
+    out.reserve(collection.entities.size());
+    for (ExtrusionEntity *ee : collection.entities) {
+        auto *path = dynamic_cast<ExtrusionPathConformal *>(ee);
+        if (path == nullptr) {
+            out.emplace_back(ee);
+            continue;
+        }
+        Points3            pts;
+        std::vector<float> beads;
+        std::vector<float> widths;
+        std::vector<Vec3f> axes;
+        const Points3     &src = path->polyline.points;
+        const bool         variable_width = path->bead_width.size() == src.size();
+        for (size_t i = 0; i < src.size(); ++i) {
+            const int n = i + 1 < src.size() ? std::max(1, int(std::ceil(unscale<double>((src[i + 1] - src[i]).cast<double>().norm()) / step))) : 1;
+            for (int j = 0; j < n; ++j) {
+                const double f = double(j) / n;
+                const size_t k = std::min(i + 1, src.size() - 1);
+                pts.emplace_back((src[i].cast<double>() + f * (src[k] - src[i]).cast<double>()).cast<coord_t>());
+                beads.emplace_back(float((1. - f) * path->bead_height[i] + f * path->bead_height[k]));
+                if (variable_width)
+                    widths.emplace_back(float((1. - f) * path->bead_width[i] + f * path->bead_width[k]));
+                if (!path->tool_axis.empty())
+                    axes.emplace_back(((1.f - float(f)) * path->tool_axis[i] + float(f) * path->tool_axis[k]).normalized());
+            }
+        }
+        std::vector<char> drop(pts.size(), 0);
+        bool              any = false;
+        for (size_t i = 0; i < pts.size(); ++i)
+            any |= drop[i] = inside(Vec3d(unscale<double>(pts[i].x()), unscale<double>(pts[i].y()), host_z + unscale<double>(pts[i].z())));
+        if (!any) {
+            out.emplace_back(ee);
+            continue;
+        }
+        for (size_t i = 1; i < pts.size();) {
+            if (!drop[i] || drop[i - 1]) {
+                ++i;
+                continue;
+            }
+            size_t j = i;
+            while (j < pts.size() && drop[j])
+                ++j;
+            if (j < pts.size() && unscale<double>((pts[j] - pts[i - 1]).cast<double>().norm()) <= 2. * path->width)
+                std::fill(drop.begin() + i, drop.begin() + j, 0);
+            i = j;
+        }
+        for (size_t i = 0; i < pts.size();) {
+            if (drop[i]) {
+                ++i;
+                continue;
+            }
+            size_t j = i;
+            while (j < pts.size() && !drop[j])
+                ++j;
+            const size_t first = i > 0 ? i - 1 : i, last = std::min(j + 1, pts.size());
+            if (last - first >= 2) {
+                std::vector<float> bead(beads.begin() + first, beads.begin() + last);
+                std::vector<Vec3f> axis;
+                if (!axes.empty())
+                    axis.assign(axes.begin() + first, axes.begin() + last);
+                auto *piece     = new ExtrusionPathConformal(Polyline3(Points3(pts.begin() + first, pts.begin() + last)), *path, std::move(bead),
+                                                             std::move(axis));
+                if (variable_width)
+                    piece->bead_width.assign(widths.begin() + first, widths.begin() + last);
+                piece->patch_id = path->patch_id;
+                piece->shell    = path->shell;
+                piece->simplify(0.01);
+                out.emplace_back(piece);
+            }
+            i = j;
+        }
+        delete ee;
+    }
+    collection.entities = std::move(out);
+}
+
 int planar_transition_layer(const std::vector<double> &boundaries, double shell_face, double shell_height,
                             double h_min, double h_max, PatchKind kind)
 {
@@ -960,6 +1039,32 @@ bool spans_slope(const HeightField &surface, const Vec2d &p, double slope_deg)
 }
 
 bool spans_wall(const HeightField &surface, const Vec2d &p) { return spans_slope(surface, p, WallSlope); }
+
+double max_shell_slope(double h, double w) { return h / w; }
+
+Mask steep_nodes(const HeightField &surface, double max_tan, double min_width)
+{
+    const int nx = surface.nx(), ny = surface.ny();
+    Mask      out(surface.data().size(), 0);
+    auto      slope = [&](int ix, int iy, int dx, int dy) {
+        const float a = surface.at(std::max(0, ix - dx), std::max(0, iy - dy));
+        const float b = surface.at(std::min(nx - 1, ix + dx), std::min(ny - 1, iy + dy));
+        const float z = surface.at(ix, iy);
+        const int   n = (ix - dx >= 0 && iy - dy >= 0) + (ix + dx < nx && iy + dy < ny);
+        if (!std::isnan(a) && !std::isnan(b) && n == 2)
+            return double(b - a) / (2. * surface.pitch());
+        if (!std::isnan(b) && ix + dx < nx && iy + dy < ny)
+            return double(b - z) / surface.pitch();
+        if (!std::isnan(a) && ix - dx >= 0 && iy - dy >= 0)
+            return double(z - a) / surface.pitch();
+        return 0.;
+    };
+    for (int iy = 0; iy < ny; ++iy)
+        for (int ix = 0; ix < nx; ++ix)
+            if (!std::isnan(surface.at(ix, iy)))
+                out[size_t(iy) * nx + ix] = std::hypot(slope(ix, iy, 1, 0), slope(ix, iy, 0, 1)) > max_tan;
+    return rasterize(opening_ex(mask_to_expolygons(out, surface), float(scale_(0.5 * min_width))), surface);
+}
 
 void band_schedule(const HeadEnvelope &head, double shell_height, double max_patch_height, double &pitch, double &tolerance)
 {

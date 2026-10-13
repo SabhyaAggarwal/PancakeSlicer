@@ -66,7 +66,7 @@ bool top_shells_enabled(const PrintRegionConfig &config, const PrintObjectConfig
 
 bool bottom_shells_enabled(const PrintRegionConfig &config, const PrintObjectConfig &object)
 {
-    return is_auto(object) ? object.enable_support.value : is_manual(object) && config.nonplanar_bottom_shells.value != 0;
+    return is_manual(object) && config.nonplanar_bottom_shells.value != 0;
 }
 
 double full_conformal_thickness(const PrintRegionConfig &config, const PrintObject &object)
@@ -93,6 +93,8 @@ bool overhangs_enabled(const PrintRegionConfig &config, const PrintObjectConfig 
 {
     return is_auto(object) || (is_manual(object) && config.nonplanar_overhangs.value);
 }
+
+bool support_free(const PrintObjectConfig &object) { return is_auto(object); }
 
 bool bridges_enabled(const PrintRegionConfig &config, const PrintObjectConfig &object)
 {
@@ -141,8 +143,6 @@ AutoObjectSettings auto_object_settings(const PrintObject &object, const PrintRe
     }
     s.clip_shells      = AutoMinShells;
     s.bottom_shells = std::clamp(int(std::ceil(d / shell_height - 0.15)), AutoMinShells, MaxShells);
-    if (is_auto(object.config()) && !object.config().enable_support.value)
-        s.bottom_shells = 0;
     return s;
 }
 

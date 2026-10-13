@@ -50,6 +50,7 @@ constexpr double TargetContact  = 0.5;
 constexpr double MinContact     = 0.4;
 constexpr double DefaultMaxBend = 40.;
 constexpr double SameHeight = 0.01;
+constexpr double SupportFreeMinArea = 1.;
 constexpr double FlatUnderside = 0.05;
 
 struct OverhangSettings
@@ -72,7 +73,7 @@ OverhangSettings overhang_settings(const PrintObject &object)
         s.region_id = int(region_id);
         s.pitch     = std::max(0.05, object.config().nonplanar_surface_resolution.value);
         s.max_bend  = Geometry::deg2rad(cfg.nonplanar_max_slope.value > 0. && object.config().nonplanar_mode.value != NonplanarMode::Auto ? cfg.nonplanar_max_slope.value : DefaultMaxBend);
-        s.min_area  = cfg.nonplanar_min_patch_area.value;
+        s.min_area  = support_free(object.config()) ? std::min(cfg.nonplanar_min_patch_area.value, SupportFreeMinArea) : cfg.nonplanar_min_patch_area.value;
         s.skin      = std::max({ 2. * g, cfg.bottom_shell_layers.value * g, cfg.bottom_shell_thickness.value });
         break;
     }
@@ -191,6 +192,7 @@ struct Piece
     int                                     k     = 0;
     double                                  min_z = 0.;
     std::unique_ptr<ExtrusionPathConformal> path;
+    bool                                    capped = false;
 };
 
 }
@@ -211,6 +213,12 @@ void build_curved_overhangs(PrintObject &object, ConformalResult &result)
     const double       w = flow.width(), s = flow.spacing();
     const double       wall_width = std::max(0, region.config().wall_loops.value) * s;
     auto               cancel = [&object]() { throw_if_canceled(object); };
+    const bool   free_mode    = support_free(object.config());
+    const int    threshold    = object.config().support_threshold_angle.value;
+    const double printable    = Geometry::deg2rad(std::clamp(90. - (threshold > 0 ? threshold : 30), 45., 55.));
+    const double contact_req  = std::max(MinContact, 1. - g * std::tan(printable) / w);
+    std::vector<std::vector<int>> self_supported(free_mode ? layers.size() : 0);
+    Polygons                      capped_cover;
 
     std::vector<double> layer_bottom(layers.size()), layer_top(layers.size());
     for (size_t i = 0; i < layers.size(); ++i) {
@@ -283,6 +291,11 @@ void build_curved_overhangs(PrintObject &object, ConformalResult &result)
         for (size_t i = 0; i < n_nodes; ++i)
             mask[i] = mask[i] && keep[i];
     }
+    std::map<std::string, double> left;
+    const double node_area = pitch * pitch;
+    for (size_t i = 0; i < n_nodes; ++i)
+        if (!std::isnan(slope[i]) && slope[i] < grad_need && !mask[i])
+            left["overhang_unfit"] += node_area;
     int                    n_comp = 0;
     const std::vector<int> label  = label_components(mask, grid.nx(), grid.ny(), n_comp);
     if (n_comp == 0)
@@ -319,11 +332,15 @@ void build_curved_overhangs(PrintObject &object, ConformalResult &result)
             continue;
         const auto it = std::lower_bound(layer_bottom.begin(), layer_bottom.end(), Sb.data()[i] + settings.skin - EPSILON);
         floor_z.data()[i] = std::min(top.data()[i], it == layer_bottom.end() ? Inf : float(*it));
+        if (free_mode) {
+            const double top_bottom = layer_bottom[layer_at(top.data()[i])];
+            if (floor_z.data()[i] > top_bottom && top_bottom - Sb.data()[i] >= 0.5 * g)
+                floor_z.data()[i] = float(top_bottom);
+        }
     }
 
     const int        pad_nodes = int(std::ceil((3. + 2. * w) / pitch)) + 2;
     std::vector<int> all_nodes;
-    double           covered = 0.;
     const size_t     first_patch = result.patches.size();
     for (int c = 0; c < n_comp; ++c) {
         throw_if_canceled(object);
@@ -340,8 +357,10 @@ void build_curved_overhangs(PrintObject &object, ConformalResult &result)
             cmask[size_t(i)] = 1;
         const ExPolygons footprint = mask_to_expolygons(cmask, grid);
         const ExPolygons footprint_ext = offset_ex(footprint, float(scale_(std::max(0.5 * w, wall_width))));
-        if (area(footprint) * SCALING_FACTOR * SCALING_FACTOR < settings.min_area)
+        if (area(footprint) * SCALING_FACTOR * SCALING_FACTOR < settings.min_area) {
+            left["overhang_small"] += nodes.size() * node_area;
             continue;
+        }
 
         std::vector<float> dist(n_nodes, Inf);
         std::vector<int>   front;
@@ -361,8 +380,10 @@ void build_curved_overhangs(PrintObject &object, ConformalResult &result)
                 }
             }
         }
-        if (front.empty())
+        if (front.empty()) {
+            left["overhang_no_root"] += nodes.size() * node_area;
             continue;
+        }
         {
             using QItem = std::pair<float, int>;
             std::priority_queue<QItem, std::vector<QItem>, std::greater<QItem>> queue;
@@ -399,7 +420,7 @@ void build_curved_overhangs(PrintObject &object, ConformalResult &result)
         }
         std::sort(slopes.begin(), slopes.end());
         const double tan_max = std::tan(settings.max_bend);
-        const double g10     = slopes[slopes.size() / 10];
+        const double g10     = slopes[slopes.size() / (free_mode ? 50 : 10)];
         const double g50     = slopes[slopes.size() / 2];
         const double kappa   = g50 < FlatUnderside ? 0. : std::max(0., std::min(grad_need / std::max(g10, 1e-3) - 1., tan_max / g50));
         const double beta    = std::clamp(grad_need - (1. + kappa) * g10, 0., std::max(0., tan_max - kappa * g10));
@@ -530,7 +551,7 @@ void build_curved_overhangs(PrintObject &object, ConformalResult &result)
                             auto path = std::make_unique<ExtrusionPathConformal>(Polyline3(std::move(pts3)), proto, std::move(heights));
                             path->simplify(0.01);
                             if (path->polyline.points.size() >= 2)
-                                out.push_back(Piece{ sub, k, min_z, std::move(path) });
+                                out.push_back(Piece{ sub, k, min_z, std::move(path), pts.front().capped });
                         };
                         int            cur = sub_band(run.front().z);
                         std::vector<V> pts{ run.front() };
@@ -583,17 +604,27 @@ void build_curved_overhangs(PrintObject &object, ConformalResult &result)
             }
         });
 
+        if (free_mode)
+            for (const std::vector<Piece> &pieces : per_k)
+                for (const Piece &piece : pieces)
+                    if (piece.capped) {
+                        Polyline pl;
+                        for (const Point3 &q : piece.path->polyline.points)
+                            pl.points.emplace_back(q.x(), q.y());
+                        polygons_append(capped_cover, offset(pl, float(scale_(0.5 * w))));
+                    }
         std::map<int, std::map<int, std::vector<Piece *>>> by_host;
         for (std::vector<Piece> &pieces : per_k)
             for (Piece &piece : pieces)
                 by_host[sb_layer[size_t(piece.sub)]][piece.sub].emplace_back(&piece);
-        if (by_host.empty())
+        if (by_host.empty()) {
+            left["overhang_no_beads"] += nodes.size() * node_area;
             continue;
+        }
         PatchDiagnostics diag;
         diag.patch_id      = int(result.patches.size());
         diag.max_slope_deg = Geometry::rad2deg(std::atan(kappa * slopes.back() + beta));
         result.diagnostics.emplace_back(std::move(diag));
-        covered += area(footprint);
         for (auto &[host, subs] : by_host) {
             ConformalPatch patch;
             patch.id           = int(result.patches.size());
@@ -640,19 +671,73 @@ void build_curved_overhangs(PrintObject &object, ConformalResult &result)
             result.patches.emplace_back(std::move(patch));
         }
         all_nodes.insert(all_nodes.end(), nodes.begin(), nodes.end());
+        size_t inward = 0, short_contact = 0;
+        if (free_mode) {
+            HeightField total = grid, from_root = grid;
+            std::fill(total.data().begin(), total.data().end(), HeightField::NoData);
+            std::fill(from_root.data().begin(), from_root.data().end(), HeightField::NoData);
+            for (int i : nodes) {
+                total.data()[size_t(i)]     = float(Sb.data()[size_t(i)] + kappa * (Sb.data()[size_t(i)] - z_ref) + beta * dist[size_t(i)]);
+                from_root.data()[size_t(i)] = dist[size_t(i)];
+            }
+            for (int i : nodes) {
+                const Vec2d gt = node_gradient(total, i % grid.nx(), i / grid.nx());
+                const Vec2d gd = node_gradient(from_root, i % grid.nx(), i / grid.nx());
+                if (!gt.allFinite() || !gd.allFinite() || gt.dot(gd) <= 0. || 1. - g / (gt.norm() * w) < contact_req) {
+                    ++(gt.allFinite() && gd.allFinite() && gt.dot(gd) > 0. ? short_contact : inward);
+                    left["overhang_supported"] += node_area;
+                    continue;
+                }
+                for (size_t l = layer_at(Sb.data()[size_t(i)] - g); l < layers.size() && layer_bottom[l] <= Sb.data()[size_t(i)] + g; ++l)
+                    self_supported[l].emplace_back(i);
+            }
+        }
         BOOST_LOG_TRIVIAL(info) << "Non-planar: curved overhang in " << object.model_object()->name << ": "
                                 << area(footprint) * SCALING_FACTOR * SCALING_FACTOR << " mm2, bend "
                                 << Geometry::rad2deg(std::atan(kappa * g50 + beta)) << " deg, contact " << 100. * contact_med
-                                << " % (least " << 100. * contact_min << " %), " << by_host.size() << " host layers";
+                                << " % (least " << 100. * contact_min << " %), " << by_host.size() << " host layers"
+                                << "; kappa " << kappa << " beta " << beta << " slope p10/p50 " << g10 << "/" << g50
+                                << ", supported nodes: " << inward << " inward, " << short_contact << " short of contact, of " << nodes.size();
     }
-    if (const double fallback = std::max(0., area(candidate) - covered) * SCALING_FACTOR * SCALING_FACTOR; fallback > 0.) {
-        PatchDiagnostics diag;
-        diag.fallback_area = fallback;
-        diag.fallback_reason = "overhang";
-        result.diagnostics.emplace_back(std::move(diag));
-    }
+    for (const auto &[reason, fallback] : left)
+        if (fallback > 0.) {
+            PatchDiagnostics diag;
+            diag.fallback_area   = fallback;
+            diag.fallback_reason = reason;
+            result.diagnostics.emplace_back(std::move(diag));
+        }
     if (result.patches.size() == first_patch)
         return;
+    if (free_mode) {
+        const ExPolygons cover     = union_ex(capped_cover);
+        const BoundingBox cover_box = get_extents(cover);
+        const Mask        free_node = rasterize(cover, grid);
+        auto under_floor = [&](const Vec3d &p) {
+            const Vec2d u  = (p.head<2>() - grid.origin()) / pitch;
+            const int   ix = int(std::lround(u.x())), iy = int(std::lround(u.y()));
+            if (ix < 0 || iy < 0 || ix >= grid.nx() || iy >= grid.ny())
+                return false;
+            const size_t i = size_t(iy) * grid.nx() + ix;
+            return free_node[i] && p.z() > Sb.data()[i] - g && p.z() < floor_z.data()[i] + 0.5 * g;
+        };
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, first_patch), [&](const tbb::blocked_range<size_t> &range) {
+            for (size_t idx = range.begin(); idx < range.end(); ++idx)
+                if (ConformalPatch &patch = result.patches[idx]; patch.kind == PatchKind::Top && !cover.empty() &&
+                                                                  get_extents(patch.footprint).overlap(cover_box))
+                    for (ExtrusionEntityCollection &shell : patch.shell_paths)
+                        erase_conformal(shell, layers[patch.host_layer]->print_z, 0.25 * pitch, under_floor);
+        });
+        result.self_supported.assign(layers.size(), ExPolygons());
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
+            for (size_t l = range.begin(); l < range.end(); ++l)
+                if (!self_supported[l].empty()) {
+                    Mask m(n_nodes, 0);
+                    for (int i : self_supported[l])
+                        m[size_t(i)] = 1;
+                    result.self_supported[l] = offset_ex(mask_to_expolygons(m, grid), float(scale_(pitch)));
+                }
+        });
+    }
 
     Mask all_mask(n_nodes, 0);
     for (int i : all_nodes)

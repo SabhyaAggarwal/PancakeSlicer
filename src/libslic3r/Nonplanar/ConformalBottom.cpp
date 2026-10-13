@@ -194,7 +194,13 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
     if (bottoms.empty())
         return;
     const float      seam      = float(scale_(0.01));
-    const ExPolygons candidate = offset_ex(union_ex(offset(bottoms, seam)), -seam);
+    ExPolygons       candidate = offset_ex(union_ex(offset(bottoms, seam)), -seam);
+    ExPolygons skins;
+    for (const ConformalPatch &patch : result.patches)
+        if (patch.kind == PatchKind::Overhang)
+            append(skins, patch.footprint);
+    if (!skins.empty())
+        candidate = diff_ex(candidate, offset_ex(union_ex(skins), float(scale_(1.))));
     const Mask       cand_mask = rasterize(candidate, grid);
 
     HeightField Sb;
@@ -482,8 +488,6 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
 
 void build_conformal_bottom(PrintObject &object, ConformalResult &result)
 {
-    for (Layer *layer : object.layers())
-        layer->conformal_patches_before.clear();
     for (size_t region_id = 0; region_id < object.num_printing_regions(); ++region_id)
         build_region_bottom(object, result, region_id);
 }

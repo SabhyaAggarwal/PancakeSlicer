@@ -6,6 +6,7 @@
 #include "PatchTools.hpp"
 
 #include "libslic3r/ClipperUtils.hpp"
+#include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
 #include "libslic3r/Geometry.hpp"
@@ -98,7 +99,7 @@ Ring open_ring(const Polygon &loop, const Vec2d &near, double step)
 
 }
 
-Polyline fill_helix(const ExPolygons &area, double spacing, const Point &start, bool clockwise, HelixRamp *ramp)
+Polyline fill_helix(const ExPolygons &area, double spacing, const Point &start, bool clockwise, HelixRamp *ramp, size_t min_rings)
 {
     const coord_t step = coord_t(scale_(spacing));
     if (step <= 0 || area.empty())
@@ -152,8 +153,23 @@ Polyline fill_helix(const ExPolygons &area, double spacing, const Point &start, 
         rings.emplace_back(ring);
         level = offset2_ex(ExPolygons{ ExPolygon(ring) }, -float(step) - 0.5f * float(step), 0.5f * float(step));
     }
-    if (rings.empty())
+    if (rings.size() < min_rings)
         return {};
+    for (;;) {
+        const Polygon &last = rings.back();
+        const Point    c    = last.centroid();
+        double         r    = 0.;
+        for (const Point &q : last.points)
+            r = std::max(r, (q - c).cast<double>().norm());
+        if (r <= 1.25 * double(step))
+            break;
+        const ExPolygons inner = offset_ex(ExPolygons{ ExPolygon(last) }, -float(step));
+        const auto       piece = std::max_element(inner.begin(), inner.end(),
+                                                  [](const ExPolygon &l, const ExPolygon &r) { return l.area() < r.area(); });
+        if (piece == inner.end() || piece->contour.points.size() < 3)
+            break;
+        rings.emplace_back(piece->contour);
+    }
     for (Polygon &ring : rings)
         if (ring.is_counter_clockwise() == clockwise)
             ring.reverse();

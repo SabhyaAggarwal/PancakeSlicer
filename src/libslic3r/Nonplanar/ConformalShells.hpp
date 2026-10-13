@@ -58,6 +58,7 @@ struct ConformalResult
     std::vector<PatchDiagnostics> diagnostics;
     std::vector<ExPolygons>       planar_exclusion;
     std::vector<ExPolygons>       bridged;
+    std::vector<ExPolygons>       self_supported;
     FlowModStats                  flow_mod;
     std::shared_ptr<ObjectMesh>   mesh;
 };

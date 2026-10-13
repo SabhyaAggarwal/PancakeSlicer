@@ -5259,8 +5259,8 @@ void PrintConfigDef::init_fff_params()
     def->label    = L("Non-planar mode");
     def->category = L("Quality");
     def->tooltip  = L("Auto prints every curved top with curved shells, in height bands the print head can clear, "
-                      "and adds curved bottom shells over supports, curved layers through thin parts and curved "
-                      "overhangs. It chooses the number of shells, the pattern and ironing for each curved area from "
+                      "and adds curved layers through thin parts and curved overhangs. Overhangs the curved layers "
+                      "can print get no support, even with supports on; support stays only under the rest. It chooses the number of shells, the pattern and ironing for each curved area from "
                       "its shape and the print head. Manual uses the non-planar settings below as set. Multiplanar cuts "
                       "the object with automatically placed planes into chunks of flat layers, each built along its "
                       "own direction, so overhangs print without support. Off prints every layer flat.");

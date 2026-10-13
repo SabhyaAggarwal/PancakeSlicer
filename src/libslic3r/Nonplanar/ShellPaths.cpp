@@ -14,9 +14,12 @@
 #include "libslic3r/Flow.hpp"
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/Line.hpp"
+#include "libslic3r/Point.hpp"
 #include "libslic3r/Polygon.hpp"
 #include "libslic3r/ShortestPath.hpp"
 #include "libslic3r/libslic3r.h"
+
+#include <Eigen/Eigenvalues>
 
 #include <algorithm>
 #include <array>
@@ -521,13 +524,17 @@ Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam,
         return {};
     Polygons   loops;
     Polylines  centres;
+    ExPolygons innermost;
     ExPolygons level = offset_ex(area, -0.5f * float(step));
     while (!level.empty()) {
         append(loops, to_polygons(level));
         ExPolygons next = offset2_ex(level, -float(step) - 0.5f * float(step), 0.5f * float(step));
         for (const ExPolygon &piece : level)
-            if (!offset_ex(piece, -0.75f * float(step)).empty() && intersection_ex(ExPolygons{ piece }, next).empty())
-                append(centres, piece.medial_axis(0.5 * double(step), 3.5 * double(step)));
+            if (intersection_ex(ExPolygons{ piece }, next).empty()) {
+                innermost.emplace_back(piece);
+                if (!offset_ex(piece, -0.75f * float(step)).empty())
+                    append(centres, piece.medial_axis(0.5 * double(step), 3.5 * double(step)));
+            }
         level = std::move(next);
     }
     loops = union_pt_chained_outside_in(loops);
@@ -544,6 +551,74 @@ Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam,
         out.emplace_back(std::move(pl));
     }
     append(out, chain_polylines(std::move(centres), &pos));
+    if (!innermost.empty()) {
+        BoundingBox box = get_extents(innermost);
+        box.offset(step);
+        auto reaches = [&box](const Point &a, const Point &b) {
+            Line l(a, b);
+            return l.clip_with_bbox(box);
+        };
+        Polylines near;
+        for (size_t i = 0; i < out.size(); ++i) {
+            const Points &pts = out[i].points;
+            for (size_t j = 0; j + 1 < pts.size(); ++j)
+                if (reaches(pts[j], pts[j + 1])) {
+                    near.emplace_back(out[i]);
+                    break;
+                }
+            if (i + 1 < out.size() && (out[i + 1].first_point() - out[i].last_point()).cast<double>().norm() <= 2. * double(step) &&
+                reaches(out[i].last_point(), out[i + 1].first_point()))
+                near.emplace_back(out[i].last_point(), out[i + 1].first_point());
+        }
+        const float  eps      = float(scale_(0.005));
+        ExPolygons   holes    = offset_ex(offset_ex(expolygons_simplify(diff_ex(innermost, offset(near, 0.5f * float(step))), scale_(0.01)), -eps), eps);
+        const double min_hole = 0.25 * double(step) * double(step);
+        Point        at       = out.empty() ? pos : out.back().last_point();
+        for (int pass = 0; pass < 3 && !holes.empty(); ++pass) {
+            Polylines fill;
+            for (const ExPolygon &hole : holes) {
+                if (hole.area() < min_hole)
+                    continue;
+                if (const ExPolygons ring = offset_ex(hole, -0.5f * float(step)); !ring.empty()) {
+                    for (const Polygon &loop : to_polygons(ring))
+                        if (loop.points.size() >= 3) {
+                            Polyline pl = open_loop_at(loop, at);
+                            pl.clip_end(0.2 * double(step));
+                            if (pl.is_valid())
+                                fill.emplace_back(std::move(pl));
+                        }
+                    continue;
+                }
+                const Points &pts = hole.contour.points;
+                Vec2d         c   = Vec2d::Zero();
+                for (const Point &q : pts)
+                    c += q.cast<double>();
+                c /= double(pts.size());
+                Matrix2d cov = Matrix2d::Zero();
+                for (const Point &q : pts)
+                    cov += (q.cast<double>() - c) * (q.cast<double>() - c).transpose();
+                const Vec2d d  = Eigen::SelfAdjointEigenSolver<Matrix2d>(cov).eigenvectors().col(1);
+                double      lo = 0., hi = 0.;
+                for (const Point &q : pts) {
+                    lo = std::min(lo, (q.cast<double>() - c).dot(d));
+                    hi = std::max(hi, (q.cast<double>() - c).dot(d));
+                }
+                lo = std::min(lo + 0.5 * double(step), -0.25 * double(step));
+                hi = std::max(hi - 0.5 * double(step), 0.25 * double(step));
+                fill.emplace_back(Point((c + lo * d).cast<coord_t>()), Point((c + hi * d).cast<coord_t>()));
+            }
+            Polylines kept;
+            for (Polyline &pl : chain_polylines(std::move(fill), &at))
+                if ((pl.first_point() - at).cast<double>().norm() <= 2. * double(step)) {
+                    at = pl.last_point();
+                    kept.emplace_back(std::move(pl));
+                }
+            if (kept.empty())
+                break;
+            holes = diff_ex(holes, offset(kept, 0.5f * float(step)));
+            append(out, std::move(kept));
+        }
+    }
     return out;
 }
 
@@ -553,7 +628,7 @@ std::vector<Polylines> shell_polylines(const ExPolygons &area, const ShellFill &
 {
     Polylines paths;
     if (fill.spiral) {
-        if (Polyline helix = fill.helix ? fill_helix(area, spacing, start, false, helix_ramp) : Polyline(); helix.is_valid())
+        if (Polyline helix = fill.helix ? fill_helix(area, spacing, start, false, helix_ramp, TopHelixMinRings) : Polyline(); helix.is_valid())
             paths.emplace_back(std::move(helix));
         else
             paths = fill_spiral(area, spacing, start, seam_line);
@@ -617,6 +692,107 @@ std::vector<Polylines> link_paths(Polylines &&paths, const ExPolygons &area, dou
         }
         roads.add(pl);
         out.emplace_back(Polylines{ std::move(pl) });
+    }
+    return out;
+}
+
+Polygons linked_cover(const std::vector<Polylines> &linked, double width)
+{
+    Polylines runs;
+    for (const Polylines &chain : linked)
+        for (size_t i = 0; i < chain.size(); i += 2)
+            runs.emplace_back(chain[i]);
+    return offset(runs, float(scale_(0.5 * width)), jtRound, scale_(0.01), etOpenRound);
+}
+
+bool cover_has_gaps(const ExPolygons &inner, const std::vector<Polylines> &linked, double width, const Polylines &variable,
+                    const std::vector<std::vector<float>> &widths, double spacing)
+{
+    if (inner.empty())
+        return false;
+    const double pitch = 0.15 * spacing;
+    BoundingBoxf bb;
+    for (const ExPolygon &e : inner) {
+        const BoundingBox b = get_extents(e);
+        bb.merge(unscale(b.min));
+        bb.merge(unscale(b.max));
+    }
+    const HeightField grid(bb, pitch);
+    const int         nx = grid.nx(), ny = grid.ny();
+    Mask              open = rasterize(inner, grid);
+    auto cover = [&](const Point &pa, const Point &pb, double r) {
+        const Vec2d  a = unscale(pa), b = unscale(pb), d = b - a;
+        const double l2 = d.squaredNorm();
+        const int    ix0 = std::max(0, int(std::floor((std::min(a.x(), b.x()) - r - bb.min.x()) / pitch)));
+        const int    ix1 = std::min(nx - 1, int(std::ceil((std::max(a.x(), b.x()) + r - bb.min.x()) / pitch)));
+        const int    iy0 = std::max(0, int(std::floor((std::min(a.y(), b.y()) - r - bb.min.y()) / pitch)));
+        const int    iy1 = std::min(ny - 1, int(std::ceil((std::max(a.y(), b.y()) + r - bb.min.y()) / pitch)));
+        for (int iy = iy0; iy <= iy1; ++iy)
+            for (int ix = ix0; ix <= ix1; ++ix) {
+                unsigned char &c = open[size_t(iy) * nx + ix];
+                if (!c)
+                    continue;
+                const Vec2d  q = grid.node(ix, iy) - a;
+                const double t = l2 > 0. ? std::clamp(q.dot(d) / l2, 0., 1.) : 0.;
+                if ((q - t * d).squaredNorm() <= r * r)
+                    c = 0;
+            }
+    };
+    for (const Polylines &chain : linked)
+        for (size_t i = 0; i < chain.size(); i += 2)
+            for (size_t j = 0; j + 1 < chain[i].points.size(); ++j)
+                cover(chain[i].points[j], chain[i].points[j + 1], 0.5 * width);
+    for (size_t i = 0; i < variable.size(); ++i)
+        for (size_t j = 0; j + 1 < variable[i].points.size(); ++j)
+            cover(variable[i].points[j], variable[i].points[j + 1], 0.5 * std::min(widths[i][j], widths[i][j + 1]));
+    for (int iy = 1; iy + 1 < ny; ++iy)
+        for (int ix = 1; ix + 1 < nx; ++ix) {
+            const size_t n = size_t(iy) * nx + ix;
+            if (open[n] && open[n - 1] && open[n + 1] && open[n - size_t(nx)] && open[n + size_t(nx)])
+                return true;
+        }
+    return false;
+}
+
+constexpr double PinholeWidth = 0.4;
+
+Polylines pinhole_roads(const ExPolygons &area, Polygons cover, double width, double spacing)
+{
+    Polylines        out;
+    const ExPolygons inner = offset_ex(area, -float(scale_(0.5 * spacing)));
+    for (int round = 0; round < 3 && !inner.empty(); ++round) {
+        const ExPolygons holes = opening_ex(diff_ex(inner, cover), float(scale_(0.5 * PinholeWidth * spacing)));
+        if (holes.empty())
+            break;
+        Polylines roads;
+        for (const ExPolygon &hole : holes) {
+            Polylines axis = hole.medial_axis(0., 2. * scale_(spacing));
+            if (axis.empty()) {
+                const Points &pts = hole.contour.points;
+                Vec2d         c   = Vec2d::Zero();
+                for (const Point &p : pts)
+                    c += p.cast<double>();
+                c /= double(pts.size());
+                double xx = 0., xy = 0., yy = 0.;
+                for (const Point &p : pts) {
+                    const Vec2d d = p.cast<double>() - c;
+                    xx += d.x() * d.x();
+                    xy += d.x() * d.y();
+                    yy += d.y() * d.y();
+                }
+                const double a    = 0.5 * std::atan2(2. * xy, xx - yy);
+                const double half = get_extents(hole).size().cast<double>().norm();
+                const Vec2d  d(half * std::cos(a), half * std::sin(a));
+                axis = intersection_pl(Polylines{ Polyline((c - d).cast<coord_t>(), (c + d).cast<coord_t>()) }, ExPolygons{ hole });
+            }
+            for (Polyline &pl : axis)
+                if (pl.is_valid())
+                    roads.emplace_back(std::move(pl));
+        }
+        if (roads.empty())
+            break;
+        append(cover, offset(roads, float(scale_(0.5 * width)), jtRound, scale_(0.01), etOpenRound));
+        append(out, std::move(roads));
     }
     return out;
 }

@@ -164,6 +164,25 @@ struct WidthRoads
     std::vector<std::vector<float>> widths;
 };
 
+Polygons width_cover(const WidthRoads &roads)
+{
+    Polygons out;
+    for (size_t i = 0; i < roads.polylines.size(); ++i) {
+        const Points             &pts = roads.polylines[i].points;
+        const std::vector<float> &w   = roads.widths[i];
+        for (size_t a = 0; a + 1 < pts.size();) {
+            size_t b     = a + 1;
+            float  w_min = std::min(w[a], w[b]);
+            while (b + 1 < pts.size() && std::abs(w[b + 1] - w[a]) < 0.1f * w[a])
+                w_min = std::min(w_min, w[++b]);
+            append(out, offset(Polyline(Points(pts.begin() + a, pts.begin() + b + 1)), float(scale_(0.5 * w_min)), jtRound, scale_(0.01),
+                               etOpenRound));
+            a = b;
+        }
+    }
+    return out;
+}
+
 void arachne_roads(const ExPolygon &piece, const Flow &flow, double layer_height, size_t max_loops, WidthRoads &out, Polygons *inner = nullptr)
 {
     const float    eps     = float(scale_(0.005));
@@ -259,6 +278,31 @@ void arachne_roads(const ExPolygon &piece, const Flow &flow, double layer_height
                 pl.points.pop_back();
                 w.pop_back();
             }
+            {
+                Vec2d c = Vec2d::Zero();
+                for (size_t j = 0; j < pl.points.size(); ++j)
+                    c += unscale(pl.points[j]);
+                c /= double(pl.points.size());
+                double r = 0.;
+                for (const Point &q : pl.points)
+                    r = std::max(r, (unscale(q) - c).norm());
+                bool summit = r < 1.25 * flow.width() && !(last && (unscale(*last) - c).norm() < r);
+                for (size_t i = 0; summit && i < lines.size(); ++i)
+                    for (const Arachne::ExtrusionJunction &j : lines[i]->junctions)
+                        summit = summit && (unscale(j.p) - c).norm() >= r;
+                if (summit) {
+                    const Vec2d  s0 = unscale(pl.points.front()) - c;
+                    const double a0 = std::atan2(s0.y(), s0.x());
+                    const double rc = std::max(r - flow.width(), 0.5 * r);
+                    Points       pre{ Point::new_scale(c.x(), c.y()) };
+                    for (int k = 0; k <= 6; ++k) {
+                        const double a = a0 + 2. * PI * k / 6.;
+                        pre.emplace_back(Point::new_scale(c.x() + rc * std::cos(a), c.y() + rc * std::sin(a)));
+                    }
+                    pl.points.insert(pl.points.begin(), pre.begin(), pre.end());
+                    w.insert(w.begin(), pre.size(), float(flow.width()));
+                }
+            }
         } else if (last && (pl.points.back() - *last).cast<double>().squaredNorm() < (pl.points.front() - *last).cast<double>().squaredNorm()) {
             pl.reverse();
             std::reverse(w.begin(), w.end());
@@ -318,7 +362,11 @@ void contour_fill(const HeightField &surface, const ExPolygons &area, double dro
                         local.data()[n] = HeightField::NoData;
                 contour_line_angle(local, a, 0.5);
             }
-            if (Polylines pl = fill_solid(middle, outer ? ipMonotonic : ipRectilinear, flow.spacing(), a, outer, flow, z); !pl.empty())
+            const ExPolygons lined = intersection_ex(offset_ex(middle, float(scale_(0.25 * flow.spacing()))), ExPolygons{ piece });
+            Polylines pl = fill_solid(lined, outer ? ipMonotonic : ipRectilinear, flow.spacing(), a, outer, flow, z);
+            pl.erase(std::remove_if(pl.begin(), pl.end(), [&middle](const Polyline &l) { return intersection_pl(Polylines{ l }, middle).empty(); }),
+                     pl.end());
+            if (!pl.empty())
                 append(lines, link_paths(chain_polylines(std::move(pl)), offset_ex(middle, float(scale_(0.5 * flow.spacing()))), flow.spacing(),
                                              MaxGlide));
         }
@@ -529,6 +577,15 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
     if (banded != nullptr && !sparse && !plug)
         for (const ExPolygon &strip : banded->lengthwise)
             arachne_roads(strip, flow, height, 0, roads);
+    std::vector<Polylines> pinholes;
+    if (banded != nullptr && !sparse &&
+        cover_has_gaps(offset_ex(whole, -float(scale_(0.5 * flow.spacing()))), linked, flow.width(), roads.polylines, roads.widths,
+                       flow.spacing())) {
+        Polygons cover = width_cover(roads);
+        append(cover, linked_cover(linked, flow.width()));
+        for (Polyline &pl : pinhole_roads(whole, std::move(cover), flow.width(), flow.spacing()))
+            pinholes.push_back({ std::move(pl) });
+    }
 
     const ExtrusionPath proto(role, flow.mm3_per_mm(), float(flow.width()), float(height));
     auto at = [&](const Vec2d &p, double &z, float &bead) {
@@ -587,6 +644,7 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
     lift_linked(linked, proto, at, host_z, resample, patch.id, k - 1, out.entities);
     if (out.entities.size() == 1)
         ramp_helix_flow(*static_cast<ExtrusionPathConformal *>(out.entities.front()), ramp, fill.outward);
+    lift_linked(pinholes, proto, at, host_z, resample, patch.id, k - 1, out.entities);
     if (from != nullptr && !out.entities.empty())
         prepend_glide(*static_cast<ExtrusionPathConformal *>(out.entities.front()), *from,
                       offset_ex(area, float(scale_(0.25 * flow.spacing()))), at, host_z, resample, MaxGlide);
@@ -1462,8 +1520,10 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
                 const HeightField &B = planar_tops[idx];
                 Mask               above(B.data().size(), 0);
                 bool               any = false;
+                const double bottom = layer_z[i] - layers[i]->height;
                 for (size_t n = 0; n < above.size(); ++n)
-                    if (!std::isnan(B.data()[n]) && layer_z[i] > B.data()[n] + EPSILON) {
+                    if (!std::isnan(B.data()[n]) && layer_z[i] > B.data()[n] + EPSILON &&
+                        !(bottom >= patch.surface.data()[n] - EPSILON)) {
                         above[n] = 1;
                         any      = true;
                     }

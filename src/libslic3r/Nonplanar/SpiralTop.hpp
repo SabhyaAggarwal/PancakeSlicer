@@ -3,6 +3,8 @@
 #include "libslic3r/Point.hpp"
 #include "libslic3r/Polyline.hpp"
 
+#include <cstddef>
+
 namespace Slic3r { class ExtrusionPathConformal; class PrintObject; }
 
 namespace Slic3r::Nonplanar {
@@ -16,7 +18,10 @@ struct HelixRamp
     double end   = 0.;
 };
 
-Polyline fill_helix(const ExPolygons &area, double spacing, const Point &start, bool clockwise = false, HelixRamp *ramp = nullptr);
+Polyline fill_helix(const ExPolygons &area, double spacing, const Point &start, bool clockwise = false, HelixRamp *ramp = nullptr,
+                    size_t min_rings = 1);
+
+constexpr size_t TopHelixMinRings = 8;
 
 bool helix_worthwhile(const HeightField &surface, const ExPolygons &area);
 
