@@ -71,7 +71,7 @@ struct Args
 {
     std::string profiles = std::string(PROFILES_DIR);
     std::string vendor   = "Prusa";
-    std::string printer, process, datadir, output, model, config_out, paint, gcode_3mf;
+    std::string printer, process, datadir, output, model, config_out, paint, gcode_3mf, json;
     std::vector<std::string> filaments, colours;
     std::vector<std::pair<std::string, int>> parts;
     std::vector<std::pair<std::string, std::string>> overrides;
@@ -121,6 +121,7 @@ Args parse_args(int argc, char **argv)
         else if (arg == "--datadir") a.datadir = next();
         else if (arg == "--config-out") a.config_out = next();
         else if (arg == "--gcode-3mf") a.gcode_3mf = next();
+        else if (arg == "--json") a.json = next();
         else if (arg == "--verify") a.verify = true;
         else if (arg == "-o" || arg == "--output") a.output = next();
         else if (arg == "--set") {
@@ -494,12 +495,16 @@ void place_wipe_tower(DynamicPrintConfig &config, const Model &model, size_t fil
 
 }
 
+#include "nonplanar_slice_json.ipp"
+
 int main(int argc, char **argv)
 {
     const Args args = parse_args(argc, argv);
+    nlohmann::json record;
     if (const char *level = std::getenv("NP_LOG_LEVEL"))
         set_logging_level(unsigned(std::atoi(level)));
     try {
+        if (! args.json.empty()) slice_json_record(record, args);
         set_resources_dir((fs::path(args.profiles) / "..").lexically_normal().string());
         const fs::path datadir = args.datadir.empty() ? fs::temp_directory_path() / fs::unique_path("np_slice_%%%%%%%%") :
                                                         fs::path(args.datadir);
@@ -538,6 +543,14 @@ int main(int argc, char **argv)
         for (ModelObject *object : model.objects)
             print.auto_assign_extruders(object);
         print.apply(model, config);
+        if (! args.json.empty()) {
+            const auto head = Nonplanar::resolve_head_envelope(print.config());
+            const std::string file = Nonplanar::HeadLibrary::instance().source_path(head.id);
+            record["inputs"]["mode"] = config.opt_serialize("nonplanar_mode");
+            record["inputs"]["zaa_enabled"] = config.opt_bool("zaa_enabled");
+            record["inputs"]["head"] = {{"id", head.id}, {"file", file}, {"sha1", file.empty() ? nlohmann::json(nullptr) : nlohmann::json(file_sha1(file))}};
+        }
+
         std::vector<StringObjectException> warnings;
         if (const StringObjectException err = print.validate(&warnings); ! err.string.empty())
             throw std::runtime_error("validate: " + err.string);
@@ -567,8 +580,24 @@ int main(int argc, char **argv)
                   << "max_vz_planned " << vz_actual << "\n"
                   << "max_vz_planned_line " << vz_line << "\n"
                   << "machine_max_speed_z " << config.opt<ConfigOptionFloats>("machine_max_speed_z")->get_at(0) << "\n";
+        if (! args.json.empty()) {
+            auto &text = record["text_summary"];
+            text["time_process_s"] = text_value(std::chrono::duration<double>(t_export - t_process).count());
+            text["time_export_s"] = text_value(std::chrono::duration<double>(t_done - t_export).count());
+            text["gcode"] = args.output;
+            text["estimated_time_s"] = text_value(normal.time);
+            text["max_vz_commanded"] = text_value(vz);
+            text["max_vz_planned"] = text_value(vz_actual);
+            text["max_vz_planned_line"] = text_value(vz_line);
+            text["machine_max_speed_z"] = text_value(config.opt<ConfigOptionFloats>("machine_max_speed_z")->get_at(0));
+        }
         for (const auto &warning : print.step_state_with_warnings(psGCodeExport).warnings)
             std::cout << "export_warning " << warning.message << "\n";
+        if (! args.json.empty())
+            for (const auto &warning : print.step_state_with_warnings(psGCodeExport).warnings) {
+                record["text_summary"]["export_warning"] = warning.message;
+                break;
+            }
         Nonplanar::FlowModStats flow;
         for (const PrintObject *object : print.objects())
             flow.merge(object->conformal().flow_mod);
@@ -578,6 +607,14 @@ int main(int argc, char **argv)
                       << "flow_laid_mm " << flow.min_laid << " " << flow.max_laid << "\n"
                       << "flow_clamped thick " << flow.max_clamped << " thin " << flow.min_clamped << " dragged " << flow.dragged
                       << " contact " << flow.contact << "\n";
+        if (! args.json.empty() && flow.points > 0) {
+            auto &text = record["text_summary"];
+            text["flow_points"] = text_value(flow.points);
+            text["flow_normal_gap_mm"] = text_value(flow.min_gap) + " " + text_value(flow.max_gap);
+            text["flow_laid_mm"] = text_value(flow.min_laid) + " " + text_value(flow.max_laid);
+            text["flow_clamped"] = "thick " + text_value(flow.max_clamped) + " thin " + text_value(flow.min_clamped) +
+                " dragged " + text_value(flow.dragged) + " contact " + text_value(flow.contact);
+        }
         double np_extrude = 0., np_other = 0.;
         std::map<std::string, double> np_kind;
         for (size_t i = 0; i < result.moves.size(); ++i) {
@@ -596,12 +633,16 @@ int main(int argc, char **argv)
         }
         for (const auto &[kind, t] : np_kind)
             std::cout << "nonplanar_other_kind_s " << t << " " << kind << "\n";
+        if (! args.json.empty() && !np_kind.empty())
+            record["text_summary"]["nonplanar_other_kind_s"] = text_value(np_kind.begin()->second) + " " + np_kind.begin()->first;
         std::map<std::string, double> role_time;
         for (const auto &m : result.moves)
             role_time[m.type == EMoveType::Extrude ? ExtrusionEntity::role_to_string(m.extrusion_role) : std::string("Travel and other")] +=
                 m.time[size_t(PrintEstimatedStatistics::ETimeMode::Normal)];
         for (const auto &[role, t] : role_time)
             std::cout << "role_time_s " << t << " " << role << "\n";
+        if (! args.json.empty() && !role_time.empty())
+            record["text_summary"]["role_time_s"] = text_value(role_time.begin()->second) + " " + role_time.begin()->first;
         std::map<std::string, double> feature_time;
         for (size_t i = 0; i < result.moves.size(); ++i) {
             const auto &m  = result.moves[i];
@@ -624,6 +665,12 @@ int main(int argc, char **argv)
             std::cout << "feature_time_s " << t << " " << kind << "\n";
         std::cout << "nonplanar_extrude_time_s " << np_extrude << "\n"
                   << "nonplanar_other_time_s " << np_other << "\n";
+        if (! args.json.empty()) {
+            record["text_summary"]["nonplanar_extrude_time_s"] = text_value(np_extrude);
+            record["text_summary"]["nonplanar_other_time_s"] = text_value(np_other);
+            if (!feature_time.empty())
+                record["text_summary"]["feature_time_s"] = text_value(feature_time.begin()->second) + " " + feature_time.begin()->first;
+        }
         if (args.verify && !result.clearance_report.ran) {
             ClearanceParams params;
             params.head               = Nonplanar::resolve_head_envelope(print.config());
@@ -639,6 +686,21 @@ int main(int argc, char **argv)
                 std::cout << "clearance_hit line " << hit.gcode_line << " " << hit.component << " " << hit.penetration << " mm\n";
             for (const std::string &omission : clearance.omissions)
                 std::cout << "clearance_omission " << omission << "\n";
+        }
+        if (! args.json.empty()) {
+            auto &text = record["text_summary"];
+            text["clearance_checked"] = text_value(clearance.ran);
+            if (clearance.ran) {
+                text["clearance_hit_moves"] = text_value(clearance.hit_moves);
+                text["clearance_machine_hit_moves"] = text_value(clearance.machine_hit_moves);
+                text["clearance_min_mm"] = text_value(clearance.min_clearance);
+                if (!clearance.worst.empty()) {
+                    const auto &hit = clearance.worst.front();
+                    text["clearance_hit"] = "line " + text_value(hit.gcode_line) + " " + hit.component + " " + text_value(hit.penetration) + " mm";
+                }
+                if (!clearance.omissions.empty()) text["clearance_omission"] = clearance.omissions.front();
+            }
+            if (!args.gcode_3mf.empty()) text["gcode_3mf"] = args.gcode_3mf;
         }
         if (! args.gcode_3mf.empty()) {
             write_gcode_3mf(args, model, print, config, result, datadir);
@@ -657,13 +719,37 @@ int main(int argc, char **argv)
             std::cout << "nonplanar_top_patches " << top << "\n"
                       << "nonplanar_bands " << bands << "\n"
                       << "nonplanar_top_footprint_mm2 " << footprint << "\n";
+            if (! args.json.empty()) {
+                auto &text = record["text_summary"];
+                if (!text.contains("nonplanar_top_patches")) {
+                    text["nonplanar_top_patches"] = text_value(top);
+                    text["nonplanar_bands"] = text_value(bands);
+                    text["nonplanar_top_footprint_mm2"] = text_value(footprint);
+                }
+                for (const auto &diag : conformal.diagnostics)
+                    if (diag.fallback_area > 0. && !text.contains("nonplanar_fallback"))
+                        text["nonplanar_fallback"] = (diag.fallback_reason.empty() ? "untagged" : diag.fallback_reason) +
+                            " " + text_value(diag.fallback_area) + " patch " + text_value(diag.patch_id);
+            }
             for (const Nonplanar::PatchDiagnostics &diag : conformal.diagnostics)
                 if (diag.fallback_area > 0.)
                     std::cout << "nonplanar_fallback " << (diag.fallback_reason.empty() ? "untagged" : diag.fallback_reason) << " "
                               << diag.fallback_area << " patch " << diag.patch_id << "\n";
         }
+        if (! args.json.empty()) {
+            slice_json_results(record, args, print, result, model, config);
+            record["status"] = "sliced";
+            write_slice_json(args.json, record);
+        }
     } catch (const std::exception &e) {
         std::cerr << "error: " << e.what() << "\n";
+        if (! args.json.empty()) {
+            record["status"] = "error";
+            record["totals"]["aborts"].push_back(e.what());
+            record["totals"]["exceptions"].push_back(e.what());
+            try { write_slice_json(args.json, record); }
+            catch (const std::exception &json_error) { std::cerr << "error: " << json_error.what() << "\n"; }
+        }
         return 1;
     }
     return 0;

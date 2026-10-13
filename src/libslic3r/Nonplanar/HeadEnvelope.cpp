@@ -615,6 +615,7 @@ void HeadLibrary::load_locked() const
     if (m_loaded)
         return;
     m_heads.clear();
+    m_sources.clear();
     m_heads.emplace(generic_conservative().id, generic_conservative());
     namespace fs = boost::filesystem;
     for (const std::string &root : { resources_dir(), data_dir() }) {
@@ -637,6 +638,7 @@ void HeadLibrary::load_locked() const
                 ss << in.rdbuf();
                 json_text = ss.str();
                 HeadEnvelope head = load_head_envelope(json_text);
+                m_sources[head.id] = file.string();
                 m_heads[head.id]  = std::move(head);
             } catch (const std::exception &err) {
                 const auto json = nlohmann::json::parse(json_text, nullptr, false);
@@ -645,6 +647,7 @@ void HeadLibrary::load_locked() const
                 if (id.empty())
                     id = file.stem().string();
                 m_heads.erase(id);
+                m_sources.erase(id);
                 BOOST_LOG_TRIVIAL(error) << "Skipping non-planar head " << file.string() << ": " << err.what();
             }
         }
@@ -658,6 +661,14 @@ const HeadEnvelope *HeadLibrary::find(const std::string &id) const
     this->load_locked();
     const auto it = m_heads.find(id);
     return it == m_heads.end() ? nullptr : &it->second;
+}
+
+std::string HeadLibrary::source_path(const std::string &id) const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    this->load_locked();
+    const auto it = m_sources.find(id);
+    return it == m_sources.end() ? std::string() : it->second;
 }
 
 std::vector<std::string> HeadLibrary::ids() const
@@ -707,6 +718,7 @@ void HeadLibrary::save_user_head(const HeadEnvelope &head)
     }
     std::lock_guard<std::mutex> lock(m_mutex);
     m_heads.emplace(head.id, head);
+    m_sources.emplace(head.id, path.string());
 }
 
 const HeadEnvelope &HeadLibrary::generic_conservative()

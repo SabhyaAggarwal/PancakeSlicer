@@ -89,6 +89,7 @@ public:
     static HeadLibrary &instance();
     const HeadEnvelope      *find(const std::string &id) const;
     std::vector<std::string> ids() const;
+    std::string              source_path(const std::string &id) const;
     void                     reload();
     void                     save_user_head(const HeadEnvelope &head);
     static const HeadEnvelope &generic_conservative();
@@ -100,6 +101,7 @@ private:
     mutable std::mutex                          m_mutex;
     mutable bool                                m_loaded = false;
     mutable std::map<std::string, HeadEnvelope> m_heads;
+    mutable std::map<std::string, std::string> m_sources;
 };
 
 HeadEnvelope resolve_head_envelope(const PrintConfig &config, std::string *warning = nullptr);
