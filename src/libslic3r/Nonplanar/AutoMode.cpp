@@ -3,12 +3,14 @@
 #include "ConformalIroning.hpp"
 #include "ConformalShells.hpp"
 #include "HeadEnvelope.hpp"
+#include "PatchTools.hpp"
 
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/Flow.hpp"
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/Print.hpp"
+#include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/libslic3r.h"
 
 #include <boost/log/trivial.hpp>
@@ -123,6 +125,10 @@ AutoObjectSettings auto_object_settings(const PrintObject &object, const PrintRe
     s.min_area  = (10. * w) * (10. * w);
     const double gantry = head.gantry_clearance();
     s.max_patch_height  = std::isfinite(gantry) ? std::max(0., gantry - head.margin) : 0.;
+    if (print_config.nonplanar_kinematics.value != RotaryLayout::None) {
+        const double reach = std::max(shell_height, head_band_height(head) - head.margin);
+        s.max_patch_height = s.max_patch_height > 0. ? std::min(s.max_patch_height, reach) : reach;
+    }
     s.clip_shells      = AutoMinShells;
     s.bottom_shells = std::clamp(int(std::ceil(d / shell_height - 0.15)), AutoMinShells, MaxShells);
     if (is_auto(object.config()) && !object.config().enable_support.value)

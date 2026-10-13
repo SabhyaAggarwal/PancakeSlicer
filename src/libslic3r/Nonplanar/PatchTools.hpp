@@ -30,7 +30,7 @@ class PrintRegionConfig;
 
 namespace Slic3r::Nonplanar {
 
-class HeadEnvelope;
+struct HeadEnvelope;
 struct ConformalPatch;
 enum class PatchKind : unsigned char;
 

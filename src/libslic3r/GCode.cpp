@@ -6932,7 +6932,8 @@ std::string GCode::change_layer(coordf_t print_z)
     }
 
     m_nominal_z = z;
-    m_writer.get_position().z() = tip_z;
+    if (m_writer.tool_kinematics().rotary_count() == 0)
+        m_writer.get_position().z() = tip_z;
     m_conformal_lift = false;
 
     return gcode;
@@ -7624,14 +7625,16 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
         m_writer.add_object_change_labels(gcode);
         auto        printed = [](const Vec3d &p) { return Vec3d((p * 1000.).array().round() / 1000.); };
         const Vec3d d       = printed(hop_to) - printed(m_writer.get_position());
-        const double vz_max = this->conformal_max_speed_z();
-        double       v      = m_config.travel_speed.get_at(get_nozzle_config_index(m_writer.filament()->id()));
-        if (vz_max > 0. && std::abs(d.z()) > EPSILON)
-            v = std::min(v, 0.99 * vz_max * d.norm() / std::abs(d.z()));
-        v = std::min(v, d.norm() * Nonplanar::planner_segment_rate(m_config.nonplanar_segment_rate.value, m_config.gcode_flavor.value,
-                                                                    m_print != nullptr && m_print->is_BBL_printer()));
-        m_writer.set_speed(gcode, v * 60.);
-        m_writer.extrude_to_pose(gcode, ToolPose{ hop_to, Vec3d::UnitZ() }, 0., "hop to conformal path");
+        if (d.norm() > EPSILON) {
+            const double vz_max = this->conformal_max_speed_z();
+            double       v      = m_config.travel_speed.get_at(get_nozzle_config_index(m_writer.filament()->id()));
+            if (vz_max > 0. && std::abs(d.z()) > EPSILON)
+                v = std::min(v, 0.99 * vz_max * d.norm() / std::abs(d.z()));
+            v = std::min(v, d.norm() * Nonplanar::planner_segment_rate(m_config.nonplanar_segment_rate.value, m_config.gcode_flavor.value,
+                                                                        m_print != nullptr && m_print->is_BBL_printer()));
+            m_writer.set_speed(gcode, v * 60.);
+            m_writer.extrude_to_pose(gcode, ToolPose{ hop_to, Vec3d::UnitZ() }, 0., "hop to conformal path");
+        }
         this->set_last_pos(next->first_point());
         m_wipe.reset_path();
         m_conformal_on_bead = false;

@@ -186,17 +186,28 @@ DynamicPrintConfig resolve(PresetBundle &bundle, const Args &a, const char *kind
 std::pair<double, double> max_vz(const GCodeProcessorResult &result, size_t *actual_line = nullptr)
 {
     double commanded = 0., actual = 0.;
+    size_t previous = 0;
     for (size_t i = 1; i < result.moves.size(); ++i) {
-        const auto  &m = result.moves[i];
-        const Vec3d  d = (m.position - result.moves[i - 1].position).cast<double>();
+        const auto &m = result.moves[i];
+        if (m.internal_only)
+            continue;
+        const Vec3d d = m.position.cast<double>() - result.moves[previous].position.cast<double>();
+        const size_t begin = previous + 1;
+        previous = i;
         const double l = d.norm();
         if (l < 1e-6 || (m.type != EMoveType::Extrude && m.type != EMoveType::Travel))
             continue;
-        commanded = std::max(commanded, std::abs(d.z()) / l * m.feedrate);
-        if (const double v = std::abs(d.z()) / l * m.actual_feedrate; v > actual) {
-            actual = v;
-            if (actual_line)
-                *actual_line = m.gcode_id;
+        const double z_fraction = std::abs(d.z()) / l;
+        commanded = std::max(commanded, z_fraction * m.feedrate);
+        for (size_t j = begin; j <= i; ++j) {
+            const auto &sample = result.moves[j];
+            if (sample.gcode_id != m.gcode_id)
+                continue;
+            if (const double v = z_fraction * sample.actual_feedrate; v > actual) {
+                actual = v;
+                if (actual_line)
+                    *actual_line = m.gcode_id;
+            }
         }
     }
     return { commanded, actual };

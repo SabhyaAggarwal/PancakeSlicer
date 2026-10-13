@@ -262,6 +262,7 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
 
     double volume = 0.;
     char   buf[64];
+    float last_vertical_height = -1.f;
     bool   speed_block_open = ! params.speed_marker.empty();
     for (size_t i = 0; i + 1 < points.size(); ++i) {
         double                speed = speeds[i];
@@ -281,6 +282,13 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
         if (std::abs(height - last_height) > TagStep) {
             last_height = height;
             std::snprintf(buf, sizeof(buf), ";%s%g\n", GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Height).c_str(), last_height);
+            out += buf;
+        }
+        const float vertical_height = a.vertical_height > 0.f && b.vertical_height > 0.f ?
+                                          0.5f * (a.vertical_height + b.vertical_height) : 0.f;
+        if (rotary && std::abs(vertical_height - last_vertical_height) > TagStep) {
+            last_vertical_height = vertical_height;
+            std::snprintf(buf, sizeof(buf), ";_NONPLANAR_VERTICAL_HEIGHT:%g\n", vertical_height);
             out += buf;
         }
         if (params.pressure_advance != nullptr && !glide(i))
@@ -403,15 +411,17 @@ bool emit_conformal_wipe(GCodeWriter &writer, const std::vector<ConformalPoint> 
     route.swap(kept);
     if (route.size() < 2)
         return false;
+    const bool rotary = writer.tool_kinematics().rotary_count() > 0;
     length = 0.;
     for (size_t i = 0; i + 1 < route.size(); ++i)
-        length += (route[i + 1].pose.tip - route[i].pose.tip).norm();
-    const bool rotary = writer.tool_kinematics().rotary_count() > 0;
+        length += rotary ? (route[i + 1].pose.tip - route[i].pose.tip).norm() : printed_length(route[i].pose.tip, route[i + 1].pose.tip);
+    if (length < ConformalMinSegment)
+        return false;
     out += ";" + GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Wipe_Start) + "\n";
     for (size_t i = 0; i + 1 < route.size(); ++i) {
         const Vec3d  d = Vec3d((route[i + 1].pose.tip * 1000.).array().round() / 1000.) -
                          Vec3d((route[i].pose.tip * 1000.).array().round() / 1000.);
-        const double l = (route[i + 1].pose.tip - route[i].pose.tip).norm();
+        const double l = rotary ? (route[i + 1].pose.tip - route[i].pose.tip).norm() : d.norm();
         if (l < EPSILON)
             continue;
         double v = rotary ? params.speed : axis_limited_speed(route[i].pose.tip, route[i + 1].pose.tip, params.speed, params.limits);

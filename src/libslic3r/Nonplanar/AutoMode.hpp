@@ -12,7 +12,7 @@ class PrintRegion;
 namespace Slic3r::Nonplanar {
 
 struct ConformalPatch;
-class HeadEnvelope;
+struct HeadEnvelope;
 
 constexpr int AutoMinShells = 2;
 

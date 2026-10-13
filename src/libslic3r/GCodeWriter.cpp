@@ -1024,6 +1024,8 @@ std::string GCodeWriter::_travel_to_z(double z, const std::string &comment, doub
         speed = std::min(speed, max_speed);
     if (m_z_travel_cap > 0.)
         speed = std::min(speed, m_z_travel_cap);
+    if (this->tool_kinematics().rotary_count() > 0 && m_max_joint_speed[2] > 0.)
+        speed = std::min(speed, m_max_joint_speed[2]);
 
     GCodeG1Formatter w;
     if (has_axis_remap()) {
@@ -1303,16 +1305,32 @@ void GCodeWriter::pose_move(std::string &out, const ToolPose &pose, double dE, c
     const ToolKinematics &kin = this->tool_kinematics();
     if (kin.rotary_count() == 0) {
         assert(pose.axis.z() > 1. - 1e-6);
+        double feed = travel ? (speed > 0. ? speed : this->config.travel_speed.get_at(m_cached_extruder_idx)) : m_current_speed / 60.;
+        if (travel || dE == 0.) {
+            if (m_is_bbl_printers)
+                for (int i = 0; i < 2; ++i)
+                    if (m_max_joint_speed[i] > 0.)
+                        feed = std::min(feed, m_max_joint_speed[i]);
+            Vec3d delta;
+            for (int i = 0; i < 3; ++i)
+                delta[i] = GCodeG1Formatter::quantize_xyzf(pose.tip[i]) - GCodeG1Formatter::quantize_xyzf(m_pos[i]);
+            const double length = delta.norm();
+            for (int i = 0; i < 3; ++i)
+                if (m_max_joint_speed[i] > 0. && std::abs(delta[i]) > EPSILON)
+                    feed = std::min(feed, m_max_joint_speed[i] * length / std::abs(delta[i]));
+        }
         if (travel) {
             GCodeG1Formatter w;
             w.emit_xyz(apply_axis_remap(Vec3d(pose.tip.x() - m_x_offset, pose.tip.y() - m_y_offset, pose.tip.z())));
-            w.emit_f((speed > 0. ? speed : this->config.travel_speed.get_at(m_cached_extruder_idx)) * 60.);
+            w.emit_f(feed * 60.);
             w.emit_comment(GCodeWriter::full_gcode_comment, comment);
             w.append_to(out);
             m_pos    = pose.tip;
             m_lifted = 0.;
             this->set_current_position_clear(true);
         } else {
+            if (dE == 0. && feed * 60. < m_current_speed)
+                this->set_speed(out, feed * 60.);
             this->extrude_to_xyz(out, pose.tip, dE, comment);
         }
         return;
