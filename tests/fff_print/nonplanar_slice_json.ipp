@@ -144,7 +144,22 @@ void slice_json_record(Json &record, const Args &args)
               {"tool", Json::object()}, {"text_summary", Json::object()}};
     auto &meshes = record["inputs"]["meshes"];
     meshes = Json::array();
-    meshes.push_back({{"file", args.model}, {"sha1", nullptr}});
+    if (args.plate.empty()) {
+        meshes.push_back({{"file", args.model}, {"sha1", nullptr}});
+    } else {
+        record["inputs"]["plate"] = {{"file", args.plate}, {"sha1", file_sha1(args.plate)}};
+        boost::nowide::ifstream in(args.plate);
+        if (!in) throw std::runtime_error("cannot read plate " + args.plate);
+        const Json layout = Json::parse(in);
+        const fs::path base = fs::path(args.plate).parent_path();
+        for (const Json &entry : layout.at("objects")) {
+            fs::path file = entry.at("file").get<std::string>();
+            if (file.is_relative()) file = base / file;
+            Json mesh = {{"file", file.string()}, {"sha1", file_sha1(file.string())}};
+            if (entry.contains("extruder")) mesh["extruder"] = entry.at("extruder");
+            meshes.push_back(std::move(mesh));
+        }
+    }
     for (const auto &part : args.parts)
         meshes.push_back({{"file", part.first}, {"sha1", nullptr}, {"extruder", part.second}});
     for (auto &mesh : meshes) mesh["sha1"] = file_sha1(mesh["file"].get<std::string>());

@@ -18,6 +18,7 @@
 #include "libslic3r/GCode/ToolKinematics.hpp"
 #include "libslic3r/GCode/WipeTower.hpp"
 #include "libslic3r/GCode/WipeTowerEstimate.hpp"
+#include "libslic3r/Geometry.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Nonplanar/ConformalShells.hpp"
 #include "libslic3r/Nonplanar/FlowMod.hpp"
@@ -72,7 +73,7 @@ struct Args
 {
     std::string profiles = std::string(PROFILES_DIR);
     std::string vendor   = "Prusa";
-    std::string printer, process, datadir, output, model, config_out, paint, gcode_3mf, json;
+    std::string printer, process, datadir, output, model, config_out, paint, gcode_3mf, json, plate;
     std::vector<std::string> filaments, colours;
     std::vector<std::pair<std::string, int>> parts;
     std::vector<std::pair<std::string, std::string>> overrides;
@@ -86,7 +87,8 @@ struct Args
     std::cerr << "error: " << error << "\n"
               << "usage: nonplanar_slice_tool --printer NAME --process NAME --filament NAME [--vendor Prusa]\n"
                  "       [--profiles DIR] [--datadir DIR] [--set key=value]... [--center X,Y]\n"
-                 "       [--config-out FILE] [--gcode-3mf FILE] [--verify] -o OUT.gcode MODEL\n";
+                 "       [--config-out FILE] [--gcode-3mf FILE] [--json FILE] [--verify]\n"
+                 "       -o OUT.gcode (MODEL | --plate PLATE.json)\n";
     std::exit(2);
 }
 
@@ -123,6 +125,7 @@ Args parse_args(int argc, char **argv)
         else if (arg == "--config-out") a.config_out = next();
         else if (arg == "--gcode-3mf") a.gcode_3mf = next();
         else if (arg == "--json") a.json = next();
+        else if (arg == "--plate") a.plate = next();
         else if (arg == "--verify") a.verify = true;
         else if (arg == "-o" || arg == "--output") a.output = next();
         else if (arg == "--set") {
@@ -141,8 +144,8 @@ Args parse_args(int argc, char **argv)
         else
             a.model = arg;
     }
-    if (a.printer.empty() || a.process.empty() || a.filaments.empty() || a.output.empty() || a.model.empty())
-        usage("--printer, --process, --filament, -o and a model are required");
+    if (a.printer.empty() || a.process.empty() || a.filaments.empty() || a.output.empty() || a.model.empty() == a.plate.empty())
+        usage("--printer, --process, --filament, -o and a model or --plate are required");
     return a;
 }
 
@@ -494,6 +497,46 @@ void place_wipe_tower(DynamicPrintConfig &config, const Model &model, size_t fil
     config.option<ConfigOptionFloats>("wipe_tower_y", true)->values = { y + move.y() };
 }
 
+Model load_plate(const std::string &path)
+{
+    boost::nowide::ifstream in(path);
+    const nlohmann::json    j = nlohmann::json::parse(in);
+    const fs::path          dir = fs::path(path).parent_path();
+    Model                   model;
+    std::map<std::string, Model> loaded;
+    for (const nlohmann::json &entry : j.at("objects")) {
+        fs::path file = entry.at("file").get<std::string>();
+        if (file.is_relative())
+            file = dir / file;
+        auto it = loaded.find(file.string());
+        if (it == loaded.end())
+            it = loaded.emplace(file.string(), Model::read_from_file(file.string(), nullptr, nullptr,
+                                                                      LoadStrategy::LoadModel | LoadStrategy::AddDefaultInstances)).first;
+        if (it->second.objects.empty())
+            throw std::runtime_error("no objects in " + file.string());
+        ModelObject *object = model.add_object(*it->second.objects.front());
+        object->name = entry.value("name", file.stem().string());
+        object->clear_instances();
+        if (const int extruder = entry.value("extruder", 0); extruder > 0)
+            object->config.set("extruder", extruder);
+        const nlohmann::json places = entry.contains("instances") ? entry.at("instances") : nlohmann::json::array({ entry });
+        for (const nlohmann::json &place : places) {
+            ModelInstance *instance = object->add_instance();
+            instance->set_rotation(Vec3d(0., 0., Geometry::deg2rad(place.value("rot", 0.))));
+        }
+        object->ensure_on_bed();
+        for (size_t i = 0; i < places.size(); ++i) {
+            const BoundingBoxf3 box = object->instance_bounding_box(i, true);
+            object->instances[i]->set_offset(object->instances[i]->get_offset() +
+                                             Vec3d(places[i].at("x").get<double>() - box.center().x(),
+                                                   places[i].at("y").get<double>() - box.center().y(), 0.));
+        }
+    }
+    if (model.objects.empty())
+        throw std::runtime_error("no objects in " + path);
+    return model;
+}
+
 }
 
 #include "nonplanar_slice_json.ipp"
@@ -524,18 +567,22 @@ int main(int argc, char **argv)
         if (! args.config_out.empty())
             config.save(args.config_out);
 
-        Model model = Model::read_from_file(args.model, nullptr, nullptr, LoadStrategy::LoadModel | LoadStrategy::AddDefaultInstances);
+        Model model = args.plate.empty() ?
+            Model::read_from_file(args.model, nullptr, nullptr, LoadStrategy::LoadModel | LoadStrategy::AddDefaultInstances) :
+            load_plate(args.plate);
         if (model.objects.empty())
             throw std::runtime_error("no objects in " + args.model);
         apply_multi_material(args, model);
-        Vec2d center = args.center;
-        if (! args.center_set) {
-            const BoundingBoxf bed(config.opt<ConfigOptionPoints>("printable_area")->values);
-            center = bed.center();
+        if (args.plate.empty()) {
+            Vec2d center = args.center;
+            if (! args.center_set) {
+                const BoundingBoxf bed(config.opt<ConfigOptionPoints>("printable_area")->values);
+                center = bed.center();
+            }
+            for (ModelObject *object : model.objects)
+                object->ensure_on_bed();
+            model.center_instances_around_point(center);
         }
-        for (ModelObject *object : model.objects)
-            object->ensure_on_bed();
-        model.center_instances_around_point(center);
         if (std::none_of(args.overrides.begin(), args.overrides.end(), [](const auto &kv) { return kv.first.rfind("wipe_tower_", 0) == 0; }))
             place_wipe_tower(config, model, args.filaments.size());
 
@@ -721,7 +768,8 @@ int main(int argc, char **argv)
                     bands     = std::max(bands, size_t(patch.band + 1));
                     footprint += area(patch.footprint) * SCALING_FACTOR * SCALING_FACTOR;
                 }
-            std::cout << "nonplanar_top_patches " << top << "\n"
+            std::cout << "nonplanar_object " << object->model_object()->name << "\n"
+                      << "nonplanar_top_patches " << top << "\n"
                       << "nonplanar_bands " << bands << "\n"
                       << "nonplanar_top_footprint_mm2 " << footprint << "\n";
             if (! args.json.empty()) {

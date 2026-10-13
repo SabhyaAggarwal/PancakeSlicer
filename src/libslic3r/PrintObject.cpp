@@ -772,7 +772,8 @@ TriangleMesh PrintObject::object_frame_mesh(double &ground_offset) const
 
 bool PrintObject::has_conformal_support() const
 {
-    return m_conformal && std::any_of(m_conformal->patches.begin(), m_conformal->patches.end(), [](const Nonplanar::ConformalPatch &patch) {
+    const Nonplanar::ConformalResult &conformal = this->conformal();
+    return std::any_of(conformal.patches.begin(), conformal.patches.end(), [](const Nonplanar::ConformalPatch &patch) {
                return patch.kind == Nonplanar::PatchKind::SupportInterface;
            });
 }
@@ -780,6 +781,8 @@ bool PrintObject::has_conformal_support() const
 const Nonplanar::ConformalResult& PrintObject::conformal() const
 {
     static const Nonplanar::ConformalResult empty;
+    if (!m_conformal && m_shared_object != nullptr)
+        return m_shared_object->conformal();
     return m_conformal ? *m_conformal : empty;
 }
 

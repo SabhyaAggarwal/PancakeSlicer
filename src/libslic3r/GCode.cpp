@@ -7357,7 +7357,7 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
         const std::vector<int> &patch_ids = before ? layer->conformal_patches_before : layer->conformal_patches_after;
         if (patch_ids.empty())
             continue;
-        const PrintObject                &object    = *layer->object();
+        const PrintObject                &object    = layer_to_print.original_object != nullptr ? *layer_to_print.original_object : *layer->object();
         const Nonplanar::ConformalResult &conformal = object.conformal();
         const size_t i_begin = single_object_instance_idx == size_t(-1) ? 0 : single_object_instance_idx;
         const size_t i_end   = single_object_instance_idx == size_t(-1) ? object.instances().size() : single_object_instance_idx + 1;
