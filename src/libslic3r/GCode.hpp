@@ -680,6 +680,7 @@ protected:
     bool m_conformal_lift { false };
     std::vector<Nonplanar::ConformalPoint> m_conformal_points;
     const Nonplanar::HeightField          *m_conformal_surface{ nullptr };
+    double                                 m_conformal_tolerance{ 0. };
     std::function<Vec2d(const Vec2d &)>    m_conformal_gradient;
     int                                    m_conformal_band_patch{ -1 };
     const ExtrusionPathConformal          *m_conformal_prev{ nullptr };

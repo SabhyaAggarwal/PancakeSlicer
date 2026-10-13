@@ -7485,6 +7485,7 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                 m_conformal_band_patch = patch.band >= 0 ? patch.id : -1;
                 m_conformal_prev       = nullptr;
                 m_conformal_surface    = patch.kind == Nonplanar::PatchKind::Top && !patch.surface.empty() ? &patch.surface : nullptr;
+                m_conformal_tolerance  = patch.automatic ? patch.automatic->max_error : m_config.nonplanar_max_surface_error.value;
                 if (! order.empty()) {
                     if (Point lid; !(m_config.spiral_mode && Nonplanar::lid_start(object, lid)))
                         gcode += this->retract();
@@ -7582,11 +7583,17 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
         return Vec3d(xy.x(), xy.y(), m_nominal_z + unscale<double>(p.z()));
     });
     this->ensure_material_columns(path);
+    const bool finish = path.role() == erTopSolidInfill || path.role() == erIroning || path.role() == erExternalPerimeter;
     if (rotary && surface_gradient) {
         MinimalTiltParams tilt;
-        tilt.slope_limit = this->nonplanar_head().slope_map(72, path.height);
+        tilt.slope_limit = finish ? this->nonplanar_head().slope_map(72, path.height) : std::vector<double>(72, 0.5 * M_PI);
         tilt.max_rate      = 10. * M_PI / 180.;
-        tilt.max_residual  = 10. * M_PI / 180.;
+        tilt.max_residual = 10. * M_PI / 180.;
+        if (finish) {
+            const double tolerance = m_conformal_tolerance > 0. ? m_conformal_tolerance : 0.05;
+            tilt.residual_from = std::asin(std::min(1., 2. * tolerance / std::max(double(path.width), EPSILON)));
+        } else
+            tilt.residual_from = std::atan(2. * path.height / std::max(double(path.width), EPSILON));
         tilt.clearance_margin = this->nonplanar_head().margin;
         if (m_material_columns)
             tilt.clearance = [this](const Vec3d &tip, const Vec3d &axis) {

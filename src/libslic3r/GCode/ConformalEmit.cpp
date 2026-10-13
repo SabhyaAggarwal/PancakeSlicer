@@ -578,7 +578,7 @@ void apply_minimal_tilt(std::vector<ConformalPoint> &points, const std::function
     if (points.empty() || kinematics.rotary_count() == 0)
         return;
 
-    const TiltBudget   budget(kinematics, params.slope_limit, params.margin, params.max_tilt, params.max_residual);
+    const TiltBudget   budget(kinematics, params.slope_limit, params.margin, params.max_tilt, params.max_residual, params.residual_from);
     const size_t       n = points.size();
     std::vector<Vec3d> normals(n), axes(n);
     for (size_t i = 0; i < n; ++i) {

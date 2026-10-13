@@ -131,6 +131,7 @@ struct MinimalTiltParams
     double              max_rate  = 0.;
     double              max_tilt  = 0.5 * M_PI;
     double              max_residual = 0.5 * M_PI;
+    double              residual_from = 0.;
     std::function<double(const Vec3d &tip, const Vec3d &axis)> clearance;
     double              clearance_margin = 0.;
 };

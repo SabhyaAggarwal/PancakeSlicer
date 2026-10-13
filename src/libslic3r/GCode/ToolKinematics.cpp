@@ -135,7 +135,6 @@ bool RotaryKinematics::inverse(const ToolPose &pose, const JointPose *prev, Join
                 }
             }
         }
-        const bool flips = free >= 0 && std::abs(from_kin[1 - free]) > 1e-9 && kin[1 - free] * from_kin[1 - free] < 0.;
         for (double m0 : options[0])
             for (double m1 : options[1]) {
                 const std::array<double, 2> m { m0, m1 };
@@ -146,7 +145,7 @@ bool RotaryKinematics::inverse(const ToolPose &pose, const JointPose *prev, Join
                     worst              = std::max(worst, t);
                     sum += t;
                 }
-                const double cost = (flips ? 1e6 : 0.) + worst + 1e-3 * sum;
+                const double cost = worst + 1e-3 * sum;
                 if (cost < best_cost) {
                     best_cost = cost;
                     best_rot  = m;
