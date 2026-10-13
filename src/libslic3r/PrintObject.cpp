@@ -767,6 +767,12 @@ void PrintObject::nonplanar_shells()
         }
         m_conformal.reset();
     }
+    if (!m_config.nonplanar_atom_toolpath.value.empty()) {
+        m_conformal = std::make_unique<Nonplanar::ConformalResult>();
+        m_print->set_status(40, L("Importing the Atomizer toolpath"));
+        for (const std::string &warning : Nonplanar::apply_atom_toolpath(*this, *m_conformal))
+            this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, warning);
+    }
     m_print->throw_if_canceled();
     this->set_done(posNonplanar);
 }
@@ -1662,6 +1668,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "nonplanar_flow_mod"
             || opt_key == "nonplanar_adaptive_bands"
             || opt_key == "nonplanar_infill_depth"
+            || opt_key == "nonplanar_strength_roads"
             || opt_key == "nonplanar_ironing"
             || opt_key == "nonplanar_overhangs"
             || opt_key == "nonplanar_bridges"

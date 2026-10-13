@@ -94,7 +94,7 @@ struct Args
     std::cerr << "error: " << error << "\n"
               << "usage: nonplanar_slice_tool --printer NAME --process NAME --filament NAME [--vendor Prusa]\n"
                  "       [--profiles DIR] [--datadir DIR] [--set key=value]... [--center X,Y]\n"
-                 "       [--config-out FILE] [--gcode-3mf FILE] [--json FILE] [--verify] [--auto-orient | --orient-only]\n"
+                 "       [--config-out FILE] [--gcode-3mf FILE] [--json FILE] [--atom TOOLPATH] [--verify] [--auto-orient | --orient-only]\n"
                  "       -o OUT.gcode (MODEL | --plate PLATE.json)\n";
     std::exit(2);
 }
@@ -132,6 +132,12 @@ Args parse_args(int argc, char **argv)
         else if (arg == "--datadir") a.datadir = next();
         else if (arg == "--config-out") a.config_out = next();
         else if (arg == "--gcode-3mf") a.gcode_3mf = next();
+        else if (arg == "--atom") {
+            const std::string path = next();
+            if (path.empty())
+                usage("--atom needs a nonempty toolpath filename");
+            a.overrides.emplace_back("nonplanar_atom_toolpath", path);
+        }
         else if (arg == "--json") a.json = next();
         else if (arg == "--plate") a.plate = next();
         else if (arg == "--verify") a.verify = true;
@@ -796,6 +802,9 @@ int main(int argc, char **argv)
             const std::string file = Nonplanar::HeadLibrary::instance().source_path(head.id);
             record["inputs"]["mode"] = config.opt_serialize("nonplanar_mode");
             record["inputs"]["zaa_enabled"] = config.opt_bool("zaa_enabled");
+            const std::string atom = config.opt_string("nonplanar_atom_toolpath");
+            record["inputs"]["atom_toolpath"] = atom.empty() ? nlohmann::json(nullptr) :
+                nlohmann::json{{"file", atom}, {"sha1", file_sha1(atom)}};
             record["inputs"]["head"] = {{"id", head.id}, {"file", file}, {"sha1", file.empty() ? nlohmann::json(nullptr) : nlohmann::json(file_sha1(file))}};
         }
 

@@ -1277,6 +1277,18 @@ JointPose GCodeWriter::get_joints() const
     return joints;
 }
 
+void GCodeWriter::set_joint_position(const JointPose &joints)
+{
+    const ToolPose pose = this->tool_kinematics().forward(joints);
+    m_joints = joints;
+    m_joints_valid = true;
+    m_rotary_written = false;
+    m_pos = pose.tip + Vec3d(m_x_offset, m_y_offset, 0.);
+    m_tool_axis = pose.axis;
+    m_lifted = m_to_lift = 0.;
+    this->set_current_position_clear(true);
+}
+
 std::string GCodeWriter::end_inverse_time()
 {
     std::string out;
@@ -1464,17 +1476,17 @@ std::string GCodeWriter::_retract(double length, double restart_extra, const std
     if (this->config.use_firmware_retraction)
         length = 1;
 
-    std::string gcode;
+    std::string gcode = m_inverse_time_retractions ? this->end_inverse_time() : std::string();
     if (double dE = filament()->retract(length, restart_extra);  !is_zero(dE)) {
         if (this->config.use_firmware_retraction) {
-            gcode = FLAVOR_IS(gcfMachinekit) ? "G22 ; retract\n" : "G10 ; retract\n";
+            gcode += FLAVOR_IS(gcfMachinekit) ? "G22 ; retract\n" : "G10 ; retract\n";
         }
         else {
             GCodeG1Formatter w;
             w.emit_e(filament()->E());
             w.emit_f(filament()->retract_speed() * 60.);
             w.emit_comment(GCodeWriter::full_gcode_comment, comment);
-            gcode = w.string();
+            gcode += w.string();
         }
     }
 
@@ -1486,10 +1498,10 @@ std::string GCodeWriter::_retract(double length, double restart_extra, const std
 
 std::string GCodeWriter::unretract(float extra_retract)
 {
-    std::string gcode;
+    std::string gcode = m_inverse_time_retractions ? this->end_inverse_time() : std::string();
 
     if (FLAVOR_IS(gcfMakerWare))
-        gcode = "M101 ; extruder on\n";
+        gcode += "M101 ; extruder on\n";
 
     if (double dE = filament()->unretract(); !is_zero(dE)) {
         if (this->config.use_firmware_retraction) {

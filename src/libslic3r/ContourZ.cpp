@@ -236,8 +236,10 @@ static void contour_extrusion_entity(LayerRegion *region, const sla::IndexedMesh
 }
 
 static void handle_extrusion_collection(LayerRegion *region, const sla::IndexedMesh &mesh, ExtrusionEntityCollection &collection,
-                                        std::initializer_list<ExtrusionRole> roles, const ExPolygons &shell_area)
+                                        std::initializer_list<ExtrusionRole> roles, const ExPolygons &shell_area,
+                                        const ExPolygons &covered = {})
 {
+    auto out_of_reach = [&covered](const Polylines &lines) { return !covered.empty() && diff_pl(lines, covered).empty(); };
     ExtrusionEntitiesPtr out;
     out.reserve(collection.entities.size());
     for (ExtrusionEntity *extr : collection.entities) {
@@ -246,7 +248,7 @@ static void handle_extrusion_collection(LayerRegion *region, const sla::IndexedM
             continue;
         }
         if (auto *nested = dynamic_cast<ExtrusionEntityCollection *>(extr)) {
-            handle_extrusion_collection(region, mesh, *nested, roles, shell_area);
+            handle_extrusion_collection(region, mesh, *nested, roles, shell_area, covered);
             if (nested->empty())
                 delete nested;
             else
@@ -254,7 +256,8 @@ static void handle_extrusion_collection(LayerRegion *region, const sla::IndexedM
             continue;
         }
         if (shell_area.empty() || intersection_pl(extr->as_polylines(), shell_area).empty()) {
-            contour_extrusion_entity(region, mesh, extr);
+            if (!out_of_reach(extr->as_polylines()))
+                contour_extrusion_entity(region, mesh, extr);
             out.push_back(extr);
             continue;
         }
@@ -285,7 +288,8 @@ static void handle_extrusion_collection(LayerRegion *region, const sla::IndexedM
                 if (!line.is_valid())
                     continue;
                 auto *piece = new ExtrusionPath(Polyline3(line), path);
-                contour_extrusion_path(region, mesh, *piece);
+                if (!out_of_reach({line}))
+                    contour_extrusion_path(region, mesh, *piece);
                 out.push_back(piece);
             }
         }
@@ -303,6 +307,8 @@ void Layer::make_contour_z(const sla::IndexedMesh &mesh)
 			this->print_z > patch.z_min + EPSILON &&
 			this->print_z <= object.get_layer(int(patch.host_layer))->print_z + EPSILON)
 			append(shell_area, diff_ex(patch.footprint, patch.wall_band));
+	ExPolygons covered;
+	bool       covered_ready = false;
 
 	for (LayerRegion *region : this->regions()) {
         const auto &config = region->region().config();
@@ -312,8 +318,17 @@ void Layer::make_contour_z(const sla::IndexedMesh &mesh)
             if (Nonplanar::top_shells_enabled(config, this->object()->config()) &&
                 Nonplanar::effective_fallback(config, this->object()->config()) == NonplanarFallback::None)
             {
-                handle_extrusion_collection(region, mesh, region->fills, {erTopSolidInfill, erMixed}, shell_area);
-                handle_extrusion_collection(region, mesh, region->perimeters, {erPerimeter, erExternalPerimeter, erMixed}, {});
+                if (!covered_ready) {
+                    covered_ready     = true;
+                    const double reach = this->print_z + PrintRegionConfig::defaults().zaa_min_z.value + 0.03;
+                    const Layer *above = this->upper_layer;
+                    while (above != nullptr && above->slice_z <= reach + EPSILON)
+                        above = above->upper_layer;
+                    if (above != nullptr)
+                        covered = offset_ex(above->lslices, -float(scale_(0.05)));
+                }
+                handle_extrusion_collection(region, mesh, region->fills, {erTopSolidInfill, erMixed}, shell_area, covered);
+                handle_extrusion_collection(region, mesh, region->perimeters, {erPerimeter, erExternalPerimeter, erMixed}, {}, covered);
             }
             continue;
         }

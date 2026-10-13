@@ -592,7 +592,7 @@ bool pass_prints(const ExtrusionEntityCollection &pass)
 {
     return std::any_of(pass.entities.begin(), pass.entities.end(), [](const ExtrusionEntity *ee) {
         const auto *path = dynamic_cast<const ExtrusionPathConformal *>(ee);
-        return path != nullptr && unscale<double>(path->polyline.length()) >= ConformalMinPath;
+        return path != nullptr && (path->preserve_points || unscale<double>(path->polyline.length()) >= ConformalMinPath);
     });
 }
 

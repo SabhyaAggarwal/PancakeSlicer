@@ -731,6 +731,8 @@ void ExtrusionPathConformal::reverse()
 
 void ExtrusionPathConformal::simplify(double tolerance)
 {
+    if (preserve_points)
+        return;
     const Points3 &pts = this->polyline.points;
     if (pts.size() < 3)
         return;

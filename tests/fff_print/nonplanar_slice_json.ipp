@@ -131,7 +131,7 @@ void slice_json_record(Json &record, const Args &args)
 {
     record = {{"schema", "orca.nonplanar_slice.v1"}, {"status", "started"},
               {"inputs", {{"printer", args.printer}, {"process", args.process}, {"filaments", args.filaments},
-                          {"vendor", args.vendor}, {"overrides", args.overrides}, {"mode", nullptr}, {"head", nullptr},
+                          {"vendor", args.vendor}, {"overrides", args.overrides}, {"mode", nullptr}, {"head", nullptr}, {"atom_toolpath", nullptr},
                           {"source_sha", git_sha("HEAD")}, {"trunk_sha", git_sha("refs/heads/nonplanar")}}},
               {"results", {{"patches", Json::array()}}}, {"objects", Json::array()},
               {"totals", {{"whole_top_rms_mm", nullptr}, {"zaa_rms_mm", nullptr}, {"planar_rms_mm", nullptr},

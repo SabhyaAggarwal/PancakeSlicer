@@ -278,9 +278,10 @@ ExtrusionEntityCollection atom_conformal_paths(const AtomToolpath &toolpath, con
     out.no_sort = true;
     const std::vector<AtomPoint> &pts = toolpath.points;
 
-    Points3            poly;
-    std::vector<float> heights;
-    std::vector<Vec3f> axes;
+    Points3            poly, entry;
+    std::vector<AtomPoint> pending_travel;
+    std::vector<float> heights, widths;
+    std::vector<Vec3f> axes, entry_axes;
     double             width = 0.;
     auto add_point = [&](const AtomPoint &p, double height) {
         const Vec3d   tip  = placement.rotation * p.tip + placement.offset;
@@ -289,38 +290,62 @@ ExtrusionEntityCollection atom_conformal_paths(const AtomToolpath &toolpath, con
         if (!scaled.allFinite() || scaled.cwiseAbs().maxCoeff() >= 0.5 * double(std::numeric_limits<coord_t>::max()))
             fail("the placed toolpath exceeds the coordinate range; check its coordinates and units");
         const Point3  q(scale_(tip.x()), scale_(tip.y()), scale_(tip.z() - host_z));
-        if (! poly.empty() && poly.back() == q && (axes.empty() || (axes.back().cast<double>() - axis).norm() < 1e-9))
+        if (! poly.empty() && poly.back() == q && (axes.empty() || (axes.back().cast<double>() - axis).norm() < 1e-9)) {
+            heights.back() = float(height);
+            widths.back() = float(p.width > 0. ? p.width : width);
             return;
+        }
         if (! keep_tool_axis && tilt(axis) > UprightTolerance)
             fail((boost::format("the tool tilts by %1$.1f degrees, but this printer has no rotary axes. "
                                 "Run AtomSlicer with -U -t 0 -b 0 for a three-axis printer.") % Geometry::rad2deg(tilt(axis))).str());
         poly.push_back(q);
         heights.push_back(float(height));
+        widths.push_back(float(p.width > 0. ? p.width : width));
         if (keep_tool_axis)
             axes.push_back(axis.cast<float>());
     };
     auto flush = [&]() {
         if (poly.size() >= 2) {
             const double h = *std::max_element(heights.begin(), heights.end());
+            width = *std::max_element(widths.begin(), widths.end());
             ExtrusionPath tmpl(role, bead_area(width, h), float(width), float(h));
             auto *path     = new ExtrusionPathConformal(Polyline3(poly), tmpl, std::move(heights), std::move(axes));
+            path->bead_width = std::move(widths);
+            path->preserve_points = true;
+            path->entry_travel = Polyline3(std::move(entry));
+            path->entry_tool_axis = std::move(entry_axes);
+            path->set_reverse();
             path->patch_id = patch_id;
             path->shell    = shell;
             out.entities.push_back(path);
         }
         poly.clear();
         heights.clear();
+        widths.clear();
         axes.clear();
+        entry.clear();
+        entry_axes.clear();
     };
 
     for (size_t i = 1; i < pts.size(); ++i) {
         if (! pts[i].deposit) {
             flush();
+            if (pending_travel.empty())
+                pending_travel.push_back(pts[i - 1]);
+            pending_travel.push_back(pts[i]);
             continue;
         }
-        if (! poly.empty() && std::abs(pts[i].width - width) > 1e-4)
-            flush();
         if (poly.empty()) {
+            for (const AtomPoint &p : pending_travel) {
+                const Vec3d tip = placement.rotation * p.tip + placement.offset;
+                const Vec3d axis = (placement.rotation * p.axis).normalized();
+                if (!keep_tool_axis && tilt(axis) > UprightTolerance)
+                    fail("a travel tilts the tool, but this printer has no rotary axes");
+                entry.emplace_back(scale_(tip.x()), scale_(tip.y()), scale_(tip.z() - host_z));
+                if (keep_tool_axis)
+                    entry_axes.push_back(axis.cast<float>());
+            }
+            pending_travel.clear();
             width = pts[i].width;
             add_point(pts[i - 1], pts[i - 1].height > 0. ? pts[i - 1].height : pts[i].height);
         }
@@ -365,9 +390,10 @@ std::vector<std::string> apply_atom_toolpath(PrintObject &object, ConformalResul
     const std::string &filename = object.config().nonplanar_atom_toolpath.value;
     const AtomToolpath toolpath = load_atom_toolpath(filename, width, height);
     const bool         rotary   = object.print()->config().nonplanar_kinematics.value != RotaryLayout::None;
-    if (! rotary && toolpath.max_tilt() > UprightTolerance)
+    const double       max_tilt = toolpath.max_tilt();
+    if (! rotary && max_tilt > UprightTolerance)
         fail((boost::format("%1% tilts the tool by up to %2$.1f degrees, but this printer has no rotary axes. "
-                            "Run AtomSlicer with -U -t 0 -b 0 for a three-axis printer.") % filename % Geometry::rad2deg(toolpath.max_tilt())).str());
+                            "Run AtomSlicer with -U -t 0 -b 0 for a three-axis printer.") % filename % Geometry::rad2deg(max_tilt)).str());
 
     const AtomPlacement placement = atom_placement(object, toolpath);
     {
@@ -392,27 +418,54 @@ std::vector<std::string> apply_atom_toolpath(PrintObject &object, ConformalResul
         layer->conformal_covered = true;
     }
 
-    const size_t   host = layers.size() - 1;
-    ConformalPatch patch;
-    patch.id           = 0;
-    patch.kind         = PatchKind::Top;
-    patch.shells       = 1;
-    patch.shell_height = height;
-    patch.host_layer   = host;
-    patch.region_id    = 0;
-    patch.shell_paths.push_back(atom_conformal_paths(toolpath, placement, layers[host]->print_z, erSolidInfill, rotary, patch.id, 0));
-    const BoundingBoxf3 source = toolpath.deposition_bbox();
-    patch.z_min = source.min.z() + placement.offset.z();
-    patch.z_max = source.max.z() + placement.offset.z();
-
+    ExtrusionEntityCollection paths = atom_conformal_paths(toolpath, placement, 0., erSolidInfill, rotary);
     result = ConformalResult();
     result.planar_exclusion.assign(layers.size(), ExPolygons());
-    result.patches.push_back(std::move(patch));
-    PatchDiagnostics diag;
-    diag.patch_id      = 0;
-    diag.max_slope_deg = Geometry::rad2deg(toolpath.max_tilt());
-    result.diagnostics.push_back(diag);
-    layers[host]->conformal_patches_after.push_back(0);
+    size_t host = 0;
+    for (ExtrusionEntity *&entity : paths.entities) {
+        auto &path = static_cast<ExtrusionPathConformal &>(*entity);
+        double low = std::numeric_limits<double>::infinity(), high = -low;
+        for (const Point3 &point : path.polyline.points) {
+            low = std::min(low, unscale<double>(point.z()));
+            high = std::max(high, unscale<double>(point.z()));
+        }
+        while (host + 1 < layers.size() && layers[host]->print_z < high - 0.001)
+            ++host;
+        if (result.patches.empty() || result.patches.back().host_layer != host) {
+            ConformalPatch patch;
+            patch.id = int(result.patches.size());
+            patch.kind = PatchKind::Top;
+            patch.shells = 1;
+            patch.shell_height = height;
+            patch.host_layer = host;
+            patch.region_id = 0;
+            patch.z_min = low;
+            patch.z_max = high;
+            patch.shell_paths.emplace_back();
+            patch.shell_paths.back().no_sort = true;
+            layers[host]->conformal_patches_after.push_back(patch.id);
+            result.patches.push_back(std::move(patch));
+        }
+        ConformalPatch &patch = result.patches.back();
+        patch.z_min = std::min(patch.z_min, low);
+        patch.z_max = std::max(patch.z_max, high);
+        path.patch_id = patch.id;
+        path.shell = 0;
+        const coord_t z = scale_(layers[host]->print_z);
+        for (Point3 &point : path.polyline.points)
+            point.z() -= z;
+        for (Point3 &point : path.entry_travel.points)
+            point.z() -= z;
+        patch.shell_paths.front().entities.push_back(entity);
+        entity = nullptr;
+    }
+    paths.entities.clear();
+    for (const ConformalPatch &patch : result.patches) {
+        PatchDiagnostics diag;
+        diag.patch_id = patch.id;
+        diag.max_slope_deg = Geometry::rad2deg(max_tilt);
+        result.diagnostics.push_back(diag);
+    }
     return warnings;
 }
 

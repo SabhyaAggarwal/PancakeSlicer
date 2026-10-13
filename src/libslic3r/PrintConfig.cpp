@@ -5150,6 +5150,17 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(2.));
 
+    def = this->add("nonplanar_strength_roads", coBool);
+    def->label    = L("Non-planar strength roads");
+    def->category = L("Strength");
+    def->tooltip  = L("Lay the hidden curved layers for strength: their infill runs along and across the direction "
+                      "that carries the load (the direction in which the surface curves least, else the part's long "
+                      "axis), alternating by 90 degrees from layer to layer, and each curved layer under the top "
+                      "shells gets a curved wall along its edge instead of ending against the flat layers. The "
+                      "visible top shell keeps its own pattern.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(true));
+
     def = this->add("nonplanar_ironing", coBool);
     def->label    = L("Non-planar ironing");
     def->category = L("Quality");

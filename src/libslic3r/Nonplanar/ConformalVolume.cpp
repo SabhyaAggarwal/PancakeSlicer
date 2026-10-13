@@ -7,6 +7,7 @@
 #include "PatchTools.hpp"
 #include "Seams.hpp"
 #include "ShellPaths.hpp"
+#include "StrengthRoads.hpp"
 #include "SurfaceClip.hpp"
 
 #include "libslic3r/BoundingBox.hpp"
@@ -465,6 +466,8 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
     const double overlap_w = 0.01 * rcfg.top_bottom_infill_wall_overlap.value * solid.width();
     const double density = 0.01 * rcfg.sparse_infill_density.value;
     const bool   surface_spacing = rcfg.nonplanar_surface_spacing.value;
+    const bool          strength       = strength_roads_enabled(rcfg, object.config());
+    const StrengthField strength_field = strength ? StrengthField(object) : StrengthField();
 
     ExPolygons slab_area;
     for (const Slab &slab : slabs)
@@ -557,6 +560,15 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
             std::vector<ShellFill> fills = plan_shell_fills(patch, rcfg, solid.spacing());
             const Point seam = shell_seam(patch.footprint, patch.base, object.config().seam_position.value, unsigned(s));
             const double base_angle = Geometry::deg2rad(rcfg.solid_infill_direction.value);
+            double     principal = 0.;
+            bool ply = strength && strength_field.direction(patch.surface, patch.footprint, principal);
+            if (ply) {
+                auto share = [&](double a) {
+                    return strength_field.aligned_share(patch.surface, patch.footprint, a) +
+                           strength_field.aligned_share(patch.surface, patch.footprint, a + 0.5 * PI);
+                };
+                ply = share(principal) > share(base_angle) + 0.05;
+            }
 
             patch.shell_paths.reserve(size_t(L));
             for (int k = 1; k <= L; ++k) {
@@ -589,6 +601,8 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
                 ExtrusionRole role        = k == L ? erTopSolidInfill : k == 1 && on_air ? erBottomSurface : solid_layer ? erSolidInfill : erInternalInfill;
                 const Flow   &flow        = k == L ? top : solid_layer ? solid : sparse;
                 ShellFill     fill        = fills[size_t(k - 1)];
+                if (ply && solid_layer && k < L && role != erBottomSurface && !fill.spiral)
+                    fill.angle = ply_angle(principal, L - k);
                 std::vector<Polylines> linked;
                 const bool spaced = surface_spacing && solid_layer && !fill.spiral;
                 if (solid_layer)
@@ -596,7 +610,7 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
                                              k == L || role == erBottomSurface, flow, 0., seam, MaxGlide, spaced ? &patch.surface : nullptr);
                 else if (density > EPSILON) {
                     fill        = ShellFill{};
-                    fill.angle  = base_angle + (k % 2) * 0.5 * PI;
+                    fill.angle  = ply ? ply_angle(principal, L - k) : base_angle + (k % 2) * 0.5 * PI;
                     linked = shell_polylines(infill_area, fill, ipRectilinear, flow.spacing() / density, false, flow, 0., seam, MaxGlide);
                 }
                 auto at = [&](const Vec2d &p, double &z, float &bead) {

@@ -113,7 +113,7 @@ void orient_free_roads(std::vector<const ExtrusionPathConformal *> &order, std::
     const coord_t rise = coord_t(scale_(min_rise));
     for (size_t i = 0; i < order.size(); ++i) {
         const ExtrusionPathConformal &path = *order[i];
-        if (path.polyline.points.size() < 2 || !path.tool_axis.empty())
+        if (path.preserve_points || path.polyline.points.size() < 2 || !path.tool_axis.empty())
             continue;
         const Point3 &first = path.polyline.points.front(), &last = path.polyline.points.back();
         const bool joined = (i > 0 && order[i - 1]->polyline.points.back().to_point() == first.to_point()) ||

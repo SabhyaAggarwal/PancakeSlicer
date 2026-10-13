@@ -1442,6 +1442,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionBool,                      nonplanar_flow_mod))
     ((ConfigOptionBool,                      nonplanar_adaptive_bands))
     ((ConfigOptionFloat,                     nonplanar_infill_depth))
+    ((ConfigOptionBool,                      nonplanar_strength_roads))
     ((ConfigOptionBool,                      nonplanar_ironing))
     ((ConfigOptionFloat,                     nonplanar_top_finish_flow))
     ((ConfigOptionBool,                      nonplanar_overhangs))

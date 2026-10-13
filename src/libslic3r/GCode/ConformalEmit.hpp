@@ -63,6 +63,7 @@ struct ConformalEmitParams
     double       e_per_mm3     = 0.;
     MotionLimits limits;
     ConditionParams condition;
+    bool         preserve_points = false;
     std::string  comment;
     std::string  speed_marker;
     std::function<std::vector<double>(const std::vector<ConformalPoint> &)> speed_caps;

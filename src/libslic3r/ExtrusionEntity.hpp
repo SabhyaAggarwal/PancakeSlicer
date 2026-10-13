@@ -353,6 +353,9 @@ public:
     std::vector<float> bead_width;
     int                patch_id = -1;
     int                shell    = -1;
+    bool               preserve_points = false;
+    Polyline3          entry_travel;
+    std::vector<Vec3f> entry_tool_axis;
 
     ExtrusionPathConformal(Polyline3 &&polyline, const ExtrusionPath &rhs,
                            std::vector<float> &&bead_height, std::vector<Vec3f> &&tool_axis = {});

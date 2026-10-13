@@ -71,6 +71,7 @@
 #include <Eigen/Geometry>
 #include <Shiny/ShinyMacros.h>
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/filesystem/operations.hpp>
@@ -3491,6 +3492,13 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
     if (!imex_active_mode_gcode.empty())
         imex_processed_gcode = this->placeholder_parser_process(
             "imex_mode_gcode", imex_active_mode_gcode, initial_extruder_id);
+    const bool imported_rotary = m_writer.tool_kinematics().rotary_count() > 0 &&
+        std::any_of(print.objects().begin(), print.objects().end(), [](const PrintObject *object) {
+            return !object->config().nonplanar_atom_toolpath.value.empty();
+        });
+    m_writer.set_inverse_time_retractions(imported_rotary);
+    if (imported_rotary)
+        file.write("G90\nG21\nG94\n");
     if (!print.config().file_start_gcode.value.empty())
         file.writeln(this->placeholder_parser_process("file_start_gcode", print.config().file_start_gcode.value, initial_extruder_id));
 
@@ -3705,6 +3713,51 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
     print.throw_if_canceled();
 
     file.write(this->preamble());
+
+    if (imported_rotary) {
+        JointPose startup;
+        for (size_t i = 0; i < 2; ++i)
+            startup.rot[i] = print.config().rotary_axis_home.get_at(i);
+        bool relative = false;
+        double units = 1.;
+        GCodeReader reader;
+        reader.parse_buffer(machine_start_gcode, [&](GCodeReader &, const GCodeReader::GCodeLine &line) {
+            if (ascii_iequals(line.cmd(), "G90")) relative = false;
+            else if (ascii_iequals(line.cmd(), "G91")) relative = true;
+            else if (ascii_iequals(line.cmd(), "G20")) units = 25.4;
+            else if (ascii_iequals(line.cmd(), "G21")) units = 1.;
+            else if (ascii_iequals(line.cmd(), "G28")) {
+                std::array<bool, 2> rotary_home{};
+                for (size_t i = 0; i < 2; ++i) {
+                    float v;
+                    rotary_home[i] = line.has_value(m_writer.tool_kinematics().rotary_axes()[i].letter, v);
+                }
+                const bool all = !line.has_x() && !line.has_y() && !line.has_z() && !rotary_home[0] && !rotary_home[1];
+                for (int i = 0; i < 3; ++i)
+                    if (all || line.has(Axis(i))) startup.xyz[i] = 0.;
+                for (size_t i = 0; i < 2; ++i)
+                    if (all || rotary_home[i]) startup.rot[i] = print.config().rotary_axis_home.get_at(i);
+            } else if (ascii_iequals(line.cmd(), "G92") && (line.has_x() || line.has_y() || line.has_z())) {
+                throw SlicingError("Atomizer rotary import: startup must preserve the machine joint datum; G92 may reset E, not XYZ.");
+            } else if (ascii_iequals(line.cmd(), "G0") || ascii_iequals(line.cmd(), "G1")) {
+                for (int i = 0; i < 3; ++i)
+                    if (line.has(Axis(i)))
+                        startup.xyz[i] = (relative ? startup.xyz[i] : 0.) + units * line.value(Axis(i));
+                for (size_t i = 0; i < 2; ++i)
+                    if (float v; line.has_value(m_writer.tool_kinematics().rotary_axes()[i].letter, v))
+                        startup.rot[i] = (relative ? startup.rot[i] : 0.) + v;
+            }
+        });
+        m_writer.set_joint_position(startup);
+        ToolPose safe{ m_writer.get_position(), m_writer.get_tool_axis() };
+        safe.tip.z() = std::max(safe.tip.z(), 5. + m_config.z_offset.value);
+        if (safe.axis.dot(Vec3d::UnitZ()) > 1. - EPSILON)
+            file.write(m_writer.travel_to_z(safe.tip.z(), "clear the plate after rotary startup", true,
+                                           this->conformal_max_speed_z()));
+        else
+            file.write(m_writer.travel_to_pose(safe, "clear the plate after rotary startup"));
+        file.write(m_writer.end_inverse_time());
+    }
 
     DoExport::init_ooze_prevention(print, m_ooze_prevention);
     print.throw_if_canceled();
@@ -6928,6 +6981,12 @@ std::string GCode::change_layer(coordf_t print_z)
 
     m_need_change_layer_lift_z = true;
 
+    if (m_writer.tool_kinematics().rotary_count() > 0 && !m_config.nonplanar_atom_toolpath.value.empty()) {
+        m_nominal_z = z;
+        m_conformal_lift = false;
+        return gcode;
+    }
+
     double tip_z = z;
     if (this->below_conformal_material()) {
         m_wipe.reset_path();
@@ -7403,9 +7462,10 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                 auto         pass   = [&patch](size_t k) -> const ExtrusionEntityCollection & {
                     return k < patch.shell_paths.size() ? patch.shell_paths[k] : patch.ironing;
                 };
-                auto printed = [](const ExtrusionEntity *ee) -> const ExtrusionPathConformal * {
+                const bool imported = !object.config().nonplanar_atom_toolpath.value.empty();
+                auto printed = [imported](const ExtrusionEntity *ee) -> const ExtrusionPathConformal * {
                     const auto *path = dynamic_cast<const ExtrusionPathConformal *>(ee);
-                    return path != nullptr && unscale<double>(path->polyline.length()) >= Nonplanar::ConformalMinPath ? path : nullptr;
+                    return path != nullptr && (imported || unscale<double>(path->polyline.length()) >= Nonplanar::ConformalMinPath) ? path : nullptr;
                 };
                 std::vector<const ExtrusionPathConformal *> order;
                 std::vector<size_t>                         pass_end;
@@ -7536,6 +7596,46 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
 
     m_wipe.reset_path();
 
+    if (!path.entry_travel.points.empty()) {
+        auto pose_at = [this, &path](size_t i) {
+            const Point3 &p = path.entry_travel.points[i];
+            const Vec2d xy = this->point_to_gcode(p.to_point());
+            const Vec3d axis = path.entry_tool_axis.empty() ? Vec3d::UnitZ() :
+                              Vec3d(path.entry_tool_axis[i].cast<double>().normalized());
+            return ToolPose{ Vec3d(xy.x(), xy.y(), m_nominal_z + unscale<double>(p.z())), axis };
+        };
+        gcode += this->conformal_retract();
+        m_writer.add_object_change_labels(gcode);
+        const ToolPose first = pose_at(0);
+        if ((m_writer.get_position() - first.tip).norm() > EPSILON ||
+            (m_writer.get_tool_axis() - first.axis).norm() > EPSILON) {
+            if (rotary)
+                gcode += this->rotary_hop(&first);
+            else
+                gcode += this->surface_travel(first.tip, m_conformal_on_bead, true, false, "join Atomizer travel");
+        }
+        for (size_t i = 1; i < path.entry_travel.points.size(); ++i) {
+            const ToolPose to = pose_at(i);
+            const Vec3d d = Vec3d((to.tip * 1000.).array().round() / 1000.) -
+                            Vec3d((m_writer.get_position() * 1000.).array().round() / 1000.);
+            const double length = d.norm();
+            if (length < EPSILON && (m_writer.get_tool_axis() - to.axis).norm() < EPSILON)
+                continue;
+            double speed = m_config.travel_speed.get_at(get_nozzle_config_index(m_writer.filament()->id()));
+            if (!rotary && length > EPSILON) {
+                const Vec3d limits(m_config.machine_max_speed_x.get_at(0), m_config.machine_max_speed_y.get_at(0),
+                                   this->conformal_max_speed_z());
+                for (int k = 0; k < 3; ++k)
+                    if (limits[k] > 0. && std::abs(d[k]) > EPSILON)
+                        speed = std::min(speed, 0.99 * limits[k] * length / std::abs(d[k]));
+                speed = std::min(speed, length * this->conformal_segment_rate());
+            }
+            gcode += m_writer.travel_to_pose(to, "Atomizer travel", speed);
+        }
+        gcode += m_writer.end_inverse_time();
+        m_conformal_on_bead = false;
+    }
+
     const std::vector<RotaryRun> runs = rotary ? plan_rotary_runs(kinematics, m_conformal_points, m_writer.get_joints()) :
                                                  std::vector<RotaryRun>(1, RotaryRun{ 0, m_conformal_points.size() - 1, JointPose() });
     const std::vector<ConformalPoint> points = runs.size() > 1 ? m_conformal_points : std::vector<ConformalPoint>();
@@ -7554,6 +7654,7 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
             };
             slice(part->polyline.points);
             slice(part->bead_height);
+            slice(part->bead_width);
             slice(part->tool_axis);
             slice(part->bead_width);
             m_conformal_points.assign(points.begin() + run.begin, points.begin() + run.end + 1);
@@ -7606,9 +7707,16 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
         m_conformal_ramp     = false;
         m_conformal_open_end = false;
         if (r + 1 < runs.size()) {
-            gcode += this->wipe_conformal_path();
+            gcode += path.preserve_points ? this->conformal_retract() : this->wipe_conformal_path();
             m_conformal_on_bead = true;
         }
+    }
+    if (path.preserve_points) {
+        gcode += m_writer.end_inverse_time();
+        m_conformal_on_bead = true;
+        m_conformal_points.clear();
+        m_conformal_prev = &path;
+        return gcode;
     }
     const bool hop      = !glide_on && this->conformal_short_hop(path, next, hop_to);
     if (!glide_on && !hop) {
@@ -7865,6 +7973,11 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
         params.limits = MotionLimits();
     params.limits.segment_rate = this->conformal_segment_rate();
     params.condition.target_length = std::max(0.15, params.nominal_speed / params.limits.segment_rate);
+    if (path.preserve_points) {
+        params.condition.target_length = 0.;
+        params.preserve_points = true;
+        params.ramp_length = params.taper_length = params.coast_length = 0.;
+    }
     if (m_config.nonplanar_flow_mod.value) {
         ConformalSpeedParams caps;
         caps.nominal_speed    = speed;
@@ -8601,7 +8714,8 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
     m_writer.add_object_change_labels(gcode);
 
     Extruder *filament = m_writer.filament();
-    if (dynamic_cast<const ExtrusionPathConformal *>(&path) != nullptr && filament != nullptr && !m_config.use_firmware_retraction &&
+    if (const auto *conformal = dynamic_cast<const ExtrusionPathConformal *>(&path);
+        conformal != nullptr && !conformal->preserve_points && filament != nullptr && !m_config.use_firmware_retraction &&
         m_config.gcode_flavor.value != gcfMakerWare) {
         gcode += m_writer.unlift();
         m_conformal_prime = filament->take_retraction();
@@ -9644,6 +9758,9 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
             if (travel.size() == 2) {
                 const auto& dest2d = this->point_to_gcode(travel.points.back());
                 Vec3d dest3d(dest2d(0), dest2d(1), z == DBL_MAX ? m_nominal_z : z);
+                if (!needs_retraction && z != DBL_MAX && z < m_writer.get_position().z() - EPSILON &&
+                    Nonplanar::requests_conformal_shells(*m_print))
+                    gcode += m_writer.travel_to_xy(dest2d, comment);
                 gcode += m_writer.travel_to_xyz(dest3d, comment, m_need_change_layer_lift_z);
                 m_need_change_layer_lift_z = false;
             } else {

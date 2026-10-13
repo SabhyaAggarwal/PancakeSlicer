@@ -50,6 +50,7 @@ public:
     const Extruder* filament() const { if(m_curr_extruder_id==-1) return nullptr; return m_curr_filament_extruder[m_curr_extruder_id]; }
 
     void                 apply_print_config(const PrintConfig &print_config);
+    void                 set_inverse_time_retractions(bool enabled) { m_inverse_time_retractions = enabled; }
     void                 set_extruders(std::vector<unsigned int> extruder_ids);
     const std::vector<Extruder>& extruders() const { return m_filament_extruders; }
     std::vector<unsigned int> extruder_ids() const {
@@ -158,6 +159,7 @@ public:
     std::string end_inverse_time();
     const Vec3d     &get_tool_axis() const { return m_tool_axis; }
     JointPose        get_joints() const;
+    void             set_joint_position(const JointPose &joints);
     static constexpr double max_tip_deviation = 0.02;
 protected:
     Vec3d           m_pos = Vec3d::Zero();
@@ -188,6 +190,7 @@ protected:
     JointPose                       m_joints;
     bool                            m_joints_valid = false;
     bool                            m_inverse_time = false;
+    bool                            m_inverse_time_retractions = false;
     bool                            m_joint_feed_written = false;
     bool                            m_rotary_written = false;
     Vec3d                           m_max_joint_speed { Vec3d::Zero() };

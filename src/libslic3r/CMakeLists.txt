@@ -175,6 +175,8 @@ set(lisbslic3r_sources
     Nonplanar/HeightField.hpp
     Nonplanar/Multiplanar.cpp
     Nonplanar/Multiplanar.hpp
+    Nonplanar/StrengthRoads.cpp
+    Nonplanar/StrengthRoads.hpp
     Nonplanar/SurfaceClip.cpp
     Nonplanar/SurfaceClip.hpp
     Nonplanar/TiltBudget.cpp

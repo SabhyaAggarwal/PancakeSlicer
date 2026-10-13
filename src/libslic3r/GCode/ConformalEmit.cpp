@@ -169,51 +169,56 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
                             params.condition.target_length, flow);
     const std::vector<ConformalPoint> &staged = shape ? shaped : merged;
 
-    constexpr double            StubLength = 0.01;
     std::vector<ConformalPoint> points;
-    std::vector<double>         stub_flow;
-    points.reserve(staged.size());
-    points.emplace_back(staged.front());
-    for (size_t i = 1; i < staged.size(); ++i) {
-        const bool last = i + 1 == staged.size();
-        if ((staged[i].pose.tip - points.back().pose.tip).norm() >= StubLength) {
-            points.emplace_back(staged[i]);
-            if (!flow.empty())
-                stub_flow.emplace_back(flow[i - 1]);
-        } else if (points.back().bead_height <= 0.f && staged[i].bead_height > 0.f) {
-            points.back() = staged[i];
-        } else if (points.size() > 1 &&
-                   (last || (staged[i].bead_height > 0.f) != (staged[i + 1].bead_height > 0.f))) {
-            points.back() = staged[i];
-            if (!flow.empty())
-                stub_flow.back() = std::min(stub_flow.back(), flow[i - 1]);
+    if (params.preserve_points)
+        points = staged;
+    else {
+        constexpr double            StubLength = 0.01;
+        std::vector<double>         stub_flow;
+        points.reserve(staged.size());
+        points.emplace_back(staged.front());
+        for (size_t i = 1; i < staged.size(); ++i) {
+            const bool last = i + 1 == staged.size();
+            if ((staged[i].pose.tip - points.back().pose.tip).norm() >= StubLength) {
+                points.emplace_back(staged[i]);
+                if (!flow.empty())
+                    stub_flow.emplace_back(flow[i - 1]);
+            } else if (points.back().bead_height <= 0.f && staged[i].bead_height > 0.f) {
+                points.back() = staged[i];
+            } else if (points.size() > 1 &&
+                       (last || (staged[i].bead_height > 0.f) != (staged[i + 1].bead_height > 0.f))) {
+                points.back() = staged[i];
+                if (!flow.empty())
+                    stub_flow.back() = std::min(stub_flow.back(), flow[i - 1]);
+            }
         }
-    }
-    if (points.size() < 2) {
-        points.emplace_back(staged.back());
-        if (!flow.empty())
-            stub_flow.emplace_back(flow.back());
-    }
-    flow.swap(stub_flow);
+        if (points.size() < 2) {
+            points.emplace_back(staged.back());
+            if (!flow.empty())
+                stub_flow.emplace_back(flow.back());
+        }
+        flow.swap(stub_flow);
 
-    {
-        std::vector<ConformalPoint> moves{ points.front() };
-        std::vector<double>         move_flow;
-        for (size_t i = 0; i + 1 < points.size(); ++i) {
-            const ConformalPoint &a = moves.back();
-            const ConformalPoint &b = points[i + 1];
-            const double          l = (b.pose.tip - a.pose.tip).norm();
-            if (l < EPSILON || (l < ConformalMinSegment && i + 2 < points.size() && (points[i + 2].bead_height > 0.f) == (b.bead_height > 0.f) &&
-                                (a.bead_height > 0.f) == (b.bead_height > 0.f)))
-                continue;
-            if (!flow.empty())
-                move_flow.emplace_back(flow[i]);
-            moves.emplace_back(b);
+        {
+            std::vector<ConformalPoint> moves{ points.front() };
+            std::vector<double>         move_flow;
+            for (size_t i = 0; i + 1 < points.size(); ++i) {
+                const ConformalPoint &a = moves.back();
+                const ConformalPoint &b = points[i + 1];
+                const double          l = (b.pose.tip - a.pose.tip).norm();
+                if (l < EPSILON || (l < ConformalMinSegment && i + 2 < points.size() && (points[i + 2].bead_height > 0.f) == (b.bead_height > 0.f) &&
+                                    (a.bead_height > 0.f) == (b.bead_height > 0.f)))
+                    continue;
+                if (!flow.empty())
+                    move_flow.emplace_back(flow[i]);
+                moves.emplace_back(b);
+            }
+            if (moves.size() < 2)
+                return 0.;
+            points.swap(moves);
+            flow.swap(move_flow);
         }
-        if (moves.size() < 2)
-            return 0.;
-        points.swap(moves);
-        flow.swap(move_flow);
+
     }
 
     std::vector<Vec3d> tips(points.size());
@@ -306,8 +311,13 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
         const double dE = v * params.e_per_mm3 + prime[i];
         if (prime[i] > 0. && params.prime_speed > 0.)
             speed = std::min(speed, params.prime_speed * printed_length(a.pose.tip, b.pose.tip) / dE);
-        if (params.limits.segment_rate > 0.)
-            speed = std::min(speed, params.limits.segment_rate * (b.pose.tip - a.pose.tip).norm());
+        if (params.limits.segment_rate > 0.) {
+            double length = (b.pose.tip - a.pose.tip).norm();
+            if (params.preserve_points && !rotary)
+                if (const double printed = printed_length(a.pose.tip, b.pose.tip); printed > EPSILON)
+                    length = std::min(length, printed);
+            speed = std::min(speed, params.limits.segment_rate * length);
+        }
         const double F = (rotary ? speed : axis_limited_speed(a.pose.tip, b.pose.tip, speed, params.limits)) * 60.;
         if (std::abs(writer.get_current_speed() - F) > EPSILON) {
             if (rotary)
