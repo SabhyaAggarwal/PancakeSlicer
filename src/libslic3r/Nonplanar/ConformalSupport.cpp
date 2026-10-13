@@ -4,6 +4,9 @@
 #include "ConformalShells.hpp"
 #include "HeadEnvelope.hpp"
 #include "PatchTools.hpp"
+#include "libslic3r/Point.hpp"
+#include "libslic3r/Polyline.hpp"
+#include "libslic3r/Polygon.hpp"
 #include "ShellPaths.hpp"
 
 #include "libslic3r/BoundingBox.hpp"
@@ -69,7 +72,7 @@ void split_by_owner(const Polylines &polylines, const std::function<int(const Ve
         auto flush = [&]() {
             if (current != -1 && piece.points.size() >= 2)
                 sink(current, std::move(piece));
-            piece.points.clear();
+            piece = Polyline();
         };
         for (size_t i = 0; i + 1 < pl.points.size(); ++i) {
             const Vec2d a = unscale(pl.points[i]), b = unscale(pl.points[i + 1]);
@@ -272,7 +275,7 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
             if (const int c = label[n]; c >= 0) {
                 zlo[size_t(c)] = std::min(zlo[size_t(c)], Sb.data()[n]);
                 zhi[size_t(c)] = std::max(zhi[size_t(c)], Sb.data()[n]);
-                owned[size_t(c)] |= owner[n] != -1;
+                owned[size_t(c)] = char(owned[size_t(c)] | (owner[n] != -1));
             }
         for (size_t n = 0; n < n_nodes; ++n)
             if (const int c = label[n]; c >= 0 && !owned[size_t(c)] && zhi[size_t(c)] - zlo[size_t(c)] < h_min)
@@ -281,7 +284,7 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
     cancel();
 
     const double     line_width    = region0.flow(object, frSolidInfill, h).width();
-    const double     wall_width    = std::max(0, region0.config().wall_loops.value) * region0.flow(object, frPerimeter, h).width();
+    const double     wall_width    = float(std::max(0, region0.config().wall_loops.value)) * region0.flow(object, frPerimeter, h).width();
     const ExPolygons inner_outline = offset_ex(union_ex(silhouette), float(-scale_(wall_width)));
     {
         const Mask inside = rasterize(inner_outline, grid);
@@ -329,7 +332,7 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
         patch.base         = masked(Fb, mask, 0);
         patch.host_layer   = size_t(floor_id);
         patch.band         = floor_id;
-        patch.z_min        = Inf;
+        patch.z_min        = double(Inf);
         patch.z_max        = layer_bottom[size_t(floor_id)];
         for (size_t n = 0; n < n_nodes; ++n)
             if (mask[n]) {
@@ -622,7 +625,9 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
     cancel();
 
     const size_t first_si = result.patches.size();
-    for (auto &[band_id, per_layer] : by_owner) {
+    for (auto &entry : by_owner) {
+        const int band_id = entry.first;
+        auto &per_layer = entry.second;
         const bool   skin_band = band_id <= -3;
         const size_t host      = skin_band ? size_t(-3 - band_id) : result.patches[size_t(band_id)].host_layer;
         ConformalPatch        patch;
@@ -635,8 +640,8 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
         patch.base         = planar;
         patch.host_layer   = host;
         patch.band         = skin_band ? int(host) : std::max(0, result.patches[size_t(band_id)].band);
-        patch.z_min        = Inf;
-        patch.z_max        = -Inf;
+        patch.z_min        = double(Inf);
+        patch.z_max        = double(-Inf);
         Mask fmask(n_nodes, 0);
         for (size_t n = 0; n < n_nodes; ++n)
             fmask[n] = cand[n] && owner[n] == band_id;

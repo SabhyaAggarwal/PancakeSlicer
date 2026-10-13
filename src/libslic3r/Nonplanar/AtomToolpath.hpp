@@ -4,6 +4,7 @@
 #include "libslic3r/ExtrusionEntityCollection.hpp"
 #include "libslic3r/Point.hpp"
 
+#include <cstddef>
 #include <istream>
 #include <string>
 #include <vector>

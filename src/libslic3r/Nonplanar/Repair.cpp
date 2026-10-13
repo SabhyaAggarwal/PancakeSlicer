@@ -1,4 +1,5 @@
 #include "Repair.hpp"
+#include "libslic3r/Nonplanar/HeightField.hpp"
 
 #include <algorithm>
 #include <cmath>

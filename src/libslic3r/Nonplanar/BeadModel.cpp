@@ -1,10 +1,14 @@
 #include "BeadModel.hpp"
 
+#include "libslic3r/Point.hpp"
 #include "libslic3r/libslic3r.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <limits>
+#include <vector>
+#include <utility>
 
 namespace Slic3r::Nonplanar {
 
@@ -16,12 +20,12 @@ double charge_length(const Vec3d &a, const Vec3d &b, const Vec3d &tool_axis)
 
 double bead_area(double width, double height)
 {
-    return height * (width - height * (1. - 0.25 * M_PI));
+    return height * (width - height * (1. - 0.25 * PI));
 }
 
 double bead_height_for_area(double width, double area)
 {
-    const double a    = 1. - 0.25 * M_PI;
+    const double a    = 1. - 0.25 * PI;
     const double disc = width * width - 4. * a * area;
     return (width - std::sqrt(std::max(0., disc))) / (2. * a);
 }
@@ -46,7 +50,7 @@ std::vector<double> shallow_junction_caps(const std::vector<Vec3d> &pts, const s
 {
     const size_t        n = length.size();
     std::vector<double> cap(n + 1, std::numeric_limits<double>::infinity());
-    const double        cos_shallow = std::cos(M_PI / 4.);
+    const double        cos_shallow = std::cos(PI / 4.);
     for (size_t i = 1; i < n; ++i) {
         if (length[i - 1] <= 0. || length[i] <= 0.)
             continue;
@@ -87,9 +91,11 @@ double road_speed(const std::vector<double> &soft, const std::vector<double> &le
         return soft[begin];
     std::sort(v.begin(), v.end());
     double below = 0.;
-    for (const auto &[speed, l] : v)
-        if ((below += l) >= (1. - fraction) * total)
+    for (const auto &[speed, l] : v) {
+        below += l;
+        if (below >= (1. - fraction) * total)
             return speed;
+    }
     return v.back().first;
 }
 
