@@ -484,6 +484,7 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & , co
         }
         else if (
                opt_key == "nonplanar_head"
+            || opt_key == "nonplanar_head_snapshot"
             || opt_key == "nonplanar_kinematics"
             || opt_key == "rotary_axis_limits"
             || opt_key == "nonplanar_max_tilt") {
@@ -3755,7 +3756,8 @@ void Print::update_filament_maps_to_config(std::vector<int> f_maps, std::vector<
         auto opt_extruder_type = dynamic_cast<const ConfigOptionEnumsGeneric*>(m_ori_full_print_config.option("extruder_type"));
         auto opt_nozzle_volume_type = dynamic_cast<const ConfigOptionEnumsGeneric*>(m_ori_full_print_config.option("nozzle_volume_type"));
         auto* ori_volume_map = m_ori_full_print_config.option<ConfigOptionInts>("filament_volume_map", true);
-        for (int index = 0; opt_extruder_type && opt_nozzle_volume_type && index < f_maps.size(); index++)
+        for (int index = 0; opt_extruder_type && !opt_extruder_type->values.empty() &&
+                            opt_nozzle_volume_type && !opt_nozzle_volume_type->values.empty() && index < f_maps.size(); index++)
         {
             ExtruderType extruder_type = (ExtruderType)(opt_extruder_type->get_at(f_maps[index] - 1));
             NozzleVolumeType nozzle_volume_type = (NozzleVolumeType)(opt_nozzle_volume_type->get_at(f_maps[index] - 1));

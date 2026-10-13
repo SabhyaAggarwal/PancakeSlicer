@@ -969,6 +969,9 @@ PrintConfigDef::PrintConfigDef()
     assign_printer_technology_to_unknown(this->options, ptFFF);
     this->init_sla_params();
     assign_printer_technology_to_unknown(this->options, ptSLA);
+    for (auto &[key, def] : this->options)
+        if (def.type == coEnums && def.default_value && def.enum_keys_map)
+            def.set_default_value(def.create_default_option());
 }
 
 void PrintConfigDef::init_common_params()
@@ -5360,6 +5363,9 @@ void PrintConfigDef::init_fff_params()
                       "where modelled. An empty or unknown ID uses the generic conservative model, which must still be "
                       "checked against your printer.");
     def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionString(""));
+
+    def = this->add("nonplanar_head_snapshot", coString);
     def->set_default_value(new ConfigOptionString(""));
 
     def = this->add("nonplanar_segment_rate", coFloat);
@@ -9822,7 +9828,7 @@ void PrintConfigDef::handle_legacy_composite(DynamicPrintConfig &config)
             throw BadOptionValueException(error_str);
         }
 
-        if (!thumbnails_list.empty()) {
+        if (!thumbnails_list.empty() && size_t(std::count(thumbnails_str.begin(), thumbnails_str.end(), '/')) < thumbnails_list.size()) {
             const auto& extentions = ConfigOptionEnum<GCodeThumbnailsFormat>::get_enum_names();
             thumbnails_str.clear();
             for (const auto& [ext, size] : thumbnails_list)

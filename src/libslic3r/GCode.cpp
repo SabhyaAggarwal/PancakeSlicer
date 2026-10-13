@@ -3621,6 +3621,9 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
 
     file.write_format("; EXECUTABLE_BLOCK_START\n");
 
+    size_t object_label_id = 0;
+    for (PrintObject *object : print.objects())
+        object->set_id(object_label_id++);
     if( m_enable_exclude_object)
         file.write(set_object_info(&print));
 
@@ -6876,6 +6879,7 @@ void GCode::append_full_config(const Print &print, std::string &str)
     cfg.option<ConfigOptionInts>("filament_map_2", true)->values = print.config().filament_map_2.values;
     static const std::set<std::string_view> banned_keys( {
         "filament_extruder_compatibility"sv,
+        "nonplanar_head_snapshot"sv,
         "prime_volume_mode"sv,
         "flush_multiplier_fast"sv,
         "filament_flush_temp_fast"sv,

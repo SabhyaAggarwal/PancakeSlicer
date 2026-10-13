@@ -412,8 +412,8 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
     }
 
     double band_pitch = 0., band_tolerance = 0.;
-    const double max_patch_height = multi_material_patch_height(object, head, object.config().nonplanar_max_patch_height.value);
-    const bool   host_above       = max_patch_height != object.config().nonplanar_max_patch_height.value;
+    const double max_patch_height = multi_material_patch_height(object, head, effective_patch_height_cap(object));
+    const bool   host_above       = max_patch_height != effective_patch_height_cap(object);
     const double rotary           = rotary_band_reach(object, head, h);
     band_schedule(head, h, rotary > 0. ? (max_patch_height > 0. ? std::min(max_patch_height, rotary) : rotary) : max_patch_height,
                   band_pitch, band_tolerance);

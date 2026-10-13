@@ -78,10 +78,21 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
             if (min_nozzle > 0. && height > 0.75 * min_nozzle)
                 return { L("Non-planar shell layer height must not exceed 75% of the nozzle diameter."), object,
                          "nonplanar_shell_layer_height" };
-            if (object->config().nonplanar_max_patch_height.value != 0. &&
-                object->config().nonplanar_max_patch_height.value < std::max(height, object->config().layer_height.value))
+            const double cap = object->config().nonplanar_max_patch_height.value;
+            if (cap < 0.)
                 return { L("Non-planar maximum patch height must be at least the layer height and the shell layer height."), object,
                          "nonplanar_max_patch_height" };
+            const double clamped = effective_patch_height_cap(*object);
+            if (cap > 0. && cap < clamped && warnings != nullptr &&
+                std::none_of(warnings->begin(), warnings->end(), [object](const StringObjectException &warning) {
+                    return warning.object == object && warning.opt_key == "nonplanar_max_patch_height";
+                })) {
+                StringObjectException warning {
+                    Slic3r::format(_u8L("Non-planar maximum patch height %1$.3f mm is below the layer or shell height; using %2$.3f mm."),
+                                   cap, clamped), object, "nonplanar_max_patch_height" };
+                warning.is_warning = true;
+                warnings->push_back(std::move(warning));
+            }
         }
     }
 
@@ -125,7 +136,10 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
     if (needs_head && config.nonplanar_head.value.empty())
         return { L("Select a non-planar head before enabling curved shells, curved ironing, or blocking collision checks."), nullptr,
                  "nonplanar_head" };
-    if (!config.nonplanar_head.value.empty() && !HeadLibrary::instance().find(config.nonplanar_head.value)) {
+    std::string head_warning;
+    if (!config.nonplanar_head.value.empty())
+        resolve_head_envelope(config, &head_warning);
+    if (!head_warning.empty()) {
         const std::string message = (boost::format(_u8L("Non-planar head \"%1%\" is missing from the head library or could not be loaded. Select a valid head.")) %
                                      config.nonplanar_head.value).str();
         if (enabled || config.nonplanar_collision_check.value != NonplanarCollisionCheck::Off)

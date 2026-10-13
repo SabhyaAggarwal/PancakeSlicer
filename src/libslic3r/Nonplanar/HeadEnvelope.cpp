@@ -20,6 +20,7 @@
 #include <exception>
 #include <initializer_list>
 #include <iterator>
+#include <ios>
 #include <limits>
 #include <mutex>
 #include <set>
@@ -414,7 +415,7 @@ bool operator==(const HeadEnvelope &lhs, const HeadEnvelope &rhs)
 {
     return lhs.id == rhs.id && lhs.name == rhs.name && lhs.boxes == rhs.boxes && lhs.tip_flat_radius == rhs.tip_flat_radius &&
            lhs.tip_allowance == rhs.tip_allowance && lhs.margin == rhs.margin && lhs.lateral_margin == rhs.lateral_margin &&
-           lhs.calibrated == rhs.calibrated && lhs.provenance == rhs.provenance;
+           lhs.calibrated == rhs.calibrated && lhs.provenance == rhs.provenance && lhs.extensions == rhs.extensions;
 }
 
 HeadEnvelope envelope_from_side_profile(const std::vector<SideProfileRow> &rows, double top,
@@ -484,6 +485,12 @@ HeadEnvelope load_head_envelope(const std::string &json_text)
                       "side_profile_top", "boxes", "sides" }, {});
 
     HeadEnvelope out;
+    auto extensions = j;
+    for (const char *key : { "schema", "id", "name", "provenance", "calibrated", "nozzle", "margin", "lateral_margin",
+                            "side_profile", "side_profile_top", "boxes", "sides" })
+        extensions.erase(key);
+    if (!extensions.empty())
+        out.extensions = extensions.dump();
     out.id = get_string(j, "id", {}, true);
     if (out.id.empty())
         bad_field("id", "must not be empty");
@@ -575,7 +582,8 @@ HeadEnvelope load_head_envelope(const std::string &json_text)
 
 std::string save_head_envelope(const HeadEnvelope &envelope)
 {
-    nlohmann::ordered_json j;
+    nlohmann::ordered_json j = envelope.extensions.empty() ? nlohmann::ordered_json::object() :
+                                                            nlohmann::ordered_json::parse(envelope.extensions);
     j["schema"]         = SchemaV1;
     j["id"]             = envelope.id;
     j["name"]           = envelope.name;
@@ -749,8 +757,27 @@ const HeadEnvelope &HeadLibrary::generic_conservative()
 
 HeadEnvelope resolve_head_envelope(const PrintConfig &config, std::string *warning)
 {
-    const auto       *opt = dynamic_cast<const ConfigOptionString *>(config.option("nonplanar_head"));
-    const std::string id  = opt != nullptr ? opt->value : std::string();
+    if (warning != nullptr)
+        warning->clear();
+    const std::string &id = config.nonplanar_head.value;
+    if (!config.nonplanar_head_snapshot.value.empty()) {
+        const auto snapshot = nlohmann::json::parse(config.nonplanar_head_snapshot.value);
+        if (snapshot.at("reference").get<std::string>() == id)
+            return load_head_envelope(snapshot.at("envelope").dump());
+    }
+    try {
+        if (!id.empty() && boost::filesystem::is_regular_file(boost::filesystem::path(id))) {
+            boost::nowide::ifstream in(id, std::ios::binary);
+            std::stringstream text;
+            text << in.rdbuf();
+            return load_head_envelope(text.str());
+        }
+    } catch (const std::exception &err) {
+        BOOST_LOG_TRIVIAL(error) << "Cannot load non-planar head " << id << ": " << err.what();
+        if (warning != nullptr)
+            *warning = (boost::format(_u8L("Non-planar head \"%1%\" could not be loaded: %2%")) % id % err.what()).str();
+        return HeadLibrary::generic_conservative();
+    }
     if (!id.empty())
         if (const HeadEnvelope *head = HeadLibrary::instance().find(id))
             return *head;

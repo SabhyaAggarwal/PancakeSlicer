@@ -86,7 +86,7 @@ ShellSettings shell_settings(const PrintObject &object, size_t region_id)
     s.max_error        = cfg.nonplanar_max_surface_error.value;
     s.min_area         = cfg.nonplanar_min_patch_area.value;
     s.pitch            = std::max(0.05, object.config().nonplanar_surface_resolution.value);
-    s.max_patch_height = object.config().nonplanar_max_patch_height.value;
+    s.max_patch_height = effective_patch_height_cap(object);
     s.banded           = effective_fallback(cfg, object.config()) == NonplanarFallback::None;
     if (object.config().nonplanar_mode.value == NonplanarMode::Auto) {
         const AutoObjectSettings a = auto_object_settings(object, object.printing_region(region_id), s.shell_height);
@@ -470,6 +470,7 @@ struct BandedFill
     double               outer_height = 0.;
     bool               walls = false;
     double             sparse_angle = std::numeric_limits<double>::quiet_NaN();
+    Polygons voids;
 };
 
 ExPolygons hidden_layer_area(const HeightField &layers, int above, const ExPolygons &area)
@@ -553,11 +554,15 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
         const ExPolygons strip   = diff_ex(layer_area, offset_ex(layer_area, -float(scale_(wall_flow.spacing() - overlap))));
         whole = diff_ex(whole, intersection_ex(strip, hidden_layer_area(*banded->layers, patch.shells - k + 1, whole)));
     }
+    const auto off_voids = [&](const ExPolygons &fill_area, double spacing) {
+        return banded == nullptr || banded->voids.empty() ? fill_area :
+                                                            diff_ex(fill_area, offset(banded->voids, float(scale_(0.45 * spacing))));
+    };
     if (plug) {
         ShellFill cross;
         cross.angle   = banded->angle + ((banded->hidden - k) % 2 == 0 ? 0.5 * PI : 0.);
         cross.outline = false;
-        linked        = shell_polylines(whole, cross, ipRectilinear, flow.spacing(), false, flow, host_z, start, MaxGlide, nullptr, &seam_line);
+        linked        = shell_polylines(off_voids(whole, flow.spacing()), cross, ipRectilinear, flow.spacing(), false, flow, host_z, start, MaxGlide, nullptr, &seam_line);
     } else if (sparse) {
         const double spacing = flow.spacing() / banded->density;
         if (banded->strips)
@@ -567,12 +572,12 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
             ShellFill lines = fill;
             if (!std::isnan(banded->sparse_angle))
                 lines.angle = banded->sparse_angle;
-            linked = shell_polylines(whole, lines, ipRectilinear, spacing, false, flow, host_z, start, MaxGlide, nullptr, &seam_line);
+            linked = shell_polylines(off_voids(whole, spacing), lines, ipRectilinear, spacing, false, flow, host_z, start, MaxGlide, nullptr, &seam_line);
         }
     } else if (banded != nullptr && banded->strips)
         contour_fill(patch.surface, area, drop, banded->strip_height, banded->strip_offset, flow, height, fill.angle, outer, host_z, roads, linked);
     else if (!area.empty())
-        linked = shell_polylines(area, fill, outer ? ipMonotonic : ipRectilinear, flow.spacing(), outer, flow, host_z, start, MaxGlide,
+        linked = shell_polylines(fill.spiral ? area : off_voids(area, flow.spacing()), fill, outer ? ipMonotonic : ipRectilinear, flow.spacing(), outer, flow, host_z, start, MaxGlide,
                                  surface_spaced ? &patch.surface : nullptr, &seam_line, &ramp);
     if (banded != nullptr && !sparse && !plug)
         for (const ExPolygon &strip : banded->lengthwise)
@@ -759,6 +764,11 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
                                           diff_ex(candidate, offset_ex(union_ex(silhouette_src), float(-scale_(wall_width)))) :
                                           ExPolygons();
     const Mask         band_mask    = rasterize(band_cand, grid);
+    Polygons voids;
+    for (const ExPolygon &island : candidate)
+        for (const Polygon &hole : island.holes)
+            if (const Point c = hole.centroid(); std::isnan(S.sample(unscaled(c))) && hole.contains(c))
+                voids.emplace_back(hole).make_counter_clockwise();
     const double       h_c          = settings.shell_height;
     const double       h_min        = 0.5 * h_c;
     const double       h_max        = 0.8 * region.flow(object, settings.shells == 1 ? frTopSolidInfill : frSolidInfill, h_c).nozzle_diameter();
@@ -1339,6 +1349,7 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
                 fills.back().helix = fills.back().spiral && helix;
             std::vector<ShellFill> banded_fills = fills;
             BandedFill             banded;
+            banded.voids        = voids;
             banded.strip_height = band_pitch;
             banded.strip_offset = 0.5 * band_tolerance;
             banded.adaptive     = settings.adaptive ? &adaptive_stacks[idx] : nullptr;

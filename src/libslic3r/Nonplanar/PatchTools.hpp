@@ -106,6 +106,7 @@ void lift_polylines(const Polylines &polylines, const ExtrusionPath &proto, cons
                     int patch_id, int shell, ExtrusionEntitiesPtr &out, const std::vector<std::vector<float>> *widths = nullptr);
 
 double head_band_height(const HeadEnvelope &head, double tilt = 0.);
+double effective_patch_height_cap(const PrintObject &object);
 double head_band_tilt_limit(const HeadEnvelope &head);
 
 void cut_into_bands(const ExtrusionEntitiesPtr &paths, double pitch, double tolerance,

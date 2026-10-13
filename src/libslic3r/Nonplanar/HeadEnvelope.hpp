@@ -44,6 +44,7 @@ struct HeadEnvelope
     double               lateral_margin = 0.3;
     bool                 calibrated = false;
     std::string          provenance;
+    std::string extensions;
 
     bool empty() const { return boxes.empty(); }
 

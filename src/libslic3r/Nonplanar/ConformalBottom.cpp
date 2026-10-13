@@ -268,8 +268,8 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
                                               intersection_ex(offset_ex(expolygons_simplify(components, scale_(pitch)), -float(scale_(pitch))),
                                                               candidate);
     double band_relief = std::max(h_c, (settings.shells - 1) * h_c + h_min + gap - settings.max_error);
-    if (object.config().nonplanar_max_patch_height.value > 0.)
-        band_relief = std::min(band_relief, object.config().nonplanar_max_patch_height.value);
+    if (effective_patch_height_cap(object) > 0.)
+        band_relief = std::min(band_relief, effective_patch_height_cap(object));
     if (settings.banded)
         band_relief = std::max(h_c, std::min(band_relief, head_band_height(head)));
     const size_t first_patch = result.patches.size();

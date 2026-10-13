@@ -46,6 +46,7 @@ struct AutoPatchSettings
     double shell_area = 0.;
     double slope90    = 0.;
     double curvature95 = 0.;
+    double curvature80 = 0.;
     double coherence  = 0.;
     double aspect     = 1.;
 };
@@ -57,5 +58,7 @@ NonplanarTopPattern top_pattern(const ConformalPatch &patch, const PrintRegionCo
 bool                ironing_enabled(const ConformalPatch &patch, const PrintRegionConfig &config);
 
 std::string auto_comment(const ConformalPatch &patch);
+
+std::string explain_top_patch(const PrintObject &object, const ConformalPatch &patch);
 
 }

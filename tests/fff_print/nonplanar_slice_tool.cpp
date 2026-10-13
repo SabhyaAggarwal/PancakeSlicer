@@ -22,6 +22,7 @@
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Nonplanar/AutoOrient.hpp"
 #include "libslic3r/Nonplanar/ConformalShells.hpp"
+#include "libslic3r/Nonplanar/AutoMode.hpp"
 #include "libslic3r/Nonplanar/FlowMod.hpp"
 #include "libslic3r/Nonplanar/HeadEnvelope.hpp"
 #include "libslic3r/Point.hpp"
@@ -29,11 +30,13 @@
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
+#include "libslic3r/Semver.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 #include "libslic3r/TriangleSelector.hpp"
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/libslic3r.h"
 
+#include <boost/algorithm/string/predicate.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <boost/filesystem/path.hpp>
 #include <boost/nowide/fstream.hpp>
@@ -47,6 +50,7 @@
 #include <exception>
 #include <initializer_list>
 #include <iostream>
+#include <ios>
 #include <limits>
 #include <map>
 #include <memory>
@@ -76,12 +80,13 @@ struct Args
 {
     std::string profiles = std::string(PROFILES_DIR);
     std::string vendor   = "Prusa";
-    std::string printer, process, datadir, output, model, config_out, paint, gcode_3mf, json, plate;
+    std::string printer, process, datadir, output, model, config_out, paint, gcode_3mf, json, plate, project_out, head_out;
     std::vector<std::string> filaments, colours;
     std::vector<std::pair<std::string, int>> parts;
     std::vector<std::pair<std::string, std::string>> overrides;
     bool        center_set = false;
     bool        verify     = false;
+    bool        explain    = false;
     bool        auto_orient = false;
     bool        orient_only = false;
     std::string confirm_up;
@@ -94,8 +99,9 @@ struct Args
     std::cerr << "error: " << error << "\n"
               << "usage: nonplanar_slice_tool --printer NAME --process NAME --filament NAME [--vendor Prusa]\n"
                  "       [--profiles DIR] [--datadir DIR] [--set key=value]... [--center X,Y]\n"
-                 "       [--config-out FILE] [--gcode-3mf FILE] [--json FILE] [--atom TOOLPATH] [--verify] [--auto-orient | --orient-only]\n"
-                 "       -o OUT.gcode (MODEL | --plate PLATE.json)\n";
+                 "       [--config-out FILE] [--project-out FILE] [--head-out FILE] [--gcode-3mf FILE] [--json FILE]\n"
+                 "       [--atom TOOLPATH] [--verify] [--explain] [--auto-orient | --orient-only]\n"
+                 "       -o OUT.gcode (MODEL | PROJECT.3mf | --plate PLATE.json)\n";
     std::exit(2);
 }
 
@@ -131,7 +137,10 @@ Args parse_args(int argc, char **argv)
         else if (arg == "--profiles") a.profiles = next();
         else if (arg == "--datadir") a.datadir = next();
         else if (arg == "--config-out") a.config_out = next();
+        else if (arg == "--project-out") a.project_out = next();
+        else if (arg == "--head-out") a.head_out = next();
         else if (arg == "--gcode-3mf") a.gcode_3mf = next();
+        else if (arg == "--explain") a.explain = true;
         else if (arg == "--atom") {
             const std::string path = next();
             if (path.empty())
@@ -515,19 +524,20 @@ void place_wipe_tower(DynamicPrintConfig &config, const Model &model, size_t fil
     config.option<ConfigOptionFloats>("wipe_tower_y", true)->values = { y + move.y() };
 }
 
-void place(const Args &args, Model &model, DynamicPrintConfig &config)
+void place(const Args &args, Model &model, DynamicPrintConfig &config, bool saved = false)
 {
-    if (args.plate.empty()) {
+    if (args.plate.empty() && (!saved || args.center_set)) {
         Vec2d center = args.center;
         if (! args.center_set) {
             const BoundingBoxf bed(config.opt<ConfigOptionPoints>("printable_area")->values);
             center = bed.center();
         }
-        for (ModelObject *object : model.objects)
-            object->ensure_on_bed();
+        if (!saved)
+            for (ModelObject *object : model.objects)
+                object->ensure_on_bed();
         model.center_instances_around_point(center);
     }
-    if (std::none_of(args.overrides.begin(), args.overrides.end(), [](const auto &kv) { return kv.first.rfind("wipe_tower_", 0) == 0; }))
+    if (!saved && std::none_of(args.overrides.begin(), args.overrides.end(), [](const auto &kv) { return kv.first.rfind("wipe_tower_", 0) == 0; }))
         place_wipe_tower(config, model, args.filaments.size());
 }
 
@@ -599,7 +609,7 @@ OrientSlice slice_orientation_child(const Args &args, const Vec3d &up, const fs:
     const fs::path out = dir / fs::unique_path("orient_%%%%%%%%.txt");
     std::string    cmd;
     for (size_t i = 0; i < args.argv.size(); ++i)
-        if (args.argv[i] == "--json")
+        if (args.argv[i] == "--json" || args.argv[i] == "--project-out" || args.argv[i] == "--head-out")
             ++i;
         else
             cmd += quote(args.argv[i]) + " ";
@@ -765,14 +775,48 @@ int main(int argc, char **argv)
         config.apply(resolve(bundle, args, "machine", Preset::TYPE_PRINTER, args.printer));
         config.apply(resolve(bundle, args, "process", Preset::TYPE_PRINT, args.process));
         apply_filaments(bundle, args, config);
+        Model model;
+        const bool project_input = boost::algorithm::iequals(fs::path(args.model).extension().string(), ".3mf");
+        bool project_settings = false;
+        if (project_input) {
+            ConfigSubstitutionContext substitutions(ForwardCompatibilitySubstitutionRule::EnableSilent);
+            En3mfType type;
+            PlateDataPtrs plates;
+            std::vector<Preset *> presets;
+            Semver version;
+            DynamicPrintConfig project_config;
+            model = Model::read_from_archive(args.model, &project_config, &substitutions, type,
+                LoadStrategy::LoadModel | LoadStrategy::LoadConfig | LoadStrategy::AddDefaultInstances,
+                &plates, &presets, &version);
+            if (!project_config.empty()) {
+                config = DynamicPrintConfig::full_print_config();
+                config.apply(project_config);
+                project_settings = true;
+            }
+            for (ModelObject *object : model.objects)
+                for (ModelInstance *instance : object->instances)
+                    instance->use_loaded_id_for_label = true;
+            release_PlateData_list(plates);
+            for (Preset *preset : presets)
+                delete preset;
+        } else {
+            model = args.plate.empty() ?
+                Model::read_from_file(args.model, nullptr, nullptr, LoadStrategy::LoadModel | LoadStrategy::AddDefaultInstances) :
+                load_plate(args.plate);
+        }
         for (const auto &[key, value] : args.overrides)
             config.set_deserialize_strict(key, value);
         if (! args.config_out.empty())
             config.save(args.config_out);
+        if (! args.head_out.empty()) {
+            PrintConfig printer_config;
+            printer_config.apply(config, true);
+            boost::nowide::ofstream out(args.head_out, std::ios::binary);
+            out << Nonplanar::save_head_envelope(Nonplanar::resolve_head_envelope(printer_config));
+            if (!out)
+                throw std::runtime_error("cannot write " + args.head_out);
+        }
 
-        Model model = args.plate.empty() ?
-            Model::read_from_file(args.model, nullptr, nullptr, LoadStrategy::LoadModel | LoadStrategy::AddDefaultInstances) :
-            load_plate(args.plate);
         if (model.objects.empty())
             throw std::runtime_error("no objects in " + args.model);
         apply_multi_material(args, model);
@@ -790,10 +834,29 @@ int main(int argc, char **argv)
             rotate_model(model, choose_orientation(args, model, config, datadir));
         if (args.orient_only)
             return 0;
-        place(args, model, config);
+        place(args, model, config, project_settings && !args.auto_orient);
+
+        if (!args.project_out.empty()) {
+            model.set_backup_path((datadir / "project-backup").string());
+            fs::create_directories(model.get_backup_path());
+            PlateData plate;
+            plate.plate_index = 0;
+            for (size_t i = 0; i < model.objects.size(); ++i)
+                for (size_t j = 0; j < model.objects[i]->instances.size(); ++j)
+                    plate.objects_and_instances.emplace_back(int(i), int(j));
+            StoreParams params;
+            params.plate_data_list = { &plate };
+            params.path = args.project_out;
+            params.model = &model;
+            params.config = &config;
+            params.strategy = SaveStrategy::Silence | SaveStrategy::SplitModel | SaveStrategy::ShareMesh |
+                              (project_input ? SaveStrategy::UseLoadedId : SaveStrategy::Default);
+            if (!store_bbs_3mf(params))
+                throw std::runtime_error("cannot write " + args.project_out);
+        }
 
         Print print;
-        print.is_BBL_printer() = args.printer.rfind("Bambu Lab", 0) == 0;
+        print.is_BBL_printer() = (project_settings ? config.opt_string("printer_model") : args.printer).rfind("Bambu Lab", 0) == 0;
         for (ModelObject *object : model.objects)
             print.auto_assign_extruders(object);
         print.apply(model, config);
@@ -829,6 +892,13 @@ int main(int argc, char **argv)
             return list;
         });
         const auto t_done = std::chrono::steady_clock::now();
+
+        if (args.explain)
+            for (const PrintObject *object : print.objects()) {
+                std::cout << "explain object " << object->model_object()->name << "\n";
+                for (const auto &patch : object->conformal().patches)
+                    std::cout << Nonplanar::explain_top_patch(*object, patch);
+            }
 
         size_t     vz_line         = 0;
         const auto [vz, vz_actual] = max_vz(result, &vz_line);

@@ -1066,6 +1066,20 @@ Mask steep_nodes(const HeightField &surface, double max_tan, double min_width)
     return rasterize(opening_ex(mask_to_expolygons(out, surface), float(scale_(0.5 * min_width))), surface);
 }
 
+double effective_patch_height_cap(const PrintObject &object)
+{
+    const double cap = object.config().nonplanar_max_patch_height.value;
+    if (cap <= 0.)
+        return cap;
+    double minimum = std::max(object.config().layer_height.value, automatic_shell_height(object));
+    for (size_t i = 0; i < object.num_printing_regions(); ++i) {
+        const auto &region = object.printing_region(i).config();
+        if (top_shells_enabled(region, object.config()) || bottom_shells_enabled(region, object.config()))
+            minimum = std::max(minimum, region.nonplanar_shell_layer_height.value);
+    }
+    return std::max(cap, minimum);
+}
+
 void band_schedule(const HeadEnvelope &head, double shell_height, double max_patch_height, double &pitch, double &tolerance)
 {
     const double reach = head_band_height(head);
@@ -1267,7 +1281,7 @@ void group_hosts_by_filament(PrintObject &object, ConformalResult &result)
     LayerPtrs   &layers = object.layers();
     const size_t n      = layers.size();
     double       reach  = head_band_height(resolve_head_envelope(object.print()->config()));
-    if (const double cap = object.config().nonplanar_max_patch_height.value; cap > 0.)
+    if (const double cap = effective_patch_height_cap(object); cap > 0.)
         reach = std::min(reach, cap);
     if (!(reach > 0.) || !std::isfinite(reach) || n == 0)
         return;
