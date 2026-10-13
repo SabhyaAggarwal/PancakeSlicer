@@ -624,6 +624,20 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
         for (size_t i = 0; i < n_nodes; ++i)
             if (mask[i] && S0.data()[i] - settings.top_shells * h_c - h_min < first_top)
                 mask[i] = 0;
+    if (settings.banded) {
+        const double outer_w   = std::min(line_width, BandedTopWidth * region.flow(object, frTopSolidInfill, h_c).nozzle_diameter());
+        const double max_slope = h_c / outer_w;
+        Mask         steep(n_nodes, 0);
+        for (int iy = 0; iy < grid.ny(); ++iy)
+            for (int ix = 0; ix < grid.nx(); ++ix)
+                if (const size_t i = size_t(iy) * grid.nx() + ix; mask[i])
+                    if (const Vec2d g = S0.gradient(grid.node(ix, iy)); g.allFinite() && g.norm() > max_slope)
+                        steep[i] = 1;
+        const Mask planar = rasterize(opening_ex(mask_to_expolygons(steep, grid), float(scale_(line_width))), grid);
+        for (size_t i = 0; i < n_nodes; ++i)
+            if (planar[i] && steep[i])
+                mask[i] = 0;
+    }
     std::vector<int> limiting_components(n_nodes, -1);
     if (!settings.banded)
         drop_unsafe_nodes(S0, head, h_c, settings.max_error, mask, &limiting_components);
@@ -857,6 +871,7 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
     std::vector<HeightField> planar_tops;
     std::vector<HeightField> stack_layers;
     std::vector<ExPolygons>  shell_areas;
+    std::vector<std::pair<ExPolygon, const char *>> skipped;
     const int                solid_layers = settings.shells - settings.sparse;
     for (ExPolygon &component : components) {
         const Mask pmask = rasterize({ component }, grid);
@@ -868,8 +883,10 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
                     ix0 = std::min(ix0, ix), iy0 = std::min(iy0, iy), ix1 = std::max(ix1, ix), iy1 = std::max(iy1, iy);
                     zlo = std::min(zlo, S1.data()[i]), zhi = std::max(zhi, S1.data()[i]);
                 }
-        if (ix1 < 0 || zhi - zlo < 0.01)
+        if (ix1 < 0 || zhi - zlo < 0.01) {
+            skipped.emplace_back(component, "flat");
             continue;
+        }
         const int pad = 3;
         ix0 = std::max(0, ix0 - pad), iy0 = std::max(0, iy0 - pad);
         ix1 = std::min(grid.nx() - 1, ix1 + pad), iy1 = std::min(grid.ny() - 1, iy1 + pad);
@@ -969,8 +986,10 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
             for (size_t i = 0; i < at_wall.size(); ++i)
                 if (at_wall[i] && !std::isnan(top.data()[i]))
                     top.data()[i] = Inf;
-        if (!printable)
+        if (!printable) {
+            skipped.emplace_back(component, "no_transition_layer");
             continue;
+        }
 
         patch.host_layer = size_t(std::lower_bound(layer_z.begin(), layer_z.end(), patch.z_max - EPSILON) - layer_z.begin());
         if (patch.host_layer >= layers.size())
@@ -995,11 +1014,19 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
                         owner = patch.id;
                 }
         const double fallback = std::max(0., cand.area() - covered) * SCALING_FACTOR * SCALING_FACTOR;
-        if (owner >= 0)
+        if (owner >= 0) {
             result.diagnostics[size_t(owner - patch_offset)].fallback_area += fallback;
-        else if (fallback > 0.) {
+            result.diagnostics[size_t(owner - patch_offset)].fallback_reason = "edge";
+        } else if (fallback > 0.) {
             PatchDiagnostics diag;
             diag.fallback_area = fallback;
+            double best = 0.;
+            diag.fallback_reason = settings.banded ? "edge" : "head";
+            for (const auto &[component, reason] : skipped)
+                if (const double a = area(intersection_ex(ExPolygons{ component }, ExPolygons{ cand })); a > best) {
+                    best                 = a;
+                    diag.fallback_reason = reason;
+                }
             diag.limiting_component = most_limiting_component(head, limiting_components, rasterize({ cand }, grid));
             result.diagnostics.emplace_back(std::move(diag));
         }
@@ -1173,6 +1200,10 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
         for (size_t i = 0; i < layers.size(); ++i)
             if (layer_z[i] > patch.z_min - EPSILON && i <= patch.host_layer)
                 layers[i]->conformal_covered = true;
+    std::vector<ExPolygons> clip_areas = shell_areas;
+    if (settings.banded)
+        for (ExPolygons &area : clip_areas)
+            area = offset_ex(area, -float(scale_(0.5 * line_width)));
     tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
         for (size_t i = range.begin(); i < range.end(); ++i) {
             throw_if_canceled(object);
@@ -1190,7 +1221,7 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
                         any      = true;
                     }
                 if (any)
-                    append(excl, intersection_ex(mask_to_expolygons(above, B), shell_areas[idx]));
+                    append(excl, intersection_ex(mask_to_expolygons(above, B), clip_areas[idx]));
             }
             if (excl.empty())
                 continue;

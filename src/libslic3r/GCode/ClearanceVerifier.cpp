@@ -75,7 +75,7 @@ Corners bead_corners(const ToolPose &a, const ToolPose &b, double width, double 
     return corners;
 }
 struct Bead { Corners corners; size_t run; };
-struct UprightBead { uint32_t move, last, run; };
+struct UprightBead { uint32_t move, last, run; uint16_t piece, pieces; };
 class BeadGrid
 {
 public:
@@ -87,9 +87,9 @@ public:
         m_beads.push_back({ bead_corners(a, b, width, height), run });
         index(m_beads.back().corners);
     }
-    void deposit_upright(size_t move, size_t last, size_t run)
+    void deposit_upright(size_t move, size_t last, size_t run, int piece = 0, int pieces = 1)
     {
-        m_upright.push_back({ uint32_t(move), uint32_t(last), uint32_t(run) });
+        m_upright.push_back({ uint32_t(move), uint32_t(last), uint32_t(run), uint16_t(piece), uint16_t(pieces) });
         index(corners(size() - 1));
     }
     double clearance(const ToolPose &pose, const Matrix3d &frame, const Nonplanar::HeadEnvelope &head,
@@ -143,8 +143,9 @@ private:
         if (!m_beads.empty()) return m_beads[id].corners;
         const UprightBead &bead = m_upright[id];
         const auto        &move = m_moves[bead.move];
-        return bead_corners({ move_tip(m_moves[bead.last], m_rotary), Vec3d::UnitZ() }, { move_tip(move, m_rotary), Vec3d::UnitZ() },
-                            move.width, move.height);
+        const Vec3d        a    = move_tip(m_moves[bead.last], m_rotary), b = move_tip(move, m_rotary);
+        return bead_corners({ a + (double(bead.piece) / bead.pieces) * (b - a), Vec3d::UnitZ() },
+                            { a + (double(bead.piece + 1) / bead.pieces) * (b - a), Vec3d::UnitZ() }, move.width, move.height);
     }
     size_t bead_run(size_t id) const { return m_beads.empty() ? m_upright[id].run : m_beads[id].run; }
     void index(const Corners &corners)
@@ -397,7 +398,10 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
     if (result.moves.empty()) return report;
     BoundingBoxf bounds;
     double max_width = 0.;
-    const bool rotary = kinematics.rotary_count() != 0;
+    bool turned = false;
+    for (const auto &move : result.moves)
+        turned |= move.has_joints && (move.joints.rot[0] != 0. || move.joints.rot[1] != 0.);
+    const bool rotary = kinematics.rotary_count() != 0 && turned;
     for (const auto &move : result.moves) {
         if (!move.position.allFinite()) throw RuntimeError("Clearance verification found a non-finite G-code position.");
         bounds.merge(Vec2d(move_tip(move, rotary).head<2>()));
@@ -576,8 +580,13 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
                 if (k == starts[r]) copies.push_back(sweep);
                 c.beads = uint32_t(beads.size());
                 step(sweep, beads, k, nullptr);
-                if (c.extruding && result.moves[c.move].extrusion_role != erCustom && !nozzle.boxes.empty())
-                    beads.deposit_upright(c.move, c.last, c.run);
+                if (c.extruding && result.moves[c.move].extrusion_role != erCustom && !nozzle.boxes.empty()) {
+                    const Vec3d a = move_tip(result.moves[c.last], rotary), b = move_tip(result.moves[c.move], rotary);
+                    const int   samples = int(std::min(65535., std::max(1., std::ceil((b - a).norm() / params.sweep))));
+                    const int   pieces  = std::clamp(int(std::ceil(std::abs(b.z() - a.z()) / std::max(params.bead_eps, EPSILON))), 1, samples);
+                    for (int piece = 0; piece < pieces; ++piece)
+                        beads.deposit_upright(c.move, c.last, c.run, piece, pieces);
+                }
             }
         sweep = Sweep { MaterialColumns(bounds, params.pitch), MaterialColumns(bounds, params.pitch) };
         hits.resize(copies.size());

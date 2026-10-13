@@ -486,6 +486,8 @@ void place_wipe_tower(DynamicPrintConfig &config, const Model &model, size_t fil
 int main(int argc, char **argv)
 {
     const Args args = parse_args(argc, argv);
+    if (const char *level = std::getenv("NP_LOG_LEVEL"))
+        set_logging_level(unsigned(std::atoi(level)));
     try {
         set_resources_dir((fs::path(args.profiles) / "..").lexically_normal().string());
         const fs::path datadir = args.datadir.empty() ? fs::temp_directory_path() / fs::unique_path("np_slice_%%%%%%%%") :
@@ -646,7 +648,7 @@ int main(int argc, char **argv)
                       << "nonplanar_top_footprint_mm2 " << footprint << "\n";
             for (const Nonplanar::PatchDiagnostics &diag : conformal.diagnostics)
                 if (diag.fallback_area > 0.)
-                    std::cout << "nonplanar_fallback untagged "
+                    std::cout << "nonplanar_fallback " << (diag.fallback_reason.empty() ? "untagged" : diag.fallback_reason) << " "
                               << diag.fallback_area << " patch " << diag.patch_id << "\n";
         }
     } catch (const std::exception &e) {

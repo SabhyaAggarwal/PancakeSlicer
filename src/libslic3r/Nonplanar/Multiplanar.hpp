@@ -33,11 +33,13 @@ struct MultiplanarChunk
     int                    base_clip = -1;
     indexed_triangle_set   piece;
     double                 overhang_area = 0.;
+    double                 step_area     = 0.;
 };
 
 struct MultiplanarParams
 {
     double                layer_height       = 0.2;
+    double                first_layer_height = 0.2;
     double                overhang_threshold = 0.25 * M_PI;
     int                   max_planes         = 3;
     HeadEnvelope          head;
@@ -49,6 +51,8 @@ struct MultiplanarPlan
 {
     std::vector<MultiplanarChunk> chunks;
     double                        residual_overhang_area = 0.;
+    double                        step_area              = 0.;
+    double                        planar_step_area       = 0.;
     std::vector<std::string>      notes;
 };
 
@@ -57,6 +61,10 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
 
 indexed_triangle_set clip_mesh(const indexed_triangle_set &mesh, const std::vector<HalfSpace> &clips,
                                const std::vector<double> &inset = {});
+
+indexed_triangle_set chunk_piece(const indexed_triangle_set &mesh, const MultiplanarChunk &chunk, double layer_height);
+
+int printable_layers(const indexed_triangle_set &piece, const MultiplanarChunk &chunk, double layer_height);
 
 std::shared_ptr<const MultiplanarPlan> clip_multiplanar_slices(PrintObject &object);
 

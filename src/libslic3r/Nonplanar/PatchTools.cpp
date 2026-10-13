@@ -1679,6 +1679,7 @@ std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const Heig
         if (!index.empty()) {
             PatchDiagnostics &diag = bands[index.begin()->second].diag;
             diag.fallback_area = comp_diag[c].fallback_area;
+            diag.fallback_reason = comp_diag[c].fallback_reason;
             diag.repaired_nodes = comp_diag[c].repaired_nodes;
             diag.repair_lowering = comp_diag[c].repair_lowering;
         }

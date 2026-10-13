@@ -649,6 +649,7 @@ void build_curved_overhangs(PrintObject &object, ConformalResult &result)
     if (const double fallback = std::max(0., area(candidate) - covered) * SCALING_FACTOR * SCALING_FACTOR; fallback > 0.) {
         PatchDiagnostics diag;
         diag.fallback_area = fallback;
+        diag.fallback_reason = "overhang";
         result.diagnostics.emplace_back(std::move(diag));
     }
     if (result.patches.size() == first_patch)

@@ -375,6 +375,7 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
     if (const double fallback = std::max(0., area(candidate) - covered) * SCALING_FACTOR * SCALING_FACTOR; fallback > 0.) {
         PatchDiagnostics diag;
         diag.fallback_area = fallback;
+        diag.fallback_reason = "bottom";
         diag.limiting_component = most_limiting_component(head, limiting_components, cand_mask);
         result.diagnostics.emplace_back(std::move(diag));
     }
