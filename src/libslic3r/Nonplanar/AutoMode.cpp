@@ -3,6 +3,7 @@
 #include "ConformalIroning.hpp"
 #include "ConformalShells.hpp"
 #include "HeadEnvelope.hpp"
+#include "MaterialRules.hpp"
 #include "Multiplanar.hpp"
 #include "PatchTools.hpp"
 #include "Repair.hpp"
@@ -33,6 +34,12 @@
 namespace Slic3r::Nonplanar {
 
 namespace {
+
+bool flexible_top(const PrintObject &object, const PrintRegionConfig &config)
+{
+    const size_t idx = size_t(std::max(0, config.top_surface_filament_id.value - 1));
+    return road_material(object.print()->config().filament_type.get_at(idx)) == RoadMaterial::Flexible;
+}
 
 constexpr int    MaxShells      = 6;
 constexpr double LargeArea      = 400.;
@@ -130,9 +137,11 @@ bool bridges_enabled(const PrintRegionConfig &config, const PrintObjectConfig &o
     return is_auto(object) || (is_manual(object) && config.nonplanar_bridges.value);
 }
 
-double infill_depth(const PrintRegionConfig &config, const PrintObjectConfig &object)
+double infill_depth(const PrintRegionConfig &config, const PrintObject &object)
 {
-    return is_auto(object) ? 2. : is_manual(object) ? config.nonplanar_infill_depth.value : 0.;
+    if (!is_auto(object.config()))
+        return is_manual(object.config()) ? config.nonplanar_infill_depth.value : 0.;
+    return object.print()->config().nonplanar_kinematics.value != RotaryLayout::None ? 0. : 2.;
 }
 
 NonplanarFallback effective_fallback(const PrintRegionConfig &config, const PrintObjectConfig &object)
@@ -273,7 +282,9 @@ void choose_patch_settings(const PrintObject &object, const HeadEnvelope &head, 
     const double r = head.tip_flat_radius;
     const bool ironing_off = config.ironing_type.value == IroningType::NoIroning &&
                              object.print()->default_region_config().ironing_type.value != IroningType::NoIroning;
-    a.ironing = !ironing_off && conformal_ironing_enabled(config) && 0.5 * r * r * curvature80 <= 0.25 * h_c;
+    a.ironing = !ironing_off && conformal_ironing_enabled(config) && !flexible_top(object, config) &&
+                0.5 * r * r * curvature80 <= 0.25 * h_c &&
+                object.print()->config().nonplanar_kinematics.value == RotaryLayout::None;
 
     patch.automatic = std::make_shared<const AutoPatchSettings>(a);
     BOOST_LOG_TRIVIAL(info) << "Non-planar auto: patch " << patch.id << " area " << a.shell_area << " mm2, slope90 "
@@ -370,7 +381,8 @@ std::string explain_top_patch(const PrintObject &object, const ConformalPatch &p
     } else
         out << (requested ? "region enabled" : "region disabled");
     if (requested && patch.ironing.entities.empty())
-        out << "; no paths survived surface, wall, band or repair clipping";
+        out << (flexible_top(object, config) ? "; flexible filament: curved tops are not ironed" :
+                                               "; no paths survived surface, wall, band or repair clipping");
     out << ")\n";
     return out.str();
 }

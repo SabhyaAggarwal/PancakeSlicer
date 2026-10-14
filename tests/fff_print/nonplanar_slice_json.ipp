@@ -24,6 +24,7 @@
 #include <cstddef>
 #include <ctime>
 #include <iomanip>
+#include <iterator>
 #include <iostream>
 #include <limits>
 #include <sstream>
@@ -341,9 +342,11 @@ void slice_json_results(Json &record, const Args &args, const Print &print, cons
         for (const auto &patch : object->conformal().patches) {
             const double a = area(patch.footprint) * SCALING_FACTOR * SCALING_FACTOR;
             Json p = grid.measure([&](const Vec2d &xy) { return in_footprint(xy, patch.footprint); });
-            static const char *kinds[] = {"top", "bottom", "volume", "overhang", "chunk", "support-interface", "bridge"};
+            static const char *kinds[] = {"top", "bottom", "volume", "overhang", "chunk", "support-interface", "bridge", "field"};
+            static_assert(std::size(kinds) == size_t(Nonplanar::PatchKind::Field) + 1, "one name per PatchKind");
             p.update({{"id", patch.id}, {"object_id", object_id}, {"kind", kinds[size_t(patch.kind)]},
-                      {"area_mm2", a}, {"mode_chosen", patch.kind == Nonplanar::PatchKind::Chunk ? "multiplanar" : "conformal"},
+                      {"area_mm2", a}, {"mode_chosen", patch.kind == Nonplanar::PatchKind::Chunk ? "multiplanar" :
+                                                       patch.kind == Nonplanar::PatchKind::Field ? "field" : "conformal"},
                       {"band_count", patch.band < 0 ? 0 : 1}, {"band", patch.band}, {"shells", patch.shells}, {"selection", patch.automatic ? "auto" : "configured"},
                       {"reason_tags", Json::array()}, {"surface_rms_mm", nullptr}});
             for (const auto &diag : object->conformal().diagnostics) if (diag.patch_id == patch.id) {

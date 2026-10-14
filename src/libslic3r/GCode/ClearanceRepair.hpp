@@ -28,6 +28,7 @@ public:
     bool apply();
 
     bool plan(const GCodeProcessorResult &result, const ClearanceReport &report, const HeadEnvelope &head);
+    bool plan_upright(const GCodeProcessorResult &result, const ClearanceReport &report);
 
 private:
     struct Planned

@@ -167,7 +167,7 @@ Args parse_args(int argc, char **argv)
         else if (arg == "--auto-orient") a.auto_orient = true;
         else if (arg == "--orient-only") a.auto_orient = a.orient_only = true;
         else if (arg == "--confirm-up") a.confirm_up = next();
-        else if (arg == "-o" || arg == "--output") a.output = next();
+        else if (arg == "-o" || arg == "--output") a.output = fs::absolute(next()).string();
         else if (arg == "--set") {
             const std::string kv  = next();
             const size_t      pos = kv.find('=');

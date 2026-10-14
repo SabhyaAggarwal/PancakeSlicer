@@ -32,6 +32,7 @@ struct ConformalPatch
     size_t     host_layer = 0;
     int        region_id = -1;
     int        band = -1;
+    bool       from_support = false;
     std::shared_ptr<const AutoPatchSettings> automatic;
     std::shared_ptr<const OrientationField> field;
 

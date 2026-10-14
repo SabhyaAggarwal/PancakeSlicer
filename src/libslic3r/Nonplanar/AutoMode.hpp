@@ -25,7 +25,7 @@ double full_conformal_thickness(const PrintRegionConfig &config, const PrintObje
 bool overhangs_enabled(const PrintRegionConfig &config, const PrintObjectConfig &object);
 bool support_free(const PrintObjectConfig &object);
 bool bridges_enabled(const PrintRegionConfig &config, const PrintObjectConfig &object);
-double infill_depth(const PrintRegionConfig &config, const PrintObjectConfig &object);
+double infill_depth(const PrintRegionConfig &config, const PrintObject &object);
 NonplanarFallback effective_fallback(const PrintRegionConfig &config, const PrintObjectConfig &object);
 bool zaa_fallback(const PrintRegionConfig &config, const PrintObjectConfig &object);
 bool spiral_top_enabled(const PrintRegionConfig &config, const PrintObjectConfig &object);

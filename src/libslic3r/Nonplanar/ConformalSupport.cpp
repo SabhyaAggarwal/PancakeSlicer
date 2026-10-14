@@ -304,6 +304,7 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
         ConformalPatch patch;
         patch.id           = int(result.patches.size());
         patch.kind         = PatchKind::Bottom;
+        patch.from_support = true;
         patch.footprint    = mask_to_expolygons(mask, grid);
         patch.wall_band    = diff_ex(patch.footprint, inner_outline);
         patch.shells       = 1;
@@ -614,6 +615,7 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
         ConformalPatch        patch;
         patch.id           = int(result.patches.size());
         patch.kind         = PatchKind::SupportInterface;
+        patch.from_support = true;
         patch.shells       = n_i;
         patch.shell_height = h;
         patch.region_id    = skin_band ? 0 : result.patches[size_t(band_id)].region_id;

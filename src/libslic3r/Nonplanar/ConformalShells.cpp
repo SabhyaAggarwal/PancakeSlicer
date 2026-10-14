@@ -104,11 +104,11 @@ ShellSettings shell_settings(const PrintObject &object, size_t region_id)
         s.shells = AutoMinShells;
     s.adaptive         = s.banded && cfg.nonplanar_adaptive_bands.value;
     s.top_shells       = s.shells;
-    if (s.banded && infill_depth(cfg, object.config()) > 0.) {
+    if (s.banded && infill_depth(cfg, object) > 0.) {
         const int top_solid = std::max(cfg.top_shell_layers.value, int(std::ceil(cfg.top_shell_thickness.value / s.shell_height - EPSILON)));
         s.sparse_density    = std::min(1., 0.01 * cfg.sparse_infill_density.value);
         if (s.sparse_density > 0.)
-            s.sparse = int(std::lround(infill_depth(cfg, object.config()) / s.shell_height));
+            s.sparse = int(std::lround(infill_depth(cfg, object) / s.shell_height));
         s.shells      = std::max(s.shells + (s.sparse > 0 ? 1 : 0), top_solid) + s.sparse;
         s.solid_angle = Geometry::deg2rad(cfg.infill_direction.value);
         s.bottom_keep = std::max(cfg.bottom_shell_layers.value * object.config().layer_height.value, cfg.bottom_shell_thickness.value);
@@ -646,9 +646,22 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
                     host_z, resample, patch.id, k - 1, out.entities);
     }
     lift_polylines(roads.polylines, proto, at, host_z, resample, patch.id, k - 1, out.entities, &roads.widths);
+    const size_t helix_from = out.entities.size();
     lift_linked(linked, proto, at, host_z, resample, patch.id, k - 1, out.entities);
-    if (out.entities.size() == 1)
-        ramp_helix_flow(*static_cast<ExtrusionPathConformal *>(out.entities.front()), ramp, fill.outward);
+    if (out.entities.size() == helix_from + 1)
+        ramp_helix_flow(*static_cast<ExtrusionPathConformal *>(out.entities.back()), ramp, fill.outward);
+    else if (ramp.end > ramp.begin && !fill.outward) {
+        double before = 0.;
+        Point  last;
+        for (size_t i = helix_from; i < out.entities.size(); ++i) {
+            auto &piece = *static_cast<ExtrusionPathConformal *>(out.entities[i]);
+            if (i > helix_from)
+                before += unscale(Point(piece.first_point() - last)).norm();
+            ramp_helix_flow(piece, HelixRamp{ ramp.begin - before, ramp.end - before }, false);
+            before += unscale<double>(piece.polyline.to_polyline().length());
+            last = piece.last_point();
+        }
+    }
     lift_linked(pinholes, proto, at, host_z, resample, patch.id, k - 1, out.entities);
     if (from != nullptr && !out.entities.empty())
         prepend_glide(*static_cast<ExtrusionPathConformal *>(out.entities.front()), *from,

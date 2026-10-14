@@ -2,6 +2,7 @@
 #include "MultiplanarConfirm.hpp"
 
 #include "ConformalIroning.hpp"
+#include "MaterialRules.hpp"
 #include "ConformalShells.hpp"
 #include "PatchTools.hpp"
 
@@ -688,8 +689,10 @@ DynamicPrintConfig chunk_print_config(const PrintObject &object)
     set("nonplanar_bridges", "0");
     set("nonplanar_atom_toolpath", "");
     set("nonplanar_ironing", "0");
-    if (conformal_ironing_enabled(object.printing_region(0).config()) &&
-        object.printing_region(0).config().ironing_type.value == IroningType::NoIroning)
+    const PrintRegionConfig &region0 = object.printing_region(0).config();
+    const int                top_id  = std::max(1, region0.top_surface_filament_id.value);
+    if (conformal_ironing_enabled(region0) && region0.ironing_type.value == IroningType::NoIroning &&
+        road_material(object.print()->config().filament_type.get_at(size_t(top_id - 1))) != RoadMaterial::Flexible)
         set("ironing_type", "top");
     set("nonplanar_kinematics", "none");
     set("zaa_enabled", "0");

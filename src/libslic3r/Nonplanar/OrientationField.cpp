@@ -1303,6 +1303,10 @@ std::shared_ptr<const OrientationField> clip_field_slices(PrintObject &object)
                             << Geometry::rad2deg(st.max_tilt) << " deg, layer thickness " << st.min_thickness << ".."
                             << st.max_thickness << " h, head conflicts " << st.head_conflicts << ", relax rounds "
                             << st.relax_rounds << ", tilt scale " << st.tilt_scale << ", layers from " << (st.solver_field ? "the layer solver" : "the own integral");
+    if (st.head_conflicts > 0)
+        throw Slic3r::SlicingError(Slic3r::format(_u8L("Orientation field: %1% poses still reach earlier material or the "
+                                                       "table after relaxing the tilt. Use multiplanar chunks or rotary curved shells."),
+                                                  st.head_conflicts));
     LayerPtrs &layers = object.layers();
     for (size_t layer_id = 1; layer_id < layers.size(); ++layer_id)
         for (LayerRegion *region : layers[layer_id]->regions())

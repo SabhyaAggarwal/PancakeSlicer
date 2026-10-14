@@ -8,6 +8,7 @@
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/Layer.hpp"
+#include "libslic3r/Nonplanar/AutoMode.hpp"
 #include "libslic3r/Nonplanar/ConformalShells.hpp"
 #include "libslic3r/Nonplanar/HeadEnvelope.hpp"
 #include "libslic3r/Print.hpp"
@@ -37,6 +38,7 @@ using MoveVertex = GCodeProcessorResult::MoveVertex;
 
 constexpr double Inf = std::numeric_limits<double>::infinity();
 constexpr double UniformRadius = 3.;
+constexpr double UprightRadius = 1.5;
 
 bool adaptive_top(const PrintObject &object, int patch)
 {
@@ -257,8 +259,30 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
 {
     ClearanceRepair *self = print.m_clearance_repair;
     const auto       mode = print.config().nonplanar_collision_check.value;
-    if (self == nullptr || !result.nonplanar || mode == NonplanarCollisionCheck::Off ||
-        print.config().nonplanar_kinematics.value != RotaryLayout::None) {
+    if (print.config().nonplanar_kinematics.value != RotaryLayout::None) {
+        if (self != nullptr && result.nonplanar && effective_collision_check(print) != NonplanarCollisionCheck::Off &&
+            self->m_pass < self->m_max_passes) {
+            ClearanceParams params;
+            params.head = resolve_head_envelope(print.config());
+            ClearanceReport report = verify_clearance(result, params, *make_tool_kinematics(print.config()),
+                                                      [&print] { print.throw_if_canceled(); });
+            if (self->m_pass == 0)
+                self->m_first_hits = report.hit_moves;
+            self->m_planned.clear();
+            if (report.hit_moves == 0 || self->plan_upright(result, report)) {
+                if (report.hit_moves == 0 && self->m_pass > 0)
+                    print.active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, self->summary(0));
+                result.clearance_report = std::move(report);
+                result.clearance        = result.clearance_report.per_move;
+                return;
+            }
+        }
+        if (self != nullptr)
+            self->m_planned.clear();
+        check_export_clearance(print, result);
+        return;
+    }
+    if (self == nullptr || !result.nonplanar || mode == NonplanarCollisionCheck::Off) {
         check_export_clearance(print, result);
         return;
     }
@@ -438,6 +462,37 @@ bool ClearanceRepair::plan(const GCodeProcessorResult &result, const ClearanceRe
     return caps + bands + lifts + drops > 0;
 }
 
+bool ClearanceRepair::plan_upright(const GCodeProcessorResult &result, const ClearanceReport &report)
+{
+    const Locator locator(m_print);
+    const double  radius = UprightRadius * double(m_pass + 1);
+    size_t        discs  = 0;
+    for (size_t i = 1; i < result.moves.size() && i < report.per_move.size(); ++i) {
+        const MoveVertex &m = result.moves[i];
+        if (report.per_move[i] >= 0.f || m.nonplanar_patch_shell == 0xFF)
+            continue;
+        const Vec3d tip  = m.position.cast<double>();
+        const Site  site = locator.locate(m, tip);
+        if (site.object == nullptr)
+            continue;
+        std::vector<RepairHints::Disc> *upright = nullptr;
+        for (Planned &p : m_planned)
+            if (p.object == site.object)
+                upright = &p.hints.upright;
+        if (upright == nullptr) {
+            m_planned.push_back({ site.object, {} });
+            upright = &m_planned.back().hints.upright;
+        }
+        const Vec2d from = site.xy + (result.moves[i - 1].position - m.position).head<2>().cast<double>();
+        for (const Vec2d &p : { from, site.xy })
+            if (std::none_of(upright->begin(), upright->end(), [&p, radius](const RepairHints::Disc &d) { return (d.p - p).norm() < 0.5 * radius; }))
+                upright->push_back({ p, radius }), ++discs;
+    }
+    if (discs > 0)
+        m_actions.push_back(std::to_string(discs) + " spots printed upright");
+    return discs > 0;
+}
+
 bool ClearanceRepair::apply()
 {
     if (m_planned.empty())
@@ -453,6 +508,7 @@ bool ClearanceRepair::apply()
         h.ironing_drops.insert(h.ironing_drops.end(), p.hints.ironing_drops.begin(), p.hints.ironing_drops.end());
         h.order_bands.insert(h.order_bands.end(), p.hints.order_bands.begin(), p.hints.order_bands.end());
         h.uniform_beads.insert(h.uniform_beads.end(), p.hints.uniform_beads.begin(), p.hints.uniform_beads.end());
+        h.upright.insert(h.upright.end(), p.hints.upright.begin(), p.hints.upright.end());
         h.travel_lift = std::max(h.travel_lift, p.hints.travel_lift);
         h.travel_layers.insert(h.travel_layers.end(), p.hints.travel_layers.begin(), p.hints.travel_layers.end());
         std::sort(h.travel_layers.begin(), h.travel_layers.end());

@@ -836,7 +836,7 @@ bool PrintObject::has_conformal_support() const
 {
     const Nonplanar::ConformalResult &conformal = this->conformal();
     return std::any_of(conformal.patches.begin(), conformal.patches.end(), [](const Nonplanar::ConformalPatch &patch) {
-               return patch.kind == Nonplanar::PatchKind::SupportInterface;
+               return patch.from_support;
            });
 }
 

@@ -7606,12 +7606,21 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
         } else
             tilt.residual_from = std::atan(2. * path.height / std::max(double(path.width), EPSILON));
         tilt.clearance_margin = this->nonplanar_head().margin;
+        const Vec2d               origin  = this->point_to_gcode(Point(0, 0));
+        const Nonplanar::RepairHints *repair = m_last_obj_copy.first != nullptr ? m_last_obj_copy.first->nonplanar_repair() : nullptr;
         if (m_material_columns)
-            tilt.clearance = [this](const Vec3d &tip, const Vec3d &axis) {
-                const Matrix3d frame = Eigen::Quaterniond::FromTwoVectors(axis, Vec3d::UnitZ()).toRotationMatrix();
+            tilt.clearance = [this, &kinematics, origin, repair](const Vec3d &tip, const Vec3d &axis) {
+                if (repair != nullptr)
+                    for (const Nonplanar::RepairHints::Disc &disc : repair->upright)
+                        if ((tip.head<2>() - origin - disc.p).squaredNorm() <= disc.radius * disc.radius)
+                            return -std::numeric_limits<double>::infinity();
+                const JointPose from = m_writer.get_joints();
+                JointPose       joints;
+                const Matrix3d  frame = kinematics.inverse({ tip, axis }, &from, joints) ?
+                                            kinematics.head_frame(joints) :
+                                            Matrix3d(Eigen::Quaterniond::FromTwoVectors(axis, Vec3d::UnitZ()).toRotationMatrix());
                 return m_material_columns->tilted_clearance(tip, frame, this->nonplanar_head());
             };
-        const Vec2d origin = this->point_to_gcode(Point(0, 0));
         apply_minimal_tilt(m_conformal_points, [&surface_gradient, &origin](const Vec2d &p) { return surface_gradient(p - origin); },
                            kinematics, tilt);
     }
@@ -7816,7 +7825,8 @@ bool GCode::conformal_short_hop(const ExtrusionPathConformal &path, const Extrus
     const Vec3d &here = m_writer.get_position();
     to                = Vec3d(xy.x(), xy.y(), m_nominal_z + unscale<double>(next->polyline.points.front().z()));
     const bool   flexible    = road_material(m_config.filament_type.get_at(m_writer.filament()->id())) == RoadMaterial::Flexible;
-    const double short_glide = flexible ? 10. : 5.;
+    const bool   into_top    = next->shell != path.shell && next->role() == erTopSolidInfill && path.role() != erInternalInfill;
+    const double short_glide = flexible && !into_top ? 10. : 5.;
     const double minimum     = m_config.retraction_minimum_travel.get_at(m_writer.filament()->id());
     if ((to - here).head<2>().norm() >= (in_band ? std::max(minimum, short_glide) : std::min(minimum, 1.)))
         return false;
@@ -9604,7 +9614,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
                         m_writer.extrude_to_xyz(gcode,
                             dest3d,
                             dE * e_ratio,
-                            flow_description.empty() ? description : flow_description, path.is_force_no_extrusion());
+                            flow_description.empty() ? description : flow_description, path.is_force_no_extrusion(), false);
                     }
                     check_and_insert_timelapse(line.b.to_point());
                 }
@@ -9789,7 +9799,8 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
             } else {
                 const auto [z_ratio, e_ratio] = sloped->interpolate(path_length / total_length);
                 Vec3d dest3d(p(0), p(1), get_sloped_z(z_ratio));
-                m_writer.extrude_to_xyz(gcode, dest3d, dE * e_ratio, flow_description.empty() ? description : flow_description);
+                m_writer.extrude_to_xyz(gcode, dest3d, dE * e_ratio, flow_description.empty() ? description : flow_description,
+                                        false, false);
             }
 
             check_and_insert_timelapse(processed_point.p.to_point());

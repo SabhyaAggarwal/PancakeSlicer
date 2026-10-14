@@ -1212,14 +1212,15 @@ void GCodeWriter::extrude_arc_to_xy(std::string &out, const Vec2d& point, const 
     w.append_to(out);
 }
 
-std::string GCodeWriter::extrude_to_xyz(const Vec3d &point, double dE, const std::string &comment, bool force_no_extrusion)
+std::string GCodeWriter::extrude_to_xyz(const Vec3d &point, double dE, const std::string &comment, bool force_no_extrusion, bool keep_tiny_e)
 {
     std::string gcode;
-    this->extrude_to_xyz(gcode, point, dE, comment, force_no_extrusion);
+    this->extrude_to_xyz(gcode, point, dE, comment, force_no_extrusion, keep_tiny_e);
     return gcode;
 }
 
-void GCodeWriter::extrude_to_xyz(std::string &out, const Vec3d &point, double dE, const std::string &comment, bool force_no_extrusion)
+void GCodeWriter::extrude_to_xyz(std::string &out, const Vec3d &point, double dE, const std::string &comment, bool force_no_extrusion,
+                                 bool keep_tiny_e)
 {
     bool z_changed = (GCodeG1Formatter::quantize_xyzf(point(2)) != GCodeG1Formatter::quantize_xyzf(m_pos(2)));
 
@@ -1241,7 +1242,7 @@ void GCodeWriter::extrude_to_xyz(std::string &out, const Vec3d &point, double dE
     }
     if (!force_no_extrusion) {
         const double e = filament()->E();
-        if (dE > 0. && e > 0. && GCodeFormatter::quantize_e(e) == 0.)
+        if (keep_tiny_e && dE > 0. && e > 0. && GCodeFormatter::quantize_e(e) == 0.)
             w.emit_axis('E', e, 7);
         else
             w.emit_e(e);

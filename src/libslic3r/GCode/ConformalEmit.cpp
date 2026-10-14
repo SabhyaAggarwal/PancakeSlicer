@@ -335,8 +335,11 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
             }
         }
         writer.extrude_to_pose(out, b.pose, dE, params.comment);
-        if (deposit && v > 0.)
-            deposit(a.pose.tip, b.pose.tip, seg_width);
+        if (deposit && v > 0.) {
+            const Vec3d side = a.pose.axis.cross(b.pose.tip - a.pose.tip);
+            const Vec3d lift = side.norm() > EPSILON ? Vec3d(0., 0., 0.5 * seg_width * std::abs(side.z()) / side.norm()) : Vec3d::Zero();
+            deposit(a.pose.tip + lift, b.pose.tip + lift, seg_width);
+        }
     }
     return volume;
 }

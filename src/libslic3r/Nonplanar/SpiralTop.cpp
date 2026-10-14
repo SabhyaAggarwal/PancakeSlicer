@@ -168,6 +168,8 @@ Polyline fill_helix(const ExPolygons &area, double spacing, const Point &start, 
                                                   [](const ExPolygon &l, const ExPolygon &r) { return l.area() < r.area(); });
         if (piece == inner.end() || piece->contour.points.size() < 3)
             break;
+        if (std::count_if(inner.begin(), inner.end(), [speck](const ExPolygon &ex) { return ex.area() > speck; }) > 1)
+            break;
         rings.emplace_back(piece->contour);
     }
     for (Polygon &ring : rings)
