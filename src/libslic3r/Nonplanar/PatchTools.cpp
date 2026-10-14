@@ -23,6 +23,8 @@
 #include "libslic3r/Surface.hpp"
 #include "libslic3r/libslic3r.h"
 
+#include <Eigen/Cholesky>
+#include <Eigen/Core>
 #include <boost/log/trivial.hpp>
 #include <tbb/blocked_range.h>
 #include <tbb/parallel_for.h>
@@ -33,6 +35,7 @@
 #include <cmath>
 #include <cstddef>
 #include <initializer_list>
+#include <iterator>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -142,6 +145,7 @@ double automatic_shell_height(const PrintObject &object)
 ObjectMesh::ObjectMesh(const PrintObject &object) : mesh(object.object_frame_mesh(ground_offset)), imesh(mesh)
 {
     imesh.ground_level_offset(ground_offset);
+    imesh.enable_column_cache();
 }
 
 const ObjectMesh &object_mesh(const PrintObject &object, ConformalResult &result)
@@ -149,6 +153,23 @@ const ObjectMesh &object_mesh(const PrintObject &object, ConformalResult &result
     if (!result.mesh)
         result.mesh = std::make_shared<ObjectMesh>(object);
     return *result.mesh;
+}
+
+std::function<bool(const Vec2d &, double)> material_below(const PrintObject &object)
+{
+    return [&object](const Vec2d &p, double z) {
+        const auto layers = object.layers();
+        auto it = std::upper_bound(layers.begin(), layers.end(), z - 0.01,
+                                   [](double z, const Layer *l) { return z < l->print_z - 0.5 * l->height; });
+        if (it == layers.begin())
+            return false;
+        const Layer &layer = **std::prev(it);
+        const Point  pt    = Point::new_scale(p.x(), p.y());
+        for (size_t i = 0; i < layer.lslices.size(); ++i)
+            if ((i >= layer.lslices_bboxes.size() || layer.lslices_bboxes[i].contains(pt)) && layer.lslices[i].contains(pt))
+                return true;
+        return false;
+    };
 }
 
 HeightField object_grid(const PrintObject &object, double pitch, Polygons *silhouette)
@@ -266,6 +287,183 @@ HeightField crop(const HeightField &src, int ix0, int iy0, int ix1, int iy1)
         for (int ix = 0; ix < out.nx(); ++ix)
             out.at(ix, iy) = src.at(ix0 + ix, iy0 + iy);
     return out;
+}
+
+namespace {
+
+using Quadric = Eigen::Matrix<double, 6, 1>;
+
+Quadric quadric_basis(double dx, double dy) { return Quadric(1., dx, dy, dx * dx, dx * dy, dy * dy); }
+
+template<class Weight> bool local_quadratic(const HeightField &f, int ix, int iy, int r, const Weight &weight, Quadric &c, int stride = 1)
+{
+    Eigen::Matrix<double, 6, 6> A = Eigen::Matrix<double, 6, 6>::Zero();
+    Quadric                     b = Quadric::Zero();
+    int                         n = 0;
+    for (int dy = -r; dy <= r; dy += stride)
+        for (int dx = -r; dx <= r; dx += stride) {
+            const int x = ix + dx, y = iy + dy;
+            if (x < 0 || y < 0 || x >= f.nx() || y >= f.ny() || std::isnan(f.at(x, y)))
+                continue;
+            const double w = weight(dx, dy, double(f.at(x, y)));
+            if (!(w > 0.))
+                continue;
+            const Quadric u = quadric_basis(dx, dy);
+            A.noalias() += w * u * u.transpose();
+            b.noalias() += w * f.at(x, y) * u;
+            ++n;
+        }
+    if (n < 12)
+        return false;
+    const auto ldlt = A.ldlt();
+    if (ldlt.info() != Eigen::Success || !ldlt.isPositive())
+        return false;
+    c = ldlt.solve(b);
+    return c.allFinite();
+}
+
+}
+
+double smooth_scan_noise(HeightField &surface, const std::function<void()> &throw_if_canceled)
+{
+    constexpr double ScanNoiseFloor = 0.006;
+    constexpr double NoiseScaleRatio = 3.5;
+    const double     pitch          = surface.pitch();
+    const int        nx = surface.nx(), ny = surface.ny();
+    const double     wall = std::tan(Geometry::deg2rad(60.)) * 4. * pitch;
+    auto residual_field = [&](int stride) {
+        std::vector<float> residual(size_t(nx) * ny, HeightField::NoData);
+        const int          r = 2 * stride;
+        tbb::parallel_for(tbb::blocked_range<int>(0, ny), [&](const tbb::blocked_range<int> &range) {
+            for (int iy = range.begin(); iy < range.end(); ++iy)
+                for (int ix = 0; ix < nx; ++ix) {
+                    const float z = surface.at(ix, iy);
+                    if (std::isnan(z) || ix < r || iy < r || ix + r >= nx || iy + r >= ny)
+                        continue;
+                    float lo = z, hi = z;
+                    bool  full = true;
+                    for (int dy = -r; dy <= r && full; dy += stride)
+                        for (int dx = -r; dx <= r; dx += stride) {
+                            const float v = surface.at(ix + dx, iy + dy);
+                            full = full && !std::isnan(v);
+                            lo = std::min(lo, v), hi = std::max(hi, v);
+                        }
+                    if (!full || hi - lo > stride * wall)
+                        continue;
+                    if (Quadric c; local_quadratic(surface, ix, iy, r, [](int, int, double) { return 1.; }, c, stride))
+                        residual[size_t(iy) * nx + ix] = float(std::abs(z - c(0)));
+                }
+        });
+        return residual;
+    };
+    auto robust_sigma = [](std::vector<float> &abs_res) {
+        std::nth_element(abs_res.begin(), abs_res.begin() + abs_res.size() / 2, abs_res.end());
+        return 1.4826 * abs_res[abs_res.size() / 2] / 0.92;
+    };
+    const int tile = std::max(5, int(std::lround(6. / pitch)));
+    auto      noise = [&](const std::vector<float> &residual) {
+        std::vector<float> tiles, all, cell;
+        for (int ty = 0; ty < ny; ty += tile)
+            for (int tx = 0; tx < nx; tx += tile) {
+                cell.clear();
+                for (int iy = ty; iy < std::min(ny, ty + tile); ++iy)
+                    for (int ix = tx; ix < std::min(nx, tx + tile); ++ix)
+                        if (const float r = residual[size_t(iy) * nx + ix]; !std::isnan(r))
+                            cell.emplace_back(r);
+                all.insert(all.end(), cell.begin(), cell.end());
+                if (2 * cell.size() >= size_t(tile) * tile)
+                    tiles.emplace_back(float(robust_sigma(cell)));
+            }
+        return !tiles.empty() ? robust_sigma(tiles) : all.size() >= 2000 ? robust_sigma(all) : 0.;
+    };
+    const double sigma = noise(residual_field(1));
+    if (sigma <= ScanNoiseFloor || noise(residual_field(2)) > NoiseScaleRatio * sigma)
+        return 0.;
+    if (throw_if_canceled)
+        throw_if_canceled();
+
+    constexpr double Radii[] = { 0.6, 0.9, 1.3, 1.8, 2.5 };
+    constexpr double Kappa   = 2.;
+    struct Disc
+    {
+        int                 r, stride;
+        std::vector<double> kernel;
+        double              weight(int dx, int dy) const { return kernel[size_t(dy + r) * (2 * r + 1) + dx + r]; }
+    };
+    std::vector<Disc> discs;
+    for (double radius : Radii) {
+        Disc d;
+        d.r      = std::max(2, int(std::ceil(radius / pitch)));
+        d.stride = std::max(1, int(std::ceil(d.r / 8.)));
+        d.kernel.assign(size_t(2 * d.r + 1) * (2 * d.r + 1), 0.);
+        const double s2 = 2. * std::pow(0.5 * radius / pitch, 2);
+        for (int dy = -d.r; dy <= d.r; ++dy)
+            for (int dx = -d.r; dx <= d.r; ++dx)
+                if (dx * dx + dy * dy <= d.r * d.r)
+                    d.kernel[size_t(dy + d.r) * (2 * d.r + 1) + dx + d.r] = std::exp(-(dx * dx + dy * dy) / s2);
+        discs.emplace_back(std::move(d));
+    }
+    HeightField out = surface;
+    tbb::parallel_for(tbb::blocked_range<int>(0, ny), [&](const tbb::blocked_range<int> &range) {
+        if (throw_if_canceled)
+            throw_if_canceled();
+        std::vector<double> errors;
+        for (int iy = range.begin(); iy < range.end(); ++iy)
+            for (int ix = 0; ix < nx; ++ix) {
+                const float z = surface.at(ix, iy);
+                if (std::isnan(z))
+                    continue;
+                double lo = -std::numeric_limits<double>::infinity(), hi = -lo, best = z;
+                for (const Disc &d : discs) {
+                    Quadric first;
+                    if (!local_quadratic(surface, ix, iy, d.r, [&d](int dx, int dy, double) { return d.weight(dx, dy); }, first, d.stride))
+                        break;
+                    errors.clear();
+                    for (int dy = -d.r; dy <= d.r; dy += d.stride)
+                        for (int dx = -d.r; dx <= d.r; dx += d.stride)
+                            if (const int x = ix + dx, y = iy + dy; x >= 0 && y >= 0 && x < nx && y < ny && d.weight(dx, dy) > 0.)
+                                if (const float v = surface.at(x, y); !std::isnan(v))
+                                    errors.emplace_back(std::abs(v - first.dot(quadric_basis(dx, dy))));
+                    std::nth_element(errors.begin(), errors.begin() + errors.size() / 2, errors.end());
+                    const double cut = std::max(4.685 * 1.4826 * errors[errors.size() / 2], 2. * sigma);
+                    Eigen::Matrix<double, 6, 6> A = Eigen::Matrix<double, 6, 6>::Zero(), C = A;
+                    Quadric                     b = Quadric::Zero();
+                    int                         n = 0;
+                    for (int dy = -d.r; dy <= d.r; dy += d.stride)
+                        for (int dx = -d.r; dx <= d.r; dx += d.stride) {
+                            const int x = ix + dx, y = iy + dy;
+                            if (x < 0 || y < 0 || x >= nx || y >= ny || std::isnan(surface.at(x, y)))
+                                continue;
+                            const Quadric u = quadric_basis(dx, dy);
+                            const double  e = (surface.at(x, y) - first.dot(u)) / cut;
+                            const double  w = std::abs(e) < 1. ? d.weight(dx, dy) * (1. - e * e) * (1. - e * e) : 0.;
+                            if (!(w > 0.))
+                                continue;
+                            A.noalias() += w * u * u.transpose();
+                            C.noalias() += w * w * u * u.transpose();
+                            b.noalias() += w * surface.at(x, y) * u;
+                            ++n;
+                        }
+                    if (n < 12)
+                        break;
+                    const auto ldlt = A.ldlt();
+                    if (ldlt.info() != Eigen::Success || !ldlt.isPositive())
+                        break;
+                    const Quadric g      = ldlt.solve(Quadric::Unit(0));
+                    const double  height = g.dot(b), sd = sigma * std::sqrt(std::max(0., g.dot(C * g)));
+                    if (!std::isfinite(height) || std::abs(height - z) > cut)
+                        break;
+                    lo = std::max(lo, height - Kappa * sd);
+                    hi = std::min(hi, height + Kappa * sd);
+                    if (lo > hi)
+                        break;
+                    best = height;
+                }
+                out.at(ix, iy) = float(best);
+            }
+    });
+    surface = std::move(out);
+    return sigma;
 }
 
 void pad_lowest(HeightField &field, int iterations)
@@ -676,6 +874,47 @@ double top_shell_angle(const ConformalPatch &patch, const PrintRegionConfig &con
     return angle;
 }
 
+void split_by_owner(const Polylines &polylines, const std::function<int(const Vec2d &)> &owner_at, double step,
+                    const std::function<void(int, Polyline &&)> &sink)
+{
+    for (const Polyline &pl : polylines) {
+        if (pl.points.size() < 2)
+            continue;
+        Polyline piece;
+        int      current = owner_at(unscale(pl.points.front()));
+        piece.points.emplace_back(pl.points.front());
+        auto flush = [&]() {
+            if (current != -1 && piece.points.size() >= 2)
+                sink(current, std::move(piece));
+            piece = Polyline();
+        };
+        for (size_t i = 0; i + 1 < pl.points.size(); ++i) {
+            const Vec2d a = unscale(pl.points[i]), b = unscale(pl.points[i + 1]);
+            const int   n = std::max(1, int(std::ceil((b - a).norm() / step)));
+            Vec2d       prev = a;
+            for (int j = 1; j <= n; ++j) {
+                const Vec2d p = a + (b - a) * (double(j) / n);
+                const int   o = owner_at(p);
+                if (o != current) {
+                    double t0 = 0., t1 = 1.;
+                    for (int it = 0; it < 24; ++it) {
+                        const double t = 0.5 * (t0 + t1);
+                        (owner_at(prev + (p - prev) * t) == current ? t0 : t1) = t;
+                    }
+                    const Point cut = Point::new_scale(prev + (p - prev) * (0.5 * (t0 + t1)));
+                    piece.points.emplace_back(cut);
+                    flush();
+                    current = o;
+                    piece.points.emplace_back(cut);
+                }
+                prev = p;
+            }
+            piece.points.emplace_back(pl.points[i + 1]);
+        }
+        flush();
+    }
+}
+
 Polylines fill_solid(const ExPolygons &area, InfillPattern pattern, double spacing, double angle, bool monotonic,
                      const Flow &flow, double z)
 {
@@ -701,6 +940,22 @@ Polylines fill_solid(const ExPolygons &area, InfillPattern pattern, double spaci
         try {
             append(out, fill->fill_surface(&surface, params));
         } catch (InfillFailedException &) {
+            if (pattern == ipRectilinear)
+                continue;
+            BOOST_LOG_TRIVIAL(warning) << "Non-planar: shell fill failed on a " << expoly.area() * SCALING_FACTOR * SCALING_FACTOR
+                                       << " mm2 piece, filled with lines";
+            std::unique_ptr<Fill> lines(Fill::new_from_type(ipRectilinear));
+            lines->layer_id    = 0;
+            lines->z           = z;
+            lines->spacing     = spacing;
+            lines->overlap     = 0.;
+            lines->angle       = float(angle);
+            lines->fixed_angle = true;
+            lines->bounding_box = fill->bounding_box;
+            try {
+                append(out, lines->fill_surface(&surface, params));
+            } catch (InfillFailedException &) {
+            }
         }
     }
     return out;
@@ -1835,9 +2090,6 @@ std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const Heig
     std::vector<PatchDiagnostics> comp_diag  = std::move(result.diagnostics);
     result.patches.clear();
     result.diagnostics.clear();
-    for (PatchDiagnostics &diag : comp_diag)
-        if (diag.patch_id < 0)
-            result.diagnostics.emplace_back(std::move(diag));
 
     struct Band
     {
@@ -2014,6 +2266,9 @@ std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const Heig
             result.patches.emplace_back(std::move(part));
         }
     }
+    for (PatchDiagnostics &diag : comp_diag)
+        if (diag.patch_id < 0)
+            result.diagnostics.emplace_back(std::move(diag));
     return components;
 }
 

@@ -326,7 +326,8 @@ void build_vase_lid(PrintObject &object, ConformalResult &result)
         sla::IndexedMesh   imesh(mesh);
         imesh.ground_level_offset(ground_offset);
         S = sample_top_surface(imesh, mesh.bounding_box().max.z() + 1., object.slicing_parameters().object_print_z_min, grid,
-                               [&object]() { throw_if_canceled(object); });
+                               [&object]() { throw_if_canceled(object); }, material_below(object));
+        smooth_scan_noise(S, [&object]() { throw_if_canceled(object); });
         pad_lowest(S, 2);
     }
 

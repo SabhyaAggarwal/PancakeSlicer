@@ -103,6 +103,8 @@ public:
     hit_result filter_hits(const std::vector<IndexedMesh::hit_result>& obj_hits) const;
 #endif
 
+    void enable_column_cache();
+
     hit_result query_ray_hit(const Vec3d &s, const Vec3d &dir) const;
     
     std::vector<hit_result> query_ray_hits(const Vec3d &s, const Vec3d &dir) const;

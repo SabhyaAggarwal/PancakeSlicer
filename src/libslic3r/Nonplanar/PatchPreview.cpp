@@ -107,6 +107,7 @@ PatchPreview preview_conformal_patches(const indexed_triangle_set &its, const He
     {
         sla::IndexedMesh imesh(mesh);
         out.surface = sample_top_surface(imesh, bb3.max.z() + 1., 0., grid, throw_if_canceled);
+        smooth_scan_noise(out.surface, throw_if_canceled);
     }
     out.conformal = grid;
     if (params.shells <= 0)

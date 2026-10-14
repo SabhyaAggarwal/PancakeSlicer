@@ -31,6 +31,7 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <map>
 #include <string>
 #include <typeinfo>
 #include <utility>
@@ -195,18 +196,39 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
         return;
     const float      seam      = float(scale_(0.01));
     ExPolygons       candidate = offset_ex(union_ex(offset(bottoms, seam)), -seam);
+    const sla::IndexedMesh &imesh  = object_mesh(object, result).imesh;
+    const double            z_shift = object.slicing_parameters().object_print_z_min;
+    const HeightField       Sb      = sample_bottom_surface(imesh, ray_start, z_shift, cancel);
     ExPolygons skins;
     for (const ConformalPatch &patch : result.patches)
-        if (patch.kind == PatchKind::Overhang)
-            append(skins, patch.footprint);
+        if (patch.kind == PatchKind::Overhang) {
+            if (!settings.banded) {
+                append(skins, patch.footprint);
+                continue;
+            }
+            Polygons covered;
+            for (const ExtrusionEntityCollection &shell : patch.shell_paths)
+                for (const ExtrusionEntity *ee : shell.entities)
+                    if (const auto *path = dynamic_cast<const ExtrusionPathConformal *>(ee)) {
+                        Polyline pl;
+                        for (const Point3 &q : path->polyline.points)
+                            pl.points.emplace_back(q.x(), q.y());
+                        polygons_append(covered, offset(pl, float(scale_(0.5 * path->width + 1.))));
+                    }
+            const Mask near = rasterize(union_ex(covered), grid);
+            Mask       same(n_nodes, 0);
+            bool       any = false;
+            for (size_t i = 0; i < n_nodes; ++i)
+                if (near[i] && !std::isnan(Sb.data()[i]))
+                    if (const float z = patch.surface.sample(grid.node(int(i % grid.nx()), int(i / grid.nx())));
+                        !std::isnan(z) && std::abs(z - Sb.data()[i]) <= 1.)
+                        same[i] = 1, any = true;
+            if (any)
+                append(skins, offset_ex(mask_to_expolygons(same, grid), float(scale_(pitch))));
+        }
     if (!skins.empty())
-        candidate = diff_ex(candidate, offset_ex(union_ex(skins), float(scale_(1.))));
+        candidate = diff_ex(candidate, settings.banded ? union_ex(skins) : offset_ex(union_ex(skins), float(scale_(1.))));
     const Mask       cand_mask = rasterize(candidate, grid);
-
-    HeightField Sb;
-    {
-        Sb = sample_bottom_surface(object_mesh(object, result).imesh, ray_start, object.slicing_parameters().object_print_z_min, cancel);
-    }
 
     std::string        head_warning;
     const HeadEnvelope head = resolve_head_envelope(object.print()->config(), &head_warning);
@@ -222,8 +244,20 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
     Mask mask(n_nodes, 0);
     for (size_t i = 0; i < n_nodes; ++i)
         mask[i] = cand_mask[i] && !std::isnan(S0.data()[i]);
+    if (const double slab = full_conformal_thickness(region.config(), object); settings.banded && slab > 0.)
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, n_nodes), [&](const tbb::blocked_range<size_t> &range) {
+            for (size_t i = range.begin(); i < range.end(); ++i)
+                if (mask[i]) {
+                    const double z   = Sb.data()[i] - z_shift + imesh.ground_level();
+                    const double top = vertical_ray_hit(imesh, grid.node(int(i % grid.nx()), int(i / grid.nx())), z + 0.01, 1., true);
+                    if (!std::isnan(top) && top - z <= slab + EPSILON)
+                        mask[i] = 0;
+                }
+        });
     if (settings.banded) {
-        const double wall = std::tan(Geometry::deg2rad(60.));
+        double wall = std::tan(Geometry::deg2rad(60.));
+        if (object.config().nonplanar_mode.value == NonplanarMode::Auto)
+            wall = std::min(wall, auto_curved_underside_slope());
         for (int iy = 0; iy < grid.ny(); ++iy)
             for (int ix = 0; ix < grid.nx(); ++ix)
                 if (const size_t i = size_t(iy) * grid.nx() + ix; mask[i]) {
@@ -270,10 +304,11 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
     double band_relief = std::max(h_c, (settings.shells - 1) * h_c + h_min + gap - settings.max_error);
     if (effective_patch_height_cap(object) > 0.)
         band_relief = std::min(band_relief, effective_patch_height_cap(object));
-    if (settings.banded)
-        band_relief = std::max(h_c, std::min(band_relief, head_band_height(head)));
     const size_t first_patch = result.patches.size();
     std::vector<HeightField> floors;
+    std::vector<std::pair<float, float>> band_range;
+    std::vector<int>         component_of;
+    int                      n_components = 0;
     double                   covered = 0.;
     for (const ExPolygon &component : components) {
         if (!settings.banded && component.area() * SCALING_FACTOR * SCALING_FACTOR < settings.min_area)
@@ -311,6 +346,8 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
             const int layer = planar_transition_layer(layer_bottom, padded.data()[i] + (settings.shells - 1) * h_c,
                                                        h_c, h_min, h_max, PatchKind::Bottom);
             if (layer < 0) {
+                if (std::isnan(surface.data()[i]))
+                    continue;
                 printable = false;
                 break;
             }
@@ -318,8 +355,14 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
         }
         if (!printable)
             continue;
+        pad_lowest(padded_floor, pad);
 
-        const int    n_bands = std::max(1, int(std::ceil((zhi - zlo) / band_relief - 1e-6)));
+        int fl_lo = int(layers.size()), fl_hi = -1;
+        for (int iy = iy0; iy <= iy1; ++iy)
+            for (int ix = ix0; ix <= ix1; ++ix)
+                if (const size_t i = size_t(iy) * grid.nx() + ix; cmask[i] && floor_layer[i] >= 0)
+                    fl_lo = std::min(fl_lo, floor_layer[i]), fl_hi = std::max(fl_hi, floor_layer[i]);
+        const int    n_bands = settings.banded ? fl_hi - fl_lo + 1 : std::max(1, int(std::ceil((zhi - zlo) / band_relief - 1e-6)));
         const double band_h  = (zhi - zlo) / n_bands;
         for (int band = 0; band < n_bands; ++band) {
             Mask   bmask(n_nodes, 0);
@@ -327,7 +370,8 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
             for (int iy = iy0; iy <= iy1; ++iy)
                 for (int ix = ix0; ix <= ix1; ++ix)
                     if (const size_t i = size_t(iy) * grid.nx() + ix; cmask[i] && floor_layer[i] >= 0 &&
-                        std::min(n_bands - 1, int(std::floor((S1.data()[i] - zlo) / band_h))) == band) {
+                        (settings.banded ? floor_layer[i] == fl_lo + band :
+                                           std::min(n_bands - 1, int(std::floor((S1.data()[i] - zlo) / band_h))) == band)) {
                         bmask[i] = 1;
                         host     = std::min(host, size_t(floor_layer[i]));
                     }
@@ -373,10 +417,17 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
                 }
             diag.rms_surface_error = err_n > 0 ? std::sqrt(err_sq / err_n) : 0.;
             covered += area(patch.footprint);
+            float lo = Inf, hi = -Inf;
+            for (size_t i = 0; i < n_nodes; ++i)
+                if (bmask[i])
+                    lo = std::min(lo, S1.data()[i]), hi = std::max(hi, S1.data()[i]);
+            band_range.emplace_back(lo, hi);
+            component_of.emplace_back(n_components);
             floors.emplace_back(component_floor);
             result.diagnostics.emplace_back(std::move(diag));
             result.patches.emplace_back(std::move(patch));
         }
+        ++n_components;
     }
     if (const double fallback = std::max(0., area(candidate) - covered) * SCALING_FACTOR * SCALING_FACTOR; fallback > 0.) {
         PatchDiagnostics diag;
@@ -390,58 +441,118 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
         return;
     }
 
+    const Flow       flow       = region.flow(object, frSolidInfill, h_c);
+    const double     base_angle = Geometry::deg2rad(region.config().solid_infill_direction.value);
+    const double     overlap    = 0.01 * region.config().top_bottom_infill_wall_overlap.value * line_width;
     std::vector<ExPolygons> shell_areas(result.patches.size());
-    tbb::parallel_for(tbb::blocked_range<size_t>(first_patch, result.patches.size()), [&](const tbb::blocked_range<size_t> &range) {
-        for (size_t idx = range.begin(); idx < range.end(); ++idx) {
-            ConformalPatch    &patch  = result.patches[idx];
-            const double       host_z = layers[patch.host_layer]->print_z;
-            const Flow         flow   = region.flow(object, frSolidInfill, h_c);
-            shell_areas[idx]          = diff_ex(patch.footprint, patch.wall_band);
-            const double     overlap = 0.01 * region.config().top_bottom_infill_wall_overlap.value * line_width;
-            const ExPolygons area    = intersection_ex(offset_ex(shell_areas[idx], float(scale_(overlap))), patch.footprint);
-            const Mask       inside  = rasterize(patch.footprint, patch.surface);
-            Point            start;
-            float            lowest = Inf;
-            for (int iy = 0; iy < patch.surface.ny(); ++iy)
-                for (int ix = 0; ix < patch.surface.nx(); ++ix)
-                    if (const float z = patch.surface.at(ix, iy); inside[size_t(iy) * patch.surface.nx() + ix] && z < lowest) {
-                        lowest        = z;
-                        const Vec2d p = patch.surface.node(ix, iy);
-                        start         = Point::new_scale(p.x(), p.y());
-                    }
-            const double base_angle = Geometry::deg2rad(region.config().solid_infill_direction.value);
-            for (int k = 1; k <= patch.shells; ++k) {
-                throw_if_canceled(object);
-                const bool          outer = k == patch.shells;
-                const ExtrusionRole role  = k == 1 ? erBottomSurface : erSolidInfill;
-                const Flow      kflow     = settings.banded && k == 1 ?
-                                                flow.with_width(std::min(flow.width(), float(0.75 * flow.nozzle_diameter()))) : flow;
-                const Polylines polylines = fill_solid(area, k == 1 ? ipMonotonic : ipRectilinear, kflow.spacing(),
-                                                       base_angle + (k - 1) * 0.5 * PI, k == 1, kflow, host_z);
-                const ExtrusionPath proto(role, kflow.mm3_per_mm(), float(kflow.width()), float(h_c));
-                auto at = [&](const Vec2d &p, double &z, float &bead) {
-                    const float s = patch.surface.sample(p);
-                    if (std::isnan(s))
-                        return false;
-                    z    = s + k * h_c;
-                    bead = float(h_c);
-                    if (outer) {
-                        const float f = patch.base.sample(p);
-                        if (std::isnan(f))
-                            return false;
-                        z    = f;
-                        bead = float(z - (s + (k - 1) * h_c));
-                    }
-                    return true;
-                };
-                ExtrusionEntityCollection shell;
-                lift_polylines(polylines, proto, at, host_z, pitch, patch.id, k - 1, shell.entities);
-                chain_and_reorder_extrusion_entities(shell.entities, &start);
-                shell.no_sort = true;
-                patch.shell_paths.emplace_back(std::move(shell));
+    for (size_t idx = first_patch; idx < result.patches.size(); ++idx)
+        shell_areas[idx] = diff_ex(result.patches[idx].footprint, result.patches[idx].wall_band);
+    auto shell_flow = [&](int k) {
+        return settings.banded && k == 1 ? flow.with_width(std::min(flow.width(), float(0.75 * flow.nozzle_diameter()))) : flow;
+    };
+    auto lift_at = [&](const ConformalPatch &patch, size_t idx, int k) {
+        return [&patch, idx, k, &settings, &band_range, &layer_bottom, first_patch, h_c, h_min, h_max](const Vec2d &p, double &z,
+                                                                                                     float &bead) {
+            const float s = patch.surface.sample(p);
+            if (std::isnan(s))
+                return false;
+            const auto &[lo, hi] = band_range[idx - first_patch];
+            if (settings.banded && (s < lo - h_min || s > hi + h_min))
+                return false;
+            z    = s + k * h_c;
+            bead = float(h_c);
+            if (k == patch.shells) {
+                const float f = settings.banded ? float(layer_bottom[patch.host_layer]) : patch.base.sample(p);
+                if (std::isnan(f))
+                    return false;
+                z    = f;
+                bead = float(z - (s + (k - 1) * h_c));
+                if (settings.banded)
+                    bead = float(std::clamp(double(bead), 0.5 * h_min, h_max));
             }
-        }
-    });
+            return true;
+        };
+    };
+    auto band_start = [](const ConformalPatch &patch) {
+        const Mask inside = rasterize(patch.footprint, patch.surface);
+        Point      start;
+        float      lowest = Inf;
+        for (int iy = 0; iy < patch.surface.ny(); ++iy)
+            for (int ix = 0; ix < patch.surface.nx(); ++ix)
+                if (const float z = patch.surface.at(ix, iy); inside[size_t(iy) * patch.surface.nx() + ix] && z < lowest) {
+                    lowest        = z;
+                    const Vec2d p = patch.surface.node(ix, iy);
+                    start         = Point::new_scale(p.x(), p.y());
+                }
+        return start;
+    };
+    auto finish_shell = [&](ConformalPatch &patch, size_t idx, int k, const Polylines &polylines, const Point &start) {
+        const Flow          kflow = shell_flow(k);
+        const ExtrusionPath proto(k == 1 ? erBottomSurface : erSolidInfill, kflow.mm3_per_mm(), float(kflow.width()), float(h_c));
+        ExtrusionEntityCollection shell;
+        lift_polylines(polylines, proto, lift_at(patch, idx, k), layers[patch.host_layer]->print_z, pitch, patch.id, k - 1, shell.entities);
+        chain_and_reorder_extrusion_entities(shell.entities, &start);
+        shell.no_sort = true;
+        patch.shell_paths.emplace_back(std::move(shell));
+    };
+    if (settings.banded) {
+        std::vector<std::vector<size_t>> members(static_cast<size_t>(n_components));
+        for (size_t idx = first_patch; idx < result.patches.size(); ++idx)
+            members[size_t(component_of[idx - first_patch])].emplace_back(idx);
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, members.size()), [&](const tbb::blocked_range<size_t> &range) {
+            for (size_t c = range.begin(); c < range.end(); ++c) {
+                const std::vector<size_t> &bands = members[c];
+                if (bands.empty())
+                    continue;
+                ExPolygons area, footprint;
+                std::map<int, size_t> by_floor;
+                for (size_t idx : bands) {
+                    append(area, shell_areas[idx]);
+                    append(footprint, result.patches[idx].footprint);
+                    by_floor[int(result.patches[idx].host_layer)] = idx;
+                }
+                area = intersection_ex(offset_ex(union_ex(area), float(scale_(overlap))), union_ex(footprint));
+                const HeightField &surface = result.patches[bands.front()].surface;
+                auto owner_at = [&](const Vec2d &q) {
+                    const float s = surface.sample(q);
+                    if (std::isnan(s))
+                        return -1;
+                    const auto it = by_floor.find(planar_transition_layer(layer_bottom, s + (settings.shells - 1) * h_c, h_c, h_min,
+                                                                          h_max, PatchKind::Bottom));
+                    return it == by_floor.end() ? -1 : int(it->second);
+                };
+                std::vector<Point> starts;
+                for (size_t idx : bands)
+                    starts.emplace_back(band_start(result.patches[idx]));
+                for (int k = 1; k <= settings.shells; ++k) {
+                    throw_if_canceled(object);
+                    const Flow kflow = shell_flow(k);
+                    std::map<size_t, Polylines> pieces;
+                    split_by_owner(fill_solid(area, k == 1 ? ipMonotonic : ipRectilinear, kflow.spacing(), base_angle + (k - 1) * 0.5 * PI,
+                                              k == 1, kflow, layers[result.patches[bands.front()].host_layer]->print_z),
+                                   owner_at, 0.5 * pitch, [&pieces](int o, Polyline &&pl) { pieces[size_t(o)].emplace_back(std::move(pl)); });
+                    for (size_t b = 0; b < bands.size(); ++b)
+                        finish_shell(result.patches[bands[b]], bands[b], k, pieces[bands[b]], starts[b]);
+                }
+            }
+        });
+    } else {
+        tbb::parallel_for(tbb::blocked_range<size_t>(first_patch, result.patches.size()), [&](const tbb::blocked_range<size_t> &range) {
+            for (size_t idx = range.begin(); idx < range.end(); ++idx) {
+                ConformalPatch  &patch = result.patches[idx];
+                const ExPolygons area  = intersection_ex(offset_ex(shell_areas[idx], float(scale_(overlap))), patch.footprint);
+                const Point      start = band_start(patch);
+                for (int k = 1; k <= patch.shells; ++k) {
+                    throw_if_canceled(object);
+                    const Flow kflow = shell_flow(k);
+                    finish_shell(patch, idx, k,
+                                 fill_solid(area, k == 1 ? ipMonotonic : ipRectilinear, kflow.spacing(), base_angle + (k - 1) * 0.5 * PI,
+                                            k == 1, kflow, layers[patch.host_layer]->print_z),
+                                 start);
+                }
+            }
+        });
+    }
 
     for (size_t idx = first_patch; idx < result.patches.size(); ++idx) {
         const ConformalPatch &patch = result.patches[idx];

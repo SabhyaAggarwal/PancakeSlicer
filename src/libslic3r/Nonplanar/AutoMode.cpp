@@ -91,9 +91,11 @@ bool top_shells_enabled(const PrintRegionConfig &config, const PrintObjectConfig
     return is_auto(object) || (is_manual(object) && config.nonplanar_top_shells.value != 0);
 }
 
+double auto_curved_underside_slope() { return std::tan(Geometry::deg2rad(10.)); }
+
 bool bottom_shells_enabled(const PrintRegionConfig &config, const PrintObjectConfig &object)
 {
-    return is_manual(object) && config.nonplanar_bottom_shells.value != 0;
+    return is_auto(object) ? object.enable_support.value : is_manual(object) && config.nonplanar_bottom_shells.value != 0;
 }
 
 double full_conformal_thickness(const PrintRegionConfig &config, const PrintObject &object)

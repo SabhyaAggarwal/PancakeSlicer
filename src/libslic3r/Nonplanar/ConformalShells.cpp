@@ -36,14 +36,17 @@
 #include <tbb/parallel_for.h>
 
 #include <algorithm>
+#include <array>
 #include <cfloat>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <initializer_list>
 #include <limits>
 #include <map>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -217,7 +220,6 @@ void arachne_roads(const ExPolygon &piece, const Flow &flow, double layer_height
     const float      min_spacing = std::max(params.min_feature_size, float(layer_height));
     const double     link_max = 2. * flow.spacing();
     const ExPolygons link_area{ piece };
-    const size_t         first = out.polylines.size();
     std::optional<Point> last;
     while (!lines.empty()) {
         size_t best = 0;
@@ -318,18 +320,10 @@ void arachne_roads(const ExPolygon &piece, const Flow &flow, double layer_height
             append(out.polylines.back().points, std::move(pl.points));
             append(out.widths.back(), std::move(w));
         } else {
-            if (out.polylines.size() > first && out.polylines.back().length() < scale_(link_max)) {
-                out.polylines.pop_back();
-                out.widths.pop_back();
-            }
             out.polylines.emplace_back(std::move(pl));
             out.widths.emplace_back(std::move(w));
         }
         last = out.polylines.back().points.back();
-    }
-    if (out.polylines.size() > first + 1 && out.polylines.back().length() < scale_(link_max)) {
-        out.polylines.pop_back();
-        out.widths.pop_back();
     }
     if (inner != nullptr && max_loops > 0)
         append(*inner, paths.getInnerContour());
@@ -666,7 +660,8 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
 }
 
 HeightField sample_top_surface(const sla::IndexedMesh &mesh, double ray_z, double z_offset, const HeightField &like,
-                               const std::function<void()> &throw_if_canceled)
+                               const std::function<void()> &throw_if_canceled,
+                               const std::function<bool(const Vec2d &, double)> &solid_below)
 {
     HeightField S = like;
     tbb::parallel_for(tbb::blocked_range<int>(0, S.ny()), [&](const tbb::blocked_range<int> &range) {
@@ -678,7 +673,9 @@ HeightField sample_top_surface(const sla::IndexedMesh &mesh, double ray_z, doubl
                 S.at(ix, iy) = HeightField::NoData;
                 for (const Vec2d &q : { p, Vec2d(p + Vec2d(1e-4, 1.7e-4)) }) {
                     const auto hit = mesh.query_ray_hit(Vec3d(q.x(), q.y(), ray_z), Vec3d(0., 0., -1.));
-                    if (hit.is_hit() && hit.normal().normalized().z() > 0.05) {
+                    const double nz = hit.is_hit() ? hit.normal().normalized().z() : 0.;
+                    if (nz > 0.05 || (nz < -0.05 && solid_below &&
+                                      solid_below(p, hit.position().z() - mesh.ground_level() + z_offset))) {
                         const Vec3d n = hit.normal();
                         const double z = hit.position().z() + (n.x() * (q.x() - p.x()) + n.y() * (q.y() - p.y())) / n.z();
                         const float  s = float(z - mesh.ground_level() + z_offset);
@@ -743,9 +740,12 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
     HeightField S, U;
     {
         const ObjectMesh &mesh = object_mesh(object, result);
-        S = sample_top_surface(mesh.imesh, mesh.mesh.bounding_box().max.z() + 1., object.slicing_parameters().object_print_z_min, grid, cancel);
+        S = sample_top_surface(mesh.imesh, mesh.mesh.bounding_box().max.z() + 1., object.slicing_parameters().object_print_z_min, grid, cancel,
+                               material_below(object));
         if (settings.shells > settings.top_shells)
             U = sample_underside(mesh.imesh, object.slicing_parameters().object_print_z_min, S, cancel);
+        if (const double noise = smooth_scan_noise(S, cancel); noise > 0.)
+            BOOST_LOG_TRIVIAL(info) << "Non-planar: " << object.model_object()->name << " top surface noise " << noise << " mm";
     }
     {
         Mask smooth(n_nodes, 0);
@@ -780,8 +780,13 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
     const double       h_c          = settings.shell_height;
     const double       h_min        = 0.5 * h_c;
     const double       h_max        = 0.8 * region.flow(object, settings.shells == 1 ? frTopSolidInfill : frSolidInfill, h_c).nozzle_diameter();
-    if (h_c > h_max)
+    if (h_c > h_max) {
+        PatchDiagnostics diag;
+        diag.fallback_area   = area(candidate) * SCALING_FACTOR * SCALING_FACTOR;
+        diag.fallback_reason = "shell_height";
+        result.diagnostics.emplace_back(std::move(diag));
         return result;
+    }
     const double       first_top    = layers.front()->print_z;
     std::vector<double> layer_z(layers.size());
     for (size_t i = 0; i < layers.size(); ++i)
@@ -796,10 +801,18 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
     Mask mask(n_nodes, 0);
     for (size_t i = 0; i < n_nodes; ++i)
         mask[i] = cand_mask[i] && !std::isnan(S0.data()[i]);
+    enum DropReason : uint8_t { Kept, DropNearBed, DropSteep, DropSteepStrip, DropFlatGround, DropFlatSliver, DropNarrow };
+    static constexpr const char *drop_reason_tag[] = { "outline", "near_bed", "steep", "steep_strip", "flat_ground", "flat_sliver", "narrow" };
+    std::vector<uint8_t> dropped(n_nodes, Kept);
+    auto drop = [&](size_t i, DropReason why) {
+        mask[i]    = 0;
+        dropped[i] = why;
+    };
+    const int min_shells = settings.shells > settings.top_shells ? 1 : settings.top_shells;
     if (settings.banded)
         for (size_t i = 0; i < n_nodes; ++i)
-            if (mask[i] && S0.data()[i] - settings.top_shells * h_c - h_min < first_top)
-                mask[i] = 0;
+            if (mask[i] && S0.data()[i] - min_shells * h_c - h_min < first_top)
+                drop(i, DropNearBed);
     if (settings.banded) {
         const double outer_w   = std::min(line_width, BandedTopWidth * region.flow(object, frTopSolidInfill, h_c).nozzle_diameter());
         const PrintConfig &print_config = object.print()->config();
@@ -823,7 +836,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
         const Mask steep_wide = rasterize(opening_ex(mask_to_expolygons(steep, grid), float(scale_(line_width))), grid);
         for (size_t i = 0; i < n_nodes; ++i)
             if (steep[i] && steep_wide[i])
-                mask[i] = 0;
+                drop(i, DropSteep);
         constexpr double FlatSlope  = 0.0175;
         constexpr double FlatGround = 2.;
         Mask             flat(n_nodes, 0);
@@ -861,7 +874,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
         const Mask       flat_planar = rasterize(flat_area, grid);
         for (size_t i = 0; i < n_nodes; ++i)
             if (flat_planar[i] && flat[i])
-                mask[i] = 0;
+                drop(i, DropFlatGround);
         {
             constexpr double     StripSlope = 1.213;
             std::vector<uint8_t> seen(n_nodes, 0);
@@ -889,7 +902,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                 std::nth_element(slopes.begin(), p90, slopes.end());
                 if (*p90 > StripSlope)
                     for (const size_t i : strip)
-                        mask[i] = 0;
+                        drop(i, DropSteepStrip);
             }
         }
         if (!flat_area.empty()) {
@@ -897,7 +910,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
             const Mask wide      = rasterize(opening_ex(mask_to_expolygons(mask, grid), float(scale_(1.5 * line_width))), grid);
             for (size_t i = 0; i < n_nodes; ++i)
                 if (mask[i] && near_flat[i] && !wide[i])
-                    mask[i] = 0;
+                    drop(i, DropFlatSliver);
         }
     }
     std::vector<int> limiting_components(n_nodes, -1);
@@ -1064,6 +1077,12 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
     }
 
     ExPolygons components = opening_ex(mask_to_expolygons(mask, grid), float(scale_(0.5 * line_width)));
+    if (settings.banded) {
+        const Mask opened = rasterize(components, grid);
+        for (size_t i = 0; i < n_nodes; ++i)
+            if (mask[i] && !opened[i])
+                dropped[i] = DropNarrow;
+    }
     components            = settings.banded ? intersection_ex(components, candidate) :
                                               intersection_ex(offset_ex(expolygons_simplify(components, scale_(pitch)), -float(scale_(pitch))),
                                                               candidate);
@@ -1243,7 +1262,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
             if (std::isnan(s))
                 continue;
             int layer = -1, m = stacks[i] ? patch.shells : n_top;
-            for (; m >= n_top; --m) {
+            for (; m >= (settings.shells > settings.top_shells ? std::min(n_top, min_shells) : n_top); --m) {
                 if (m > n_top) {
                     const float u = U.at(ix0 + int(i % size_t(top.nx())), iy0 + int(i / size_t(top.nx())));
                     if (std::isnan(u) || s - m * h_c - h_min < u + (m > solid_layers ? settings.bottom_keep : h_c))
@@ -1265,6 +1284,8 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                 layer = thick_layer_transition(s - (m - 1) * h_c);
             }
             if (layer < 0) {
+                if (std::isnan(top.data()[i]))
+                    continue;
                 printable = false;
                 break;
             }
@@ -1272,6 +1293,8 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
             top.data()[i]   = float(layer_z[size_t(layer)]);
             patch.z_min = std::min(patch.z_min, layer_z[size_t(layer)]);
         }
+        pad_lowest(count, pad);
+        pad_lowest(top, pad);
         if (settings.banded)
             for (size_t i = 0; i < at_wall.size(); ++i)
                 if (at_wall[i] && !std::isnan(top.data()[i]))
@@ -1311,7 +1334,38 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                         owner = patch.id;
                 }
         const double fallback = std::max(0., cand.area() - covered) * SCALING_FACTOR * SCALING_FACTOR;
-        if (owner >= 0) {
+        if (settings.banded && fallback > 0.) {
+            ExPolygons uncovered{ cand };
+            for (const ConformalPatch &patch : result.patches)
+                if (get_extents(patch.footprint).overlap(cand_bb))
+                    uncovered = diff_ex(uncovered, patch.footprint);
+            for (const auto &[component, reason] : skipped)
+                if (get_extents(component).overlap(cand_bb)) {
+                    if (const double a = area(intersection_ex(ExPolygons{ component }, uncovered)) * SCALING_FACTOR * SCALING_FACTOR; a > 0.) {
+                        PatchDiagnostics diag;
+                        diag.fallback_area   = a;
+                        diag.fallback_reason = reason;
+                        result.diagnostics.emplace_back(std::move(diag));
+                    }
+                    uncovered = diff_ex(uncovered, ExPolygons{ component });
+                }
+            const double            rest = area(uncovered) * SCALING_FACTOR * SCALING_FACTOR;
+            std::array<double, std::size(drop_reason_tag)> by_reason{};
+            const Mask              umask = rasterize(uncovered, grid);
+            for (size_t i = 0; i < n_nodes; ++i)
+                if (umask[i])
+                    by_reason[dropped[i]] += pitch * pitch;
+            const double nodes = std::accumulate(by_reason.begin() + 1, by_reason.end(), 0.);
+            const double scale = nodes > rest ? rest / nodes : 1.;
+            by_reason[Kept]    = std::max(0., rest - nodes * scale);
+            for (size_t r = 0; r < by_reason.size(); ++r)
+                if (by_reason[r] * (r == Kept ? 1. : scale) > 1e-3) {
+                    PatchDiagnostics diag;
+                    diag.fallback_area   = by_reason[r] * (r == Kept ? 1. : scale);
+                    diag.fallback_reason = drop_reason_tag[r];
+                    result.diagnostics.emplace_back(std::move(diag));
+                }
+        } else if (owner >= 0) {
             result.diagnostics[size_t(owner - patch_offset)].fallback_area += fallback;
             result.diagnostics[size_t(owner - patch_offset)].fallback_reason = "edge";
         } else if (fallback > 0.) {
@@ -1373,9 +1427,8 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
             banded.strip_height = band_pitch;
             banded.strip_offset = 0.5 * band_tolerance;
             banded.adaptive     = settings.adaptive ? &adaptive_stacks[idx] : nullptr;
-            const NonplanarTopPattern pattern = top_pattern(patch, region.config());
-            const bool user_rings = settings.banded && pattern == NonplanarTopPattern::Concentric && is_round(patch.footprint) &&
-                                    outline_is_contour(patch, h_c);
+            const NonplanarTopPattern pattern    = top_pattern(patch, region.config());
+            const bool                user_rings = settings.banded && pattern == NonplanarTopPattern::Concentric;
             if (settings.banded && (pattern == NonplanarTopPattern::Contour || user_rings)) {
                 double angle = 0.;
                 for (size_t k = 0; k < banded_fills.size(); ++k)
@@ -1399,12 +1452,9 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                 if (!banded_fills.front().spiral)
                     banded.lengthwise = lengthwise_strips(area, line_width);
             } else if (settings.banded) {
-                for (ShellFill &f : banded_fills) {
+                for (ShellFill &f : banded_fills)
                     f.outline = false;
-                    f.gaps    = f.spiral;
-                }
-                if (!banded_fills.back().spiral)
-                    banded.lengthwise = lengthwise_strips(area, line_width);
+                banded.lengthwise = lengthwise_strips(area, line_width);
             }
             if (settings.shells > settings.top_shells) {
                 banded.layers  = &stack_layers[idx];
@@ -1552,10 +1602,21 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
 
     for (const ConformalPatch &patch : result.patches)
         layers[patch.host_layer]->conformal_patches_after.emplace_back(patch.id);
-    for (const ConformalPatch &patch : units)
-        for (size_t i = 0; i < layers.size(); ++i)
-            if (layer_z[i] > patch.z_min - EPSILON && i <= patch.host_layer)
-                layers[i]->conformal_covered = true;
+    std::vector<char> printed(units.size(), !settings.banded);
+    for (size_t c : patch_component)
+        printed[c] = 1;
+    for (size_t idx = 0; idx < units.size(); ++idx)
+        if (!printed[idx]) {
+            PatchDiagnostics diag;
+            diag.fallback_area   = area(units[idx].footprint) * SCALING_FACTOR * SCALING_FACTOR;
+            diag.fallback_reason = "no_pieces";
+            result.diagnostics.emplace_back(std::move(diag));
+        }
+    for (size_t idx = 0; idx < units.size(); ++idx)
+        if (printed[idx])
+            for (size_t i = 0; i < layers.size(); ++i)
+                if (layer_z[i] > units[idx].z_min - EPSILON && i <= units[idx].host_layer)
+                    layers[i]->conformal_covered = true;
     std::vector<ExPolygons> clip_areas = shell_areas;
     if (settings.banded)
         for (ExPolygons &area : clip_areas)
@@ -1566,7 +1627,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
             ExPolygons excl;
             for (size_t idx = 0; idx < units.size(); ++idx) {
                 const ConformalPatch &patch = units[idx];
-                if (i > patch.host_layer || layer_z[i] <= patch.z_min - EPSILON)
+                if (!printed[idx] || i > patch.host_layer || layer_z[i] <= patch.z_min - EPSILON)
                     continue;
                 const HeightField &B = planar_tops[idx];
                 Mask               above(B.data().size(), 0);

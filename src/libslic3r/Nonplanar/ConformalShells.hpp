@@ -66,7 +66,8 @@ struct ConformalResult
 };
 
 HeightField sample_top_surface(const sla::IndexedMesh &mesh, double ray_z, double z_offset, const HeightField &like,
-                               const std::function<void()> &throw_if_canceled = {});
+                               const std::function<void()> &throw_if_canceled = {},
+                               const std::function<bool(const Vec2d &, double)> &solid_below = {});
 
 ConformalResult build_conformal_shells(PrintObject &object);
 

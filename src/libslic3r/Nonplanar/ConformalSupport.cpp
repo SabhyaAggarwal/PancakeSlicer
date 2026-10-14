@@ -1,5 +1,6 @@
 #include "ConformalSupport.hpp"
 
+#include "AutoMode.hpp"
 #include "ConformalBottom.hpp"
 #include "ConformalShells.hpp"
 #include "HeadEnvelope.hpp"
@@ -58,47 +59,6 @@ int nearest_node(const HeightField &grid, const Vec2d &p)
     const Vec2d o  = (p - grid.origin()) / grid.pitch();
     const int   ix = int(std::lround(o.x())), iy = int(std::lround(o.y()));
     return ix < 0 || iy < 0 || ix >= grid.nx() || iy >= grid.ny() ? -1 : iy * grid.nx() + ix;
-}
-
-void split_by_owner(const Polylines &polylines, const std::function<int(const Vec2d &)> &owner_at, double step,
-                    const std::function<void(int, Polyline &&)> &sink)
-{
-    for (const Polyline &pl : polylines) {
-        if (pl.points.size() < 2)
-            continue;
-        Polyline piece;
-        int      current = owner_at(unscale(pl.points.front()));
-        piece.points.emplace_back(pl.points.front());
-        auto flush = [&]() {
-            if (current != -1 && piece.points.size() >= 2)
-                sink(current, std::move(piece));
-            piece = Polyline();
-        };
-        for (size_t i = 0; i + 1 < pl.points.size(); ++i) {
-            const Vec2d a = unscale(pl.points[i]), b = unscale(pl.points[i + 1]);
-            const int   n = std::max(1, int(std::ceil((b - a).norm() / step)));
-            Vec2d       prev = a;
-            for (int j = 1; j <= n; ++j) {
-                const Vec2d p = a + (b - a) * (double(j) / n);
-                const int   o = owner_at(p);
-                if (o != current) {
-                    double t0 = 0., t1 = 1.;
-                    for (int it = 0; it < 24; ++it) {
-                        const double t = 0.5 * (t0 + t1);
-                        (owner_at(prev + (p - prev) * t) == current ? t0 : t1) = t;
-                    }
-                    const Point cut = Point::new_scale(prev + (p - prev) * (0.5 * (t0 + t1)));
-                    piece.points.emplace_back(cut);
-                    flush();
-                    current = o;
-                    piece.points.emplace_back(cut);
-                }
-                prev = p;
-            }
-            piece.points.emplace_back(pl.points[i + 1]);
-        }
-        flush();
-    }
 }
 
 HeightField masked(const HeightField &field, const Mask &mask, int pad)
@@ -175,16 +135,42 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
         cancel();
     }
 
+    HeightField Sb = grid;
+    {
+        const double z_min     = object.slicing_parameters().object_print_z_min;
+        HeightField  ray_start = grid;
+        for (size_t n = 0; n < n_nodes; ++n)
+            if (top[n] >= 0)
+                ray_start.data()[n] = float(support_z[size_t(top[n])] - z_min);
+        double             ground_offset = 0.;
+        const TriangleMesh mesh          = object.object_frame_mesh(ground_offset);
+        sla::IndexedMesh   imesh(mesh);
+        imesh.ground_level_offset(ground_offset);
+        Sb = sample_bottom_surface(imesh, ray_start, z_min, cancel);
+    }
+
     constexpr int    OverhangOwner = -2;
     std::vector<int> owner(n_nodes, -1);
     Mask             taken(n_nodes, 0);
     std::vector<const ConformalPatch *> skin(n_nodes, nullptr);
-    for (const ConformalPatch &patch : result.patches) {
-        if (patch.kind == PatchKind::Top)
-            continue;
+    std::vector<const ConformalPatch *> owners;
+    for (const ConformalPatch &patch : result.patches)
+        if (patch.kind == PatchKind::Bottom)
+            owners.emplace_back(&patch);
+    for (const ConformalPatch &patch : result.patches)
+        if (patch.kind != PatchKind::Bottom && patch.kind != PatchKind::Top)
+            owners.emplace_back(&patch);
+    for (const ConformalPatch *owner_patch : owners) {
+        const ConformalPatch &patch = *owner_patch;
+        const HeightField    &under = patch.kind == PatchKind::Volume ? patch.base : patch.surface;
         const Mask m = rasterize(patch.footprint, grid);
         for (size_t n = 0; n < n_nodes; ++n)
             if (m[n] && !taken[n]) {
+                if (const float z = Sb.data()[n]; !std::isnan(z)) {
+                    const float own = under.sample(grid.node(int(n % grid.nx()), int(n / grid.nx())));
+                    if (!std::isnan(own) && std::abs(own - z) > 1.f)
+                        continue;
+                }
                 taken[n] = 1;
                 if (patch.kind == PatchKind::Bottom)
                     owner[n] = patch.id;
@@ -193,20 +179,6 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
                     skin[n]  = &patch;
                 }
             }
-    }
-
-    HeightField Sb = grid;
-    {
-        const double z_min     = object.slicing_parameters().object_print_z_min;
-        HeightField  ray_start = grid;
-        for (size_t n = 0; n < n_nodes; ++n)
-            if (top[n] >= 0 && !taken[n])
-                ray_start.data()[n] = float(support_z[size_t(top[n])] - z_min);
-        double             ground_offset = 0.;
-        const TriangleMesh mesh          = object.object_frame_mesh(ground_offset);
-        sla::IndexedMesh   imesh(mesh);
-        imesh.ground_level_offset(ground_offset);
-        Sb = sample_bottom_surface(imesh, ray_start, z_min, cancel);
     }
     for (size_t n = 0; n < n_nodes; ++n)
         if (owner[n] != -1) {
@@ -219,6 +191,15 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
             const double d = Sb.data()[n] - support_z[size_t(top[n])];
             cand[n]        = d >= gap - h - EPSILON && d <= gap + 2. * h + EPSILON;
         }
+    if (ocfg.nonplanar_mode.value == NonplanarMode::Auto) {
+        const double limit = auto_curved_underside_slope();
+        for (size_t n = 0; n < n_nodes; ++n)
+            if (cand[n] && owner[n] == -1) {
+                const Vec2d gr = Sb.gradient(grid.node(int(n % grid.nx()), int(n / grid.nx())));
+                if (!std::isnan(gr.x()) && !std::isnan(gr.y()) && gr.norm() > limit)
+                    cand[n] = 0;
+            }
+    }
 
     const int cfg_layers = ocfg.support_interface_top_layers.value;
     double    stack      = h_max + h;

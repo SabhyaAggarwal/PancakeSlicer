@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <atomic>
 #include <cstdint>
 #include <unordered_map>
 #include <cstddef>
@@ -529,6 +530,19 @@ void MaterialColumns::deposit(const Vec3d &a, const Vec3d &b, double width)
 
 double MaterialColumns::top_in_rect(const BoundingBoxf &rect) const { return top_above(rect, -Inf); }
 
+void MaterialColumns::merge(const MaterialColumns &other)
+{
+    for (size_t t = 0; t < m_blocks.size(); ++t) {
+        const std::vector<double> &from = other.m_blocks[t];
+        if (from.empty()) continue;
+        std::vector<double> &to = m_blocks[t];
+        if (to.empty()) to = from;
+        else for (size_t i = 0; i < to.size(); ++i) to[i] = std::max(to[i], from[i]);
+        m_tiles[t] = std::max(m_tiles[t], other.m_tiles[t]);
+    }
+    m_ceiling = std::max(m_ceiling, other.m_ceiling);
+}
+
 double MaterialColumns::tile_bound(const BoundingBoxf &rect) const
 {
     int x0, y0, x1, y1;
@@ -771,7 +785,19 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
             for (const auto &p : pending) previous.deposit(p.a, p.b, p.width);
             pending.clear();
         }
+        void merge(const Sweep &delta)
+        {
+            columns.merge(delta.columns);
+            previous.merge(delta.previous);
+        }
     };
+    auto empty_sweep = [&]() { return Sweep { MaterialColumns(bounds, params.pitch), MaterialColumns(bounds, params.pitch) }; };
+    Vec2d reach_min = body_boxes.finite_min.cwiseMin(strict_boxes.finite_min), reach_max = body_boxes.finite_max.cwiseMax(strict_boxes.finite_max);
+    double infinite_floor = Inf;
+    for (const auto *list : { &body_boxes, &strict_boxes, &allowed_boxes })
+        for (const auto &box : list->boxes)
+            if (box.infinite_x || box.infinite_y) infinite_floor = std::min(infinite_floor, box.min.z());
+    std::atomic<size_t> unswept { 0 };
     BeadGrid beads(result.moves, rotary);
     using Hits = std::vector<std::pair<size_t, ClearanceHit>>;
     std::vector<double> bests(checked.size(), Inf);
@@ -799,7 +825,17 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
         if (!std::isfinite(displacement) || displacement / params.sweep > 50000000.)
             throw RuntimeError("Clearance sweep is too large. Check the G-code coordinates and rotary angles.");
         const int count = std::max(1, int(std::ceil(displacement / params.sweep)));
-        if (hits != nullptr) {
+        const bool planar_only = !rotary && hits != nullptr && move.nonplanar_patch_shell == 0xFF && c.move >= first_print &&
+            c.move <= last_print && [&]() {
+                const double z = std::min(a.z(), b.z());
+                const double ceiling = sweep.columns.ceiling();
+                if (ceiling == -Inf) return true;
+                if (ceiling > z + infinite_floor) return false;
+                return !(reach_min.x() <= reach_max.x()) ||
+                    sweep.columns.tile_bound(BoundingBoxf(a.head<2>().cwiseMin(b.head<2>()) + reach_min, a.head<2>().cwiseMax(b.head<2>()) + reach_max)) <= z;
+            }();
+        if (planar_only) ++unswept;
+        if (hits != nullptr && !planar_only) {
             double best = Inf;
             ClearanceHit hit;
             hit.move_id = c.move; hit.gcode_line = move.gcode_id; hit.layer = move.layer_id;
@@ -880,7 +916,7 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
 
     std::vector<Hits> hits;
     if (rotary) {
-        Sweep sweep { MaterialColumns(bounds, params.pitch), MaterialColumns(bounds, params.pitch) };
+        Sweep sweep = empty_sweep();
         laid_before.resize(checked.size());
         for (size_t k = 0; k < checked.size(); ++k) {
             laid_before[k] = tilted.prefix();
@@ -890,7 +926,7 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
         const size_t ranges = (checked.size() + target - 1) / target;
         hits.resize(ranges);
         tbb::parallel_for(tbb::blocked_range<size_t>(0, ranges, 1), [&](const tbb::blocked_range<size_t> &range) {
-            Sweep own { MaterialColumns(bounds, params.pitch), MaterialColumns(bounds, params.pitch) };
+            Sweep own = empty_sweep();
             TiltedBeads::Scratch scratch;
             for (size_t r = range.begin(); r < range.end(); ++r)
                 for (size_t k = r * target; k < std::min(checked.size(), (r + 1) * target); ++k)
@@ -902,25 +938,47 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
         for (size_t k = 1; k < checked.size(); ++k)
             if (!checked[k].extruding && k >= starts.back() + target) starts.push_back(k);
         starts.push_back(checked.size());
-        std::vector<Sweep> copies;
-        copies.reserve(starts.size() - 1);
-        Sweep sweep { MaterialColumns(bounds, params.pitch), MaterialColumns(bounds, params.pitch) };
-        for (size_t r = 0; r + 1 < starts.size(); ++r)
-            for (size_t k = starts[r]; k < starts[r + 1]; ++k) {
-                Checked &c = checked[k];
-                if (!c.extruding) sweep.flush();
-                if (k == starts[r]) copies.push_back(sweep);
-                c.beads = uint32_t(beads.size());
-                step(sweep, beads, k, nullptr);
-                if (c.extruding && result.moves[c.move].extrusion_role != erCustom && !nozzle.boxes.empty()) {
-                    const Vec3d a = move_tip(result.moves[c.last], rotary), b = move_tip(result.moves[c.move], rotary);
-                    const int   samples = int(std::min(65535., std::max(1., std::ceil((b - a).norm() / params.sweep))));
-                    const int   pieces  = int(std::clamp(std::ceil(std::abs(b.z() - a.z()) / std::max(params.bead_eps, EPSILON)), 1., double(samples)));
-                    for (int piece = 0; piece < pieces; ++piece)
-                        beads.deposit_upright(c.move, c.last, c.run, piece, pieces);
+        const size_t runs = starts.size() - 1;
+        std::vector<Sweep> deltas;
+        deltas.reserve(runs);
+        for (size_t r = 0; r < runs; ++r) deltas.push_back(empty_sweep());
+        std::vector<std::vector<std::pair<size_t, int>>> run_beads(runs);
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, runs, 1), [&](const tbb::blocked_range<size_t> &range) {
+            for (size_t r = range.begin(); r < range.end(); ++r) {
+                Sweep &delta = deltas[r];
+                uint32_t laid = 0;
+                for (size_t k = starts[r]; k < starts[r + 1]; ++k) {
+                    Checked &c = checked[k];
+                    if (!c.extruding && k != starts[r]) delta.flush();
+                    c.beads = laid;
+                    step(delta, beads, k, nullptr);
+                    if (c.extruding && result.moves[c.move].extrusion_role != erCustom && !nozzle.boxes.empty()) {
+                        const Vec3d a = move_tip(result.moves[c.last], rotary), b = move_tip(result.moves[c.move], rotary);
+                        const int   samples = int(std::min(65535., std::max(1., std::ceil((b - a).norm() / params.sweep))));
+                        const int   pieces  = int(std::clamp(std::ceil(std::abs(b.z() - a.z()) / std::max(params.bead_eps, EPSILON)), 1., double(samples)));
+                        run_beads[r].emplace_back(k, pieces);
+                        laid += uint32_t(pieces);
+                    }
                 }
+                delta.flush();
             }
-        sweep = Sweep { MaterialColumns(bounds, params.pitch), MaterialColumns(bounds, params.pitch) };
+        });
+        std::vector<Sweep> copies;
+        copies.reserve(runs);
+        copies.push_back(empty_sweep());
+        for (size_t r = 1; r < runs; ++r) {
+            copies.push_back(copies.back());
+            copies.back().merge(deltas[r - 1]);
+            deltas[r - 1] = empty_sweep();
+        }
+        deltas.clear();
+        for (size_t r = 0; r < runs; ++r) {
+            const uint32_t offset = uint32_t(beads.size());
+            for (size_t k = starts[r]; k < starts[r + 1]; ++k) checked[k].beads += offset;
+            for (const auto &[k, pieces] : run_beads[r])
+                for (int piece = 0; piece < pieces; ++piece)
+                    beads.deposit_upright(checked[k].move, checked[k].last, checked[k].run, piece, pieces);
+        }
         hits.resize(copies.size());
         tbb::parallel_for(tbb::blocked_range<size_t>(0, copies.size(), 1), [&](const tbb::blocked_range<size_t> &range) {
             for (size_t r = range.begin(); r < range.end(); ++r) {
@@ -957,6 +1015,8 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
             if (report.worst.size() > 256) report.worst.resize(256);
         }
     }
+    if (unswept > 0)
+        report.omissions.emplace_back("Planar moves with no material above their tip within the head's reach are not swept.");
     return report;
 }
 void check_export_clearance(Print &print, GCodeProcessorResult &result)

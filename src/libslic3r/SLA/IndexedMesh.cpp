@@ -10,6 +10,13 @@
 #include <cassert>
 #include <cmath>
 #include <algorithm>
+#include <array>
+#include <cstdint>
+#include <cstring>
+#include <memory>
+#include <mutex>
+#include <unordered_map>
+#include <utility>
 #include <Eigen/Geometry>
 #include <cstdlib>
 #include <functional>
@@ -28,12 +35,142 @@ namespace Slic3r {
 
 namespace sla {
 
+struct ColumnHash
+{
+    size_t operator()(const std::pair<uint64_t, uint64_t> &k) const { return size_t(k.first * 0x9E3779B97F4A7C15ull ^ (k.second + 0x632BE59BD9B4E019ull + (k.first << 6))); }
+};
+
 class IndexedMesh::AABBImpl {
 private:
     AABBTreeIndirect::Tree3f m_tree;
     double                   m_triangle_ray_epsilon;
 
+    struct Columns
+    {
+        static constexpr size_t Shards = 64;
+        double base_z;
+        double x0, y0, cell, margin;
+        int    nx, ny;
+        std::vector<uint32_t> offsets;
+        std::vector<uint32_t> leaves;
+        std::array<std::mutex, Shards> locks;
+        std::array<std::unordered_map<std::pair<uint64_t, uint64_t>, std::shared_ptr<const std::vector<int>>, ColumnHash>, Shards> maps;
+    };
+    std::shared_ptr<Columns> m_columns;
+
+    std::shared_ptr<const std::vector<int>> column(const indexed_triangle_set &its, double x, double y)
+    {
+        uint64_t kx, ky;
+        std::memcpy(&kx, &x, sizeof x);
+        std::memcpy(&ky, &y, sizeof y);
+        const std::pair<uint64_t, uint64_t> key(kx, ky);
+        const size_t shard = ColumnHash()(key) % Columns::Shards;
+        {
+            std::lock_guard<std::mutex> lock(m_columns->locks[shard]);
+            if (auto it = m_columns->maps[shard].find(key); it != m_columns->maps[shard].end())
+                return it->second;
+        }
+        auto faces = std::make_shared<std::vector<int>>();
+        const Columns &c = *m_columns;
+        const double gx = std::floor((x - c.x0) / c.cell), gy = std::floor((y - c.y0) / c.cell);
+        if (gx >= -1. && gy >= -1. && gx <= double(c.nx) && gy <= double(c.ny)) {
+            const size_t cell = size_t(std::clamp(int(gy), 0, c.ny - 1)) * size_t(c.nx) + size_t(std::clamp(int(gx), 0, c.nx - 1));
+            const Vec3d origin(x, y, c.base_z), dir(Vec3d::UnitZ()), invdir(dir.cwiseInverse());
+            for (uint32_t k = c.offsets[cell]; k < c.offsets[cell + 1]; ++k) {
+                const auto &node = m_tree.node(c.leaves[k]);
+                if (!AABBTreeIndirect::detail::ray_box_intersect_invdir(origin, invdir, node.bbox.cast<double>(), 0.,
+                                                                        std::numeric_limits<double>::infinity()))
+                    continue;
+                const Vec3i32 &face = its.indices[node.idx];
+                double t, u, v;
+                if (AABBTreeIndirect::detail::intersect_triangle(origin, dir, its.vertices[face(0)], its.vertices[face(1)], its.vertices[face(2)],
+                                                                 t, u, v, m_triangle_ray_epsilon) &&
+                    t > 0.)
+                    faces->push_back(int(node.idx));
+            }
+        }
+        std::lock_guard<std::mutex> lock(m_columns->locks[shard]);
+        return m_columns->maps[shard].emplace(key, std::move(faces)).first->second;
+    }
+
+    void column_hits(const indexed_triangle_set &its, const Vec3d &s, const Vec3d &dir, std::vector<igl::Hit<float>> &hits)
+    {
+        for (int id : *column(its, s.x(), s.y())) {
+            const Vec3i32 &face = its.indices[size_t(id)];
+            double t, u, v;
+            if (AABBTreeIndirect::detail::intersect_triangle(s, dir, its.vertices[face(0)], its.vertices[face(1)], its.vertices[face(2)], t, u,
+                                                             v, m_triangle_ray_epsilon) &&
+                t > 0.)
+                hits.push_back(igl::Hit<float>{ id, -1, float(u), float(v), float(t) });
+        }
+    }
+
 public:
+    bool columns_cover(const Vec3d &dir) const { return m_columns && dir.x() == 0. && dir.y() == 0. && std::abs(dir.z()) == 1.; }
+    void enable_columns(const indexed_triangle_set &its)
+    {
+        if (m_columns) return;
+        m_columns = std::make_shared<Columns>();
+        float lo = std::numeric_limits<float>::max();
+        for (const Vec3f &v : its.vertices) lo = std::min(lo, v.z());
+        m_columns->base_z = double(lo) - 1.;
+        build_column_grid(its);
+    }
+
+    void build_column_grid(const indexed_triangle_set &its)
+    {
+        Columns &c = *m_columns;
+        std::vector<uint32_t> order;
+        if (!m_tree.empty()) {
+            std::vector<size_t> stack { 0 };
+            while (!stack.empty()) {
+                const size_t i = stack.back();
+                stack.pop_back();
+                if (m_tree.node(i).is_leaf())
+                    order.push_back(uint32_t(i));
+                else
+                    stack.push_back(2 * i + 2), stack.push_back(2 * i + 1);
+            }
+        }
+        BoundingBoxf box;
+        for (const Vec3f &v : its.vertices) box.merge(Vec2d(v.x(), v.y()));
+        const Vec2d size = box.defined ? Vec2d(box.size()) : Vec2d::Zero();
+        const double area = std::max(size.x() * size.y(), 1e-6);
+        c.cell   = std::max({ std::sqrt(area / (0.5 * std::max<size_t>(order.size(), 1))), std::sqrt(area / double(1 << 20)), 1e-3 });
+        c.margin = 1e-4;
+        c.x0 = box.defined ? box.min.x() : 0., c.y0 = box.defined ? box.min.y() : 0.;
+        c.nx = std::max(1, int(std::ceil(size.x() / c.cell))), c.ny = std::max(1, int(std::ceil(size.y() / c.cell)));
+        auto for_cells = [&](uint32_t leaf, auto &&visit) {
+            const Vec3i32 &f = its.indices[m_tree.node(leaf).idx];
+            const Vec2d p[3] = { its.vertices[f(0)].head<2>().cast<double>(), its.vertices[f(1)].head<2>().cast<double>(),
+                                 its.vertices[f(2)].head<2>().cast<double>() };
+            const Vec2d lo = p[0].cwiseMin(p[1]).cwiseMin(p[2]), hi = p[0].cwiseMax(p[1]).cwiseMax(p[2]);
+            const int ix0 = std::clamp(int(std::floor((lo.x() - c.margin - c.x0) / c.cell)), 0, c.nx - 1),
+                      ix1 = std::clamp(int(std::floor((hi.x() + c.margin - c.x0) / c.cell)), 0, c.nx - 1),
+                      iy0 = std::clamp(int(std::floor((lo.y() - c.margin - c.y0) / c.cell)), 0, c.ny - 1),
+                      iy1 = std::clamp(int(std::floor((hi.y() + c.margin - c.y0) / c.cell)), 0, c.ny - 1);
+            for (int iy = iy0; iy <= iy1; ++iy)
+                for (int ix = ix0; ix <= ix1; ++ix) {
+                    const Vec2d centre(c.x0 + (ix + 0.5) * c.cell, c.y0 + (iy + 0.5) * c.cell);
+                    bool apart = false;
+                    for (int e = 0; e < 3 && !apart; ++e) {
+                        const Vec2d &a = p[e], &b = p[(e + 1) % 3], &r = p[(e + 2) % 3];
+                        const Vec2d n(a.y() - b.y(), b.x() - a.x());
+                        const double reach = 0.5 * c.cell * (std::abs(n.x()) + std::abs(n.y())) + c.margin * n.norm();
+                        const double edge = n.dot(a), other = n.dot(r), mid = n.dot(centre);
+                        apart = mid - reach > std::max(edge, other) || mid + reach < std::min(edge, other);
+                    }
+                    if (!apart) visit(size_t(iy) * size_t(c.nx) + size_t(ix));
+                }
+        };
+        c.offsets.assign(size_t(c.nx) * size_t(c.ny) + 1, 0);
+        for (uint32_t leaf : order) for_cells(leaf, [&](size_t cell) { ++c.offsets[cell + 1]; });
+        std::partial_sum(c.offsets.begin(), c.offsets.end(), c.offsets.begin());
+        c.leaves.resize(c.offsets.back());
+        std::vector<uint32_t> fill(c.offsets.begin(), c.offsets.end() - 1);
+        for (uint32_t leaf : order) for_cells(leaf, [&](size_t cell) { c.leaves[fill[cell]++] = leaf; });
+    }
+
     void init(const indexed_triangle_set &its, bool calculate_epsilon)
     {
         m_triangle_ray_epsilon = 0.000001;
@@ -51,6 +188,13 @@ public:
                        const Vec3d &               dir,
                        igl::Hit<float> &                  hit)
     {
+        if (columns_cover(dir)) {
+            std::vector<igl::Hit<float>> hits;
+            column_hits(its, s, dir, hits);
+            for (const igl::Hit<float> &h : hits)
+                if (h.t < hit.t) hit = h;
+            return;
+        }
         AABBTreeIndirect::intersect_ray_first_hit(its.vertices, its.indices,
                                                   m_tree, s, dir, hit, m_triangle_ray_epsilon);
     }
@@ -60,6 +204,11 @@ public:
                        const Vec3d &               dir,
                        std::vector<igl::Hit<float>> &     hits)
     {
+        if (columns_cover(dir)) {
+            column_hits(its, s, dir, hits);
+            std::sort(hits.begin(), hits.end(), [](const auto &l, const auto &r) { return l.t < r.t; });
+            return;
+        }
         AABBTreeIndirect::intersect_ray_all_hits(its.vertices, its.indices,
                                                  m_tree, s, dir, hits, m_triangle_ray_epsilon);
     }
@@ -102,6 +251,8 @@ IndexedMesh::IndexedMesh(const TriangleMesh &mesh, bool calculate_epsilon)
 }
 
 IndexedMesh::~IndexedMesh() {}
+
+void IndexedMesh::enable_column_cache() { m_aabb->enable_columns(*m_tm); }
 
 IndexedMesh::IndexedMesh(const IndexedMesh &other):
     m_tm(other.m_tm), m_ground_level(other.m_ground_level),

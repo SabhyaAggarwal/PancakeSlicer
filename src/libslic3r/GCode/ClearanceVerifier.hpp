@@ -35,6 +35,8 @@ public:
     double swept_clearance(const Vec3d &a, const Vec3d &b, const PreparedHead &head, double bound, int *box = nullptr,
                            int hint = -1) const;
     double tilted_clearance(const Vec3d &tip, const Matrix3d &frame, const Nonplanar::HeadEnvelope &head) const;
+    void merge(const MaterialColumns &other);
+    double tile_bound(const BoundingBoxf &rect) const;
 private:
     void cells(const BoundingBoxf &rect, int &x0, int &y0, int &x1, int &y1) const;
     double cell_top(int x, int y) const
@@ -42,7 +44,6 @@ private:
         const std::vector<double> &block = m_blocks[size_t(y / m_tile) * m_tx + x / m_tile];
         return block.empty() ? -std::numeric_limits<double>::infinity() : block[size_t(y % m_tile) * m_tile + x % m_tile];
     }
-    double tile_bound(const BoundingBoxf &rect) const;
     double top_above(const BoundingBoxf &rect, double floor) const;
     BoundingBoxf m_bbox;
     double m_pitch;

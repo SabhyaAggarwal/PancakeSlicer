@@ -34,12 +34,11 @@ struct ShellFill
     bool   helix   = false;
     double angle   = 0.;
     bool   outline = true;
-    bool   gaps    = false;
 };
 
 std::vector<ShellFill> plan_shell_fills(const ConformalPatch &patch, const PrintRegionConfig &config, double spacing);
 
-Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam, const Polyline *seam_line = nullptr, bool gaps = false);
+Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam, const Polyline *seam_line = nullptr);
 
 Polylines fill_surface_spaced(const ExPolygons &area, const HeightField &surface, InfillPattern pattern, double spacing, double angle,
                               bool monotonic, const Flow &flow, double z);

@@ -57,12 +57,15 @@ struct ObjectMesh
 };
 const ObjectMesh &object_mesh(const PrintObject &object, ConformalResult &result);
 
+std::function<bool(const Vec2d &p, double z)> material_below(const PrintObject &object);
+
 HeightField object_grid(const PrintObject &object, double pitch, Polygons *silhouette = nullptr);
 
 Mask rasterize(const ExPolygons &area, const HeightField &grid);
 ExPolygons mask_to_expolygons(const Mask &mask, const HeightField &grid);
 HeightField crop(const HeightField &src, int ix0, int iy0, int ix1, int iy1);
 void pad_lowest(HeightField &field, int iterations);
+double smooth_scan_noise(HeightField &surface, const std::function<void()> &throw_if_canceled = {});
 std::vector<int> label_components(const Mask &mask, int nx, int ny, int &count);
 
 void drop_steep_nodes(const HeightField &surface, const HeadEnvelope &head, double gap, const HeightField &grid, Mask &mask);
@@ -99,6 +102,9 @@ bool contour_line_angle(const HeightField &surface, double &angle, double min_co
 
 Polylines fill_solid(const ExPolygons &area, InfillPattern pattern, double spacing, double angle, bool monotonic,
                      const Flow &flow, double z);
+
+void split_by_owner(const Polylines &polylines, const std::function<int(const Vec2d &)> &owner_at, double step,
+                    const std::function<void(int, Polyline &&)> &sink);
 
 using LiftFn = std::function<bool(const Vec2d &p, double &z, float &bead_height)>;
 

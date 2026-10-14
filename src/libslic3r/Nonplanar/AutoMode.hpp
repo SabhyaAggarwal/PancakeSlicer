@@ -17,6 +17,8 @@ struct HeadEnvelope;
 
 constexpr int AutoMinShells = 2;
 
+double auto_curved_underside_slope();
+
 bool top_shells_enabled(const PrintRegionConfig &config, const PrintObjectConfig &object);
 bool bottom_shells_enabled(const PrintRegionConfig &config, const PrintObjectConfig &object);
 double full_conformal_thickness(const PrintRegionConfig &config, const PrintObject &object);
