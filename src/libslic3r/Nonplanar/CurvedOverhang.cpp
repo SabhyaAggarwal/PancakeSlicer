@@ -46,6 +46,7 @@ namespace Slic3r::Nonplanar {
 namespace {
 
 constexpr float Inf = std::numeric_limits<float>::infinity();
+constexpr double ThinWallLayers = 15.;
 constexpr double TargetContact  = 0.5;
 constexpr double MinContact     = 0.4;
 constexpr double DefaultMaxBend = 40.;
@@ -281,6 +282,8 @@ void build_curved_overhangs(PrintObject &object, ConformalResult &result)
                 continue;
             const Vec2d gr = node_gradient(Sb, ix, iy);
             if (std::isnan(gr.x()) || std::isnan(gr.y()))
+                continue;
+            if (top.data()[i] - Sb.data()[i] < ThinWallLayers * g && (!free_mode || gr.norm() >= 1. / std::tan(printable)))
                 continue;
             slope[i] = float(gr.norm());
             mask[i]  = slope[i] < grad_need && slope[i] >= grad_min;
