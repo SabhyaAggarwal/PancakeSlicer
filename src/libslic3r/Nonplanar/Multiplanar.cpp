@@ -1,4 +1,5 @@
 #include "Multiplanar.hpp"
+#include "MultiplanarConfirm.hpp"
 
 #include "ConformalIroning.hpp"
 #include "ConformalShells.hpp"
@@ -706,10 +707,15 @@ DynamicPrintConfig chunk_print_config(const PrintObject &object)
 
 std::shared_ptr<const MultiplanarPlan> clip_multiplanar_slices(PrintObject &object)
 {
-    if (object.config().nonplanar_mode.value != NonplanarMode::Multiplanar ||
-        !object.config().nonplanar_atom_toolpath.value.empty())
+    const NonplanarMode mode = object.config().nonplanar_mode.value;
+    if ((mode != NonplanarMode::Multiplanar && mode != NonplanarMode::Auto) || !object.config().nonplanar_atom_toolpath.value.empty())
         return {};
     const std::unique_ptr<ToolKinematics> kinematics = make_tool_kinematics(object.print()->config());
+    if (mode == NonplanarMode::Auto && (! kinematics || kinematics->rotary_count() == 0))
+        return {};
+    const indexed_triangle_set mesh = slicing_frame_mesh(object);
+    if (mode == NonplanarMode::Auto && ! auto_rotary_candidate(object, mesh))
+        return {};
     MultiplanarParams params;
     params.layer_height       = object.config().layer_height.value;
     params.first_layer_height = object.print()->config().initial_layer_print_height.value;
@@ -717,7 +723,7 @@ std::shared_ptr<const MultiplanarPlan> clip_multiplanar_slices(PrintObject &obje
     params.max_planes         = object.config().multiplanar_max_planes.value;
     params.head               = resolve_head_envelope(object.print()->config());
     params.kinematics         = kinematics.get();
-    auto plan = std::make_shared<MultiplanarPlan>(plan_multiplanar(slicing_frame_mesh(object), params,
+    auto plan = std::make_shared<MultiplanarPlan>(plan_multiplanar(mesh, params,
                                                                    [&object]() { throw_if_canceled(object); }));
     for (const std::string &note : plan->notes)
         BOOST_LOG_TRIVIAL(info) << "Multiplanar " << object.model_object()->name << ": " << note;
@@ -729,6 +735,8 @@ std::shared_ptr<const MultiplanarPlan> clip_multiplanar_slices(PrintObject &obje
         BOOST_LOG_TRIVIAL(info) << "Multiplanar chunk " << i << ": parent " << c.parent << " dir " << c.build_dir.transpose()
                                 << " base " << c.base << " overhang " << c.overhang_area << " steps " << c.step_area;
     }
+    if (mode == NonplanarMode::Auto && (plan->auto_reason = auto_rotary_chunks(object, mesh, *plan)).empty())
+        return {};
 
     const std::vector<HalfSpace> &clips = plan->chunks.front().clips;
     if (clips.empty())

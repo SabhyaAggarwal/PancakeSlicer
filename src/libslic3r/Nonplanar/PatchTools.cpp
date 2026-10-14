@@ -15,6 +15,7 @@
 #include "libslic3r/Flow.hpp"
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/Layer.hpp"
+#include "libslic3r/Model.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintBase.hpp"
 #include "libslic3r/PrintConfig.hpp"
@@ -128,6 +129,9 @@ void prepare_vase_closure(PrintObject &object)
 
 double automatic_shell_height(const PrintObject &object)
 {
+    const ModelObject &model = *object.model_object();
+    if (!model.layer_height_profile.empty() || !model.layer_config_ranges.empty())
+        return std::min(object.slicing_parameters().first_object_layer_height, object.config().layer_height.value);
     double height = std::numeric_limits<double>::infinity();
     for (const Layer *layer : object.layers())
         if (layer->height > 0.)

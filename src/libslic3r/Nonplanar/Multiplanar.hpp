@@ -57,6 +57,7 @@ struct MultiplanarPlan
     double                        step_area              = 0.;
     double                        planar_step_area       = 0.;
     std::vector<std::string>      notes;
+    std::string                   auto_reason;
 };
 
 MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const MultiplanarParams &params,

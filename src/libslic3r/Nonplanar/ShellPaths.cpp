@@ -517,7 +517,7 @@ std::vector<ShellFill> plan_shell_fills(const ConformalPatch &patch, const Print
     return fills;
 }
 
-Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam, const Polyline *seam_line)
+Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam, const Polyline *seam_line, bool gaps)
 {
     const coord_t step = coord_t(scale_(spacing));
     if (step <= 0)
@@ -529,10 +529,16 @@ Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam,
     while (!level.empty()) {
         append(loops, to_polygons(level));
         ExPolygons next = offset2_ex(level, -float(step) - 0.5f * float(step), 0.5f * float(step));
+        if (gaps) {
+            const ExPolygons gap = opening_ex(diff_ex(offset_ex(level, -0.5f * float(step)), offset_ex(next, 0.5f * float(step))),
+                                              0.25f * float(step));
+            for (const ExPolygon &piece : gap)
+                append(centres, piece.medial_axis(0.25 * double(step), 3.5 * double(step)));
+        }
         for (const ExPolygon &piece : level)
             if (intersection_ex(ExPolygons{ piece }, next).empty()) {
                 innermost.emplace_back(piece);
-                if (!offset_ex(piece, -0.75f * float(step)).empty())
+                if (!gaps && !offset_ex(piece, -0.75f * float(step)).empty())
                     append(centres, piece.medial_axis(0.5 * double(step), 3.5 * double(step)));
             }
         level = std::move(next);
@@ -631,7 +637,7 @@ std::vector<Polylines> shell_polylines(const ExPolygons &area, const ShellFill &
         if (Polyline helix = fill.helix ? fill_helix(area, spacing, start, false, helix_ramp, TopHelixMinRings) : Polyline(); helix.is_valid())
             paths.emplace_back(std::move(helix));
         else
-            paths = fill_spiral(area, spacing, start, seam_line);
+            paths = fill_spiral(area, spacing, start, seam_line, fill.gaps);
         if (fill.outward)
             reverse_order(paths);
     } else {

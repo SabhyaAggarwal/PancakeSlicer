@@ -12,6 +12,7 @@ class PrintRegion;
 namespace Slic3r::Nonplanar {
 
 struct ConformalPatch;
+struct MultiplanarPlan;
 struct HeadEnvelope;
 
 constexpr int AutoMinShells = 2;
@@ -26,6 +27,10 @@ double infill_depth(const PrintRegionConfig &config, const PrintObjectConfig &ob
 NonplanarFallback effective_fallback(const PrintRegionConfig &config, const PrintObjectConfig &object);
 bool zaa_fallback(const PrintRegionConfig &config, const PrintObjectConfig &object);
 NonplanarCollisionCheck effective_collision_check(const Print &print);
+
+bool auto_multiplanar_candidate(double steep_top_share, double thin_top_share);
+bool auto_multiplanar_chunks(const MultiplanarPlan &plan);
+bool auto_multiplanar_confirmed(double chunks_rms, double planar_rms, double chunks_time, double planar_time);
 
 struct AutoObjectSettings
 {

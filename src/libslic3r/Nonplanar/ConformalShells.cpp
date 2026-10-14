@@ -16,6 +16,7 @@
 #include "libslic3r/Arachne/utils/ExtrusionLine.hpp"
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ClipperUtils.hpp"
+#include "libslic3r/Config.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/Flow.hpp"
 #include "libslic3r/Geometry.hpp"
@@ -29,6 +30,7 @@
 #include "libslic3r/TriangleMesh.hpp"
 #include "libslic3r/libslic3r.h"
 
+#include <boost/algorithm/string/predicate.hpp>
 #include <boost/log/trivial.hpp>
 #include <tbb/blocked_range.h>
 #include <tbb/parallel_for.h>
@@ -111,12 +113,13 @@ ShellSettings shell_settings(const PrintObject &object, size_t region_id)
     return s;
 }
 
-ExPolygons candidate_top_area(const PrintObject &object, size_t region_id)
+ExPolygons candidate_top_area(const PrintObject &object, const std::vector<size_t> &region_ids)
 {
     Polygons tops;
     for (const Layer *layer : object.layers())
         for (const LayerRegion *layerm : layer->regions())
-            if (&layerm->region() == &object.printing_region(region_id))
+            if (std::any_of(region_ids.begin(), region_ids.end(),
+                            [&](size_t id) { return &layerm->region() == &object.printing_region(id); }))
                 for (const Surface &surface : layerm->slices.surfaces)
                     if (surface.surface_type == stTop)
                         polygons_append(tops, to_polygons(surface.expolygon));
@@ -708,8 +711,10 @@ HeightField sample_underside(const sla::IndexedMesh &mesh, double z_offset, cons
     return U;
 }
 
-static ConformalResult build_region_shells(PrintObject &object, size_t region_id, int patch_offset, std::shared_ptr<ObjectMesh> &mesh)
+static ConformalResult build_region_shells(PrintObject &object, const std::vector<size_t> &region_ids, int patch_offset,
+                                           std::shared_ptr<ObjectMesh> &mesh)
 {
+    const size_t    region_id = region_ids.front();
     ConformalResult result;
     result.mesh = mesh;
     const auto      t_start = std::chrono::steady_clock::now();
@@ -720,7 +725,7 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
     if (settings.shells <= 0 || layers.empty())
         return result;
 
-    ExPolygons candidate = candidate_top_area(object, region_id);
+    ExPolygons candidate = candidate_top_area(object, region_ids);
     if (candidate.empty())
         return result;
 
@@ -801,6 +806,10 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
         const double tilt      = print_config.nonplanar_kinematics.value == RotaryLayout::None ? 0. :
                                      std::clamp(Geometry::deg2rad(print_config.nonplanar_max_tilt.value), 0., 0.5 * M_PI);
         const double max_slope = h_c / outer_w;
+        auto local_height = [&layers](double z) {
+            const auto it = std::lower_bound(layers.begin(), layers.end(), z, [](const Layer *layer, double v) { return layer->print_z < v; });
+            return it == layers.end() ? layers.back()->height : (*it)->height;
+        };
         Mask                steep(n_nodes, 0);
         std::vector<double> slope(n_nodes, 0.);
         for (int iy = 0; iy < grid.ny(); ++iy)
@@ -808,7 +817,7 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
                 if (const size_t i = size_t(iy) * grid.nx() + ix; mask[i])
                     if (const Vec2d g = S0.gradient(grid.node(ix, iy)); g.allFinite()) {
                         const double eff = tilt > 0. ? std::tan(std::max(0., std::atan(g.norm()) - tilt)) : g.norm();
-                        if (eff > max_slope)
+                        if (eff > std::max(max_slope, local_height(S0.at(ix, iy)) / outer_w))
                             steep[i] = 1, slope[i] = eff;
                     }
         const Mask steep_wide = rasterize(opening_ex(mask_to_expolygons(steep, grid), float(scale_(line_width))), grid);
@@ -1225,6 +1234,10 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
                     if (!std::isnan(stack->outer.data()[i]) &&
                         (stack->outer.node(int(i % size_t(stack->outer.nx())), int(i / size_t(stack->outer.nx()))) - d.p).norm() <= d.radius)
                         stack->make_uniform(i);
+        auto thick_layer_transition = [&](double face) {
+            const auto above = std::partition_point(layer_z.begin(), layer_z.end(), [&](double z) { return face - z >= h_min; });
+            return above == layer_z.begin() || above == layer_z.end() ? -1 : int(above - layer_z.begin()) - 1;
+        };
         for (size_t i = 0; i < top.data().size(); ++i) {
             const float s = patch.surface.data()[i];
             if (std::isnan(s))
@@ -1246,6 +1259,10 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
                 }
                 if ((layer = planar_transition_layer(layer_z, s - (m - 1) * h_c, h_c, h_min, h_max, PatchKind::Top)) >= 0)
                     break;
+            }
+            if (layer < 0) {
+                m     = n_top;
+                layer = thick_layer_transition(s - (m - 1) * h_c);
             }
             if (layer < 0) {
                 printable = false;
@@ -1356,11 +1373,14 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
             banded.strip_height = band_pitch;
             banded.strip_offset = 0.5 * band_tolerance;
             banded.adaptive     = settings.adaptive ? &adaptive_stacks[idx] : nullptr;
-            if (settings.banded && top_pattern(patch, region.config()) == NonplanarTopPattern::Contour) {
+            const NonplanarTopPattern pattern = top_pattern(patch, region.config());
+            const bool user_rings = settings.banded && pattern == NonplanarTopPattern::Concentric && is_round(patch.footprint) &&
+                                    outline_is_contour(patch, h_c);
+            if (settings.banded && (pattern == NonplanarTopPattern::Contour || user_rings)) {
                 double angle = 0.;
                 for (size_t k = 0; k < banded_fills.size(); ++k)
                     banded_fills[k] = ShellFill();
-                if (contour_line_angle(patch.surface, angle, 0.9))
+                if (!user_rings && contour_line_angle(patch.surface, angle, 0.9))
                     for (ShellFill &f : banded_fills) {
                         f.angle = angle;
                         f.outline = false;
@@ -1377,6 +1397,13 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
                         banded_fills[k].angle = fills[k].angle;
                 }
                 if (!banded_fills.front().spiral)
+                    banded.lengthwise = lengthwise_strips(area, line_width);
+            } else if (settings.banded) {
+                for (ShellFill &f : banded_fills) {
+                    f.outline = false;
+                    f.gaps    = f.spiral;
+                }
+                if (!banded_fills.back().spiral)
                     banded.lengthwise = lengthwise_strips(area, line_width);
             }
             if (settings.shells > settings.top_shells) {
@@ -1580,8 +1607,20 @@ ConformalResult build_conformal_shells(PrintObject &object)
         layer->conformal_patches_after.clear();
         layer->conformal_covered = false;
     }
+    std::vector<std::vector<size_t>> groups;
     for (size_t region_id = 0; region_id < object.num_printing_regions(); ++region_id) {
-        ConformalResult region = build_region_shells(object, region_id, int(result.patches.size()), result.mesh);
+        const PrintRegionConfig &cfg  = object.printing_region(region_id).config();
+        auto                     same = std::find_if(groups.begin(), groups.end(), [&](const std::vector<size_t> &group) {
+            const t_config_option_keys diff = object.printing_region(group.front()).config().diff(cfg);
+            return std::all_of(diff.begin(), diff.end(), [](const std::string &key) { return boost::starts_with(key, "fuzzy_skin"); });
+        });
+        if (same == groups.end())
+            groups.push_back({ region_id });
+        else
+            same->push_back(region_id);
+    }
+    for (const std::vector<size_t> &group : groups) {
+        ConformalResult region = build_region_shells(object, group, int(result.patches.size()), result.mesh);
         result.mesh            = region.mesh;
         result.flow_mod.merge(region.flow_mod);
         for (ConformalPatch &patch : region.patches)

@@ -3,6 +3,7 @@
 #include "ConformalIroning.hpp"
 #include "ConformalShells.hpp"
 #include "HeadEnvelope.hpp"
+#include "Multiplanar.hpp"
 #include "PatchTools.hpp"
 #include "Repair.hpp"
 
@@ -24,6 +25,7 @@
 #include <cstddef>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -36,6 +38,11 @@ constexpr int    MaxShells      = 6;
 constexpr double LargeArea      = 400.;
 constexpr double MinCoherence   = 0.1;
 constexpr double MaxRoundAspect = 1.5;
+constexpr double MultiplanarThinShare  = 0.6;
+constexpr double MultiplanarSteepShare = 0.55;
+constexpr double MultiplanarMinGain    = 0.02;
+constexpr double MultiplanarMinRmsGain = 0.10;
+constexpr double MultiplanarMaxTimeRatio = 1.5;
 
 bool is_auto(const PrintObjectConfig &object) { return object.nonplanar_mode.value == NonplanarMode::Auto; }
 bool is_manual(const PrintObjectConfig &object)
@@ -59,6 +66,22 @@ double percentile(std::vector<double> &v, double q)
     const size_t k = std::min(v.size() - 1, size_t(q * double(v.size())));
     std::nth_element(v.begin(), v.begin() + k, v.end());
     return v[k];
+}
+
+std::optional<NonplanarTopPattern> user_top_pattern(const PrintObject &object, const PrintRegionConfig &config)
+{
+    const PrintRegionConfig &base = object.print()->default_region_config();
+    if (config.nonplanar_top_pattern.value != base.nonplanar_top_pattern.value)
+        return config.nonplanar_top_pattern.value;
+    if (config.top_surface_pattern.value == base.top_surface_pattern.value)
+        return std::nullopt;
+    switch (config.top_surface_pattern.value) {
+    case ipConcentric:
+    case ipSpiralInset:
+    case ipArchimedeanChords:
+    case ipOctagramSpiral: return NonplanarTopPattern::Concentric;
+    default: return NonplanarTopPattern::Rectilinear;
+    }
 }
 
 }
@@ -127,6 +150,22 @@ NonplanarCollisionCheck effective_collision_check(const Print &print)
         if (is_auto(object->config()))
             return std::max(set, NonplanarCollisionCheck::Warn);
     return set;
+}
+
+bool auto_multiplanar_candidate(double steep_top_share, double thin_top_share)
+{
+    return steep_top_share >= MultiplanarSteepShare || thin_top_share >= MultiplanarThinShare;
+}
+
+bool auto_multiplanar_confirmed(double chunks_rms, double planar_rms, double chunks_time, double planar_time)
+{
+    return std::isfinite(chunks_rms) && std::isfinite(planar_rms) && std::isfinite(planar_time) && planar_time > 0. &&
+           chunks_rms <= (1. - MultiplanarMinRmsGain) * planar_rms && chunks_time < MultiplanarMaxTimeRatio * planar_time;
+}
+
+bool auto_multiplanar_chunks(const MultiplanarPlan &plan)
+{
+    return plan.chunks.size() > 1 && plan.step_area < (1. - MultiplanarMinGain) * plan.planar_step_area;
 }
 
 AutoObjectSettings auto_object_settings(const PrintObject &object, const PrintRegion &region, double shell_height)
@@ -222,8 +261,12 @@ void choose_patch_settings(const PrintObject &object, const HeadEnvelope &head, 
     a.pattern = banded || a.coherence >= MinCoherence ? NonplanarTopPattern::Contour :
                 a.aspect <= MaxRoundAspect            ? NonplanarTopPattern::Concentric :
                                                         NonplanarTopPattern::Rectilinear;
+    if (const std::optional<NonplanarTopPattern> user = user_top_pattern(object, config))
+        a.pattern = *user;
     const double r = head.tip_flat_radius;
-    a.ironing = conformal_ironing_enabled(config) && 0.5 * r * r * curvature80 <= 0.25 * h_c;
+    const bool ironing_off = config.ironing_type.value == IroningType::NoIroning &&
+                             object.print()->default_region_config().ironing_type.value != IroningType::NoIroning;
+    a.ironing = !ironing_off && conformal_ironing_enabled(config) && 0.5 * r * r * curvature80 <= 0.25 * h_c;
 
     patch.automatic = std::make_shared<const AutoPatchSettings>(a);
     BOOST_LOG_TRIVIAL(info) << "Non-planar auto: patch " << patch.id << " area " << a.shell_area << " mm2, slope90 "

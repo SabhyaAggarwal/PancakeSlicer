@@ -31,6 +31,7 @@
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/Semver.hpp"
+#include "libslic3r/Slicing.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 #include "libslic3r/TriangleSelector.hpp"
 #include "libslic3r/Utils.hpp"
@@ -80,7 +81,7 @@ struct Args
 {
     std::string profiles = std::string(PROFILES_DIR);
     std::string vendor   = "Prusa";
-    std::string printer, process, datadir, output, model, config_out, paint, gcode_3mf, json, plate, project_out, head_out;
+    std::string printer, process, datadir, output, model, config_out, paint, gcode_3mf, json, plate, project_out, head_out, layer_profile, project, save_3mf, tip_out;
     std::vector<std::string> filaments, colours;
     std::vector<std::pair<std::string, int>> parts;
     std::vector<std::pair<std::string, std::string>> overrides;
@@ -100,8 +101,9 @@ struct Args
               << "usage: nonplanar_slice_tool --printer NAME --process NAME --filament NAME [--vendor Prusa]\n"
                  "       [--profiles DIR] [--datadir DIR] [--set key=value]... [--center X,Y]\n"
                  "       [--config-out FILE] [--project-out FILE] [--head-out FILE] [--gcode-3mf FILE] [--json FILE]\n"
-                 "       [--atom TOOLPATH] [--verify] [--explain] [--auto-orient | --orient-only]\n"
-                 "       -o OUT.gcode (MODEL | PROJECT.3mf | --plate PLATE.json)\n";
+                 "       [--atom TOOLPATH] [--verify] [--explain] [--auto-orient | --orient-only] [--save-3mf PROJECT.3mf]\n"
+                 "       [--layer-profile adaptive:QUALITY | ramp:H_BOTTOM:H_TOP | range:DEPTH:H]\n"
+                 "       -o OUT.gcode (MODEL | PROJECT.3mf | --plate PLATE.json | --project SPEC.json)\n";
     std::exit(2);
 }
 
@@ -133,6 +135,7 @@ Args parse_args(int argc, char **argv)
                 usage("--part expects FILE:EXTRUDER");
             a.parts.emplace_back(spec.substr(0, pos), std::atoi(spec.c_str() + pos + 1));
         } else if (arg == "--paint") a.paint = next();
+        else if (arg == "--layer-profile") a.layer_profile = next();
         else if (arg == "--vendor") a.vendor = next();
         else if (arg == "--profiles") a.profiles = next();
         else if (arg == "--datadir") a.datadir = next();
@@ -149,6 +152,9 @@ Args parse_args(int argc, char **argv)
         }
         else if (arg == "--json") a.json = next();
         else if (arg == "--plate") a.plate = next();
+        else if (arg == "--project") a.project = next();
+        else if (arg == "--save-3mf") a.save_3mf = next();
+        else if (arg == "--tip-out") a.tip_out = next();
         else if (arg == "--verify") a.verify = true;
         else if (arg == "--auto-orient") a.auto_orient = true;
         else if (arg == "--orient-only") a.auto_orient = a.orient_only = true;
@@ -170,9 +176,10 @@ Args parse_args(int argc, char **argv)
         else
             a.model = arg;
     }
-    if (a.printer.empty() || a.process.empty() || a.filaments.empty() || (a.output.empty() && ! a.orient_only && a.confirm_up.empty()) ||
-        a.model.empty() == a.plate.empty())
-        usage("--printer, --process, --filament, -o and a model or --plate are required");
+    if (a.printer.empty() || a.process.empty() || a.filaments.empty() ||
+        (a.output.empty() && ! a.orient_only && a.confirm_up.empty() && a.save_3mf.empty()) ||
+        int(! a.model.empty()) + int(! a.plate.empty()) + int(! a.project.empty()) != 1)
+        usage("--printer, --process, --filament, -o and one of a model, --plate or --project are required");
     return a;
 }
 
@@ -524,6 +531,38 @@ void place_wipe_tower(DynamicPrintConfig &config, const Model &model, size_t fil
     config.option<ConfigOptionFloats>("wipe_tower_y", true)->values = { y + move.y() };
 }
 
+void apply_layer_profile(const Args &args, Model &model, Print &print, const DynamicPrintConfig &config)
+{
+    if (args.layer_profile.empty())
+        return;
+    const size_t colon = args.layer_profile.find(':');
+    const std::string kind = args.layer_profile.substr(0, colon);
+    double a = 0., b = 0.;
+    const int values = colon == std::string::npos ? 0 : std::sscanf(args.layer_profile.c_str() + colon + 1, "%lf:%lf", &a, &b);
+    if (!((kind == "adaptive" && values >= 1) || ((kind == "ramp" || kind == "range") && values == 2)))
+        usage("--layer-profile expects adaptive:Q, ramp:H0:H1 or range:D:H");
+    for (ModelObject *object : model.objects) {
+        const PrintObject *print_object = nullptr;
+        for (const PrintObject *po : print.objects())
+            if (po->model_object()->id() == object->id())
+                print_object = po;
+        if (print_object == nullptr)
+            continue;
+        const SlicingParameters &sp  = print_object->slicing_parameters();
+        const double             top = sp.object_print_z_uncompensated_height();
+        if (kind == "adaptive")
+            object->layer_height_profile.set(layer_height_profile_adaptive(sp, *object, float(a)));
+        else if (kind == "ramp")
+            object->layer_height_profile.set(std::vector<coordf_t>{ 0., sp.first_object_layer_height, sp.first_object_layer_height, a, top, b });
+        else {
+            ModelConfig range;
+            range.set("layer_height", b);
+            object->layer_config_ranges[{ std::max(0., top - a), top }] = range;
+        }
+    }
+    print.apply(model, config);
+}
+
 void place(const Args &args, Model &model, DynamicPrintConfig &config, bool saved = false)
 {
     if (args.plate.empty() && (!saved || args.center_set)) {
@@ -750,6 +789,95 @@ Model load_plate(const std::string &path)
     return model;
 }
 
+Model load_project(const std::string &path)
+{
+    boost::nowide::ifstream in(path);
+    const nlohmann::json    j   = nlohmann::json::parse(in);
+    const fs::path          dir = fs::path(path).parent_path();
+    auto resolve_path = [&dir](const std::string &file) { return fs::path(file).is_relative() ? (dir / file).string() : file; };
+    auto read_model   = [](const std::string &file) {
+        Model m = Model::read_from_file(file, nullptr, nullptr, LoadStrategy::LoadModel | LoadStrategy::AddDefaultInstances);
+        if (m.objects.empty() || m.objects.front()->volumes.empty())
+            throw std::runtime_error("no objects in " + file);
+        return m;
+    };
+    ConfigSubstitutionContext ctx(ForwardCompatibilitySubstitutionRule::Disable);
+    auto apply_settings = [&ctx](ModelConfig &config, const nlohmann::json &settings) {
+        for (const auto &[key, value] : settings.items())
+            config.set_deserialize(key, value.is_string() ? value.get<std::string>() : value.dump(), ctx);
+    };
+
+    Model        model  = read_model(resolve_path(j.at("object").get<std::string>()));
+    ModelObject *object = model.objects.front();
+    object->name        = j.value("name", fs::path(j.at("object").get<std::string>()).stem().string());
+    ModelVolume *main   = object->volumes.front();
+    if (j.contains("settings"))
+        apply_settings(object->config, j.at("settings"));
+    for (const nlohmann::json &v : j.value("volumes", nlohmann::json::array())) {
+        static const std::map<std::string, ModelVolumeType> types = {
+            { "part", ModelVolumeType::MODEL_PART },           { "modifier", ModelVolumeType::PARAMETER_MODIFIER },
+            { "negative", ModelVolumeType::NEGATIVE_VOLUME },  { "support_enforcer", ModelVolumeType::SUPPORT_ENFORCER },
+            { "support_blocker", ModelVolumeType::SUPPORT_BLOCKER } };
+        const auto type = types.find(v.value("type", "modifier"));
+        if (type == types.end())
+            throw std::runtime_error("unknown volume type " + v.value("type", ""));
+        Model        src    = read_model(resolve_path(v.at("file").get<std::string>()));
+        TriangleMesh mesh   = src.objects.front()->volumes.front()->mesh();
+        mesh.transform(src.objects.front()->volumes.front()->get_matrix());
+        if (v.contains("offset"))
+            mesh.translate(v["offset"][0].get<float>(), v["offset"][1].get<float>(), v["offset"][2].get<float>());
+        ModelVolume *volume = object->add_volume(std::move(mesh), type->second, false);
+        volume->set_transformation(Geometry::Transformation(main->get_matrix() * Geometry::translation_transform(-main->mesh().get_init_shift())));
+        volume->center_geometry_after_creation();
+        volume->name = fs::path(v.at("file").get<std::string>()).stem().string();
+        if (v.contains("settings"))
+            apply_settings(volume->config, v.at("settings"));
+    }
+    for (const nlohmann::json &r : j.value("ranges", nlohmann::json::array())) {
+        ModelConfig &config = object->layer_config_ranges[{ r.at("z")[0].get<double>(), r.at("z")[1].get<double>() }];
+        config.set("layer_height", r.value("layer_height", 0.2));
+        apply_settings(config, r.value("settings", nlohmann::json::object()));
+    }
+    const nlohmann::json paint = j.value("paint", nlohmann::json::object());
+    for (const auto &[kind, file] : paint.items()) {
+        boost::nowide::ifstream pin(resolve_path(file.get<std::string>()));
+        std::vector<int>        ids;
+        for (int id; pin >> id;)
+            ids.push_back(id);
+        if (ids.size() != main->mesh().its.indices.size())
+            throw std::runtime_error("paint " + kind + " has " + std::to_string(ids.size()) + " entries, the mesh " +
+                                     std::to_string(main->mesh().its.indices.size()) + " triangles");
+        TriangleSelector selector(main->mesh());
+        for (size_t i = 0; i < ids.size(); ++i)
+            if (ids[i] > 0)
+                selector.set_facet(int(i), EnforcerBlockerType(ids[i]));
+        if (kind == "seam") main->seam_facets.set(selector);
+        else if (kind == "support") main->supported_facets.set(selector);
+        else if (kind == "fuzzy") main->fuzzy_skin_facets.set(selector);
+        else if (kind == "color") main->mmu_segmentation_facets.set(selector);
+        else throw std::runtime_error("unknown paint " + kind);
+    }
+    return model;
+}
+
+void save_project(const Args &args, Model &model, DynamicPrintConfig &config, const fs::path &datadir)
+{
+    auto plate         = std::make_unique<PlateData>();
+    plate->plate_index = 0;
+    for (size_t i = 0; i < model.objects.size(); ++i)
+        for (size_t j = 0; j < model.objects[i]->instances.size(); ++j)
+            plate->objects_and_instances.emplace_back(int(i), int(j));
+    model.set_backup_path((datadir / "backup").string());
+    StoreParams params;
+    params.path            = args.save_3mf;
+    params.model           = &model;
+    params.plate_data_list = { plate.get() };
+    params.config          = &config;
+    params.strategy        = SaveStrategy::Silence | SaveStrategy::SplitModel | SaveStrategy::ShareMesh;
+    if (! store_bbs_3mf(params))
+        throw std::runtime_error("cannot write " + args.save_3mf);
+}
+
 }
 
 #include "nonplanar_slice_json.ipp"
@@ -800,9 +928,9 @@ int main(int argc, char **argv)
             for (Preset *preset : presets)
                 delete preset;
         } else {
-            model = args.plate.empty() ?
-                Model::read_from_file(args.model, nullptr, nullptr, LoadStrategy::LoadModel | LoadStrategy::AddDefaultInstances) :
-                load_plate(args.plate);
+            model = ! args.plate.empty()   ? load_plate(args.plate) :
+                    ! args.project.empty() ? load_project(args.project) :
+                Model::read_from_file(args.model, nullptr, nullptr, LoadStrategy::LoadModel | LoadStrategy::AddDefaultInstances);
         }
         for (const auto &[key, value] : args.overrides)
             config.set_deserialize_strict(key, value);
@@ -820,6 +948,13 @@ int main(int argc, char **argv)
         if (model.objects.empty())
             throw std::runtime_error("no objects in " + args.model);
         apply_multi_material(args, model);
+        if (! args.save_3mf.empty()) {
+            place(args, model, config);
+            save_project(args, model, config, datadir);
+            std::cout << "project " << args.save_3mf << "\n";
+            if (args.output.empty())
+                return 0;
+        }
         if (! args.confirm_up.empty()) {
             Vec3d up;
             if (std::sscanf(args.confirm_up.c_str(), "%lf,%lf,%lf", &up.x(), &up.y(), &up.z()) != 3)
@@ -860,6 +995,7 @@ int main(int argc, char **argv)
         for (ModelObject *object : model.objects)
             print.auto_assign_extruders(object);
         print.apply(model, config);
+        apply_layer_profile(args, model, print, config);
         if (! args.json.empty()) {
             const auto head = Nonplanar::resolve_head_envelope(print.config());
             const std::string file = Nonplanar::HeadLibrary::instance().source_path(head.id);
@@ -929,6 +1065,16 @@ int main(int argc, char **argv)
                 record["text_summary"]["export_warning"] = warning.message;
                 break;
             }
+        for (const PrintObject *object : print.objects())
+            for (int step = 0; step < int(posCount); ++step)
+                for (const auto &warning : object->step_state_with_warnings(PrintObjectStep(step)).warnings) {
+                    std::cout << "object_warning " << warning.message << "\n";
+                    if (! args.json.empty()) {
+                        if (! record["text_summary"].contains("object_warning"))
+                            record["text_summary"]["object_warning"] = warning.message;
+                        record["object_warnings"].push_back(warning.message);
+                    }
+                }
         Nonplanar::FlowModStats flow;
         for (const PrintObject *object : print.objects())
             flow.merge(object->conformal().flow_mod);
@@ -1007,6 +1153,24 @@ int main(int argc, char **argv)
             params.head               = Nonplanar::resolve_head_envelope(print.config());
             result.clearance_report   = verify_clearance(result, params, *make_tool_kinematics(print.config()));
         }
+        if (!args.tip_out.empty()) {
+            const auto       kinematics = make_tool_kinematics(print.config());
+            const bool       rotary     = kinematics->rotary_count() > 0;
+            boost::nowide::ofstream tips(args.tip_out);
+            tips << "# ax ay az bx by bz nx ny nz width height part\n";
+            for (size_t i = 1; i < result.moves.size(); ++i) {
+                const auto &m = result.moves[i];
+                if (m.type != EMoveType::Extrude)
+                    continue;
+                const Vec3f &a    = result.moves[i - 1].position, &b = m.position;
+                const Vec3d  axis = rotary && m.has_joints ? kinematics->forward(m.joints).axis : Vec3d::UnitZ();
+                const ExtrusionRole r = m.extrusion_role;
+                const bool part = !(r == erSkirt || r == erBrim || r == erWipeTower || r == erCustom || r == erNone ||
+                                    r == erSupportMaterial || r == erSupportMaterialInterface || r == erSupportTransition);
+                tips << a.x() << ' ' << a.y() << ' ' << a.z() << ' ' << b.x() << ' ' << b.y() << ' ' << b.z() << ' '
+                     << axis.x() << ' ' << axis.y() << ' ' << axis.z() << ' ' << m.width << ' ' << m.height << ' ' << int(part) << '\n';
+            }
+        }
         const ClearanceReport &clearance = result.clearance_report;
         std::cout << "clearance_checked " << clearance.ran << "\n";
         if (clearance.ran) {
@@ -1062,6 +1226,22 @@ int main(int argc, char **argv)
                     if (diag.fallback_area > 0. && !text.contains("nonplanar_fallback"))
                         text["nonplanar_fallback"] = (diag.fallback_reason.empty() ? "untagged" : diag.fallback_reason) +
                             " " + text_value(diag.fallback_area) + " patch " + text_value(diag.patch_id);
+            }
+            {
+                for (size_t r = 0; r < object->num_printing_regions(); ++r) {
+                    const PrintRegionConfig &rc = object->printing_region(r).config();
+                    std::cout << "nonplanar_region " << r;
+                    for (const char *key : { "top_shell_layers", "top_shell_thickness", "top_surface_pattern", "nonplanar_top_shells", "nonplanar_top_pattern",
+                                             "sparse_infill_density", "wall_loops", "fuzzy_skin", "ironing_type" })
+                        std::cout << " " << key << "=" << rc.opt_serialize(key);
+                    std::cout << "\n";
+                }
+                for (const Nonplanar::ConformalPatch &patch : conformal.patches) {
+                    const Point c = get_extents(patch.footprint).center();
+                    std::cout << "nonplanar_patch " << patch.id << " kind " << int(patch.kind) << " region " << patch.region_id << " band "
+                              << patch.band << " shells " << patch.shells << " xy " << unscale<double>(c.x()) << "," << unscale<double>(c.y())
+                              << "\n";
+                }
             }
             for (const Nonplanar::PatchDiagnostics &diag : conformal.diagnostics)
                 if (diag.fallback_area > 0.)

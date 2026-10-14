@@ -182,6 +182,8 @@ set(lisbslic3r_sources
     Nonplanar/LayerFieldOpt.cpp
     Nonplanar/LayerFieldOpt.hpp
     Nonplanar/Multiplanar.cpp
+    Nonplanar/MultiplanarConfirm.cpp
+    Nonplanar/MultiplanarConfirm.hpp
     Nonplanar/Multiplanar.hpp
     Nonplanar/StrengthRoads.cpp
     Nonplanar/StrengthRoads.hpp

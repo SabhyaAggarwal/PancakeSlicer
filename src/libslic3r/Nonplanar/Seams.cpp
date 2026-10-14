@@ -51,20 +51,27 @@ double dist2_to_segment(const Vec2d &p, const Vec2d &a, const Vec2d &b)
     return (a + t * d - p).squaredNorm();
 }
 
-bool near_facet(const std::vector<SeamPaint::Facet> &facets, const Point &p, double z, double reach)
+constexpr double PaintedSeamReach = 10.;
+
+double facet_dist2(const std::vector<SeamPaint::Facet> &facets, const Point &p, double z)
 {
-    const Vec2d q = p.cast<double>();
+    const Vec2d q    = p.cast<double>();
+    double      best = std::numeric_limits<double>::max();
     for (const SeamPaint::Facet &f : facets) {
         if (z < f.z_min - 2. || z > f.z_max + 2.)
             continue;
         if (f.xy.contains(p))
-            return true;
+            return 0.;
         const Points &v = f.xy.points;
         for (size_t i = 0; i < v.size(); ++i)
-            if (dist2_to_segment(q, v[i].cast<double>(), v[(i + 1) % v.size()].cast<double>()) <= reach * reach)
-                return true;
+            best = std::min(best, dist2_to_segment(q, v[i].cast<double>(), v[(i + 1) % v.size()].cast<double>()));
     }
-    return false;
+    return best;
+}
+
+bool near_facet(const std::vector<SeamPaint::Facet> &facets, const Point &p, double z, double reach)
+{
+    return facet_dist2(facets, p, z) <= reach * reach;
 }
 
 }
@@ -198,6 +205,16 @@ Point shell_seam(const ExPolygons &area, const HeightField &surface, SeamPositio
                 enforced.emplace_back(c);
             else if (!near_facet(paint->blockers, c.p, c.z, r))
                 free.emplace_back(c);
+        }
+        if (enforced.empty() && !paint->enforcers.empty()) {
+            std::vector<double> d2(cands.size());
+            double              best = scale_(PaintedSeamReach) * scale_(PaintedSeamReach);
+            for (size_t i = 0; i < cands.size(); ++i)
+                best = std::min(best, d2[i] = facet_dist2(paint->enforcers, cands[i].p, cands[i].z));
+            const double limit = std::pow(std::sqrt(best) + r, 2.);
+            for (size_t i = 0; i < cands.size(); ++i)
+                if (d2[i] <= limit && d2[i] <= scale_(PaintedSeamReach) * scale_(PaintedSeamReach))
+                    enforced.emplace_back(cands[i]);
         }
         if (!enforced.empty())
             cands = std::move(enforced);

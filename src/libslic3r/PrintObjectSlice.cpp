@@ -1076,6 +1076,8 @@ void PrintObject::slice_volumes()
     region_slices.clear();
     m_multiplanar = Nonplanar::clip_multiplanar_slices(*this);
     m_field = m_multiplanar ? nullptr : Nonplanar::clip_field_slices(*this);
+    if (m_multiplanar && !m_multiplanar->auto_reason.empty())
+        this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, m_multiplanar->auto_reason);
 
     BOOST_LOG_TRIVIAL(debug) << "Slicing volumes - removing top empty layers";
     while (! m_layers.empty()) {
