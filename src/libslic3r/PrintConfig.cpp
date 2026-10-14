@@ -5185,6 +5185,42 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(0.95));
 
+    def = this->add("nonplanar_tilt_flow", coFloats);
+    def->label    = L("Non-planar tilt flow");
+    def->category = L("Quality");
+    def->tooltip  = L("Flow multipliers of the curved top shells by surface slope, at 0, 10, 20, 30 and 40 degrees, "
+                      "interpolated between them and held beyond 40 degrees. A tilted bead wets the material below "
+                      "differently from a level one; the non-planar tilted-bead flow calibration measures these values.");
+    def->min      = 0.5;
+    def->max      = 1.5;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloats{ 1., 1., 1., 1., 1. });
+
+    def = this->add("nonplanar_top_speed_factor", coPercent);
+    def->label    = L("Non-planar top speed");
+    def->category = L("Speed");
+    def->tooltip  = L("Speed of the visible curved top roads. Below 100%, a percentage of the speed each road would "
+                      "otherwise run, after the slope, Z and flow limits; above, of the top surface speed, under those "
+                      "limits. The non-planar curved-top calibration measures it per printer.");
+    def->sidetext = "%";
+    def->min      = 10;
+    def->max      = 200;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionPercent(100));
+
+    def = this->add("nonplanar_top_fan_boost", coPercent);
+    def->label    = L("Non-planar top fan boost");
+    def->category = L("Cooling");
+    def->tooltip  = L("Least extra part cooling on the visible curved top roads, as a share of the way from the layer's "
+                      "fan speed to the overhang fan speed. 0 leaves the per-road fan demand alone; 100 runs those roads "
+                      "at the overhang fan speed. Needs non-planar road cooling. The non-planar curved-top calibration "
+                      "measures it per printer.");
+    def->sidetext = "%";
+    def->min      = 0;
+    def->max      = 100;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionPercent(0));
+
     def = this->add("nonplanar_overhangs", coBool);
     def->label    = L("Curved overhangs");
     def->category = L("Quality");

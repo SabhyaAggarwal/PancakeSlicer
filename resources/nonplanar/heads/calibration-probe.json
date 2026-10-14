@@ -1,0 +1,142 @@
+{
+  "schema": "orca.head_envelope.v1",
+  "id": "calibration-probe",
+  "name": "Calibration probe (nozzle only)",
+  "provenance": "Built in for the non-planar clearance calibration plate (docs/nonplanar/CALIBRATION.md): a 0.3 mm land and 35-degree nozzle cone to 4 mm, all inside the tip allowance, and a gantry far above, so the slicer neither clips nor bands the plate's steps while its paths still keep clear of the nozzle. Not a real head; never select it for a print.",
+  "calibrated": false,
+  "nozzle": {
+    "tip_flat_radius": 0.3,
+    "allowance_radius": 3.5,
+    "allowance_height": 4.0
+  },
+  "margin": 0.3,
+  "lateral_margin": 0.3,
+  "boxes": [
+    {
+      "name": "nozzle_land",
+      "min": [
+        -0.3,
+        -0.3,
+        0.0
+      ],
+      "max": [
+        0.3,
+        0.3,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.05",
+      "min": [
+        -0.475,
+        -0.475,
+        0.05
+      ],
+      "max": [
+        0.475,
+        0.475,
+        0.25
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.25",
+      "min": [
+        -0.65,
+        -0.65,
+        0.25
+      ],
+      "max": [
+        0.65,
+        0.65,
+        0.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.50",
+      "min": [
+        -1.0,
+        -1.0,
+        0.5
+      ],
+      "max": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_1.00",
+      "min": [
+        -1.35,
+        -1.35,
+        1.0
+      ],
+      "max": [
+        1.35,
+        1.35,
+        1.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_1.50",
+      "min": [
+        -1.7,
+        -1.7,
+        1.5
+      ],
+      "max": [
+        1.7,
+        1.7,
+        2.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_2.00",
+      "min": [
+        -2.401,
+        -2.401,
+        2.0
+      ],
+      "max": [
+        2.401,
+        2.401,
+        3.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_3.00",
+      "min": [
+        -3.101,
+        -3.101,
+        3.0
+      ],
+      "max": [
+        3.101,
+        3.101,
+        4.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "x_gantry",
+      "min": [
+        0.0,
+        -1.0,
+        60.0
+      ],
+      "max": [
+        0.0,
+        1.0,
+        100.0
+      ],
+      "infinite_x": true
+    }
+  ]
+}

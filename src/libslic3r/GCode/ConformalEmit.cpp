@@ -233,7 +233,11 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
             glides[i]  = true;
         }
     const std::vector<double> caps   = params.speed_caps ? params.speed_caps(points) : std::vector<double>();
-    const std::vector<double> speeds = limit_feedrates(tips, nominal, params.limits, 0.05, caps.empty() ? nullptr : &caps, &glides);
+    std::vector<double> speeds = limit_feedrates(tips, nominal, params.limits, 0.05, caps.empty() ? nullptr : &caps, &glides);
+    if (params.speed_scale < 1.)
+        for (size_t i = 0; i < speeds.size(); ++i)
+            if (!glides[i])
+                speeds[i] *= params.speed_scale;
 
     const std::vector<std::string> tags = params.segment_tags ? params.segment_tags(points, speeds) : std::vector<std::string>();
     std::vector<double> prime(points.size() - 1, 0.);

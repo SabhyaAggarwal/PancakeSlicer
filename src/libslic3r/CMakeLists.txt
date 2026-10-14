@@ -126,6 +126,8 @@ set(lisbslic3r_sources
     Nonplanar/AutoOrient.hpp
     Nonplanar/BeadModel.cpp
     Nonplanar/BeadModel.hpp
+    Nonplanar/Calibration.cpp
+    Nonplanar/Calibration.hpp
     Nonplanar/FlowMod.cpp
     Nonplanar/FlowMod.hpp
     Nonplanar/LayerField.hpp

@@ -21,6 +21,7 @@
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Nonplanar/AutoOrient.hpp"
+#include "libslic3r/Nonplanar/Calibration.hpp"
 #include "libslic3r/Nonplanar/ConformalShells.hpp"
 #include "libslic3r/Nonplanar/AutoMode.hpp"
 #include "libslic3r/Nonplanar/FlowMod.hpp"
@@ -55,6 +56,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <sstream>
 #include <string>
@@ -81,7 +83,9 @@ struct Args
 {
     std::string profiles = std::string(PROFILES_DIR);
     std::string vendor   = "Prusa";
-    std::string printer, process, datadir, output, model, config_out, paint, gcode_3mf, json, plate, project_out, head_out, layer_profile, project, save_3mf, tip_out;
+    std::string printer, process, datadir, output, model, config_out, paint, gcode_3mf, json, plate, project_out, head_out, layer_profile, project, save_3mf,
+                tip_out, calib, calib_head, calib_picks;
+    int         calib_fit = -1;
     std::vector<std::string> filaments, colours;
     std::vector<std::pair<std::string, int>> parts;
     std::vector<std::pair<std::string, std::string>> overrides;
@@ -102,8 +106,8 @@ struct Args
                  "       [--profiles DIR] [--datadir DIR] [--set key=value]... [--center X,Y]\n"
                  "       [--config-out FILE] [--project-out FILE] [--head-out FILE] [--gcode-3mf FILE] [--json FILE]\n"
                  "       [--atom TOOLPATH] [--verify] [--explain] [--auto-orient | --orient-only] [--save-3mf PROJECT.3mf]\n"
-                 "       [--layer-profile adaptive:QUALITY | ramp:H_BOTTOM:H_TOP | range:DEPTH:H]\n"
-                 "       -o OUT.gcode (MODEL | PROJECT.3mf | --plate PLATE.json | --project SPEC.json)\n";
+                 "       [--layer-profile adaptive:QUALITY | ramp:H_BOTTOM:H_TOP | range:DEPTH:H] [--calib-head ID]\n"
+                 "       -o OUT.gcode (MODEL | PROJECT.3mf | --plate PLATE.json | --project SPEC.json | --calib TEST)\n";
     std::exit(2);
 }
 
@@ -155,6 +159,10 @@ Args parse_args(int argc, char **argv)
         else if (arg == "--project") a.project = next();
         else if (arg == "--save-3mf") a.save_3mf = next();
         else if (arg == "--tip-out") a.tip_out = next();
+        else if (arg == "--calib") a.calib = next();
+        else if (arg == "--calib-head") a.calib_head = next();
+        else if (arg == "--calib-fit") a.calib_fit = std::atoi(next().c_str());
+        else if (arg == "--calib-picks") a.calib_picks = next();
         else if (arg == "--verify") a.verify = true;
         else if (arg == "--auto-orient") a.auto_orient = true;
         else if (arg == "--orient-only") a.auto_orient = a.orient_only = true;
@@ -178,8 +186,10 @@ Args parse_args(int argc, char **argv)
     }
     if (a.printer.empty() || a.process.empty() || a.filaments.empty() ||
         (a.output.empty() && ! a.orient_only && a.confirm_up.empty() && a.save_3mf.empty()) ||
-        int(! a.model.empty()) + int(! a.plate.empty()) + int(! a.project.empty()) != 1)
-        usage("--printer, --process, --filament, -o and one of a model, --plate or --project are required");
+        int(! a.model.empty()) + int(! a.plate.empty()) + int(! a.project.empty()) + int(! a.calib.empty()) != 1)
+        usage("--printer, --process, --filament, -o and one of a model, --plate, --project or --calib are required");
+    if (! a.calib.empty() && ! Nonplanar::Calibration::parse_test(a.calib))
+        usage("unknown --calib test " + a.calib);
     return a;
 }
 
@@ -565,7 +575,7 @@ void apply_layer_profile(const Args &args, Model &model, Print &print, const Dyn
 
 void place(const Args &args, Model &model, DynamicPrintConfig &config, bool saved = false)
 {
-    if (args.plate.empty() && (!saved || args.center_set)) {
+    if (args.plate.empty() && args.calib.empty() && (!saved || args.center_set)) {
         Vec2d center = args.center;
         if (! args.center_set) {
             const BoundingBoxf bed(config.opt<ConfigOptionPoints>("printable_area")->values);
@@ -927,7 +937,7 @@ int main(int argc, char **argv)
             release_PlateData_list(plates);
             for (Preset *preset : presets)
                 delete preset;
-        } else {
+        } else if (args.calib.empty()) {
             model = ! args.plate.empty()   ? load_plate(args.plate) :
                     ! args.project.empty() ? load_project(args.project) :
                 Model::read_from_file(args.model, nullptr, nullptr, LoadStrategy::LoadModel | LoadStrategy::AddDefaultInstances);
@@ -945,6 +955,20 @@ int main(int argc, char **argv)
                 throw std::runtime_error("cannot write " + args.head_out);
         }
 
+        std::optional<Nonplanar::Calibration::Plate> calib_plate;
+        Nonplanar::HeadEnvelope calib_head;
+        if (! args.calib.empty()) {
+            PrintConfig printer_config;
+            printer_config.apply(config, true);
+            if (! args.calib_head.empty())
+                printer_config.nonplanar_head.value = args.calib_head;
+            calib_head  = Nonplanar::resolve_head_envelope(printer_config);
+            calib_plate = Nonplanar::Calibration::make_plate(*Nonplanar::Calibration::parse_test(args.calib), config, calib_head);
+            config.apply(calib_plate->config);
+            for (const auto &[key, value] : args.overrides)
+                config.set_deserialize_strict(key, value);
+            Nonplanar::Calibration::add_to_model(*calib_plate, model);
+        }
         if (model.objects.empty())
             throw std::runtime_error("no objects in " + args.model);
         apply_multi_material(args, model);
@@ -1147,6 +1171,96 @@ int main(int argc, char **argv)
             record["text_summary"]["nonplanar_other_time_s"] = text_value(np_other);
             if (!feature_time.empty())
                 record["text_summary"]["feature_time_s"] = text_value(feature_time.begin()->second) + " " + feature_time.begin()->first;
+        }
+        if (calib_plate) {
+            std::cout << "calib_test " << args.calib << "\n" << "calib_objects " << calib_plate->objects.size() << "\n";
+            for (const auto &object : calib_plate->objects)
+                std::cout << "calib_object " << object.center.x() << " " << object.center.y() << " " << object.name << "\n";
+            const auto test = *Nonplanar::Calibration::parse_test(args.calib);
+            if (test == Nonplanar::Calibration::Test::Clearance || test == Nonplanar::Calibration::Test::Verifier) {
+                const double gap = config.opt_float("layer_height");
+                std::cout << "calib_head " << calib_head.id << "\n"
+                          << "calib_model_first_touch " << Nonplanar::Calibration::predicted_first_touch(calib_head, gap) << "\n";
+                for (const auto &step : Nonplanar::Calibration::clearance_steps()) {
+                    std::string component;
+                    const double c = Nonplanar::Calibration::step_clearance(calib_head, step, gap, &component);
+                    std::cout << "calib_step " << step.slope_deg << " " << step.relief << " clearance " << c << " " << component << "\n";
+                }
+            }
+            if (args.calib_fit >= 0) {
+                const double gap = config.opt_float("layer_height");
+                const std::string id = calib_head.id + "-calibrated";
+                const auto fit = Nonplanar::Calibration::fit_clearance(calib_head, args.calib_fit, gap, id, calib_head.name + " (calibrated)");
+                Nonplanar::HeadLibrary::instance().save_user_head(fit.head);
+                Nonplanar::HeadLibrary::instance().reload();
+                const Nonplanar::HeadEnvelope *loaded = Nonplanar::HeadLibrary::instance().find(id);
+                PrintConfig selected;
+                selected.apply(config, true);
+                selected.nonplanar_head.value = id;
+                selected.nonplanar_head_snapshot.value.clear();
+                std::cout << "calib_fit_shift_mm " << fit.shift << "\n"
+                          << "calib_fit_slope_cap_deg " << fit.slope_cap_deg << "\n"
+                          << "calib_fit_band_height_mm " << fit.band_height << "\n"
+                          << "calib_fit_gantry_floor_mm " << fit.gantry_floor << "\n"
+                          << "calib_fit_model_first_touch " << Nonplanar::Calibration::predicted_first_touch(fit.head, gap) << "\n"
+                          << "calib_roundtrip_head " << (loaded != nullptr && *loaded == fit.head && Nonplanar::resolve_head_envelope(selected) == fit.head ? "ok" : "MISMATCH") << "\n"
+                          << "calib_roundtrip_head_file " << Nonplanar::HeadLibrary::instance().source_path(id) << "\n";
+                if (loaded != nullptr)
+                    std::cout << "calib_fit_verifier_first_touch "
+                              << Nonplanar::Calibration::verifier_first_touch(*calib_plate, result, *loaded, *make_tool_kinematics(print.config())) << "\n";
+            }
+            if (! args.calib_picks.empty()) {
+                std::vector<int> picks;
+                for (size_t pos = 0; pos <= args.calib_picks.size();) {
+                    const size_t end = std::min(args.calib_picks.find(',', pos), args.calib_picks.size());
+                    picks.push_back(std::atoi(args.calib_picks.substr(pos, end - pos).c_str()));
+                    pos = end + 1;
+                }
+                DynamicPrintConfig written;
+                if (test == Nonplanar::Calibration::Test::TiltFlow)
+                    written.set_key_value("nonplanar_tilt_flow", new ConfigOptionFloats(Nonplanar::Calibration::tilt_flow_result(
+                        config.option<ConfigOptionFloats>("nonplanar_tilt_flow")->values, picks)));
+                else if (test == Nonplanar::Calibration::Test::CurvedTop && picks.size() == 2)
+                    written = Nonplanar::Calibration::curved_top_result(picks[0], picks[1]);
+                DynamicPrintConfig saved = config;
+                saved.apply(written);
+                const std::string path = (datadir / "calib_roundtrip.json").string();
+                saved.save_to_json(path, "calibrated", "User", "2.0.0.0");
+                DynamicPrintConfig                 loaded;
+                std::map<std::string, std::string> key_values;
+                std::string                        reason;
+                loaded.load_from_json(path, ForwardCompatibilitySubstitutionRule::EnableSilent, key_values, reason);
+                bool same = ! written.empty();
+                for (const std::string &key : written.keys()) {
+                    std::cout << "calib_written " << key << " = " << written.opt_serialize(key) << "\n";
+                    same = same && loaded.has(key) && *loaded.option(key) == *written.option(key);
+                }
+                std::cout << "calib_roundtrip_config " << (same ? "ok" : "MISMATCH") << "\n";
+            }
+            if (test == Nonplanar::Calibration::Test::Verifier) {
+                ClearanceReport report;
+                const int first = Nonplanar::Calibration::verifier_first_touch(*calib_plate, result, calib_head,
+                                                                               *make_tool_kinematics(print.config()), &report);
+                std::cout << "calib_verifier_first_touch " << first << "\n"
+                          << "calib_verifier_hit_moves " << report.hit_moves << "\n";
+                std::vector<size_t> hits(calib_plate->objects.size(), 0);
+                std::vector<float>  worst(calib_plate->objects.size(), 0.f);
+                for (size_t i = 0; i < report.per_move.size() && i < result.moves.size(); ++i) {
+                    if (!(report.per_move[i] < 0.f) || result.moves[i].type != EMoveType::Extrude)
+                        continue;
+                    const Vec2d p(result.moves[i].position.x(), result.moves[i].position.y());
+                    size_t best = 0;
+                    for (size_t k = 1; k < calib_plate->objects.size(); ++k)
+                        if ((p - calib_plate->objects[k].center).norm() < (p - calib_plate->objects[best].center).norm())
+                            best = k;
+                    ++hits[best];
+                    worst[best] = std::min(worst[best], report.per_move[i]);
+                }
+                for (size_t k = 0; k < hits.size(); ++k)
+                    std::cout << "calib_verifier_step " << k + 1 << " hits " << hits[k] << " worst " << worst[k] << "\n";
+                for (const ClearanceHit &hit : report.worst)
+                    std::cout << "calib_verifier_hit " << hit.component << " " << hit.penetration << " at " << hit.tip.x() << "," << hit.tip.y() << "," << hit.tip.z() << "\n";
+            }
         }
         if (args.verify && !result.clearance_report.ran) {
             ClearanceParams params;

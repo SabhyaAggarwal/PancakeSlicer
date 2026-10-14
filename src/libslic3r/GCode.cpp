@@ -8085,8 +8085,27 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
         }
     }
 
+    const bool   curved_top  = path.role() == erTopSolidInfill && path.patch_id >= 0;
+    const double speed_scale = curved_top ? 0.01 * m_config.nonplanar_top_speed_factor.value : 1.;
+    if (speed_scale > 1.)
+        speed *= speed_scale;
+    if (const std::vector<double> &tilt_flow = m_config.nonplanar_tilt_flow.values;
+        curved_top && m_conformal_surface != nullptr && m_conformal_points.size() == path.polyline.points.size() &&
+        std::any_of(tilt_flow.begin(), tilt_flow.end(), [](double f) { return f != 1.; }))
+        for (size_t i = 0; i < m_conformal_points.size(); ++i) {
+            const Vec2d g = m_conformal_surface->gradient(unscale(path.polyline.points[i].to_point()));
+            if (std::isnan(g.x()) || std::isnan(g.y()))
+                continue;
+            const double t = std::clamp(Geometry::rad2deg(std::atan(g.norm())) / 10., 0., double(tilt_flow.size() - 1));
+            const size_t k = std::min(size_t(t), tilt_flow.size() - 1), k1 = std::min(k + 1, tilt_flow.size() - 1);
+            const float  f = float(tilt_flow[k] + (t - double(k)) * (tilt_flow[k1] - tilt_flow[k]));
+            m_conformal_points[i].bead_height *= f;
+            m_conformal_points[i].vertical_height *= f;
+        }
+
     ConformalEmitParams params;
     params.nominal_speed = speed;
+    params.speed_scale   = std::min(1., speed_scale);
     params.ramp_length   = m_conformal_ramp ? StartRamp : 0.;
     params.taper_length  = EndTaper;
     params.coast_length  = EndCoast;
@@ -8170,13 +8189,18 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
     }
 
     if (road_cooling && m_enable_cooling_markers && path.role() != erIroning)
-        params.segment_tags = [this, &path](const std::vector<ConformalPoint> &points, const std::vector<double> &speeds) {
+        params.segment_tags = [this, &path, curved_top](const std::vector<ConformalPoint> &points, const std::vector<double> &speeds) {
             RoadFanParams fan;
             if (road_material(m_config.filament_type.get_at(m_writer.filament()->id())) == RoadMaterial::Enclosure)
                 fan.downhill_weight = 0.;
             std::vector<float> demand = road_fan_demand(points, speeds, path.width, m_np_support, m_conformal_gradient, fan);
             if (path.role() == erInternalInfill)
                 std::fill(demand.begin(), demand.end(), 0.f);
+            if (curved_top && m_config.nonplanar_top_fan_boost.value > 0.) {
+                const float floor = float(std::round(0.01 * m_config.nonplanar_top_fan_boost.value / fan.step) * fan.step);
+                for (float &u : demand)
+                    u = std::max(u, std::min(floor, 1.f));
+            }
             return road_fan_tags(demand, m_np_fan_level);
         };
     params.prime         = m_conformal_prime;

@@ -67,6 +67,7 @@ struct ConformalEmitParams
     std::string  comment;
     std::string  speed_marker;
     std::function<std::vector<double>(const std::vector<ConformalPoint> &)> speed_caps;
+    double       speed_scale   = 1.;
     double       prime         = 0.;
     double       prime_length  = 0.;
     double       prime_speed   = 0.;
