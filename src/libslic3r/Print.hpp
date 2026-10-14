@@ -55,7 +55,7 @@
 
 namespace Slic3r {
 
-namespace Nonplanar { struct ConformalResult; struct RepairHints; class ClearanceRepair; struct MultiplanarPlan; }
+namespace Nonplanar { struct ConformalResult; struct RepairHints; class ClearanceRepair; struct MultiplanarPlan; class OrientationField; }
 
 class SlicingErrors;
 
@@ -524,6 +524,7 @@ private:
     std::unique_ptr<Nonplanar::ConformalResult> m_conformal;
     std::shared_ptr<Nonplanar::RepairHints>     m_nonplanar_repair;
     std::shared_ptr<const Nonplanar::MultiplanarPlan> m_multiplanar;
+    std::shared_ptr<const Nonplanar::OrientationField> m_field;
 
     bool                    				m_typed_slices = false;
 

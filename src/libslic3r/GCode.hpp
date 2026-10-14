@@ -534,6 +534,7 @@ protected:
     bool            conformal_in_band(const ExtrusionPathConformal *prev, const ExtrusionPathConformal *path) const;
     bool            conformal_short_hop(const ExtrusionPathConformal &path, const ExtrusionPathConformal *next, Vec3d &to);
     std::string     extrude_multiplanar_chunk(const Nonplanar::ConformalPatch &patch);
+    std::string     extrude_field_patch(const Nonplanar::ConformalPatch &patch);
     std::string     travel_above_nonplanar(const Polyline &travel, const std::string &comment, double z);
     void            emit_conformal_moves(std::string &gcode, const ExtrusionPathConformal &path, double e_per_mm,
                                          double speed, const std::string &speed_marker, const std::string &description);

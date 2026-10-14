@@ -742,7 +742,8 @@ static const t_config_enum_values s_keys_map_NonplanarMode = {
     { "off",    int(NonplanarMode::Off)    },
     { "auto",   int(NonplanarMode::Auto)   },
     { "manual", int(NonplanarMode::Manual) },
-    { "multiplanar", int(NonplanarMode::Multiplanar) }
+    { "multiplanar", int(NonplanarMode::Multiplanar) },
+    { "field",  int(NonplanarMode::Field)  }
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(NonplanarMode)
 
@@ -5266,16 +5267,20 @@ void PrintConfigDef::init_fff_params()
                       "can print get no support, even with supports on; support stays only under the rest. It chooses the number of shells, the pattern and ironing for each curved area from "
                       "its shape and the print head. Manual uses the non-planar settings below as set. Multiplanar cuts "
                       "the object with automatically placed planes into chunks of flat layers, each built along its "
-                      "own direction, so overhangs print without support. Off prints every layer flat.");
+                      "own direction, so overhangs print without support. Orientation field (rotary printers) prints the whole "
+                      "object in curved layers whose normal the table follows continuously, so every road is laid "
+                      "flat under the nozzle and overhangs print without support. Off prints every layer flat.");
     def->enum_keys_map = &ConfigOptionEnum<NonplanarMode>::get_enum_values();
     def->enum_values.push_back("off");
     def->enum_values.push_back("auto");
     def->enum_values.push_back("manual");
     def->enum_values.push_back("multiplanar");
+    def->enum_values.push_back("field");
     def->enum_labels.push_back(L("Off"));
     def->enum_labels.push_back(L("Auto"));
     def->enum_labels.push_back(L("Manual"));
     def->enum_labels.push_back(L("Multiplanar"));
+    def->enum_labels.push_back(L("Orientation field"));
     def->mode     = comSimple;
     def->set_default_value(new ConfigOptionEnum<NonplanarMode>(NonplanarMode::Manual));
 

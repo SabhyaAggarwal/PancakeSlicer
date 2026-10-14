@@ -618,8 +618,6 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
     return finish();
 }
 
-namespace {
-
 indexed_triangle_set slicing_frame_mesh(const PrintObject &object)
 {
     double               ground = 0.;
@@ -632,6 +630,8 @@ indexed_triangle_set slicing_frame_mesh(const PrintObject &object)
         v.z() += shift;
     return its;
 }
+
+namespace {
 
 Polygon clip_convex(const Polygon &poly, const Vec2d &normal, double offset)
 {
@@ -651,6 +651,8 @@ Polygon clip_convex(const Polygon &poly, const Vec2d &normal, double offset)
     if (out.points.size() < 3)
         out.points.clear();
     return out;
+}
+
 }
 
 void collect_paths(const ExtrusionEntity *ee, std::vector<const ExtrusionPath *> &out)
@@ -700,8 +702,6 @@ DynamicPrintConfig chunk_print_config(const PrintObject &object)
     set("initial_layer_print_height", config.opt_serialize("layer_height"));
     set("initial_layer_line_width", config.opt_serialize("line_width"));
     return config;
-}
-
 }
 
 std::shared_ptr<const MultiplanarPlan> clip_multiplanar_slices(PrintObject &object)

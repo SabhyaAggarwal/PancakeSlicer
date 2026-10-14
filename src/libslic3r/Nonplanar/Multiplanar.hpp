@@ -9,6 +9,9 @@
 #include <vector>
 
 namespace Slic3r {
+class DynamicPrintConfig;
+class ExtrusionEntity;
+class ExtrusionPath;
 class PrintObject;
 class ToolKinematics;
 }
@@ -65,6 +68,10 @@ indexed_triangle_set clip_mesh(const indexed_triangle_set &mesh, const std::vect
 indexed_triangle_set chunk_piece(const indexed_triangle_set &mesh, const MultiplanarChunk &chunk, double layer_height);
 
 int printable_layers(const indexed_triangle_set &piece, const MultiplanarChunk &chunk, double layer_height);
+
+indexed_triangle_set slicing_frame_mesh(const PrintObject &object);
+DynamicPrintConfig chunk_print_config(const PrintObject &object);
+void collect_paths(const ExtrusionEntity *ee, std::vector<const ExtrusionPath *> &out);
 
 std::shared_ptr<const MultiplanarPlan> clip_multiplanar_slices(PrintObject &object);
 

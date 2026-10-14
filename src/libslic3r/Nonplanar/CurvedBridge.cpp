@@ -105,7 +105,7 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
             region_id = int(r);
             break;
         }
-    if (region_id < 0 || layers.size() < 3 || object.config().enable_support.value || prints_several_filaments(object))
+    if (region_id < 0 || layers.size() < 3 || object.config().enable_support.value)
         return;
     if (result.planar_exclusion.size() != layers.size())
         result.planar_exclusion.assign(layers.size(), ExPolygons());
@@ -119,6 +119,14 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
     const HeadEnvelope head = resolve_head_envelope(object.print()->config(), &head_warning);
     if (!head_warning.empty())
         BOOST_LOG_TRIVIAL(warning) << "Non-planar: " << head_warning;
+    const double max_sag = layer_changes_filament(object) ? head_band_height(head) : std::numeric_limits<double>::infinity();
+    auto one_filament = [&object](size_t r) {
+        const PrintRegionConfig &cfg = object.printing_region(r).config();
+        const int                id  = cfg.outer_wall_filament_id.value;
+        return cfg.inner_wall_filament_id.value == id && cfg.sparse_infill_filament_id.value == id &&
+               cfg.internal_solid_filament_id.value == id && cfg.top_surface_filament_id.value == id &&
+               cfg.bottom_surface_filament_id.value == id;
+    };
 
     const HeightField grid    = object_grid(object, pitch);
     const size_t      n_nodes = grid.data().size();
@@ -270,7 +278,7 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
                 owned = area(intersection_ex(a, result.planar_exclusion[i + size_t(j)])) > 0.05 * area(a);
             if (owned)
                 continue;
-            double    k      = std::min(1., n_flat * dmax / s_max);
+            double    k      = std::min({ 1., n_flat * dmax / s_max, max_sag / s_max });
             auto      fall   = [n_flat](int j) { return 1. - double(j) / n_flat; };
 
             BoundingBox bb = get_extents(a);
@@ -317,71 +325,78 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
                 continue;
 
             const BoundingBox a_bbox = get_extents(a);
-            const int         first_patch = int(result.patches.size());
+            bool              mixed  = false;
+            for (int j = 0; j <= n_flat && !mixed; ++j)
+                for (const LayerRegion *layerm : layers[i + size_t(j)]->regions())
+                    if (!one_filament(layerm->region().print_object_region_id()) && !intersection_ex(layerm->slices.surfaces, a).empty())
+                        mixed = true;
+            if (mixed)
+                continue;
+            const int first_patch = int(result.patches.size());
             for (int j = 0; j <= n_flat; ++j) {
                 const size_t l      = i + size_t(j);
                 const double host_z = layers[l]->print_z;
-                ExtrusionPaths taken_paths, fills;
-                for (LayerRegion *layerm : layers[l]->regions()) {
-                    take_paths(layerm->perimeters, a, a_bbox, taken_paths);
-                    take_paths(layerm->fills, a, a_bbox, fills);
-                }
-                append(taken_paths, std::move(fills));
-                if (taken_paths.empty())
-                    continue;
-                ConformalPatch patch;
-                patch.id           = int(result.patches.size());
-                patch.kind         = PatchKind::Bridge;
-                patch.footprint    = a;
-                patch.shell_height = layers[l]->height;
-                patch.region_id    = region_id;
-                patch.host_layer   = l;
-                patch.shells       = 1;
                 HeightField surface = like;
                 for (int iy = 0; iy < like.ny(); ++iy)
                     for (int ix = 0; ix < like.nx(); ++ix)
                         surface.at(ix, iy) = float(host_z - k * fall(j) * sag1.at(ix0 + ix, iy0 + iy));
                 const double rise = j == 0 ? 0. : k * (fall(j - 1) - fall(j));
-                ExtrusionEntitiesPtr lifted;
-                for (const ExtrusionPath &path : taken_paths) {
-                    const float h  = path.height;
-                    LiftFn      at = [&](const Vec2d &p, double &z, float &bead_height) {
-                        const float s = sag1.sample(p);
-                        const double sag = std::isnan(s) ? 0. : double(s);
-                        z           = host_z - k * fall(j) * sag;
-                        bead_height = float(h + rise * sag);
-                        return true;
-                    };
-                    lift_polylines(Polylines{ path.polyline.to_polyline() }, path, at, host_z, pitch, patch.id, 0, lifted);
-                }
-                if (j > 0 && flow_mod) {
-                    FlowModParams params;
-                    params.land_radius = head.tip_flat_radius;
-                    params.max_height  = FlowModMaxThickness * nozzle;
-                    params.smoothing   = FlowModSmoothing * nozzle;
-                    params.resample    = pitch;
-                    for (ExtrusionEntity *ee : lifted)
-                        modulate_flow(*static_cast<ExtrusionPathConformal *>(ee), surface, nullptr, nullptr, params, result.flow_mod);
-                }
-                patch.z_min = std::numeric_limits<double>::infinity();
-                patch.z_max = -std::numeric_limits<double>::infinity();
-                for (const ExtrusionEntity *ee : lifted)
-                    for (const Point3 &p : static_cast<const ExtrusionPathConformal *>(ee)->polyline.points) {
-                        patch.z_min = std::min(patch.z_min, host_z + unscale<double>(p.z()));
-                        patch.z_max = std::max(patch.z_max, host_z + unscale<double>(p.z()));
+                for (LayerRegion *layerm : layers[l]->regions()) {
+                    ExtrusionPaths taken_paths, fills;
+                    take_paths(layerm->perimeters, a, a_bbox, taken_paths);
+                    take_paths(layerm->fills, a, a_bbox, fills);
+                    append(taken_paths, std::move(fills));
+                    if (taken_paths.empty())
+                        continue;
+                    ConformalPatch patch;
+                    patch.id           = int(result.patches.size());
+                    patch.kind         = PatchKind::Bridge;
+                    patch.footprint    = a;
+                    patch.shell_height = layers[l]->height;
+                    patch.region_id    = int(layerm->region().print_object_region_id());
+                    patch.host_layer   = l;
+                    patch.shells       = 1;
+                    ExtrusionEntitiesPtr lifted;
+                    for (const ExtrusionPath &path : taken_paths) {
+                        const float h  = path.height;
+                        LiftFn      at = [&](const Vec2d &p, double &z, float &bead_height) {
+                            const float s = sag1.sample(p);
+                            const double sag = std::isnan(s) ? 0. : double(s);
+                            z           = host_z - k * fall(j) * sag;
+                            bead_height = float(h + rise * sag);
+                            return true;
+                        };
+                        lift_polylines(Polylines{ path.polyline.to_polyline() }, path, at, host_z, pitch, patch.id, 0, lifted);
                     }
-                ExtrusionEntityCollection shell;
-                shell.entities = std::move(lifted);
-                shell.no_sort  = true;
-                patch.shell_paths.emplace_back(std::move(shell));
-                layers[l]->conformal_patches_before.emplace_back(patch.id);
-                layers[l]->conformal_covered = true;
-                append(result.planar_exclusion[l], a);
-                result.patches.emplace_back(std::move(patch));
-                if (taken[l].empty())
-                    taken[l].assign(n_nodes, 0);
-                for (int n : nodes)
-                    taken[l][size_t(n)] = 1;
+                    if (j > 0 && flow_mod) {
+                        FlowModParams params;
+                        params.land_radius = head.tip_flat_radius;
+                        params.max_height  = FlowModMaxThickness * nozzle;
+                        params.smoothing   = FlowModSmoothing * nozzle;
+                        params.resample    = pitch;
+                        for (ExtrusionEntity *ee : lifted)
+                            modulate_flow(*static_cast<ExtrusionPathConformal *>(ee), surface, nullptr, nullptr, params, result.flow_mod);
+                    }
+                    patch.z_min = std::numeric_limits<double>::infinity();
+                    patch.z_max = -std::numeric_limits<double>::infinity();
+                    for (const ExtrusionEntity *ee : lifted)
+                        for (const Point3 &p : static_cast<const ExtrusionPathConformal *>(ee)->polyline.points) {
+                            patch.z_min = std::min(patch.z_min, host_z + unscale<double>(p.z()));
+                            patch.z_max = std::max(patch.z_max, host_z + unscale<double>(p.z()));
+                        }
+                    ExtrusionEntityCollection shell;
+                    shell.entities = std::move(lifted);
+                    shell.no_sort  = true;
+                    patch.shell_paths.emplace_back(std::move(shell));
+                    layers[l]->conformal_patches_before.emplace_back(patch.id);
+                    layers[l]->conformal_covered = true;
+                    append(result.planar_exclusion[l], a);
+                    result.patches.emplace_back(std::move(patch));
+                    if (taken[l].empty())
+                        taken[l].assign(n_nodes, 0);
+                    for (int n : nodes)
+                        taken[l][size_t(n)] = 1;
+                }
             }
             if (int(result.patches.size()) == first_patch)
                 continue;

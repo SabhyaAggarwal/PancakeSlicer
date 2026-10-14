@@ -122,6 +122,8 @@ double rotary_band_reach(const PrintObject &object, const HeadEnvelope &head, do
 
 bool prints_several_filaments(const PrintObject &object);
 
+bool layer_changes_filament(const PrintObject &object);
+
 double multi_material_patch_height(const PrintObject &object, const HeadEnvelope &head, double max_patch_height);
 
 struct BandSeams
@@ -158,6 +160,8 @@ struct TopColours
 };
 
 TopColours top_colours(const PrintObject &object, const ExPolygons &candidate);
+
+std::function<int(const Vec3d &)> planar_colour(const PrintObject &object, const TopColours &colours, const ExPolygons &area, double pitch);
 
 std::vector<std::pair<size_t, size_t>> split_by_colour(ConformalResult &result, const TopColours &colours,
                                                        const std::function<int(const Vec3d &)> &colour = {});

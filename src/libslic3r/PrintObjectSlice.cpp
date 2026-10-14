@@ -24,6 +24,7 @@
 #include "Layer.hpp"
 #include "Model.hpp"
 #include "Nonplanar/Multiplanar.hpp"
+#include "Nonplanar/OrientationField.hpp"
 #include "MultiMaterialSegmentation.hpp"
 #include "ObjectID.hpp"
 #include "Point.hpp"
@@ -1074,6 +1075,7 @@ void PrintObject::slice_volumes()
     }
     region_slices.clear();
     m_multiplanar = Nonplanar::clip_multiplanar_slices(*this);
+    m_field = m_multiplanar ? nullptr : Nonplanar::clip_field_slices(*this);
 
     BOOST_LOG_TRIVIAL(debug) << "Slicing volumes - removing top empty layers";
     while (! m_layers.empty()) {

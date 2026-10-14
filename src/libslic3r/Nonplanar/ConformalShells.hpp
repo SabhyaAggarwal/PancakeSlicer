@@ -14,8 +14,9 @@ namespace Slic3r::sla { class IndexedMesh; }
 namespace Slic3r::Nonplanar {
 
 struct AutoPatchSettings;
+class OrientationField;
 
-enum class PatchKind : unsigned char { Top, Bottom, Volume, Overhang, Chunk, SupportInterface, Bridge };
+enum class PatchKind : unsigned char { Top, Bottom, Volume, Overhang, Chunk, SupportInterface, Bridge, Field };
 
 struct ConformalPatch
 {
@@ -32,6 +33,7 @@ struct ConformalPatch
     int        region_id = -1;
     int        band = -1;
     std::shared_ptr<const AutoPatchSettings> automatic;
+    std::shared_ptr<const OrientationField> field;
 
     std::vector<ExtrusionEntityCollection> shell_paths;
     ExtrusionEntityCollection              ironing;

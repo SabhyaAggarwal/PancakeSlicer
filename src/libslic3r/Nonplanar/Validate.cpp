@@ -2,6 +2,7 @@
 
 #include "AutoMode.hpp"
 #include "HeadEnvelope.hpp"
+#include "OrientationField.hpp"
 #include "PatchTools.hpp"
 #include "libslic3r/Config.hpp"
 #include "libslic3r/I18N.hpp"
@@ -42,13 +43,15 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
     size_t instances = 0, multiplanar_instances = 0;
     for (const PrintObject *object : print.objects()) {
         instances += object->instances().size();
-        if (object->config().nonplanar_mode.value == NonplanarMode::Multiplanar) {
+        if (object->config().nonplanar_mode.value == NonplanarMode::Multiplanar || object->config().nonplanar_mode.value == NonplanarMode::Field) {
             multiplanar_instances += object->instances().size();
             needs_head = enabled = true;
             if (config.spiral_mode)
                 return { L("Multiplanar chunks cannot be combined with spiral vase mode."), object, "nonplanar_mode" };
             if (config.belt_printer)
                 return { L("Multiplanar chunks cannot be combined with a belt printer."), object, "nonplanar_mode" };
+            if (std::string why; object->config().nonplanar_mode.value == NonplanarMode::Field && !field_motion_supported(config, &why))
+                return { why, object, "nonplanar_mode" };
         }
         for (size_t region_id = 0; region_id < object->num_printing_regions(); ++region_id) {
             const PrintRegionConfig &region = object->printing_region(region_id).config();

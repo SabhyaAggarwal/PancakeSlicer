@@ -12,6 +12,7 @@
 #include "Nonplanar/HeightField.hpp"
 #include "Nonplanar/ConformalBottom.hpp"
 #include "Nonplanar/ConformalShells.hpp"
+#include "Nonplanar/OrientationField.hpp"
 #include "Nonplanar/PatchTools.hpp"
 #include "Flow.hpp"
 #include "Nonplanar/BeadModel.hpp"
@@ -7449,6 +7450,11 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                 m_config.apply(print.default_region_config());
                 m_config.apply(object.config(), true);
                 m_config.apply(region.config());
+                if (patch.kind == Nonplanar::PatchKind::Field) {
+                    gcode += this->extrude_field_patch(patch);
+                    m_max_layer_z = std::max(m_max_layer_z, float(patch.z_max));
+                    continue;
+                }
                 if (patch.kind == Nonplanar::PatchKind::Chunk) {
                     gcode += this->extrude_multiplanar_chunk(patch);
                     m_max_layer_z = std::max(m_max_layer_z, float(patch.z_max));
@@ -7885,6 +7891,152 @@ std::string GCode::extrude_multiplanar_chunk(const Nonplanar::ConformalPatch &pa
         gcode += this->retract();
         gcode += m_writer.travel_to_z(std::max(m_writer.get_position().z(), top + hop), "lift off the chunk", true, this->conformal_max_speed_z());
     }
+    gcode += m_writer.end_inverse_time();
+    return gcode;
+}
+
+std::string GCode::extrude_field_patch(const Nonplanar::ConformalPatch &patch)
+{
+    using namespace Nonplanar;
+    std::string             gcode;
+    const OrientationField &field = *patch.field;
+    const double            hop   = std::max(this->nonplanar_head().margin,
+                                             m_writer.filament() != nullptr ? m_config.z_hop.get_at(m_writer.filament()->id()) : 0.);
+    const double z_base = m_layer->slice_z + 0.5 * m_layer->height;
+    const double host_z = m_layer->print_z;
+    auto to_writer = [&](const Vec3d &p) {
+        const Vec2d xy = this->point_to_gcode(Point::new_scale(p.x(), p.y()));
+        return Vec3d(xy.x(), xy.y(), m_nominal_z + p.z() - z_base);
+    };
+    auto to_field = [&](const Point3 &p) { return Vec3d(unscale<double>(p.x()), unscale<double>(p.y()), unscale<double>(p.z()) + z_base); };
+    m_wipe.reset_path();
+    bool  entered = false;
+    Vec3d last    = Vec3d::Zero();
+    const auto *rotary = dynamic_cast<const RotaryKinematics *>(&m_writer.tool_kinematics());
+    const bool  settle = rotary != nullptr && rotary->layout() != RotaryLayout::HeadAB;
+    double      plane  = 0.;
+    if (settle) {
+        JointPose tilted = m_writer.get_joints();
+        tilted.rot[0]    = rotary->machine_angle(0, Geometry::deg2rad(10.));
+        const Vec3d a    = rotary->forward(tilted).axis;
+        plane            = std::atan2(a.y(), a.x());
+    }
+    auto settled = [&](const Vec3d &axis) { return settle ? settle_axis(axis, plane) : axis; };
+    auto pin_crossings = [](auto &poses, auto axis_of) {
+        for (size_t i = 1; i < poses.size(); ++i) {
+            Vec3d &a = axis_of(poses[i - 1]), &b = axis_of(poses[i]);
+            if (a.head<2>().dot(b.head<2>()) < 0.)
+                (a.z() > b.z() ? a : b) = Vec3d::UnitZ();
+        }
+    };
+    const Vec3d xy_offset(m_writer.get_xy_offset().x(), m_writer.get_xy_offset().y(), 0.);
+    auto chains = [&](JointPose from, const std::vector<ToolPose> &poses, size_t mark) {
+        const RotaryAxis &c = rotary->rotary_axes()[1];
+        for (size_t i = 0; i < poses.size(); ++i) {
+            JointPose next;
+            if (! rotary->inverse(ToolPose{ poses[i].tip - xy_offset, poses[i].axis }, &from, next) || std::abs(next.rot[1] - from.rot[1]) > 90.)
+                return false;
+            if (! c.continuous && (next.rot[1] < c.min_deg + (i == mark ? 45. : 1.) || next.rot[1] > c.max_deg - (i == mark ? 45. : 1.)))
+                return false;
+            from = next;
+        }
+        return true;
+    };
+    auto road_seed = [&](const std::vector<ToolPose> &road, JointPose &seed) {
+        const RotaryAxis &c = rotary->rotary_axes()[1];
+        for (double guess : { rotary->machine_angle(1, 0.), 0.5 * (c.min_deg + c.max_deg), c.min_deg + 1., c.max_deg - 1. }) {
+            JointPose g = m_writer.get_joints(), s;
+            g.rot[0]    = rotary->machine_angle(0, 0.);
+            g.rot[1]    = guess;
+            if (rotary->inverse(ToolPose{ road.front().tip - xy_offset, road.front().axis }, &g, s) && chains(s, road, size_t(-1))) {
+                seed = s;
+                return true;
+            }
+        }
+        return false;
+    };
+    auto field_travel = [&](const Vec3d &a, const Vec3d &b, const ToolPose &target, std::vector<ToolPose> &poses) -> bool {
+        const Vec3d  qa = field.forward(a), qb = field.forward(b);
+        const double level = std::max(qa.z(), qb.z()) + hop;
+        std::vector<Vec3d> legs { qa, Vec3d(qa.x(), qa.y(), level), Vec3d(qb.x(), qb.y(), level), qb };
+        poses.clear();
+        for (size_t l = 1; l < legs.size(); ++l) {
+            const double len = (legs[l] - legs[l - 1]).norm();
+            const int    n   = std::max(1, int(std::ceil(len / 2.)));
+            for (int s = 1; s <= n; ++s) {
+                Vec3d p;
+                if (! field.inverse(legs[l - 1] + (legs[l] - legs[l - 1]) * (double(s) / n), p))
+                    return false;
+                poses.push_back({ to_writer(p), settled(field.orientation(p)) });
+            }
+        }
+        pin_crossings(poses, [](ToolPose &pose) -> Vec3d & { return pose.axis; });
+        poses.back() = target;
+        return true;
+    };
+    for (size_t k = 0; k < patch.shell_paths.size(); ++k) {
+        gcode += ";_NONPLANAR_BEGIN patch=" + std::to_string(patch.id) + " shell=" + std::to_string(k) + " band=" + std::to_string(patch.band) +
+                 " rate=" + std::to_string(std::lround(this->conformal_segment_rate())) + "\n";
+        for (const ExtrusionEntity *ee : patch.shell_paths[k].entities) {
+            const auto *path = dynamic_cast<const ExtrusionPathConformal *>(ee);
+            if (path == nullptr || path->polyline.points.size() < 2 || unscale<double>(path->polyline.length()) < ConformalMinPath)
+                continue;
+            m_conformal_points = conformal_points(*path, [this](const Point3 &p) {
+                const Vec2d xy = this->point_to_gcode(p.to_point());
+                return Vec3d(xy.x(), xy.y(), m_nominal_z + unscale<double>(p.z()));
+            });
+            const Vec3d first = to_field(path->polyline.points.front());
+            double plane_at_start = plane;
+            for (ConformalPoint &p : m_conformal_points)
+                p.pose.axis = settled(p.pose.axis);
+            pin_crossings(m_conformal_points, [](ConformalPoint &p) -> Vec3d & { return p.pose.axis; });
+            const double plane_at_end = plane;
+            plane = plane_at_start;
+            const ToolPose start = m_conformal_points.front().pose;
+            std::vector<ToolPose> road;
+            for (const ConformalPoint &p : m_conformal_points)
+                road.push_back(p.pose);
+            JointPose seed;
+            if (! entered) {
+                const bool reseed = rotary != nullptr && ! chains(m_writer.get_joints(), road, 0) && road_seed(road, seed);
+                gcode += this->retract();
+                gcode += this->rotary_move_safely(&start, reseed ? &seed : nullptr);
+                entered = true;
+            } else if ((m_writer.get_position() - start.tip).norm() > EPSILON || rotary != nullptr) {
+                std::vector<ToolPose> travel;
+                const bool moves  = (m_writer.get_position() - start.tip).norm() > EPSILON;
+                const bool along  = moves && field_travel(last, first, start, travel);
+                std::vector<ToolPose> chain = travel;
+                chain.insert(chain.end(), road.begin(), road.end());
+                if (rotary == nullptr || chains(m_writer.get_joints(), chain, travel.size())) {
+                    if (moves) {
+                        gcode += this->retract();
+                        if (along)
+                            for (size_t i = 0; i < travel.size(); ++i)
+                                gcode += m_writer.travel_to_pose(travel[i], i + 1 == travel.size() ? "lower onto the curved layer" : "travel along the curved layers");
+                        else
+                            gcode += this->rotary_hop(&start);
+                    }
+                } else {
+                    gcode += this->retract();
+                    gcode += road_seed(road, seed) ? this->rotary_hop(&start, &seed) : this->rotary_hop(&start);
+                }
+            }
+            plane = plane_at_end;
+            this->set_last_pos(path->first_point());
+            m_need_change_layer_lift_z = false;
+            gcode += this->_extrude(*path, "orientation field");
+            gcode += this->wipe_conformal_path();
+            gcode += m_writer.end_inverse_time();
+            for (const Point3 &p : path->polyline.points)
+                m_max_layer_z = std::max(m_max_layer_z, float(unscale<double>(p.z()) + host_z));
+            last = to_field(path->polyline.points.back());
+            m_conformal_points.clear();
+        }
+        gcode += ";_NONPLANAR_END\n";
+    }
+    gcode += this->retract();
+    gcode += this->rotary_move_safely(nullptr);
     gcode += m_writer.end_inverse_time();
     return gcode;
 }

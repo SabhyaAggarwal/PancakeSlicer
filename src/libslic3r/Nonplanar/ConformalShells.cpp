@@ -132,20 +132,23 @@ constexpr double LengthwiseMinAspect = 4.;
 void split_by_colour(ConformalResult &result, std::vector<HeightField> &planar_tops, std::vector<HeightField> &stack_layers,
                      std::vector<AdaptiveStack> &stacks, std::vector<ExPolygons> &shell_areas,
                      std::vector<ExPolygons> &fill_areas, std::vector<Point> &seams, std::vector<Polyline> &seam_lines,
-                     const TopColours &colours)
+                     const TopColours &colours, const std::function<int(const Vec3d &)> &colour)
 {
     std::vector<HeightField> tops, depths;
     std::vector<AdaptiveStack> new_stacks;
     std::vector<ExPolygons>  areas, fills;
     std::vector<Point>       new_seams;
     std::vector<Polyline>    lines;
-    for (const auto &[idx, c] : split_by_colour(result, colours)) {
+    const std::vector<std::pair<size_t, size_t>> sources = split_by_colour(result, colours, colour);
+    for (size_t i = 0; i < sources.size(); ++i) {
+        const auto [idx, c] = sources[i];
+        const ExPolygons own = colour ? union_ex(colours.areas[c], result.patches[i].footprint) : colours.areas[c];
         tops.emplace_back(planar_tops[idx]);
         depths.emplace_back(stack_layers[idx]);
         if (!stacks.empty())
             new_stacks.emplace_back(stacks[idx]);
-        areas.emplace_back(intersection_ex(shell_areas[idx], colours.areas[c]));
-        fills.emplace_back(intersection_ex(fill_areas[idx], colours.areas[c]));
+        areas.emplace_back(intersection_ex(shell_areas[idx], own));
+        fills.emplace_back(intersection_ex(fill_areas[idx], own));
         new_seams.emplace_back(seams[idx]);
         lines.emplace_back(seam_lines[idx]);
     }
@@ -1439,9 +1442,19 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
     });
 
     if (const TopColours colours = top_colours(object, candidate); colours.areas.size() > 1) {
-        split_by_colour(result, planar_tops, stack_layers, adaptive_stacks, shell_areas, fill_areas, seams, seam_lines, colours);
+        std::function<int(const Vec3d &)> colour;
+        if (settings.banded && settings.shells > settings.top_shells) {
+            const double hidden = (settings.top_shells - 0.5) * settings.shell_height;
+            colour = [planar = planar_colour(object, colours, candidate, 0.2), &S1, &colours, hidden](const Vec3d &p) {
+                const float s = S1.sample(p.head<2>());
+                return !std::isnan(s) && s - p.z() > hidden ? planar(p) : colours.at(p.head<2>());
+            };
+        }
+        split_by_colour(result, planar_tops, stack_layers, adaptive_stacks, shell_areas, fill_areas, seams, seam_lines, colours, colour);
+        const int own = region.config().top_surface_filament_id.value;
         for (ConformalPatch &patch : result.patches) {
-            patch.region_id = int(region_id);
+            if (object.printing_region(size_t(patch.region_id)).config().top_surface_filament_id.value == own)
+                patch.region_id = int(region_id);
             patch.id += patch_offset;
             for (ExtrusionEntityCollection &shell : patch.shell_paths)
                 for (ExtrusionEntity *entity : shell.entities)
@@ -1465,7 +1478,7 @@ static ConformalResult build_region_shells(PrintObject &object, size_t region_id
                 return adaptive_stacks[c].layer(k + 1, q, drop, bead, deepest);
             };
         component_patches = split_into_bands(result, S, layer_z, band_pitch, band_tolerance, &band_seams,
-                                             material_max_patch_height != settings.max_patch_height, patch_offset, &patch_component);
+                                             layer_changes_filament(object), patch_offset, &patch_component);
     }
     std::vector<ConformalPatch> &units = settings.banded ? component_patches : result.patches;
 

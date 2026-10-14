@@ -24,6 +24,7 @@
 #include "Nonplanar/ConformalShells.hpp"
 #include "Nonplanar/PatchTools.hpp"
 #include "Nonplanar/Multiplanar.hpp"
+#include "Nonplanar/OrientationField.hpp"
 #include "Nonplanar/ConformalSupport.hpp"
 #include "Nonplanar/ConformalVolume.hpp"
 #include "Nonplanar/CurvedBridge.hpp"
@@ -724,6 +725,16 @@ void PrintObject::nonplanar_shells()
                    Nonplanar::full_conformal_thickness(this->printing_region(region_id).config(), *this) > 0. ||
                    Nonplanar::overhangs_enabled(this->printing_region(region_id).config(), this->config()) ||
                    Nonplanar::bridges_enabled(this->printing_region(region_id).config(), this->config());
+    if (m_field && m_config.nonplanar_atom_toolpath.value.empty()) {
+        m_print->set_status(40, L("Slicing curved layers of the orientation field"));
+        for (Layer *layer : m_layers)
+            layer->conformal_patches_after.clear();
+        m_conformal = std::make_unique<Nonplanar::ConformalResult>();
+        Nonplanar::build_field_patch(*this, m_field, *m_conformal);
+        m_print->throw_if_canceled();
+        this->set_done(posNonplanar);
+        return;
+    }
     if (m_multiplanar && m_config.nonplanar_atom_toolpath.value.empty()) {
         m_print->set_status(40, L("Slicing multiplanar chunks"));
         for (Layer *layer : m_layers) {

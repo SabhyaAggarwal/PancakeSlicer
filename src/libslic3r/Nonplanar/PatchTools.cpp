@@ -17,6 +17,7 @@
 #include "libslic3r/Layer.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintBase.hpp"
+#include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/SLA/IndexedMesh.hpp"
 #include "libslic3r/Surface.hpp"
 #include "libslic3r/libslic3r.h"
@@ -39,6 +40,7 @@
 #include <optional>
 #include <set>
 #include <memory>
+#include <mutex>
 #include <typeinfo>
 #include <utility>
 #include <vector>
@@ -1209,6 +1211,55 @@ TopColours top_colours(const PrintObject &object, const ExPolygons &candidate)
     return out;
 }
 
+std::function<int(const Vec3d &)> planar_colour(const PrintObject &object, const TopColours &colours, const ExPolygons &area, double pitch)
+{
+    struct Layers
+    {
+        std::vector<double>                       z;
+        std::vector<std::unique_ptr<HeightField>> fields;
+        std::mutex                                mutex;
+    };
+    auto layers = std::make_shared<Layers>();
+    for (const Layer *layer : object.layers())
+        layers->z.emplace_back(layer->print_z);
+    layers->fields.resize(layers->z.size());
+    BoundingBoxf bbox;
+    for (const ExPolygon &expoly : area)
+        for (const Point &pt : expoly.contour.points)
+            bbox.merge(unscale(pt));
+    bbox.min -= Vec2d(1., 1.);
+    bbox.max += Vec2d(1., 1.);
+    return [layers, &object, &colours, bbox, pitch](const Vec3d &p) {
+        if (layers->z.empty() || !bbox.defined)
+            return colours.at(p.head<2>());
+        const size_t i = std::min(layers->z.size() - 1,
+                                  size_t(std::lower_bound(layers->z.begin(), layers->z.end(), p.z() - EPSILON) - layers->z.begin()));
+        const HeightField *field;
+        {
+            std::lock_guard<std::mutex> lock(layers->mutex);
+            if (!layers->fields[i]) {
+                auto f = std::make_unique<HeightField>(bbox, pitch);
+                for (const LayerRegion *layerm : object.get_layer(int(i))->regions()) {
+                    const auto c = std::find(colours.filaments.begin(), colours.filaments.end(),
+                                             layerm->region().config().outer_wall_filament_id.value);
+                    if (c == colours.filaments.end())
+                        continue;
+                    const Mask mask = rasterize(to_expolygons(layerm->slices.surfaces), *f);
+                    for (size_t n = 0; n < mask.size(); ++n)
+                        if (mask[n])
+                            f->data()[n] = float(c - colours.filaments.begin());
+                }
+                layers->fields[i] = std::move(f);
+            }
+            field = layers->fields[i].get();
+        }
+        const Vec2d o  = (p.head<2>() - field->origin()) / field->pitch();
+        const int   ix = int(std::lround(o.x())), iy = int(std::lround(o.y()));
+        const float c  = ix >= 0 && iy >= 0 && ix < field->nx() && iy < field->ny() ? field->at(ix, iy) : HeightField::NoData;
+        return std::isnan(c) ? colours.at(p.head<2>()) : int(c);
+    };
+}
+
 std::vector<std::pair<size_t, size_t>> split_by_colour(ConformalResult &result, const TopColours &colours,
                                                        const std::function<int(const Vec3d &)> &colour)
 {
@@ -1258,6 +1309,21 @@ std::vector<std::pair<size_t, size_t>> split_by_colour(ConformalResult &result, 
         if (!comp.ironing.entities.empty())
             cut_by_colour(comp.ironing.entities, colour_at, 0., static_cast<const ExtrusionPath *>(comp.ironing.entities.front())->width,
                           [&](int c, ExtrusionPathConformal *path) { patch_of(c).ironing.entities.emplace_back(path); });
+        if (colour)
+            for (size_t c = 0; c < piece.size(); ++c)
+                if (piece[c]) {
+                    ConformalPatch &p = patches[*piece[c]];
+                    Polylines       roads;
+                    float           width = 0.f;
+                    for (const ExtrusionEntityCollection *pass : passes(p))
+                        for (const ExtrusionEntity *ee : pass->entities) {
+                            roads.emplace_back(ee->as_polyline());
+                            width = std::max(width, static_cast<const ExtrusionPath *>(ee)->width);
+                        }
+                    Polygons own = offset(roads, float(scale_(0.5 * width)));
+                    polygons_append(own, to_polygons(colours.areas[c]));
+                    p.footprint = intersection_ex(comp.footprint, union_ex(own));
+                }
     }
     for (size_t i = 0; i < patches.size(); ++i) {
         patches[i].id          = int(i);
@@ -1405,9 +1471,10 @@ void group_hosts_by_filament(PrintObject &object, ConformalResult &result)
                             << " moved onto layers printing their filament";
 }
 
-bool prints_several_filaments(const PrintObject &object)
+namespace {
+
+void object_filaments(const PrintObject &object, std::set<int> &filaments)
 {
-    std::set<int> filaments;
     for (size_t region_id = 0; region_id < object.num_printing_regions(); ++region_id) {
         const PrintRegionConfig &cfg = object.printing_region(region_id).config();
         for (int id : { cfg.outer_wall_filament_id.value, cfg.inner_wall_filament_id.value, cfg.sparse_infill_filament_id.value,
@@ -1418,12 +1485,33 @@ bool prints_several_filaments(const PrintObject &object)
         for (int id : { object.config().support_filament.value, object.config().support_interface_filament.value })
             if (id > 0)
                 filaments.insert(id);
+}
+
+}
+
+bool prints_several_filaments(const PrintObject &object)
+{
+    std::set<int> filaments;
+    object_filaments(object, filaments);
+    return filaments.size() > 1;
+}
+
+bool layer_changes_filament(const PrintObject &object)
+{
+    if (prints_several_filaments(object))
+        return true;
+    const Print *print = object.print();
+    if (print == nullptr || print->config().print_sequence == PrintSequence::ByObject)
+        return false;
+    std::set<int> filaments;
+    for (const PrintObject *other : print->objects())
+        object_filaments(*other, filaments);
     return filaments.size() > 1;
 }
 
 double multi_material_patch_height(const PrintObject &object, const HeadEnvelope &head, double max_patch_height)
 {
-    if (!prints_several_filaments(object))
+    if (!layer_changes_filament(object))
         return max_patch_height;
     double layer_height = 0.;
     for (const Layer *layer : object.layers())

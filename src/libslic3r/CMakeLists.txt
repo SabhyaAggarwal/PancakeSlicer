@@ -128,6 +128,9 @@ set(lisbslic3r_sources
     Nonplanar/BeadModel.hpp
     Nonplanar/FlowMod.cpp
     Nonplanar/FlowMod.hpp
+    Nonplanar/LayerField.hpp
+    Nonplanar/OrientationField.cpp
+    Nonplanar/OrientationField.hpp
     GCode/ToolKinematics.cpp
     GCode/ToolKinematics.hpp
     GCode/ClearanceRepair.cpp
@@ -173,6 +176,9 @@ set(lisbslic3r_sources
     Nonplanar/HeadEnvelope.hpp
     Nonplanar/HeightField.cpp
     Nonplanar/HeightField.hpp
+    Nonplanar/LayerField.hpp
+    Nonplanar/LayerFieldOpt.cpp
+    Nonplanar/LayerFieldOpt.hpp
     Nonplanar/Multiplanar.cpp
     Nonplanar/Multiplanar.hpp
     Nonplanar/StrengthRoads.cpp

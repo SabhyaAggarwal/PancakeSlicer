@@ -412,8 +412,9 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
     }
 
     double band_pitch = 0., band_tolerance = 0.;
-    const double max_patch_height = multi_material_patch_height(object, head, effective_patch_height_cap(object));
-    const bool   host_above       = max_patch_height != effective_patch_height_cap(object);
+    const double cap              = effective_patch_height_cap(object);
+    const double max_patch_height = multi_material_patch_height(object, head, cap);
+    const bool   host_above       = max_patch_height != cap || layer_changes_filament(object);
     const double rotary           = rotary_band_reach(object, head, h);
     band_schedule(head, h, rotary > 0. ? (max_patch_height > 0. ? std::min(max_patch_height, rotary) : rotary) : max_patch_height,
                   band_pitch, band_tolerance);
@@ -436,40 +437,8 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
     for (const Slab &slab : slabs)
         append(slab_area, slab.footprint);
     const TopColours colours = top_colours(object, union_ex(slab_area));
-    std::vector<HeightField> layer_colours;
-    if (colours.areas.size() > 1) {
-        BoundingBoxf bbox;
-        for (const ExPolygon &expoly : slab_area)
-            for (const Point &pt : expoly.contour.points)
-                bbox.merge(unscale(pt));
-        bbox.min -= Vec2d(1., 1.);
-        bbox.max += Vec2d(1., 1.);
-        layer_colours.assign(layers.size(), HeightField());
-        tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
-            for (size_t i = range.begin(); i < range.end(); ++i) {
-                HeightField field(bbox, 0.1);
-                for (const LayerRegion *layerm : layers[i]->regions()) {
-                    const auto c = std::find(colours.filaments.begin(), colours.filaments.end(),
-                                             layerm->region().config().outer_wall_filament_id.value);
-                    if (c == colours.filaments.end())
-                        continue;
-                    const Mask mask = rasterize(to_expolygons(layerm->slices.surfaces), field);
-                    for (size_t n = 0; n < mask.size(); ++n)
-                        if (mask[n])
-                            field.data()[n] = float(c - colours.filaments.begin());
-                }
-                layer_colours[i] = std::move(field);
-            }
-        });
-    }
-    auto colour_at = [&](const Vec3d &p) {
-        const size_t i = std::min(layers.size() - 1, size_t(std::lower_bound(layer_z.begin(), layer_z.end(), p.z() - EPSILON) - layer_z.begin()));
-        const HeightField &field = layer_colours[i];
-        const Vec2d        o     = (p.head<2>() - field.origin()) / field.pitch();
-        const int          ix = int(std::lround(o.x())), iy = int(std::lround(o.y()));
-        const float        c  = ix >= 0 && iy >= 0 && ix < field.nx() && iy < field.ny() ? field.at(ix, iy) : HeightField::NoData;
-        return std::isnan(c) ? colours.at(p.head<2>()) : int(c);
-    };
+    const std::function<int(const Vec3d &)> colour_at = colours.areas.size() > 1 ? planar_colour(object, colours, slab_area, 0.1) :
+                                                                                  std::function<int(const Vec3d &)>();
 
     std::vector<ConformalPatch>   components(slabs.size());
     std::vector<ConformalResult>  banded(slabs.size());
