@@ -972,11 +972,11 @@ std::string CoolingBuffer::apply_layer_cooldown(
             need_set_fan = true;
             np_set_aux(0.f);
         } else if (line->type & CoolingLine::TYPE_NP_PASS_HOLD) {
+            char buf[96];
+            std::snprintf(buf, sizeof(buf), "G1 Z%.3f F%d ; hold for the minimum pass time\n", line->value, int(line->value2));
+            new_gcode += buf;
+            current_feedrate = 0;
             if (line->time > 0.f) {
-                char buf[96];
-                std::snprintf(buf, sizeof(buf), "G1 Z%.3f F%d ; hold for the minimum pass time\n", line->value, int(line->value2));
-                new_gcode += buf;
-                current_feedrate = 0;
                 const int hold_fan = std::max(np_hold_fan, m_current_fan_speed);
                 new_gcode += GCodeWriter::set_fan(m_config.gcode_flavor, hold_fan, part_cooling_fan_min_pwm);
                 m_current_fan_speed = hold_fan;

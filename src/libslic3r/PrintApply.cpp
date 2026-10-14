@@ -1114,6 +1114,11 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
 
     new_full_config.normalize_fdm_1();
     t_config_option_keys changed_keys = new_full_config.normalize_fdm_2(objects().size(), used_filaments.size());
+    if (keep_conformal_tower && new_full_config.option<ConfigOptionFloats>("filament_diameter")->values.size() > 1 &&
+        Nonplanar::requests_conformal_shells(*this)) {
+        new_full_config.option<ConfigOptionBool>("enable_prime_tower")->value = true;
+        changed_keys.erase(std::remove(changed_keys.begin(), changed_keys.end(), "enable_prime_tower"), changed_keys.end());
+    }
     if (changed_keys.size() > 0) {
         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(", got changed_keys, size=%1%")%changed_keys.size();
         for (int i = 0; i < changed_keys.size(); i++)
@@ -1644,7 +1649,8 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
     if (keep_conformal_tower && new_full_config.option<ConfigOptionFloats>("filament_diameter")->values.size() > 1 &&
         Nonplanar::requests_conformal_shells(*this)) {
         new_full_config.option<ConfigOptionBool>("enable_prime_tower")->value = true;
-        if (!m_config.enable_prime_tower && std::find(new_changed_keys.begin(), new_changed_keys.end(), "enable_prime_tower") == new_changed_keys.end())
+        new_changed_keys.erase(std::remove(new_changed_keys.begin(), new_changed_keys.end(), "enable_prime_tower"), new_changed_keys.end());
+        if (!m_config.enable_prime_tower)
             new_changed_keys.emplace_back("enable_prime_tower");
     }
     if (new_changed_keys.size() > 0) {

@@ -685,6 +685,7 @@ public:
             auto binbb = sl::boundingBox(m_bin);
             m_pconf.best_object_pos = binbb.minCorner() + Point{ binbb.width() * this->params.align_center.x(), binbb.height() * this->params.align_center.y() };
             m_pconf.alignment = PConfig::Alignment::USER_DEFINED;
+            m_pconf.clamp_to_bin = true;
         }
 
         for (auto& region : m_pconf.m_excluded_regions) {

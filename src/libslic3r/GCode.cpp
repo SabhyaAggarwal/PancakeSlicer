@@ -8232,6 +8232,7 @@ std::string GCode::nonplanar_pass_hold(const ExtrusionPathConformal *next)
         speed = 10.;
     char buf[96];
     std::snprintf(buf, sizeof(buf), "%s Z%.3f F%.0f\n", NpPassHoldTag, z, 60. * speed);
+    m_writer.get_position().z() = z;
     return buf;
 }
 
