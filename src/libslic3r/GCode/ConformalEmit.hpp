@@ -119,9 +119,13 @@ struct RotaryRun
 {
     size_t    begin = 0, end = 0;
     JointPose seed;
+    bool      reversed = false;
 };
 std::vector<RotaryRun> plan_rotary_runs(const ToolKinematics &kinematics, const std::vector<ConformalPoint> &points,
                                         const JointPose &from, double max_jump_deg = 90.);
+
+bool alternate_rotary_runs(const ToolKinematics &kinematics, const std::vector<ConformalPoint> &points, const JointPose &from,
+                           std::vector<RotaryRun> &runs, double max_jump_deg = 90.);
 
 struct MinimalTiltParams
 {

@@ -4577,7 +4577,17 @@ void GCodeProcessor::process_rotary_G1(const GCodeReader::GCodeLine& line)
     process_G1(g1_axes, g1_feedrate);
     if (old_rot != joints.rot) {
         m_result.nonplanar = true;
-        if (m_result.moves.size() == previous_moves) store_move_vertex(EMoveType::Travel);
+        if (m_result.moves.size() == previous_moves) {
+            store_move_vertex(EMoveType::Travel);
+            double seconds = 0.;
+            for (int i = 0; i < 2; ++i)
+                if (const double speed = kin.rotary_axes()[i].max_speed_deg_s; speed > 0.)
+                    seconds = std::max(seconds, std::abs(joints.rot[i] - old_rot[i]) / speed);
+            if (m_inverse_time && line.has_f() && line.f() > 0.f)
+                seconds = std::max(seconds, 60. / double(line.f()));
+            if (seconds > 0.)
+                simulate_st_synchronize(float(seconds));
+        }
     }
 }
 

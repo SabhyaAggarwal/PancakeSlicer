@@ -557,6 +557,31 @@ std::vector<RotaryRun> plan_rotary_runs(const ToolKinematics &kinematics, const 
     return runs;
 }
 
+bool alternate_rotary_runs(const ToolKinematics &kinematics, const std::vector<ConformalPoint> &points, const JointPose &from,
+                           std::vector<RotaryRun> &runs, double max_jump_deg)
+{
+    if (runs.size() < 2)
+        return false;
+    auto jump = [](const JointPose &a, const JointPose &b) { return std::max(std::abs(a.rot[0] - b.rot[0]), std::abs(a.rot[1] - b.rot[1])); };
+    std::vector<RotaryRun> out = runs;
+    JointPose              prev = from;
+    for (size_t k = 0; k < out.size(); ++k) {
+        RotaryRun &run = out[k];
+        run.reversed   = k % 2 == 1;
+        const size_t n = run.end - run.begin + 1;
+        for (size_t m = 0; m < n; ++m) {
+            JointPose next;
+            if (! kinematics.inverse(points[run.reversed ? run.end - m : run.begin + m].pose, &prev, next) || jump(prev, next) > max_jump_deg)
+                return false;
+            if (m == 0)
+                run.seed = next;
+            prev = next;
+        }
+    }
+    runs = std::move(out);
+    return true;
+}
+
 namespace {
 
 Vec3d rotate_toward(const Vec3d &from, const Vec3d &to, double max_angle)

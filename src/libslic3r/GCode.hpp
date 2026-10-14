@@ -548,6 +548,8 @@ protected:
     std::string     rotary_move_safely(const ToolPose *target, const JointPose *seed = nullptr);
     bool            rotary_at_home() const;
     std::string     rotary_hop(const ToolPose *target, const JointPose *seed = nullptr);
+    std::string     rotary_local_hop(const ToolPose &target);
+    std::string     rotary_turn_on_spot(const ToolPose &target);
     const Nonplanar::HeadEnvelope &nonplanar_head();
     double          nonplanar_hop();
     double          conformal_max_speed_z() const;

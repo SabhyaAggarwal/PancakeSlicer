@@ -17,6 +17,7 @@
 #include "libslic3r/Layer.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Print.hpp"
+#include "libslic3r/ShortestPath.hpp"
 #include "libslic3r/PrintBase.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/SLA/IndexedMesh.hpp"
@@ -669,6 +670,7 @@ void clip_extrusions(ExtrusionEntityCollection &collection, const AreaEdges &edg
     ExtrusionEntitiesPtr out;
     out.reserve(collection.entities.size());
     bool any_cut = false;
+    std::vector<std::pair<size_t, size_t>> cut_from;
     for (ExtrusionEntity *ee : collection.entities) {
         if (auto *sub = dynamic_cast<ExtrusionEntityCollection *>(ee)) {
             clip_extrusions(*sub, edges, area_bbox);
@@ -731,8 +733,21 @@ void clip_extrusions(ExtrusionEntityCollection &collection, const AreaEdges &edg
         }
         any_cut = true;
         delete ee;
+        cut_from.emplace_back(out.size(), out.size() + pieces.entities.size());
         out.insert(out.end(), pieces.entities.begin(), pieces.entities.end());
         pieces.entities.clear();
+    }
+    for (size_t k = 0; k < cut_from.size();) {
+        size_t begin = cut_from[k].first, end = cut_from[k].second;
+        const ExtrusionRole role = begin < end ? out[begin]->role() : erNone;
+        for (++k; k < cut_from.size() && cut_from[k].first == end && (cut_from[k].first == cut_from[k].second || out[cut_from[k].first]->role() == role); ++k)
+            end = cut_from[k].second;
+        if (end - begin < 2)
+            continue;
+        std::vector<ExtrusionEntity *> run(out.begin() + begin, out.begin() + end);
+        const Point                    from = begin > 0 ? out[begin - 1]->last_point() : run.front()->first_point();
+        reorder_extrusion_entities(run, chain_extrusion_entities(run, &from));
+        std::copy(run.begin(), run.end(), out.begin() + begin);
     }
     collection.entities = std::move(out);
     if (any_cut)

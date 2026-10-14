@@ -7658,11 +7658,14 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
         m_conformal_on_bead = false;
     }
 
-    const std::vector<RotaryRun> runs = rotary ? plan_rotary_runs(kinematics, m_conformal_points, m_writer.get_joints()) :
-                                                 std::vector<RotaryRun>(1, RotaryRun{ 0, m_conformal_points.size() - 1, JointPose() });
+    std::vector<RotaryRun> runs = rotary ? plan_rotary_runs(kinematics, m_conformal_points, m_writer.get_joints()) :
+                                           std::vector<RotaryRun>(1, RotaryRun{ 0, m_conformal_points.size() - 1, JointPose() });
     const std::vector<ConformalPoint> points = runs.size() > 1 ? m_conformal_points : std::vector<ConformalPoint>();
     Vec3d      hop_to;
-    const bool glide_on = next != nullptr && next->polyline.points.front() == path.polyline.points.back();
+    bool       glide_on = next != nullptr && next->polyline.points.front() == path.polyline.points.back();
+    if (runs.size() > 1 && ! path.preserve_points && (runs.size() % 2 == 1 || ! glide_on) &&
+        alternate_rotary_runs(kinematics, m_conformal_points, m_writer.get_joints(), runs))
+        glide_on = glide_on && ! runs.back().reversed;
     const bool open_end = glide_on && next->polyline.points.size() >= 2 &&
                           (next->bead_height.size() < 2 || (next->bead_height[0] > 0.f && next->bead_height[1] > 0.f));
     for (size_t r = 0; r < runs.size(); ++r) {
@@ -7676,17 +7679,20 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
             };
             slice(part->polyline.points);
             slice(part->bead_height);
-            slice(part->bead_width);
             slice(part->tool_axis);
             slice(part->bead_width);
             m_conformal_points.assign(points.begin() + run.begin, points.begin() + run.end + 1);
+            if (run.reversed) {
+                part->reverse();
+                std::reverse(m_conformal_points.begin(), m_conformal_points.end());
+            }
         }
         const ExtrusionPathConformal &sub = part ? *part : path;
         const ToolPose &start = m_conformal_points.front().pose;
         const Vec3d    &here  = m_writer.get_position();
         if (rotary && r == 0 && m_last_pos_defined && (here - start.tip).norm() <= EPSILON &&
             m_writer.get_tool_axis().dot(start.axis) >= std::cos(5. * M_PI / 180.) && (m_writer.get_tool_axis() - start.axis).norm() > EPSILON)
-            gcode += m_writer.travel_to_pose(start, "turn on the curved shell");
+            gcode += this->rotary_turn_on_spot(start);
         const bool lid_join = r == 0 && m_config.spiral_mode && path.role() == erExternalPerimeter && m_last_pos_defined &&
                               (here - start.tip).norm() <= 0.5 && (m_writer.get_tool_axis() - start.axis).norm() <= EPSILON;
         if (lid_join && (here - start.tip).norm() > EPSILON) {
@@ -7696,7 +7702,8 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
             gcode += m_conformal_on_bead || m_conformal_prev != nullptr ? this->conformal_retract() : this->retract();
             m_writer.add_object_change_labels(gcode);
             if (rotary && (r > 0 || start.axis.z() < 1. - EPSILON || ! this->rotary_at_home())) {
-                gcode += this->rotary_hop(&start, &run.seed);
+                const std::string local = r == 0 || runs[r].reversed || runs[r - 1].reversed ? this->rotary_local_hop(start) : std::string();
+                gcode += local.empty() ? this->rotary_hop(&start, &run.seed) : local;
             } else if (m_material_columns && !rotary) {
                 gcode += this->surface_travel(start.tip, m_conformal_on_bead, true, this->conformal_in_band(m_conformal_prev, &path),
                                               "move to conformal path");
@@ -8537,6 +8544,92 @@ std::string GCode::rotary_hop(const ToolPose *target, const JointPose *seed)
     }
     gcode += m_writer.end_inverse_time();
     return gcode;
+}
+
+std::string GCode::rotary_turn_on_spot(const ToolPose &target)
+{
+    const auto *rotary = dynamic_cast<const RotaryKinematics *>(&m_writer.tool_kinematics());
+    const Vec3d here = m_writer.get_position(), axis = m_writer.get_tool_axis();
+    const Vec3d offset(m_writer.get_xy_offset().x(), m_writer.get_xy_offset().y(), 0.);
+    JointPose   end;
+    const JointPose joints = m_writer.get_joints();
+    if (rotary == nullptr || ! m_material_columns || ! rotary->inverse({ target.tip - offset, target.axis }, &joints, end))
+        return m_writer.travel_to_pose(target, "turn on the curved shell");
+    const Nonplanar::HeadEnvelope &head = this->nonplanar_head();
+    auto clearance = [&](const Vec3d &tip, const JointPose &rot) { return m_material_columns->tilted_clearance(tip, rotary->head_frame(rot), head); };
+    const double floor = std::min({ head.margin, clearance(here, joints), clearance(target.tip, end) }) - 0.01;
+    const double turn  = std::max(std::abs(end.rot[0] - joints.rot[0]), std::abs(end.rot[1] - joints.rot[1]));
+    const int    steps = std::max(1, int(std::ceil(turn / 0.5)));
+    double       worst = std::numeric_limits<double>::infinity();
+    for (int k = 1; k < steps; ++k) {
+        JointPose rot = joints;
+        for (int i = 0; i < 2; ++i)
+            rot.rot[i] = joints.rot[i] + (end.rot[i] - joints.rot[i]) * double(k) / steps;
+        worst = std::min(worst, clearance(here, rot));
+    }
+    if (worst >= floor)
+        return m_writer.travel_to_pose(target, "turn on the curved shell");
+    const double lift = floor - worst + 0.05;
+    std::string  gcode;
+    gcode += m_writer.travel_to_pose({ here + lift * axis, axis }, "lift to turn on the curved shell");
+    gcode += m_writer.travel_to_pose({ target.tip + lift * target.axis, target.axis }, "turn on the curved shell");
+    gcode += m_writer.travel_to_pose(target, "lower onto the curved shell");
+    return gcode;
+}
+
+std::string GCode::rotary_local_hop(const ToolPose &target)
+{
+    const auto *rotary = dynamic_cast<const RotaryKinematics *>(&m_writer.tool_kinematics());
+    if (rotary == nullptr || ! m_material_columns || ! m_last_pos_defined)
+        return {};
+    const Vec3d     here   = m_writer.get_position();
+    const Vec3d     axis   = m_writer.get_tool_axis();
+    const Vec3d     offset(m_writer.get_xy_offset().x(), m_writer.get_xy_offset().y(), 0.);
+    const JointPose joints = m_writer.get_joints();
+    if (axis.dot(target.axis) < std::cos(30. * M_PI / 180.) || (target.tip - here).norm() > 50.)
+        return {};
+    const Nonplanar::HeadEnvelope &head   = this->nonplanar_head();
+    const double                   margin = head.margin;
+    auto clearance = [&](const Vec3d &tip, const JointPose &rot) {
+        return m_material_columns->tilted_clearance(tip, rotary->head_frame(rot), head);
+    };
+    JointPose end;
+    if (! rotary->inverse({ target.tip - offset, target.axis }, &joints, end))
+        return {};
+    const double at_here = std::min(margin, clearance(here, joints)) - 0.01;
+    const double at_end  = std::min(margin, clearance(target.tip, end)) - 0.01;
+    const double hop     = this->nonplanar_hop();
+    for (const double lift : { hop, 2. * hop, 4. * hop }) {
+        const Vec3d up = here + lift * axis, down = target.tip + lift * target.axis;
+        bool        ok = true;
+        auto        straight = [&](const Vec3d &a, const Vec3d &b, const JointPose &rot, double floor) {
+            const int steps = std::max(1, int(std::ceil((b - a).norm() / 0.25)));
+            for (int k = 1; k <= steps && ok; ++k)
+                ok = clearance(a + (b - a) * (double(k) / steps), rot) >= floor;
+        };
+        straight(here, up, joints, at_here);
+        straight(target.tip, down, end, at_end);
+        if (ok) {
+            const double turn  = std::max(std::abs(end.rot[0] - joints.rot[0]), std::abs(end.rot[1] - joints.rot[1]));
+            const int    steps = std::max(1, int(std::ceil(std::max((down - up).norm() / 0.25, turn))));
+            for (int k = 1; k < steps && ok; ++k) {
+                const double u   = double(k) / steps;
+                JointPose    rot = joints;
+                for (int i = 0; i < 2; ++i)
+                    rot.rot[i] = joints.rot[i] + u * (end.rot[i] - joints.rot[i]);
+                ok = clearance(up + (down - up) * u, rot) >= margin;
+            }
+        }
+        if (! ok)
+            continue;
+        std::string gcode;
+        gcode += m_writer.travel_to_pose({ up, axis }, "lift along the tool");
+        gcode += m_writer.travel_to_pose({ down, target.axis }, "turn across to the curved shell");
+        gcode += m_writer.travel_to_pose(target, "lower onto the curved shell");
+        gcode += m_writer.end_inverse_time();
+        return gcode;
+    }
+    return {};
 }
 
 std::string GCode::rotary_move_safely(const ToolPose *target, const JointPose *seed)
@@ -9819,11 +9912,22 @@ std::string GCode::_encode_label_ids_to_base64(std::vector<size_t> ids)
 
 std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string comment, double z )
 {
-    const bool nonplanar_travel = m_nonplanar_ceiling > 0.;
+    bool nonplanar_travel = m_nonplanar_ceiling > 0.;
     Polyline travel { this->last_pos(), point };
 
     LiftType lift_type = LiftType::SpiralLift;
     bool needs_retraction = this->needs_retraction(travel, role, lift_type);
+    if (nonplanar_travel && ! needs_retraction && m_material_columns && std::abs(m_writer.get_position().z() - m_nominal_z) < EPSILON &&
+        (z == DBL_MAX || std::abs(z - m_nominal_z) < EPSILON)) {
+        const Vec2d  a = this->point_to_gcode(travel.points.front()), b = this->point_to_gcode(travel.points.back());
+        BoundingBoxf rect;
+        rect.merge(a);
+        rect.merge(b);
+        rect.min.array() -= 1.;
+        rect.max.array() += 1.;
+        if (m_material_columns->top_in_rect(rect) <= m_writer.get_position().z() + EPSILON)
+            nonplanar_travel = false;
+    }
     bool could_be_wipe_disabled       = false;
     const bool used_external_mp_once  = m_avoid_crossing_perimeters.used_external_mp_once();
     std::string gcode;
