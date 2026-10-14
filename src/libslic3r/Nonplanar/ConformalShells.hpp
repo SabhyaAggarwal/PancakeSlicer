@@ -1,6 +1,7 @@
 #pragma once
 #include "FlowMod.hpp"
 #include "HeightField.hpp"
+#include "ShellBase.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
 #include <functional>
@@ -27,6 +28,8 @@ struct ConformalPatch
     HeightField surface;
     HeightField base;
     int        shells = 0;
+    int        sparse = 0;
+    bool       bridged_base = false;
     double     shell_height = 0.;
     double     z_min = 0., z_max = 0.;
     size_t     host_layer = 0;
@@ -63,6 +66,7 @@ struct ConformalResult
     std::vector<ExPolygons>       bridged;
     std::vector<ExPolygons>       self_supported;
     FlowModStats                  flow_mod;
+    std::vector<PatchBase>        base;
     bool                          layer_changes_filament = false;
     std::shared_ptr<ObjectMesh>   mesh;
 };

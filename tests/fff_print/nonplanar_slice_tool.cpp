@@ -1357,6 +1357,15 @@ int main(int argc, char **argv)
                               << "\n";
                 }
             }
+            for (const Nonplanar::PatchBase &b : conformal.base) {
+                std::cout << "nonplanar_base patches ";
+                for (size_t i = 0; i < b.patches.size(); ++i)
+                    std::cout << (i ? "," : "") << b.patches[i];
+                std::cout << " area " << b.area << " on_csparse " << b.share[0] << " on_sparse " << b.share[1] << " on_solid " << b.share[2]
+                          << " on_air " << b.share[3] << " span " << b.span << " reach_p50 " << b.reach_p50 << " solid_min " << b.solid_min
+                          << " solid_p50 " << b.solid_p50 << " slope_p90 " << b.slope_p90 << " sag_rms " << b.sag_rms << " sag_max " << b.sag_max
+                          << " solid_layers " << b.solid_layers << " bridged " << b.bridged << "\n";
+            }
             for (const Nonplanar::PatchDiagnostics &diag : conformal.diagnostics)
                 if (diag.fallback_area > 0.)
                     std::cout << "nonplanar_fallback " << (diag.fallback_reason.empty() ? "untagged" : diag.fallback_reason) << " "

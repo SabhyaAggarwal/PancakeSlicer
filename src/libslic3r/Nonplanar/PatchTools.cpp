@@ -1560,6 +1560,8 @@ std::vector<std::pair<size_t, size_t>> split_by_colour(ConformalResult &result, 
                 p.surface      = comp.surface;
                 p.base         = comp.base;
                 p.shells       = comp.shells;
+                p.sparse       = comp.sparse;
+                p.bridged_base = comp.bridged_base;
                 p.shell_height = comp.shell_height;
                 p.z_min        = comp.z_min;
                 p.z_max        = comp.z_max;
@@ -2136,6 +2138,8 @@ std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const Heig
                 p.surface      = comp.surface;
                 p.base         = comp.base;
                 p.shells       = comp.shells;
+                p.sparse       = comp.sparse;
+                p.bridged_base = comp.bridged_base;
                 p.shell_height = comp.shell_height;
                 p.region_id    = comp.region_id;
                 p.automatic    = comp.automatic;

@@ -37,6 +37,12 @@ double segment_volume(const Vec3d &a, const Vec3d &b, double width, float height
     return std::max(0., bead_area(width, h)) * charge_length(a, b, tool_axis);
 }
 
+double bridge_sag(double span, bool bridged)
+{
+    const double sag = std::min(BridgeSagMax, BridgeSagCoefficient * span * span);
+    return bridged ? BridgedSagFactor * sag : sag;
+}
+
 std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, double nominal,
                                     const MotionLimits &limits, double quantum, const std::vector<double> *caps)
 {

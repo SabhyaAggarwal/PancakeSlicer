@@ -12,6 +12,14 @@ double bead_height_for_area(double width, double area);
 double segment_volume(const Vec3d &a, const Vec3d &b, double width, float height_a, float height_b,
                       const Vec3d &tool_axis = Vec3d::UnitZ());
 
+constexpr double BridgeSagCoefficient = 0.01;
+constexpr double BridgeSagMax         = 0.4;
+constexpr double BridgedSagFactor     = 0.5;
+constexpr double BridgeSagLayerFactor = 0.4;
+constexpr double BridgeSpanAir        = 10.;
+double bridge_sag(double span, bool bridged = false);
+inline bool past_bridging_limit(double span, double height) { return bridge_sag(span) > 0.25 * height; }
+
 struct MotionLimits
 {
     double max_v_xy = 0., max_a_xy = 0.;

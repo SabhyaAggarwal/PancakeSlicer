@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -41,15 +42,16 @@ private:
     void cells(const BoundingBoxf &rect, int &x0, int &y0, int &x1, int &y1) const;
     double cell_top(int x, int y) const
     {
-        const std::vector<double> &block = m_blocks[size_t(y / m_tile) * m_tx + x / m_tile];
-        return block.empty() ? -std::numeric_limits<double>::infinity() : block[size_t(y % m_tile) * m_tile + x % m_tile];
+        const auto &block = m_blocks[size_t(y / m_tile) * m_tx + x / m_tile];
+        return !block ? -std::numeric_limits<double>::infinity() : (*block)[size_t(y % m_tile) * m_tile + x % m_tile];
     }
     double top_above(const BoundingBoxf &rect, double floor) const;
+    std::vector<double> &writable(size_t t);
     BoundingBoxf m_bbox;
     double m_pitch;
     int m_nx, m_ny, m_tile, m_tx;
     std::vector<double> m_tiles;
-    std::vector<std::vector<double>> m_blocks;
+    std::vector<std::shared_ptr<std::vector<double>>> m_blocks;
     double m_ceiling = -std::numeric_limits<double>::infinity();
 };
 

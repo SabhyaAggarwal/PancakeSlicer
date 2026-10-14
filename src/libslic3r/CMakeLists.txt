@@ -170,6 +170,8 @@ set(lisbslic3r_sources
     Nonplanar/Repair.hpp
     Nonplanar/Seams.cpp
     Nonplanar/Seams.hpp
+    Nonplanar/ShellBase.cpp
+    Nonplanar/ShellBase.hpp
     Nonplanar/ShellPaths.cpp
     Nonplanar/ShellPaths.hpp
     Nonplanar/ShellSeams.cpp

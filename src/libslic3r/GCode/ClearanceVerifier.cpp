@@ -519,9 +519,7 @@ void MaterialColumns::deposit(const Vec3d &a, const Vec3d &b, double width)
         for (int x = x0; x < x1;) {
             const int    tx = x / m_tile, end = std::min(x1, (tx + 1) * m_tile);
             const size_t t  = size_t(y / m_tile) * m_tx + tx;
-            std::vector<double> &block = m_blocks[t];
-            if (block.empty()) block.assign(size_t(m_tile) * m_tile, -Inf);
-            double *row = block.data() + size_t(y % m_tile) * m_tile;
+            double *row = writable(t).data() + size_t(y % m_tile) * m_tile;
             for (; x < end; ++x) row[x - tx * m_tile] = std::max(row[x - tx * m_tile], z);
             m_tiles[t] = std::max(m_tiles[t], z);
         }
@@ -530,14 +528,28 @@ void MaterialColumns::deposit(const Vec3d &a, const Vec3d &b, double width)
 
 double MaterialColumns::top_in_rect(const BoundingBoxf &rect) const { return top_above(rect, -Inf); }
 
+std::vector<double> &MaterialColumns::writable(size_t t)
+{
+    std::shared_ptr<std::vector<double>> &block = m_blocks[t];
+    if (!block)
+        block = std::make_shared<std::vector<double>>(size_t(m_tile) * m_tile, -Inf);
+    else if (block.use_count() > 1)
+        block = std::make_shared<std::vector<double>>(*block);
+    else
+        std::atomic_thread_fence(std::memory_order_acquire);
+    return *block;
+}
+
 void MaterialColumns::merge(const MaterialColumns &other)
 {
     for (size_t t = 0; t < m_blocks.size(); ++t) {
-        const std::vector<double> &from = other.m_blocks[t];
-        if (from.empty()) continue;
-        std::vector<double> &to = m_blocks[t];
-        if (to.empty()) to = from;
-        else for (size_t i = 0; i < to.size(); ++i) to[i] = std::max(to[i], from[i]);
+        const auto &from = other.m_blocks[t];
+        if (!from) continue;
+        if (!m_blocks[t]) m_blocks[t] = from;
+        else if (m_blocks[t] != from) {
+            std::vector<double> &to = writable(t);
+            for (size_t i = 0; i < to.size(); ++i) to[i] = std::max(to[i], (*from)[i]);
+        }
         m_tiles[t] = std::max(m_tiles[t], other.m_tiles[t]);
     }
     m_ceiling = std::max(m_ceiling, other.m_ceiling);
@@ -568,7 +580,7 @@ double MaterialColumns::top_above(const BoundingBoxf &rect, double floor) const
             const int ay = std::max(y0, ty * m_tile), by = std::min(y1, (ty + 1) * m_tile);
             if (ax == tx * m_tile && bx == std::min(m_nx, (tx + 1) * m_tile) &&
                 ay == ty * m_tile && by == std::min(m_ny, (ty + 1) * m_tile)) { best = tile; continue; }
-            const double *block = m_blocks[size_t(ty) * m_tx + tx].data();
+            const double *block = m_blocks[size_t(ty) * m_tx + tx]->data();
             for (int y = ay; y < by; ++y) {
                 const double *row = block + size_t(y - ty * m_tile) * m_tile;
                 for (int x = ax; x < bx; ++x) best = std::max(best, row[x - tx * m_tile]);
