@@ -5282,7 +5282,7 @@ void PrintConfigDef::init_fff_params()
     def->enum_labels.push_back(L("Multiplanar"));
     def->enum_labels.push_back(L("Orientation field"));
     def->mode     = comSimple;
-    def->set_default_value(new ConfigOptionEnum<NonplanarMode>(NonplanarMode::Manual));
+    def->set_default_value(new ConfigOptionEnum<NonplanarMode>(NonplanarMode::Off));
 
     def = this->add("multiplanar_max_planes", coInt);
     def->label    = L("Multiplanar maximum planes");
@@ -9833,7 +9833,7 @@ void PrintConfigDef::handle_legacy_composite(DynamicPrintConfig &config)
             throw BadOptionValueException(error_str);
         }
 
-        if (!thumbnails_list.empty() && size_t(std::count(thumbnails_str.begin(), thumbnails_str.end(), '/')) < thumbnails_list.size()) {
+        if (!thumbnails_list.empty()) {
             const auto& extentions = ConfigOptionEnum<GCodeThumbnailsFormat>::get_enum_names();
             thumbnails_str.clear();
             for (const auto& [ext, size] : thumbnails_list)
@@ -9842,6 +9842,16 @@ void PrintConfigDef::handle_legacy_composite(DynamicPrintConfig &config)
 
             config.set_key_value("thumbnails", new ConfigOptionString(thumbnails_str));
         }
+    }
+
+    if (!config.has("nonplanar_mode") && config.has("layer_height") && config.has("nozzle_diameter")) {
+        auto opt = [&config](const char *key) { return config.option(key); };
+        if ((opt("nonplanar_top_shells") && opt("nonplanar_top_shells")->getInt() != 0) ||
+            (opt("nonplanar_bottom_shells") && opt("nonplanar_bottom_shells")->getInt() != 0) ||
+            (opt("nonplanar_overhangs") && opt("nonplanar_overhangs")->getBool()) ||
+            (opt("nonplanar_bridges") && opt("nonplanar_bridges")->getBool()) ||
+            (opt("nonplanar_full_conformal_max_thickness") && opt("nonplanar_full_conformal_max_thickness")->getFloat() != 0.))
+            config.set_key_value("nonplanar_mode", new ConfigOptionEnum<NonplanarMode>(NonplanarMode::Manual));
     }
 
     if (config.has("wiping_volumes_matrix") && !config.has("wiping_volumes_use_custom_matrix")) {
