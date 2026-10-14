@@ -62,6 +62,7 @@ struct ConformalResult
     std::vector<ExPolygons>       bridged;
     std::vector<ExPolygons>       self_supported;
     FlowModStats                  flow_mod;
+    bool                          layer_changes_filament = false;
     std::shared_ptr<ObjectMesh>   mesh;
 };
 

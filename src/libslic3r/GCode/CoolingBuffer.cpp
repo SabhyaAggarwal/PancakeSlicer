@@ -952,8 +952,11 @@ std::string CoolingBuffer::apply_layer_cooldown(
                 fan_speed_change_requests[CoolingLine::TYPE_FORCE_RESUME_FAN] = true;
                 need_set_fan = true;
             }
-            if (m_additional_fan_speed != -1 && m_config.auxiliary_fan.value)
+            if (m_additional_fan_speed != -1 && m_config.auxiliary_fan.value) {
                 new_gcode += GCodeWriter::set_additional_fan(m_additional_fan_speed);
+                np_aux_current = -1;
+                np_set_aux(np_level);
+            }
         }
         else if (line->type & CoolingLine::TYPE_BELT_BAND_START) {
             m_belt_band_active = true;

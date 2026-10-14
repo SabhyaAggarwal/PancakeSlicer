@@ -719,19 +719,24 @@ void PrintObject::nonplanar_shells()
 {
     if (!this->set_started(posNonplanar))
         return;
-    bool enabled = !m_config.nonplanar_atom_toolpath.value.empty();
+    const bool imported = !m_config.nonplanar_atom_toolpath.value.empty();
+    bool       enabled  = false;
     for (size_t region_id = 0; region_id < this->num_printing_regions(); ++region_id)
         enabled |= Nonplanar::top_shells_enabled(this->printing_region(region_id).config(), this->config()) ||
                    Nonplanar::bottom_shells_enabled(this->printing_region(region_id).config(), this->config()) ||
                    Nonplanar::full_conformal_thickness(this->printing_region(region_id).config(), *this) > 0. ||
                    Nonplanar::overhangs_enabled(this->printing_region(region_id).config(), this->config()) ||
                    Nonplanar::bridges_enabled(this->printing_region(region_id).config(), this->config());
+    enabled &= !imported;
     if (m_field && m_config.nonplanar_atom_toolpath.value.empty()) {
         m_print->set_status(40, L("Slicing curved layers of the orientation field"));
-        for (Layer *layer : m_layers)
+        for (Layer *layer : m_layers) {
+            layer->conformal_patches_before.clear();
             layer->conformal_patches_after.clear();
+        }
         m_conformal = std::make_unique<Nonplanar::ConformalResult>();
         Nonplanar::build_field_patch(*this, m_field, *m_conformal);
+        m_conformal->layer_changes_filament = Nonplanar::layer_changes_filament(*this);
         m_print->throw_if_canceled();
         this->set_done(posNonplanar);
         return;
@@ -744,6 +749,7 @@ void PrintObject::nonplanar_shells()
         }
         m_conformal = std::make_unique<Nonplanar::ConformalResult>();
         Nonplanar::build_multiplanar_chunks(*this, *m_multiplanar, *m_conformal);
+        m_conformal->layer_changes_filament = Nonplanar::layer_changes_filament(*this);
         m_print->throw_if_canceled();
         this->set_done(posNonplanar);
         return;
@@ -774,11 +780,6 @@ void PrintObject::nonplanar_shells()
         Nonplanar::build_conformal_volume(*this, *m_conformal);
         Nonplanar::group_hosts_by_filament(*this, *m_conformal);
         m_conformal->mesh.reset();
-        if (!m_config.nonplanar_atom_toolpath.value.empty()) {
-            m_print->set_status(40, L("Importing the Atomizer toolpath"));
-            for (const std::string &warning : Nonplanar::apply_atom_toolpath(*this, *m_conformal))
-                this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, warning);
-        }
     } else if (m_conformal) {
         for (Layer *layer : m_layers) {
             layer->conformal_patches_before.clear();
@@ -787,12 +788,14 @@ void PrintObject::nonplanar_shells()
         }
         m_conformal.reset();
     }
-    if (!m_config.nonplanar_atom_toolpath.value.empty()) {
+    if (imported) {
         m_conformal = std::make_unique<Nonplanar::ConformalResult>();
         m_print->set_status(40, L("Importing the Atomizer toolpath"));
         for (const std::string &warning : Nonplanar::apply_atom_toolpath(*this, *m_conformal))
             this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, warning);
     }
+    if (m_conformal)
+        m_conformal->layer_changes_filament = Nonplanar::layer_changes_filament(*this);
     m_print->throw_if_canceled();
     this->set_done(posNonplanar);
 }

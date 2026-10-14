@@ -538,7 +538,7 @@ struct OrientationFieldBuilder
             over[f] = facet_area[f] > 0. && !facet_bed[f] && facet_normal[f].z() < -sin_threshold;
         const std::vector<Vec3i32> nb = its_face_neighbors(mesh);
         std::vector<int>           cluster(nf, -1);
-        const double               sin_target = std::sin(params.overhang_threshold + Geometry::deg2rad(5.));
+        const double               sin_target = std::sin(0.5 * M_PI - params.overhang_threshold - Geometry::deg2rad(5.));
         int                        next = 0;
         for (size_t seed = 0; seed < nf; ++seed) {
             if (!over[seed] || cluster[seed] >= 0)
@@ -708,7 +708,7 @@ struct OrientationFieldBuilder
             });
         };
         auto dot = [&](const std::vector<double> &a, const std::vector<double> &bb) {
-            return tbb::parallel_reduce(
+            return tbb::parallel_deterministic_reduce(
                 tbb::blocked_range<size_t>(0, n, 8192), 0.,
                 [&](const tbb::blocked_range<size_t> &range, double s) {
                     for (size_t i = range.begin(); i < range.end(); ++i)
@@ -938,7 +938,7 @@ struct OrientationFieldBuilder
 
     double correct_overhangs()
     {
-        const double sin_target = std::sin(params.overhang_threshold + Geometry::deg2rad(5.));
+        const double sin_target = std::sin(0.5 * M_PI - params.overhang_threshold - Geometry::deg2rad(5.));
         double       area       = 0.;
         for (size_t s = 0; s < samples.size(); ++s) {
             const FacetSample &fs = samples[s];
@@ -1075,6 +1075,8 @@ struct OrientationFieldBuilder
     {
         LayerFieldParams lp;
         lp.layer_height      = params.layer_height;
+        lp.min_layer_height *= params.layer_height / 0.2;
+        lp.max_layer_height *= params.layer_height / 0.2;
         lp.flat_base_height  = params.first_layer_height + F.m_pitch;
         lp.overhang_angle    = 90. - Geometry::rad2deg(params.overhang_threshold);
         lp.head              = &params.head;
@@ -1151,7 +1153,7 @@ struct OrientationFieldBuilder
 
     void run()
     {
-        sin_threshold = std::sin(params.overhang_threshold);
+        sin_threshold = std::sin(0.5 * M_PI - params.overhang_threshold);
         setup_grid();
         voxelize();
         check_cancel();

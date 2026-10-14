@@ -168,8 +168,8 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & , co
         "gcode_remap_x",
         "gcode_remap_y",
         "gcode_remap_z",
-        "rotary_axis_continuous", "rotary_max_speed", "rotary_pivot", "rotary_tool_length",
-        "rotary_firmware_rtcp", "rotary_inverse_time_feed", "nonplanar_collision_check", "nonplanar_repair_iterations", "nonplanar_road_cooling", "nonplanar_segment_rate", "rotary_axis_reversed", "rotary_axis_home", "rotary_linear_moves_table", "rotary_table_height", "rotary_tool_mount",
+        "rotary_max_speed",
+        "rotary_firmware_rtcp", "rotary_inverse_time_feed", "nonplanar_collision_check", "nonplanar_repair_iterations", "nonplanar_road_cooling", "nonplanar_segment_rate", "rotary_linear_moves_table",
         "belt_frame_tilt_decouple", "belt_frame_tilt_angle",
         "belt_printer_infinite_y",
         "additional_cooling_fan_speed",
@@ -489,7 +489,14 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & , co
             || opt_key == "nonplanar_head_snapshot"
             || opt_key == "nonplanar_kinematics"
             || opt_key == "rotary_axis_limits"
-            || opt_key == "nonplanar_max_tilt") {
+            || opt_key == "nonplanar_max_tilt"
+            || opt_key == "rotary_axis_home"
+            || opt_key == "rotary_axis_reversed"
+            || opt_key == "rotary_axis_continuous"
+            || opt_key == "rotary_pivot"
+            || opt_key == "rotary_tool_length"
+            || opt_key == "rotary_table_height"
+            || opt_key == "rotary_tool_mount") {
             osteps.emplace_back(posSlice);
         }
         else if (opt_key == "z_hop_types") {
@@ -508,6 +515,12 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & , co
     for (PrintObjectStep ostep : osteps)
         for (PrintObject *object : m_objects)
             invalidated |= object->invalidate_step(ostep);
+    if (std::find(opt_keys.begin(), opt_keys.end(), "filament_type") != opt_keys.end())
+        for (PrintObject *object : m_objects)
+            if (!object->conformal().patches.empty()) {
+                invalidated |= object->invalidate_step(posPerimeters);
+                invalidated |= object->invalidate_step(posSupportMaterial);
+            }
 
     return invalidated;
 }

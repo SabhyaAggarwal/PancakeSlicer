@@ -115,7 +115,7 @@ std::vector<ExtendedPoint<L::Dim>> estimate_points_properties(const POINTS&     
 
         if (ADD_INTERSECTIONS &&
             ((points.back().distance > boundary_offset + EPSILON) != (next_point.distance > boundary_offset + EPSILON))) {
-            const ExtendedPoint<L::Dim>& prev_point    = points.back();
+            const ExtendedPoint<L::Dim>  prev_point    = points.back();
             auto                         intersections = unscaled_prev_layer.template intersections_with_line<true>(
                 L{prev_point.position.template cast<AABBScalar>(), next_point.position.template cast<AABBScalar>()});
             for (const auto &intersection : intersections) {

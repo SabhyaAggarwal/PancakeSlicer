@@ -7,6 +7,7 @@
 #include "Point.hpp"
 #include "Polygon.hpp"
 #include "Print.hpp"
+#include "Nonplanar/ConformalShells.hpp"
 #include "Nonplanar/PatchTools.hpp"
 #include "BeltTransform.hpp"
 #include "FilamentMixer.hpp"
@@ -1818,6 +1819,13 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
         object->update_slicing_parameters();
         m_support_used |= object->config().enable_support;
     }
+    for (PrintObject *object : m_objects)
+        if (const Nonplanar::ConformalResult &conformal = object->conformal();
+            object->is_step_done_unguarded(posNonplanar) && !conformal.patches.empty() &&
+            conformal.layer_changes_filament != Nonplanar::layer_changes_filament(*object)) {
+            update_apply_status(object->invalidate_step(posPerimeters));
+            update_apply_status(object->invalidate_step(posSupportMaterial));
+        }
 
 #ifdef _DEBUG
     check_model_ids_equal(m_model, model);

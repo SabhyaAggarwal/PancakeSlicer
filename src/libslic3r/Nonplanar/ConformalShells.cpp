@@ -1393,7 +1393,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
     if (settings.banded && repair != nullptr)
         for (const RepairHints::OrderBand &band : repair->order_bands)
             band_max_patch_height = std::min(band_max_patch_height > 0. ? band_max_patch_height : Inf, band.height);
-    if (const double rotary = rotary_band_reach(object, head, h_c); settings.banded && rotary > 0.)
+    if (const double rotary = settings.banded ? rotary_band_reach(object, head, h_c) : 0.; rotary > 0.)
         band_max_patch_height = band_max_patch_height > 0. ? std::min(band_max_patch_height, rotary) : rotary;
     double band_pitch = 0., band_tolerance = 0.;
     if (settings.banded)
@@ -1418,7 +1418,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
             const double overlap = 0.01 * region.config().top_bottom_infill_wall_overlap.value * line_width;
             const ExPolygons area = intersection_ex(offset_ex(shell_areas[idx], float(scale_(overlap))), patch.footprint);
             std::vector<ShellFill> fills = plan_shell_fills(patch, region.config(), line_width);
-            const bool helix = region.config().nonplanar_spiral_top.value && helix_worthwhile(patch.surface, area);
+            const bool helix = spiral_top_enabled(region.config(), object.config()) && helix_worthwhile(patch.surface, area);
             if (!fills.empty())
                 fills.back().helix = fills.back().spiral && helix;
             std::vector<ShellFill> banded_fills = fills;

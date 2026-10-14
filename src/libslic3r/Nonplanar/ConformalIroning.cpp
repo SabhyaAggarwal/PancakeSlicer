@@ -88,7 +88,7 @@ ExtrusionEntityCollection make_conformal_ironing(const PrintObject &object, cons
     if (cfg.ironing_pattern.value == ipConcentric) {
         ShellFill spiral;
         spiral.spiral = true;
-        spiral.helix  = cfg.nonplanar_spiral_top.value && helix_worthwhile(patch.surface, area);
+        spiral.helix  = spiral_top_enabled(cfg, object.config()) && helix_worthwhile(patch.surface, area);
         linked        = shell_polylines(area, spiral, ipRectilinear, spacing, false, flow, host_z, seam, MaxGlide, nullptr, &seam_line);
     } else {
         double angle     = 0.;

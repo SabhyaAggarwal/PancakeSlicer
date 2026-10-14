@@ -283,13 +283,16 @@ ExtrusionEntityCollection atom_conformal_paths(const AtomToolpath &toolpath, con
     std::vector<float> heights, widths;
     std::vector<Vec3f> axes, entry_axes;
     double             width = 0.;
-    auto add_point = [&](const AtomPoint &p, double height) {
-        const Vec3d   tip  = placement.rotation * p.tip + placement.offset;
-        const Vec3d   axis = (placement.rotation * p.axis).normalized();
+    auto scaled_point = [&](const Vec3d &tip) {
         const Vec3d scaled(tip.x() / SCALING_FACTOR, tip.y() / SCALING_FACTOR, (tip.z() - host_z) / SCALING_FACTOR);
         if (!scaled.allFinite() || scaled.cwiseAbs().maxCoeff() >= 0.5 * double(std::numeric_limits<coord_t>::max()))
             fail("the placed toolpath exceeds the coordinate range; check its coordinates and units");
-        const Point3  q(scale_(tip.x()), scale_(tip.y()), scale_(tip.z() - host_z));
+        return Point3(scale_(tip.x()), scale_(tip.y()), scale_(tip.z() - host_z));
+    };
+    auto add_point = [&](const AtomPoint &p, double height) {
+        const Vec3d   tip  = placement.rotation * p.tip + placement.offset;
+        const Vec3d   axis = (placement.rotation * p.axis).normalized();
+        const Point3  q    = scaled_point(tip);
         if (! poly.empty() && poly.back() == q && (axes.empty() || (axes.back().cast<double>() - axis).norm() < 1e-9)) {
             heights.back() = float(height);
             widths.back() = float(p.width > 0. ? p.width : width);
@@ -341,7 +344,7 @@ ExtrusionEntityCollection atom_conformal_paths(const AtomToolpath &toolpath, con
                 const Vec3d axis = (placement.rotation * p.axis).normalized();
                 if (!keep_tool_axis && tilt(axis) > UprightTolerance)
                     fail("a travel tilts the tool, but this printer has no rotary axes");
-                entry.emplace_back(scale_(tip.x()), scale_(tip.y()), scale_(tip.z() - host_z));
+                entry.push_back(scaled_point(tip));
                 if (keep_tool_axis)
                     entry_axes.push_back(axis.cast<float>());
             }

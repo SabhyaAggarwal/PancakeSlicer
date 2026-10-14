@@ -92,7 +92,8 @@ void filter_levels(std::vector<int> &lv, int nx, int ny, int r, bool take_min)
 
 double outer_bead_width(double height, double nozzle, double max_width)
 {
-    return std::clamp(2.5 * height, 0.5 * nozzle, std::max(max_width, height));
+    const double hi = std::max(max_width, height);
+    return std::clamp(2.5 * height, std::min(0.5 * nozzle, hi), hi);
 }
 
 double outer_residual(double width, double slope, double curvature)

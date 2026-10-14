@@ -52,6 +52,16 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
                 return { L("Multiplanar chunks cannot be combined with a belt printer."), object, "nonplanar_mode" };
             if (std::string why; object->config().nonplanar_mode.value == NonplanarMode::Field && !field_motion_supported(config, &why))
                 return { why, object, "nonplanar_mode" };
+            const ModelObject &model = *object->model_object();
+            if (object->num_printing_regions() > 1 || model.is_mm_painted() ||
+                std::any_of(model.volumes.begin(), model.volumes.end(), [](const ModelVolume *v) {
+                    return v->is_negative_volume() || v->is_modifier();
+                }))
+                return { L("Multiplanar chunks and orientation fields print one part with one set of settings. Remove negative "
+                           "volumes, modifiers, painting and parts with their own settings, or use another non-planar mode."),
+                         object, "nonplanar_mode" };
+            if (object->config().nonplanar_mode.value == NonplanarMode::Field && object->config().raft_layers.value > 0)
+                return { L("An orientation field cannot be printed on a raft."), object, "raft_layers" };
         }
         for (size_t region_id = 0; region_id < object->num_printing_regions(); ++region_id) {
             const PrintRegionConfig &region = object->printing_region(region_id).config();

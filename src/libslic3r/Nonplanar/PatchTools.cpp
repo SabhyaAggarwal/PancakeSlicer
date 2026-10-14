@@ -1377,7 +1377,11 @@ double rotary_band_reach(const PrintObject &object, const HeadEnvelope &head, do
         for (const FlowRole role : { frExternalPerimeter, frPerimeter, frInfill, frSolidInfill, frTopSolidInfill })
             width = std::max(width, double(object.printing_region(i).flow(object, role, layer_height).width()));
     const double tilt = std::clamp(Geometry::deg2rad(config.nonplanar_max_tilt.value), 0., 0.5 * M_PI);
-    return std::max(MinBandReach, head_band_height(head) - 0.5 * width * std::sin(tilt));
+    const double reach = head_band_height(head) - 0.5 * width * std::sin(tilt);
+    if (!(reach >= MinBandReach))
+        throw RuntimeError("Head clearance cannot support non-planar bands with tilted roads. Lower the maximum tilt, "
+                           "or check the head model and margin.");
+    return reach;
 }
 
 namespace {
@@ -1791,6 +1795,9 @@ double multi_material_patch_height(const PrintObject &object, const HeadEnvelope
     for (const Layer *layer : object.layers())
         layer_height = std::max(layer_height, layer->height);
     const double reach = head_band_height(head) - layer_height;
+    if (!(reach >= MinBandReach))
+        throw RuntimeError("Head clearance cannot support non-planar bands with several filaments: the head must clear "
+                           "a layer printed after each band. Check the head model and margin.");
     return max_patch_height > 0. ? std::min(max_patch_height, reach) : reach;
 }
 

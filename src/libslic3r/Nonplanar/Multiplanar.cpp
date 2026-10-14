@@ -246,7 +246,7 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
     MultiplanarPlan plan;
     const Facets    f          = facets_of(mesh);
     const size_t    n_facets   = f.area.size();
-    const double    sin_thresh = std::sin(params.overhang_threshold);
+    const double    sin_thresh = std::sin(0.5 * M_PI - params.overhang_threshold);
     const double    h          = params.layer_height;
     const bool      rotary     = params.kinematics != nullptr && params.kinematics->rotary_count() > 0;
 
@@ -685,6 +685,7 @@ DynamicPrintConfig chunk_print_config(const PrintObject &object)
     set("nonplanar_bottom_shells", "0");
     set("nonplanar_full_conformal_max_thickness", "0");
     set("nonplanar_overhangs", "0");
+    set("nonplanar_bridges", "0");
     set("nonplanar_atom_toolpath", "");
     set("nonplanar_ironing", "0");
     if (conformal_ironing_enabled(object.printing_region(0).config()) &&

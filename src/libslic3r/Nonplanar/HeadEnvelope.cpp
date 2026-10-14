@@ -760,12 +760,12 @@ HeadEnvelope resolve_head_envelope(const PrintConfig &config, std::string *warni
     if (warning != nullptr)
         warning->clear();
     const std::string &id = config.nonplanar_head.value;
-    if (!config.nonplanar_head_snapshot.value.empty()) {
-        const auto snapshot = nlohmann::json::parse(config.nonplanar_head_snapshot.value);
-        if (snapshot.at("reference").get<std::string>() == id)
-            return load_head_envelope(snapshot.at("envelope").dump());
-    }
     try {
+        if (!config.nonplanar_head_snapshot.value.empty()) {
+            const auto snapshot = nlohmann::json::parse(config.nonplanar_head_snapshot.value);
+            if (snapshot.at("reference").get<std::string>() == id)
+                return load_head_envelope(snapshot.at("envelope").dump());
+        }
         if (!id.empty() && boost::filesystem::is_regular_file(boost::filesystem::path(id))) {
             boost::nowide::ifstream in(id, std::ios::binary);
             std::stringstream text;

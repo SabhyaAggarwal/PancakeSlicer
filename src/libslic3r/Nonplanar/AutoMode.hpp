@@ -28,6 +28,7 @@ bool bridges_enabled(const PrintRegionConfig &config, const PrintObjectConfig &o
 double infill_depth(const PrintRegionConfig &config, const PrintObjectConfig &object);
 NonplanarFallback effective_fallback(const PrintRegionConfig &config, const PrintObjectConfig &object);
 bool zaa_fallback(const PrintRegionConfig &config, const PrintObjectConfig &object);
+bool spiral_top_enabled(const PrintRegionConfig &config, const PrintObjectConfig &object);
 NonplanarCollisionCheck effective_collision_check(const Print &print);
 
 bool auto_multiplanar_candidate(double steep_top_share, double thin_top_share);

@@ -7680,7 +7680,6 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
             slice(part->polyline.points);
             slice(part->bead_height);
             slice(part->tool_axis);
-            slice(part->bead_width);
             m_conformal_points.assign(points.begin() + run.begin, points.begin() + run.end + 1);
             if (run.reversed) {
                 part->reverse();

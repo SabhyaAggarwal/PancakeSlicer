@@ -145,6 +145,11 @@ bool zaa_fallback(const PrintRegionConfig &config, const PrintObjectConfig &obje
     return top_shells_enabled(config, object) && effective_fallback(config, object) == NonplanarFallback::ZAA;
 }
 
+bool spiral_top_enabled(const PrintRegionConfig &config, const PrintObjectConfig &object)
+{
+    return !is_auto(object) && config.nonplanar_spiral_top.value;
+}
+
 NonplanarCollisionCheck effective_collision_check(const Print &print)
 {
     const NonplanarCollisionCheck set = print.config().nonplanar_collision_check.value;
