@@ -593,18 +593,24 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
             erase_conformal(patch.ironing, host_z, 0.25 * pitch, in_slab);
         }
     });
-    if (!result.self_supported.empty())
-        for (const Slab &slab : slabs) {
-            float lo = std::numeric_limits<float>::infinity(), hi = -lo;
-            for (float b : slab.bottom.data())
-                if (!std::isnan(b))
-                    lo = std::min(lo, b), hi = std::max(hi, b);
-            const ExPolygons grown = offset_ex(slab.footprint, float(scale_(pitch)));
-            for (size_t l = 0; l < layers.size() && l < result.self_supported.size(); ++l)
-                if (!result.self_supported[l].empty() && layers[l]->print_z >= lo - layers[l]->height &&
-                    layers[l]->print_z - layers[l]->height <= hi + layers[l]->height)
-                    result.self_supported[l] = diff_ex(result.self_supported[l], grown);
-        }
+if (!result.self_supported.empty())
+        for (const Slab &slab : slabs)
+            tbb::parallel_for(tbb::blocked_range<size_t>(0, std::min(layers.size(), result.self_supported.size())),
+                              [&](const tbb::blocked_range<size_t> &range) {
+                for (size_t l = range.begin(); l < range.end(); ++l) {
+                    if (result.self_supported[l].empty())
+                        continue;
+                    const double lo = layers[l]->print_z - 2. * layers[l]->height, hi = layers[l]->print_z + layers[l]->height;
+                    Mask         on(slab.bottom.data().size(), 0);
+                    bool         any = false;
+                    for (size_t n = 0; n < on.size(); ++n)
+                        if (const float b = slab.bottom.data()[n]; b >= lo && b <= hi)
+                            on[n] = 1, any = true;
+                    if (any)
+                        result.self_supported[l] = diff_ex(result.self_supported[l],
+                                                           offset_ex(mask_to_expolygons(on, slab.bottom), float(scale_(2. * pitch))));
+                }
+            });
 
     for (ConformalResult &bands : banded) {
         const int offset = int(result.patches.size());
