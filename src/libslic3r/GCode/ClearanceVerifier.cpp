@@ -217,7 +217,9 @@ public:
             const auto box = prepared_box(raw, head);
             if (box.min.z() > box.max.z()) continue;
             const size_t id = m_boxes.size();
-            m_boxes.push_back({ box.min, box.max, raw.name, box.nozzle, box.infinite_x, box.infinite_y });
+            const Vec2d radius = raw.min.head<2>().cwiseAbs().cwiseMax(raw.max.head<2>().cwiseAbs());
+            const bool  allowed = box.nozzle && !box.infinite_x && !box.infinite_y && radius.norm() <= head.tip_allowance.radius;
+            m_boxes.push_back({ box.min, box.max, raw.name, box.nozzle, box.infinite_x, box.infinite_y, allowed });
             const bool finite_nozzle = box.nozzle && !box.infinite_x && !box.infinite_y;
             Group &group = finite_nozzle ? nozzle : m_groups.emplace_back();
             group.infinite = box.infinite_x || box.infinite_y;
@@ -225,6 +227,7 @@ public:
             group.add(id, box.min, box.max, finite_nozzle);
         }
         if (!nozzle.bands.empty()) m_groups.insert(m_groups.begin(), std::move(nozzle));
+        m_allowance = head.tip_allowance;
     }
     void deposit(const ToolPose &a, const ToolPose &b, double width, double height, size_t run)
     {
@@ -281,6 +284,14 @@ public:
         if (laid.beads == 0) return Inf;
         scratch.seen.resize(m_chunks.size(), 0);
         const Matrix3d to_work = frame.transpose(), abs_frame = frame.cwiseAbs();
+        const bool tilted = to_work.col(2).z() < 1. - 1e-9 && m_allowance.radius > 0. && m_allowance.height > 0.;
+        auto in_allowance = [&](const Road &bead) {
+            for (const Vec3d &v : bead.corners)
+                if (v.z() < pose.tip.z() || v.z() > pose.tip.z() + m_allowance.height ||
+                    (v.head<2>() - pose.tip.head<2>()).squaredNorm() > m_allowance.radius * m_allowance.radius)
+                    return false;
+            return true;
+        };
         const Vec3d slack = (abs_frame.transpose() * abs_frame - Matrix3d::Identity()) * laid.half;
         auto bound_head = [&](const Vec3d &bl, const Vec3d &bh, const Box *axes, double limit) {
             double g = Inf;
@@ -323,12 +334,14 @@ public:
                         const Vec3d q = frame * (v - pose.tip);
                         bl = bl.cwiseMin(q); bh = bh.cwiseMax(q);
                     }
+                    const bool allowed_bead = tilted && in_allowance(bead);
                     for (size_t b = 0; b < group.bands.size(); ++b) {
                         const auto &[band_lo, band_hi] = scratch.bands[b];
                         if (gap(band_lo, band_hi, bl, bh, axes) > best) continue;
                         for (size_t index : group.bands[b].boxes) {
                             const Box &box = m_boxes[index];
                             if (box.nozzle && extruding && bead.run == run) continue;
+                            if (box.allowed && allowed_bead) continue;
                             double g = gap(box.lo - grow, box.hi + grow, bl, bh, &box);
                             if ((g < best || (g == best && index < best_box)) && !box.infinite_x && !box.infinite_y) {
                                 const Axes &road = m_axes[id];
@@ -383,7 +396,7 @@ public:
 private:
     static constexpr double FineCell = 1., CoarseCell = 4., ChunkSize = 1.;
     static constexpr uint32_t ChunkBeads = 16, BlockChunks = 16;
-    struct Box { Vec3d lo, hi; std::string name; bool nozzle, infinite_x, infinite_y; };
+    struct Box { Vec3d lo, hi; std::string name; bool nozzle, infinite_x, infinite_y, allowed; };
     struct Band { Vec3d lo { Vec3d::Constant(Inf) }, hi { Vec3d::Constant(-Inf) }; std::vector<size_t> boxes; };
     struct Group
     {
@@ -434,6 +447,7 @@ private:
     }
     std::vector<Box> m_boxes;
     std::vector<Group> m_groups;
+    Nonplanar::TipAllowance m_allowance;
     struct Road { Corners corners; Vec3d lo, hi; size_t run; };
     std::vector<Road> m_beads;
     std::vector<Chunk> m_chunks;
