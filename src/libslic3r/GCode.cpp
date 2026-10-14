@@ -10,6 +10,7 @@
 #include "Nonplanar/HeadEnvelope.hpp"
 #include "Nonplanar/AutoMode.hpp"
 #include "Nonplanar/HeightField.hpp"
+#include "Nonplanar/MaterialRules.hpp"
 #include "Nonplanar/ConformalBottom.hpp"
 #include "Nonplanar/ConformalShells.hpp"
 #include "Nonplanar/OrientationField.hpp"
@@ -7804,9 +7805,10 @@ bool GCode::conformal_short_hop(const ExtrusionPathConformal &path, const Extrus
     const Vec2d  xy   = this->point_to_gcode(next->first_point());
     const Vec3d &here = m_writer.get_position();
     to                = Vec3d(xy.x(), xy.y(), m_nominal_z + unscale<double>(next->polyline.points.front().z()));
-    constexpr double ShortGlide = 5.;
-    const double     minimum    = m_config.retraction_minimum_travel.get_at(m_writer.filament()->id());
-    if ((to - here).head<2>().norm() >= (in_band ? std::max(minimum, ShortGlide) : std::min(minimum, 1.)))
+    const bool   flexible    = road_material(m_config.filament_type.get_at(m_writer.filament()->id())) == RoadMaterial::Flexible;
+    const double short_glide = flexible ? 10. : 5.;
+    const double minimum     = m_config.retraction_minimum_travel.get_at(m_writer.filament()->id());
+    if ((to - here).head<2>().norm() >= (in_band ? std::max(minimum, short_glide) : std::min(minimum, 1.)))
         return false;
     const HeadEnvelope &head = this->nonplanar_head();
     const HeadEnvelope  land = nozzle_land(head);
@@ -8159,7 +8161,10 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
 
     if (road_cooling && m_enable_cooling_markers && path.role() != erIroning)
         params.segment_tags = [this, &path](const std::vector<ConformalPoint> &points, const std::vector<double> &speeds) {
-            std::vector<float> demand = road_fan_demand(points, speeds, path.width, m_np_support, m_conformal_gradient, RoadFanParams());
+            RoadFanParams fan;
+            if (road_material(m_config.filament_type.get_at(m_writer.filament()->id())) == RoadMaterial::Enclosure)
+                fan.downhill_weight = 0.;
+            std::vector<float> demand = road_fan_demand(points, speeds, path.width, m_np_support, m_conformal_gradient, fan);
             if (path.role() == erInternalInfill)
                 std::fill(demand.begin(), demand.end(), 0.f);
             return road_fan_tags(demand, m_np_fan_level);
@@ -8405,7 +8410,9 @@ std::string GCode::wipe_conformal_path()
         run += l;
         area += l * 0.5 * (a.bead_height + b.bead_height);
     }
-    const double scale  = run > EPSILON ? Nonplanar::pressure_retract_scale(area / run, m_config.layer_height.value) : 1.;
+    double scale = run > EPSILON ? Nonplanar::pressure_retract_scale(area / run, m_config.layer_height.value) : 1.;
+    if (Nonplanar::road_material(m_config.filament_type.get_at(filament.id())) == Nonplanar::RoadMaterial::Flexible)
+        scale = std::min(scale, 1.);
     const double length = m_config.use_firmware_retraction ? 0. : scale * filament.retraction_length();
     m_conformal_retract = length;
     const double    before   = wipe ? length * filament.retract_before_wipe() : 0.;

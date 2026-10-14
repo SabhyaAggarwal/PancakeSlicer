@@ -4,6 +4,7 @@
 #include "ConformalBottom.hpp"
 #include "ConformalShells.hpp"
 #include "HeadEnvelope.hpp"
+#include "MaterialRules.hpp"
 #include "PatchTools.hpp"
 #include "Repair.hpp"
 #include "Seams.hpp"
@@ -68,6 +69,8 @@ ExtrusionEntityCollection make_conformal_ironing(const PrintObject &object, cons
     const PrintRegionConfig &cfg          = region.config();
     const int    filament = patch_filament_id(object, patch);
     const size_t idx      = size_t(std::max(0, filament - 1));
+    if (road_material(print_config.filament_type.get_at(idx)) == RoadMaterial::Flexible)
+        return out;
     const double nozzle   = nozzle_diameter_for_filament(print_config, filament, object.print()->is_BBL_printer());
     const double spacing  = std::max(IRONING_SPACING_MIN, !cfg.filament_ironing_spacing.is_nil(idx) ? cfg.filament_ironing_spacing.get_at(idx) :
                                                                                                     cfg.ironing_spacing.value);

@@ -129,6 +129,8 @@ set(lisbslic3r_sources
     Nonplanar/FlowMod.cpp
     Nonplanar/FlowMod.hpp
     Nonplanar/LayerField.hpp
+    Nonplanar/MaterialRules.cpp
+    Nonplanar/MaterialRules.hpp
     Nonplanar/OrientationField.cpp
     Nonplanar/OrientationField.hpp
     GCode/ToolKinematics.cpp
