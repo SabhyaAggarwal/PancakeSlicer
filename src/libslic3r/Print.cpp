@@ -76,6 +76,8 @@
 #include "BeltTransform.hpp"
 #include "GCode/WipeTower.hpp"
 #include "GCode/ClearanceRepair.hpp"
+#include "GCode/ClearanceVerifier.hpp"
+#include "Nonplanar/HeadEnvelope.hpp"
 #include "GCode/WipeTower2.hpp"
 #include "GCode/WipeTowerEstimate.hpp"
 #include "Utils.hpp"
@@ -701,6 +703,114 @@ std::vector<size_t> Print::layers_sorted_for_object(float start, float end, std:
     return idx_of_object_sorted;
 };
 
+namespace {
+const std::string LidConflict = "extruder_clearance_height_to_lid";
+
+struct SequentialFootprint
+{
+    Polygon     hull;
+    double      top;
+    double      pad;
+    std::string name;
+};
+
+std::string sequential_head_conflict(const MaterialColumns::PreparedHead &prepared, const Nonplanar::HeadEnvelope &head,
+                                     const SequentialFootprint &a, const SequentialFootprint &b, double z0, double lid)
+{
+    if (a.top > lid)
+        return LidConflict;
+    const Polygons b_area = offset(b.hull, float(scale_(b.pad)));
+    const BoundingBox a_box = a.hull.bounding_box();
+    for (const MaterialColumns::PreparedBox &box : prepared.boxes) {
+        if (a.top <= z0 + box.min.z())
+            break;
+        bool hit = box.infinite_x && box.infinite_y;
+        if (!hit && (box.infinite_x || box.infinite_y)) {
+            const int axis = box.infinite_x ? 1 : 0;
+            const BoundingBox b_box = get_extents(b_area);
+            hit = b_box.min[axis] + scale_(box.min[axis]) < a_box.max[axis] && a_box.min[axis] < b_box.max[axis] + scale_(box.max[axis]);
+        } else if (!hit) {
+            Points swept;
+            for (const Polygon &poly : b_area)
+                for (const Point &p : poly.points)
+                    for (double x : { box.min.x(), box.max.x() })
+                        for (double y : { box.min.y(), box.max.y() })
+                            swept.emplace_back(p + Point(scale_(x), scale_(y)));
+            hit = !intersection(Geometry::convex_hull(swept), a.hull).empty();
+        }
+        if (hit)
+            return head.boxes[box.index].name;
+    }
+    return {};
+}
+}
+static std::string sequential_head_order(const Print &print, const std::vector<SequentialFootprint> &objects,
+                                         const std::optional<Polygon> &tower, std::vector<size_t> &order, std::pair<int, int> &pair)
+{
+    const Nonplanar::HeadEnvelope        head     = Nonplanar::resolve_head_envelope(print.config());
+    const MaterialColumns::PreparedHead prepared = MaterialColumns::prepare(head);
+    const double z0  = print.config().initial_layer_print_height.value;
+    const double lid = print.config().extruder_clearance_height_to_lid.value;
+    const size_t n   = objects.size();
+    std::vector<std::vector<std::string>> conflict(n, std::vector<std::string>(n));
+    for (size_t i = 0; i < n; ++i)
+        for (size_t j = 0; j < n; ++j)
+            if (i != j)
+                conflict[i][j] = sequential_head_conflict(prepared, head, objects[i], objects[j], z0, lid);
+    for (size_t i = 0; i < n; ++i)
+        for (size_t j = i + 1; j < n; ++j)
+            if (!conflict[i][j].empty() && !conflict[j][i].empty()) {
+                pair = { int(i), int(j) };
+                if (objects[i].top > lid && objects[j].top > lid)
+                    return (boost::format(L("%1% and %2% are both taller than the extruder clearance height to the lid (%3% mm): only one of them can print last.")) %
+                            objects[i].name % objects[j].name % lid).str();
+                const std::string &box = conflict[i][j] == LidConflict ? conflict[j][i] : conflict[i][j];
+                return (boost::format(L("%1% and %2% cannot be printed one after the other in either order: the head's %3% would hit the finished one.")) %
+                        objects[i].name % objects[j].name % box).str();
+            }
+    std::vector<bool> done(n, false);
+    order.clear();
+    while (order.size() < n) {
+        size_t next = n;
+        for (size_t j = 0; j < n && next == n; ++j) {
+            if (done[j])
+                continue;
+            bool free = true;
+            for (size_t i = 0; i < n && free; ++i)
+                free = done[i] || i == j || conflict[j][i].empty();
+            if (free)
+                next = j;
+        }
+        if (next == n) {
+            size_t a = 0;
+            while (done[a]) ++a;
+            size_t b = 0;
+            while (done[b] || b == a || conflict[a][b].empty()) ++b;
+            pair = { int(a), int(b) };
+            return (boost::format(L("No print order keeps the head clear of every finished object: %1% has to print before %2%, which cannot print before it.")) %
+                    objects[b].name % objects[a].name).str();
+        }
+        done[next] = true;
+        order.push_back(next);
+    }
+    if (tower) {
+        const SequentialFootprint tower_object { *tower, 0., 0., L("Prime tower") };
+        double height = 0.;
+        for (size_t k : order) {
+            SequentialFootprint standing = tower_object;
+            standing.top = height;
+            if (const std::string box = sequential_head_conflict(prepared, head, standing, objects[k], z0, std::numeric_limits<double>::infinity());
+                !box.empty()) {
+                pair = { int(k), -1 };
+                return (boost::format(L("The head's %1% would hit the prime tower, %2% mm tall by then, while %3% prints. Move the prime tower away from it.")) %
+                        box % (std::round(height * 10.) / 10.) % objects[k].name).str();
+            }
+            height += objects[k].top;
+        }
+    }
+    return {};
+}
+
 StringObjectException Print::sequential_print_clearance_valid(const Print &print, Polygons *polygons, std::vector<std::pair<Polygon, float>>* height_polygons)
 {
     StringObjectException single_object_exception;
@@ -715,6 +825,7 @@ StringObjectException Print::sequential_print_clearance_valid(const Print &print
         const PrintInstance *print_instance;
         BoundingBox    bounding_box;
         Polygon        hull_polygon;
+        Polygon        footprint;
         int                  object_index;
         double         arrange_score;
         double               height;
@@ -729,6 +840,7 @@ StringObjectException Print::sequential_print_clearance_valid(const Print &print
     };
 
     auto [object_skirt_offset, _] = print.object_skirt_offset();
+    const bool head_rule = Nonplanar::requests_conformal_shells(print);
     std::vector<struct print_instance_info> print_instance_with_bounding_box;
     {
         Polygons convex_hulls_other;
@@ -736,7 +848,7 @@ StringObjectException Print::sequential_print_clearance_valid(const Print &print
             polygons->clear();
         std::vector<size_t> intersecting_idxs;
 
-        float obj_distance = print.is_all_objects_are_short() ? scale_(std::max(0.5f * MAX_OUTER_NOZZLE_DIAMETER, object_skirt_offset) - 0.1) : scale_(0.5 * print.config().extruder_clearance_radius.value + object_skirt_offset - 0.1);
+        float obj_distance = print.is_all_objects_are_short() || head_rule ? scale_(std::max(0.5f * MAX_OUTER_NOZZLE_DIAMETER, object_skirt_offset) - 0.1) : scale_(0.5 * print.config().extruder_clearance_radius.value + object_skirt_offset - 0.1);
 
         for (const PrintObject *print_object : print.objects()) {
             assert(! print_object->model_object()->instances.empty());
@@ -785,7 +897,7 @@ StringObjectException Print::sequential_print_clearance_valid(const Print &print
                         if (has_exception) break;
                     }
                 }
-                struct print_instance_info print_info {&instance, convex_hull.bounding_box(), convex_hull};
+                struct print_instance_info print_info {&instance, convex_hull.bounding_box(), convex_hull, convex_hull_no_offset};
                 print_info.height = instance.print_object->height();
                 print_info.object_index = find_object_index(print.model(), print_object->model_object());
                 print_instance_with_bounding_box.push_back(std::move(print_info));
@@ -899,6 +1011,50 @@ StringObjectException Print::sequential_print_clearance_valid(const Print &print
                                  << ", height:"<< inst.height;
 
 #endif
+    auto finished_z = [](const PrintInstance *inst) {
+        double z = inst->print_object->max_z();
+        for (const auto &patch : inst->print_object->conformal().patches)
+            z = std::max(z, double(scale_(patch.z_max)));
+        return z;
+    };
+    if (head_rule && print_instance_with_bounding_box.size() > 1) {
+        const PrintConfig &config = print.config();
+        const double skirt = config.skirt_loops.value > 0 && config.skirt_type.value == stPerObject ?
+                                 config.skirt_distance.value + config.skirt_loops.value * print.skirt_flow().spacing() : 0.;
+        std::vector<SequentialFootprint> footprints;
+        for (const print_instance_info &info : print_instance_with_bounding_box) {
+            const PrintObjectConfig &object_config = info.print_instance->print_object->config();
+            const double brim = object_config.brim_type.value == btNoBrim ? 0. : object_config.brim_width.value;
+            footprints.push_back({ info.footprint, unscale<double>(finished_z(info.print_instance)), brim + skirt,
+                                   info.print_instance->model_instance->get_object()->name });
+        }
+        std::optional<Polygon> tower;
+        if (Nonplanar::sequential_shell_tower(print)) {
+            const int            plate  = print.get_plate_index();
+            const Vec3d          origin = print.get_plate_origin();
+            const double         x = config.wipe_tower_x.get_at(plate) + origin.x(), y = config.wipe_tower_y.get_at(plate) + origin.y();
+            const WipeTowerData &data = print.wipe_tower_data(print.extruders(true).size());
+            Polygon rect({ Point::new_scale(x, y), Point::new_scale(x + data.width, y), Point::new_scale(x + data.width, y + data.depth),
+                           Point::new_scale(x, y + data.depth) });
+            rect.rotate(Geometry::deg2rad(config.wipe_tower_rotation_angle.value), Point::new_scale(x, y));
+            tower = offset(rect, float(scale_(std::max(0.f, data.brim_width)))).front();
+        }
+        std::vector<size_t>  order;
+        std::pair<int, int>  pair;
+        if (std::string error = sequential_head_order(print, footprints, tower, order, pair); !error.empty()) {
+            single_object_exception.string += (single_object_exception.string.empty() ? "" : "\n") + error;
+            single_object_exception.object = print_instance_with_bounding_box[pair.first].print_instance->model_instance;
+            if (polygons)
+                for (int k : { pair.first, pair.second })
+                    if (k >= 0)
+                        polygons->push_back(print_instance_with_bounding_box[k].hull_polygon);
+        } else {
+            std::vector<print_instance_info> ordered;
+            for (size_t k : order)
+                ordered.push_back(print_instance_with_bounding_box[k]);
+            print_instance_with_bounding_box = std::move(ordered);
+        }
+    }
     {
         int print_instance_count = print_instance_with_bounding_box.size();
         std::map<const PrintInstance*, std::pair<Polygon, float>> too_tall_instances;
@@ -924,10 +1080,7 @@ StringObjectException Print::sequential_print_clearance_valid(const Print &print
                     break;
                 }
             }
-            double finished_z = inst->print_object->max_z();
-            for (const auto &patch : inst->print_object->conformal().patches)
-                finished_z = std::max(finished_z, double(scale_(patch.z_max)));
-            if (height < finished_z)
+            if (!head_rule && height < finished_z(inst))
                 too_tall_instances[inst] = std::make_pair(print_instance_with_bounding_box[k].hull_polygon, unscaled<double>(height));
         }
 

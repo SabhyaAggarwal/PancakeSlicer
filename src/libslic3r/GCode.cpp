@@ -3551,6 +3551,10 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
                 if (patch.z_max + Nonplanar::GlideLift > max_height_z)
                     max_height_z = std::ceil((patch.z_max + Nonplanar::GlideLift) * 100. - EPSILON) / 100.;
         }
+        if (has_wipe_tower && Nonplanar::sequential_shell_tower(print))
+            for (const std::vector<WipeTower::ToolChangeResult> &layer : print.wipe_tower_data().tool_changes)
+                for (const WipeTower::ToolChangeResult &tcr : layer)
+                    max_height_z = std::max(max_height_z, coordf_t(tcr.print_z));
 
         std::ostringstream max_height_z_tip;
         max_height_z_tip<<"; max_z_height: " << std::fixed << std::setprecision(2) << max_height_z << '\n';
