@@ -4114,7 +4114,10 @@ void PrintObject::combine_infill()
 {
     for (size_t region_id = 0; region_id < this->num_printing_regions(); ++ region_id) {
         const PrintRegion &region = this->printing_region(region_id);
-        const bool enable_combine_infill = region.config().infill_combination.value;
+        const bool enable_combine_infill = region.config().infill_combination.value ||
+                                           (this->config().nonplanar_mode.value == NonplanarMode::Auto &&
+                                            m_print->config().nonplanar_kinematics.value == RotaryLayout::None &&
+                                            Nonplanar::infill_depth(region.config(), *this) == 0.);
         if (enable_combine_infill == false || region.config().sparse_infill_density == 0.)
             continue;
 
