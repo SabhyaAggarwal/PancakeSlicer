@@ -180,7 +180,7 @@ public:
         , m_role(rhs.m_role)
         , m_no_extrusion(rhs.m_no_extrusion)
     {}
-    ExtrusionPath(ExtrusionPath &&rhs)
+    ExtrusionPath(ExtrusionPath &&rhs) noexcept
         : polyline(std::move(rhs.polyline))
         , overhang_degree(rhs.overhang_degree)
         , curve_degree(rhs.curve_degree)
@@ -234,7 +234,7 @@ public:
         this->polyline = rhs.polyline;
         return *this;
     }
-    ExtrusionPath& operator=(ExtrusionPath&& rhs) {
+    ExtrusionPath& operator=(ExtrusionPath&& rhs) noexcept {
         m_can_reverse = rhs.m_can_reverse;
         m_role = rhs.m_role;
         m_no_extrusion = rhs.m_no_extrusion;

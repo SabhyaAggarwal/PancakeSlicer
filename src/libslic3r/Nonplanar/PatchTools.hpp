@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -63,6 +64,29 @@ HeightField object_grid(const PrintObject &object, double pitch, Polygons *silho
 
 Mask rasterize(const ExPolygons &area, const HeightField &grid);
 ExPolygons mask_to_expolygons(const Mask &mask, const HeightField &grid);
+ExPolygons mask_to_expolygons(const Mask &mask, const HeightField &grid, int ix0, int iy0, int ix1, int iy1);
+
+class RunGroups
+{
+public:
+    struct Run { int y, x0, x1; };
+    void add(int key, int ix, int iy)
+    {
+        if (m_last == nullptr || m_last_key != key)
+            m_last = &m_groups[key], m_last_key = key;
+        if (!m_last->empty() && m_last->back().y == iy && m_last->back().x1 + 1 == ix)
+            ++m_last->back().x1;
+        else
+            m_last->push_back({ iy, ix, ix });
+    }
+    const std::map<int, std::vector<Run>> &groups() const { return m_groups; }
+
+private:
+    std::map<int, std::vector<Run>> m_groups;
+    std::vector<Run>               *m_last     = nullptr;
+    int                             m_last_key = 0;
+};
+ExPolygons runs_to_expolygons(const std::vector<RunGroups::Run> &runs, const HeightField &grid);
 HeightField crop(const HeightField &src, int ix0, int iy0, int ix1, int iy1);
 void pad_lowest(HeightField &field, int iterations);
 double smooth_scan_noise(HeightField &surface, const std::function<void()> &throw_if_canceled = {});

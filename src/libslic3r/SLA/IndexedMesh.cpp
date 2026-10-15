@@ -10,13 +10,8 @@
 #include <cassert>
 #include <cmath>
 #include <algorithm>
-#include <array>
 #include <cstdint>
-#include <cstring>
 #include <memory>
-#include <mutex>
-#include <unordered_map>
-#include <utility>
 #include <Eigen/Geometry>
 #include <cstdlib>
 #include <functional>
@@ -35,11 +30,6 @@ namespace Slic3r {
 
 namespace sla {
 
-struct ColumnHash
-{
-    size_t operator()(const std::pair<uint64_t, uint64_t> &k) const { return size_t(k.first * 0x9E3779B97F4A7C15ull ^ (k.second + 0x632BE59BD9B4E019ull + (k.first << 6))); }
-};
-
 class IndexedMesh::AABBImpl {
 private:
     AABBTreeIndirect::Tree3f m_tree;
@@ -47,61 +37,37 @@ private:
 
     struct Columns
     {
-        static constexpr size_t Shards = 64;
         double base_z;
         double x0, y0, cell, margin;
         int    nx, ny;
         std::vector<uint32_t> offsets;
         std::vector<uint32_t> leaves;
-        std::array<std::mutex, Shards> locks;
-        std::array<std::unordered_map<std::pair<uint64_t, uint64_t>, std::shared_ptr<const std::vector<int>>, ColumnHash>, Shards> maps;
     };
     std::shared_ptr<Columns> m_columns;
 
-    std::shared_ptr<const std::vector<int>> column(const indexed_triangle_set &its, double x, double y)
+    void column_hits(const indexed_triangle_set &its, const Vec3d &s, const Vec3d &dir, std::vector<igl::Hit<float>> &hits) const
     {
-        uint64_t kx, ky;
-        std::memcpy(&kx, &x, sizeof x);
-        std::memcpy(&ky, &y, sizeof y);
-        const std::pair<uint64_t, uint64_t> key(kx, ky);
-        const size_t shard = ColumnHash()(key) % Columns::Shards;
-        {
-            std::lock_guard<std::mutex> lock(m_columns->locks[shard]);
-            if (auto it = m_columns->maps[shard].find(key); it != m_columns->maps[shard].end())
-                return it->second;
-        }
-        auto faces = std::make_shared<std::vector<int>>();
         const Columns &c = *m_columns;
-        const double gx = std::floor((x - c.x0) / c.cell), gy = std::floor((y - c.y0) / c.cell);
-        if (gx >= -1. && gy >= -1. && gx <= double(c.nx) && gy <= double(c.ny)) {
-            const size_t cell = size_t(std::clamp(int(gy), 0, c.ny - 1)) * size_t(c.nx) + size_t(std::clamp(int(gx), 0, c.nx - 1));
-            const Vec3d origin(x, y, c.base_z), dir(Vec3d::UnitZ()), invdir(dir.cwiseInverse());
-            for (uint32_t k = c.offsets[cell]; k < c.offsets[cell + 1]; ++k) {
-                const auto &node = m_tree.node(c.leaves[k]);
-                if (!AABBTreeIndirect::detail::ray_box_intersect_invdir(origin, invdir, node.bbox.cast<double>(), 0.,
-                                                                        std::numeric_limits<double>::infinity()))
-                    continue;
-                const Vec3i32 &face = its.indices[node.idx];
-                double t, u, v;
-                if (AABBTreeIndirect::detail::intersect_triangle(origin, dir, its.vertices[face(0)], its.vertices[face(1)], its.vertices[face(2)],
-                                                                 t, u, v, m_triangle_ray_epsilon) &&
-                    t > 0.)
-                    faces->push_back(int(node.idx));
-            }
-        }
-        std::lock_guard<std::mutex> lock(m_columns->locks[shard]);
-        return m_columns->maps[shard].emplace(key, std::move(faces)).first->second;
-    }
-
-    void column_hits(const indexed_triangle_set &its, const Vec3d &s, const Vec3d &dir, std::vector<igl::Hit<float>> &hits)
-    {
-        for (int id : *column(its, s.x(), s.y())) {
-            const Vec3i32 &face = its.indices[size_t(id)];
+        const double gx = std::floor((s.x() - c.x0) / c.cell), gy = std::floor((s.y() - c.y0) / c.cell);
+        if (!(gx >= -1. && gy >= -1. && gx <= double(c.nx) && gy <= double(c.ny)))
+            return;
+        const size_t cell = size_t(std::clamp(int(gy), 0, c.ny - 1)) * size_t(c.nx) + size_t(std::clamp(int(gx), 0, c.nx - 1));
+        const Vec3d origin(s.x(), s.y(), c.base_z), up(Vec3d::UnitZ()), invdir(up.cwiseInverse());
+        for (uint32_t k = c.offsets[cell]; k < c.offsets[cell + 1]; ++k) {
+            const auto &node = m_tree.node(c.leaves[k]);
+            if (!AABBTreeIndirect::detail::ray_box_intersect_invdir(origin, invdir, node.bbox.cast<double>(), 0.,
+                                                                    std::numeric_limits<double>::infinity()))
+                continue;
+            const Vec3i32 &face = its.indices[node.idx];
             double t, u, v;
+            if (!AABBTreeIndirect::detail::intersect_triangle(origin, up, its.vertices[face(0)], its.vertices[face(1)], its.vertices[face(2)],
+                                                              t, u, v, m_triangle_ray_epsilon) ||
+                t <= 0.)
+                continue;
             if (AABBTreeIndirect::detail::intersect_triangle(s, dir, its.vertices[face(0)], its.vertices[face(1)], its.vertices[face(2)], t, u,
                                                              v, m_triangle_ray_epsilon) &&
                 t > 0.)
-                hits.push_back(igl::Hit<float>{ id, -1, float(u), float(v), float(t) });
+                hits.push_back(igl::Hit<float>{ int(node.idx), -1, float(u), float(v), float(t) });
         }
     }
 

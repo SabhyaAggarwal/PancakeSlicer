@@ -3,7 +3,6 @@
 
 #include "SkeletalTrapezoidationGraph.hpp"
 
-#include <ankerl/unordered_dense.h>
 #include <boost/log/trivial.hpp>
 #include <algorithm>
 #include <cstdint>
@@ -189,51 +188,22 @@ bool STHalfEdgeNode::isLocalMaximum(bool strict) const
 
 void SkeletalTrapezoidationGraph::collapseSmallEdges(coord_t snap_dist)
 {
-    ankerl::unordered_dense::map<edge_t*, Edges::iterator> edge_locator;
-    ankerl::unordered_dense::map<node_t*, Nodes::iterator> node_locator;
-    
-    for (auto edge_it = edges.begin(); edge_it != edges.end(); ++edge_it)
-    {
-        edge_locator.emplace(&*edge_it, edge_it);
-    }
-    
-    for (auto node_it = nodes.begin(); node_it != nodes.end(); ++node_it)
-    {
-        node_locator.emplace(&*node_it, node_it);
-    }
-    
-    auto safelyRemoveEdge = [this, &edge_locator](edge_t* to_be_removed, Edges::iterator& current_edge_it, bool& edge_it_is_updated)
-    {
-        if (current_edge_it != edges.end()
-            && to_be_removed == &*current_edge_it)
-        {
-            current_edge_it = edges.erase(current_edge_it);
-            edge_it_is_updated = true;
-        }
-        else
-        {
-            edges.erase(edge_locator[to_be_removed]);
-        }
-    };
-
     auto should_collapse = [snap_dist](node_t* a, node_t* b) 
     { 
         return shorter_then(a->p - b->p, snap_dist);
     };
-        
-    for (auto edge_it = edges.begin(); edge_it != edges.end();)
+    bool collapsed = false;
+    for (edge_t &edge : edges)
     {
-        if (edge_it->prev)
+        if (edge.collapsed || edge.prev)
         {
-            edge_it++;
             continue;
         }
         
-        edge_t* quad_start = &*edge_it;
+        edge_t* quad_start = &edge;
         edge_t* quad_end = quad_start; while (quad_end->next) quad_end = quad_end->next;
         edge_t* quad_mid = (quad_start->next == quad_end)? nullptr : quad_start->next;
 
-        bool edge_it_is_updated = false;
         if (quad_mid && should_collapse(quad_mid->from, quad_mid->to))
         {
             assert(quad_mid->twin);
@@ -269,15 +239,16 @@ void SkeletalTrapezoidationGraph::collapseSmallEdges(coord_t snap_dist)
                 }
             }
             
-            nodes.erase(node_locator[quad_mid->to]);
+            quad_mid->to->collapsed = true;
 
             quad_mid->prev->next = quad_mid->next;
             quad_mid->next->prev = quad_mid->prev;
             quad_mid->twin->next->prev = quad_mid->twin->prev;
             quad_mid->twin->prev->next = quad_mid->twin->next;
 
-            safelyRemoveEdge(quad_mid->twin, edge_it, edge_it_is_updated);
-            safelyRemoveEdge(quad_mid, edge_it, edge_it_is_updated);
+            quad_mid->twin->collapsed = true;
+            quad_mid->collapsed = true;
+            collapsed = true;
         }
 
         if ( should_collapse(quad_start->from, quad_end->to) && should_collapse(quad_start->to, quad_end->from))
@@ -296,18 +267,19 @@ void SkeletalTrapezoidationGraph::collapseSmallEdges(coord_t snap_dist)
                     quad_end->from->incident_edge = quad_end->prev->twin;
                 }
             }
-            nodes.erase(node_locator[quad_start->from]);
+            quad_start->from->collapsed = true;
 
             quad_start->twin->twin = quad_end->twin;
             quad_end->twin->twin = quad_start->twin;
-            safelyRemoveEdge(quad_start, edge_it, edge_it_is_updated);
-            safelyRemoveEdge(quad_end, edge_it, edge_it_is_updated);
+            quad_start->collapsed = true;
+            quad_end->collapsed = true;
+            collapsed = true;
         }
-
-        if (!edge_it_is_updated)
-        {
-            edge_it++;
-        }
+    }
+    if (collapsed)
+    {
+        edges.remove_if([](const edge_t &edge) { return edge.collapsed; });
+        nodes.remove_if([](const node_t &node) { return node.collapsed; });
     }
 }
 

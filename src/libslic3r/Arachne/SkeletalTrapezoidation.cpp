@@ -452,7 +452,6 @@ void SkeletalTrapezoidation::constructFromPolygons(const Polygons& polys)
 
 void SkeletalTrapezoidation::separatePointyQuadEndNodes()
 {
-    NodeSet visited_nodes;
     for (edge_t& edge : graph.edges)
     {
         if (edge.prev) 
@@ -460,14 +459,15 @@ void SkeletalTrapezoidation::separatePointyQuadEndNodes()
             continue;
         }
         edge_t* quad_start = &edge;
-        if (visited_nodes.find(quad_start->from) == visited_nodes.end())
+        if (!quad_start->from->quad_start_seen)
         {
-            visited_nodes.emplace(quad_start->from);
+            quad_start->from->quad_start_seen = true;
         }
         else
         {
             graph.nodes.emplace_back(*quad_start->from);
             node_t* new_node = &graph.nodes.back();
+            new_node->quad_start_seen = false;
             new_node->incident_edge = quad_start;
             quad_start->from = new_node;
             quad_start->twin->to = new_node;
@@ -1902,22 +1902,26 @@ void SkeletalTrapezoidation::connectJunctions(ptr_vector_t<LineJunctions>& edge_
                 edge_junctions.emplace_back(std::make_shared<LineJunctions>());
                 edge_to_peak->data.setExtrusionJunctions(edge_junctions.back());
             }
-            LineJunctions from_junctions = *edge_to_peak->data.getExtrusionJunctions();
+            const LineJunctions *from_junctions_ptr = edge_to_peak->data.getExtrusionJunctions().get();
+            LineJunctions        from_merged;
             if (! edge_from_peak->twin->data.hasExtrusionJunctions())
             {
                 edge_junctions.emplace_back(std::make_shared<LineJunctions>());
                 edge_from_peak->twin->data.setExtrusionJunctions(edge_junctions.back());
             }
-            LineJunctions to_junctions = *edge_from_peak->twin->data.getExtrusionJunctions();
+            const LineJunctions *to_junctions_ptr = edge_from_peak->twin->data.getExtrusionJunctions().get();
+            LineJunctions        to_merged;
             if (edge_to_peak->prev)
             {
-                LineJunctions from_prev_junctions = *edge_to_peak->prev->data.getExtrusionJunctions();
-                while (!from_junctions.empty() && !from_prev_junctions.empty() && from_junctions.back().perimeter_index <= from_prev_junctions.front().perimeter_index)
+                from_merged = *from_junctions_ptr;
+                const LineJunctions &from_prev_junctions = *edge_to_peak->prev->data.getExtrusionJunctions();
+                while (!from_merged.empty() && !from_prev_junctions.empty() && from_merged.back().perimeter_index <= from_prev_junctions.front().perimeter_index)
                 {
-                    from_junctions.pop_back();
+                    from_merged.pop_back();
                 }
-                from_junctions.reserve(from_junctions.size() + from_prev_junctions.size());
-                from_junctions.insert(from_junctions.end(), from_prev_junctions.begin(), from_prev_junctions.end());
+                from_merged.reserve(from_merged.size() + from_prev_junctions.size());
+                from_merged.insert(from_merged.end(), from_prev_junctions.begin(), from_prev_junctions.end());
+                from_junctions_ptr = &from_merged;
                 assert(!edge_to_peak->prev->prev);
                 if(edge_to_peak->prev->prev)
                 {
@@ -1926,19 +1930,23 @@ void SkeletalTrapezoidation::connectJunctions(ptr_vector_t<LineJunctions>& edge_
             }
             if (edge_from_peak->next)
             {
-                LineJunctions to_next_junctions = *edge_from_peak->next->twin->data.getExtrusionJunctions();
-                while (!to_junctions.empty() && !to_next_junctions.empty() && to_junctions.back().perimeter_index <= to_next_junctions.front().perimeter_index)
+                to_merged = *to_junctions_ptr;
+                const LineJunctions &to_next_junctions = *edge_from_peak->next->twin->data.getExtrusionJunctions();
+                while (!to_merged.empty() && !to_next_junctions.empty() && to_merged.back().perimeter_index <= to_next_junctions.front().perimeter_index)
                 {
-                    to_junctions.pop_back();
+                    to_merged.pop_back();
                 }
-                to_junctions.reserve(to_junctions.size() + to_next_junctions.size());
-                to_junctions.insert(to_junctions.end(), to_next_junctions.begin(), to_next_junctions.end());
+                to_merged.reserve(to_merged.size() + to_next_junctions.size());
+                to_merged.insert(to_merged.end(), to_next_junctions.begin(), to_next_junctions.end());
+                to_junctions_ptr = &to_merged;
                 assert(!edge_from_peak->next->next);
                 if(edge_from_peak->next->next)
                 {
                     BOOST_LOG_TRIVIAL(warning) << "The edge we're about to connect is already connected!";
                 }
             }
+            const LineJunctions &from_junctions = *from_junctions_ptr;
+            const LineJunctions &to_junctions   = *to_junctions_ptr;
             assert(std::abs(int(from_junctions.size()) - int(to_junctions.size())) <= 1);
             if(std::abs(int(from_junctions.size()) - int(to_junctions.size())) > 1)
             {
@@ -1948,8 +1956,8 @@ void SkeletalTrapezoidation::connectJunctions(ptr_vector_t<LineJunctions>& edge_
             size_t segment_count = std::min(from_junctions.size(), to_junctions.size());
             for (size_t junction_rev_idx = 0; junction_rev_idx < segment_count; junction_rev_idx++)
             {
-                ExtrusionJunction& from = from_junctions[from_junctions.size() - 1 - junction_rev_idx];
-                ExtrusionJunction& to = to_junctions[to_junctions.size() - 1 - junction_rev_idx];
+                const ExtrusionJunction& from = from_junctions[from_junctions.size() - 1 - junction_rev_idx];
+                const ExtrusionJunction& to = to_junctions[to_junctions.size() - 1 - junction_rev_idx];
                 assert(from.perimeter_index == to.perimeter_index);
                 if(from.perimeter_index != to.perimeter_index)
                 {

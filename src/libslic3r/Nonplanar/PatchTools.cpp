@@ -260,24 +260,46 @@ Mask rasterize(const ExPolygons &area, const HeightField &grid)
 
 ExPolygons mask_to_expolygons(const Mask &mask, const HeightField &grid)
 {
-    Polygons     cells;
-    const double h   = 0.5 * grid.pitch();
+    return mask_to_expolygons(mask, grid, 0, 0, grid.nx() - 1, grid.ny() - 1);
+}
+
+namespace {
+Polygon run_cell(const HeightField &grid, int y, int x0, int x1)
+{
+    const double  h   = 0.5 * grid.pitch();
     const coord_t eps = 10;
-    for (int iy = 0; iy < grid.ny(); ++iy)
-        for (int ix = 0; ix < grid.nx();) {
+    const Vec2d   lo  = grid.node(x0, y) - Vec2d(h, h), hi = grid.node(x1, y) + Vec2d(h, h);
+    const Point   plo = Point::new_scale(lo.x(), lo.y()) - Point(eps, eps);
+    const Point   phi = Point::new_scale(hi.x(), hi.y()) + Point(eps, eps);
+    return Polygon({ plo, Point(phi.x(), plo.y()), phi, Point(plo.x(), phi.y()) });
+}
+}
+
+ExPolygons mask_to_expolygons(const Mask &mask, const HeightField &grid, int ix0, int iy0, int ix1, int iy1)
+{
+    Polygons cells;
+    ix0 = std::max(ix0, 0), iy0 = std::max(iy0, 0), ix1 = std::min(ix1, grid.nx() - 1), iy1 = std::min(iy1, grid.ny() - 1);
+    for (int iy = iy0; iy <= iy1; ++iy)
+        for (int ix = ix0; ix <= ix1;) {
             if (!mask[size_t(iy) * grid.nx() + ix]) {
                 ++ix;
                 continue;
             }
             int end = ix;
-            while (end + 1 < grid.nx() && mask[size_t(iy) * grid.nx() + end + 1])
+            while (end + 1 <= ix1 && mask[size_t(iy) * grid.nx() + end + 1])
                 ++end;
-            const Vec2d lo = grid.node(ix, iy) - Vec2d(h, h), hi = grid.node(end, iy) + Vec2d(h, h);
-            const Point plo = Point::new_scale(lo.x(), lo.y()) - Point(eps, eps);
-            const Point phi = Point::new_scale(hi.x(), hi.y()) + Point(eps, eps);
-            cells.emplace_back(Polygon({ plo, Point(phi.x(), plo.y()), phi, Point(plo.x(), phi.y()) }));
+            cells.emplace_back(run_cell(grid, iy, ix, end));
             ix = end + 1;
         }
+    return union_ex(cells);
+}
+
+ExPolygons runs_to_expolygons(const std::vector<RunGroups::Run> &runs, const HeightField &grid)
+{
+    Polygons cells;
+    cells.reserve(runs.size());
+    for (const RunGroups::Run &r : runs)
+        cells.emplace_back(run_cell(grid, r.y, r.x0, r.x1));
     return union_ex(cells);
 }
 
@@ -1362,7 +1384,12 @@ bool spans_slope(const HeightField &surface, const Vec2d &p, double slope_deg)
     const int ix1 = std::min(ix + 1, surface.nx() - 1), iy1 = std::min(iy + 1, surface.ny() - 1);
     const float z[4] = { surface.at(ix, iy), surface.at(ix1, iy), surface.at(ix, iy1), surface.at(ix1, iy1) };
     const double span = std::sqrt(double((ix1 - ix) + (iy1 - iy))) * surface.pitch();
-    return *std::max_element(z, z + 4) - *std::min_element(z, z + 4) > std::tan(Geometry::deg2rad(slope_deg)) * span;
+    thread_local double last_deg = std::numeric_limits<double>::quiet_NaN(), last_tan = 0.;
+    if (slope_deg != last_deg) {
+        last_deg = slope_deg;
+        last_tan = std::tan(Geometry::deg2rad(slope_deg));
+    }
+    return *std::max_element(z, z + 4) - *std::min_element(z, z + 4) > last_tan * span;
 }
 
 bool spans_wall(const HeightField &surface, const Vec2d &p) { return spans_slope(surface, p, WallSlope); }
@@ -1954,6 +1981,10 @@ std::vector<ConformalPatch> split_by_reach(ConformalPatch &&p, const ExPolygons 
             ExtrusionEntitiesPtr &mine = k < n_shells ? parts[pa].shell_paths[k].entities : parts[pa].ironing.entities;
             for (size_t i = 0; i < mine.size();) {
                 const auto *s     = static_cast<const ExtrusionPathConformal *>(mine[i]);
+                if (!is_short_road(*s)) {
+                    ++i;
+                    continue;
+                }
                 size_t      to    = parts.size();
                 double      best  = std::numeric_limits<double>::max();
                 for (size_t pb = 0; pb < parts.size(); ++pb) {
@@ -2035,9 +2066,14 @@ std::vector<ConformalPatch> split_by_reach(ConformalPatch &&p, const ExPolygons 
         part.shell_paths = std::move(paths);
         part.ironing     = std::move(ironing);
         Mask mine(owner_of.size(), 0);
+        int  ix0 = G.nx(), iy0 = G.ny(), ix1 = -1, iy1 = -1;
         for (size_t n = 0; n < owner_of.size(); ++n)
-            mine[n] = owner_of[n] == int(i);
-        part.footprint = intersection_ex(p.footprint, mask_to_expolygons(mine, G));
+            if (owner_of[n] == int(i)) {
+                mine[n]      = 1;
+                const int ix = int(n % G.nx()), iy = int(n / G.nx());
+                ix0 = std::min(ix0, ix), iy0 = std::min(iy0, iy), ix1 = std::max(ix1, ix), iy1 = std::max(iy1, iy);
+            }
+        part.footprint = intersection_ex(p.footprint, mask_to_expolygons(mine, G, ix0, iy0, ix1, iy1));
         part.wall_band = intersection_ex(part.footprint, p.wall_band);
     }
     return parts;
@@ -2239,17 +2275,15 @@ std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const Heig
 
         const HeightField &F  = comp.surface;
         const Mask         in = rasterize(comp.footprint, F);
-        std::map<int, Mask> cells;
+        RunGroups cells;
         for (int iy = 0; iy < F.ny(); ++iy)
             for (int ix = 0; ix < F.nx(); ++ix) {
                 const size_t n = size_t(iy) * F.nx() + ix;
                 const float  z = F.data()[n];
                 if (!in[n] || std::isnan(z))
                     continue;
-                const int b    = band_of(z);
-                Mask     &mask = cells[b];
-                mask.resize(in.size(), 0);
-                mask[n] = 1;
+                const int b = band_of(z);
+                cells.add(b, ix, iy);
                 Band       &bd = band(b);
                 const Vec2d  p = F.node(ix, iy);
                 const Vec2d  g = F.gradient(p);
@@ -2264,9 +2298,9 @@ std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const Heig
                     bd.diag.max_slope_deg = std::max(bd.diag.max_slope_deg, Geometry::rad2deg(std::atan(g.norm())));
                 bd.patch.z_max = std::max(bd.patch.z_max, double(z));
             }
-        for (const auto &[b, mask] : cells) {
+        for (const auto &[b, runs] : cells.groups()) {
             ConformalPatch &p = band(b).patch;
-            p.footprint       = intersection_ex(comp.footprint, mask_to_expolygons(mask, F));
+            p.footprint       = intersection_ex(comp.footprint, runs_to_expolygons(runs, F));
             p.wall_band       = intersection_ex(p.footprint, comp.wall_band);
         }
         if (!index.empty()) {

@@ -354,16 +354,13 @@ Polylines contour_fill(const HeightField &surface, const ExPolygons &area, doubl
             }
         }
 
-    std::map<int, Mask> strips;
+    RunGroups strips;
     for (size_t n = 0; n < surface.data().size(); ++n)
-        if (const float s = surface.data()[n]; !std::isnan(s)) {
-            Mask &mask = strips[std::isfinite(strip_height) ? int(std::floor((s - drop) / strip_height)) : 0];
-            mask.resize(surface.data().size(), 0);
-            mask[n] = 1;
-        }
+        if (const float s = surface.data()[n]; !std::isnan(s))
+            strips.add(std::isfinite(strip_height) ? int(std::floor((s - drop) / strip_height)) : 0, int(n % nx), int(n / nx));
     Polylines out;
-    for (const auto &[strip, mask] : strips)
-        for (const ExPolygon &piece : intersection_ex(area, mask_to_expolygons(mask, surface))) {
+    for (const auto &[strip, runs] : strips.groups())
+        for (const ExPolygon &piece : intersection_ex(area, runs_to_expolygons(runs, surface))) {
             const BoundingBox bb  = get_extents(piece);
             const Vec2d       lo  = (unscale(bb.min) - surface.origin()) / surface.pitch();
             const Vec2d       hi  = (unscale(bb.max) - surface.origin()) / surface.pitch();
@@ -759,9 +756,23 @@ constexpr double PinholeWidth = 0.4;
 Polylines pinhole_roads(const ExPolygons &area, Polygons cover, double width, double spacing)
 {
     Polylines        out;
-    const ExPolygons inner = offset_ex(area, -float(scale_(0.5 * spacing)));
+    const ExPolygons inner  = offset_ex(area, -float(scale_(0.5 * spacing)));
+    const float      radius = float(scale_(0.5 * PinholeWidth * spacing));
+    ExPolygons       last;
     for (int round = 0; round < 3 && !inner.empty(); ++round) {
-        const ExPolygons holes = opening_ex(diff_ex(inner, cover), float(scale_(0.5 * PinholeWidth * spacing)));
+        if (round > 0) {
+            bool found = false;
+            for (const ExPolygon &window : offset_ex(last, float(scale_(0.5 * width + 0.5)) + 8.f * radius)) {
+                const BoundingBox box  = get_extents(window);
+                const ExPolygons  gaps = diff_ex(intersection_ex(ClipperUtils::clip_clipper_polygons_with_subject_bbox(inner, box), ExPolygons{ window }),
+                                                 ClipperUtils::clip_clipper_polygons_with_subject_bbox(cover, box));
+                if (found = !opening_ex(gaps, radius).empty(); found)
+                    break;
+            }
+            if (!found)
+                break;
+        }
+        const ExPolygons holes = opening_ex(diff_ex(inner, cover), radius);
         if (holes.empty())
             break;
         Polylines roads;
@@ -791,6 +802,7 @@ Polylines pinhole_roads(const ExPolygons &area, Polygons cover, double width, do
         }
         if (roads.empty())
             break;
+        last = holes;
         append(cover, offset(roads, float(scale_(0.5 * width)), jtRound, scale_(0.01), etOpenRound));
         append(out, std::move(roads));
     }

@@ -6,6 +6,7 @@
 #include "libslic3r.h"
 #include "Polygon.hpp"
 #include "Polyline.hpp"
+#include <type_traits>
 #include <utility>
 #include <initializer_list>
 #include <cstddef>
@@ -77,6 +78,8 @@ public:
     Polygon& 		contour_or_hole(size_t idx) 		{ return (idx == 0) ? this->contour : this->holes[idx - 1]; }
     const Polygon& 	contour_or_hole(size_t idx) const 	{ return (idx == 0) ? this->contour : this->holes[idx - 1]; }
 };
+
+static_assert(std::is_nothrow_move_constructible_v<Polygon> && std::is_nothrow_move_constructible_v<ExPolygon>);
 
 inline bool operator==(const ExPolygon &lhs, const ExPolygon &rhs) { return lhs.contour == rhs.contour && lhs.holes == rhs.holes; }
 inline bool operator!=(const ExPolygon &lhs, const ExPolygon &rhs) { return lhs.contour != rhs.contour || lhs.holes != rhs.holes; }

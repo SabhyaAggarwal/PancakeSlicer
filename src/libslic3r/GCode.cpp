@@ -7518,7 +7518,7 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                 m_conformal_band_patch = patch.band >= 0 ? patch.id : -1;
                 m_conformal_prev       = nullptr;
                 m_conformal_primed     = false;
-                m_conformal_surface    = patch.kind == Nonplanar::PatchKind::Top && !patch.surface.empty() ? &patch.surface : nullptr;
+                m_conformal_surface    = patch.kind == Nonplanar::PatchKind::Top && !patch.surface.empty() ? &patch.surface.get() : nullptr;
                 m_conformal_tolerance  = patch.automatic ? patch.automatic->max_error : m_config.nonplanar_max_surface_error.value;
                 if (! order.empty()) {
                     if (Point lid; m_config.spiral_mode && Nonplanar::lid_start(object, lid))

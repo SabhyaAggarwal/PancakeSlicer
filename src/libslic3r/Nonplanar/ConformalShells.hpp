@@ -2,11 +2,14 @@
 #include "FlowMod.hpp"
 #include "HeightField.hpp"
 #include "ShellBase.hpp"
+#include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
+#include "libslic3r/Point.hpp"
 #include <functional>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace Slic3r { class PrintObject; }
@@ -19,14 +22,58 @@ class OrientationField;
 
 enum class PatchKind : unsigned char { Top, Bottom, Volume, Overhang, Chunk, SupportInterface, Bridge, Field };
 
+class PatchField
+{
+public:
+    PatchField() = default;
+    PatchField(HeightField field) : m_field(std::make_shared<HeightField>(std::move(field))) {}
+    PatchField &operator=(HeightField field)
+    {
+        m_field = std::make_shared<HeightField>(std::move(field));
+        return *this;
+    }
+
+    const HeightField &get() const { return m_field ? *m_field : empty_field(); }
+    operator const HeightField &() const { return this->get(); }
+    HeightField &edit()
+    {
+        if (!m_field)
+            m_field = std::make_shared<HeightField>();
+        else if (m_field.use_count() > 1)
+            m_field = std::make_shared<HeightField>(*m_field);
+        return *m_field;
+    }
+
+    int                       nx() const { return this->get().nx(); }
+    int                       ny() const { return this->get().ny(); }
+    double                    pitch() const { return this->get().pitch(); }
+    const Vec2d              &origin() const { return this->get().origin(); }
+    BoundingBoxf              bbox() const { return this->get().bbox(); }
+    bool                      empty() const { return this->get().empty(); }
+    float                     at(int ix, int iy) const { return this->get().at(ix, iy); }
+    Vec2d                     node(int ix, int iy) const { return this->get().node(ix, iy); }
+    float                     sample(const Vec2d &p) const { return this->get().sample(p); }
+    Vec2d                     gradient(const Vec2d &p) const { return this->get().gradient(p); }
+    bool                      has_data(const Vec2d &p) const { return this->get().has_data(p); }
+    const std::vector<float> &data() const { return this->get().data(); }
+
+private:
+    static const HeightField &empty_field()
+    {
+        static const HeightField empty;
+        return empty;
+    }
+    std::shared_ptr<HeightField> m_field;
+};
+
 struct ConformalPatch
 {
     int        id = -1;
     PatchKind  kind = PatchKind::Top;
     ExPolygons footprint;
     ExPolygons wall_band;
-    HeightField surface;
-    HeightField base;
+    PatchField surface;
+    PatchField base;
     int        shells = 0;
     int        sparse = 0;
     bool       bridged_base = false;
@@ -42,6 +89,7 @@ struct ConformalPatch
     std::vector<ExtrusionEntityCollection> shell_paths;
     ExtrusionEntityCollection              ironing;
 };
+static_assert(std::is_nothrow_move_constructible_v<ConformalPatch>);
 
 struct PatchDiagnostics
 {

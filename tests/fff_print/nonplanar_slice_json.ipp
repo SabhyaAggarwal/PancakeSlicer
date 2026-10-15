@@ -22,6 +22,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <ctime>
 #include <iomanip>
 #include <iterator>
@@ -240,7 +241,7 @@ struct SliceGrid
     }
     template<class F> Json measure(F accepts) const
     {
-        double squared = 0.;
+        double squared = 0., squared_conformal = 0.;
         size_t cells = 0, finite = 0, gaps = 0, covered = 0, iron = 0;
         for (int y = 0; y < ny; ++y) for (int x = 0; x < nx; ++x) {
             const size_t k = size_t(y) * nx + x;
@@ -249,14 +250,92 @@ struct SliceGrid
             const double error = bead[k] - mesh[k];
             if (std::isfinite(error)) { squared += error * error; ++finite; }
             if (error < -1.) ++gaps;
-            if (conformal[k] && std::abs(error) <= 1.) ++covered;
+            if (conformal[k] && std::abs(error) <= 1.) { ++covered; squared_conformal += error * error; }
             iron += ironed[k];
         }
         return {{"rms_vs_mesh_mm", finite ? Json(std::sqrt(squared / finite)) : Json(nullptr)},
                 {"coverage", cells ? Json(double(covered) / cells) : Json(nullptr)},
+                {"rms_covered_mm", covered ? Json(std::sqrt(squared_conformal / covered)) : Json(nullptr)},
+                {"rms_uncovered_mm", finite > covered ? Json(std::sqrt(std::max(0., squared - squared_conformal) / (finite - covered))) : Json(nullptr)},
                 {"gap_cells", gaps}, {"ironed_area_mm2", iron * pitch * pitch}, {"eval_cells", cells},
                 {"finite_cells", finite}};
     }
+};
+
+class RowContains
+{
+public:
+    explicit RowContains(const ExPolygons &polygons) : m_polygons(polygons) {}
+    bool operator()(const Point &p)
+    {
+        if (!m_valid || p.y() != m_y)
+            this->row(p.y());
+        for (const std::vector<Ring> &rings : m_rings) {
+            if (const int r = crossings(p, rings.front()); r != -1 && r % 2 == 0)
+                continue;
+            if (std::none_of(rings.begin() + 1, rings.end(), [&p](const Ring &hole) { const int r = crossings(p, hole); return r != -1 && r % 2 == 1; }))
+                return true;
+        }
+        return false;
+    }
+
+private:
+    struct Ring
+    {
+        bool                             degenerate = false;
+        std::vector<std::pair<Point, Point>> edges;
+    };
+    static int crossings(const Point &pt, const Ring &ring)
+    {
+        if (ring.degenerate)
+            return 0;
+        int result = 0;
+        for (const auto &[ip, ipNext] : ring.edges) {
+            if (ipNext.y() == pt.y() && ((ipNext.x() == pt.x()) || (ip.y() == pt.y() && ((ipNext.x() > pt.x()) == (ip.x() < pt.x())))))
+                return -1;
+            if ((ip.y() < pt.y()) != (ipNext.y() < pt.y())) {
+                if (ip.x() >= pt.x()) {
+                    if (ipNext.x() > pt.x())
+                        result = 1 - result;
+                    else {
+                        int64_t d = int64_t(ip.x() - pt.x()) * int64_t(ipNext.y() - pt.y()) - int64_t(ipNext.x() - pt.x()) * int64_t(ip.y() - pt.y());
+                        if (!d) return -1;
+                        if ((d > 0) == (ipNext.y() > ip.y())) result = 1 - result;
+                    }
+                } else if (ipNext.x() > pt.x()) {
+                    int64_t d = int64_t(ip.x() - pt.x()) * int64_t(ipNext.y() - pt.y()) - int64_t(ipNext.x() - pt.x()) * int64_t(ip.y() - pt.y());
+                    if (!d) return -1;
+                    if ((d > 0) == (ipNext.y() > ip.y())) result = 1 - result;
+                }
+            }
+        }
+        return result;
+    }
+    void row(coord_t y)
+    {
+        m_y     = y;
+        m_valid = true;
+        m_rings.resize(m_polygons.size());
+        for (size_t i = 0; i < m_polygons.size(); ++i) {
+            const ExPolygon &expoly = m_polygons[i];
+            m_rings[i].resize(1 + expoly.holes.size());
+            for (size_t j = 0; j < m_rings[i].size(); ++j) {
+                const Points &path = (j == 0 ? expoly.contour : expoly.holes[j - 1]).points;
+                Ring         &ring = m_rings[i][j];
+                ring.degenerate    = path.size() < 3;
+                ring.edges.clear();
+                for (size_t k = 0; k < path.size() && !ring.degenerate; ++k) {
+                    const Point &ip = path[k], &ipNext = path[(k + 1) % path.size()];
+                    if (ipNext.y() == y || ((ip.y() < y) != (ipNext.y() < y)))
+                        ring.edges.emplace_back(ip, ipNext);
+                }
+            }
+        }
+    }
+    const ExPolygons                    &m_polygons;
+    coord_t                              m_y     = 0;
+    bool                                 m_valid = false;
+    std::vector<std::vector<Ring>>       m_rings;
 };
 
 void slice_json_results(Json &record, const Args &args, const Print &print, const GCodeProcessorResult &result,
@@ -318,6 +397,8 @@ void slice_json_results(Json &record, const Args &args, const Print &print, cons
     totals["ironed_area_mm2"] = quality["ironed_area_mm2"];
     totals["eval_cells"] = quality["eval_cells"];
     totals["finite_cells"] = quality["finite_cells"];
+    totals["rms_covered_mm"] = quality["rms_covered_mm"];
+    totals["rms_uncovered_mm"] = quality["rms_uncovered_mm"];
     const bool control = std::all_of(print.objects().begin(), print.objects().end(), [](const PrintObject *object) {
         return object->config().nonplanar_mode.value == NonplanarMode::Off;
     });
@@ -330,18 +411,21 @@ void slice_json_results(Json &record, const Args &args, const Print &print, cons
         double footprint = 0.;
         for (const auto &instance : object->instances())
             entry["instances"].push_back({{"id", instance.id}, {"shift_mm", {unscale<double>(instance.shift.x()), unscale<double>(instance.shift.y())}}});
-        const auto in_footprint = [&](const Vec2d &p, const ExPolygons &polygons) {
-            for (const auto &instance : object->instances()) {
+        const auto in_footprint = [&](const Vec2d &p, std::vector<RowContains> &rows, const BoundingBox &box) {
+            for (size_t i = 0; i < object->instances().size(); ++i) {
+                const auto &instance = object->instances()[i];
                 const Vec2d local = p - Vec2d(unscale<double>(instance.shift.x()), unscale<double>(instance.shift.y()));
                 const Point node = Point::new_scale(local);
-                if (std::any_of(polygons.begin(), polygons.end(), [&node](const ExPolygon &polygon) { return polygon.contains(node); }))
+                if (box.contains(node) && rows[i](node))
                     return true;
             }
             return false;
         };
         for (const auto &patch : object->conformal().patches) {
             const double a = area(patch.footprint) * SCALING_FACTOR * SCALING_FACTOR;
-            Json p = grid.measure([&](const Vec2d &xy) { return in_footprint(xy, patch.footprint); });
+            const BoundingBox box = get_extents(patch.footprint);
+            std::vector<RowContains> rows(object->instances().size(), RowContains(patch.footprint));
+            Json p = grid.measure([&](const Vec2d &xy) { return in_footprint(xy, rows, box); });
             static const char *kinds[] = {"top", "bottom", "volume", "overhang", "chunk", "support-interface", "bridge", "field"};
             static_assert(std::size(kinds) == size_t(Nonplanar::PatchKind::Field) + 1, "one name per PatchKind");
             p.update({{"id", patch.id}, {"object_id", object_id}, {"kind", kinds[size_t(patch.kind)]},

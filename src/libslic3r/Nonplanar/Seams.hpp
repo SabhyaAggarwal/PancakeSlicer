@@ -66,6 +66,7 @@ void absorb_short_roads(ExtrusionEntitiesPtr &paths);
 constexpr double ExtrudedJoin = 3.;
 void extrude_short_glides(ExtrusionEntitiesPtr &paths, double floor, double ceiling);
 bool short_road_joint(const ExtrusionPathConformal &s, const ExtrusionPathConformal &o, double &distance, Point &a, Point &b);
+bool is_short_road(const ExtrusionPathConformal &s);
 
 
 void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &band_roads, const GlideZ &glide_z, double max_glide,

@@ -549,6 +549,11 @@ bool joint(const ExtrusionPathConformal &s, const ExtrusionPathConformal &o, dou
 
 }
 
+bool is_short_road(const ExtrusionPathConformal &s)
+{
+    return extruded(s) && s.tool_axis.empty() && unscale<double>(s.polyline.length()) < ShortRoad;
+}
+
 bool short_road_joint(const ExtrusionPathConformal &s, const ExtrusionPathConformal &o, double &distance, Point &a, Point &b)
 {
     int mode = 0;

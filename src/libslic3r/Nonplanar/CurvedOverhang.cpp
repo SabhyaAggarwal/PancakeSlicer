@@ -402,20 +402,39 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
     const int        pad_nodes = int(std::ceil((3. + 2. * w) / pitch)) + 2;
     std::vector<int> all_nodes;
     const size_t     first_patch = result.patches.size();
+    std::vector<std::vector<int>>   comp_nodes(static_cast<size_t>(n_comp));
+    std::vector<std::array<int, 4>> comp_box(size_t(n_comp), std::array<int, 4>{ grid.nx(), grid.ny(), -1, -1 });
+    for (int iy = 0; iy < grid.ny(); ++iy)
+        for (int ix = 0; ix < grid.nx(); ++ix)
+            if (const int l = label[size_t(iy) * grid.nx() + ix]; l >= 0) {
+                comp_nodes[size_t(l)].emplace_back(iy * grid.nx() + ix);
+                std::array<int, 4> &b = comp_box[size_t(l)];
+                b = { std::min(b[0], ix), std::min(b[1], iy), std::max(b[2], ix), std::max(b[3], iy) };
+            }
+    Mask               cmask(n_nodes, 0);
+    std::vector<float> dist(n_nodes, Inf);
+    HeightField        s_field, d_field;
+    if (free_mode) {
+        s_field = d_field = grid;
+        std::fill(s_field.data().begin(), s_field.data().end(), HeightField::NoData);
+        std::fill(d_field.data().begin(), d_field.data().end(), HeightField::NoData);
+    }
+    const std::vector<int> *marked = nullptr;
     for (int c = 0; c < n_comp; ++c) {
         throw_if_canceled(object);
-        std::vector<int> nodes;
-        int              ix0 = grid.nx(), iy0 = grid.ny(), ix1 = -1, iy1 = -1;
-        for (int iy = 0; iy < grid.ny(); ++iy)
-            for (int ix = 0; ix < grid.nx(); ++ix)
-                if (label[size_t(iy) * grid.nx() + ix] == c) {
-                    nodes.emplace_back(iy * grid.nx() + ix);
-                    ix0 = std::min(ix0, ix), iy0 = std::min(iy0, iy), ix1 = std::max(ix1, ix), iy1 = std::max(iy1, iy);
-                }
-        Mask cmask(n_nodes, 0);
+        if (marked != nullptr)
+            for (int i : *marked) {
+                cmask[size_t(i)] = 0;
+                dist[size_t(i)]  = Inf;
+                if (free_mode)
+                    s_field.data()[size_t(i)] = d_field.data()[size_t(i)] = HeightField::NoData;
+            }
+        const std::vector<int> &nodes = comp_nodes[size_t(c)];
+        marked                        = &nodes;
+        const int ix0 = comp_box[size_t(c)][0], iy0 = comp_box[size_t(c)][1], ix1 = comp_box[size_t(c)][2], iy1 = comp_box[size_t(c)][3];
         for (int i : nodes)
             cmask[size_t(i)] = 1;
-        const ExPolygons footprint = mask_to_expolygons(cmask, grid);
+        const ExPolygons footprint = mask_to_expolygons(cmask, grid, ix0, iy0, ix1, iy1);
         const ExPolygons footprint_ext = offset_ex(footprint, float(scale_(std::max(0.5 * w, wall_width))));
         auto reject = [&](Why reason) {
             for (int i : nodes)
@@ -426,7 +445,6 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
             continue;
         }
 
-        std::vector<float> dist(n_nodes, Inf);
         std::vector<int>   front;
         for (int i : nodes) {
             const int ix = i % grid.nx(), iy = i / grid.nx();
@@ -490,9 +508,6 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
         double       beta    = std::clamp(grad_need - (1. + kappa) * g10, 0., std::max(0., tan_max - kappa * g10));
         std::vector<Vec2d> grad_s, grad_d;
         if (free_mode) {
-            HeightField s_field = grid, d_field = grid;
-            std::fill(s_field.data().begin(), s_field.data().end(), HeightField::NoData);
-            std::fill(d_field.data().begin(), d_field.data().end(), HeightField::NoData);
             for (int i : nodes) {
                 s_field.data()[size_t(i)] = Sb.data()[size_t(i)];
                 d_field.data()[size_t(i)] = dist[size_t(i)];
@@ -738,13 +753,14 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
         diag.patch_id      = int(result.patches.size());
         diag.max_slope_deg = Geometry::rad2deg(std::atan(kappa * slopes.back() + beta));
         result.diagnostics.emplace_back(std::move(diag));
+        const PatchField surface_field(S_pad), base_field(F_pad);
         for (auto &[host, subs] : by_host) {
             ConformalPatch patch;
             patch.id           = int(result.patches.size());
             patch.kind         = PatchKind::Overhang;
             patch.footprint    = footprint;
-            patch.surface      = S_pad;
-            patch.base         = F_pad;
+            patch.surface      = surface_field;
+            patch.base         = base_field;
             patch.shell_height = g;
             patch.region_id    = settings.region_id;
             patch.host_layer   = size_t(host);

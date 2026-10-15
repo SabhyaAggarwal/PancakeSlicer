@@ -890,6 +890,7 @@ void PrintObject::contour_z()
     TriangleMesh     mesh          = this->object_frame_mesh(ground_offset);
     sla::IndexedMesh imesh(mesh);
     imesh.ground_level_offset(ground_offset);
+    imesh.enable_column_cache();
 
     std::mutex mtx;
     size_t completed = 0;

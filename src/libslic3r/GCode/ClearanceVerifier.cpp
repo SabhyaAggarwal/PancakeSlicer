@@ -519,8 +519,11 @@ void MaterialColumns::deposit(const Vec3d &a, const Vec3d &b, double width)
         for (int x = x0; x < x1;) {
             const int    tx = x / m_tile, end = std::min(x1, (tx + 1) * m_tile);
             const size_t t  = size_t(y / m_tile) * m_tx + tx;
-            double *row = writable(t).data() + size_t(y % m_tile) * m_tile;
+            std::vector<double> &block = writable(t);
+            double *row = block.data() + size_t(y % m_tile) * m_tile;
             for (; x < end; ++x) row[x - tx * m_tile] = std::max(row[x - tx * m_tile], z);
+            double &row_top = block[size_t(m_tile) * m_tile + size_t(y % m_tile)];
+            row_top    = std::max(row_top, z);
             m_tiles[t] = std::max(m_tiles[t], z);
         }
     if (x0 < x1 && y0 < y1) m_ceiling = std::max(m_ceiling, z);
@@ -532,7 +535,7 @@ std::vector<double> &MaterialColumns::writable(size_t t)
 {
     std::shared_ptr<std::vector<double>> &block = m_blocks[t];
     if (!block)
-        block = std::make_shared<std::vector<double>>(size_t(m_tile) * m_tile, -Inf);
+        block = std::make_shared<std::vector<double>>(size_t(m_tile) * (m_tile + 1), -Inf);
     else if (block.use_count() > 1)
         block = std::make_shared<std::vector<double>>(*block);
     else
@@ -580,8 +583,11 @@ double MaterialColumns::top_above(const BoundingBoxf &rect, double floor) const
             const int ay = std::max(y0, ty * m_tile), by = std::min(y1, (ty + 1) * m_tile);
             if (ax == tx * m_tile && bx == std::min(m_nx, (tx + 1) * m_tile) &&
                 ay == ty * m_tile && by == std::min(m_ny, (ty + 1) * m_tile)) { best = tile; continue; }
-            const double *block = m_blocks[size_t(ty) * m_tx + tx]->data();
+            const double *block   = m_blocks[size_t(ty) * m_tx + tx]->data();
+            const double *row_top = block + size_t(m_tile) * m_tile;
             for (int y = ay; y < by; ++y) {
+                if (row_top[y - ty * m_tile] <= best)
+                    continue;
                 const double *row = block + size_t(y - ty * m_tile) * m_tile;
                 for (int x = ax; x < bx; ++x) best = std::max(best, row[x - tx * m_tile]);
             }

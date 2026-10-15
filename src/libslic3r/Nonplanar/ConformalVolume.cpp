@@ -461,18 +461,19 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
             patch.surface = crop(grid, ix0, iy0, ix1, iy1);
             patch.base    = patch.surface;
             HeightField S = grid;
+            HeightField &top_field = patch.surface.edit(), &base_field = patch.base.edit();
             for (int i : slab.items) {
                 const Item  &it = items[size_t(i)];
                 const size_t n  = local_index(slab, it);
                 const int    ix = int(it.node % size_t(nx)) - ix0, iy = int(it.node / size_t(nx)) - iy0;
-                patch.surface.at(ix, iy) = slab.top.data()[n];
-                patch.base.at(ix, iy)    = slab.bottom.data()[n];
+                top_field.at(ix, iy)     = slab.top.data()[n];
+                base_field.at(ix, iy)    = slab.bottom.data()[n];
                 S.data()[it.node]        = slab.top.data()[n];
                 patch.z_min              = std::min(patch.z_min, double(slab.bottom.data()[n]));
                 patch.z_max              = std::max(patch.z_max, double(slab.top.data()[n]));
             }
-            pad_lowest(patch.surface, pad);
-            pad_lowest(patch.base, pad);
+            pad_lowest(top_field, pad);
+            pad_lowest(base_field, pad);
 
             const int        L           = patch.shells;
             ExPolygons infill_area = loops == 0 ? patch.footprint : ExPolygons();
@@ -539,7 +540,7 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
                 const bool spaced = surface_spacing && solid_layer && !fill.spiral;
                 if (solid_layer)
                     linked = shell_polylines(infill_area, fill, k == L || role == erBottomSurface ? ipMonotonic : ipRectilinear, flow.spacing(),
-                                             k == L || role == erBottomSurface, flow, 0., seam, MaxGlide, spaced ? &patch.surface : nullptr);
+                                             k == L || role == erBottomSurface, flow, 0., seam, MaxGlide, spaced ? &patch.surface.get() : nullptr);
                 else if (density > EPSILON) {
                     fill        = ShellFill{};
                     fill.angle  = ply ? ply_angle(principal, L - k) : base_angle + (k % 2) * 0.5 * PI;

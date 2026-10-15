@@ -39,6 +39,8 @@ public:
     std::optional<coord_t> distToGoUp() const;
 
     STHalfEdge* getNextUnconnected();
+
+    bool collapsed = false;
 };
 
 class STHalfEdgeNode : public HalfEdgeNode<SkeletalTrapezoidationJoint, SkeletalTrapezoidationEdge, STHalfEdgeNode, STHalfEdge>
@@ -47,6 +49,9 @@ class STHalfEdgeNode : public HalfEdgeNode<SkeletalTrapezoidationJoint, Skeletal
     using node_t = STHalfEdgeNode;
 public:
     STHalfEdgeNode(SkeletalTrapezoidationJoint data, Point p);
+
+    bool quad_start_seen = false;
+    bool collapsed = false;
 
     bool isMultiIntersection();
 

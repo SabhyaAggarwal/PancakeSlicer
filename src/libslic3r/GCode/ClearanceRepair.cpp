@@ -27,6 +27,7 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -87,8 +88,13 @@ struct Segment { size_t move; size_t run; Vec3d a, b; double half_width; };
 class SegmentGrid
 {
 public:
-    explicit SegmentGrid(const GCodeProcessorResult &result)
+    SegmentGrid(const GCodeProcessorResult &result, const std::vector<BoundingBoxf> *reach, const std::vector<size_t> &blamed)
     {
+        std::unordered_set<int64_t> cells;
+        if (reach != nullptr)
+            for (const BoundingBoxf &r : *reach)
+                visit(r, [&](int64_t key) { cells.insert(key); });
+        std::unordered_set<size_t> blamed_moves(blamed.begin(), blamed.end());
         size_t last = 0, run = 0;
         for (size_t i = 1; i < result.moves.size(); ++i) {
             const MoveVertex &m = result.moves[i];
@@ -100,10 +106,17 @@ public:
                 ++run;
                 continue;
             }
-            m_run_of[i] = run;
+            if (blamed_moves.count(i))
+                m_run_of[i] = run;
+            const Segment segment { i, run, a, b, 0.5 * m.width };
+            bool in_reach = reach == nullptr;
+            if (!in_reach)
+                visit(bounds(segment), [&](int64_t key) { in_reach = in_reach || cells.count(key) > 0; });
+            if (!in_reach)
+                continue;
             const size_t id = m_segments.size();
-            m_segments.push_back({ i, run, a, b, 0.5 * m.width });
-            visit(bounds(m_segments.back()), [&](int64_t key) { m_cells[key].push_back(id); });
+            m_segments.push_back(segment);
+            visit(bounds(segment), [&](int64_t key) { m_cells[key].push_back(id); });
         }
     }
     size_t run_of(size_t move) const { auto it = m_run_of.find(move); return it == m_run_of.end() ? size_t(-1) : it->second; }
@@ -295,7 +308,10 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
     ClearanceReport report = verify_clearance(result, params, ThreeAxisKinematics(), [&print] { print.throw_if_canceled(); });
     const size_t hits = report.hit_moves;
     self->m_planned.clear();
-    if (hits > 0 && self->plan(result, report, params.head) && self->m_pass < self->m_max_passes) {
+    const bool stalled = self->m_pass > 0 && hits == self->m_last_hits && report.min_clearance == self->m_last_min;
+    self->m_last_hits  = hits;
+    self->m_last_min   = report.min_clearance;
+    if (hits > 0 && !stalled && self->plan(result, report, params.head) && self->m_pass < self->m_max_passes) {
         result.clearance_report = std::move(report);
         result.clearance        = result.clearance_report.per_move;
         return;
@@ -327,17 +343,6 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
 bool ClearanceRepair::plan(const GCodeProcessorResult &result, const ClearanceReport &report, const HeadEnvelope &head)
 {
     const std::vector<Box> contact_boxes = verifier_boxes(head, true), travel_boxes = verifier_boxes(head, false);
-    const SegmentGrid      grid(result);
-    if (m_pass == 0)
-        m_first_hits = report.hit_moves;
-    const Locator          locator(m_print);
-    auto hints_of = [this](PrintObject *object) -> RepairHints & {
-        for (Planned &p : m_planned)
-            if (p.object == object)
-                return p.hints;
-        m_planned.push_back({ object, {} });
-        return m_planned.back().hints;
-    };
     auto previous_physical = [&](size_t i) { while (i > 0 && !physical(result.moves[--i])) {} return i; };
     auto next_extrusion    = [&](size_t i) {
         while (++i < result.moves.size())
@@ -348,6 +353,39 @@ bool ClearanceRepair::plan(const GCodeProcessorResult &result, const ClearanceRe
         while (i > 0)
             if (result.moves[--i].type == EMoveType::Extrude) return i;
         return size_t(0);
+    };
+    std::vector<BoundingBoxf> reach;
+    std::vector<size_t>       blamed;
+    bool                      unbounded = false;
+    for (const ClearanceHit &hit : report.worst)
+        for (const size_t id : { hit.move_id, next_extrusion(hit.move_id) }) {
+            if (id == 0)
+                continue;
+            blamed.push_back(id);
+            const Vec3d  a = tip_of(result, previous_physical(id)), b = tip_of(result, id);
+            BoundingBoxf r(a.head<2>().cwiseMin(b.head<2>()), a.head<2>().cwiseMax(b.head<2>()));
+            Vec2d        lo = Vec2d::Zero(), hi = Vec2d::Zero();
+            for (const std::vector<Box> *list : { &contact_boxes, &travel_boxes })
+                for (const Box &box : *list)
+                    if (hit.component.empty() || box.name == hit.component) {
+                        unbounded = unbounded || box.inf_x || box.inf_y;
+                        lo = lo.cwiseMin(box.min.head<2>());
+                        hi = hi.cwiseMax(box.max.head<2>());
+                    }
+            r.min += lo - Vec2d::Constant(CellSlack);
+            r.max += hi + Vec2d::Constant(CellSlack);
+            reach.push_back(r);
+        }
+    const SegmentGrid      grid(result, unbounded ? nullptr : &reach, blamed);
+    if (m_pass == 0)
+        m_first_hits = report.hit_moves;
+    const Locator          locator(m_print);
+    auto hints_of = [this](PrintObject *object) -> RepairHints & {
+        for (Planned &p : m_planned)
+            if (p.object == object)
+                return p.hints;
+        m_planned.push_back({ object, {} });
+        return m_planned.back().hints;
     };
 
     size_t caps = 0, bands = 0, drops = 0, lifts = 0, unrepaired = 0;

@@ -42,6 +42,8 @@ private:
     int                      m_max_passes = 0;
     int                      m_pass       = 0;
     size_t                   m_first_hits = 0;
+    size_t                   m_last_hits  = 0;
+    double                   m_last_min   = 0.;
     std::vector<Planned>     m_planned;
     std::vector<std::string> m_actions;
 };

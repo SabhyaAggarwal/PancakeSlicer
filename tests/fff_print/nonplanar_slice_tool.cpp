@@ -107,7 +107,8 @@ struct Args
                  "       [--config-out FILE] [--project-out FILE] [--head-out FILE] [--gcode-3mf FILE] [--json FILE]\n"
                  "       [--atom TOOLPATH] [--verify] [--explain] [--auto-orient | --orient-only] [--save-3mf PROJECT.3mf]\n"
                  "       [--layer-profile adaptive:QUALITY | ramp:H_BOTTOM:H_TOP | range:DEPTH:H] [--calib-head ID]\n"
-                 "       -o OUT.gcode (MODEL | PROJECT.3mf | --plate PLATE.json | --project SPEC.json | --calib TEST)\n";
+                 "       -o OUT.gcode (MODEL | PROJECT.3mf | --plate PLATE.json | --project SPEC.json | --calib TEST)\n"
+                 "       nonplanar_slice_tool --load-gcode FILE.gcode   (times the preview's G-code load)\n";
     std::exit(2);
 }
 
@@ -896,6 +897,18 @@ void save_project(const Args &args, Model &model, DynamicPrintConfig &config, co
 
 int main(int argc, char **argv)
 {
+    if (argc == 3 && std::string(argv[1]) == "--load-gcode") {
+        const auto     t0 = std::chrono::steady_clock::now();
+        const double   c0 = process_cpu_seconds();
+        GCodeProcessor processor;
+        processor.process_file(argv[2]);
+        const auto &moves = processor.get_result().moves;
+        std::cout << "preview_load_s " << std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() << "\n"
+                  << "preview_load_cpu_s " << process_cpu_seconds() - c0 << "\n"
+                  << "preview_moves " << moves.size() << "\n"
+                  << "preview_moves_mb " << double(moves.size() * sizeof(moves.front())) / 1e6 << "\n";
+        return 0;
+    }
     const Args args = parse_args(argc, argv);
     nlohmann::json record;
     if (const char *level = std::getenv("NP_LOG_LEVEL"))
@@ -1038,13 +1051,15 @@ int main(int argc, char **argv)
             throw std::runtime_error("validate: " + err.string);
         for (const StringObjectException &w : warnings)
             std::cerr << "warning: " << w.string << "\n";
-        const auto t_process = std::chrono::steady_clock::now();
+        const auto   t_process = std::chrono::steady_clock::now();
+        const double c_process = process_cpu_seconds();
         try {
             print.process();
         } catch (const SlicingErrors &errors) {
             throw std::runtime_error(print.slicing_errors_message(errors));
         }
-        const auto t_export = std::chrono::steady_clock::now();
+        const auto   t_export = std::chrono::steady_clock::now();
+        const double c_export = process_cpu_seconds();
         GCodeProcessorResult result;
         const indexed_triangle_set mesh = plate_mesh(model);
         print.export_gcode(args.output, &result, [&mesh](const ThumbnailsParams &params) {
@@ -1053,7 +1068,8 @@ int main(int argc, char **argv)
                 list.push_back(render_thumbnail(mesh, unsigned(size.x()), unsigned(size.y()), false));
             return list;
         });
-        const auto t_done = std::chrono::steady_clock::now();
+        const auto   t_done = std::chrono::steady_clock::now();
+        const double c_done = process_cpu_seconds();
 
         if (args.explain)
             for (size_t i = 0; i < print.objects().size(); ++i) {
@@ -1073,7 +1089,11 @@ int main(int argc, char **argv)
                   << "max_vz_commanded " << vz << "\n"
                   << "max_vz_planned " << vz_actual << "\n"
                   << "max_vz_planned_line " << vz_line << "\n"
-                  << "machine_max_speed_z " << config.opt<ConfigOptionFloats>("machine_max_speed_z")->get_at(0) << "\n";
+                  << "machine_max_speed_z " << config.opt<ConfigOptionFloats>("machine_max_speed_z")->get_at(0) << "\n"
+                  << "cpu_process_s " << c_export - c_process << "\n"
+                  << "cpu_export_s " << c_done - c_export << "\n"
+                  << "preview_moves " << result.moves.size() << "\n"
+                  << "preview_moves_mb " << double(result.moves.size() * sizeof(result.moves.front())) / 1e6 << "\n";
         if (! args.json.empty()) {
             auto &text = record["text_summary"];
             text["time_process_s"] = text_value(std::chrono::duration<double>(t_export - t_process).count());
