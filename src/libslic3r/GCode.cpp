@@ -8505,6 +8505,24 @@ static void extrude_contoured(GCodeWriter &writer, std::string &gcode, const Vec
         writer.set_speed(gcode, F_set);
 }
 
+static void extrude_contoured_road(GCodeWriter &writer, std::string &gcode, const Vec3d &from, const Vec3d &to, double nominal_z,
+                                   double dE, double width, double height, bool scale_flow, const std::string &comment, double vz_max)
+{
+    const double dz      = std::abs(to.z() - from.z());
+    const double nominal = Nonplanar::bead_area(width, height);
+    const int    n       = scale_flow && dz > 0.25 * height ?
+                               std::clamp(int(std::ceil(dz / (0.25 * height) - EPSILON)), 1, std::max(1, int((to - from).head<2>().norm() / 0.1))) : 1;
+    for (int i = 1; i <= n; ++i) {
+        const Vec3d  a     = from + (to - from) * (double(i - 1) / n);
+        const Vec3d  b     = i == n ? to : from + (to - from) * (double(i) / n);
+        const double ratio = scale_flow && nominal > 0. ? std::max(0., Nonplanar::bead_area(width, height + 0.5 * (a.z() + b.z()))) / nominal : 1.;
+        const double z     = nominal_z + b.z();
+        if (z < 0.1)
+            throw RuntimeError("GCode: very low z");
+        extrude_contoured(writer, gcode, Vec3d(b.x(), b.y(), z), dE / n * ratio, comment, vz_max);
+    }
+}
+
 double GCode::conformal_max_speed_z() const
 {
     return m_writer.max_speed_z() > 0. ? m_writer.max_speed_z() :
@@ -9682,23 +9700,11 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
                     }
                     tag_belt_band((line.a.x() + line.b.x()) / 2, (line.a.y() + line.b.y()) / 2);
                     if (path.z_contoured) {
-                        Vec2d dest2d = this->point_to_gcode(line.b.to_point());
-                        coordf_t z_diff = unscale_(line.b.z());
-
-                        double extrusion_ratio = 1;
-                        if (path.role() != erIroning) {
-                            extrusion_ratio = (path.height + z_diff) / path.height;
-                        }
-
-                        double e = dE * extrusion_ratio;
-
-                        double z = m_nominal_z + z_diff;
-                        if (z < 0.1) {
-                            throw RuntimeError("GCode: very low z");
-                        }
-                        extrude_contoured(m_writer, gcode, Vec3d(dest2d.x(), dest2d.y(), z), e,
-                                          flow_description.empty() ? description : flow_description, z_cap ? this->conformal_max_speed_z() : 0.);
-
+                        const Vec2d from = this->point_to_gcode(line.a.to_point()), to = this->point_to_gcode(line.b.to_point());
+                        extrude_contoured_road(m_writer, gcode, Vec3d(from.x(), from.y(), unscale_(line.a.z())),
+                                               Vec3d(to.x(), to.y(), unscale_(line.b.z())), m_nominal_z, dE, path.width, path.height,
+                                               path.role() != erIroning, flow_description.empty() ? description : flow_description,
+                                               z_cap ? this->conformal_max_speed_z() : 0.);
                     } else if (sloped == nullptr) {
                         m_writer.extrude_to_xy(gcode,
                             this->point_to_gcode(line.b.to_point()),
@@ -9874,23 +9880,10 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
                 }
             }
             if (path.z_contoured) {
-                Vec2d    dest2d = p.head<2>();
-                coordf_t z_diff = unscale_(processed_point.p.z());
-
-                double extrusion_ratio = 1;
-                if (path.role() != erIroning) {
-                    extrusion_ratio = (path.height + z_diff) / path.height;
-                }
-
-                double e = dE * extrusion_ratio;
-
-                double z = m_nominal_z + z_diff;
-                if (z < 0.1) {
-                    throw RuntimeError("GCode: very low z");
-                }
-                extrude_contoured(m_writer, gcode, Vec3d(dest2d.x(), dest2d.y(), z), e,
-                                  flow_description.empty() ? description : flow_description,
-                                  Nonplanar::requests_conformal_shells(*m_print) ? this->conformal_max_speed_z() : 0.);
+                extrude_contoured_road(m_writer, gcode, Vec3d(prev.x(), prev.y(), unscale_(pre_processed_point.p.z())),
+                                       Vec3d(p.x(), p.y(), unscale_(processed_point.p.z())), m_nominal_z, dE, path.width, path.height,
+                                       path.role() != erIroning, flow_description.empty() ? description : flow_description,
+                                       Nonplanar::requests_conformal_shells(*m_print) ? this->conformal_max_speed_z() : 0.);
             } else if (sloped == nullptr) {
                 m_writer.extrude_to_xy(gcode, p.head<2>(), dE, flow_description.empty() ? description : flow_description);
             } else {
