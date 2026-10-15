@@ -1,0 +1,20 @@
+{
+	"type": "filament",
+	"name": "Generic PLA @Tripod",
+	"inherits": "Generic PLA @System",
+	"from": "system",
+	"setting_id": "vSmvYTywJJIh1sN2",
+	"instantiation": "true",
+	"filament_type": [
+		"PLA"
+	],
+	"filament_extruder_id": [
+		"1"
+	],
+	"filament_extruder_variant": [
+		"Direct Drive Standard"
+	],
+	"compatible_printers": [
+		"Tripod 5-axis CoreXY 0.4 nozzle"
+	]
+}

@@ -713,7 +713,8 @@ static const t_config_enum_values s_keys_map_RotaryLayout = {
     { "table_bc", int(RotaryLayout::TableBC) },
     { "table_ac", int(RotaryLayout::TableAC) },
     { "head_ab",  int(RotaryLayout::HeadAB)  },
-    { "head_bc",  int(RotaryLayout::HeadBC)  }
+    { "head_bc",  int(RotaryLayout::HeadBC)  },
+    { "hybrid_ac", 5 }
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(RotaryLayout)
 
@@ -5490,11 +5491,13 @@ void PrintConfigDef::init_fff_params()
     def->enum_values.push_back("table_ac");
     def->enum_values.push_back("head_ab");
     def->enum_values.push_back("head_bc");
+    def->enum_values.push_back("hybrid_ac");
     def->enum_labels.push_back(L("None (3-axis)"));
     def->enum_labels.push_back(L("BC rotary table"));
     def->enum_labels.push_back(L("AC rotary table"));
     def->enum_labels.push_back(L("AB tilting head"));
     def->enum_labels.push_back(L("BC tilting head"));
+    def->enum_labels.push_back(L("A tilting head, C turntable"));
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionEnum<RotaryLayout>(RotaryLayout::None));
 

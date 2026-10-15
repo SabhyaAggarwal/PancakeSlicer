@@ -273,6 +273,65 @@ void RotaryHeadBC::solve_axis(const Vec3d &a, double free_angle, std::vector<std
     out.push_back({ -tilt, std::atan2(-a.y(), -a.x()) });
 }
 
+namespace {
+
+constexpr RotaryLayout HybridAC = RotaryLayout(5);
+
+class RotaryHybridAC : public RotaryKinematics
+{
+public:
+    using RotaryKinematics::RotaryKinematics;
+    RotaryLayout layout() const override { return HybridAC; }
+
+    bool inverse(const ToolPose &pose, const JointPose *prev, JointPose &out) const override
+    {
+        if (!RotaryKinematics::inverse(pose, prev, out))
+            return false;
+        if (!m_geo.firmware_rtcp) {
+            const auto  kin  = this->kinematic_angles(out);
+            const Vec3d tool = rot_x(kin[0]) * Vec3d::UnitZ();
+            out.xyz          = this->turn_work(pose.tip, kin[1]) + m_geo.tool_length * (tool - Vec3d::UnitZ());
+        }
+        return true;
+    }
+
+    ToolPose forward(const JointPose &joints) const override
+    {
+        const auto  kin  = this->kinematic_angles(joints);
+        const Vec3d tool = rot_x(kin[0]) * Vec3d::UnitZ();
+        ToolPose    pose;
+        pose.axis = rot_z(-kin[1]) * tool;
+        pose.tip  = m_geo.firmware_rtcp ? joints.xyz : this->turn_work(joints.xyz - m_geo.tool_length * (tool - Vec3d::UnitZ()), -kin[1]);
+        return pose;
+    }
+
+protected:
+    Matrix3d rotation(double a, double c) const override { return rot_z(-c) * rot_x(a); }
+    bool     is_table() const override { return false; }
+    int      free_axis() const override { return 1; }
+
+    void solve_axis(const Vec3d &v, double free_angle, std::vector<std::array<double, 2>> &out) const override
+    {
+        const double xy = v.head<2>().norm();
+        if (xy < SingularXY) {
+            out.push_back({ 0., free_angle });
+            return;
+        }
+        const double tilt = std::atan2(xy, v.z());
+        out.push_back({ tilt, std::atan2(-v.x(), -v.y()) });
+        out.push_back({ -tilt, std::atan2(v.x(), v.y()) });
+    }
+
+private:
+    Vec3d turn_work(const Vec3d &p, double c) const
+    {
+        const Vec3d centre(m_geo.pivot.x(), m_geo.pivot.y(), 0.);
+        return centre + rot_z(c) * (p - centre);
+    }
+};
+
+}
+
 RotaryGeometry rotary_geometry(const PrintConfig &config)
 {
     RotaryGeometry geo;
@@ -280,6 +339,7 @@ RotaryGeometry rotary_geometry(const PrintConfig &config)
     switch (config.nonplanar_kinematics.value) {
     case RotaryLayout::TableAC: letters = "AC"; break;
     case RotaryLayout::HeadAB: letters = "AB"; break;
+    case HybridAC: letters = "AC"; break;
     default: break;
     }
     auto at = [](const auto &opt, size_t i, auto fallback) { return i < opt.values.size() ? opt.values[i] : fallback; };
@@ -327,6 +387,7 @@ std::unique_ptr<ToolKinematics> make_tool_kinematics(const PrintConfig &config)
     case RotaryLayout::TableAC: return std::make_unique<RotaryTableAC>(rotary_geometry(config));
     case RotaryLayout::HeadAB: return std::make_unique<RotaryHeadAB>(rotary_geometry(config));
     case RotaryLayout::HeadBC: return std::make_unique<RotaryHeadBC>(rotary_geometry(config));
+    case HybridAC: return std::make_unique<RotaryHybridAC>(rotary_geometry(config));
     default: return std::make_unique<ThreeAxisKinematics>();
     }
 }

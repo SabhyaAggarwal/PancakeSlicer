@@ -1,6 +1,6 @@
 {
 	"name": "Custom Printer",
-	"version": "02.04.00.13",
+	"version": "02.04.00.14",
 	"force_update": "0",
 	"description": "My configurations",
 	"machine_model_list": [
@@ -29,8 +29,20 @@
 			"sub_path": "machine/MyToolChanger.json"
 		},
 		{
+			"name": "Hybrid XYA+C 5-axis",
+			"sub_path": "machine/Hybrid XYA+C 5-axis.json"
+		},
+		{
 			"name": "Prodcan3 5-axis BC table",
 			"sub_path": "machine/Prodcan3 5-axis BC table.json"
+		},
+		{
+			"name": "Tripod 5-axis CoreXY",
+			"sub_path": "machine/Tripod 5-axis CoreXY.json"
+		},
+		{
+			"name": "Wrist 5-axis AB head",
+			"sub_path": "machine/Wrist 5-axis AB head.json"
 		}
 	],
 	"process_list": [
@@ -199,8 +211,20 @@
 			"sub_path": "process/0.56mm Extra Draft @MyToolChanger.json"
 		},
 		{
+			"name": "0.20mm Non-planar top @Hybrid",
+			"sub_path": "process/0.20mm Non-planar top @Hybrid.json"
+		},
+		{
 			"name": "0.20mm Non-planar top @Prodcan3",
 			"sub_path": "process/0.20mm Non-planar top @Prodcan3.json"
+		},
+		{
+			"name": "0.20mm Non-planar top @Tripod",
+			"sub_path": "process/0.20mm Non-planar top @Tripod.json"
+		},
+		{
+			"name": "0.20mm Non-planar top @Wrist",
+			"sub_path": "process/0.20mm Non-planar top @Wrist.json"
 		}
 	],
 	"filament_list": [
@@ -229,12 +253,24 @@
 			"sub_path": "filament/Generic PETG @MyToolChanger.json"
 		},
 		{
+			"name": "Generic PLA @Hybrid",
+			"sub_path": "filament/Generic PLA @Hybrid.json"
+		},
+		{
 			"name": "Generic PLA @MyToolChanger",
 			"sub_path": "filament/Generic PLA @MyToolChanger.json"
 		},
 		{
 			"name": "Generic PLA @Prodcan3",
 			"sub_path": "filament/Generic PLA @Prodcan3.json"
+		},
+		{
+			"name": "Generic PLA @Tripod",
+			"sub_path": "filament/Generic PLA @Tripod.json"
+		},
+		{
+			"name": "Generic PLA @Wrist",
+			"sub_path": "filament/Generic PLA @Wrist.json"
 		},
 		{
 			"name": "Generic PLA-CF @MyToolChanger",
@@ -335,8 +371,20 @@
 			"sub_path": "machine/MyToolChanger 0.8 nozzle.json"
 		},
 		{
+			"name": "Hybrid XYA+C 5-axis 0.4 nozzle",
+			"sub_path": "machine/Hybrid XYA+C 5-axis 0.4 nozzle.json"
+		},
+		{
 			"name": "Prodcan3 5-axis BC table 0.4 nozzle",
 			"sub_path": "machine/Prodcan3 5-axis BC table 0.4 nozzle.json"
+		},
+		{
+			"name": "Tripod 5-axis CoreXY 0.4 nozzle",
+			"sub_path": "machine/Tripod 5-axis CoreXY 0.4 nozzle.json"
+		},
+		{
+			"name": "Wrist 5-axis AB head 0.4 nozzle",
+			"sub_path": "machine/Wrist 5-axis AB head 0.4 nozzle.json"
 		}
 	]
 }

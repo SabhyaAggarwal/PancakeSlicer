@@ -1,0 +1,94 @@
+{
+	"type": "machine",
+	"name": "Tripod 5-axis CoreXY 0.4 nozzle",
+	"from": "system",
+	"setting_id": "uZNGOVvKQny3jBHN",
+	"instantiation": "true",
+	"printer_notes": "Research design, docs/nonplanar/kinematics/tripod: a Voron Trident 250 whose toolhead is a 3-PRS tripod wrist (three NEMA 11 linear steppers on MGN12 rails at 45 mm, 110 mm blade struts, platform 30 mm, Revo Six 50 mm under the ball plane). The wrist reaches a 60 deg cone toward every azimuth. The slicer drives it as head_ab with the pivot 50 mm up the tool (rotary_tool_length), A and B within the cone; the tripod's own IK (kinematics/kin.py) turns A, B and the tip height into the three slider positions, and its common mode is a 90 mm/s local Z (machine_max_speed_z). rotary_max_speed is the tilt rate at the upright pose (191 deg/s at 100 mm/s per slider); slower poses (79 deg/s at the edge of the cone) are corrected in joint space (slicer/RESULTS.md). XY speeds are the Prodcan3's so the rotary-suite ratios compare kinematics, not motors. Not built; calibrated=false.",
+	"printer_technology": "FFF",
+	"printable_area": [
+		"0x0",
+		"250x0",
+		"250x250",
+		"0x250"
+	],
+	"printable_height": "250",
+	"nozzle_diameter": [
+		"0.4"
+	],
+	"machine_max_speed_x": [
+		"100",
+		"100"
+	],
+	"machine_max_speed_y": [
+		"80",
+		"80"
+	],
+	"machine_max_speed_z": [
+		"90",
+		"90"
+	],
+	"nonplanar_head": "tripod",
+	"nonplanar_segment_rate": "150",
+	"nonplanar_kinematics": "head_ab",
+	"rotary_axis_limits": [
+		"-60",
+		"60",
+		"-60",
+		"60"
+	],
+	"rotary_axis_continuous": [
+		"0",
+		"0"
+	],
+	"rotary_max_speed": [
+		"191",
+		"191"
+	],
+	"rotary_pivot": [
+		"0",
+		"0",
+		"0"
+	],
+	"rotary_tool_length": "50",
+	"rotary_tool_mount": [
+		"0",
+		"0",
+		"0"
+	],
+	"rotary_table_height": "0",
+	"rotary_linear_moves_table": [
+		"0",
+		"0",
+		"0"
+	],
+	"rotary_firmware_rtcp": "0",
+	"rotary_inverse_time_feed": "1",
+	"nonplanar_max_tilt": "60",
+	"default_print_profile": "0.20mm Non-planar top @Tripod",
+	"printer_model": "Tripod 5-axis CoreXY",
+	"printer_variant": "0.4",
+	"default_filament_profile": [
+		"Generic PLA @Tripod"
+	],
+	"default_nozzle_volume_type": [
+		"Standard"
+	],
+	"extruder_type": [
+		"Direct Drive"
+	],
+	"extruder_variant_list": [
+		"Direct Drive Standard"
+	],
+	"printer_extruder_id": [
+		"1"
+	],
+	"printer_extruder_variant": [
+		"Direct Drive Standard"
+	],
+	"gcode_flavor": "marlin",
+	"machine_start_gcode": "G90\nM83\nG94\nG28\nM140 S[first_layer_bed_temperature]\nM104 S[first_layer_temperature]\nM190 S[first_layer_bed_temperature]\nM109 S[first_layer_temperature]\nG92 E0",
+	"machine_end_gcode": "G94\nG91\nG1 E-0.8 F1800\nG1 Z10 F600\nG90\nM104 S0\nM140 S0\nM107\nM84",
+	"before_layer_change_gcode": ";BEFORE_LAYER_CHANGE\n;[layer_z]\nG92 E0\n",
+	"layer_change_gcode": ";AFTER_LAYER_CHANGE\n;[layer_z]"
+}

@@ -1,0 +1,94 @@
+{
+	"type": "machine",
+	"name": "Wrist 5-axis AB head 0.4 nozzle",
+	"from": "system",
+	"setting_id": "G3QiM9a3ca8Drgep",
+	"instantiation": "true",
+	"printer_notes": "Wrist: an AB belt gimbal on an A1-class bed-slinger (docs/nonplanar/kinematics/wrist). B tilts a frame about machine Y (outer, +-80 deg), A tilts the hotend about the frame's X (inner, +-68 deg); both axes meet 44 mm above the nozzle tip (rotary_tool_length). Joint speed caps: A 690 deg/s, B 540 deg/s, the motors at 1,000 rpm through the 8.6:1 and 11:1 belt reductions. Joint-space XYZAB G-code with G93 inverse-time feed; the slicer does the tool-centre-point compensation (rotary_firmware_rtcp = 0). Linear limits are the A1-class donor's; the Z travel is the stock 256 mm less the 50 mm the wrist hangs lower. Head envelope 'wrist' from the design's geometry.json; uncalibrated.",
+	"printer_technology": "FFF",
+	"printable_area": [
+		"0x0",
+		"256x0",
+		"256x256",
+		"0x256"
+	],
+	"printable_height": "206",
+	"nozzle_diameter": [
+		"0.4"
+	],
+	"machine_max_speed_x": [
+		"500",
+		"500"
+	],
+	"machine_max_speed_y": [
+		"500",
+		"500"
+	],
+	"machine_max_speed_z": [
+		"30",
+		"30"
+	],
+	"nonplanar_head": "wrist",
+	"nonplanar_segment_rate": "150",
+	"nonplanar_kinematics": "head_ab",
+	"rotary_axis_limits": [
+		"-68",
+		"68",
+		"-80",
+		"80"
+	],
+	"rotary_axis_continuous": [
+		"0",
+		"0"
+	],
+	"rotary_max_speed": [
+		"690",
+		"540"
+	],
+	"rotary_pivot": [
+		"0",
+		"0",
+		"0"
+	],
+	"rotary_tool_length": "44",
+	"rotary_tool_mount": [
+		"0",
+		"0",
+		"0"
+	],
+	"rotary_table_height": "0",
+	"rotary_linear_moves_table": [
+		"0",
+		"0",
+		"0"
+	],
+	"rotary_firmware_rtcp": "0",
+	"rotary_inverse_time_feed": "1",
+	"nonplanar_max_tilt": "70",
+	"default_print_profile": "0.20mm Non-planar top @Wrist",
+	"printer_model": "Wrist 5-axis AB head",
+	"printer_variant": "0.4",
+	"default_filament_profile": [
+		"Generic PLA @Wrist"
+	],
+	"default_nozzle_volume_type": [
+		"Standard"
+	],
+	"extruder_type": [
+		"Direct Drive"
+	],
+	"extruder_variant_list": [
+		"Direct Drive Standard"
+	],
+	"printer_extruder_id": [
+		"1"
+	],
+	"printer_extruder_variant": [
+		"Direct Drive Standard"
+	],
+	"gcode_flavor": "marlin",
+	"machine_start_gcode": "G90\nM83\nG94\nG28\nM140 S[first_layer_bed_temperature]\nM104 S[first_layer_temperature]\nM190 S[first_layer_bed_temperature]\nM109 S[first_layer_temperature]\nG92 E0",
+	"machine_end_gcode": "G94\nG91\nG1 E-0.8 F1800\nG1 Z10 F600\nG90\nM104 S0\nM140 S0\nM107\nM84",
+	"before_layer_change_gcode": ";BEFORE_LAYER_CHANGE\n;[layer_z]\nG92 E0\n",
+	"layer_change_gcode": ";AFTER_LAYER_CHANGE\n;[layer_z]"
+}

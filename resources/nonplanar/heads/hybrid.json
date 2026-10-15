@@ -1,0 +1,1938 @@
+{
+  "schema": "orca.head_envelope.v1",
+  "id": "hybrid",
+  "name": "Hybrid XYA+C (A-tilt head on a CoreXY, C turntable)",
+  "provenance": "docs/nonplanar/kinematics/hybrid (kinematics/kin.py HEAD_BOXES, cad/hybrid.scad). E3D V6 heatsink (diameter 22.3 x 26 mm, published drawing) at Z=26.5..52.5, V6 heater block 16 x 23 x 11.5 mm with a 1.5 mm silicone sock, long side along the A hinge (head X), at Z=12..23.5, a stock 20 mm M6 extended V6 nozzle: 7 mm hex at Z=9..12, 6 mm shank at Z=4.33..9, 60-degree included cone from the 1 mm land. A hinge axis at Z=30 along X: printed collar (radius 14, Z=23..37), two 6800 bearings in radius 12.5 housings to |X|=24 and the 24 mm Vectran capstan drum at X=25..36; these are cylinders about the hinge, so their boxes bound them at every A. Cooling outlets from a frame CPAP blower on both X sides at Z=7..12. The machine-fixed yoke arms and carriage are above the hinge and are not head boxes (kinematics/reach.py models them). Nozzle-tip frame +X right (hinge), +Y rear, +Z up, mm. Margins 0.3 mm. Dimensions from stock-part drawings, best estimate 2026-10-14; calibrated=false.",
+  "calibrated": false,
+  "nozzle": {
+    "tip_flat_radius": 0.5,
+    "allowance_radius": 3.0,
+    "allowance_height": 1.0
+  },
+  "margin": 0.3,
+  "lateral_margin": 0.3,
+  "boxes": [
+    {
+      "name": "nozzle_land_00",
+      "min": [
+        -0.174,
+        -0.5,
+        0.0
+      ],
+      "max": [
+        0.174,
+        -0.469,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_01",
+      "min": [
+        -0.242,
+        -0.469,
+        0.0
+      ],
+      "max": [
+        0.242,
+        -0.438,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_02",
+      "min": [
+        -0.291,
+        -0.438,
+        0.0
+      ],
+      "max": [
+        0.291,
+        -0.406,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_03",
+      "min": [
+        -0.331,
+        -0.406,
+        0.0
+      ],
+      "max": [
+        0.331,
+        -0.375,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_04",
+      "min": [
+        -0.363,
+        -0.375,
+        0.0
+      ],
+      "max": [
+        0.363,
+        -0.344,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_05",
+      "min": [
+        -0.39,
+        -0.344,
+        0.0
+      ],
+      "max": [
+        0.39,
+        -0.312,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_06",
+      "min": [
+        -0.413,
+        -0.312,
+        0.0
+      ],
+      "max": [
+        0.413,
+        -0.281,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_07",
+      "min": [
+        -0.433,
+        -0.281,
+        0.0
+      ],
+      "max": [
+        0.433,
+        -0.25,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_08",
+      "min": [
+        -0.45,
+        -0.25,
+        0.0
+      ],
+      "max": [
+        0.45,
+        -0.219,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_09",
+      "min": [
+        -0.464,
+        -0.219,
+        0.0
+      ],
+      "max": [
+        0.464,
+        -0.188,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_10",
+      "min": [
+        -0.475,
+        -0.188,
+        0.0
+      ],
+      "max": [
+        0.475,
+        -0.156,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_11",
+      "min": [
+        -0.484,
+        -0.156,
+        0.0
+      ],
+      "max": [
+        0.484,
+        -0.125,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_12",
+      "min": [
+        -0.491,
+        -0.125,
+        0.0
+      ],
+      "max": [
+        0.491,
+        -0.094,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_13",
+      "min": [
+        -0.496,
+        -0.094,
+        0.0
+      ],
+      "max": [
+        0.496,
+        -0.062,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_14",
+      "min": [
+        -0.499,
+        -0.062,
+        0.0
+      ],
+      "max": [
+        0.499,
+        -0.031,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_15",
+      "min": [
+        -0.5,
+        -0.031,
+        0.0
+      ],
+      "max": [
+        0.5,
+        0.0,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_16",
+      "min": [
+        -0.5,
+        0.0,
+        0.0
+      ],
+      "max": [
+        0.5,
+        0.031,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_17",
+      "min": [
+        -0.499,
+        0.031,
+        0.0
+      ],
+      "max": [
+        0.499,
+        0.062,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_18",
+      "min": [
+        -0.496,
+        0.062,
+        0.0
+      ],
+      "max": [
+        0.496,
+        0.094,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_19",
+      "min": [
+        -0.491,
+        0.094,
+        0.0
+      ],
+      "max": [
+        0.491,
+        0.125,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_20",
+      "min": [
+        -0.484,
+        0.125,
+        0.0
+      ],
+      "max": [
+        0.484,
+        0.156,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_21",
+      "min": [
+        -0.475,
+        0.156,
+        0.0
+      ],
+      "max": [
+        0.475,
+        0.188,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_22",
+      "min": [
+        -0.464,
+        0.188,
+        0.0
+      ],
+      "max": [
+        0.464,
+        0.219,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_23",
+      "min": [
+        -0.45,
+        0.219,
+        0.0
+      ],
+      "max": [
+        0.45,
+        0.25,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_24",
+      "min": [
+        -0.433,
+        0.25,
+        0.0
+      ],
+      "max": [
+        0.433,
+        0.281,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_25",
+      "min": [
+        -0.413,
+        0.281,
+        0.0
+      ],
+      "max": [
+        0.413,
+        0.312,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_26",
+      "min": [
+        -0.39,
+        0.312,
+        0.0
+      ],
+      "max": [
+        0.39,
+        0.344,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_27",
+      "min": [
+        -0.363,
+        0.344,
+        0.0
+      ],
+      "max": [
+        0.363,
+        0.375,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_28",
+      "min": [
+        -0.331,
+        0.375,
+        0.0
+      ],
+      "max": [
+        0.331,
+        0.406,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_29",
+      "min": [
+        -0.291,
+        0.406,
+        0.0
+      ],
+      "max": [
+        0.291,
+        0.438,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_30",
+      "min": [
+        -0.242,
+        0.438,
+        0.0
+      ],
+      "max": [
+        0.242,
+        0.469,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_land_31",
+      "min": [
+        -0.174,
+        0.469,
+        0.0
+      ],
+      "max": [
+        0.174,
+        0.5,
+        0.05
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.05_00",
+      "min": [
+        -0.369,
+        -0.558,
+        0.05
+      ],
+      "max": [
+        0.369,
+        -0.419,
+        0.1
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.05_01",
+      "min": [
+        -0.483,
+        -0.419,
+        0.05
+      ],
+      "max": [
+        0.483,
+        -0.279,
+        0.1
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.05_02",
+      "min": [
+        -0.54,
+        -0.279,
+        0.05
+      ],
+      "max": [
+        0.54,
+        -0.14,
+        0.1
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.05_03",
+      "min": [
+        -0.558,
+        -0.14,
+        0.05
+      ],
+      "max": [
+        0.558,
+        0.0,
+        0.1
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.05_04",
+      "min": [
+        -0.558,
+        0.0,
+        0.05
+      ],
+      "max": [
+        0.558,
+        0.139,
+        0.1
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.05_05",
+      "min": [
+        -0.54,
+        0.139,
+        0.05
+      ],
+      "max": [
+        0.54,
+        0.279,
+        0.1
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.05_06",
+      "min": [
+        -0.483,
+        0.279,
+        0.05
+      ],
+      "max": [
+        0.483,
+        0.419,
+        0.1
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.05_07",
+      "min": [
+        -0.369,
+        0.419,
+        0.05
+      ],
+      "max": [
+        0.369,
+        0.558,
+        0.1
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.10_00",
+      "min": [
+        -0.407,
+        -0.615,
+        0.1
+      ],
+      "max": [
+        0.407,
+        -0.461,
+        0.2
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.10_01",
+      "min": [
+        -0.533,
+        -0.461,
+        0.1
+      ],
+      "max": [
+        0.533,
+        -0.307,
+        0.2
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.10_02",
+      "min": [
+        -0.595,
+        -0.307,
+        0.1
+      ],
+      "max": [
+        0.595,
+        -0.154,
+        0.2
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.10_03",
+      "min": [
+        -0.615,
+        -0.154,
+        0.1
+      ],
+      "max": [
+        0.615,
+        0.0,
+        0.2
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.10_04",
+      "min": [
+        -0.615,
+        0.0,
+        0.1
+      ],
+      "max": [
+        0.615,
+        0.154,
+        0.2
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.10_05",
+      "min": [
+        -0.595,
+        0.154,
+        0.1
+      ],
+      "max": [
+        0.595,
+        0.307,
+        0.2
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.10_06",
+      "min": [
+        -0.533,
+        0.307,
+        0.1
+      ],
+      "max": [
+        0.533,
+        0.461,
+        0.2
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.10_07",
+      "min": [
+        -0.407,
+        0.461,
+        0.1
+      ],
+      "max": [
+        0.407,
+        0.615,
+        0.2
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.20_00",
+      "min": [
+        -0.445,
+        -0.673,
+        0.2
+      ],
+      "max": [
+        0.445,
+        -0.505,
+        0.3
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.20_01",
+      "min": [
+        -0.583,
+        -0.505,
+        0.2
+      ],
+      "max": [
+        0.583,
+        -0.337,
+        0.3
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.20_02",
+      "min": [
+        -0.652,
+        -0.337,
+        0.2
+      ],
+      "max": [
+        0.652,
+        -0.168,
+        0.3
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.20_03",
+      "min": [
+        -0.673,
+        -0.168,
+        0.2
+      ],
+      "max": [
+        0.673,
+        0.0,
+        0.3
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.20_04",
+      "min": [
+        -0.673,
+        0.0,
+        0.2
+      ],
+      "max": [
+        0.673,
+        0.168,
+        0.3
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.20_05",
+      "min": [
+        -0.652,
+        0.168,
+        0.2
+      ],
+      "max": [
+        0.652,
+        0.337,
+        0.3
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.20_06",
+      "min": [
+        -0.583,
+        0.337,
+        0.2
+      ],
+      "max": [
+        0.583,
+        0.505,
+        0.3
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.20_07",
+      "min": [
+        -0.445,
+        0.505,
+        0.2
+      ],
+      "max": [
+        0.445,
+        0.673,
+        0.3
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.30_00",
+      "min": [
+        -0.522,
+        -0.789,
+        0.3
+      ],
+      "max": [
+        0.522,
+        -0.592,
+        0.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.30_01",
+      "min": [
+        -0.683,
+        -0.592,
+        0.3
+      ],
+      "max": [
+        0.683,
+        -0.395,
+        0.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.30_02",
+      "min": [
+        -0.764,
+        -0.395,
+        0.3
+      ],
+      "max": [
+        0.764,
+        -0.197,
+        0.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.30_03",
+      "min": [
+        -0.789,
+        -0.197,
+        0.3
+      ],
+      "max": [
+        0.789,
+        0.0,
+        0.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.30_04",
+      "min": [
+        -0.789,
+        0.0,
+        0.3
+      ],
+      "max": [
+        0.789,
+        0.197,
+        0.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.30_05",
+      "min": [
+        -0.764,
+        0.197,
+        0.3
+      ],
+      "max": [
+        0.764,
+        0.394,
+        0.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.30_06",
+      "min": [
+        -0.683,
+        0.394,
+        0.3
+      ],
+      "max": [
+        0.683,
+        0.592,
+        0.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.30_07",
+      "min": [
+        -0.522,
+        0.592,
+        0.3
+      ],
+      "max": [
+        0.522,
+        0.789,
+        0.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.50_00",
+      "min": [
+        -0.617,
+        -0.933,
+        0.5
+      ],
+      "max": [
+        0.617,
+        -0.7,
+        0.75
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.50_01",
+      "min": [
+        -0.808,
+        -0.7,
+        0.5
+      ],
+      "max": [
+        0.808,
+        -0.467,
+        0.75
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.50_02",
+      "min": [
+        -0.903,
+        -0.467,
+        0.5
+      ],
+      "max": [
+        0.903,
+        -0.233,
+        0.75
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.50_03",
+      "min": [
+        -0.933,
+        -0.233,
+        0.5
+      ],
+      "max": [
+        0.933,
+        0.0,
+        0.75
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.50_04",
+      "min": [
+        -0.933,
+        0.0,
+        0.5
+      ],
+      "max": [
+        0.933,
+        0.233,
+        0.75
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.50_05",
+      "min": [
+        -0.903,
+        0.233,
+        0.5
+      ],
+      "max": [
+        0.903,
+        0.467,
+        0.75
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.50_06",
+      "min": [
+        -0.808,
+        0.467,
+        0.5
+      ],
+      "max": [
+        0.808,
+        0.7,
+        0.75
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.50_07",
+      "min": [
+        -0.617,
+        0.7,
+        0.5
+      ],
+      "max": [
+        0.617,
+        0.933,
+        0.75
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.75_00",
+      "min": [
+        -0.712,
+        -1.077,
+        0.75
+      ],
+      "max": [
+        0.712,
+        -0.808,
+        1.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.75_01",
+      "min": [
+        -0.933,
+        -0.808,
+        0.75
+      ],
+      "max": [
+        0.933,
+        -0.538,
+        1.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.75_02",
+      "min": [
+        -1.043,
+        -0.538,
+        0.75
+      ],
+      "max": [
+        1.043,
+        -0.269,
+        1.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.75_03",
+      "min": [
+        -1.077,
+        -0.269,
+        0.75
+      ],
+      "max": [
+        1.077,
+        0.0,
+        1.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.75_04",
+      "min": [
+        -1.077,
+        0.0,
+        0.75
+      ],
+      "max": [
+        1.077,
+        0.269,
+        1.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.75_05",
+      "min": [
+        -1.043,
+        0.269,
+        0.75
+      ],
+      "max": [
+        1.043,
+        0.538,
+        1.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.75_06",
+      "min": [
+        -0.933,
+        0.538,
+        0.75
+      ],
+      "max": [
+        0.933,
+        0.808,
+        1.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_0.75_07",
+      "min": [
+        -0.712,
+        0.808,
+        0.75
+      ],
+      "max": [
+        0.712,
+        1.077,
+        1.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_1.00_00",
+      "min": [
+        -0.904,
+        -1.366,
+        1.0
+      ],
+      "max": [
+        0.904,
+        -1.025,
+        1.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_1.00_01",
+      "min": [
+        -1.183,
+        -1.025,
+        1.0
+      ],
+      "max": [
+        1.183,
+        -0.683,
+        1.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_1.00_02",
+      "min": [
+        -1.323,
+        -0.683,
+        1.0
+      ],
+      "max": [
+        1.323,
+        -0.341,
+        1.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_1.00_03",
+      "min": [
+        -1.366,
+        -0.341,
+        1.0
+      ],
+      "max": [
+        1.366,
+        0.0,
+        1.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_1.00_04",
+      "min": [
+        -1.366,
+        0.0,
+        1.0
+      ],
+      "max": [
+        1.366,
+        0.341,
+        1.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_1.00_05",
+      "min": [
+        -1.323,
+        0.341,
+        1.0
+      ],
+      "max": [
+        1.323,
+        0.683,
+        1.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_1.00_06",
+      "min": [
+        -1.183,
+        0.683,
+        1.0
+      ],
+      "max": [
+        1.183,
+        1.025,
+        1.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_1.00_07",
+      "min": [
+        -0.904,
+        1.025,
+        1.0
+      ],
+      "max": [
+        0.904,
+        1.366,
+        1.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_1.50_00",
+      "min": [
+        -1.095,
+        -1.655,
+        1.5
+      ],
+      "max": [
+        1.095,
+        -1.241,
+        2.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_1.50_01",
+      "min": [
+        -1.433,
+        -1.241,
+        1.5
+      ],
+      "max": [
+        1.433,
+        -0.828,
+        2.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_1.50_02",
+      "min": [
+        -1.602,
+        -0.828,
+        1.5
+      ],
+      "max": [
+        1.602,
+        -0.414,
+        2.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_1.50_03",
+      "min": [
+        -1.655,
+        -0.414,
+        1.5
+      ],
+      "max": [
+        1.655,
+        0.0,
+        2.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_1.50_04",
+      "min": [
+        -1.655,
+        0.0,
+        1.5
+      ],
+      "max": [
+        1.655,
+        0.414,
+        2.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_1.50_05",
+      "min": [
+        -1.602,
+        0.414,
+        1.5
+      ],
+      "max": [
+        1.602,
+        0.827,
+        2.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_1.50_06",
+      "min": [
+        -1.433,
+        0.827,
+        1.5
+      ],
+      "max": [
+        1.433,
+        1.241,
+        2.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_1.50_07",
+      "min": [
+        -1.095,
+        1.241,
+        1.5
+      ],
+      "max": [
+        1.095,
+        1.655,
+        2.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_2.00_00",
+      "min": [
+        -1.285,
+        -1.943,
+        2.0
+      ],
+      "max": [
+        1.285,
+        -1.457,
+        2.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_2.00_01",
+      "min": [
+        -1.683,
+        -1.457,
+        2.0
+      ],
+      "max": [
+        1.683,
+        -0.972,
+        2.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_2.00_02",
+      "min": [
+        -1.881,
+        -0.972,
+        2.0
+      ],
+      "max": [
+        1.881,
+        -0.486,
+        2.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_2.00_03",
+      "min": [
+        -1.943,
+        -0.486,
+        2.0
+      ],
+      "max": [
+        1.943,
+        0.0,
+        2.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_2.00_04",
+      "min": [
+        -1.943,
+        0.0,
+        2.0
+      ],
+      "max": [
+        1.943,
+        0.486,
+        2.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_2.00_05",
+      "min": [
+        -1.881,
+        0.486,
+        2.0
+      ],
+      "max": [
+        1.881,
+        0.972,
+        2.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_2.00_06",
+      "min": [
+        -1.683,
+        0.972,
+        2.0
+      ],
+      "max": [
+        1.683,
+        1.457,
+        2.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_2.00_07",
+      "min": [
+        -1.285,
+        1.457,
+        2.0
+      ],
+      "max": [
+        1.285,
+        1.943,
+        2.5
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_2.50_00",
+      "min": [
+        -1.476,
+        -2.232,
+        2.5
+      ],
+      "max": [
+        1.476,
+        -1.674,
+        3.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_2.50_01",
+      "min": [
+        -1.933,
+        -1.674,
+        2.5
+      ],
+      "max": [
+        1.933,
+        -1.116,
+        3.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_2.50_02",
+      "min": [
+        -2.161,
+        -1.116,
+        2.5
+      ],
+      "max": [
+        2.161,
+        -0.558,
+        3.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_2.50_03",
+      "min": [
+        -2.232,
+        -0.558,
+        2.5
+      ],
+      "max": [
+        2.232,
+        0.0,
+        3.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_2.50_04",
+      "min": [
+        -2.232,
+        0.0,
+        2.5
+      ],
+      "max": [
+        2.232,
+        0.558,
+        3.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_2.50_05",
+      "min": [
+        -2.161,
+        0.558,
+        2.5
+      ],
+      "max": [
+        2.161,
+        1.116,
+        3.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_2.50_06",
+      "min": [
+        -1.933,
+        1.116,
+        2.5
+      ],
+      "max": [
+        1.933,
+        1.674,
+        3.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_2.50_07",
+      "min": [
+        -1.476,
+        1.674,
+        2.5
+      ],
+      "max": [
+        1.476,
+        2.232,
+        3.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_3.00_00",
+      "min": [
+        -1.858,
+        -2.809,
+        3.0
+      ],
+      "max": [
+        1.858,
+        -2.107,
+        4.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_3.00_01",
+      "min": [
+        -2.433,
+        -2.107,
+        3.0
+      ],
+      "max": [
+        2.433,
+        -1.405,
+        4.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_3.00_02",
+      "min": [
+        -2.72,
+        -1.405,
+        3.0
+      ],
+      "max": [
+        2.72,
+        -0.702,
+        4.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_3.00_03",
+      "min": [
+        -2.809,
+        -0.702,
+        3.0
+      ],
+      "max": [
+        2.809,
+        0.0,
+        4.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_3.00_04",
+      "min": [
+        -2.809,
+        0.0,
+        3.0
+      ],
+      "max": [
+        2.809,
+        0.702,
+        4.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_3.00_05",
+      "min": [
+        -2.72,
+        0.702,
+        3.0
+      ],
+      "max": [
+        2.72,
+        1.404,
+        4.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_3.00_06",
+      "min": [
+        -2.433,
+        1.404,
+        3.0
+      ],
+      "max": [
+        2.433,
+        2.107,
+        4.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_3.00_07",
+      "min": [
+        -1.858,
+        2.107,
+        3.0
+      ],
+      "max": [
+        1.858,
+        2.809,
+        4.0
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_4.00_00",
+      "min": [
+        -1.984,
+        -3.0,
+        4.0
+      ],
+      "max": [
+        1.984,
+        -2.25,
+        4.33
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_4.00_01",
+      "min": [
+        -2.598,
+        -2.25,
+        4.0
+      ],
+      "max": [
+        2.598,
+        -1.5,
+        4.33
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_4.00_02",
+      "min": [
+        -2.905,
+        -1.5,
+        4.0
+      ],
+      "max": [
+        2.905,
+        -0.75,
+        4.33
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_4.00_03",
+      "min": [
+        -3.0,
+        -0.75,
+        4.0
+      ],
+      "max": [
+        3.0,
+        0.0,
+        4.33
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_4.00_04",
+      "min": [
+        -3.0,
+        0.0,
+        4.0
+      ],
+      "max": [
+        3.0,
+        0.75,
+        4.33
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_4.00_05",
+      "min": [
+        -2.905,
+        0.75,
+        4.0
+      ],
+      "max": [
+        2.905,
+        1.5,
+        4.33
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_4.00_06",
+      "min": [
+        -2.598,
+        1.5,
+        4.0
+      ],
+      "max": [
+        2.598,
+        2.25,
+        4.33
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "nozzle_cone_4.00_07",
+      "min": [
+        -1.984,
+        2.25,
+        4.0
+      ],
+      "max": [
+        1.984,
+        3.0,
+        4.33
+      ],
+      "nozzle": true
+    },
+    {
+      "name": "shank",
+      "min": [
+        -3.0,
+        -3.0,
+        4.33
+      ],
+      "max": [
+        3.0,
+        3.0,
+        9.0
+      ]
+    },
+    {
+      "name": "hex",
+      "min": [
+        -4.05,
+        -4.05,
+        9.0
+      ],
+      "max": [
+        4.05,
+        4.05,
+        12.0
+      ]
+    },
+    {
+      "name": "heatblock",
+      "min": [
+        -13.0,
+        -9.5,
+        12.0
+      ],
+      "max": [
+        13.0,
+        9.5,
+        23.5
+      ]
+    },
+    {
+      "name": "heatbreak",
+      "min": [
+        -3.5,
+        -3.5,
+        23.5
+      ],
+      "max": [
+        3.5,
+        3.5,
+        26.5
+      ]
+    },
+    {
+      "name": "heatsink",
+      "min": [
+        -11.15,
+        -11.15,
+        26.5
+      ],
+      "max": [
+        11.15,
+        11.15,
+        52.5
+      ]
+    },
+    {
+      "name": "hinge_collar",
+      "min": [
+        -17.0,
+        -14.0,
+        23.0
+      ],
+      "max": [
+        17.0,
+        14.0,
+        37.0
+      ]
+    },
+    {
+      "name": "duct_left",
+      "min": [
+        -15.0,
+        -4.0,
+        7.0
+      ],
+      "max": [
+        -7.0,
+        4.0,
+        12.0
+      ]
+    },
+    {
+      "name": "duct_right",
+      "min": [
+        7.0,
+        -4.0,
+        7.0
+      ],
+      "max": [
+        15.0,
+        4.0,
+        12.0
+      ]
+    },
+    {
+      "name": "hinge_bearings",
+      "min": [
+        -24.0,
+        -12.5,
+        17.5
+      ],
+      "max": [
+        24.0,
+        12.5,
+        42.5
+      ]
+    },
+    {
+      "name": "capstan_drum",
+      "min": [
+        25.0,
+        -12.0,
+        18.0
+      ],
+      "max": [
+        36.0,
+        12.0,
+        42.0
+      ]
+    }
+  ]
+}

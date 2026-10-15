@@ -1,0 +1,20 @@
+{
+	"type": "filament",
+	"name": "Generic PLA @Wrist",
+	"inherits": "Generic PLA @System",
+	"from": "system",
+	"setting_id": "NvCZHUDqEOuJJZ7s",
+	"instantiation": "true",
+	"filament_type": [
+		"PLA"
+	],
+	"filament_extruder_id": [
+		"1"
+	],
+	"filament_extruder_variant": [
+		"Direct Drive Standard"
+	],
+	"compatible_printers": [
+		"Wrist 5-axis AB head 0.4 nozzle"
+	]
+}

@@ -1,0 +1,138 @@
+{
+	"type": "machine",
+	"name": "Hybrid XYA+C 5-axis 0.4 nozzle",
+	"from": "system",
+	"setting_id": "I1WDiIELMDYJnnnB",
+	"instantiation": "true",
+	"printer_notes": "Hybrid XYA+C (docs/nonplanar/kinematics/hybrid): a Voron Trident 300 CoreXY whose head tilts A about machine X on a hinge 30 mm above the tip (rotary_tool_length), driven by a third CoreXY belt loop, and whose Z bed carries a continuous C turntable (D240 plate) about the vertical through the plate centre (rotary_pivot 0,0,0; the G-code origin is the plate centre). A +-90 deg at 360 deg/s, C continuous at 600 deg/s. Joint-space XYZAC with G93 inverse-time feed; the linear limits are the Prodcan3's so the rotary-suite times compare the kinematics alone. Geometry from kinematics/kin.py; calibrated=false.",
+	"printer_technology": "FFF",
+	"printable_area": [
+		"120.000x0.000",
+		"118.973x15.663",
+		"115.911x31.058",
+		"110.866x45.922",
+		"103.923x60.000",
+		"95.202x73.051",
+		"84.853x84.853",
+		"73.051x95.202",
+		"60.000x103.923",
+		"45.922x110.866",
+		"31.058x115.911",
+		"15.663x118.973",
+		"0.000x120.000",
+		"-15.663x118.973",
+		"-31.058x115.911",
+		"-45.922x110.866",
+		"-60.000x103.923",
+		"-73.051x95.202",
+		"-84.853x84.853",
+		"-95.202x73.051",
+		"-103.923x60.000",
+		"-110.866x45.922",
+		"-115.911x31.058",
+		"-118.973x15.663",
+		"-120.000x0.000",
+		"-118.973x-15.663",
+		"-115.911x-31.058",
+		"-110.866x-45.922",
+		"-103.923x-60.000",
+		"-95.202x-73.051",
+		"-84.853x-84.853",
+		"-73.051x-95.202",
+		"-60.000x-103.923",
+		"-45.922x-110.866",
+		"-31.058x-115.911",
+		"-15.663x-118.973",
+		"0.000x-120.000",
+		"15.663x-118.973",
+		"31.058x-115.911",
+		"45.922x-110.866",
+		"60.000x-103.923",
+		"73.051x-95.202",
+		"84.853x-84.853",
+		"95.202x-73.051",
+		"103.923x-60.000",
+		"110.866x-45.922",
+		"115.911x-31.058",
+		"118.973x-15.663"
+	],
+	"printable_height": "240",
+	"nozzle_diameter": [
+		"0.4"
+	],
+	"machine_max_speed_x": [
+		"100",
+		"100"
+	],
+	"machine_max_speed_y": [
+		"80",
+		"80"
+	],
+	"machine_max_speed_z": [
+		"20",
+		"20"
+	],
+	"nonplanar_head": "hybrid",
+	"nonplanar_segment_rate": "150",
+	"nonplanar_kinematics": "hybrid_ac",
+	"rotary_axis_limits": [
+		"-90",
+		"90",
+		"-180",
+		"180"
+	],
+	"rotary_axis_continuous": [
+		"0",
+		"1"
+	],
+	"rotary_max_speed": [
+		"360",
+		"600"
+	],
+	"rotary_pivot": [
+		"0",
+		"0",
+		"0"
+	],
+	"rotary_tool_length": "30",
+	"rotary_tool_mount": [
+		"0",
+		"0",
+		"0"
+	],
+	"rotary_table_height": "0",
+	"rotary_linear_moves_table": [
+		"0",
+		"0",
+		"0"
+	],
+	"rotary_firmware_rtcp": "0",
+	"rotary_inverse_time_feed": "1",
+	"nonplanar_max_tilt": "75",
+	"default_print_profile": "0.20mm Non-planar top @Hybrid",
+	"printer_model": "Hybrid XYA+C 5-axis",
+	"printer_variant": "0.4",
+	"default_filament_profile": [
+		"Generic PLA @Hybrid"
+	],
+	"default_nozzle_volume_type": [
+		"Standard"
+	],
+	"extruder_type": [
+		"Direct Drive"
+	],
+	"extruder_variant_list": [
+		"Direct Drive Standard"
+	],
+	"printer_extruder_id": [
+		"1"
+	],
+	"printer_extruder_variant": [
+		"Direct Drive Standard"
+	],
+	"gcode_flavor": "marlin",
+	"machine_start_gcode": "G90\nM83\nG94\nG28\nM201 A20000 C6000 ; rotary accelerations (deg/s^2), docs/nonplanar/kinematics/hybrid/stiffness.md\nM140 S[first_layer_bed_temperature]\nM104 S[first_layer_temperature]\nM190 S[first_layer_bed_temperature]\nM109 S[first_layer_temperature]\nG92 E0",
+	"machine_end_gcode": "G94\nG91\nG1 E-0.8 F1800\nG1 Z10 F600\nG90\nM104 S0\nM140 S0\nM107\nM84",
+	"before_layer_change_gcode": ";BEFORE_LAYER_CHANGE\n;[layer_z]\nG92 E0\n",
+	"layer_change_gcode": ";AFTER_LAYER_CHANGE\n;[layer_z]"
+}
