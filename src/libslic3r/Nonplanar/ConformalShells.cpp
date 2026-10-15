@@ -7,6 +7,7 @@
 #include "HeadEnvelope.hpp"
 #include "PatchTools.hpp"
 #include "Repair.hpp"
+#include "Report.hpp"
 #include "Seams.hpp"
 #include "ShellPaths.hpp"
 #include "ShellBase.hpp"
@@ -19,6 +20,7 @@
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/Config.hpp"
+#include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/Flow.hpp"
 #include "libslic3r/Geometry.hpp"
@@ -495,6 +497,64 @@ bool is_round(const ExPolygons &footprint)
     return p > 0. && 4. * PI * a / (p * p) >= 0.5;
 }
 
+struct PlanarFace
+{
+    ExPolygons area;
+    double     fall = 0.;
+};
+constexpr double FaceMinWidth = 4.;
+constexpr double FaceMinArea  = 25.;
+std::vector<PlanarFace> planar_faces(const HeightField &surface, const ExPolygons &area)
+{
+    const int          nx = surface.nx(), ny = surface.ny();
+    const size_t       n  = size_t(nx) * ny;
+    std::vector<Vec2d> grad(n, Vec2d(NAN, NAN));
+    for (int iy = 0; iy < ny; ++iy)
+        for (int ix = 0; ix < nx; ++ix)
+            if (!std::isnan(surface.at(ix, iy)))
+                grad[size_t(iy) * nx + ix] = surface.gradient(surface.node(ix, iy));
+    const double            spread = std::tan(Geometry::deg2rad(1.)), rise = std::tan(Geometry::deg2rad(3.));
+    std::vector<uint8_t>    seen(n, 0);
+    std::vector<size_t>     queue;
+    std::vector<PlanarFace> out;
+    for (size_t seed = 0; seed < n; ++seed) {
+        if (seen[seed] || !grad[seed].allFinite() || grad[seed].norm() < rise)
+            continue;
+        const Vec2d g0  = grad[seed];
+        Vec2d       sum = Vec2d::Zero();
+        queue.assign(1, seed);
+        seen[seed] = 1;
+        for (size_t q = 0; q < queue.size(); ++q) {
+            const size_t i = queue[q];
+            sum += grad[i];
+            const int ix = int(i % size_t(nx)), iy = int(i / size_t(nx));
+            static constexpr int steps[4][2] = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } };
+            for (const auto &d : steps) {
+                const int jx = ix + d[0], jy = iy + d[1];
+                if (jx < 0 || jy < 0 || jx >= nx || jy >= ny)
+                    continue;
+                const size_t j = size_t(jy) * nx + jx;
+                if (!seen[j] && grad[j].allFinite() && (grad[j] - g0).norm() <= spread) {
+                    seen[j] = 1;
+                    queue.emplace_back(j);
+                }
+            }
+        }
+        if (double(queue.size()) * sqr(surface.pitch()) < FaceMinArea)
+            continue;
+        Mask mask(n, 0);
+        for (const size_t i : queue)
+            mask[i] = 1;
+        ExPolygons face = intersection_ex(opening_ex(mask_to_expolygons(mask, surface), float(scale_(0.5 * FaceMinWidth))), area);
+        double     a    = 0.;
+        for (const ExPolygon &e : face)
+            a += e.area() * SCALING_FACTOR * SCALING_FACTOR;
+        if (a >= FaceMinArea)
+            out.push_back({ std::move(face), std::atan2(sum.y(), sum.x()) });
+    }
+    return out;
+}
+
 constexpr double SparseWallSlope = 45.;
 
 struct BandedFill
@@ -602,6 +662,16 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
         return banded == nullptr || banded->voids.empty() ? fill_area :
                                                             diff_ex(fill_area, offset(banded->voids, float(scale_(0.45 * spacing))));
     };
+    ExPolygons rest = area;
+    if (banded != nullptr && outer && !sparse && !plug && !fill.spiral && adaptive == nullptr)
+        for (const PlanarFace &face : planar_faces(patch.surface, area)) {
+            ShellFill down;
+            down.angle   = face.fall;
+            down.outline = false;
+            append(linked, shell_polylines(off_voids(face.area, flow.spacing()), down, ipMonotonic, flow.spacing(), true, flow, host_z,
+                                           start, MaxGlide, nullptr, &seam_line));
+            rest = diff_ex(rest, face.area);
+        }
     if (plug) {
         ShellFill cross;
         cross.angle   = banded->angle + ((banded->hidden - k) % 2 == 0 ? 0.5 * PI : 0.);
@@ -619,10 +689,11 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
             linked = shell_polylines(off_voids(whole, spacing), lines, ipRectilinear, spacing, false, flow, host_z, start, MaxGlide, nullptr, &seam_line);
         }
     } else if (banded != nullptr && banded->strips)
-        contour_fill(patch.surface, area, drop, banded->strip_height, banded->strip_offset, flow, height, fill.angle, outer, host_z, roads, linked);
-    else if (!area.empty())
-        linked = shell_polylines(fill.spiral ? area : off_voids(area, flow.spacing()), fill, outer ? ipMonotonic : ipRectilinear, flow.spacing(), outer, flow, host_z, start, MaxGlide,
-                                 surface_spaced ? &patch.surface : nullptr, &seam_line, &ramp);
+        contour_fill(patch.surface, outer ? expolygons_simplify(rest, scale_(0.5 * patch.surface.pitch())) : rest, drop,
+                     banded->strip_height, banded->strip_offset, flow, height, fill.angle, outer, host_z, roads, linked);
+    else if (!rest.empty())
+        append(linked, shell_polylines(fill.spiral ? rest : off_voids(rest, flow.spacing()), fill, outer ? ipMonotonic : ipRectilinear, flow.spacing(), outer, flow,
+                                       host_z, start, MaxGlide, surface_spaced ? &patch.surface : nullptr, &seam_line, &ramp));
     if (banded != nullptr && !sparse && !plug)
         for (const ExPolygon &strip : banded->lengthwise)
             arachne_roads(strip, flow, height, 0, roads);
@@ -731,7 +802,7 @@ double low_plane_top_radius(const PrintObject &object, double layer_height)
             continue;
         const double h_c = cfg.nonplanar_shell_layer_height.value > 0. ? cfg.nonplanar_shell_layer_height.value : automatic_shell_height(object);
         const Flow   top = region.flow(object, frTopSolidInfill, h_c);
-        const double w   = std::min(double(top.width()), BandedTopWidth * top.nozzle_diameter());
+        const double w   = std::min(double(top.width()), BandedCapWidth * top.nozzle_diameter());
         radius = std::max(radius, 0.5 * (0.5 * layer_height - min_z) * w / std::max(h_c, layer_height));
     }
     return radius;
@@ -910,7 +981,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
             if (mask[i] && S0.data()[i] - min_shells * h_c - h_min < first_top)
                 drop(i, DropNearBed);
     if (settings.banded) {
-        const double outer_w   = std::min(line_width, BandedTopWidth * region.flow(object, frTopSolidInfill, h_c).nozzle_diameter());
+        const double outer_w   = std::min(line_width, BandedCapWidth * region.flow(object, frTopSolidInfill, h_c).nozzle_diameter());
         const PrintConfig &print_config = object.print()->config();
         const double tilt      = print_config.nonplanar_kinematics.value == RotaryLayout::None ? 0. :
                                      std::clamp(Geometry::deg2rad(print_config.nonplanar_max_tilt.value), 0., 0.5 * M_PI);
@@ -1433,10 +1504,12 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
         double     covered = 0.;
         int        owner   = -1;
         const auto cand_bb = get_extents(cand);
+        ExPolygons covering;
         for (const ConformalPatch &patch : result.patches)
             if (get_extents(patch.footprint).overlap(cand_bb))
                 if (const double a = area(intersection_ex(patch.footprint, ExPolygons{ cand })); a > 0.) {
                     covered += a;
+                    expolygons_append(covering, patch.footprint);
                     if (owner < 0)
                         owner = patch.id;
                 }
@@ -1448,10 +1521,13 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                     uncovered = diff_ex(uncovered, patch.footprint);
             for (const auto &[component, reason] : skipped)
                 if (get_extents(component).overlap(cand_bb)) {
-                    if (const double a = area(intersection_ex(ExPolygons{ component }, uncovered)) * SCALING_FACTOR * SCALING_FACTOR; a > 0.) {
+                    ExPolygons part = intersection_ex(ExPolygons{ component }, uncovered);
+                    if (const double a = area(part) * SCALING_FACTOR * SCALING_FACTOR; a > 0.) {
                         PatchDiagnostics diag;
                         diag.fallback_area   = a;
                         diag.fallback_reason = reason;
+                        if (fallback_hatched(reason))
+                            record_fallback_shape(diag, std::move(part), S);
                         result.diagnostics.emplace_back(std::move(diag));
                     }
                     uncovered = diff_ex(uncovered, ExPolygons{ component });
@@ -1470,11 +1546,24 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                     PatchDiagnostics diag;
                     diag.fallback_area   = by_reason[r] * (r == Kept ? 1. : scale);
                     diag.fallback_reason = drop_reason_tag[r];
+                    if (r != Kept && fallback_hatched(diag.fallback_reason)) {
+                        Mask nodes_mask(n_nodes, 0);
+                        for (size_t i = 0; i < n_nodes; ++i)
+                            nodes_mask[i] = umask[i] && dropped[i] == r;
+                        record_fallback_shape(diag, mask_to_expolygons(nodes_mask, grid), S);
+                    }
                     result.diagnostics.emplace_back(std::move(diag));
                 }
         } else if (owner >= 0) {
-            result.diagnostics[size_t(owner - patch_offset)].fallback_area += fallback;
-            result.diagnostics[size_t(owner - patch_offset)].fallback_reason = "edge";
+            PatchDiagnostics &diag = result.diagnostics[size_t(owner - patch_offset)];
+            diag.fallback_area += fallback;
+            diag.fallback_reason = "edge";
+            if (fallback > 0.) {
+                ExPolygons left = diff_ex(ExPolygons{ cand }, covering);
+                expolygons_append(left, std::move(diag.fallback_shape));
+                diag.fallback_hatch.clear();
+                record_fallback_shape(diag, union_ex(left), S);
+            }
         } else if (fallback > 0.) {
             PatchDiagnostics diag;
             diag.fallback_area = fallback;
@@ -1486,6 +1575,8 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                     diag.fallback_reason = reason;
                 }
             diag.limiting_component = most_limiting_component(head, limiting_components, rasterize({ cand }, grid));
+            if (fallback_hatched(diag.fallback_reason))
+                record_fallback_shape(diag, ExPolygons{ cand }, S);
             result.diagnostics.emplace_back(std::move(diag));
         }
     }
@@ -1540,12 +1631,12 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                 double angle = 0.;
                 for (size_t k = 0; k < banded_fills.size(); ++k)
                     banded_fills[k] = ShellFill();
-                if (!user_rings && contour_line_angle(patch.surface, angle, 0.9))
+                if (!user_rings && contour_line_angle(patch.surface, angle, 0.9)) {
                     for (ShellFill &f : banded_fills) {
                         f.angle = angle;
                         f.outline = false;
                     }
-                else if (is_round(patch.footprint) && outline_is_contour(patch, h_c))
+                } else if (is_round(patch.footprint) && outline_is_contour(patch, h_c))
                     for (size_t k = 0; k < banded_fills.size(); ++k) {
                         banded_fills[k].spiral = true;
                         banded_fills[k].outward = (banded_fills.size() - 1 - k) % 2 == 1;

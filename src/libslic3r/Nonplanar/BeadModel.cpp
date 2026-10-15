@@ -150,9 +150,12 @@ std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, const std::ve
         for (size_t i = 0; i < n; ++i)
             soft[i] = std::min(soft[i], limits.segment_rate * length[i]);
     const std::vector<double> junction = shallow_junction_caps(pts, length, limits);
+    auto reach = [&limits](double cap, double l) {
+        return limits.max_a_xy > 0. && std::isfinite(cap) ? std::sqrt(cap * cap + 0.5 * limits.max_a_xy * l) : cap;
+    };
     for (size_t i = 0; i < n; ++i)
         if (!glide(i))
-            soft[i] = std::min({ soft[i], junction[i], junction[i + 1] });
+            soft[i] = std::min({ soft[i], reach(junction[i], length[i]), reach(junction[i + 1], length[i]) });
 
     std::vector<double> v(n);
     for (size_t begin = 0; begin < n;) {

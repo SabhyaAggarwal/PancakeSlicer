@@ -1,6 +1,7 @@
 #include "Orient.hpp"
 #include "Geometry.hpp"
 #include <Eigen/Core>
+#include <Eigen/Geometry>
 #include <ios>
 #include <iomanip>
 #include "TriangleMesh.hpp"
@@ -9,6 +10,7 @@
 #include <cmath>
 #include "libslic3r.h"
 #include <cstddef>
+#include <cstdio>
 #include <iostream>
 #include <algorithm>
 #include <cstdlib>
@@ -525,14 +527,38 @@ public:
     }
 };
 
-static void orient_nonplanar(OrientMesh &mesh)
+static void orient_nonplanar(OrientMesh &mesh, const std::function<bool()> &stopfn)
 {
+    if (stopfn && stopfn())
+        return;
     const Nonplanar::OrientResult res = Nonplanar::auto_orient(mesh.mesh.its, mesh.nonplanar_params);
-    mesh.orientation                  = res.chosen.up;
-    Geometry::rotation_from_two_vectors(mesh.orientation, { 0, 0, 1 }, mesh.axis, mesh.angle, &mesh.rotation_matrix);
+    if (stopfn && stopfn())
+        return;
+    mesh.orientation     = res.chosen.up;
+    mesh.rotation_matrix = Nonplanar::rotation_to_z(res.chosen.up);
+    const Eigen::AngleAxisd turn(mesh.rotation_matrix);
+    mesh.axis         = turn.axis();
+    mesh.angle        = turn.angle();
     mesh.euler_angles = Geometry::extract_euler_angles(mesh.rotation_matrix);
     BOOST_LOG_TRIVIAL(info) << mesh.name << ": non-planar orientation " << mesh.orientation.transpose() << (res.rotated ? " (turned)" : " (kept)")
                             << ", cost " << res.chosen.cost << " against " << res.original.cost;
+    const Nonplanar::OrientScore *other = &res.original;
+    if (!res.rotated)
+        for (const Nonplanar::OrientScore &score : res.ranked)
+            if ((score.up - res.original.up).norm() > 1e-6) {
+                other = &score;
+                break;
+            }
+    char buf[256];
+    if (res.rotated)
+        std::snprintf(buf, sizeof(buf), "turned to up (%.2f, %.2f, %.2f): cost %.0f s against %.0f s as loaded, curved top %.0f mm2 against %.0f mm2",
+                      res.chosen.up.x(), res.chosen.up.y(), res.chosen.up.z(), res.chosen.cost, other->cost, res.chosen.curved_top, other->curved_top);
+    else if (other != &res.original)
+        std::snprintf(buf, sizeof(buf), "kept as loaded: cost %.0f s against %.0f s for the best turn, curved top %.0f mm2", res.chosen.cost,
+                      other->cost, res.chosen.curved_top);
+    else
+        std::snprintf(buf, sizeof(buf), "kept as loaded: no other orientation scored, cost %.0f s", res.chosen.cost);
+    mesh.nonplanar_decision = buf;
 }
 
 void _orient(OrientMeshs& meshs_,
@@ -546,7 +572,7 @@ void _orient(OrientMeshs& meshs_,
             auto& mesh_ = meshs_[i];
             progressfn(i, mesh_.name);
             if (mesh_.nonplanar) {
-                orient_nonplanar(mesh_);
+                orient_nonplanar(mesh_, stopfn);
                 continue;
             }
             AutoOrienter orienter(&mesh_, params, {}, stopfn);
@@ -561,7 +587,7 @@ void _orient(OrientMeshs& meshs_,
                 auto& mesh_ = meshs_[i];
                 progressfn(i, mesh_.name);
                 if (mesh_.nonplanar) {
-                    orient_nonplanar(mesh_);
+                    orient_nonplanar(mesh_, stopfn);
                     continue;
                 }
                 AutoOrienter orienter(&mesh_, params, {}, stopfn);

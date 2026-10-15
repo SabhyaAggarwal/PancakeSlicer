@@ -7,17 +7,20 @@
 #include "Multiplanar.hpp"
 #include "PatchTools.hpp"
 #include "Repair.hpp"
+#include "Report.hpp"
 
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/Flow.hpp"
 #include "libslic3r/Geometry.hpp"
+#include "libslic3r/I18N.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 #include "libslic3r/libslic3r.h"
 
+#include <boost/format.hpp>
 #include <boost/log/trivial.hpp>
 
 #include <algorithm>
@@ -25,6 +28,7 @@
 #include <cstdio>
 #include <cstddef>
 #include <limits>
+#include <map>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -141,7 +145,7 @@ double infill_depth(const PrintRegionConfig &config, const PrintObject &object)
 {
     if (!is_auto(object.config()))
         return is_manual(object.config()) ? config.nonplanar_infill_depth.value : 0.;
-    return object.print()->config().nonplanar_kinematics.value != RotaryLayout::None ? 0. : 2.;
+    return 0.;
 }
 
 NonplanarFallback effective_fallback(const PrintRegionConfig &config, const PrintObjectConfig &object)
@@ -385,6 +389,26 @@ std::string explain_top_patch(const PrintObject &object, const ConformalPatch &p
                                                "; no paths survived surface, wall, band or repair clipping");
     out << ")\n";
     return out.str();
+}
+
+std::vector<std::string> object_warnings(const PrintObject &object, const ReportObject &report)
+{
+    std::vector<std::string> warnings;
+    if (report.planar_top > 1. && report.curved_share() < 0.9) {
+        std::map<std::string, double> by_reason;
+        for (const PatchDiagnostics &diag : object.conformal().diagnostics)
+            if (diag.fallback_area > 0. && !fallback_is_exact(diag.fallback_reason) && diag.fallback_reason != "bottom" &&
+                diag.fallback_reason.rfind("overhang", 0) != 0)
+                by_reason[diag.fallback_reason] += diag.fallback_area;
+        const auto main = std::max_element(by_reason.begin(), by_reason.end(),
+                                           [](const auto &a, const auto &b) { return a.second < b.second; });
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%.0f %% (%.0f mm2)", 100. * (1. - report.curved_share()), report.planar_top);
+        warnings.emplace_back((boost::format(_u8L("%1%: %2% of the curved top prints in planar layers, mostly: %3%.")) % report.name % buf %
+                               (main == by_reason.end() ? std::string("-") : fallback_reason_text(main->first)))
+                                  .str());
+    }
+    return warnings;
 }
 
 }

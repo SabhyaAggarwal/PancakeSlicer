@@ -1333,13 +1333,21 @@ void build_field_patch(PrintObject &object, const std::shared_ptr<const Orientat
     model_object->add_volume(TriangleMesh(indexed_triangle_set(deformed)));
     model_object->add_instance();
     Print print;
+    throw_if_canceled(object);
     try {
         print.apply(model, config);
-        print.set_status_silent();
+        const PrintBase *outer = object.print();
+        print.set_status_callback([&print, outer](const PrintBase::SlicingStatus &) {
+            if (outer->canceled())
+                print.cancel();
+        });
         print.process();
+    } catch (const CanceledException &) {
+        throw;
     } catch (const std::exception &ex) {
         throw Slic3r::SlicingError(std::string(_u8L("Orientation field: slicing the curved layers failed: ")) + ex.what());
     }
+    throw_if_canceled(object);
     if (print.objects().empty())
         return;
     const PrintObject &sliced = *print.objects().front();

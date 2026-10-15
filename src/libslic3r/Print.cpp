@@ -78,6 +78,7 @@
 #include "GCode/ClearanceRepair.hpp"
 #include "GCode/ClearanceVerifier.hpp"
 #include "Nonplanar/HeadEnvelope.hpp"
+#include "Nonplanar/Report.hpp"
 #include "GCode/WipeTower2.hpp"
 #include "GCode/WipeTowerEstimate.hpp"
 #include "Utils.hpp"
@@ -3396,6 +3397,7 @@ std::string Print::export_gcode(const std::string& path_template, GCodeProcessor
     if (result != nullptr) {
         result->conflict_result = m_conflict_result;
         result->nozzle_group_result = this->get_layered_nozzle_group_result();
+        result->nonplanar_report = Nonplanar::make_report(*this, *result);
     }
     return path.c_str();
 }

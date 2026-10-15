@@ -288,6 +288,7 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
     }
 
     const double grad_need = g / ((1. - TargetContact) * w);
+    const double grad_bend = free_mode ? std::min(grad_need, 1. / std::tan(printable)) : grad_need;
     const double grad_min  = std::max(0., g / ((1. - MinContact) * w) - std::tan(settings.max_bend));
     std::vector<float> slope(n_nodes, HeightField::NoData);
     Mask               mask(n_nodes, 0);
@@ -317,9 +318,9 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
             if (top.data()[i] - Sb.data()[i] < ThinWallLayers * g && (!free_mode || gr.norm() >= 1. / std::tan(printable)))
                 continue;
             slope[i] = float(gr.norm());
-            mask[i]  = slope[i] < grad_need && slope[i] >= grad_min;
+            mask[i]  = slope[i] < grad_bend && slope[i] >= grad_min;
             if (!mask[i])
-                why[i] = slope[i] >= grad_need ? SelfSupporting : Unfit;
+                why[i] = slope[i] >= grad_bend ? SelfSupporting : Unfit;
         }
     {
         const ExPolygons opened = opening_ex(mask_to_expolygons(mask, grid), float(scale_(0.5 * w)));

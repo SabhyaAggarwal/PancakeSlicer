@@ -353,12 +353,10 @@ void slice_json_results(Json &record, const Args &args, const Print &print, cons
                 p["surface_rms_mm"] = diag.rms_surface_error;
                 if (!diag.fallback_reason.empty()) p["reason_tags"].push_back(diag.fallback_reason);
             }
-            if (args.explain && patch.kind == Nonplanar::PatchKind::Top) {
-                std::string text = Nonplanar::explain_top_patch(*object, patch);
-                if (!text.empty() && text.back() == '\n')
-                    text.pop_back();
-                p["explain"] = std::move(text);
-            }
+            if (args.explain && patch.kind == Nonplanar::PatchKind::Top)
+                for (const Nonplanar::ReportPatch &rp : result.nonplanar_report.patches)
+                    if (rp.object == object_id && rp.id == patch.id)
+                        p["explain"] = rp.explain;
             entry["patches"].push_back(p);
             record["results"]["patches"].push_back(std::move(p));
             if (patch.kind == Nonplanar::PatchKind::Top) { ++top; bands = std::max(bands, size_t(patch.band + 1)); footprint += a; }

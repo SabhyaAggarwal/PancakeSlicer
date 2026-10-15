@@ -168,6 +168,8 @@ set(lisbslic3r_sources
     Nonplanar/PatchTools.hpp
     Nonplanar/Repair.cpp
     Nonplanar/Repair.hpp
+    Nonplanar/Report.cpp
+    Nonplanar/Report.hpp
     Nonplanar/Seams.cpp
     Nonplanar/Seams.hpp
     Nonplanar/ShellBase.cpp

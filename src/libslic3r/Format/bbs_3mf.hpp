@@ -37,6 +37,7 @@ struct ThumbnailData;
 #define TOP_FILE_FORMAT                 "Metadata/top_%1%.png"
 #define PICK_FILE_FORMAT                "Metadata/pick_%1%.png"
 #define PATTERN_CONFIG_FILE_FORMAT      "Metadata/plate_%1%.json"
+#define NONPLANAR_REPORT_FILE_FORMAT    "Metadata/nonplanar_%1%.json"
 #define EMBEDDED_PRINT_FILE_FORMAT      "Metadata/process_settings_%1%.config"
 #define EMBEDDED_FILAMENT_FILE_FORMAT      "Metadata/filament_settings_%1%.config"
 #define EMBEDDED_PRINTER_FILE_FORMAT      "Metadata/machine_settings_%1%.config"
@@ -102,6 +103,7 @@ struct PlateData
     std::string     gcode_prediction;
     std::string     gcode_weight;
     std::string     first_layer_time;
+    std::string     nonplanar_report;
     std::string     plate_name;
     std::vector<FilamentInfo> slice_filaments_info;
     std::vector<PlateMixedFilamentInfo> mixed_filaments_info;

@@ -54,6 +54,8 @@ struct PatchDiagnostics
     std::string limiting_component;
     int    repaired_nodes = 0;
     double repair_lowering = 0.;
+    ExPolygons                      fallback_shape;
+    std::vector<std::vector<Vec3f>> fallback_hatch;
 };
 
 struct ObjectMesh;
@@ -75,7 +77,8 @@ HeightField sample_top_surface(const sla::IndexedMesh &mesh, double ray_z, doubl
                                const std::function<void()> &throw_if_canceled = {},
                                const std::function<bool(const Vec2d &, double)> &solid_below = {});
 
-constexpr double BandedTopWidth = 0.75;
+constexpr double BandedTopWidth = 0.55;
+constexpr double BandedCapWidth = 0.625;
 
 double low_plane_top_radius(const PrintObject &object, double layer_height);
 

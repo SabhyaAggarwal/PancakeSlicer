@@ -2273,6 +2273,8 @@ std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const Heig
             PatchDiagnostics &diag = bands[index.begin()->second].diag;
             diag.fallback_area = comp_diag[c].fallback_area;
             diag.fallback_reason = comp_diag[c].fallback_reason;
+            diag.fallback_shape = comp_diag[c].fallback_shape;
+            diag.fallback_hatch = comp_diag[c].fallback_hatch;
             diag.repaired_nodes = comp_diag[c].repaired_nodes;
             diag.repair_lowering = comp_diag[c].repair_lowering;
         }
@@ -2336,6 +2338,8 @@ std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const Heig
             diag.rms_surface_error = bd.err_n > 0 ? std::sqrt(bd.err_sq / bd.err_n) : 0.;
             if (left < parts.size()) {
                 diag.fallback_area   = 0.;
+                diag.fallback_shape.clear();
+                diag.fallback_hatch.clear();
                 diag.repaired_nodes  = 0;
                 diag.repair_lowering = 0.;
             }

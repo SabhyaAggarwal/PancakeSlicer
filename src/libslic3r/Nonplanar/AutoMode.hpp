@@ -2,6 +2,7 @@
 #include "libslic3r/PrintConfig.hpp"
 
 #include <string>
+#include <vector>
 
 namespace Slic3r {
 class Print;
@@ -14,6 +15,7 @@ namespace Slic3r::Nonplanar {
 struct ConformalPatch;
 struct MultiplanarPlan;
 struct HeadEnvelope;
+struct ReportObject;
 
 constexpr int AutoMinShells = 2;
 
@@ -68,5 +70,7 @@ bool                ironing_enabled(const ConformalPatch &patch, const PrintRegi
 std::string auto_comment(const ConformalPatch &patch);
 
 std::string explain_top_patch(const PrintObject &object, const ConformalPatch &patch);
+
+std::vector<std::string> object_warnings(const PrintObject &object, const ReportObject &report);
 
 }

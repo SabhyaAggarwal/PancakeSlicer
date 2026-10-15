@@ -373,6 +373,8 @@ void write_gcode_3mf(const Args &args, Model &model, Print &print, DynamicPrintC
     plate->nozzle_diameters = config.option("nozzle_diameter")->serialize();
     plate->gcode_prediction = std::to_string(int(result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)].time));
     plate->first_layer_time = std::to_string(result.initial_layer_time);
+    if (!result.nonplanar_report.empty())
+        plate->nonplanar_report = result.nonplanar_report.to_json();
     plate->parse_filament_info(&result);
     nlohmann::json bambu_ids;
     {
@@ -1054,10 +1056,11 @@ int main(int argc, char **argv)
         const auto t_done = std::chrono::steady_clock::now();
 
         if (args.explain)
-            for (const PrintObject *object : print.objects()) {
-                std::cout << "explain object " << object->model_object()->name << "\n";
-                for (const auto &patch : object->conformal().patches)
-                    std::cout << Nonplanar::explain_top_patch(*object, patch);
+            for (size_t i = 0; i < print.objects().size(); ++i) {
+                std::cout << "explain object " << print.objects()[i]->model_object()->name << "\n";
+                for (const Nonplanar::ReportPatch &patch : result.nonplanar_report.patches)
+                    if (patch.object == i && patch.top)
+                        std::cout << patch.explain << "\n";
             }
 
         size_t     vz_line         = 0;
@@ -1315,61 +1318,43 @@ int main(int argc, char **argv)
             write_gcode_3mf(args, model, print, config, result, datadir);
             std::cout << "gcode_3mf " << args.gcode_3mf << "\n";
         }
-        for (const PrintObject *object : print.objects()) {
-            const Nonplanar::ConformalResult &conformal = object->conformal();
-            size_t top = 0, bands = 0;
-            double footprint = 0.;
-            for (const Nonplanar::ConformalPatch &patch : conformal.patches)
-                if (patch.kind == Nonplanar::PatchKind::Top) {
-                    ++top;
-                    bands     = std::max(bands, size_t(patch.band + 1));
-                    footprint += area(patch.footprint) * SCALING_FACTOR * SCALING_FACTOR;
-                }
-            std::cout << "nonplanar_object " << object->model_object()->name << "\n"
-                      << "nonplanar_top_patches " << top << "\n"
-                      << "nonplanar_bands " << bands << "\n"
-                      << "nonplanar_top_footprint_mm2 " << footprint << "\n";
+        const Nonplanar::NonplanarReport report = result.nonplanar_report.objects.empty() ? Nonplanar::make_report(print, result, true) :
+                                                                                           result.nonplanar_report;
+        for (size_t i = 0; i < report.objects.size(); ++i) {
+            const Nonplanar::ReportObject &object = report.objects[i];
+            std::cout << "nonplanar_object " << object.name << "\n"
+                      << "nonplanar_top_patches " << object.top_patches << "\n"
+                      << "nonplanar_bands " << object.bands << "\n"
+                      << "nonplanar_top_footprint_mm2 " << object.curved_top << "\n";
             if (! args.json.empty()) {
                 auto &text = record["text_summary"];
                 if (!text.contains("nonplanar_top_patches")) {
-                    text["nonplanar_top_patches"] = text_value(top);
-                    text["nonplanar_bands"] = text_value(bands);
-                    text["nonplanar_top_footprint_mm2"] = text_value(footprint);
+                    text["nonplanar_top_patches"] = text_value(object.top_patches);
+                    text["nonplanar_bands"] = text_value(object.bands);
+                    text["nonplanar_top_footprint_mm2"] = text_value(object.curved_top);
                 }
-                for (const auto &diag : conformal.diagnostics)
-                    if (diag.fallback_area > 0. && !text.contains("nonplanar_fallback"))
-                        text["nonplanar_fallback"] = (diag.fallback_reason.empty() ? "untagged" : diag.fallback_reason) +
-                            " " + text_value(diag.fallback_area) + " patch " + text_value(diag.patch_id);
+                for (const Nonplanar::ReportFallback &f : report.fallbacks)
+                    if (f.object == i && !text.contains("nonplanar_fallback"))
+                        text["nonplanar_fallback"] = f.reason + " " + text_value(f.area) + " patch " + text_value(f.patch);
             }
-            {
-                for (size_t r = 0; r < object->num_printing_regions(); ++r) {
-                    const PrintRegionConfig &rc = object->printing_region(r).config();
-                    std::cout << "nonplanar_region " << r;
-                    for (const char *key : { "top_shell_layers", "top_shell_thickness", "top_surface_pattern", "nonplanar_top_shells", "nonplanar_top_pattern",
-                                             "sparse_infill_density", "wall_loops", "fuzzy_skin", "ironing_type" })
-                        std::cout << " " << key << "=" << rc.opt_serialize(key);
-                    std::cout << "\n";
-                }
-                for (const Nonplanar::ConformalPatch &patch : conformal.patches) {
-                    const Point c = get_extents(patch.footprint).center();
-                    std::cout << "nonplanar_patch " << patch.id << " kind " << int(patch.kind) << " region " << patch.region_id << " band "
-                              << patch.band << " shells " << patch.shells << " xy " << unscale<double>(c.x()) << "," << unscale<double>(c.y())
-                              << "\n";
-                }
-            }
-            for (const Nonplanar::PatchBase &b : conformal.base) {
+            for (size_t r = 0; r < object.regions.size(); ++r)
+                std::cout << "nonplanar_region " << r << " " << object.regions[r] << "\n";
+            for (const Nonplanar::ReportPatch &patch : report.patches)
+                if (patch.object == i)
+                    std::cout << "nonplanar_patch " << patch.id << " kind " << patch.kind << " region " << patch.region << " band "
+                              << patch.band << " shells " << patch.shells << " xy " << patch.center.x() << "," << patch.center.y() << "\n";
+            for (const Nonplanar::PatchBase &b : print.objects()[i]->conformal().base) {
                 std::cout << "nonplanar_base patches ";
-                for (size_t i = 0; i < b.patches.size(); ++i)
-                    std::cout << (i ? "," : "") << b.patches[i];
+                for (size_t k = 0; k < b.patches.size(); ++k)
+                    std::cout << (k ? "," : "") << b.patches[k];
                 std::cout << " area " << b.area << " on_csparse " << b.share[0] << " on_sparse " << b.share[1] << " on_solid " << b.share[2]
                           << " on_air " << b.share[3] << " span " << b.span << " reach_p50 " << b.reach_p50 << " solid_min " << b.solid_min
                           << " solid_p50 " << b.solid_p50 << " slope_p90 " << b.slope_p90 << " sag_rms " << b.sag_rms << " sag_max " << b.sag_max
                           << " solid_layers " << b.solid_layers << " bridged " << b.bridged << "\n";
             }
-            for (const Nonplanar::PatchDiagnostics &diag : conformal.diagnostics)
-                if (diag.fallback_area > 0.)
-                    std::cout << "nonplanar_fallback " << (diag.fallback_reason.empty() ? "untagged" : diag.fallback_reason) << " "
-                              << diag.fallback_area << " patch " << diag.patch_id << "\n";
+            for (const Nonplanar::ReportFallback &f : report.fallbacks)
+                if (f.object == i)
+                    std::cout << "nonplanar_fallback " << f.reason << " " << f.area << " patch " << f.patch << "\n";
         }
         if (! args.json.empty()) {
             slice_json_results(record, args, print, result, model, config);

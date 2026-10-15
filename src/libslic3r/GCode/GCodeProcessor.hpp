@@ -16,6 +16,7 @@
 #include "libslic3r/GCode/MachineFrameTransform.hpp"
 #include "libslic3r/GCode/ToolKinematics.hpp"
 #include "libslic3r/GCode/ClearanceVerifier.hpp"
+#include "libslic3r/Nonplanar/Report.hpp"
 
 #include <cstddef>
 #include <cassert>
@@ -291,6 +292,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         std::vector<float> clearance;
         bool nonplanar = false;
         ClearanceReport clearance_report;
+        Nonplanar::NonplanarReport nonplanar_report;
         ObjectMass plate_mass;
         std::vector<ObjectMass> object_masses;
         std::vector<ObjectMass> body_masses;
@@ -354,6 +356,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             clearance = std::forward<Other>(other).clearance;
             nonplanar = other.nonplanar;
             clearance_report = std::forward<Other>(other).clearance_report;
+            nonplanar_report = std::forward<Other>(other).nonplanar_report;
             plate_mass = std::forward<Other>(other).plate_mass;
             object_masses = std::forward<Other>(other).object_masses;
             body_masses = std::forward<Other>(other).body_masses;

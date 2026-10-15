@@ -37,6 +37,7 @@ struct OrientMesh {
     bool has_cooling_fan{false};
     bool nonplanar{false};
     Nonplanar::OrientParams nonplanar_params;
+    std::string nonplanar_decision;
 
     std::string name;
 

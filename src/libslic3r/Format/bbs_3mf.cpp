@@ -7526,6 +7526,15 @@ bool _BBS_3MF_Exporter::_add_gcode_file_to_archive(mz_zip_archive& archive, cons
             BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ":" <<__LINE__ << boost::format(", store  %1% to 3mf %2%\n") % src_gcode_file % gcode_in_3mf;
         }
     });
+    for (const PlateData *plate_data : plate_data_list2)
+        if (!plate_data->nonplanar_report.empty()) {
+            const std::string name = (boost::format(NONPLANAR_REPORT_FILE_FORMAT) % (plate_data->plate_index + 1)).str();
+            if (!mz_zip_writer_add_mem(&archive, name.c_str(), plate_data->nonplanar_report.data(), plate_data->nonplanar_report.size(),
+                                       MZ_DEFAULT_COMPRESSION)) {
+                add_error("Unable to add the non-planar report to archive");
+                return false;
+            }
+        }
     return result;
 }
 

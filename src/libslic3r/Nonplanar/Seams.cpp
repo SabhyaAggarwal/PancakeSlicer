@@ -4,6 +4,8 @@
 #include "HeightField.hpp"
 
 #include "libslic3r/ClipperUtils.hpp"
+#include "libslic3r/ExtrusionEntity.hpp"
+#include "libslic3r/Geometry.hpp"
 #include "libslic3r/Line.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Print.hpp"
@@ -935,6 +937,12 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
                        in_band(b, JoinClamp);
         for (const Point3 &q : route)
             extrude = extrude && in_band(q, JoinClamp);
+        if (extrude && current->role() == erTopSolidInfill && grid != nullptr && a != b) {
+            const Vec2d pa = unscale(a.to_point()), d = (unscale(b.to_point()) - pa).normalized();
+            const Vec2d g  = grid->gradient(0.5 * (pa + unscale(b.to_point())));
+            if (g.allFinite() && g.norm() >= std::tan(Geometry::deg2rad(3.)) && std::abs(d.dot(g.normalized())) < 0.5)
+                extrude = false;
+        }
         if (extrude && a != b) {
             const float ha = heights.back(), hb = path->bead_height.front();
             const Vec2d pa = unscale(a.to_point());

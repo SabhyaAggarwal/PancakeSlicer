@@ -2301,6 +2301,7 @@ void GCodeProcessorResult::reset() {
     clearance.clear();
     nonplanar = false;
     clearance_report = {};
+    nonplanar_report = {};
     plate_mass = {};
     object_masses.clear();
     body_masses.clear();
