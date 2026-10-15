@@ -799,7 +799,7 @@ HeightField sample_underside(const sla::IndexedMesh &mesh, double z_offset, cons
 }
 
 static ConformalResult build_region_shells(PrintObject &object, const std::vector<size_t> &region_ids, int patch_offset,
-                                           std::shared_ptr<ObjectMesh> &mesh)
+                                           std::shared_ptr<ObjectMesh> &mesh, const ExPolygons *whole_tops)
 {
     const size_t    region_id = region_ids.front();
     ConformalResult result;
@@ -828,6 +828,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
 
     auto cancel = [&object]() { throw_if_canceled(object); };
     HeightField S, U;
+    ExPolygons  whole;
     {
         const ObjectMesh &mesh = object_mesh(object, result);
         S = sample_top_surface(mesh.imesh, mesh.mesh.bounding_box().max.z() + 1., object.slicing_parameters().object_print_z_min, grid, cancel,
@@ -850,6 +851,11 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
         const float slit = float(scale_(0.5));
         candidate        = union_ex(candidate, intersection_ex(diff_ex(closing_ex(to_polygons(candidate), slit), candidate),
                                                                 mask_to_expolygons(smooth, grid)));
+        if (whole_tops != nullptr) {
+            Polygons all = to_polygons(*whole_tops);
+            polygons_append(all, to_polygons(candidate));
+            whole = closing_ex(all, slit);
+        }
     }
     const Mask        cand_mask = rasterize(candidate, grid);
     throw_if_canceled(object);
@@ -1176,6 +1182,10 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
     components            = settings.banded ? intersection_ex(components, candidate) :
                                               intersection_ex(offset_ex(expolygons_simplify(components, scale_(pitch)), -float(scale_(pitch))),
                                                               candidate);
+    if (whole_tops != nullptr && settings.banded)
+        if (const ExPolygons other = diff_ex(whole, candidate); !other.empty())
+            components = union_ex(components, intersection_ex(intersection_ex(offset_ex(components, float(scale_(1.5 * pitch))), candidate),
+                                                              offset_ex(other, float(scale_(1.5 * pitch)))));
     {
         std::vector<BoundingBox> island_bboxes;
         for (const ExPolygon &island : candidate)
@@ -1827,8 +1837,16 @@ ConformalResult build_conformal_shells(PrintObject &object)
         else
             same->push_back(region_id);
     }
+    ExPolygons all_tops;
+    if (groups.size() > 1) {
+        std::vector<size_t> all(object.num_printing_regions());
+        for (size_t r = 0; r < all.size(); ++r)
+            all[r] = r;
+        all_tops = candidate_top_area(object, all);
+    }
     for (const std::vector<size_t> &group : groups) {
-        ConformalResult region = build_region_shells(object, group, int(result.patches.size()), result.mesh);
+        ConformalResult region = build_region_shells(object, group, int(result.patches.size()), result.mesh,
+                                                     groups.size() > 1 ? &all_tops : nullptr);
         result.mesh            = region.mesh;
         result.flow_mod.merge(region.flow_mod);
         append(result.base, std::move(region.base));

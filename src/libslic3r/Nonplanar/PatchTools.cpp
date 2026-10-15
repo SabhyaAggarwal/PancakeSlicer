@@ -329,6 +329,7 @@ double smooth_scan_noise(HeightField &surface, const std::function<void()> &thro
 {
     constexpr double ScanNoiseFloor = 0.006;
     constexpr double NoiseScaleRatio = 3.5;
+    constexpr double PatternCorrelation = 0.6;
     const double     pitch          = surface.pitch();
     const int        nx = surface.nx(), ny = surface.ny();
     const double     wall = std::tan(Geometry::deg2rad(60.)) * 4. * pitch;
@@ -352,7 +353,7 @@ double smooth_scan_noise(HeightField &surface, const std::function<void()> &thro
                     if (!full || hi - lo > stride * wall)
                         continue;
                     if (Quadric c; local_quadratic(surface, ix, iy, r, [](int, int, double) { return 1.; }, c, stride))
-                        residual[size_t(iy) * nx + ix] = float(std::abs(z - c(0)));
+                        residual[size_t(iy) * nx + ix] = float(z - c(0));
                 }
         });
         return residual;
@@ -370,15 +371,65 @@ double smooth_scan_noise(HeightField &surface, const std::function<void()> &thro
                 for (int iy = ty; iy < std::min(ny, ty + tile); ++iy)
                     for (int ix = tx; ix < std::min(nx, tx + tile); ++ix)
                         if (const float r = residual[size_t(iy) * nx + ix]; !std::isnan(r))
-                            cell.emplace_back(r);
+                            cell.emplace_back(std::abs(r));
                 all.insert(all.end(), cell.begin(), cell.end());
                 if (2 * cell.size() >= size_t(tile) * tile)
                     tiles.emplace_back(float(robust_sigma(cell)));
             }
         return !tiles.empty() ? robust_sigma(tiles) : all.size() >= 2000 ? robust_sigma(all) : 0.;
     };
-    const double sigma = noise(residual_field(1));
-    if (sigma <= ScanNoiseFloor || noise(residual_field(2)) > NoiseScaleRatio * sigma)
+    auto periodicity = [&](const std::vector<float> &residual) {
+        const int           lags = std::max(2, int(std::lround(2. / pitch))), side = 2 * lags + 1;
+        std::vector<double> acf(size_t(side) * side);
+        std::vector<int>    lobe;
+        double              sum = 0., weight = 0.;
+        for (int ty = 0; ty + tile <= ny; ty += tile)
+            for (int tx = 0; tx + tile <= nx; tx += tile) {
+                auto   at = [&](int x, int y) { return residual[size_t(ty + y) * nx + tx + x]; };
+                double mean = 0.;
+                int    n    = 0;
+                for (int y = 0; y < tile; ++y)
+                    for (int x = 0; x < tile; ++x)
+                        if (const float r = at(x, y); !std::isnan(r))
+                            mean += r, ++n;
+                if (2 * n < tile * tile)
+                    continue;
+                mean /= n;
+                for (int dy = -lags; dy <= lags; ++dy)
+                    for (int dx = -lags; dx <= lags; ++dx) {
+                        double c = 0.;
+                        int    m = 0;
+                        for (int y = std::max(0, -dy); y < std::min(tile, tile - dy); ++y)
+                            for (int x = std::max(0, -dx); x < std::min(tile, tile - dx); ++x)
+                                if (const float a = at(x, y), b = at(x + dx, y + dy); !std::isnan(a) && !std::isnan(b))
+                                    c += (a - mean) * (b - mean), ++m;
+                        acf[size_t(dy + lags) * side + dx + lags] = 10 * m >= 3 * n ? c / m : std::nan("");
+                    }
+                const double energy = acf[size_t(lags) * side + lags];
+                if (!(energy > 0.))
+                    continue;
+                lobe.assign(size_t(side) * side, 0);
+                std::vector<int> stack{ lags * side + lags };
+                lobe[size_t(stack.back())] = 1;
+                while (!stack.empty()) {
+                    const int i = stack.back();
+                    stack.pop_back();
+                    for (const int j : { i - 1, i + 1, i - side, i + side })
+                        if (j >= 0 && j < side * side && std::abs(j % side - i % side) <= 1 && !lobe[size_t(j)] && acf[size_t(j)] > 0.)
+                            lobe[size_t(j)] = 1, stack.emplace_back(j);
+                }
+                double peak = -1.;
+                for (size_t i = 0; i < acf.size(); ++i)
+                    if (!lobe[i] && !std::isnan(acf[i]))
+                        peak = std::max(peak, acf[i] / energy);
+                sum += peak * energy * n;
+                weight += energy * n;
+            }
+        return weight > 0. ? sum / weight : 0.;
+    };
+    const std::vector<float> residual = residual_field(1);
+    const double             sigma    = noise(residual);
+    if (sigma <= ScanNoiseFloor || noise(residual_field(2)) > NoiseScaleRatio * sigma || periodicity(residual) > PatternCorrelation)
         return 0.;
     if (throw_if_canceled)
         throw_if_canceled();
