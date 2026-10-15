@@ -5,12 +5,12 @@
 	"from": "system",
 	"setting_id": "JPNBmdUJjJqybPji",
 	"instantiation": "true",
-	"nonplanar_ironing": "1",
 	"nonplanar_full_conformal_max_thickness": "3",
 	"nonplanar_mode": "auto",
-	"ironing_type": "top",
+	"nonplanar_top_speed_factor": "150%",
+	"top_surface_acceleration": "1250",
 	"compatible_printers": [
 		"Prusa MINI 0.4 nozzle"
 	],
-	"description": "0.20mm Standard for Prusa MINI/MINI+ with curved top shells; the shell count (2 to 6), pattern and ironing are chosen for each curved area. Thin curved parts (up to 3 mm) print in curved layers throughout on meshes with holes; closed meshes keep planar interiors. Uses the shared prusa-mini head."
+	"description": "0.20mm Standard for Prusa MINI/MINI+ with curved top shells; auto chooses the shell count (2 to 6) and pattern for each curved area, with ironing left off. Thin curved parts (up to 3 mm) print in curved layers throughout on meshes with holes; closed meshes keep planar interiors. Curved tops run at 150% of the top surface speed. Uses the shared prusa-mini head."
 }

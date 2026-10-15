@@ -6,7 +6,7 @@
 	"from": "User",
 	"instantiation": "true",
 	"nonplanar_mode": "auto",
-	"description": "UNMEASURED Prodcan3 research process. Standalone 0.20mm Standard tuning derived from Custom/MyMarlin for one Direct Drive Standard extruder, with absolute speeds capped at the supplied 80 mm/s Y-axis limit. Three curved top shells, thin curved parts (up to 3 mm) in curved layers throughout, and ironing; requires the unmeasured prodcan3 head and BC-table machine preset.",
+	"description": "UNMEASURED Prodcan3 research process. Standalone 0.20mm Standard tuning derived from Custom/MyMarlin for one Direct Drive Standard extruder, with absolute speeds capped at the supplied 80 mm/s Y-axis limit. Three curved top shells, thin curved parts (up to 3 mm) in curved layers throughout, no ironing; requires the unmeasured prodcan3 head and BC-table machine preset.",
 	"print_extruder_id": [
 		"1"
 	],
@@ -56,7 +56,7 @@
 	"ironing_flow": "10%",
 	"ironing_spacing": "0.15",
 	"ironing_speed": "30",
-	"ironing_type": "top",
+	"ironing_type": "no ironing",
 	"reduce_infill_retraction": "1",
 	"filename_format": "{input_filename_base}_{filament_type[initial_tool]}_{print_time}.gcode",
 	"detect_overhang_wall": "1",
@@ -159,7 +159,6 @@
 	"support_style": "default",
 	"nonplanar_full_conformal_max_thickness": "3",
 	"nonplanar_top_shells": "3",
-	"nonplanar_ironing": "1",
 	"nonplanar_bridges": "1",
 	"compatible_printers": [
 		"Prodcan3 5-axis BC table"

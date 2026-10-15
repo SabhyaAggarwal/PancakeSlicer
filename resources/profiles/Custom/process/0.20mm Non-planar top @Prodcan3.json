@@ -4,7 +4,7 @@
 	"from": "system",
 	"setting_id": "ODa80obTTexL7WQ7",
 	"instantiation": "true",
-	"description": "UNMEASURED Prodcan3 research process. Standalone 0.20mm Standard tuning derived from Custom/MyMarlin for one Direct Drive Standard extruder, with absolute speeds capped at the supplied 80 mm/s Y-axis limit. Auto chooses 2 to 6 curved top shells and ironing for each curved area (three shells in Manual); thin curved parts (up to 3 mm) print in curved layers throughout on meshes with holes; requires the unmeasured prodcan3 head and BC-table machine preset.",
+	"description": "UNMEASURED Prodcan3 research process. Standalone 0.20mm Standard tuning derived from Custom/MyMarlin for one Direct Drive Standard extruder, with absolute speeds capped at the supplied 80 mm/s Y-axis limit. Auto chooses 2 to 6 curved top shells (three in Manual), with ironing left off; thin curved parts (up to 3 mm) print in curved layers throughout on meshes with holes. Requires the unmeasured prodcan3 head and BC-table machine preset.",
 	"print_extruder_id": [
 		"1"
 	],
@@ -54,7 +54,7 @@
 	"ironing_flow": "10%",
 	"ironing_spacing": "0.15",
 	"ironing_speed": "30",
-	"ironing_type": "top",
+	"ironing_type": "no ironing",
 	"reduce_infill_retraction": "1",
 	"filename_format": "{input_filename_base}_{filament_type[initial_tool]}_{print_time}.gcode",
 	"detect_overhang_wall": "1",
@@ -158,7 +158,6 @@
 	"nonplanar_full_conformal_max_thickness": "3",
 	"nonplanar_mode": "auto",
 	"nonplanar_top_shells": "3",
-	"nonplanar_ironing": "1",
 	"compatible_printers": [
 		"Prodcan3 5-axis BC table 0.4 nozzle"
 	],
