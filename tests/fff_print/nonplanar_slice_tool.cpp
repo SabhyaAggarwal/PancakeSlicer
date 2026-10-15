@@ -1123,7 +1123,7 @@ int main(int argc, char **argv)
         std::map<std::string, double> np_kind;
         for (size_t i = 0; i < result.moves.size(); ++i) {
             const auto &m = result.moves[i];
-            if (m.nonplanar_patch_shell == 0xFF)
+            if (result.state(m).nonplanar_patch_shell == 0xFF)
                 continue;
             const double t = m.time[size_t(PrintEstimatedStatistics::ETimeMode::Normal)];
             if (m.type == EMoveType::Extrude) {
@@ -1150,7 +1150,7 @@ int main(int argc, char **argv)
         std::map<std::string, double> feature_time;
         for (size_t i = 0; i < result.moves.size(); ++i) {
             const auto &m  = result.moves[i];
-            const bool  np = m.nonplanar_patch_shell != 0xFF;
+            const bool  np = result.state(m).nonplanar_patch_shell != 0xFF;
             std::string kind;
             if (m.type == EMoveType::Extrude)
                 kind = ExtrusionEntity::role_to_string(m.extrusion_role);
@@ -1280,7 +1280,7 @@ int main(int argc, char **argv)
                 if (m.type != EMoveType::Extrude)
                     continue;
                 const Vec3f &a    = result.moves[i - 1].position, &b = m.position;
-                const Vec3d  axis = rotary && m.has_joints ? kinematics->forward(m.joints).axis : Vec3d::UnitZ();
+                const Vec3d  axis = rotary && result.has_joints() ? kinematics->forward(result.joints[i]).axis : Vec3d::UnitZ();
                 const ExtrusionRole r = m.extrusion_role;
                 const bool part = !(r == erSkirt || r == erBrim || r == erWipeTower || r == erCustom || r == erNone ||
                                     r == erSupportMaterial || r == erSupportMaterialInterface || r == erSupportTransition);

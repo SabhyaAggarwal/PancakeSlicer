@@ -116,7 +116,7 @@ double measured_slice(const PrintObject &object, bool chunks, std::vector<Bead> 
             r == erSupportMaterial || r == erSupportMaterialInterface || r == erSupportTransition)
             continue;
         beads.push_back({ result.moves[i - 1].position.cast<double>(), m.position.cast<double>(),
-                          rotary && m.has_joints ? kinematics->forward(m.joints).axis : Vec3d::UnitZ(), double(m.width), double(m.height) });
+                          rotary && result.has_joints() ? kinematics->forward(result.joints[i]).axis : Vec3d::UnitZ(), double(m.width), double(m.height) });
     }
     return result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)].time;
 }

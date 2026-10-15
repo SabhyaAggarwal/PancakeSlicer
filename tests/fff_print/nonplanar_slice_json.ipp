@@ -234,7 +234,7 @@ struct SliceGrid
                 if ((p - aa - t * d).squaredNorm() > radius * radius) return;
                 const double z = a.z() + t * (b.z() - a.z());
                 if (m.extrusion_role == erIroning) { if (std::abs(z - mesh[k]) <= 1.) ironed[k] = 1; return; }
-                if (z > bead[k]) { bead[k] = z; conformal[k] = m.nonplanar_patch_shell != 0xFF; }
+                if (z > bead[k]) { bead[k] = z; conformal[k] = result.state(m).nonplanar_patch_shell != 0xFF; }
             });
         }
     }
@@ -287,14 +287,14 @@ void slice_json_results(Json &record, const Args &args, const Print &print, cons
             first_print = std::min(first_print, i); last_print = i;
         }
     bool turned = false;
-    for (const auto &m : result.moves) turned |= m.has_joints && (m.joints.rot[0] != 0. || m.joints.rot[1] != 0.);
+    for (const JointPose &joints : result.joints) turned |= joints.rot[0] != 0. || joints.rot[1] != 0.;
     for (size_t i = 0; i < result.moves.size(); ++i) {
         const auto &m = result.moves[i];
         if (m.type == EMoveType::Retract) totals["retractions"] = totals["retractions"].get<size_t>() + 1;
         if (m.type == EMoveType::Travel && i > 0) travel += (m.position - result.moves[i - 1].position).norm();
         if (hits.size() < 10 && i < clearance.per_move.size() && clearance.per_move[i] < -1e-5 &&
             !(m.extrusion_role == erCustom && (i < first_print || i > last_print))) {
-            const Vec3d tip = !turned && m.has_joints ? m.joints.xyz : Vec3d(m.position.cast<double>());
+            const Vec3d tip = !turned && result.has_joints() ? result.joints[i].xyz : Vec3d(m.position.cast<double>());
             Json hit = {{"move_id", i}, {"gcode_line", m.gcode_id}, {"tip_mm", {tip.x(), tip.y(), tip.z()}},
                         {"penetration_mm", -clearance.per_move[i]}, {"component", nullptr}};
             for (const auto &worst : clearance.worst) if (worst.move_id == i) {

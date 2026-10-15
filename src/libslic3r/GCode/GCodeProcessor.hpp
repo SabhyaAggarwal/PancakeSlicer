@@ -2,6 +2,7 @@
 #define slic3r_GCodeProcessor_hpp_
 
 #include "libslic3r/CommonDefs.hpp"
+#include "libslic3r/ChunkedVector.hpp"
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/Polygon.hpp"
@@ -21,6 +22,7 @@
 #include <cstddef>
 #include <cassert>
 #include <cstdint>
+#include <cstring>
 #include <array>
 #include <deque>
 #include <unordered_map>
@@ -217,6 +219,22 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             }
         };
 
+        struct MoveState
+        {
+            float fan_speed{ 0.0f };
+            float temperature{ 0.0f };
+            float pressure_advance{ 0.0f };
+            float acceleration{ 0.0f };
+            float jerk{ 0.0f };
+            float print_z{ 0.0f };
+            int   object_label_id{ -1 };
+            unsigned char nonplanar_patch_shell{ 0xFF };
+            signed char nonplanar_band{ -1 };
+            short nonplanar_patch{ -1 };
+
+            bool operator==(const MoveState &other) const { return std::memcmp(this, &other, sizeof(MoveState)) == 0; }
+        };
+
         struct MoveVertex
         {
             unsigned int gcode_id{ 0 };
@@ -231,28 +249,17 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             float width{ 0.0f };
             float height{ 0.0f };
             float mm3_per_mm{ 0.0f };
-            float travel_dist{ 0.0f };
-            float fan_speed{ 0.0f };
-            float temperature{ 0.0f };
-            float pressure_advance{ 0.0f };
-            float acceleration{ 0.0f };
-            float jerk{ 0.0f };
             std::array<float, static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count)> time{ 0.0f, 0.0f };
-            float layer_duration{ 0.0f };
             unsigned int layer_id{ 0 };
+            unsigned int state{ 0 };
             bool internal_only{ false };
-
-            int  object_label_id{-1};
-            float print_z{0.0f};
-            unsigned char nonplanar_patch_shell{ 0xFF };
-            short nonplanar_patch{ -1 };
-            signed char nonplanar_band{ -1 };
-            JointPose joints;
-            bool has_joints = false;
 
             float volumetric_rate() const { return feedrate * mm3_per_mm; }
             float actual_volumetric_rate() const { return actual_feedrate * mm3_per_mm; }
         };
+        static_assert(sizeof(MoveVertex) <= 64, "The preview keeps one MoveVertex per move: put rarely changing values in MoveState.");
+        static_assert(sizeof(MoveState) == 32, "MoveState is compared and hashed bitwise: no padding.");
+        using Moves = ChunkedVector<MoveVertex>;
 
         struct SliceWarning {
             int         level;
@@ -288,7 +295,10 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
 
         std::string filename;
         unsigned int id;
-        std::vector<MoveVertex> moves;
+        Moves moves;
+        std::vector<MoveState> move_states{ MoveState() };
+        ChunkedVector<JointPose> joints;
+        std::array<float, static_cast<size_t>(EMoveType::Count)> move_type_distances{};
         std::vector<float> clearance;
         bool nonplanar = false;
         ClearanceReport clearance_report;
@@ -345,6 +355,14 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         BedType bed_type = BedType::btCount;
         void reset();
 
+        const MoveState &state(const MoveVertex &move) const { return move_states[move.state]; }
+        bool has_joints() const { return !joints.empty(); }
+        const JointPose &joint(size_t i) const
+        {
+            static const JointPose none;
+            return joints.empty() ? none : joints[i];
+        }
+
         mutable std::mutex result_mutex;
         GCodeProcessorResult& operator=(const GCodeProcessorResult &other) { assign(other); return *this; }
         GCodeProcessorResult& operator=(GCodeProcessorResult &&other) { assign(std::move(other)); return *this; }
@@ -353,6 +371,9 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             filename = std::forward<Other>(other).filename;
             id = std::forward<Other>(other).id;
             moves = std::forward<Other>(other).moves;
+            move_states = std::forward<Other>(other).move_states;
+            joints = std::forward<Other>(other).joints;
+            move_type_distances = other.move_type_distances;
             clearance = std::forward<Other>(other).clearance;
             nonplanar = other.nonplanar;
             clearance_report = std::forward<Other>(other).clearance_report;
@@ -811,7 +832,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             void build_extruder_free_blocks(const std::vector<ExtruderPreHeating::FilamentUsageBlock>& filament_usage_blocks, const std::vector<ExtruderPreHeating::ExtruderUsageBlcok>& extruder_usage_blocks);
 
             PreCoolingInjector(
-                const std::vector<GCodeProcessorResult::MoveVertex>& moves_,
+                const GCodeProcessorResult::Moves& moves_,
                 const std::vector<std::string>& filament_types_,
                 const MultiNozzleUtils::LayeredNozzleGroupResult& nozzle_group_result_,
                 const std::vector<int>& filament_nozzle_temps_,
@@ -859,7 +880,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
 
         private:
             std::vector<ExtruderFreeBlock> m_extruder_free_blocks;
-            const std::vector<GCodeProcessorResult::MoveVertex>& moves;
+            const GCodeProcessorResult::Moves& moves;
             const std::vector<std::string>& filament_types;
             const MultiNozzleUtils::LayeredNozzleGroupResult& nozzle_group_result;
             const std::vector<int>& filament_nozzle_temps;
@@ -940,6 +961,10 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
                 move.position = position;
                 move.height = height;
                 m_result.moves.erase(m_result.moves.begin() + *m_move_id);
+                if (m_result.has_joints()) {
+                    m_result.joints.push_back(m_result.joints[*m_move_id]);
+                    m_result.joints.erase(m_result.joints.begin() + *m_move_id);
+                }
                 m_result.custom_gcode_per_print_z[*m_custom_gcode_per_print_z_id].print_z = position.z();
                 reset();
             }
@@ -1040,6 +1065,21 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         unsigned char                   m_nonplanar_patch_shell{ 0xFF };
         short                           m_nonplanar_patch{ -1 };
         signed char                     m_nonplanar_band{ -1 };
+        bool                            m_keep_tips{ false };
+        struct MoveStateHash
+        {
+            size_t operator()(const GCodeProcessorResult::MoveState &state) const
+            {
+                std::array<uint32_t, sizeof(GCodeProcessorResult::MoveState) / 4> words;
+                std::memcpy(words.data(), &state, sizeof(state));
+                size_t h = 0;
+                for (uint32_t w : words)
+                    h = (h ^ w) * 0x100000001b3ull;
+                return h;
+            }
+        };
+        std::unordered_map<GCodeProcessorResult::MoveState, unsigned int, MoveStateHash> m_move_state_ids;
+        std::array<unsigned int, 2> m_recent_move_states{ 0, 0 };
         float                           m_nonplanar_feed_interval{ 0.f };
         AxisCoords m_start_position;
         AxisCoords m_end_position;
@@ -1165,7 +1205,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
                                               const std::vector<int>      &filament_map,
                                               const std::vector<std::set<int>>& unprintable_filament_types );
         void apply_config(const PrintConfig& config);
-        void set_print(Print* print) { m_print = print; }
+        void set_print(Print* print);
         void set_mass_locator(MassLocator locator, std::vector<GCodeProcessorResult::ObjectMass> objects)
         {
             m_mass_locator = std::move(locator);
@@ -1352,6 +1392,8 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         void handle_offsets_of_second_process(const TimeProcessor::InsertedLinesMap& inserted_operation_lines);
 
         void store_move_vertex(EMoveType type, EMovePathType path_type = EMovePathType::Noop_move, bool internal_only = false);
+        unsigned int intern_move_state(const GCodeProcessorResult::MoveState &state);
+        bool keep_joints() const { return m_tool_kinematics != nullptr || m_keep_tips; }
         void add_object_mass(int filament_id, float volume);
         void finalize_object_masses();
 

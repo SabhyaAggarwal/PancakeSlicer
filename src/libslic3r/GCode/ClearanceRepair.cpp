@@ -57,7 +57,10 @@ bool physical(const MoveVertex &m)
            m.type != EMoveType::Pause_Print && m.type != EMoveType::Custom_GCode;
 }
 
-Vec3d tip_of(const MoveVertex &m) { return m.has_joints ? m.joints.xyz : Vec3d(m.position.cast<double>()); }
+Vec3d tip_of(const GCodeProcessorResult &result, size_t i)
+{
+    return result.has_joints() ? result.joints[i].xyz : Vec3d(result.moves[i].position.cast<double>());
+}
 
 struct Box { std::string name; Vec3d min, max; bool inf_x, inf_y, nozzle; };
 std::vector<Box> verifier_boxes(const HeadEnvelope &head, bool allowance)
@@ -91,7 +94,7 @@ public:
             const MoveVertex &m = result.moves[i];
             if (!physical(m))
                 continue;
-            const Vec3d a = tip_of(result.moves[last]), b = tip_of(m);
+            const Vec3d a = tip_of(result, last), b = tip_of(result, i);
             last = i;
             if (m.type != EMoveType::Extrude) {
                 ++run;
@@ -158,7 +161,7 @@ Blame blame(const GCodeProcessorResult &result, const SegmentGrid &grid, size_t 
     const MoveVertex &m  = result.moves[move_id];
     const bool extruding = m.type == EMoveType::Extrude;
     const size_t run     = grid.run_of(move_id);
-    const Vec3d a = tip_of(result.moves[prev_id]), b = tip_of(m);
+    const Vec3d a = tip_of(result, prev_id), b = tip_of(result, move_id);
     const int count = std::max(1, int(std::ceil((b - a).norm() / 0.25)));
     for (int j = 0; j < count; ++j) {
         const Vec3d p0 = a + double(j) / count * (b - a), p1 = a + double(j + 1) / count * (b - a);
@@ -215,10 +218,12 @@ public:
                         return object;
         return nullptr;
     }
-    Site locate(const MoveVertex &m, const Vec3d &tip) const
+    Site locate(const GCodeProcessorResult &result, size_t move_id, const Vec3d &tip) const
     {
         Site best;
-        if (m.nonplanar_patch_shell == 0xFF)
+        const MoveVertex &m = result.moves[move_id];
+        const int shell = result.state(m).nonplanar_patch_shell;
+        if (shell == 0xFF)
             return best;
         double best_dz = 0.5;
         const double z = to_object_z(tip.z());
@@ -226,7 +231,6 @@ public:
             for (size_t instance = 0; instance < object->instances().size(); ++instance) {
                 const Vec2d q = to_object(tip, *object, instance, m.extruder_id);
                 for (const ConformalPatch &patch : object->conformal().patches) {
-                    const int shell = m.nonplanar_patch_shell;
                     const float s = patch.surface.sample(q);
                     if (std::isnan(s) || shell > patch.shells)
                         continue;
@@ -299,7 +303,7 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
     self->m_planned.clear();
     size_t conformal_hits = 0;
     for (size_t i = 0; i < result.moves.size(); ++i)
-        if (report.per_move[i] < 0.f && result.moves[i].nonplanar_patch_shell != 0xFF && result.moves[i].type == EMoveType::Extrude)
+        if (report.per_move[i] < 0.f && result.state(result.moves[i]).nonplanar_patch_shell != 0xFF && result.moves[i].type == EMoveType::Extrude)
             ++conformal_hits;
     result.clearance_report = std::move(report);
     result.clearance        = result.clearance_report.per_move;
@@ -309,7 +313,7 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
     if (conformal_hits > 0) {
         message += " " + std::to_string(conformal_hits) + " conformal moves still hit printed material";
         for (const ClearanceHit &hit : result.clearance_report.worst)
-            if (result.moves[hit.move_id].nonplanar_patch_shell != 0xFF && result.moves[hit.move_id].type == EMoveType::Extrude) {
+            if (result.state(result.moves[hit.move_id]).nonplanar_patch_shell != 0xFF && result.moves[hit.move_id].type == EMoveType::Extrude) {
                 message += " (worst " + std::to_string(hit.penetration) + " mm, " + hit.component + ", line " + std::to_string(hit.gcode_line) + ")";
                 break;
             }
@@ -353,20 +357,20 @@ bool ClearanceRepair::plan(const GCodeProcessorResult &result, const ClearanceRe
         const MoveVertex *m = &result.moves[move_id];
         const bool extruding = m->type == EMoveType::Extrude;
         const size_t prev = previous_physical(move_id);
-        const Vec3d  a = tip_of(result.moves[prev]), b = tip_of(*m);
+        const Vec3d  a = tip_of(result, prev), b = tip_of(result, move_id);
         const double penetration = hit.penetration;
 
         if (!extruding) {
             const size_t next = next_extrusion(move_id);
             const bool vertical = (b.head<2>() - a.head<2>()).norm() < 1e-3;
-            if (vertical && next != 0 && result.moves[next].nonplanar_patch_shell != 0xFF) {
+            if (vertical && next != 0 && result.state(result.moves[next]).nonplanar_patch_shell != 0xFF) {
                 move_id = next;
                 m = &result.moves[move_id];
             } else {
                 const size_t last = previous_extrusion(move_id);
-                Site site = locator.locate(result.moves[last], tip_of(result.moves[last]));
+                Site site = locator.locate(result, last, tip_of(result, last));
                 if (site.object == nullptr && next != 0)
-                    site = locator.locate(result.moves[next], tip_of(result.moves[next]));
+                    site = locator.locate(result, next, tip_of(result, next));
                 if (site.object == nullptr)
                     site.object = locator.object_at(b, m->extruder_id);
                 if (site.object != nullptr) {
@@ -389,7 +393,7 @@ bool ClearanceRepair::plan(const GCodeProcessorResult &result, const ClearanceRe
             }
         }
 
-        const Site site = locator.locate(*m, tip_of(*m));
+        const Site site = locator.locate(result, move_id, tip_of(result, move_id));
         if (site.object != nullptr) {
             const ConformalPatch &patch = site.object->conformal().patches[size_t(site.patch)];
             if (site.shell == patch.shells) {
@@ -405,8 +409,7 @@ bool ClearanceRepair::plan(const GCodeProcessorResult &result, const ClearanceRe
             ++unrepaired, ++unrepaired_by_cause["no material found"];
             continue;
         }
-        const MoveVertex &culprit = result.moves[what.culprit->move];
-        const Site        source  = locator.locate(culprit, what.culprit->b);
+        const Site        source  = locator.locate(result, what.culprit->move, what.culprit->b);
         if (source.object != nullptr && source.object->conformal().patches[size_t(source.patch)].kind == PatchKind::Top) {
             const ConformalPatch &patch = source.object->conformal().patches[size_t(source.patch)];
             const double drop = std::max(0, patch.shells - 1 - std::min(source.shell, patch.shells - 1)) * patch.shell_height;
@@ -469,10 +472,10 @@ bool ClearanceRepair::plan_upright(const GCodeProcessorResult &result, const Cle
     size_t        discs  = 0;
     for (size_t i = 1; i < result.moves.size() && i < report.per_move.size(); ++i) {
         const MoveVertex &m = result.moves[i];
-        if (report.per_move[i] >= 0.f || m.nonplanar_patch_shell == 0xFF)
+        if (report.per_move[i] >= 0.f || result.state(m).nonplanar_patch_shell == 0xFF)
             continue;
         const Vec3d tip  = m.position.cast<double>();
-        const Site  site = locator.locate(m, tip);
+        const Site  site = locator.locate(result, i, tip);
         if (site.object == nullptr)
             continue;
         std::vector<RepairHints::Disc> *upright = nullptr;

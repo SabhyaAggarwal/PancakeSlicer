@@ -42,9 +42,9 @@ bool is_nozzle(const Nonplanar::HeadBox &box, const Nonplanar::HeadEnvelope &hea
                           radius.norm() <= head.tip_allowance.radius);
 }
 
-Vec3d move_tip(const GCodeProcessorResult::MoveVertex &move, bool rotary)
+Vec3d move_tip(const GCodeProcessorResult &result, size_t i, bool rotary)
 {
-    return !rotary && move.has_joints ? move.joints.xyz : Vec3d(move.position.cast<double>());
+    return !rotary && result.has_joints() ? result.joints[i].xyz : Vec3d(result.moves[i].position.cast<double>());
 }
 
 Nonplanar::HeadBox prepared_box(Nonplanar::HeadBox box, const Nonplanar::HeadEnvelope &head)
@@ -88,7 +88,7 @@ struct UprightBead { uint32_t move, last, run; uint16_t piece, pieces; };
 class BeadGrid
 {
 public:
-    BeadGrid(const std::vector<GCodeProcessorResult::MoveVertex> &moves, bool rotary) : m_moves(moves), m_rotary(rotary) {}
+    BeadGrid(const GCodeProcessorResult &result, bool rotary) : m_result(result), m_rotary(rotary) {}
     double material_radius = 0.;
     size_t size() const { return m_beads.size() + m_upright.size(); }
     void deposit(const ToolPose &a, const ToolPose &b, double width, double height, size_t run)
@@ -166,8 +166,8 @@ private:
     {
         if (!m_beads.empty()) return m_beads[id].corners;
         const UprightBead &bead = m_upright[id];
-        const auto        &move = m_moves[bead.move];
-        const Vec3d        a    = move_tip(m_moves[bead.last], m_rotary), b = move_tip(move, m_rotary);
+        const auto        &move = m_result.moves[bead.move];
+        const Vec3d        a    = move_tip(m_result, bead.last, m_rotary), b = move_tip(m_result, bead.move, m_rotary);
         return bead_corners({ a + (double(bead.piece) / bead.pieces) * (b - a), Vec3d::UnitZ() },
                             { a + (double(bead.piece + 1) / bead.pieces) * (b - a), Vec3d::UnitZ() }, move.width, move.height);
     }
@@ -191,7 +191,7 @@ private:
                 for (int x = a[0]; x <= b[0]; ++x)
                     fn((uint64_t(uint32_t(x) & 0x1FFFFF) << 42) | (uint64_t(uint32_t(y) & 0x1FFFFF) << 21) | (uint32_t(z) & 0x1FFFFF));
     }
-    const std::vector<GCodeProcessorResult::MoveVertex> &m_moves;
+    const GCodeProcessorResult                          &m_result;
     bool                                                 m_rotary;
     std::vector<Bead>                                    m_beads;
     Vec3d                                                m_material_min = Vec3d::Constant(Inf), m_material_max = Vec3d::Constant(-Inf);
@@ -725,8 +725,8 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
     BoundingBoxf bounds;
     double max_width = 0.;
     bool turned = false;
-    for (const auto &move : result.moves)
-        turned |= move.has_joints && (move.joints.rot[0] != 0. || move.joints.rot[1] != 0.);
+    for (const JointPose &joints : result.joints)
+        turned |= joints.rot[0] != 0. || joints.rot[1] != 0.;
     bool direct_upright = true;
     if (kinematics.rotary_count() != 0 && !turned) {
         const JointPose zero;
@@ -739,9 +739,10 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
         }
     }
     const bool rotary = kinematics.rotary_count() != 0 && (turned || !direct_upright);
-    for (const auto &move : result.moves) {
+    for (size_t i = 0; i < result.moves.size(); ++i) {
+        const auto &move = result.moves[i];
         if (!move.position.allFinite()) throw RuntimeError("Clearance verification found a non-finite G-code position.");
-        bounds.merge(Vec2d(move_tip(move, rotary).head<2>()));
+        bounds.merge(Vec2d(move_tip(result, i, rotary).head<2>()));
         max_width = std::max(max_width, double(move.width));
     }
     bounds.min.array() -= max_width + params.pitch; bounds.max.array() += max_width + params.pitch;
@@ -775,12 +776,11 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
             const auto &move = result.moves[i];
             if (move.type == EMoveType::Seam || move.type == EMoveType::Color_change || move.type == EMoveType::Tool_change ||
                 move.type == EMoveType::Pause_Print || move.type == EMoveType::Custom_GCode) continue;
-            const auto &last = result.moves[last_index];
             const size_t from = last_index;
             last_index = i;
             const bool extruding = move.type == EMoveType::Extrude;
             if (!extruding && move.type != EMoveType::Retract && move.type != EMoveType::Unretract &&
-                (move_tip(move, rotary) - move_tip(last, rotary)).squaredNorm() == 0. && move.joints.rot == last.joints.rot) continue;
+                (move_tip(result, i, rotary) - move_tip(result, from, rotary)).squaredNorm() == 0. && result.joint(i).rot == result.joint(from).rot) continue;
             if (!extruding) ++run;
             checked.push_back({ uint32_t(i), uint32_t(from), uint32_t(run), 0, extruding });
         }
@@ -810,7 +810,7 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
         for (const auto &box : list->boxes)
             if (box.infinite_x || box.infinite_y) infinite_floor = std::min(infinite_floor, box.min.z());
     std::atomic<size_t> unswept { 0 };
-    BeadGrid beads(result.moves, rotary);
+    BeadGrid beads(result, rotary);
     using Hits = std::vector<std::pair<size_t, ClearanceHit>>;
     std::vector<double> bests(checked.size(), Inf);
     TiltedBeads tilted(params.head);
@@ -818,26 +818,28 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
     auto step = [&](Sweep &sweep, BeadGrid &bead_grid, size_t k, Hits *hits, TiltedBeads::Scratch *scratch = nullptr) {
         const Checked &c = checked[k];
         if (throw_if_canceled) throw_if_canceled();
-        const auto &move = result.moves[c.move], &last = result.moves[c.last];
+        const auto &move = result.moves[c.move];
+        const JointPose &move_joints = result.joint(c.move), &last_joints = result.joint(c.last);
+        const unsigned char patch_shell = result.state(move).nonplanar_patch_shell;
         const bool extruding = c.extruding;
-        const Vec3d a = move_tip(last, rotary), b = move_tip(move, rotary);
-        const bool straight_lift = !extruding && a.head<2>() == b.head<2>() && b.z() >= a.z() && move.joints.rot == last.joints.rot;
+        const Vec3d a = move_tip(result, c.last, rotary), b = move_tip(result, c.move, rotary);
+        const bool straight_lift = !extruding && a.head<2>() == b.head<2>() && b.z() >= a.z() && move_joints.rot == last_joints.rot;
         double displacement = (b - a).norm(), turn = 0., tip_lever = 0.;
         const TiltedBeads::Prefix &laid = rotary ? laid_before[k] : TiltedBeads::Prefix {};
         if (rotary) {
-            const double angle = (std::abs(move.joints.rot[0] - last.joints.rot[0]) + std::abs(move.joints.rot[1] - last.joints.rot[1])) * M_PI / 180.;
+            const double angle = (std::abs(move_joints.rot[0] - last_joints.rot[0]) + std::abs(move_joints.rot[1] - last_joints.rot[1])) * M_PI / 180.;
             tip_lever = std::max(a.norm(), b.norm());
             if (const auto *kin = dynamic_cast<const RotaryKinematics *>(&kinematics))
                 tip_lever += kin->geometry().pivot.norm() + kin->geometry().tool_mount.norm() + kin->geometry().tool_length + std::abs(kin->geometry().table_height);
             double lever = tip_lever + head_lever;
             if (infinite_head) lever += laid.radius;
             turn = angle;
-            displacement = (move.joints.xyz - last.joints.xyz).norm() + angle * lever;
+            displacement = (move_joints.xyz - last_joints.xyz).norm() + angle * lever;
         }
         if (!std::isfinite(displacement) || displacement / params.sweep > 50000000.)
             throw RuntimeError("Clearance sweep is too large. Check the G-code coordinates and rotary angles.");
         const int count = std::max(1, int(std::ceil(displacement / params.sweep)));
-        const bool planar_only = !rotary && hits != nullptr && move.nonplanar_patch_shell == 0xFF && c.move >= first_print &&
+        const bool planar_only = !rotary && hits != nullptr && patch_shell == 0xFF && c.move >= first_print &&
             c.move <= last_print && [&]() {
                 const double z = std::min(a.z(), b.z());
                 const double ceiling = sweep.columns.ceiling();
@@ -855,31 +857,31 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
                 if (gap < best) { best = gap; hit.component = component; hit.tip = tip; }
             };
             bool lands_on_extrusion = false;
-            if (!extruding && a.head<2>() == b.head<2>() && b.z() < a.z() && move.joints.rot == last.joints.rot)
+            if (!extruding && a.head<2>() == b.head<2>() && b.z() < a.z() && move_joints.rot == last_joints.rot)
                 for (size_t k = size_t(c.move) + 1; k < result.moves.size(); ++k) {
                     const EMoveType type = result.moves[k].type;
                     if (type == EMoveType::Extrude || ((type == EMoveType::Travel || type == EMoveType::Wipe) &&
-                        (move_tip(result.moves[k], rotary) != b || result.moves[k].joints.rot != move.joints.rot))) {
+                        (move_tip(result, k, rotary) != b || result.joint(k).rot != move_joints.rot))) {
                         lands_on_extrusion = type == EMoveType::Extrude;
                         break;
                     }
                 }
-            const bool strict = !extruding && !straight_lift && !lands_on_extrusion && move.nonplanar_patch_shell == 0xFF;
+            const bool strict = !extruding && !straight_lift && !lands_on_extrusion && patch_shell == 0xFF;
             const Nonplanar::HeadEnvelope &contact_head = strict ? contact_strict : contact_allowed;
             const auto &contact_boxes = strict ? strict_boxes : allowed_boxes;
             const size_t bead_limit = rotary ? bead_grid.size() : c.beads;
-            Vec3d sample_start = rotary ? kinematics.forward(last.joints).tip : a;
+            Vec3d sample_start = rotary ? kinematics.forward(last_joints).tip : a;
             for (int j = 0; j < count; ++j) {
                 if ((j & 1023) == 0 && throw_if_canceled) throw_if_canceled();
                 const double t0 = double(j) / count, t1 = double(j + 1) / count;
                 const Vec3d p0 = a + t0 * (b - a), p1 = a + t1 * (b - a);
                 std::string component;
                 if (rotary) {
-                    const JointPose q = interpolate(last.joints, move.joints, 0.5 * (t0 + t1));
+                    const JointPose q = interpolate(last_joints, move_joints, 0.5 * (t0 + t1));
                     const ToolPose pose = kinematics.forward(q);
                     const Matrix3d frame = kinematics.head_frame(q);
-                    const Vec3d sample_end = kinematics.forward(interpolate(last.joints, move.joints, t1)).tip;
-                    const double theta = turn / count, stride = (move.joints.xyz - last.joints.xyz).norm() / count;
+                    const Vec3d sample_end = kinematics.forward(interpolate(last_joints, move_joints, t1)).tip;
+                    const double theta = turn / count, stride = (move_joints.xyz - last_joints.xyz).norm() / count;
                     const Vec3d grow = 0.5 * (frame * (sample_end - sample_start)).cwiseAbs() +
                                        Vec3d::Constant((theta * theta * tip_lever + 2. * theta * stride) / 8.);
                     sample_start = sample_end;
@@ -916,8 +918,8 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
             for (int j = 0; j < count; ++j) {
                 const double t0 = double(j) / count, t1 = double(j + 1) / count;
                 const Vec3d p0 = a + t0 * (b - a), p1 = a + t1 * (b - a);
-                if (rotary) tilted.deposit(kinematics.forward(interpolate(last.joints, move.joints, t0)),
-                                           kinematics.forward(interpolate(last.joints, move.joints, t1)), move.width, move.height, c.run);
+                if (rotary) tilted.deposit(kinematics.forward(interpolate(last_joints, move_joints, t0)),
+                                           kinematics.forward(interpolate(last_joints, move_joints, t1)), move.width, move.height, c.run);
                 else {
                     sweep.columns.deposit(p0, p1, move.width);
                     if (!nozzle.boxes.empty()) sweep.pending.push_back({ p0, p1, move.width });
@@ -965,7 +967,7 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
                     c.beads = laid;
                     step(delta, beads, k, nullptr);
                     if (c.extruding && result.moves[c.move].extrusion_role != erCustom && !nozzle.boxes.empty()) {
-                        const Vec3d a = move_tip(result.moves[c.last], rotary), b = move_tip(result.moves[c.move], rotary);
+                        const Vec3d a = move_tip(result, c.last, rotary), b = move_tip(result, c.move, rotary);
                         const int   samples = int(std::min(65535., std::max(1., std::ceil((b - a).norm() / params.sweep))));
                         const int   pieces  = int(std::clamp(std::ceil(std::abs(b.z() - a.z()) / std::max(params.bead_eps, EPSILON)), 1., double(samples)));
                         run_beads[r].emplace_back(k, pieces);

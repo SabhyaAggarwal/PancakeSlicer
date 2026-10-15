@@ -249,7 +249,7 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
     const size_t normal = size_t(PrintEstimatedStatistics::ETimeMode::Normal);
     report.time_s       = result.print_statistics.modes[normal].time;
     for (const GCodeProcessorResult::MoveVertex &move : result.moves)
-        if (move.nonplanar_patch_shell != 0xFF)
+        if (result.state(move).nonplanar_patch_shell != 0xFF)
             report.curved_time_s += move.time[normal];
     return report;
 }

@@ -4877,8 +4877,11 @@ void Print::reload_gcode_moves(GCodeProcessorResult* result) const
 
     GCodeProcessorResult& reloaded = processor.result();
     std::lock_guard<std::mutex> lock(result->result_mutex);
-    result->moves      = std::move(reloaded.moves);
-    result->lines_ends = std::move(reloaded.lines_ends);
+    result->moves               = std::move(reloaded.moves);
+    result->move_states         = std::move(reloaded.move_states);
+    result->joints              = std::move(reloaded.joints);
+    result->move_type_distances = reloaded.move_type_distances;
+    result->lines_ends          = std::move(reloaded.lines_ends);
 }
 
 std::tuple<float, float> Print::object_skirt_offset(double margin_height) const

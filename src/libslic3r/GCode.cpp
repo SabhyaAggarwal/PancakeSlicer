@@ -2554,6 +2554,8 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
         boost::nowide::remove(path_tmp.c_str());
         throw;
     }
+    if (print->config().nonplanar_kinematics.value == RotaryLayout::None)
+        m_processor.result().joints.clear();
     DoExport::update_print_estimated_stats(m_processor, m_writer.extruders(), print->m_print_statistics, print->config());
     if (m_print->config().machine_max_printed_mass.value > EPSILON) {
         double mass_on_bed_total = print->m_print_statistics.total_weight;

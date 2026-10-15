@@ -535,8 +535,9 @@ void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult& result, P
                     const float width = interpolate ? lerp(prev_move.width, curr_move.width, t) : curr_move.width;
                     const float height = interpolate ? lerp(prev_move.height, curr_move.height, t) : curr_move.height;
                     const float mm3_per_mm = curr_move.mm3_per_mm;
-                    const float fan_speed = curr_move.fan_speed;
-                    const float temperature = interpolate ? lerp(prev_move.temperature, curr_move.temperature, t) : curr_move.temperature;
+                    const float fan_speed = result.state(curr_move).fan_speed;
+                    const float temperature = interpolate ? lerp(result.state(prev_move).temperature, result.state(curr_move).temperature, t) :
+                                                            result.state(curr_move).temperature;
                     actual_speed_moves.push_back({
                         block.move_id,
                         position,
@@ -563,8 +564,9 @@ void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult& result, P
                     const float width = interpolate ? lerp(prev_move.width, curr_move.width, t) : curr_move.width;
                     const float height = interpolate ? lerp(prev_move.height, curr_move.height, t) : curr_move.height;
                     const float mm3_per_mm = curr_move.mm3_per_mm;
-                    const float fan_speed = curr_move.fan_speed;
-                    const float temperature = interpolate ? lerp(prev_move.temperature, curr_move.temperature, t) : curr_move.temperature;
+                    const float fan_speed = result.state(curr_move).fan_speed;
+                    const float temperature = interpolate ? lerp(result.state(prev_move).temperature, result.state(curr_move).temperature, t) :
+                                                            result.state(curr_move).temperature;
                     actual_speed_moves.push_back({
                         block.move_id,
                         position,
@@ -1891,10 +1893,10 @@ void GCodeProcessor::PreCoolingInjector::inject_cooling_heating_command(TimeProc
         return 0;
     };
 
-    auto adjust_iter = [&](std::vector<GCodeProcessorResult::MoveVertex>::const_iterator iter,
-                           const std::vector<GCodeProcessorResult::MoveVertex>::const_iterator& begin,
-                           const std::vector<GCodeProcessorResult::MoveVertex>::const_iterator& end,
-                           bool forward) -> std::vector<GCodeProcessorResult::MoveVertex>::const_iterator {
+    auto adjust_iter = [&](GCodeProcessorResult::Moves::const_iterator iter,
+                           const GCodeProcessorResult::Moves::const_iterator& begin,
+                           const GCodeProcessorResult::Moves::const_iterator& end,
+                           bool forward) -> GCodeProcessorResult::Moves::const_iterator {
         if (forward) {
             while (iter != end) {
                 unsigned current_id = iter->gcode_id;
@@ -2298,6 +2300,9 @@ void GCodeProcessorResult::reset() {
     lock();
 
     moves.clear();
+    move_states = { MoveState() };
+    joints.clear();
+    move_type_distances.fill(0.0f);
     clearance.clear();
     nonplanar = false;
     clearance_report = {};
@@ -2561,16 +2566,17 @@ bool GCodeProcessor::check_multi_extruder_gcode_valid(const int                 
     };
     std::map<int, std::map<int, GCodePosInfo>> gcode_path_pos;
     for (const GCodeProcessorResult::MoveVertex &move : m_result.moves) {
+        const int object_label_id = m_result.state(move).object_label_id;
         if (move.type == EMoveType::Extrude ) {
             const Vec3d cp = compare_pos(move);
-            const float z_for_height = machine_frame_active ? float(cp.z()) : move.print_z;
+            const float z_for_height = machine_frame_active ? float(cp.z()) : m_result.state(move).print_z;
             if (move.extrusion_role == ExtrusionRole::erCustom) {
-                gcode_path_pos[move.object_label_id][int(move.extruder_id)].pos_custom.emplace_back(to_2d(cp));
-                gcode_path_pos[move.object_label_id][int(move.extruder_id)].max_print_z_custom =
-                    std::max(gcode_path_pos[move.object_label_id][int(move.extruder_id)].max_print_z_custom, z_for_height);
+                gcode_path_pos[object_label_id][int(move.extruder_id)].pos_custom.emplace_back(to_2d(cp));
+                gcode_path_pos[object_label_id][int(move.extruder_id)].max_print_z_custom =
+                    std::max(gcode_path_pos[object_label_id][int(move.extruder_id)].max_print_z_custom, z_for_height);
             } else {
-                gcode_path_pos[move.object_label_id][int(move.extruder_id)].pos.emplace_back(to_2d(cp));
-                gcode_path_pos[move.object_label_id][int(move.extruder_id)].max_print_z = std::max(gcode_path_pos[move.object_label_id][int(move.extruder_id)].max_print_z,
+                gcode_path_pos[object_label_id][int(move.extruder_id)].pos.emplace_back(to_2d(cp));
+                gcode_path_pos[object_label_id][int(move.extruder_id)].max_print_z = std::max(gcode_path_pos[object_label_id][int(move.extruder_id)].max_print_z,
                                                                                                    z_for_height);
             }
         }
@@ -3272,6 +3278,7 @@ void GCodeProcessor::reset()
     m_mm3_per_mm = 0.0f;
     m_travel_dist = 0.0f;
     m_fan_speed = 0.0f;
+    m_pressure_advance = 0.0f;
     m_z_offset = 0.0f;
 
     m_extrusion_role = erNone;
@@ -3322,6 +3329,8 @@ void GCodeProcessor::reset()
 
     m_result.reset();
     m_result.id = ++s_result_id;
+    m_move_state_ids = { { m_result.move_states.front(), 0 } };
+    m_recent_move_states = { 0, 0 };
 
     m_last_default_color_id = 0;
 
@@ -6464,6 +6473,28 @@ void GCodeProcessor::process_filament_change(int id)
     m_machine_config_idx = get_machine_config_idx();
 }
 
+void GCodeProcessor::set_print(Print* print)
+{
+    m_print = print;
+    m_keep_tips = print != nullptr && std::any_of(print->objects().begin(), print->objects().end(), [](const PrintObject* object) {
+        return object->config().nonplanar_mode.value != NonplanarMode::Off;
+    });
+}
+
+unsigned int GCodeProcessor::intern_move_state(const GCodeProcessorResult::MoveState& state)
+{
+    const std::vector<GCodeProcessorResult::MoveState>& states = m_result.move_states;
+    if (states[m_recent_move_states[0]] == state)
+        return m_recent_move_states[0];
+    std::swap(m_recent_move_states[0], m_recent_move_states[1]);
+    if (states[m_recent_move_states[0]] == state)
+        return m_recent_move_states[0];
+    const auto [it, inserted] = m_move_state_ids.try_emplace(state, static_cast<unsigned int>(states.size()));
+    if (inserted)
+        m_result.move_states.push_back(state);
+    return m_recent_move_states[0] = it->second;
+}
+
 void GCodeProcessor::store_move_vertex(EMoveType type, EMovePathType path_type, bool internal_only)
 {
     int filament_id = get_filament_id();
@@ -6511,6 +6542,18 @@ void GCodeProcessor::store_move_vertex(EMoveType type, EMovePathType path_type, 
         ? m_first_layer_height
         : m_end_position[Z] - m_z_offset;
 
+    GCodeProcessorResult::MoveState state;
+    state.fan_speed = m_fan_speed;
+    state.temperature = m_extruder_temps[filament_id];
+    state.pressure_advance = m_pressure_advance;
+    state.acceleration = move_acceleration;
+    state.jerk = move_jerk;
+    state.print_z = m_print_z;
+    state.object_label_id = m_object_label_id;
+    state.nonplanar_patch_shell = m_nonplanar_patch_shell;
+    state.nonplanar_band = m_nonplanar_band;
+    state.nonplanar_patch = m_nonplanar_patch;
+
     m_result.moves.push_back({
         m_last_line_id,
         type,
@@ -6524,26 +6567,20 @@ void GCodeProcessor::store_move_vertex(EMoveType type, EMovePathType path_type, 
         m_width,
         m_height,
         m_mm3_per_mm,
-        m_travel_dist,
-        m_fan_speed,
-        m_extruder_temps[filament_id],
-        m_pressure_advance,
-        move_acceleration,
-        move_jerk,
         { 0.0f, 0.0f },
-        static_cast<float>(m_layer_id),
         std::max<unsigned int>(1, m_layer_id) - 1,
-        internal_only,
-        m_object_label_id,
-        m_print_z
+        intern_move_state(state),
+        internal_only
     });
-    m_result.moves.back().nonplanar_patch_shell = m_nonplanar_patch_shell;
-    m_result.moves.back().nonplanar_patch = m_nonplanar_patch;
-    m_result.moves.back().nonplanar_band = m_nonplanar_band;
-    m_result.moves.back().joints = m_joints;
-    if (!m_tool_kinematics)
-        m_result.moves.back().joints.xyz = Vec3d(m_end_position[X], m_end_position[Y], m_end_position[Z]);
-    m_result.moves.back().has_joints = true;
+    if (keep_joints()) {
+        m_result.joints.resize(m_result.moves.size() - 1);
+        m_result.joints.push_back(m_joints);
+        if (!m_tool_kinematics)
+            m_result.joints.back().xyz = Vec3d(m_end_position[X], m_end_position[Y], m_end_position[Z]);
+    }
+    if (!internal_only)
+        m_result.move_type_distances[size_t(type)] += (type == EMoveType::Retract || type == EMoveType::Unretract) ?
+            std::fabs(m_result.moves.back().delta_extruder) : m_travel_dist;
 
     if (type == EMoveType::Seam) {
         m_seams_count++;
@@ -6952,7 +6989,10 @@ void GCodeProcessor::calculate_time(GCodeProcessorResult& result, size_t keep_la
             actual_speed_moves = std::move(machine.actual_speed_moves);
     }
 
-    std::vector<GCodeProcessorResult::MoveVertex>& moves = result.moves;
+    assert(&result == &m_result);
+    GCodeProcessorResult::Moves& moves = result.moves;
+    ChunkedVector<JointPose>& joints = result.joints;
+    const bool with_joints = !joints.empty();
     size_t inserted_actual_speed_moves_count = 0;
     size_t kept                              = 0;
     size_t group_start                       = 0;
@@ -6975,16 +7015,24 @@ void GCodeProcessor::calculate_time(GCodeProcessorResult& result, size_t keep_la
 
     size_t read  = moves.size();
     moves.resize(moves.size() + inserted_actual_speed_moves_count);
+    if (with_joints)
+        joints.resize(moves.size());
     size_t write = moves.size();
     m_actual_speed_id_map.clear();
     size_t entry = actual_speed_moves.size();
     while (entry > 0) {
         const unsigned int block_id = actual_speed_moves[--entry].move_id;
         assert(block_id < read);
-        while (read > block_id + 1)
+        while (read > block_id + 1) {
             moves[--write] = moves[--read];
+            if (with_joints)
+                joints[write] = joints[read];
+        }
         const GCodeProcessorResult::MoveVertex block_move = moves[--read];
+        const JointPose block_joints = with_joints ? joints[read] : JointPose();
         moves[--write] = block_move;
+        if (with_joints)
+            joints[write] = block_joints;
         m_actual_speed_id_map.emplace_back(block_id, (unsigned int)write);
         for (; entry > 0 && actual_speed_moves[entry - 1].position.has_value(); --entry) {
             const TimeMachine::ActualSpeedMove& it = actual_speed_moves[entry - 1];
@@ -6997,10 +7045,14 @@ void GCodeProcessor::calculate_time(GCodeProcessorResult& result, size_t keep_la
             new_move.width = *it.width;
             new_move.height = *it.height;
             new_move.mm3_per_mm = *it.mm3_per_mm;
-            new_move.fan_speed = *it.fan_speed;
-            new_move.temperature = *it.temperature;
+            GCodeProcessorResult::MoveState state = result.state(block_move);
+            state.fan_speed = *it.fan_speed;
+            state.temperature = *it.temperature;
+            new_move.state = intern_move_state(state);
             new_move.internal_only = true;
             moves[--write] = new_move;
+            if (with_joints)
+                joints[write] = block_joints;
         }
     }
     assert(read == write);
