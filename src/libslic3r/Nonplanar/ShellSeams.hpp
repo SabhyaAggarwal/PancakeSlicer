@@ -3,6 +3,8 @@
 #include "libslic3r/Point.hpp"
 #include "libslic3r/Polyline.hpp"
 
+#include <cstddef>
+#include <deque>
 #include <string>
 #include <vector>
 
@@ -35,6 +37,9 @@ std::vector<ConformalPoint> shape_runs(const std::vector<ConformalPoint> &points
 constexpr double StartTuck = 2.;
 void orient_free_roads(std::vector<const ExtrusionPathConformal *> &order, std::vector<ExtrusionPathConformal> &storage,
                        double min_rise = 0.1);
+
+void order_pass_roads(std::vector<const ExtrusionPathConformal *> &order, size_t begin, size_t end,
+                      std::deque<ExtrusionPathConformal> &storage);
 
 double pressure_advance_scale(double height, double nominal_height);
 

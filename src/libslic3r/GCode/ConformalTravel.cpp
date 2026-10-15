@@ -91,6 +91,45 @@ Vec2d material_gradient(const MaterialColumns &columns, const Vec2d &p, double r
     return Vec2d(diff(Vec2d(radius, 0.)), diff(Vec2d(0., radius)));
 }
 
+bool over_material(const MaterialColumns &columns, const Vec3d &a, const Vec3d &b, double depth)
+{
+    const double floor = std::min(a.z(), b.z()) - depth;
+    const double h     = 0.125;
+    const int    steps = std::max(1, int(std::ceil((b - a).head<2>().norm() / 0.25)));
+    for (int k = 0; k <= steps; ++k) {
+        const Vec2d q = (a + (b - a) * (double(k) / steps)).head<2>();
+        if (!(columns.top_in_rect(BoundingBoxf(q - Vec2d(h, h), q + Vec2d(h, h))) >= floor))
+            return false;
+    }
+    return true;
+}
+
+bool material_route(const MaterialColumns &columns, const Vec3d &a, const Vec3d &b, double depth, Vec2d &via)
+{
+    via = Vec2d::Constant(std::numeric_limits<double>::quiet_NaN());
+    if (over_material(columns, a, b, depth))
+        return true;
+    const Vec2d  A = a.head<2>(), B = b.head<2>();
+    const double L = (B - A).norm();
+    if (L < 1.)
+        return false;
+    const Vec2d  mid  = 0.5 * (A + B);
+    const Vec2d  perp = Vec2d(-(B - A).y(), (B - A).x()) / L;
+    const double mz   = 0.5 * (a.z() + b.z());
+    double       best = 1.25 * L + 2.;
+    bool         found = false;
+    for (double k : { 0.15, 0.3 })
+        for (double side : { -1., 1. }) {
+            const Vec2d  w   = mid + side * k * L * perp;
+            const double len = (w - A).norm() + (B - w).norm();
+            const Vec3d  W(w.x(), w.y(), mz);
+            if (len <= best && over_material(columns, a, W, depth) && over_material(columns, W, b, depth)) {
+                best = len, via = w, found = true;
+            }
+        }
+    return found;
+}
+
 double pressure_retract_scale(double end_bead_height, double layer_height)
 {
     return end_bead_height > 0. && layer_height > 0. ? std::clamp(end_bead_height / layer_height, 0.5, 1.25) : 1.;
@@ -120,8 +159,10 @@ SurfaceTravel plan_surface_travel(const MaterialColumns &columns, const Vec3d &f
         return n;
     };
     std::vector<Vec2d> route{ A, B };
+    if (std::isfinite(params.via.x()))
+        route.insert(route.begin() + 1, params.via);
     out.wet = wet(route);
-    if (out.wet > 0 && L > 1.) {
+    if (out.wet > 0 && L > 1. && route.size() == 2) {
         const Vec2d  mid  = 0.5 * (A + B);
         const Vec2d  perp = Vec2d(-(B - A).y(), (B - A).x()) / L;
         double       best = L;

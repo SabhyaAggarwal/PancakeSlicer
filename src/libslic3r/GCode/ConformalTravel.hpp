@@ -44,6 +44,7 @@ struct SurfaceTravelParams
     const FreshBeads *fresh = nullptr;
     double       now     = 0.;
     double       wet_age = 3.;
+    Vec2d        via     = Vec2d::Constant(std::numeric_limits<double>::quiet_NaN());
 };
 
 struct SurfaceTravel
@@ -58,6 +59,9 @@ SurfaceTravel plan_surface_travel(const MaterialColumns &columns, const Vec3d &f
                                   bool to_on_bead, const SurfaceTravelParams &params);
 
 Vec3d normal_departure(const MaterialColumns &columns, const HeadEnvelope &land, const Vec3d &from, double hop);
+
+bool over_material(const MaterialColumns &columns, const Vec3d &a, const Vec3d &b, double depth);
+bool material_route(const MaterialColumns &columns, const Vec3d &a, const Vec3d &b, double depth, Vec2d &via);
 
 double pressure_retract_scale(double end_bead_height, double layer_height);
 

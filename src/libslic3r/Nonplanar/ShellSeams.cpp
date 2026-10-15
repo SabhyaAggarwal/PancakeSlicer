@@ -130,6 +130,97 @@ void orient_free_roads(std::vector<const ExtrusionPathConformal *> &order, std::
     }
 }
 
+void order_pass_roads(std::vector<const ExtrusionPathConformal *> &order, size_t begin, size_t end,
+                      std::deque<ExtrusionPathConformal> &storage)
+{
+    if (end < begin + 3)
+        return;
+    struct Unit
+    {
+        size_t begin, end;
+        Vec2d  a, b;
+        bool   flippable;
+        bool   flipped = false;
+        Vec2d  start() const { return flipped ? b : a; }
+        Vec2d  last() const { return flipped ? a : b; }
+    };
+    std::vector<Unit> units;
+    for (size_t i = begin; i < end; ++i) {
+        const ExtrusionPathConformal &road = *order[i];
+        if (!units.empty() && order[i - 1]->polyline.points.back() == road.polyline.points.front()) {
+            units.back().end       = i + 1;
+            units.back().b         = unscale(road.polyline.points.back().to_point());
+            units.back().flippable = false;
+            continue;
+        }
+        const bool open = road.polyline.points.size() >= 2 && road.polyline.points.front() != road.polyline.points.back();
+        const bool ends = road.bead_height.empty() || (road.bead_height.front() > 0.f && road.bead_height.back() > 0.f);
+        units.push_back({ i, i + 1, unscale(road.polyline.points.front().to_point()), unscale(road.polyline.points.back().to_point()),
+                          open && ends && road.can_reverse() && !road.preserve_points && road.tool_axis.empty() });
+    }
+    const size_t pinned = end < order.size() && order[end - 1]->polyline.points.back() == order[end]->polyline.points.front() ? 1 : 0;
+    const size_t n      = units.size();
+    if (n < 3 || n > 600)
+        return;
+    std::vector<size_t> seq(n);
+    for (size_t i = 0; i < n; ++i)
+        seq[i] = i;
+    auto gap = [&units](size_t from, size_t to) { return (units[to].start() - units[from].last()).norm(); };
+    constexpr double Gain = 0.1;
+    for (int sweep = 0; sweep < 10; ++sweep) {
+        bool improved = false;
+        for (size_t len = 1; len <= 3; ++len)
+            for (size_t i = 1; i + len + pinned <= seq.size(); ++i) {
+                const size_t first = seq[i], last = seq[i + len - 1];
+                const size_t size = seq.size() - len;
+                auto rest = [&](size_t k) { return k < i ? seq[k] : seq[k + len]; };
+                auto added = [&](size_t k) {
+                    const size_t p = rest(k - 1);
+                    return gap(p, first) + (k < size ? gap(last, rest(k)) - gap(p, rest(k)) : 0.);
+                };
+                double best   = added(i) - Gain;
+                size_t best_k = size_t(-1);
+                bool   best_flip = false;
+                for (const bool flip : { false, true }) {
+                    if (flip && (len > 1 || !units[first].flippable))
+                        continue;
+                    if (flip)
+                        units[first].flipped = !units[first].flipped;
+                    for (size_t k = 1; k + pinned <= size; ++k)
+                        if ((flip || k != i) && added(k) < best)
+                            best = added(k), best_k = k, best_flip = flip;
+                    if (flip)
+                        units[first].flipped = !units[first].flipped;
+                }
+                if (best_k == size_t(-1))
+                    continue;
+                if (best_flip)
+                    units[first].flipped = !units[first].flipped;
+                if (best_k != i) {
+                    if (best_k < i)
+                        std::rotate(seq.begin() + best_k, seq.begin() + i, seq.begin() + i + len);
+                    else
+                        std::rotate(seq.begin() + i, seq.begin() + i + len, seq.begin() + best_k + len);
+                }
+                improved = true;
+            }
+        if (!improved)
+            break;
+    }
+    std::vector<const ExtrusionPathConformal *> out;
+    out.reserve(end - begin);
+    for (const size_t u : seq) {
+        const Unit &unit = units[u];
+        if (unit.flipped) {
+            storage.emplace_back(*order[unit.begin]);
+            storage.back().reverse();
+            out.emplace_back(&storage.back());
+        } else
+            out.insert(out.end(), order.begin() + unit.begin, order.begin() + unit.end);
+    }
+    std::copy(out.begin(), out.end(), order.begin() + begin);
+}
+
 double pressure_advance_scale(double height, double nominal_height)
 {
     if (height <= 0. || nominal_height <= 0.)

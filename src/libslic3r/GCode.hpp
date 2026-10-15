@@ -533,6 +533,7 @@ protected:
                                            const std::function<Vec2d(const Vec2d &)> &slope_gradient = {});
     bool            conformal_in_band(const ExtrusionPathConformal *prev, const ExtrusionPathConformal *path) const;
     bool            conformal_short_hop(const ExtrusionPathConformal &path, const ExtrusionPathConformal *next, Vec3d &to);
+    bool            conformal_keep_primed(ExtrusionRole from, const ExtrusionPathConformal *next);
     std::string     extrude_multiplanar_chunk(const Nonplanar::ConformalPatch &patch);
     std::string     extrude_field_patch(const Nonplanar::ConformalPatch &patch);
     std::string     travel_above_nonplanar(const Polyline &travel, const std::string &comment, double z);
@@ -540,9 +541,12 @@ protected:
                                          double speed, const std::string &speed_marker, const std::string &description);
     std::string     wipe_conformal_path();
     Nonplanar::PressureAdvance conformal_pressure_advance() const;
-    std::string     surface_travel(const Vec3d &to, bool from_on_bead, bool to_on_bead, bool in_band, const std::string &comment);
+    std::string     surface_travel(const Vec3d &to, bool from_on_bead, bool to_on_bead, bool in_band, const std::string &comment,
+                                   double clearance = -1., const Vec2d &via = Vec2d::Constant(std::numeric_limits<double>::quiet_NaN()));
     std::string     conformal_retract();
-    double          conformal_clearance();
+    std::function<double(const Vec3d &, const Vec3d &)> nozzle_clearance();
+    double          conformal_clearance(bool lift = true);
+    bool            conformal_lift_enforced(ExtrusionRole role) const;
     double          nonplanar_repair_lift() const;
     void            ensure_material_columns(const ExtrusionPath &path);
     std::string     rotary_move_safely(const ToolPose *target, const JointPose *seed = nullptr);
@@ -696,6 +700,7 @@ protected:
     Nonplanar::SupportSnapshot             m_np_support;
     float                                  m_np_fan_level{ 0.f };
     bool                                   m_conformal_on_bead{ false };
+    bool                                   m_conformal_primed{ false };
     double                                 m_conformal_retract{ 0. };
     double                                 m_conformal_prime{ 0. };
     double                                 m_print_clock{ 0. };

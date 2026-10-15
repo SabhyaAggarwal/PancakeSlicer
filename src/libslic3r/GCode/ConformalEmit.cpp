@@ -274,6 +274,7 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
     char   buf[64];
     float last_vertical_height = -1.f;
     bool   speed_block_open = ! params.speed_marker.empty();
+    double coast_floor = -1.;
     for (size_t i = 0; i + 1 < points.size(); ++i) {
         double                speed = speeds[i];
         const ConformalPoint &a = points[i];
@@ -304,11 +305,25 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
         if (params.pressure_advance != nullptr && !glide(i))
             params.pressure_advance->update(height, out);
         const Vec3d axis = (a.pose.axis + b.pose.axis).normalized();
-        const double v = a.bead_height <= 0.f || b.bead_height <= 0.f ? 0. :
+        double       v = a.bead_height <= 0.f || b.bead_height <= 0.f ? 0. :
                          (a.vertical_height > 0.f && b.vertical_height > 0.f ?
                               segment_volume(a.pose.tip, b.pose.tip, seg_width, a.vertical_height, b.vertical_height) :
                               segment_volume(a.pose.tip, b.pose.tip, seg_width, a.bead_height, b.bead_height, axis)) *
                              (flow.empty() ? 1. : flow[i]);
+        if (!rotary && params.clearance && v == 0. && prime[i] == 0. && a.bead_height > 0.f && b.bead_height > 0.f) {
+            const Vec3d up = Vec3d::UnitZ();
+            if (coast_floor == -1.)
+                coast_floor = std::min(params.margin, params.clearance(a.pose.tip, up)) - 1e-3;
+            const int steps = std::max(1, int(std::ceil((b.pose.tip - a.pose.tip).norm() / 0.25)));
+            bool      clear = true;
+            for (int k = 1; k <= steps && clear; ++k)
+                clear = params.clearance(a.pose.tip + (double(k) / steps) * (b.pose.tip - a.pose.tip), up) >= coast_floor;
+            if (!clear)
+                v = SoftTaperFloor * (a.vertical_height > 0.f && b.vertical_height > 0.f ?
+                                          segment_volume(a.pose.tip, b.pose.tip, seg_width, a.vertical_height, b.vertical_height) :
+                                          segment_volume(a.pose.tip, b.pose.tip, seg_width, a.bead_height, b.bead_height, axis));
+        } else
+            coast_floor = -1.;
         volume += v;
         if (params.max_volume_per_second > 0. && v > 0.)
             speed = std::min(speed, params.max_volume_per_second * (b.pose.tip - a.pose.tip).norm() / v);
@@ -430,6 +445,23 @@ bool emit_conformal_wipe(GCodeWriter &writer, const std::vector<ConformalPoint> 
     if (route.size() < 2)
         return false;
     const bool rotary = writer.tool_kinematics().rotary_count() > 0;
+    if (params.clearance && !rotary) {
+        const Vec3d  axis  = Vec3d::UnitZ();
+        const double floor = std::min(params.margin, params.clearance(route.front().pose.tip, axis)) - 1e-3;
+        for (size_t i = 0; i + 1 < route.size(); ++i) {
+            const Vec3d &a = route[i].pose.tip, &b = route[i + 1].pose.tip;
+            const int    steps = std::max(1, int(std::ceil((b - a).norm() / 0.25)));
+            bool         clear = true;
+            for (int k = 1; k <= steps && clear; ++k)
+                clear = params.clearance(a + (double(k) / steps) * (b - a), axis) >= floor;
+            if (!clear) {
+                route.resize(i + 1);
+                break;
+            }
+        }
+        if (route.size() < 2)
+            return false;
+    }
     length = 0.;
     for (size_t i = 0; i + 1 < route.size(); ++i)
         length += rotary ? (route[i + 1].pose.tip - route[i].pose.tip).norm() : printed_length(route[i].pose.tip, route[i + 1].pose.tip);

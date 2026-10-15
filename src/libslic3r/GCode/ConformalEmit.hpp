@@ -78,6 +78,8 @@ struct ConformalEmitParams
     bool         open_end      = false;
     bool         scored        = false;
     PressureAdvanceTracker *pressure_advance = nullptr;
+    std::function<double(const Vec3d &tip, const Vec3d &axis)> clearance;
+    double       margin = 0.;
     std::function<std::vector<std::string>(const std::vector<ConformalPoint> &, const std::vector<double> &)> segment_tags;
 };
 
@@ -107,6 +109,8 @@ struct ConformalWipeParams
     MotionLimits limits;
     double       max_v_e  = 0.;
     std::string  speed_marker;
+    std::function<double(const Vec3d &tip, const Vec3d &axis)> clearance;
+    double       margin = 0.;
 };
 bool emit_conformal_wipe(GCodeWriter &writer, const std::vector<ConformalPoint> &points, const ConformalWipeParams &params,
                            std::string &out, Vec3d &end);
