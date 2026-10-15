@@ -747,6 +747,13 @@ static const t_config_enum_values s_keys_map_NonplanarMode = {
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(NonplanarMode)
 
+static const t_config_enum_values s_keys_map_NonplanarDeform = {
+    { "off",  int(NonplanarDeform::Off)  },
+    { "auto", int(NonplanarDeform::Auto) },
+    { "on",   int(NonplanarDeform::On)   }
+};
+CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(NonplanarDeform)
+
 static const t_config_enum_values s_keys_map_PrimeVolumeMode = {
     { "Default", pvmDefault },
     { "Saving",  pvmSaving },
@@ -5345,6 +5352,24 @@ void PrintConfigDef::init_fff_params()
     def->enum_labels.push_back(L("Orientation field"));
     def->mode     = comSimple;
     def->set_default_value(new ConfigOptionEnum<NonplanarMode>(NonplanarMode::Off));
+
+    def = this->add("nonplanar_deform", coEnum);
+    def->label    = L("Curved layers through the whole part");
+    def->category = L("Quality");
+    def->tooltip  = L("Prints the whole object in curved layers: the mesh is deformed so that its curved top becomes flat, "
+                      "sliced as usual, and every path is mapped back onto the curved layers. Walls, infill, top and bottom "
+                      "all follow the curved top, in height bands the print head can clear. Auto uses it where it gives a "
+                      "better top than the curved shells (with Non-planar mode set to Auto); On always uses it with curved "
+                      "shells enabled; Off never does.");
+    def->enum_keys_map = &ConfigOptionEnum<NonplanarDeform>::get_enum_values();
+    def->enum_values.push_back("off");
+    def->enum_values.push_back("auto");
+    def->enum_values.push_back("on");
+    def->enum_labels.push_back(L("Off"));
+    def->enum_labels.push_back(L("Auto"));
+    def->enum_labels.push_back(L("On"));
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionEnum<NonplanarDeform>(NonplanarDeform::Auto));
 
     def = this->add("multiplanar_max_planes", coInt);
     def->label    = L("Multiplanar maximum planes");

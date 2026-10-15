@@ -274,7 +274,7 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
     char   buf[64];
     float last_vertical_height = -1.f;
     bool   speed_block_open = ! params.speed_marker.empty();
-    double coast_floor = -1.;
+    double coast_floor = -1., coast_dz = 0.;
     for (size_t i = 0; i + 1 < points.size(); ++i) {
         double                speed = speeds[i];
         const ConformalPoint &a = points[i];
@@ -310,20 +310,29 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
                               segment_volume(a.pose.tip, b.pose.tip, seg_width, a.vertical_height, b.vertical_height) :
                               segment_volume(a.pose.tip, b.pose.tip, seg_width, a.bead_height, b.bead_height, axis)) *
                              (flow.empty() ? 1. : flow[i]);
+        ToolPose to_pose = b.pose;
         if (!rotary && params.clearance && v == 0. && prime[i] == 0. && a.bead_height > 0.f && b.bead_height > 0.f) {
             const Vec3d up = Vec3d::UnitZ();
-            if (coast_floor == -1.)
+            if (coast_floor == -1.) {
                 coast_floor = std::min(params.margin, params.clearance(a.pose.tip, up)) - 1e-3;
-            const int steps = std::max(1, int(std::ceil((b.pose.tip - a.pose.tip).norm() / 0.25)));
-            bool      clear = true;
-            for (int k = 1; k <= steps && clear; ++k)
-                clear = params.clearance(a.pose.tip + (double(k) / steps) * (b.pose.tip - a.pose.tip), up) >= coast_floor;
-            if (!clear)
-                v = SoftTaperFloor * (a.vertical_height > 0.f && b.vertical_height > 0.f ?
-                                          segment_volume(a.pose.tip, b.pose.tip, seg_width, a.vertical_height, b.vertical_height) :
-                                          segment_volume(a.pose.tip, b.pose.tip, seg_width, a.bead_height, b.bead_height, axis));
+                coast_dz    = 0.;
+            }
+            const Vec3d from  = a.pose.tip + Vec3d(0., 0., coast_dz);
+            const int   steps = std::max(1, int(std::ceil((b.pose.tip - a.pose.tip).norm() / 0.25)));
+            for (int pass = 0; pass < 4; ++pass) {
+                const Vec3d to   = b.pose.tip + Vec3d(0., 0., coast_dz);
+                double      lift = 0.;
+                for (int k = 1; k <= steps; ++k) {
+                    const double t = double(k) / steps;
+                    lift = std::max(lift, (coast_floor - params.clearance(from + t * (to - from), up)) / t);
+                }
+                if (lift <= 0.)
+                    break;
+                coast_dz += std::min(lift + 0.005, 1.);
+            }
+            to_pose.tip.z() += coast_dz;
         } else
-            coast_floor = -1.;
+            coast_floor = -1., coast_dz = 0.;
         volume += v;
         if (params.max_volume_per_second > 0. && v > 0.)
             speed = std::min(speed, params.max_volume_per_second * (b.pose.tip - a.pose.tip).norm() / v);
@@ -349,7 +358,7 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
                 writer.set_speed(out, F, "", marker);
             }
         }
-        writer.extrude_to_pose(out, b.pose, dE, params.comment);
+        writer.extrude_to_pose(out, to_pose, dE, params.comment);
         if (deposit && v > 0.) {
             const Vec3d side = a.pose.axis.cross(b.pose.tip - a.pose.tip);
             const Vec3d lift = side.norm() > EPSILON ? Vec3d(0., 0., 0.5 * seg_width * std::abs(side.z()) / side.norm()) : Vec3d::Zero();
@@ -446,6 +455,11 @@ bool emit_conformal_wipe(GCodeWriter &writer, const std::vector<ConformalPoint> 
         return false;
     const bool rotary = writer.tool_kinematics().rotary_count() > 0;
     if (params.clearance && !rotary) {
+        const Vec3d &tip = writer.get_position();
+        if (const double lift = tip.z() - route.front().pose.tip.z();
+            lift > EPSILON && (tip.head<2>() - route.front().pose.tip.head<2>()).norm() < 1e-3)
+            for (ConformalPoint &p : route)
+                p.pose.tip.z() += lift;
         const Vec3d  axis  = Vec3d::UnitZ();
         const double floor = std::min(params.margin, params.clearance(route.front().pose.tip, axis)) - 1e-3;
         for (size_t i = 0; i + 1 < route.size(); ++i) {

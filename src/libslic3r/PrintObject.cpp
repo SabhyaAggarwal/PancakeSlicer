@@ -30,6 +30,7 @@
 #include "Nonplanar/ConformalVolume.hpp"
 #include "Nonplanar/CurvedBridge.hpp"
 #include "Nonplanar/CurvedOverhang.hpp"
+#include "Nonplanar/DeformSlice.hpp"
 #include "Nonplanar/PatchTools.hpp"
 #include "Nonplanar/SpiralTop.hpp"
 #include "MutablePolygon.hpp"
@@ -754,6 +755,17 @@ void PrintObject::nonplanar_shells()
         this->set_done(posNonplanar);
         return;
     }
+    if (Nonplanar::deform_slice_requested(*this)) {
+        m_print->set_status(40, L("Slicing curved layers"));
+        auto conformal = std::make_unique<Nonplanar::ConformalResult>();
+        if (Nonplanar::build_deform_slice(*this, *conformal)) {
+            m_conformal = std::move(conformal);
+            m_conformal->layer_changes_filament = Nonplanar::layer_changes_filament(*this);
+            m_print->throw_if_canceled();
+            this->set_done(posNonplanar);
+            return;
+        }
+    }
     std::unique_ptr<Nonplanar::ConformalResult> lid;
     if (enabled && m_print->config().spiral_mode.value) {
         lid = std::make_unique<Nonplanar::ConformalResult>();
@@ -779,6 +791,10 @@ void PrintObject::nonplanar_shells()
         Nonplanar::build_conformal_ironing(*this, *m_conformal);
         Nonplanar::build_conformal_volume(*this, *m_conformal);
         Nonplanar::group_hosts_by_filament(*this, *m_conformal);
+        if (Nonplanar::deform_slice_considered(*this)) {
+            m_print->set_status(40, L("Slicing curved layers"));
+            Nonplanar::choose_deform_slice(*this, *m_conformal);
+        }
         m_conformal->mesh.reset();
     } else if (m_conformal) {
         for (Layer *layer : m_layers) {
@@ -1436,6 +1452,7 @@ bool PrintObject::invalidate_state_by_config_options(
         } else if (
             opt_key == "small_area_infill_flow_compensation_model"
             || opt_key == "nonplanar_mode"
+            || opt_key == "nonplanar_deform"
             || opt_key == "multiplanar_max_planes"
             || opt_key == "multiplanar_overhang_threshold"
             || opt_key == "nonplanar_atom_toolpath") {

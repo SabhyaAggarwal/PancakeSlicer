@@ -241,6 +241,7 @@ enum class NonplanarTopPattern : unsigned char { Contour, Rectilinear, Concentri
 enum class NonplanarFallback : unsigned char { ZAA, Planar, None };
 enum class NonplanarCollisionCheck : unsigned char { Off, Warn, Block };
 enum class NonplanarMode : unsigned char { Off, Auto, Manual, Multiplanar, Field };
+enum class NonplanarDeform : unsigned char { Off, Auto, On };
 
 enum class SurfaceFillOrder {
     Default,
@@ -736,6 +737,7 @@ CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarTopPattern)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarFallback)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarCollisionCheck)
 CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarMode)
+CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS(NonplanarDeform)
 
 #undef CONFIG_OPTION_ENUM_DECLARE_STATIC_MAPS
 
@@ -1238,6 +1240,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat,               nonplanar_surface_resolution))
     ((ConfigOptionFloat,               nonplanar_max_patch_height))
     ((ConfigOptionEnum<NonplanarMode>, nonplanar_mode))
+    ((ConfigOptionEnum<NonplanarDeform>, nonplanar_deform))
     ((ConfigOptionInt,                 multiplanar_max_planes))
     ((ConfigOptionFloat,               multiplanar_overhang_threshold))
     ((ConfigOptionBool,                nonplanar_support_interface))

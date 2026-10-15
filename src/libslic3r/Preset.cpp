@@ -1383,7 +1383,7 @@ static std::vector<std::string> s_Preset_print_options{
     "nonplanar_fallback", "nonplanar_full_conformal_max_thickness", "nonplanar_surface_resolution", "nonplanar_max_patch_height", "nonplanar_collision_check", "nonplanar_repair_iterations", "nonplanar_road_cooling", "nonplanar_support_interface",
     "nonplanar_atom_toolpath",
     "nonplanar_overhangs", "nonplanar_bridges",
-    "nonplanar_mode", "multiplanar_max_planes", "multiplanar_overhang_threshold",
+    "nonplanar_mode", "nonplanar_deform", "multiplanar_max_planes", "multiplanar_overhang_threshold",
     "ironing_expansion",
 };
 
