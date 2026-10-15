@@ -75,6 +75,12 @@ HeightField sample_top_surface(const sla::IndexedMesh &mesh, double ray_z, doubl
                                const std::function<void()> &throw_if_canceled = {},
                                const std::function<bool(const Vec2d &, double)> &solid_below = {});
 
+constexpr double BandedTopWidth = 0.75;
+
+double low_plane_top_radius(const PrintObject &object, double layer_height);
+
+double low_plane_rim(const PrintObject &object);
+
 ConformalResult build_conformal_shells(PrintObject &object);
 
 }

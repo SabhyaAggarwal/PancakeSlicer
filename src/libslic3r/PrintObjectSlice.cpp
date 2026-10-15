@@ -23,6 +23,7 @@
 #include "I18N.hpp"
 #include "Layer.hpp"
 #include "Model.hpp"
+#include "Nonplanar/ConformalShells.hpp"
 #include "Nonplanar/Multiplanar.hpp"
 #include "Nonplanar/OrientationField.hpp"
 #include "MultiMaterialSegmentation.hpp"
@@ -1068,6 +1069,48 @@ void PrintObject::slice_volumes()
         slices_to_regions(print->config(), *this, this->model_object()->volumes, *m_shared_regions, slice_zs,
                           std::move(objSliceByVolume), PrintObject::clip_multipart_objects, throw_on_cancel_callback);
 
+    if (!slice_zs.empty()) {
+        std::vector<float>  low_zs = slice_zs;
+        std::vector<double> radius(m_layers.size(), 0.);
+        bool                any    = false;
+        for (size_t i = 1; i < m_layers.size(); ++i)
+            if ((radius[i] = Nonplanar::low_plane_top_radius(*this, m_layers[i]->height)) > 0.) {
+                low_zs[i] = float(m_layers[i]->slice_z - 0.5 * m_layers[i]->height + PrintRegionConfig::defaults().zaa_min_z.value);
+                any       = true;
+            }
+        if (any) {
+            std::vector<std::vector<ExPolygons>> low = slices_to_regions(print->config(), *this, this->model_object()->volumes,
+                *m_shared_regions, low_zs, slice_volumes_inner(print->config(), this->config(), this->trafo_centered(),
+                    this->model_object()->volumes, m_shared_regions->layer_ranges, low_zs, throw_on_cancel_callback),
+                PrintObject::clip_multipart_objects, throw_on_cancel_callback);
+            Polygons outline;
+            for (const std::vector<ExPolygons> &by_layer : low)
+                for (const ExPolygons &slice : by_layer)
+                    polygons_append(outline, to_polygons(slice));
+            const ExPolygons silhouette = union_ex(outline);
+            const ExPolygons rim        = diff_ex(silhouette, offset_ex(silhouette, -float(scale_(Nonplanar::low_plane_rim(*this)))));
+            for (size_t region_id = 0; region_id < region_slices.size(); ++region_id)
+                tbb::parallel_for(size_t(1), region_slices[region_id].size(), [&](size_t i) {
+                    if (radius[i] <= 0.)
+                        return;
+                    const ExPolygons &below = low[region_id][i];
+                    ExPolygons       &mid   = region_slices[region_id][i];
+                    ExPolygons        wide  = intersection_ex(opening_ex(diff_ex(below, mid), float(scale_(radius[i]))), below);
+                    if (wide.empty())
+                        return;
+                    const BoundingBox reach = get_extents(wide);
+                    ExPolygons        keep  = intersection_ex(wide, rim);
+                    for (const ExPolygon &island : below)
+                        if (get_extents(island).overlap(reach) && !intersection_ex(ExPolygons{ island }, wide).empty() &&
+                            (offset_ex(island, -float(scale_(1.))).empty() ||
+                             area(intersection_ex(ExPolygons{ island }, mid)) < 0.5 * island.area()))
+                            append(keep, intersection_ex(wide, ExPolygons{ island }));
+                    wide = union_ex(keep);
+                    if (!wide.empty())
+                        mid = union_ex(mid, offset_ex(wide, float(scale_(0.01))));
+                });
+        }
+    }
     for (size_t region_id = 0; region_id < region_slices.size(); ++ region_id) {
         std::vector<ExPolygons> &by_layer = region_slices[region_id];
         for (size_t layer_id = 0; layer_id < by_layer.size(); ++ layer_id)

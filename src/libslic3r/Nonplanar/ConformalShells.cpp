@@ -497,8 +497,6 @@ bool is_round(const ExPolygons &footprint)
 
 constexpr double SparseWallSlope = 45.;
 
-constexpr double BandedTopWidth = 0.75;
-
 struct BandedFill
 {
     bool       strips       = false;
@@ -716,6 +714,39 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
     return out;
 }
 
+}
+
+double low_plane_top_radius(const PrintObject &object, double layer_height)
+{
+    const double min_z = PrintRegionConfig::defaults().zaa_min_z.value;
+    if (0.5 * layer_height <= min_z + EPSILON)
+        return 0.;
+    double radius = 0.;
+    for (size_t region_id = 0; region_id < object.num_printing_regions(); ++region_id) {
+        const PrintRegion       &region = object.printing_region(region_id);
+        const PrintRegionConfig &cfg    = region.config();
+        if (cfg.zaa_enabled)
+            return 0.;
+        if (!top_shells_enabled(cfg, object.config()) || effective_fallback(cfg, object.config()) != NonplanarFallback::None)
+            continue;
+        const double h_c = cfg.nonplanar_shell_layer_height.value > 0. ? cfg.nonplanar_shell_layer_height.value : automatic_shell_height(object);
+        const Flow   top = region.flow(object, frTopSolidInfill, h_c);
+        const double w   = std::min(double(top.width()), BandedTopWidth * top.nozzle_diameter());
+        radius = std::max(radius, 0.5 * (0.5 * layer_height - min_z) * w / std::max(h_c, layer_height));
+    }
+    return radius;
+}
+
+double low_plane_rim(const PrintObject &object)
+{
+    double rim = 0.;
+    for (size_t region_id = 0; region_id < object.num_printing_regions(); ++region_id) {
+        const PrintRegion &region = object.printing_region(region_id);
+        const double       h      = object.config().layer_height.value;
+        rim = std::max(rim, std::max(0, region.config().wall_loops.value) * double(region.flow(object, frPerimeter, h).width()) +
+                                double(region.flow(object, frTopSolidInfill, h).width()));
+    }
+    return rim;
 }
 
 HeightField sample_top_surface(const sla::IndexedMesh &mesh, double ray_z, double z_offset, const HeightField &like,
