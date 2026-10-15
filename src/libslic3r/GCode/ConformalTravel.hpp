@@ -1,4 +1,5 @@
 #pragma once
+#include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/Nonplanar/HeadEnvelope.hpp"
 #include "libslic3r/Point.hpp"
 
@@ -39,6 +40,7 @@ struct SurfaceTravelParams
     double       max_grade      = 0.5;
     double       sample         = 1.;
     double       ceiling        = 0.;
+    BoundingBoxf bed;
     double       floor          = std::numeric_limits<double>::infinity();
     double       min_z          = -std::numeric_limits<double>::infinity();
     const FreshBeads *fresh = nullptr;

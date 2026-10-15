@@ -169,6 +169,8 @@ SurfaceTravel plan_surface_travel(const MaterialColumns &columns, const Vec3d &f
         for (double k : { 0.15, 0.3 })
             for (double side : { -1., 1. }) {
                 const Vec2d              w = mid + side * k * L * perp;
+                if (params.bed.defined && !params.bed.contains(w))
+                    continue;
                 const std::vector<Vec2d> r{ A, w, B };
                 const double             len = (w - A).norm() + (B - w).norm();
                 if (len > 1.25 * L + 2.)
@@ -213,7 +215,7 @@ SurfaceTravel plan_surface_travel(const MaterialColumns &columns, const Vec3d &f
             z[i + 1] = std::max(z[i + 1], floor);
         }
     for (double &v : z)
-        v = std::max(v, params.min_z);
+        v = std::max({ v, params.min_z, c });
     z.front() = std::max(z.front(), dep.z());
     z.back()  = std::max(z.back(), arr.z());
     for (size_t i = 1; i < n; ++i)

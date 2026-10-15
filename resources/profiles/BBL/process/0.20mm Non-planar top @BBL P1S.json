@@ -9,7 +9,7 @@
 	"nonplanar_flow_mod": "1",
 	"nonplanar_surface_spacing": "1",
 	"nonplanar_top_finish_flow": "0.95",
-	"description": "0.20mm Standard tuning for P1S with curved top shells, thin curved parts (up to 3 mm) in curved layers throughout; the shell count, pattern and ironing are chosen for each curved area. Uses the bundled bambu-p1s head.",
+	"description": "0.20mm Standard tuning for P1S with curved top shells; the shell count (2 to 6), pattern and ironing are chosen for each curved area. Thin curved parts (up to 3 mm) print in curved layers throughout on meshes with holes; closed meshes keep planar interiors. Uses the bundled bambu-p1s head.",
 	"nonplanar_full_conformal_max_thickness": "3",
 	"nonplanar_mode": "auto",
 	"ironing_type": "top",

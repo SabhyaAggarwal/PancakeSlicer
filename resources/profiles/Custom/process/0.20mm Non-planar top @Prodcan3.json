@@ -4,7 +4,7 @@
 	"from": "system",
 	"setting_id": "ODa80obTTexL7WQ7",
 	"instantiation": "true",
-	"description": "UNMEASURED Prodcan3 research process. Standalone 0.20mm Standard tuning derived from Custom/MyMarlin for one Direct Drive Standard extruder, with absolute speeds capped at the supplied 80 mm/s Y-axis limit. Three curved top shells, thin curved parts (up to 3 mm) in curved layers throughout, and ironing; requires the unmeasured prodcan3 head and BC-table machine preset.",
+	"description": "UNMEASURED Prodcan3 research process. Standalone 0.20mm Standard tuning derived from Custom/MyMarlin for one Direct Drive Standard extruder, with absolute speeds capped at the supplied 80 mm/s Y-axis limit. Auto chooses 2 to 6 curved top shells and ironing for each curved area (three shells in Manual); thin curved parts (up to 3 mm) print in curved layers throughout on meshes with holes; requires the unmeasured prodcan3 head and BC-table machine preset.",
 	"print_extruder_id": [
 		"1"
 	],

@@ -15,5 +15,5 @@
 	"compatible_printers": [
 		"Bambu Lab A1 mini 0.4 nozzle"
 	],
-	"description": "0.20mm Standard for A1 mini with curved top shells, thin curved parts (up to 3 mm) in curved layers throughout; the shell count, pattern and ironing are chosen for each curved area. Uses the bundled bambu-a1-mini head."
+	"description": "0.20mm Standard for A1 mini with curved top shells; the shell count (2 to 6), pattern and ironing are chosen for each curved area. Thin curved parts (up to 3 mm) print in curved layers throughout on meshes with holes; closed meshes keep planar interiors. Uses the bundled bambu-a1-mini head."
 }

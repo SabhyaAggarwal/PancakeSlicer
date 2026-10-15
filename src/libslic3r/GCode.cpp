@@ -3549,7 +3549,16 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
 
         coordf_t max_height_z = -1;
         for (const auto& object : print.objects()) {
-            max_height_z = std::max(object->layers().back()->print_z, max_height_z);
+            const Layer *top = object->layers().back();
+            max_height_z = std::max(top->print_z, max_height_z);
+            for (const LayerRegion *layerm : top->regions()) {
+                const PrintRegionConfig &rcfg = layerm->region().config();
+                if (Nonplanar::zaa_fallback(rcfg, object->config()) ||
+                    (Nonplanar::top_shells_enabled(rcfg, object->config()) &&
+                     Nonplanar::effective_fallback(rcfg, object->config()) == NonplanarFallback::None))
+                    max_height_z = std::max(max_height_z,
+                                            std::ceil((top->print_z + rcfg.zaa_min_z.value + 0.03) * 100. - EPSILON) / 100.);
+            }
             for (const Nonplanar::ConformalPatch &patch : object->conformal().patches)
                 if (patch.z_max + Nonplanar::GlideLift > max_height_z)
                     max_height_z = std::ceil((patch.z_max + Nonplanar::GlideLift) * 100. - EPSILON) / 100.;
@@ -8441,6 +8450,7 @@ std::string GCode::surface_travel(const Vec3d &to, bool from_on_bead, bool to_on
     if (max_z > 0. && travel_speed > 0.)
         params.max_grade = std::clamp(0.8 * max_z / travel_speed, 0.05, 0.5);
     params.ceiling        = m_config.printable_height.value > 0. ? m_config.printable_height.value + m_config.z_offset.value : 0.;
+    params.bed            = BoundingBoxf(m_config.printable_area.values);
     params.floor          = m_nominal_z + params.clearance;
     if (!in_band && m_print != nullptr && m_print->has_wipe_tower())
         params.min_z = this->nonplanar_travel_z();
