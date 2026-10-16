@@ -10,6 +10,7 @@
 
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ClipperUtils.hpp"
+#include "libslic3r/Exception.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/Flow.hpp"
 #include "libslic3r/Geometry.hpp"
@@ -777,7 +778,12 @@ Polylines pinhole_roads(const ExPolygons &area, Polygons cover, double width, do
             break;
         Polylines roads;
         for (const ExPolygon &hole : holes) {
-            Polylines axis = hole.medial_axis(0., 2. * scale_(spacing));
+            Polylines axis;
+            try {
+                axis = hole.medial_axis(0., 2. * scale_(spacing));
+            } catch (const Slic3r::LogicError &) {
+                axis.clear();
+            }
             if (axis.empty()) {
                 const Points &pts = hole.contour.points;
                 Vec2d         c   = Vec2d::Zero();
