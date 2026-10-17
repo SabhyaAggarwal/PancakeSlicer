@@ -103,6 +103,9 @@ static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &
 			if (path.role() == erIroning) {
 				max_up = height;
 				min_down = -(height + 0.1);
+			} else if (banded && !rcfg.zaa_enabled && path.role() == erTopSolidInfill && hit_up.is_hit() &&
+			           hit_up.normal().z() > std::cos(M_PI / 18.)) {
+				max_up = 0.5 * height;
 			}
 
             if (is_perimeter(path.role()) && hit_up.is_hit()) {

@@ -40,8 +40,8 @@
 #include <tbb/parallel_for.h>
 
 #include <algorithm>
-#include <array>
 #include <cfloat>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -650,6 +650,8 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
     if (banded != nullptr && outer) {
         const float narrow = float(banded_outer_width(flow.width(), flow.nozzle_diameter(), height));
         flow = flow.with_width(adaptive != nullptr ? float(outer_bead_width(height, flow.nozzle_diameter(), narrow)) : narrow);
+    } else if (banded != nullptr && adaptive == nullptr && k + 1 == patch.shells && !sparse && !plug && fill.spiral) {
+        flow = flow.with_width(std::min(flow.width(), float(BandedTopWidth * flow.nozzle_diameter())));
     }
     ShellFill rings = fill;
     if (banded != nullptr && k + 1 == patch.shells && fill.spiral && !sparse && !plug && adaptive == nullptr) {
@@ -1047,7 +1049,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                         flat_margin[i] = float(g.norm() - FlatSlope);
                         flat[i]        = g.norm() < FlatSlope;
                     }
-        const double reach = region.config().zaa_enabled ? region.config().zaa_min_z.value : PrintRegionConfig::defaults().zaa_min_z.value;
+        const double min_z = region.config().zaa_enabled ? region.config().zaa_min_z.value : PrintRegionConfig::defaults().zaa_min_z.value;
         ExPolygons   flat_area;
         for (ExPolygon &ground : opening_ex(mask_to_expolygons(flat, grid), float(scale_(FlatGround)))) {
             const Mask on = rasterize(ExPolygons{ ground }, grid);
@@ -1070,7 +1072,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                     std::any_of((*it)->lslices.begin(), (*it)->lslices.end(), [&at](const ExPolygon &e) { return e.contains(at); }))
                     host = *it;
             }
-            if (host != nullptr && hi - host->print_z <= reach + EPSILON && lo - host->print_z >= reach - host->height - EPSILON)
+            if (host != nullptr && hi - host->print_z <= min_z + EPSILON && lo - host->print_z >= min_z - host->height - EPSILON)
                 flat_area.emplace_back(std::move(ground));
         }
         const Mask       flat_planar = rasterize(flat_area, grid);
