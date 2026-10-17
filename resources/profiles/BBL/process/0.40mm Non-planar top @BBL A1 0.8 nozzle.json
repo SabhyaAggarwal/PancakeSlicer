@@ -16,5 +16,5 @@
 	"compatible_printers": [
 		"Bambu Lab A1 0.8 nozzle"
 	],
-	"description": "0.40mm Standard for A1 with a 0.8 mm nozzle, curved top shells; auto chooses the shell count (2 to 6) and pattern for each curved area, with ironing left off. Thin curved parts (up to 3 mm) print in curved layers throughout on meshes with holes; closed meshes keep planar interiors. Uses the bundled bambu-a1-nozzle-08 head."
+	"description": "0.40mm Standard for the A1 with a 0.8 mm nozzle, with curved top surfaces, overhangs and bridges. Auto chooses the shells and pattern for each curved area and checks every move against the A1 head."
 }

@@ -33,6 +33,7 @@ struct ReportPatch
     double      area    = 0.;
     std::vector<BoundingBox> boxes;
     std::string explain;
+    std::string summary;
 };
 
 struct ReportFallback

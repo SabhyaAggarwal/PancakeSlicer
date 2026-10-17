@@ -57,16 +57,16 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
                 std::any_of(model.volumes.begin(), model.volumes.end(), [](const ModelVolume *v) {
                     return v->is_negative_volume() || v->is_modifier();
                 }))
-                return { L("Multiplanar chunks and orientation fields print one part with one set of settings. Remove negative "
+                return { L("Multiplanar and rotary curved layers print one part with one set of settings. Remove negative "
                            "volumes, modifiers, painting and parts with their own settings, or use another non-planar mode."),
                          object, "nonplanar_mode" };
             if (object->config().nonplanar_mode.value == NonplanarMode::Field && object->config().raft_layers.value > 0)
-                return { L("An orientation field cannot be printed on a raft."), object, "raft_layers" };
+                return { L("Rotary curved layers cannot be printed on a raft."), object, "raft_layers" };
         }
         for (size_t region_id = 0; region_id < object->num_printing_regions(); ++region_id) {
             const PrintRegionConfig &region = object->printing_region(region_id).config();
             if (config.spiral_mode && full_conformal_thickness(region, *object) > 0.)
-                return { L("Full conformal layers cannot be combined with spiral vase mode."), object,
+                return { L("Curved thin parts cannot be combined with spiral vase mode."), object,
                          "nonplanar_full_conformal_max_thickness" };
             const bool shells  = top_shells_enabled(region, object->config()) || bottom_shells_enabled(region, object->config());
             const bool ironing = object->config().nonplanar_mode.value == NonplanarMode::Manual && region.nonplanar_ironing.value;
@@ -77,23 +77,24 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
             for (const ModelVolume *volume : object->model_object()->volumes) {
                 if (volume->is_modifier() && volume->config.has("layer_height") &&
                     std::abs(volume->config.opt_float("layer_height") - object->config().layer_height.value) > EPSILON)
-                    return { L("Non-planar shells cannot use a spatial modifier with a different layer height. Use the object's variable layer height profile instead."),
+                    return { L("Curved shells cannot use a modifier with a different layer height. Use the object's variable layer height instead."),
                              object, "layer_height" };
             }
             for (int filament : { top_shells_enabled(region, object->config()) ? region.top_surface_filament_id.value : 0,
                                   bottom_shells_enabled(region, object->config()) ? region.bottom_surface_filament_id.value : 0 })
                 if (filament > 0 && size_t(filament) <= config.filament_is_mixed.values.size() &&
                     config.filament_is_mixed.values[size_t(filament - 1)])
-                    return { L("Non-planar shells require a single physical filament for each patch. Select a non-mixed surface filament."),
+                    return { L("Curved shells need one physical filament per curved area. Select a non-mixed surface filament."),
                              object, "top_surface_filament_id" };
             const double height = region.nonplanar_shell_layer_height.value > 0. ? region.nonplanar_shell_layer_height.value :
                                                                                  automatic_shell_height(*object);
             if (min_nozzle > 0. && height > 0.75 * min_nozzle)
-                return { L("Non-planar shell layer height must not exceed 75% of the nozzle diameter."), object,
+                // xgettext:no-c-format, no-boost-format
+                return { L("Curved shell layer height must not exceed 75% of the nozzle diameter."), object,
                          "nonplanar_shell_layer_height" };
             const double cap = object->config().nonplanar_max_patch_height.value;
             if (cap < 0.)
-                return { L("Non-planar maximum patch height must be at least the layer height and the shell layer height."), object,
+                return { L("Maximum curved band height must be at least the layer height and the curved shell layer height."), object,
                          "nonplanar_max_patch_height" };
             const double clamped = effective_patch_height_cap(*object);
             if (cap > 0. && cap < clamped && warnings != nullptr &&
@@ -101,7 +102,7 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
                     return warning.object == object && warning.opt_key == "nonplanar_max_patch_height";
                 })) {
                 StringObjectException warning {
-                    Slic3r::format(_u8L("Non-planar maximum patch height %1$.3f mm is below the layer or shell height; using %2$.3f mm."),
+                    Slic3r::format(_u8L("Maximum curved band height %1$.3f mm is below the layer or shell height; using %2$.3f mm."),
                                    cap, clamped), object, "nonplanar_max_patch_height" };
                 warning.is_warning = true;
                 warnings->push_back(std::move(warning));
@@ -143,11 +144,11 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
         if (instances > 1 && config.print_sequence != PrintSequence::ByObject)
             return { L("With rotary axes, several objects can only be printed in \"By object\" sequence."), nullptr, "print_sequence" };
         if (config.rotary_tool_length.value <= 0. && !config.rotary_firmware_rtcp)
-            return { L("Rotary axes need the tool length, or tool centre point control in the firmware."), nullptr, "rotary_tool_length" };
+            return { L("Rotary axes need the tool length, or tool center point control in the firmware."), nullptr, "rotary_tool_length" };
     }
 
     if (needs_head && config.nonplanar_head.value.empty())
-        return { L("Select a non-planar head before enabling curved shells, curved ironing, or blocking collision checks."), nullptr,
+        return { L("Select a print head on the printer's Non-planar page before enabling curved shells, curved ironing or Block export."), nullptr,
                  "nonplanar_head" };
     std::string head_warning;
     if (!config.nonplanar_head.value.empty())
@@ -226,7 +227,7 @@ void report_head(const Print &print)
     const HeadEnvelope head = resolve_head_envelope(config);
     const std::vector<double> slopes = head.slope_map(360, gap);
     const double limit = Geometry::rad2deg(*std::min_element(slopes.begin(), slopes.end()));
-    const std::string message = (boost::format(_u8L("Non-planar: head %1% (%2%), limit %3$.1f° at %4% mm")) % head.id %
+    const std::string message = (boost::format(_u8L("Non-planar: head %1% (%2%), slope limit %3$.1f° at %4% mm")) % head.id %
                                  (head.calibrated ? _u8L("calibrated") : _u8L("uncalibrated")) % limit % gap).str();
     BOOST_LOG_TRIVIAL(info) << message;
     print.set_status(0, message);

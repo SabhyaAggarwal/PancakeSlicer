@@ -18,6 +18,7 @@
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/TriangleMesh.hpp"
+#include "libslic3r/format.hpp"
 #include "libslic3r/libslic3r.h"
 
 #include <boost/format.hpp>
@@ -26,6 +27,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <cstddef>
 #include <limits>
 #include <map>
@@ -325,76 +327,149 @@ std::string auto_comment(const ConformalPatch &patch)
     return buf;
 }
 
+namespace {
+
+struct TopPatchDecision
+{
+    bool                automatic = false;
+    NonplanarMode       mode      = NonplanarMode::Off;
+    NonplanarTopPattern pattern   = NonplanarTopPattern::Contour;
+    const char         *pattern_rule = "region setting";
+    bool                banded    = false;
+    double              head_reach = 0.;
+    double              object_cap = 0., material_cap = 0., repair_cap = 0., cap = 0.;
+    double              pitch = 0., tolerance = 0.;
+    bool                requested = false;
+    bool                region_irons = false;
+    double              deviation = 0.;
+    bool                flexible  = false;
+};
+
+TopPatchDecision top_patch_decision(const PrintObject &object, const ConformalPatch &patch)
+{
+    TopPatchDecision d;
+    const auto &region = object.printing_region(size_t(patch.region_id));
+    const auto &config = region.config();
+    const auto head = resolve_head_envelope(object.print()->config());
+    d.mode      = object.config().nonplanar_mode.value;
+    d.automatic = d.mode == NonplanarMode::Auto;
+    d.pattern   = top_pattern(patch, config);
+    if (patch.automatic) {
+        const auto &a = *patch.automatic;
+        d.pattern_rule = effective_fallback(config, object.config()) == NonplanarFallback::None ? "auto: Z-band schedule" :
+                         a.coherence >= MinCoherence ? "auto: dominant gradient" :
+                         a.aspect <= MaxRoundAspect ? "auto: round footprint" : "auto: elongated footprint";
+    }
+    d.banded = patch.band >= 0;
+    if (d.banded) {
+        double cap = d.automatic ? auto_object_settings(object, region, patch.shell_height).max_patch_height :
+                                   effective_patch_height_cap(object);
+        d.object_cap = cap;
+        cap = multi_material_patch_height(object, head, cap);
+        d.material_cap = cap;
+        if (const auto *repair = object.nonplanar_repair())
+            for (const auto &band : repair->order_bands)
+                cap = std::min(cap > 0. ? cap : std::numeric_limits<double>::infinity(), band.height);
+        d.repair_cap = cap;
+        if (const double rotary = rotary_band_reach(object, head, patch.shell_height); rotary > 0.)
+            cap = cap > 0. ? std::min(cap, rotary) : rotary;
+        d.cap = cap;
+        band_schedule(head, patch.shell_height, cap, d.pitch, d.tolerance);
+        d.head_reach = head_band_height(head);
+    }
+    d.requested    = ironing_enabled(patch, config);
+    d.region_irons = conformal_ironing_enabled(config);
+    if (patch.automatic) {
+        const double r = head.tip_flat_radius;
+        d.deviation = 0.5 * r * r * patch.automatic->curvature80;
+    }
+    d.flexible = flexible_top(object, config);
+    return d;
+}
+
+const char *pattern_key(NonplanarTopPattern pattern)
+{
+    return pattern == NonplanarTopPattern::Contour ? "contour" : pattern == NonplanarTopPattern::Concentric ? "concentric" : "rectilinear";
+}
+
+}
+
 std::string explain_top_patch(const PrintObject &object, const ConformalPatch &patch)
 {
     if (patch.kind != PatchKind::Top)
         return {};
-    const auto &region = object.printing_region(size_t(patch.region_id));
-    const auto &config = region.config();
-    const auto head = resolve_head_envelope(object.print()->config());
-    const auto mode = object.config().nonplanar_mode.value;
-    const bool automatic = mode == NonplanarMode::Auto;
-    const auto pattern = top_pattern(patch, config);
-    const char *pattern_name = pattern == NonplanarTopPattern::Contour ? "contour" :
-                               pattern == NonplanarTopPattern::Concentric ? "concentric" : "rectilinear";
+    const TopPatchDecision d = top_patch_decision(object, patch);
     std::ostringstream out;
-    out << "patch " << patch.id << " mode=" << (automatic ? "auto" : mode == NonplanarMode::Multiplanar ? "multiplanar" : "manual")
-        << " (object setting) pattern=" << pattern_name << " (";
-    if (patch.automatic) {
-        const auto &a = *patch.automatic;
-        out << (effective_fallback(config, object.config()) == NonplanarFallback::None ? "auto: Z-band schedule" :
-                a.coherence >= MinCoherence ? "auto: dominant gradient" :
-                a.aspect <= MaxRoundAspect ? "auto: round footprint" : "auto: elongated footprint");
-    } else
-        out << "region setting";
+    out << "patch " << patch.id << " mode=" << (d.automatic ? "auto" : d.mode == NonplanarMode::Multiplanar ? "multiplanar" : "manual")
+        << " (object setting) pattern=" << pattern_key(d.pattern) << " (" << d.pattern_rule;
     out << ") shells=" << patch.shells << " shell_height=" << patch.shell_height << " mm";
-    if (patch.band >= 0) {
-        double cap = automatic ? auto_object_settings(object, region, patch.shell_height).max_patch_height :
-                                 effective_patch_height_cap(object);
-        const double object_cap = cap;
-        cap = multi_material_patch_height(object, head, cap);
-        const double material_cap = cap;
-        if (const auto *repair = object.nonplanar_repair())
-            for (const auto &band : repair->order_bands)
-                cap = std::min(cap > 0. ? cap : std::numeric_limits<double>::infinity(), band.height);
-        const double repair_cap = cap;
-        if (const double rotary = rotary_band_reach(object, head, patch.shell_height); rotary > 0.)
-            cap = cap > 0. ? std::min(cap, rotary) : rotary;
-        double pitch = 0., tolerance = 0.;
-        band_schedule(head, patch.shell_height, cap, pitch, tolerance);
-        out << " band_height=" << pitch + tolerance << " mm (head reach=" << head_band_height(head);
-        if (automatic)
-            out << "; auto gantry cap=" << object_cap;
-        else if (object_cap > 0.)
-            out << "; user cap=" << object_cap;
-        if (material_cap != object_cap)
-            out << "; multi-material cap=" << material_cap;
-        if (repair_cap != material_cap)
-            out << "; repair cap=" << repair_cap;
-        if (cap != repair_cap)
-            out << "; rotary tilt cap=" << cap;
-        out << ") band_pitch=" << pitch << " mm band=" << patch.band;
+    if (d.banded) {
+        out << " band_height=" << d.pitch + d.tolerance << " mm (head reach=" << d.head_reach;
+        if (d.automatic)
+            out << "; auto gantry cap=" << d.object_cap;
+        else if (d.object_cap > 0.)
+            out << "; user cap=" << d.object_cap;
+        if (d.material_cap != d.object_cap)
+            out << "; multi-material cap=" << d.material_cap;
+        if (d.repair_cap != d.material_cap)
+            out << "; repair cap=" << d.repair_cap;
+        if (d.cap != d.repair_cap)
+            out << "; rotary tilt cap=" << d.cap;
+        out << ") band_pitch=" << d.pitch << " mm band=" << patch.band;
     } else
         out << " band_height=" << patch.z_max - patch.z_min << " mm (unbanded patch relief)";
-    const bool requested = ironing_enabled(patch, config);
     out << " ironing=" << (patch.ironing.entities.empty() ? "off" : "on") << " (";
     if (patch.automatic) {
         const auto &a = *patch.automatic;
-        const double r = head.tip_flat_radius, deviation = 0.5 * r * r * a.curvature80;
-        if (!conformal_ironing_enabled(config))
+        if (!d.region_irons)
             out << "auto: region ironing off";
         else
-            out << "auto: land deviation " << deviation << (deviation <= 0.25 * patch.shell_height ? " <= " : " > ")
+            out << "auto: land deviation " << d.deviation << (d.deviation <= 0.25 * patch.shell_height ? " <= " : " > ")
                 << 0.25 * patch.shell_height << " mm (h_c/4)";
         out << "; area=" << a.shell_area << " mm2 slope90=" << Geometry::rad2deg(a.slope90)
             << " deg curvature80=" << a.curvature80 << "/mm";
     } else
-        out << (requested ? "region enabled" : "region disabled");
-    if (requested && patch.ironing.entities.empty())
-        out << (flexible_top(object, config) ? "; flexible filament: curved tops are not ironed" :
-                                               "; no paths survived surface, wall, band or repair clipping");
+        out << (d.requested ? "region enabled" : "region disabled");
+    if (d.requested && patch.ironing.entities.empty())
+        out << (d.flexible ? "; flexible filament: curved tops are not ironed" :
+                             "; no paths survived surface, wall, band or repair clipping");
     out << ")\n";
     return out.str();
+}
+
+std::string describe_top_patch(const PrintObject &object, const ConformalPatch &patch)
+{
+    if (patch.kind != PatchKind::Top)
+        return {};
+    const TopPatchDecision d = top_patch_decision(object, patch);
+    const std::string pattern = d.pattern == NonplanarTopPattern::Contour    ? _u8L("Contour") :
+                                d.pattern == NonplanarTopPattern::Concentric ? _u8L("Concentric") : _u8L("Rectilinear");
+    const std::string rule = !patch.automatic                                        ? _u8L("set in the process") :
+                             std::strcmp(d.pattern_rule, "auto: Z-band schedule") == 0   ? _u8L("the only pattern continuous across height bands") :
+                             std::strcmp(d.pattern_rule, "auto: dominant gradient") == 0 ? _u8L("the surface slopes mostly one way") :
+                             std::strcmp(d.pattern_rule, "auto: round footprint") == 0   ? _u8L("the area is round") :
+                                                                                           _u8L("the area is long and narrow");
+    std::string out = format(_u8L("%1% lines: %2%."), pattern, rule) + "\n" +
+                      format(_u8L("%1% shells, %2$.2f mm each."), patch.shells, patch.shell_height) + "\n";
+    if (d.banded) {
+        const std::string limit = d.cap != d.repair_cap                         ? _u8L("the rotary tilt") :
+                                  d.repair_cap != d.material_cap                ? _u8L("the clearance repair") :
+                                  d.material_cap != d.object_cap                ? _u8L("a filament change") :
+                                  d.object_cap > 0. && d.object_cap < d.head_reach ? (d.automatic ? _u8L("the gantry") : _u8L("the maximum curved band height")) :
+                                                                                  _u8L("how far the head reaches");
+        out += format(_u8L("Height band %1%, %2$.2f mm high, set by %3%."), patch.band + 1, d.pitch + d.tolerance, limit) + "\n";
+    } else
+        out += format(_u8L("One pass over %1$.2f mm of relief."), patch.z_max - patch.z_min) + "\n";
+    const bool ironed = !patch.ironing.entities.empty();
+    if (ironed)
+        out += patch.automatic ? _u8L("Ironed: the flat nozzle tip fits this curvature.") : _u8L("Ironed, as set in the process.");
+    else if (d.requested)
+        out += d.flexible ? _u8L("Not ironed: flexible filament.") : _u8L("Not ironed: no ironing line fits this area.");
+    else if (patch.automatic && d.region_irons)
+        out += _u8L("Not ironed: too curved for the flat nozzle tip.");
+    else
+        out += _u8L("Not ironed: ironing is off in the process.");
+    return out;
 }
 
 std::vector<std::string> object_warnings(const PrintObject &object, const ReportObject &report)
@@ -411,7 +486,7 @@ std::vector<std::string> object_warnings(const PrintObject &object, const Report
         char buf[64];
         std::snprintf(buf, sizeof(buf), "%.0f %% (%.0f mm2)", 100. * (1. - report.curved_share()), report.planar_top);
         warnings.emplace_back((boost::format(_u8L("%1%: %2% of the curved top prints in planar layers, mostly: %3%.")) % report.name % buf %
-                               (main == by_reason.end() ? std::string("-") : fallback_reason_text(main->first)))
+                               (main == by_reason.end() ? std::string("-") : I18N::translate(fallback_reason_text(main->first))))
                                   .str());
     }
     return warnings;

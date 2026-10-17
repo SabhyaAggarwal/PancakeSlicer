@@ -6,7 +6,7 @@
 	"from": "User",
 	"instantiation": "true",
 	"nonplanar_mode": "auto",
-	"description": "UNMEASURED Prodcan3 research process. Standalone 0.20mm Standard tuning derived from Custom/MyMarlin for one Direct Drive Standard extruder, with absolute speeds capped at the supplied 80 mm/s Y-axis limit. Three curved top shells, thin curved parts (up to 3 mm) in curved layers throughout, no ironing; requires the unmeasured prodcan3 head and BC-table machine preset.",
+	"description": "0.20mm settings for the Prodcan3 5-axis BC table (import copy) with curved top surfaces, overhangs and bridges. Auto chooses the shells and pattern for each curved area, tilts top lines where an upright line would stand proud, and prints steep roofs in tilted chunks where they come out smoother. Speeds are capped at the Y axis' 80 mm/s.",
 	"print_extruder_id": [
 		"1"
 	],

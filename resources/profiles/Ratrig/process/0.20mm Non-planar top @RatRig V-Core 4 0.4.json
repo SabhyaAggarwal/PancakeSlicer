@@ -16,5 +16,5 @@
 		"RatRig V-Core 4 400 0.4 nozzle",
 		"RatRig V-Core 4 500 0.4 nozzle"
 	],
-	"description": "0.20mm Quality with curved top shells, thin curved parts (up to 3 mm) in curved layers throughout; the shell count, pattern and ironing are chosen for each curved area. Uses the bundled ratrig-vcore4 head."
+	"description": "0.20mm Quality with curved top surfaces, overhangs and bridges. Auto chooses the shells and pattern for each curved area and checks every move against the printer's head."
 }

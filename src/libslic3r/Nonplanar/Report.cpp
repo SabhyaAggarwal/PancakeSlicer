@@ -7,6 +7,7 @@
 
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
+#include "libslic3r/I18N.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Print.hpp"
 
@@ -62,35 +63,35 @@ struct ReasonInfo
 const std::map<std::string, ReasonInfo> &reasons()
 {
     static const std::map<std::string, ReasonInfo> map{
-        { "flat", { "flat", "flat: planar layers print it exactly" } },
-        { "flat_ground", { "flat", "flat ground: planar layers, Z contoured, print it exactly" } },
-        { "flat_sliver", { "flat", "a sliver beside flat ground, printed with it" } },
-        { "steep", { "wall", "steeper than a curved bead follows (atan(h/w)): planar layers, Z contoured" } },
-        { "steep_strip", { "wall", "a steep strip between curved tops: planar layers, Z contoured" } },
-        { "narrow", { "wall", "narrower than half a road: the contoured planar top measured better" } },
-        { "outline", { "outline", "outline between surface samples" } },
-        { "near_bed", { "fallback", "too close to the first layer for a shell" } },
-        { "no_transition_layer", { "fallback", "no planar layer under the first shell within the bead range" } },
-        { "no_pieces", { "fallback", "the bands laid no road there" } },
-        { "shell_height", { "unreachable", "shell layer too thick for the nozzle" } },
-        { "edge", { "fallback", "edge of a curved top: near the bed, too steep or narrower than a road" } },
-        { "head", { "fallback", "the print head cannot reach it" } },
-        { "bottom", { "fallback", "underside printed by planar bottom layers" } },
-        { "overhang_self_supporting", { "wall", "self-supporting underside: planar layers print it" } },
-        { "overhang_unfit", { "wall", "an overhang sliver under a road" } },
-        { "overhang_roof", { "wall", "flat roof: a bridge prints it" } },
-        { "overhang_no_root", { "unreachable", "overhang with nothing below to grow from" } },
-        { "overhang_rootless", { "unreachable", "overhang with nothing below to grow from" } },
-        { "overhang_resting", { "unreachable", "underside on or just above the bed" } },
-        { "overhang_unsampled", { "unreachable", "underside over solid material" } },
-        { "overhang_supported", { "unreachable", "overhang the curved layers cannot make printable: support prints it" } },
-        { "overhang_small", { "fallback", "overhang smaller than the minimum patch" } },
-        { "overhang_no_beads", { "fallback", "overhang no bead fits" } },
-        { "overhang_no_pieces", { "fallback", "the overhang laid no road there" } },
-        { "overhang_narrow", { "wall", "overhang narrower than a road" } },
-        { "overhang_outline", { "outline", "overhang outline between surface samples" } },
-        { "overhang_rim", { "outline", "overhang rim without a slope" } },
-        { "untagged", { "fallback", "no reason recorded" } },
+        { "flat", { "flat", L("flat: planar layers print it exactly") } },
+        { "flat_ground", { "flat", L("flat ground: planar layers, Z contoured, print it exactly") } },
+        { "flat_sliver", { "flat", L("a sliver beside flat ground, printed with it") } },
+        { "steep", { "wall", L("steeper than a curved bead follows (atan(h/w)): planar layers, Z contoured") } },
+        { "steep_strip", { "wall", L("a steep strip between curved tops: planar layers, Z contoured") } },
+        { "narrow", { "wall", L("narrower than half a road: the contoured planar top measured better") } },
+        { "outline", { "outline", L("outline between surface samples") } },
+        { "near_bed", { "fallback", L("too close to the first layer for a shell") } },
+        { "no_transition_layer", { "fallback", L("no planar layer under the first shell within the bead range") } },
+        { "no_pieces", { "fallback", L("the bands laid no road there") } },
+        { "shell_height", { "unreachable", L("shell layer too thick for the nozzle") } },
+        { "edge", { "fallback", L("edge of a curved top: near the bed, too steep or narrower than a road") } },
+        { "head", { "fallback", L("the print head cannot reach it") } },
+        { "bottom", { "fallback", L("underside printed by planar bottom layers") } },
+        { "overhang_self_supporting", { "wall", L("self-supporting underside: planar layers print it") } },
+        { "overhang_unfit", { "wall", L("an overhang sliver under a road") } },
+        { "overhang_roof", { "wall", L("flat roof: a bridge prints it") } },
+        { "overhang_no_root", { "unreachable", L("overhang with nothing below to grow from") } },
+        { "overhang_rootless", { "unreachable", L("overhang with nothing below to grow from") } },
+        { "overhang_resting", { "unreachable", L("underside on or just above the bed") } },
+        { "overhang_unsampled", { "unreachable", L("underside over solid material") } },
+        { "overhang_supported", { "unreachable", L("overhang the curved layers cannot make printable: support prints it") } },
+        { "overhang_small", { "fallback", L("overhang smaller than the minimum patch") } },
+        { "overhang_no_beads", { "fallback", L("overhang no bead fits") } },
+        { "overhang_no_pieces", { "fallback", L("the overhang laid no road there") } },
+        { "overhang_narrow", { "wall", L("overhang narrower than a road") } },
+        { "overhang_outline", { "outline", L("overhang outline between surface samples") } },
+        { "overhang_rim", { "outline", L("overhang rim without a slope") } },
+        { "untagged", { "fallback", L("no reason recorded") } },
     };
     return map;
 }
@@ -206,6 +207,7 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
             rp.explain = explain_top_patch(*object, patch);
             while (!rp.explain.empty() && rp.explain.back() == '\n')
                 rp.explain.pop_back();
+            rp.summary = describe_top_patch(*object, patch);
         }
         for (const PatchDiagnostics &diag : conformal.diagnostics) {
             if (diag.fallback_area <= 0.)

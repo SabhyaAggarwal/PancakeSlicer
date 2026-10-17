@@ -14,5 +14,5 @@
 	"compatible_printers": [
 		"Flashforge Adventurer 5M 0.4 Nozzle"
 	],
-	"description": "0.20mm Standard with curved top shells, thin curved parts (up to 3 mm) in curved layers throughout; the shell count, pattern and ironing are chosen for each curved area. Uses the bundled flashforge-ad5m head."
+	"description": "0.20mm Standard with curved top surfaces, overhangs and bridges. Auto chooses the shells and pattern for each curved area and checks every move against the printer's head."
 }

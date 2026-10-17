@@ -731,7 +731,7 @@ void PrintObject::nonplanar_shells()
                    Nonplanar::bridges_enabled(this->printing_region(region_id).config(), this->config());
     enabled &= !imported;
     if (m_field && m_config.nonplanar_atom_toolpath.value.empty()) {
-        m_print->set_status(40, L("Slicing curved layers of the orientation field"));
+        m_print->set_status(40, L("Slicing rotary curved layers"));
         for (Layer *layer : m_layers) {
             layer->conformal_patches_before.clear();
             layer->conformal_patches_after.clear();

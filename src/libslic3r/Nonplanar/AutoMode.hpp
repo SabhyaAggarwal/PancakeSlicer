@@ -72,6 +72,7 @@ bool                ironing_enabled(const ConformalPatch &patch, const PrintRegi
 std::string auto_comment(const ConformalPatch &patch);
 
 std::string explain_top_patch(const PrintObject &object, const ConformalPatch &patch);
+std::string describe_top_patch(const PrintObject &object, const ConformalPatch &patch);
 
 std::vector<std::string> object_warnings(const PrintObject &object, const ReportObject &report);
 

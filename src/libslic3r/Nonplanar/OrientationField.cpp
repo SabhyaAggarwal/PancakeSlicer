@@ -1248,15 +1248,15 @@ bool field_motion_supported(const PrintConfig &config, std::string *why)
         return false;
     };
     if (kinematics == nullptr || kinematics->rotary_count() < 2)
-        return fail(_u8L("The orientation field needs a printer with two rotary axes."));
+        return fail(_u8L("Rotary curved layers need a printer with two rotary axes."));
     if (!kinematics->inverse_time_feed() && !kinematics->firmware_rtcp())
-        return fail(_u8L("The orientation field needs rotary moves streamed along each road: enable inverse-time feed (G93) or firmware RTCP."));
+        return fail(_u8L("Rotary curved layers need rotary moves streamed along each line: enable inverse-time feed (G93) or firmware RTCP."));
     const double budget = field_tilt_budget(*kinematics);
     if (budget < Geometry::deg2rad(10.)) {
         double best = 0.;
         for (int s = 0; s < 72; ++s)
             best = std::max(best, kinematics->max_tilt(2. * M_PI * s / 72.));
-        return fail(format(_u8L("The orientation field needs at least 10 degrees of tilt in every direction; the rotary axis limits allow %1% degrees in the tightest direction (%2% in the widest)."),
+        return fail(format(_u8L("Rotary curved layers need at least 10 degrees of tilt in every direction; the rotary axis limits allow %1% degrees in the tightest direction (%2% in the widest)."),
                            int(std::lround(Geometry::rad2deg(budget))), int(std::lround(Geometry::rad2deg(best)))));
     }
     return true;
@@ -1304,8 +1304,8 @@ std::shared_ptr<const OrientationField> clip_field_slices(PrintObject &object)
                             << st.max_thickness << " h, head conflicts " << st.head_conflicts << ", relax rounds "
                             << st.relax_rounds << ", tilt scale " << st.tilt_scale << ", layers from " << (st.solver_field ? "the layer solver" : "the own integral");
     if (st.head_conflicts > 0)
-        throw Slic3r::SlicingError(Slic3r::format(_u8L("Orientation field: %1% poses still reach earlier material or the "
-                                                       "table after relaxing the tilt. Use multiplanar chunks or rotary curved shells."),
+        throw Slic3r::SlicingError(Slic3r::format(_u8L("Rotary curved layers: %1% poses still reach earlier material or the "
+                                                       "table after relaxing the tilt. Use Multiplanar or Auto instead."),
                                                   st.head_conflicts));
     LayerPtrs &layers = object.layers();
     for (size_t layer_id = 1; layer_id < layers.size(); ++layer_id)
@@ -1345,7 +1345,7 @@ void build_field_patch(PrintObject &object, const std::shared_ptr<const Orientat
     } catch (const CanceledException &) {
         throw;
     } catch (const std::exception &ex) {
-        throw Slic3r::SlicingError(std::string(_u8L("Orientation field: slicing the curved layers failed: ")) + ex.what());
+        throw Slic3r::SlicingError(std::string(_u8L("Rotary curved layers: slicing failed: ")) + ex.what());
     }
     throw_if_canceled(object);
     if (print.objects().empty())

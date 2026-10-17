@@ -17,5 +17,5 @@
 	"compatible_printers": [
 		"Bambu Lab P1S 0.6 nozzle"
 	],
-	"description": "0.30mm Standard for P1S with a 0.6 mm nozzle, curved top shells; auto chooses the shell count (2 to 6) and pattern for each curved area, with ironing left off. Thin curved parts (up to 3 mm) print in curved layers throughout on meshes with holes; closed meshes keep planar interiors. Uses the bundled bambu-p1s-nozzle-06 head."
+	"description": "0.30mm Standard for the P1S with a 0.6 mm nozzle, with curved top surfaces, overhangs and bridges. Auto chooses the shells and pattern for each curved area and checks every move against the P1S head."
 }

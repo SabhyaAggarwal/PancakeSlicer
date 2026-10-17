@@ -343,7 +343,7 @@ ClearanceFit fit_clearance(const HeadEnvelope &base, int last_clean, double gap,
 {
     const std::vector<ClearanceStep> &steps = clearance_steps();
     if (last_clean < 0 || last_clean > int(steps.size()))
-        throw RuntimeError((boost::format(_u8L("The last clean step must be between 0 and %1%.")) % steps.size()).str());
+        throw RuntimeError((boost::format(_u8L("The last clean cone must be between 0 and %1%.")) % steps.size()).str());
     HeadEnvelope shroud = base;
     shroud.boxes.erase(std::remove_if(shroud.boxes.begin(), shroud.boxes.end(),
                                       [](const HeadBox &b) { return b.nozzle || b.infinite_x || b.infinite_y; }),
@@ -495,7 +495,7 @@ Plate make_plate(Test test, const DynamicPrintConfig &config, const HeadEnvelope
             const double foot = cone_foot_radius(step), pad = foot + PadFlange;
             const int    rings = std::max(12, int(std::ceil(pad / 0.25)));
             PlateObject  object;
-            object.name = (boost::format(_u8L("Step %1%: %2% deg, %3% mm")) % (k + 1) % step.slope_deg % step.relief).str();
+            object.name = (boost::format(_u8L("Cone %1%: %2% deg, %3% mm")) % (k + 1) % step.slope_deg % step.relief).str();
             object.mesh = TriangleMesh(disk_solid(pad, rings, 128, [&](double r) { return PadHeight + cone_height(step, r); }));
             plate.objects.emplace_back(std::move(object));
             shapes.push_back({ Vec2d(2. * pad, 2. * pad), step.relief });

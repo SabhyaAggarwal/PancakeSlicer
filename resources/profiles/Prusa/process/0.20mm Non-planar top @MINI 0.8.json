@@ -12,5 +12,5 @@
 	"compatible_printers": [
 		"Prusa MINI 0.8 nozzle"
 	],
-	"description": "0.20mm Standard for Prusa MINI/MINI+ with a 0.8 mm nozzle, curved top shells; auto chooses the shell count (2 to 6) and pattern for each curved area, with ironing left off. Thin curved parts (up to 3 mm) print in curved layers throughout on meshes with holes; closed meshes keep planar interiors. Curved tops run at 150% of the top surface speed. Uses the shared prusa-mini head."
+	"description": "0.20mm Standard for the MINI and MINI+ with a 0.8 mm nozzle, with curved top surfaces, overhangs and bridges. Auto chooses the shells and pattern for each curved area and checks every move against the MINI head. Curved tops print at 150% of the top surface speed."
 }
