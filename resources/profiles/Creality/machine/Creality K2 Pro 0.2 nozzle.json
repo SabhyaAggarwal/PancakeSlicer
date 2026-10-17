@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "O7s4tZqfiukNZUuz",
 	"instantiation": "true",
+	"nonplanar_head": "creality-k2",
 	"printer_model": "Creality K2 Pro",
 	"gcode_flavor": "klipper",
 	"host_type": "crealityprint",

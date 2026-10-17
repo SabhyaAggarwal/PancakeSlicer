@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "6e68LcMl17yl7Ii8",
 	"instantiation": "true",
+	"nonplanar_head": "qidi-xseries-gen3",
 	"printer_model": "Qidi X-Max 3",
 	"gcode_flavor": "klipper",
 	"default_print_profile": "0.20mm Standard @Qidi XMax3",

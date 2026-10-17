@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "zx1WGvi1Ff3X3RpP",
 	"instantiation": "true",
+	"nonplanar_head": "creality-k1-max",
 	"printer_model": "Creality K1 Max_CFS-C",
 	"auxiliary_fan": "1",
 	"bbl_use_printhost": "0",

@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "U5MWs9u3tWvrlVwP",
 	"instantiation": "true",
+	"nonplanar_head": "qidi-xseries-gen3",
 	"printer_model": "Qidi Q1 Pro",
 	"gcode_flavor": "klipper",
 	"default_print_profile": "0.20mm Standard @Qidi Q1 Pro",

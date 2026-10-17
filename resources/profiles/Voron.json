@@ -1,6 +1,6 @@
 {
 	"name": "Voron",
-	"version": "02.04.00.05",
+	"version": "02.04.00.06",
 	"force_update": "0",
 	"description": "Voron configurations",
 	"machine_model_list": [
@@ -97,6 +97,10 @@
 		{
 			"name": "fdm_process_voron_common_1_0",
 			"sub_path": "process/fdm_process_voron_common_1_0.json"
+		},
+		{
+			"name": "0.20mm Non-planar top @Voron 0.1",
+			"sub_path": "process/0.20mm Non-planar top @Voron 0.1.json"
 		},
 		{
 			"name": "0.20mm Non-planar top @Voron 2.4",

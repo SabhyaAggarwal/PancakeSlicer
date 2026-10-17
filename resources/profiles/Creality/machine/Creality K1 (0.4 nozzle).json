@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "YTVSp79gHX8xNpu2",
 	"instantiation": "true",
+	"nonplanar_head": "creality-k1",
 	"printer_model": "Creality K1",
 	"gcode_flavor": "klipper",
 	"default_print_profile": "0.20mm Standard @Creality K1 (0.4 nozzle)",

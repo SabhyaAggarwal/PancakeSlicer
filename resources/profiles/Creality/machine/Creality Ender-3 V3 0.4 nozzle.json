@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "FUmSsB1Xk6FJC0tl",
 	"instantiation": "true",
+	"nonplanar_head": "creality-ender3-v3",
 	"printer_model": "Creality Ender-3 V3",
 	"gcode_flavor": "klipper",
 	"printer_structure": "i3",

@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "ShWzWhKWa9JASGUz",
 	"instantiation": "true",
+	"nonplanar_head": "sovol-sv06",
 	"printer_model": "Sovol SV06",
 	"default_print_profile": "0.20mm High-Speed @Sovol SV06",
 	"nozzle_diameter": [

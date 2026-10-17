@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "Isk4WSQ4RH23P3Wy",
 	"instantiation": "true",
+	"nonplanar_head": "sovol-sv08",
 	"printer_model": "Sovol SV08",
 	"default_print_profile": "0.20mm Standard @Sovol SV08 0.8 nozzle",
 	"printer_variant": "0.8",

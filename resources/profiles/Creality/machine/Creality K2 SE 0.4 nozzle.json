@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "Blm3dYf9xWwUoaYJ",
 	"instantiation": "true",
+	"nonplanar_head": "creality-k2",
 	"printer_model": "Creality K2 SE",
 	"auxiliary_fan": "0",
 	"bbl_use_printhost": "0",

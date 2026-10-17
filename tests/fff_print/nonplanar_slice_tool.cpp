@@ -51,6 +51,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <fstream>
 #include <initializer_list>
 #include <iostream>
 #include <ios>
@@ -85,7 +86,7 @@ struct Args
     std::string profiles = std::string(PROFILES_DIR);
     std::string vendor   = "Prusa";
     std::string printer, process, datadir, output, model, config_out, paint, gcode_3mf, json, plate, project_out, head_out, layer_profile, project, save_3mf,
-                tip_out, calib, calib_head, calib_picks;
+                tip_out, move_times, calib, calib_head, calib_picks;
     int         calib_fit = -1;
     std::vector<std::string> filaments, colours;
     std::vector<std::pair<std::string, int>> parts;
@@ -158,6 +159,7 @@ Args parse_args(int argc, char **argv)
             a.overrides.emplace_back("nonplanar_atom_toolpath", path);
         }
         else if (arg == "--json") a.json = next();
+        else if (arg == "--move-times") a.move_times = next();
         else if (arg == "--plate") a.plate = next();
         else if (arg == "--project") a.project = next();
         else if (arg == "--save-3mf") a.save_3mf = next();
@@ -1196,6 +1198,12 @@ int main(int argc, char **argv)
             std::cout << "role_time_s " << t << " " << role << "\n";
         if (! args.json.empty() && !role_time.empty())
             record["text_summary"]["role_time_s"] = text_value(role_time.begin()->second) + " " + role_time.begin()->first;
+        if (!args.move_times.empty()) {
+            std::ofstream mt(args.move_times);
+            for (const auto &m : result.moves)
+                mt << m.gcode_id << ' ' << m.position.x() << ' ' << m.position.y() << ' ' << m.position.z() << ' '
+                   << m.time[size_t(PrintEstimatedStatistics::ETimeMode::Normal)] << ' ' << int(result.state(m).nonplanar_patch_shell != 0xFF) << '\n';
+        }
         std::map<std::string, double> feature_time;
         for (size_t i = 0; i < result.moves.size(); ++i) {
             const auto &m  = result.moves[i];

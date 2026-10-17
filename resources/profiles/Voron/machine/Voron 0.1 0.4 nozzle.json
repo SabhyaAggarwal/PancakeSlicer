@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "kquY5Lc3pSREFhza",
 	"instantiation": "true",
+	"nonplanar_head": "voron-mini-stealthburner",
 	"printer_model": "Voron 0.1",
 	"default_print_profile": "0.20mm Standard @Voron",
 	"max_layer_height": [

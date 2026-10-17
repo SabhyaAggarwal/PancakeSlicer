@@ -169,11 +169,11 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
                             params.condition.target_length, flow);
     const std::vector<ConformalPoint> &staged = shape ? shaped : merged;
 
+    constexpr double            StubLength = 0.01;
     std::vector<ConformalPoint> points;
     if (params.preserve_points)
         points = staged;
     else {
-        constexpr double            StubLength = 0.01;
         std::vector<double>         stub_flow;
         points.reserve(staged.size());
         points.emplace_back(staged.front());
@@ -280,6 +280,9 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
         const ConformalPoint &a = points[i];
         const ConformalPoint &b = points[i + 1];
         if ((b.pose.tip - a.pose.tip).norm() < EPSILON)
+            continue;
+        if (prime[i] == 0. && (a.bead_height <= 0.f || b.bead_height <= 0.f || (!flow.empty() && flow[i] == 0.)) &&
+            i + 2 < points.size() && (b.pose.tip - writer.get_position()).norm() < StubLength)
             continue;
         if (i < tags.size())
             out += tags[i];

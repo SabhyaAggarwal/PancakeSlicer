@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "E8r7L89MF77uzSpN",
 	"instantiation": "true",
+	"nonplanar_head": "creality-k1c",
 	"printer_model": "Creality K1 SE",
 	"gcode_flavor": "klipper",
 	"default_print_profile": "0.20mm Standard @Creality K1 SE 0.4",

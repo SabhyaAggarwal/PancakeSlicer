@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "2YkExWLDiNgfaQ42",
 	"instantiation": "true",
+	"nonplanar_head": "ratrig-vcore4",
 	"printer_model": "RatRig V-Core 4 HYBRID 400",
 	"printer_variant": "0.5",
 	"nozzle_diameter": [

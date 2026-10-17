@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "lj7NBHJtE1211s3A",
 	"instantiation": "true",
+	"nonplanar_head": "anycubic-kobra3",
 	"printer_technology": "FFF",
 	"printer_settings_id": "Anycubic Kobra 3 Max 0.4 nozzle",
 	"printer_model": "Anycubic Kobra 3 Max",

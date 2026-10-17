@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "dVAxSK9P8leZim5Q",
 	"instantiation": "true",
+	"nonplanar_head": "creality-ender3-v3-ke",
 	"printer_variant": "0.4",
 	"printer_settings_id": "Creality",
 	"printer_model": "Creality Ender-3 V3 KE",

@@ -6,6 +6,7 @@
 	"from": "system",
 	"setting_id": "69QdWuRQwAZk9rFu",
 	"instantiation": "true",
+	"nonplanar_head": "elegoo-neptune4",
 	"host_type": "elegoolink",
 	"printer_model": "Elegoo Neptune 4",
 	"default_print_profile": "0.20mm Standard @Elegoo N4 0.4 nozzle",

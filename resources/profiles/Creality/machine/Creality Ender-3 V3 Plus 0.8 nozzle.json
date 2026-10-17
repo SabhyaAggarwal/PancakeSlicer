@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "POEqDPvODxBUiA6S",
 	"instantiation": "true",
+	"nonplanar_head": "creality-ender3-v3",
 	"printer_model": "Creality Ender-3 V3 Plus",
 	"printer_structure": "i3",
 	"auxiliary_fan": "1",

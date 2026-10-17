@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "LIsjlFTwoNWK2WyU",
 	"instantiation": "true",
+	"nonplanar_head": "anycubic-kobra2",
 	"printer_technology": "FFF",
 	"printer_settings_id": "Anycubic Kobra 2 Neo 0.4 nozzle",
 	"printer_model": "Anycubic Kobra 2 Neo",

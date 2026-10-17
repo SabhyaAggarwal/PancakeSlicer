@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "7OloFrnUOgr6NqYN",
 	"instantiation": "true",
+	"nonplanar_head": "creality-k1c",
 	"printer_model": "Creality K1C",
 	"gcode_flavor": "klipper",
 	"default_print_profile": "0.30mm Standard @Creality K1C (0.6 nozzle)",

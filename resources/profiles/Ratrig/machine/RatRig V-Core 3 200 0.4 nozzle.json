@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "dRoCwCRQlESZEBHP",
 	"instantiation": "true",
+	"nonplanar_head": "ratrig-vcore3",
 	"printer_model": "RatRig V-Core 3 200",
 	"nozzle_diameter": [
 		"0.4"

@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "OPYo1a3aIyXMdlI7",
 	"instantiation": "true",
+	"nonplanar_head": "sovol-sv06-ace",
 	"printer_model": "Sovol SV06 Plus ACE",
 	"default_print_profile": "0.20mm Standard @Sovol SV06 Plus ACE",
 	"nozzle_diameter": [

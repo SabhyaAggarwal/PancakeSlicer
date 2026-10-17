@@ -4643,6 +4643,17 @@ void GCode::print_machine_envelope(GCodeOutputStream &file, Print &print)
                     print.config().input_shaping_freq_y.value, "").c_str());
             }
         }
+    } else if (flavor == gcfKlipper && print.config().emit_machine_limits_to_gcode.value &&
+               Nonplanar::requests_conformal_shells(print)) {
+        double velocity = std::max(print.config().machine_max_speed_x.get_at(0), print.config().machine_max_speed_y.get_at(0));
+        double accel    = print.config().machine_max_acceleration_extruding.get_at(0);
+        for (double axis : {print.config().machine_max_acceleration_x.get_at(0), print.config().machine_max_acceleration_y.get_at(0)})
+            if (axis > 0.)
+                accel = accel > 0. ? std::min(accel, axis) : axis;
+        const double scv = print.config().machine_max_jerk_x.get_at(0);
+        if (velocity > 0. && accel > 0. && scv > 0.)
+            file.write_format("SET_VELOCITY_LIMIT VELOCITY=%d ACCEL=%d SQUARE_CORNER_VELOCITY=%.2lf ; machine limits\n",
+                              int(velocity + 0.5), int(accel + 0.5), scv);
     }
 #undef MAX_LIMIT
 }
@@ -8192,8 +8203,8 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
     auto first_value     = [](const ConfigOptionFloats &opt) { return opt.values.empty() ? 0. : opt.values.front(); };
     auto lower_limit     = [](double a, double b) { return a > 0. && b > 0. ? std::min(a, b) : std::max(a, b); };
     const GCodeFlavor flavor  = m_config.gcode_flavor.value;
-    const bool        emitted = m_config.emit_machine_limits_to_gcode.value &&
-                         (flavor == gcfMarlinLegacy || flavor == gcfMarlinFirmware || flavor == gcfRepRapFirmware);
+    const bool        emitted = flavor == gcfKlipper || (m_config.emit_machine_limits_to_gcode.value &&
+                         (flavor == gcfMarlinLegacy || flavor == gcfMarlinFirmware || flavor == gcfRepRapFirmware));
     auto z_value         = [&lower_limit, &first_value, emitted](const ConfigOptionFloats &opt) {
         if (emitted)
             return first_value(opt);
@@ -8255,8 +8266,12 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
         };
     params.prime         = m_conformal_prime;
     params.prime_length  = ConformalPrime;
-    if (m_writer.filament() != nullptr)
+    if (m_writer.filament() != nullptr) {
+        const double max_e = first_value(m_config.machine_max_speed_e);
         params.prime_speed = m_writer.filament()->deretract_speed();
+        if (max_e > 0. && params.prime_speed > max_e)
+            params.prime_speed = max_e;
+    }
     m_conformal_prime    = 0.;
 
     const double clock_speed = std::max(1., speed);
@@ -8316,6 +8331,7 @@ std::string GCode::nonplanar_pass_hold(const ExtrusionPathConformal *next)
         speed = 10.;
     char buf[96];
     std::snprintf(buf, sizeof(buf), "%s Z%.3f F%.0f\n", NpPassHoldTag, z, 60. * speed);
+    m_np_hold_z = z;
     m_writer.get_position().z() = z;
     return buf;
 }
@@ -8323,6 +8339,7 @@ std::string GCode::nonplanar_pass_hold(const ExtrusionPathConformal *next)
 std::string GCode::nonplanar_patch_end()
 {
     std::string gcode;
+    m_np_hold_z = 0.;
     m_np_support = Nonplanar::SupportSnapshot();
     if (m_np_fan_level > 0.f) {
         gcode += Nonplanar::NpFanEndTag;
@@ -8422,7 +8439,9 @@ std::string GCode::conformal_retract()
 {
     if (m_writer.filament() == nullptr)
         return {};
-    return m_writer.retract(false, m_conformal_retract) + m_writer.reset_e();
+    std::string gcode = m_writer.retract(false, m_conformal_retract);
+    gcode += m_writer.reset_e();
+    return gcode;
 }
 
 std::string GCode::surface_travel(const Vec3d &to, bool from_on_bead, bool to_on_bead, bool in_band, const std::string &comment,
@@ -8448,7 +8467,7 @@ std::string GCode::surface_travel(const Vec3d &to, bool from_on_bead, bool to_on
         max_z = max_z > 0. && v > 0. ? std::min(max_z, v) : std::max(max_z, v);
     const double travel_speed = m_config.travel_speed.get_at(m_writer.filament() != nullptr ? get_nozzle_config_index(m_writer.filament()->id()) : 0);
     if (max_z > 0. && travel_speed > 0.)
-        params.max_grade = std::clamp(0.8 * max_z / travel_speed, 0.05, 0.5);
+        params.max_grade = std::clamp(0.8 * max_z / travel_speed, 0.05, 0.12);
     params.ceiling        = m_config.printable_height.value > 0. ? m_config.printable_height.value + m_config.z_offset.value : 0.;
     params.bed            = BoundingBoxf(m_config.printable_area.values);
     params.floor          = m_nominal_z + params.clearance;
@@ -8481,6 +8500,12 @@ std::string GCode::surface_travel(const Vec3d &to, bool from_on_bead, bool to_on
         double      v = travel_speed;
         if (vz_max > 0. && std::abs(d.z()) > EPSILON)
             v = std::min(v, 0.99 * vz_max * d.norm() / std::abs(d.z()));
+        if (m_np_hold_z > 0. && vz_max > 0.) {
+            const Vec3d dh = printed(p) - printed(Vec3d(last.x(), last.y(), m_np_hold_z));
+            if (std::abs(dh.z()) > EPSILON)
+                v = std::min(v, 0.99 * vz_max * dh.norm() / std::abs(dh.z()));
+            m_np_hold_z = 0.;
+        }
         if (rate > 0.)
             v = std::min(v, rate * d.norm());
         gcode += m_writer.travel_to_pose({ p, Vec3d::UnitZ() }, i + 1 == travel.points.size() ? comment : "travel over the surface", v);

@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "jeSiHKAisMVAWrTq",
 	"instantiation": "true",
+	"nonplanar_head": "creality-k1-max",
 	"printer_model": "Creality K1 Max",
 	"gcode_flavor": "klipper",
 	"default_print_profile": "0.40mm Standard @Creality K1Max (0.8 nozzle)",

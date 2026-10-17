@@ -307,8 +307,11 @@ float GCodeProcessor::Trapezoid::deceleration_time(float distance, float acceler
 
 void GCodeProcessor::TimeBlock::calculate_trapezoid()
 {
-    float accelerate_distance = std::max(0.0f, estimated_acceleration_distance(feedrate_profile.entry, feedrate_profile.cruise, acceleration));
-    const float decelerate_distance = std::max(0.0f, estimated_acceleration_distance(feedrate_profile.cruise, feedrate_profile.exit, -acceleration));
+    const float cruise = smooth_cruise > 0.0f ? std::max(std::min(feedrate_profile.cruise, smooth_cruise),
+                                                         std::max(feedrate_profile.entry, feedrate_profile.exit)) :
+                                                feedrate_profile.cruise;
+    float accelerate_distance = std::max(0.0f, estimated_acceleration_distance(feedrate_profile.entry, cruise, acceleration));
+    const float decelerate_distance = std::max(0.0f, estimated_acceleration_distance(cruise, feedrate_profile.exit, -acceleration));
     float cruise_distance = distance - accelerate_distance - decelerate_distance;
 
     if (cruise_distance < 0.0f) {
@@ -317,7 +320,7 @@ void GCodeProcessor::TimeBlock::calculate_trapezoid()
         trapezoid.cruise_feedrate = speed_from_distance(feedrate_profile.entry, accelerate_distance, acceleration);
     }
     else
-        trapezoid.cruise_feedrate = feedrate_profile.cruise;
+        trapezoid.cruise_feedrate = cruise;
 
     trapezoid.accelerate_until = accelerate_distance;
     trapezoid.decelerate_after = accelerate_distance + cruise_distance;
@@ -409,6 +412,32 @@ static void planner_reverse_pass_kernel(GCodeProcessor::TimeBlock& curr, const G
     }
 }
 
+static void klipper_smooth_cruise(std::vector<GCodeProcessor::TimeBlock>& blocks)
+{
+    if (blocks.empty() || blocks.front().smooth_acceleration <= 0.0f)
+        return;
+    std::vector<float> s2(blocks.size() + 1);
+    s2[0] = sqr(blocks.front().feedrate_profile.entry);
+    for (size_t i = 0; i < blocks.size(); ++i) {
+        const float limit = sqr(blocks[i].max_entry_speed);
+        if (i > 0)
+            s2[i] = std::min(limit, s2[i - 1] + 2.0f * blocks[i - 1].distance * blocks[i - 1].smooth_acceleration);
+    }
+    s2.back() = sqr(blocks.back().safe_feedrate);
+    for (size_t i = blocks.size(); i-- > 0;)
+        s2[i] = std::min(s2[i], s2[i + 1] + 2.0f * blocks[i].distance * blocks[i].smooth_acceleration);
+    for (size_t i = 0; i < blocks.size(); ++i) {
+        GCodeProcessor::TimeBlock &b = blocks[i];
+        if (b.smooth_acceleration <= 0.0f)
+            continue;
+        const float cap = std::sqrt(0.5f * (s2[i] + s2[i + 1]) + b.distance * b.smooth_acceleration);
+        if (cap != b.smooth_cruise) {
+            b.smooth_cruise          = cap;
+            b.flags.recalculate      = true;
+        }
+    }
+}
+
 static void recalculate_trapezoids(std::vector<GCodeProcessor::TimeBlock>& blocks)
 {
     GCodeProcessor::TimeBlock* curr = nullptr;
@@ -482,6 +511,7 @@ void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult& result, P
         planner_forward_pass_kernel(blocks[i], blocks[i + 1]);
     }
 
+    klipper_smooth_cruise(blocks);
     recalculate_trapezoids(blocks);
 
     const size_t n_blocks_process = blocks.size() - keep_last_n_blocks;
@@ -3243,6 +3273,7 @@ void GCodeProcessor::reset()
     m_nonplanar_patch = -1;
     m_nonplanar_band = -1;
     m_nonplanar_feed_interval = 0.f;
+    m_klipper_min_cruise_ratio = 0.5f;
     m_units = EUnits::Millimeters;
     m_global_positioning_type = EPositioningType::Absolute;
     m_e_local_positioning_type = EPositioningType::Absolute;
@@ -4832,12 +4863,16 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
         }
 
         block.acceleration = acceleration;
+        if (m_flavor == gcfKlipper)
+            block.smooth_acceleration = std::min(acceleration, get_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i)) *
+                                                                   (1.0f - m_klipper_min_cruise_ratio));
 
         static const float PREVIOUS_FEEDRATE_THRESHOLD = 0.0001f;
         const bool has_prev_move = !blocks.empty() && prev.feedrate > PREVIOUS_FEEDRATE_THRESHOLD;
 
         const float vmax_junction_jd = calc_vmax_junction_deviation(block, prev, curr, has_prev_move,
-                                                                    static_cast<PrintEstimatedStatistics::ETimeMode>(i));
+                                                                    static_cast<PrintEstimatedStatistics::ETimeMode>(i),
+                                                                    blocks.empty() ? nullptr : &blocks.back());
         const bool use_junction_deviation = vmax_junction_jd >= 0.0f;
 
         curr.safe_feedrate = use_junction_deviation ? 0.0f : block.feedrate_profile.cruise;
@@ -5167,12 +5202,16 @@ void GCodeProcessor::process_VG1(const GCodeReader::GCodeLine& line)
         }
 
         block.acceleration = acceleration;
+        if (m_flavor == gcfKlipper)
+            block.smooth_acceleration = std::min(acceleration, get_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i)) *
+                                                                   (1.0f - m_klipper_min_cruise_ratio));
 
         static const float PREVIOUS_FEEDRATE_THRESHOLD = 0.0001f;
         const bool has_prev_move = !blocks.empty() && prev.feedrate > PREVIOUS_FEEDRATE_THRESHOLD;
 
         const float vmax_junction_jd = calc_vmax_junction_deviation(block, prev, curr, has_prev_move,
-                                                                    static_cast<PrintEstimatedStatistics::ETimeMode>(i));
+                                                                    static_cast<PrintEstimatedStatistics::ETimeMode>(i),
+                                                                    blocks.empty() ? nullptr : &blocks.back());
         const bool use_junction_deviation = vmax_junction_jd >= 0.0f;
 
         curr.safe_feedrate = use_junction_deviation ? 0.0f : block.feedrate_profile.cruise;
@@ -5982,6 +6021,17 @@ void GCodeProcessor::process_SET_VELOCITY_LIMIT(const GCodeReader::GCodeLine& li
         }
     }
 
+    static const std::regex cruise_ratio_pattern("\\sMINIMUM_CRUISE_RATIO\\s*=\\s*([0-9]*\\.*[0-9]*)");
+    static const std::regex accel_to_decel_pattern("\\sACCEL_TO_DECEL\\s*=\\s*([0-9]*\\.*[0-9]*)");
+    try {
+        if (std::regex_search(line.raw(), matches, cruise_ratio_pattern) && matches.size() == 2)
+            m_klipper_min_cruise_ratio = std::clamp(std::stof(matches[1]), 0.0f, 0.99f);
+        else if (std::regex_search(line.raw(), matches, accel_to_decel_pattern) && matches.size() == 2) {
+            const float accel = get_acceleration(PrintEstimatedStatistics::ETimeMode::Normal);
+            if (accel > 0.0f)
+                m_klipper_min_cruise_ratio = std::clamp(1.0f - std::stof(matches[1]) / accel, 0.0f, 0.99f);
+        }
+    } catch (...) {}
 }
 
 void GCodeProcessor::process_M221(const GCodeReader::GCodeLine& line)
@@ -6802,9 +6852,12 @@ float GCodeProcessor::calc_junction_acceleration(const TimeBlock& block, const V
     return junction_acceleration;
 }
 
+static constexpr float KlipperExtruderCornerVelocity = 1.0f;
+
 float GCodeProcessor::calc_vmax_junction_deviation(const TimeBlock& block, const TimeMachine::State& prev,
                                                    const TimeMachine::State& curr, bool has_prev_move,
-                                                   PrintEstimatedStatistics::ETimeMode mode) const
+                                                   PrintEstimatedStatistics::ETimeMode mode,
+                                                   const TimeBlock* prev_block) const
 {
     const float junction_deviation = get_junction_deviation(mode, block.acceleration);
     if (junction_deviation <= 0.0f)
@@ -6824,6 +6877,25 @@ float GCodeProcessor::calc_vmax_junction_deviation(const TimeBlock& block, const
     const float junction_acceleration = calc_junction_acceleration(block, junction_unit_vec, mode);
 
     float vmax_junction_sqr = (junction_acceleration * junction_deviation * sin_theta_d2) / (1.0f - sin_theta_d2);
+
+    if (m_flavor == gcfKlipper && prev_block != nullptr) {
+        const float scv = get_option_value(m_time_processor.machine_limits.machine_max_jerk_x, static_cast<size_t>(mode));
+        const float toolhead_accel = std::max(get_acceleration(mode), block.acceleration);
+        const float cos_theta_d2 = std::sqrt(0.5f * (1.0f + junction_cos_theta));
+        if (scv > 0.0f && toolhead_accel > 0.0f && cos_theta_d2 > 0.0f) {
+            const float jd     = sqr(scv) * (std::sqrt(2.0f) - 1.0f) / toolhead_accel;
+            const float r_jd   = sin_theta_d2 / (1.0f - sin_theta_d2);
+            const float accel  = std::min(block.acceleration, prev_block->acceleration);
+            const float q      = 0.25f * sin_theta_d2 / cos_theta_d2;
+            vmax_junction_sqr  = std::min({ r_jd * jd * accel, 2.0f * block.distance * block.acceleration * q,
+                                            2.0f * prev_block->distance * prev_block->acceleration * q });
+        }
+        if (curr.feedrate > 0.0f && prev.feedrate > 0.0f) {
+            const float diff_r = std::abs(curr.axis_feedrate[E] / curr.feedrate - prev.axis_feedrate[E] / prev.feedrate);
+            if (diff_r > 0.0f)
+                vmax_junction_sqr = std::min(vmax_junction_sqr, sqr(KlipperExtruderCornerVelocity / diff_r));
+        }
+    }
 
     if (m_flavor != gcfKlipper && block.distance < 1.0f && junction_cos_theta < -0.7071067812f) {
         const float neg = junction_cos_theta < 0.0f ? -1.0f : 1.0f;

@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "T3EZ1NtmQTNkmDkk",
 	"instantiation": "true",
+	"nonplanar_head": "prusa-mk3s",
 	"printer_model": "Prusa MK3S",
 	"printer_variant": "0.4",
 	"default_filament_profile": [
