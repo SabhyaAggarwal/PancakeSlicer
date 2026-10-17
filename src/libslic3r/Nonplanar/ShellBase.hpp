@@ -14,8 +14,9 @@ class PrintObject;
 namespace Slic3r::Nonplanar {
 
 struct ConformalPatch;
+struct ConformalResult;
 
-enum class BaseSupport : unsigned char { CurvedSparse, PlanarSparse, PlanarSolid, Air, Count };
+enum class BaseSupport : unsigned char { CurvedSparse, PlanarSparse, PlanarSolid, Air, Underside, Count };
 
 struct PatchBase
 {
@@ -31,15 +32,21 @@ struct PatchBase
     bool   bridged = false;
 };
 
+constexpr double UndersideContact = 0.1;
+
 constexpr double NormalThicknessTolerance = 0.02;
 
-int normal_solid_layers(double thickness, double shell_height, double slope, int layers, int shells);
+struct BaseInput
+{
+    HeightField      surface, planar_top, layers;
+    ExPolygons       area;
+    std::vector<int> patches;
+    int              sparse = 0, solid = 0;
+    bool             bridged = false;
+    double           shell_height = 0.;
+};
 
-double slope_p90(const HeightField &surface);
-
-PatchBase measure_patch_base(const PrintObject &object, const ConformalPatch &unit, const HeightField &planar_top,
-                             const HeightField &layers, const ExPolygons &area, const std::vector<const ConformalPatch *> &pieces,
-                             int sparse, int solid, bool bridged, const std::vector<double> &layer_z);
+void measure_shell_bases(const PrintObject &object, ConformalResult &result);
 
 void closing_cells(const PrintObject &object, const ConformalPatch &unit, const HeightField &planar_top, const HeightField &layers,
                    const ExPolygons &area, int solid, double thickness, const std::vector<double> &layer_z,

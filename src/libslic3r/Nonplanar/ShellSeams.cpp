@@ -120,7 +120,8 @@ void orient_free_roads(std::vector<const ExtrusionPathConformal *> &order, std::
                             (i + 1 < order.size() && order[i + 1]->polyline.points.front().to_point() == last.to_point());
         const bool tucked = i > 0 && (order[i - 1]->polyline.points.back().to_point() - first.to_point()).cast<double>().norm() <
                                          scale_(StartTuck);
-        if (joined || tucked || last.z() >= first.z() - rise)
+        const bool loop = (last.to_point() - first.to_point()).cast<double>().norm() <= 1.5 * scale_(path.width);
+        if (joined || tucked || loop || last.z() >= first.z() - rise)
             continue;
         if (!path.bead_height.empty() && (path.bead_height.front() <= 0.f || path.bead_height.back() <= 0.f))
             continue;
@@ -275,6 +276,96 @@ void PressureAdvanceTracker::restore(std::string &out)
     out += this->set(m_base.value);
     m_changed = false;
     m_height  = m_nominal;
+}
+
+bool scarf_curved_loop(ExtrusionPathConformal &path, const CurvedScarf &scarf, const std::function<Vec2d(const Vec2d &)> &gradient)
+{
+    const Points3 &pts = path.polyline.points;
+    const size_t   n   = pts.size();
+    if (n < 4 || scarf.length <= 0. || !path.tool_axis.empty() || path.bead_height.size() != n ||
+        (!path.bead_width.empty() && path.bead_width.size() != n))
+        return false;
+    for (float h : path.bead_height)
+        if (h <= 0.f)
+            return false;
+    auto xy = [&pts](size_t i) { return unscale(pts[i].to_point()); };
+    if ((xy(n - 1) - xy(0)).norm() > 1.5 * path.width)
+        return false;
+    std::vector<double> s(n, 0.);
+    double turn = 0., max_turn = 0.;
+    for (size_t i = 1; i < n; ++i)
+        s[i] = s[i - 1] + (xy(i) - xy(i - 1)).norm();
+    for (size_t i = 1; i + 1 < n; ++i) {
+        const Vec2d a = xy(i) - xy(i - 1), b = xy(i + 1) - xy(i);
+        if (a.squaredNorm() > 0. && b.squaredNorm() > 0.)
+            turn += std::atan2(a.x() * b.y() - a.y() * b.x(), a.dot(b));
+    }
+    if (std::abs(turn) < 1.6 * PI || std::abs(turn) > 2.4 * PI || s.back() < 4. * scarf.nozzle)
+        return false;
+    if (scarf.max_turn >= 0.) {
+        auto at = [&](double t) {
+            t        = std::clamp(t, 0., s.back());
+            size_t k = size_t(std::upper_bound(s.begin(), s.end(), t) - s.begin());
+            k        = std::clamp<size_t>(k, 1, n - 1);
+            const double l = s[k] - s[k - 1];
+            return Vec2d(xy(k - 1) + (l > 0. ? (t - s[k - 1]) / l : 0.) * (xy(k) - xy(k - 1)));
+        };
+        for (size_t i = 0; i < n; ++i) {
+            const Vec2d a = at(s[i]) - at(s[i] - scarf.nozzle), b = at(s[i] + scarf.nozzle) - at(s[i]);
+            if (a.squaredNorm() > 0. && b.squaredNorm() > 0.)
+                max_turn = std::max(max_turn, std::abs(std::atan2(a.x() * b.y() - a.y() * b.x(), a.dot(b))));
+        }
+        if (max_turn > scarf.max_turn)
+            return false;
+    }
+    const double length = std::min(scarf.length, s.back());
+    const double share0 = std::clamp(scarf.start_share, CurvedScarfMinShare, 1.);
+    Points3            ramp;
+    std::vector<float> ramp_h, ramp_w;
+    std::vector<double> ramp_s;
+    for (size_t i = 0; i < n && s[i] <= length; ++i) {
+        ramp.emplace_back(pts[i]);
+        ramp_h.emplace_back(path.bead_height[i]);
+        ramp_w.emplace_back(path.bead_width.empty() ? 0.f : path.bead_width[i]);
+        ramp_s.emplace_back(s[i]);
+    }
+    const size_t m = ramp.size();
+    if (m < n && ramp_s.back() < length - EPSILON) {
+        const double t = (length - s[m - 1]) / (s[m] - s[m - 1]);
+        ramp.emplace_back((pts[m - 1].cast<double>() + t * (pts[m] - pts[m - 1]).cast<double>()).cast<coord_t>());
+        ramp_h.emplace_back(float(path.bead_height[m - 1] + t * (path.bead_height[m] - path.bead_height[m - 1])));
+        ramp_w.emplace_back(path.bead_width.empty() ? 0.f : float(path.bead_width[m - 1] + t * (path.bead_width[m] - path.bead_width[m - 1])));
+        ramp_s.emplace_back(length);
+    }
+    auto share = [&](double d) { return share0 + (1. - share0) * std::min(1., d / length); };
+    Points3            out_pts;
+    std::vector<float> out_h, out_w;
+    auto push = [&](const Point3 &p, float h, float w) {
+        if (!out_pts.empty() && out_pts.back() == p)
+            return;
+        out_pts.emplace_back(p);
+        out_h.emplace_back(h);
+        out_w.emplace_back(w);
+    };
+    for (size_t k = 0; k < ramp.size(); ++k) {
+        const double f    = share(ramp_s[k]);
+        const double drop = (1. - f) * ramp_h[k];
+        Vec2d        g    = gradient ? gradient(unscale(ramp[k].to_point())) : Vec2d::Zero();
+        if (std::isnan(g.x()) || std::isnan(g.y()))
+            g = Vec2d::Zero();
+        const double c = 1. / std::sqrt(1. + g.squaredNorm());
+        const Vec3d d = drop * c * c * Vec3d(g.x(), g.y(), -1.);
+        push(Point3(ramp[k] + Vec3d(scale_(d.x()), scale_(d.y()), scale_(d.z())).cast<coord_t>()), float(f * ramp_h[k]), ramp_w[k]);
+    }
+    for (size_t i = m; i < n; ++i)
+        push(pts[i], path.bead_height[i], path.bead_width.empty() ? 0.f : path.bead_width[i]);
+    for (size_t k = 0; k < ramp.size(); ++k)
+        push(ramp[k], float(std::max(SoftTaperFloor, 1. - share(ramp_s[k])) * ramp_h[k]), ramp_w[k]);
+    path.polyline.points = std::move(out_pts);
+    path.bead_height     = std::move(out_h);
+    if (!path.bead_width.empty())
+        path.bead_width = std::move(out_w);
+    return true;
 }
 
 double mean_bead_height(const std::vector<ConformalPoint> &points)

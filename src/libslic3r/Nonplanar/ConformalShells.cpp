@@ -110,7 +110,7 @@ ShellSettings shell_settings(const PrintObject &object, size_t region_id)
     s.adaptive         = s.banded && cfg.nonplanar_adaptive_bands.value;
     s.top_shells       = s.shells;
     if (s.banded && infill_depth(cfg, object) > 0.) {
-        const int top_solid = std::max(cfg.top_shell_layers.value, int(std::ceil(cfg.top_shell_thickness.value / s.shell_height - EPSILON)));
+        const int top_solid = planar_top_layers(cfg, s.shell_height);
         s.sparse_density    = std::min(1., 0.01 * cfg.sparse_infill_density.value);
         if (s.sparse_density > 0.)
             s.sparse = int(std::lround(infill_depth(cfg, object) / s.shell_height));
@@ -234,7 +234,7 @@ std::unique_ptr<ArachneLoops> arachne_paths(const ExPolygon &piece, const Flow &
 }
 
 void arachne_roads(const ExPolygon &piece, Arachne::WallToolPaths *paths, const Flow &flow, double layer_height, size_t max_loops, WidthRoads &out,
-                   Polygons *inner = nullptr)
+                   Polygons *inner = nullptr, const Point *seam = nullptr)
 {
     if (paths == nullptr)
         return;
@@ -253,16 +253,17 @@ void arachne_roads(const ExPolygon &piece, Arachne::WallToolPaths *paths, const 
     std::optional<ExPolygons> link_grown;
     std::optional<Point> last;
     while (!lines.empty()) {
+        const std::optional<Point> near = last ? last : seam != nullptr ? std::optional<Point>(*seam) : std::nullopt;
         size_t best = 0;
         double best_d = std::numeric_limits<double>::max();
         for (size_t i = 0; i < lines.size() && lines[i]->inset_idx == lines.front()->inset_idx; ++i) {
             const auto &js = lines[i]->junctions;
             double      d  = 0.;
-            if (last) {
-                d = std::min((js.front().p - *last).cast<double>().squaredNorm(), (js.back().p - *last).cast<double>().squaredNorm());
+            if (near) {
+                d = std::min((js.front().p - *near).cast<double>().squaredNorm(), (js.back().p - *near).cast<double>().squaredNorm());
                 if (lines[i]->is_closed)
                     for (size_t j = 0; j + 1 < js.size(); ++j)
-                        d = std::min(d, Line(js[j].p, js[j + 1].p).distance_to_squared(*last));
+                        d = std::min(d, Line(js[j].p, js[j + 1].p).distance_to_squared(*near));
             }
             if (d < best_d) {
                 best_d = d;
@@ -278,19 +279,25 @@ void arachne_roads(const ExPolygon &piece, Arachne::WallToolPaths *paths, const 
             w.emplace_back(std::max(min_spacing, float(unscale<double>(j.w))) + to_width);
         }
         if (line.is_closed) {
-            size_t start = 0;
-            if (last) {
+            auto foot_of = [&pl](const Point &q, size_t &start, Point &foot) {
                 double best_seg = std::numeric_limits<double>::max();
-                Point  foot;
                 for (size_t j = 0; j + 1 < pl.points.size(); ++j) {
                     Point        f;
-                    const double d = Line(pl.points[j], pl.points[j + 1]).distance_to_squared(*last, &f);
+                    const double d = Line(pl.points[j], pl.points[j + 1]).distance_to_squared(q, &f);
                     if (d < best_seg) {
                         best_seg = d;
                         start    = j + 1;
                         foot     = f;
                     }
                 }
+            };
+            size_t start = 0;
+            Point  foot;
+            if (seam != nullptr)
+                foot_of(*seam, start, foot);
+            if (last && (seam == nullptr || (foot - *last).cast<double>().norm() > scale_(link_max)))
+                foot_of(*last, start, foot);
+            if (start > 0) {
                 const double seg = (pl.points[start] - pl.points[start - 1]).cast<double>().norm();
                 if (const double t = seg > 0. ? (foot - pl.points[start - 1]).cast<double>().norm() / seg : 0.; t > 0.01 && t < 0.99) {
                     pl.points.insert(pl.points.begin() + start, foot);
@@ -342,7 +349,7 @@ void arachne_roads(const ExPolygon &piece, Arachne::WallToolPaths *paths, const 
                     w.insert(w.begin(), pre.size(), float(flow.width()));
                 }
             }
-        } else if (last && (pl.points.back() - *last).cast<double>().squaredNorm() < (pl.points.front() - *last).cast<double>().squaredNorm()) {
+        } else if (near && (pl.points.back() - *near).cast<double>().squaredNorm() < (pl.points.front() - *near).cast<double>().squaredNorm()) {
             pl.reverse();
             std::reverse(w.begin(), w.end());
         }
@@ -361,14 +368,15 @@ void arachne_roads(const ExPolygon &piece, Arachne::WallToolPaths *paths, const 
         append(*inner, paths->getInnerContour());
 }
 
-void arachne_roads(const ExPolygon &piece, const Flow &flow, double layer_height, size_t max_loops, WidthRoads &out, Polygons *inner = nullptr)
+void arachne_roads(const ExPolygon &piece, const Flow &flow, double layer_height, size_t max_loops, WidthRoads &out, Polygons *inner = nullptr,
+                   const Point *seam = nullptr)
 {
     const std::unique_ptr<ArachneLoops> loops = arachne_paths(piece, flow, layer_height, max_loops);
-    arachne_roads(piece, loops ? loops->paths.get() : nullptr, flow, layer_height, max_loops, out, inner);
+    arachne_roads(piece, loops ? loops->paths.get() : nullptr, flow, layer_height, max_loops, out, inner, seam);
 }
 
 void contour_fill(const HeightField &surface, const ExPolygons &area, double drop, double strip_height, double strip_offset, const Flow &flow, double layer_height,
-                  double angle, bool outer, double z, WidthRoads &roads, std::vector<Polylines> &lines)
+                  double angle, bool outer, double z, WidthRoads &roads, std::vector<Polylines> &lines, const Point *seam = nullptr)
 {
     HeightField fine(BoundingBoxf(surface.origin(), surface.node(surface.nx() - 1, surface.ny() - 1)), surface.pitch() / ContourRefine);
     std::vector<float>().swap(fine.data());
@@ -415,7 +423,7 @@ void contour_fill(const HeightField &surface, const ExPolygons &area, double dro
         }
     });
     for (size_t i = 0; i < pieces.size(); ++i) {
-        arachne_roads(pieces[i], paths[i] ? paths[i]->paths.get() : nullptr, flow, layer_height, ContourLoops, roads);
+        arachne_roads(pieces[i], paths[i] ? paths[i]->paths.get() : nullptr, flow, layer_height, ContourLoops, roads, nullptr, seam);
         append(lines, std::move(middles[i]));
     }
 }
@@ -698,13 +706,14 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
         }
     } else if (banded != nullptr && banded->strips)
         contour_fill(patch.surface, outer ? expolygons_simplify(rest, scale_(0.5 * patch.surface.pitch())) : rest, drop,
-                     banded->strip_height, banded->strip_offset, flow, height, fill.angle, outer, host_z, roads, linked);
+                     banded->strip_height, banded->strip_offset, flow, height, fill.angle, outer, host_z, roads, linked,
+                     outer ? &start : nullptr);
     else if (!rest.empty())
         append(linked, shell_polylines(fill.spiral ? rest : off_voids(rest, flow.spacing()), rings, outer ? ipMonotonic : ipRectilinear, flow.spacing(), outer, flow,
                                        host_z, start, MaxGlide, surface_spaced ? &patch.surface.get() : nullptr, &seam_line, &ramp));
     if (banded != nullptr && !sparse && !plug)
         for (const ExPolygon &strip : banded->lengthwise)
-            arachne_roads(strip, flow, height, 0, roads);
+            arachne_roads(strip, flow, height, 0, roads, nullptr, outer ? &start : nullptr);
     std::vector<Polylines> pinholes;
     if (banded != nullptr && !sparse &&
         cover_has_gaps(offset_ex(whole, -float(scale_(0.5 * flow.spacing()))), linked, flow.width(), roads.polylines, roads.widths,
@@ -1371,11 +1380,8 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
         choose_patch_settings(object, head, settings.max_error, first_top, patch);
         if (settings.shells > settings.top_shells)
             patch.shells = settings.shells;
-        int patch_solid = solid_layers;
-        if (settings.shells > settings.top_shells) {
-            patch_solid  = normal_solid_layers(top_thickness, h_c, slope_p90(patch.surface), solid_layers, settings.shells);
-            patch.sparse = settings.shells - patch_solid;
-        }
+        if (settings.shells > settings.top_shells)
+            patch.sparse = settings.sparse;
 
         PatchDiagnostics diag;
         diag.patch_id   = patch.id;
@@ -1451,7 +1457,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
             for (; m >= (settings.shells > settings.top_shells ? std::min(n_top, min_shells) : n_top); --m) {
                 if (m > n_top) {
                     const float u = U.at(ix0 + int(i % size_t(top.nx())), iy0 + int(i / size_t(top.nx())));
-                    if (std::isnan(u) || s - m * h_c - h_min < u + (m > patch_solid ? settings.bottom_keep : h_c))
+                    if (std::isnan(u) || s - m * h_c - h_min < u + (m > solid_layers ? settings.bottom_keep : h_c))
                         continue;
                 }
                 if (stack && m == n_top && !std::isnan(stack->outer.data()[i])) {
@@ -1895,20 +1901,15 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                     close_layer(object, i, union_ex(solid_cells[i]), union_ex(bridge_cells[i]));
         });
     }
-    {
-        std::vector<std::vector<const ConformalPatch *>> pieces(units.size());
-        for (size_t i = 0; i < result.patches.size(); ++i)
-            pieces[settings.banded ? patch_component[i] : i].push_back(&result.patches[i]);
-        result.base.resize(units.size());
-        tbb::parallel_for(tbb::blocked_range<size_t>(0, units.size()), [&](const tbb::blocked_range<size_t> &range) {
-            for (size_t idx = range.begin(); idx < range.end(); ++idx)
-                if (printed[idx])
-                    result.base[idx] = measure_patch_base(object, units[idx], planar_tops[idx], stack_layers[idx], shell_areas[idx], pieces[idx],
-                                                          units[idx].sparse, units[idx].shells - units[idx].sparse, units[idx].bridged_base, layer_z);
-        });
-        result.base.erase(std::remove_if(result.base.begin(), result.base.end(), [](const PatchBase &b) { return b.patches.empty(); }),
-                          result.base.end());
-    }
+    for (size_t idx = 0; idx < units.size(); ++idx)
+        if (printed[idx]) {
+            BaseInput input{ units[idx].surface, planar_tops[idx], stack_layers[idx], shell_areas[idx], {}, units[idx].sparse,
+                             units[idx].shells - units[idx].sparse, units[idx].bridged_base, units[idx].shell_height };
+            for (size_t i = 0; i < result.patches.size(); ++i)
+                if ((settings.banded ? patch_component[i] : i) == idx)
+                    input.patches.push_back(result.patches[i].id);
+            result.base_inputs.emplace_back(std::move(input));
+        }
 
     BOOST_LOG_TRIVIAL(info) << "Non-planar: " << result.patches.size() << " curved top patch(es) in " << object.model_object()->name
                             << ", " << grid.nx() << "x" << grid.ny() << " nodes, "
@@ -1948,7 +1949,7 @@ ConformalResult build_conformal_shells(PrintObject &object)
                                                      groups.size() > 1 ? &all_tops : nullptr);
         result.mesh            = region.mesh;
         result.flow_mod.merge(region.flow_mod);
-        append(result.base, std::move(region.base));
+        append(result.base_inputs, std::move(region.base_inputs));
         for (ConformalPatch &patch : region.patches)
             result.patches.emplace_back(std::move(patch));
         for (PatchDiagnostics &diag : region.diagnostics)

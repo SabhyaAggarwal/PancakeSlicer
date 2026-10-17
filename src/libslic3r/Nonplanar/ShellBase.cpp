@@ -7,6 +7,7 @@
 #include "libslic3r/AABBTreeLines.hpp"
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ClipperUtils.hpp"
+#include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
 #include "libslic3r/Fill/FillBase.hpp"
 #include "libslic3r/Flow.hpp"
@@ -17,8 +18,12 @@
 #include "libslic3r/Surface.hpp"
 #include "libslic3r/libslic3r.h"
 
+#include <tbb/blocked_range.h>
+#include <tbb/parallel_for.h>
+
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <map>
 #include <memory>
 #include <vector>
@@ -26,6 +31,17 @@
 namespace Slic3r::Nonplanar {
 
 namespace {
+
+constexpr float Inf = std::numeric_limits<float>::infinity();
+
+template<class Fn> void for_each_conformal(const ExtrusionEntity &entity, const Fn &fn)
+{
+    if (const auto *collection = dynamic_cast<const ExtrusionEntityCollection *>(&entity)) {
+        for (const ExtrusionEntity *e : collection->entities)
+            for_each_conformal(*e, fn);
+    } else if (const auto *path = dynamic_cast<const ExtrusionPathConformal *>(&entity))
+        fn(*path);
+}
 
 template<class Keep> void collect_lines(const ExtrusionEntity &entity, const Keep &keep, Lines &out)
 {
@@ -100,37 +116,72 @@ PlanarLayerView view_layer(const Layer &layer, const HeightField &grid)
 }
 
 }
-
-int normal_solid_layers(double thickness, double shell_height, double slope, int layers, int shells)
+struct UndersideColumns
 {
-    if (thickness <= 0. || shell_height <= 0.)
-        return std::min(layers, shells);
-    const int n = int(std::ceil((thickness - NormalThicknessTolerance) / (shell_height * std::cos(slope)) - EPSILON));
-    return std::clamp(std::max(n, layers), 0, shells);
+    std::vector<float> top, bottom;
+};
+
+UndersideColumns underside_columns(const PrintObject &object, const ConformalResult &result, const HeightField &grid,
+                                   const HeightField &ceiling, const ExPolygons &area)
+{
+    UndersideColumns out{ std::vector<float>(grid.data().size(), -Inf), std::vector<float>(grid.data().size(), Inf) };
+    const BoundingBox box   = get_extents(area);
+    const double      pitch = grid.pitch();
+    auto mark = [&](const Vec2d &p, double top, double bead, double width) {
+        const double r   = 0.5 * width;
+        const Vec2d  lo  = (p - grid.origin()) / pitch - Vec2d(r, r) / pitch, hi = lo + Vec2d(2. * r, 2. * r) / pitch;
+        for (int iy = std::max(0, int(std::ceil(lo.y()))); iy <= std::min(grid.ny() - 1, int(std::floor(hi.y()))); ++iy)
+            for (int ix = std::max(0, int(std::ceil(lo.x()))); ix <= std::min(grid.nx() - 1, int(std::floor(hi.x()))); ++ix) {
+                const size_t i = size_t(iy) * grid.nx() + ix;
+                const float  c = ceiling.data()[i];
+                if (std::isnan(c) || top > c + EPSILON || (grid.node(ix, iy) - p).squaredNorm() > r * r)
+                    continue;
+                out.top[i]    = std::max(out.top[i], float(top));
+                out.bottom[i] = std::min(out.bottom[i], float(top - bead));
+            }
+    };
+    for (const ConformalPatch &patch : result.patches) {
+        if (patch.kind != PatchKind::Bottom && patch.kind != PatchKind::Bridge && patch.kind != PatchKind::Overhang &&
+            patch.kind != PatchKind::Volume)
+            continue;
+        if (!box.overlap(get_extents(patch.footprint)))
+            continue;
+        const double host_z = object.layers()[patch.host_layer]->print_z;
+        for (const ExtrusionEntityCollection &shell : patch.shell_paths)
+            for_each_conformal(shell, [&](const ExtrusionPathConformal &path) {
+                const Points3 &pts = path.polyline.points;
+                if (path.bead_height.size() != pts.size())
+                    return;
+                const bool variable = path.bead_width.size() == pts.size();
+                for (size_t k = 0; k + 1 < pts.size(); ++k) {
+                    const Vec3d a = unscale(pts[k]), b = unscale(pts[k + 1]);
+                    const int   n = std::max(1, int(std::ceil((b - a).head<2>().norm() / (0.5 * pitch))));
+                    for (int j = k == 0 ? 0 : 1; j <= n; ++j) {
+                        const double f    = double(j) / n;
+                        const double bead = (1. - f) * path.bead_height[k] + f * path.bead_height[k + 1];
+                        if (bead <= 0.)
+                            continue;
+                        const double width = variable ? (1. - f) * path.bead_width[k] + f * path.bead_width[k + 1] : path.width;
+                        const Vec3d  q     = a + f * (b - a);
+                        mark(q.head<2>(), host_z + q.z(), bead, width);
+                    }
+                }
+            });
+    }
+    return out;
 }
 
-double slope_p90(const HeightField &surface)
+PatchBase measure_patch_base(const PrintObject &object, const BaseInput &input, const std::vector<const ConformalPatch *> &pieces,
+                             const UndersideColumns &under, const std::vector<double> &layer_z)
 {
-    std::vector<double> slopes;
-    for (int iy = 0; iy < surface.ny(); ++iy)
-        for (int ix = 0; ix < surface.nx(); ++ix)
-            if (!std::isnan(surface.at(ix, iy)))
-                if (const Vec2d g = surface.gradient(surface.node(ix, iy)); g.allFinite())
-                    slopes.push_back(std::atan(g.norm()));
-    return percentile(std::move(slopes), 0.9);
-}
-
-PatchBase measure_patch_base(const PrintObject &object, const ConformalPatch &unit, const HeightField &planar_top,
-                             const HeightField &layers, const ExPolygons &area, const std::vector<const ConformalPatch *> &pieces,
-                             int sparse, int solid, bool bridged, const std::vector<double> &layer_z)
-{
+    const HeightField &planar_top = input.planar_top, &layers = input.layers;
+    const int          sparse = input.sparse, solid = input.solid;
     PatchBase base;
     base.solid_layers = solid;
-    base.bridged      = bridged;
-    for (const ConformalPatch *p : pieces)
-        base.patches.push_back(p->id);
+    base.bridged      = input.bridged;
+    base.patches      = input.patches;
     const auto       object_layers = object.layers();
-    const Mask       inside        = rasterize(area, planar_top);
+    const Mask       inside        = rasterize(input.area, planar_top);
     std::unique_ptr<AABBTreeLines::LinesDistancer<Line>> curved_sparse;
     if (sparse > 0) {
         Lines lines;
@@ -152,7 +203,7 @@ PatchBase measure_patch_base(const PrintObject &object, const ConformalPatch &un
     struct Node { BaseSupport support; double reach; int solid; double vertical; double cos_slope; };
     std::vector<Node>   nodes;
     std::vector<double> slopes;
-    const double        h_c = unit.shell_height;
+    const double        h_c = input.shell_height;
     for (int iy = 0; iy < planar_top.ny(); ++iy)
         for (int ix = 0; ix < planar_top.nx(); ++ix) {
             const size_t i = size_t(iy) * planar_top.nx() + ix;
@@ -160,7 +211,7 @@ PatchBase measure_patch_base(const PrintObject &object, const ConformalPatch &un
             if (!inside[i] || !std::isfinite(b) || std::isnan(m))
                 continue;
             const Vec2d p = planar_top.node(ix, iy);
-            const Vec2d g = unit.surface.gradient(p);
+            const Vec2d g = input.surface.gradient(p);
             if (!g.allFinite())
                 continue;
             Node n{ BaseSupport::PlanarSolid, 0., std::min(int(m), solid), 0., 1. / std::sqrt(1. + g.squaredNorm()) };
@@ -171,7 +222,10 @@ PatchBase measure_patch_base(const PrintObject &object, const ConformalPatch &un
                 n.reach   = curved_sparse ? unscale<double>(curved_sparse->distance_from_lines<false>(q)) : BridgeSpanAir;
             } else if (const size_t l = layer_of(b); l != size_t(-1)) {
                 PlanarLayerView &v = view(l);
-                if (!v.material[i]) {
+                if (!v.material[i] && under.top[i] >= b - UndersideContact) {
+                    n.support  = BaseSupport::Underside;
+                    n.vertical = std::clamp(double(b - under.bottom[i]), 0., 2.);
+                } else if (!v.material[i]) {
                     n.support = BaseSupport::Air;
                     n.reach   = std::min(0.5 * BridgeSpanAir, v.edge_distance(q));
                 } else if (v.sparse[i]) {
@@ -218,7 +272,7 @@ PatchBase measure_patch_base(const PrintObject &object, const ConformalPatch &un
         else if (n.support != BaseSupport::PlanarSolid && span[size_t(n.support)] > 0.) {
             const double L = span[size_t(n.support)];
             const double x = std::min(n.reach, 0.5 * L) / L;
-            s = bridge_sag(L, bridged && n.support == BaseSupport::CurvedSparse) * 4. * x * (1. - x) *
+            s = bridge_sag(L, input.bridged && n.support == BaseSupport::CurvedSparse) * 4. * x * (1. - x) *
                 std::pow(BridgeSagLayerFactor, std::max(0, n.solid - 1));
         }
         sag_sq += s * s;
@@ -230,6 +284,29 @@ PatchBase measure_patch_base(const PrintObject &object, const ConformalPatch &un
     base.solid_p50 = percentile(thickness, 0.5);
     base.sag_rms   = std::sqrt(sag_sq / double(nodes.size()));
     return base;
+}
+
+void measure_shell_bases(const PrintObject &object, ConformalResult &result)
+{
+    std::vector<double> layer_z;
+    for (const Layer *layer : object.layers())
+        layer_z.push_back(layer->print_z);
+    std::vector<PatchBase> bases(result.base_inputs.size());
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, bases.size()), [&](const tbb::blocked_range<size_t> &range) {
+        for (size_t idx = range.begin(); idx < range.end(); ++idx) {
+            const BaseInput                   &input = result.base_inputs[idx];
+            std::vector<const ConformalPatch *> pieces;
+            for (const ConformalPatch &patch : result.patches)
+                if (std::find(input.patches.begin(), input.patches.end(), patch.id) != input.patches.end())
+                    pieces.push_back(&patch);
+            bases[idx] = measure_patch_base(object, input, pieces, underside_columns(object, result, input.planar_top, input.surface, input.area),
+                                            layer_z);
+        }
+    });
+    result.base_inputs.clear();
+    for (PatchBase &base : bases)
+        if (!base.patches.empty())
+            result.base.emplace_back(std::move(base));
 }
 
 void closing_cells(const PrintObject &object, const ConformalPatch &unit, const HeightField &planar_top, const HeightField &layers,

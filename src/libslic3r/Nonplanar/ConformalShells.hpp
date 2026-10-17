@@ -117,6 +117,7 @@ struct ConformalResult
     std::vector<ExPolygons>       self_supported;
     FlowModStats                  flow_mod;
     std::vector<PatchBase>        base;
+    std::vector<BaseInput>        base_inputs;
     bool                          layer_changes_filament = false;
     std::vector<double>           event_cuts;
     std::shared_ptr<ObjectMesh>   mesh;

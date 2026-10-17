@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <deque>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -74,6 +75,16 @@ private:
 constexpr double PressureAdvanceStep = 0.25;
 
 size_t convex_seam(const std::vector<double> &rear, const std::vector<double> &curvature, const std::vector<double> &z);
+struct CurvedScarf
+{
+    double length      = 0.;
+    double start_share = 0.5;
+    double max_turn    = -1.;
+    double nozzle      = 0.4;
+};
+constexpr double CurvedScarfMinShare = 0.5;
+bool scarf_curved_loop(ExtrusionPathConformal &path, const CurvedScarf &scarf, const std::function<Vec2d(const Vec2d &)> &gradient);
+
 double mean_bead_height(const std::vector<ConformalPoint> &points);
 double meridian_curvature(const HeightField &surface, const Polyline &meridian, double length = 5.);
 

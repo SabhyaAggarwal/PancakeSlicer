@@ -545,18 +545,82 @@ Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam,
         level = std::move(next);
     }
     loops = union_pt_chained_outside_in(loops);
-    Polylines out;
+    Polyline line = seam_line != nullptr && seam_line->is_valid() ? *seam_line : Polyline(seam, seam);
+    if (!innermost.empty()) {
+        Vec2d  c    = Vec2d::Zero();
+        double area = 0.;
+        for (const ExPolygon &e : innermost) {
+            const double a = e.area();
+            c += a * e.contour.centroid().cast<double>();
+            area += a;
+        }
+        if (area > 0.)
+            line.points.emplace_back((c / area).cast<coord_t>());
+    }
+    Polylines opened;
+    Polygons  rings;
     Point     pos = seam;
     for (const Polygon &loop : loops) {
         if (loop.points.size() < 3)
             continue;
-        Polyline pl = open_loop_at(loop, out.empty() || seam_line == nullptr ? pos : crossing_near(loop, *seam_line, pos));
-        pl.clip_end(double(step));
-        if (!pl.is_valid())
+        Polyline pl = open_loop_at(loop, opened.empty() ? pos : crossing_near(loop, line, pos));
+        Polyline short_of = pl;
+        short_of.clip_end(double(step));
+        if (!short_of.is_valid())
             continue;
-        pos = pl.last_point();
+        pos = pl.first_point();
+        opened.emplace_back(std::move(pl));
+        rings.emplace_back(loop);
+    }
+    Polylines out;
+    for (size_t k = 0; k < opened.size(); ++k) {
+        Polyline pl = opened[k];
+        const double length = pl.length();
+        const double shear  = std::clamp(0.125 * length, double(step), scale_(RingStepLength));
+        bool         joined = false;
+        if (k + 1 < opened.size() && shear > double(step)) {
+            Polyline body = pl;
+            body.clip_end(shear);
+            Polyline tail = pl;
+            tail.reverse();
+            tail.clip_end(length - shear);
+            tail.reverse();
+            Points blended;
+            bool   parallel = body.is_valid() && tail.is_valid();
+            double done     = 0.;
+            for (size_t i = 0; parallel && i + 1 < tail.points.size(); ++i) {
+                const Vec2d  a = tail.points[i].cast<double>(), b = tail.points[i + 1].cast<double>();
+                const double l = (b - a).norm();
+                const int    n = std::max(1, int(std::ceil(l / (0.25 * double(step)))));
+                for (int j = (i == 0 ? 0 : 1); j <= n; ++j) {
+                    const Point  q(((a + (b - a) * (double(j) / n))).cast<coord_t>());
+                    const Point  f = project_on(rings[k + 1], q).first;
+                    const double d = (f - q).cast<double>().norm();
+                    if (d < 0.5 * double(step) || d > 1.5 * double(step)) {
+                        parallel = false;
+                        break;
+                    }
+                    const double t = std::min(1., (done + l * double(j) / n) / shear);
+                    blended.emplace_back((q.cast<double>() + t * (f - q).cast<double>()).cast<coord_t>());
+                }
+                done += l;
+            }
+            const Vec2d miss = blended.empty() ? Vec2d(Vec2d::Zero()) : Vec2d((opened[k + 1].first_point() - blended.back()).cast<double>());
+            if (parallel && !blended.empty() && miss.norm() <= 1.5 * double(step)) {
+                for (size_t i = 0; i < blended.size(); ++i)
+                    blended[i] += (miss * (double(i) / double(std::max<size_t>(1, blended.size() - 1)))).cast<coord_t>();
+                blended.back() = opened[k + 1].first_point();
+                body.points.insert(body.points.end(), blended.begin() + (blended.front() == body.last_point() ? 1 : 0), blended.end());
+                pl     = std::move(body);
+                joined = true;
+            }
+        }
+        if (!joined)
+            pl.clip_end(double(step));
         out.emplace_back(std::move(pl));
     }
+    if (!out.empty())
+        pos = out.back().last_point();
     append(out, chain_polylines(std::move(centres), &pos));
     if (!innermost.empty()) {
         BoundingBox box = get_extents(innermost);
@@ -642,27 +706,34 @@ std::vector<Polylines> shell_polylines(const ExPolygons &area, const ShellFill &
         if (fill.outward)
             reverse_order(paths);
     } else {
-        const ExPolygons inner = fill.outline ? offset_ex(area, -float(scale_(spacing))) : area;
+        const ExPolygons inner  = fill.outline ? offset_ex(area, -float(scale_(spacing))) : area;
+        const bool       seamed = fill.outline && seam_line != nullptr && seam_line->is_valid();
+        Polylines        outline;
+        auto             open_outline = [&](const Point &at) {
+            for (const Polygon &loop : fill.outline ? to_polygons(offset_ex(area, -0.5f * float(scale_(spacing)))) : Polygons()) {
+                Polyline pl = open_loop_at(loop, at);
+                pl.clip_end(0.2 * scale_(spacing));
+                if (pl.is_valid())
+                    outline.emplace_back(std::move(pl));
+            }
+            std::stable_sort(outline.begin(), outline.end(), [&at](const Polyline &l, const Polyline &r) {
+                return (l.first_point() - at).cast<double>().norm() > (r.first_point() - at).cast<double>().norm();
+            });
+        };
+        if (seamed)
+            open_outline(seam_line->first_point());
+        const Point from = seamed && !outline.empty() ? outline.back().last_point() : start;
         paths = surface_spaced != nullptr ?
                     fill_surface_spaced(inner, *surface_spaced, line_pattern, spacing, fill.angle, monotonic, flow, z) :
                     fill_solid(inner, line_pattern, spacing, fill.angle, monotonic, flow, z);
         if (monotonic) {
-            if (!paths.empty() && (paths.back().last_point() - start).cast<double>().norm() <
-                                      (paths.front().first_point() - start).cast<double>().norm())
+            if (!paths.empty() && (paths.back().last_point() - from).cast<double>().norm() <
+                                      (paths.front().first_point() - from).cast<double>().norm())
                 reverse_order(paths);
         } else
-            paths = chain_nearest(std::move(paths), start);
-        const Point lines_start = paths.empty() ? start : paths.front().first_point();
-        Polylines   outline;
-        for (const Polygon &loop : fill.outline ? to_polygons(offset_ex(area, -0.5f * float(scale_(spacing)))) : Polygons()) {
-            Polyline pl = open_loop_at(loop, lines_start);
-            pl.clip_end(0.2 * scale_(spacing));
-            if (pl.is_valid())
-                outline.emplace_back(std::move(pl));
-        }
-        std::stable_sort(outline.begin(), outline.end(), [&lines_start](const Polyline &l, const Polyline &r) {
-            return (l.first_point() - lines_start).cast<double>().norm() > (r.first_point() - lines_start).cast<double>().norm();
-        });
+            paths = chain_nearest(std::move(paths), from);
+        if (!seamed)
+            open_outline(paths.empty() ? start : paths.front().first_point());
         paths.insert(paths.begin(), std::make_move_iterator(outline.begin()), std::make_move_iterator(outline.end()));
     }
     return link_paths(std::move(paths), area, spacing, max_glide);

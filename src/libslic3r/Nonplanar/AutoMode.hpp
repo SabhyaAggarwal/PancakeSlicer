@@ -28,6 +28,8 @@ bool overhangs_enabled(const PrintRegionConfig &config, const PrintObjectConfig 
 bool support_free(const PrintObjectConfig &object);
 bool bridges_enabled(const PrintRegionConfig &config, const PrintObjectConfig &object);
 double infill_depth(const PrintRegionConfig &config, const PrintObject &object);
+
+int planar_top_layers(const PrintRegionConfig &config, double shell_height);
 NonplanarFallback effective_fallback(const PrintRegionConfig &config, const PrintObjectConfig &object);
 bool zaa_fallback(const PrintRegionConfig &config, const PrintObjectConfig &object);
 bool spiral_top_enabled(const PrintRegionConfig &config, const PrintObjectConfig &object);

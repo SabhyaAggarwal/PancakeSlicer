@@ -40,6 +40,8 @@ struct ShellFill
 
 std::vector<ShellFill> plan_shell_fills(const ConformalPatch &patch, const PrintRegionConfig &config, double spacing);
 
+constexpr double RingStepLength = 3.;
+
 Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam, const Polyline *seam_line = nullptr,
                       double ring_spacing = 0., int first_ring = 0);
 

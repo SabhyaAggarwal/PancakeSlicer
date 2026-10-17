@@ -32,6 +32,7 @@
 #include "Nonplanar/CurvedOverhang.hpp"
 #include "Nonplanar/DeformSlice.hpp"
 #include "Nonplanar/PatchTools.hpp"
+#include "Nonplanar/ShellBase.hpp"
 #include "Nonplanar/SpiralTop.hpp"
 #include "MutablePolygon.hpp"
 #include "PrintBase.hpp"
@@ -793,6 +794,7 @@ void PrintObject::nonplanar_shells()
         }
         Nonplanar::build_conformal_ironing(*this, *m_conformal);
         Nonplanar::build_conformal_volume(*this, *m_conformal);
+        Nonplanar::measure_shell_bases(*this, *m_conformal);
         Nonplanar::group_hosts_by_filament(*this, *m_conformal);
         Nonplanar::host_before_events(*this, *m_conformal);
         if (Nonplanar::deform_slice_considered(*this)) {

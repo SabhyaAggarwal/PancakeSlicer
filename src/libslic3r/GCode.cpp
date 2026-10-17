@@ -7630,6 +7630,29 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
             m_conformal_prev = &path;
             return gcode;
         }
+    const bool scarf_role = (path.role() == erTopSolidInfill && m_conformal_scored) ||
+                            (m_config.seam_slope_type.value == SeamScarfType::All &&
+                             (path.role() == erTopSolidInfill || path.role() == erSolidInfill || path.role() == erInternalInfill));
+    if (!m_conformal_scarf && !rotary && !path.preserve_points && m_config.seam_slope_type.value != SeamScarfType::None &&
+        !m_config.belt_printer.value && !m_config.spiral_mode.value && scarf_role &&
+        (m_conformal_prev == nullptr || m_conformal_prev->polyline.points.back() != path.polyline.points.front()) &&
+        (next == nullptr || next->polyline.points.front() != path.polyline.points.back())) {
+        CurvedScarf scarf;
+        const double h      = path.height > 0.f ? double(path.height) : 0.2;
+        scarf.length        = m_config.seam_slope_entire_loop.value ? std::numeric_limits<double>::max() : m_config.seam_slope_min_length.value;
+        scarf.start_share   = m_config.seam_slope_start_height.percent ? 0.01 * m_config.seam_slope_start_height.value :
+                                                                         m_config.seam_slope_start_height.value / h;
+        scarf.nozzle        = m_config.nozzle_diameter.get_at(m_writer.filament()->id());
+        if (m_config.seam_slope_conditional.value)
+            scarf.max_turn = PI - Geometry::deg2rad(double(m_config.scarf_angle_threshold.value));
+        if (ExtrusionPathConformal scarfed = path; scarf_curved_loop(scarfed, scarf, slope_gradient)) {
+            m_conformal_scarf = true;
+            gcode = this->extrude_conformal_path(scarfed, description, surface_gradient, next, slope_gradient);
+            m_conformal_scarf = false;
+            m_conformal_prev  = &path;
+            return gcode;
+        }
+    }
     m_conformal_points = conformal_points(path, [this](const Point3 &p) {
         const Vec2d xy = this->point_to_gcode(p.to_point());
         return Vec3d(xy.x(), xy.y(), m_nominal_z + unscale<double>(p.z()));
@@ -7772,7 +7795,7 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
                 gcode += m_writer.travel_to_xy(start.tip.head<2>(), "move to conformal path");
                 gcode += m_writer.travel_to_z(start.tip.z(), "lower onto conformal path", true, this->conformal_max_speed_z());
             }
-            m_conformal_ramp = !primed;
+            m_conformal_ramp = !primed && !m_conformal_scarf;
             if (m_conformal_pa_tracker && path.role() == erIroning)
                 m_conformal_pa_tracker->restore(gcode);
             else if (m_conformal_pa_tracker && !m_conformal_pa_tracker->along_road())
@@ -7784,7 +7807,7 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
             const Vec2d origin   = this->point_to_gcode(Point(0, 0));
             m_conformal_gradient = [&slope_gradient, origin](const Vec2d &p) { return slope_gradient(p - origin); };
         }
-        m_conformal_open_end = r + 1 == runs.size() && open_end;
+        m_conformal_open_end = (r + 1 == runs.size() && open_end) || m_conformal_scarf;
         gcode += ";_NONPLANAR_PATH\n";
         gcode += this->_extrude(sub, description);
         m_conformal_gradient = nullptr;

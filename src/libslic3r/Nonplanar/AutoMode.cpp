@@ -148,6 +148,11 @@ double infill_depth(const PrintRegionConfig &config, const PrintObject &object)
     return 0.;
 }
 
+int planar_top_layers(const PrintRegionConfig &config, double shell_height)
+{
+    return std::max(config.top_shell_layers.value, int(std::ceil(config.top_shell_thickness.value / shell_height - EPSILON)));
+}
+
 NonplanarFallback effective_fallback(const PrintRegionConfig &config, const PrintObjectConfig &object)
 {
     return is_auto(object) ? NonplanarFallback::None : config.nonplanar_fallback.value;
@@ -226,6 +231,13 @@ void choose_patch_settings(const PrintObject &object, const HeadEnvelope &head, 
     a.shell_area = area(diff_ex(patch.footprint, patch.wall_band)) * SCALING_FACTOR * SCALING_FACTOR;
 
     std::vector<double> slopes, curvatures;
+    Mask shell_node = rasterize(diff_ex(patch.footprint, patch.wall_band), S);
+    for (int iy = 0; iy + 1 < S.ny(); ++iy)
+        for (int ix = 0; ix + 1 < S.nx(); ++ix)
+            if (spans_wall(S, S.node(ix, iy) + Vec2d(0.5 * pitch, 0.5 * pitch)))
+                for (int jy = iy; jy <= iy + 1; ++jy)
+                    for (int jx = ix; jx <= ix + 1; ++jx)
+                        shell_node[size_t(jy) * S.nx() + jx] = 0;
     double jxx = 0., jxy = 0., jyy = 0.;
     double n = 0., mx = 0., my = 0., mxx = 0., mxy = 0., myy = 0.;
     float  z_lo = std::numeric_limits<float>::infinity();
@@ -244,7 +256,8 @@ void choose_patch_settings(const PrintObject &object, const HeadEnvelope &head, 
             const Vec2d g = S.gradient(p);
             if (std::isnan(g.x()) || std::isnan(g.y()))
                 continue;
-            slopes.emplace_back(std::atan(g.norm()));
+            if (shell_node[size_t(iy) * S.nx() + ix])
+                slopes.emplace_back(std::atan(g.norm()));
             jxx += g.x() * g.x(), jxy += g.x() * g.y(), jyy += g.y() * g.y();
             const float xm = z_at(ix - step, iy), xp = z_at(ix + step, iy), ym = z_at(ix, iy - step), yp = z_at(ix, iy + step);
             const float a0 = z_at(ix - step, iy - step), a1 = z_at(ix + step, iy - step), a2 = z_at(ix - step, iy + step),
@@ -272,7 +285,7 @@ void choose_patch_settings(const PrintObject &object, const HeadEnvelope &head, 
     const double T       = (large ? 1.5 : 1.0) * d;
     const int    n_depth = std::isfinite(z_lo) ? int(std::floor((z_lo - 0.5 * h_c - first_layer_top) / h_c + 1e-6)) : AutoMinShells;
     a.shells = std::clamp(int(std::ceil(T / (h_c * std::cos(a.slope90)) - 0.15)), AutoMinShells, MaxShells);
-    a.shells = std::max(AutoMinShells, std::min(a.shells, n_depth));
+    a.shells = std::max(AutoMinShells, std::min({ a.shells, n_depth, planar_top_layers(config, h_c) }));
     patch.shells = a.shells;
     if (!is_auto(object.config()))
         return;

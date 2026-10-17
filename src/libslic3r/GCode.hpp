@@ -694,6 +694,7 @@ protected:
     bool                                   m_conformal_ramp{ false };
     bool                                   m_conformal_open_end{ false };
     bool                                   m_conformal_scored{ false };
+    bool                                   m_conformal_scarf{ false };
     std::map<unsigned int, Nonplanar::PressureAdvance> m_start_gcode_pa;
     Nonplanar::PressureAdvance                         m_machine_start_pa;
     std::unique_ptr<Nonplanar::PressureAdvanceTracker> m_conformal_pa_tracker;
