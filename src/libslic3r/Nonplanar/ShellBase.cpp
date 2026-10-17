@@ -330,7 +330,7 @@ void closing_cells(const PrintObject &object, const ConformalPatch &unit, const 
             const Vec2d g = unit.surface.gradient(planar_top.node(ix, iy));
             if (!g.allFinite())
                 continue;
-            double need = std::max(EPSILON, (thickness - NormalThicknessTolerance) * std::sqrt(1. + g.squaredNorm()) - int(m) * unit.shell_height);
+            double need = std::max(EPSILON, thickness - NormalThicknessTolerance - int(m) * unit.shell_height);
             const auto it = std::lower_bound(layer_z.begin(), layer_z.end(), double(b) - EPSILON);
             if (it == layer_z.end() || std::abs(*it - b) > 1e-4)
                 continue;

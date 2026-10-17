@@ -974,7 +974,7 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
     const HeadEnvelope head = resolve_head_envelope(host_print.config());
     double             pitch = 0., tolerance = 0.;
     const double inflation = 0.6 * nozzle + 0.25 + 0.5 * MaxSegment;
-    const double reach     = deform_band_height(head, 1.1 * report.max_layer_slope, inflation);
+    const double reach     = object.has_support() ? head_band_height(head) : deform_band_height(head, 1.1 * report.max_layer_slope, inflation);
     double       cap   = multi_material_patch_height(object, head, ocfg.nonplanar_max_patch_height.value);
     cap                = cap > 0. ? std::min(cap, reach) : reach;
     tolerance = std::min(0.5 * cap, 0.45 * report.rho_min * h);

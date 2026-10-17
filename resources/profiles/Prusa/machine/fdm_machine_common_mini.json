@@ -12,5 +12,6 @@
 		"0",
 		"0"
 	],
-	"nonplanar_head": "prusa-mini"
+	"nonplanar_head": "prusa-mini",
+	"nonplanar_segment_rate": "150"
 }
