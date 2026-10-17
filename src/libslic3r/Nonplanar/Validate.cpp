@@ -168,6 +168,8 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
 
 StringObjectException validate_layer_gcodes(const Print &print, std::vector<StringObjectException> *warnings)
 {
+    if (print.config().print_sequence == PrintSequence::ByObject)
+        return {};
     for (const CustomGCode::Item &item : print.model().get_curr_plate_custom_gcodes().gcodes)
         for (const PrintObject *object : print.objects()) {
             if (! object->is_step_done(posNonplanar) || object->layers().empty())

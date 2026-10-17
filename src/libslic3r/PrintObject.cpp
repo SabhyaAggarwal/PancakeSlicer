@@ -738,6 +738,7 @@ void PrintObject::nonplanar_shells()
         m_conformal = std::make_unique<Nonplanar::ConformalResult>();
         Nonplanar::build_field_patch(*this, m_field, *m_conformal);
         m_conformal->layer_changes_filament = Nonplanar::layer_changes_filament(*this);
+        m_conformal->event_cuts             = Nonplanar::event_cuts(*this);
         m_print->throw_if_canceled();
         this->set_done(posNonplanar);
         return;
@@ -751,6 +752,7 @@ void PrintObject::nonplanar_shells()
         m_conformal = std::make_unique<Nonplanar::ConformalResult>();
         Nonplanar::build_multiplanar_chunks(*this, *m_multiplanar, *m_conformal);
         m_conformal->layer_changes_filament = Nonplanar::layer_changes_filament(*this);
+        m_conformal->event_cuts             = Nonplanar::event_cuts(*this);
         m_print->throw_if_canceled();
         this->set_done(posNonplanar);
         return;
@@ -761,6 +763,7 @@ void PrintObject::nonplanar_shells()
         if (Nonplanar::build_deform_slice(*this, *conformal)) {
             m_conformal = std::move(conformal);
             m_conformal->layer_changes_filament = Nonplanar::layer_changes_filament(*this);
+            m_conformal->event_cuts             = Nonplanar::event_cuts(*this);
             m_print->throw_if_canceled();
             this->set_done(posNonplanar);
             return;
@@ -791,6 +794,7 @@ void PrintObject::nonplanar_shells()
         Nonplanar::build_conformal_ironing(*this, *m_conformal);
         Nonplanar::build_conformal_volume(*this, *m_conformal);
         Nonplanar::group_hosts_by_filament(*this, *m_conformal);
+        Nonplanar::host_before_events(*this, *m_conformal);
         if (Nonplanar::deform_slice_considered(*this)) {
             m_print->set_status(40, L("Slicing curved layers"));
             Nonplanar::choose_deform_slice(*this, *m_conformal);
@@ -810,8 +814,10 @@ void PrintObject::nonplanar_shells()
         for (const std::string &warning : Nonplanar::apply_atom_toolpath(*this, *m_conformal))
             this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, warning);
     }
-    if (m_conformal)
+    if (m_conformal) {
         m_conformal->layer_changes_filament = Nonplanar::layer_changes_filament(*this);
+        m_conformal->event_cuts             = Nonplanar::event_cuts(*this);
+    }
     m_print->throw_if_canceled();
     this->set_done(posNonplanar);
 }

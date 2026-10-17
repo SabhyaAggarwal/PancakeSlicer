@@ -415,6 +415,7 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
     const double cap              = effective_patch_height_cap(object);
     const double max_patch_height = multi_material_patch_height(object, head, cap);
     const bool   host_above       = max_patch_height != cap || layer_changes_filament(object);
+    const std::vector<double> cuts = event_cuts(object);
     const double rotary           = rotary_band_reach(object, head, h);
     band_schedule(head, h, rotary > 0. ? (max_patch_height > 0. ? std::min(max_patch_height, rotary) : rotary) : max_patch_height,
                   band_pitch, band_tolerance);
@@ -566,7 +567,7 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
             bands.diagnostics.back().patch_id = 0;
             if (colours.areas.size() > 1)
                 split_by_colour(bands, colours, colour_at);
-            split_into_bands(bands, S, layer_z, band_pitch, band_tolerance, nullptr, host_above);
+            split_into_bands(bands, S, layer_z, band_pitch, band_tolerance, nullptr, host_above, 0, nullptr, cuts);
         }
     });
 

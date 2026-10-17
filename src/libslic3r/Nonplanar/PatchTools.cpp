@@ -10,6 +10,7 @@
 
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ClipperUtils.hpp"
+#include "libslic3r/CustomGCode.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/Flow.hpp"
@@ -1712,6 +1713,7 @@ void group_hosts_by_filament(PrintObject &object, ConformalResult &result)
     std::vector<double> layer_z(n);
     for (size_t i = 0; i < n; ++i)
         layer_z[i] = layers[i]->print_z;
+    const std::vector<double> cuts = event_cuts(object);
 
     std::vector<std::set<int>> planar(n);
     for (size_t i = 0; i < n; ++i)
@@ -1783,7 +1785,10 @@ void group_hosts_by_filament(PrintObject &object, ConformalResult &result)
         if (!items[p].movable || has_filament(P.host_layer, items[p].filament, p))
             continue;
         const size_t lo = size_t(std::lower_bound(layer_z.begin(), layer_z.end(), P.z_max - EPSILON) - layer_z.begin());
-        const size_t hi = size_t(std::upper_bound(layer_z.begin(), layer_z.end(), P.z_min + reach + EPSILON) - layer_z.begin());
+        double       top = P.z_min + reach;
+        if (const auto cut = std::lower_bound(cuts.begin(), cuts.end(), P.z_max - SCALING_FACTOR); cut != cuts.end())
+            top = std::min(top, *cut);
+        const size_t hi = size_t(std::upper_bound(layer_z.begin(), layer_z.end(), top + EPSILON) - layer_z.begin());
         std::vector<size_t> candidates;
         for (size_t h = lo; h < std::min(hi, n); ++h)
             if (h != P.host_layer && has_filament(h, items[p].filament, p))
@@ -1865,6 +1870,87 @@ bool layer_changes_filament(const PrintObject &object)
     for (const PrintObject *other : print->objects())
         object_filaments(*other, filaments);
     return filaments.size() > 1;
+}
+
+int event_slab(const std::vector<double> &cuts, double z)
+{
+    return int(std::lower_bound(cuts.begin(), cuts.end(), z) - cuts.begin());
+}
+
+void cut_at_events(ExtrusionPathConformal *piece, const std::vector<double> &cuts,
+                   const std::function<void(int slab, ExtrusionPathConformal *part)> &sink)
+{
+    if (cuts.empty())
+        return sink(0, piece);
+    cut_by_colour(ExtrusionEntitiesPtr{ piece }, [&cuts](const Vec3d &p) { return event_slab(cuts, p.z()); }, 0., 0.,
+                  [&sink](int slab, ExtrusionPathConformal *part) {
+                      if (std::any_of(part->bead_height.begin(), part->bead_height.end(), [](float h) { return h > 0.f; }))
+                          sink(slab, part);
+                      else
+                          delete part;
+                  });
+    delete piece;
+}
+
+size_t event_host(const std::vector<double> &cuts, int slab, const std::vector<double> &layer_z, size_t host)
+{
+    if (size_t(slab) >= cuts.size())
+        return host;
+    return std::min(host, size_t(std::lower_bound(layer_z.begin(), layer_z.end(), cuts[size_t(slab)] - EPSILON) - layer_z.begin()));
+}
+
+std::vector<double> event_cuts(const PrintObject &object)
+{
+    std::vector<double> cuts;
+    const Print        *print = object.print();
+    if (print == nullptr || print->config().print_sequence == PrintSequence::ByObject || object.layers().size() < 2)
+        return cuts;
+    const ConstLayerPtrsAdaptor layers = object.layers();
+    for (const CustomGCode::Item &item : print->model().get_curr_plate_custom_gcodes().gcodes) {
+        if (item.print_z > layers.back()->print_z + 0.5 * layers.back()->height)
+            continue;
+        size_t l = 0;
+        if (item.type == CustomGCode::ToolChange)
+            while (l < layers.size() && layers[l]->print_z < item.print_z - EPSILON)
+                ++l;
+        else
+            while (l + 1 < layers.size() && 0.5 * (layers[l]->print_z + layers[l + 1]->print_z) < item.print_z)
+                ++l;
+        if (l > 0 && l < layers.size())
+            cuts.emplace_back(layers[l - 1]->print_z);
+    }
+    std::sort(cuts.begin(), cuts.end());
+    cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
+    return cuts;
+}
+
+void host_before_events(PrintObject &object, ConformalResult &result)
+{
+    LayerPtrs &layers = object.layers();
+    for (const double cut : event_cuts(object)) {
+        const size_t below = size_t(std::lower_bound(layers.begin(), layers.end(), cut - EPSILON,
+                                                     [](const Layer *layer, double z) { return layer->print_z < z; }) - layers.begin());
+        if (below + 1 >= layers.size() || layers[below + 1]->conformal_patches_before.empty())
+            continue;
+        const coord_t dz = coord_t(scale_(layers[below + 1]->print_z - layers[below]->print_z));
+        std::function<void(ExtrusionEntityCollection &)> rebase = [&](ExtrusionEntityCollection &collection) {
+            for (ExtrusionEntity *ee : collection.entities)
+                if (auto *sub = dynamic_cast<ExtrusionEntityCollection *>(ee))
+                    rebase(*sub);
+                else if (auto *path = dynamic_cast<ExtrusionPathConformal *>(ee))
+                    for (Point3 &pt : path->polyline.points)
+                        pt.z() += dz;
+        };
+        for (const int id : layers[below + 1]->conformal_patches_before) {
+            ConformalPatch &patch = result.patches[size_t(id)];
+            for (ExtrusionEntityCollection &shell : patch.shell_paths)
+                rebase(shell);
+            rebase(patch.ironing);
+            patch.host_layer = below;
+            layers[below]->conformal_patches_after.emplace_back(id);
+        }
+        layers[below + 1]->conformal_patches_before.clear();
+    }
 }
 
 double multi_material_patch_height(const PrintObject &object, const HeadEnvelope &head, double max_patch_height)
@@ -2195,7 +2281,8 @@ void order_nearest_from_lowest(ExtrusionEntityCollection &shell)
 
 }
 std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const HeightField &S, const std::vector<double> &layer_z,
-                                             double pitch, double tolerance, const BandSeams *seams, bool host_above, int patch_offset, std::vector<size_t> *band_component)
+                                             double pitch, double tolerance, const BandSeams *seams, bool host_above, int patch_offset, std::vector<size_t> *band_component,
+                                             const std::vector<double> &cuts)
 {
     std::vector<ConformalPatch>   components = std::move(result.patches);
     std::vector<PatchDiagnostics> comp_diag  = std::move(result.diagnostics);
@@ -2205,6 +2292,7 @@ std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const Heig
     struct Band
     {
         int              band;
+        int              slab;
         size_t           comp;
         ConformalPatch   patch;
         PatchDiagnostics diag;
@@ -2214,12 +2302,12 @@ std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const Heig
     std::vector<Band> bands;
     auto band_of = [pitch](double z) { return int(std::floor(z / pitch)); };
     for (size_t c = 0; c < components.size(); ++c) {
-        ConformalPatch       &comp = components[c];
-        std::map<int, size_t> index;
-        auto band = [&](int b) -> Band & {
-            const auto [it, inserted] = index.try_emplace(b, bands.size());
+        ConformalPatch                       &comp = components[c];
+        std::map<std::pair<int, int>, size_t> index;
+        auto band = [&](int b, int slab) -> Band & {
+            const auto [it, inserted] = index.try_emplace({ b, slab }, bands.size());
             if (inserted) {
-                Band nb{ b, c, {}, {} };
+                Band nb{ b, slab, c, {}, {} };
                 ConformalPatch &p = nb.patch;
                 p.kind         = comp.kind;
                 p.surface      = comp.surface;
@@ -2260,31 +2348,35 @@ std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const Heig
                     delete piece;
                     return;
                 }
-                ConformalPatch &p = band(b).patch;
-                for (const Point3 &pt : piece->polyline.points) {
-                    p.z_min = std::min(p.z_min, unscale<double>(pt.z()));
-                    p.z_max = std::max(p.z_max, unscale<double>(pt.z()));
-                }
-                p.shell_paths[k].entities.emplace_back(piece);
+                cut_at_events(piece, cuts, [&](int slab, ExtrusionPathConformal *part) {
+                    ConformalPatch &p = band(b, slab).patch;
+                    for (const Point3 &pt : part->polyline.points) {
+                        p.z_min = std::min(p.z_min, unscale<double>(pt.z()));
+                        p.z_max = std::max(p.z_max, unscale<double>(pt.z()));
+                    }
+                    p.shell_paths[k].entities.emplace_back(part);
+                });
             }, cut_rank);
         comp.shell_paths.clear();
         cut_into_bands(comp.ironing.entities, pitch, 0., [&](int b, ExtrusionPathConformal *piece) {
-            band(b).patch.ironing.entities.emplace_back(piece);
+            cut_at_events(piece, cuts, [&](int slab, ExtrusionPathConformal *part) { band(b, slab).patch.ironing.entities.emplace_back(part); });
         }, cut_rank);
         comp.ironing.clear();
 
         const HeightField &F  = comp.surface;
         const Mask         in = rasterize(comp.footprint, F);
-        RunGroups cells;
+        const int  slabs = int(cuts.size()) + 1;
+        RunGroups  cells;
         for (int iy = 0; iy < F.ny(); ++iy)
             for (int ix = 0; ix < F.nx(); ++ix) {
                 const size_t n = size_t(iy) * F.nx() + ix;
                 const float  z = F.data()[n];
                 if (!in[n] || std::isnan(z))
                     continue;
-                const int b = band_of(z);
-                cells.add(b, ix, iy);
-                Band       &bd = band(b);
+                const int b    = band_of(z);
+                const int slab = event_slab(cuts, z);
+                cells.add(b * slabs + slab, ix, iy);
+                Band       &bd = band(b, slab);
                 const Vec2d  p = F.node(ix, iy);
                 const Vec2d  g = F.gradient(p);
                 const Vec2d  o = (p - S.origin()) / S.pitch();
@@ -2298,8 +2390,9 @@ std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const Heig
                     bd.diag.max_slope_deg = std::max(bd.diag.max_slope_deg, Geometry::rad2deg(std::atan(g.norm())));
                 bd.patch.z_max = std::max(bd.patch.z_max, double(z));
             }
-        for (const auto &[b, runs] : cells.groups()) {
-            ConformalPatch &p = band(b).patch;
+        for (const auto &[key, runs] : cells.groups()) {
+            const int       b = key >= 0 ? key / slabs : -((-key + slabs - 1) / slabs);
+            ConformalPatch &p = band(b, key - b * slabs).patch;
             p.footprint       = intersection_ex(comp.footprint, runs_to_expolygons(runs, F));
             p.wall_band       = intersection_ex(p.footprint, comp.wall_band);
         }
@@ -2314,7 +2407,8 @@ std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const Heig
         }
     }
 
-    std::stable_sort(bands.begin(), bands.end(), [](const Band &a, const Band &b) { return a.band < b.band; });
+    std::stable_sort(bands.begin(), bands.end(),
+                     [](const Band &a, const Band &b) { return a.band != b.band ? a.band < b.band : a.slab < b.slab; });
     for (Band &bd : bands) {
         ConformalPatch &p = bd.patch;
         p.band            = bd.band;
@@ -2326,6 +2420,7 @@ std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const Heig
             const auto it = std::upper_bound(layer_z.begin(), layer_z.end(), top + EPSILON);
             p.host_layer  = it == layer_z.begin() ? 0 : size_t(it - layer_z.begin()) - 1;
         }
+        p.host_layer = event_host(cuts, bd.slab, layer_z, p.host_layer);
         const coord_t dz  = coord_t(scale_(layer_z[p.host_layer]));
         std::vector<ConformalPatch> parts;
         if (seams != nullptr)

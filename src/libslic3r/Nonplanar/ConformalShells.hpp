@@ -118,6 +118,7 @@ struct ConformalResult
     FlowModStats                  flow_mod;
     std::vector<PatchBase>        base;
     bool                          layer_changes_filament = false;
+    std::vector<double>           event_cuts;
     std::shared_ptr<ObjectMesh>   mesh;
 };
 

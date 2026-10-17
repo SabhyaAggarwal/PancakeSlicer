@@ -1776,7 +1776,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                 return adaptive_stacks[c].layer(k + 1, q, drop, bead, deepest);
             };
         component_patches = split_into_bands(result, S, layer_z, band_pitch, band_tolerance, &band_seams,
-                                             layer_changes_filament(object), patch_offset, &patch_component);
+                                             layer_changes_filament(object), patch_offset, &patch_component, event_cuts(object));
     }
     std::vector<ConformalPatch> &units = settings.banded ? component_patches : result.patches;
 

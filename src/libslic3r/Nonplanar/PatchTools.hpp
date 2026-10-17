@@ -154,6 +154,15 @@ bool prints_several_filaments(const PrintObject &object);
 
 bool layer_changes_filament(const PrintObject &object);
 
+std::vector<double> event_cuts(const PrintObject &object);
+
+int event_slab(const std::vector<double> &cuts, double z);
+void cut_at_events(ExtrusionPathConformal *piece, const std::vector<double> &cuts,
+                   const std::function<void(int slab, ExtrusionPathConformal *part)> &sink);
+size_t event_host(const std::vector<double> &cuts, int slab, const std::vector<double> &layer_z, size_t host);
+
+void host_before_events(PrintObject &object, ConformalResult &result);
+
 double multi_material_patch_height(const PrintObject &object, const HeadEnvelope &head, double max_patch_height);
 
 struct BandSeams
@@ -198,7 +207,8 @@ std::vector<std::pair<size_t, size_t>> split_by_colour(ConformalResult &result, 
 
 std::vector<ConformalPatch> split_into_bands(ConformalResult &result, const HeightField &S, const std::vector<double> &layer_z,
                                              double pitch, double tolerance, const BandSeams *seams = nullptr,
-                                             bool host_above = false, int patch_offset = 0, std::vector<size_t> *band_component = nullptr);
+                                             bool host_above = false, int patch_offset = 0, std::vector<size_t> *band_component = nullptr,
+                                             const std::vector<double> &cuts = {});
 
 bool spans_wall(const HeightField &surface, const Vec2d &p);
 bool spans_slope(const HeightField &surface, const Vec2d &p, double slope_deg);

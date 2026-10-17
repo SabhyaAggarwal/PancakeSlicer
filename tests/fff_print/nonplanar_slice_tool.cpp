@@ -7,6 +7,7 @@
 
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/Config.hpp"
+#include "libslic3r/CustomGCode.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
@@ -89,6 +90,7 @@ struct Args
     std::vector<std::string> filaments, colours;
     std::vector<std::pair<std::string, int>> parts;
     std::vector<std::pair<std::string, std::string>> overrides;
+    std::vector<CustomGCode::Item> events;
     bool        center_set = false;
     bool        verify     = false;
     bool        explain    = false;
@@ -175,6 +177,24 @@ Args parse_args(int argc, char **argv)
             if (pos == std::string::npos)
                 usage("--set expects key=value, got " + kv);
             a.overrides.emplace_back(kv.substr(0, pos), kv.substr(pos + 1));
+        } else if (arg == "--event") {
+            const std::string ev    = next();
+            const size_t      colon = ev.find(':');
+            CustomGCode::Item item{ 0., CustomGCode::Custom, 1, "", "" };
+            const std::string type  = colon == std::string::npos ? "" : ev.substr(colon + 1, ev.find(':', colon + 1) - colon - 1);
+            const std::string text  = ev.find(':', colon + 1) == std::string::npos ? "" : ev.substr(ev.find(':', colon + 1) + 1);
+            item.print_z            = std::atof(ev.substr(0, colon).c_str());
+            if (type == "pause") item.type = CustomGCode::PausePrint;
+            else if (type == "template") item.type = CustomGCode::Template;
+            else if (type == "colour") { item.type = CustomGCode::ColorChange; item.color = "#FF0000"; }
+            else if (type == "change") { item.type = CustomGCode::ToolChange; item.extruder = std::max(1, std::atoi(text.c_str())); }
+            else if (type == "custom") {
+                item.extra = text;
+                for (size_t pos; (pos = item.extra.find("\\n")) != std::string::npos;)
+                    item.extra.replace(pos, 2, "\n");
+            } else
+                usage("--event expects Z:pause, Z:custom:GCODE, Z:template, Z:colour or Z:change:N");
+            a.events.emplace_back(item);
         } else if (arg == "--center") {
             const std::string xy = next();
             if (std::sscanf(xy.c_str(), "%lf,%lf", &a.center.x(), &a.center.y()) != 2)
@@ -987,6 +1007,15 @@ int main(int argc, char **argv)
         if (model.objects.empty())
             throw std::runtime_error("no objects in " + args.model);
         apply_multi_material(args, model);
+        if (! args.events.empty()) {
+            CustomGCode::Info &info = model.plates_custom_gcodes[model.curr_plate_index];
+            info.gcodes             = args.events;
+            std::sort(info.gcodes.begin(), info.gcodes.end());
+            const bool change = std::any_of(info.gcodes.begin(), info.gcodes.end(),
+                                            [](const CustomGCode::Item &item) { return item.type == CustomGCode::ToolChange; });
+            info.mode = config.option<ConfigOptionFloats>("filament_diameter")->size() == 1 ? CustomGCode::SingleExtruder :
+                        change ? CustomGCode::MultiAsSingle : CustomGCode::MultiExtruder;
+        }
         if (! args.save_3mf.empty()) {
             place(args, model, config);
             save_project(args, model, config, datadir);

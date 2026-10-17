@@ -46,6 +46,7 @@
 #include <cassert>
 #include <cstdio>
 #include <limits>
+#include <iterator>
 #include <algorithm>
 #include <map>
 #include <numeric>
@@ -2923,6 +2924,13 @@ void ToolOrdering::assign_custom_gcodes(const Print &print)
 			++ custom_gcode_it;
 		}
 	}
+    for (auto it = m_layer_tools.begin(); it != m_layer_tools.end(); ++ it)
+        if (it->custom_gcode != nullptr && it->extruders.empty()) {
+            const auto next = std::find_if(std::next(it), m_layer_tools.end(), [](const LayerTools &lt) { return ! lt.extruders.empty(); });
+            if (next != m_layer_tools.end() && next->custom_gcode == nullptr)
+                next->custom_gcode = it->custom_gcode;
+            it->custom_gcode = nullptr;
+        }
 }
 
 const LayerTools& ToolOrdering::tools_for_layer(coordf_t print_z) const

@@ -972,36 +972,40 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
     cap                = cap > 0. ? std::min(cap, reach) : reach;
     tolerance = std::min(0.5 * cap, 0.45 * report.rho_min * h);
     pitch     = cap - tolerance;
-    std::map<int, ConformalPatch> bands;
-    std::map<int, size_t>         band_layer;
+    const std::vector<double>                     cuts = event_cuts(object);
+    std::map<std::pair<int, int>, ConformalPatch> bands;
+    std::map<std::pair<int, int>, size_t>         band_layer;
     for (size_t k = 0; k < curved.size(); ++k) {
         if (curved[k].empty())
             continue;
         ExtrusionEntitiesPtr paths(curved[k].begin(), curved[k].end());
-        cut_into_bands(paths, pitch, tolerance, [&](int b, ExtrusionPathConformal *piece) {
-            ConformalPatch &patch = bands[b];
-            const auto [it, inserted] = band_layer.try_emplace(b, k);
-            if (inserted || it->second != k || patch.shell_paths.empty()) {
-                patch.shell_paths.emplace_back();
-                patch.shell_paths.back().no_sort = true;
-                it->second                       = k;
-            }
-            if (inserted) {
-                patch.z_min = Inf;
-                patch.z_max = -Inf;
-            }
-            for (const Point3 &pt : piece->polyline.points) {
-                patch.z_min = std::min(patch.z_min, unscale<double>(pt.z()));
-                patch.z_max = std::max(patch.z_max, unscale<double>(pt.z()));
-            }
-            piece->shell = int(patch.shell_paths.size()) - 1;
-            patch.shell_paths.back().entities.push_back(piece);
+        cut_into_bands(paths, pitch, tolerance, [&](int b, ExtrusionPathConformal *whole) {
+            cut_at_events(whole, cuts, [&](int slab, ExtrusionPathConformal *piece) {
+                ConformalPatch &patch = bands[{ b, slab }];
+                const auto [it, inserted] = band_layer.try_emplace({ b, slab }, k);
+                if (inserted || it->second != k || patch.shell_paths.empty()) {
+                    patch.shell_paths.emplace_back();
+                    patch.shell_paths.back().no_sort = true;
+                    it->second                       = k;
+                }
+                if (inserted) {
+                    patch.z_min = Inf;
+                    patch.z_max = -Inf;
+                }
+                for (const Point3 &pt : piece->polyline.points) {
+                    patch.z_min = std::min(patch.z_min, unscale<double>(pt.z()));
+                    patch.z_max = std::max(patch.z_max, unscale<double>(pt.z()));
+                }
+                piece->shell = int(patch.shell_paths.size()) - 1;
+                patch.shell_paths.back().entities.push_back(piece);
+            });
         });
         for (ExtrusionPathConformal *p : curved[k])
             delete p;
     }
     out.patches.clear();
-    for (auto &[b, patch] : bands) {
+    for (auto &[key, patch] : bands) {
+        const auto [b, slab] = key;
         Point last(0, 0);
         for (ExtrusionEntityCollection &shell : patch.shell_paths)
             link_pieces(shell, last);
@@ -1012,7 +1016,7 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
         patch.shell_height = h;
         const double top   = (b + 1) * pitch + tolerance;
         const auto   it    = std::upper_bound(layer_z.begin(), layer_z.end(), top + EPSILON);
-        patch.host_layer   = it == layer_z.begin() ? 0 : size_t(it - layer_z.begin()) - 1;
+        patch.host_layer   = event_host(cuts, slab, layer_z, it == layer_z.begin() ? 0 : size_t(it - layer_z.begin()) - 1);
         const coord_t dz   = coord_t(scale_(layer_z[patch.host_layer]));
         for (ExtrusionEntityCollection &shell : patch.shell_paths)
             for (ExtrusionEntity *ee : shell.entities)
