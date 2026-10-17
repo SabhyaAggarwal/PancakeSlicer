@@ -33,6 +33,7 @@ std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, double nomina
                                     const std::vector<double> *caps = nullptr);
 std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, const std::vector<double> &nominal,
                                     const MotionLimits &limits, double quantum = 0.05,
-                                    const std::vector<double> *caps = nullptr, const std::vector<bool> *glides = nullptr);
+                                    const std::vector<double> *caps = nullptr, const std::vector<bool> *glides = nullptr,
+                                    const std::vector<double> *move_length = nullptr);
 
 }

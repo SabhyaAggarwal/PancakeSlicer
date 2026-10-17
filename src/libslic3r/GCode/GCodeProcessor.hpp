@@ -620,6 +620,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
                 bool nominal_length{ false };
                 bool prepare_stage{ false };
                 bool nonplanar{ false };
+                bool arc_continuation{ false };
             };
 
             EMoveType move_type{ EMoveType::Noop };
@@ -1084,6 +1085,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         std::array<unsigned int, 2> m_recent_move_states{ 0, 0 };
         float                           m_nonplanar_feed_interval{ 0.f };
         float                           m_klipper_min_cruise_ratio{ 0.5f };
+        bool                            m_arc_first_block{ false };
         AxisCoords m_start_position;
         AxisCoords m_end_position;
         AxisCoords m_origin;

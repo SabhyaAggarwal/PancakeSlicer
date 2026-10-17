@@ -3,6 +3,7 @@
 
 #include "libslic3r/Nonplanar/ShellSeams.hpp"
 
+#include "libslic3r/Circle.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
@@ -148,6 +149,141 @@ void condition_path(std::vector<ConformalPoint> &points, const ConditionParams &
     points.swap(out);
 }
 
+namespace {
+
+struct FittedMove
+{
+    size_t begin = 0, end = 0;
+    bool   arc = false, ccw = false;
+    Vec2d  center = Vec2d::Zero();
+};
+
+std::vector<FittedMove> single_moves(size_t segments)
+{
+    std::vector<FittedMove> moves(segments);
+    for (size_t i = 0; i < segments; ++i) {
+        moves[i].begin = i;
+        moves[i].end   = i + 1;
+    }
+    return moves;
+}
+
+double swept_angle(const Vec2d &a, const Vec2d &b, const Vec2d &c, bool ccw)
+{
+    const Vec2d u = a - c, w = b - c;
+    double      angle = std::atan2(u.x() * w.y() - u.y() * w.x(), u.dot(w));
+    if (!ccw)
+        angle = -angle;
+    return angle <= 0. ? angle + 2. * PI : angle;
+}
+
+double helix_length(const Vec3d &a, const Vec3d &b, const Vec2d &center, bool ccw)
+{
+    const double arc = (a.head<2>() - center).norm() * swept_angle(a.head<2>(), b.head<2>(), center, ccw);
+    return std::sqrt(arc * arc + (b.z() - a.z()) * (b.z() - a.z()));
+}
+
+double helix_limited_speed(const Vec3d &a, const Vec3d &b, double length, double v, const MotionLimits &limits)
+{
+    const double dz = GCodeFormatter::quantize_xyzf(b.z()) - GCodeFormatter::quantize_xyzf(a.z());
+    if (length < EPSILON)
+        return v;
+    if (limits.max_v_z > 0. && std::abs(dz) > EPSILON)
+        v = std::min(v, limits.max_v_z * length / std::abs(dz));
+    const double xy = std::sqrt(std::max(0., length * length - dz * dz));
+    if (limits.max_v_xy > 0. && xy > EPSILON)
+        v = std::min(v, limits.max_v_xy * length / xy);
+    return v;
+}
+
+std::vector<FittedMove> fit_moves(const std::vector<ConformalPoint> &points, const std::vector<double> &volume,
+                                  const std::vector<double> &prime, const std::vector<double> &lift, const std::vector<double> &speed,
+                                  double tolerance, const ConditionParams &condition)
+{
+    const size_t n = points.size() - 1;
+    enum Kind { Road, Glide, Other };
+    std::vector<Kind>   kind(n);
+    std::vector<double> length(n);
+    for (size_t k = 0; k < n; ++k) {
+        const ConformalPoint &a = points[k], &b = points[k + 1];
+        length[k] = (b.pose.tip - a.pose.tip).norm();
+        kind[k]   = length[k] < ConformalMinSegment * 0.1 || prime[k] > 0. || lift[k] != 0. || lift[k + 1] != 0. ? Other :
+                    a.bead_height > 0.f && b.bead_height > 0.f           ? Road :
+                    a.bead_height <= 0.f && b.bead_height <= 0.f         ? Glide : Other;
+    }
+    auto joins = [&](size_t first, size_t k) {
+        if (kind[k] != kind[first] || kind[k] == Other || speed[k] != speed[first])
+            return false;
+        if (kind[k] == Glide)
+            return true;
+        const double height  = 0.5 * double(points[first].bead_height + points[first + 1].bead_height);
+        const double density = volume[first] / length[first];
+        return std::abs(volume[k] / length[k] - density) <= density * condition.bead_tolerance / height;
+    };
+    auto z_tolerance = [&](size_t first) { return kind[first] == Glide ? condition.glide_z_tolerance : condition.z_tolerance; };
+    auto line_fits = [&](size_t i, size_t j) {
+        const Vec3d  a = points[i].pose.tip, d = points[j].pose.tip - a;
+        const double l2 = d.head<2>().squaredNorm();
+        if (l2 <= EPSILON)
+            return false;
+        double last = 0.;
+        for (size_t k = i + 1; k < j; ++k) {
+            const Vec3d &p = points[k].pose.tip;
+            const double t = (p - a).head<2>().dot(d.head<2>()) / l2;
+            const Vec3d  q = a + t * d;
+            if (t < last || t > 1. || (p - q).head<2>().norm() > tolerance || std::abs(p.z() - q.z()) > z_tolerance(i))
+                return false;
+            last = t;
+        }
+        return true;
+    };
+    Points xy;
+    auto arc_fits = [&](size_t i, size_t j, FittedMove &move) {
+        xy.clear();
+        double polyline = 0.;
+        for (size_t k = i; k <= j; ++k) {
+            xy.emplace_back(Point::new_scale(points[k].pose.tip.x(), points[k].pose.tip.y()));
+            if (k > i)
+                polyline += (xy.back() - xy[xy.size() - 2]).cast<double>().norm();
+        }
+        ArcSegment arc;
+        if (!ArcSegment::try_create_arc(xy, arc, polyline, DEFAULT_SCALED_MAX_RADIUS, scaled<double>(tolerance)) || arc.angle_radians > PI)
+            return false;
+        const Vec2d  c   = unscaled(arc.center);
+        const bool   ccw = arc.direction == ArcDirection::Arc_Dir_CCW;
+        const Vec3d &a = points[i].pose.tip, &b = points[j].pose.tip;
+        const double total = swept_angle(a.head<2>(), b.head<2>(), c, ccw);
+        double       last  = 0.;
+        for (size_t k = i + 1; k < j; ++k) {
+            const Vec3d &p = points[k].pose.tip;
+            const double t = swept_angle(a.head<2>(), p.head<2>(), c, ccw) / total;
+            if (t < last || t > 1. || std::abs(p.z() - (a.z() + t * (b.z() - a.z()))) > z_tolerance(i))
+                return false;
+            last = t;
+        }
+        move.arc    = true;
+        move.ccw    = ccw;
+        move.center = c;
+        return true;
+    };
+
+    std::vector<FittedMove> moves;
+    for (size_t i = 0; i < n;) {
+        auto       open = [&](size_t k) { return k < n && joins(i, k); };
+        FittedMove line{ i, i + 1 };
+        while (open(line.end) && line_fits(i, line.end + 1))
+            ++line.end;
+        FittedMove arc{ i, i + 1 }, candidate{ i, i + 2 };
+        for (; open(candidate.end - 1) && arc_fits(i, candidate.end, candidate); ++candidate.end)
+            arc = candidate;
+        moves.emplace_back(arc.end > line.end ? arc : line);
+        i = moves.back().end;
+    }
+    return moves;
+}
+
+}
+
 double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<ConformalPoint> &points_in, double width,
                                 const ConformalEmitParams &params, float &last_height, std::string &out,
                                 const DepositFn &deposit)
@@ -232,14 +368,7 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
             nominal[i] = std::max(params.nominal_speed, params.glide_speed);
             glides[i]  = true;
         }
-    const std::vector<double> caps   = params.speed_caps ? params.speed_caps(points) : std::vector<double>();
-    std::vector<double> speeds = limit_feedrates(tips, nominal, params.limits, 0.05, caps.empty() ? nullptr : &caps, &glides);
-    if (params.speed_scale < 1.)
-        for (size_t i = 0; i < speeds.size(); ++i)
-            if (!glides[i])
-                speeds[i] *= params.speed_scale;
 
-    const std::vector<std::string> tags = params.segment_tags ? params.segment_tags(points, speeds) : std::vector<std::string>();
     std::vector<double> prime(points.size() - 1, 0.);
     auto primes = [&](size_t i) {
         return points[i].bead_height > 0.f && points[i + 1].bead_height > 0.f && (points[i + 1].pose.tip - points[i].pose.tip).norm() >= 0.05;
@@ -270,26 +399,122 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
         }
     }
 
+    std::vector<double> seg_volume(points.size() - 1, 0.), seg_width(points.size() - 1, width);
+    std::vector<double> lift(points.size(), 0.);
+    double coast_floor = -1., coast_dz = 0.;
+    for (size_t i = 0; i + 1 < points.size(); ++i) {
+        const ConformalPoint &a = points[i], &b = points[i + 1];
+        if ((b.pose.tip - a.pose.tip).norm() < EPSILON)
+            continue;
+        if (a.width > 0.f && b.width > 0.f)
+            seg_width[i] = 0.5 * (double(a.width) + double(b.width));
+        const Vec3d axis = (a.pose.axis + b.pose.axis).normalized();
+        double     &v    = seg_volume[i];
+        v = a.bead_height <= 0.f || b.bead_height <= 0.f ? 0. :
+            (a.vertical_height > 0.f && b.vertical_height > 0.f ?
+                 segment_volume(a.pose.tip, b.pose.tip, seg_width[i], a.vertical_height, b.vertical_height) :
+                 segment_volume(a.pose.tip, b.pose.tip, seg_width[i], a.bead_height, b.bead_height, axis)) *
+                (flow.empty() ? 1. : flow[i]);
+        if (!rotary && params.clearance && v == 0. && prime[i] == 0. && a.bead_height > 0.f && b.bead_height > 0.f) {
+            const Vec3d up = Vec3d::UnitZ();
+            if (coast_floor == -1.) {
+                coast_floor = std::min(params.margin, params.clearance(a.pose.tip, up)) - 1e-3;
+                coast_dz    = 0.;
+            }
+            const Vec3d from  = a.pose.tip + Vec3d(0., 0., coast_dz);
+            const int   steps = std::max(1, int(std::ceil((b.pose.tip - a.pose.tip).norm() / 0.25)));
+            for (int pass = 0; pass < 4; ++pass) {
+                const Vec3d to   = b.pose.tip + Vec3d(0., 0., coast_dz);
+                double      need = 0.;
+                for (int k = 1; k <= steps; ++k) {
+                    const double t = double(k) / steps;
+                    need = std::max(need, (coast_floor - params.clearance(from + t * (to - from), up)) / t);
+                }
+                if (need <= 0.)
+                    break;
+                coast_dz += std::min(need + 0.005, 1.);
+            }
+            lift[i + 1] = coast_dz;
+        } else
+            coast_floor = -1., coast_dz = 0.;
+    }
+
+    const std::vector<double> caps   = params.speed_caps ? params.speed_caps(points) : std::vector<double>();
+    std::vector<double> speeds = limit_feedrates(tips, nominal, params.limits, 0.05, caps.empty() ? nullptr : &caps, &glides);
+    std::vector<FittedMove> moves = single_moves(points.size() - 1);
+    auto move_length = [&points](const FittedMove &m) {
+        if (!m.arc)
+            return (points[m.end].pose.tip - points[m.begin].pose.tip).norm();
+        return helix_length(points[m.begin].pose.tip, points[m.end].pose.tip, m.center, m.ccw);
+    };
+    if (params.arc_tolerance > 0. && !rotary) {
+        moves = fit_moves(points, seg_volume, prime, lift, speeds, params.arc_tolerance, params.condition);
+        std::vector<double> block_length(points.size() - 1);
+        for (const FittedMove &m : moves)
+            std::fill(block_length.begin() + m.begin, block_length.begin() + m.end, move_length(m));
+        speeds = limit_feedrates(tips, nominal, params.limits, 0.05, caps.empty() ? nullptr : &caps, &glides, &block_length);
+    }
+    if (params.speed_scale < 1.)
+        for (size_t i = 0; i < speeds.size(); ++i)
+            if (!glides[i])
+                speeds[i] *= params.speed_scale;
+
+    const std::vector<std::string> tags = params.segment_tags ? params.segment_tags(points, speeds) : std::vector<std::string>();
+    if (!tags.empty()) {
+        std::vector<FittedMove> split;
+        split.reserve(moves.size());
+        for (const FittedMove &m : moves) {
+            size_t begin = m.begin;
+            for (size_t k = m.begin + 1; k <= m.end; ++k)
+                if (k == m.end || !tags[k].empty()) {
+                    FittedMove piece = m;
+                    piece.begin      = begin;
+                    piece.end        = k;
+                    piece.arc        = m.arc && k - begin > 1;
+                    split.emplace_back(piece);
+                    begin = k;
+                }
+        }
+        moves.swap(split);
+    }
+
     double volume = 0.;
     char   buf[64];
     float last_vertical_height = -1.f;
     bool   speed_block_open = ! params.speed_marker.empty();
-    double coast_floor = -1., coast_dz = 0.;
-    for (size_t i = 0; i + 1 < points.size(); ++i) {
-        double                speed = speeds[i];
+    for (const FittedMove &m : moves) {
+        const size_t          i = m.begin;
         const ConformalPoint &a = points[i];
-        const ConformalPoint &b = points[i + 1];
-        if ((b.pose.tip - a.pose.tip).norm() < EPSILON)
+        const ConformalPoint &b = points[m.end];
+        const bool            single = m.end == i + 1;
+        if (single && (b.pose.tip - a.pose.tip).norm() < EPSILON)
             continue;
         if (prime[i] == 0. && (a.bead_height <= 0.f || b.bead_height <= 0.f || (!flow.empty() && flow[i] == 0.)) &&
-            i + 2 < points.size() && (b.pose.tip - writer.get_position()).norm() < StubLength)
+            m.end + 1 < points.size() && (b.pose.tip - writer.get_position()).norm() < StubLength)
             continue;
         if (i < tags.size())
             out += tags[i];
-        const float height = 0.5f * (a.bead_height + b.bead_height);
-        const double seg_width = a.width > 0.f && b.width > 0.f ? 0.5 * (double(a.width) + double(b.width)) : width;
-        if (params.last_width != nullptr && std::abs(float(seg_width) - *params.last_width) > TagStep) {
-            *params.last_width = float(seg_width);
+        double speed = speeds[i];
+        float  height = 0.5f * (a.bead_height + b.bead_height);
+        double mean_width = seg_width[i], v = seg_volume[i];
+        if (!single) {
+            double length = 0., h = 0., w = 0.;
+            v = 0.;
+            for (size_t k = i; k < m.end; ++k) {
+                const double l = (points[k + 1].pose.tip - points[k].pose.tip).norm();
+                length += l;
+                h += l * 0.5 * (points[k].bead_height + points[k + 1].bead_height);
+                w += l * seg_width[k];
+                v += seg_volume[k];
+                speed = std::min(speed, speeds[k]);
+                if (params.max_volume_per_second > 0. && seg_volume[k] > 0.)
+                    speed = std::min(speed, params.max_volume_per_second * l / seg_volume[k]);
+            }
+            height     = float(h / length);
+            mean_width = w / length;
+        }
+        if (params.last_width != nullptr && std::abs(float(mean_width) - *params.last_width) > TagStep) {
+            *params.last_width = float(mean_width);
             std::snprintf(buf, sizeof(buf), ";%s%g\n", GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Width).c_str(), *params.last_width);
             out += buf;
         }
@@ -307,49 +532,22 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
         }
         if (params.pressure_advance != nullptr && !glide(i))
             params.pressure_advance->update(height, out);
-        const Vec3d axis = (a.pose.axis + b.pose.axis).normalized();
-        double       v = a.bead_height <= 0.f || b.bead_height <= 0.f ? 0. :
-                         (a.vertical_height > 0.f && b.vertical_height > 0.f ?
-                              segment_volume(a.pose.tip, b.pose.tip, seg_width, a.vertical_height, b.vertical_height) :
-                              segment_volume(a.pose.tip, b.pose.tip, seg_width, a.bead_height, b.bead_height, axis)) *
-                             (flow.empty() ? 1. : flow[i]);
-        ToolPose to_pose = b.pose;
-        if (!rotary && params.clearance && v == 0. && prime[i] == 0. && a.bead_height > 0.f && b.bead_height > 0.f) {
-            const Vec3d up = Vec3d::UnitZ();
-            if (coast_floor == -1.) {
-                coast_floor = std::min(params.margin, params.clearance(a.pose.tip, up)) - 1e-3;
-                coast_dz    = 0.;
-            }
-            const Vec3d from  = a.pose.tip + Vec3d(0., 0., coast_dz);
-            const int   steps = std::max(1, int(std::ceil((b.pose.tip - a.pose.tip).norm() / 0.25)));
-            for (int pass = 0; pass < 4; ++pass) {
-                const Vec3d to   = b.pose.tip + Vec3d(0., 0., coast_dz);
-                double      lift = 0.;
-                for (int k = 1; k <= steps; ++k) {
-                    const double t = double(k) / steps;
-                    lift = std::max(lift, (coast_floor - params.clearance(from + t * (to - from), up)) / t);
-                }
-                if (lift <= 0.)
-                    break;
-                coast_dz += std::min(lift + 0.005, 1.);
-            }
-            to_pose.tip.z() += coast_dz;
-        } else
-            coast_floor = -1., coast_dz = 0.;
         volume += v;
-        if (params.max_volume_per_second > 0. && v > 0.)
+        if (single && params.max_volume_per_second > 0. && v > 0.)
             speed = std::min(speed, params.max_volume_per_second * (b.pose.tip - a.pose.tip).norm() / v);
         const double dE = v * params.e_per_mm3 + prime[i];
         if (prime[i] > 0. && params.prime_speed > 0.)
             speed = std::min(speed, params.prime_speed * printed_length(a.pose.tip, b.pose.tip) / dE);
         if (params.limits.segment_rate > 0.) {
-            double length = (b.pose.tip - a.pose.tip).norm();
+            double length = move_length(m);
             if (params.preserve_points && !rotary)
                 if (const double printed = printed_length(a.pose.tip, b.pose.tip); printed > EPSILON)
                     length = std::min(length, printed);
             speed = std::min(speed, params.limits.segment_rate * length);
         }
-        const double F = (rotary ? speed : axis_limited_speed(a.pose.tip, b.pose.tip, speed, params.limits)) * 60.;
+        const double F = (rotary ? speed :
+                          m.arc  ? helix_limited_speed(a.pose.tip, b.pose.tip, move_length(m), speed, params.limits) :
+                                   axis_limited_speed(a.pose.tip, b.pose.tip, speed, params.limits)) * 60.;
         if (std::abs(writer.get_current_speed() - F) > EPSILON) {
             if (rotary)
                 writer.set_pose_speed(F);
@@ -361,12 +559,21 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
                 writer.set_speed(out, F, "", marker);
             }
         }
-        writer.extrude_to_pose(out, to_pose, dE, params.comment);
-        if (deposit && v > 0.) {
-            const Vec3d side = a.pose.axis.cross(b.pose.tip - a.pose.tip);
-            const Vec3d lift = side.norm() > EPSILON ? Vec3d(0., 0., 0.5 * seg_width * std::abs(side.z()) / side.norm()) : Vec3d::Zero();
-            deposit(a.pose.tip + lift, b.pose.tip + lift, seg_width);
+        if (m.arc)
+            writer.extrude_helix_to_xyz(out, b.pose.tip, m.center, dE, m.ccw, params.comment);
+        else {
+            ToolPose to_pose = b.pose;
+            to_pose.tip.z() += lift[m.end];
+            writer.extrude_to_pose(out, to_pose, dE, params.comment);
         }
+        if (deposit)
+            for (size_t k = i; k < m.end; ++k)
+                if (seg_volume[k] > 0.) {
+                    const ConformalPoint &p = points[k], &q = points[k + 1];
+                    const Vec3d side = p.pose.axis.cross(q.pose.tip - p.pose.tip);
+                    const Vec3d lift = side.norm() > EPSILON ? Vec3d(0., 0., 0.5 * seg_width[k] * std::abs(side.z()) / side.norm()) : Vec3d::Zero();
+                    deposit(p.pose.tip + lift, q.pose.tip + lift, seg_width[k]);
+                }
     }
     return volume;
 }

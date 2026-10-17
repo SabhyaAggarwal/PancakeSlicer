@@ -102,6 +102,8 @@ public:
     void        extrude_arc_to_xy(std::string &out, const Vec2d &point, const Vec2d &center_offset, double dE, const bool is_ccw, const std::string &comment = std::string(), bool force_no_extrusion = false);
     void        extrude_to_xyz(std::string &out, const Vec3d &point, double dE, const std::string &comment = std::string(), bool force_no_extrusion = false,
                                bool keep_tiny_e = true);
+    void        extrude_helix_to_xyz(std::string &out, const Vec3d &point, const Vec2d &center, double dE, bool is_ccw,
+                                     const std::string &comment = std::string());
     std::string retract(bool before_wipe = false, double retract_length = 0);
     std::string retract_for_toolchange(bool before_wipe = false, double retract_length = 0);
     std::string unretract(float extra_retract = 0.f);

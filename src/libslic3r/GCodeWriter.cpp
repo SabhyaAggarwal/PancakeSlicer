@@ -1251,6 +1251,31 @@ void GCodeWriter::extrude_to_xyz(std::string &out, const Vec3d &point, double dE
     w.append_to(out);
 }
 
+void GCodeWriter::extrude_helix_to_xyz(std::string &out, const Vec3d &point, const Vec2d &center, double dE, bool is_ccw,
+                                       const std::string &comment)
+{
+    assert(m_kinematics->supports_arc_moves() && ! has_axis_remap());
+    const auto  printed = [](const Vec2d &p) { return Vec2d(GCodeFormatter::quantize_xyzf(p.x()), GCodeFormatter::quantize_xyzf(p.y())); };
+    const Vec2d offset(m_x_offset, m_y_offset);
+    const Vec2d a = printed(m_pos.head<2>() - offset), b = printed(point.head<2>() - offset);
+    const Vec2d mid = 0.5 * (a + b), normal = Vec2d(a.y() - b.y(), b.x() - a.x()).normalized();
+    const Vec2d c   = mid + normal * normal.dot(center - offset - mid);
+    const bool  z_changed = GCodeFormatter::quantize_xyzf(point.z()) != GCodeFormatter::quantize_xyzf(m_pos.z());
+    m_pos    = point;
+    m_lifted = 0;
+    GCodeG2G3Formatter w(is_ccw);
+    w.emit_xy(b);
+    if (z_changed)
+        w.emit_z(point.z());
+    w.emit_ij(c - a);
+    if (dE != 0.) {
+        filament()->extrude(dE);
+        w.emit_e(filament()->E());
+    }
+    w.emit_comment(GCodeWriter::full_gcode_comment, comment);
+    w.append_to(out);
+}
+
 const ToolKinematics &GCodeWriter::tool_kinematics() const
 {
     static const ThreeAxisKinematics planar;

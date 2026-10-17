@@ -372,7 +372,7 @@ float GCodeProcessor::TimeMachine::HostFeed::stall(const TimeBlock& block, doubl
 {
     if (block.feed_interval <= 0.0f)
         return 0.0f;
-    double arrival = last_arrival + block.feed_interval;
+    double arrival = last_arrival + (block.flags.arc_continuation ? 0. : block.feed_interval);
     if (starts.size() == PlannerBlocks)
         arrival = std::max(arrival, starts.front());
     float  stall = 0.0f;
@@ -4807,6 +4807,9 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
         block.flags.prepare_stage = m_processing_start_custom_gcode;
         block.flags.nonplanar = m_nonplanar_patch_shell != 0xFF;
         block.feed_interval = m_nonplanar_feed_interval;
+        block.flags.arc_continuation = origin == G1DiscretizationOrigin::G2G3 && !m_arc_first_block;
+        if (origin == G1DiscretizationOrigin::G2G3)
+            m_arc_first_block = false;
 
         if ((prev.exit_direction(0) != 0.0f || prev.exit_direction(1) != 0.0f) &&
             (curr.enter_direction(0) != 0.0f || curr.enter_direction(1) != 0.0f) &&
@@ -5457,6 +5460,7 @@ void GCodeProcessor::process_G2_G3(const GCodeReader::GCodeLine& line, bool cloc
     const double travel_length = arc.travel_length();
     if (travel_length < 0.001)
         return;
+    m_arc_first_block = true;
 
     auto adjust_target = [this](const AxisCoords& target, const AxisCoords& prev_position) {
         AxisCoords ret = target;

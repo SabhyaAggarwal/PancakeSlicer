@@ -109,7 +109,7 @@ double road_speed(const std::vector<double> &soft, const std::vector<double> &le
 
 std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, const std::vector<double> &nominal,
                                     const MotionLimits &limits, double quantum, const std::vector<double> *caps,
-                                    const std::vector<bool> *glides)
+                                    const std::vector<bool> *glides, const std::vector<double> *move_length)
 {
     if (pts.size() < 2)
         return {};
@@ -148,7 +148,7 @@ std::vector<double> limit_feedrates(const std::vector<Vec3d> &pts, const std::ve
 
     if (limits.segment_rate > 0.)
         for (size_t i = 0; i < n; ++i)
-            soft[i] = std::min(soft[i], limits.segment_rate * length[i]);
+            soft[i] = std::min(soft[i], limits.segment_rate * (move_length != nullptr && length[i] > 0. ? (*move_length)[i] : length[i]));
     const std::vector<double> junction = shallow_junction_caps(pts, length, limits);
     auto reach = [&limits](double cap, double l) {
         return limits.max_a_xy > 0. && std::isfinite(cap) ? std::sqrt(cap * cap + 0.5 * limits.max_a_xy * l) : cap;

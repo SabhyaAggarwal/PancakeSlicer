@@ -8285,6 +8285,10 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
         params.condition.target_length = 0.;
         params.preserve_points = true;
         params.ramp_length = params.taper_length = params.coast_length = 0.;
+    } else if ((flavor == gcfMarlinFirmware || (m_print != nullptr && m_print->is_BBL_printer())) && !this->should_disable_arc_fitting() &&
+               !m_writer.has_axis_remap()) {
+        const double resolution = m_config.resolution.value;
+        params.arc_tolerance    = resolution > 0. ? std::min(resolution, params.condition.tolerance) : params.condition.tolerance;
     }
     if (m_config.nonplanar_flow_mod.value) {
         ConformalSpeedParams caps;
