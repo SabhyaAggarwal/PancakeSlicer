@@ -515,18 +515,27 @@ std::vector<ShellFill> plan_shell_fills(const ConformalPatch &patch, const Print
     return fills;
 }
 
-Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam, const Polyline *seam_line)
+Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam, const Polyline *seam_line, double ring_spacing, int first_ring)
 {
     const coord_t step = coord_t(scale_(spacing));
     if (step <= 0)
         return {};
+    const coord_t chain = ring_spacing > 0. ? coord_t(scale_(ring_spacing)) : step;
+    const int     every = std::max(1, int(std::lround(double(step) / double(chain))));
+    const double  arc   = scale_(0.01);
+    auto inward = [chain, arc](const ExPolygons &level, int rings) {
+        ExPolygons out = level;
+        for (int i = 0; i < rings && !out.empty(); ++i)
+            out = expolygons_simplify(offset2_ex(out, -1.5f * float(chain), 0.5f * float(chain), jtRound, arc), scale_(0.005));
+        return out;
+    };
     Polygons   loops;
     Polylines  centres;
     ExPolygons innermost;
-    ExPolygons level = offset_ex(area, -0.5f * float(step));
+    ExPolygons level = inward(expolygons_simplify(offset_ex(area, -0.5f * float(chain), jtRound, arc), scale_(0.005)), first_ring);
     while (!level.empty()) {
         append(loops, to_polygons(level));
-        ExPolygons next = offset2_ex(level, -float(step) - 0.5f * float(step), 0.5f * float(step));
+        ExPolygons next = inward(level, every);
         for (const ExPolygon &piece : level)
             if (intersection_ex(ExPolygons{ piece }, next).empty()) {
                 innermost.emplace_back(piece);
@@ -629,7 +638,7 @@ std::vector<Polylines> shell_polylines(const ExPolygons &area, const ShellFill &
         if (Polyline helix = fill.helix ? fill_helix(area, spacing, start, false, helix_ramp, TopHelixMinRings) : Polyline(); helix.is_valid())
             paths.emplace_back(std::move(helix));
         else
-            paths = fill_spiral(area, spacing, start, seam_line);
+            paths = fill_spiral(area, spacing, start, seam_line, fill.ring_spacing, fill.first_ring);
         if (fill.outward)
             reverse_order(paths);
     } else {

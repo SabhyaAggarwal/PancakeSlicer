@@ -634,6 +634,15 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
         const float narrow = std::min(flow.width(), float(BandedTopWidth * flow.nozzle_diameter()));
         flow = flow.with_width(adaptive != nullptr ? float(outer_bead_width(height, flow.nozzle_diameter(), narrow)) : narrow);
     }
+    ShellFill rings = fill;
+    if (banded != nullptr && k + 1 == patch.shells && fill.spiral && !sparse && !plug && adaptive == nullptr) {
+        const Flow   top   = region.flow(object, frTopSolidInfill, height);
+        const Flow   outer = top.with_width(std::min(top.width(), float(BandedTopWidth * top.nozzle_diameter())));
+        const double s     = outer.spacing();
+        flow               = flow.with_spacing(float(std::clamp(std::round(flow.spacing() / s), 1., 2.) * s));
+        rings.ring_spacing = s;
+        rings.first_ring   = int(std::ceil((flow.width() - outer.width()) / (2. * s) - 1e-6));
+    }
     const bool                bridge  = plug && banded->bridge_first && k == banded->sparse + 1;
     const ExtrusionRole       role    = outer ? erTopSolidInfill : sparse ? erInternalInfill : bridge ? erInternalBridgeInfill : erSolidInfill;
     const double drop = adaptive != nullptr ? adaptive->nominal_drop(k) : (patch.shells - k) * patch.shell_height;
@@ -691,7 +700,7 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
         contour_fill(patch.surface, outer ? expolygons_simplify(rest, scale_(0.5 * patch.surface.pitch())) : rest, drop,
                      banded->strip_height, banded->strip_offset, flow, height, fill.angle, outer, host_z, roads, linked);
     else if (!rest.empty())
-        append(linked, shell_polylines(fill.spiral ? rest : off_voids(rest, flow.spacing()), fill, outer ? ipMonotonic : ipRectilinear, flow.spacing(), outer, flow,
+        append(linked, shell_polylines(fill.spiral ? rest : off_voids(rest, flow.spacing()), rings, outer ? ipMonotonic : ipRectilinear, flow.spacing(), outer, flow,
                                        host_z, start, MaxGlide, surface_spaced ? &patch.surface.get() : nullptr, &seam_line, &ramp));
     if (banded != nullptr && !sparse && !plug)
         for (const ExPolygon &strip : banded->lengthwise)
