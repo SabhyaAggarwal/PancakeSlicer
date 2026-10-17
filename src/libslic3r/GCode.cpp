@@ -7998,11 +7998,11 @@ std::string GCode::extrude_multiplanar_chunk(const Nonplanar::ConformalPatch &pa
             gcode += m_writer.end_inverse_time();
             m_conformal_points.clear();
         }
+        if (rotary && k + 1 == patch.shell_paths.size())
+            gcode += this->rotary_move_safely(nullptr);
         gcode += ";_NONPLANAR_END\n";
     }
-    if (rotary)
-        gcode += this->rotary_move_safely(nullptr);
-    else if (entered) {
+    if (! rotary && entered) {
         gcode += this->retract();
         gcode += m_writer.travel_to_z(std::max(m_writer.get_position().z(), top + hop), "lift off the chunk", true, this->conformal_max_speed_z());
     }
@@ -8148,10 +8148,12 @@ std::string GCode::extrude_field_patch(const Nonplanar::ConformalPatch &patch)
             last = to_field(path->polyline.points.back());
             m_conformal_points.clear();
         }
+        if (k + 1 == patch.shell_paths.size()) {
+            gcode += this->retract();
+            gcode += this->rotary_move_safely(nullptr);
+        }
         gcode += ";_NONPLANAR_END\n";
     }
-    gcode += this->retract();
-    gcode += this->rotary_move_safely(nullptr);
     gcode += m_writer.end_inverse_time();
     return gcode;
 }
@@ -8288,7 +8290,8 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
         ConformalSpeedParams caps;
         caps.nominal_speed    = speed;
         caps.max_volumetric   = FILAMENT_CONFIG(filament_max_volumetric_speed);
-        caps.reference_height = m_conformal_gradient ? path.height : 0.;
+        const bool hidden     = path.role() == erSolidInfill || path.role() == erInternalInfill;
+        caps.reference_height = m_conformal_gradient && !hidden ? path.height : 0.;
         if (road_cooling)
             caps.min_speed = FILAMENT_CONFIG(slow_down_min_speed);
         caps.max_joint_speed  = Vec3d(first_value(m_config.machine_max_speed_x), first_value(m_config.machine_max_speed_y),
@@ -8604,22 +8607,30 @@ std::string GCode::surface_travel(const Vec3d &to, bool from_on_bead, bool to_on
     return gcode;
 }
 
-static void extrude_contoured(GCodeWriter &writer, std::string &gcode, const Vec3d &to, double e, const std::string &comment, double vz_max)
+static void extrude_contoured(GCodeWriter &writer, std::string &gcode, const Vec3d &to, double e, const std::string &comment, double vz_max,
+                              double nominal)
 {
+    if (vz_max <= 0.) {
+        writer.extrude_to_xyz(gcode, to, e, comment);
+        return;
+    }
     auto         printed = [](const Vec3d &q) { return Vec3d((q * 1000.).array().round() / 1000.); };
-    const Vec3d  d     = printed(to) - printed(writer.get_position());
-    const double dz    = std::abs(d.z());
-    const double F_set = writer.get_current_speed();
-    const double F_cap = vz_max > 0. && dz > EPSILON ? std::min(F_set, 0.95 * vz_max * 60. * d.norm() / dz) : F_set;
-    if (F_cap < F_set - EPSILON)
-        writer.set_speed(gcode, F_cap);
+    const Vec3d  d       = printed(to) - printed(writer.get_position());
+    const double dz      = std::abs(d.z());
+    double       F       = nominal;
+    if (dz > EPSILON) {
+        const double cap = 0.95 * vz_max * 60. * d.norm() / dz;
+        if (cap < nominal)
+            F = nominal * std::pow(0.95, std::ceil(std::log(cap / nominal) / std::log(0.95)));
+    }
+    if (std::abs(F - writer.get_current_speed()) > EPSILON)
+        writer.set_speed(gcode, F);
     writer.extrude_to_xyz(gcode, to, e, comment);
-    if (F_cap < F_set - EPSILON)
-        writer.set_speed(gcode, F_set);
 }
 
 static void extrude_contoured_road(GCodeWriter &writer, std::string &gcode, const Vec3d &from, const Vec3d &to, double nominal_z,
-                                   double dE, double width, double height, bool scale_flow, const std::string &comment, double vz_max)
+                                   double dE, double width, double height, bool scale_flow, const std::string &comment, double vz_max,
+                                   double nominal_feed)
 {
     const double dz      = std::abs(to.z() - from.z());
     const double nominal = Nonplanar::bead_area(width, height);
@@ -8632,7 +8643,7 @@ static void extrude_contoured_road(GCodeWriter &writer, std::string &gcode, cons
         const double z     = nominal_z + b.z();
         if (z < 0.1)
             throw RuntimeError("GCode: very low z");
-        extrude_contoured(writer, gcode, Vec3d(b.x(), b.y(), z), dE / n * ratio, comment, vz_max);
+        extrude_contoured(writer, gcode, Vec3d(b.x(), b.y(), z), dE / n * ratio, comment, vz_max, nominal_feed);
     }
 }
 
@@ -8663,6 +8674,31 @@ double GCode::nonplanar_travel_z(const Vec2d *from, const Vec2d *to, bool nozzle
                                                                      std::max(m_nonplanar_ceiling, double(m_max_layer_z) + m_config.z_offset.value) + hop;
     }
     return m_config.printable_height.value > 0. ? std::min(z, m_config.printable_height.value + m_config.z_offset.value) : z;
+}
+
+bool GCode::nonplanar_travel_clear(const Polyline &travel, double z, bool short_travel)
+{
+    if (!m_track_nonplanar_material || !m_material_columns || travel.size() < 2)
+        return false;
+    constexpr double tolerance = 1e-6;
+    if (z + tolerance >= std::max(m_nonplanar_ceiling, double(m_max_layer_z) + m_config.z_offset.value))
+        return true;
+    const Nonplanar::HeadEnvelope &head = this->nonplanar_head();
+    BoundingBoxf rect;
+    for (const Point &p : travel.points)
+        rect.merge(this->point_to_gcode(p));
+    const double reach = short_travel ? 1. : head.reach();
+    rect.min.array() -= reach;
+    rect.max.array() += reach;
+    if (m_material_columns->top_in_rect(rect) <= z + tolerance)
+        return true;
+    if (short_travel)
+        return false;
+    for (size_t i = 1; i < travel.size(); ++i)
+        if (safe_travel_z(*m_material_columns, head, this->point_to_gcode(travel.points[i - 1]), this->point_to_gcode(travel.points[i]), 0.) >
+            z + tolerance)
+            return false;
+    return true;
 }
 
 std::string GCode::wipe_conformal_path()
@@ -9769,6 +9805,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
                 double total_length = sloped == nullptr ? 0. : path.polyline.length() * SCALING_FACTOR;
                 double saved_z      = m_writer.get_position().z();
 
+                const double contoured_feed = m_writer.get_current_speed();
                 for (const Line3& line : path.polyline.lines()) {
                     std::string flow_description;
                     const double line_length = path.z_contoured
@@ -9792,7 +9829,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
                         extrude_contoured_road(m_writer, gcode, Vec3d(from.x(), from.y(), unscale_(line.a.z())),
                                                Vec3d(to.x(), to.y(), unscale_(line.b.z())), m_nominal_z, dE, path.width, path.height,
                                                path.role() != erIroning, flow_description.empty() ? description : flow_description,
-                                               z_cap ? this->conformal_max_speed_z() : 0.);
+                                               z_cap ? this->conformal_max_speed_z() : 0., contoured_feed);
                     } else if (sloped == nullptr) {
                         m_writer.extrude_to_xy(gcode,
                             this->point_to_gcode(line.b.to_point()),
@@ -9809,6 +9846,8 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
                     }
                     check_and_insert_timelapse(line.b.to_point());
                 }
+                if (path.z_contoured && std::abs(m_writer.get_current_speed() - contoured_feed) > EPSILON)
+                    m_writer.set_speed(gcode, contoured_feed);
             } else {
                 const std::vector<PathFittingData>& fitting_result = path.polyline.fitting_result;
                 for (size_t fitting_index = 0; fitting_index < fitting_result.size(); fitting_index++) {
@@ -9971,7 +10010,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
                 extrude_contoured_road(m_writer, gcode, Vec3d(prev.x(), prev.y(), unscale_(pre_processed_point.p.z())),
                                        Vec3d(p.x(), p.y(), unscale_(processed_point.p.z())), m_nominal_z, dE, path.width, path.height,
                                        path.role() != erIroning, flow_description.empty() ? description : flow_description,
-                                       Nonplanar::requests_conformal_shells(*m_print) ? this->conformal_max_speed_z() : 0.);
+                                       Nonplanar::requests_conformal_shells(*m_print) ? this->conformal_max_speed_z() : 0., last_set_speed);
             } else if (sloped == nullptr) {
                 m_writer.extrude_to_xy(gcode, p.head<2>(), dE, flow_description.empty() ? description : flow_description);
             } else {
@@ -10129,17 +10168,6 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
 
     LiftType lift_type = LiftType::SpiralLift;
     bool needs_retraction = this->needs_retraction(travel, role, lift_type);
-    if (nonplanar_travel && ! needs_retraction && m_material_columns && std::abs(m_writer.get_position().z() - m_nominal_z) < EPSILON &&
-        (z == DBL_MAX || std::abs(z - m_nominal_z) < EPSILON)) {
-        const Vec2d  a = this->point_to_gcode(travel.points.front()), b = this->point_to_gcode(travel.points.back());
-        BoundingBoxf rect;
-        rect.merge(a);
-        rect.merge(b);
-        rect.min.array() -= 1.;
-        rect.max.array() += 1.;
-        if (m_material_columns->top_in_rect(rect) <= m_writer.get_position().z() + EPSILON)
-            nonplanar_travel = false;
-    }
     bool could_be_wipe_disabled       = false;
     const bool used_external_mp_once  = m_avoid_crossing_perimeters.used_external_mp_once();
     std::string gcode;
@@ -10204,6 +10232,12 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
 
     m_avoid_crossing_perimeters.reset_once_modifiers();
 
+    const bool travel_clear = nonplanar_travel &&
+                              this->nonplanar_travel_clear(travel, std::min(z == DBL_MAX ? m_nominal_z : z, m_writer.get_position().z()),
+                                                           !needs_retraction);
+    if (travel_clear)
+        nonplanar_travel = false;
+
     if (needs_retraction || nonplanar_travel) {
 
         Point last_post_before_retract = this->last_pos();
@@ -10223,7 +10257,7 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
 
     m_writer.add_object_change_labels(gcode);
 
-    if (travel.size() >= 2 && this->below_conformal_material()) {
+    if (travel.size() >= 2 && !travel_clear && this->below_conformal_material()) {
         const Vec2d from = this->point_to_gcode(travel.points.front()), to = this->point_to_gcode(travel.points.back());
         const double z_to = z == DBL_MAX ? m_nominal_z : z;
         if (const double safe = this->nonplanar_travel_z(&from, &to); safe > z_to + EPSILON) {
@@ -10448,7 +10482,7 @@ std::string GCode::retract(bool toolchange, bool is_last_retraction, LiftType li
         can_lift = false;
     }
 
-    if (needs_lift && can_lift) {
+    if (needs_lift && can_lift && this->rotary_at_home()) {
         if (m_writer.get_position().z() < m_nominal_z - EPSILON && Nonplanar::requests_conformal_shells(*m_print))
             gcode += m_writer.travel_to_z(m_nominal_z, "rise to layer Z before lift", true, this->conformal_max_speed_z());
         if (this->below_conformal_material())

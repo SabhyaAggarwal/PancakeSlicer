@@ -15,6 +15,7 @@
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/Print.hpp"
+#include "libslic3r/Nonplanar/PatchTools.hpp"
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/LocalesUtils.hpp"
 #include "libslic3r/format.hpp"
@@ -4881,7 +4882,8 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
             for (unsigned char a = X; a <= E; ++a) {
                 float axis_max_jerk = get_axis_max_jerk(static_cast<PrintEstimatedStatistics::ETimeMode>(i), static_cast<Axis>(a));
                 if (curr.abs_axis_feedrate[a] > axis_max_jerk)
-                    curr.safe_feedrate = std::min(curr.safe_feedrate, axis_max_jerk);
+                    curr.safe_feedrate = std::min(curr.safe_feedrate, m_marlin_junctions ?
+                        float(block.feedrate_profile.cruise * axis_max_jerk / curr.abs_axis_feedrate[a]) : axis_max_jerk);
             }
         }
 
@@ -4902,15 +4904,27 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
                     if (prev_speed_larger)
                         exit_v *= smaller_speed_factor;
                     Vec3f entry_v = block.feedrate_profile.cruise * (curr.enter_direction);
-                    Vec3f jerk_v = entry_v - exit_v;
-                    jerk_v = Vec3f(abs(jerk_v.x()), abs(jerk_v.y()), abs(jerk_v.z()));
                     Vec3f max_xyz_jerk_v = get_xyz_max_jerk(static_cast<PrintEstimatedStatistics::ETimeMode>(i));
-
-                    for (size_t i = 0; i < 3; i++)
-                    {
-                        if (jerk_v[i] > max_xyz_jerk_v[i]) {
-                            v_factor *= max_xyz_jerk_v[i] / jerk_v[i];
-                            jerk_v *= v_factor;
+                    if (!m_marlin_junctions) {
+                        Vec3f jerk_v = entry_v - exit_v;
+                        jerk_v = Vec3f(abs(jerk_v.x()), abs(jerk_v.y()), abs(jerk_v.z()));
+                        for (size_t k = 0; k < 3; k++)
+                            if (jerk_v[k] > max_xyz_jerk_v[k]) {
+                                v_factor *= max_xyz_jerk_v[k] / jerk_v[k];
+                                jerk_v *= v_factor;
+                                limited = true;
+                            }
+                    }
+                    for (size_t k = 0; m_marlin_junctions && k < 3; k++) {
+                        float v_exit = exit_v[k], v_entry = entry_v[k];
+                        if (limited) {
+                            v_exit *= v_factor;
+                            v_entry *= v_factor;
+                        }
+                        const float jerk = (v_exit > v_entry) ? ((v_entry > 0.0f || v_exit < 0.0f) ? v_exit - v_entry : std::max(v_exit, -v_entry)) :
+                                                                ((v_entry < 0.0f || v_exit > 0.0f) ? v_entry - v_exit : std::max(-v_exit, v_entry));
+                        if (jerk > max_xyz_jerk_v[k]) {
+                            v_factor *= max_xyz_jerk_v[k] / jerk;
                             limited = true;
                         }
                     }
@@ -5220,7 +5234,8 @@ void GCodeProcessor::process_VG1(const GCodeReader::GCodeLine& line)
             for (unsigned char a = X; a <= E; ++a) {
                 float axis_max_jerk = get_axis_max_jerk(static_cast<PrintEstimatedStatistics::ETimeMode>(i), static_cast<Axis>(a));
                 if (curr.abs_axis_feedrate[a] > axis_max_jerk)
-                    curr.safe_feedrate = std::min(curr.safe_feedrate, axis_max_jerk);
+                    curr.safe_feedrate = std::min(curr.safe_feedrate, m_marlin_junctions ?
+                        float(block.feedrate_profile.cruise * axis_max_jerk / curr.abs_axis_feedrate[a]) : axis_max_jerk);
             }
         }
 
@@ -5241,15 +5256,27 @@ void GCodeProcessor::process_VG1(const GCodeReader::GCodeLine& line)
                     if (prev_speed_larger)
                         exit_v *= smaller_speed_factor;
                     Vec3f entry_v = block.feedrate_profile.cruise * (curr.enter_direction);
-                    Vec3f jerk_v = entry_v - exit_v;
-                    jerk_v = Vec3f(abs(jerk_v.x()), abs(jerk_v.y()), abs(jerk_v.z()));
                     Vec3f max_xyz_jerk_v = get_xyz_max_jerk(static_cast<PrintEstimatedStatistics::ETimeMode>(i));
-
-                    for (size_t i = 0; i < 3; i++)
-                    {
-                        if (jerk_v[i] > max_xyz_jerk_v[i]) {
-                            v_factor *= max_xyz_jerk_v[i] / jerk_v[i];
-                            jerk_v *= v_factor;
+                    if (!m_marlin_junctions) {
+                        Vec3f jerk_v = entry_v - exit_v;
+                        jerk_v = Vec3f(abs(jerk_v.x()), abs(jerk_v.y()), abs(jerk_v.z()));
+                        for (size_t k = 0; k < 3; k++)
+                            if (jerk_v[k] > max_xyz_jerk_v[k]) {
+                                v_factor *= max_xyz_jerk_v[k] / jerk_v[k];
+                                jerk_v *= v_factor;
+                                limited = true;
+                            }
+                    }
+                    for (size_t k = 0; m_marlin_junctions && k < 3; k++) {
+                        float v_exit = exit_v[k], v_entry = entry_v[k];
+                        if (limited) {
+                            v_exit *= v_factor;
+                            v_entry *= v_factor;
+                        }
+                        const float jerk = (v_exit > v_entry) ? ((v_entry > 0.0f || v_exit < 0.0f) ? v_exit - v_entry : std::max(v_exit, -v_entry)) :
+                                                                ((v_entry < 0.0f || v_exit > 0.0f) ? v_entry - v_exit : std::max(-v_exit, v_entry));
+                        if (jerk > max_xyz_jerk_v[k]) {
+                            v_factor *= max_xyz_jerk_v[k] / jerk;
                             limited = true;
                         }
                     }
@@ -6529,6 +6556,7 @@ void GCodeProcessor::set_print(Print* print)
     m_keep_tips = print != nullptr && std::any_of(print->objects().begin(), print->objects().end(), [](const PrintObject* object) {
         return object->config().nonplanar_mode.value != NonplanarMode::Off;
     });
+    m_marlin_junctions = print != nullptr && Nonplanar::requests_conformal_shells(*print);
 }
 
 unsigned int GCodeProcessor::intern_move_state(const GCodeProcessorResult::MoveState& state)

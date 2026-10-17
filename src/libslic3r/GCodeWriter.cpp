@@ -1272,6 +1272,11 @@ JointPose GCodeWriter::get_joints() const
     const ToolPose pose { m_pos - Vec3d(m_x_offset, m_y_offset, 0.), m_tool_axis };
     if (m_joints_valid && (this->tool_kinematics().forward(m_joints).tip - pose.tip).norm() < EPSILON)
         return m_joints;
+    if (m_joints_valid && this->tool_kinematics().rotary_count() > 0) {
+        JointPose joints = m_joints;
+        joints.xyz       = this->apply_axis_remap(pose.tip);
+        return joints;
+    }
     JointPose joints;
     if (! this->tool_kinematics().inverse(pose, m_joints_valid ? &m_joints : nullptr, joints))
         this->tool_kinematics().inverse({ pose.tip, Vec3d::UnitZ() }, nullptr, joints);
@@ -1355,10 +1360,12 @@ void GCodeWriter::pose_move(std::string &out, const ToolPose &pose, double dE, c
     }
 
     const Vec3d    offset(m_x_offset, m_y_offset, 0.);
-    const ToolPose from { m_pos - offset, m_tool_axis };
-    const ToolPose to { pose.tip - offset, pose.axis.normalized() };
     m_joints       = this->get_joints();
     m_joints_valid = true;
+    ToolPose       from { m_pos - offset, m_tool_axis };
+    if (const ToolPose held = kin.forward(m_joints); (held.tip - from.tip).norm() >= EPSILON)
+        from = held;
+    const ToolPose to { pose.tip - offset, pose.axis.normalized() };
     std::vector<JointPose> joints;
     kin.linearize(m_joints, from, to, max_tip_deviation, joints);
 

@@ -445,7 +445,7 @@ ExPolygons lengthwise_strips(const ExPolygons &area, double line_width)
 }
 
 Polylines sparse_strip_fill(const HeightField &surface, const ExPolygons &area, double drop, double strip_height, double spacing,
-                            const Point &start)
+                            const Point &start, double shift = 0.)
 {
     RunGroups strips;
     for (size_t n = 0; n < surface.data().size(); ++n)
@@ -454,7 +454,7 @@ Polylines sparse_strip_fill(const HeightField &surface, const ExPolygons &area, 
     Polylines out;
     for (const auto &[strip, runs] : strips.groups())
         for (const ExPolygon &piece : intersection_ex(area, runs_to_expolygons(runs, surface)))
-            for (double inset = 0.5 * spacing;; inset += spacing) {
+            for (double inset = 0.5 * spacing;; inset += inset == 0.5 * spacing ? spacing - shift : spacing) {
                 const Polygons rings = to_polygons(offset_ex(ExPolygons{ piece }, -float(scale_(inset))));
                 if (rings.empty())
                     break;
@@ -563,6 +563,10 @@ std::vector<PlanarFace> planar_faces(const HeightField &surface, const ExPolygon
 }
 
 constexpr double SparseWallSlope = 45.;
+
+constexpr double PlugCrossSlope = 8.;
+constexpr double PlugLineAngle = 10.;
+constexpr double PlugCrossArea = 400.;
 
 constexpr double BandedTopAspect = 1.5;
 constexpr double BandedTopMinShare = 0.75;
@@ -699,21 +703,55 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
                                            start, MaxGlide, nullptr, &seam_line));
             rest = diff_ex(rest, face.area);
         }
-    if (plug) {
+    if (plug && k == banded->sparse + 1 && banded->sparse > 0) {
         ShellFill cross;
         cross.angle   = banded->angle + ((banded->hidden - k) % 2 == 0 ? 0.5 * PI : 0.);
         cross.outline = false;
         linked        = shell_polylines(off_voids(whole, flow.spacing()), cross, ipRectilinear, flow.spacing(), false, flow, host_z, start, MaxGlide, nullptr, &seam_line);
-    } else if (sparse) {
-        const double spacing = flow.spacing() / banded->density;
+    } else if (sparse || plug) {
+        const double spacing = sparse ? flow.spacing() / banded->density : flow.spacing();
+        ExPolygons gentle;
+        if (plug && k == banded->hidden && Slic3r::area(whole) * SCALING_FACTOR * SCALING_FACTOR < PlugCrossArea)
+            gentle = whole;
+        else if (plug && k == banded->hidden) {
+            Mask mask(patch.surface.data().size(), 0);
+            for (int iy = 0; iy < patch.surface.ny(); ++iy)
+                for (int ix = 0; ix < patch.surface.nx(); ++ix)
+                    if (const Vec2d g = patch.surface.gradient(patch.surface.node(ix, iy)); g.norm() <= std::tan(Geometry::deg2rad(PlugCrossSlope)))
+                        mask[size_t(iy) * size_t(patch.surface.nx()) + size_t(ix)] = 1;
+            gentle = opening_ex(intersection_ex(whole, mask_to_expolygons(mask, patch.surface)), float(scale_(flow.spacing())));
+        }
+        Point           open      = start;
+        const Polyline *open_line = &seam_line;
+        if (plug) {
+            open      = Point(2 * get_extents(whole).center() - start);
+            open_line = nullptr;
+        }
+        const ExPolygons steep = gentle.empty() ? whole : diff_ex(whole, gentle);
+        const double shift = plug ? 0.5 * spacing : 0.;
         if (banded->strips)
-            for (Polyline &pl : sparse_strip_fill(patch.surface, whole, drop, banded->strip_height, spacing, start))
+            for (Polyline &pl : sparse_strip_fill(patch.surface, steep, drop, banded->strip_height, spacing, open, 0.5 * shift))
                 linked.push_back({ std::move(pl) });
         else {
-            ShellFill lines = fill;
-            if (!std::isnan(banded->sparse_angle))
-                lines.angle = banded->sparse_angle;
-            linked = shell_polylines(off_voids(whole, spacing), lines, ipRectilinear, spacing, false, flow, host_z, start, MaxGlide, nullptr, &seam_line);
+            const ExPolygons plan  = fill.spiral && shift > 0. ? offset_ex(whole, -float(scale_(shift))) : whole;
+            ShellFill        along = fill;
+            if (plug && !fill.spiral)
+                along.angle += Geometry::deg2rad((banded->hidden - k) % 2 == 0 ? PlugLineAngle : -PlugLineAngle);
+            else if (sparse && !std::isnan(banded->sparse_angle))
+                along.angle = banded->sparse_angle;
+            std::vector<Polylines> chains = shell_polylines(fill.spiral ? plan : off_voids(plan, spacing), along, ipRectilinear, spacing, false, flow, host_z, open, MaxGlide, nullptr, open_line);
+            if (gentle.empty())
+                linked = std::move(chains);
+            else
+                for (const Polylines &chain : chains)
+                    for (Polyline &pl : intersection_pl(chain, steep))
+                        linked.push_back({ std::move(pl) });
+        }
+        if (!gentle.empty()) {
+            ShellFill cross;
+            cross.angle   = (fill.spiral || banded->strips ? Geometry::deg2rad(region.config().infill_direction.value) : fill.angle) + 0.5 * PI;
+            cross.outline = false;
+            append(linked, shell_polylines(off_voids(gentle, spacing), cross, ipRectilinear, spacing, false, flow, host_z, open, MaxGlide, nullptr, open_line));
         }
     } else if (banded != nullptr && banded->strips)
         contour_fill(patch.surface, outer ? expolygons_simplify(rest, scale_(0.5 * patch.surface.pitch())) : rest, drop,

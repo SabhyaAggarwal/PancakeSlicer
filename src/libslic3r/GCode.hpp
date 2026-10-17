@@ -562,6 +562,7 @@ protected:
     std::string     nonplanar_pass_hold(const ExtrusionPathConformal *next);
     std::string     nonplanar_patch_end();
     double          nonplanar_travel_z(const Vec2d *from = nullptr, const Vec2d *to = nullptr, bool nozzle_only = false);
+    bool            nonplanar_travel_clear(const Polyline &travel, double z, bool short_travel);
     bool            below_conformal_material() const
     { return m_material_columns && m_nonplanar_ceiling > std::min(m_nominal_z, m_writer.get_position().z()) + EPSILON; }
 

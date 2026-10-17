@@ -1191,6 +1191,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         UsedFilaments m_used_filaments;
 
         Print* m_print{ nullptr };
+        bool   m_marlin_junctions{ false };
 
         GCodeProcessorResult m_result;
         static unsigned int s_result_id;
