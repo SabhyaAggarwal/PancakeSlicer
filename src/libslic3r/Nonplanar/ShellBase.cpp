@@ -2,6 +2,7 @@
 
 #include "BeadModel.hpp"
 #include "ConformalShells.hpp"
+#include "Multiplanar.hpp"
 #include "PatchTools.hpp"
 
 #include "libslic3r/AABBTreeLines.hpp"
@@ -45,23 +46,16 @@ template<class Fn> void for_each_conformal(const ExtrusionEntity &entity, const 
 
 template<class Keep> void collect_lines(const ExtrusionEntity &entity, const Keep &keep, Lines &out)
 {
-    if (const auto *collection = dynamic_cast<const ExtrusionEntityCollection *>(&entity)) {
-        for (const ExtrusionEntity *e : collection->entities)
-            collect_lines(*e, keep, out);
-    } else if (const auto *path = dynamic_cast<const ExtrusionPath *>(&entity)) {
+    std::vector<const ExtrusionPath *> paths;
+    collect_paths(&entity, paths);
+    for (const ExtrusionPath *path : paths) {
         if (!keep(*path))
-            return;
+            continue;
         const Points3 &pts = path->polyline.points;
         for (size_t i = 1; i < pts.size(); ++i)
             if (const auto *conformal = dynamic_cast<const ExtrusionPathConformal *>(path);
                 conformal == nullptr || conformal->bead_height.size() != pts.size() || conformal->bead_height[i] > 0.f)
                 out.emplace_back(pts[i - 1].to_point(), pts[i].to_point());
-    } else if (const auto *multi = dynamic_cast<const ExtrusionMultiPath *>(&entity)) {
-        for (const ExtrusionPath &p : multi->paths)
-            collect_lines(p, keep, out);
-    } else if (const auto *loop = dynamic_cast<const ExtrusionLoop *>(&entity)) {
-        for (const ExtrusionPath &p : loop->paths)
-            collect_lines(p, keep, out);
     }
 }
 

@@ -262,18 +262,20 @@ public:
             });
     }
     double clearance(const Prefix &laid, Scratch &scratch, const ToolPose &pose, const Matrix3d &frame, const Vec3d &sweep, double turn,
-                     size_t run, bool extruding, double cutoff, std::string &component) const
+                     size_t run, bool extruding, bool allowance, double cutoff, std::string &component) const
     {
         double best = cutoff;
         size_t best_box = std::numeric_limits<size_t>::max();
         if (laid.beads == 0) return Inf;
         scratch.seen.resize(m_chunks.size(), 0);
         const Matrix3d to_work = frame.transpose(), abs_frame = frame.cwiseAbs();
-        const bool tilted = to_work.col(2).z() < 1. - 1e-9 && m_allowance.radius > 0. && m_allowance.height > 0.;
+        const double shrink = sweep.norm() + 0.5 * turn * std::hypot(m_allowance.radius, m_allowance.height);
+        const double radius = m_allowance.radius - shrink, height = m_allowance.height - shrink;
+        const bool tilted = to_work.col(2).z() < 1. - 1e-9 && allowance && radius > 0. && height > 0.;
         auto in_allowance = [&](const Corners &corners) {
             for (const Vec3d &v : corners)
-                if (v.z() < pose.tip.z() || v.z() > pose.tip.z() + m_allowance.height ||
-                    (v.head<2>() - pose.tip.head<2>()).squaredNorm() > m_allowance.radius * m_allowance.radius)
+                if (v.z() < pose.tip.z() || v.z() > pose.tip.z() + height ||
+                    (v.head<2>() - pose.tip.head<2>()).squaredNorm() > radius * radius)
                     return false;
             return true;
         };
@@ -465,14 +467,6 @@ private:
     Grid m_fine { FineCell, {} }, m_coarse { CoarseCell, {} };
     Prefix m_prefix;
 };
-
-JointPose interpolate(const JointPose &a, const JointPose &b, double t)
-{
-    JointPose q;
-    q.xyz = a.xyz + t * (b.xyz - a.xyz);
-    for (int k = 0; k < 2; ++k) q.rot[k] = a.rot[k] + t * (b.rot[k] - a.rot[k]);
-    return q;
-}
 }
 
 MaterialColumns::MaterialColumns(const BoundingBoxf &bbox, double pitch) : m_bbox(bbox), m_pitch(pitch)
@@ -820,10 +814,11 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
     };
     auto empty_sweep = [&]() { return Sweep { MaterialColumns(bounds, params.pitch), MaterialColumns(bounds, params.pitch) }; };
     Vec2d reach_min = body_boxes.finite_min.cwiseMin(strict_boxes.finite_min), reach_max = body_boxes.finite_max.cwiseMax(strict_boxes.finite_max);
-    double infinite_floor = Inf;
+    double infinite_floor = Inf, finite_floor = 0.;
     for (const auto *list : { &body_boxes, &strict_boxes, &allowed_boxes })
         for (const auto &box : list->boxes)
             if (box.infinite_x || box.infinite_y) infinite_floor = std::min(infinite_floor, box.min.z());
+            else if (list != &allowed_boxes) finite_floor = std::min(finite_floor, box.min.z());
     std::atomic<size_t> unswept { 0 };
     BeadGrid beads(result, rotary);
     struct Hits { std::vector<ClearanceHit> hits; double min_clearance = Inf; };
@@ -860,7 +855,7 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
                 if (ceiling == -Inf) return true;
                 if (ceiling > z + infinite_floor) return false;
                 return !(reach_min.x() <= reach_max.x()) ||
-                    sweep.columns.tile_bound(BoundingBoxf(a.head<2>().cwiseMin(b.head<2>()) + reach_min, a.head<2>().cwiseMax(b.head<2>()) + reach_max)) <= z;
+                    sweep.columns.tile_bound(BoundingBoxf(a.head<2>().cwiseMin(b.head<2>()) + reach_min, a.head<2>().cwiseMax(b.head<2>()) + reach_max)) <= z + finite_floor;
             }();
         if (planar_only) ++unswept;
         if (hits != nullptr && !planar_only) {
@@ -891,15 +886,15 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
                 const Vec3d p0 = a + t0 * (b - a), p1 = a + t1 * (b - a);
                 std::string component;
                 if (rotary) {
-                    const JointPose q = interpolate(last_joints, move_joints, 0.5 * (t0 + t1));
+                    const JointPose q = lerp(last_joints, move_joints, 0.5 * (t0 + t1));
                     const ToolPose pose = kinematics.forward(q);
                     const Matrix3d frame = kinematics.head_frame(q);
-                    const Vec3d sample_end = kinematics.forward(interpolate(last_joints, move_joints, t1)).tip;
+                    const Vec3d sample_end = kinematics.forward(lerp(last_joints, move_joints, t1)).tip;
                     const double theta = turn / count, stride = (move_joints.xyz - last_joints.xyz).norm() / count;
                     const Vec3d grow = 0.5 * (frame * (sample_end - sample_start)).cwiseAbs() +
                                        Vec3d::Constant((theta * theta * tip_lever + 2. * theta * stride) / 8.);
                     sample_start = sample_end;
-                    record(tilted.clearance(laid, *scratch, pose, frame, grow, theta, c.run, extruding, best, component), component, pose.tip);
+                    record(tilted.clearance(laid, *scratch, pose, frame, grow, theta, c.run, extruding, !strict, best, component), component, pose.tip);
                 } else {
                     int index = -1;
                     const double body_gap = sweep.columns.swept_clearance(p0, p1, body_boxes, best, &index, sweep.body_hint);
@@ -937,8 +932,8 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
             for (int j = 0; j < count; ++j) {
                 const double t0 = double(j) / count, t1 = double(j + 1) / count;
                 const Vec3d p0 = a + t0 * (b - a), p1 = a + t1 * (b - a);
-                if (rotary) tilted.deposit(kinematics.forward(interpolate(last_joints, move_joints, t0)),
-                                           kinematics.forward(interpolate(last_joints, move_joints, t1)), move.width, move.height, c.run);
+                if (rotary) tilted.deposit(kinematics.forward(lerp(last_joints, move_joints, t0)),
+                                           kinematics.forward(lerp(last_joints, move_joints, t1)), move.width, move.height, c.run);
                 else {
                     sweep.columns.deposit(p0, p1, move.width);
                     if (!nozzle.boxes.empty()) sweep.pending.push_back({ p0, p1, move.width });

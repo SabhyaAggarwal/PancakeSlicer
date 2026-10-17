@@ -232,10 +232,7 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
         candidate = diff_ex(candidate, settings.banded ? union_ex(skins) : offset_ex(union_ex(skins), float(scale_(1.))));
     const Mask       cand_mask = rasterize(candidate, grid);
 
-    std::string        head_warning;
-    const HeadEnvelope head = resolve_head_envelope(object.print()->config(), &head_warning);
-    if (!head_warning.empty())
-        BOOST_LOG_TRIVIAL(warning) << "Non-planar: " << head_warning;
+    const HeadEnvelope head = resolve_head_envelope(object.print()->config());
 
     HeightField S0 = Sb;
     for (size_t i = 0; i < n_nodes; ++i)
@@ -268,10 +265,9 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
                         mask[i] = 0;
                 }
     }
-    std::vector<int> limiting_components(n_nodes, -1);
-    HeightField      S1 = S0;
+    HeightField S1 = S0;
     if (!settings.banded) {
-        drop_unsafe_nodes(S0, head, h_c, settings.max_error, mask, &limiting_components);
+        drop_unsafe_nodes(S0, head, h_c, settings.max_error, mask);
         S1 = component_minorant(S0, mask, head, cancel);
         for (size_t i = 0; i < n_nodes; ++i)
             if (mask[i] && (std::isnan(S1.data()[i]) || Sb.data()[i] - S1.data()[i] > settings.max_error))
@@ -399,7 +395,6 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
 
             PatchDiagnostics diag;
             diag.patch_id = patch.id;
-            diag.limiting_component = most_limiting_component(head, limiting_components, bmask);
             double err_sq = 0.;
             size_t err_n  = 0;
             for (int iy = 0; iy < surface.ny(); ++iy)
@@ -435,7 +430,6 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
         PatchDiagnostics diag;
         diag.fallback_area = fallback;
         diag.fallback_reason = "bottom";
-        diag.limiting_component = most_limiting_component(head, limiting_components, cand_mask);
         result.diagnostics.emplace_back(std::move(diag));
     }
     if (result.patches.size() == first_patch) {

@@ -32,9 +32,6 @@ public:
     Vec2d gradient(const Vec2d &p) const;
     bool  has_data(const Vec2d &p) const { return !std::isnan(this->sample(p)); }
 
-    void min_with(const HeightField &rhs);
-    void max_with(const HeightField &rhs);
-
     std::vector<float>       &data()       { return m_z; }
     const std::vector<float> &data() const { return m_z; }
 

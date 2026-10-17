@@ -66,6 +66,8 @@ double axis_limited_speed(const Vec3d &a, const Vec3d &b, double v, const Motion
     return v;
 }
 
+}
+
 ConformalPoint interpolate(const ConformalPoint &a, const ConformalPoint &b, double t)
 {
     ConformalPoint p;
@@ -75,8 +77,6 @@ ConformalPoint interpolate(const ConformalPoint &a, const ConformalPoint &b, dou
     p.vertical_height = a.vertical_height + float(t) * (b.vertical_height - a.vertical_height);
     p.width       = a.width + float(t) * (b.width - a.width);
     return p;
-}
-
 }
 
 double planner_segment_rate(double configured, GCodeFlavor flavor, bool bbl_printer)

@@ -100,9 +100,7 @@ std::vector<int> label_components(const Mask &mask, int nx, int ny, int &count);
 void drop_steep_nodes(const HeightField &surface, const HeadEnvelope &head, double gap, const HeightField &grid, Mask &mask);
 
 void drop_unsafe_nodes(const HeightField &surface, const HeadEnvelope &head, double gap, double max_error,
-                       Mask &mask, std::vector<int> *limiting_components = nullptr);
-std::string most_limiting_component(const HeadEnvelope &head, const std::vector<int> &limiting_components,
-                                    const Mask &area);
+                       Mask &mask);
 
 class AreaEdges
 {
@@ -126,7 +124,6 @@ void erase_conformal(ExtrusionEntityCollection &collection, double host_z, doubl
 int planar_transition_layer(const std::vector<double> &boundaries, double shell_face, double shell_height,
                             double h_min, double h_max, PatchKind kind);
 
-double top_shell_angle(const ConformalPatch &patch, const PrintRegionConfig &config);
 bool contour_line_angle(const HeightField &surface, double &angle, double min_coherence = 0.1);
 
 Polylines fill_solid(const ExPolygons &area, InfillPattern pattern, double spacing, double angle, bool monotonic,

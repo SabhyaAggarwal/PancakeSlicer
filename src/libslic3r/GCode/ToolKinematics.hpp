@@ -20,6 +20,15 @@ struct JointPose
     std::array<double, 2> rot { 0., 0. };
 };
 
+inline JointPose lerp(const JointPose &a, const JointPose &b, double t)
+{
+    JointPose out;
+    out.xyz = a.xyz + t * (b.xyz - a.xyz);
+    for (int i = 0; i < 2; ++i)
+        out.rot[i] = a.rot[i] + t * (b.rot[i] - a.rot[i]);
+    return out;
+}
+
 struct RotaryAxis
 {
     char   letter = 'B';

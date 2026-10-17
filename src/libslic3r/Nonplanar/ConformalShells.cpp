@@ -655,14 +655,16 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
         const float narrow = float(banded_outer_width(flow.width(), flow.nozzle_diameter(), height));
         flow = flow.with_width(adaptive != nullptr ? float(outer_bead_width(height, flow.nozzle_diameter(), narrow)) : narrow);
     } else if (banded != nullptr && adaptive == nullptr && k + 1 == patch.shells && !sparse && !plug && fill.spiral) {
-        flow = flow.with_width(std::min(flow.width(), float(BandedTopWidth * flow.nozzle_diameter())));
+        flow = flow.with_width(float(banded_outer_width(flow.width(), flow.nozzle_diameter(), height)));
     }
     ShellFill rings = fill;
     if (banded != nullptr && k + 1 == patch.shells && fill.spiral && !sparse && !plug && adaptive == nullptr) {
         const Flow   top   = region.flow(object, frTopSolidInfill, height);
-        const Flow   outer = top.with_width(std::min(top.width(), float(BandedTopWidth * top.nozzle_diameter())));
+        const Flow   outer = top.with_width(float(banded_outer_width(top.width(), top.nozzle_diameter(), height)));
         const double s     = outer.spacing();
-        flow               = flow.with_spacing(float(std::clamp(std::round(flow.spacing() / s), 1., 2.) * s));
+        const float  pitch = float(std::clamp(std::round(flow.spacing() / s), 1., 2.) * s);
+        flow               = flow.width() + pitch - flow.spacing() >= flow.height() ? flow.with_spacing(pitch) :
+                                 flow.with_width(Flow::rounded_rectangle_extrusion_width_from_spacing(pitch, flow.height()));
         rings.ring_spacing = s;
         rings.first_ring   = int(std::ceil((flow.width() - outer.width()) / (2. * s) - 1e-6));
     }
@@ -953,10 +955,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
     if (candidate.empty())
         return result;
 
-    std::string        head_warning;
-    const HeadEnvelope head = resolve_head_envelope(object.print()->config(), &head_warning);
-    if (!head_warning.empty())
-        BOOST_LOG_TRIVIAL(warning) << "Non-planar: " << head_warning;
+    const HeadEnvelope head = resolve_head_envelope(object.print()->config());
 
     const double      pitch = settings.pitch;
     Polygons          silhouette_src;
@@ -1155,9 +1154,8 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                     drop(i, DropFlatSliver);
         }
     }
-    std::vector<int> limiting_components(n_nodes, -1);
     if (!settings.banded)
-        drop_unsafe_nodes(S0, head, h_c, settings.max_error, mask, &limiting_components);
+        drop_unsafe_nodes(S0, head, h_c, settings.max_error, mask);
     if (!settings.banded) {
         int                    n_comp = 0;
         const std::vector<int> label  = label_components(mask, grid.nx(), grid.ny(), n_comp);
@@ -1177,7 +1175,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                     for (int ix = 0; ix < own.nx(); ++ix)
                         if (label[size_t(iy0[k] + iy) * grid.nx() + ix0[k] + ix] != c)
                             own.at(ix, iy) = HeightField::NoData;
-                const HeightField safe  = min_safe_tip_height(own, head, own, nullptr, true);
+                const HeightField safe  = min_safe_tip_height(own, head, own, true);
                 const HeightField lower = head_lipschitz_minorant(own, head, 8, cancel);
                 size_t            high  = 0;
                 for (int iy = 0; iy < own.ny(); ++iy)
@@ -1296,7 +1294,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                         if (const size_t i = size_t(iy) * grid.nx() + ix;
                             (label[i] != c || !mask[i] || band_mask[i]) && !std::isnan(S.data()[i]))
                             H.at(ix - wx0, iy - wy0) = std::min(S.data()[i], host_z);
-                const HeightField z_safe = min_safe_tip_height(H, near_head, like, nullptr, true);
+                const HeightField z_safe = min_safe_tip_height(H, near_head, like, true);
                 for (int iy = 0; iy < like.ny(); ++iy)
                     for (int ix = 0; ix < like.nx(); ++ix) {
                         const size_t i = size_t(e.iy0 + iy) * grid.nx() + e.ix0 + ix;
@@ -1533,7 +1531,6 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                 if (!std::isnan(g.x()) && !std::isnan(g.y()))
                     diag.max_slope_deg = std::max(diag.max_slope_deg, Geometry::rad2deg(std::atan(g.norm())));
             }
-        diag.limiting_component = most_limiting_component(head, limiting_components, pmask);
         diag.rms_surface_error = err_n > 0 ? std::sqrt(err_sq / err_n) : 0.;
         pad_lowest(patch.surface.edit(), pad);
         pad_lowest(patch.base.edit(), pad);
@@ -1709,7 +1706,6 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                     best                 = a;
                     diag.fallback_reason = reason;
                 }
-            diag.limiting_component = most_limiting_component(head, limiting_components, rasterize({ cand }, grid));
             if (fallback_hatched(diag.fallback_reason))
                 record_fallback_shape(diag, ExPolygons{ cand }, S);
             result.diagnostics.emplace_back(std::move(diag));
@@ -1855,20 +1851,19 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                 }
                 for (ExtrusionEntityCollection &shell : shells)
                     patch.shell_paths.emplace_back(std::move(shell));
-            }
-            std::optional<Point3>       from;
-            for (int k = 1; k <= patch.shells && !settings.banded; ++k) {
-                throw_if_canceled(object);
-                ShellFill fill = fills[size_t(k - 1)];
-                if (settings.banded)
-                    fill = banded_fills[size_t(k - 1)];
-                const Point start = fill.spiral || !from ? seam : from->to_point();
-                patch.shell_paths.emplace_back(make_shell(object, patch, planar_tops[idx], fill_area, k, fill, start, from ? &*from : nullptr, host_z,
-                                                          pitch, seam_lines[idx], settings.banded ? &banded : nullptr));
-                const ExtrusionEntitiesPtr &entities = patch.shell_paths.back().entities;
-                from.reset();
-                if (!entities.empty() && !settings.banded)
-                    from = static_cast<const ExtrusionPathConformal *>(entities.back())->polyline.points.back();
+            } else {
+                std::optional<Point3> from;
+                for (int k = 1; k <= patch.shells; ++k) {
+                    throw_if_canceled(object);
+                    const ShellFill &fill  = fills[size_t(k - 1)];
+                    const Point      start = fill.spiral || !from ? seam : from->to_point();
+                    patch.shell_paths.emplace_back(make_shell(object, patch, planar_tops[idx], fill_area, k, fill, start, from ? &*from : nullptr,
+                                                              host_z, pitch, seam_lines[idx]));
+                    const ExtrusionEntitiesPtr &entities = patch.shell_paths.back().entities;
+                    from.reset();
+                    if (!entities.empty())
+                        from = static_cast<const ExtrusionPathConformal *>(entities.back())->polyline.points.back();
+                }
             }
             if (settings.banded && ironing_enabled(patch, region.config()))
                 patch.ironing = make_conformal_ironing(object, patch, area, seam, seam_lines[idx], host_z, true, spans_wall);

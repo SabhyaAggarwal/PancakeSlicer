@@ -99,7 +99,6 @@ struct PatchDiagnostics
     double max_slope_deg = 0.;
     double fallback_area = 0.;
     std::string fallback_reason;
-    std::string limiting_component;
     int    repaired_nodes = 0;
     double repair_lowering = 0.;
     ExPolygons                      fallback_shape;

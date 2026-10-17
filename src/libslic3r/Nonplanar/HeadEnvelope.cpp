@@ -189,25 +189,8 @@ double HeadEnvelope::underside_height(const Vec2d &d) const
     return d.x() == 0. && d.y() == 0. ? std::min(best, 0.) : best;
 }
 
-double HeadEnvelope::max_slope(double phi, double gap) const
-{
-    return max_slope(phi, gap, Inf, nullptr);
-}
-
 double HeadEnvelope::max_slope(double phi, double gap, double reach) const
 {
-    return max_slope(phi, gap, reach, nullptr);
-}
-
-double HeadEnvelope::max_slope(double phi, double gap, std::string *limiting_component) const
-{
-    return max_slope(phi, gap, Inf, limiting_component);
-}
-
-double HeadEnvelope::max_slope(double phi, double gap, double reach, std::string *limiting_component) const
-{
-    if (limiting_component)
-        limiting_component->clear();
     const Vec2d u(std::cos(phi), std::sin(phi));
     double      tan_min = Inf;
     for (const HeadBox &box : boxes) {
@@ -224,11 +207,7 @@ double HeadEnvelope::max_slope(double phi, double gap, double reach, std::string
         pmax = std::min(pmax, reach);
         const double num = gap + box.min.z() - (box.nozzle ? 0. : margin);
         const double limit = num >= 0. ? num / pmax : pmin > 0. ? num / pmin : -Inf;
-        if (limit < tan_min) {
-            tan_min = limit;
-            if (limiting_component)
-                *limiting_component = box.name;
-        }
+        tan_min = std::min(tan_min, limit);
     }
     return tan_min == Inf ? 0.5 * PI : std::atan(std::max(0., tan_min));
 }
@@ -322,65 +301,6 @@ HeadEnvelope HeadEnvelope::from_slope_star(const HeadEnvelope &base, const Slope
     out.calibrated = true;
     out.provenance = "slope star " + reading.date + ", base " + base.id;
     return out;
-}
-
-SlopeStarReading load_slope_star_reading(const std::string &json_text)
-{
-    try {
-        const auto j = nlohmann::json::parse(json_text);
-        if (!j.is_object() || j.value("schema", std::string()) != "orca.slope_star_reading.v1")
-            throw RuntimeError("Slope star JSON: expected schema orca.slope_star_reading.v1");
-        SlopeStarReading reading;
-        reading.date = j.at("date").get<std::string>();
-        const auto &arms = j.at("arms");
-        if (!arms.is_array())
-            throw RuntimeError("Slope star JSON: arms must be an array");
-        for (const auto &arm : arms) {
-            const double azimuth = arm.at("azimuth_deg").get<double>();
-            double limit = 0.;
-            if (arm.contains("max_clean_slope_deg") == arm.contains("steps"))
-                throw RuntimeError("Slope star JSON: each arm needs either max_clean_slope_deg or steps");
-            if (arm.contains("max_clean_slope_deg"))
-                limit = arm.at("max_clean_slope_deg").get<double>();
-            else {
-                const auto &steps = arm.at("steps");
-                if (!steps.is_array() || steps.empty())
-                    throw RuntimeError("Slope star JSON: steps must be a nonempty array");
-                double previous = -1.;
-                bool failed = false;
-                for (const auto &step : steps) {
-                    const double slope = step.at("slope_deg").get<double>();
-                    const auto &passed = step.at("passed");
-                    if (!std::isfinite(slope) || slope < 0. || slope >= 90. || slope <= previous || !passed.is_boolean())
-                        throw RuntimeError("Slope star JSON: steps need ascending slopes in [0, 90) and boolean passed");
-                    previous = slope;
-                    if (!passed.get<bool>())
-                        failed = true;
-                    else if (failed)
-                        throw RuntimeError("Slope star JSON: a clean step after a failed step needs reinspection");
-                    else
-                        limit = slope;
-                }
-            }
-            reading.samples.push_back({azimuth * PI / 180., limit * PI / 180.});
-        }
-        validate_reading(reading);
-        return reading;
-    } catch (const nlohmann::json::exception &err) {
-        throw RuntimeError(std::string("Slope star JSON: ") + err.what());
-    }
-}
-
-std::string save_slope_star_reading(const SlopeStarReading &reading)
-{
-    validate_reading(reading);
-    nlohmann::ordered_json j;
-    j["schema"] = "orca.slope_star_reading.v1";
-    j["date"] = reading.date;
-    j["arms"] = nlohmann::ordered_json::array();
-    for (const SlopeStarSample &sample : reading.samples)
-        j["arms"].push_back({{"azimuth_deg", sample.azimuth * 180. / PI}, {"max_clean_slope_deg", sample.max_clean_slope * 180. / PI}});
-    return j.dump(2);
 }
 
 double HeadEnvelope::gantry_clearance() const

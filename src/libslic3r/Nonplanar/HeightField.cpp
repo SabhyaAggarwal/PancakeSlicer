@@ -3,7 +3,6 @@
 #include "libslic3r/Exception.hpp"
 
 #include <algorithm>
-#include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -67,20 +66,6 @@ Vec2d HeightField::gradient(const Vec2d &p) const
     const double h = 0.5 * m_pitch;
     return Vec2d((double(this->sample(p + Vec2d(h, 0.))) - double(this->sample(p - Vec2d(h, 0.)))) / m_pitch,
                  (double(this->sample(p + Vec2d(0., h))) - double(this->sample(p - Vec2d(0., h)))) / m_pitch);
-}
-
-void HeightField::min_with(const HeightField &rhs)
-{
-    assert(rhs.m_nx == m_nx && rhs.m_ny == m_ny);
-    for (size_t i = 0; i < m_z.size(); ++i)
-        m_z[i] = std::isnan(rhs.m_z[i]) ? rhs.m_z[i] : std::isnan(m_z[i]) ? m_z[i] : std::min(m_z[i], rhs.m_z[i]);
-}
-
-void HeightField::max_with(const HeightField &rhs)
-{
-    assert(rhs.m_nx == m_nx && rhs.m_ny == m_ny);
-    for (size_t i = 0; i < m_z.size(); ++i)
-        m_z[i] = std::isnan(rhs.m_z[i]) ? rhs.m_z[i] : std::isnan(m_z[i]) ? m_z[i] : std::max(m_z[i], rhs.m_z[i]);
 }
 
 }

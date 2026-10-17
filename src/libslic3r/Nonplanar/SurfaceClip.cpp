@@ -37,7 +37,6 @@ struct KernelBox
 {
     int   i0 = 0, i1 = 0, j0 = 0, j1 = 0;
     bool  inf_x = false, inf_y = false;
-    int   component = -1;
     float z = 0.f;
 
     bool same_window(const KernelBox &o) const
@@ -56,8 +55,7 @@ std::vector<KernelBox> kernel_boxes(const HeadEnvelope &head, double pitch, bool
             throw RuntimeError("Head envelope reach is too large for the non-planar grid. Check the head dimensions or increase the grid spacing.");
         return int(value);
     };
-    for (size_t component = 0; component < head.boxes.size(); ++component) {
-        const HeadBox &box = head.boxes[component];
+    for (const HeadBox &box : head.boxes) {
         const double grow = box.nozzle ? 0. : head.lateral_margin;
         double       zmin = box.min.z();
         if (apply_allowance && box.nozzle) {
@@ -69,7 +67,6 @@ std::vector<KernelBox> kernel_boxes(const HeadEnvelope &head, double pitch, bool
                 continue;
         }
         KernelBox k;
-        k.component = int(component);
         k.inf_x = box.infinite_x;
         k.inf_y = box.infinite_y;
         k.i0    = k.inf_x ? 0 : offset(std::ceil((box.min.x() - grow) / pitch - eps));
@@ -149,7 +146,7 @@ std::vector<float> rect_sliding(const std::vector<float> &in, int nx, int ny, in
     return out;
 }
 
-bool minorant_pass(std::vector<float> &cur, int nx, int ny, const std::vector<KernelBox> &boxes, std::vector<int> *limiting_components)
+bool minorant_pass(std::vector<float> &cur, int nx, int ny, const std::vector<KernelBox> &boxes)
 {
     bool changed = false;
     for (const KernelBox &k : boxes) {
@@ -162,8 +159,6 @@ bool minorant_pass(std::vector<float> &cur, int nx, int ny, const std::vector<Ke
             if (!std::isnan(cur[i]) && w[i] + z < cur[i]) {
                 cur[i]  = w[i] + z;
                 changed = true;
-                if (limiting_components)
-                    (*limiting_components)[i] = k.component;
             }
     }
     return changed;
@@ -174,38 +169,23 @@ bool minorant_pass(std::vector<float> &cur, int nx, int ny, const std::vector<Ke
 HeightField head_lipschitz_minorant(const HeightField &S, const HeadEnvelope &head, int max_iterations,
                                     const std::function<void()> &throw_if_canceled)
 {
-    return head_lipschitz_minorant(S, head, max_iterations, throw_if_canceled, nullptr);
-}
-
-HeightField head_lipschitz_minorant(const HeightField &S, const HeadEnvelope &head, int max_iterations,
-                                    const std::function<void()> &throw_if_canceled, std::vector<int> *limiting_components)
-{
     HeightField out = S;
-    if (limiting_components)
-        limiting_components->assign(S.data().size(), -1);
     if (S.empty())
         return out;
     const std::vector<KernelBox> boxes = kernel_boxes(head, S.pitch(), true);
     for (int it = 0; it < max_iterations; ++it) {
         if (throw_if_canceled)
             throw_if_canceled();
-        if (!minorant_pass(out.data(), S.nx(), S.ny(), boxes, limiting_components))
+        if (!minorant_pass(out.data(), S.nx(), S.ny(), boxes))
             break;
     }
     return out;
 }
 
-HeightField min_safe_tip_height(const HeightField &material, const HeadEnvelope &head, const HeightField &like)
-{
-    return min_safe_tip_height(material, head, like, nullptr, false);
-}
-
 HeightField min_safe_tip_height(const HeightField &material, const HeadEnvelope &head, const HeightField &like,
-                                std::vector<int> *limiting_components, bool apply_tip_allowance)
+                                bool apply_tip_allowance)
 {
     HeightField out = like;
-    if (limiting_components)
-        limiting_components->assign(like.data().size(), -1);
     if (like.empty())
         return out;
     const double pitch = like.pitch();
@@ -230,23 +210,15 @@ HeightField min_safe_tip_height(const HeightField &material, const HeadEnvelope 
             }
     }
     std::vector<float> best(src.size(), -FInf);
-    std::vector<int> binding(limiting_components ? src.size() : 0, -1);
     for (const KernelBox &k : kernel_boxes(head, pitch, apply_tip_allowance)) {
         const std::vector<float> w = rect_sliding<MaxOp>(src, nx, ny, k.i0, k.i1, k.inf_x, k.j0, k.j1, k.inf_y);
         for (size_t i = 0; i < best.size(); ++i)
-            if (w[i] - k.z > best[i] ||
-                (limiting_components && std::isfinite(best[i]) && w[i] - k.z == best[i] && k.component < binding[i])) {
-                best[i] = w[i] - k.z;
-                if (limiting_components)
-                    binding[i] = k.component;
-            }
+            best[i] = std::max(best[i], w[i] - k.z);
     }
     for (int y = 0; y < like.ny(); ++y)
         for (int x = 0; x < like.nx(); ++x) {
             const size_t i = size_t(y - oy) * nx + x - ox;
             out.at(x, y) = std::isnan(like.at(x, y)) ? HeightField::NoData : best[i];
-            if (limiting_components && !std::isnan(like.at(x, y)))
-                (*limiting_components)[size_t(y) * like.nx() + x] = binding[i];
         }
     return out;
 }

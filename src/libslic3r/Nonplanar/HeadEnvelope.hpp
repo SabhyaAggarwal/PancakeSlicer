@@ -1,5 +1,6 @@
 #pragma once
 #include "libslic3r/Point.hpp"
+#include <limits>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -50,11 +51,7 @@ struct HeadEnvelope
 
     double underside_height(const Vec2d &d) const;
 
-    double max_slope(double phi, double gap) const;
-    double max_slope(double phi, double gap, double reach) const;
-    double max_slope(double phi, double gap, double reach, std::string *limiting_component) const;
-
-    double max_slope(double phi, double gap, std::string *limiting_component) const;
+    double max_slope(double phi, double gap, double reach = std::numeric_limits<double>::infinity()) const;
 
     std::vector<double> slope_map(int n, double gap) const;
 
@@ -80,9 +77,6 @@ std::vector<HeadBox> boxes_from_n_side_profile(const std::vector<NSideProfileRow
 
 HeadEnvelope load_head_envelope(const std::string &json_text);
 std::string  save_head_envelope(const HeadEnvelope &envelope);
-
-SlopeStarReading load_slope_star_reading(const std::string &json_text);
-std::string save_slope_star_reading(const SlopeStarReading &reading);
 
 class HeadLibrary
 {

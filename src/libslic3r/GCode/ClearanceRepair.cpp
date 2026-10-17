@@ -222,6 +222,13 @@ public:
         return tip.head<2>() + m_offset + extruder_offset - unscale(object.instances()[instance].shift);
     }
     double to_object_z(double z) const { return z - m_z_offset; }
+    Vec3d from_preview(const MoveVertex &m) const
+    {
+        const Vec2d extruder_offset = m.extruder_id < m_print.config().extruder_offset.values.size() ?
+                                          m_print.config().extruder_offset.values[m.extruder_id] : Vec2d::Zero();
+        const Vec2d xy = m.position.head<2>().cast<double>() - Vec2d(m_print.get_plate_origin().head<2>()) - extruder_offset;
+        return Vec3d(xy.x(), xy.y(), double(m.position.z()) + m_z_offset);
+    }
     double to_gcode_z(double z) const { return z + m_z_offset; }
     PrintObject *object_at(const Vec3d &tip, unsigned extruder) const
     {
@@ -514,7 +521,7 @@ bool ClearanceRepair::plan_upright(const GCodeProcessorResult &result, const Cle
         const MoveVertex &m = result.moves[i];
         if (report.per_move[i] >= 0.f || result.state(m).nonplanar_patch_shell == 0xFF)
             continue;
-        const Vec3d tip  = m.position.cast<double>();
+        const Vec3d tip  = locator.from_preview(m);
         const Site  site = locator.locate(result, i, tip);
         if (site.object == nullptr)
             continue;

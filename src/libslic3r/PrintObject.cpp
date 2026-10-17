@@ -1413,7 +1413,20 @@ bool PrintObject::invalidate_state_by_config_options(
 
     std::vector<PrintObjectStep> steps;
     bool invalidated = false;
+    static const std::set<std::string> low_plane_keys = { "nonplanar_top_shells", "nonplanar_fallback", "nonplanar_shell_layer_height",
+                                                          "wall_loops", "inner_wall_line_width", "top_surface_line_width" };
+    static const std::set<std::string> deform_keys = {
+        "seam_position", "outer_wall_speed", "inner_wall_speed", "sparse_infill_speed", "internal_solid_infill_speed",
+        "top_surface_speed", "gap_infill_speed", "bridge_speed", "default_acceleration", "outer_wall_acceleration",
+        "inner_wall_acceleration", "sparse_infill_acceleration", "internal_solid_infill_acceleration", "top_surface_acceleration",
+        "bridge_acceleration", "travel_acceleration" };
+    const bool curved = m_config.nonplanar_mode.value != NonplanarMode::Off;
+    const bool deform = Nonplanar::deform_slice_requested(*this) || Nonplanar::deform_slice_considered(*this);
     for (const t_config_option_key &opt_key : opt_keys) {
+        if (curved && low_plane_keys.count(opt_key) > 0)
+            steps.emplace_back(posSlice);
+        if (deform && deform_keys.count(opt_key) > 0)
+            steps.emplace_back(posPerimeters);
         if (   opt_key == "brim_width"
             || opt_key == "leading_brim_length"
             || opt_key == "extra_brim_width"

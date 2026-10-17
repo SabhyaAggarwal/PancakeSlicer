@@ -135,7 +135,7 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
         cancel();
     }
 
-    HeightField Sb = grid;
+    HeightField Sb;
     {
         const double z_min     = object.slicing_parameters().object_print_z_min;
         HeightField  ray_start = grid;
@@ -291,13 +291,7 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
         }
     const HeightField floor_surface = masked(Sb, all_floor, 3);
     double angle  = Geometry::deg2rad(region0.config().solid_infill_direction.value);
-    bool   rings  = false;
-    {
-        Mask si_nodes(n_nodes, 0);
-        for (size_t n = 0; n < n_nodes; ++n)
-            si_nodes[n] = cand[n];
-        rings = !contour_line_angle(masked(Sb, si_nodes, 0), angle, 0.3);
-    }
+    const bool rings = !contour_line_angle(masked(Sb, cand, 0), angle, 0.3);
 
     const size_t first_floor = result.patches.size();
     for (auto &[floor_id, mask] : floor_bands) {
@@ -381,8 +375,9 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
             if (!out.empty()) {
                 const Vec2d  a = unscale(out.back().back().last_point()), b = unscale(pl.first_point());
                 const double d = (b - a).norm();
-                const bool   inside = in_band(band, 0.5 * (a + b)) && in_band(band, a + 0.25 * (b - a)) && in_band(band, a + 0.75 * (b - a));
-                if (d <= max_link && in_band(band, 0.5 * (a + b))) {
+                const bool   mid    = in_band(band, 0.5 * (a + b));
+                const bool   inside = mid && in_band(band, a + 0.25 * (b - a)) && in_band(band, a + 0.75 * (b - a));
+                if (d <= max_link && mid) {
                     Points &run = out.back().back().points;
                     run.insert(run.end(), pl.points.begin() + 1, pl.points.end());
                     continue;
@@ -420,18 +415,17 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
         return it != band_range.end() && s >= it->second.first - h_min && s <= it->second.second + h_min;
     };
 
+    ExPolygons floor_shells;
+    for (size_t idx = first_floor; idx < result.patches.size(); ++idx)
+        append(floor_shells, diff_ex(result.patches[idx].footprint, result.patches[idx].wall_band));
     if (result.patches.size() > first_floor) {
         const PrintRegion &region  = object.printing_region(size_t(result.patches[first_floor].region_id));
         const Flow         flow    = region.flow(object, frSolidInfill, h);
         const double       overlap = 0.01 * region.config().top_bottom_infill_wall_overlap.value * line_width;
-        ExPolygons         footprint, shell_area;
-        for (size_t idx = first_floor; idx < result.patches.size(); ++idx) {
+        ExPolygons         footprint;
+        for (size_t idx = first_floor; idx < result.patches.size(); ++idx)
             append(footprint, result.patches[idx].footprint);
-            append(shell_area, diff_ex(result.patches[idx].footprint, result.patches[idx].wall_band));
-        }
-        footprint  = union_ex(footprint);
-        shell_area = union_ex(shell_area);
-        const ExPolygons area = intersection_ex(offset_ex(shell_area, float(scale_(overlap))), footprint);
+        const ExPolygons area = intersection_ex(offset_ex(union_ex(floor_shells), float(scale_(overlap))), union_ex(footprint));
         std::map<int, Polylines> pieces;
         split_by_owner(fill_solid(area, rings ? ipConcentric : ipRectilinear, flow.spacing(), angle, false, flow, 0.), owner_at, 0.5 * pitch,
                        [&](int o, Polyline &&pl) { pieces[o].emplace_back(std::move(pl)); });
@@ -461,15 +455,9 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
     }
 
     if (result.patches.size() > first_floor) {
-        Mask shell_mask(n_nodes, 0);
-        {
-            ExPolygons shell_area;
-            for (size_t idx = first_floor; idx < result.patches.size(); ++idx)
-                append(shell_area, diff_ex(result.patches[idx].footprint, result.patches[idx].wall_band));
-            const Mask m = rasterize(shell_area, grid);
-            for (size_t n = 0; n < n_nodes; ++n)
-                shell_mask[n] = m[n] && all_floor[n];
-        }
+        Mask shell_mask = rasterize(floor_shells, grid);
+        for (size_t n = 0; n < n_nodes; ++n)
+            shell_mask[n] = shell_mask[n] && all_floor[n];
         tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
             for (size_t i = range.begin(); i < range.end(); ++i) {
                 Mask below(n_nodes, 0);
@@ -522,9 +510,7 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
         }
     });
 
-    Mask si_mask(n_nodes, 0);
-    for (size_t n = 0; n < n_nodes; ++n)
-        si_mask[n] = cand[n];
+    const Mask      &si_mask = cand;
     const ExPolygons si_area = mask_to_expolygons(si_mask, grid);
     if (si_area.empty())
         return;
@@ -661,6 +647,13 @@ void build_conformal_support(PrintObject &object, ConformalResult &result)
         }
         if (patch.z_min > patch.z_max)
             continue;
+        std::vector<int> &after  = layers[patch.host_layer]->conformal_patches_after;
+        if (!skin_band)
+            if (auto it = std::find(after.begin(), after.end(), band_id); it != after.end()) {
+                after.insert(it, patch.id);
+                result.patches.emplace_back(std::move(patch));
+                continue;
+            }
         std::vector<int> &before = layers[patch.host_layer]->conformal_patches_before;
         before.insert(skin_band ? std::find_if(before.begin(), before.end(), [&result](int id) {
                                       return result.patches[size_t(id)].kind == PatchKind::Overhang;

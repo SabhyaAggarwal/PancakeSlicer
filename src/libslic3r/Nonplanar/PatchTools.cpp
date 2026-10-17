@@ -682,35 +682,19 @@ void drop_steep_nodes(const HeightField &surface, const HeadEnvelope &head, doub
 }
 
 void drop_unsafe_nodes(const HeightField &surface, const HeadEnvelope &head, double gap, double max_error,
-                       Mask &mask, std::vector<int> *limiting_components)
+                       Mask &mask)
 {
     Mask plane_safe = mask;
     drop_steep_nodes(surface, head, gap, surface, plane_safe);
-    const HeightField current_safe = min_safe_tip_height(surface, head, surface, limiting_components, true);
+    const HeightField current_safe = min_safe_tip_height(surface, head, surface, true);
     HeightField previous = surface;
     for (float &z : previous.data())
         z -= float(gap);
-    std::vector<int> substrate_components;
-    const HeightField substrate_safe = min_safe_tip_height(previous, head, surface,
-                                                           limiting_components ? &substrate_components : nullptr);
-    for (size_t i = 0; i < mask.size(); ++i) {
-        if (limiting_components && substrate_safe.data()[i] > current_safe.data()[i])
-            (*limiting_components)[i] = substrate_components[i];
+    const HeightField substrate_safe = min_safe_tip_height(previous, head, surface);
+    for (size_t i = 0; i < mask.size(); ++i)
         if (mask[i] && !plane_safe[i] &&
             surface.data()[i] < std::max(current_safe.data()[i], substrate_safe.data()[i]) - max_error)
             mask[i] = 0;
-    }
-}
-
-std::string most_limiting_component(const HeadEnvelope &head, const std::vector<int> &limiting_components,
-                                    const Mask &area)
-{
-    std::vector<size_t> counts(head.boxes.size(), 0);
-    for (size_t i = 0; i < area.size(); ++i)
-        if (area[i] && limiting_components[i] >= 0)
-            ++counts[size_t(limiting_components[i])];
-    const auto most = std::max_element(counts.begin(), counts.end());
-    return most != counts.end() && *most > 0 ? head.boxes[size_t(most - counts.begin())].name : std::string();
 }
 
 namespace {
@@ -1014,14 +998,6 @@ bool contour_line_angle(const HeightField &surface, double &angle, double min_co
         return false;
     angle = 0.5 * std::atan2(2. * jxy, jxx - jyy) + 0.5 * PI;
     return true;
-}
-
-double top_shell_angle(const ConformalPatch &patch, const PrintRegionConfig &config)
-{
-    double angle = Geometry::deg2rad(config.solid_infill_direction.value);
-    if (top_pattern(patch, config) == NonplanarTopPattern::Contour && !contour_line_angle(patch.surface, angle))
-        angle = Geometry::deg2rad(config.solid_infill_direction.value);
-    return angle;
 }
 
 void split_by_owner(const Polylines &polylines, const std::function<int(const Vec2d &)> &owner_at, double step,
@@ -1986,6 +1962,7 @@ std::vector<double> event_cuts(const PrintObject &object)
 
 void host_before_events(PrintObject &object, ConformalResult &result)
 {
+    constexpr double EventSlack = 1e-3;
     LayerPtrs &layers = object.layers();
     for (const double cut : event_cuts(object)) {
         const size_t below = size_t(std::lower_bound(layers.begin(), layers.end(), cut - EPSILON,
@@ -2001,15 +1978,20 @@ void host_before_events(PrintObject &object, ConformalResult &result)
                     for (Point3 &pt : path->polyline.points)
                         pt.z() += dz;
         };
-        for (const int id : layers[below + 1]->conformal_patches_before) {
+        std::vector<int> &before = layers[below + 1]->conformal_patches_before, kept;
+        for (const int id : before) {
             ConformalPatch &patch = result.patches[size_t(id)];
+            if (patch.z_max > cut + EventSlack) {
+                kept.emplace_back(id);
+                continue;
+            }
             for (ExtrusionEntityCollection &shell : patch.shell_paths)
                 rebase(shell);
             rebase(patch.ironing);
             patch.host_layer = below;
             layers[below]->conformal_patches_after.emplace_back(id);
         }
-        layers[below + 1]->conformal_patches_before.clear();
+        before = std::move(kept);
     }
 }
 
@@ -2270,7 +2252,7 @@ void order_band_part(ConformalPatch &p, const BandSeams &seams, size_t comp, int
         }
         const Point3 *from = below != nullptr ? &static_cast<const ExtrusionPathConformal *>(below->entities.back())->polyline.points.back() :
                                                 nullptr;
-        order_band_pieces(shell.entities, cursor, roads, glide_z, seams.max_glide, G.pitch(), hidden || ironing, floor, top, &G, from);
+        order_band_pieces(shell.entities, cursor, roads, glide_z, seams.max_glide, G.pitch(), hidden || ironing, floor, top, G, from);
         shell.no_sort = true;
     }
 }

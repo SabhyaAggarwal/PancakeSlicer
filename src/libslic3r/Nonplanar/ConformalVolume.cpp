@@ -228,10 +228,7 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
     if (items.empty())
         return;
 
-    std::string        head_warning;
-    const HeadEnvelope head = resolve_head_envelope(object.print()->config(), &head_warning);
-    if (!head_warning.empty())
-        BOOST_LOG_TRIVIAL(warning) << "Non-planar: " << head_warning;
+    const HeadEnvelope head = resolve_head_envelope(object.print()->config());
 
     const PrintRegion       &region     = object.printing_region(size_t(settings.region_id));
     const PrintRegionConfig &rcfg       = region.config();

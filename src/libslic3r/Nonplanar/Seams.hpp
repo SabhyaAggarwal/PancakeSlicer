@@ -70,8 +70,6 @@ bool is_short_road(const ExtrusionPathConformal &s);
 
 
 void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &band_roads, const GlideZ &glide_z, double max_glide,
-                       double step, bool hidden = false, double floor = std::numeric_limits<double>::infinity(),
-                       double ceiling = -std::numeric_limits<double>::infinity(), const HeightField *grid = nullptr,
-                       const Point3 *from = nullptr);
+                       double step, bool hidden, double floor, double ceiling, const HeightField &grid, const Point3 *from);
 
 }

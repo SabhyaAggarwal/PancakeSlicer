@@ -129,7 +129,7 @@ void modulate_flow(ExtrusionPathConformal &path, const HeightField &surface, con
     const size_t       n     = pts.size();
     std::vector<char>  keep(n, 1);
     std::vector<Vec2d> xy(n);
-    std::vector<double> nz(n, 1.), gap(n, 0.), laid(n, 0.), s(n, 0.);
+    std::vector<double> nz(n, 1.), gap(n, 0.), s(n, 0.);
     for (size_t i = 0; i < n; ++i)
         xy[i] = unscale(pts[i].to_point());
 
@@ -155,7 +155,6 @@ void modulate_flow(ExtrusionPathConformal &path, const HeightField &surface, con
                 g = Vec2d::Zero();
             nz[i]  = 1. / std::sqrt(1. + g.squaredNorm());
             gap[i] = std::max(0., double(h[i]) + (below != nullptr ? below->sample(xy[i]) : 0.));
-            laid[i] = gap[i];
             stats.dragged += params.land_radius * std::max(0., -g.dot(t)) > 0.01;
             stats.contact += gap[i] < 0.5 * width * std::abs(g.dot(Vec2d(-t.y(), t.x())));
             stats.min_gap = std::min(stats.min_gap, gap[i] * nz[i]);
@@ -169,16 +168,16 @@ void modulate_flow(ExtrusionPathConformal &path, const HeightField &surface, con
         auto weight = [&](size_t j) { return 0.5 * ((j > b ? s[j] - s[j - 1] : 0.) + (j < e ? s[j + 1] - s[j] : 0.)) + 1e-9; };
         for (size_t i = b; i <= e; ++i) {
             while (hi <= e && s[hi] <= s[i] + half) {
-                sum += weight(hi) * laid[hi];
+                sum += weight(hi) * gap[hi];
                 wsum += weight(hi);
                 ++hi;
             }
             while (s[lo] < s[i] - half) {
-                sum -= weight(lo) * laid[lo];
+                sum -= weight(lo) * gap[lo];
                 wsum -= weight(lo);
                 ++lo;
             }
-            smooth[i - b] = wsum > 0. ? sum / wsum : laid[i];
+            smooth[i - b] = wsum > 0. ? sum / wsum : gap[i];
         }
         for (size_t i = b; i <= e; ++i) {
             double v = smooth[i - b];

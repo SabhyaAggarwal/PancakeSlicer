@@ -21,15 +21,6 @@ Matrix3d rot_z(double t) { return Eigen::AngleAxisd(t, Vec3d::UnitZ()).toRotatio
 
 double wrap_pi(double a) { return std::remainder(a, 2. * M_PI); }
 
-JointPose lerp(const JointPose &a, const JointPose &b, double t)
-{
-    JointPose out;
-    out.xyz = a.xyz + t * (b.xyz - a.xyz);
-    for (int i = 0; i < 2; ++i)
-        out.rot[i] = a.rot[i] + t * (b.rot[i] - a.rot[i]);
-    return out;
-}
-
 }
 
 void ToolKinematics::linearize(const JointPose &ja, const ToolPose &pa, const ToolPose &pb, double tol,

@@ -312,7 +312,7 @@ std::string NonplanarReport::to_json(const std::map<size_t, std::string> &orient
         objects_json.push_back(std::move(jo));
     }
     j["objects"] = std::move(objects_json);
-    return j.dump(1);
+    return j.dump(1, ' ', false, json::error_handler_t::replace);
 }
 
 }

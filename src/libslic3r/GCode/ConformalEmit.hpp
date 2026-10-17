@@ -28,6 +28,8 @@ struct ConformalPoint
     float    width       = 0.f;
 };
 
+ConformalPoint interpolate(const ConformalPoint &a, const ConformalPoint &b, double t);
+
 using ToWriterFrame = std::function<Vec3d(const Point3 &)>;
 
 constexpr double GlideLift = 0.1;

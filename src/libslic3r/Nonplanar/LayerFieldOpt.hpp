@@ -25,8 +25,6 @@ public:
     double identity_below() const override { return m_identity_below; }
 
     bool        empty() const { return m_z.empty(); }
-    HeightField layer_surface(double s) const;
-
     double       pitch() const { return m_pitch; }
     double       level_spacing() const { return m_ds; }
     int          levels() const { return m_nk; }
@@ -72,9 +70,7 @@ struct LayerFieldParams
     double pitch              = 0.;
     double level_spacing      = 1.;
     int    outer_iterations   = 6;
-    int    force_candidate    = -1;
     const HeadEnvelope *head  = nullptr;
-    bool                whole_layer_order = false;
     ToolAxisFn          tool_axis;
     std::function<void()> throw_if_canceled;
 };

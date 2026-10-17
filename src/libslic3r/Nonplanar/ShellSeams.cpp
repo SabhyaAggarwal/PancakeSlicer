@@ -15,17 +15,6 @@ namespace Slic3r::Nonplanar {
 
 namespace {
 
-ConformalPoint interpolate(const ConformalPoint &a, const ConformalPoint &b, double t)
-{
-    ConformalPoint p;
-    p.pose.tip    = a.pose.tip + t * (b.pose.tip - a.pose.tip);
-    p.pose.axis   = (a.pose.axis + t * (b.pose.axis - a.pose.axis)).normalized();
-    p.bead_height = a.bead_height + float(t) * (b.bead_height - a.bead_height);
-    p.vertical_height = a.vertical_height + float(t) * (b.vertical_height - a.vertical_height);
-    p.width       = a.width + float(t) * (b.width - a.width);
-    return p;
-}
-
 void add_breaks(std::vector<double> &breaks, double from, double to, double piece)
 {
     if (to <= from)

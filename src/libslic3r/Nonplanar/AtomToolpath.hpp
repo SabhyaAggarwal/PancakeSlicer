@@ -28,8 +28,6 @@ struct AtomToolpath
 {
     std::vector<AtomPoint> points;
     double platform_height = 0.;
-    size_t deposition_edges() const;
-    double deposition_length() const;
     double travel_length() const;
     double max_tilt() const;
     BoundingBoxf3 deposition_bbox() const;

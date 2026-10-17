@@ -66,6 +66,7 @@
 #include "I18N.hpp"
 #include "Nonplanar/Validate.hpp"
 #include "Nonplanar/ConformalShells.hpp"
+#include "Nonplanar/DeformSlice.hpp"
 #include "Nonplanar/PatchTools.hpp"
 #include "LifecycleEvents.hpp"
 #include "ShortestPath.hpp"
@@ -523,6 +524,16 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & , co
                 invalidated |= object->invalidate_step(posPerimeters);
                 invalidated |= object->invalidate_step(posSupportMaterial);
             }
+    static const std::set<std::string> deform_time_keys = {
+        "machine_max_acceleration_extruding", "machine_max_acceleration_travel", "machine_max_acceleration_x",
+        "machine_max_acceleration_y", "machine_max_acceleration_z", "machine_max_speed_x", "machine_max_speed_y",
+        "machine_max_speed_z", "machine_max_jerk_x", "machine_max_jerk_y", "machine_max_jerk_z",
+        "machine_max_junction_deviation", "nonplanar_segment_rate", "gcode_flavor", "travel_speed",
+        "accel_to_decel_enable", "accel_to_decel_factor", "retraction_length", "z_hop", "slow_down_layer_time" };
+    if (std::any_of(opt_keys.begin(), opt_keys.end(), [](const t_config_option_key &key) { return deform_time_keys.count(key) > 0; }))
+        for (PrintObject *object : m_objects)
+            if (Nonplanar::deform_slice_considered(*object))
+                invalidated |= object->invalidate_step(posPerimeters);
 
     return invalidated;
 }

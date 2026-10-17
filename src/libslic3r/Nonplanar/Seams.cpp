@@ -19,7 +19,6 @@
 #include <limits>
 #include <functional>
 #include <memory>
-#include <optional>
 #include <queue>
 #include <unordered_map>
 #include <utility>
@@ -463,11 +462,11 @@ private:
 };
 
 bool glide_route_from(const Point3 &from, const Point3 &to, const GlideZ &glide_z, double max_glide, double step,
-                      std::optional<GlideRouter> &router, Points3 &pts)
+                      GlideRouter &router, Points3 &pts)
 {
     const Vec2d  pa = unscale(from.to_point()), pb = unscale(to.to_point());
     const double l  = (pb - pa).norm();
-    if (l > (router ? std::max(max_glide, MaxRoute) : max_glide))
+    if (l > std::max(max_glide, MaxRoute))
         return false;
     pts.assign(1, from);
     auto straight = [&]() {
@@ -489,7 +488,7 @@ bool glide_route_from(const Point3 &from, const Point3 &to, const GlideZ &glide_
     };
     if (!straight()) {
         Points3 route;
-        if (!router || !router->route(pa, pb, std::min(RouteRatio * l + RouteSnap, MaxRoute), route))
+        if (!router.route(pa, pb, std::min(RouteRatio * l + RouteSnap, MaxRoute), route))
             return false;
         pts.assign(1, from);
         pts.insert(pts.end(), route.begin(), route.end());
@@ -662,8 +661,69 @@ void absorb_short_roads(ExtrusionEntitiesPtr &paths)
     }
 }
 
+namespace {
+
+void join_glide(ExtrusionPathConformal &current, ExtrusionPathConformal &path, const Points3 &route, double floor, double ceiling,
+                const HeightField &grid)
+{
+    Points3            &pts     = current.polyline.points;
+    std::vector<float> &heights = current.bead_height;
+    const Point3        a       = pts.back();
+    const Point3        b       = path.polyline.points.front();
+    std::vector<float> &widths  = current.bead_width;
+    const size_t        n_before = pts.size();
+    if (!widths.empty() || !path.bead_width.empty()) {
+        if (widths.empty())
+            widths.assign(pts.size(), float(current.width));
+        if (path.bead_width.empty())
+            path.bead_width.assign(path.polyline.points.size(), float(path.width));
+    }
+    constexpr double JoinClamp = 0.02;
+    auto in_band = [floor, ceiling](const Point3 &q, double slack) {
+        return unscale<double>(q.z()) >= floor - slack && unscale<double>(q.z()) <= ceiling + slack;
+    };
+    bool extrude = (unscale(b.to_point()) - unscale(a.to_point())).norm() <= ExtrudedJoin * current.width && in_band(a, JoinClamp) &&
+                   in_band(b, JoinClamp);
+    for (const Point3 &q : route)
+        extrude = extrude && in_band(q, JoinClamp);
+    if (extrude && current.role() == erTopSolidInfill && a != b) {
+        const Vec2d pa = unscale(a.to_point()), d = (unscale(b.to_point()) - pa).normalized();
+        const Vec2d g  = grid.gradient(0.5 * (pa + unscale(b.to_point())));
+        if (g.allFinite() && g.norm() >= std::tan(Geometry::deg2rad(3.)) && std::abs(d.dot(g.normalized())) < 0.5)
+            extrude = false;
+    }
+    if (extrude && a != b) {
+        const float ha = heights.back(), hb = path.bead_height.front();
+        const Vec2d pa = unscale(a.to_point());
+        const double l = (unscale(b.to_point()) - pa).norm();
+        for (Point3 q : route) {
+            q.z() = std::clamp(q.z(), coord_t(std::ceil(scale_(floor))), coord_t(std::floor(scale_(ceiling))));
+            pts.emplace_back(q);
+            heights.emplace_back(ha + (hb - ha) * float((unscale(q.to_point()) - pa).norm() / l));
+        }
+    } else if (a != b) {
+        pts.emplace_back(a);
+        heights.emplace_back(0.f);
+        for (const Point3 &q : route) {
+            pts.emplace_back(q);
+            heights.emplace_back(0.f);
+        }
+        pts.emplace_back(b);
+        heights.emplace_back(0.f);
+    }
+    const bool same = (a == b || extrude) && heights.back() == path.bead_height.front() && pts.back() == b;
+    if (!widths.empty()) {
+        widths.insert(widths.end(), pts.size() - n_before, widths.back());
+        widths.insert(widths.end(), path.bead_width.begin() + (same ? 1 : 0), path.bead_width.end());
+    }
+    pts.insert(pts.end(), path.polyline.points.begin() + (same ? 1 : 0), path.polyline.points.end());
+    heights.insert(heights.end(), path.bead_height.begin() + (same ? 1 : 0), path.bead_height.end());
+}
+
+}
+
 void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &band_roads, const GlideZ &glide_z, double max_glide,
-                       double step, bool hidden, double floor, double ceiling, const HeightField *grid, const Point3 *from)
+                       double step, bool hidden, double floor, double ceiling, const HeightField &grid, const Point3 *from)
 {
     std::vector<ExtrusionPathConformal *> todo;
     for (ExtrusionEntity *ee : pieces)
@@ -672,7 +732,7 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
     ExtrusionEntitiesPtr out;
     ExtrusionPathConformal *current = nullptr;
     RoadGrid           roads;
-    const double       reach_mm = grid != nullptr ? std::max(max_glide, MaxRoute) : max_glide;
+    const double       reach_mm = std::max(max_glide, MaxRoute);
     const double       reach    = scale_(reach_mm);
     constexpr size_t   Tries = 8;
 
@@ -683,9 +743,7 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
         bool   reversed;
     };
     std::vector<End> ends;
-    std::optional<GlideRouter> router;
-    if (grid != nullptr)
-        router.emplace(*grid, glide_z, step);
+    GlideRouter      router(grid, glide_z, step);
     auto glide_to = [&](const Point3 &a, const Point3 &b, Points3 &route) {
         route.clear();
         const Vec2d  pa = unscale(a.to_point()), pb = unscale(b.to_point());
@@ -700,7 +758,7 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
                 return true;
             }))
             return true;
-        if (!router || !router->route(pa, pb, std::min(RouteRatio * l + RouteSnap, MaxRoute), route))
+        if (!router.route(pa, pb, std::min(RouteRatio * l + RouteSnap, MaxRoute), route))
             return false;
         if (!hidden) {
             Polyline xy;
@@ -922,58 +980,7 @@ void order_band_pieces(ExtrusionEntitiesPtr &pieces, Point &cursor, RoadGrid &ba
             current = path;
             continue;
         }
-        Points3            &pts     = current->polyline.points;
-        std::vector<float> &heights = current->bead_height;
-        const Point3        a       = pts.back();
-        const Point3        b       = path->polyline.points.front();
-        std::vector<float> &widths  = current->bead_width;
-        const size_t        n_before = pts.size();
-        if (!widths.empty() || !path->bead_width.empty()) {
-            if (widths.empty())
-                widths.assign(pts.size(), float(current->width));
-            if (path->bead_width.empty())
-                path->bead_width.assign(path->polyline.points.size(), float(path->width));
-        }
-        constexpr double JoinClamp = 0.02;
-        auto in_band = [floor, ceiling](const Point3 &q, double slack) {
-            return unscale<double>(q.z()) >= floor - slack && unscale<double>(q.z()) <= ceiling + slack;
-        };
-        bool extrude = (unscale(b.to_point()) - unscale(a.to_point())).norm() <= ExtrudedJoin * current->width && in_band(a, JoinClamp) &&
-                       in_band(b, JoinClamp);
-        for (const Point3 &q : route)
-            extrude = extrude && in_band(q, JoinClamp);
-        if (extrude && current->role() == erTopSolidInfill && grid != nullptr && a != b) {
-            const Vec2d pa = unscale(a.to_point()), d = (unscale(b.to_point()) - pa).normalized();
-            const Vec2d g  = grid->gradient(0.5 * (pa + unscale(b.to_point())));
-            if (g.allFinite() && g.norm() >= std::tan(Geometry::deg2rad(3.)) && std::abs(d.dot(g.normalized())) < 0.5)
-                extrude = false;
-        }
-        if (extrude && a != b) {
-            const float ha = heights.back(), hb = path->bead_height.front();
-            const Vec2d pa = unscale(a.to_point());
-            const double l = (unscale(b.to_point()) - pa).norm();
-            for (Point3 q : route) {
-                q.z() = std::clamp(q.z(), coord_t(std::ceil(scale_(floor))), coord_t(std::floor(scale_(ceiling))));
-                pts.emplace_back(q);
-                heights.emplace_back(ha + (hb - ha) * float((unscale(q.to_point()) - pa).norm() / l));
-            }
-        } else if (a != b) {
-            pts.emplace_back(a);
-            heights.emplace_back(0.f);
-            for (const Point3 &q : route) {
-                pts.emplace_back(q);
-                heights.emplace_back(0.f);
-            }
-            pts.emplace_back(b);
-            heights.emplace_back(0.f);
-        }
-        const bool same = (a == b || extrude) && heights.back() == path->bead_height.front() && pts.back() == b;
-        if (!widths.empty()) {
-            widths.insert(widths.end(), pts.size() - n_before, widths.back());
-            widths.insert(widths.end(), path->bead_width.begin() + (same ? 1 : 0), path->bead_width.end());
-        }
-        pts.insert(pts.end(), path->polyline.points.begin() + (same ? 1 : 0), path->polyline.points.end());
-        heights.insert(heights.end(), path->bead_height.begin() + (same ? 1 : 0), path->bead_height.end());
+        join_glide(*current, *path, route, floor, ceiling, grid);
         delete path;
     }
     pieces = std::move(out);

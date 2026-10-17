@@ -51,36 +51,6 @@ bool link_inside(const Point &a, const Point &b, const AreaEdges &area)
     return true;
 }
 
-Polyline open_loop_at(const Polygon &loop, const Point &near)
-{
-    const Points &pts  = loop.points;
-    const Vec2d   p    = near.cast<double>();
-    size_t        best = 0;
-    Vec2d         foot = pts.front().cast<double>();
-    double        dist = std::numeric_limits<double>::max();
-    for (size_t i = 0; i < pts.size(); ++i) {
-        const Vec2d  a = pts[i].cast<double>(), b = pts[(i + 1) % pts.size()].cast<double>();
-        const Vec2d  d = b - a;
-        const double t = d.squaredNorm() > 0. ? std::clamp((p - a).dot(d) / d.squaredNorm(), 0., 1.) : 0.;
-        const Vec2d  f = a + t * d;
-        if (const double dd = (f - p).squaredNorm(); dd < dist) {
-            dist = dd;
-            best = i;
-            foot = f;
-        }
-    }
-    const Point start(coord_t(std::lround(foot.x())), coord_t(std::lround(foot.y())));
-    Polyline    out;
-    out.points.reserve(pts.size() + 2);
-    out.points.emplace_back(start);
-    for (size_t j = 1; j <= pts.size(); ++j)
-        if (const Point &q = pts[(best + j) % pts.size()]; q != out.points.back())
-            out.points.emplace_back(q);
-    if (out.points.back() != start)
-        out.points.emplace_back(start);
-    return out;
-}
-
 std::pair<Point, size_t> project_on(const Polygon &rail, const Point &p)
 {
     const Points &pts  = rail.points;
@@ -98,6 +68,21 @@ std::pair<Point, size_t> project_on(const Polygon &rail, const Point &p)
         }
     }
     return { Point(coord_t(std::lround(foot.x())), coord_t(std::lround(foot.y()))), best };
+}
+
+Polyline open_loop_at(const Polygon &loop, const Point &near)
+{
+    const Points &pts         = loop.points;
+    const auto [start, best] = project_on(loop, near);
+    Polyline     out;
+    out.points.reserve(pts.size() + 2);
+    out.points.emplace_back(start);
+    for (size_t j = 1; j <= pts.size(); ++j)
+        if (const Point &q = pts[(best + j) % pts.size()]; q != out.points.back())
+            out.points.emplace_back(q);
+    if (out.points.back() != start)
+        out.points.emplace_back(start);
+    return out;
 }
 
 Polyline glide_route(const Point &a, const Point &b, const AreaEdges &inside, const Polygons &rails, double reach, double max_length)

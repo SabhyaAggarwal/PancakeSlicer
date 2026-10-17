@@ -3,6 +3,7 @@
 #include "BeadModel.hpp"
 #include "ConformalShells.hpp"
 #include "HeadEnvelope.hpp"
+#include "Multiplanar.hpp"
 #include "PatchTools.hpp"
 #include "StrengthRoads.hpp"
 #include "SurfaceClip.hpp"
@@ -49,7 +50,6 @@ constexpr double FlatPredicted = 0.025;
 constexpr double MaxShells = 1.2;
 constexpr double MaxSaddleShare = 0.25;
 constexpr double MaxTimeRatioPredicted = 1.25;
-constexpr double ProviderPredicted = 0.035;
 constexpr double ZaaMinZ = 0.05;
 
 double sample_clamped(const HeightField &f, const Vec2d &xy)
@@ -116,19 +116,6 @@ void fill_nodata(HeightField &f, float fallback)
             }
         f.data().swap(next);
     }
-}
-
-indexed_triangle_set slicing_frame_mesh(const PrintObject &object)
-{
-    double               ground = 0.;
-    indexed_triangle_set its    = object.object_frame_mesh(ground).its;
-    float                min_z  = std::numeric_limits<float>::max();
-    for (const stl_vertex &v : its.vertices)
-        min_z = std::min(min_z, v.z());
-    const float shift = -(min_z + float(ground));
-    for (stl_vertex &v : its.vertices)
-        v.z() += shift;
-    return its;
 }
 
 DynamicPrintConfig deform_print_config(const PrintObject &object, double road_angle)
@@ -822,15 +809,27 @@ DeformFieldReport measure_layer_field(const indexed_triangle_set &mesh, const La
 }
 
 namespace {
-DeformFieldProvider &field_provider()
+void translate_entity(ExtrusionEntity &ee, const Point3 &d)
 {
-    static DeformFieldProvider provider;
-    return provider;
-}
+    if (auto *coll = dynamic_cast<ExtrusionEntityCollection *>(&ee)) {
+        for (ExtrusionEntity *e : coll->entities)
+            translate_entity(*e, d);
+    } else if (auto *path = dynamic_cast<ExtrusionPath *>(&ee)) {
+        path->polyline.translate(d);
+    } else if (auto *multi = dynamic_cast<ExtrusionMultiPath *>(&ee)) {
+        for (ExtrusionPath &p : multi->paths)
+            p.polyline.translate(d);
+    } else if (auto *loop = dynamic_cast<ExtrusionLoop *>(&ee)) {
+        for (ExtrusionPath &p : loop->paths)
+            p.polyline.translate(d);
+        if (auto *sloped = dynamic_cast<ExtrusionLoopSloped *>(loop))
+            for (std::vector<ExtrusionPathSloped> *v : { &sloped->starts, &sloped->ends })
+                for (ExtrusionPathSloped &p : *v)
+                    p.polyline.translate(d);
+    }
 }
 
-void set_deform_field_provider(DeformFieldProvider provider) { field_provider() = std::move(provider); }
-
+}
 bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::string *why, double give_up_above,
                           const LayerField *given, double planar_time, double time_budget,
                           const std::function<bool(const DeformFieldReport &)> &admit, const MeshRays *rays)
@@ -930,6 +929,9 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
     const double seam_gap = scale_(object.printing_region(0).config().seam_gap.get_abs_value(nozzle));
 
     const double                                       z0 = field->identity_below();
+    for (size_t i = 1; i < sliced.layers().size() && sliced.layers()[i]->print_z <= z0 + EPSILON; ++i)
+        if (i >= layers.size() || std::abs(layers[i]->print_z - raft - sliced.layers()[i]->print_z) >= 1e-5)
+            return fail("layer " + std::to_string(i) + " below the curved layers is off the host's layers");
     std::vector<std::vector<ExtrusionPathConformal *>> curved(sliced.layers().size());
     std::vector<int>                                   planar_host(sliced.layers().size(), -1);
     const double                                       step = 0.5;
@@ -962,6 +964,11 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
         if (i < planar_host.size() && planar_host[i] >= 0) {
             const LayerRegion *src = sliced.layers()[i]->regions().front();
             out.planar[i]          = std::make_unique<DeformSlice::Planar>(DeformSlice::Planar{ src->perimeters, src->fills, src->thin_fills });
+            if (sliced.center_offset() != Point(0, 0)) {
+                const Point3 d(sliced.center_offset().x(), sliced.center_offset().y(), coord_t(0));
+                for (ExtrusionEntityCollection *c : { &out.planar[i]->perimeters, &out.planar[i]->fills, &out.planar[i]->thin_fills })
+                    translate_entity(*c, d);
+            }
         }
 
     const HeadEnvelope head = resolve_head_envelope(host_print.config());
@@ -1190,18 +1197,11 @@ public:
 
     void add(const ExtrusionEntity &ee, double z)
     {
-        if (const auto *coll = dynamic_cast<const ExtrusionEntityCollection *>(&ee)) {
-            for (const ExtrusionEntity *e : coll->entities)
-                this->add(*e, z);
-        } else if (const auto *loop = dynamic_cast<const ExtrusionLoop *>(&ee)) {
-            for (const ExtrusionPath &p : loop->paths)
-                this->add(p, z);
-        } else if (const auto *multi = dynamic_cast<const ExtrusionMultiPath *>(&ee)) {
-            for (const ExtrusionPath &p : multi->paths)
-                this->add(p, z);
-        } else if (const auto *path = dynamic_cast<const ExtrusionPath *>(&ee)) {
+        std::vector<const ExtrusionPath *> paths;
+        collect_paths(&ee, paths);
+        for (const ExtrusionPath *path : paths) {
             if (path->role() == erIroning || is_support(path->role()))
-                return;
+                continue;
             const Points3 &pts       = path->polyline.points;
             const auto    *conformal = dynamic_cast<const ExtrusionPathConformal *>(path);
             for (size_t i = 1; i < pts.size(); ++i) {
@@ -1308,19 +1308,12 @@ public:
 
     void add(const ExtrusionEntity &ee, double z)
     {
-        if (const auto *coll = dynamic_cast<const ExtrusionEntityCollection *>(&ee)) {
-            for (const ExtrusionEntity *e : coll->entities)
-                this->add(*e, z);
-        } else if (const auto *loop = dynamic_cast<const ExtrusionLoop *>(&ee)) {
-            for (const ExtrusionPath &p : loop->paths)
-                this->add(p, z);
-        } else if (const auto *multi = dynamic_cast<const ExtrusionMultiPath *>(&ee)) {
-            for (const ExtrusionPath &p : multi->paths)
-                this->add(p, z);
-        } else if (const auto *path = dynamic_cast<const ExtrusionPath *>(&ee)) {
+        std::vector<const ExtrusionPath *> paths;
+        collect_paths(&ee, paths);
+        for (const ExtrusionPath *path : paths) {
             const Points3 &pts = path->polyline.points;
             if (pts.size() < 2 || is_support(path->role()))
-                return;
+                continue;
             const auto  *c   = dynamic_cast<const ExtrusionPathConformal *>(path);
             const int    r   = this->role_index(path->role());
             const double v   = m_speed[r], a = m_accel[r];
@@ -1430,19 +1423,12 @@ class OverhangLength
 public:
     void add(const ExtrusionEntity &ee, double)
     {
-        if (const auto *coll = dynamic_cast<const ExtrusionEntityCollection *>(&ee)) {
-            for (const ExtrusionEntity *e : coll->entities)
-                this->add(*e, 0.);
-        } else if (const auto *loop = dynamic_cast<const ExtrusionLoop *>(&ee)) {
-            for (const ExtrusionPath &p : loop->paths)
-                this->add(p, 0.);
-        } else if (const auto *multi = dynamic_cast<const ExtrusionMultiPath *>(&ee)) {
-            for (const ExtrusionPath &p : multi->paths)
-                this->add(p, 0.);
-        } else if (const auto *path = dynamic_cast<const ExtrusionPath *>(&ee)) {
+        std::vector<const ExtrusionPath *> paths;
+        collect_paths(&ee, paths);
+        for (const ExtrusionPath *path : paths) {
             const ExtrusionRole r = path->role();
             if (r != erOverhangPerimeter && r != erBridgeInfill)
-                return;
+                continue;
             const auto    *conformal = dynamic_cast<const ExtrusionPathConformal *>(path);
             const Points3 &pts       = path->polyline.points;
             for (size_t i = 1; i < pts.size(); ++i) {
@@ -1505,20 +1491,6 @@ template<class Proxy> void walk(Proxy &proxy, const PrintObject &object, const C
 
 }
 
-double top_surface_rms(const PrintObject &object, const ConformalResult *result, const DeformSlice *slice)
-{
-    const auto   layers = object.layers();
-    const double raft   = layers.front()->print_z - (layers.front()->slice_z + 0.5 * layers.front()->height);
-    const indexed_triangle_set mesh = slicing_frame_mesh(object);
-    const sla::IndexedMesh     imesh(mesh);
-    MeshRays                   rays { &imesh, 0., BoundingBoxf3() };
-    for (const stl_vertex &v : mesh.vertices)
-        rays.bbox.merge(v.cast<double>());
-    TopMetric metric(rays, raft);
-    walk(metric, object, result, slice);
-    return metric.rms();
-}
-
 double print_time_proxy(const PrintObject &object, const ConformalResult *result, const DeformSlice *slice)
 {
     TimeProxy proxy(object);
@@ -1546,7 +1518,7 @@ bool choose_deform_slice(PrintObject &object, ConformalResult &result)
                                                 Vec3d(box.max.x(), box.max.y(), box.max.z() + rays.shift));
     }
     std::unique_ptr<TopMetric> metric;
-    double                     shells = 0., t_shells = -1., t_planar = 0., best_rms = 0., shells_overhang = -1.;
+    double                     shells = 0., t_shells = -1., t_planar = 0., best_rms = 0.;
     auto score_rms = [&]() {
         if (metric)
             return;
@@ -1565,9 +1537,7 @@ bool choose_deform_slice(PrintObject &object, ConformalResult &result)
         BOOST_LOG_TRIVIAL(info) << "Deform slice " << name << ": shells top RMS " << shells << " mm, " << t_shells / 60.
                                 << " min, their planar layers " << t_planar / 60. << " min";
     };
-    bool promising = false;
     auto admit = [&](const DeformFieldReport &r) {
-        promising |= r.predicted_rms <= ProviderPredicted;
         if (r.predicted_rms > MaxPredicted)
             return false;
         score_rms();
@@ -1577,38 +1547,23 @@ bool choose_deform_slice(PrintObject &object, ConformalResult &result)
         score_time();
         return t_planar * r.layer_factor <= MaxTimeRatioPredicted * t_shells;
     };
-    std::vector<std::unique_ptr<LayerField>> fields;
-    fields.emplace_back();
     std::unique_ptr<DeformSlice> best;
-    for (size_t i = 0; i < fields.size(); ++i) {
-        auto       slice    = std::make_unique<DeformSlice>();
-        const bool computed = compute_deform_slice(object, *slice, nullptr, std::numeric_limits<double>::infinity(), fields[i].get(), 0.,
-                                                   std::numeric_limits<double>::infinity(), admit, &rays);
-        if (i == 0 && promising && field_provider())
-            for (std::unique_ptr<LayerField> &f : field_provider()(object, slicing_frame_mesh(object)))
-                if (f)
-                    fields.push_back(std::move(f));
-        if (!computed)
-            continue;
+    if (auto slice = std::make_unique<DeformSlice>();
+        compute_deform_slice(object, *slice, nullptr, std::numeric_limits<double>::infinity(), nullptr, 0.,
+                             std::numeric_limits<double>::infinity(), admit, &rays)) {
         metric->clear();
         walk(*metric, object, nullptr, slice.get());
         const double rms = metric->rms();
         const double t   = print_time_proxy(object, nullptr, slice.get());
-        OverhangLength over;
+        OverhangLength over, mine;
         walk(over, object, nullptr, slice.get());
-        if (shells_overhang < 0.) {
-            OverhangLength mine;
-            walk(mine, object, &result, nullptr);
-            shells_overhang = mine.length();
-        }
-        const bool   ok  = rms < best_rms && t <= 1.2 * t_shells && over.length() <= 1.1 * shells_overhang + 0.2;
-        BOOST_LOG_TRIVIAL(info) << "Deform slice " << name << ": field " << i << " top RMS " << rms << " mm against the shells' " << shells
+        walk(mine, object, &result, nullptr);
+        const bool ok = rms < best_rms && t <= 1.2 * t_shells && over.length() <= 1.1 * mine.length() + 0.2;
+        BOOST_LOG_TRIVIAL(info) << "Deform slice " << name << ": top RMS " << rms << " mm against the shells' " << shells
                                 << " mm, time " << t / 60. << " min against " << t_shells / 60. << ", overhang " << over.length() << " mm2 against "
-                                << shells_overhang << (ok ? ", best so far" : ", rejected");
-        if (ok) {
-            best_rms = rms;
-            best     = std::move(slice);
-        }
+                                << mine.length() << (ok ? ", kept" : ", rejected");
+        if (ok)
+            best = std::move(slice);
     }
     BOOST_LOG_TRIVIAL(info) << "Deform slice " << name << ": " << (best ? "curved layers" : "curved shells");
     if (!best)

@@ -20,7 +20,6 @@ public:
     StrengthField() = default;
     explicit StrengthField(const PrintObject &object);
 
-    double long_axis() const { return m_long_axis; }
     double aspect() const { return m_aspect; }
     bool direction(const HeightField &layer, const ExPolygons &area, double &angle) const;
     double aligned_share(const HeightField &layer, const ExPolygons &area, double angle) const;

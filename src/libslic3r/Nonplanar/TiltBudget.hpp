@@ -5,10 +5,6 @@
 
 #include <vector>
 
-namespace Slic3r {
-class PrintConfig;
-}
-
 namespace Slic3r::Nonplanar {
 
 class TiltBudget
@@ -24,11 +20,9 @@ public:
 
     double slope_limit(double phi) const;
     double reach(double psi) const;
-    double extended_slope_limit(double phi) const { return this->slope_limit(phi) + this->reach(phi + M_PI); }
 
     double tilt(const Vec2d &g) const;
     Vec3d  axis(const Vec2d &g) const;
-    bool   needs_tilt(const Vec2d &g) const;
 
 private:
     std::vector<double> m_slope_limit;
@@ -37,7 +31,5 @@ private:
     double              m_max_residual = 0.5 * M_PI;
     double              m_residual_from = 0.;
 };
-
-TiltBudget make_tilt_budget(const PrintConfig &config, const HeadEnvelope &head, double gap);
 
 }

@@ -118,17 +118,6 @@ template<class T> T OrientationField::trilinear(const std::vector<T> &f, const V
 
 double OrientationField::phi(const Vec3d &p) const { return this->trilinear(m_phi, p); }
 
-OrientationTerm OrientationField::orientation_term() const
-{
-    OrientationTerm term;
-    term.direction = [this](const Vec3d &p) {
-        const Vec3d d = this->trilinear(m_dir, p);
-        return d.squaredNorm() > 1e-24 ? Vec3d(d.normalized()) : Vec3d(Vec3d::UnitZ());
-    };
-    term.weight = [this](const Vec3d &p) { return this->inside(p) ? 1. : 0.; };
-    return term;
-}
-
 Vec3d OrientationField::gradient(const Vec3d &p) const { return this->trilinear(m_grad_phi, p).cast<double>(); }
 
 Vec3d OrientationField::orientation(const Vec3d &p) const
@@ -1080,7 +1069,6 @@ struct OrientationFieldBuilder
         lp.flat_base_height  = params.first_layer_height + F.m_pitch;
         lp.overhang_angle    = 90. - Geometry::rad2deg(params.overhang_threshold);
         lp.head              = &params.head;
-        lp.whole_layer_order = false;
         lp.throw_if_canceled = cancel;
         lp.tool_axis         = [this](const Vec3d &p) {
             const Vec3d v = F.trilinear(d, p);
@@ -1180,7 +1168,6 @@ struct OrientationFieldBuilder
         st.head_conflicts = conflicts.size();
         if (!st.solver_field)
             integrate_phi(1e-7);
-        F.m_dir = d;
         integrate_uv();
         F.compute_gradients();
         F.build_inverse();

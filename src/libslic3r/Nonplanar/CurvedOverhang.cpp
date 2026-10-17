@@ -136,21 +136,6 @@ Vec2d node_gradient(const HeightField &f, int ix, int iy)
     return Vec2d(axis(1, 0), axis(0, 1));
 }
 
-double head_budget(const HeadEnvelope &head)
-{
-    double out = Inf;
-    for (const HeadBox &box : head.boxes) {
-        if (!box.nozzle) {
-            out = std::min(out, box.min.z() - head.margin);
-            continue;
-        }
-        const double r = std::hypot(std::max(std::abs(box.min.x()), std::abs(box.max.x())),
-                                    std::max(std::abs(box.min.y()), std::abs(box.max.y())));
-        out = std::min(out, r <= head.tip_allowance.radius ? std::max(box.min.z(), head.tip_allowance.height) : box.min.z());
-    }
-    return out;
-}
-
 struct Piece
 {
     int                                     sub   = 0;
@@ -321,11 +306,8 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
         return more;
     }
 
-    std::string        head_warning;
-    const HeadEnvelope head = resolve_head_envelope(object.print()->config(), &head_warning);
-    if (!head_warning.empty())
-        BOOST_LOG_TRIVIAL(warning) << "Non-planar: " << head_warning;
-    double tau = std::min(0.5 * g, head_budget(head));
+    const HeadEnvelope head = resolve_head_envelope(object.print()->config());
+    double tau = std::min(0.5 * g, head_band_height(head));
     if (tau < 0.02) {
         BOOST_LOG_TRIVIAL(warning) << "Non-planar: the head reaches within " << tau
                                    << " mm of the tip; curved overhangs cannot keep below it";

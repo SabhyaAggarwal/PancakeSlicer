@@ -1089,13 +1089,22 @@ void PrintObject::slice_volumes()
                     polygons_append(outline, to_polygons(slice));
             const ExPolygons silhouette = union_ex(outline);
             const ExPolygons rim        = diff_ex(silhouette, offset_ex(silhouette, -float(scale_(Nonplanar::low_plane_rim(*this)))));
+            std::vector<Polygons> mid_all;
+            if (region_slices.size() > 1) {
+                mid_all.assign(m_layers.size(), Polygons());
+                for (size_t i = 1; i < m_layers.size(); ++i)
+                    if (radius[i] > 0.)
+                        for (const std::vector<ExPolygons> &by_layer : region_slices)
+                            polygons_append(mid_all[i], to_polygons(by_layer[i]));
+            }
             for (size_t region_id = 0; region_id < region_slices.size(); ++region_id)
                 tbb::parallel_for(size_t(1), region_slices[region_id].size(), [&](size_t i) {
                     if (radius[i] <= 0.)
                         return;
                     const ExPolygons &below = low[region_id][i];
                     ExPolygons       &mid   = region_slices[region_id][i];
-                    ExPolygons        wide  = intersection_ex(opening_ex(diff_ex(below, mid), float(scale_(radius[i]))), below);
+                    ExPolygons        wide  = intersection_ex(opening_ex(mid_all.empty() ? diff_ex(below, mid) : diff_ex(below, mid_all[i]),
+                                                                         float(scale_(radius[i]))), below);
                     if (wide.empty())
                         return;
                     const BoundingBox reach = get_extents(wide);

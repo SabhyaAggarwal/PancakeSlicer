@@ -1,10 +1,6 @@
 #include "TiltBudget.hpp"
 
-#include "PatchTools.hpp"
-
-#include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/libslic3r.h"
-
 
 #include <algorithm>
 #include <cmath>
@@ -69,19 +65,6 @@ Vec3d TiltBudget::axis(const Vec2d &g) const
         return Vec3d::UnitZ();
     const double phi = std::atan2(g.y(), g.x());
     return Vec3d(-std::sin(tilt) * std::cos(phi), -std::sin(tilt) * std::sin(phi), std::cos(tilt));
-}
-
-bool TiltBudget::needs_tilt(const Vec2d &g) const
-{
-    return ! this->empty() && g.norm() > 0. && std::atan(g.norm()) > this->slope_limit(std::atan2(g.y(), g.x()));
-}
-
-TiltBudget make_tilt_budget(const PrintConfig &config, const HeadEnvelope &head, double gap)
-{
-    if (config.nonplanar_kinematics.value == RotaryLayout::None)
-        return {};
-    return TiltBudget(*make_tool_kinematics(config), head.slope_map(TiltBudget::Azimuths, gap), 3. * M_PI / 180.,
-                      head_band_tilt_limit(head));
 }
 
 }

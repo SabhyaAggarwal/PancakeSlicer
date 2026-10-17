@@ -117,21 +117,6 @@ NpyArray parse_npy(const std::string &name, const unsigned char *data, size_t si
 
 }
 
-size_t AtomToolpath::deposition_edges() const
-{
-    size_t n = 0;
-    for (size_t i = 1; i < points.size(); ++i) n += points[i].deposit;
-    return n;
-}
-
-double AtomToolpath::deposition_length() const
-{
-    double l = 0.;
-    for (size_t i = 1; i < points.size(); ++i)
-        if (points[i].deposit) l += (points[i].tip - points[i - 1].tip).norm();
-    return l;
-}
-
 double AtomToolpath::travel_length() const
 {
     double l = 0.;

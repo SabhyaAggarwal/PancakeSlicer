@@ -33,6 +33,7 @@ constexpr double ConeApexRadius = 1.5;
 constexpr double PatchLength = 5., PatchWidth = 7., PatchCrown = 0.25;
 constexpr double DomeRadius = 5., DomeHeight = 3., SaddleHalf = 5., SaddleAmplitude = 1.;
 constexpr double FitMargin = 0.2;
+constexpr double TouchMargin = 0.05;
 constexpr double LayoutGap = 3., BedMargin = 5.;
 
 indexed_triangle_set grid_solid(double x0, double x1, double y0, double y1, int nx, int ny, const std::function<double(double, double)> &z)
@@ -207,7 +208,7 @@ std::vector<Vec2d> grid_layout(const std::vector<Footprint> &shapes, int cols, c
 }
 
 std::vector<Vec2d> best_layout(const std::vector<Footprint> &shapes, std::initializer_list<int> cols, const HeadEnvelope &head, double gap,
-                               const BoundingBoxf &bed, int &chosen)
+                               const BoundingBoxf &bed)
 {
     std::vector<Vec2d> best;
     double             best_area = Inf;
@@ -222,7 +223,6 @@ std::vector<Vec2d> best_layout(const std::vector<Footprint> &shapes, std::initia
             if (box.size().x() * box.size().y() < best_area) {
                 best_area = box.size().x() * box.size().y();
                 best      = std::move(at);
-                chosen    = c;
             }
         } catch (const RuntimeError &) {
         }
@@ -363,6 +363,8 @@ ClearanceFit fit_clearance(const HeadEnvelope &base, int last_clean, double gap,
             shift = std::max(shift, needed(k));
     }
     shift += FitMargin;
+    if (last_clean < int(steps.size()))
+        shift = std::min(shift, needed(last_clean + 1) - TouchMargin);
     shift = std::max(shift, -lowest);
 
     ClearanceFit out;
@@ -449,7 +451,7 @@ std::vector<double> tilt_flow_result(const std::vector<double> &current, const s
     for (size_t i = 0; i < slopes.size(); ++i) {
         if (picks[i] < 0 || picks[i] >= int(tilt_multipliers().size()))
             throw RuntimeError(_u8L("Pick one of the printed patches for every slope."));
-        const double base = i < current.size() ? current[i] : 1.;
+        const double base = current.size() == slopes.size() ? current[i] : 1.;
         out[i] = std::round(std::clamp(base * tilt_multipliers()[size_t(picks[i])], 0.5, 1.5) * 1000.) / 1000.;
     }
     return out;
@@ -485,7 +487,6 @@ Plate make_plate(Test test, const DynamicPrintConfig &config, const HeadEnvelope
     std::vector<Footprint> shapes;
     std::vector<int>       cols;
     std::vector<int>       cells;
-    bool                   no_ironing = false;
     switch (test) {
     case Test::Clearance:
     case Test::Verifier: {
@@ -501,7 +502,6 @@ Plate make_plate(Test test, const DynamicPrintConfig &config, const HeadEnvelope
             shapes.push_back({ Vec2d(2. * pad, 2. * pad), step.relief });
         }
         cols = { 2, 4 };
-        no_ironing = true;
         break;
     }
     case Test::TiltFlow: {
@@ -529,7 +529,6 @@ Plate make_plate(Test test, const DynamicPrintConfig &config, const HeadEnvelope
                 shapes.push_back({ Vec2d(x1 - x0, y1 - y0), PatchLength * t + PatchCrown });
             }
         cols = { int(tilt_multipliers().size()) };
-        no_ironing = true;
         break;
     }
     case Test::CurvedTop: {
@@ -567,14 +566,12 @@ Plate make_plate(Test test, const DynamicPrintConfig &config, const HeadEnvelope
             }
         plate.config.set_key_value("nonplanar_road_cooling", new ConfigOptionBool(true));
         cols = { int(top_speed_factors().size()) };
-        no_ironing = true;
         break;
     }
     }
-    int                chosen = 0;
     std::vector<Vec2d> at;
     try {
-        at = cols.size() == 1 ? grid_layout(shapes, cols.front(), head, gap, bed) : best_layout(shapes, { cols[0], cols[1] }, head, gap, bed, chosen);
+        at = cols.size() == 1 ? grid_layout(shapes, cols.front(), head, gap, bed) : best_layout(shapes, { cols[0], cols[1] }, head, gap, bed);
     } catch (const RuntimeError &) {
         if (test != Test::TiltFlow)
             throw;
@@ -596,10 +593,8 @@ Plate make_plate(Test test, const DynamicPrintConfig &config, const HeadEnvelope
         object.mesh.translate(-float(box.center().x()), -float(box.center().y()), -float(box.min.z()));
         object.center = at[cells.empty() ? i : size_t(cells[i])];
         object.config.set_key_value("nonplanar_mode", new ConfigOptionEnum<NonplanarMode>(NonplanarMode::Auto));
-        if (no_ironing) {
-            object.config.set_key_value("ironing_type", new ConfigOptionEnum<IroningType>(IroningType::NoIroning));
-            object.config.set_key_value("nonplanar_ironing", new ConfigOptionBool(false));
-        }
+        object.config.set_key_value("ironing_type", new ConfigOptionEnum<IroningType>(IroningType::NoIroning));
+        object.config.set_key_value("nonplanar_ironing", new ConfigOptionBool(false));
     }
     return plate;
 }

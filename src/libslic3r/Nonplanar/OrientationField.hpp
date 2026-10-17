@@ -22,19 +22,12 @@ namespace Slic3r::Nonplanar {
 
 struct ConformalResult;
 
-struct OrientationTerm
-{
-    ToolAxisFn                           direction;
-    std::function<double(const Vec3d &)> weight;
-};
-
 struct OrientationFieldParams
 {
     double                layer_height       = 0.2;
     double                first_layer_height = 0.2;
     double                overhang_threshold = 0.25 * M_PI;
     double                max_tilt           = 55. * M_PI / 180.;
-    double                bed_band           = 1.0;
     HeadEnvelope          head;
     const ToolKinematics *kinematics         = nullptr;
     double                pitch              = 0.;
@@ -67,14 +60,12 @@ public:
     Vec3d  gradient(const Vec3d &p) const override;
     double identity_below() const override { return m_bed_band; }
     Vec3d  orientation(const Vec3d &p) const;
-    OrientationTerm orientation_term() const;
 
     Vec3d    forward(const Vec3d &p) const;
     Matrix3d jacobian(const Vec3d &p) const;
     bool     inverse(const Vec3d &q, Vec3d &p) const;
     bool     inside(const Vec3d &p) const;
 
-    double                       bed_band() const { return m_bed_band; }
     double                       pitch() const { return m_pitch; }
     const OrientationFieldStats &stats() const { return m_stats; }
     double                       max_tilt() const { return m_stats.max_tilt; }
@@ -92,7 +83,6 @@ private:
     double m_bed_band = 0.;
     double m_tilt_budget = 0.5 * M_PI;
     std::vector<double>  m_phi, m_u, m_v;
-    std::vector<Vec3d>   m_dir;
     std::vector<Vec3f>   m_grad_phi, m_grad_u, m_grad_v;
     std::vector<uint8_t> m_inside;
     Vec3d                              m_inv_origin { Vec3d::Zero() };

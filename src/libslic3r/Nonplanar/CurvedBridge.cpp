@@ -115,10 +115,7 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
     const double       pitch  = std::max(0.05, object.config().nonplanar_surface_resolution.value);
     const double       nozzle = region.flow(object, frSolidInfill, object.config().layer_height.value).nozzle_diameter();
     const bool         flow_mod = region.config().nonplanar_flow_mod.value;
-    std::string        head_warning;
-    const HeadEnvelope head = resolve_head_envelope(object.print()->config(), &head_warning);
-    if (!head_warning.empty())
-        BOOST_LOG_TRIVIAL(warning) << "Non-planar: " << head_warning;
+    const HeadEnvelope head = resolve_head_envelope(object.print()->config());
     const double max_sag = layer_changes_filament(object) ? head_band_height(head) : std::numeric_limits<double>::infinity();
     auto one_filament = [&object](size_t r) {
         const PrintRegionConfig &cfg = object.printing_region(r).config();
@@ -282,7 +279,7 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
             double    k      = std::min({ 1., n_flat * dmax / s_max, max_sag / s_max });
             auto      fall   = [n_flat](int j) { return 1. - double(j) / n_flat; };
 
-            BoundingBox bb = get_extents(a);
+            const BoundingBox bb = get_extents(a);
             const int   pad = 2;
             int         ix0 = std::max(0, int(std::floor((unscale<double>(bb.min.x()) - grid.origin().x()) / pitch)) - pad);
             int         iy0 = std::max(0, int(std::floor((unscale<double>(bb.min.y()) - grid.origin().y()) / pitch)) - pad);
@@ -308,7 +305,7 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
                     }
                     if (fall(j) <= 0.)
                         continue;
-                    const HeightField safe = min_safe_tip_height(below, head, like, nullptr, true);
+                    const HeightField safe = min_safe_tip_height(below, head, like, true);
                     for (int n : nodes) {
                         const float s = sag1.data()[size_t(n)];
                         if (s <= 0.f)
@@ -325,8 +322,7 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
             if (k * s_max < MinSag)
                 continue;
 
-            const BoundingBox a_bbox = get_extents(a);
-            bool              mixed  = false;
+            bool mixed = false;
             for (int j = 0; j <= n_flat && !mixed; ++j)
                 for (const LayerRegion *layerm : layers[i + size_t(j)]->regions())
                     if (!one_filament(layerm->region().print_object_region_id()) && !intersection_ex(layerm->slices.surfaces, a).empty())
@@ -344,8 +340,8 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
                 const double rise = j == 0 ? 0. : k * (fall(j - 1) - fall(j));
                 for (LayerRegion *layerm : layers[l]->regions()) {
                     ExtrusionPaths taken_paths, fills;
-                    take_paths(layerm->perimeters, a, a_bbox, taken_paths);
-                    take_paths(layerm->fills, a, a_bbox, fills);
+                    take_paths(layerm->perimeters, a, bb, taken_paths);
+                    take_paths(layerm->fills, a, bb, fills);
                     append(taken_paths, std::move(fills));
                     if (taken_paths.empty())
                         continue;

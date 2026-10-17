@@ -37,7 +37,6 @@ public:
     double identity_below() const override { return m_z0; }
 
     double             rho(const Vec2d &xy) const;
-    const HeightField &rho_field() const { return m_rho; }
 
 private:
     double      m_z0;
@@ -102,10 +101,6 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
 DeformFieldReport measure_layer_field(const indexed_triangle_set &mesh, const LayerField &field, double layer_height,
                                       const HeightField *top = nullptr);
 
-using DeformFieldProvider =
-    std::function<std::vector<std::unique_ptr<LayerField>>(const PrintObject &object, const indexed_triangle_set &mesh)>;
-void set_deform_field_provider(DeformFieldProvider provider);
-double top_surface_rms(const PrintObject &object, const ConformalResult *result, const DeformSlice *slice);
 double print_time_proxy(const PrintObject &object, const ConformalResult *result, const DeformSlice *slice);
 
 void apply_deform_slice(PrintObject &object, DeformSlice &&slice, ConformalResult &result);
