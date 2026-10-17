@@ -1,7 +1,7 @@
 {
 	"name": "Bambulab",
 	"url": "http://www.bambulab.com/Parameters/vendor/BBL.json",
-	"version": "02.08.00.31",
+	"version": "02.08.00.32",
 	"force_update": "0",
 	"description": "the initial version of BBL configurations",
 	"machine_model_list": [
@@ -9980,6 +9980,18 @@
 			"sub_path": "process/0.20mm Non-planar top @BBL H2DP.json"
 		},
 		{
+			"name": "0.10mm Non-planar top @BBL A1 0.2 nozzle",
+			"sub_path": "process/0.10mm Non-planar top @BBL A1 0.2 nozzle.json"
+		},
+		{
+			"name": "0.10mm Non-planar top @BBL A1M 0.2 nozzle",
+			"sub_path": "process/0.10mm Non-planar top @BBL A1M 0.2 nozzle.json"
+		},
+		{
+			"name": "0.10mm Non-planar top @BBL P1S 0.2 nozzle",
+			"sub_path": "process/0.10mm Non-planar top @BBL P1S 0.2 nozzle.json"
+		},
+		{
 			"name": "0.20mm Non-planar top @BBL A1",
 			"sub_path": "process/0.20mm Non-planar top @BBL A1.json"
 		},
@@ -9998,6 +10010,30 @@
 		{
 			"name": "0.20mm Non-planar top @BBL X1C",
 			"sub_path": "process/0.20mm Non-planar top @BBL X1C.json"
+		},
+		{
+			"name": "0.30mm Non-planar top @BBL A1 0.6 nozzle",
+			"sub_path": "process/0.30mm Non-planar top @BBL A1 0.6 nozzle.json"
+		},
+		{
+			"name": "0.30mm Non-planar top @BBL A1M 0.6 nozzle",
+			"sub_path": "process/0.30mm Non-planar top @BBL A1M 0.6 nozzle.json"
+		},
+		{
+			"name": "0.30mm Non-planar top @BBL P1S 0.6 nozzle",
+			"sub_path": "process/0.30mm Non-planar top @BBL P1S 0.6 nozzle.json"
+		},
+		{
+			"name": "0.40mm Non-planar top @BBL A1 0.8 nozzle",
+			"sub_path": "process/0.40mm Non-planar top @BBL A1 0.8 nozzle.json"
+		},
+		{
+			"name": "0.40mm Non-planar top @BBL A1M 0.8 nozzle",
+			"sub_path": "process/0.40mm Non-planar top @BBL A1M 0.8 nozzle.json"
+		},
+		{
+			"name": "0.40mm Non-planar top @BBL P1S 0.8 nozzle",
+			"sub_path": "process/0.40mm Non-planar top @BBL P1S 0.8 nozzle.json"
 		}
 	]
 }

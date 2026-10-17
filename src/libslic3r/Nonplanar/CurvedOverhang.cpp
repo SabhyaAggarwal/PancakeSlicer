@@ -52,6 +52,13 @@ constexpr float Inf = std::numeric_limits<float>::infinity();
 constexpr double ThinWallLayers = 15.;
 constexpr double TargetContact  = 0.5;
 constexpr double MinContact     = 0.4;
+constexpr double TunedLayerRatio = 0.5;
+
+double contact(double tuned, double g, double d)
+{
+    const double tall = g / (TunedLayerRatio * d);
+    return tall < 1. - EPSILON ? 1. - (1. - tuned) * tall : tuned;
+}
 constexpr double DefaultMaxBend = 40.;
 constexpr double SameHeight = 0.01;
 constexpr double SupportFreeMinArea = 1.;
@@ -70,7 +77,8 @@ struct OverhangSettings
 OverhangSettings overhang_settings(const PrintObject &object)
 {
     OverhangSettings s;
-    const double     g = object.config().layer_height.value;
+    const double     g     = object.config().layer_height.value;
+    const double     scale = bead_scale(object.print()->config());
     for (size_t region_id = 0; region_id < object.num_printing_regions(); ++region_id) {
         const PrintRegionConfig &cfg = object.printing_region(region_id).config();
         if (!overhangs_enabled(cfg, object.config()))
@@ -79,7 +87,7 @@ OverhangSettings overhang_settings(const PrintObject &object)
         s.pitch     = std::max(0.05, object.config().nonplanar_surface_resolution.value);
         s.max_bend  = Geometry::deg2rad(cfg.nonplanar_max_slope.value > 0. && object.config().nonplanar_mode.value != NonplanarMode::Auto ? cfg.nonplanar_max_slope.value : DefaultMaxBend);
         s.min_area  = effective_fallback(cfg, object.config()) == NonplanarFallback::None ? 0. :
-                      support_free(object.config()) ? std::min(cfg.nonplanar_min_patch_area.value, SupportFreeMinArea) :
+                      support_free(object.config()) ? std::min(cfg.nonplanar_min_patch_area.value, SupportFreeMinArea * scale * scale) :
                                                       cfg.nonplanar_min_patch_area.value;
         s.skin      = std::max({ 2. * g, cfg.bottom_shell_layers.value * g, cfg.bottom_shell_thickness.value });
         break;
@@ -216,13 +224,15 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
     const PrintRegion &region = object.printing_region(size_t(settings.region_id));
     const Flow         flow   = region.flow(object, frExternalPerimeter, g);
     const double       w = flow.width(), s = flow.spacing();
+    const double       d = smallest_nozzle(object.print()->config());
+    const double       min_contact = contact(MinContact, g, d);
     const double       wall_width = std::max(0, region.config().wall_loops.value) * s;
     auto               cancel = [&object]() { throw_if_canceled(object); };
     const bool   free_mode    = support_free(object.config());
     const int    threshold    = object.config().support_threshold_angle.value;
     const double printable    = Geometry::deg2rad(std::clamp(90. - (threshold > 0 ? threshold : 30), 45., 55.));
-    const double contact_req  = std::max(MinContact, 1. - g * std::tan(printable) / w);
-    const double grad_req     = g / ((1. - (free_mode ? contact_req : MinContact)) * w);
+    const double contact_req  = std::max(min_contact, 1. - g * std::tan(printable) / w);
+    const double grad_req     = g / ((1. - (free_mode ? contact_req : min_contact)) * w);
     std::vector<std::vector<int>> self_supported(free_mode ? layers.size() : 0);
     Polygons                      capped_cover;
 
@@ -287,9 +297,9 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
         candidate = intersection_ex(candidate, mask_to_expolygons(sampled, grid));
     }
 
-    const double grad_need = g / ((1. - TargetContact) * w);
+    const double grad_need = g / ((1. - contact(TargetContact, g, d)) * w);
     const double grad_bend = free_mode ? std::min(grad_need, 1. / std::tan(printable)) : grad_need;
-    const double grad_min  = std::max(0., g / ((1. - MinContact) * w) - std::tan(settings.max_bend));
+    const double grad_min  = std::max(0., g / ((1. - min_contact) * w) - std::tan(settings.max_bend));
     std::vector<float> slope(n_nodes, HeightField::NoData);
     Mask               mask(n_nodes, 0);
     enum Why : uint8_t { Taken, Unsampled, Resting, Rim, SelfSupporting, Unfit, Small, NoRoot, NoBeads };

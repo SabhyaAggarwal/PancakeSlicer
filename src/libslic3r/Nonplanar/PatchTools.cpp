@@ -144,6 +144,17 @@ double automatic_shell_height(const PrintObject &object)
     return std::isfinite(height) ? height : object.config().layer_height.value;
 }
 
+double smallest_nozzle(const PrintConfig &config)
+{
+    double out = 0.;
+    for (double d : config.nozzle_diameter.values)
+        if (d > 0. && (out == 0. || d < out))
+            out = d;
+    return out > 0. ? out : TunedNozzle;
+}
+
+double bead_scale(const PrintConfig &config) { return smallest_nozzle(config) / TunedNozzle; }
+
 ObjectMesh::ObjectMesh(const PrintObject &object) : mesh(object.object_frame_mesh(ground_offset)), imesh(mesh)
 {
     imesh.ground_level_offset(ground_offset);
@@ -1465,7 +1476,6 @@ double rotary_band_reach(const PrintObject &object, const HeadEnvelope &head, do
 
 namespace {
 constexpr double ColourPitch = 0.05;
-constexpr double ColourMinWidth = 0.4;
 }
 
 TopColours top_colours(const PrintObject &object, const ExPolygons &candidate)
@@ -1517,7 +1527,7 @@ TopColours top_colours(const PrintObject &object, const ExPolygons &candidate)
         out.areas.emplace_back(diff_ex(intersection_ex(candidate, offset(top, seam)), assigned));
         append(assigned, out.areas.back());
     }
-    const float half_road = float(scale_(0.5 * ColourMinWidth));
+    const float half_road = float(scale_(0.5 * smallest_nozzle(object.print()->config())));
     ExPolygons  slivers;
     for (ExPolygons &area : out.areas) {
         ExPolygons kept = opening_ex(area, half_road);

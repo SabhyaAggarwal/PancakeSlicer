@@ -1,6 +1,6 @@
 {
 	"name": "Prusa",
-	"version": "02.04.00.32",
+	"version": "02.04.00.33",
 	"force_update": "0",
 	"description": "Prusa configurations",
 	"machine_model_list": [
@@ -237,6 +237,18 @@
 		{
 			"name": "0.20mm Non-planar top @MINI",
 			"sub_path": "process/0.20mm Non-planar top @MINI.json"
+		},
+		{
+			"name": "0.12mm Non-planar top @MINI 0.25",
+			"sub_path": "process/0.12mm Non-planar top @MINI 0.25.json"
+		},
+		{
+			"name": "0.20mm Non-planar top @MINI 0.6",
+			"sub_path": "process/0.20mm Non-planar top @MINI 0.6.json"
+		},
+		{
+			"name": "0.20mm Non-planar top @MINI 0.8",
+			"sub_path": "process/0.20mm Non-planar top @MINI 0.8.json"
 		},
 		{
 			"name": "0.15mm Standard @MK3.5 0.6",

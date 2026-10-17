@@ -61,15 +61,6 @@ bool is_manual(const PrintObjectConfig &object)
     return object.nonplanar_mode.value == NonplanarMode::Manual || object.nonplanar_mode.value == NonplanarMode::Multiplanar;
 }
 
-double smallest_nozzle(const PrintConfig &config)
-{
-    double out = 0.;
-    for (double d : config.nozzle_diameter.values)
-        if (d > 0. && (out == 0. || d < out))
-            out = d;
-    return out > 0. ? out : 0.4;
-}
-
 double percentile(std::vector<double> &v, double q)
 {
     if (v.empty())
@@ -202,7 +193,8 @@ AutoObjectSettings auto_object_settings(const PrintObject &object, const PrintRe
 
     AutoObjectSettings s;
     s.max_error = std::clamp(0.25 * shell_height, 0.02, 0.1);
-    s.min_area  = (10. * w) * (10. * w);
+    const double area_w = w * std::min(1., TunedNozzle / d);
+    s.min_area  = (10. * area_w) * (10. * area_w);
     const double gantry = head.gantry_clearance();
     s.max_patch_height  = std::isfinite(gantry) ? std::max(0., gantry - head.margin) : 0.;
     if (print_config.nonplanar_kinematics.value != RotaryLayout::None) {
@@ -281,7 +273,8 @@ void choose_patch_settings(const PrintObject &object, const HeadEnvelope &head, 
         a.aspect = mid - rad > 1e-12 ? std::sqrt((mid + rad) / (mid - rad)) : std::numeric_limits<double>::infinity();
     }
 
-    const bool   large   = a.shell_area >= LargeArea;
+    const double scale   = bead_scale(object.print()->config());
+    const bool   large   = a.shell_area >= LargeArea * scale * scale;
     const double T       = (large ? 1.5 : 1.0) * d;
     const int    n_depth = std::isfinite(z_lo) ? int(std::floor((z_lo - 0.5 * h_c - first_layer_top) / h_c + 1e-6)) : AutoMinShells;
     a.shells = std::clamp(int(std::ceil(T / (h_c * std::cos(a.slope90)) - 0.15)), AutoMinShells, MaxShells);

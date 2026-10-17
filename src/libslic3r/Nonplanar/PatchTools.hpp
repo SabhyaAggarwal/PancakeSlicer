@@ -48,6 +48,10 @@ void prepare_vase_closure(PrintObject &object);
 
 double automatic_shell_height(const PrintObject &object);
 
+constexpr double TunedNozzle = 0.4;
+double smallest_nozzle(const PrintConfig &config);
+double bead_scale(const PrintConfig &config);
+
 struct ConformalResult;
 struct ObjectMesh
 {

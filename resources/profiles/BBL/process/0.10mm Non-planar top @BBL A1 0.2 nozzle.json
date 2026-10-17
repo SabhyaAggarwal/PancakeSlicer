@@ -1,0 +1,20 @@
+{
+	"type": "process",
+	"name": "0.10mm Non-planar top @BBL A1 0.2 nozzle",
+	"inherits": "0.10mm Standard @BBL A1 0.2 nozzle",
+	"from": "system",
+	"setting_id": "3unC03OMMNOjIpAy",
+	"instantiation": "true",
+	"nonplanar_flow_mod": "1",
+	"nonplanar_surface_spacing": "1",
+	"nonplanar_top_finish_flow": "0.95",
+	"nonplanar_full_conformal_max_thickness": "3",
+	"nonplanar_mode": "auto",
+	"top_surface_acceleration": [
+		"5000"
+	],
+	"compatible_printers": [
+		"Bambu Lab A1 0.2 nozzle"
+	],
+	"description": "0.10mm Standard for A1 with a 0.2 mm nozzle, curved top shells; auto chooses the shell count (2 to 6) and pattern for each curved area, with ironing left off. Thin curved parts (up to 3 mm) print in curved layers throughout on meshes with holes; closed meshes keep planar interiors. Uses the bundled bambu-a1 head."
+}

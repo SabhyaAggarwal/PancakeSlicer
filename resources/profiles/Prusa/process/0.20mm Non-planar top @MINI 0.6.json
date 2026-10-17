@@ -1,0 +1,16 @@
+{
+	"type": "process",
+	"name": "0.20mm Non-planar top @MINI 0.6",
+	"inherits": "0.20mm Standard @MINI 0.6",
+	"from": "system",
+	"setting_id": "xWPRfFwCqmxwYfm4",
+	"instantiation": "true",
+	"nonplanar_full_conformal_max_thickness": "3",
+	"nonplanar_mode": "auto",
+	"nonplanar_top_speed_factor": "150%",
+	"top_surface_acceleration": "1250",
+	"compatible_printers": [
+		"Prusa MINI 0.6 nozzle"
+	],
+	"description": "0.20mm Standard for Prusa MINI/MINI+ with a 0.6 mm nozzle, curved top shells; auto chooses the shell count (2 to 6) and pattern for each curved area, with ironing left off. Thin curved parts (up to 3 mm) print in curved layers throughout on meshes with holes; closed meshes keep planar interiors. Curved tops run at 150% of the top surface speed. Uses the shared prusa-mini head."
+}

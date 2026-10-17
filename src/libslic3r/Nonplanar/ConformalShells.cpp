@@ -564,6 +564,15 @@ std::vector<PlanarFace> planar_faces(const HeightField &surface, const ExPolygon
 
 constexpr double SparseWallSlope = 45.;
 
+constexpr double BandedTopAspect = 1.5;
+constexpr double BandedTopMinShare = 0.75;
+
+double banded_outer_width(double line_width, double nozzle, double height, double fraction = BandedTopWidth)
+{
+    const double w = std::min(line_width, fraction * nozzle);
+    return std::min(w, std::max(BandedTopMinShare * fraction * nozzle, BandedTopAspect * height));
+}
+
 struct BandedFill
 {
     bool       strips       = false;
@@ -614,7 +623,7 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
         ExPolygons                rest   = area;
         ExPolygons                rest_lengthwise = banded->lengthwise;
         const Flow                nominal = region.flow(object, frTopSolidInfill, patch.shell_height);
-        const double              narrow  = std::min(double(nominal.width()), BandedTopWidth * nominal.nozzle_diameter());
+        const double              narrow  = banded_outer_width(nominal.width(), nominal.nozzle_diameter(), patch.shell_height);
         for (size_t i = 0; i < adaptive->levels.size() && !(rest.empty() && rest_lengthwise.empty()); ++i) {
             const bool       last = i + 1 == adaptive->levels.size();
             const double     w    = outer_bead_width(adaptive->levels[i], nominal.nozzle_diameter(), narrow);
@@ -639,7 +648,7 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
     const double              height  = adaptive != nullptr && outer ? banded->outer_height : patch.shell_height;
     Flow                      flow    = region.flow(object, outer ? frTopSolidInfill : sparse ? frInfill : frSolidInfill, height);
     if (banded != nullptr && outer) {
-        const float narrow = std::min(flow.width(), float(BandedTopWidth * flow.nozzle_diameter()));
+        const float narrow = float(banded_outer_width(flow.width(), flow.nozzle_diameter(), height));
         flow = flow.with_width(adaptive != nullptr ? float(outer_bead_width(height, flow.nozzle_diameter(), narrow)) : narrow);
     }
     ShellFill rings = fill;
@@ -819,7 +828,7 @@ double low_plane_top_radius(const PrintObject &object, double layer_height)
             continue;
         const double h_c = cfg.nonplanar_shell_layer_height.value > 0. ? cfg.nonplanar_shell_layer_height.value : automatic_shell_height(object);
         const Flow   top = region.flow(object, frTopSolidInfill, h_c);
-        const double w   = std::min(double(top.width()), BandedCapWidth * top.nozzle_diameter());
+        const double w   = banded_outer_width(top.width(), top.nozzle_diameter(), h_c, BandedCapWidth);
         radius = std::max(radius, 0.5 * (0.5 * layer_height - min_z) * w / std::max(h_c, layer_height));
     }
     return radius;
@@ -936,7 +945,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                                                       !spans_wall(S, p + Vec2d(h, -h)) && !spans_wall(S, p + Vec2d(-h, h)) &&
                                                       !spans_wall(S, p + Vec2d(h, h));
             }
-        const float slit = float(scale_(0.5));
+        const float slit = float(scale_(0.5 * bead_scale(object.print()->config())));
         candidate        = union_ex(candidate, intersection_ex(diff_ex(closing_ex(to_polygons(candidate), slit), candidate),
                                                                 mask_to_expolygons(smooth, grid)));
         if (whole_tops != nullptr) {
@@ -998,7 +1007,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
             if (mask[i] && S0.data()[i] - min_shells * h_c - h_min < first_top)
                 drop(i, DropNearBed);
     if (settings.banded) {
-        const double outer_w   = std::min(line_width, BandedCapWidth * region.flow(object, frTopSolidInfill, h_c).nozzle_diameter());
+        const double outer_w   = banded_outer_width(line_width, region.flow(object, frTopSolidInfill, h_c).nozzle_diameter(), h_c, BandedCapWidth);
         const PrintConfig &print_config = object.print()->config();
         const double tilt      = print_config.nonplanar_kinematics.value == RotaryLayout::None ? 0. :
                                      std::clamp(Geometry::deg2rad(print_config.nonplanar_max_tilt.value), 0., 0.5 * M_PI);
@@ -1438,7 +1447,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
         std::optional<AdaptiveStack> stack;
         if (settings.adaptive)
             stack = adaptive_stack(top, HeightField(), n_top * h_c, h_c, patch.shells - n_top, nozzle,
-                                   std::min(line_width, BandedTopWidth * nozzle), settings.max_error);
+                                   banded_outer_width(line_width, nozzle, h_c), settings.max_error);
         if (stack && repair != nullptr)
             for (const RepairHints::Disc &d : repair->uniform_beads)
                 for (size_t i = 0; i < stack->outer.data().size(); ++i)
@@ -1801,6 +1810,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
         params.land_radius = head.tip_flat_radius;
         params.max_height  = FlowModMaxThickness * nozzle;
         params.smoothing   = FlowModSmoothing * nozzle;
+        params.min_normal  = FlowModMinThickness * bead_scale(object.print()->config());
         params.resample    = pitch;
         std::vector<std::vector<size_t>> groups(units.size());
         for (size_t i = 0; i < result.patches.size(); ++i)
