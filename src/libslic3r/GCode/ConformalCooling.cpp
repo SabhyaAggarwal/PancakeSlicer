@@ -35,12 +35,45 @@ double SupportSnapshot::top(const Vec2d &xy) const
     return m_top[size_t(y) * m_nx + x];
 }
 
+std::vector<float> road_hang(const std::vector<ConformalPoint> &points, double width, const SupportSnapshot &support,
+                             const std::function<Vec2d(const Vec2d &)> &gradient, int samples)
+{
+    const size_t       n = points.size() < 2 ? 0 : points.size() - 1;
+    std::vector<float> out(n, 0.f);
+    if (support.empty())
+        return out;
+    for (size_t i = 0; i < n; ++i) {
+        const ConformalPoint &a = points[i], &b = points[i + 1];
+        const Vec3d           d   = b.pose.tip - a.pose.tip;
+        const double          h   = 0.5 * (a.bead_height + b.bead_height);
+        const double          dxy = d.head<2>().norm();
+        if (h <= 0. || dxy < EPSILON)
+            continue;
+        const double h_z    = h * std::abs(0.5 * (a.pose.axis + b.pose.axis).normalized().z());
+        const Vec3d  mid    = 0.5 * (a.pose.tip + b.pose.tip);
+        const Vec2d  across = Vec2d(-d.y(), d.x()) / dxy;
+        const Vec2d  g      = gradient ? gradient(mid.head<2>()) : Vec2d(Vec2d::Zero());
+        const double tol    = h_z + 0.1;
+        int          hang   = 0;
+        for (int k = 0; k < samples; ++k) {
+            const double off    = 0.8 * width * ((k + 0.5) / samples - 0.5);
+            const Vec2d  xy     = mid.head<2>() + off * across;
+            const double bottom = mid.z() - h_z + g.dot(off * across);
+            if (support.top(xy) < bottom - tol)
+                ++hang;
+        }
+        out[i] = float(double(hang) / samples);
+    }
+    return out;
+}
+
 std::vector<float> road_fan_demand(const std::vector<ConformalPoint> &points, const std::vector<double> &speeds, double width,
                                    const SupportSnapshot &support, const std::function<Vec2d(const Vec2d &)> &gradient,
                                    const RoadFanParams &params)
 {
-    const size_t       n = points.size() < 2 ? 0 : points.size() - 1;
-    std::vector<float> raw(n, 0.f);
+    const size_t        n    = points.size() < 2 ? 0 : points.size() - 1;
+    const std::vector<float> hang = road_hang(points, width, support, gradient, params.lateral_samples);
+    std::vector<float>  raw(n, 0.f);
     std::vector<double> t0(n, 0.), t1(n, 0.);
     double              t = 0.;
     for (size_t i = 0; i < n; ++i) {
@@ -54,24 +87,10 @@ std::vector<float> road_fan_demand(const std::vector<ConformalPoint> &points, co
         const double dxy = d.head<2>().norm();
         if (h <= 0. || dxy < EPSILON)
             continue;
-        const double h_z    = h * std::abs(0.5 * (a.pose.axis + b.pose.axis).normalized().z());
-        const Vec3d  mid    = 0.5 * (a.pose.tip + b.pose.tip);
-        const Vec2d  across = Vec2d(-d.y(), d.x()) / dxy;
-        const Vec2d  g      = gradient ? gradient(mid.head<2>()) : Vec2d(Vec2d::Zero());
-        const double tol    = h_z + 0.1;
-        int          hang   = 0;
-        if (!support.empty()) {
-            for (int k = 0; k < params.lateral_samples; ++k) {
-                const double off    = 0.8 * width * ((k + 0.5) / params.lateral_samples - 0.5);
-                const Vec2d  xy     = mid.head<2>() + off * across;
-                const double bottom = mid.z() - h_z + g.dot(off * across);
-                if (support.top(xy) < bottom - tol)
-                    ++hang;
-            }
-        }
         const double downhill = -d.z() / dxy;
         const double stretch  = std::clamp((downhill - params.downhill_start) / (params.downhill_full - params.downhill_start), 0., 1.);
-        raw[i] = float(std::max(double(hang) / params.lateral_samples, params.downhill_weight * stretch));
+        raw[i] = hang[i] >= params.overhang_from ? 1.f :
+                                                   float(std::max(params.hang_weight * hang[i], params.downhill_weight * stretch));
     }
     std::vector<float> out(n, 0.f);
     std::deque<size_t> window;

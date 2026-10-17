@@ -41,10 +41,15 @@ struct RoadFanParams
     double downhill_start  = 0.087;
     double downhill_full   = 0.577;
     double downhill_weight = 0.5;
+    double hang_weight     = 1.;
+    double overhang_from   = 2.;
     double lead            = 1.0;
     double hold            = 1.0;
     double step            = 0.1;
 };
+
+std::vector<float> road_hang(const std::vector<ConformalPoint> &points, double width, const SupportSnapshot &support,
+                             const std::function<Vec2d(const Vec2d &)> &gradient, int samples);
 
 std::vector<float> road_fan_demand(const std::vector<ConformalPoint> &points, const std::vector<double> &speeds, double width,
                                    const SupportSnapshot &support, const std::function<Vec2d(const Vec2d &)> &gradient,

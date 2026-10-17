@@ -8,14 +8,20 @@
 #include <cstddef>
 
 namespace Slic3r { class PerimeterGenerator; }
+namespace Slic3r { class ExtrusionPathConformal; }
 namespace Slic3r { struct FuzzySkinConfig; }
+namespace Slic3r { class PrintRegionConfig; }
 namespace Slic3r::Arachne { struct ExtrusionLine; }
 
 namespace Slic3r::Feature::FuzzySkin {
 
+FuzzySkinConfig fuzzy_skin_config(const PrintRegionConfig& config, int layer_id);
+
 void fuzzy_polyline(Points& poly, bool closed, coordf_t slice_z, const FuzzySkinConfig& cfg);
 
 void fuzzy_extrusion_line(Arachne::ExtrusionJunctions& ext_lines, coordf_t slice_z, coordf_t layer_height, const FuzzySkinConfig& cfg, bool closed = true);
+
+void fuzzy_conformal_path(ExtrusionPathConformal& path, coordf_t z_base, const FuzzySkinConfig& cfg);
 
 void group_region_by_fuzzify(PerimeterGenerator& g);
 

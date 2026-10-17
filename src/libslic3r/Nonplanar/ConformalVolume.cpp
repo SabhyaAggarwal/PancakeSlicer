@@ -518,7 +518,15 @@ void build_conformal_volume(PrintObject &object, ConformalResult &result)
                 };
                 ExtrusionEntityCollection layer;
                 layer.no_sort = true;
-                for (int i = 0; i < loops; ++i) {
+                std::vector<int> wall_order(static_cast<size_t>(loops));
+                std::iota(wall_order.begin(), wall_order.end(), 0);
+                if (rcfg.wall_sequence.value == WallSequence::InnerOuter)
+                    std::reverse(wall_order.begin(), wall_order.end());
+                else if (rcfg.wall_sequence.value == WallSequence::InnerOuterInner && loops > 2) {
+                    std::rotate(wall_order.begin(), wall_order.begin() + 2, wall_order.end());
+                    std::reverse(wall_order.begin(), wall_order.end() - 2);
+                }
+                for (int i : wall_order) {
                     const double          d    = i == 0 ? 0.5 * ext.spacing() : ext.spacing() + (i - 0.5) * per.spacing();
                     const Flow           &flow = i == 0 ? ext : per;
                     std::vector<Polylines> rings;

@@ -71,11 +71,15 @@
 #include "libslic3r/format.hpp"
 #include "Time.hpp"
 #include "GCode/ExtrusionProcessor.hpp"
+#include "GCode/ConformalCooling.hpp"
+#include "Feature/FuzzySkin/FuzzySkin.hpp"
+#include "PerimeterGenerator.hpp"
 #include <Eigen/Geometry>
 #include <Shiny/ShinyMacros.h>
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <deque>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <boost/filesystem/path.hpp>
@@ -7527,8 +7531,22 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                     }
                 std::vector<ExtrusionPathConformal> oriented;
                 Nonplanar::orient_free_roads(order, oriented);
+                std::deque<ExtrusionPathConformal> fuzzed;
+                if (patch.kind == Nonplanar::PatchKind::Overhang || patch.kind == Nonplanar::PatchKind::Volume) {
+                    const FuzzySkinConfig fuzzy = Feature::FuzzySkin::fuzzy_skin_config(region.config(), int(layer->id()));
+                    for (const ExtrusionPathConformal *&path : order)
+                        if (const bool outer = is_external_perimeter(path->role()) || path->role() == erOverhangPerimeter;
+                            (outer || path->role() == erPerimeter) && !path->preserve_points &&
+                            Feature::FuzzySkin::should_fuzzify(fuzzy, int(layer->id()), outer ? 0 : 1, true)) {
+                            fuzzed.emplace_back(*path);
+                            Feature::FuzzySkin::fuzzy_conformal_path(fuzzed.back(), m_nominal_z, fuzzy);
+                            path = &fuzzed.back();
+                        }
+                }
                 size_t next = 0;
                 m_conformal_band_patch = patch.band >= 0 ? patch.id : -1;
+                m_conformal_may_hang   = patch.kind == Nonplanar::PatchKind::Overhang || patch.kind == Nonplanar::PatchKind::Bridge ||
+                                       patch.kind == Nonplanar::PatchKind::Volume;
                 m_conformal_prev       = nullptr;
                 m_conformal_primed     = false;
                 m_conformal_surface    = patch.kind == Nonplanar::PatchKind::Top && !patch.surface.empty() ? &patch.surface.get() : nullptr;
@@ -7580,6 +7598,7 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                 gcode += this->rotary_hop(nullptr);
                 m_conformal_scored = false;
                 m_conformal_band_patch = -1;
+                m_conformal_may_hang   = false;
                 m_conformal_prev       = nullptr;
                 m_conformal_surface    = nullptr;
                 m_max_layer_z = std::max({ m_max_layer_z, float(patch.z_max + Nonplanar::GlideLift),
@@ -8137,6 +8156,8 @@ std::string GCode::extrude_field_patch(const Nonplanar::ConformalPatch &patch)
     return gcode;
 }
 
+static float overhang_fan_overlap_threshold(int overhang_fan_threshold);
+
 void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConformal &path, double e_per_mm, double speed,
                                  const std::string &speed_marker, const std::string &description)
 {
@@ -8168,6 +8189,11 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
                 speed = std::min(speed, small);
         }
     }
+
+    if (is_perimeter(path.role()) && !is_bridge(path.role()) && path.polyline.points.front() == path.polyline.points.back() &&
+        path.polyline.length() <= SMALL_PERIMETER_LENGTH(NOZZLE_CONFIG(small_perimeter_threshold)))
+        speed = NOZZLE_CONFIG(small_perimeter_speed).value == 0 ? 0.5 * NOZZLE_CONFIG(outer_wall_speed) :
+                                                                  NOZZLE_CONFIG(small_perimeter_speed).get_abs_value(NOZZLE_CONFIG(outer_wall_speed));
 
     const bool   curved_top  = path.role() == erTopSolidInfill && path.patch_id >= 0;
     const double speed_scale = curved_top ? 0.01 * m_config.nonplanar_top_speed_factor.value : 1.;
@@ -8274,15 +8300,50 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
         };
     }
 
-    if (road_cooling && m_enable_cooling_markers && path.role() != erIroning)
-        params.segment_tags = [this, &path, curved_top](const std::vector<ConformalPoint> &points, const std::vector<double> &speeds) {
+    const ExtrusionRole role          = path.role();
+    const bool          overhang_road = m_conformal_may_hang && (is_perimeter(role) || is_bridge(role)) && role != erInternalBridgeInfill &&
+                                        !m_np_support.empty();
+    if (overhang_road && NOZZLE_CONFIG(enable_overhang_speed) && role != erOverhangPerimeter && role != erBridgeInfill) {
+        const double mm3_per_mm = e_per_mm * FILAMENT_CONFIG(filament_flow_ratio) / m_writer.filament()->e_per_mm3();
+        double       ref_speed  = is_external_perimeter(role) ? NOZZLE_CONFIG(outer_wall_speed) : NOZZLE_CONFIG(inner_wall_speed);
+        if (ref_speed == 0)
+            ref_speed = FILAMENT_CONFIG(filament_max_volumetric_speed) / mm3_per_mm;
+        if (FILAMENT_CONFIG(filament_max_volumetric_speed) > 0)
+            ref_speed = std::min(ref_speed, FILAMENT_CONFIG(filament_max_volumetric_speed) / mm3_per_mm);
+        const OverhangSpeedSections sections(OverhangSpeedSections::overlap_levels(), this->overhang_speed_table(ref_speed),
+                                             float(ref_speed), path.width);
+        params.speed_caps = [this, &path, sections, original = float(speed), caps = std::move(params.speed_caps)](
+                                const std::vector<ConformalPoint> &points) {
+            std::vector<double>      out  = caps ? caps(points) :
+                                                   std::vector<double>(points.size() < 2 ? 0 : points.size() - 1, std::numeric_limits<double>::infinity());
+            const std::vector<float> hang = road_hang(points, path.width, m_np_support, m_conformal_gradient, RoadFanParams().lateral_samples);
+            for (size_t i = 0; i < out.size(); ++i)
+                if (hang[i] > 0.f)
+                    out[i] = std::min(out[i], double(sections.speed(hang[i] * path.width, original)));
+            return out;
+        };
+    }
+    double overhang_from = 2.;
+    if (overhang_road && FILAMENT_CONFIG(enable_overhang_bridge_fan) && role != erBridgeInfill && role != erOverhangPerimeter)
+        if (const float overlap = overhang_fan_overlap_threshold(FILAMENT_CONFIG(overhang_fan_threshold)); overlap >= 0.f)
+            overhang_from = 1. - overlap;
+
+    const bool role_fan = (role == erInternalBridgeInfill && FILAMENT_CONFIG(enable_overhang_bridge_fan) &&
+                           FILAMENT_CONFIG(internal_bridge_fan_speed) >= 0) ||
+                          (role == erSupportMaterialInterface && FILAMENT_CONFIG(support_material_interface_fan_speed) >= 0);
+    if ((road_cooling || overhang_from <= 1.) && m_enable_cooling_markers && path.role() != erIroning)
+        params.segment_tags = [this, &path, curved_top, road_cooling, overhang_from, role_fan](const std::vector<ConformalPoint> &points,
+                                                                                               const std::vector<double>         &speeds) {
             RoadFanParams fan;
-            if (road_material(m_config.filament_type.get_at(m_writer.filament()->id())) == RoadMaterial::Enclosure)
+            fan.overhang_from = overhang_from;
+            if (!road_cooling)
+                fan.hang_weight = fan.downhill_weight = 0.;
+            else if (road_material(m_config.filament_type.get_at(m_writer.filament()->id())) == RoadMaterial::Enclosure)
                 fan.downhill_weight = 0.;
             std::vector<float> demand = road_fan_demand(points, speeds, path.width, m_np_support, m_conformal_gradient, fan);
-            if (path.role() == erInternalInfill)
+            if (path.role() == erInternalInfill || role_fan)
                 std::fill(demand.begin(), demand.end(), 0.f);
-            if (curved_top && m_config.nonplanar_top_fan_boost.value > 0.) {
+            if (road_cooling && curved_top && m_config.nonplanar_top_fan_boost.value > 0.) {
                 const float floor = float(std::round(0.01 * m_config.nonplanar_top_fan_boost.value / fan.step) * fan.step);
                 for (float &u : demand)
                     u = std::max(u, std::min(floor, 1.f));
@@ -8321,7 +8382,9 @@ void GCode::nonplanar_pass_start(const ExPolygons &footprint, bool ironing)
     if (m_writer.filament() == nullptr || ironing)
         return;
     m_np_support = SupportSnapshot();
-    if (m_config.nonplanar_road_cooling.value && m_enable_cooling_markers && m_material_columns && !footprint.empty()) {
+    const bool cooling  = m_config.nonplanar_road_cooling.value && m_enable_cooling_markers;
+    const bool overhang = NOZZLE_CONFIG(enable_overhang_speed) || (FILAMENT_CONFIG(enable_overhang_bridge_fan) && m_enable_cooling_markers);
+    if ((cooling || overhang) && m_material_columns && !footprint.empty()) {
         const BoundingBox bbox = get_extents(footprint);
         BoundingBoxf      area(this->point_to_gcode(bbox.min), this->point_to_gcode(bbox.max));
         area.min.array() -= 1.;
@@ -9101,6 +9164,20 @@ static float overhang_fan_overlap_threshold(int overhang_fan_threshold)
     }
 }
 
+ConfigOptionFloatsOrPercents GCode::overhang_speed_table(double ref_speed) const
+{
+    auto level = [ref_speed](double speed) {
+        return speed < 0.5 ? FloatOrPercent{100, true} : FloatOrPercent{speed * 100 / ref_speed, true};
+    };
+    const double speed_4_4 = NOZZLE_CONFIG(overhang_4_4_speed).get_abs_value(ref_speed);
+    return ConfigOptionFloatsOrPercents({FloatOrPercent{100, true}, level(NOZZLE_CONFIG(overhang_1_4_speed).get_abs_value(ref_speed)),
+                                         level(NOZZLE_CONFIG(overhang_2_4_speed).get_abs_value(ref_speed)),
+                                         level(NOZZLE_CONFIG(overhang_3_4_speed).get_abs_value(ref_speed)), level(speed_4_4),
+                                         NOZZLE_CONFIG(slowdown_for_curled_perimeters) ?
+                                             level(speed_4_4) :
+                                             FloatOrPercent{NOZZLE_CONFIG(bridge_speed) * 100 / ref_speed, true}});
+}
+
 std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_description, double speed)
 {
     std::string gcode;
@@ -9447,56 +9524,17 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
                 ref_speed = std::min(ref_speed, m_config.scarf_joint_speed.get_abs_value(ref_speed));
             }
             
-            ConfigOptionPercents         overhang_overlap_levels({90, 75, 50, 25, 13, 0});
+            const ConfigOptionPercents overhang_overlap_levels = OverhangSpeedSections::overlap_levels();
 
             float fan_overlap_threshold = -1.f;
             if (FILAMENT_CONFIG(enable_overhang_bridge_fan) && m_enable_cooling_markers && path.role() != erBridgeInfill &&
                 path.role() != erOverhangPerimeter)
                 fan_overlap_threshold = overhang_fan_overlap_threshold(FILAMENT_CONFIG(overhang_fan_threshold));
 
-            if (NOZZLE_CONFIG(slowdown_for_curled_perimeters)){
-                ConfigOptionFloatsOrPercents dynamic_overhang_speeds(
-                    {FloatOrPercent{100, true},
-                     (NOZZLE_CONFIG(overhang_1_4_speed).get_abs_value(ref_speed) < 0.5) ?
-                         FloatOrPercent{100, true} :
-                         FloatOrPercent{NOZZLE_CONFIG(overhang_1_4_speed).get_abs_value(ref_speed) * 100 / ref_speed, true},
-                     (NOZZLE_CONFIG(overhang_2_4_speed).get_abs_value(ref_speed) < 0.5) ?
-                         FloatOrPercent{100, true} :
-                         FloatOrPercent{NOZZLE_CONFIG(overhang_2_4_speed).get_abs_value(ref_speed) * 100 / ref_speed, true},
-                     (NOZZLE_CONFIG(overhang_3_4_speed).get_abs_value(ref_speed) < 0.5) ?
-                         FloatOrPercent{100, true} :
-                         FloatOrPercent{NOZZLE_CONFIG(overhang_3_4_speed).get_abs_value(ref_speed) * 100 / ref_speed, true},
-                     (NOZZLE_CONFIG(overhang_4_4_speed).get_abs_value(ref_speed) < 0.5) ?
-                         FloatOrPercent{100, true} :
-                         FloatOrPercent{NOZZLE_CONFIG(overhang_4_4_speed).get_abs_value(ref_speed) * 100 / ref_speed, true},
-                     (NOZZLE_CONFIG(overhang_4_4_speed).get_abs_value(ref_speed) < 0.5) ?
-                         FloatOrPercent{100, true} :
-                         FloatOrPercent{NOZZLE_CONFIG(overhang_4_4_speed).get_abs_value(ref_speed) * 100 / ref_speed, true}});
-
-                new_points = m_extrusion_quality_estimator.estimate_extrusion_quality(path, overhang_overlap_levels, dynamic_overhang_speeds,
-                                                                              ref_speed, speed, NOZZLE_CONFIG(slowdown_for_curled_perimeters),
-                                                                              fan_overlap_threshold);
-        	}else{
-                ConfigOptionFloatsOrPercents dynamic_overhang_speeds(
-                                                                     {FloatOrPercent{100, true},
-                     (NOZZLE_CONFIG(overhang_1_4_speed).get_abs_value(ref_speed) < 0.5) ?
-                         FloatOrPercent{100, true} :
-                         FloatOrPercent{NOZZLE_CONFIG(overhang_1_4_speed).get_abs_value(ref_speed) * 100 / ref_speed, true},
-                     (NOZZLE_CONFIG(overhang_2_4_speed).get_abs_value(ref_speed) < 0.5) ?
-                         FloatOrPercent{100, true} :
-                         FloatOrPercent{NOZZLE_CONFIG(overhang_2_4_speed).get_abs_value(ref_speed) * 100 / ref_speed, true},
-                     (NOZZLE_CONFIG(overhang_3_4_speed).get_abs_value(ref_speed) < 0.5) ?
-                         FloatOrPercent{100, true} :
-                         FloatOrPercent{NOZZLE_CONFIG(overhang_3_4_speed).get_abs_value(ref_speed) * 100 / ref_speed, true},
-                      (NOZZLE_CONFIG(overhang_4_4_speed).get_abs_value(ref_speed) < 0.5) ?
-                            FloatOrPercent{100, true} :
-                            FloatOrPercent{NOZZLE_CONFIG(overhang_4_4_speed).get_abs_value(ref_speed) * 100 / ref_speed, true},
-                     FloatOrPercent{NOZZLE_CONFIG(bridge_speed) * 100 / ref_speed, true}});
-
-                new_points = m_extrusion_quality_estimator.estimate_extrusion_quality(path, overhang_overlap_levels, dynamic_overhang_speeds,
-                                                                              ref_speed, speed, NOZZLE_CONFIG(slowdown_for_curled_perimeters),
-                                                                              fan_overlap_threshold);
-            }
+            new_points = m_extrusion_quality_estimator.estimate_extrusion_quality(path, overhang_overlap_levels,
+                                                                                  this->overhang_speed_table(ref_speed), ref_speed, speed,
+                                                                                  NOZZLE_CONFIG(slowdown_for_curled_perimeters),
+                                                                                  fan_overlap_threshold);
             variable_speed = std::any_of(new_points.begin(), new_points.end(),
                                          [speed](const ProcessedPoint &p) { return fabs(double(p.speed) - speed) > 1; });
             if (FILAMENT_CONFIG(enable_overhang_bridge_fan) && m_enable_cooling_markers) {

@@ -18,6 +18,7 @@
 #include "libslic3r/Arachne/utils/ExtrusionJunction.hpp"
 #include "libslic3r/Arachne/utils/ExtrusionLine.hpp"
 #include "libslic3r/ClipperUtils.hpp"
+#include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/Layer.hpp"
 #include "libslic3r/PerimeterGenerator.hpp"
 #include "libslic3r/Point.hpp"
@@ -263,6 +264,23 @@ static void fuzzy_extrusion_line_ripple(Arachne::ExtrusionJunctions& ext_lines, 
         ext_lines = std::move(out);
 }
 
+FuzzySkinConfig fuzzy_skin_config(const PrintRegionConfig& config, int layer_id)
+{
+    return FuzzySkinConfig{config.fuzzy_skin,
+                           scaled<coord_t>(config.fuzzy_skin_thickness.value),
+                           scaled<coord_t>(config.fuzzy_skin_point_distance.value),
+                           config.fuzzy_skin_first_layer,
+                           config.fuzzy_skin_noise_type,
+                           config.fuzzy_skin_scale,
+                           config.fuzzy_skin_octaves,
+                           config.fuzzy_skin_persistence,
+                           config.fuzzy_skin_mode,
+                           config.fuzzy_skin_ripples_per_layer,
+                           config.fuzzy_skin_ripple_offset,
+                           config.fuzzy_skin_layers_between_ripple_offset,
+                           layer_id};
+}
+
 void fuzzy_polyline(Points& poly, bool closed, coordf_t slice_z, const FuzzySkinConfig& cfg)
 {
     if (cfg.noise_type == NoiseType::Ripple) {
@@ -379,6 +397,88 @@ void fuzzy_extrusion_line(Arachne::ExtrusionJunctions& ext_lines, coordf_t slice
         ext_lines = std::move(out);
 }
 
+void fuzzy_conformal_path(ExtrusionPathConformal& path, coordf_t z_base, const FuzzySkinConfig& cfg)
+{
+    const Points3& pts = path.polyline.points;
+    const size_t   n   = pts.size();
+    if (n < 2 || path.bead_height.size() != n)
+        return;
+    const bool ripple = cfg.noise_type == NoiseType::Ripple;
+    std::unique_ptr<noise::module::Module> noise = ripple ? nullptr : get_noise_module(cfg);
+    double length_mm = 0., anchor_mm = 0., phase_at_anchor = 0.;
+    if (ripple) {
+        Points xy;
+        xy.reserve(n);
+        for (const Point3& p : pts)
+            xy.emplace_back(p.to_point());
+        for (size_t i = 0; i + 1 < n; ++i)
+            length_mm += unscale_((xy[i + 1] - xy[i]).cast<double>().norm());
+        if (cfg.ripples_per_layer <= 0 || length_mm < 1e-6)
+            return;
+        if (pts.front() == pts.back())
+            anchor_mm = ripple_anchor_arc_mm(Points(xy.begin(), xy.end() - 1));
+        phase_at_anchor = M_PI * 2.0 + ripple_phase_shift_rad(cfg);
+    }
+    const double min_dist = ripple ? cfg.point_distance : cfg.point_distance * 3. / 4.;
+    const double range    = ripple ? 0. : cfg.point_distance / 2.;
+    const bool   axes     = path.tool_axis.size() == n;
+    const bool   widths   = path.bead_width.size() == n;
+
+    Points3            out{ pts.front() };
+    std::vector<float> bead{ path.bead_height.front() };
+    std::vector<Vec3f> axis;
+    std::vector<float> width;
+    if (axes)
+        axis.push_back(path.tool_axis.front());
+    if (widths)
+        width.push_back(path.bead_width.front());
+    auto keep = [&](size_t i) {
+        out.push_back(pts[i]);
+        bead.push_back(path.bead_height[i]);
+        if (axes)
+            axis.push_back(path.tool_axis[i]);
+        if (widths)
+            width.push_back(path.bead_width[i]);
+    };
+    auto fuzzy = [&](size_t i) {
+        return i + 1 < n && path.bead_height[i] > 0.f && path.bead_height[i + 1] > 0.f && pts[i].to_point() != pts[i + 1].to_point();
+    };
+    double left_over = ripple ? 0. : random_value() * (min_dist / 2.);
+    double along_mm  = 0.;
+    for (size_t i = 0; i + 1 < n; ++i) {
+        const Vec3d  a   = pts[i].cast<double>(), b = pts[i + 1].cast<double>();
+        const Vec2d  ab  = (b - a).head<2>();
+        const double len = ab.norm();
+        if (fuzzy(i)) {
+            const Vec2d across = perp(ab) / len;
+            double      d      = ripple ? std::ceil(scale_(along_mm) / min_dist) * min_dist - scale_(along_mm) : left_over;
+            for (; d < len; d += min_dist + random_value() * range) {
+                const double t = d / len;
+                const Vec3d  p = a + t * (b - a);
+                const double r = ripple ? std::sin(cfg.ripples_per_layer * 2. * M_PI * (along_mm + unscale_(d) - anchor_mm) / length_mm +
+                                                   phase_at_anchor) * cfg.thickness :
+                                          noise->GetValue(unscale_(p.x()), unscale_(p.y()), z_base + unscale_(p.z())) * cfg.thickness;
+                out.emplace_back((p + Vec3d(across.x(), across.y(), 0.) * r).cast<coord_t>());
+                bead.push_back(float((1. - t) * path.bead_height[i] + t * path.bead_height[i + 1]));
+                if (axes)
+                    axis.push_back(((1.f - float(t)) * path.tool_axis[i] + float(t) * path.tool_axis[i + 1]).normalized());
+                if (widths)
+                    width.push_back(float((1. - t) * path.bead_width[i] + t * path.bead_width[i + 1]));
+            }
+            left_over = d - len;
+        }
+        along_mm += unscale_(len);
+        if (i + 2 == n || !fuzzy(i) || !fuzzy(i + 1))
+            keep(i + 1);
+    }
+    path.polyline.points = std::move(out);
+    path.bead_height     = std::move(bead);
+    if (axes)
+        path.tool_axis = std::move(axis);
+    if (widths)
+        path.bead_width = std::move(width);
+}
+
 void group_region_by_fuzzify(PerimeterGenerator& g)
 {
     g.regions_by_fuzzify.clear();
@@ -394,19 +494,7 @@ void group_region_by_fuzzify(PerimeterGenerator& g)
     regions.reserve(g.compatible_regions->size());
     for (auto region : *g.compatible_regions) {
         const auto&           region_config = region->region().config();
-        const FuzzySkinConfig cfg{region_config.fuzzy_skin,
-                                  scaled<coord_t>(region_config.fuzzy_skin_thickness.value),
-                                  scaled<coord_t>(region_config.fuzzy_skin_point_distance.value),
-                                  region_config.fuzzy_skin_first_layer,
-                                  region_config.fuzzy_skin_noise_type,
-                                  region_config.fuzzy_skin_scale,
-                                  region_config.fuzzy_skin_octaves,
-                                  region_config.fuzzy_skin_persistence,
-                                  region_config.fuzzy_skin_mode,
-                                  region_config.fuzzy_skin_ripples_per_layer,
-                                  region_config.fuzzy_skin_ripple_offset,
-                                  region_config.fuzzy_skin_layers_between_ripple_offset,
-                                  g.layer_id};
+        const FuzzySkinConfig cfg = fuzzy_skin_config(region_config, g.layer_id);
 
         auto it = std::find_if(regions.begin(), regions.end(), [&cfg](const ConfigSurfaces& item) {
             return item.config == cfg;

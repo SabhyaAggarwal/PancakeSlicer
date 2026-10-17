@@ -409,6 +409,66 @@ struct ProcessedPoint
     float overlap = 1.0f;
 };
 
+struct OverhangSpeedSections
+{
+    static ConfigOptionPercents overlap_levels() { return ConfigOptionPercents({90, 75, 50, 25, 13, 0}); }
+
+    std::vector<std::pair<float, float>> sections;
+
+    OverhangSpeedSections(const ConfigOptionPercents &overlaps, const ConfigOptionFloatsOrPercents &speeds, float ext_perimeter_speed,
+                          float width)
+    {
+        const size_t count = std::min(overlaps.values.size(), speeds.values.size());
+        for (size_t i = 0; i < count; i++) {
+            float distance = width * (1.0 - (overlaps.get_at(i) / 100.0));
+            float speed    = speeds.get_at(i).percent ? (ext_perimeter_speed * speeds.get_at(i).value / 100.0) : speeds.get_at(i).value;
+            sections.push_back({distance, speed});
+        }
+        std::sort(sections.begin(), sections.end(), [](const std::pair<float, float> &a, const std::pair<float, float> &b) {
+            if (a.first == b.first)
+                return a.second > b.second;
+            return a.first < b.first;
+        });
+        std::pair<float, float> last_section{INFINITY, 0};
+        for (auto &section : sections) {
+            if (section.first == last_section.first)
+                section.second = last_section.second;
+            else
+                last_section = section;
+        }
+    }
+
+    float slowdown_from(float original_speed) const
+    {
+        float smallest = std::numeric_limits<float>::infinity();
+        bool  found    = false;
+        for (const auto &section : sections)
+            if (section.second <= original_speed && section.first < smallest) {
+                smallest = section.first;
+                found    = true;
+            }
+        return found ? smallest : -1.f;
+    }
+
+    float speed(float distance, float original_speed) const
+    {
+        float final_speed;
+        if (distance <= sections.front().first) {
+            final_speed = original_speed;
+        } else if (distance >= sections.back().first) {
+            final_speed = sections.back().second;
+        } else {
+            size_t section_idx = 0;
+            while (distance > sections[section_idx + 1].first)
+                section_idx++;
+            float t = (distance - sections[section_idx].first) / (sections[section_idx + 1].first - sections[section_idx].first);
+            t           = std::clamp(t, 0.0f, 1.0f);
+            final_speed = (1.0f - t) * sections[section_idx].second + t * sections[section_idx + 1].second;
+        }
+        return round(final_speed);
+    }
+};
+
 class ExtrusionQualityEstimator
 {
     using Boundaries   = AABBTreeLines::LinesDistancer<Linef3>;
@@ -465,64 +525,10 @@ public:
                                                            bool								   slowdown_for_curled_edges,
                                                            float                               fan_overlap_threshold = -1.0f)
     {
-        size_t                               speed_sections_count = std::min(overlaps.values.size(), speeds.values.size());
-        std::vector<std::pair<float, float>> speed_sections;
-        
-        
-        
-        for (size_t i = 0; i < speed_sections_count; i++) {
-            float distance = path.width * (1.0 - (overlaps.get_at(i) / 100.0));
-            float speed    = speeds.get_at(i).percent ? (ext_perimeter_speed * speeds.get_at(i).value / 100.0) : speeds.get_at(i).value;
-            speed_sections.push_back({distance, speed});
-        }
-        std::sort(speed_sections.begin(), speed_sections.end(),
-                  [](const std::pair<float, float> &a, const std::pair<float, float> &b) { 
-                    if (a.first == b.first) {
-                        return a.second > b.second;
-                    }
-                    return a.first < b.first; });
+        const OverhangSpeedSections speed_sections(overlaps, speeds, ext_perimeter_speed, path.width);
+        const float smallest_distance_with_lower_speed = speed_sections.slowdown_from(original_speed);
 
-        std::pair<float, float> last_section{INFINITY, 0};
-        for (auto &section : speed_sections) {
-            if (section.first == last_section.first) {
-                section.second = last_section.second;
-            } else {
-                last_section = section;
-            }
-        }
-        
-        float smallest_distance_with_lower_speed = std::numeric_limits<float>::infinity();
-        bool found = false;
-        for (const auto& section : speed_sections) {
-            if (section.second <= original_speed) {
-                if (section.first < smallest_distance_with_lower_speed) {
-                    smallest_distance_with_lower_speed = section.first;
-                    found = true;
-                }
-            }
-        }
-
-        if (!found)
-            smallest_distance_with_lower_speed=-1.f;
-
-        auto calculate_speed = [&speed_sections, &original_speed](float distance) {
-            float final_speed;
-            if (distance <= speed_sections.front().first) {
-                final_speed = original_speed;
-            } else if (distance >= speed_sections.back().first) {
-                final_speed = speed_sections.back().second;
-            } else {
-                size_t section_idx = 0;
-                while (distance > speed_sections[section_idx + 1].first) {
-                    section_idx++;
-                }
-                float t = (distance - speed_sections[section_idx].first) /
-                          (speed_sections[section_idx + 1].first - speed_sections[section_idx].first);
-                t           = std::clamp(t, 0.0f, 1.0f);
-                final_speed = (1.0f - t) * speed_sections[section_idx].second + t * speed_sections[section_idx + 1].second;
-            }
-            return round(final_speed);
-        };
+        auto calculate_speed = [&speed_sections, &original_speed](float distance) { return speed_sections.speed(distance, original_speed); };
 
         auto effective_speed = [&calculate_speed, original_speed](float distance) {
             return std::min(calculate_speed(distance), original_speed);
