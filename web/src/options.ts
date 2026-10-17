@@ -27,7 +27,7 @@ export interface OptionDef {
 
 export interface TabGroup {
   title: string;
-  icon: string;
+  icon?: string;
   options: string[];
 }
 export interface TabPage {
@@ -38,9 +38,20 @@ export interface TabPage {
 export interface TabDesc {
   tab: 'process' | 'filament' | 'printer';
   pages: TabPage[];
+  removed_keys: string[];
 }
 
-export const OPTIONS = optionsJson as unknown as Record<string, OptionDef>;
+const INVENTORY_MODES: Record<string, OptionMode> = {
+  Simple: 'simple', Advanced: 'advanced', Expert: 'develop', Develop: 'develop',
+};
+export const OPTIONS: Record<string, OptionDef> = Object.fromEntries(
+  Object.entries(optionsJson).map(([key, def]) => [key, {
+    ...def,
+    enum_values: def.enum_values.filter((value): value is string => typeof value === 'string'),
+    type: def.type.replace(/Or/g, '_or_').toLowerCase(),
+    mode: INVENTORY_MODES[def.mode],
+  }]),
+);
 export const TABS: Record<TabDesc['tab'], TabDesc> = {
   process: processTab as TabDesc,
   filament: filamentTab as TabDesc,
@@ -56,4 +67,5 @@ const MODE_RANK: Record<OptionMode, number> = { simple: 0, advanced: 1, develop:
 export const modeVisible = (opt: OptionMode, ui: OptionMode) => MODE_RANK[opt] <= MODE_RANK[ui];
 
 const HIDDEN = /print_host|printhost|printer_agent|host_type|api_key|bbl_use_printhost|upload|cloud|device|octoprint|_plugin_config_overrides/;
-export const isHidden = (key: string) => HIDDEN.test(key);
+const REMOVED_KEYS = new Set(Object.values(TABS).flatMap((tab) => tab.removed_keys));
+export const isHidden = (key: string) => REMOVED_KEYS.has(key) || HIDDEN.test(key);

@@ -1,264 +1,2212 @@
 {
- "tab": "filament",
- "pages": [
-  {
-   "title": "Filament",
-   "icon": "custom-gcode_filament",
-   "groups": [
+  "tab": "filament",
+  "pages": [
     {
-     "title": "Basic information",
-     "icon": "param_information",
-     "options": [
-      "filament_type",
-      "filament_vendor",
-      "filament_soluble",
-      "filament_is_support",
-      "filament_change_length",
-      "default_filament_colour",
-      "filament_diameter",
-      "filament_adhesiveness_category",
-      "filament_density",
-      "filament_shrink",
-      "filament_shrinkage_compensation_z",
-      "filament_cost",
-      "temperature_vitrification",
-      "idle_temperature",
-      "nozzle_temperature_range_low",
-      "nozzle_temperature_range_high"
-     ]
+      "title": "Filament",
+      "icon": "custom-gcode_filament",
+      "groups": [
+        {
+          "title": "Basic information",
+          "options": [
+            "filament_type",
+            "filament_vendor",
+            "filament_soluble",
+            "filament_is_support",
+            "filament_change_length",
+            "required_nozzle_HRC",
+            "default_filament_colour",
+            "filament_diameter",
+            "filament_adhesiveness_category",
+            "filament_density",
+            "filament_shrink",
+            "filament_shrinkage_compensation_z",
+            "filament_cost",
+            "temperature_vitrification",
+            "idle_temperature",
+            "nozzle_temperature_range_low",
+            "nozzle_temperature_range_high"
+          ],
+          "lines": [
+            {
+              "options": [
+                "filament_type"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4575",
+              "modes": {
+                "filament_type": "Simple"
+              }
+            },
+            {
+              "options": [
+                "filament_vendor"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4576",
+              "modes": {
+                "filament_vendor": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_soluble"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4577",
+              "modes": {
+                "filament_soluble": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_is_support"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4579",
+              "modes": {
+                "filament_is_support": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_change_length"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4580",
+              "modes": {
+                "filament_change_length": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "required_nozzle_HRC"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4583",
+              "modes": {
+                "required_nozzle_HRC": "Develop"
+              }
+            },
+            {
+              "options": [
+                "default_filament_colour"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4584",
+              "modes": {
+                "default_filament_colour": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_diameter"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4585",
+              "modes": {
+                "filament_diameter": "Simple"
+              }
+            },
+            {
+              "options": [
+                "filament_adhesiveness_category"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4586",
+              "modes": {
+                "filament_adhesiveness_category": "Develop"
+              }
+            },
+            {
+              "options": [
+                "filament_density"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4588",
+              "modes": {
+                "filament_density": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_shrink"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4589",
+              "modes": {
+                "filament_shrink": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_shrinkage_compensation_z"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4590",
+              "modes": {
+                "filament_shrinkage_compensation_z": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_cost"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4591",
+              "modes": {
+                "filament_cost": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "temperature_vitrification"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4593",
+              "modes": {
+                "temperature_vitrification": "Simple"
+              }
+            },
+            {
+              "options": [
+                "idle_temperature"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4594",
+              "modes": {
+                "idle_temperature": "Simple"
+              }
+            },
+            {
+              "options": [
+                "nozzle_temperature_range_low",
+                "nozzle_temperature_range_high"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4598",
+              "label": "Recommended nozzle temperature",
+              "modes": {
+                "nozzle_temperature_range_low": "Simple",
+                "nozzle_temperature_range_high": "Simple"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:4574"
+        },
+        {
+          "title": "Flow ratio and Pressure Advance",
+          "options": [
+            "pellet_flow_coefficient",
+            "filament_flow_ratio",
+            "enable_pressure_advance",
+            "pressure_advance",
+            "adaptive_pressure_advance",
+            "adaptive_pressure_advance_overhangs",
+            "adaptive_pressure_advance_bridges",
+            "adaptive_pressure_advance_model"
+          ],
+          "lines": [
+            {
+              "options": [
+                "pellet_flow_coefficient"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4613",
+              "modes": {
+                "pellet_flow_coefficient": "Simple"
+              }
+            },
+            {
+              "options": [
+                "filament_flow_ratio"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4614",
+              "modes": {
+                "filament_flow_ratio": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "enable_pressure_advance"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4616",
+              "modes": {
+                "enable_pressure_advance": "Simple"
+              }
+            },
+            {
+              "options": [
+                "pressure_advance"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4617",
+              "modes": {
+                "pressure_advance": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "adaptive_pressure_advance"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4620",
+              "modes": {
+                "adaptive_pressure_advance": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "adaptive_pressure_advance_overhangs"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4621",
+              "modes": {
+                "adaptive_pressure_advance_overhangs": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "adaptive_pressure_advance_bridges"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4622",
+              "modes": {
+                "adaptive_pressure_advance_bridges": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "adaptive_pressure_advance_model"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4628",
+              "modes": {
+                "adaptive_pressure_advance_model": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:4612"
+        },
+        {
+          "title": "Print chamber temperature",
+          "options": [
+            "activate_chamber_temp_control",
+            "chamber_temperature",
+            "chamber_minimal_temperature"
+          ],
+          "lines": [
+            {
+              "options": [
+                "activate_chamber_temp_control"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4641",
+              "modes": {
+                "activate_chamber_temp_control": "Simple"
+              }
+            },
+            {
+              "options": [
+                "chamber_temperature",
+                "chamber_minimal_temperature"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4650",
+              "label": "Chamber temperature",
+              "modes": {
+                "chamber_temperature": "Simple",
+                "chamber_minimal_temperature": "Simple"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:4640"
+        },
+        {
+          "title": "Print temperature",
+          "options": [
+            "nozzle_temperature_initial_layer",
+            "nozzle_temperature"
+          ],
+          "lines": [
+            {
+              "options": [
+                "nozzle_temperature_initial_layer",
+                "nozzle_temperature"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4671",
+              "label": "Nozzle",
+              "modes": {
+                "nozzle_temperature_initial_layer": "Simple",
+                "nozzle_temperature": "Simple"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:4666"
+        },
+        {
+          "title": "Bed temperature",
+          "options": [
+            "supertack_plate_temp_initial_layer",
+            "supertack_plate_temp",
+            "cool_plate_temp_initial_layer",
+            "cool_plate_temp",
+            "textured_cool_plate_temp_initial_layer",
+            "textured_cool_plate_temp",
+            "eng_plate_temp_initial_layer",
+            "eng_plate_temp",
+            "hot_plate_temp_initial_layer",
+            "hot_plate_temp",
+            "textured_plate_temp_initial_layer",
+            "textured_plate_temp"
+          ],
+          "lines": [
+            {
+              "options": [
+                "supertack_plate_temp_initial_layer",
+                "supertack_plate_temp"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4679",
+              "label": "Cool Plate (SuperTack)",
+              "modes": {
+                "supertack_plate_temp_initial_layer": "Simple",
+                "supertack_plate_temp": "Simple"
+              }
+            },
+            {
+              "options": [
+                "cool_plate_temp_initial_layer",
+                "cool_plate_temp"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4686",
+              "label": "Cool Plate",
+              "modes": {
+                "cool_plate_temp_initial_layer": "Simple",
+                "cool_plate_temp": "Simple"
+              }
+            },
+            {
+              "options": [
+                "textured_cool_plate_temp_initial_layer",
+                "textured_cool_plate_temp"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4693",
+              "label": "Textured Cool Plate",
+              "modes": {
+                "textured_cool_plate_temp_initial_layer": "Simple",
+                "textured_cool_plate_temp": "Simple"
+              }
+            },
+            {
+              "options": [
+                "eng_plate_temp_initial_layer",
+                "eng_plate_temp"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4700",
+              "label": "Engineering Plate",
+              "modes": {
+                "eng_plate_temp_initial_layer": "Simple",
+                "eng_plate_temp": "Simple"
+              }
+            },
+            {
+              "options": [
+                "hot_plate_temp_initial_layer",
+                "hot_plate_temp"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4707",
+              "label": "Smooth PEI Plate / High Temp Plate",
+              "modes": {
+                "hot_plate_temp_initial_layer": "Simple",
+                "hot_plate_temp": "Simple"
+              }
+            },
+            {
+              "options": [
+                "textured_plate_temp_initial_layer",
+                "textured_plate_temp"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4714",
+              "label": "Textured PEI Plate",
+              "modes": {
+                "textured_plate_temp_initial_layer": "Simple",
+                "textured_plate_temp": "Simple"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:4673"
+        },
+        {
+          "title": "Volumetric speed limitation",
+          "options": [
+            "filament_adaptive_volumetric_speed",
+            "filament_max_volumetric_speed"
+          ],
+          "lines": [
+            {
+              "options": [
+                "filament_adaptive_volumetric_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4746",
+              "modes": {
+                "filament_adaptive_volumetric_speed": "Develop"
+              }
+            },
+            {
+              "options": [
+                "filament_max_volumetric_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4747",
+              "modes": {
+                "filament_max_volumetric_speed": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:4745"
+        }
+      ],
+      "source": "src/slic3r/GUI/Tab.cpp:4572"
     },
     {
-     "title": "Flow ratio and Pressure Advance",
-     "icon": "param_flow_ratio_and_pressure_advance",
-     "options": [
-      "pellet_flow_coefficient",
-      "filament_flow_ratio",
-      "enable_pressure_advance",
-      "pressure_advance",
-      "adaptive_pressure_advance",
-      "adaptive_pressure_advance_overhangs",
-      "adaptive_pressure_advance_bridges",
-      "adaptive_pressure_advance_model"
-     ]
+      "title": "Cooling",
+      "icon": "custom-gcode_cooling_fan",
+      "groups": [
+        {
+          "title": "Cooling for specific layer",
+          "options": [
+            "close_fan_the_first_x_layers",
+            "initial_layer_fan_speed",
+            "full_fan_speed_layer"
+          ],
+          "lines": [
+            {
+              "options": [
+                "close_fan_the_first_x_layers"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4765",
+              "modes": {
+                "close_fan_the_first_x_layers": "Simple"
+              }
+            },
+            {
+              "options": [
+                "initial_layer_fan_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4767",
+              "modes": {
+                "initial_layer_fan_speed": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "full_fan_speed_layer"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4768",
+              "modes": {
+                "full_fan_speed_layer": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:4764"
+        },
+        {
+          "title": "Part cooling fan",
+          "options": [
+            "fan_min_speed",
+            "fan_cooling_layer_time",
+            "fan_max_speed",
+            "slow_down_layer_time",
+            "reduce_fan_stop_start_freq",
+            "slow_down_for_layer_cooling",
+            "dont_slow_down_outer_wall",
+            "slow_down_min_speed",
+            "enable_overhang_bridge_fan",
+            "overhang_fan_threshold",
+            "overhang_fan_speed",
+            "internal_bridge_fan_speed",
+            "support_material_interface_fan_speed",
+            "ironing_fan_speed"
+          ],
+          "lines": [
+            {
+              "options": [
+                "fan_min_speed",
+                "fan_cooling_layer_time"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4775",
+              "label": "Min fan speed threshold",
+              "modes": {
+                "fan_min_speed": "Simple",
+                "fan_cooling_layer_time": "Simple"
+              }
+            },
+            {
+              "options": [
+                "fan_max_speed",
+                "slow_down_layer_time"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4780",
+              "label": "Max fan speed threshold",
+              "modes": {
+                "fan_max_speed": "Simple",
+                "slow_down_layer_time": "Simple"
+              }
+            },
+            {
+              "options": [
+                "reduce_fan_stop_start_freq"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4781",
+              "modes": {
+                "reduce_fan_stop_start_freq": "Simple"
+              }
+            },
+            {
+              "options": [
+                "slow_down_for_layer_cooling"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4782",
+              "modes": {
+                "slow_down_for_layer_cooling": "Simple"
+              }
+            },
+            {
+              "options": [
+                "dont_slow_down_outer_wall"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4783",
+              "modes": {
+                "dont_slow_down_outer_wall": "Simple"
+              }
+            },
+            {
+              "options": [
+                "slow_down_min_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4784",
+              "modes": {
+                "slow_down_min_speed": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "enable_overhang_bridge_fan"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4786",
+              "modes": {
+                "enable_overhang_bridge_fan": "Simple"
+              }
+            },
+            {
+              "options": [
+                "overhang_fan_threshold"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4787",
+              "modes": {
+                "overhang_fan_threshold": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "overhang_fan_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4788",
+              "modes": {
+                "overhang_fan_speed": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "internal_bridge_fan_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4789",
+              "modes": {
+                "internal_bridge_fan_speed": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "support_material_interface_fan_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4790",
+              "modes": {
+                "support_material_interface_fan_speed": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "ironing_fan_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4791",
+              "modes": {
+                "ironing_fan_speed": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:4770"
+        },
+        {
+          "title": "Auxiliary part cooling fan",
+          "options": [
+            "additional_cooling_fan_speed"
+          ],
+          "lines": [
+            {
+              "options": [
+                "additional_cooling_fan_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4794",
+              "modes": {
+                "additional_cooling_fan_speed": "Simple"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:4793"
+        },
+        {
+          "title": "Exhaust fan",
+          "options": [
+            "activate_air_filtration",
+            "activate_air_filtration_during_print",
+            "during_print_exhaust_fan_speed",
+            "activate_air_filtration_on_completion",
+            "complete_print_exhaust_fan_speed"
+          ],
+          "lines": [
+            {
+              "options": [
+                "activate_air_filtration"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4798",
+              "modes": {
+                "activate_air_filtration": "Simple"
+              }
+            },
+            {
+              "options": [
+                "activate_air_filtration_during_print",
+                "during_print_exhaust_fan_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4804",
+              "label": "During print",
+              "modes": {
+                "activate_air_filtration_during_print": "Simple",
+                "during_print_exhaust_fan_speed": "Simple"
+              }
+            },
+            {
+              "options": [
+                "activate_air_filtration_on_completion",
+                "complete_print_exhaust_fan_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4811",
+              "label": "Complete print",
+              "modes": {
+                "activate_air_filtration_on_completion": "Simple",
+                "complete_print_exhaust_fan_speed": "Simple"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:4796"
+        }
+      ],
+      "source": "src/slic3r/GUI/Tab.cpp:4756"
     },
     {
-     "title": "Print chamber temperature",
-     "icon": "param_chamber_temp",
-     "options": [
-      "activate_chamber_temp_control",
-      "chamber_temperature",
-      "chamber_minimal_temperature"
-     ]
+      "title": "Setting Overrides",
+      "icon": "custom-gcode_setting_override",
+      "groups": [
+        {
+          "title": "Retraction",
+          "options": [
+            "filament_retraction_length",
+            "filament_z_hop",
+            "filament_z_hop_types",
+            "filament_retract_lift_above",
+            "filament_retract_lift_below",
+            "filament_retract_lift_enforce",
+            "filament_retraction_speed",
+            "filament_deretraction_speed",
+            "filament_retract_restart_extra",
+            "filament_retraction_minimum_travel",
+            "filament_retract_when_changing_layer",
+            "filament_wipe",
+            "filament_wipe_distance",
+            "filament_retract_before_wipe",
+            "filament_retract_after_wipe",
+            "filament_long_retractions_when_cut",
+            "filament_retraction_distances_when_cut"
+          ],
+          "lines": [
+            {
+              "options": [
+                "filament_retraction_length"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4323",
+              "nullable_override": true,
+              "modes": {
+                "filament_retraction_length": "Simple"
+              }
+            },
+            {
+              "options": [
+                "filament_z_hop"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4323",
+              "nullable_override": true,
+              "modes": {
+                "filament_z_hop": "Simple"
+              }
+            },
+            {
+              "options": [
+                "filament_z_hop_types"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4323",
+              "nullable_override": true,
+              "modes": {
+                "filament_z_hop_types": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_retract_lift_above"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4323",
+              "nullable_override": true,
+              "modes": {
+                "filament_retract_lift_above": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_retract_lift_below"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4323",
+              "nullable_override": true,
+              "modes": {
+                "filament_retract_lift_below": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_retract_lift_enforce"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4323",
+              "nullable_override": true,
+              "modes": {
+                "filament_retract_lift_enforce": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_retraction_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4323",
+              "nullable_override": true,
+              "modes": {
+                "filament_retraction_speed": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_deretraction_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4323",
+              "nullable_override": true,
+              "modes": {
+                "filament_deretraction_speed": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_retract_restart_extra"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4323",
+              "nullable_override": true,
+              "modes": {
+                "filament_retract_restart_extra": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_retraction_minimum_travel"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4323",
+              "nullable_override": true,
+              "modes": {
+                "filament_retraction_minimum_travel": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_retract_when_changing_layer"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4323",
+              "nullable_override": true,
+              "modes": {
+                "filament_retract_when_changing_layer": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_wipe"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4323",
+              "nullable_override": true,
+              "modes": {
+                "filament_wipe": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_wipe_distance"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4323",
+              "nullable_override": true,
+              "modes": {
+                "filament_wipe_distance": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_retract_before_wipe"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4323",
+              "nullable_override": true,
+              "modes": {
+                "filament_retract_before_wipe": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_retract_after_wipe"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4323",
+              "nullable_override": true,
+              "modes": {
+                "filament_retract_after_wipe": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_long_retractions_when_cut"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4323",
+              "nullable_override": true,
+              "modes": {
+                "filament_long_retractions_when_cut": "Simple"
+              }
+            },
+            {
+              "options": [
+                "filament_retraction_distances_when_cut"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4323",
+              "nullable_override": true,
+              "modes": {
+                "filament_retraction_distances_when_cut": "Simple"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:4322"
+        },
+        {
+          "title": "Retraction when switching material",
+          "options": [
+            "filament_retract_length_toolchange",
+            "filament_retract_restart_extra_toolchange"
+          ],
+          "lines": [
+            {
+              "options": [
+                "filament_retract_length_toolchange"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4349",
+              "nullable_override": true,
+              "modes": {
+                "filament_retract_length_toolchange": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_retract_restart_extra_toolchange"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4349",
+              "nullable_override": true,
+              "modes": {
+                "filament_retract_restart_extra_toolchange": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:4348"
+        },
+        {
+          "title": "Ironing",
+          "options": [
+            "filament_ironing_flow",
+            "filament_ironing_spacing",
+            "filament_ironing_inset",
+            "filament_ironing_speed"
+          ],
+          "lines": [
+            {
+              "options": [
+                "filament_ironing_flow"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4434",
+              "nullable_override": true,
+              "modes": {
+                "filament_ironing_flow": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_ironing_spacing"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4434",
+              "nullable_override": true,
+              "modes": {
+                "filament_ironing_spacing": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_ironing_inset"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4434",
+              "nullable_override": true,
+              "modes": {
+                "filament_ironing_inset": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_ironing_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4434",
+              "nullable_override": true,
+              "modes": {
+                "filament_ironing_speed": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:4354"
+        }
+      ],
+      "source": "src/slic3r/GUI/Tab.cpp:4283"
     },
     {
-     "title": "Print temperature",
-     "icon": "param_extruder_temp",
-     "options": [
-      "nozzle_temperature_initial_layer",
-      "nozzle_temperature"
-     ]
+      "title": "Advanced",
+      "icon": "custom-gcode_advanced",
+      "groups": [
+        {
+          "title": "Filament start G-code",
+          "options": [
+            "filament_start_gcode"
+          ],
+          "lines": [
+            {
+              "options": [
+                "filament_start_gcode"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4829",
+              "modes": {
+                "filament_start_gcode": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:4820"
+        },
+        {
+          "title": "Change extrusion role G-code",
+          "options": [
+            "filament_change_extrusion_role_gcode"
+          ],
+          "lines": [
+            {
+              "options": [
+                "filament_change_extrusion_role_gcode"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4840",
+              "modes": {
+                "filament_change_extrusion_role_gcode": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:4831"
+        },
+        {
+          "title": "Filament end G-code",
+          "options": [
+            "filament_end_gcode"
+          ],
+          "lines": [
+            {
+              "options": [
+                "filament_end_gcode"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4851",
+              "modes": {
+                "filament_end_gcode": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:4842"
+        },
+        {
+          "title": "Plugin Configuration",
+          "options": [
+            "filament_plugin_config_overrides"
+          ],
+          "lines": [
+            {
+              "options": [
+                "filament_plugin_config_overrides"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4854",
+              "modes": {
+                "filament_plugin_config_overrides": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:4853"
+        }
+      ],
+      "source": "src/slic3r/GUI/Tab.cpp:4819"
     },
     {
-     "title": "Bed temperature",
-     "icon": "param_bed_temp",
-     "options": [
-      "supertack_plate_temp_initial_layer",
-      "supertack_plate_temp",
-      "cool_plate_temp_initial_layer",
-      "cool_plate_temp",
-      "textured_cool_plate_temp_initial_layer",
-      "textured_cool_plate_temp",
-      "eng_plate_temp_initial_layer",
-      "eng_plate_temp",
-      "hot_plate_temp_initial_layer",
-      "hot_plate_temp",
-      "textured_plate_temp_initial_layer",
-      "textured_plate_temp"
-     ]
+      "title": "Multimaterial",
+      "icon": "custom-gcode_multi_material",
+      "groups": [
+        {
+          "title": "Wipe tower parameters",
+          "options": [
+            "filament_minimal_purge_on_wipe_tower",
+            "filament_tower_interface_pre_extrusion_dist",
+            "filament_tower_interface_pre_extrusion_length",
+            "filament_tower_ironing_area",
+            "filament_tower_interface_purge_volume",
+            "filament_tower_interface_print_temp"
+          ],
+          "lines": [
+            {
+              "options": [
+                "filament_minimal_purge_on_wipe_tower"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4858",
+              "modes": {
+                "filament_minimal_purge_on_wipe_tower": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_tower_interface_pre_extrusion_dist"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4859",
+              "modes": {
+                "filament_tower_interface_pre_extrusion_dist": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_tower_interface_pre_extrusion_length"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4860",
+              "modes": {
+                "filament_tower_interface_pre_extrusion_length": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_tower_ironing_area"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4861",
+              "modes": {
+                "filament_tower_ironing_area": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_tower_interface_purge_volume"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4862",
+              "modes": {
+                "filament_tower_interface_purge_volume": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_tower_interface_print_temp"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4863",
+              "modes": {
+                "filament_tower_interface_print_temp": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:4857"
+        },
+        {
+          "title": "Multi Filament",
+          "options": [
+            "long_retractions_when_ec",
+            "retraction_distances_when_ec"
+          ],
+          "lines": [
+            {
+              "options": [
+                "long_retractions_when_ec"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4868",
+              "modes": {
+                "long_retractions_when_ec": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "retraction_distances_when_ec"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4869",
+              "modes": {
+                "retraction_distances_when_ec": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:4865"
+        },
+        {
+          "title": "Tool change parameters with single extruder MM printers",
+          "options": [
+            "filament_loading_speed_start",
+            "filament_loading_speed",
+            "filament_unloading_speed_start",
+            "filament_unloading_speed",
+            "filament_toolchange_delay",
+            "filament_cooling_moves",
+            "filament_cooling_initial_speed",
+            "filament_cooling_final_speed",
+            "filament_stamping_loading_speed",
+            "filament_stamping_distance",
+            "filament_ramming_parameters"
+          ],
+          "lines": [
+            {
+              "options": [
+                "filament_loading_speed_start"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4872",
+              "modes": {
+                "filament_loading_speed_start": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_loading_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4873",
+              "modes": {
+                "filament_loading_speed": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_unloading_speed_start"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4874",
+              "modes": {
+                "filament_unloading_speed_start": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_unloading_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4875",
+              "modes": {
+                "filament_unloading_speed": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_toolchange_delay"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4876",
+              "modes": {
+                "filament_toolchange_delay": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_cooling_moves"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4877",
+              "modes": {
+                "filament_cooling_moves": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_cooling_initial_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4878",
+              "modes": {
+                "filament_cooling_initial_speed": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_cooling_final_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4879",
+              "modes": {
+                "filament_cooling_final_speed": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_stamping_loading_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4880",
+              "modes": {
+                "filament_stamping_loading_speed": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_stamping_distance"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4881",
+              "modes": {
+                "filament_stamping_distance": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_ramming_parameters"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4882",
+              "manual": true,
+              "widget": "ramming curve editor",
+              "modes": {
+                "filament_ramming_parameters": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:4871"
+        },
+        {
+          "title": "Tool change parameters with multi extruder MM printers",
+          "options": [
+            "filament_multitool_ramming",
+            "filament_multitool_ramming_volume",
+            "filament_multitool_ramming_flow"
+          ],
+          "lines": [
+            {
+              "options": [
+                "filament_multitool_ramming"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4902",
+              "modes": {
+                "filament_multitool_ramming": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_multitool_ramming_volume"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4903",
+              "modes": {
+                "filament_multitool_ramming_volume": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "filament_multitool_ramming_flow"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4904",
+              "modes": {
+                "filament_multitool_ramming_flow": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:4901"
+        }
+      ],
+      "source": "src/slic3r/GUI/Tab.cpp:4856"
     },
     {
-     "title": "Volumetric speed limitation",
-     "icon": "param_volumetric_speed",
-     "options": [
-      "filament_adaptive_volumetric_speed",
-      "filament_max_volumetric_speed"
-     ]
+      "title": "Dependencies",
+      "icon": "advanced",
+      "groups": [
+        {
+          "title": "Compatible printers",
+          "options": [
+            "compatible_printers",
+            "compatible_printers_condition"
+          ],
+          "lines": [
+            {
+              "options": [
+                "compatible_printers"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4908",
+              "manual": true,
+              "widget": "preset compatibility selector",
+              "modes": {
+                "compatible_printers": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "compatible_printers_condition"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4914",
+              "modes": {
+                "compatible_printers_condition": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:4907"
+        },
+        {
+          "title": "Compatible process profiles",
+          "options": [
+            "compatible_prints",
+            "compatible_prints_condition"
+          ],
+          "lines": [
+            {
+              "options": [
+                "compatible_prints"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4917",
+              "manual": true,
+              "widget": "preset compatibility selector",
+              "modes": {
+                "compatible_prints": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "compatible_prints_condition"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4923",
+              "modes": {
+                "compatible_prints_condition": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:4916"
+        }
+      ],
+      "source": "src/slic3r/GUI/Tab.cpp:4906"
+    },
+    {
+      "title": "Notes",
+      "icon": "custom-gcode_note",
+      "groups": [
+        {
+          "title": "Notes",
+          "options": [
+            "filament_notes"
+          ],
+          "lines": [
+            {
+              "options": [
+                "filament_notes"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:4931",
+              "modes": {
+                "filament_notes": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:4926"
+        }
+      ],
+      "source": "src/slic3r/GUI/Tab.cpp:4925"
     }
-   ]
+  ],
+  "option_modes": {
+    "filament_type": "Simple",
+    "filament_vendor": "Advanced",
+    "filament_soluble": "Advanced",
+    "filament_is_support": "Advanced",
+    "filament_change_length": "Advanced",
+    "required_nozzle_HRC": "Develop",
+    "default_filament_colour": "Advanced",
+    "filament_diameter": "Simple",
+    "filament_adhesiveness_category": "Develop",
+    "filament_density": "Advanced",
+    "filament_shrink": "Advanced",
+    "filament_shrinkage_compensation_z": "Advanced",
+    "filament_cost": "Advanced",
+    "temperature_vitrification": "Simple",
+    "idle_temperature": "Simple",
+    "nozzle_temperature_range_low": "Simple",
+    "nozzle_temperature_range_high": "Simple",
+    "pellet_flow_coefficient": "Simple",
+    "filament_flow_ratio": "Advanced",
+    "enable_pressure_advance": "Simple",
+    "pressure_advance": "Advanced",
+    "adaptive_pressure_advance": "Advanced",
+    "adaptive_pressure_advance_overhangs": "Advanced",
+    "adaptive_pressure_advance_bridges": "Advanced",
+    "adaptive_pressure_advance_model": "Advanced",
+    "activate_chamber_temp_control": "Simple",
+    "chamber_temperature": "Simple",
+    "chamber_minimal_temperature": "Simple",
+    "nozzle_temperature_initial_layer": "Simple",
+    "nozzle_temperature": "Simple",
+    "supertack_plate_temp_initial_layer": "Simple",
+    "supertack_plate_temp": "Simple",
+    "cool_plate_temp_initial_layer": "Simple",
+    "cool_plate_temp": "Simple",
+    "textured_cool_plate_temp_initial_layer": "Simple",
+    "textured_cool_plate_temp": "Simple",
+    "eng_plate_temp_initial_layer": "Simple",
+    "eng_plate_temp": "Simple",
+    "hot_plate_temp_initial_layer": "Simple",
+    "hot_plate_temp": "Simple",
+    "textured_plate_temp_initial_layer": "Simple",
+    "textured_plate_temp": "Simple",
+    "filament_adaptive_volumetric_speed": "Develop",
+    "filament_max_volumetric_speed": "Advanced",
+    "close_fan_the_first_x_layers": "Simple",
+    "initial_layer_fan_speed": "Advanced",
+    "full_fan_speed_layer": "Advanced",
+    "fan_min_speed": "Simple",
+    "fan_cooling_layer_time": "Simple",
+    "fan_max_speed": "Simple",
+    "slow_down_layer_time": "Simple",
+    "reduce_fan_stop_start_freq": "Simple",
+    "slow_down_for_layer_cooling": "Simple",
+    "dont_slow_down_outer_wall": "Simple",
+    "slow_down_min_speed": "Advanced",
+    "enable_overhang_bridge_fan": "Simple",
+    "overhang_fan_threshold": "Advanced",
+    "overhang_fan_speed": "Advanced",
+    "internal_bridge_fan_speed": "Advanced",
+    "support_material_interface_fan_speed": "Advanced",
+    "ironing_fan_speed": "Advanced",
+    "additional_cooling_fan_speed": "Simple",
+    "activate_air_filtration": "Simple",
+    "activate_air_filtration_during_print": "Simple",
+    "during_print_exhaust_fan_speed": "Simple",
+    "activate_air_filtration_on_completion": "Simple",
+    "complete_print_exhaust_fan_speed": "Simple",
+    "filament_retraction_length": "Simple",
+    "filament_z_hop": "Simple",
+    "filament_z_hop_types": "Advanced",
+    "filament_retract_lift_above": "Advanced",
+    "filament_retract_lift_below": "Advanced",
+    "filament_retract_lift_enforce": "Advanced",
+    "filament_retraction_speed": "Advanced",
+    "filament_deretraction_speed": "Advanced",
+    "filament_retract_restart_extra": "Advanced",
+    "filament_retraction_minimum_travel": "Advanced",
+    "filament_retract_when_changing_layer": "Advanced",
+    "filament_wipe": "Advanced",
+    "filament_wipe_distance": "Advanced",
+    "filament_retract_before_wipe": "Advanced",
+    "filament_retract_after_wipe": "Advanced",
+    "filament_long_retractions_when_cut": "Simple",
+    "filament_retraction_distances_when_cut": "Simple",
+    "filament_retract_length_toolchange": "Advanced",
+    "filament_retract_restart_extra_toolchange": "Advanced",
+    "filament_ironing_flow": "Advanced",
+    "filament_ironing_spacing": "Advanced",
+    "filament_ironing_inset": "Advanced",
+    "filament_ironing_speed": "Advanced",
+    "filament_start_gcode": "Advanced",
+    "filament_change_extrusion_role_gcode": "Advanced",
+    "filament_end_gcode": "Advanced",
+    "filament_plugin_config_overrides": "Advanced",
+    "filament_minimal_purge_on_wipe_tower": "Advanced",
+    "filament_tower_interface_pre_extrusion_dist": "Advanced",
+    "filament_tower_interface_pre_extrusion_length": "Advanced",
+    "filament_tower_ironing_area": "Advanced",
+    "filament_tower_interface_purge_volume": "Advanced",
+    "filament_tower_interface_print_temp": "Advanced",
+    "long_retractions_when_ec": "Advanced",
+    "retraction_distances_when_ec": "Advanced",
+    "filament_loading_speed_start": "Advanced",
+    "filament_loading_speed": "Advanced",
+    "filament_unloading_speed_start": "Advanced",
+    "filament_unloading_speed": "Advanced",
+    "filament_toolchange_delay": "Advanced",
+    "filament_cooling_moves": "Advanced",
+    "filament_cooling_initial_speed": "Advanced",
+    "filament_cooling_final_speed": "Advanced",
+    "filament_stamping_loading_speed": "Advanced",
+    "filament_stamping_distance": "Advanced",
+    "filament_ramming_parameters": "Advanced",
+    "filament_multitool_ramming": "Advanced",
+    "filament_multitool_ramming_volume": "Advanced",
+    "filament_multitool_ramming_flow": "Advanced",
+    "compatible_printers": "Advanced",
+    "compatible_printers_condition": "Advanced",
+    "compatible_prints": "Advanced",
+    "compatible_prints_condition": "Advanced",
+    "filament_notes": "Advanced"
   },
-  {
-   "title": "Cooling",
-   "icon": "custom-gcode_cooling_fan",
-   "groups": [
+  "removed_keys": [
+    "bbl_calib_mark_logo",
+    "bbl_use_printhost",
+    "extruder_ams_count",
+    "farthest_point_timelapse",
+    "filament_dev_ams_drying_ams_limitations",
+    "filament_dev_ams_drying_heat_distortion_temperature",
+    "filament_dev_ams_drying_temperature",
+    "filament_dev_ams_drying_time",
+    "filament_dev_chamber_drying_bed_temperature",
+    "filament_dev_chamber_drying_time",
+    "filament_dev_drying_cooling_temperature",
+    "filament_dev_drying_softening_temperature",
+    "flashforge_serial_number",
+    "host_type",
+    "print_host",
+    "print_host_webui",
+    "printer_agent",
+    "printhost_apikey",
+    "printhost_authorization_type",
+    "printhost_cafile",
+    "printhost_password",
+    "printhost_port",
+    "printhost_ssl_ignore_revoke",
+    "printhost_user",
+    "scan_first_layer",
+    "thumbnails",
+    "thumbnails_format",
+    "timelapse_type"
+  ],
+  "visibility": [
     {
-     "title": "Cooling for specific layer",
-     "icon": "param_cooling_specific_layer",
-     "options": [
-      "close_fan_the_first_x_layers",
-      "initial_layer_fan_speed",
-      "full_fan_speed_layer"
-     ]
+      "options": [
+        "overhang_fan_speed"
+      ],
+      "condition": "(enable_overhang_bridge_fan)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:4991",
+      "condition_source": "has_enable_overhang_bridge_fan"
     },
     {
-     "title": "Part cooling fan",
-     "icon": "param_cooling_part_fan",
-     "options": [
-      "fan_min_speed",
-      "fan_cooling_layer_time",
-      "fan_max_speed",
-      "slow_down_layer_time",
-      "reduce_fan_stop_start_freq",
-      "slow_down_for_layer_cooling",
-      "dont_slow_down_outer_wall",
-      "slow_down_min_speed",
-      "enable_overhang_bridge_fan",
-      "overhang_fan_threshold",
-      "overhang_fan_speed",
-      "internal_bridge_fan_speed",
-      "support_material_interface_fan_speed",
-      "ironing_fan_speed"
-     ]
+      "options": [
+        "overhang_fan_threshold"
+      ],
+      "condition": "(enable_overhang_bridge_fan)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:4991",
+      "condition_source": "has_enable_overhang_bridge_fan"
     },
     {
-     "title": "Auxiliary part cooling fan",
-     "icon": "param_cooling_aux_fan",
-     "options": [
-      "additional_cooling_fan_speed"
-     ]
+      "options": [
+        "internal_bridge_fan_speed"
+      ],
+      "condition": "(enable_overhang_bridge_fan)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:4991",
+      "condition_source": "has_enable_overhang_bridge_fan"
     },
     {
-     "title": "Exhaust fan",
-     "icon": "param_cooling_exhaust",
-     "options": [
-      "activate_air_filtration",
-      "activate_air_filtration_during_print",
-      "during_print_exhaust_fan_speed",
-      "activate_air_filtration_on_completion",
-      "complete_print_exhaust_fan_speed"
-     ]
+      "options": [
+        "dont_slow_down_outer_wall"
+      ],
+      "condition": "(slow_down_for_layer_cooling)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:4996",
+      "condition_source": "has_slow_down_for_layer_cooling"
+    },
+    {
+      "options": [
+        "initial_layer_fan_speed"
+      ],
+      "condition": "((close_fan_the_first_x_layers) <= 0)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:5005",
+      "condition_source": "initial_layer_fan_speed_enabled"
+    },
+    {
+      "options": [
+        "additional_cooling_fan_speed"
+      ],
+      "condition": "auxiliary_fan == true",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:5021",
+      "condition_source": "printer_cfg.opt_bool(\"auxiliary_fan\")"
+    },
+    {
+      "options": [
+        "activate_air_filtration"
+      ],
+      "condition": "support_air_filtration == true",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:5024",
+      "condition_source": "support_air_filtration"
+    },
+    {
+      "options": [
+        "during_print_exhaust_fan_speed"
+      ],
+      "condition": "support_air_filtration == true",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:5024",
+      "condition_source": "support_air_filtration"
+    },
+    {
+      "options": [
+        "complete_print_exhaust_fan_speed"
+      ],
+      "condition": "support_air_filtration == true",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:5024",
+      "condition_source": "support_air_filtration"
+    },
+    {
+      "options": [
+        "activate_air_filtration_during_print"
+      ],
+      "condition": "activate_air_filtration == true",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:5029",
+      "condition_source": "activate_air_filtration",
+      "when": "(support_air_filtration)"
+    },
+    {
+      "options": [
+        "during_print_exhaust_fan_speed"
+      ],
+      "condition": "activate_air_filtration && activate_air_filtration_during_print",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:5030",
+      "condition_source": "activate_air_filtration && m_config->opt_bool(\"activate_air_filtration_during_print\", 0)",
+      "when": "(support_air_filtration)"
+    },
+    {
+      "options": [
+        "activate_air_filtration_on_completion"
+      ],
+      "condition": "activate_air_filtration == true",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:5031",
+      "condition_source": "activate_air_filtration",
+      "when": "(support_air_filtration)"
+    },
+    {
+      "options": [
+        "complete_print_exhaust_fan_speed"
+      ],
+      "condition": "activate_air_filtration && activate_air_filtration_on_completion",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:5032",
+      "condition_source": "activate_air_filtration && m_config->opt_bool(\"activate_air_filtration_on_completion\", 0)",
+      "when": "(support_air_filtration)"
+    },
+    {
+      "options": [
+        "pressure_advance"
+      ],
+      "condition": "(enable_pressure_advance)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:5038",
+      "condition_source": "pa"
+    },
+    {
+      "options": [
+        "supertack_plate_temp_initial_layer"
+      ],
+      "condition": "printer_vendor == \"BBL\" || support_multi_bed_types == true || curr_bed_type == \"Supertack Plate\" || curr_bed_type == \"\"",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:5058",
+      "condition_source": "support_multi_bed_types || bed_temp_1st_layer_key == key",
+      "manual": true
+    },
+    {
+      "options": [
+        "cool_plate_temp_initial_layer"
+      ],
+      "condition": "printer_vendor == \"BBL\" || support_multi_bed_types == true || curr_bed_type == \"Cool Plate\" || curr_bed_type == \"\"",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:5058",
+      "condition_source": "support_multi_bed_types || bed_temp_1st_layer_key == key",
+      "manual": true
+    },
+    {
+      "options": [
+        "textured_cool_plate_temp_initial_layer"
+      ],
+      "condition": "printer_vendor == \"BBL\" || support_multi_bed_types == true || curr_bed_type == \"Textured Cool Plate\" || curr_bed_type == \"\"",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:5058",
+      "condition_source": "support_multi_bed_types || bed_temp_1st_layer_key == key",
+      "manual": true
+    },
+    {
+      "options": [
+        "eng_plate_temp_initial_layer"
+      ],
+      "condition": "printer_vendor == \"BBL\" || support_multi_bed_types == true || curr_bed_type == \"Engineering Plate\" || curr_bed_type == \"\"",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:5058",
+      "condition_source": "support_multi_bed_types || bed_temp_1st_layer_key == key",
+      "manual": true
+    },
+    {
+      "options": [
+        "textured_plate_temp_initial_layer"
+      ],
+      "condition": "printer_vendor == \"BBL\" || support_multi_bed_types == true || curr_bed_type == \"Textured PEI Plate\" || curr_bed_type == \"\"",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:5058",
+      "condition_source": "support_multi_bed_types || bed_temp_1st_layer_key == key",
+      "manual": true
+    },
+    {
+      "options": [
+        "hot_plate_temp_initial_layer"
+      ],
+      "condition": "printer_vendor == \"BBL\" || support_multi_bed_types == true || curr_bed_type == \"High Temp Plate\" || curr_bed_type == \"\"",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:5058",
+      "condition_source": "support_multi_bed_types || bed_temp_1st_layer_key == key",
+      "manual": true
+    },
+    {
+      "options": [
+        "adaptive_pressure_advance"
+      ],
+      "condition": "(enable_pressure_advance)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:5066",
+      "condition_source": "pa"
+    },
+    {
+      "options": [
+        "adaptive_pressure_advance_overhangs"
+      ],
+      "condition": "(enable_pressure_advance)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:5067",
+      "condition_source": "pa"
+    },
+    {
+      "options": [
+        "adaptive_pressure_advance_overhangs"
+      ],
+      "condition": "(adaptive_pressure_advance) && (enable_pressure_advance)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:5069",
+      "condition_source": "has_adaptive_pa && pa"
+    },
+    {
+      "options": [
+        "adaptive_pressure_advance_model"
+      ],
+      "condition": "(adaptive_pressure_advance) && (enable_pressure_advance)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:5070",
+      "condition_source": "has_adaptive_pa && pa"
+    },
+    {
+      "options": [
+        "adaptive_pressure_advance_bridges"
+      ],
+      "condition": "(adaptive_pressure_advance) && (enable_pressure_advance)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:5071",
+      "condition_source": "has_adaptive_pa && pa"
+    },
+    {
+      "options": [
+        "pellet_flow_coefficient"
+      ],
+      "condition": "(pellet_modded_printer)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:5074",
+      "condition_source": "is_pellet_printer"
+    },
+    {
+      "options": [
+        "filament_diameter"
+      ],
+      "condition": "!(pellet_modded_printer)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:5075",
+      "condition_source": "!is_pellet_printer"
+    },
+    {
+      "options": [
+        "activate_chamber_temp_control"
+      ],
+      "condition": "support_chamber_temp_control == true",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:5077",
+      "condition_source": "printer_cfg.opt_bool(\"support_chamber_temp_control\")"
+    },
+    {
+      "options": [
+        "filament_adaptive_volumetric_speed"
+      ],
+      "condition": "((volumetric_speed_coefficients) != \"0 0 0 0 0 0\")",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:5081",
+      "condition_source": "enable_fit"
+    },
+    {
+      "options": [
+        "filament_minimal_purge_on_wipe_tower"
+      ],
+      "condition": "!(printer_vendor == \"BBL\")",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:5089",
+      "condition_source": "!is_BBL_printer"
+    },
+    {
+      "options": [
+        "filament_loading_speed_start"
+      ],
+      "condition": "!(printer_vendor == \"BBL\")",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:5090",
+      "condition_source": "!is_BBL_printer"
+    },
+    {
+      "options": [
+        "filament_loading_speed"
+      ],
+      "condition": "!(printer_vendor == \"BBL\")",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:5090",
+      "condition_source": "!is_BBL_printer"
+    },
+    {
+      "options": [
+        "filament_unloading_speed_start"
+      ],
+      "condition": "!(printer_vendor == \"BBL\")",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:5090",
+      "condition_source": "!is_BBL_printer"
+    },
+    {
+      "options": [
+        "filament_unloading_speed"
+      ],
+      "condition": "!(printer_vendor == \"BBL\")",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:5090",
+      "condition_source": "!is_BBL_printer"
+    },
+    {
+      "options": [
+        "filament_toolchange_delay"
+      ],
+      "condition": "!(printer_vendor == \"BBL\")",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:5090",
+      "condition_source": "!is_BBL_printer"
+    },
+    {
+      "options": [
+        "filament_cooling_moves"
+      ],
+      "condition": "!(printer_vendor == \"BBL\")",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:5090",
+      "condition_source": "!is_BBL_printer"
+    },
+    {
+      "options": [
+        "filament_cooling_initial_speed"
+      ],
+      "condition": "!(printer_vendor == \"BBL\")",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:5090",
+      "condition_source": "!is_BBL_printer"
+    },
+    {
+      "options": [
+        "filament_cooling_final_speed"
+      ],
+      "condition": "!(printer_vendor == \"BBL\")",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:5090",
+      "condition_source": "!is_BBL_printer"
+    },
+    {
+      "options": [
+        "filament_multitool_ramming_volume"
+      ],
+      "condition": "(filament_multitool_ramming)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:5096",
+      "condition_source": "multitool_ramming"
+    },
+    {
+      "options": [
+        "filament_multitool_ramming_flow"
+      ],
+      "condition": "(filament_multitool_ramming)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:5097",
+      "condition_source": "multitool_ramming"
+    },
+    {
+      "options": [
+        "long_retractions_when_ec"
+      ],
+      "condition": "((printer_vendor == \"BBL\") && extruders_count > 1)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:5100",
+      "condition_source": "is_BBL_multi_extruder"
+    },
+    {
+      "options": [
+        "retraction_distances_when_ec"
+      ],
+      "condition": "((printer_vendor == \"BBL\") && extruders_count > 1) && long_retractions_when_ec",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:5101",
+      "condition_source": "is_BBL_multi_extruder && m_config->opt_bool(\"long_retractions_when_ec\", variant_index)"
+    },
+    {
+      "options": [
+        "filament_retraction_length"
+      ],
+      "condition": "filament_retraction_length != null",
+      "effect": "enabled",
+      "manual": true,
+      "nullable_override": true,
+      "source": "src/slic3r/GUI/Tab.cpp:4442"
+    },
+    {
+      "options": [
+        "filament_z_hop"
+      ],
+      "condition": "filament_z_hop != null && (filament_retraction_length == null || filament_retraction_length > 0)",
+      "effect": "enabled",
+      "manual": true,
+      "nullable_override": true,
+      "source": "src/slic3r/GUI/Tab.cpp:4442"
+    },
+    {
+      "options": [
+        "filament_z_hop_types"
+      ],
+      "condition": "filament_z_hop_types != null && (filament_retraction_length == null || filament_retraction_length > 0)",
+      "effect": "enabled",
+      "manual": true,
+      "nullable_override": true,
+      "source": "src/slic3r/GUI/Tab.cpp:4442"
+    },
+    {
+      "options": [
+        "filament_retract_lift_above"
+      ],
+      "condition": "filament_retract_lift_above != null && (filament_retraction_length == null || filament_retraction_length > 0)",
+      "effect": "enabled",
+      "manual": true,
+      "nullable_override": true,
+      "source": "src/slic3r/GUI/Tab.cpp:4442"
+    },
+    {
+      "options": [
+        "filament_retract_lift_below"
+      ],
+      "condition": "filament_retract_lift_below != null && (filament_retraction_length == null || filament_retraction_length > 0)",
+      "effect": "enabled",
+      "manual": true,
+      "nullable_override": true,
+      "source": "src/slic3r/GUI/Tab.cpp:4442"
+    },
+    {
+      "options": [
+        "filament_retract_lift_enforce"
+      ],
+      "condition": "filament_retract_lift_enforce != null && (filament_retraction_length == null || filament_retraction_length > 0)",
+      "effect": "enabled",
+      "manual": true,
+      "nullable_override": true,
+      "source": "src/slic3r/GUI/Tab.cpp:4442"
+    },
+    {
+      "options": [
+        "filament_retraction_speed"
+      ],
+      "condition": "filament_retraction_speed != null && (filament_retraction_length == null || filament_retraction_length > 0)",
+      "effect": "enabled",
+      "manual": true,
+      "nullable_override": true,
+      "source": "src/slic3r/GUI/Tab.cpp:4442"
+    },
+    {
+      "options": [
+        "filament_deretraction_speed"
+      ],
+      "condition": "filament_deretraction_speed != null && (filament_retraction_length == null || filament_retraction_length > 0)",
+      "effect": "enabled",
+      "manual": true,
+      "nullable_override": true,
+      "source": "src/slic3r/GUI/Tab.cpp:4442"
+    },
+    {
+      "options": [
+        "filament_retract_restart_extra"
+      ],
+      "condition": "filament_retract_restart_extra != null && (filament_retraction_length == null || filament_retraction_length > 0)",
+      "effect": "enabled",
+      "manual": true,
+      "nullable_override": true,
+      "source": "src/slic3r/GUI/Tab.cpp:4442"
+    },
+    {
+      "options": [
+        "filament_retraction_minimum_travel"
+      ],
+      "condition": "filament_retraction_minimum_travel != null && (filament_retraction_length == null || filament_retraction_length > 0)",
+      "effect": "enabled",
+      "manual": true,
+      "nullable_override": true,
+      "source": "src/slic3r/GUI/Tab.cpp:4442"
+    },
+    {
+      "options": [
+        "filament_retract_when_changing_layer"
+      ],
+      "condition": "filament_retract_when_changing_layer != null && (filament_retraction_length == null || filament_retraction_length > 0)",
+      "effect": "enabled",
+      "manual": true,
+      "nullable_override": true,
+      "source": "src/slic3r/GUI/Tab.cpp:4442"
+    },
+    {
+      "options": [
+        "filament_wipe"
+      ],
+      "condition": "filament_wipe != null && (filament_retraction_length == null || filament_retraction_length > 0)",
+      "effect": "enabled",
+      "manual": true,
+      "nullable_override": true,
+      "source": "src/slic3r/GUI/Tab.cpp:4442"
+    },
+    {
+      "options": [
+        "filament_wipe_distance"
+      ],
+      "condition": "filament_wipe_distance != null && (filament_retraction_length == null || filament_retraction_length > 0)",
+      "effect": "enabled",
+      "manual": true,
+      "nullable_override": true,
+      "source": "src/slic3r/GUI/Tab.cpp:4442"
+    },
+    {
+      "options": [
+        "filament_retract_before_wipe"
+      ],
+      "condition": "filament_retract_before_wipe != null && (filament_retraction_length == null || filament_retraction_length > 0)",
+      "effect": "enabled",
+      "manual": true,
+      "nullable_override": true,
+      "source": "src/slic3r/GUI/Tab.cpp:4442"
+    },
+    {
+      "options": [
+        "filament_retract_after_wipe"
+      ],
+      "condition": "filament_retract_after_wipe != null && (filament_retraction_length == null || filament_retraction_length > 0)",
+      "effect": "enabled",
+      "manual": true,
+      "nullable_override": true,
+      "source": "src/slic3r/GUI/Tab.cpp:4442"
+    },
+    {
+      "options": [
+        "filament_long_retractions_when_cut"
+      ],
+      "condition": "filament_long_retractions_when_cut != null && (filament_retraction_length == null || filament_retraction_length > 0) && enable_long_retraction_when_cut == 2",
+      "effect": "enabled",
+      "manual": true,
+      "nullable_override": true,
+      "source": "src/slic3r/GUI/Tab.cpp:4442"
+    },
+    {
+      "options": [
+        "filament_retraction_distances_when_cut"
+      ],
+      "condition": "filament_retraction_distances_when_cut != null && (filament_retraction_length == null || filament_retraction_length > 0) && enable_long_retraction_when_cut == 2 && filament_long_retractions_when_cut == true",
+      "effect": "enabled",
+      "manual": true,
+      "nullable_override": true,
+      "source": "src/slic3r/GUI/Tab.cpp:4442"
+    },
+    {
+      "options": [
+        "filament_retract_length_toolchange"
+      ],
+      "condition": "filament_retract_length_toolchange != null && (filament_retraction_length == null || filament_retraction_length > 0)",
+      "effect": "enabled",
+      "manual": true,
+      "nullable_override": true,
+      "source": "src/slic3r/GUI/Tab.cpp:4442"
+    },
+    {
+      "options": [
+        "filament_retract_restart_extra_toolchange"
+      ],
+      "condition": "filament_retract_restart_extra_toolchange != null && (filament_retraction_length == null || filament_retraction_length > 0)",
+      "effect": "enabled",
+      "manual": true,
+      "nullable_override": true,
+      "source": "src/slic3r/GUI/Tab.cpp:4442"
+    },
+    {
+      "options": [
+        "filament_ironing_flow"
+      ],
+      "condition": "filament_ironing_flow != null",
+      "effect": "enabled",
+      "manual": true,
+      "nullable_override": true,
+      "source": "src/slic3r/GUI/Tab.cpp:4442"
+    },
+    {
+      "options": [
+        "filament_ironing_spacing"
+      ],
+      "condition": "filament_ironing_spacing != null",
+      "effect": "enabled",
+      "manual": true,
+      "nullable_override": true,
+      "source": "src/slic3r/GUI/Tab.cpp:4442"
+    },
+    {
+      "options": [
+        "filament_ironing_inset"
+      ],
+      "condition": "filament_ironing_inset != null",
+      "effect": "enabled",
+      "manual": true,
+      "nullable_override": true,
+      "source": "src/slic3r/GUI/Tab.cpp:4442"
+    },
+    {
+      "options": [
+        "filament_ironing_speed"
+      ],
+      "condition": "filament_ironing_speed != null",
+      "effect": "enabled",
+      "manual": true,
+      "nullable_override": true,
+      "source": "src/slic3r/GUI/Tab.cpp:4442"
+    },
+    {
+      "options": [
+        "filament_long_retractions_when_cut"
+      ],
+      "condition": "enable_long_retraction_when_cut == 2",
+      "effect": "visible",
+      "manual": true,
+      "source": "src/slic3r/GUI/Tab.cpp:4503"
+    },
+    {
+      "options": [
+        "filament_retraction_distances_when_cut"
+      ],
+      "condition": "enable_long_retraction_when_cut == 2 && filament_long_retractions_when_cut == true",
+      "effect": "visible",
+      "manual": true,
+      "source": "src/slic3r/GUI/Tab.cpp:4503"
     }
-   ]
-  },
-  {
-   "title": "Advanced",
-   "icon": "custom-gcode_advanced",
-   "groups": [
+  ],
+  "source_counts": [
     {
-     "title": "Filament start G-code",
-     "icon": "param_gcode",
-     "options": [
-      "filament_start_gcode"
-     ]
+      "function": "TabFilament::build",
+      "pages": 6,
+      "groups": 21
     },
     {
-     "title": "Change extrusion role G-code",
-     "icon": "param_gcode",
-     "options": [
-      "filament_change_extrusion_role_gcode"
-     ]
-    },
-    {
-     "title": "Filament end G-code",
-     "icon": "param_gcode",
-     "options": [
-      "filament_end_gcode"
-     ]
-    },
-    {
-     "title": "Plugin Configuration",
-     "icon": "param_gcode",
-     "options": [
-      "filament_plugin_config_overrides"
-     ]
+      "function": "TabFilament::add_filament_overrides_page",
+      "pages": 1,
+      "groups": 3
     }
-   ]
-  },
-  {
-   "title": "Multimaterial",
-   "icon": "custom-gcode_multi_material",
-   "groups": [
-    {
-     "title": "Wipe tower parameters",
-     "icon": "param_tower",
-     "options": [
-      "filament_minimal_purge_on_wipe_tower",
-      "filament_tower_interface_pre_extrusion_dist",
-      "filament_tower_interface_pre_extrusion_length",
-      "filament_tower_ironing_area",
-      "filament_tower_interface_purge_volume",
-      "filament_tower_interface_print_temp"
-     ]
-    },
-    {
-     "title": "Multi Filament",
-     "icon": "",
-     "options": [
-      "long_retractions_when_ec",
-      "retraction_distances_when_ec"
-     ]
-    },
-    {
-     "title": "Tool change parameters with single extruder MM printers",
-     "icon": "param_toolchange",
-     "options": [
-      "filament_loading_speed_start",
-      "filament_loading_speed",
-      "filament_unloading_speed_start",
-      "filament_unloading_speed",
-      "filament_toolchange_delay",
-      "filament_cooling_moves",
-      "filament_cooling_initial_speed",
-      "filament_cooling_final_speed",
-      "filament_stamping_loading_speed",
-      "filament_stamping_distance",
-      "filament_ramming_parameters"
-     ]
-    },
-    {
-     "title": "Tool change parameters with multi extruder MM printers",
-     "icon": "param_toolchange_multi_extruder",
-     "options": [
-      "filament_multitool_ramming",
-      "filament_multitool_ramming_volume",
-      "filament_multitool_ramming_flow"
-     ]
-    }
-   ]
-  },
-  {
-   "title": "Dependencies",
-   "icon": "advanced",
-   "groups": [
-    {
-     "title": "Compatible printers",
-     "icon": "param_dependencies_printers",
-     "options": [
-      "compatible_printers",
-      "compatible_printers_condition"
-     ]
-    },
-    {
-     "title": "Compatible process profiles",
-     "icon": "param_dependencies_presets",
-     "options": [
-      "compatible_prints",
-      "compatible_prints_condition"
-     ]
-    }
-   ]
-  },
-  {
-   "title": "Notes",
-   "icon": "custom-gcode_note",
-   "groups": [
-    {
-     "title": "Notes",
-     "icon": "note",
-     "options": [
-      "filament_notes"
-     ]
-    }
-   ]
-  }
- ]
+  ],
+  "extraction_warnings": [],
+  "visibility_context": {}
 }

@@ -1,403 +1,3343 @@
 {
- "tab": "printer",
- "pages": [
-  {
-   "title": "Basic information",
-   "icon": "custom-gcode_object-info",
-   "groups": [
+  "tab": "printer",
+  "pages": [
     {
-     "title": "Printable space",
-     "icon": "param_printable_space",
-     "options": [
-      "printable_area",
-      "parallel_printheads_count",
-      "bed_exclude_area",
-      "printable_height",
-      "support_multi_bed_types",
-      "best_object_pos",
-      "z_offset",
-      "preferred_orientation"
-     ]
+      "title": "Basic information",
+      "icon": "custom-gcode_object-info",
+      "groups": [
+        {
+          "title": "Printable space",
+          "options": [
+            "printable_area",
+            "parallel_printheads_count",
+            "bed_exclude_area",
+            "printable_height",
+            "support_multi_bed_types",
+            "best_object_pos",
+            "z_offset",
+            "preferred_orientation"
+          ],
+          "lines": [
+            {
+              "options": [
+                "printable_area"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5293",
+              "manual": true,
+              "widget": "bed shape editor",
+              "modes": {
+                "printable_area": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "parallel_printheads_count"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5296",
+              "modes": {
+                "parallel_printheads_count": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "bed_exclude_area"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5299",
+              "modes": {
+                "bed_exclude_area": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "printable_height"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5301",
+              "modes": {
+                "printable_height": "Simple"
+              }
+            },
+            {
+              "options": [
+                "support_multi_bed_types"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5302",
+              "modes": {
+                "support_multi_bed_types": "Simple"
+              }
+            },
+            {
+              "options": [
+                "best_object_pos"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5303",
+              "modes": {
+                "best_object_pos": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "z_offset"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5305",
+              "modes": {
+                "z_offset": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "preferred_orientation"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5306",
+              "modes": {
+                "preferred_orientation": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5291"
+        },
+        {
+          "title": "Advanced",
+          "options": [
+            "printer_structure",
+            "gcode_flavor",
+            "gcode_skip_config_block",
+            "pellet_modded_printer",
+            "bbl_use_printhost",
+            "printer_agent",
+            "use_3mf",
+            "scan_first_layer",
+            "enable_power_loss_recovery",
+            "disable_m73",
+            "thumbnails",
+            "use_relative_e_distances",
+            "use_firmware_retraction",
+            "time_cost",
+            "build_plate_tilt_x",
+            "build_plate_tilt_y"
+          ],
+          "lines": [
+            {
+              "options": [
+                "printer_structure"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5310",
+              "modes": {
+                "printer_structure": "Develop"
+              }
+            },
+            {
+              "options": [
+                "gcode_flavor"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5311",
+              "modes": {
+                "gcode_flavor": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "gcode_skip_config_block"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5312",
+              "modes": {
+                "gcode_skip_config_block": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "pellet_modded_printer"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5313",
+              "modes": {
+                "pellet_modded_printer": "Simple"
+              }
+            },
+            {
+              "options": [
+                "bbl_use_printhost"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5314",
+              "modes": {
+                "bbl_use_printhost": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "printer_agent"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5329",
+              "modes": {
+                "printer_agent": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "use_3mf"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5333",
+              "modes": {
+                "use_3mf": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "scan_first_layer"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5334",
+              "modes": {
+                "scan_first_layer": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "enable_power_loss_recovery"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5335",
+              "modes": {
+                "enable_power_loss_recovery": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "disable_m73"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5339",
+              "modes": {
+                "disable_m73": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "thumbnails"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5371",
+              "modes": {
+                "thumbnails": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "use_relative_e_distances"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5409",
+              "modes": {
+                "use_relative_e_distances": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "use_firmware_retraction"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5410",
+              "modes": {
+                "use_firmware_retraction": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "time_cost"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5412",
+              "modes": {
+                "time_cost": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "build_plate_tilt_x"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5413",
+              "modes": {
+                "build_plate_tilt_x": "Expert"
+              }
+            },
+            {
+              "options": [
+                "build_plate_tilt_y"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5414",
+              "modes": {
+                "build_plate_tilt_y": "Expert"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5308"
+        },
+        {
+          "title": "Belt printer",
+          "options": [
+            "belt_printer",
+            "belt_printer_infinite_y",
+            "belt_slice_rotation_angle",
+            "belt_slice_rotation",
+            "belt_support_floor_offset"
+          ],
+          "lines": [
+            {
+              "options": [
+                "belt_printer"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5344",
+              "modes": {
+                "belt_printer": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "belt_printer_infinite_y"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5345",
+              "modes": {
+                "belt_printer_infinite_y": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "belt_slice_rotation_angle"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5352",
+              "modes": {
+                "belt_slice_rotation_angle": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "belt_slice_rotation"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5353",
+              "modes": {
+                "belt_slice_rotation": "Develop"
+              }
+            },
+            {
+              "options": [
+                "belt_support_floor_offset"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5354",
+              "modes": {
+                "belt_support_floor_offset": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5343"
+        },
+        {
+          "title": "Machine frame transforms",
+          "options": [
+            "gcode_remap_x",
+            "gcode_remap_y",
+            "gcode_remap_z",
+            "belt_frame_tilt_decouple",
+            "belt_frame_tilt_angle"
+          ],
+          "lines": [
+            {
+              "options": [
+                "gcode_remap_x"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5362",
+              "modes": {
+                "gcode_remap_x": "Develop"
+              }
+            },
+            {
+              "options": [
+                "gcode_remap_y"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5363",
+              "modes": {
+                "gcode_remap_y": "Develop"
+              }
+            },
+            {
+              "options": [
+                "gcode_remap_z"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5364",
+              "modes": {
+                "gcode_remap_z": "Develop"
+              }
+            },
+            {
+              "options": [
+                "belt_frame_tilt_decouple"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5365",
+              "modes": {
+                "belt_frame_tilt_decouple": "Expert"
+              }
+            },
+            {
+              "options": [
+                "belt_frame_tilt_angle"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5366",
+              "modes": {
+                "belt_frame_tilt_angle": "Expert"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5361"
+        },
+        {
+          "title": "Plugin Configuration",
+          "options": [
+            "printer_plugin_config_overrides"
+          ],
+          "lines": [
+            {
+              "options": [
+                "printer_plugin_config_overrides"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5417",
+              "modes": {
+                "printer_plugin_config_overrides": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5416"
+        },
+        {
+          "title": "Cooling Fan",
+          "options": [
+            "fan_speedup_time",
+            "fan_speedup_overhangs",
+            "fan_kickstart",
+            "part_cooling_fan_min_pwm"
+          ],
+          "lines": [
+            {
+              "options": [
+                "fan_speedup_time",
+                "fan_speedup_overhangs"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5424",
+              "label": "Fan speed-up time",
+              "modes": {
+                "fan_speedup_time": "Advanced",
+                "fan_speedup_overhangs": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "fan_kickstart"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5425",
+              "modes": {
+                "fan_kickstart": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "part_cooling_fan_min_pwm"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5427",
+              "modes": {
+                "part_cooling_fan_min_pwm": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5419"
+        },
+        {
+          "title": "Extruder Clearance",
+          "options": [
+            "extruder_clearance_radius",
+            "extruder_clearance_dist_to_rod",
+            "extruder_clearance_height_to_rod",
+            "extruder_clearance_height_to_lid"
+          ],
+          "lines": [
+            {
+              "options": [
+                "extruder_clearance_radius"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5430",
+              "modes": {
+                "extruder_clearance_radius": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "extruder_clearance_dist_to_rod"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5431",
+              "modes": {
+                "extruder_clearance_dist_to_rod": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "extruder_clearance_height_to_rod"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5432",
+              "modes": {
+                "extruder_clearance_height_to_rod": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "extruder_clearance_height_to_lid"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5433",
+              "modes": {
+                "extruder_clearance_height_to_lid": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5429"
+        },
+        {
+          "title": "Adaptive bed mesh",
+          "options": [
+            "bed_mesh_min",
+            "bed_mesh_max",
+            "bed_mesh_probe_distance",
+            "adaptive_bed_mesh_margin"
+          ],
+          "lines": [
+            {
+              "options": [
+                "bed_mesh_min"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5436",
+              "modes": {
+                "bed_mesh_min": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "bed_mesh_max"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5437",
+              "modes": {
+                "bed_mesh_max": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "bed_mesh_probe_distance"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5438",
+              "modes": {
+                "bed_mesh_probe_distance": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "adaptive_bed_mesh_margin"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5439",
+              "modes": {
+                "adaptive_bed_mesh_margin": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5435"
+        },
+        {
+          "title": "Accessory",
+          "options": [
+            "nozzle_hrc",
+            "auxiliary_fan",
+            "fan_direction",
+            "support_chamber_temp_control",
+            "support_air_filtration",
+            "cooling_filter_enabled"
+          ],
+          "lines": [
+            {
+              "options": [
+                "nozzle_hrc"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5442",
+              "modes": {
+                "nozzle_hrc": "Develop"
+              }
+            },
+            {
+              "options": [
+                "auxiliary_fan"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5443",
+              "modes": {
+                "auxiliary_fan": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "fan_direction"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5444",
+              "modes": {
+                "fan_direction": "Develop"
+              }
+            },
+            {
+              "options": [
+                "support_chamber_temp_control"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5445",
+              "modes": {
+                "support_chamber_temp_control": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "support_air_filtration"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5446",
+              "modes": {
+                "support_air_filtration": "Develop"
+              }
+            },
+            {
+              "options": [
+                "cooling_filter_enabled"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5447",
+              "modes": {
+                "cooling_filter_enabled": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5441"
+        }
+      ],
+      "source": "src/slic3r/GUI/Tab.cpp:5290"
     },
     {
-     "title": "Advanced",
-     "icon": "param_advanced",
-     "options": [
-      "printer_structure",
-      "gcode_flavor",
-      "gcode_skip_config_block",
-      "pellet_modded_printer",
-      "bbl_use_printhost",
-      "printer_agent",
-      "use_3mf",
-      "scan_first_layer",
-      "enable_power_loss_recovery",
-      "disable_m73"
-     ]
+      "title": "Non-planar",
+      "icon": "custom-gcode_motion",
+      "groups": [
+        {
+          "title": "Print head",
+          "options": [
+            "nonplanar_head",
+            "nonplanar_segment_rate"
+          ],
+          "lines": [
+            {
+              "options": [
+                "nonplanar_head"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5469",
+              "label": "Print head",
+              "modes": {
+                "nonplanar_head": "Advanced"
+              }
+            },
+            {
+              "options": [],
+              "source": "src/slic3r/GUI/Tab.cpp:5489",
+              "label": "",
+              "manual": true,
+              "widget": "desktop custom widget",
+              "modes": {}
+            },
+            {
+              "options": [
+                "nonplanar_segment_rate"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5490",
+              "modes": {
+                "nonplanar_segment_rate": "Expert"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5454"
+        },
+        {
+          "title": "Rotary axes",
+          "options": [
+            "nonplanar_kinematics",
+            "nonplanar_max_tilt",
+            "rotary_axis_limits",
+            "rotary_axis_continuous",
+            "rotary_max_speed",
+            "rotary_pivot",
+            "rotary_tool_mount",
+            "rotary_linear_moves_table",
+            "rotary_axis_home",
+            "rotary_axis_reversed",
+            "rotary_tool_length",
+            "rotary_table_height",
+            "rotary_firmware_rtcp",
+            "rotary_inverse_time_feed"
+          ],
+          "lines": [
+            {
+              "options": [
+                "nonplanar_kinematics"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5493",
+              "modes": {
+                "nonplanar_kinematics": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "nonplanar_max_tilt"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5494",
+              "modes": {
+                "nonplanar_max_tilt": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "rotary_axis_limits"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5507",
+              "index_labels": [
+                "First min",
+                "First max",
+                "Second min",
+                "Second max"
+              ],
+              "modes": {
+                "rotary_axis_limits": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "rotary_axis_continuous"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5508",
+              "index_labels": [
+                "First",
+                "Second"
+              ],
+              "modes": {
+                "rotary_axis_continuous": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "rotary_max_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5509",
+              "index_labels": [
+                "First",
+                "Second"
+              ],
+              "modes": {
+                "rotary_max_speed": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "rotary_pivot"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5510",
+              "index_labels": [
+                "X",
+                "Y",
+                "Z"
+              ],
+              "modes": {
+                "rotary_pivot": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "rotary_tool_mount"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5511",
+              "index_labels": [
+                "X",
+                "Y",
+                "Z"
+              ],
+              "modes": {
+                "rotary_tool_mount": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "rotary_linear_moves_table"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5512",
+              "index_labels": [
+                "X",
+                "Y",
+                "Z"
+              ],
+              "modes": {
+                "rotary_linear_moves_table": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "rotary_axis_home"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5513",
+              "index_labels": [
+                "First",
+                "Second"
+              ],
+              "modes": {
+                "rotary_axis_home": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "rotary_axis_reversed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5514",
+              "index_labels": [
+                "First",
+                "Second"
+              ],
+              "modes": {
+                "rotary_axis_reversed": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "rotary_tool_length"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5515",
+              "modes": {
+                "rotary_tool_length": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "rotary_table_height"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5516",
+              "modes": {
+                "rotary_table_height": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "rotary_firmware_rtcp"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5517",
+              "modes": {
+                "rotary_firmware_rtcp": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "rotary_inverse_time_feed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5518",
+              "modes": {
+                "rotary_inverse_time_feed": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5492"
+        }
+      ],
+      "source": "src/slic3r/GUI/Tab.cpp:5453"
     },
     {
-     "title": "Belt printer",
-     "icon": "param_advanced",
-     "options": [
-      "belt_printer",
-      "belt_printer_infinite_y",
-      "belt_slice_rotation_angle",
-      "belt_slice_rotation",
-      "belt_support_floor_offset"
-     ]
+      "title": "Motion ability",
+      "icon": "custom-gcode_motion",
+      "groups": [
+        {
+          "title": "",
+          "options": [
+            "full_power_legend",
+            "silent_legend"
+          ],
+          "lines": [
+            {
+              "options": [
+                "full_power_legend",
+                "silent_legend"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5791",
+              "label": "",
+              "modes": {
+                "full_power_legend": "Develop",
+                "silent_legend": "Develop"
+              },
+              "manual": true
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5772",
+          "condition": "silent_mode == true"
+        },
+        {
+          "title": "Advanced",
+          "options": [
+            "emit_machine_limits_to_gcode"
+          ],
+          "lines": [
+            {
+              "options": [
+                "emit_machine_limits_to_gcode"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5794",
+              "modes": {
+                "emit_machine_limits_to_gcode": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5793"
+        },
+        {
+          "title": "Resonance Compensation",
+          "options": [
+            "resonance_avoidance",
+            "min_resonance_avoidance_speed",
+            "max_resonance_avoidance_speed",
+            "input_shaping_emit",
+            "input_shaping_type",
+            "input_shaping_freq_x",
+            "input_shaping_freq_y",
+            "input_shaping_damp_x",
+            "input_shaping_damp_y"
+          ],
+          "lines": [
+            {
+              "options": [
+                "resonance_avoidance"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5798",
+              "modes": {
+                "resonance_avoidance": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "min_resonance_avoidance_speed",
+                "max_resonance_avoidance_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5805",
+              "label": "Resonance Avoidance Speed",
+              "modes": {
+                "min_resonance_avoidance_speed": "Advanced",
+                "max_resonance_avoidance_speed": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "input_shaping_emit"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5807",
+              "modes": {
+                "input_shaping_emit": "Expert"
+              }
+            },
+            {
+              "options": [
+                "input_shaping_type"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5808",
+              "modes": {
+                "input_shaping_type": "Expert"
+              }
+            },
+            {
+              "options": [
+                "input_shaping_freq_x",
+                "input_shaping_freq_y"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5814",
+              "label": "Frequency",
+              "modes": {
+                "input_shaping_freq_x": "Expert",
+                "input_shaping_freq_y": "Expert"
+              }
+            },
+            {
+              "options": [
+                "input_shaping_damp_x",
+                "input_shaping_damp_y"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5821",
+              "label": "Damping",
+              "modes": {
+                "input_shaping_damp_x": "Expert",
+                "input_shaping_damp_y": "Expert"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5797"
+        },
+        {
+          "title": "Speed limitation",
+          "options": [
+            "machine_max_speed_x",
+            "machine_max_speed_y",
+            "machine_max_speed_z",
+            "machine_max_speed_e"
+          ],
+          "lines": [
+            {
+              "options": [
+                "machine_max_speed_x"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5832",
+              "indexed_columns": "normal, silent when silent_mode == true",
+              "modes": {
+                "machine_max_speed_x": "Simple"
+              }
+            },
+            {
+              "options": [
+                "machine_max_speed_y"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5832",
+              "indexed_columns": "normal, silent when silent_mode == true",
+              "modes": {
+                "machine_max_speed_y": "Simple"
+              }
+            },
+            {
+              "options": [
+                "machine_max_speed_z"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5832",
+              "indexed_columns": "normal, silent when silent_mode == true",
+              "modes": {
+                "machine_max_speed_z": "Simple"
+              }
+            },
+            {
+              "options": [
+                "machine_max_speed_e"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5832",
+              "indexed_columns": "normal, silent when silent_mode == true",
+              "modes": {
+                "machine_max_speed_e": "Simple"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5830"
+        },
+        {
+          "title": "Acceleration limitation",
+          "options": [
+            "machine_max_acceleration_x",
+            "machine_max_acceleration_y",
+            "machine_max_acceleration_z",
+            "machine_max_acceleration_e",
+            "machine_max_acceleration_extruding",
+            "machine_max_acceleration_retracting",
+            "machine_max_acceleration_travel"
+          ],
+          "lines": [
+            {
+              "options": [
+                "machine_max_acceleration_x"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5838",
+              "indexed_columns": "normal, silent when silent_mode == true",
+              "modes": {
+                "machine_max_acceleration_x": "Simple"
+              }
+            },
+            {
+              "options": [
+                "machine_max_acceleration_y"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5838",
+              "indexed_columns": "normal, silent when silent_mode == true",
+              "modes": {
+                "machine_max_acceleration_y": "Simple"
+              }
+            },
+            {
+              "options": [
+                "machine_max_acceleration_z"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5838",
+              "indexed_columns": "normal, silent when silent_mode == true",
+              "modes": {
+                "machine_max_acceleration_z": "Simple"
+              }
+            },
+            {
+              "options": [
+                "machine_max_acceleration_e"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5838",
+              "indexed_columns": "normal, silent when silent_mode == true",
+              "modes": {
+                "machine_max_acceleration_e": "Simple"
+              }
+            },
+            {
+              "options": [
+                "machine_max_acceleration_extruding"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5840",
+              "indexed_columns": "normal, silent when silent_mode == true",
+              "modes": {
+                "machine_max_acceleration_extruding": "Simple"
+              }
+            },
+            {
+              "options": [
+                "machine_max_acceleration_retracting"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5841",
+              "indexed_columns": "normal, silent when silent_mode == true",
+              "modes": {
+                "machine_max_acceleration_retracting": "Simple"
+              }
+            },
+            {
+              "options": [
+                "machine_max_acceleration_travel"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5842",
+              "indexed_columns": "normal, silent when silent_mode == true",
+              "modes": {
+                "machine_max_acceleration_travel": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5836"
+        },
+        {
+          "title": "Jerk limitation",
+          "options": [
+            "machine_max_junction_deviation",
+            "machine_max_jerk_x",
+            "machine_max_jerk_y",
+            "machine_max_jerk_z",
+            "machine_max_jerk_e"
+          ],
+          "lines": [
+            {
+              "options": [
+                "machine_max_junction_deviation"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5846",
+              "indexed_columns": "normal, silent when silent_mode == true",
+              "modes": {
+                "machine_max_junction_deviation": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "machine_max_jerk_x"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5848",
+              "indexed_columns": "normal, silent when silent_mode == true",
+              "modes": {
+                "machine_max_jerk_x": "Simple"
+              }
+            },
+            {
+              "options": [
+                "machine_max_jerk_y"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5848",
+              "indexed_columns": "normal, silent when silent_mode == true",
+              "modes": {
+                "machine_max_jerk_y": "Simple"
+              }
+            },
+            {
+              "options": [
+                "machine_max_jerk_z"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5848",
+              "indexed_columns": "normal, silent when silent_mode == true",
+              "modes": {
+                "machine_max_jerk_z": "Simple"
+              }
+            },
+            {
+              "options": [
+                "machine_max_jerk_e"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5848",
+              "indexed_columns": "normal, silent when silent_mode == true",
+              "modes": {
+                "machine_max_jerk_e": "Simple"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5844"
+        }
+      ],
+      "source": "src/slic3r/GUI/Tab.cpp:5768",
+      "condition": "gcode_flavor == \"marlin\" || gcode_flavor == \"marlin2\" || gcode_flavor == \"klipper\" || gcode_flavor == \"reprapfirmware\" || gcode_flavor == \"repetier\"",
+      "manual": true
     },
     {
-     "title": "Machine frame transforms",
-     "icon": "param_advanced",
-     "options": [
-      "gcode_remap_x",
-      "gcode_remap_y",
-      "gcode_remap_z",
-      "belt_frame_tilt_decouple",
-      "belt_frame_tilt_angle",
-      "thumbnails",
-      "use_relative_e_distances",
-      "use_firmware_retraction",
-      "time_cost",
-      "build_plate_tilt_x",
-      "build_plate_tilt_y"
-     ]
+      "title": "Extruder",
+      "icon": "custom-gcode_extruder",
+      "groups": [
+        {
+          "title": "Basic information",
+          "options": [
+            "nozzle_diameter",
+            "nozzle_type",
+            "nozzle_volume",
+            "extruder_printable_height",
+            "extruder_printable_area"
+          ],
+          "lines": [
+            {
+              "options": [
+                "nozzle_diameter"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6175",
+              "modes": {
+                "nozzle_diameter": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "nozzle_type"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6176",
+              "modes": {
+                "nozzle_type": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "nozzle_volume"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6179",
+              "modes": {
+                "nozzle_volume": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "extruder_printable_height"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6180",
+              "modes": {
+                "extruder_printable_height": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "extruder_printable_area"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6183",
+              "modes": {
+                "extruder_printable_area": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:6174"
+        },
+        {
+          "title": "Layer height limits",
+          "options": [
+            "min_layer_height",
+            "max_layer_height"
+          ],
+          "lines": [
+            {
+              "options": [
+                "min_layer_height"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6227",
+              "modes": {
+                "min_layer_height": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "max_layer_height"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6228",
+              "modes": {
+                "max_layer_height": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:6226"
+        },
+        {
+          "title": "Position",
+          "options": [
+            "extruder_offset"
+          ],
+          "lines": [
+            {
+              "options": [
+                "extruder_offset"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6231",
+              "modes": {
+                "extruder_offset": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:6230"
+        },
+        {
+          "title": "Retraction",
+          "options": [
+            "retraction_length",
+            "retract_restart_extra",
+            "retraction_speed",
+            "deretraction_speed",
+            "retraction_minimum_travel",
+            "retract_when_changing_layer",
+            "wipe",
+            "wipe_distance",
+            "retract_before_wipe",
+            "retract_after_wipe"
+          ],
+          "lines": [
+            {
+              "options": [
+                "retraction_length"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6238",
+              "modes": {
+                "retraction_length": "Simple"
+              }
+            },
+            {
+              "options": [
+                "retract_restart_extra"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6238",
+              "modes": {
+                "retract_restart_extra": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "retraction_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6238",
+              "modes": {
+                "retraction_speed": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "deretraction_speed"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6238",
+              "modes": {
+                "deretraction_speed": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "retraction_minimum_travel"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6238",
+              "modes": {
+                "retraction_minimum_travel": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "retract_when_changing_layer"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6238",
+              "modes": {
+                "retract_when_changing_layer": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "wipe"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6238",
+              "modes": {
+                "wipe": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "wipe_distance"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6238",
+              "modes": {
+                "wipe_distance": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "retract_before_wipe"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6238",
+              "modes": {
+                "retract_before_wipe": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "retract_after_wipe"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6238",
+              "modes": {
+                "retract_after_wipe": "Expert"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:6237"
+        },
+        {
+          "title": "Z-Hop",
+          "options": [
+            "retract_lift_enforce",
+            "z_hop_types",
+            "z_hop",
+            "travel_slope",
+            "retract_lift_above",
+            "retract_lift_below"
+          ],
+          "lines": [
+            {
+              "options": [
+                "retract_lift_enforce"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6242",
+              "modes": {
+                "retract_lift_enforce": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "z_hop_types"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6242",
+              "modes": {
+                "z_hop_types": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "z_hop"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6242",
+              "modes": {
+                "z_hop": "Simple"
+              }
+            },
+            {
+              "options": [
+                "travel_slope"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6242",
+              "modes": {
+                "travel_slope": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "retract_lift_above"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6242",
+              "modes": {
+                "retract_lift_above": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "retract_lift_below"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6242",
+              "modes": {
+                "retract_lift_below": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:6241"
+        },
+        {
+          "title": "Retraction when switching material",
+          "options": [
+            "retract_length_toolchange",
+            "retract_restart_extra_toolchange",
+            "long_retractions_when_cut",
+            "retraction_distances_when_cut"
+          ],
+          "lines": [
+            {
+              "options": [
+                "retract_length_toolchange"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6246",
+              "modes": {
+                "retract_length_toolchange": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "retract_restart_extra_toolchange"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6247",
+              "modes": {
+                "retract_restart_extra_toolchange": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "long_retractions_when_cut"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6249",
+              "modes": {
+                "long_retractions_when_cut": "Develop"
+              }
+            },
+            {
+              "options": [
+                "retraction_distances_when_cut"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6250",
+              "modes": {
+                "retraction_distances_when_cut": "Develop"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:6245"
+        }
+      ],
+      "source": "src/slic3r/GUI/Tab.cpp:6171",
+      "condition": "extruders_count > 0"
     },
     {
-     "title": "Plugin Configuration",
-     "icon": "param_gcode",
-     "options": [
-      "printer_plugin_config_overrides"
-     ]
+      "title": "Multimaterial",
+      "icon": "custom-gcode_multi_material",
+      "groups": [
+        {
+          "title": "Single extruder multi-material setup",
+          "options": [
+            "single_extruder_multi_material",
+            "extruders_count",
+            "manual_filament_change",
+            "bed_temperature_formula"
+          ],
+          "lines": [
+            {
+              "options": [
+                "single_extruder_multi_material"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5916",
+              "modes": {
+                "single_extruder_multi_material": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "extruders_count"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5925",
+              "modes": {
+                "extruders_count": "Advanced"
+              },
+              "manual": true
+            },
+            {
+              "options": [
+                "manual_filament_change"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6004",
+              "modes": {
+                "manual_filament_change": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "bed_temperature_formula"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6005",
+              "modes": {
+                "bed_temperature_formula": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5915"
+        },
+        {
+          "title": "Wipe tower",
+          "options": [
+            "wipe_tower_type",
+            "purge_in_prime_tower",
+            "enable_filament_ramming",
+            "tool_change_on_wipe_tower",
+            "wait_for_temp_on_wipe_tower"
+          ],
+          "lines": [
+            {
+              "options": [
+                "wipe_tower_type"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6008",
+              "modes": {
+                "wipe_tower_type": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "purge_in_prime_tower"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6009",
+              "modes": {
+                "purge_in_prime_tower": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "enable_filament_ramming"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6010",
+              "modes": {
+                "enable_filament_ramming": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "tool_change_on_wipe_tower"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6011",
+              "modes": {
+                "tool_change_on_wipe_tower": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "wait_for_temp_on_wipe_tower"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6012",
+              "modes": {
+                "wait_for_temp_on_wipe_tower": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:6007"
+        },
+        {
+          "title": "Belt purge tower",
+          "options": [
+            "enable_belt_purge_tower"
+          ],
+          "lines": [
+            {
+              "options": [
+                "enable_belt_purge_tower"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6018",
+              "modes": {
+                "enable_belt_purge_tower": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:6017"
+        },
+        {
+          "title": "Single extruder multi-material parameters",
+          "options": [
+            "cooling_tube_retraction",
+            "cooling_tube_length",
+            "parking_pos_retraction",
+            "extra_loading_move",
+            "high_current_on_filament_swap"
+          ],
+          "lines": [
+            {
+              "options": [
+                "cooling_tube_retraction"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6022",
+              "modes": {
+                "cooling_tube_retraction": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "cooling_tube_length"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6023",
+              "modes": {
+                "cooling_tube_length": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "parking_pos_retraction"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6024",
+              "modes": {
+                "parking_pos_retraction": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "extra_loading_move"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6025",
+              "modes": {
+                "extra_loading_move": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "high_current_on_filament_swap"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6026",
+              "modes": {
+                "high_current_on_filament_swap": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:6021"
+        },
+        {
+          "title": "Advanced",
+          "options": [
+            "machine_load_filament_time",
+            "machine_unload_filament_time",
+            "machine_tool_change_time"
+          ],
+          "lines": [
+            {
+              "options": [
+                "machine_load_filament_time"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6029",
+              "modes": {
+                "machine_load_filament_time": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "machine_unload_filament_time"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6030",
+              "modes": {
+                "machine_unload_filament_time": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "machine_tool_change_time"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6031",
+              "modes": {
+                "machine_tool_change_time": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:6028"
+        },
+        {
+          "title": "IDEX/IQEX Configuration",
+          "options": [
+            "is_imex",
+            "imex_firmware_managed_zones",
+            "imex_gantry_count",
+            "imex_tools_per_gantry",
+            "imex_tool_layout",
+            "imex_nozzle_clearance_x",
+            "imex_nozzle_clearance_y",
+            "imex_carriage_margin",
+            "imex_pre_slice_warnings",
+            "imex_viz_theme"
+          ],
+          "lines": [
+            {
+              "options": [
+                "is_imex"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6035",
+              "modes": {
+                "is_imex": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "imex_firmware_managed_zones"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6036",
+              "modes": {
+                "imex_firmware_managed_zones": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "imex_gantry_count"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6037",
+              "modes": {
+                "imex_gantry_count": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "imex_tools_per_gantry"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6038",
+              "modes": {
+                "imex_tools_per_gantry": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "imex_tool_layout"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6039",
+              "modes": {
+                "imex_tool_layout": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "imex_nozzle_clearance_x"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6040",
+              "modes": {
+                "imex_nozzle_clearance_x": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "imex_nozzle_clearance_y"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6041",
+              "modes": {
+                "imex_nozzle_clearance_y": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "imex_carriage_margin"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6042",
+              "modes": {
+                "imex_carriage_margin": "Advanced"
+              }
+            },
+            {
+              "options": [
+                "imex_pre_slice_warnings"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6075",
+              "label": "Pre-slice warnings",
+              "modes": {
+                "imex_pre_slice_warnings": "Advanced"
+              },
+              "manual": true
+            },
+            {
+              "options": [
+                "imex_viz_theme"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:6077",
+              "modes": {
+                "imex_viz_theme": "Advanced"
+              }
+            },
+            {
+              "options": [],
+              "source": "src/slic3r/GUI/Tab.cpp:6160",
+              "label": "Modes",
+              "manual": true,
+              "widget": "desktop custom widget",
+              "modes": {}
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:6034"
+        }
+      ],
+      "source": "src/slic3r/GUI/Tab.cpp:5914"
     },
     {
-     "title": "Cooling Fan",
-     "icon": "param_cooling_fan",
-     "options": [
-      "fan_speedup_time",
-      "fan_speedup_overhangs",
-      "fan_kickstart",
-      "part_cooling_fan_min_pwm"
-     ]
+      "title": "Machine G-code",
+      "icon": "custom-gcode_gcode",
+      "groups": [
+        {
+          "title": "File header G-code",
+          "options": [
+            "file_start_gcode"
+          ],
+          "lines": [
+            {
+              "options": [
+                "file_start_gcode"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5530",
+              "modes": {
+                "file_start_gcode": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5521"
+        },
+        {
+          "title": "Machine start G-code",
+          "options": [
+            "machine_start_gcode"
+          ],
+          "lines": [
+            {
+              "options": [
+                "machine_start_gcode"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5541",
+              "modes": {
+                "machine_start_gcode": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5532"
+        },
+        {
+          "title": "Machine end G-code",
+          "options": [
+            "machine_end_gcode"
+          ],
+          "lines": [
+            {
+              "options": [
+                "machine_end_gcode"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5552",
+              "modes": {
+                "machine_end_gcode": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5543"
+        },
+        {
+          "title": "Printing by object G-code",
+          "options": [
+            "printing_by_object_gcode"
+          ],
+          "lines": [
+            {
+              "options": [
+                "printing_by_object_gcode"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5563",
+              "modes": {
+                "printing_by_object_gcode": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5554"
+        },
+        {
+          "title": "Before layer change G-code",
+          "options": [
+            "before_layer_change_gcode"
+          ],
+          "lines": [
+            {
+              "options": [
+                "before_layer_change_gcode"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5575",
+              "modes": {
+                "before_layer_change_gcode": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5566"
+        },
+        {
+          "title": "Layer change G-code",
+          "options": [
+            "layer_change_gcode"
+          ],
+          "lines": [
+            {
+              "options": [
+                "layer_change_gcode"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5586",
+              "modes": {
+                "layer_change_gcode": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5577"
+        },
+        {
+          "title": "Timelapse G-code",
+          "options": [
+            "time_lapse_gcode"
+          ],
+          "lines": [
+            {
+              "options": [
+                "time_lapse_gcode"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5597",
+              "modes": {
+                "time_lapse_gcode": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5588"
+        },
+        {
+          "title": "Clumping Detection G-code",
+          "options": [
+            "wrapping_detection_gcode"
+          ],
+          "lines": [
+            {
+              "options": [
+                "wrapping_detection_gcode"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5608",
+              "modes": {
+                "wrapping_detection_gcode": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5599"
+        },
+        {
+          "title": "Change filament G-code",
+          "options": [
+            "change_filament_gcode"
+          ],
+          "lines": [
+            {
+              "options": [
+                "change_filament_gcode"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5619",
+              "modes": {
+                "change_filament_gcode": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5610"
+        },
+        {
+          "title": "Change extrusion role G-code",
+          "options": [
+            "change_extrusion_role_gcode"
+          ],
+          "lines": [
+            {
+              "options": [
+                "change_extrusion_role_gcode"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5630",
+              "modes": {
+                "change_extrusion_role_gcode": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5621"
+        },
+        {
+          "title": "Pause G-code",
+          "options": [
+            "machine_pause_gcode"
+          ],
+          "lines": [
+            {
+              "options": [
+                "machine_pause_gcode"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5640",
+              "modes": {
+                "machine_pause_gcode": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5632"
+        },
+        {
+          "title": "Template Custom G-code",
+          "options": [
+            "template_custom_gcode"
+          ],
+          "lines": [
+            {
+              "options": [
+                "template_custom_gcode"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5650",
+              "modes": {
+                "template_custom_gcode": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5642"
+        }
+      ],
+      "source": "src/slic3r/GUI/Tab.cpp:5520"
     },
     {
-     "title": "Extruder Clearance",
-     "icon": "param_extruder_clearance",
-     "options": [
-      "extruder_clearance_radius",
-      "extruder_clearance_dist_to_rod",
-      "extruder_clearance_height_to_rod",
-      "extruder_clearance_height_to_lid"
-     ]
-    },
-    {
-     "title": "Adaptive bed mesh",
-     "icon": "param_adaptive_mesh",
-     "options": [
-      "bed_mesh_min",
-      "bed_mesh_max",
-      "bed_mesh_probe_distance",
-      "adaptive_bed_mesh_margin"
-     ]
-    },
-    {
-     "title": "Accessory",
-     "icon": "param_accessory",
-     "options": [
-      "nozzle_hrc",
-      "auxiliary_fan",
-      "fan_direction",
-      "support_chamber_temp_control",
-      "support_air_filtration",
-      "cooling_filter_enabled"
-     ]
+      "title": "Notes",
+      "icon": "custom-gcode_note",
+      "groups": [
+        {
+          "title": "Notes",
+          "options": [
+            "printer_notes"
+          ],
+          "lines": [
+            {
+              "options": [
+                "printer_notes"
+              ],
+              "source": "src/slic3r/GUI/Tab.cpp:5657",
+              "modes": {
+                "printer_notes": "Advanced"
+              }
+            }
+          ],
+          "source": "src/slic3r/GUI/Tab.cpp:5653"
+        }
+      ],
+      "source": "src/slic3r/GUI/Tab.cpp:5652"
     }
-   ]
+  ],
+  "option_modes": {
+    "printable_area": "Advanced",
+    "parallel_printheads_count": "Advanced",
+    "bed_exclude_area": "Advanced",
+    "printable_height": "Simple",
+    "support_multi_bed_types": "Simple",
+    "best_object_pos": "Advanced",
+    "z_offset": "Advanced",
+    "preferred_orientation": "Advanced",
+    "printer_structure": "Develop",
+    "gcode_flavor": "Advanced",
+    "gcode_skip_config_block": "Advanced",
+    "pellet_modded_printer": "Simple",
+    "bbl_use_printhost": "Advanced",
+    "printer_agent": "Advanced",
+    "use_3mf": "Advanced",
+    "scan_first_layer": "Advanced",
+    "enable_power_loss_recovery": "Advanced",
+    "disable_m73": "Advanced",
+    "thumbnails": "Advanced",
+    "use_relative_e_distances": "Advanced",
+    "use_firmware_retraction": "Advanced",
+    "time_cost": "Advanced",
+    "build_plate_tilt_x": "Expert",
+    "build_plate_tilt_y": "Expert",
+    "belt_printer": "Advanced",
+    "belt_printer_infinite_y": "Advanced",
+    "belt_slice_rotation_angle": "Advanced",
+    "belt_slice_rotation": "Develop",
+    "belt_support_floor_offset": "Advanced",
+    "gcode_remap_x": "Develop",
+    "gcode_remap_y": "Develop",
+    "gcode_remap_z": "Develop",
+    "belt_frame_tilt_decouple": "Expert",
+    "belt_frame_tilt_angle": "Expert",
+    "printer_plugin_config_overrides": "Advanced",
+    "fan_speedup_time": "Advanced",
+    "fan_speedup_overhangs": "Advanced",
+    "fan_kickstart": "Advanced",
+    "part_cooling_fan_min_pwm": "Advanced",
+    "extruder_clearance_radius": "Advanced",
+    "extruder_clearance_dist_to_rod": "Advanced",
+    "extruder_clearance_height_to_rod": "Advanced",
+    "extruder_clearance_height_to_lid": "Advanced",
+    "bed_mesh_min": "Advanced",
+    "bed_mesh_max": "Advanced",
+    "bed_mesh_probe_distance": "Advanced",
+    "adaptive_bed_mesh_margin": "Advanced",
+    "nozzle_hrc": "Develop",
+    "auxiliary_fan": "Advanced",
+    "fan_direction": "Develop",
+    "support_chamber_temp_control": "Advanced",
+    "support_air_filtration": "Develop",
+    "cooling_filter_enabled": "Advanced",
+    "nonplanar_head": "Advanced",
+    "nonplanar_segment_rate": "Expert",
+    "nonplanar_kinematics": "Advanced",
+    "nonplanar_max_tilt": "Advanced",
+    "rotary_axis_limits": "Advanced",
+    "rotary_axis_continuous": "Advanced",
+    "rotary_max_speed": "Advanced",
+    "rotary_pivot": "Advanced",
+    "rotary_tool_mount": "Advanced",
+    "rotary_linear_moves_table": "Advanced",
+    "rotary_axis_home": "Advanced",
+    "rotary_axis_reversed": "Advanced",
+    "rotary_tool_length": "Advanced",
+    "rotary_table_height": "Advanced",
+    "rotary_firmware_rtcp": "Advanced",
+    "rotary_inverse_time_feed": "Advanced",
+    "full_power_legend": "Develop",
+    "silent_legend": "Develop",
+    "emit_machine_limits_to_gcode": "Advanced",
+    "resonance_avoidance": "Advanced",
+    "min_resonance_avoidance_speed": "Advanced",
+    "max_resonance_avoidance_speed": "Advanced",
+    "input_shaping_emit": "Expert",
+    "input_shaping_type": "Expert",
+    "input_shaping_freq_x": "Expert",
+    "input_shaping_freq_y": "Expert",
+    "input_shaping_damp_x": "Expert",
+    "input_shaping_damp_y": "Expert",
+    "machine_max_speed_x": "Simple",
+    "machine_max_speed_y": "Simple",
+    "machine_max_speed_z": "Simple",
+    "machine_max_speed_e": "Simple",
+    "machine_max_acceleration_x": "Simple",
+    "machine_max_acceleration_y": "Simple",
+    "machine_max_acceleration_z": "Simple",
+    "machine_max_acceleration_e": "Simple",
+    "machine_max_acceleration_extruding": "Simple",
+    "machine_max_acceleration_retracting": "Simple",
+    "machine_max_acceleration_travel": "Advanced",
+    "machine_max_junction_deviation": "Advanced",
+    "machine_max_jerk_x": "Simple",
+    "machine_max_jerk_y": "Simple",
+    "machine_max_jerk_z": "Simple",
+    "machine_max_jerk_e": "Simple",
+    "nozzle_diameter": "Advanced",
+    "nozzle_type": "Advanced",
+    "nozzle_volume": "Advanced",
+    "extruder_printable_height": "Advanced",
+    "extruder_printable_area": "Advanced",
+    "min_layer_height": "Advanced",
+    "max_layer_height": "Advanced",
+    "extruder_offset": "Advanced",
+    "retraction_length": "Simple",
+    "retract_restart_extra": "Advanced",
+    "retraction_speed": "Advanced",
+    "deretraction_speed": "Advanced",
+    "retraction_minimum_travel": "Advanced",
+    "retract_when_changing_layer": "Advanced",
+    "wipe": "Advanced",
+    "wipe_distance": "Advanced",
+    "retract_before_wipe": "Advanced",
+    "retract_after_wipe": "Expert",
+    "retract_lift_enforce": "Advanced",
+    "z_hop_types": "Advanced",
+    "z_hop": "Simple",
+    "travel_slope": "Advanced",
+    "retract_lift_above": "Advanced",
+    "retract_lift_below": "Advanced",
+    "retract_length_toolchange": "Advanced",
+    "retract_restart_extra_toolchange": "Advanced",
+    "long_retractions_when_cut": "Develop",
+    "retraction_distances_when_cut": "Develop",
+    "single_extruder_multi_material": "Advanced",
+    "extruders_count": "Advanced",
+    "manual_filament_change": "Advanced",
+    "bed_temperature_formula": "Advanced",
+    "wipe_tower_type": "Advanced",
+    "purge_in_prime_tower": "Advanced",
+    "enable_filament_ramming": "Advanced",
+    "tool_change_on_wipe_tower": "Advanced",
+    "wait_for_temp_on_wipe_tower": "Advanced",
+    "enable_belt_purge_tower": "Advanced",
+    "cooling_tube_retraction": "Advanced",
+    "cooling_tube_length": "Advanced",
+    "parking_pos_retraction": "Advanced",
+    "extra_loading_move": "Advanced",
+    "high_current_on_filament_swap": "Advanced",
+    "machine_load_filament_time": "Advanced",
+    "machine_unload_filament_time": "Advanced",
+    "machine_tool_change_time": "Advanced",
+    "is_imex": "Advanced",
+    "imex_firmware_managed_zones": "Advanced",
+    "imex_gantry_count": "Advanced",
+    "imex_tools_per_gantry": "Advanced",
+    "imex_tool_layout": "Advanced",
+    "imex_nozzle_clearance_x": "Advanced",
+    "imex_nozzle_clearance_y": "Advanced",
+    "imex_carriage_margin": "Advanced",
+    "imex_pre_slice_warnings": "Advanced",
+    "imex_viz_theme": "Advanced",
+    "file_start_gcode": "Advanced",
+    "machine_start_gcode": "Advanced",
+    "machine_end_gcode": "Advanced",
+    "printing_by_object_gcode": "Advanced",
+    "before_layer_change_gcode": "Advanced",
+    "layer_change_gcode": "Advanced",
+    "time_lapse_gcode": "Advanced",
+    "wrapping_detection_gcode": "Advanced",
+    "change_filament_gcode": "Advanced",
+    "change_extrusion_role_gcode": "Advanced",
+    "machine_pause_gcode": "Advanced",
+    "template_custom_gcode": "Advanced",
+    "printer_notes": "Advanced"
   },
-  {
-   "title": "Non-planar",
-   "icon": "custom-gcode_motion",
-   "groups": [
+  "removed_keys": [
+    "bbl_calib_mark_logo",
+    "bbl_use_printhost",
+    "extruder_ams_count",
+    "farthest_point_timelapse",
+    "filament_dev_ams_drying_ams_limitations",
+    "filament_dev_ams_drying_heat_distortion_temperature",
+    "filament_dev_ams_drying_temperature",
+    "filament_dev_ams_drying_time",
+    "filament_dev_chamber_drying_bed_temperature",
+    "filament_dev_chamber_drying_time",
+    "filament_dev_drying_cooling_temperature",
+    "filament_dev_drying_softening_temperature",
+    "flashforge_serial_number",
+    "host_type",
+    "print_host",
+    "print_host_webui",
+    "printer_agent",
+    "printhost_apikey",
+    "printhost_authorization_type",
+    "printhost_cafile",
+    "printhost_password",
+    "printhost_port",
+    "printhost_ssl_ignore_revoke",
+    "printhost_user",
+    "scan_first_layer",
+    "thumbnails",
+    "thumbnails_format",
+    "timelapse_type"
+  ],
+  "visibility": [
     {
-     "title": "Print head",
-     "icon": "param_extruder_clearance",
-     "options": [
-      "nonplanar_head",
-      "nonplanar_segment_rate"
-     ]
+      "options": [
+        "scan_first_layer"
+      ],
+      "condition": "(printer_vendor == \"BBL\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6643",
+      "condition_source": "is_BBL_printer"
     },
     {
-     "title": "Rotary axes",
-     "icon": "param_position",
-     "options": [
-      "nonplanar_kinematics",
-      "nonplanar_max_tilt",
-      "rotary_tool_length",
-      "rotary_table_height",
-      "rotary_firmware_rtcp",
-      "rotary_inverse_time_feed"
-     ]
+      "options": [
+        "bbl_calib_mark_logo"
+      ],
+      "condition": "(printer_vendor == \"BBL\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6643",
+      "condition_source": "is_BBL_printer"
+    },
+    {
+      "options": [
+        "bbl_use_printhost"
+      ],
+      "condition": "(printer_vendor == \"BBL\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6643",
+      "condition_source": "is_BBL_printer"
+    },
+    {
+      "options": [
+        "use_firmware_retraction"
+      ],
+      "condition": "!(printer_vendor == \"BBL\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6647",
+      "condition_source": "!is_BBL_printer"
+    },
+    {
+      "options": [
+        "use_relative_e_distances"
+      ],
+      "condition": "!(printer_vendor == \"BBL\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6647",
+      "condition_source": "!is_BBL_printer"
+    },
+    {
+      "options": [
+        "support_multi_bed_types"
+      ],
+      "condition": "!(printer_vendor == \"BBL\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6647",
+      "condition_source": "!is_BBL_printer"
+    },
+    {
+      "options": [
+        "pellet_modded_printer"
+      ],
+      "condition": "!(printer_vendor == \"BBL\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6647",
+      "condition_source": "!is_BBL_printer"
+    },
+    {
+      "options": [
+        "bed_mesh_max"
+      ],
+      "condition": "!(printer_vendor == \"BBL\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6647",
+      "condition_source": "!is_BBL_printer"
+    },
+    {
+      "options": [
+        "bed_mesh_min"
+      ],
+      "condition": "!(printer_vendor == \"BBL\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6647",
+      "condition_source": "!is_BBL_printer"
+    },
+    {
+      "options": [
+        "bed_mesh_probe_distance"
+      ],
+      "condition": "!(printer_vendor == \"BBL\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6647",
+      "condition_source": "!is_BBL_printer"
+    },
+    {
+      "options": [
+        "adaptive_bed_mesh_margin"
+      ],
+      "condition": "!(printer_vendor == \"BBL\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6647",
+      "condition_source": "!is_BBL_printer"
+    },
+    {
+      "options": [
+        "thumbnails"
+      ],
+      "condition": "!(printer_vendor == \"BBL\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6647",
+      "condition_source": "!is_BBL_printer"
+    },
+    {
+      "options": [
+        "enable_power_loss_recovery"
+      ],
+      "condition": "(printer_vendor == \"BBL\") || (gcode_flavor == \"marlin2\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6651",
+      "condition_source": "is_BBL_printer || gcf_is_marlin_firmware"
+    },
+    {
+      "options": [
+        "build_plate_tilt_x"
+      ],
+      "condition": "!(belt_printer == true)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6657",
+      "condition_source": "!is_belt"
+    },
+    {
+      "options": [
+        "build_plate_tilt_y"
+      ],
+      "condition": "!(belt_printer == true)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6658",
+      "condition_source": "!is_belt"
+    },
+    {
+      "options": [
+        "belt_printer_infinite_y"
+      ],
+      "condition": "(belt_printer == true)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6660",
+      "condition_source": "is_belt"
+    },
+    {
+      "options": [
+        "belt_slice_rotation_angle"
+      ],
+      "condition": "(belt_printer == true)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6662",
+      "condition_source": "is_belt"
+    },
+    {
+      "options": [
+        "belt_slice_rotation"
+      ],
+      "condition": "(belt_printer == true)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6663",
+      "condition_source": "is_belt"
+    },
+    {
+      "options": [
+        "gcode_remap_x"
+      ],
+      "condition": "(belt_printer == true)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6670",
+      "condition_source": "is_belt"
+    },
+    {
+      "options": [
+        "gcode_remap_y"
+      ],
+      "condition": "(belt_printer == true)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6670",
+      "condition_source": "is_belt"
+    },
+    {
+      "options": [
+        "gcode_remap_z"
+      ],
+      "condition": "(belt_printer == true)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6670",
+      "condition_source": "is_belt"
+    },
+    {
+      "options": [
+        "belt_slice_rotation_angle"
+      ],
+      "condition": "(belt_printer == true) && (belt_slice_rotation) != \"none\"",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6676",
+      "condition_source": "is_belt && rot_axis != BeltRotationAxis::None"
+    },
+    {
+      "options": [
+        "belt_frame_tilt_decouple"
+      ],
+      "condition": "(belt_printer == true) && (mode >= \"Expert\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6680",
+      "condition_source": "is_belt && expert_or_above"
+    },
+    {
+      "options": [
+        "belt_frame_tilt_angle"
+      ],
+      "condition": "(belt_printer == true) && (mode >= \"Expert\") && belt_frame_tilt_decouple",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6681",
+      "condition_source": "is_belt && expert_or_above && m_config->opt_bool(\"belt_frame_tilt_decouple\")"
+    },
+    {
+      "options": [
+        "belt_support_floor_offset"
+      ],
+      "condition": "(belt_printer == true)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6685",
+      "condition_source": "is_belt"
+    },
+    {
+      "options": [
+        "parallel_printheads_count"
+      ],
+      "condition": "support_parallel_printheads == true",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6687",
+      "condition_source": "support_parallel_printheads"
+    },
+    {
+      "options": [
+        "fan_direction"
+      ],
+      "condition": "auxiliary_fan == true",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6689",
+      "condition_source": "m_config->opt_bool(\"auxiliary_fan\")"
+    },
+    {
+      "options": [
+        "support_air_filtration"
+      ],
+      "condition": "support_cooling_filter == false",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6692",
+      "condition_source": "!m_config->opt_bool(\"support_cooling_filter\")"
+    },
+    {
+      "options": [
+        "cooling_filter_enabled"
+      ],
+      "condition": "support_cooling_filter == true",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6693",
+      "condition_source": "m_config->opt_bool(\"support_cooling_filter\")"
+    },
+    {
+      "options": [
+        "nonplanar_max_tilt"
+      ],
+      "condition": "(nonplanar_kinematics != \"none\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6699",
+      "condition_source": "rotary"
+    },
+    {
+      "options": [
+        "rotary_tool_length"
+      ],
+      "condition": "(nonplanar_kinematics != \"none\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6699",
+      "condition_source": "rotary"
+    },
+    {
+      "options": [
+        "rotary_firmware_rtcp"
+      ],
+      "condition": "(nonplanar_kinematics != \"none\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6699",
+      "condition_source": "rotary"
+    },
+    {
+      "options": [
+        "rotary_inverse_time_feed"
+      ],
+      "condition": "(nonplanar_kinematics != \"none\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6699",
+      "condition_source": "rotary"
+    },
+    {
+      "options": [
+        "rotary_table_height"
+      ],
+      "condition": "(nonplanar_kinematics != \"none\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6699",
+      "condition_source": "rotary"
+    },
+    {
+      "options": [
+        "rotary_axis_limits"
+      ],
+      "condition": "(nonplanar_kinematics != \"none\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6703",
+      "condition_source": "rotary"
+    },
+    {
+      "options": [
+        "rotary_axis_continuous"
+      ],
+      "condition": "(nonplanar_kinematics != \"none\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6703",
+      "condition_source": "rotary"
+    },
+    {
+      "options": [
+        "rotary_max_speed"
+      ],
+      "condition": "(nonplanar_kinematics != \"none\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6703",
+      "condition_source": "rotary"
+    },
+    {
+      "options": [
+        "rotary_pivot"
+      ],
+      "condition": "(nonplanar_kinematics != \"none\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6703",
+      "condition_source": "rotary"
+    },
+    {
+      "options": [
+        "rotary_axis_reversed"
+      ],
+      "condition": "(nonplanar_kinematics != \"none\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6703",
+      "condition_source": "rotary"
+    },
+    {
+      "options": [
+        "rotary_axis_home"
+      ],
+      "condition": "(nonplanar_kinematics != \"none\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6703",
+      "condition_source": "rotary"
+    },
+    {
+      "options": [
+        "rotary_linear_moves_table"
+      ],
+      "condition": "(nonplanar_kinematics != \"none\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6703",
+      "condition_source": "rotary"
+    },
+    {
+      "options": [
+        "rotary_tool_mount"
+      ],
+      "condition": "(nonplanar_kinematics != \"none\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6703",
+      "condition_source": "rotary"
+    },
+    {
+      "options": [
+        "wrapping_detection_gcode"
+      ],
+      "condition": "printer_capabilities.support_wrapping_detection == true",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6711",
+      "condition_source": "DevPrinterConfigUtil::support_wrapping_detection(printer_type)",
+      "manual": true
+    },
+    {
+      "options": [
+        "enable_belt_purge_tower"
+      ],
+      "condition": "(belt_printer == true)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6719",
+      "condition_source": "is_belt_printer"
+    },
+    {
+      "options": [
+        "wipe_tower_type"
+      ],
+      "condition": "!(printer_vendor == \"BBL\") && !(belt_printer == true)",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6722",
+      "condition_source": "!is_BBL_printer && !is_belt_printer"
+    },
+    {
+      "options": [
+        "enable_filament_ramming"
+      ],
+      "condition": "(!(printer_vendor == \"BBL\") && wipe_tower_type == \"type2\")",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6724",
+      "condition_source": "supports_wipe_tower_2"
+    },
+    {
+      "options": [
+        "cooling_tube_retraction"
+      ],
+      "condition": "(!(printer_vendor == \"BBL\") && wipe_tower_type == \"type2\")",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6724",
+      "condition_source": "supports_wipe_tower_2"
+    },
+    {
+      "options": [
+        "cooling_tube_length"
+      ],
+      "condition": "(!(printer_vendor == \"BBL\") && wipe_tower_type == \"type2\")",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6724",
+      "condition_source": "supports_wipe_tower_2"
+    },
+    {
+      "options": [
+        "parking_pos_retraction"
+      ],
+      "condition": "(!(printer_vendor == \"BBL\") && wipe_tower_type == \"type2\")",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6724",
+      "condition_source": "supports_wipe_tower_2"
+    },
+    {
+      "options": [
+        "extra_loading_move"
+      ],
+      "condition": "(!(printer_vendor == \"BBL\") && wipe_tower_type == \"type2\")",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6724",
+      "condition_source": "supports_wipe_tower_2"
+    },
+    {
+      "options": [
+        "high_current_on_filament_swap"
+      ],
+      "condition": "(!(printer_vendor == \"BBL\") && wipe_tower_type == \"type2\")",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6724",
+      "condition_source": "supports_wipe_tower_2"
+    },
+    {
+      "options": [
+        "extruders_count"
+      ],
+      "condition": "!(single_extruder_multi_material)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6740",
+      "condition_source": "!bSEMM"
+    },
+    {
+      "options": [
+        "manual_filament_change"
+      ],
+      "condition": "(single_extruder_multi_material)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6741",
+      "condition_source": "bSEMM"
+    },
+    {
+      "options": [
+        "purge_in_prime_tower"
+      ],
+      "condition": "(single_extruder_multi_material) && (!(printer_vendor == \"BBL\") && wipe_tower_type == \"type2\")",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6742",
+      "condition_source": "bSEMM && supports_wipe_tower_2"
+    },
+    {
+      "options": [
+        "imex_gantry_count"
+      ],
+      "condition": "is_imex == true",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6746",
+      "condition_source": "is_imex"
+    },
+    {
+      "options": [
+        "imex_tools_per_gantry"
+      ],
+      "condition": "is_imex == true",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6746",
+      "condition_source": "is_imex"
+    },
+    {
+      "options": [
+        "imex_nozzle_clearance_x"
+      ],
+      "condition": "is_imex == true",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6746",
+      "condition_source": "is_imex"
+    },
+    {
+      "options": [
+        "imex_nozzle_clearance_y"
+      ],
+      "condition": "is_imex == true",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6746",
+      "condition_source": "is_imex"
+    },
+    {
+      "options": [
+        "imex_carriage_margin"
+      ],
+      "condition": "is_imex == true",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6746",
+      "condition_source": "is_imex"
+    },
+    {
+      "options": [
+        "imex_tool_layout"
+      ],
+      "condition": "is_imex == true",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6750",
+      "condition_source": "is_imex"
+    },
+    {
+      "options": [
+        "imex_viz_theme"
+      ],
+      "condition": "is_imex == true",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6751",
+      "condition_source": "is_imex"
+    },
+    {
+      "options": [
+        "imex_firmware_managed_zones"
+      ],
+      "condition": "is_imex == true",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6752",
+      "condition_source": "is_imex"
+    },
+    {
+      "options": [
+        "tool_change_on_wipe_tower"
+      ],
+      "condition": "!(single_extruder_multi_material) && (!(printer_vendor == \"BBL\") && wipe_tower_type == \"type2\") && extruders_count > 1",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6802",
+      "condition_source": "!bSEMM && supports_wipe_tower_2 && extruders_count > 1"
+    },
+    {
+      "options": [
+        "wait_for_temp_on_wipe_tower"
+      ],
+      "condition": "!(single_extruder_multi_material) && (!(printer_vendor == \"BBL\") && wipe_tower_type == \"type2\") && extruders_count > 1",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6803",
+      "condition_source": "!bSEMM && supports_wipe_tower_2 && extruders_count > 1"
+    },
+    {
+      "options": [
+        "extruder_printable_area"
+      ],
+      "condition": "false",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6814",
+      "condition_source": "false"
+    },
+    {
+      "options": [
+        "extruder_printable_area"
+      ],
+      "condition": "extruders_count == 2",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6815",
+      "condition_source": "m_preset_bundle->get_printer_extruder_count() == 2"
+    },
+    {
+      "options": [
+        "extruder_printable_height"
+      ],
+      "condition": "false",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6816",
+      "condition_source": "false"
+    },
+    {
+      "options": [
+        "extruder_printable_height"
+      ],
+      "condition": "extruders_count == 2",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6817",
+      "condition_source": "m_preset_bundle->get_printer_extruder_count() == 2"
+    },
+    {
+      "options": [
+        "retract_length"
+      ],
+      "condition": "use_firmware_retraction == false",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6821",
+      "condition_source": "!use_firmware_retraction"
+    },
+    {
+      "options": [
+        "retraction_minimum_travel"
+      ],
+      "condition": "(retraction_length > 0) || use_firmware_retraction",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6825",
+      "condition_source": "have_retract_length || use_firmware_retraction"
+    },
+    {
+      "options": [
+        "z_hop"
+      ],
+      "condition": "((retraction_length > 0) || use_firmware_retraction)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6831",
+      "condition_source": "retraction"
+    },
+    {
+      "options": [
+        "retract_when_changing_layer"
+      ],
+      "condition": "((retraction_length > 0) || use_firmware_retraction)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6831",
+      "condition_source": "retraction"
+    },
+    {
+      "options": [
+        "retract_lift_above"
+      ],
+      "condition": "((retraction_length > 0) || use_firmware_retraction) && (z_hop > 0)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6837",
+      "condition_source": "retraction && (m_config->opt_float(\"z_hop\", variant_index) > 0)"
+    },
+    {
+      "options": [
+        "retract_lift_below"
+      ],
+      "condition": "((retraction_length > 0) || use_firmware_retraction) && (z_hop > 0)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6837",
+      "condition_source": "retraction && (m_config->opt_float(\"z_hop\", variant_index) > 0)"
+    },
+    {
+      "options": [
+        "retract_lift_enforce"
+      ],
+      "condition": "((retraction_length > 0) || use_firmware_retraction) && (z_hop > 0)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6837",
+      "condition_source": "retraction && (m_config->opt_float(\"z_hop\", variant_index) > 0)"
+    },
+    {
+      "options": [
+        "retraction_speed"
+      ],
+      "condition": "((retraction_length > 0) || use_firmware_retraction) && !use_firmware_retraction",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6844",
+      "condition_source": "retraction && !use_firmware_retraction"
+    },
+    {
+      "options": [
+        "deretraction_speed"
+      ],
+      "condition": "((retraction_length > 0) || use_firmware_retraction) && !use_firmware_retraction",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6844",
+      "condition_source": "retraction && !use_firmware_retraction"
+    },
+    {
+      "options": [
+        "retract_before_wipe"
+      ],
+      "condition": "((retraction_length > 0) || use_firmware_retraction) && !use_firmware_retraction",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6844",
+      "condition_source": "retraction && !use_firmware_retraction"
+    },
+    {
+      "options": [
+        "retract_after_wipe"
+      ],
+      "condition": "((retraction_length > 0) || use_firmware_retraction) && !use_firmware_retraction",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6844",
+      "condition_source": "retraction && !use_firmware_retraction"
+    },
+    {
+      "options": [
+        "retract_length"
+      ],
+      "condition": "((retraction_length > 0) || use_firmware_retraction) && !use_firmware_retraction",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6844",
+      "condition_source": "retraction && !use_firmware_retraction"
+    },
+    {
+      "options": [
+        "retract_restart_extra"
+      ],
+      "condition": "((retraction_length > 0) || use_firmware_retraction) && !use_firmware_retraction",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6844",
+      "condition_source": "retraction && !use_firmware_retraction"
+    },
+    {
+      "options": [
+        "wipe_distance"
+      ],
+      "condition": "((retraction_length > 0) || use_firmware_retraction) && !use_firmware_retraction",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6844",
+      "condition_source": "retraction && !use_firmware_retraction"
+    },
+    {
+      "options": [
+        "retract_before_wipe"
+      ],
+      "condition": "(((retraction_length > 0) || use_firmware_retraction) && wipe) && retract_after_wipe < 100",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6854",
+      "condition_source": "wipe && !is_approx(retract_after_wipe, 100.)"
+    },
+    {
+      "options": [
+        "retract_after_wipe"
+      ],
+      "condition": "(((retraction_length > 0) || use_firmware_retraction) && wipe) && retract_before_wipe < 100",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6855",
+      "condition_source": "wipe && !is_approx(retract_before_wipe, 100.)"
+    },
+    {
+      "options": [
+        "wipe_distance"
+      ],
+      "condition": "(((retraction_length > 0) || use_firmware_retraction) && wipe)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6881",
+      "condition_source": "wipe"
+    },
+    {
+      "options": [
+        "retract_length_toolchange"
+      ],
+      "condition": "(true)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6883",
+      "condition_source": "have_multiple_extruders"
+    },
+    {
+      "options": [
+        "retract_restart_extra_toolchange"
+      ],
+      "condition": "(true) && (retract_length_toolchange > 0)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6886",
+      "condition_source": "have_multiple_extruders && toolchange_retraction"
+    },
+    {
+      "options": [
+        "long_retractions_when_cut"
+      ],
+      "condition": "!use_firmware_retraction && enable_long_retraction_when_cut",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6888",
+      "condition_source": "!use_firmware_retraction && m_config->opt_int(\"enable_long_retraction_when_cut\")"
+    },
+    {
+      "options": [
+        "retraction_distances_when_cut"
+      ],
+      "condition": "long_retractions_when_cut == true",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6889",
+      "condition_source": "m_config->opt_bool(\"long_retractions_when_cut\", variant_index)"
+    },
+    {
+      "options": [
+        "travel_slope"
+      ],
+      "condition": "z_hop_types != \"Normal Lift\"",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6891",
+      "condition_source": "m_config->opt_enum(\"z_hop_types\", variant_index) != ZHopType::zhtNormal"
+    },
+    {
+      "options": [
+        "machine_max_acceleration_travel"
+      ],
+      "condition": "!((gcode_flavor) == \"marlin\") && !((gcode_flavor) == \"klipper\")",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6906",
+      "condition_source": "!gcf_is_marlin_legacy && !gcf_is_klipper"
+    },
+    {
+      "options": [
+        "machine_max_acceleration_travel"
+      ],
+      "condition": "!((gcode_flavor) == \"marlin\") && !((gcode_flavor) == \"klipper\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6908",
+      "condition_source": "!gcf_is_marlin_legacy && !gcf_is_klipper"
+    },
+    {
+      "options": [
+        "machine_max_junction_deviation"
+      ],
+      "condition": "((gcode_flavor) == \"marlin2\")",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6909",
+      "condition_source": "gcf_is_marlin_firmware"
+    },
+    {
+      "options": [
+        "machine_max_junction_deviation"
+      ],
+      "condition": "((gcode_flavor) == \"marlin2\")",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6911",
+      "condition_source": "gcf_is_marlin_firmware"
+    },
+    {
+      "options": [
+        "machine_max_jerk_x"
+      ],
+      "condition": "(gcode_flavor != \"marlin2\" || machine_max_junction_deviation == 0)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6925",
+      "condition_source": "enable_jerk"
+    },
+    {
+      "options": [
+        "machine_max_jerk_y"
+      ],
+      "condition": "(gcode_flavor != \"marlin2\" || machine_max_junction_deviation == 0)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6926",
+      "condition_source": "enable_jerk"
+    },
+    {
+      "options": [
+        "machine_max_jerk_z"
+      ],
+      "condition": "(gcode_flavor != \"marlin2\" || machine_max_junction_deviation == 0)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6927",
+      "condition_source": "enable_jerk"
+    },
+    {
+      "options": [
+        "machine_max_jerk_e"
+      ],
+      "condition": "(gcode_flavor != \"marlin2\" || machine_max_junction_deviation == 0)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6928",
+      "condition_source": "enable_jerk"
+    },
+    {
+      "options": [
+        "emit_machine_limits_to_gcode"
+      ],
+      "condition": "(((gcode_flavor) == \"marlin\") || ((gcode_flavor) == \"marlin2\") || ((gcode_flavor) == \"reprapfirmware\"))",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6932",
+      "condition_source": "emittable_limits"
+    },
+    {
+      "options": [
+        "min_resonance_avoidance_speed"
+      ],
+      "condition": "resonance_avoidance == true",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6935",
+      "condition_source": "resonance_avoidance"
+    },
+    {
+      "options": [
+        "max_resonance_avoidance_speed"
+      ],
+      "condition": "resonance_avoidance == true",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6936",
+      "condition_source": "resonance_avoidance"
+    },
+    {
+      "options": [
+        "input_shaping_emit"
+      ],
+      "condition": "(((gcode_flavor) == \"marlin2\") || ((gcode_flavor) == \"reprapfirmware\"))",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6940",
+      "condition_source": "input_shaping_compatible"
+    },
+    {
+      "options": [
+        "input_shaping_type"
+      ],
+      "condition": "(((gcode_flavor) == \"marlin2\") || ((gcode_flavor) == \"reprapfirmware\"))",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6940",
+      "condition_source": "input_shaping_compatible"
+    },
+    {
+      "options": [
+        "input_shaping_freq_x"
+      ],
+      "condition": "(((gcode_flavor) == \"marlin2\") || ((gcode_flavor) == \"reprapfirmware\"))",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6940",
+      "condition_source": "input_shaping_compatible"
+    },
+    {
+      "options": [
+        "input_shaping_freq_y"
+      ],
+      "condition": "(((gcode_flavor) == \"marlin2\") || ((gcode_flavor) == \"reprapfirmware\"))",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6940",
+      "condition_source": "input_shaping_compatible"
+    },
+    {
+      "options": [
+        "input_shaping_damp_x"
+      ],
+      "condition": "(((gcode_flavor) == \"marlin2\") || ((gcode_flavor) == \"reprapfirmware\"))",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6940",
+      "condition_source": "input_shaping_compatible"
+    },
+    {
+      "options": [
+        "input_shaping_damp_y"
+      ],
+      "condition": "(((gcode_flavor) == \"marlin2\") || ((gcode_flavor) == \"reprapfirmware\"))",
+      "effect": "visible",
+      "source": "src/slic3r/GUI/Tab.cpp:6940",
+      "condition_source": "input_shaping_compatible"
+    },
+    {
+      "options": [
+        "input_shaping_emit"
+      ],
+      "condition": "emit_machine_limits_to_gcode == true",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6946",
+      "condition_source": "emit_machine_limits_to_gcode",
+      "when": "((((gcode_flavor) == \"marlin2\") || ((gcode_flavor) == \"reprapfirmware\")))"
+    },
+    {
+      "options": [
+        "input_shaping_type"
+      ],
+      "condition": "(emit_machine_limits_to_gcode && input_shaping_emit)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6948",
+      "condition_source": "input_shaping_emit",
+      "when": "((((gcode_flavor) == \"marlin2\") || ((gcode_flavor) == \"reprapfirmware\")))"
+    },
+    {
+      "options": [
+        "input_shaping_freq_x"
+      ],
+      "condition": "(emit_machine_limits_to_gcode && input_shaping_emit)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6949",
+      "condition_source": "input_shaping_emit",
+      "when": "((((gcode_flavor) == \"marlin2\") || ((gcode_flavor) == \"reprapfirmware\")))"
+    },
+    {
+      "options": [
+        "input_shaping_freq_y"
+      ],
+      "condition": "(emit_machine_limits_to_gcode && input_shaping_emit) && !((gcode_flavor) == \"reprapfirmware\")",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6950",
+      "condition_source": "input_shaping_emit && !gcf_is_reprap_firmware",
+      "when": "((((gcode_flavor) == \"marlin2\") || ((gcode_flavor) == \"reprapfirmware\")))"
+    },
+    {
+      "options": [
+        "input_shaping_damp_x"
+      ],
+      "condition": "(emit_machine_limits_to_gcode && input_shaping_emit)",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6951",
+      "condition_source": "input_shaping_emit",
+      "when": "((((gcode_flavor) == \"marlin2\") || ((gcode_flavor) == \"reprapfirmware\")))"
+    },
+    {
+      "options": [
+        "input_shaping_damp_y"
+      ],
+      "condition": "(emit_machine_limits_to_gcode && input_shaping_emit) && !((gcode_flavor) == \"reprapfirmware\")",
+      "effect": "enabled",
+      "source": "src/slic3r/GUI/Tab.cpp:6952",
+      "condition_source": "input_shaping_emit && !gcf_is_reprap_firmware",
+      "when": "((((gcode_flavor) == \"marlin2\") || ((gcode_flavor) == \"reprapfirmware\")))"
     }
-   ]
-  },
-  {
-   "title": "Machine G-code",
-   "icon": "custom-gcode_gcode",
-   "groups": [
+  ],
+  "source_counts": [
     {
-     "title": "File header G-code",
-     "icon": "param_gcode",
-     "options": [
-      "file_start_gcode"
-     ]
+      "function": "TabPrinter::build_fff",
+      "pages": 4,
+      "groups": 24
     },
     {
-     "title": "Machine start G-code",
-     "icon": "param_gcode",
-     "options": [
-      "machine_start_gcode"
-     ]
+      "function": "TabPrinter::build_kinematics_page",
+      "pages": 1,
+      "groups": 6
     },
     {
-     "title": "Machine end G-code",
-     "icon": "param_gcode",
-     "options": [
-      "machine_end_gcode"
-     ]
-    },
-    {
-     "title": "Printing by object G-code",
-     "icon": "param_gcode",
-     "options": [
-      "printing_by_object_gcode"
-     ]
-    },
-    {
-     "title": "Before layer change G-code",
-     "icon": "param_gcode",
-     "options": [
-      "before_layer_change_gcode"
-     ]
-    },
-    {
-     "title": "Layer change G-code",
-     "icon": "param_gcode",
-     "options": [
-      "layer_change_gcode"
-     ]
-    },
-    {
-     "title": "Timelapse G-code",
-     "icon": "param_gcode",
-     "options": [
-      "time_lapse_gcode"
-     ]
-    },
-    {
-     "title": "Clumping Detection G-code",
-     "icon": "param_gcode",
-     "options": [
-      "wrapping_detection_gcode"
-     ]
-    },
-    {
-     "title": "Change filament G-code",
-     "icon": "param_gcode",
-     "options": [
-      "change_filament_gcode"
-     ]
-    },
-    {
-     "title": "Change extrusion role G-code",
-     "icon": "param_gcode",
-     "options": [
-      "change_extrusion_role_gcode"
-     ]
-    },
-    {
-     "title": "Pause G-code",
-     "icon": "param_gcode",
-     "options": [
-      "machine_pause_gcode"
-     ]
-    },
-    {
-     "title": "Template Custom G-code",
-     "icon": "param_gcode",
-     "options": [
-      "template_custom_gcode"
-     ]
+      "function": "TabPrinter::build_unregular_pages",
+      "pages": 2,
+      "groups": 12
     }
-   ]
-  },
-  {
-   "title": "Notes",
-   "icon": "custom-gcode_note",
-   "groups": [
-    {
-     "title": "Notes",
-     "icon": "note",
-     "options": [
-      "printer_notes"
-     ]
-    }
-   ]
-  },
-  {
-   "title": "Motion ability",
-   "icon": "custom-gcode_motion",
-   "groups": [
-    {
-     "title": "Advanced",
-     "icon": "param_advanced",
-     "options": [
-      "emit_machine_limits_to_gcode"
-     ]
-    },
-    {
-     "title": "Resonance Compensation",
-     "icon": "param_resonance_avoidance",
-     "options": [
-      "resonance_avoidance",
-      "min_resonance_avoidance_speed",
-      "max_resonance_avoidance_speed",
-      "input_shaping_emit",
-      "input_shaping_type",
-      "input_shaping_freq_x",
-      "input_shaping_freq_y",
-      "input_shaping_damp_x",
-      "input_shaping_damp_y"
-     ]
-    },
-    {
-     "title": "Acceleration limitation",
-     "icon": "param_acceleration",
-     "options": [
-      "machine_max_acceleration_",
-      "machine_max_acceleration_extruding",
-      "machine_max_acceleration_retracting",
-      "machine_max_acceleration_travel"
-     ]
-    },
-    {
-     "title": "Jerk limitation",
-     "icon": "param_jerk",
-     "options": [
-      "machine_max_junction_deviation",
-      "machine_max_jerk_"
-     ]
-    }
-   ]
-  },
-  {
-   "title": "Multimaterial",
-   "icon": "custom-gcode_multi_material",
-   "groups": [
-    {
-     "title": "Single extruder multi-material setup",
-     "icon": "param_multi_material",
-     "options": [
-      "single_extruder_multi_material",
-      "manual_filament_change",
-      "bed_temperature_formula"
-     ]
-    },
-    {
-     "title": "Wipe tower",
-     "icon": "param_tower",
-     "options": [
-      "wipe_tower_type",
-      "purge_in_prime_tower",
-      "enable_filament_ramming",
-      "tool_change_on_wipe_tower",
-      "wait_for_temp_on_wipe_tower"
-     ]
-    },
-    {
-     "title": "Belt purge tower",
-     "icon": "param_tower",
-     "options": [
-      "enable_belt_purge_tower"
-     ]
-    },
-    {
-     "title": "Single extruder multi-material parameters",
-     "icon": "param_settings",
-     "options": [
-      "cooling_tube_retraction",
-      "cooling_tube_length",
-      "parking_pos_retraction",
-      "extra_loading_move",
-      "high_current_on_filament_swap"
-     ]
-    },
-    {
-     "title": "Advanced",
-     "icon": "param_advanced",
-     "options": [
-      "machine_load_filament_time",
-      "machine_unload_filament_time",
-      "machine_tool_change_time"
-     ]
-    },
-    {
-     "title": "IDEX/IQEX Configuration",
-     "icon": "param_advanced",
-     "options": [
-      "is_imex",
-      "imex_firmware_managed_zones",
-      "imex_gantry_count",
-      "imex_tools_per_gantry",
-      "imex_tool_layout",
-      "imex_nozzle_clearance_x",
-      "imex_nozzle_clearance_y",
-      "imex_carriage_margin",
-      "imex_viz_theme"
-     ]
-    }
-   ]
-  },
-  {
-   "title": "Extruder",
-   "icon": "custom-gcode_extruder",
-   "groups": [
-    {
-     "title": "Basic information",
-     "icon": "param_information",
-     "options": [
-      "nozzle_diameter",
-      "nozzle_type",
-      "nozzle_volume",
-      "extruder_printable_height",
-      "extruder_printable_area"
-     ]
-    },
-    {
-     "title": "Layer height limits",
-     "icon": "param_layer_height",
-     "options": [
-      "min_layer_height",
-      "max_layer_height"
-     ]
-    },
-    {
-     "title": "Position",
-     "icon": "param_position",
-     "options": [
-      "extruder_offset"
-     ]
-    },
-    {
-     "title": "Retraction when switching material",
-     "icon": "param_retraction_material_change",
-     "options": [
-      "retract_length_toolchange",
-      "retract_restart_extra_toolchange",
-      "long_retractions_when_cut",
-      "retraction_distances_when_cut"
-     ]
-    }
-   ]
-  }
- ]
+  ],
+  "extraction_warnings": [],
+  "visibility_context": {}
 }
