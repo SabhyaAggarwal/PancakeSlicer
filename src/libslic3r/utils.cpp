@@ -1,4 +1,5 @@
 #include "Utils.hpp"
+#include "HeapTrim.hpp"
 #include "Exception.hpp"
 #include "I18N.hpp"
 
@@ -61,6 +62,9 @@
 
 #ifdef __APPLE__
 #include "MacUtils.hpp"
+#include <malloc/malloc.h>
+#else
+#include <malloc.h>
 #endif
 
 #ifdef WIN32
@@ -100,6 +104,8 @@
 #include <boost/log/sources/severity_logger.hpp>
 #include <boost/log/sources/record_ostream.hpp>
 #include <boost/log/support/date_time.hpp>
+
+#include <tbb/scalable_allocator.h>
 
 #include <boost/core/null_deleter.hpp>
 #include <boost/locale.hpp>
@@ -1565,6 +1571,18 @@ std::string format_diameter_to_str(double diameter, int precision)
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(precision) << best;
     return oss.str();
+}
+
+void trim_free_memory()
+{
+    scalable_allocation_command(TBBMALLOC_CLEAN_ALL_BUFFERS, nullptr);
+#if defined(__GLIBC__)
+    malloc_trim(0);
+#elif defined(__APPLE__)
+    malloc_zone_pressure_relief(nullptr, 0);
+#elif defined(_WIN32)
+    _heapmin();
+#endif
 }
 
 std::string log_memory_info(bool ignore_loglevel)

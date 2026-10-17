@@ -15,6 +15,7 @@ public:
 
     HeightField() = default;
     HeightField(const BoundingBoxf &bbox, double pitch, float init = NoData);
+    static HeightField layout(const BoundingBoxf &bbox, double pitch);
 
     int          nx() const { return m_nx; }
     int          ny() const { return m_ny; }
@@ -38,6 +39,7 @@ public:
     const std::vector<float> &data() const { return m_z; }
 
 private:
+    void               set_layout(const BoundingBoxf &bbox, double pitch);
     Vec2d              m_origin { Vec2d::Zero() };
     double             m_pitch  { 0.2 };
     int                m_nx     { 0 };

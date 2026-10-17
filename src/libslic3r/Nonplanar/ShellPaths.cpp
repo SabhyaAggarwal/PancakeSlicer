@@ -795,7 +795,7 @@ bool cover_has_gaps(const ExPolygons &inner, const std::vector<Polylines> &linke
         bb.merge(unscale(b.min));
         bb.merge(unscale(b.max));
     }
-    const HeightField grid(bb, pitch);
+    const HeightField grid = HeightField::layout(bb, pitch);
     const int         nx = grid.nx(), ny = grid.ny();
     Mask              open = rasterize(inner, grid);
     auto cover = [&](const Point &pa, const Point &pb, double r) {

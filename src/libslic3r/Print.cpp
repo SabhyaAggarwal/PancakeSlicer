@@ -82,6 +82,7 @@
 #include "GCode/WipeTower2.hpp"
 #include "GCode/WipeTowerEstimate.hpp"
 #include "Utils.hpp"
+#include "HeapTrim.hpp"
 #include "PrintConfig.hpp"
 #include "MaterialType.hpp"
 #include "Model.hpp"
@@ -2959,6 +2960,7 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
             else if (obj->set_started(posNonplanar))
                 obj->set_done(posNonplanar);
         }
+        trim_free_memory();
 
         for (PrintObject *obj : m_objects) {
             bool need_contouring = need_slicing_objects.count(obj) != 0 && obj->need_z_contouring();
@@ -3353,6 +3355,7 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
         }
     }
 
+    trim_free_memory();
     BOOST_LOG_TRIVIAL(info) << "Slicing process finished." << log_memory_info();
 
     {

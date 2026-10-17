@@ -65,6 +65,7 @@
 #include "Print.hpp"
 #include "BuildLabel.hpp"
 #include "Utils.hpp"
+#include "HeapTrim.hpp"
 #include "ClipperUtils.hpp"
 #include "LocalesUtils.hpp"
 #include "libslic3r/format.hpp"
@@ -2547,6 +2548,7 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
 
     m_processor.result().nozzle_group_result = m_print->get_layered_nozzle_group_result();
 
+    trim_free_memory();
     m_processor.finalize(true);
     try {
         Nonplanar::ClearanceRepair::check_export(*print, m_processor.result());

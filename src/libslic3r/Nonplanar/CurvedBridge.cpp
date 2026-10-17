@@ -149,6 +149,7 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
                 if (m[n])
                     material.data()[n] = std::max(material.data()[n], float(layers[swept]->print_z));
         }
+        slice_masks.erase(slice_masks.begin(), slice_masks.lower_bound(i - 1));
         ExPolygons     bridge_area;
         ExtrusionPaths bridge_roads;
         for (LayerRegion *layerm : layers[i]->regions()) {

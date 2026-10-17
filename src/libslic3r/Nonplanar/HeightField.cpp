@@ -10,8 +10,23 @@
 
 namespace Slic3r::Nonplanar {
 
-HeightField::HeightField(const BoundingBoxf &bbox, double pitch, float init) : m_origin(bbox.min), m_pitch(pitch)
+HeightField::HeightField(const BoundingBoxf &bbox, double pitch, float init)
 {
+    this->set_layout(bbox, pitch);
+    m_z.assign(size_t(m_nx) * size_t(m_ny), init);
+}
+
+HeightField HeightField::layout(const BoundingBoxf &bbox, double pitch)
+{
+    HeightField grid;
+    grid.set_layout(bbox, pitch);
+    return grid;
+}
+
+void HeightField::set_layout(const BoundingBoxf &bbox, double pitch)
+{
+    m_origin = bbox.min;
+    m_pitch  = pitch;
     if (!std::isfinite(pitch) || pitch <= 0. || !bbox.min.allFinite() || !bbox.max.allFinite() ||
         (bbox.max - bbox.min).minCoeff() < 0.)
         throw RuntimeError("Invalid non-planar surface bounds or grid resolution.");
@@ -22,7 +37,6 @@ HeightField::HeightField(const BoundingBoxf &bbox, double pitch, float init) : m
     m_ny = std::max(1, int(rounded.y()));
     if (size_t(m_ny) > m_z.max_size() / size_t(m_nx))
         throw RuntimeError("Non-planar surface grid is too large. Increase the grid spacing or reduce the model size.");
-    m_z.assign(size_t(m_nx) * size_t(m_ny), init);
 }
 
 BoundingBoxf HeightField::bbox() const

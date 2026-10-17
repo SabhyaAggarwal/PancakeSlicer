@@ -7,6 +7,7 @@
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
+#include "libslic3r/HeapTrim.hpp"
 #include "libslic3r/Layer.hpp"
 #include "libslic3r/Nonplanar/AutoMode.hpp"
 #include "libslic3r/Nonplanar/ConformalShells.hpp"
@@ -274,6 +275,7 @@ ClearanceRepair::~ClearanceRepair() { m_print.m_clearance_repair = nullptr; }
 
 void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
 {
+    trim_free_memory();
     ClearanceRepair *self = print.m_clearance_repair;
     const auto       mode = print.config().nonplanar_collision_check.value;
     if (print.config().nonplanar_kinematics.value != RotaryLayout::None) {
