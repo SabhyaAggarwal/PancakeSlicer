@@ -151,56 +151,6 @@ double head_budget(const HeadEnvelope &head)
     return out;
 }
 
-ExPolygons positive_region(const HeightField &f)
-{
-    Polygons  polys;
-    const int nx = f.nx(), ny = f.ny();
-    auto val = [&f](int ix, int iy) { const float v = f.at(ix, iy); return std::isnan(v) ? -1. : double(v); };
-    auto pt  = [&f](double ix, double iy) {
-        const Vec2d p = f.origin() + f.pitch() * Vec2d(ix, iy);
-        return Point::new_scale(p.x(), p.y());
-    };
-    for (int iy = 0; iy + 1 < ny; ++iy) {
-        int run = -1;
-        for (int ix = 0; ix + 1 < nx; ++ix) {
-            const int    cx[4] = { ix, ix + 1, ix + 1, ix };
-            const int    cy[4] = { iy, iy, iy + 1, iy + 1 };
-            double       v[4];
-            int          inside = 0;
-            for (int c = 0; c < 4; ++c)
-                inside += (v[c] = val(cx[c], cy[c])) >= 0.;
-            if (inside == 4) {
-                if (run < 0)
-                    run = ix;
-                continue;
-            }
-            if (run >= 0) {
-                polys.emplace_back(Points{ pt(run, iy), pt(ix, iy), pt(ix, iy + 1), pt(run, iy + 1) });
-                run = -1;
-            }
-            if (inside == 0)
-                continue;
-            Points cell;
-            for (int a = 0; a < 4; ++a) {
-                const int b = (a + 1) % 4;
-                if (v[a] >= 0.)
-                    cell.emplace_back(pt(cx[a], cy[a]));
-                if ((v[a] >= 0.) != (v[b] >= 0.)) {
-                    const bool a_lo = cy[a] < cy[b] || (cy[a] == cy[b] && cx[a] < cx[b]);
-                    const int  lo = a_lo ? a : b, hi = a_lo ? b : a;
-                    const double t = v[lo] / (v[lo] - v[hi]);
-                    cell.emplace_back(pt(cx[lo] + t * (cx[hi] - cx[lo]), cy[lo] + t * (cy[hi] - cy[lo])));
-                }
-            }
-            if (cell.size() >= 3)
-                polys.emplace_back(std::move(cell));
-        }
-        if (run >= 0)
-            polys.emplace_back(Points{ pt(run, iy), pt(nx - 1, iy), pt(nx - 1, iy + 1), pt(run, iy + 1) });
-    }
-    return union_ex(polys);
-}
-
 struct Piece
 {
     int                                     sub   = 0;

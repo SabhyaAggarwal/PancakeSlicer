@@ -91,6 +91,7 @@ private:
     int                             m_last_key = 0;
 };
 ExPolygons runs_to_expolygons(const std::vector<RunGroups::Run> &runs, const HeightField &grid);
+ExPolygons positive_region(const HeightField &f);
 HeightField crop(const HeightField &src, int ix0, int iy0, int ix1, int iy1);
 void pad_lowest(HeightField &field, int iterations);
 double smooth_scan_noise(HeightField &surface, const std::function<void()> &throw_if_canceled = {});

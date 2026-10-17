@@ -1002,10 +1002,15 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
         dropped[i] = why;
     };
     const int min_shells = settings.shells > settings.top_shells ? 1 : settings.top_shells;
+    std::vector<float> bed_margin(n_nodes, NAN), steep_margin(n_nodes, NAN), flat_margin(n_nodes, NAN);
     if (settings.banded)
         for (size_t i = 0; i < n_nodes; ++i)
-            if (mask[i] && S0.data()[i] - min_shells * h_c - h_min < first_top)
-                drop(i, DropNearBed);
+            if (mask[i]) {
+                const double margin = S0.data()[i] - min_shells * h_c - h_min - first_top;
+                bed_margin[i]       = float(margin);
+                if (margin < 0.)
+                    drop(i, DropNearBed);
+            }
     if (settings.banded) {
         const double outer_w   = banded_outer_width(line_width, region.flow(object, frTopSolidInfill, h_c).nozzle_diameter(), h_c, BandedCapWidth);
         const PrintConfig &print_config = object.print()->config();
@@ -1023,7 +1028,9 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                 if (const size_t i = size_t(iy) * grid.nx() + ix; mask[i])
                     if (const Vec2d g = S0.gradient(grid.node(ix, iy)); g.allFinite()) {
                         const double eff = tilt > 0. ? std::tan(std::max(0., std::atan(g.norm()) - tilt)) : g.norm();
-                        if (eff > std::max(max_slope, local_height(S0.at(ix, iy)) / outer_w))
+                        const double cap = std::max(max_slope, local_height(S0.at(ix, iy)) / outer_w);
+                        steep_margin[i]  = float(cap - eff);
+                        if (eff > cap)
                             steep[i] = 1, slope[i] = eff;
                     }
         const Mask steep_wide = rasterize(opening_ex(mask_to_expolygons(steep, grid), float(scale_(line_width))), grid);
@@ -1036,8 +1043,10 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
         for (int iy = 0; iy < grid.ny(); ++iy)
             for (int ix = 0; ix < grid.nx(); ++ix)
                 if (const size_t i = size_t(iy) * grid.nx() + ix; mask[i])
-                    if (const Vec2d g = S0.gradient(grid.node(ix, iy)); g.allFinite() && g.norm() < FlatSlope)
-                        flat[i] = 1;
+                    if (const Vec2d g = S0.gradient(grid.node(ix, iy)); g.allFinite()) {
+                        flat_margin[i] = float(g.norm() - FlatSlope);
+                        flat[i]        = g.norm() < FlatSlope;
+                    }
         const double reach = region.config().zaa_enabled ? region.config().zaa_min_z.value : PrintRegionConfig::defaults().zaa_min_z.value;
         ExPolygons   flat_area;
         for (ExPolygon &ground : opening_ex(mask_to_expolygons(flat, grid), float(scale_(FlatGround)))) {
@@ -1269,7 +1278,70 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
         std::fill(mask.begin(), mask.end(), 0);
     }
 
-    ExPolygons components = opening_ex(mask_to_expolygons(mask, grid), float(scale_(0.5 * line_width)));
+    auto footprint_cells = [&]() {
+        constexpr float MinCross   = 0.05f;
+        constexpr float CreaseStep = 0.2f;
+        const int       nx = grid.nx(), ny = grid.ny();
+        auto margin = [&](uint8_t why, size_t i) {
+            return why == DropNearBed                             ? bed_margin[i] :
+                   why == DropSteep || why == DropSteepStrip      ? steep_margin[i] :
+                   why == DropFlatGround                          ? flat_margin[i] :
+                                                                    NAN;
+        };
+        auto neighbours = [&](size_t i, auto &&fn) {
+            const int ix = int(i % size_t(nx)), iy = int(i / size_t(nx));
+            for (const auto &[dx, dy] : { std::pair{ 1, 0 }, std::pair{ -1, 0 }, std::pair{ 0, 1 }, std::pair{ 0, -1 } })
+                if (const int jx = ix + dx, jy = iy + dy; jx >= 0 && jy >= 0 && jx < nx && jy < ny)
+                    fn(size_t(jy) * nx + jx);
+        };
+        auto distance = [&](uint8_t why, size_t i) {
+            const float m = margin(why, i);
+            if (std::isnan(m))
+                return 1.f;
+            float step = 0.f;
+            neighbours(i, [&](size_t j) {
+                if (const float n = margin(why, j); !std::isnan(n) && (m < 0.f) != (n < 0.f))
+                    step = std::max(step, std::abs(m - n));
+            });
+            const float slope_step = why == DropNearBed ? step / float(pitch) : step;
+            return step > 0.f && slope_step <= CreaseStep ? std::clamp(std::abs(m) / step, MinCross, 1.f) : 1.f;
+        };
+        HeightField field = grid;
+        for (size_t i = 0; i < n_nodes; ++i) {
+            float &v = field.data()[i];
+            v        = HeightField::NoData;
+            if (!cand_mask[i])
+                continue;
+            if (!mask[i]) {
+                if (dropped[i] != Kept)
+                    v = -distance(dropped[i], i);
+                continue;
+            }
+            v = 1.f;
+            neighbours(i, [&](size_t j) {
+                if (!mask[j] && dropped[j] != Kept) {
+                    const float m = margin(dropped[j], i);
+                    v = std::min(v, std::isnan(m) || m < 0.f ? distance(dropped[j], j) : distance(dropped[j], i));
+                }
+            });
+        }
+        HeightField mirrored = field;
+        for (size_t j = 0; j < n_nodes; ++j)
+            if (!cand_mask[j]) {
+                float v = 0.f;
+                neighbours(j, [&](size_t i) {
+                    if (const float u = field.data()[i]; u > 0.f)
+                        v = std::max(v, u);
+                });
+                if (v > 0.f)
+                    mirrored.data()[j] = -v;
+            }
+        return positive_region(mirrored);
+    };
+    const float narrow     = float(scale_(0.5 * line_width));
+    ExPolygons  components = opening_ex(mask_to_expolygons(mask, grid), narrow);
+    if (settings.banded)
+        components = intersection_ex(opening_ex(footprint_cells(), narrow), offset_ex(components, float(scale_(pitch))));
     if (settings.banded) {
         const Mask opened = rasterize(components, grid);
         for (size_t i = 0; i < n_nodes; ++i)
