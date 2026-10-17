@@ -1,0 +1,264 @@
+{
+ "tab": "filament",
+ "pages": [
+  {
+   "title": "Filament",
+   "icon": "custom-gcode_filament",
+   "groups": [
+    {
+     "title": "Basic information",
+     "icon": "param_information",
+     "options": [
+      "filament_type",
+      "filament_vendor",
+      "filament_soluble",
+      "filament_is_support",
+      "filament_change_length",
+      "default_filament_colour",
+      "filament_diameter",
+      "filament_adhesiveness_category",
+      "filament_density",
+      "filament_shrink",
+      "filament_shrinkage_compensation_z",
+      "filament_cost",
+      "temperature_vitrification",
+      "idle_temperature",
+      "nozzle_temperature_range_low",
+      "nozzle_temperature_range_high"
+     ]
+    },
+    {
+     "title": "Flow ratio and Pressure Advance",
+     "icon": "param_flow_ratio_and_pressure_advance",
+     "options": [
+      "pellet_flow_coefficient",
+      "filament_flow_ratio",
+      "enable_pressure_advance",
+      "pressure_advance",
+      "adaptive_pressure_advance",
+      "adaptive_pressure_advance_overhangs",
+      "adaptive_pressure_advance_bridges",
+      "adaptive_pressure_advance_model"
+     ]
+    },
+    {
+     "title": "Print chamber temperature",
+     "icon": "param_chamber_temp",
+     "options": [
+      "activate_chamber_temp_control",
+      "chamber_temperature",
+      "chamber_minimal_temperature"
+     ]
+    },
+    {
+     "title": "Print temperature",
+     "icon": "param_extruder_temp",
+     "options": [
+      "nozzle_temperature_initial_layer",
+      "nozzle_temperature"
+     ]
+    },
+    {
+     "title": "Bed temperature",
+     "icon": "param_bed_temp",
+     "options": [
+      "supertack_plate_temp_initial_layer",
+      "supertack_plate_temp",
+      "cool_plate_temp_initial_layer",
+      "cool_plate_temp",
+      "textured_cool_plate_temp_initial_layer",
+      "textured_cool_plate_temp",
+      "eng_plate_temp_initial_layer",
+      "eng_plate_temp",
+      "hot_plate_temp_initial_layer",
+      "hot_plate_temp",
+      "textured_plate_temp_initial_layer",
+      "textured_plate_temp"
+     ]
+    },
+    {
+     "title": "Volumetric speed limitation",
+     "icon": "param_volumetric_speed",
+     "options": [
+      "filament_adaptive_volumetric_speed",
+      "filament_max_volumetric_speed"
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Cooling",
+   "icon": "custom-gcode_cooling_fan",
+   "groups": [
+    {
+     "title": "Cooling for specific layer",
+     "icon": "param_cooling_specific_layer",
+     "options": [
+      "close_fan_the_first_x_layers",
+      "initial_layer_fan_speed",
+      "full_fan_speed_layer"
+     ]
+    },
+    {
+     "title": "Part cooling fan",
+     "icon": "param_cooling_part_fan",
+     "options": [
+      "fan_min_speed",
+      "fan_cooling_layer_time",
+      "fan_max_speed",
+      "slow_down_layer_time",
+      "reduce_fan_stop_start_freq",
+      "slow_down_for_layer_cooling",
+      "dont_slow_down_outer_wall",
+      "slow_down_min_speed",
+      "enable_overhang_bridge_fan",
+      "overhang_fan_threshold",
+      "overhang_fan_speed",
+      "internal_bridge_fan_speed",
+      "support_material_interface_fan_speed",
+      "ironing_fan_speed"
+     ]
+    },
+    {
+     "title": "Auxiliary part cooling fan",
+     "icon": "param_cooling_aux_fan",
+     "options": [
+      "additional_cooling_fan_speed"
+     ]
+    },
+    {
+     "title": "Exhaust fan",
+     "icon": "param_cooling_exhaust",
+     "options": [
+      "activate_air_filtration",
+      "activate_air_filtration_during_print",
+      "during_print_exhaust_fan_speed",
+      "activate_air_filtration_on_completion",
+      "complete_print_exhaust_fan_speed"
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Advanced",
+   "icon": "custom-gcode_advanced",
+   "groups": [
+    {
+     "title": "Filament start G-code",
+     "icon": "param_gcode",
+     "options": [
+      "filament_start_gcode"
+     ]
+    },
+    {
+     "title": "Change extrusion role G-code",
+     "icon": "param_gcode",
+     "options": [
+      "filament_change_extrusion_role_gcode"
+     ]
+    },
+    {
+     "title": "Filament end G-code",
+     "icon": "param_gcode",
+     "options": [
+      "filament_end_gcode"
+     ]
+    },
+    {
+     "title": "Plugin Configuration",
+     "icon": "param_gcode",
+     "options": [
+      "filament_plugin_config_overrides"
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Multimaterial",
+   "icon": "custom-gcode_multi_material",
+   "groups": [
+    {
+     "title": "Wipe tower parameters",
+     "icon": "param_tower",
+     "options": [
+      "filament_minimal_purge_on_wipe_tower",
+      "filament_tower_interface_pre_extrusion_dist",
+      "filament_tower_interface_pre_extrusion_length",
+      "filament_tower_ironing_area",
+      "filament_tower_interface_purge_volume",
+      "filament_tower_interface_print_temp"
+     ]
+    },
+    {
+     "title": "Multi Filament",
+     "icon": "",
+     "options": [
+      "long_retractions_when_ec",
+      "retraction_distances_when_ec"
+     ]
+    },
+    {
+     "title": "Tool change parameters with single extruder MM printers",
+     "icon": "param_toolchange",
+     "options": [
+      "filament_loading_speed_start",
+      "filament_loading_speed",
+      "filament_unloading_speed_start",
+      "filament_unloading_speed",
+      "filament_toolchange_delay",
+      "filament_cooling_moves",
+      "filament_cooling_initial_speed",
+      "filament_cooling_final_speed",
+      "filament_stamping_loading_speed",
+      "filament_stamping_distance",
+      "filament_ramming_parameters"
+     ]
+    },
+    {
+     "title": "Tool change parameters with multi extruder MM printers",
+     "icon": "param_toolchange_multi_extruder",
+     "options": [
+      "filament_multitool_ramming",
+      "filament_multitool_ramming_volume",
+      "filament_multitool_ramming_flow"
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Dependencies",
+   "icon": "advanced",
+   "groups": [
+    {
+     "title": "Compatible printers",
+     "icon": "param_dependencies_printers",
+     "options": [
+      "compatible_printers",
+      "compatible_printers_condition"
+     ]
+    },
+    {
+     "title": "Compatible process profiles",
+     "icon": "param_dependencies_presets",
+     "options": [
+      "compatible_prints",
+      "compatible_prints_condition"
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Notes",
+   "icon": "custom-gcode_note",
+   "groups": [
+    {
+     "title": "Notes",
+     "icon": "note",
+     "options": [
+      "filament_notes"
+     ]
+    }
+   ]
+  }
+ ]
+}

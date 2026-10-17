@@ -1,0 +1,403 @@
+{
+ "tab": "printer",
+ "pages": [
+  {
+   "title": "Basic information",
+   "icon": "custom-gcode_object-info",
+   "groups": [
+    {
+     "title": "Printable space",
+     "icon": "param_printable_space",
+     "options": [
+      "printable_area",
+      "parallel_printheads_count",
+      "bed_exclude_area",
+      "printable_height",
+      "support_multi_bed_types",
+      "best_object_pos",
+      "z_offset",
+      "preferred_orientation"
+     ]
+    },
+    {
+     "title": "Advanced",
+     "icon": "param_advanced",
+     "options": [
+      "printer_structure",
+      "gcode_flavor",
+      "gcode_skip_config_block",
+      "pellet_modded_printer",
+      "bbl_use_printhost",
+      "printer_agent",
+      "use_3mf",
+      "scan_first_layer",
+      "enable_power_loss_recovery",
+      "disable_m73"
+     ]
+    },
+    {
+     "title": "Belt printer",
+     "icon": "param_advanced",
+     "options": [
+      "belt_printer",
+      "belt_printer_infinite_y",
+      "belt_slice_rotation_angle",
+      "belt_slice_rotation",
+      "belt_support_floor_offset"
+     ]
+    },
+    {
+     "title": "Machine frame transforms",
+     "icon": "param_advanced",
+     "options": [
+      "gcode_remap_x",
+      "gcode_remap_y",
+      "gcode_remap_z",
+      "belt_frame_tilt_decouple",
+      "belt_frame_tilt_angle",
+      "thumbnails",
+      "use_relative_e_distances",
+      "use_firmware_retraction",
+      "time_cost",
+      "build_plate_tilt_x",
+      "build_plate_tilt_y"
+     ]
+    },
+    {
+     "title": "Plugin Configuration",
+     "icon": "param_gcode",
+     "options": [
+      "printer_plugin_config_overrides"
+     ]
+    },
+    {
+     "title": "Cooling Fan",
+     "icon": "param_cooling_fan",
+     "options": [
+      "fan_speedup_time",
+      "fan_speedup_overhangs",
+      "fan_kickstart",
+      "part_cooling_fan_min_pwm"
+     ]
+    },
+    {
+     "title": "Extruder Clearance",
+     "icon": "param_extruder_clearance",
+     "options": [
+      "extruder_clearance_radius",
+      "extruder_clearance_dist_to_rod",
+      "extruder_clearance_height_to_rod",
+      "extruder_clearance_height_to_lid"
+     ]
+    },
+    {
+     "title": "Adaptive bed mesh",
+     "icon": "param_adaptive_mesh",
+     "options": [
+      "bed_mesh_min",
+      "bed_mesh_max",
+      "bed_mesh_probe_distance",
+      "adaptive_bed_mesh_margin"
+     ]
+    },
+    {
+     "title": "Accessory",
+     "icon": "param_accessory",
+     "options": [
+      "nozzle_hrc",
+      "auxiliary_fan",
+      "fan_direction",
+      "support_chamber_temp_control",
+      "support_air_filtration",
+      "cooling_filter_enabled"
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Non-planar",
+   "icon": "custom-gcode_motion",
+   "groups": [
+    {
+     "title": "Print head",
+     "icon": "param_extruder_clearance",
+     "options": [
+      "nonplanar_head",
+      "nonplanar_segment_rate"
+     ]
+    },
+    {
+     "title": "Rotary axes",
+     "icon": "param_position",
+     "options": [
+      "nonplanar_kinematics",
+      "nonplanar_max_tilt",
+      "rotary_tool_length",
+      "rotary_table_height",
+      "rotary_firmware_rtcp",
+      "rotary_inverse_time_feed"
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Machine G-code",
+   "icon": "custom-gcode_gcode",
+   "groups": [
+    {
+     "title": "File header G-code",
+     "icon": "param_gcode",
+     "options": [
+      "file_start_gcode"
+     ]
+    },
+    {
+     "title": "Machine start G-code",
+     "icon": "param_gcode",
+     "options": [
+      "machine_start_gcode"
+     ]
+    },
+    {
+     "title": "Machine end G-code",
+     "icon": "param_gcode",
+     "options": [
+      "machine_end_gcode"
+     ]
+    },
+    {
+     "title": "Printing by object G-code",
+     "icon": "param_gcode",
+     "options": [
+      "printing_by_object_gcode"
+     ]
+    },
+    {
+     "title": "Before layer change G-code",
+     "icon": "param_gcode",
+     "options": [
+      "before_layer_change_gcode"
+     ]
+    },
+    {
+     "title": "Layer change G-code",
+     "icon": "param_gcode",
+     "options": [
+      "layer_change_gcode"
+     ]
+    },
+    {
+     "title": "Timelapse G-code",
+     "icon": "param_gcode",
+     "options": [
+      "time_lapse_gcode"
+     ]
+    },
+    {
+     "title": "Clumping Detection G-code",
+     "icon": "param_gcode",
+     "options": [
+      "wrapping_detection_gcode"
+     ]
+    },
+    {
+     "title": "Change filament G-code",
+     "icon": "param_gcode",
+     "options": [
+      "change_filament_gcode"
+     ]
+    },
+    {
+     "title": "Change extrusion role G-code",
+     "icon": "param_gcode",
+     "options": [
+      "change_extrusion_role_gcode"
+     ]
+    },
+    {
+     "title": "Pause G-code",
+     "icon": "param_gcode",
+     "options": [
+      "machine_pause_gcode"
+     ]
+    },
+    {
+     "title": "Template Custom G-code",
+     "icon": "param_gcode",
+     "options": [
+      "template_custom_gcode"
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Notes",
+   "icon": "custom-gcode_note",
+   "groups": [
+    {
+     "title": "Notes",
+     "icon": "note",
+     "options": [
+      "printer_notes"
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Motion ability",
+   "icon": "custom-gcode_motion",
+   "groups": [
+    {
+     "title": "Advanced",
+     "icon": "param_advanced",
+     "options": [
+      "emit_machine_limits_to_gcode"
+     ]
+    },
+    {
+     "title": "Resonance Compensation",
+     "icon": "param_resonance_avoidance",
+     "options": [
+      "resonance_avoidance",
+      "min_resonance_avoidance_speed",
+      "max_resonance_avoidance_speed",
+      "input_shaping_emit",
+      "input_shaping_type",
+      "input_shaping_freq_x",
+      "input_shaping_freq_y",
+      "input_shaping_damp_x",
+      "input_shaping_damp_y"
+     ]
+    },
+    {
+     "title": "Acceleration limitation",
+     "icon": "param_acceleration",
+     "options": [
+      "machine_max_acceleration_",
+      "machine_max_acceleration_extruding",
+      "machine_max_acceleration_retracting",
+      "machine_max_acceleration_travel"
+     ]
+    },
+    {
+     "title": "Jerk limitation",
+     "icon": "param_jerk",
+     "options": [
+      "machine_max_junction_deviation",
+      "machine_max_jerk_"
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Multimaterial",
+   "icon": "custom-gcode_multi_material",
+   "groups": [
+    {
+     "title": "Single extruder multi-material setup",
+     "icon": "param_multi_material",
+     "options": [
+      "single_extruder_multi_material",
+      "manual_filament_change",
+      "bed_temperature_formula"
+     ]
+    },
+    {
+     "title": "Wipe tower",
+     "icon": "param_tower",
+     "options": [
+      "wipe_tower_type",
+      "purge_in_prime_tower",
+      "enable_filament_ramming",
+      "tool_change_on_wipe_tower",
+      "wait_for_temp_on_wipe_tower"
+     ]
+    },
+    {
+     "title": "Belt purge tower",
+     "icon": "param_tower",
+     "options": [
+      "enable_belt_purge_tower"
+     ]
+    },
+    {
+     "title": "Single extruder multi-material parameters",
+     "icon": "param_settings",
+     "options": [
+      "cooling_tube_retraction",
+      "cooling_tube_length",
+      "parking_pos_retraction",
+      "extra_loading_move",
+      "high_current_on_filament_swap"
+     ]
+    },
+    {
+     "title": "Advanced",
+     "icon": "param_advanced",
+     "options": [
+      "machine_load_filament_time",
+      "machine_unload_filament_time",
+      "machine_tool_change_time"
+     ]
+    },
+    {
+     "title": "IDEX/IQEX Configuration",
+     "icon": "param_advanced",
+     "options": [
+      "is_imex",
+      "imex_firmware_managed_zones",
+      "imex_gantry_count",
+      "imex_tools_per_gantry",
+      "imex_tool_layout",
+      "imex_nozzle_clearance_x",
+      "imex_nozzle_clearance_y",
+      "imex_carriage_margin",
+      "imex_viz_theme"
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Extruder",
+   "icon": "custom-gcode_extruder",
+   "groups": [
+    {
+     "title": "Basic information",
+     "icon": "param_information",
+     "options": [
+      "nozzle_diameter",
+      "nozzle_type",
+      "nozzle_volume",
+      "extruder_printable_height",
+      "extruder_printable_area"
+     ]
+    },
+    {
+     "title": "Layer height limits",
+     "icon": "param_layer_height",
+     "options": [
+      "min_layer_height",
+      "max_layer_height"
+     ]
+    },
+    {
+     "title": "Position",
+     "icon": "param_position",
+     "options": [
+      "extruder_offset"
+     ]
+    },
+    {
+     "title": "Retraction when switching material",
+     "icon": "param_retraction_material_change",
+     "options": [
+      "retract_length_toolchange",
+      "retract_restart_extra_toolchange",
+      "long_retractions_when_cut",
+      "retraction_distances_when_cut"
+     ]
+    }
+   ]
+  }
+ ]
+}
