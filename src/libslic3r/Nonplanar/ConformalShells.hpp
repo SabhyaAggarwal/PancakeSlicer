@@ -6,13 +6,14 @@
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
 #include "libslic3r/Point.hpp"
+#include "libslic3r/Polyline.hpp"
 #include <functional>
 #include <memory>
 #include <string>
 #include <type_traits>
 #include <vector>
 
-namespace Slic3r { class PrintObject; }
+namespace Slic3r { class PrintObject; class Flow; }
 namespace Slic3r::sla { class IndexedMesh; }
 
 namespace Slic3r::Nonplanar {
@@ -121,6 +122,19 @@ struct ConformalResult
     std::vector<double>           event_cuts;
     std::shared_ptr<ObjectMesh>   mesh;
 };
+
+struct WidthRoads
+{
+    Polylines                       polylines;
+    std::vector<std::vector<float>> widths;
+};
+
+void contour_roads(const HeightField &surface, const ExPolygons &area, double drop, double strip_height, double strip_offset, const Flow &flow,
+                   double layer_height, double angle, bool outer, double z, WidthRoads &roads, std::vector<Polylines> &lines);
+
+bool outline_is_contour(const ConformalPatch &patch, double tolerance);
+
+bool is_round(const ExPolygons &footprint);
 
 HeightField sample_top_surface(const sla::IndexedMesh &mesh, double ray_z, double z_offset, const HeightField &like,
                                const std::function<void()> &throw_if_canceled = {},

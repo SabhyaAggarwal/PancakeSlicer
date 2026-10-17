@@ -500,6 +500,27 @@ std::vector<ShellFill> plan_shell_fills(const ConformalPatch &patch, const Print
     return fills;
 }
 
+ThickPolylines gap_fill(const ExPolygons &area, const Polygons &covered, double spacing)
+{
+    ThickPolylines out;
+    for (ExPolygon &gap : opening_ex(diff_ex(area, covered), float(scale_(0.125 * spacing)))) {
+        gap.douglas_peucker(scale_(0.01));
+        const size_t n = out.size();
+        gap.medial_axis(scale_(0.25 * spacing), scale_(2. * spacing), &out);
+        if (out.size() == n && gap.area() > sqr(scale_(0.5 * spacing))) {
+            const BoundingBox bb   = get_extents(gap.contour);
+            const Point       c    = bb.center();
+            const bool        wide = bb.size().x() >= bb.size().y();
+            const coord_t     half = std::max<coord_t>(coord_t(scale_(0.125 * spacing)), (wide ? bb.size().x() : bb.size().y()) / 2 - coord_t(scale_(0.5 * spacing)));
+            ThickPolyline     pl;
+            pl.points = wide ? Points{ Point(c.x() - half, c.y()), Point(c.x() + half, c.y()) } : Points{ Point(c.x(), c.y() - half), Point(c.x(), c.y() + half) };
+            pl.width.assign(2, std::min(double(wide ? bb.size().y() : bb.size().x()), gap.area() / double(2 * half)));
+            out.emplace_back(std::move(pl));
+        }
+    }
+    return out;
+}
+
 Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam, const Polyline *seam_line, double ring_spacing, int first_ring)
 {
     const coord_t step = coord_t(scale_(spacing));

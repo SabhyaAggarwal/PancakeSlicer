@@ -172,12 +172,6 @@ void split_by_colour(ConformalResult &result, std::vector<HeightField> &planar_t
     seam_lines  = std::move(lines);
 }
 
-struct WidthRoads
-{
-    Polylines                       polylines;
-    std::vector<std::vector<float>> widths;
-};
-
 Polygons width_cover(const WidthRoads &roads)
 {
     Polygons out;
@@ -465,6 +459,7 @@ Polylines sparse_strip_fill(const HeightField &surface, const ExPolygons &area, 
     return out;
 }
 
+}
 bool outline_is_contour(const ConformalPatch &patch, double tolerance)
 {
     const double pitch = patch.surface.pitch();
@@ -503,6 +498,8 @@ bool is_round(const ExPolygons &footprint)
     }
     return p > 0. && 4. * PI * a / (p * p) >= 0.5;
 }
+
+namespace {
 
 struct PlanarFace
 {
@@ -853,6 +850,18 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
     return out;
 }
 
+}
+
+void contour_roads(const HeightField &surface, const ExPolygons &area, double drop, double strip_height, double strip_offset, const Flow &flow,
+                   double layer_height, double angle, bool outer, double z, WidthRoads &roads, std::vector<Polylines> &lines)
+{
+    contour_fill(surface, area, drop, strip_height, strip_offset, flow, layer_height, angle, outer, z, roads, lines);
+    if (cover_has_gaps(offset_ex(area, -float(scale_(0.5 * flow.spacing()))), lines, flow.width(), roads.polylines, roads.widths, flow.spacing())) {
+        Polygons cover = width_cover(roads);
+        append(cover, linked_cover(lines, flow.width()));
+        for (Polyline &pl : pinhole_roads(area, std::move(cover), flow.width(), flow.spacing()))
+            lines.push_back({ std::move(pl) });
+    }
 }
 
 double low_plane_top_radius(const PrintObject &object, double layer_height)
@@ -1463,6 +1472,18 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
     std::vector<ExPolygons>  shell_areas;
     std::vector<std::pair<ExPolygon, const char *>> skipped;
     const int                solid_layers = settings.shells - settings.sparse;
+    std::vector<Mask> planar_solid(layers.size());
+    auto solid_at = [&](size_t l, size_t n) {
+        if (planar_solid[l].empty()) {
+            ExPolygons solid;
+            for (const LayerRegion *layerm : layers[l]->regions())
+                for (const Surface &surface : layerm->fill_surfaces.surfaces)
+                    if (surface.surface_type != stInternal && surface.surface_type != stInternalVoid)
+                        solid.emplace_back(surface.expolygon);
+            planar_solid[l] = rasterize(solid, grid);
+        }
+        return planar_solid[l][n] != 0;
+    };
     const double             top_thickness = std::max(region.config().top_shell_layers.value * object.config().layer_height.value,
                                                       region.config().top_shell_thickness.value);
     for (ExPolygon &component : components) {
@@ -1577,6 +1598,16 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                     const float u = U.at(ix0 + int(i % size_t(top.nx())), iy0 + int(i / size_t(top.nx())));
                     if (std::isnan(u) || s - m * h_c - h_min < u + (m > solid_layers ? settings.bottom_keep : h_c))
                         continue;
+                    if (const int patch_solid = patch.shells - patch.sparse; m > patch_solid) {
+                        const size_t n    = size_t(iy0 + int(i / size_t(top.nx()))) * size_t(grid.nx()) + size_t(ix0 + int(i % size_t(top.nx())));
+                        const double zlo  = s - m * h_c, zhi = s - patch_solid * h_c;
+                        bool         over = false;
+                        for (size_t l = size_t(std::lower_bound(layer_z.begin(), layer_z.end(), zlo) - layer_z.begin());
+                             l < layers.size() && layer_z[l] - 0.5 * layers[l]->height < zhi && !over; ++l)
+                            over = solid_at(l, n);
+                        if (over)
+                            continue;
+                    }
                 }
                 if (stack && m == n_top && !std::isnan(stack->outer.data()[i])) {
                     const double h0   = stack->outer.data()[i];

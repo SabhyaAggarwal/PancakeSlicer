@@ -802,6 +802,49 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
     for (int i : all_nodes)
         all_mask[size_t(i)] = 1;
     const ExPolygons all_footprint = mask_to_expolygons(all_mask, grid);
+    std::vector<Polylines> spans(layers.size());
+    {
+        std::function<void(const ExtrusionEntityCollection &, double)> walk = [&](const ExtrusionEntityCollection &c, double host_z) {
+            for (const ExtrusionEntity *ee : c.entities) {
+                if (const auto *sub = dynamic_cast<const ExtrusionEntityCollection *>(ee)) {
+                    walk(*sub, host_z);
+                    continue;
+                }
+                const auto *path = dynamic_cast<const ExtrusionPathConformal *>(ee);
+                if (path == nullptr || path->bead_height.size() != path->polyline.points.size())
+                    continue;
+                std::vector<Vec3d> pts;
+                const Points3     &src = path->polyline.points;
+                double             lo = Inf, hi = -Inf;
+                for (size_t i = 0; i < src.size(); ++i) {
+                    const size_t k = std::min(i + 1, src.size() - 1);
+                    const Vec3d  a = unscale(src[i]) + Vec3d(0., 0., host_z), b = unscale(src[k]) + Vec3d(0., 0., host_z);
+                    const int    n = k > i ? std::max(1, int(std::ceil((b - a).head<2>().norm() / (0.25 * w)))) : 1;
+                    for (int j = 0; j < n; ++j)
+                        pts.emplace_back(a + double(j) / n * (b - a));
+                    lo = std::min(lo, a.z() - path->bead_height[i]), hi = std::max(hi, a.z());
+                }
+                for (size_t l = size_t(std::lower_bound(layer_top.begin(), layer_top.end(), lo - g) - layer_top.begin());
+                     l < layers.size() && layer_bottom[l] <= hi; ++l) {
+                    const double mid = 0.5 * (layer_bottom[l] + layer_top[l]);
+                    Polyline     run;
+                    for (size_t i = 0; i <= pts.size(); ++i) {
+                        if (i < pts.size() && pts[i].z() >= mid)
+                            run.points.emplace_back(Point::new_scale(pts[i].x(), pts[i].y()));
+                        else if (!run.points.empty()) {
+                            if (run.points.size() == 1)
+                                run.points.emplace_back(run.points.front());
+                            spans[l].emplace_back(std::move(run));
+                            run.points.clear();
+                        }
+                    }
+                }
+            }
+        };
+        for (size_t idx = first_patch; idx < result.patches.size(); ++idx)
+            for (const ExtrusionEntityCollection &shell : result.patches[idx].shell_paths)
+                walk(shell, layers[result.patches[idx].host_layer]->print_z);
+    }
     tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
         for (size_t l = range.begin(); l < range.end(); ++l) {
             throw_if_canceled(object);
@@ -812,7 +855,8 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
                     below[size_t(i)] = 1, any = true;
             if (!any)
                 continue;
-            ExPolygons excl = intersection_ex(mask_to_expolygons(below, grid), all_footprint);
+            ExPolygons excl = intersection_ex(intersection_ex(mask_to_expolygons(below, grid), all_footprint),
+                                              offset(spans[l], float(scale_(0.5 * w))));
             if (excl.empty())
                 continue;
             const BoundingBox excl_bbox = get_extents(excl);
