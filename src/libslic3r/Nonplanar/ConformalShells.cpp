@@ -26,6 +26,7 @@
 #include "libslic3r/Flow.hpp"
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/Layer.hpp"
+#include "libslic3r/Point.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintBase.hpp"
 #include "libslic3r/PrintConfig.hpp"
@@ -1111,6 +1112,48 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
                       offset_ex(area, float(scale_(0.25 * flow.spacing()))), at, host_z, resample, MaxGlide);
     out.no_sort = true;
     return out;
+}
+
+void taper_top(ConformalPatch &patch)
+{
+    if (patch.shell_paths.empty())
+        return;
+    Polylines                       roads, others;
+    std::vector<std::vector<float>> widths;
+    std::vector<std::pair<ExtrusionPathConformal *, size_t>> slots;
+    float  to_width = 0.f;
+    double spacing  = 0.;
+    for (ExtrusionEntity *ee : patch.shell_paths.back().entities) {
+        auto          &path = *static_cast<ExtrusionPathConformal *>(ee);
+        const Points3 &pts  = path.polyline.points;
+        for (size_t i = 0; i + 1 < pts.size();) {
+            if (path.bead_height[i] <= 0.f || path.bead_height[i + 1] <= 0.f) {
+                ++i;
+                continue;
+            }
+            size_t j = i + 1;
+            while (j + 1 < pts.size() && path.bead_height[j + 1] > 0.f)
+                ++j;
+            Polyline run;
+            for (size_t k = i; k <= j; ++k)
+                run.points.emplace_back(pts[k].x(), pts[k].y());
+            if (path.bead_width.size() != pts.size())
+                others.emplace_back(std::move(run));
+            else {
+                roads.emplace_back(std::move(run));
+                widths.emplace_back(path.bead_width.begin() + i, path.bead_width.begin() + j + 1);
+                slots.emplace_back(&path, i);
+                to_width = float(path.height * (1. - 0.25 * PI));
+                spacing  = path.width - to_width;
+            }
+            i = j;
+        }
+    }
+    if (roads.empty())
+        return;
+    taper_converging(roads, widths, others, to_width, spacing);
+    for (size_t r = 0; r < roads.size(); ++r)
+        std::copy(widths[r].begin(), widths[r].end(), slots[r].first->bead_width.begin() + slots[r].second);
 }
 
 }
@@ -2245,6 +2288,11 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                                              layer_changes_filament(object), patch_offset, &patch_component, event_cuts(object));
     }
     std::vector<ConformalPatch> &units = settings.banded ? component_patches : result.patches;
+    if (settings.banded)
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, result.patches.size()), [&](const tbb::blocked_range<size_t> &range) {
+            for (size_t i = range.begin(); i < range.end(); ++i)
+                taper_top(result.patches[i]);
+        });
 
     if (region.config().nonplanar_flow_mod.value) {
         const double  nozzle = region.flow(object, frSolidInfill, h_c).nozzle_diameter();

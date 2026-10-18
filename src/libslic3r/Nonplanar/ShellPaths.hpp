@@ -66,6 +66,15 @@ std::vector<Polylines> shell_polylines(const ExPolygons &area, const ShellFill &
 
 std::vector<Polylines> link_paths(Polylines &&paths, const ExPolygons &area, double spacing, double max_glide);
 
+constexpr double TaperFrom = 0.85;
+constexpr double TaperFloor = 0.6;
+constexpr double TaperSmooth = 1.;
+constexpr double TaperEnds = 1.;
+constexpr double TaperMissing = 1.25;
+
+void taper_converging(const Polylines &roads, std::vector<std::vector<float>> &widths, const Polylines &others, float to_width,
+                      double spacing);
+
 Polygons linked_cover(const std::vector<Polylines> &linked, double width);
 
 bool cover_has_gaps(const ExPolygons &inner, const std::vector<Polylines> &linked, double width, const Polylines &variable,

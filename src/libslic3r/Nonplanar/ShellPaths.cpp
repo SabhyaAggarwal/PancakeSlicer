@@ -8,6 +8,7 @@
 #include "Seams.hpp"
 #include "SpiralTop.hpp"
 
+#include "libslic3r/AABBTreeLines.hpp"
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/Exception.hpp"
@@ -21,6 +22,8 @@
 #include "libslic3r/libslic3r.h"
 
 #include <Eigen/Eigenvalues>
+#include <tbb/blocked_range.h>
+#include <tbb/parallel_for.h>
 
 #include <algorithm>
 #include <array>
@@ -749,6 +752,118 @@ std::vector<Polylines> shell_polylines(const ExPolygons &area, const ShellFill &
         paths.insert(paths.begin(), std::make_move_iterator(outline.begin()), std::make_move_iterator(outline.end()));
     }
     return link_paths(std::move(paths), area, spacing, max_glide);
+}
+
+constexpr double TaperStep = 0.25;
+
+void taper_converging(const Polylines &roads, std::vector<std::vector<float>> &widths, const Polylines &others, float to_width,
+                      double spacing)
+{
+    std::vector<Linef>  lines;
+    std::vector<size_t> owner;
+    std::vector<double> arc0;
+    std::vector<double> length;
+    auto add = [&](const Polyline &pl, size_t id) {
+        double arc = 0.;
+        for (size_t j = 0; j + 1 < pl.points.size(); ++j) {
+            const Linef l(unscale(pl.points[j]), unscale(pl.points[j + 1]));
+            lines.emplace_back(l);
+            owner.emplace_back(id);
+            arc0.emplace_back(arc);
+            arc += (l.b - l.a).norm();
+        }
+        length.resize(lines.size(), arc);
+    };
+    for (size_t r = 0; r < roads.size(); ++r)
+        add(roads[r], r);
+    for (size_t k = 0; k < others.size(); ++k)
+        add(others[k], roads.size() + k);
+    if (lines.empty())
+        return;
+    const AABBTreeLines::LinesDistancer<Linef> tree(lines);
+    const double parallel = std::cos(Geometry::deg2rad(30.));
+    auto room = [&](size_t r, const Vec2d &p, const Vec2d &t, double arc, double s) {
+        const Vec2d n(-t.y(), t.x());
+        double      left = std::numeric_limits<double>::max(), right = left;
+        for (const size_t i : tree.all_lines_in_radius(p, 1.25 * s)) {
+            const Linef &l = lines[i];
+            const Vec2d  d = l.b - l.a;
+            const double len = d.norm();
+            if (len < EPSILON || std::abs(d.dot(t)) < parallel * len)
+                continue;
+            const double u = std::clamp((p - l.a).dot(d) / (len * len), 0., 1.);
+            const Vec2d  v = l.a + u * d - p;
+            const double at_line = arc0[i] + u * len;
+            if (owner[i] == r && std::abs(at_line - arc) < 3. * s)
+                continue;
+            const double lateral = v.dot(n);
+            if (std::abs(v.dot(t)) > 0.5 * std::abs(lateral) + 0.02)
+                continue;
+            if (owner[i] != r && std::min(at_line, length[i] - at_line) < TaperEnds)
+                return 1.;
+            if (lateral > 0.)
+                left = std::min(left, lateral);
+            else
+                right = std::min(right, -lateral);
+        }
+        const auto   side = [s](double d) { return d == std::numeric_limits<double>::max() ? TaperMissing * s : std::min(d, 1.25 * s); };
+        const double mean = 0.5 * (side(left) + side(right)) / s;
+        return mean < TaperFrom ? std::max(mean, TaperFloor) : 1.;
+    };
+    const auto own_spacing = [&](float width) { return std::clamp(double(width - to_width), EPSILON, spacing); };
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, roads.size()), [&](const tbb::blocked_range<size_t> &range) {
+        for (size_t r = range.begin(); r < range.end(); ++r) {
+            const Points             &pts = roads[r].points;
+            const std::vector<float> &w   = widths[r];
+            if (pts.size() < 2)
+                continue;
+            std::vector<Vec2d>  p, heading;
+            std::vector<double> arc, share;
+            std::vector<float>  width;
+            std::vector<size_t> vertex;
+            double              at = 0.;
+            for (size_t j = 0; j + 1 < pts.size(); ++j) {
+                const Vec2d  a = unscale(pts[j]), b = unscale(pts[j + 1]);
+                const double len = (b - a).norm();
+                const Vec2d  t   = len > EPSILON ? Vec2d((b - a) / len) : Vec2d(1., 0.);
+                const int    n   = std::max(1, int(std::ceil(len / TaperStep)));
+                vertex.emplace_back(p.size());
+                for (int k = 0; k < n; ++k) {
+                    const double f = double(k) / n;
+                    p.emplace_back(a + f * (b - a));
+                    heading.emplace_back(t);
+                    arc.emplace_back(at + f * len);
+                    width.emplace_back(float(w[j] + f * (w[j + 1] - w[j])));
+                }
+                at += len;
+            }
+            vertex.emplace_back(p.size());
+            p.emplace_back(unscale(pts.back()));
+            heading.emplace_back(heading.back());
+            arc.emplace_back(at);
+            width.emplace_back(w.back());
+            share.reserve(p.size());
+            for (size_t i = 0; i < p.size(); ++i)
+                share.emplace_back(std::min(arc[i], at - arc[i]) < TaperEnds ? 1. :
+                                                                                room(r, p[i], heading[i], arc[i], own_spacing(width[i])));
+            if (std::all_of(share.begin(), share.end(), [](double s) { return s >= 1.; }))
+                continue;
+            for (size_t j = 0, lo = 0, hi = 0; j < vertex.size(); ++j) {
+                const size_t i = vertex[j];
+                while (arc[lo] < arc[i] - 0.5 * TaperSmooth)
+                    ++lo;
+                while (hi + 1 < share.size() && arc[hi + 1] <= arc[i] + 0.5 * TaperSmooth)
+                    ++hi;
+                double sum = 0., weight = 0.;
+                for (size_t k = lo; k <= std::max(hi, i); ++k) {
+                    const double dl = 0.5 * ((k + 1 < share.size() ? arc[k + 1] : arc[k]) - (k > 0 ? arc[k - 1] : arc[k])) + 1e-6;
+                    sum += share[k] * dl;
+                    weight += dl;
+                }
+                widths[r][j] = float(width[i] - (1. - std::min(1., sum / weight)) * own_spacing(width[i]));
+            }
+        }
+    });
 }
 
 std::vector<Polylines> link_paths(Polylines &&paths, const ExPolygons &area, double spacing, double max_glide)
