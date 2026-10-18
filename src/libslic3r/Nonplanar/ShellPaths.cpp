@@ -578,15 +578,21 @@ Polylines fill_spiral(const ExPolygons &area, double spacing, const Point &seam,
         opened.emplace_back(std::move(pl));
         rings.emplace_back(loop);
     }
+    const Polygons edges = to_polygons(area);
+    auto           along_edge = [&](const Point &p) {
+        return first_ring == 0 && std::any_of(edges.begin(), edges.end(), [&](const Polygon &edge) {
+                   return edge.size() >= 3 && (project_on(edge, p).first - p).cast<double>().norm() < double(chain);
+               });
+    };
     Polylines out;
     for (size_t k = 0; k < opened.size(); ++k) {
         Polyline pl = opened[k];
         const double length = pl.length();
         const double shear  = std::clamp(0.125 * length, double(step), scale_(RingStepLength));
         bool         joined = false;
-        if (k + 1 < opened.size() && shear > double(step)) {
-            Polyline body = pl;
-            body.clip_end(shear);
+        Polyline     body   = pl;
+        body.clip_end(shear);
+        if (k + 1 < opened.size() && shear > double(step) && body.is_valid() && !along_edge(body.last_point())) {
             Polyline tail = pl;
             tail.reverse();
             tail.clip_end(length - shear);

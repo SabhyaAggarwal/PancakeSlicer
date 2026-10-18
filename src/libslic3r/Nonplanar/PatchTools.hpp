@@ -158,6 +158,8 @@ bool layer_changes_filament(const PrintObject &object);
 
 std::vector<double> event_cuts(const PrintObject &object);
 
+std::vector<std::pair<double, unsigned int>> multi_as_single_tool_changes(const PrintObject &object);
+
 int event_slab(const std::vector<double> &cuts, double z);
 void cut_at_events(ExtrusionPathConformal *piece, const std::vector<double> &cuts,
                    const std::function<void(int slab, ExtrusionPathConformal *part)> &sink);

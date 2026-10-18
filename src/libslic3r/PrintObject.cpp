@@ -730,6 +730,11 @@ void PrintObject::nonplanar_shells()
                    Nonplanar::overhangs_enabled(this->printing_region(region_id).config(), this->config()) ||
                    Nonplanar::bridges_enabled(this->printing_region(region_id).config(), this->config());
     enabled &= !imported;
+    auto record_apply_inputs = [this]() {
+        m_conformal->layer_changes_filament = Nonplanar::layer_changes_filament(*this);
+        m_conformal->event_cuts             = Nonplanar::event_cuts(*this);
+        m_conformal->tool_changes           = Nonplanar::multi_as_single_tool_changes(*this);
+    };
     if (m_field && m_config.nonplanar_atom_toolpath.value.empty()) {
         m_print->set_status(40, L("Slicing rotary curved layers"));
         for (Layer *layer : m_layers) {
@@ -738,8 +743,7 @@ void PrintObject::nonplanar_shells()
         }
         m_conformal = std::make_unique<Nonplanar::ConformalResult>();
         Nonplanar::build_field_patch(*this, m_field, *m_conformal);
-        m_conformal->layer_changes_filament = Nonplanar::layer_changes_filament(*this);
-        m_conformal->event_cuts             = Nonplanar::event_cuts(*this);
+        record_apply_inputs();
         m_print->throw_if_canceled();
         this->set_done(posNonplanar);
         return;
@@ -752,8 +756,7 @@ void PrintObject::nonplanar_shells()
         }
         m_conformal = std::make_unique<Nonplanar::ConformalResult>();
         Nonplanar::build_multiplanar_chunks(*this, *m_multiplanar, *m_conformal);
-        m_conformal->layer_changes_filament = Nonplanar::layer_changes_filament(*this);
-        m_conformal->event_cuts             = Nonplanar::event_cuts(*this);
+        record_apply_inputs();
         m_print->throw_if_canceled();
         this->set_done(posNonplanar);
         return;
@@ -763,8 +766,7 @@ void PrintObject::nonplanar_shells()
         auto conformal = std::make_unique<Nonplanar::ConformalResult>();
         if (Nonplanar::build_deform_slice(*this, *conformal)) {
             m_conformal = std::move(conformal);
-            m_conformal->layer_changes_filament = Nonplanar::layer_changes_filament(*this);
-            m_conformal->event_cuts             = Nonplanar::event_cuts(*this);
+            record_apply_inputs();
             m_print->throw_if_canceled();
             this->set_done(posNonplanar);
             return;
@@ -816,10 +818,8 @@ void PrintObject::nonplanar_shells()
         for (const std::string &warning : Nonplanar::apply_atom_toolpath(*this, *m_conformal))
             this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, warning);
     }
-    if (m_conformal) {
-        m_conformal->layer_changes_filament = Nonplanar::layer_changes_filament(*this);
-        m_conformal->event_cuts             = Nonplanar::event_cuts(*this);
-    }
+    if (m_conformal)
+        record_apply_inputs();
     m_print->throw_if_canceled();
     this->set_done(posNonplanar);
 }

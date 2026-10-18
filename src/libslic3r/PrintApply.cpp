@@ -1823,7 +1823,8 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
         if (const Nonplanar::ConformalResult &conformal = object->conformal();
             object->is_step_done_unguarded(posNonplanar) && !conformal.patches.empty() &&
             (conformal.layer_changes_filament != Nonplanar::layer_changes_filament(*object) ||
-             conformal.event_cuts != Nonplanar::event_cuts(*object))) {
+             conformal.event_cuts != Nonplanar::event_cuts(*object) ||
+             conformal.tool_changes != Nonplanar::multi_as_single_tool_changes(*object))) {
             update_apply_status(object->invalidate_step(posPerimeters));
             update_apply_status(object->invalidate_step(posSupportMaterial));
         }

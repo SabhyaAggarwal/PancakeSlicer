@@ -1908,6 +1908,17 @@ bool layer_changes_filament(const PrintObject &object)
     return filaments.size() > 1;
 }
 
+std::vector<std::pair<double, unsigned int>> multi_as_single_tool_changes(const PrintObject &object)
+{
+    const Print *print = object.print();
+    if (print == nullptr || print->config().filament_diameter.size() < 2 || print->object_extruders().size() != 1)
+        return {};
+    const CustomGCode::Info &info = print->model().get_curr_plate_custom_gcodes();
+    if (info.mode != CustomGCode::MultiAsSingle)
+        return {};
+    return custom_tool_changes(info, print->config().filament_diameter.size());
+}
+
 int event_slab(const std::vector<double> &cuts, double z)
 {
     return int(std::lower_bound(cuts.begin(), cuts.end(), z) - cuts.begin());

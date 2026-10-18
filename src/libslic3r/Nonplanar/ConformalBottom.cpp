@@ -9,7 +9,6 @@
 
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ClipperUtils.hpp"
-#include "libslic3r/CustomGCode.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
@@ -715,21 +714,13 @@ bool patch_has_extrusions(const ConformalPatch &patch)
 
 int patch_filament_id(const PrintObject &object, const ConformalPatch &patch)
 {
-    if (const Print *print = object.print(); print != nullptr && patch.kind != PatchKind::SupportInterface &&
-                                             print->config().filament_diameter.size() > 1 && patch.host_layer < object.layers().size()) {
-        const Model &model = print->model();
-        if (const auto it = model.plates_custom_gcodes.find(model.curr_plate_index);
-            it != model.plates_custom_gcodes.end() && it->second.mode == CustomGCode::MultiAsSingle &&
-            std::any_of(it->second.gcodes.begin(), it->second.gcodes.end(),
-                        [](const CustomGCode::Item &item) { return item.type == CustomGCode::ToolChange; }) &&
-            print->object_extruders().size() == 1) {
-            int filament = 0;
-            for (const auto &[z, extruder] : custom_tool_changes(it->second, print->config().filament_diameter.size()))
-                if (z < object.layers()[patch.host_layer]->print_z + EPSILON)
-                    filament = int(extruder);
-            if (filament > 0)
-                return filament;
-        }
+    if (patch.kind != PatchKind::SupportInterface && patch.host_layer < object.layers().size()) {
+        int filament = 0;
+        for (const auto &[z, extruder] : multi_as_single_tool_changes(object))
+            if (z < object.layers()[patch.host_layer]->print_z + EPSILON)
+                filament = int(extruder);
+        if (filament > 0)
+            return filament;
     }
     const PrintRegionConfig &cfg = object.printing_region(size_t(patch.region_id)).config();
     switch (patch.kind) {

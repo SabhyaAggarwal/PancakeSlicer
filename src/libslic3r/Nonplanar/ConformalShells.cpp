@@ -107,6 +107,8 @@ ShellSettings shell_settings(const PrintObject &object, size_t region_id)
         s.max_patch_height = a.max_patch_height;
     } else if (s.shells < 0)
         s.shells = AutoMinShells;
+    if (s.banded)
+        s.shells = std::max(s.shells, AutoMinShells);
     s.adaptive         = s.banded && cfg.nonplanar_adaptive_bands.value;
     s.top_shells       = s.shells;
     if (s.banded && infill_depth(cfg, object) > 0.) {
@@ -1049,7 +1051,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
         mask[i]    = 0;
         dropped[i] = why;
     };
-    const int min_shells = settings.shells > settings.top_shells ? 1 : settings.top_shells;
+    const int min_shells = settings.shells > settings.top_shells ? AutoMinShells : settings.top_shells;
     std::vector<float> bed_margin(n_nodes, NAN), steep_margin(n_nodes, NAN), flat_margin(n_nodes, NAN);
     if (settings.banded)
         for (size_t i = 0; i < n_nodes; ++i)

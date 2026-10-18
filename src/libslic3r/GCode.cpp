@@ -4649,17 +4649,6 @@ void GCode::print_machine_envelope(GCodeOutputStream &file, Print &print)
                     print.config().input_shaping_freq_y.value, "").c_str());
             }
         }
-    } else if (flavor == gcfKlipper && print.config().emit_machine_limits_to_gcode.value &&
-               Nonplanar::requests_conformal_shells(print)) {
-        double velocity = std::max(print.config().machine_max_speed_x.get_at(0), print.config().machine_max_speed_y.get_at(0));
-        double accel    = print.config().machine_max_acceleration_extruding.get_at(0);
-        for (double axis : {print.config().machine_max_acceleration_x.get_at(0), print.config().machine_max_acceleration_y.get_at(0)})
-            if (axis > 0.)
-                accel = accel > 0. ? std::min(accel, axis) : axis;
-        const double scv = print.config().machine_max_jerk_x.get_at(0);
-        if (velocity > 0. && accel > 0. && scv > 0.)
-            file.write_format("SET_VELOCITY_LIMIT VELOCITY=%d ACCEL=%d SQUARE_CORNER_VELOCITY=%.2lf ; machine limits\n",
-                              int(velocity + 0.5), int(accel + 0.5), scv);
     }
 #undef MAX_LIMIT
 }

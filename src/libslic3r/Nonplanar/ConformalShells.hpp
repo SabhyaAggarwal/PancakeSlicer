@@ -11,6 +11,7 @@
 #include <memory>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace Slic3r { class PrintObject; class Flow; }
@@ -120,6 +121,7 @@ struct ConformalResult
     std::vector<BaseInput>        base_inputs;
     bool                          layer_changes_filament = false;
     std::vector<double>           event_cuts;
+    std::vector<std::pair<double, unsigned int>> tool_changes;
     std::shared_ptr<ObjectMesh>   mesh;
 };
 

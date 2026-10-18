@@ -65,6 +65,8 @@ PatchPreviewParams patch_preview_params(const DynamicPrintConfig &config)
     const double layer_height = num("layer_height", 0.2);
     if (const auto *opt = config.option<ConfigOptionInt>("nonplanar_top_shells"))
         p.shells = mode == NonplanarMode::Auto || opt->value < 0 ? AutoMinShells : opt->value;
+    if (p.banded && p.shells > 0)
+        p.shells = std::max(p.shells, AutoMinShells);
     if (mode == NonplanarMode::Off)
         p.shells = 0;
     const double shell_height = num("nonplanar_shell_layer_height", 0.);
