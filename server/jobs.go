@@ -76,7 +76,7 @@ type Job struct {
 	eventBytes int
 	changed    chan struct{}
 	cancel     context.CancelFunc
-	userStop   bool
+	stopReason string
 	stage      string
 	progress   *float64
 }
@@ -159,9 +159,9 @@ func (j *Job) log(stream, line string) {
 func (j *Job) setState(s JobState, errMsg string) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	if s.Finished() && j.userStop {
+	if s.Finished() && j.stopReason != "" {
 		s = StateCancelled
-		errMsg = "cancelled"
+		errMsg = j.stopReason
 	}
 	j.state = s
 	j.errMsg = errMsg
@@ -314,7 +314,7 @@ func (m *JobManager) Cancel(j *Job) bool {
 	if j.state.Finished() {
 		return false
 	}
-	j.userStop = true
+	j.stopReason = "cancelled"
 	j.cancel()
 	return true
 }
@@ -349,7 +349,10 @@ func (m *JobManager) Shutdown() {
 	m.closing = true
 	for _, j := range m.jobs {
 		j.mu.Lock()
-		if j.cancel != nil {
+		if !j.state.Finished() && j.cancel != nil {
+			if j.stopReason == "" {
+				j.stopReason = "server shutting down"
+			}
 			j.cancel()
 		}
 		j.mu.Unlock()
