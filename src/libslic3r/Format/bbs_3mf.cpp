@@ -7121,7 +7121,7 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
                             if (use_loaded_id && (inst->loaded_id > 0))
                                 identify_id = inst->loaded_id;
                             else
-                                identify_id = inst->id().id;
+                                identify_id = inst->get_labeled_id();
                         }
                         obj_id = objects_data.find(obj)->second.object_id;
 
@@ -7340,7 +7340,7 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
                         if (m_use_loaded_id && (inst->loaded_id > 0))
                             identify_id = inst->loaded_id;
                         else
-                            identify_id = inst->id().id;
+                            identify_id = inst->get_labeled_id();
                         bool skipped = std::find(plate_data->skipped_objects.begin(), plate_data->skipped_objects.end(), identify_id) !=
                                        plate_data->skipped_objects.end();
 

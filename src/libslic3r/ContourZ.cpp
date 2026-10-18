@@ -12,6 +12,7 @@
 #include "SLA/IndexedMesh.hpp"
 #include "libslic3r.h"
 #include <Eigen/Core>
+#include <algorithm>
 #include <cfloat>
 #include <cmath>
 #include <initializer_list>
@@ -19,6 +20,7 @@
 #include <string>
 #include <typeinfo>
 #include <utility>
+#include <vector>
 #include "Config.hpp"
 #include "Polyline.hpp"
 #include "PrintConfig.hpp"
@@ -26,6 +28,8 @@
 namespace Slic3r {
 
 static void contour_extrusion_entity(LayerRegion *region, const sla::IndexedMesh &mesh, ExtrusionEntity *extr);
+
+static bool plane_only_role(ExtrusionRole role) { return role == erSolidInfill || role == erGapFill; }
 
 static double follow_slope_down(double angle_rad, double dist)
 {
@@ -49,11 +53,19 @@ static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &
     if (!rcfg.zaa_enabled && !banded && path.role() != erTopSolidInfill)
         return false;
 
-    if (path.role() != erTopSolidInfill && path.role() != erIroning && path.role() != erExternalPerimeter && path.role() != erPerimeter) {
+    if (path.role() != erTopSolidInfill && path.role() != erIroning && path.role() != erExternalPerimeter && path.role() != erPerimeter && !plane_only_role(path.role())) {
 		return false;
 	}
 	
 	Layer *layer = region->layer();
+    std::vector<const ExPolygon *> planar_faces;
+    if (banded)
+        for (const auto &diag : layer->object()->conformal().diagnostics)
+            if (diag.fallback_reason == "planar_patch")
+                for (const ExPolygon &face : diag.fallback_shape)
+                    planar_faces.push_back(&face);
+    if (plane_only_role(path.role()) && planar_faces.empty())
+        return false;
     const auto &config = region->region().config().zaa_enabled
         ? region->region().config() : PrintRegionConfig::defaults();
 	coordf_t min_z = config.zaa_min_z;
@@ -97,6 +109,10 @@ static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &
 
 			double d = hit_up.distance() - (layer->print_z - ray_z);
 
+            const bool on_planar_face = banded && !rcfg.zaa_enabled && hit_up.is_hit() &&
+                std::any_of(planar_faces.begin(), planar_faces.end(), [&](const ExPolygon *face) {
+                    return face->contains(Point::new_scale(x, y));
+                });
 			double max_up = min_z;
 			double min_down = -(height - min_z);
 			double half_width = path.width / 2.0;
@@ -107,6 +123,9 @@ static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &
 			           hit_up.normal().z() > std::cos(M_PI / 18.)) {
 				max_up = 0.5 * height;
 			}
+
+            if (on_planar_face)
+                max_up = std::max(max_up, 0.5 * height);
 
             if (is_perimeter(path.role()) && hit_up.is_hit()) {
 				const Vec3d &normal = hit_up.normal();
@@ -125,7 +144,7 @@ static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &
                 }
             }
 
-            if (d < -height || d > max_up + 0.03) {
+            if (d < -height || d > max_up + (on_planar_face ? 0. : 0.03)) {
                 d = 0;
             }
 
@@ -135,7 +154,10 @@ static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &
                 d = max_up;
             }
 
-            if (is_perimeter(path.role()) && d > 0) {
+            if (plane_only_role(path.role()) && !on_planar_face)
+                d = 0.;
+
+            if (is_perimeter(path.role()) && d > 0 && !on_planar_face) {
                 d = 0;
             }
 
@@ -239,7 +261,7 @@ static void contour_extrusion_entity(LayerRegion *region, const sla::IndexedMesh
 }
 
 static void handle_extrusion_collection(LayerRegion *region, const sla::IndexedMesh &mesh, ExtrusionEntityCollection &collection,
-                                        std::initializer_list<ExtrusionRole> roles, const ExPolygons &shell_area,
+                                        const std::vector<ExtrusionRole> &roles, const ExPolygons &shell_area,
                                         const ExPolygons &covered = {})
 {
     auto out_of_reach = [&covered](const Polylines &lines) { return !covered.empty() && diff_pl(lines, covered).empty(); };
@@ -258,7 +280,7 @@ static void handle_extrusion_collection(LayerRegion *region, const sla::IndexedM
                 out.push_back(nested);
             continue;
         }
-        if (shell_area.empty() || intersection_pl(extr->as_polylines(), shell_area).empty()) {
+        if (shell_area.empty() || plane_only_role(extr->role()) || intersection_pl(extr->as_polylines(), shell_area).empty()) {
             if (!out_of_reach(extr->as_polylines()))
                 contour_extrusion_entity(region, mesh, extr);
             out.push_back(extr);
@@ -287,6 +309,12 @@ static void handle_extrusion_collection(LayerRegion *region, const sla::IndexedM
                 out.push_back(path.clone());
                 continue;
             }
+            if (plane_only_role(path.role())) {
+                ExtrusionEntity *copy = path.clone();
+                contour_extrusion_entity(region, mesh, copy);
+                out.push_back(copy);
+                continue;
+            }
             for (Polyline &line : diff_pl(Polylines{path.polyline.to_polyline()}, shell_area)) {
                 if (!line.is_valid())
                     continue;
@@ -305,6 +333,12 @@ void Layer::make_contour_z(const sla::IndexedMesh &mesh)
 {
 	ExPolygons shell_area;
 	const PrintObject &object = *this->object();
+    std::vector<ExtrusionRole> fill_roles{ erTopSolidInfill, erMixed };
+    if (std::any_of(object.conformal().diagnostics.begin(), object.conformal().diagnostics.end(),
+                    [](const auto &diag) { return diag.fallback_reason == "planar_patch"; })) {
+        fill_roles.push_back(erSolidInfill);
+        fill_roles.push_back(erGapFill);
+    }
 	for (const Nonplanar::ConformalPatch &patch : object.conformal().patches)
 		if ((patch.kind == Nonplanar::PatchKind::Top || patch.kind == Nonplanar::PatchKind::Volume) &&
 			this->print_z > patch.z_min + EPSILON &&
@@ -330,7 +364,7 @@ void Layer::make_contour_z(const sla::IndexedMesh &mesh)
                     if (above != nullptr)
                         covered = offset_ex(above->lslices, -float(scale_(0.05)));
                 }
-                handle_extrusion_collection(region, mesh, region->fills, {erTopSolidInfill, erMixed}, shell_area, covered);
+                handle_extrusion_collection(region, mesh, region->fills, fill_roles, shell_area, covered);
                 handle_extrusion_collection(region, mesh, region->perimeters, {erPerimeter, erExternalPerimeter, erMixed}, {}, covered);
             }
             continue;

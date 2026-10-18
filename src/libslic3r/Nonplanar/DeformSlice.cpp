@@ -8,13 +8,17 @@
 #include "StrengthRoads.hpp"
 #include "SurfaceClip.hpp"
 #include "libslic3r/BoundingBox.hpp"
+#include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
+#include "libslic3r/GCode/ConformalCooling.hpp"
 #include "libslic3r/GCode/ConformalEmit.hpp"
+#include "libslic3r/GCode/GCodeProcessor.hpp"
 #include "libslic3r/I18N.hpp"
 #include "libslic3r/Layer.hpp"
 #include "libslic3r/LocalesUtils.hpp"
 #include "libslic3r/Model.hpp"
+#include "libslic3r/Point.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/SLA/IndexedMesh.hpp"
@@ -28,8 +32,11 @@
 #include <chrono>
 #include <ctime>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 #include <map>
+#include <memory>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -51,6 +58,9 @@ constexpr double FlatPredicted = 0.025;
 constexpr double MaxShells = 1.2;
 constexpr double MaxSaddleShare = 0.25;
 constexpr double MaxTimeRatioPredicted = 1.25;
+constexpr double MaxTimeRatio = 1.15;
+constexpr double MaxMovesRatio = 1.5;
+constexpr double OutlineError = 0.03;
 constexpr double ZaaMinZ = 0.05;
 
 double sample_clamped(const HeightField &f, const Vec2d &xy)
@@ -1055,6 +1065,7 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
         out.patches.push_back(std::move(patch));
     }
     out.report = report;
+    out.field  = own ? std::shared_ptr<const LayerField>(std::move(own)) : std::shared_ptr<const LayerField>(std::shared_ptr<const LayerField>(), given);
 
     BOOST_LOG_TRIVIAL(info) << "Deform slice " << name << ": " << sliced.layers().size() << " layers, " << bands.size() << " bands (reach " << reach << ", pitch "
                             << pitch << ", tolerance " << tolerance << "), "
@@ -1110,7 +1121,7 @@ public:
     static constexpr double Pitch = 0.5;
     static constexpr double Buried = 1.5;
 
-    TopMetric(const MeshRays &rays, double raft)
+    TopMetric(const MeshRays &rays, double raft, const ConformalResult &shells) : m_raft(raft)
     {
         const BoundingBoxf3 &bb = rays.bbox;
         m_mesh = HeightField(BoundingBoxf(bb.min.head<2>(), bb.max.head<2>()), Pitch);
@@ -1119,6 +1130,12 @@ public:
         const int nx = m_mesh.nx(), ny = m_mesh.ny();
         std::vector<float> &nz = m_nz;
         nz.assign(m_mesh.data().size(), 0.f);
+        m_planar.assign(nz.size(), 0);
+        std::vector<const ExPolygon *> planar_faces;
+        for (const PatchDiagnostics &diag : shells.diagnostics)
+            if (diag.fallback_reason == "planar_patch")
+                for (const ExPolygon &face : diag.fallback_shape)
+                    planar_faces.push_back(&face);
         {
             const sla::IndexedMesh &imesh = *rays.imesh;
             tbb::parallel_for(tbb::blocked_range<int>(0, ny), [&](const tbb::blocked_range<int> &range) {
@@ -1129,6 +1146,9 @@ public:
                         if (hit.is_hit()) {
                             m_mesh.at(ix, iy)          = float(hit.position().z() + rays.shift + raft);
                             nz[size_t(iy) * nx + ix] = float(std::abs(hit.normal().normalized().z()));
+                            m_planar[size_t(iy) * nx + ix] = std::any_of(planar_faces.begin(), planar_faces.end(), [&](const ExPolygon *face) {
+                                return face->contains(Point::new_scale(p));
+                            });
                         }
                     }
             });
@@ -1211,14 +1231,17 @@ public:
                     continue;
                 float &v = m_dep.at(ix, iy);
                 float      z = float(a.z() + t * (b.z() - a.z()));
-                if (contour != 0 && !std::isnan(m_mesh.at(ix, iy))) {
+                const bool contourable = contour != 0 && (contour != 3 || m_planar[size_t(iy) * m_mesh.nx() + ix]);
+                if (contourable && !std::isnan(m_mesh.at(ix, iy))) {
                     const double d = m_mesh.at(ix, iy) - z;
-                    if (d >= -m_layer_h && d <= ZaaMinZ + 0.03)
-                        z += float(std::clamp(d, -(m_layer_h - ZaaMinZ), contour > 1 ? 0. : ZaaMinZ));
+                    const bool planar = m_planar[size_t(iy) * m_mesh.nx() + ix] != 0;
+                    const double up = planar ? std::max(ZaaMinZ, 0.5 * m_layer_h) : ZaaMinZ;
+                    if (d >= -m_layer_h && d <= up + (planar ? 0. : 0.03))
+                        z += float(std::clamp(d, -(m_layer_h - ZaaMinZ), contour == 2 && !planar ? 0. : up));
                 }
                 if (std::isnan(v) || z > v) {
                     v = z;
-                    float at = contour == 0 ? m_mesh.sample(a.head<2>() + t * d - Vec2d(0.5 * Pitch, 0.5 * Pitch)) : HeightField::NoData;
+                    float at = !contourable ? m_mesh.sample(a.head<2>() + t * d - Vec2d(0.5 * Pitch, 0.5 * Pitch)) : HeightField::NoData;
                     if (std::isnan(at))
                         at = m_mesh.at(ix, iy);
                     m_err.at(ix, iy) = z - at;
@@ -1244,7 +1267,8 @@ public:
                 const double za = conformal != nullptr ? z + unscale<double>(pts[i - 1].z()) : z;
                 const double zb = conformal != nullptr ? z + unscale<double>(pts[i].z()) : z;
                 const ExtrusionRole r = path->role();
-                const int contour = conformal != nullptr ? 0 : r == erTopSolidInfill ? 1 : r == erPerimeter || r == erExternalPerimeter ? 2 : 0;
+                const int contour = conformal != nullptr ? 0 : r == erTopSolidInfill ? 1 : r == erPerimeter || r == erExternalPerimeter ? 2 :
+                                    r == erSolidInfill || r == erGapFill ? 3 : 0;
                 this->add(Vec3d(unscale<double>(pts[i - 1].x()), unscale<double>(pts[i - 1].y()), za),
                           Vec3d(unscale<double>(pts[i].x()), unscale<double>(pts[i].y()), zb), w, contour);
             }
@@ -1261,6 +1285,7 @@ public:
     {
         std::fill(m_dep.data().begin(), m_dep.data().end(), HeightField::NoData);
         std::fill(m_err.data().begin(), m_err.data().end(), HeightField::NoData);
+        std::fill(m_planar.begin(), m_planar.end(), 0);
     }
 
     double rms() const
@@ -1277,14 +1302,55 @@ public:
             }
         return n == 0 ? 0. : std::sqrt(sum / weight);
     }
+    bool judged(const Vec3d &p) const
+    {
+        const Vec2d o  = (p.head<2>() - m_mesh.origin()) / Pitch;
+        const int   ix = int(std::floor(o.x())), iy = int(std::floor(o.y()));
+        if (ix < 0 || iy < 0 || ix >= m_mesh.nx() || iy >= m_mesh.ny() || !m_eval[size_t(iy) * m_mesh.nx() + ix])
+            return false;
+        return std::abs(m_mesh.at(ix, iy) - m_raft - p.z()) < Pitch;
+    }
 
 private:
     HeightField        m_mesh, m_dep, m_err;
     std::vector<float> m_nz;
-    std::vector<char>  m_eval;
+    double             m_raft = 0.;
+    std::vector<char>  m_eval, m_planar;
     double            m_layer_h = 0.2;
     double            m_floor   = Inf;
 };
+
+double surface_rms(const indexed_triangle_set &mesh, double shift, const TopMetric &metric, double top_ms, const LayerField *field, double h)
+{
+    const double cos35 = std::cos(Geometry::deg2rad(35.));
+    double       sum = 0., area = 0.;
+    for (const stl_triangle_vertex_indices &f : mesh.indices) {
+        const Vec3d a = mesh.vertices[f[0]].cast<double>(), b = mesh.vertices[f[1]].cast<double>(), c = mesh.vertices[f[2]].cast<double>();
+        Vec3d        n = (b - a).cross(c - a);
+        const double A = 0.5 * n.norm();
+        if (!(A > 0.))
+            continue;
+        n /= 2. * A;
+        if (n.z() < -cos35)
+            continue;
+        const Vec3d p = (a + b + c) / 3. + Vec3d(0., 0., shift);
+        double      e2;
+        if (n.z() > 0. && metric.judged(p))
+            e2 = top_ms;
+        else {
+            Vec3d  m = Vec3d::UnitZ();
+            double t = h;
+            if (field != nullptr)
+                if (const Vec3d g = field->gradient(p); g.norm() > 1e-9)
+                    m = g.normalized(), t = h / g.norm();
+            const double stair = t * std::abs(n.dot(m));
+            e2 = OutlineError * OutlineError + stair * stair / 12.;
+        }
+        sum += A * e2;
+        area += A;
+    }
+    return area > 0. ? std::sqrt(sum / area) : 0.;
+}
 
 class TimeProxy
 {
@@ -1302,14 +1368,18 @@ public:
             const double v = opt.values.empty() ? 0. : opt.get_at(0).get_abs_value(def_a);
             return std::min(v > 0. ? v : def_a, machine_a);
         };
-        m_vz     = first(pc.machine_max_speed_z, 10.);
-        m_rate   = planner_segment_rate(pc.nonplanar_segment_rate.value, pc.gcode_flavor.value, object.print()->is_BBL_printer());
-        m_travel = first(pc.travel_speed, 150.);
-        m_travel_a = std::min(first(oc.travel_acceleration, def_a), first(pc.machine_max_acceleration_travel, 1e9));
-        m_decel  = pc.accel_to_decel_enable.value ? std::clamp(0.01 * pc.accel_to_decel_factor.value, 0.05, 1.) : 1.;
-        m_jerk   = std::max(1., first(pc.machine_max_jerk_x, 8.));
-        m_retract = 2. * first(pc.retraction_length, 0.8) / 30. + 2. * (first(pc.z_hop, 0.4) + 0.2) / m_vz;
+        m_rate        = planner_segment_rate(pc.nonplanar_segment_rate.value, pc.gcode_flavor.value, object.print()->is_BBL_printer());
+        m_travel      = first(pc.travel_speed, 150.);
+        m_travel_a    = std::min(first(oc.travel_acceleration, def_a), first(pc.machine_max_acceleration_travel, 1e9));
+        m_retract     = first(pc.retraction_length, 0.8);
+        m_retract_f   = first(pc.retraction_speed, 30.);
+        m_hop         = first(pc.z_hop, 0.);
+        m_min_travel  = pc.retraction_minimum_travel.values.empty() ? 0. : pc.retraction_minimum_travel.values.front();
+        m_reduce_infill = pc.reduce_infill_retraction.value && rc.sparse_infill_density.value > 0.;
+        m_vz          = first(pc.machine_max_speed_z, 10.);
         m_layer_floor = first(pc.slow_down_layer_time, 0.);
+        const double d = pc.filament_diameter.values.empty() ? 1.75 : pc.filament_diameter.values.front();
+        m_e_per_mm3   = 4. / (PI * d * d);
         m_speed[0] = first(rc.outer_wall_speed, 60.);
         m_speed[1] = first(rc.inner_wall_speed, 100.);
         m_speed[2] = first(rc.sparse_infill_speed, 100.);
@@ -1317,6 +1387,12 @@ public:
         m_speed[4] = first(rc.top_surface_speed, 60.);
         m_speed[5] = first(rc.gap_infill_speed, 50.);
         m_speed[6] = first(rc.bridge_speed, 30.);
+        m_max_volume = first(pc.filament_max_volumetric_speed, 0.);
+        if (pc.nonplanar_road_cooling.value) {
+            const double small = rc.small_perimeter_speed.values.empty() || rc.small_perimeter_speed.get_at(0).value == 0. ?
+                                     0.5 * m_speed[0] : rc.small_perimeter_speed.get_at(0).get_abs_value(m_speed[0]);
+            m_small = small > 0. ? small : 0.;
+        }
         m_accel[0] = accel(oc.outer_wall_acceleration);
         m_accel[1] = accel(oc.inner_wall_acceleration);
         m_accel[2] = accel_pct(oc.sparse_infill_acceleration);
@@ -1342,6 +1418,24 @@ public:
         else if (pc.gcode_flavor.value == gcfMarlinFirmware)
             m_limits.junction_deviation = lowest(pc.machine_max_junction_deviation);
         m_limits.segment_rate = m_rate;
+        const GCodeFlavor flavor = pc.gcode_flavor.value;
+        if (flavor == gcfKlipper ||
+            (pc.emit_machine_limits_to_gcode.value && (flavor == gcfMarlinLegacy || flavor == gcfMarlinFirmware || flavor == gcfRepRapFirmware))) {
+            auto front = [](const ConfigOptionFloats &opt) { return opt.values.empty() ? 0. : opt.values.front(); };
+            m_limits.max_v_xy    = pair_min(front(pc.machine_max_speed_x), front(pc.machine_max_speed_y));
+            m_limits.max_a_xy    = pair_min(front(pc.machine_max_acceleration_x), front(pc.machine_max_acceleration_y));
+            m_limits.max_v_z     = 0.99 * front(pc.machine_max_speed_z);
+            m_limits.max_a_z     = front(pc.machine_max_acceleration_z);
+            m_limits.max_jerk_xy = pair_min(front(pc.machine_max_jerk_x), front(pc.machine_max_jerk_y));
+            m_limits.max_jerk_z  = front(pc.machine_max_jerk_z);
+            if (flavor == gcfMarlinFirmware)
+                m_limits.junction_deviation = front(pc.machine_max_junction_deviation);
+        }
+        m_grade = std::clamp(0.8 * lowest(pc.machine_max_speed_z) / m_travel, 0.05, 0.12);
+        m_processor.reset();
+        m_processor.initialize_result_moves();
+        m_processor.apply_config(pc);
+        m_processor.process_buffer("G90\nM83\n");
     }
 
     void add(const ExtrusionEntity &ee, double z)
@@ -1352,70 +1446,134 @@ public:
             const Points3 &pts = path->polyline.points;
             if (pts.size() < 2 || is_support(path->role()))
                 continue;
-            const auto  *c   = dynamic_cast<const ExtrusionPathConformal *>(path);
-            const int    r   = this->role_index(path->role());
-            const double v   = m_speed[r], a = m_accel[r];
+            const auto  *c = dynamic_cast<const ExtrusionPathConformal *>(path);
+            const int    r = this->role_index(path->role());
+            double v = m_speed[r];
+            if (m_max_volume > 0. && path->mm3_per_mm > 0.)
+                v = std::min(v, m_max_volume / path->mm3_per_mm);
+            if (c != nullptr && m_small > 0. && path->role() != erIroning && unscale<double>(path->polyline.length()) < SmallRoadLength)
+                v = std::min(v, m_small);
             std::vector<Vec3d> p3(pts.size());
             for (size_t i = 0; i < pts.size(); ++i)
                 p3[i] = Vec3d(unscale<double>(pts[i].x()), unscale<double>(pts[i].y()), c != nullptr ? z + unscale<double>(pts[i].z()) : z);
-            if (m_have) {
-                const double d = (p3.front() - m_last).head<2>().norm();
-                if (d > 2. * path->width)
-                    m_layer += this->trapezoid(d, m_travel, m_travel_a, m_jerk, m_jerk) + m_retract;
-                else
-                    m_layer += this->trapezoid(d, v, a, m_jerk, m_jerk);
-            }
-            std::vector<double> feed(pts.size() - 1, v);
+            std::vector<float>  beads;
+            std::vector<double> feed;
             if (c != nullptr) {
-                std::vector<double> nominal(pts.size() - 1);
-                std::vector<bool>   glides(pts.size() - 1);
-                for (size_t i = 0; i + 1 < pts.size(); ++i) {
-                    glides[i]  = i + 1 < c->bead_height.size() && (c->bead_height[i] <= 0.f || c->bead_height[i + 1] <= 0.f);
+                std::vector<ConformalPoint> cp(pts.size());
+                for (size_t i = 0; i < pts.size(); ++i) {
+                    cp[i].pose.tip    = p3[i];
+                    cp[i].pose.axis   = i < c->tool_axis.size() ? Vec3d(c->tool_axis[i].cast<double>().normalized()) : Vec3d::UnitZ();
+                    cp[i].bead_height = i < c->bead_height.size() ? c->bead_height[i] : float(c->height);
+                    cp[i].width       = c->bead_width.size() == pts.size() ? c->bead_width[i] : 0.f;
+                }
+                ConditionParams cond;
+                cond.target_length = std::max(0.15, v / m_rate);
+                condition_path(cp, cond);
+                std::vector<ConformalPoint> kept { cp.front() };
+                for (size_t i = 1; i < cp.size(); ++i) {
+                    const bool last = i + 1 == cp.size();
+                    if ((cp[i].pose.tip - kept.back().pose.tip).norm() >= ConformalMinSegment)
+                        kept.push_back(cp[i]);
+                    else if (last)
+                        kept.size() > 1 ? void(kept.back() = cp[i]) : kept.push_back(cp[i]);
+                }
+                p3.resize(kept.size());
+                beads.resize(kept.size());
+                for (size_t i = 0; i < kept.size(); ++i)
+                    p3[i] = kept[i].pose.tip, beads[i] = kept[i].bead_height;
+                std::vector<double> nominal(p3.size() - 1), caps(p3.size() - 1, Inf);
+                std::vector<bool>   glides(p3.size() - 1);
+                for (size_t i = 0; i + 1 < p3.size(); ++i) {
+                    glides[i]  = beads[i] <= 0.f || beads[i + 1] <= 0.f;
                     nominal[i] = glides[i] ? m_travel : v;
+                    const double w = kept[i].width > 0.f ? 0.5 * (kept[i].width + kept[i + 1].width) : path->width;
+                    const double section = w * 0.5 * (beads[i] + beads[i + 1]);
+                    if (m_max_volume > 0. && section > 0.)
+                        caps[i] = m_max_volume / section;
                 }
-                feed = limit_feedrates(p3, nominal, m_limits, 0.05, nullptr, &glides);
+                feed = limit_feedrates(p3, nominal, m_limits, 0.05, &caps, &glides);
             } else
-                for (size_t i = 0; i + 1 < pts.size(); ++i) {
-                    const double l = (p3[i + 1] - p3[i]).norm(), dz = std::abs(p3[i + 1].z() - p3[i].z());
-                    if (dz > 1e-9)
-                        feed[i] = std::min(feed[i], m_vz * l / dz);
-                }
-            auto junction = [&](size_t i) {
-                const Vec3d  u = (p3[i] - p3[i - 1]).normalized(), w = (p3[i + 1] - p3[i]).normalized();
-                const double vm = std::min(feed[i - 1], feed[i]);
-                return u.dot(w) > std::cos(Geometry::deg2rad(20.)) ? vm : std::min(vm, m_jerk);
-            };
-            for (size_t i = 0; i + 1 < pts.size(); ++i) {
-                const double l  = (p3[i + 1] - p3[i]).norm();
-                const double v0 = i == 0 ? m_jerk : junction(i), v1 = i + 2 == pts.size() ? m_jerk : junction(i + 1);
-                m_layer += feed[i] > 0. ? this->trapezoid(l, feed[i], a, v0, v1) : 0.;
+                feed.assign(p3.size() - 1, v);
+            m_moves += p3.size() - 1;
+            if (m_in_patch && m_have && c != nullptr && (p3.front() - m_last).norm() > 1e-6)
+                this->pass_travel(p3.front(), path->role());
+            else if (!m_have || (p3.front() - m_last).head<2>().norm() > 2. * path->width) {
+                auto         infill  = [](ExtrusionRole r) { return r == erSolidInfill || r == erInternalInfill; };
+                const double d       = (p3.front() - m_last).head<2>().norm();
+                const bool   retract = m_have && m_retract > 0. && d >= m_min_travel &&
+                                     !(m_reduce_infill && infill(m_role) && infill(path->role()));
+                if (retract)
+                    this->line("G1 E%.4f F%.0f", -m_retract, 60. * m_retract_f);
+                this->accel(m_travel_a);
+                if (retract && m_hop > 0.)
+                    this->line("G1 Z%.3f F%.0f", m_last.z() + m_hop, 60. * m_vz);
+                this->line("G1 X%.3f Y%.3f F%.0f", p3.front().x(), p3.front().y(), 60. * m_travel);
+                this->line("G1 Z%.3f F%.0f", p3.front().z(), 60. * m_vz);
+                if (retract)
+                    this->line("G1 E%.4f F%.0f", m_retract, 60. * m_retract_f);
+            } else
+                this->line("G1 X%.3f Y%.3f Z%.3f F%.0f", p3.front().x(), p3.front().y(), p3.front().z(), 60. * v);
+            this->accel(m_accel[r]);
+            const double e_per_mm = m_e_per_mm3 * path->mm3_per_mm;
+            double       f_last   = -1.;
+            for (size_t i = 0; i + 1 < p3.size(); ++i) {
+                const double l = (p3[i + 1] - p3[i]).norm();
+                const double f = std::max(1., std::round(60. * feed[i]));
+                const double e = !beads.empty() && (beads[i] <= 0.f || beads[i + 1] <= 0.f) ? 0. : e_per_mm * l;
+                if (f != f_last)
+                    this->line(e > 0. ? "G1 X%.3f Y%.3f Z%.3f E%.5f F%.0f" : "G1 X%.3f Y%.3f Z%.3f F%.0f", p3[i + 1].x(), p3[i + 1].y(), p3[i + 1].z(),
+                               e > 0. ? e : f, f);
+                else
+                    this->line(e > 0. ? "G1 X%.3f Y%.3f Z%.3f E%.5f" : "G1 X%.3f Y%.3f Z%.3f", p3[i + 1].x(), p3[i + 1].y(), p3[i + 1].z(), e);
+                f_last = f;
             }
             m_last = p3.back();
             m_have = true;
+            m_role = path->role();
         }
     }
 
     void add(const ConformalPatch &patch, double host_z)
     {
         if (!m_in_patches)
-            m_planar_layer = m_layer, m_in_patches = true;
+            m_planar_layer = this->flush() - m_layer_start, m_in_patches = true;
+        this->line(";_NONPLANAR_BEGIN rate=%.0f", m_rate);
+        m_in_patch = true;
         for (const ExtrusionEntityCollection &shell : patch.shell_paths)
             this->add(shell, host_z);
+        m_in_patch = false;
+        this->line(";_NONPLANAR_END");
     }
 
     void layer(double) {}
     void end_layer()
     {
-        const double planar = m_in_patches ? m_planar_layer : m_layer;
-        if (m_layer > 0.)
-            m_time += std::max(m_layer, m_layer_floor);
+        const double now    = this->flush();
+        const double layer  = now - m_layer_start;
+        const double planar = m_in_patches ? m_planar_layer : layer;
+        if (layer > 0.)
+            m_time += std::max(layer, m_layer_floor);
         if (planar > 0.)
             m_planar += std::max(planar, m_layer_floor);
-        m_layer = 0., m_planar_layer = 0., m_in_patches = false;
+        m_layer_start = now, m_planar_layer = 0., m_in_patches = false;
     }
     double floor() const { return -Inf; }
 
-    double seconds() const { return m_time + std::max(m_layer, m_layer > 0. ? m_layer_floor : 0.); }
+    double seconds()
+    {
+        const double before = this->flush();
+        m_processor.finalize(false);
+        return m_time + std::max(0., double(m_processor.get_time(PrintEstimatedStatistics::ETimeMode::Normal)) - before);
+    }
+    size_t moves() const { return m_moves; }
+    double extruding_seconds() const
+    {
+        double t = 0.;
+        for (const GCodeProcessorResult::MoveVertex &m : m_processor.get_result().moves)
+            if (m.type == EMoveType::Extrude)
+                t += m.time[size_t(PrintEstimatedStatistics::ETimeMode::Normal)];
+        return t;
+    }
     double planar_seconds() const { return m_planar; }
 
 private:
@@ -1433,27 +1591,80 @@ private:
         default: return 3;
         }
     }
-    double trapezoid(double l, double v, double a, double v0, double v1) const
+    void pass_travel(const Vec3d &to, ExtrusionRole next)
     {
-        if (l <= 0. || v <= 0.)
-            return 0.;
-        v0 = std::min(v0, v), v1 = std::min(v1, v);
-        const double ad  = a * m_decel;
-        const double acc = (v * v - v0 * v0) / (2. * a), dec = (v * v - v1 * v1) / (2. * ad);
-        if (acc + dec <= l)
-            return (v - v0) / a + (v - v1) / ad + (l - acc - dec) / v;
-        const double vp = std::sqrt(std::max(0., (2. * l * a * ad + ad * v0 * v0 + a * v1 * v1) / (a + ad)));
-        return std::max(0., vp - v0) / a + std::max(0., vp - v1) / ad;
+        constexpr double Step = 2.5;
+        auto infill = [](ExtrusionRole r) { return r == erSolidInfill || r == erInternalInfill; };
+        const double d       = (to - m_last).head<2>().norm();
+        const bool   primed  = !(next == erTopSolidInfill && m_role != erTopSolidInfill) &&
+                               (d < m_min_travel || d < 2. || (m_reduce_infill && infill(m_role) && infill(next)));
+        const double lift    = primed ? 0.1 : std::max(0.1, m_hop);
+        if (!primed && m_retract > 0.)
+            this->line("G1 E%.4f F%.0f", -m_retract, 60. * m_retract_f);
+        this->accel(m_travel_a);
+        const double top = std::max(m_last.z(), to.z()) + lift;
+        this->line("G1 Z%.3f F%.0f", top, 60. * m_vz);
+        const int n = std::max(1, int(std::round(d / Step)));
+        Vec3d     at(m_last.x(), m_last.y(), top);
+        for (int k = 1; k <= n; ++k) {
+            const Vec2d  xy = m_last.head<2>() + (to - m_last).head<2>() * (double(k) / n);
+            const double z  = top + (k < n && k % 2 == 1 ? 0.5 * m_grade * d / n : 0.);
+            const Vec3d  p(xy.x(), xy.y(), z);
+            const double l = (p - at).norm(), dz = std::abs(p.z() - at.z());
+            double       v = m_travel;
+            if (dz > 1e-6)
+                v = std::min(v, 0.99 * m_vz * l / dz);
+            if (m_rate > 0.)
+                v = std::min(v, m_rate * l);
+            this->line("G1 X%.3f Y%.3f Z%.3f F%.0f", p.x(), p.y(), p.z(), 60. * std::max(v, 1.));
+            at = p;
+        }
+        this->line("G1 Z%.3f F%.0f", to.z(), 60. * m_vz);
+        if (!primed && m_retract > 0.)
+            this->line("G1 E%.4f F%.0f", m_retract, 60. * m_retract_f);
+    }
+    template<class... Args> void line(const char *fmt, Args... args)
+    {
+        char buf[128];
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-security"
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+#endif
+        const int n = std::snprintf(buf, sizeof(buf), fmt, args...);
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
+        m_buf.append(buf, size_t(std::clamp(n, 0, int(sizeof(buf) - 1))));
+        m_buf += '\n';
+    }
+    void accel(double a)
+    {
+        if (a != m_accel_last)
+            this->line("M204 S%.0f", a), m_accel_last = a;
+    }
+    double flush()
+    {
+        if (!m_buf.empty()) {
+            m_processor.process_buffer(m_buf);
+            m_buf.clear();
+        }
+        return m_processor.get_time(PrintEstimatedStatistics::ETimeMode::Normal);
     }
 
-    double       m_vz = 10., m_travel = 150., m_travel_a = 2000., m_decel = 1., m_jerk = 8., m_retract = 0., m_rate = 0.;
-    double       m_layer_floor = 0.;
-    double       m_speed[7] {}, m_accel[7] {};
-    MotionLimits m_limits;
-    double       m_time = 0., m_layer = 0., m_planar = 0., m_planar_layer = 0.;
-    bool         m_in_patches = false;
-    Vec3d        m_last { Vec3d::Zero() };
-    bool         m_have = false;
+    GCodeProcessor m_processor;
+    std::string    m_buf;
+    size_t         m_moves = 0;
+    double         m_travel = 150., m_travel_a = 2000., m_retract = 0., m_retract_f = 30., m_hop = 0., m_vz = 10., m_rate = 0.;
+    double         m_layer_floor = 0., m_e_per_mm3 = 0., m_accel_last = -1., m_max_volume = 0., m_small = 0.;
+    double         m_speed[7] {}, m_accel[7] {};
+    MotionLimits   m_limits;
+    double         m_time = 0., m_planar = 0., m_layer_start = 0., m_planar_layer = 0.;
+    bool           m_in_patches = false, m_in_patch = false, m_reduce_infill = false;
+    double         m_min_travel = 0., m_grade = 0.05;
+    ExtrusionRole  m_role = erNone;
+    Vec3d          m_last { Vec3d::Zero() };
+    bool           m_have = false;
 };
 
 class OverhangLength
@@ -1546,6 +1757,7 @@ bool choose_deform_slice(PrintObject &object, ConformalResult &result)
     } cpu_log { object.model_object()->name };
     const std::string &name   = object.model_object()->name;
     const auto         layers = object.layers();
+    const double       h      = object.config().layer_height.value;
     const ObjectMesh &om = object_mesh(object, result);
     MeshRays          rays;
     {
@@ -1555,15 +1767,19 @@ bool choose_deform_slice(PrintObject &object, ConformalResult &result)
         rays.bbox               = BoundingBoxf3(Vec3d(box.min.x(), box.min.y(), box.min.z() + rays.shift),
                                                 Vec3d(box.max.x(), box.max.y(), box.max.z() + rays.shift));
     }
+    struct Score
+    {
+        double top = 0., surface = 0., time = 0., extruding = 0., overhang = 0.;
+        size_t moves = 0;
+    };
     std::unique_ptr<TopMetric> metric;
-    double                     shells = 0., t_shells = -1., t_planar = 0., best_rms = 0.;
+    double                     shells_v = 0., t_shells = -1., t_planar = 0.;
     auto score_rms = [&]() {
         if (metric)
             return;
-        metric = std::make_unique<TopMetric>(rays, layers.front()->print_z - (layers.front()->slice_z + 0.5 * layers.front()->height));
+        metric = std::make_unique<TopMetric>(rays, layers.front()->print_z - (layers.front()->slice_z + 0.5 * layers.front()->height), result);
         walk(*metric, object, &result, nullptr);
-        shells   = metric->rms();
-        best_rms = 0.95 * shells;
+        shells_v = metric->rms();
     };
     auto score_time = [&]() {
         if (t_shells >= 0.)
@@ -1572,34 +1788,49 @@ bool choose_deform_slice(PrintObject &object, ConformalResult &result)
         walk(proxy, object, &result, nullptr);
         t_shells = proxy.seconds();
         t_planar = proxy.planar_seconds();
-        BOOST_LOG_TRIVIAL(info) << "Deform slice " << name << ": shells top RMS " << shells << " mm, " << t_shells / 60.
+        BOOST_LOG_TRIVIAL(info) << "Deform slice " << name << ": shells top RMS " << shells_v << " mm, " << t_shells / 60.
                                 << " min, their planar layers " << t_planar / 60. << " min";
     };
     auto admit = [&](const DeformFieldReport &r) {
         if (r.predicted_rms > MaxPredicted)
             return false;
         score_rms();
-        const double crossing = object.config().layer_height.value / std::sqrt(12.);
-        if (shells < 0.5 * crossing / 0.95 || shells > MaxShells * crossing || r.predicted_rms > 0.8 * shells)
+        const double crossing = h / std::sqrt(12.);
+        if (shells_v < 0.5 * crossing / 0.95 || shells_v > MaxShells * crossing || r.predicted_rms > 0.8 * shells_v)
             return false;
         score_time();
         return t_planar * r.layer_factor <= MaxTimeRatioPredicted * t_shells;
+    };
+    auto score = [&](const ConformalResult *res, const DeformSlice *slice) {
+        Score s;
+        metric->clear();
+        walk(*metric, object, res, slice);
+        s.top = metric->rms();
+        s.surface = surface_rms(om.mesh.its, rays.shift, *metric, s.top * s.top, slice != nullptr ? slice->field.get() : nullptr, h);
+        TimeProxy proxy(object);
+        walk(proxy, object, res, slice);
+        s.time      = proxy.seconds();
+        s.extruding = proxy.extruding_seconds();
+        s.moves     = proxy.moves();
+        OverhangLength over;
+        walk(over, object, res, slice);
+        s.overhang = over.length();
+        return s;
     };
     std::unique_ptr<DeformSlice> best;
     if (auto slice = std::make_unique<DeformSlice>();
         compute_deform_slice(object, *slice, nullptr, std::numeric_limits<double>::infinity(), nullptr, 0.,
                              std::numeric_limits<double>::infinity(), admit, &rays)) {
-        metric->clear();
-        walk(*metric, object, nullptr, slice.get());
-        const double rms = metric->rms();
-        const double t   = print_time_proxy(object, nullptr, slice.get());
-        OverhangLength over, mine;
-        walk(over, object, nullptr, slice.get());
-        walk(mine, object, &result, nullptr);
-        const bool ok = rms < best_rms && t <= 1.2 * t_shells && over.length() <= 1.1 * mine.length() + 0.2;
-        BOOST_LOG_TRIVIAL(info) << "Deform slice " << name << ": top RMS " << rms << " mm against the shells' " << shells
-                                << " mm, time " << t / 60. << " min against " << t_shells / 60. << ", overhang " << over.length() << " mm2 against "
-                                << mine.length() << (ok ? ", kept" : ", rejected");
+        const Score shells = score(&result, nullptr), d = score(nullptr, slice.get());
+        const double gain  = 1. - d.surface / shells.surface;
+        const double ratio = d.time / shells.time;
+        const bool   ok    = d.top <= shells.top && gain > 0. && gain >= ratio - 1. && ratio <= MaxTimeRatio &&
+                        double(d.moves) <= MaxMovesRatio * double(shells.moves) && d.overhang <= 1.1 * shells.overhang + 0.2;
+        BOOST_LOG_TRIVIAL(info) << "Deform slice " << name << ": top RMS " << d.top << " mm against the shells' " << shells.top
+                                << ", surface " << d.surface << " against " << shells.surface << ", gain " << gain << ", time " << d.time / 60.
+                                << " min (extruding " << d.extruding / 60. << ") against " << shells.time / 60. << " (" << shells.extruding / 60.
+                                << "), moves " << d.moves << " against " << shells.moves << ", overhang " << d.overhang << " mm2 against "
+                                << shells.overhang << (ok ? ", kept" : ", rejected");
         if (ok)
             best = std::move(slice);
     }

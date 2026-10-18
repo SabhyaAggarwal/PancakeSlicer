@@ -1305,14 +1305,27 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
     Mask mask(n_nodes, 0);
     for (size_t i = 0; i < n_nodes; ++i)
         mask[i] = cand_mask[i] && !std::isnan(S0.data()[i]);
-    enum DropReason : uint8_t { Kept, DropNearBed, DropSteep, DropSteepStrip, DropFlatGround, DropFlatSliver, DropNarrow };
-    static constexpr const char *drop_reason_tag[] = { "outline", "near_bed", "steep", "steep_strip", "flat_ground", "flat_sliver", "narrow" };
+    enum DropReason : uint8_t { Kept, DropNearBed, DropSteep, DropSteepStrip, DropFlatGround, DropFlatSliver, DropNarrow, DropPlanar };
+    static constexpr const char *drop_reason_tag[] = { "outline", "near_bed", "steep", "steep_strip", "flat_ground", "flat_sliver", "narrow", "planar_patch" };
     std::vector<uint8_t> dropped(n_nodes, Kept);
     std::optional<SteepTops> steep_tops;
     auto drop = [&](size_t i, DropReason why) {
         mask[i]    = 0;
         dropped[i] = why;
     };
+    if (settings.banded && object.config().nonplanar_mode.value == NonplanarMode::Auto) {
+        const Flow top_flow = region.flow(object, frTopSolidInfill, h_c);
+        const double outer_w = banded_outer_width(line_width, top_flow.nozzle_diameter(), h_c, BandedCapWidth);
+        Mask face(S.data().size(), 0);
+        for (size_t i = 0; i < face.size(); ++i)
+            face[i] = std::isfinite(S.data()[i]);
+        const Mask planar = auto_planar_nodes(S, face, object.config().layer_height.value, line_width,
+                                              std::max(h_c, object.config().layer_height.value) / outer_w);
+        for (size_t i = 0; i < n_nodes; ++i)
+            if (planar[i] && mask[i])
+                drop(i, DropPlanar);
+    }
+
     const int min_shells = settings.shells > settings.top_shells ? AutoMinShells : settings.top_shells;
     std::vector<float> bed_margin(n_nodes, NAN), steep_margin(n_nodes, NAN), flat_margin(n_nodes, NAN);
     if (settings.banded)

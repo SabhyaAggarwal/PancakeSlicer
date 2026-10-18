@@ -64,6 +64,7 @@ const std::map<std::string, ReasonInfo> &reasons()
 {
     static const std::map<std::string, ReasonInfo> map{
         { "flat", { "flat", L("flat: planar layers print it exactly") } },
+        { "planar_patch", { "flat", L("tilted plane: planar layers, Z contoured") } },
         { "flat_ground", { "flat", L("flat ground: planar layers, Z contoured, print it exactly") } },
         { "flat_sliver", { "flat", L("a sliver beside flat ground, printed with it") } },
         { "steep", { "wall", L("steeper than a curved bead follows (atan(h/w)): planar layers, Z contoured") } },

@@ -3584,13 +3584,19 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
         for (const auto& object : print.objects()) {
             const Layer *top = object->layers().back();
             max_height_z = std::max(top->print_z, max_height_z);
+            const bool planar_faces = std::any_of(object->conformal().diagnostics.begin(), object->conformal().diagnostics.end(),
+                [](const auto &diag) { return diag.fallback_reason == "planar_patch"; });
             for (const LayerRegion *layerm : top->regions()) {
                 const PrintRegionConfig &rcfg = layerm->region().config();
                 if (Nonplanar::zaa_fallback(rcfg, object->config()) ||
                     (Nonplanar::top_shells_enabled(rcfg, object->config()) &&
                      Nonplanar::effective_fallback(rcfg, object->config()) == NonplanarFallback::None))
+                {
+                    const double reach = std::max(rcfg.zaa_min_z.value,
+                        planar_faces && !rcfg.zaa_enabled ? 0.5 * top->height : 0.);
                     max_height_z = std::max(max_height_z,
-                                            std::ceil((top->print_z + rcfg.zaa_min_z.value + 0.03) * 100. - EPSILON) / 100.);
+                                            std::ceil((top->print_z + reach + 0.03) * 100. - EPSILON) / 100.);
+                }
             }
             for (const Nonplanar::ConformalPatch &patch : object->conformal().patches)
                 if (patch.z_max + Nonplanar::GlideLift > max_height_z)

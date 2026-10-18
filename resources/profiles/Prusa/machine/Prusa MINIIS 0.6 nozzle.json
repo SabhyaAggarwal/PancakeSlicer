@@ -5,7 +5,6 @@
 	"from": "system",
 	"setting_id": "t40vAdqUDOysca1f",
 	"instantiation": "true",
-	"gcode_flavor": "marlin2",
 	"printer_model": "Prusa MINI IS",
 	"printer_variant": "0.6",
 	"default_filament_profile": [
@@ -23,14 +22,5 @@
 	],
 	"retraction_length": [
 		"2.8"
-	],
-	"retraction_speed": [
-		"70"
-	],
-	"thumbnails": [
-		"16x16/QOI",
-		"220x124/QOI",
-		"200x240/QOI",
-		"640x480/PNG"
 	]
 }

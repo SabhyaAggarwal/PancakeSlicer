@@ -5,12 +5,7 @@
 	"from": "system",
 	"setting_id": "7tAJhJpGlglvanmU",
 	"instantiation": "true",
-	"nonplanar_flow_mod": "1",
-	"nonplanar_surface_spacing": "1",
-	"nonplanar_top_finish_flow": "0.95",
 	"description": "0.20mm Standard for the P1S with curved top surfaces, overhangs and bridges. Auto chooses the shells and pattern for each curved area and checks every move against the P1S head.",
-	"nonplanar_full_conformal_max_thickness": "3",
-	"nonplanar_mode": "auto",
 	"adaptive_layer_height_error": "0.14",
 	"overhang_layer_contact": "50%",
 	"top_surface_acceleration": [
@@ -19,5 +14,6 @@
 	],
 	"compatible_printers": [
 		"Bambu Lab P1S 0.4 nozzle"
-	]
+	],
+	"include": "fdm_process_nonplanar_top"
 }

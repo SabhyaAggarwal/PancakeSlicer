@@ -2,6 +2,7 @@
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/PrintConfig.hpp"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -13,10 +14,14 @@ class PrintRegion;
 
 namespace Slic3r::Nonplanar {
 
+class HeightField;
 struct ConformalPatch;
 struct MultiplanarPlan;
 struct HeadEnvelope;
 struct ReportObject;
+
+std::vector<uint8_t> auto_planar_nodes(const HeightField &surface, const std::vector<uint8_t> &candidate,
+                                      double layer_height, double line_width, double max_slope);
 
 constexpr int AutoMinShells = 2;
 

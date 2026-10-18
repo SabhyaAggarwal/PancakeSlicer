@@ -3,6 +3,7 @@
 #include "ConformalIroning.hpp"
 #include "ConformalShells.hpp"
 #include "HeadEnvelope.hpp"
+#include "HeightField.hpp"
 #include "MaterialRules.hpp"
 #include "Multiplanar.hpp"
 #include "PatchTools.hpp"
@@ -15,6 +16,7 @@
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/I18N.hpp"
 #include "libslic3r/Model.hpp"
+#include "libslic3r/Point.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/TriangleMesh.hpp"
@@ -35,6 +37,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Slic3r::Nonplanar {
@@ -88,6 +91,86 @@ std::optional<NonplanarTopPattern> user_top_pattern(const PrintObject &object, c
     }
 }
 
+}
+
+Mask auto_planar_nodes(const HeightField &surface, const Mask &candidate, double layer_height, double line_width, double max_slope)
+{
+    const int nx = surface.nx(), ny = surface.ny();
+    Mask planar(candidate.size(), 0), seen(candidate.size(), 0), member(candidate.size(), 0);
+    std::vector<Vec2d> gradients(candidate.size(), Vec2d::Constant(NAN));
+    for (int iy = 0; iy < ny; ++iy)
+        for (int ix = 0; ix < nx; ++ix)
+            if (candidate[size_t(iy) * nx + ix])
+                gradients[size_t(iy) * nx + ix] = surface.gradient(surface.node(ix, iy));
+    std::vector<size_t> nodes, stack;
+    auto point = [&](size_t i) {
+        const Vec2d p = surface.node(int(i % size_t(nx)), int(i / size_t(nx)));
+        return Vec3d(p.x(), p.y(), surface.data()[i]);
+    };
+    const double min_width = 4. * line_width;
+    constexpr double CreaseJump = 0.4;
+    for (size_t seed = 0; seed < candidate.size(); ++seed) {
+        if (!candidate[seed] || seen[seed] || !gradients[seed].allFinite())
+            continue;
+        nodes.clear();
+        stack.assign(1, seed);
+        seen[seed] = 1;
+        while (!stack.empty()) {
+            const size_t i = stack.back();
+            stack.pop_back();
+            nodes.push_back(i);
+            const int ix = int(i % size_t(nx)), iy = int(i / size_t(nx));
+            for (const auto &[dx, dy] : { std::pair{ 1, 0 }, std::pair{ -1, 0 }, std::pair{ 0, 1 }, std::pair{ 0, -1 } })
+                if (const int jx = ix + dx, jy = iy + dy; jx >= 0 && jy >= 0 && jx < nx && jy < ny)
+                    if (const size_t j = size_t(jy) * nx + jx; candidate[j] && !seen[j] && gradients[j].allFinite() &&
+                        (gradients[i] - gradients[j]).norm() <= CreaseJump) {
+                        seen[j] = 1;
+                        stack.push_back(j);
+                    }
+        }
+        if (nodes.size() < 3 || nodes.size() * surface.pitch() * surface.pitch() < min_width * min_width)
+            continue;
+        Vec3d mean = Vec3d::Zero();
+        for (size_t i : nodes)
+            mean += point(i);
+        mean /= double(nodes.size());
+        double xx = 0., xy = 0., yy = 0., xz = 0., yz = 0.;
+        for (size_t i : nodes) {
+            const Vec3d p = point(i) - mean;
+            xx += p.x() * p.x(), xy += p.x() * p.y(), yy += p.y() * p.y();
+            xz += p.x() * p.z(), yz += p.y() * p.z();
+        }
+        const double det = xx * yy - xy * xy;
+        if (det <= 1e-12 * std::max(1., xx * yy))
+            continue;
+        const Vec2d gradient((xz * yy - yz * xy) / det, (yz * xx - xz * xy) / det);
+        if (gradient.norm() <= 0.0175 || gradient.norm() > max_slope)
+            continue;
+        const double tolerance = 0.5 * layer_height * std::sqrt(1. + gradient.squaredNorm());
+        const bool fits = std::all_of(nodes.begin(), nodes.end(), [&](size_t i) {
+            const Vec3d p = point(i) - mean;
+            return std::abs(p.z() - gradient.dot(p.head<2>())) < tolerance;
+        });
+        if (!fits)
+            continue;
+        for (size_t i : nodes)
+            member[i] = 1;
+        const bool wide = !offset_ex(mask_to_expolygons(member, surface), -float(scale_(0.5 * min_width))).empty();
+        std::vector<double> normal_error;
+        for (size_t i : nodes) {
+            const int ix = int(i % size_t(nx)), iy = int(i / size_t(nx));
+            if (ix > 0 && iy > 0 && ix + 1 < nx && iy + 1 < ny &&
+                member[i - 1] && member[i + 1] && member[i - nx] && member[i + nx])
+                normal_error.push_back((gradients[i] - gradient).norm());
+        }
+        for (size_t i : nodes)
+            member[i] = 0;
+        if (!wide || normal_error.size() < 3 || percentile(normal_error, 0.9) > 0.005)
+            continue;
+        for (size_t i : nodes)
+            planar[i] = 1;
+    }
+    return planar;
 }
 
 bool top_shells_enabled(const PrintRegionConfig &config, const PrintObjectConfig &object)

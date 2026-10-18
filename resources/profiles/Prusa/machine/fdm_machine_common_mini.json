@@ -16,5 +16,41 @@
 	"nonplanar_segment_rate": "150",
 	"z_hop": [
 		"0.2"
+	],
+	"auxiliary_fan": "0",
+	"bed_exclude_area": [
+		"0x0"
+	],
+	"gcode_flavor": "marlin2",
+	"machine_load_filament_time": "17",
+	"machine_max_jerk_e": [
+		"10",
+		"2.5"
+	],
+	"machine_max_speed_e": [
+		"80",
+		"25"
+	],
+	"machine_pause_gcode": "M601",
+	"machine_unload_filament_time": "16",
+	"printable_area": [
+		"0x0",
+		"180x0",
+		"180x180",
+		"0x180"
+	],
+	"printable_height": "180",
+	"scan_first_layer": "0",
+	"thumbnails": [
+		"16x16/QOI",
+		"220x124/QOI",
+		"200x240/QOI",
+		"640x480/PNG"
+	],
+	"retraction_minimum_travel": [
+		"1.5"
+	],
+	"retraction_speed": [
+		"70"
 	]
 }

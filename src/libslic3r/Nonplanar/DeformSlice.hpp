@@ -92,6 +92,7 @@ struct DeformSlice
     DeformFieldReport                    report;
     std::vector<std::unique_ptr<Planar>> planar;
     std::vector<ConformalPatch>          patches;
+    std::shared_ptr<const LayerField>    field;
 };
 bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::string *why = nullptr,
                           double give_up_above = std::numeric_limits<double>::infinity(), const LayerField *field = nullptr,

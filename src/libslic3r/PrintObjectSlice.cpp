@@ -24,6 +24,9 @@
 #include "Layer.hpp"
 #include "Model.hpp"
 #include "Nonplanar/ConformalShells.hpp"
+#include "Nonplanar/AutoMode.hpp"
+#include "Nonplanar/HeightField.hpp"
+#include "Nonplanar/PatchTools.hpp"
 #include "Nonplanar/Multiplanar.hpp"
 #include "Nonplanar/OrientationField.hpp"
 #include "MultiMaterialSegmentation.hpp"
@@ -1083,6 +1086,29 @@ void PrintObject::slice_volumes()
                 *m_shared_regions, low_zs, slice_volumes_inner(print->config(), this->config(), this->trafo_centered(),
                     this->model_object()->volumes, m_shared_regions->layer_ranges, low_zs, throw_on_cancel_callback),
                 PrintObject::clip_multipart_objects, throw_on_cancel_callback);
+            Nonplanar::HeightField planar_surface;
+            Nonplanar::Mask planar_nodes;
+            if (config().nonplanar_mode.value == NonplanarMode::Auto && !Nonplanar::vase_with_conformal_roof(*this)) {
+                const Nonplanar::ObjectMesh mesh(*this);
+                const auto bbox = mesh.mesh.bounding_box();
+                const double pitch = std::max(0.05, config().nonplanar_surface_resolution.value);
+                const BoundingBoxf bounds((bbox.min.head<2>().array() / pitch).floor().matrix() * pitch - Vec2d::Constant(pitch),
+                                          (bbox.max.head<2>().array() / pitch).ceil().matrix() * pitch + Vec2d::Constant(pitch));
+                const Nonplanar::HeightField grid(bounds, pitch);
+                planar_surface = Nonplanar::sample_top_surface(mesh.imesh, bbox.max.z() + 1.,
+                    slicing_parameters().object_print_z_min, grid, throw_on_cancel_callback);
+                Nonplanar::Mask candidate(planar_surface.data().size(), 0);
+                for (size_t j = 0; j < candidate.size(); ++j)
+                    candidate[j] = std::isfinite(planar_surface.data()[j]);
+                const double h = config().layer_height.value;
+                double width = 0.;
+                for (size_t rid = 0; rid < num_printing_regions(); ++rid)
+                    width = std::max(width, double(printing_region(rid).flow(*this, frTopSolidInfill, h).width()));
+                const double r = Nonplanar::low_plane_top_radius(*this, h);
+                if (r > 0.)
+                    planar_nodes = Nonplanar::auto_planar_nodes(planar_surface, candidate, h, width,
+                        0.5 * (0.5 * h - PrintRegionConfig::defaults().zaa_min_z.value) / r);
+            }
             Polygons outline;
             for (const std::vector<ExPolygons> &by_layer : low)
                 for (const ExPolygons &slice : by_layer)
@@ -1109,6 +1135,15 @@ void PrintObject::slice_volumes()
                         return;
                     const BoundingBox reach = get_extents(wide);
                     ExPolygons        keep  = intersection_ex(wide, rim);
+                    if (!planar_nodes.empty()) {
+                        Nonplanar::Mask active(planar_nodes.size(), 0);
+                        const double margin = planar_surface.pitch();
+                        const double lo = m_layers[i]->bottom_z() + PrintRegionConfig::defaults().zaa_min_z.value - margin;
+                        const double hi = m_layers[i]->print_z - 0.5 * m_layers[i]->height + margin;
+                        for (size_t j = 0; j < active.size(); ++j)
+                            active[j] = planar_nodes[j] && planar_surface.data()[j] >= lo && planar_surface.data()[j] <= hi;
+                        append(keep, intersection_ex(wide, Nonplanar::mask_to_expolygons(active, planar_surface)));
+                    }
                     for (const ExPolygon &island : below)
                         if (get_extents(island).overlap(reach) && !intersection_ex(ExPolygons{ island }, wide).empty() &&
                             (offset_ex(island, -float(scale_(1.))).empty() ||

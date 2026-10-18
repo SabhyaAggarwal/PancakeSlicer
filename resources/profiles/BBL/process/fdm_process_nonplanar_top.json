@@ -1,0 +1,11 @@
+{
+	"type": "process",
+	"name": "fdm_process_nonplanar_top",
+	"from": "system",
+	"instantiation": "false",
+	"nonplanar_flow_mod": "1",
+	"nonplanar_surface_spacing": "1",
+	"nonplanar_top_finish_flow": "0.95",
+	"nonplanar_full_conformal_max_thickness": "3",
+	"nonplanar_mode": "auto"
+}
