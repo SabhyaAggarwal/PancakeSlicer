@@ -121,3 +121,13 @@ export function readStates(dv: DataView, offset: number, h: Header): States {
 }
 
 export const isOption = (t: number) => t >= MoveType.Retract && t <= MoveType.CustomGCode;
+
+export function shortTime(t: number): string {
+  let d = Math.floor(t / 86400), h = Math.floor((t % 86400) / 3600), m = Math.floor((t % 3600) / 60);
+  const sec = Math.floor(t % 60);
+  if (d + h > 0 && sec >= 30 && ++m === 60) {
+    m = 0;
+    if (++h === 24) (h = 0), ++d;
+  }
+  return d > 0 ? `${d}d${h}h${m}m` : h > 0 ? `${h}h${m}m` : m > 0 ? `${m}m${sec}s` : t >= 1 ? `${sec}s` : t > 0 ? '<1s' : '0s';
+}

@@ -36,12 +36,14 @@ export type Gizmo = 'none' | 'move' | 'rotate' | 'scale';
 
 export interface JobView {
   id?: string;
-  state: 'idle' | 'submitting' | 'running' | 'done' | 'failed';
+  state: 'idle' | 'submitting' | 'running' | 'done' | 'failed' | 'canceled';
   pct: number;
   stage: string;
   error?: string;
   status?: JobStatus;
   stale?: boolean;
+  warnings?: string[];
+  exported?: string;
 }
 
 export interface State {
@@ -150,9 +152,14 @@ export function selectPrinter(name: string) {
     const next = { ...s, printer: name };
     const base = resolvePreset(next, 'machine', name).base;
     const procs = compatible(next, 'process', base?.name ?? name);
-    const process = procs.some((p) => p.name === s.process) ? s.process : (procs[0]?.name ?? '');
+    const defProcess = String(base?.config.default_print_profile ?? '');
+    const process = procs.some((p) => p.name === s.process)
+      ? s.process
+      : (procs.find((p) => p.name === defProcess)?.name ?? procs[0]?.name ?? '');
     const fils = compatible(next, 'filament', base?.name ?? name);
+    const defFilaments = base?.config.default_filament_profile;
     const preferred =
+      (Array.isArray(defFilaments) ? defFilaments : [defFilaments]).map(String).find((m) => fils.some((f) => f.name === m)) ??
       base?.default_materials?.find((m) => fils.some((f) => f.name === m) && /PLA Basic/.test(m)) ??
       base?.default_materials?.find((m) => fils.some((f) => f.name === m)) ??
       fils.find((f) => /Generic PLA/.test(f.name))?.name ??

@@ -56,6 +56,7 @@ export function TopBar() {
   const name = useStore((s) => (s.project?.name ?? s.objects[0]?.name)?.replace(/\.(stl|obj|3mf)$/i, ''));
   const project = useStore((s) => !!s.project);
   const exportLabel = outputKind() === 'gcode.3mf' ? 'Export plate sliced file' : 'Export G-code';
+  const exportTip = outputKind() === 'gcode.3mf' ? 'Export current sliced file' : 'Export current plate as G-code';
   return (
     <div className="topbar">
       <Icon name="OrcaSlicer" size={20} className="topbar-logo" />
@@ -67,7 +68,7 @@ export function TopBar() {
           'sep',
           { label: 'Import 3MF/STL/STEP/SVG/OBJ/AMF...', shortcut: 'Ctrl+I', action: openFileDialog, tip: 'Load a model' },
           'sep',
-          { label: exportLabel + '...', shortcut: 'Ctrl+G', action: download, disabled: !jobDone },
+          { label: exportLabel + '...', shortcut: 'Ctrl+G', action: download, disabled: !jobDone, tip: exportTip },
           { label: 'Export all objects as one STL...', tip: 'Export all objects as one STL' },
           { label: 'Export all objects as STLs...', tip: 'Export all objects as STLs' },
           { label: 'Export toolpaths as OBJ...', tip: 'Export toolpaths as OBJ' },

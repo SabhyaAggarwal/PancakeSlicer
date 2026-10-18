@@ -8,7 +8,8 @@ export interface Api {
   deleteUserPreset(type: PresetType, name: string): Promise<void>;
   submit(req: JobRequest): Promise<string>;
   status(id: string): Promise<JobStatus>;
-  events(id: string, on: { progress(e: ProgressEvent): void; done(s: JobStatus): void; error(msg: string): void }): () => void;
+  events(id: string, on: { progress(e: ProgressEvent): void; done(s: JobStatus): void; error(msg: string): void; log?(stream: string, line: string): void }): () => void;
+  cancel(id: string): Promise<void>;
   downloadUrl(id: string): string;
   movesUrl(id: string): string;
 }
@@ -103,12 +104,22 @@ const realApi: Api = {
     };
     es.onmessage = onData;
     es.addEventListener('progress', onData as EventListener);
+    es.addEventListener('log', ((ev: MessageEvent) => {
+      try {
+        const j = JSON.parse(ev.data);
+        on.log?.(String(j.stream ?? ''), String(j.line ?? ''));
+      } catch {
+      }
+    }) as EventListener);
     for (const t of ['done', 'end', 'complete', 'failed', 'error_event']) es.addEventListener(t, () => void finish());
     es.onerror = () => void finish();
     return () => {
       finished = true;
       es.close();
     };
+  },
+  async cancel(id) {
+    await fetch(`/api/jobs/${id}`, { method: 'DELETE' });
   },
   downloadUrl: (id) => `/api/jobs/${id}/download`,
   movesUrl: (id) => `/api/jobs/${id}/moves`,
@@ -192,6 +203,8 @@ const mockApi: Api = {
     }, 280);
     return () => clearInterval(timer);
   },
+  async cancel() {
+  },
   downloadUrl(id) {
     const j = mockJobs.get(id);
     return URL.createObjectURL(new Blob([j?.gcode ?? ''], { type: 'text/plain' }));
@@ -204,7 +217,7 @@ export async function connect(): Promise<Api> {
   try {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 1500);
-    const r = await fetch('/api/presets?vendor=BBL', { signal: ctl.signal, method: 'GET' });
+    const r = await fetch('/api/healthz', { signal: ctl.signal, method: 'GET' });
     clearTimeout(t);
     const type = r.headers.get('content-type') ?? '';
     if (r.ok && type.includes('json')) return realApi;

@@ -1,4 +1,4 @@
-import { OPTIONS } from '../options';
+import { OPTIONS, type OptionMode } from '../options';
 import { compatible, getState, markStale, printerPreset, setState, useStore } from '../state/store';
 import { flushModified } from './FlushDialog';
 import { Icon, IconButton } from './Icon';
@@ -25,7 +25,8 @@ function PrinterSection() {
   const cover = machine?.model ? `/profiles/${machine.vendor}/${encodeURIComponent(machine.model)}_cover.png` : '/images/printer_placeholder.png';
   const nozzle = machine?.config.nozzle_diameter;
   const nozzleText = Array.isArray(nozzle) ? nozzle[0] : nozzle;
-  const showBed = machine?.vendor === 'BBL' && !!bedDef?.enum_values;
+  const multiBed = machine?.config.support_multi_bed_types;
+  const showBed = (machine?.vendor === 'BBL' || multiBed === true || multiBed === '1') && !!bedDef?.enum_values;
   return (
     <div className="side-section">
       <SectionTitle icon="printer" title="Printer" />
@@ -43,7 +44,7 @@ function PrinterSection() {
             {showBed && (
               <select className="combo bed-combo" title="Plate type" value={bedType} onChange={(e) => setState({ bedType: e.target.value })}>
                 {bedDef!.enum_values!.map((v, i) =>
-                  machine.not_support_bed_type?.includes(v) ? null : (
+                  machine?.not_support_bed_type?.includes(v) ? null : (
                     <option key={v} value={v}>
                       {bedDef!.enum_labels?.[i] ?? v}
                     </option>
@@ -85,9 +86,9 @@ function FilamentSection() {
     });
   return (
     <div className="side-section">
-      <SectionTitle icon="filament" title="Project Filaments">
-        <IconButton icon="add_filament" title="Add one filament" onClick={add} disabled={slots.length >= 16} />
+      <SectionTitle icon="filament" title="Filament">
         <IconButton icon="delete_filament" title="Remove last filament" onClick={remove} disabled={slots.length <= 1} />
+        <IconButton icon="add_filament" title="Add one filament" onClick={add} disabled={slots.length >= 16} />
         {slots.length > 1 && (
           <button
             type="button"
@@ -115,6 +116,9 @@ function FilamentSection() {
   );
 }
 
+const MODES: OptionMode[] = ['simple', 'advanced', 'develop'];
+const MODE_TIPS = ['Simple settings', 'Advanced settings', 'Expert settings'];
+
 function ProcessHeader() {
   const uiMode = useStore((s) => s.uiMode);
   const scope = useStore((s) => s.processScope);
@@ -137,15 +141,12 @@ function ProcessHeader() {
         </button>
       </span>
       <span className="side-title-tools">
-        <span className="adv-label">Advanced</span>
-        <button
-          type="button"
-          className="icon-btn"
-          title="Cycle settings visibility"
-          onClick={() => setState({ uiMode: uiMode === 'simple' ? 'advanced' : 'simple' })}
-        >
-          <Icon name={uiMode === 'simple' ? 'toggle_off' : 'toggle_on'} size={28} />
-        </button>
+        <IconButton icon="advanced" title="Cycle settings visibility" onClick={() => setState({ uiMode: MODES[(MODES.indexOf(uiMode) + 1) % 3] })} />
+        <span className="mode-view" role="radiogroup">
+          {MODES.map((m, i) => (
+            <button key={m} type="button" role="radio" aria-checked={m === uiMode} className={m === uiMode ? 'active' : ''} title={MODE_TIPS[i]} onClick={() => setState({ uiMode: m })} />
+          ))}
+        </span>
       </span>
     </div>
   );

@@ -1,13 +1,14 @@
-import type { Config, JobRequest, PresetCatalog } from './api/types';
+import type { Config, ConfigValue, JobRequest, PresetCatalog } from './api/types';
 import { connect } from './api/client';
 import { currentFlush } from './components/FlushDialog';
 import { eventArg } from './components/LayerEvents';
 import { jobValue } from './options';
+import { shortTime } from './preview/format';
 import { filamentColor } from './plater/Plater3D';
 import { arrange, loadMesh, meshFromPositions, nextFreeSpot, parsePoints, placeholderGeometry, plateJson } from './plater/geometry';
 import { readProject } from './plater/threemf';
 import {
-  DEFAULT_PRINTER, DEMO_MODELS, getState, markStale, newId, printerPreset, resolvePreset, selectPrinter, setState, toast, type PlateObject,
+  DEFAULT_PRINTER, DEMO_MODELS, effectiveConfig, getState, markStale, newId, printerPreset, resolvePreset, selectPrinter, setState, toast, type PlateObject,
 } from './state/store';
 
 const VENDORS = ['BBL', 'Prusa'];
@@ -244,10 +245,17 @@ export async function slice() {
     const id = await s.api.submit(jobRequest());
     setState({ job: { id, state: 'running', pct: 0, stage: 'queued' } });
     unsubscribe?.();
+    const warnings: string[] = [];
     unsubscribe = s.api.events(id, {
       progress: (e) => setState((st) => ({ job: { ...st.job, pct: Math.max(st.job.pct, e.pct), stage: e.stage } })),
-      done: (status) => setState({ job: { id, state: 'done', pct: 100, stage: 'done', status } }),
+      done: (status) => setState({ job: { id, state: 'done', pct: 100, stage: 'done', status, warnings } }),
       error: (msg) => setState((st) => ({ job: { ...st.job, state: 'failed', error: msg } })),
+      log: (stream, line) => {
+        if (stream !== 'stderr' || !line.trim()) return;
+        const m = /^warning:\s*(.*)$/i.exec(line);
+        if (m) warnings.push(m[1]);
+        else if (warnings.length && !/^error:/i.test(line)) warnings[warnings.length - 1] += `\n${line}`;
+      },
     });
   } catch (e) {
     setState({ job: { state: 'failed', pct: 0, stage: '', error: String(e) } });
@@ -255,19 +263,55 @@ export async function slice() {
 }
 
 export function cancelSlice() {
+  const s = getState();
   unsubscribe?.();
   unsubscribe = null;
-  setState({ job: { state: 'idle', pct: 0, stage: '' } });
+  if (s.job.id) void s.api?.cancel(s.job.id).catch(() => undefined);
+  setState({ job: { state: 'canceled', pct: 0, stage: '' } });
 }
 
-export function download() {
+export function exportFilename(): string {
+  const s = getState();
+  const base = (s.project?.name ?? s.objects[0]?.name)?.replace(/\.(stl|obj|3mf)$/i, '') ?? 'plate';
+  const time = Number((s.job.status?.record as { text_summary?: Record<string, string> } | undefined)?.text_summary?.estimated_time_s);
+  const firstTool = Math.max(0, Math.min(...s.objects.map((o) => o.extruder - 1)));
+  const vars: Config = {
+    ...effectiveConfig(s, 'machine'), ...effectiveConfig(s, 'filament'), ...effectiveConfig(s, 'process'), ...overrides(),
+    input_filename_base: base, initial_tool: firstTool, initial_extruder: firstTool,
+    ...(Number.isFinite(time) ? { print_time: shortTime(time) } : {}),
+  };
+  let unknown = false;
+  const at = (v: ConfigValue | undefined, i: number) => {
+    const list = Array.isArray(v) ? v : typeof v === 'string' && v.includes(';') ? v.split(';') : [v];
+    return list[Math.min(i, list.length - 1)];
+  };
+  const name = String(vars.filename_format ?? '').replace(/[{[]([a-z_]+)(?:\[([a-z_0-9]+)\])?[}\]]/g, (_, key: string, idx?: string) => {
+    const v = idx === undefined ? vars[key] : at(vars[key], /^\d+$/.test(idx) ? Number(idx) : Number(vars[idx] ?? 0));
+    if (v === undefined || v === '') unknown = true;
+    return String(Array.isArray(v) ? v[0] : v);
+  });
+  const stem = !name || unknown ? base : name.replace(/\.gcode$/i, '').replace(/[<>:/\\|?*"]/g, '_');
+  return `${stem}.${outputKind()}`;
+}
+
+export async function download() {
   const s = getState();
   if (!s.api || s.job.state !== 'done' || !s.job.id) return;
+  let href: string;
+  try {
+    const r = await fetch(s.api.downloadUrl(s.job.id));
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+    href = URL.createObjectURL(await r.blob());
+  } catch (e) {
+    toast(`Export failed: ${e instanceof Error ? e.message : e}`);
+    return;
+  }
   const a = document.createElement('a');
-  a.href = s.api.downloadUrl(s.job.id);
-  const base = (s.project?.name ?? s.objects[0]?.name)?.replace(/\.(stl|obj|3mf)$/i, '') ?? 'plate';
-  a.download = s.job.status?.filename ?? `${base}.${outputKind()}`;
+  a.href = href;
+  a.download = exportFilename();
+  setState((st) => ({ job: { ...st.job, exported: a.download } }));
   document.body.appendChild(a);
   a.click();
   a.remove();
+  setTimeout(() => URL.revokeObjectURL(href), 60000);
 }

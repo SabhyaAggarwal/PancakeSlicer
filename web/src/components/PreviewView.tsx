@@ -10,7 +10,7 @@ import { LayerSlider, MoveSlider } from './PreviewSliders';
 import { EventList, EventMenu, eventTicks } from './LayerEvents';
 
 let current: { key: string; data: PreviewData; cancel(): void } | null = null;
-let live: { header(d: PreviewData): void; chunk(d: PreviewData): void; done(d: PreviewData): void; error(): void } | null = null;
+let live: { header(d: PreviewData): void; chunk(d: PreviewData): void; done(d: PreviewData): void; error(d: PreviewData): void } | null = null;
 
 function source(): { key: string; url?: string; file?: File } | null {
   const q = new URLSearchParams(location.search).get('moves');
@@ -110,7 +110,10 @@ export function PreviewView() {
       recolor(d);
       bump();
     },
-    error: () => bump(),
+    error: (d) => {
+      setData(d);
+      bump();
+    },
   };
   live = handlers;
   useEffect(() => {
@@ -139,7 +142,7 @@ export function PreviewView() {
       header: (d) => mine(d) && live?.header(d),
       chunk: (d) => mine(d) && live?.chunk(d),
       done: (d) => mine(d) && live?.done(d),
-      error: (d) => mine(d) && live?.error(),
+      error: (d) => mine(d) && live?.error(d),
     });
     current = { key: src.key, ...handle };
     setData(null);
@@ -210,7 +213,11 @@ export function PreviewView() {
   const loading = data && !data.done && !data.error;
   const status = !data && !source() && !dropped
     ? job.state === 'done' ? null : 'No sliced result. Slice the plate to see the result here.'
-    : data?.error ? `Cannot load the toolpaths: ${data.error}` : null;
+    : data?.error
+      ? /^404 /.test(data.error)
+        ? 'This slicing service did not produce preview data for the job. The sliced file can still be exported.'
+        : `Cannot load the toolpaths: ${data.error}`
+      : null;
 
   return (
     <div

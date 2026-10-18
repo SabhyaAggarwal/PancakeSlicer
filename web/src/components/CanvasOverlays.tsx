@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { addInstance, arrangeAll, cancelSlice, download, openFileDialog, outputKind, removeInstance } from '../actions';
+import { addInstance, arrangeAll, cancelSlice, openFileDialog, removeInstance } from '../actions';
 import { objectSize } from '../plater/geometry';
 import { setState, updateInstance, updateObject, useStore, type Gizmo } from '../state/store';
-import { IconButton } from './Icon';
+import { Icon, IconButton } from './Icon';
 
 const LATER_GIZMOS: [icon: string, tooltip: string][] = [
   ['toolbar_cut', 'Cut (C)'],
@@ -111,39 +111,80 @@ export function ManipulationPanel() {
   );
 }
 
+const STATUS: Record<string, string> = {
+  uploading: 'Uploading', queued: 'Queued', slicing: 'Slicing mesh', export: 'Generating G-code',
+};
+
+const cleanError = (msg = '') => msg.replace(/^(error:\s*)?(validate:\s*)?/i, '');
+
 export function SliceNotification() {
   const job = useStore((s) => s.job);
-  const record = job.status?.record as { text_summary?: Record<string, string> } | undefined;
-  if (job.state === 'idle') return null;
+  const [closed, setClosed] = useState<Set<string>>(new Set());
+  const [expired, setExpired] = useState<Set<string>>(new Set());
+  const brief = job.state === 'canceled' ? `canceled` : job.state === 'done' && !job.stale ? `done:${job.id}` : null;
+  const exported = job.exported ? `exported:${job.id}:${job.exported}` : null;
+  useEffect(() => {
+    const timers = ([[brief, 3000], [exported, 20000]] as const)
+      .filter(([k]) => k)
+      .map(([k, ms]) => setTimeout(() => setExpired((e) => new Set(e).add(k!)), ms));
+    return () => timers.forEach(clearTimeout);
+  }, [brief, exported]);
+  useEffect(() => setClosed(new Set()), [job.id]);
   const busy = job.state === 'running' || job.state === 'submitting';
+  const close = (k: string) => (
+    <button className="notif-close icon-btn" title="Close" onClick={() => setClosed((c) => new Set(c).add(k))}>
+      <Icon name="notification_close" size={14} />
+    </button>
+  );
+  const warnings = job.state === 'done' && !job.stale ? (job.warnings ?? []) : [];
   return (
-    <div className={`notification ${job.state}`}>
-      {busy && (
-        <>
-          <div className="notif-text">
-            Slicing Plate 1 <span className="notif-stage">{job.stage}</span>
-            <button className="link" onClick={cancelSlice}>
-              Cancel
-            </button>
+    <div className="notifications">
+      {warnings.map((w, i) =>
+        closed.has(`w${i}`) ? null : (
+          <div key={`w${i}`} className="notification warning">
+            {close(`w${i}`)}
+            <div className="notif-title">Warning:</div>
+            <div className="notif-body">{w}</div>
           </div>
-          <div className="progress">
-            <div className="progress-fill" style={{ width: `${Math.max(2, job.pct)}%` }} />
-          </div>
-          <div className="notif-pct">{Math.round(job.pct)}%</div>
-        </>
+        ),
       )}
-      {job.state === 'done' && (
-        <div className="notif-text">
-          {job.stale ? 'Settings changed since slicing. Slice again to export.' : 'Slicing complete.'}
-          {!job.stale && (
-            <button className="link" onClick={download}>
-              {outputKind() === 'gcode.3mf' ? 'Export plate sliced file' : 'Export G-code file'}
-            </button>
-          )}
-          {record?.text_summary?.estimated_printing_time && <span className="notif-stage">{record.text_summary.estimated_printing_time}</span>}
+      {job.state === 'failed' && !closed.has('error') && (
+        <div className="notification failed">
+          {close('error')}
+          <div className="notif-title">Error:</div>
+          <div className="notif-body">{cleanError(job.error)}</div>
         </div>
       )}
-      {job.state === 'failed' && <div className="notif-text error">Slicing failed: {job.error}</div>}
+      {exported && !expired.has(exported) && !closed.has(exported) && (
+        <div className="notification done">
+          {close(exported)}
+          <div className="notif-title">Exported successfully</div>
+          <div className="notif-body">{job.exported}</div>
+        </div>
+      )}
+      {busy && (
+        <div className="notification running">
+          <div className="notif-text">
+            Slicing plate 1:{STATUS[job.stage] ?? job.stage}.
+            <button className="notif-cancel icon-btn" title="Cancel" onClick={cancelSlice}>
+              <Icon name="notification_cancel" size={16} />
+            </button>
+          </div>
+          <div className="progress-row">
+            <div className="progress">
+              <div className="progress-fill" style={{ width: `${Math.max(2, job.pct)}%` }} />
+            </div>
+            <span className="notif-pct">{Math.round(job.pct)}%</span>
+          </div>
+        </div>
+      )}
+      {brief && !expired.has(brief) && !exported && (
+        <div className="notification done">
+          <div className="notif-title">
+            {job.state === 'canceled' ? 'Slicing Canceled' : <><Icon name="notification_slicing_complete" size={16} /> Slice complete</>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

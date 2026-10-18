@@ -5,11 +5,13 @@ import {
   nonplanarIndexColor, type ColorRange, type RGB, type Ranges, type ViewType,
 } from '../preview/colors';
 import type { PreviewData } from '../preview/data';
-import { ROLE_NAMES } from '../preview/format';
+import { ROLE_NAMES, shortTime } from '../preview/format';
 import type { PreviewScene } from '../preview/PreviewScene';
 import type { PreviewUi } from './PreviewView';
 
 const css = (c: RGB) => `rgb(${c[0]},${c[1]},${c[2]})`;
+
+const SHOW_STATS = new URLSearchParams(location.search).has('stats');
 
 export function formatTime(s: number): string {
   if (!Number.isFinite(s)) return '-';
@@ -87,7 +89,7 @@ export function Legend(props: {
         return (
           <table className="lg-table">
             <thead>
-              <tr><th>Line Type</th><th>Time</th><th>Percent</th><th>Used filament</th></tr>
+              <tr><th>Line Type</th><th>Time</th><th>%</th><th>Usage</th></tr>
             </thead>
             <tbody>
               {ROLE_NAMES.map((name, r) => (d.roleTime[r] > 0 || d.roleFilament[r] > 0) && (
@@ -118,7 +120,7 @@ export function Legend(props: {
         const names = d.meta.filament_names?.length ? d.meta.filament_names : s.filamentSlots;
         return (
           <table className="lg-table">
-            <thead><tr><th>Filament</th><th>Used filament</th></tr></thead>
+            <thead><tr><th>Filament</th><th>Total</th></tr></thead>
             <tbody>
               {fil.map((f, i) => (
                 <tr key={i}>
@@ -167,19 +169,24 @@ export function Legend(props: {
               Shells
             </label>
           </div>
+          <div className="lg-sub">
+            {ui.view === 'feature' ? 'Total estimation' : 'Time Estimation'}
+            {modes > 1 && mode === 0 ? ' [Normal mode]' : ''}
+          </div>
           <table className="lg-summary">
             <tbody>
-              <tr><td>Estimated time{modes > 1 ? (mode ? ' (stealth)' : ' (normal)') : ''}</td><td>{formatTime(total)}</td></tr>
-              {prepare ? <tr><td>Prepare time</td><td>{formatTime(prepare)}</td></tr> : null}
-              <tr><td>Total filament</td><td>{(fil.reduce((a, f) => a + f.mm, 0) / 1000).toFixed(2)} m · {fil.reduce((a, f) => a + f.grams, 0).toFixed(2)} g</td></tr>
-              <tr><td>Layers</td><td>{d.layers.length}</td></tr>
-              <tr><td>Moves</td><td>{d.n.toLocaleString()}</td></tr>
+              {ui.view === 'feature' && (
+                <tr><td>Total Filament:</td><td>{(fil.reduce((a, f) => a + f.mm, 0) / 1000).toFixed(2)} m  {fil.reduce((a, f) => a + f.grams, 0).toFixed(2)} g</td></tr>
+              )}
+              {prepare ? <tr><td>Prepare time:</td><td>{shortTime(prepare)}</td></tr> : null}
+              <tr><td>Model printing time:</td><td>{shortTime(total - (prepare ?? 0))}</td></tr>
+              <tr><td>Total time:</td><td>{shortTime(total)}</td></tr>
             </tbody>
           </table>
           {modes > 1 && (
             <button className="lg-mode" onClick={() => setMode(1 - mode)}>{mode ? 'Show normal mode' : 'Show stealth mode'}</button>
           )}
-          {stats && (
+          {stats && SHOW_STATS && (
             <div className="lg-perf" title="Last frame: blocks drawn / culled / at level of detail, segments drawn, frame CPU and GPU time">
               {stats.blocks} blocks ({stats.lodBlocks} LOD, {stats.culled} culled) · {(stats.segments / 1e6).toFixed(2)} M seg · {stats.frameMs.toFixed(1)} ms
               {Number.isFinite(stats.gpuMs) ? ` · GPU ${stats.gpuMs.toFixed(1)} ms` : ''}

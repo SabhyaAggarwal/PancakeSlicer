@@ -35,8 +35,8 @@ export function PresetCombo({ type, slot = 0, className }: { type: PresetType; s
       <optgroup label="System presets">
         {system.map((p) => (
           <option key={p.name} value={p.name}>
+            {p.name === value && dirty ? '* ' : ''}
             {p.name}
-            {p.name === value && dirty ? ' (modified)' : ''}
           </option>
         ))}
       </optgroup>
@@ -44,8 +44,8 @@ export function PresetCombo({ type, slot = 0, className }: { type: PresetType; s
         <optgroup label="User presets">
           {user.map((u) => (
             <option key={u.name} value={u.name}>
+              {u.name === value && dirty ? '* ' : ''}
               {u.name}
-              {u.name === value && dirty ? ' (modified)' : ''}
             </option>
           ))}
         </optgroup>
