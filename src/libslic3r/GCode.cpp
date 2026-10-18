@@ -7952,9 +7952,15 @@ bool GCode::conformal_short_hop(const ExtrusionPathConformal &path, const Extrus
         if (!body.boxes.empty() && m_material_columns->swept_clearance(here, to, body) < 0.)
             return false;
     }
+    const double length = (to - here).head<2>().norm();
+    for (double s = 0.25; s < length - 0.25; s += 0.1) {
+        const Vec3d p = here + (to - here) * (s / length);
+        if (m_material_columns->top_in_rect(BoundingBoxf(p.head<2>() - Vec2d(0.1, 0.1), p.head<2>() + Vec2d(0.1, 0.1))) > p.z() + 0.1)
+            return false;
+    }
     auto depth = [&](const Vec3d &a, const Vec3d &b) { return -m_material_columns->swept_clearance(a, b, land); };
     const double accepted = std::max({ depth(here, here), depth(to, to), 0. }) + 0.01;
-    const int    steps    = std::max(1, int(std::ceil((to - here).head<2>().norm() / 0.1)));
+    const int    steps    = std::max(1, int(std::ceil(length / 0.1)));
     for (int k = 0; k < steps; ++k)
         if (depth(here + (to - here) * (double(k) / steps), here + (to - here) * (double(k + 1) / steps)) > accepted)
             return false;
@@ -8235,6 +8241,44 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
             m_conformal_points[i].bead_height *= f;
             m_conformal_points[i].vertical_height *= f;
         }
+
+    if (m_material_columns && m_writer.tool_kinematics().rotary_count() == 0) {
+        const auto top_at = [this](const Vec3d &p) {
+            return m_material_columns->top_in_rect(BoundingBoxf(p.head<2>() - Vec2d(0.1, 0.1), p.head<2>() + Vec2d(0.1, 0.1)));
+        };
+        std::vector<ConformalPoint> lifted;
+        bool                        any = false;
+        for (size_t i = 0; i + 1 < m_conformal_points.size(); ++i) {
+            const ConformalPoint &a = m_conformal_points[i], &b = m_conformal_points[i + 1];
+            lifted.emplace_back(a);
+            if (a.bead_height > 0.f && b.bead_height > 0.f)
+                continue;
+            const int                   n = std::max(1, int(std::ceil((b.pose.tip - a.pose.tip).head<2>().norm() / 0.25)));
+            std::vector<ConformalPoint> run;
+            bool                        rises = false;
+            for (int k = 0; k <= n; ++k) {
+                ConformalPoint p  = interpolate(a, b, double(k) / n);
+                p.bead_height     = 0.f;
+                p.vertical_height = 0.f;
+                if (const double z = top_at(p.pose.tip) + GlideLift; z > p.pose.tip.z() + EPSILON)
+                    p.pose.tip.z() = z, rises = true;
+                run.emplace_back(p);
+            }
+            if (!rises)
+                continue;
+            any = true;
+            ConformalPoint up = run.front(), down = run.back();
+            up.pose.tip.z()   = std::max(a.pose.tip.z(), up.pose.tip.z());
+            down.pose.tip.z() = std::max(b.pose.tip.z(), down.pose.tip.z());
+            lifted.emplace_back(up);
+            lifted.insert(lifted.end(), run.begin() + 1, run.end() - 1);
+            lifted.emplace_back(down);
+        }
+        if (any) {
+            lifted.emplace_back(m_conformal_points.back());
+            m_conformal_points = std::move(lifted);
+        }
+    }
 
     ConformalEmitParams params;
     params.margin    = this->nonplanar_head().margin;

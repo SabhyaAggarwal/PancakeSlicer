@@ -33,6 +33,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -134,6 +135,75 @@ Vec2d node_gradient(const HeightField &f, int ix, int iy)
         return std::numeric_limits<double>::quiet_NaN();
     };
     return Vec2d(axis(1, 0), axis(0, 1));
+}
+
+void smooth_inside(HeightField &f, const Mask &in, int passes)
+{
+    static constexpr float k[5] = { 1.f, 4.f, 6.f, 4.f, 1.f };
+    const int              nx = f.nx(), ny = f.ny();
+    std::vector<float>     tmp(f.data().size());
+    for (int pass = 0; pass < passes; ++pass)
+        for (int axis = 0; axis < 2; ++axis) {
+            for (int iy = 0; iy < ny; ++iy)
+                for (int ix = 0; ix < nx; ++ix) {
+                    const size_t i = size_t(iy) * nx + ix;
+                    tmp[i]         = f.data()[i];
+                    if (!in[i])
+                        continue;
+                    float sum = 0.f, weight = 0.f;
+                    for (int t = -2; t <= 2; ++t) {
+                        const int x = axis == 0 ? ix + t : ix, y = axis == 0 ? iy : iy + t;
+                        if (x < 0 || y < 0 || x >= nx || y >= ny || !in[size_t(y) * nx + x])
+                            continue;
+                        sum += k[t + 2] * f.data()[size_t(y) * nx + x];
+                        weight += k[t + 2];
+                    }
+                    tmp[i] = sum / weight;
+                }
+            std::copy(tmp.begin(), tmp.end(), f.data().begin());
+        }
+}
+
+ExPolygons smooth_contours(const ExPolygons &polygons, double step, double window)
+{
+    auto smooth = [&](Polygon &poly) {
+        const double length = unscale<double>(poly.length());
+        const size_t n      = size_t(length / step);
+        if (n < 8)
+            return;
+        Points samples;
+        samples.reserve(n);
+        const Points &pts = poly.points;
+        double        at  = 0.;
+        for (size_t i = 0; i < pts.size(); ++i) {
+            const Vec2d a = unscale(pts[i]), b = unscale(pts[(i + 1) % pts.size()]);
+            const double l = (b - a).norm();
+            for (; at < l; at += length / double(n)) {
+                const Vec2d p = a + (b - a) * (at / l);
+                samples.emplace_back(Point::new_scale(p.x(), p.y()));
+            }
+            at -= l;
+        }
+        const int half = std::max(1, int(std::lround(0.5 * window / (length / double(n)))));
+        if (int(samples.size()) <= 2 * half + 2)
+            return;
+        Points out(samples.size());
+        for (size_t i = 0; i < samples.size(); ++i) {
+            Vec2d sum = Vec2d::Zero();
+            for (int t = -half; t <= half; ++t)
+                sum += samples[size_t((ptrdiff_t(i) + t + ptrdiff_t(samples.size())) % ptrdiff_t(samples.size()))].cast<double>();
+            out[i] = (sum / double(2 * half + 1)).cast<coord_t>();
+        }
+        poly.points = std::move(out);
+        poly.douglas_peucker(scale_(0.005));
+    };
+    ExPolygons out = polygons;
+    for (ExPolygon &e : out) {
+        smooth(e.contour);
+        for (Polygon &h : e.holes)
+            smooth(h);
+    }
+    return union_ex(out);
 }
 
 struct Piece
@@ -508,10 +578,14 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
                     in_c[i]       = 1;
                     const float b = S_c.data()[i];
                     D_c.data()[i] = float(kappa * (b - z_ref) + beta * dist[size_t(cy0 + iy) * grid.nx() + cx0 + ix]);
-                    k_lo          = std::min(k_lo, (b + D_c.data()[i] + 0.5 * g) / g);
-                    k_hi          = std::max(k_hi, (F_c.data()[i] + D_c.data()[i] + 0.5 * g) / g);
                 } else
                     S_c.data()[i] = F_c.data()[i] = D_c.data()[i] = HeightField::NoData;
+            }
+        smooth_inside(D_c, in_c, std::max(2, int(std::ceil(sqr(0.6 / pitch)))));
+        for (size_t i = 0; i < in_c.size(); ++i)
+            if (in_c[i]) {
+                k_lo = std::min(k_lo, (S_c.data()[i] + D_c.data()[i] + 0.5 * g) / g);
+                k_hi = std::max(k_hi, (F_c.data()[i] + D_c.data()[i] + 0.5 * g) / g);
             }
         for (int iy = 0; iy < S_c.ny(); ++iy)
             for (int ix = 0; ix < S_c.nx(); ++ix)
@@ -568,7 +642,7 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
                 if (!any)
                     continue;
                 const ExPolygons &outline = layers[layer_at(z_top)]->lslices;
-                const ExPolygons  Q       = positive_region(f1);
+                const ExPolygons  Q       = smooth_contours(positive_region(f1), 0.1, 1.);
                 ExPolygons area_k = intersection_ex(intersection_ex(intersection_ex(Q, positive_region(f2)), footprint_ext), outline);
                 area_k            = opening_ex(area_k, float(scale_(0.25 * w)));
                 if (area_k.empty())

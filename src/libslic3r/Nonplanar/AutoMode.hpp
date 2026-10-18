@@ -1,4 +1,5 @@
 #pragma once
+#include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/PrintConfig.hpp"
 
 #include <string>

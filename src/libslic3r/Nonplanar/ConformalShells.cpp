@@ -386,6 +386,7 @@ void contour_fill(const HeightField &surface, const ExPolygons &area, double dro
         append(pieces, expolygons_simplify(intersection_ex(area, runs_to_expolygons(runs, fine)), scale_(0.5 * fine.pitch())));
     std::vector<std::unique_ptr<ArachneLoops>> paths(pieces.size());
     std::vector<std::vector<Polylines>>        middles(pieces.size());
+    std::vector<size_t>                        max_loops(pieces.size(), ContourLoops);
     tbb::parallel_for(tbb::blocked_range<size_t>(0, pieces.size(), 1), [&](const tbb::blocked_range<size_t> &range) {
         for (size_t i = range.begin(); i < range.end(); ++i) {
             const ExPolygon &piece = pieces[i];
@@ -395,6 +396,11 @@ void contour_fill(const HeightField &surface, const ExPolygons &area, double dro
             const ExPolygons middle = intersection_ex(union_ex(paths[i]->paths->getInnerContour()), ExPolygons{ piece });
             if (middle.empty())
                 continue;
+            if (std::any_of(middle.begin(), middle.end(), [](const ExPolygon &e) { return !e.holes.empty(); })) {
+                paths[i]     = arachne_paths(piece, flow, layer_height, 0);
+                max_loops[i] = 0;
+                continue;
+            }
             double a = angle;
             {
                 const BoundingBox bb  = get_extents(middle);
@@ -419,7 +425,7 @@ void contour_fill(const HeightField &surface, const ExPolygons &area, double dro
         }
     });
     for (size_t i = 0; i < pieces.size(); ++i) {
-        arachne_roads(pieces[i], paths[i] ? paths[i]->paths.get() : nullptr, flow, layer_height, ContourLoops, roads, nullptr, seam);
+        arachne_roads(pieces[i], paths[i] ? paths[i]->paths.get() : nullptr, flow, layer_height, max_loops[i], roads, nullptr, seam);
         append(lines, std::move(middles[i]));
     }
 }
@@ -1316,6 +1322,17 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                 }
             if (sample == n_nodes)
                 continue;
+            {
+                const Mask around = rasterize(offset_ex(ExPolygons{ ground }, float(scale_(FlatGround))), grid);
+                size_t     ring = 0, shells = 0;
+                for (size_t i = 0; i < n_nodes; ++i)
+                    if (around[i] && !on[i]) {
+                        ++ring;
+                        shells += mask[i];
+                    }
+                if (ring > 0 && double(shells) >= 0.9 * double(ring))
+                    continue;
+            }
             const Point at = Point::new_scale(grid.node(int(sample % size_t(grid.nx())), int(sample / size_t(grid.nx()))));
             const Layer *host = nullptr;
             for (auto it = layers.rbegin(); it != layers.rend() && host == nullptr; ++it) {
