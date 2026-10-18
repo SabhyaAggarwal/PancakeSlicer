@@ -50,7 +50,10 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, users *UserPres
 	mux.HandleFunc("/api/user-presets/{name}", s.userPreset)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { fail(w, 404, "unknown API endpoint") })
 	mux.Handle("/", spaFiles(c.StaticDir))
-	return mux
+	if c.Metrics {
+		mux.HandleFunc("GET /metrics", s.metrics)
+	}
+	return s.middleware(mux)
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
@@ -85,6 +88,19 @@ func (s *Server) listPresets(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
+	j, err := s.jobs.NewJob(s.clientIP(r))
+	if err != nil {
+		admissionFailure(w, err)
+		return
+	}
+	started := false
+	defer func() {
+		s.jobs.releaseUpload(j)
+		if !started {
+			os.RemoveAll(j.Dir)
+		}
+	}()
+
 	if r.ContentLength > s.cfg.MaxUploadSize {
 		fail(w, http.StatusRequestEntityTooLarge, "multipart upload exceeds max-upload")
 		return
@@ -141,7 +157,6 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	var err error
 	if raw := r.FormValue("overrides"); raw != "" {
 		req.Overrides, err = overrides(raw)
 		if err != nil {
@@ -160,17 +175,6 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "files[] is required")
 		return
 	}
-	j, err := s.jobs.NewJob()
-	if err != nil {
-		fail(w, 500, err.Error())
-		return
-	}
-	started := false
-	defer func() {
-		if !started {
-			os.RemoveAll(j.Dir)
-		}
-	}()
 	names := map[string]bool{}
 	for _, f := range files {
 		_, parameters, headerErr := mime.ParseMediaType(f.Header.Get("Content-Disposition"))
@@ -225,7 +229,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	}
 	j.Request = req
 	if err := s.jobs.Start(j); err != nil {
-		fail(w, 503, err.Error())
+		admissionFailure(w, err)
 		return
 	}
 	started = true

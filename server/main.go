@@ -5,28 +5,40 @@ import (
 	"errors"
 	"flag"
 	"log"
+	"math"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
 
 type Config struct {
-	DataDir       string
-	Listen        string
-	Tool          string
-	Resources     string
-	JobRoot       string
-	StaticDir     string
-	MaxJobs       int
-	JobTimeout    time.Duration
-	JobTTL        time.Duration
-	MaxUploadSize int64
-	Features      ToolFeatures
-	Options       *cachedResponse
+	DataDir        string
+	Listen         string
+	Tool           string
+	Resources      string
+	JobRoot        string
+	StaticDir      string
+	MaxJobs        int
+	JobTimeout     time.Duration
+	JobTTL         time.Duration
+	MaxUploadSize  int64
+	SubmitRate     float64
+	SubmitBurst    int
+	MaxClientJobs  int
+	MaxQueue       int
+	BearerToken    string
+	DiskQuota      int64
+	RequestLog     bool
+	Metrics        bool
+	TrustedProxies []netip.Prefix
+	Features       ToolFeatures
+	Options        *cachedResponse
 }
 
 func env(key, def string) string {
@@ -50,6 +62,11 @@ func envDuration(key string, def time.Duration) time.Duration {
 	return def
 }
 
+func envBool(key string) bool {
+	v, _ := strconv.ParseBool(env(key, "false"))
+	return v
+}
+
 func parseConfig() Config {
 	var c Config
 	flag.StringVar(&c.DataDir, "data-dir", env("ORCA_WEB_DATA_DIR", "data"), "persistent user preset directory (ORCA_WEB_DATA_DIR)")
@@ -62,7 +79,30 @@ func parseConfig() Config {
 	flag.DurationVar(&c.JobTimeout, "job-timeout", envDuration("ORCA_WEB_JOB_TIMEOUT", 15*time.Minute), "wall-clock limit of one slice (ORCA_WEB_JOB_TIMEOUT)")
 	flag.DurationVar(&c.JobTTL, "job-ttl", envDuration("ORCA_WEB_JOB_TTL", 2*time.Hour), "finished jobs and their files are deleted after this (ORCA_WEB_JOB_TTL)")
 	flag.Int64Var(&c.MaxUploadSize, "max-upload", int64(envInt("ORCA_WEB_MAX_UPLOAD_MB", 512))<<20, "largest accepted upload in bytes (ORCA_WEB_MAX_UPLOAD_MB in MB)")
+	rate, _ := strconv.ParseFloat(env("ORCA_WEB_SUBMIT_RATE", "0"), 64)
+	flag.Float64Var(&c.SubmitRate, "submit-rate", rate, "job submission tokens per second per IP; 0 disables (ORCA_WEB_SUBMIT_RATE)")
+	flag.IntVar(&c.SubmitBurst, "submit-burst", envInt("ORCA_WEB_SUBMIT_BURST", 1), "submission bucket capacity (ORCA_WEB_SUBMIT_BURST)")
+	flag.IntVar(&c.MaxClientJobs, "max-client-jobs", envInt("ORCA_WEB_MAX_CLIENT_JOBS", 0), "active jobs per IP; 0 disables (ORCA_WEB_MAX_CLIENT_JOBS)")
+	flag.IntVar(&c.MaxQueue, "max-queue", envInt("ORCA_WEB_MAX_QUEUE", -1), "waiting jobs; -1 unlimited, 0 no waiting (ORCA_WEB_MAX_QUEUE)")
+	flag.StringVar(&c.BearerToken, "bearer-token", env("ORCA_WEB_BEARER_TOKEN", ""), "mutation bearer token; empty disables (ORCA_WEB_BEARER_TOKEN)")
+	quota, _ := strconv.ParseInt(env("ORCA_WEB_DISK_QUOTA", "0"), 10, 64)
+	flag.Int64Var(&c.DiskQuota, "disk-quota", quota, "job directory quota in bytes; 0 disables (ORCA_WEB_DISK_QUOTA)")
+	flag.BoolVar(&c.RequestLog, "request-log", envBool("ORCA_WEB_REQUEST_LOG"), "JSON request logging (ORCA_WEB_REQUEST_LOG)")
+	flag.BoolVar(&c.Metrics, "metrics", envBool("ORCA_WEB_METRICS"), "expose GET /metrics (ORCA_WEB_METRICS)")
+	proxies := flag.String("trusted-proxies", env("ORCA_WEB_TRUSTED_PROXIES", ""), "comma-separated trusted proxy CIDRs (ORCA_WEB_TRUSTED_PROXIES)")
 	flag.Parse()
+	if c.SubmitRate < 0 || math.IsNaN(c.SubmitRate) || math.IsInf(c.SubmitRate, 0) || c.SubmitBurst < 1 || c.MaxClientJobs < 0 || c.MaxQueue < -1 || c.DiskQuota < 0 {
+		log.Fatal("invalid public deployment limits")
+	}
+	if *proxies != "" {
+		for _, cidr := range strings.Split(*proxies, ",") {
+			prefix, err := netip.ParsePrefix(strings.TrimSpace(cidr))
+			if err != nil {
+				log.Fatal(err)
+			}
+			c.TrustedProxies = append(c.TrustedProxies, prefix)
+		}
+	}
 	if c.MaxJobs < 1 {
 		log.Fatal("max-jobs must be positive")
 	}

@@ -60,6 +60,7 @@ const maxEventBytes = 8 << 20
 
 type Job struct {
 	ID      string
+	Client  string
 	Dir     string
 	Request JobRequest
 	Created time.Time
@@ -228,13 +229,18 @@ func outputBase(r JobRequest) string {
 }
 
 type JobManager struct {
-	cfg     Config
-	sem     chan struct{}
-	wg      sync.WaitGroup
-	mu      sync.Mutex
-	jobs    map[string]*Job
-	stop    chan struct{}
-	closing bool
+	cfg           Config
+	sem           chan struct{}
+	wg            sync.WaitGroup
+	mu            sync.Mutex
+	jobs          map[string]*Job
+	stop          chan struct{}
+	closing       bool
+	uploads       map[string]*Job
+	buckets       map[string]tokenBucket
+	durations     [8]uint64
+	durationCount uint64
+	durationSum   float64
 }
 
 var jobIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
@@ -254,12 +260,18 @@ func NewJobManager(cfg Config) (*JobManager, error) {
 			}
 		}
 	}
-	m := &JobManager{cfg: cfg, sem: make(chan struct{}, cfg.MaxJobs), jobs: map[string]*Job{}, stop: make(chan struct{})}
+	m := &JobManager{cfg: cfg, sem: make(chan struct{}, cfg.MaxJobs), jobs: map[string]*Job{}, stop: make(chan struct{}), uploads: map[string]*Job{}, buckets: map[string]tokenBucket{}}
 	go m.reap()
 	return m, nil
 }
 
-func (m *JobManager) NewJob() (*Job, error) {
+func (m *JobManager) NewJob(client string) (*Job, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.admitLocked(client); err != nil {
+		return nil, err
+	}
+
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return nil, err
@@ -271,15 +283,21 @@ func (m *JobManager) NewJob() (*Job, error) {
 			return nil, errors.Join(err, os.RemoveAll(dir))
 		}
 	}
-	return &Job{ID: id, Dir: dir, Created: time.Now(), state: StateQueued, changed: make(chan struct{})}, nil
+	j := &Job{ID: id, Client: client, Dir: dir, Created: time.Now(), state: StateQueued, changed: make(chan struct{})}
+	m.uploads[id] = j
+	return j, nil
 }
 
 func (m *JobManager) Start(j *Job) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closing {
-		return errors.New("service is shutting down")
+		return &admissionError{503, "service is shutting down", 1}
 	}
+	if err := m.quotaLocked(); err != nil {
+		return err
+	}
+	delete(m.uploads, j.ID)
 	ctx, cancel := context.WithCancel(context.Background())
 	j.mu.Lock()
 	j.cancel = cancel
@@ -289,6 +307,7 @@ func (m *JobManager) Start(j *Job) error {
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
+		defer m.completed(j)
 		defer cancel()
 		select {
 		case m.sem <- struct{}{}:
@@ -320,12 +339,16 @@ func (m *JobManager) Cancel(j *Job) bool {
 }
 
 func (m *JobManager) Remove(j *Job) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.removeLocked(j)
+}
+
+func (m *JobManager) removeLocked(j *Job) error {
 	if err := os.RemoveAll(j.Dir); err != nil {
 		return err
 	}
-	m.mu.Lock()
 	delete(m.jobs, j.ID)
-	m.mu.Unlock()
 	return nil
 }
 
@@ -373,13 +396,27 @@ func (m *JobManager) Shutdown() {
 }
 
 func (m *JobManager) reap() {
-	t := time.NewTicker(time.Minute)
+	interval := time.Minute
+	if m.cfg.DiskQuota > 0 {
+		interval = 5 * time.Second
+	}
+	t := time.NewTicker(interval)
 	defer t.Stop()
 	for {
 		select {
 		case <-m.stop:
 			return
 		case now := <-t.C:
+			m.mu.Lock()
+			if err := m.quotaLocked(); err != nil {
+				log.Printf("job quota: %v", err)
+			}
+			for client, bucket := range m.buckets {
+				if now.Sub(bucket.at).Seconds()*m.cfg.SubmitRate >= float64(m.cfg.SubmitBurst) {
+					delete(m.buckets, client)
+				}
+			}
+			m.mu.Unlock()
 			var old []*Job
 			m.mu.Lock()
 			for _, j := range m.jobs {
