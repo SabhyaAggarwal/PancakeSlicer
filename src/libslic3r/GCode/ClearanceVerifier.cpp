@@ -5,13 +5,15 @@
 #include "libslic3r/ChunkedVector.hpp"
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
+#include "libslic3r/I18N.hpp"
 #include "libslic3r/Nonplanar/AutoMode.hpp"
+#include "libslic3r/Nonplanar/HeadBoxLabel.hpp"
 #include "libslic3r/Nonplanar/HeadEnvelope.hpp"
 #include "libslic3r/Point.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/PrintBase.hpp"
-#include <sstream>
+#include "libslic3r/format.hpp"
 #include <Eigen/Geometry>
 #include <tbb/blocked_range.h>
 #include <tbb/parallel_for.h>
@@ -1079,11 +1081,11 @@ void check_export_clearance(Print &print, GCodeProcessorResult &result)
     result.clearance = result.clearance_report.per_move;
     if (result.clearance_report.hit_moves == 0) return;
     const auto &hit = result.clearance_report.worst.front();
-    std::ostringstream message;
-    message << result.clearance_report.hit_moves << " moves would hit printed material (worst: " << hit.penetration
-            << " mm, " << hit.component << ", layer " << hit.layer + 1 << ", line " << hit.gcode_line << ").";
-    print.active_step_add_warning(PrintStateBase::WarningLevel::CRITICAL, message.str());
+    const std::string message = Slic3r::format(_u8L("Moves that would hit printed material: %1% (worst %2$.3f mm, %3%, layer %4%, G-code line %5%)."),
+                                               result.clearance_report.hit_moves, hit.penetration, Nonplanar::head_box_label(hit.component),
+                                               hit.layer + 1, hit.gcode_line);
+    print.active_step_add_warning(PrintStateBase::WarningLevel::CRITICAL, message);
     if (mode == NonplanarCollisionCheck::Block)
-        throw RuntimeError(message.str() + " Export blocked by non-planar collision checking. Review the path or select warn to export it.");
+        throw RuntimeError(message + " " + _u8L("Export blocked by the head clearance check. Review the path or set the check to Warn to export it."));
 }
 }

@@ -182,6 +182,7 @@ set(lisbslic3r_sources
     Nonplanar/SpiralTop.cpp
     Nonplanar/SpiralTop.hpp
     Nonplanar/HeadEnvelope.cpp
+    Nonplanar/HeadBoxLabel.hpp
     Nonplanar/HeadEnvelope.hpp
     Nonplanar/HeightField.cpp
     Nonplanar/HeightField.hpp

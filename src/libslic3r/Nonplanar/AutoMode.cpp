@@ -573,7 +573,7 @@ std::vector<std::string> object_warnings(const PrintObject &object, const Report
         const auto main = std::max_element(by_reason.begin(), by_reason.end(),
                                            [](const auto &a, const auto &b) { return a.second < b.second; });
         char buf[64];
-        std::snprintf(buf, sizeof(buf), "%.0f %% (%.0f mm2)", 100. * (1. - report.curved_share()), report.planar_top);
+        std::snprintf(buf, sizeof(buf), "%.0f %% (%.0f mm²)", 100. * (1. - report.curved_share()), report.planar_top);
         warnings.emplace_back((boost::format(_u8L("%1%: %2% of the curved top prints in planar layers, mostly: %3%.")) % report.name % buf %
                                (main == by_reason.end() ? std::string("-") : I18N::translate(fallback_reason_text(main->first))))
                                   .str());

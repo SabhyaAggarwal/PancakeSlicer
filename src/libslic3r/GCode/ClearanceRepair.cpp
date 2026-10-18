@@ -8,13 +8,16 @@
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/HeapTrim.hpp"
+#include "libslic3r/I18N.hpp"
 #include "libslic3r/Layer.hpp"
 #include "libslic3r/Nonplanar/AutoMode.hpp"
 #include "libslic3r/Nonplanar/ConformalShells.hpp"
+#include "libslic3r/Nonplanar/HeadBoxLabel.hpp"
 #include "libslic3r/Nonplanar/HeadEnvelope.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintBase.hpp"
 #include "libslic3r/PrintConfig.hpp"
+#include "libslic3r/format.hpp"
 #include "libslic3r/libslic3r.h"
 
 #include <boost/log/trivial.hpp>
@@ -336,17 +339,17 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
         return;
     std::string message = self->summary(hits);
     if (conformal_hits > 0) {
-        message += " " + std::to_string(conformal_hits) + " conformal moves still hit printed material";
-        for (const ClearanceHit &hit : result.clearance_report.worst)
-            if (result.state(result.moves[hit.move_id]).nonplanar_patch_shell != 0xFF && result.moves[hit.move_id].type == EMoveType::Extrude) {
-                message += " (worst " + std::to_string(hit.penetration) + " mm, " + hit.component + ", line " + std::to_string(hit.gcode_line) + ")";
-                break;
-            }
-        message += ".";
+        const auto worst = std::find_if(result.clearance_report.worst.begin(), result.clearance_report.worst.end(), [&result](const ClearanceHit &hit) {
+            return result.state(result.moves[hit.move_id]).nonplanar_patch_shell != 0xFF && result.moves[hit.move_id].type == EMoveType::Extrude;
+        });
+        message += " " + (worst == result.clearance_report.worst.end() ?
+                              Slic3r::format(_u8L("Curved moves that still hit printed material: %1%."), conformal_hits) :
+                              Slic3r::format(_u8L("Curved moves that still hit printed material: %1% (worst %2$.3f mm, %3%, G-code line %4%)."),
+                                             conformal_hits, worst->penetration, head_box_label(worst->component), worst->gcode_line));
     }
     print.active_step_add_warning(conformal_hits > 0 ? PrintStateBase::WarningLevel::CRITICAL : PrintStateBase::WarningLevel::NON_CRITICAL, message);
     if (mode == NonplanarCollisionCheck::Block && conformal_hits > 0)
-        throw RuntimeError(message + " Export blocked by non-planar collision checking. Review the path or select warn to export it.");
+        throw RuntimeError(message + " " + _u8L("Export blocked by the head clearance check. Review the path or set the check to Warn to export it."));
 }
 
 bool ClearanceRepair::plan(const GCodeProcessorResult &result, const ClearanceReport &report, const HeadEnvelope &head)
@@ -577,35 +580,33 @@ bool ClearanceRepair::apply()
 
 std::string ClearanceRepair::summary(size_t hits_now) const
 {
-    std::ostringstream out;
-    out << std::setprecision(2);
-    if (m_pass == 0)
-        out << "Non-planar collision check: " << hits_now << " hits, none repaired";
-    else
-        out << "Non-planar repair: " << m_first_hits << " hits → " << hits_now << " after " << m_pass << (m_pass == 1 ? " pass" : " passes");
+    std::ostringstream detail;
+    detail << std::setprecision(2);
     for (const PrintObject *object : m_print.objects()) {
         const RepairHints *hints = object->nonplanar_repair();
         if (hints == nullptr || m_pass == 0)
             continue;
         for (const PatchDiagnostics &diag : object->conformal().diagnostics)
             if (diag.repaired_nodes > 0)
-                out << "; " << diag.repaired_nodes << " nodes lowered by ≤ " << diag.repair_lowering << " mm on patch " << diag.patch_id;
+                detail << "; " << diag.repaired_nodes << " nodes lowered by <= " << diag.repair_lowering << " mm on patch " << diag.patch_id;
         if (!hints->order_bands.empty()) {
             double height = Inf;
             for (const RepairHints::OrderBand &b : hints->order_bands) height = std::min(height, b.height);
-            out << "; patches of " << object->model_object()->name << " printed in bands ≤ " << height << " mm";
+            detail << "; patches of " << object->model_object()->name << " printed in bands <= " << height << " mm";
         }
         if (hints->travel_lift > 0.)
-            out << "; travel lifted " << hints->travel_lift << " mm";
+            detail << "; travel lifted " << hints->travel_lift << " mm";
         if (!hints->ironing_drops.empty())
-            out << "; " << hints->ironing_drops.size() << " ironing spots dropped";
+            detail << "; " << hints->ironing_drops.size() << " ironing spots dropped";
         if (!hints->uniform_beads.empty())
-            out << "; " << hints->uniform_beads.size() << " spots at the uniform shell height";
+            detail << "; " << hints->uniform_beads.size() << " spots at the uniform shell height";
     }
-    out << " (" ;
-    for (size_t i = 0; i < m_actions.size(); ++i) out << (i ? "; " : "") << m_actions[i];
-    out << ").";
-    return out.str();
+    for (const std::string &action : m_actions)
+        detail << "; " << action;
+    BOOST_LOG_TRIVIAL(info) << "Non-planar repair: " << m_first_hits << " hits -> " << hits_now << " after " << m_pass << " passes" << detail.str();
+    return m_pass == 0 ? Slic3r::format(_u8L("Head clearance check: %1% moves would hit printed material, none repaired."), hits_now) :
+                         Slic3r::format(_u8L("Clearance repair passes: %1%. Moves that would hit printed material: %2% before, %3% after."),
+                                        m_pass, m_first_hits, hits_now);
 }
 
 }
