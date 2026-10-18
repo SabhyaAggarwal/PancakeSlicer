@@ -1,4 +1,4 @@
-import { BLOCK, CHUNK, readHeader, readStates, MoveType, type Header, type LayerRec, type MoveChunk, type States, type StreamMeta } from './format';
+import { BLOCK, CHUNK, readHeader, readStates, readStatistics, MoveType, type Header, type LayerRec, type MoveChunk, type States, type StreamMeta } from './format';
 
 const LOD_TOLERANCE = 0.05;
 const CUSTOM_ROLE = 18;
@@ -252,7 +252,11 @@ async function run(src: WorkerIn) {
     if (stage === 'meta' && q.avail >= header!.metaBytes) {
       const bytes = q.buf.slice(q.pos, q.pos + header!.metaBytes);
       try {
-        meta = JSON.parse(new TextDecoder().decode(bytes)) as StreamMeta;
+        const value = JSON.parse(new TextDecoder().decode(bytes));
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+          meta = value as StreamMeta;
+          meta.statistics = readStatistics(meta.statistics);
+        }
       } catch {
         meta = {};
       }

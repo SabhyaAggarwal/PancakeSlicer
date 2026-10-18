@@ -15,7 +15,34 @@ export const ROLE_NAMES = [
 ];
 export const ROLE_COUNT = ROLE_NAMES.length;
 
+export interface PrintStatistics {
+  total_used_filament_mm: number;
+  total_extruded_volume_mm3: number;
+  total_weight_g: number;
+  total_cost: number;
+  total_wipe_tower_filament_mm: number;
+  total_toolchanges: number;
+  per_extruder: { extruder_id: number; used_filament_mm: number; used_filament_g: number }[];
+}
+
+export function readStatistics(value: unknown): PrintStatistics | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const s = value as Record<string, unknown>;
+  const nonnegative = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+  if (!['total_used_filament_mm', 'total_extruded_volume_mm3', 'total_weight_g', 'total_cost',
+    'total_wipe_tower_filament_mm', 'total_toolchanges'].every((k) => nonnegative(s[k])) ||
+    !Number.isSafeInteger(s.total_toolchanges) || !Array.isArray(s.per_extruder)) return undefined;
+  const ids = new Set<number>();
+  for (const e of s.per_extruder) {
+    if (!e || !Number.isInteger(e.extruder_id) || e.extruder_id < 0 || e.extruder_id > 255 ||
+      ids.has(e.extruder_id) || !nonnegative(e.used_filament_mm) || !nonnegative(e.used_filament_g)) return undefined;
+    ids.add(e.extruder_id);
+  }
+  return value as PrintStatistics;
+}
+
 export interface StreamMeta {
+  statistics?: PrintStatistics;
   extruder_colors?: string[];
   color_print_colors?: string[];
   filament_names?: string[];

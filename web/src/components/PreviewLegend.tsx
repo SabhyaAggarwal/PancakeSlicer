@@ -76,7 +76,16 @@ export function Legend(props: {
   const modes = (d.meta.estimated_times ?? []).filter((m) => typeof m?.time === 'number' && m.time > 0).length;
   const total = d.totalTime(mode);
   const prepare = d.meta.estimated_times?.[mode]?.prepare_time;
+  const state = getState();
+  const record = d.sourceUrl && state.job.id && d.sourceUrl === state.api?.movesUrl(state.job.id)
+    ? state.job.status?.record : undefined;
+  const printStats = d.statistics(record);
+  const fallbackTip = 'Print statistics unavailable from this tool. Filament is estimated from preview moves; flushed filament may be missing.';
   const fil = filamentInfo(d);
+  const totalsByExtruder = printStats
+    ? [...printStats.per_extruder].sort((a, b) => a.extruder_id - b.extruder_id)
+      .map((f) => ({ id: f.extruder_id, mm: f.used_filament_mm, grams: f.used_filament_g }))
+    : fil.map((f, id) => ({ ...f, id }));
   const filMm = fil.reduce((a, f) => a + f.mm, 0), filG = fil.reduce((a, f) => a + f.grams, 0);
   const toggle = (k: keyof PreviewUi['vis']) => setUi((u) => ({ ...u, vis: { ...u.vis, [k]: !u.vis[k] } }));
   const toggleRole = (r: number) =>
@@ -127,9 +136,9 @@ export function Legend(props: {
           <table className="lg-table">
             <thead><tr><th>Filament</th><th>Total</th></tr></thead>
             <tbody>
-              {fil.map((f, i) => (
-                <tr key={i}>
-                  <td><Swatch c={cols[i] ?? hexToRgb('#F2754E')} />{i + 1} {names[i] ?? ''}</td>
+              {totalsByExtruder.map((f) => (
+                <tr key={f.id} title={printStats ? undefined : fallbackTip}>
+                  <td><Swatch c={cols[f.id] ?? hexToRgb('#F2754E')} />{f.id + 1} {names[f.id] ?? ''}</td>
                   <td>{(f.mm / 1000).toFixed(2)} m  {compactWeight(f.grams)}</td>
                 </tr>
               ))}
@@ -181,7 +190,21 @@ export function Legend(props: {
           <table className="lg-summary">
             <tbody>
               {ui.view === 'feature' && (
-                <tr><td>Total Filament:</td><td>{(filMm / 1000).toFixed(2)} m  {compactWeight(filG)}</td></tr>
+                <>
+                  <tr title={printStats ? 'Completed export totals, including flushed filament and wipe tower.' : fallbackTip}>
+                    <td>Total Filament:</td><td>{((printStats?.total_used_filament_mm ?? filMm) / 1000).toFixed(2)} m  {compactWeight(printStats?.total_weight_g ?? filG)}</td>
+                  </tr>
+                  {printStats && <>
+                    <tr title="Filament summed from preview extrusion moves, excluding internal speed samples.">
+                      <td>Model Filament:</td><td>{(filMm / 1000).toFixed(2)} m  {compactWeight(filG)}</td>
+                    </tr>
+                    <tr title="Export total minus preview move consumption; includes any wipe tower consumption absent from the moves.">
+                      <td>Flushed filament:</td><td>{(Math.max(0, printStats.total_used_filament_mm - filMm) / 1000).toFixed(2)} m  {compactWeight(Math.max(0, printStats.total_weight_g - filG))}</td>
+                    </tr>
+                    <tr><td>Cost:</td><td>{printStats.total_cost.toFixed(2)}</td></tr>
+                    <tr><td>Tool changes:</td><td>{printStats.total_toolchanges}</td></tr>
+                  </>}
+                </>
               )}
               {prepare ? <tr><td>Prepare time:</td><td>{shortTime(prepare)}</td></tr> : null}
               <tr><td>Model printing time:</td><td>{shortTime(total - (prepare ?? 0))}</td></tr>

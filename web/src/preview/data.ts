@@ -1,9 +1,10 @@
-import { MoveType, ROLE_COUNT, type Header, type LayerRec, type MoveChunk, type States, type StreamMeta } from './format';
+import { MoveType, ROLE_COUNT, readStatistics, type Header, type LayerRec, type MoveChunk, type States, type StreamMeta } from './format';
 import type { WorkerIn, WorkerOut } from './loader.worker';
 
 export const TEX_WIDTH = 4096;
 
 export class PreviewData {
+  sourceUrl?: string;
   header: Header | null = null;
   states: States | null = null;
   n = 0;
@@ -46,6 +47,10 @@ export class PreviewData {
   filamentMm: number[] = [];
   bbox = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
   optionIds: number[] = [];
+
+  statistics(record?: Record<string, unknown>) {
+    return readStatistics(record?.statistics) ?? this.meta.statistics;
+  }
 
   get rows() {
     return Math.max(1, Math.ceil(this.n / TEX_WIDTH));
@@ -193,6 +198,7 @@ export interface LoadHandlers {
 
 export function loadMoves(src: WorkerIn, on: LoadHandlers): { data: PreviewData; cancel(): void } {
   const d = new PreviewData();
+  d.sourceUrl = src.url;
   const worker = new Worker(new URL('./loader.worker.ts', import.meta.url), { type: 'module' });
   worker.onmessage = (e: MessageEvent<WorkerOut>) => {
     const m = e.data;
