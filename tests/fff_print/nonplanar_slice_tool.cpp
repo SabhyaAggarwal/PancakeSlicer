@@ -45,11 +45,15 @@
 #include "libslic3r/TriangleSelector.hpp"
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/libslic3r.h"
+#include "libslic3r/miniz_extension.hpp"
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <boost/filesystem/path.hpp>
 #include <boost/nowide/fstream.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/xml_parser.hpp>
+#include <miniz.h>
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -837,13 +841,15 @@ Model load_plate(const std::string &path)
         for (const nlohmann::json &place : places) {
             ModelInstance *instance = object->add_instance();
             instance->set_rotation(Vec3d(0., 0., Geometry::deg2rad(place.value("rot", 0.))));
+            instance->printable = place.value("printable", true);
         }
         object->ensure_on_bed();
         for (size_t i = 0; i < places.size(); ++i) {
             const BoundingBoxf3 box = object->instance_bounding_box(i, true);
             object->instances[i]->set_offset(object->instances[i]->get_offset() +
                                              Vec3d(places[i].at("x").get<double>() - box.center().x(),
-                                                   places[i].at("y").get<double>() - box.center().y(), 0.));
+                                                   places[i].at("y").get<double>() - box.center().y(),
+                                                   places[i].contains("z") ? places[i].at("z").get<double>() - box.min.z() : 0.));
         }
     }
     if (model.objects.empty())
@@ -922,7 +928,49 @@ Model load_project(const std::string &path)
     return model;
 }
 
-void save_project(const Args &args, Model &model, DynamicPrintConfig &config)
+void restore_loaded_ids(const std::string &path, Model &model)
+{
+    mz_zip_archive zip;
+    mz_zip_zero_struct(&zip);
+    if (! open_zip_reader(&zip, path))
+        return;
+    size_t size = 0;
+    void  *data = mz_zip_reader_extract_file_to_heap(&zip, "Metadata/model_settings.config", &size, 0);
+    close_zip_reader(&zip);
+    if (data == nullptr)
+        return;
+    std::istringstream in(std::string(static_cast<const char *>(data), size));
+    mz_free(data);
+    namespace pt = boost::property_tree;
+    pt::ptree tree;
+    pt::read_xml(in, tree);
+    std::map<int, std::vector<std::pair<int, int>>> saved;
+    for (const auto &[tag, plate] : tree.get_child("config", pt::ptree()))
+        for (const auto &[item, instance] : plate) {
+            if (tag != "plate" || item != "model_instance")
+                continue;
+            std::map<std::string, int> values;
+            for (const auto &[key, meta] : instance)
+                if (key == "metadata")
+                    values[meta.get("<xmlattr>.key", std::string())] = meta.get("<xmlattr>.value", -1);
+            if (values["instance_id"] >= 0 && values["identify_id"] > 0)
+                saved[values["object_id"]].emplace_back(values["instance_id"], values["identify_id"]);
+        }
+    for (const auto &[id, instances] : saved)
+        for (ModelObject *object : model.objects) {
+            auto kept = [object](const std::pair<int, int> &i) {
+                return size_t(i.first) < object->instances.size() && object->instances[i.first]->loaded_id == size_t(i.second);
+            };
+            if (std::none_of(instances.begin(), instances.end(), kept))
+                continue;
+            for (const auto &[index, identify_id] : instances)
+                if (size_t(index) < object->instances.size())
+                    object->instances[index]->loaded_id = identify_id;
+            break;
+        }
+}
+
+void save_project(const Args &args, Model &model, DynamicPrintConfig &config, bool loaded_ids)
 {
     auto plate         = std::make_unique<PlateData>();
     plate->plate_index = 0;
@@ -935,7 +983,8 @@ void save_project(const Args &args, Model &model, DynamicPrintConfig &config)
     params.model           = &model;
     params.plate_data_list = { plate.get() };
     params.config          = &config;
-    params.strategy        = SaveStrategy::Silence | SaveStrategy::SplitModel | SaveStrategy::ShareMesh;
+    params.strategy        = SaveStrategy::Silence | SaveStrategy::SplitModel | SaveStrategy::ShareMesh |
+                             (loaded_ids ? SaveStrategy::UseLoadedId : SaveStrategy::Default);
     if (! store_bbs_3mf(params))
         throw std::runtime_error("cannot write " + args.save_3mf);
 }
@@ -1021,6 +1070,7 @@ int main(int argc, char **argv)
             for (ModelObject *object : model.objects)
                 for (ModelInstance *instance : object->instances)
                     instance->use_loaded_id_for_label = true;
+            restore_loaded_ids(args.model, model);
             if (plates.size() == 1) {
                 source_plate.reset(plates.front());
                 plates.clear();
@@ -1082,8 +1132,8 @@ int main(int argc, char **argv)
                         change ? CustomGCode::MultiAsSingle : CustomGCode::MultiExtruder;
         }
         if (! args.save_3mf.empty()) {
-            place(args, model, config);
-            save_project(args, model, config);
+            place(args, model, config, project_settings && !args.auto_orient);
+            save_project(args, model, config, project_input);
             std::cout << "project " << args.save_3mf << "\n";
             if (args.output.empty())
                 return 0;

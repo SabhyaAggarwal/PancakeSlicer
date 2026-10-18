@@ -797,7 +797,8 @@ ExPolygons hidden_layer_area(const HeightField &layers, int above, const ExPolyg
     return intersection_ex(area, expolygons_simplify(cells, scale_(0.25 * layers.pitch())));
 }
 
-ExPolygons plumb_wall_band(const PrintObject &object, const HeightField &S, const ExPolygons &candidate, double wall_width, double depth)
+ExPolygons plumb_wall_band(const PrintObject &object, const HeightField &S, const ExPolygons &candidate, double wall_width, double depth,
+                           double void_depth)
 {
     constexpr double Plumb      = 2.;
     constexpr double MaxFitArea = 2200.;
@@ -815,11 +816,13 @@ ExPolygons plumb_wall_band(const PrintObject &object, const HeightField &S, cons
     if (zhi < zlo)
         return {};
     const float             w = float(scale_(wall_width));
-    std::vector<ExPolygons> rings(layers.size()), edges(layers.size()), band(layers.size());
+    std::vector<ExPolygons> rings(layers.size()), edges(layers.size()), voids(layers.size()), band(layers.size());
     tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
         for (size_t i = range.begin(); i < range.end(); ++i)
-            if (const double z = layers[i]->print_z; z > zlo - depth - 2. * Plumb && z < zhi + EPSILON) {
+            if (const double z = layers[i]->print_z; z > zlo - std::max(depth, void_depth) - 2. * Plumb && z < zhi + EPSILON) {
                 const ExPolygons &slices = layers[i]->lslices;
+                Polygons          bores;
+                ExPolygons        solid_below;
                 for (const ExPolygon &island : slices) {
                     const Point inside = island.contour.points.front();
                     const bool  nested = std::any_of(slices.begin(), slices.end(), [&](const ExPolygon &other) {
@@ -836,38 +839,61 @@ ExPolygons plumb_wall_band(const PrintObject &object, const HeightField &S, cons
                             hole.make_counter_clockwise();
                             if (solid.empty())
                                 solid = opening_ex(ExPolygons{ island }, 1.5f * w);
-                            if (!intersection_ex(solid, offset_ex(ExPolygon(hole), 2.f * w)).empty()) {
+                            const ExPolygons near = offset_ex(ExPolygon(hole), 2.f * w);
+                            bool             fit  = !intersection_ex(solid, near).empty();
+                            if (!fit) {
+                                if (solid_below.empty())
+                                    if (const auto b = std::upper_bound(layer_z.begin(), layer_z.end(), z - Plumb + EPSILON); b != layer_z.begin())
+                                        solid_below = opening_ex(layers[size_t(b - layer_z.begin()) - 1]->lslices, 1.5f * w);
+                                fit = !intersection_ex(solid_below, near).empty();
+                            }
+                            if (fit) {
                                 append(rings[i], intersection_ex(diff_ex(offset(hole, w), Polygons{ hole }), ExPolygons{ island }));
                                 append(edges[i], intersection_ex(diff_ex(offset(hole, float(scale_(Edge))), Polygons{ hole }), ExPolygons{ island }));
+                                bores.emplace_back(std::move(hole));
                             }
                         }
                 }
+                if (!bores.empty())
+                    voids[i] = diff_ex(bores, slices);
             }
     });
     tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
         for (size_t i = range.begin(); i < range.end(); ++i) {
             const double z = layers[i]->print_z;
-            if (rings[i].empty() || z < zlo - depth - EPSILON)
+            if ((rings[i].empty() || z < zlo - depth - EPSILON) && (voids[i].empty() || z < zlo - void_depth - EPSILON))
                 continue;
             const auto below = std::upper_bound(layer_z.begin(), layer_z.end(), z - Plumb + EPSILON);
             if (below == layer_z.begin())
                 continue;
-            const Mask on    = rasterize(rings[i], S);
-            Mask       reach(on.size(), 0);
-            bool       any = false;
+            const Mask on = rasterize(rings[i], S), over = rasterize(voids[i], S);
+            Mask       reach(on.size(), 0), reach_void(on.size(), 0);
+            bool       any = false, any_void = false;
             for (size_t n = 0; n < on.size(); ++n)
-                if (const float s = S.data()[n]; on[n] && cand[n] && !std::isnan(s) && s - z < depth + EPSILON && s - z > -layers[i]->height - EPSILON)
-                    reach[n] = 1, any = true;
+                if (const float s = S.data()[n]; cand[n] && !std::isnan(s)) {
+                    if (on[n] && s - z < depth + EPSILON && s - z > -layers[i]->height - EPSILON)
+                        reach[n] = 1, any = true;
+                    if (over[n] && s - z < void_depth + EPSILON && s - z > -0.5 * layers[i]->height + EPSILON)
+                        reach_void[n] = 1, any_void = true;
+                }
+            const size_t b    = size_t(below - layer_z.begin()) - 1;
+            const float  cell = float(scale_(S.pitch()));
+            if (any_void) {
+                ExPolygons lower = rings[b];
+                append(lower, voids[b]);
+                if (const ExPolygons plumb = intersection_ex(voids[i], offset_ex(lower, float(scale_(Lean)))); !plumb.empty())
+                    band[i] = intersection_ex(plumb, offset_ex(mask_to_expolygons(reach_void, S), cell));
+            }
             if (!any)
                 continue;
-            const ExPolygons plumb = intersection_ex(edges[i], offset_ex(edges[size_t(below - layer_z.begin()) - 1], float(scale_(Lean))));
+            const ExPolygons plumb = intersection_ex(edges[i], offset_ex(edges[b], float(scale_(Lean))));
             const ExPolygons local = intersection_ex(edges[i], edges[i - 1]);
             ExPolygons       walls;
-            for (ExPolygon &piece : rings[i])
+            for (const ExPolygon &piece : rings[i])
                 if (!intersection_ex(ExPolygons{ piece }, plumb).empty() && !intersection_ex(ExPolygons{ piece }, local).empty())
-                    walls.emplace_back(std::move(piece));
+                    walls.emplace_back(piece);
             if (!walls.empty())
-                band[i] = intersection_ex(walls, offset_ex(mask_to_expolygons(reach, S), float(scale_(S.pitch()))));
+                append(band[i], intersection_ex(walls, offset_ex(mask_to_expolygons(reach, S), cell)));
         }
     });
     ExPolygons out;
@@ -1099,6 +1125,16 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
     }
 
     const ExtrusionPath proto(role, flow.mm3_per_mm(), float(flow.width()), float(height));
+    Mask narrow_shell1;
+    if (banded != nullptr && banded->layers == nullptr && adaptive == nullptr && k == 1)
+        narrow_shell1 = rasterize(diff_ex(whole, opening_ex(whole, float(scale_(0.5 * LengthwiseMaxLines * flow.width())))), patch.surface);
+    auto narrow_floor = [&](const Vec2d &p) {
+        if (narrow_shell1.empty())
+            return false;
+        const Vec2d o  = (p - patch.surface.origin()) / patch.surface.pitch();
+        const int   ix = int(std::lround(o.x())), iy = int(std::lround(o.y()));
+        return ix >= 0 && iy >= 0 && ix < patch.surface.nx() && iy < patch.surface.ny() && narrow_shell1[size_t(iy) * patch.surface.nx() + ix] != 0;
+    };
     auto at = [&](const Vec2d &p, double &z, float &bead) {
         const float s = patch.surface.sample(p);
         if (std::isnan(s) || (banded != nullptr && (sparse ? spans_slope(patch.surface, p, SparseWallSlope) : spans_wall(patch.surface, p))))
@@ -1149,7 +1185,7 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
                 bead = float(z - floor_z);
             }
         } else if (k == 1) {
-            const float floor_z = top_of_planar.sample(p);
+            const float floor_z = narrow_floor(p) ? nearest(top_of_planar, p) : top_of_planar.sample(p);
             if (!std::isfinite(floor_z))
                 return false;
             bead = float(z - floor_z);
@@ -1438,7 +1474,10 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
     ExPolygons         band_cand;
     if (wall_width > 0.) {
         band_cand = diff_ex(candidate, offset_ex(silhouette, float(-scale_(wall_width))));
-        ExPolygons more = diff_ex(plumb_wall_band(object, S, candidate, wall_width, settings.shells * settings.shell_height), band_cand);
+        const int  deepest = object.config().nonplanar_mode.value == NonplanarMode::Auto ?
+                                 std::max(settings.shells, planar_top_layers(region.config(), settings.shell_height)) : settings.shells;
+        ExPolygons more    = diff_ex(plumb_wall_band(object, S, candidate, wall_width, settings.shells * settings.shell_height,
+                                                     deepest * settings.shell_height), band_cand);
         more.erase(std::remove_if(more.begin(), more.end(), [](const ExPolygon &e) { return e.area() * SCALING_FACTOR * SCALING_FACTOR < 0.01; }),
                    more.end());
         if (!more.empty())
