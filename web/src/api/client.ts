@@ -10,6 +10,7 @@ export interface Api {
   status(id: string): Promise<JobStatus>;
   events(id: string, on: { progress(e: ProgressEvent): void; done(s: JobStatus): void; error(msg: string): void }): () => void;
   downloadUrl(id: string): string;
+  movesUrl(id: string): string;
 }
 
 async function json<T>(r: Response): Promise<T> {
@@ -109,6 +110,7 @@ const realApi: Api = {
     };
   },
   downloadUrl: (id) => `/api/jobs/${id}/download`,
+  movesUrl: (id) => `/api/jobs/${id}/moves`,
 };
 
 const USER_KEY = 'orca.userPresets';
@@ -180,7 +182,10 @@ const mockApi: Api = {
       const base = j.req.plate.objects[0]?.name ?? 'plate';
       Object.assign(j.status, { state: 'done', progress: 100, stage: 'done', filename: `${base}.${j.req.output}` });
       on.progress({ stage: 'done', pct: 100 });
-      on.done(j.status);
+      fetch('/__moves/record')
+        .then((r) => (r.ok && (r.headers.get('content-type') ?? '').includes('json') ? r.json() : undefined))
+        .catch(() => undefined)
+        .then((record) => on.done({ ...j.status, record: record ?? j.status.record }));
     }, 280);
     return () => clearInterval(timer);
   },
@@ -188,6 +193,7 @@ const mockApi: Api = {
     const j = mockJobs.get(id);
     return URL.createObjectURL(new Blob([j?.gcode ?? ''], { type: 'text/plain' }));
   },
+  movesUrl: () => '/__moves/sample',
 };
 
 export async function connect(): Promise<Api> {

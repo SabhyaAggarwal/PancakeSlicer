@@ -23,16 +23,46 @@ function resolveAsset(url: string): string | null {
   return null;
 }
 
+const MOVES_DIR = process.env.ORCA_MOVES_DIR ?? 'samples-moves';
+const SAMPLE = process.env.ORCA_MOVES_SAMPLE ?? path.join(MOVES_DIR, 'dome-a1mini/dome.moves');
+const RECORD = process.env.ORCA_RECORD_SAMPLE ?? path.join(MOVES_DIR, 'dome-a1mini/dome.json');
+
+function resolveMoves(url: string): string | null {
+  const clean = decodeURIComponent(url.split('?')[0]);
+  if (clean === '/__moves/sample') return SAMPLE;
+  if (clean === '/__moves/record') return RECORD;
+  if (!clean.startsWith('/__moves/')) return null;
+  const file = path.resolve(MOVES_DIR, clean.slice('/__moves/'.length));
+  return file.startsWith(path.resolve(MOVES_DIR) + path.sep) ? file : null;
+}
+
 export function orcaAssets(): Plugin {
   return {
     name: 'orca-assets',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
+        const moves = req.url ? resolveMoves(req.url) : null;
+        if (moves) {
+          if (!fs.existsSync(moves) || !fs.statSync(moves).isFile()) return next();
+          res.setHeader('Content-Type', moves.endsWith('.json') ? 'application/json' : 'application/octet-stream');
+          res.setHeader('Content-Length', String(fs.statSync(moves).size));
+          fs.createReadStream(moves).pipe(res);
+          return;
+        }
         const file = req.url ? resolveAsset(req.url) : null;
         if (!file || !fs.existsSync(file)) return next();
         res.setHeader('Content-Type', MIME[path.extname(file)] ?? 'application/octet-stream');
         res.setHeader('Cache-Control', 'max-age=3600');
         fs.createReadStream(file).pipe(res);
+      });
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const moves = req.url ? resolveMoves(req.url) : null;
+        if (!moves || !fs.existsSync(moves) || !fs.statSync(moves).isFile()) return next();
+        res.setHeader('Content-Type', moves.endsWith('.json') ? 'application/json' : 'application/octet-stream');
+        res.setHeader('Content-Length', String(fs.statSync(moves).size));
+        fs.createReadStream(moves).pipe(res);
       });
     },
     generateBundle(_opts, bundle) {
