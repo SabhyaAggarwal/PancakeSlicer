@@ -3,7 +3,7 @@ import { sliceProgress } from './api/progress';
 import { connect } from './api/client';
 import { currentFlush } from './components/FlushDialog';
 import { eventArg } from './components/LayerEvents';
-import { jobValue } from './options';
+import { jobValue, loadTab } from './options';
 import { shortTime } from './preview/format';
 import { filamentColor } from './plater/Plater3D';
 import { arrange, loadMesh, loadProject, nextFreeSpot, parsePoints, placeholderGeometry, plateJson } from './plater/geometry';
@@ -30,6 +30,7 @@ export async function init() {
   const first = localStorage.getItem('orca.vendor') ?? 'BBL';
   const vendors = [first, ...VENDORS.filter((v) => v !== first)];
   try {
+    await loadTab('process');
     const [cat, userPresets] = await Promise.all([
       api.presets(first, DEMO_MODELS, (c) => mergeCatalog(first, c)),
       api.userPresets().catch(() => []),

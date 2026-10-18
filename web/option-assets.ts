@@ -16,9 +16,11 @@ export function optionAssets(): Plugin {
       };
       const options = read('./src/options.generated.json');
       const quick = Object.fromEntries(['curr_bed_type', 'flush_multiplier'].map((key) => [key, options[key]]));
-      const numeric = Object.keys(options).filter((key) => /^(Floats|Ints|Percents|Bools|FloatsOrPercents|Points)$/.test(options[key].type));
+      const vectors = Object.fromEntries(Object.keys(options)
+        .filter((key) => /^(Floats|Ints|Percents|Bools|FloatsOrPercents|Points|Enums|Strings|PointsGroups)$/.test(options[key].type))
+        .map((key) => [key, options[key].type]));
       const removed = [...new Set(['process', 'printer', 'filament'].flatMap((tab) => read(`./src/tabs/${tab}.json`).removed_keys))];
-      return `export const quick = ${JSON.stringify(quick)}; export const numeric = ${JSON.stringify(numeric)}; export const removed = ${JSON.stringify(removed)};`;
+      return `export const quick = ${JSON.stringify(quick)}; export const vectors = ${JSON.stringify(vectors)}; export const removed = ${JSON.stringify(removed)};`;
     },
   };
 }

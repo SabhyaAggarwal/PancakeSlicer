@@ -169,13 +169,15 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4598",
               "label": "Recommended nozzle temperature",
+              "tooltip": "Recommended nozzle temperature range of this filament. 0 means not set",
               "modes": {
                 "nozzle_temperature_range_low": "Simple",
                 "nozzle_temperature_range_high": "Simple"
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:4574"
+          "source": "src/slic3r/GUI/Tab.cpp:4574",
+          "icon": "param_information"
         },
         {
           "title": "Flow ratio and Pressure Advance",
@@ -258,12 +260,19 @@
                 "adaptive_pressure_advance_model"
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4628",
+              "overrides": {
+                "adaptive_pressure_advance_model": {
+                  "full_width": true,
+                  "multiline": true
+                }
+              },
               "modes": {
                 "adaptive_pressure_advance_model": "Advanced"
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:4612"
+          "source": "src/slic3r/GUI/Tab.cpp:4612",
+          "icon": "param_flow_ratio_and_pressure_advance"
         },
         {
           "title": "Print chamber temperature",
@@ -289,13 +298,23 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4650",
               "label": "Chamber temperature",
+              "tooltip": "Target chamber temperature, and the minimal chamber temperature at which printing should start",
+              "overrides": {
+                "chamber_temperature": {
+                  "label": "Target"
+                },
+                "chamber_minimal_temperature": {
+                  "label": "Minimal"
+                }
+              },
               "modes": {
                 "chamber_temperature": "Simple",
                 "chamber_minimal_temperature": "Simple"
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:4640"
+          "source": "src/slic3r/GUI/Tab.cpp:4640",
+          "icon": "param_chamber_temp"
         },
         {
           "title": "Print temperature",
@@ -311,13 +330,15 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4671",
               "label": "Nozzle",
+              "tooltip": "Nozzle temperature when printing",
               "modes": {
                 "nozzle_temperature_initial_layer": "Simple",
                 "nozzle_temperature": "Simple"
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:4666"
+          "source": "src/slic3r/GUI/Tab.cpp:4666",
+          "icon": "param_extruder_temp"
         },
         {
           "title": "Bed temperature",
@@ -343,6 +364,7 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4679",
               "label": "Cool Plate (SuperTack)",
+              "tooltip": "Bed temperature when the Cool Plate SuperTack is installed. A value of 0 means the filament does not support printing on the Cool Plate SuperTack.",
               "modes": {
                 "supertack_plate_temp_initial_layer": "Simple",
                 "supertack_plate_temp": "Simple"
@@ -355,6 +377,7 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4686",
               "label": "Cool Plate",
+              "tooltip": "This is the bed temperature when the Cool Plate is installed. A value of 0 means the filament does not support printing on the Cool Plate.",
               "modes": {
                 "cool_plate_temp_initial_layer": "Simple",
                 "cool_plate_temp": "Simple"
@@ -367,6 +390,7 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4693",
               "label": "Textured Cool Plate",
+              "tooltip": "This is the bed temperature when the Textured Cool Plate is installed. A value of 0 means the filament does not support printing on the Textured Cool Plate.",
               "modes": {
                 "textured_cool_plate_temp_initial_layer": "Simple",
                 "textured_cool_plate_temp": "Simple"
@@ -379,6 +403,7 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4700",
               "label": "Engineering Plate",
+              "tooltip": "This is the bed temperature when the engineering plate is installed. A value of 0 means the filament does not support printing on the Engineering Plate.",
               "modes": {
                 "eng_plate_temp_initial_layer": "Simple",
                 "eng_plate_temp": "Simple"
@@ -391,6 +416,7 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4707",
               "label": "Smooth PEI Plate / High Temp Plate",
+              "tooltip": "This is the bed temperature when the Smooth PEI Plate/High Temperature Plate is installed. A value of 0 means the filament does not support printing on the Smooth PEI Plate/High Temp Plate.",
               "modes": {
                 "hot_plate_temp_initial_layer": "Simple",
                 "hot_plate_temp": "Simple"
@@ -403,13 +429,15 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4714",
               "label": "Textured PEI Plate",
+              "tooltip": "This is the bed temperature when the Textured PEI Plate is installed. A value of 0 means the filament does not support printing on the Textured PEI Plate.",
               "modes": {
                 "textured_plate_temp_initial_layer": "Simple",
                 "textured_plate_temp": "Simple"
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:4673"
+          "source": "src/slic3r/GUI/Tab.cpp:4673",
+          "icon": "param_bed_temp"
         },
         {
           "title": "Volumetric speed limitation",
@@ -437,7 +465,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:4745"
+          "source": "src/slic3r/GUI/Tab.cpp:4745",
+          "icon": "param_volumetric_speed"
         }
       ],
       "source": "src/slic3r/GUI/Tab.cpp:4572"
@@ -482,7 +511,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:4764"
+          "source": "src/slic3r/GUI/Tab.cpp:4764",
+          "icon": "param_cooling_specific_layer"
         },
         {
           "title": "Part cooling fan",
@@ -510,6 +540,7 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4775",
               "label": "Min fan speed threshold",
+              "tooltip": "The part cooling fan will run at the minimum fan speed when the estimated layer time is longer than the threshold value. When the layer time is shorter than the threshold, the fan speed will be interpolated between the minimum and maximum fan speed according to layer printing time.",
               "modes": {
                 "fan_min_speed": "Simple",
                 "fan_cooling_layer_time": "Simple"
@@ -522,6 +553,7 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4780",
               "label": "Max fan speed threshold",
+              "tooltip": "The part cooling fan will run at maximum speed when the estimated layer time is shorter than the threshold value.",
               "modes": {
                 "fan_max_speed": "Simple",
                 "slow_down_layer_time": "Simple"
@@ -618,7 +650,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:4770"
+          "source": "src/slic3r/GUI/Tab.cpp:4770",
+          "icon": "param_cooling_part_fan"
         },
         {
           "title": "Auxiliary part cooling fan",
@@ -636,7 +669,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:4793"
+          "source": "src/slic3r/GUI/Tab.cpp:4793",
+          "icon": "param_cooling_aux_fan"
         },
         {
           "title": "Exhaust fan",
@@ -682,7 +716,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:4796"
+          "source": "src/slic3r/GUI/Tab.cpp:4796",
+          "icon": "param_cooling_exhaust"
         }
       ],
       "source": "src/slic3r/GUI/Tab.cpp:4756"
@@ -884,7 +919,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:4322"
+          "source": "src/slic3r/GUI/Tab.cpp:4322",
+          "icon": "param_retraction"
         },
         {
           "title": "Retraction when switching material",
@@ -914,7 +950,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:4348"
+          "source": "src/slic3r/GUI/Tab.cpp:4348",
+          "icon": "param_retraction_material_change"
         },
         {
           "title": "Ironing",
@@ -966,7 +1003,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:4354"
+          "source": "src/slic3r/GUI/Tab.cpp:4354",
+          "icon": "param_ironing"
         }
       ],
       "source": "src/slic3r/GUI/Tab.cpp:4283"
@@ -986,12 +1024,19 @@
                 "filament_start_gcode"
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4829",
+              "overrides": {
+                "filament_start_gcode": {
+                  "full_width": true,
+                  "multiline": true
+                }
+              },
               "modes": {
                 "filament_start_gcode": "Advanced"
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:4820"
+          "source": "src/slic3r/GUI/Tab.cpp:4820",
+          "icon": "param_gcode"
         },
         {
           "title": "Change extrusion role G-code",
@@ -1004,12 +1049,19 @@
                 "filament_change_extrusion_role_gcode"
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4840",
+              "overrides": {
+                "filament_change_extrusion_role_gcode": {
+                  "full_width": true,
+                  "multiline": true
+                }
+              },
               "modes": {
                 "filament_change_extrusion_role_gcode": "Advanced"
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:4831"
+          "source": "src/slic3r/GUI/Tab.cpp:4831",
+          "icon": "param_gcode"
         },
         {
           "title": "Filament end G-code",
@@ -1022,12 +1074,19 @@
                 "filament_end_gcode"
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4851",
+              "overrides": {
+                "filament_end_gcode": {
+                  "full_width": true,
+                  "multiline": true
+                }
+              },
               "modes": {
                 "filament_end_gcode": "Advanced"
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:4842"
+          "source": "src/slic3r/GUI/Tab.cpp:4842",
+          "icon": "param_gcode"
         },
         {
           "title": "Plugin Configuration",
@@ -1045,7 +1104,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:4853"
+          "source": "src/slic3r/GUI/Tab.cpp:4853",
+          "icon": "param_gcode"
         }
       ],
       "source": "src/slic3r/GUI/Tab.cpp:4819"
@@ -1120,7 +1180,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:4857"
+          "source": "src/slic3r/GUI/Tab.cpp:4857",
+          "icon": "param_tower"
         },
         {
           "title": "Multi Filament",
@@ -1268,7 +1329,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:4871"
+          "source": "src/slic3r/GUI/Tab.cpp:4871",
+          "icon": "param_toolchange"
         },
         {
           "title": "Tool change parameters with multi extruder MM printers",
@@ -1306,7 +1368,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:4901"
+          "source": "src/slic3r/GUI/Tab.cpp:4901",
+          "icon": "param_toolchange_multi_extruder"
         }
       ],
       "source": "src/slic3r/GUI/Tab.cpp:4856"
@@ -1338,12 +1401,18 @@
                 "compatible_printers_condition"
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4914",
+              "overrides": {
+                "compatible_printers_condition": {
+                  "full_width": true
+                }
+              },
               "modes": {
                 "compatible_printers_condition": "Advanced"
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:4907"
+          "source": "src/slic3r/GUI/Tab.cpp:4907",
+          "icon": "param_dependencies_printers"
         },
         {
           "title": "Compatible process profiles",
@@ -1368,12 +1437,18 @@
                 "compatible_prints_condition"
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4923",
+              "overrides": {
+                "compatible_prints_condition": {
+                  "full_width": true
+                }
+              },
               "modes": {
                 "compatible_prints_condition": "Advanced"
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:4916"
+          "source": "src/slic3r/GUI/Tab.cpp:4916",
+          "icon": "param_dependencies_presets"
         }
       ],
       "source": "src/slic3r/GUI/Tab.cpp:4906"
@@ -1393,12 +1468,18 @@
                 "filament_notes"
               ],
               "source": "src/slic3r/GUI/Tab.cpp:4931",
+              "overrides": {
+                "filament_notes": {
+                  "full_width": true
+                }
+              },
               "modes": {
                 "filament_notes": "Advanced"
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:4926"
+          "source": "src/slic3r/GUI/Tab.cpp:4926",
+          "icon": "note"
         }
       ],
       "source": "src/slic3r/GUI/Tab.cpp:4925"
@@ -1555,6 +1636,7 @@
     "scan_first_layer",
     "thumbnails",
     "thumbnails_format",
+    "time_lapse_gcode",
     "timelapse_type"
   ],
   "visibility": [
@@ -1692,7 +1774,7 @@
       "options": [
         "supertack_plate_temp_initial_layer"
       ],
-      "condition": "printer_vendor == \"BBL\" || support_multi_bed_types == true || curr_bed_type == \"Supertack Plate\" || curr_bed_type == \"\"",
+      "condition": "printer_vendor == \"BBL\" || support_multi_bed_types == true || curr_bed_type == \"Supertack Plate\" || (curr_bed_type != \"Cool Plate\" && curr_bed_type != \"Engineering Plate\" && curr_bed_type != \"High Temp Plate\" && curr_bed_type != \"Textured PEI Plate\" && curr_bed_type != \"Textured Cool Plate\" && curr_bed_type != \"Supertack Plate\")",
       "effect": "visible",
       "source": "src/slic3r/GUI/Tab.cpp:5058",
       "condition_source": "support_multi_bed_types || bed_temp_1st_layer_key == key",
@@ -1702,7 +1784,7 @@
       "options": [
         "cool_plate_temp_initial_layer"
       ],
-      "condition": "printer_vendor == \"BBL\" || support_multi_bed_types == true || curr_bed_type == \"Cool Plate\" || curr_bed_type == \"\"",
+      "condition": "printer_vendor == \"BBL\" || support_multi_bed_types == true || curr_bed_type == \"Cool Plate\" || (curr_bed_type != \"Cool Plate\" && curr_bed_type != \"Engineering Plate\" && curr_bed_type != \"High Temp Plate\" && curr_bed_type != \"Textured PEI Plate\" && curr_bed_type != \"Textured Cool Plate\" && curr_bed_type != \"Supertack Plate\")",
       "effect": "visible",
       "source": "src/slic3r/GUI/Tab.cpp:5058",
       "condition_source": "support_multi_bed_types || bed_temp_1st_layer_key == key",
@@ -1712,7 +1794,7 @@
       "options": [
         "textured_cool_plate_temp_initial_layer"
       ],
-      "condition": "printer_vendor == \"BBL\" || support_multi_bed_types == true || curr_bed_type == \"Textured Cool Plate\" || curr_bed_type == \"\"",
+      "condition": "printer_vendor == \"BBL\" || support_multi_bed_types == true || curr_bed_type == \"Textured Cool Plate\" || (curr_bed_type != \"Cool Plate\" && curr_bed_type != \"Engineering Plate\" && curr_bed_type != \"High Temp Plate\" && curr_bed_type != \"Textured PEI Plate\" && curr_bed_type != \"Textured Cool Plate\" && curr_bed_type != \"Supertack Plate\")",
       "effect": "visible",
       "source": "src/slic3r/GUI/Tab.cpp:5058",
       "condition_source": "support_multi_bed_types || bed_temp_1st_layer_key == key",
@@ -1722,7 +1804,7 @@
       "options": [
         "eng_plate_temp_initial_layer"
       ],
-      "condition": "printer_vendor == \"BBL\" || support_multi_bed_types == true || curr_bed_type == \"Engineering Plate\" || curr_bed_type == \"\"",
+      "condition": "printer_vendor == \"BBL\" || support_multi_bed_types == true || curr_bed_type == \"Engineering Plate\" || (curr_bed_type != \"Cool Plate\" && curr_bed_type != \"Engineering Plate\" && curr_bed_type != \"High Temp Plate\" && curr_bed_type != \"Textured PEI Plate\" && curr_bed_type != \"Textured Cool Plate\" && curr_bed_type != \"Supertack Plate\")",
       "effect": "visible",
       "source": "src/slic3r/GUI/Tab.cpp:5058",
       "condition_source": "support_multi_bed_types || bed_temp_1st_layer_key == key",
@@ -1732,7 +1814,7 @@
       "options": [
         "textured_plate_temp_initial_layer"
       ],
-      "condition": "printer_vendor == \"BBL\" || support_multi_bed_types == true || curr_bed_type == \"Textured PEI Plate\" || curr_bed_type == \"\"",
+      "condition": "printer_vendor == \"BBL\" || support_multi_bed_types == true || curr_bed_type == \"Textured PEI Plate\" || (curr_bed_type != \"Cool Plate\" && curr_bed_type != \"Engineering Plate\" && curr_bed_type != \"High Temp Plate\" && curr_bed_type != \"Textured PEI Plate\" && curr_bed_type != \"Textured Cool Plate\" && curr_bed_type != \"Supertack Plate\")",
       "effect": "visible",
       "source": "src/slic3r/GUI/Tab.cpp:5058",
       "condition_source": "support_multi_bed_types || bed_temp_1st_layer_key == key",
@@ -1742,7 +1824,7 @@
       "options": [
         "hot_plate_temp_initial_layer"
       ],
-      "condition": "printer_vendor == \"BBL\" || support_multi_bed_types == true || curr_bed_type == \"High Temp Plate\" || curr_bed_type == \"\"",
+      "condition": "printer_vendor == \"BBL\" || support_multi_bed_types == true || curr_bed_type == \"High Temp Plate\" || (curr_bed_type != \"Cool Plate\" && curr_bed_type != \"Engineering Plate\" && curr_bed_type != \"High Temp Plate\" && curr_bed_type != \"Textured PEI Plate\" && curr_bed_type != \"Textured Cool Plate\" && curr_bed_type != \"Supertack Plate\")",
       "effect": "visible",
       "source": "src/slic3r/GUI/Tab.cpp:5058",
       "condition_source": "support_multi_bed_types || bed_temp_1st_layer_key == key",

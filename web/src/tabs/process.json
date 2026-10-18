@@ -41,7 +41,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:2803"
+          "source": "src/slic3r/GUI/Tab.cpp:2803",
+          "icon": "param_layer_height"
         },
         {
           "title": "Line width",
@@ -139,7 +140,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:2808"
+          "source": "src/slic3r/GUI/Tab.cpp:2808",
+          "icon": "param_line_width"
         },
         {
           "title": "Seam",
@@ -347,7 +349,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:2819"
+          "source": "src/slic3r/GUI/Tab.cpp:2819",
+          "icon": "param_seam"
         },
         {
           "title": "Precision",
@@ -495,7 +498,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:2842"
+          "source": "src/slic3r/GUI/Tab.cpp:2842",
+          "icon": "param_precision"
         },
         {
           "title": "Ironing",
@@ -573,7 +577,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:2858"
+          "source": "src/slic3r/GUI/Tab.cpp:2858",
+          "icon": "param_ironing"
         },
         {
           "title": "Z contouring",
@@ -621,7 +626,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:2867"
+          "source": "src/slic3r/GUI/Tab.cpp:2867",
+          "icon": "param_z_contouring"
         },
         {
           "title": "Non-planar",
@@ -759,7 +765,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:2874"
+          "source": "src/slic3r/GUI/Tab.cpp:2874",
+          "icon": "param_z_contouring"
         },
         {
           "title": "Curved top finish",
@@ -812,13 +819,19 @@
             },
             {
               "options": [
-                "nonplanar_tilt_flow",
-                "nonplanar_tilt_flow",
-                "nonplanar_tilt_flow",
-                "nonplanar_tilt_flow",
                 "nonplanar_tilt_flow"
               ],
               "source": "src/slic3r/GUI/Tab.cpp:2904",
+              "index_labels": [
+                "0°",
+                "10°",
+                "20°",
+                "30°",
+                "40°"
+              ],
+              "overrides": {
+                "nonplanar_tilt_flow": {}
+              },
               "modes": {
                 "nonplanar_tilt_flow": "Advanced"
               }
@@ -851,7 +864,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:2889"
+          "source": "src/slic3r/GUI/Tab.cpp:2889",
+          "icon": "param_wall_surface"
         },
         {
           "title": "Non-planar tuning",
@@ -969,7 +983,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:2910"
+          "source": "src/slic3r/GUI/Tab.cpp:2910",
+          "icon": "param_advanced"
         },
         {
           "title": "Wall generator",
@@ -1087,7 +1102,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:2925"
+          "source": "src/slic3r/GUI/Tab.cpp:2925",
+          "icon": "param_wall_generator"
         },
         {
           "title": "Walls and surfaces",
@@ -1320,12 +1336,19 @@
                 "small_area_infill_flow_compensation_model"
               ],
               "source": "src/slic3r/GUI/Tab.cpp:2966",
+              "overrides": {
+                "small_area_infill_flow_compensation_model": {
+                  "full_width": true,
+                  "multiline": true
+                }
+              },
               "modes": {
                 "small_area_infill_flow_compensation_model": "Advanced"
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:2938"
+          "source": "src/slic3r/GUI/Tab.cpp:2938",
+          "icon": "param_wall_surface"
         },
         {
           "title": "Bridging",
@@ -1423,7 +1446,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:2968"
+          "source": "src/slic3r/GUI/Tab.cpp:2968",
+          "icon": "param_bridge"
         },
         {
           "title": "Overhangs",
@@ -1521,7 +1545,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:2979"
+          "source": "src/slic3r/GUI/Tab.cpp:2979",
+          "icon": "param_overhang"
         }
       ],
       "source": "src/slic3r/GUI/Tab.cpp:2802"
@@ -1566,7 +1591,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:2991"
+          "source": "src/slic3r/GUI/Tab.cpp:2991",
+          "icon": "param_wall"
         },
         {
           "title": "Top/bottom shells",
@@ -1744,7 +1770,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:2996"
+          "source": "src/slic3r/GUI/Tab.cpp:2996",
+          "icon": "param_shell"
         },
         {
           "title": "Infill",
@@ -2092,7 +2119,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3016"
+          "source": "src/slic3r/GUI/Tab.cpp:3016",
+          "icon": "param_infill"
         },
         {
           "title": "Advanced",
@@ -2200,7 +2228,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3052"
+          "source": "src/slic3r/GUI/Tab.cpp:3052",
+          "icon": "param_advanced"
         }
       ],
       "source": "src/slic3r/GUI/Tab.cpp:2990"
@@ -2255,7 +2284,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3065"
+          "source": "src/slic3r/GUI/Tab.cpp:3065",
+          "icon": "param_speed_first"
         },
         {
           "title": "Other layers speed",
@@ -2393,7 +2423,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3070"
+          "source": "src/slic3r/GUI/Tab.cpp:3070",
+          "icon": "param_speed"
         },
         {
           "title": "Overhang speed",
@@ -2435,6 +2466,7 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:3094",
               "label": "Overhang speed",
+              "tooltip": "This is the speed for various overhang degrees. Overhang degrees are expressed as a percentage of line width. 0 speed means no slowing down for the overhang degree range and wall speed is used",
               "modes": {
                 "overhang_1_4_speed": "Advanced",
                 "overhang_2_4_speed": "Advanced",
@@ -2449,13 +2481,15 @@
               ],
               "source": "src/slic3r/GUI/Tab.cpp:3099",
               "label": "Bridge",
+              "tooltip": "Set speed for external and internal bridges",
               "modes": {
                 "bridge_speed": "Advanced",
                 "internal_bridge_speed": "Advanced"
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3084"
+          "source": "src/slic3r/GUI/Tab.cpp:3084",
+          "icon": "param_overhang_speed"
         },
         {
           "title": "Travel speed",
@@ -2473,7 +2507,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3101"
+          "source": "src/slic3r/GUI/Tab.cpp:3101",
+          "icon": "param_travel_speed"
         },
         {
           "title": "Acceleration",
@@ -2601,7 +2636,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3104"
+          "source": "src/slic3r/GUI/Tab.cpp:3104",
+          "icon": "param_acceleration"
         },
         {
           "title": "Junction Deviation",
@@ -2619,7 +2655,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3118"
+          "source": "src/slic3r/GUI/Tab.cpp:3118",
+          "icon": "param_junction_deviation"
         },
         {
           "title": "Jerk(XY)",
@@ -2707,7 +2744,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3121"
+          "source": "src/slic3r/GUI/Tab.cpp:3121",
+          "icon": "param_jerk"
         },
         {
           "title": "Advanced",
@@ -2745,7 +2783,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3131"
+          "source": "src/slic3r/GUI/Tab.cpp:3131",
+          "icon": "param_advanced"
         }
       ],
       "source": "src/slic3r/GUI/Tab.cpp:3064"
@@ -2860,7 +2899,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3137"
+          "source": "src/slic3r/GUI/Tab.cpp:3137",
+          "icon": "param_support"
         },
         {
           "title": "Raft",
@@ -2888,7 +2928,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3150"
+          "source": "src/slic3r/GUI/Tab.cpp:3150",
+          "icon": "param_raft"
         },
         {
           "title": "Filament for Supports",
@@ -2926,7 +2967,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3154"
+          "source": "src/slic3r/GUI/Tab.cpp:3154",
+          "icon": "param_support_filament"
         },
         {
           "title": "Support ironing",
@@ -2974,7 +3016,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3159"
+          "source": "src/slic3r/GUI/Tab.cpp:3159",
+          "icon": "param_ironing"
         },
         {
           "title": "Advanced",
@@ -3162,7 +3205,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3168"
+          "source": "src/slic3r/GUI/Tab.cpp:3168",
+          "icon": "param_advanced"
         },
         {
           "title": "Tree supports",
@@ -3290,7 +3334,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3190"
+          "source": "src/slic3r/GUI/Tab.cpp:3190",
+          "icon": "param_support_tree"
         }
       ],
       "source": "src/slic3r/GUI/Tab.cpp:3136"
@@ -3535,7 +3580,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3205"
+          "source": "src/slic3r/GUI/Tab.cpp:3205",
+          "icon": "param_tower"
         },
         {
           "title": "Filament for Features",
@@ -3613,7 +3659,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3230"
+          "source": "src/slic3r/GUI/Tab.cpp:3230",
+          "icon": "param_filament_for_features"
         },
         {
           "title": "Ooze prevention",
@@ -3661,7 +3708,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3239"
+          "source": "src/slic3r/GUI/Tab.cpp:3239",
+          "icon": "param_ooze_prevention"
         },
         {
           "title": "Flush options",
@@ -3699,7 +3747,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3245"
+          "source": "src/slic3r/GUI/Tab.cpp:3245",
+          "icon": "param_flush"
         },
         {
           "title": "Advanced",
@@ -3827,7 +3876,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3249"
+          "source": "src/slic3r/GUI/Tab.cpp:3249",
+          "icon": "advanced"
         }
       ],
       "source": "src/slic3r/GUI/Tab.cpp:3204"
@@ -3932,7 +3982,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3264"
+          "source": "src/slic3r/GUI/Tab.cpp:3264",
+          "icon": "param_skirt"
         },
         {
           "title": "Brim",
@@ -4050,7 +4101,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3275"
+          "source": "src/slic3r/GUI/Tab.cpp:3275",
+          "icon": "param_adhension"
         },
         {
           "title": "Special mode",
@@ -4158,7 +4210,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3288"
+          "source": "src/slic3r/GUI/Tab.cpp:3288",
+          "icon": "param_special"
         },
         {
           "title": "Fuzzy skin",
@@ -4286,7 +4339,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3301"
+          "source": "src/slic3r/GUI/Tab.cpp:3301",
+          "icon": "fuzzy_skin"
         },
         {
           "title": "G-code output",
@@ -4349,12 +4403,18 @@
                 "filename_format"
               ],
               "source": "src/slic3r/GUI/Tab.cpp:3326",
+              "overrides": {
+                "filename_format": {
+                  "multiline": true
+                }
+              },
               "modes": {
                 "filename_format": "Advanced"
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3315"
+          "source": "src/slic3r/GUI/Tab.cpp:3315",
+          "icon": "param_gcode"
         },
         {
           "title": "Change extrusion role G-code",
@@ -4367,12 +4427,19 @@
                 "process_change_extrusion_role_gcode"
               ],
               "source": "src/slic3r/GUI/Tab.cpp:3337",
+              "overrides": {
+                "process_change_extrusion_role_gcode": {
+                  "full_width": true,
+                  "multiline": true
+                }
+              },
               "modes": {
                 "process_change_extrusion_role_gcode": "Advanced"
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3328"
+          "source": "src/slic3r/GUI/Tab.cpp:3328",
+          "icon": "param_gcode"
         },
         {
           "title": "Post-processing Scripts",
@@ -4385,12 +4452,19 @@
                 "post_process"
               ],
               "source": "src/slic3r/GUI/Tab.cpp:3344",
+              "overrides": {
+                "post_process": {
+                  "full_width": true,
+                  "multiline": true
+                }
+              },
               "modes": {
                 "post_process": "Advanced"
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3339"
+          "source": "src/slic3r/GUI/Tab.cpp:3339",
+          "icon": "param_gcode"
         },
         {
           "title": "Slicing Pipeline Plugin",
@@ -4403,12 +4477,18 @@
                 "slicing_pipeline_plugin"
               ],
               "source": "src/slic3r/GUI/Tab.cpp:3350",
+              "overrides": {
+                "slicing_pipeline_plugin": {
+                  "full_width": true
+                }
+              },
               "modes": {
                 "slicing_pipeline_plugin": "Advanced"
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3346"
+          "source": "src/slic3r/GUI/Tab.cpp:3346",
+          "icon": "param_gcode"
         },
         {
           "title": "Plugin Configuration",
@@ -4426,7 +4506,8 @@
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3354"
+          "source": "src/slic3r/GUI/Tab.cpp:3354",
+          "icon": "param_gcode"
         },
         {
           "title": "Notes",
@@ -4439,12 +4520,18 @@
                 "notes"
               ],
               "source": "src/slic3r/GUI/Tab.cpp:3361",
+              "overrides": {
+                "notes": {
+                  "full_width": true
+                }
+              },
               "modes": {
                 "notes": "Advanced"
               }
             }
           ],
-          "source": "src/slic3r/GUI/Tab.cpp:3357"
+          "source": "src/slic3r/GUI/Tab.cpp:3357",
+          "icon": "note"
         }
       ],
       "source": "src/slic3r/GUI/Tab.cpp:3263"
@@ -4886,6 +4973,7 @@
     "scan_first_layer",
     "thumbnails",
     "thumbnails_format",
+    "time_lapse_gcode",
     "timelapse_type"
   ],
   "visibility": [
@@ -5772,7 +5860,8 @@
       "condition": "true",
       "effect": "enabled",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:968",
-      "condition_source": "true"
+      "condition_source": "true",
+      "when": "(gcode_flavor == \"marlin2\" && machine_max_junction_deviation > 0)"
     },
     {
       "options": [
@@ -5781,7 +5870,8 @@
       "condition": "false",
       "effect": "enabled",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:969",
-      "condition_source": "false"
+      "condition_source": "false",
+      "when": "(gcode_flavor == \"marlin2\" && machine_max_junction_deviation > 0)"
     },
     {
       "options": [
@@ -5790,7 +5880,8 @@
       "condition": "false",
       "effect": "visible",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:970",
-      "condition_source": "false"
+      "condition_source": "false",
+      "when": "(gcode_flavor == \"marlin2\" && machine_max_junction_deviation > 0)"
     },
     {
       "options": [
@@ -5799,7 +5890,8 @@
       "condition": "false",
       "effect": "visible",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:970",
-      "condition_source": "false"
+      "condition_source": "false",
+      "when": "(gcode_flavor == \"marlin2\" && machine_max_junction_deviation > 0)"
     },
     {
       "options": [
@@ -5808,7 +5900,8 @@
       "condition": "false",
       "effect": "visible",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:970",
-      "condition_source": "false"
+      "condition_source": "false",
+      "when": "(gcode_flavor == \"marlin2\" && machine_max_junction_deviation > 0)"
     },
     {
       "options": [
@@ -5817,7 +5910,8 @@
       "condition": "false",
       "effect": "visible",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:970",
-      "condition_source": "false"
+      "condition_source": "false",
+      "when": "(gcode_flavor == \"marlin2\" && machine_max_junction_deviation > 0)"
     },
     {
       "options": [
@@ -5826,7 +5920,8 @@
       "condition": "false",
       "effect": "visible",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:970",
-      "condition_source": "false"
+      "condition_source": "false",
+      "when": "(gcode_flavor == \"marlin2\" && machine_max_junction_deviation > 0)"
     },
     {
       "options": [
@@ -5835,7 +5930,8 @@
       "condition": "false",
       "effect": "visible",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:970",
-      "condition_source": "false"
+      "condition_source": "false",
+      "when": "(gcode_flavor == \"marlin2\" && machine_max_junction_deviation > 0)"
     },
     {
       "options": [
@@ -5844,7 +5940,8 @@
       "condition": "false",
       "effect": "visible",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:970",
-      "condition_source": "false"
+      "condition_source": "false",
+      "when": "(gcode_flavor == \"marlin2\" && machine_max_junction_deviation > 0)"
     },
     {
       "options": [
@@ -5853,7 +5950,8 @@
       "condition": "false",
       "effect": "enabled",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:973",
-      "condition_source": "false"
+      "condition_source": "false",
+      "when": "!(gcode_flavor == \"marlin2\" && machine_max_junction_deviation > 0)"
     },
     {
       "options": [
@@ -5862,7 +5960,8 @@
       "condition": "true",
       "effect": "enabled",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:974",
-      "condition_source": "true"
+      "condition_source": "true",
+      "when": "!(gcode_flavor == \"marlin2\" && machine_max_junction_deviation > 0)"
     },
     {
       "options": [
@@ -5871,7 +5970,8 @@
       "condition": "true",
       "effect": "visible",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:977",
-      "condition_source": "true"
+      "condition_source": "true",
+      "when": "!(gcode_flavor == \"marlin2\" && machine_max_junction_deviation > 0)"
     },
     {
       "options": [
@@ -5880,7 +5980,8 @@
       "condition": "(default_jerk != null && default_jerk > 0)",
       "effect": "enabled",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:978",
-      "condition_source": "have_default_jerk"
+      "condition_source": "have_default_jerk",
+      "when": "!(gcode_flavor == \"marlin2\" && machine_max_junction_deviation > 0)"
     },
     {
       "options": [
@@ -5889,7 +5990,8 @@
       "condition": "true",
       "effect": "visible",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:977",
-      "condition_source": "true"
+      "condition_source": "true",
+      "when": "!(gcode_flavor == \"marlin2\" && machine_max_junction_deviation > 0)"
     },
     {
       "options": [
@@ -5898,7 +6000,8 @@
       "condition": "(default_jerk != null && default_jerk > 0)",
       "effect": "enabled",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:978",
-      "condition_source": "have_default_jerk"
+      "condition_source": "have_default_jerk",
+      "when": "!(gcode_flavor == \"marlin2\" && machine_max_junction_deviation > 0)"
     },
     {
       "options": [
@@ -5907,7 +6010,8 @@
       "condition": "true",
       "effect": "visible",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:977",
-      "condition_source": "true"
+      "condition_source": "true",
+      "when": "!(gcode_flavor == \"marlin2\" && machine_max_junction_deviation > 0)"
     },
     {
       "options": [
@@ -5916,7 +6020,8 @@
       "condition": "(default_jerk != null && default_jerk > 0)",
       "effect": "enabled",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:978",
-      "condition_source": "have_default_jerk"
+      "condition_source": "have_default_jerk",
+      "when": "!(gcode_flavor == \"marlin2\" && machine_max_junction_deviation > 0)"
     },
     {
       "options": [
@@ -5925,7 +6030,8 @@
       "condition": "true",
       "effect": "visible",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:977",
-      "condition_source": "true"
+      "condition_source": "true",
+      "when": "!(gcode_flavor == \"marlin2\" && machine_max_junction_deviation > 0)"
     },
     {
       "options": [
@@ -5934,7 +6040,8 @@
       "condition": "(default_jerk != null && default_jerk > 0)",
       "effect": "enabled",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:978",
-      "condition_source": "have_default_jerk"
+      "condition_source": "have_default_jerk",
+      "when": "!(gcode_flavor == \"marlin2\" && machine_max_junction_deviation > 0)"
     },
     {
       "options": [
@@ -5943,7 +6050,8 @@
       "condition": "true",
       "effect": "visible",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:977",
-      "condition_source": "true"
+      "condition_source": "true",
+      "when": "!(gcode_flavor == \"marlin2\" && machine_max_junction_deviation > 0)"
     },
     {
       "options": [
@@ -5952,7 +6060,8 @@
       "condition": "(default_jerk != null && default_jerk > 0)",
       "effect": "enabled",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:978",
-      "condition_source": "have_default_jerk"
+      "condition_source": "have_default_jerk",
+      "when": "!(gcode_flavor == \"marlin2\" && machine_max_junction_deviation > 0)"
     },
     {
       "options": [
@@ -5961,7 +6070,8 @@
       "condition": "true",
       "effect": "visible",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:977",
-      "condition_source": "true"
+      "condition_source": "true",
+      "when": "!(gcode_flavor == \"marlin2\" && machine_max_junction_deviation > 0)"
     },
     {
       "options": [
@@ -5970,7 +6080,8 @@
       "condition": "(default_jerk != null && default_jerk > 0)",
       "effect": "enabled",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:978",
-      "condition_source": "have_default_jerk"
+      "condition_source": "have_default_jerk",
+      "when": "!(gcode_flavor == \"marlin2\" && machine_max_junction_deviation > 0)"
     },
     {
       "options": [
@@ -5979,7 +6090,8 @@
       "condition": "true",
       "effect": "visible",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:977",
-      "condition_source": "true"
+      "condition_source": "true",
+      "when": "!(gcode_flavor == \"marlin2\" && machine_max_junction_deviation > 0)"
     },
     {
       "options": [
@@ -5988,7 +6100,8 @@
       "condition": "(default_jerk != null && default_jerk > 0)",
       "effect": "enabled",
       "source": "src/slic3r/GUI/ConfigManipulation.cpp:978",
-      "condition_source": "have_default_jerk"
+      "condition_source": "have_default_jerk",
+      "when": "!(gcode_flavor == \"marlin2\" && machine_max_junction_deviation > 0)"
     },
     {
       "options": [

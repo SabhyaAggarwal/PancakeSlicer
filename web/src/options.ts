@@ -1,10 +1,10 @@
-import type { ConfigValue } from './api/types';
 import { useEffect, useState } from 'react';
-import { quick, numeric, removed } from 'virtual:option-bootstrap';
+import { quick, removed } from 'virtual:option-bootstrap';
 import optionsUrl from './options.generated.json?url&no-inline';
 import processUrl from './tabs/process.json?url&no-inline';
 import filamentUrl from './tabs/filament.json?url&no-inline';
 import printerUrl from './tabs/printer.json?url&no-inline';
+import { setOptionTypes } from './config-values';
 import { normalizeOptions } from './option-inventory';
 import { catalogWorker, workerId } from './api/worker';
 import type { CatalogOut } from './api/catalog.worker';
@@ -26,25 +26,40 @@ export interface OptionDef {
   enum_labels?: string[];
   default?: unknown;
   readonly?: boolean;
+  nullable?: boolean;
   gui_type?: string;
   multiline?: boolean;
   full_width?: boolean;
 }
 
+export interface TabLine {
+  options: string[];
+  label?: string;
+  tooltip?: string;
+  modes?: Record<string, string>;
+  overrides?: Record<string, Partial<OptionDef>>;
+  index_labels?: string[];
+  indexed_columns?: string;
+}
 export interface TabGroup {
   title: string;
   icon?: string;
   options: string[];
+  lines: TabLine[];
+  condition?: string;
 }
 export interface TabPage {
   title: string;
   icon: string;
   groups: TabGroup[];
+  condition?: string;
 }
 export interface TabDesc {
   tab: 'process' | 'filament' | 'printer';
   pages: TabPage[];
   removed_keys: string[];
+  visibility: { options: string[]; condition: string; effect: 'visible' | 'enabled'; when?: string }[];
+  option_modes: Record<string, string>;
 }
 
 export const OPTIONS: Record<string, OptionDef> = normalizeOptions(quick);
@@ -68,7 +83,11 @@ export function loadTab(tab: TabDesc['tab']): Promise<void> {
     const on = (e: MessageEvent<CatalogOut>) => {
       if (e.data.id !== id) return;
       if (e.data.type === 'settings') {
-        Object.assign(OPTIONS, e.data.options);
+        if (Object.keys(e.data.options).length) {
+          for (const key of Object.keys(OPTIONS)) delete OPTIONS[key];
+          Object.assign(OPTIONS, e.data.options);
+          setOptionTypes(OPTIONS);
+        }
         TABS[tab] = e.data.tab;
         cleanup();
         for (const listener of listeners) listener();
@@ -80,7 +99,7 @@ export function loadTab(tab: TabDesc['tab']): Promise<void> {
     };
     worker.addEventListener('message', on);
     worker.addEventListener('error', fail);
-    worker.postMessage({ id, type: 'settings', optionsUrl: new URL(optionsUrl, location.href).href, tabUrl: new URL(URLs[tab], location.href).href });
+    worker.postMessage({ id, type: 'settings', mock: new URLSearchParams(location.search).has('mock'), optionsUrl: new URL(optionsUrl, location.href).href, tabUrl: new URL(URLs[tab], location.href).href });
   }).catch((error) => { pending.delete(tab); throw error; });
   pending.set(tab, promise);
   return promise;
@@ -115,15 +134,6 @@ const HIDDEN = /print_host|printhost|printer_agent|host_type|api_key|bbl_use_pri
 const REMOVED_KEYS = new Set(removed);
 export const isHidden = (key: string) => REMOVED_KEYS.has(key) || HIDDEN.test(key);
 
-const NUMERIC_VECTOR = new Set(numeric);
+export const isDeferred = (key: string) => key === 'post_process' || key === 'slicing_pipeline_plugin' || key.includes('_plugin_config');
 
-export function toolValue(key: string, v: ConfigValue): string {
-  const scalar = (x: unknown) => (x === true ? '1' : x === false ? '0' : String(x));
-  if (!Array.isArray(v)) return scalar(v);
-  if (NUMERIC_VECTOR.has(key)) return v.map(scalar).join(',');
-  return v.map((x) => (/[;"\\\n\s]/.test(String(x)) ? `"${String(x).replace(/["\\]/g, '\\$&').replace(/\n/g, '\\n')}"` : String(x))).join(';');
-}
-
-export function jobValue(key: string, v: ConfigValue): ConfigValue {
-  return Array.isArray(v) && NUMERIC_VECTOR.has(key) ? toolValue(key, v) : v;
-}
+export { toolValue, jobValue } from './config-values';

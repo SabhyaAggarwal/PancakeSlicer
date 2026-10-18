@@ -6,6 +6,7 @@ import { orcaAssets } from './orca-assets.ts';
 
 export default defineConfig({
   plugins: [react(), orcaAssets(), optionAssets(), bundleReport()],
+  worker: { plugins: () => [optionAssets()] },
   server: {
     port: 5173,
     proxy: {

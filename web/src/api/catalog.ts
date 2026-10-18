@@ -1,3 +1,4 @@
+import { normalizeConfig } from '../config-values';
 import type { PresetCatalog, PresetType, SystemPreset } from './types';
 
 export function normalizeCatalog(raw: any, vendor: string): PresetCatalog {
@@ -6,7 +7,7 @@ export function normalizeCatalog(raw: any, vendor: string): PresetCatalog {
     ...p,
     type,
     vendor: p.vendor ?? vendor,
-    config: p.config ?? p.values ?? {},
+    config: normalizeConfig(p.config ?? p.values ?? {}),
   });
   return {
     machines: pick('machines', 'machine', 'printers').map(norm('machine')),

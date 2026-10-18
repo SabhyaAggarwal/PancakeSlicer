@@ -3,6 +3,7 @@ import type { Config, ConfigValue } from '../api/types';
 import { isHidden, OPTIONS, useTab } from '../options';
 import objectKeys from '../object_options.json';
 import { effectiveConfig, getState, removeObjectOptions, setObjectOption, useStore } from '../state/store';
+import { environment, fieldDefinition, optionState } from '../visibility';
 import { Field } from './Field';
 import { Icon, IconButton } from './Icon';
 
@@ -39,6 +40,9 @@ export function ObjectSettings() {
   const object = useStore((s) => s.objects.find((o) => o.id === s.selected?.object));
   const filaments = useStore((s) => s.filamentSlots.length);
   useStore((s) => s.dirty.process);
+  useStore((s) => s.dirty.machine);
+  useStore((s) => s.printer);
+  const uiMode = useStore((s) => s.uiMode);
   useStore((s) => s.process);
   const global = effectiveConfig(getState(), 'process');
   const [menu, setMenu] = useState(false);
@@ -59,8 +63,15 @@ export function ObjectSettings() {
     for (const k of keys) if (!(k in object.settings)) setObjectOption(object.id, k, global[k] ?? (OPTIONS[k]?.default as ConfigValue) ?? '');
     if (remove.length) removeObjectOptions(object.id, remove);
   };
+  const state = getState();
+  const machine = effectiveConfig(state, 'machine');
+  const env = environment([machine, global, object.settings], {
+    settings_scope: 'object', printer_vendor: state.machines.find((p) => p.name === state.printer)?.vendor,
+  }, uiMode);
+  const states = optionState(desc, env);
   const byCat = new Map<string, string[]>();
   for (const k of Object.keys(object.settings)) {
+    if (isHidden(k)) continue;
     const cat = OPTIONS[k]?.category || 'Others';
     if (!byCat.has(cat)) byCat.set(cat, []);
     byCat.get(cat)!.push(k);
@@ -103,6 +114,8 @@ export function ObjectSettings() {
                 key={k}
                 optKey={k}
                 type="process"
+                disabled={states[k]?.enabled === false}
+                definition={fieldDefinition(k, env)}
                 value={object.settings[k]}
                 systemValue={global[k]}
                 dirty={asText(object.settings[k]) !== asText(global[k])}

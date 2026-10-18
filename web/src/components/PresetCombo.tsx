@@ -11,9 +11,10 @@ export function PresetCombo({ type, slot = 0, className }: { type: PresetType; s
 
   const s = getState();
   const base = userPresets.find((u) => u.type === 'machine' && u.name === printer)?.inherits ?? printer;
-  const system = type === 'machine' ? machines : compatible(s, type, base);
+  const systemUnsorted = type === 'machine' ? machines : compatible(s, type, base);
+  const system = [...systemUnsorted].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
   const sysNames = new Set(system.map((p) => p.name));
-  const user = userPresets.filter((u) => u.type === type && (type === 'machine' || sysNames.has(u.inherits)));
+  const user = userPresets.filter((u) => u.type === type && (type === 'machine' || sysNames.has(u.inherits))).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
 
   const onChange = (name: string) => {
     if (dirty && !window.confirm('The current preset has unsaved changes. Discard them?')) return;
@@ -34,14 +35,7 @@ export function PresetCombo({ type, slot = 0, className }: { type: PresetType; s
   return (
     <select className={`combo preset-combo ${className ?? ''}`} value={value} onChange={(e) => onChange(e.target.value)} title={value}>
       {!sysNames.has(value) && !user.some((u) => u.name === value) && <option value={value}>{value || '—'}</option>}
-      <optgroup label="System presets">
-        {system.map((p) => (
-          <option key={p.name} value={p.name}>
-            {p.name === value && dirty ? '* ' : ''}
-            {p.name}
-          </option>
-        ))}
-      </optgroup>
+
       {user.length > 0 && (
         <optgroup label="User presets">
           {user.map((u) => (
@@ -52,6 +46,14 @@ export function PresetCombo({ type, slot = 0, className }: { type: PresetType; s
           ))}
         </optgroup>
       )}
+      <optgroup label="System presets">
+        {system.map((p) => (
+          <option key={p.name} value={p.name}>
+            {p.name === value && dirty ? '* ' : ''}
+            {p.name}
+          </option>
+        ))}
+      </optgroup>
     </select>
   );
 }

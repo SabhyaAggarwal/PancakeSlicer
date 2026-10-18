@@ -1,3 +1,4 @@
+import { normalizeConfig } from '../config-values';
 import { demoPresets, normalizeCatalog } from './catalog';
 import { catalogWorker, workerId } from './worker';
 import type { CatalogIn, CatalogOut } from './catalog.worker';
@@ -34,6 +35,8 @@ export function parseProgress(data: string): ProgressEvent | null {
   return m && Number.isFinite(Number(m[2])) ? { stage: m[1], pct: Number(m[2]) } : null;
 }
 
+const normalizeUserPreset = (preset: UserPreset): UserPreset => ({ ...preset, overrides: normalizeConfig(preset.overrides) });
+
 const realApi: Api = {
   mock: false,
   presets(vendor, models, update) {
@@ -61,7 +64,7 @@ const realApi: Api = {
     const r = await fetch('/api/user-presets');
     if (r.status === 404) return mockApi.userPresets();
     const j = await json<any>(r);
-    return Array.isArray(j) ? j : (j.presets ?? []);
+    return (Array.isArray(j) ? j : (j.presets ?? [])).map(normalizeUserPreset);
   },
   async saveUserPreset(p) {
     const r = await fetch('/api/user-presets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) });
@@ -165,7 +168,7 @@ const mockApi: Api = {
   },
   async userPresets() {
     try {
-      return JSON.parse(localStorage.getItem(USER_KEY) ?? '[]') as UserPreset[];
+      return (JSON.parse(localStorage.getItem(USER_KEY) ?? '[]') as UserPreset[]).map(normalizeUserPreset);
     } catch {
       return [];
     }

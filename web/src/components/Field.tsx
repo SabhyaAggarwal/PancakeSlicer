@@ -1,5 +1,6 @@
 import { memo, useEffect, useState } from 'react';
 import type { ConfigValue, PresetType } from '../api/types';
+import { normalizeConfigValue, toolValue } from '../config-values';
 import { OPTIONS, splitKey, type OptionDef } from '../options';
 import { resetOption, setOption } from '../state/store';
 import { Icon } from './Icon';
@@ -9,18 +10,17 @@ const NUMERIC = new Set(['float', 'floats', 'int', 'ints', 'percent', 'percents'
 function elementOf(v: ConfigValue | undefined, idx: number, vector: boolean): ConfigValue | undefined {
   if (!vector) return v;
   if (Array.isArray(v)) return v[Math.min(idx, v.length - 1)];
-  if (typeof v === 'string' && v.includes(',') && !v.includes('\n')) return v.split(',')[idx] ?? v.split(',')[0];
   return v;
 }
 
 function withElement(v: ConfigValue | undefined, idx: number, el: ConfigValue): ConfigValue {
-  const arr = Array.isArray(v) ? [...(v as (string | number)[])] : [];
+  const arr = Array.isArray(v) ? [...v] : [];
   while (arr.length <= idx) arr.push(arr[0] ?? '');
   arr[idx] = el as string;
   return arr as string[];
 }
 
-const asText = (v: ConfigValue | undefined) => (v === undefined || v === null ? '' : Array.isArray(v) ? v.join(', ') : String(v));
+const asText = (v: unknown): string => v == null ? '' : Array.isArray(v) ? v.map(asText).join(', ') : typeof v === 'object' && 'value' in v ? `${v.value}${'percent' in v && v.percent ? '%' : ''}` : String(v);
 
 export const Field = memo(function Field(props: {
   optKey: string;
@@ -28,36 +28,50 @@ export const Field = memo(function Field(props: {
   value: ConfigValue | undefined;
   systemValue: ConfigValue | undefined;
   dirty: boolean;
+  disabled?: boolean;
+  label?: string;
+  tooltip?: string;
+  definition?: Partial<OptionDef>;
+  inheritedValue?: ConfigValue;
+  overrideDisabled?: boolean;
   onSet?: (key: string, value: ConfigValue) => void;
   onReset?: (key: string) => void;
   resetTitle?: string;
   extra?: React.ReactNode;
 }) {
   const [key, idx] = splitKey(props.optKey);
-  const def: OptionDef | undefined = OPTIONS[key];
-  if (!def) return null;
-  const vector = def.type.endsWith('s') && def.type !== 'points' && def.type !== 'enums';
-  const value = elementOf(props.value ?? (def.default as ConfigValue | undefined), idx, vector);
+  const baseDef = OPTIONS[key];
+  if (!baseDef) return null;
+  const def: OptionDef = { ...baseDef, ...props.definition };
+  const vector = def.type.endsWith('s') && def.type !== 'points' && def.type !== 'points_groups' && def.type !== 'ints_groups';
+  const current = props.value === undefined ? undefined : normalizeConfigValue(key, props.value);
+  const system = props.systemValue === undefined ? undefined : normalizeConfigValue(key, props.systemValue);
+  const value = elementOf(current ?? (def.nullable ? undefined : def.default as ConfigValue | undefined), idx, vector);
   const set = props.onSet ?? ((k: string, v: ConfigValue) => setOption(props.type, k, v));
   const reset = props.onReset ?? ((k: string) => resetOption(props.type, k));
   const commit = (el: ConfigValue) => {
-    const next = vector ? withElement(props.value ?? props.systemValue, idx, el) : el;
-    if (asText(next) === asText(props.systemValue) && !props.onSet) reset(key);
+    const next = normalizeConfigValue(key, vector ? withElement(current ?? system ?? def.default as ConfigValue, idx, el) : el);
+    if (system !== undefined && toolValue(key, next) === toolValue(key, system) && !props.onSet) reset(key);
     else set(key, next);
   };
-  const label = def.label || def.full_label || key;
+  const label = props.label ?? (def.label || def.full_label || key);
   const modified = props.dirty;
-  const tooltip = `${def.tooltip ?? ''}\n\nparameter name: ${key}`.trim();
+  const checked = !props.overrideDisabled && value != null && value !== 'nil' && value !== '';
+  const inherited = props.inheritedValue ?? OPTIONS[key.replace(/^filament_/, '')]?.default;
+  const fallback = elementOf(inherited as ConfigValue | undefined, idx, vector) ?? '0';
+  const tooltip = `${props.tooltip ?? def.tooltip ?? ''}\n\nparameter name: ${key}`.trim();
 
   return (
     <div className={`opt-line ${def.full_width || def.multiline ? 'full' : ''}`}>
       <span className={`opt-label ${modified ? 'modified' : ''}`} title={tooltip}>
+        {def.nullable && <input className="nullable-toggle" type="checkbox" aria-label={`Override ${label}`} checked={checked} disabled={props.overrideDisabled}
+        onChange={(e) => commit(e.target.checked ? fallback : 'nil')} />}
         {label}
       </span>
-      <span className="opt-field">
-        <Widget def={def} value={value} onCommit={commit} />
+      <fieldset className="opt-field" disabled={props.disabled || (def.nullable && !checked)}>
+        <Widget def={def} value={def.nullable && !checked ? fallback : value} onCommit={commit} />
         {def.sidetext && <span className="opt-side">{def.sidetext}</span>}
-      </span>
+      </fieldset>
       <span className="opt-undo">
         {modified && (
           <button type="button" className="icon-btn" title={props.resetTitle ?? 'Reset to the preset value'} onClick={() => reset(key)}>
@@ -77,6 +91,10 @@ function Widget({ def, value, onCommit }: { def: OptionDef; value: ConfigValue |
     return (
       <input type="checkbox" className="chk" checked={on} disabled={def.readonly} onChange={(e) => onCommit(e.target.checked ? '1' : '0')} />
     );
+  }
+  if (def.enum_values?.length && /^(select_open|[if]_enum_open)$/.test(def.gui_type ?? '')) {
+    return <><TextBox value={asText(value)} onCommit={onCommit} readOnly={def.readonly} list={`choices-${def.key}`} />
+      <datalist id={`choices-${def.key}`}>{def.enum_values.map((v, i) => <option key={v} value={v}>{def.enum_labels?.[i] ?? v}</option>)}</datalist></>;
   }
   if ((base === 'enum' || def.enum_values) && def.enum_values?.length) {
     const v = asText(value);
@@ -102,7 +120,7 @@ function Widget({ def, value, onCommit }: { def: OptionDef; value: ConfigValue |
   return <TextBox value={asText(value)} numeric={NUMERIC.has(def.type)} def={def} onCommit={onCommit} readOnly={def.readonly} />;
 }
 
-function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean; def?: OptionDef; readOnly?: boolean; onCommit: (v: ConfigValue) => void }) {
+function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean; def?: OptionDef; readOnly?: boolean; list?: string; onCommit: (v: ConfigValue) => void }) {
   const [text, setText] = useState(props.value);
   const [bad, setBad] = useState(false);
   useEffect(() => setText(props.value), [props.value]);
@@ -112,7 +130,7 @@ function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean;
       const pct = text.trim().endsWith('%');
       const n = Number(text.replace('%', '').trim());
       const ok = Number.isFinite(n) && (props.def.min === undefined || n >= props.def.min) && (props.def.max === undefined || n <= props.def.max) &&
-        (!pct || props.def.type.includes('percent'));
+        (!pct || props.def.type.includes('percent')) && (!props.def.type.startsWith('int') || Number.isInteger(n));
       setBad(!ok);
       if (!ok) return;
     }
@@ -125,6 +143,7 @@ function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean;
       className={`text ${props.numeric ? 'num' : ''} ${bad ? 'bad' : ''}`}
       value={text}
       readOnly={props.readOnly}
+      list={props.list}
       onChange={(e) => {
         setText(e.target.value);
         setBad(false);

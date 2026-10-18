@@ -33,8 +33,8 @@ export function CanvasToolbar() {
     <div className="canvas-toolbar">
       <IconButton size={24} icon="toolbar_open" title="Add (Ctrl+I)" onClick={openFileDialog} />
       <IconButton size={24} icon="toolbar_add_plate" title="Add plate" disabled />
-      <IconButton size={24} icon="toolbar_orient" title="Auto orient (Q)" disabled />
-      <IconButton size={24} icon="toolbar_arrange" title={`Arrange all objects (A)${locked}`} onClick={arrangeAll} disabled={!hasObjects || project} />
+      <IconButton size={24} icon="toolbar_orient" title={"Auto orient all/selected objects (Q)\nAuto orient all objects on current plate (Shift+Q)"} disabled />
+      <IconButton size={24} icon="toolbar_arrange" title={`Arrange all objects (A)\nArrange objects on selected plates (Shift+A)${locked}`} onClick={arrangeAll} disabled={!hasObjects || project} />
       <span className="tb-sep" />
       <IconButton size={24} icon="instance_add" title={`Add instance (+)${locked}`} onClick={addInstance} disabled={!edit} />
       <IconButton size={24} icon="instance_remove" title={`Remove instance (-)${locked}`} onClick={removeInstance} disabled={instances < 2 || project} />

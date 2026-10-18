@@ -26,7 +26,7 @@ function PrinterSection() {
   const nozzle = machine?.config.nozzle_diameter;
   const nozzleText = Array.isArray(nozzle) ? nozzle[0] : nozzle;
   const multiBed = machine?.config.support_multi_bed_types;
-  const showBed = (machine?.vendor === 'BBL' || multiBed === true || multiBed === '1') && !!bedDef?.enum_values;
+  const showBed = (machine?.vendor === 'BBL' || multiBed === true || multiBed === 1 || multiBed === '1') && !!bedDef?.enum_values;
   return (
     <div className="side-section">
       <SectionTitle icon="printer" title="Printer" />
@@ -44,7 +44,7 @@ function PrinterSection() {
             {showBed && (
               <select className="combo bed-combo" title="Plate type" value={bedType} onChange={(e) => setState({ bedType: e.target.value })}>
                 {bedDef!.enum_values!.map((v, i) =>
-                  machine?.not_support_bed_type?.includes(v) ? null : (
+                  machine?.not_support_bed_type?.some((b) => b === v || b === bedDef!.enum_labels?.[i]) ? null : (
                     <option key={v} value={v}>
                       {bedDef!.enum_labels?.[i] ?? v}
                     </option>
@@ -87,8 +87,6 @@ function FilamentSection() {
   return (
     <div className="side-section">
       <SectionTitle icon="filament" title="Filament">
-        <IconButton icon="delete_filament" title="Remove last filament" onClick={remove} disabled={slots.length <= 1} />
-        <IconButton icon="add_filament" title="Add one filament" onClick={add} disabled={slots.length >= 16} />
         {slots.length > 1 && (
           <button
             type="button"
@@ -99,11 +97,13 @@ function FilamentSection() {
             Flushing volumes
           </button>
         )}
+        {slots.length > 1 && <IconButton icon="delete_filament" title="Remove last filament" onClick={remove} />}
+        <IconButton icon="add_filament" title="Add one filament" onClick={add} disabled={slots.length >= 64} />
       </SectionTitle>
       <div className="side-content filament-list">
         {slots.map((_, i) => (
           <div key={i} className="filament-row">
-            <label className="filament-swatch" style={{ background: filamentColor(s, i + 1) }} title="Change extruder color">
+            <label className="filament-swatch" style={{ background: filamentColor(s, i + 1) }} title="Click to select filament color">
               {i + 1}
               <input type="color" value={filamentColor(s, i + 1)} onChange={(e) => pickColour(i, e.target.value)} />
             </label>
