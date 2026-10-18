@@ -31,6 +31,7 @@
 #include "libslic3r/Preset.hpp"
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/Print.hpp"
+#include "libslic3r/PrintBase.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/Semver.hpp"
 #include "libslic3r/Slicing.hpp"
@@ -58,7 +59,9 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <ostream>
 #include <stdexcept>
 #include <sstream>
 #include <string>
@@ -86,7 +89,8 @@ struct Args
     std::string profiles = std::string(PROFILES_DIR);
     std::string vendor   = "Prusa";
     std::string printer, process, datadir, output, model, config_out, paint, gcode_3mf, json, plate, project_out, head_out, layer_profile, project, save_3mf,
-                tip_out, move_times, calib, calib_head, calib_picks;
+                tip_out, move_times, calib, calib_head, calib_picks, moves_out, dump_options, dump_presets;
+    bool        progress = false;
     int         calib_fit = -1;
     std::vector<std::string> filaments, colours;
     std::vector<std::pair<std::string, int>> parts;
@@ -111,6 +115,8 @@ struct Args
                  "       [--atom TOOLPATH] [--verify] [--explain] [--auto-orient | --orient-only] [--save-3mf PROJECT.3mf]\n"
                  "       [--layer-profile adaptive:QUALITY | ramp:H_BOTTOM:H_TOP | range:DEPTH:H] [--calib-head ID]\n"
                  "       -o OUT.gcode (MODEL | PROJECT.3mf | --plate PLATE.json | --project SPEC.json | --calib TEST)\n"
+                 "       [--moves-out FILE] [--progress]\n"
+                 "       nonplanar_slice_tool --dump-options FILE | --dump-presets VENDOR FILE [--profiles DIR]\n"
                  "       nonplanar_slice_tool --load-gcode FILE.gcode   (times the preview's G-code load)\n";
     std::exit(2);
 }
@@ -159,6 +165,10 @@ Args parse_args(int argc, char **argv)
             a.overrides.emplace_back("nonplanar_atom_toolpath", path);
         }
         else if (arg == "--json") a.json = next();
+        else if (arg == "--moves-out") a.moves_out = next();
+        else if (arg == "--dump-options") a.dump_options = next();
+        else if (arg == "--dump-presets") { a.vendor = next(); a.dump_presets = next(); }
+        else if (arg == "--progress") a.progress = true;
         else if (arg == "--move-times") a.move_times = next();
         else if (arg == "--plate") a.plate = next();
         else if (arg == "--project") a.project = next();
@@ -207,6 +217,7 @@ Args parse_args(int argc, char **argv)
         else
             a.model = arg;
     }
+    if (!a.dump_options.empty() || !a.dump_presets.empty()) return a;
     if (a.printer.empty() || a.process.empty() || a.filaments.empty() ||
         (a.output.empty() && ! a.orient_only && a.confirm_up.empty() && a.save_3mf.empty()) ||
         int(! a.model.empty()) + int(! a.plate.empty()) + int(! a.project.empty()) + int(! a.calib.empty()) != 1)
@@ -791,6 +802,7 @@ Model load_plate(const std::string &path)
     const fs::path          dir = fs::path(path).parent_path();
     Model                   model;
     std::map<std::string, Model> loaded;
+    ConfigSubstitutionContext ctx(ForwardCompatibilitySubstitutionRule::Disable);
     for (const nlohmann::json &entry : j.at("objects")) {
         fs::path file = entry.at("file").get<std::string>();
         if (file.is_relative())
@@ -806,6 +818,9 @@ Model load_plate(const std::string &path)
         object->clear_instances();
         if (const int extruder = entry.value("extruder", 0); extruder > 0)
             object->config.set("extruder", extruder);
+        if (entry.contains("settings"))
+            for (const auto &[key, value] : entry.at("settings").items())
+                object->config.set_deserialize(key, value.is_string() ? value.get<std::string>() : value.dump(), ctx);
         const nlohmann::json places = entry.contains("instances") ? entry.at("instances") : nlohmann::json::array({ entry });
         for (const nlohmann::json &place : places) {
             ModelInstance *instance = object->add_instance();
@@ -916,6 +931,8 @@ void save_project(const Args &args, Model &model, DynamicPrintConfig &config, co
 }
 
 #include "nonplanar_slice_json.ipp"
+#include "nonplanar_slice_moves.ipp"
+#include "nonplanar_slice_catalog.ipp"
 
 int main(int argc, char **argv)
 {
@@ -936,7 +953,13 @@ int main(int argc, char **argv)
     if (const char *level = std::getenv("NP_LOG_LEVEL"))
         set_logging_level(unsigned(std::atoi(level)));
     try {
+        if (!args.dump_options.empty()) dump_options(args.dump_options);
+        if (!args.dump_options.empty() && args.dump_presets.empty()) return 0;
         if (! args.json.empty()) slice_json_record(record, args);
+        auto progress = [&args](const char *stage, int percent) {
+            if (args.progress) std::cout << "progress " << stage << " " << percent << std::endl;
+        };
+        progress("load", 0);
         set_resources_dir((fs::path(args.profiles) / "..").lexically_normal().string());
         const fs::path datadir = args.datadir.empty() ? fs::temp_directory_path() / fs::unique_path("np_slice_%%%%%%%%") :
                                                         fs::path(args.datadir);
@@ -945,6 +968,7 @@ int main(int argc, char **argv)
         set_temporary_dir(datadir.string());
         Nonplanar::HeadLibrary::instance().reload();
 
+        if (!args.dump_presets.empty()) { dump_presets(args); return 0; }
         PresetBundle       bundle;
         DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
         config.apply(resolve(bundle, args, "machine", Preset::TYPE_PRINTER, args.printer));
@@ -1060,6 +1084,8 @@ int main(int argc, char **argv)
                 throw std::runtime_error("cannot write " + args.project_out);
         }
 
+        std::mutex progress_mutex;
+        int last_percent = 0;
         Print print;
         print.is_BBL_printer() = (project_settings ? config.opt_string("printer_model") : args.printer).rfind("Bambu Lab", 0) == 0;
         for (ModelObject *object : model.objects)
@@ -1084,11 +1110,21 @@ int main(int argc, char **argv)
             std::cerr << "warning: " << w.string << "\n";
         const auto   t_process = std::chrono::steady_clock::now();
         const double c_process = process_cpu_seconds();
+        progress("load", 100);
+        progress("slice", 0);
+        if (args.progress) print.set_status_callback([&](const PrintBase::SlicingStatus &status) {
+            std::lock_guard<std::mutex> lock(progress_mutex);
+            const int percent = std::clamp(status.percent, 0, 100);
+            if (percent > last_percent) { last_percent = percent; progress("slice", percent); }
+        });
         try {
             print.process();
         } catch (const SlicingErrors &errors) {
             throw std::runtime_error(print.slicing_errors_message(errors));
         }
+        if (args.progress) print.set_status_default();
+        if (last_percent < 100) progress("slice", 100);
+        progress("export", 0);
         const auto   t_export = std::chrono::steady_clock::now();
         const double c_export = process_cpu_seconds();
         GCodeProcessorResult result;
@@ -1101,6 +1137,9 @@ int main(int argc, char **argv)
         });
         const auto   t_done = std::chrono::steady_clock::now();
         const double c_done = process_cpu_seconds();
+
+        progress("export", 100);
+        if (!args.moves_out.empty()) write_moves(args.moves_out, result, args.filaments);
 
         if (args.explain)
             for (size_t i = 0; i < print.objects().size(); ++i) {
@@ -1322,6 +1361,7 @@ int main(int argc, char **argv)
                     std::cout << "calib_verifier_hit " << hit.component << " " << hit.penetration << " at " << hit.tip.x() << "," << hit.tip.y() << "," << hit.tip.z() << "\n";
             }
         }
+        progress("verify", 0);
         if (args.verify && !result.clearance_report.ran) {
             ClearanceParams params;
             params.head               = Nonplanar::resolve_head_envelope(print.config());
@@ -1345,6 +1385,7 @@ int main(int argc, char **argv)
                      << axis.x() << ' ' << axis.y() << ' ' << axis.z() << ' ' << m.width << ' ' << m.height << ' ' << int(part) << '\n';
             }
         }
+        progress("verify", 100);
         const ClearanceReport &clearance = result.clearance_report;
         std::cout << "clearance_checked " << clearance.ran << "\n";
         if (clearance.ran) {
@@ -1415,9 +1456,27 @@ int main(int argc, char **argv)
                     std::cout << "nonplanar_fallback " << f.reason << " " << f.area << " patch " << f.patch << "\n";
         }
         if (! args.json.empty()) {
+            progress("json", 0);
             slice_json_results(record, args, print, result, model, config);
+            if (!args.plate.empty()) {
+                boost::nowide::ifstream in(args.plate);
+                const auto layout = nlohmann::json::parse(in);
+                for (size_t i = 0; i < print.objects().size(); ++i) {
+                    const ModelObject *object = print.objects()[i]->model_object();
+                    const auto it = std::find_if(model.objects.begin(), model.objects.end(),
+                        [object](const ModelObject *source) { return source->id() == object->id(); });
+                    const auto &entry = layout.at("objects").at(size_t(it - model.objects.begin()));
+                    if (entry.contains("settings")) {
+                        auto &settings = record["objects"][i]["settings"] = nlohmann::json::object();
+                        for (const auto &[key, value] : entry.at("settings").items())
+                            settings[key] = object->config.opt_serialize(key);
+                    }
+                }
+            }
+            record["totals"]["move_count"] = result.moves.size();
             record["status"] = "sliced";
             write_slice_json(args.json, record);
+            progress("json", 100);
         }
     } catch (const std::exception &e) {
         std::cerr << "error: " << e.what() << "\n";
