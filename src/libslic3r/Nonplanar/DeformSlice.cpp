@@ -19,6 +19,7 @@
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/SLA/IndexedMesh.hpp"
 #include "libslic3r/ShortestPath.hpp"
+#include "libslic3r/libslic3r.h"
 
 #include <boost/log/trivial.hpp>
 #include <tbb/parallel_for.h>
@@ -140,6 +141,8 @@ DynamicPrintConfig deform_print_config(const PrintObject &object, double road_an
     set("enable_prime_tower", "0");
     set("enable_arc_fitting", "0");
     set("ironing_type", "no ironing");
+    set("adaptive_layer_height_error", "0");
+    set("overhang_layer_contact", "0%");
     set("wall_generator", "classic");
     const double nozzle = config.opt<ConfigOptionFloats>("nozzle_diameter")->values.front();
     const double top_w  = object.printing_region(0).config().top_surface_line_width.get_abs_value(nozzle);
@@ -860,9 +863,10 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
     for (const Layer *layer : layers)
         layer_z.push_back(layer->print_z);
     const double raft = layers.front()->print_z - (layers.front()->slice_z + 0.5 * layers.front()->height);
+    bool uniform = true;
     for (size_t i = 1; i < layers.size(); ++i)
         if (std::abs(layers[i]->height - h) > 1e-4)
-            return fail("variable layer heights");
+            uniform = false;
 
     DeformFieldParams params;
     params.first_layer_height = first;
@@ -908,8 +912,25 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
     Model        model;
     ModelObject *model_object = model.add_object();
     model_object->name        = name + " deformed";
-    model_object->add_volume(TriangleMesh(deform_mesh(mesh_of(), *field, 1.)));
+    TriangleMesh deformed(deform_mesh(mesh_of(), *field, 1.));
+    const double deformed_top = deformed.bounding_box().max.z() - deformed.bounding_box().min.z();
+    model_object->add_volume(std::move(deformed));
     model_object->add_instance();
+    if (!uniform) {
+        const double z0      = field->identity_below();
+        const double raft_z  = layers.front()->print_z - (layers.front()->slice_z + 0.5 * layers.front()->height);
+        std::vector<coordf_t> profile{ 0., layers.front()->height, layers.front()->height, layers.front()->height };
+        bool         on_host = z0 <= layers.front()->print_z - raft_z + 1e-5;
+        for (size_t i = 1; i < layers.size() && layers[i]->print_z - raft_z <= z0 + 1e-5; ++i) {
+            const double top_z = layers[i]->print_z - raft_z;
+            profile.insert(profile.end(), { top_z - layers[i]->height, layers[i]->height, top_z, layers[i]->height });
+            on_host = std::abs(top_z - z0) < 1e-5;
+        }
+        if (!on_host)
+            return fail("variable layer heights, identity zone off a layer boundary");
+        profile.insert(profile.end(), { z0, h, deformed_top, h });
+        model_object->layer_height_profile.set(profile);
+    }
     Print print;
     try {
         print.apply(model, deform_print_config(object, strength_road_angle(object, mesh_of(), *field, top.empty() ? nullptr : &top)));

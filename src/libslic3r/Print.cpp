@@ -326,7 +326,12 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & , co
     std::vector<PrintObjectStep> osteps;
     bool invalidated = false;
 
+    const bool layer_rules = std::any_of(m_objects.begin(), m_objects.end(), [](const PrintObject *object) {
+        return object->config().adaptive_layer_height_error.value > 0. || object->config().overhang_layer_contact.value > 0.;
+    });
     for (const t_config_option_key &opt_key : opt_keys) {
+        if (layer_rules && (opt_key == "enable_prime_tower" || opt_key == "filament_diameter"))
+            osteps.emplace_back(posSlice);
         if (steps_gcode.find(opt_key) != steps_gcode.end()) {
             steps.emplace_back(psGCodeExport);
         } else if (steps_ignore.find(opt_key) != steps_ignore.end()) {

@@ -1249,6 +1249,8 @@ static std::vector<std::string> s_Preset_print_options{
     "gcode_add_line_number",
     "enable_arc_fitting",
     "precise_z_height",
+    "adaptive_layer_height_error",
+    "overhang_layer_contact",
     "infill_combination",
     "infill_combination_max_layer_height",
     "support_bottom_interface_spacing",

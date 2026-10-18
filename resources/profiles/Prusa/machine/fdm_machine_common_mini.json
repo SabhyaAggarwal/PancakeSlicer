@@ -13,5 +13,8 @@
 		"0"
 	],
 	"nonplanar_head": "prusa-mini",
-	"nonplanar_segment_rate": "150"
+	"nonplanar_segment_rate": "150",
+	"z_hop": [
+		"0.2"
+	]
 }

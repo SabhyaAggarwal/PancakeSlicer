@@ -6,6 +6,8 @@
     "setting_id": "GP037",
     "instantiation": "true",
     "nonplanar_mode": "auto",
+    "adaptive_layer_height_error": "0.4",
+    "overhang_layer_contact": "50%",
     "description": "It has a very big layer height, and results in very apparent layer lines, low printing quality and general printing time.",
     "default_acceleration": [
         "6000"

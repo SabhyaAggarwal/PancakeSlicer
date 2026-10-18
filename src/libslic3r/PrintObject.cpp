@@ -1497,6 +1497,8 @@ bool PrintObject::invalidate_state_by_config_options(
             steps.emplace_back(posPerimeters);
         } else if (
                opt_key == "layer_height"
+            || opt_key == "adaptive_layer_height_error"
+            || opt_key == "overhang_layer_contact"
             || opt_key == "mmu_segmented_region_max_width"
             || opt_key == "mmu_segmented_region_interlocking_depth"
             || opt_key == "raft_layers"
@@ -1542,6 +1544,8 @@ bool PrintObject::invalidate_state_by_config_options(
                 }
         } else if (opt_key == "enable_support") {
             steps.emplace_back(posSupportMaterial);
+            if (m_config.adaptive_layer_height_error.value > 0. || m_config.overhang_layer_contact.value > 0.)
+                steps.emplace_back(posSlice);
             bool clip = m_config.nonplanar_mode.value == NonplanarMode::Auto;
             for (size_t region_id = 0; region_id < this->num_printing_regions() && !clip; ++region_id)
                 clip = Nonplanar::overhangs_enabled(this->printing_region(region_id).config(), m_config) ||
@@ -1601,6 +1605,9 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "tree_support_angle_slow"
             || opt_key == "tree_support_wall_count") {
             steps.emplace_back(posSupportMaterial);
+            if ((opt_key == "support_style" || opt_key == "support_threshold_angle") &&
+                (m_config.adaptive_layer_height_error.value > 0. || m_config.overhang_layer_contact.value > 0.))
+                steps.emplace_back(posSlice);
         } else if (
                opt_key == "bottom_shell_layers"
             || opt_key == "top_shell_layers") {
@@ -3924,7 +3931,10 @@ bool PrintObject::update_layer_height_profile(const ModelObject &model_object, c
         layer_height_profile.clear();
 
     if (layer_height_profile.empty() || layer_height_profile[1] != slicing_parameters.first_object_layer_height) {
-        layer_height_profile = layer_height_profile_from_ranges(slicing_parameters, model_object.layer_config_ranges);
+        layer_height_profile = (slicing_parameters.surface_error > 0. || slicing_parameters.overhang_reach > 0.) &&
+                model_object.layer_config_ranges.empty() ?
+            layer_height_profile_surface_error(slicing_parameters, model_object) :
+            layer_height_profile_from_ranges(slicing_parameters, model_object.layer_config_ranges);
         updated = true;
     }
 

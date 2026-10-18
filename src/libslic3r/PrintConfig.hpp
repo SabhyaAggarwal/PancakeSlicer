@@ -1224,6 +1224,8 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloatsNullable,     initial_layer_jerk))
     ((ConfigOptionFloatsNullable,     travel_jerk))
     ((ConfigOptionBool,               precise_z_height))
+    ((ConfigOptionFloat,              adaptive_layer_height_error))
+    ((ConfigOptionPercent,            overhang_layer_contact))
     ((ConfigOptionFloatsNullable,     default_junction_deviation))
 
     ((ConfigOptionBool, interlocking_beam))

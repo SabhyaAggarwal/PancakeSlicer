@@ -6,6 +6,8 @@
     "setting_id": "GP051",
     "instantiation": "true",
     "nonplanar_mode": "auto",
+    "adaptive_layer_height_error": "0.056",
+    "overhang_layer_contact": "50%",
     "description": "Compared with the default profile of a 0.2 mm nozzle, it has a smaller layer height, and results in almost invisible layer lines and higher printing quality, but shorter printing time.",
     "default_acceleration": [
         "6000"

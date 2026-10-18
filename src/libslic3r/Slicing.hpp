@@ -55,6 +55,11 @@ struct SlicingParameters
     coordf_t    min_layer_height { 0 };
     coordf_t    max_layer_height { 0 };
     coordf_t    max_suport_layer_height { 0 };
+    coordf_t    surface_error { 0 };
+    coordf_t    overhang_reach { 0 };
+    coordf_t    shell_top_nz { 2 };
+    coordf_t    curved_underside_nz { 2 };
+    coordf_t    road_width { 0 };
 
     coordf_t    first_print_layer_height { 0 };
 
@@ -123,6 +128,10 @@ std::vector<coordf_t> layer_height_profile_from_ranges(
 std::vector<double> layer_height_profile_adaptive(
     const SlicingParameters& slicing_params,
     const ModelObject& object, float quality_factor);
+
+std::vector<coordf_t> layer_height_profile_surface_error(
+    const SlicingParameters &slicing_params,
+    const ModelObject       &object);
 
 struct HeightProfileSmoothingParams
 {

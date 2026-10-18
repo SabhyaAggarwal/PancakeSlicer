@@ -6,6 +6,8 @@
 	"setting_id": "GP026",
 	"instantiation": "true",
 	"nonplanar_mode": "auto",
+	"adaptive_layer_height_error": "0.084",
+	"overhang_layer_contact": "50%",
 	"nonplanar_shell_layer_height": "0.08",
 	"description": "Compared with the default profile of a 0.2 mm nozzle, it has a slightly bigger layer height, and results in almost negligible layer lines, and slightly shorter printing time.",
 	"bridge_speed": [

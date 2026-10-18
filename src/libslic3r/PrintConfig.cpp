@@ -4220,6 +4220,38 @@ void PrintConfigDef::init_fff_params()
     def->mode    = comAdvanced;
     def->set_default_value(new ConfigOptionBool(0));
 
+    def          = this->add("adaptive_layer_height_error", coFloat);
+    def->label   = L("Adaptive layer height");
+    def->category = L("Quality");
+    def->tooltip = L("Varies the layer height over the object's height so that the stair steps on sloped surfaces stand "
+                     "no further than this from the model, measured along the surface normal. Layers stay between the "
+                     "printer's minimum layer height and this process's layer height: vertical walls keep the layer "
+                     "height, shallow slopes get thinner layers. Flat tops and the undersides over bridges land exactly "
+                     "on a layer boundary. A value at or above the layer height only aligns the flat surfaces. "
+                     "Under the auto non-planar mode the planar body takes it, and the shallow tops the curved shells "
+                     "print do not thin the layers. Not applied to objects with a variable layer height or height "
+                     "range modifiers, in the other non-planar modes, with a prime tower, with organic tree supports "
+                     "or in spiral vase mode. 0 disables.");
+    def->sidetext = L("mm");
+    def->min     = 0;
+    def->mode    = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0));
+
+    def          = this->add("overhang_layer_contact", coPercent);
+    def->label   = L("Overhang layer contact");
+    def->category = L("Quality");
+    def->tooltip = L("Thinner layers under overhangs: where a sloped underside would leave the outer wall resting on less "
+                     "than this share of its width on the layer below, the layers there get thin enough to keep it, down "
+                     "to the printer's minimum layer height. Undersides too flat for that are left to bridges and "
+                     "supports. Like the adaptive layer height, it also lands flat surfaces on layer boundaries and is "
+                     "not applied in the cases listed there, nor under the non-planar modes, whose curved overhangs "
+                     "print the undersides. 0 disables.");
+    def->sidetext = "%";
+    def->min     = 0;
+    def->max     = 90;
+    def->mode    = comAdvanced;
+    def->set_default_value(new ConfigOptionPercent(0));
+
     def = this->add("enable_arc_fitting", coBool);
     def->label = L("Arc fitting");
     def->tooltip = L("Enable this to get a G-code file which has G2 and G3 moves. "

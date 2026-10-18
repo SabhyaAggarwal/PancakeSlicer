@@ -8,6 +8,8 @@
 	"nonplanar_overhangs": "1",
 	"nonplanar_bridges": "1",
 	"nonplanar_mode": "auto",
+	"adaptive_layer_height_error": "0.14",
+	"overhang_layer_contact": "50%",
 	"compatible_printers": [
 		"Prusa MINIIS 0.4 nozzle"
 	],

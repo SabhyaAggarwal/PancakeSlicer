@@ -6,6 +6,8 @@
 	"setting_id": "eAFe5ATddc99VxqO",
 	"instantiation": "true",
 	"nonplanar_mode": "auto",
+	"adaptive_layer_height_error": "0.07",
+	"overhang_layer_contact": "50%",
 	"nonplanar_overhangs": "1",
 	"nonplanar_bridges": "1",
 	"line_width": "0.45",

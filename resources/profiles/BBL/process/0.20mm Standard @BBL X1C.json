@@ -9,6 +9,8 @@
 	"nonplanar_overhangs": "1",
 	"nonplanar_bridges": "1",
 	"nonplanar_mode": "auto",
+	"adaptive_layer_height_error": "0.14",
+	"overhang_layer_contact": "50%",
 	"description": "It has a general layer height, and results in general layer lines and printing quality. It is suitable for most general printing cases.",
 	"bridge_speed": [
 		"50",

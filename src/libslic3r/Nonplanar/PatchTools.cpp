@@ -10,6 +10,7 @@
 
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ClipperUtils.hpp"
+#include "libslic3r/Slicing.hpp"
 #include "libslic3r/CustomGCode.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
 #include "libslic3r/Exception.hpp"
@@ -135,7 +136,8 @@ void prepare_vase_closure(PrintObject &object)
 double automatic_shell_height(const PrintObject &object)
 {
     const ModelObject &model = *object.model_object();
-    if (!model.layer_height_profile.empty() || !model.layer_config_ranges.empty())
+    const SlicingParameters &sp = object.slicing_parameters();
+    if (!model.layer_height_profile.empty() || !model.layer_config_ranges.empty() || sp.surface_error > 0. || sp.overhang_reach > 0.)
         return std::min(object.slicing_parameters().first_object_layer_height, object.config().layer_height.value);
     double height = std::numeric_limits<double>::infinity();
     for (const Layer *layer : object.layers())

@@ -10,6 +10,8 @@
 	"nonplanar_top_finish_flow": "0.95",
 	"nonplanar_full_conformal_max_thickness": "3",
 	"nonplanar_mode": "auto",
+	"adaptive_layer_height_error": "0.14",
+	"overhang_layer_contact": "50%",
 	"top_surface_acceleration": [
 		"5000"
 	],

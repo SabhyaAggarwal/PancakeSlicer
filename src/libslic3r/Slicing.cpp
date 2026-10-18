@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <limits>
+#include <tuple>
 #include <vector>
 #include <utility>
 #include <math.h>
@@ -13,6 +14,7 @@
 #include "SlicingAdaptive.hpp"
 #include "PrintConfig.hpp"
 #include "Model.hpp"
+#include "TriangleMesh.hpp"
 #include "Config.hpp"
 
 #ifdef SLIC3R_DEBUG
@@ -131,6 +133,22 @@ SlicingParameters SlicingParameters::create_from_config(
 
     params.min_layer_height = std::min(params.min_layer_height, params.layer_height);
     params.max_layer_height = std::max(params.max_layer_height, params.layer_height);
+
+    const bool organic_support = object_config.enable_support.value && is_tree(object_config.support_type.value) &&
+        (object_config.support_style.value == smsTreeOrganic || object_config.support_style.value == smsDefault);
+    const NonplanarMode mode = object_config.nonplanar_mode.value;
+    if ((mode == NonplanarMode::Off || mode == NonplanarMode::Auto) && !print_config.spiral_mode.value && !organic_support &&
+        !(print_config.enable_prime_tower.value && print_config.filament_diameter.values.size() > 1)) {
+        if (mode == NonplanarMode::Auto) {
+            params.shell_top_nz = std::cos(std::atan(params.layer_height / (0.75 * print_config.nozzle_diameter.get_at(0))));
+            const double threshold = object_config.support_threshold_angle.value > 0 ? object_config.support_threshold_angle.value : 30.;
+            params.curved_underside_nz = std::sin(std::clamp(90. - threshold, 45., 55.) * M_PI / 180.);
+        }
+        params.road_width = 1.05 * print_config.nozzle_diameter.get_at(0);
+        params.surface_error = object_config.adaptive_layer_height_error.value;
+        if (object_config.overhang_layer_contact.value > 0. && mode == NonplanarMode::Off)
+            params.overhang_reach = (1. - 0.01 * object_config.overhang_layer_contact.value) * params.road_width;
+    }
 
     if (zero_gap_interface_raft) {
         params.gap_raft_object = 0.0;
@@ -328,6 +346,210 @@ std::vector<double> layer_height_profile_adaptive(const SlicingParameters& slici
     }
 
     return layer_height_profile;
+}
+
+static std::vector<coordf_t> surface_error_profile(const SlicingParameters &slicing_params, const ModelObject &object)
+{
+    static constexpr double ADAPTIVE_AREA_TOL = 1.0;
+    static constexpr double FLAT_COS          = 0.99985;
+    static constexpr double FLAT_MERGE        = 0.02;
+    static constexpr double BIN               = 0.01;
+    static constexpr double STEP              = 0.005;
+    static constexpr double FREEZE_DEPTH      = 1.0;
+
+    const double e     = slicing_params.surface_error;
+    const double reach = slicing_params.overhang_reach;
+    const double h_max = slicing_params.layer_height;
+    const double h_min = std::min(slicing_params.min_layer_height, h_max);
+    const double top   = slicing_params.object_print_z_uncompensated_height();
+    const double z0    = slicing_params.first_object_layer_height;
+
+    std::vector<coordf_t> profile{ 0., z0 };
+    if (slicing_params.first_object_layer_height_fixed())
+        profile.insert(profile.end(), { z0, z0 });
+
+    TriangleMesh mesh = object.raw_mesh();
+    const ModelInstance &instance = *object.instances.front();
+    mesh.transform(instance.get_matrix(), instance.is_left_handed());
+
+    const int classes = std::max(1, int(std::floor((h_max - h_min) / STEP + 1e-9)));
+    const int bins    = std::max(1, int(std::ceil(top / BIN)));
+    std::vector<double> area(size_t(classes) * (bins + 1), 0.);
+    std::vector<std::pair<double, double>> flats, up_flats;
+    std::vector<std::tuple<double, double, double>> shallow;
+    for (const stl_triangle_vertex_indices &f : mesh.its.indices) {
+        const Vec3f  &a = mesh.its.vertices[f[0]], &b = mesh.its.vertices[f[1]], &c = mesh.its.vertices[f[2]];
+        const Vec3d   n = (b - a).cross(c - a).cast<double>();
+        const double  a2 = n.norm();
+        if (a2 < 1e-12)
+            continue;
+        const double nz = std::abs(n.z()) / a2, A = 0.5 * a2;
+        const double lo = std::min({ a.z(), b.z(), c.z() }), hi = std::max({ a.z(), b.z(), c.z() });
+        if (nz >= FLAT_COS) {
+            flats.emplace_back(0.5 * (lo + hi), A);
+            if (n.z() > 0.)
+                up_flats.emplace_back(0.5 * (lo + hi), A);
+            continue;
+        }
+        if (n.z() > 0. && nz > slicing_params.shell_top_nz) {
+            shallow.emplace_back(std::max(lo - FREEZE_DEPTH, z0), hi, A);
+            continue;
+        }
+        if (n.z() < 0. && nz > slicing_params.curved_underside_nz)
+            continue;
+        double tolerated = e > 0. && nz > 1e-9 ? e / nz : std::numeric_limits<double>::max();
+        if (n.z() > 0. && tolerated < h_max)
+            tolerated = std::max(tolerated, slicing_params.road_width * std::sqrt(std::max(0., 1. - nz * nz)) / nz);
+        if (reach > 0. && n.z() < 0.) {
+            const double overhang = reach * std::sqrt(std::max(0., 1. - nz * nz)) / nz;
+            if (overhang >= h_min)
+                tolerated = std::min(tolerated, overhang);
+        }
+        if (tolerated >= h_max || hi <= 0. || lo >= top)
+            continue;
+        const int cls = std::clamp(int(std::floor((tolerated - h_min) / STEP)), 0, classes - 1);
+        const int b0 = std::clamp(int(std::max(lo, 0.) / BIN), 0, bins - 1), b1 = std::clamp(int(std::min(hi, top) / BIN), 0, bins - 1);
+        double *row = &area[size_t(cls) * (bins + 1)];
+        const double per_bin = A / (b1 - b0 + 1);
+        row[b0] += per_bin;
+        row[b1 + 1] -= per_bin;
+    }
+    std::vector<double> cum(size_t(classes + 1) * (bins + 1), 0.);
+    for (int k = 0; k < classes; ++ k) {
+        const double *row = &area[size_t(k) * (bins + 1)];
+        double       *dst = &cum[size_t(k + 1) * (bins + 1)];
+        const double *below = &cum[size_t(k) * (bins + 1)];
+        double per_bin = 0., run = 0.;
+        for (int i = 0; i < bins; ++ i) {
+            per_bin += row[i];
+            dst[i] = below[i] + run;
+            run += per_bin;
+        }
+        dst[bins] = below[bins] + run;
+    }
+    auto offending = [&](double z, double h) {
+        const int k  = std::clamp(int(std::ceil((h - h_min) / STEP - 1e-9)), 0, classes);
+        const int i0 = std::clamp(int(z / BIN), 0, bins), i1 = std::clamp(int(std::ceil((z + h) / BIN)), 0, bins);
+        const double *row = &cum[size_t(k) * (bins + 1)];
+        return row[i1] - row[i0];
+    };
+
+    std::sort(flats.begin(), flats.end());
+    std::vector<double> levels;
+    for (size_t i = 0; i < flats.size();) {
+        double A = 0., zA = 0.;
+        size_t j = i;
+        for (; j < flats.size() && flats[j].first - flats[i].first <= FLAT_MERGE; ++ j)
+            A += flats[j].second, zA += flats[j].first * flats[j].second;
+        const double z = zA / A;
+        if (A >= ADAPTIVE_AREA_TOL && z >= z0 + h_min - EPSILON && z <= top - h_min + EPSILON &&
+            (levels.empty() || z - levels.back() >= h_min))
+            levels.push_back(z);
+        i = j;
+    }
+    levels.push_back(top);
+
+    auto on_grid = [&](double z) { return std::abs((z - z0) / h_max - std::round((z - z0) / h_max)) < 1e-6; };
+    for (double level : levels) {
+        if (level >= top || std::abs((level - z0) / h_max - std::round((level - z0) / h_max)) > 1e-3)
+            continue;
+        double area = 0.;
+        for (const auto &[zf, af] : up_flats)
+            if (std::abs(zf - level) <= FLAT_MERGE)
+                area += af;
+        if (area >= ADAPTIVE_AREA_TOL)
+            shallow.emplace_back(std::max(level - FREEZE_DEPTH, z0), level, area);
+    }
+    std::sort(shallow.begin(), shallow.end());
+    std::vector<std::pair<double, double>> frozen;
+    double frozen_area = 0.;
+    for (const auto &[a, b, area] : shallow) {
+        if (!frozen.empty() && a <= frozen.back().second + h_max) {
+            frozen.back().second = std::max(frozen.back().second, b);
+            frozen_area += area;
+            continue;
+        }
+        if (!frozen.empty() && frozen_area < ADAPTIVE_AREA_TOL)
+            frozen.pop_back();
+        frozen.emplace_back(a, b);
+        frozen_area = area;
+    }
+    if (!frozen.empty() && frozen_area < ADAPTIVE_AREA_TOL)
+        frozen.pop_back();
+    for (auto &r : frozen)
+        r.first = z0 + std::floor((r.first - z0) / h_max + 1e-9) * h_max;
+    if (slicing_params.shell_top_nz < 1.5 && !frozen.empty() && frozen.front().first > z0 + EPSILON)
+        frozen.insert(frozen.begin(), { z0, frozen.front().first });
+    auto in_frozen  = [&](double z) {
+        return std::any_of(frozen.begin(), frozen.end(), [z](const auto &r) { return r.first - 1e-6 <= z && z < r.second; });
+    };
+    {
+        std::vector<double> kept;
+        for (double level : levels)
+            if (level >= top || std::none_of(frozen.begin(), frozen.end(),
+                                             [level](const auto &r) { return r.first - 1e-9 <= level && level <= r.second + 1e-9; }))
+                kept.push_back(level);
+        for (const auto &r : frozen)
+            if (const double g = z0 + std::floor((r.first - z0) / h_max + 1e-9) * h_max; g > z0 + 1e-6)
+                kept.push_back(g);
+        std::sort(kept.begin(), kept.end());
+        levels.clear();
+        for (double level : kept)
+            if (levels.empty() || level - levels.back() >= h_min - EPSILON)
+                levels.push_back(level);
+            else if (on_grid(level) && level < top)
+                levels.back() = level;
+        if (levels.back() < top - EPSILON)
+            levels.push_back(top);
+    }
+
+    double z = z0;
+    size_t next_level = 0;
+    while (z < top - EPSILON && top - z0 >= h_min) {
+        if (in_frozen(z) && on_grid(z)) {
+            profile.insert(profile.end(), { z, h_max, z + h_max, h_max });
+            z += h_max;
+            continue;
+        }
+        double h = h_max;
+        while (h > h_min + EPSILON && offending(z, h) > ADAPTIVE_AREA_TOL)
+            h -= STEP;
+        h = std::max(h, h_min);
+        while (levels[next_level] <= z + EPSILON)
+            ++ next_level;
+        double target = levels[next_level];
+        if (h >= h_max - 1e-9 && !on_grid(z)) {
+            double g = z0 + std::ceil((z - z0) / h_max - 1e-9) * h_max;
+            if (g - z < h_min - 1e-9)
+                g += h_max;
+            if (g <= target - h_min + 1e-9)
+                target = g;
+        }
+        if (const double d = target - z; d < 2. * h_max + h_min) {
+            int n = int(std::ceil(d / h - 1e-6));
+            if (d / n < h_min - EPSILON)
+                n = std::max(1, int(std::floor(d / h_min + 1e-6)));
+            if (d / n <= h_max + EPSILON)
+                h = d / n;
+            else if (target == levels[next_level] && levels[next_level] < top)
+                ++ next_level;
+        }
+        h = std::min(h, top - z);
+        profile.insert(profile.end(), { z, h, z + h, h });
+        z += h;
+    }
+    profile[profile.size() - 2] = top;
+    return profile;
+}
+
+std::vector<coordf_t> layer_height_profile_surface_error(const SlicingParameters &slicing_params, const ModelObject &object)
+{
+    if (slicing_params.shell_top_nz < 1.5) {
+        SlicingParameters flats_only   = slicing_params;
+        flats_only.curved_underside_nz = 0.;
+        return surface_error_profile(flats_only, object);
+    }
+    return surface_error_profile(slicing_params, object);
 }
 
 std::vector<double> smooth_height_profile(const std::vector<double>& profile, const SlicingParameters& slicing_params, const HeightProfileSmoothingParams& smoothing_params)
