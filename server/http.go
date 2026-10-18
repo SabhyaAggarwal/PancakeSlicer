@@ -282,7 +282,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "multiple uploads require plate JSON")
 		return
 	}
-	if err := validatePlateBounds(filepath.Join(j.Dir, "input"), req, findPreset(vendor.Machines, req.Printer), r.FormValue("plate")); err != nil {
+	if err := validatePlateBounds(filepath.Join(j.Dir, "input"), req, vendor.machines[req.Printer], r.FormValue("plate")); err != nil {
 		fail(w, 400, err.Error())
 		return
 	}

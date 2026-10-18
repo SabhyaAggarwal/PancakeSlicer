@@ -74,25 +74,35 @@ func meshVertices(file string, add func(meshPoint) error) error {
 			return err
 		}
 	}
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 4096), 4<<20)
-	for scanner.Scan() {
-		fields := strings.Fields(scanner.Text())
-		if len(fields) < 4 || (fields[0] != "v" && fields[0] != "vertex") {
-			continue
+	reader := bufio.NewReaderSize(f, 64<<10)
+	for {
+		line, err := reader.ReadSlice('\n')
+		if err == bufio.ErrBufferFull {
+			for err == bufio.ErrBufferFull {
+				_, err = reader.ReadSlice('\n')
+			}
+			line = nil
 		}
-		var p meshPoint
-		for i := range p {
-			p[i], err = strconv.ParseFloat(fields[i+1], 64)
-			if err != nil {
+		if err != nil && err != io.EOF {
+			return err
+		}
+		if fields := strings.Fields(string(line)); len(fields) >= 4 && (fields[0] == "v" || fields[0] == "vertex") {
+			var p meshPoint
+			for i := range p {
+				v, perr := strconv.ParseFloat(fields[i+1], 64)
+				if perr != nil {
+					return perr
+				}
+				p[i] = v
+			}
+			if err := add(p); err != nil {
 				return err
 			}
 		}
-		if err := add(p); err != nil {
-			return err
+		if err == io.EOF {
+			return nil
 		}
 	}
-	return scanner.Err()
 }
 
 type modelTransform [12]float64
