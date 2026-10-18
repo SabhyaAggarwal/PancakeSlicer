@@ -110,7 +110,7 @@ struct Args
 {
     std::cerr << "error: " << error << "\n"
               << "usage: nonplanar_slice_tool --printer NAME --process NAME --filament NAME [--vendor Prusa]\n"
-                 "       [--profiles DIR] [--datadir DIR] [--set key=value]... [--center X,Y]\n"
+                 "       [--profiles DIR] [--datadir DIR] [--bed-type NAME] [--set key=value]... [--center X,Y]\n"
                  "       [--config-out FILE] [--project-out FILE] [--head-out FILE] [--gcode-3mf FILE] [--json FILE]\n"
                  "       [--atom TOOLPATH] [--verify] [--explain] [--auto-orient | --orient-only] [--save-3mf PROJECT.3mf]\n"
                  "       [--layer-profile adaptive:QUALITY | ramp:H_BOTTOM:H_TOP | range:DEPTH:H] [--calib-head ID]\n"
@@ -135,6 +135,13 @@ Args parse_args(int argc, char **argv)
         if (arg == "--printer") a.printer = next();
         else if (arg == "--process") a.process = next();
         else if (arg == "--filament") a.filaments.push_back(next());
+        else if (arg == "--bed-type") {
+            const std::string name = next();
+            BedType bed_type;
+            if (!ConfigOptionEnum<BedType>::from_string(name, bed_type) || bed_type <= btDefault || bed_type >= btCount)
+                usage("--bed-type expects a plate name, e.g. Textured PEI Plate or Cool Plate");
+            a.overrides.emplace_back("curr_bed_type", name);
+        }
         else if (arg == "--colours") {
             std::string list = next();
             for (size_t pos = 0; pos <= list.size();) {
@@ -971,6 +978,14 @@ int main(int argc, char **argv)
         PresetBundle       bundle;
         DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
         config.apply(resolve(bundle, args, "machine", Preset::TYPE_PRINTER, args.printer));
+        const std::string default_bed = !config.opt_string("default_bed_type").empty() ? config.opt_string("default_bed_type") :
+            vendor_json_value({fs::path(args.profiles) / args.vendor / "machine"}, config.opt_string("printer_model"), "default_bed_type");
+        if (args.vendor == "BBL" || config.opt_bool("support_multi_bed_types") || !default_bed.empty()) {
+            Preset printer(Preset::TYPE_PRINTER, args.printer);
+            printer.config = config;
+            printer.config.set_key_value("default_bed_type", new ConfigOptionString(default_bed));
+            config.set_key_value("curr_bed_type", new ConfigOptionEnum<BedType>(printer.get_default_bed_type(&bundle)));
+        }
         config.apply(resolve(bundle, args, "process", Preset::TYPE_PRINT, args.process));
         apply_filaments(bundle, args, config);
         Model model;
@@ -991,6 +1006,11 @@ int main(int argc, char **argv)
                 config = DynamicPrintConfig::full_print_config();
                 config.apply(project_config);
                 project_settings = true;
+            }
+            if (plates.size() == 1 && plates.front() != nullptr) {
+                const auto *bed_type = plates.front()->config.option<ConfigOptionEnum<BedType>>("curr_bed_type");
+                if (bed_type != nullptr && bed_type->value > btDefault && bed_type->value < btCount)
+                    config.apply_only(plates.front()->config, {"curr_bed_type"});
             }
             for (ModelObject *object : model.objects)
                 for (ModelInstance *instance : object->instances)
