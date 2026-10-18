@@ -12,6 +12,8 @@ export interface ProjectItem {
   id: string;
   name: string;
   extruder: number;
+  printable: boolean;
+  settings: Config;
   origin: [number, number, number];
 }
 
@@ -81,14 +83,17 @@ function parseModel(text: string): { objects: Map<string, Obj>; build: { objecti
   return { objects, build };
 }
 
-function parseSettings(text: string | undefined): Map<string, { name?: string; extruder?: number }> {
-  const out = new Map<string, { name?: string; extruder?: number }>();
+function parseSettings(text: string | undefined): Map<string, { name?: string; extruder?: number; settings: Config }> {
+  const out = new Map<string, { name?: string; extruder?: number; settings: Config }>();
   if (!text) return out;
   const re = /<object\s+id="([^"]+)">([\s\S]*?)<\/object>/g;
   for (let m; (m = re.exec(text)); ) {
     const own = m[2].split(/<part\b/)[0];
     const meta = (key: string) => new RegExp(`<metadata\\s+key="${key}"\\s+value="([^"]*)"`).exec(own)?.[1];
-    out.set(m[1], { name: meta('name'), extruder: Number(meta('extruder')) || undefined });
+    const settings: Config = {};
+    for (const v of own.matchAll(/<metadata\s+key="([^"]+)"\s+value="([^"]*)"/g))
+      if (v[1] !== 'name' && v[1] !== 'extruder') settings[v[1]] = unescapeXml(v[2]);
+    out.set(m[1], { name: meta('name'), extruder: Number(meta('extruder')) || undefined, settings });
   }
   return out;
 }
@@ -129,11 +134,13 @@ export async function readProject(file: File): Promise<{ items: ProjectItem[]; m
     for (const c of o.components) collect(c.path ?? path, c.objectid, compose(c.transform, t), out, depth + 1);
   };
 
-  const build = root.build.filter((b) => b.printable);
+  const build = root.build;
   const items = build.map((b, i) => {
     const meta = settings.get(b.objectid);
     return {
       id: b.objectid,
+      printable: b.printable,
+      settings: meta?.settings ?? {},
       name: unescapeXml(meta?.name ?? root.objects.get(b.objectid)?.name ?? `Object ${i + 1}`),
       extruder: meta?.extruder ?? 1,
       origin: [b.transform[9], b.transform[10], b.transform[11]] as [number, number, number],

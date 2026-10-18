@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { LayerRec } from '../preview/format';
-import { filamentColor } from '../plater/Plater3D';
+import { filamentColor } from '../plater/filamentColor';
 import { effectiveConfig, getState, setEvents, useStore, type LayerEvent } from '../state/store';
 import type { SliderTick } from './PreviewSliders';
 

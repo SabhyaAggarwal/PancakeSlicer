@@ -1,5 +1,5 @@
 import type { PresetType } from '../api/types';
-import { compatible, getState, resolvePreset, selectPrinter, setState, useStore } from '../state/store';
+import { compatible, getState, presetEdits, resolvePreset, selectPrinter, setState, useStore } from '../state/store';
 
 export function PresetCombo({ type, slot = 0, className }: { type: PresetType; slot?: number; className?: string }) {
   const value = useStore((s) => (type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot] ?? ''));
@@ -7,7 +7,7 @@ export function PresetCombo({ type, slot = 0, className }: { type: PresetType; s
   const machines = useStore((s) => s.machines);
   useStore((s) => s.processes.length + s.filaments.length);
   const userPresets = useStore((s) => s.userPresets);
-  const dirty = useStore((s) => Object.keys(s.dirty[type]).length > 0);
+  const dirty = useStore((s) => Object.keys(presetEdits(s, type, slot)).length > 0);
 
   const s = getState();
   const base = userPresets.find((u) => u.type === 'machine' && u.name === printer)?.inherits ?? printer;
@@ -17,7 +17,7 @@ export function PresetCombo({ type, slot = 0, className }: { type: PresetType; s
   const user = userPresets.filter((u) => u.type === type && (type === 'machine' || sysNames.has(u.inherits))).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
 
   const onChange = (name: string) => {
-    if (dirty && !window.confirm('The current preset has unsaved changes. Discard them?')) return;
+    if (type !== 'filament' && dirty && !window.confirm('The current preset has unsaved changes. Discard them?')) return;
     if (type === 'machine') {
       selectPrinter(name);
       localStorage.setItem('orca.printer', name);
@@ -26,7 +26,7 @@ export function PresetCombo({ type, slot = 0, className }: { type: PresetType; s
       return;
     }
     setState((st) => ({
-      dirty: { ...st.dirty, [type]: {} },
+      dirty: type === 'process' ? { ...st.dirty, process: {} } : st.dirty,
       projectPresets: st.projectPresets && (type === 'process'
         ? { ...st.projectPresets, process: {} }
         : { ...st.projectPresets, filaments: st.projectPresets.filaments.map((f, i) => i === slot ? {} : f) }),
@@ -43,8 +43,7 @@ export function PresetCombo({ type, slot = 0, className }: { type: PresetType; s
         <optgroup label="User presets">
           {user.map((u) => (
             <option key={u.name} value={u.name}>
-              {u.name === value && dirty ? '* ' : ''}
-              {u.name}
+              {u.name}{u.name === value && dirty ? ' (modified)' : ''}
             </option>
           ))}
         </optgroup>
@@ -52,8 +51,7 @@ export function PresetCombo({ type, slot = 0, className }: { type: PresetType; s
       <optgroup label="System presets">
         {system.map((p) => (
           <option key={p.name} value={p.name}>
-            {p.name === value && dirty ? '* ' : ''}
-            {p.name}
+            {p.name}{p.name === value && dirty ? ' (modified)' : ''}
           </option>
         ))}
       </optgroup>

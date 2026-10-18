@@ -39,7 +39,7 @@ export interface JobStatus {
   stage?: string;
   error?: string;
   record?: Record<string, unknown>;
-  output?: 'gcode' | 'gcode.3mf';
+  output?: 'gcode' | 'gcode.3mf' | '3mf';
   filename?: string;
 }
 
@@ -54,7 +54,7 @@ export interface PlateJson {
     file: string;
     name: string;
     extruder?: number;
-    instances: { x: number; y: number; rot: number }[];
+    instances: { x: number; y: number; rot: number; z?: number; printable?: boolean }[];
     settings?: Record<string, string>;
   }[];
 }
@@ -67,6 +67,7 @@ export interface JobRequest {
   filaments: string[];
   overrides: Config;
   plate?: PlateJson;
+  project_instances?: { printable: boolean }[];
   events: string[];
-  output: 'gcode' | 'gcode.3mf';
+  output: 'gcode' | 'gcode.3mf' | '3mf';
 }

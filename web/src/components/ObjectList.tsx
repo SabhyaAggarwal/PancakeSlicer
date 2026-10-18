@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { OPTIONS, useTab } from '../options';
-import { getState, setState, updateObject, useStore } from '../state/store';
-import { filamentColor } from '../plater/Plater3D';
+import { getState, setState, updateObject, updateInstance, togglePrintable, useStore } from '../state/store';
+import { filamentColor } from '../plater/filamentColor';
+import { instanceBox } from '../plater/geometry';
 import { Icon } from './Icon';
 
 interface SliceRecord {
@@ -15,31 +16,60 @@ export function ObjectList() {
   const slots = useStore((s) => s.filamentSlots);
   const project = useStore((s) => s.project);
   const record = useStore((s) => (s.job.state === 'done' && !s.job.stale ? (s.job.status?.record as SliceRecord | undefined) : undefined));
+  const [menu, setMenu] = useState<{ x: number; y: number; object: number; instance?: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const close = (e: MouseEvent) => { if (!menuRef.current?.contains(e.target as Node)) setMenu(null); };
+    const escape = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenu(null); };
+    window.addEventListener('mousedown', close);
+    window.addEventListener('keydown', escape);
+    return () => { window.removeEventListener('mousedown', close); window.removeEventListener('keydown', escape); };
+  }, [menu]);
+  const printableButton = (object: number, printable: boolean, instance?: number) => (
+    <button className="ol-printable" aria-label="Printable" aria-pressed={printable}
+      title="Click the icon to toggle printable properties of the object"
+      onClick={(e) => { e.stopPropagation(); togglePrintable(object, instance); }}>
+      <Icon name={printable ? 'check_on' : 'check_off_focused'} size={16} />
+    </button>
+  );
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState<Record<number, boolean>>({});
   const s = getState();
+  const menuPrintable = objects.find((o) => o.id === menu?.object)?.instances.find((i) => menu?.instance === undefined || i.id === menu.instance)?.printable !== false;
   const shown = objects.filter((o) => o.name.toLowerCase().includes(query.toLowerCase()));
 
   return (
     <div className="object-list">
+      {menu && <div ref={menuRef} role="menu" className="menu-pop ol-menu" style={{ left: Math.min(menu.x, window.innerWidth - 180), top: Math.min(menu.y, window.innerHeight - 50) }}>
+        <button className="menu-item" role="menuitemcheckbox"
+          aria-checked={menuPrintable}
+          onClick={() => { togglePrintable(menu.object, menu.instance); setMenu(null); }}>
+          <span>{menuPrintable ? '✓ ' : '　'}Printable</span><span>V</span>
+        </button>
+      </div>}
       <div className="search-bar">
         <Icon name="search" size={16} />
         <input placeholder="Search plate, object and part." value={query} onChange={(e) => setQuery(e.target.value)} />
       </div>
       <div className="ol-header">
-        <span>Name</span>
+        <span className="ol-name">Name</span>
+        <span className="ol-status" />
         <span className="ol-fila">Fila.</span>
+        <span className="ol-status" />
       </div>
       <div className="ol-body">
         {shown.map((o) => {
           const objSelected = selected?.object === o.id;
           const multi = o.instances.length > 1;
+          const sinking = !o.project?.placeholder && o.instances.some((i) => { const b = instanceBox(o, i); return b.min.z < -0.001 && b.max.z >= -0.001; });
           const nSettings = Object.keys(o.settings).length;
           return (
             <div key={o.id}>
               <div
                 className={`ol-row ${objSelected ? 'selected' : ''}`}
-                onClick={() => setState({ selected: { object: o.id, instance: o.instances[0].id } })}
+                onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, object: o.id }); }}
+                onClick={() => setState({ selected: { object: o.id, instance: o.instances[0].id, allInstances: true } })}
               >
                 <span className="ol-name">
                   {multi ? (
@@ -65,6 +95,7 @@ export function ObjectList() {
                     </span>
                   )}
                 </span>
+                {printableButton(o.id, o.instances.some((i) => i.printable !== false))}
                 <select
                   className="ol-fila-select"
                   disabled={!!o.project}
@@ -80,11 +111,15 @@ export function ObjectList() {
                     </option>
                   ))}
                 </select>
+                <span className="ol-status">{sinking && <button className="ol-sinking" title="Click the icon to shift this object to the bed"
+                  onClick={(e) => { e.stopPropagation(); o.instances.forEach((i) => updateInstance(o.id, i.id, { z: 0 })); }} disabled={!!o.project}>
+                  <Icon name="objlist_sinking" size={16} />
+                </button>}</span>
               </div>
               {nSettings > 0 && (
                 <div
                   className={`ol-row ol-child ${objSelected && getState().processScope === 'objects' ? 'selected' : ''}`}
-                  onClick={() => setState({ selected: { object: o.id, instance: o.instances[0].id }, processScope: 'objects' })}
+                  onClick={() => setState({ selected: { object: o.id, instance: o.instances[0].id, allInstances: true }, processScope: 'objects' })}
                   title={Object.keys(o.settings).join(', ')}
                 >
                   <Icon name="cog" size={14} />
@@ -100,9 +135,12 @@ export function ObjectList() {
                     <div
                       key={inst.id}
                       className={`ol-row ol-child2 ${selected?.instance === inst.id ? 'selected' : ''}`}
+                      onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, object: o.id, instance: inst.id }); }}
                       onClick={() => setState({ selected: { object: o.id, instance: inst.id } })}
                     >
-                      Instance {k + 1}
+                      <span className="ol-name">Instance {k + 1}</span>
+                      {printableButton(o.id, inst.printable !== false, inst.id)}
+                      <span className="ol-fila" /><span className="ol-status" />
                     </div>
                   ))}
                 </>

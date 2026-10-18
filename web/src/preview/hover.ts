@@ -35,7 +35,7 @@ export interface HoverInfo {
 export class NonplanarHover {
   private grid: Grid | null = null;
 
-  pick(d: PreviewData, camera: THREE.PerspectiveCamera, w: number, h: number, range: [number, number], hiddenRoles: Set<number>, px: number, py: number): number {
+  pick(d: PreviewData, camera: THREE.PerspectiveCamera | THREE.OrthographicCamera, w: number, h: number, range: [number, number], hiddenRoles: Set<number>, px: number, py: number): number {
     const m = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     const key = `${m.elements.join(',')}|${w}|${h}|${range}|${[...hiddenRoles].join(',')}|${d.loaded}`;
     if (this.grid?.key !== key) this.grid = build(d, m, w, h, range, hiddenRoles, key);

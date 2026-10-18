@@ -70,7 +70,8 @@ export function PreviewView() {
     };
   }, []);
 
-  const machine = useMemo(() => printerPreset(getState()), [printer, machines]);
+  const machineEdits = useStore((s) => s.dirty.machine);
+  const machine = useMemo(() => printerPreset(getState()), [printer, machines, machineEdits]);
   useEffect(() => sceneRef.current?.setBed(machine), [machine]);
   useEffect(() => sceneRef.current?.setShells(objects, ui.shells), [objects, ui.shells]);
 
@@ -203,9 +204,7 @@ export function PreviewView() {
       } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         const d = e.key === 'ArrowRight' ? 1 : -1;
         setMovePos((p) => Math.max(1, Math.min(topMoves, (p ?? topMoves) + d)));
-      } else if (e.key === '0') sceneRef.current?.view('iso');
-      else if (e.key === '1') sceneRef.current?.view('top');
-      else if (e.key === '3') sceneRef.current?.view('front');
+      }
       else return;
       e.preventDefault();
     };

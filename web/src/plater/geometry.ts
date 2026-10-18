@@ -138,14 +138,14 @@ export function objectMatrix(o: PlateObject): THREE.Matrix4 {
 export function instanceMatrix(o: PlateObject, inst: Instance): THREE.Matrix4 {
   const m = objectMatrix(o).premultiply(new THREE.Matrix4().makeRotationZ(inst.rotZ * DEG));
   const b = transformedBox(o.geometry, m, `${o.rotX},${o.rotY},${o.scale},${inst.rotZ}`);
-  return m.premultiply(new THREE.Matrix4().makeTranslation(inst.x - (b.min.x + b.max.x) / 2, inst.y - (b.min.y + b.max.y) / 2, 0));
+  return m.premultiply(new THREE.Matrix4().makeTranslation(inst.x - (b.min.x + b.max.x) / 2, inst.y - (b.min.y + b.max.y) / 2, inst.z ?? 0));
 }
 
 export function instanceBox(o: PlateObject, inst: Instance): THREE.Box3 {
   const m = objectMatrix(o).premultiply(new THREE.Matrix4().makeRotationZ(inst.rotZ * DEG));
   const b = transformedBox(o.geometry, m, `${o.rotX},${o.rotY},${o.scale},${inst.rotZ}`).clone();
   const c = new THREE.Vector3((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, 0);
-  return b.translate(new THREE.Vector3(inst.x, inst.y, 0).sub(c));
+  return b.translate(new THREE.Vector3(inst.x, inst.y, inst.z ?? 0).sub(c));
 }
 
 export function objectSize(o: PlateObject): THREE.Vector3 {
@@ -177,7 +177,7 @@ export async function plateJson(objects: PlateObject[]): Promise<{ plate: PlateJ
       file,
       name: o.name.replace(/\.(stl|obj)$/i, ''),
       extruder: o.extruder,
-      instances: o.instances.map((i) => ({ x: round(i.x), y: round(i.y), rot: round(i.rotZ) })),
+      instances: o.instances.map((i) => ({ x: round(i.x), y: round(i.y), rot: round(i.rotZ), z: round(i.z ?? 0), printable: i.printable !== false })),
       ...(Object.keys(o.settings).length
         ? { settings: Object.fromEntries(Object.entries(o.settings).map(([k, v]) => [k, toolValue(k, v)])) }
         : {}),
@@ -269,6 +269,7 @@ export function outsideBed(objects: PlateObject[], area: THREE.Vector2[], height
   };
   for (const o of objects)
     for (const i of o.instances) {
+      if (i.printable === false) continue;
       const b = instanceBox(o, i);
       const corners = [[b.min.x, b.min.y], [b.max.x, b.min.y], [b.max.x, b.max.y], [b.min.x, b.max.y]];
       if (b.max.z > height + 1e-3 || !corners.every(([x, y]) => inside(x, y))) out.add(i.id);

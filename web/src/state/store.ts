@@ -9,6 +9,8 @@ export interface Instance {
   x: number;
   y: number;
   rotZ: number;
+  z?: number;
+  printable?: boolean;
 }
 
 export interface PlateObject {
@@ -57,7 +59,8 @@ export interface State {
   printer: string;
   process: string;
   filamentSlots: string[];
-  dirty: Record<PresetType, Config>;
+  dirty: Record<'machine' | 'process', Config>;
+  filamentEdits: Record<string, Config>;
   projectPresets: { machine: Config; process: Config; filaments: Config[] } | null;
   projectNotice: string | null;
   bedType: string;
@@ -65,7 +68,7 @@ export interface State {
   tab: MainTab;
   dialog: { type: 'machine' | 'filament'; slot: number } | null;
   objects: PlateObject[];
-  selected: { object: number; instance: number } | null;
+  selected: { object: number; instance: number; allInstances?: boolean } | null;
   gizmo: Gizmo;
   processScope: 'global' | 'objects';
   slotColours: (string | undefined)[];
@@ -74,6 +77,7 @@ export interface State {
   flushDialog: boolean;
   events: LayerEvent[];
   project: File | null;
+  projectName: string | null;
   job: JobView;
   toast: string | null;
 }
@@ -88,7 +92,8 @@ let state: State = {
   printer: '',
   process: '',
   filamentSlots: [],
-  dirty: { machine: {}, process: {}, filament: {} },
+  dirty: { machine: {}, process: {} },
+  filamentEdits: {},
   projectPresets: null,
   projectNotice: null,
   bedType: '',
@@ -105,6 +110,7 @@ let state: State = {
   flushDialog: false,
   events: [],
   project: null,
+  projectName: null,
   job: { state: 'idle', pct: 0, stage: '' },
   toast: null,
 };
@@ -172,15 +178,21 @@ export function effectiveConfig(s: State, type: PresetType, slot = 0): Config {
   const name = type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot];
   const { config } = resolvePreset(s, type, name ?? '');
   const project = type === 'filament' ? s.projectPresets?.filaments[slot] : s.projectPresets?.[type];
-  return { ...config, ...project, ...s.dirty[type] };
+  return { ...config, ...project, ...presetEdits(s, type, slot) };
 }
 
 export function compatible(s: State, type: 'process' | 'filament', printer = s.printer): SystemPreset[] {
   return listFor(s, type).filter((p) => !p.compatible_printers?.length || p.compatible_printers.includes(printer));
 }
 
+const printerCache = new WeakMap<State, SystemPreset>();
 export function printerPreset(s: State): SystemPreset | undefined {
-  return resolvePreset(s, 'machine', s.printer).base;
+  if (printerCache.has(s)) return printerCache.get(s);
+  const { base } = resolvePreset(s, 'machine', s.printer);
+  if (!base) return undefined;
+  const preset = { ...base, config: effectiveConfig(s, 'machine') };
+  printerCache.set(s, preset);
+  return preset;
 }
 
 export function selectPrinter(name: string) {
@@ -210,7 +222,8 @@ export function selectPrinter(name: string) {
       process,
       filamentSlots,
       bedType: base?.default_bed_type || String(base?.config.curr_bed_type ?? ''),
-      dirty: { machine: {}, process: {}, filament: {} },
+      dirty: { machine: {}, process: {} },
+      filamentEdits: {},
       job: markStale(s.job),
     };
   });
@@ -218,35 +231,62 @@ export function selectPrinter(name: string) {
 
 const markStale = (job: JobView): JobView => (job.state === 'done' ? { ...job, stale: true } : job);
 
-export function setOption(type: PresetType, key: string, value: ConfigValue) {
-  setState((s) => ({ dirty: { ...s.dirty, [type]: { ...s.dirty[type], [key]: value } }, job: markStale(s.job) }));
+const EMPTY_EDITS: Config = {};
+export function presetEdits(s: State, type: PresetType, slot = 0): Config {
+  return type === 'filament' ? s.filamentEdits[s.filamentSlots[slot]] ?? EMPTY_EDITS : s.dirty[type];
 }
 
-export function resetOption(type: PresetType, key: string) {
+export function setOption(type: PresetType, key: string, value: ConfigValue, slot = 0) {
   setState((s) => {
-    const d = { ...s.dirty[type] };
-    delete d[key];
-    return { dirty: { ...s.dirty, [type]: d } };
+    const edits = { ...presetEdits(s, type, slot), [key]: value };
+    return {
+      ...(type === 'filament' ? { filamentEdits: { ...s.filamentEdits, [s.filamentSlots[slot]]: edits } }
+        : { dirty: { ...s.dirty, [type]: edits } }),
+      job: markStale(s.job),
+    };
   });
 }
 
-export async function saveUserPreset(type: PresetType, name: string) {
+export function resetOption(type: PresetType, key: string, slot = 0) {
+  setState((s) => {
+    const edits = { ...presetEdits(s, type, slot) };
+    delete edits[key];
+    return {
+      ...(type === 'filament' ? { filamentEdits: { ...s.filamentEdits, [s.filamentSlots[slot]]: edits } }
+        : { dirty: { ...s.dirty, [type]: edits } }),
+      job: markStale(s.job),
+    };
+  });
+}
+
+export async function saveUserPreset(type: PresetType, name: string, slot = 0) {
   const s = getState();
-  const current = type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[0];
+  const current = type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot];
   const { base, user } = resolvePreset(s, type, current);
+  const project = type === 'filament' ? s.projectPresets?.filaments[slot] : s.projectPresets?.[type];
   const preset: UserPreset = {
-    name,
-    type,
-    inherits: base?.name ?? current,
-    overrides: { ...(user?.overrides ?? {}), ...s.dirty[type] },
+    name, type, inherits: base?.name ?? current,
+    overrides: { ...(user?.overrides ?? {}), ...project, ...presetEdits(s, type, slot) },
   };
   await s.api!.saveUserPreset(preset);
-  const userPresets = [...s.userPresets.filter((u) => !(u.type === type && u.name === name)), preset];
   setState((st) => {
-    const patch: Partial<State> = { userPresets, dirty: { ...st.dirty, [type]: {} } };
-    if (type === 'machine') patch.printer = name;
-    else if (type === 'process') patch.process = name;
-    else patch.filamentSlots = [name, ...st.filamentSlots.slice(1)];
+    const patch: Partial<State> = {
+      userPresets: [...st.userPresets.filter((u) => !(u.type === type && u.name === name)), preset],
+    };
+    if (type === 'filament') {
+      const filamentEdits = { ...st.filamentEdits };
+      delete filamentEdits[current];
+      patch.filamentEdits = filamentEdits;
+      patch.filamentSlots = st.filamentSlots.map((f) => f === current ? name : f);
+      if (st.projectPresets) patch.projectPresets = { ...st.projectPresets,
+        filaments: st.projectPresets.filaments.map((c, i) => i === slot ? {}
+          : st.filamentSlots[i] === current ? { ...c, ...presetEdits(s, type, slot) } : c) };
+    } else {
+      patch.dirty = { ...st.dirty, [type]: {} };
+      if (type === 'machine') patch.printer = name;
+      else patch.process = name;
+      if (st.projectPresets) patch.projectPresets = { ...st.projectPresets, [type]: {} };
+    }
     return patch;
   });
 }
@@ -283,7 +323,7 @@ export function removeSelected() {
 }
 
 export function deleteAll() {
-  setState((s) => ({ objects: [], selected: null, project: null, projectMaterials: null, projectPresets: null, projectNotice: null, job: markStale(s.job) }));
+  setState((s) => ({ objects: [], selected: null, project: null, projectName: null, projectMaterials: null, projectPresets: null, projectNotice: null, job: markStale(s.job) }));
 }
 
 export function setObjectOption(id: number, key: string, value: ConfigValue) {
@@ -310,3 +350,10 @@ export function setEvents(events: LayerEvent[]) {
 }
 
 export { markStale };
+
+export function togglePrintable(objectId: number, instanceId?: number) {
+  const o = state.objects.find((o) => o.id === objectId);
+  if (!o) return;
+  const printable = (o.instances.find((i) => i.id === instanceId) ?? o.instances[0]).printable === false;
+  updateObject(objectId, { instances: o.instances.map((i) => instanceId === undefined || i.id === instanceId ? { ...i, printable } : i) });
+}

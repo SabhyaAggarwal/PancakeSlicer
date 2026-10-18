@@ -146,8 +146,8 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	if req.Output == "" {
 		req.Output = "gcode"
 	}
-	if req.Output != "gcode" && req.Output != "gcode.3mf" {
-		fail(w, 400, "output must be gcode or gcode.3mf")
+	if req.Output != "gcode" && req.Output != "gcode.3mf" && req.Output != "3mf" {
+		fail(w, 400, "output must be gcode, gcode.3mf or 3mf")
 		return
 	}
 	if req.Vendor == "" {
@@ -259,7 +259,8 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if raw := r.FormValue("plate"); raw != "" {
+	rawPlate := r.FormValue("plate")
+	if raw := rawPlate; raw != "" {
 		var plate map[string]json.RawMessage
 		var objects []map[string]json.RawMessage
 		if json.Unmarshal([]byte(raw), &plate) != nil || json.Unmarshal(plate["objects"], &objects) != nil || len(objects) == 0 {
@@ -273,6 +274,15 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		if req.Output != "3mf" {
+			filtered, err := platePrintableWorkaround([]byte(raw), "")
+			if err != nil {
+				fail(w, 400, err.Error())
+				return
+			}
+			raw = string(filtered)
+			rawPlate = raw
+		}
 		if err := os.WriteFile(filepath.Join(j.Dir, "input", "plate.json"), []byte(raw), 0600); err != nil {
 			fail(w, 500, err.Error())
 			return
@@ -281,6 +291,21 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	} else if len(files) != 1 {
 		fail(w, 400, "multiple uploads require plate JSON")
 		return
+	}
+	if raw := r.FormValue("project_instances"); raw != "" {
+		if req.Plate || len(req.Files) != 1 || !strings.EqualFold(filepath.Ext(req.Files[0]), ".3mf") {
+			fail(w, 400, "project_instances requires one 3MF project")
+			return
+		}
+		var instances []projectInstance
+		if json.Unmarshal([]byte(raw), &instances) != nil || len(instances) == 0 {
+			fail(w, 400, "project_instances needs a non-empty array")
+			return
+		}
+		if err := patchProject(filepath.Join(j.Dir, "input", req.Files[0]), instances, false); err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
 	}
 	if !req.Plate && strings.EqualFold(filepath.Ext(req.Files[0]), ".3mf") {
 		machine := vendor.machines[req.Printer]
@@ -298,7 +323,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		}
 		req.Overrides = append(selected, req.Overrides...)
 	}
-	if err := validatePlateBounds(filepath.Join(j.Dir, "input"), req, vendor.machines[req.Printer], r.FormValue("plate")); err != nil {
+	if err := validatePlateBounds(filepath.Join(j.Dir, "input"), req, vendor.machines[req.Printer], rawPlate); req.Output != "3mf" && err != nil {
 		fail(w, 400, err.Error())
 		return
 	}

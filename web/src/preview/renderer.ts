@@ -401,7 +401,7 @@ export class SegmentRenderer {
     this.renderer.resetState();
   }
 
-  render(camera: THREE.PerspectiveCamera, state: DrawState, viewportHeight: number) {
+  render(camera: THREE.PerspectiveCamera | THREE.OrthographicCamera, state: DrawState, viewportHeight: number) {
     const d = this.data;
     if (!d || !this.blocks.length) return;
     const t0 = performance.now();
@@ -434,7 +434,7 @@ export class SegmentRenderer {
 
     const frustum = new THREE.Frustum().setFromProjectionMatrix(
       new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
-    const k = (2 * Math.tan((camera.fov * Math.PI) / 360)) / Math.max(1, viewportHeight);
+    const k = camera instanceof THREE.PerspectiveCamera ? (2 * Math.tan((camera.fov * Math.PI) / 360)) / Math.max(1, viewportHeight) : 0;
     const [r0, r1] = state.range;
     const stats: FrameStats = { blocks: 0, culled: 0, lodBlocks: 0, segments: 0, cpuMs: 0 };
     let lodMode = false, ribbonMode = false;
@@ -450,7 +450,7 @@ export class SegmentRenderer {
       if (!frustum.intersectsBox(b.box)) { ++stats.culled; continue; }
       ++stats.blocks;
       const lodRange = d.lodBlocks.length > bi * 2 + 1 ? [d.lodBlocks[bi * 2], d.lodBlocks[bi * 2 + 1]] : null;
-      const far = this.lodEnabled && b.box.distanceToPoint(camera.position) * k >= this.lodPixel;
+      const far = this.lodEnabled && (camera instanceof THREE.OrthographicCamera ? (camera.top - camera.bottom) / camera.zoom / Math.max(1, viewportHeight) : b.box.distanceToPoint(camera.position) * k) >= this.lodPixel;
       const merged = far && lodRange != null && s0 === b.first && s1 === b.end;
       if (far !== ribbonMode) {
         gl.bindVertexArray(far ? this.ribbonVao : this.vao);

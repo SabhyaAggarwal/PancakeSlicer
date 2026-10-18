@@ -158,7 +158,7 @@ type namedBounds struct {
 	box  meshBounds
 }
 
-func projectBounds(file string) ([]namedBounds, error) {
+func projectBounds(file string, includeNonPrintable ...bool) ([]namedBounds, error) {
 	z, err := zip.OpenReader(file)
 	if err != nil {
 		return nil, err
@@ -285,7 +285,7 @@ func projectBounds(file string) ([]namedBounds, error) {
 	}
 	out := []namedBounds{}
 	for _, item := range m.Items {
-		if item.Printable == "0" {
+		if item.Printable == "0" && (len(includeNonPrintable) == 0 || !includeNonPrintable[0]) {
 			continue
 		}
 		t, err := transformValue(item.Transform)

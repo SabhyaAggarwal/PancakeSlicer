@@ -25,6 +25,7 @@ const asText = (v: unknown): string => v == null ? '' : Array.isArray(v) ? v.map
 export const Field = memo(function Field(props: {
   optKey: string;
   type: PresetType;
+  slot?: number;
   value: ConfigValue | undefined;
   systemValue: ConfigValue | undefined;
   dirty: boolean;
@@ -38,6 +39,7 @@ export const Field = memo(function Field(props: {
   onReset?: (key: string) => void;
   resetTitle?: string;
   extra?: React.ReactNode;
+  widget?: React.ReactNode;
 }) {
   const [key, idx] = splitKey(props.optKey);
   const baseDef = OPTIONS[key];
@@ -47,8 +49,8 @@ export const Field = memo(function Field(props: {
   const current = props.value === undefined ? undefined : normalizeConfigValue(key, props.value);
   const system = props.systemValue === undefined ? undefined : normalizeConfigValue(key, props.systemValue);
   const value = elementOf(current ?? (def.nullable ? undefined : def.default as ConfigValue | undefined), idx, vector);
-  const set = props.onSet ?? ((k: string, v: ConfigValue) => setOption(props.type, k, v));
-  const reset = props.onReset ?? ((k: string) => resetOption(props.type, k));
+  const set = props.onSet ?? ((k: string, v: ConfigValue) => setOption(props.type, k, v, props.slot));
+  const reset = props.onReset ?? ((k: string) => resetOption(props.type, k, props.slot));
   const commit = (el: ConfigValue) => {
     const next = normalizeConfigValue(key, vector ? withElement(current ?? system ?? def.default as ConfigValue, idx, el) : el);
     if (system !== undefined && toolValue(key, next) === toolValue(key, system) && !props.onSet) reset(key);
@@ -69,7 +71,7 @@ export const Field = memo(function Field(props: {
         {label}
       </span>
       <fieldset className="opt-field" disabled={props.disabled || (def.nullable && !checked)}>
-        <Widget def={def} value={def.nullable && !checked ? fallback : value} onCommit={commit} />
+        {props.widget ?? <Widget def={def} value={def.nullable && !checked ? fallback : value} onCommit={commit} />}
         {def.sidetext && <span className="opt-side">{def.sidetext}</span>}
       </fieldset>
       <span className="opt-undo">

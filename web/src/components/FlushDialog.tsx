@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Config } from '../api/types';
 import { calcFlushingVolumes, MAX_FLUSH_VOLUME, minFlushVolumes, MULTIPLIER_RANGE, parseColour, predictorMinFlush } from '../flush';
 import { OPTIONS } from '../options';
-import { filamentColor } from '../plater/Plater3D';
+import { filamentColor } from '../plater/filamentColor';
 import { effectiveConfig, markStale, setState, useStore, type State } from '../state/store';
 
 const TYPICAL_MAX_FLUSH_VOLUME = 900;

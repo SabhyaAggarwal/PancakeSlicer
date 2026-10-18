@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import type { SystemPreset } from '../api/types';
+import { bedAsset } from './bed-assets';
 import { bedBounds, parsePoints } from './geometry';
 
 const stlCache = new Map<string, Promise<THREE.BufferGeometry | null>>();
@@ -82,13 +83,15 @@ export function buildBed(machine: SystemPreset | undefined, onReady: () => void)
   group.add(outline);
 
   const vendor = machine?.vendor ?? '';
-  if (machine?.bed_model) {
-    void loadStl(`/profiles/${vendor}/${machine.bed_model}`).then((g) => {
+  const customModel = String(machine?.config.bed_custom_model ?? '');
+  const customTexture = String(machine?.config.bed_custom_texture ?? '');
+  if (customModel || machine?.bed_model) {
+    void loadStl(customModel ? bedAsset(customModel) : `/profiles/${vendor}/${machine!.bed_model}`).then((g) => {
       if (!g) return;
       g.computeBoundingBox();
       const bb = g.boundingBox!;
       const model = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0x3c3f40 }));
-      const bbl = machine.bed_model!.startsWith('bbl-3dp-');
+      const bbl = !customModel && !!machine?.bed_model?.startsWith('bbl-3dp-');
       const c = bedBounds(pts).center;
       model.position.set(bbl ? 0 : c.x, bbl ? 0 : c.y, -bb.max.z - 0.03);
       group.add(model);
@@ -103,8 +106,8 @@ export function buildBed(machine: SystemPreset | undefined, onReady: () => void)
       onReady();
     });
   }
-  if (machine?.bed_texture) {
-    void loadSvgTexture(`/profiles/${vendor}/${machine.bed_texture}`).then((t) => {
+  if (customTexture || machine?.bed_texture) {
+    void loadSvgTexture(customTexture ? bedAsset(customTexture) : `/profiles/${vendor}/${machine!.bed_texture}`).then((t) => {
       if (!t) return;
       texMat.map = t;
       texMat.color.set(0xffffff);

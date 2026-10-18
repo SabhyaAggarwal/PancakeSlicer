@@ -1,27 +1,18 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { CameraViews } from './CameraViews';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
-import { effectiveConfig, getState, printerPreset, setState, subscribeStore, updateInstance, updateObject, useStore, type State } from '../state/store';
+import { getState, printerPreset, setState, subscribeStore, updateInstance, updateObject, useStore, type State } from '../state/store';
+import { filamentColor } from './filamentColor';
 import { buildBed } from './Bed';
 import { raycastBvh, type Bvh } from './bvh';
-import { bedBounds, instanceMatrix, outsideBed, parsePoints } from './geometry';
+import { instanceMatrix, outsideBed, parsePoints } from './geometry';
 
 const OUTSIDE = new THREE.Color(0x4d9ed9);
 
 function brightenColor(c: THREE.Color): THREE.Color {
   const hsl = c.getHSL({ h: 0, s: 0, l: 0 }, THREE.SRGBColorSpace);
   return c.clone().setHSL(hsl.h, hsl.s, Math.min(hsl.l + 0.25, 1), THREE.SRGBColorSpace);
-}
-
-export function filamentColor(s: State, extruder: number): string {
-  const chosen = s.slotColours[extruder - 1] ?? (s.project ? s.projectMaterials?.colours[extruder - 1] : undefined);
-  if (chosen) return chosen;
-  const name = s.filamentSlots[extruder - 1] ?? s.filamentSlots[0];
-  const cfg = name ? effectiveConfig(s, 'filament', extruder - 1) : {};
-  const c = cfg.filament_colour ?? cfg.default_filament_colour;
-  const v = Array.isArray(c) ? String(c[0]) : String(c ?? '');
-  return /^#[0-9a-fA-F]{6}/.test(v) ? v.slice(0, 7) : '#00AE42';
 }
 
 export default function Plater3D() {
@@ -45,13 +36,11 @@ export default function Plater3D() {
     fill.position.set(0.6, 0.8, 0.3);
     scene.add(fill);
 
-    const camera = new THREE.PerspectiveCamera(35, 1, 1, 5000);
-    camera.up.set(0, 0, 1);
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = false;
-    controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
-    controls.zoomToCursor = true;
-
+    const views = new CameraViews(renderer.domElement, () => getState().tab === 'prepare', () => {
+      tc.camera = views.camera;
+      render();
+    });
+    const controls = views.controls;
     let frame = 0;
     const frames: { at: number; ms: number }[] = [];
     const render = () => {
@@ -60,7 +49,7 @@ export default function Plater3D() {
         frame = 0;
         const t0 = performance.now();
         if (uploads.length) uploadStep();
-        renderer.render(scene, camera);
+        renderer.render(scene, views.camera);
         if (frames.length > 4096) frames.splice(0, 2048);
         frames.push({ at: t0, ms: performance.now() - t0 });
       });
@@ -77,7 +66,7 @@ export default function Plater3D() {
     const stage = new THREE.Mesh(stageGeo, new THREE.MeshBasicMaterial());
     stage.frustumCulled = false;
     const stageScene = new THREE.Scene().add(stage);
-    void renderer.compileAsync(stageScene, camera);
+    void renderer.compileAsync(stageScene, views.camera);
     const needsUpload = (geo: THREE.BufferGeometry) => {
       if (uploaded.has(geo)) return false;
       const steps = [...Object.values(geo.attributes), ...(geo.index ? [geo.index] : [])];
@@ -92,7 +81,7 @@ export default function Plater3D() {
       stageGeo.setIndex(null);
       stageGeo.setAttribute('position', a === u.geo.index ? dummy : (a as THREE.BufferAttribute));
       if (a === u.geo.index) stageGeo.setIndex(a as THREE.BufferAttribute);
-      renderer.render(stageScene, camera);
+      renderer.render(stageScene, views.camera);
       stageGeo.setAttribute('position', dummy);
       stageGeo.setIndex(null);
       if (!u.steps.length) {
@@ -108,17 +97,10 @@ export default function Plater3D() {
     let bedKey = '';
     let area: THREE.Vector2[] = [];
     let height = 250;
-    const fitCamera = () => {
-      const { min, max, center } = bedBounds(area);
-      const size = Math.max(max.x - min.x, max.y - min.y);
-      controls.target.set(center.x, center.y, 0);
-      camera.position.set(center.x, center.y - size * 1.55, size * 1.25);
-      controls.update();
-      render();
-    };
+    const fitCamera = () => views.setBed(area);
     const syncBed = (s: State) => {
       const m = printerPreset(s);
-      const key = `${m?.name}|${m?.config.printable_area}`;
+      const key = `${m?.name}|${m?.config.printable_area}|${m?.config.bed_custom_texture}|${m?.config.bed_custom_model}`;
       if (key === bedKey) return;
       bedKey = key;
       if (bed) scene.remove(bed);
@@ -146,7 +128,7 @@ export default function Plater3D() {
     {
       const warm = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), material('#00AE42', 'normal'));
       scene.add(warm);
-      void renderer.compileAsync(warm, camera, scene).finally(() => {
+      void renderer.compileAsync(warm, views.camera, scene).finally(() => {
         scene.remove(warm);
         warm.geometry.dispose();
       });
@@ -161,7 +143,7 @@ export default function Plater3D() {
           const mesh = meshes.get(inst.id);
           if (!mesh) continue;
           const state = outside.has(inst.id) ? 'outside' : s.selected?.instance === inst.id ? 'selected' : 'normal';
-          mesh.material = material(color, state, !!o.project?.placeholder);
+          mesh.material = material(inst.printable === false ? '#999999' : color, inst.printable === false ? 'normal' : state, !!o.project?.placeholder);
         }
       }
     };
@@ -201,7 +183,7 @@ export default function Plater3D() {
 
     const proxy = new THREE.Object3D();
     scene.add(proxy);
-    const tc = new TransformControls(camera, renderer.domElement);
+    const tc = new TransformControls(views.camera, renderer.domElement);
     tc.setSize(0.9);
     const tcHelper = tc.getHelper();
     scene.add(tcHelper);
@@ -222,7 +204,7 @@ export default function Plater3D() {
       const s = getState();
       if (!dragStart || !s.selected) return;
       const { object, instance } = s.selected;
-      if (tc.mode === 'translate') updateInstance(object, instance, { x: proxy.position.x, y: proxy.position.y });
+      if (tc.mode === 'translate') updateInstance(object, instance, { x: proxy.position.x, y: proxy.position.y, z: proxy.position.z });
       else if (tc.mode === 'rotate') {
         const deg = 180 / Math.PI;
         updateObject(object, { rotX: dragStart.rotX + proxy.rotation.x * deg, rotY: dragStart.rotY + proxy.rotation.y * deg });
@@ -241,10 +223,10 @@ export default function Plater3D() {
       }
       const mode = s.gizmo === 'move' ? 'translate' : s.gizmo;
       if (tc.mode !== mode) tc.setMode(mode);
-      tc.showZ = mode !== 'translate';
+      tc.showZ = true;
       if (!dragStart) {
         const b = new THREE.Box3().setFromObject(meshes.get(i.id)!);
-        proxy.position.set(i.x, i.y, mode === 'translate' ? 0 : (b.min.z + b.max.z) / 2);
+        proxy.position.set(i.x, i.y, mode === 'translate' ? (i.z ?? 0) : (b.min.z + b.max.z) / 2);
         proxy.rotation.set(0, 0, 0);
         proxy.scale.set(1, 1, 1);
       }
@@ -257,7 +239,7 @@ export default function Plater3D() {
     const setRay = (ev: { clientX: number; clientY: number }) => {
       const r = renderer.domElement.getBoundingClientRect();
       ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
-      ray.setFromCamera(ndc, camera);
+      ray.setFromCamera(ndc, views.camera);
     };
     const EXACT_TRIANGLES = 100_000;
     const box = new THREE.Box3();
@@ -378,26 +360,11 @@ export default function Plater3D() {
       if (!w || !h) return;
       const size = renderer.getSize(new THREE.Vector2());
       if (size.x !== w || size.y !== h) renderer.setSize(w, h);
-      camera.aspect = w / Math.max(1, h);
-      camera.updateProjectionMatrix();
+      views.resize(w, h);
       render();
     };
     const ro = new ResizeObserver(resize);
     ro.observe(el);
-
-    const onKey = (ev: KeyboardEvent) => {
-      if ((ev.target as HTMLElement)?.closest('input,select,textarea')) return;
-      const { min, max, center } = bedBounds(area);
-      const size = Math.max(max.x - min.x, max.y - min.y);
-      if (ev.key === '0') fitCamera();
-      else if (ev.key === '1') camera.position.set(center.x, center.y - 0.001, size * 2.2);
-      else if (ev.key === '3') camera.position.set(center.x, center.y - size * 2, size * 0.25);
-      else return;
-      controls.target.set(center.x, center.y, 0);
-      controls.update();
-      render();
-    };
-    window.addEventListener('keydown', onKey);
 
     let last: State | null = null;
     const sync = () => {
@@ -408,7 +375,7 @@ export default function Plater3D() {
       syncBed(s);
       syncObjects(s);
     };
-    (window as unknown as { __plater: unknown }).__plater = { scene, camera, controls, tc, renderer, meshes, frames, hoverMs, hovered: () => hovered, pick, render, getState, setState };
+    (window as unknown as { __plater: unknown }).__plater = { scene, get camera() { return views.camera; }, controls, tc, renderer, meshes, frames, hoverMs, hovered: () => hovered, pick, render, getState, setState };
     const unsub = subscribeStore(sync);
     sync();
     resize();
@@ -417,9 +384,9 @@ export default function Plater3D() {
       unsub();
       cancelAnimationFrame(hoverFrame);
       ro.disconnect();
-      window.removeEventListener('keydown', onKey);
+      views.dispose();
       tc.dispose();
-      controls.dispose();
+
       renderer.dispose();
       el.removeChild(renderer.domElement);
     };

@@ -1,12 +1,12 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { addInstance, arrangeAll, download, importFiles, init, newProject, openFileDialog, openProjectDialog, removeInstance } from './actions';
+import { addInstance, arrangeAll, download, importFiles, init, newProject, openFileDialog, openProjectDialog, removeInstance, saveProject } from './actions';
 import { FlushDialog } from './components/FlushDialog';
 import { CanvasToolbar, ManipulationPanel, SliceNotification, Toast } from './components/CanvasOverlays';
 import { PresetDialog } from './components/Dialogs';
 import { Sidebar } from './components/Sidebar';
 import { TabBar, TopBar } from './components/TopBar';
-import Plater3D from './plater/Plater3D';
-import { deleteAll, getState, removeSelected, setState, useStore } from './state/store';
+const Plater3D = lazy(() => import('./plater/Plater3D'));
+import { deleteAll, getState, removeSelected, setState, togglePrintable, useStore } from './state/store';
 
 const PreviewView = lazy(() => import('./components/PreviewView').then((m) => ({ default: m.PreviewView })));
 
@@ -26,6 +26,7 @@ export default function App() {
       if (ctrl && e.key.toLowerCase() === 'i') openFileDialog();
       else if (ctrl && e.key.toLowerCase() === 'o') openProjectDialog();
       else if (ctrl && e.key.toLowerCase() === 'n') newProject();
+      else if (ctrl && e.key.toLowerCase() === 's') void saveProject(e.shiftKey);
       else if (ctrl && e.key.toLowerCase() === 'g') download();
       else if (ctrl && e.key === 'Delete') deleteAll();
       else if (ctrl) return;
@@ -36,6 +37,7 @@ export default function App() {
       else if (e.key === 'm' || e.key === 'M') setState((s) => ({ gizmo: s.gizmo === 'move' ? 'none' : 'move' }));
       else if (e.key === 'r' || e.key === 'R') setState((s) => ({ gizmo: s.gizmo === 'rotate' ? 'none' : 'rotate' }));
       else if (e.key === 's' || e.key === 'S') setState((s) => ({ gizmo: s.gizmo === 'scale' ? 'none' : 'scale' }));
+      else if (e.key.toLowerCase() === 'v') { const selected = getState().selected; if (selected) togglePrintable(selected.object, selected.allInstances ? undefined : selected.instance); }
       else if (e.key === 'Escape') setState({ selected: null, gizmo: 'none' });
       else return;
       e.preventDefault();
@@ -66,7 +68,7 @@ export default function App() {
           }}
         >
           <div style={{ display: tab === 'prepare' ? 'contents' : 'none' }}>
-            <Plater3D />
+            <Suspense fallback={<div role="status">Loading plater…</div>}><Plater3D /></Suspense>
             <CanvasToolbar />
             <ManipulationPanel />
           </div>

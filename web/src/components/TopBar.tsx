@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
-import { arrangeAll, canExport, STALE_RESULT_TIP, download, newProject, openFileDialog, openProjectDialog, outputKind, outsideVolumeWarning, slice } from '../actions';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { arrangeAll, canExport, STALE_RESULT_TIP, download, newProject, openFileDialog, openProjectDialog, outputKind, outsideVolumeWarning, saveProject, slice } from '../actions';
 import { deleteAll, removeSelected, setState, useStore } from '../state/store';
+import { CAMERA_VIEWS, VIEW_DIRECTIONS, cameraCommand, cameraSnapshot, subscribeCamera, perspective, autoPerspective } from '../camera';
 import { Icon } from './Icon';
 
-type MenuItem = { label: string; shortcut?: string; action?: () => void; disabled?: boolean; tip?: string } | 'sep';
+type MenuItem = { label: string; shortcut?: string; action?: () => void; disabled?: boolean; tip?: string; checked?: boolean; role?: 'menuitemradio' | 'menuitemcheckbox' } | 'sep';
 
 function Menu({ title, items }: { title: string; items: MenuItem[] }) {
   const [open, setOpen] = useState(false);
@@ -28,6 +29,8 @@ function Menu({ title, items }: { title: string; items: MenuItem[] }) {
               <button
                 key={it.label}
                 className="menu-item"
+                role={it.role}
+                aria-checked={it.checked}
                 disabled={it.disabled || !it.action}
                 title={it.tip}
                 onClick={() => {
@@ -46,9 +49,9 @@ function Menu({ title, items }: { title: string; items: MenuItem[] }) {
   );
 }
 
-const view = (key: string) => window.dispatchEvent(new KeyboardEvent('keydown', { key }));
 
 export function TopBar() {
+  useSyncExternalStore(subscribeCamera, cameraSnapshot);
   const exportEnabled = useStore(canExport);
   const stale = useStore((s) => s.job.stale);
   const hasObjects = useStore((s) => s.objects.length > 0);
@@ -66,6 +69,8 @@ export function TopBar() {
         title="File"
         items={[
           { label: 'New Project', shortcut: 'Ctrl+N', action: newProject, tip: 'Start a new project' },
+          { label: 'Save Project', shortcut: 'Ctrl+S', action: () => void saveProject(), disabled: !hasObjects, tip: 'Save current project to file' },
+          { label: 'Save Project as...', shortcut: 'Ctrl+Shift+S', action: () => void saveProject(true), disabled: !hasObjects, tip: 'Save current project as' },
           { label: 'Open Project...', shortcut: 'Ctrl+O', action: openProjectDialog, tip: 'Open a project file' },
           'sep',
           { label: 'Import 3MF/STL/STEP/SVG/OBJ/AMF...', shortcut: 'Ctrl+I', action: openFileDialog, tip: 'Load a model' },
@@ -93,7 +98,11 @@ export function TopBar() {
       <Menu
         title="View"
         items={[
-          { label: 'Default View', shortcut: '0', action: () => view('0'), tip: 'Default View' },
+          ...CAMERA_VIEWS.map((label, i) => ({ label, shortcut: `${/Mac/.test(navigator.platform) ? 'Cmd' : 'Ctrl'}+${i}`, action: () => cameraCommand(VIEW_DIRECTIONS[i]), tip: i ? `${label} View` : label })),
+          'sep',
+          { label: 'Use Perspective View', role: 'menuitemradio', checked: perspective, action: () => cameraCommand('perspective') },
+          { label: 'Use Orthogonal View', role: 'menuitemradio', checked: !perspective, action: () => cameraCommand('orthogonal') },
+          { label: 'Auto Perspective', role: 'menuitemcheckbox', checked: autoPerspective, action: () => cameraCommand('auto') },
         ]}
       />
       <Menu

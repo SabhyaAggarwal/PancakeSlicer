@@ -461,7 +461,11 @@ func (m *JobManager) toolArgs(j *Job) []string {
 	if m.cfg.Features.Progress {
 		args = append(args, "--progress")
 	}
-	args = append(args, "--json", j.OutputPath("json"), "-o", j.OutputPath("gcode"))
+	if r.Output == "3mf" {
+		args = append(args, "--save-3mf", j.OutputPath("3mf"))
+	} else {
+		args = append(args, "--json", j.OutputPath("json"), "-o", j.OutputPath("gcode"))
+	}
 	if r.Output == "gcode.3mf" {
 		args = append(args, "--gcode-3mf", j.OutputPath("gcode.3mf"))
 	}
@@ -476,8 +480,16 @@ func (m *JobManager) toolArgs(j *Job) []string {
 func (m *JobManager) run(ctx context.Context, j *Job) {
 	ctx, cancel := context.WithTimeout(ctx, m.cfg.JobTimeout)
 	defer cancel()
-	args := m.toolArgs(j)
 	j.setState(StateRunning, "")
+	args := m.toolArgs(j)
+	var placementErr error
+	if j.Request.Output != "3mf" {
+		args, placementErr = plateZWorkaround(ctx, m, j, args)
+	}
+	if placementErr != nil {
+		j.setState(StateFailed, sanitizeToolError(placementErr))
+		return
+	}
 	if !m.cfg.Features.Progress {
 		j.log("server", "progress slicing 0")
 	}
@@ -532,7 +544,24 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 	j.exitCode = &code
 	j.mu.Unlock()
 	raw, recordErr := os.ReadFile(j.OutputPath("json"))
-	if recordErr == nil && !json.Valid(raw) {
+	if j.Request.Output == "3mf" {
+		recordErr = nil
+		raw = nil
+		if waitErr == nil && !j.Request.Plate && strings.EqualFold(filepath.Ext(j.Request.Files[0]), ".3mf") {
+			recordErr = loadedProjectSaveWorkaround(filepath.Join(j.Dir, "input", j.Request.Files[0]), j.OutputPath("3mf"))
+		}
+		if waitErr == nil && j.Request.Plate {
+			plate, err := os.ReadFile(filepath.Join(j.Dir, "input", "plate.json"))
+			if err == nil {
+				_, err = platePrintableWorkaround(plate, j.OutputPath("3mf"))
+			}
+			if err == nil {
+				_, err = plateZWorkaround(ctx, m, j, nil)
+			}
+			recordErr = err
+		}
+	}
+	if recordErr == nil && j.Request.Output != "3mf" && !json.Valid(raw) {
 		recordErr = errors.New("invalid slice JSON")
 	}
 	if recordErr == nil {
@@ -548,7 +577,7 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 	case waitErr != nil:
 		j.setState(StateFailed, lastErr.message(waitErr))
 	case recordErr != nil:
-		j.setState(StateFailed, "the slicer did not write a valid slice record: "+sanitizeToolError(recordErr))
+		j.setState(StateFailed, "the slicer output could not be read: "+sanitizeToolError(recordErr))
 	default:
 		if _, err := os.Stat(j.OutputPath(j.Request.Output)); err != nil {
 			j.setState(StateFailed, "the slicer finished without writing "+filepath.Base(j.OutputPath(j.Request.Output)))

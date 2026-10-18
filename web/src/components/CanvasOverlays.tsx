@@ -88,7 +88,7 @@ export function ManipulationPanel() {
         <span>Position</span>
         <Num value={inst.x} onCommit={(x) => updateInstance(o.id, inst.id, { x })} />
         <Num value={inst.y} onCommit={(y) => updateInstance(o.id, inst.id, { y })} />
-        <span className="manip-ro">0.00</span>
+        <Num value={inst.z ?? 0} onCommit={(z) => updateInstance(o.id, inst.id, { z })} />
         <span>Rotation</span>
         <Num value={o.rotX} onCommit={(rotX) => updateObject(o.id, { rotX })} />
         <Num value={o.rotY} onCommit={(rotY) => updateObject(o.id, { rotY })} />

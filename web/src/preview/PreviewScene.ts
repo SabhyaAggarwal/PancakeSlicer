@@ -1,8 +1,9 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { CameraViews } from '../plater/CameraViews';
+import { getState } from '../state/store';
 import type { SystemPreset } from '../api/types';
 import { buildBed } from '../plater/Bed';
-import { bedBounds, instanceMatrix, parsePoints } from '../plater/geometry';
+import { instanceMatrix, parsePoints } from '../plater/geometry';
 import type { PlateObject } from '../state/store';
 import { colorVertices, type ColorContext } from './colors';
 import type { PreviewData } from './data';
@@ -13,8 +14,9 @@ const FRAME_BUDGET_MS = 14;
 export class PreviewScene {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
-  readonly camera = new THREE.PerspectiveCamera(35, 1, 0.5, 5000);
-  readonly controls: OrbitControls;
+  readonly views: CameraViews;
+  get camera() { return this.views.camera; }
+  get controls() { return this.views.controls; }
   private segments: SegmentRenderer;
   private bed: THREE.Group | null = null;
   private bedKey = '';
@@ -45,10 +47,7 @@ export class PreviewScene {
     sun.position.set(-0.4, -0.6, 1);
     this.scene.add(sun);
     this.scene.add(this.shells);
-    this.camera.up.set(0, 0, 1);
-    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
-    this.controls.zoomToCursor = true;
+    this.views = new CameraViews(this.renderer.domElement, () => getState().tab === 'preview', () => this.request());
     this.controls.addEventListener('change', () => this.request());
     this.controls.addEventListener('start', () => (this.moving = true));
     this.controls.addEventListener('end', () => {
@@ -73,31 +72,19 @@ export class PreviewScene {
     if (!w || !h) return;
     const size = this.renderer.getSize(new THREE.Vector2());
     if (size.x !== w || size.y !== h) this.renderer.setSize(w, h);
-    this.camera.aspect = w / Math.max(1, h);
-    this.camera.updateProjectionMatrix();
+    this.views.resize(w, h);
     this.request();
   }
 
   setBed(machine: SystemPreset | undefined) {
-    const key = `${machine?.name}|${machine?.config.printable_area}`;
+    const key = `${machine?.name}|${machine?.config.printable_area}|${machine?.config.bed_custom_texture}|${machine?.config.bed_custom_model}`;
     if (key === this.bedKey) return;
     this.bedKey = key;
     if (this.bed) this.scene.remove(this.bed);
     this.bed = buildBed(machine, () => this.request());
     this.scene.add(this.bed);
     this.area = parsePoints(machine?.config.printable_area);
-    this.view('iso');
-  }
-
-  view(kind: 'iso' | 'top' | 'front') {
-    const { min, max, center } = bedBounds(this.area);
-    const size = Math.max(max.x - min.x, max.y - min.y);
-    this.controls.target.set(center.x, center.y, 0);
-    if (kind === 'iso') this.camera.position.set(center.x, center.y - size * 1.55, size * 1.25);
-    else if (kind === 'top') this.camera.position.set(center.x, center.y - 0.001, size * 2.2);
-    else this.camera.position.set(center.x, center.y - size * 2, size * 0.25);
-    this.controls.update();
-    this.request();
+    this.views.setBed(this.area);
   }
 
   setShells(objects: PlateObject[], visible: boolean) {
@@ -257,7 +244,7 @@ export class PreviewScene {
   dispose() {
     cancelAnimationFrame(this.frame);
     this.segments.dispose();
-    this.controls.dispose();
+    this.views.dispose();
     this.renderer.dispose();
     this.host.removeChild(this.renderer.domElement);
   }

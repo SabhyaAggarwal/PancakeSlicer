@@ -85,6 +85,7 @@ const realApi: Api = {
     for (const f of req.filaments) fd.append('filament[]', f);
     fd.append('overrides', JSON.stringify(req.overrides));
     if (req.plate) fd.append('plate', JSON.stringify(req.plate));
+    if (req.project_instances) fd.append('project_instances', JSON.stringify(req.project_instances));
     if (req.events.length) fd.append('events', JSON.stringify(req.events));
     fd.append('output', req.output);
     const j = await json<{ id: string }>(await mutation('/api/jobs', { method: 'POST', body: fd }, true, signal));

@@ -6,7 +6,7 @@ import { eventArg } from './components/LayerEvents';
 import { normalizeConfig } from './config-values';
 import { OPTIONS, jobValue, loadTab } from './options';
 import { shortTime } from './preview/format';
-import { filamentColor } from './plater/Plater3D';
+import { filamentColor } from './plater/filamentColor';
 import { arrange, loadMesh, loadProject, nextFreeSpot, parsePoints, placeholderGeometry, plateJson, outsideBed } from './plater/geometry';
 import type { ProjectItem } from './plater/threemf';
 import {
@@ -133,7 +133,8 @@ function adoptProject(config: Config, slots: number) {
     },
     projectNotice: fallback ? `Project printer "${id || saved.printer_model || 'unknown'}" is unavailable. Using ${printer.name}.` : null,
     bedType: String(saved.curr_bed_type ?? current.bedType),
-    dirty: { machine: {}, process: {}, filament: {} },
+    dirty: { machine: {}, process: {} },
+    filamentEdits: {},
   });
 }
 
@@ -153,17 +154,17 @@ export async function openProject(file: File) {
         adoptProject(materials.config, slots);
         objects = items.map((it) => ({
           id: newId(), name: it.name, geometry: placeholderGeometry(), rotX: 0, rotY: 0, scale: [1, 1, 1],
-          extruder: it.extruder, source: file, settings: {}, project: { file: file.name, placeholder: true },
-          instances: [{ id: newId(), x: it.origin[0], y: it.origin[1], rotZ: 0 }],
+          extruder: it.extruder, source: file, settings: it.settings, project: { file: file.name, placeholder: true },
+          instances: [{ id: newId(), x: it.origin[0], y: it.origin[1], z: it.origin[2], rotZ: 0, printable: it.printable }],
         }));
         setState((st) => ({
-          objects, project: file, projectMaterials: materials, slotColours: [], flush: { matrix: null, multiplier: null }, selected: null, processScope: 'global',
+          objects, project: file, projectName: file.name, projectMaterials: materials, slotColours: [], flush: { matrix: null, multiplier: null }, selected: null, processScope: 'global',
           filamentSlots: Array.from({ length: slots }, (_, i) => st.filamentSlots[i] ?? st.filamentSlots[0] ?? ''),
           job: markStale(st.job),
         }));
       },
       mesh: (i, geometry, centre) =>
-        patch(i, (o) => ({ ...o, geometry, project: { file: file.name, placeholder: false }, instances: [{ ...o.instances[0], x: centre.x, y: centre.y }] })),
+        patch(i, (o) => ({ ...o, geometry, project: { file: file.name, placeholder: false }, instances: [{ ...o.instances[0], x: centre.x, y: centre.y, z: centre.z }] })),
       missing: (i) => patch(i, (o) => ({ ...o, project: { file: file.name, placeholder: true, missing: true } })),
     });
   } catch (e) {
@@ -174,7 +175,7 @@ export async function openProject(file: File) {
 export function newProject() {
   const s = getState();
   if (s.objects.length && !window.confirm('Start a new project? The objects on the plate are removed.')) return;
-  setState((st) => ({ objects: [], selected: null, project: null, projectMaterials: null, projectPresets: null, projectNotice: null, events: [], flush: { matrix: null, multiplier: null }, processScope: 'global', job: markStale(st.job) }));
+  setState((st) => ({ objects: [], selected: null, project: null, projectName: null, projectMaterials: null, projectPresets: null, projectNotice: null, events: [], flush: { matrix: null, multiplier: null }, processScope: 'global', job: markStale(st.job) }));
 }
 
 export function openProjectDialog() {
@@ -205,7 +206,7 @@ export function addInstance() {
   if (!o || o.project) return;
   const spot = nextFreeSpot(s.objects, o, bedArea());
   const src = o.instances.find((i) => i.id === s.selected!.instance) ?? o.instances[0];
-  const inst = { id: newId(), x: spot?.x ?? src.x, y: spot?.y ?? src.y, rotZ: src.rotZ };
+  const inst = { id: newId(), x: spot?.x ?? src.x, y: spot?.y ?? src.y, rotZ: src.rotZ, z: src.z, printable: src.printable };
   setState((st) => {
     const objects = st.objects.map((ob) => (ob.id === o.id ? { ...ob, instances: [...ob.instances, inst] } : ob));
     return { objects: spot ? objects : arrange(objects, bedArea()), selected: { object: o.id, instance: inst.id } };
@@ -233,22 +234,21 @@ function overrides(s = getState()): Config {
     ...effectiveConfig(s, 'machine'), ...effectiveConfig(s, 'process'),
     ...effectiveConfig(s, 'filament'),
   } : {};
-  if (s.project) {
-    const configs = s.filamentSlots.map((_, i) => effectiveConfig(s, 'filament', i));
-    for (const [k, v] of Object.entries(configs[0] ?? {})) {
-      if (Array.isArray(v)) out[k] = configs.flatMap((c) => {
-        const value = c[k];
-        return Array.isArray(value) ? value.slice(0, 1) : [value];
-      }) as ConfigValue;
-    }
-    for (const k of Object.keys(out)) if (!OPTIONS[k]) delete out[k];
-  }
   const add = (type: 'machine' | 'process' | 'filament', name: string, dirty: Config) => {
     Object.assign(out, resolvePreset(s, type, name).user?.overrides ?? {}, dirty);
   };
   add('machine', s.printer, s.dirty.machine);
   add('process', s.process, s.dirty.process);
-  add('filament', s.filamentSlots[0] ?? '', s.dirty.filament);
+  const configs = s.filamentSlots.map((_, i) => effectiveConfig(s, 'filament', i));
+  for (const k of new Set(configs.flatMap((c) => Object.keys(c)))) {
+    if (!OPTIONS[k]) continue;
+    const values = configs.map((c) => c[k] ?? OPTIONS[k].default);
+    if (values.every((v) => v === undefined || Array.isArray(v) && !v.length)) continue;
+    out[k] = values.some(Array.isArray)
+      ? values.map((v) => Array.isArray(v) ? v[0] ?? '' : v ?? '') as ConfigValue
+      : values[0] as ConfigValue;
+  }
+  for (const k of Object.keys(out)) if (!OPTIONS[k]) delete out[k];
   if (s.projectMaterials && s.project) {
     out.filament_colour = s.filamentSlots.map((_, i) => filamentColor(s, i + 1));
     if (s.projectMaterials.matrix) out.flush_volumes_matrix = s.projectMaterials.matrix;
@@ -272,6 +272,7 @@ export async function jobRequest(): Promise<JobRequest> {
   const { plate, files } = s.project ? { plate: undefined, files: [{ name: s.project.name, blob: s.project as Blob }] } : await plateJson(s.objects);
   return {
     files,
+    ...(s.project ? { project_instances: s.objects.flatMap((o) => o.instances.map((i) => ({ printable: i.printable !== false }))) } : {}),
     vendor: printerPreset(s)?.vendor ?? 'BBL',
     printer: sys('machine', s.printer),
     process: sys('process', s.process),
@@ -419,4 +420,9 @@ export async function download() {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(href), 60000);
+}
+
+export async function saveProject(as = false) {
+  const saving = await import('./saveProject');
+  return saving.saveProject(as);
 }

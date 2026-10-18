@@ -1,26 +1,30 @@
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import type { ConfigValue, PresetType } from '../api/types';
 import { isDeferred, isHidden, modeVisible, OPTIONS, splitKey, useTab, type TabDesc, type TabLine } from '../options';
-import { effectiveConfig, getState, resolvePreset, saveUserPreset, setState, toast, useStore } from '../state/store';
+import { effectiveConfig, getState, presetEdits, resolvePreset, saveUserPreset, setState, toast, useStore } from '../state/store';
 import { condition, environment, fieldDefinition, optionState } from '../visibility';
 import { Field } from './Field';
 import { Icon, IconButton } from './Icon';
 import { PresetCombo } from './PresetCombo';
 
+const BedShapeDialog = lazy(() => import('./BedShapeDialog'));
+
 const TAB_OF: Record<PresetType, TabDesc['tab']> = { process: 'process', filament: 'filament', machine: 'printer' };
 
 export function SettingsTab({ type, slot = 0, compact }: { type: PresetType; slot?: number; compact?: boolean }) {
   const { desc, error } = useTab(TAB_OF[type]);
+  const [bedDialog, setBedDialog] = useState(false);
   const [pageIdx, setPageIdx] = useState(0);
   const machineEdits = useStore((s) => s.dirty.machine);
   const printer = useStore((s) => s.printer);
   const bedType = useStore((s) => s.bedType);
   const uiMode = useStore((s) => s.uiMode);
-  const dirty = useStore((s) => s.dirty[type]);
+  const dirty = useStore((s) => presetEdits(s, type, slot));
   const presetName = useStore((s) => (type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot]));
   const userPresets = useStore((s) => s.userPresets);
   const lists = useStore((s) => s.machines.length + s.processes.length + s.filaments.length);
-  const config = useMemo(() => effectiveConfig(getState(), type, slot), [type, slot, presetName, dirty, userPresets, lists]);
+  const project = useStore((s) => s.projectPresets);
+  const config = useMemo(() => effectiveConfig(getState(), type, slot), [type, slot, presetName, dirty, userPresets, lists, project]);
   const system = useMemo(() => resolvePreset(getState(), type, presetName ?? '').config, [type, presetName, userPresets, lists]);
 
   const env = useMemo(() => {
@@ -60,7 +64,7 @@ export function SettingsTab({ type, slot = 0, compact }: { type: PresetType; slo
       toast('A system preset has this name; choose another.');
       return;
     }
-    await saveUserPreset(type, name);
+    await saveUserPreset(type, name, slot);
     toast(`Preset "${name}" saved`);
   };
   const onDelete = async () => {
@@ -73,13 +77,14 @@ export function SettingsTab({ type, slot = 0, compact }: { type: PresetType; slo
       const fallback = base?.name ?? '';
       if (type === 'machine') patch.printer = fallback;
       else if (type === 'process') patch.process = fallback;
-      else patch.filamentSlots = st.filamentSlots.map((f, i) => (i === slot ? fallback : f));
+      else patch.filamentSlots = st.filamentSlots.map((f) => (f === presetName ? fallback : f));
       return patch;
     });
   };
 
   return (
     <div className={`settings-tab ${compact ? 'compact' : ''}`}>
+      {bedDialog && <Suspense fallback={<div role="status">Loading bed shape…</div>}><BedShapeDialog config={config} close={() => setBedDialog(false)} /></Suspense>}
       <div className="tab-preset-row">
         <PresetCombo type={type} slot={slot} />
         <IconButton icon="save" title={modifiedCount ? `Save current ${type === 'machine' ? 'printer' : type} preset (${modifiedCount} modified)` : 'Save as user preset'} onClick={onSave} />
@@ -116,7 +121,8 @@ export function SettingsTab({ type, slot = 0, compact }: { type: PresetType; slo
                 {shared && <span className="opt-label" title={tooltip}>{line.label ?? (OPTIONS[splitKey(keys[0])[0]]?.full_label || OPTIONS[splitKey(keys[0])[0]]?.label)}</span>}
                 {keys.map((k, i) => {
                   const key = splitKey(k)[0];
-                  return <Field key={`${k}:${i}`} optKey={k} type={type} value={config[key]} systemValue={system[key]} dirty={key in dirty}
+                  return <Field widget={type === 'machine' && key === 'printable_area' ? <button className="side-btn" title="Set bed shape" onClick={() => setBedDialog(true)}>Set ...</button> : undefined} key={`${k}:${i}`} optKey={k} type={type} value={config[key]} systemValue={system[key]} dirty={key in dirty}
+                    slot={slot}
                     disabled={isDeferred(key) || states[key]?.enabled === false}
                     definition={{ ...fieldDefinition(key, env), ...line.overrides?.[key] }}
                     inheritedValue={env[key.replace(/^filament_/, '')] as ConfigValue}
