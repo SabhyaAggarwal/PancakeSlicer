@@ -52,6 +52,7 @@ type vendorCache struct {
 }
 type PresetIndex struct {
 	root        string
+	tool        *Config
 	cache       sync.Map
 	allOnce     sync.Once
 	allResponse *cachedResponse
@@ -90,7 +91,11 @@ func (p *PresetIndex) vendor(name string) (*VendorPresets, error) {
 	entry, _ := p.cache.LoadOrStore(name, &vendorCache{})
 	v := entry.(*vendorCache)
 	v.once.Do(func() {
-		v.presets, v.err = p.loadVendor(name)
+		if p.tool != nil {
+			v.presets, v.err = p.dumpVendor(name)
+		} else {
+			v.presets, v.err = p.loadVendor(name)
+		}
 		if v.err == nil {
 			v.response, v.err = cacheJSON(v.presets)
 		}

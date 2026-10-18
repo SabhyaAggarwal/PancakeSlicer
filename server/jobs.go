@@ -75,10 +75,14 @@ type Job struct {
 	changed  chan struct{}
 	cancel   context.CancelFunc
 	userStop bool
+	stage    string
+	progress *float64
 }
 
 type JobView struct {
 	ID          string          `json:"id"`
+	Stage       string          `json:"stage,omitempty"`
+	Progress    *float64        `json:"progress,omitempty"`
 	State       JobState        `json:"state"`
 	Created     time.Time       `json:"created"`
 	Started     *time.Time      `json:"started,omitempty"`
@@ -96,7 +100,7 @@ func (j *Job) View() JobView {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	v := JobView{ID: j.ID, State: j.state, Created: j.Created, Error: j.errMsg, ExitCode: j.exitCode,
-		Request: j.Request, EventsURL: "/api/jobs/" + j.ID + "/events", Slice: j.slice}
+		Stage: j.stage, Progress: j.progress, Request: j.Request, EventsURL: "/api/jobs/" + j.ID + "/events", Slice: j.slice}
 	if !j.started.IsZero() {
 		t := j.started
 		v.Started = &t
@@ -138,11 +142,12 @@ func (j *Job) log(stream, line string) {
 	defer j.mu.Unlock()
 	e := Event{Type: "log", Stream: stream, Line: line}
 	fields := strings.Fields(line)
-	if len(fields) == 3 && fields[0] == "progress" {
+	if (stream == "stdout" || stream == "server") && len(fields) == 3 && fields[0] == "progress" {
 		if pct, err := strconv.ParseFloat(fields[2], 64); err == nil && pct >= 0 && pct <= 100 {
 			e.Type = "progress"
 			e.Stage = fields[1]
 			e.Pct = &pct
+			j.stage, j.progress = e.Stage, e.Pct
 		}
 	}
 	j.appendLocked(e)
@@ -186,6 +191,8 @@ func (j *Job) EventsSince(from int) ([]Event, <-chan struct{}, bool) {
 func (j *Job) OutputPath(kind string) string {
 	return filepath.Join(j.Dir, "out", outputBase(j.Request)+"."+kind)
 }
+
+func (j *Job) MovesPath() string { return filepath.Join(j.Dir, "moves.bin") }
 
 func (j *Job) DownloadName() string {
 	name := j.Request.Filename
@@ -385,6 +392,12 @@ func (m *JobManager) toolArgs(j *Job) []string {
 	for _, e := range r.Events {
 		args = append(args, "--event", e)
 	}
+	if m.cfg.Features.MovesOut {
+		args = append(args, "--moves-out", j.MovesPath())
+	}
+	if m.cfg.Features.Progress {
+		args = append(args, "--progress")
+	}
 	args = append(args, "--json", j.OutputPath("json"), "-o", j.OutputPath("gcode"))
 	if r.Output == "gcode.3mf" {
 		args = append(args, "--gcode-3mf", j.OutputPath("gcode.3mf"))
@@ -402,7 +415,9 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 	defer cancel()
 	args := m.toolArgs(j)
 	j.setState(StateRunning, "")
-	j.log("server", "progress slicing 0")
+	if !m.cfg.Features.Progress {
+		j.log("server", "progress slicing 0")
+	}
 	j.log("server", "nonplanar_slice_tool "+quoteArgs(args))
 
 	cmd, commandErr := lineBufferedCommand(ctx, m.cfg.Tool, args)
@@ -467,7 +482,9 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 			j.setState(StateFailed, "the slicer finished without writing "+filepath.Base(j.OutputPath(j.Request.Output)))
 			return
 		}
-		j.log("server", "progress export 100")
+		if !m.cfg.Features.Progress {
+			j.log("server", "progress export 100")
+		}
 		j.setState(StateDone, "")
 	}
 	log.Printf("job %s %s (exit %d)", j.ID, j.State(), code)

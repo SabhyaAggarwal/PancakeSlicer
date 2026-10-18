@@ -25,6 +25,8 @@ type Config struct {
 	JobTimeout    time.Duration
 	JobTTL        time.Duration
 	MaxUploadSize int64
+	Features      ToolFeatures
+	Options       *cachedResponse
 }
 
 func env(key, def string) string {
@@ -83,6 +85,7 @@ func main() {
 	if st, err := os.Stat(filepath.Join(cfg.Resources, "profiles")); err != nil || !st.IsDir() {
 		log.Fatalf("no profiles directory under %s", cfg.Resources)
 	}
+	cfg.Features, cfg.Options = probeTool(cfg)
 	jobs, err := NewJobManager(cfg)
 	if err != nil {
 		log.Fatal(err)
@@ -92,6 +95,9 @@ func main() {
 		log.Fatal(err)
 	}
 	presets := NewPresetIndex(filepath.Join(cfg.Resources, "profiles"))
+	if cfg.Features.DumpPresets {
+		presets.tool = &cfg
+	}
 	for _, vendor := range []string{"BBL", "Prusa"} {
 		if _, err := presets.vendor(vendor); err != nil {
 			log.Printf("cannot preload %s presets: %v", vendor, err)

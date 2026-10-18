@@ -28,7 +28,7 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, users *UserPres
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, r *http.Request) {
 		q, n := jobs.Counts()
-		writeJSON(w, 200, map[string]any{"status": "ok", "queued": q, "running": n})
+		writeJSON(w, 200, map[string]any{"status": "ok", "queued": q, "running": n, "tool_features": c.Features})
 	})
 	mux.HandleFunc("POST /api/jobs", s.createJob)
 	mux.HandleFunc("GET /api/jobs/{id}", s.getJob)
@@ -37,7 +37,10 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, users *UserPres
 	mux.HandleFunc("GET /api/jobs/{id}/download", s.download)
 	mux.HandleFunc("GET /api/jobs/{id}/moves", s.moves)
 	mux.HandleFunc("GET /api/presets", s.listPresets)
-	options := cacheResponse(optionData)
+	options := c.Options
+	if options == nil {
+		options = cacheResponse(optionData)
+	}
 	mux.HandleFunc("GET /api/options", func(w http.ResponseWriter, r *http.Request) {
 		options.serve(w, r, "options.json", "application/json", catalogCache, time.Time{})
 	})
@@ -279,7 +282,7 @@ func (s *Server) moves(w http.ResponseWriter, r *http.Request) {
 	if j == nil {
 		return
 	}
-	f, err := os.Open(j.OutputPath("moves"))
+	f, err := os.Open(j.MovesPath())
 	if err != nil || j.State() != StateDone {
 		if f != nil {
 			f.Close()
@@ -289,7 +292,7 @@ func (s *Server) moves(w http.ResponseWriter, r *http.Request) {
 	}
 	defer f.Close()
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filepath.Base(j.OutputPath("moves"))}))
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filepath.Base(j.MovesPath())}))
 	st, err := f.Stat()
 	if err != nil {
 		fail(w, 500, err.Error())
