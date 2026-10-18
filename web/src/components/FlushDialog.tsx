@@ -27,8 +27,9 @@ export function defaultMultiplier(s: State): number {
 
 export function currentFlush(s: State): { matrix: number[]; multiplier: number } {
   const n = s.filamentSlots.length;
-  const saved = s.flush.matrix && s.flush.matrix.length === n * n ? s.flush.matrix : null;
-  return { matrix: saved ?? autoFlushMatrix(s), multiplier: s.flush.multiplier ?? defaultMultiplier(s) };
+  const table = s.flush.matrix ?? (s.project ? s.projectMaterials?.matrix : null);
+  const saved = table?.length === n * n ? table : null;
+  return { matrix: saved ?? autoFlushMatrix(s), multiplier: s.flush.multiplier ?? (s.project ? s.projectMaterials?.multiplier : null) ?? defaultMultiplier(s) };
 }
 
 export function flushModified(s: State): boolean {
@@ -87,7 +88,15 @@ function FlushTable() {
     const limit = mult > 0 ? MAX_FLUSH_VOLUME / mult : MAX_FLUSH_VOLUME;
     const matrix = raw.map((v) => Math.min(Math.max(v, 0), limit));
     const same = matrix.every((v, i) => v === auto[i]);
-    setState((st) => ({ flush: { matrix: same ? null : matrix, multiplier: mult }, flushDialog: false, job: markStale(st.job) }));
+    const matrixChanged = raw.some((v, i) => v !== init.matrix[i]);
+    setState((st) => ({
+      flush: {
+        matrix: st.project && !matrixChanged ? st.flush.matrix : same && !st.project ? null : matrix,
+        multiplier: st.project && mult === init.multiplier ? st.flush.multiplier : mult,
+      },
+      flushDialog: false,
+      job: markStale(st.job),
+    }));
   };
   const outOfRange = raw.some((_, i) => Math.floor(i / n) !== i % n && (shown(i) < minVol || shown(i) > MAX_FLUSH_VOLUME));
 

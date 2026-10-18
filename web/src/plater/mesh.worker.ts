@@ -22,7 +22,7 @@ export type MeshOut =
   | ({ type: 'mesh'; id: number; item?: number } & MeshData)
   | { type: 'hull'; id: number; item?: number; hull: Float32Array }
   | { type: 'bvh'; id: number; item?: number; bvh: Bvh; ms: number }
-  | { type: 'items'; id: number; items: Awaited<ReturnType<typeof readProject>>['items'] }
+  | { type: 'items'; id: number; items: Awaited<ReturnType<typeof readProject>>['items']; materials: Awaited<ReturnType<typeof readProject>>['materials'] }
   | { type: 'missing'; id: number; item: number }
   | { type: 'blob'; id: number; blob: Blob }
   | { type: 'done'; id: number }
@@ -64,7 +64,7 @@ self.onmessage = async (e: MessageEvent<MeshIn>) => {
       finish(m.id, soup, undefined, progress)();
     } else if (m.type === 'project') {
       const project = await readProject(m.file);
-      post({ type: 'items', id: m.id, items: project.items });
+      post({ type: 'items', id: m.id, items: project.items, materials: project.materials });
       const hulls: (() => void)[] = [];
       for (let i = 0; i < project.items.length; i++) {
         const soup = project.mesh(i);

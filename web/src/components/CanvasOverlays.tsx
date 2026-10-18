@@ -1,7 +1,7 @@
 import { slicingText } from '../api/progress';
 import { accessNotice, accessSnapshot, saveAccessToken, subscribeAccess } from '../api/access';
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { addInstance, arrangeAll, cancelSlice, openFileDialog, removeInstance } from '../actions';
+import { addInstance, arrangeAll, cancelSlice, openFileDialog, removeInstance, outsideVolumeWarning } from '../actions';
 import { objectSize } from '../plater/geometry';
 import { setState, updateInstance, updateObject, useStore, type Gizmo } from '../state/store';
 import { Icon, IconButton } from './Icon';
@@ -141,6 +141,7 @@ export function AccessNotification() {
 
 export function SliceNotification() {
   const job = useStore((s) => s.job);
+  const outside = useStore(outsideVolumeWarning);
   const [closed, setClosed] = useState<Set<string>>(new Set());
   const [expired, setExpired] = useState<Set<string>>(new Set());
   const brief = job.state === 'canceled' ? `canceled` : job.state === 'done' && !job.stale ? `done:${job.id}` : null;
@@ -162,6 +163,12 @@ export function SliceNotification() {
   return (
     <div className="notifications">
       <AccessNotification />
+      {outside && (
+        <div className="notification warning" role="alert">
+          <div className="notif-title">Object outside the print volume</div>
+          <div className="notif-body">{outside}</div>
+        </div>
+      )}
       {warnings.map((w, i) =>
         closed.has(`w${i}`) ? null : (
           <div key={`w${i}`} className="notification warning">

@@ -66,6 +66,7 @@ export interface State {
   gizmo: Gizmo;
   processScope: 'global' | 'objects';
   slotColours: (string | undefined)[];
+  projectMaterials: { colours: string[]; matrix: number[] | null; multiplier: number | null } | null;
   flush: { matrix: number[] | null; multiplier: number | null };
   flushDialog: boolean;
   events: LayerEvent[];
@@ -94,6 +95,7 @@ let state: State = {
   gizmo: 'none',
   processScope: 'global',
   slotColours: [],
+  projectMaterials: null,
   flush: { matrix: null, multiplier: null },
   flushDialog: false,
   events: [],
@@ -246,7 +248,7 @@ export function removeSelected() {
 }
 
 export function deleteAll() {
-  setState((s) => ({ objects: [], selected: null, project: null, job: markStale(s.job) }));
+  setState((s) => ({ objects: [], selected: null, project: null, projectMaterials: null, job: markStale(s.job) }));
 }
 
 export function setObjectOption(id: number, key: string, value: ConfigValue) {

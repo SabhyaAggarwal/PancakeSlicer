@@ -6,7 +6,7 @@ import { eventArg } from './components/LayerEvents';
 import { jobValue, loadTab } from './options';
 import { shortTime } from './preview/format';
 import { filamentColor } from './plater/Plater3D';
-import { arrange, loadMesh, loadProject, nextFreeSpot, parsePoints, placeholderGeometry, plateJson } from './plater/geometry';
+import { arrange, loadMesh, loadProject, nextFreeSpot, parsePoints, placeholderGeometry, plateJson, outsideBed } from './plater/geometry';
 import type { ProjectItem } from './plater/threemf';
 import {
   DEFAULT_PRINTER, DEMO_MODELS, effectiveConfig, getState, markStale, newId, printerPreset, resolvePreset, selectPrinter, setState, toast, type PlateObject,
@@ -101,17 +101,17 @@ export async function openProject(file: File) {
   };
   try {
     await loadProject(file, {
-      items(items: ProjectItem[]) {
+      items(items: ProjectItem[], materials) {
         if (!items.length) return toast(`${file.name}: the project has no printable objects`);
-        const slots = Math.max(s.filamentSlots.length, ...items.map((i) => i.extruder));
+        const slots = Math.max(1, materials.colours.length, ...items.map((i) => i.extruder));
         objects = items.map((it) => ({
           id: newId(), name: it.name, geometry: placeholderGeometry(), rotX: 0, rotY: 0, scale: [1, 1, 1],
           extruder: it.extruder, source: file, settings: {}, project: { file: file.name, placeholder: true },
           instances: [{ id: newId(), x: it.origin[0], y: it.origin[1], rotZ: 0 }],
         }));
         setState((st) => ({
-          objects, project: file, selected: null, processScope: 'global',
-          filamentSlots: st.filamentSlots.length >= slots ? st.filamentSlots : [...st.filamentSlots, ...Array(slots - st.filamentSlots.length).fill(st.filamentSlots[0] ?? '')],
+          objects, project: file, projectMaterials: materials, slotColours: [], flush: { matrix: null, multiplier: null }, selected: null, processScope: 'global',
+          filamentSlots: Array.from({ length: slots }, (_, i) => st.filamentSlots[i] ?? st.filamentSlots[0] ?? ''),
           job: markStale(st.job),
         }));
       },
@@ -127,7 +127,7 @@ export async function openProject(file: File) {
 export function newProject() {
   const s = getState();
   if (s.objects.length && !window.confirm('Start a new project? The objects on the plate are removed.')) return;
-  setState((st) => ({ objects: [], selected: null, project: null, events: [], flush: { matrix: null, multiplier: null }, processScope: 'global', job: markStale(st.job) }));
+  setState((st) => ({ objects: [], selected: null, project: null, projectMaterials: null, events: [], flush: { matrix: null, multiplier: null }, processScope: 'global', job: markStale(st.job) }));
 }
 
 export function openProjectDialog() {
@@ -191,11 +191,12 @@ function overrides(): Config {
   add('process', s.process, s.dirty.process);
   add('filament', s.filamentSlots[0] ?? '', s.dirty.filament);
   if (s.bedType) out.curr_bed_type = s.bedType;
-  if (s.filamentSlots.length > 1) {
+  if (s.filamentSlots.length > 1 || s.slotColours.some((c) => c !== undefined)) {
     const { matrix, multiplier } = currentFlush(s);
-    out.filament_colour = s.filamentSlots.map((_, i) => filamentColor(s, i + 1));
-    out.flush_volumes_matrix = matrix;
-    out.flush_multiplier = [multiplier];
+    if (!s.project || s.slotColours.some((c) => c !== undefined))
+      out.filament_colour = s.filamentSlots.map((_, i) => filamentColor(s, i + 1));
+    if (!s.project || s.flush.matrix !== null) out.flush_volumes_matrix = matrix;
+    if (!s.project || s.flush.multiplier !== null) out.flush_multiplier = [multiplier];
   }
   for (const k of Object.keys(out)) out[k] = jobValue(k, out[k]);
   return out;
@@ -233,9 +234,23 @@ let unsubscribe: (() => void) | null = null;
 let sliceGeneration = 0;
 let pendingSubmission: AbortController | null = null;
 
+export function outsideVolumeWarning(s = getState()): string | null {
+  const machine = printerPreset(s);
+  if (!machine) return null;
+  const objects = s.objects.filter((o) => !o.project?.placeholder);
+  const outside = outsideBed(objects, parsePoints(machine.config.printable_area), Number(machine.config.printable_height ?? 1e6));
+  const names = objects.filter((o) => o.instances.some((i) => outside.has(i.id))).map((o) => o.name);
+  return names.length ? `Following objects are laid over the boundary of plate or exceeds the height limit:\n${names.join('\n')}\nPlease solve the problem by moving it totally on or off the plate, and confirming that the height is within the build volume.\n` : null;
+}
+
 export async function slice() {
   const s = getState();
   if (!s.api || !s.objects.length || s.job.state === 'running' || s.job.state === 'submitting') return;
+  const outside = outsideVolumeWarning(s);
+  if (outside) {
+    setState({ job: { state: 'failed', pct: 0, stage: '', error: outside } });
+    return;
+  }
   const generation = ++sliceGeneration;
   const submission = new AbortController();
   pendingSubmission = submission;

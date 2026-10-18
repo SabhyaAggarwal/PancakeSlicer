@@ -4,7 +4,7 @@ import { toolValue } from '../options';
 import type { Instance, PlateObject } from '../state/store';
 import type { Bvh } from './bvh';
 import type { MeshData, MeshIn, MeshOut } from './mesh.worker';
-import type { ProjectItem } from './threemf';
+import type { ProjectItem, ProjectMaterials } from './threemf';
 
 const DEG = Math.PI / 180;
 
@@ -56,14 +56,14 @@ export function loadMesh(file: File, progress?: (pct: number) => void): Promise<
 }
 
 export function loadProject(file: File, on: {
-  items(items: ProjectItem[]): void;
+  items(items: ProjectItem[], materials: ProjectMaterials): void;
   mesh(i: number, geometry: THREE.BufferGeometry, centre: THREE.Vector3): void;
   missing(i: number): void;
 }): Promise<void> {
   return new Promise((resolve, reject) => {
     const geos = new Map<number, THREE.BufferGeometry>();
     request({ type: 'project', file }, (m) => {
-      if (m.type === 'items') on.items(m.items);
+      if (m.type === 'items') on.items(m.items, m.materials);
       else if (m.type === 'mesh') {
         const geo = toGeometry(m);
         geos.set(m.item!, geo);
@@ -258,8 +258,13 @@ export function outsideBed(objects: PlateObject[], area: THREE.Vector2[], height
   const poly = area;
   const inside = (x: number, y: number) => {
     let c = false;
-    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++)
-      if (poly[i].y > y !== poly[j].y > y && x < ((poly[j].x - poly[i].x) * (y - poly[i].y)) / (poly[j].y - poly[i].y) + poly[i].x) c = !c;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const a = poly[i], b = poly[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy)));
+      if (Math.hypot(x - a.x - t * dx, y - a.y - t * dy) <= 1e-3) return true;
+      if (a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) c = !c;
+    }
     return c;
   };
   for (const o of objects)

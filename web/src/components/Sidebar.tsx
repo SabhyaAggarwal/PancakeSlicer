@@ -63,6 +63,7 @@ function FilamentSection() {
   const slots = useStore((s) => s.filamentSlots);
   useStore((s) => s.dirty.filament);
   useStore((s) => s.slotColours);
+  useStore((s) => s.projectMaterials);
   const s = getState();
   const add = () =>
     setState((st) => {

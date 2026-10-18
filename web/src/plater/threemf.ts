@@ -1,5 +1,11 @@
 import { unzip, strFromU8 } from 'fflate';
 
+export interface ProjectMaterials {
+  colours: string[];
+  matrix: number[] | null;
+  multiplier: number | null;
+}
+
 export interface ProjectItem {
   id: string;
   name: string;
@@ -87,7 +93,7 @@ function parseSettings(text: string | undefined): Map<string, { name?: string; e
 
 const unescapeXml = (s: string) => s.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 
-export async function readProject(file: File): Promise<{ items: ProjectItem[]; mesh(i: number): Float32Array | null }> {
+export async function readProject(file: File): Promise<{ items: ProjectItem[]; materials: ProjectMaterials; mesh(i: number): Float32Array | null }> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   const zip = await new Promise<Record<string, Uint8Array>>((resolve, reject) => unzip(bytes, (err, data) => (err ? reject(err) : resolve(data))));
   const entry = (p: string) => zip[p.replace(/^\//, '')] ?? Object.entries(zip).find(([k]) => k.toLowerCase() === p.replace(/^\//, '').toLowerCase())?.[1];
@@ -136,5 +142,15 @@ export async function readProject(file: File): Promise<{ items: ProjectItem[]; m
     collect(rootPath, build[i].objectid, build[i].transform, tris);
     return tris.length ? new Float32Array(tris) : null;
   };
-  return { items, mesh };
+  const configBytes = entry('Metadata/project_settings.config');
+  const config = configBytes ? JSON.parse(strFromU8(configBytes)) : {};
+  const numbers = (v: unknown): number[] | null => {
+    const list = Array.isArray(v) ? v.map(Number) : typeof v === 'string' ? v.split(/[,;]/).map(Number) : [];
+    return list.length && list.every(Number.isFinite) ? list : null;
+  };
+  const colourValue = config.filament_colour;
+  const colours = (Array.isArray(colourValue) ? colourValue : typeof colourValue === 'string' ? colourValue.split(';') : [])
+    .map(String);
+  const materials = { colours, matrix: numbers(config.flush_volumes_matrix), multiplier: numbers(config.flush_multiplier)?.[0] ?? null };
+  return { items, materials, mesh };
 }

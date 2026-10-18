@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { arrangeAll, download, newProject, openFileDialog, openProjectDialog, outputKind, slice } from '../actions';
+import { arrangeAll, download, newProject, openFileDialog, openProjectDialog, outputKind, outsideVolumeWarning, slice } from '../actions';
 import { deleteAll, removeSelected, setState, useStore } from '../state/store';
 import { Icon } from './Icon';
 
@@ -119,6 +119,7 @@ export function TabBar() {
   const tab = useStore((s) => s.tab);
   const job = useStore((s) => s.job);
   const hasObjects = useStore((s) => s.objects.length > 0);
+  const outside = useStore(outsideVolumeWarning);
   const busy = job.state === 'running' || job.state === 'submitting';
   const canExport = job.state === 'done' && !job.stale;
   const exportLabel = useStore(outputKind) === 'gcode.3mf' ? 'Export plate sliced file' : 'Export G-code file';
@@ -135,7 +136,7 @@ export function TabBar() {
         </button>
       </div>
       <div className="tabbar-actions">
-        <button className="side-btn" disabled={!hasObjects || busy} onClick={() => void slice()}>
+        <button className="side-btn" disabled={!hasObjects || busy || !!outside} title={outside ?? ''} onClick={() => void slice()}>
           Slice plate
         </button>
         <button className="side-btn" disabled={!canExport} onClick={download} title={job.stale ? 'Settings changed since the last slice; slice again' : ''}>
