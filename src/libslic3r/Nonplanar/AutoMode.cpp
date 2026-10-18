@@ -209,7 +209,7 @@ AutoObjectSettings auto_object_settings(const PrintObject &object, const PrintRe
 }
 
 void choose_patch_settings(const PrintObject &object, const HeadEnvelope &head, double max_error, double first_layer_top,
-                           ConformalPatch &patch)
+                           ConformalPatch &patch, const ExPolygons *steep_faces)
 {
     const PrintRegionConfig &config = object.printing_region(size_t(patch.region_id)).config();
     if (!is_auto(object.config()) && config.nonplanar_top_shells.value >= 0)
@@ -232,6 +232,8 @@ void choose_patch_settings(const PrintObject &object, const HeadEnvelope &head, 
                 for (int jy = iy; jy <= iy + 1; ++jy)
                     for (int jx = ix; jx <= ix + 1; ++jx)
                         shell_node[size_t(jy) * S.nx() + jx] = 0;
+    const Mask          steep_node = steep_faces != nullptr && !steep_faces->empty() ? rasterize(*steep_faces, S) : Mask();
+    std::vector<double> count_slopes;
     double jxx = 0., jxy = 0., jyy = 0.;
     double n = 0., mx = 0., my = 0., mxx = 0., mxy = 0., myy = 0.;
     float  z_lo = std::numeric_limits<float>::infinity();
@@ -250,8 +252,11 @@ void choose_patch_settings(const PrintObject &object, const HeadEnvelope &head, 
             const Vec2d g = S.gradient(p);
             if (std::isnan(g.x()) || std::isnan(g.y()))
                 continue;
-            if (shell_node[size_t(iy) * S.nx() + ix])
+            if (shell_node[size_t(iy) * S.nx() + ix]) {
                 slopes.emplace_back(std::atan(g.norm()));
+                if (steep_node.empty() || !steep_node[size_t(iy) * S.nx() + ix])
+                    count_slopes.emplace_back(slopes.back());
+            }
             jxx += g.x() * g.x(), jxy += g.x() * g.y(), jyy += g.y() * g.y();
             const float xm = z_at(ix - step, iy), xp = z_at(ix + step, iy), ym = z_at(ix, iy - step), yp = z_at(ix, iy + step);
             const float a0 = z_at(ix - step, iy - step), a1 = z_at(ix + step, iy - step), a2 = z_at(ix - step, iy + step),
@@ -279,7 +284,8 @@ void choose_patch_settings(const PrintObject &object, const HeadEnvelope &head, 
     const bool   large   = a.shell_area >= LargeArea * scale * scale;
     const double T       = (large ? 1.5 : 1.0) * d;
     const int    n_depth = std::isfinite(z_lo) ? int(std::floor((z_lo - 0.5 * h_c - first_layer_top) / h_c + 1e-6)) : AutoMinShells;
-    a.shells = std::clamp(int(std::ceil(T / (h_c * std::cos(a.slope90)) - 0.15)), AutoMinShells, MaxShells);
+    const double shell_slope = steep_node.empty() || count_slopes.empty() ? a.slope90 : percentile(count_slopes, 0.9);
+    a.shells = std::clamp(int(std::ceil(T / (h_c * std::cos(shell_slope)) - 0.15)), AutoMinShells, MaxShells);
     a.shells = std::max(AutoMinShells, std::min({ a.shells, n_depth, planar_top_layers(config, h_c) }));
     patch.shells = a.shells;
     if (!is_auto(object.config()))

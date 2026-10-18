@@ -64,7 +64,7 @@ struct AutoPatchSettings
 };
 
 void choose_patch_settings(const PrintObject &object, const HeadEnvelope &head, double max_error, double first_layer_top,
-                           ConformalPatch &patch);
+                           ConformalPatch &patch, const ExPolygons *steep_faces = nullptr);
 
 NonplanarTopPattern top_pattern(const ConformalPatch &patch, const PrintRegionConfig &config);
 bool                ironing_enabled(const ConformalPatch &patch, const PrintRegionConfig &config);

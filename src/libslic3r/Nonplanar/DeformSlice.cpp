@@ -1092,8 +1092,10 @@ public:
         const BoundingBoxf3 &bb = rays.bbox;
         m_mesh = HeightField(BoundingBoxf(bb.min.head<2>(), bb.max.head<2>()), Pitch);
         m_dep  = m_mesh;
+        m_err  = m_mesh;
         const int nx = m_mesh.nx(), ny = m_mesh.ny();
-        std::vector<float> nz(m_mesh.data().size(), 0.f);
+        std::vector<float> &nz = m_nz;
+        nz.assign(m_mesh.data().size(), 0.f);
         {
             const sla::IndexedMesh &imesh = *rays.imesh;
             tbb::parallel_for(tbb::blocked_range<int>(0, ny), [&](const tbb::blocked_range<int> &range) {
@@ -1146,6 +1148,7 @@ public:
                 m_eval[size_t(iy) * nx + ix] = ok;
             }
         std::fill(m_dep.data().begin(), m_dep.data().end(), HeightField::NoData);
+        std::fill(m_err.data().begin(), m_err.data().end(), HeightField::NoData);
         for (size_t n = 0; n < m_eval.size(); ++n)
             if (m_eval[n])
                 m_floor = std::min(m_floor, double(m_mesh.data()[n]));
@@ -1190,8 +1193,13 @@ public:
                     if (d >= -m_layer_h && d <= ZaaMinZ + 0.03)
                         z += float(std::clamp(d, -(m_layer_h - ZaaMinZ), contour > 1 ? 0. : ZaaMinZ));
                 }
-                if (std::isnan(v) || z > v)
+                if (std::isnan(v) || z > v) {
                     v = z;
+                    float at = contour == 0 ? m_mesh.sample(a.head<2>() + t * d - Vec2d(0.5 * Pitch, 0.5 * Pitch)) : HeightField::NoData;
+                    if (std::isnan(at))
+                        at = m_mesh.at(ix, iy);
+                    m_err.at(ix, iy) = z - at;
+                }
             }
     }
 
@@ -1226,24 +1234,31 @@ public:
             this->add(shell, host_z);
     }
 
-    void clear() { std::fill(m_dep.data().begin(), m_dep.data().end(), HeightField::NoData); }
+    void clear()
+    {
+        std::fill(m_dep.data().begin(), m_dep.data().end(), HeightField::NoData);
+        std::fill(m_err.data().begin(), m_err.data().end(), HeightField::NoData);
+    }
 
     double rms() const
     {
         double sum = 0.;
         size_t n   = 0;
+        double weight = 0.;
         for (size_t i = 0; i < m_eval.size(); ++i)
-            if (m_eval[i] && !std::isnan(m_dep.data()[i]) && !std::isnan(m_mesh.data()[i])) {
-                const double e = m_dep.data()[i] - m_mesh.data()[i];
-                sum += e * e;
+            if (m_eval[i] && !std::isnan(m_err.data()[i]) && m_nz[i] > 0.f) {
+                const double e = m_err.data()[i] * m_nz[i];
+                sum += e * e / m_nz[i];
+                weight += 1. / m_nz[i];
                 ++n;
             }
-        return n == 0 ? 0. : std::sqrt(sum / n);
+        return n == 0 ? 0. : std::sqrt(sum / weight);
     }
 
 private:
-    HeightField       m_mesh, m_dep;
-    std::vector<char> m_eval;
+    HeightField        m_mesh, m_dep, m_err;
+    std::vector<float> m_nz;
+    std::vector<char>  m_eval;
     double            m_layer_h = 0.2;
     double            m_floor   = Inf;
 };
