@@ -1,16 +1,14 @@
 import type { Config, ConfigValue, JobRequest, PresetCatalog, SystemPreset } from './api/types';
 import { sliceProgress } from './api/progress';
 import { connect } from './api/client';
-import { currentFlush } from './components/FlushDialog';
-import { eventArg } from './components/LayerEvents';
 import { normalizeConfig } from './config-values';
-import { OPTIONS, jobValue, loadTab } from './options';
+import { OPTIONS, loadTab } from './options';
 import { shortTime } from './preview/format';
-import { filamentColor } from './plater/filamentColor';
+import { jobFields, outputKind, overrides, plateSignature } from './slice-input';
 import { arrange, loadMesh, loadProject, nextFreeSpot, parsePoints, placeholderGeometry, plateJson, outsideBed } from './plater/geometry';
 import type { ProjectItem } from './plater/threemf';
 import {
-  DEFAULT_PRINTER, DEMO_MODELS, effectiveConfig, getState, markStale, newId, plateSignature, printerPreset, resolvePreset, selectPrinter, setState, toast, type PlateObject,
+  DEFAULT_PRINTER, DEMO_MODELS, effectiveConfig, getState, markStale, newId, printerPreset, resolvePreset, selectPrinter, setState, toast, type PlateObject,
 } from './state/store';
 
 const VENDORS = ['BBL', 'Prusa'];
@@ -66,7 +64,7 @@ export async function importFiles(files: FileList | File[]) {
     return;
   }
   if (getState().project) {
-    toast('A 3MF project is open; its plate is sliced as saved. Delete all to start a new plate.');
+    toast('A 3MF project is open; its objects share the project archive. Delete all to start a new plate.');
     return;
   }
   list = list.filter((f) => /\.(stl|obj)$/i.test(f.name) || (toast(`${f.name}: STL, OBJ and 3MF are supported`), false));
@@ -164,7 +162,7 @@ export async function openProject(file: File) {
         }));
       },
       mesh: (i, geometry, centre) =>
-        patch(i, (o) => ({ ...o, geometry, project: { file: file.name, placeholder: false }, instances: [{ ...o.instances[0], x: centre.x, y: centre.y, z: centre.z }] })),
+        patch(i, (o) => ({ ...o, geometry, project: { file: file.name, placeholder: false, origin: [centre.x, centre.y, centre.z] }, instances: [{ ...o.instances[0], x: centre.x, y: centre.y, z: centre.z }] })),
       missing: (i) => patch(i, (o) => ({ ...o, project: { file: file.name, placeholder: true, missing: true } })),
     });
   } catch (e) {
@@ -196,7 +194,6 @@ export function openFileDialog() {
 }
 
 export function arrangeAll() {
-  if (getState().project) return;
   setState((s) => ({ objects: arrange(s.objects, bedArea()) }));
 }
 
@@ -224,64 +221,13 @@ export function removeInstance() {
   }));
 }
 
-export function outputKind(s = getState()): 'gcode' | 'gcode.3mf' {
-  const m = printerPreset(s);
-  return m?.vendor === 'BBL' ? 'gcode.3mf' : 'gcode';
-}
+export { outputKind } from './slice-input';
 
-function overrides(s = getState()): Config {
-  const out: Config = s.project ? {
-    ...effectiveConfig(s, 'machine'), ...effectiveConfig(s, 'process'),
-    ...effectiveConfig(s, 'filament'),
-  } : {};
-  const add = (type: 'machine' | 'process' | 'filament', name: string, dirty: Config) => {
-    Object.assign(out, resolvePreset(s, type, name).user?.overrides ?? {}, dirty);
-  };
-  add('machine', s.printer, s.dirty.machine);
-  add('process', s.process, s.dirty.process);
-  const configs = s.filamentSlots.map((_, i) => effectiveConfig(s, 'filament', i));
-  for (const k of new Set(configs.flatMap((c) => Object.keys(c)))) {
-    if (!OPTIONS[k]) continue;
-    const values = configs.map((c) => c[k] ?? OPTIONS[k].default);
-    if (values.every((v) => v === undefined || Array.isArray(v) && !v.length)) continue;
-    out[k] = values.some(Array.isArray)
-      ? values.map((v) => Array.isArray(v) ? v[0] ?? '' : v ?? '') as ConfigValue
-      : values[0] as ConfigValue;
-  }
-  for (const k of Object.keys(out)) if (!OPTIONS[k]) delete out[k];
-  if (s.projectMaterials && s.project) {
-    out.filament_colour = s.filamentSlots.map((_, i) => filamentColor(s, i + 1));
-    if (s.projectMaterials.matrix) out.flush_volumes_matrix = s.projectMaterials.matrix;
-    if (s.projectMaterials.multiplier !== null) out.flush_multiplier = [s.projectMaterials.multiplier];
-  }
-  if (s.bedType) out.curr_bed_type = s.bedType;
-  if (s.filamentSlots.length > 1 || s.slotColours.some((c) => c !== undefined)) {
-    const { matrix, multiplier } = currentFlush(s);
-    if (!s.project || s.slotColours.some((c) => c !== undefined))
-      out.filament_colour = s.filamentSlots.map((_, i) => filamentColor(s, i + 1));
-    if (!s.project || s.flush.matrix !== null) out.flush_volumes_matrix = matrix;
-    if (!s.project || s.flush.multiplier !== null) out.flush_multiplier = [multiplier];
-  }
-  for (const k of Object.keys(out)) out[k] = jobValue(k, out[k]);
-  return out;
-}
+export async function jobRequest(s = getState()): Promise<JobRequest> {
+  const fields = jobFields(s);
 
-export async function jobRequest(): Promise<JobRequest> {
-  const s = getState();
-  const sys = (type: 'machine' | 'process' | 'filament', n: string) => resolvePreset(s, type, n).base?.name ?? n;
   const { plate, files } = s.project ? { plate: undefined, files: [{ name: s.project.name, blob: s.project as Blob }] } : await plateJson(s.objects);
-  return {
-    files,
-    ...(s.project ? { project_instances: s.objects.flatMap((o) => o.instances.map((i) => ({ printable: i.printable !== false }))) } : {}),
-    vendor: printerPreset(s)?.vendor ?? 'BBL',
-    printer: sys('machine', s.printer),
-    process: sys('process', s.process),
-    filaments: s.filamentSlots.map((f) => sys('filament', f)),
-    overrides: overrides(s),
-    plate,
-    events: s.events.map(eventArg),
-    output: outputKind(s),
-  };
+  return { ...fields, plate, files };
 }
 
 (window as unknown as { __jobId: unknown }).__jobId = () => getState().job.id;
@@ -290,7 +236,7 @@ export async function jobRequest(): Promise<JobRequest> {
   return {
     'files[]': r.files.map((f) => `${f.name} (${f.blob.size} bytes)`),
     vendor: r.vendor, printer: r.printer, process: r.process, 'filament[]': r.filaments,
-    overrides: JSON.stringify(r.overrides), plate: r.plate && JSON.stringify(r.plate),
+    overrides: JSON.stringify(r.overrides), plate: r.plate && JSON.stringify(r.plate), project_instances: r.project_instances,
     events: r.events.length ? JSON.stringify(r.events) : undefined, output: r.output,
   };
 };
@@ -322,7 +268,7 @@ export async function slice() {
   const signature = plateSignature(s);
   setState({ job: { state: 'submitting', pct: 0, stage: 'uploading', plateSignature: signature } });
   try {
-    const request = await jobRequest();
+    const request = await jobRequest(s);
     if (generation !== sliceGeneration) return;
     const id = await s.api.submit(request, submission.signal);
     if (generation !== sliceGeneration) {
@@ -421,6 +367,9 @@ export async function download() {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(href), 60000);
 }
+
+export const toolbarOperation = (operation: 'orient' | 'split', all = false) =>
+  import('./plater/operations').then((m) => m.run(operation, all));
 
 export async function saveProject(as = false) {
   const saving = await import('./saveProject');

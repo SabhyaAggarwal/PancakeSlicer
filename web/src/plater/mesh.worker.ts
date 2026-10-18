@@ -1,5 +1,6 @@
 import { bakeStl, centre, hullPoints, parseObj, parseStl, vertexNormals, weld } from './meshcore';
 import { buildBvh, type Bvh } from './bvh';
+import { split } from './split';
 import { readProject } from './threemf';
 
 export interface MeshData {
@@ -13,11 +14,13 @@ export interface MeshData {
 }
 
 export type MeshIn =
+  | { type: 'split'; id: number; file: Blob }
   | { type: 'mesh'; id: number; file: File }
   | { type: 'project'; id: number; file: File }
   | { type: 'bake'; id: number; positions: Float32Array; index: Uint32Array | Uint16Array | null; matrix: number[] };
 
 export type MeshOut =
+  | { type: 'pieces'; id: number; pieces: Blob[] }
   | { type: 'progress'; id: number; pct: number }
   | ({ type: 'mesh'; id: number; item?: number } & MeshData)
   | { type: 'hull'; id: number; item?: number; hull: Float32Array }
@@ -53,7 +56,9 @@ function finish(id: number, soup: Float32Array, item?: number, progress?: (pct: 
 self.onmessage = async (e: MessageEvent<MeshIn>) => {
   const m = e.data;
   try {
-    if (m.type === 'mesh') {
+    if (m.type === 'split') {
+ post({ type: 'pieces', id: m.id, pieces: split(parseStl(await m.file.arrayBuffer())) });
+ } else if (m.type === 'mesh') {
       const big = m.file.size > 4 << 20;
       const progress = big ? (pct: number) => post({ type: 'progress', id: m.id, pct }) : undefined;
       progress?.(0);

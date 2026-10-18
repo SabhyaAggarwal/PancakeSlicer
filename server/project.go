@@ -8,6 +8,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -17,11 +18,56 @@ import (
 )
 
 type projectInstance struct {
-	Printable  *bool   `json:"printable"`
-	Z          float64 `json:"z"`
-	Transform  string  `json:"-"`
-	ObjectID   string  `json:"-"`
-	IdentifyID string  `json:"-"`
+	Printable  *bool     `json:"printable"`
+	Z          float64   `json:"z"`
+	Transform  string    `json:"-"`
+	Delta      []float64 `json:"transform"`
+	ObjectID   string    `json:"-"`
+	IdentifyID string    `json:"-"`
+}
+
+func projectTransformsWorkaround(path string, edits []projectInstance) error {
+	source, err := savedProjectInstances(path)
+	if err != nil {
+		return err
+	}
+	if len(source) != len(edits) {
+		return fmt.Errorf("project build item count changed")
+	}
+	for i := range edits {
+		if edits[i].Delta == nil {
+			continue
+		}
+		if len(edits[i].Delta) != 12 {
+			return fmt.Errorf("project transform needs 12 numbers")
+		}
+		var delta modelTransform
+		for k, v := range edits[i].Delta {
+			if math.IsNaN(v) || math.IsInf(v, 0) {
+				return fmt.Errorf("non-finite project transform")
+			}
+			delta[k] = v
+		}
+		t, err := transformValue(source[i].Transform)
+		if err != nil {
+			return err
+		}
+		values := make([]string, 12)
+		for r := 0; r < 4; r++ {
+			for c := 0; c < 3; c++ {
+				v := 0.0
+				if r == 3 {
+					v = delta[9+c]
+				}
+				for k := 0; k < 3; k++ {
+					v += t[r*3+k] * delta[k*3+c]
+				}
+				values[r*3+c] = strconv.FormatFloat(v, 'g', -1, 64)
+			}
+		}
+		edits[i].Transform = strings.Join(values, " ")
+	}
+	return patchProject(path, edits, false)
 }
 
 var buildPattern = regexp.MustCompile(`(?s)<build\b[^>]*>.*?</build>`)

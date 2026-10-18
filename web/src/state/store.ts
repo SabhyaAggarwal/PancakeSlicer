@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { plateSignature } from '../slice-input';
 import * as THREE from 'three';
 import type { Api } from '../api/client';
 import type { Config, ConfigValue, JobStatus, PresetType, SystemPreset, UserPreset } from '../api/types';
@@ -24,7 +25,7 @@ export interface PlateObject {
   instances: Instance[];
   source: File;
   settings: Config;
-  project?: { file: string; placeholder: boolean; missing?: boolean };
+  project?: { file: string; placeholder: boolean; missing?: boolean; origin?: [number, number, number] };
 }
 
 export interface LayerEvent {
@@ -135,31 +136,6 @@ export function useStore<T>(sel: (s: State) => T): T {
 
 let nextId = 1;
 export const newId = () => nextId++;
-
-const fileIds = new WeakMap<File, number>();
-let nextFileId = 1;
-function fileId(file: File | null): number | null {
-  if (!file) return null;
-  if (!fileIds.has(file)) fileIds.set(file, nextFileId++);
-  return fileIds.get(file)!;
-}
-
-export function plateSignature(s: State): string {
-  const preset = (type: PresetType, name: string, slot = 0) => ({ name, config: effectiveConfig(s, type, slot) });
-  return JSON.stringify({
-    objects: s.objects.map((o) => ({
-      id: o.id, name: o.name, source: fileId(o.source), geometry: o.geometry.uuid,
-      rotX: o.rotX, rotY: o.rotY, scale: o.scale, extruder: o.extruder,
-      instances: o.instances, settings: o.settings, project: o.project,
-    })),
-    project: fileId(s.project),
-    printer: preset('machine', s.printer), process: preset('process', s.process),
-    filaments: s.filamentSlots.map((name, slot) => preset('filament', name, slot)),
-    dirty: s.dirty, bedType: s.bedType, slotColours: s.slotColours,
-    projectMaterials: s.projectMaterials, flush: s.flush, events: s.events,
-  }, (_key, value) => value && typeof value === 'object' && !Array.isArray(value)
-    ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value);
-}
 
 export const DEMO_MODELS = ['Bambu Lab A1 mini', 'Bambu Lab A1', 'Bambu Lab P1S', 'Prusa MINI', 'Prusa MINI IS'];
 export const DEFAULT_PRINTER = 'Bambu Lab A1 mini 0.4 nozzle';

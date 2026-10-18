@@ -217,7 +217,7 @@ export default function Plater3D() {
     const syncGizmo = (s: State) => {
       const o = s.objects.find((ob) => ob.id === s.selected?.object);
       const i = o?.instances.find((ii) => ii.id === s.selected?.instance);
-      if (!o || !i || s.gizmo === 'none' || o.project) {
+      if (!o || !i || s.gizmo === 'none' || o.project?.placeholder) {
         tc.detach();
         return;
       }
@@ -291,7 +291,7 @@ export default function Plater3D() {
       const p = bedPoint();
       const o = getState().objects.find((ob) => ob.id === object)!;
       const i = o.instances.find((ii) => ii.id === instance)!;
-      if (p && !o.project) drag = { object, instance, dx: i.x - p.x, dy: i.y - p.y, moved: false };
+      if (p && !o.project?.placeholder) drag = { object, instance, dx: i.x - p.x, dy: i.y - p.y, moved: false };
       controls.enabled = false;
       renderer.domElement.setPointerCapture(ev.pointerId);
     };

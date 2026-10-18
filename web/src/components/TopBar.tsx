@@ -58,7 +58,6 @@ export function TopBar() {
   const hasSel = useStore((s) => !!s.selected);
   const mock = useStore((s) => s.api?.mock);
   const name = useStore((s) => (s.project?.name ?? s.objects[0]?.name)?.replace(/\.(stl|obj|3mf)$/i, ''));
-  const project = useStore((s) => !!s.project);
   const kind = useStore(outputKind);
   const exportLabel = kind === 'gcode.3mf' ? 'Export plate sliced file' : 'Export G-code';
   const exportTip = kind === 'gcode.3mf' ? 'Export current sliced file' : 'Export current plate as G-code';
@@ -90,7 +89,7 @@ export function TopBar() {
           { label: 'Delete selected', shortcut: 'Del', action: removeSelected, disabled: !hasSel },
           { label: 'Delete all', shortcut: 'Ctrl+Del', action: deleteAll, disabled: !hasObjects },
           'sep',
-          { label: 'Arrange', shortcut: 'A', action: arrangeAll, disabled: !hasObjects || project },
+          { label: 'Arrange', shortcut: 'A', action: arrangeAll, disabled: !hasObjects },
           'sep',
           { label: 'Preferences', shortcut: 'Ctrl+P' },
         ]}

@@ -5,7 +5,7 @@ export function Icon({ name, size = 16, className, title }: { name: string; size
 export function IconButton(props: {
   icon: string;
   title: string;
-  onClick?: () => void;
+  onClick?: React.MouseEventHandler<HTMLButtonElement>;
   disabled?: boolean;
   active?: boolean;
   size?: number;

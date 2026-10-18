@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -32,6 +33,7 @@ const (
 func (s JobState) Finished() bool { return s == StateDone || s == StateFailed || s == StateCancelled }
 
 type JobRequest struct {
+	Orient    bool        `json:"orient,omitempty"`
 	Vendor    string      `json:"vendor"`
 	Printer   string      `json:"printer"`
 	Process   string      `json:"process"`
@@ -112,7 +114,7 @@ func (j *Job) View() JobView {
 		t := j.finished
 		v.Finished = &t
 	}
-	if j.state == StateDone {
+	if j.state == StateDone && !j.Request.Orient {
 		v.DownloadURL = "/api/jobs/" + j.ID + "/download"
 		v.Filename = j.DownloadName()
 	}
@@ -455,6 +457,9 @@ func (m *JobManager) toolArgs(j *Job) []string {
 	for _, e := range r.Events {
 		args = append(args, "--event", e)
 	}
+	if r.Orient {
+		return append(args, "--orient-only", filepath.Join(in, r.Files[0]))
+	}
 	if m.cfg.Features.MovesOut {
 		args = append(args, "--moves-out", j.MovesPath())
 	}
@@ -483,7 +488,7 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 	j.setState(StateRunning, "")
 	args := m.toolArgs(j)
 	var placementErr error
-	if j.Request.Output != "3mf" {
+	if !j.Request.Orient && j.Request.Output != "3mf" {
 		args, placementErr = plateZWorkaround(ctx, m, j, args)
 	}
 	if placementErr != nil {
@@ -523,10 +528,30 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 		}
 		return
 	}
+	var rotation []float64
 	var lastErr lastLines
 	var readers sync.WaitGroup
 	readers.Add(2)
-	go func() { defer readers.Done(); scanLines(stdout, func(l string) { j.log("stdout", l) }) }()
+	go func() {
+		defer readers.Done()
+		scanLines(stdout, func(l string) {
+			j.log("stdout", l)
+			if j.Request.Orient && strings.HasPrefix(l, "auto_orient_rotation ") {
+				fields := strings.Fields(l)[1:]
+				if len(fields) == 9 {
+					values := make([]float64, 9)
+					for i, field := range fields {
+						value, err := strconv.ParseFloat(field, 64)
+						if err != nil || math.IsNaN(value) || math.IsInf(value, 0) {
+							return
+						}
+						values[i] = value
+					}
+					rotation = values
+				}
+			}
+		})
+	}()
 	go func() {
 		defer readers.Done()
 		scanLines(stderr, func(l string) { lastErr.add(l); j.log("stderr", l) })
@@ -544,7 +569,14 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 	j.exitCode = &code
 	j.mu.Unlock()
 	raw, recordErr := os.ReadFile(j.OutputPath("json"))
-	if j.Request.Output == "3mf" {
+	if j.Request.Orient {
+		if len(rotation) == 9 {
+			raw, recordErr = json.Marshal(map[string]any{"rotation": rotation})
+		} else {
+			recordErr = errors.New("missing native orientation rotation")
+		}
+	}
+	if !j.Request.Orient && j.Request.Output == "3mf" {
 		recordErr = nil
 		raw = nil
 		if waitErr == nil && !j.Request.Plate && strings.EqualFold(filepath.Ext(j.Request.Files[0]), ".3mf") {
@@ -579,7 +611,7 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 	case recordErr != nil:
 		j.setState(StateFailed, "the slicer output could not be read: "+sanitizeToolError(recordErr))
 	default:
-		if _, err := os.Stat(j.OutputPath(j.Request.Output)); err != nil {
+		if _, err := os.Stat(j.OutputPath(j.Request.Output)); !j.Request.Orient && err != nil {
 			j.setState(StateFailed, "the slicer finished without writing "+filepath.Base(j.OutputPath(j.Request.Output)))
 			return
 		}

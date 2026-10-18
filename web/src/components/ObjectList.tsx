@@ -112,7 +112,7 @@ export function ObjectList() {
                   ))}
                 </select>
                 <span className="ol-status">{sinking && <button className="ol-sinking" title="Click the icon to shift this object to the bed"
-                  onClick={(e) => { e.stopPropagation(); o.instances.forEach((i) => updateInstance(o.id, i.id, { z: 0 })); }} disabled={!!o.project}>
+                  onClick={(e) => { e.stopPropagation(); o.instances.forEach((i) => updateInstance(o.id, i.id, { z: 0 })); }} disabled={!!o.project?.placeholder}>
                   <Icon name="objlist_sinking" size={16} />
                 </button>}</span>
               </div>

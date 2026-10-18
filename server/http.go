@@ -138,7 +138,11 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, status, "invalid multipart upload: "+err.Error())
 		return
 	}
-	req := JobRequest{Vendor: r.FormValue("vendor"), Printer: r.FormValue("printer"), Process: r.FormValue("process"), Filaments: r.MultipartForm.Value["filament[]"], Output: r.FormValue("output"), Filename: r.FormValue("filename")}
+	req := JobRequest{Orient: r.FormValue("operation") == "orient", Vendor: r.FormValue("vendor"), Printer: r.FormValue("printer"), Process: r.FormValue("process"), Filaments: r.MultipartForm.Value["filament[]"], Output: r.FormValue("output"), Filename: r.FormValue("filename")}
+	if op := r.FormValue("operation"); op != "" && op != "orient" {
+		fail(w, 400, "unknown operation")
+		return
+	}
 	if strings.ContainsAny(req.Filename, "/\\\r\n") || len(req.Filename) > 240 || strings.IndexFunc(req.Filename, unicode.IsControl) >= 0 || req.Filename == "." || req.Filename == ".." {
 		fail(w, 400, "filename must be a basename of at most 240 bytes")
 		return
@@ -302,7 +306,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, "project_instances needs a non-empty array")
 			return
 		}
-		if err := patchProject(filepath.Join(j.Dir, "input", req.Files[0]), instances, false); err != nil {
+		if err := projectTransformsWorkaround(filepath.Join(j.Dir, "input", req.Files[0]), instances); err != nil {
 			fail(w, 400, err.Error())
 			return
 		}
@@ -323,9 +327,15 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		}
 		req.Overrides = append(selected, req.Overrides...)
 	}
-	if err := validatePlateBounds(filepath.Join(j.Dir, "input"), req, vendor.machines[req.Printer], rawPlate); req.Output != "3mf" && err != nil {
-		fail(w, 400, err.Error())
+	if req.Orient && (req.Output == "3mf" || req.Plate || len(req.Files) != 1 || !strings.EqualFold(filepath.Ext(req.Files[0]), ".stl")) {
+		fail(w, 400, "orient requires one STL without plate JSON or project output")
 		return
+	}
+	if !req.Orient && req.Output != "3mf" {
+		if err := validatePlateBounds(filepath.Join(j.Dir, "input"), req, vendor.machines[req.Printer], rawPlate); err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
 	}
 	j.Request = req
 	if err := s.jobs.Start(j); err != nil {

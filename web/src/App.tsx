@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { addInstance, arrangeAll, download, importFiles, init, newProject, openFileDialog, openProjectDialog, removeInstance, saveProject } from './actions';
+import { addInstance, arrangeAll, download, importFiles, init, newProject, openFileDialog, openProjectDialog, removeInstance, toolbarOperation, saveProject } from './actions';
 import { FlushDialog } from './components/FlushDialog';
 import { CanvasToolbar, ManipulationPanel, SliceNotification, Toast } from './components/CanvasOverlays';
 import { PresetDialog } from './components/Dialogs';
@@ -31,6 +31,7 @@ export default function App() {
       else if (ctrl && e.key === 'Delete') deleteAll();
       else if (ctrl) return;
       else if (e.key === 'Delete' || e.key === 'Backspace') removeSelected();
+      else if (e.key.toLowerCase() === 'q') toolbarOperation('orient', e.shiftKey);
       else if (e.key === 'a' || e.key === 'A') arrangeAll();
       else if (e.key === '+' || e.key === '=') addInstance();
       else if (e.key === '-') removeInstance();

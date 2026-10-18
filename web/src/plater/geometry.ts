@@ -12,7 +12,7 @@ let worker: Worker | null = null;
 let nextRequest = 1;
 const pending = new Map<number, (m: MeshOut) => void>();
 
-function request(msg: DistributiveOmit<MeshIn, 'id'>, on: (m: MeshOut) => void, transfer: Transferable[] = []) {
+export function request(msg: DistributiveOmit<MeshIn, 'id'>, on: (m: MeshOut) => void, transfer: Transferable[] = []) {
   if (!worker) {
     worker = new Worker(new URL('./mesh.worker.ts', import.meta.url), { type: 'module' });
     worker.onmessage = (e: MessageEvent<MeshOut>) => {
@@ -29,6 +29,7 @@ type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : n
 
 function toGeometry(d: MeshData): THREE.BufferGeometry {
   const geo = new THREE.BufferGeometry();
+  geo.userData.sourceCentre = d.centre;
   geo.setAttribute('position', new THREE.BufferAttribute(d.positions, 3));
   geo.setAttribute('normal', new THREE.BufferAttribute(d.normals, 3));
   geo.setIndex(new THREE.BufferAttribute(d.index, 1));
@@ -164,15 +165,13 @@ export function bakeStl(o: PlateObject): Promise<Blob> {
   );
 }
 
-export async function plateJson(objects: PlateObject[]): Promise<{ plate: PlateJson; files: { name: string; blob: Blob }[] }> {
-  const names: string[] = [];
+export function plateDescription(objects: PlateObject[]): PlateJson {
   const used = new Set<string>();
   const plate: PlateJson = { objects: [] };
   for (const o of objects) {
     let file = `${o.name.replace(/[^A-Za-z0-9_.-]+/g, '_').replace(/\.(stl|obj)$/i, '')}.stl`;
     for (let k = 2; used.has(file); k++) file = file.replace(/(_\d+)?\.stl$/, `_${k}.stl`);
     used.add(file);
-    names.push(file);
     plate.objects.push({
       file,
       name: o.name.replace(/\.(stl|obj)$/i, ''),
@@ -183,8 +182,26 @@ export async function plateJson(objects: PlateObject[]): Promise<{ plate: PlateJ
         : {}),
     });
   }
+  return plate;
+}
+
+export async function plateJson(objects: PlateObject[]): Promise<{ plate: PlateJson; files: { name: string; blob: Blob }[] }> {
+  const plate = plateDescription(objects);
   const blobs = await Promise.all(objects.map(bakeStl));
-  return { plate, files: names.map((name, i) => ({ name, blob: blobs[i] })) };
+  return { plate, files: plate.objects.map(({ file: name }, i) => ({ name, blob: blobs[i] })) };
+}
+
+const meshContents = new WeakMap<THREE.BufferGeometry, string>();
+export function meshSignature(o: PlateObject) {
+  let contents = meshContents.get(o.geometry);
+  if (contents === undefined) {
+    contents = JSON.stringify([
+      Array.from(o.geometry.attributes.position.array),
+      o.geometry.index && Array.from(o.geometry.index.array),
+    ]);
+    meshContents.set(o.geometry, contents);
+  }
+  return [contents, objectMatrix(o).elements];
 }
 
 const round = (v: number) => Math.round(v * 1000) / 1000;
