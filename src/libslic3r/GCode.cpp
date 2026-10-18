@@ -898,6 +898,31 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
         return buf;
     }
 
+    void WipeTowerIntegration::record_nonplanar_material(GCode &gcodegen, const WipeTower::ToolChangeResult &tcr, double z) const
+    {
+        if (!gcodegen.m_material_columns || tcr.extrusions.empty())
+            return;
+        const bool type2 = gcodegen.wipe_tower_type() == WipeTowerType::Type2;
+        const Eigen::Rotation2Df rotation(m_wipe_tower_rotation / 180.f * float(M_PI));
+        auto point = [&](const Vec2f &local, unsigned tool) {
+            Vec2f xy = local;
+            if (!tcr.priming)
+                xy = type2 ? transform_wt2_pt(local) : Vec2f(rotation * local + m_wipe_tower_pos);
+            if (!type2)
+                xy += m_rib_offset;
+            const Vec2d offset = m_extruder_offsets[m_single_extruder_multi_material ? 0 : tool];
+            return Vec3d(double(xy.x()) - offset.x(), double(xy.y()) - offset.y(), z);
+        };
+        Vec3d previous = point(tcr.start_pos, tcr.initial_tool);
+        for (const WipeTower::Extrusion &road : tcr.extrusions) {
+            const Vec3d next = point(road.pos, road.tool);
+            if (road.width > 0.)
+                gcodegen.m_material_columns->deposit(previous, next, road.width);
+            previous = next;
+        }
+        gcodegen.m_nonplanar_ceiling = std::max(gcodegen.m_nonplanar_ceiling, z);
+    }
+
     std::string WipeTowerIntegration::prepare_nonplanar_visit(GCode &gcodegen, const WipeTower::ToolChangeResult &tcr,
                                                                const Point &start, double &z) const
     {
@@ -1362,6 +1387,7 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
         unescape_string_cstyle(tcr_escaped_gcode, tcr_gcode);
         gcode += tower_height_tag(gcodegen, tcr, tcr_gcode);
         gcode += tcr_gcode;
+        record_nonplanar_material(gcodegen, tcr, z);
         if (custom_gcode_changes_tool(tcr_gcode, gcodegen.writer().toolchange_prefix(), new_filament_id))
             gcodegen.m_toolchange_count++;
         check_add_eol(toolchange_gcode_str);
@@ -1624,6 +1650,7 @@ static std::vector<Vec2d> get_path_of_change_filament(const Print& print)
         unescape_string_cstyle(tcr_escaped_gcode, tcr_gcode);
         gcode += tower_height_tag(gcodegen, tcr, tcr_gcode);
         gcode += tcr_gcode;
+        record_nonplanar_material(gcodegen, tcr, z);
         check_add_eol(toolchange_gcode_str);
 
         if (new_extruder_id != -1)
@@ -7342,6 +7369,8 @@ std::string GCode::extrude_path(const ExtrusionPath& path, const std::string& de
     m_multi_flow_segment_path_pa_set = false;
     m_multi_flow_segment_path_average_mm3_per_mm = 0;
     std::string gcode = this->_extrude(path, description, speed);
+    if (gcode.empty())
+        return gcode;
     if (m_wipe.enable && FILAMENT_CONFIG(wipe)) {
         m_wipe.reset_path();
         m_wipe.path = path.polyline.to_polyline();
@@ -9213,7 +9242,8 @@ ConfigOptionFloatsOrPercents GCode::overhang_speed_table(double ref_speed) const
 std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_description, double speed)
 {
     std::string gcode;
-    if (path.z_contoured && path.polyline.length() < scale_(0.05))
+    if (path.polyline.length() < scale_(0.05) &&
+        (path.z_contoured || (path.role() == erTopSolidInfill && Nonplanar::requests_conformal_shells(*m_print))))
         return gcode;
     this->ensure_material_columns(path);
 

@@ -17,7 +17,7 @@ namespace Slic3r::sla { class IndexedMesh; }
 
 namespace Slic3r::Nonplanar {
 
-class HeadEnvelope;
+struct HeadEnvelope;
 
 struct MeshRays
 {

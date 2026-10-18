@@ -161,6 +161,7 @@ private:
     std::string prepare_nonplanar_visit(GCode &gcodegen, const WipeTower::ToolChangeResult &tcr,
                                        const Point &start, double &z) const;
     std::string append_tcr(GCode &gcodegen, const WipeTower::ToolChangeResult &tcr, int new_extruder_id, double z = -1.) const;
+    void record_nonplanar_material(GCode &gcodegen, const WipeTower::ToolChangeResult &tcr, double z) const;
     std::string tower_height_tag(GCode &gcodegen, const WipeTower::ToolChangeResult &tcr, const std::string &tcr_gcode) const;
     Polyline generate_path_to_wipe_tower(const Point &start_pos, const Point &end_pos, const BoundingBox &avoid_polygon, const Polygons &bed_polygons) const;
     std::string append_tcr2(GCode &gcodegen, const WipeTower::ToolChangeResult &tcr, int new_extruder_id, double z = -1.) const;

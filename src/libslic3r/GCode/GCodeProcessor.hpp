@@ -253,6 +253,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             unsigned int layer_id{ 0 };
             unsigned int state{ 0 };
             bool internal_only{ false };
+            bool timing_only{ false };
 
             float volumetric_rate() const { return feedrate * mm3_per_mm; }
             float actual_volumetric_rate() const { return actual_feedrate * mm3_per_mm; }

@@ -79,6 +79,37 @@ Corners bead_corners(const ToolPose &a, const ToolPose &b, double width, double 
     }
     return corners;
 }
+bool swept_bead_contact(const Corners &bead, const Vec3d &a, const Vec3d &b, const Nonplanar::HeadBox &box)
+{
+    double enter = 0., leave = 1.;
+    const Vec3d centre = 0.5 * (box.min + box.max), half = 0.5 * (box.max - box.min);
+    auto overlap = [&](const Vec3d &raw_axis) {
+        const double length = raw_axis.norm();
+        if (length < 1e-12) return true;
+        const Vec3d axis = raw_axis / length;
+        double lo = Inf, hi = -Inf;
+        for (const Vec3d &corner : bead) {
+            const double p = axis.dot(corner - a - centre);
+            lo = std::min(lo, p); hi = std::max(hi, p);
+        }
+        const double radius = axis.cwiseAbs().dot(half), speed = axis.dot(b - a);
+        lo += ContactTolerance; hi -= ContactTolerance;
+        if (std::abs(speed) < 1e-12)
+            return lo < radius && hi > -radius;
+        double t0 = (lo - radius) / speed, t1 = (hi + radius) / speed;
+        if (t0 > t1) std::swap(t0, t1);
+        enter = std::max(enter, t0); leave = std::min(leave, t1);
+        return enter < leave;
+    };
+    const std::array<Vec3d, 3> edges { bead[4] - bead[0], bead[2] - bead[0], bead[1] - bead[0] };
+    for (int k = 0; k < 3; ++k) {
+        if (!overlap(Vec3d::Unit(k)) || !overlap(edges[k].cross(edges[(k + 1) % 3])))
+            return false;
+        for (int j = 0; j < 3; ++j)
+            if (!overlap(edges[k].cross(Vec3d::Unit(j)))) return false;
+    }
+    return true;
+}
 struct UprightBead { uint32_t move, last, run; uint16_t piece, pieces; };
 class BeadGrid
 {
@@ -103,24 +134,21 @@ public:
         for (size_t id = 0; id < size(); ++id)
             visit_bead(id, [&](uint64_t cell) { m_ids[m_cells[cell].second++] = uint32_t(id); });
     }
-    double clearance(const ToolPose &pose, const Matrix3d &frame, const Nonplanar::HeadEnvelope &head,
-                     double inflation, size_t run, bool extruding, std::string &component, size_t limit) const
+    double clearance(const Vec3d &a, const Vec3d &b, const Nonplanar::HeadEnvelope &head,
+                     size_t run, bool extruding, std::string &component, size_t limit) const
     {
         double best = Inf;
         std::vector<uint32_t> candidates;
         for (const auto &raw : head.boxes) {
             auto box = prepared_box(raw, head);
             if (box.min.z() > box.max.z()) continue;
-            Vec3d lo = box.min - Vec3d::Constant(inflation), hi = box.max + Vec3d::Constant(inflation);
+            const Vec3d lo = a.cwiseMin(b) + box.min, hi = a.cwiseMax(b) + box.max;
             Vec3d work_lo = Vec3d::Constant(Inf), work_hi = Vec3d::Constant(-Inf);
             if (box.infinite_x || box.infinite_y) {
                 candidates.resize(limit);
                 for (size_t i = 0; i < limit; ++i) candidates[i] = uint32_t(i);
             } else {
-                for (int k = 0; k < 8; ++k) {
-                    const Vec3d v = pose.tip + frame.transpose() * Vec3d(k & 1 ? hi.x() : lo.x(), k & 2 ? hi.y() : lo.y(), k & 4 ? hi.z() : lo.z());
-                    work_lo = work_lo.cwiseMin(v); work_hi = work_hi.cwiseMax(v);
-                }
+                work_lo = lo; work_hi = hi;
                 candidates.clear();
                 visit(work_lo, work_hi, [&](uint64_t cell) {
                     auto it = m_cells.find(cell);
@@ -133,16 +161,18 @@ public:
             }
             for (uint32_t id : candidates) {
                 if (box.nozzle && extruding && m_upright[id].run == run) continue;
+                const Corners bead = corners(id);
                 Vec3d bl = Vec3d::Constant(Inf), bh = Vec3d::Constant(-Inf);
-                for (const Vec3d &v : corners(id)) {
-                    const Vec3d q = frame * (v - pose.tip);
-                    bl = bl.cwiseMin(q); bh = bh.cwiseMax(q);
+                for (const Vec3d &v : bead) {
+                    bl = bl.cwiseMin(v); bh = bh.cwiseMax(v);
                 }
                 double gap = -Inf;
                 for (int axis = 0; axis < 3; ++axis) {
                     if ((axis == 0 && box.infinite_x) || (axis == 1 && box.infinite_y)) continue;
                     gap = std::max(gap, std::max(lo[axis] - bh[axis], bl[axis] - hi[axis]));
                 }
+                if (gap < -ContactTolerance && !box.infinite_x && !box.infinite_y && !swept_bead_contact(bead, a, b, box))
+                    gap = 0.;
                 if (gap < best) { best = gap; component = box.name; }
             }
         }
@@ -749,6 +779,7 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
     const bool rotary = kinematics.rotary_count() != 0 && (turned || !direct_upright);
     for (size_t i = 0; i < result.moves.size(); ++i) {
         const auto &move = result.moves[i];
+        if (move.timing_only) continue;
         if (!move.position.allFinite()) throw RuntimeError("Clearance verification found a non-finite G-code position.");
         bounds.merge(Vec2d(move_tip(result, i, rotary).head<2>()));
         max_width = std::max(max_width, double(move.width));
@@ -773,7 +804,7 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
     }
     size_t first_print = result.moves.size(), last_print = 0;
     for (size_t i = 0; i < result.moves.size(); ++i)
-        if (const auto &mv = result.moves[i]; mv.type == EMoveType::Extrude && mv.extrusion_role != erCustom && mv.extrusion_role != erNone)
+        if (const auto &mv = result.moves[i]; !mv.timing_only && mv.type == EMoveType::Extrude && mv.extrusion_role != erCustom && mv.extrusion_role != erNone)
             first_print = std::min(first_print, i), last_print = i;
 
     struct Checked { uint32_t move, last, beads; uint32_t run : 31, extruding : 1; };
@@ -783,7 +814,7 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
         size_t last_index = 0, run = 0;
         for (size_t i = 1; i < result.moves.size(); ++i) {
             const auto &move = result.moves[i];
-            if (move.type == EMoveType::Seam || move.type == EMoveType::Color_change || move.type == EMoveType::Tool_change ||
+            if (move.timing_only || move.type == EMoveType::Seam || move.type == EMoveType::Color_change || move.type == EMoveType::Tool_change ||
                 move.type == EMoveType::Pause_Print || move.type == EMoveType::Custom_GCode) continue;
             const size_t from = last_index;
             last_index = i;
@@ -868,6 +899,7 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
             bool lands_on_extrusion = false;
             if (!extruding && a.head<2>() == b.head<2>() && b.z() < a.z() && move_joints.rot == last_joints.rot)
                 for (size_t k = size_t(c.move) + 1; k < result.moves.size(); ++k) {
+                    if (result.moves[k].timing_only) continue;
                     const EMoveType type = result.moves[k].type;
                     if (type == EMoveType::Extrude || ((type == EMoveType::Travel || type == EMoveType::Wipe) &&
                         (move_tip(result, k, rotary) != b || result.joint(k).rot != move_joints.rot))) {
@@ -905,17 +937,7 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
                     hint = index;
                     component = contact_head.boxes[contact_boxes.boxes[size_t(index)].index].name;
                     if (nozzle_gap < -ContactTolerance && nozzle_gap >= -params.pitch) {
-                        auto swept_head = contact_head;
-                        const Vec2d half = 0.5 * (p1.head<2>() - p0.head<2>()).cwiseAbs();
-                        for (auto &box : swept_head.boxes) {
-                            box = prepared_box(box, contact_head);
-                            box.min.head<2>() -= half; box.max.head<2>() += half;
-                            box.max.z() += std::abs(p1.z() - p0.z());
-                        }
-                        swept_head.tip_allowance = {};
-                        const Vec2d middle = 0.5 * (p0.head<2>() + p1.head<2>());
-                        const ToolPose pose { Vec3d(middle.x(), middle.y(), std::min(p0.z(), p1.z())), Vec3d::UnitZ() };
-                        nozzle_gap = std::max(nozzle_gap, bead_grid.clearance(pose, Matrix3d::Identity(), swept_head, 0., c.run, extruding, component, bead_limit));
+                        nozzle_gap = std::max(nozzle_gap, bead_grid.clearance(p0, p1, contact_head, c.run, extruding, component, bead_limit));
                     }
                     record(nozzle_gap, component, p1);
                 }

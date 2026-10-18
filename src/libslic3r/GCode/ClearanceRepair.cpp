@@ -55,7 +55,7 @@ constexpr double CellSlack = 0.25;
 
 bool physical(const MoveVertex &m)
 {
-    return m.type != EMoveType::Seam && m.type != EMoveType::Color_change && m.type != EMoveType::Tool_change &&
+    return !m.timing_only && m.type != EMoveType::Seam && m.type != EMoveType::Color_change && m.type != EMoveType::Tool_change &&
            m.type != EMoveType::Pause_Print && m.type != EMoveType::Custom_GCode;
 }
 
@@ -355,12 +355,12 @@ bool ClearanceRepair::plan(const GCodeProcessorResult &result, const ClearanceRe
     auto previous_physical = [&](size_t i) { while (i > 0 && !physical(result.moves[--i])) {} return i; };
     auto next_extrusion    = [&](size_t i) {
         while (++i < result.moves.size())
-            if (result.moves[i].type == EMoveType::Extrude) return i;
+            if (!result.moves[i].timing_only && result.moves[i].type == EMoveType::Extrude) return i;
         return size_t(0);
     };
     auto previous_extrusion = [&](size_t i) {
         while (i > 0)
-            if (result.moves[--i].type == EMoveType::Extrude) return i;
+            if (const auto &move = result.moves[--i]; !move.timing_only && move.type == EMoveType::Extrude) return i;
         return size_t(0);
     };
     std::vector<BoundingBoxf> reach;
@@ -533,7 +533,9 @@ bool ClearanceRepair::plan_upright(const GCodeProcessorResult &result, const Cle
             m_planned.push_back({ site.object, {} });
             upright = &m_planned.back().hints.upright;
         }
-        const Vec2d from = site.xy + (result.moves[i - 1].position - m.position).head<2>().cast<double>();
+        size_t previous = i;
+        while (previous > 0 && !physical(result.moves[--previous])) {}
+        const Vec2d from = site.xy + (result.moves[previous].position - m.position).head<2>().cast<double>();
         for (const Vec2d &p : { from, site.xy })
             if (std::none_of(upright->begin(), upright->end(), [&p, radius](const RepairHints::Disc &d) { return (d.p - p).norm() < 0.5 * radius; }))
                 upright->push_back({ p, radius }), ++discs;

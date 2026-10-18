@@ -562,7 +562,7 @@ void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult& result, P
 
             if (EPSILON < block.trapezoid.accelerate_until && block.trapezoid.accelerate_until < block.distance - EPSILON) {
                 const float t = block.trapezoid.accelerate_until / block.distance;
-                const Vec3f position = lerp(prev_move.position, curr_move.position, t);
+                const Vec3f position = prev_move.position + t * (curr_move.position - prev_move.position);
                 if ((position - prev_move.position).norm() > EPSILON &&
                     (position - curr_move.position).norm() > EPSILON) {
                     const float delta_extruder = interpolate ? lerp(prev_move.delta_extruder, curr_move.delta_extruder, t) : curr_move.delta_extruder;
@@ -591,7 +591,7 @@ void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult& result, P
             const bool has_deceleration = block.trapezoid.deceleration_distance(block.distance) > EPSILON;
             if (has_deceleration && block.trapezoid.decelerate_after > block.trapezoid.accelerate_until + EPSILON) {
                 const float t = block.trapezoid.decelerate_after / block.distance;
-                const Vec3f position = lerp(prev_move.position, curr_move.position, t);
+                const Vec3f position = prev_move.position + t * (curr_move.position - prev_move.position);
                 if ((position - prev_move.position).norm() > EPSILON &&
                     (position - curr_move.position).norm() > EPSILON) {
                     const float delta_extruder = interpolate ? lerp(prev_move.delta_extruder, curr_move.delta_extruder, t) : curr_move.delta_extruder;
@@ -7164,6 +7164,7 @@ void GCodeProcessor::calculate_time(GCodeProcessorResult& result, size_t keep_la
             state.temperature = *it.temperature;
             new_move.state = intern_move_state(state);
             new_move.internal_only = true;
+            new_move.timing_only = true;
             moves[--write] = new_move;
             if (with_joints)
                 joints[write] = block_joints;
