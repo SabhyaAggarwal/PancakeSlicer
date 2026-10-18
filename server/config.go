@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 //go:generate python3 generate_config_types.py ../web/src/options.generated.json
@@ -33,6 +34,9 @@ var settingKey = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*$`)
 var hiddenSetting = regexp.MustCompile(`print_host|printhost|printer_agent|host_type|api_key|bbl_use_printhost|upload|cloud|device|octoprint|_plugin_config_overrides`)
 
 func overrides(raw string) ([][2]string, error) {
+	if len(raw) > 256<<10 {
+		return nil, errors.New("overrides exceed 256 KiB")
+	}
 	var values map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(raw), &values); err != nil || values == nil {
 		return nil, errors.New("overrides must be a JSON object")
@@ -48,6 +52,9 @@ func overrides(raw string) ([][2]string, error) {
 			return nil, fmt.Errorf("invalid override key %q", key)
 		}
 		value, err := configValue(key, values[key])
+		if err == nil && len(value) > 64<<10 {
+			err = errors.New("serialized value exceeds 64 KiB")
+		}
 		if err != nil {
 			return nil, fmt.Errorf("override %s: %w", key, err)
 		}
@@ -63,8 +70,17 @@ func escapeConfigString(value string) string {
 func scalarConfigValue(value any) (string, error) {
 	switch v := value.(type) {
 	case string:
+		if len(v) > 32<<10 {
+			return "", errors.New("scalar exceeds 32 KiB")
+		}
+		if strings.IndexFunc(v, func(r rune) bool { return unicode.IsControl(r) && r != '\n' && r != '\r' && r != '\t' }) >= 0 {
+			return "", errors.New("scalar contains control characters")
+		}
 		return v, nil
 	case json.Number:
+		if len(v) > 32<<10 {
+			return "", errors.New("scalar exceeds 32 KiB")
+		}
 		return string(v), nil
 	case bool:
 		if v {
@@ -94,6 +110,9 @@ func configValue(key string, raw json.RawMessage) (string, error) {
 			if err != nil {
 				return "", err
 			}
+			if kind != "strings" && strings.IndexFunc(part, unicode.IsControl) >= 0 {
+				return "", errors.New("scalar contains control characters")
+			}
 			if kind == "strings" && ((len(array) == 1 && part == "") || strings.ContainsAny(part, " \t;\\\"\r\n")) {
 				part = "\"" + escapeConfigString(part) + "\""
 			}
@@ -116,6 +135,9 @@ func configValue(key string, raw json.RawMessage) (string, error) {
 	scalar, err := scalarConfigValue(value)
 	if err != nil {
 		return "", err
+	}
+	if kind != "string" && kind != "strings" && strings.IndexFunc(scalar, unicode.IsControl) >= 0 {
+		return "", errors.New("scalar contains control characters")
 	}
 	return scalar, nil
 }

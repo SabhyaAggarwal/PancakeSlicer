@@ -138,12 +138,15 @@ func main() {
 	if cfg.Features.DumpPresets {
 		presets.tool = &cfg
 	}
+	if _, err := presets.names(); err != nil {
+		log.Fatal(err)
+	}
 	for _, vendor := range []string{"BBL", "Prusa"} {
 		if _, err := presets.vendor(vendor); err != nil {
 			log.Printf("cannot preload %s presets: %v", vendor, err)
 		}
 	}
-	srv := &http.Server{Addr: cfg.Listen, Handler: NewServer(cfg, jobs, presets, users), ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Addr: cfg.Listen, Handler: NewServer(cfg, jobs, presets, users), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 10 * time.Second, MaxHeaderBytes: 2 << 20}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

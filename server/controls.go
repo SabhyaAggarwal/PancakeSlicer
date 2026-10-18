@@ -321,6 +321,16 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 				return
 			}
 		}
+		headerBytes := len(r.Method) + len(r.RequestURI) + len(r.Host) + 32
+		for name, values := range r.Header {
+			for _, value := range values {
+				headerBytes += len(name) + len(value) + 4
+			}
+		}
+		if headerBytes > 1<<20 {
+			fail(w, http.StatusRequestHeaderFieldsTooLarge, "request headers exceed 1 MiB")
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
 }

@@ -25,10 +25,11 @@ type Preset struct {
 	DefaultMaterials   []string                   `json:"default_materials,omitempty"`
 }
 type VendorPresets struct {
-	Vendor    string   `json:"vendor"`
-	Machines  []Preset `json:"machines"`
-	Processes []Preset `json:"processes"`
-	Filaments []Preset `json:"filaments"`
+	Vendor                         string   `json:"vendor"`
+	Machines                       []Preset `json:"machines"`
+	Processes                      []Preset `json:"processes"`
+	Filaments                      []Preset `json:"filaments"`
+	machines, processes, filaments map[string]*Preset
 }
 type rawPreset map[string]json.RawMessage
 
@@ -51,41 +52,79 @@ type vendorCache struct {
 	err      error
 }
 type PresetIndex struct {
-	root        string
-	tool        *Config
-	cache       sync.Map
-	allOnce     sync.Once
-	allResponse *cachedResponse
-	allError    error
+	root           string
+	indexOnce      sync.Once
+	indexError     error
+	vendorNames    []string
+	printerVendors map[string]string
+	known          map[string]map[string]map[string]bool
+	tool           *Config
+	cache          sync.Map
+	allOnce        sync.Once
+	allResponse    *cachedResponse
+	allError       error
 }
 
 func NewPresetIndex(root string) *PresetIndex { return &PresetIndex{root: root} }
+
 func (p *PresetIndex) names() ([]string, error) {
-	entries, err := os.ReadDir(p.root)
-	if err != nil {
-		return nil, err
-	}
-	names := []string{}
-	for _, e := range entries {
-		if e.IsDir() {
-			if st, err := os.Stat(filepath.Join(p.root, e.Name(), "machine")); err == nil && st.IsDir() {
-				names = append(names, e.Name())
+	p.indexOnce.Do(func() {
+		p.known = map[string]map[string]map[string]bool{}
+		p.printerVendors = map[string]string{}
+		entries, err := os.ReadDir(p.root)
+		if err != nil {
+			p.indexError = err
+			return
+		}
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
 			}
+			if st, err := os.Stat(filepath.Join(p.root, e.Name(), "machine")); err != nil || !st.IsDir() {
+				continue
+			}
+			p.vendorNames = append(p.vendorNames, e.Name())
 		}
-	}
-	sort.Slice(names, func(i, j int) bool {
-		if (names[i] == "BBL") != (names[j] == "BBL") {
-			return names[i] == "BBL"
+		sort.Slice(p.vendorNames, func(i, j int) bool {
+			if (p.vendorNames[i] == "BBL") != (p.vendorNames[j] == "BBL") {
+				return p.vendorNames[i] == "BBL"
+			}
+			return p.vendorNames[i] < p.vendorNames[j]
+		})
+		for _, vendor := range p.vendorNames {
+			kinds := map[string]map[string]bool{}
+			for _, kind := range []string{"machine", "process", "filament"} {
+				raw, err := readKind(filepath.Join(p.root, vendor, kind))
+				if err != nil {
+					p.indexError = err
+					return
+				}
+				names := map[string]bool{}
+				for name, preset := range raw {
+					if stringValue(preset["instantiation"]) != "true" {
+						continue
+					}
+					names[name] = true
+					if kind == "machine" && p.printerVendors[name] == "" {
+						p.printerVendors[name] = vendor
+					}
+				}
+				kinds[kind] = names
+			}
+			p.known[vendor] = kinds
 		}
-		return names[i] < names[j]
 	})
-	return names, nil
+	return p.vendorNames, p.indexError
+}
+func (p *PresetIndex) knownPreset(vendor, kind, name string) bool {
+	_, err := p.names()
+	return err == nil && p.known[vendor][kind][name]
 }
 func (p *PresetIndex) vendor(name string) (*VendorPresets, error) {
-	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\\") {
-		return nil, os.ErrNotExist
+	if _, err := p.names(); err != nil {
+		return nil, err
 	}
-	if st, err := os.Stat(filepath.Join(p.root, name, "machine")); err != nil || !st.IsDir() {
+	if p.known[name] == nil {
 		return nil, os.ErrNotExist
 	}
 	entry, _ := p.cache.LoadOrStore(name, &vendorCache{})
@@ -97,6 +136,9 @@ func (p *PresetIndex) vendor(name string) (*VendorPresets, error) {
 			v.presets, v.err = p.loadVendor(name)
 		}
 		if v.err == nil {
+			v.presets.machines = presetMap(v.presets.Machines)
+			v.presets.processes = presetMap(v.presets.Processes)
+			v.presets.filaments = presetMap(v.presets.Filaments)
 			v.response, v.err = cacheJSON(v.presets)
 		}
 	})
@@ -122,22 +164,17 @@ func (p *PresetIndex) Vendors() ([]VendorPresets, error) {
 	return vs, nil
 }
 func (p *PresetIndex) VendorOfPrinter(printer string) string {
-	names, _ := p.names()
-	for _, name := range names {
-		v, ok := p.Vendor(name)
-		if ok && findPreset(v.Machines, printer) != nil {
-			return name
-		}
+	if _, err := p.names(); err != nil {
+		return ""
 	}
-	return ""
+	return p.printerVendors[printer]
 }
-func findPreset(list []Preset, name string) *Preset {
+func presetMap(list []Preset) map[string]*Preset {
+	out := make(map[string]*Preset, len(list))
 	for i := range list {
-		if list[i].Name == name {
-			return &list[i]
-		}
+		out[list[i].Name] = &list[i]
 	}
-	return nil
+	return out
 }
 
 func readKind(dir string) (map[string]rawPreset, error) {

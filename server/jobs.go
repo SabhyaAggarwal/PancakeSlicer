@@ -485,7 +485,7 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 
 	cmd, commandErr := lineBufferedCommand(ctx, m.cfg.Tool, args)
 	if commandErr != nil {
-		j.setState(StateFailed, commandErr.Error())
+		j.setState(StateFailed, sanitizeToolError(commandErr))
 		return
 	}
 	cmd.Dir = j.Dir
@@ -507,7 +507,7 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 		case errors.Is(ctx.Err(), context.DeadlineExceeded):
 			j.setState(StateFailed, "slicing exceeded the time limit")
 		default:
-			j.setState(StateFailed, "cannot start the slicer: "+err.Error())
+			j.setState(StateFailed, "cannot start the slicer: "+sanitizeToolError(err))
 		}
 		return
 	}
@@ -548,7 +548,7 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 	case waitErr != nil:
 		j.setState(StateFailed, lastErr.message(waitErr))
 	case recordErr != nil:
-		j.setState(StateFailed, "the slicer did not write a valid slice record: "+recordErr.Error())
+		j.setState(StateFailed, "the slicer did not write a valid slice record: "+sanitizeToolError(recordErr))
 	default:
 		if _, err := os.Stat(j.OutputPath(j.Request.Output)); err != nil {
 			j.setState(StateFailed, "the slicer finished without writing "+filepath.Base(j.OutputPath(j.Request.Output)))
@@ -586,11 +586,11 @@ func (l *lastLines) add(s string) {
 func (l *lastLines) message(waitErr error) string {
 	for i := len(l.lines) - 1; i >= 0; i-- {
 		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(l.lines[i])), "error") {
-			return strings.TrimSpace(l.lines[i])
+			return sanitizeToolError(errors.New(strings.TrimSpace(l.lines[i])))
 		}
 	}
 	if len(l.lines) > 0 {
-		return strings.TrimSpace(l.lines[len(l.lines)-1])
+		return sanitizeToolError(errors.New(strings.TrimSpace(l.lines[len(l.lines)-1])))
 	}
 	return "slicer " + waitErr.Error()
 }
@@ -606,3 +606,19 @@ func quoteArgs(args []string) string {
 	}
 	return strings.Join(q, " ")
 }
+
+func sanitizeToolError(err error) string {
+	for {
+		next := errors.Unwrap(err)
+		if next == nil {
+			break
+		}
+		err = next
+	}
+	return toolErrorPath.ReplaceAllStringFunc(err.Error(), func(token string) string {
+		parts := toolErrorPath.FindStringSubmatch(token)
+		return parts[1] + filepath.Base(strings.ReplaceAll(parts[2], "\\", "/"))
+	})
+}
+
+var toolErrorPath = regexp.MustCompile(`(^|[\s"'‘(])((?:[A-Za-z]:[\\/]|/)[^\s"'’<>:]+)`)

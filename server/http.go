@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"mime"
+	"net"
 	"net/http"
 	"os"
 	"path"
@@ -87,6 +89,10 @@ func (s *Server) listPresets(w http.ResponseWriter, r *http.Request) {
 	vs.serve(w, r, "presets.json", "application/json", catalogCache, time.Time{})
 }
 
+func presetDisplayName(name string) string {
+	return path.Base(strings.ReplaceAll(name, "\\", "/"))
+}
+
 func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	j, err := s.jobs.NewJob(s.clientIP(r))
 	if err != nil {
@@ -105,6 +111,12 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusRequestEntityTooLarge, "multipart upload exceeds max-upload")
 		return
 	}
+	controller := http.NewResponseController(w)
+	if err := controller.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		fail(w, 500, "upload read deadline unavailable")
+		return
+	}
+	defer controller.SetReadDeadline(time.Time{})
 	r.Body = http.MaxBytesReader(w, r.Body, s.cfg.MaxUploadSize)
 	parseErr := r.ParseMultipartForm(8 << 20)
 	if r.MultipartForm != nil {
@@ -112,9 +124,16 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := parseErr; err != nil {
 		var tooLarge *http.MaxBytesError
+		var timeout net.Error
 		status := 400
 		if errors.As(err, &tooLarge) {
 			status = 413
+		}
+		if errors.As(err, &timeout) && timeout.Timeout() {
+			status = http.StatusRequestTimeout
+			w.Header().Set("Connection", "close")
+			fail(w, status, "multipart upload read deadline exceeded")
+			return
 		}
 		fail(w, status, "invalid multipart upload: "+err.Error())
 		return
@@ -134,17 +153,37 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	if req.Vendor == "" {
 		req.Vendor = s.presets.VendorOfPrinter(req.Printer)
 	}
+	if _, err := s.presets.names(); err != nil {
+		fail(w, 500, "preset catalog unavailable")
+		return
+	}
+	if s.presets.known[req.Vendor] == nil {
+		fail(w, 400, "unknown vendor")
+		return
+	}
+	for _, selection := range []struct{ kind, label, name string }{{"machine", "printer", req.Printer}, {"process", "process", req.Process}} {
+		if !s.presets.knownPreset(req.Vendor, selection.kind, selection.name) {
+			fail(w, 400, "unknown "+selection.label+" preset: "+presetDisplayName(selection.name))
+			return
+		}
+	}
+	for _, name := range req.Filaments {
+		if !s.presets.knownPreset(req.Vendor, "filament", name) {
+			fail(w, 400, "unknown filament preset: "+presetDisplayName(name))
+			return
+		}
+	}
 	vendor, ok := s.presets.Vendor(req.Vendor)
 	if !ok {
 		fail(w, 400, "unknown vendor")
 		return
 	}
-	if findPreset(vendor.Machines, req.Printer) == nil {
-		fail(w, 400, "unknown printer preset: "+req.Printer)
+	if vendor.machines[req.Printer] == nil {
+		fail(w, 400, "unknown printer preset: "+presetDisplayName(req.Printer))
 		return
 	}
-	if findPreset(vendor.Processes, req.Process) == nil {
-		fail(w, 400, "unknown process preset: "+req.Process)
+	if vendor.processes[req.Process] == nil {
+		fail(w, 400, "unknown process preset: "+presetDisplayName(req.Process))
 		return
 	}
 	if len(req.Filaments) == 0 {
@@ -152,8 +191,8 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, f := range req.Filaments {
-		if findPreset(vendor.Filaments, f) == nil {
-			fail(w, 400, "unknown filament preset: "+f)
+		if vendor.filaments[f] == nil {
+			fail(w, 400, "unknown filament preset: "+presetDisplayName(f))
 			return
 		}
 	}
@@ -168,6 +207,22 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		if json.Unmarshal([]byte(raw), &req.Events) != nil {
 			fail(w, 400, "events must be an array of strings")
 			return
+		}
+	}
+	if len(req.Events) > 0 {
+		rawHeight := vendor.machines[req.Printer].Config["printable_height"]
+		heightText := stringValue(rawHeight)
+		if heightText == "" {
+			heightText = string(rawHeight)
+		}
+		maxHeight, _ := strconv.ParseFloat(heightText, 64)
+		for _, event := range req.Events {
+			text, _, hasType := strings.Cut(event, ":")
+			height, err := strconv.ParseFloat(text, 64)
+			if err != nil || !hasType || math.IsNaN(height) || math.IsInf(height, 0) || height <= 0 || !(height < maxHeight) {
+				fail(w, 400, "event height must be finite, positive and below printable_height")
+				return
+			}
 		}
 	}
 	files := r.MultipartForm.File["files[]"]
