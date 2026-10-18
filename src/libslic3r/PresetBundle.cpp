@@ -6136,6 +6136,22 @@ PresetBundle::VendorRead PresetBundle::read_vendor(const std::string& dir, const
                 return read;
             }
         } else if (VendorCacheFile::load(read.cache_path, vendor_name, version, read.data)) {
+            if (!read.data.has_model_bed_defaults && has_profile) {
+                try {
+                    PresetBundle metadata;
+                    metadata.load_vendor_configs_from_json(dir, vendor_name, LoadConfigBundleAttribute::LoadVendorOnly,
+                                                           compatibility_rule, nullptr, false);
+                    const auto& models = metadata.vendors.at(vendor_name).models;
+                    for (auto& model : read.data.vendors.at(vendor_name).models)
+                        for (const auto& source : models)
+                            if (source.id == model.id) {
+                                model.default_bed_type = source.default_bed_type;
+                                break;
+                            }
+                } catch (const std::exception& e) {
+                    BOOST_LOG_TRIVIAL(warning) << "Cannot read model bed defaults for " << vendor_name << ": " << e.what();
+                }
+            }
             read.from_cache = true;
             if (filament_only) {
                 read.data.process_entries.clear();
@@ -6308,6 +6324,9 @@ void PresetBundle::parse_vendor_json(VendorRead& read)
                 }
                 else if (boost::iequals(it.key(), BBL_JSON_KEY_HOTEND_MODEL)) {
                     model.hotend_model = it.value();
+                }
+                else if (boost::iequals(it.key(), "default_bed_type")) {
+                    model.default_bed_type = it.value();
                 }
                 else if (boost::iequals(it.key(), BBL_JSON_KEY_DEFAULT_MATERIALS)) {
                     std::string default_materials_field = it.value();

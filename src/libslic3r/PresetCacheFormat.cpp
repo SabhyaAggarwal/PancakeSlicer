@@ -10,6 +10,7 @@
 #include <exception>
 #include <boost/filesystem/operations.hpp>
 #include <memory>
+#include <map>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -242,7 +243,7 @@ struct CacheFileHeader {
 static_assert(sizeof(CacheFileHeader) == 20, "CacheFileHeader must be 20 bytes");
 
 constexpr uint32_t CACHE_MAGIC   = 0x4F52435A;
-constexpr uint32_t CACHE_VERSION = 2;
+constexpr uint32_t CACHE_VERSION = 3;
 
 std::string read_bounded_string(cereal::BinaryInputArchive& ar)
 {
@@ -256,17 +257,40 @@ std::string read_bounded_string(cereal::BinaryInputArchive& ar)
     return s;
 }
 
-std::string read_cache_stamps(cereal::BinaryInputArchive& ar, const std::string& expected_vendor_name)
+std::string read_cache_stamps(cereal::BinaryInputArchive& ar, const std::string& expected_vendor_name, uint32_t* version = nullptr)
 {
     uint32_t cache_version = 0;
     ar(cache_version);
-    if (cache_version != CACHE_VERSION)
+    if (cache_version < 2 || cache_version > CACHE_VERSION)
         return {};
+    if (version != nullptr)
+        *version = cache_version;
     const std::string vendor_name    = read_bounded_string(ar);
     const std::string vendor_version = read_bounded_string(ar);
     if (vendor_name != expected_vendor_name)
         return {};
     return vendor_version;
+}
+
+using ModelBedDefaults = std::map<std::string, std::map<std::string, std::string>>;
+
+void load_cached_vendors(cereal::BinaryInputArchive& ar, VendorMap& vendors, uint32_t version)
+{
+    ar(vendors);
+    if (version >= 3) {
+        ModelBedDefaults defaults;
+        ar(defaults);
+        for (auto& vendor : vendors) {
+            const auto found = defaults.find(vendor.first);
+            if (found == defaults.end())
+                continue;
+            for (auto& model : vendor.second.models) {
+                const auto bed = found->second.find(model.id);
+                if (bed != found->second.end())
+                    model.default_bed_type = bed->second;
+            }
+        }
+    }
 }
 
 bool cache_covers_version(const std::string& cached, const Semver& on_disk)
@@ -387,6 +411,12 @@ bool VendorCacheFile::save(const std::string& path, const std::string& vendor_na
             ar(vendor_name, vendor_version);
             dict.save(ar);
             ar(data.vendors);
+            ModelBedDefaults defaults;
+            for (const auto& vendor : data.vendors)
+                for (const auto& model : vendor.second.models)
+                    if (!model.default_bed_type.empty())
+                        defaults[vendor.first][model.id] = model.default_bed_type;
+            ar(defaults);
             save_entries(ar, data.process_entries, dict);
             save_entries(ar, data.filament_entries, dict);
             save_entries(ar, data.machine_entries, dict);
@@ -409,13 +439,14 @@ static bool read_cache_up_to_presets(const std::string& path, const std::string&
     try {
         boost::iostreams::stream<boost::iostreams::array_source> body(blob.data(), blob.size());
         cereal::BinaryInputArchive ar(body);
-        const std::string vendor_version = read_cache_stamps(ar, expected_vendor_name);
+        uint32_t cache_version = 0;
+        const std::string vendor_version = read_cache_stamps(ar, expected_vendor_name, &cache_version);
         if (vendor_version.empty() || ! cache_covers_version(vendor_version, expected_vendor_version))
             return false;
         CacheDictionary dict;
         dict.load(ar);
-        ar(vendors);
-        read_rest(ar, dict);
+        load_cached_vendors(ar, vendors, cache_version);
+        read_rest(ar, dict, cache_version);
         if (vendors.find(expected_vendor_name) == vendors.end())
             throw std::runtime_error("vendor cache does not carry its own vendor profile");
         return true;
@@ -429,7 +460,8 @@ bool VendorCacheFile::load(const std::string& path, const std::string& expected_
                            const Semver& expected_vendor_version, VendorCacheData& data)
 {
     return read_cache_up_to_presets(path, expected_vendor_name, expected_vendor_version, data.vendors,
-        [&data](cereal::BinaryInputArchive& ar, const CacheDictionary& dict) {
+        [&data](cereal::BinaryInputArchive& ar, const CacheDictionary& dict, uint32_t version) {
+            data.has_model_bed_defaults = version >= 3;
             load_entries(ar, data.process_entries, dict);
             load_entries(ar, data.filament_entries, dict);
             load_entries(ar, data.machine_entries, dict);
@@ -442,7 +474,7 @@ bool VendorCacheFile::load_vendor_profile(const std::string& path, const std::st
 {
     VendorMap vendors;
     if (! read_cache_up_to_presets(path, expected_vendor_name, expected_vendor_version, vendors,
-                                   [](cereal::BinaryInputArchive&, const CacheDictionary&) {}))
+                                   [](cereal::BinaryInputArchive&, const CacheDictionary&, uint32_t) {}))
         return false;
     vendor = std::move(vendors.find(expected_vendor_name)->second);
     return true;
@@ -490,12 +522,13 @@ bool VendorCacheFile::carries_preset(const std::string& path, const std::string&
     try {
         boost::iostreams::stream<boost::iostreams::array_source> body(blob.data(), blob.size());
         cereal::BinaryInputArchive ar(body);
-        if (read_cache_stamps(ar, vendor_name).empty())
+        uint32_t cache_version = 0;
+        if (read_cache_stamps(ar, vendor_name, &cache_version).empty())
             return false;
         CacheDictionary dict;
         dict.load(ar);
         VendorMap vendors;
-        ar(vendors);
+        load_cached_vendors(ar, vendors, cache_version);
         CachedPreset entry;
         for (Preset::Type kind : { Preset::TYPE_PRINT, Preset::TYPE_FILAMENT, Preset::TYPE_PRINTER }) {
             uint32_t cnt = 0;

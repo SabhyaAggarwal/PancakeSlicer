@@ -154,6 +154,7 @@ public:
         std::string                 bottom_texture_rect_longer;
         std::string                 middle_texture_rect;
         std::string                 hotend_model;
+        std::string                 default_bed_type;
         PrinterVariant*       variant(const std::string &name) {
             for (auto &v : this->variants)
                 if (v.name == name)

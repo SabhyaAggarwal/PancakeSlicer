@@ -384,6 +384,7 @@ VendorProfile VendorProfile::from_ini(const ptree &tree, const boost::filesystem
             VendorProfile::PrinterModel model;
             model.id = section.first.substr(printer_model_key.size());
             model.name = section.second.get<std::string>("name", model.id);
+            model.default_bed_type = section.second.get<std::string>("default_bed_type", "");
 
             const char *technology_fallback = boost::algorithm::starts_with(model.id, "SL") ? "SLA" : "FFF";
 
@@ -1007,9 +1008,22 @@ bool Preset::has_lidar(PresetBundle *preset_bundle)
 
 BedType Preset::get_default_bed_type(PresetBundle* preset_bundle)
 {
-    if (config.has("default_bed_type") && !config.opt_string("default_bed_type").empty()) {
+    std::string str_bed_type = config.has("default_bed_type") ? config.opt_string("default_bed_type") : std::string();
+    if (str_bed_type.empty()) {
+        const VendorProfile* model_vendor = vendor;
+        if (model_vendor == nullptr && preset_bundle != nullptr)
+            model_vendor = preset_bundle->printers.get_preset_with_vendor_profile(*this).vendor;
+        const auto* printer_model = config.opt<ConfigOptionString>("printer_model");
+        if (model_vendor != nullptr && printer_model != nullptr) {
+            for (const auto& model : model_vendor->models)
+                if (model.id == printer_model->value) {
+                    str_bed_type = model.default_bed_type;
+                    break;
+                }
+        }
+    }
+    if (!str_bed_type.empty()) {
         try {
-            std::string str_bed_type = config.opt_string("default_bed_type");
             BedType bed_type;
             if (ConfigOptionEnum<BedType>::from_string(str_bed_type, bed_type) &&
                 bed_type > btDefault && bed_type < btCount) {

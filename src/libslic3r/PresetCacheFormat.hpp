@@ -78,6 +78,7 @@ struct VendorCacheData
     std::vector<CachedPreset> filament_entries;
     std::vector<CachedPreset> machine_entries;
     uint64_t                  parse_errors = 0;
+    bool                      has_model_bed_defaults = true;
 };
 
 class VendorCacheFile
