@@ -42,6 +42,11 @@ export function EventMenu({ anchor, z, layer, onClose }: { anchor: DOMRect; z: n
   const ref = useRef<HTMLDivElement>(null);
   const here = events.filter((e) => sameZ(e.z, z));
   useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  useEffect(() => {
     if (custom !== null) return;
     const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && onClose();
     window.addEventListener('mousedown', close);

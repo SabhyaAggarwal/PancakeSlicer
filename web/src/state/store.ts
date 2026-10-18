@@ -120,7 +120,7 @@ export function useStore<T>(sel: (s: State) => T): T {
 let nextId = 1;
 export const newId = () => nextId++;
 
-export const DEMO_MODELS = ['Bambu Lab A1 mini', 'Bambu Lab A1', 'Bambu Lab P1S', 'Prusa MINI'];
+export const DEMO_MODELS = ['Bambu Lab A1 mini', 'Bambu Lab A1', 'Bambu Lab P1S', 'Prusa MINI', 'Prusa MINI IS'];
 export const DEFAULT_PRINTER = 'Bambu Lab A1 mini 0.4 nozzle';
 
 export function listFor(s: State, type: PresetType): SystemPreset[] {

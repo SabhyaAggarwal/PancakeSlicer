@@ -194,6 +194,11 @@ function AddMenu(props: {
 
 function SelectSettings(props: { title: string; keys: string[]; current: Config; onOk(keys: string[]): void; onClose(): void }) {
   const [checked, setChecked] = useState(() => new Set(props.keys.filter((k) => k in props.current)));
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && props.onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [props.onClose]);
   const toggle = (k: string) => {
     const next = new Set(checked);
     if (next.has(k)) next.delete(k);

@@ -282,3 +282,28 @@ fieldset.opt-field:disabled { opacity: .5; }
 .access-token-form { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .access-token-form input { flex: 1; min-width: 0; }
 .access-token-form .notif-body { width: 100%; }
+
+@media (max-width: 1599px), (max-height: 899px) {
+  .topbar-title { max-width: calc(100% - 600px); white-space: nowrap; overflow: hidden; }
+  .tabbar { overflow-x: auto; }
+  .tabbar-tabs, .tabbar-actions { flex: none; }
+  .sidebar { overflow-y: auto; }
+  .filament-list { max-height: 160px; overflow-y: auto; }
+  .process-panel { min-height: 240px; flex-shrink: 0; }
+  .settings-tab, .tab-preset-row, .page-bar { min-width: 0; }
+  .tab-preset-row { flex: none; }
+  .opt-line { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) 22px; }
+  .compact .opt-line { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 22px; }
+  .opt-line.full { grid-template-columns: minmax(0, 1fr) 22px; }
+  .canvas-toolbar { width: max-content; max-width: calc(100% - 24px); overflow-x: auto; }
+  .canvas-toolbar .tb-sep { flex: none; }
+  .manip-panel { top: 76px; }
+  .modal > .settings-tab, .flush-body, .select-list { min-height: 0; }
+  .flush-scroll { flex: none; max-width: 100%; }
+  .legend { min-width: 250px; max-width: calc(100% - 460px); max-height: calc(100% - 200px); }
+  .lg-head select { min-width: 0; }
+  .events-panel { max-height: 120px; overflow: auto; }
+  .notifications { right: 96px; bottom: 60px; max-width: calc(100% - 112px); max-height: 30%; overflow: auto; }
+  .notification { flex: none; }
+  .move-slider input { min-width: 0; }
+}
