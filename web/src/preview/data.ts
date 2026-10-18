@@ -43,6 +43,7 @@ export class PreviewData {
 
   roleTime = new Float64Array(ROLE_COUNT);
   roleFilament = new Float64Array(ROLE_COUNT);
+  roleFilamentByExtruder: Float64Array[] = [];
   travelTime = 0;
   filamentMm: number[] = [];
   bbox = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
@@ -108,6 +109,8 @@ export class PreviewData {
         if (!(this.type[i] & 0x80)) {
           this.roleFilament[this.role[i]] += this.de[i];
           const e = this.extruder[i];
+          const roles = this.roleFilamentByExtruder[e] ??= new Float64Array(ROLE_COUNT);
+          roles[this.role[i]] += this.de[i];
           this.filamentMm[e] = (this.filamentMm[e] ?? 0) + this.de[i];
         }
         for (let k = 0; k < 3; ++k) {

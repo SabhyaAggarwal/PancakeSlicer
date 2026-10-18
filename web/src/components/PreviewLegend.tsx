@@ -5,7 +5,7 @@ import {
   nonplanarIndexColor, type ColorRange, type RGB, type Ranges, type ViewType,
 } from '../preview/colors';
 import type { PreviewData } from '../preview/data';
-import { ROLE_NAMES, shortTime } from '../preview/format';
+import { ROLE_NAMES, shortTime, type PrintStatistics } from '../preview/format';
 import type { PreviewScene } from '../preview/PreviewScene';
 import type { PreviewUi } from './PreviewView';
 
@@ -47,9 +47,12 @@ function RangeRows({ range, decimals, title }: { range: ColorRange | undefined; 
   );
 }
 
-function filamentInfo(d: PreviewData) {
+function filamentInfo(d: PreviewData, statistics?: PrintStatistics) {
   const s = getState();
   return d.filamentMm.map((mm, i) => {
+    const native = statistics?.per_extruder.find((f) => f.extruder_id === i);
+    if (native && native.used_filament_mm > 0)
+      return { mm: mm ?? 0, grams: (mm ?? 0) * native.used_filament_g / native.used_filament_mm };
     const cfg = effectiveConfig(s, 'filament', Math.min(i, Math.max(0, s.filamentSlots.length - 1)));
     const num = (v: unknown, def: number) => {
       const x = Number(Array.isArray(v) ? v[0] : v);
@@ -81,12 +84,17 @@ export function Legend(props: {
     ? state.job.status?.record : undefined;
   const printStats = d.statistics(record);
   const fallbackTip = 'Print statistics unavailable from this tool. Filament is estimated from preview moves; flushed filament may be missing.';
-  const fil = filamentInfo(d);
+  const fil = filamentInfo(d, printStats);
   const totalsByExtruder = printStats
     ? [...printStats.per_extruder].sort((a, b) => a.extruder_id - b.extruder_id)
       .map((f) => ({ id: f.extruder_id, mm: f.used_filament_mm, grams: f.used_filament_g }))
     : fil.map((f, id) => ({ ...f, id }));
   const filMm = fil.reduce((a, f) => a + f.mm, 0), filG = fil.reduce((a, f) => a + f.grams, 0);
+  const roleGrams = (role: number) => fil.reduce((sum, f, id) =>
+    sum + (f.mm > 0 ? (d.roleFilamentByExtruder[id]?.[role] ?? 0) * f.grams / f.mm : 0), 0);
+  const towerMm = d.roleFilament[17], towerG = roleGrams(17);
+  const supportMm = d.roleFilament[14] + d.roleFilament[15] + d.roleFilament[16];
+  const supportG = roleGrams(14) + roleGrams(15) + roleGrams(16);
   const toggle = (k: keyof PreviewUi['vis']) => setUi((u) => ({ ...u, vis: { ...u.vis, [k]: !u.vis[k] } }));
   const toggleRole = (r: number) =>
     setUi((u) => {
@@ -111,7 +119,7 @@ export function Legend(props: {
                   <td>{d.roleTime[r] > 0 ? shortTime(d.roleTime[r]) : ''}</td>
                   <td>{percent(d.roleTime[r], total)}</td>
                   <td>{(d.roleFilament[r] / 1000).toFixed(2)}m</td>
-                  <td>{compactWeight(filMm > 0 ? (d.roleFilament[r] * filG) / filMm : 0)}</td>
+                  <td>{compactWeight(roleGrams(r))}</td>
                 </tr>
               ))}
             </tbody>
@@ -195,10 +203,12 @@ export function Legend(props: {
                     <td>Total Filament:</td><td>{((printStats?.total_used_filament_mm ?? filMm) / 1000).toFixed(2)} m  {compactWeight(printStats?.total_weight_g ?? filG)}</td>
                   </tr>
                   {printStats && <>
-                    <tr title="Filament summed from preview extrusion moves, excluding internal speed samples.">
-                      <td>Model Filament:</td><td>{(filMm / 1000).toFixed(2)} m  {compactWeight(filG)}</td>
+                    <tr title="Preview extrusion consumption excluding prime tower, support and internal speed samples.">
+                      <td>Model Filament:</td><td>{((filMm - towerMm - supportMm) / 1000).toFixed(2)} m  {compactWeight(filG - towerG - supportG)}</td>
                     </tr>
-                    <tr title="Export total minus preview move consumption; includes any wipe tower consumption absent from the moves.">
+                    {towerMm > 0 && <tr><td>Prime tower:</td><td>{(towerMm / 1000).toFixed(2)} m  {compactWeight(towerG)}</td></tr>}
+                    {supportMm > 0 && <tr><td>Support:</td><td>{(supportMm / 1000).toFixed(2)} m  {compactWeight(supportG)}</td></tr>}
+                    <tr title="Export total minus all preview extrusion consumption, including prime tower and support. Weights use the export's per-filament weight per millimeter.">
                       <td>Flushed filament:</td><td>{(Math.max(0, printStats.total_used_filament_mm - filMm) / 1000).toFixed(2)} m  {compactWeight(Math.max(0, printStats.total_weight_g - filG))}</td>
                     </tr>
                     <tr><td>Cost:</td><td>{printStats.total_cost.toFixed(2)}</td></tr>
