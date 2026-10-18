@@ -176,8 +176,8 @@ export function removeInstance() {
   }));
 }
 
-export function outputKind(): 'gcode' | 'gcode.3mf' {
-  const m = printerPreset(getState());
+export function outputKind(s = getState()): 'gcode' | 'gcode.3mf' {
+  const m = printerPreset(s);
   return m?.vendor === 'BBL' ? 'gcode.3mf' : 'gcode';
 }
 

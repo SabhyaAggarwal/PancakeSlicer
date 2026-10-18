@@ -107,12 +107,13 @@ export function SettingsTab({ type, slot = 0, compact }: { type: PresetType; slo
               let labels = line.index_labels;
               if (labels) keys = keys.flatMap((k) => labels!.map((_, i) => `${splitKey(k)[0]}#${i}`));
               if (line.indexed_columns) {
-                labels = env.silent_mode ? ['Normal', 'Silent'] : ['Normal'];
-                keys = keys.flatMap((k) => labels!.map((_, i) => `${splitKey(k)[0]}#${i}`));
+                labels = env.silent_mode ? ['Normal', 'Silent'] : undefined;
+                keys = keys.flatMap((k) => (labels ?? ['']).map((_, i) => `${splitKey(k)[0]}#${i}`));
               }
               const shared = keys.length > 1;
+              const tooltip = line.tooltip && OPTIONS[line.tooltip] ? OPTIONS[line.tooltip].tooltip : line.tooltip;
               return <div key={row} className={shared ? 'option-row' : undefined}>
-                {shared && <span className="opt-label" title={line.tooltip}>{line.label ?? (OPTIONS[splitKey(keys[0])[0]]?.full_label || OPTIONS[splitKey(keys[0])[0]]?.label)}</span>}
+                {shared && <span className="opt-label" title={tooltip}>{line.label ?? (OPTIONS[splitKey(keys[0])[0]]?.full_label || OPTIONS[splitKey(keys[0])[0]]?.label)}</span>}
                 {keys.map((k, i) => {
                   const key = splitKey(k)[0];
                   return <Field key={`${k}:${i}`} optKey={k} type={type} value={config[key]} systemValue={system[key]} dirty={key in dirty}
@@ -121,7 +122,7 @@ export function SettingsTab({ type, slot = 0, compact }: { type: PresetType; slo
                     inheritedValue={env[key.replace(/^filament_/, '')] as ConfigValue}
                     overrideDisabled={OPTIONS[key]?.nullable && key !== 'filament_retraction_length' && !key.startsWith('filament_ironing_') && env.filament_retraction_length != null && Number(env.filament_retraction_length) <= 0}
                     label={labels?.[i] ?? (shared ? line.overrides?.[key]?.label ?? OPTIONS[key]?.label : line.label)}
-                    tooltip={line.tooltip} />;
+                    tooltip={tooltip} />;
                 })}
               </div>;
             })}

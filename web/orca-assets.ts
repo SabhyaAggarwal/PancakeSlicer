@@ -78,10 +78,17 @@ export function orcaAssets(): Plugin {
       }
       for (const f of ['printer_placeholder.png'])
         this.emitFile({ type: 'asset', fileName: `images/${f}`, source: fs.readFileSync(path.join(IMAGES, f)) });
+      const quoted = (name: string) => new RegExp(`["'\`]${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'\`]`).test(text);
       for (const v of VENDORS) {
+        const beds = new Set<string>();
+        for (const f of fs.readdirSync(path.join(PROFILES, v, 'machine'))) {
+          if (!f.endsWith('.json')) continue;
+          const m = JSON.parse(fs.readFileSync(path.join(PROFILES, v, 'machine', f), 'utf8'));
+          if (m.type === 'machine_model' && quoted(m.name)) for (const b of [m.bed_model, m.bed_texture]) if (b) beds.add(b);
+        }
         for (const f of fs.readdirSync(path.join(PROFILES, v))) {
           const cover = /^(.*)_cover\.png$/.exec(f);
-          if (!/\.(svg|png|stl)$/.test(f) || !(text.includes(f) || (cover && new RegExp(`["'\`]${cover[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'\`]`).test(text)))) continue;
+          if (!/\.(svg|png|stl)$/.test(f) || !(text.includes(f) || beds.has(f) || (cover && quoted(cover[1])))) continue;
           this.emitFile({ type: 'asset', fileName: `profiles/${v}/${f}`, source: fs.readFileSync(path.join(PROFILES, v, f)) });
         }
       }

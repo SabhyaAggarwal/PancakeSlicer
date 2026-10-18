@@ -76,6 +76,15 @@ export async function mutation(path: string, init: RequestInit, retry = false, s
     accessNotice({ status: response.status, message });
     throw new Error(message);
   }
-  if (!response.ok && response.status !== 404) throw new Error(`${response.status} ${response.statusText}: ${(await response.text()).slice(0, 300)}`);
+  if (!response.ok && response.status !== 404) throw await responseError(response);
   return response;
+}
+
+export async function responseError(response: Response): Promise<Error> {
+  const text = await response.text();
+  try {
+    const j = JSON.parse(text);
+    if (typeof j?.error === 'string' && j.error) return new Error(j.error);
+  } catch {  }
+  return new Error(`${response.status} ${response.statusText}: ${text.slice(0, 300)}`);
 }

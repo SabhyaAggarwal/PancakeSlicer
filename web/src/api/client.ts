@@ -1,4 +1,4 @@
-import { bootstrapAccessToken, mutation } from './access';
+import { bootstrapAccessToken, mutation, responseError } from './access';
 import { normalizeConfig } from '../config-values';
 import { demoPresets, normalizeCatalog } from './catalog';
 import { catalogWorker, workerId } from './worker';
@@ -20,7 +20,7 @@ export interface Api {
 }
 
 async function json<T>(r: Response): Promise<T> {
-  if (!r.ok) throw new Error(`${r.status} ${r.statusText}: ${(await r.text()).slice(0, 300)}`);
+  if (!r.ok) throw await responseError(r);
   return r.json() as Promise<T>;
 }
 

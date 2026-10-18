@@ -55,8 +55,9 @@ export function TopBar() {
   const mock = useStore((s) => s.api?.mock);
   const name = useStore((s) => (s.project?.name ?? s.objects[0]?.name)?.replace(/\.(stl|obj|3mf)$/i, ''));
   const project = useStore((s) => !!s.project);
-  const exportLabel = outputKind() === 'gcode.3mf' ? 'Export plate sliced file' : 'Export G-code';
-  const exportTip = outputKind() === 'gcode.3mf' ? 'Export current sliced file' : 'Export current plate as G-code';
+  const kind = useStore(outputKind);
+  const exportLabel = kind === 'gcode.3mf' ? 'Export plate sliced file' : 'Export G-code';
+  const exportTip = kind === 'gcode.3mf' ? 'Export current sliced file' : 'Export current plate as G-code';
   return (
     <div className="topbar">
       <Icon name="OrcaSlicer" size={20} className="topbar-logo" />
@@ -120,7 +121,7 @@ export function TabBar() {
   const hasObjects = useStore((s) => s.objects.length > 0);
   const busy = job.state === 'running' || job.state === 'submitting';
   const canExport = job.state === 'done' && !job.stale;
-  const exportLabel = outputKind() === 'gcode.3mf' ? 'Export plate sliced file' : 'Export G-code file';
+  const exportLabel = useStore(outputKind) === 'gcode.3mf' ? 'Export plate sliced file' : 'Export G-code file';
   return (
     <div className="tabbar">
       <div className="tabbar-tabs">

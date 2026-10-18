@@ -153,7 +153,9 @@ export function PreviewView() {
   }, [job.id, job.state, dropped]);
 
   useEffect(() => {
-    if (data?.header) recolor(data);
+    if (!data?.header) return;
+    recolor(data);
+    bump();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ui.view, ui.nonplanar, ui.vis]);
 
