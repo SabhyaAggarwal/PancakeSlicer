@@ -100,9 +100,11 @@ export class PreviewData {
       this.layerTimes[lt] = (this.layerTimes[lt] ?? 0) + this.time[i];
       if (t === MoveType.Extrude) {
         this.roleTime[this.role[i]] += this.time[i];
-        this.roleFilament[this.role[i]] += this.de[i];
-        const e = this.extruder[i];
-        this.filamentMm[e] = (this.filamentMm[e] ?? 0) + this.de[i];
+        if (!(this.type[i] & 0x80)) {
+          this.roleFilament[this.role[i]] += this.de[i];
+          const e = this.extruder[i];
+          this.filamentMm[e] = (this.filamentMm[e] ?? 0) + this.de[i];
+        }
         for (let k = 0; k < 3; ++k) {
           const v = this.pos[i * 4 + k];
           if (v < this.bbox.min[k]) this.bbox.min[k] = v;
