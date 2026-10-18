@@ -44,6 +44,7 @@
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/log/trivial.hpp>
 #include <tbb/blocked_range.h>
+#include <tbb/parallel_reduce.h>
 #include <tbb/parallel_for.h>
 
 #include <algorithm>
@@ -134,16 +135,34 @@ ShellSettings shell_settings(const PrintObject &object, size_t region_id)
 
 ExPolygons candidate_top_area(const PrintObject &object, const std::vector<size_t> &region_ids)
 {
-    Polygons tops;
-    for (const Layer *layer : object.layers())
-        for (const LayerRegion *layerm : layer->regions())
+    const auto &layers = object.layers();
+    std::vector<Polygons> tops(layers.size());
+    for (size_t i = 0; i < layers.size(); ++i)
+        for (const LayerRegion *layerm : layers[i]->regions())
             if (std::any_of(region_ids.begin(), region_ids.end(),
                             [&](size_t id) { return &layerm->region() == &object.printing_region(id); }))
                 for (const Surface &surface : layerm->slices.surfaces)
                     if (surface.surface_type == stTop)
-                        polygons_append(tops, to_polygons(surface.expolygon));
-    const float seam = float(scale_(0.01));
-    return offset_ex(union_ex(offset(tops, seam)), -seam);
+                        polygons_append(tops[i], to_polygons(surface.expolygon));
+    const float seam   = float(scale_(0.01));
+    size_t      points = 0;
+    for (const Polygons &layer : tops)
+        points += count_points(layer);
+    if (points < TreeUnionPoints) {
+        Polygons all;
+        for (Polygons &layer : tops)
+            polygons_append(all, std::move(layer));
+        return offset_ex(union_ex(offset(all, seam)), -seam);
+    }
+    return offset_ex(tbb::parallel_reduce(
+        tbb::blocked_range<size_t>(0, tops.size(), 8), ExPolygons(),
+        [&](const tbb::blocked_range<size_t> &range, ExPolygons acc) {
+            for (size_t i = range.begin(); i < range.end(); ++i)
+                if (!tops[i].empty())
+                    acc = union_ex(acc, union_ex(offset(tops[i], seam)));
+            return acc;
+        },
+        [](const ExPolygons &a, const ExPolygons &b) { return union_ex(a, b); }), -seam);
 }
 
 constexpr size_t ContourLoops = 8;

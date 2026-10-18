@@ -35,6 +35,7 @@
 
 #include <boost/log/trivial.hpp>
 #include <tbb/parallel_for.h>
+#include <tbb/parallel_reduce.h>
 
 #include <algorithm>
 #include <chrono>
@@ -363,6 +364,25 @@ double deform_band_height(const HeadEnvelope &head, double slope, double inflati
 
 double ColumnScaleField::rho(const Vec2d &xy) const { return m_rho.empty() ? 1. : sample_clamped(m_rho, xy); }
 
+double ColumnScaleField::max_slope_near(const Vec2d &xy, double level) const
+{
+    if (level <= m_z0 || m_rho.empty())
+        return 0.;
+    const int    cx = int(std::floor((xy.x() - m_rho.origin().x()) / m_rho.pitch()));
+    const int    cy = int(std::floor((xy.y() - m_rho.origin().y()) / m_rho.pitch()));
+    const auto   at = [this](int ix, int iy) {
+        return double(m_rho.at(std::clamp(ix, 0, m_rho.nx() - 1), std::clamp(iy, 0, m_rho.ny() - 1)));
+    };
+    double g = 0.;
+    for (int iy = cy - 1; iy <= cy + 1; ++iy)
+        for (int ix = cx - 1; ix <= cx + 1; ++ix) {
+            const double gx = std::max(std::abs(at(ix + 1, iy) - at(ix, iy)), std::abs(at(ix + 1, iy + 1) - at(ix, iy + 1)));
+            const double gy = std::max(std::abs(at(ix, iy + 1) - at(ix, iy)), std::abs(at(ix + 1, iy + 1) - at(ix + 1, iy)));
+            g = std::max(g, std::hypot(gx, gy) / m_rho.pitch());
+        }
+    return (level - m_z0) * g;
+}
+
 Vec3d ColumnScaleField::gradient(const Vec3d &p) const
 {
     if (p.z() <= m_z0)
@@ -433,7 +453,7 @@ std::unique_ptr<ColumnScaleField> build_column_scale_field(const indexed_triangl
     }
     const HeightField T       = slope_cap_minorant(S, std::atan(P.max_slope));
     const double      cell    = pitch * pitch;
-    const double      z0_min  = P.first_layer_height;
+    const double      z0_min  = P.planar_top;
     const double      tan_min = std::tan(Geometry::deg2rad(1.));
 
     struct Node { double s; size_t n; };
@@ -630,9 +650,59 @@ std::unique_ptr<ColumnScaleField> build_column_scale_field(const indexed_triangl
     return field;
 }
 
+static void close_holes(indexed_triangle_set &its)
+{
+    auto key = [](int a, int b) { return (uint64_t(std::min(a, b)) << 32) | uint64_t(uint32_t(std::max(a, b))); };
+    std::unordered_map<uint64_t, int> uses;
+    for (const stl_triangle_vertex_indices &f : its.indices)
+        for (int i = 0; i < 3; ++i)
+            ++uses[key(f[i], f[(i + 1) % 3])];
+    std::multimap<int, int> next;
+    for (const stl_triangle_vertex_indices &f : its.indices)
+        for (int i = 0; i < 3; ++i)
+            if (uses[key(f[i], f[(i + 1) % 3])] == 1)
+                next.emplace(f[(i + 1) % 3], f[i]);
+    size_t closed = 0, kept = 0;
+    while (!next.empty()) {
+        std::vector<int> loop{ next.begin()->first };
+        for (auto it = next.begin(); it != next.end(); it = next.find(loop.back())) {
+            const int to = it->second;
+            next.erase(it);
+            if (to == loop.front())
+                break;
+            loop.push_back(to);
+        }
+        if (loop.size() < 3)
+            continue;
+        Vec3d c = Vec3d::Zero(), n = Vec3d::Zero();
+        for (int v : loop)
+            c += its.vertices[size_t(v)].cast<double>();
+        c /= double(loop.size());
+        for (size_t i = 0; i < loop.size(); ++i)
+            n += its.vertices[size_t(loop[i])].cast<double>().cross(its.vertices[size_t(loop[(i + 1) % loop.size()])].cast<double>());
+        bool fans = n.squaredNorm() > 0.;
+        for (size_t i = 0; fans && i < loop.size(); ++i) {
+            const Vec3d a = its.vertices[size_t(loop[i])].cast<double>(), b = its.vertices[size_t(loop[(i + 1) % loop.size()])].cast<double>();
+            fans = (a - c).cross(b - c).dot(n) > 0.;
+        }
+        if (!fans) {
+            ++kept;
+            continue;
+        }
+        const int ci = int(its.vertices.size());
+        its.vertices.push_back(c.cast<float>());
+        for (size_t i = 0; i < loop.size(); ++i)
+            its.indices.emplace_back(loop[i], loop[(i + 1) % loop.size()], ci);
+        ++closed;
+    }
+    if (closed + kept > 0)
+        BOOST_LOG_TRIVIAL(info) << "Deform slice: closed " << closed << " mesh holes, left " << kept << " open";
+}
+
 indexed_triangle_set deform_mesh(const indexed_triangle_set &mesh, const LayerField &field, double max_edge)
 {
     indexed_triangle_set its   = mesh;
+    close_holes(its);
     const float          z0    = float(field.identity_below());
     const double         max_2 = max_edge * max_edge;
     for (int pass = 0; pass < 16; ++pass) {
@@ -885,7 +955,7 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
             uniform = false;
 
     DeformFieldParams params;
-    params.first_layer_height = first;
+    params.planar_top         = first + 2. * h;
     params.layer_height       = h;
     params.min_ratio          = 0.5;
     params.max_ratio          = std::min(1.5, 0.8 * nozzle / h);
@@ -1012,8 +1082,19 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
     double             pitch = 0., tolerance = 0.;
     const double inflation = 0.6 * nozzle + 0.25 + 0.5 * MaxSegment;
     const bool shared_plate = host_print.objects().size() > 1 || object.instances().size() > 1;
-    const double reach = object.has_support() || shared_plate ? head_band_height(head) :
-                                                               deform_band_height(head, 1.1 * report.max_layer_slope, inflation);
+    double slope = 1.1 * report.max_layer_slope;
+    if (const auto *columns = dynamic_cast<const ColumnScaleField *>(field))
+        slope = tbb::parallel_reduce(tbb::blocked_range<size_t>(0, curved.size()), slope,
+            [&](const tbb::blocked_range<size_t> &range, double s) {
+                for (size_t k = range.begin(); k < range.end(); ++k)
+                    for (const ExtrusionPathConformal *path : curved[k])
+                        for (const Point3 &pt : path->polyline.points)
+                            s = std::max(s, columns->max_slope_near(Vec2d(unscale<double>(pt.x()), unscale<double>(pt.y())),
+                                                                    sliced.layers()[k]->print_z));
+                return s;
+            },
+            [](double a, double b) { return std::max(a, b); });
+    const double reach = object.has_support() || shared_plate ? head_band_height(head) : deform_band_height(head, slope, inflation);
     double       cap   = multi_material_patch_height(object, head, ocfg.nonplanar_max_patch_height.value);
     cap                = cap > 0. ? std::min(cap, reach) : reach;
     tolerance = std::min(0.5 * cap, 0.45 * report.rho_min * h);

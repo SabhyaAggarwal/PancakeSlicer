@@ -38,6 +38,7 @@
 #include <boost/log/trivial.hpp>
 #include <tbb/blocked_range.h>
 #include <tbb/parallel_for.h>
+#include <tbb/parallel_reduce.h>
 
 #include <algorithm>
 #include <tuple>
@@ -332,14 +333,15 @@ ExPolygons runs_to_expolygons(const std::vector<RunGroups::Run> &runs, const Hei
 
 ExPolygons positive_region(const HeightField &f)
 {
-    Polygons  polys;
     const int nx = f.nx(), ny = f.ny();
+    std::vector<Polygons> rows(size_t(std::max(0, ny - 1)));
     auto val = [&f](int ix, int iy) { const float v = f.at(ix, iy); return std::isnan(v) ? -1. : double(v); };
     auto pt  = [&f](double ix, double iy) {
         const Vec2d p = f.origin() + f.pitch() * Vec2d(ix, iy);
         return Point::new_scale(p.x(), p.y());
     };
     for (int iy = 0; iy + 1 < ny; ++iy) {
+        Polygons &polys = rows[size_t(iy)];
         int run = -1;
         for (int ix = 0; ix + 1 < nx; ++ix) {
             const int    cx[4] = { ix, ix + 1, ix + 1, ix };
@@ -377,7 +379,24 @@ ExPolygons positive_region(const HeightField &f)
         if (run >= 0)
             polys.emplace_back(Points{ pt(run, iy), pt(nx - 1, iy), pt(nx - 1, iy + 1), pt(run, iy + 1) });
     }
-    return union_ex(polys);
+    size_t points = 0;
+    for (const Polygons &row : rows)
+        points += count_points(row);
+    if (points < TreeUnionPoints) {
+        Polygons polys;
+        for (Polygons &row : rows)
+            polygons_append(polys, std::move(row));
+        return union_ex(polys);
+    }
+    return tbb::parallel_reduce(
+        tbb::blocked_range<size_t>(0, rows.size(), 16), ExPolygons(),
+        [&rows](const tbb::blocked_range<size_t> &range, ExPolygons acc) {
+            Polygons block;
+            for (size_t i = range.begin(); i < range.end(); ++i)
+                polygons_append(block, rows[i]);
+            return block.empty() ? acc : union_ex(acc, union_ex(block));
+        },
+        [](const ExPolygons &a, const ExPolygons &b) { return union_ex(a, b); });
 }
 
 HeightField crop(const HeightField &src, int ix0, int iy0, int ix1, int iy1)

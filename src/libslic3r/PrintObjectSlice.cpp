@@ -11,6 +11,7 @@
 #include <cmath>
 #include <iterator>
 #include <tbb/parallel_for.h>
+#include <tbb/parallel_reduce.h>
 #include <vector>
 #include <utility>
 
@@ -1113,8 +1114,25 @@ void PrintObject::slice_volumes()
             for (const std::vector<ExPolygons> &by_layer : low)
                 for (const ExPolygons &slice : by_layer)
                     polygons_append(outline, to_polygons(slice));
+            ExPolygons outline_ex;
+            if (count_points(outline) < Nonplanar::TreeUnionPoints)
+                outline_ex = union_ex(outline);
+            else {
+                std::vector<ExPolygons> per_layer(m_layers.size());
+                for (const std::vector<ExPolygons> &by_layer : low)
+                    for (size_t i = 0; i < by_layer.size() && i < per_layer.size(); ++i)
+                        expolygons_append(per_layer[i], by_layer[i]);
+                outline_ex = tbb::parallel_reduce(
+                    tbb::blocked_range<size_t>(0, per_layer.size(), 8), ExPolygons(),
+                    [&per_layer](const tbb::blocked_range<size_t> &range, ExPolygons acc) {
+                        for (size_t i = range.begin(); i < range.end(); ++i)
+                            acc = union_ex(acc, per_layer[i]);
+                        return acc;
+                    },
+                    [](const ExPolygons &a, const ExPolygons &b) { return union_ex(a, b); });
+            }
             ExPolygons silhouette;
-            for (ExPolygon &island : union_ex(outline))
+            for (ExPolygon &island : outline_ex)
                 silhouette.emplace_back(std::move(island.contour));
             const ExPolygons rim        = diff_ex(silhouette, offset_ex(silhouette, -float(scale_(Nonplanar::low_plane_rim(*this)))));
             std::vector<Polygons> mid_all;

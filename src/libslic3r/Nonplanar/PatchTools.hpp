@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -94,6 +95,7 @@ private:
     int                             m_last_key = 0;
 };
 ExPolygons runs_to_expolygons(const std::vector<RunGroups::Run> &runs, const HeightField &grid);
+inline constexpr size_t TreeUnionPoints = 2000000;
 ExPolygons positive_region(const HeightField &f);
 HeightField crop(const HeightField &src, int ix0, int iy0, int ix1, int iy1);
 void pad_lowest(HeightField &field, int iterations);

@@ -39,6 +39,7 @@ public:
     double identity_below() const override { return m_z0; }
 
     double             rho(const Vec2d &xy) const;
+    double             max_slope_near(const Vec2d &xy, double level) const;
 
 private:
     double      m_z0;
@@ -47,7 +48,7 @@ private:
 
 struct DeformFieldParams
 {
-    double first_layer_height = 0.2;
+    double planar_top         = 0.6;
     double layer_height       = 0.2;
     double min_ratio          = 0.5;
     double max_ratio          = 1.5;
