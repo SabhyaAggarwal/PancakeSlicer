@@ -41,7 +41,7 @@ void move_float(std::ostream &out, float value)
 void write_moves(const std::string &path, const GCodeProcessorResult &result, const std::vector<std::string> &filaments)
 {
     static_assert(uint8_t(EMoveType::Count) < 128, "Move type must leave bit 7 for internal_only");
-    struct Layer { uint32_t id; uint64_t first; float z; };
+    struct Layer { uint32_t id; uint64_t first; float z; float extrusion_z; };
     std::vector<Layer> layers;
     for (size_t i = 1; i < result.moves.size(); ++i) {
         const auto &move = result.moves[i];
@@ -49,10 +49,16 @@ void write_moves(const std::string &path, const GCodeProcessorResult &result, co
         float z = state.print_z;
         if (z <= 0.f && !result.belt_tilt_angle && move.type == EMoveType::Extrude && state.nonplanar_patch_shell == 0xFF)
             z = move.position.z();
+        const float extrusion_z = move.type == EMoveType::Extrude && move.extrusion_role != erCustom ? move.position.z() : 0.f;
         if (layers.empty() || layers.back().id != move.layer_id)
-            layers.push_back({move.layer_id, i, z});
-        else layers.back().z = std::max(layers.back().z, z);
+            layers.push_back({move.layer_id, i, z, extrusion_z});
+        else {
+            layers.back().z = std::max(layers.back().z, z);
+            layers.back().extrusion_z = std::max(layers.back().extrusion_z, extrusion_z);
+        }
     }
+    for (Layer &layer : layers)
+        if (layer.z <= 0.f) layer.z = layer.extrusion_z;
     std::vector<std::string> colors = result.extruder_colors;
     for (const auto &item : result.custom_gcode_per_print_z)
         if (item.type == CustomGCode::ColorChange) colors.push_back(item.color);
