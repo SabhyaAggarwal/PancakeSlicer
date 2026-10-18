@@ -3,6 +3,7 @@ import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { ConfigValue, PlateJson } from '../api/types';
+import { toolValue } from '../options';
 import type { Instance, PlateObject } from '../state/store';
 
 const DEG = Math.PI / 180;
@@ -28,12 +29,30 @@ export async function loadMesh(file: File): Promise<THREE.BufferGeometry> {
   } else {
     throw new Error(`${file.name}: STL and OBJ load in the browser; 3MF needs the server loader`);
   }
-  geo.deleteAttribute('normal');
+  return finishMesh(geo).geometry;
+}
+
+export function finishMesh(geo: THREE.BufferGeometry): { geometry: THREE.BufferGeometry; centre: THREE.Vector3 } {
+  if (geo.getAttribute('normal')) geo.deleteAttribute('normal');
   geo = mergeVertices(geo, 1e-4);
   geo.computeVertexNormals();
   geo.computeBoundingBox();
   const b = geo.boundingBox!;
-  geo.translate(-(b.min.x + b.max.x) / 2, -(b.min.y + b.max.y) / 2, -b.min.z);
+  const centre = new THREE.Vector3((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, b.min.z);
+  geo.translate(-centre.x, -centre.y, -centre.z);
+  geo.computeBoundingBox();
+  geo.computeBoundingSphere();
+  return { geometry: geo, centre };
+}
+
+export function meshFromPositions(positions: Float32Array): { geometry: THREE.BufferGeometry; centre: THREE.Vector3 } {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  return finishMesh(geo);
+}
+
+export function placeholderGeometry(size = 20): THREE.BufferGeometry {
+  const geo = new THREE.BoxGeometry(size, size, size).translate(0, 0, size / 2);
   geo.computeBoundingBox();
   geo.computeBoundingSphere();
   return geo;
@@ -140,6 +159,9 @@ export function plateJson(objects: PlateObject[]): { plate: PlateJson; files: { 
       name: o.name.replace(/\.(stl|obj)$/i, ''),
       extruder: o.extruder,
       instances: o.instances.map((i) => ({ x: round(i.x), y: round(i.y), rot: round(i.rotZ) })),
+      ...(Object.keys(o.settings).length
+        ? { settings: Object.fromEntries(Object.entries(o.settings).map(([k, v]) => [k, toolValue(k, v)])) }
+        : {}),
     });
   }
   return { plate, files };

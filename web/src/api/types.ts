@@ -55,6 +55,7 @@ export interface PlateJson {
     name: string;
     extruder?: number;
     instances: { x: number; y: number; rot: number }[];
+    settings?: Record<string, string>;
   }[];
 }
 
@@ -65,6 +66,7 @@ export interface JobRequest {
   process: string;
   filaments: string[];
   overrides: Config;
-  plate: PlateJson;
+  plate?: PlateJson;
+  events: string[];
   output: 'gcode' | 'gcode.3mf';
 }

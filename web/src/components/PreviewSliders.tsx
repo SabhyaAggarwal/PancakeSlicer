@@ -1,7 +1,20 @@
 import { useRef } from 'react';
 import type { LayerRec } from '../preview/format';
 
-export function LayerSlider({ layers, lo, hi, onChange }: { layers: LayerRec[]; lo: number; hi: number; onChange(lo: number, hi: number): void }) {
+export interface SliderTick {
+  layer: number;
+  color: string;
+  title: string;
+}
+
+export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus }: {
+  layers: LayerRec[];
+  lo: number;
+  hi: number;
+  onChange(lo: number, hi: number): void;
+  ticks?: SliderTick[];
+  onPlus?(anchor: DOMRect): void;
+}) {
   const track = useRef<HTMLDivElement>(null);
   const n = layers.length;
   const frac = (i: number) => (n > 1 ? i / (n - 1) : 0);
@@ -52,8 +65,31 @@ export function LayerSlider({ layers, lo, hi, onChange }: { layers: LayerRec[]; 
         }}
       >
         <div className="ls-fill" style={{ bottom: `${frac(lo) * 100}%`, top: `${(1 - frac(hi)) * 100}%` }} />
+        {ticks.map((t) => (
+          <div
+            key={`${t.layer}-${t.title}`}
+            className="ls-tick"
+            style={{ bottom: `${frac(t.layer) * 100}%`, background: t.color }}
+            title={t.title}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              onChange(Math.min(lo, t.layer), t.layer);
+            }}
+          />
+        ))}
         <div className="ls-thumb hi" style={{ bottom: `${frac(hi) * 100}%` }} onPointerDown={drag('hi')} title="Upper layer (Up / Down keys)">
           <div className="ls-tip">{label(hi)}</div>
+          {onPlus && (
+            <button
+              type="button"
+              className="ls-plus"
+              title={ticks.some((t) => t.layer === hi) ? 'Edit custom G-code of this layer' : 'Add pause, custom G-code or color change'}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => onPlus((e.currentTarget as HTMLElement).getBoundingClientRect())}
+            >
+              {ticks.some((t) => t.layer === hi) ? '✎' : '+'}
+            </button>
+          )}
         </div>
         <div className="ls-thumb lo" style={{ bottom: `${frac(lo) * 100}%` }} onPointerDown={drag('lo')} title="Lower layer">
           <div className="ls-tip">{label(lo)}</div>

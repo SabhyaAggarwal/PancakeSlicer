@@ -10,6 +10,8 @@ const SELECTED = new THREE.Color(0x00c1ae);
 const OUTSIDE = new THREE.Color(0x4d9ed9);
 
 export function filamentColor(s: State, extruder: number): string {
+  const chosen = s.slotColours[extruder - 1];
+  if (chosen) return chosen;
   const name = s.filamentSlots[extruder - 1] ?? s.filamentSlots[0];
   const cfg = name ? effectiveConfig(s, 'filament', extruder - 1) : {};
   const c = cfg.filament_colour ?? cfg.default_filament_colour;
@@ -82,14 +84,14 @@ export default function Plater3D() {
 
     const meshes = new Map<number, THREE.Mesh>();
     const materials = new Map<string, THREE.MeshStandardMaterial>();
-    const material = (color: string, state: 'normal' | 'selected' | 'outside') => {
-      const k = color + state;
+    const material = (color: string, state: 'normal' | 'selected' | 'outside', placeholder = false) => {
+      const k = color + state + placeholder;
       let m = materials.get(k);
       if (!m) {
         const c = new THREE.Color(color);
         if (state === 'selected') c.lerp(SELECTED, 0.55);
         if (state === 'outside') c.lerp(OUTSIDE, 0.7);
-        m = new THREE.MeshStandardMaterial({ color: c, roughness: 0.65, metalness: 0.05 });
+        m = new THREE.MeshStandardMaterial({ color: c, roughness: 0.65, metalness: 0.05, transparent: placeholder, opacity: placeholder ? 0.35 : 1 });
         materials.set(k, m);
       }
       return m;
@@ -113,7 +115,7 @@ export default function Plater3D() {
           mesh.matrix.copy(instanceMatrix(o, inst));
           mesh.matrixWorldNeedsUpdate = true;
           const sel = s.selected?.instance === inst.id;
-          mesh.material = material(color, sel ? 'selected' : out.has(inst.id) ? 'outside' : 'normal');
+          mesh.material = material(color, sel ? 'selected' : out.has(inst.id) ? 'outside' : 'normal', !!o.project?.placeholder);
         }
       }
       for (const [id, mesh] of meshes)
@@ -161,7 +163,7 @@ export default function Plater3D() {
     const syncGizmo = (s: State) => {
       const o = s.objects.find((ob) => ob.id === s.selected?.object);
       const i = o?.instances.find((ii) => ii.id === s.selected?.instance);
-      if (!o || !i || s.gizmo === 'none') {
+      if (!o || !i || s.gizmo === 'none' || o.project) {
         tc.detach();
         return;
       }
@@ -202,7 +204,7 @@ export default function Plater3D() {
       const p = bedPoint();
       const o = getState().objects.find((ob) => ob.id === object)!;
       const i = o.instances.find((ii) => ii.id === instance)!;
-      if (p) drag = { object, instance, dx: i.x - p.x, dy: i.y - p.y, moved: false };
+      if (p && !o.project) drag = { object, instance, dx: i.x - p.x, dy: i.y - p.y, moved: false };
       controls.enabled = false;
       renderer.domElement.setPointerCapture(ev.pointerId);
     };
@@ -253,7 +255,7 @@ export default function Plater3D() {
     const sync = () => {
       const s = getState();
       if (last && s.objects === last.objects && s.selected === last.selected && s.printer === last.printer &&
-          s.filamentSlots === last.filamentSlots && s.machines === last.machines && s.gizmo === last.gizmo && s.dirty === last.dirty) return;
+          s.filamentSlots === last.filamentSlots && s.slotColours === last.slotColours && s.machines === last.machines && s.gizmo === last.gizmo && s.dirty === last.dirty) return;
       last = s;
       syncBed(s);
       syncObjects(s);

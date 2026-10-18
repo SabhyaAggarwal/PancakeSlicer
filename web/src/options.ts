@@ -1,3 +1,4 @@
+import type { ConfigValue } from './api/types';
 import optionsJson from './options.generated.json';
 import processTab from './tabs/process.json';
 import filamentTab from './tabs/filament.json';
@@ -69,3 +70,17 @@ export const modeVisible = (opt: OptionMode, ui: OptionMode) => MODE_RANK[opt] <
 const HIDDEN = /print_host|printhost|printer_agent|host_type|api_key|bbl_use_printhost|upload|cloud|device|octoprint|_plugin_config_overrides/;
 const REMOVED_KEYS = new Set(Object.values(TABS).flatMap((tab) => tab.removed_keys));
 export const isHidden = (key: string) => REMOVED_KEYS.has(key) || HIDDEN.test(key);
+
+const NUMERIC_VECTOR = /^(floats|ints|percents|bools|floats_or_percents|points)$/;
+
+export function toolValue(key: string, v: ConfigValue): string {
+  const type = OPTIONS[key]?.type ?? '';
+  const scalar = (x: unknown) => (x === true ? '1' : x === false ? '0' : String(x));
+  if (!Array.isArray(v)) return scalar(v);
+  if (NUMERIC_VECTOR.test(type)) return v.map(scalar).join(',');
+  return v.map((x) => (/[;"\\\n\s]/.test(String(x)) ? `"${String(x).replace(/["\\]/g, '\\$&').replace(/\n/g, '\\n')}"` : String(x))).join(';');
+}
+
+export function jobValue(key: string, v: ConfigValue): ConfigValue {
+  return Array.isArray(v) && NUMERIC_VECTOR.test(OPTIONS[key]?.type ?? '') ? toolValue(key, v) : v;
+}

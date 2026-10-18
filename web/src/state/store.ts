@@ -21,6 +21,14 @@ export interface PlateObject {
   extruder: number;
   instances: Instance[];
   source: File;
+  settings: Config;
+  project?: { file: string; placeholder: boolean; missing?: boolean };
+}
+
+export interface LayerEvent {
+  z: number;
+  type: 'pause' | 'custom' | 'template' | 'colour' | 'change';
+  text?: string;
 }
 
 export type MainTab = 'prepare' | 'preview';
@@ -54,6 +62,12 @@ export interface State {
   objects: PlateObject[];
   selected: { object: number; instance: number } | null;
   gizmo: Gizmo;
+  processScope: 'global' | 'objects';
+  slotColours: (string | undefined)[];
+  flush: { matrix: number[] | null; multiplier: number | null };
+  flushDialog: boolean;
+  events: LayerEvent[];
+  project: File | null;
   job: JobView;
   toast: string | null;
 }
@@ -76,6 +90,12 @@ let state: State = {
   objects: [],
   selected: null,
   gizmo: 'none',
+  processScope: 'global',
+  slotColours: [],
+  flush: { matrix: null, multiplier: null },
+  flushDialog: false,
+  events: [],
+  project: null,
   job: { state: 'idle', pct: 0, stage: '' },
   toast: null,
 };
@@ -208,6 +228,7 @@ export function updateInstance(objectId: number, instanceId: number, patch: Part
 export function removeSelected() {
   setState((s) => {
     if (!s.selected) return {};
+    if (s.objects.some((o) => o.project)) return {};
     const objects = s.objects
       .map((o) =>
         o.id === s.selected!.object ? { ...o, instances: o.instances.filter((i) => i.id !== s.selected!.instance) } : o,
@@ -218,5 +239,30 @@ export function removeSelected() {
 }
 
 export function deleteAll() {
-  setState((s) => ({ objects: [], selected: null, job: markStale(s.job) }));
+  setState((s) => ({ objects: [], selected: null, project: null, job: markStale(s.job) }));
 }
+
+export function setObjectOption(id: number, key: string, value: ConfigValue) {
+  setState((s) => ({
+    objects: s.objects.map((o) => (o.id === id ? { ...o, settings: { ...o.settings, [key]: value } } : o)),
+    job: markStale(s.job),
+  }));
+}
+
+export function removeObjectOptions(id: number, keys: string[]) {
+  setState((s) => ({
+    objects: s.objects.map((o) => {
+      if (o.id !== id) return o;
+      const settings = { ...o.settings };
+      for (const k of keys) delete settings[k];
+      return { ...o, settings };
+    }),
+    job: markStale(s.job),
+  }));
+}
+
+export function setEvents(events: LayerEvent[]) {
+  setState((s) => ({ events: [...events].sort((a, b) => a.z - b.z), job: markStale(s.job) }));
+}
+
+export { markStale };

@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { arrangeAll, download, openFileDialog, outputKind, slice } from '../actions';
+import { arrangeAll, download, newProject, openFileDialog, openProjectDialog, outputKind, slice } from '../actions';
 import { deleteAll, removeSelected, setState, useStore } from '../state/store';
 import { Icon } from './Icon';
 
-type MenuItem = { label: string; shortcut?: string; action?: () => void; disabled?: boolean } | 'sep';
+type MenuItem = { label: string; shortcut?: string; action?: () => void; disabled?: boolean; tip?: string } | 'sep';
 
 function Menu({ title, items }: { title: string; items: MenuItem[] }) {
   const [open, setOpen] = useState(false);
@@ -28,7 +28,8 @@ function Menu({ title, items }: { title: string; items: MenuItem[] }) {
               <button
                 key={it.label}
                 className="menu-item"
-                disabled={it.disabled}
+                disabled={it.disabled || !it.action}
+                title={it.tip}
                 onClick={() => {
                   setOpen(false);
                   it.action?.();
@@ -52,7 +53,8 @@ export function TopBar() {
   const hasObjects = useStore((s) => s.objects.length > 0);
   const hasSel = useStore((s) => !!s.selected);
   const mock = useStore((s) => s.api?.mock);
-  const name = useStore((s) => s.objects[0]?.name.replace(/\.(stl|obj)$/i, ''));
+  const name = useStore((s) => (s.project?.name ?? s.objects[0]?.name)?.replace(/\.(stl|obj|3mf)$/i, ''));
+  const project = useStore((s) => !!s.project);
   const exportLabel = outputKind() === 'gcode.3mf' ? 'Export plate sliced file' : 'Export G-code';
   return (
     <div className="topbar">
@@ -60,9 +62,18 @@ export function TopBar() {
       <Menu
         title="File"
         items={[
-          { label: 'Import 3MF/STL/STEP/SVG/OBJ/AMF...', shortcut: 'Ctrl+I', action: openFileDialog },
+          { label: 'New Project', shortcut: 'Ctrl+N', action: newProject, tip: 'Start a new project' },
+          { label: 'Open Project...', shortcut: 'Ctrl+O', action: openProjectDialog, tip: 'Open a project file' },
+          'sep',
+          { label: 'Import 3MF/STL/STEP/SVG/OBJ/AMF...', shortcut: 'Ctrl+I', action: openFileDialog, tip: 'Load a model' },
           'sep',
           { label: exportLabel + '...', shortcut: 'Ctrl+G', action: download, disabled: !jobDone },
+          { label: 'Export all objects as one STL...', tip: 'Export all objects as one STL' },
+          { label: 'Export all objects as STLs...', tip: 'Export all objects as STLs' },
+          { label: 'Export toolpaths as OBJ...', tip: 'Export toolpaths as OBJ' },
+          { label: 'Export Preset Bundle...', tip: 'Export current configuration to files' },
+          'sep',
+          { label: 'Quit', tip: 'Quit' },
         ]}
       />
       <Menu
@@ -71,15 +82,27 @@ export function TopBar() {
           { label: 'Delete selected', shortcut: 'Del', action: removeSelected, disabled: !hasSel },
           { label: 'Delete all', shortcut: 'Ctrl+Del', action: deleteAll, disabled: !hasObjects },
           'sep',
-          { label: 'Arrange', shortcut: 'A', action: arrangeAll, disabled: !hasObjects },
+          { label: 'Arrange', shortcut: 'A', action: arrangeAll, disabled: !hasObjects || project },
+          'sep',
+          { label: 'Preferences', shortcut: 'Ctrl+P' },
         ]}
       />
       <Menu
         title="View"
         items={[
-          { label: 'Default View', shortcut: '0', action: () => view('0') },
-          { label: 'Top View', shortcut: '1', action: () => view('1') },
-          { label: 'Front View', shortcut: '3', action: () => view('3') },
+          { label: 'Default View', shortcut: '0', action: () => view('0'), tip: 'Default View' },
+        ]}
+      />
+      <Menu
+        title="Help"
+        items={[
+          { label: 'Keyboard Shortcuts', shortcut: 'Shift+?', tip: 'Show the list of keyboard shortcuts' },
+          { label: 'Setup Wizard', tip: 'Setup Wizard' },
+          'sep',
+          { label: 'Show Configuration Folder', tip: 'Show Configuration Folder' },
+          { label: 'Troubleshoot Center' },
+          { label: 'Show Tip of the Day', tip: 'Show Tip of the Day' },
+          { label: 'Check for Updates', tip: 'Check for Updates' },
         ]}
       />
       <div className="topbar-title">

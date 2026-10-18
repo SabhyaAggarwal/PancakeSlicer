@@ -7,6 +7,7 @@ import { NonplanarHover, explain, type HoverInfo } from '../preview/hover';
 import { PreviewScene } from '../preview/PreviewScene';
 import { Legend } from './PreviewLegend';
 import { LayerSlider, MoveSlider } from './PreviewSliders';
+import { EventList, EventMenu, eventTicks } from './LayerEvents';
 
 let current: { key: string; data: PreviewData; cancel(): void } | null = null;
 let live: { header(d: PreviewData): void; chunk(d: PreviewData): void; done(d: PreviewData): void; error(): void } | null = null;
@@ -49,6 +50,8 @@ export function PreviewView() {
   const drawRange = useRef<[number, number]>([1, 1]);
   const [tip, setTip] = useState<(HoverInfo & { x: number; y: number }) | null>(null);
   const lastRanges = useRef(0);
+  const events = useStore((s) => s.events);
+  const [eventMenu, setEventMenu] = useState<{ anchor: DOMRect; layer: number } | null>(null);
 
   useEffect(() => {
     const scene = new PreviewScene(host.current!);
@@ -266,6 +269,24 @@ export function PreviewView() {
             setLayers([a, b]);
             setMovePos(null);
           }}
+          ticks={eventTicks(events, data!.layers)}
+          onPlus={(anchor) => setEventMenu({ anchor, layer: hi })}
+        />
+      )}
+      {layerCount > 0 && (
+        <EventList
+          onPick={(z) => {
+            const i = data!.layers.findIndex((l) => l.z >= z - 1e-3);
+            if (i >= 0) setLayers(([a]) => [Math.min(a, i), i]);
+          }}
+        />
+      )}
+      {eventMenu && data && (
+        <EventMenu
+          anchor={eventMenu.anchor}
+          layer={eventMenu.layer}
+          z={Math.round(data.layers[eventMenu.layer].z * 1e4) / 1e4}
+          onClose={() => setEventMenu(null)}
         />
       )}
       {layerCount > 0 && topMoves > 0 && (

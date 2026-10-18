@@ -4,35 +4,51 @@ import { objectSize } from '../plater/geometry';
 import { setState, updateInstance, updateObject, useStore, type Gizmo } from '../state/store';
 import { IconButton } from './Icon';
 
-const LATER = 'Not available in the web app yet';
+const LATER_GIZMOS: [icon: string, tooltip: string][] = [
+  ['toolbar_cut', 'Cut (C)'],
+  ['toolbar_meshboolean', 'Mesh Boolean (B)'],
+  ['toolbar_support', 'Support Painting (L)'],
+  ['toolbar_seam', 'Seam painting (P)'],
+  ['toolbar_fuzzy_skin_paint', 'Paint-on fuzzy skin (H)'],
+  ['mmu_segmentation', 'Color Painting (N)'],
+  ['toolbar_texture_displacement', 'Texture displacement'],
+  ['toolbar_text', 'Emboss (T)'],
+  ['svg_part', 'SVG'],
+  ['toolbar_measure', 'Measure (U)'],
+  ['toolbar_assembly', 'Assemble (Y)'],
+  ['toolbar_brimears', 'Brim Ears (E)'],
+];
 
 export function CanvasToolbar() {
   const gizmo = useStore((s) => s.gizmo);
   const hasObjects = useStore((s) => s.objects.length > 0);
   const sel = useStore((s) => s.selected);
   const instances = useStore((s) => s.objects.find((o) => o.id === s.selected?.object)?.instances.length ?? 0);
+  const project = useStore((s) => !!s.project);
   const toggle = (g: Gizmo) => setState({ gizmo: gizmo === g ? 'none' : g });
+  const locked = project ? ' — the opened 3MF project keeps its saved placement' : '';
+  const edit = !!sel && !project;
   return (
     <div className="canvas-toolbar">
       <IconButton size={24} icon="toolbar_open" title="Add (Ctrl+I)" onClick={openFileDialog} />
-      <IconButton size={24} icon="toolbar_add_plate" title={`Add plate — ${LATER}`} disabled />
-      <IconButton size={24} icon="toolbar_orient" title={`Auto orient — ${LATER}`} disabled />
-      <IconButton size={24} icon="toolbar_arrange" title="Arrange all objects (A)" onClick={arrangeAll} disabled={!hasObjects} />
+      <IconButton size={24} icon="toolbar_add_plate" title="Add plate" disabled />
+      <IconButton size={24} icon="toolbar_orient" title="Auto orient (Q)" disabled />
+      <IconButton size={24} icon="toolbar_arrange" title={`Arrange all objects (A)${locked}`} onClick={arrangeAll} disabled={!hasObjects || project} />
       <span className="tb-sep" />
-      <IconButton size={24} icon="instance_add" title="Add instance (+)" onClick={addInstance} disabled={!sel} />
-      <IconButton size={24} icon="instance_remove" title="Remove instance (-)" onClick={removeInstance} disabled={instances < 2} />
-      <IconButton size={24} icon="split_objects" title={`Split to objects — ${LATER}`} disabled />
-      <IconButton size={24} icon="split_parts" title={`Split to parts — ${LATER}`} disabled />
-      <IconButton size={24} icon="toolbar_variable_layer_height" title={`Variable layer height — ${LATER}`} disabled />
+      <IconButton size={24} icon="instance_add" title={`Add instance (+)${locked}`} onClick={addInstance} disabled={!edit} />
+      <IconButton size={24} icon="instance_remove" title={`Remove instance (-)${locked}`} onClick={removeInstance} disabled={instances < 2 || project} />
+      <IconButton size={24} icon="split_objects" title="Split to objects" disabled />
+      <IconButton size={24} icon="split_parts" title="Split to parts" disabled />
+      <IconButton size={24} icon="toolbar_variable_layer_height" title="Variable layer height" disabled />
+      <IconButton size={24} icon="toolbar_assemble" title="Assembly View" disabled />
       <span className="tb-sep" />
-      <IconButton size={24} icon="toolbar_move" title="Move (M)" active={gizmo === 'move'} onClick={() => toggle('move')} disabled={!sel} />
-      <IconButton size={24} icon="toolbar_rotate" title="Rotate (R)" active={gizmo === 'rotate'} onClick={() => toggle('rotate')} disabled={!sel} />
-      <IconButton size={24} icon="toolbar_scale" title="Scale (S)" active={gizmo === 'scale'} onClick={() => toggle('scale')} disabled={!sel} />
-      <IconButton size={24} icon="toolbar_flatten" title={`Lay on face — ${LATER}`} disabled />
-      <IconButton size={24} icon="toolbar_cut" title={`Cut — ${LATER}`} disabled />
-      <IconButton size={24} icon="toolbar_support" title={`Support painting — ${LATER}`} disabled />
-      <IconButton size={24} icon="toolbar_seam" title={`Seam painting — ${LATER}`} disabled />
-      <IconButton size={24} icon="toolbar_measure" title={`Measure — ${LATER}`} disabled />
+      <IconButton size={24} icon="toolbar_move" title={`Move (M)${locked}`} active={gizmo === 'move'} onClick={() => toggle('move')} disabled={!edit} />
+      <IconButton size={24} icon="toolbar_rotate" title={`Rotate (R)${locked}`} active={gizmo === 'rotate'} onClick={() => toggle('rotate')} disabled={!edit} />
+      <IconButton size={24} icon="toolbar_scale" title={`Scale (S)${locked}`} active={gizmo === 'scale'} onClick={() => toggle('scale')} disabled={!edit} />
+      <IconButton size={24} icon="toolbar_flatten" title="Lay on Face (F)" disabled />
+      {LATER_GIZMOS.map(([icon, title]) => (
+        <IconButton key={icon} size={24} icon={icon} title={title} disabled />
+      ))}
     </div>
   );
 }
@@ -57,7 +73,7 @@ export function ManipulationPanel() {
   const o = useStore((s) => s.objects.find((ob) => ob.id === s.selected?.object));
   const instId = useStore((s) => s.selected?.instance);
   const inst = o?.instances.find((i) => i.id === instId);
-  if (!o || !inst || gizmo === 'none') return null;
+  if (!o || !inst || gizmo === 'none' || o.project) return null;
   const size = objectSize(o);
   return (
     <div className="manip-panel">

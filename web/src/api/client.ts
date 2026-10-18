@@ -72,7 +72,8 @@ const realApi: Api = {
     fd.append('process', req.process);
     for (const f of req.filaments) fd.append('filament[]', f);
     fd.append('overrides', JSON.stringify(req.overrides));
-    fd.append('plate', JSON.stringify(req.plate));
+    if (req.plate) fd.append('plate', JSON.stringify(req.plate));
+    if (req.events.length) fd.append('events', JSON.stringify(req.events));
     fd.append('output', req.output);
     const j = await json<{ id: string }>(await fetch('/api/jobs', { method: 'POST', body: fd }));
     return j.id;
@@ -173,13 +174,15 @@ const mockApi: Api = {
         `; printer_settings_id = ${j.req.printer}`,
         `; print_settings_id = ${j.req.process}`,
         `; filament_settings_id = ${j.req.filaments.join(';')}`,
-        `; plate = ${JSON.stringify(j.req.plate)}`,
+        `; plate = ${JSON.stringify(j.req.plate ?? null)}`,
+        `; files = ${JSON.stringify(j.req.files.map((f) => f.name))}`,
         `; overrides = ${JSON.stringify(cfg)}`,
+        `; events = ${JSON.stringify(j.req.events)}`,
         'G28 ; home',
         'M84',
         '',
       ].join('\n');
-      const base = j.req.plate.objects[0]?.name ?? 'plate';
+      const base = j.req.plate?.objects[0]?.name ?? j.req.files[0]?.name.replace(/\.3mf$/i, '') ?? 'plate';
       Object.assign(j.status, { state: 'done', progress: 100, stage: 'done', filename: `${base}.${j.req.output}` });
       on.progress({ stage: 'done', pct: 100 });
       fetch('/__moves/record')

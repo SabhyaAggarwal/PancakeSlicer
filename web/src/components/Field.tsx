@@ -28,16 +28,22 @@ export const Field = memo(function Field(props: {
   value: ConfigValue | undefined;
   systemValue: ConfigValue | undefined;
   dirty: boolean;
+  onSet?: (key: string, value: ConfigValue) => void;
+  onReset?: (key: string) => void;
+  resetTitle?: string;
+  extra?: React.ReactNode;
 }) {
   const [key, idx] = splitKey(props.optKey);
   const def: OptionDef | undefined = OPTIONS[key];
   if (!def) return null;
   const vector = def.type.endsWith('s') && def.type !== 'points' && def.type !== 'enums';
   const value = elementOf(props.value ?? (def.default as ConfigValue | undefined), idx, vector);
+  const set = props.onSet ?? ((k: string, v: ConfigValue) => setOption(props.type, k, v));
+  const reset = props.onReset ?? ((k: string) => resetOption(props.type, k));
   const commit = (el: ConfigValue) => {
-    const next = vector ? withElement(props.value, idx, el) : el;
-    if (asText(next) === asText(props.systemValue)) resetOption(props.type, key);
-    else setOption(props.type, key, next);
+    const next = vector ? withElement(props.value ?? props.systemValue, idx, el) : el;
+    if (asText(next) === asText(props.systemValue) && !props.onSet) reset(key);
+    else set(key, next);
   };
   const label = def.label || def.full_label || key;
   const modified = props.dirty;
@@ -54,10 +60,11 @@ export const Field = memo(function Field(props: {
       </span>
       <span className="opt-undo">
         {modified && (
-          <button type="button" className="icon-btn" title="Reset to the preset value" onClick={() => resetOption(props.type, key)}>
+          <button type="button" className="icon-btn" title={props.resetTitle ?? 'Reset to the preset value'} onClick={() => reset(key)}>
             <Icon name="undo" size={14} />
           </button>
         )}
+        {props.extra}
       </span>
     </div>
   );

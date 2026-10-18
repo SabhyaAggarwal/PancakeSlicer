@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { addInstance, arrangeAll, download, importFiles, init, openFileDialog, removeInstance } from './actions';
+import { addInstance, arrangeAll, download, importFiles, init, newProject, openFileDialog, openProjectDialog, removeInstance } from './actions';
+import { FlushDialog } from './components/FlushDialog';
 import { CanvasToolbar, ManipulationPanel, SliceNotification, Toast } from './components/CanvasOverlays';
 import { PresetDialog } from './components/Dialogs';
 import { PreviewView } from './components/PreviewView';
@@ -16,9 +17,11 @@ export default function App() {
   useEffect(() => {
     void init();
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.closest('input,select,textarea') || getState().dialog) return;
+      if ((e.target as HTMLElement)?.closest('input,select,textarea') || getState().dialog || getState().flushDialog) return;
       const ctrl = e.ctrlKey || e.metaKey;
       if (ctrl && e.key.toLowerCase() === 'i') openFileDialog();
+      else if (ctrl && e.key.toLowerCase() === 'o') openProjectDialog();
+      else if (ctrl && e.key.toLowerCase() === 'n') newProject();
       else if (ctrl && e.key.toLowerCase() === 'g') download();
       else if (ctrl && e.key === 'Delete') deleteAll();
       else if (ctrl) return;
@@ -67,6 +70,7 @@ export default function App() {
         </div>
       </div>
       <PresetDialog />
+      <FlushDialog />
       <Toast />
     </div>
   );
