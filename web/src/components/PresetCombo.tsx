@@ -27,6 +27,9 @@ export function PresetCombo({ type, slot = 0, className }: { type: PresetType; s
     }
     setState((st) => ({
       dirty: { ...st.dirty, [type]: {} },
+      projectPresets: st.projectPresets && (type === 'process'
+        ? { ...st.projectPresets, process: {} }
+        : { ...st.projectPresets, filaments: st.projectPresets.filaments.map((f, i) => i === slot ? {} : f) }),
       ...(type === 'process' ? { process: name } : { filamentSlots: st.filamentSlots.map((f, i) => (i === slot ? name : f)) }),
       job: st.job.state === 'done' ? { ...st.job, stale: true } : st.job,
     }));

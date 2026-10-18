@@ -219,6 +219,6 @@ export function SliceNotification() {
 }
 
 export function Toast() {
-  const msg = useStore((s) => s.toast);
+  const msg = useStore((s) => s.toast ?? s.projectNotice);
   return msg ? <div className="toast">{msg}</div> : null;
 }

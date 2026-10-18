@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { arrangeAll, download, newProject, openFileDialog, openProjectDialog, outputKind, outsideVolumeWarning, slice } from '../actions';
+import { arrangeAll, canExport, STALE_RESULT_TIP, download, newProject, openFileDialog, openProjectDialog, outputKind, outsideVolumeWarning, slice } from '../actions';
 import { deleteAll, removeSelected, setState, useStore } from '../state/store';
 import { Icon } from './Icon';
 
@@ -49,7 +49,8 @@ function Menu({ title, items }: { title: string; items: MenuItem[] }) {
 const view = (key: string) => window.dispatchEvent(new KeyboardEvent('keydown', { key }));
 
 export function TopBar() {
-  const jobDone = useStore((s) => s.job.state === 'done');
+  const exportEnabled = useStore(canExport);
+  const stale = useStore((s) => s.job.stale);
   const hasObjects = useStore((s) => s.objects.length > 0);
   const hasSel = useStore((s) => !!s.selected);
   const mock = useStore((s) => s.api?.mock);
@@ -69,7 +70,7 @@ export function TopBar() {
           'sep',
           { label: 'Import 3MF/STL/STEP/SVG/OBJ/AMF...', shortcut: 'Ctrl+I', action: openFileDialog, tip: 'Load a model' },
           'sep',
-          { label: exportLabel + '...', shortcut: 'Ctrl+G', action: download, disabled: !jobDone, tip: exportTip },
+          { label: exportLabel + '...', shortcut: 'Ctrl+G', action: download, disabled: !exportEnabled, tip: stale ? STALE_RESULT_TIP : exportTip },
           { label: 'Export all objects as one STL...', tip: 'Export all objects as one STL' },
           { label: 'Export all objects as STLs...', tip: 'Export all objects as STLs' },
           { label: 'Export toolpaths as OBJ...', tip: 'Export toolpaths as OBJ' },
@@ -121,7 +122,7 @@ export function TabBar() {
   const hasObjects = useStore((s) => s.objects.length > 0);
   const outside = useStore(outsideVolumeWarning);
   const busy = job.state === 'running' || job.state === 'submitting';
-  const canExport = job.state === 'done' && !job.stale;
+  const exportEnabled = useStore(canExport);
   const exportLabel = useStore(outputKind) === 'gcode.3mf' ? 'Export plate sliced file' : 'Export G-code file';
   return (
     <div className="tabbar">
@@ -139,7 +140,7 @@ export function TabBar() {
         <button className="side-btn" disabled={!hasObjects || busy || !!outside} title={outside ?? ''} onClick={() => void slice()}>
           Slice plate
         </button>
-        <button className="side-btn" disabled={!canExport} onClick={download} title={job.stale ? 'Settings changed since the last slice; slice again' : ''}>
+        <button className="side-btn" disabled={!exportEnabled} onClick={download} title={job.stale ? STALE_RESULT_TIP : (outside ?? '')}>
           {exportLabel}
         </button>
       </div>

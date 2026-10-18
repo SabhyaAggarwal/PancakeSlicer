@@ -282,6 +282,22 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "multiple uploads require plate JSON")
 		return
 	}
+	if !req.Plate && strings.EqualFold(filepath.Ext(req.Files[0]), ".3mf") {
+		machine := vendor.machines[req.Printer]
+		selected := make([][2]string, 0, len(machine.Config)+len(req.Overrides))
+		for key, raw := range machine.Config {
+			if configKinds[key] == "" || hiddenSetting.MatchString(key) {
+				continue
+			}
+			value, err := configValue(key, raw)
+			if err != nil {
+				fail(w, 500, "invalid system printer setting: "+key)
+				return
+			}
+			selected = append(selected, [2]string{key, value})
+		}
+		req.Overrides = append(selected, req.Overrides...)
+	}
 	if err := validatePlateBounds(filepath.Join(j.Dir, "input"), req, vendor.machines[req.Printer], r.FormValue("plate")); err != nil {
 		fail(w, 400, err.Error())
 		return

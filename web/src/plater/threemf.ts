@@ -1,6 +1,8 @@
 import { unzip, strFromU8 } from 'fflate';
+import type { Config } from '../api/types';
 
 export interface ProjectMaterials {
+  config: Config;
   colours: string[];
   matrix: number[] | null;
   multiplier: number | null;
@@ -151,6 +153,6 @@ export async function readProject(file: File): Promise<{ items: ProjectItem[]; m
   const colourValue = config.filament_colour;
   const colours = (Array.isArray(colourValue) ? colourValue : typeof colourValue === 'string' ? colourValue.split(';') : [])
     .map(String);
-  const materials = { colours, matrix: numbers(config.flush_volumes_matrix), multiplier: numbers(config.flush_multiplier)?.[0] ?? null };
+  const materials = { config, colours, matrix: numbers(config.flush_volumes_matrix), multiplier: numbers(config.flush_multiplier)?.[0] ?? null };
   return { items, materials, mesh };
 }

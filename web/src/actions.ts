@@ -1,15 +1,16 @@
-import type { Config, ConfigValue, JobRequest, PresetCatalog } from './api/types';
+import type { Config, ConfigValue, JobRequest, PresetCatalog, SystemPreset } from './api/types';
 import { sliceProgress } from './api/progress';
 import { connect } from './api/client';
 import { currentFlush } from './components/FlushDialog';
 import { eventArg } from './components/LayerEvents';
-import { jobValue, loadTab } from './options';
+import { normalizeConfig } from './config-values';
+import { OPTIONS, jobValue, loadTab } from './options';
 import { shortTime } from './preview/format';
 import { filamentColor } from './plater/Plater3D';
 import { arrange, loadMesh, loadProject, nextFreeSpot, parsePoints, placeholderGeometry, plateJson, outsideBed } from './plater/geometry';
 import type { ProjectItem } from './plater/threemf';
 import {
-  DEFAULT_PRINTER, DEMO_MODELS, effectiveConfig, getState, markStale, newId, printerPreset, resolvePreset, selectPrinter, setState, toast, type PlateObject,
+  DEFAULT_PRINTER, DEMO_MODELS, effectiveConfig, getState, markStale, newId, plateSignature, printerPreset, resolvePreset, selectPrinter, setState, toast, type PlateObject,
 } from './state/store';
 
 const VENDORS = ['BBL', 'Prusa'];
@@ -91,6 +92,51 @@ export async function importFiles(files: FileList | File[]) {
   });
 }
 
+function closestPreset(presets: SystemPreset[], config: Config, id: string): SystemPreset | undefined {
+  const exact = presets.find((p) => p.name === id);
+  if (exact) return exact;
+  const text = (v: ConfigValue) => JSON.stringify(Array.isArray(v) ? v.map(String) : String(v));
+  return [...presets].sort((a, b) => {
+    const score = (p: SystemPreset) => Object.entries(p.config).reduce((n, [k, v]) =>
+      n + (config[k] !== undefined && text(v) === text(config[k]) ? 1 : 0), 0);
+    return score(b) - score(a);
+  })[0];
+}
+
+function adoptProject(config: Config, slots: number) {
+  const s = getState();
+  const saved = normalizeConfig(config);
+  const id = String(saved.printer_settings_id ?? '');
+  const sameModel = s.machines.filter((p) => String(p.config.printer_model) === String(saved.printer_model));
+  const sameNozzle = sameModel.filter((p) => String(p.config.nozzle_diameter) === String(saved.nozzle_diameter));
+  const printer = closestPreset(sameNozzle.length ? sameNozzle : sameModel.length ? sameModel : s.machines, saved, id);
+  if (!printer) throw new Error('No system printer is available for this project');
+  selectPrinter(printer.name);
+  const current = getState();
+  const forPrinter = (presets: SystemPreset[]) => presets.filter((p) => !p.compatible_printers?.length || p.compatible_printers.includes(printer.name));
+  const process = closestPreset(forPrinter(current.processes), saved, String(saved.print_settings_id ?? ''));
+  const ids = saved.filament_settings_id;
+  const filamentConfigs = Array.from({ length: slots }, (_, i) => Object.fromEntries(Object.entries(saved).map(([k, v]) =>
+    [k, Array.isArray(v) && current.filaments.some((p) => k in p.config) ? [v[Math.min(i, v.length - 1)] ?? ''] : v])) as Config);
+  const filaments = filamentConfigs.map((c, i) => closestPreset(forPrinter(current.filaments), c, String(Array.isArray(ids) ? ids[i] ?? '' : ids ?? '')));
+  const keys = (presets: SystemPreset[]) => new Set(presets.flatMap((p) => Object.keys(p.config)));
+  const machineKeys = keys(current.machines), filamentKeys = keys(current.filaments);
+  const take = (c: Config, accept: (k: string) => boolean) => Object.fromEntries(Object.entries(c).filter(([k]) => OPTIONS[k] && accept(k)));
+  const fallback = !sameNozzle.length || !!id && !current.machines.some((p) => p.name === id);
+  setState({
+    process: process?.name ?? current.process,
+    filamentSlots: filaments.map((p, i) => p?.name ?? current.filamentSlots[i] ?? current.filamentSlots[0]),
+    projectPresets: {
+      machine: fallback ? {} : take(saved, (k) => machineKeys.has(k)),
+      process: take(saved, (k) => !machineKeys.has(k) && !filamentKeys.has(k)),
+      filaments: filamentConfigs.map((c) => take(c, (k) => filamentKeys.has(k) && !machineKeys.has(k))),
+    },
+    projectNotice: fallback ? `Project printer "${id || saved.printer_model || 'unknown'}" is unavailable. Using ${printer.name}.` : null,
+    bedType: String(saved.curr_bed_type ?? current.bedType),
+    dirty: { machine: {}, process: {}, filament: {} },
+  });
+}
+
 export async function openProject(file: File) {
   const s = getState();
   if (s.objects.length && !window.confirm('Opening a project replaces the objects on the plate. Continue?')) return;
@@ -104,6 +150,7 @@ export async function openProject(file: File) {
       items(items: ProjectItem[], materials) {
         if (!items.length) return toast(`${file.name}: the project has no printable objects`);
         const slots = Math.max(1, materials.colours.length, ...items.map((i) => i.extruder));
+        adoptProject(materials.config, slots);
         objects = items.map((it) => ({
           id: newId(), name: it.name, geometry: placeholderGeometry(), rotX: 0, rotY: 0, scale: [1, 1, 1],
           extruder: it.extruder, source: file, settings: {}, project: { file: file.name, placeholder: true },
@@ -127,7 +174,7 @@ export async function openProject(file: File) {
 export function newProject() {
   const s = getState();
   if (s.objects.length && !window.confirm('Start a new project? The objects on the plate are removed.')) return;
-  setState((st) => ({ objects: [], selected: null, project: null, projectMaterials: null, events: [], flush: { matrix: null, multiplier: null }, processScope: 'global', job: markStale(st.job) }));
+  setState((st) => ({ objects: [], selected: null, project: null, projectMaterials: null, projectPresets: null, projectNotice: null, events: [], flush: { matrix: null, multiplier: null }, processScope: 'global', job: markStale(st.job) }));
 }
 
 export function openProjectDialog() {
@@ -181,15 +228,32 @@ export function outputKind(s = getState()): 'gcode' | 'gcode.3mf' {
   return m?.vendor === 'BBL' ? 'gcode.3mf' : 'gcode';
 }
 
-function overrides(): Config {
-  const s = getState();
-  const out: Config = {};
+function overrides(s = getState()): Config {
+  const out: Config = s.project ? {
+    ...effectiveConfig(s, 'machine'), ...effectiveConfig(s, 'process'),
+    ...effectiveConfig(s, 'filament'),
+  } : {};
+  if (s.project) {
+    const configs = s.filamentSlots.map((_, i) => effectiveConfig(s, 'filament', i));
+    for (const [k, v] of Object.entries(configs[0] ?? {})) {
+      if (Array.isArray(v)) out[k] = configs.flatMap((c) => {
+        const value = c[k];
+        return Array.isArray(value) ? value.slice(0, 1) : [value];
+      }) as ConfigValue;
+    }
+    for (const k of Object.keys(out)) if (!OPTIONS[k]) delete out[k];
+  }
   const add = (type: 'machine' | 'process' | 'filament', name: string, dirty: Config) => {
     Object.assign(out, resolvePreset(s, type, name).user?.overrides ?? {}, dirty);
   };
   add('machine', s.printer, s.dirty.machine);
   add('process', s.process, s.dirty.process);
   add('filament', s.filamentSlots[0] ?? '', s.dirty.filament);
+  if (s.projectMaterials && s.project) {
+    out.filament_colour = s.filamentSlots.map((_, i) => filamentColor(s, i + 1));
+    if (s.projectMaterials.matrix) out.flush_volumes_matrix = s.projectMaterials.matrix;
+    if (s.projectMaterials.multiplier !== null) out.flush_multiplier = [s.projectMaterials.multiplier];
+  }
   if (s.bedType) out.curr_bed_type = s.bedType;
   if (s.filamentSlots.length > 1 || s.slotColours.some((c) => c !== undefined)) {
     const { matrix, multiplier } = currentFlush(s);
@@ -212,10 +276,10 @@ export async function jobRequest(): Promise<JobRequest> {
     printer: sys('machine', s.printer),
     process: sys('process', s.process),
     filaments: s.filamentSlots.map((f) => sys('filament', f)),
-    overrides: overrides(),
+    overrides: overrides(s),
     plate,
     events: s.events.map(eventArg),
-    output: outputKind(),
+    output: outputKind(s),
   };
 }
 
@@ -254,7 +318,8 @@ export async function slice() {
   const generation = ++sliceGeneration;
   const submission = new AbortController();
   pendingSubmission = submission;
-  setState({ job: { state: 'submitting', pct: 0, stage: 'uploading' } });
+  const signature = plateSignature(s);
+  setState({ job: { state: 'submitting', pct: 0, stage: 'uploading', plateSignature: signature } });
   try {
     const request = await jobRequest();
     if (generation !== sliceGeneration) return;
@@ -263,7 +328,7 @@ export async function slice() {
       await s.api.cancel(id);
       return;
     }
-    setState({ job: { id, state: 'running', pct: 0, stage: 'queued' } });
+    setState((st) => ({ job: { ...st.job, id, state: 'running', pct: 0, stage: 'queued' } }));
     unsubscribe?.();
     const warnings: string[] = [];
     unsubscribe = s.api.events(id, {
@@ -273,7 +338,7 @@ export async function slice() {
         if (e.stage === 'verify' && e.pct >= 100 && request.output === 'gcode.3mf') progress.stage = 'Packaging sliced plate';
         setState((st) => progress.pct < st.job.pct ? {} : { job: { ...st.job, ...progress } });
       },
-      done: (status) => generation === sliceGeneration && setState({ job: { id, state: 'done', pct: 100, stage: 'done', status, warnings } }),
+      done: (status) => generation === sliceGeneration && setState((st) => ({ job: { ...st.job, id, state: 'done', pct: 100, stage: 'done', status, warnings } })),
       error: (msg) => generation === sliceGeneration && setState((st) => ({ job: { ...st.job, state: 'failed', error: msg } })),
       log: (stream, line) => {
         if (stream !== 'stderr' || !line.trim()) return;
@@ -323,9 +388,16 @@ export function exportFilename(): string {
   return `${stem}.${outputKind()}`;
 }
 
+export function canExport(s = getState()): boolean {
+  return s.job.state === 'done' && !!s.job.id && !!s.job.plateSignature && !s.job.stale &&
+    s.job.plateSignature === plateSignature(s) && !outsideVolumeWarning(s);
+}
+
+export const STALE_RESULT_TIP = 'Settings changed since the last slice; slice again';
+
 export async function download() {
   const s = getState();
-  if (!s.api || s.job.state !== 'done' || !s.job.id) return;
+  if (!s.api || !canExport(s) || !s.job.id) return;
   let href: string;
   try {
     const r = await fetch(s.api.downloadUrl(s.job.id));
@@ -333,6 +405,10 @@ export async function download() {
     href = URL.createObjectURL(await r.blob());
   } catch (e) {
     toast(`Export failed: ${e instanceof Error ? e.message : e}`);
+    return;
+  }
+  if (getState().job.id !== s.job.id || !canExport()) {
+    URL.revokeObjectURL(href);
     return;
   }
   const a = document.createElement('a');

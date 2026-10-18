@@ -42,6 +42,7 @@ export interface JobView {
   error?: string;
   status?: JobStatus;
   stale?: boolean;
+  plateSignature?: string;
   warnings?: string[];
   exported?: string;
 }
@@ -57,6 +58,8 @@ export interface State {
   process: string;
   filamentSlots: string[];
   dirty: Record<PresetType, Config>;
+  projectPresets: { machine: Config; process: Config; filaments: Config[] } | null;
+  projectNotice: string | null;
   bedType: string;
   uiMode: OptionMode;
   tab: MainTab;
@@ -86,6 +89,8 @@ let state: State = {
   process: '',
   filamentSlots: [],
   dirty: { machine: {}, process: {}, filament: {} },
+  projectPresets: null,
+  projectNotice: null,
   bedType: '',
   uiMode: 'simple',
   tab: 'prepare',
@@ -107,7 +112,10 @@ let state: State = {
 const listeners = new Set<() => void>();
 export const getState = () => state;
 export function setState(patch: Partial<State> | ((s: State) => Partial<State>)) {
-  state = { ...state, ...(typeof patch === 'function' ? patch(state) : patch) };
+  const next = { ...state, ...(typeof patch === 'function' ? patch(state) : patch) };
+  if (next.job.plateSignature && !next.job.stale && next.job.plateSignature !== plateSignature(next))
+    next.job = { ...next.job, stale: true };
+  state = next;
   listeners.forEach((l) => l());
 }
 const subscribe = (l: () => void) => {
@@ -121,6 +129,31 @@ export function useStore<T>(sel: (s: State) => T): T {
 
 let nextId = 1;
 export const newId = () => nextId++;
+
+const fileIds = new WeakMap<File, number>();
+let nextFileId = 1;
+function fileId(file: File | null): number | null {
+  if (!file) return null;
+  if (!fileIds.has(file)) fileIds.set(file, nextFileId++);
+  return fileIds.get(file)!;
+}
+
+export function plateSignature(s: State): string {
+  const preset = (type: PresetType, name: string, slot = 0) => ({ name, config: effectiveConfig(s, type, slot) });
+  return JSON.stringify({
+    objects: s.objects.map((o) => ({
+      id: o.id, name: o.name, source: fileId(o.source), geometry: o.geometry.uuid,
+      rotX: o.rotX, rotY: o.rotY, scale: o.scale, extruder: o.extruder,
+      instances: o.instances, settings: o.settings, project: o.project,
+    })),
+    project: fileId(s.project),
+    printer: preset('machine', s.printer), process: preset('process', s.process),
+    filaments: s.filamentSlots.map((name, slot) => preset('filament', name, slot)),
+    dirty: s.dirty, bedType: s.bedType, slotColours: s.slotColours,
+    projectMaterials: s.projectMaterials, flush: s.flush, events: s.events,
+  }, (_key, value) => value && typeof value === 'object' && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value);
+}
 
 export const DEMO_MODELS = ['Bambu Lab A1 mini', 'Bambu Lab A1', 'Bambu Lab P1S', 'Prusa MINI', 'Prusa MINI IS'];
 export const DEFAULT_PRINTER = 'Bambu Lab A1 mini 0.4 nozzle';
@@ -138,7 +171,8 @@ export function resolvePreset(s: State, type: PresetType, name: string): { base?
 export function effectiveConfig(s: State, type: PresetType, slot = 0): Config {
   const name = type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot];
   const { config } = resolvePreset(s, type, name ?? '');
-  return { ...config, ...s.dirty[type] };
+  const project = type === 'filament' ? s.projectPresets?.filaments[slot] : s.projectPresets?.[type];
+  return { ...config, ...project, ...s.dirty[type] };
 }
 
 export function compatible(s: State, type: 'process' | 'filament', printer = s.printer): SystemPreset[] {
@@ -172,6 +206,7 @@ export function selectPrinter(name: string) {
     );
     return {
       printer: name,
+      projectPresets: null,
       process,
       filamentSlots,
       bedType: base?.default_bed_type || String(base?.config.curr_bed_type ?? ''),
@@ -248,7 +283,7 @@ export function removeSelected() {
 }
 
 export function deleteAll() {
-  setState((s) => ({ objects: [], selected: null, project: null, projectMaterials: null, job: markStale(s.job) }));
+  setState((s) => ({ objects: [], selected: null, project: null, projectMaterials: null, projectPresets: null, projectNotice: null, job: markStale(s.job) }));
 }
 
 export function setObjectOption(id: number, key: string, value: ConfigValue) {
