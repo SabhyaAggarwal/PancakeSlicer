@@ -2947,7 +2947,7 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
     for (const PrintObject *object : print.objects())
         for (size_t i = 0; i < object->num_printing_regions(); ++i) {
             const PrintRegionConfig &config = object->printing_region(i).config();
-            m_track_nonplanar_material |= Nonplanar::top_shells_enabled(config, object->config()) ||
+            m_track_nonplanar_material |= config.zaa_enabled || Nonplanar::top_shells_enabled(config, object->config()) ||
                                           Nonplanar::bottom_shells_enabled(config, object->config());
         }
     for (const PrintObject *object : print.objects())
@@ -9296,6 +9296,9 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
         (path.z_contoured || (path.role() == erTopSolidInfill && Nonplanar::requests_conformal_shells(*m_print))))
         return gcode;
     this->ensure_material_columns(path);
+
+    if (path.z_contoured && m_config.zaa_enabled && m_material_columns)
+        m_nonplanar_ceiling = std::max(m_nonplanar_ceiling, m_material_columns->ceiling());
 
     const std::string  bridge_description = is_bridge(path.role()) ? path_description + " (bridge)" : std::string();
     const std::string &description        = bridge_description.empty() ? path_description : bridge_description;
