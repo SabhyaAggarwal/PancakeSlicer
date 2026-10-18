@@ -288,8 +288,13 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
                                 const ConformalEmitParams &params, float &last_height, std::string &out,
                                 const DepositFn &deposit)
 {
-    if (points_in.size() < 2)
+    auto unwritten = [&writer, &params]() {
+        if (params.prime > 0. && writer.filament() != nullptr)
+            writer.filament()->give_back_retraction(params.prime);
         return 0.;
+    };
+    if (points_in.size() < 2)
+        return unwritten();
     std::vector<ConformalPoint> conditioned;
     if (params.condition.target_length > 0.) {
         conditioned = points_in;
@@ -350,7 +355,7 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
                 moves.emplace_back(b);
             }
             if (moves.size() < 2)
-                return 0.;
+                return unwritten();
             points.swap(moves);
             flow.swap(move_flow);
         }

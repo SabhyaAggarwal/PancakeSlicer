@@ -7822,6 +7822,9 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
             else if (m_conformal_pa_tracker && !m_conformal_pa_tracker->along_road())
                 m_conformal_pa_tracker->update(mean_bead_height(m_conformal_points), gcode);
         }
+        if (!m_conformal_ramp && !m_conformal_scarf && m_writer.filament() != nullptr &&
+            m_writer.get_extruder_retracted_length(int(m_writer.filament()->id())) > EPSILON)
+            m_conformal_ramp = true;
         this->set_last_pos(sub.first_point());
         m_need_change_layer_lift_z = false;
         if (slope_gradient && m_config.nonplanar_flow_mod.value) {
@@ -8730,7 +8733,6 @@ std::string GCode::wipe_conformal_path()
     const double    after    = wipe ? length * filament.retract_after_wipe() : 0.;
     Nonplanar::ConformalWipeParams params;
     params.distance        = wipe ? FILAMENT_CONFIG(wipe_distance) : Nonplanar::ConformalWipe;
-    params.retract         = std::max(0., length - before - after);
     params.speed           = std::max(10., m_config.get_abs_value("wipe_speed", m_config.travel_speed.get_at(get_nozzle_config_index(filament.id()))));
     auto first_value       = [](const ConfigOptionFloats &opt) { return opt.values.empty() ? 0. : opt.values.front(); };
     params.limits.max_v_xy = std::min(first_value(m_config.machine_max_speed_x), first_value(m_config.machine_max_speed_y));
@@ -8743,6 +8745,7 @@ std::string GCode::wipe_conformal_path()
     params.clearance = this->nozzle_clearance();
     if (before > EPSILON)
         gcode += m_writer.retract(true, before);
+    params.retract = std::max(0., length - after - std::max(before, m_writer.get_extruder_retracted_length(int(filament.id()))));
     Vec3d end;
     if (Nonplanar::emit_conformal_wipe(m_writer, m_conformal_points, params, gcode, end))
         this->set_last_pos(this->gcode_to_point(end.head<2>()));

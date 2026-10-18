@@ -130,6 +130,11 @@ double Extruder::take_retraction()
     return prime;
 }
 
+void Extruder::give_back_retraction(double prime)
+{
+    (m_share_extruder ? m_share_retracted[extruder_id()] : m_retracted) += prime;
+}
+
 double Extruder::extruded_volume() const
 {
     if (m_share_extruder) {
