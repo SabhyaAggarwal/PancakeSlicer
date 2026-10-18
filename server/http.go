@@ -432,6 +432,10 @@ func spaFiles(dir string) http.Handler {
 			return
 		}
 		clean := path.Clean("/" + r.URL.Path)
+		if clean == "/metrics" || clean == "/api" || strings.HasPrefix(clean, "/api/") {
+			http.NotFound(w, r)
+			return
+		}
 		relative := filepath.FromSlash(strings.TrimPrefix(clean, "/"))
 		if strings.Contains(r.URL.Path, "\\") || (relative != "" && !filepath.IsLocal(relative)) {
 			http.NotFound(w, r)
