@@ -8,6 +8,8 @@
 #include "libslic3r/Point.hpp"
 #include "nlohmann/json.hpp"
 
+struct indexed_triangle_set;
+
 namespace Slic3r {
 
 static std::vector<Vec2d> THUMBNAIL_SIZE = { Vec2d(50, 50) };
@@ -28,6 +30,8 @@ struct ThumbnailData
         pixels = data.pixels;
     }
 };
+
+ThumbnailData render_thumbnail(const indexed_triangle_set &mesh, unsigned width, unsigned height, bool top, const std::string &colour = "#00AE42");
 
 using ThumbnailsList = std::vector<ThumbnailData>;
 

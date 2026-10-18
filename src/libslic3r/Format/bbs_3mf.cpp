@@ -9,6 +9,7 @@
 #include "../GCode.hpp"
 #include "../Geometry.hpp"
 #include "../GCode/ThumbnailData.hpp"
+#include "../PNGReadWrite.hpp"
 #include "../Semver.hpp"
 
 #include "../I18N.hpp"
@@ -29,6 +30,7 @@
 
 #include <boost/assert/source_location.hpp>
 #include <ios>
+#include <iterator>
 #include <cstring>
 #include <boost/spirit/home/qi/parse.hpp>
 #include <boost/spirit/home/qi/numeric/int.hpp>
@@ -5198,7 +5200,7 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
 
         bool _add_content_types_file_to_archive(mz_zip_archive& archive);
 
-        bool _add_thumbnail_file_to_archive(mz_zip_archive& archive, const ThumbnailData& thumbnail_data, const char* local_path, int index, bool generate_small_thumbnail = false);
+        bool _add_thumbnail_file_to_archive(mz_zip_archive& archive, const ThumbnailData& thumbnail_data, const char* local_path, int index, bool generate_small_thumbnail = false, bool small_only = false);
         bool _add_calibration_file_to_archive(mz_zip_archive& archive, const ThumbnailData& thumbnail_data, int index);
         bool _add_bbox_file_to_archive(mz_zip_archive& archive, const PlateBBoxData& id_bboxes, int index);
         bool _add_relationships_file_to_archive(mz_zip_archive &                archive,
@@ -5453,6 +5455,9 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
 
                     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ":" <<__LINE__ << boost::format(",add thumbnail %1%'s data into 3mf")%(index+1);
                     thumbnail_status[index] = true;
+                    if (!plate_data_list[index]->plate_thumbnail.is_valid())
+                        plate_data_list[index]->plate_thumbnail.load_from(*thumbnail_data[index]);
+                    plate_data_list[index]->thumbnail_file = (boost::format(THUMBNAIL_FILE_FORMAT) % (index + 1)).str();
                 }
             }
 
@@ -5463,7 +5468,8 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
                     }
 
                     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << ":" << __LINE__ << boost::format(",add no light thumbnail %1%'s data into 3mf") % (index + 1);
-                    thumbnail_status[index] = true;
+                    no_light_thumbnail_status[index] = true;
+                    plate_data_list[index]->no_light_thumbnail_file = (boost::format(NO_LIGHT_THUMBNAIL_FILE_FORMAT) % (index + 1)).str();
                 }
             }
             for (unsigned int index = 0; index < top_thumbnail_data.size(); index++)
@@ -5475,6 +5481,7 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
                         return false;
                     }
                     top_thumbnail_status[index] = true;
+                    plate_data_list[index]->top_file = (boost::format(TOP_FILE_FORMAT) % (index + 1)).str();
                 }
 
                 if (pick_thumbnail_data[index]->is_valid())
@@ -5484,6 +5491,7 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
                         return false;
                     }
                     pick_thumbnail_status[index] = true;
+                    plate_data_list[index]->pick_file = (boost::format(PICK_FILE_FORMAT) % (index + 1)).str();
                 }
             }
 
@@ -5498,6 +5506,21 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
                         BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ":" << __LINE__ << boost::format(", add thumbnail %1% from file %2% failed\n") % (i+1) %plate_data->thumbnail_file;
                         return false;
                     }
+                    boost::nowide::ifstream png_file(plate_data->thumbnail_file, std::ios::binary);
+                    std::string png_bytes((std::istreambuf_iterator<char>(png_file)), {});
+                    png::ImageColorscale decoded;
+                    if (!png::decode_colored_png(png::ReadBuf{png_bytes.data(), png_bytes.size()}, decoded))
+                        return false;
+                    ThumbnailData cover;
+                    cover.width = decoded.cols;
+                    cover.height = decoded.rows;
+                    cover.pixels.resize(size_t(cover.width) * cover.height * 4, 255);
+                    for (size_t pixel = 0; pixel < size_t(cover.width) * cover.height; ++pixel)
+                        std::copy_n(decoded.buf.data() + pixel * decoded.bytes_per_pixel, decoded.bytes_per_pixel,
+                                    cover.pixels.data() + pixel * 4);
+                    if (!_add_thumbnail_file_to_archive(archive, cover, "Metadata/plate", i, true, true))
+                        return false;
+
                 }
 
                 if (!no_light_thumbnail_status[i] && !plate_data->no_light_thumbnail_file.empty() && (boost::filesystem::exists(plate_data->no_light_thumbnail_file))){
@@ -5568,6 +5591,8 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
                         close_zip_writer(&archive);
                         return false;
                     }
+                    if (index < plate_data_list.size())
+                        plate_data_list[index]->pattern_bbox_file = (boost::format(PATTERN_CONFIG_FILE_FORMAT) % (index + 1)).str();
                 }
             }
         }
@@ -5788,55 +5813,46 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
         return true;
     }
 
-    bool _BBS_3MF_Exporter::_add_thumbnail_file_to_archive(mz_zip_archive& archive, const ThumbnailData& thumbnail_data, const char* local_path, int index, bool generate_small_thumbnail)
+    bool _BBS_3MF_Exporter::_add_thumbnail_file_to_archive(mz_zip_archive& archive, const ThumbnailData& thumbnail_data, const char* local_path, int index, bool generate_small_thumbnail, bool small_only)
     {
         bool res = false;
 
         size_t png_size = 0;
-        void* png_data = tdefl_write_image_to_png_file_in_memory_ex((const void*)thumbnail_data.pixels.data(), thumbnail_data.width, thumbnail_data.height, 4, &png_size, MZ_DEFAULT_COMPRESSION, 1);
+        void* png_data = small_only ? nullptr : tdefl_write_image_to_png_file_in_memory_ex((const void*)thumbnail_data.pixels.data(), thumbnail_data.width, thumbnail_data.height, 4, &png_size, MZ_DEFAULT_COMPRESSION, 1);
         if (png_data != nullptr) {
             std::string thumbnail_name = (boost::format("%1%_%2%.png")%local_path % (index + 1)).str();
             res = mz_zip_writer_add_mem(&archive, thumbnail_name.c_str(), (const void*)png_data, png_size, MZ_NO_COMPRESSION);
             mz_free(png_data);
         }
 
-        if (!res) {
+        if (!res && !small_only) {
             add_error("Unable to add thumbnail file to archive");
             BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ":" << __LINE__ << boost::format(", Unable to add thumbnail file to archive\n");
+            return false;
         }
 
         if (generate_small_thumbnail && thumbnail_data.is_valid()) {
             std::vector<unsigned char> small_pixels;
             small_pixels.resize(PLATE_THUMBNAIL_SMALL_WIDTH * PLATE_THUMBNAIL_SMALL_HEIGHT * 4);
-            int sw = thumbnail_data.width / PLATE_THUMBNAIL_SMALL_WIDTH;
-            int sh = thumbnail_data.height / PLATE_THUMBNAIL_SMALL_HEIGHT;
-            int clampped_width = sw * PLATE_THUMBNAIL_SMALL_WIDTH;
-            int clampped_height = sh * PLATE_THUMBNAIL_SMALL_HEIGHT;
-
-            for (int i = 0; i < clampped_height; i += sh) {
-                for (int j = 0; j < clampped_width; j += sw) {
-                    int r = 0, g = 0, b = 0, a = 0;
-                    for (int m = 0; m < sh; m++) {
-                        for (int n = 0; n < sw; n++) {
-                            r += (int)thumbnail_data.pixels[4 * ((i + m) * thumbnail_data.width + j + n) + 0];
-                            g += (int)thumbnail_data.pixels[4 * ((i + m) * thumbnail_data.width + j + n) + 1];
-                            b += (int)thumbnail_data.pixels[4 * ((i + m) * thumbnail_data.width + j + n) + 2];
-                            a += (int)thumbnail_data.pixels[4 * ((i + m) * thumbnail_data.width + j + n) + 3];
-                        }
+            for (unsigned y = 0; y < PLATE_THUMBNAIL_SMALL_HEIGHT; ++y)
+                for (unsigned x = 0; x < PLATE_THUMBNAIL_SMALL_WIDTH; ++x) {
+                    const unsigned x0 = x * thumbnail_data.width / PLATE_THUMBNAIL_SMALL_WIDTH;
+                    const unsigned y0 = y * thumbnail_data.height / PLATE_THUMBNAIL_SMALL_HEIGHT;
+                    const unsigned x1 = std::max(x0 + 1, (x + 1) * thumbnail_data.width / PLATE_THUMBNAIL_SMALL_WIDTH);
+                    const unsigned y1 = std::max(y0 + 1, (y + 1) * thumbnail_data.height / PLATE_THUMBNAIL_SMALL_HEIGHT);
+                    for (unsigned c = 0; c < 4; ++c) {
+                        unsigned sum = 0;
+                        for (unsigned sy = y0; sy < y1; ++sy)
+                            for (unsigned sx = x0; sx < x1; ++sx)
+                                sum += thumbnail_data.pixels[4 * (sy * thumbnail_data.width + sx) + c];
+                        small_pixels[4 * (y * PLATE_THUMBNAIL_SMALL_WIDTH + x) + c] =
+                            static_cast<unsigned char>(sum / ((x1 - x0) * (y1 - y0)));
                     }
-                    r = std::clamp(0, r / sw / sh, 255);
-                    g = std::clamp(0, g / sw / sh, 255);
-                    b = std::clamp(0, b / sw / sh, 255);
-                    a = std::clamp(0, a / sw / sh, 255);
-                    small_pixels[4 * (i / sw * PLATE_THUMBNAIL_SMALL_WIDTH + j / sh) + 0] = (unsigned char)r;
-                    small_pixels[4 * (i / sw * PLATE_THUMBNAIL_SMALL_WIDTH + j / sh) + 1] = (unsigned char)g;
-                    small_pixels[4 * (i / sw * PLATE_THUMBNAIL_SMALL_WIDTH + j / sh) + 2] = (unsigned char)b;
-                    small_pixels[4 * (i / sw * PLATE_THUMBNAIL_SMALL_WIDTH + j / sh) + 3] = (unsigned char)a;
                 }
-            }
+            res = false;
             size_t small_png_size = 0;
             void* small_png_data = tdefl_write_image_to_png_file_in_memory_ex((const void*)small_pixels.data(), PLATE_THUMBNAIL_SMALL_WIDTH, PLATE_THUMBNAIL_SMALL_HEIGHT, 4, &small_png_size, MZ_DEFAULT_COMPRESSION, 1);
-            if (png_data != nullptr) {
+            if (small_png_data != nullptr) {
                 std::string thumbnail_name = (boost::format("%1%_%2%_small.png") % local_path % (index + 1)).str();
                 res = mz_zip_writer_add_mem(&archive, thumbnail_name.c_str(), (const void*)small_png_data, small_png_size, MZ_NO_COMPRESSION);
                 mz_free(small_png_data);

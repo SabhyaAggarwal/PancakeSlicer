@@ -252,17 +252,36 @@ std::string find_preset_file(const Args &a, const char *kind, const std::string 
 DynamicPrintConfig resolve(PresetBundle &bundle, const Args &a, const char *kind, Preset::Type type, const std::string &name)
 {
     DynamicPrintConfig config;
-    std::string        error;
+    std::string        error, filament_id, preset_name = name;
     if (fs::path(name).extension() == ".json" && fs::is_regular_file(name)) {
         std::map<std::string, std::string> key_values;
         config.load_from_json(name, ForwardCompatibilitySubstitutionRule::EnableSilent, key_values, error);
         if (! error.empty())
             throw std::runtime_error("cannot load " + name + ": " + error);
-        return config;
+        preset_name = key_values[BBL_JSON_KEY_NAME];
+        if (preset_name.empty())
+            preset_name = fs::path(name).stem().string();
+        filament_id = key_values[BBL_JSON_KEY_FILAMENT_ID];
+    } else {
+        const std::string file = find_preset_file(a, kind, name);
+        if (!bundle.resolve_preset_config(config, type, file, ForwardCompatibilitySubstitutionRule::EnableSilent, error, true, &filament_id))
+            throw std::runtime_error("cannot resolve " + file + ": " + error);
     }
-    const std::string  file = find_preset_file(a, kind, name);
-    if (! bundle.resolve_preset_config(config, type, file, ForwardCompatibilitySubstitutionRule::EnableSilent, error))
-        throw std::runtime_error("cannot resolve " + file + ": " + error);
+    if (type == Preset::TYPE_PRINTER)
+        config.set_key_value("printer_settings_id", new ConfigOptionString(preset_name));
+    else if (type == Preset::TYPE_PRINT)
+        config.set_key_value("print_settings_id", new ConfigOptionString(preset_name));
+    else if (type == Preset::TYPE_FILAMENT) {
+        config.set_key_value("filament_settings_id", new ConfigOptionStrings{preset_name});
+        if (!filament_id.empty())
+            config.set_key_value("filament_ids", new ConfigOptionStrings{filament_id});
+    }
+    if (type != Preset::TYPE_PRINTER)
+        config.erase("printer_settings_id");
+    if (type != Preset::TYPE_PRINT)
+        config.erase("print_settings_id");
+    if (type != Preset::TYPE_FILAMENT)
+        config.erase("filament_settings_id");
     return config;
 }
 
@@ -308,60 +327,6 @@ indexed_triangle_set plate_mesh(const Model &model)
     return out;
 }
 
-ThumbnailData render_thumbnail(const indexed_triangle_set &mesh, unsigned width, unsigned height, bool top)
-{
-    ThumbnailData thumb;
-    thumb.set(width, height);
-    std::fill(thumb.pixels.begin(), thumb.pixels.end(), 0);
-    const double c = top ? 0. : std::sqrt(0.5);
-    const Vec3d  right(1., 0., 0.), up = top ? Vec3d(0., 1., 0.) : Vec3d(0., c, c), toward = right.cross(up);
-    const Vec3d  light = Vec3d(-0.3, -0.5, 1.).normalized();
-    std::vector<Vec3d> p(mesh.vertices.size());
-    BoundingBoxf       box;
-    for (size_t i = 0; i < p.size(); ++i) {
-        const Vec3d v = mesh.vertices[i].cast<double>();
-        p[i]          = Vec3d(v.dot(right), v.dot(up), v.dot(toward));
-        box.merge(Vec2d(p[i].x(), p[i].y()));
-    }
-    if (! box.defined)
-        return thumb;
-    const double scale = 0.9 * std::min(width / std::max(box.size().x(), 1e-3), height / std::max(box.size().y(), 1e-3));
-    const Vec2d  mid   = box.center();
-    for (Vec3d &q : p)
-        q = Vec3d((q.x() - mid.x()) * scale + 0.5 * width, (q.y() - mid.y()) * scale + 0.5 * height, q.z());
-    std::vector<double> depth(size_t(width) * height, -std::numeric_limits<double>::max());
-    for (const stl_triangle_vertex_indices &f : mesh.indices) {
-        const Vec3d &a = p[f[0]], &b = p[f[1]], &d = p[f[2]];
-        const double area = (b.x() - a.x()) * (d.y() - a.y()) - (d.x() - a.x()) * (b.y() - a.y());
-        if (std::abs(area) < 1e-12)
-            continue;
-        const Vec3d  n     = (mesh.vertices[f[1]] - mesh.vertices[f[0]]).cast<double>().cross((mesh.vertices[f[2]] - mesh.vertices[f[0]]).cast<double>()).normalized();
-        const double shade = 0.35 + 0.65 * std::abs(n.dot(light));
-        const int    x0 = std::max(0, int(std::floor(std::min({ a.x(), b.x(), d.x() })))), x1 = std::min(int(width) - 1, int(std::ceil(std::max({ a.x(), b.x(), d.x() }))));
-        const int    y0 = std::max(0, int(std::floor(std::min({ a.y(), b.y(), d.y() })))), y1 = std::min(int(height) - 1, int(std::ceil(std::max({ a.y(), b.y(), d.y() }))));
-        for (int y = y0; y <= y1; ++y)
-            for (int x = x0; x <= x1; ++x) {
-                const double px = x + 0.5, py = y + 0.5;
-                const double w0 = ((b.x() - px) * (d.y() - py) - (d.x() - px) * (b.y() - py)) / area;
-                const double w1 = ((d.x() - px) * (a.y() - py) - (a.x() - px) * (d.y() - py)) / area;
-                const double w2 = 1. - w0 - w1;
-                if (w0 < 0. || w1 < 0. || w2 < 0.)
-                    continue;
-                const double z = w0 * a.z() + w1 * b.z() + w2 * d.z();
-                double      &zb = depth[size_t(y) * width + x];
-                if (z <= zb)
-                    continue;
-                zb                = z;
-                unsigned char *px4 = &thumb.pixels[4 * (size_t(y) * width + x)];
-                px4[0] = (unsigned char) (0x00 * shade);
-                px4[1] = (unsigned char) (0xAE * shade);
-                px4[2] = (unsigned char) (0x42 * shade);
-                px4[3] = 255;
-            }
-    }
-    return thumb;
-}
-
 std::string vendor_json_value(const std::vector<fs::path> &dirs, std::string name, const std::string &key)
 {
     for (int depth = 0; depth < 8 && ! name.empty(); ++depth) {
@@ -390,9 +355,18 @@ std::string vendor_json_value(const std::vector<fs::path> &dirs, std::string nam
 }
 
 void write_gcode_3mf(const Args &args, Model &model, Print &print, DynamicPrintConfig &config, GCodeProcessorResult &result,
-                     const fs::path &datadir)
+                     const PlateData *source_plate)
 {
-    auto plate                     = std::make_unique<PlateData>();
+    auto plate                     = source_plate ? std::make_unique<PlateData>(*source_plate) : std::make_unique<PlateData>();
+    plate->objects_and_instances.clear();
+    if (!source_plate)
+        plate->config.apply_only(config, {"filament_map_mode", "filament_map", "filament_volume_map"});
+    else if (!plate->config.has("filament_map_mode"))
+        plate->config.apply_only(config, {"filament_map_mode"});
+    if (const auto *mode = plate->config.option<ConfigOptionEnum<FilamentMapMode>>("filament_map_mode"); mode && is_auto_filament_map_mode(mode->value)) {
+        plate->config.option<ConfigOptionInts>("filament_map", true)->values        = print.get_filament_maps();
+        plate->config.option<ConfigOptionInts>("filament_volume_map", true)->values = print.get_filament_volume_maps();
+    }
     plate->plate_index             = 0;
     for (size_t i = 0; i < model.objects.size(); ++i)
         for (size_t j = 0; j < model.objects[i]->instances.size(); ++j)
@@ -401,14 +375,23 @@ void write_gcode_3mf(const Args &args, Model &model, Print &print, DynamicPrintC
     plate->is_sliced_valid         = true;
     plate->toolpath_outside        = result.toolpath_outside;
     plate->timelapse_warning_code  = result.timelapse_warning_code;
+    plate->limit_filament_maps     = result.limit_filament_maps;
+    plate->layer_filaments         = result.layer_filaments;
+    plate->filament_change_sequence = result.filament_change_sequence;
+    plate->nozzle_change_sequence  = result.nozzle_change_sequence;
+    plate->optimal_assignment     = result.optimal_assignment;
     plate->is_label_object_enabled = result.label_object_enabled;
     plate->is_support_used         = print.is_support_used();
     plate->printer_model_id = vendor_json_value({ fs::path(args.profiles) / args.vendor / "machine" }, config.opt_string("printer_model"), "model_id");
     plate->nozzle_diameters = config.option("nozzle_diameter")->serialize();
     plate->gcode_prediction = std::to_string(int(result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)].time));
     plate->first_layer_time = std::to_string(result.initial_layer_time);
+    plate->nonplanar_report.clear();
     if (!result.nonplanar_report.empty())
         plate->nonplanar_report = result.nonplanar_report.to_json();
+    plate->slice_filaments_info.clear();
+    plate->mixed_filaments_info.clear();
+    plate->nozzle_group_result.reset();
     plate->parse_filament_info(&result);
     nlohmann::json bambu_ids;
     {
@@ -419,7 +402,10 @@ void write_gcode_3mf(const Args &args, Model &model, Print &print, DynamicPrintC
         std::string display_type;
         info.type        = config.get_filament_type(display_type, int(info.id));
         info.color       = config.option<ConfigOptionStrings>("filament_colour")->get_at(info.id);
-        info.filament_id = vendor_json_value({ fs::path(args.profiles) / args.vendor / "filament",
+        const auto *ids = config.option<ConfigOptionStrings>("filament_ids");
+        info.filament_id = ids && info.id < ids->values.size() ? ids->values[info.id] : std::string();
+        if (info.filament_id.empty())
+            info.filament_id = vendor_json_value({ fs::path(args.profiles) / args.vendor / "filament",
                                                fs::path(args.profiles) / "OrcaFilamentLibrary" / "filament" },
                                              args.filaments[std::min(size_t(info.id), args.filaments.size() - 1)], "filament_id");
         if (bambu_ids.is_object() && bambu_ids["filaments"].contains(info.filament_id))
@@ -430,8 +416,19 @@ void write_gcode_3mf(const Args &args, Model &model, Print &print, DynamicPrintC
     plate->gcode_weight = weight;
 
     const indexed_triangle_set mesh     = plate_mesh(model);
-    ThumbnailData              plate_png = render_thumbnail(mesh, 512, 512, false), top_png = render_thumbnail(mesh, 512, 512, true);
-    plate->plate_thumbnail.load_from(plate_png);
+    const std::string &colour = config.option<ConfigOptionStrings>("filament_colour")->get_at(0);
+    ThumbnailData plate_png = render_thumbnail(mesh, 512, 512, false, colour), top_png = render_thumbnail(mesh, 512, 512, true, colour);
+    ThumbnailData no_light_png = plate_png, pick_png = top_png;
+    if (!plate->thumbnail_file.empty() && fs::exists(plate->thumbnail_file))
+        plate_png.reset();
+    else
+        plate->plate_thumbnail.load_from(plate_png);
+    if (!plate->no_light_thumbnail_file.empty() && fs::exists(plate->no_light_thumbnail_file))
+        no_light_png.reset();
+    if (!plate->top_file.empty() && fs::exists(plate->top_file))
+        top_png.reset();
+    if (!plate->pick_file.empty() && fs::exists(plate->pick_file))
+        pick_png.reset();
 
     PlateBBoxData bboxes;
     bboxes.is_seq_print     = config.opt_enum<PrintSequence>("print_sequence") == PrintSequence::ByObject;
@@ -455,7 +452,7 @@ void write_gcode_3mf(const Args &args, Model &model, Print &print, DynamicPrintC
         bboxes.filament_colors.push_back(info.color);
     }
 
-    model.set_backup_path((datadir / "backup").string());
+    model.get_backup_path();
     StoreParams params;
     params.path                    = args.gcode_3mf;
     params.model                   = &model;
@@ -463,12 +460,14 @@ void write_gcode_3mf(const Args &args, Model &model, Print &print, DynamicPrintC
     params.export_plate_idx        = 0;
     params.config                  = &config;
     params.thumbnail_data          = { &plate_png };
-    params.no_light_thumbnail_data = { &plate_png };
+    params.no_light_thumbnail_data = { &no_light_png };
     params.top_thumbnail_data      = { &top_png };
-    params.pick_thumbnail_data     = { &top_png };
+    params.pick_thumbnail_data     = { &pick_png };
     params.id_bboxes               = { &bboxes };
     params.strategy = SaveStrategy::Silence | SaveStrategy::WithGcode | SaveStrategy::SplitModel | SaveStrategy::ShareMesh |
                       SaveStrategy::SkipModel;
+    if (source_plate)
+        params.strategy = params.strategy | SaveStrategy::UseLoadedId;
     if (! store_bbs_3mf(params))
         throw std::runtime_error("cannot write " + args.gcode_3mf);
 }
@@ -653,7 +652,7 @@ OrientSlice slice_orientation(const Args &args, const Model &source, const Matri
         rotate_model(model, rotation);
         place(args, model, config);
         Print print;
-        print.is_BBL_printer() = args.printer.rfind("Bambu Lab", 0) == 0;
+        print.is_BBL_printer() = config.opt_string("printer_model").rfind("Bambu Lab", 0) == 0;
         for (ModelObject *object : model.objects)
             print.auto_assign_extruders(object);
         print.apply(model, config);
@@ -910,14 +909,14 @@ Model load_project(const std::string &path)
     return model;
 }
 
-void save_project(const Args &args, Model &model, DynamicPrintConfig &config, const fs::path &datadir)
+void save_project(const Args &args, Model &model, DynamicPrintConfig &config)
 {
     auto plate         = std::make_unique<PlateData>();
     plate->plate_index = 0;
     for (size_t i = 0; i < model.objects.size(); ++i)
         for (size_t j = 0; j < model.objects[i]->instances.size(); ++j)
             plate->objects_and_instances.emplace_back(int(i), int(j));
-    model.set_backup_path((datadir / "backup").string());
+    model.get_backup_path();
     StoreParams params;
     params.path            = args.save_3mf;
     params.model           = &model;
@@ -977,6 +976,7 @@ int main(int argc, char **argv)
         Model model;
         const bool project_input = boost::algorithm::iequals(fs::path(args.model).extension().string(), ".3mf");
         bool project_settings = false;
+        std::unique_ptr<PlateData> source_plate;
         if (project_input) {
             ConfigSubstitutionContext substitutions(ForwardCompatibilitySubstitutionRule::EnableSilent);
             En3mfType type;
@@ -995,6 +995,19 @@ int main(int argc, char **argv)
             for (ModelObject *object : model.objects)
                 for (ModelInstance *instance : object->instances)
                     instance->use_loaded_id_for_label = true;
+            if (plates.size() == 1) {
+                source_plate.reset(plates.front());
+                plates.clear();
+                const bool changed_colours = !args.colours.empty() || std::any_of(args.overrides.begin(), args.overrides.end(),
+                    [](const auto &setting) { return setting.first == "filament_colour"; });
+                if (args.auto_orient || args.center_set || changed_colours || !args.parts.empty() || !args.paint.empty()) {
+                    source_plate->plate_thumbnail.reset();
+                    source_plate->thumbnail_file.clear();
+                    source_plate->no_light_thumbnail_file.clear();
+                    source_plate->top_file.clear();
+                    source_plate->pick_file.clear();
+                }
+            }
             release_PlateData_list(plates);
             for (Preset *preset : presets)
                 delete preset;
@@ -1044,7 +1057,7 @@ int main(int argc, char **argv)
         }
         if (! args.save_3mf.empty()) {
             place(args, model, config);
-            save_project(args, model, config, datadir);
+            save_project(args, model, config);
             std::cout << "project " << args.save_3mf << "\n";
             if (args.output.empty())
                 return 0;
@@ -1066,7 +1079,6 @@ int main(int argc, char **argv)
         place(args, model, config, project_settings && !args.auto_orient);
 
         if (!args.project_out.empty()) {
-            model.set_backup_path((datadir / "project-backup").string());
             fs::create_directories(model.get_backup_path());
             PlateData plate;
             plate.plate_index = 0;
@@ -1087,7 +1099,7 @@ int main(int argc, char **argv)
         std::mutex progress_mutex;
         int last_percent = 0;
         Print print;
-        print.is_BBL_printer() = (project_settings ? config.opt_string("printer_model") : args.printer).rfind("Bambu Lab", 0) == 0;
+        print.is_BBL_printer() = config.opt_string("printer_model").rfind("Bambu Lab", 0) == 0;
         for (ModelObject *object : model.objects)
             print.auto_assign_extruders(object);
         print.apply(model, config);
@@ -1129,10 +1141,11 @@ int main(int argc, char **argv)
         const double c_export = process_cpu_seconds();
         GCodeProcessorResult result;
         const indexed_triangle_set mesh = plate_mesh(model);
-        print.export_gcode(args.output, &result, [&mesh](const ThumbnailsParams &params) {
+        print.export_gcode(args.output, &result, [&mesh, &config](const ThumbnailsParams &params) {
             ThumbnailsList list;
             for (const Vec2d &size : params.sizes)
-                list.push_back(render_thumbnail(mesh, unsigned(size.x()), unsigned(size.y()), false));
+                list.push_back(render_thumbnail(mesh, unsigned(size.x()), unsigned(size.y()), false,
+                    config.option<ConfigOptionStrings>("filament_colour")->get_at(0)));
             return list;
         });
         const auto   t_done = std::chrono::steady_clock::now();
@@ -1413,7 +1426,7 @@ int main(int argc, char **argv)
             if (!args.gcode_3mf.empty()) text["gcode_3mf"] = args.gcode_3mf;
         }
         if (! args.gcode_3mf.empty()) {
-            write_gcode_3mf(args, model, print, config, result, datadir);
+            write_gcode_3mf(args, model, print, config, result, source_plate.get());
             std::cout << "gcode_3mf " << args.gcode_3mf << "\n";
         }
         const Nonplanar::NonplanarReport report = result.nonplanar_report.objects.empty() ? Nonplanar::make_report(print, result, true) :

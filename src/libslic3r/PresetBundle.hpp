@@ -232,6 +232,16 @@ public:
     bool resolve_system_preset(DynamicPrintConfig &config, Preset::Type type, const std::string &name,
                                ForwardCompatibilitySubstitutionRule compatibility_rule, std::string &error);
 
+    bool resolve_preset_config(DynamicPrintConfig &config, Preset::Type type, const std::string &source_file,
+                               ForwardCompatibilitySubstitutionRule compatibility_rule, std::string &error,
+                               bool allow_source_manifest, std::string *filament_id);
+    bool resolve_preset_config_type(DynamicPrintConfig &config, Preset::Type &type, const std::string &source_file,
+                                    ForwardCompatibilitySubstitutionRule compatibility_rule, std::string &error,
+                                    bool allow_source_manifest, std::string *filament_id);
+    bool resolve_system_preset(DynamicPrintConfig &config, Preset::Type type, const std::string &name,
+                               ForwardCompatibilitySubstitutionRule compatibility_rule, std::string &error,
+                               std::string *filament_id);
+
     void     load_selections(AppConfig &config, const PresetPreferences& preferred_selection = PresetPreferences());
 
     PresetsConfigSubstitutions load_user_presets(std::string user, ForwardCompatibilitySubstitutionRule rule, bool read_only = false);

@@ -430,10 +430,30 @@ PresetBundle::PresetBundle()
     this->project_config.apply_only(FullPrintConfig::defaults(), s_project_options);
 }
 
+bool PresetBundle::resolve_preset_config(DynamicPrintConfig &config, Preset::Type type, const std::string &source_file,
+                                         ForwardCompatibilitySubstitutionRule compatibility_rule, std::string &error,
+                                         bool allow_source_manifest)
+{
+    return resolve_preset_config(config, type, source_file, compatibility_rule, error, allow_source_manifest, nullptr);
+}
+
+bool PresetBundle::resolve_preset_config_type(DynamicPrintConfig &config, Preset::Type &type, const std::string &source_file,
+                                              ForwardCompatibilitySubstitutionRule compatibility_rule, std::string &error,
+                                              bool allow_source_manifest)
+{
+    return resolve_preset_config_type(config, type, source_file, compatibility_rule, error, allow_source_manifest, nullptr);
+}
+
+bool PresetBundle::resolve_system_preset(DynamicPrintConfig &config, Preset::Type type, const std::string &name,
+                                         ForwardCompatibilitySubstitutionRule compatibility_rule, std::string &error)
+{
+    return resolve_system_preset(config, type, name, compatibility_rule, error, nullptr);
+}
+
 bool PresetBundle::resolve_preset_config(DynamicPrintConfig &config, Preset::Type type,
                                          const std::string &source_file,
                                          ForwardCompatibilitySubstitutionRule compatibility_rule,
-                                         std::string &error, bool allow_source_manifest)
+                                         std::string &error, bool allow_source_manifest, std::string *filament_id)
 {
     if (compatibility_rule == ForwardCompatibilitySubstitutionRule::EnableSystemSilent)
         compatibility_rule = ForwardCompatibilitySubstitutionRule::EnableSilent;
@@ -478,6 +498,8 @@ bool PresetBundle::resolve_preset_config(DynamicPrintConfig &config, Preset::Typ
 
     if (const Preset *resolved = find_loaded(*this)) {
         config = resolved->config;
+        if (filament_id)
+            *filament_id = resolved->filament_id;
         error.clear();
         return true;
     }
@@ -512,6 +534,8 @@ bool PresetBundle::resolve_preset_config(DynamicPrintConfig &config, Preset::Typ
                 return false;
             }
             config = resolved->config;
+            if (filament_id)
+                *filament_id = resolved->filament_id;
             error.clear();
             return true;
         } catch (const std::exception &ex) {
@@ -558,7 +582,7 @@ const PresetBundle *PresetBundle::load_source_vendor(const boost::filesystem::pa
 bool PresetBundle::resolve_preset_config_type(DynamicPrintConfig &config, Preset::Type &type,
                                               const std::string &source_file,
                                               ForwardCompatibilitySubstitutionRule compatibility_rule,
-                                              std::string &error, bool allow_source_manifest)
+                                              std::string &error, bool allow_source_manifest, std::string *filament_id)
 {
     std::optional<std::pair<Preset::Type, DynamicPrintConfig>> resolved;
     for (Preset::Type candidate_type : types_list(ptFFF)) {
@@ -584,6 +608,8 @@ bool PresetBundle::resolve_preset_config_type(DynamicPrintConfig &config, Preset
         return false;
     }
 
+    if (filament_id && !resolve_preset_config(config, resolved->first, source_file, compatibility_rule, error, allow_source_manifest, filament_id))
+        return false;
     type   = resolved->first;
     config = std::move(resolved->second);
     error.clear();
@@ -591,7 +617,7 @@ bool PresetBundle::resolve_preset_config_type(DynamicPrintConfig &config, Preset
 }
 
 bool PresetBundle::resolve_system_preset(DynamicPrintConfig &config, Preset::Type type, const std::string &name,
-                                         ForwardCompatibilitySubstitutionRule compatibility_rule, std::string &error)
+                                         ForwardCompatibilitySubstitutionRule compatibility_rule, std::string &error, std::string *filament_id)
 {
     const std::string vendor_id = find_preset_vendor(name, type);
     if (vendor_id.empty()) {
@@ -618,6 +644,8 @@ bool PresetBundle::resolve_system_preset(DynamicPrintConfig &config, Preset::Typ
             return false;
         }
         config = preset->config;
+        if (filament_id)
+            *filament_id = preset->filament_id;
     } catch (const std::exception &ex) {
         error = ex.what();
         return false;
