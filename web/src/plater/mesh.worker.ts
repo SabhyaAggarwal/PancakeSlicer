@@ -1,4 +1,5 @@
 import { bakeStl, centre, hullPoints, parseObj, parseStl, vertexNormals, weld } from './meshcore';
+import { buildBvh, type Bvh } from './bvh';
 import { readProject } from './threemf';
 
 export interface MeshData {
@@ -20,6 +21,7 @@ export type MeshOut =
   | { type: 'progress'; id: number; pct: number }
   | ({ type: 'mesh'; id: number; item?: number } & MeshData)
   | { type: 'hull'; id: number; item?: number; hull: Float32Array }
+  | { type: 'bvh'; id: number; item?: number; bvh: Bvh; ms: number }
   | { type: 'items'; id: number; items: Awaited<ReturnType<typeof readProject>>['items'] }
   | { type: 'missing'; id: number; item: number }
   | { type: 'blob'; id: number; blob: Blob }
@@ -37,9 +39,12 @@ function finish(id: number, soup: Float32Array, item?: number, progress?: (pct: 
   const cx = (box.min[0] + box.max[0]) / 2, cy = (box.min[1] + box.max[1]) / 2, cz = (box.min[2] + box.max[2]) / 2;
   for (let i = 0; i < positions.length; i += 3)
     r2 = Math.max(r2, (positions[i] - cx) ** 2 + (positions[i + 1] - cy) ** 2 + (positions[i + 2] - cz) ** 2);
-  const keep = positions.slice();
+  const keep = positions.slice(), keepIndex = index.slice();
   post({ type: 'mesh', id, item, positions, index, normals, ...box, radius: Math.sqrt(r2) }, [positions.buffer, index.buffer, normals.buffer]);
   return () => {
+    const t0 = performance.now();
+    const bvh = buildBvh(keep, keepIndex);
+    post({ type: 'bvh', id, item, bvh, ms: performance.now() - t0 }, [bvh.bounds.buffer, bvh.nodes.buffer, bvh.tris.buffer]);
     const hull = hullPoints(keep);
     post({ type: 'hull', id, item, hull }, [hull.buffer]);
   };

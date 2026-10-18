@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { ConfigValue, PlateJson } from '../api/types';
 import { toolValue } from '../options';
 import type { Instance, PlateObject } from '../state/store';
+import type { Bvh } from './bvh';
 import type { MeshData, MeshIn, MeshOut } from './mesh.worker';
 import type { ProjectItem } from './threemf';
 
@@ -36,6 +37,11 @@ function toGeometry(d: MeshData): THREE.BufferGeometry {
   return geo;
 }
 
+function setBvh(geo: THREE.BufferGeometry, m: { bvh: Bvh; ms: number }) {
+  geo.userData.bvh = m.bvh;
+  geo.userData.bvhMs = m.ms;
+}
+
 export function loadMesh(file: File, progress?: (pct: number) => void): Promise<THREE.BufferGeometry> {
   return new Promise((resolve, reject) => {
     let geo: THREE.BufferGeometry | null = null;
@@ -43,6 +49,7 @@ export function loadMesh(file: File, progress?: (pct: number) => void): Promise<
       if (m.type === 'progress') progress?.(m.pct);
       else if (m.type === 'mesh') resolve((geo = toGeometry(m)));
       else if (m.type === 'hull' && geo) geo.userData.hull = m.hull;
+      else if (m.type === 'bvh' && geo) setBvh(geo, m);
       else if (m.type === 'error') reject(new Error(m.message));
     });
   });
@@ -64,6 +71,9 @@ export function loadProject(file: File, on: {
       } else if (m.type === 'hull') {
         const geo = geos.get(m.item!);
         if (geo) geo.userData.hull = m.hull;
+      } else if (m.type === 'bvh') {
+        const geo = geos.get(m.item!);
+        if (geo) setBvh(geo, m);
       } else if (m.type === 'missing') on.missing(m.item);
       else if (m.type === 'done') resolve();
       else if (m.type === 'error') reject(new Error(m.message));

@@ -1,4 +1,5 @@
 import { demoPresets, normalizeCatalog } from './catalog';
+import { catalogWorker, workerId } from './worker';
 import type { CatalogIn, CatalogOut } from './catalog.worker';
 import type { Config, JobRequest, JobStatus, PresetCatalog, PresetType, ProgressEvent, SystemPreset, UserPreset } from './types';
 
@@ -32,15 +33,11 @@ export function parseProgress(data: string): ProgressEvent | null {
   return m ? { stage: m[1], pct: Number(m[2]) } : null;
 }
 
-let catalogWorker: Worker | null = null;
-let nextCatalog = 1;
-
 const realApi: Api = {
   mock: false,
   presets(vendor, models, update) {
-    catalogWorker ??= new Worker(new URL('./catalog.worker.ts', import.meta.url), { type: 'module' });
-    const id = nextCatalog++;
-    const worker = catalogWorker;
+    const worker = catalogWorker();
+    const id = workerId();
     return new Promise((resolve, reject) => {
       let answered = false;
       const on = (e: MessageEvent<CatalogOut>) => {
@@ -50,7 +47,7 @@ const realApi: Api = {
           if (answered) update?.(m.catalog);
           else resolve(m.catalog);
           answered = true;
-        } else {
+        } else if (m.type === 'done' || m.type === 'error') {
           worker.removeEventListener('message', on);
           if (m.type === 'error' && !answered) reject(new Error(m.message));
         }

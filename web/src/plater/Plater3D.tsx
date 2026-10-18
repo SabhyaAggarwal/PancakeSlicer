@@ -4,10 +4,16 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { effectiveConfig, getState, printerPreset, setState, subscribeStore, updateInstance, updateObject, useStore, type State } from '../state/store';
 import { buildBed } from './Bed';
+import { raycastBvh, type Bvh } from './bvh';
 import { bedBounds, instanceMatrix, outsideBed, parsePoints } from './geometry';
 
-const SELECTED = new THREE.Color(0x00c1ae);
 const OUTSIDE = new THREE.Color(0x4d9ed9);
+const HOVER_SELECT_COLOR = new THREE.Color().setRGB(0.4, 0.9, 0.1, THREE.SRGBColorSpace);
+
+function brightenColor(c: THREE.Color): THREE.Color {
+  const hsl = c.getHSL({ h: 0, s: 0, l: 0 }, THREE.SRGBColorSpace);
+  return c.clone().setHSL(hsl.h, hsl.s, Math.min(hsl.l + 0.25, 1), THREE.SRGBColorSpace);
+}
 
 export function filamentColor(s: State, extruder: number): string {
   const chosen = s.slotColours[extruder - 1];
@@ -126,12 +132,13 @@ export default function Plater3D() {
 
     const meshes = new Map<number, THREE.Mesh>();
     const materials = new Map<string, THREE.MeshStandardMaterial>();
-    const material = (color: string, state: 'normal' | 'selected' | 'outside', placeholder = false) => {
+    const material = (color: string, state: 'normal' | 'selected' | 'hover' | 'outside', placeholder = false) => {
       const k = color + state + placeholder;
       let m = materials.get(k);
       if (!m) {
-        const c = new THREE.Color(color);
-        if (state === 'selected') c.lerp(SELECTED, 0.55);
+        let c = new THREE.Color(color);
+        if (state === 'selected') c = brightenColor(c);
+        if (state === 'hover') c = HOVER_SELECT_COLOR.clone();
         if (state === 'outside') c.lerp(OUTSIDE, 0.7);
         m = new THREE.MeshStandardMaterial({ color: c, roughness: 0.65, metalness: 0.05, transparent: placeholder, opacity: placeholder ? 0.35 : 1 });
         materials.set(k, m);
@@ -147,11 +154,23 @@ export default function Plater3D() {
       });
     }
     let liveGeometries = new Set<THREE.BufferGeometry>();
-    const syncObjects = (s: State) => {
-      const seen = new Set<number>();
-      const out = outsideBed(s.objects, area, height);
+    let outside = new Set<number>();
+    let hovered: number | null = null;
+    const tint = (s: State) => {
       for (const o of s.objects) {
         const color = filamentColor(s, o.extruder);
+        for (const inst of o.instances) {
+          const mesh = meshes.get(inst.id);
+          if (!mesh) continue;
+          const state = s.selected?.instance === inst.id ? 'selected' : hovered === inst.id ? 'hover' : outside.has(inst.id) ? 'outside' : 'normal';
+          mesh.material = material(color, state, !!o.project?.placeholder);
+        }
+      }
+    };
+    const syncObjects = (s: State) => {
+      const seen = new Set<number>();
+      outside = outsideBed(s.objects, area, height);
+      for (const o of s.objects) {
         for (const inst of o.instances) {
           seen.add(inst.id);
           let mesh = meshes.get(inst.id);
@@ -166,10 +185,10 @@ export default function Plater3D() {
           }
           mesh.matrix.copy(instanceMatrix(o, inst));
           mesh.matrixWorldNeedsUpdate = true;
-          const sel = s.selected?.instance === inst.id;
-          mesh.material = material(color, sel ? 'selected' : out.has(inst.id) ? 'outside' : 'normal', !!o.project?.placeholder);
         }
       }
+      if (hovered !== null && !seen.has(hovered)) hovered = null;
+      tint(s);
       for (const [id, mesh] of meshes)
         if (!seen.has(id)) {
           scene.remove(mesh);
@@ -237,7 +256,7 @@ export default function Plater3D() {
 
     const ray = new THREE.Raycaster();
     const ndc = new THREE.Vector2();
-    const setRay = (ev: PointerEvent) => {
+    const setRay = (ev: { clientX: number; clientY: number }) => {
       const r = renderer.domElement.getBoundingClientRect();
       ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
       ray.setFromCamera(ndc, camera);
@@ -245,7 +264,10 @@ export default function Plater3D() {
     const EXACT_TRIANGLES = 100_000;
     const box = new THREE.Box3();
     const entry = new THREE.Vector3();
-    const pick = (ev: PointerEvent): { object: THREE.Object3D; distance: number } | undefined => {
+    const inverse = new THREE.Matrix4();
+    const linear = new THREE.Matrix3();
+    const origin = new THREE.Vector3(), direction = new THREE.Vector3();
+    const pick = (ev: { clientX: number; clientY: number }): { object: THREE.Object3D; distance: number } | undefined => {
       setRay(ev);
       const hits: { mesh: THREE.Mesh; distance: number }[] = [];
       for (const mesh of meshes.values()) {
@@ -257,8 +279,18 @@ export default function Plater3D() {
       for (const { mesh, distance } of hits) {
         if (best && distance >= best.distance) break;
         const g = mesh.geometry;
-        const triangles = (g.index ? g.index.count : g.attributes.position.count) / 3;
-        const hit = triangles > EXACT_TRIANGLES ? { object: mesh, distance } : ray.intersectObject(mesh, false)[0];
+        const bvh = g.userData.bvh as Bvh | undefined;
+        let hit: { object: THREE.Object3D; distance: number } | undefined;
+        if (bvh) {
+          inverse.copy(mesh.matrixWorld).invert();
+          origin.copy(ray.ray.origin).applyMatrix4(inverse);
+          direction.copy(ray.ray.direction).applyMatrix3(linear.setFromMatrix4(inverse));
+          const t = raycastBvh(bvh, g.attributes.position.array, g.index!.array, origin.toArray(), direction.toArray(), best?.distance);
+          if (t !== Infinity) hit = { object: mesh, distance: t };
+        } else {
+          const triangles = (g.index ? g.index.count : g.attributes.position.count) / 3;
+          hit = triangles > EXACT_TRIANGLES ? { object: mesh, distance } : ray.intersectObject(mesh, false)[0];
+        }
         if (hit && (!best || hit.distance < best.distance)) best = hit;
       }
       return best;
@@ -302,6 +334,47 @@ export default function Plater3D() {
     renderer.domElement.addEventListener('pointermove', onMove);
     renderer.domElement.addEventListener('pointerup', onUp);
 
+    let hoverAt: { clientX: number; clientY: number } | null = null;
+    let hoverFrame = 0;
+    let orbiting = false;
+    const hoverMs: number[] = [];
+    const setHover = (id: number | null) => {
+      if (id === hovered) return;
+      hovered = id;
+      tint(getState());
+      render();
+    };
+    const hoverPass = () => {
+      hoverFrame = 0;
+      if (!hoverAt || orbiting) return;
+      const t0 = performance.now();
+      const axis = (tc as unknown as { axis: string | null }).axis;
+      const hit = axis ? undefined : pick(hoverAt);
+      if (hoverMs.length > 4096) hoverMs.splice(0, 2048);
+      hoverMs.push(performance.now() - t0);
+      setHover(hit ? (hit.object.userData as { instance: number }).instance : null);
+    };
+    const onHover = (ev: PointerEvent) => {
+      if (ev.buttons || orbiting || tc.dragging) {
+        hoverAt = null;
+        setHover(null);
+        return;
+      }
+      hoverAt = { clientX: ev.clientX, clientY: ev.clientY };
+      if (!hoverFrame) hoverFrame = requestAnimationFrame(hoverPass);
+    };
+    const onLeave = () => {
+      hoverAt = null;
+      setHover(null);
+    };
+    controls.addEventListener('start', () => {
+      orbiting = true;
+      onLeave();
+    });
+    controls.addEventListener('end', () => (orbiting = false));
+    renderer.domElement.addEventListener('pointermove', onHover);
+    renderer.domElement.addEventListener('pointerleave', onLeave);
+
     const resize = () => {
       const w = el.clientWidth, h = el.clientHeight;
       if (!w || !h) return;
@@ -337,13 +410,14 @@ export default function Plater3D() {
       syncBed(s);
       syncObjects(s);
     };
-    (window as unknown as { __plater: unknown }).__plater = { scene, camera, controls, tc, renderer, meshes, frames, render, getState, setState };
+    (window as unknown as { __plater: unknown }).__plater = { scene, camera, controls, tc, renderer, meshes, frames, hoverMs, hovered: () => hovered, pick, render, getState, setState };
     const unsub = subscribeStore(sync);
     sync();
     resize();
 
     return () => {
       unsub();
+      cancelAnimationFrame(hoverFrame);
       ro.disconnect();
       window.removeEventListener('keydown', onKey);
       tc.dispose();

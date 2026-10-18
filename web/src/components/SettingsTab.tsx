@@ -1,15 +1,15 @@
 import { useMemo, useState } from 'react';
 import type { PresetType } from '../api/types';
-import { isHidden, modeVisible, OPTIONS, splitKey, TABS } from '../options';
+import { isHidden, modeVisible, OPTIONS, splitKey, useTab, type TabDesc } from '../options';
 import { effectiveConfig, getState, resolvePreset, saveUserPreset, setState, toast, useStore } from '../state/store';
 import { Field } from './Field';
 import { Icon, IconButton } from './Icon';
 import { PresetCombo } from './PresetCombo';
 
-const TAB_OF: Record<PresetType, keyof typeof TABS> = { process: 'process', filament: 'filament', machine: 'printer' };
+const TAB_OF: Record<PresetType, TabDesc['tab']> = { process: 'process', filament: 'filament', machine: 'printer' };
 
 export function SettingsTab({ type, slot = 0, compact }: { type: PresetType; slot?: number; compact?: boolean }) {
-  const desc = TABS[TAB_OF[type]];
+  const { desc, error } = useTab(TAB_OF[type]);
   const [pageIdx, setPageIdx] = useState(0);
   const uiMode = useStore((s) => s.uiMode);
   const dirty = useStore((s) => s.dirty[type]);
@@ -21,7 +21,7 @@ export function SettingsTab({ type, slot = 0, compact }: { type: PresetType; slo
 
   const pages = useMemo(
     () =>
-      desc.pages
+      (desc?.pages ?? [])
         .map((p) => ({
           ...p,
           groups: p.groups
@@ -82,6 +82,7 @@ export function SettingsTab({ type, slot = 0, compact }: { type: PresetType; slo
         ))}
       </div>
       <div className="page-body">
+        {!desc && <div role="status">{error ? `Settings failed to load: ${error}` : 'Loading settings…'}</div>}
         {page?.groups.map((g) => (
           <section key={g.title} className="optgroup">
             {g.title && (

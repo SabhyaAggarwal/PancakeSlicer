@@ -1,9 +1,11 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { bundleReport } from './bundle-report.ts';
+import { optionAssets } from './option-assets.ts';
 import { orcaAssets } from './orca-assets.ts';
 
 export default defineConfig({
-  plugins: [react(), orcaAssets()],
+  plugins: [react(), orcaAssets(), optionAssets(), bundleReport()],
   server: {
     port: 5173,
     proxy: {

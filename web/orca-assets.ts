@@ -67,7 +67,8 @@ export function orcaAssets(): Plugin {
     },
     generateBundle(_opts, bundle) {
       const text = Object.values(bundle)
-        .map((c) => (c.type === 'chunk' ? c.code : typeof c.source === 'string' ? c.source : ''))
+        .map((c) => (c.type === 'chunk' ? c.code : typeof c.source === 'string' ? c.source
+          : c.fileName.endsWith('.json') ? Buffer.from(c.source).toString('utf8') : ''))
         .join('\n');
       const tokens = new Set(Array.from(text.matchAll(/["'`]([A-Za-z0-9_.+-]{2,80})["'`]/g), (m) => m[1]));
       for (const f of fs.readdirSync(IMAGES)) {

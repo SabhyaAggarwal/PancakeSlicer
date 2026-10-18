@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { OPTIONS } from '../options';
+import { OPTIONS, useTab } from '../options';
 import { getState, setState, updateObject, useStore } from '../state/store';
 import { filamentColor } from '../plater/Plater3D';
 import { Icon } from './Icon';
@@ -9,6 +9,7 @@ interface SliceRecord {
 }
 
 export function ObjectList() {
+  useTab('process');
   const objects = useStore((s) => s.objects);
   const selected = useStore((s) => s.selected);
   const slots = useStore((s) => s.filamentSlots);

@@ -1,7 +1,10 @@
 import { demoPresets, normalizeCatalog } from './catalog';
+import { normalizeOptions } from '../option-inventory';
+import type { OptionDef, TabDesc } from '../options';
 import type { PresetCatalog } from './types';
 
-export interface CatalogIn {
+export type CatalogIn = { id: number; type: 'settings'; optionsUrl: string; tabUrl: string } | {
+  type?: 'catalog';
   id: number;
   vendor: string;
   models: string[];
@@ -9,6 +12,7 @@ export interface CatalogIn {
 
 export type CatalogOut =
   | { id: number; type: 'catalog'; catalog: PresetCatalog; from: 'cache' | 'network' }
+  | { id: number; type: 'settings'; options: Record<string, OptionDef>; tab: TabDesc }
   | { id: number; type: 'done' }
   | { id: number; type: 'error'; message: string };
 
@@ -43,9 +47,25 @@ function tx<T>(d: IDBDatabase, mode: IDBTransactionMode, op: (s: IDBObjectStore)
 
 const post = (m: CatalogOut) => (self as unknown as Worker).postMessage(m);
 
+let definitions: Promise<Record<string, OptionDef>> | null = null;
+let definitionsSent = false;
+async function asset(url: string) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}: ${url}`);
+  return r.json();
+}
+
 self.onmessage = async (e: MessageEvent<CatalogIn>) => {
-  const { id, vendor, models } = e.data;
+  const { id } = e.data;
   try {
+    if (e.data.type === 'settings') {
+      definitions ??= asset(e.data.optionsUrl).then(normalizeOptions).catch((error) => { definitions = null; throw error; });
+      const [options, tab] = await Promise.all([definitions, asset(e.data.tabUrl)]);
+      post({ id, type: 'settings', options: definitionsSent ? {} : options, tab });
+      definitionsSent = true;
+      return;
+    }
+    const { vendor, models } = e.data;
     const key = `${vendor}|${models.join(',')}`;
     const store = await db().catch(() => null);
     const cached = store ? await tx<Entry | undefined>(store, 'readonly', (s) => s.get(key)).catch(() => undefined) : undefined;

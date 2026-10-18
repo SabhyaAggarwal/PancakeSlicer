@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Config, ConfigValue } from '../api/types';
-import { isHidden, OPTIONS } from '../options';
+import { isHidden, OPTIONS, useTab } from '../options';
 import objectKeys from '../object_options.json';
 import { effectiveConfig, getState, removeObjectOptions, setObjectOption, useStore } from '../state/store';
 import { Field } from './Field';
@@ -35,6 +35,7 @@ function hierarchy(filaments: number): [string, string[]][] {
 }
 
 export function ObjectSettings() {
+  const { desc, error } = useTab('process');
   const object = useStore((s) => s.objects.find((o) => o.id === s.selected?.object));
   const filaments = useStore((s) => s.filamentSlots.length);
   useStore((s) => s.dirty.process);
@@ -42,8 +43,9 @@ export function ObjectSettings() {
   const global = effectiveConfig(getState(), 'process');
   const [menu, setMenu] = useState(false);
   const [pick, setPick] = useState<[string, string[]] | null>(null);
-  const cats = useMemo(() => hierarchy(filaments), [filaments]);
+  const cats = useMemo(() => hierarchy(filaments), [filaments, desc]);
 
+  if (!desc) return <div role="status">{error ?? 'Loading settings…'}</div>;
   if (!object)
     return <div className="obj-settings-empty">Select an object in the list or on the plate to edit its settings.</div>;
   if (object.project)

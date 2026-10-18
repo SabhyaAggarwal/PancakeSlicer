@@ -1,8 +1,13 @@
 import type { ConfigValue } from './api/types';
-import optionsJson from './options.generated.json';
-import processTab from './tabs/process.json';
-import filamentTab from './tabs/filament.json';
-import printerTab from './tabs/printer.json';
+import { useEffect, useState } from 'react';
+import { quick, numeric, removed } from 'virtual:option-bootstrap';
+import optionsUrl from './options.generated.json?url&no-inline';
+import processUrl from './tabs/process.json?url&no-inline';
+import filamentUrl from './tabs/filament.json?url&no-inline';
+import printerUrl from './tabs/printer.json?url&no-inline';
+import { normalizeOptions } from './option-inventory';
+import { catalogWorker, workerId } from './api/worker';
+import type { CatalogOut } from './api/catalog.worker';
 
 export type OptionMode = 'simple' | 'advanced' | 'develop';
 
@@ -42,22 +47,61 @@ export interface TabDesc {
   removed_keys: string[];
 }
 
-const INVENTORY_MODES: Record<string, OptionMode> = {
-  Simple: 'simple', Advanced: 'advanced', Expert: 'develop', Develop: 'develop',
-};
-export const OPTIONS: Record<string, OptionDef> = Object.fromEntries(
-  Object.entries(optionsJson).map(([key, def]) => [key, {
-    ...def,
-    enum_values: def.enum_values.filter((value): value is string => typeof value === 'string'),
-    type: def.type.replace(/Or/g, '_or_').toLowerCase(),
-    mode: INVENTORY_MODES[def.mode],
-  }]),
-);
-export const TABS: Record<TabDesc['tab'], TabDesc> = {
-  process: processTab as TabDesc,
-  filament: filamentTab as TabDesc,
-  printer: printerTab as TabDesc,
-};
+export const OPTIONS: Record<string, OptionDef> = normalizeOptions(quick);
+export const TABS: Partial<Record<TabDesc['tab'], TabDesc>> = {};
+const URLs = { process: processUrl, filament: filamentUrl, printer: printerUrl };
+const pending = new Map<TabDesc['tab'], Promise<void>>();
+const listeners = new Set<() => void>();
+
+export function loadTab(tab: TabDesc['tab']): Promise<void> {
+  if (TABS[tab]) return Promise.resolve();
+  const cached = pending.get(tab);
+  if (cached) return cached;
+  const promise = new Promise<void>((resolve, reject) => {
+    const worker = catalogWorker();
+    const id = workerId();
+    const cleanup = () => {
+      worker.removeEventListener('message', on);
+      worker.removeEventListener('error', fail);
+    };
+    const fail = (e: ErrorEvent) => { cleanup(); reject(new Error(e.message)); };
+    const on = (e: MessageEvent<CatalogOut>) => {
+      if (e.data.id !== id) return;
+      if (e.data.type === 'settings') {
+        Object.assign(OPTIONS, e.data.options);
+        TABS[tab] = e.data.tab;
+        cleanup();
+        for (const listener of listeners) listener();
+        resolve();
+      } else if (e.data.type === 'error') {
+        cleanup();
+        reject(new Error(e.data.message));
+      }
+    };
+    worker.addEventListener('message', on);
+    worker.addEventListener('error', fail);
+    worker.postMessage({ id, type: 'settings', optionsUrl: new URL(optionsUrl, location.href).href, tabUrl: new URL(URLs[tab], location.href).href });
+  }).catch((error) => { pending.delete(tab); throw error; });
+  pending.set(tab, promise);
+  return promise;
+}
+
+export function useTab(tab: TabDesc['tab']) {
+  const [, update] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    const changed = () => update((n) => n + 1);
+    listeners.add(changed);
+    setError(null);
+    void loadTab(tab).then(
+      () => { if (active) changed(); },
+      (e) => { if (active) setError(String(e)); },
+    );
+    return () => { active = false; listeners.delete(changed); };
+  }, [tab]);
+  return { desc: TABS[tab], error };
+}
 
 export function splitKey(k: string): [string, number] {
   const [key, idx] = k.split('#');
@@ -68,19 +112,18 @@ const MODE_RANK: Record<OptionMode, number> = { simple: 0, advanced: 1, develop:
 export const modeVisible = (opt: OptionMode, ui: OptionMode) => MODE_RANK[opt] <= MODE_RANK[ui];
 
 const HIDDEN = /print_host|printhost|printer_agent|host_type|api_key|bbl_use_printhost|upload|cloud|device|octoprint|_plugin_config_overrides/;
-const REMOVED_KEYS = new Set(Object.values(TABS).flatMap((tab) => tab.removed_keys));
+const REMOVED_KEYS = new Set(removed);
 export const isHidden = (key: string) => REMOVED_KEYS.has(key) || HIDDEN.test(key);
 
-const NUMERIC_VECTOR = /^(floats|ints|percents|bools|floats_or_percents|points)$/;
+const NUMERIC_VECTOR = new Set(numeric);
 
 export function toolValue(key: string, v: ConfigValue): string {
-  const type = OPTIONS[key]?.type ?? '';
   const scalar = (x: unknown) => (x === true ? '1' : x === false ? '0' : String(x));
   if (!Array.isArray(v)) return scalar(v);
-  if (NUMERIC_VECTOR.test(type)) return v.map(scalar).join(',');
+  if (NUMERIC_VECTOR.has(key)) return v.map(scalar).join(',');
   return v.map((x) => (/[;"\\\n\s]/.test(String(x)) ? `"${String(x).replace(/["\\]/g, '\\$&').replace(/\n/g, '\\n')}"` : String(x))).join(';');
 }
 
 export function jobValue(key: string, v: ConfigValue): ConfigValue {
-  return Array.isArray(v) && NUMERIC_VECTOR.test(OPTIONS[key]?.type ?? '') ? toolValue(key, v) : v;
+  return Array.isArray(v) && NUMERIC_VECTOR.has(key) ? toolValue(key, v) : v;
 }

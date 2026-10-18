@@ -1,20 +1,22 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { addInstance, arrangeAll, download, importFiles, init, newProject, openFileDialog, openProjectDialog, removeInstance } from './actions';
 import { FlushDialog } from './components/FlushDialog';
 import { CanvasToolbar, ManipulationPanel, SliceNotification, Toast } from './components/CanvasOverlays';
 import { PresetDialog } from './components/Dialogs';
-import { PreviewView } from './components/PreviewView';
 import { Sidebar } from './components/Sidebar';
 import { TabBar, TopBar } from './components/TopBar';
 import Plater3D from './plater/Plater3D';
 import { deleteAll, getState, removeSelected, setState, useStore } from './state/store';
 
+const PreviewView = lazy(() => import('./components/PreviewView').then((m) => ({ default: m.PreviewView })));
+
 export default function App() {
   const tab = useStore((s) => s.tab);
   const loading = useStore((s) => s.loading);
+  const jobDone = useStore((s) => s.job.state === 'done');
   const [dragOver, setDragOver] = useState(false);
   const previewOpened = useRef(false);
-  if (tab === 'preview') previewOpened.current = true;
+  if (tab === 'preview' || jobDone) previewOpened.current = true;
 
   useEffect(() => {
     void init();
@@ -70,7 +72,9 @@ export default function App() {
           </div>
           {previewOpened.current && (
             <div style={{ display: tab === 'preview' ? 'contents' : 'none' }}>
-              <PreviewView />
+              <Suspense fallback={<div role="status">Loading preview…</div>}>
+                <PreviewView />
+              </Suspense>
             </div>
           )}
           <SliceNotification />
