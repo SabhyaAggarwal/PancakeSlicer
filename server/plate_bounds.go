@@ -365,9 +365,10 @@ func validatePlateBounds(dir string, req JobRequest, machine *Preset, rawPlate s
 		return nil
 	}
 	type placement struct {
-		X   float64 `json:"x"`
-		Y   float64 `json:"y"`
-		Rot float64 `json:"rot"`
+		Printable *bool   `json:"printable"`
+		X         float64 `json:"x"`
+		Y         float64 `json:"y"`
+		Rot       float64 `json:"rot"`
 	}
 	var plate struct {
 		Objects []struct {
@@ -391,6 +392,9 @@ func validatePlateBounds(dir string, req JobRequest, machine *Preset, rawPlate s
 			instances = []placement{o.placement}
 		}
 		for _, p := range instances {
+			if p.Printable != nil && !*p.Printable {
+				continue
+			}
 			b := meshBounds{}
 			angle := p.Rot * math.Pi / 180
 			c, s := math.Cos(angle), math.Sin(angle)

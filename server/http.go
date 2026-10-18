@@ -278,14 +278,9 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if req.Output != "3mf" {
-			filtered, err := platePrintableWorkaround([]byte(raw), "")
-			if err != nil {
-				fail(w, 400, err.Error())
-				return
-			}
-			raw = string(filtered)
-			rawPlate = raw
+		if err := validatePlatePlacement([]byte(raw), req.Output == "3mf", s.cfg.Features.PlatePlacement); err != nil {
+			fail(w, 400, err.Error())
+			return
 		}
 		if err := os.WriteFile(filepath.Join(j.Dir, "input", "plate.json"), []byte(raw), 0600); err != nil {
 			fail(w, 500, err.Error())
@@ -294,6 +289,10 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		req.Plate = true
 	} else if len(files) != 1 {
 		fail(w, 400, "multiple uploads require plate JSON")
+		return
+	}
+	if req.Output == "3mf" && !req.Plate && strings.EqualFold(filepath.Ext(req.Files[0]), ".3mf") && !s.cfg.Features.PlatePlacement {
+		fail(w, 400, "saving loaded projects requires the R238 tool (native placement and identify IDs)")
 		return
 	}
 	if raw := r.FormValue("project_instances"); raw != "" {

@@ -13,6 +13,7 @@ import (
 )
 
 type ToolFeatures struct {
+	PlatePlacement bool `json:"plate_placement"`
 	DumpOptions    bool `json:"dump_options"`
 	DumpPresets    bool `json:"dump_presets"`
 	Progress       bool `json:"progress"`
@@ -110,7 +111,7 @@ func probeTool(c Config) (ToolFeatures, *cachedResponse) {
 	}
 	configKinds = kinds
 	log.Printf("using native v1 tool contract (%d options)", len(options))
-	return ToolFeatures{true, true, true, true, true}, response
+	return ToolFeatures{DumpOptions: true, DumpPresets: true, Progress: true, MovesOut: true, ObjectSettings: true}, response
 }
 
 func nativeStrings(value string) []string {

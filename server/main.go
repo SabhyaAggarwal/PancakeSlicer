@@ -126,6 +126,11 @@ func main() {
 		log.Fatalf("no profiles directory under %s", cfg.Resources)
 	}
 	cfg.Features, cfg.Options = probeTool(cfg)
+	if err := probePlatePlacement(cfg); err != nil {
+		log.Printf("R238 placement unavailable; plate z/printable and loaded project saves require an upgraded tool: %v", err)
+	} else {
+		cfg.Features.PlatePlacement = true
+	}
 	jobs, err := NewJobManager(cfg)
 	if err != nil {
 		log.Fatal(err)

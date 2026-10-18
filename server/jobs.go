@@ -487,14 +487,6 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 	defer cancel()
 	j.setState(StateRunning, "")
 	args := m.toolArgs(j)
-	var placementErr error
-	if !j.Request.Orient && j.Request.Output != "3mf" {
-		args, placementErr = plateZWorkaround(ctx, m, j, args)
-	}
-	if placementErr != nil {
-		j.setState(StateFailed, sanitizeToolError(placementErr))
-		return
-	}
 	if !m.cfg.Features.Progress {
 		j.log("server", "progress slicing 0")
 	}
@@ -579,19 +571,7 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 	if !j.Request.Orient && j.Request.Output == "3mf" {
 		recordErr = nil
 		raw = nil
-		if waitErr == nil && !j.Request.Plate && strings.EqualFold(filepath.Ext(j.Request.Files[0]), ".3mf") {
-			recordErr = loadedProjectSaveWorkaround(filepath.Join(j.Dir, "input", j.Request.Files[0]), j.OutputPath("3mf"))
-		}
-		if waitErr == nil && j.Request.Plate {
-			plate, err := os.ReadFile(filepath.Join(j.Dir, "input", "plate.json"))
-			if err == nil {
-				_, err = platePrintableWorkaround(plate, j.OutputPath("3mf"))
-			}
-			if err == nil {
-				_, err = plateZWorkaround(ctx, m, j, nil)
-			}
-			recordErr = err
-		}
+
 	}
 	if recordErr == nil && j.Request.Output != "3mf" && !json.Valid(raw) {
 		recordErr = errors.New("invalid slice JSON")
