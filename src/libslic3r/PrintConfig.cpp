@@ -5021,7 +5021,9 @@ void PrintConfigDef::init_fff_params()
     def->label    = L("Curved top shells");
     def->category = L("Quality");
     def->tooltip  = L("Number of curved shells printed along the model's top surface. 0 prints none; -1 chooses the number for each "
-                      "curved area from its slope and size, as Auto does.");
+                      "curved area from its slope and size, as Auto does."
+                      " Default: 0. Unit: shells. Auto replaces this count with 2 to 6 shells per area, capped by the planar "
+                      "top and available depth.");
     def->min      = -1;
     def->max      = 10;
     def->mode     = comSimple;
@@ -5032,7 +5034,9 @@ void PrintConfigDef::init_fff_params()
     def->category = L("Quality");
     def->tooltip  = L("Number of curved shells printed along the model's underside, usually over support. 0 prints none; -1 prints "
                       "one nozzle diameter of skin, 2 to 6 shells. With height bands, undersides steeper than 60° keep their planar "
-                      "walls. Auto prints two only with supports on, under undersides of 10° or less.");
+                      "walls. Auto prints them only with supports on, under undersides of 10° or less."
+                      " Default: 0. Unit: shells. Auto ignores this count and chooses 2 to 6 shells from nozzle diameter and shell height, "
+                      "only with supports enabled, on undersides up to 10 degrees.");
     def->min      = -1;
     def->max      = 10;
     def->mode     = comAdvanced;
@@ -5042,7 +5046,9 @@ void PrintConfigDef::init_fff_params()
     def->label    = L("Curved shell layer height");
     def->category = L("Quality");
     // xgettext:no-c-format, no-boost-format
-    def->tooltip  = L("Vertical thickness of each curved shell. 0 uses the layer height. At most 75% of the nozzle diameter.");
+    def->tooltip  = L("Vertical thickness of each curved shell. 0 uses the layer height. At most 75% of the nozzle diameter."
+                      " Default: 0. Unit: mm. Auto retains a positive value; 0 derives the shell height from the layer "
+                      "profile.");
     def->sidetext = L("mm");
     def->min      = 0;
     def->mode     = comExpert;
@@ -5053,7 +5059,9 @@ void PrintConfigDef::init_fff_params()
     def->category = L("Quality");
     def->tooltip  = L("Curved shells and curved layers flatten wherever the surface is steeper than this. With the Z contouring or "
                       "Planar fallback the head's own slope limit applies too, and areas flattened by more than the surface tolerance "
-                      "use the fallback. Curved overhangs bend by at most this angle, 40° when it is 0. 0 adds no limit.");
+                      "use the fallback. Curved overhangs bend by at most this angle, 40° when it is 0. 0 adds no limit."
+                      " Default: 0. Unit: degrees. Auto ignores this cap for top and bottom shells; head clearance and the steep planar "
+                      "admission rule still apply.");
     def->sidetext = u8"°";
     def->min      = 0;
     def->max      = 90;
@@ -5067,7 +5075,9 @@ void PrintConfigDef::init_fff_params()
                       "fallback, areas the head cannot follow more closely use the fallback. With height bands the shells follow "
                       "the surface, and adaptive curved shell height may thicken the outermost bead until its step reaches this "
                       "tolerance. On rotary printers a top line tilts where an upright line would stand prouder than this. Auto "
-                      "chooses its own value per area.");
+                      "chooses its own value per area."
+                      " Default: 0.05. Unit: mm. Auto replaces this tolerance with one quarter of the shell height, clamped "
+                      "to 0.02 to 0.1 mm.");
     def->sidetext = L("mm");
     def->min      = 0;
     def->mode     = comExpert;
@@ -5077,7 +5087,8 @@ void PrintConfigDef::init_fff_params()
     def->label    = L("Non-planar minimum patch area");
     def->category = L("Quality");
     def->tooltip  = L("With the Z contouring or Planar fallback, curved areas smaller than this, seen from above, use the fallback. "
-                      "Height bands keep every area.");
+                      "Height bands keep every area."
+                      " Default: 16. Unit: mm². Auto derives its own area threshold; height bands bypass the area cut.");
     def->sidetext = u8"mm²";
     def->min      = 0;
     def->mode     = comExpert;
@@ -5088,7 +5099,9 @@ void PrintConfigDef::init_fff_params()
     def->category = L("Quality");
     def->tooltip  = L("Line pattern of the curved shells. Contour follows the surface's level lines: a spiral on round tops such as "
                       "domes, straight lines elsewhere, and the only pattern that stays continuous across height bands. Rectilinear "
-                      "uses the solid infill direction. Concentric follows nested outlines.");
+                      "uses the solid infill direction. Concentric follows nested outlines."
+                      " Default: Contour. Unit: unitless choice. Auto chooses Contour, except where an object, modifier or "
+                      "height range overrides the top pattern.");
     def->enum_keys_map = &ConfigOptionEnum<NonplanarTopPattern>::get_enum_values();
     def->enum_values.push_back("contour");
     def->enum_values.push_back("rectilinear");
@@ -5103,7 +5116,8 @@ void PrintConfigDef::init_fff_params()
     def->label    = L("Curved top direction");
     def->category = L("Quality");
     def->tooltip  = L("Direction of the lines of the outermost curved shell, which sets how the surface looks. -1 lets each curved "
-                      "area choose the direction that keeps its lines most level.");
+                      "area choose the direction that keeps its lines most level."
+                      " Default: -1. Unit: degrees. Auto chooses the outer-shell direction per area.");
     def->sidetext = u8"°";
     def->min      = -1;
     def->max      = 360;
@@ -5115,7 +5129,8 @@ void PrintConfigDef::init_fff_params()
     def->category = L("Quality");
     def->tooltip  = L("Space the lines of the curved shells by the line width measured along the surface, not from above. On slopes "
                       "the lines lie closer and each carries less material, so the shell keeps its thickness. Applies to line "
-                      "patterns, not to the spirals and height-band lines of the Contour pattern.");
+                      "patterns, not to the spirals and height-band lines of the Contour pattern."
+                      " Default: on. Unit: unitless on/off. Auto retains this setting.");
     def->mode     = comExpert;
     def->set_default_value(new ConfigOptionBool(true));
 
@@ -5125,7 +5140,8 @@ void PrintConfigDef::init_fff_params()
     def->tooltip  = L("Print the outermost shell of a round curved top, such as a dome or a bowl with a median slope of 12° or more, "
                       "as one spiral from the rim to the apex, with no seam and no retraction. In spiral vase mode, in Auto and "
                       "Manual, the wall carries on into a closed curved lid in the same extrusion unless curved bottom shells are "
-                      "printed. Otherwise Auto keeps the rings.");
+                      "printed. Otherwise Auto keeps the rings."
+                      " Default: on. Unit: unitless on/off. Auto disables this spiral except for the spiral-vase lid.");
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionBool(true));
 
@@ -5134,7 +5150,8 @@ void PrintConfigDef::init_fff_params()
     def->category = L("Quality");
     def->tooltip  = L("Extrude each curved shell line by the bead the nozzle can lay there: the thickness above the material below, "
                       "how far the flat nozzle tip reaches on a slope, and a smooth change along the line. Thin and steep parts of "
-                      "the shells print slower, within the filament's maximum volumetric speed.");
+                      "the shells print slower, within the filament's maximum volumetric speed."
+                      " Default: on. Unit: unitless on/off. Auto retains this setting.");
     def->mode     = comExpert;
     def->set_default_value(new ConfigOptionBool(true));
 
@@ -5145,7 +5162,8 @@ void PrintConfigDef::init_fff_params()
                       "thin outer beads where slope or curvature would leave steps larger than the non-planar surface tolerance, "
                       "thick beads on gentle slopes, from 0.2 to 0.75 of the nozzle diameter (0.6 for the outermost bead). The shells "
                       "keep their total thickness, so gentle areas need fewer of them. Height bands only. Where the clearance repair "
-                      "finds the head hitting printed material, the shells there keep a uniform thickness.");
+                      "finds the head hitting printed material, the shells there keep a uniform thickness."
+                      " Default: off. Unit: unitless on/off. Auto retains this setting.");
     def->mode     = comExpert;
     def->set_default_value(new ConfigOptionBool(false));
 
@@ -5155,7 +5173,8 @@ void PrintConfigDef::init_fff_params()
     def->tooltip  = L("With height bands, this much sparse infill under the curved top shells follows the surface too, so the shells "
                       "rest on a curved base instead of the steps of the flat layers. The step to the flat layers moves into the "
                       "sparse infill, where it does not show. Rounded to whole shell layers. 0 curves only the shells. Manual only: Auto "
-                      "curves only the shells.");
+                      "curves only the shells."
+                      " Default: 2. Unit: mm. Auto overrides this depth with 0 mm.");
     def->sidetext = L("mm");
     def->min      = 0;
     def->max      = 20;
@@ -5168,7 +5187,8 @@ void PrintConfigDef::init_fff_params()
     def->tooltip  = L("Lay the hidden curved layers for strength: their infill runs along and across the direction that carries "
                       "the load (where the surface curves least, else the part's long axis), turning 90° from layer to layer, and "
                       "each curved layer under the top shells gets a curved wall along its edge instead of ending against the flat "
-                      "layers. The visible top shell keeps its own pattern.");
+                      "layers. The visible top shell keeps its own pattern."
+                      " Default: on. Unit: unitless on/off. Auto retains this setting.");
     def->mode     = comExpert;
     def->set_default_value(new ConfigOptionBool(true));
 
@@ -5179,7 +5199,9 @@ void PrintConfigDef::init_fff_params()
                       "An ironing type other than \"No ironing\" irons curved tops too. Ironing stops where the slope would press "
                       "the flat nozzle tip through the shell, and flexible filaments are not ironed. Auto irons a curved area only "
                       "when ironing is asked for and the flat nozzle tip fits its curvature; an object, modifier or height range set "
-                      "to \"No ironing\" irons none.");
+                      "to \"No ironing\" irons none."
+                      " Default: off. Unit: unitless on/off. Auto admits requested ironing only where the nozzle land fits "
+                      "the curvature, and disables it on rotary printers.");
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionBool(false));
 
@@ -5188,7 +5210,8 @@ void PrintConfigDef::init_fff_params()
     def->category = L("Quality");
     def->tooltip  = L("Flow of the outermost curved shell, on top of the top surface flow ratio. Slightly less material leaves the "
                       "visible surface without ridges. With non-planar flow modulation off, this shell also slows on slopes steeper "
-                      "than 25°, down to 0.7 of its speed.");
+                      "than 25°, down to 0.7 of its speed."
+                      " Default: 0.95. Unit: unitless multiplier. Auto retains this setting.");
     def->min      = 0.5;
     def->max      = 1.2;
     def->mode     = comExpert;
@@ -5199,7 +5222,9 @@ void PrintConfigDef::init_fff_params()
     def->category = L("Quality");
     def->tooltip  = L("Flow of the curved top shells by surface slope, at 0, 10, 20, 30 and 40°, interpolated between and held beyond "
                       "40°. A tilted bead wets the layer below differently from a level one. Calibration > Non-planar > Tilted-bead "
-                      "flow measures these values.");
+                      "flow measures these values."
+                      " Default: 1, 1, 1, 1, 1. Unit: unitless multipliers at 0/10/20/30/40 degrees. Auto retains this "
+                      "setting.");
     def->min      = 0.5;
     def->max      = 1.5;
     def->mode     = comAdvanced;
@@ -5211,7 +5236,8 @@ void PrintConfigDef::init_fff_params()
     // xgettext:no-c-format, no-boost-format
     def->tooltip  = L("Speed of the visible curved top lines. Below 100%, a share of the speed each line would otherwise run after "
                       "the slope, Z and flow limits; above, a share of the top surface speed, under the same limits. Calibration > "
-                      "Non-planar > Curved-top quality measures it.");
+                      "Non-planar > Curved-top quality measures it."
+                      " Default: 100. Unit: percent. Auto retains this setting.");
     def->sidetext = "%";
     def->min      = 10;
     def->max      = 200;
@@ -5223,7 +5249,8 @@ void PrintConfigDef::init_fff_params()
     def->category = L("Cooling");
     def->tooltip  = L("Extra part cooling on the visible curved top lines, as a share of the way from the layer's fan speed to the "
                       "overhang fan speed. 0 leaves the fan to curved line cooling; 100 runs those lines at the overhang fan speed. "
-                      "Needs curved line cooling. Calibration > Non-planar > Curved-top quality measures it.");
+                      "Needs curved line cooling. Calibration > Non-planar > Curved-top quality measures it."
+                      " Default: 0. Unit: percent. Auto retains this setting.");
     def->sidetext = "%";
     def->min      = 0;
     def->max      = 100;
@@ -5237,7 +5264,8 @@ void PrintConfigDef::init_fff_params()
                       "from the supported part, so each layer reaches only a fraction of a line width beyond the one below. Covers "
                       "undersides down to flat roofs, and bridges that curved bridges do not take. The layers bend by at most the "
                       "non-planar maximum slope, 40° when it is 0. With supports and the curved support interface on, supported "
-                      "overhangs get that interface instead. Auto always prints them and leaves support out under them.");
+                      "overhangs get that interface instead. Auto always prints them and leaves support out under them."
+                      " Default: off. Unit: unitless on/off. Auto enables curved overhangs regardless of this switch.");
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionBool(false));
 
@@ -5247,7 +5275,9 @@ void PrintConfigDef::init_fff_params()
     def->tooltip  = L("Print bridges spanning 4 to 45 mm as shallow curves that sag 1/80 of the span from both ends, the shape the hot "
                       "bead settles into, instead of straight lines that droop after they are laid. The layers above level the sag "
                       "out with thicker beads. Not with supports on, which would stand in the sag. Auto prints them whenever supports "
-                      "are off.");
+                      "are off."
+                      " Default: off. Unit: unitless on/off. Auto enables curved bridges when supports are off regardless of "
+                      "this switch.");
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionBool(false));
 
@@ -5257,7 +5287,8 @@ void PrintConfigDef::init_fff_params()
     def->tooltip  = L("How to print top areas the head cannot follow in one curved pass. Height bands prints every top area curved, "
                       "in thin bands from the lowest up, so the head never meets material printed before. Z contouring and Planar "
                       "curve only the areas the head can print in any order; Z contouring smooths the steps of the flat layers left "
-                      "elsewhere, Planar prints them as usual. Quality > Z contouring stays separate.");
+                      "elsewhere, Planar prints them as usual. Quality > Z contouring stays separate."
+                      " Default: Height bands. Unit: unitless choice. Auto always selects Height bands.");
     def->enum_keys_map = &ConfigOptionEnum<NonplanarFallback>::get_enum_values();
     def->enum_values.push_back("none");
     def->enum_values.push_back("zaa");
@@ -5275,7 +5306,9 @@ void PrintConfigDef::init_fff_params()
                       "infill included, with no flat layers: wing skins, domes, canopies, panels. Thicker or steeper areas stay "
                       "planar. 0 prints none in Manual and Multiplanar. Auto prints them only on a model with holes in its surface "
                       "(open edges on more than 1 in 100 facets), up to this thickness or 15 shell layers at 0; on a closed model, "
-                      "none. Not in spiral vase mode.");
+                      "none. Not in spiral vase mode."
+                      " Default: 0. Unit: mm. Auto uses a positive value only on open meshes, or 15 shell layers at 0; closed "
+                      "meshes use none.");
     def->sidetext = L("mm");
     def->min      = 0;
     def->mode     = comAdvanced;
@@ -5284,7 +5317,8 @@ void PrintConfigDef::init_fff_params()
     def = this->add("nonplanar_surface_resolution", coFloat);
     def->label    = L("Non-planar surface resolution");
     def->category = L("Quality");
-    def->tooltip  = L("Grid spacing used to sample curved surfaces. Smaller values follow finer detail but take more time and memory.");
+    def->tooltip  = L("Grid spacing used to sample curved surfaces. Smaller values follow finer detail but take more time and memory."
+                      " Default: 0.2. Unit: mm. Auto retains this setting.");
     def->sidetext = L("mm");
     def->min      = 0.05;
     def->max      = 2;
@@ -5297,7 +5331,9 @@ void PrintConfigDef::init_fff_params()
     def->tooltip  = L("Height of the bands the curved top shells print in. With height bands, 0 uses the head's reach (how far it can "
                       "sink beside material already printed) and a smaller value makes the bands shorter. With the Z contouring or "
                       "Planar fallback, a positive value splits tall areas into bands this high and 0 leaves them whole. Curved bottom "
-                      "bands keep their own limit.");
+                      "bands keep their own limit."
+                      " Default: 0. Unit: mm. Auto replaces this cap with a head-derived limit; height bands also obey the "
+                      "head reach.");
     def->sidetext = L("mm");
     def->min      = 0;
     def->mode     = comExpert;
@@ -5313,7 +5349,9 @@ void PrintConfigDef::init_fff_params()
                       "Manual: the curved settings below, as set.\n"
                       "Multiplanar: the part in chunks of flat layers, each chunk tilted so its overhangs need less support.\n"
                       "Rotary curved layers: the whole part in curved layers, the table tilting so each line is laid level under the "
-                      "nozzle. Needs two rotary axes.");
+                      "nozzle. Needs two rotary axes."
+                      " Default: Off. Unit: unitless choice. Auto is selected explicitly by a process or object; it does not "
+                      "replace the stored mode.");
     def->enum_keys_map = &ConfigOptionEnum<NonplanarMode>::get_enum_values();
     def->enum_values.push_back("off");
     def->enum_values.push_back("auto");
@@ -5333,7 +5371,10 @@ void PrintConfigDef::init_fff_params()
     def->category = L("Quality");
     def->tooltip  = L("Print the whole part in curved layers that follow its top: walls, infill, top and bottom, in height bands the "
                       "head clears. Auto uses it in Auto mode where it gives a better top than curved shells alone; On uses it "
-                      "whenever curved top shells are on; Off never does.");
+                      "whenever curved top shells are on; Off never does."
+                      " Default: Auto. Unit: unitless choice. In Auto mode, Auto compares the column-field slice with the "
+                      "shells: more than 5 percent better top RMS, at most 1.2 times the time, and bounded added overhang. On "
+                      "forces the slice; Off disables it.");
     def->enum_keys_map = &ConfigOptionEnum<NonplanarDeform>::get_enum_values();
     def->enum_values.push_back("off");
     def->enum_values.push_back("auto");
@@ -5371,7 +5412,9 @@ void PrintConfigDef::init_fff_params()
                       "distance, and the first bottom layer over it as a curved layer. The support body stays planar. At most two "
                       "interface layers are curved, fewer where the head's reach requires. Every non-planar mode but Off; needs a "
                       "print head on the printer's Non-planar page. With supports on it replaces curved overhangs, except in Auto, "
-                      "which curves it only under curved overhangs, curved bottom shells and undersides of 10° or less.");
+                      "which curves it only under curved overhangs, curved bottom shells and undersides of 10° or less."
+                      " Default: on. Unit: unitless on/off. Auto retains this switch and restricts curved interfaces to the "
+                      "curved underside areas it admits.");
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionBool(true));
 
@@ -5379,7 +5422,8 @@ void PrintConfigDef::init_fff_params()
     def->label    = L("Atomizer toolpath");
     def->category = L("Quality");
     def->tooltip  = L("Path of a toolpath written by Atomizer (.poses or .npz) for this object. When set, the "
-                      "object prints that whole-part curved toolpath instead of its layers. Empty slices normally.");
+                      "object prints that whole-part curved toolpath instead of its layers. Empty slices normally."
+                      " Default: empty. Unit: file path. Auto retains this setting.");
     def->mode     = comDevelop;
     def->set_default_value(new ConfigOptionString(""));
 
@@ -5388,7 +5432,8 @@ void PrintConfigDef::init_fff_params()
     def->category = L("Quality");
     def->tooltip  = L("Check that the print head clears material printed before. Off skips it, Warn reports moves that would hit, "
                       "Block export refuses to export while curved moves still hit. Auto checks at least as Warn. Only the parts of "
-                      "the machine in the head model are checked; the Clearance view lists what it leaves out.");
+                      "the machine in the head model are checked; the Clearance view lists what it leaves out."
+                      " Default: Warn. Unit: unitless choice. Auto raises Off to Warn and retains Block export.");
     def->enum_keys_map = &ConfigOptionEnum<NonplanarCollisionCheck>::get_enum_values();
     def->enum_values.push_back("off");
     def->enum_values.push_back("warn");
@@ -5404,7 +5449,8 @@ void PrintConfigDef::init_fff_params()
     def->category = L("Quality");
     def->tooltip  = L("When the clearance check finds the head hitting printed material, regenerate the curved shells and the G-code "
                       "with local repairs (lower surface, higher travel, fewer ironing lines) up to this many times. 0 only reports "
-                      "the hits.");
+                      "the hits."
+                      " Default: 3. Unit: passes. Auto retains this setting.");
     def->min      = 0;
     def->max      = 10;
     def->mode     = comExpert;
@@ -5418,7 +5464,8 @@ void PrintConfigDef::init_fff_params()
                       "line arrives. Top surfaces never print faster than the top surface speed, and lines under 2 mm run at the small "
                       "perimeter speed. With the filament's slowdown for layer cooling on, a curved pass shorter than the minimum "
                       "layer time slows down and, below the minimum print speed, the nozzle waits above it with the fan at full speed. "
-                      "Printers with rotary axes do not wait.");
+                      "Printers with rotary axes do not wait."
+                      " Default: on. Unit: unitless on/off. Auto retains this setting.");
     def->mode     = comExpert;
     def->set_default_value(new ConfigOptionBool(true));
 
@@ -5426,11 +5473,14 @@ void PrintConfigDef::init_fff_params()
     def->label    = L("Print head");
     def->category = L("Non-planar");
     def->tooltip  = L("Library ID of the head shape that limits curved surfaces: nozzle, ducts and gantry where modelled. An empty or "
-                      "unknown ID uses the generic conservative head.");
+                      "unknown ID uses the generic conservative head."
+                      " Default: empty. Unit: head ID or JSON path. Auto retains this setting.");
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionString(""));
 
     def = this->add("nonplanar_head_snapshot", coString);
+    def->tooltip = L("Project-owned resolved print-head envelope. Default: empty. Unit: serialized head JSON. "
+                     "Auto retains the saved envelope; changing the head selection clears it.");
     def->set_default_value(new ConfigOptionString(""));
 
     def = this->add("nonplanar_segment_rate", coFloat);
@@ -5438,7 +5488,8 @@ void PrintConfigDef::init_fff_params()
     def->category = L("Non-planar");
     def->tooltip  = L("How many moves per second the firmware can plan without its move buffer running empty. Curved "
                       "shells are made of short moves; they are joined and slowed down so that this rate is never "
-                      "exceeded, which avoids stuttering. 0 picks a value from the G-code flavor and printer.");
+                      "exceeded, which avoids stuttering. 0 picks a value from the G-code flavor and printer."
+                      " Default: 0. Unit: moves/s. Auto retains this setting.");
     def->sidetext = L("moves/s");
     def->min      = 0;
     def->mode     = comExpert;
@@ -5448,7 +5499,8 @@ void PrintConfigDef::init_fff_params()
     def->label    = L("Rotary axes");
     def->category = L("Non-planar");
     def->tooltip  = L("Choose the printer's rotary layout; None keeps ordinary three-axis XYZ motion. Rotary layouts can "
-                      "tilt the tool or bed, but require measured geometry and matching firmware settings.");
+                      "tilt the tool or bed, but require measured geometry and matching firmware settings."
+                      " Default: None. Unit: unitless choice. Auto retains this setting.");
     def->enum_keys_map = &ConfigOptionEnum<RotaryLayout>::get_enum_values();
     def->enum_values.push_back("none");
     def->enum_values.push_back("table_bc");
@@ -5577,7 +5629,8 @@ void PrintConfigDef::init_fff_params()
                       "may allow less. Curved top shells lean toward the surface normal only where an upright line would stand proud "
                       "of the surface, and their bands get shorter so the upright head clears the tilted lines. Other curved areas in "
                       "height bands stay upright. Multiplanar chunks tilt within this angle; rotary curved layers need at least 10°. "
-                      "0 keeps the tool upright.");
+                      "0 keeps the tool upright."
+                      " Default: 0. Unit: degrees. Auto retains this setting.");
     def->sidetext = u8"°";
     def->min      = 0;
     def->max      = 90;
