@@ -2,17 +2,19 @@ import { vectors as shippedVectors } from 'virtual:option-bootstrap';
 import type { Config, ConfigValue } from './api/types';
 
 const types: Record<string, string> = { ...shippedVectors };
-const vectorTypes = ['Floats', 'Ints', 'Percents', 'Bools', 'FloatsOrPercents', 'Points', 'Enums', 'Strings', 'PointsGroups', 'IntsGroups'];
+const vectorTypes = new Map(['Floats', 'Ints', 'Percents', 'Bools', 'FloatsOrPercents', 'Points', 'Enums', 'Strings', 'PointsGroups', 'IntsGroups']
+  .map((type) => [type.toLowerCase(), type]));
+const configTypes = new Map(vectorTypes).set('string', 'String').set('point', 'Point').set('point3', 'Point3');
 export function vectorType(type: string): string | undefined {
   const name = type.replace(/^co/, '').replace(/_/g, '').toLowerCase();
-  return vectorTypes.find((t) => t.toLowerCase() === name);
+  return vectorTypes.get(name);
 }
 
 export function setOptionTypes(options: Record<string, { type: string }>) {
   for (const key of Object.keys(types)) delete types[key];
   for (const [key, def] of Object.entries(options)) {
     const name = def.type.replace(/^co/, '').replace(/_/g, '').toLowerCase();
-    const type = vectorType(def.type) ?? ['String', 'Point', 'Point3'].find((t) => t.toLowerCase() === name);
+    const type = configTypes.get(name);
     if (type) types[key] = type;
   }
 }

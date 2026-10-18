@@ -60,8 +60,16 @@ async function asset(url: string): Promise<any> {
   return response.json();
 }
 
-export async function loadRuntimeOptions(url: string, mock = false): Promise<Record<string, OptionDef>> {
-  const shippedPromise = asset(url).then(records).catch(() => null);
+export interface RuntimeOptions {
+  options: Record<string, OptionDef>;
+  etag: string | null;
+  native: boolean;
+}
+
+export async function loadRuntimeOptions(url: string, mock = false, cached?: RuntimeOptions): Promise<RuntimeOptions> {
+  let shippedPromise: Promise<Record<string, Metadata> | null> | undefined;
+  const shippedAsset = () => shippedPromise ??= asset(url).then(records).catch(() => null);
+  if (!cached?.native) void shippedAsset();
   let native = false;
   nativePresets = false;
   if (!mock) {
@@ -74,10 +82,24 @@ export async function loadRuntimeOptions(url: string, mock = false): Promise<Rec
     } catch {
     } finally { clearTimeout(timer); }
   }
-  const selected = native ? records(await asset('/api/options')) : await shippedPromise;
+  let etag: string | null = null;
+  let selected: Record<string, Metadata> | null;
+  if (native) {
+    const response = await fetch('/api/options', {
+      cache: 'no-store',
+      headers: cached?.native && cached.etag ? { 'If-None-Match': cached.etag } : {},
+    });
+    if (response.status === 304 && cached?.native) {
+      setOptionTypes(cached.options);
+      return cached;
+    }
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}: /api/options`);
+    etag = response.headers.get('ETag');
+    selected = records(await response.json());
+  } else selected = await shippedAsset();
   if (!selected) throw new Error('Shipped option dictionary unavailable');
   const options = normalizeOptions(selected);
-  const shipped = await shippedPromise;
+  const shipped = native ? await shippedAsset() : null;
   const hints = shipped ? normalizeOptions(shipped) : {};
   if (native) for (const [key, def] of Object.entries(options)) {
     const hint = hints[key];
@@ -86,5 +108,5 @@ export async function loadRuntimeOptions(url: string, mock = false): Promise<Rec
       if (hint[name] !== undefined) Object.assign(def, { [name]: hint[name] });
   }
   setOptionTypes(options);
-  return options;
+  return { options, etag, native };
 }

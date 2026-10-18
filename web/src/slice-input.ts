@@ -1,5 +1,5 @@
 import type { Config, ConfigValue } from './api/types';
-import { currentFlush } from './components/FlushDialog';
+import { currentFlush } from './flush-state';
 import { eventArg } from './components/LayerEvents';
 import { OPTIONS, jobValue } from './options';
 import { filamentColor } from './plater/filamentColor';

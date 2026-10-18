@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { Plugin } from 'vite';
 
-export function optionAssets(): Plugin {
+export function optionAssets(bootstrapTypes = true): Plugin {
   return {
     name: 'orca-option-bootstrap',
     resolveId(id) {
@@ -16,11 +16,18 @@ export function optionAssets(): Plugin {
       };
       const options = read('./src/options.generated.json');
       const quick = Object.fromEntries(['curr_bed_type', 'flush_multiplier'].map((key) => [key, options[key]]));
-      const vectors = Object.fromEntries(Object.keys(options)
+      const vectors = Object.fromEntries((bootstrapTypes ? Object.keys(options) : [])
         .filter((key) => /^(Floats|Ints|Percents|Bools|FloatsOrPercents|Points|Enums|Strings|PointsGroups|String|Point|Point3)$/.test(options[key].type))
         .map((key) => [key, options[key].type]));
+      const groups = new Map<string, string[]>();
+      for (const [key, type] of Object.entries(vectors)) {
+        const keys = groups.get(type) ?? [];
+        keys.push(key);
+        groups.set(type, keys);
+      }
+      const grouped = [...groups].map(([type, keys]) => [type, keys.join(' ')]);
       const removed = [...new Set(['process', 'printer', 'filament'].flatMap((tab) => read(`./src/tabs/${tab}.json`).removed_keys))];
-      return `export const quick = ${JSON.stringify(quick)}; export const vectors = ${JSON.stringify(vectors)}; export const removed = ${JSON.stringify(removed)};`;
+      return `export const quick = ${JSON.stringify(quick)}; export const vectors = Object.fromEntries(${JSON.stringify(grouped)}.flatMap(([type, keys]) => keys.split(' ').map(key => [key, type]))); export const removed = ${JSON.stringify(removed)};`;
     },
   };
 }

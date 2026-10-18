@@ -1,19 +1,23 @@
 import { normalizeConfig } from '../config-values';
 import type { PresetCatalog, PresetType, SystemPreset } from './types';
 
-export function normalizeCatalog(raw: any, vendor: string, native = raw?.schema === 'orca.presets.v1'): PresetCatalog {
+export function normalizeCatalog(raw: any, vendor: string, native = raw?.schema === 'orca.presets.v1', models?: string[]): PresetCatalog {
   const pick = (...keys: string[]) => keys.map((k) => raw?.[k]).find(Array.isArray) ?? [];
   const norm = (type: PresetType) => (p: any): SystemPreset => ({
     ...p,
     type,
     vendor: p.vendor ?? vendor,
-    config: normalizeConfig(p.config ?? p.values ?? {}, native),
+    config: p.config ?? p.values ?? {},
   });
-  return {
+  let catalog = {
     machines: pick('machines', 'machine', 'printers').map(norm('machine')),
     processes: pick('processes', 'process', 'prints').map(norm('process')),
     filaments: pick('filaments', 'filament').map(norm('filament')),
   };
+  if (models) catalog = demoPresets(catalog, models);
+  for (const presets of Object.values(catalog))
+    for (const preset of presets) preset.config = normalizeConfig(preset.config, native);
+  return catalog;
 }
 
 export function demoPresets(cat: PresetCatalog, models: string[]): PresetCatalog {

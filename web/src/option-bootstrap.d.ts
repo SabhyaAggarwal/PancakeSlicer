@@ -3,3 +3,8 @@ declare module 'virtual:option-bootstrap' {
   export const vectors: Record<string, string>;
   export const removed: string[];
 }
+
+declare module 'virtual:mock-presets' {
+  const url: string;
+  export default url;
+}

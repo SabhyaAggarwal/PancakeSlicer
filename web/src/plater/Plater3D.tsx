@@ -247,9 +247,11 @@ export default function Plater3D() {
     const inverse = new THREE.Matrix4();
     const linear = new THREE.Matrix3();
     const origin = new THREE.Vector3(), direction = new THREE.Vector3();
+    const rayOrigin = [0, 0, 0], rayDirection = [0, 0, 0];
+    const hits: { mesh: THREE.Mesh; distance: number }[] = [];
     const pick = (ev: { clientX: number; clientY: number }): { object: THREE.Object3D; distance: number } | undefined => {
       setRay(ev);
-      const hits: { mesh: THREE.Mesh; distance: number }[] = [];
+      hits.length = 0;
       for (const mesh of meshes.values()) {
         box.copy(mesh.geometry.boundingBox!).applyMatrix4(mesh.matrixWorld);
         if (ray.ray.intersectBox(box, entry)) hits.push({ mesh, distance: entry.distanceTo(ray.ray.origin) });
@@ -265,7 +267,7 @@ export default function Plater3D() {
           inverse.copy(mesh.matrixWorld).invert();
           origin.copy(ray.ray.origin).applyMatrix4(inverse);
           direction.copy(ray.ray.direction).applyMatrix3(linear.setFromMatrix4(inverse));
-          const t = raycastBvh(bvh, g.attributes.position.array, g.index!.array, origin.toArray(), direction.toArray(), best?.distance);
+          const t = raycastBvh(bvh, g.attributes.position.array, g.index!.array, origin.toArray(rayOrigin), direction.toArray(rayDirection), best?.distance);
           if (t !== Infinity) hit = { object: mesh, distance: t };
         } else {
           const triangles = (g.index ? g.index.count : g.attributes.position.count) / 3;
@@ -273,6 +275,7 @@ export default function Plater3D() {
         }
         if (hit && (!best || hit.distance < best.distance)) best = hit;
       }
+      hits.length = 0;
       return best;
     };
     const bedPoint = () => {

@@ -29,11 +29,12 @@ export async function init() {
   const first = localStorage.getItem('orca.vendor') ?? 'BBL';
   const vendors = [first, ...VENDORS.filter((v) => v !== first)];
   try {
-    await loadTab('process');
+    const settings = loadTab('process');
     const [cat, userPresets] = await Promise.all([
       api.presets(first, DEMO_MODELS, (c) => mergeCatalog(first, c)),
-      api.userPresets().catch(() => []),
+      settings.then(() => api.userPresets()).catch(() => []),
     ]);
+    await settings;
     setState({ ...cat, userPresets, loading: null, filamentSlots: [] });
     const known = (n: string | null) => !!n && !!resolvePreset(getState(), 'machine', n).base;
     const printer = [saved, DEFAULT_PRINTER].find(known) ?? cat.machines[0]?.name;

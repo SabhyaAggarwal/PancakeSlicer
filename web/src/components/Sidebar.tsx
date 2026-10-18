@@ -1,14 +1,15 @@
 import { OPTIONS, type OptionMode } from '../options';
 import { compatible, getState, markStale, printerPreset, setState, useStore } from '../state/store';
-import { flushModified } from './FlushDialog';
-import { Icon, IconButton } from './Icon';
 import { lazy, Suspense } from 'react';
-import { ObjectSettings } from './ObjectSettings';
+import { flushModified } from '../flush-state';
+import { Icon, IconButton } from './Icon';
 import { PresetCombo } from './PresetCombo';
 import { SettingsTab } from './SettingsTab';
 import { filamentColor } from '../plater/filamentColor';
 
 const ObjectList = lazy(() => import('./ObjectList').then((m) => ({ default: m.ObjectList })));
+
+const ObjectSettings = lazy(() => import('./ObjectSettings').then((m) => ({ default: m.ObjectSettings })));
 
 function SectionTitle({ icon, title, children }: { icon: string; title: string; children?: React.ReactNode }) {
   return (
@@ -164,7 +165,13 @@ export function Sidebar() {
       <FilamentSection />
       <ProcessHeader />
       {hasObjects && <Suspense fallback={null}><ObjectList /></Suspense>}
-      <div className="process-panel">{objects ? <ObjectSettings /> : <SettingsTab type="process" compact />}</div>
+      <div className="process-panel">
+        {objects ? (
+          <Suspense fallback={<div role="status">Loading object settings…</div>}>
+            <ObjectSettings />
+          </Suspense>
+        ) : <SettingsTab type="process" compact />}
+      </div>
     </aside>
   );
 }

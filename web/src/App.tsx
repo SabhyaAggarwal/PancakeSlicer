@@ -1,16 +1,18 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { addInstance, arrangeAll, download, importFiles, init, newProject, openFileDialog, openProjectDialog, removeInstance, toolbarOperation, saveProject } from './actions';
-import { FlushDialog } from './components/FlushDialog';
+import { addInstance, arrangeAll, download, importFiles, newProject, openFileDialog, openProjectDialog, removeInstance, toolbarOperation, saveProject } from './actions';
 import { CanvasToolbar, ManipulationPanel, SliceNotification, Toast } from './components/CanvasOverlays';
-import { PresetDialog } from './components/Dialogs';
 import { Sidebar } from './components/Sidebar';
 import { TabBar, TopBar } from './components/TopBar';
 const Plater3D = lazy(() => import('./plater/Plater3D'));
 import { deleteAll, getState, removeSelected, setState, togglePrintable, useStore } from './state/store';
 
+const PresetDialog = lazy(() => import('./components/Dialogs').then((m) => ({ default: m.PresetDialog })));
+const FlushDialog = lazy(() => import('./components/FlushDialog').then((m) => ({ default: m.FlushDialog })));
 const PreviewView = lazy(() => import('./components/PreviewView').then((m) => ({ default: m.PreviewView })));
 
 export default function App() {
+  const dialog = useStore((s) => s.dialog);
+  const flushDialog = useStore((s) => s.flushDialog);
   const tab = useStore((s) => s.tab);
   const loading = useStore((s) => s.loading);
   const jobDone = useStore((s) => s.job.state === 'done');
@@ -19,7 +21,6 @@ export default function App() {
   if (tab === 'preview' || jobDone) previewOpened.current = true;
 
   useEffect(() => {
-    void init();
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.closest('input,select,textarea') || getState().dialog || getState().flushDialog) return;
       const ctrl = e.ctrlKey || e.metaKey;
@@ -84,8 +85,10 @@ export default function App() {
           {loading && <div className="loading">{loading}…</div>}
         </div>
       </div>
-      <PresetDialog />
-      <FlushDialog />
+      <Suspense fallback={<div role="status">Loading dialog…</div>}>
+        {dialog && <PresetDialog />}
+        {flushDialog && <FlushDialog />}
+      </Suspense>
       <Toast />
     </div>
   );
