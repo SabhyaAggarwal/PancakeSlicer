@@ -13,11 +13,15 @@ const css = (c: RGB) => `rgb(${c[0]},${c[1]},${c[2]})`;
 
 const SHOW_STATS = new URLSearchParams(location.search).has('stats');
 
-export function formatTime(s: number): string {
-  if (!Number.isFinite(s)) return '-';
-  s = Math.round(s);
-  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
-  return [d && `${d}d`, (d || h) && `${h}h`, (d || h || m) && `${m}m`, `${sec}s`].filter(Boolean).join(' ');
+function compactWeight(g: number): string {
+  const a = Math.abs(g);
+  const [v, unit] = a >= 1e6 ? [a / 1e6, 't'] : a >= 1e3 ? [a / 1e3, 'kg'] : [a, 'g'];
+  return `${g < 0 ? '-' : ''}${v.toFixed(2)}${unit}`;
+}
+
+function percent(time: number, total: number): string {
+  const p = total > 0 ? time / total : 0;
+  return p === 0 ? '0' : p > 0.001 ? (p * 100).toFixed(1) : '<0.1';
 }
 
 function Swatch({ c }: { c: RGB }) {
@@ -73,7 +77,7 @@ export function Legend(props: {
   const total = d.totalTime(mode);
   const prepare = d.meta.estimated_times?.[mode]?.prepare_time;
   const fil = filamentInfo(d);
-  const extrudeTime = d.roleTime.reduce((a, b) => a + b, 0);
+  const filMm = fil.reduce((a, f) => a + f.mm, 0), filG = fil.reduce((a, f) => a + f.grams, 0);
   const toggle = (k: keyof PreviewUi['vis']) => setUi((u) => ({ ...u, vis: { ...u.vis, [k]: !u.vis[k] } }));
   const toggleRole = (r: number) =>
     setUi((u) => {
@@ -89,15 +93,16 @@ export function Legend(props: {
         return (
           <table className="lg-table">
             <thead>
-              <tr><th>Line Type</th><th>Time</th><th>%</th><th>Usage</th></tr>
+              <tr><th>Line Type</th><th>Time</th><th>%</th><th colSpan={2}>Usage</th></tr>
             </thead>
             <tbody>
               {ROLE_NAMES.map((name, r) => (d.roleTime[r] > 0 || d.roleFilament[r] > 0) && (
                 <tr key={r} className={ui.vis.hiddenRoles.has(r) ? 'off' : ''} onClick={() => toggleRole(r)} title="Click to show or hide">
                   <td><Swatch c={ROLE_COLORS[r]} />{name}</td>
-                  <td>{formatTime(d.roleTime[r])}</td>
-                  <td>{extrudeTime > 0 ? `${((100 * d.roleTime[r]) / extrudeTime).toFixed(1)}%` : ''}</td>
-                  <td>{(d.roleFilament[r] / 1000).toFixed(2)} m</td>
+                  <td>{d.roleTime[r] > 0 ? shortTime(d.roleTime[r]) : ''}</td>
+                  <td>{percent(d.roleTime[r], total)}</td>
+                  <td>{(d.roleFilament[r] / 1000).toFixed(2)}m</td>
+                  <td>{compactWeight(filMm > 0 ? (d.roleFilament[r] * filG) / filMm : 0)}</td>
                 </tr>
               ))}
             </tbody>
@@ -125,7 +130,7 @@ export function Legend(props: {
               {fil.map((f, i) => (
                 <tr key={i}>
                   <td><Swatch c={cols[i] ?? hexToRgb('#F2754E')} />{i + 1} {names[i] ?? ''}</td>
-                  <td>{(f.mm / 1000).toFixed(2)} m · {f.grams.toFixed(2)} g</td>
+                  <td>{(f.mm / 1000).toFixed(2)} m  {compactWeight(f.grams)}</td>
                 </tr>
               ))}
             </tbody>
@@ -161,7 +166,7 @@ export function Legend(props: {
               <label key={k} className="lg-opt">
                 <input type="checkbox" checked={ui.vis[k] as boolean} onChange={() => toggle(k)} />
                 <Swatch c={c} />{label}
-                {k === 'travel' && d.travelTime > 0 && <span className="lg-time">{formatTime(d.travelTime)}</span>}
+                {k === 'travel' && d.travelTime > 0 && <span className="lg-time">{shortTime(d.travelTime)}</span>}
               </label>
             ))}
             <label className="lg-opt">
@@ -176,7 +181,7 @@ export function Legend(props: {
           <table className="lg-summary">
             <tbody>
               {ui.view === 'feature' && (
-                <tr><td>Total Filament:</td><td>{(fil.reduce((a, f) => a + f.mm, 0) / 1000).toFixed(2)} m  {fil.reduce((a, f) => a + f.grams, 0).toFixed(2)} g</td></tr>
+                <tr><td>Total Filament:</td><td>{(filMm / 1000).toFixed(2)} m  {compactWeight(filG)}</td></tr>
               )}
               {prepare ? <tr><td>Prepare time:</td><td>{shortTime(prepare)}</td></tr> : null}
               <tr><td>Model printing time:</td><td>{shortTime(total - (prepare ?? 0))}</td></tr>

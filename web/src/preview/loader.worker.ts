@@ -1,6 +1,7 @@
 import { BLOCK, CHUNK, readHeader, readStates, MoveType, type Header, type LayerRec, type MoveChunk, type States, type StreamMeta } from './format';
 
 const LOD_TOLERANCE = 0.05;
+const CUSTOM_ROLE = 18;
 
 export type WorkerIn = { url?: string; file?: Blob };
 export type WorkerOut =
@@ -150,6 +151,7 @@ async function run(src: WorkerIn) {
   let stage: 'header' | 'states' | 'moves' | 'layers' | 'meta' | 'end' = 'header';
   const layers: LayerRec[] = [];
   const fileLayers: LayerRec[] = [];
+  const vgcodeZ: number[] = [];
   let meta: StreamMeta = {};
   let prev: [number, number, number] = [0, 0, 0];
   let eof = false;
@@ -192,8 +194,14 @@ async function run(src: WorkerIn) {
         let z = states!.printZ[st] ?? 0;
         if (z <= 0 && (type & 0x7f) === MoveType.Extrude && states!.shell[st] === 0xff) z = c.pos[i * 4 + 2];
         const last = layers[layers.length - 1];
-        if (!last || last.id !== layerId) layers.push({ id: layerId, first: v, z });
-        else if (z > last.z) last.z = z;
+        const extrusionZ = (type & 0x7f) === MoveType.Extrude && c.role[i] !== CUSTOM_ROLE ? c.pos[i * 4 + 2] : null;
+        if (!last || last.id !== layerId) {
+          layers.push({ id: layerId, first: v, z });
+          vgcodeZ.push(extrusionZ ?? 0);
+        } else {
+          if (z > last.z) last.z = z;
+          if (extrusionZ != null) vgcodeZ[vgcodeZ.length - 1] = extrusionZ;
+        }
         c.layer[i] = layers.length - 1;
       }
       q.pos += n * h.moveStride;
@@ -258,7 +266,10 @@ async function run(src: WorkerIn) {
   }
   const matches = fileLayers.length === layers.length &&
     fileLayers.every((l, i) => l.id === layers[i].id && l.first === layers[i].first);
-  post({ kind: 'done', layers: matches ? fileLayers : layers, meta, ms: performance.now() - t0, bytes: received, layerTableMatches: matches });
+  const final = matches ? fileLayers : layers;
+  if (!meta.belt_tilt_angle && final.some((l, i) => i > 0 && final[i - 1].z >= l.z))
+    final.forEach((l, i) => (l.z = vgcodeZ[i]));
+  post({ kind: 'done', layers: final, meta, ms: performance.now() - t0, bytes: received, layerTableMatches: matches });
 }
 
 self.onmessage = (e: MessageEvent<WorkerIn>) => {

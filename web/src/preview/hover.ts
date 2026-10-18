@@ -101,9 +101,20 @@ export function explain(d: PreviewData, id: number, record: Record<string, unkno
   const st = d.states!;
   const s = d.state[id];
   const patchId = st.patch[s];
-  const objects = (record?.objects as { id?: number; name?: string; patches?: RecordPatch[] }[] | undefined) ?? [];
+  const objects = (record?.objects as { id?: number; name?: string; patches?: RecordPatch[]; instances?: { shift_mm?: number[] }[] }[] | undefined) ?? [];
   const label = st.label[s];
-  const own = objects.filter((o) => o.id === label);
+  let own = objects.filter((o) => o.id === label);
+  if (!own.length && objects.length > 1 && label >= 0) {
+    const c = labelCentres(d).get(label);
+    let best = Infinity;
+    if (c)
+      for (const o of objects)
+        for (const inst of o.instances ?? []) {
+          const [x, y] = inst.shift_mm ?? [NaN, NaN];
+          const dist = Math.hypot(x - c[0], y - c[1]);
+          if (dist < best) (best = dist), (own = [o]);
+        }
+  }
   for (const o of own.length ? own : objects.length === 1 || label < 0 ? objects : []) {
     const p = o.patches?.find((q) => q.id === patchId);
     if (!p) continue;
@@ -117,4 +128,23 @@ export function explain(d: PreviewData, id: number, record: Record<string, unkno
     title: `Curved pass of patch ${patchId}`,
     body: `Shell ${st.shell[s] + 1}, band ${st.band[s] + 1}. Printed curved where the head clears it.`,
   };
+}
+
+const centres = new WeakMap<PreviewData, Map<number, [number, number]>>();
+
+function labelCentres(d: PreviewData): Map<number, [number, number]> {
+  let out = centres.get(d);
+  if (out) return out;
+  const boxes = new Map<number, number[]>();
+  for (let i = 1; i < d.loaded; ++i) {
+    if ((d.type[i] & 0x7f) !== MoveType.Extrude) continue;
+    const label = d.states!.label[d.state[i]];
+    const x = d.pos[i * 4], y = d.pos[i * 4 + 1];
+    const b = boxes.get(label);
+    if (!b) boxes.set(label, [x, y, x, y]);
+    else (b[0] = Math.min(b[0], x)), (b[1] = Math.min(b[1], y)), (b[2] = Math.max(b[2], x)), (b[3] = Math.max(b[3], y));
+  }
+  out = new Map([...boxes].map(([label, b]) => [label, [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2]]));
+  if (d.done) centres.set(d, out);
+  return out;
 }
