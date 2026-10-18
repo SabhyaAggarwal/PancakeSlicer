@@ -11,7 +11,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -42,6 +41,7 @@ type JobRequest struct {
 	Files     []string    `json:"files"`
 	Plate     bool        `json:"plate"`
 	Output    string      `json:"output"`
+	Filename  string      `json:"filename,omitempty"`
 }
 
 type Event struct {
@@ -107,7 +107,7 @@ func (j *Job) View() JobView {
 	}
 	if j.state == StateDone {
 		v.DownloadURL = "/api/jobs/" + j.ID + "/download"
-		v.Filename = filepath.Base(j.OutputPath(j.Request.Output))
+		v.Filename = j.DownloadName()
 	}
 	return v
 }
@@ -185,6 +185,23 @@ func (j *Job) EventsSince(from int) ([]Event, <-chan struct{}, bool) {
 
 func (j *Job) OutputPath(kind string) string {
 	return filepath.Join(j.Dir, "out", outputBase(j.Request)+"."+kind)
+}
+
+func (j *Job) DownloadName() string {
+	name := j.Request.Filename
+	if name == "" && len(j.Request.Files) > 0 {
+		name = j.Request.Files[0]
+	}
+	for _, ext := range []string{".gcode.3mf", ".gcode", ".3mf", ".stl", ".obj"} {
+		if strings.HasSuffix(strings.ToLower(name), ext) {
+			name = name[:len(name)-len(ext)]
+			break
+		}
+	}
+	if name == "" {
+		name = "plate_1"
+	}
+	return name + "." + j.Request.Output
 }
 
 func outputBase(r JobRequest) string {
@@ -388,7 +405,11 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 	j.log("server", "progress slicing 0")
 	j.log("server", "nonplanar_slice_tool "+quoteArgs(args))
 
-	cmd := exec.CommandContext(ctx, m.cfg.Tool, args...)
+	cmd, commandErr := lineBufferedCommand(ctx, m.cfg.Tool, args)
+	if commandErr != nil {
+		j.setState(StateFailed, commandErr.Error())
+		return
+	}
 	cmd.Dir = j.Dir
 	cmd.Env = append(os.Environ(), "TMPDIR="+filepath.Join(j.Dir, "tmp"))
 	configureKill(cmd)

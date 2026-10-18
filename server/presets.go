@@ -45,13 +45,17 @@ func stringList(raw json.RawMessage) []string {
 }
 
 type vendorCache struct {
-	once    sync.Once
-	presets *VendorPresets
-	err     error
+	once     sync.Once
+	presets  *VendorPresets
+	response *cachedResponse
+	err      error
 }
 type PresetIndex struct {
-	root  string
-	cache sync.Map
+	root        string
+	cache       sync.Map
+	allOnce     sync.Once
+	allResponse *cachedResponse
+	allError    error
 }
 
 func NewPresetIndex(root string) *PresetIndex { return &PresetIndex{root: root} }
@@ -85,7 +89,12 @@ func (p *PresetIndex) vendor(name string) (*VendorPresets, error) {
 	}
 	entry, _ := p.cache.LoadOrStore(name, &vendorCache{})
 	v := entry.(*vendorCache)
-	v.once.Do(func() { v.presets, v.err = p.loadVendor(name) })
+	v.once.Do(func() {
+		v.presets, v.err = p.loadVendor(name)
+		if v.err == nil {
+			v.response, v.err = cacheJSON(v.presets)
+		}
+	})
 	return v.presets, v.err
 }
 func (p *PresetIndex) Vendor(name string) (*VendorPresets, bool) {
@@ -244,4 +253,24 @@ func (p *PresetIndex) loadVendor(vendor string) (*VendorPresets, error) {
 		m.DefaultMaterials = stringList(model["default_materials"])
 	}
 	return v, nil
+}
+
+func (p *PresetIndex) response(name string) (*cachedResponse, error) {
+	if _, err := p.vendor(name); err != nil {
+		return nil, err
+	}
+	entry, _ := p.cache.Load(name)
+	return entry.(*vendorCache).response, nil
+}
+
+func (p *PresetIndex) allResponseJSON() (*cachedResponse, error) {
+	p.allOnce.Do(func() {
+		vs, err := p.Vendors()
+		if err != nil {
+			p.allError = err
+			return
+		}
+		p.allResponse, p.allError = cacheJSON(vs)
+	})
+	return p.allResponse, p.allError
 }

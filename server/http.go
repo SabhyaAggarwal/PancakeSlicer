@@ -1,7 +1,6 @@
 package main
 
 import (
-	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,10 +8,12 @@ import (
 	"mime"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 type Server struct {
@@ -36,6 +37,10 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, users *UserPres
 	mux.HandleFunc("GET /api/jobs/{id}/download", s.download)
 	mux.HandleFunc("GET /api/jobs/{id}/moves", s.moves)
 	mux.HandleFunc("GET /api/presets", s.listPresets)
+	options := cacheResponse(optionData)
+	mux.HandleFunc("GET /api/options", func(w http.ResponseWriter, r *http.Request) {
+		options.serve(w, r, "options.json", "application/json", catalogCache, time.Time{})
+	})
 	mux.HandleFunc("GET /api/user-presets", s.listUserPresets)
 	mux.HandleFunc("POST /api/user-presets", s.saveUserPreset)
 	mux.HandleFunc("DELETE /api/user-presets/{type}/{name}", s.deleteTypedUserPreset)
@@ -56,7 +61,7 @@ func fail(w http.ResponseWriter, status int, message string) {
 
 func (s *Server) listPresets(w http.ResponseWriter, r *http.Request) {
 	if name := r.URL.Query().Get("vendor"); name != "" {
-		v, err := s.presets.vendor(name)
+		v, err := s.presets.response(name)
 		if errors.Is(err, os.ErrNotExist) {
 			fail(w, 404, "unknown vendor")
 			return
@@ -65,15 +70,15 @@ func (s *Server) listPresets(w http.ResponseWriter, r *http.Request) {
 			fail(w, 500, err.Error())
 			return
 		}
-		writeJSON(w, 200, v)
+		v.serve(w, r, "presets.json", "application/json", catalogCache, time.Time{})
 		return
 	}
-	vs, err := s.presets.Vendors()
+	vs, err := s.presets.allResponseJSON()
 	if err != nil {
 		fail(w, 500, err.Error())
 		return
 	}
-	writeJSON(w, 200, vs)
+	vs.serve(w, r, "presets.json", "application/json", catalogCache, time.Time{})
 }
 
 func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
@@ -91,7 +96,11 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, status, "invalid multipart upload: "+err.Error())
 		return
 	}
-	req := JobRequest{Vendor: r.FormValue("vendor"), Printer: r.FormValue("printer"), Process: r.FormValue("process"), Filaments: r.MultipartForm.Value["filament[]"], Output: r.FormValue("output")}
+	req := JobRequest{Vendor: r.FormValue("vendor"), Printer: r.FormValue("printer"), Process: r.FormValue("process"), Filaments: r.MultipartForm.Value["filament[]"], Output: r.FormValue("output"), Filename: r.FormValue("filename")}
+	if strings.ContainsAny(req.Filename, "/\\\r\n") || len(req.Filename) > 240 || strings.IndexFunc(req.Filename, unicode.IsControl) >= 0 || req.Filename == "." || req.Filename == ".." {
+		fail(w, 400, "filename must be a basename of at most 240 bytes")
+		return
+	}
 	if req.Output == "" {
 		req.Output = "gcode"
 	}
@@ -260,7 +269,7 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, err.Error())
 		return
 	}
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": st.Name()}))
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": j.DownloadName()}))
 	w.Header().Set("Content-Type", "application/octet-stream")
 	http.ServeContent(w, r, st.Name(), st.ModTime(), f)
 }
@@ -280,11 +289,13 @@ func (s *Server) moves(w http.ResponseWriter, r *http.Request) {
 	}
 	defer f.Close()
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Encoding", "gzip")
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filepath.Base(j.OutputPath("moves")) + ".gz"}))
-	compressed := gzip.NewWriter(w)
-	defer compressed.Close()
-	io.Copy(compressed, f)
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filepath.Base(j.OutputPath("moves"))}))
+	st, err := f.Stat()
+	if err != nil {
+		fail(w, 500, err.Error())
+		return
+	}
+	serveStream(w, r, f, st, "private, max-age=300, must-revalidate")
 }
 
 func (s *Server) events(w http.ResponseWriter, r *http.Request) {
@@ -388,18 +399,32 @@ func (s *Server) userPreset(w http.ResponseWriter, r *http.Request) {
 }
 
 func spaFiles(dir string) http.Handler {
-	files := http.FileServer(http.Dir(dir))
+	cache := &staticCache{files: map[string]staticEntry{}}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := os.Stat(filepath.Join(dir, filepath.FromSlash(strings.TrimPrefix(r.URL.Path, "/"))))
-		if err == nil {
-			files.ServeHTTP(w, r)
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.WriteHeader(405)
 			return
 		}
-		if strings.HasPrefix(r.URL.Path, "/images/") || strings.HasPrefix(r.URL.Path, "/profiles/") || filepath.Ext(r.URL.Path) != "" {
+		clean := path.Clean("/" + r.URL.Path)
+		file := filepath.Join(dir, filepath.FromSlash(strings.TrimPrefix(clean, "/")))
+		st, err := os.Stat(file)
+		if err == nil && st.IsDir() {
+			file = filepath.Join(file, "index.html")
+			st, err = os.Stat(file)
+		}
+		if err != nil {
+			if strings.HasPrefix(clean, "/images/") || strings.HasPrefix(clean, "/profiles/") || filepath.Ext(clean) != "" {
+				http.NotFound(w, r)
+				return
+			}
+			file = filepath.Join(dir, "index.html")
+			st, err = os.Stat(file)
+		}
+		if err != nil || !st.Mode().IsRegular() {
 			http.NotFound(w, r)
 			return
 		}
-		http.ServeFile(w, r, filepath.Join(dir, "index.html"))
+		cache.serve(w, r, file, st)
 	})
 }
 
