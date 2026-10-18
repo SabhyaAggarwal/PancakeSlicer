@@ -85,6 +85,10 @@ func (s *Server) listPresets(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
+	if r.ContentLength > s.cfg.MaxUploadSize {
+		fail(w, http.StatusRequestEntityTooLarge, "multipart upload exceeds max-upload")
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, s.cfg.MaxUploadSize)
 	parseErr := r.ParseMultipartForm(8 << 20)
 	if r.MultipartForm != nil {
@@ -169,9 +173,10 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	}()
 	names := map[string]bool{}
 	for _, f := range files {
-		name := f.Filename
+		_, parameters, headerErr := mime.ParseMediaType(f.Header.Get("Content-Disposition"))
+		name := parameters["filename"]
 		ext := strings.ToLower(filepath.Ext(name))
-		if name == "" || strings.ContainsAny(name, "/\\") || name != filepath.Base(name) || (ext != ".stl" && ext != ".obj" && ext != ".3mf") || names[name] {
+		if headerErr != nil || name == "" || len(name) > 240 || strings.IndexFunc(name, unicode.IsControl) >= 0 || strings.ContainsAny(name, "/\\") || name != filepath.Base(name) || (ext != ".stl" && ext != ".obj" && ext != ".3mf") || names[name] {
 			fail(w, 400, "uploads need unique STL, OBJ or 3MF basenames")
 			return
 		}
@@ -249,7 +254,10 @@ func (s *Server) deleteJob(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 202, map[string]string{"id": j.ID, "state": "cancelling"})
 		return
 	}
-	s.jobs.Remove(j)
+	if err := s.jobs.Remove(j); err != nil {
+		fail(w, 500, "cannot remove job: "+err.Error())
+		return
+	}
 	w.WriteHeader(204)
 }
 func (s *Server) download(w http.ResponseWriter, r *http.Request) {
@@ -315,17 +323,21 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 		}
 		from = n + 1
 	}
-	f, ok := w.(http.Flusher)
-	if !ok {
+	controller := http.NewResponseController(w)
+	if _, ok := w.(http.Flusher); !ok {
 		fail(w, 500, "streaming unavailable")
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
+	defer controller.SetWriteDeadline(time.Time{})
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
 	for {
+		if err := controller.SetWriteDeadline(time.Now().Add(15 * time.Second)); err != nil {
+			return
+		}
 		events, changed, done := j.EventsSince(from)
 		for _, e := range events {
 			b, _ := json.Marshal(e)
@@ -334,7 +346,9 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 			}
 			from = e.ID + 1
 		}
-		f.Flush()
+		if err := controller.Flush(); err != nil {
+			return
+		}
 		if done {
 			return
 		}
@@ -343,10 +357,15 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 			return
 		case <-changed:
 		case <-heartbeat.C:
+			if err := controller.SetWriteDeadline(time.Now().Add(15 * time.Second)); err != nil {
+				return
+			}
 			if _, err := io.WriteString(w, ": keepalive\n\n"); err != nil {
 				return
 			}
-			f.Flush()
+			if err := controller.Flush(); err != nil {
+				return
+			}
 		}
 	}
 }
@@ -409,7 +428,12 @@ func spaFiles(dir string) http.Handler {
 			return
 		}
 		clean := path.Clean("/" + r.URL.Path)
-		file := filepath.Join(dir, filepath.FromSlash(strings.TrimPrefix(clean, "/")))
+		relative := filepath.FromSlash(strings.TrimPrefix(clean, "/"))
+		if strings.Contains(r.URL.Path, "\\") || (relative != "" && !filepath.IsLocal(relative)) {
+			http.NotFound(w, r)
+			return
+		}
+		file := filepath.Join(dir, relative)
 		st, err := os.Stat(file)
 		if err == nil && st.IsDir() {
 			file = filepath.Join(file, "index.html")

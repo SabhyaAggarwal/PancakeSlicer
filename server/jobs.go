@@ -56,6 +56,7 @@ type Event struct {
 }
 
 const maxEvents = 20000
+const maxEventBytes = 8 << 20
 
 type Job struct {
 	ID      string
@@ -63,20 +64,21 @@ type Job struct {
 	Request JobRequest
 	Created time.Time
 
-	mu       sync.Mutex
-	state    JobState
-	started  time.Time
-	finished time.Time
-	errMsg   string
-	exitCode *int
-	slice    json.RawMessage
-	events   []Event
-	dropped  int
-	changed  chan struct{}
-	cancel   context.CancelFunc
-	userStop bool
-	stage    string
-	progress *float64
+	mu         sync.Mutex
+	state      JobState
+	started    time.Time
+	finished   time.Time
+	errMsg     string
+	exitCode   *int
+	slice      json.RawMessage
+	events     []Event
+	dropped    int
+	eventBytes int
+	changed    chan struct{}
+	cancel     context.CancelFunc
+	userStop   bool
+	stage      string
+	progress   *float64
 }
 
 type JobView struct {
@@ -128,10 +130,11 @@ func (j *Job) notifyLocked() {
 }
 
 func (j *Job) appendLocked(e Event) {
-	if (e.Type == "log" || e.Type == "progress") && len(j.events) >= maxEvents {
+	if (e.Type == "log" || e.Type == "progress") && (len(j.events) >= maxEvents || len(e.Line) > maxEventBytes-j.eventBytes) {
 		j.dropped++
 		return
 	}
+	j.eventBytes += len(e.Line)
 	e.ID = len(j.events)
 	j.events = append(j.events, e)
 	j.notifyLocked()
@@ -240,10 +243,14 @@ func NewJobManager(cfg Config) (*JobManager, error) {
 	if err := os.MkdirAll(cfg.JobRoot, 0o755); err != nil {
 		return nil, err
 	}
-	if entries, err := os.ReadDir(cfg.JobRoot); err == nil {
-		for _, e := range entries {
-			if e.IsDir() && jobIDPattern.MatchString(e.Name()) {
-				os.RemoveAll(filepath.Join(cfg.JobRoot, e.Name()))
+	entries, err := os.ReadDir(cfg.JobRoot)
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range entries {
+		if e.IsDir() && jobIDPattern.MatchString(e.Name()) {
+			if err := os.RemoveAll(filepath.Join(cfg.JobRoot, e.Name())); err != nil {
+				return nil, fmt.Errorf("remove orphan job: %w", err)
 			}
 		}
 	}
@@ -261,7 +268,7 @@ func (m *JobManager) NewJob() (*Job, error) {
 	dir := filepath.Join(m.cfg.JobRoot, id)
 	for _, sub := range []string{"input", "out", "datadir", "tmp"} {
 		if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
-			return nil, err
+			return nil, errors.Join(err, os.RemoveAll(dir))
 		}
 	}
 	return &Job{ID: id, Dir: dir, Created: time.Now(), state: StateQueued, changed: make(chan struct{})}, nil
@@ -312,11 +319,14 @@ func (m *JobManager) Cancel(j *Job) bool {
 	return true
 }
 
-func (m *JobManager) Remove(j *Job) {
+func (m *JobManager) Remove(j *Job) error {
+	if err := os.RemoveAll(j.Dir); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	delete(m.jobs, j.ID)
 	m.mu.Unlock()
-	os.RemoveAll(j.Dir)
+	return nil
 }
 
 func (m *JobManager) Counts() (queued, running int) {
@@ -346,6 +356,17 @@ func (m *JobManager) Shutdown() {
 	}
 	m.mu.Unlock()
 	m.wg.Wait()
+	m.mu.Lock()
+	remaining := make([]*Job, 0, len(m.jobs))
+	for _, j := range m.jobs {
+		remaining = append(remaining, j)
+	}
+	m.mu.Unlock()
+	for _, j := range remaining {
+		if err := m.Remove(j); err != nil {
+			log.Printf("remove job %s: %v", j.ID, err)
+		}
+	}
 }
 
 func (m *JobManager) reap() {
@@ -367,7 +388,9 @@ func (m *JobManager) reap() {
 			}
 			m.mu.Unlock()
 			for _, j := range old {
-				m.Remove(j)
+				if err := m.Remove(j); err != nil {
+					log.Printf("expire job %s: %v", j.ID, err)
+				}
 			}
 		}
 	}
@@ -429,12 +452,14 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 	cmd.Env = append(os.Environ(), "TMPDIR="+filepath.Join(j.Dir, "tmp"))
 	configureKill(cmd)
 	cmd.WaitDelay = 5 * time.Second
-	stdout, err1 := cmd.StdoutPipe()
-	stderr, err2 := cmd.StderrPipe()
-	if err := errors.Join(err1, err2); err != nil {
-		j.setState(StateFailed, err.Error())
-		return
-	}
+	stdout, stdoutWriter := io.Pipe()
+	stderr, stderrWriter := io.Pipe()
+	defer stdout.Close()
+	defer stderr.Close()
+	defer stdoutWriter.Close()
+	defer stderrWriter.Close()
+	cmd.Stdout = stdoutWriter
+	cmd.Stderr = stderrWriter
 	if err := cmd.Start(); err != nil {
 		switch {
 		case errors.Is(ctx.Err(), context.Canceled):
@@ -454,8 +479,13 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 		defer readers.Done()
 		scanLines(stderr, func(l string) { lastErr.add(l); j.log("stderr", l) })
 	}()
-	readers.Wait()
 	waitErr := cmd.Wait()
+	if cmd.Cancel != nil {
+		cmd.Cancel()
+	}
+	stdoutWriter.Close()
+	stderrWriter.Close()
+	readers.Wait()
 
 	code := cmd.ProcessState.ExitCode()
 	j.mu.Lock()
@@ -471,6 +501,8 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 		j.mu.Unlock()
 	}
 	switch {
+	case errors.Is(ctx.Err(), context.Canceled):
+		j.setState(StateCancelled, "cancelled")
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
 		j.setState(StateFailed, fmt.Sprintf("slicing exceeded the %s time limit", m.cfg.JobTimeout))
 	case waitErr != nil:

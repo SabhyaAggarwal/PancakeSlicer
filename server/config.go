@@ -44,7 +44,7 @@ func overrides(raw string) ([][2]string, error) {
 	sort.Strings(keys)
 	out := make([][2]string, 0, len(keys))
 	for _, key := range keys {
-		if !settingKey.MatchString(key) || hiddenSetting.MatchString(key) {
+		if !settingKey.MatchString(key) || hiddenSetting.MatchString(key) || configKinds[key] == "" {
 			return nil, fmt.Errorf("invalid override key %q", key)
 		}
 		value, err := configValue(key, values[key])
