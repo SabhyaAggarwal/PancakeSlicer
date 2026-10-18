@@ -1,4 +1,5 @@
 import type { Config, ConfigValue, JobRequest, PresetCatalog } from './api/types';
+import { sliceProgress } from './api/progress';
 import { connect } from './api/client';
 import { currentFlush } from './components/FlushDialog';
 import { eventArg } from './components/LayerEvents';
@@ -228,20 +229,33 @@ export async function jobRequest(): Promise<JobRequest> {
 };
 
 let unsubscribe: (() => void) | null = null;
+let sliceGeneration = 0;
 
 export async function slice() {
   const s = getState();
   if (!s.api || !s.objects.length || s.job.state === 'running' || s.job.state === 'submitting') return;
+  const generation = ++sliceGeneration;
   setState({ job: { state: 'submitting', pct: 0, stage: 'uploading' } });
   try {
-    const id = await s.api.submit(await jobRequest());
+    const request = await jobRequest();
+    if (generation !== sliceGeneration) return;
+    const id = await s.api.submit(request);
+    if (generation !== sliceGeneration) {
+      await s.api.cancel(id);
+      return;
+    }
     setState({ job: { id, state: 'running', pct: 0, stage: 'queued' } });
     unsubscribe?.();
     const warnings: string[] = [];
     unsubscribe = s.api.events(id, {
-      progress: (e) => setState((st) => ({ job: { ...st.job, pct: Math.max(st.job.pct, e.pct), stage: e.stage } })),
-      done: (status) => setState({ job: { id, state: 'done', pct: 100, stage: 'done', status, warnings } }),
-      error: (msg) => setState((st) => ({ job: { ...st.job, state: 'failed', error: msg } })),
+      progress: (e) => {
+        if (generation !== sliceGeneration) return;
+        const progress = sliceProgress(e);
+        if (e.stage === 'verify' && e.pct >= 100 && request.output === 'gcode.3mf') progress.stage = 'Packaging sliced plate';
+        setState((st) => progress.pct < st.job.pct ? {} : { job: { ...st.job, ...progress } });
+      },
+      done: (status) => generation === sliceGeneration && setState({ job: { id, state: 'done', pct: 100, stage: 'done', status, warnings } }),
+      error: (msg) => generation === sliceGeneration && setState((st) => ({ job: { ...st.job, state: 'failed', error: msg } })),
       log: (stream, line) => {
         if (stream !== 'stderr' || !line.trim()) return;
         const m = /^warning:\s*(.*)$/i.exec(line);
@@ -250,11 +264,13 @@ export async function slice() {
       },
     });
   } catch (e) {
+    if (generation !== sliceGeneration) return;
     setState({ job: { state: 'failed', pct: 0, stage: '', error: String(e) } });
   }
 }
 
 export function cancelSlice() {
+  ++sliceGeneration;
   const s = getState();
   unsubscribe?.();
   unsubscribe = null;

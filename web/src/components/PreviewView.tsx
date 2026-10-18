@@ -1,3 +1,4 @@
+import { slicingText } from '../api/progress';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { effectiveConfig, getState, printerPreset, useStore } from '../state/store';
 import { computeRanges, hexToRgb, type NonplanarColor, type Ranges, type ViewType, type Visibility } from '../preview/colors';
@@ -211,7 +212,9 @@ export function PreviewView() {
   }, [layerCount, topMoves]);
 
   const loading = data && !data.done && !data.error;
-  const status = !data && !source() && !dropped
+  const status = job.state === 'running' || job.state === 'submitting'
+    ? slicingText(job)
+    : !data && !source() && !dropped
     ? job.state === 'done' ? null : 'No sliced result. Slice the plate to see the result here.'
     : data?.error
       ? /^404 /.test(data.error)

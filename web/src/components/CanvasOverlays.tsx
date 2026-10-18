@@ -1,3 +1,4 @@
+import { slicingText } from '../api/progress';
 import { useEffect, useState } from 'react';
 import { addInstance, arrangeAll, cancelSlice, openFileDialog, removeInstance } from '../actions';
 import { objectSize } from '../plater/geometry';
@@ -111,10 +112,6 @@ export function ManipulationPanel() {
   );
 }
 
-const STATUS: Record<string, string> = {
-  uploading: 'Uploading', queued: 'Queued', slicing: 'Slicing mesh', export: 'Generating G-code',
-};
-
 const cleanError = (msg = '') => msg.replace(/^(error:\s*)?(validate:\s*)?/i, '');
 
 export function SliceNotification() {
@@ -165,16 +162,15 @@ export function SliceNotification() {
       {busy && (
         <div className="notification running">
           <div className="notif-text">
-            Slicing plate 1:{STATUS[job.stage] ?? job.stage}.
+            {slicingText(job)}
             <button className="notif-cancel icon-btn" title="Cancel" onClick={cancelSlice}>
               <Icon name="notification_cancel" size={16} />
             </button>
           </div>
           <div className="progress-row">
-            <div className="progress">
-              <div className="progress-fill" style={{ width: `${Math.max(2, job.pct)}%` }} />
+            <div className="progress" role="progressbar" aria-label="Slicing plate 1" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(job.pct)}>
+              <div className="progress-fill" style={{ width: `${job.pct}%` }} />
             </div>
-            <span className="notif-pct">{Math.round(job.pct)}%</span>
           </div>
         </div>
       )}

@@ -25,12 +25,13 @@ async function json<T>(r: Response): Promise<T> {
 export function parseProgress(data: string): ProgressEvent | null {
   try {
     const j = JSON.parse(data);
-    const pct = Number(j.pct ?? j.percent ?? j.progress);
-    if (Number.isFinite(pct)) return { stage: String(j.stage ?? j.message ?? ''), pct, message: j.message };
+    const value = j?.pct ?? j?.percent ?? j?.progress;
+    const pct = typeof value === 'number' || typeof value === 'string' && value.trim() ? Number(value) : NaN;
+    if (j && typeof j === 'object' && Number.isFinite(pct)) return { stage: String(j.stage ?? j.message ?? ''), pct, message: j.message };
   } catch {
   }
-  const m = /progress\s+(\S+)\s+(-?[\d.]+)/.exec(data);
-  return m ? { stage: m[1], pct: Number(m[2]) } : null;
+  const m = /^\s*progress\s+(\S+)\s+(-?\d+(?:\.\d+)?)\s*$/.exec(data);
+  return m && Number.isFinite(Number(m[2])) ? { stage: m[1], pct: Number(m[2]) } : null;
 }
 
 const realApi: Api = {
@@ -91,25 +92,38 @@ const realApi: Api = {
   events(id, on) {
     const es = new EventSource(`/api/jobs/${id}/events`);
     let finished = false;
+    let disposed = false;
+    let checking = false;
     const finish = async () => {
-      if (finished) return;
-      finished = true;
-      es.close();
+      if (finished || checking) return;
+      checking = true;
       try {
         const s = await realApi.status(id);
+        if (disposed) return;
+        if (s.state === 'queued' || s.state === 'running') return;
+        finished = true;
+        es.close();
         if (s.state === 'done') on.done(s);
         else on.error(s.error ?? `job ${s.state}`);
       } catch (e) {
-        on.error(String(e));
+        if (!disposed) {
+          finished = true;
+          es.close();
+          on.error(String(e));
+        }
+      } finally {
+        checking = false;
       }
     };
     const onData = (ev: MessageEvent) => {
+      if (finished) return;
       const p = parseProgress(ev.data);
       if (p) on.progress(p);
       if (/"state"\s*:\s*"(done|failed|canceled)"/.test(ev.data)) void finish();
     };
     es.onmessage = onData;
     es.addEventListener('progress', onData as EventListener);
+    es.addEventListener('state', onData as EventListener);
     es.addEventListener('log', ((ev: MessageEvent) => {
       try {
         const j = JSON.parse(ev.data);
@@ -120,6 +134,7 @@ const realApi: Api = {
     for (const t of ['done', 'end', 'complete', 'failed', 'error_event']) es.addEventListener(t, () => void finish());
     es.onerror = () => void finish();
     return () => {
+      disposed = true;
       finished = true;
       es.close();
     };
@@ -135,8 +150,10 @@ const USER_KEY = 'orca.userPresets';
 const mockJobs = new Map<string, { req: JobRequest; status: JobStatus; gcode?: string }>();
 
 const STAGES: [string, number][] = [
-  ['loading', 2], ['slicing', 10], ['perimeters', 25], ['infill', 40], ['nonplanar', 55],
-  ['support', 65], ['skirt', 72], ['gcode', 80], ['processing', 92], ['export', 98],
+  ['load', 0], ['load', 100], ['slice', 0], ['slice', 15], ['slice', 25], ['slice', 35],
+  ['slice', 40], ['slice', 50], ['slice', 70], ['slice', 75], ['slice', 100],
+  ['export', 0], ['export', 100], ['verify', 0], ['verify', 100],
+  ['package', 0], ['package', 100], ['json', 0], ['json', 100],
 ];
 
 const mockApi: Api = {
@@ -173,11 +190,12 @@ const mockApi: Api = {
   },
   events(id, on) {
     const j = mockJobs.get(id)!;
+    const stages = STAGES.filter(([stage]) => stage !== 'package' || j.req.output === 'gcode.3mf');
     let i = 0;
     j.status.state = 'running';
     const timer = setInterval(() => {
-      if (i < STAGES.length) {
-        const [stage, pct] = STAGES[i++];
+      if (i < stages.length) {
+        const [stage, pct] = stages[i++];
         j.status.stage = stage;
         j.status.progress = pct;
         on.progress({ stage, pct });
@@ -200,7 +218,6 @@ const mockApi: Api = {
       ].join('\n');
       const base = j.req.plate?.objects[0]?.name ?? j.req.files[0]?.name.replace(/\.3mf$/i, '') ?? 'plate';
       Object.assign(j.status, { state: 'done', progress: 100, stage: 'done', filename: `${base}.${j.req.output}` });
-      on.progress({ stage: 'done', pct: 100 });
       fetch('/__moves/record')
         .then((r) => (r.ok && (r.headers.get('content-type') ?? '').includes('json') ? r.json() : undefined))
         .catch(() => undefined)
