@@ -1,4 +1,6 @@
 #include "HeadEnvelope.hpp"
+#include "libslic3r/Point.hpp"
+#include <boost/filesystem/directory.hpp>
 
 #include "libslic3r/Config.hpp"
 #include "libslic3r/Exception.hpp"

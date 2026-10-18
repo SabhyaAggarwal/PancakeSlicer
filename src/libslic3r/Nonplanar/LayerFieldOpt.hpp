@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include "HeadEnvelope.hpp"
 #include "HeightField.hpp"
 #include "LayerField.hpp"

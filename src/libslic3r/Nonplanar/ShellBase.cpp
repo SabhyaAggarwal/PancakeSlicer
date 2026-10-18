@@ -1,4 +1,10 @@
 #include "ShellBase.hpp"
+#include "libslic3r/ExPolygon.hpp"
+#include "libslic3r/Nonplanar/HeightField.hpp"
+#include "libslic3r/Point.hpp"
+#include "libslic3r/PrintConfig.hpp"
+#include <cstddef>
+#include <utility>
 
 #include "BeadModel.hpp"
 #include "ConformalShells.hpp"

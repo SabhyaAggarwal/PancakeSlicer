@@ -1,4 +1,10 @@
 #include "MultiplanarConfirm.hpp"
+#include "libslic3r/Point.hpp"
+#include "libslic3r/libslic3r.h"
+#include <boost/filesystem/operations.hpp>
+#include <boost/filesystem/path.hpp>
+#include <cstddef>
+#include <math.h>
 
 #include "AutoMode.hpp"
 #include "Multiplanar.hpp"

@@ -1,4 +1,5 @@
 #pragma once
+#include <math.h>
 #include "HeadEnvelope.hpp"
 #include "LayerField.hpp"
 #include "LayerFieldOpt.hpp"

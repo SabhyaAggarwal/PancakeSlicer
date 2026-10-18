@@ -1,4 +1,6 @@
 #pragma once
+#include "libslic3r/Point.hpp"
+#include <utility>
 #include "ConformalShells.hpp"
 #include "HeightField.hpp"
 #include "LayerField.hpp"

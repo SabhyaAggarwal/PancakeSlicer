@@ -58,6 +58,24 @@ double process_cpu_seconds()
 
 using Json = nlohmann::json;
 
+Json print_statistics_json(const Print &print, const GCodeProcessorResult &result)
+{
+    const PrintStatistics &stats = print.print_statistics();
+    Json statistics = {{"total_used_filament_mm", stats.total_used_filament},
+                       {"total_extruded_volume_mm3", stats.total_extruded_volume},
+                       {"total_weight_g", stats.total_weight}, {"total_cost", stats.total_cost},
+                       {"total_wipe_tower_filament_mm", stats.total_wipe_tower_filament},
+                       {"total_toolchanges", stats.total_toolchanges}, {"per_extruder", Json::array()}};
+    for (const auto &[id, volume] : result.print_statistics.total_volumes_per_extruder) {
+        const double diameter = print.config().filament_diameter.get_at(id);
+        const double density = print.config().filament_density.get_at(id);
+        statistics["per_extruder"].push_back({{"extruder_id", id},
+            {"used_filament_mm", volume / (PI * sqr(0.5 * diameter))},
+            {"used_filament_g", volume * density * 0.001}});
+    }
+    return statistics;
+}
+
 std::string file_sha1(const std::string &path)
 {
     boost::nowide::ifstream in(path, std::ios::binary);

@@ -4,6 +4,13 @@
 #include "nanosvg/nanosvgrast.h"
 
 #include "admesh/stl.h"
+#include <Eigen/Geometry>
+#include <boost/filesystem/directory.hpp>
+#include "libslic3r/Nonplanar/Report.hpp"
+#include "libslic3r/Nonplanar/ShellBase.hpp"
+#include "libslic3r/Polygon.hpp"
+#include "libslic3r/PrintBase.hpp"
+#include <math.h>
 
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/Config.hpp"
@@ -31,7 +38,6 @@
 #include "libslic3r/Preset.hpp"
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/Print.hpp"
-#include "libslic3r/PrintBase.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/Semver.hpp"
 #include "libslic3r/Slicing.hpp"
@@ -1172,7 +1178,11 @@ int main(int argc, char **argv)
         const double c_done = process_cpu_seconds();
 
         progress("export", 100);
-        if (!args.moves_out.empty()) write_moves(args.moves_out, result, args.filaments);
+        if (!args.json.empty() || !args.moves_out.empty()) {
+            const auto statistics = print_statistics_json(print, result);
+            if (!args.json.empty()) record["statistics"] = statistics;
+            if (!args.moves_out.empty()) write_moves(args.moves_out, result, args.filaments, statistics);
+        }
 
         if (args.explain)
             for (size_t i = 0; i < print.objects().size(); ++i) {

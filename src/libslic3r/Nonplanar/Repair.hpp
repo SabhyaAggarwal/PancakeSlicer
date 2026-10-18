@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include "HeightField.hpp"
 #include "libslic3r/Point.hpp"
 #include <vector>

@@ -1,4 +1,5 @@
 #include "ConformalVolume.hpp"
+#include "libslic3r/Point.hpp"
 
 #include "AutoMode.hpp"
 #include "ConformalShells.hpp"

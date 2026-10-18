@@ -1,4 +1,13 @@
 #include "Multiplanar.hpp"
+#include "libslic3r/ExPolygon.hpp"
+#include "libslic3r/Exception.hpp"
+#include "libslic3r/Nonplanar/HeadEnvelope.hpp"
+#include "libslic3r/Point.hpp"
+#include "libslic3r/Polygon.hpp"
+#include "libslic3r/TriangleMesh.hpp"
+#include "libslic3r/libslic3r.h"
+#include <cstddef>
+#include <math.h>
 #include "MultiplanarConfirm.hpp"
 
 #include "ConformalIroning.hpp"

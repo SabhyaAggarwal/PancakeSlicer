@@ -1,4 +1,5 @@
 #include "CurvedOverhang.hpp"
+#include "libslic3r/Nonplanar/HeightField.hpp"
 
 #include "AutoMode.hpp"
 
@@ -66,6 +67,8 @@ constexpr double SameHeight = 0.01;
 constexpr double SupportFreeMinArea = 1.;
 constexpr double FlatUnderside = 0.05;
 constexpr int MaxPasses = 4;
+constexpr double BoreHalfSpan = 2.5;
+constexpr double ThreadDepth = 1.3;
 
 struct OverhangSettings
 {
@@ -324,10 +327,10 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
     const double grad_min  = std::max(0., g / ((1. - min_contact) * w) - std::tan(settings.max_bend));
     std::vector<float> slope(n_nodes, HeightField::NoData);
     Mask               mask(n_nodes, 0);
-    enum Why : uint8_t { Taken, Unsampled, Resting, Rim, SelfSupporting, Unfit, Small, NoRoot, NoBeads };
+    enum Why : uint8_t { Taken, Unsampled, Resting, Rim, SelfSupporting, Unfit, Small, NoRoot, NoBeads, Bridged, Thread };
     static constexpr const char *why_tag[] = { "overhang_outline", "overhang_unsampled", "overhang_resting", "overhang_rim",
                                                "overhang_self_supporting", "overhang_unfit", "overhang_small",
-                                               "overhang_no_root", "overhang_no_beads" };
+                                               "overhang_no_root", "overhang_no_beads", "overhang_bridged", "overhang_thread" };
     std::vector<uint8_t> why(n_nodes, Taken);
     for (int iy = 0; iy < grid.ny(); ++iy)
         for (int ix = 0; ix < grid.nx(); ++ix) {
@@ -520,6 +523,65 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
                             queue.emplace(nd, int(q));
                         }
                     }
+            }
+        }
+
+        {
+            float far = 0.f;
+            for (int i : nodes)
+                far = std::max(far, dist[size_t(i)]);
+            const bool strip = std::none_of(footprint.begin(), footprint.end(), [](const ExPolygon &e) { return !e.holes.empty(); });
+            if (far <= ThreadDepth) {
+                const int    tip = *std::max_element(nodes.begin(), nodes.end(), [&](int a, int b) { return dist[size_t(a)] < dist[size_t(b)]; });
+                const Vec2d  q   = grid.node(tip % grid.nx(), tip / grid.nx());
+                const Point  pt  = Point::new_scale(q.x(), q.y());
+                const Layer &at  = *layers[layer_at(Sb.data()[size_t(tip)] - 0.5 * g)];
+                const float ww   = float(scale_(std::max(wall_width, w)));
+                bool        bore = false;
+                for (const ExPolygon &e : at.lslices)
+                    if (e.contour.contains(pt) && !e.contains(pt))
+                        for (Polygon hole : e.holes)
+                            if (hole.contains(pt) && fit_round(hole) && std::abs(hole.area()) * SCALING_FACTOR * SCALING_FACTOR <= Nonplanar::ThreadBoreArea) {
+                                hole.make_counter_clockwise();
+                                bore = !intersection_ex(opening_ex(ExPolygons{ e }, 1.5f * ww), offset_ex(ExPolygon(hole), 2.f * ww)).empty();
+                            }
+                if (bore) {
+                    reject(Thread);
+                    continue;
+                }
+            }
+            std::vector<float> ceiling;
+            for (int i : nodes)
+                ceiling.emplace_back(slope[size_t(i)]);
+            std::nth_element(ceiling.begin(), ceiling.begin() + ptrdiff_t(ceiling.size() / 2), ceiling.end());
+            const bool arc = !ceiling.empty() && ceiling[ceiling.size() / 2] >= FlatUnderside;
+            if (strip && arc && far <= BoreHalfSpan) {
+                Mask root(n_nodes, 0);
+                for (int i : front)
+                    root[size_t(i)] = 1;
+                int groups = 0;
+                for (int seed : front)
+                    if (root[size_t(seed)] == 1) {
+                        ++groups;
+                        std::vector<int> stack{ seed };
+                        root[size_t(seed)] = 2;
+                        while (!stack.empty()) {
+                            const int i = stack.back();
+                            stack.pop_back();
+                            const int ix = i % grid.nx(), iy = i / grid.nx();
+                            for (int dy = -1; dy <= 1; ++dy)
+                                for (int dx = -1; dx <= 1; ++dx)
+                                    if (const int qx = ix + dx, qy = iy + dy; qx >= 0 && qy >= 0 && qx < grid.nx() && qy < grid.ny())
+                                        if (const size_t q = size_t(qy) * grid.nx() + qx; root[q] == 1) {
+                                            root[q] = 2;
+                                            stack.emplace_back(int(q));
+                                        }
+                        }
+                    }
+                if (groups >= 2) {
+                    reject(Bridged);
+                    continue;
+                }
             }
         }
 

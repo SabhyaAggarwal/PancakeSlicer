@@ -1,4 +1,9 @@
 #include "TiltBudget.hpp"
+#include "libslic3r/GCode/ToolKinematics.hpp"
+#include "libslic3r/Point.hpp"
+#include <cstddef>
+#include <math.h>
+#include <vector>
 
 #include "libslic3r/libslic3r.h"
 

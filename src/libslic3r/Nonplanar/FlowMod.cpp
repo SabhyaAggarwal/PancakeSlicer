@@ -1,4 +1,10 @@
 #include "FlowMod.hpp"
+#include "libslic3r/Nonplanar/HeightField.hpp"
+#include "libslic3r/Point.hpp"
+#include <cstddef>
+#include <limits>
+#include <utility>
+#include <vector>
 
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/libslic3r.h"

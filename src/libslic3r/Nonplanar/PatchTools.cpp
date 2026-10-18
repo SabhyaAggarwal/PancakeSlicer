@@ -1,4 +1,11 @@
 #include "PatchTools.hpp"
+#include "libslic3r/ExPolygon.hpp"
+#include "libslic3r/ExtrusionEntity.hpp"
+#include "libslic3r/Fill/FillBase.hpp"
+#include "libslic3r/Point.hpp"
+#include "libslic3r/Polygon.hpp"
+#include "libslic3r/Polyline.hpp"
+#include <math.h>
 
 #include "AutoMode.hpp"
 #include "ConformalBottom.hpp"
@@ -18,7 +25,6 @@
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/Layer.hpp"
 #include "libslic3r/Model.hpp"
-#include "libslic3r/Point.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/ShortestPath.hpp"
 #include "libslic3r/PrintBase.hpp"

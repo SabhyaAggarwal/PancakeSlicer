@@ -1,4 +1,5 @@
 #include "HeightField.hpp"
+#include "libslic3r/BoundingBox.hpp"
 
 #include "libslic3r/Exception.hpp"
 

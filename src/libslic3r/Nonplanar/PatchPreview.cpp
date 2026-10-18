@@ -1,4 +1,5 @@
 #include "PatchPreview.hpp"
+#include "libslic3r/Nonplanar/HeightField.hpp"
 
 #include "AutoMode.hpp"
 #include "ConformalShells.hpp"

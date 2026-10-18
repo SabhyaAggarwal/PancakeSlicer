@@ -1,4 +1,14 @@
 #include "AtomToolpath.hpp"
+#include "libslic3r/ExtrusionEntity.hpp"
+#include "libslic3r/ExtrusionEntityCollection.hpp"
+#include "libslic3r/Flow.hpp"
+#include "libslic3r/Point.hpp"
+#include "libslic3r/PrintConfig.hpp"
+#include <istream>
+#include <miniz.h>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "BeadModel.hpp"
 #include "ConformalShells.hpp"

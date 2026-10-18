@@ -1113,7 +1113,9 @@ void PrintObject::slice_volumes()
             for (const std::vector<ExPolygons> &by_layer : low)
                 for (const ExPolygons &slice : by_layer)
                     polygons_append(outline, to_polygons(slice));
-            const ExPolygons silhouette = union_ex(outline);
+            ExPolygons silhouette;
+            for (ExPolygon &island : union_ex(outline))
+                silhouette.emplace_back(std::move(island.contour));
             const ExPolygons rim        = diff_ex(silhouette, offset_ex(silhouette, -float(scale_(Nonplanar::low_plane_rim(*this)))));
             std::vector<Polygons> mid_all;
             if (region_slices.size() > 1) {

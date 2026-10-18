@@ -1,10 +1,11 @@
 #pragma once
+#include "libslic3r/Polygon.hpp"
+#include <cstddef>
 #include "HeightField.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/Fill/FillBase.hpp"
 #include "libslic3r/Point.hpp"
-#include "libslic3r/Polygon.hpp"
 #include "libslic3r/Polyline.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/SLA/IndexedMesh.hpp"

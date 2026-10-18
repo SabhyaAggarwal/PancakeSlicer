@@ -1,4 +1,10 @@
 #include "AutoOrient.hpp"
+#include "libslic3r/Config.hpp"
+#include "libslic3r/Point.hpp"
+#include <cstddef>
+#include <math.h>
+#include <utility>
+#include <vector>
 
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/PrintConfig.hpp"

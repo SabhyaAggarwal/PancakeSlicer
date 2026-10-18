@@ -1,4 +1,6 @@
 #include "ConformalIroning.hpp"
+#include <cstddef>
+#include <functional>
 
 #include "AutoMode.hpp"
 #include "ConformalBottom.hpp"

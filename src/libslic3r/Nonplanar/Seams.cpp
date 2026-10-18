@@ -1,4 +1,9 @@
 #include "Seams.hpp"
+#include "libslic3r/Point.hpp"
+#include "libslic3r/Polygon.hpp"
+#include "libslic3r/PrintConfig.hpp"
+#include <cstddef>
+#include <vector>
 #include "ShellSeams.hpp"
 
 #include "HeightField.hpp"

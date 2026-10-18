@@ -1,4 +1,8 @@
 #include "StrengthRoads.hpp"
+#include "libslic3r/ExPolygon.hpp"
+#include "libslic3r/PrintConfig.hpp"
+#include "libslic3r/libslic3r.h"
+#include <cstddef>
 
 #include "HeightField.hpp"
 #include "PatchTools.hpp"

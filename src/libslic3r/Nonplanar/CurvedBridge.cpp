@@ -1,4 +1,6 @@
 #include "CurvedBridge.hpp"
+#include "libslic3r/Nonplanar/HeightField.hpp"
+#include <cstddef>
 
 #include "AutoMode.hpp"
 #include "ConformalShells.hpp"

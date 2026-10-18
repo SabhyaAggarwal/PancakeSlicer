@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include "FlowMod.hpp"
 #include "HeightField.hpp"
 #include "ShellBase.hpp"
@@ -6,7 +7,10 @@
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
 #include "libslic3r/Point.hpp"
+#include "libslic3r/Polygon.hpp"
 #include "libslic3r/Polyline.hpp"
+#include <cmath>
+#include <math.h>
 #include <functional>
 #include <memory>
 #include <string>
@@ -18,6 +22,14 @@ namespace Slic3r { class PrintObject; class Flow; }
 namespace Slic3r::sla { class IndexedMesh; }
 
 namespace Slic3r::Nonplanar {
+
+constexpr double ThreadBoreArea = 500.;
+
+inline bool fit_round(const Polygon &outline)
+{
+    const double length = outline.length();
+    return length > 0. && 4. * M_PI * std::abs(outline.area()) / (length * length) >= 0.85;
+}
 
 struct AutoPatchSettings;
 class OrientationField;

@@ -1,4 +1,8 @@
 #include "LayerFieldOpt.hpp"
+#include "libslic3r/BoundingBox.hpp"
+#include "libslic3r/Nonplanar/HeightField.hpp"
+#include "libslic3r/Nonplanar/LayerField.hpp"
+#include "libslic3r/Point.hpp"
 
 #include "SurfaceClip.hpp"
 #include "libslic3r/libslic3r.h"

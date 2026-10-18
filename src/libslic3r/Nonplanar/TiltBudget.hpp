@@ -1,4 +1,5 @@
 #pragma once
+#include <math.h>
 #include "HeadEnvelope.hpp"
 #include "libslic3r/GCode/ToolKinematics.hpp"
 #include "libslic3r/Point.hpp"

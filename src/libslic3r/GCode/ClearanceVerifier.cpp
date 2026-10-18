@@ -1,4 +1,7 @@
 #include "ClearanceVerifier.hpp"
+#include "libslic3r.h"
+#include <math.h>
+#include <memory>
 #include "GCodeProcessor.hpp"
 #include "ToolKinematics.hpp"
 #include "libslic3r/BoundingBox.hpp"

@@ -1,4 +1,14 @@
 #include "DeformSlice.hpp"
+#include "libslic3r/Config.hpp"
+#include "libslic3r/Geometry.hpp"
+#include "libslic3r/Nonplanar/LayerField.hpp"
+#include "libslic3r/Point.hpp"
+#include "libslic3r/libslic3r.h"
+#include <cstdint>
+#include <exception>
+#include <functional>
+#include <memory>
+#include <string>
 
 #include "BeadModel.hpp"
 #include "ConformalShells.hpp"
@@ -18,12 +28,10 @@
 #include "libslic3r/Layer.hpp"
 #include "libslic3r/LocalesUtils.hpp"
 #include "libslic3r/Model.hpp"
-#include "libslic3r/Point.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/SLA/IndexedMesh.hpp"
 #include "libslic3r/ShortestPath.hpp"
-#include "libslic3r/libslic3r.h"
 
 #include <boost/log/trivial.hpp>
 #include <tbb/parallel_for.h>
@@ -35,8 +43,6 @@
 #include <cstdio>
 #include <limits>
 #include <map>
-#include <memory>
-#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>

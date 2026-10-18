@@ -1,4 +1,12 @@
 #include "Calibration.hpp"
+#include "libslic3r/Config.hpp"
+#include "libslic3r/Nonplanar/HeadEnvelope.hpp"
+#include "libslic3r/Point.hpp"
+#include "libslic3r/TriangleMesh.hpp"
+#include <initializer_list>
+#include <optional>
+#include <string>
+#include <vector>
 
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/Exception.hpp"

@@ -1,4 +1,9 @@
 #include "libslic3r/GCode/ConformalEmit.hpp"
+#include "libslic3r/Nonplanar/HeightField.hpp"
+#include "libslic3r/Point.hpp"
+#include "libslic3r/Polygon.hpp"
+#include "libslic3r/Polyline.hpp"
+#include <functional>
 #include "ConformalBottom.hpp"
 
 #include "AutoMode.hpp"

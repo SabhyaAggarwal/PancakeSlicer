@@ -1,4 +1,7 @@
 #include "SurfaceClip.hpp"
+#include "libslic3r/Nonplanar/HeadEnvelope.hpp"
+#include "libslic3r/Nonplanar/HeightField.hpp"
+#include "libslic3r/Point.hpp"
 
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/libslic3r.h"

@@ -1,4 +1,12 @@
 #include "ShellSeams.hpp"
+#include "libslic3r/GCode/ConformalEmit.hpp"
+#include "libslic3r/Point.hpp"
+#include "libslic3r/Polyline.hpp"
+#include <deque>
+#include <functional>
+#include <string>
+#include <utility>
+#include <vector>
 #include "HeightField.hpp"
 
 #include "libslic3r/ExtrusionEntity.hpp"

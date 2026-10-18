@@ -1,4 +1,5 @@
 #include "MaterialRules.hpp"
+#include <string>
 
 #include "libslic3r/MaterialType.hpp"
 

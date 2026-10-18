@@ -1,4 +1,7 @@
 #include "ClearanceRepair.hpp"
+#include "Point.hpp"
+#include <cstddef>
+#include <memory>
 
 #include "ClearanceVerifier.hpp"
 #include "GCodeProcessor.hpp"

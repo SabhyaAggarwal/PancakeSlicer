@@ -38,7 +38,8 @@ void move_float(std::ostream &out, float value)
     move_le(out, bits);
 }
 
-void write_moves(const std::string &path, const GCodeProcessorResult &result, const std::vector<std::string> &filaments)
+void write_moves(const std::string &path, const GCodeProcessorResult &result, const std::vector<std::string> &filaments,
+                 const nlohmann::json &statistics)
 {
     static_assert(uint8_t(EMoveType::Count) < 128, "Move type must leave bit 7 for internal_only");
     struct Layer { uint32_t id; uint64_t first; float z; float extrusion_z; };
@@ -68,7 +69,7 @@ void write_moves(const std::string &path, const GCodeProcessorResult &result, co
     for (size_t i = 0; i < filaments.size(); ++i)
         if (filament_names[i].empty()) filament_names[i] = filaments[i];
     nlohmann::json metadata = {{"extruder_colors", result.extruder_colors}, {"color_print_colors", colors},
-        {"filament_names", filament_names}, {"estimated_times", nlohmann::json::array()},
+        {"filament_names", filament_names}, {"statistics", statistics}, {"estimated_times", nlohmann::json::array()},
         {"belt_tilt_angle", result.belt_tilt_angle}, {"belt_z_origin", result.belt_z_origin},
         {"machine_frame_transform_active", result.machine_frame_transform_active}};
     for (const auto &mode : result.print_statistics.modes)

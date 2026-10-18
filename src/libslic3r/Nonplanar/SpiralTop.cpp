@@ -1,4 +1,6 @@
 #include "SpiralTop.hpp"
+#include "libslic3r/Point.hpp"
+#include "libslic3r/Polyline.hpp"
 
 #include "AutoMode.hpp"
 #include "ConformalShells.hpp"

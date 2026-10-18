@@ -1,4 +1,9 @@
 #include "ShellPaths.hpp"
+#include "libslic3r/ExtrusionEntity.hpp"
+#include "libslic3r/Nonplanar/PatchTools.hpp"
+#include "libslic3r/Polyline.hpp"
+#include "libslic3r/PrintConfig.hpp"
+#include <cstddef>
 
 #include "AutoMode.hpp"
 

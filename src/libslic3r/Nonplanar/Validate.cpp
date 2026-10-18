@@ -1,4 +1,5 @@
 #include "Validate.hpp"
+#include "libslic3r/PrintBase.hpp"
 
 #include "AutoMode.hpp"
 #include "HeadEnvelope.hpp"

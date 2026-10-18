@@ -1,4 +1,19 @@
 #include "OrientationField.hpp"
+#include "libslic3r/Exception.hpp"
+#include "libslic3r/Nonplanar/HeadEnvelope.hpp"
+#include "libslic3r/Nonplanar/LayerFieldOpt.hpp"
+#include "libslic3r/Point.hpp"
+#include "libslic3r/Polygon.hpp"
+#include "libslic3r/PrintBase.hpp"
+#include "libslic3r/TriangleMesh.hpp"
+#include "libslic3r/libslic3r.h"
+#include <Eigen/Geometry>
+#include <cstdint>
+#include <igl/Hit.h>
+#include <math.h>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "ConformalShells.hpp"
 #include "Multiplanar.hpp"

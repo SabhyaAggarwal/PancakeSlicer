@@ -1,4 +1,10 @@
 #include "ConformalShells.hpp"
+#include "libslic3r/Arachne/utils/ExtrusionJunction.hpp"
+#include "libslic3r/Nonplanar/FlowMod.hpp"
+#include "libslic3r/Point.hpp"
+#include "libslic3r/Polygon.hpp"
+#include "libslic3r/Polyline.hpp"
+#include <math.h>
 
 #include "AdaptiveBands.hpp"
 #include "AutoMode.hpp"
@@ -26,7 +32,6 @@
 #include "libslic3r/Flow.hpp"
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/Layer.hpp"
-#include "libslic3r/Point.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintBase.hpp"
 #include "libslic3r/PrintConfig.hpp"
@@ -792,6 +797,85 @@ ExPolygons hidden_layer_area(const HeightField &layers, int above, const ExPolyg
     return intersection_ex(area, expolygons_simplify(cells, scale_(0.25 * layers.pitch())));
 }
 
+ExPolygons plumb_wall_band(const PrintObject &object, const HeightField &S, const ExPolygons &candidate, double wall_width, double depth)
+{
+    constexpr double Plumb      = 2.;
+    constexpr double MaxFitArea = 2200.;
+    constexpr double Edge       = 0.1;
+    constexpr double Lean       = 0.25;
+    const auto layers = object.layers();
+    std::vector<double> layer_z(layers.size());
+    for (size_t i = 0; i < layers.size(); ++i)
+        layer_z[i] = layers[i]->print_z;
+    const Mask cand = rasterize(candidate, S);
+    float zlo = Inf, zhi = -Inf;
+    for (size_t n = 0; n < cand.size(); ++n)
+        if (cand[n] && !std::isnan(S.data()[n]))
+            zlo = std::min(zlo, S.data()[n]), zhi = std::max(zhi, S.data()[n]);
+    if (zhi < zlo)
+        return {};
+    const float             w = float(scale_(wall_width));
+    std::vector<ExPolygons> rings(layers.size()), edges(layers.size()), band(layers.size());
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
+        for (size_t i = range.begin(); i < range.end(); ++i)
+            if (const double z = layers[i]->print_z; z > zlo - depth - 2. * Plumb && z < zhi + EPSILON) {
+                const ExPolygons &slices = layers[i]->lslices;
+                for (const ExPolygon &island : slices) {
+                    const Point inside = island.contour.points.front();
+                    const bool  nested = std::any_of(slices.begin(), slices.end(), [&](const ExPolygon &other) {
+                        return &other != &island &&
+                               std::any_of(other.holes.begin(), other.holes.end(), [&](const Polygon &h) { return h.contains(inside); });
+                    });
+                    if (nested && fit_round(island.contour) && std::abs(island.contour.area()) * SCALING_FACTOR * SCALING_FACTOR <= MaxFitArea) {
+                        append(rings[i], diff_ex(ExPolygon(island.contour), offset_ex(ExPolygon(island.contour), -w)));
+                        append(edges[i], diff_ex(ExPolygon(island.contour), offset_ex(ExPolygon(island.contour), -float(scale_(Edge)))));
+                    }
+                    ExPolygons solid;
+                    for (Polygon hole : island.holes)
+                        if (fit_round(hole) && std::abs(hole.area()) * SCALING_FACTOR * SCALING_FACTOR <= MaxFitArea) {
+                            hole.make_counter_clockwise();
+                            if (solid.empty())
+                                solid = opening_ex(ExPolygons{ island }, 1.5f * w);
+                            if (!intersection_ex(solid, offset_ex(ExPolygon(hole), 2.f * w)).empty()) {
+                                append(rings[i], intersection_ex(diff_ex(offset(hole, w), Polygons{ hole }), ExPolygons{ island }));
+                                append(edges[i], intersection_ex(diff_ex(offset(hole, float(scale_(Edge))), Polygons{ hole }), ExPolygons{ island }));
+                            }
+                        }
+                }
+            }
+    });
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
+        for (size_t i = range.begin(); i < range.end(); ++i) {
+            const double z = layers[i]->print_z;
+            if (rings[i].empty() || z < zlo - depth - EPSILON)
+                continue;
+            const auto below = std::upper_bound(layer_z.begin(), layer_z.end(), z - Plumb + EPSILON);
+            if (below == layer_z.begin())
+                continue;
+            const Mask on    = rasterize(rings[i], S);
+            Mask       reach(on.size(), 0);
+            bool       any = false;
+            for (size_t n = 0; n < on.size(); ++n)
+                if (const float s = S.data()[n]; on[n] && cand[n] && !std::isnan(s) && s - z < depth + EPSILON && s - z > -layers[i]->height - EPSILON)
+                    reach[n] = 1, any = true;
+            if (!any)
+                continue;
+            const ExPolygons plumb = intersection_ex(edges[i], offset_ex(edges[size_t(below - layer_z.begin()) - 1], float(scale_(Lean))));
+            const ExPolygons local = intersection_ex(edges[i], edges[i - 1]);
+            ExPolygons       walls;
+            for (ExPolygon &piece : rings[i])
+                if (!intersection_ex(ExPolygons{ piece }, plumb).empty() && !intersection_ex(ExPolygons{ piece }, local).empty())
+                    walls.emplace_back(std::move(piece));
+            if (!walls.empty())
+                band[i] = intersection_ex(walls, offset_ex(mask_to_expolygons(reach, S), float(scale_(S.pitch()))));
+        }
+    });
+    ExPolygons out;
+    for (ExPolygons &b : band)
+        append(out, std::move(b));
+    return out.empty() ? out : intersection_ex(union_ex(out), candidate);
+}
+
 float nearest(const HeightField &field, const Vec2d &p)
 {
     const Vec2d o  = (p - field.origin()) / field.pitch();
@@ -1252,6 +1336,28 @@ HeightField sample_underside(const sla::IndexedMesh &mesh, double z_offset, cons
     return U;
 }
 
+HeightField undersides_within(const HeightField &U, const HeightField &S, const Mask &closed, double reach)
+{
+    const int    r  = int(std::ceil(reach / U.pitch()));
+    const double r2 = reach * reach / (U.pitch() * U.pitch());
+    HeightField  out = U;
+    tbb::parallel_for(tbb::blocked_range<int>(0, U.ny()), [&](const tbb::blocked_range<int> &range) {
+        for (int iy = range.begin(); iy < range.end(); ++iy)
+            for (int ix = 0; ix < U.nx(); ++ix) {
+                const float s = S.at(ix, iy);
+                float      &u = out.at(ix, iy);
+                if (std::isnan(s) || std::isnan(u))
+                    continue;
+                for (int jy = std::max(0, iy - r); jy <= std::min(U.ny() - 1, iy + r); ++jy)
+                    for (int jx = std::max(0, ix - r); jx <= std::min(U.nx() - 1, ix + r); ++jx)
+                        if (const float v = U.at(jx, jy), d2 = float((jx - ix) * (jx - ix) + (jy - iy) * (jy - iy));
+                            closed[size_t(jy) * U.nx() + jx] && d2 <= r2 && v < s && v - U.at(ix, iy) > 5.67f * std::sqrt(d2) * float(U.pitch()) && v > u)
+                            u = v;
+            }
+    });
+    return out;
+}
+
 static ConformalResult build_region_shells(PrintObject &object, const std::vector<size_t> &region_ids, int patch_offset,
                                            std::shared_ptr<ObjectMesh> &mesh, const ExPolygons *whole_tops)
 {
@@ -1279,13 +1385,24 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
 
     auto cancel = [&object]() { throw_if_canceled(object); };
     HeightField S, U;
+    Mask        closed_void;
     ExPolygons  whole;
     {
         const ObjectMesh &mesh = object_mesh(object, result);
         S = sample_top_surface(mesh.imesh, mesh.mesh.bounding_box().max.z() + 1., object.slicing_parameters().object_print_z_min, grid, cancel,
                                material_below(object));
-        if (settings.shells > settings.top_shells)
-            U = sample_underside(mesh.imesh, object.slicing_parameters().object_print_z_min, S, cancel);
+        if (settings.shells > settings.top_shells) {
+            const double z_offset = object.slicing_parameters().object_print_z_min;
+            U = sample_underside(mesh.imesh, z_offset, S, cancel);
+            closed_void.assign(U.data().size(), 0);
+            tbb::parallel_for(tbb::blocked_range<int>(0, U.ny()), [&](const tbb::blocked_range<int> &range) {
+                for (int iy = range.begin(); iy < range.end(); ++iy)
+                    for (int ix = 0; ix < U.nx(); ++ix)
+                        if (const float u = U.at(ix, iy); !std::isnan(u) && u > z_offset + EPSILON)
+                            closed_void[size_t(iy) * U.nx() + ix] =
+                                !std::isnan(vertical_ray_hit(mesh.imesh, U.node(ix, iy), u - z_offset + mesh.imesh.ground_level() - 0.01, -1.));
+            });
+        }
         if (const double noise = smooth_scan_noise(S, cancel); noise > 0.)
             BOOST_LOG_TRIVIAL(info) << "Non-planar: " << object.model_object()->name << " top surface noise " << noise << " mm";
     }
@@ -1313,11 +1430,20 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
 
     const PrintRegion &region       = object.printing_region(size_t(settings.region_id));
     const double       line_width   = region.flow(object, frTopSolidInfill, settings.shell_height).width();
+    const ExPolygons   silhouette   = union_ex(silhouette_src);
     const double       wall_width   = std::max(0, region.config().wall_loops.value) *
                                 region.flow(object, frPerimeter, settings.shell_height).width();
-    const ExPolygons   band_cand    = wall_width > 0. ?
-                                          diff_ex(candidate, offset_ex(union_ex(silhouette_src), float(-scale_(wall_width)))) :
-                                          ExPolygons();
+    if (settings.shells > settings.top_shells)
+        U = undersides_within(U, S, closed_void, wall_width);
+    ExPolygons         band_cand;
+    if (wall_width > 0.) {
+        band_cand = diff_ex(candidate, offset_ex(silhouette, float(-scale_(wall_width))));
+        ExPolygons more = diff_ex(plumb_wall_band(object, S, candidate, wall_width, settings.shells * settings.shell_height), band_cand);
+        more.erase(std::remove_if(more.begin(), more.end(), [](const ExPolygon &e) { return e.area() * SCALING_FACTOR * SCALING_FACTOR < 0.01; }),
+                   more.end());
+        if (!more.empty())
+            band_cand = union_ex(band_cand, more);
+    }
     const Mask         band_mask    = rasterize(band_cand, grid);
     Polygons voids;
     for (const ExPolygon &island : candidate)
@@ -1900,6 +2026,18 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
         pad_lowest(patch.surface.edit(), pad);
         pad_lowest(patch.base.edit(), pad);
         ExPolygons  shell_area = diff_ex(patch.footprint, patch.wall_band);
+        {
+            Polygons material;
+            for (const Layer *layer : layers)
+                if (layer->print_z > zlo - patch.shells * h_c - EPSILON && layer->print_z - layer->height < zhi + EPSILON)
+                    polygons_append(material, to_polygons(layer->lslices));
+            const Polygons solid = union_(material);
+            ExPolygons gaps = diff_ex(intersection_ex(shell_area, closing(solid, float(scale_(2. * pitch)))), solid);
+            gaps.erase(std::remove_if(gaps.begin(), gaps.end(), [](const ExPolygon &g) { return g.area() * SCALING_FACTOR * SCALING_FACTOR < 0.01; }),
+                       gaps.end());
+            if (!gaps.empty())
+                shell_area = diff_ex(shell_area, gaps);
+        }
         Mask        stacks     = rasterize(offset_ex(shell_area, -float(scale_(line_width))), top);
         Mask        at_wall(stacks.size(), 0);
         {
