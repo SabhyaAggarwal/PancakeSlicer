@@ -499,8 +499,10 @@ void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult& result, P
 
     assert(keep_last_n_blocks <= blocks.size());
 
+    const bool synchronize_at_end = result.nonplanar && additional_time > 0.0f &&
+                                    target_move_type == EMoveType::Noop && blocks.size() > keep_last_n_blocks;
     AdditionalBuffer additional_buffer = m_additional_time_buffer;
-    if (additional_time > 0.0f)
+    if (additional_time > 0.0f && !synchronize_at_end)
         additional_buffer.emplace_back(target_move_type, additional_time);
     additional_buffer = merge_adjacent_additional_time_blocks(additional_buffer);
 
@@ -520,6 +522,8 @@ void GCodeProcessor::TimeMachine::calculate_time(GCodeProcessorResult& result, P
     for (size_t i = 0; i < n_blocks_process; ++i) {
         const TimeBlock& block = blocks[i];
         float block_time = block.time() + host_feed.stall(block, time);
+        if (synchronize_at_end && i + 1 == n_blocks_process)
+            block_time += additional_time;
         if (additional_buffer_idx < additional_buffer.size()) {
             const EMoveType buf_move_type = additional_buffer[additional_buffer_idx].first;
             if (buf_move_type == EMoveType::Noop || buf_move_type == block.move_type) {
@@ -4771,6 +4775,7 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
     float distance = move_length(delta_pos);
     assert(distance != 0.0f);
     float inv_distance = 1.0f / distance;
+    const bool bambu = m_print != nullptr && m_print->is_BBL_printer();
 
     for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i) {
         TimeMachine& machine = m_time_processor.machines[i];
@@ -4811,7 +4816,8 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
         if (origin == G1DiscretizationOrigin::G2G3)
             m_arc_first_block = false;
 
-        if ((prev.exit_direction(0) != 0.0f || prev.exit_direction(1) != 0.0f) &&
+        if ((!m_marlin_junctions || bambu) &&
+            (prev.exit_direction(0) != 0.0f || prev.exit_direction(1) != 0.0f) &&
             (curr.enter_direction(0) != 0.0f || curr.enter_direction(1) != 0.0f) &&
             std::hypot(delta_pos[X], delta_pos[Y]) > 1e-4) {
             Vec3f v1 = prev.exit_direction;
@@ -4924,7 +4930,8 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
                             v_exit *= v_factor;
                             v_entry *= v_factor;
                         }
-                        const float jerk = (v_exit > v_entry) ? ((v_entry > 0.0f || v_exit < 0.0f) ? v_exit - v_entry : std::max(v_exit, -v_entry)) :
+                        const float jerk = bambu ? std::abs(v_entry - v_exit) :
+                                           (v_exit > v_entry) ? ((v_entry > 0.0f || v_exit < 0.0f) ? v_exit - v_entry : std::max(v_exit, -v_entry)) :
                                                                 ((v_entry < 0.0f || v_exit > 0.0f) ? v_entry - v_exit : std::max(-v_exit, v_entry));
                         if (jerk > max_xyz_jerk_v[k]) {
                             v_factor *= max_xyz_jerk_v[k] / jerk;
@@ -5128,6 +5135,7 @@ void GCodeProcessor::process_VG1(const GCodeReader::GCodeLine& line)
     float distance = move_length(delta_pos);
     assert(distance != 0.0f);
     float inv_distance = 1.0f / distance;
+    const bool bambu = m_print != nullptr && m_print->is_BBL_printer();
 
     for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i) {
         TimeMachine& machine = m_time_processor.machines[i];
@@ -5163,7 +5171,8 @@ void GCodeProcessor::process_VG1(const GCodeReader::GCodeLine& line)
         block.flags.nonplanar = m_nonplanar_patch_shell != 0xFF;
         block.feed_interval = m_nonplanar_feed_interval;
 
-        if ((prev.exit_direction(0) != 0.0f || prev.exit_direction(1) != 0.0f) &&
+        if ((!m_marlin_junctions || bambu) &&
+            (prev.exit_direction(0) != 0.0f || prev.exit_direction(1) != 0.0f) &&
             (curr.enter_direction(0) != 0.0f || curr.enter_direction(1) != 0.0f) &&
             std::hypot(delta_pos[X], delta_pos[Y]) > 1e-4) {
             Vec3f v1 = prev.exit_direction;
@@ -5276,7 +5285,8 @@ void GCodeProcessor::process_VG1(const GCodeReader::GCodeLine& line)
                             v_exit *= v_factor;
                             v_entry *= v_factor;
                         }
-                        const float jerk = (v_exit > v_entry) ? ((v_entry > 0.0f || v_exit < 0.0f) ? v_exit - v_entry : std::max(v_exit, -v_entry)) :
+                        const float jerk = bambu ? std::abs(v_entry - v_exit) :
+                                           (v_exit > v_entry) ? ((v_entry > 0.0f || v_exit < 0.0f) ? v_exit - v_entry : std::max(v_exit, -v_entry)) :
                                                                 ((v_entry < 0.0f || v_exit > 0.0f) ? v_entry - v_exit : std::max(-v_exit, v_entry));
                         if (jerk > max_xyz_jerk_v[k]) {
                             v_factor *= max_xyz_jerk_v[k] / jerk;

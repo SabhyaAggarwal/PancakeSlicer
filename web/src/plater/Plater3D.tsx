@@ -8,7 +8,6 @@ import { raycastBvh, type Bvh } from './bvh';
 import { bedBounds, instanceMatrix, outsideBed, parsePoints } from './geometry';
 
 const OUTSIDE = new THREE.Color(0x4d9ed9);
-const HOVER_SELECT_COLOR = new THREE.Color().setRGB(0.4, 0.9, 0.1, THREE.SRGBColorSpace);
 
 function brightenColor(c: THREE.Color): THREE.Color {
   const hsl = c.getHSL({ h: 0, s: 0, l: 0 }, THREE.SRGBColorSpace);
@@ -132,13 +131,12 @@ export default function Plater3D() {
 
     const meshes = new Map<number, THREE.Mesh>();
     const materials = new Map<string, THREE.MeshStandardMaterial>();
-    const material = (color: string, state: 'normal' | 'selected' | 'hover' | 'outside', placeholder = false) => {
+    const material = (color: string, state: 'normal' | 'selected' | 'outside', placeholder = false) => {
       const k = color + state + placeholder;
       let m = materials.get(k);
       if (!m) {
         let c = new THREE.Color(color);
         if (state === 'selected') c = brightenColor(c);
-        if (state === 'hover') c = HOVER_SELECT_COLOR.clone();
         if (state === 'outside') c.lerp(OUTSIDE, 0.7);
         m = new THREE.MeshStandardMaterial({ color: c, roughness: 0.65, metalness: 0.05, transparent: placeholder, opacity: placeholder ? 0.35 : 1 });
         materials.set(k, m);
@@ -162,7 +160,7 @@ export default function Plater3D() {
         for (const inst of o.instances) {
           const mesh = meshes.get(inst.id);
           if (!mesh) continue;
-          const state = s.selected?.instance === inst.id ? 'selected' : hovered === inst.id ? 'hover' : outside.has(inst.id) ? 'outside' : 'normal';
+          const state = s.selected?.instance === inst.id ? 'selected' : outside.has(inst.id) ? 'outside' : 'normal';
           mesh.material = material(color, state, !!o.project?.placeholder);
         }
       }
