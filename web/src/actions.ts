@@ -231,16 +231,19 @@ export async function jobRequest(): Promise<JobRequest> {
 
 let unsubscribe: (() => void) | null = null;
 let sliceGeneration = 0;
+let pendingSubmission: AbortController | null = null;
 
 export async function slice() {
   const s = getState();
   if (!s.api || !s.objects.length || s.job.state === 'running' || s.job.state === 'submitting') return;
   const generation = ++sliceGeneration;
+  const submission = new AbortController();
+  pendingSubmission = submission;
   setState({ job: { state: 'submitting', pct: 0, stage: 'uploading' } });
   try {
     const request = await jobRequest();
     if (generation !== sliceGeneration) return;
-    const id = await s.api.submit(request);
+    const id = await s.api.submit(request, submission.signal);
     if (generation !== sliceGeneration) {
       await s.api.cancel(id);
       return;
@@ -272,6 +275,8 @@ export async function slice() {
 
 export function cancelSlice() {
   ++sliceGeneration;
+  pendingSubmission?.abort();
+  pendingSubmission = null;
   const s = getState();
   unsubscribe?.();
   unsubscribe = null;

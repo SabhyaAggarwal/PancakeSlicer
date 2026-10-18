@@ -1,7 +1,7 @@
 import { vectors as shippedVectors } from 'virtual:option-bootstrap';
 import type { Config, ConfigValue } from './api/types';
 
-const vectors: Record<string, string> = { ...shippedVectors };
+const types: Record<string, string> = { ...shippedVectors };
 const vectorTypes = ['Floats', 'Ints', 'Percents', 'Bools', 'FloatsOrPercents', 'Points', 'Enums', 'Strings', 'PointsGroups', 'IntsGroups'];
 export function vectorType(type: string): string | undefined {
   const name = type.replace(/^co/, '').replace(/_/g, '').toLowerCase();
@@ -9,13 +9,15 @@ export function vectorType(type: string): string | undefined {
 }
 
 export function setOptionTypes(options: Record<string, { type: string }>) {
-  for (const key of Object.keys(vectors)) delete vectors[key];
+  for (const key of Object.keys(types)) delete types[key];
   for (const [key, def] of Object.entries(options)) {
-    const type = vectorType(def.type);
-    if (type) vectors[key] = type;
+    const name = def.type.replace(/^co/, '').replace(/_/g, '').toLowerCase();
+    const type = vectorType(def.type) ?? ['String', 'Point', 'Point3'].find((t) => t.toLowerCase() === name);
+    if (type) types[key] = type;
   }
 }
 
+const escapeConfigString = (text: string) => text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r/g, '\\r').replace(/\n/g, '\\n');
 export const unescapeConfigString = (text: string) => text.replace(/\\([\s\S])/g, (_, c: string) => c === 'n' ? '\n' : c === 'r' ? '\r' : c);
 
 function stringVector(text: string): string[] {
@@ -58,8 +60,15 @@ const scalar = (v: unknown): string => {
   return String(v);
 };
 
-export function normalizeConfigValue(key: string, value: ConfigValue, type = vectors[key]): ConfigValue {
-  if (!type) return value;
+export function normalizeConfigValue(key: string, value: ConfigValue, type = types[key]): ConfigValue {
+  if (!type || type === 'String') return value;
+  if (type === 'Point' || type === 'Point3') {
+    const parts = Array.isArray(value) ? value : String(value).split(/[,x]/);
+    return parts.map((part) => {
+      const text = String(part).trim();
+      return text !== '' && Number.isFinite(Number(text)) ? String(Number(text)) : text;
+    }).join(type === 'Point' ? 'x' : ',');
+  }
   let values: unknown[];
   if (Array.isArray(value)) values = value;
   else if (type === 'Strings') values = stringVector(String(value));
@@ -78,19 +87,22 @@ export function normalizeConfigValue(key: string, value: ConfigValue, type = vec
   });
 }
 
-export function normalizeConfig(config: Config): Config {
-  return Object.fromEntries(Object.entries(config).map(([key, value]) => [key, normalizeConfigValue(key, value)]));
+export function normalizeConfig(config: Config, native = false): Config {
+  return Object.fromEntries(Object.entries(config).map(([key, value]) => [key,
+    native && types[key] === 'String' && typeof value === 'string'
+      ? unescapeConfigString(value) : normalizeConfigValue(key, value),
+  ]));
 }
 
 export function toolValue(key: string, value: ConfigValue): string {
-  if (!Array.isArray(value)) return scalar(value);
+  if (!Array.isArray(value)) return types[key] === 'String' ? escapeConfigString(scalar(value)) : scalar(value);
   const parts = value.map(scalar);
-  if (vectors[key] === 'Strings' || !vectors[key]) return parts.map((text) =>
+  if (types[key] === 'Strings' || !types[key]) return parts.map((text) =>
     (parts.length === 1 && text === '') || /[ \t;\\"\r\n]/.test(text)
-      ? `"${text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r/g, '\\r').replace(/\n/g, '\\n')}"` : text).join(';');
-  return parts.join((vectors[key] === 'PointsGroups' || vectors[key] === 'IntsGroups') ? '#' : ',');
+      ? `"${escapeConfigString(text)}"` : text).join(';');
+  return parts.join((types[key] === 'PointsGroups' || types[key] === 'IntsGroups') ? '#' : ',');
 }
 
 export function jobValue(key: string, value: ConfigValue): ConfigValue {
-  return Array.isArray(value) && vectors[key] && vectors[key] !== 'Strings' ? toolValue(key, value) : value;
+  return types[key] === 'String' || Array.isArray(value) && types[key] && types[key] !== 'Strings' ? toolValue(key, value) : value;
 }

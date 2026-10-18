@@ -278,3 +278,7 @@ fieldset.opt-field:disabled { opacity: .5; }
 @media (prefers-reduced-motion: reduce) {
   .progress-fill { transition: none; }
 }
+
+.access-token-form { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.access-token-form input { flex: 1; min-width: 0; }
+.access-token-form .notif-body { width: 100%; }

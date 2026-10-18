@@ -1,5 +1,6 @@
 import { slicingText } from '../api/progress';
-import { useEffect, useState } from 'react';
+import { accessNotice, accessSnapshot, saveAccessToken, subscribeAccess } from '../api/access';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { addInstance, arrangeAll, cancelSlice, openFileDialog, removeInstance } from '../actions';
 import { objectSize } from '../plater/geometry';
 import { setState, updateInstance, updateObject, useStore, type Gizmo } from '../state/store';
@@ -114,6 +115,30 @@ export function ManipulationPanel() {
 
 const cleanError = (msg = '') => msg.replace(/^(error:\s*)?(validate:\s*)?/i, '');
 
+export function AccessNotification() {
+  const notice = useSyncExternalStore(subscribeAccess, accessSnapshot);
+  const [value, setValue] = useState('');
+  if (!notice) return null;
+  return (
+    <div className={`notification ${notice.status === 429 || notice.status === 503 ? 'warning' : 'failed'}`} role="alert">
+      <button className="notif-close icon-btn" title="Close" onClick={() => accessNotice(null)}><Icon name="notification_close" size={14} /></button>
+      <div className="notif-title">{notice.message}</div>
+      {notice.status === 401 && (
+        <form className="access-token-form" onSubmit={(event) => {
+          event.preventDefault();
+          saveAccessToken(value);
+          setValue('');
+          accessNotice(null);
+        }}>
+          <input type="password" aria-label="Access token" autoComplete="off" value={value} onChange={(event) => setValue(event.target.value)} />
+          <button type="submit">Save</button>
+          <div className="notif-body">Save the token, then try the action again.</div>
+        </form>
+      )}
+    </div>
+  );
+}
+
 export function SliceNotification() {
   const job = useStore((s) => s.job);
   const [closed, setClosed] = useState<Set<string>>(new Set());
@@ -136,6 +161,7 @@ export function SliceNotification() {
   const warnings = job.state === 'done' && !job.stale ? (job.warnings ?? []) : [];
   return (
     <div className="notifications">
+      <AccessNotification />
       {warnings.map((w, i) =>
         closed.has(`w${i}`) ? null : (
           <div key={`w${i}`} className="notification warning">
@@ -145,7 +171,7 @@ export function SliceNotification() {
           </div>
         ),
       )}
-      {job.state === 'failed' && !closed.has('error') && (
+      {job.state === 'failed' && !/Access token required|Server storage full|Server busy\./.test(job.error ?? '') && !closed.has('error') && (
         <div className="notification failed">
           {close('error')}
           <div className="notif-title">Error:</div>

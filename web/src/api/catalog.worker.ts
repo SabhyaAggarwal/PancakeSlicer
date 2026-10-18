@@ -1,5 +1,5 @@
 import { demoPresets, normalizeCatalog } from './catalog';
-import { loadRuntimeOptions } from '../option-inventory';
+import { loadRuntimeOptions, nativePresetCatalog } from '../option-inventory';
 import optionsUrl from '../options.generated.json?url&no-inline';
 import type { OptionDef, TabDesc } from '../options';
 import type { PresetCatalog } from './types';
@@ -25,7 +25,7 @@ interface Entry {
 }
 
 const VERSION = 1;
-const FORMAT = 3;
+const FORMAT = 4;
 
 function db(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -70,7 +70,7 @@ self.onmessage = async (e: MessageEvent<CatalogIn>) => {
     }
     definitions ??= loadRuntimeOptions(optionsUrl).catch((error) => { definitions = null; throw error; });
     const options = await definitions;
-    const types = JSON.stringify(Object.entries(options).map(([key, def]) => [key, def.type]));
+    const types = JSON.stringify([nativePresetCatalog(), Object.entries(options).map(([key, def]) => [key, def.type])]);
     const { vendor, models } = e.data;
     const key = `${FORMAT}|${vendor}|${models.join(',')}`;
     const store = await db().catch(() => null);
@@ -83,7 +83,7 @@ self.onmessage = async (e: MessageEvent<CatalogIn>) => {
     });
     if (r.status !== 304) {
       if (!r.ok) throw new Error(`${r.status} ${r.statusText}: ${(await r.text()).slice(0, 300)}`);
-      const catalog = demoPresets(normalizeCatalog(await r.json(), vendor), models);
+      const catalog = demoPresets(normalizeCatalog(await r.json(), vendor, nativePresetCatalog()), models);
       if (!cached || JSON.stringify(cached.catalog) !== JSON.stringify(catalog)) post({ id, type: 'catalog', catalog, from: 'network' });
       if (store) await tx(store, 'readwrite', (s) => s.put({ key, etag: r.headers.get('ETag'), types, catalog } satisfies Entry)).catch(() => undefined);
     }

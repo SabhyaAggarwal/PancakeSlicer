@@ -2,6 +2,9 @@ import type { ConfigValue } from './api/types';
 import type { OptionDef, OptionMode } from './options';
 import { normalizeConfigValue, setOptionTypes, unescapeConfigString, vectorType } from './config-values';
 
+let nativePresets = false;
+export const nativePresetCatalog = () => nativePresets;
+
 const MODES: Record<string, OptionMode> = {
   Simple: 'simple', Advanced: 'advanced', Expert: 'develop', Develop: 'develop',
   0: 'simple', 1: 'advanced', 2: 'develop', 3: 'develop',
@@ -60,12 +63,14 @@ async function asset(url: string): Promise<any> {
 export async function loadRuntimeOptions(url: string, mock = false): Promise<Record<string, OptionDef>> {
   const shippedPromise = asset(url).then(records).catch(() => null);
   let native = false;
+  nativePresets = false;
   if (!mock) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 1500);
     try {
       const health = await fetch('/api/healthz', { signal: controller.signal }).then((r) => r.ok ? r.json() : null);
       native = health?.tool_features?.dump_options === true;
+      nativePresets = health?.tool_features?.dump_presets === true;
     } catch {
     } finally { clearTimeout(timer); }
   }

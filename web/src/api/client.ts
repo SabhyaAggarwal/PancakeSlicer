@@ -1,3 +1,4 @@
+import { bootstrapAccessToken, mutation } from './access';
 import { normalizeConfig } from '../config-values';
 import { demoPresets, normalizeCatalog } from './catalog';
 import { catalogWorker, workerId } from './worker';
@@ -10,7 +11,7 @@ export interface Api {
   userPresets(): Promise<UserPreset[]>;
   saveUserPreset(p: UserPreset): Promise<void>;
   deleteUserPreset(type: PresetType, name: string): Promise<void>;
-  submit(req: JobRequest): Promise<string>;
+  submit(req: JobRequest, signal?: AbortSignal): Promise<string>;
   status(id: string): Promise<JobStatus>;
   events(id: string, on: { progress(e: ProgressEvent): void; done(s: JobStatus): void; error(msg: string): void; log?(stream: string, line: string): void }): () => void;
   cancel(id: string): Promise<void>;
@@ -67,15 +68,15 @@ const realApi: Api = {
     return (Array.isArray(j) ? j : (j.presets ?? [])).map(normalizeUserPreset);
   },
   async saveUserPreset(p) {
-    const r = await fetch('/api/user-presets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) });
+    const r = await mutation('/api/user-presets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) });
     if (r.status === 404) return mockApi.saveUserPreset(p);
     await json(r);
   },
   async deleteUserPreset(type, name) {
-    const r = await fetch(`/api/user-presets/${type}/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    const r = await mutation(`/api/user-presets/${type}/${encodeURIComponent(name)}`, { method: 'DELETE' });
     if (r.status === 404) return mockApi.deleteUserPreset(type, name);
   },
-  async submit(req) {
+  async submit(req, signal) {
     const fd = new FormData();
     for (const f of req.files) fd.append('files[]', f.blob, f.name);
     fd.append('vendor', req.vendor);
@@ -86,7 +87,7 @@ const realApi: Api = {
     if (req.plate) fd.append('plate', JSON.stringify(req.plate));
     if (req.events.length) fd.append('events', JSON.stringify(req.events));
     fd.append('output', req.output);
-    const j = await json<{ id: string }>(await fetch('/api/jobs', { method: 'POST', body: fd }));
+    const j = await json<{ id: string }>(await mutation('/api/jobs', { method: 'POST', body: fd }, true, signal));
     return j.id;
   },
   async status(id) {
@@ -143,7 +144,7 @@ const realApi: Api = {
     };
   },
   async cancel(id) {
-    await fetch(`/api/jobs/${id}`, { method: 'DELETE' });
+    await mutation(`/api/jobs/${id}`, { method: 'DELETE' });
   },
   downloadUrl: (id) => `/api/jobs/${id}/download`,
   movesUrl: (id) => `/api/jobs/${id}/moves`,
@@ -162,7 +163,12 @@ const STAGES: [string, number][] = [
 const mockApi: Api = {
   mock: true,
   async presets(vendor, models) {
-    const all = normalizeCatalog((await import('../mock/presets.json')).default, vendor);
+    const [{ gunzipSync, strFromU8 }, { default: url }] = await Promise.all([
+      import('fflate'), import('../mock/presets.json.gz?url'),
+    ]);
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Mock presets failed to load');
+    const all = normalizeCatalog(JSON.parse(strFromU8(gunzipSync(new Uint8Array(await response.arrayBuffer())))), vendor);
     const f = (l: SystemPreset[]) => l.filter((p) => vendor === '*' || p.vendor === vendor);
     return demoPresets({ machines: f(all.machines), processes: f(all.processes), filaments: f(all.filaments) }, models);
   },
@@ -238,6 +244,7 @@ const mockApi: Api = {
 };
 
 export async function connect(): Promise<Api> {
+  bootstrapAccessToken();
   if (new URLSearchParams(location.search).has('mock')) return mockApi;
   try {
     const ctl = new AbortController();
