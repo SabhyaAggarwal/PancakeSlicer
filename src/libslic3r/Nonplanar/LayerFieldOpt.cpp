@@ -1164,8 +1164,8 @@ LayerFieldMetrics evaluate_layer_field(const indexed_triangle_set &mesh, const L
                 }
                 if (it.n_lo.z() < -0.02f && it.lo > params.flat_base_height + 0.05) {
                     const double area = q * q / -it.n_lo.z();
-                    const Vec3d g = field.gradient(Vec3d(xy.x(), xy.y(), it.lo + 0.02)).normalized();
                     const Vec3d g_raw = field.gradient(Vec3d(xy.x(), xy.y(), it.lo + 0.02));
+                    const Vec3d g = g_raw.normalized();
                     const Vec3d nd(it.n_lo.x() * g_raw.z() - it.n_lo.z() * g_raw.x(), it.n_lo.y() * g_raw.z() - it.n_lo.z() * g_raw.y(), it.n_lo.z());
                     double ang = std::asin(std::clamp(-nd.z() / nd.norm(), -1., 1.)) * 180. / PI;
                     if (std::hypot(it.n_lo.x(), it.n_lo.y()) < 0.2 && ang > params.overhang_angle &&

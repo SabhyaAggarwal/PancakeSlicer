@@ -18,6 +18,7 @@
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/Layer.hpp"
 #include "libslic3r/Model.hpp"
+#include "libslic3r/Point.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/ShortestPath.hpp"
 #include "libslic3r/PrintBase.hpp"
@@ -228,14 +229,14 @@ HeightField object_grid(const PrintObject &object, double pitch, Polygons *silho
     return HeightField(grid_bbox, pitch);
 }
 
-Mask rasterize(const ExPolygons &area, const HeightField &grid)
+namespace {
+template<class Paths> Mask rasterize_paths(const Paths &area, const HeightField &grid)
 {
     Mask                             mask(size_t(grid.nx()) * grid.ny(), 0);
     std::vector<std::vector<double>> crossings(grid.ny());
     const double                     p  = grid.pitch();
     const Vec2d                      o  = grid.origin();
-    auto add_polygon = [&](const Polygon &poly) {
-        const Points &pts = poly.points;
+    for (const Points &pts : area) {
         for (size_t i = 0; i < pts.size(); ++i) {
             Vec2d a = unscale(pts[i]), b = unscale(pts[(i + 1) % pts.size()]);
             if (a.y() == b.y())
@@ -251,11 +252,6 @@ Mask rasterize(const ExPolygons &area, const HeightField &grid)
                 crossings[iy].emplace_back(a.x() + (y - a.y()) * (b.x() - a.x()) / (b.y() - a.y()));
             }
         }
-    };
-    for (const ExPolygon &expoly : area) {
-        add_polygon(expoly.contour);
-        for (const Polygon &hole : expoly.holes)
-            add_polygon(hole);
     }
     for (int iy = 0; iy < grid.ny(); ++iy) {
         std::vector<double> &xs = crossings[iy];
@@ -270,6 +266,17 @@ Mask rasterize(const ExPolygons &area, const HeightField &grid)
         }
     }
     return mask;
+}
+}
+
+Mask rasterize(const ExPolygons &area, const HeightField &grid)
+{
+    return rasterize_paths(ClipperUtils::ExPolygonsProvider(area), grid);
+}
+
+Mask rasterize(const Polygons &area, const HeightField &grid)
+{
+    return rasterize_paths(ClipperUtils::PolygonsProvider(area), grid);
 }
 
 ExPolygons mask_to_expolygons(const Mask &mask, const HeightField &grid)
@@ -422,6 +429,17 @@ double smooth_scan_noise(HeightField &surface, const std::function<void()> &thro
     auto residual_field = [&](int stride) {
         std::vector<float> residual(size_t(nx) * ny, HeightField::NoData);
         const int          r = 2 * stride;
+        std::vector<Quadric> basis;
+        Eigen::Matrix<double, 6, 6> A = Eigen::Matrix<double, 6, 6>::Zero();
+        for (int dy = -r; dy <= r; dy += stride)
+            for (int dx = -r; dx <= r; dx += stride) {
+                const Quadric u = quadric_basis(dx, dy);
+                A.noalias() += u * u.transpose();
+                basis.emplace_back(u);
+            }
+        const auto ldlt = A.ldlt();
+        if (ldlt.info() != Eigen::Success || !ldlt.isPositive())
+            return residual;
         tbb::parallel_for(tbb::blocked_range<int>(0, ny), [&](const tbb::blocked_range<int> &range) {
             for (int iy = range.begin(); iy < range.end(); ++iy)
                 for (int ix = 0; ix < nx; ++ix) {
@@ -430,15 +448,18 @@ double smooth_scan_noise(HeightField &surface, const std::function<void()> &thro
                         continue;
                     float lo = z, hi = z;
                     bool  full = true;
+                    Quadric b = Quadric::Zero();
+                    size_t n = 0;
                     for (int dy = -r; dy <= r && full; dy += stride)
                         for (int dx = -r; dx <= r; dx += stride) {
                             const float v = surface.at(ix + dx, iy + dy);
                             full = full && !std::isnan(v);
                             lo = std::min(lo, v), hi = std::max(hi, v);
+                            b.noalias() += double(v) * basis[n++];
                         }
                     if (!full || hi - lo > stride * wall)
                         continue;
-                    if (Quadric c; local_quadratic(surface, ix, iy, r, [](int, int, double) { return 1.; }, c, stride))
+                    if (const Quadric c = ldlt.solve(b); c.allFinite())
                         residual[size_t(iy) * nx + ix] = float(z - c(0));
                 }
         });

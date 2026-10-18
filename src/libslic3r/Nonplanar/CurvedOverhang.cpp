@@ -5,6 +5,7 @@
 #include "ConformalBottom.hpp"
 #include "ConformalShells.hpp"
 #include "HeadEnvelope.hpp"
+#include "HeightField.hpp"
 #include "PatchTools.hpp"
 
 #include "libslic3r/BoundingBox.hpp"
@@ -215,7 +216,15 @@ struct Piece
     bool                                    capped = false;
 };
 
-bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass, HeightField &prev_top)
+struct OverhangCandidates
+{
+    HeightField grid;
+    ExPolygons  area;
+    Mask        mask;
+    bool        ready = false;
+};
+
+bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass, HeightField &prev_top, OverhangCandidates &candidates)
 {
     LayerPtrs             &layers   = object.layers();
     const OverhangSettings settings = overhang_settings(object);
@@ -251,7 +260,9 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
                                           ptrdiff_t(layer_top.size()) - 1));
     };
 
-    const HeightField grid      = object_grid(object, pitch);
+    if (!candidates.ready)
+        candidates.grid = object_grid(object, pitch);
+    const HeightField &grid     = candidates.grid;
     const size_t      n_nodes   = grid.data().size();
     HeightField       ray_start = grid;
     Polygons          bottoms;
@@ -271,13 +282,19 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
         for (size_t n = 0; n < n_nodes; ++n)
             if (m[n] && !(ray_start.data()[n] <= start) && (prev_top.empty() || start > prev_top.data()[n] - 2. * g))
                 ray_start.data()[n] = start;
-        polygons_append(bottoms, to_polygons(layer_bottoms));
+        if (!candidates.ready)
+            polygons_append(bottoms, to_polygons(layer_bottoms));
     }
-    if (bottoms.empty())
-        return false;
-    const float      seam      = float(scale_(0.01));
-    ExPolygons       candidate = offset_ex(union_ex(offset(bottoms, seam)), -seam);
-    const Mask       cand_mask = rasterize(candidate, grid);
+    if (!candidates.ready) {
+        if (bottoms.empty())
+            return false;
+        const float seam = float(scale_(0.01));
+        candidates.area  = offset_ex(union_ex(offset(bottoms, seam)), -seam);
+        candidates.mask  = rasterize(candidates.area, grid);
+        candidates.ready = true;
+    }
+    ExPolygons  candidate = candidates.area;
+    const Mask &cand_mask = candidates.mask;
 
     HeightField Sb, top;
     {
@@ -949,8 +966,9 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
 }
 void build_curved_overhangs(PrintObject &object, ConformalResult &result)
 {
-    HeightField prev_top;
-    for (int pass = 0; pass < MaxPasses && build_overhang_pass(object, result, pass, prev_top); ++pass)
+    HeightField        prev_top;
+    OverhangCandidates candidates;
+    for (int pass = 0; pass < MaxPasses && build_overhang_pass(object, result, pass, prev_top, candidates); ++pass)
         ;
 }
 

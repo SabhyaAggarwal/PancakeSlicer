@@ -4,6 +4,7 @@
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/Fill/FillBase.hpp"
 #include "libslic3r/Point.hpp"
+#include "libslic3r/Polygon.hpp"
 #include "libslic3r/Polyline.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/SLA/IndexedMesh.hpp"
@@ -67,6 +68,7 @@ std::function<bool(const Vec2d &p, double z)> material_below(const PrintObject &
 HeightField object_grid(const PrintObject &object, double pitch, Polygons *silhouette = nullptr);
 
 Mask rasterize(const ExPolygons &area, const HeightField &grid);
+Mask rasterize(const Polygons &area, const HeightField &grid);
 ExPolygons mask_to_expolygons(const Mask &mask, const HeightField &grid);
 ExPolygons mask_to_expolygons(const Mask &mask, const HeightField &grid, int ix0, int iy0, int ix1, int iy1);
 

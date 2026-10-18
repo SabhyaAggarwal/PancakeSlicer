@@ -5,6 +5,7 @@
 #include "BeadModel.hpp"
 #include "ConformalIroning.hpp"
 #include "HeadEnvelope.hpp"
+#include "HeightField.hpp"
 #include "PatchTools.hpp"
 #include "Repair.hpp"
 #include "Report.hpp"
@@ -51,9 +52,11 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <numeric>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -209,27 +212,64 @@ Arachne::WallToolPathsParams arachne_params(const Flow &flow)
 
 struct ArachneLoops
 {
-    Polygons                                outline;
-    std::unique_ptr<Arachne::WallToolPaths> paths;
+    Polygons                                       outline;
+    std::unique_ptr<Arachne::WallToolPaths>          generator;
+    const std::vector<Arachne::VariableWidthLines> *paths = nullptr;
+    const Polygons                               *inner = nullptr;
 };
 
 std::unique_ptr<ArachneLoops> arachne_paths(const ExPolygon &piece, const Flow &flow, double layer_height, size_t max_loops)
 {
     const float eps     = float(scale_(0.005));
-    auto        out     = std::make_unique<ArachneLoops>();
-    Polygons   &outline = out->outline;
+    auto out = std::make_unique<ArachneLoops>();
+    Polygons &outline = out->outline;
     outline = offset(offset_ex(expolygons_simplify({ piece }, scale_(0.01)), -eps), eps);
     if (outline.empty())
         return nullptr;
     const coord_t     bead  = coord_t(scale_(flow.spacing()));
     const BoundingBox bb    = get_extents(outline);
     const size_t      loops = max_loops > 0 ? max_loops : size_t(std::max(bb.size().x(), bb.size().y()) / std::max<coord_t>(bead, 1)) + 1;
-    out->paths = std::make_unique<Arachne::WallToolPaths>(outline, bead, bead, loops, 0, layer_height, arachne_params(flow));
-    out->paths->getToolPaths();
+    out->generator = std::make_unique<Arachne::WallToolPaths>(outline, bead, bead, loops, 0, layer_height, arachne_params(flow));
+    out->paths = &out->generator->getToolPaths();
+    if (max_loops > 0)
+        out->inner = &out->generator->getInnerContour();
     return out;
 }
 
-void arachne_roads(const ExPolygon &piece, Arachne::WallToolPaths *paths, const Flow &flow, double layer_height, size_t max_loops, WidthRoads &out,
+class ArachneCache
+{
+    using Key = std::tuple<float, float, float, double, size_t, std::vector<Points>>;
+    struct Entry {
+        std::once_flag                ready;
+        std::unique_ptr<ArachneLoops> paths;
+    };
+    std::mutex                             m_mutex;
+    std::map<Key, std::shared_ptr<Entry>>    m_entries;
+
+public:
+    std::shared_ptr<const ArachneLoops> get(const ExPolygon &piece, const Flow &flow, double height, size_t max_loops)
+    {
+        std::vector<Points> shape{ piece.contour.points };
+        for (const Polygon &hole : piece.holes)
+            shape.emplace_back(hole.points);
+        Key key(flow.width(), flow.spacing(), flow.nozzle_diameter(), height, max_loops, std::move(shape));
+        std::shared_ptr<Entry> entry;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            const auto it = m_entries.find(key);
+            if (it != m_entries.end())
+                entry = it->second;
+            else {
+                entry = std::make_shared<Entry>();
+                m_entries.emplace(std::move(key), entry);
+            }
+        }
+        std::call_once(entry->ready, [&] { entry->paths = arachne_paths(piece, flow, height, max_loops); });
+        return entry->paths ? std::shared_ptr<const ArachneLoops>(entry, entry->paths.get()) : nullptr;
+    }
+};
+
+void arachne_roads(const ExPolygon &piece, const ArachneLoops *paths, const Flow &flow, double layer_height, size_t max_loops, WidthRoads &out,
                    Polygons *inner = nullptr, const Point *seam = nullptr)
 {
     if (paths == nullptr)
@@ -237,7 +277,7 @@ void arachne_roads(const ExPolygon &piece, Arachne::WallToolPaths *paths, const 
     const Arachne::WallToolPathsParams params = arachne_params(flow);
 
     std::vector<const Arachne::ExtrusionLine *> lines;
-    for (const Arachne::VariableWidthLines &inset : paths->getToolPaths())
+    for (const Arachne::VariableWidthLines &inset : *paths->paths)
         for (const Arachne::ExtrusionLine &line : inset)
             if (line.junctions.size() >= 2)
                 lines.emplace_back(&line);
@@ -361,39 +401,57 @@ void arachne_roads(const ExPolygon &piece, Arachne::WallToolPaths *paths, const 
         last = out.polylines.back().points.back();
     }
     if (inner != nullptr && max_loops > 0)
-        append(*inner, paths->getInnerContour());
+        append(*inner, *paths->inner);
 }
 
 void arachne_roads(const ExPolygon &piece, const Flow &flow, double layer_height, size_t max_loops, WidthRoads &out, Polygons *inner = nullptr,
-                   const Point *seam = nullptr)
+                   const Point *seam = nullptr, ArachneCache *cache = nullptr)
 {
-    const std::unique_ptr<ArachneLoops> loops = arachne_paths(piece, flow, layer_height, max_loops);
-    arachne_roads(piece, loops ? loops->paths.get() : nullptr, flow, layer_height, max_loops, out, inner, seam);
+    std::shared_ptr<const ArachneLoops> loops;
+    if (cache != nullptr)
+        loops = cache->get(piece, flow, layer_height, max_loops);
+    else
+        loops = arachne_paths(piece, flow, layer_height, max_loops);
+    arachne_roads(piece, loops.get(), flow, layer_height, max_loops, out, inner, seam);
 }
 
-void contour_fill(const HeightField &surface, const ExPolygons &area, double drop, double strip_height, double strip_offset, const Flow &flow, double layer_height,
-                  double angle, bool outer, double z, WidthRoads &roads, std::vector<Polylines> &lines, const Point *seam = nullptr)
+HeightField contour_samples(const HeightField &surface)
 {
     HeightField fine(BoundingBoxf(surface.origin(), surface.node(surface.nx() - 1, surface.ny() - 1)), surface.pitch() / ContourRefine);
-    std::vector<float>().swap(fine.data());
-    RunGroups strips;
     for (int iy = 0; iy < fine.ny(); ++iy)
         for (int ix = 0; ix < fine.nx(); ++ix)
             if (const float s = surface.sample(fine.node(ix, iy)); !std::isnan(s) && !spans_wall(surface, fine.node(ix, iy)))
+                fine.at(ix, iy) = s;
+    return fine;
+}
+
+void contour_fill(const HeightField &surface, const ExPolygons &area, double drop, double strip_height, double strip_offset, const Flow &flow, double layer_height,
+                  double angle, bool outer, double z, WidthRoads &roads, std::vector<Polylines> &lines, const Point *seam = nullptr,
+                  const HeightField *samples = nullptr, ArachneCache *cache = nullptr)
+{
+    const HeightField owned = samples == nullptr ? contour_samples(surface) : HeightField();
+    const HeightField &fine = samples == nullptr ? owned : *samples;
+    RunGroups strips;
+    for (int iy = 0; iy < fine.ny(); ++iy)
+        for (int ix = 0; ix < fine.nx(); ++ix)
+            if (const float s = fine.at(ix, iy); !std::isnan(s))
                 strips.add(int(std::floor((s - drop - strip_offset) / strip_height)), ix, iy);
     ExPolygons pieces;
     for (const auto &[strip, runs] : strips.groups())
         append(pieces, expolygons_simplify(intersection_ex(area, runs_to_expolygons(runs, fine)), scale_(0.5 * fine.pitch())));
-    std::vector<std::unique_ptr<ArachneLoops>> paths(pieces.size());
+    std::vector<std::shared_ptr<const ArachneLoops>> paths(pieces.size());
     std::vector<std::vector<Polylines>>        middles(pieces.size());
     std::vector<size_t>                        max_loops(pieces.size(), ContourLoops);
     tbb::parallel_for(tbb::blocked_range<size_t>(0, pieces.size(), 1), [&](const tbb::blocked_range<size_t> &range) {
         for (size_t i = range.begin(); i < range.end(); ++i) {
             const ExPolygon &piece = pieces[i];
-            paths[i] = arachne_paths(piece, flow, layer_height, ContourLoops);
+            if (cache != nullptr)
+                paths[i] = cache->get(piece, flow, layer_height, ContourLoops);
+            else
+                paths[i] = arachne_paths(piece, flow, layer_height, ContourLoops);
             if (!paths[i])
                 continue;
-            const ExPolygons middle = intersection_ex(union_ex(paths[i]->paths->getInnerContour()), ExPolygons{ piece });
+            const ExPolygons middle = intersection_ex(union_ex(*paths[i]->inner), ExPolygons{ piece });
             if (middle.empty())
                 continue;
             if (std::any_of(middle.begin(), middle.end(), [](const ExPolygon &e) { return !e.holes.empty(); })) {
@@ -425,7 +483,7 @@ void contour_fill(const HeightField &surface, const ExPolygons &area, double dro
         }
     });
     for (size_t i = 0; i < pieces.size(); ++i) {
-        arachne_roads(pieces[i], paths[i] ? paths[i]->paths.get() : nullptr, flow, layer_height, max_loops[i], roads, nullptr, seam);
+        arachne_roads(pieces[i], paths[i].get(), flow, layer_height, max_loops[i], roads, nullptr, seam);
         append(lines, std::move(middles[i]));
     }
 }
@@ -704,6 +762,8 @@ double banded_outer_width(double line_width, double nozzle, double height, doubl
 struct BandedFill
 {
     bool       strips       = false;
+    const HeightField *contour = nullptr;
+    ArachneCache *arachne = nullptr;
     double     strip_height = 0.;
     double     strip_offset = 0.;
     ExPolygons lengthwise;
@@ -929,13 +989,13 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
     } else if (banded != nullptr && banded->strips)
         contour_fill(patch.surface, outer ? expolygons_simplify(rest, scale_(0.5 * patch.surface.pitch())) : rest, drop,
                      banded->strip_height, banded->strip_offset, flow, height, fill.angle, outer, host_z, roads, linked,
-                     outer ? &start : nullptr);
+                     outer ? &start : nullptr, banded->contour, banded->arachne);
     else if (!rest.empty())
         append(linked, shell_polylines(fill.spiral ? rest : off_voids(rest, flow.spacing()), rings, outer ? ipMonotonic : ipRectilinear, flow.spacing(), outer, flow,
                                        host_z, start, MaxGlide, surface_spaced ? &patch.surface.get() : nullptr, &seam_line, &ramp));
     if (banded != nullptr && !sparse && !plug)
         for (const ExPolygon &strip : banded->lengthwise)
-            arachne_roads(strip, flow, height, 0, roads, nullptr, outer ? &start : nullptr);
+            arachne_roads(strip, flow, height, 0, roads, nullptr, outer ? &start : nullptr, banded->arachne);
     std::vector<Polylines> pinholes;
     WidthRoads covered = roads;
     for (const auto &[lines, thick_flow] : thick)
@@ -1906,10 +1966,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                 }
         const double fallback = std::max(0., cand.area() - covered) * SCALING_FACTOR * SCALING_FACTOR;
         if (settings.banded && fallback > 0.) {
-            ExPolygons uncovered{ cand };
-            for (const ConformalPatch &patch : result.patches)
-                if (get_extents(patch.footprint).overlap(cand_bb))
-                    uncovered = diff_ex(uncovered, patch.footprint);
+            Polygons uncovered = diff(ExPolygons{ cand }, covering);
             for (const auto &[component, reason] : skipped)
                 if (get_extents(component).overlap(cand_bb)) {
                     ExPolygons part = intersection_ex(ExPolygons{ component }, uncovered);
@@ -1921,7 +1978,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                             record_fallback_shape(diag, std::move(part), S);
                         result.diagnostics.emplace_back(std::move(diag));
                     }
-                    uncovered = diff_ex(uncovered, ExPolygons{ component });
+                    uncovered = diff(uncovered, ExPolygons{ component });
                 }
             const double            rest = area(uncovered) * SCALING_FACTOR * SCALING_FACTOR;
             std::array<double, std::size(drop_reason_tag)> by_reason{};
@@ -2010,7 +2067,9 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
             if (!fills.empty())
                 fills.back().helix = fills.back().spiral && helix;
             std::vector<ShellFill> banded_fills = fills;
+            ArachneCache          arachne_cache;
             BandedFill             banded;
+            banded.arachne      = &arachne_cache;
             banded.voids        = voids;
             banded.strip_height = band_pitch;
             banded.strip_offset = 0.5 * band_tolerance;
@@ -2073,6 +2132,8 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                         banded.angle = principal;
                 }
             }
+            const HeightField contour = banded.strips ? contour_samples(patch.surface) : HeightField();
+            banded.contour = banded.strips ? &contour : nullptr;
             const ExPolygons fill_area = banded.lengthwise.empty() ? area : diff_ex(area, banded.lengthwise);
             const SeamPosition          seam_position = object.config().seam_position.value;
             patch.shell_paths.reserve(patch.shells);
