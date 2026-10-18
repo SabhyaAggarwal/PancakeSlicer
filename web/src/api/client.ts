@@ -100,6 +100,7 @@ const realApi: Api = {
     let finished = false;
     let disposed = false;
     let checking = false;
+    let reason: string | undefined;
     const finish = async () => {
       if (finished || checking) return;
       checking = true;
@@ -115,7 +116,7 @@ const realApi: Api = {
         if (!disposed) {
           finished = true;
           es.close();
-          on.error(String(e));
+          on.error(reason ?? String(e));
         }
       } finally {
         checking = false;
@@ -137,7 +138,14 @@ const realApi: Api = {
       } catch {
       }
     }) as EventListener);
-    for (const t of ['done', 'end', 'complete', 'failed', 'error_event']) es.addEventListener(t, () => void finish());
+    for (const t of ['done', 'end', 'complete', 'failed', 'error_event'])
+      es.addEventListener(t, ((ev: MessageEvent) => {
+        try {
+          reason = JSON.parse(ev.data).error || reason;
+        } catch {
+        }
+        void finish();
+      }) as EventListener);
     es.onerror = () => void finish();
     return () => {
       disposed = true;
