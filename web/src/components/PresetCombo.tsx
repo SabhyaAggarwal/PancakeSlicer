@@ -1,5 +1,5 @@
 import type { PresetType } from '../api/types';
-import { compatible, getState, selectPrinter, setState, useStore } from '../state/store';
+import { compatible, getState, resolvePreset, selectPrinter, setState, useStore } from '../state/store';
 
 export function PresetCombo({ type, slot = 0, className }: { type: PresetType; slot?: number; className?: string }) {
   const value = useStore((s) => (type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot] ?? ''));
@@ -20,6 +20,8 @@ export function PresetCombo({ type, slot = 0, className }: { type: PresetType; s
     if (type === 'machine') {
       selectPrinter(name);
       localStorage.setItem('orca.printer', name);
+      const vendor = resolvePreset(getState(), 'machine', name).base?.vendor;
+      if (vendor) localStorage.setItem('orca.vendor', vendor);
       return;
     }
     setState((st) => ({

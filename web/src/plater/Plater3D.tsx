@@ -48,12 +48,54 @@ export default function Plater3D() {
     controls.zoomToCursor = true;
 
     let frame = 0;
+    const frames: { at: number; ms: number }[] = [];
     const render = () => {
-      if (frame) return;
+      if (frame || !el.clientWidth) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
+        const t0 = performance.now();
+        if (uploads.length) uploadStep();
         renderer.render(scene, camera);
+        if (frames.length > 4096) frames.splice(0, 2048);
+        frames.push({ at: t0, ms: performance.now() - t0 });
       });
+    };
+
+    const STAGED_BYTES = 8 << 20;
+    const uploads: { geo: THREE.BufferGeometry; steps: (THREE.BufferAttribute | THREE.InterleavedBufferAttribute)[] }[] = [];
+    const uploaded = new WeakSet<THREE.BufferGeometry>();
+    const stageGeo = new THREE.BufferGeometry();
+    stageGeo.setDrawRange(0, 0);
+    stageGeo.boundingSphere = new THREE.Sphere();
+    const dummy = new THREE.BufferAttribute(new Float32Array(3), 3);
+    stageGeo.setAttribute('position', dummy);
+    const stage = new THREE.Mesh(stageGeo, new THREE.MeshBasicMaterial());
+    stage.frustumCulled = false;
+    const stageScene = new THREE.Scene().add(stage);
+    void renderer.compileAsync(stageScene, camera);
+    const needsUpload = (geo: THREE.BufferGeometry) => {
+      if (uploaded.has(geo)) return false;
+      const steps = [...Object.values(geo.attributes), ...(geo.index ? [geo.index] : [])];
+      if (steps.reduce((n, a) => n + a.array.byteLength, 0) < STAGED_BYTES) return false;
+      if (!uploads.some((u) => u.geo === geo)) uploads.push({ geo, steps });
+      return true;
+    };
+    const uploadStep = () => {
+      const u = uploads[0];
+      const a = u.steps.shift()!;
+      for (const k of Object.keys(stageGeo.attributes)) stageGeo.deleteAttribute(k);
+      stageGeo.setIndex(null);
+      stageGeo.setAttribute('position', a === u.geo.index ? dummy : (a as THREE.BufferAttribute));
+      if (a === u.geo.index) stageGeo.setIndex(a as THREE.BufferAttribute);
+      renderer.render(stageScene, camera);
+      stageGeo.setAttribute('position', dummy);
+      stageGeo.setIndex(null);
+      if (!u.steps.length) {
+        uploads.shift();
+        uploaded.add(u.geo);
+        for (const m of meshes.values()) if (m.geometry === u.geo) m.visible = true;
+      }
+      render();
     };
     controls.addEventListener('change', render);
 
@@ -96,6 +138,15 @@ export default function Plater3D() {
       }
       return m;
     };
+    {
+      const warm = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), material('#00AE42', 'normal'));
+      scene.add(warm);
+      void renderer.compileAsync(warm, camera, scene).finally(() => {
+        scene.remove(warm);
+        warm.geometry.dispose();
+      });
+    }
+    let liveGeometries = new Set<THREE.BufferGeometry>();
     const syncObjects = (s: State) => {
       const seen = new Set<number>();
       const out = outsideBed(s.objects, area, height);
@@ -107,6 +158,7 @@ export default function Plater3D() {
           if (!mesh || mesh.geometry !== o.geometry) {
             if (mesh) scene.remove(mesh);
             mesh = new THREE.Mesh(o.geometry);
+            mesh.visible = !needsUpload(o.geometry);
             mesh.matrixAutoUpdate = false;
             mesh.userData = { object: o.id, instance: inst.id };
             meshes.set(inst.id, mesh);
@@ -123,6 +175,9 @@ export default function Plater3D() {
           scene.remove(mesh);
           meshes.delete(id);
         }
+      const live = new Set(s.objects.map((o) => o.geometry));
+      for (const g of liveGeometries) if (!live.has(g)) g.dispose();
+      liveGeometries = live;
       syncGizmo(s);
       render();
     };
@@ -182,11 +237,31 @@ export default function Plater3D() {
 
     const ray = new THREE.Raycaster();
     const ndc = new THREE.Vector2();
-    const pick = (ev: PointerEvent) => {
+    const setRay = (ev: PointerEvent) => {
       const r = renderer.domElement.getBoundingClientRect();
       ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
       ray.setFromCamera(ndc, camera);
-      return ray.intersectObjects([...meshes.values()], false)[0];
+    };
+    const EXACT_TRIANGLES = 100_000;
+    const box = new THREE.Box3();
+    const entry = new THREE.Vector3();
+    const pick = (ev: PointerEvent): { object: THREE.Object3D; distance: number } | undefined => {
+      setRay(ev);
+      const hits: { mesh: THREE.Mesh; distance: number }[] = [];
+      for (const mesh of meshes.values()) {
+        box.copy(mesh.geometry.boundingBox!).applyMatrix4(mesh.matrixWorld);
+        if (ray.ray.intersectBox(box, entry)) hits.push({ mesh, distance: entry.distanceTo(ray.ray.origin) });
+      }
+      hits.sort((a, b) => a.distance - b.distance);
+      let best: { object: THREE.Object3D; distance: number } | undefined;
+      for (const { mesh, distance } of hits) {
+        if (best && distance >= best.distance) break;
+        const g = mesh.geometry;
+        const triangles = (g.index ? g.index.count : g.attributes.position.count) / 3;
+        const hit = triangles > EXACT_TRIANGLES ? { object: mesh, distance } : ray.intersectObject(mesh, false)[0];
+        if (hit && (!best || hit.distance < best.distance)) best = hit;
+      }
+      return best;
     };
     const bedPoint = () => {
       const p = new THREE.Vector3();
@@ -210,7 +285,7 @@ export default function Plater3D() {
     };
     const onMove = (ev: PointerEvent) => {
       if (!drag) return;
-      pick(ev);
+      setRay(ev);
       const p = bedPoint();
       if (!p) return;
       drag.moved = true;
@@ -229,7 +304,9 @@ export default function Plater3D() {
 
     const resize = () => {
       const w = el.clientWidth, h = el.clientHeight;
-      renderer.setSize(w, h);
+      if (!w || !h) return;
+      const size = renderer.getSize(new THREE.Vector2());
+      if (size.x !== w || size.y !== h) renderer.setSize(w, h);
       camera.aspect = w / Math.max(1, h);
       camera.updateProjectionMatrix();
       render();
@@ -260,6 +337,7 @@ export default function Plater3D() {
       syncBed(s);
       syncObjects(s);
     };
+    (window as unknown as { __plater: unknown }).__plater = { scene, camera, controls, tc, renderer, meshes, frames, render, getState, setState };
     const unsub = subscribeStore(sync);
     sync();
     resize();

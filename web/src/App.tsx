@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { addInstance, arrangeAll, download, importFiles, init, newProject, openFileDialog, openProjectDialog, removeInstance } from './actions';
 import { FlushDialog } from './components/FlushDialog';
 import { CanvasToolbar, ManipulationPanel, SliceNotification, Toast } from './components/CanvasOverlays';
@@ -13,6 +13,8 @@ export default function App() {
   const tab = useStore((s) => s.tab);
   const loading = useStore((s) => s.loading);
   const [dragOver, setDragOver] = useState(false);
+  const previewOpened = useRef(false);
+  if (tab === 'preview') previewOpened.current = true;
 
   useEffect(() => {
     void init();
@@ -45,7 +47,9 @@ export default function App() {
       <TopBar />
       <TabBar />
       <div className="main">
-        {tab === 'prepare' && <Sidebar />}
+        <div style={{ display: tab === 'prepare' ? 'contents' : 'none' }}>
+          <Sidebar />
+        </div>
         <div
           className={`canvas-area ${dragOver ? 'drag-over' : ''}`}
           onDragOver={(e) => {
@@ -64,7 +68,11 @@ export default function App() {
             <CanvasToolbar />
             <ManipulationPanel />
           </div>
-          {tab === 'preview' && <PreviewView />}
+          {previewOpened.current && (
+            <div style={{ display: tab === 'preview' ? 'contents' : 'none' }}>
+              <PreviewView />
+            </div>
+          )}
           <SliceNotification />
           {loading && <div className="loading">{loading}…</div>}
         </div>

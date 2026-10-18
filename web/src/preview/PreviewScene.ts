@@ -70,7 +70,9 @@ export class PreviewScene {
 
   resize() {
     const w = this.host.clientWidth, h = this.host.clientHeight;
-    this.renderer.setSize(w, h);
+    if (!w || !h) return;
+    const size = this.renderer.getSize(new THREE.Vector2());
+    if (size.x !== w || size.y !== h) this.renderer.setSize(w, h);
     this.camera.aspect = w / Math.max(1, h);
     this.camera.updateProjectionMatrix();
     this.request();
@@ -169,7 +171,7 @@ export class PreviewScene {
   }
 
   request() {
-    if (this.frame) return;
+    if (this.frame || !this.host.clientWidth) return;
     this.frame = requestAnimationFrame(() => {
       this.frame = 0;
       this.renderNow();

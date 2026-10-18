@@ -1,54 +1,74 @@
 import * as THREE from 'three';
-import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
-import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
-import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { ConfigValue, PlateJson } from '../api/types';
 import { toolValue } from '../options';
 import type { Instance, PlateObject } from '../state/store';
+import type { MeshData, MeshIn, MeshOut } from './mesh.worker';
+import type { ProjectItem } from './threemf';
 
 const DEG = Math.PI / 180;
 
-export async function loadMesh(file: File): Promise<THREE.BufferGeometry> {
-  const ext = file.name.toLowerCase().split('.').pop();
-  let geo: THREE.BufferGeometry;
-  if (ext === 'stl') {
-    geo = new STLLoader().parse(await file.arrayBuffer());
-  } else if (ext === 'obj') {
-    const group = new OBJLoader().parse(await file.text());
-    const parts: THREE.BufferGeometry[] = [];
-    group.traverse((o) => {
-      if ((o as THREE.Mesh).isMesh) {
-        const g = (o as THREE.Mesh).geometry.clone();
-        g.deleteAttribute('normal');
-        g.deleteAttribute('uv');
-        parts.push(g.index ? g.toNonIndexed() : g);
-      }
-    });
-    if (!parts.length) throw new Error('no mesh in ' + file.name);
-    geo = parts.length === 1 ? parts[0] : mergeGeoms(parts);
-  } else {
-    throw new Error(`${file.name}: STL and OBJ load in the browser; 3MF needs the server loader`);
+let worker: Worker | null = null;
+let nextRequest = 1;
+const pending = new Map<number, (m: MeshOut) => void>();
+
+function request(msg: DistributiveOmit<MeshIn, 'id'>, on: (m: MeshOut) => void, transfer: Transferable[] = []) {
+  if (!worker) {
+    worker = new Worker(new URL('./mesh.worker.ts', import.meta.url), { type: 'module' });
+    worker.onmessage = (e: MessageEvent<MeshOut>) => {
+      const h = pending.get(e.data.id);
+      if (e.data.type === 'done' || e.data.type === 'error') pending.delete(e.data.id);
+      h?.(e.data);
+    };
   }
-  return finishMesh(geo).geometry;
+  const id = nextRequest++;
+  pending.set(id, on);
+  worker.postMessage({ ...msg, id }, transfer);
 }
+type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never;
 
-export function finishMesh(geo: THREE.BufferGeometry): { geometry: THREE.BufferGeometry; centre: THREE.Vector3 } {
-  if (geo.getAttribute('normal')) geo.deleteAttribute('normal');
-  geo = mergeVertices(geo, 1e-4);
-  geo.computeVertexNormals();
-  geo.computeBoundingBox();
-  const b = geo.boundingBox!;
-  const centre = new THREE.Vector3((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, b.min.z);
-  geo.translate(-centre.x, -centre.y, -centre.z);
-  geo.computeBoundingBox();
-  geo.computeBoundingSphere();
-  return { geometry: geo, centre };
-}
-
-export function meshFromPositions(positions: Float32Array): { geometry: THREE.BufferGeometry; centre: THREE.Vector3 } {
+function toGeometry(d: MeshData): THREE.BufferGeometry {
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  return finishMesh(geo);
+  geo.setAttribute('position', new THREE.BufferAttribute(d.positions, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(d.normals, 3));
+  geo.setIndex(new THREE.BufferAttribute(d.index, 1));
+  geo.boundingBox = new THREE.Box3(new THREE.Vector3(...d.min), new THREE.Vector3(...d.max));
+  geo.boundingSphere = new THREE.Sphere(geo.boundingBox.getCenter(new THREE.Vector3()), d.radius);
+  return geo;
+}
+
+export function loadMesh(file: File, progress?: (pct: number) => void): Promise<THREE.BufferGeometry> {
+  return new Promise((resolve, reject) => {
+    let geo: THREE.BufferGeometry | null = null;
+    request({ type: 'mesh', file }, (m) => {
+      if (m.type === 'progress') progress?.(m.pct);
+      else if (m.type === 'mesh') resolve((geo = toGeometry(m)));
+      else if (m.type === 'hull' && geo) geo.userData.hull = m.hull;
+      else if (m.type === 'error') reject(new Error(m.message));
+    });
+  });
+}
+
+export function loadProject(file: File, on: {
+  items(items: ProjectItem[]): void;
+  mesh(i: number, geometry: THREE.BufferGeometry, centre: THREE.Vector3): void;
+  missing(i: number): void;
+}): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const geos = new Map<number, THREE.BufferGeometry>();
+    request({ type: 'project', file }, (m) => {
+      if (m.type === 'items') on.items(m.items);
+      else if (m.type === 'mesh') {
+        const geo = toGeometry(m);
+        geos.set(m.item!, geo);
+        on.mesh(m.item!, geo, new THREE.Vector3(...m.centre));
+      } else if (m.type === 'hull') {
+        const geo = geos.get(m.item!);
+        if (geo) geo.userData.hull = m.hull;
+      } else if (m.type === 'missing') on.missing(m.item);
+      else if (m.type === 'done') resolve();
+      else if (m.type === 'error') reject(new Error(m.message));
+    });
+  });
 }
 
 export function placeholderGeometry(size = 20): THREE.BufferGeometry {
@@ -58,24 +78,17 @@ export function placeholderGeometry(size = 20): THREE.BufferGeometry {
   return geo;
 }
 
-function mergeGeoms(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
-  const total = parts.reduce((n, g) => n + g.attributes.position.count, 0);
-  const pos = new Float32Array(total * 3);
-  let off = 0;
-  for (const g of parts) {
-    pos.set(g.attributes.position.array as Float32Array, off);
-    off += g.attributes.position.count * 3;
-  }
-  const out = new THREE.BufferGeometry();
-  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  return out;
-}
-
 function tiltScale(o: PlateObject): THREE.Matrix4 {
   const m = new THREE.Matrix4().makeScale(...o.scale);
   m.premultiply(new THREE.Matrix4().makeRotationX(o.rotX * DEG));
   m.premultiply(new THREE.Matrix4().makeRotationY(o.rotY * DEG));
   return m;
+}
+
+function boxCorners(b: THREE.Box3): Float32Array {
+  const out = new Float32Array(24);
+  for (let i = 0; i < 8; i++) out.set([i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z], 3 * i);
+  return out;
 }
 
 const boxCache = new WeakMap<THREE.BufferGeometry, Map<string, THREE.Box3>>();
@@ -84,10 +97,22 @@ function transformedBox(geo: THREE.BufferGeometry, m: THREE.Matrix4, key: string
   if (!per) boxCache.set(geo, (per = new Map()));
   let b = per.get(key);
   if (!b) {
-    b = new THREE.Box3();
-    const p = geo.attributes.position as THREE.BufferAttribute;
-    const v = new THREE.Vector3();
-    for (let i = 0; i < p.count; i++) b.expandByPoint(v.fromBufferAttribute(p, i).applyMatrix4(m));
+    const e = m.elements;
+    const axisAligned = [0, 4, 8].every((c) => [e[c], e[c + 1], e[c + 2]].filter((v) => Math.abs(v) > 1e-12).length === 1);
+    const p = (geo.userData.hull as Float32Array | undefined) ??
+      (axisAligned && geo.boundingBox ? boxCorners(geo.boundingBox) : (geo.attributes.position.array as Float32Array));
+    let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+    for (let i = 0; i < p.length; i += 3) {
+      const x = p[i], y = p[i + 1], z = p[i + 2];
+      const tx = e[0] * x + e[4] * y + e[8] * z + e[12], ty = e[1] * x + e[5] * y + e[9] * z + e[13], tz = e[2] * x + e[6] * y + e[10] * z + e[14];
+      if (tx < x0) x0 = tx;
+      if (tx > x1) x1 = tx;
+      if (ty < y0) y0 = ty;
+      if (ty > y1) y1 = ty;
+      if (tz < z0) z0 = tz;
+      if (tz > z1) z1 = tz;
+    }
+    b = new THREE.Box3(new THREE.Vector3(x0, y0, z0), new THREE.Vector3(x1, y1, z1));
     if (per.size > 64) per.clear();
     per.set(key, b);
   }
@@ -118,42 +143,26 @@ export function objectSize(o: PlateObject): THREE.Vector3 {
   return b.getSize(new THREE.Vector3());
 }
 
-export function bakeStl(o: PlateObject): Blob {
-  const m = objectMatrix(o);
-  const geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry;
-  const p = geo.attributes.position as THREE.BufferAttribute;
-  const tris = p.count / 3;
-  const buf = new ArrayBuffer(84 + tris * 50);
-  const dv = new DataView(buf);
-  new TextEncoder().encodeInto('OrcaSlicer web plate object', new Uint8Array(buf, 0, 80));
-  dv.setUint32(80, tris, true);
-  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), n = new THREE.Vector3();
-  let off = 84;
-  for (let t = 0; t < tris; t++) {
-    a.fromBufferAttribute(p, 3 * t).applyMatrix4(m);
-    b.fromBufferAttribute(p, 3 * t + 1).applyMatrix4(m);
-    c.fromBufferAttribute(p, 3 * t + 2).applyMatrix4(m);
-    n.subVectors(c, b).cross(new THREE.Vector3().subVectors(a, b)).normalize();
-    for (const v of [n, a, b, c]) {
-      dv.setFloat32(off, v.x, true);
-      dv.setFloat32(off + 4, v.y, true);
-      dv.setFloat32(off + 8, v.z, true);
-      off += 12;
-    }
-    off += 2;
-  }
-  return new Blob([buf], { type: 'model/stl' });
+export function bakeStl(o: PlateObject): Promise<Blob> {
+  const pos = o.geometry.attributes.position.array as Float32Array;
+  const index = (o.geometry.index?.array as Uint32Array | Uint16Array | undefined) ?? null;
+  return new Promise((resolve, reject) =>
+    request({ type: 'bake', positions: pos, index, matrix: objectMatrix(o).elements }, (m) => {
+      if (m.type === 'blob') resolve(m.blob);
+      else if (m.type === 'error') reject(new Error(m.message));
+    }),
+  );
 }
 
-export function plateJson(objects: PlateObject[]): { plate: PlateJson; files: { name: string; blob: Blob }[] } {
-  const files: { name: string; blob: Blob }[] = [];
+export async function plateJson(objects: PlateObject[]): Promise<{ plate: PlateJson; files: { name: string; blob: Blob }[] }> {
+  const names: string[] = [];
   const used = new Set<string>();
   const plate: PlateJson = { objects: [] };
   for (const o of objects) {
     let file = `${o.name.replace(/[^A-Za-z0-9_.-]+/g, '_').replace(/\.(stl|obj)$/i, '')}.stl`;
     for (let k = 2; used.has(file); k++) file = file.replace(/(_\d+)?\.stl$/, `_${k}.stl`);
     used.add(file);
-    files.push({ name: file, blob: bakeStl(o) });
+    names.push(file);
     plate.objects.push({
       file,
       name: o.name.replace(/\.(stl|obj)$/i, ''),
@@ -164,7 +173,8 @@ export function plateJson(objects: PlateObject[]): { plate: PlateJson; files: { 
         : {}),
     });
   }
-  return { plate, files };
+  const blobs = await Promise.all(objects.map(bakeStl));
+  return { plate, files: names.map((name, i) => ({ name, blob: blobs[i] })) };
 }
 
 const round = (v: number) => Math.round(v * 1000) / 1000;

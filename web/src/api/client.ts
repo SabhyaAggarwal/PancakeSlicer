@@ -1,8 +1,10 @@
+import { demoPresets, normalizeCatalog } from './catalog';
+import type { CatalogIn, CatalogOut } from './catalog.worker';
 import type { Config, JobRequest, JobStatus, PresetCatalog, PresetType, ProgressEvent, SystemPreset, UserPreset } from './types';
 
 export interface Api {
   mock: boolean;
-  presets(vendor: string): Promise<PresetCatalog>;
+  presets(vendor: string, models: string[], update?: (c: PresetCatalog) => void): Promise<PresetCatalog>;
   userPresets(): Promise<UserPreset[]>;
   saveUserPreset(p: UserPreset): Promise<void>;
   deleteUserPreset(type: PresetType, name: string): Promise<void>;
@@ -19,21 +21,6 @@ async function json<T>(r: Response): Promise<T> {
   return r.json() as Promise<T>;
 }
 
-function normalizeCatalog(raw: any, vendor: string): PresetCatalog {
-  const pick = (...keys: string[]) => keys.map((k) => raw?.[k]).find(Array.isArray) ?? [];
-  const norm = (type: PresetType) => (p: any): SystemPreset => ({
-    ...p,
-    type,
-    vendor: p.vendor ?? vendor,
-    config: p.config ?? p.values ?? {},
-  });
-  return {
-    machines: pick('machines', 'machine', 'printers').map(norm('machine')),
-    processes: pick('processes', 'process', 'prints').map(norm('process')),
-    filaments: pick('filaments', 'filament').map(norm('filament')),
-  };
-}
-
 export function parseProgress(data: string): ProgressEvent | null {
   try {
     const j = JSON.parse(data);
@@ -45,10 +32,32 @@ export function parseProgress(data: string): ProgressEvent | null {
   return m ? { stage: m[1], pct: Number(m[2]) } : null;
 }
 
+let catalogWorker: Worker | null = null;
+let nextCatalog = 1;
+
 const realApi: Api = {
   mock: false,
-  async presets(vendor) {
-    return normalizeCatalog(await json(await fetch(`/api/presets?vendor=${encodeURIComponent(vendor)}`)), vendor);
+  presets(vendor, models, update) {
+    catalogWorker ??= new Worker(new URL('./catalog.worker.ts', import.meta.url), { type: 'module' });
+    const id = nextCatalog++;
+    const worker = catalogWorker;
+    return new Promise((resolve, reject) => {
+      let answered = false;
+      const on = (e: MessageEvent<CatalogOut>) => {
+        const m = e.data;
+        if (m.id !== id) return;
+        if (m.type === 'catalog') {
+          if (answered) update?.(m.catalog);
+          else resolve(m.catalog);
+          answered = true;
+        } else {
+          worker.removeEventListener('message', on);
+          if (m.type === 'error' && !answered) reject(new Error(m.message));
+        }
+      };
+      worker.addEventListener('message', on);
+      worker.postMessage({ id, vendor, models } satisfies CatalogIn);
+    });
   },
   async userPresets() {
     const r = await fetch('/api/user-presets');
@@ -135,11 +144,10 @@ const STAGES: [string, number][] = [
 
 const mockApi: Api = {
   mock: true,
-  async presets(vendor) {
+  async presets(vendor, models) {
     const all = normalizeCatalog((await import('../mock/presets.json')).default, vendor);
-    if (vendor === '*') return all;
-    const f = (l: SystemPreset[]) => l.filter((p) => p.vendor === vendor);
-    return { machines: f(all.machines), processes: f(all.processes), filaments: f(all.filaments) };
+    const f = (l: SystemPreset[]) => l.filter((p) => vendor === '*' || p.vendor === vendor);
+    return demoPresets({ machines: f(all.machines), processes: f(all.processes), filaments: f(all.filaments) }, models);
   },
   async userPresets() {
     try {

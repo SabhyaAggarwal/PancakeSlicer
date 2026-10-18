@@ -5,40 +5,43 @@ import { eventArg } from './components/LayerEvents';
 import { jobValue } from './options';
 import { shortTime } from './preview/format';
 import { filamentColor } from './plater/Plater3D';
-import { arrange, loadMesh, meshFromPositions, nextFreeSpot, parsePoints, placeholderGeometry, plateJson } from './plater/geometry';
-import { readProject } from './plater/threemf';
+import { arrange, loadMesh, loadProject, nextFreeSpot, parsePoints, placeholderGeometry, plateJson } from './plater/geometry';
+import type { ProjectItem } from './plater/threemf';
 import {
   DEFAULT_PRINTER, DEMO_MODELS, effectiveConfig, getState, markStale, newId, printerPreset, resolvePreset, selectPrinter, setState, toast, type PlateObject,
 } from './state/store';
 
 const VENDORS = ['BBL', 'Prusa'];
 
-function demoPresets(cat: PresetCatalog): PresetCatalog {
-  const machines = cat.machines.filter((m) => DEMO_MODELS.includes(m.model ?? String(m.config.printer_model ?? '')));
-  const names = new Set(machines.map((m) => m.name));
-  const forDemo = (p: { compatible_printers?: string[] }) => (p.compatible_printers ?? []).some((c) => names.has(c));
-  return {
-    machines,
-    processes: cat.processes.filter((p) => p.name.includes('Non-planar top') && forDemo(p)),
-    filaments: cat.filaments.filter(forDemo),
-  };
+function mergeCatalog(vendor: string, cat: PresetCatalog) {
+  const order = <T extends { vendor: string }>(l: T[]) => [...l].sort((a, b) => VENDORS.indexOf(a.vendor) - VENDORS.indexOf(b.vendor));
+  setState((s) => ({
+    machines: order([...s.machines.filter((p) => p.vendor !== vendor), ...cat.machines]),
+    processes: order([...s.processes.filter((p) => p.vendor !== vendor), ...cat.processes]),
+    filaments: order([...s.filaments.filter((p) => p.vendor !== vendor), ...cat.filaments]),
+  }));
 }
 
 export async function init() {
   const api = await connect();
   setState({ api, loading: 'Loading presets' });
+  const saved = localStorage.getItem('orca.printer');
+  const first = localStorage.getItem('orca.vendor') ?? 'BBL';
+  const vendors = [first, ...VENDORS.filter((v) => v !== first)];
   try {
-    const cats = await Promise.all(VENDORS.map((v) => api.presets(v)));
-    const all = demoPresets({
-      machines: cats.flatMap((c) => c.machines),
-      processes: cats.flatMap((c) => c.processes),
-      filaments: cats.flatMap((c) => c.filaments),
-    });
-    const userPresets = await api.userPresets().catch(() => []);
-    setState({ ...all, userPresets, loading: null, filamentSlots: [] });
-    const saved = localStorage.getItem('orca.printer');
-    const printer = [saved, DEFAULT_PRINTER].find((n) => n && (all.machines.some((m) => m.name === n) || userPresets.some((u) => u.name === n)));
-    selectPrinter(printer ?? all.machines[0]?.name ?? '');
+    const [cat, userPresets] = await Promise.all([
+      api.presets(first, DEMO_MODELS, (c) => mergeCatalog(first, c)),
+      api.userPresets().catch(() => []),
+    ]);
+    setState({ ...cat, userPresets, loading: null, filamentSlots: [] });
+    const known = (n: string | null) => !!n && !!resolvePreset(getState(), 'machine', n).base;
+    const printer = [saved, DEFAULT_PRINTER].find(known) ?? cat.machines[0]?.name;
+    if (printer) selectPrinter(printer);
+    for (const v of vendors.slice(1)) {
+      mergeCatalog(v, await api.presets(v, DEMO_MODELS, (c) => mergeCatalog(v, c)));
+      if (!printer && known(saved)) selectPrinter(saved!);
+    }
+    if (!getState().printer && getState().machines[0]) selectPrinter(getState().machines[0].name);
   } catch (e) {
     setState({ loading: null });
     toast(`Presets failed to load: ${e}`);
@@ -67,12 +70,14 @@ export async function importFiles(files: FileList | File[]) {
   const added: PlateObject[] = [];
   for (const f of list) {
     try {
-      const geometry = await loadMesh(f);
+      const geometry = await loadMesh(f, (pct) => setState({ loading: `Loading ${f.name} ${Math.round(pct)}%` }));
+      if (getState().loading?.startsWith('Loading ')) setState({ loading: null });
       added.push({
         id: newId(), name: f.name, geometry, rotX: 0, rotY: 0, scale: [1, 1, 1], extruder: 1, source: f, settings: {},
         instances: [{ id: newId(), x: 0, y: 0, rotZ: 0 }],
       });
     } catch (e) {
+      if (getState().loading?.startsWith('Loading ')) setState({ loading: null });
       toast(String(e instanceof Error ? e.message : e));
     }
   }
@@ -87,46 +92,33 @@ export async function importFiles(files: FileList | File[]) {
 export async function openProject(file: File) {
   const s = getState();
   if (s.objects.length && !window.confirm('Opening a project replaces the objects on the plate. Continue?')) return;
-  let project: Awaited<ReturnType<typeof readProject>>;
+  let objects: PlateObject[] = [];
+  const patch = (i: number, f: (o: PlateObject) => PlateObject) => {
+    const id = objects[i]?.id;
+    if (getState().project === file) setState((st) => ({ objects: st.objects.map((o) => (o.id === id ? f(o) : o)) }));
+  };
   try {
-    project = await readProject(file);
+    await loadProject(file, {
+      items(items: ProjectItem[]) {
+        if (!items.length) return toast(`${file.name}: the project has no printable objects`);
+        const slots = Math.max(s.filamentSlots.length, ...items.map((i) => i.extruder));
+        objects = items.map((it) => ({
+          id: newId(), name: it.name, geometry: placeholderGeometry(), rotX: 0, rotY: 0, scale: [1, 1, 1],
+          extruder: it.extruder, source: file, settings: {}, project: { file: file.name, placeholder: true },
+          instances: [{ id: newId(), x: it.origin[0], y: it.origin[1], rotZ: 0 }],
+        }));
+        setState((st) => ({
+          objects, project: file, selected: null, processScope: 'global',
+          filamentSlots: st.filamentSlots.length >= slots ? st.filamentSlots : [...st.filamentSlots, ...Array(slots - st.filamentSlots.length).fill(st.filamentSlots[0] ?? '')],
+          job: markStale(st.job),
+        }));
+      },
+      mesh: (i, geometry, centre) =>
+        patch(i, (o) => ({ ...o, geometry, project: { file: file.name, placeholder: false }, instances: [{ ...o.instances[0], x: centre.x, y: centre.y }] })),
+      missing: (i) => patch(i, (o) => ({ ...o, project: { file: file.name, placeholder: true, missing: true } })),
+    });
   } catch (e) {
     toast(`${file.name}: ${e instanceof Error ? e.message : e}`);
-    return;
-  }
-  if (!project.items.length) {
-    toast(`${file.name}: the project has no printable objects`);
-    return;
-  }
-  const slots = Math.max(s.filamentSlots.length, ...project.items.map((i) => i.extruder));
-  const objects: PlateObject[] = project.items.map((it) => ({
-    id: newId(), name: it.name, geometry: placeholderGeometry(), rotX: 0, rotY: 0, scale: [1, 1, 1],
-    extruder: it.extruder, source: file, settings: {}, project: { file: file.name, placeholder: true },
-    instances: [{ id: newId(), x: it.origin[0], y: it.origin[1], rotZ: 0 }],
-  }));
-  setState((st) => ({
-    objects, project: file, selected: null, processScope: 'global',
-    filamentSlots: st.filamentSlots.length >= slots ? st.filamentSlots : [...st.filamentSlots, ...Array(slots - st.filamentSlots.length).fill(st.filamentSlots[0] ?? '')],
-    job: markStale(st.job),
-  }));
-  for (let i = 0; i < objects.length; i++) {
-    await new Promise((r) => setTimeout(r, 0));
-    if (getState().project !== file) return;
-    const positions = project.mesh(i);
-    const id0 = objects[i].id;
-    if (!positions) {
-      setState((st) => ({ objects: st.objects.map((o) => (o.id === id0 ? { ...o, project: { file: file.name, placeholder: true, missing: true } } : o)) }));
-      continue;
-    }
-    const { geometry, centre } = meshFromPositions(positions);
-    const id = objects[i].id;
-    setState((st) => ({
-      objects: st.objects.map((o) =>
-        o.id === id
-          ? { ...o, geometry, project: { file: file.name, placeholder: false }, instances: [{ ...o.instances[0], x: centre.x, y: centre.y }] }
-          : o,
-      ),
-    }));
   }
 }
 
@@ -207,10 +199,10 @@ function overrides(): Config {
   return out;
 }
 
-export function jobRequest(): JobRequest {
+export async function jobRequest(): Promise<JobRequest> {
   const s = getState();
   const sys = (type: 'machine' | 'process' | 'filament', n: string) => resolvePreset(s, type, n).base?.name ?? n;
-  const { plate, files } = s.project ? { plate: undefined, files: [{ name: s.project.name, blob: s.project as Blob }] } : plateJson(s.objects);
+  const { plate, files } = s.project ? { plate: undefined, files: [{ name: s.project.name, blob: s.project as Blob }] } : await plateJson(s.objects);
   return {
     files,
     vendor: printerPreset(s)?.vendor ?? 'BBL',
@@ -225,8 +217,8 @@ export function jobRequest(): JobRequest {
 }
 
 (window as unknown as { __jobId: unknown }).__jobId = () => getState().job.id;
-(window as unknown as { __job: unknown }).__job = () => {
-  const r = jobRequest();
+(window as unknown as { __job: unknown }).__job = async () => {
+  const r = await jobRequest();
   return {
     'files[]': r.files.map((f) => `${f.name} (${f.blob.size} bytes)`),
     vendor: r.vendor, printer: r.printer, process: r.process, 'filament[]': r.filaments,
@@ -242,7 +234,7 @@ export async function slice() {
   if (!s.api || !s.objects.length || s.job.state === 'running' || s.job.state === 'submitting') return;
   setState({ job: { state: 'submitting', pct: 0, stage: 'uploading' } });
   try {
-    const id = await s.api.submit(jobRequest());
+    const id = await s.api.submit(await jobRequest());
     setState({ job: { id, state: 'running', pct: 0, stage: 'queued' } });
     unsubscribe?.();
     const warnings: string[] = [];
