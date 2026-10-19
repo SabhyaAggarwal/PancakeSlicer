@@ -246,6 +246,11 @@ type JobManager struct {
 	durations     [8]uint64
 	durationCount uint64
 	durationSum   float64
+	submitted     uint64
+	completedJobs [3]uint64
+	rejects       [200]uint64
+	responseBytes uint64
+	downloadBytes uint64
 }
 
 var jobIDPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
@@ -309,6 +314,9 @@ func (m *JobManager) Start(j *Job) error {
 	j.appendLocked(Event{Type: "state", State: StateQueued})
 	j.mu.Unlock()
 	m.jobs[j.ID] = j
+	if m.cfg.Metrics {
+		m.submitted++
+	}
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()

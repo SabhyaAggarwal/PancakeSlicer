@@ -93,6 +93,34 @@ func presetDisplayName(name string) string {
 	return path.Base(strings.ReplaceAll(name, "\\", "/"))
 }
 
+const uploadIdleTimeout = 10 * time.Second
+const uploadProgressBytes = 64 << 10
+
+type uploadBody struct {
+	io.ReadCloser
+	controller   *http.ResponseController
+	rate         int64
+	pending      int
+	rateDeadline time.Time
+}
+
+func (b *uploadBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	b.pending += n
+	if b.pending >= uploadProgressBytes {
+		b.rateDeadline = b.rateDeadline.Add(time.Duration(float64(b.pending) / float64(b.rate) * float64(time.Second)))
+		b.pending = 0
+		deadline := time.Now().Add(uploadIdleTimeout)
+		if b.rateDeadline.Before(deadline) {
+			deadline = b.rateDeadline
+		}
+		if deadlineErr := b.controller.SetReadDeadline(deadline); deadlineErr != nil && err == nil {
+			err = deadlineErr
+		}
+	}
+	return n, err
+}
+
 func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	j, err := s.jobs.NewJob(s.clientIP(r))
 	if err != nil {
@@ -112,12 +140,14 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	controller := http.NewResponseController(w)
-	if err := controller.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
+	deadline := time.Now().Add(uploadIdleTimeout)
+	if err := controller.SetReadDeadline(deadline); err != nil {
 		fail(w, 500, "upload read deadline unavailable")
 		return
 	}
 	defer controller.SetReadDeadline(time.Time{})
-	r.Body = http.MaxBytesReader(w, r.Body, s.cfg.MaxUploadSize)
+	r.Body = &uploadBody{ReadCloser: http.MaxBytesReader(w, r.Body, s.cfg.MaxUploadSize),
+		controller: controller, rate: s.cfg.UploadMinRate, rateDeadline: deadline}
 	parseErr := r.ParseMultipartForm(8 << 20)
 	if r.MultipartForm != nil {
 		defer r.MultipartForm.RemoveAll()

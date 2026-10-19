@@ -175,6 +175,11 @@ func (m *JobManager) completed(j *Job) {
 	defer m.mu.Unlock()
 	if m.cfg.Metrics {
 		j.mu.Lock()
+		for i, state := range []JobState{StateDone, StateFailed, StateCancelled} {
+			if j.state == state {
+				m.completedJobs[i]++
+			}
+		}
 		if !j.started.IsZero() {
 			seconds := j.finished.Sub(j.started).Seconds()
 			m.durationCount++
@@ -202,6 +207,22 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 	for _, j := range m.jobs {
 		counts[j.State()]++
 	}
+	fmt.Fprintln(w, "# HELP orca_jobs_submitted_total Accepted jobs, excluding rejected uploads.\n# TYPE orca_jobs_submitted_total counter")
+	fmt.Fprintf(w, "orca_jobs_submitted_total %d\n", m.submitted)
+	fmt.Fprintln(w, "# HELP orca_jobs_completed_total Terminal jobs, including cancellations before starting.\n# TYPE orca_jobs_completed_total counter")
+	for i, state := range []JobState{StateDone, StateFailed, StateCancelled} {
+		fmt.Fprintf(w, "orca_jobs_completed_total{state=%q} %d\n", state, m.completedJobs[i])
+	}
+	fmt.Fprintln(w, "# HELP orca_http_rejections_total Completed HTTP responses with status 400 through 599.\n# TYPE orca_http_rejections_total counter")
+	for i, count := range m.rejects {
+		if count > 0 {
+			fmt.Fprintf(w, "orca_http_rejections_total{status=\"%d\"} %d\n", i+400, count)
+		}
+	}
+	fmt.Fprintln(w, "# HELP orca_http_response_bytes_total Response body bytes written for completed requests.\n# TYPE orca_http_response_bytes_total counter")
+	fmt.Fprintf(w, "orca_http_response_bytes_total %d\n", m.responseBytes)
+	fmt.Fprintln(w, "# HELP orca_download_bytes_total Response body bytes written for successful job downloads.\n# TYPE orca_download_bytes_total counter")
+	fmt.Fprintf(w, "orca_download_bytes_total %d\n", m.downloadBytes)
 	fmt.Fprintln(w, "# HELP orca_jobs Retained jobs by state.\n# TYPE orca_jobs gauge")
 	for _, state := range []JobState{StateQueued, StateRunning, StateDone, StateFailed, StateCancelled} {
 		fmt.Fprintf(w, "orca_jobs{state=%q} %d\n", state, counts[state])
@@ -263,6 +284,7 @@ func (s *Server) clientIP(r *http.Request) string {
 type requestWriter struct {
 	http.ResponseWriter
 	status int
+	bytes  uint64
 }
 
 func (w *requestWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
@@ -280,7 +302,9 @@ func (w *requestWriter) Write(b []byte) (int, error) {
 	if w.status == 0 {
 		w.WriteHeader(200)
 	}
-	return w.ResponseWriter.Write(b)
+	n, err := w.ResponseWriter.Write(b)
+	w.bytes += uint64(n)
+	return n, err
 }
 func (w *requestWriter) Flush() { _ = w.FlushError() }
 func (w *requestWriter) FlushError() error {
@@ -292,7 +316,7 @@ func (w *requestWriter) FlushError() error {
 
 func (s *Server) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.cfg.RequestLog {
+		if s.cfg.RequestLog || s.cfg.Metrics {
 			started := time.Now()
 			recorder := &requestWriter{ResponseWriter: w}
 			w = recorder
@@ -301,6 +325,24 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 				if status == 0 {
 					status = 200
 				}
+				if s.cfg.Metrics {
+					if r.Method == "HEAD" {
+						recorder.bytes = 0
+					}
+					m := s.jobs
+					m.mu.Lock()
+					m.responseBytes += recorder.bytes
+					if status >= 400 && status <= 599 {
+						m.rejects[status-400]++
+					}
+					if (r.Method == "GET" || r.Method == "HEAD") && r.PathValue("id") != "" && r.URL.Path == "/api/jobs/"+r.PathValue("id")+"/download" && status >= 200 && status < 300 {
+						m.downloadBytes += recorder.bytes
+					}
+					m.mu.Unlock()
+				}
+				if !s.cfg.RequestLog {
+					return
+				}
 				id := r.PathValue("id")
 				if id == "" && strings.HasPrefix(r.URL.Path, "/api/jobs/") {
 					id, _, _ = strings.Cut(strings.TrimPrefix(r.URL.Path, "/api/jobs/"), "/")
@@ -308,7 +350,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 				if id == "" {
 					id = strings.TrimPrefix(w.Header().Get("Location"), "/api/jobs/")
 				}
-				b, _ := json.Marshal(map[string]any{"method": r.Method, "path": r.URL.Path, "status": status, "duration_ms": float64(time.Since(started).Microseconds()) / 1000, "client": s.clientIP(r), "job_id": id})
+				b, _ := json.Marshal(map[string]any{"method": logPrefix(r.Method, 32), "path": logPrefix(r.URL.Path, 1024), "status": status, "duration_ms": float64(time.Since(started).Microseconds()) / 1000, "client": s.clientIP(r), "job_id": logPrefix(id, 128)})
 				log.Writer().Write(append(b, '\n'))
 			}()
 		}
@@ -333,4 +375,11 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func logPrefix(value string, limit int) string {
+	if len(value) > limit {
+		return value[:limit] + "..."
+	}
+	return value
 }
