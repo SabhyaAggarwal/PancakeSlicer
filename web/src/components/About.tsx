@@ -11,6 +11,7 @@ export function AboutContent({ about }: { about: BuildAbout }) {
     <p>This program is free software. You can receive the Corresponding Source of this running version at no charge:</p>
     <p><a href={about.source_url} target="_blank" rel="noreferrer">Get source code for this version</a></p>
     </> : <p role="alert">The operator must configure the Corresponding Source offer required by AGPL-3.0 §13.</p>}
+    <p><a href="/third-party-licences.txt" target="_blank" rel="noreferrer">Third-party licences</a></p>
     <p className="about-revision">Revision: {about.revision}{about.image && <><br />Image: {about.image}</>}</p>
   </>;
 }

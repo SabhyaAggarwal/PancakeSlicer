@@ -4,10 +4,11 @@ import { bundleReport } from './bundle-report.ts';
 import { optionAssets } from './option-assets.ts';
 import { mockAssets } from './mock-assets.ts';
 import { orcaAssets } from './orca-assets.ts';
+import { licenceNotices } from './licence-notices.ts';
 
 export default defineConfig({
-  plugins: [react(), orcaAssets(), optionAssets(), mockAssets(), bundleReport()],
-  worker: { format: 'es', plugins: () => [optionAssets(false)] },
+  plugins: [react(), orcaAssets(), optionAssets(), mockAssets(), bundleReport(), licenceNotices()],
+  worker: { format: 'es', plugins: () => [optionAssets(false), licenceNotices(false)] },
   server: {
     port: 5173,
     proxy: {
