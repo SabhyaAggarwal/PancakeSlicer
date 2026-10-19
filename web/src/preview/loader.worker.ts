@@ -38,8 +38,11 @@ async function open(src: WorkerIn): Promise<{ stream: ReadableStream<Uint8Array>
       else c.enqueue(value);
     },
   });
-  if (head[0] === 0x1f && head[1] === 0x8b)
+  if (head[0] === 0x1f && head[1] === 0x8b) {
+    if (typeof DecompressionStream === 'undefined')
+      throw new Error('Unsupported browser: gzip preview requires Chrome or Edge 109+, Firefox 115+, or Safari 16.4+.');
     return { stream: rest.pipeThrough(new DecompressionStream('gzip') as unknown as TransformStream<Uint8Array, Uint8Array>), total: 0 };
+  }
   return { stream: rest, total };
 }
 

@@ -14,6 +14,14 @@ const MIME: Record<string, string> = {
   '.stl': 'model/stl',
 };
 
+function assetSource(file: string): Buffer | string {
+  const data = fs.readFileSync(file);
+  if (!file.endsWith('.svg')) return data;
+  return data.toString('utf8')
+    .replace(/<!DOCTYPE[^>]*>/gi, '')
+    .replace(/@font-face\s*\{[^}]*\}/gi, (rule) => /(?:https?:)?\/\//i.test(rule) ? '' : rule);
+}
+
 function resolveAsset(url: string): string | null {
   const clean = decodeURIComponent(url.split('?')[0]);
   let m = /^\/images\/([A-Za-z0-9_.+-]+\.(?:svg|png))$/.exec(clean);
@@ -53,7 +61,8 @@ export function orcaAssets(): Plugin {
         if (!file || !fs.existsSync(file)) return next();
         res.setHeader('Content-Type', MIME[path.extname(file)] ?? 'application/octet-stream');
         res.setHeader('Cache-Control', 'max-age=3600');
-        fs.createReadStream(file).pipe(res);
+        if (file.endsWith('.svg')) res.end(assetSource(file));
+        else fs.createReadStream(file).pipe(res);
       });
     },
     configurePreviewServer(server) {
@@ -74,10 +83,10 @@ export function orcaAssets(): Plugin {
       for (const f of fs.readdirSync(IMAGES)) {
         if (!f.endsWith('.svg')) continue;
         if (tokens.has(f.slice(0, -4)) || tokens.has(f))
-          this.emitFile({ type: 'asset', fileName: `images/${f}`, source: fs.readFileSync(path.join(IMAGES, f)) });
+          this.emitFile({ type: 'asset', fileName: `images/${f}`, source: assetSource(path.join(IMAGES, f)) });
       }
       for (const f of ['printer_placeholder.png'])
-        this.emitFile({ type: 'asset', fileName: `images/${f}`, source: fs.readFileSync(path.join(IMAGES, f)) });
+        this.emitFile({ type: 'asset', fileName: `images/${f}`, source: assetSource(path.join(IMAGES, f)) });
       const quoted = (name: string) => new RegExp(`["'\`]${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'\`]`).test(text);
       for (const v of VENDORS) {
         const beds = new Set<string>();
@@ -89,7 +98,7 @@ export function orcaAssets(): Plugin {
         for (const f of fs.readdirSync(path.join(PROFILES, v))) {
           const cover = /^(.*)_cover\.png$/.exec(f);
           if (!/\.(svg|png|stl)$/.test(f) || !(text.includes(f) || beds.has(f) || (cover && quoted(cover[1])))) continue;
-          this.emitFile({ type: 'asset', fileName: `profiles/${v}/${f}`, source: fs.readFileSync(path.join(PROFILES, v, f)) });
+          this.emitFile({ type: 'asset', fileName: `profiles/${v}/${f}`, source: assetSource(path.join(PROFILES, v, f)) });
         }
       }
     },

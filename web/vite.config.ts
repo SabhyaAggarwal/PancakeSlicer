@@ -15,7 +15,8 @@ export default defineConfig({
     },
   },
   build: {
-    target: 'es2022',
+    target: ['chrome109', 'edge109', 'firefox115', 'safari16.4'],
+    cssTarget: ['chrome109', 'edge109', 'firefox115', 'safari16.4'],
     chunkSizeWarningLimit: 700,
     rolldownOptions: {
       output: {
