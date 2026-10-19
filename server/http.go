@@ -32,6 +32,10 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, users *UserPres
 		q, n := jobs.Counts()
 		writeJSON(w, 200, map[string]any{"status": "ok", "queued": q, "running": n, "tool_features": c.Features})
 	})
+	mux.HandleFunc("GET /api/source", s.source)
+	mux.HandleFunc("GET /api/about", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, buildAbout(c))
+	})
 	mux.HandleFunc("POST /api/jobs", s.createJob)
 	mux.HandleFunc("GET /api/jobs/{id}", s.getJob)
 	mux.HandleFunc("DELETE /api/jobs/{id}", s.deleteJob)

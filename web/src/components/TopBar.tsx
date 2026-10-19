@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { arrangeAll, canExport, STALE_RESULT_TIP, download, newProject, openFileDialog, openProjectDialog, outputKind, outsideVolumeWarning, saveProject, slice } from '../actions';
 import { deleteAll, removeSelected, setState, useStore } from '../state/store';
 import { CAMERA_VIEWS, VIEW_DIRECTIONS, cameraCommand, cameraSnapshot, subscribeCamera, perspective, autoPerspective } from '../camera';
 import { Icon } from './Icon';
+
+const About = lazy(() => import('./About'));
 
 type MenuItem = { label: string; shortcut?: string; action?: () => void; disabled?: boolean; tip?: string; checked?: boolean; role?: 'menuitemradio' | 'menuitemcheckbox' } | 'sep';
 
@@ -51,6 +53,7 @@ function Menu({ title, items }: { title: string; items: MenuItem[] }) {
 
 
 export function TopBar() {
+  const [aboutOpen, setAboutOpen] = useState(false);
   useSyncExternalStore(subscribeCamera, cameraSnapshot);
   const exportEnabled = useStore(canExport);
   const stale = useStore((s) => s.job.stale);
@@ -115,8 +118,11 @@ export function TopBar() {
           { label: 'Troubleshoot Center' },
           { label: 'Show Tip of the Day', tip: 'Show Tip of the Day' },
           { label: 'Check for Updates', tip: 'Check for Updates' },
+          'sep',
+          { label: 'About OrcaSlicer', action: () => setAboutOpen(true), tip: 'Version, licence and Corresponding Source' },
         ]}
       />
+      {aboutOpen && <Suspense fallback={<div role="status">Loading About…</div>}><About close={() => setAboutOpen(false)} /></Suspense>}
       <div className="topbar-title">
         {name ?? 'Untitled'}
         {mock && <span className="mock-badge" title="The slicing service did not answer; jobs are simulated">mock</span>}

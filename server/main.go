@@ -18,6 +18,8 @@ import (
 )
 
 type Config struct {
+	SourceURL      string
+	SourceArchive  string
 	DataDir        string
 	Listen         string
 	Tool           string
@@ -70,6 +72,8 @@ func envBool(key string) bool {
 
 func parseConfig() Config {
 	var c Config
+	flag.StringVar(&c.SourceArchive, "source-archive", env("ORCA_WEB_SOURCE_ARCHIVE", ""), "mounted Corresponding Source archive matching build metadata (ORCA_WEB_SOURCE_ARCHIVE)")
+	flag.StringVar(&c.SourceURL, "source-url", env("ORCA_WEB_SOURCE_URL", ""), "Corresponding Source repository URL or exact URL containing {revision} (ORCA_WEB_SOURCE_URL)")
 	flag.StringVar(&c.DataDir, "data-dir", env("ORCA_WEB_DATA_DIR", "data"), "persistent user preset directory (ORCA_WEB_DATA_DIR)")
 	flag.StringVar(&c.Listen, "listen", env("ORCA_WEB_LISTEN", "127.0.0.1:8780"), "listen address (ORCA_WEB_LISTEN)")
 	flag.StringVar(&c.Tool, "tool", env("ORCA_WEB_TOOL", "build-nogui/tests/fff_print/nonplanar_slice_tool"), "nonplanar_slice_tool path (ORCA_WEB_TOOL)")
@@ -93,6 +97,9 @@ func parseConfig() Config {
 	flag.BoolVar(&c.Metrics, "metrics", envBool("ORCA_WEB_METRICS"), "expose GET /metrics (ORCA_WEB_METRICS)")
 	proxies := flag.String("trusted-proxies", env("ORCA_WEB_TRUSTED_PROXIES", ""), "comma-separated trusted proxy CIDRs (ORCA_WEB_TRUSTED_PROXIES)")
 	flag.Parse()
+	if err := validateSourceURL(c.SourceURL); err != nil {
+		log.Fatal(err)
+	}
 	if c.SubmitRate < 0 || math.IsNaN(c.SubmitRate) || math.IsInf(c.SubmitRate, 0) || c.SubmitBurst < 1 || c.MaxClientJobs < 0 || c.MaxQueue < -1 || c.DiskQuota < 0 {
 		log.Fatal("invalid public deployment limits")
 	}
@@ -111,6 +118,11 @@ func parseConfig() Config {
 	if c.JobTimeout <= 0 || c.JobTTL <= 0 || c.MaxUploadSize <= 0 || c.UploadMinRate <= 0 {
 		log.Fatal("job-timeout, job-ttl, max-upload and upload-min-rate must be positive")
 	}
+	if c.SourceArchive != "" {
+		if abs, err := filepath.Abs(c.SourceArchive); err == nil {
+			c.SourceArchive = abs
+		}
+	}
 	for _, p := range []*string{&c.Tool, &c.Resources, &c.JobRoot, &c.StaticDir, &c.DataDir} {
 		if abs, err := filepath.Abs(*p); err == nil {
 			*p = abs
@@ -121,6 +133,16 @@ func parseConfig() Config {
 
 func main() {
 	cfg := parseConfig()
+	if cfg.SourceURL == "" && cfg.SourceArchive == "" {
+		log.Printf("WARNING: no Corresponding Source offer configured; operator must set ORCA_WEB_SOURCE_URL or ORCA_WEB_SOURCE_ARCHIVE (AGPL-3.0 section 13)")
+	}
+	if cfg.SourceArchive != "" {
+		if file, err := openSourceArchive(cfg); err != nil {
+			log.Printf("WARNING: Corresponding Source archive rejected: %v (AGPL-3.0 section 13)", err)
+		} else {
+			file.Close()
+		}
+	}
 	if st, err := os.Stat(cfg.Tool); err != nil || st.IsDir() {
 		log.Printf("warning: tool %s not found; jobs will fail until it is built", cfg.Tool)
 	}

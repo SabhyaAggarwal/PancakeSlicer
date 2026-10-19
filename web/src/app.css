@@ -338,3 +338,9 @@ fieldset.opt-field:disabled { opacity: .5; }
 .plate-choice { position: absolute; left: 16px; top: 110px; display: flex; gap: 6px; max-width: calc(100% - 32px); overflow-x: auto; z-index: 5; }
 .plate-choice button { padding: 7px 12px; border: 1px solid var(--border); border-radius: 4px; background: #fff; color: var(--text); white-space: nowrap; cursor: pointer; }
 .plate-choice button[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 -2px var(--accent); }
+
+.about-dialog { padding: 0; border: 1px solid #aaa; border-radius: 5px; color: inherit; background: #f5f5f5; width: 500px; max-width: 94vw; }
+.about-dialog::backdrop { background: #0005; }
+.about-body { padding: 8px 20px; line-height: 1.5; }
+.about-body h2 { font-size: 18px; }
+.about-revision { font-size: 11px; overflow-wrap: anywhere; color: #666; }
