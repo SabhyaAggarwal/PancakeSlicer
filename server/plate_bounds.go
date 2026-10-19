@@ -349,7 +349,28 @@ func validatePlateBounds(dir string, req JobRequest, machine *Preset, rawPlate s
 			if err != nil {
 				return err
 			}
+			var shift [2]float64
+			if !layout.HasConfig && req.PlateIndex == 0 {
+				var assembly meshBounds
+				for _, o := range objects {
+					if o.box.count > 0 {
+						if err := assembly.add(o.box.min); err != nil {
+							return err
+						}
+						if err := assembly.add(o.box.max); err != nil {
+							return err
+						}
+					}
+				}
+				for axis := range shift {
+					shift[axis] = (bed.min[axis] + bed.max[axis] - assembly.min[axis] - assembly.max[axis]) / 2
+				}
+			}
 			for _, o := range objects {
+				for axis := range shift {
+					o.box.min[axis] += shift[axis]
+					o.box.max[axis] += shift[axis]
+				}
 				if req.PlateIndex > 0 {
 					if layout.Membership[o.buildIndex] != req.PlateIndex {
 						continue

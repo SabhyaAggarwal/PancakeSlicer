@@ -23,6 +23,7 @@ type projectLayout struct {
 	Plates       []projectPlate `json:"source_plates"`
 	Membership   map[int]int    `json:"-"`
 	Width, Depth float64
+	HasConfig    bool `json:"-"`
 }
 
 func (p projectLayout) hasPlate(index int) bool {
@@ -72,6 +73,9 @@ func readProjectLayout(file string) (projectLayout, error) {
 	var config map[string]json.RawMessage
 	for _, f := range z.File {
 		name := strings.ToLower(f.Name)
+		if name == "metadata/project_settings.config" || name == "metadata/slic3r_pe.config" {
+			out.HasConfig = true
+		}
 		if name != "metadata/model_settings.config" && name != "metadata/project_settings.config" && !strings.HasSuffix(name, ".model") {
 			continue
 		}
