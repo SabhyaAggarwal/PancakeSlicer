@@ -18,10 +18,13 @@
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Point.hpp"
 #include "libslic3r/Print.hpp"
+#include "libslic3r/PrintBase.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 #include "libslic3r/format.hpp"
 #include "libslic3r/libslic3r.h"
+
+#include <Eigen/Geometry>
 
 #include <boost/format.hpp>
 #include <boost/log/trivial.hpp>
@@ -30,6 +33,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <exception>
 #include <cstddef>
 #include <limits>
 #include <map>
@@ -171,6 +175,65 @@ Mask auto_planar_nodes(const HeightField &surface, const Mask &candidate, double
             planar[i] = 1;
     }
     return planar;
+}
+
+bool auto_z_contouring(const PrintObject &object, const std::vector<double> &layers)
+{
+    static thread_local bool probing = false;
+    if (probing || !is_auto(object.config()) || layers.size() < 4 || object.print()->config().spiral_mode.value ||
+        object.print()->config().belt_printer.value || object.print()->config().nonplanar_kinematics.value != RotaryLayout::None ||
+        !object.config().nonplanar_atom_toolpath.value.empty())
+        return false;
+    const double min_z = PrintRegionConfig::defaults().zaa_min_z.value;
+    for (size_t i = 2; i + 1 < layers.size(); i += 2)
+        if (layers[i + 1] - layers[i] < min_z - EPSILON)
+            return false;
+    double ground_offset = 0.;
+    const TriangleMesh mesh = object.object_frame_mesh(ground_offset);
+    const double bottom = mesh.bounding_box().min.z();
+    bool has_top = false;
+    for (const auto &face : mesh.its.indices) {
+        const Vec3d a = mesh.its.vertices[face[0]].cast<double>();
+        const Vec3d b = mesh.its.vertices[face[1]].cast<double>();
+        const Vec3d c = mesh.its.vertices[face[2]].cast<double>();
+        const Vec3d n = (b - a).cross(c - a);
+        const double length = n.norm();
+        if (length <= 1e-12)
+            continue;
+        const double nz = std::abs(n.z()) / length;
+        if (nz > 1e-4 && n.head<2>().norm() / length > 1e-6)
+            return false;
+        has_top |= n.z() > 0. && nz > 0.5 && a.z() - bottom > layers[1] + EPSILON;
+    }
+    if (!has_top)
+        return false;
+    struct ProbeScope {
+        bool &active;
+        explicit ProbeScope(bool &active) : active(active) { active = true; }
+        ~ProbeScope() { active = false; }
+    } scope(probing);
+    DynamicPrintConfig config = object.print()->full_print_config();
+    config.apply(object.config(), true);
+    config.apply(object.printing_region(0).config(), true);
+    Model model;
+    ModelObject *copy = model.add_object(*object.model_object());
+    copy->clear_instances();
+    copy->add_instance(*object.instances().front().model_instance);
+    Print probe;
+    probe.apply(model, config);
+    probe.set_status_callback([&object](const PrintBase::SlicingStatus &) { throw_if_canceled(object); });
+    try {
+        probe.process();
+    } catch (const std::exception &ex) {
+        throw_if_canceled(object);
+        BOOST_LOG_TRIVIAL(warning) << "Auto Z contouring keeps the shell schedule: " << ex.what();
+        return false;
+    }
+    for (const PrintObject *part : probe.objects())
+        for (const ConformalPatch &patch : part->conformal().patches)
+            if (patch.kind == PatchKind::Top || patch.kind == PatchKind::Volume)
+                return false;
+    return true;
 }
 
 bool top_shells_enabled(const PrintRegionConfig &config, const PrintObjectConfig &object)

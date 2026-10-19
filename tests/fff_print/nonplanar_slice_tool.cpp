@@ -1513,6 +1513,11 @@ int main(int argc, char **argv)
                                                                                            result.nonplanar_report;
         for (size_t i = 0; i < report.objects.size(); ++i) {
             const Nonplanar::ReportObject &object = report.objects[i];
+            if (print.objects()[i]->auto_z_contouring()) {
+                std::cout << "nonplanar_auto_z_contouring " << object.name << "\n";
+                if (!args.json.empty())
+                    record["auto_z_contouring_objects"].push_back(object.name);
+            }
             std::cout << "nonplanar_object " << object.name << "\n"
                       << "nonplanar_top_patches " << object.top_patches << "\n"
                       << "nonplanar_bands " << object.bands << "\n"

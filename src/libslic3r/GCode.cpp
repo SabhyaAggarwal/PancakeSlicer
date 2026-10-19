@@ -9277,7 +9277,8 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
         return gcode;
     this->ensure_material_columns(path);
 
-    if (path.z_contoured && m_config.zaa_enabled && m_material_columns)
+    if (path.z_contoured && m_material_columns &&
+        (m_config.zaa_enabled || (m_layer != nullptr && m_layer->object()->auto_z_contouring())))
         m_nonplanar_ceiling = std::max(m_nonplanar_ceiling, m_material_columns->ceiling());
 
     const std::string  bridge_description = is_bridge(path.role()) ? path_description + " (bridge)" : std::string();

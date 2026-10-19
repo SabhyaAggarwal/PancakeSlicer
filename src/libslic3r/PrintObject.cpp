@@ -729,7 +729,7 @@ void PrintObject::nonplanar_shells()
                    Nonplanar::full_conformal_thickness(this->printing_region(region_id).config(), *this) > 0. ||
                    Nonplanar::overhangs_enabled(this->printing_region(region_id).config(), this->config()) ||
                    Nonplanar::bridges_enabled(this->printing_region(region_id).config(), this->config());
-    enabled &= !imported;
+    enabled &= !imported && !m_auto_z_contouring;
     auto record_apply_inputs = [this]() {
         m_conformal->layer_changes_filament = Nonplanar::layer_changes_filament(*this);
         m_conformal->event_cuts             = Nonplanar::event_cuts(*this);
@@ -1854,6 +1854,9 @@ bool PrintObject::invalidate_state_by_config_options(
         }
     }
 
+    if (m_config.nonplanar_mode.value == NonplanarMode::Auto &&
+        std::any_of(steps.begin(), steps.end(), [](PrintObjectStep step) { return step > posSlice && step <= posNonplanar; }))
+        steps.emplace_back(posSlice);
     sort_remove_duplicates(steps);
     if (!steps.empty() && steps.front() <= posNonplanar)
         m_nonplanar_repair.reset();

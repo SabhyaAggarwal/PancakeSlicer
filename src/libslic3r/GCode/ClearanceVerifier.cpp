@@ -1076,7 +1076,9 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
 void check_export_clearance(Print &print, GCodeProcessorResult &result)
 {
     const auto mode = Nonplanar::effective_collision_check(print);
-    if (!result.nonplanar || mode == NonplanarCollisionCheck::Off) return;
+    const bool contoured_auto = std::any_of(print.objects().begin(), print.objects().end(),
+        [](const PrintObject *object) { return object->auto_z_contouring(); });
+    if ((!result.nonplanar && !contoured_auto) || mode == NonplanarCollisionCheck::Off) return;
     ClearanceParams params;
     params.head = Nonplanar::resolve_head_envelope(print.config());
     auto kinematics = make_tool_kinematics(print.config());

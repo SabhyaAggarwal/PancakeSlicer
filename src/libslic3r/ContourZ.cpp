@@ -48,9 +48,10 @@ static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &
 {
     const PrintRegionConfig &rcfg   = region->region().config();
     const PrintObjectConfig &ocfg   = region->layer()->object()->config();
+    const bool zaa_active = rcfg.zaa_enabled || region->layer()->object()->auto_z_contouring();
     const bool               banded = Nonplanar::top_shells_enabled(rcfg, ocfg) &&
                                       Nonplanar::effective_fallback(rcfg, ocfg) == NonplanarFallback::None;
-    if (!rcfg.zaa_enabled && !banded && path.role() != erTopSolidInfill)
+    if (!zaa_active && !banded && path.role() != erTopSolidInfill)
         return false;
 
     if (path.role() != erTopSolidInfill && path.role() != erIroning && path.role() != erExternalPerimeter && path.role() != erPerimeter && !plane_only_role(path.role())) {
@@ -66,10 +67,10 @@ static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &
                     planar_faces.push_back(&face);
     if (plane_only_role(path.role()) && planar_faces.empty())
         return false;
-    const auto &config = region->region().config().zaa_enabled
+    const auto &config = rcfg.zaa_enabled
         ? region->region().config() : PrintRegionConfig::defaults();
 	coordf_t min_z = config.zaa_min_z;
-	const coordf_t ray_z = rcfg.zaa_enabled || !banded ? layer->slice_z : layer->bottom_z() + min_z;
+	const coordf_t ray_z = zaa_active || !banded ? layer->slice_z : layer->bottom_z() + min_z;
 	coordf_t mesh_slice_z = ray_z + mesh.ground_level();
 
 	const Points3 &points = path.polyline.points;
@@ -77,7 +78,7 @@ static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &
 
 	coordf_t height = layer->height;
 
-	double minimize_perimeter_height_angle = rcfg.zaa_enabled ? config.zaa_minimize_perimeter_height.value : 0.;
+	double minimize_perimeter_height_angle = zaa_active ? config.zaa_minimize_perimeter_height.value : 0.;
 
 	Pointf3s contoured_points;
 	bool was_contoured = false;
@@ -109,7 +110,7 @@ static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &
 
 			double d = hit_up.distance() - (layer->print_z - ray_z);
 
-            const bool on_planar_face = banded && !rcfg.zaa_enabled && hit_up.is_hit() &&
+            const bool on_planar_face = banded && !zaa_active && hit_up.is_hit() &&
                 std::any_of(planar_faces.begin(), planar_faces.end(), [&](const ExPolygon *face) {
                     return face->contains(Point::new_scale(x, y));
                 });
@@ -119,7 +120,7 @@ static bool contour_extrusion_path(LayerRegion *region, const sla::IndexedMesh &
 			if (path.role() == erIroning) {
 				max_up = height;
 				min_down = -(height + 0.1);
-			} else if (banded && !rcfg.zaa_enabled && path.role() == erTopSolidInfill && hit_up.is_hit() &&
+			} else if (banded && !zaa_active && path.role() == erTopSolidInfill && hit_up.is_hit() &&
 			           hit_up.normal().z() > std::cos(M_PI / 18.)) {
 				max_up = 0.5 * height;
 			}
@@ -349,7 +350,7 @@ void Layer::make_contour_z(const sla::IndexedMesh &mesh)
 
 	for (LayerRegion *region : this->regions()) {
         const auto &config = region->region().config();
-        if (!config.zaa_enabled) {
+        if (!config.zaa_enabled && !object.auto_z_contouring()) {
             if (Nonplanar::zaa_fallback(config, this->object()->config()))
                 handle_extrusion_collection(region, mesh, region->fills, {erTopSolidInfill, erMixed}, shell_area);
             if (Nonplanar::top_shells_enabled(config, this->object()->config()) &&

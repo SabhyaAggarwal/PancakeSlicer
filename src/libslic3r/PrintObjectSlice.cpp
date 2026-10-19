@@ -66,9 +66,10 @@ static coordf_t compute_slice_z(PrintObject* print_object, size_t i_layer, coord
     size_t num_regions = print_object->num_printing_regions();
     for (size_t rid = 0; rid < num_regions; ++rid) {
         const auto& rcfg = print_object->printing_region(rid).config();
-        if (rcfg.zaa_enabled) {
-            if (!zaa_active || rcfg.zaa_min_z < z_offset)
-                z_offset = rcfg.zaa_min_z;
+        if (rcfg.zaa_enabled || print_object->auto_z_contouring()) {
+            const double min_z = rcfg.zaa_enabled ? rcfg.zaa_min_z.value : PrintRegionConfig::defaults().zaa_min_z.value;
+            if (!zaa_active || min_z < z_offset)
+                z_offset = min_z;
             zaa_active = true;
         }
     }
@@ -707,7 +708,9 @@ void PrintObject::slice()
     m_belt_min_z              = 0.;
     m_belt_global_z_offset    = 0.;
     this->clear_layers();
-    m_layers = new_layers(this, generate_object_layers(m_slicing_params, layer_height_profile, m_config.precise_z_height.value));
+    const auto object_layers = generate_object_layers(m_slicing_params, layer_height_profile, m_config.precise_z_height.value);
+    m_auto_z_contouring = Nonplanar::auto_z_contouring(*this, object_layers);
+    m_layers = new_layers(this, object_layers);
     this->slice_volumes();
     m_print->throw_if_canceled();
 

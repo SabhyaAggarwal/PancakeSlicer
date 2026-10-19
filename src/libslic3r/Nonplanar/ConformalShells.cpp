@@ -1311,6 +1311,8 @@ void contour_roads(const HeightField &surface, const ExPolygons &area, double dr
 
 double low_plane_top_radius(const PrintObject &object, double layer_height)
 {
+    if (object.auto_z_contouring())
+        return 0.;
     const double min_z = PrintRegionConfig::defaults().zaa_min_z.value;
     if (0.5 * layer_height <= min_z + EPSILON)
         return 0.;

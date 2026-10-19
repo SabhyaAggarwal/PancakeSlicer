@@ -23,6 +23,8 @@ struct ReportObject;
 std::vector<uint8_t> auto_planar_nodes(const HeightField &surface, const std::vector<uint8_t> &candidate,
                                       double layer_height, double line_width, double max_slope);
 
+bool auto_z_contouring(const PrintObject &object, const std::vector<double> &layers);
+
 constexpr int AutoMinShells = 2;
 
 double auto_curved_underside_slope();

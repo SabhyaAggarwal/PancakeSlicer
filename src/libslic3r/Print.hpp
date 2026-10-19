@@ -336,6 +336,7 @@ public:
     const TpmsRadialField*       tpms_radial_field(TpmsAdaptiveMode mode) const { return m_tpms_radial_fields[size_t(mode)].get(); }
     TriangleMesh                 object_frame_mesh(double &ground_offset) const;
     const Nonplanar::ConformalResult& conformal() const;
+    bool auto_z_contouring() const { return m_shared_object ? m_shared_object->auto_z_contouring() : m_auto_z_contouring; }
     const Nonplanar::RepairHints*     nonplanar_repair() const { return m_nonplanar_repair.get(); }
     bool has_conformal_support() const;
 
@@ -521,6 +522,7 @@ private:
     std::vector<ExPolygons>                 m_belt_brim_areas_by_layer;
     std::vector<BeltBrimBand>               m_belt_brim_prologue;
     std::shared_ptr<TreeSupportData>        m_tree_support_preview_cache;
+    bool m_auto_z_contouring = false;
     std::unique_ptr<Nonplanar::ConformalResult> m_conformal;
     std::shared_ptr<Nonplanar::RepairHints>     m_nonplanar_repair;
     std::shared_ptr<const Nonplanar::MultiplanarPlan> m_multiplanar;
