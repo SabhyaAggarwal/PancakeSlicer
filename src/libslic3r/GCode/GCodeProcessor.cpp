@@ -3273,6 +3273,7 @@ void GCodeProcessor::reset()
 {
     m_tool_kinematics.reset();
     m_joints        = JointPose();
+    m_rotary_position_known_axes = 0;
     m_inverse_time  = false;
     m_nonplanar_patch_shell = 0xFF;
     m_nonplanar_patch = -1;
@@ -4594,6 +4595,10 @@ void GCodeProcessor::process_rotary_G1(const GCodeReader::GCodeLine& line)
 {
     const ToolKinematics &kin      = *m_tool_kinematics;
     const bool            relative = m_global_positioning_type == EPositioningType::Relative;
+    const bool            from_unknown = m_rotary_position_known_axes != 7;
+    if (!relative)
+        for (int i = 0; i < 3; ++i)
+            if (line.has(Axis(i))) m_rotary_position_known_axes |= 1 << i;
     const double          scale    = (m_units == EUnits::Inches) ? double(INCHES_TO_MM) : 1.0;
     JointPose             joints   = m_joints;
     for (int i = 0; i < 3; ++i)
@@ -4634,6 +4639,10 @@ void GCodeProcessor::process_rotary_G1(const GCodeReader::GCodeLine& line)
             if (seconds > 0.)
                 simulate_st_synchronize(float(seconds));
         }
+    }
+    for (size_t i = previous_moves; i < m_result.moves.size(); ++i) {
+        m_result.moves[i].clearance_pose_known = m_rotary_position_known_axes == 7;
+        m_result.moves[i].clearance_from_unknown = from_unknown;
     }
 }
 
@@ -5688,6 +5697,7 @@ void GCodeProcessor::process_G23(const GCodeReader::GCodeLine& line)
 
 void GCodeProcessor::process_G28(const GCodeReader::GCodeLine& line)
 {
+    const size_t previous_moves = m_result.moves.size();
     std::string_view cmd = line.cmd();
     std::string new_line_raw = { cmd.data(), cmd.size() };
     bool found = false;
@@ -5710,6 +5720,11 @@ void GCodeProcessor::process_G28(const GCodeReader::GCodeLine& line)
     GCodeReader reader;
     reader.parse_line(new_line_raw, [&](GCodeReader& reader, const GCodeReader::GCodeLine& gline) { new_gline = gline; });
     process_G1(new_gline);
+    if (m_tool_kinematics) {
+        m_rotary_position_known_axes = 0;
+        for (size_t i = previous_moves; i < m_result.moves.size(); ++i)
+            m_result.moves[i].clearance_pose_known = false;
+    }
 }
 
 void GCodeProcessor::process_G90(const GCodeReader::GCodeLine& line)
@@ -6669,6 +6684,7 @@ void GCodeProcessor::store_move_vertex(EMoveType type, EMovePathType path_type, 
         intern_move_state(state),
         internal_only
     });
+    m_result.moves.back().clearance_pose_known = !m_tool_kinematics || m_rotary_position_known_axes == 7;
     if (keep_joints()) {
         m_result.joints.resize(m_result.moves.size() - 1);
         m_result.joints.push_back(m_joints);

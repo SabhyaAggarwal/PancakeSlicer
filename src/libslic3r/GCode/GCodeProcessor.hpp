@@ -254,6 +254,8 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             unsigned int state{ 0 };
             bool internal_only{ false };
             bool timing_only{ false };
+            bool clearance_pose_known{ true };
+            bool clearance_from_unknown{ false };
 
             float volumetric_rate() const { return feedrate * mm3_per_mm; }
             float actual_volumetric_rate() const { return actual_feedrate * mm3_per_mm; }
@@ -1070,6 +1072,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         std::vector<float> m_nozzle_volume;
         std::unique_ptr<ToolKinematics> m_tool_kinematics;
         JointPose                       m_joints;
+        unsigned char                   m_rotary_position_known_axes{ 0 };
         bool                            m_inverse_time{ false };
         unsigned char                   m_nonplanar_patch_shell{ 0xFF };
         short                           m_nonplanar_patch{ -1 };

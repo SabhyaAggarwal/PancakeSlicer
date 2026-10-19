@@ -18,6 +18,7 @@
 #include "libslic3r/PrintBase.hpp"
 #include "libslic3r/format.hpp"
 #include <Eigen/Geometry>
+#include <nlohmann/json.hpp>
 #include <tbb/blocked_range.h>
 #include <tbb/parallel_for.h>
 #include <tbb/task_arena.h>
@@ -67,6 +68,116 @@ Nonplanar::HeadBox prepared_box(Nonplanar::HeadBox box, const Nonplanar::HeadEnv
             box.min.z() = std::max(box.min.z(), head.tip_allowance.height);
     }
     return box;
+}
+
+struct TableObstacle
+{
+    std::string name;
+    bool cradle = false;
+    Vec3d min, max;
+    std::vector<std::pair<Vec3d, Vec3d>> boxes;
+    struct Block { Vec3d min, max; size_t first, last; };
+    std::vector<Block> blocks;
+};
+
+std::vector<TableObstacle> table_obstacles(const Nonplanar::HeadEnvelope &head, const ToolKinematics &kinematics)
+{
+    if (head.extensions.empty() || kinematics.layout() != RotaryLayout::TableBC) return {};
+    const auto json = nlohmann::json::parse(head.extensions);
+    const auto found = json.find("table_obstacles");
+    if (found == json.end()) return {};
+    std::vector<TableObstacle> out;
+    for (const auto &item : *found) {
+        TableObstacle solid;
+        solid.name = item.at("name").get<std::string>();
+        const std::string frame = item.at("frame").get<std::string>();
+        if (frame != "table" && frame != "cradle") throw RuntimeError("Unknown table obstacle frame.");
+        solid.cradle = frame == "cradle";
+        solid.min = Vec3d::Constant(Inf);
+        solid.max = Vec3d::Constant(-Inf);
+        for (const auto &box : item.at("boxes")) {
+            Vec3d lo, hi;
+            for (int axis = 0; axis < 3; ++axis) {
+                lo[axis] = box.at("min").at(axis).get<double>();
+                hi[axis] = box.at("max").at(axis).get<double>();
+            }
+            if (!lo.allFinite() || !hi.allFinite() || (lo.array() > hi.array()).any())
+                throw RuntimeError("Invalid table obstacle bounds.");
+            solid.min = solid.min.cwiseMin(lo);
+            solid.max = solid.max.cwiseMax(hi);
+            solid.boxes.emplace_back(lo, hi);
+        }
+        if (solid.boxes.empty()) throw RuntimeError("A table obstacle must contain at least one box.");
+        std::sort(solid.boxes.begin(), solid.boxes.end(), [](const auto &a, const auto &b) { return a.first.y() < b.first.y(); });
+        for (size_t first = 0; first < solid.boxes.size(); first += 16) {
+            TableObstacle::Block block { Vec3d::Constant(Inf), Vec3d::Constant(-Inf), first, std::min(first + 16, solid.boxes.size()) };
+            for (size_t i = first; i < block.last; ++i) {
+                block.min = block.min.cwiseMin(solid.boxes[i].first);
+                block.max = block.max.cwiseMax(solid.boxes[i].second);
+            }
+            solid.blocks.emplace_back(std::move(block));
+        }
+        out.emplace_back(std::move(solid));
+    }
+    return out;
+}
+
+double obstacle_gap(const Vec3d &centre, const Vec3d &half, const Matrix3d &rotation,
+                    const Vec3d &lo, const Vec3d &hi)
+{
+    const Vec3d delta = centre - 0.5 * (lo + hi), radius = 0.5 * (hi - lo);
+    double gap = -Inf;
+    auto project = [&](const Vec3d &axis) {
+        const double length = axis.norm();
+        if (length < 1e-10) return;
+        const Vec3d unit = axis / length;
+        gap = std::max(gap, std::abs(unit.dot(delta)) - unit.cwiseAbs().dot(radius) -
+                            (rotation.transpose() * unit).cwiseAbs().dot(half));
+    };
+    for (int i = 0; i < 3; ++i) {
+        project(Vec3d::Unit(i));
+        project(rotation.col(i));
+        for (int j = 0; j < 3; ++j) project(Vec3d::Unit(i).cross(rotation.col(j)));
+    }
+    return gap;
+}
+
+double table_clearance(const std::vector<TableObstacle> &obstacles, const std::vector<Nonplanar::HeadBox> &head,
+                       const ToolKinematics &kinematics, const JointPose &joints, const ToolPose &pose,
+                       const Matrix3d &frame, const Vec3d &grow, double theta, std::string &component)
+{
+    if (obstacles.empty()) return Inf;
+    const auto &geometry = static_cast<const RotaryKinematics &>(kinematics).geometry();
+    const double c = (joints.rot[1] - geometry.home[1]) * (geometry.reversed[1] ? -1. : 1.) * M_PI / 180.;
+    const Matrix3d yaw = Eigen::AngleAxisd(c, Vec3d::UnitZ()).toRotationMatrix();
+    const Matrix3d table_rotation = frame.transpose(), cradle_rotation = yaw * table_rotation;
+    double best = Inf;
+    for (const auto &box : head) {
+        const Vec3d table_centre = pose.tip + table_rotation * (0.5 * (box.min + box.max));
+        const Vec3d cradle_centre = yaw * table_centre;
+        const Vec3d half = 0.5 * (box.max - box.min) + grow +
+            Vec3d::Constant(theta * box.min.cwiseAbs().cwiseMax(box.max.cwiseAbs()).norm() * 0.5);
+        const Vec3d table_radius = table_rotation.cwiseAbs() * half, cradle_radius = cradle_rotation.cwiseAbs() * half;
+        for (const auto &solid : obstacles) {
+            const Vec3d &centre = solid.cradle ? cradle_centre : table_centre;
+            const Vec3d &radius = solid.cradle ? cradle_radius : table_radius;
+            if ((centre.array() + radius.array() < solid.min.array()).any() ||
+                (centre.array() - radius.array() > solid.max.array()).any()) continue;
+            const Matrix3d &rotation = solid.cradle ? cradle_rotation : table_rotation;
+            for (const auto &block : solid.blocks) {
+                if ((centre.array() + radius.array() < block.min.array()).any() ||
+                    (centre.array() - radius.array() > block.max.array()).any()) continue;
+                for (size_t i = block.first; i < block.last; ++i) {
+                    const auto &bounds = solid.boxes[i];
+                    if ((centre.array() + radius.array() < bounds.first.array()).any() ||
+                        (centre.array() - radius.array() > bounds.second.array()).any()) continue;
+                    const double gap = obstacle_gap(centre, half, rotation, bounds.first, bounds.second);
+                    if (gap < best) { best = gap; component = "machine/" + solid.name + "/" + box.name; }
+                }
+            }
+        }
+    }
+    return best;
 }
 
 using Corners = std::array<Vec3d, 8>;
@@ -761,7 +872,15 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
     ClearanceReport report;
     report.ran = true;
     report.per_move.assign(result.moves.size(), float(Inf));
-    report.omissions = { "Bed and machine self-collision are not modelled.", "Support stability and thermal effects are not modelled.",
+    const auto obstacles = table_obstacles(params.head, kinematics);
+    std::vector<Nonplanar::HeadBox> machine_head;
+    if (!obstacles.empty()) {
+        auto strict_head = params.head;
+        strict_head.tip_allowance = {};
+        for (const auto &box : strict_head.boxes) machine_head.push_back(prepared_box(box, strict_head));
+    }
+    report.omissions = { obstacles.empty() ? "Bed and machine self-collision are not modelled." :
+                         "Only the declared table/cradle obstacles are modelled; other machine self-collision is omitted.", "Support stability and thermal effects are not modelled.",
                          "Nozzle contact with the current uninterrupted extrusion run is excluded." };
     if (!params.head.calibrated) report.omissions.emplace_back("Head geometry has not been calibrated on this printer.");
     if (result.moves.empty()) return report;
@@ -781,7 +900,7 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
             direct_upright = kinematics.forward(probe).tip.isApprox(probe.xyz, 1e-9);
         }
     }
-    const bool rotary = kinematics.rotary_count() != 0 && (turned || !direct_upright);
+    const bool rotary = kinematics.rotary_count() != 0 && (turned || !direct_upright || !obstacles.empty());
     for (size_t i = 0; i < result.moves.size(); ++i) {
         const auto &move = result.moves[i];
         if (move.timing_only) continue;
@@ -815,16 +934,19 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
     struct Checked { uint32_t move, last, beads; uint32_t run : 31, extruding : 1; };
     std::vector<Checked> checked;
     checked.reserve(result.moves.size());
+    bool unknown_pose = false;
     {
         size_t last_index = 0, run = 0;
         for (size_t i = 1; i < result.moves.size(); ++i) {
             const auto &move = result.moves[i];
             if (move.timing_only || move.type == EMoveType::Seam || move.type == EMoveType::Color_change || move.type == EMoveType::Tool_change ||
                 move.type == EMoveType::Pause_Print || move.type == EMoveType::Custom_GCode) continue;
-            const size_t from = last_index;
+            const size_t from = move.clearance_from_unknown ? i : last_index;
             last_index = i;
+            if (!move.clearance_pose_known) { unknown_pose = true; continue; }
+            unknown_pose |= move.clearance_from_unknown;
             const bool extruding = move.type == EMoveType::Extrude;
-            if (!extruding && move.type != EMoveType::Retract && move.type != EMoveType::Unretract &&
+            if (!move.clearance_from_unknown && !extruding && move.type != EMoveType::Retract && move.type != EMoveType::Unretract &&
                 (move_tip(result, i, rotary) - move_tip(result, from, rotary)).squaredNorm() == 0. && result.joint(i).rot == result.joint(from).rot) continue;
             if (!extruding) ++run;
             checked.push_back({ uint32_t(i), uint32_t(from), 0, uint32_t(run), extruding });
@@ -932,6 +1054,8 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
                                        Vec3d::Constant((theta * theta * tip_lever + 2. * theta * stride) / 8.);
                     sample_start = sample_end;
                     record(tilted.clearance(laid, *scratch, pose, frame, grow, theta, c.run, extruding, !strict, best, component), component, pose.tip);
+                    const double machine_gap = table_clearance(obstacles, machine_head, kinematics, q, pose, frame, grow, theta, component);
+                    record(machine_gap, component, pose.tip);
                 } else {
                     int index = -1;
                     const double body_gap = sweep.columns.swept_clearance(p0, p1, body_boxes, best, &index, sweep.body_hint);
@@ -1071,6 +1195,8 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
     }
     if (unswept > 0)
         report.omissions.emplace_back("Planar moves with no material above their tip within the head's reach are not swept.");
+    if (unknown_pose)
+        report.omissions.emplace_back("Rotary homing poses are undefined; the first explicit XYZ endpoint is checked without inventing its incoming sweep.");
     return report;
 }
 void check_export_clearance(Print &print, GCodeProcessorResult &result)

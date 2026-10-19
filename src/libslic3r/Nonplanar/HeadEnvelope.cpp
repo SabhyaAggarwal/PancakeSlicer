@@ -404,7 +404,7 @@ HeadEnvelope load_head_envelope(const std::string &json_text)
     if (schema != SchemaV1)
         bad_field("schema", "is \"" + schema + "\", expected \"" + SchemaV1 + "\"");
     warn_unknown(j, { "schema", "id", "name", "provenance", "calibrated", "nozzle", "margin", "lateral_margin", "side_profile",
-                      "side_profile_top", "boxes", "sides" }, {});
+                      "side_profile_top", "boxes", "sides", "table_obstacles" }, {});
 
     HeadEnvelope out;
     auto extensions = j;

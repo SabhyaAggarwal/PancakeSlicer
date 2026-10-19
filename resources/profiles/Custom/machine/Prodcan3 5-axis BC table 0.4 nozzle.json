@@ -4,7 +4,7 @@
 	"from": "system",
 	"setting_id": "bfu1keiBIweg5y34",
 	"instantiation": "true",
-	"printer_notes": "Prodcan3 5-axis printer with a BC tilting-rotary table. Geometry comes from curveslice machines/prodcan3/machine.json and printer.urdf; the prodcan3 head adds a 0.3 mm margin. Run Calibration > Non-planar > Head clearance to fit it to your machine. G-code is joint-space XYZBC with G93 inverse-time feed; B is limited to +-60 deg and C to +-180 deg. rotary_pivot is where the B axis (about Y through the URDF b_joint origin 91,55.3,102 mm at Y=0) meets the C axis (b_to_c offset 0,-117.95,-6.5 mm), in the URDF base frame. The tool mount is the X-rail center with every joint at zero (x_origin_x -3, tool_centerline_y 35, z_origin_height 82.05 mm) and the nozzle tip sits 60 mm below it (rotary_tool_length, the URDF TCP drop); the bed surface is 6.5 mm above the pivot (b_to_c -6.5 plus c_to_bed 13); the Y stage carries the table, so joint Y runs opposite to the part.",
+	"printer_notes": "Prodcan3 5-axis printer with a BC tilting-rotary table. Geometry comes from curveslice machines/prodcan3/machine.json and printer.urdf; the prodcan3 head adds a 0.3 mm margin. Run Calibration > Non-planar > Head clearance to fit it to your machine. G-code is joint-space XYZBC with G93 inverse-time feed; B is limited to +-60 deg and C to +-180 deg. rotary_pivot is where the B axis (about Y through the URDF b_joint origin 91,55.3,102 mm at Y=0) meets the C axis (b_to_c offset 0,-117.95,-6.5 mm), in the URDF base frame. The tool mount is the X-rail center with every joint at zero (x_origin_x -3, tool_centerline_y 35, z_origin_height 82.05 mm) and the nozzle tip sits 60 mm below it (rotary_tool_length, the URDF TCP drop); the bed surface is 6.5 mm above the pivot (b_to_c -6.5 plus c_to_bed 13); the Y stage carries the table, so joint Y runs opposite to the part. Source audit 2026-10-18: printer.urdf SHA256 10012ce034b1e79097b85405c9b3809702649de5a539299e4fb14251ae6123fd defines B revolute +/-pi/3 and C revolute +/-pi (not continuous), velocities 0.5/1 rad/s = 28.647/57.295 deg/s. Linear speeds 100/80/20 mm/s. The 69 mm printable height is the machine.json work envelope, inside the 157.9 mm physical Z joint stroke. B/C acceleration estimates 120/240 deg/s^2 reach those rated speeds in 0.239 s; emitted as M201 B120 C240. Geometry matches URDF origins including 60 mm TCP drop and 6.5 mm table height; head margin 0.3 mm.",
 	"printer_technology": "FFF",
 	"printable_area": [
 		"40.000x0.000",
@@ -131,7 +131,7 @@
 		"Direct Drive Standard"
 	],
 	"gcode_flavor": "marlin",
-	"machine_start_gcode": "G90\nM83\nG94\nG28\nM140 S[first_layer_bed_temperature]\nM104 S[first_layer_temperature]\nM190 S[first_layer_bed_temperature]\nM109 S[first_layer_temperature]\nG92 E0",
+	"machine_start_gcode": "G90\nM83\nG94\nM201 B120 C240\nG28\nM140 S[first_layer_bed_temperature]\nM104 S[first_layer_temperature]\nM190 S[first_layer_bed_temperature]\nM109 S[first_layer_temperature]\nG92 E0",
 	"machine_end_gcode": "G94\nG91\nG1 E-0.8 F1800\nG1 Z10 F600\nG90\nM104 S0\nM140 S0\nM107\nM84",
 	"before_layer_change_gcode": ";BEFORE_LAYER_CHANGE\n;[layer_z]\nG92 E0\n",
 	"layer_change_gcode": ";AFTER_LAYER_CHANGE\n;[layer_z]"
