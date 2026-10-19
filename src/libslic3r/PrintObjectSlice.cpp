@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <boost/format.hpp>
 #include <boost/log/trivial.hpp>
 #include <limits>
 
@@ -726,6 +727,11 @@ void PrintObject::slice()
     m_layers = new_layers(this, object_layers);
     this->slice_volumes();
     m_print->throw_if_canceled();
+    if (const RepairedMeshErrors repaired = this->model_object()->get_object_stl_stats().repaired_errors; repaired.repaired()) {
+        const std::string message = (boost::format(_u8L("%1%: mesh repaired on load: %2%.")) % this->model_object()->name % repaired.summary()).str();
+        BOOST_LOG_TRIVIAL(warning) << message;
+        this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, message);
+    }
 
     if (std::abs(m_slicing_params.belt_floor_shear_factor) > EPSILON) {
         double z_shift_val = (m_belt_min_z < 0.) ? -m_belt_min_z : 0.;

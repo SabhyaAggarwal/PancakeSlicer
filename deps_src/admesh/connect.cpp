@@ -26,6 +26,7 @@
 #include <math.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <vector>
 
 #include <boost/predef/other/endian.h>
@@ -42,7 +43,18 @@ struct HashEdge {
 	// Compare two keys.
 	bool operator==(const HashEdge &rhs) const { return memcmp(key, rhs.key, sizeof(key)) == 0; }
 	bool operator!=(const HashEdge &rhs) const { return ! (*this == rhs); }
-	int  hash(int M) const { return ((key[0] / 11 + key[1] / 7 + key[2] / 3) ^ (key[3] / 11  + key[4] / 7 + key[5] / 3)) % M; }
+	// All six coordinates mixed (splitmix64): the sums of a few bits of each coordinate this replaced chained
+	// millions of edges into a few buckets on a regular mesh whose edges do not match (a 4M-facet T-junction tube
+	// took 30 s here). The buckets only order the search, so the matches are the same.
+	int  hash(int M) const {
+		uint64_t h = 0x9E3779B97F4A7C15ull;
+		for (uint32_t k : key) {
+			h ^= k;
+			h *= 0xBF58476D1CE4E5B9ull;
+			h ^= h >> 31;
+		}
+		return int(h % uint64_t(M));
+	}
 
 	// Index of a facet owning this edge.
 	int        facet_number;

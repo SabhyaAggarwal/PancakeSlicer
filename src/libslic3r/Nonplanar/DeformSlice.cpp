@@ -32,6 +32,7 @@
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/SLA/IndexedMesh.hpp"
 #include "libslic3r/ShortestPath.hpp"
+#include "libslic3r/TriangleMesh.hpp"
 
 #include <boost/log/trivial.hpp>
 #include <tbb/parallel_for.h>
@@ -650,59 +651,11 @@ std::unique_ptr<ColumnScaleField> build_column_scale_field(const indexed_triangl
     return field;
 }
 
-static void close_holes(indexed_triangle_set &its)
-{
-    auto key = [](int a, int b) { return (uint64_t(std::min(a, b)) << 32) | uint64_t(uint32_t(std::max(a, b))); };
-    std::unordered_map<uint64_t, int> uses;
-    for (const stl_triangle_vertex_indices &f : its.indices)
-        for (int i = 0; i < 3; ++i)
-            ++uses[key(f[i], f[(i + 1) % 3])];
-    std::multimap<int, int> next;
-    for (const stl_triangle_vertex_indices &f : its.indices)
-        for (int i = 0; i < 3; ++i)
-            if (uses[key(f[i], f[(i + 1) % 3])] == 1)
-                next.emplace(f[(i + 1) % 3], f[i]);
-    size_t closed = 0, kept = 0;
-    while (!next.empty()) {
-        std::vector<int> loop{ next.begin()->first };
-        for (auto it = next.begin(); it != next.end(); it = next.find(loop.back())) {
-            const int to = it->second;
-            next.erase(it);
-            if (to == loop.front())
-                break;
-            loop.push_back(to);
-        }
-        if (loop.size() < 3)
-            continue;
-        Vec3d c = Vec3d::Zero(), n = Vec3d::Zero();
-        for (int v : loop)
-            c += its.vertices[size_t(v)].cast<double>();
-        c /= double(loop.size());
-        for (size_t i = 0; i < loop.size(); ++i)
-            n += its.vertices[size_t(loop[i])].cast<double>().cross(its.vertices[size_t(loop[(i + 1) % loop.size()])].cast<double>());
-        bool fans = n.squaredNorm() > 0.;
-        for (size_t i = 0; fans && i < loop.size(); ++i) {
-            const Vec3d a = its.vertices[size_t(loop[i])].cast<double>(), b = its.vertices[size_t(loop[(i + 1) % loop.size()])].cast<double>();
-            fans = (a - c).cross(b - c).dot(n) > 0.;
-        }
-        if (!fans) {
-            ++kept;
-            continue;
-        }
-        const int ci = int(its.vertices.size());
-        its.vertices.push_back(c.cast<float>());
-        for (size_t i = 0; i < loop.size(); ++i)
-            its.indices.emplace_back(loop[i], loop[(i + 1) % loop.size()], ci);
-        ++closed;
-    }
-    if (closed + kept > 0)
-        BOOST_LOG_TRIVIAL(info) << "Deform slice: closed " << closed << " mesh holes, left " << kept << " open";
-}
-
 indexed_triangle_set deform_mesh(const indexed_triangle_set &mesh, const LayerField &field, double max_edge)
 {
     indexed_triangle_set its   = mesh;
-    close_holes(its);
+    if (const RepairedMeshErrors closed = its_close_holes(its); closed.holes_filled > 0)
+        BOOST_LOG_TRIVIAL(info) << "Deform slice: closed " << closed.holes_filled << " mesh holes";
     const float          z0    = float(field.identity_below());
     const double         max_2 = max_edge * max_edge;
     for (int pass = 0; pass < 16; ++pass) {

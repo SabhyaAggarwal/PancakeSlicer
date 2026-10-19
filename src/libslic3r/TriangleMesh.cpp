@@ -11,6 +11,8 @@
 #include "Execution/ExecutionSeq.hpp"
 #include "Utils.hpp"
 #include "libslic3r.h"
+#include "AABBTreeIndirect.hpp"
+#include "I18N.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -25,22 +27,32 @@
 #include <libqhullcpp/QhullPoint.h>
 #include <libqhullcpp/QhullVertexSet.h>
 
+#include <array>
 #include <cmath>
 #include <deque>
+#include <limits>
 #include <queue>
 #include <map>
 #include <math.h>
+#include <numeric>
+#include <optional>
+#include <set>
+#include <string>
+#include <unordered_map>
 #include <vector>
 #include <utility>
 #include <algorithm>
 #include <type_traits>
 
+#include <boost/format.hpp>
+#include <tbb/parallel_sort.h>
 #include <boost/log/trivial.hpp>
 #include <boost/nowide/cstdio.hpp>
 #include <boost/predef/other/endian.h>
 
 #include <Eigen/Core>
 #include <Eigen/Dense>
+#include <igl/Hit.h>
 
 #include <assert.h>
 #include "ExtrusionEntity.hpp"
@@ -87,80 +99,27 @@ TriangleMesh::TriangleMesh(indexed_triangle_set &&its, const RepairedMeshErrors&
     fill_initial_stats(this->its, m_stats);
 }
 
-static void trianglemesh_repair_on_import(stl_file &stl)
+static bool trianglemesh_repair_on_import(stl_file &stl)
 {
     if (stl.stats.number_of_facets == 0)
-        return;
+        return true;
 
     BOOST_LOG_TRIVIAL(debug) << "TriangleMesh::repair() started";
-
-#ifdef SLIC3R_TRACE_REPAIR
-    BOOST_LOG_TRIVIAL(trace) << "\tstl_check_faces_exact";
-#endif
     assert(stl_validate(&stl));
     stl_check_facets_exact(&stl);
     assert(stl_validate(&stl));
     stl.stats.facets_w_1_bad_edge = (stl.stats.connected_facets_2_edge - stl.stats.connected_facets_3_edge);
     stl.stats.facets_w_2_bad_edge = (stl.stats.connected_facets_1_edge - stl.stats.connected_facets_2_edge);
     stl.stats.facets_w_3_bad_edge = (stl.stats.number_of_facets - stl.stats.connected_facets_1_edge);
-    
-    float tolerance = (float)stl.stats.shortest_edge;
-    float increment = (float)stl.stats.bounding_diameter / 10000.0f;
-    int iterations = 2;
-    if (stl.stats.connected_facets_3_edge < int(stl.stats.number_of_facets)) {
-        for (int i = 0; i < iterations; ++ i) {
-            if (stl.stats.connected_facets_3_edge < int(stl.stats.number_of_facets)) {
-#ifdef SLIC3R_TRACE_REPAIR
-                BOOST_LOG_TRIVIAL(trace) << "\tstl_check_faces_nearby";
-#endif
-                stl_check_facets_nearby(&stl, tolerance);
-                tolerance += increment;
-            } else {
-                break;
-            }
-        }
-    }
-    assert(stl_validate(&stl));
-    
-    if (stl.stats.connected_facets_3_edge < (int)stl.stats.number_of_facets) {
-#ifdef SLIC3R_TRACE_REPAIR
-        BOOST_LOG_TRIVIAL(trace) << "\tstl_remove_unconnected_facets";
-#endif
-        stl_remove_unconnected_facets(&stl);
-        assert(stl_validate(&stl));
-    }
-    
-#if 0
-    if (stl.stats.connected_facets_3_edge < stl.stats.number_of_facets) {
-#ifdef SLIC3R_TRACE_REPAIR
-        BOOST_LOG_TRIVIAL(trace) << "\tstl_fill_holes";
-#endif
-        stl_fill_holes(&stl);
-        stl_clear_error(&stl);
-    }
-#endif
+    if (stl.stats.connected_facets_3_edge < int(stl.stats.number_of_facets))
+        return false;
 
-#ifdef SLIC3R_TRACE_REPAIR
-    BOOST_LOG_TRIVIAL(trace) << "\tstl_fix_normal_directions";
-#endif
     stl_fix_normal_directions(&stl);
     assert(stl_validate(&stl));
-
-#ifdef SLIC3R_TRACE_REPAIR
-    BOOST_LOG_TRIVIAL(trace) << "\tstl_fix_normal_values";
-#endif
     stl_fix_normal_values(&stl);
     assert(stl_validate(&stl));
-    
-#ifdef SLIC3R_TRACE_REPAIR
-    BOOST_LOG_TRIVIAL(trace) << "\tstl_calculate_volume";
-#endif
     stl_calculate_volume(&stl);
     assert(stl_validate(&stl));
-    
-#ifdef SLIC3R_TRACE_REPAIR
-    BOOST_LOG_TRIVIAL(trace) << "\tstl_verify_neighbors";
-#endif
     stl_verify_neighbors(&stl);
     assert(stl_validate(&stl));
 
@@ -168,36 +127,42 @@ static void trianglemesh_repair_on_import(stl_file &stl)
         stl_check_facets_exact(&stl);
 
     BOOST_LOG_TRIVIAL(debug) << "TriangleMesh::repair() finished";
+    return true;
 }
 
 bool TriangleMesh::from_stl(stl_file& stl, bool repair)
 {
-    if (repair)
-        trianglemesh_repair_on_import(stl);
-
-#if 0
-    m_stats.number_of_facets = stl.stats.number_of_facets;
-    m_stats.min = stl.stats.min;
-    m_stats.max = stl.stats.max;
-    m_stats.size = stl.stats.size;
-    m_stats.volume = stl.stats.volume;
-
-    auto facets_w_1_bad_edge = stl.stats.connected_facets_2_edge - stl.stats.connected_facets_3_edge;
-    auto facets_w_2_bad_edge = stl.stats.connected_facets_1_edge - stl.stats.connected_facets_2_edge;
-    auto facets_w_3_bad_edge = stl.stats.number_of_facets - stl.stats.connected_facets_1_edge;
-    m_stats.open_edges = stl.stats.backwards_edges + facets_w_1_bad_edge + facets_w_2_bad_edge * 2 + facets_w_3_bad_edge * 3;
-
-    m_stats.repaired_errors = { stl.stats.edges_fixed,
-                                stl.stats.degenerate_facets,
-                                stl.stats.facets_removed,
-                                stl.stats.facets_reversed,
-                                stl.stats.backwards_edges };
-
-    m_stats.number_of_parts = stl.stats.number_of_parts;
-#endif
+    if (repair && ! trianglemesh_repair_on_import(stl)) {
+        const uint32_t unconnected = stl.stats.number_of_facets - stl.stats.connected_facets_3_edge;
+        this->its.clear();
+        this->its.vertices.reserve(size_t(stl.stats.number_of_facets) * 3);
+        this->its.indices.reserve(stl.stats.number_of_facets);
+        for (uint32_t i = 0; i < stl.stats.number_of_facets; ++ i) {
+            const int first = int(this->its.vertices.size());
+            for (const stl_vertex &v : stl.facet_start[i].vertex)
+                this->its.vertices.emplace_back(v);
+            this->its.indices.emplace_back(first, first + 1, first + 2);
+        }
+        its_merge_vertices(this->its, false);
+        RepairedMeshErrors errors = its_repair_on_load(this->its);
+        errors.degenerate_facets += stl.stats.degenerate_facets;
+        errors.facets_removed += stl.stats.facets_removed;
+        BOOST_LOG_TRIVIAL(warning) << "Mesh repaired on load: " << unconnected << " of " << stl.stats.number_of_facets
+                                   << " STL facets not meeting edge to edge: " << errors.summary();
+        fill_initial_stats(this->its, this->m_stats);
+        m_stats.repaired_errors = errors;
+        return true;
+    }
 
     stl_generate_shared_vertices(&stl, this->its);
     fill_initial_stats(this->its, this->m_stats);
+    if (repair) {
+        m_stats.repaired_errors.edges_fixed       = stl.stats.edges_fixed;
+        m_stats.repaired_errors.degenerate_facets = stl.stats.degenerate_facets;
+        m_stats.repaired_errors.facets_removed    = stl.stats.facets_removed;
+        m_stats.repaired_errors.facets_reversed   = stl.stats.facets_reversed;
+        m_stats.repaired_errors.backwards_edges   = stl.stats.backwards_edges;
+    }
     return true;
 }
 
@@ -710,6 +675,527 @@ int its_compactify_vertices(indexed_triangle_set &its, bool shrink_to_fit)
             its.vertices.shrink_to_fit();
     }
     return removed;
+}
+
+std::string RepairedMeshErrors::summary() const
+{
+    std::string out;
+    auto add = [&out](int n, const char *format) {
+        if (n > 0)
+            out += (out.empty() ? "" : ", ") + (boost::format(_u8L(format)) % n).str();
+    };
+    add(edges_fixed, L("edges joined: %1%"));
+    add(degenerate_facets, L("degenerate facets removed: %1%"));
+    add(duplicate_facets, L("duplicate facets removed: %1%"));
+    add(nonmanifold_edges, L("edges shared by three or more facets made manifold: %1%"));
+    add(facets_removed - degenerate_facets - duplicate_facets, L("other facets removed: %1%"));
+    add(holes_filled, L("holes closed: %1%"));
+    add(facets_added, L("facets added: %1%"));
+    add(facets_reversed, L("facets reversed: %1%"));
+    add(backwards_edges, L("backwards edges: %1%"));
+    return out;
+}
+
+namespace {
+
+struct EdgeTable
+{
+    struct Entry
+    {
+        uint64_t key;
+        int      face_edge;
+    };
+    std::vector<Entry> entries;
+    std::vector<int>   valence;
+    std::vector<int>   first;
+
+    explicit EdgeTable(const indexed_triangle_set &its)
+    {
+        entries.reserve(its.indices.size() * 3);
+        for (int f = 0; f < int(its.indices.size()); ++ f)
+            for (int i = 0; i < 3; ++ i) {
+                const uint64_t a = uint32_t(its.indices[f](i)), b = uint32_t(its.indices[f]((i + 1) % 3));
+                entries.push_back({ std::min(a, b) << 32 | std::max(a, b), f * 3 + i });
+            }
+        tbb::parallel_sort(entries.begin(), entries.end(), [](const Entry &l, const Entry &r) { return l.key < r.key || (l.key == r.key && l.face_edge < r.face_edge); });
+        valence.assign(entries.size(), 0);
+        first.assign(entries.size(), 0);
+        for (size_t i = 0; i < entries.size();) {
+            size_t j = i;
+            while (j < entries.size() && entries[j].key == entries[i].key)
+                ++ j;
+            for (size_t k = i; k < j; ++ k) {
+                valence[entries[k].face_edge] = int(j - i);
+                first[entries[k].face_edge]   = int(i);
+            }
+            i = j;
+        }
+    }
+    int twin(int face_edge) const
+    {
+        const int i = first[face_edge];
+        return entries[i].face_edge == face_edge ? entries[i + 1].face_edge : entries[i].face_edge;
+    }
+};
+
+int remove_faces(indexed_triangle_set &its, const std::vector<char> &remove)
+{
+    size_t k = 0;
+    for (size_t f = 0; f < its.indices.size(); ++ f)
+        if (! remove[f])
+            its.indices[k ++] = its.indices[f];
+    const int removed = int(its.indices.size() - k);
+    its.indices.resize(k);
+    return removed;
+}
+
+bool fill_loop(indexed_triangle_set &its, const std::vector<int> &loop, const std::function<bool(int, int)> &edge_exists)
+{
+    const int    n        = int(loop.size());
+    const double infinite = std::numeric_limits<double>::max();
+    auto area = [&its, &loop](int i, int k, int j) {
+        const Vec3d a = its.vertices[loop[i]].cast<double>(), b = its.vertices[loop[k]].cast<double>(), c = its.vertices[loop[j]].cast<double>();
+        return 0.5 * (b - a).cross(c - a).norm();
+    };
+    std::vector<double> cost(size_t(n) * n, 0.);
+    std::vector<int>    split(size_t(n) * n, -1);
+    for (int len = 2; len < n; ++ len)
+        for (int i = 0; i + len < n; ++ i) {
+            const int j    = i + len;
+            double    best = infinite;
+            if (len == n - 1 || ! edge_exists(loop[i], loop[j]))
+                for (int k = i + 1; k < j; ++ k)
+                    if (const double l = cost[size_t(i) * n + k], r = cost[size_t(k) * n + j]; l < infinite && r < infinite)
+                        if (const double c = l + r + area(i, k, j); c < best) {
+                            best                     = c;
+                            split[size_t(i) * n + j] = k;
+                        }
+            cost[size_t(i) * n + j] = best;
+        }
+    if (cost[n - 1] == infinite)
+        return false;
+    std::vector<std::pair<int, int>> stack { { 0, n - 1 } };
+    while (! stack.empty()) {
+        const auto [i, j] = stack.back();
+        stack.pop_back();
+        if (j - i < 2)
+            continue;
+        const int k = split[size_t(i) * n + j];
+        its.indices.emplace_back(loop[i], loop[k], loop[j]);
+        stack.push_back({ i, k });
+        stack.push_back({ k, j });
+    }
+    return true;
+}
+
+void close_small_holes(indexed_triangle_set &its, const EdgeTable &edges, float max_hole_size, RepairedMeshErrors &out)
+{
+    std::multimap<int, int> next;
+    for (int fe = 0; fe < int(edges.valence.size()); ++ fe)
+        if (edges.valence[fe] == 1)
+            next.emplace(its.indices[fe / 3]((fe % 3 + 1) % 3), its.indices[fe / 3](fe % 3));
+    std::set<uint64_t> added;
+    auto edge_key    = [](int a, int b) { return uint64_t(uint32_t(std::min(a, b))) << 32 | uint32_t(std::max(a, b)); };
+    auto edge_exists = [&edges, &added, &edge_key](int a, int b) {
+        const uint64_t key = edge_key(a, b);
+        return added.count(key) > 0 ||
+               std::binary_search(edges.entries.begin(), edges.entries.end(), EdgeTable::Entry { key, 0 },
+                                  [](const EdgeTable::Entry &l, const EdgeTable::Entry &r) { return l.key < r.key; });
+    };
+    const BoundingBoxf3 bbox     = bounding_box(its);
+    const double        max_size = std::min<double>(max_hole_size, 0.5 * bbox.size().norm());
+    const size_t        max_vertices = 1000;
+    const size_t        faces_before = its.indices.size();
+    while (! next.empty()) {
+        std::vector<int> path { next.begin()->first };
+        std::vector<std::vector<int>> loops;
+        while (! path.empty()) {
+            auto it = next.find(path.back());
+            if (it == next.end())
+                break;
+            const int v = it->second;
+            next.erase(it);
+            if (auto at = std::find(path.begin(), path.end(), v); at != path.end()) {
+                loops.emplace_back(at, path.end());
+                path.erase(at + 1, path.end());
+                if (path.size() == 1 && next.find(v) == next.end())
+                    path.clear();
+            } else
+                path.push_back(v);
+        }
+        for (const std::vector<int> &loop : loops) {
+            if (loop.size() < 3 || loop.size() > max_vertices)
+                continue;
+            BoundingBoxf3 box;
+            for (int v : loop)
+                box.merge(its.vertices[v].cast<double>());
+            if (box.size().norm() > max_size)
+                continue;
+            const size_t faces = its.indices.size();
+            if (! fill_loop(its, loop, edge_exists))
+                continue;
+            for (size_t f = faces; f < its.indices.size(); ++ f)
+                for (int i = 0; i < 3; ++ i)
+                    added.insert(edge_key(its.indices[f](i), its.indices[f]((i + 1) % 3)));
+            ++ out.holes_filled;
+            out.facets_added += int(its.indices.size() - faces);
+        }
+    }
+}
+
+}
+static RepairedMeshErrors repair_pass(indexed_triangle_set &its, float max_hole_size)
+{
+    RepairedMeshErrors out;
+
+    if (const size_t open = its_num_open_edges(its); open > 0) {
+        indexed_triangle_set merged = its;
+        if (its_merge_vertices(merged, false) > 0)
+            if (const size_t open_merged = its_num_open_edges(merged); open_merged < open) {
+                out.edges_fixed = int(open - open_merged);
+                its             = std::move(merged);
+            }
+    }
+    if (its_num_open_edges(its) > 0) {
+        auto boundary_edges = [&its](std::vector<int> &boundary) {
+            boundary.clear();
+            double length = 0.;
+            const EdgeTable edges(its);
+            for (int fe = 0; fe < int(edges.valence.size()); ++ fe)
+                if (edges.valence[fe] == 1) {
+                    boundary.push_back(fe);
+                    length += (its.vertices[its.indices[fe / 3]((fe % 3 + 1) % 3)] - its.vertices[its.indices[fe / 3](fe % 3)]).norm();
+                }
+            return boundary.empty() ? 0. : length / boundary.size();
+        };
+        std::vector<int> boundary;
+        const double     mean = boundary_edges(boundary);
+        const double     snap = std::min(0.002, 0.05 * mean);
+        const double     cell = std::max(mean, 1e-3);
+        auto cell_of  = [cell](const Vec3d &p) { return Vec3i64((p / cell).array().floor().cast<int64_t>()); };
+        auto cell_key = [](const Vec3i64 &c) { return uint64_t(c.x() * 73856093) ^ uint64_t(c.y() * 19349663) ^ uint64_t(c.z() * 83492791); };
+        auto boundary_grid = [&its, &cell_of, &cell_key](const std::vector<int> &boundary) {
+            std::unordered_map<uint64_t, std::vector<int>> grid;
+            std::vector<char>                              seen(its.vertices.size(), 0);
+            for (int fe : boundary)
+                for (int v : { its.indices[fe / 3](fe % 3), its.indices[fe / 3]((fe % 3 + 1) % 3) })
+                    if (! seen[v]) {
+                        seen[v] = 1;
+                        grid[cell_key(cell_of(its.vertices[v].cast<double>()))].push_back(v);
+                    }
+            return grid;
+        };
+        auto box_cells = [&cell_of, &cell_key](const Vec3d &lo, const Vec3d &hi, auto &&fn) {
+            const Vec3i64 c0 = cell_of(lo), c1 = cell_of(hi);
+            for (int64_t x = c0.x(); x <= c1.x(); ++ x)
+                for (int64_t y = c0.y(); y <= c1.y(); ++ y)
+                    for (int64_t z = c0.z(); z <= c1.z(); ++ z)
+                        fn(cell_key(Vec3i64(x, y, z)));
+        };
+        const Vec3d reach = Vec3d::Constant(snap);
+        {
+            const auto       grid = boundary_grid(boundary);
+            std::vector<int> target(its.vertices.size());
+            std::iota(target.begin(), target.end(), 0);
+            auto root = [&target](int v) {
+                while (target[v] != v)
+                    v = target[v] = target[target[v]];
+                return v;
+            };
+            for (const auto &[key, vertices] : grid)
+                for (int v : vertices) {
+                    const Vec3d p = its.vertices[v].cast<double>();
+                    box_cells(p - reach, p + reach, [&](uint64_t k) {
+                        if (auto it = grid.find(k); it != grid.end())
+                            for (int w : it->second)
+                                if (w != v && (its.vertices[w].cast<double>() - p).norm() <= snap)
+                                    if (const int rv = root(v), rw = root(w); rv != rw)
+                                        target[std::max(rv, rw)] = std::min(rv, rw);
+                    });
+                }
+            int merged = 0;
+            for (int v = 0; v < int(target.size()); ++ v)
+                if ((target[v] = root(v)) != v)
+                    ++ merged;
+            if (merged > 0) {
+                for (stl_triangle_vertex_indices &face : its.indices)
+                    for (int i = 0; i < 3; ++ i)
+                        face(i) = target[face(i)];
+                out.edges_fixed += merged;
+            }
+        }
+        for (int pass = 0; pass < 4; ++ pass) {
+            if (pass > 0 || out.edges_fixed > 0)
+                boundary_edges(boundary);
+            if (boundary.empty())
+                break;
+            const auto        grid = boundary_grid(boundary);
+            std::vector<char> split(its.indices.size(), 0);
+            const size_t      faces = its.indices.size();
+            for (int fe : boundary) {
+                const int f = fe / 3, i = fe % 3;
+                if (split[f])
+                    continue;
+                const int    a = its.indices[f](i), b = its.indices[f]((i + 1) % 3), c = its.indices[f]((i + 2) % 3);
+                const Vec3d  pa = its.vertices[a].cast<double>(), ab = its.vertices[b].cast<double>() - pa;
+                const double len = ab.norm();
+                if (len <= 2. * snap)
+                    continue;
+                std::vector<std::pair<double, int>> on_edge;
+                auto test_cell = [&](uint64_t key) {
+                    if (auto it = grid.find(key); it != grid.end())
+                        for (int v : it->second) {
+                            if (v == a || v == b || v == c)
+                                continue;
+                            const Vec3d  ap = its.vertices[v].cast<double>() - pa;
+                            const double t  = ap.dot(ab) / (len * len);
+                            if (t * len > snap && (1. - t) * len > snap && (ap - t * ab).norm() <= snap)
+                                on_edge.push_back({ t, v });
+                        }
+                };
+                const Vec3d   lo = pa.cwiseMin(pa + ab) - reach, hi = pa.cwiseMax(pa + ab) + reach;
+                const Vec3i64 span = cell_of(hi) - cell_of(lo) + Vec3i64::Ones();
+                if (span.x() * span.y() * span.z() <= 27)
+                    box_cells(lo, hi, test_cell);
+                else
+                    for (int k = 0, steps = int(std::ceil(len / cell)); k <= steps; ++ k) {
+                        const Vec3d p = pa + ab * (double(k) / steps);
+                        box_cells(p - Vec3d::Constant(cell), p + Vec3d::Constant(cell), test_cell);
+                    }
+                if (on_edge.empty())
+                    continue;
+                std::sort(on_edge.begin(), on_edge.end());
+                on_edge.erase(std::unique(on_edge.begin(), on_edge.end(), [](const auto &l, const auto &r) { return l.second == r.second; }), on_edge.end());
+                split[f]       = 1;
+                its.indices[f] = stl_triangle_vertex_indices(a, on_edge.front().second, c);
+                for (size_t k = 0; k < on_edge.size(); ++ k)
+                    its.indices.emplace_back(on_edge[k].second, k + 1 < on_edge.size() ? on_edge[k + 1].second : b, c);
+                out.edges_fixed += int(on_edge.size());
+            }
+            if (its.indices.size() == faces)
+                break;
+            out.facets_added += int(its.indices.size() - faces);
+        }
+    }
+    out.degenerate_facets = its_remove_degenerate_faces(its, false);
+
+    {
+        std::vector<std::pair<std::array<int, 3>, int>> sorted;
+        sorted.reserve(its.indices.size());
+        for (int f = 0; f < int(its.indices.size()); ++ f) {
+            std::array<int, 3> v { its.indices[f](0), its.indices[f](1), its.indices[f](2) };
+            std::sort(v.begin(), v.end());
+            sorted.push_back({ v, f });
+        }
+        tbb::parallel_sort(sorted.begin(), sorted.end());
+        std::vector<char> remove(its.indices.size(), 0);
+        for (size_t i = 1; i < sorted.size(); ++ i)
+            if (sorted[i].first == sorted[i - 1].first)
+                remove[sorted[i].second] = 1;
+        out.duplicate_facets = remove_faces(its, remove);
+    }
+
+    std::optional<EdgeTable> table;
+    auto edge_table = [&table, &its]() -> const EdgeTable & {
+        if (! table)
+            table.emplace(its);
+        return *table;
+    };
+
+    for (bool changed = true; changed;) {
+        changed = false;
+        const EdgeTable  &edges = edge_table();
+        std::vector<char> remove(its.indices.size(), 0);
+        auto open_edges = [&edges](int face) {
+            return int(edges.valence[face * 3] == 1) + int(edges.valence[face * 3 + 1] == 1) + int(edges.valence[face * 3 + 2] == 1);
+        };
+        for (size_t i = 0; i < edges.entries.size();) {
+            size_t j = i;
+            while (j < edges.entries.size() && edges.entries[j].key == edges.entries[i].key)
+                ++ j;
+            if (j - i > 2) {
+                std::vector<std::pair<int, int>> faces;
+                for (size_t k = i; k < j; ++ k)
+                    if (int face = edges.entries[k].face_edge / 3; ! remove[face])
+                        faces.push_back({ open_edges(face), face });
+                std::sort(faces.begin(), faces.end(), std::greater<>());
+                size_t left = faces.size();
+                for (const auto &[open, face] : faces)
+                    if (left > 2 && open > 0) {
+                        remove[face] = 1;
+                        -- left;
+                    }
+                if (left == 2 && faces.size() > 2)
+                    ++ out.nonmanifold_edges;
+            }
+            i = j;
+        }
+        if (int removed = remove_faces(its, remove); removed > 0) {
+            out.facets_removed += removed;
+            changed = true;
+            table.reset();
+        }
+    }
+
+    {
+        const EdgeTable   &edges  = edge_table();
+        const int          nfaces = int(its.indices.size());
+        std::vector<int>   patch(nfaces, -1);
+        std::vector<char>  flip(nfaces, 0);
+        std::vector<int>   queue;
+        std::optional<AABBTreeIndirect::Tree3f> tree;
+        std::vector<igl::Hit<float>>            hits;
+        auto faces_inward = [&its, &tree, &hits, &flip](std::vector<int> faces) {
+            if (! tree)
+                tree.emplace(AABBTreeIndirect::build_aabb_tree_over_indexed_triangle_set(its.vertices, its.indices));
+            auto area = [&its](int f) { return its_unnormalized_normal(its, f).squaredNorm(); };
+            const size_t samples = std::min<size_t>(7, faces.size());
+            std::nth_element(faces.begin(), faces.begin() + (samples - 1), faces.end(), [&area](int l, int r) { return area(l) > area(r); });
+            int inward = 0, outward = 0;
+            for (size_t k = 0; k < samples; ++ k) {
+                const int f = faces[k];
+                Vec3d     n = its_unnormalized_normal(its, f).cast<double>();
+                if (n.squaredNorm() < 1e-12)
+                    continue;
+                n = (flip[f] ? -1. : 1.) * n.normalized();
+                const Vec3d centroid = (its.vertices[its.indices[f](0)] + its.vertices[its.indices[f](1)] + its.vertices[its.indices[f](2)]).cast<double>() / 3.;
+                AABBTreeIndirect::intersect_ray_all_hits(its.vertices, its.indices, *tree, Vec3d(centroid + 1e-3 * n), n, hits);
+                int    crossings = 0;
+                double last      = -1.;
+                for (const igl::Hit<float> &hit : hits)
+                    if (hit.id != f && std::abs(hit.t - last) > 1e-5) {
+                        ++ crossings;
+                        last = hit.t;
+                    }
+                ++ (crossings % 2 ? inward : outward);
+            }
+            return inward > outward;
+        };
+        for (int seed = 0; seed < nfaces; ++ seed) {
+            if (patch[seed] >= 0)
+                continue;
+            queue.assign(1, seed);
+            patch[seed]  = seed;
+            size_t flips = 0;
+            for (size_t q = 0; q < queue.size(); ++ q) {
+                const int f = queue[q];
+                for (int i = 0; i < 3; ++ i) {
+                    if (edges.valence[f * 3 + i] != 2)
+                        continue;
+                    const int tw = edges.twin(f * 3 + i), g = tw / 3;
+                    if (patch[g] >= 0)
+                        continue;
+                    const bool same = its.indices[f](i) == its.indices[g](tw % 3);
+                    patch[g]        = seed;
+                    flip[g]         = char(flip[f] != same);
+                    flips += flip[g];
+                    queue.push_back(g);
+                }
+            }
+            const bool open = std::any_of(queue.begin(), queue.end(), [&edges](int f) {
+                return edges.valence[f * 3] != 2 || edges.valence[f * 3 + 1] != 2 || edges.valence[f * 3 + 2] != 2;
+            });
+            if (open ? faces_inward(queue) : 2 * flips > queue.size())
+                for (int f : queue)
+                    flip[f] = ! flip[f];
+        }
+        for (int f = 0; f < nfaces; ++ f)
+            if (flip[f]) {
+                std::swap(its.indices[f](1), its.indices[f](2));
+                ++ out.facets_reversed;
+                table.reset();
+            }
+    }
+
+    {
+        const size_t faces = its.indices.size();
+        close_small_holes(its, edge_table(), max_hole_size, out);
+        if (its.indices.size() > faces)
+            table.reset();
+    }
+
+    {
+        struct Shell
+        {
+            std::vector<int> faces;
+            bool             closed = true;
+            double           volume = 0.;
+            BoundingBoxf3    box;
+        };
+        const EdgeTable   &edges  = edge_table();
+        const int          nfaces = int(its.indices.size());
+        std::vector<char>  seen(nfaces, 0);
+        std::vector<Shell> shells;
+        double             total = 0.;
+        for (int seed = 0; seed < nfaces; ++ seed) {
+            if (seen[seed])
+                continue;
+            Shell &shell = shells.emplace_back();
+            shell.faces.assign(1, seed);
+            seen[seed] = 1;
+            for (size_t q = 0; q < shell.faces.size(); ++ q) {
+                const int   f = shell.faces[q];
+                const Vec3d a = its.vertices[its.indices[f](0)].cast<double>(), b = its.vertices[its.indices[f](1)].cast<double>(),
+                            c = its.vertices[its.indices[f](2)].cast<double>();
+                shell.volume += a.dot(b.cross(c)) / 6.;
+                shell.box.merge(a);
+                shell.box.merge(b);
+                shell.box.merge(c);
+                for (int i = 0; i < 3; ++ i) {
+                    if (edges.valence[f * 3 + i] != 2) {
+                        shell.closed = false;
+                        continue;
+                    }
+                    if (const int g = edges.twin(f * 3 + i) / 3; ! seen[g]) {
+                        seen[g] = 1;
+                        shell.faces.push_back(g);
+                    }
+                }
+            }
+            if (shell.closed)
+                total += shell.volume;
+        }
+        auto flip = [&its, &out](const Shell &shell) {
+            for (int f : shell.faces)
+                std::swap(its.indices[f](1), its.indices[f](2));
+            out.facets_reversed += int(shell.faces.size());
+        };
+        auto held = [&shells](const Shell &shell) {
+            return std::any_of(shells.begin(), shells.end(), [&shell](const Shell &other) {
+                return &other != &shell && other.closed && other.box.contains(shell.box.min) && other.box.contains(shell.box.max);
+            });
+        };
+        for (const Shell &shell : shells)
+            if (shell.closed && (total < 0. || (shell.volume < 0. && ! held(shell))))
+                flip(shell);
+    }
+
+    out.facets_removed += out.degenerate_facets + out.duplicate_facets;
+    if (out.facets_removed > 0 || out.edges_fixed > 0)
+        its_compactify_vertices(its, false);
+    return out;
+}
+
+RepairedMeshErrors its_close_holes(indexed_triangle_set &its, float max_hole_size)
+{
+    RepairedMeshErrors out;
+    if (! its.indices.empty())
+        close_small_holes(its, EdgeTable(its), max_hole_size, out);
+    return out;
+}
+
+RepairedMeshErrors its_repair_on_load(indexed_triangle_set &its, float max_hole_size)
+{
+    RepairedMeshErrors out;
+    for (int pass = 0; pass < 3 && ! its.indices.empty(); ++ pass) {
+        const RepairedMeshErrors fixed = repair_pass(its, max_hole_size);
+        if (! fixed.repaired())
+            break;
+        out.merge(fixed);
+    }
+    if (out.repaired())
+        its_shrink_to_fit(its);
+    return out;
 }
 
 bool its_store_triangle(const indexed_triangle_set &its,

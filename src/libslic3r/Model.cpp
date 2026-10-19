@@ -213,6 +213,23 @@ Model::~Model()
         Slic3r::remove_backup(*this, true);
 }
 
+static void repair_meshes_on_load(Model &model)
+{
+    for (ModelObject *o : model.objects) {
+        for (ModelVolume *v : o->volumes) {
+            indexed_triangle_set     its    = v->mesh().its;
+            const RepairedMeshErrors errors = its_repair_on_load(its);
+            if (! errors.repaired())
+                continue;
+            BOOST_LOG_TRIVIAL(warning) << "Mesh repaired on load: " << o->name << ": " << errors.summary();
+            v->set_mesh(TriangleMesh(std::move(its), errors));
+            v->calculate_convex_hull();
+            v->invalidate_convex_hull_2d();
+        }
+        o->invalidate_bounding_box();
+    }
+}
+
 Model Model::read_from_step(const std::string&                                      input_file,
                             LoadStrategy                                            options,
                             ImportStepProgressFn                                    stepFn,
@@ -260,6 +277,7 @@ _finished:
 
     for (ModelObject *o : model.objects)
         o->input_file = input_file;
+    repair_meshes_on_load(model);
 
     if (options & LoadStrategy::AddDefaultInstances)
         model.add_default_instances();
@@ -320,10 +338,11 @@ Model Model::read_from_file(const std::string&                                  
     bool result = false;
     bool is_cb_cancel = false;
     std::string message;
+    bool stl_mesh = false;
     if (boost::algorithm::iends_with(input_file, ".stl"))
-        result = load_stl(input_file.c_str(), &model, nullptr, stlFn);
+        result = stl_mesh = load_stl(input_file.c_str(), &model, nullptr, stlFn);
     else if (boost::algorithm::iends_with(input_file, ".oltp"))
-        result = load_stl(input_file.c_str(), &model, nullptr, stlFn,256);
+        result = stl_mesh = load_stl(input_file.c_str(), &model, nullptr, stlFn,256);
     else if (boost::algorithm::iends_with(input_file, ".obj")) {
         ObjInfo                 obj_info;
         ObjParser::MtlData      mtl_data;
@@ -415,7 +434,7 @@ Model Model::read_from_file(const std::string&                                  
         if (temp_stl.empty()) {
             throw Slic3r::RuntimeError("Failed to convert asset to STL via ModelIO.");
         }
-        result = load_stl(temp_stl.c_str(), &model);
+        result = stl_mesh = load_stl(temp_stl.c_str(), &model);
         delete_temp_file(temp_stl);
     }
 #endif
@@ -439,6 +458,8 @@ Model Model::read_from_file(const std::string&                                  
 
     for (ModelObject *o : model.objects)
         o->input_file = input_file;
+    if (! stl_mesh && ! boost::algorithm::iends_with(input_file, ".3mf") && ! boost::algorithm::iends_with(input_file, ".amf"))
+        repair_meshes_on_load(model);
 
     if (options & LoadStrategy::AddDefaultInstances)
         model.add_default_instances();
@@ -2315,6 +2336,14 @@ void ModelObject::print_info() const
             cout << "facets_reversed = "    << stats.facets_reversed   << endl;
         if (stats.backwards_edges > 0)
             cout << "backwards_edges = "    << stats.backwards_edges   << endl;
+        if (stats.duplicate_facets > 0)
+            cout << "duplicate_facets = "   << stats.duplicate_facets  << endl;
+        if (stats.nonmanifold_edges > 0)
+            cout << "nonmanifold_edges = "  << stats.nonmanifold_edges << endl;
+        if (stats.holes_filled > 0)
+            cout << "holes_filled = "       << stats.holes_filled      << endl;
+        if (stats.facets_added > 0)
+            cout << "facets_added = "       << stats.facets_added      << endl;
     }
     cout << "number_of_parts =  " << mesh.stats().number_of_parts << endl;
     cout << "volume = "           << mesh.volume()                << endl;
@@ -2365,10 +2394,7 @@ int ModelObject::get_repaired_errors_count(const int vol_idx ) const
     if (vol_idx >= 0)
         return this->volumes[vol_idx]->get_repaired_errors_count();
 
-    const RepairedMeshErrors& stats = get_object_stl_stats().repaired_errors;
-
-    return  stats.degenerate_facets + stats.edges_fixed     + stats.facets_removed +
-            stats.facets_reversed + stats.backwards_edges;
+    return get_object_stl_stats().repaired_errors.count();
 }
 
 bool ModelObject::has_solid_mesh() const
@@ -2572,10 +2598,7 @@ const Polygon& ModelVolume::get_convex_hull_2d(const Transform3d &trafo_instance
 
 int ModelVolume::get_repaired_errors_count() const
 {
-    const RepairedMeshErrors &stats = this->mesh().stats().repaired_errors;
-
-    return  stats.degenerate_facets + stats.edges_fixed     + stats.facets_removed +
-            stats.facets_reversed + stats.backwards_edges;
+    return this->mesh().stats().repaired_errors.count();
 }
 
 const TriangleMesh& ModelVolume::get_convex_hull() const

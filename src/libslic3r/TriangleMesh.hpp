@@ -10,6 +10,7 @@
 #include <cereal/specialize.hpp>
 #include <functional>
 #include <utility>
+#include <string>
 #include <vector>
 #include "BoundingBox.hpp"
 #include "Line.hpp"
@@ -28,6 +29,10 @@ struct RepairedMeshErrors {
     int           facets_removed            = 0;
     int           facets_reversed           = 0;
     int           backwards_edges           = 0;
+    int           duplicate_facets          = 0;
+    int           nonmanifold_edges         = 0;
+    int           holes_filled              = 0;
+    int           facets_added              = 0;
 
     void clear() { *this = RepairedMeshErrors(); }
 
@@ -37,9 +42,17 @@ struct RepairedMeshErrors {
         this->facets_removed      += rhs.facets_removed;
         this->facets_reversed     += rhs.facets_reversed;
         this->backwards_edges     += rhs.backwards_edges;
+        this->duplicate_facets    += rhs.duplicate_facets;
+        this->nonmanifold_edges   += rhs.nonmanifold_edges;
+        this->holes_filled        += rhs.holes_filled;
+        this->facets_added        += rhs.facets_added;
     }
 
-    bool repaired() const { return degenerate_facets > 0 || edges_fixed > 0 || facets_removed > 0 || facets_reversed > 0 || backwards_edges > 0; }
+    bool repaired() const { return degenerate_facets > 0 || edges_fixed > 0 || facets_removed > 0 || facets_reversed > 0 || backwards_edges > 0 ||
+                                   duplicate_facets > 0 || nonmanifold_edges > 0 || holes_filled > 0; }
+    int count() const { return degenerate_facets + edges_fixed + facets_removed + facets_reversed + backwards_edges +
+                               duplicate_facets + nonmanifold_edges + holes_filled; }
+    std::string summary() const;
 };
 
 struct TriangleMeshStats {
@@ -181,6 +194,9 @@ int its_merge_vertices(indexed_triangle_set &its, bool shrink_to_fit = true);
 int its_remove_degenerate_faces(indexed_triangle_set &its, bool shrink_to_fit = true);
 
 int its_compactify_vertices(indexed_triangle_set &its, bool shrink_to_fit = true);
+
+RepairedMeshErrors its_repair_on_load(indexed_triangle_set &its, float max_hole_size = 20.f);
+RepairedMeshErrors its_close_holes(indexed_triangle_set &its, float max_hole_size = 20.f);
 
 bool its_store_triangle(const indexed_triangle_set &its, const char *obj_filename, size_t triangle_index);
 bool its_store_triangles(const indexed_triangle_set &its, const char *obj_filename, const std::vector<size_t>& triangles);
