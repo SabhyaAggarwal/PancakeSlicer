@@ -27,6 +27,6 @@ export function sliceProgress(e: ProgressEvent): ProgressEvent {
   return { stage: e.message || text || 'Slicing', pct: Math.min(99, range ? range[0] + pct * range[1] / 100 : pct) };
 }
 
-export function slicingText(job: { stage: string; pct: number }): string {
-  return `Slicing plate 1: ${STATUS[job.stage] ?? (job.stage || 'Slicing')} ${Math.round(job.pct)}%`;
+export function slicingText(job: { stage: string; pct: number }, plateIndex = 1): string {
+  return `Slicing plate ${plateIndex}: ${STATUS[job.stage] ?? (job.stage || 'Slicing')} ${Math.round(job.pct)}%`;
 }

@@ -291,6 +291,45 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "multiple uploads require plate JSON")
 		return
 	}
+	if raw := r.FormValue("plate_index"); raw != "" {
+		req.PlateIndex, err = strconv.Atoi(raw)
+		if err != nil || req.PlateIndex < 1 || req.Plate || req.Orient || len(req.Files) != 1 || !strings.EqualFold(filepath.Ext(req.Files[0]), ".3mf") {
+			fail(w, 400, "plate_index requires a positive 1-based index and one 3MF project")
+			return
+		}
+		if req.Output != "3mf" && !s.cfg.Features.PlateIndex {
+			fail(w, 400, "slicing a selected project plate requires an upgraded ToolRecord tool with --plate-index support")
+			return
+		}
+	}
+	if !req.Plate && strings.EqualFold(filepath.Ext(req.Files[0]), ".3mf") {
+		layout, layoutErr := readProjectLayout(filepath.Join(j.Dir, "input", req.Files[0]))
+		if layoutErr != nil {
+			fail(w, 400, layoutErr.Error())
+			return
+		}
+		if req.PlateIndex > 0 && req.Output != "3mf" {
+			if layout.Width <= 0 || layout.Depth <= 0 {
+				fail(w, 400, "selected project has no printable area")
+				return
+			}
+			for _, plate := range layout.Membership {
+				if plate == 0 {
+					fail(w, 400, "cannot resolve saved plate membership for every build item")
+					return
+				}
+			}
+		}
+		req.SourcePlates = layout.Plates
+		if req.PlateIndex > 0 && !layout.hasPlate(req.PlateIndex) {
+			fail(w, 400, "plate_index does not name a saved project plate")
+			return
+		}
+		if req.Output != "3mf" && len(layout.Plates) > 1 && req.PlateIndex == 0 {
+			fail(w, 400, "multi-plate project: select a plate using plate_index; slicing requires a ToolRecord tool with --plate-index support")
+			return
+		}
+	}
 	if req.Output == "3mf" && !req.Plate && strings.EqualFold(filepath.Ext(req.Files[0]), ".3mf") && !s.cfg.Features.PlatePlacement {
 		fail(w, 400, "saving loaded projects requires the R238 tool (native placement and identify IDs)")
 		return

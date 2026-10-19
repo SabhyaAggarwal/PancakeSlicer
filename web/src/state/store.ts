@@ -3,6 +3,7 @@ import { plateSignature } from '../slice-input';
 import * as THREE from 'three';
 import type { Api } from '../api/client';
 import type { Config, ConfigValue, JobStatus, PresetType, SystemPreset, UserPreset } from '../api/types';
+import type { ProjectPlate } from '../plater/threemf';
 import type { OptionMode } from '../options';
 
 export interface Instance {
@@ -25,7 +26,7 @@ export interface PlateObject {
   instances: Instance[];
   source: File;
   settings: Config;
-  project?: { file: string; placeholder: boolean; missing?: boolean; origin?: [number, number, number] };
+  project?: { buildIndex?: number; plateIndex?: number; plateOrigin?: [number, number]; file: string; placeholder: boolean; missing?: boolean; origin?: [number, number, number] };
 }
 
 export interface LayerEvent {
@@ -77,6 +78,8 @@ export interface State {
   flush: { matrix: number[] | null; multiplier: number | null };
   flushDialog: boolean;
   events: LayerEvent[];
+  projectPlates: (ProjectPlate & { objects: PlateObject[] })[];
+  plateIndex: number;
   project: File | null;
   projectName: string | null;
   job: JobView;
@@ -110,6 +113,8 @@ let state: State = {
   flush: { matrix: null, multiplier: null },
   flushDialog: false,
   events: [],
+  projectPlates: [],
+  plateIndex: 1,
   project: null,
   projectName: null,
   job: { state: 'idle', pct: 0, stage: '' },
@@ -154,7 +159,8 @@ export function effectiveConfig(s: State, type: PresetType, slot = 0): Config {
   const name = type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot];
   const { config } = resolvePreset(s, type, name ?? '');
   const project = type === 'filament' ? s.projectPresets?.filaments[slot] : s.projectPresets?.[type];
-  return { ...config, ...project, ...presetEdits(s, type, slot) };
+  const plate = type === 'process' ? s.projectPlates.find((p) => p.index === s.plateIndex)?.settings : undefined;
+  return { ...config, ...project, ...plate, ...presetEdits(s, type, slot) };
 }
 
 export function compatible(s: State, type: 'process' | 'filament', printer = s.printer): SystemPreset[] {
@@ -299,7 +305,7 @@ export function removeSelected() {
 }
 
 export function deleteAll() {
-  setState((s) => ({ objects: [], selected: null, project: null, projectName: null, projectMaterials: null, projectPresets: null, projectNotice: null, job: markStale(s.job) }));
+  setState((s) => ({ objects: [], selected: null, project: null, projectPlates: [], plateIndex: 1, projectName: null, projectMaterials: null, projectPresets: null, projectNotice: null, job: markStale(s.job) }));
 }
 
 export function setObjectOption(id: number, key: string, value: ConfigValue) {

@@ -38,6 +38,8 @@ export function overrides(s = getState()): Config {
     if (s.projectMaterials.multiplier !== null) out.flush_multiplier = [s.projectMaterials.multiplier];
   }
   if (s.bedType) out.curr_bed_type = s.bedType;
+  const plateBed = s.projectPlates.find((p) => p.index === s.plateIndex)?.settings.curr_bed_type;
+  if (plateBed && !s.dirty.machine.curr_bed_type) out.curr_bed_type = plateBed;
   if (s.filamentSlots.length > 1 || s.slotColours.some((c) => c !== undefined)) {
     const { matrix, multiplier } = currentFlush(s);
     if (!s.project || s.slotColours.some((c) => c !== undefined))
@@ -45,19 +47,24 @@ export function overrides(s = getState()): Config {
     if (!s.project || s.flush.matrix !== null) out.flush_volumes_matrix = matrix;
     if (!s.project || s.flush.multiplier !== null) out.flush_multiplier = [multiplier];
   }
+  if (s.projectPlates.length > 1) for (const key of ['wipe_tower_x', 'wipe_tower_y']) {
+    const value = out[key];
+    if (Array.isArray(value) && value.length) out[key] = [Number(value[Math.min(s.plateIndex - 1, value.length - 1)])];
+  }
   for (const k of Object.keys(out)) out[k] = jobValue(k, out[k]);
   return out;
 }
 
-export function jobFields(s: State) {
+export function jobFields(s: State, saving = false) {
   const sys = (type: 'machine' | 'process' | 'filament', n: string) => resolvePreset(s, type, n).base?.name ?? n;
   return {
     vendor: printerPreset(s)?.vendor ?? 'BBL',
     printer: sys('machine', s.printer),
     process: sys('process', s.process),
     filaments: s.filamentSlots.map((f) => sys('filament', f)),
-    ...(s.project ? { project_instances: projectInstances(s.objects) } : {}),
-    overrides: overrides(s),
+    ...(s.projectPlates.length > 1 ? { plate_index: s.plateIndex } : {}),
+    ...(s.project ? { project_instances: projectInstances(s.projectPlates.length ? s.projectPlates.flatMap((p) => p.index === s.plateIndex ? s.objects : p.objects).sort((a,b) => (a.project?.buildIndex ?? 0) - (b.project?.buildIndex ?? 0)) : s.objects) } : {}),
+    overrides: overrides(saving ? { ...s, projectPlates: [] } : s),
     events: s.events.map(eventArg),
     output: outputKind(s),
   };

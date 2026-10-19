@@ -139,11 +139,14 @@ function adoptProject(config: Config, slots: number) {
 
 export async function openProject(file: File) {
   const s = getState();
-  if (s.objects.length && !window.confirm('Opening a project replaces the objects on the plate. Continue?')) return;
+  if ((s.objects.length || s.projectPlates.some((p) => p.objects.length)) && !window.confirm('Opening a project replaces the objects on the plate. Continue?')) return;
   let objects: PlateObject[] = [];
   const patch = (i: number, f: (o: PlateObject) => PlateObject) => {
     const id = objects[i]?.id;
-    if (getState().project === file) setState((st) => ({ objects: st.objects.map((o) => (o.id === id ? f(o) : o)) }));
+    if (getState().project === file) setState((st) => ({
+      objects: st.objects.map((o) => (o.id === id ? f(o) : o)),
+      projectPlates: st.projectPlates.map((p) => ({ ...p, objects: p.objects.map((o) => o.id === id ? f(o) : o) })),
+    }));
   };
   try {
     await loadProject(file, {
@@ -153,18 +156,20 @@ export async function openProject(file: File) {
         adoptProject(materials.config, slots);
         objects = items.map((it) => ({
           id: newId(), name: it.name, geometry: placeholderGeometry(), rotX: 0, rotY: 0, scale: [1, 1, 1],
-          extruder: it.extruder, source: file, settings: it.settings, project: { file: file.name, placeholder: true },
+          extruder: it.extruder, source: file, settings: it.settings, project: { file: file.name, placeholder: true, buildIndex: it.buildIndex, plateIndex: it.plateIndex, plateOrigin: materials.plates.find((p) => p.index === it.plateIndex)?.origin },
           instances: [{ id: newId(), x: it.origin[0], y: it.origin[1], z: it.origin[2], rotZ: 0, printable: it.printable }],
         }));
         setState((st) => ({
-          objects, project: file, projectName: file.name, projectMaterials: materials, slotColours: [], flush: { matrix: null, multiplier: null }, selected: null, processScope: 'global',
+          objects: objects.filter((o) => o.project?.plateIndex === materials.plates[0].index),
+          projectPlates: materials.plates.map((p) => ({ ...p, objects: objects.filter((o) => o.project?.plateIndex === p.index) })),
+          plateIndex: materials.plates[0].index, project: file, projectName: file.name, projectMaterials: materials, slotColours: [], flush: { matrix: null, multiplier: null }, selected: null, processScope: 'global',
           filamentSlots: Array.from({ length: slots }, (_, i) => st.filamentSlots[i] ?? st.filamentSlots[0] ?? ''),
           job: markStale(st.job),
         }));
       },
       mesh: (i, geometry, centre) =>
-        patch(i, (o) => ({ ...o, geometry, project: { file: file.name, placeholder: false, origin: [centre.x, centre.y, centre.z] }, instances: [{ ...o.instances[0], x: centre.x, y: centre.y, z: centre.z }] })),
-      missing: (i) => patch(i, (o) => ({ ...o, project: { file: file.name, placeholder: true, missing: true } })),
+        patch(i, (o) => ({ ...o, geometry, project: { ...o.project!, file: file.name, placeholder: false, origin: [centre.x, centre.y, centre.z] }, instances: [{ ...o.instances[0], x: centre.x, y: centre.y, z: centre.z }] })),
+      missing: (i) => patch(i, (o) => ({ ...o, project: { ...o.project!, file: file.name, placeholder: true, missing: true } })),
     });
   } catch (e) {
     toast(`${file.name}: ${e instanceof Error ? e.message : e}`);
@@ -173,8 +178,8 @@ export async function openProject(file: File) {
 
 export function newProject() {
   const s = getState();
-  if (s.objects.length && !window.confirm('Start a new project? The objects on the plate are removed.')) return;
-  setState((st) => ({ objects: [], selected: null, project: null, projectName: null, projectMaterials: null, projectPresets: null, projectNotice: null, events: [], flush: { matrix: null, multiplier: null }, processScope: 'global', job: markStale(st.job) }));
+  if ((s.objects.length || s.projectPlates.some((p) => p.objects.length)) && !window.confirm('Start a new project? The objects on the plate are removed.')) return;
+  setState((st) => ({ objects: [], selected: null, project: null, projectPlates: [], plateIndex: 1, projectName: null, projectMaterials: null, projectPresets: null, projectNotice: null, events: [], flush: { matrix: null, multiplier: null }, processScope: 'global', job: markStale(st.job) }));
 }
 
 export function openProjectDialog() {
@@ -224,8 +229,8 @@ export function removeInstance() {
 
 export { outputKind } from './slice-input';
 
-export async function jobRequest(s = getState()): Promise<JobRequest> {
-  const fields = jobFields(s);
+export async function jobRequest(s = getState(), saving = false): Promise<JobRequest> {
+  const fields = jobFields(s, saving);
 
   const { plate, files } = s.project ? { plate: undefined, files: [{ name: s.project.name, blob: s.project as Blob }] } : await plateJson(s.objects);
   return { ...fields, plate, files };

@@ -1,7 +1,10 @@
 import { unzip, strFromU8 } from 'fflate';
 import type { Config } from '../api/types';
 
+export interface ProjectPlate { index: number; name: string; origin: [number, number]; settings: Config }
+
 export interface ProjectMaterials {
+  plates: ProjectPlate[];
   config: Config;
   colours: string[];
   matrix: number[] | null;
@@ -10,6 +13,8 @@ export interface ProjectMaterials {
 
 export interface ProjectItem {
   id: string;
+  buildIndex: number;
+  plateIndex: number;
   name: string;
   extruder: number;
   printable: boolean;
@@ -134,25 +139,63 @@ export async function readProject(file: File): Promise<{ items: ProjectItem[]; m
     for (const c of o.components) collect(c.path ?? path, c.objectid, compose(c.transform, t), out, depth + 1);
   };
 
+  const configBytes = entry('Metadata/project_settings.config');
+  const config = configBytes ? JSON.parse(strFromU8(configBytes)) : {};
+  const metadata = entry('Metadata/model_settings.config');
+  const plateText = metadata ? strFromU8(metadata) : '';
+  const membership = new Map<string, number>();
+  const plates: ProjectPlate[] = [];
+  for (const p of plateText.matchAll(/<plate\b[^>]*>([\s\S]*?)<\/plate>/g)) {
+    const own = p[1].split(/<model_instance\b/)[0];
+    const values: Config = {};
+    for (const m of own.matchAll(/<metadata\b([^>]*)\/?>/g)) {
+      const key = attr(m[1], 'key'), value = attr(m[1], 'value');
+      if (key && value !== undefined) values[key] = unescapeXml(value);
+    }
+    const index = Number(values.plater_id);
+    if (!Number.isInteger(index) || index < 1) continue;
+    const settings = { ...values };
+    if (settings.bed_type && settings.bed_type !== 'Default Plate') settings.curr_bed_type = settings.bed_type;
+    delete settings.bed_type;
+    for (const k of ['plater_id', 'plater_name', 'locked']) delete settings[k];
+    plates.push({ index, name: String(values.plater_name ?? ''), origin: [0, 0], settings });
+    for (const inst of p[1].matchAll(/<model_instance\b[^>]*>([\s\S]*?)<\/model_instance>/g)) {
+      const v = (key: string) => new RegExp(`<metadata\\s+key="${key}"\\s+value="([^"]*)"`).exec(inst[1])?.[1];
+      membership.set(`${v('object_id')}:${v('instance_id')}`, index);
+    }
+  }
+  if (!plates.length) plates.push({ index: 1, name: '', origin: [0, 0], settings: {} });
+  plates.sort((a, b) => a.index - b.index);
+  const points = (Array.isArray(config.printable_area) ? config.printable_area : String(config.printable_area ?? '').split(',')).map((s: string) => s.split('x').map(Number));
+  const width = Math.max(...points.map((p: number[]) => p[0])) - Math.min(...points.map((p: number[]) => p[0]));
+  const depth = Math.max(...points.map((p: number[]) => p[1])) - Math.min(...points.map((p: number[]) => p[1]));
+  const columns = Math.ceil(Math.sqrt(Math.max(...plates.map((p) => p.index))));
+  for (const p of plates) p.origin = [((p.index - 1) % columns) * width * 1.2 || 0, -Math.floor((p.index - 1) / columns) * depth * 1.2 || 0];
+  const counts = new Map<string, number>();
   const build = root.build;
   const items = build.map((b, i) => {
     const meta = settings.get(b.objectid);
+    const instance = counts.get(b.objectid) ?? 0;
+    counts.set(b.objectid, instance + 1);
+    const plateIndex = membership.get(`${b.objectid}:${instance}`) ?? (plates.length === 1 ? plates[0].index : 0);
+    if (!plateIndex) throw new Error('Cannot resolve saved plate membership for every build item');
+    const plate = plates.find((p) => p.index === plateIndex);
     return {
-      id: b.objectid,
+      id: b.objectid, buildIndex: i, plateIndex,
       printable: b.printable,
       settings: meta?.settings ?? {},
       name: unescapeXml(meta?.name ?? root.objects.get(b.objectid)?.name ?? `Object ${i + 1}`),
       extruder: meta?.extruder ?? 1,
-      origin: [b.transform[9], b.transform[10], b.transform[11]] as [number, number, number],
+      origin: [b.transform[9] - (plate?.origin[0] ?? 0), b.transform[10] - (plate?.origin[1] ?? 0), b.transform[11]] as [number, number, number],
     };
   });
   const mesh = (i: number) => {
     const tris: number[] = [];
     collect(rootPath, build[i].objectid, build[i].transform, tris);
+    const origin = plates.find((p) => p.index === items[i].plateIndex)?.origin ?? [0, 0];
+    for (let k = 0; k < tris.length; k += 3) { tris[k] -= origin[0]; tris[k + 1] -= origin[1]; }
     return tris.length ? new Float32Array(tris) : null;
   };
-  const configBytes = entry('Metadata/project_settings.config');
-  const config = configBytes ? JSON.parse(strFromU8(configBytes)) : {};
   const numbers = (v: unknown): number[] | null => {
     const list = Array.isArray(v) ? v.map(Number) : typeof v === 'string' ? v.split(/[,;]/).map(Number) : [];
     return list.length && list.every(Number.isFinite) ? list : null;
@@ -160,6 +203,6 @@ export async function readProject(file: File): Promise<{ items: ProjectItem[]; m
   const colourValue = config.filament_colour;
   const colours = (Array.isArray(colourValue) ? colourValue : typeof colourValue === 'string' ? colourValue.split(';') : [])
     .map(String);
-  const materials = { config, colours, matrix: numbers(config.flush_volumes_matrix), multiplier: numbers(config.flush_multiplier)?.[0] ?? null };
+  const materials = { plates, config, colours, matrix: numbers(config.flush_volumes_matrix), multiplier: numbers(config.flush_multiplier)?.[0] ?? null };
   return { items, materials, mesh };
 }

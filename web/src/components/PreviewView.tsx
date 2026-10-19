@@ -29,6 +29,7 @@ export interface PreviewUi {
 }
 
 export function PreviewView() {
+  const plateIndex = useStore((s) => s.plateIndex);
   const job = useStore((s) => s.job);
   const objects = useStore((s) => s.objects);
   const printer = useStore((s) => s.printer);
@@ -214,7 +215,7 @@ export function PreviewView() {
 
   const loading = data && !data.done && !data.error;
   const status = job.state === 'running' || job.state === 'submitting'
-    ? slicingText(job)
+    ? slicingText(job, plateIndex)
     : !data && !source() && !dropped
     ? job.state === 'done' ? null : 'No sliced result. Slice the plate to see the result here.'
     : data?.error

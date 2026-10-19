@@ -141,6 +141,7 @@ export function AccessNotification() {
 }
 
 export function SliceNotification() {
+  const plateIndex = useStore((s) => s.plateIndex);
   const job = useStore((s) => s.job);
   const outside = useStore(outsideVolumeWarning);
   const [closed, setClosed] = useState<Set<string>>(new Set());
@@ -196,13 +197,13 @@ export function SliceNotification() {
       {busy && (
         <div className="notification running">
           <div className="notif-text">
-            {slicingText(job)}
+            {slicingText(job, plateIndex)}
             <button className="notif-cancel icon-btn" title="Cancel" onClick={cancelSlice}>
               <Icon name="notification_cancel" size={16} />
             </button>
           </div>
           <div className="progress-row">
-            <div className="progress" role="progressbar" aria-label="Slicing plate 1" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(job.pct)}>
+            <div className="progress" role="progressbar" aria-label={`Slicing plate ${plateIndex}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(job.pct)}>
               <div className="progress-fill" style={{ width: `${job.pct}%` }} />
             </div>
           </div>

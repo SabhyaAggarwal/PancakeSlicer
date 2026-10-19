@@ -33,17 +33,19 @@ const (
 func (s JobState) Finished() bool { return s == StateDone || s == StateFailed || s == StateCancelled }
 
 type JobRequest struct {
-	Orient    bool        `json:"orient,omitempty"`
-	Vendor    string      `json:"vendor"`
-	Printer   string      `json:"printer"`
-	Process   string      `json:"process"`
-	Filaments []string    `json:"filaments"`
-	Overrides [][2]string `json:"overrides"`
-	Events    []string    `json:"events"`
-	Files     []string    `json:"files"`
-	Plate     bool        `json:"plate"`
-	Output    string      `json:"output"`
-	Filename  string      `json:"filename,omitempty"`
+	SourcePlates []projectPlate `json:"source_plates,omitempty"`
+	PlateIndex   int            `json:"plate_index,omitempty"`
+	Orient       bool           `json:"orient,omitempty"`
+	Vendor       string         `json:"vendor"`
+	Printer      string         `json:"printer"`
+	Process      string         `json:"process"`
+	Filaments    []string       `json:"filaments"`
+	Overrides    [][2]string    `json:"overrides"`
+	Events       []string       `json:"events"`
+	Files        []string       `json:"files"`
+	Plate        bool           `json:"plate"`
+	Output       string         `json:"output"`
+	Filename     string         `json:"filename,omitempty"`
 }
 
 type Event struct {
@@ -237,6 +239,7 @@ type JobManager struct {
 	mu            sync.Mutex
 	jobs          map[string]*Job
 	stop          chan struct{}
+	reaped        chan struct{}
 	closing       bool
 	uploads       map[string]*Job
 	buckets       map[string]tokenBucket
@@ -262,7 +265,7 @@ func NewJobManager(cfg Config) (*JobManager, error) {
 			}
 		}
 	}
-	m := &JobManager{cfg: cfg, sem: make(chan struct{}, cfg.MaxJobs), jobs: map[string]*Job{}, stop: make(chan struct{}), uploads: map[string]*Job{}, buckets: map[string]tokenBucket{}}
+	m := &JobManager{cfg: cfg, sem: make(chan struct{}, cfg.MaxJobs), jobs: map[string]*Job{}, stop: make(chan struct{}), reaped: make(chan struct{}), uploads: map[string]*Job{}, buckets: map[string]tokenBucket{}}
 	go m.reap()
 	return m, nil
 }
@@ -369,9 +372,12 @@ func (m *JobManager) Counts() (queued, running int) {
 }
 
 func (m *JobManager) Shutdown() {
-	close(m.stop)
 	m.mu.Lock()
 	m.closing = true
+	close(m.stop)
+	m.mu.Unlock()
+	<-m.reaped
+	m.mu.Lock()
 	for _, j := range m.jobs {
 		j.mu.Lock()
 		if !j.state.Finished() && j.cancel != nil {
@@ -384,6 +390,9 @@ func (m *JobManager) Shutdown() {
 	}
 	m.mu.Unlock()
 	m.wg.Wait()
+}
+
+func (m *JobManager) Cleanup() {
 	m.mu.Lock()
 	remaining := make([]*Job, 0, len(m.jobs))
 	for _, j := range m.jobs {
@@ -398,6 +407,7 @@ func (m *JobManager) Shutdown() {
 }
 
 func (m *JobManager) reap() {
+	defer close(m.reaped)
 	interval := time.Minute
 	if m.cfg.DiskQuota > 0 {
 		interval = 5 * time.Second
@@ -473,6 +483,9 @@ func (m *JobManager) toolArgs(j *Job) []string {
 	}
 	if r.Output == "gcode.3mf" {
 		args = append(args, "--gcode-3mf", j.OutputPath("gcode.3mf"))
+	}
+	if r.PlateIndex > 0 && r.Output != "3mf" {
+		args = append(args, "--plate-index", fmt.Sprint(r.PlateIndex))
 	}
 	if r.Plate {
 		args = append(args, "--plate", filepath.Join(in, "plate.json"))
@@ -570,6 +583,9 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 	}
 	if !j.Request.Orient && j.Request.Output == "3mf" {
 		recordErr = nil
+		if waitErr == nil && !j.Request.Plate && strings.EqualFold(filepath.Ext(j.Request.Files[0]), ".3mf") {
+			recordErr = preserveProjectPlates(filepath.Join(j.Dir, "input", j.Request.Files[0]), j.OutputPath("3mf"))
+		}
 		raw = nil
 
 	}

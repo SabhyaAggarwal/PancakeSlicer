@@ -5,7 +5,7 @@ let savingProject = false;
 
 export async function saveProject(as = false) {
   const s = getState();
-  if (savingProject || !s.api || !s.objects.length) return;
+  if (savingProject || !s.api || !s.objects.length && !s.projectPlates.some((p) => p.objects.length)) return;
   if (s.api.mock) { toast('Saving a project requires the slicing service'); return; }
   let name = s.projectName ?? (s.objects[0].name.replace(/\.(stl|obj|3mf)$/i, '') + '.3mf');
   if (as) {
@@ -17,8 +17,8 @@ export async function saveProject(as = false) {
   savingProject = true;
   toast('Saving project…');
   try {
-    const request = await jobRequest();
-    const id = await s.api.submit({ ...request, output: '3mf' });
+    const request = await jobRequest(s, true);
+    const id = await s.api.submit({ ...request, plate_index: undefined, output: '3mf' });
     await new Promise<void>((resolve, reject) => {
       const unsubscribe = s.api!.events(id, {
         progress() {},

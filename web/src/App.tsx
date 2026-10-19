@@ -3,6 +3,7 @@ import { addInstance, arrangeAll, download, importFiles, newProject, openFileDia
 import { CanvasToolbar, ManipulationPanel, SliceNotification, Toast } from './components/CanvasOverlays';
 import { Sidebar } from './components/Sidebar';
 import { TabBar, TopBar } from './components/TopBar';
+const PlateChoice = lazy(() => import('./components/PlateChoice'));
 const Plater3D = lazy(() => import('./plater/Plater3D'));
 import { deleteAll, getState, removeSelected, setState, togglePrintable, useStore } from './state/store';
 
@@ -11,6 +12,7 @@ const FlushDialog = lazy(() => import('./components/FlushDialog').then((m) => ({
 const PreviewView = lazy(() => import('./components/PreviewView').then((m) => ({ default: m.PreviewView })));
 
 export default function App() {
+  const multiPlate = useStore((s) => s.projectPlates.length > 1);
   const dialog = useStore((s) => s.dialog);
   const flushDialog = useStore((s) => s.flushDialog);
   const tab = useStore((s) => s.tab);
@@ -72,6 +74,7 @@ export default function App() {
           <div style={{ display: tab === 'prepare' ? 'contents' : 'none' }}>
             <Suspense fallback={<div role="status">Loading plater…</div>}><Plater3D /></Suspense>
             <CanvasToolbar />
+            {multiPlate && <Suspense fallback={null}><PlateChoice /></Suspense>}
             <ManipulationPanel />
           </div>
           {previewOpened.current && (

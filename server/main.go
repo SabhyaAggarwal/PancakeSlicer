@@ -131,6 +131,11 @@ func main() {
 	} else {
 		cfg.Features.PlatePlacement = true
 	}
+	if err := probePlateIndex(cfg); err != nil {
+		log.Printf("selected project plates unavailable: %v", err)
+	} else {
+		cfg.Features.PlateIndex = true
+	}
 	jobs, err := NewJobManager(cfg)
 	if err != nil {
 		log.Fatal(err)
@@ -162,7 +167,11 @@ func main() {
 		jobs.Shutdown()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		srv.Shutdown(shutdownCtx)
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("HTTP shutdown: %v", err)
+			srv.Close()
+		}
+		jobs.Cleanup()
 	}()
 	log.Printf("listening on %s (tool %s, resources %s, jobs %s, %d at once)", cfg.Listen, cfg.Tool, cfg.Resources, cfg.JobRoot, cfg.MaxJobs)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

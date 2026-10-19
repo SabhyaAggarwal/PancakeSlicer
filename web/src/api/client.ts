@@ -85,6 +85,7 @@ const realApi: Api = {
     fd.append('process', req.process);
     for (const f of req.filaments) fd.append('filament[]', f);
     fd.append('overrides', JSON.stringify(req.overrides));
+    if (req.plate_index !== undefined) fd.append('plate_index', String(req.plate_index));
     if (req.plate) fd.append('plate', JSON.stringify(req.plate));
     if (req.project_instances) fd.append('project_instances', JSON.stringify(req.project_instances));
     if (req.events.length) fd.append('events', JSON.stringify(req.events));

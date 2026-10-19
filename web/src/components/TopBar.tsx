@@ -55,6 +55,7 @@ export function TopBar() {
   const exportEnabled = useStore(canExport);
   const stale = useStore((s) => s.job.stale);
   const hasObjects = useStore((s) => s.objects.length > 0);
+  const hasProjectObjects = useStore((s) => s.objects.length > 0 || s.projectPlates.some((p) => p.objects.length > 0));
   const hasSel = useStore((s) => !!s.selected);
   const mock = useStore((s) => s.api?.mock);
   const name = useStore((s) => (s.project?.name ?? s.objects[0]?.name)?.replace(/\.(stl|obj|3mf)$/i, ''));
@@ -68,8 +69,8 @@ export function TopBar() {
         title="File"
         items={[
           { label: 'New Project', shortcut: 'Ctrl+N', action: newProject, tip: 'Start a new project' },
-          { label: 'Save Project', shortcut: 'Ctrl+S', action: () => void saveProject(), disabled: !hasObjects, tip: 'Save current project to file' },
-          { label: 'Save Project as...', shortcut: 'Ctrl+Shift+S', action: () => void saveProject(true), disabled: !hasObjects, tip: 'Save current project as' },
+          { label: 'Save Project', shortcut: 'Ctrl+S', action: () => void saveProject(), disabled: !hasProjectObjects, tip: 'Save current project to file' },
+          { label: 'Save Project as...', shortcut: 'Ctrl+Shift+S', action: () => void saveProject(true), disabled: !hasProjectObjects, tip: 'Save current project as' },
           { label: 'Open Project...', shortcut: 'Ctrl+O', action: openProjectDialog, tip: 'Open a project file' },
           'sep',
           { label: 'Import 3MF/STL/STEP/SVG/OBJ/AMF...', shortcut: 'Ctrl+I', action: openFileDialog, tip: 'Load a model' },

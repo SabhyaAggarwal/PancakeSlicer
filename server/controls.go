@@ -118,7 +118,7 @@ func directoryBytes(dir string) (int64, error) {
 }
 
 func (m *JobManager) quotaLocked() error {
-	if m.cfg.DiskQuota == 0 {
+	if m.closing || m.cfg.DiskQuota == 0 {
 		return nil
 	}
 	entries, err := os.ReadDir(m.cfg.JobRoot)

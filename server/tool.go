@@ -13,6 +13,7 @@ import (
 )
 
 type ToolFeatures struct {
+	PlateIndex     bool `json:"plate_index"`
 	PlatePlacement bool `json:"plate_placement"`
 	DumpOptions    bool `json:"dump_options"`
 	DumpPresets    bool `json:"dump_presets"`

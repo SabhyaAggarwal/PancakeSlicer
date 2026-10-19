@@ -154,8 +154,9 @@ type boundsModel struct {
 	} `xml:"build>item"`
 }
 type namedBounds struct {
-	name string
-	box  meshBounds
+	name       string
+	buildIndex int
+	box        meshBounds
 }
 
 func projectBounds(file string, includeNonPrintable ...bool) ([]namedBounds, error) {
@@ -284,7 +285,7 @@ func projectBounds(file string, includeNonPrintable ...bool) ([]namedBounds, err
 		return fmt.Errorf("missing 3MF object %s", id)
 	}
 	out := []namedBounds{}
-	for _, item := range m.Items {
+	for buildIndex, item := range m.Items {
 		if item.Printable == "0" && (len(includeNonPrintable) == 0 || !includeNonPrintable[0]) {
 			continue
 		}
@@ -296,7 +297,7 @@ func projectBounds(file string, includeNonPrintable ...bool) ([]namedBounds, err
 		if name == "" {
 			name = "Object " + item.ID
 		}
-		b := namedBounds{name: name}
+		b := namedBounds{name: name, buildIndex: buildIndex}
 		if err := collect(root, item.ID, []modelTransform{t}, &b.box, 0); err != nil {
 			return nil, err
 		}
@@ -344,7 +345,21 @@ func validatePlateBounds(dir string, req JobRequest, machine *Preset, rawPlate s
 			if err != nil {
 				return err
 			}
+			layout, err := readProjectLayout(filepath.Join(dir, req.Files[0]))
+			if err != nil {
+				return err
+			}
 			for _, o := range objects {
+				if req.PlateIndex > 0 {
+					if layout.Membership[o.buildIndex] != req.PlateIndex {
+						continue
+					}
+					origin := layout.origin(req.PlateIndex)
+					for axis := 0; axis < 2; axis++ {
+						o.box.min[axis] -= origin[axis]
+						o.box.max[axis] -= origin[axis]
+					}
+				}
 				if err := check(o.name, o.box); err != nil {
 					return err
 				}

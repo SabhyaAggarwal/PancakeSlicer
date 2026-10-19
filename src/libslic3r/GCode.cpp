@@ -4828,47 +4828,29 @@ namespace ProcessLayer
         const CustomGCode::Item 								*custom_gcode,
         unsigned int                                             current_extruder_id,
         unsigned int                                             first_extruder_id,
+        bool                                                     is_bbl_printer,
         const PrintConfig                                       &config)
     {
         std::string gcode;
-        bool single_filament_print = config.filament_diameter.size() == 1;
-
         if (custom_gcode != nullptr) {
             assert(custom_gcode->type != CustomGCode::ToolChange);
-
-            CustomGCode::Type   gcode_type = custom_gcode->type;
-            bool  				color_change = gcode_type == CustomGCode::ColorChange;
-            bool 				tool_change = gcode_type == CustomGCode::ToolChange;
-            assert(!tool_change || single_filament_print);
-
-            std::string pause_print_msg;
-            int m600_extruder_before_layer = -1;
-            if (color_change && custom_gcode->extruder > 0)
-                m600_extruder_before_layer = custom_gcode->extruder - 1;
-            else if (gcode_type == CustomGCode::PausePrint)
-                pause_print_msg = custom_gcode->extra;
-#if 0
-            if (color_change || tool_change)
-            {
-                assert(m600_extruder_before_layer >= 0);
-                gcode += ";" + GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Color_Change) + ",T" + std::to_string(m600_extruder_before_layer) + "," + custom_gcode->color + "\n";
-
-                if (!single_filament_print && m600_extruder_before_layer >= 0 && first_extruder_id != (unsigned)m600_extruder_before_layer
-                    ) {
+            const CustomGCode::Type gcode_type = custom_gcode->type;
+            if (gcode_type == CustomGCode::ColorChange) {
+                const unsigned int extruder = config.filament_diameter.size() == 1 || custom_gcode->extruder <= 0 ?
+                    current_extruder_id : unsigned(custom_gcode->extruder - 1);
+                gcode += ";" + GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Color_Change) + ",T" + std::to_string(extruder) + "," + custom_gcode->color + "\n";
+                if (config.filament_diameter.size() > 1 && first_extruder_id != extruder) {
                     DynamicConfig cfg;
-                    cfg.set_key_value("color_change_extruder", new ConfigOptionInt(m600_extruder_before_layer));
+                    cfg.set_key_value("color_change_extruder", new ConfigOptionInt(int(extruder)));
                     gcode += gcodegen.placeholder_parser_process("machine_pause_gcode", config.machine_pause_gcode, current_extruder_id, &cfg);
-                    gcode += "\n";
-                    gcode += "M117 Change filament for Extruder " + std::to_string(m600_extruder_before_layer) + "\n";
-                }
-                else {
-                    gcode += gcodegen.placeholder_parser_process("color_change_gcode", config.color_change_gcode, current_extruder_id);
-                    gcode += "\n";
+                    gcode += "\nM117 Change filament for Extruder " + std::to_string(extruder) + "\n";
+                } else if (is_bbl_printer) {
+                    gcode += gcodegen.placeholder_parser_process("machine_pause_gcode", config.machine_pause_gcode, current_extruder_id) + "\n";
+                } else {
+                    gcode += "M600\n";
                     gcodegen.writer().unretract();
                 }
-            }
-            else {
-#endif
+            } else {
                 if (gcode_type == CustomGCode::PausePrint)
                 {
                     gcode += ";" + GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Pause_Print) + "\n";
@@ -4883,9 +4865,7 @@ namespace ProcessLayer
 
                 }
                 gcode += "\n";
-#if 0
             }
-#endif
         }
 
         return gcode;
@@ -5845,7 +5825,7 @@ LayerResult GCode::process_layer(
     }
 
     if (single_object_instance_idx == size_t(-1)) {
-        gcode += ProcessLayer::emit_custom_gcode_per_print_z(*this, layer_tools.custom_gcode, m_writer.filament()->id(), first_extruder_id, print.config());
+        gcode += ProcessLayer::emit_custom_gcode_per_print_z(*this, layer_tools.custom_gcode, m_writer.filament()->id(), first_extruder_id, print.is_BBL_printer(), print.config());
     }
 
     auto get_next_extruder = [&](int current_extruder,const std::vector<unsigned int>&extruders) {

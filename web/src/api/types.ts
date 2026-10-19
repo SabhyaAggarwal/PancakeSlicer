@@ -67,6 +67,7 @@ export interface JobRequest {
   filaments: string[];
   overrides: Config;
   plate?: PlateJson;
+  plate_index?: number;
   project_instances?: { printable: boolean; transform?: number[] }[];
   events: string[];
   output: 'gcode' | 'gcode.3mf' | '3mf';
