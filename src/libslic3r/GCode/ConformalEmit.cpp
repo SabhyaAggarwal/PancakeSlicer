@@ -492,13 +492,13 @@ double emit_conformal_extrusion(GCodeWriter &writer, const std::vector<Conformal
         const ConformalPoint &a = points[i];
         const ConformalPoint &b = points[m.end];
         const bool            single = m.end == i + 1;
+        if (i < tags.size())
+            out += tags[i];
         if (single && (b.pose.tip - a.pose.tip).norm() < EPSILON)
             continue;
         if (prime[i] == 0. && (a.bead_height <= 0.f || b.bead_height <= 0.f || (!flow.empty() && flow[i] == 0.)) &&
             m.end + 1 < points.size() && (b.pose.tip - writer.get_position()).norm() < StubLength)
             continue;
-        if (i < tags.size())
-            out += tags[i];
         double speed = speeds[i];
         float  height = 0.5f * (a.bead_height + b.bead_height);
         double mean_width = seg_width[i], v = seg_volume[i];

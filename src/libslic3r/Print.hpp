@@ -852,7 +852,8 @@ public:
     ApplyStatus         apply(const Model &model, DynamicPrintConfig config, bool extruder_applied = false) override;
 
     void                process(long long *time_cost_with_cache = nullptr, bool use_cache = false) override;
-    std::string         export_gcode(const std::string& path_template, GCodeProcessorResult* result, ThumbnailsGeneratorCallback thumbnail_cb = nullptr);
+    std::string         export_gcode(const std::string& path_template, GCodeProcessorResult* result, ThumbnailsGeneratorCallback thumbnail_cb = nullptr,
+                                    bool retain_raw_positions = false);
     int                 export_cached_data(const std::string& dir_path, bool with_space=false) override;
     int                 load_cached_data(const std::string& directory) override;
 

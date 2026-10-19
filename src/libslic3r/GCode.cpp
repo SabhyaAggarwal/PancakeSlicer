@@ -2411,7 +2411,7 @@ static void set_mass_locator(GCodeProcessor &processor, const Print &print)
     processor.set_mass_locator(std::move(locate), std::move(object_masses));
 }
 
-void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* result, ThumbnailsGeneratorCallback thumbnail_cb)
+void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* result, ThumbnailsGeneratorCallback thumbnail_cb, bool retain_raw_positions)
 {
     PROFILE_CLEAR();
 
@@ -2469,6 +2469,8 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
 
     m_processor.initialize(path_tmp);
     m_processor.set_print(print);
+    if (retain_raw_positions)
+        m_processor.set_keep_raw_positions(true);
     GCodeOutputStream file(boost::nowide::fopen(path_tmp.c_str(), "wb"), m_processor);
     if (! file.is_open()) {
         std::string err_msg = std::string("G-code export to ") + path + " failed.\nCannot open the file for writing.\n";
@@ -2587,7 +2589,7 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
         boost::nowide::remove(path_tmp.c_str());
         throw;
     }
-    if (print->config().nonplanar_kinematics.value == RotaryLayout::None)
+    if (!retain_raw_positions && print->config().nonplanar_kinematics.value == RotaryLayout::None)
         m_processor.result().joints.clear();
     DoExport::update_print_estimated_stats(m_processor, m_writer.extruders(), print->m_print_statistics, print->config());
     if (m_print->config().machine_max_printed_mass.value > EPSILON) {
@@ -4833,6 +4835,7 @@ namespace ProcessLayer
     {
         std::string gcode;
         if (custom_gcode != nullptr) {
+            gcodegen.writer().limit_next_travel_z();
             assert(custom_gcode->type != CustomGCode::ToolChange);
             const CustomGCode::Type gcode_type = custom_gcode->type;
             if (gcode_type == CustomGCode::ColorChange) {
@@ -7682,6 +7685,14 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
         const Vec2d xy = this->point_to_gcode(p.to_point());
         return Vec3d(xy.x(), xy.y(), m_nominal_z + unscale<double>(p.z()));
     });
+    if (!rotary && !path.preserve_points && m_last_pos_defined && m_conformal_prev != nullptr &&
+        m_conformal_prev->polyline.points.back() == path.polyline.points.front() &&
+        std::all_of(m_conformal_points.begin(), m_conformal_points.end(), [](const ConformalPoint &p) { return p.bead_height <= 0.f; })) {
+        Vec3d &start = m_conformal_points.front().pose.tip;
+        const Vec3d &here = m_writer.get_position();
+        if ((here - start).head<2>().norm() <= EPSILON && here.z() > start.z())
+            start = here;
+    }
     this->ensure_material_columns(path);
     const bool finish = path.role() == erTopSolidInfill || path.role() == erIroning || path.role() == erExternalPerimeter;
     if (rotary && surface_gradient) {
@@ -8663,7 +8674,7 @@ std::string GCode::surface_travel(const Vec3d &to, bool from_on_bead, bool to_on
 }
 
 static void extrude_contoured(GCodeWriter &writer, std::string &gcode, const Vec3d &to, double e, const std::string &comment, double vz_max,
-                              double nominal)
+                              double nominal, bool defer_cap)
 {
     if (vz_max <= 0.) {
         writer.extrude_to_xyz(gcode, to, e, comment);
@@ -8678,14 +8689,17 @@ static void extrude_contoured(GCodeWriter &writer, std::string &gcode, const Vec
         if (cap < nominal)
             F = nominal * std::pow(0.95, std::ceil(std::log(cap / nominal) / std::log(0.95)));
     }
-    if (std::abs(F - writer.get_current_speed()) > EPSILON)
+    if (defer_cap) {
+        if (F < nominal)
+            gcode += std::string(CoolingBuffer::ZaaMaxFeedTag) + std::to_string(std::floor(F)) + "\n";
+    } else if (std::abs(F - writer.get_current_speed()) > EPSILON)
         writer.set_speed(gcode, F);
     writer.extrude_to_xyz(gcode, to, e, comment);
 }
 
 static void extrude_contoured_road(GCodeWriter &writer, std::string &gcode, const Vec3d &from, const Vec3d &to, double nominal_z,
                                    double dE, double width, double height, bool scale_flow, const std::string &comment, double vz_max,
-                                   double nominal_feed)
+                                   double nominal_feed, bool defer_cap)
 {
     const double dz      = std::abs(to.z() - from.z());
     const double nominal = Nonplanar::bead_area(width, height);
@@ -8698,7 +8712,7 @@ static void extrude_contoured_road(GCodeWriter &writer, std::string &gcode, cons
         const double z     = nominal_z + b.z();
         if (z < 0.1)
             throw RuntimeError("GCode: very low z");
-        extrude_contoured(writer, gcode, Vec3d(b.x(), b.y(), z), dE / n * ratio, comment, vz_max, nominal_feed);
+        extrude_contoured(writer, gcode, Vec3d(b.x(), b.y(), z), dE / n * ratio, comment, vz_max, nominal_feed, defer_cap);
     }
 }
 
@@ -9342,17 +9356,27 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
         m_need_change_layer_lift_z = false;
     }
 
+    const auto contour_travel = [this](double z, const std::string &comment) {
+        const double limit = this->conformal_max_speed_z();
+        const bool defer_cap = m_config.zaa_enabled && !Nonplanar::requests_conformal_shells(*m_print);
+        std::string move = m_writer.travel_to_z(z, comment, true, defer_cap ? 0. : limit);
+        if (defer_cap && limit > 0. && !move.empty())
+            move.insert(0, std::string(CoolingBuffer::ZaaMaxFeedTag) + std::to_string(std::floor(limit * 60.)) + "\n");
+        return move;
+    };
     if (!positioned && path.z_contoured && !path.polyline.lines().empty()) {
         double current_z = m_writer.get_position().z();
         double first_z = unscale_(path.polyline.lines().begin()->a.z()) + m_nominal_z;
         if (GCodeFormatter::quantize_xyzf(first_z) != GCodeFormatter::quantize_xyzf(current_z)) {
-            gcode += m_writer.travel_to_z(first_z, "set Z for contouring", true, Nonplanar::requests_conformal_shells(*m_print) ? this->conformal_max_speed_z() : 0.);
+            gcode += contour_travel(first_z, "set Z for contouring");
         }
     }
     if (!path.z_contoured && sloped == nullptr) {
         double current_z = m_writer.get_position().z();
         if (GCodeFormatter::quantize_xyzf(current_z) != GCodeFormatter::quantize_xyzf(m_nominal_z)) {
-            gcode += this->writer().travel_to_z(m_nominal_z, "reset Z after contouring", true, Nonplanar::requests_conformal_shells(*m_print) ? this->conformal_max_speed_z() : 0.);
+            gcode += m_config.zaa_enabled || Nonplanar::requests_conformal_shells(*m_print) ?
+                contour_travel(m_nominal_z, "reset Z after contouring") :
+                m_writer.travel_to_z(m_nominal_z, "reset Z after contouring", true);
         }
     }
 
@@ -9865,7 +9889,6 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
             if (const auto *conformal = dynamic_cast<const ExtrusionPathConformal *>(&path)) {
                 this->emit_conformal_moves(gcode, *conformal, e_per_mm, speed, comment, description);
             } else if (!m_config.enable_arc_fitting || path.polyline.fitting_result.empty() || m_config.spiral_mode || sloped != nullptr || path.z_contoured || this->should_disable_arc_fitting()) {
-                const bool z_cap = path.z_contoured && Nonplanar::requests_conformal_shells(*m_print);
                 double path_length = 0.;
                 double total_length = sloped == nullptr ? 0. : path.polyline.length() * SCALING_FACTOR;
                 double saved_z      = m_writer.get_position().z();
@@ -9894,7 +9917,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
                         extrude_contoured_road(m_writer, gcode, Vec3d(from.x(), from.y(), unscale_(line.a.z())),
                                                Vec3d(to.x(), to.y(), unscale_(line.b.z())), m_nominal_z, dE, path.width, path.height,
                                                path.role() != erIroning, flow_description.empty() ? description : flow_description,
-                                               z_cap ? this->conformal_max_speed_z() : 0., contoured_feed);
+                                               this->conformal_max_speed_z(), contoured_feed, !Nonplanar::requests_conformal_shells(*m_print));
                     } else if (sloped == nullptr) {
                         m_writer.extrude_to_xy(gcode,
                             this->point_to_gcode(line.b.to_point()),
@@ -10075,7 +10098,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
                 extrude_contoured_road(m_writer, gcode, Vec3d(prev.x(), prev.y(), unscale_(pre_processed_point.p.z())),
                                        Vec3d(p.x(), p.y(), unscale_(processed_point.p.z())), m_nominal_z, dE, path.width, path.height,
                                        path.role() != erIroning, flow_description.empty() ? description : flow_description,
-                                       Nonplanar::requests_conformal_shells(*m_print) ? this->conformal_max_speed_z() : 0., last_set_speed);
+                                       this->conformal_max_speed_z(), last_set_speed, !Nonplanar::requests_conformal_shells(*m_print));
             } else if (sloped == nullptr) {
                 m_writer.extrude_to_xy(gcode, p.head<2>(), dE, flow_description.empty() ? description : flow_description);
             } else {

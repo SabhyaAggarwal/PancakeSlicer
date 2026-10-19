@@ -302,7 +302,12 @@ DynamicPrintConfig resolve(PresetBundle &bundle, const Args &a, const char *kind
     return config;
 }
 
-std::pair<double, double> max_vz(const GCodeProcessorResult &result, size_t *actual_line = nullptr)
+Vec3d emitted_tip(const GCodeProcessorResult &result, size_t i, bool rotary)
+{
+    return !rotary && result.has_joints() ? result.joints[i].xyz : Vec3d(result.moves[i].position.cast<double>());
+}
+
+std::pair<double, double> max_vz(const GCodeProcessorResult &result, size_t *actual_line = nullptr, bool rotary = false)
 {
     double commanded = 0., actual = 0.;
     size_t previous = 0;
@@ -310,7 +315,7 @@ std::pair<double, double> max_vz(const GCodeProcessorResult &result, size_t *act
         const auto &m = result.moves[i];
         if (m.internal_only)
             continue;
-        const Vec3d d = m.position.cast<double>() - result.moves[previous].position.cast<double>();
+        const Vec3d d = emitted_tip(result, i, rotary) - emitted_tip(result, previous, rotary);
         const size_t begin = previous + 1;
         previous = i;
         const double l = d.norm();
@@ -1223,7 +1228,7 @@ int main(int argc, char **argv)
                 list.push_back(render_thumbnail(mesh, unsigned(size.x()), unsigned(size.y()), false,
                     config.option<ConfigOptionStrings>("filament_colour")->get_at(0)));
             return list;
-        });
+        }, args.verify || !args.json.empty());
         const auto   t_done = std::chrono::steady_clock::now();
         const double c_done = process_cpu_seconds();
 
@@ -1243,7 +1248,7 @@ int main(int argc, char **argv)
             }
 
         size_t     vz_line         = 0;
-        const auto [vz, vz_actual] = max_vz(result, &vz_line);
+        const auto [vz, vz_actual] = max_vz(result, &vz_line, print.config().nonplanar_kinematics.value != RotaryLayout::None);
         const auto &normal         = result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)];
         std::cout << "time_process_s " << std::chrono::duration<double>(t_export - t_process).count() << "\n"
                   << "time_export_s " << std::chrono::duration<double>(t_done - t_export).count() << "\n"

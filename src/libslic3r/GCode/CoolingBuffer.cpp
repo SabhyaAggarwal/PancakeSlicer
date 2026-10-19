@@ -53,6 +53,7 @@ CoolingBuffer::CoolingBuffer(GCode &gcodegen) : m_config(gcodegen.config()), m_g
 
 void CoolingBuffer::reset(const Vec3d &position)
 {
+    m_nominal_feed = m_emitted_feed = 0.;
     m_belt_band_active = false;
     m_current_pos.assign(7, 0.f);
     m_current_pos[0] = float(position.x());
@@ -308,7 +309,48 @@ std::string CoolingBuffer::process_layer(std::string &&gcode, size_t layer_id, b
         float layer_time_stretched = this->calculate_layer_slowdown(per_extruder_adjustments);
         layer_time_stretched += this->apply_nonplanar_pass_time(per_extruder_adjustments);
         out = this->apply_layer_cooldown(m_gcode, layer_id, layer_time_stretched, per_extruder_adjustments);
+        out = this->apply_zaa_feed_limits(out);
         m_gcode.clear();
+    }
+    return out;
+}
+
+std::string CoolingBuffer::apply_zaa_feed_limits(const std::string &gcode)
+{
+    std::string out;
+    out.reserve(gcode.size());
+    double cap = 0.;
+    for (size_t start = 0; start < gcode.size();) {
+        const size_t end = gcode.find('\n', start);
+        std::string line = gcode.substr(start, end == std::string::npos ? end : end - start);
+        start = end == std::string::npos ? gcode.size() : end + 1;
+        if (boost::starts_with(line, ZaaMaxFeedTag)) {
+            cap = atof_decimal_point(line.c_str() + std::strlen(ZaaMaxFeedTag));
+            continue;
+        }
+        if (line.size() > 2 && line[0] == 'G' && line[1] >= '0' && line[1] <= '3' && line[2] == ' ') {
+            const size_t comment = line.find(';');
+            const size_t f = line.find(" F");
+            const bool has_f = f != std::string::npos && (comment == std::string::npos || f < comment);
+            if (has_f)
+                m_nominal_feed = atof_decimal_point(line.c_str() + f + 2);
+            const double feed = cap > 0. ? std::min(m_nominal_feed, cap) : m_nominal_feed;
+            if (feed > 0. && (has_f || feed != m_emitted_feed)) {
+                if (has_f && feed != m_nominal_feed) {
+                    const size_t word_end = line.find_first_of(" \t;", f + 2);
+                    line.replace(f + 2, word_end == std::string::npos ? word_end : word_end - f - 2,
+                                 std::to_string(static_cast<int>(std::floor(feed))));
+                } else if (!has_f) {
+                    const size_t insert = comment == std::string::npos ? line.size() : comment;
+                    line.insert(insert, " F" + std::to_string(static_cast<int>(std::floor(feed))) + (comment == std::string::npos ? "" : " "));
+                }
+                m_emitted_feed = feed;
+            }
+            cap = 0.;
+        }
+        out += line;
+        if (end != std::string::npos)
+            out += '\n';
     }
     return out;
 }

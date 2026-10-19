@@ -3384,7 +3384,7 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
     }
 }
 
-std::string Print::export_gcode(const std::string& path_template, GCodeProcessorResult* result, ThumbnailsGeneratorCallback thumbnail_cb)
+std::string Print::export_gcode(const std::string& path_template, GCodeProcessorResult* result, ThumbnailsGeneratorCallback thumbnail_cb, bool retain_raw_positions)
 {
     std::string path = this->output_filepath(path_template);
     std::string message;
@@ -3407,7 +3407,7 @@ std::string Print::export_gcode(const std::string& path_template, GCodeProcessor
         this->update_imex_slice_offset();
         const Vec2d imex_off = this->get_imex_slice_offset();
         gcode->set_gcode_offset_with_imex_shift(origin(0), origin(1), imex_off.x(), imex_off.y());
-        gcode->do_export(this, path.c_str(), result, thumbnail_cb);
+        gcode->do_export(this, path.c_str(), result, thumbnail_cb, retain_raw_positions);
         if (!repair.apply())
             break;
         this->process();

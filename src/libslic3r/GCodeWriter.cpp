@@ -878,6 +878,18 @@ std::string GCodeWriter::eager_lift(const LiftType type) {
 
 std::string GCodeWriter::travel_to_xyz(const Vec3d &point, const std::string &comment, bool force_z, double max_speed_z, double max_speed)
 {
+    double event_speed_z = m_limit_next_travel_z ? this->max_speed_z() : 0.;
+    if (m_limit_next_travel_z) {
+        const double configured = this->config.travel_speed_z.get_at(m_cached_extruder_idx);
+        if (configured > 0.)
+            event_speed_z = event_speed_z > 0. ? std::min(event_speed_z, configured) : configured;
+        if (event_speed_z > 0.)
+            max_speed_z = max_speed_z > 0. ? std::min(max_speed_z, event_speed_z) : event_speed_z;
+    }
+    const auto event_travel_speed = [event_speed_z](double speed) {
+        return event_speed_z > 0. ? std::min(speed, event_speed_z) : speed;
+    };
+
     Vec3d dest_point = point;
     auto travel_speed =
         this->point_on_first_layer(Vec3d(point.x() - m_x_offset, point.y() - m_y_offset, point.z())) ? this->config.get_abs_value_at("initial_layer_travel_speed", m_cached_extruder_idx) : this->config.travel_speed.get_at(m_cached_extruder_idx);
@@ -890,6 +902,7 @@ std::string GCodeWriter::travel_to_xyz(const Vec3d &point, const std::string &co
         final_travel_speed = std::min(final_travel_speed, max_speed);
     if (const Vec3d delta = point - m_pos; m_z_travel_cap > 0. && std::abs(delta.z()) > EPSILON)
         final_travel_speed = std::min(final_travel_speed, m_z_travel_cap * delta.norm() / std::abs(delta.z()));
+    final_travel_speed = event_travel_speed(final_travel_speed);
     if (std::abs(m_to_lift) > EPSILON) {
         assert(std::abs(m_lifted) < EPSILON);
         if ((!this->is_current_position_clear() || m_pos != dest_point) &&
@@ -922,7 +935,7 @@ std::string GCodeWriter::travel_to_xyz(const Vec3d &point, const std::string &co
                 Vec3d slope_top_point = Vec3d(temp(0), temp(1), delta(2)) + source;
                 GCodeG1Formatter w0;
                 w0.emit_xyz(has_axis_remap() ? apply_axis_remap(slope_top_point) : slope_top_point);
-                w0.emit_f(travel_speed * 60.0);
+                w0.emit_f(event_travel_speed(travel_speed) * 60.0);
                 w0.emit_comment(GCodeWriter::full_gcode_comment, comment);
                 slop_move = w0.string();
             }
@@ -936,13 +949,13 @@ std::string GCodeWriter::travel_to_xyz(const Vec3d &point, const std::string &co
             GCodeG1Formatter w0;
             if (has_axis_remap()) {
                 w0.emit_xyz(apply_axis_remap(target));
-                w0.emit_f(travel_speed * 60.0);
+                w0.emit_f(event_travel_speed(travel_speed) * 60.0);
                 w0.emit_comment(GCodeWriter::full_gcode_comment, comment);
                 xy_z_move = w0.string();
             }
             else if (this->is_current_position_clear()) {
                 w0.emit_xyz(target);
-                w0.emit_f(travel_speed * 60.0);
+                w0.emit_f(event_travel_speed(travel_speed) * 60.0);
                 w0.emit_comment(GCodeWriter::full_gcode_comment, comment);
                 xy_z_move = w0.string();
             }
@@ -1024,6 +1037,8 @@ std::string GCodeWriter::_travel_to_z(double z, const std::string &comment, doub
         speed = std::min(speed, max_speed);
     if (m_z_travel_cap > 0.)
         speed = std::min(speed, m_z_travel_cap);
+    if (m_limit_next_travel_z && this->max_speed_z() > 0.)
+        speed = std::min(speed, this->max_speed_z());
     if (this->tool_kinematics().rotary_count() > 0 && m_max_joint_speed[2] > 0.)
         speed = std::min(speed, m_max_joint_speed[2]);
 
@@ -1051,6 +1066,8 @@ std::string GCodeWriter::_spiral_travel_to_z(double z, const Vec2d &ij_offset, c
         speed = m_is_first_layer ? this->config.get_abs_value_at("initial_layer_travel_speed", m_cached_extruder_idx)
                                  : this->config.travel_speed.get_at(m_cached_extruder_idx);
     }
+    if (m_limit_next_travel_z && this->max_speed_z() > 0.)
+        speed = std::min(speed, this->max_speed_z());
 
     if (!this->config.enable_arc_fitting) {
         const double z_start = m_pos(2);

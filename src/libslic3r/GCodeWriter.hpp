@@ -91,6 +91,7 @@ public:
     std::string travel_to_z(double z, const std::string &comment = std::string(), bool force = false, double max_speed = 0.);
     double      max_speed_z() const { return m_max_joint_speed.z(); }
     void        set_z_travel_cap(double speed) { m_z_travel_cap = speed; }
+    void        limit_next_travel_z() { m_limit_next_travel_z = true; }
     bool        will_move_z(double z) const;
     std::string extrude_to_xy(const Vec2d &point, double dE, const std::string &comment = std::string(), bool force_no_extrusion = false);
     std::string extrude_arc_to_xy(const Vec2d &point, const Vec2d &center_offset, double dE, const bool is_ccw, const std::string &comment = std::string(), bool force_no_extrusion = false);
@@ -129,7 +130,11 @@ public:
     void add_object_end_labels(std::string &gcode);
     void add_object_change_labels(std::string& gcode);
 
-    void set_current_position_clear(bool clear) { m_is_current_pos_clear = clear; };
+    void set_current_position_clear(bool clear) {
+        m_is_current_pos_clear = clear;
+        if (clear)
+            m_limit_next_travel_z = false;
+    };
     bool is_current_position_clear() const { return m_is_current_pos_clear; };
     static bool full_gcode_comment;
     void set_is_bbl_machine(bool bval) {m_is_bbl_printers = bval;}
@@ -199,6 +204,7 @@ protected:
     bool                            m_rotary_written = false;
     Vec3d                           m_max_joint_speed { Vec3d::Zero() };
     double                          m_z_travel_cap { 0. };
+    bool                            m_limit_next_travel_z { false };
     double                          m_min_joint_move_time = 0.;
     void        write_joint_move(std::string &out, const JointPose &joints, double tip_length, double tip_speed,
                                  double dE, const std::string &comment);

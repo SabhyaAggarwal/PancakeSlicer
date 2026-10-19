@@ -387,13 +387,15 @@ void close_layer(PrintObject &object, size_t layer_id, const ExPolygons &solid, 
         layerm->fill_surfaces.surfaces = std::move(kept);
         const PrintRegionConfig &config = layerm->region().config();
         const double angle = Geometry::deg2rad(config.solid_infill_direction.value) + (layer_id % 2 == 1 ? 0.5 * PI : 0.);
-        const Flow   flow  = layerm->flow(frSolidInfill);
         auto *collection = new ExtrusionEntityCollection();
         for (const auto &[part, role] : { std::pair{ diff_ex(area, bridged), erSolidInfill }, std::pair{ bridged, erInternalBridgeInfill } }) {
             if (part.empty())
                 continue;
+            const Flow flow = role == erInternalBridgeInfill ?
+                                  layerm->bridging_flow(frSolidInfill, object.config().thick_internal_bridges.value) :
+                                  layerm->flow(frSolidInfill);
             for (Polyline &pl : fill_solid(part, ipRectilinear, flow.spacing(), angle, false, flow, layer.print_z)) {
-                ExtrusionPath path(role, flow.mm3_per_mm(), flow.width(), float(layer.height));
+                ExtrusionPath path(role, flow.mm3_per_mm(), flow.width(), flow.height());
                 path.polyline = Polyline3(pl);
                 collection->entities.push_back(new ExtrusionPath(std::move(path)));
             }

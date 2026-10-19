@@ -361,7 +361,8 @@ void slice_json_results(Json &record, const Args &args, const Print &print, cons
 {
     Json &tool = record["tool"], &totals = record["totals"];
     size_t line = 0;
-    const auto vz = max_vz(result, &line);
+    const bool rotary = print.config().nonplanar_kinematics.value != RotaryLayout::None;
+    const auto vz = max_vz(result, &line, rotary);
     const auto &normal = result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)];
     tool["estimated_time_s"] = text_number(normal.time);
     tool["max_vz_commanded"] = text_number(vz.first);
@@ -383,15 +384,13 @@ void slice_json_results(Json &record, const Args &args, const Print &print, cons
         if (result.moves[i].type == EMoveType::Extrude && result.moves[i].extrusion_role != erCustom && result.moves[i].extrusion_role != erNone) {
             first_print = std::min(first_print, i); last_print = i;
         }
-    bool turned = false;
-    for (const JointPose &joints : result.joints) turned |= joints.rot[0] != 0. || joints.rot[1] != 0.;
     for (size_t i = 0; i < result.moves.size(); ++i) {
         const auto &m = result.moves[i];
         if (m.type == EMoveType::Retract) totals["retractions"] = totals["retractions"].get<size_t>() + 1;
-        if (m.type == EMoveType::Travel && i > 0) travel += (m.position - result.moves[i - 1].position).norm();
+        if (m.type == EMoveType::Travel && i > 0) travel += (emitted_tip(result, i, rotary) - emitted_tip(result, i - 1, rotary)).norm();
         if (hits.size() < 10 && i < clearance.per_move.size() && clearance.per_move[i] < -1e-5 &&
             !(m.extrusion_role == erCustom && (i < first_print || i > last_print))) {
-            const Vec3d tip = !turned && result.has_joints() ? result.joints[i].xyz : Vec3d(m.position.cast<double>());
+            const Vec3d tip = emitted_tip(result, i, rotary);
             Json hit = {{"move_id", i}, {"gcode_line", m.gcode_id}, {"tip_mm", {tip.x(), tip.y(), tip.z()}},
                         {"penetration_mm", -clearance.per_move[i]}, {"component", nullptr}};
             for (const auto &worst : clearance.worst) if (worst.move_id == i) {

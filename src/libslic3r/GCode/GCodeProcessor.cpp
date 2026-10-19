@@ -4732,7 +4732,12 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
 
         if (origin == G1DiscretizationOrigin::G1)
             m_extruded_last_z = m_end_position[Z];
-        m_options_z_corrector.update(m_height);
+        if (const auto removed = m_options_z_corrector.update(m_height)) {
+            for (TimeMachine &machine : m_time_processor.machines)
+                for (TimeBlock &block : machine.blocks)
+                    if (block.move_id > *removed)
+                        --block.move_id;
+        }
 
         if (m_forced_width > 0.0f)
             m_width = m_forced_width;
@@ -7173,6 +7178,15 @@ void GCodeProcessor::calculate_time(GCodeProcessorResult& result, size_t keep_la
     assert(read == write);
 
     std::reverse(m_actual_speed_id_map.begin(), m_actual_speed_id_map.end());
+    const auto remap_move_id = [&](size_t id) {
+        auto it = std::lower_bound(m_actual_speed_id_map.begin(), m_actual_speed_id_map.end(), id,
+                                   [](const std::pair<unsigned int, unsigned int>& entry, size_t value) { return entry.first < value; });
+        if (it != m_actual_speed_id_map.end() && it->first == id)
+            return size_t(it->second);
+        return it == m_actual_speed_id_map.begin() ? id : id + (it - 1)->second - (it - 1)->first;
+    };
+    if (const auto id = m_options_z_corrector.move_id())
+        m_options_z_corrector.remap_move_id(remap_move_id(*id));
     for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i) {
         for (GCodeProcessor::TimeBlock& block : m_time_processor.machines[i].blocks) {
             auto it = std::lower_bound(m_actual_speed_id_map.begin(), m_actual_speed_id_map.end(), block.move_id,

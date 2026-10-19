@@ -17,6 +17,7 @@ struct PerExtruderAdjustments;
 
 class CoolingBuffer {
 public:
+    static constexpr const char *ZaaMaxFeedTag = ";_ZAA_MAX_FEED:";
     CoolingBuffer(GCode &gcodegen);
     void        reset(const Vec3d &position);
     void        set_current_extruder(unsigned int extruder_id, unsigned int nozzle_id) { m_current_extruder = extruder_id; m_current_nozzle = nozzle_id; }
@@ -28,6 +29,10 @@ private:
     float       calculate_layer_slowdown(std::vector<PerExtruderAdjustments> &per_extruder_adjustments);
     float       apply_nonplanar_pass_time(std::vector<PerExtruderAdjustments> &per_extruder_adjustments);
     std::string apply_layer_cooldown(const std::string &gcode, size_t layer_id, float layer_time, std::vector<PerExtruderAdjustments> &per_extruder_adjustments);
+
+    std::string apply_zaa_feed_limits(const std::string &gcode);
+    double m_nominal_feed = 0.;
+    double m_emitted_feed = 0.;
 
     std::string                 m_gcode;
     std::vector<char>           m_axis;

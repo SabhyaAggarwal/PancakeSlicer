@@ -1017,7 +1017,7 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
     const Mask steep_pairs = steep != nullptr && !steep_faces.empty() ?
                                  rasterize(offset_ex(steep_faces, -float(scale_(2. * patch.shell_height))), patch.surface) : Mask();
     std::vector<std::pair<std::vector<Polylines>, Flow>> thick;
-    ExPolygons rest = area;
+    ExPolygons rest = area, fall_lines;
     if (banded != nullptr && outer && !sparse && !plug && adaptive == nullptr) {
         std::vector<PlanarFace> falls;
         if (!fill.spiral)
@@ -1064,6 +1064,7 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
             append(linked, shell_polylines(off_voids(single, flow.spacing()), down, ipMonotonic, flow.spacing(), true, flow, host_z,
                                            start, MaxGlide, nullptr, &seam_line));
             rest = diff_ex(rest, face.area);
+            append(fall_lines, face.area);
         }
     }
     if (plug && k == banded->sparse + 1 && banded->sparse > 0) {
@@ -1116,11 +1117,14 @@ ExtrusionEntityCollection make_shell(const PrintObject &object, const ConformalP
             cross.outline = false;
             append(linked, shell_polylines(off_voids(gentle, spacing), cross, ipRectilinear, spacing, false, flow, host_z, open, MaxGlide, nullptr, open_line));
         }
-    } else if (banded != nullptr && banded->strips)
-        contour_fill(patch.surface, outer ? expolygons_simplify(rest, scale_(0.5 * patch.surface.pitch())) : rest, drop,
+    } else if (banded != nullptr && banded->strips) {
+        ExPolygons contours = outer ? expolygons_simplify(rest, scale_(0.5 * patch.surface.pitch())) : rest;
+        if (!fall_lines.empty())
+            contours = diff_ex(contours, fall_lines);
+        contour_fill(patch.surface, contours, drop,
                      banded->strip_height, banded->strip_offset, flow, height, fill.angle, outer, host_z, roads, linked,
                      outer ? &start : nullptr, banded->contour, banded->arachne);
-    else if (!rest.empty())
+    } else if (!rest.empty())
         append(linked, shell_polylines(fill.spiral ? rest : off_voids(rest, flow.spacing()), rings, outer ? ipMonotonic : ipRectilinear, flow.spacing(), outer, flow,
                                        host_z, start, MaxGlide, surface_spaced ? &patch.surface.get() : nullptr, &seam_line, &ramp));
     if (banded != nullptr && !sparse && !plug)

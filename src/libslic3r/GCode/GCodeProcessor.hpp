@@ -955,9 +955,12 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
                 m_custom_gcode_per_print_z_id = m_result.custom_gcode_per_print_z.size() - 1;
             }
 
-            void update(float height) {
+            std::optional<size_t> move_id() const { return m_move_id; }
+            void remap_move_id(size_t id) { m_move_id = id; }
+
+            std::optional<size_t> update(float height) {
                 if (!m_move_id.has_value() || !m_custom_gcode_per_print_z_id.has_value())
-                    return;
+                    return std::nullopt;
 
                 const Vec3f position = m_result.moves.back().position;
 
@@ -970,7 +973,9 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
                     m_result.joints.erase(m_result.joints.begin() + *m_move_id);
                 }
                 m_result.custom_gcode_per_print_z[*m_custom_gcode_per_print_z_id].print_z = position.z();
+                const size_t removed = *m_move_id;
                 reset();
+                return removed;
             }
 
             void reset() {
@@ -1213,6 +1218,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
                                               const std::vector<std::set<int>>& unprintable_filament_types );
         void apply_config(const PrintConfig& config);
         void set_print(Print* print);
+        void set_keep_raw_positions(bool keep) { m_keep_tips = keep; }
         void set_mass_locator(MassLocator locator, std::vector<GCodeProcessorResult::ObjectMass> objects)
         {
             m_mass_locator = std::move(locator);

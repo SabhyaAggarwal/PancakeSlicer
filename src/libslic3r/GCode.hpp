@@ -244,7 +244,8 @@ public:
     virtual ~GCode() = default;
 
 public:
-    void            do_export(Print* print, const char* path, GCodeProcessorResult* result = nullptr, ThumbnailsGeneratorCallback thumbnail_cb = nullptr);
+    void            do_export(Print* print, const char* path, GCodeProcessorResult* result = nullptr, ThumbnailsGeneratorCallback thumbnail_cb = nullptr,
+                              bool retain_raw_positions = false);
     void            export_layer_filaments(GCodeProcessorResult* result);
     void set_gcode_offset(double x, double y) { m_writer.set_xy_offset(x, y); m_processor.set_xy_offset(x, y);}
     void set_gcode_offset_with_imex_shift(double x, double y, double imex_x, double imex_y) {
