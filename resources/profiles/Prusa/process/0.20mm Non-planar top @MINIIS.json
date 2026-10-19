@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "UvbfEPAWPqokM3Dx",
 	"instantiation": "true",
+	"nonplanar_sublayer_walls": "1",
 	"nonplanar_full_conformal_max_thickness": "3",
 	"nonplanar_mode": "auto",
 	"adaptive_layer_height_error": "0.14",

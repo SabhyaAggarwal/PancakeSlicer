@@ -1012,8 +1012,15 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
                 const double ceiling = sweep.columns.ceiling();
                 if (ceiling == -Inf) return true;
                 if (ceiling > z + infinite_floor) return false;
-                return !(reach_min.x() <= reach_max.x()) ||
-                    sweep.columns.tile_bound(BoundingBoxf(a.head<2>().cwiseMin(b.head<2>()) + reach_min, a.head<2>().cwiseMax(b.head<2>()) + reach_max)) <= z + finite_floor;
+                const Vec2d lo = a.head<2>().cwiseMin(b.head<2>()), hi = a.head<2>().cwiseMax(b.head<2>());
+                if (!(reach_min.x() <= reach_max.x()) || sweep.columns.tile_bound(BoundingBoxf(lo + reach_min, hi + reach_max)) <= z + finite_floor)
+                    return true;
+                for (const auto *list : { &body_boxes, &strict_boxes })
+                    for (const auto &box : list->boxes)
+                        if (!box.infinite_x && !box.infinite_y &&
+                            sweep.columns.tile_bound(BoundingBoxf(lo + box.min.head<2>(), hi + box.max.head<2>())) > z + box.min.z())
+                            return false;
+                return true;
             }();
         if (planar_only) ++unswept;
         if (hits != nullptr && !planar_only) {

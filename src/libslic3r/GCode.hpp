@@ -469,6 +469,8 @@ protected:
                              const std::vector<const ExtrusionEntity*>& region_perimeters = {},
                              const Point*                               start_point       = nullptr,
                              const WipeInwardSupport*                   wipe_support      = nullptr);
+    std::string extrude_raised_walls(const Print &print, const std::vector<LayerToPrint> &layers, unsigned int extruder_id,
+                                     size_t single_object_instance_idx);
     std::string extrude_multi_path(const ExtrusionMultiPath& multipath, const std::string& description = "", double speed = -1.);
     std::string extrude_path(const ExtrusionPath& path, const std::string& description = "", double speed = -1.);
 

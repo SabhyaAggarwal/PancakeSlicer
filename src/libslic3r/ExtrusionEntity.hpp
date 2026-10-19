@@ -440,6 +440,7 @@ class ExtrusionLoop : public ExtrusionEntity
 public:
     ExtrusionPaths paths;
     bool print_after_infill = false;
+    ExtrusionPaths raised;
 
     ExtrusionLoop(ExtrusionLoopRole role = elrDefault) : m_loop_role(role) {}
     ExtrusionLoop(const ExtrusionPaths &paths, ExtrusionLoopRole role = elrDefault) : paths(paths), m_loop_role(role) {}

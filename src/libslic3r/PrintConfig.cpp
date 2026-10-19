@@ -5177,6 +5177,18 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionBool(true));
 
+    def = this->add("nonplanar_sublayer_walls", coBool);
+    def->label    = L("Half-height outer walls");
+    def->category = L("Quality");
+    def->tooltip  = L("In Auto, print the outer wall as two lines of half the layer height where the face is steeper than "
+                      "25 degrees, vertical walls included, each at the outline of its own half of the layer, so the wall "
+                      "shows half the layer's ridges and a slope half its stair. The lower line prints at the end of the "
+                      "layer below. Slopes near 45 degrees are taken first, until the extra lines would add about 40 % "
+                      "of the part's estimated extrusion time; on typical parts every outer wall fits, for 5 to 20 % more "
+                      "print time. Curved tops and planar layers are not affected.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
+
     def = this->add("nonplanar_flow_mod", coBool);
     def->label    = L("Non-planar flow modulation");
     def->category = L("Quality");

@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "2f14dUeI1q3W7SAA",
 	"instantiation": "true",
+	"nonplanar_sublayer_walls": "1",
 	"adaptive_layer_height_error": "0.14",
 	"overhang_layer_contact": "50%",
 	"top_surface_acceleration": [

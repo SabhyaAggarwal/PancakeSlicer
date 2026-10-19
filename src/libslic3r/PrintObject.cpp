@@ -29,6 +29,7 @@
 #include "Nonplanar/OrientationField.hpp"
 #include "Nonplanar/ConformalSupport.hpp"
 #include "Nonplanar/ConformalVolume.hpp"
+#include "Nonplanar/SubLayerWalls.hpp"
 #include "Nonplanar/CurvedBridge.hpp"
 #include "Nonplanar/CurvedOverhang.hpp"
 #include "Nonplanar/DeformSlice.hpp"
@@ -932,6 +933,7 @@ void PrintObject::contour_z()
         }
     );
     m_print->throw_if_canceled();
+    Nonplanar::split_sublayer_walls(*this);
     BOOST_LOG_TRIVIAL(debug) << "Contouring in parallel - end";
 
     this->set_done(posContouring);
@@ -1770,6 +1772,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "nonplanar_top_direction"
             || opt_key == "nonplanar_surface_spacing"
             || opt_key == "nonplanar_spiral_top"
+            || opt_key == "nonplanar_sublayer_walls"
             || opt_key == "nonplanar_flow_mod"
             || opt_key == "nonplanar_adaptive_bands"
             || opt_key == "nonplanar_infill_depth"

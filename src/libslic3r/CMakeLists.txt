@@ -198,6 +198,8 @@ set(lisbslic3r_sources
     Nonplanar/Multiplanar.hpp
     Nonplanar/StrengthRoads.cpp
     Nonplanar/StrengthRoads.hpp
+    Nonplanar/SubLayerWalls.cpp
+    Nonplanar/SubLayerWalls.hpp
     Nonplanar/SurfaceClip.cpp
     Nonplanar/SurfaceClip.hpp
     Nonplanar/TiltBudget.cpp

@@ -1444,6 +1444,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat,                     nonplanar_top_direction))
     ((ConfigOptionBool,                      nonplanar_surface_spacing))
     ((ConfigOptionBool,                      nonplanar_spiral_top))
+    ((ConfigOptionBool,                      nonplanar_sublayer_walls))
     ((ConfigOptionBool,                      nonplanar_flow_mod))
     ((ConfigOptionBool,                      nonplanar_adaptive_bands))
     ((ConfigOptionFloat,                     nonplanar_infill_depth))

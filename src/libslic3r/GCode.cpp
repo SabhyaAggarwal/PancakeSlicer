@@ -6515,6 +6515,7 @@ LayerResult GCode::process_layer(
         }
 
         gcode += this->extrude_conformal_patches(print, layers, extruder_id, single_object_instance_idx);
+        gcode += this->extrude_raised_walls(print, layers, extruder_id, single_object_instance_idx);
 
         for (const auto &grp : layer_tools.mixed_sub_layer_groups) {
             int sub_idx = -1;
@@ -7305,6 +7306,75 @@ std::string GCode::extrude_loop(const ExtrusionLoop&                       loop_
     if (wipe_inward_applied)
         gcode += m_wipe.wipe(*this, 0.);
 
+    return gcode;
+}
+
+std::string GCode::extrude_raised_walls(const Print &print, const std::vector<LayerToPrint> &layers, unsigned int extruder_id,
+                                        size_t single_object_instance_idx)
+{
+    std::string gcode;
+    for (const LayerToPrint &layer_to_print : layers) {
+        const Layer *layer = layer_to_print.object_layer;
+        if (layer == nullptr)
+            continue;
+        const PrintObject &object = layer_to_print.original_object != nullptr ? *layer_to_print.original_object : *layer->object();
+        for (const LayerRegion *layerm : layer->regions()) {
+            const PrintRegion &region = layerm->region();
+            if (!region.config().nonplanar_sublayer_walls.value || region.extruder(frExternalPerimeter) - 1 != extruder_id)
+                continue;
+            std::vector<const ExtrusionPath *> raised;
+            std::vector<const ExtrusionEntity *> stack(layerm->perimeters.entities.begin(), layerm->perimeters.entities.end());
+            while (!stack.empty()) {
+                const ExtrusionEntity *ee = stack.back();
+                stack.pop_back();
+                if (const auto *c = dynamic_cast<const ExtrusionEntityCollection *>(ee))
+                    stack.insert(stack.end(), c->entities.begin(), c->entities.end());
+                else if (const auto *loop = dynamic_cast<const ExtrusionLoop *>(ee))
+                    for (const ExtrusionPath &path : loop->raised)
+                        raised.emplace_back(&path);
+            }
+            if (raised.empty())
+                continue;
+            const size_t i_begin = single_object_instance_idx == size_t(-1) ? 0 : single_object_instance_idx;
+            const size_t i_end   = single_object_instance_idx == size_t(-1) ? object.instances().size() : single_object_instance_idx + 1;
+            for (size_t instance_id = i_begin; instance_id < i_end; ++instance_id) {
+                const PrintInstance &instance = object.instances()[instance_id];
+                if (m_enable_exclude_object)
+                    m_writer.set_object_start_str(this->object_exclude_start(instance));
+                const Point &offset = instance.shift;
+                m_last_obj_copy     = std::make_pair(&object, offset);
+                this->set_origin(unscale(offset));
+                this->on_set_origin(&object, offset);
+                m_layer = layer;
+                m_config.apply(print.default_region_config());
+                m_config.apply(object.config(), true);
+                m_config.apply(region.config());
+                std::vector<bool> done(raised.size(), false);
+                for (size_t n = 0; n < raised.size(); ++n) {
+                    const Point from = this->last_pos();
+                    size_t      best = 0;
+                    bool        flip = false;
+                    double      best_d = std::numeric_limits<double>::max();
+                    for (size_t i = 0; i < raised.size(); ++i)
+                        if (!done[i])
+                            for (bool rev : { false, true }) {
+                                const Point p = rev ? raised[i]->last_point() : raised[i]->first_point();
+                                if (const double d = (p - from).cast<double>().squaredNorm(); d < best_d)
+                                    best_d = d, best = i, flip = rev;
+                            }
+                    done[best] = true;
+                    ExtrusionPath run = *raised[best];
+                    if (flip)
+                        run.reverse();
+                    gcode += this->extrude_path(run, "sub-layer wall", -1.);
+                }
+                if (!m_writer.is_object_start_str_empty())
+                    m_writer.set_object_start_str("");
+                else if (m_enable_exclude_object)
+                    m_writer.set_object_end_str(this->object_exclude_end(instance));
+            }
+        }
+    }
     return gcode;
 }
 
@@ -8701,6 +8771,11 @@ static void extrude_contoured(GCodeWriter &writer, std::string &gcode, const Vec
     writer.extrude_to_xyz(gcode, to, e, comment);
 }
 
+static bool scales_contoured_flow(const ExtrusionPath &path, const Layer *layer)
+{
+    return path.role() != erIroning && (layer == nullptr || path.height >= layer->height - EPSILON);
+}
+
 static void extrude_contoured_road(GCodeWriter &writer, std::string &gcode, const Vec3d &from, const Vec3d &to, double nominal_z,
                                    double dE, double width, double height, bool scale_flow, const std::string &comment, double vz_max,
                                    double nominal_feed, bool defer_cap)
@@ -9920,7 +9995,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
                         const Vec2d from = this->point_to_gcode(line.a.to_point()), to = this->point_to_gcode(line.b.to_point());
                         extrude_contoured_road(m_writer, gcode, Vec3d(from.x(), from.y(), unscale_(line.a.z())),
                                                Vec3d(to.x(), to.y(), unscale_(line.b.z())), m_nominal_z, dE, path.width, path.height,
-                                               path.role() != erIroning, flow_description.empty() ? description : flow_description,
+                                               scales_contoured_flow(path, m_layer), flow_description.empty() ? description : flow_description,
                                                this->conformal_max_speed_z(), contoured_feed, !Nonplanar::requests_conformal_shells(*m_print));
                     } else if (sloped == nullptr) {
                         m_writer.extrude_to_xy(gcode,
@@ -10101,7 +10176,7 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
             if (path.z_contoured) {
                 extrude_contoured_road(m_writer, gcode, Vec3d(prev.x(), prev.y(), unscale_(pre_processed_point.p.z())),
                                        Vec3d(p.x(), p.y(), unscale_(processed_point.p.z())), m_nominal_z, dE, path.width, path.height,
-                                       path.role() != erIroning, flow_description.empty() ? description : flow_description,
+                                       scales_contoured_flow(path, m_layer), flow_description.empty() ? description : flow_description,
                                        this->conformal_max_speed_z(), last_set_speed, !Nonplanar::requests_conformal_shells(*m_print));
             } else if (sloped == nullptr) {
                 m_writer.extrude_to_xy(gcode, p.head<2>(), dE, flow_description.empty() ? description : flow_description);
