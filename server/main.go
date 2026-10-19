@@ -136,6 +136,7 @@ func main() {
 	} else {
 		cfg.Features.PlateIndex = true
 	}
+	cfg.Features.ColourChange = probeColourChange(cfg)
 	jobs, err := NewJobManager(cfg)
 	if err != nil {
 		log.Fatal(err)
