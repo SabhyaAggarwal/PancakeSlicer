@@ -332,6 +332,7 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
                                                "overhang_self_supporting", "overhang_unfit", "overhang_small",
                                                "overhang_no_root", "overhang_no_beads", "overhang_bridged", "overhang_thread" };
     std::vector<uint8_t> why(n_nodes, Taken);
+    Mask                 flat_mask(n_nodes, 0);
     for (int iy = 0; iy < grid.ny(); ++iy)
         for (int ix = 0; ix < grid.nx(); ++ix) {
             const size_t i = size_t(iy) * grid.nx() + ix;
@@ -343,6 +344,7 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
             }
             if (!(top.data()[i] - Sb.data()[i] >= 0.5 * g) || !(Sb.data()[i] >= layer_top.front() + 0.5 * g)) {
                 why[i] = Resting;
+                flat_mask[i] = free_mode && top.data()[i] - Sb.data()[i] < 0.5 * g && Sb.data()[i] >= layer_top.front() + 0.5 * g;
                 continue;
             }
             const Vec2d gr = node_gradient(Sb, ix, iy);
@@ -350,6 +352,8 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
                 why[i] = Rim;
                 continue;
             }
+            if (free_mode && gr.norm() >= 1. / std::tan(printable))
+                flat_mask[i] = 2;
             if (top.data()[i] - Sb.data()[i] < ThinWallLayers * g && (!free_mode || gr.norm() >= 1. / std::tan(printable)))
                 continue;
             slope[i] = float(gr.norm());
@@ -389,10 +393,53 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
                 result.diagnostics.emplace_back(std::move(diag));
             }
     };
+    auto publish_self_supported = [&]() {
+        if (!free_mode)
+            return;
+        std::vector<std::vector<int>> flat(layers.size());
+        for (int iy = 0; iy < (object.has_support_material() ? grid.ny() : 0); ++iy)
+            for (int ix = 0; ix < grid.nx(); ++ix) {
+                const size_t i    = size_t(iy) * grid.nx() + ix;
+                bool         face = flat_mask[i] != 0;
+                for (int dy = -1; dy <= 1 && face && flat_mask[i] == 2; ++dy)
+                    for (int dx = -1; dx <= 1 && face; ++dx) {
+                        const int x = ix + dx, y = iy + dy;
+                        face = x >= 0 && y >= 0 && x < grid.nx() && y < grid.ny() && flat_mask[size_t(y) * grid.nx() + x];
+                    }
+                if (face)
+                    for (size_t l = layer_at(Sb.data()[i] - g); l < layers.size() && layer_bottom[l] <= Sb.data()[i] + g; ++l)
+                        flat[l].emplace_back(int(i));
+            }
+        auto publish = [&](const std::vector<std::vector<int>> &nodes, std::vector<ExPolygons> &out, bool reach) {
+            if (std::all_of(nodes.begin(), nodes.end(), [](const std::vector<int> &n) { return n.empty(); }))
+                return;
+            if (out.size() != layers.size())
+                out.assign(layers.size(), ExPolygons());
+            tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
+                for (size_t l = range.begin(); l < range.end(); ++l)
+                    if (!nodes[l].empty()) {
+                        Mask m(n_nodes, 0);
+                        for (int i : nodes[l])
+                            m[size_t(i)] = 1;
+                        if (!reach)
+                            append(out[l], offset_ex(mask_to_expolygons(m, grid), float(scale_(pitch))));
+                        else if (l > 0) {
+                            const ExPolygons carried = offset_ex(layers[l - 1]->lslices, float(scale_(layers[l]->height * std::tan(printable))));
+                            const ExPolygons beyond  = diff_ex(layers[l]->lslices, carried);
+                            append(out[l], diff_ex(intersection_ex(mask_to_expolygons(m, grid), carried), offset_ex(beyond, float(scale_(w)))));
+                        }
+                        out[l] = union_ex(out[l]);
+                    }
+            });
+        };
+        publish(self_supported, result.self_supported, false);
+        publish(flat, result.flat_printed, true);
+    };
     int                    n_comp = 0;
     const std::vector<int> label  = label_components(mask, grid.nx(), grid.ny(), n_comp);
     if (n_comp == 0) {
         report_fallback();
+        publish_self_supported();
         return more;
     }
 
@@ -916,8 +963,10 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
                                 << ", supported nodes: " << inward << " inward, " << short_contact << " short of contact, of " << nodes.size();
     }
     report_fallback();
-    if (result.patches.size() == first_patch)
+    if (result.patches.size() == first_patch) {
+        publish_self_supported();
         return more;
+    }
     if (free_mode) {
         const ExPolygons cover     = union_ex(capped_cover);
         const BoundingBox cover_box = get_extents(cover);
@@ -937,18 +986,7 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
                     for (ExtrusionEntityCollection &shell : patch.shell_paths)
                         erase_conformal(shell, layers[patch.host_layer]->print_z, 0.25 * pitch, under_floor);
         });
-        if (result.self_supported.size() != layers.size())
-            result.self_supported.assign(layers.size(), ExPolygons());
-        tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
-            for (size_t l = range.begin(); l < range.end(); ++l)
-                if (!self_supported[l].empty()) {
-                    Mask m(n_nodes, 0);
-                    for (int i : self_supported[l])
-                        m[size_t(i)] = 1;
-                    append(result.self_supported[l], offset_ex(mask_to_expolygons(m, grid), float(scale_(pitch))));
-                    result.self_supported[l] = union_ex(result.self_supported[l]);
-                }
-        });
+        publish_self_supported();
     }
 
     Mask all_mask(n_nodes, 0);

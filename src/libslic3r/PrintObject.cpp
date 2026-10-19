@@ -4609,14 +4609,22 @@ void PrintObject::project_and_append_custom_facets(
                 }
             }
         }
-    if (! seam && type == EnforcerBlockerType::BLOCKER && m_conformal && ! m_conformal->self_supported.empty()) {
+    if (! seam && type == EnforcerBlockerType::BLOCKER && m_conformal &&
+        (! m_conformal->self_supported.empty() || ! m_conformal->flat_printed.empty())) {
         std::vector<Polygons> enforcers = this->slice_support_enforcers();
         this->project_and_append_custom_facets(false, EnforcerBlockerType::ENFORCER, enforcers);
         out.resize(std::max(out.size(), m_layers.size()));
-        for (size_t i = 0; i < m_conformal->self_supported.size() && i < out.size(); ++ i)
+        for (size_t i = 0; i < out.size(); ++ i) {
+            Polygons blocked;
+            if (i < m_conformal->self_supported.size())
+                polygons_append(blocked, to_polygons(m_conformal->self_supported[i]));
+            if (i < m_conformal->flat_printed.size())
+                polygons_append(blocked, to_polygons(m_conformal->flat_printed[i]));
+            if (blocked.empty())
+                continue;
             polygons_append(out[i], i < enforcers.size() && ! enforcers[i].empty() ?
-                                        diff(to_polygons(m_conformal->self_supported[i]), expand(enforcers[i], float(scale_(0.3)))) :
-                                        to_polygons(m_conformal->self_supported[i]));
+                                        diff(blocked, expand(enforcers[i], float(scale_(0.3)))) : blocked);
+        }
     }
 }
 

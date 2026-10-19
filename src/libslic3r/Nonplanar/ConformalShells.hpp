@@ -128,6 +128,7 @@ struct ConformalResult
     std::vector<ExPolygons>       planar_exclusion;
     std::vector<ExPolygons>       bridged;
     std::vector<ExPolygons>       self_supported;
+    std::vector<ExPolygons>       flat_printed;
     FlowModStats                  flow_mod;
     std::vector<PatchBase>        base;
     std::vector<BaseInput>        base_inputs;
