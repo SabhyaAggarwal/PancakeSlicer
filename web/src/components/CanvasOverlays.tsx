@@ -141,6 +141,7 @@ export function AccessNotification() {
 }
 
 export function SliceNotification() {
+  const notice = useSyncExternalStore(subscribeAccess, accessSnapshot);
   const plateIndex = useStore((s) => s.plateIndex);
   const job = useStore((s) => s.job);
   const outside = useStore(outsideVolumeWarning);
@@ -180,7 +181,7 @@ export function SliceNotification() {
           </div>
         ),
       )}
-      {job.state === 'failed' && !/Access token required|Server storage full|Server busy\./.test(job.error ?? '') && !closed.has('error') && (
+      {job.state === 'failed' && notice?.message !== cleanError(job.error) && !/Access token required|Server storage full|Server busy\./.test(job.error ?? '') && !closed.has('error') && (
         <div className="notification failed">
           {close('error')}
           <div className="notif-title">Error:</div>

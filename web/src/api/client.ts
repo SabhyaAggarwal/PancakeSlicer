@@ -70,12 +70,10 @@ const realApi: Api = {
   },
   async saveUserPreset(p) {
     const r = await mutation('/api/user-presets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) });
-    if (r.status === 404) return (await mock()).saveUserPreset(p);
     await json(r);
   },
   async deleteUserPreset(type, name) {
-    const r = await mutation(`/api/user-presets/${type}/${encodeURIComponent(name)}`, { method: 'DELETE' });
-    if (r.status === 404) return (await mock()).deleteUserPreset(type, name);
+    await mutation(`/api/user-presets/${type}/${encodeURIComponent(name)}`, { method: 'DELETE' });
   },
   async submit(req, signal) {
     const fd = new FormData();

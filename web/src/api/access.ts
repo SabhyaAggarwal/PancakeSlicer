@@ -76,7 +76,11 @@ export async function mutation(path: string, init: RequestInit, retry = false, s
     accessNotice({ status: response.status, message });
     throw new Error(message);
   }
-  if (!response.ok && response.status !== 404) throw await responseError(response);
+  if (!response.ok) {
+    const error = await responseError(response);
+    accessNotice({ status: response.status, message: error.message });
+    throw error;
+  }
   return response;
 }
 
