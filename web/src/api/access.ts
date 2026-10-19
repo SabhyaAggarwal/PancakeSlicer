@@ -30,11 +30,31 @@ export function bootstrapAccessToken() {
   }
 }
 
-export async function mutation(path: string, init: RequestInit, retry = false, signal?: AbortSignal): Promise<Response> {
+function sendWithProgress(path: string, init: RequestInit, headers: Headers, onUpload: (fraction: number) => void): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(init.method ?? 'GET', path);
+    xhr.responseType = 'blob';
+    headers.forEach((value, key) => xhr.setRequestHeader(key, value));
+    xhr.upload.onprogress = (e) => e.lengthComputable && onUpload(e.loaded / e.total);
+    xhr.onload = () => {
+      const headers = new Headers();
+      for (const line of xhr.getAllResponseHeaders().trim().split(/\r?\n/)) {
+        const at = line.indexOf(':');
+        if (at > 0) headers.set(line.slice(0, at).trim(), line.slice(at + 1).trim());
+      }
+      resolve(new Response(xhr.response, { status: xhr.status, statusText: xhr.statusText, headers }));
+    };
+    xhr.onerror = xhr.onabort = () => reject(new TypeError('Failed to fetch'));
+    xhr.send(init.body as XMLHttpRequestBodyInit);
+  });
+}
+
+export async function mutation(path: string, init: RequestInit, retry = false, signal?: AbortSignal, onUpload?: (fraction: number) => void): Promise<Response> {
   const send = () => {
     const headers = new Headers(init.headers);
     if (token) headers.set('Authorization', `Bearer ${token}`);
-    return fetch(path, { ...init, headers });
+    return onUpload ? sendWithProgress(path, init, headers, onUpload) : fetch(path, { ...init, headers });
   };
   let response = await send();
   if ((response.status === 429 || response.status === 503) && retry) {

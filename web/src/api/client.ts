@@ -11,7 +11,7 @@ export interface Api {
   userPresets(): Promise<UserPreset[]>;
   saveUserPreset(p: UserPreset): Promise<void>;
   deleteUserPreset(type: PresetType, name: string): Promise<void>;
-  submit(req: JobRequest, signal?: AbortSignal): Promise<string>;
+  submit(req: JobRequest, signal?: AbortSignal, onUpload?: (fraction: number) => void): Promise<string>;
   status(id: string): Promise<JobStatus>;
   events(id: string, on: { progress(e: ProgressEvent): void; done(s: JobStatus): void; error(msg: string): void; log?(stream: string, line: string): void }): () => void;
   cancel(id: string): Promise<void>;
@@ -75,7 +75,7 @@ const realApi: Api = {
   async deleteUserPreset(type, name) {
     await mutation(`/api/user-presets/${type}/${encodeURIComponent(name)}`, { method: 'DELETE' });
   },
-  async submit(req, signal) {
+  async submit(req, signal, onUpload) {
     const fd = new FormData();
     for (const f of req.files) fd.append('files[]', f.blob, f.name);
     fd.append('vendor', req.vendor);
@@ -88,7 +88,7 @@ const realApi: Api = {
     if (req.project_instances) fd.append('project_instances', JSON.stringify(req.project_instances));
     if (req.events.length) fd.append('events', JSON.stringify(req.events));
     fd.append('output', req.output);
-    const j = await json<{ id: string }>(await mutation('/api/jobs', { method: 'POST', body: fd }, true, signal));
+    const j = await json<{ id: string }>(await mutation('/api/jobs', { method: 'POST', body: fd }, true, signal, onUpload));
     return j.id;
   },
   async status(id) {

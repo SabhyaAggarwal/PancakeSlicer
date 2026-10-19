@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import type { Config, ConfigValue, JobRequest, PresetCatalog, SystemPreset } from './api/types';
 import { sliceProgress } from './api/progress';
 import { connect } from './api/client';
@@ -106,6 +107,7 @@ function adoptProject(config: Config, slots: number) {
   const s = getState();
   const saved = normalizeConfig(config);
   const id = String(saved.printer_settings_id ?? '');
+  if (!id && saved.printer_model === undefined) return setState({ projectPresets: null, projectNotice: null });
   const sameModel = s.machines.filter((p) => String(p.config.printer_model) === String(saved.printer_model));
   const sameNozzle = sameModel.filter((p) => String(p.config.nozzle_diameter) === String(saved.nozzle_diameter));
   const printer = closestPreset(sameNozzle.length ? sameNozzle : sameModel.length ? sameModel : s.machines, saved, id);
@@ -137,6 +139,23 @@ function adoptProject(config: Config, slots: number) {
   });
 }
 
+function centreGeometryOnly() {
+  const box = new THREE.Box3();
+  for (const o of getState().objects) {
+    o.geometry.computeBoundingBox();
+    for (const i of o.instances) box.union(o.geometry.boundingBox!.clone().translate(new THREE.Vector3(i.x, i.y, i.z)));
+  }
+  const bed = bedArea(), xs = bed.map((p) => p.x), ys = bed.map((p) => p.y);
+  if (box.isEmpty() || !bed.length) return;
+  const dx = (Math.min(...xs) + Math.max(...xs) - box.min.x - box.max.x) / 2, dy = (Math.min(...ys) + Math.max(...ys) - box.min.y - box.max.y) / 2;
+  const shift = (o: PlateObject): PlateObject => {
+    const p = o.project!, [px, py] = p.plateOrigin ?? [0, 0];
+    return { ...o, instances: o.instances.map((i) => ({ ...i, x: i.x + dx, y: i.y + dy })),
+      project: { ...p, plateOrigin: [px - dx, py - dy], ...(p.origin ? { origin: [p.origin[0] + dx, p.origin[1] + dy, p.origin[2]] as [number, number, number] } : {}) } };
+  };
+  setState((st) => ({ objects: st.objects.map(shift), projectPlates: st.projectPlates.map((p) => ({ ...p, objects: p.objects.map(shift) })) }));
+}
+
 export async function openProject(file: File) {
   const s = getState();
   if ((s.objects.length || s.projectPlates.some((p) => p.objects.length)) && !window.confirm('Opening a project replaces the objects on the plate. Continue?')) return;
@@ -148,10 +167,12 @@ export async function openProject(file: File) {
       projectPlates: st.projectPlates.map((p) => ({ ...p, objects: p.objects.map((o) => o.id === id ? f(o) : o) })),
     }));
   };
+  let geometryOnly = false;
   try {
     await loadProject(file, {
       items(items: ProjectItem[], materials) {
         if (!items.length) return toast(`${file.name}: the project has no printable objects`);
+        geometryOnly = !materials.hasConfig && materials.plates.length === 1;
         const slots = Math.max(1, materials.colours.length, ...items.map((i) => i.extruder));
         adoptProject(materials.config, slots);
         objects = items.map((it) => ({
@@ -171,6 +192,7 @@ export async function openProject(file: File) {
         patch(i, (o) => ({ ...o, geometry, project: { ...o.project!, file: file.name, placeholder: false, origin: [centre.x, centre.y, centre.z] }, instances: [{ ...o.instances[0], x: centre.x, y: centre.y, z: centre.z }] })),
       missing: (i) => patch(i, (o) => ({ ...o, project: { ...o.project!, file: file.name, placeholder: true, missing: true } })),
     });
+    if (geometryOnly && getState().project === file) centreGeometryOnly();
   } catch (e) {
     toast(`${file.name}: ${e instanceof Error ? e.message : e}`);
   }
@@ -276,7 +298,8 @@ export async function slice() {
   try {
     const request = await jobRequest(s);
     if (generation !== sliceGeneration) return;
-    const id = await s.api.submit(request, submission.signal);
+    const id = await s.api.submit(request, submission.signal, (fraction) => generation === sliceGeneration &&
+      setState((st) => (st.job.state === 'submitting' ? { job: { ...st.job, pct: Math.round(fraction * 100) } } : {})));
     if (generation !== sliceGeneration) {
       await s.api.cancel(id);
       return;

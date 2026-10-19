@@ -9,6 +9,7 @@ export interface ProjectMaterials {
   colours: string[];
   matrix: number[] | null;
   multiplier: number | null;
+  hasConfig: boolean;
 }
 
 export interface ProjectItem {
@@ -203,6 +204,7 @@ export async function readProject(file: File): Promise<{ items: ProjectItem[]; m
   const colourValue = config.filament_colour;
   const colours = (Array.isArray(colourValue) ? colourValue : typeof colourValue === 'string' ? colourValue.split(';') : [])
     .map(String);
-  const materials = { plates, config, colours, matrix: numbers(config.flush_volumes_matrix), multiplier: numbers(config.flush_multiplier)?.[0] ?? null };
+  const materials = { plates, config, colours, matrix: numbers(config.flush_volumes_matrix), multiplier: numbers(config.flush_multiplier)?.[0] ?? null,
+    hasConfig: !!configBytes || !!entry('Metadata/Slic3r_PE.config') };
   return { items, materials, mesh };
 }

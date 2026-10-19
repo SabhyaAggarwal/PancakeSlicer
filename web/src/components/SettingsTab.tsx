@@ -1,4 +1,5 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
+import { accessSnapshot } from '../api/access';
 import type { ConfigValue, PresetType } from '../api/types';
 import { isDeferred, isHidden, modeVisible, OPTIONS, splitKey, useTab, type TabDesc, type TabLine } from '../options';
 import { effectiveConfig, getState, presetEdits, resolvePreset, saveUserPreset, setState, toast, useStore } from '../state/store';
@@ -56,6 +57,10 @@ export function SettingsTab({ type, slot = 0, compact }: { type: PresetType; slo
   const isUser = userPresets.some((u) => u.type === type && u.name === presetName);
   const modifiedCount = Object.keys(dirty).length;
 
+  const failed = (action: string, e: unknown) => {
+    const message = e instanceof Error ? e.message : String(e);
+    if (accessSnapshot()?.message !== message) toast(`${action} failed: ${message}`);
+  };
   const onSave = async () => {
     const suggested = isUser ? presetName : `${presetName} - Copy`;
     const name = window.prompt('Save preset as', suggested)?.trim();
@@ -64,14 +69,22 @@ export function SettingsTab({ type, slot = 0, compact }: { type: PresetType; slo
       toast('A system preset has this name; choose another.');
       return;
     }
-    await saveUserPreset(type, name, slot);
+    try {
+      await saveUserPreset(type, name, slot);
+    } catch (e) {
+      return failed('Saving the preset', e);
+    }
     toast(`Preset "${name}" saved`);
   };
   const onDelete = async () => {
     const s = getState();
     if (!isUser || !s.api || !window.confirm(`Delete the preset "${presetName}"?`)) return;
     const { base } = resolvePreset(s, type, presetName!);
-    await s.api.deleteUserPreset(type, presetName!);
+    try {
+      await s.api.deleteUserPreset(type, presetName!);
+    } catch (e) {
+      return failed('Deleting the preset', e);
+    }
     setState((st) => {
       const patch: Partial<typeof st> = { userPresets: st.userPresets.filter((u) => !(u.type === type && u.name === presetName)) };
       const fallback = base?.name ?? '';
