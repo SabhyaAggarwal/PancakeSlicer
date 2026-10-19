@@ -169,6 +169,25 @@ def overhang_bracket():
     return g.extrude_xz(prof, -10, 10)
 
 
+@part("flat90", "Wall shelf: 8 x 30 x 25 mm wall, 3 mm shelf 20 mm out at its top, flat 90 deg underside at 22 mm")
+def wall_shelf():
+    return g.extrude_xz([(0, 0), (8, 0), (8, 22), (28, 22), (28, 25), (0, 25)], -15, 15)
+
+
+@part("flat90", "T-table: 12 x 12 x 20 mm post, 42 x 42 x 3 mm plate, 15 mm flat 90 deg overhang on every side")
+def t_table():
+    post, plate, z0, z1 = 6.0, 21.0, 20.0, 23.0
+    sq = lambda r, z: [(-r, -r, z), (r, -r, z), (r, r, z), (-r, r, z)]
+    v = np.array(sq(post, 0) + sq(post, z0) + sq(plate, z0) + sq(plate, z1), float)
+    f = [(0, 2, 1), (0, 3, 2), (12, 13, 14), (12, 14, 15)]  # post bottom, plate top
+    for i in range(4):
+        j = (i + 1) % 4
+        f += [(i, j, 4 + j), (i, 4 + j, 4 + i)]            # post sides
+        f += [(8 + i, 8 + j, 12 + j), (8 + i, 12 + j, 12 + i)]  # plate sides
+        f += [(4 + i, 4 + j, 8 + j), (4 + i, 8 + j, 8 + i)]     # plate underside, the ring round the post
+    return g.Mesh(v, f)
+
+
 @part("slope", "Frustum with one face per slope: 15, 30, 40 and 50 deg sides, 20 x 20 flat top")
 def slope_frustum():
     sl = [15, 30, 40, 50]  # +X, +Y, -X, -Y

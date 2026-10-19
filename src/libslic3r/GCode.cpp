@@ -9003,6 +9003,7 @@ std::string GCode::rotary_move_safely(const ToolPose *target, const JointPose *s
     const double ceiling = std::max(m_nonplanar_ceiling, double(m_max_layer_z));
     const double clear   = 5.;
     const bool   table   = layout_is_table(kinematics->layout()) && ! geo.firmware_rtcp;
+    const bool   head    = ! layout_is_table(kinematics->layout());
     const Vec3d  o(0., 0., geo.table_height);
     double       high;
     if (table) {
@@ -9037,10 +9038,14 @@ std::string GCode::rotary_move_safely(const ToolPose *target, const JointPose *s
             r.z()   = std::max(r.z(), high);
             return r;
         }
-        return Vec3d(pose.tip.x(), pose.tip.y(), std::max(pose.tip.z(), high));
+        const Vec3d departed = pose.tip + (head && pose.axis.z() < 1. - EPSILON ? clear : 0.) * pose.axis;
+        return Vec3d(departed.x(), departed.y(), std::max(departed.z(), high));
     };
 
     std::string gcode;
+    const ToolPose pose = kinematics->forward(current);
+    if (head && pose.axis.z() < 1. - EPSILON)
+        m_writer.move_to_joints(gcode, joints_at(pose.tip + clear * pose.axis, current), "retract along the tool before turning");
     const JointPose up = joints_at(lifted(current), current);
     m_writer.move_to_joints(gcode, up, "lift to turn the rotary axes");
     JointPose turned = up;

@@ -17,6 +17,7 @@
 #include "libslic3r/Nonplanar/ConformalShells.hpp"
 #include "libslic3r/Nonplanar/HeadBoxLabel.hpp"
 #include "libslic3r/Nonplanar/HeadEnvelope.hpp"
+#include "libslic3r/Nonplanar/MultiplanarConfirm.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintBase.hpp"
 #include "libslic3r/PrintConfig.hpp"
@@ -289,6 +290,8 @@ ClearanceRepair::~ClearanceRepair() { m_print.m_clearance_repair = nullptr; }
 void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
 {
     trim_free_memory();
+    if (rotary_auto_measurement())
+        return;
     ClearanceRepair *self = print.m_clearance_repair;
     const auto       mode = print.config().nonplanar_collision_check.value;
     if (print.config().nonplanar_kinematics.value != RotaryLayout::None) {

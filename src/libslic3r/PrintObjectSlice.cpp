@@ -7,6 +7,7 @@
 #include <cassert>
 #include <cstdlib>
 #include <memory>
+#include <string>
 #include <math.h>
 #include <cmath>
 #include <iterator>
@@ -29,6 +30,7 @@
 #include "Nonplanar/HeightField.hpp"
 #include "Nonplanar/PatchTools.hpp"
 #include "Nonplanar/Multiplanar.hpp"
+#include "Nonplanar/MultiplanarConfirm.hpp"
 #include "Nonplanar/OrientationField.hpp"
 #include "MultiMaterialSegmentation.hpp"
 #include "ObjectID.hpp"
@@ -700,6 +702,17 @@ void PrintObject::slice()
 {
     if (! this->set_started(posSlice))
         return;
+    const NonplanarMode previous_mode = m_config.nonplanar_mode.value;
+    if (previous_mode == NonplanarMode::Off && Nonplanar::auto_rotary_requested(*this))
+        m_config.nonplanar_mode.value = NonplanarMode::Auto;
+    if (const std::string why = Nonplanar::auto_rotary_planar(*this); !why.empty()) {
+        m_config.nonplanar_mode.value = NonplanarMode::Off;
+        this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, why);
+    }
+    if (m_config.nonplanar_mode.value != previous_mode) {
+        m_slicing_params.valid = false;
+        this->update_slicing_parameters();
+    }
     m_print->set_status(5, L("Slicing mesh"), PrintBase::SlicingStatus::RELOAD_SCENE);
     std::vector<coordf_t> layer_height_profile;
     this->update_layer_height_profile(*this->model_object(), m_slicing_params, layer_height_profile);

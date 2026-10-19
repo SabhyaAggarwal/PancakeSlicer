@@ -7,6 +7,7 @@
 #include "Point.hpp"
 #include "Polygon.hpp"
 #include "Print.hpp"
+#include "Nonplanar/MultiplanarConfirm.hpp"
 #include "Nonplanar/ConformalShells.hpp"
 #include "Nonplanar/PatchTools.hpp"
 #include "BeltTransform.hpp"
@@ -1813,6 +1814,11 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
                     }
             }
     }
+
+    if (apply_status != APPLY_STATUS_UNCHANGED)
+        for (PrintObject *object : m_objects)
+            if (Nonplanar::auto_rotary_requested(*object))
+                update_apply_status(object->invalidate_step(posSlice));
 
     for (PrintObject *object : m_objects)
     {
