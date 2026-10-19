@@ -376,35 +376,12 @@ AtomPlacement atom_placement(const PrintObject &object, const AtomToolpath &tool
     return placement;
 }
 
-std::vector<std::string> apply_atom_toolpath(PrintObject &object, ConformalResult &result)
+void host_ordered_plan(PrintObject &object, const AtomToolpath &toolpath, const AtomPlacement &placement, ConformalResult &result)
 {
-    std::vector<std::string> warnings;
-    LayerPtrs               &layers = object.layers();
-    if (layers.empty() || object.num_printing_regions() == 0)
-        return warnings;
-    const PrintRegion &region   = object.printing_region(0);
-    const double       height   = object.config().layer_height.value;
-    const double       width    = region.flow(object, frSolidInfill, height).width();
-    const std::string &filename = object.config().nonplanar_atom_toolpath.value;
-    const AtomToolpath toolpath = load_atom_toolpath(filename, width, height);
-    const bool         rotary   = object.print()->config().nonplanar_kinematics.value != RotaryLayout::None;
-    const double       max_tilt = toolpath.max_tilt();
-    if (! rotary && max_tilt > UprightTolerance)
-        fail((boost::format("%1% tilts the tool by up to %2$.1f degrees, but this printer has no rotary axes. "
-                            "Run AtomSlicer with -U -t 0 -b 0 for a three-axis printer.") % filename % Geometry::rad2deg(max_tilt)).str());
-
-    const AtomPlacement placement = atom_placement(object, toolpath);
-    {
-        double              ground = 0.;
-        const BoundingBoxf3 mesh   = object.object_frame_mesh(ground).bounding_box();
-        const BoundingBoxf3 source = toolpath.deposition_bbox();
-        const Vec3d         ms = mesh.size(), ts = source.size();
-        const double        tol = std::max(1., 4. * width);
-        if (std::abs(std::max(ms.x(), ms.y()) - std::max(ts.x(), ts.y())) > tol || std::abs(ms.z() - source.max.z()) > tol)
-            warnings.push_back((boost::format("The Atomizer toolpath %1% spans %2$.1f x %3$.1f x %4$.1f mm, the object %5$.1f x %6$.1f x %7$.1f mm. "
-                                              "Was it sliced from this model?") % filename % ts.x() % ts.y() % source.max.z() % ms.x() % ms.y() % ms.z()).str());
-    }
-
+    LayerPtrs   &layers   = object.layers();
+    const double height   = object.config().layer_height.value;
+    const bool   rotary   = object.print()->config().nonplanar_kinematics.value != RotaryLayout::None;
+    const double max_tilt = toolpath.max_tilt();
     for (Layer *layer : layers) {
         for (LayerRegion *layerm : layer->regions()) {
             layerm->perimeters.clear();
@@ -418,6 +395,7 @@ std::vector<std::string> apply_atom_toolpath(PrintObject &object, ConformalResul
 
     ExtrusionEntityCollection paths = atom_conformal_paths(toolpath, placement, 0., erSolidInfill, rotary);
     result = ConformalResult();
+    result.ordered_plan = true;
     result.planar_exclusion.assign(layers.size(), ExPolygons());
     size_t host = 0;
     for (ExtrusionEntity *&entity : paths.entities) {
@@ -464,6 +442,38 @@ std::vector<std::string> apply_atom_toolpath(PrintObject &object, ConformalResul
         diag.max_slope_deg = Geometry::rad2deg(max_tilt);
         result.diagnostics.push_back(diag);
     }
+}
+
+std::vector<std::string> apply_atom_toolpath(PrintObject &object, ConformalResult &result)
+{
+    std::vector<std::string> warnings;
+    LayerPtrs               &layers = object.layers();
+    if (layers.empty() || object.num_printing_regions() == 0)
+        return warnings;
+    const PrintRegion &region   = object.printing_region(0);
+    const double       height   = object.config().layer_height.value;
+    const double       width    = region.flow(object, frSolidInfill, height).width();
+    const std::string &filename = object.config().nonplanar_atom_toolpath.value;
+    const AtomToolpath toolpath = load_atom_toolpath(filename, width, height);
+    const bool         rotary   = object.print()->config().nonplanar_kinematics.value != RotaryLayout::None;
+    const double       max_tilt = toolpath.max_tilt();
+    if (! rotary && max_tilt > UprightTolerance)
+        fail((boost::format("%1% tilts the tool by up to %2$.1f degrees, but this printer has no rotary axes. "
+                            "Run AtomSlicer with -U -t 0 -b 0 for a three-axis printer.") % filename % Geometry::rad2deg(max_tilt)).str());
+
+    const AtomPlacement placement = atom_placement(object, toolpath);
+    {
+        double              ground = 0.;
+        const BoundingBoxf3 mesh   = object.object_frame_mesh(ground).bounding_box();
+        const BoundingBoxf3 source = toolpath.deposition_bbox();
+        const Vec3d         ms = mesh.size(), ts = source.size();
+        const double        tol = std::max(1., 4. * width);
+        if (std::abs(std::max(ms.x(), ms.y()) - std::max(ts.x(), ts.y())) > tol || std::abs(ms.z() - source.max.z()) > tol)
+            warnings.push_back((boost::format("The Atomizer toolpath %1% spans %2$.1f x %3$.1f x %4$.1f mm, the object %5$.1f x %6$.1f x %7$.1f mm. "
+                                              "Was it sliced from this model?") % filename % ts.x() % ts.y() % source.max.z() % ms.x() % ms.y() % ms.z()).str());
+    }
+
+    host_ordered_plan(object, toolpath, placement, result);
     return warnings;
 }
 

@@ -121,6 +121,8 @@ set(lisbslic3r_sources
     Nonplanar/AdaptiveBands.hpp
     Nonplanar/AtomToolpath.cpp
     Nonplanar/AtomToolpath.hpp
+    Nonplanar/LeanVase.cpp
+    Nonplanar/LeanVase.hpp
     Nonplanar/AutoMode.cpp
     Nonplanar/AutoMode.hpp
     Nonplanar/AutoOrient.cpp

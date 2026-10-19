@@ -135,6 +135,7 @@ struct ConformalResult
     bool                          layer_changes_filament = false;
     std::vector<double>           event_cuts;
     std::vector<std::pair<double, unsigned int>> tool_changes;
+    bool                          ordered_plan = false;
     std::shared_ptr<ObjectMesh>   mesh;
 };
 

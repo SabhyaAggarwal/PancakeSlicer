@@ -51,4 +51,6 @@ AtomPlacement atom_placement(const PrintObject &object, const AtomToolpath &tool
 
 std::vector<std::string> apply_atom_toolpath(PrintObject &object, ConformalResult &result);
 
+void host_ordered_plan(PrintObject &object, const AtomToolpath &toolpath, const AtomPlacement &placement, ConformalResult &result);
+
 }

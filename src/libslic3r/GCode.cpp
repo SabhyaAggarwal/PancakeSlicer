@@ -3534,7 +3534,7 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
             "imex_mode_gcode", imex_active_mode_gcode, initial_extruder_id);
     const bool imported_rotary = m_writer.tool_kinematics().rotary_count() > 0 &&
         std::any_of(print.objects().begin(), print.objects().end(), [](const PrintObject *object) {
-            return !object->config().nonplanar_atom_toolpath.value.empty();
+            return !object->config().nonplanar_atom_toolpath.value.empty() || object->conformal().ordered_plan;
         });
     m_writer.set_inverse_time_retractions(imported_rotary);
     if (imported_rotary)
@@ -5610,6 +5610,7 @@ LayerResult GCode::process_layer(
     if (z_hope_type == ZHopType::zhtAuto || z_hope_type == ZHopType::zhtSpiral || z_hope_type == ZHopType::zhtSlope)
         auto_lift_type = LiftType::SpiralLift;
 
+    m_ordered_plan_layer = layer.object() != nullptr && layer.object()->conformal().ordered_plan;
     gcode += this->change_layer(print_z);
     update_layer_related_config(m_layer_index);
     update_placeholder_parser_with_variant_params();
@@ -7025,7 +7026,7 @@ std::string GCode::change_layer(coordf_t print_z)
 
     m_need_change_layer_lift_z = true;
 
-    if (m_writer.tool_kinematics().rotary_count() > 0 && !m_config.nonplanar_atom_toolpath.value.empty()) {
+    if (m_writer.tool_kinematics().rotary_count() > 0 && (!m_config.nonplanar_atom_toolpath.value.empty() || m_ordered_plan_layer)) {
         m_nominal_z = z;
         m_conformal_lift = false;
         return gcode;
@@ -7513,7 +7514,7 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                 auto         pass   = [&patch](size_t k) -> const ExtrusionEntityCollection & {
                     return k < patch.shell_paths.size() ? patch.shell_paths[k] : patch.ironing;
                 };
-                const bool imported = !object.config().nonplanar_atom_toolpath.value.empty();
+                const bool imported = !object.config().nonplanar_atom_toolpath.value.empty() || object.conformal().ordered_plan;
                 auto printed = [imported](const ExtrusionEntity *ee) -> const ExtrusionPathConformal * {
                     const auto *path = dynamic_cast<const ExtrusionPathConformal *>(ee);
                     return path != nullptr && (imported || unscale<double>(path->polyline.length()) >= Nonplanar::ConformalMinPath) ? path : nullptr;
@@ -7602,7 +7603,10 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                     m_conformal_pa_tracker->restore(gcode);
                 m_conformal_pa_tracker.reset();
                 gcode += this->nonplanar_patch_end();
-                gcode += this->rotary_hop(nullptr);
+                if (const std::string leave = this->rotary_hop(nullptr); !leave.empty())
+                    gcode += ";_NONPLANAR_BEGIN patch=" + std::to_string(patch.id) + " shell=" + std::to_string(patch.shell_paths.size() - 1) +
+                             " band=" + std::to_string(patch.band) + " rate=" + std::to_string(std::lround(this->conformal_segment_rate())) + "\n" +
+                             leave + ";_NONPLANAR_END\n";
                 m_conformal_scored = false;
                 m_conformal_band_patch = -1;
                 m_conformal_may_hang   = false;

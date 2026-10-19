@@ -22,6 +22,7 @@
 #include "Nonplanar/ConformalBottom.hpp"
 #include "Nonplanar/ConformalIroning.hpp"
 #include "Nonplanar/AtomToolpath.hpp"
+#include "Nonplanar/LeanVase.hpp"
 #include "Nonplanar/ConformalShells.hpp"
 #include "Nonplanar/PatchTools.hpp"
 #include "Nonplanar/Multiplanar.hpp"
@@ -735,6 +736,20 @@ void PrintObject::nonplanar_shells()
         m_conformal->event_cuts             = Nonplanar::event_cuts(*this);
         m_conformal->tool_changes           = Nonplanar::multi_as_single_tool_changes(*this);
     };
+    if (Nonplanar::lean_vase_considered(*this)) {
+        std::string                why;
+        const Nonplanar::AtomToolpath plan = Nonplanar::lean_vase_toolpath(*this, why);
+        if (!plan.points.empty()) {
+            m_print->set_status(40, L("Leaning the vase wall"));
+            m_conformal = std::make_unique<Nonplanar::ConformalResult>();
+            Nonplanar::host_ordered_plan(*this, plan, Nonplanar::AtomPlacement(), *m_conformal);
+            record_apply_inputs();
+            m_print->throw_if_canceled();
+            this->set_done(posNonplanar);
+            return;
+        }
+        BOOST_LOG_TRIVIAL(info) << "Lean vase: " << m_model_object->name << " keeps the spiral vase: " << why;
+    }
     if (m_field && m_config.nonplanar_atom_toolpath.value.empty()) {
         m_print->set_status(40, L("Slicing rotary curved layers"));
         for (Layer *layer : m_layers) {
