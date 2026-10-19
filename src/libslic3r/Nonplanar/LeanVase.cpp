@@ -44,6 +44,7 @@ constexpr double SeamScatter = 8.;
 constexpr double ScarfFloor  = 0.15;
 constexpr int    TiltSmooth  = 7;
 constexpr size_t MaxPoints   = 4000000;
+constexpr double LeanChord   = 1.5;
 constexpr double TableGap    = 0.5;
 std::optional<std::vector<Vec2d>> meridian(const indexed_triangle_set &mesh, double phi, double inset)
 {
@@ -111,8 +112,16 @@ Profile profile(std::vector<Vec2d> rz, double z_bottom, double h, double max_til
     p.lean.resize(n);
     p.tilt.resize(n);
     p.count.assign(n, 0.);
+    std::vector<double> arc(n, 0.);
+    for (size_t i = 1; i < n; ++i)
+        arc[i] = arc[i - 1] + (p.rz[i] - p.rz[i - 1]).norm();
     for (size_t i = 0; i < n; ++i) {
-        const Vec2d d = p.rz[std::min(i + 1, n - 1)] - p.rz[i > 0 ? i - 1 : 0];
+        size_t lo = i, hi = i;
+        while (lo > 0 && arc[i] - arc[lo] < LeanChord)
+            --lo;
+        while (hi + 1 < n && arc[hi] - arc[i] < LeanChord)
+            ++hi;
+        const Vec2d d = p.rz[std::max(hi, std::min(i + 1, n - 1))] - p.rz[std::min(lo, i > 0 ? i - 1 : 0)];
         p.lean[i]     = std::atan2(d.x(), d.y());
         p.tilt[i]     = std::abs(p.lean[i]) < Geometry::deg2rad(MinLeanDeg) ? 0. :
                         p.lean[i] > 0. ? std::min(p.lean[i], max_tilt) : std::max(p.lean[i], -Geometry::deg2rad(InwardDeg));
@@ -172,10 +181,18 @@ std::vector<Profile> trace_wall(const PrintObject &object, double w, double h, d
             return {};
         }
         meridians[j] = profile(std::move(*rz), z_bottom, h, max_tilt);
-        lean_max     = std::max(lean_max, *std::max_element(meridians[j].lean.begin(), meridians[j].lean.end()));
+    }
+    for (double z = z_bottom; z < top && lean_max <= threshold; z += 0.5) {
+        double sum = 0.;
+        for (const Profile &p : meridians) {
+            const auto   it = std::lower_bound(p.rz.begin(), p.rz.end(), z, [](const Vec2d &a, double v) { return a.y() < v; });
+            const size_t i  = std::min(size_t(it - p.rz.begin()), p.rz.size() - 1);
+            sum += p.lean[i];
+        }
+        lean_max = std::max(lean_max, sum / double(meridians.size()));
     }
     if (lean_max <= threshold) {
-        why = "the wall leans no further than the overhang threshold";
+        why = "the wall, averaged round, leans no further than the overhang threshold";
         return {};
     }
     return meridians;

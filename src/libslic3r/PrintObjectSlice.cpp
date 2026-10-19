@@ -1111,7 +1111,7 @@ void PrintObject::slice_volumes()
                 PrintObject::clip_multipart_objects, throw_on_cancel_callback);
             Nonplanar::HeightField planar_surface;
             Nonplanar::Mask planar_nodes;
-            if (config().nonplanar_mode.value == NonplanarMode::Auto && !Nonplanar::vase_with_conformal_roof(*this)) {
+            if (config().nonplanar_mode.value == NonplanarMode::Auto && !print->config().spiral_mode.value) {
                 const Nonplanar::ObjectMesh mesh(*this);
                 const auto bbox = mesh.mesh.bounding_box();
                 const double pitch = std::max(0.05, config().nonplanar_surface_resolution.value);

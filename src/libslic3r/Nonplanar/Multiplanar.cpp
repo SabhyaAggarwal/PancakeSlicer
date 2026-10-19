@@ -726,6 +726,8 @@ std::shared_ptr<const MultiplanarPlan> clip_multiplanar_slices(PrintObject &obje
     const std::unique_ptr<ToolKinematics> kinematics = make_tool_kinematics(object.print()->config());
     if (mode == NonplanarMode::Auto && (! kinematics || kinematics->rotary_count() == 0))
         return {};
+    if (mode == NonplanarMode::Auto && object.print()->config().spiral_mode.value)
+        return {};
     const indexed_triangle_set mesh = slicing_frame_mesh(object);
     if (mode == NonplanarMode::Auto && ! auto_rotary_candidate(object, mesh))
         return {};

@@ -1,5 +1,4 @@
 #include "MultiplanarConfirm.hpp"
-#include "LeanVase.hpp"
 #include "libslic3r/Point.hpp"
 #include "libslic3r/libslic3r.h"
 #include <boost/filesystem/operations.hpp>
@@ -526,7 +525,7 @@ std::string auto_rotary_planar(const PrintObject &object)
     if (rotary_measurement_depth > 0 || object.config().nonplanar_mode.value != NonplanarMode::Auto ||
         !object.config().nonplanar_atom_toolpath.value.empty())
         return {};
-    if (lean_vase_flares(object))
+    if (object.print()->config().spiral_mode.value)
         return {};
     const auto kinematics = make_tool_kinematics(object.print()->config());
     if (kinematics->rotary_count() == 0)

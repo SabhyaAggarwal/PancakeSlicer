@@ -113,10 +113,31 @@ bool vase_with_conformal_roof(const PrintObject &object)
 {
     if (!object.print()->config().spiral_mode)
         return false;
+    bool shells = false;
     for (size_t r = 0; r < object.num_printing_regions(); ++r)
-        if (top_shells_enabled(object.printing_region(r).config(), object.config()))
-            return true;
-    return false;
+        shells |= top_shells_enabled(object.printing_region(r).config(), object.config());
+    if (!shells)
+        return false;
+    const auto layers = object.layers();
+    if (layers.empty())
+        return false;
+    auto area = [](const Layer *layer) {
+        double a = 0.;
+        for (const LayerRegion *layerm : layer->regions())
+            for (const Surface &surface : layerm->slices.surfaces)
+                a += surface.expolygon.contour.area();
+        return a;
+    };
+    const double top_z = layers[layers.size() - 1]->print_z;
+    const double band  = std::max(3., 0.15 * (top_z - layers[0]->print_z));
+    auto at_depth = [&layers, top_z](double depth) {
+        size_t i = layers.size() - 1;
+        while (i > 0 && layers[i]->print_z > top_z - depth)
+            --i;
+        return i;
+    };
+    const double a_top = area(layers[layers.size() - 1]), a_mid = area(layers[at_depth(band / 3.)]), a_below = area(layers[at_depth(band)]);
+    return a_below > 0. && a_top < 0.5 * a_below && a_mid < 0.7 * a_below;
 }
 
 void prepare_vase_closure(PrintObject &object)

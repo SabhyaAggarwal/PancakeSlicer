@@ -788,14 +788,15 @@ void PrintObject::nonplanar_shells()
             return;
         }
     }
+    const bool open_vase = m_print->config().spiral_mode.value && !Nonplanar::vase_with_conformal_roof(*this);
     std::unique_ptr<Nonplanar::ConformalResult> lid;
-    if (enabled && m_print->config().spiral_mode.value) {
+    if (enabled && m_print->config().spiral_mode.value && !open_vase) {
         lid = std::make_unique<Nonplanar::ConformalResult>();
         Nonplanar::build_vase_lid(*this, *lid);
     }
     if (lid && !lid->patches.empty()) {
         m_conformal = std::move(lid);
-    } else if (enabled) {
+    } else if (enabled && !open_vase) {
         m_print->set_status(40, L("Generating curved top shells"));
         m_conformal = std::make_unique<Nonplanar::ConformalResult>(Nonplanar::build_conformal_shells(*this));
         for (Layer *layer : m_layers)
@@ -891,9 +892,10 @@ const Nonplanar::ConformalResult& PrintObject::conformal() const
 bool PrintObject::need_z_contouring() const
 {
     size_t num_regions = this->num_printing_regions();
+    const bool open_vase = m_print->config().spiral_mode.value && !Nonplanar::vase_with_conformal_roof(*this);
     for (size_t region_id = 0; region_id < num_regions; region_id++) {
         const auto &config = this->printing_region(region_id).config();
-        if (config.zaa_enabled || (Nonplanar::top_shells_enabled(config, this->config()) &&
+        if (config.zaa_enabled || (!open_vase && Nonplanar::top_shells_enabled(config, this->config()) &&
                                    Nonplanar::effective_fallback(config, this->config()) != NonplanarFallback::Planar))
             return true;
     }
