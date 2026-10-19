@@ -842,7 +842,6 @@ target_link_libraries(libslic3r
         TBB::tbb
         TBB::tbbmalloc
         ZLIB::ZLIB
-        OpenSSL::Crypto
     )
 
 if(NOT WIN32)

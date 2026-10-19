@@ -29,6 +29,7 @@
 #include <cstring>
 #include <cassert>
 #include <boost/locale/conversion.hpp>
+#include <boost/uuid/detail/md5.hpp>
 #include <iterator>
 #include <functional>
 #include <exception>
@@ -37,7 +38,6 @@
 #include <cstdarg>
 #include <iostream>
 #include <map>
-#include <openssl/md5.h>
 #include <set>
 #include <stdio.h>
 #include <filesystem>
@@ -1724,21 +1724,22 @@ bool makedir(const std::string path) {
 
 bool bbl_calc_md5(std::string &filename, std::string &md5_out)
 {
-    unsigned char digest[16];
-    MD5_CTX       ctx;
-    MD5_Init(&ctx);
-    boost::nowide::ifstream ifs(filename, std::ios::binary);
-    std::string                 buf(64 * 1024, 0);
-    const std::size_t &         size      = boost::filesystem::file_size(filename);
-    std::size_t                 left_size = size;
+    // Boost's MD5 rather than OpenSSL's keeps libslic3r free of the GPL-incompatible OpenSSL licence.
+    boost::uuids::detail::md5 md5;
+    boost::nowide::ifstream   ifs(filename, std::ios::binary);
+    std::string               buf(64 * 1024, 0);
+    boost::filesystem::file_size(filename);
     while (ifs) {
         ifs.read(buf.data(), buf.size());
-        int read_bytes = ifs.gcount();
-        MD5_Update(&ctx, (unsigned char *) buf.data(), read_bytes);
+        md5.process_bytes(buf.data(), size_t(ifs.gcount()));
     }
-    MD5_Final(digest, &ctx);
+    boost::uuids::detail::md5::digest_type digest;
+    md5.get_digest(digest);
+    static_assert(sizeof(digest) == 16, "an MD5 digest is 16 bytes");
+    constexpr int elements = int(sizeof(digest) / sizeof(digest[0]));
+    constexpr int width    = 32 / elements;
     char md5_str[33];
-    for (int j = 0; j < 16; j++) { sprintf(&md5_str[j * 2], "%02X", (unsigned int) digest[j]); }
+    for (int j = 0; j < elements; j++) { sprintf(&md5_str[j * width], "%0*X", width, (unsigned int) digest[j]); }
     md5_out = std::string(md5_str);
     return true;
 }
