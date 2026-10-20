@@ -700,6 +700,27 @@ void groupingVolumesForBrim(PrintObject* object, LayerPtrs& layers, int firstLay
     reGroupingLayerPolygons(object->firstLayerObjGroupsMod(), layers.front()->lslices, scaled_resolution);
 }
 
+static constexpr double MinAutoSupportOverhangArea = 20.;
+static double overhang_area(const PrintObject &object)
+{
+    if (object.model_object()->instances.empty())
+        return 0.;
+    TriangleMesh mesh = object.model_object()->raw_mesh();
+    mesh.transform(object.model_object()->instances.front()->get_matrix());
+    const double threshold = object.config().support_threshold_angle.value > 0 ? object.config().support_threshold_angle.value : 30.;
+    const double down      = -std::cos(threshold * M_PI / 180.);
+    const float  bottom    = mesh.bounding_box().min.z();
+    double       area      = 0.;
+    for (const stl_triangle_vertex_indices &face : mesh.its.indices) {
+        const Vec3f a = mesh.its.vertices[face[0]], b = mesh.its.vertices[face[1]], c = mesh.its.vertices[face[2]];
+        const Vec3f n = (b - a).cross(c - a);
+        const float twice = n.norm();
+        if (twice > 0.f && n.z() / twice < down && std::min({ a.z(), b.z(), c.z() }) > bottom + 0.5f)
+            area += 0.5 * twice;
+    }
+    return area;
+}
+
 void PrintObject::slice()
 {
     if (! this->set_started(posSlice))
@@ -707,6 +728,14 @@ void PrintObject::slice()
     const NonplanarMode previous_mode = m_config.nonplanar_mode.value;
     if (previous_mode == NonplanarMode::Off && Nonplanar::auto_rotary_requested(*this))
         m_config.nonplanar_mode.value = NonplanarMode::Auto;
+    if (m_auto_support_applied) {
+        m_config.enable_support.value = false;
+        m_config.support_type.value   = m_auto_support_type;
+        m_config.support_style.value  = m_auto_support_style;
+        m_config.support_critical_regions_only.value = m_auto_support_critical;
+        m_auto_support_applied        = false;
+    }
+    m_auto_support = false;
     if (const std::string why = Nonplanar::auto_rotary_planar(*this); !why.empty()) {
         m_config.nonplanar_mode.value = NonplanarMode::Off;
         this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, why);
@@ -824,6 +853,13 @@ void PrintObject::slice()
             m_belt_floor_z_shift_cached      = m_slicing_params.belt_floor_z_shift;
             m_belt_floor_z_shift_cache_valid = true;
         }
+    }
+
+    if (!m_config.enable_support.value && !m_layers.empty() && !Nonplanar::rotary_auto_measurement() &&
+        (m_config.nonplanar_mode.value == NonplanarMode::Auto || Nonplanar::auto_rotary_requested(*this))) {
+        m_auto_support_need = this->is_support_necessary();
+        m_auto_support      = m_auto_support_need != NoNeedSupp ||
+                              (m_config.nonplanar_mode.value == NonplanarMode::Off && overhang_area(*this) >= MinAutoSupportOverhangArea);
     }
 
     this->set_done(posSlice);

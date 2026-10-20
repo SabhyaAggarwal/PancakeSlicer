@@ -999,6 +999,18 @@ void PrintObject::generate_support_material(bool with_belt_brim)
 {
     if (this->set_started(posSupportMaterial)) {
         this->clear_support_layers();
+        if (m_auto_support && !m_auto_support_applied && !m_config.enable_support.value) {
+            m_auto_support_type           = m_config.support_type.value;
+            m_auto_support_style          = m_config.support_style.value;
+            m_auto_support_critical       = m_config.support_critical_regions_only.value;
+            m_auto_support_applied        = true;
+            m_config.enable_support.value = true;
+            m_config.support_type.value   = stTreeAuto;
+            m_config.support_critical_regions_only.value = m_config.nonplanar_mode.value == NonplanarMode::Auto;
+            m_config.support_style.value  = smsTreeHybrid;
+            m_slicing_params.valid = false;
+            this->update_slicing_parameters();
+        }
 
         if(!has_support() && !m_print->get_no_check_flag()) {
             m_print->set_status(50, L("Checking support necessity"));
@@ -1032,6 +1044,37 @@ void PrintObject::generate_support_material(bool with_belt_brim)
             m_print->set_status(50, L("Generating support"));
 
             this->_generate_support_material();
+            if (m_auto_support_applied) {
+                constexpr double MinAutoSupportVolume = 100.;
+                double           volume               = 0.;
+                for (const SupportLayer *layer : m_support_layers)
+                    volume += layer->support_fills.total_volume();
+                std::string message;
+                if (volume < MinAutoSupportVolume) {
+                    this->clear_support_layers();
+                    m_config.enable_support.value = false;
+                    m_config.support_type.value   = m_auto_support_type;
+                    m_config.support_style.value  = m_auto_support_style;
+                    m_config.support_critical_regions_only.value = m_auto_support_critical;
+                    m_auto_support_applied        = false;
+                    m_slicing_params.valid        = false;
+                    this->update_slicing_parameters();
+                    if (m_auto_support_need != NoNeedSupp) {
+                        message = Slic3r::format(L("It seems object %s has %s. Please re-orient the object or enable support generation."),
+                                                 this->model_object()->name,
+                                                 m_auto_support_need == SharpTail ? L("floating regions") : L("floating cantilever"));
+                        this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, message, PrintStateBase::SlicingNeedSupportOn);
+                    }
+                } else {
+                    message = (boost::format(_u8L("Planar fallback: tree support enabled for %1% (%2$.0f mm3).")) %
+                               this->model_object()->name % volume).str();
+                    this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, message);
+                }
+                BOOST_LOG_TRIVIAL(warning) << "Auto support " << this->model_object()->name << ": " << volume << " mm3 kept "
+                                           << m_auto_support_applied;
+            }
+        }
+        if ((this->has_support() && m_layers.size() > 1) || (this->has_raft() && !m_layers.empty())) {
             Nonplanar::contour_support_interface(*this);
             if (Nonplanar::conformal_support_wanted(*this)) {
                 const bool fresh = !m_conformal;
@@ -1444,6 +1487,16 @@ bool PrintObject::invalidate_state_by_config_options(
 
     std::vector<PrintObjectStep> steps;
     bool invalidated = false;
+    if (m_auto_support_applied && std::any_of(opt_keys.begin(), opt_keys.end(), [](const t_config_option_key &key) {
+            return key == "enable_support" || key == "support_type" || key == "support_style" || key == "support_critical_regions_only";
+        })) {
+        m_config.enable_support.value                = false;
+        m_config.support_type.value                  = m_auto_support_type;
+        m_config.support_style.value                 = m_auto_support_style;
+        m_config.support_critical_regions_only.value = m_auto_support_critical;
+        m_auto_support_applied                       = false;
+        steps.emplace_back(posSlice);
+    }
     static const std::set<std::string> low_plane_keys = { "nonplanar_top_shells", "nonplanar_fallback", "nonplanar_shell_layer_height",
                                                           "wall_loops", "inner_wall_line_width", "top_surface_line_width" };
     static const std::set<std::string> deform_keys = {
@@ -1576,6 +1629,8 @@ bool PrintObject::invalidate_state_by_config_options(
                 }
         } else if (opt_key == "enable_support") {
             steps.emplace_back(posSupportMaterial);
+            if (m_auto_support)
+                steps.emplace_back(posSlice);
             if (m_config.adaptive_layer_height_error.value > 0. || m_config.overhang_layer_contact.value > 0.)
                 steps.emplace_back(posSlice);
             bool clip = m_config.nonplanar_mode.value == NonplanarMode::Auto;
@@ -4646,7 +4701,7 @@ void PrintObject::project_and_append_custom_facets(
             }
         }
     if (! seam && type == EnforcerBlockerType::BLOCKER && m_conformal &&
-        (! m_conformal->self_supported.empty() || ! m_conformal->flat_printed.empty())) {
+        (! m_conformal->self_supported.empty() || ! m_conformal->flat_printed.empty() || ! m_conformal->bridged.empty())) {
         std::vector<Polygons> enforcers = this->slice_support_enforcers();
         this->project_and_append_custom_facets(false, EnforcerBlockerType::ENFORCER, enforcers);
         out.resize(std::max(out.size(), m_layers.size()));
@@ -4656,6 +4711,8 @@ void PrintObject::project_and_append_custom_facets(
                 polygons_append(blocked, to_polygons(m_conformal->self_supported[i]));
             if (i < m_conformal->flat_printed.size())
                 polygons_append(blocked, to_polygons(m_conformal->flat_printed[i]));
+            if (i < m_conformal->bridged.size())
+                polygons_append(blocked, to_polygons(m_conformal->bridged[i]));
             if (blocked.empty())
                 continue;
             polygons_append(out[i], i < enforcers.size() && ! enforcers[i].empty() ?

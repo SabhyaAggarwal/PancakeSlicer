@@ -523,6 +523,12 @@ private:
     std::vector<BeltBrimBand>               m_belt_brim_prologue;
     std::shared_ptr<TreeSupportData>        m_tree_support_preview_cache;
     bool m_auto_z_contouring = false;
+    bool                 m_auto_support = false;
+    bool                 m_auto_support_applied = false;
+    SupportNecessaryType m_auto_support_need = NoNeedSupp;
+    SupportType          m_auto_support_type{};
+    SupportMaterialStyle m_auto_support_style{};
+    bool                 m_auto_support_critical = false;
     std::unique_ptr<Nonplanar::ConformalResult> m_conformal;
     std::shared_ptr<Nonplanar::RepairHints>     m_nonplanar_repair;
     std::shared_ptr<const Nonplanar::MultiplanarPlan> m_multiplanar;
