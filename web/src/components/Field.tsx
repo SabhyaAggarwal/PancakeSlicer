@@ -1,8 +1,8 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import type { ConfigValue, PresetType } from '../api/types';
 import { normalizeConfigValue, toolValue } from '../config-values';
 import { OPTIONS, splitKey, type OptionDef } from '../options';
-import { resetOption, setOption } from '../state/store';
+import { effectiveConfig, getState, resetOption, setOption, useStore } from '../state/store';
 import { Icon } from './Icon';
 
 const NUMERIC = new Set(['float', 'floats', 'int', 'ints', 'percent', 'percents', 'float_or_percent', 'floats_or_percents']);
@@ -24,11 +24,11 @@ const asText = (v: unknown): string => v == null ? '' : Array.isArray(v) ? v.map
 
 const CHOICE_HINTS: Record<string, Record<string, string>> = {
   nonplanar_mode: {
-    off: 'Flat layers only, as standard OrcaSlicer prints.',
-    auto: 'Curves tops and overhangs wherever the nozzle clears the part. Recommended.',
-    manual: 'Uses the curved-layer settings below exactly as set.',
-    multiplanar: 'Flat layers in tilted chunks, so overhangs need less support.',
-    field: 'The whole part in curved layers. Needs a printer with two rotary axes.',
+    off: 'Standard: flat layers, like any slicer.',
+    auto: 'Auto: chooses per part between curved tops, whole-part curved layers and flat.',
+    manual: 'Custom: the curved-layer settings below, exactly as set.',
+    multiplanar: 'Tilted chunks: the bed tilts so each chunk prints its overhangs upright.',
+    field: 'Rotary curved layers: every layer curved, the table keeping each line level.',
   },
 };
 
@@ -71,17 +71,17 @@ export const Field = memo(function Field(props: {
   const checked = !props.overrideDisabled && value != null && value !== 'nil' && value !== '';
   const inherited = props.inheritedValue ?? OPTIONS[key.replace(/^filament_/, '')]?.default;
   const fallback = elementOf(inherited as ConfigValue | undefined, idx, vector) ?? '0';
-  const tooltip = `${props.tooltip ?? def.tooltip ?? ''}\n\nparameter name: ${key}`.trim();
   const hint = CHOICE_HINTS[key]?.[asText(value)];
+  const tooltip = `${hint ? `${hint}\n\n` : ''}${props.tooltip ?? def.tooltip ?? ''}\n\nparameter name: ${key}`.trim();
 
   return (
-    <div className={`opt-line ${def.full_width || def.multiline ? 'full' : ''}`}>
+    <div className={`opt-line ${def.full_width || def.multiline ? 'full' : ''}`} data-opt={key}>
       <span className={`opt-label ${modified ? 'modified' : ''}`} title={tooltip}>
         {def.nullable && <input className="nullable-toggle" type="checkbox" aria-label={`Override ${label}`} checked={checked} disabled={props.overrideDisabled}
         onChange={(e) => commit(e.target.checked ? fallback : 'nil')} />}
         {label}
       </span>
-      <fieldset className="opt-field" disabled={props.disabled || (def.nullable && !checked)}>
+      <fieldset className="opt-field" title={hint} disabled={props.disabled || (def.nullable && !checked)}>
         {props.widget ?? <Widget def={def} value={def.nullable && !checked ? fallback : value} onCommit={commit} />}
         {def.sidetext && <span className="opt-side">{def.sidetext}</span>}
       </fieldset>
@@ -93,13 +93,30 @@ export const Field = memo(function Field(props: {
         )}
         {props.extra}
       </span>
-      {hint && <span className="opt-hint">{hint}</span>}
     </div>
   );
 });
 
+const FILAMENT_SLOT_KEYS = new Set(['support_filament', 'support_interface_filament', 'wipe_tower_filament', 'outer_wall_filament_id',
+  'inner_wall_filament_id', 'sparse_infill_filament_id', 'internal_solid_filament_id', 'top_surface_filament_id', 'bottom_surface_filament_id']);
+
+function SlotChoice({ value, onCommit }: { value: string; onCommit: (v: ConfigValue) => void }) {
+  const slots = useStore((s) => s.filamentSlots);
+  useStore((s) => s.filamentEdits);
+  const type = (i: number) => { const t = effectiveConfig(getState(), 'filament', i).filament_type; return String(Array.isArray(t) ? t[0] : t ?? ''); };
+  const known = value === '0' || (Number(value) >= 1 && Number(value) <= slots.length);
+  return (
+    <select className="combo" value={value} onChange={(e) => onCommit(e.target.value)}>
+      <option value="0">Default</option>
+      {slots.map((_, i) => <option key={i} value={String(i + 1)}>{i + 1}: {type(i)}</option>)}
+      {!known && <option value={value}>{value}</option>}
+    </select>
+  );
+}
+
 function Widget({ def, value, onCommit }: { def: OptionDef; value: ConfigValue | undefined; onCommit: (v: ConfigValue) => void }) {
   const base = def.type.replace(/s$/, '');
+  if (FILAMENT_SLOT_KEYS.has(def.key)) return <SlotChoice value={asText(value) || '0'} onCommit={onCommit} />;
   if (base === 'bool') {
     const on = value === true || value === 'true' || value === '1' || value === 1;
     return (
@@ -131,14 +148,17 @@ function Widget({ def, value, onCommit }: { def: OptionDef; value: ConfigValue |
   if (def.multiline || (base === 'string' && /gcode|notes|post_process/.test(def.key))) {
     return <TextBox value={asText(value)} multiline onCommit={onCommit} readOnly={def.readonly} />;
   }
-  return <TextBox value={asText(value)} numeric={NUMERIC.has(def.type)} def={def} onCommit={onCommit} readOnly={def.readonly} />;
+  return <TextBox value={asText(value)} numeric={NUMERIC.has(def.type)} spin={base === 'int'} def={def} onCommit={onCommit} readOnly={def.readonly} />;
 }
 
-function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean; def?: OptionDef; readOnly?: boolean; list?: string; onCommit: (v: ConfigValue) => void }) {
+function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean; spin?: boolean; def?: OptionDef; readOnly?: boolean; list?: string; onCommit: (v: ConfigValue) => void }) {
   const [text, setText] = useState(props.value);
   const [bad, setBad] = useState(false);
+  const latest = useRef(text);
+  latest.current = text;
   useEffect(() => setText(props.value), [props.value]);
   const commit = () => {
+    const text = latest.current;
     if (text === props.value) return;
     if (props.numeric && props.def) {
       const pct = text.trim().endsWith('%');
@@ -152,9 +172,15 @@ function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean;
   };
   if (props.multiline)
     return <textarea className="text multiline" value={text} readOnly={props.readOnly} spellCheck={false} onChange={(e) => setText(e.target.value)} onBlur={commit} />;
+  const spin = props.spin && props.def ? {
+    type: 'number', step: 1, min: props.def.min, max: props.def.max,
+    onMouseUp: () => setTimeout(commit),
+    onKeyUp: (e: React.KeyboardEvent) => (e.key === 'ArrowUp' || e.key === 'ArrowDown') && commit(),
+  } : {};
   return (
     <input
-      className={`text ${props.numeric ? 'num' : ''} ${bad ? 'bad' : ''}`}
+      {...spin}
+      className={`text ${props.numeric ? 'num' : ''} ${props.spin ? 'spin' : ''} ${bad ? 'bad' : ''}`}
       value={text}
       readOnly={props.readOnly}
       list={props.list}

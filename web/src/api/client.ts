@@ -88,7 +88,12 @@ const realApi: Api = {
     if (req.project_instances) fd.append('project_instances', JSON.stringify(req.project_instances));
     if (req.events.length) fd.append('events', JSON.stringify(req.events));
     fd.append('output', req.output);
-    const j = await json<{ id: string }>(await mutation('/api/jobs', { method: 'POST', body: fd }, true, signal, onUpload));
+    if (req.priority) fd.append('priority', req.priority);
+    if (req.project_settings) fd.append('project_settings', JSON.stringify(req.project_settings));
+    if (req.project_edits) fd.append('project_edits', JSON.stringify(req.project_edits));
+    if (req.preview_budget !== undefined) fd.append('budget', String(req.preview_budget));
+    const url = req.preview_budget !== undefined ? '/api/patch-preview' : '/api/jobs';
+    const j = await json<{ id: string }>(await mutation(url, { method: 'POST', body: fd }, req.preview_budget === undefined, signal, onUpload, req.preview_budget !== undefined));
     return j.id;
   },
   async status(id) {
@@ -161,6 +166,10 @@ const realApi: Api = {
 
 const mock = () => import('./mock').then((m) => m.mockApi);
 
+export let toolFeatures: Record<string, unknown> = {};
+export const canLoadStep = () => toolFeatures.step === true;
+export const canEditProject = () => toolFeatures.edit === true;
+
 export async function connect(): Promise<Api> {
   bootstrapAccessToken();
   if (new URLSearchParams(location.search).has('mock')) return mock();
@@ -170,7 +179,10 @@ export async function connect(): Promise<Api> {
     const r = await fetch('/api/healthz', { signal: ctl.signal, method: 'GET' });
     clearTimeout(t);
     const type = r.headers.get('content-type') ?? '';
-    if (r.ok && type.includes('json')) return realApi;
+    if (r.ok && type.includes('json')) {
+      toolFeatures = ((await r.json()) as { tool_features?: Record<string, unknown> }).tool_features ?? {};
+      return realApi;
+    }
   } catch {
   }
   return mock();

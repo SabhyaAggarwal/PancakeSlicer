@@ -1,9 +1,11 @@
 import * as THREE from 'three';
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { ConfigValue, PlateJson } from '../api/types';
 import { toolValue } from '../options';
-import type { Instance, PlateObject } from '../state/store';
+import type { Instance, PlateObject, Volume } from '../state/store';
 import type { Bvh } from './bvh';
 import type { MeshData, MeshIn, MeshOut } from './mesh.worker';
+import type { ShellsIn, ShellsOut } from './shells.worker';
 import type { ProjectItem, ProjectMaterials } from './threemf';
 
 const DEG = Math.PI / 180;
@@ -35,7 +37,29 @@ function toGeometry(d: MeshData): THREE.BufferGeometry {
   geo.setIndex(new THREE.BufferAttribute(d.index, 1));
   geo.boundingBox = new THREE.Box3(new THREE.Vector3(...d.min), new THREE.Vector3(...d.max));
   geo.boundingSphere = new THREE.Sphere(geo.boundingBox.getCenter(new THREE.Vector3()), d.radius);
+  checkShells(geo);
   return geo;
+}
+
+let shellsWorker: Worker | null = null;
+const shellsPending = new Map<number, THREE.BufferGeometry>();
+let shellsChecked: ((geo: THREE.BufferGeometry) => void) | null = null;
+export const onShellsChecked = (f: (geo: THREE.BufferGeometry) => void) => void (shellsChecked = f);
+
+function checkShells(geo: THREE.BufferGeometry) {
+  if (!shellsWorker) {
+    shellsWorker = new Worker(new URL('./shells.worker.ts', import.meta.url), { type: 'module' });
+    shellsWorker.onmessage = (e: MessageEvent<ShellsOut>) => {
+      const g = shellsPending.get(e.data.id);
+      shellsPending.delete(e.data.id);
+      if (!g) return;
+      g.userData.printInPlaceGap = e.data.gap;
+      shellsChecked?.(g);
+    };
+  }
+  const id = nextRequest++;
+  shellsPending.set(id, geo);
+  shellsWorker.postMessage({ id, positions: geo.attributes.position.array as Float32Array, index: geo.index!.array as Uint32Array } satisfies ShellsIn);
 }
 
 function setBvh(geo: THREE.BufferGeometry, m: { bvh: Bvh; ms: number }) {
@@ -146,7 +170,47 @@ export function instanceBox(o: PlateObject, inst: Instance): THREE.Box3 {
   const m = objectMatrix(o).premultiply(new THREE.Matrix4().makeRotationZ(inst.rotZ * DEG));
   const b = transformedBox(o.geometry, m, `${o.rotX},${o.rotY},${o.scale},${inst.rotZ}`).clone();
   const c = new THREE.Vector3((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, 0);
-  return b.translate(new THREE.Vector3(inst.x, inst.y, inst.z ?? 0).sub(c));
+  b.translate(new THREE.Vector3(inst.x, inst.y, inst.z ?? 0).sub(c));
+  for (const v of o.volumes ?? []) if (v.type === 'part') b.union(volumeBox(o, inst, v));
+  return b;
+}
+
+export function volumeWorld(o: PlateObject, inst: Instance, v: Volume): THREE.Matrix4 {
+  return instanceMatrix(o, inst).multiply(new THREE.Matrix4().fromArray(v.matrix));
+}
+
+export function volumeBox(o: PlateObject, inst: Instance, v: Volume): THREE.Box3 {
+  const m = volumeWorld(o, inst, v);
+  return transformedBox(v.geometry, m, m.elements.join());
+}
+
+export function volumeGeometry(position: Float32Array, index: Uint32Array | Uint16Array | null, normal?: Float32Array): THREE.BufferGeometry {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(position, 3));
+  if (index) geo.setIndex(new THREE.BufferAttribute(index, 1));
+  if (normal) geo.setAttribute('normal', new THREE.BufferAttribute(normal, 3));
+  else geo.computeVertexNormals();
+  geo.computeBoundingBox();
+  const c = geo.boundingBox!.getCenter(new THREE.Vector3());
+  if (c.lengthSq() > 0) {
+    geo.translate(-c.x, -c.y, -c.z);
+    geo.computeBoundingBox();
+  }
+  geo.computeBoundingSphere();
+  return geo;
+}
+
+export function primitiveGeometry(shape: 'Cube' | 'Cylinder' | 'Sphere' | 'Cone' | 'Disc' | 'Torus', side: number): THREE.BufferGeometry {
+  const r = side / 2;
+  const g = shape === 'Cube' ? new THREE.BoxGeometry(side, side, side)
+    : shape === 'Cylinder' ? new THREE.CylinderGeometry(r, r, side, 120).rotateX(Math.PI / 2)
+    : shape === 'Sphere' ? new THREE.SphereGeometry(r, 90, 45).rotateX(Math.PI / 2)
+    : shape === 'Cone' ? new THREE.ConeGeometry(r, side, 120).rotateX(Math.PI / 2)
+    : shape === 'Disc' ? new THREE.CylinderGeometry(r, r, 0.2, 120).rotateX(Math.PI / 2)
+    : new THREE.TorusGeometry(r, side / 8, 60, 120);
+  const welded = mergeVertices(new THREE.BufferGeometry().setAttribute('position', g.getAttribute('position')).setIndex(g.index), 1e-4);
+  g.dispose();
+  return volumeGeometry(welded.attributes.position.array as Float32Array, welded.index!.array as Uint32Array);
 }
 
 export function objectSize(o: PlateObject): THREE.Vector3 {
@@ -154,11 +218,22 @@ export function objectSize(o: PlateObject): THREE.Vector3 {
   return b.getSize(new THREE.Vector3());
 }
 
-export function bakeStl(o: PlateObject): Promise<Blob> {
+export function bakeStl(o: PlateObject, matrix = objectMatrix(o)): Promise<Blob> {
   const pos = o.geometry.attributes.position.array as Float32Array;
   const index = (o.geometry.index?.array as Uint32Array | Uint16Array | undefined) ?? null;
   return new Promise((resolve, reject) =>
-    request({ type: 'bake', positions: pos, index, matrix: objectMatrix(o).elements }, (m) => {
+    request({ type: 'bake', positions: pos, index, matrix: matrix.elements }, (m) => {
+      if (m.type === 'blob') resolve(m.blob);
+      else if (m.type === 'error') reject(new Error(m.message));
+    }),
+  );
+}
+
+function bakeVolume(o: PlateObject, v: Volume): Promise<Blob> {
+  const index = (v.geometry.index?.array as Uint32Array | Uint16Array | undefined) ?? null;
+  return new Promise((resolve, reject) =>
+    request({ type: 'bake', positions: v.geometry.attributes.position.array as Float32Array, index,
+      matrix: objectMatrix(o).multiply(new THREE.Matrix4().fromArray(v.matrix)).elements }, (m) => {
       if (m.type === 'blob') resolve(m.blob);
       else if (m.type === 'error') reject(new Error(m.message));
     }),
@@ -172,14 +247,25 @@ export function plateDescription(objects: PlateObject[]): PlateJson {
     let file = `${o.name.replace(/[^A-Za-z0-9_.-]+/g, '_').replace(/\.(stl|obj)$/i, '')}.stl`;
     for (let k = 2; used.has(file); k++) file = file.replace(/(_\d+)?\.stl$/, `_${k}.stl`);
     used.add(file);
+    const settings = (c: PlateObject['settings']) => Object.fromEntries(Object.entries(c).map(([k, v]) => [k, toolValue(k, v)]));
+    const place = (i: Instance) => {
+      if (!o.volumes?.some((v) => v.type === 'part')) return { x: i.x, y: i.y, z: i.z ?? 0 };
+      const b = instanceBox(o, i);
+      return { x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2, z: b.min.z };
+    };
     plate.objects.push({
       file,
       name: o.name.replace(/\.(stl|obj)$/i, ''),
       extruder: o.extruder,
-      instances: o.instances.map((i) => ({ x: round(i.x), y: round(i.y), rot: round(i.rotZ), z: round(i.z ?? 0), printable: i.printable !== false })),
-      ...(Object.keys(o.settings).length
-        ? { settings: Object.fromEntries(Object.entries(o.settings).map(([k, v]) => [k, toolValue(k, v)])) }
-        : {}),
+      instances: o.instances.map((i) => { const p = place(i); return { x: round(p.x), y: round(p.y), rot: round(i.rotZ), z: round(p.z), printable: i.printable !== false }; }),
+      ...(Object.keys(o.settings).length ? { settings: settings(o.settings) } : {}),
+      ...(o.volumes?.length ? { volumes: o.volumes.map((v, k) => ({
+        file: file.replace(/\.stl$/, `.v${k + 1}.stl`),
+        type: v.type,
+        name: v.name,
+        ...(v.extruder ? { extruder: v.extruder } : {}),
+        ...(Object.keys(v.settings).length ? { settings: settings(v.settings) } : {}),
+      })) } : {}),
     });
   }
   return plate;
@@ -187,12 +273,14 @@ export function plateDescription(objects: PlateObject[]): PlateJson {
 
 export async function plateJson(objects: PlateObject[]): Promise<{ plate: PlateJson; files: { name: string; blob: Blob }[] }> {
   const plate = plateDescription(objects);
-  const blobs = await Promise.all(objects.map(bakeStl));
-  return { plate, files: plate.objects.map(({ file: name }, i) => ({ name, blob: blobs[i] })) };
+  const blobs = await Promise.all(objects.map((o) => bakeStl(o)));
+  const volumes = await Promise.all(objects.map((o) => Promise.all((o.volumes ?? []).map((v) => bakeVolume(o, v)))));
+  return { plate, files: plate.objects.flatMap(({ file: name, volumes: vs }, i) => [{ name, blob: blobs[i] },
+    ...(vs ?? []).map((v, k) => ({ name: v.file, blob: volumes[i][k] }))]) };
 }
 
 const meshContents = new WeakMap<THREE.BufferGeometry, string>();
-export function meshSignature(o: PlateObject) {
+export function meshSignature(o: PlateObject): unknown[] {
   let contents = meshContents.get(o.geometry);
   if (contents === undefined) {
     contents = JSON.stringify([
@@ -201,7 +289,7 @@ export function meshSignature(o: PlateObject) {
     ]);
     meshContents.set(o.geometry, contents);
   }
-  return [contents, objectMatrix(o).elements];
+  return [contents, objectMatrix(o).elements, ...(o.volumes ?? []).map((v) => [meshSignature({ ...o, geometry: v.geometry, volumes: [] })[0], v.matrix])];
 }
 
 const round = (v: number) => Math.round(v * 1000) / 1000;

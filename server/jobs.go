@@ -33,19 +33,26 @@ const (
 func (s JobState) Finished() bool { return s == StateDone || s == StateFailed || s == StateCancelled }
 
 type JobRequest struct {
-	SourcePlates []projectPlate `json:"source_plates,omitempty"`
-	PlateIndex   int            `json:"plate_index,omitempty"`
-	Orient       bool           `json:"orient,omitempty"`
-	Vendor       string         `json:"vendor"`
-	Printer      string         `json:"printer"`
-	Process      string         `json:"process"`
-	Filaments    []string       `json:"filaments"`
-	Overrides    [][2]string    `json:"overrides"`
-	Events       []string       `json:"events"`
-	Files        []string       `json:"files"`
-	Plate        bool           `json:"plate"`
-	Output       string         `json:"output"`
-	Filename     string         `json:"filename,omitempty"`
+	SourcePlates    []projectPlate `json:"source_plates,omitempty"`
+	PlateIndex      int            `json:"plate_index,omitempty"`
+	Orient          bool           `json:"orient,omitempty"`
+	Cut             string         `json:"cut,omitempty"`
+	CutKeep         string         `json:"cut_keep,omitempty"`
+	CutPlaceLower   bool           `json:"cut_place_lower,omitempty"`
+	Vendor          string         `json:"vendor"`
+	Printer         string         `json:"printer"`
+	Process         string         `json:"process"`
+	Filaments       []string       `json:"filaments"`
+	Overrides       [][2]string    `json:"overrides"`
+	Events          []string       `json:"events"`
+	Files           []string       `json:"files"`
+	Plate           bool           `json:"plate"`
+	Output          string         `json:"output"`
+	Filename        string         `json:"filename,omitempty"`
+	ProjectSettings [][2]string    `json:"project_settings,omitempty"`
+	Edits           bool           `json:"edits,omitempty"`
+	Priority        string         `json:"priority,omitempty"`
+	PreviewBudget   float64        `json:"preview_budget,omitempty"`
 }
 
 type Event struct {
@@ -84,6 +91,7 @@ type Job struct {
 	stopReason string
 	stage      string
 	progress   *float64
+	send       *Transfer
 }
 
 type JobView struct {
@@ -116,7 +124,7 @@ func (j *Job) View() JobView {
 		t := j.finished
 		v.Finished = &t
 	}
-	if j.state == StateDone && !j.Request.Orient {
+	if j.state == StateDone && !j.Request.Orient && j.Request.Output != "patch-preview" {
 		v.DownloadURL = "/api/jobs/" + j.ID + "/download"
 		v.Filename = j.DownloadName()
 	}
@@ -198,6 +206,10 @@ func (j *Job) EventsSince(from int) ([]Event, <-chan struct{}, bool) {
 
 func (j *Job) OutputPath(kind string) string {
 	return filepath.Join(j.Dir, "out", outputBase(j.Request)+"."+kind)
+}
+
+func (j *Job) PiecePath(side string) string {
+	return filepath.Join(j.Dir, "out", outputBase(j.Request)+"."+side+".stl")
 }
 
 func (j *Job) MovesPath() string { return filepath.Join(j.Dir, "moves.bin") }
@@ -322,9 +334,7 @@ func (m *JobManager) Start(j *Job) error {
 		defer m.wg.Done()
 		defer m.completed(j)
 		defer cancel()
-		select {
-		case m.sem <- struct{}{}:
-		case <-ctx.Done():
+		if !m.acquire(ctx, j.Request.Priority == "low") {
 			j.setState(StateCancelled, "cancelled before it started")
 			return
 		}
@@ -332,6 +342,31 @@ func (m *JobManager) Start(j *Job) error {
 		m.run(ctx, j)
 	}()
 	return nil
+}
+
+func (m *JobManager) acquire(ctx context.Context, low bool) bool {
+	if !low {
+		select {
+		case m.sem <- struct{}{}:
+			return true
+		case <-ctx.Done():
+			return false
+		}
+	}
+	t := time.NewTicker(250 * time.Millisecond)
+	defer t.Stop()
+	for {
+		select {
+		case m.sem <- struct{}{}:
+			return true
+		default:
+		}
+		select {
+		case <-t.C:
+		case <-ctx.Done():
+			return false
+		}
+	}
 }
 
 func (m *JobManager) Get(id string) *Job {
@@ -478,6 +513,20 @@ func (m *JobManager) toolArgs(j *Job) []string {
 	if r.Orient {
 		return append(args, "--orient-only", filepath.Join(in, r.Files[0]))
 	}
+	if r.Cut != "" {
+		args = append(args, "--cut-only", r.Cut, "--cut-keep", r.CutKeep, "-o", j.OutputPath("stl"))
+		if r.CutPlaceLower {
+			args = append(args, "--cut-place-lower")
+		}
+		return append(args, filepath.Join(in, r.Files[0]))
+	}
+	if r.Output == "patch-preview" {
+		args = append(args, "--patch-preview", j.OutputPath("json"), "--patch-preview-budget", strconv.FormatFloat(r.PreviewBudget, 'f', -1, 64))
+		if r.Plate {
+			return append(args, "--plate", filepath.Join(in, "plate.json"))
+		}
+		return append(args, filepath.Join(in, r.Files[0]))
+	}
 	if m.cfg.Features.MovesOut {
 		args = append(args, "--moves-out", j.MovesPath())
 	}
@@ -488,12 +537,18 @@ func (m *JobManager) toolArgs(j *Job) []string {
 		args = append(args, "--save-3mf", j.OutputPath("3mf"))
 	} else {
 		args = append(args, "--json", j.OutputPath("json"), "-o", j.OutputPath("gcode"))
+		if m.cfg.Features.SurfaceGrid {
+			args = append(args, "--surface-grid")
+		}
 	}
 	if r.Output == "gcode.3mf" {
 		args = append(args, "--gcode-3mf", j.OutputPath("gcode.3mf"))
 	}
 	if r.PlateIndex > 0 && r.Output != "3mf" {
 		args = append(args, "--plate-index", fmt.Sprint(r.PlateIndex))
+	}
+	if r.Edits {
+		args = append(args, "--edit", filepath.Join(in, "edits.json"))
 	}
 	if r.Plate {
 		args = append(args, "--plate", filepath.Join(in, "plate.json"))
@@ -512,6 +567,9 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 		j.log("server", "progress slicing 0")
 	}
 	j.log("server", "nonplanar_slice_tool "+quoteArgs(args))
+	if j.Request.Output == "patch-preview" && m.previewCached(j, args) {
+		return
+	}
 
 	cmd, commandErr := lineBufferedCommand(ctx, m.cfg.Tool, args)
 	if commandErr != nil {
@@ -542,6 +600,7 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 		return
 	}
 	var rotation []float64
+	var pieces []map[string]any
 	var lastErr lastLines
 	var readers sync.WaitGroup
 	readers.Add(2)
@@ -561,6 +620,14 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 						values[i] = value
 					}
 					rotation = values
+				}
+			}
+			if f := strings.Fields(l); j.Request.Cut != "" && len(f) == 8 && f[0] == "cut_piece" && f[2] == "triangles" && f[4] == "open_edges" && f[6] == "volume_mm3" {
+				triangles, e1 := strconv.Atoi(f[3])
+				open, e2 := strconv.Atoi(f[5])
+				volume, e3 := strconv.ParseFloat(f[7], 64)
+				if e1 == nil && e2 == nil && e3 == nil && (f[1] == "upper" || f[1] == "lower") && !math.IsNaN(volume) && !math.IsInf(volume, 0) {
+					pieces = append(pieces, map[string]any{"side": f[1], "triangles": triangles, "open_edges": open, "volume_mm3": volume})
 				}
 			}
 		})
@@ -589,9 +656,20 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 			recordErr = errors.New("missing native orientation rotation")
 		}
 	}
-	if !j.Request.Orient && j.Request.Output == "3mf" {
+	if j.Request.Cut != "" {
+		raw, recordErr = json.Marshal(map[string]any{"pieces": pieces})
+		for _, p := range pieces {
+			if _, err := os.Stat(j.PiecePath(p["side"].(string))); err != nil {
+				recordErr = errors.New("missing cut piece " + p["side"].(string))
+			}
+		}
+		if len(pieces) == 0 {
+			recordErr = errors.New("missing cut pieces")
+		}
+	}
+	if !j.Request.Orient && j.Request.Cut == "" && j.Request.Output == "3mf" {
 		recordErr = nil
-		if waitErr == nil && !j.Request.Plate && strings.EqualFold(filepath.Ext(j.Request.Files[0]), ".3mf") {
+		if waitErr == nil && !j.Request.Plate && !j.Request.Edits && strings.EqualFold(filepath.Ext(j.Request.Files[0]), ".3mf") {
 			recordErr = preserveProjectPlates(filepath.Join(j.Dir, "input", j.Request.Files[0]), j.OutputPath("3mf"))
 		}
 		raw = nil
@@ -615,8 +693,13 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 	case recordErr != nil:
 		j.setState(StateFailed, "the slicer output could not be read: "+sanitizeToolError(recordErr))
 	default:
-		if _, err := os.Stat(j.OutputPath(j.Request.Output)); !j.Request.Orient && err != nil {
-			j.setState(StateFailed, "the slicer finished without writing "+filepath.Base(j.OutputPath(j.Request.Output)))
+		kind := j.Request.Output
+		if kind == "patch-preview" {
+			kind = "json"
+			m.keepPreview(j, args, raw)
+		}
+		if _, err := os.Stat(j.OutputPath(kind)); !j.Request.Orient && j.Request.Cut == "" && err != nil {
+			j.setState(StateFailed, "the slicer finished without writing "+filepath.Base(j.OutputPath(kind)))
 			return
 		}
 		if !m.cfg.Features.Progress {

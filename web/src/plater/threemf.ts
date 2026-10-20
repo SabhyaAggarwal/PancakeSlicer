@@ -10,10 +10,12 @@ export interface ProjectMaterials {
   matrix: number[] | null;
   multiplier: number | null;
   hasConfig: boolean;
+  builds: { object: number; instance: number }[];
 }
 
 export interface ProjectItem {
   id: string;
+  instance: number;
   buildIndex: number;
   plateIndex: number;
   name: string;
@@ -21,6 +23,7 @@ export interface ProjectItem {
   printable: boolean;
   settings: Config;
   origin: [number, number, number];
+  rotZ: number;
 }
 
 interface Obj {
@@ -182,12 +185,13 @@ export async function readProject(file: File): Promise<{ items: ProjectItem[]; m
     if (!plateIndex) throw new Error('Cannot resolve saved plate membership for every build item');
     const plate = plates.find((p) => p.index === plateIndex);
     return {
-      id: b.objectid, buildIndex: i, plateIndex,
+      id: b.objectid, instance, buildIndex: i, plateIndex,
       printable: b.printable,
       settings: meta?.settings ?? {},
       name: unescapeXml(meta?.name ?? root.objects.get(b.objectid)?.name ?? `Object ${i + 1}`),
       extruder: meta?.extruder ?? 1,
       origin: [b.transform[9] - (plate?.origin[0] ?? 0), b.transform[10] - (plate?.origin[1] ?? 0), b.transform[11]] as [number, number, number],
+      rotZ: Math.atan2(b.transform[1], b.transform[0]) * 180 / Math.PI,
     };
   });
   const mesh = (i: number) => {
@@ -205,6 +209,6 @@ export async function readProject(file: File): Promise<{ items: ProjectItem[]; m
   const colours = (Array.isArray(colourValue) ? colourValue : typeof colourValue === 'string' ? colourValue.split(';') : [])
     .map(String);
   const materials = { plates, config, colours, matrix: numbers(config.flush_volumes_matrix), multiplier: numbers(config.flush_multiplier)?.[0] ?? null,
-    hasConfig: !!configBytes || !!entry('Metadata/Slic3r_PE.config') };
+    hasConfig: !!configBytes || !!entry('Metadata/Slic3r_PE.config'), builds: items.map((it) => ({ object: Number(it.id), instance: it.instance })) };
   return { items, materials, mesh };
 }

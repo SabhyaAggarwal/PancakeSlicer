@@ -135,7 +135,8 @@ export const VIEW_TYPES: { key: ViewType; label: string }[] = [
   { key: 'pressure_advance', label: 'Pressure Advance' },
 ];
 
-export type NonplanarColor = 'shell' | 'band' | 'patch' | 'bead_height' | 'slope';
+export type NonplanarColor = 'shell' | 'band' | 'patch' | 'bead_height' | 'slope' | 'curved';
+export const CURVED_COLOR: RGB = [22, 179, 160];
 export const NONPLANAR_COLORS: { key: NonplanarColor; label: string }[] = [
   { key: 'shell', label: 'Shell' },
   { key: 'band', label: 'Band' },
@@ -151,6 +152,21 @@ export interface Visibility {
   unretract: boolean;
   seam: boolean;
   hiddenRoles: Set<number>;
+}
+
+const MAPPED_ROLES = [6, 8];
+
+export function drawMasks(v: Visibility, surface = false): { roleMask: number; typeMask: number; optionMask: number } {
+  let roleMask = 0;
+  for (let r = 0; r < 20; ++r) if (!v.hiddenRoles.has(r) && !(surface && MAPPED_ROLES.includes(r))) roleMask |= 1 << r;
+  let typeMask = 1 << MoveType.Extrude;
+  if (v.travel) typeMask |= 1 << MoveType.Travel;
+  if (v.wipe) typeMask |= 1 << MoveType.Wipe;
+  let optionMask = 0;
+  if (v.retract) optionMask |= 1 << MoveType.Retract;
+  if (v.unretract) optionMask |= 1 << MoveType.Unretract;
+  if (v.seam) optionMask |= 1 << MoveType.Seam;
+  return { roleMask, typeMask, optionMask };
 }
 
 export interface Ranges {
@@ -240,6 +256,7 @@ export function colorVertices(d: PreviewData, c: ColorContext, out: Uint8Array, 
       case 'patch': return nonplanarIndexColor(s.patch[st]);
       case 'bead_height': return r.beadHeight.colorAt(d.height[i]);
       case 'slope': return r.slope.colorAt(d.slope ? d.slope[i] : 0);
+      case 'curved': return CURVED_COLOR;
       default: return r.shell.colorAt(s.shell[st]);
     }
   };

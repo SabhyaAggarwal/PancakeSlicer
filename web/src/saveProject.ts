@@ -1,5 +1,6 @@
 import { jobRequest } from './actions';
 import { getState, setState, toast } from './state/store';
+import { promptDialog } from './components/Ask';
 import { markSaved, snapshot } from './state/history';
 
 let savingProject = false;
@@ -10,9 +11,9 @@ export async function saveProject(as = false) {
   if (s.api.mock) { toast('Saving a project requires the slicing service'); return; }
   let name = s.projectName ?? (s.objects[0].name.replace(/\.(stl|obj|3mf)$/i, '') + '.3mf');
   if (as) {
-    const proposed = window.prompt('Save Project as', name);
-    if (!proposed?.trim()) return;
-    name = proposed.trim().replace(/\.3mf$/i, '') + '.3mf';
+    const proposed = await promptDialog('Save Project as', name);
+    if (!proposed) return;
+    name = proposed.replace(/\.3mf$/i, '') + '.3mf';
   }
   name = name.replace(/[<>:/\\|?*"]/g, '_');
   savingProject = true;

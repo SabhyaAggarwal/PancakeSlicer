@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Modal, ModalTitle } from './Modal';
 import { offer, remove, restore, sessions, type Session } from '../persist/session';
 import { setState, useStore } from '../state/store';
 
@@ -15,17 +16,13 @@ export default function SessionDialog() {
   const close = () => setState({ sessionDialog: null });
   useEffect(() => {
     if (mode === 'recent') void sessions().then(setList);
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
   }, [mode]);
 
   if (mode === 'restore' && offer) {
     const s = offer;
     return (
-      <div className="modal-backdrop">
-        <div className="modal small" role="dialog" aria-label="Restore your last session?">
-          <div className="modal-title"><span>Restore your last session?</span></div>
+      <Modal className="small" label="Restore your last session?" onClose={close}>
+          <ModalTitle title="Restore your last session?" onClose={close} />
           <div className="session-offer">
             <Thumb s={s} />
             <div>
@@ -34,20 +31,15 @@ export default function SessionDialog() {
             </div>
           </div>
           <div className="modal-buttons center">
-            <button className="btn primary" autoFocus onClick={() => void restore(s.id)}>Restore</button>
+            <button className="btn primary" data-autofocus onClick={() => void restore(s.id)}>Restore</button>
             <button className="btn" onClick={close}>Start new</button>
           </div>
-        </div>
-      </div>
+      </Modal>
     );
   }
   return (
-    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-      <div className="modal small" role="dialog" aria-label="Recent projects">
-        <div className="modal-title">
-          <span>Recent projects</span>
-          <button className="modal-close" title="Close" onClick={close}>×</button>
-        </div>
+    <Modal className="small" label="Recent projects" onClose={close} backdropClose>
+        <ModalTitle title="Recent projects" onClose={close} />
         <div className="session-list">
           {list === null ? <div role="status">Loading…</div>
             : !list.length ? <div className="session-meta">No recent projects</div>
@@ -65,7 +57,6 @@ export default function SessionDialog() {
               </div>
             ))}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

@@ -2,15 +2,25 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { CameraViews } from './CameraViews';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
-import { getState, printerPreset, setState, subscribeStore, updateInstance, updateObject, useStore, type State } from '../state/store';
+import { getState, printerPreset, setState, subscribeStore, updateInstance, updateObject, updateVolume, useStore, type State, type VolumeType } from '../state/store';
 import { beginStep } from '../state/history';
 import { filamentColor } from './filamentColor';
-import { buildBed } from './Bed';
+import { bedKey as bedCacheKey, buildBed, sceneColors } from './Bed';
+import { subscribeTheme } from '../theme';
+import { pixelRatio, watchPixelRatio } from './pixelRatio';
 import { raycastBvh, type Bvh } from './bvh';
-import { instanceMatrix, outsideBed, parsePoints } from './geometry';
+import { instanceBox, instanceMatrix, outsideBed, parsePoints, volumeWorld } from './geometry';
+import { cutNormal, cutPoint, cutTarget } from './cut';
 import { layOnFace, layOnFacePlanes, type LayOnFacePlane } from './transforms';
+import { MeasureView } from './measureView';
+import { measureState, setMeasure, subscribeMeasure } from './measureState';
+import { getPatchPreview, inFootprint, nonplanarViewShown, overlayFits, planarReason, subscribePatchPreview, type InstanceOverlay } from '../patch-preview';
 
 const OUTSIDE = new THREE.Color(0x4d9ed9);
+const VOLUME_COLOURS: Record<Exclude<VolumeType, 'part'>, [number, number, number, number]> = {
+  modifier: [1, 1, 0, 0.6], negative: [0.3, 0.3, 0.3, 0.4], support_enforcer: [0.3, 0.3, 1, 0.4], support_blocker: [1, 0.3, 0.3, 0.4],
+};
+const CUT_PLANE = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.9, 0.9, 0.9), transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false });
 
 function brightenColor(c: THREE.Color): THREE.Color {
   const hsl = c.getHSL({ h: 0, s: 0, l: 0 }, THREE.SRGBColorSpace);
@@ -25,8 +35,8 @@ export default function Plater3D() {
   useEffect(() => {
     const el = host.current!;
     const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setClearColor(0xe9e9e9);
+    renderer.setClearColor(sceneColors().background);
+    renderer.localClippingEnabled = true;
     el.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
@@ -56,6 +66,12 @@ export default function Plater3D() {
           renderer.autoClear = false;
           renderer.clearDepth();
           renderer.render(flattenScene, views.camera);
+          renderer.autoClear = true;
+        }
+        if (measuring.scene.children.length || getState().gizmo === 'measure') {
+          measuring.frame();
+          renderer.autoClear = false;
+          renderer.render(measuring.scene, views.camera);
           renderer.autoClear = true;
         }
         if (frames.length > 4096) frames.splice(0, 2048);
@@ -108,7 +124,7 @@ export default function Plater3D() {
     const fitCamera = () => views.setBed(area);
     const syncBed = (s: State) => {
       const m = printerPreset(s);
-      const key = `${m?.name}|${m?.config.printable_area}|${m?.config.bed_custom_texture}|${m?.config.bed_custom_model}`;
+      const key = bedCacheKey(m);
       if (key === bedKey) return;
       bedKey = key;
       if (bed) scene.remove(bed);
@@ -121,14 +137,14 @@ export default function Plater3D() {
 
     const meshes = new Map<number, THREE.Mesh>();
     const materials = new Map<string, THREE.MeshStandardMaterial>();
-    const material = (color: string, state: 'normal' | 'selected' | 'outside', placeholder = false) => {
-      const k = color + state + placeholder;
+    const material = (color: string, state: 'normal' | 'selected' | 'outside', placeholder = false, ghost = false) => {
+      const k = color + state + placeholder + ghost;
       let m = materials.get(k);
       if (!m) {
         let c = new THREE.Color(color);
         if (state === 'selected') c = brightenColor(c);
         if (state === 'outside') c.lerp(OUTSIDE, 0.7);
-        m = new THREE.MeshStandardMaterial({ color: c, roughness: 0.65, metalness: 0.05, transparent: placeholder, opacity: placeholder ? 0.35 : 1 });
+        m = new THREE.MeshStandardMaterial({ color: c, roughness: 0.65, metalness: 0.05, transparent: placeholder || ghost, opacity: placeholder ? 0.35 : ghost ? 0.4 : 1, depthWrite: !ghost });
         materials.set(k, m);
       }
       return m;
@@ -151,9 +167,28 @@ export default function Plater3D() {
           const mesh = meshes.get(inst.id);
           if (!mesh) continue;
           const state = outside.has(inst.id) ? 'outside' : s.selected?.instance === inst.id || s.selected?.all ? 'selected' : 'normal';
-          mesh.material = material(inst.printable === false ? '#999999' : color, inst.printable === false ? 'normal' : state, !!o.project?.placeholder);
+          const ghost = s.selected?.object === o.id && s.selected.volume !== undefined;
+          mesh.material = material(inst.printable === false ? '#999999' : color, inst.printable === false ? 'normal' : state, !!o.project?.placeholder, ghost);
+          for (const v of o.volumes ?? []) {
+            const vm = volumeMeshes.get(`${inst.id}:${v.id}`);
+            if (vm) vm.material = volumeMaterial(v.type, filamentColor(s, v.extruder || o.extruder), s.selected?.object === o.id && s.selected.volume === v.id);
+          }
         }
       }
+    };
+    const volumeMeshes = new Map<string, THREE.Mesh>();
+    const volumeMaterial = (type: VolumeType, color: string, selected: boolean) => {
+      if (type === 'part') return material(color, selected ? 'selected' : 'normal');
+      const k = type + selected;
+      let m = materials.get(k);
+      if (!m) {
+        const [r, g, b, a] = VOLUME_COLOURS[type];
+        let c = new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
+        if (selected) c = brightenColor(c);
+        m = new THREE.MeshStandardMaterial({ color: c, roughness: 0.65, metalness: 0.05, transparent: true, opacity: a, depthWrite: false });
+        materials.set(k, m);
+      }
+      return m;
     };
     const syncObjects = (s: State) => {
       const seen = new Set<number>();
@@ -176,19 +211,88 @@ export default function Plater3D() {
         }
       }
       if (hovered !== null && !seen.has(hovered)) hovered = null;
+      const seenVolumes = new Set<string>();
+      for (const o of s.objects)
+        for (const inst of o.instances)
+          for (const v of o.volumes ?? []) {
+            const key = `${inst.id}:${v.id}`;
+            seenVolumes.add(key);
+            let mesh = volumeMeshes.get(key);
+            if (!mesh || mesh.geometry !== v.geometry) {
+              if (mesh) scene.remove(mesh);
+              mesh = new THREE.Mesh(v.geometry);
+              mesh.matrixAutoUpdate = false;
+              mesh.renderOrder = v.type === 'part' ? 0 : 1;
+              mesh.userData = { object: o.id, instance: inst.id, volume: v.id };
+              volumeMeshes.set(key, mesh);
+              scene.add(mesh);
+            }
+            mesh.matrix.copy(volumeWorld(o, inst, v));
+            mesh.matrixWorldNeedsUpdate = true;
+          }
+      for (const [key, mesh] of volumeMeshes)
+        if (!seenVolumes.has(key)) {
+          scene.remove(mesh);
+          volumeMeshes.delete(key);
+        }
       tint(s);
       for (const [id, mesh] of meshes)
         if (!seen.has(id)) {
           scene.remove(mesh);
           meshes.delete(id);
         }
-      const live = new Set(s.objects.map((o) => o.geometry));
+      const live = new Set(s.objects.flatMap((o) => [o.geometry, ...(o.volumes ?? []).map((v) => v.geometry)]));
       for (const g of liveGeometries) if (!live.has(g)) g.dispose();
       liveGeometries = live;
+      syncCut(s);
       syncGizmo(s);
       syncFlatten(s);
+      syncOverlay(s);
       render();
     };
+
+    const cutPlane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), CUT_PLANE);
+    const cutProxy = new THREE.Object3D();
+    const cutParts = [THREE.ColorManagement.toWorkingColorSpace(new THREE.Color(0, 1, 1), THREE.SRGBColorSpace),
+      THREE.ColorManagement.toWorkingColorSpace(new THREE.Color(1, 0, 1), THREE.SRGBColorSpace)].map((color) => {
+      const m = new THREE.Mesh(undefined, new THREE.MeshStandardMaterial({ color, roughness: 0.65, metalness: 0.05, clippingPlanes: [new THREE.Plane()] }));
+      m.matrixAutoUpdate = false;
+      return m;
+    });
+    cutPlane.renderOrder = 2;
+    scene.add(cutProxy);
+    let cutInstance: number | null = null;
+    const syncCut = (s: State) => {
+      const t = s.gizmo === 'cut' && s.cut ? cutTarget(s) : null;
+      const show = !!t;
+      if (cutInstance !== null && (!show || cutInstance !== t!.inst.id)) {
+        const m = meshes.get(cutInstance);
+        if (m) m.visible = true;
+        cutInstance = null;
+      }
+      for (const o of [cutPlane, ...cutParts]) {
+        if (show && !o.parent) scene.add(o);
+        else if (!show && o.parent) scene.remove(o);
+      }
+      if (!t) return;
+      const mesh = meshes.get(t.inst.id);
+      if (mesh) mesh.visible = false;
+      cutInstance = t.inst.id;
+      const n = cutNormal(s.cut!), p = cutPoint(s, s.cut!)!;
+      const size = instanceBox(t.o, t.inst).getSize(new THREE.Vector3());
+      const side = 1.5 * Math.max(size.x, size.y, size.z);
+      cutPlane.position.copy(p);
+      cutPlane.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
+      cutPlane.scale.set(side, side, 1);
+      cutParts.forEach((m, k) => {
+        m.geometry = t.o.geometry;
+        m.matrix.copy(instanceMatrix(t.o, t.inst));
+        m.matrixWorldNeedsUpdate = true;
+        ((m.material as THREE.MeshStandardMaterial).clippingPlanes![0]).setFromNormalAndCoplanarPoint(k === 0 ? n : n.clone().negate(), p);
+      });
+      if (!cutDrag) cutProxy.position.copy(p);
+    };
+    let cutDrag = false;
 
     const proxy = new THREE.Object3D();
     scene.add(proxy);
@@ -197,26 +301,50 @@ export default function Plater3D() {
     const tcHelper = tc.getHelper();
     scene.add(tcHelper);
     tc.addEventListener('change', render);
-    let dragStart: { x: number; y: number; rotX: number; rotY: number; rotZ: number; scale: [number, number, number] } | null = null;
+    let dragStart: { x: number; y: number; rotX: number; rotY: number; rotZ: number; scale: [number, number, number];
+      volume?: { world: THREE.Matrix4; proxy: THREE.Matrix4 } } | null = null;
     let endStep: (() => void) | null = null;
     tc.addEventListener('dragging-changed', (e) => {
       endStep?.();
-      endStep = (e as unknown as { value: boolean }).value
-        ? beginStep(tc.mode === 'translate' ? 'Move' : tc.mode === 'rotate' ? 'Rotate' : 'Scale') : null;
-      controls.enabled = !(e as unknown as { value: boolean }).value;
+      const dragging = (e as unknown as { value: boolean }).value;
+      controls.enabled = !dragging;
       const s = getState();
+      if (s.gizmo === 'cut') {
+        cutDrag = dragging;
+        endStep = null;
+        return;
+      }
+      endStep = dragging ? beginStep(tc.mode === 'translate' ? 'Move' : tc.mode === 'rotate' ? 'Rotate' : 'Scale') : null;
       const o = s.objects.find((ob) => ob.id === s.selected?.object);
       const i = o?.instances.find((ii) => ii.id === s.selected?.instance);
-      if ((e as unknown as { value: boolean }).value && o && i) {
-        dragStart = { x: i.x, y: i.y, rotX: o.rotX, rotY: o.rotY, rotZ: i.rotZ, scale: [...o.scale] };
+      const v = o?.volumes?.find((vv) => vv.id === s.selected?.volume);
+      if (dragging && o && i) {
+        dragStart = { x: i.x, y: i.y, rotX: o.rotX, rotY: o.rotY, rotZ: i.rotZ, scale: [...o.scale],
+          volume: v && { world: volumeWorld(o, i, v), proxy: proxy.matrix.clone() } };
         proxyRotation(o.rotX, o.rotY, i.rotZ);
         proxy.scale.set(1, 1, 1);
       } else dragStart = null;
     });
     tc.addEventListener('objectChange', () => {
       const s = getState();
+      if (s.gizmo === 'cut' && s.cut) {
+        setState({ cut: { ...s.cut, z: cutProxy.position.z } });
+        return;
+      }
       if (!dragStart || !s.selected) return;
       const { object, instance } = s.selected;
+      if (dragStart.volume && s.selected.volume !== undefined) {
+        const o = s.objects.find((ob) => ob.id === object)!;
+        const i = o.instances.find((ii) => ii.id === instance)!;
+        if (tc.mode === 'scale' && s.uniformScale) {
+          const k = Math.max(0.01, (proxy.scale.x + proxy.scale.y + proxy.scale.z) / 3);
+          proxy.scale.set(k, k, k);
+        }
+        proxy.updateMatrix();
+        const world = proxy.matrix.clone().multiply(dragStart.volume.proxy.clone().invert()).multiply(dragStart.volume.world);
+        updateVolume(object, s.selected.volume, { matrix: instanceMatrix(o, i).invert().multiply(world).elements });
+        return;
+      }
       if (tc.mode === 'translate') updateInstance(object, instance, { x: proxy.position.x, y: proxy.position.y, z: proxy.position.z });
       else if (tc.mode === 'rotate') {
         const deg = 180 / Math.PI;
@@ -229,15 +357,34 @@ export default function Plater3D() {
       }
     });
     const syncGizmo = (s: State) => {
+      if (s.gizmo === 'cut') {
+        if (!s.cut || !cutTarget(s)) return tc.detach();
+        if (tc.mode !== 'translate') tc.setMode('translate');
+        tc.showX = tc.showY = false;
+        if (tc.object !== cutProxy) tc.attach(cutProxy);
+        return;
+      }
+      tc.showX = tc.showY = true;
       const o = s.objects.find((ob) => ob.id === s.selected?.object);
       const i = o?.instances.find((ii) => ii.id === s.selected?.instance);
-      if (!o || !i || s.gizmo === 'none' || s.gizmo === 'flatten' || s.selected?.all || o.project?.placeholder) {
+      const v = o?.volumes?.find((vv) => vv.id === s.selected?.volume);
+      if (!o || !i || s.gizmo === 'none' || s.gizmo === 'flatten' || s.gizmo === 'measure' || s.selected?.all || o.project?.placeholder) {
         tc.detach();
         return;
       }
       const mode = s.gizmo === 'move' ? 'translate' : s.gizmo;
       if (tc.mode !== mode) tc.setMode(mode);
       tc.showZ = true;
+      if (v) {
+        if (!dragStart) {
+          proxy.position.setFromMatrixPosition(volumeWorld(o, i, v));
+          proxy.rotation.set(0, 0, 0, 'XYZ');
+          proxy.scale.set(1, 1, 1);
+          proxy.updateMatrix();
+        }
+        if (tc.object !== proxy) tc.attach(proxy);
+        return;
+      }
       if (!dragStart) {
         const b = new THREE.Box3().setFromObject(meshes.get(i.id)!);
         proxy.position.set(i.x, i.y, mode === 'translate' ? (i.z ?? 0) : (b.min.z + b.max.z) / 2);
@@ -310,6 +457,11 @@ export default function Plater3D() {
     };
     gizmoRef.current = () => syncGizmo(getState());
 
+    const measuring = new MeasureView(el, () => views.camera);
+    const measurable = (s: State, instance: number) => s.objects.some((o) => !o.project?.placeholder && o.instances.some((i) => i.id === instance &&
+      (s.selected?.all || (s.selected?.object === o.id && (s.selected.allInstances || s.selected.instance === i.id)))));
+    const unsubMeasure = subscribeMeasure(() => { measuring.sync(); render(); });
+
     const ray = new THREE.Raycaster();
     const ndc = new THREE.Vector2();
     const setRay = (ev: { clientX: number; clientY: number }) => {
@@ -325,7 +477,9 @@ export default function Plater3D() {
     const origin = new THREE.Vector3(), direction = new THREE.Vector3();
     const rayOrigin = [0, 0, 0], rayDirection = [0, 0, 0];
     const hits: { mesh: THREE.Mesh; distance: number }[] = [];
-    const pick = (ev: { clientX: number; clientY: number }): { object: THREE.Object3D; distance: number } | undefined => {
+    const triHit = { tri: -1 };
+    type Hit = { object: THREE.Object3D; distance: number; tri?: number; local?: THREE.Vector3 };
+    const pick = (ev: { clientX: number; clientY: number }): Hit | undefined => {
       setRay(ev);
       hits.length = 0;
       for (const mesh of meshes.values()) {
@@ -333,21 +487,23 @@ export default function Plater3D() {
         if (ray.ray.intersectBox(box, entry)) hits.push({ mesh, distance: entry.distanceTo(ray.ray.origin) });
       }
       hits.sort((a, b) => a.distance - b.distance);
-      let best: { object: THREE.Object3D; distance: number } | undefined;
+      let best: Hit | undefined;
       for (const { mesh, distance } of hits) {
         if (best && distance >= best.distance) break;
         const g = mesh.geometry;
         const bvh = g.userData.bvh as Bvh | undefined;
-        let hit: { object: THREE.Object3D; distance: number } | undefined;
+        let hit: Hit | undefined;
         if (bvh) {
           inverse.copy(mesh.matrixWorld).invert();
           origin.copy(ray.ray.origin).applyMatrix4(inverse);
           direction.copy(ray.ray.direction).applyMatrix3(linear.setFromMatrix4(inverse));
-          const t = raycastBvh(bvh, g.attributes.position.array, g.index!.array, origin.toArray(rayOrigin), direction.toArray(rayDirection), best?.distance);
-          if (t !== Infinity) hit = { object: mesh, distance: t };
+          const t = raycastBvh(bvh, g.attributes.position.array, g.index!.array, origin.toArray(rayOrigin), direction.toArray(rayDirection), best?.distance, triHit);
+          if (t !== Infinity) hit = { object: mesh, distance: t, tri: triHit.tri, local: origin.clone().addScaledVector(direction, t) };
         } else {
           const triangles = (g.index ? g.index.count : g.attributes.position.count) / 3;
-          hit = triangles > EXACT_TRIANGLES ? { object: mesh, distance } : ray.intersectObject(mesh, false)[0];
+          const h = triangles > EXACT_TRIANGLES ? undefined : ray.intersectObject(mesh, false)[0];
+          hit = !h ? (triangles > EXACT_TRIANGLES ? { object: mesh, distance } : undefined)
+            : { object: mesh, distance: h.distance, tri: h.faceIndex ?? undefined, local: mesh.worldToLocal(h.point.clone()) };
         }
         if (hit && (!best || hit.distance < best.distance)) best = hit;
       }
@@ -360,9 +516,23 @@ export default function Plater3D() {
     };
     let drag: { object: number; instance: number; dx: number; dy: number; moved: boolean } | null = null;
     let downAt: { x: number; y: number } | null = null;
+    const touches = new Set<number>();
+    const onTouchDown = (ev: PointerEvent) => {
+      if (ev.pointerType !== 'touch') return;
+      touches.add(ev.pointerId);
+      if (touches.size > 1) {
+        drag = null;
+        downAt = null;
+        controls.enabled = true;
+      }
+    };
+    const onTouchUp = (ev: PointerEvent) => touches.delete(ev.pointerId);
+    renderer.domElement.addEventListener('pointerdown', onTouchDown, { capture: true });
+    window.addEventListener('pointerup', onTouchUp);
+    window.addEventListener('pointercancel', onTouchUp);
     const onDown = (ev: PointerEvent) => {
       if (ev.button === 2) rightAt = { x: ev.clientX, y: ev.clientY };
-      if (ev.button !== 0 || (tc.dragging || (tc as unknown as { axis: string | null }).axis)) return;
+      if (ev.button !== 0 || touches.size > 1 || (tc.dragging || (tc as unknown as { axis: string | null }).axis)) return;
       const k = pickPlane(ev);
       if (k >= 0 && flatten) {
         const o = getState().objects.find((ob) => ob.id === flatten!.object);
@@ -377,6 +547,7 @@ export default function Plater3D() {
       if (!hit) return;
       const { object, instance } = hit.object.userData as { object: number; instance: number };
       setState({ selected: { object, instance } });
+      if (getState().gizmo === 'measure') return;
       const p = bedPoint();
       const o = getState().objects.find((ob) => ob.id === object)!;
       const i = o.instances.find((ii) => ii.id === instance)!;
@@ -401,12 +572,20 @@ export default function Plater3D() {
       downAt = null;
       controls.enabled = true;
     };
+    const onMeasureDown = (ev: PointerEvent) => {
+      if (ev.button !== 0 || getState().gizmo !== 'measure' || !measuring.click()) return;
+      ev.stopImmediatePropagation();
+      ev.preventDefault();
+    };
+    renderer.domElement.addEventListener('pointerdown', onMeasureDown, { capture: true });
     renderer.domElement.addEventListener('pointerdown', onDown);
     renderer.domElement.addEventListener('pointermove', onMove);
     renderer.domElement.addEventListener('pointerup', onUp);
+    renderer.domElement.addEventListener('pointercancel', onUp);
 
     let hoverAt: { clientX: number; clientY: number } | null = null;
     let hoverFrame = 0;
+    let hoverShift = false;
     let orbiting = false;
     const hoverMs: number[] = [];
     const setHover = (id: number | null) => {
@@ -424,21 +603,32 @@ export default function Plater3D() {
       if (hoverMs.length > 4096) hoverMs.splice(0, 2048);
       hoverMs.push(performance.now() - t0);
       setHover(hit ? (hit.object.userData as { instance: number }).instance : null);
+      planarTip(hit, hoverAt);
       if (flatten) setHoverPlane(pickPlane(hoverAt));
+      if (getState().gizmo === 'measure') {
+        const r = renderer.domElement.getBoundingClientRect();
+        const id = hit && (hit.object.userData as { instance: number }).instance;
+        measuring.hover(hit?.tri !== undefined && hit.local && measurable(getState(), id!) ? { mesh: hit.object as THREE.Mesh, tri: hit.tri, local: hit.local } : null,
+          new THREE.Vector2(hoverAt.clientX - r.left, hoverAt.clientY - r.top), hoverShift);
+      }
     };
     const onHover = (ev: PointerEvent) => {
       if (ev.buttons || orbiting || tc.dragging) {
         hoverAt = null;
         setHover(null);
+        tip.hidden = true;
         return;
       }
       hoverAt = { clientX: ev.clientX, clientY: ev.clientY };
+      hoverShift = ev.shiftKey;
       if (!hoverFrame) hoverFrame = requestAnimationFrame(hoverPass);
     };
     const onLeave = () => {
       hoverAt = null;
       setHover(null);
+      tip.hidden = true;
       setHoverPlane(-1);
+      if (measureState().hover) setMeasure({ ...measureState(), hover: undefined });
     };
 
     let rightAt: { x: number; y: number } | null = null;
@@ -466,33 +656,126 @@ export default function Plater3D() {
       const w = el.clientWidth, h = el.clientHeight;
       if (!w || !h) return;
       const size = renderer.getSize(new THREE.Vector2());
-      if (size.x !== w || size.y !== h) renderer.setSize(w, h);
+      const ratio = pixelRatio(w, h);
+      if (ratio !== renderer.getPixelRatio()) renderer.setPixelRatio(ratio);
+      if (size.x !== w || size.y !== h || renderer.domElement.width !== Math.floor(w * ratio)) renderer.setSize(w, h);
       views.resize(w, h);
+      measuring.resize(w, h);
       render();
     };
     const ro = new ResizeObserver(resize);
     ro.observe(el);
+    const unwatchRatio = watchPixelRatio(resize);
+
+    const overlayRoot = new THREE.Group();
+    scene.add(overlayRoot);
+    const css = (v: string) => getComputedStyle(document.documentElement).getPropertyValue(v).trim() || '#009688';
+    const topMat = new THREE.MeshBasicMaterial({ polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
+    const ledgeMat = new THREE.LineBasicMaterial();
+    const overlayColours = () => {
+      topMat.color.set(css('--accent'));
+      ledgeMat.color.set(css('--accent-hover'));
+    };
+    overlayColours();
+    const overlays = new Map<number, { group: THREE.Group; ov: InstanceOverlay }>();
+    const buildOverlay = () => {
+      for (const { group } of overlays.values()) {
+        for (const c of group.children as (THREE.Mesh | THREE.LineSegments)[]) c.geometry.dispose();
+        overlayRoot.remove(group);
+      }
+      overlays.clear();
+      for (const ov of getPatchPreview()?.overlays ?? []) {
+        const group = new THREE.Group();
+        group.matrixAutoUpdate = false;
+        if (ov.top.length) {
+          const g = new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(ov.top, 3));
+          group.add(new THREE.Mesh(g, topMat));
+        }
+        if (ov.ledges.length) {
+          const g = new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(ov.ledges, 3)).translate(0, 0, -0.15);
+          group.add(new THREE.LineSegments(g, ledgeMat));
+        }
+        group.userData.from = ov.at.clone().invert();
+        overlays.set(ov.instanceId, { group, ov });
+        overlayRoot.add(group);
+      }
+      syncOverlay(getState());
+      render();
+    };
+    const syncOverlay = (s: State) => {
+      overlayRoot.visible = nonplanarViewShown();
+      for (const { group, ov } of overlays.values()) {
+        const o = s.objects.find((ob) => ob.id === ov.objectId);
+        const inst = o?.instances.find((i) => i.id === ov.instanceId);
+        group.visible = !!o && !!inst && overlayFits(ov, o);
+        if (group.visible) group.matrix.multiplyMatrices(instanceMatrix(o!, inst!), group.userData.from as THREE.Matrix4);
+        group.matrixWorldNeedsUpdate = true;
+      }
+    };
+    const unsubPreview = subscribePatchPreview(() => {
+      if (overlays.size !== (getPatchPreview()?.overlays.length ?? 0) || [...overlays.values()].some(({ ov }, i) => ov !== getPatchPreview()?.overlays[i])) buildOverlay();
+      else {
+        syncOverlay(getState());
+        render();
+      }
+    });
+    const tip = document.createElement('div');
+    tip.className = 'canvas-tip';
+    tip.hidden = true;
+    el.appendChild(tip);
+    const planarTip = (hit: { object: THREE.Object3D; distance: number } | undefined, at: { clientX: number; clientY: number } | null) => {
+      const entry = hit && overlayRoot.visible ? overlays.get((hit.object.userData as { instance: number }).instance) : undefined;
+      let text = '';
+      if (entry?.group.visible && entry.ov.planar.length) {
+        const p = ray.ray.at(hit!.distance, new THREE.Vector3()).applyMatrix4(entry.group.matrix.clone().invert());
+        const area = entry.ov.planar.find((a) => inFootprint(a.footprint, p.x, p.y));
+        text = area ? planarReason(area.reason) : '';
+      }
+      tip.hidden = !text || !at;
+      if (!tip.hidden) {
+        const r = el.getBoundingClientRect();
+        tip.textContent = text;
+        tip.style.left = `${at!.clientX - r.left + 12}px`;
+        tip.style.top = `${at!.clientY - r.top + 16}px`;
+      }
+    };
 
     let last: State | null = null;
     const sync = () => {
       const s = getState();
+      if (last && (s.gizmo !== last.gizmo || s.objects !== last.objects || s.selected !== last.selected) && (measureState().first || measureState().hover || last.gizmo === 'measure'))
+        setMeasure({});
       if (last && s.objects === last.objects && s.selected === last.selected && s.printer === last.printer &&
           s.filamentSlots === last.filamentSlots && s.slotColours === last.slotColours && s.machines === last.machines && s.gizmo === last.gizmo && s.dirty === last.dirty) return;
       last = s;
       syncBed(s);
       syncObjects(s);
     };
-    (window as unknown as { __plater: unknown }).__plater = { scene, get camera() { return views.camera; }, controls, tc, renderer, meshes, frames, hoverMs, hovered: () => hovered, flattenPlanes: () => flattenScene.children, pick, render, getState, setState };
+    (window as unknown as { __plater: unknown }).__plater = { scene, get camera() { return views.camera; }, controls, tc, renderer, meshes, frames, hoverMs, hovered: () => hovered, flattenPlanes: () => flattenScene.children, measure: measureState, pick, render, getState, setState };
     const unsub = subscribeStore(sync);
+    const unsubTheme = subscribeTheme(() => {
+      renderer.setClearColor(sceneColors().background);
+      overlayColours();
+      syncBed(getState());
+      render();
+    });
+    buildOverlay();
     sync();
     resize();
 
     return () => {
       unsub();
+      unsubTheme();
+      unsubPreview();
+      unwatchRatio();
+      window.removeEventListener('pointerup', onTouchUp);
+      window.removeEventListener('pointercancel', onTouchUp);
       cancelAnimationFrame(hoverFrame);
       ro.disconnect();
       views.dispose();
       tc.dispose();
+      unsubMeasure();
+      measuring.dispose();
 
       renderer.dispose();
       el.removeChild(renderer.domElement);

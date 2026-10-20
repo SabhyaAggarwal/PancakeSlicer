@@ -66,7 +66,7 @@ export function environment(configs: Config[], context: Environment, mode: Optio
     else if (/^(float|int|percent)/.test(def.type) && typeof v === 'string') v = Number(v.replace(/%$/, '').split(',')[0]);
     env[key] = v;
   }
-  return { ...env, ...context, mode: mode === 'simple' ? 'Simple' : mode === 'advanced' ? 'Advanced' : 'Expert' };
+  return { ...env, ...context, mode: mode === 'simple' ? 'Simple' : mode === 'advanced' ? 'Advanced' : mode === 'developer' ? 'Develop' : 'Expert' };
 }
 
 export function optionState(desc: TabDesc, env: Environment): Record<string, { visible: boolean; enabled: boolean }> {
@@ -97,6 +97,8 @@ export function fieldDefinition(key: string, env: Environment): Partial<OptionDe
       ? ['Default', 'MZV', 'ZVD', 'ZVDD', 'ZVDDD', 'EI2', 'EI3', 'DAA', 'Disable']
       : env.gcode_flavor === 'marlin2' ? ['ZV', 'Disable'] : ['Default', 'Disable'];
   if (values) return { enum_values: values, enum_labels: values.map((v) => def.enum_labels?.[def.enum_values!.indexOf(v)] ?? v) };
+  if (key === 'nonplanar_mode' && String(env.nonplanar_kinematics ?? 'none') === 'none')
+    return { enum_labels: def.enum_values?.map((v, i) => `${def.enum_labels?.[i] ?? v}${v === 'multiplanar' || v === 'field' ? ' (needs rotary axes)' : ''}`) };
   if (key === 'brim_width' && env.brim_type === 'brim_ears' && condition('belt_printer == true && (belt_slice_rotation == "x" || belt_slice_rotation == "y") && (belt_slice_rotation_angle >= 1 && belt_slice_rotation_angle <= 85 || belt_slice_rotation_angle <= -1 && belt_slice_rotation_angle >= -85)', env) !== true)
     return { label: 'Brim ear radius' };
   return {};

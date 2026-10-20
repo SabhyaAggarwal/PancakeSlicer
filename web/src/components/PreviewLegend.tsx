@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { effectiveConfig, getState } from '../state/store';
 import {
-  NONPLANAR_COLORS, NONPLANAR_HUES, NONPLANAR_PLANAR_COLOR, OPTION_COLORS, RANGE_PALETTE, ROLE_COLORS, VIEW_TYPES, hexToRgb,
+  CURVED_COLOR, NONPLANAR_COLORS, NONPLANAR_HUES, NONPLANAR_PLANAR_COLOR, OPTION_COLORS, RANGE_PALETTE, ROLE_COLORS, VIEW_TYPES, hexToRgb,
   nonplanarIndexColor, type ColorRange, type RGB, type Ranges, type ViewType,
 } from '../preview/colors';
 import type { PreviewData } from '../preview/data';
@@ -72,6 +72,8 @@ export function Legend(props: {
   ranges: Ranges | null;
   range: [number, number];
   scene: PreviewScene | null;
+  explain?: ReactNode;
+  explainOnly?: boolean;
 }) {
   const { data: d, ui, setUi, ranges } = props;
   const [open, setOpen] = useState(true);
@@ -115,7 +117,7 @@ export function Legend(props: {
             <tbody>
               {ROLE_NAMES.map((name, r) => (d.roleTime[r] > 0 || d.roleFilament[r] > 0) && (
                 <tr key={r} className={ui.vis.hiddenRoles.has(r) ? 'off' : ''} onClick={() => toggleRole(r)} title="Click to show or hide">
-                  <td><Swatch c={ROLE_COLORS[r]} />{name}</td>
+                  <td><button type="button" className="lg-role" aria-pressed={!ui.vis.hiddenRoles.has(r)} onClick={(e) => { e.stopPropagation(); toggleRole(r); }}><Swatch c={ROLE_COLORS[r]} />{name}</button></td>
                   <td>{d.roleTime[r] > 0 ? shortTime(d.roleTime[r]) : ''}</td>
                   <td>{percent(d.roleTime[r], total)}</td>
                   <td>{(d.roleFilament[r] / 1000).toFixed(2)}m</td>
@@ -174,7 +176,8 @@ export function Legend(props: {
         </select>
         <button className="lg-collapse" onClick={() => setOpen(!open)} title={open ? 'Collapse' : 'Expand'}>{open ? '▴' : '▾'}</button>
       </div>
-      {open && (
+      {open && props.explain}
+      {open && !props.explainOnly && (
         <>
           <div className="lg-body">{body()}</div>
           <div className="lg-sub">Options</div>
@@ -265,6 +268,7 @@ function NonplanarKey({ d, ui, setUi, ranges }: { d: PreviewData; ui: PreviewUi;
     for (let k = shellCount - 1; k >= 0; --k) rows.push({ c: ranges ? ranges.shell.colorAt(k) : [0, 0, 0], label: `Shell ${k + 1}` });
   } else if (ui.nonplanar === 'band') rows = indexRows([...bands], 'Band', 'Bands', 'Unbanded');
   else if (ui.nonplanar === 'patch') rows = indexRows([...patches], 'Patch', 'Patches', 'No patch');
+  else if (ui.nonplanar === 'curved') rows = [{ c: CURVED_COLOR, label: 'Curved' }];
   return (
     <div>
       <div className="lg-radios">

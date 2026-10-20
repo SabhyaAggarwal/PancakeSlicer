@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 type projectInstance struct {
 	Printable *bool     `json:"printable"`
 	Transform string    `json:"-"`
+	Object    string    `json:"-"`
 	Delta     []float64 `json:"transform"`
 }
 
@@ -73,64 +75,12 @@ func patchProject(path string, instances []projectInstance) error {
 	if len(instances) == 0 {
 		return nil
 	}
-	src, err := zip.OpenReader(path)
+	root, err := projectRoot(path)
 	if err != nil {
 		return err
 	}
-	defer src.Close()
-	root := "3D/3dmodel.model"
-	for _, f := range src.File {
-		if strings.EqualFold(f.Name, "_rels/.rels") {
-			r, err := f.Open()
-			if err != nil {
-				return err
-			}
-			var rels struct {
-				Items []struct {
-					Type   string `xml:"Type,attr"`
-					Target string `xml:"Target,attr"`
-				} `xml:"Relationship"`
-			}
-			err = xml.NewDecoder(io.LimitReader(r, 1<<20)).Decode(&rels)
-			r.Close()
-			if err != nil {
-				return err
-			}
-			for _, rel := range rels.Items {
-				if strings.HasSuffix(rel.Type, "/3dmodel") {
-					root = strings.TrimPrefix(rel.Target, "/")
-				}
-			}
-		}
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".project-*.3mf")
-	if err != nil {
-		return err
-	}
-	name := tmp.Name()
-	defer os.Remove(name)
-	dst := zip.NewWriter(tmp)
-	found := false
-	for _, f := range src.File {
-		if !strings.EqualFold(f.Name, root) {
-			if err = dst.Copy(f); err != nil {
-				break
-			}
-			continue
-		}
-		found = true
-		var r io.ReadCloser
-		r, err = f.Open()
-		if err != nil {
-			break
-		}
-		var data []byte
-		data, err = io.ReadAll(io.LimitReader(r, 256<<20))
-		r.Close()
-		if err != nil {
-			break
-		}
-		n := 0
+	n := 0
+	found, err := rewriteProject(path, func(name string) bool { return strings.EqualFold(name, root) }, func(data []byte) ([]byte, error) {
 		data = buildPattern.ReplaceAllFunc(data, func(build []byte) []byte {
 			return itemPattern.ReplaceAllFunc(build, func(item []byte) []byte {
 				if n >= len(instances) {
@@ -155,7 +105,115 @@ func patchProject(path string, instances []projectInstance) error {
 			})
 		})
 		if n != len(instances) {
-			err = fmt.Errorf("project has %d build items, expected %d", n, len(instances))
+			return nil, fmt.Errorf("project has %d build items, expected %d", n, len(instances))
+		}
+		return data, nil
+	})
+	if err == nil && !found {
+		err = fmt.Errorf("project has no root model part")
+	}
+	return err
+}
+
+func projectRoot(path string) (string, error) {
+	src, err := zip.OpenReader(path)
+	if err != nil {
+		return "", err
+	}
+	defer src.Close()
+	root := "3D/3dmodel.model"
+	for _, f := range src.File {
+		if !strings.EqualFold(f.Name, "_rels/.rels") {
+			continue
+		}
+		r, err := f.Open()
+		if err != nil {
+			return "", err
+		}
+		var rels struct {
+			Items []struct {
+				Type   string `xml:"Type,attr"`
+				Target string `xml:"Target,attr"`
+			} `xml:"Relationship"`
+		}
+		err = xml.NewDecoder(io.LimitReader(r, 1<<20)).Decode(&rels)
+		r.Close()
+		if err != nil {
+			return "", err
+		}
+		for _, rel := range rels.Items {
+			if strings.HasSuffix(rel.Type, "/3dmodel") {
+				root = strings.TrimPrefix(rel.Target, "/")
+			}
+		}
+	}
+	return root, nil
+}
+
+func patchProjectSettings(path string, settings [][2]string) error {
+	if len(settings) == 0 {
+		return nil
+	}
+	_, err := rewriteProject(path, func(name string) bool {
+		return strings.EqualFold(name, "Metadata/model_settings.config") || strings.EqualFold(name, "Metadata/layer_config_ranges.xml")
+	}, func(data []byte) ([]byte, error) {
+		for _, kv := range settings {
+			key, value := regexp.QuoteMeta(kv[0]), xmlEscape(kv[1])
+			for _, re := range []*regexp.Regexp{
+				regexp.MustCompile(`(<metadata\s+key="` + key + `"\s+value=")[^"]*(")`),
+				regexp.MustCompile(`(<option\s+opt_key="` + key + `"\s*>)[^<]*(</option>)`),
+			} {
+				data = re.ReplaceAllFunc(data, func(m []byte) []byte {
+					g := re.FindSubmatch(m)
+					return []byte(string(g[1]) + value + string(g[2]))
+				})
+			}
+		}
+		return data, nil
+	})
+	return err
+}
+
+func xmlEscape(s string) string {
+	var b strings.Builder
+	_ = xml.EscapeText(&b, []byte(s))
+	return strings.ReplaceAll(b.String(), `"`, "&#34;")
+}
+
+func rewriteProject(path string, match func(name string) bool, edit func(data []byte) ([]byte, error)) (bool, error) {
+	src, err := zip.OpenReader(path)
+	if err != nil {
+		return false, err
+	}
+	defer src.Close()
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".project-*.3mf")
+	if err != nil {
+		return false, err
+	}
+	name := tmp.Name()
+	defer os.Remove(name)
+	dst := zip.NewWriter(tmp)
+	found := false
+	for _, f := range src.File {
+		if !match(f.Name) {
+			if err = dst.Copy(f); err != nil {
+				break
+			}
+			continue
+		}
+		found = true
+		var r io.ReadCloser
+		r, err = f.Open()
+		if err != nil {
+			break
+		}
+		var data []byte
+		data, err = io.ReadAll(io.LimitReader(r, 256<<20))
+		r.Close()
+		if err != nil {
+			break
+		}
+		if data, err = edit(data); err != nil {
 			break
 		}
 		var w io.Writer
@@ -163,8 +221,7 @@ func patchProject(path string, instances []projectInstance) error {
 		if err != nil {
 			break
 		}
-		_, err = w.Write(data)
-		if err != nil {
+		if _, err = w.Write(data); err != nil {
 			break
 		}
 	}
@@ -175,15 +232,12 @@ func patchProject(path string, instances []projectInstance) error {
 		err = closeErr
 	}
 	if err != nil {
-		return err
-	}
-	if !found {
-		return fmt.Errorf("project has no root model part")
+		return false, err
 	}
 	if err = src.Close(); err != nil {
-		return err
+		return false, err
 	}
-	return os.Rename(name, path)
+	return found, os.Rename(name, path)
 }
 
 func savedProjectInstances(path string) ([]projectInstance, error) {
@@ -223,6 +277,9 @@ func savedProjectInstances(path string) ([]projectInstance, error) {
 						if a.Name.Local == "transform" {
 							state.Transform = a.Value
 						}
+						if a.Name.Local == "objectid" {
+							state.Object = a.Value
+						}
 						if a.Name.Local == "printable" {
 							v := a.Value != "0"
 							state.Printable = &v
@@ -245,4 +302,92 @@ func savedProjectInstances(path string) ([]projectInstance, error) {
 		}
 	}
 	return nil, fmt.Errorf("project has no build items")
+}
+
+func writeProjectEdits(dir string, files []string, uploaded map[string]bool, raw string) error {
+	if !strings.EqualFold(filepath.Ext(files[0]), ".3mf") {
+		return fmt.Errorf("project_edits requires the 3MF project as the first upload")
+	}
+	var edits []map[string]json.RawMessage
+	if json.Unmarshal([]byte(raw), &edits) != nil || len(edits) == 0 {
+		return fmt.Errorf("project_edits needs a non-empty array of edits")
+	}
+	used := map[string]bool{}
+	for _, e := range edits {
+		var op string
+		if json.Unmarshal(e["op"], &op) != nil {
+			return fmt.Errorf("project_edits: every edit needs an op")
+		}
+		_, hasFile := e["file"]
+		if op != "add_object" {
+			if hasFile {
+				return fmt.Errorf("project_edits: only add_object takes a file")
+			}
+			continue
+		}
+		var file string
+		if json.Unmarshal(e["file"], &file) != nil || !uploaded[file] || file == files[0] || strings.EqualFold(filepath.Ext(file), ".3mf") {
+			return fmt.Errorf("project_edits: add_object must name an uploaded mesh")
+		}
+		used[file] = true
+	}
+	for _, f := range files[1:] {
+		if !used[f] {
+			return fmt.Errorf("project_edits: upload %s is not used by an edit", f)
+		}
+	}
+	data, err := json.Marshal(map[string]any{"edits": edits})
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "edits.json"), data, 0600)
+}
+
+func projectEditBounds(dir, project string, plate int) (map[int]bool, string, error) {
+	data, err := os.ReadFile(filepath.Join(dir, "edits.json"))
+	if err != nil {
+		return nil, "", err
+	}
+	var list struct {
+		Edits []map[string]json.RawMessage `json:"edits"`
+	}
+	if err := json.Unmarshal(data, &list); err != nil {
+		return nil, "", err
+	}
+	items, err := savedProjectInstances(filepath.Join(dir, project))
+	if err != nil {
+		return nil, "", err
+	}
+	deleted := map[int]bool{}
+	var added []map[string]json.RawMessage
+	for _, e := range list.Edits {
+		var op string
+		json.Unmarshal(e["op"], &op)
+		switch op {
+		case "delete":
+			var object, instance int
+			json.Unmarshal(e["object"], &object)
+			_, one := e["instance"]
+			json.Unmarshal(e["instance"], &instance)
+			seen := map[string]int{}
+			for i, item := range items {
+				n := seen[item.Object]
+				seen[item.Object]++
+				if item.Object == strconv.Itoa(object) && (!one || n == instance) {
+					deleted[i] = true
+				}
+			}
+		case "add_object":
+			on := 1
+			json.Unmarshal(e["plate"], &on)
+			if plate == 0 || on == plate {
+				added = append(added, e)
+			}
+		}
+	}
+	if len(added) == 0 {
+		return deleted, "", nil
+	}
+	raw, err := json.Marshal(map[string]any{"objects": added})
+	return deleted, string(raw), err
 }

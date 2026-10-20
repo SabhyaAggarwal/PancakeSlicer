@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Modal, ModalTitle } from './Modal';
+import { menuKeys } from '../keys';
 import type { Config, ConfigValue } from '../api/types';
 import { isHidden, OPTIONS, useTab } from '../options';
 import objectKeys from '../object_options.json';
-import { effectiveConfig, getState, removeObjectOptions, setObjectOption, useStore } from '../state/store';
+import { effectiveConfig, effectiveMode, getState, removeObjectOptions, removeVolumeOptions, setObjectOption, setVolumeOption, useStore } from '../state/store';
+import { volumeIcon } from '../plater/volumes';
 import { undoable } from '../state/history';
 import { environment, fieldDefinition, optionState } from '../visibility';
 import { Field } from './Field';
 import { Icon, IconButton } from './Icon';
+import PrintStyle from './PrintStyle';
 
 const OBJECT_KEYS = [...objectKeys.region, ...objectKeys.object];
 
@@ -23,9 +27,9 @@ const FREQ_BUNDLE: [string, string[]][] = [
 const labelOf = (key: string) => OPTIONS[key]?.full_label || OPTIONS[key]?.label || key;
 const asText = (v: ConfigValue | undefined) => (v === undefined ? '' : Array.isArray(v) ? v.join(',') : String(v));
 
-function hierarchy(filaments: number): [string, string[]][] {
+function hierarchy(filaments: number, keys: string[]): [string, string[]][] {
   const cats = new Map<string, string[]>();
-  for (const key of OBJECT_KEYS) {
+  for (const key of keys) {
     const def = OPTIONS[key];
     if (!def || isHidden(key)) continue;
     const cat = def.category ?? '';
@@ -39,16 +43,17 @@ function hierarchy(filaments: number): [string, string[]][] {
 export function ObjectSettings() {
   const { desc, error } = useTab('process');
   const object = useStore((s) => s.objects.find((o) => o.id === s.selected?.object));
+  const volume = useStore((s) => object?.volumes?.find((v) => v.id === s.selected?.volume));
   const filaments = useStore((s) => s.filamentSlots.length);
   useStore((s) => s.dirty.process);
   useStore((s) => s.dirty.machine);
   useStore((s) => s.printer);
-  const uiMode = useStore((s) => s.uiMode);
+  const uiMode = useStore(effectiveMode);
   useStore((s) => s.process);
   const global = effectiveConfig(getState(), 'process');
   const [menu, setMenu] = useState(false);
   const [pick, setPick] = useState<[string, string[]] | null>(null);
-  const cats = useMemo(() => hierarchy(filaments), [filaments, desc]);
+  const cats = useMemo(() => hierarchy(filaments, volume ? objectKeys.region : OBJECT_KEYS), [filaments, desc, !!volume]);
 
   if (!desc) return <div role="status">{error ?? 'Loading settings…'}</div>;
   if (!object)
@@ -60,18 +65,29 @@ export function ObjectSettings() {
       </div>
     );
 
+  if (volume && volume.type !== 'part' && volume.type !== 'modifier')
+    return <div className="obj-settings-empty">{volume.name} has no settings.</div>;
+  const target = volume ? {
+    name: volume.name, icon: volumeIcon(volume.type), settings: volume.settings, region: true,
+    set: (k: string, v: ConfigValue) => setVolumeOption(object.id, volume.id, k, v),
+    remove: (keys: string[]) => removeVolumeOptions(object.id, volume.id, keys),
+  } : {
+    name: object.name, icon: 'obj_printable', settings: object.settings, region: false,
+    set: (k: string, v: ConfigValue) => setObjectOption(object.id, k, v),
+    remove: (keys: string[]) => removeObjectOptions(object.id, keys),
+  };
   const add = (keys: string[], remove: string[] = []) => undoable('Add Settings', () => {
-    for (const k of keys) if (!(k in object.settings)) setObjectOption(object.id, k, global[k] ?? (OPTIONS[k]?.default as ConfigValue) ?? '');
-    if (remove.length) removeObjectOptions(object.id, remove);
+    for (const k of keys) if (!(k in target.settings) && (!target.region || objectKeys.region.includes(k))) target.set(k, global[k] ?? (OPTIONS[k]?.default as ConfigValue) ?? '');
+    if (remove.length) target.remove(remove);
   });
   const state = getState();
   const machine = effectiveConfig(state, 'machine');
-  const env = environment([machine, global, object.settings], {
+  const env = environment([machine, global, object.settings, ...(volume ? [volume.settings] : [])], {
     settings_scope: 'object', printer_vendor: state.machines.find((p) => p.name === state.printer)?.vendor,
   }, uiMode);
   const states = optionState(desc, env);
   const byCat = new Map<string, string[]>();
-  for (const k of Object.keys(object.settings)) {
+  for (const k of Object.keys(target.settings)) {
     if (isHidden(k)) continue;
     const cat = OPTIONS[k]?.category || 'Others';
     if (!byCat.has(cat)) byCat.set(cat, []);
@@ -81,9 +97,9 @@ export function ObjectSettings() {
   return (
     <div className="obj-settings">
       <div className="obj-settings-head">
-        <Icon name="obj_printable" size={14} />
-        <span className="ol-text" title={object.name}>
-          {object.name}
+        <Icon name={target.icon} size={14} />
+        <span className="ol-text" title={target.name}>
+          {target.name}
         </span>
         <span className="obj-settings-tools">
           <AddMenu
@@ -95,14 +111,15 @@ export function ObjectSettings() {
           />
           <IconButton
             icon="delete"
-            title="Delete all settings of this object"
-            disabled={!Object.keys(object.settings).length}
-            onClick={() => removeObjectOptions(object.id, Object.keys(object.settings))}
+            title={volume ? 'Delete all settings of this part' : 'Delete all settings of this object'}
+            disabled={!Object.keys(target.settings).length}
+            onClick={() => target.remove(Object.keys(target.settings))}
           />
         </span>
       </div>
-      {!Object.keys(object.settings).length && (
-        <div className="obj-settings-empty">This object uses the global process settings. Add settings with “+”.</div>
+      {!volume && <PrintStyle />}
+      {!Object.keys(target.settings).length && (
+        <div className="obj-settings-empty">{volume ? 'This part uses its object\'s settings.' : 'This object uses the global process settings.'} Add settings with “+”.</div>
       )}
       <div className="page-body">
         {[...byCat.entries()].map(([cat, keys]) => (
@@ -117,14 +134,14 @@ export function ObjectSettings() {
                 type="process"
                 disabled={states[k]?.enabled === false}
                 definition={fieldDefinition(k, env)}
-                value={object.settings[k]}
+                value={target.settings[k]}
                 systemValue={global[k]}
-                dirty={asText(object.settings[k]) !== asText(global[k])}
-                onSet={(key, v) => setObjectOption(object.id, key, v)}
-                onReset={(key) => setObjectOption(object.id, key, global[key] ?? object.settings[key])}
+                dirty={asText(target.settings[k]) !== asText(global[k])}
+                onSet={(key, v) => target.set(key, v)}
+                onReset={(key) => target.set(key, global[key] ?? target.settings[key])}
                 resetTitle="Reset to the global process value"
                 extra={
-                  <button type="button" className="icon-btn opt-remove" title="Remove this setting from the object" onClick={() => removeObjectOptions(object.id, [k])}>
+                  <button type="button" className="icon-btn opt-remove" title="Remove this setting from the object" onClick={() => target.remove([k])}>
                     ×
                   </button>
                 }
@@ -137,10 +154,10 @@ export function ObjectSettings() {
         <SelectSettings
           title={pick[0]}
           keys={pick[1]}
-          current={object.settings}
+          current={target.settings}
           onClose={() => setPick(null)}
           onOk={(checked) => {
-            add(checked, pick[1].filter((k) => k in object.settings && !checked.includes(k)));
+            add(checked, pick[1].filter((k) => k in target.settings && !checked.includes(k)));
             setPick(null);
           }}
         />
@@ -161,6 +178,7 @@ function AddMenu(props: {
     if (!props.open) return;
     const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && props.setOpen(false);
     window.addEventListener('mousedown', close);
+    ref.current?.querySelector<HTMLElement>('.menu-pop .menu-item')?.focus();
     return () => window.removeEventListener('mousedown', close);
   }, [props.open]);
   const item = (label: string, fn: () => void, icon?: string) => (
@@ -179,10 +197,11 @@ function AddMenu(props: {
     </button>
   );
   return (
-    <span className="menu" ref={ref}>
+    <span className="menu" ref={ref}
+      onKeyDown={(e) => props.open && menuKeys(e, ref.current!.querySelector('.menu-pop'), () => props.setOpen(false), ref.current!.querySelector('button'))}>
       <IconButton icon="add" title="Add settings" onClick={() => props.setOpen(!props.open)} />
       {props.open && (
-        <div className="menu-pop menu-pop-right">
+        <div className="menu-pop menu-pop-right" role="menu" aria-label="Add settings">
           {FREQ_BUNDLE.map(([cat, keys]) => item(cat, () => props.onBundle(keys.filter((k) => OPTIONS[k] && !isHidden(k))), cat === 'Support' ? 'support' : undefined))}
           <div className="menu-sep" />
           <div className="menu-caption">Add settings by category</div>
@@ -195,11 +214,6 @@ function AddMenu(props: {
 
 function SelectSettings(props: { title: string; keys: string[]; current: Config; onOk(keys: string[]): void; onClose(): void }) {
   const [checked, setChecked] = useState(() => new Set(props.keys.filter((k) => k in props.current)));
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && props.onClose();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [props.onClose]);
   const toggle = (k: string) => {
     const next = new Set(checked);
     if (next.has(k)) next.delete(k);
@@ -207,14 +221,8 @@ function SelectSettings(props: { title: string; keys: string[]; current: Config;
     setChecked(next);
   };
   return (
-    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
-      <div className="modal small" role="dialog" aria-label="Select settings">
-        <div className="modal-title">
-          <span>Select settings — {props.title}</span>
-          <button className="modal-close" title="Close" onClick={props.onClose}>
-            ×
-          </button>
-        </div>
+    <Modal className="small" label={`Select settings — ${props.title}`} onClose={props.onClose} backdropClose returnFocus='.obj-settings-tools button[title="Add settings"]'>
+        <ModalTitle title={`Select settings — ${props.title}`} onClose={props.onClose} />
         <div className="select-list">
           {props.keys.map((k) => (
             <label key={k} className="select-row" title={OPTIONS[k]?.tooltip}>
@@ -235,7 +243,6 @@ function SelectSettings(props: { title: string; keys: string[]; current: Config;
             Cancel
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
+import { Modal, ModalTitle } from './Modal';
 import type { Config } from '../api/types';
 import { bedBounds, parsePoints } from '../plater/geometry';
 import { bedAsset, registerBedAsset } from '../plater/bed-assets';
@@ -17,8 +18,6 @@ export default function BedShapeDialog({ config, close }: { config: Config; clos
   const [diameter, setDiameter] = useState(size[0]);
   const [texture, setTexture] = useState(String(config.bed_custom_texture ?? ''));
   const [model, setModel] = useState(String(config.bed_custom_model ?? ''));
-  const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => { dialog.current?.showModal(); }, []);
   const valid = shape === 'Rectangular' ? size.every((n) => Number.isFinite(n) && n > 0 && n <= 214700) && origin.every((n) => Number.isFinite(n) && Math.abs(n) <= 107350) : shape === 'Circular' ? Number.isFinite(diameter) && diameter > 0 && diameter <= 214700 : custom.length >= 3;
   const points = shape === 'Rectangular' ? [[-origin[0], -origin[1]], [size[0] - origin[0], -origin[1]], [size[0] - origin[0], size[1] - origin[1]], [-origin[0], size[1] - origin[1]]] :
     shape === 'Circular' ? Array.from({ length: 72 }, (_, i) => { const a = (i + 1) * Math.PI * 2 / 72; return [diameter / 2 * Math.cos(a), diameter / 2 * Math.sin(a)]; }) : custom;
@@ -52,9 +51,9 @@ export default function BedShapeDialog({ config, close }: { config: Config; clos
       } finally { geometry.dispose(); }
     } catch (e) { setError(e instanceof Error ? e.message : 'Error: invalid model'); }
   };
-  return <dialog ref={dialog} className="bed-dialog" aria-label="Bed Shape" onCancel={(e) => { e.preventDefault(); close(); }} onKeyDown={(e) => e.stopPropagation()}>
+  return <Modal className="bed-dialog" label="Bed Shape" onClose={close}>
     <form onSubmit={(e) => { e.preventDefault(); if (!valid) return; setOption('machine', 'printable_area', points.map(([x, y]) => `${Number(x.toFixed(6))}x${Number(y.toFixed(6))}`)); setOption('machine', 'bed_custom_texture', texture); setOption('machine', 'bed_custom_model', model); close(); }}>
-      <div className="modal-title"><span>Bed Shape</span><button className="modal-close" type="button" title="Close" onClick={close}>×</button></div>
+      <ModalTitle title="Bed Shape" onClose={close} />
       <div className="bed-dialog-body"><div className="bed-dialog-fields"><fieldset><legend>Shape</legend>
         <select className="combo" aria-label="Shape" value={shape} onChange={(e) => setShape(e.target.value)}>{['Rectangular', 'Circular', 'Custom'].map((name) => <option key={name}>{name}</option>)}</select>
         {shape === 'Rectangular' && <>{pair('Size', size, setSize, 0, 214700)}{pair('Origin', origin, setOrigin, -107350, 107350)}</>}
@@ -62,10 +61,10 @@ export default function BedShapeDialog({ config, close }: { config: Config; clos
         {shape === 'Custom' && <><label className="side-btn">Load shape from STL...<input type="file" aria-label="Load shape from STL" hidden accept=".stl" onChange={(e) => { const file = e.target.files?.[0]; if (file) void loadShape(file); }} /></label>{error && <div role="alert">{error}</div>}</>}
       </fieldset>{asset('Texture', texture, setTexture, '.png,.svg')}{asset('Model', model, setModel, '.stl')}</div>
       <svg className="bed-2d" viewBox="0 0 300 300" role="img" aria-label="Bed shape preview">
-        <defs><pattern id="bed-grid" width={10 * scale || 10} height={10 * scale || 10} patternUnits="userSpaceOnUse"><path d={`M ${10 * scale} 0 L 0 0 0 ${10 * scale}`} fill="none" stroke="#bbb" strokeWidth="0.5" /></pattern><clipPath id="bed-clip"><polygon points={points.map(([x, y]) => `${px(x)},${py(y)}`).join(' ')} /></clipPath></defs>
-        {valid && <><polygon points={points.map(([x, y]) => `${px(x)},${py(y)}`).join(' ')} fill="#e3e4e4" stroke="#666" />{texture && <image href={bedAsset(texture)} x={px(Math.min(...xs))} y={py(Math.max(...ys))} width={(Math.max(...xs) - Math.min(...xs)) * scale} height={(Math.max(...ys) - Math.min(...ys)) * scale} preserveAspectRatio="none" clipPath="url(#bed-clip)" />}<rect width="300" height="300" fill="url(#bed-grid)" clipPath="url(#bed-clip)" /><path d={`M ${px(0)} ${py(0)} h 24 M ${px(0)} ${py(0)} v -24`} stroke="#555" /><circle cx={px(0)} cy={py(0)} r="3" fill="#00ae42" /><text x={px(0) + 5} y={py(0) + 15} fontSize="11">0,0</text></>}
+        <defs><pattern id="bed-grid" width={10 * scale || 10} height={10 * scale || 10} patternUnits="userSpaceOnUse"><path d={`M ${10 * scale} 0 L 0 0 0 ${10 * scale}`} fill="none" className="bed-2d-grid" strokeWidth="0.5" /></pattern><clipPath id="bed-clip"><polygon points={points.map(([x, y]) => `${px(x)},${py(y)}`).join(' ')} /></clipPath></defs>
+        {valid && <><polygon points={points.map(([x, y]) => `${px(x)},${py(y)}`).join(' ')} className="bed-2d-plate" />{texture && <image href={bedAsset(texture)} x={px(Math.min(...xs))} y={py(Math.max(...ys))} width={(Math.max(...xs) - Math.min(...xs)) * scale} height={(Math.max(...ys) - Math.min(...ys)) * scale} preserveAspectRatio="none" clipPath="url(#bed-clip)" />}<rect width="300" height="300" fill="url(#bed-grid)" clipPath="url(#bed-clip)" /><path d={`M ${px(0)} ${py(0)} h 24 M ${px(0)} ${py(0)} v -24`} className="bed-2d-axes" /><circle cx={px(0)} cy={py(0)} r="3" fill="#00ae42" /><text x={px(0) + 5} y={py(0) + 15} fontSize="11" className="bed-2d-label">0,0</text></>}
       </svg></div>
       <div className="bed-dialog-buttons"><button className="side-btn" type="submit" disabled={!valid}>OK</button><button className="side-btn" type="button" onClick={close}>Cancel</button></div>
     </form>
-  </dialog>;
+  </Modal>;
 }

@@ -1,19 +1,21 @@
 import * as THREE from 'three';
-import type { Config, ConfigValue, JobRequest, PresetCatalog, SystemPreset } from './api/types';
+import type { Config, ConfigValue, JobRequest, PresetCatalog, PresetType, SystemPreset } from './api/types';
 import { sliceProgress } from './api/progress';
-import { connect } from './api/client';
+import { canEditProject, canLoadStep, connect } from './api/client';
 import { normalizeConfig } from './config-values';
 import { OPTIONS, loadTab } from './options';
 import { shortTime } from './preview/format';
 import { jobFields, outputKind, overrides, plateSignature } from './slice-input';
-import { arrange, loadMesh, loadProject, nextFreeSpot, parsePoints, placeholderGeometry, plateJson, outsideBed } from './plater/geometry';
+import { arrange, bakeStl, bedBounds, loadMesh, loadProject, nextFreeSpot, parsePoints, placeholderGeometry, plateJson, outsideBed } from './plater/geometry';
 import type { ProjectItem } from './plater/threemf';
+import { projectEdits } from './plater/projectTransforms';
+import { confirmDialog, numberDialog } from './components/Ask';
 import {
-  DEFAULT_PRINTER, DEMO_MODELS, effectiveConfig, getState, markStale, newId, printerPreset, resolvePreset, selectPrinter, setState, toast, type PlateObject,
+  DEFAULT_PRINTER, DEMO_MODELS, effectiveConfig, getState, markStale, newId, presetEdits, printerPreset, resolvePreset, selectPrinter, setState, toast, type PlateObject,
 } from './state/store';
 import { historyDepth, leaveDocument, markSaved, newDocument, undoable } from './state/history';
 
-const VENDORS = ['BBL', 'Prusa'];
+const VENDORS = ['BBL', 'Prusa', 'Custom'];
 
 function mergeCatalog(vendor: string, cat: PresetCatalog) {
   const order = <T extends { vendor: string }>(l: T[]) => [...l].sort((a, b) => VENDORS.indexOf(a.vendor) - VENDORS.indexOf(b.vendor));
@@ -27,6 +29,8 @@ function mergeCatalog(vendor: string, cat: PresetCatalog) {
 export async function init() {
   const api = await connect();
   setState({ api, loading: 'Loading presets' });
+  if (!api.mock) void fetch('/api/healthz').then((r) => r.json()).then((h) => setState({ features: h?.tool_features ?? {} })).catch(() => {});
+  if (!api.mock) fetch('/api/printers').then((r) => (r.ok ? r.json() : [])).then((printers) => Array.isArray(printers) && setState({ printers })).catch(() => {});
   const saved = localStorage.getItem('orca.printer');
   const first = localStorage.getItem('orca.vendor') ?? 'BBL';
   const vendors = [first, ...VENDORS.filter((v) => v !== first)];
@@ -48,7 +52,7 @@ export async function init() {
     if (!getState().printer && getState().machines[0]) selectPrinter(getState().machines[0].name);
   } catch (e) {
     setState({ loading: null });
-    toast(`Presets failed to load: ${e}. Check that the slicing service is running, then reload the page.`);
+    toast(`Presets failed to load: ${e}`);
   }
 }
 
@@ -57,6 +61,35 @@ export function choosePrinter(name: string) {
   localStorage.setItem('orca.printer', name);
   const vendor = resolvePreset(getState(), 'machine', name).base?.vendor;
   if (vendor) localStorage.setItem('orca.vendor', vendor);
+}
+
+export function switchPreset(type: PresetType, slot: number, name: string, edits: 'discard' | 'transfer' = 'discard') {
+  undoable(type === 'machine' ? 'Change printer' : type === 'process' ? 'Change process preset' : 'Change filament preset',
+    () => applyPresetSwitch(type, slot, name, edits));
+}
+
+function applyPresetSwitch(type: PresetType, slot: number, name: string, edits: 'discard' | 'transfer') {
+  const carried = { ...presetEdits(getState(), type, slot) };
+  if (type === 'machine') {
+    choosePrinter(name);
+    if (edits === 'transfer') setState((s) => ({ dirty: { ...s.dirty, machine: carried } }));
+    return;
+  }
+  setState((st) => {
+    const old = st.filamentSlots[slot];
+    const filamentEdits = { ...st.filamentEdits };
+    if (type === 'filament' && !st.filamentSlots.some((f, i) => i !== slot && f === old)) delete filamentEdits[old];
+    if (type === 'filament' && edits === 'transfer') filamentEdits[name] = { ...filamentEdits[name], ...carried };
+    return {
+      dirty: type === 'process' ? { ...st.dirty, process: edits === 'transfer' ? carried : {} } : st.dirty,
+      filamentEdits,
+      projectPresets: st.projectPresets && (type === 'process'
+        ? { ...st.projectPresets, process: {} }
+        : { ...st.projectPresets, filaments: st.projectPresets.filaments.map((f, i) => i === slot ? {} : f) }),
+      ...(type === 'process' ? { process: name } : { filamentSlots: st.filamentSlots.map((f, i) => (i === slot ? name : f)) }),
+      job: markStale(st.job),
+    };
+  });
 }
 
 export function bedArea() {
@@ -73,18 +106,22 @@ export async function importFiles(files: FileList | File[]) {
     await openProject(projectFile);
     return;
   }
-  if (getState().project) {
+  const project = !!getState().project;
+  if (project && !canEditProject()) {
     toast('A 3MF project is open; its objects share the project archive. Delete all to start a new plate.');
     return;
   }
-  list = list.filter((f) => /\.(stl|obj)$/i.test(f.name) || (toast(`${f.name} is not a model file. Choose an STL, OBJ or 3MF file.`), false));
+  const step = /\.(step|stp)$/i;
+  list = list.filter((f) => /\.(stl|obj)$/i.test(f.name) || step.test(f.name) && canLoadStep() ||
+    (toast(`${f.name} is not a model file. Choose an STL, OBJ${canLoadStep() ? ', STEP' : ''} or 3MF file.`), false));
   const added: PlateObject[] = [];
   for (const f of list) {
     try {
-      const geometry = await loadMesh(f, (pct) => setState({ loading: `Loading ${f.name} ${Math.round(pct)}%` }));
+      const { geometry, source } = step.test(f.name) ? await loadStep(f)
+        : { geometry: await loadMesh(f, (pct) => setState({ loading: `Loading ${f.name} ${Math.round(pct)}%` })), source: f };
       if (getState().loading?.startsWith('Loading ')) setState({ loading: null });
       added.push({
-        id: newId(), name: f.name, geometry, rotX: 0, rotY: 0, scale: [1, 1, 1], extruder: 1, source: f, settings: {},
+        id: newId(), name: f.name, geometry, rotX: 0, rotY: 0, scale: [1, 1, 1], extruder: 1, source, settings: {},
         instances: [{ id: newId(), x: 0, y: 0, rotZ: 0 }],
       });
     } catch (e) {
@@ -94,10 +131,36 @@ export async function importFiles(files: FileList | File[]) {
   }
   if (!added.length) return;
   undoable(added.length > 1 ? 'Add objects' : 'Add object', () => setState((s) => {
-    const objects = arrange([...s.objects, ...added], bedArea());
+    const objects = project ? added.reduce((list, o) => {
+      const spot = nextFreeSpot(list, o, bedArea()) ?? bedBounds(bedArea()).center;
+      return [...list, { ...o, instances: [{ ...o.instances[0], x: spot.x, y: spot.y }] }];
+    }, s.objects) : arrange([...s.objects, ...added], bedArea());
     const last = added[added.length - 1];
     return { objects, selected: { object: last.id, instance: last.instances[0].id }, job: s.job.state === 'done' ? { ...s.job, stale: true } : s.job };
   }));
+}
+
+async function loadStep(f: File): Promise<{ geometry: THREE.BufferGeometry; source: File }> {
+  const s = getState();
+  if (!s.api || s.api.mock) throw new Error(`${f.name}: importing STEP requires the slicing service`);
+  setState({ loading: `Loading ${f.name}` });
+  const { vendor, printer, process, filaments } = jobFields(s, true);
+  const id = await s.api.submit({ vendor, printer, process, filaments, overrides: {}, events: [], output: '3mf', files: [{ name: f.name, blob: f }] });
+  await new Promise<void>((resolve, reject) => {
+    const unsubscribe = s.api!.events(id, {
+      progress() {},
+      done() { unsubscribe(); resolve(); },
+      error(message) { unsubscribe(); reject(new Error(`${f.name}: ${message}`)); },
+    });
+  });
+  const response = await fetch(s.api.downloadUrl(id));
+  if (!response.ok) throw new Error(`${f.name}: ${response.status} ${response.statusText}`);
+  const stem = f.name.replace(/\.(step|stp)$/i, '');
+  let geometry: THREE.BufferGeometry | undefined;
+  await loadProject(new File([await response.blob()], `${stem}.3mf`), { items() {}, mesh: (i, g) => { if (i === 0) geometry = g; }, missing() {} });
+  if (!geometry) throw new Error(`${f.name}: the STEP file has no shape`);
+  const mesh = { geometry, rotX: 0, rotY: 0, scale: [1, 1, 1] } as PlateObject;
+  return { geometry, source: new File([await bakeStl(mesh)], `${stem}.stl`) };
 }
 
 function closestPreset(presets: SystemPreset[], config: Config, id: string): SystemPreset | undefined {
@@ -166,7 +229,7 @@ function centreGeometryOnly() {
 
 export async function openProject(file: File) {
   const s = getState();
-  if ((s.objects.length || s.projectPlates.some((p) => p.objects.length)) && !window.confirm('Opening a project replaces the objects on the plate. Continue?')) return;
+  if ((s.objects.length || s.projectPlates.some((p) => p.objects.length)) && !(await confirmDialog('Open Project', 'Opening a project replaces the objects on the plate. Continue?'))) return;
   leaveDocument();
   let objects: PlateObject[] = [];
   const patch = (i: number, f: (o: PlateObject) => PlateObject) => {
@@ -184,11 +247,15 @@ export async function openProject(file: File) {
         geometryOnly = !materials.hasConfig && materials.plates.length === 1;
         const slots = Math.max(1, materials.colours.length, ...items.map((i) => i.extruder));
         adoptProject(materials.config, slots);
-        objects = items.map((it) => ({
-          id: newId(), name: it.name, geometry: placeholderGeometry(), rotX: 0, rotY: 0, scale: [1, 1, 1],
-          extruder: it.extruder, source: file, settings: it.settings, project: { file: file.name, placeholder: true, buildIndex: it.buildIndex, plateIndex: it.plateIndex, plateOrigin: materials.plates.find((p) => p.index === it.plateIndex)?.origin },
-          instances: [{ id: newId(), x: it.origin[0], y: it.origin[1], z: it.origin[2], rotZ: 0, printable: it.printable }],
-        }));
+        objects = items.map((it) => {
+          const instanceId = newId();
+          return {
+            id: newId(), name: it.name, geometry: placeholderGeometry(), rotX: 0, rotY: 0, scale: [1, 1, 1],
+            extruder: it.extruder, source: file, settings: it.settings, project: { file: file.name, placeholder: true, buildIndex: it.buildIndex, plateIndex: it.plateIndex, plateOrigin: materials.plates.find((p) => p.index === it.plateIndex)?.origin,
+              saved: { object: Number(it.id), instance: it.instance, instanceId, extruder: it.extruder, rotZ: it.rotZ } },
+            instances: [{ id: instanceId, x: it.origin[0], y: it.origin[1], z: it.origin[2], rotZ: 0, printable: it.printable }],
+          };
+        });
         setState((st) => ({
           objects: objects.filter((o) => o.project?.plateIndex === materials.plates[0].index),
           projectPlates: materials.plates.map((p) => ({ ...p, objects: objects.filter((o) => o.project?.plateIndex === p.index) })),
@@ -199,7 +266,7 @@ export async function openProject(file: File) {
         newDocument(true);
       },
       mesh: (i, geometry, centre) =>
-        patch(i, (o) => ({ ...o, geometry, project: { ...o.project!, file: file.name, placeholder: false, origin: [centre.x, centre.y, centre.z] }, instances: [{ ...o.instances[0], x: centre.x, y: centre.y, z: centre.z }] })),
+        patch(i, (o) => ({ ...o, geometry, project: { ...o.project!, file: file.name, placeholder: false, origin: [centre.x, centre.y, centre.z] }, instances: [{ ...o.instances[0], x: centre.x, y: centre.y, z: centre.z }, ...o.instances.slice(1)] })),
       missing: (i) => patch(i, (o) => ({ ...o, project: { ...o.project!, file: file.name, placeholder: true, missing: true } })),
     });
     if (geometryOnly && getState().project === file) centreGeometryOnly();
@@ -209,9 +276,9 @@ export async function openProject(file: File) {
   }
 }
 
-export function newProject() {
+export async function newProject() {
   const s = getState();
-  if ((s.objects.length || s.projectPlates.some((p) => p.objects.length)) && !window.confirm('Start a new project? The objects on the plate are removed.')) return;
+  if ((s.objects.length || s.projectPlates.some((p) => p.objects.length)) && !(await confirmDialog('New Project', 'Start a new project? The objects on the plate are removed.'))) return;
   leaveDocument();
   setState((st) => ({ objects: [], selected: null, project: null, projectPlates: [], plateIndex: 1, projectName: null, projectMaterials: null, projectPresets: null, projectNotice: null, events: [], flush: { matrix: null, multiplier: null }, processScope: 'global', job: markStale(st.job) }));
   newDocument(true);
@@ -229,7 +296,7 @@ export function openFileDialog() {
   const input = document.createElement('input');
   input.type = 'file';
   input.multiple = true;
-  input.accept = '.stl,.obj,.3mf,.STL,.OBJ,.3MF';
+  input.accept = ['stl', 'obj', '3mf', ...(canLoadStep() ? ['step', 'stp'] : [])].flatMap((e) => [`.${e}`, `.${e.toUpperCase()}`]).join(',');
   input.onchange = () => input.files && void importFiles(input.files);
   input.click();
 }
@@ -241,7 +308,7 @@ export function arrangeAll() {
 export function addInstance() {
   const s = getState();
   const o = s.objects.find((ob) => ob.id === s.selected?.object);
-  if (!o || o.project) return;
+  if (!o || o.project && (o.project.placeholder || !canEditProject())) return;
   const spot = nextFreeSpot(s.objects, o, bedArea());
   const src = o.instances.find((i) => i.id === s.selected!.instance) ?? o.instances[0];
   const inst = { id: newId(), x: spot?.x ?? src.x, y: spot?.y ?? src.y, rotZ: src.rotZ, z: src.z, printable: src.printable };
@@ -262,12 +329,63 @@ export function removeInstance() {
   })));
 }
 
+export async function setInstanceCount() {
+  const s = getState();
+  const o = s.objects.find((ob) => ob.id === s.selected?.object);
+  if (!o || o.project && (o.project.placeholder || !canEditProject())) return;
+  const num = await numberDialog('Copies of the selected object', 'Number of copies:', o.instances.length, 0, 1000);
+  if (num === null || num === o.instances.length) return;
+  undoable(`Set numbers of copies to ${num}`, () => setState((st) => {
+    const cur = st.objects.find((ob) => ob.id === o.id);
+    if (!cur) return {};
+    if (num === 0) return { objects: st.objects.filter((ob) => ob.id !== o.id), selected: null, job: markStale(st.job) };
+    let next: PlateObject = { ...cur, instances: cur.instances.slice(0, num) };
+    let full = false;
+    const src = cur.instances[cur.instances.length - 1];
+    while (next.instances.length < num) {
+      const others = [...st.objects.filter((ob) => ob.id !== o.id), next];
+      const spot: { x: number; y: number } | null = full ? null : nextFreeSpot(others, next, bedArea());
+      full ||= !spot;
+      next = { ...next, instances: [...next.instances, { id: newId(), x: spot?.x ?? src.x, y: spot?.y ?? src.y, rotZ: src.rotZ, z: src.z, printable: src.printable }] };
+    }
+    const objects = st.objects.map((ob) => (ob.id === o.id ? next : ob));
+    const last = next.instances[next.instances.length - 1];
+    return { objects: full ? arrange(objects, bedArea()) : objects, selected: { object: o.id, instance: last.id }, job: markStale(st.job) };
+  }));
+}
+
+export function fillBed() {
+  const s = getState();
+  const o = s.objects.find((ob) => ob.id === s.selected?.object);
+  if (!o || o.project && (o.project.placeholder || !canEditProject())) return;
+  const area = bedArea();
+  const src = o.instances[o.instances.length - 1];
+  const withCopies = (n: number) => arrange(s.objects.map((ob) => ob.id !== o.id ? ob : { ...ob, instances: [...ob.instances,
+    ...Array.from({ length: n }, () => ({ id: newId(), x: src.x, y: src.y, rotZ: src.rotZ, z: src.z, printable: src.printable }))] }), area);
+  const fits = (objects: PlateObject[]) => outsideBed(objects, area, Infinity).size === 0;
+  let lo = 0, hi = 1;
+  let best = withCopies(0);
+  if (!fits(best)) return toast('The plate is full: no copy of the selected object fits on it');
+  for (let next = withCopies(hi); hi <= 1000 && fits(next); next = withCopies(hi)) { best = next; lo = hi; hi *= 2; }
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1, next = withCopies(mid);
+    if (fits(next)) { best = next; lo = mid; } else hi = mid;
+  }
+  if (!lo) return toast('No more copies of the selected object fit on the plate');
+  undoable('Arrange', () => setState((st) => ({ objects: best, selected: { object: o.id, instance: o.instances[0].id, allInstances: true }, job: markStale(st.job) })));
+}
+
 export { outputKind } from './slice-input';
 
 export async function jobRequest(s = getState(), saving = false): Promise<JobRequest> {
   const fields = jobFields(s, saving);
 
-  const { plate, files } = s.project ? { plate: undefined, files: [{ name: s.project.name, blob: s.project as Blob }] } : await plateJson(s.objects);
+  if (s.project) {
+    const { added, files } = fields.project_edits ? projectEdits(s) : { added: [], files: [] };
+    const blobs = await Promise.all(added.map((o) => bakeStl(o)));
+    return { ...fields, files: [{ name: s.project.name, blob: s.project as Blob }, ...files.map((name, i) => ({ name, blob: blobs[i] }))] };
+  }
+  const { plate, files } = await plateJson(s.objects);
   return { ...fields, plate, files };
 }
 
@@ -387,8 +505,8 @@ export function canExport(s = getState()): boolean {
 export function fileUse(machine = printerPreset(getState())) {
   const printer = machine?.model?.replace(/^Bambu Lab /, '') ?? 'printer';
   return machine?.vendor === 'BBL'
-    ? `Copy it to the ${printer}'s microSD card and start it from the printer screen; Bambu Handy can then monitor the print.`
-    : `Copy it to the ${printer}'s USB drive and start it from the printer screen.`;
+    ? `Copy it to the ${printer}'s microSD card.`
+    : `Copy it to the ${printer}'s USB drive.`;
 }
 
 export const STALE_RESULT_TIP = 'Settings changed since the last slice; slice again';

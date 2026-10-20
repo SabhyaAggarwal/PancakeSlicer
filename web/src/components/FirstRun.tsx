@@ -1,13 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import domeUrl from '../../../tests/data/nonplanar/dome.obj?url';
 import knobUrl from '../../../tests/data/nonplanar/corpus/w_knob_knurled.stl?url';
+import hookUrl from '../samples/shelf_hook.stl?url';
 import { choosePrinter, importFiles, openFileDialog, openProjectDialog } from '../actions';
 import { DEMO_MODELS, printerPreset, toast, useStore } from '../state/store';
+import { Modal, ModalTitle } from './Modal';
 
 const SETUP_KEY = 'orca.setup';
 const SAMPLES = [
   { url: domeUrl, file: 'dome.obj', label: 'Dome', tip: 'Curved top, the classic non-planar test' },
   { url: knobUrl, file: 'knob.stl', label: 'Knob', tip: 'An everyday part with a rounded, knurled top' },
+  { url: hookUrl, file: 'shelf_hook.stl', label: 'Shelf hook', tip: 'A 90° ledge that prints without support' },
 ];
 
 const nozzleOf = (v: unknown) => Number(Array.isArray(v) ? v[0] : v);
@@ -18,7 +21,7 @@ async function addSample(url: string, file: string) {
     if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
     await importFiles([new File([await r.blob()], file)]);
   } catch (e) {
-    toast(`The sample could not be downloaded (${e instanceof Error ? e.message : e}). Check the connection and try again.`);
+    toast(`Sample download failed: ${e instanceof Error ? e.message : e}`);
   }
 }
 
@@ -38,7 +41,7 @@ function PrinterChoice() {
   };
   return (
     <div className="fr-printer">
-      <div className="fr-heading">Which printer is this for?</div>
+      <div className="fr-heading">Printer</div>
       <div className="fr-models" role="radiogroup" aria-label="Printer">
         {models.map((model) => {
           const vendor = machines.find((m) => m.model === model)!.vendor;
@@ -59,7 +62,26 @@ function PrinterChoice() {
             {n.d} mm
           </button>
         ))}
-        <span className="fr-dim">Most printers ship with 0.4 mm. Change it later under Printer.</span>
+      </div>
+    </div>
+  );
+}
+
+function DropZone() {
+  return (
+    <div className="fr-drop">
+      <div className="fr-heading">Drop STL / OBJ / 3MF here</div>
+      <div className="fr-actions">
+        <button type="button" className="side-btn" onClick={openFileDialog} title="Add (Ctrl+I)">Add model…</button>
+        <button type="button" className="fr-link" onClick={openProjectDialog} title="Open Project (Ctrl+O)">Open project…</button>
+      </div>
+      <div className="fr-samples">
+        <span>Samples</span>
+        {SAMPLES.map((s) => (
+          <button key={s.file} type="button" className="fr-sample" title={s.tip} onClick={() => void addSample(s.url, s.file)}>
+            {s.label}
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -68,30 +90,30 @@ function PrinterChoice() {
 export default function EmptyPlate() {
   const [firstVisit] = useState(() => !localStorage.getItem(SETUP_KEY) && !localStorage.getItem('orca.printer'));
   useEffect(() => () => localStorage.setItem(SETUP_KEY, '1'), []);
-  const bbl = useStore((s) => printerPreset(s)?.vendor === 'BBL');
   return (
     <div className="empty-plate">
       {firstVisit && <PrinterChoice />}
-      <div className="fr-drop">
-        <div className="fr-heading">Drop an STL, OBJ or 3MF file on the plate</div>
-        <div className="fr-actions">
-          <button type="button" className="side-btn" onClick={openFileDialog} title="Add (Ctrl+I)">Add model…</button>
-          <button type="button" className="fr-link" onClick={openProjectDialog} title="Open Project (Ctrl+O)">Open project…</button>
-        </div>
-        <div className="fr-samples">
-          <span>Or try a sample:</span>
-          {SAMPLES.map((s) => (
-            <button key={s.file} type="button" className="fr-sample" title={s.tip} onClick={() => void addSample(s.url, s.file)}>
-              {s.label}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="fr-dim fr-note">
-        <b>Non-planar top</b> curves the top layers to follow the surface, so domes and rounded tops print
-        smooth instead of stair-stepped. Then <b>Slice plate</b> (top right) and export the file for
-        {bbl ? ' the printer’s microSD card.' : ' the printer’s USB drive.'}
-      </div>
+      <DropZone />
+      <div className="fr-note" />
     </div>
+  );
+}
+
+export function SetupWizard({ close }: { close(): void }) {
+  const count = useStore((s) => s.objects.length);
+  const start = useRef(count);
+  useEffect(() => { if (count > start.current) close(); }, [count]);
+  return (
+    <Modal label="Setup Wizard" onClose={close} className="small setup-wizard" returnFocus=".topbar .menu-title">
+      <ModalTitle title="Setup Wizard" onClose={close} />
+      <div className="setup-wizard-body">
+        <PrinterChoice />
+        <DropZone />
+      </div>
+      <div className="modal-buttons">
+        <span style={{ flex: 1 }} />
+        <button type="button" className="btn primary" data-autofocus onClick={close}>OK</button>
+      </div>
+    </Modal>
   );
 }

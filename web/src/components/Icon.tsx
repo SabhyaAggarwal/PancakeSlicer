@@ -1,5 +1,9 @@
+import { useSyncExternalStore } from 'react';
+import { isDark, subscribeTheme } from '../theme';
+
 export function Icon({ name, size = 16, className, title }: { name: string; size?: number; className?: string; title?: string }) {
-  return <img src={`/images/${name}.svg`} width={size} height={size} className={className} alt="" title={title} draggable={false} />;
+  const dark = useSyncExternalStore(subscribeTheme, isDark);
+  return <img src={`/images/${dark ? 'dark/' : ''}${name}.svg`} width={size} height={size} className={className} alt="" title={title} draggable={false} />;
 }
 
 export function IconButton(props: {

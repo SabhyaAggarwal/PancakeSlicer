@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { bedArea } from './actions';
 import { bedBounds, instanceBox, nearestFreeSpot } from './plater/geometry';
 import { undoable } from './state/history';
+import { canEditProject } from './api/client';
 import { getState, markStale, newId, setState, toast, updateObject, type Instance, type PlateObject, type State } from './state/store';
 
 export function selectionTargets(s: State = getState()): { o: PlateObject; inst: Instance }[] {
@@ -67,7 +68,7 @@ export async function mirrorSelection(axis: 0 | 1 | 2) {
   })));
 }
 
-export const canPaste = (s: State = getState()) => s.clipboard.length > 0 && !s.project;
+export const canPaste = (s: State = getState()) => s.clipboard.length > 0 && (!s.project || canEditProject());
 
 export function copySelection() {
   const targets = selectionTargets();
@@ -114,4 +115,16 @@ export function renameObject(id: number, name: string) {
   const trimmed = name.trim();
   setState({ renaming: null });
   if (trimmed && trimmed !== getState().objects.find((o) => o.id === id)?.name) updateObject(id, { name: trimmed }, 'Rename');
+}
+
+export function setFilament(id: number, extruder: number) {
+  const s = getState();
+  const saved = s.objects.find((o) => o.id === id)?.project?.saved?.object;
+  const hit = (o: PlateObject) => o.id === id || saved !== undefined && o.project?.saved?.object === saved;
+  const set = (o: PlateObject) => (hit(o) ? { ...o, extruder } : o);
+  undoable('Change Filament', () => setState((st) => ({
+    objects: st.objects.map(set),
+    projectPlates: st.projectPlates.map((p) => (p.index === st.plateIndex ? p : { ...p, objects: p.objects.map(set) })),
+    job: markStale(st.job),
+  })));
 }

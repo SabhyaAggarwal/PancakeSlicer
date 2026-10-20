@@ -3,6 +3,14 @@ import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import type { SystemPreset } from '../api/types';
 import { bedAsset } from './bed-assets';
 import { bedBounds, parsePoints } from './geometry';
+import { isDark } from '../theme';
+
+export const sceneColors = () => isDark()
+  ? { background: 0x54545a, plate: 0x626269, texture: 0x55555c, grid: 0x6e6e76, outline: 0x8a8a90, model: 0x414148, shell: 0x9a9aa0 }
+  : { background: 0xe9e9e9, plate: 0xb9bcbd, texture: 0xdcdcdc, grid: 0x8f9293, outline: 0x5f6263, model: 0x3c3f40, shell: 0xc8c8c8 };
+
+export const bedKey = (machine: SystemPreset | undefined) =>
+  `${machine?.name}|${machine?.config.printable_area}|${machine?.config.bed_custom_texture}|${machine?.config.bed_custom_model}|${isDark()}`;
 
 const stlCache = new Map<string, Promise<THREE.BufferGeometry | null>>();
 const texCache = new Map<string, Promise<THREE.Texture | null>>();
@@ -50,6 +58,7 @@ function loadSvgTexture(url: string) {
 export function buildBed(machine: SystemPreset | undefined, onReady: () => void): THREE.Group {
   const group = new THREE.Group();
   group.name = 'bed';
+  const colors = sceneColors();
   const area = parsePoints(machine?.config.printable_area);
   const pts = area.length >= 3 ? area : [new THREE.Vector2(0, 0), new THREE.Vector2(200, 0), new THREE.Vector2(200, 200), new THREE.Vector2(0, 200)];
   const { min, max } = bedBounds(pts);
@@ -57,11 +66,11 @@ export function buildBed(machine: SystemPreset | undefined, onReady: () => void)
 
   const plateGeo = new THREE.ExtrudeGeometry(shape, { depth: 1, bevelEnabled: false });
   plateGeo.translate(0, 0, -1.02);
-  const plate = new THREE.Mesh(plateGeo, new THREE.MeshLambertMaterial({ color: 0xb9bcbd }));
+  const plate = new THREE.Mesh(plateGeo, new THREE.MeshLambertMaterial({ color: colors.plate }));
   plate.receiveShadow = false;
   group.add(plate);
 
-  const texMat = new THREE.MeshBasicMaterial({ color: 0xdcdcdc, transparent: true, depthWrite: false });
+  const texMat = new THREE.MeshBasicMaterial({ color: colors.texture, transparent: true, depthWrite: false });
   const surfGeo = new THREE.ShapeGeometry(shape);
   const sp = surfGeo.attributes.position, uv = surfGeo.attributes.uv;
   for (let i = 0; i < sp.count; i++) uv.setXY(i, (sp.getX(i) - min.x) / (max.x - min.x), (sp.getY(i) - min.y) / (max.y - min.y));
@@ -74,11 +83,11 @@ export function buildBed(machine: SystemPreset | undefined, onReady: () => void)
   for (let y = Math.ceil(min.y / 10) * 10; y <= max.y; y += 10) grid.push(min.x, y, 0.02, max.x, y, 0.02);
   const gridGeo = new THREE.BufferGeometry();
   gridGeo.setAttribute('position', new THREE.Float32BufferAttribute(grid, 3));
-  group.add(new THREE.LineSegments(gridGeo, new THREE.LineBasicMaterial({ color: 0x8f9293, transparent: true, opacity: 0.45 })));
+  group.add(new THREE.LineSegments(gridGeo, new THREE.LineBasicMaterial({ color: colors.grid, transparent: true, opacity: 0.45 })));
 
   const outline = new THREE.LineLoop(
     new THREE.BufferGeometry().setFromPoints(pts.map((p) => new THREE.Vector3(p.x, p.y, 0.03))),
-    new THREE.LineBasicMaterial({ color: 0x5f6263 }),
+    new THREE.LineBasicMaterial({ color: colors.outline }),
   );
   group.add(outline);
 
@@ -90,7 +99,7 @@ export function buildBed(machine: SystemPreset | undefined, onReady: () => void)
       if (!g) return;
       g.computeBoundingBox();
       const bb = g.boundingBox!;
-      const model = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0x3c3f40 }));
+      const model = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: colors.model }));
       const bbl = !customModel && !!machine?.bed_model?.startsWith('bbl-3dp-');
       const c = bedBounds(pts).center;
       model.position.set(bbl ? 0 : c.x, bbl ? 0 : c.y, -bb.max.z - 0.03);

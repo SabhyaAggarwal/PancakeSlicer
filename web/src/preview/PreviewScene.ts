@@ -2,12 +2,17 @@ import * as THREE from 'three';
 import { CameraViews } from '../plater/CameraViews';
 import { getState } from '../state/store';
 import type { SystemPreset } from '../api/types';
-import { buildBed } from '../plater/Bed';
+import { bedKey, buildBed, sceneColors } from '../plater/Bed';
+import { subscribeTheme } from '../theme';
+import { pixelRatio, watchPixelRatio } from '../plater/pixelRatio';
 import { instanceMatrix, parsePoints } from '../plater/geometry';
 import type { PlateObject } from '../state/store';
 import { colorVertices, type ColorContext } from './colors';
 import type { PreviewData } from './data';
 import { SegmentRenderer, type DrawState, type FrameStats } from './renderer';
+import { binOf, type SurfaceGrid } from './surface-grid';
+
+const SURFACE_LIFT_MM = 0.15;
 
 const FRAME_BUDGET_MS = 14;
 
@@ -20,10 +25,18 @@ export class PreviewScene {
   private segments: SegmentRenderer;
   private bed: THREE.Group | null = null;
   private bedKey = '';
+  private machine: SystemPreset | undefined;
+  private unsubTheme = subscribeTheme(() => {
+    this.renderer.setClearColor(sceneColors().background);
+    this.shellMat.color.set(sceneColors().shell);
+    this.setBed(this.machine);
+    this.request();
+  });
   private area: THREE.Vector2[] = [];
   private shells = new THREE.Group();
-  private shellMat = new THREE.MeshStandardMaterial({ color: 0xc8c8c8, transparent: true, opacity: 0.35, depthWrite: false, roughness: 0.8 });
+  private shellMat = new THREE.MeshStandardMaterial({ color: sceneColors().shell, transparent: true, opacity: 0.35, depthWrite: false, roughness: 0.8 });
   private tool: THREE.Mesh;
+  private surface: { mesh: THREE.Mesh; cells: Uint32Array; grid: SurfaceGrid } | null = null;
   private data: PreviewData | null = null;
   private uploaded = 0;
   private draw: DrawState = { range: [0, 0], roleMask: -1, typeMask: 0, optionMask: 0 };
@@ -34,12 +47,12 @@ export class PreviewScene {
   onFrame: (() => void) | null = null;
   private moving = false;
   private scale = 1;
-  private readonly basePixelRatio = Math.min(window.devicePixelRatio, 2);
+  private basePixelRatio = 1;
+  private unwatchRatio = watchPixelRatio(() => this.resize());
 
   constructor(private host: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(this.basePixelRatio);
-    this.renderer.setClearColor(0xe9e9e9);
+    this.renderer.setClearColor(sceneColors().background);
     this.renderer.autoClear = true;
     host.appendChild(this.renderer.domElement);
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8a8a, 1.6));
@@ -71,13 +84,19 @@ export class PreviewScene {
     const w = this.host.clientWidth, h = this.host.clientHeight;
     if (!w || !h) return;
     const size = this.renderer.getSize(new THREE.Vector2());
-    if (size.x !== w || size.y !== h) this.renderer.setSize(w, h);
+    const base = pixelRatio(w, h);
+    if (base !== this.basePixelRatio || size.x !== w || size.y !== h) {
+      this.basePixelRatio = base;
+      this.renderer.setPixelRatio(base * this.scale);
+      this.renderer.setSize(w, h);
+    }
     this.views.resize(w, h);
     this.request();
   }
 
   setBed(machine: SystemPreset | undefined) {
-    const key = `${machine?.name}|${machine?.config.printable_area}|${machine?.config.bed_custom_texture}|${machine?.config.bed_custom_model}`;
+    this.machine = machine;
+    const key = bedKey(machine);
     if (key === this.bedKey) return;
     this.bedKey = key;
     if (this.bed) this.scene.remove(this.bed);
@@ -142,6 +161,80 @@ export class PreviewScene {
       this.tool.visible = true;
     } else this.tool.visible = false;
     this.request();
+  }
+
+  copyCamera(from: PreviewScene) {
+    this.views.projection(from.camera instanceof THREE.PerspectiveCamera);
+    const c = this.camera, f = from.camera;
+    c.position.copy(f.position);
+    c.quaternion.copy(f.quaternion);
+    c.up.copy(f.up);
+    c.zoom = f.zoom;
+    if (c instanceof THREE.OrthographicCamera && f instanceof THREE.OrthographicCamera) (c.top = f.top), (c.bottom = f.bottom);
+    this.controls.target.copy(from.controls.target);
+    this.views.resize(Math.max(1, this.host.clientWidth), Math.max(1, this.host.clientHeight));
+    this.request();
+  }
+
+  fit(min: THREE.Vector3, max: THREE.Vector3) {
+    const centre = min.clone().add(max).multiplyScalar(0.5);
+    const radius = Math.max(1, min.distanceTo(max) / 2) * 1.4;
+    const c = this.camera;
+    const dir = c.position.clone().sub(this.controls.target).normalize();
+    this.controls.target.copy(centre);
+    if (c instanceof THREE.PerspectiveCamera) {
+      const half = THREE.MathUtils.degToRad(c.fov / 2);
+      c.position.copy(centre).addScaledVector(dir, radius / Math.sin(Math.min(half, Math.atan(Math.tan(half) * c.aspect))));
+    } else {
+      c.position.copy(centre).addScaledVector(dir, Math.max(radius * 4, c.position.distanceTo(centre)));
+      c.zoom = Math.min(c.top, c.right) / radius;
+    }
+    c.updateProjectionMatrix();
+    this.controls.update();
+    this.request();
+  }
+
+  setSurface(grid: SurfaceGrid | null) {
+    if (this.surface?.grid === grid) return;
+    if (this.surface) {
+      this.scene.remove(this.surface.mesh);
+      this.surface.mesh.geometry.dispose();
+      (this.surface.mesh.material as THREE.Material).dispose();
+      this.surface = null;
+    }
+    if (grid) {
+      const { nx, ny, pitch, origin, rms, meshZ, eligible } = grid;
+      const cells: number[] = [];
+      for (let i = 0; i < nx * ny; ++i) if (eligible[i] > 0 && Number.isFinite(rms[i]) && Number.isFinite(meshZ[i])) cells.push(i);
+      const pos = new Float32Array(cells.length * 18), col = new Float32Array(cells.length * 18);
+      cells.forEach((i, k) => {
+        const x0 = origin[0] + (i % nx) * pitch, y0 = origin[1] + Math.floor(i / nx) * pitch, z = meshZ[i] + SURFACE_LIFT_MM;
+        const [r, g, b] = binOf(rms[i] * 1000).color;
+        const c = new THREE.Color().setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
+        const corners = [[x0, y0], [x0 + pitch, y0], [x0 + pitch, y0 + pitch], [x0, y0], [x0 + pitch, y0 + pitch], [x0, y0 + pitch]];
+        corners.forEach(([x, y], v) => {
+          pos.set([x, y, z], k * 18 + v * 3);
+          col.set([c.r, c.g, c.b], k * 18 + v * 3);
+        });
+      });
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geometry.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      const material = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+      const mesh = new THREE.Mesh(geometry, material);
+      this.scene.add(mesh);
+      this.surface = { mesh, cells: Uint32Array.from(cells), grid };
+    }
+    this.request();
+  }
+
+  pickSurface(px: number, py: number): number {
+    const s = this.surface;
+    if (!s) return -1;
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2((px / this.host.clientWidth) * 2 - 1, -(py / this.host.clientHeight) * 2 + 1), this.camera);
+    const hit = ray.intersectObject(s.mesh)[0];
+    return hit?.faceIndex != null ? s.cells[hit.faceIndex >> 1] : -1;
   }
 
   get segmentRenderer() {
@@ -242,6 +335,8 @@ export class PreviewScene {
   }
 
   dispose() {
+    this.unsubTheme();
+    this.unwatchRatio();
     cancelAnimationFrame(this.frame);
     this.segments.dispose();
     this.views.dispose();

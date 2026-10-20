@@ -77,7 +77,7 @@ function commit(name: string, before: Doc, merge?: string) {
 }
 
 function geometries(doc: Doc, into: Set<THREE.BufferGeometry>) {
-  const add = (objects: PlateObject[]) => objects.forEach((o) => into.add(o.geometry));
+  const add = (objects: PlateObject[]) => objects.forEach((o) => { into.add(o.geometry); o.volumes?.forEach((v) => into.add(v.geometry)); });
   add(doc.objects);
   doc.projectPlates.forEach((p) => add(p.objects));
 }
@@ -113,6 +113,8 @@ function restore(doc: Doc) {
     const sel = getState().selected;
     if (sel && !getState().objects.some((o) => o.id === sel.object && o.instances.some((i) => i.id === sel.instance)))
       setState({ selected: null });
+    else if (sel?.volume !== undefined && !getState().objects.some((o) => o.id === sel.object && o.volumes?.some((v) => v.id === sel.volume)))
+      setState({ selected: { ...sel, volume: undefined, allInstances: true } });
   } finally {
     restoring = false;
   }

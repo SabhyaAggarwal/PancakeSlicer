@@ -21,6 +21,14 @@ type ToolFeatures struct {
 	Progress       bool            `json:"progress"`
 	MovesOut       bool            `json:"moves_out"`
 	ObjectSettings bool            `json:"object_settings"`
+	Step           bool            `json:"step"`
+	Edit           bool            `json:"edit"`
+	ForcePlanar    bool            `json:"force_planar"`
+	Cut            bool            `json:"cut"`
+	PatchPreview   bool            `json:"patch_preview"`
+	SurfaceGrid    bool            `json:"surface_grid"`
+	Volumes        bool            `json:"volumes"`
+	PresetCompat   bool            `json:"preset_compat"`
 }
 
 type toolOption struct {
@@ -46,6 +54,23 @@ func toolDump(c Config, args ...string) ([]byte, error) {
 		return nil, fmt.Errorf("tool catalog: %w: %.1000s", err, output)
 	}
 	return os.ReadFile(path)
+}
+
+func probeUsage(c Config, f *ToolFeatures) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, c.Tool, "--help")
+	configureKill(cmd)
+	cmd.WaitDelay = 5 * time.Second
+	out, _ := cmd.CombinedOutput()
+	usage := string(out)
+	f.Step = strings.Contains(usage, "--step-linear-deflection")
+	f.Edit = strings.Contains(usage, "--edit EDITS.json")
+	f.ForcePlanar = strings.Contains(usage, "--force-planar")
+	f.Cut = strings.Contains(usage, "--cut-only")
+	f.PatchPreview = strings.Contains(usage, "--patch-preview FILE")
+	f.SurfaceGrid = strings.Contains(usage, "--surface-grid")
+	f.Volumes = f.Cut
 }
 
 func probeTool(c Config) (ToolFeatures, *cachedResponse) {

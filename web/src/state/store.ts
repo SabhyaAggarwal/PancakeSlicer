@@ -4,8 +4,9 @@ import * as THREE from 'three';
 import type { Api } from '../api/client';
 import type { Config, ConfigValue, JobStatus, PresetType, SystemPreset, UserPreset } from '../api/types';
 import type { ProjectPlate } from '../plater/threemf';
-import { OPTIONS, type OptionMode } from '../options';
+import { isHidden, OPTIONS, type OptionMode } from '../options';
 import { undoable } from './history';
+import { canEditProject } from '../api/client';
 
 export interface Instance {
   id: number;
@@ -14,6 +15,18 @@ export interface Instance {
   rotZ: number;
   z?: number;
   printable?: boolean;
+}
+
+export type VolumeType = 'part' | 'negative' | 'modifier' | 'support_blocker' | 'support_enforcer';
+
+export interface Volume {
+  id: number;
+  name: string;
+  type: VolumeType;
+  geometry: THREE.BufferGeometry;
+  matrix: number[];
+  extruder: number;
+  settings: Config;
 }
 
 export interface PlateObject {
@@ -27,7 +40,9 @@ export interface PlateObject {
   instances: Instance[];
   source: File;
   settings: Config;
-  project?: { buildIndex?: number; plateIndex?: number; plateOrigin?: [number, number]; file: string; placeholder: boolean; missing?: boolean; origin?: [number, number, number] };
+  volumes?: Volume[];
+  project?: { buildIndex?: number; plateIndex?: number; plateOrigin?: [number, number]; file: string; placeholder: boolean; missing?: boolean; origin?: [number, number, number];
+    saved?: { object: number; instance: number; instanceId: number; extruder: number; rotZ: number } };
 }
 
 export interface LayerEvent {
@@ -36,8 +51,22 @@ export interface LayerEvent {
   text?: string;
 }
 
+export interface HeadInfo {
+  id: string;
+  name: string;
+  calibrated: boolean;
+}
+
+export type PresetUx =
+  | { kind: 'search' }
+  | { kind: 'save'; type: PresetType; slot: number; then?: string }
+  | { kind: 'unsaved'; type: PresetType; slot: number; target: string }
+  | { kind: 'compare'; type: PresetType; left?: string; right?: string }
+  | { kind: 'export' }
+  | { kind: 'import' };
+
 export type MainTab = 'prepare' | 'preview';
-export type Gizmo = 'none' | 'move' | 'rotate' | 'scale' | 'flatten';
+export type Gizmo = 'none' | 'move' | 'rotate' | 'scale' | 'flatten' | 'cut' | 'measure';
 
 export interface JobView {
   id?: string;
@@ -52,8 +81,19 @@ export interface JobView {
   exported?: string;
 }
 
+export interface CutPlane {
+  z: number;
+  rotX: number;
+  rotY: number;
+  keepUpper: boolean;
+  keepLower: boolean;
+  placeLower: boolean;
+}
+
 export interface State {
   api: Api | null;
+  features: { cut?: boolean; volumes?: boolean; edit?: boolean };
+  cut: CutPlane | null;
   loading: string | null;
   machines: SystemPreset[];
   processes: SystemPreset[];
@@ -68,20 +108,23 @@ export interface State {
   projectNotice: string | null;
   bedType: string;
   uiMode: OptionMode;
+  developerMode: boolean;
   tab: MainTab;
   dialog: { type: 'machine' | 'filament'; slot: number } | null;
   objects: PlateObject[];
-  selected: { object: number; instance: number; allInstances?: boolean; all?: boolean } | null;
+  selected: { object: number; instance: number; allInstances?: boolean; all?: boolean; volume?: number } | null;
   gizmo: Gizmo;
   uniformScale: boolean;
-  contextMenu: { x: number; y: number; object?: number; instance?: number } | null;
+  contextMenu: { x: number; y: number; object?: number; instance?: number; volume?: number } | null;
   renaming: number | null;
   clipboard: PlateObject[];
   processScope: 'global' | 'objects';
   slotColours: (string | undefined)[];
-  projectMaterials: { colours: string[]; matrix: number[] | null; multiplier: number | null } | null;
+  projectMaterials: { colours: string[]; matrix: number[] | null; multiplier: number | null; builds?: { object: number; instance: number }[] } | null;
   flush: { matrix: number[] | null; multiplier: number | null };
   flushDialog: boolean;
+  appDialog: 'about' | 'preferences' | 'shortcuts' | 'send' | 'setup' | null;
+  printers: { name: string; kind: string }[];
   events: LayerEvent[];
   projectPlates: (ProjectPlate & { objects: PlateObject[] })[];
   plateIndex: number;
@@ -89,11 +132,17 @@ export interface State {
   projectName: string | null;
   job: JobView;
   toast: string | null;
+  recommendedStyle: Record<number, 'standard'>;
+  heads: HeadInfo[] | null;
+  presetUx: PresetUx | null;
+  settingsFocus: { type: PresetType; page: string; key: string; nonce: number } | null;
   sessionDialog: 'restore' | 'recent' | null;
 }
 
 let state: State = {
   api: null,
+  features: {},
+  cut: null,
   loading: 'Connecting',
   machines: [],
   processes: [],
@@ -108,6 +157,7 @@ let state: State = {
   projectNotice: null,
   bedType: '',
   uiMode: 'simple',
+  developerMode: (() => { try { return localStorage.getItem('orca.developer_mode') === '1'; } catch { return false; } })(),
   tab: 'prepare',
   dialog: null,
   objects: [],
@@ -122,6 +172,8 @@ let state: State = {
   projectMaterials: null,
   flush: { matrix: null, multiplier: null },
   flushDialog: false,
+  appDialog: null,
+  printers: [],
   events: [],
   projectPlates: [],
   plateIndex: 1,
@@ -129,6 +181,10 @@ let state: State = {
   projectName: null,
   job: { state: 'idle', pct: 0, stage: '' },
   toast: null,
+  recommendedStyle: {},
+  heads: null,
+  presetUx: null,
+  settingsFocus: null,
   sessionDialog: null,
 };
 
@@ -150,11 +206,13 @@ export function useStore<T>(sel: (s: State) => T): T {
   return useSyncExternalStore(subscribe, () => sel(state));
 }
 
+export const effectiveMode = (s: State): OptionMode => s.developerMode ? 'developer' : s.uiMode;
+
 let nextId = 1;
 export const newId = () => nextId++;
 export const reserveIds = (max: number) => { nextId = Math.max(nextId, max + 1); };
 
-export const DEMO_MODELS = ['Bambu Lab A1 mini', 'Bambu Lab A1', 'Bambu Lab P1S', 'Prusa MINI', 'Prusa MINI IS'];
+export const DEMO_MODELS = ['Bambu Lab A1 mini', 'Bambu Lab A1', 'Bambu Lab P1S', 'Prusa MINI', 'Prusa MINI IS', 'Prodcan3 5-axis BC table'];
 export const DEFAULT_PRINTER = 'Bambu Lab A1 mini 0.4 nozzle';
 
 export function listFor(s: State, type: PresetType): SystemPreset[] {
@@ -255,15 +313,22 @@ export function resetOption(type: PresetType, key: string, slot = 0) {
   }));
 }
 
-export async function saveUserPreset(type: PresetType, name: string, slot = 0) {
+export function hasUnsavedEdits(s: State, type: PresetType, slot: number) {
+  if (!Object.keys(presetEdits(s, type, slot)).length) return false;
+  return type !== 'filament' || !s.filamentSlots.some((f, i) => i !== slot && f === s.filamentSlots[slot]);
+}
+
+export const PRESET_META = /^(inherits|name|from|version|type|setting_id|base_id|filament_id|is_custom_defined|instantiation|\w+_settings_id)$/;
+
+export async function saveUserPreset(type: PresetType, name: string, slot = 0, detach = false) {
   const s = getState();
   const current = type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot];
   const { base, user } = resolvePreset(s, type, current);
   const project = type === 'filament' ? s.projectPresets?.filaments[slot] : s.projectPresets?.[type];
-  const preset: UserPreset = {
-    name, type, inherits: base?.name ?? current,
-    overrides: { ...(user?.overrides ?? {}), ...project, ...presetEdits(s, type, slot) },
-  };
+  const overrides = { ...(user?.overrides ?? {}), ...project, ...presetEdits(s, type, slot) };
+  if (detach) for (const [key, value] of Object.entries(effectiveConfig(s, type, slot)))
+    if (OPTIONS[key] && !isHidden(key) && !PRESET_META.test(key) && !(key in overrides)) overrides[key] = value;
+  const preset: UserPreset = { name, type, inherits: base?.name ?? current, overrides };
   await s.api!.saveUserPreset(preset);
   setState((st) => {
     const patch: Partial<State> = {
@@ -313,9 +378,10 @@ export function updateInstance(objectId: number, instanceId: number, patch: Part
 
 export function removeSelected() {
   if (state.selected?.all) return deleteAll();
+  if (state.selected?.volume !== undefined) return deleteVolume(state.selected.object, state.selected.volume);
   undoable('Delete selected', () => setState((s) => {
     if (!s.selected) return {};
-    if (s.objects.some((o) => o.project)) return {};
+    if (s.objects.some((o) => o.project) && !canEditProject()) return {};
     const objects = s.objects
       .map((o) =>
         o.id === s.selected!.object ? { ...o, instances: o.instances.filter((i) => i.id !== s.selected!.instance) } : o,
@@ -360,4 +426,51 @@ export function togglePrintable(objectId: number, instanceId?: number) {
   const printable = (o.instances.find((i) => i.id === instanceId) ?? o.instances[0]).printable === false;
   updateObject(objectId, { instances: o.instances.map((i) => instanceId === undefined || i.id === instanceId ? { ...i, printable } : i) },
     printable ? 'Set Printable' : 'Set Unprintable');
+}
+
+const mapVolumes = (s: State, objectId: number, f: (v: Volume[]) => Volume[]) =>
+  s.objects.map((o) => (o.id === objectId ? { ...o, volumes: f(o.volumes ?? []) } : o));
+
+export function updateVolume(objectId: number, volumeId: number, patch: Partial<Volume>, name = 'matrix' in patch ? 'Move' : editName(patch)) {
+  undoable(name, () => setState((s) => ({
+    objects: mapVolumes(s, objectId, (vs) => vs.map((v) => (v.id === volumeId ? { ...v, ...patch } : v))),
+    job: markStale(s.job),
+  })));
+}
+
+export function addVolume(objectId: number, volume: Volume, name: string) {
+  undoable(name, () => setState((s) => {
+    const o = s.objects.find((ob) => ob.id === objectId);
+    if (!o) return {};
+    const volumes = [...(o.volumes ?? []), volume].sort((a, b) => VOLUME_ORDER.indexOf(a.type) - VOLUME_ORDER.indexOf(b.type));
+    return { objects: mapVolumes(s, objectId, () => volumes), selected: { object: objectId, instance: o.instances[0].id, volume: volume.id }, job: markStale(s.job) };
+  }));
+}
+export const VOLUME_ORDER: VolumeType[] = ['part', 'negative', 'modifier', 'support_blocker', 'support_enforcer'];
+
+export function deleteVolume(objectId: number, volumeId: number) {
+  undoable('Delete part', () => setState((s) => ({
+    objects: mapVolumes(s, objectId, (vs) => vs.filter((v) => v.id !== volumeId)),
+    selected: s.selected?.volume === volumeId ? { object: objectId, instance: s.selected.instance, allInstances: true } : s.selected,
+    job: markStale(s.job),
+  })));
+}
+
+export function setVolumeOption(objectId: number, volumeId: number, key: string, value: ConfigValue) {
+  undoable(settingName(key), () => setState((s) => ({
+    objects: mapVolumes(s, objectId, (vs) => vs.map((v) => (v.id === volumeId ? { ...v, settings: { ...v.settings, [key]: value } } : v))),
+    job: markStale(s.job),
+  })), `volume:${volumeId}:${key}`);
+}
+
+export function removeVolumeOptions(objectId: number, volumeId: number, keys: string[]) {
+  undoable('Delete Settings', () => setState((s) => ({
+    objects: mapVolumes(s, objectId, (vs) => vs.map((v) => {
+      if (v.id !== volumeId) return v;
+      const settings = { ...v.settings };
+      for (const k of keys) delete settings[k];
+      return { ...v, settings };
+    })),
+    job: markStale(s.job),
+  })));
 }

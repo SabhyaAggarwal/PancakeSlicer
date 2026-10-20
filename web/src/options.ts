@@ -9,7 +9,7 @@ import { normalizeOptions } from './option-inventory';
 import { catalogWorker, workerId } from './api/worker';
 import type { CatalogOut } from './api/catalog.worker';
 
-export type OptionMode = 'simple' | 'advanced' | 'develop';
+export type OptionMode = 'simple' | 'advanced' | 'develop' | 'developer';
 
 export interface OptionDef {
   key: string;
@@ -127,7 +127,7 @@ export function splitKey(k: string): [string, number] {
   return [key, idx === undefined ? 0 : Number(idx)];
 }
 
-const MODE_RANK: Record<OptionMode, number> = { simple: 0, advanced: 1, develop: 2 };
+const MODE_RANK: Record<OptionMode, number> = { simple: 0, advanced: 1, develop: 2, developer: 3 };
 export const modeVisible = (opt: OptionMode, ui: OptionMode) => MODE_RANK[opt] <= MODE_RANK[ui];
 
 const HIDDEN = /print_host|printhost|printer_agent|host_type|api_key|bbl_use_printhost|upload|cloud|device|octoprint|_plugin_config_overrides/;

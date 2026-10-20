@@ -1,14 +1,28 @@
 import { slicingText } from '../api/progress';
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { effectiveConfig, getState, printerPreset, useStore } from '../state/store';
-import { computeRanges, hexToRgb, type NonplanarColor, type Ranges, type ViewType, type Visibility } from '../preview/colors';
+import { setCompareWanted, useCompareWanted } from '../compare';
+import { computeRanges, drawMasks, hexToRgb, type ColorContext, type NonplanarColor, type Ranges, type ViewType, type Visibility } from '../preview/colors';
 import { loadMoves, type PreviewData } from '../preview/data';
-import { MoveType } from '../preview/format';
 import { NonplanarHover, explain, type HoverInfo } from '../preview/hover';
 import { PreviewScene } from '../preview/PreviewScene';
+import { surfaceGrid } from '../preview/surface-grid';
 import { Legend } from './PreviewLegend';
 import { LayerSlider, MoveSlider } from './PreviewSliders';
 import { EventList, EventMenu, eventTicks } from './LayerEvents';
+import { ownsKeys } from '../keys';
+
+const ExplainLegend = lazy(() => import('./PreviewExplain').then((m) => ({ default: m.ExplainLegend })));
+const StandardView = lazy(() => import('./PreviewExplain').then((m) => ({ default: m.StandardView })));
+
+export function colorContext(d: PreviewData, ui: Pick<PreviewUi, 'view' | 'nonplanar'>, ranges: Ranges): ColorContext {
+  const s = getState();
+  const extruderColors = (d.meta.extruder_colors?.length ? d.meta.extruder_colors : s.filamentSlots.map((_, i) => {
+    const c = effectiveConfig(s, 'filament', i).filament_colour;
+    return Array.isArray(c) ? String(c[0]) : String(c ?? '');
+  })).map(hexToRgb);
+  return { view: ui.view, nonplanar: ui.nonplanar, ranges, extruderColors, colorPrintColors: (d.meta.color_print_colors ?? []).map(hexToRgb) };
+}
 
 let current: { key: string; data: PreviewData; cancel(): void } | null = null;
 let live: { header(d: PreviewData): void; chunk(d: PreviewData): void; done(d: PreviewData): void; error(d: PreviewData): void } | null = null;
@@ -26,6 +40,7 @@ export interface PreviewUi {
   nonplanar: NonplanarColor;
   vis: Visibility;
   shells: boolean;
+  surface: boolean;
 }
 
 export function PreviewView() {
@@ -44,6 +59,7 @@ export function PreviewView() {
     nonplanar: 'shell',
     vis: { travel: false, wipe: false, retract: false, unretract: false, seam: true, hiddenRoles: new Set() },
     shells: false,
+    surface: false,
   });
   const [layers, setLayers] = useState<[number, number]>([0, Number.MAX_SAFE_INTEGER]);
   const [movePos, setMovePos] = useState<number | null>(null);
@@ -51,9 +67,25 @@ export function PreviewView() {
   const hover = useRef(new NonplanarHover());
   const drawRange = useRef<[number, number]>([1, 1]);
   const [tip, setTip] = useState<(HoverInfo & { x: number; y: number }) | null>(null);
+  const tapAt = useRef<{ x: number; y: number } | null>(null);
+  const showTip = (e: React.PointerEvent, busy: boolean) => {
+    const scene = sceneRef.current;
+    const r = host.current!.getBoundingClientRect();
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    const grid = ui.surface && !busy && scene ? surfaceGrid(record) : null;
+    if (grid) {
+      const cell = scene!.pickSurface(x, y);
+      return setTip(cell < 0 ? null : { title: `Top error ${Math.round(grid.rms[cell] * 1000)} µm`, body: '', x, y });
+    }
+    if (ui.view !== 'nonplanar' || busy || !scene || !data?.states) return tip && setTip(null);
+    const id = hover.current.pick(data, scene.camera, r.width, r.height, drawRange.current, ui.vis.hiddenRoles, x, y);
+    setTip(id < 0 ? null : { ...explain(data, id, job.status?.record), x, y });
+  };
   const lastRanges = useRef(0);
   const events = useStore((s) => s.events);
   const [eventMenu, setEventMenu] = useState<{ anchor: DOMRect; layer: number } | null>(null);
+  const compare = useCompareWanted();
+  const setCompare = setCompareWanted;
 
   useEffect(() => {
     const scene = new PreviewScene(host.current!);
@@ -76,20 +108,7 @@ export function PreviewView() {
   useEffect(() => sceneRef.current?.setBed(machine), [machine]);
   useEffect(() => sceneRef.current?.setShells(objects, ui.shells), [objects, ui.shells]);
 
-  const colorCtx = (d: PreviewData) => {
-    const s = getState();
-    const extruderColors = (d.meta.extruder_colors?.length ? d.meta.extruder_colors : s.filamentSlots.map((_, i) => {
-      const c = effectiveConfig(s, 'filament', i).filament_colour;
-      return Array.isArray(c) ? String(c[0]) : String(c ?? '');
-    })).map(hexToRgb);
-    return {
-      view: ui.view,
-      nonplanar: ui.nonplanar,
-      ranges: ranges.current!,
-      extruderColors,
-      colorPrintColors: (d.meta.color_print_colors ?? []).map(hexToRgb),
-    };
-  };
+  const colorCtx = (d: PreviewData) => colorContext(d, ui, ranges.current!);
   const recolor = (d: PreviewData) => {
     if (ui.view === 'nonplanar' && ui.nonplanar === 'slope') d.computeSlope();
     ranges.current = computeRanges(d, ui.vis);
@@ -173,18 +192,9 @@ export function PreviewView() {
     const [s0] = layerCount ? data.layerSpan(lo, hi) : [1];
     const s1 = topFirst + pos;
     drawRange.current = [s0, s1];
-    const v = ui.vis;
-    let roleMask = 0;
-    for (let r = 0; r < 20; ++r) if (!v.hiddenRoles.has(r)) roleMask |= 1 << r;
-    let typeMask = 1 << MoveType.Extrude;
-    if (v.travel) typeMask |= 1 << MoveType.Travel;
-    if (v.wipe) typeMask |= 1 << MoveType.Wipe;
-    let optionMask = 0;
-    if (v.retract) optionMask |= 1 << MoveType.Retract;
-    if (v.unretract) optionMask |= 1 << MoveType.Unretract;
-    if (v.seam) optionMask |= 1 << MoveType.Seam;
-    scene.setDrawState({ range: [s0, s1], roleMask, typeMask, optionMask }, pos < topMoves ? s1 - 1 : null);
-  }, [data, data?.loaded, data?.done, lo, hi, pos, topFirst, topMoves, ui.vis, layerCount]);
+    scene.setDrawState({ range: [s0, s1], ...drawMasks(ui.vis, ui.surface && !!surfaceGrid(record)) }, pos < topMoves ? s1 - 1 : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, data?.loaded, data?.done, lo, hi, pos, topFirst, topMoves, ui.vis, ui.surface, layerCount, job.status]);
 
   (window as unknown as { __preview: unknown }).__preview = {
     scene: sceneRef.current,
@@ -197,7 +207,7 @@ export function PreviewView() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.closest('input,select,textarea') || getState().tab !== 'preview') return;
+      if (ownsKeys(e) || e.ctrlKey || e.metaKey || e.altKey || getState().tab !== 'preview') return;
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         const d = e.key === 'ArrowUp' ? 1 : -1;
         setLayers(([a, b]) => [a, Math.max(a, Math.min(layerCount - 1, Math.min(b, layerCount - 1) + d))]);
@@ -205,7 +215,8 @@ export function PreviewView() {
       } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         const d = e.key === 'ArrowRight' ? 1 : -1;
         setMovePos((p) => Math.max(1, Math.min(topMoves, (p ?? topMoves) + d)));
-      }
+      } else if (e.key === 'Home') setMovePos(1);
+      else if (e.key === 'End') setMovePos(null);
       else return;
       e.preventDefault();
     };
@@ -214,6 +225,10 @@ export function PreviewView() {
   }, [layerCount, topMoves]);
 
   const loading = data && !data.done && !data.error;
+  const api = getState().api;
+  const record = data?.sourceUrl && job.id && api && data.sourceUrl === api.movesUrl(job.id) ? job.status?.record : undefined;
+  const comparing = compare && !!record && !job.stale;
+  useEffect(() => sceneRef.current?.setSurface(ui.surface ? surfaceGrid(record) : null), [ui.surface, record]);
   const status = job.state === 'running' || job.state === 'submitting'
     ? slicingText(job, plateIndex)
     : !data && !source() && !dropped
@@ -226,7 +241,7 @@ export function PreviewView() {
 
   return (
     <div
-      className="preview"
+      className={comparing ? 'preview compare' : 'preview'}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         const f = e.dataTransfer.files[0];
@@ -240,20 +255,22 @@ export function PreviewView() {
       <div
         ref={host}
         className="preview-canvas"
-        onPointerLeave={() => setTip(null)}
+        onPointerLeave={(e) => e.pointerType === 'mouse' && setTip(null)}
         onPointerMove={(e) => {
-          const scene = sceneRef.current;
-          if (ui.view !== 'nonplanar' || e.buttons || !scene || !data?.states) return tip && setTip(null);
-          const r = host.current!.getBoundingClientRect();
-          const x = e.clientX - r.left, y = e.clientY - r.top;
-          const id = hover.current.pick(data, scene.camera, r.width, r.height, drawRange.current, ui.vis.hiddenRoles, x, y);
-          setTip(id < 0 ? null : { ...explain(data, id, job.status?.record), x, y });
+          if (e.pointerType !== 'mouse') return e.buttons && tip && setTip(null);
+          showTip(e, e.buttons !== 0);
+        }}
+        onPointerDown={(e) => (tapAt.current = { x: e.clientX, y: e.clientY })}
+        onPointerUp={(e) => {
+          const t = tapAt.current;
+          tapAt.current = null;
+          if (e.pointerType !== 'mouse' && t && Math.hypot(e.clientX - t.x, e.clientY - t.y) < 8) showTip(e, false);
         }}
       />
       {tip && (
         <div className="preview-tip" style={{ left: tip.x + 16, top: tip.y + 16 }}>
           <b>{tip.title}</b>
-          <div>{tip.body}</div>
+          {tip.body && <div>{tip.body}</div>}
         </div>
       )}
       {status && <div className="preview-status">{status}</div>}
@@ -265,7 +282,19 @@ export function PreviewView() {
           ranges={ranges.current}
           range={layerCount ? data.layerSpan(lo, hi) : [1, 1]}
           scene={sceneRef.current}
+          explainOnly={comparing || (ui.surface && !!surfaceGrid(record))}
+          explain={record && (
+            <Suspense fallback={null}>
+              <ExplainLegend data={data} record={record} ui={ui} setUi={setUi} compare={comparing} setCompare={setCompare} />
+            </Suspense>
+          )}
         />
+      )}
+      {comparing && data?.header && (
+        <Suspense fallback={null}>
+          <StandardView data={data} record={record!} scene={sceneRef.current} ui={ui}
+            zRange={layerCount ? [data.layers[lo].z, data.layers[hi].z] : [0, 0]} />
+        </Suspense>
       )}
       {loading && (
         <div className="preview-loading">

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { Modal, ModalTitle } from './Modal';
 
 export type BuildAbout = { version: string; revision: string; image: string; license: string; source_url: string; source_configured: boolean; source_sha256: string };
 
@@ -17,11 +18,9 @@ export function AboutContent({ about }: { about: BuildAbout }) {
 }
 
 export default function About({ close }: { close: () => void }) {
-  const dialog = useRef<HTMLDialogElement>(null);
   const [about, setAbout] = useState<BuildAbout | null>(null);
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
-  useEffect(() => { dialog.current?.showModal(); }, []);
   useEffect(() => {
     const controller = new AbortController();
     setError('');
@@ -33,11 +32,11 @@ export default function About({ close }: { close: () => void }) {
     });
     return () => controller.abort();
   }, [attempt]);
-  return <dialog ref={dialog} className="about-dialog" aria-label="About OrcaSlicer" onCancel={(e) => { e.preventDefault(); close(); }} onKeyDown={(e) => e.stopPropagation()}>
-    <div className="modal-title"><span>About OrcaSlicer</span><button className="modal-close" title="Close" onClick={close}>×</button></div>
+  return <Modal className="about-dialog" label="About OrcaSlicer" onClose={close}>
+    <ModalTitle title="About OrcaSlicer" onClose={close} />
     <div className="about-body">
       {about ? <AboutContent about={about} /> : error ? <p role="alert">Unable to load source information: {error}. <button className="side-btn" onClick={() => setAttempt(attempt + 1)}>Retry</button></p> : <p role="status">Loading version and source information…</p>}
     </div>
-    <div className="bed-dialog-buttons"><button className="side-btn" autoFocus onClick={close}>OK</button></div>
-  </dialog>;
+    <div className="bed-dialog-buttons"><button className="side-btn" data-autofocus onClick={close}>OK</button></div>
+  </Modal>;
 }

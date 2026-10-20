@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,10 +24,11 @@ type Server struct {
 	jobs    *JobManager
 	presets *PresetIndex
 	users   *UserPresetStore
+	sends   *SendManager
 }
 
 func NewServer(c Config, jobs *JobManager, presets *PresetIndex, users *UserPresetStore) http.Handler {
-	s := &Server{c, jobs, presets, users}
+	s := &Server{c, jobs, presets, users, NewSendManager(c.Printers)}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, r *http.Request) {
 		q, n := jobs.Counts()
@@ -37,11 +39,15 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, users *UserPres
 		writeJSON(w, 200, buildAbout(c))
 	})
 	mux.HandleFunc("POST /api/jobs", s.createJob)
+	mux.HandleFunc("POST /api/patch-preview", s.createJob)
 	mux.HandleFunc("GET /api/jobs/{id}", s.getJob)
 	mux.HandleFunc("DELETE /api/jobs/{id}", s.deleteJob)
 	mux.HandleFunc("GET /api/jobs/{id}/events", s.events)
 	mux.HandleFunc("GET /api/jobs/{id}/download", s.download)
 	mux.HandleFunc("GET /api/jobs/{id}/moves", s.moves)
+	mux.HandleFunc("POST /api/jobs/{id}/send", s.sendJob)
+	mux.HandleFunc("GET /api/jobs/{id}/send", s.getSend)
+	mux.HandleFunc("GET /api/printers", s.listPrinters)
 	mux.HandleFunc("GET /api/presets", s.listPresets)
 	options := c.Options
 	if options == nil {
@@ -173,7 +179,22 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req := JobRequest{Orient: r.FormValue("operation") == "orient", Vendor: r.FormValue("vendor"), Printer: r.FormValue("printer"), Process: r.FormValue("process"), Filaments: r.MultipartForm.Value["filament[]"], Output: r.FormValue("output"), Filename: r.FormValue("filename")}
-	if op := r.FormValue("operation"); op != "" && op != "orient" {
+	switch op := r.FormValue("operation"); op {
+	case "", "orient":
+	case "cut":
+		if !s.cfg.Features.Cut {
+			fail(w, 400, "cutting requires a tool with --cut-only")
+			return
+		}
+		req.Cut, req.CutKeep, req.CutPlaceLower = r.FormValue("cut"), r.FormValue("cut_keep"), r.FormValue("cut_place_lower") == "1"
+		if req.CutKeep == "" {
+			req.CutKeep = "both"
+		}
+		if !validCutPlane(req.Cut) || (req.CutKeep != "upper" && req.CutKeep != "lower" && req.CutKeep != "both") {
+			fail(w, 400, "cut needs a plane Z or X,Y,Z,NX,NY,NZ with a nonzero normal and cut_keep upper, lower or both")
+			return
+		}
+	default:
 		fail(w, 400, "unknown operation")
 		return
 	}
@@ -184,7 +205,26 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	if req.Output == "" {
 		req.Output = "gcode"
 	}
-	if req.Output != "gcode" && req.Output != "gcode.3mf" && req.Output != "3mf" {
+	switch p := r.FormValue("priority"); p {
+	case "", "normal":
+	case "low":
+		req.Priority = p
+	default:
+		fail(w, 400, "priority must be normal or low")
+		return
+	}
+	if r.URL.Path == "/api/patch-preview" {
+		if !s.cfg.Features.PatchPreview {
+			fail(w, 501, "this slicer has no patch preview")
+			return
+		}
+		budget, err := strconv.ParseFloat(cmp.Or(r.FormValue("budget"), "2"), 64)
+		if err != nil || !(budget >= 0.1 && budget <= 60) {
+			fail(w, 400, "budget must be 0.1 to 60 seconds")
+			return
+		}
+		req.Output, req.Priority, req.PreviewBudget = "patch-preview", "low", budget
+	} else if req.Output != "gcode" && req.Output != "gcode.3mf" && req.Output != "3mf" {
 		fail(w, 400, "output must be gcode, gcode.3mf or 3mf")
 		return
 	}
@@ -273,8 +313,9 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		_, parameters, headerErr := mime.ParseMediaType(f.Header.Get("Content-Disposition"))
 		name := parameters["filename"]
 		ext := strings.ToLower(filepath.Ext(name))
-		if headerErr != nil || name == "" || len(name) > 240 || strings.IndexFunc(name, unicode.IsControl) >= 0 || strings.ContainsAny(name, "/\\") || name != filepath.Base(name) || (ext != ".stl" && ext != ".obj" && ext != ".3mf") || names[name] {
-			fail(w, 400, "uploads need unique STL, OBJ or 3MF basenames")
+		step := s.cfg.Features.Step && (ext == ".step" || ext == ".stp")
+		if headerErr != nil || name == "" || len(name) > 240 || strings.IndexFunc(name, unicode.IsControl) >= 0 || strings.ContainsAny(name, "/\\") || name != filepath.Base(name) || (ext != ".stl" && ext != ".obj" && ext != ".3mf" && !step) || names[name] {
+			fail(w, 400, "uploads need unique STL, OBJ, STEP or 3MF basenames")
 			return
 		}
 		names[name] = true
@@ -307,9 +348,22 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, obj := range objects {
 			var file string
-			if json.Unmarshal(obj["file"], &file) != nil || !names[file] {
+			var volumes []struct {
+				File string `json:"file"`
+			}
+			if json.Unmarshal(obj["file"], &file) != nil || !names[file] || (obj["volumes"] != nil && json.Unmarshal(obj["volumes"], &volumes) != nil) {
 				fail(w, 400, "plate objects must reference uploaded basenames")
 				return
+			}
+			if len(volumes) > 0 && !s.cfg.Features.Volumes {
+				fail(w, 400, "parts and modifiers require a tool with plate-JSON volumes")
+				return
+			}
+			for _, v := range volumes {
+				if !names[v.File] {
+					fail(w, 400, "plate volumes must reference uploaded basenames")
+					return
+				}
 			}
 		}
 		if err := validatePlatePlacement([]byte(raw), req.Output == "3mf", s.cfg.Features.PlatePlacement); err != nil {
@@ -321,13 +375,23 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		req.Plate = true
+	} else if raw := r.FormValue("project_edits"); raw != "" {
+		if !s.cfg.Features.Edit {
+			fail(w, 400, "editing an opened project requires a tool with --edit")
+			return
+		}
+		if err := writeProjectEdits(filepath.Join(j.Dir, "input"), req.Files, names, raw); err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		req.Edits = true
 	} else if len(files) != 1 {
 		fail(w, 400, "multiple uploads require plate JSON")
 		return
 	}
 	if raw := r.FormValue("plate_index"); raw != "" {
 		req.PlateIndex, err = strconv.Atoi(raw)
-		if err != nil || req.PlateIndex < 1 || req.Plate || req.Orient || len(req.Files) != 1 || !strings.EqualFold(filepath.Ext(req.Files[0]), ".3mf") {
+		if err != nil || req.PlateIndex < 1 || req.Plate || req.Orient || len(req.Files) != 1 && !req.Edits || !strings.EqualFold(filepath.Ext(req.Files[0]), ".3mf") {
 			fail(w, 400, "plate_index requires a positive 1-based index and one 3MF project")
 			return
 		}
@@ -369,7 +433,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if raw := r.FormValue("project_instances"); raw != "" {
-		if req.Plate || len(req.Files) != 1 || !strings.EqualFold(filepath.Ext(req.Files[0]), ".3mf") {
+		if req.Plate || len(req.Files) != 1 && !req.Edits || !strings.EqualFold(filepath.Ext(req.Files[0]), ".3mf") {
 			fail(w, 400, "project_instances requires one 3MF project")
 			return
 		}
@@ -382,6 +446,22 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, err.Error())
 			return
 		}
+	}
+	if raw := r.FormValue("project_settings"); raw != "" {
+		if req.Plate || len(req.Files) != 1 && !req.Edits || !strings.EqualFold(filepath.Ext(req.Files[0]), ".3mf") {
+			fail(w, 400, "project_settings requires one 3MF project")
+			return
+		}
+		settings, err := overrides(raw)
+		if err != nil {
+			fail(w, 400, "project_settings: "+err.Error())
+			return
+		}
+		if err := patchProjectSettings(filepath.Join(j.Dir, "input", req.Files[0]), settings); err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		req.ProjectSettings = settings
 	}
 	if !req.Plate && strings.EqualFold(filepath.Ext(req.Files[0]), ".3mf") {
 		machine := vendor.machines[req.Printer]
@@ -399,11 +479,15 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		}
 		req.Overrides = append(selected, req.Overrides...)
 	}
+	if req.Cut != "" && (req.Output != "gcode" || req.Plate || len(req.Files) != 1 || !strings.EqualFold(filepath.Ext(req.Files[0]), ".stl")) {
+		fail(w, 400, "cut requires one STL without plate JSON or project output")
+		return
+	}
 	if req.Orient && (req.Output == "3mf" || req.Plate || len(req.Files) != 1 || !strings.EqualFold(filepath.Ext(req.Files[0]), ".stl")) {
 		fail(w, 400, "orient requires one STL without plate JSON or project output")
 		return
 	}
-	if !req.Orient && req.Output != "3mf" {
+	if !req.Orient && req.Cut == "" && req.Output != "3mf" && req.Output != "patch-preview" {
 		if err := validatePlateBounds(filepath.Join(j.Dir, "input"), req, vendor.machines[req.Printer], rawPlate); err != nil {
 			fail(w, 400, err.Error())
 			return
@@ -455,7 +539,16 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "job has no completed download")
 		return
 	}
-	f, err := os.Open(j.OutputPath(j.Request.Output))
+	path, name := j.OutputPath(j.Request.Output), j.DownloadName()
+	if j.Request.Cut != "" {
+		side := r.URL.Query().Get("piece")
+		if side != "upper" && side != "lower" {
+			fail(w, 400, "a cut job's download needs piece=upper or piece=lower")
+			return
+		}
+		path, name = j.PiecePath(side), outputBase(j.Request)+"."+side+".stl"
+	}
+	f, err := os.Open(path)
 	if err != nil {
 		fail(w, 404, "download expired")
 		return
@@ -466,7 +559,7 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, err.Error())
 		return
 	}
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": j.DownloadName()}))
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
 	w.Header().Set("Content-Type", "application/octet-stream")
 	http.ServeContent(w, r, st.Name(), st.ModTime(), f)
 }
@@ -703,4 +796,20 @@ func (s *Server) deleteTypedUserPreset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(204)
+}
+
+func validCutPlane(plane string) bool {
+	fields := strings.Split(plane, ",")
+	if len(fields) != 1 && len(fields) != 6 {
+		return false
+	}
+	v := make([]float64, len(fields))
+	for i, f := range fields {
+		x, err := strconv.ParseFloat(strings.TrimSpace(f), 64)
+		if err != nil || math.IsNaN(x) || math.IsInf(x, 0) {
+			return false
+		}
+		v[i] = x
+	}
+	return len(v) == 1 || math.Hypot(math.Hypot(v[3], v[4]), v[5]) > 1e-9
 }

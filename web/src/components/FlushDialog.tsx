@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { MAX_FLUSH_VOLUME, minFlushVolumes, MULTIPLIER_RANGE, parseColour, predictorMinFlush } from '../flush';
 import { autoFlushMatrix, currentFlush, flushInputs } from '../flush-state';
 import { markStale, setState, useStore } from '../state/store';
+import { Modal, ModalTitle } from './Modal';
 import { undoable } from '../state/history';
 
 const TYPICAL_MAX_FLUSH_VOLUME = 900;
@@ -29,11 +30,6 @@ function FlushTable() {
   const dataset = Number((Array.isArray(printer.nozzle_flush_dataset) ? printer.nozzle_flush_dataset[0] : printer.nozzle_flush_dataset) ?? 0) || 0;
   const minVol = Math.min(predictorMinFlush(dataset), ...minFlushVolumes(printer, filaments));
   const close = () => setState({ flushDialog: false });
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
 
   const shown = (i: number) => Math.min(MAX_FLUSH_VOLUME, Math.max(0, Math.round(raw[i] * mult)));
   const onCell = (i: number, text: string) => {
@@ -68,14 +64,8 @@ function FlushTable() {
   const outOfRange = raw.some((_, i) => Math.floor(i / n) !== i % n && (shown(i) < minVol || shown(i) > MAX_FLUSH_VOLUME));
 
   return (
-    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-      <div className="modal flush-dialog" role="dialog" aria-label="Flushing volumes for filament change">
-        <div className="modal-title">
-          <span>Flushing volumes for filament change</span>
-          <button className="modal-close" title="Close" onClick={close}>
-            ×
-          </button>
-        </div>
+    <Modal className="flush-dialog" label="Flushing volumes for filament change" onClose={close} backdropClose>
+        <ModalTitle title="Flushing volumes for filament change" onClose={close} />
         <div className="flush-body">
           <div className="tip-panel">
             Orca would re-calculate your flushing volumes everytime the filaments color changed or filaments changed. You could disable the
@@ -160,7 +150,6 @@ function FlushTable() {
             Cancel
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

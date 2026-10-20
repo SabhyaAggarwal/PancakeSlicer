@@ -40,6 +40,8 @@ type Config struct {
 	RequestLog     bool
 	Metrics        bool
 	TrustedProxies []netip.Prefix
+	PrintersFile   string
+	Printers       []*PrinterConfig
 	Features       ToolFeatures
 	Options        *cachedResponse
 }
@@ -95,6 +97,7 @@ func parseConfig() Config {
 	flag.Int64Var(&c.DiskQuota, "disk-quota", quota, "job directory quota in bytes; 0 disables (ORCA_WEB_DISK_QUOTA)")
 	flag.BoolVar(&c.RequestLog, "request-log", envBool("ORCA_WEB_REQUEST_LOG"), "JSON request logging (ORCA_WEB_REQUEST_LOG)")
 	flag.BoolVar(&c.Metrics, "metrics", envBool("ORCA_WEB_METRICS"), "expose GET /metrics (ORCA_WEB_METRICS)")
+	flag.StringVar(&c.PrintersFile, "printers", env("ORCA_WEB_PRINTERS", ""), "administrator's printer list (JSON) for Send to printer; empty disables sending (ORCA_WEB_PRINTERS)")
 	proxies := flag.String("trusted-proxies", env("ORCA_WEB_TRUSTED_PROXIES", ""), "comma-separated trusted proxy CIDRs (ORCA_WEB_TRUSTED_PROXIES)")
 	flag.Parse()
 	if err := validateSourceURL(c.SourceURL); err != nil {
@@ -132,6 +135,12 @@ func parseConfig() Config {
 }
 
 func main() {
+	if len(os.Args) == 3 && os.Args[1] == "printer-fingerprint" {
+		if err := printerFingerprint(os.Args[2], env("ORCA_WEB_RESOURCES", "resources")); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	cfg := parseConfig()
 	if cfg.SourceURL == "" && cfg.SourceArchive == "" {
 		log.Printf("WARNING: no Corresponding Source offer configured; operator must set ORCA_WEB_SOURCE_URL or ORCA_WEB_SOURCE_ARCHIVE (AGPL-3.0 section 13)")
@@ -149,6 +158,17 @@ func main() {
 	if st, err := os.Stat(filepath.Join(cfg.Resources, "profiles")); err != nil || !st.IsDir() {
 		log.Fatalf("no profiles directory under %s", cfg.Resources)
 	}
+	printers, err := loadPrinters(cfg.PrintersFile, cfg.Resources)
+	if err != nil {
+		log.Fatal(err)
+	}
+	cfg.Printers = printers
+	if len(printers) > 0 {
+		log.Printf("send to printer: %d configured printer(s)", len(printers))
+		if cfg.BearerToken == "" {
+			log.Printf("WARNING: printers are configured without a bearer token; anyone who can reach this service can start prints")
+		}
+	}
 	cfg.Features, cfg.Options = probeTool(cfg)
 	if err := probePlatePlacement(cfg); err != nil {
 		log.Printf("R238 placement unavailable; plate z/printable and loaded project saves require an upgraded tool: %v", err)
@@ -161,6 +181,8 @@ func main() {
 		cfg.Features.PlateIndex = true
 	}
 	cfg.Features.ColourChange = probeColourChange(cfg)
+	probeUsage(cfg, &cfg.Features)
+	log.Printf("tool operations: step %v, edit %v, force_planar %v, cut %v, volumes %v, patch_preview %v, surface_grid %v", cfg.Features.Step, cfg.Features.Edit, cfg.Features.ForcePlanar, cfg.Features.Cut, cfg.Features.Volumes, cfg.Features.PatchPreview, cfg.Features.SurfaceGrid)
 	jobs, err := NewJobManager(cfg)
 	if err != nil {
 		log.Fatal(err)

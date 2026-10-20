@@ -92,7 +92,7 @@ export function buildBvh(p: Float32Array, index: Uint32Array): Bvh {
 const stack = new Uint32Array(128);
 const stackT = new Float64Array(128);
 
-export function raycastBvh(bvh: Bvh, p: ArrayLike<number>, index: ArrayLike<number>, o: ArrayLike<number>, d: ArrayLike<number>, far = Infinity): number {
+export function raycastBvh(bvh: Bvh, p: ArrayLike<number>, index: ArrayLike<number>, o: ArrayLike<number>, d: ArrayLike<number>, far = Infinity, out?: { tri: number }): number {
   const { bounds, nodes, tris } = bvh;
   const ox = o[0], oy = o[1], oz = o[2], dx = d[0], dy = d[1], dz = d[2];
   const ix = 1 / dx, iy = 1 / dy, iz = 1 / dz;
@@ -131,7 +131,10 @@ export function raycastBvh(bvh: Bvh, p: ArrayLike<number>, index: ArrayLike<numb
         const v = (dx * qx + dy * qy + dz * qz) * inv;
         if (v < 0 || u + v > 1) continue;
         const t = (e2x * qx + e2y * qy + e2z * qz) * inv;
-        if (t >= 0 && t < best) best = t;
+        if (t >= 0 && t < best) {
+          best = t;
+          if (out) out.tri = tris[k];
+        }
       }
       continue;
     }

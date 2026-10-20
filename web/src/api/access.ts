@@ -50,7 +50,10 @@ function sendWithProgress(path: string, init: RequestInit, headers: Headers, onU
   });
 }
 
-export async function mutation(path: string, init: RequestInit, retry = false, signal?: AbortSignal, onUpload?: (fraction: number) => void): Promise<Response> {
+const showNotice = (value: AccessNotice | null) => accessNotice(value);
+
+export async function mutation(path: string, init: RequestInit, retry = false, signal?: AbortSignal, onUpload?: (fraction: number) => void, quiet = false): Promise<Response> {
+  const accessNotice = quiet ? () => undefined : showNotice;
   const send = () => {
     const headers = new Headers(init.headers);
     if (token) headers.set('Authorization', `Bearer ${token}`);
@@ -94,7 +97,7 @@ export async function mutation(path: string, init: RequestInit, retry = false, s
     const seconds = /^\d+$/.test(raw) ? Math.min(86400, Number(raw)) : 1;
     const message = `Server busy. Retry after ${seconds} seconds.`;
     accessNotice({ status: response.status, message });
-    throw new Error(message);
+    throw Object.assign(new Error(message), { status: response.status });
   }
   if (!response.ok) {
     const error = await responseError(response);
@@ -104,11 +107,12 @@ export async function mutation(path: string, init: RequestInit, retry = false, s
   return response;
 }
 
-export async function responseError(response: Response): Promise<Error> {
+export async function responseError(response: Response): Promise<Error & { status: number }> {
   const text = await response.text();
+  let message = `${response.status} ${response.statusText}: ${text.slice(0, 300)}`;
   try {
     const j = JSON.parse(text);
-    if (typeof j?.error === 'string' && j.error) return new Error(j.error);
+    if (typeof j?.error === 'string' && j.error) message = j.error;
   } catch {  }
-  return new Error(`${response.status} ${response.statusText}: ${text.slice(0, 300)}`);
+  return Object.assign(new Error(message), { status: response.status });
 }

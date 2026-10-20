@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { autoPerspective, cameraProjection, perspective, VIEW_DIRECTIONS, type CameraCommand, type CameraView } from '../camera';
 import { getState, subscribeStore } from '../state/store';
 import { bedBounds } from './geometry';
+import { ownsKeys } from '../keys';
 
 export class CameraViews {
   camera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
@@ -47,9 +48,13 @@ export class CameraViews {
     else if (this.active()) this.view(command);
   };
   private onKey = (event: KeyboardEvent) => {
-    if (!this.active() || event.altKey || event.shiftKey ||
-        getState().dialog || getState().flushDialog || document.querySelector('.bed-dialog') ||
-        (event.target as HTMLElement)?.closest('input,select,textarea,[contenteditable="true"]')) return;
+    if (!this.active() || event.altKey || event.shiftKey || ownsKeys(event) ||
+        getState().dialog || getState().flushDialog || getState().appDialog || document.querySelector('dialog[open]')) return;
+    if (!event.ctrlKey && !event.metaKey && (event.key === 'i' || event.key === 'o')) {
+      event.preventDefault();
+      this.zoom(event.key === 'i' ? 1.25 : 0.8);
+      return;
+    }
     const view = VIEW_DIRECTIONS[Number(event.key)];
     if (!/^[0-6]$/.test(event.key) || !view) return;
     event.preventDefault();
@@ -57,6 +62,18 @@ export class CameraViews {
   };
 
   setBed(area: THREE.Vector2[]) { this.area = area; this.view('plate'); }
+
+  zoom(factor: number) {
+    if (this.camera instanceof THREE.OrthographicCamera) {
+      this.camera.zoom = Math.min(50, Math.max(0.05, this.camera.zoom * factor));
+      this.camera.updateProjectionMatrix();
+    } else {
+      const offset = this.camera.position.clone().sub(this.controls.target);
+      this.camera.position.copy(this.controls.target).add(offset.multiplyScalar(1 / factor));
+    }
+    this.controls.update();
+    this.changed();
+  }
 
   view(view: CameraView) {
     const { min, max, center } = bedBounds(this.area);

@@ -6,12 +6,22 @@ import type { Plugin } from 'vite';
 const RESOURCES = fileURLToPath(new URL('../resources', import.meta.url));
 const IMAGES = path.join(RESOURCES, 'images');
 const PROFILES = path.join(RESOURCES, 'profiles');
-const VENDORS = ['BBL', 'Prusa'];
+const VENDORS = ['BBL', 'Prusa', 'Custom'];
+const HEADS = path.join(RESOURCES, 'nonplanar', 'heads');
+function headIndex(): string {
+  const heads = fs.readdirSync(HEADS).filter((f) => f.endsWith('.json')).map((f) => {
+    const h = JSON.parse(fs.readFileSync(path.join(HEADS, f), 'utf8'));
+    return { id: String(h.id ?? f.slice(0, -5)), name: String(h.name ?? ''), calibrated: h.calibrated === true };
+  });
+  heads.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  return JSON.stringify(heads);
+}
 
 const MIME: Record<string, string> = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.stl': 'model/stl',
+  '.json': 'application/json',
 };
 
 function assetSource(file: string): Buffer | string {
@@ -22,10 +32,27 @@ function assetSource(file: string): Buffer | string {
     .replace(/@font-face\s*\{[^}]*\}/gi, (rule) => /(?:https?:)?\/\//i.test(rule) ? '' : rule);
 }
 
+const DARK_COLOURS: [string, string][] = [
+  ['#262E30', '#EFEFF0'], ['#323A3D', '#B3B3B5'], ['#808080', '#818183'], ['#CECECE', '#54545B'],
+  ['#6B6B6B', '#818182'], ['#909090', '#FFFFFF'], ['#F1F1F1', '#36363B'],
+  ['#DBDBDB', '#4A4A51'], ['#F0F0F1', '#333337'], ['#515151', '#B3B3B5'],
+];
+
+function darkIcon(name: string): string | null {
+  const own = path.join(IMAGES, `${name}_dark.svg`);
+  const file = fs.existsSync(own) ? own : path.join(IMAGES, `${name}.svg`);
+  if (!fs.existsSync(file)) return null;
+  let svg = String(assetSource(file));
+  for (const [from, to] of DARK_COLOURS) svg = svg.replace(new RegExp(`${from}(?![0-9A-Fa-f])`, 'gi'), to);
+  return svg;
+}
+
 function resolveAsset(url: string): string | null {
   const clean = decodeURIComponent(url.split('?')[0]);
   let m = /^\/images\/([A-Za-z0-9_.+-]+\.(?:svg|png))$/.exec(clean);
   if (m) return path.join(IMAGES, m[1]);
+  m = /^\/nonplanar\/heads\/([a-z0-9_-]+\.json)$/.exec(clean);
+  if (m && m[1] !== 'index.json') return path.join(HEADS, m[1]);
   m = /^\/profiles\/([A-Za-z0-9_-]+)\/([A-Za-z0-9 _.+-]+\.(?:svg|png|stl))$/.exec(clean);
   if (m) return path.join(PROFILES, m[1], m[2]);
   return null;
@@ -57,6 +84,19 @@ export function orcaAssets(): Plugin {
           fs.createReadStream(moves).pipe(res);
           return;
         }
+        if (req.url?.split('?')[0] === '/nonplanar/heads/index.json') {
+          res.setHeader('Content-Type', 'application/json');
+          res.end(headIndex());
+          return;
+        }
+        const dark = req.url ? /^\/images\/dark\/([A-Za-z0-9_.+-]+)\.svg$/.exec(req.url.split('?')[0]) : null;
+        const darkSvg = dark ? darkIcon(dark[1]) : null;
+        if (darkSvg) {
+          res.setHeader('Content-Type', MIME['.svg']);
+          res.setHeader('Cache-Control', 'max-age=3600');
+          res.end(darkSvg);
+          return;
+        }
         const file = req.url ? resolveAsset(req.url) : null;
         if (!file || !fs.existsSync(file)) return next();
         res.setHeader('Content-Type', MIME[path.extname(file)] ?? 'application/octet-stream');
@@ -82,9 +122,15 @@ export function orcaAssets(): Plugin {
       const tokens = new Set(Array.from(text.matchAll(/["'`]([A-Za-z0-9_.+-]{2,80})["'`]/g), (m) => m[1]));
       for (const f of fs.readdirSync(IMAGES)) {
         if (!f.endsWith('.svg')) continue;
-        if (tokens.has(f.slice(0, -4)) || tokens.has(f))
+        if (tokens.has(f.slice(0, -4)) || tokens.has(f)) {
           this.emitFile({ type: 'asset', fileName: `images/${f}`, source: assetSource(path.join(IMAGES, f)) });
+          this.emitFile({ type: 'asset', fileName: `images/dark/${f}`, source: darkIcon(f.slice(0, -4))! });
+        }
       }
+      this.emitFile({ type: 'asset', fileName: 'nonplanar/heads/index.json', source: headIndex() });
+      for (const f of fs.readdirSync(HEADS))
+        if (/^[a-z0-9_-]+\.json$/.test(f) && f !== 'index.json')
+          this.emitFile({ type: 'asset', fileName: `nonplanar/heads/${f}`, source: fs.readFileSync(path.join(HEADS, f)) });
       for (const f of ['printer_placeholder.png'])
         this.emitFile({ type: 'asset', fileName: `images/${f}`, source: assetSource(path.join(IMAGES, f)) });
       const quoted = (name: string) => new RegExp(`["'\`]${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'\`]`).test(text);

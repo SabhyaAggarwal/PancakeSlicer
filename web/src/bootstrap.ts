@@ -1,4 +1,5 @@
 import { checkBrowserSupport, showBrowserNotice, unsupportedBrowserMessage } from './browser-support';
+import './theme';
 import './app.css';
 
 const root = document.getElementById('root')!;

@@ -1,3 +1,5 @@
+import type { ProjectEdit } from '../plater/projectTransforms';
+
 export type PresetType = 'machine' | 'process' | 'filament';
 export type ConfigValue = string | number | boolean | string[] | number[];
 export type Config = Record<string, ConfigValue>;
@@ -56,6 +58,7 @@ export interface PlateJson {
     extruder?: number;
     instances: { x: number; y: number; rot: number; z?: number; printable?: boolean }[];
     settings?: Record<string, string>;
+    volumes?: { file: string; type: string; name: string; extruder?: number; settings?: Record<string, string> }[];
   }[];
 }
 
@@ -69,6 +72,10 @@ export interface JobRequest {
   plate?: PlateJson;
   plate_index?: number;
   project_instances?: { printable: boolean; transform?: number[] }[];
+  project_edits?: ProjectEdit[];
   events: string[];
   output: 'gcode' | 'gcode.3mf' | '3mf';
+  project_settings?: Config;
+  priority?: 'low';
+  preview_budget?: number;
 }

@@ -4,7 +4,8 @@ import { eventArg } from './components/LayerEvents';
 import { OPTIONS, jobValue } from './options';
 import { filamentColor } from './plater/filamentColor';
 import { meshSignature, plateDescription } from './plater/geometry';
-import { projectInstances } from './plater/projectTransforms';
+import { projectEdits, projectInstances } from './plater/projectTransforms';
+import { canEditProject } from './api/client';
 import { effectiveConfig, getState, printerPreset, resolvePreset, type State } from './state/store';
 
 export function outputKind(s = getState()): 'gcode' | 'gcode.3mf' {
@@ -52,6 +53,10 @@ export function overrides(s = getState()): Config {
     if (Array.isArray(value) && value.length) out[key] = [Number(value[Math.min(s.plateIndex - 1, value.length - 1)])];
   }
   for (const k of Object.keys(out)) out[k] = jobValue(k, out[k]);
+  if (s.project) for (const k of Object.keys(out)) {
+    const values = OPTIONS[k].type === 'enum' ? OPTIONS[k].enum_values : undefined;
+    if (values?.length && !values.includes(String(out[k]))) delete out[k];
+  }
   return out;
 }
 
@@ -63,7 +68,8 @@ export function jobFields(s: State, saving = false) {
     process: sys('process', s.process),
     filaments: s.filamentSlots.map((f) => sys('filament', f)),
     ...(s.projectPlates.length > 1 ? { plate_index: s.plateIndex } : {}),
-    ...(s.project ? { project_instances: projectInstances(s.projectPlates.length ? s.projectPlates.flatMap((p) => p.index === s.plateIndex ? s.objects : p.objects).sort((a,b) => (a.project?.buildIndex ?? 0) - (b.project?.buildIndex ?? 0)) : s.objects) } : {}),
+    ...(s.project ? { project_instances: projectInstances(s) } : {}),
+    ...(s.project && canEditProject() && projectEdits(s).edits.length ? { project_edits: projectEdits(s).edits } : {}),
     overrides: overrides(saving ? { ...s, projectPlates: [] } : s),
     events: s.events.map(eventArg),
     output: outputKind(s),
@@ -74,7 +80,7 @@ export function plateSignature(s: State): string {
   return JSON.stringify({
     ...jobFields(s),
     plate: s.project ? undefined : plateDescription(s.objects),
-    files: s.project ? [fileId(s.project)] : s.objects.map(meshSignature),
+    files: s.project ? [fileId(s.project), ...projectEdits(s).added.map(meshSignature)] : s.objects.map(meshSignature),
   }, (key, value) => key === 'transform' && Array.isArray(value) ? value.map((v: number) => Math.round(v * 1e6) / 1e6)
     : value && typeof value === 'object' && !Array.isArray(value)
     ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value);

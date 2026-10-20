@@ -6,8 +6,8 @@ let nativePresets = false;
 export const nativePresetCatalog = () => nativePresets;
 
 const MODES: Record<string, OptionMode> = {
-  Simple: 'simple', Advanced: 'advanced', Expert: 'develop', Develop: 'develop',
-  0: 'simple', 1: 'advanced', 2: 'develop', 3: 'develop',
+  Simple: 'simple', Advanced: 'advanced', Expert: 'develop', Develop: 'developer',
+  0: 'simple', 1: 'advanced', 2: 'develop', 3: 'developer',
 };
 
 interface Metadata {

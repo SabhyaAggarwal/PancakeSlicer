@@ -1,10 +1,11 @@
 import type * as THREE from 'three';
-import { loadMesh, loadProject, placeholderGeometry } from '../plater/geometry';
+import { loadMesh, loadProject, placeholderGeometry, volumeGeometry } from '../plater/geometry';
 import type { ProjectPlate } from '../plater/threemf';
 import { documentGeneration, newDocument, onLeaveDocument, snapshot, subscribeHistory, unsaved, type Doc } from '../state/history';
-import { getState, reserveIds, setState, subscribeStore, toast, type PlateObject, type State } from '../state/store';
+import { getState, reserveIds, setState, subscribeStore, toast, type PlateObject, type State, type Volume } from '../state/store';
 
-type StoredObject = Omit<PlateObject, 'geometry' | 'source'> & { source: string };
+type StoredVolume = Omit<Volume, 'geometry'> & { geometry: { position: Float32Array; normal?: Float32Array; index: Uint32Array | Uint16Array | null } };
+type StoredObject = Omit<PlateObject, 'geometry' | 'source' | 'volumes'> & { source: string; volumes?: StoredVolume[] };
 type StoredDoc = Omit<Doc, 'objects' | 'projectPlates' | 'project'> & {
   objects: StoredObject[];
   projectPlates: (ProjectPlate & { objects: StoredObject[] })[];
@@ -65,7 +66,11 @@ const sameDoc = (a: Doc | null, b: Doc) => !!a && (Object.keys(b) as (keyof Doc)
 function serialize(doc: Doc): { stored: StoredDoc; blobs: Map<string, Blob> } {
   const blobs = new Map<string, Blob>();
   const keep = (b: Blob) => { const k = keyOf(b); blobs.set(k, b); return k; };
-  const object = ({ geometry: _, source, ...rest }: PlateObject): StoredObject => ({ ...rest, source: keep(source) });
+  const volume = ({ geometry: g, ...rest }: Volume): StoredVolume => ({ ...rest, geometry: {
+    position: g.attributes.position.array as Float32Array, normal: g.attributes.normal?.array as Float32Array | undefined,
+    index: (g.index?.array as Uint32Array | undefined) ?? null } });
+  const object = ({ geometry: _, source, volumes, ...rest }: PlateObject): StoredObject =>
+    ({ ...rest, source: keep(source), ...(volumes ? { volumes: volumes.map(volume) } : {}) });
   return {
     stored: {
       ...doc,
@@ -226,9 +231,10 @@ export async function restore(id: string) {
     }
     for (const o of [...rec.doc.objects, ...rec.doc.projectPlates.flatMap((p) => p.objects)])
       if (!o.project && !meshes.has(o.source)) meshes.set(o.source, await loadMesh(blobs.get(o.source) as File));
-    const revive = (o: StoredObject): PlateObject => {
+    const revive = ({ volumes, ...o }: StoredObject): PlateObject => {
       const source = blobs.get(o.source) as File;
-      if (!o.project) return { ...o, source, geometry: meshes.get(o.source)! };
+      if (!o.project) return { ...o, source, geometry: meshes.get(o.source)!,
+        ...(volumes ? { volumes: volumes.map((v) => ({ ...v, geometry: volumeGeometry(v.geometry.position, v.geometry.index, v.geometry.normal) })) } : {}) };
       const item = o.project.buildIndex === undefined ? undefined : items.get(o.project.buildIndex);
       if (!item) return { ...o, source, geometry: placeholderGeometry() };
       if (!o.project.placeholder) return { ...o, source, geometry: item.geometry };
@@ -238,7 +244,7 @@ export async function restore(id: string) {
     };
     const objects = rec.doc.objects.map(revive);
     const projectPlates = rec.doc.projectPlates.map((p) => ({ ...p, objects: p.objects.map(revive) }));
-    reserveIds(Math.max(0, ...[...objects, ...projectPlates.flatMap((p) => p.objects)].flatMap((o) => [o.id, ...o.instances.map((i) => i.id)])));
+    reserveIds(Math.max(0, ...[...objects, ...projectPlates.flatMap((p) => p.objects)].flatMap((o) => [o.id, ...o.instances.map((i) => i.id), ...(o.volumes ?? []).map((v) => v.id)])));
     setState({
       ...rec.doc, objects, projectPlates, project: rec.doc.project ? (blobs.get(rec.doc.project) as File) : null,
       tab: 'prepare', gizmo: 'none', dialog: null, loading: null, job: { state: 'idle', pct: 0, stage: '' },

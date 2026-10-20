@@ -3,6 +3,8 @@ import type { LayerRec } from '../preview/format';
 import { filamentColor } from '../plater/filamentColor';
 import { effectiveConfig, getState, setEvents, useStore, type LayerEvent } from '../state/store';
 import type { SliderTick } from './PreviewSliders';
+import { Modal, ModalTitle } from './Modal';
+import { menuKeys } from '../keys';
 
 const COLOR: Record<LayerEvent['type'], string> = {
   pause: '#E67E22', custom: '#3A7BD5', template: '#8E44AD', colour: '#E53935', change: '#00AE42',
@@ -42,10 +44,8 @@ export function EventMenu({ anchor, z, layer, onClose }: { anchor: DOMRect; z: n
   const ref = useRef<HTMLDivElement>(null);
   const here = events.filter((e) => sameZ(e.z, z));
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+    if (custom === null) ref.current?.querySelector<HTMLElement>('.menu-item')?.focus();
+  }, [custom]);
   useEffect(() => {
     if (custom !== null) return;
     const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && onClose();
@@ -73,17 +73,11 @@ export function EventMenu({ anchor, z, layer, onClose }: { anchor: DOMRect; z: n
 
   if (custom !== null)
     return (
-      <div className="modal-backdrop">
-        <div className="modal small" role="dialog" aria-label="Custom G-code">
-          <div className="modal-title">
-            <span>Custom G-code</span>
-            <button className="modal-close" title="Close" onClick={onClose}>
-              ×
-            </button>
-          </div>
+      <Modal className="small" label="Custom G-code" onClose={onClose} returnFocus=".ls-plus">
+          <ModalTitle title="Custom G-code" onClose={onClose} />
           <div className="flush-body">
             <div>Enter Custom G-code used on current layer:</div>
-            <textarea className="text multiline gcode-input" autoFocus value={custom} spellCheck={false} onChange={(e) => setCustom(e.target.value)} />
+            <textarea className="text multiline gcode-input" data-autofocus value={custom} spellCheck={false} onChange={(e) => setCustom(e.target.value)} />
           </div>
           <div className="modal-buttons center">
             <button className="btn primary" disabled={!custom.trim()} onClick={() => put({ z, type: 'custom', text: custom })}>
@@ -93,12 +87,12 @@ export function EventMenu({ anchor, z, layer, onClose }: { anchor: DOMRect; z: n
               Cancel
             </button>
           </div>
-        </div>
-      </div>
+      </Modal>
     );
 
   return (
-    <div className="menu-pop event-menu" ref={ref} style={style}>
+    <div className="menu-pop event-menu" ref={ref} style={style} role="menu" aria-label={`Layer ${layer + 1}`}
+      onKeyDown={(e) => menuKeys(e, ref.current, onClose, document.querySelector<HTMLElement>('.ls-plus'))}>
       <div className="menu-caption">
         Layer {layer + 1} · {z.toFixed(2)} mm
       </div>

@@ -349,6 +349,12 @@ func validatePlateBounds(dir string, req JobRequest, machine *Preset, rawPlate s
 			if err != nil {
 				return err
 			}
+			deleted := map[int]bool{}
+			if req.Edits {
+				if deleted, rawPlate, err = projectEditBounds(dir, req.Files[0], req.PlateIndex); err != nil {
+					return err
+				}
+			}
 			var shift [2]float64
 			if !layout.HasConfig && req.PlateIndex == 0 {
 				var assembly meshBounds
@@ -367,6 +373,9 @@ func validatePlateBounds(dir string, req JobRequest, machine *Preset, rawPlate s
 				}
 			}
 			for _, o := range objects {
+				if deleted[o.buildIndex] {
+					continue
+				}
 				for axis := range shift {
 					o.box.min[axis] += shift[axis]
 					o.box.max[axis] += shift[axis]
@@ -385,8 +394,11 @@ func validatePlateBounds(dir string, req JobRequest, machine *Preset, rawPlate s
 					return err
 				}
 			}
+			if rawPlate == "" {
+				return nil
+			}
 		}
-		if !strings.EqualFold(filepath.Ext(req.Files[0]), ".3mf") {
+		if rawPlate == "" && !strings.EqualFold(filepath.Ext(req.Files[0]), ".3mf") && !isStep(req.Files[0]) {
 			b := meshBounds{}
 			if err := meshVertices(filepath.Join(dir, req.Files[0]), b.add); err != nil {
 				return err
@@ -398,7 +410,9 @@ func validatePlateBounds(dir string, req JobRequest, machine *Preset, rawPlate s
 			}
 			return check(req.Files[0], b)
 		}
-		return nil
+		if rawPlate == "" {
+			return nil
+		}
 	}
 	type placement struct {
 		Printable *bool   `json:"printable"`
@@ -412,12 +426,20 @@ func validatePlateBounds(dir string, req JobRequest, machine *Preset, rawPlate s
 			File      string      `json:"file"`
 			Name      string      `json:"name"`
 			Instances []placement `json:"instances"`
+			Volumes   []struct {
+				File      string          `json:"file"`
+				Type      string          `json:"type"`
+				Transform json.RawMessage `json:"transform"`
+			} `json:"volumes"`
 		} `json:"objects"`
 	}
 	if err := json.Unmarshal([]byte(rawPlate), &plate); err != nil {
 		return err
 	}
 	for _, o := range plate.Objects {
+		if isStep(o.File) {
+			continue
+		}
 		name := o.Name
 		if name == "" {
 			name = o.File
@@ -434,8 +456,23 @@ func validatePlateBounds(dir string, req JobRequest, machine *Preset, rawPlate s
 			b := meshBounds{}
 			angle := p.Rot * math.Pi / 180
 			c, s := math.Cos(angle), math.Sin(angle)
-			if err := meshVertices(file, func(v meshPoint) error { return b.add(meshPoint{c*v[0] - s*v[1], s*v[0] + c*v[1], v[2]}) }); err != nil {
+			rotate := func(v meshPoint) error { return b.add(meshPoint{c*v[0] - s*v[1], s*v[0] + c*v[1], v[2]}) }
+			if err := meshVertices(file, rotate); err != nil {
 				return err
+			}
+			for _, v := range o.Volumes {
+				if v.Type != "" && v.Type != "part" {
+					continue
+				}
+				m, err := volumeTransform(v.Transform)
+				if err != nil {
+					return err
+				}
+				if err := meshVertices(filepath.Join(dir, v.File), func(p meshPoint) error {
+					return rotate(meshPoint{m[0]*p[0] + m[1]*p[1] + m[2]*p[2] + m[3], m[4]*p[0] + m[5]*p[1] + m[6]*p[2] + m[7], m[8]*p[0] + m[9]*p[1] + m[10]*p[2] + m[11]})
+				}); err != nil {
+					return err
+				}
 			}
 			dx, dy := p.X-(b.min[0]+b.max[0])/2, p.Y-(b.min[1]+b.max[1])/2
 			b.min[0] += dx
@@ -448,4 +485,32 @@ func validatePlateBounds(dir string, req JobRequest, machine *Preset, rawPlate s
 		}
 	}
 	return nil
+}
+
+func volumeTransform(raw json.RawMessage) ([16]float64, error) {
+	m := [16]float64{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}
+	if len(raw) == 0 || string(raw) == "null" {
+		return m, nil
+	}
+	var flat []float64
+	var rows [][]float64
+	if json.Unmarshal(raw, &flat) == nil && len(flat) == 16 {
+		copy(m[:], flat)
+		return m, nil
+	}
+	if json.Unmarshal(raw, &rows) == nil && len(rows) == 4 {
+		for r, row := range rows {
+			if len(row) != 4 {
+				return m, fmt.Errorf("a volume transform is a row-major 4x4 matrix: 16 numbers or 4 rows of 4")
+			}
+			copy(m[4*r:], row)
+		}
+		return m, nil
+	}
+	return m, fmt.Errorf("a volume transform is a row-major 4x4 matrix: 16 numbers or 4 rows of 4")
+}
+
+func isStep(file string) bool {
+	ext := strings.ToLower(filepath.Ext(file))
+	return ext == ".step" || ext == ".stp"
 }
