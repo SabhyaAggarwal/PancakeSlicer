@@ -1,0 +1,12 @@
+{
+	"type": "machine_model",
+	"name": "Fairino FR3 cell",
+	"model_id": "fairino_fr3_cell",
+	"nozzle_diameter": "0.4",
+	"machine_tech": "FFF",
+	"family": "MyPrinter",
+	"bed_model": "",
+	"bed_texture": "",
+	"hotend_model": "",
+	"default_materials": "Generic PLA @FR3"
+}

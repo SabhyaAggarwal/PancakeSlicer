@@ -751,7 +751,10 @@ CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(NonplanarMode)
 static const t_config_enum_values s_keys_map_NonplanarDeform = {
     { "off",  int(NonplanarDeform::Off)  },
     { "auto", int(NonplanarDeform::Auto) },
-    { "on",   int(NonplanarDeform::On)   }
+    { "on",   int(NonplanarDeform::On)   },
+    { "quickcurve", int(NonplanarDeform::QuickCurve) },
+    { "conical",    int(NonplanarDeform::Conical)    },
+    { "optimized",  int(NonplanarDeform::Optimized)  }
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(NonplanarDeform)
 
@@ -5413,19 +5416,36 @@ void PrintConfigDef::init_fff_params()
     def = this->add("nonplanar_deform", coEnum);
     def->label    = L("Curved layers through the whole part");
     def->category = L("Quality");
-    def->tooltip  = L("Print the whole part in curved layers that follow its top: walls, infill, top and bottom, in height bands the "
-                      "head clears. Auto uses it in Auto mode where it gives a better top than curved shells alone; On uses it "
-                      "whenever curved top shells are on; Off never does."
+    def->tooltip  = L("Print the whole part in curved layers, walls, infill, top and bottom, in height bands the head clears.\n"
+                      "Chosen explicitly (any value but Auto and Off), the outer walls on faces steeper than 25° stay planar, "
+                      "with their half-height beads, around the curved inside; the bands are then 1 mm tall, which costs time.\n"
+                      "Auto (recommended): in Auto mode, only where it measures better than curved top shells alone.\n"
+                      "Column field: every layer stretched column by column so the top lies on one layer. Best on domes; "
+                      "flat and saddle tops cross thin layers.\n"
+                      "QuickCurve (experimental): one smooth surface fitted to the top, every layer above a short base that "
+                      "surface shifted up, all of one thickness. Best on low parts with gently curved tops; a tall dome's rim "
+                      "still crosses layers.\n"
+                      "Conical (experimental): shallow cones sloping down outward from the part's centre, for overhangs that "
+                      "lean outward. Tops cross the cones.\n"
+                      "Optimized field (experimental): curved layers solved to follow the top and lean under overhangs within "
+                      "the head's reach.\n"
+                      "Off: never. A layer source that cannot slice a part falls back to Auto's curved shells with a warning."
                       " Default: Auto. Unit: unitless choice. In Auto mode, Auto compares the column-field slice with the "
-                      "shells: more than 5 percent better top RMS, at most 1.2 times the time, and bounded added overhang. On "
-                      "forces the slice; Off disables it.");
+                      "shells: a whole-surface gain that pays for its time, no worse top and bounded added overhang. The "
+                      "other values force their field.");
     def->enum_keys_map = &ConfigOptionEnum<NonplanarDeform>::get_enum_values();
     def->enum_values.push_back("off");
     def->enum_values.push_back("auto");
     def->enum_values.push_back("on");
+    def->enum_values.push_back("quickcurve");
+    def->enum_values.push_back("conical");
+    def->enum_values.push_back("optimized");
     def->enum_labels.push_back(L("Off"));
     def->enum_labels.push_back(L("Auto"));
-    def->enum_labels.push_back(L("On"));
+    def->enum_labels.push_back(L("Column field"));
+    def->enum_labels.push_back(L("QuickCurve (experimental)"));
+    def->enum_labels.push_back(L("Conical (experimental)"));
+    def->enum_labels.push_back(L("Optimized field (experimental)"));
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionEnum<NonplanarDeform>(NonplanarDeform::Auto));
 
@@ -5686,11 +5706,12 @@ void PrintConfigDef::init_fff_params()
                       "may allow less. Curved top shells lean toward the surface normal only where an upright line would stand proud "
                       "of the surface, and their bands get shorter so the upright head clears the tilted lines. Other curved areas in "
                       "height bands stay upright. Multiplanar chunks tilt within this angle; rotary curved layers need at least 10°. "
-                      "0 keeps the tool upright."
+                      "0 keeps the tool upright. On a rotary table, more than 90° lets multiplanar chunks build past horizontal: the table "
+                      "turns a branch that grows sideways or downward until it points up; curved layers still lean at most 90°."
                       " Default: 0. Unit: degrees. Auto retains this setting.");
     def->sidetext = u8"°";
     def->min      = 0;
-    def->max      = 90;
+    def->max      = 135;
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(0));
 

@@ -25,6 +25,8 @@ namespace Slic3r::Nonplanar {
 
 constexpr double ThreadBoreArea = 500.;
 
+constexpr double ThreadDepth = 1.3;
+
 inline bool fit_round(const Polygon &outline)
 {
     const double length = outline.length();
@@ -129,6 +131,7 @@ struct ConformalResult
     std::vector<ExPolygons>       bridged;
     std::vector<ExPolygons>       self_supported;
     std::vector<ExPolygons>       flat_printed;
+    std::vector<ExPolygons>       shells_refused;
     ExPolygons                    clearance;
     bool                          clearance_ready = false;
     FlowModStats                  flow_mod;
@@ -138,6 +141,7 @@ struct ConformalResult
     std::vector<double>           event_cuts;
     std::vector<std::pair<double, unsigned int>> tool_changes;
     bool                          ordered_plan = false;
+    std::string                   layer_source, layer_source_refused;
     std::shared_ptr<ObjectMesh>   mesh;
 };
 

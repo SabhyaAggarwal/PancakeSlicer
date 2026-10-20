@@ -241,7 +241,7 @@ enum class NonplanarTopPattern : unsigned char { Contour, Rectilinear, Concentri
 enum class NonplanarFallback : unsigned char { ZAA, Planar, None };
 enum class NonplanarCollisionCheck : unsigned char { Off, Warn, Block };
 enum class NonplanarMode : unsigned char { Off, Auto, Manual, Multiplanar, Field };
-enum class NonplanarDeform : unsigned char { Off, Auto, On };
+enum class NonplanarDeform : unsigned char { Off, Auto, On, QuickCurve, Conical, Optimized };
 
 enum class SurfaceFillOrder {
     Default,

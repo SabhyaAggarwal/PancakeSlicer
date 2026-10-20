@@ -13,4 +13,6 @@ bool lean_vase_flares(const PrintObject &object);
 
 AtomToolpath lean_vase_toolpath(const PrintObject &object, std::string &why);
 
+bool lean_vase_in_time(const PrintObject &object, const AtomToolpath &plan, std::string &why);
+
 }

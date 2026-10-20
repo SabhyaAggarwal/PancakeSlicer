@@ -12,6 +12,7 @@
 #include "ConformalShells.hpp"
 #include "HeadEnvelope.hpp"
 #include "LayerSchedule.hpp"
+#include "Multiplanar.hpp"
 #include "Seams.hpp"
 #include "ShellPaths.hpp"
 #include "SurfaceClip.hpp"
@@ -170,16 +171,14 @@ ExPolygons clearance_zone(const PrintObject &object)
     const auto &layers = object.layers();
     if (layers.empty())
         return {};
-    double                            ground = 0.;
-    const TriangleMesh                mesh   = object.object_frame_mesh(ground);
-    std::vector<indexed_triangle_set> bodies = its_split(mesh.its);
+    std::vector<indexed_triangle_set> bodies = its_split(slicing_frame_mesh(object));
     bodies.erase(std::remove_if(bodies.begin(), bodies.end(), [](const indexed_triangle_set &b) { return std::abs(its_volume(b)) < ClearanceMinVolume; }),
                  bodies.end());
     if (bodies.size() < 2)
         return {};
     std::vector<float> zs(layers.size());
     for (size_t i = 0; i < layers.size(); ++i)
-        zs[i] = float(layers[i]->slice_z - ground);
+        zs[i] = float(layers[i]->slice_z);
     std::vector<std::vector<ExPolygons>> slices(bodies.size());
     tbb::parallel_for(tbb::blocked_range<size_t>(0, bodies.size()), [&](const tbb::blocked_range<size_t> &range) {
         for (size_t b = range.begin(); b < range.end(); ++b)
@@ -215,16 +214,23 @@ ExPolygons clearance_zone(const PrintObject &object)
     tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
         for (size_t i = range.begin(); i < range.end(); ++i) {
             std::vector<ExPolygons> by_piece(pieces.size());
-            ExPolygons              all;
-            for (size_t b = 0; b < bodies.size(); ++b)
-                if (!slices[b][i].empty()) {
-                    append(by_piece[size_t(std::lower_bound(pieces.begin(), pieces.end(), root(b)) - pieces.begin())], slices[b][i]);
-                    append(all, slices[b][i]);
-                }
+            ExPolygons              all, here;
+            for (size_t j = 0; j < layers.size(); ++j)
+                if (std::abs(layers[j]->slice_z - layers[i]->slice_z) <= ClearanceRise + EPSILON)
+                    for (size_t b = 0; b < bodies.size(); ++b)
+                        if (!slices[b][j].empty()) {
+                            append(by_piece[size_t(std::lower_bound(pieces.begin(), pieces.end(), root(b)) - pieces.begin())], slices[b][j]);
+                            if (j == i)
+                                append(here, slices[b][j]);
+                        }
             if (std::count_if(by_piece.begin(), by_piece.end(), [](const ExPolygons &e) { return !e.empty(); }) < 2)
                 continue;
-            all = union_ex(all);
-            for (ExPolygon &gap : diff_ex(closing_ex(all, half), all)) {
+            for (ExPolygons &e : by_piece)
+                if (!e.empty()) {
+                    e = union_ex(e);
+                    append(all, e);
+                }
+            for (ExPolygon &gap : diff_ex(closing_ex(union_ex(all), half), union_ex(here))) {
                 const ExPolygons  grown = offset_ex(gap, touch);
                 const BoundingBox box   = get_extents(grown);
                 int               sides = 0;

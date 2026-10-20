@@ -64,8 +64,8 @@ const std::vector<RotaryRoute> &rotary_routes()
           [](PrintObject &object, ConformalResult &result) {
               std::string        why;
               const AtomToolpath plan = lean_vase_toolpath(object, why);
-              if (plan.points.empty()) {
-                  BOOST_LOG_TRIVIAL(info) << "Lean vase: " << object.model_object()->name << " keeps the spiral vase: " << why;
+              if (plan.points.empty() || !lean_vase_in_time(object, plan, why)) {
+                  BOOST_LOG_TRIVIAL(warning) << "Lean vase: " << object.model_object()->name << " keeps the spiral vase: " << why;
                   return false;
               }
               object.print()->set_status(40, L("Leaning the vase wall"));

@@ -13,6 +13,7 @@
 #include "BeadModel.hpp"
 #include "ConformalShells.hpp"
 #include "HeadEnvelope.hpp"
+#include "LayerSources.hpp"
 #include "Multiplanar.hpp"
 #include "PatchTools.hpp"
 #include "StrengthRoads.hpp"
@@ -70,6 +71,7 @@ constexpr double MaxTimeRatio = 1.15;
 constexpr double MaxMovesRatio = 1.5;
 constexpr double OutlineError = 0.03;
 constexpr double ZaaMinZ = 0.05;
+constexpr double HostWallTilt = 25.;
 
 double sample_clamped(const HeightField &f, const Vec2d &xy)
 {
@@ -176,7 +178,7 @@ DynamicPrintConfig deform_print_config(const PrintObject &object, double road_an
 }
 
 void map_path(const ExtrusionPath &path, const Vec2d &center, double level, double thickness, const LayerField &field, double raft,
-              double step, std::vector<ExtrusionPathConformal *> &result)
+              double step, std::vector<ExtrusionPathConformal *> &result, const std::function<bool(const Vec3d &)> &drop = {})
 {
     const Points3 &src = path.polyline.points;
     if (src.size() < 2)
@@ -236,12 +238,13 @@ void map_path(const ExtrusionPath &path, const Vec2d &center, double level, doub
         const double top = field.z_at(p, level);
         const double bot = field.z_at(p, level - thickness);
         const double j   = std::max(0., top - bot) / thickness;
-        if (j < MinStretch) {
+        const double bead = j < MinStretch ? 0. : bead_height_for_area(path.width, j * area);
+        if (j < MinStretch || (drop && drop(Vec3d(p.x(), p.y(), top - 0.5 * bead)))) {
             flush();
             continue;
         }
         poly.points.push_back(Point3::new_scale(p.x(), p.y(), top + raft));
-        beads.push_back(float(bead_height_for_area(path.width, j * area)));
+        beads.push_back(float(bead));
     }
     flush();
 }
@@ -333,6 +336,64 @@ void link_pieces(ExtrusionEntityCollection &shell, Point &last)
     shell.entities = std::move(out);
     if (!shell.entities.empty())
         last = shell.entities.back()->last_point();
+}
+
+bool outer_wall(ExtrusionRole role) { return role == erExternalPerimeter || role == erOverhangPerimeter; }
+
+bool kept_stretches(const ExtrusionPath &path, double step, const std::function<bool(const Vec2d &)> &keep, ExtrusionEntitiesPtr *out)
+{
+    const Points3 &src = path.polyline.points;
+    Points3        run;
+    bool           all = true;
+    auto flush = [&]() {
+        if (out != nullptr && run.size() >= 2)
+            out->push_back(new ExtrusionPath(Polyline3(std::move(run)), path));
+        run.clear();
+    };
+    for (size_t i = 0; i < src.size(); ++i) {
+        const int n = i == 0 ? 1 : std::max(1, int(std::ceil(unscale<double>((src[i] - src[i - 1]).cast<double>().norm()) / step)));
+        for (int k = 1; k <= n; ++k) {
+            const Point3 q = i == 0 ? src[0] : Point3(src[i - 1] + ((src[i] - src[i - 1]).cast<double>() * (double(k) / n)).cast<coord_t>());
+            if (keep(unscale(q.to_point())))
+                run.push_back(q);
+            else {
+                all = false;
+                if (out == nullptr)
+                    return false;
+                flush();
+            }
+        }
+    }
+    flush();
+    return all;
+}
+
+void host_outer_walls(const ExtrusionEntityCollection &in, double step, const std::function<bool(const Vec2d &)> &keep,
+                      ExtrusionEntityCollection &out)
+{
+    for (const ExtrusionEntity *ee : in.entities) {
+        if (const auto *c = dynamic_cast<const ExtrusionEntityCollection *>(ee)) {
+            ExtrusionEntityCollection sub;
+            sub.no_sort = c->no_sort;
+            host_outer_walls(*c, step, keep, sub);
+            if (!sub.entities.empty())
+                out.append(std::move(sub));
+        } else if (const auto *loop = dynamic_cast<const ExtrusionLoop *>(ee)) {
+            if (std::none_of(loop->paths.begin(), loop->paths.end(), [](const ExtrusionPath &p) { return outer_wall(p.role()); }))
+                continue;
+            if (std::all_of(loop->paths.begin(), loop->paths.end(), [&](const ExtrusionPath &p) { return kept_stretches(p, step, keep, nullptr); }))
+                out.entities.push_back(loop->clone());
+            else
+                for (const ExtrusionPath &p : loop->paths)
+                    if (outer_wall(p.role()))
+                        kept_stretches(p, step, keep, &out.entities);
+        } else if (const auto *multi = dynamic_cast<const ExtrusionMultiPath *>(ee)) {
+            for (const ExtrusionPath &p : multi->paths)
+                if (outer_wall(p.role()))
+                    kept_stretches(p, step, keep, &out.entities);
+        } else if (const auto *path = dynamic_cast<const ExtrusionPath *>(ee); path != nullptr && outer_wall(path->role()))
+            kept_stretches(*path, step, keep, &out.entities);
+    }
 }
 
 }
@@ -724,7 +785,10 @@ bool deform_slice_requested(const PrintObject &object)
     if (!cfg.nonplanar_atom_toolpath.value.empty())
         return false;
     switch (cfg.nonplanar_deform.value) {
-    case NonplanarDeform::On: return cfg.nonplanar_mode.value == NonplanarMode::Auto || cfg.nonplanar_mode.value == NonplanarMode::Manual;
+    case NonplanarDeform::On:
+    case NonplanarDeform::QuickCurve:
+    case NonplanarDeform::Conical:
+    case NonplanarDeform::Optimized: return cfg.nonplanar_mode.value == NonplanarMode::Auto || cfg.nonplanar_mode.value == NonplanarMode::Manual;
     default: return false;
     }
 }
@@ -874,7 +938,7 @@ void translate_entity(ExtrusionEntity &ee, const Point3 &d)
 }
 bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::string *why, double give_up_above,
                           const LayerField *given, double planar_time, double time_budget,
-                          const std::function<bool(const DeformFieldReport &)> &admit, const MeshRays *rays)
+                          const std::function<bool(const DeformFieldReport &)> &admit, const MeshRays *rays, bool host_walls)
 {
     const auto t_start = std::chrono::steady_clock::now();
     const std::string &name = object.model_object()->name;
@@ -995,6 +1059,14 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
     std::vector<std::vector<ExtrusionPathConformal *>> curved(sliced.layers().size());
     std::vector<int>                                   planar_host(sliced.layers().size(), -1);
     const double                                       step = 0.5;
+    std::unique_ptr<sla::IndexedMesh> wall_mesh = host_walls ? std::make_unique<sla::IndexedMesh>(mesh_of()) : nullptr;
+    const double                      steep_nz  = std::cos(Geometry::deg2rad(HostWallTilt));
+    const std::function<bool(const Vec3d &)> steep = [&](const Vec3d &p) {
+        int   face = -1;
+        Vec3d at;
+        wall_mesh->squared_distance(p, face, at);
+        return face >= 0 && std::abs(wall_mesh->normal_by_face_id(face).z()) < steep_nz;
+    };
     tbb::parallel_for(tbb::blocked_range<size_t>(0, sliced.layers().size()), [&](const tbb::blocked_range<size_t> &range) {
         for (size_t i = range.begin(); i < range.end(); ++i) {
             const Layer *layer = sliced.layers()[i];
@@ -1013,7 +1085,8 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
             for (const ExtrusionPath &p : flat.out) {
                 if (p.role() == erIroning)
                     continue;
-                map_path(p, center, level, layer->height, *field, raft, step, curved[i]);
+                map_path(p, center, level, layer->height, *field, raft, step, curved[i],
+                         host_walls && outer_wall(p.role()) ? steep : std::function<bool(const Vec3d &)>());
             }
         }
     });
@@ -1029,25 +1102,39 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
                 for (ExtrusionEntityCollection *c : { &out.planar[i]->perimeters, &out.planar[i]->fills, &out.planar[i]->thin_fills })
                     translate_entity(*c, d);
             }
+        } else if (host_walls && i < layers.size()) {
+            const double z   = layers[i]->print_z - raft - 0.5 * layers[i]->height;
+            auto         own = std::make_unique<DeformSlice::Planar>();
+            own->curved      = true;
+            for (const LayerRegion *layerm : layers[i]->regions())
+                host_outer_walls(layerm->perimeters, step, [&](const Vec2d &xy) { return steep(Vec3d(xy.x(), xy.y(), z)); }, own->perimeters);
+            if (!own->perimeters.entities.empty())
+                out.planar[i] = std::move(own);
         }
 
     const HeadEnvelope head = resolve_head_envelope(host_print.config());
     double             pitch = 0., tolerance = 0.;
     const double inflation = 0.6 * nozzle + 0.25 + 0.5 * MaxSegment;
     const bool shared_plate = host_print.objects().size() > 1 || object.instances().size() > 1;
-    double slope = 1.1 * report.max_layer_slope;
-    if (const auto *columns = dynamic_cast<const ColumnScaleField *>(field))
-        slope = tbb::parallel_reduce(tbb::blocked_range<size_t>(0, curved.size()), slope,
-            [&](const tbb::blocked_range<size_t> &range, double s) {
-                for (size_t k = range.begin(); k < range.end(); ++k)
-                    for (const ExtrusionPathConformal *path : curved[k])
-                        for (const Point3 &pt : path->polyline.points)
-                            s = std::max(s, columns->max_slope_near(Vec2d(unscale<double>(pt.x()), unscale<double>(pt.y())),
-                                                                    sliced.layers()[k]->print_z));
-                return s;
-            },
-            [](double a, double b) { return std::max(a, b); });
-    const double reach = object.has_support() || shared_plate ? head_band_height(head) : deform_band_height(head, slope, inflation);
+    double slope = tbb::parallel_reduce(tbb::blocked_range<size_t>(0, curved.size()), 1.1 * report.max_layer_slope,
+        [&](const tbb::blocked_range<size_t> &range, double s) {
+            for (size_t k = range.begin(); k < range.end(); ++k)
+                for (const ExtrusionPathConformal *path : curved[k])
+                    for (const Point3 &pt : path->polyline.points) {
+                        const Vec2d  xy(unscale<double>(pt.x()), unscale<double>(pt.y()));
+                        const double level = sliced.layers()[k]->print_z;
+                        double       near  = field->max_slope_near(xy, level);
+                        if (near < 0.) {
+                            const Vec3d g = field->gradient(Vec3d(xy.x(), xy.y(), field->z_at(xy, level)));
+                            near          = g.z() > 1e-9 ? 1.1 * g.head<2>().norm() / g.z() : 0.;
+                        }
+                        s = std::max(s, near);
+                    }
+            return s;
+        },
+        [](double a, double b) { return std::max(a, b); });
+    const bool   planar_beside = std::any_of(out.planar.begin(), out.planar.end(), [](const auto &p) { return p && p->curved; });
+    const double reach = object.has_support() || shared_plate || planar_beside ? head_band_height(head) : deform_band_height(head, slope, inflation);
     double       cap   = multi_material_patch_height(object, head, ocfg.nonplanar_max_patch_height.value);
     cap                = cap > 0. ? std::min(cap, reach) : reach;
     tolerance = std::min(0.5 * cap, 0.45 * report.rho_min * h);
@@ -1129,6 +1216,7 @@ void apply_deform_slice(PrintObject &object, DeformSlice &&slice, ConformalResul
             host->perimeters = std::move(slice.planar[i]->perimeters);
             host->fills      = std::move(slice.planar[i]->fills);
             host->thin_fills = std::move(slice.planar[i]->thin_fills);
+            layer->conformal_covered = slice.planar[i]->curved;
         } else {
             host->perimeters.clear();
             host->fills.clear();
@@ -1878,14 +1966,25 @@ bool choose_deform_slice(PrintObject &object, ConformalResult &result)
     if (!best)
         return false;
     apply_deform_slice(object, std::move(*best), result);
+    result.layer_source = "on";
     return true;
 }
 
 bool build_deform_slice(PrintObject &object, ConformalResult &result, std::string *why)
 {
     DeformSlice slice;
-    if (!compute_deform_slice(object, slice, why))
+    std::shared_ptr<const LayerField> source;
+    if (object.config().nonplanar_deform.value != NonplanarDeform::On) {
+        source = build_layer_source(object, why);
+        if (!source)
+            return false;
+    }
+    if (!compute_deform_slice(object, slice, why, std::numeric_limits<double>::infinity(), source.get(), 0., std::numeric_limits<double>::infinity(),
+                              {}, nullptr, true))
         return false;
+    if (source)
+        slice.field = source;
+    result.layer_source = object.config().nonplanar_deform.serialize();
     apply_deform_slice(object, std::move(slice), result);
     return true;
 }

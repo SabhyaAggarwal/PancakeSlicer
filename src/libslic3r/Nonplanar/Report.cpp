@@ -184,6 +184,8 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
         out.name            = object->model_object()->name;
         out.model_object_id = object->model_object()->id().id;
         out.mode            = object->config().nonplanar_mode.serialize();
+        out.layer_source         = conformal.layer_source;
+        out.layer_source_refused = conformal.layer_source_refused;
         for (size_t r = 0; r < object->num_printing_regions(); ++r) {
             const PrintRegionConfig &config = object->printing_region(r).config();
             std::string              keys;
@@ -319,6 +321,10 @@ std::string NonplanarReport::to_json(const std::map<size_t, std::string> &orient
             if (f.object == i)
                 fallbacks_json.push_back({ { "reason", f.reason }, { "class", f.cls }, { "why", fallback_reason_text(f.reason) }, { "area_mm2", f.area },
                                            { "top", f.top }, { "patch", f.patch } });
+        if (!o.layer_source.empty())
+            jo["curved_layers"] = json{ { "source", o.layer_source == "on" ? "column" : o.layer_source }, { "bands", o.other_patches } };
+        else if (!o.layer_source_refused.empty())
+            jo["curved_layers"] = json{ { "refused", o.layer_source_refused } };
         jo["regions"]   = o.regions;
         jo["patches"]   = std::move(patches_json);
         jo["fallbacks"] = std::move(fallbacks_json);

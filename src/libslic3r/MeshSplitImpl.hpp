@@ -4,6 +4,7 @@
 #include <vector>
 #include "Point.hpp"
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <cassert>
 #include <utility>
@@ -17,6 +18,7 @@
 
 #include "TriangleMesh.hpp"
 #include "libnest2d/tools/benchmark.h"
+#include "Execution/ExecutionSeq.hpp"
 #include "Execution/ExecutionTBB.hpp"
 
 namespace Slic3r {
@@ -223,8 +225,28 @@ std::vector<Vec3i32> create_face_neighbors_index(ExPolicy &&ex, const indexed_tr
     std::vector<Vec3i32> neighbors(indices.size(),
                                  Vec3i32(no_value, no_value, no_value));
 
-    execution::for_each(ex, size_t(0), indices.size(),
-        [&neighbors, &indices, &vertex_triangles] (size_t face_idx)
+    std::atomic<bool> ambiguous{false};
+    if (! IsSequentialEP<ExPolicy>)
+        execution::for_each(ex, size_t(0), indices.size(),
+        [&ambiguous, &indices, &vertex_triangles] (size_t face_idx)
+        {
+            for (int edge_index = 0; edge_index < 3 && ! ambiguous.load(std::memory_order_relaxed); ++edge_index) {
+                const Vec2i32 edge = its_triangle_edge(indices[face_idx], edge_index);
+                int opposite = 0, same = 0;
+                for (const size_t other_face : vertex_triangles[edge[0]])
+                    if (other_face != face_idx)
+                        if (const int vertex_index = its_triangle_vertex_index(indices[other_face], edge[1]); vertex_index >= 0) {
+                            if (indices[other_face][(vertex_index + 1) % 3] == edge[0])
+                                ++ opposite;
+                            else if (indices[other_face][(vertex_index + 2) % 3] == edge[0])
+                                ++ same;
+                        }
+                if (opposite > 1 || (opposite > 0 && same > 0))
+                    ambiguous.store(true, std::memory_order_relaxed);
+            }
+        }, execution::max_concurrency(ex));
+
+    auto pair_face = [&neighbors, &indices, &vertex_triangles] (size_t face_idx)
         {
             Vec3i32& neighbor = neighbors[face_idx];
             const stl_triangle_vertex_indices & triangle_indices = indices[face_idx];
@@ -246,7 +268,11 @@ std::vector<Vec3i32> create_face_neighbors_index(ExPolicy &&ex, const indexed_tr
                     break;
                 }
             }
-        }, execution::max_concurrency(ex));
+        };
+    if (ambiguous)
+        execution::for_each(ex_seq, size_t(0), indices.size(), pair_face);
+    else
+        execution::for_each(ex, size_t(0), indices.size(), pair_face, execution::max_concurrency(ex));
 
     return neighbors;
 }

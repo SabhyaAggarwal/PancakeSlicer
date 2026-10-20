@@ -1,0 +1,170 @@
+{
+	"type": "machine",
+	"name": "Fairino FR3 cell 0.4 nozzle",
+	"from": "system",
+	"setting_id": "rpWGcoyEOh2BRfgz",
+	"instantiation": "true",
+	"printer_notes": "Fairino FR3 cell (docs/nonplanar/kinematics/fr3): a Fairino FR3 6-DOF arm carries an inline direct-drive extruder and hotend and prints onto a tilt-rotate positioner in front of it: A about machine X, +-135 deg at 120 deg/s, C continuous at 360 deg/s on the trunnion, heated D80 build puck on a D30 spindle 142 mm long, the puck surface on the A axis (the part may overhang the puck; part envelope D160 x 100 mm). Layout table_ac: the tool stays vertical in the machine frame and the positioner turns the part so each chunk's build direction points up (gravity-aligned, up to 135 deg from the plate normal). G-code: XYZ is the TCP in the positioner's fixed frame, origin where the A and C axes meet (the puck centre), mm; A and C are the positioner angles in degrees (work frame -> machine: Rx(A) Rz(C)); E relative; rotary_tool_length 142.34 is the tip-to-flange length and rotary_tool_mount puts the flange 142.34 above the TCP at home, so XYZ reads the TCP; G93 inverse-time F on moves that turn A or C, G94 mm/min otherwise. The FR3 converter maps it to joint trajectories. Arm limits 300 mm/s, 3000 mm/s^2 and 8 mm/s jerk (fitted so the slicer's estimate matches the FR3 converter's joint-limited corners within 5 % on five parts); calibrated=false.",
+	"printer_technology": "FFF",
+	"printable_area": [
+		"40.000x0.000",
+		"39.658x5.221",
+		"38.637x10.353",
+		"36.955x15.307",
+		"34.641x20.000",
+		"31.734x24.350",
+		"28.284x28.284",
+		"24.350x31.734",
+		"20.000x34.641",
+		"15.307x36.955",
+		"10.353x38.637",
+		"5.221x39.658",
+		"0.000x40.000",
+		"-5.221x39.658",
+		"-10.353x38.637",
+		"-15.307x36.955",
+		"-20.000x34.641",
+		"-24.350x31.734",
+		"-28.284x28.284",
+		"-31.734x24.350",
+		"-34.641x20.000",
+		"-36.955x15.307",
+		"-38.637x10.353",
+		"-39.658x5.221",
+		"-40.000x0.000",
+		"-39.658x-5.221",
+		"-38.637x-10.353",
+		"-36.955x-15.307",
+		"-34.641x-20.000",
+		"-31.734x-24.350",
+		"-28.284x-28.284",
+		"-24.350x-31.734",
+		"-20.000x-34.641",
+		"-15.307x-36.955",
+		"-10.353x-38.637",
+		"-5.221x-39.658",
+		"-0.000x-40.000",
+		"5.221x-39.658",
+		"10.353x-38.637",
+		"15.307x-36.955",
+		"20.000x-34.641",
+		"24.350x-31.734",
+		"28.284x-28.284",
+		"31.734x-24.350",
+		"34.641x-20.000",
+		"36.955x-15.307",
+		"38.637x-10.353",
+		"39.658x-5.221"
+	],
+	"printable_height": "100",
+	"nozzle_diameter": [
+		"0.4"
+	],
+	"machine_max_speed_x": [
+		"300",
+		"300"
+	],
+	"machine_max_speed_y": [
+		"300",
+		"300"
+	],
+	"machine_max_speed_z": [
+		"300",
+		"300"
+	],
+	"nonplanar_head": "fr3-toolhead",
+	"nonplanar_segment_rate": "150",
+	"nonplanar_kinematics": "table_ac",
+	"rotary_axis_limits": [
+		"-135",
+		"135",
+		"-180",
+		"180"
+	],
+	"rotary_axis_continuous": [
+		"0",
+		"1"
+	],
+	"rotary_max_speed": [
+		"120",
+		"360"
+	],
+	"rotary_pivot": [
+		"0",
+		"0",
+		"0"
+	],
+	"rotary_tool_length": "142.34",
+	"rotary_tool_mount": [
+		"0",
+		"0",
+		"142.34"
+	],
+	"rotary_table_height": "0",
+	"rotary_linear_moves_table": [
+		"0",
+		"0",
+		"0"
+	],
+	"rotary_firmware_rtcp": "0",
+	"rotary_inverse_time_feed": "1",
+	"nonplanar_max_tilt": "135",
+	"default_print_profile": "0.20mm Full orientation @FR3",
+	"printer_model": "Fairino FR3 cell",
+	"printer_variant": "0.4",
+	"default_filament_profile": [
+		"Generic PLA @FR3"
+	],
+	"default_nozzle_volume_type": [
+		"Standard"
+	],
+	"extruder_type": [
+		"Direct Drive"
+	],
+	"extruder_variant_list": [
+		"Direct Drive Standard"
+	],
+	"printer_extruder_id": [
+		"1"
+	],
+	"printer_extruder_variant": [
+		"Direct Drive Standard"
+	],
+	"gcode_flavor": "marlin",
+	"machine_start_gcode": "G90\nM83\nG94\nG28\nM201 A600 C1800 ; positioner accelerations (deg/s^2), docs/nonplanar/kinematics/fr3/cell/positioner.json\nM140 S[first_layer_bed_temperature]\nM104 S[first_layer_temperature]\nM190 S[first_layer_bed_temperature]\nM109 S[first_layer_temperature]\nG92 E0",
+	"machine_end_gcode": "G94\nG91\nG1 E-0.8 F1800\nG1 Z10 F600\nG90\nM104 S0\nM140 S0\nM107\nM84",
+	"before_layer_change_gcode": ";BEFORE_LAYER_CHANGE\n;[layer_z]\nG92 E0\n",
+	"layer_change_gcode": ";AFTER_LAYER_CHANGE\n;[layer_z]",
+	"machine_max_acceleration_x": [
+		"3000",
+		"3000"
+	],
+	"machine_max_acceleration_y": [
+		"3000",
+		"3000"
+	],
+	"machine_max_acceleration_z": [
+		"3000",
+		"3000"
+	],
+	"machine_max_acceleration_extruding": [
+		"3000",
+		"3000"
+	],
+	"machine_max_acceleration_travel": [
+		"3000",
+		"3000"
+	],
+	"machine_max_jerk_x": [
+		"8",
+		"8"
+	],
+	"machine_max_jerk_y": [
+		"8",
+		"8"
+	],
+	"machine_max_jerk_z": [
+		"8",
+		"8"
+	]
+}

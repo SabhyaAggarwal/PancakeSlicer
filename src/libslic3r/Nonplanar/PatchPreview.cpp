@@ -23,6 +23,8 @@
 #include <tbb/global_control.h>
 #include <tbb/task_arena.h>
 
+#include <math.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -91,7 +93,7 @@ PatchPreviewParams patch_preview_params(const DynamicPrintConfig &config)
         p.wall_width = std::max(0, loops->value) * width("inner_wall_line_width", frPerimeter);
     const auto *kinematics = config.option<ConfigOptionEnum<RotaryLayout>>("nonplanar_kinematics");
     if (kinematics != nullptr && kinematics->value != RotaryLayout::None)
-        p.max_tilt = Geometry::deg2rad(num("nonplanar_max_tilt", 0.));
+        p.max_tilt = std::min(Geometry::deg2rad(num("nonplanar_max_tilt", 0.)), 0.5 * M_PI);
     return p;
 }
 

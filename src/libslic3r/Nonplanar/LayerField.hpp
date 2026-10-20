@@ -39,6 +39,8 @@ public:
     }
 
     virtual double identity_below() const { return 0.; }
+
+    virtual double max_slope_near(const Vec2d & , double ) const { return -1.; }
 };
 
 }

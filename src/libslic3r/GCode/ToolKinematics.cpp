@@ -205,7 +205,7 @@ double RotaryKinematics::max_tilt(double phi) const
         JointPose j;
         return this->inverse(pose, nullptr, j);
     };
-    double lo = 0., hi = std::min(m_geo.max_tilt, 0.5 * M_PI - 1e-6);
+    double lo = 0., hi = this->is_table() && m_geo.max_tilt > 0.5 * M_PI ? m_geo.max_tilt : std::min(m_geo.max_tilt, 0.5 * M_PI - 1e-6);
     if (hi <= 0.)
         return 0.;
     if (reachable(hi))

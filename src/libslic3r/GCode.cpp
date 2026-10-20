@@ -9,6 +9,7 @@
 #include "GCode/ClearanceVerifier.hpp"
 #include "GCode/ToolKinematics.hpp"
 #include "Nonplanar/HeadEnvelope.hpp"
+#include "Nonplanar/Multiplanar.hpp"
 #include "Nonplanar/AutoMode.hpp"
 #include "Nonplanar/HeightField.hpp"
 #include "Nonplanar/MaterialRules.hpp"
@@ -2980,7 +2981,7 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
         m_track_nonplanar_material |= !object->conformal().patches.empty();
     if (print.config().nonplanar_kinematics.value != RotaryLayout::None) {
         m_writer.set_tool_kinematics(make_tool_kinematics(print.config()));
-        m_writer.set_min_joint_move_time(
+        m_writer.set_min_joint_move_time(Nonplanar::full_orientation(print.config()) ? 0. :
             1. / Nonplanar::planner_segment_rate(print.config().nonplanar_segment_rate.value, print.config().gcode_flavor.value, print.is_BBL_printer()));
         if (std::unique_ptr<MachineKinematics> upright = make_upright_machine_kinematics(print.config())) {
             m_writer.set_kinematics(std::move(upright));
@@ -8156,21 +8157,40 @@ std::string GCode::extrude_multiplanar_chunk(const Nonplanar::ConformalPatch &pa
     double       top     = -std::numeric_limits<double>::infinity();
     m_wipe.reset_path();
     double       ceiling = -std::numeric_limits<double>::infinity();
+    const auto   to_writer = [this](const Point3 &p) {
+        const Vec2d xy = this->point_to_gcode(p.to_point());
+        return Vec3d(xy.x(), xy.y(), m_nominal_z + unscale<double>(p.z()));
+    };
+    const double in_layer_travel = full_orientation(m_config) && m_writer.filament() != nullptr ?
+        m_config.retraction_minimum_travel.get_at(m_writer.filament()->id()) : 0.;
+    auto in_layer = [&](const Vec3d &from, const ExtrusionPathConformal *next) {
+        if (next == nullptr || in_layer_travel <= 0.)
+            return false;
+        const Vec3d to   = to_writer(next->polyline.points.front());
+        const Vec3d axis = next->tool_axis.empty() ? Vec3d(Vec3d::UnitZ()) : Vec3d(next->tool_axis.front().cast<double>().normalized());
+        return (to - from).norm() < in_layer_travel && std::abs(axis.dot(to - from)) < 1e-3 && axis.dot(from) > ceiling - 1e-3;
+    };
     for (size_t k = 0; k < patch.shell_paths.size(); ++k) {
         gcode += ";_NONPLANAR_BEGIN patch=" + std::to_string(patch.id) + " shell=" + std::to_string(k) + " band=" + std::to_string(patch.band) +
                  " rate=" + std::to_string(std::lround(this->conformal_segment_rate())) + "\n";
-        for (const ExtrusionEntity *ee : patch.shell_paths[k].entities) {
-            const auto *path = dynamic_cast<const ExtrusionPathConformal *>(ee);
-            if (path == nullptr || path->polyline.points.size() < 2)
-                continue;
-            m_conformal_points = conformal_points(*path, [this](const Point3 &p) {
-                const Vec2d xy = this->point_to_gcode(p.to_point());
-                return Vec3d(xy.x(), xy.y(), m_nominal_z + unscale<double>(p.z()));
-            });
+        std::vector<const ExtrusionPathConformal *> paths;
+        for (const ExtrusionEntity *ee : patch.shell_paths[k].entities)
+            if (const auto *path = dynamic_cast<const ExtrusionPathConformal *>(ee); path != nullptr && path->polyline.points.size() >= 2)
+                paths.emplace_back(path);
+        enum class Reach { Lift, Retracted, Primed } reach = Reach::Lift;
+        auto outer = [](const ExtrusionPathConformal &p) { return p.role() == erExternalPerimeter || p.role() == erOverhangPerimeter; };
+        for (size_t i = 0; i < paths.size(); ++i) {
+            const ExtrusionPathConformal *path = paths[i];
+            m_conformal_points = conformal_points(*path, to_writer);
             const ToolPose &start = m_conformal_points.front().pose;
             const Vec3d    &axis  = start.axis;
             const Vec3d     here  = m_writer.get_position();
-            if (! entered || (here - start.tip).norm() > EPSILON) {
+            if (reach != Reach::Lift) {
+                if (reach == Reach::Retracted)
+                    gcode += this->retract();
+                if ((here - start.tip).norm() > EPSILON)
+                    gcode += m_writer.travel_to_pose(start, "move in the layer");
+            } else if (! entered || (here - start.tip).norm() > EPSILON) {
                 gcode += this->retract();
                 if (axis.z() > 1. - EPSILON) {
                     const double travel_z = m_material_columns ?
@@ -8182,7 +8202,7 @@ std::string GCode::extrude_multiplanar_chunk(const Nonplanar::ConformalPatch &pa
                 } else if (! entered) {
                     gcode += this->rotary_move_safely(&start);
                 } else {
-                    const std::string local = this->rotary_local_hop(start);
+                    const std::string local = full_orientation(m_config) ? std::string() : this->rotary_local_hop(start);
                     if (!local.empty())
                         gcode += local;
                     else {
@@ -8204,7 +8224,10 @@ std::string GCode::extrude_multiplanar_chunk(const Nonplanar::ConformalPatch &pa
             this->set_last_pos(path->first_point());
             m_need_change_layer_lift_z = false;
             gcode += this->_extrude(*path, "multiplanar chunk");
-            gcode += this->wipe_conformal_path();
+            const ExtrusionPathConformal *next = i + 1 < paths.size() ? paths[i + 1] : nullptr;
+            reach = ! in_layer(m_writer.get_position(), next) ? Reach::Lift : outer(*path) || outer(*next) ? Reach::Retracted : Reach::Primed;
+            if (reach != Reach::Primed)
+                gcode += this->wipe_conformal_path();
             gcode += m_writer.end_inverse_time();
             m_conformal_points.clear();
         }
@@ -8534,6 +8557,8 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
         params.limits = MotionLimits();
     params.limits.segment_rate = this->conformal_segment_rate();
     params.condition.target_length = std::max(0.15, params.nominal_speed / params.limits.segment_rate);
+    if (Nonplanar::full_orientation(m_config) && path.role() != erExternalPerimeter && path.role() != erOverhangPerimeter)
+        params.limits.segment_rate = 0.;
     if (path.preserve_points) {
         params.condition.target_length = 0.;
         params.preserve_points = true;

@@ -64,7 +64,7 @@ struct SeamCandidate {
   Perimeter &perimeter;
   float visibility;
   float overhang;
-  float unsupported_dist;
+  float unsupported_dist = 0.f;
   float embedded_distance;
   float local_ccw_angle;
   EnforcedBlockedSeamPoint type;

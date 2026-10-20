@@ -1,0 +1,23 @@
+{
+	"type": "filament",
+	"name": "Generic PLA @FR3",
+	"inherits": "Generic PLA @System",
+	"from": "system",
+	"setting_id": "IMnALAfYSnXNQxaN",
+	"instantiation": "true",
+	"filament_type": [
+		"PLA"
+	],
+	"filament_extruder_id": [
+		"1"
+	],
+	"filament_extruder_variant": [
+		"Direct Drive Standard"
+	],
+	"compatible_printers": [
+		"Fairino FR3 cell 0.4 nozzle"
+	],
+	"filament_max_volumetric_speed": [
+		"12"
+	]
+}

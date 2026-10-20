@@ -19,6 +19,10 @@ bool rotary_measurement_too_slow(double estimated_time);
 
 bool auto_rotary_requested(const PrintObject &object);
 
+constexpr double RotaryMaxTimeRatio = 2.5;
+
+double planar_support_time(const PrintObject &object);
+
 std::string auto_rotary_planar(const PrintObject &object);
 
 bool auto_rotary_candidate(const PrintObject &object, const indexed_triangle_set &mesh);

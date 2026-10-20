@@ -53,6 +53,7 @@ struct ReportObject
     std::string name;
     size_t      model_object_id = 0;
     std::string mode;
+    std::string layer_source, layer_source_refused;
     size_t      top_patches   = 0;
     size_t      other_patches = 0;
     size_t      bands         = 0;

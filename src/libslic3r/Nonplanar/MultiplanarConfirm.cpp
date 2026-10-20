@@ -97,7 +97,8 @@ struct Bead
     double width, height;
 };
 
-double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector<Bead> &beads)
+double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector<Bead> &beads,
+                      const std::vector<std::pair<std::string, std::string>> &overrides = {})
 {
     DynamicPrintConfig config = object.print()->full_print_config();
     config.apply(object.config(), true);
@@ -110,7 +111,13 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
     }
     Model        model;
     ModelObject *copy = model.add_object(*object.model_object());
-    const_cast<DynamicPrintConfig &>(copy->config.get()).set_key_value("nonplanar_mode", new ConfigOptionEnum<NonplanarMode>(mode));
+    DynamicPrintConfig &copy_config = const_cast<DynamicPrintConfig &>(copy->config.get());
+    copy_config.set_key_value("nonplanar_mode", new ConfigOptionEnum<NonplanarMode>(mode));
+    for (const auto &[key, value] : overrides) {
+        config.set_deserialize_strict(key, value);
+        if (copy_config.has(key))
+            copy_config.set_deserialize_strict(key, value);
+    }
     copy->clear_instances();
     copy->add_instance(*object.model_object()->instances.front());
     static thread_local std::pair<std::string, std::pair<double, std::vector<Bead>>> last_planar;
@@ -565,7 +572,7 @@ std::string auto_rotary_planar(const PrintObject &object)
     if (object.print()->config().spiral_mode.value)
         return {};
     const auto kinematics = make_tool_kinematics(object.print()->config());
-    if (kinematics->rotary_count() == 0)
+    if (kinematics->rotary_count() == 0 || full_orientation(object.print()->config()))
         return {};
     if (rotary_route_claimed(object))
         return {};
@@ -586,7 +593,7 @@ std::string auto_rotary_planar(const PrintObject &object)
     const double planar_rms = rounded_normal_rms(mesh.its, planar);
     if (!std::isfinite(planar_time) || planar_time <= 0.)
         return {};
-    constexpr double RotaryMaxTimeRatio = 2.5, RotaryGainPerTime = 0.5;
+    constexpr double RotaryGainPerTime = 0.5;
     const double candidate_time = measured_slice(object, NonplanarMode::Auto, candidate);
     throw_if_canceled(object);
     const double candidate_rms = rounded_normal_rms(mesh.its, candidate);
@@ -651,6 +658,12 @@ std::string auto_rotary_chunks(const PrintObject &object, const indexed_triangle
         << " % of its stair-steps flat; measured: " << measured.str() << " (MULTIPLANAR.md \"Auto\").";
     BOOST_LOG_TRIVIAL(warning) << why.str();
     return why.str();
+}
+
+double planar_support_time(const PrintObject &object)
+{
+    std::vector<Bead> beads;
+    return measured_slice(object, NonplanarMode::Off, beads, { { "enable_support", "1" }, { "support_type", "tree(auto)" } });
 }
 
 }

@@ -39,7 +39,7 @@ public:
     double identity_below() const override { return m_z0; }
 
     double             rho(const Vec2d &xy) const;
-    double             max_slope_near(const Vec2d &xy, double level) const;
+    double             max_slope_near(const Vec2d &xy, double level) const override;
 
 private:
     double      m_z0;
@@ -91,6 +91,7 @@ struct DeformSlice
     struct Planar
     {
         ExtrusionEntityCollection perimeters, fills, thin_fills;
+        bool                      curved = false;
     };
     DeformFieldReport                    report;
     std::vector<std::unique_ptr<Planar>> planar;
@@ -100,7 +101,8 @@ struct DeformSlice
 bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::string *why = nullptr,
                           double give_up_above = std::numeric_limits<double>::infinity(), const LayerField *field = nullptr,
                           double planar_time = 0., double time_budget = std::numeric_limits<double>::infinity(),
-                          const std::function<bool(const DeformFieldReport &)> &admit = {}, const MeshRays *rays = nullptr);
+                          const std::function<bool(const DeformFieldReport &)> &admit = {}, const MeshRays *rays = nullptr,
+                          bool host_walls = false);
 
 DeformFieldReport measure_layer_field(const indexed_triangle_set &mesh, const LayerField &field, double layer_height,
                                       const HeightField *top = nullptr);

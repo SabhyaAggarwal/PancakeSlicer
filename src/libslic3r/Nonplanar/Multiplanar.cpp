@@ -21,7 +21,9 @@
 #include "libslic3r/Config.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
+#include "libslic3r/GCode/ClearanceVerifier.hpp"
 #include "libslic3r/GCode/ToolKinematics.hpp"
+#include "libslic3r/Line.hpp"
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/I18N.hpp"
 #include "libslic3r/Layer.hpp"
@@ -201,6 +203,179 @@ double vertical_extent(const indexed_triangle_set &mesh, const Vec3d &dir, doubl
     return top - base;
 }
 
+constexpr double PlateDepth    = 150.;
+constexpr double ObstaclePitch = 0.5;
+constexpr double MergeTolerance = 1.;
+constexpr double NozzleZone    = 2.;
+constexpr double NozzleBody    = 5.;
+constexpr double SampleReach   = 0.35;
+constexpr double SideCutLean   = 20. * M_PI / 180.;
+constexpr double StubPenalty   = 10.;
+constexpr double SideCutStep   = 4.;
+constexpr double TravelHop     = 2.;
+
+MaterialColumns::PreparedHead coarse_head(const HeadEnvelope &envelope)
+{
+    MaterialColumns::PreparedHead out;
+    std::vector<MaterialColumns::PreparedBox> first;
+    for (const MaterialColumns::PreparedBox &b : MaterialColumns::prepare(envelope).boxes) {
+        if (b.infinite_x || b.infinite_y || b.max.z() <= NozzleZone)
+            continue;
+        size_t k = b.min.z() < NozzleBody ? first.size() : 0;
+        for (; k < first.size(); ++k)
+            if ((first[k].min.head<2>() - b.min.head<2>()).cwiseAbs().maxCoeff() <= MergeTolerance &&
+                (first[k].max.head<2>() - b.max.head<2>()).cwiseAbs().maxCoeff() <= MergeTolerance &&
+                out.boxes[k].max.z() >= b.min.z() - EPSILON)
+                break;
+        if (k < first.size() && first[k].min.z() >= NozzleBody) {
+            out.boxes[k].min = out.boxes[k].min.cwiseMin(b.min);
+            out.boxes[k].max = out.boxes[k].max.cwiseMax(b.max);
+        } else {
+            first.push_back(b);
+            out.boxes.push_back(b);
+        }
+    }
+    return out;
+}
+
+template<typename Fn> void sample_surface(const indexed_triangle_set &mesh, double pitch, Fn fn)
+{
+    for (const stl_triangle_vertex_indices &t : mesh.indices) {
+        const Vec3d a = mesh.vertices[t[0]].cast<double>(), b = mesh.vertices[t[1]].cast<double>(), c = mesh.vertices[t[2]].cast<double>();
+        const int   n = std::max(1, int(std::ceil(std::max({ (b - a).norm(), (c - b).norm(), (a - c).norm() }) / pitch)));
+        for (int i = 0; i <= n; ++i)
+            for (int j = 0; j <= n - i; ++j)
+                fn(a + (b - a) * (double(i) / n) + (c - a) * (double(j) / n));
+    }
+}
+
+void sliding_min(const std::vector<double> &in, std::vector<double> &out, size_t first, int n, int stride, int lo, int hi)
+{
+    std::vector<int> window;
+    size_t           head = 0;
+    int              next = 0;
+    for (int i = 0; i < n; ++i) {
+        for (; next < n && next <= i + hi; ++next) {
+            const double v = in[first + size_t(next) * stride];
+            while (window.size() > head && in[first + size_t(window.back()) * stride] >= v)
+                window.pop_back();
+            window.push_back(next);
+        }
+        while (window.size() > head && window[head] < i + lo)
+            ++head;
+        out[first + size_t(i) * stride] = window.size() > head && window[head] <= i + hi ? in[first + size_t(window[head]) * stride] :
+                                                                                            std::numeric_limits<double>::infinity();
+    }
+}
+
+struct HeadHit
+{
+    std::string what;
+    bool        bed = false;
+};
+HeadHit head_blocked(const indexed_triangle_set &piece, const Matrix3d &frame, double h, const HeadEnvelope &envelope,
+                     const MaterialColumns::PreparedHead &head, const std::vector<const indexed_triangle_set *> &earlier,
+                     const Polygons &plates)
+{
+    constexpr double Inf = std::numeric_limits<double>::infinity();
+    std::vector<Vec3d> tips;
+    sample_surface(piece, ObstaclePitch, [&](const Vec3d &p) { tips.push_back(frame * p); });
+    if (tips.empty())
+        return {};
+    BoundingBoxf3 box;
+    for (const Vec3d &t : tips)
+        box.merge(t);
+    const double floor = box.min.z() + h, top = box.max.z() + TravelHop;
+    double reach = 0.;
+    for (const MaterialColumns::PreparedBox &b : head.boxes)
+        if (! b.infinite_x && ! b.infinite_y)
+            reach = std::max({ reach, b.min.head<2>().cwiseAbs().maxCoeff(), b.max.head<2>().cwiseAbs().maxCoeff() });
+    reach += 2. * ObstaclePitch;
+    const Vec2d origin = box.min.head<2>() - Vec2d::Constant(reach);
+    const int   nx = int(std::ceil((box.max.x() - box.min.x() + 2. * reach) / ObstaclePitch)) + 1;
+    const int   ny = int(std::ceil((box.max.y() - box.min.y() + 2. * reach) / ObstaclePitch)) + 1;
+    auto cell = [&](const Vec2d &p, int &ix, int &iy) {
+        ix = int(std::floor((p.x() - origin.x()) / ObstaclePitch));
+        iy = int(std::floor((p.y() - origin.y()) / ObstaclePitch));
+        return ix >= 0 && iy >= 0 && ix < nx && iy < ny;
+    };
+    std::vector<double> lowest(size_t(nx) * ny, Inf), neg_highest(size_t(nx) * ny, Inf);
+    for (const Vec3d &t : tips) {
+        int ix, iy;
+        if (cell(t.head<2>(), ix, iy)) {
+            const size_t c = size_t(iy) * nx + ix;
+            lowest[c]      = std::min(lowest[c], std::max(t.z(), floor));
+            neg_highest[c] = std::min(neg_highest[c], -std::max(t.z(), floor));
+        }
+    }
+
+    std::vector<Vec3d> obstacles, where;
+    auto add = [&](const Vec3d &p) {
+        const Vec3d q = frame * p;
+        int ix, iy;
+        if (cell(q.head<2>(), ix, iy)) {
+            obstacles.push_back(q);
+            where.push_back(p);
+        }
+    };
+    for (const indexed_triangle_set *mesh : earlier)
+        sample_surface(*mesh, ObstaclePitch, add);
+    const size_t first_plate = obstacles.size();
+    for (const Polygon &plate : plates) {
+        const BoundingBoxf outline(unscaled(get_extents(plate).min), unscaled(get_extents(plate).max));
+        for (double y = outline.min.y(); y <= outline.max.y(); y += ObstaclePitch)
+            for (double x = outline.min.x(); x <= outline.max.x(); x += ObstaclePitch)
+                if (plate.contains(Point::new_scale(x, y))) {
+                    add(Vec3d(x, y, 0.));
+                    add(Vec3d(x, y, -PlateDepth));
+                }
+        for (const Line &edge : plate.lines()) {
+            const Vec2d a = unscaled(edge.a), b = unscaled(edge.b);
+            const int   n = std::max(1, int(std::ceil((b - a).norm() / ObstaclePitch)));
+            for (int i = 0; i <= n; ++i)
+                for (double z = 0.; z >= -PlateDepth; z -= ObstaclePitch)
+                    add(Vec3d(a.x() + (b.x() - a.x()) * i / n, a.y() + (b.y() - a.y()) * i / n, z));
+        }
+    }
+    if (obstacles.empty())
+        return {};
+    std::vector<double> heights;
+    for (const Vec3d &o : obstacles)
+        heights.push_back(o.z());
+    std::sort(heights.begin(), heights.end());
+
+    std::vector<double> rows(lowest.size()), reach_min(lowest.size()), reach_neg_max(lowest.size());
+    for (const MaterialColumns::PreparedBox &b : head.boxes) {
+        const Vec3d lo(b.min.x() - SampleReach, b.min.y() - SampleReach, std::max(b.min.z(), NozzleZone)),
+            hi = b.max + Vec3d::Constant(SampleReach);
+        if (auto it = std::lower_bound(heights.begin(), heights.end(), floor + lo.z()); it == heights.end() || *it > top + hi.z())
+            continue;
+        const int x0 = int(std::floor(-hi.x() / ObstaclePitch)) - 1, x1 = int(std::ceil(-lo.x() / ObstaclePitch)) + 1;
+        const int y0 = int(std::floor(-hi.y() / ObstaclePitch)) - 1, y1 = int(std::ceil(-lo.y() / ObstaclePitch)) + 1;
+        for (int iy = 0; iy < ny; ++iy)
+            sliding_min(lowest, rows, size_t(iy) * nx, nx, 1, x0, x1);
+        for (int ix = 0; ix < nx; ++ix)
+            sliding_min(rows, reach_min, size_t(ix), ny, nx, y0, y1);
+        for (int iy = 0; iy < ny; ++iy)
+            sliding_min(neg_highest, rows, size_t(iy) * nx, nx, 1, x0, x1);
+        for (int ix = 0; ix < nx; ++ix)
+            sliding_min(rows, reach_neg_max, size_t(ix), ny, nx, y0, y1);
+        for (size_t k = 0; k < obstacles.size(); ++k) {
+            const Vec3d &o = obstacles[k];
+            int ix, iy;
+            cell(o.head<2>(), ix, iy);
+            const size_t c = size_t(iy) * nx + ix;
+            if (reach_min[c] <= o.z() - lo.z() && TravelHop - reach_neg_max[c] >= o.z() - hi.z()) {
+                std::ostringstream hit;
+                hit << "the head (" << envelope.boxes[b.index].name << ") would meet " << (k < first_plate ? "material printed earlier" : "the bed")
+                    << " at " << where[k].x() << ", " << where[k].y() << ", " << where[k].z();
+                return { hit.str(), k >= first_plate };
+            }
+        }
+    }
+    return {};
+}
+
 }
 
 indexed_triangle_set chunk_piece(const indexed_triangle_set &mesh, const MultiplanarChunk &chunk, double layer_height)
@@ -288,7 +463,8 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
         root.piece = mesh;
         root.frame = Matrix3d::Identity();
         set_score(root, evaluate(root.clips, frame_of(root)));
-        plan.planar_step_area = root.step_area;
+        plan.planar_step_area     = root.step_area;
+        plan.planar_overhang_area = root.overhang_area;
         planar_score          = root.overhang_area + StepWeight * root.step_area;
         plan.chunks.push_back(std::move(root));
     }
@@ -336,6 +512,8 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
         plan.notes.emplace_back("no tilt budget: the head clears no tilted layer");
         return finish();
     }
+    const bool full = rotary && layout_is_table(params.kinematics->layout()) && tilt_max > 0.5 * M_PI + EPSILON;
+    const MaterialColumns::PreparedHead prepared_head = full ? coarse_head(params.head) : MaterialColumns::PreparedHead{};
 
     std::vector<bool> skipped(n_facets, false);
     std::vector<bool> tried(n_facets, false);
@@ -455,6 +633,9 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
             double base;
             Score  far;
             double score;
+            Vec3d  cut;
+            double offset;
+            double stub = 0.;
         };
         std::vector<Candidate> candidates;
         for (const Vec3d &dir : dirs) {
@@ -466,34 +647,76 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
                 weight += f.area[i];
             }
             level /= std::max(weight, EPSILON);
-            if (w.goal == Goal::Overhang)
+            if (w.goal == Goal::Overhang) {
                 for (int k = 0; k < 4; ++k)
-                    candidates.push_back({ dir, lo - 0.25 * k * h, {}, 0. });
+                    candidates.push_back({ dir, lo - 0.25 * k * h, {}, 0., dir, lo - 0.25 * k * h });
+                if (full && dir.z() < 0.) {
+                    double foot = -std::numeric_limits<double>::infinity();
+                    for (const stl_vertex &v : c.piece.vertices)
+                        if (v.z() < params.first_layer_height + h)
+                            foot = std::max(foot, dir.dot(v.cast<double>()));
+                    if (foot > lo)
+                        for (int k = 0; k < 3; ++k)
+                            candidates.push_back({ dir, foot + (k + 1) * h, {}, 0., dir, foot + (k + 1) * h });
+                }
+            }
             else {
                 const double layers = std::ceil((level - lo) / h - EPSILON) + MinChunkLayers;
                 for (int k = 0; k < 3; ++k)
-                    candidates.push_back({ dir, level - (layers + k) * h, {}, 0. });
+                    candidates.push_back({ dir, level - (layers + k) * h, {}, 0., dir, level - (layers + k) * h });
+            }
+            const Vec3d side(dir.x(), dir.y(), 0.);
+            if (full && w.goal == Goal::Overhang && std::abs(dir.z()) <= std::sin(SideCutLean)) {
+                const Vec3d u    = side.normalized();
+                double      lo_u = std::numeric_limits<double>::infinity();
+                for (size_t i : w.cluster)
+                    for (int v = 0; v < 3; ++v)
+                        lo_u = std::min(lo_u, u.dot(mesh.vertices[mesh.indices[i][v]].cast<double>()));
+                double holder = -std::numeric_limits<double>::infinity();
+                for (const stl_vertex &v : c.piece.vertices)
+                    if (v.z() < params.first_layer_height + h)
+                        holder = std::max(holder, u.dot(v.cast<double>()));
+                std::vector<double> offsets { lo_u, lo_u + 1., lo_u + 2., lo_u + 4., lo_u + 8. };
+                if (holder > -std::numeric_limits<double>::infinity() && holder < lo_u)
+                    for (double off : { 0.1, 0.5, 1., 2. })
+                        offsets.push_back(holder + off);
+                for (double offset : offsets) {
+                    double base = std::numeric_limits<double>::infinity();
+                    for (const stl_vertex &v : c.piece.vertices)
+                        if (u.dot(v.cast<double>()) >= offset)
+                            base = std::min(base, dir.dot(v.cast<double>()));
+                    if (std::isfinite(base))
+                        candidates.push_back({ dir, base, {}, 0., u, offset, std::isfinite(holder) ? std::max(0., offset - holder) : 0. });
+                }
             }
         }
         const double floor_z = params.first_layer_height + h;
+        const stl_vertex *summit = nullptr;
+        if (full && w.goal == Goal::Overhang)
+            for (const stl_vertex &v : c.piece.vertices)
+                if (summit == nullptr || v.z() > summit->z())
+                    summit = &v;
         candidates.erase(std::remove_if(candidates.begin(), candidates.end(), [&](const Candidate &cand) {
+            if (summit != nullptr && cand.cut.dot(summit->cast<double>()) >= cand.offset)
+                return true;
             double lowest = std::numeric_limits<double>::infinity();
             for (const stl_vertex &v : c.piece.vertices)
-                if (cand.dir.dot(v.cast<double>()) >= cand.base)
+                if (cand.cut.dot(v.cast<double>()) >= cand.offset)
                     lowest = std::min(lowest, double(v.z()));
-            return lowest < floor_z || (rotary && lowest + head_drop(params.head, cand.dir) < 0.);
+            return lowest < floor_z || (rotary && ! full && lowest + head_drop(params.head, cand.dir) < 0.);
         }), candidates.end());
 
         const double current = c.overhang_area + StepWeight * c.step_area;
-        tbb::parallel_for(size_t(0), candidates.size(), [&](size_t k) {
-            Candidate             &cand = candidates[k];
+        auto score = [&](Candidate &cand) {
             std::vector<HalfSpace> far = c.clips, near = c.clips;
-            far.push_back({ -cand.dir, -cand.base });
-            near.push_back({ cand.dir, cand.base });
+            far.push_back({ -cand.cut, -cand.offset });
+            near.push_back({ cand.cut, cand.offset });
             cand.far         = evaluate(far, { cand.dir, cand.base, false });
             const Score rest = evaluate(near, frame_of(c));
-            cand.score       = cand.far.overhang + rest.overhang + StepWeight * (cand.far.steps + rest.steps) + 1e-3 * std::acos(cand.dir.z());
-        });
+            cand.score       = cand.far.overhang + rest.overhang + StepWeight * (cand.far.steps + rest.steps) + 1e-3 * std::acos(cand.dir.z()) +
+                         StubPenalty * cand.stub;
+        };
+        tbb::parallel_for(size_t(0), candidates.size(), [&](size_t k) { score(candidates[k]); });
         const double seam = std::max(w.goal == Goal::Overhang ? 0.5 * params.min_overhang_area : StepWeight * params.min_overhang_area,
                                      SeamShare * planar_score);
         candidates.erase(std::remove_if(candidates.begin(), candidates.end(), [&](const Candidate &cand) { return cand.score >= current - seam; }),
@@ -505,19 +728,34 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
         }
 
         rejected = "no candidate passed validation";
-        for (size_t ci = 0; ci < std::min<size_t>(candidates.size(), MaxValidated); ++ci) {
-            const Candidate     &cand = candidates[ci];
-            indexed_triangle_set far  = clip_mesh(c.piece, { { -cand.dir, -cand.base } });
-            indexed_triangle_set near = clip_mesh(c.piece, { { cand.dir, cand.base } });
-            if (near.indices.empty() || far.indices.empty() || vertical_extent(far, cand.dir, cand.base) < MinChunkLayers * h) {
+        const size_t max_validated = full ? 160 : MaxValidated;
+        struct Blocked { Vec3d dir, cut; double offset; };
+        std::vector<Blocked>                  blocked;
+        std::vector<std::pair<Vec3d, double>> tried_cuts;
+        for (size_t ci = 0; ci < std::min(candidates.size(), max_validated); ++ci) {
+            const Candidate      cand = candidates[ci];
+            if (std::any_of(blocked.begin(), blocked.end(), [&](const Blocked &b) {
+                    return b.dir.dot(cand.dir) > 1. - 1e-9 && b.cut.dot(cand.cut) > 1. - 1e-9 && cand.offset <= b.offset + EPSILON; })) {
+                candidates.erase(candidates.begin() + ci--);
+                continue;
+            }
+            indexed_triangle_set far  = clip_mesh(c.piece, { { -cand.cut, -cand.offset } });
+            indexed_triangle_set near = clip_mesh(c.piece, { { cand.cut, cand.offset } });
+            double base = cand.base;
+            if (cand.cut != cand.dir) {
+                base = std::numeric_limits<double>::infinity();
+                for (const stl_vertex &v : far.vertices)
+                    base = std::min(base, cand.dir.dot(v.cast<double>()));
+            }
+            if (near.indices.empty() || far.indices.empty() || vertical_extent(far, cand.dir, base) < MinChunkLayers * h) {
                 rejected = "the chunk would be thinner than three layers";
                 continue;
             }
             bool below = std::all_of(near.vertices.begin(), near.vertices.end(),
-                                     [&](const stl_vertex &v) { return cand.dir.dot(v.cast<double>()) <= cand.base + PlaneTolerance; });
+                                     [&](const stl_vertex &v) { return cand.cut.dot(v.cast<double>()) <= cand.offset + PlaneTolerance; });
             for (int pi = 0; pi < w.chunk_idx && below; ++pi)
                 below = std::all_of(plan.chunks[size_t(pi)].piece.vertices.begin(), plan.chunks[size_t(pi)].piece.vertices.end(),
-                                    [&](const stl_vertex &v) { return cand.dir.dot(v.cast<double>()) <= cand.base + PlaneTolerance; });
+                                    [&](const stl_vertex &v) { return cand.cut.dot(v.cast<double>()) <= cand.offset + PlaneTolerance; });
             if (! below) {
                 rejected = "material printed earlier would rise above the cut plane";
                 continue;
@@ -540,8 +778,48 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
                 const Matrix3d head = params.kinematics->head_frame(joints);
                 if ((head.row(2).transpose() - cand.dir).norm() < 1e-6 && head.determinant() > 0.)
                     frame = head;
-                if (box.min.z() + head_drop(params.head, frame) < 0.) {
+                if (! full && box.min.z() + head_drop(params.head, frame) < 0.) {
                     rejected = "the tilted head would reach below the bed";
+                    continue;
+                }
+            }
+            if (full) {
+                std::vector<const indexed_triangle_set *> earlier { &near };
+                for (int pi = 0; pi < w.chunk_idx; ++pi)
+                    earlier.push_back(&plan.chunks[size_t(pi)].piece);
+                if (const HeadHit hit = head_blocked(far, frame, h, params.head, prepared_head, earlier, params.plates); ! hit.what.empty()) {
+                    blocked.push_back({ cand.dir, cand.cut, cand.offset });
+                    if (cand.cut != cand.dir) {
+                        const double tilt = std::acos(std::clamp(cand.dir.z(), -1., 1.)) - 2. * TiltStep;
+                        for (const bool tip_back : { false, true }) {
+                            Candidate next = cand;
+                            if (tip_back) {
+                                if (! hit.bed || std::abs(0.5 * M_PI - tilt) > SideCutLean + EPSILON)
+                                    continue;
+                                next.dir = direction(tilt, std::atan2(cand.cut.y(), cand.cut.x()));
+                            } else {
+                                next.offset += SideCutStep;
+                                next.stub += SideCutStep;
+                            }
+                            next.base = std::numeric_limits<double>::infinity();
+                            for (const stl_vertex &v : c.piece.vertices)
+                                if (next.cut.dot(v.cast<double>()) >= next.offset)
+                                    next.base = std::min(next.base, next.dir.dot(v.cast<double>()));
+                            const bool seen = std::any_of(tried_cuts.begin(), tried_cuts.end(), [&](const auto &t) {
+                                return t.first.dot(next.dir) > 1. - 1e-9 && std::abs(t.second - next.offset) < EPSILON; });
+                            if (! std::isfinite(next.base) || seen)
+                                continue;
+                            tried_cuts.emplace_back(next.dir, next.offset);
+                            score(next);
+                            if (next.score < current - seam)
+                                candidates.insert(candidates.begin() + ci + 1, next);
+                        }
+                    }
+                    std::ostringstream why;
+                    why << hit.what << " (build direction " << std::lround(Geometry::rad2deg(std::acos(std::clamp(cand.dir.z(), -1., 1.))))
+                        << " deg from vertical toward " << std::lround(Geometry::rad2deg(std::atan2(cand.dir.y(), cand.dir.x()))) << " deg, "
+                        << (cand.cut == cand.dir ? "base plane" : "side cut") << ")";
+                    rejected = why.str();
                     continue;
                 }
             }
@@ -551,15 +829,15 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
             chunk.parent    = w.chunk_idx;
             chunk.build_dir = cand.dir;
             chunk.frame     = frame;
-            chunk.base      = cand.base;
+            chunk.base      = base;
             chunk.clips     = c.clips;
             chunk.base_clip = int(chunk.clips.size());
-            chunk.clips.push_back({ -cand.dir, -cand.base });
+            chunk.clips.push_back({ -cand.cut, -cand.offset });
             chunk.piece     = std::move(far);
             set_score(chunk, cand.far);
 
             MultiplanarChunk rest = c;
-            rest.clips.push_back({ cand.dir, cand.base });
+            rest.clips.push_back({ cand.cut, cand.offset });
             if (printable_layers(chunk_piece(mesh, chunk, h), chunk, h) < MinChunkLayers ||
                 printable_layers(chunk_piece(mesh, rest, h), rest, h) < MinChunkLayers) {
                 rejected = "a side of the cut would slice into fewer than three layers";
@@ -587,14 +865,17 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
 
     int planes = 0;
     constexpr size_t MaxGivenUp = 64;
+    size_t searched_given_up = 0;
     while (planes < params.max_planes) {
         if (throw_if_canceled)
             throw_if_canceled();
-        if (plan.notes.size() > MaxGivenUp) {
+        if ((full ? searched_given_up : plan.notes.size()) > MaxGivenUp) {
             plan.notes.push_back("search stopped after " + std::to_string(MaxGivenUp) + " seeds stayed");
             break;
         }
-        std::array<Work, 2>              work { overhang_work(), top_work() };
+        std::array<Work, 2>              work { overhang_work(), {} };
+        if (! full || work[0].chunk_idx < 0)
+            work[1] = top_work();
         std::array<std::optional<Cut>, 2> cuts;
         for (size_t k = 0; k < work.size(); ++k) {
             Work &w = work[k];
@@ -604,12 +885,16 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
             for (size_t i : w.cluster)
                 area += f.area[i];
             std::string rejected;
-            if (w.goal == Goal::Overhang && area < params.min_overhang_area)
+            const bool too_small = w.goal == Goal::Overhang && area < params.min_overhang_area;
+            if (too_small)
                 rejected = "smaller than the minimum area";
             else
                 cuts[k] = find_cut(w, rejected);
-            if (! cuts[k])
+            if (! cuts[k]) {
                 give_up(w, rejected);
+                if (! too_small)
+                    ++searched_given_up;
+            }
         }
         if (! cuts[0] && ! cuts[1]) {
             if (work[0].chunk_idx < 0 && work[1].chunk_idx < 0)
@@ -633,6 +918,11 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
         ++planes;
     }
     return finish();
+}
+
+bool full_orientation(const PrintConfig &config)
+{
+    return layout_is_table(config.nonplanar_kinematics.value) && config.nonplanar_max_tilt.value > 90.;
 }
 
 indexed_triangle_set slicing_frame_mesh(const PrintObject &object)
@@ -735,7 +1025,8 @@ std::shared_ptr<const MultiplanarPlan> clip_multiplanar_slices(PrintObject &obje
     if (mode == NonplanarMode::Auto && object.print()->config().spiral_mode.value)
         return {};
     const indexed_triangle_set mesh = slicing_frame_mesh(object);
-    if (mode == NonplanarMode::Auto && ! auto_rotary_candidate(object, mesh))
+    const bool full = full_orientation(object.print()->config());
+    if (mode == NonplanarMode::Auto && ! full && ! auto_rotary_candidate(object, mesh))
         return {};
     MultiplanarParams params;
     params.layer_height       = object.config().layer_height.value;
@@ -744,11 +1035,20 @@ std::shared_ptr<const MultiplanarPlan> clip_multiplanar_slices(PrintObject &obje
     params.max_planes         = object.config().multiplanar_max_planes.value;
     params.head               = resolve_head_envelope(object.print()->config());
     params.kinematics         = kinematics.get();
+    if (const std::vector<Vec2d> &area = object.print()->config().printable_area.values; area.size() >= 3)
+        for (const PrintInstance &instance : object.instances()) {
+            Polygon plate;
+            for (const Vec2d &p : area)
+                plate.points.push_back(Point::new_scale(p.x(), p.y()) - instance.shift);
+            params.plates.push_back(std::move(plate));
+        }
     static thread_local std::pair<std::string, MultiplanarPlan> last;
     std::string key(reinterpret_cast<const char *>(mesh.vertices.data()), mesh.vertices.size() * sizeof(stl_vertex));
     key.append(reinterpret_cast<const char *>(mesh.indices.data()), mesh.indices.size() * sizeof(stl_triangle_vertex_indices));
     for (const double v : { params.layer_height, params.first_layer_height, params.overhang_threshold, double(params.max_planes) })
         key.append(reinterpret_cast<const char *>(&v), sizeof(v));
+    for (const Polygon &plate : params.plates)
+        key.append(reinterpret_cast<const char *>(plate.points.data()), plate.points.size() * sizeof(Point));
     for (const std::string &opt : object.print()->config().keys())
         key += opt + '=' + object.print()->config().opt_serialize(opt) + '\n';
     if (last.first != key)
@@ -764,7 +1064,14 @@ std::shared_ptr<const MultiplanarPlan> clip_multiplanar_slices(PrintObject &obje
         BOOST_LOG_TRIVIAL(info) << "Multiplanar chunk " << i << ": parent " << c.parent << " dir " << c.build_dir.transpose()
                                 << " base " << c.base << " overhang " << c.overhang_area << " steps " << c.step_area;
     }
-    if (mode == NonplanarMode::Auto && (plan->auto_reason = auto_rotary_chunks(object, mesh, *plan)).empty())
+    if (mode == NonplanarMode::Auto && full && plan->planar_overhang_area - plan->residual_overhang_area >= params.min_overhang_area) {
+        std::ostringstream why;
+        why << "Auto mode prints " << object.model_object()->name << " in " << plan->chunks.size() << " chunks: the table turns "
+            << std::lround(plan->planar_overhang_area - plan->residual_overhang_area) << " of its " << std::lround(plan->planar_overhang_area)
+            << " mm2 of overhang upright (MULTIPLANAR.md \"Auto\").";
+        plan->auto_reason = why.str();
+        BOOST_LOG_TRIVIAL(warning) << plan->auto_reason;
+    } else if (mode == NonplanarMode::Auto && (plan->auto_reason = auto_rotary_chunks(object, mesh, *plan)).empty())
         return {};
 
     const std::vector<HalfSpace> &clips = plan->chunks.front().clips;

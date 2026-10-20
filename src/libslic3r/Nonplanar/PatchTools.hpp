@@ -53,6 +53,7 @@ double automatic_shell_height(const PrintObject &object);
 
 constexpr double ClearanceGap   = 1.0;
 constexpr double ClearanceDepth = 1.2;
+constexpr double ClearanceRise  = 0.5 * ClearanceGap;
 constexpr double ClearanceReach = 0.6;
 constexpr double ClearanceMinVolume = 1.;
 ExPolygons clearance_zone(const PrintObject &object);

@@ -2,6 +2,7 @@
 #include <math.h>
 #include "HeadEnvelope.hpp"
 #include "libslic3r/Point.hpp"
+#include "libslic3r/Polygon.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 
 #include <functional>
@@ -13,6 +14,7 @@ namespace Slic3r {
 class DynamicPrintConfig;
 class ExtrusionEntity;
 class ExtrusionPath;
+class PrintConfig;
 class PrintObject;
 class ToolKinematics;
 }
@@ -49,6 +51,7 @@ struct MultiplanarParams
     HeadEnvelope          head;
     const ToolKinematics *kinematics         = nullptr;
     double                min_overhang_area  = 4.;
+    Polygons              plates;
 };
 
 struct MultiplanarPlan
@@ -57,6 +60,7 @@ struct MultiplanarPlan
     double                        residual_overhang_area = 0.;
     double                        step_area              = 0.;
     double                        planar_step_area       = 0.;
+    double                        planar_overhang_area   = 0.;
     std::vector<std::string>      notes;
     std::string                   auto_reason;
 };
@@ -71,6 +75,7 @@ indexed_triangle_set chunk_piece(const indexed_triangle_set &mesh, const Multipl
 
 int printable_layers(const indexed_triangle_set &piece, const MultiplanarChunk &chunk, double layer_height);
 
+bool full_orientation(const PrintConfig &config);
 indexed_triangle_set slicing_frame_mesh(const PrintObject &object);
 DynamicPrintConfig chunk_print_config(const PrintObject &object);
 void collect_paths(const ExtrusionEntity *ee, std::vector<const ExtrusionPath *> &out);

@@ -198,6 +198,8 @@ set(lisbslic3r_sources
     Nonplanar/DeformSlice.hpp
     Nonplanar/LayerFieldOpt.cpp
     Nonplanar/LayerFieldOpt.hpp
+    Nonplanar/LayerSources.cpp
+    Nonplanar/LayerSources.hpp
     Nonplanar/Multiplanar.cpp
     Nonplanar/MultiplanarConfirm.cpp
     Nonplanar/MultiplanarConfirm.hpp

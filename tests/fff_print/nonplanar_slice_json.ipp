@@ -499,6 +499,10 @@ void slice_json_results(Json &record, const Args &args, const Print &print, cons
     size_t object_id = 0;
     for (const PrintObject *object : print.objects()) {
         Json entry = {{"id", object_id}, {"name", object->model_object()->name}, {"mode", object->config().nonplanar_mode.serialize()}, {"deform", object->config().nonplanar_deform.serialize()}, {"instances", Json::array()}, {"patches", Json::array()}};
+        if (const auto &c = object->conformal(); !c.layer_source.empty())
+            entry["curved_layers"] = {{"source", c.layer_source == "on" ? "column" : c.layer_source}};
+        else if (!c.layer_source_refused.empty())
+            entry["curved_layers"] = {{"refused", c.layer_source_refused}};
         size_t top = 0, bands = 0;
         double footprint = 0.;
         for (const auto &instance : object->instances())

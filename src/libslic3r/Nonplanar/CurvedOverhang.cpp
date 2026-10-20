@@ -70,7 +70,6 @@ constexpr double DefaultMaxBend = 40.;
 constexpr double SupportFreeMinArea = 1.;
 constexpr double FlatUnderside = 0.05;
 constexpr int MaxPasses = 4;
-constexpr double ThreadDepth = 1.3;
 
 struct OverhangSettings
 {
@@ -734,7 +733,7 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
             for (int i : nodes)
                 far = std::max(far, dist[size_t(i)]);
             const bool strip = std::none_of(footprint.begin(), footprint.end(), [](const ExPolygon &e) { return !e.holes.empty(); });
-            if (far <= ThreadDepth) {
+            if (far <= Nonplanar::ThreadDepth) {
                 const int    tip = *std::max_element(nodes.begin(), nodes.end(), [&](int a, int b) { return dist[size_t(a)] < dist[size_t(b)]; });
                 const Vec2d  q   = grid.node(tip % grid.nx(), tip / grid.nx());
                 const Point  pt  = Point::new_scale(q.x(), q.y());

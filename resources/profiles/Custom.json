@@ -1,9 +1,13 @@
 {
 	"name": "Custom Printer",
-	"version": "02.04.00.19",
+	"version": "02.04.00.21",
 	"force_update": "0",
 	"description": "My configurations",
 	"machine_model_list": [
+		{
+			"name": "Fairino FR3 cell",
+			"sub_path": "machine/Fairino FR3 cell.json"
+		},
 		{
 			"name": "Generic Belt Printer",
 			"sub_path": "machine/MyBeltPrinter.json"
@@ -211,6 +215,10 @@
 			"sub_path": "process/0.56mm Extra Draft @MyToolChanger.json"
 		},
 		{
+			"name": "0.20mm Full orientation @FR3",
+			"sub_path": "process/0.20mm Full orientation @FR3.json"
+		},
+		{
 			"name": "0.20mm Non-planar top @Hybrid",
 			"sub_path": "process/0.20mm Non-planar top @Hybrid.json"
 		},
@@ -251,6 +259,10 @@
 		{
 			"name": "Generic PETG @MyToolChanger",
 			"sub_path": "filament/Generic PETG @MyToolChanger.json"
+		},
+		{
+			"name": "Generic PLA @FR3",
+			"sub_path": "filament/Generic PLA @FR3.json"
 		},
 		{
 			"name": "Generic PLA @Hybrid",
@@ -369,6 +381,10 @@
 		{
 			"name": "MyToolChanger 0.8 nozzle",
 			"sub_path": "machine/MyToolChanger 0.8 nozzle.json"
+		},
+		{
+			"name": "Fairino FR3 cell 0.4 nozzle",
+			"sub_path": "machine/Fairino FR3 cell 0.4 nozzle.json"
 		},
 		{
 			"name": "Hybrid XYA+C 5-axis 0.4 nozzle",

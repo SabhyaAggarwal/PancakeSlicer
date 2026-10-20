@@ -346,7 +346,7 @@ void Layer::make_contour_z(const sla::IndexedMesh &mesh)
 			this->print_z <= object.get_layer(int(patch.host_layer))->print_z + EPSILON)
 			append(shell_area, diff_ex(patch.footprint, patch.wall_band));
 	ExPolygons covered;
-	bool       covered_ready = false;
+	bool       covered_ready = false, shells_checked = false;
 
 	for (LayerRegion *region : this->regions()) {
         const auto &config = region->region().config();
@@ -366,6 +366,13 @@ void Layer::make_contour_z(const sla::IndexedMesh &mesh)
                         covered = offset_ex(above->lslices, -float(scale_(0.05)));
                     if (const ExPolygons &clearance = object.conformal().clearance; !clearance.empty())
                         covered = covered.empty() ? clearance : union_ex(covered, clearance);
+                }
+                if (!shells_checked) {
+                    shells_checked = true;
+                    const bool shells  = std::any_of(object.conformal().patches.begin(), object.conformal().patches.end(),
+                                                     [](const Nonplanar::ConformalPatch &p) { return p.kind == Nonplanar::PatchKind::Top; });
+                    if (!shells && object.print()->config().nonplanar_kinematics.value != RotaryLayout::None)
+                        covered = this->lslices;
                 }
                 handle_extrusion_collection(region, mesh, region->fills, fill_roles, shell_area, covered);
                 handle_extrusion_collection(region, mesh, region->perimeters, {erPerimeter, erExternalPerimeter, erMixed}, {}, covered);

@@ -773,16 +773,22 @@ void PrintObject::nonplanar_shells()
         this->set_done(posNonplanar);
         return;
     }
+    std::string deform_refused;
     if (Nonplanar::deform_slice_requested(*this)) {
         m_print->set_status(40, L("Slicing curved layers"));
-        auto conformal = std::make_unique<Nonplanar::ConformalResult>();
-        if (Nonplanar::build_deform_slice(*this, *conformal)) {
+        auto        conformal = std::make_unique<Nonplanar::ConformalResult>();
+        std::string why;
+        if (Nonplanar::build_deform_slice(*this, *conformal, &why)) {
             m_conformal = std::move(conformal);
             record_apply_inputs();
             m_print->throw_if_canceled();
             this->set_done(posNonplanar);
             return;
         }
+        this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL,
+                                      Slic3r::format(L("%1%: curved layers through the whole part not used (%2%); printed with curved top shells instead."),
+                                             this->model_object()->name, why));
+        deform_refused = this->config().nonplanar_deform.serialize() + ": " + why;
     }
     const bool open_vase = m_print->config().spiral_mode.value && !Nonplanar::vase_with_conformal_roof(*this);
     std::unique_ptr<Nonplanar::ConformalResult> lid;
@@ -839,8 +845,10 @@ void PrintObject::nonplanar_shells()
         if (fresh && m_conformal->patches.empty())
             m_conformal.reset();
     }
-    if (m_conformal)
+    if (m_conformal) {
+        m_conformal->layer_source_refused = deform_refused;
         record_apply_inputs();
+    }
     m_print->throw_if_canceled();
     this->set_done(posNonplanar);
 }
