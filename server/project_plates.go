@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -159,87 +158,4 @@ func probePlateIndex(c Config) error {
 		return fmt.Errorf("tool lacks --plate-index contract")
 	}
 	return nil
-}
-
-func preserveProjectPlates(input, output string) error {
-	layout, err := readProjectLayout(input)
-	if err != nil {
-		return err
-	}
-	if len(layout.Plates) < 2 {
-		return nil
-	}
-	saved, err := zip.OpenReader(output)
-	if err != nil {
-		return err
-	}
-	var config []byte
-	for _, f := range saved.File {
-		if strings.EqualFold(f.Name, "Metadata/project_settings.config") {
-			r, e := f.Open()
-			if e != nil {
-				saved.Close()
-				return e
-			}
-			config, err = io.ReadAll(io.LimitReader(r, 16<<20))
-			r.Close()
-			break
-		}
-	}
-	saved.Close()
-	if err != nil {
-		return err
-	}
-	if !json.Valid(config) {
-		return fmt.Errorf("saved project has no valid config")
-	}
-	source, err := zip.OpenReader(input)
-	if err != nil {
-		return err
-	}
-	defer source.Close()
-	tmp, err := os.CreateTemp("", "orca-plates-*.3mf")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	w := zip.NewWriter(tmp)
-	for _, f := range source.File {
-		if strings.EqualFold(f.Name, "Metadata/project_settings.config") {
-			var dst io.Writer
-			dst, err = w.CreateHeader(&f.FileHeader)
-			if err == nil {
-				_, err = dst.Write(config)
-			}
-		} else {
-			err = w.Copy(f)
-		}
-		if err != nil {
-			w.Close()
-			tmp.Close()
-			return err
-		}
-	}
-	if err = w.Close(); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err = tmp.Close(); err != nil {
-		return err
-	}
-	in, err := os.Open(tmp.Name())
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	out, err := os.Create(output)
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(out, in)
-	closeErr := out.Close()
-	if err != nil {
-		return err
-	}
-	return closeErr
 }

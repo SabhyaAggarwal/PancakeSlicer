@@ -680,11 +680,7 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 	}
 	if !j.Request.Orient && j.Request.Cut == "" && j.Request.Output == "3mf" {
 		recordErr = nil
-		if waitErr == nil && !j.Request.Plate && !j.Request.Edits && strings.EqualFold(filepath.Ext(j.Request.Files[0]), ".3mf") {
-			recordErr = preserveProjectPlates(filepath.Join(j.Dir, "input", j.Request.Files[0]), j.OutputPath("3mf"))
-		}
 		raw = nil
-
 	}
 	if recordErr == nil && j.Request.Output != "3mf" && !json.Valid(raw) {
 		recordErr = errors.New("invalid slice JSON")
