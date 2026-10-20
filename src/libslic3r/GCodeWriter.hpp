@@ -114,6 +114,7 @@ public:
     const Vec3d& get_position() const { return m_pos; }
     Vec3d&       get_position() { return m_pos; }
     void        set_position(const Vec3d& in) { m_pos = in; }
+    void        set_position(const Vec3d& in, double z_hop) { m_pos = in; m_lifted = z_hop; m_to_lift = 0.; }
     double      get_zhop() const { return m_lifted; }
 
     void set_xy_offset(double x, double y) { m_x_offset = x; m_y_offset = y; }

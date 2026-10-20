@@ -16,7 +16,7 @@ class Print;
 class ExtrusionEntityCollection;
 class PrintTryCancel;
 
-void make_brim(const Print& print, PrintTryCancel try_cancel,
+void make_brim(Print& print, PrintTryCancel try_cancel,
     Polygons& islands_area, std::map<ObjectID, ExtrusionEntityCollection>& brimMap,
     std::map<ObjectInstanceID, ExtrusionEntityCollection>& brimMapByInstance,
     std::vector<std::pair<ObjectID, unsigned int>>& objPrintVec,

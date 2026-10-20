@@ -4,6 +4,7 @@
 #include "EdgeGrid.hpp"
 #include "ExPolygon.hpp"
 #include "Flow.hpp"
+#include "I18N.hpp"
 #include "Geometry.hpp"
 #include "ExtrusionEntity.hpp"
 #include "Layer.hpp"
@@ -380,7 +381,7 @@ static ExPolygons make_brim_ears(const PrintObject* object)
     return mouse_ears_ex;
 }
 
-static ExPolygons outer_inner_brim_area(const Print& print,
+static ExPolygons outer_inner_brim_area(Print& print,
     const float no_brim_offset, std::map<ObjectInstanceID, ExPolygons>& brimAreaMap,
     std::vector<std::pair<ObjectID, unsigned int>>& objPrintVec,
     std::vector<unsigned int>& printExtruders)
@@ -566,9 +567,10 @@ static ExPolygons outer_inner_brim_area(const Print& print,
     }
 
     int  extruder_nums = print.config().nozzle_diameter.values.size();
+    const Polygon bed = Model::getBedPolygon();
     std::vector<Polygons> extruder_unprintable_area = print.get_extruder_printable_polygons();
     if (extruder_unprintable_area.empty()) {
-        extruder_unprintable_area.resize(extruder_nums, Polygons{Model::getBedPolygon()});
+        extruder_unprintable_area.resize(extruder_nums, Polygons{bed});
     }
     std::vector<int> filament_map = print.get_filament_maps();
 
@@ -598,9 +600,19 @@ static ExPolygons outer_inner_brim_area(const Print& print,
 
         }
 
-        for (auto& [key, areas] : brimAreaMap)
-            if (key.object_id == object->id())
-                areas = diff_ex(areas, extruder_no_brim_area);
+        bool clipped = false;
+        for (auto& [key, areas] : brimAreaMap) {
+            if (key.object_id != object->id())
+                continue;
+            const bool outside = !bed.empty() && !diff_ex(areas, Polygons{bed}).empty();
+            clipped = clipped || outside;
+            areas = diff_ex(areas, extruder_no_brim_area);
+            if (outside)
+                areas = intersection_ex(areas, Polygons{bed});
+        }
+        if (clipped)
+            print.active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL,
+                I18N::translate(L("Brim was clipped to the printable area. Move the objects farther from the bed edge to print the full brim.")));
 
     }
 
@@ -790,7 +802,7 @@ ExtrusionEntityCollection makeBrimInfillFromPlateCoordinates(const ExPolygons& s
     return makeBrimInfillImpl(singleBrimArea, print, islands_area, false);
 }
 
-void make_brim(const Print& print, PrintTryCancel try_cancel, Polygons& islands_area,
+void make_brim(Print& print, PrintTryCancel try_cancel, Polygons& islands_area,
     std::map<ObjectID, ExtrusionEntityCollection>& brimMap,
     std::map<ObjectInstanceID, ExtrusionEntityCollection>& brimMapByInstance,
     std::vector<std::pair<ObjectID, unsigned int>> &objPrintVec,

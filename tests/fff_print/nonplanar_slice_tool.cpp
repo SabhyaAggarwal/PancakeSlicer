@@ -52,6 +52,7 @@
 #include <boost/filesystem/operations.hpp>
 #include <boost/filesystem/path.hpp>
 #include <boost/nowide/fstream.hpp>
+#include <boost/system/error_code.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
 #include <miniz.h>
@@ -78,6 +79,7 @@
 #include <stdexcept>
 #include <sstream>
 #include <string>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -105,6 +107,7 @@ struct Args
                 tip_out, planned_out, verify_gcode, move_times, calib, calib_head, calib_picks, moves_out, dump_options, dump_presets;
     bool        progress = false;
     int         calib_fit = -1;
+    int         plate_index = 0;
     std::vector<std::string> filaments, colours;
     std::vector<std::pair<std::string, int>> parts;
     std::vector<std::pair<std::string, std::string>> overrides;
@@ -126,7 +129,7 @@ struct Args
                  "       [--profiles DIR] [--datadir DIR] [--bed-type NAME] [--set key=value]... [--center X,Y]\n"
                  "       [--config-out FILE] [--project-out FILE] [--head-out FILE] [--gcode-3mf FILE] [--json FILE]\n"
                  "       [--atom TOOLPATH] [--verify] [--explain] [--auto-orient | --orient-only] [--save-3mf PROJECT.3mf]\n"
-                 "       [--layer-profile adaptive:QUALITY | ramp:H_BOTTOM:H_TOP | range:DEPTH:H] [--calib-head ID]\n"
+                 "       [--plate-index N] [--layer-profile adaptive:QUALITY | ramp:H_BOTTOM:H_TOP | range:DEPTH:H] [--calib-head ID]\n"
                  "       -o OUT.gcode (MODEL | PROJECT.3mf | --plate PLATE.json | --project SPEC.json | --calib TEST)\n"
                  "       [--moves-out FILE] [--progress]\n"
                  "       nonplanar_slice_tool --dump-options FILE | --dump-presets VENDOR FILE [--profiles DIR]\n"
@@ -190,6 +193,14 @@ Args parse_args(int argc, char **argv)
         else if (arg == "--dump-presets") { a.vendor = next(); a.dump_presets = next(); }
         else if (arg == "--progress") a.progress = true;
         else if (arg == "--move-times") a.move_times = next();
+        else if (arg == "--plate-index") {
+            const std::string value = next();
+            if (value.empty() || value.find_first_not_of("0123456789") != std::string::npos)
+                usage("--plate-index expects a positive 1-based integer");
+            try { a.plate_index = std::stoi(value); }
+            catch (const std::exception &) { usage("--plate-index is out of range"); }
+            if (a.plate_index < 1) usage("--plate-index expects a positive 1-based integer");
+        }
         else if (arg == "--plate") a.plate = next();
         else if (arg == "--project") a.project = next();
         else if (arg == "--save-3mf") a.save_3mf = next();
@@ -683,6 +694,7 @@ OrientSlice slice_orientation(const Args &args, const Model &source, const Matri
         for (ModelObject *object : model.objects)
             print.auto_assign_extruders(object);
         print.apply(model, config);
+        Model::setBedPolygon(config, print.config());
         if (const StringObjectException err = print.validate(); ! err.string.empty())
             throw std::runtime_error("validate: " + err.string);
         print.process();
@@ -938,34 +950,109 @@ Model load_project(const std::string &path)
     return model;
 }
 
-void restore_loaded_ids(const std::string &path, Model &model)
+DynamicPrintConfig project_config(PresetBundle &bundle, const Args &a, const DynamicPrintConfig &config)
 {
+    DynamicPrintConfig out = config;
+    const size_t n = config.option<ConfigOptionStrings>("filament_settings_id")->size();
+    std::vector<std::string> lists;
+    if (const auto *saved = config.option<ConfigOptionStrings>("different_settings_to_system"))
+        lists = saved->values;
+    lists.resize(n + 2);
+    auto diff_slot = [&](size_t list, const char *kind, Preset::Type type, const std::string &name, const std::string &saved_name,
+                   const std::vector<std::string> &keys, size_t slot) {
+        const DynamicPrintConfig system = resolve(bundle, a, kind, type, name);
+        const std::string system_name = type == Preset::TYPE_PRINTER ? system.opt_string("printer_settings_id") :
+                                        type == Preset::TYPE_PRINT   ? system.opt_string("print_settings_id") :
+                                                                       system.option<ConfigOptionStrings>("filament_settings_id")->values.front();
+        if (system_name != saved_name)
+            return;
+        std::vector<std::string> changed;
+        for (const std::string &key : keys) {
+            const ConfigOption *base = system.option(key), *value = config.option(key);
+            if (base == nullptr || value == nullptr || key == "inherits" || boost::algorithm::ends_with(key, "_settings_id") ||
+                boost::algorithm::starts_with(key, "compatible_"))
+                continue;
+            const auto *base_vector = dynamic_cast<const ConfigOptionVectorBase *>(base);
+            const auto *value_vector = dynamic_cast<const ConfigOptionVectorBase *>(value);
+            bool differs = base->serialize() != value->serialize();
+            if (type == Preset::TYPE_FILAMENT && n > 1 && base_vector && value_vector && value_vector->size() == n * base_vector->size()) {
+                const std::vector<std::string> b = base_vector->vserialize(), v = value_vector->vserialize();
+                differs = !std::equal(b.begin(), b.end(), v.begin() + slot * b.size());
+            }
+            if (differs)
+                changed.push_back(key);
+        }
+        lists[list] = escape_strings_cstyle(changed);
+    };
+    diff_slot(0, "process", Preset::TYPE_PRINT, a.process, config.opt_string("print_settings_id"), Preset::print_options(), 0);
+    for (size_t i = 0; i < std::min(n, a.filaments.size()); ++i)
+        diff_slot(i + 1, "filament", Preset::TYPE_FILAMENT, a.filaments[i],
+            config.option<ConfigOptionStrings>("filament_settings_id")->values[i], Preset::filament_options(), i);
+    diff_slot(n + 1, "machine", Preset::TYPE_PRINTER, a.printer, config.opt_string("printer_settings_id"), Preset::printer_options(), 0);
+    out.set_key_value("different_settings_to_system", new ConfigOptionStrings(lists));
+    return out;
+}
+
+struct SavedInstance
+{
+    int         plate = 0;
+    std::string plate_name;
+    int         object_id = 0, instance_id = 0, identify_id = 0;
+};
+
+std::vector<SavedInstance> read_saved_instances(const std::string &path)
+{
+    std::vector<SavedInstance> out;
     mz_zip_archive zip;
     mz_zip_zero_struct(&zip);
     if (! open_zip_reader(&zip, path))
-        return;
+        return out;
     size_t size = 0;
     void  *data = mz_zip_reader_extract_file_to_heap(&zip, "Metadata/model_settings.config", &size, 0);
     close_zip_reader(&zip);
     if (data == nullptr)
-        return;
+        return out;
     std::istringstream in(std::string(static_cast<const char *>(data), size));
     mz_free(data);
     namespace pt = boost::property_tree;
     pt::ptree tree;
     pt::read_xml(in, tree);
-    std::map<int, std::vector<std::pair<int, int>>> saved;
-    for (const auto &[tag, plate] : tree.get_child("config", pt::ptree()))
+    const auto root = tree.get_child_optional("config");
+    if (!root) return out;
+    for (const auto &[tag, plate] : *root) {
+        if (tag != "plate")
+            continue;
+        SavedInstance on_plate;
+        for (const auto &[key, meta] : plate)
+            if (key == "metadata") {
+                const std::string name = meta.get("<xmlattr>.key", std::string());
+                if (name == "plater_id") on_plate.plate = meta.get("<xmlattr>.value", 0);
+                else if (name == "plater_name") on_plate.plate_name = meta.get("<xmlattr>.value", std::string());
+            }
         for (const auto &[item, instance] : plate) {
-            if (tag != "plate" || item != "model_instance")
+            if (item != "model_instance")
                 continue;
-            std::map<std::string, int> values;
+            SavedInstance saved = on_plate;
             for (const auto &[key, meta] : instance)
-                if (key == "metadata")
-                    values[meta.get("<xmlattr>.key", std::string())] = meta.get("<xmlattr>.value", -1);
-            if (values["instance_id"] >= 0 && values["identify_id"] > 0)
-                saved[values["object_id"]].emplace_back(values["instance_id"], values["identify_id"]);
+                if (key == "metadata") {
+                    const std::string name  = meta.get("<xmlattr>.key", std::string());
+                    const int         value = meta.get("<xmlattr>.value", -1);
+                    if (name == "object_id") saved.object_id = value;
+                    else if (name == "instance_id") saved.instance_id = value;
+                    else if (name == "identify_id") saved.identify_id = value;
+                }
+            out.push_back(saved);
         }
+    }
+    return out;
+}
+
+void restore_loaded_ids(const std::vector<SavedInstance> &instances, Model &model)
+{
+    std::map<int, std::vector<std::pair<int, int>>> saved;
+    for (const SavedInstance &instance : instances)
+        if (instance.instance_id >= 0 && instance.identify_id > 0)
+            saved[instance.object_id].emplace_back(instance.instance_id, instance.identify_id);
     for (const auto &[id, instances] : saved)
         for (ModelObject *object : model.objects) {
             auto kept = [object](const std::pair<int, int> &i) {
@@ -980,23 +1067,25 @@ void restore_loaded_ids(const std::string &path, Model &model)
         }
 }
 
-void save_project(const Args &args, Model &model, DynamicPrintConfig &config, bool loaded_ids)
+#include "nonplanar_slice_tool_save.ipp"
+
+void save_project(PresetBundle &bundle, const Args &args, Model &model, const DynamicPrintConfig &config, bool loaded_ids,
+                  const PlateDataPtrs &plates)
 {
-    auto plate         = std::make_unique<PlateData>();
-    plate->plate_index = 0;
-    for (size_t i = 0; i < model.objects.size(); ++i)
-        for (size_t j = 0; j < model.objects[i]->instances.size(); ++j)
-            plate->objects_and_instances.emplace_back(int(i), int(j));
     model.get_backup_path();
     StoreParams params;
     params.path            = args.save_3mf;
     params.model           = &model;
-    params.plate_data_list = { plate.get() };
-    params.config          = &config;
+    params.plate_data_list = plates;
+    DynamicPrintConfig saved = project_config(bundle, args, config);
+    params.config          = &saved;
     params.strategy        = SaveStrategy::Silence | SaveStrategy::SplitModel | SaveStrategy::ShareMesh |
                              (loaded_ids ? SaveStrategy::UseLoadedId : SaveStrategy::Default);
     if (! store_bbs_3mf(params))
         throw std::runtime_error("cannot write " + args.save_3mf);
+    Args written = args;
+    written.model = args.save_3mf;
+    save_source_project(written, config, true);
 }
 
 }
@@ -1004,6 +1093,7 @@ void save_project(const Args &args, Model &model, DynamicPrintConfig &config, bo
 #include "nonplanar_slice_json.ipp"
 #include "nonplanar_slice_moves.ipp"
 #include "nonplanar_slice_catalog.ipp"
+#include "nonplanar_model_context.ipp"
 
 int main(int argc, char **argv)
 {
@@ -1072,8 +1162,14 @@ int main(int argc, char **argv)
         apply_filaments(bundle, args, config);
         Model model;
         const bool project_input = boost::algorithm::iequals(fs::path(args.model).extension().string(), ".3mf");
+        if (args.plate_index && !project_input)
+            throw std::runtime_error("--plate-index requires a saved .3mf project");
         bool project_settings = false;
+        ContextInstances saved_instances;
         std::unique_ptr<PlateData> source_plate;
+        std::vector<SourcePlate> source_plates;
+        std::optional<Model> full_model;
+        std::optional<DynamicPrintConfig> full_config;
         if (project_input) {
             ConfigSubstitutionContext substitutions(ForwardCompatibilitySubstitutionRule::EnableSilent);
             En3mfType type;
@@ -1089,6 +1185,36 @@ int main(int argc, char **argv)
                 config.apply(project_config);
                 project_settings = true;
             }
+            std::unique_ptr<ConfigOption> source_area(config.option("printable_area")->clone());
+            load_slice_config(args.model, config, project_settings);
+            const std::vector<SavedInstance> saved = read_saved_instances(args.model);
+            restore_loaded_ids(saved, model);
+            if (!args.json.empty() || args.plate_index || !args.save_3mf.empty())
+                saved_instances = context_instances(args.model, model, saved);
+            if (!args.json.empty()) {
+                auto &sources = record["model_context"]["source_plates"];
+                sources = Json::array();
+                for (const PlateData *plate : plates)
+                    if (plate) sources.push_back({{"index", plate->plate_index + 1}, {"name", plate->plate_name},
+                                                   {"settings", context_settings(plate->config)}});
+            }
+            if (!args.save_3mf.empty()) {
+                for (const PlateData *plate : plates)
+                    if (plate) source_plates.push_back({plate->plate_index, plate->plate_name, plate->locked, plate->config});
+                if (args.plate_index) {
+                    full_model  = model;
+                    full_config = config;
+                }
+            }
+            if (args.plate_index) {
+                std::unique_ptr<ConfigOption> slice_area(config.option("printable_area")->clone());
+                config.set_key_value("printable_area", source_area.release());
+                select_context_plate(model, config, plates, saved_instances, args.plate_index);
+                config.set_key_value("printable_area", slice_area.release());
+                if (!args.json.empty())
+                    record["model_context"]["source_plate"] = {{"index", args.plate_index},
+                        {"name", plates.front()->plate_name}, {"settings", context_settings(plates.front()->config)}};
+            }
             if (plates.size() == 1 && plates.front() != nullptr) {
                 const auto *bed_type = plates.front()->config.option<ConfigOptionEnum<BedType>>("curr_bed_type");
                 if (bed_type != nullptr && bed_type->value > btDefault && bed_type->value < btCount)
@@ -1097,7 +1223,6 @@ int main(int argc, char **argv)
             for (ModelObject *object : model.objects)
                 for (ModelInstance *instance : object->instances)
                     instance->use_loaded_id_for_label = true;
-            restore_loaded_ids(args.model, model);
             if (plates.size() == 1) {
                 source_plate.reset(plates.front());
                 plates.clear();
@@ -1119,8 +1244,19 @@ int main(int argc, char **argv)
                     ! args.project.empty() ? load_project(args.project) :
                 Model::read_from_file(args.model, nullptr, nullptr, LoadStrategy::LoadModel | LoadStrategy::AddDefaultInstances);
         }
-        for (const auto &[key, value] : args.overrides)
+        if (!args.json.empty())
+            record["model_context"]["presets"] = context_presets(config, project_settings);
+        for (const auto &[key, value] : args.overrides) {
             config.set_deserialize_strict(key, value);
+            if (full_config)
+                full_config->set_deserialize_strict(key, value);
+        }
+        if (project_input) {
+            repair_project_flush(config);
+            complete_project_ranges(model, config);
+            if (full_config) repair_project_flush(*full_config);
+            if (full_model) complete_project_ranges(*full_model, full_config ? *full_config : config);
+        }
         if (! args.config_out.empty())
             config.save(args.config_out);
         if (! args.head_out.empty()) {
@@ -1159,8 +1295,17 @@ int main(int argc, char **argv)
                         change ? CustomGCode::MultiAsSingle : CustomGCode::MultiExtruder;
         }
         if (! args.save_3mf.empty()) {
-            place(args, model, config, project_settings && !args.auto_orient);
-            save_project(args, model, config, project_input);
+            if (preserves_project_geometry(args)) {
+                save_source_project(args, full_config ? *full_config : config, project_settings);
+            } else {
+                place(args, model, config, project_settings && !args.auto_orient);
+                Model &saved_model = full_model ? *full_model : model;
+                const std::vector<std::unique_ptr<PlateData>> plates = saved_plates(saved_model, source_plates, saved_instances);
+                PlateDataPtrs plate_list;
+                for (const auto &plate : plates)
+                    plate_list.push_back(plate.get());
+                save_project(bundle, args, saved_model, full_config ? *full_config : config, project_input, plate_list);
+            }
             std::cout << "project " << args.save_3mf << "\n";
             if (args.output.empty())
                 return 0;
@@ -1192,7 +1337,8 @@ int main(int argc, char **argv)
             params.plate_data_list = { &plate };
             params.path = args.project_out;
             params.model = &model;
-            params.config = &config;
+            DynamicPrintConfig saved = project_config(bundle, args, config);
+            params.config = &saved;
             params.strategy = SaveStrategy::Silence | SaveStrategy::SplitModel | SaveStrategy::ShareMesh |
                               (project_input ? SaveStrategy::UseLoadedId : SaveStrategy::Default);
             if (!store_bbs_3mf(params))
@@ -1206,6 +1352,7 @@ int main(int argc, char **argv)
         for (ModelObject *object : model.objects)
             print.auto_assign_extruders(object);
         print.apply(model, config);
+        Model::setBedPolygon(config, print.config());
         apply_layer_profile(args, model, print, config);
         if (! args.json.empty()) {
             const auto head = Nonplanar::resolve_head_envelope(print.config());
@@ -1304,6 +1451,14 @@ int main(int argc, char **argv)
             text["max_vz_planned"] = text_value(vz_actual);
             text["max_vz_planned_line"] = text_value(vz_line);
             text["machine_max_speed_z"] = text_value(config.opt<ConfigOptionFloats>("machine_max_speed_z")->get_at(0));
+        }
+        for (const auto &warning : print.step_state_with_warnings(psSkirtBrim).warnings) {
+            std::cout << "print_warning " << warning.message << "\n";
+            if (!args.json.empty()) {
+                if (!record["text_summary"].contains("print_warning"))
+                    record["text_summary"]["print_warning"] = warning.message;
+                record["print_warnings"].push_back(warning.message);
+            }
         }
         for (const auto &warning : print.step_state_with_warnings(psGCodeExport).warnings)
             std::cout << "export_warning " << warning.message << "\n";
@@ -1609,6 +1764,7 @@ int main(int argc, char **argv)
                 }
             }
             record["totals"]["move_count"] = result.moves.size();
+            slice_model_context(record, print, config, saved_instances);
             record["status"] = "sliced";
             write_slice_json(args.json, record);
             progress("json", 100);

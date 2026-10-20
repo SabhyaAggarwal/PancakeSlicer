@@ -1489,6 +1489,7 @@ public:
     static double getThermalLength(const std::vector<ModelVolume*> modelVolumePtrs);
     static Polygon getBedPolygon() { return Model::printSpeedMap.bed_poly; }
     static void setPrintSpeedTable(const DynamicPrintConfig& config, const PrintConfig& print_config);
+    static void setBedPolygon(const DynamicPrintConfig& config, const PrintConfig& print_config);
     static void setExtruderParams(const DynamicPrintConfig& config, int extruders_count);
 
     static Model read_from_archive(

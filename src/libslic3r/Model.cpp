@@ -2894,6 +2894,10 @@ void Model::setPrintSpeedTable(const DynamicPrintConfig& config, const PrintConf
     }
 
 
+    setBedPolygon(config, print_config);
+}
+
+void Model::setBedPolygon(const DynamicPrintConfig& config, const PrintConfig& print_config) {
     printSpeedMap.bed_poly.points = get_bed_shape(config);
     Pointfs excluse_area_points = print_config.bed_exclude_area.values;
     Polygons exclude_polys;

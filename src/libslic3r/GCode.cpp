@@ -2163,6 +2163,27 @@ std::vector<std::pair<coordf_t, std::vector<GCode::LayerToPrint>>> GCode::collec
     return layers_to_print;
 }
 
+static bool pressure_advance_pattern_supported(const CustomGCode::Item &item, const GCodeWriter &writer, const PrintConfig &config)
+{
+    return !config.belt_printer.value && !writer.has_axis_remap() &&
+           item.extra.find("; start pressure advance pattern for layer\n") == 0;
+}
+
+static double pressure_advance_pattern_max_z(const CustomGCode::Item &item)
+{
+    double z = item.print_z, top = 0.;
+    GCodeReader reader;
+    reader.parse_buffer(item.extra, [&](GCodeReader &, const GCodeReader::GCodeLine &line) {
+        if (!line.cmd_is("G0") && !line.cmd_is("G1"))
+            return;
+        const double next_z = line.has_z() ? line.z() : z;
+        if (line.has_e() && line.e() > 0 && (line.has_x() || line.has_y()))
+            top = std::max(top, std::max(z, next_z));
+        z = next_z;
+    });
+    return top;
+}
+
 namespace DoExport {
 
     static void update_print_estimated_stats(const GCodeProcessor& processor, const std::vector<Extruder>& extruders, PrintStatistics& print_statistics, const PrintConfig& config)
@@ -3607,6 +3628,10 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
                 if (patch.z_max + Nonplanar::GlideLift > max_height_z)
                     max_height_z = std::ceil((patch.z_max + Nonplanar::GlideLift) * 100. - EPSILON) / 100.;
         }
+        for (const auto &item : print.model().get_curr_plate_custom_gcodes().gcodes)
+            if (pressure_advance_pattern_supported(item, m_writer, print.config()))
+                max_height_z = std::max(max_height_z, std::ceil((pressure_advance_pattern_max_z(item) -
+                    m_config.z_offset.value) * 100. - EPSILON) / 100.);
         if (has_wipe_tower && Nonplanar::sequential_shell_tower(print))
             for (const std::vector<WipeTower::ToolChangeResult> &layer : print.wipe_tower_data().tool_changes)
                 for (const WipeTower::ToolChangeResult &tcr : layer)
@@ -4828,6 +4853,45 @@ std::vector<GCode::InstanceToPrint> GCode::sort_print_object_instances(
 namespace ProcessLayer
 {
 
+    static std::string pressure_advance_pattern(GCodeWriter &writer, const std::string &source)
+    {
+        Vec3d position = writer.get_position();
+        std::string output;
+        GCodeReader reader;
+        reader.apply_config(writer.config);
+        reader.parse_buffer(source, [&](GCodeReader &parser, const GCodeReader::GCodeLine &line) {
+            const bool move = line.cmd_is("G0") || line.cmd_is("G1");
+            const double de = line.dist_E(parser);
+            if (line.cmd_is("G10") || line.cmd_is("G11") ||
+                (move && line.has_e() && !line.has_x() && !line.has_y() && !line.has_z())) {
+                output += line.cmd_is("G10") || (move && de < 0) ? writer.retract() : writer.unretract();
+                return;
+            }
+            if (move) {
+                if (line.has_x()) position.x() = line.x();
+                if (line.has_y()) position.y() = line.y();
+                if (line.has_z()) position.z() = line.z();
+            }
+            if (line.cmd_is("G92") && line.has_e()) {
+                output += writer.reset_e(true);
+                return;
+            }
+            auto emitted = line;
+            if (move && line.has_e()) {
+                writer.filament()->extrude(de);
+                if (!writer.config.use_relative_e_distances)
+                    emitted.set(E, float(writer.filament()->E()), 5);
+            }
+            output += emitted.raw() + "\n";
+        });
+        writer.set_position(position, 0.);
+        writer.set_current_position_clear(true);
+        output += writer.retract();
+        output += writer.eager_lift(LiftType::NormalLift);
+        writer.set_position(writer.get_position(), std::max(0., writer.get_position().z() - position.z()));
+        return output;
+    }
+
     static std::string emit_custom_gcode_per_print_z(
         GCode                                                   &gcodegen,
         const CustomGCode::Item 								*custom_gcode,
@@ -4866,6 +4930,8 @@ namespace ProcessLayer
                     gcode += ";" + GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Custom_Code) + "\n";
                     if (gcode_type == CustomGCode::Template)
                         gcode += gcodegen.placeholder_parser_process("template_custom_gcode", config.template_custom_gcode, current_extruder_id);
+                    else if (pressure_advance_pattern_supported(*custom_gcode, gcodegen.writer(), config))
+                        gcode += pressure_advance_pattern(gcodegen.writer(), custom_gcode->extra);
                     else
                         gcode += custom_gcode->extra;
 
@@ -5833,6 +5899,13 @@ LayerResult GCode::process_layer(
 
     if (single_object_instance_idx == size_t(-1)) {
         gcode += ProcessLayer::emit_custom_gcode_per_print_z(*this, layer_tools.custom_gcode, m_writer.filament()->id(), first_extruder_id, print.is_BBL_printer(), print.config());
+        if (layer_tools.custom_gcode && pressure_advance_pattern_supported(*layer_tools.custom_gcode, m_writer, print.config())) {
+            const Vec3d position = m_writer.get_position();
+            m_nominal_z = position.z() - m_writer.get_zhop();
+            set_last_pos(gcode_to_point({position.x(), position.y()}));
+            m_wipe.reset_path();
+            m_max_layer_z = std::max(m_max_layer_z, float(pressure_advance_pattern_max_z(*layer_tools.custom_gcode) - m_config.z_offset.value));
+        }
     }
 
     auto get_next_extruder = [&](int current_extruder,const std::vector<unsigned int>&extruders) {
