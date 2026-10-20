@@ -66,6 +66,7 @@ export type PresetUx =
   | { kind: 'import' };
 
 export type MainTab = 'prepare' | 'preview';
+export type CalibMenu = 'temperature' | 'max-flowrate' | 'pressure-advance' | 'flow-ratio' | 'retraction' | 'cornering' | 'input-shaping-freq' | 'input-shaping-damp' | 'vfa';
 export type Gizmo = 'none' | 'move' | 'rotate' | 'scale' | 'flatten' | 'cut' | 'measure';
 
 export interface JobView {
@@ -78,6 +79,7 @@ export interface JobView {
   stale?: boolean;
   plateSignature?: string;
   warnings?: string[];
+  calib?: string;
   exported?: string;
 }
 
@@ -124,6 +126,7 @@ export interface State {
   flush: { matrix: number[] | null; multiplier: number | null };
   flushDialog: boolean;
   appDialog: 'about' | 'preferences' | 'shortcuts' | 'send' | 'setup' | null;
+  calibDialog: CalibMenu | null;
   printers: { name: string; kind: string }[];
   events: LayerEvent[];
   projectPlates: (ProjectPlate & { objects: PlateObject[] })[];
@@ -173,6 +176,7 @@ let state: State = {
   flush: { matrix: null, multiplier: null },
   flushDialog: false,
   appDialog: null,
+  calibDialog: null,
   printers: [],
   events: [],
   projectPlates: [],
@@ -233,8 +237,14 @@ export function effectiveConfig(s: State, type: PresetType, slot = 0): Config {
   return { ...config, ...project, ...plate, ...presetEdits(s, type, slot) };
 }
 
-export function compatible(s: State, type: 'process' | 'filament', printer = s.printer): SystemPreset[] {
-  return listFor(s, type).filter((p) => !p.compatible_printers?.length || p.compatible_printers.includes(printer));
+export function isCompatible(p: SystemPreset, printer: string, process?: string): boolean {
+  if (!p.compatible_evaluated) return !p.compatible_printers?.length || p.compatible_printers.includes(printer);
+  return !!p.compatible_printers?.includes(printer) && (!process || !p.compatible_prints || p.compatible_prints.includes(process));
+}
+
+export function compatible(s: State, type: 'process' | 'filament', printer = s.printer, process = s.process): SystemPreset[] {
+  const print = type === 'filament' ? resolvePreset(s, 'process', process).base?.name ?? process : undefined;
+  return listFor(s, type).filter((p) => isCompatible(p, printer, print));
 }
 
 const printerCache = new WeakMap<State, SystemPreset>();
@@ -256,7 +266,7 @@ export function selectPrinter(name: string) {
     const process = procs.some((p) => p.name === s.process)
       ? s.process
       : (procs.find((p) => p.name === defProcess)?.name ?? procs[0]?.name ?? '');
-    const fils = compatible(next, 'filament', base?.name ?? name);
+    const fils = compatible(next, 'filament', base?.name ?? name, process);
     const defFilaments = base?.config.default_filament_profile;
     const preferred =
       (Array.isArray(defFilaments) ? defFilaments : [defFilaments]).map(String).find((m) => fils.some((f) => f.name === m)) ??

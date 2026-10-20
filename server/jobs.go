@@ -50,6 +50,9 @@ type JobRequest struct {
 	Output          string         `json:"output"`
 	Filename        string         `json:"filename,omitempty"`
 	ProjectSettings [][2]string    `json:"project_settings,omitempty"`
+	ForcePlanar     bool           `json:"force_planar,omitempty"`
+	Calib           string         `json:"calib,omitempty"`
+	CalibParams     string         `json:"calib_params,omitempty"`
 	Edits           bool           `json:"edits,omitempty"`
 	Priority        string         `json:"priority,omitempty"`
 	PreviewBudget   float64        `json:"preview_budget,omitempty"`
@@ -547,10 +550,18 @@ func (m *JobManager) toolArgs(j *Job) []string {
 	if r.PlateIndex > 0 && r.Output != "3mf" {
 		args = append(args, "--plate-index", fmt.Sprint(r.PlateIndex))
 	}
+	if r.ForcePlanar {
+		args = append(args, "--force-planar")
+	}
 	if r.Edits {
 		args = append(args, "--edit", filepath.Join(in, "edits.json"))
 	}
-	if r.Plate {
+	if r.Calib != "" {
+		args = append(args, "--calib", r.Calib)
+		if r.CalibParams != "" {
+			args = append(args, "--calib-params", r.CalibParams)
+		}
+	} else if r.Plate {
 		args = append(args, "--plate", filepath.Join(in, "plate.json"))
 	} else {
 		args = append(args, filepath.Join(in, r.Files[0]))

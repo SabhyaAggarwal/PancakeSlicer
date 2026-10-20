@@ -15,6 +15,8 @@ type Preset struct {
 	Vendor             string                     `json:"vendor"`
 	Inherits           []string                   `json:"inherits"`
 	CompatiblePrinters []string                   `json:"compatible_printers"`
+	Evaluated          bool                       `json:"compatible_evaluated,omitempty"`
+	CompatiblePrints   []string                   `json:"compatible_prints,omitempty"`
 	Config             map[string]json.RawMessage `json:"config"`
 	Model              string                     `json:"model,omitempty"`
 	Variant            string                     `json:"variant,omitempty"`

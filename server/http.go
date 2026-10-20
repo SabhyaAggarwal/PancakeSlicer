@@ -13,6 +13,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -213,6 +214,13 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "priority must be normal or low")
 		return
 	}
+	if r.FormValue("force_planar") != "" {
+		if !s.cfg.Features.ForcePlanar {
+			fail(w, 400, "force_planar requires a tool with --force-planar")
+			return
+		}
+		req.ForcePlanar = true
+	}
 	if r.URL.Path == "/api/patch-preview" {
 		if !s.cfg.Features.PatchPreview {
 			fail(w, 501, "this slicer has no patch preview")
@@ -304,6 +312,23 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	files := r.MultipartForm.File["files[]"]
+	if kind := r.FormValue("calib"); kind != "" {
+		params := r.FormValue("calib_params")
+		switch {
+		case !s.cfg.Features.Calib:
+			fail(w, 400, "calibrations require a tool with --calib")
+		case !calibKinds[kind]:
+			fail(w, 400, "unknown calibration")
+		case !calibParams.MatchString(params):
+			fail(w, 400, "calib_params must be key=value pairs separated by commas")
+		case len(files) > 0 || r.FormValue("plate") != "" || req.Output == "3mf" || req.Orient:
+			fail(w, 400, "a calibration takes no files, plate or project output")
+		default:
+			req.Calib, req.CalibParams = kind, params
+			s.startJob(w, j, req, &started)
+		}
+		return
+	}
 	if len(files) == 0 {
 		fail(w, 400, "files[] is required")
 		return
@@ -493,12 +518,20 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	s.startJob(w, j, req, &started)
+}
+
+var calibKinds = map[string]bool{"cornering": true, "flow-rate": true, "input-shaping-freq": true, "input-shaping-damp": true,
+	"max-volumetric-speed": true, "pa-line": true, "pa-pattern": true, "pa-tower": true, "retraction": true, "temp-tower": true, "vfa": true}
+var calibParams = regexp.MustCompile(`^([a-z_]+=[A-Za-z0-9_.;-]*(,[a-z_]+=[A-Za-z0-9_.;-]*)*)?$`)
+
+func (s *Server) startJob(w http.ResponseWriter, j *Job, req JobRequest, started *bool) {
 	j.Request = req
 	if err := s.jobs.Start(j); err != nil {
 		admissionFailure(w, err)
 		return
 	}
-	started = true
+	*started = true
 	w.Header().Set("Location", "/api/jobs/"+j.ID)
 	writeJSON(w, 202, map[string]string{"id": j.ID})
 }

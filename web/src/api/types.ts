@@ -9,6 +9,8 @@ export interface SystemPreset {
   vendor: string;
   type: PresetType;
   compatible_printers?: string[];
+  compatible_evaluated?: boolean;
+  compatible_prints?: string[];
   config: Config;
   model?: string;
   variant?: string;
@@ -76,6 +78,9 @@ export interface JobRequest {
   events: string[];
   output: 'gcode' | 'gcode.3mf' | '3mf';
   project_settings?: Config;
+  calib?: string;
+  calib_params?: string;
+  force_planar?: boolean;
   priority?: 'low';
   preview_budget?: number;
 }

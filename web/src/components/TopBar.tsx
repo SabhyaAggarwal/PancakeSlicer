@@ -5,7 +5,7 @@ import { canPaste, copySelection, pasteClipboard, selectAll } from '../edit';
 import { historyVersion, redo, redoName, subscribeHistory, undo, undoName } from '../state/history';
 import { CAMERA_VIEWS, VIEW_DIRECTIONS, cameraCommand, cameraSnapshot, subscribeCamera, perspective, autoPerspective } from '../camera';
 import { Icon } from './Icon';
-import { canLoadStep } from '../api/client';
+import { canCalibrate, canLoadStep } from '../api/client';
 
 type MenuItem = { label: string; shortcut?: string; action?: () => void; disabled?: boolean; tip?: string; checked?: boolean; role?: 'menuitemradio' | 'menuitemcheckbox' } | 'sep';
 
@@ -163,6 +163,22 @@ export function TopBar() {
           { label: 'Auto Perspective', role: 'menuitemcheckbox', checked: autoPerspective, action: () => cameraCommand('auto') },
         ]}
       />
+      {canCalibrate() && <Menu
+        title="Calibration"
+        items={[
+          { label: 'Temperature', action: () => setState({ calibDialog: 'temperature' }), tip: 'Temperature Calibration' },
+          { label: 'Max flowrate', action: () => setState({ calibDialog: 'max-flowrate' }), tip: 'Max flowrate' },
+          { label: 'Pressure advance', action: () => setState({ calibDialog: 'pressure-advance' }), tip: 'Pressure advance' },
+          { label: 'Flow ratio', action: () => setState({ calibDialog: 'flow-ratio' }), tip: 'Flow Rate Calibration' },
+          { label: 'Retraction', action: () => setState({ calibDialog: 'retraction' }), tip: 'Retraction' },
+          { label: 'Cornering', action: () => setState({ calibDialog: 'cornering' }), tip: 'Cornering calibration' },
+          { label: 'Input Shaping Frequency', action: () => setState({ calibDialog: 'input-shaping-freq' }), tip: 'Input Shaping Frequency' },
+          { label: 'Input Shaping Damping/zeta factor', action: () => setState({ calibDialog: 'input-shaping-damp' }), tip: 'Input Shaping Damping/zeta factor' },
+          { label: 'VFA', action: () => setState({ calibDialog: 'vfa' }), tip: 'VFA' },
+          'sep',
+          { label: 'Calibration Guide', action: () => window.open('https://www.orcaslicer.com/wiki/calibration_guide', '_blank', 'noopener'), tip: 'Calibration Guide' },
+        ]}
+      />}
       <Menu
         title="Help"
         items={[

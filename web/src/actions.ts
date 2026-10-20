@@ -5,13 +5,13 @@ import { canEditProject, canLoadStep, connect } from './api/client';
 import { normalizeConfig } from './config-values';
 import { OPTIONS, loadTab } from './options';
 import { shortTime } from './preview/format';
-import { jobFields, outputKind, overrides, plateSignature } from './slice-input';
+import { calibOverrides, jobFields, outputKind, overrides, plateSignature } from './slice-input';
 import { arrange, bakeStl, bedBounds, loadMesh, loadProject, nextFreeSpot, parsePoints, placeholderGeometry, plateJson, outsideBed } from './plater/geometry';
 import type { ProjectItem } from './plater/threemf';
 import { projectEdits } from './plater/projectTransforms';
 import { confirmDialog, numberDialog } from './components/Ask';
 import {
-  DEFAULT_PRINTER, DEMO_MODELS, effectiveConfig, getState, markStale, newId, presetEdits, printerPreset, resolvePreset, selectPrinter, setState, toast, type PlateObject,
+  DEFAULT_PRINTER, DEMO_MODELS, effectiveConfig, getState, isCompatible, markStale, newId, presetEdits, printerPreset, resolvePreset, selectPrinter, setState, toast, type PlateObject,
 } from './state/store';
 import { historyDepth, leaveDocument, markSaved, newDocument, undoable } from './state/history';
 
@@ -108,7 +108,7 @@ export async function importFiles(files: FileList | File[]) {
   }
   const project = !!getState().project;
   if (project && !canEditProject()) {
-    toast('A 3MF project is open; its objects share the project archive. Delete all to start a new plate.');
+    toast('A 3MF project is open; Delete all to start a new plate');
     return;
   }
   const step = /\.(step|stp)$/i;
@@ -185,7 +185,7 @@ function adoptProject(config: Config, slots: number) {
   if (!printer) throw new Error('No system printer is available for this project');
   selectPrinter(printer.name);
   const current = getState();
-  const forPrinter = (presets: SystemPreset[]) => presets.filter((p) => !p.compatible_printers?.length || p.compatible_printers.includes(printer.name));
+  const forPrinter = (presets: SystemPreset[]) => presets.filter((p) => isCompatible(p, printer.name));
   const process = closestPreset(forPrinter(current.processes), saved, String(saved.print_settings_id ?? ''));
   const ids = saved.filament_settings_id;
   const filamentConfigs = Array.from({ length: slots }, (_, i) => Object.fromEntries(Object.entries(saved).map(([k, v]) =>
@@ -414,10 +414,10 @@ export function outsideVolumeWarning(s = getState()): string | null {
   return names.length ? `Following objects are laid over the boundary of plate or exceeds the height limit:\n${names.join('\n')}\nPlease solve the problem by moving it totally on or off the plate, and confirming that the height is within the build volume.\n` : null;
 }
 
-export async function slice() {
+export async function slice(calib?: { kind: string; params: string }) {
   const s = getState();
-  if (!s.api || !s.objects.length || s.job.state === 'running' || s.job.state === 'submitting') return;
-  const outside = outsideVolumeWarning(s);
+  if (!s.api || !s.objects.length && !calib || s.job.state === 'running' || s.job.state === 'submitting') return;
+  const outside = calib ? null : outsideVolumeWarning(s);
   if (outside) {
     setState({ job: { state: 'failed', pct: 0, stage: '', error: outside } });
     return;
@@ -427,9 +427,11 @@ export async function slice() {
   const submission = new AbortController();
   pendingSubmission = submission;
   const signature = plateSignature(s);
-  setState({ job: { state: 'submitting', pct: 0, stage: 'uploading', plateSignature: signature } });
+  setState({ job: { state: 'submitting', pct: 0, stage: 'uploading', plateSignature: signature, calib: calib?.kind } });
   try {
-    const request = await jobRequest(s);
+    const { vendor, printer, process, filaments, output } = jobFields(s);
+    const request: JobRequest = calib ? { vendor, printer, process, filaments, overrides: calibOverrides(s), output, events: [], files: [], calib: calib.kind, calib_params: calib.params }
+      : await jobRequest(s);
     if (generation !== sliceGeneration) return;
     const id = await s.api.submit(request, submission.signal, (fraction) => generation === sliceGeneration &&
       setState((st) => (st.job.state === 'submitting' ? { job: { ...st.job, pct: Math.round(fraction * 100) } } : {})));
@@ -475,7 +477,7 @@ export function cancelSlice() {
 
 export function exportFilename(): string {
   const s = getState();
-  const base = (s.project?.name ?? s.objects[0]?.name)?.replace(/\.(stl|obj|3mf)$/i, '') ?? 'plate';
+  const base = s.job.calib ?? (s.project?.name ?? s.objects[0]?.name)?.replace(/\.(stl|obj|3mf)$/i, '') ?? 'plate';
   const time = Number((s.job.status?.record as { text_summary?: Record<string, string> } | undefined)?.text_summary?.estimated_time_s);
   const firstTool = Math.max(0, Math.min(...s.objects.map((o) => o.extruder - 1)));
   const vars: Config = {

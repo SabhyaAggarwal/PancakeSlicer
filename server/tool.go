@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -27,6 +28,7 @@ type ToolFeatures struct {
 	Cut            bool            `json:"cut"`
 	PatchPreview   bool            `json:"patch_preview"`
 	SurfaceGrid    bool            `json:"surface_grid"`
+	Calib          bool            `json:"calib"`
 	Volumes        bool            `json:"volumes"`
 	PresetCompat   bool            `json:"preset_compat"`
 }
@@ -70,7 +72,11 @@ func probeUsage(c Config, f *ToolFeatures) {
 	f.Cut = strings.Contains(usage, "--cut-only")
 	f.PatchPreview = strings.Contains(usage, "--patch-preview FILE")
 	f.SurfaceGrid = strings.Contains(usage, "--surface-grid")
+	f.Calib = strings.Contains(usage, "--calib-params")
 	f.Volumes = f.Cut
+	if dump, err := toolDump(c, "--dump-presets", "Prusa"); err == nil {
+		f.PresetCompat = bytes.Contains(dump, []byte(`"compatible_printers_evaluated"`))
+	}
 }
 
 func probeTool(c Config) (ToolFeatures, *cachedResponse) {
@@ -191,6 +197,8 @@ func (p *PresetIndex) dumpVendor(vendor string) (*VendorPresets, error) {
 		Name     string                     `json:"name"`
 		Inherits []string                   `json:"inherits"`
 		Values   map[string]json.RawMessage `json:"values"`
+		Printers *[]string                  `json:"compatible_printers_evaluated"`
+		Prints   *[]string                  `json:"compatible_prints_evaluated"`
 	}
 	var dump struct {
 		Schema   string      `json:"schema"`
@@ -217,7 +225,14 @@ func (p *PresetIndex) dumpVendor(vendor string) (*VendorPresets, error) {
 					config[key] = value
 				}
 			}
-			out = append(out, Preset{Name: e.Name, Vendor: vendor, Inherits: e.Inherits, Config: config, CompatiblePrinters: stringList(config["compatible_printers"])})
+			preset := Preset{Name: e.Name, Vendor: vendor, Inherits: e.Inherits, Config: config, CompatiblePrinters: stringList(config["compatible_printers"])}
+			if e.Printers != nil {
+				preset.Evaluated, preset.CompatiblePrinters = true, *e.Printers
+				if e.Prints != nil {
+					preset.CompatiblePrints = *e.Prints
+				}
+			}
+			out = append(out, preset)
 		}
 		return out
 	}

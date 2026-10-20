@@ -182,7 +182,7 @@ func main() {
 	}
 	cfg.Features.ColourChange = probeColourChange(cfg)
 	probeUsage(cfg, &cfg.Features)
-	log.Printf("tool operations: step %v, edit %v, force_planar %v, cut %v, volumes %v, patch_preview %v, surface_grid %v", cfg.Features.Step, cfg.Features.Edit, cfg.Features.ForcePlanar, cfg.Features.Cut, cfg.Features.Volumes, cfg.Features.PatchPreview, cfg.Features.SurfaceGrid)
+	log.Printf("tool operations: step %v, edit %v, force_planar %v, cut %v, volumes %v, patch_preview %v, surface_grid %v, calib %v", cfg.Features.Step, cfg.Features.Edit, cfg.Features.ForcePlanar, cfg.Features.Cut, cfg.Features.Volumes, cfg.Features.PatchPreview, cfg.Features.SurfaceGrid, cfg.Features.Calib)
 	jobs, err := NewJobManager(cfg)
 	if err != nil {
 		log.Fatal(err)

@@ -22,6 +22,7 @@ const FlushDialog = lazy(() => import('./components/FlushDialog').then((m) => ({
 const PreviewView = lazy(() => import('./components/PreviewView').then((m) => ({ default: m.PreviewView })));
 const SessionDialog = lazy(() => import('./components/SessionDialog'));
 const AppDialog = lazy(() => import('./components/AppDialogs'));
+const CalibDialog = lazy(() => import('./components/CalibDialog'));
 
 function nudge(key: string, fine: boolean) {
   const s = getState();
@@ -44,6 +45,7 @@ export default function App() {
   const flushDialog = useStore((s) => s.flushDialog);
   const presetUx = useStore((s) => !!s.presetUx);
   const appDialog = useStore((s) => s.appDialog);
+  const calibDialog = useStore((s) => s.calibDialog);
   const contextMenu = useStore((s) => !!s.contextMenu);
   const sessionDialog = useStore((s) => s.sessionDialog);
   const tab = useStore((s) => s.tab);
@@ -68,7 +70,7 @@ export default function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (ownsKeys(e) || getState().dialog || getState().flushDialog || getState().appDialog || getState().sessionDialog) return;
+      if (ownsKeys(e) || getState().dialog || getState().flushDialog || getState().appDialog || getState().calibDialog || getState().sessionDialog) return;
       const ctrl = e.ctrlKey || e.metaKey;
       const prepare = getState().tab === 'prepare';
       if (ctrl && e.key.toLowerCase() === 'z') e.shiftKey ? redo() : undo();
@@ -163,6 +165,7 @@ export default function App() {
         {flushDialog && <FlushDialog />}
         {presetUx && <PresetUx />}
         {appDialog && <AppDialog which={appDialog} />}
+        {calibDialog && <CalibDialog which={calibDialog} />}
         {contextMenu && <ContextMenu />}
         {sessionDialog && <SessionDialog />}
       </Suspense>

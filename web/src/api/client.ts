@@ -91,6 +91,8 @@ const realApi: Api = {
     if (req.priority) fd.append('priority', req.priority);
     if (req.project_settings) fd.append('project_settings', JSON.stringify(req.project_settings));
     if (req.project_edits) fd.append('project_edits', JSON.stringify(req.project_edits));
+    if (req.force_planar) fd.append('force_planar', '1');
+    if (req.calib) { fd.append('calib', req.calib); fd.append('calib_params', req.calib_params ?? ''); }
     if (req.preview_budget !== undefined) fd.append('budget', String(req.preview_budget));
     const url = req.preview_budget !== undefined ? '/api/patch-preview' : '/api/jobs';
     const j = await json<{ id: string }>(await mutation(url, { method: 'POST', body: fd }, req.preview_budget === undefined, signal, onUpload, req.preview_budget !== undefined));
@@ -169,6 +171,8 @@ const mock = () => import('./mock').then((m) => m.mockApi);
 export let toolFeatures: Record<string, unknown> = {};
 export const canLoadStep = () => toolFeatures.step === true;
 export const canEditProject = () => toolFeatures.edit === true;
+export const canForcePlanar = () => toolFeatures.force_planar === true;
+export const canCalibrate = () => toolFeatures.calib === true;
 
 export async function connect(): Promise<Api> {
   bootstrapAccessToken();
