@@ -1,5 +1,6 @@
 import type { PresetType } from '../api/types';
-import { compatible, getState, presetEdits, resolvePreset, selectPrinter, setState, useStore } from '../state/store';
+import { choosePrinter } from '../actions';
+import { compatible, getState, presetEdits, setState, useStore } from '../state/store';
 
 export function PresetCombo({ type, slot = 0, className }: { type: PresetType; slot?: number; className?: string }) {
   const value = useStore((s) => (type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot] ?? ''));
@@ -19,10 +20,7 @@ export function PresetCombo({ type, slot = 0, className }: { type: PresetType; s
   const onChange = (name: string) => {
     if (type !== 'filament' && dirty && !window.confirm('The current preset has unsaved changes. Discard them?')) return;
     if (type === 'machine') {
-      selectPrinter(name);
-      localStorage.setItem('orca.printer', name);
-      const vendor = resolvePreset(getState(), 'machine', name).base?.vendor;
-      if (vendor) localStorage.setItem('orca.vendor', vendor);
+      choosePrinter(name);
       return;
     }
     setState((st) => ({

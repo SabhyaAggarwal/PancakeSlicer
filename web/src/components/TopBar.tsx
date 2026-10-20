@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { arrangeAll, canExport, STALE_RESULT_TIP, download, newProject, openFileDialog, openProjectDialog, outputKind, outsideVolumeWarning, saveProject, slice } from '../actions';
+import { arrangeAll, canExport, fileUse, STALE_RESULT_TIP, download, newProject, openFileDialog, openProjectDialog, outputKind, outsideVolumeWarning, saveProject, slice } from '../actions';
 import { deleteAll, removeSelected, setState, useStore } from '../state/store';
 import { CAMERA_VIEWS, VIEW_DIRECTIONS, cameraCommand, cameraSnapshot, subscribeCamera, perspective, autoPerspective } from '../camera';
 import { Icon } from './Icon';
@@ -152,10 +152,10 @@ export function TabBar() {
         </button>
       </div>
       <div className="tabbar-actions">
-        <button className="side-btn" disabled={!hasObjects || busy || !!outside} title={outside ?? ''} onClick={() => void slice()}>
+        <button className="side-btn" disabled={!hasObjects || busy || !!outside} title={outside ?? (hasObjects ? 'Slice the plate into a printable file and show it in Preview' : 'Add a model to the plate first')} onClick={() => void slice()}>
           Slice plate
         </button>
-        <button className="side-btn" disabled={!exportEnabled} onClick={download} title={job.stale ? STALE_RESULT_TIP : (outside ?? '')}>
+        <button className="side-btn" disabled={!exportEnabled} onClick={download} title={job.stale ? STALE_RESULT_TIP : outside ?? (exportEnabled ? `Download the sliced file. ${fileUse()}` : 'Slice the plate first')}>
           {exportLabel}
         </button>
       </div>

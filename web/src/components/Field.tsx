@@ -22,6 +22,16 @@ function withElement(v: ConfigValue | undefined, idx: number, el: ConfigValue): 
 
 const asText = (v: unknown): string => v == null ? '' : Array.isArray(v) ? v.map(asText).join(', ') : typeof v === 'object' && 'value' in v ? `${v.value}${'percent' in v && v.percent ? '%' : ''}` : String(v);
 
+const CHOICE_HINTS: Record<string, Record<string, string>> = {
+  nonplanar_mode: {
+    off: 'Flat layers only, as standard OrcaSlicer prints.',
+    auto: 'Curves tops and overhangs wherever the nozzle clears the part. Recommended.',
+    manual: 'Uses the curved-layer settings below exactly as set.',
+    multiplanar: 'Flat layers in tilted chunks, so overhangs need less support.',
+    field: 'The whole part in curved layers. Needs a printer with two rotary axes.',
+  },
+};
+
 export const Field = memo(function Field(props: {
   optKey: string;
   type: PresetType;
@@ -62,6 +72,7 @@ export const Field = memo(function Field(props: {
   const inherited = props.inheritedValue ?? OPTIONS[key.replace(/^filament_/, '')]?.default;
   const fallback = elementOf(inherited as ConfigValue | undefined, idx, vector) ?? '0';
   const tooltip = `${props.tooltip ?? def.tooltip ?? ''}\n\nparameter name: ${key}`.trim();
+  const hint = CHOICE_HINTS[key]?.[asText(value)];
 
   return (
     <div className={`opt-line ${def.full_width || def.multiline ? 'full' : ''}`}>
@@ -82,6 +93,7 @@ export const Field = memo(function Field(props: {
         )}
         {props.extra}
       </span>
+      {hint && <span className="opt-hint">{hint}</span>}
     </div>
   );
 });

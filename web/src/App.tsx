@@ -4,6 +4,7 @@ import { CanvasToolbar, ManipulationPanel, SliceNotification, Toast } from './co
 import { Sidebar } from './components/Sidebar';
 import { TabBar, TopBar } from './components/TopBar';
 const PlateChoice = lazy(() => import('./components/PlateChoice'));
+const EmptyPlate = lazy(() => import('./components/FirstRun'));
 const Plater3D = lazy(() => import('./plater/Plater3D'));
 import { deleteAll, getState, removeSelected, setState, togglePrintable, useStore } from './state/store';
 
@@ -18,6 +19,7 @@ export default function App() {
   const tab = useStore((s) => s.tab);
   const loading = useStore((s) => s.loading);
   const jobDone = useStore((s) => s.job.state === 'done');
+  const empty = useStore((s) => !s.objects.length && !s.project && !!s.printer);
   const [dragOver, setDragOver] = useState(false);
   const previewOpened = useRef(false);
   if (tab === 'preview' || jobDone) previewOpened.current = true;
@@ -76,6 +78,7 @@ export default function App() {
             <CanvasToolbar />
             {multiPlate && <Suspense fallback={null}><PlateChoice /></Suspense>}
             <ManipulationPanel />
+            {empty && !loading && <Suspense fallback={null}><EmptyPlate /></Suspense>}
           </div>
           {previewOpened.current && (
             <div style={{ display: tab === 'preview' ? 'contents' : 'none' }}>

@@ -47,8 +47,15 @@ export async function init() {
     if (!getState().printer && getState().machines[0]) selectPrinter(getState().machines[0].name);
   } catch (e) {
     setState({ loading: null });
-    toast(`Presets failed to load: ${e}`);
+    toast(`Presets failed to load: ${e}. Check that the slicing service is running, then reload the page.`);
   }
+}
+
+export function choosePrinter(name: string) {
+  selectPrinter(name);
+  localStorage.setItem('orca.printer', name);
+  const vendor = resolvePreset(getState(), 'machine', name).base?.vendor;
+  if (vendor) localStorage.setItem('orca.vendor', vendor);
 }
 
 export function bedArea() {
@@ -69,7 +76,7 @@ export async function importFiles(files: FileList | File[]) {
     toast('A 3MF project is open; its objects share the project archive. Delete all to start a new plate.');
     return;
   }
-  list = list.filter((f) => /\.(stl|obj)$/i.test(f.name) || (toast(`${f.name}: STL, OBJ and 3MF are supported`), false));
+  list = list.filter((f) => /\.(stl|obj)$/i.test(f.name) || (toast(`${f.name} is not a model file. Choose an STL, OBJ or 3MF file.`), false));
   const added: PlateObject[] = [];
   for (const f of list) {
     try {
@@ -290,6 +297,7 @@ export async function slice() {
     setState({ job: { state: 'failed', pct: 0, stage: '', error: outside } });
     return;
   }
+  setState({ tab: 'preview' });
   const generation = ++sliceGeneration;
   const submission = new AbortController();
   pendingSubmission = submission;
@@ -367,6 +375,13 @@ export function exportFilename(): string {
 export function canExport(s = getState()): boolean {
   return s.job.state === 'done' && !!s.job.id && !!s.job.plateSignature && !s.job.stale &&
     s.job.plateSignature === plateSignature(s) && !outsideVolumeWarning(s);
+}
+
+export function fileUse(machine = printerPreset(getState())) {
+  const printer = machine?.model?.replace(/^Bambu Lab /, '') ?? 'printer';
+  return machine?.vendor === 'BBL'
+    ? `Copy it to the ${printer}'s microSD card and start it from the printer screen; Bambu Handy can then monitor the print.`
+    : `Copy it to the ${printer}'s USB drive and start it from the printer screen.`;
 }
 
 export const STALE_RESULT_TIP = 'Settings changed since the last slice; slice again';

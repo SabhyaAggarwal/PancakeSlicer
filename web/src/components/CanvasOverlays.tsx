@@ -1,9 +1,9 @@
 import { slicingText } from '../api/progress';
 import { accessNotice, accessSnapshot, saveAccessToken, subscribeAccess } from '../api/access';
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { addInstance, arrangeAll, cancelSlice, openFileDialog, removeInstance, toolbarOperation, outsideVolumeWarning } from '../actions';
+import { addInstance, arrangeAll, cancelSlice, download, fileUse, openFileDialog, outputKind, removeInstance, toolbarOperation, outsideVolumeWarning } from '../actions';
 import { objectSize } from '../plater/geometry';
-import { setState, updateInstance, updateObject, useStore, type Gizmo } from '../state/store';
+import { printerPreset, setState, updateInstance, updateObject, useStore, type Gizmo } from '../state/store';
 import { Icon, IconButton } from './Icon';
 
 const LATER_GIZMOS: [icon: string, tooltip: string][] = [
@@ -147,7 +147,10 @@ export function SliceNotification() {
   const outside = useStore(outsideVolumeWarning);
   const [closed, setClosed] = useState<Set<string>>(new Set());
   const [expired, setExpired] = useState<Set<string>>(new Set());
-  const brief = job.state === 'canceled' ? `canceled` : job.state === 'done' && !job.stale ? `done:${job.id}` : null;
+  const brief = job.state === 'canceled' ? `canceled` : null;
+  const done = job.state === 'done' && !job.stale && !job.exported ? `done:${job.id}` : null;
+  const machine = useStore(printerPreset);
+  const exportLabel = useStore(outputKind) === 'gcode.3mf' ? 'Export plate sliced file' : 'Export G-code file';
   const exported = job.exported ? `exported:${job.id}:${job.exported}` : null;
   useEffect(() => {
     const timers = ([[brief, 3000], [exported, 20000]] as const)
@@ -192,7 +195,7 @@ export function SliceNotification() {
         <div className="notification done">
           {close(exported)}
           <div className="notif-title">Exported successfully</div>
-          <div className="notif-body">{job.exported}</div>
+          <div className="notif-body">{job.exported}{'\n'}{fileUse(machine)}</div>
         </div>
       )}
       {busy && (
@@ -210,10 +213,17 @@ export function SliceNotification() {
           </div>
         </div>
       )}
-      {brief && !expired.has(brief) && !exported && (
+      {brief && !expired.has(brief) && (
         <div className="notification done">
-          <div className="notif-title">
-            {job.state === 'canceled' ? 'Slicing Canceled' : <><Icon name="notification_slicing_complete" size={16} /> Slice complete</>}
+          <div className="notif-title">Slicing Canceled</div>
+        </div>
+      )}
+      {done && !closed.has(done) && (
+        <div className="notification done">
+          {close(done)}
+          <div className="notif-title"><Icon name="notification_slicing_complete" size={16} /> Slice complete</div>
+          <div className="notif-body">
+            <button type="button" className="notif-link" onClick={download}>{exportLabel}</button> to download the file for your printer.
           </div>
         </div>
       )}
