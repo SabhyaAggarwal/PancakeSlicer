@@ -1420,7 +1420,8 @@ HeightField undersides_within(const HeightField &U, const HeightField &S, const 
 }
 
 static ConformalResult build_region_shells(PrintObject &object, const std::vector<size_t> &region_ids, int patch_offset,
-                                           std::shared_ptr<ObjectMesh> &mesh, const ExPolygons *whole_tops)
+                                           std::shared_ptr<ObjectMesh> &mesh, const ExPolygons *whole_tops,
+                                           const ExPolygons &clearance)
 {
     const size_t    region_id = region_ids.front();
     ConformalResult result;
@@ -1434,6 +1435,8 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
         return result;
 
     ExPolygons candidate = candidate_top_area(object, region_ids);
+    if (!clearance.empty())
+        candidate = diff_ex(candidate, clearance);
     if (candidate.empty())
         return result;
 
@@ -2623,6 +2626,8 @@ ConformalResult build_conformal_shells(PrintObject &object)
 {
     ConformalResult result;
     result.planar_exclusion.resize(object.layers().size());
+    result.clearance       = clearance_zone(object);
+    result.clearance_ready = true;
     for (Layer *layer : object.layers()) {
         layer->conformal_patches_after.clear();
         layer->conformal_covered = false;
@@ -2645,10 +2650,12 @@ ConformalResult build_conformal_shells(PrintObject &object)
         for (size_t r = 0; r < all.size(); ++r)
             all[r] = r;
         all_tops = candidate_top_area(object, all);
+        if (!result.clearance.empty())
+            all_tops = diff_ex(all_tops, result.clearance);
     }
     for (const std::vector<size_t> &group : groups) {
         ConformalResult region = build_region_shells(object, group, int(result.patches.size()), result.mesh,
-                                                     groups.size() > 1 ? &all_tops : nullptr);
+                                                     groups.size() > 1 ? &all_tops : nullptr, result.clearance);
         result.mesh            = region.mesh;
         result.flow_mod.merge(region.flow_mod);
         append(result.base_inputs, std::move(region.base_inputs));

@@ -31,6 +31,8 @@
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/SLA/IndexedMesh.hpp"
 #include "libslic3r/Surface.hpp"
+#include "libslic3r/TriangleMesh.hpp"
+#include "libslic3r/TriangleMeshSlicer.hpp"
 #include "libslic3r/libslic3r.h"
 
 #include <Eigen/Cholesky>
@@ -160,6 +162,111 @@ void prepare_vase_closure(PrintObject &object)
                     surface.bridge_angle = Geometry::deg2rad(config.infill_direction.value);
             }
     }
+}
+
+ExPolygons clearance_zone(const PrintObject &object)
+{
+    const auto &layers = object.layers();
+    if (layers.empty())
+        return {};
+    double                            ground = 0.;
+    const TriangleMesh                mesh   = object.object_frame_mesh(ground);
+    std::vector<indexed_triangle_set> bodies = its_split(mesh.its);
+    bodies.erase(std::remove_if(bodies.begin(), bodies.end(), [](const indexed_triangle_set &b) { return std::abs(its_volume(b)) < ClearanceMinVolume; }),
+                 bodies.end());
+    if (bodies.size() < 2)
+        return {};
+    std::vector<float> zs(layers.size());
+    for (size_t i = 0; i < layers.size(); ++i)
+        zs[i] = float(layers[i]->slice_z - ground);
+    std::vector<std::vector<ExPolygons>> slices(bodies.size());
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, bodies.size()), [&](const tbb::blocked_range<size_t> &range) {
+        for (size_t b = range.begin(); b < range.end(); ++b)
+            slices[b] = slice_mesh_ex(bodies[b], zs);
+    });
+    std::vector<size_t> piece(bodies.size());
+    std::iota(piece.begin(), piece.end(), size_t(0));
+    const std::function<size_t(size_t)> root = [&](size_t x) {
+        while (piece[x] != x)
+            x = piece[x] = piece[piece[x]];
+        return x;
+    };
+    std::map<std::pair<size_t, size_t>, double> overlap;
+    for (size_t i = 0; i < layers.size(); ++i)
+        for (size_t a = 0; a < bodies.size(); ++a)
+            for (size_t b = a + 1; b < bodies.size(); ++b)
+                if (!slices[a][i].empty() && !slices[b][i].empty() && get_extents(slices[a][i]).overlap(get_extents(slices[b][i])) &&
+                    area(intersection_ex(slices[a][i], slices[b][i])) > scale_(0.01) * scale_(0.01))
+                    overlap[{ a, b }] += layers[i]->height;
+    for (const auto &[pair, height] : overlap)
+        if (height >= ClearanceDepth - EPSILON)
+            piece[root(pair.first)] = root(pair.second);
+    std::vector<size_t> pieces;
+    for (size_t b = 0; b < bodies.size(); ++b)
+        pieces.emplace_back(root(b));
+    std::sort(pieces.begin(), pieces.end());
+    pieces.erase(std::unique(pieces.begin(), pieces.end()), pieces.end());
+    if (pieces.size() < 2)
+        return {};
+    const float half  = float(scale_(0.5 * ClearanceGap));
+    const float touch = float(scale_(0.02));
+    std::vector<ExPolygons> gaps(layers.size());
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
+        for (size_t i = range.begin(); i < range.end(); ++i) {
+            std::vector<ExPolygons> by_piece(pieces.size());
+            ExPolygons              all;
+            for (size_t b = 0; b < bodies.size(); ++b)
+                if (!slices[b][i].empty()) {
+                    append(by_piece[size_t(std::lower_bound(pieces.begin(), pieces.end(), root(b)) - pieces.begin())], slices[b][i]);
+                    append(all, slices[b][i]);
+                }
+            if (std::count_if(by_piece.begin(), by_piece.end(), [](const ExPolygons &e) { return !e.empty(); }) < 2)
+                continue;
+            all = union_ex(all);
+            for (ExPolygon &gap : diff_ex(closing_ex(all, half), all)) {
+                const ExPolygons  grown = offset_ex(gap, touch);
+                const BoundingBox box   = get_extents(grown);
+                int               sides = 0;
+                for (size_t k = 0; k < by_piece.size() && sides < 2; ++k)
+                    if (!by_piece[k].empty() && get_extents(by_piece[k]).overlap(box) && !intersection_ex(grown, by_piece[k]).empty())
+                        ++sides;
+                if (sides >= 2)
+                    gaps[i].emplace_back(std::move(gap));
+            }
+        }
+    });
+    std::vector<size_t> first(layers.size() + 1, 0);
+    for (size_t i = 0; i < layers.size(); ++i)
+        first[i + 1] = first[i] + gaps[i].size();
+    std::vector<size_t> parent(first.back());
+    std::iota(parent.begin(), parent.end(), size_t(0));
+    const std::function<size_t(size_t)> find = [&](size_t x) {
+        while (parent[x] != x)
+            x = parent[x] = parent[parent[x]];
+        return x;
+    };
+    const float drift = float(scale_(ClearanceGap));
+    for (size_t i = 1; i < layers.size(); ++i)
+        for (size_t a = 0; a < gaps[i].size(); ++a) {
+            const ExPolygons  grown = offset_ex(gaps[i][a], drift);
+            const BoundingBox box   = get_extents(grown);
+            for (size_t b = 0; b < gaps[i - 1].size(); ++b)
+                if (get_extents(gaps[i - 1][b].contour).overlap(box) && !intersection_ex(grown, ExPolygons{ gaps[i - 1][b] }).empty())
+                    parent[find(first[i] + a)] = find(first[i - 1] + b);
+        }
+    std::vector<double> lo(parent.size(), std::numeric_limits<double>::infinity()), hi(parent.size(), -std::numeric_limits<double>::infinity());
+    for (size_t i = 0; i < layers.size(); ++i)
+        for (size_t a = 0; a < gaps[i].size(); ++a) {
+            const size_t r = find(first[i] + a);
+            lo[r] = std::min(lo[r], layers[i]->print_z - layers[i]->height);
+            hi[r] = std::max(hi[r], layers[i]->print_z);
+        }
+    ExPolygons zone;
+    for (size_t i = 0; i < layers.size(); ++i)
+        for (size_t a = 0; a < gaps[i].size(); ++a)
+            if (const size_t r = find(first[i] + a); hi[r] - lo[r] >= ClearanceDepth - EPSILON)
+                zone.emplace_back(std::move(gaps[i][a]));
+    return zone.empty() ? zone : offset_ex(union_ex(zone), float(scale_(ClearanceReach)));
 }
 
 double automatic_shell_height(const PrintObject &object)

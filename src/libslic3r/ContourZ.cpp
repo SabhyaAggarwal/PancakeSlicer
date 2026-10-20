@@ -364,6 +364,8 @@ void Layer::make_contour_z(const sla::IndexedMesh &mesh)
                         above = above->upper_layer;
                     if (above != nullptr)
                         covered = offset_ex(above->lslices, -float(scale_(0.05)));
+                    if (const ExPolygons &clearance = object.conformal().clearance; !clearance.empty())
+                        covered = covered.empty() ? clearance : union_ex(covered, clearance);
                 }
                 handle_extrusion_collection(region, mesh, region->fills, fill_roles, shell_area, covered);
                 handle_extrusion_collection(region, mesh, region->perimeters, {erPerimeter, erExternalPerimeter, erMixed}, {}, covered);

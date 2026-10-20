@@ -294,6 +294,12 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
             return false;
         const float seam = float(scale_(0.01));
         candidates.area  = offset_ex(union_ex(offset(bottoms, seam)), -seam);
+        if (!result.clearance_ready) {
+            result.clearance       = clearance_zone(object);
+            result.clearance_ready = true;
+        }
+        if (!result.clearance.empty())
+            candidates.area = diff_ex(candidates.area, result.clearance);
         candidates.mask  = rasterize(candidates.area, grid);
         candidates.ready = true;
     }

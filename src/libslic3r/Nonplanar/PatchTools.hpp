@@ -51,6 +51,12 @@ void prepare_vase_closure(PrintObject &object);
 
 double automatic_shell_height(const PrintObject &object);
 
+constexpr double ClearanceGap   = 1.0;
+constexpr double ClearanceDepth = 1.2;
+constexpr double ClearanceReach = 0.6;
+constexpr double ClearanceMinVolume = 1.;
+ExPolygons clearance_zone(const PrintObject &object);
+
 constexpr double TunedNozzle = 0.4;
 double smallest_nozzle(const PrintConfig &config);
 double bead_scale(const PrintConfig &config);
