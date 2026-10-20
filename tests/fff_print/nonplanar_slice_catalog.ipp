@@ -102,10 +102,26 @@ void dump_presets(const Args &args)
                 if (it == sources.end()) throw std::runtime_error("missing preset parent " + parent);
                 parent = it->second.value("inherits", "");
             }
-            catalog[kind].push_back({{"name", preset.name}, {"type", kind}, {"inherits", chain},
+            nlohmann::json entry = {{"name", preset.name}, {"type", kind}, {"inherits", chain},
                 {"visible", preset.is_visible}, {"instantiation", true}, {"values", values},
                 {"compatible_printers", values.value("compatible_printers", "")},
-                {"compatible_printers_condition", values.value("compatible_printers_condition", "")}});
+                {"compatible_printers_condition", values.value("compatible_printers_condition", "")}};
+            if (collection != &bundle.printers) {
+                const PresetWithVendorProfile self = collection->get_preset_with_vendor_profile(preset);
+                nlohmann::json printers = nlohmann::json::array(), prints = nlohmann::json::array();
+                for (const Preset &printer : bundle.printers.get_presets())
+                    if (!printer.is_default && is_compatible_with_printer(self, bundle.printers.get_preset_with_vendor_profile(printer)))
+                        printers.push_back(printer.name);
+                entry["compatible_printers_evaluated"] = std::move(printers);
+                if (collection == &bundle.filaments) {
+                    for (const Preset &print : bundle.prints.get_presets())
+                        if (!print.is_default && is_compatible_with_print(self, bundle.prints.get_preset_with_vendor_profile(print),
+                                                                          bundle.printers.get_edited_preset_with_vendor_profile()))
+                            prints.push_back(print.name);
+                    entry["compatible_prints_evaluated"] = std::move(prints);
+                }
+            }
+            catalog[kind].push_back(std::move(entry));
         }
     }
     if (manifest.contains("machine_model_list")) for (const auto &entry : manifest.at("machine_model_list"))

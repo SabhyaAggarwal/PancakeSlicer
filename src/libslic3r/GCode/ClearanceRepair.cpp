@@ -49,6 +49,7 @@ using MoveVertex = GCodeProcessorResult::MoveVertex;
 constexpr double Inf = std::numeric_limits<double>::infinity();
 constexpr double UniformRadius = 3.;
 constexpr double UprightRadius = 1.5;
+constexpr double SkinUprightRadius = 0.6;
 
 bool adaptive_top(const PrintObject &object, int patch)
 {
@@ -260,6 +261,11 @@ public:
             for (size_t instance = 0; instance < object->instances().size(); ++instance) {
                 const Vec2d q = to_object(tip, *object, instance, m.extruder_id);
                 for (const ConformalPatch &patch : object->conformal().patches) {
+                    if (patch.kind == PatchKind::Skin) {
+                        if (best.object == nullptr && unscaled(object->bounding_box()).contains(q))
+                            best = Site { object, patch.id, shell, q };
+                        continue;
+                    }
                     const float s = patch.surface.sample(q);
                     if (std::isnan(s) || shell > patch.shells)
                         continue;
@@ -553,9 +559,16 @@ bool ClearanceRepair::plan_upright(const GCodeProcessorResult &result, const Cle
         size_t previous = i;
         while (previous > 0 && !physical(result.moves[--previous])) {}
         const Vec2d from = site.xy + (result.moves[previous].position - m.position).head<2>().cast<double>();
-        for (const Vec2d &p : { from, site.xy })
-            if (std::none_of(upright->begin(), upright->end(), [&p, radius](const RepairHints::Disc &d) { return (d.p - p).norm() < 0.5 * radius; }))
-                upright->push_back({ p, radius }), ++discs;
+        const bool   skin = site.patch >= 0 && site.object->conformal().patches[size_t(site.patch)].kind == PatchKind::Skin;
+        const double nan  = std::numeric_limits<double>::quiet_NaN();
+        const double z_at = skin ? locator.to_object_z(tip.z()) : nan;
+        const double z_from = skin ? locator.to_object_z(double(result.moves[previous].position.z())) : nan;
+        const double r = skin ? SkinUprightRadius : radius;
+        for (const auto &[p, z] : { std::make_pair(from, z_from), std::make_pair(site.xy, z_at) })
+            if (std::none_of(upright->begin(), upright->end(), [&p = p, z = z, r](const RepairHints::Disc &d) {
+                    return (d.p - p).norm() < 0.5 * r && (std::isnan(z) == std::isnan(d.z)) && (std::isnan(z) || std::abs(d.z - z) < 0.5 * r);
+                }))
+                upright->push_back({ p, r, z }), ++discs;
     }
     if (discs > 0)
         m_actions.push_back(std::to_string(discs) + " spots printed upright");
@@ -571,8 +584,10 @@ bool ClearanceRepair::apply()
         if (!object.m_nonplanar_repair)
             object.m_nonplanar_repair = std::make_shared<RepairHints>();
         RepairHints &h = *object.m_nonplanar_repair;
+        const bool skin = std::any_of(object.conformal().patches.begin(), object.conformal().patches.end(),
+                                      [](const ConformalPatch &patch) { return patch.kind == PatchKind::Skin; });
         const bool regenerate = !p.hints.surface_caps.empty() || !p.hints.ironing_drops.empty() || !p.hints.order_bands.empty() ||
-                                !p.hints.uniform_beads.empty();
+                                !p.hints.uniform_beads.empty() || (skin && !p.hints.upright.empty());
         h.surface_caps.insert(h.surface_caps.end(), p.hints.surface_caps.begin(), p.hints.surface_caps.end());
         h.ironing_drops.insert(h.ironing_drops.end(), p.hints.ironing_drops.begin(), p.hints.ironing_drops.end());
         h.order_bands.insert(h.order_bands.end(), p.hints.order_bands.begin(), p.hints.order_bands.end());

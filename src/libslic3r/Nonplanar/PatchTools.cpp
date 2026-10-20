@@ -11,6 +11,7 @@
 #include "ConformalBottom.hpp"
 #include "ConformalShells.hpp"
 #include "HeadEnvelope.hpp"
+#include "LayerSchedule.hpp"
 #include "Seams.hpp"
 #include "ShellPaths.hpp"
 #include "SurfaceClip.hpp"
@@ -273,7 +274,8 @@ double automatic_shell_height(const PrintObject &object)
 {
     const ModelObject &model = *object.model_object();
     const SlicingParameters &sp = object.slicing_parameters();
-    if (!model.layer_height_profile.empty() || !model.layer_config_ranges.empty() || sp.surface_error > 0. || sp.overhang_reach > 0.)
+    if (!model.layer_height_profile.empty() || !model.layer_config_ranges.empty() || sp.surface_error > 0. || sp.overhang_reach > 0. ||
+        field_layers(object))
         return std::min(object.slicing_parameters().first_object_layer_height, object.config().layer_height.value);
     double height = std::numeric_limits<double>::infinity();
     for (const Layer *layer : object.layers())
@@ -959,7 +961,7 @@ int AreaEdges::classify(const Points &points) const
 
 namespace {
 
-void clip_extrusions(ExtrusionEntityCollection &collection, const AreaEdges &edges, const BoundingBox &area_bbox)
+void clip_extrusions(ExtrusionEntityCollection &collection, const AreaEdges &edges, const BoundingBox &area_bbox, const ExPolygons *seam)
 {
     const ExPolygons &area = edges.area();
     ExtrusionEntitiesPtr out;
@@ -968,7 +970,7 @@ void clip_extrusions(ExtrusionEntityCollection &collection, const AreaEdges &edg
     std::vector<std::pair<size_t, size_t>> cut_from;
     for (ExtrusionEntity *ee : collection.entities) {
         if (auto *sub = dynamic_cast<ExtrusionEntityCollection *>(ee)) {
-            clip_extrusions(*sub, edges, area_bbox);
+            clip_extrusions(*sub, edges, area_bbox, seam);
             if (sub->entities.empty())
                 delete ee;
             else
@@ -1014,7 +1016,7 @@ void clip_extrusions(ExtrusionEntityCollection &collection, const AreaEdges &edg
             }
             cut = true;
             for (Polyline &pl : diff_pl(src, area))
-                if (pl.is_valid() && pl.length() >= scale_(2. * path.width))
+                if (pl.is_valid() && pl.length() >= scale_(2. * path.width) && (seam == nullptr || !diff_pl(Polylines{ pl }, *seam).empty()))
                     pieces.entities.emplace_back(new ExtrusionPath(Polyline3(pl), path));
         };
         if (single != nullptr)
@@ -1051,9 +1053,9 @@ void clip_extrusions(ExtrusionEntityCollection &collection, const AreaEdges &edg
 
 }
 
-void clip_extrusions(ExtrusionEntityCollection &collection, const ExPolygons &area, const BoundingBox &area_bbox)
+void clip_extrusions(ExtrusionEntityCollection &collection, const ExPolygons &area, const BoundingBox &area_bbox, const ExPolygons *seam)
 {
-    clip_extrusions(collection, AreaEdges(area), area_bbox);
+    clip_extrusions(collection, AreaEdges(area), area_bbox, seam);
 }
 
 void erase_conformal(ExtrusionEntityCollection &collection, double host_z, double step, const std::function<bool(const Vec3d &)> &inside)
@@ -1136,11 +1138,22 @@ void erase_conformal(ExtrusionEntityCollection &collection, double host_z, doubl
 }
 
 int planar_transition_layer(const std::vector<double> &boundaries, double shell_face, double shell_height,
-                            double h_min, double h_max, PatchKind kind)
+                            double h_min, double h_max, PatchKind kind, bool nearest)
 {
     if (boundaries.empty())
         return -1;
     const bool top = kind == PatchKind::Top;
+    if (nearest) {
+        const double face = shell_face + (top ? -1. : 1.) * shell_height;
+        const int    mid  = int(std::lower_bound(boundaries.begin(), boundaries.end(), face) - boundaries.begin());
+        int          best = -1;
+        double       err  = std::numeric_limits<double>::infinity();
+        for (int i = std::max(0, mid - 4); i < std::min(int(boundaries.size()), mid + 4); ++i)
+            if (const double bead = top ? shell_face - boundaries[size_t(i)] : boundaries[size_t(i)] - shell_face;
+                bead >= h_min && bead <= h_max && std::abs(bead - shell_height) < err)
+                best = i, err = std::abs(bead - shell_height);
+        return best;
+    }
     const double target = shell_face + (top ? -1. : 1.) * (shell_height + h_min);
     int layer = top ? int(std::upper_bound(boundaries.begin(), boundaries.end(), target + EPSILON) - boundaries.begin()) - 1 :
                       int(std::lower_bound(boundaries.begin(), boundaries.end(), target - EPSILON) - boundaries.begin());

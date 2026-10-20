@@ -128,12 +128,13 @@ private:
     std::unordered_map<uint64_t, std::vector<std::pair<Point, Point>>> m_cells;
 };
 
-void clip_extrusions(ExtrusionEntityCollection &collection, const ExPolygons &area, const BoundingBox &area_bbox);
+void clip_extrusions(ExtrusionEntityCollection &collection, const ExPolygons &area, const BoundingBox &area_bbox,
+                     const ExPolygons *seam = nullptr);
 
 void erase_conformal(ExtrusionEntityCollection &collection, double host_z, double step, const std::function<bool(const Vec3d &)> &inside);
 
 int planar_transition_layer(const std::vector<double> &boundaries, double shell_face, double shell_height,
-                            double h_min, double h_max, PatchKind kind);
+                            double h_min, double h_max, PatchKind kind, bool nearest = false);
 
 bool contour_line_angle(const HeightField &surface, double &angle, double min_coherence = 0.1);
 

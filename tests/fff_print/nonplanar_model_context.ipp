@@ -130,6 +130,7 @@ struct SourcePlate
     std::string        name;
     bool               locked = false;
     DynamicPrintConfig config;
+    std::string        thumbnail_file, no_light_thumbnail_file, top_file, pick_file;
 };
 
 std::vector<std::unique_ptr<PlateData>> saved_plates(const Model &model, const std::vector<SourcePlate> &sources,
@@ -141,6 +142,10 @@ std::vector<std::unique_ptr<PlateData>> saved_plates(const Model &model, const s
         plate->plate_index = source.plate_index;
         plate->plate_name  = source.name;
         plate->locked      = source.locked;
+        plate->thumbnail_file          = source.thumbnail_file;
+        plate->no_light_thumbnail_file = source.no_light_thumbnail_file;
+        plate->top_file                = source.top_file;
+        plate->pick_file               = source.pick_file;
         plate->config      = source.config;
     }
     bool resolved = !plates.empty();
@@ -166,15 +171,8 @@ std::vector<std::unique_ptr<PlateData>> saved_plates(const Model &model, const s
     return plates;
 }
 
-void select_context_plate(Model &model, DynamicPrintConfig &config, PlateDataPtrs &plates,
-                          const ContextInstances &saved, int plate_index)
+Vec3d context_plate_origin(const DynamicPrintConfig &config, const PlateDataPtrs &plates, int plate_index)
 {
-    auto selected = std::find_if(plates.begin(), plates.end(), [plate_index](const PlateData *plate) {
-        return plate && plate->plate_index + 1 == plate_index;
-    });
-    if (selected == plates.end())
-        throw std::runtime_error("--plate-index does not name a plate in this project");
-    PlateData *plate = *selected;
     const auto *bed = config.option<ConfigOptionPoints>("printable_area");
     if (!bed || bed->values.empty())
         throw std::runtime_error("selected project has no printable area");
@@ -184,8 +182,19 @@ void select_context_plate(Model &model, DynamicPrintConfig &config, PlateDataPtr
     for (const PlateData *item : plates)
         if (item) count = std::max(count, item->plate_index + 1);
     const int columns = int(std::ceil(std::sqrt(double(count))));
-    const Vec3d origin((plate_index - 1) % columns * bounds.size().x() * 1.2,
-                       -(plate_index - 1) / columns * bounds.size().y() * 1.2, 0.);
+    return Vec3d((plate_index - 1) % columns * bounds.size().x() * 1.2, -(plate_index - 1) / columns * bounds.size().y() * 1.2, 0.);
+}
+
+void select_context_plate(Model &model, DynamicPrintConfig &config, PlateDataPtrs &plates,
+                          const ContextInstances &saved, int plate_index)
+{
+    auto selected = std::find_if(plates.begin(), plates.end(), [plate_index](const PlateData *plate) {
+        return plate && plate->plate_index + 1 == plate_index;
+    });
+    if (selected == plates.end())
+        throw std::runtime_error("--plate-index does not name a plate in this project");
+    PlateData *plate = *selected;
+    const Vec3d origin = context_plate_origin(config, plates, plate_index);
     size_t kept = 0;
     for (size_t o = model.objects.size(); o-- > 0;) {
         ModelObject *object = model.objects[o];

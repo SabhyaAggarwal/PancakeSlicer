@@ -62,7 +62,7 @@ float surface_z(const HeightField &surface, const Vec2d &p)
 
 std::string patch_kind_name(int kind)
 {
-    static const char *names[] = { "top", "bottom", "volume", "overhang", "chunk", "support interface", "bridge", "field" };
+    static const char *names[] = { "top", "bottom", "volume", "overhang", "chunk", "support interface", "bridge", "field", "skin" };
     return kind >= 0 && kind < int(std::size(names)) ? names[kind] : "patch";
 }
 

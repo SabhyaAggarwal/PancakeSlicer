@@ -72,10 +72,44 @@ bool preserves_project_geometry(const Args &args)
 {
     return boost::algorithm::iequals(fs::path(args.model).extension().string(), ".3mf") &&
            !args.center_set && !args.auto_orient && args.parts.empty() && args.paint.empty() &&
-           args.events.empty() && args.layer_profile.empty() && args.calib.empty();
+           args.events.empty() && args.layer_profile.empty() && args.calib.empty() && args.edit.empty();
 }
 
-void save_source_project(const Args &args, const DynamicPrintConfig &config, bool project_settings)
+std::string carried_cut_information(const std::string &source, const std::vector<ObjectID> &source_objects, const Model &saved)
+{
+    mz_zip_archive archive{};
+    if (!open_zip_reader(&archive, source))
+        return {};
+    ScopeGuard close([&] { close_zip_reader(&archive); });
+    size_t size = 0;
+    void *data = mz_zip_reader_extract_file_to_heap(&archive, "Metadata/cut_information.xml", &size, 0);
+    if (!data)
+        return {};
+    std::istringstream in(std::string(static_cast<const char *>(data), size));
+    mz_free(data);
+    namespace pt = boost::property_tree;
+    pt::ptree tree, out;
+    pt::read_xml(in, tree, pt::xml_parser::trim_whitespace);
+    for (const auto &[tag, object] : tree.get_child("objects", pt::ptree())) {
+        const int index = object.get<int>("<xmlattr>.id", 0) - 1;
+        if (tag != "object" || index < 0 || size_t(index) >= source_objects.size())
+            continue;
+        const auto it = std::find_if(saved.objects.begin(), saved.objects.end(),
+                                     [&id = source_objects[size_t(index)]](const ModelObject *o) { return o->id() == id; });
+        if (it == saved.objects.end())
+            continue;
+        pt::ptree &kept = out.add_child("objects.object", object);
+        kept.put("<xmlattr>.id", int(it - saved.objects.begin()) + 1);
+    }
+    if (out.empty())
+        return {};
+    std::ostringstream xml;
+    pt::write_xml(xml, out, pt::xml_writer_make_settings<std::string>(' ', 1));
+    return xml.str();
+}
+
+void save_source_project(const Args &args, const DynamicPrintConfig &config, bool project_settings,
+                         const std::string &cut_information = {})
 {
     nlohmann::json settings = nlohmann::json::object();
     for (const std::string &key : config.keys())
@@ -109,6 +143,11 @@ void save_source_project(const Args &args, const DynamicPrintConfig &config, boo
             throw std::runtime_error("cannot retain project entry: " + std::string(stat.m_filename));
     }
     MZ_TIME_T modified = 315619200;
+    const char *cut_entry = "Metadata/cut_information.xml";
+    if (!cut_information.empty() && mz_zip_reader_locate_file(&source, cut_entry, nullptr, 0) < 0 &&
+        !mz_zip_writer_add_mem_ex_v2(&target, cut_entry, cut_information.data(), cut_information.size(), nullptr, 0,
+                                     MZ_DEFAULT_COMPRESSION, 0, 0, &modified, nullptr, 0, nullptr, 0))
+        throw std::runtime_error("cannot write " + std::string(cut_entry));
     if (!mz_zip_writer_add_mem_ex_v2(&target, slice_config_entry, snapshot.data(), snapshot.size(), nullptr, 0,
                                     MZ_DEFAULT_COMPRESSION, 0, 0, &modified, nullptr, 0, nullptr, 0) ||
         !mz_zip_writer_finalize_archive(&target))

@@ -734,6 +734,7 @@ int patch_filament_id(const PrintObject &object, const ConformalPatch &patch)
     case PatchKind::Overhang: return cfg.bottom_surface_filament_id.value;
     case PatchKind::Chunk:
     case PatchKind::Field:
+    case PatchKind::Skin:
     case PatchKind::Volume:
     case PatchKind::Bridge: break;
     case PatchKind::SupportInterface: {

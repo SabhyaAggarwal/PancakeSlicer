@@ -5,6 +5,7 @@
 #include "AutoMode.hpp"
 #include "ConformalShells.hpp"
 #include "FlowMod.hpp"
+#include "LayerSchedule.hpp"
 #include "HeadEnvelope.hpp"
 #include "PatchTools.hpp"
 #include "SurfaceClip.hpp"
@@ -43,7 +44,6 @@ namespace {
 
 constexpr double SagRatio = 1. / 80.;
 constexpr double MinSpan = 4.;
-constexpr double MaxSpan = 45.;
 constexpr double MinWidth = 1.;
 constexpr double AnchorReach = 1.5;
 constexpr double MinSag = 0.05;
@@ -108,6 +108,8 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
             break;
         }
     if (region_id < 0 || layers.size() < 3 || object.config().enable_support.value)
+        return;
+    if (field_layers(object))
         return;
     if (result.planar_exclusion.size() != layers.size())
         result.planar_exclusion.assign(layers.size(), ExPolygons());
@@ -219,7 +221,7 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
             auto march = [&](const Vec2d &p, const Vec2d &u, double &edge) {
                 const double step = 0.5 * pitch;
                 double       t    = step;
-                for (; t <= MaxSpan + AnchorReach; t += step) {
+                for (; t <= MaxBridgeSpan + AnchorReach; t += step) {
                     const int n = node_at(p + t * u);
                     if (n < 0)
                         return false;
@@ -249,7 +251,7 @@ void build_curved_bridges(PrintObject &object, ConformalResult &result)
                 if (support[size_t(n)])
                     continue;
                 const double span = d1 + d2;
-                if (span < MinSpan || span > MaxSpan)
+                if (span < MinSpan || span > MaxBridgeSpan)
                     continue;
                 const float s = float(span * unit_catenary(SagRatio, d2 / span));
                 sag1.data()[size_t(n)] = s;

@@ -34,7 +34,7 @@ inline bool fit_round(const Polygon &outline)
 struct AutoPatchSettings;
 class OrientationField;
 
-enum class PatchKind : unsigned char { Top, Bottom, Volume, Overhang, Chunk, SupportInterface, Bridge, Field };
+enum class PatchKind : unsigned char { Top, Bottom, Volume, Overhang, Chunk, SupportInterface, Bridge, Field, Skin };
 
 class PatchField
 {

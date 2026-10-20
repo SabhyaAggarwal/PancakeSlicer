@@ -30,6 +30,7 @@
 #include "Nonplanar/AutoMode.hpp"
 #include "Nonplanar/HeightField.hpp"
 #include "Nonplanar/PatchTools.hpp"
+#include "Nonplanar/LayerSchedule.hpp"
 #include "Nonplanar/Multiplanar.hpp"
 #include "Nonplanar/MultiplanarConfirm.hpp"
 #include "Nonplanar/OrientationField.hpp"
@@ -717,6 +718,9 @@ void PrintObject::slice()
     m_print->set_status(5, L("Slicing mesh"), PrintBase::SlicingStatus::RELOAD_SCENE);
     std::vector<coordf_t> layer_height_profile;
     this->update_layer_height_profile(*this->model_object(), m_slicing_params, layer_height_profile);
+    if (Nonplanar::field_layers_considered(*this))
+        if (std::vector<coordf_t> field = Nonplanar::field_layer_profile(*this); !field.empty())
+            layer_height_profile = std::move(field);
     m_print->throw_if_canceled();
     m_typed_slices = false;
     m_belt_min_z              = 0.;

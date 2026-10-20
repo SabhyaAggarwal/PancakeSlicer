@@ -619,6 +619,8 @@ std::string auto_rotary_planar(const PrintObject &object)
 
 bool auto_rotary_candidate(const PrintObject &object, const indexed_triangle_set &mesh)
 {
+    if (rotary_route_claimed(object) || rotary_route_appends(object))
+        return false;
     return auto_multiplanar_candidate(steep_top_share(mesh),
                                       thin_top_share(mesh, full_conformal_thickness(object.printing_region(0).config(), object)));
 }

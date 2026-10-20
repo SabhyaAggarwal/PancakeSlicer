@@ -5,8 +5,10 @@
 
 #include "ConformalBottom.hpp"
 #include "ConformalShells.hpp"
+#include "CurvedBridge.hpp"
 #include "HeadEnvelope.hpp"
 #include "HeightField.hpp"
+#include "LayerSchedule.hpp"
 #include "PatchTools.hpp"
 
 #include "libslic3r/BoundingBox.hpp"
@@ -23,7 +25,6 @@
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/SLA/IndexedMesh.hpp"
-#include "libslic3r/ShortestPath.hpp"
 #include "libslic3r/Surface.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 #include "libslic3r/libslic3r.h"
@@ -33,6 +34,7 @@
 #include <tbb/parallel_for.h>
 
 #include <algorithm>
+#include <cassert>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -44,6 +46,8 @@
 #include <queue>
 #include <memory>
 #include <string>
+#include <tuple>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -63,11 +67,9 @@ double contact(double tuned, double g, double d)
     return tall < 1. - EPSILON ? 1. - (1. - tuned) * tall : tuned;
 }
 constexpr double DefaultMaxBend = 40.;
-constexpr double SameHeight = 0.01;
 constexpr double SupportFreeMinArea = 1.;
 constexpr double FlatUnderside = 0.05;
 constexpr int MaxPasses = 4;
-constexpr double BoreHalfSpan = 2.5;
 constexpr double ThreadDepth = 1.3;
 
 struct OverhangSettings
@@ -139,6 +141,59 @@ Vec2d node_gradient(const HeightField &f, int ix, int iy)
         return std::numeric_limits<double>::quiet_NaN();
     };
     return Vec2d(axis(1, 0), axis(0, 1));
+}
+
+double between_supports(const std::vector<int> &nodes, const std::vector<std::pair<int, int>> &roots, const HeightField &grid, double span)
+{
+    const int                    nx = grid.nx();
+    std::unordered_map<int, int> local;
+    local.reserve(nodes.size());
+    for (size_t j = 0; j < nodes.size(); ++j)
+        local.emplace(nodes[j], int(j));
+    const float          inf = std::numeric_limits<float>::infinity();
+    std::vector<float>   d1(nodes.size(), inf), d2(nodes.size(), inf);
+    std::vector<int>     s1(nodes.size(), -1), s2(nodes.size(), -1);
+    using QItem = std::tuple<float, int, int>;
+    std::priority_queue<QItem, std::vector<QItem>, std::greater<QItem>> queue;
+    auto relax = [&](int j, float d, int s) {
+        if (s == s1[j]) {
+            if (d >= d1[j])
+                return;
+            d1[j] = d;
+        } else if (s == s2[j]) {
+            if (d >= d2[j])
+                return;
+            d2[j] = d;
+            if (d2[j] < d1[j])
+                std::swap(d1[j], d2[j]), std::swap(s1[j], s2[j]);
+        } else if (d < d1[j]) {
+            d2[j] = d1[j], s2[j] = s1[j], d1[j] = d, s1[j] = s;
+        } else if (d < d2[j]) {
+            d2[j] = d, s2[j] = s;
+        } else
+            return;
+        queue.emplace(d, j, s);
+    };
+    for (const auto &[i, s] : roots)
+        relax(local.at(i), 0.f, s);
+    while (!queue.empty()) {
+        const auto [d, j, s] = queue.top();
+        queue.pop();
+        if (!(s == s1[j] && d == d1[j]) && !(s == s2[j] && d == d2[j]))
+            continue;
+        const int i = nodes[size_t(j)], ix = i % nx;
+        for (int dy = -1; dy <= 1; ++dy)
+            for (int dx = -1; dx <= 1; ++dx) {
+                if ((dx == 0 && dy == 0) || ix + dx < 0 || ix + dx >= nx)
+                    continue;
+                if (const auto it = local.find(i + dy * nx + dx); it != local.end())
+                    relax(it->second, d + float(grid.pitch() * std::hypot(dx, dy)), s);
+            }
+    }
+    size_t between = 0;
+    for (size_t j = 0; j < nodes.size(); ++j)
+        between += d1[j] + d2[j] <= span;
+    return double(between) / double(nodes.size());
 }
 
 void smooth_inside(HeightField &f, const Mask &in, int passes)
@@ -218,7 +273,90 @@ struct Piece
     double                                  min_z = 0.;
     std::unique_ptr<ExtrusionPathConformal> path;
     bool                                    capped = false;
+    bool                                    side   = false;
 };
+
+ExtrusionEntitiesPtr order_by_support(const std::vector<Piece *> &pieces, Point &last, double w, double g)
+{
+    const size_t  n      = pieces.size();
+    const double  under = scale_(0.5 * w + g), beside = scale_(w), level = scale_(0.5 * g);
+    const coord_t cell   = std::max<coord_t>(1, coord_t(std::max(under, beside)));
+    struct Sample { Point p; coord_t z; int piece; };
+    std::vector<Sample>                              samples;
+    std::vector<size_t>                              first(n + 1, 0);
+    std::unordered_map<int64_t, std::vector<size_t>> cells;
+    auto key = [cell](const Point &p) { return (int64_t(p.x() / cell) << 32) ^ int64_t(uint32_t(p.y() / cell)); };
+    const double step = scale_(0.5 * w);
+    for (size_t i = 0; i < n; ++i) {
+        first[i]           = samples.size();
+        const Points3 &pts = pieces[i]->path->polyline.points;
+        for (size_t s = 0; s < pts.size(); ++s) {
+            const Point3 &b = s + 1 < pts.size() ? pts[s + 1] : pts[s];
+            const int     m = s + 1 < pts.size() ? std::max(1, int(std::ceil((b - pts[s]).head<2>().cast<double>().norm() / step))) : 1;
+            for (int t = 0; t < m; ++t) {
+                const Vec3d q = pts[s].cast<double>() + (b - pts[s]).cast<double>() * (double(t) / m);
+                samples.push_back({ Point(coord_t(q.x()), coord_t(q.y())), coord_t(q.z()), int(i) });
+            }
+        }
+    }
+    first[n] = samples.size();
+    for (size_t s = 0; s < samples.size(); ++s)
+        cells[key(samples[s].p)].emplace_back(s);
+    std::vector<std::vector<int>> dependents(n);
+    std::vector<int>              waiting(n, 0);
+    for (size_t i = 0; i < n; ++i) {
+        std::vector<int> support;
+        for (size_t own = first[i]; own < first[i + 1]; ++own) {
+            const Sample &a = samples[own];
+            for (coord_t dx = -1; dx <= 1; ++dx)
+                for (coord_t dy = -1; dy <= 1; ++dy)
+                    if (auto it = cells.find(key(a.p + Point(dx * cell, dy * cell))); it != cells.end())
+                        for (size_t s : it->second) {
+                            const Sample &b = samples[s];
+                            const Piece  &q = *pieces[size_t(b.piece)];
+                            if (size_t(b.piece) == i)
+                                continue;
+                            const double d  = (b.p - a.p).cast<double>().norm();
+                            const double dz = double(a.z - b.z);
+                            if ((dz >= level && d <= under) ||
+                                (std::abs(dz) < level && d < beside && (q.side == pieces[i]->side ? q.k < pieces[i]->k : pieces[i]->side)))
+                                support.emplace_back(b.piece);
+                        }
+        }
+        sort_remove_duplicates(support);
+        waiting[i] = int(support.size());
+        for (int q : support)
+            dependents[size_t(q)].emplace_back(int(i));
+    }
+    ExtrusionEntitiesPtr out;
+    std::vector<bool>    done(n, false);
+    for (size_t taken = 0; taken < n; ++taken) {
+        size_t best = n;
+        bool   flip = false;
+        double best_d = Inf;
+        for (size_t i = 0; i < n; ++i)
+            if (!done[i] && waiting[i] == 0) {
+                const ExtrusionPathConformal &path = *pieces[i]->path;
+                const double a = (path.first_point() - last).cast<double>().squaredNorm();
+                const double b = (path.last_point() - last).cast<double>().squaredNorm();
+                if (std::min(a, b) < best_d)
+                    best = i, best_d = std::min(a, b), flip = b < a;
+            }
+        if (best == n)
+            for (size_t i = 0; i < n; ++i)
+                if (!done[i] && (best == n || pieces[i]->min_z < pieces[best]->min_z))
+                    best = i, flip = false;
+        done[best] = true;
+        for (int d : dependents[best])
+            --waiting[size_t(d)];
+        ExtrusionPathConformal *path = pieces[best]->path.release();
+        if (flip)
+            path->reverse();
+        last = path->last_point();
+        out.emplace_back(path);
+    }
+    return out;
+}
 
 struct OverhangCandidates
 {
@@ -331,6 +469,11 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
 
     const double grad_need = g / ((1. - contact(TargetContact, g, d)) * w);
     const double grad_bend = free_mode ? std::min(grad_need, 1. / std::tan(printable)) : grad_need;
+    const bool field = field_layers(object);
+    auto field_bend = [&](double z) {
+        const double g_field = layers[layer_at(z)]->height;
+        return std::min(grad_bend, g_field / ((1. - min_contact) * w));
+    };
     const double grad_min  = std::max(0., g / ((1. - min_contact) * w) - std::tan(settings.max_bend));
     std::vector<float> slope(n_nodes, HeightField::NoData);
     Mask               mask(n_nodes, 0);
@@ -364,9 +507,10 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
             if (top.data()[i] - Sb.data()[i] < ThinWallLayers * g && (!free_mode || gr.norm() >= 1. / std::tan(printable)))
                 continue;
             slope[i] = float(gr.norm());
-            mask[i]  = slope[i] < grad_bend && slope[i] >= grad_min;
+            const double bend = field ? field_bend(Sb.data()[i]) : grad_bend;
+            mask[i]  = slope[i] < bend && slope[i] >= grad_min;
             if (!mask[i])
-                why[i] = slope[i] >= grad_bend ? SelfSupporting : Unfit;
+                why[i] = slope[i] >= bend ? SelfSupporting : Unfit;
         }
     {
         const ExPolygons opened = opening_ex(mask_to_expolygons(mask, grid), float(scale_(0.5 * w)));
@@ -486,6 +630,7 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
     }
 
     const int        pad_nodes = int(std::ceil((3. + 2. * w) / pitch)) + 2;
+    std::vector<Polylines> root_roads(layers.size());
     std::vector<int> all_nodes;
     const size_t     first_patch = result.patches.size();
     std::vector<std::vector<int>>   comp_nodes(static_cast<size_t>(n_comp));
@@ -532,18 +677,22 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
         }
 
         std::vector<int>   front;
+        std::vector<std::pair<size_t, size_t>> front_island;
         for (int i : nodes) {
-            const int ix = i % grid.nx(), iy = i / grid.nx();
-            const Layer &below = *layers[layer_at(Sb.data()[size_t(i)] - 0.5 * g)];
+            const int    ix = i % grid.nx(), iy = i / grid.nx();
+            const size_t l  = layer_at(Sb.data()[size_t(i)] - 0.5 * g);
+            const Layer &below = *layers[l];
             for (const auto &[dx, dy] : { std::pair{ 1, 0 }, std::pair{ -1, 0 }, std::pair{ 0, 1 }, std::pair{ 0, -1 } }) {
                 const int qx = ix + dx, qy = iy + dy;
                 if (qx < 0 || qy < 0 || qx >= grid.nx() || qy >= grid.ny() || cmask[size_t(qy) * grid.nx() + qx])
                     continue;
                 const Vec2d q  = grid.node(qx, qy);
                 const Point pt = Point::new_scale(q.x(), q.y());
-                if (std::any_of(below.lslices.begin(), below.lslices.end(), [&pt](const ExPolygon &e) { return e.contains(pt); })) {
+                if (const auto e = std::find_if(below.lslices.begin(), below.lslices.end(), [&pt](const ExPolygon &e) { return e.contains(pt); });
+                    e != below.lslices.end()) {
                     dist[size_t(i)] = 0.f;
                     front.emplace_back(i);
+                    front_island.emplace_back(l, size_t(e - below.lslices.begin()));
                     break;
                 }
             }
@@ -633,6 +782,32 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
                         }
                     }
                 if (groups >= 2) {
+                    reject(Bridged);
+                    continue;
+                }
+            }
+            if (ceiling[ceiling.size() / 2] <= 0.5 * g / w) {
+                std::vector<std::pair<size_t, size_t>> islands(front_island);
+                std::sort(islands.begin(), islands.end());
+                islands.erase(std::unique(islands.begin(), islands.end()), islands.end());
+                std::vector<int> support(islands.size());
+                int              n_supports = 0;
+                for (size_t a = 0; a < islands.size(); ++a) {
+                    const ExPolygon &ea    = layers[islands[a].first]->lslices[islands[a].second];
+                    int              below = -1;
+                    for (size_t b = 0; b < a && below != -2; ++b)
+                        if (islands[b].first < islands[a].first && support[b] != below) {
+                            const ExPolygon &eb = layers[islands[b].first]->lslices[islands[b].second];
+                            if (get_extents(ea).overlap(get_extents(eb)) && !intersection_ex(ea, eb).empty())
+                                below = below == -1 && support[b] >= 0 ? support[b] : -2;
+                        }
+                    support[a] = below == -1 ? n_supports++ : below;
+                }
+                std::vector<std::pair<int, int>> roots;
+                for (size_t k = 0; k < front.size(); ++k)
+                    if (const int s = support[size_t(std::lower_bound(islands.begin(), islands.end(), front_island[k]) - islands.begin())]; s >= 0)
+                        roots.emplace_back(front[k], s);
+                if (between_supports(nodes, roots, grid, MaxBridgeSpan) >= 0.5) {
                     reject(Bridged);
                     continue;
                 }
@@ -756,7 +931,7 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
         const ExtrusionPath             inner_proto(erSolidInfill, flow.mm3_per_mm(), float(w), float(g));
         using AtFn = std::function<bool(const Vec2d &, double &, float &, bool &)>;
         const bool flat = kappa == 0. && g50 < FlatUnderside;
-        auto emit_into = [&](const AtFn &at, std::vector<Piece> &out, int k, const ExtrusionPath &proto, const Polyline &pl) {
+        auto emit_into = [&](const AtFn &at, std::vector<Piece> &out, int k, const ExtrusionPath &proto, const Polyline &pl, bool side) {
             struct V { Vec2d p; double z; float bead; bool capped; };
             std::vector<V> run;
             auto flush = [&]() {
@@ -785,7 +960,7 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
                     auto path = std::make_unique<ExtrusionPathConformal>(Polyline3(std::move(pts3)), proto, std::move(heights));
                     path->simplify(0.01);
                     if (path->polyline.points.size() >= 2)
-                        out.push_back(Piece{ sub, k, min_z, std::move(path), pts.front().capped });
+                        out.push_back(Piece{ sub, k, min_z, std::move(path), pts.front().capped, side });
                 };
                 int            cur = sub_band(run.front().z);
                 std::vector<V> pts{ run.front() };
@@ -896,28 +1071,65 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
                     if (inset.empty() || intersection_ex(inset, area_k).empty())
                         break;
                     for (const Polyline &pl : intersection_pl(to_polylines(inset), zone))
-                        emit_into(m == 0 && flat ? AtFn(hang_at) : AtFn(at), out, k, m == 0 ? outer_proto : inner_proto, pl);
+                        emit_into(m == 0 && flat ? AtFn(hang_at) : AtFn(at), out, k, m == 0 ? outer_proto : inner_proto, pl, false);
                 }
-                const ExPolygons side = diff_ex(area_k, offset_ex(outline, -float(scale_(w))));
+                const ExPolygons side = flat ? ExPolygons() : diff_ex(area_k, offset_ex(outline, -float(scale_(w))));
                 if (!side.empty())
                     for (const Polyline &pl : intersection_pl(to_polylines(offset_ex(area_k, -float(scale_(0.5 * w)))), side))
-                        emit_into(side_at, out, k, side_proto, pl);
+                        emit_into(side_at, out, k, side_proto, pl, true);
             }
         });
 
+        if (flat)
+            for (int j = 0;; ++j) {
+                auto edge_at = [&](const Vec2d &p, double &z, float &bead, bool &capped) {
+                    const float b = S_pad.sample(p), F = floor_at(p);
+                    if (std::isnan(b) || std::isnan(F))
+                        return false;
+                    const double L = b + (j + 1) * g;
+                    if (j == 0 ? L > F + EPSILON : L - 0.5 * g >= F)
+                        return false;
+                    z = L, bead = float(g), capped = j > 0 && L + 0.5 * g >= F;
+                    if (capped)
+                        z = F, bead = float(F - (L - g));
+                    return z - bead >= layer_top.front() - EPSILON;
+                };
+                const ExPolygons &edge_outline = layers[layer_at(z_ref + (j + 0.5) * g)]->lslices;
+                std::vector<Piece> edge;
+                Polylines roads = intersection_pl(to_polylines(offset_ex(edge_outline, -float(scale_(0.5 * w)))), footprint);
+                for (size_t a = 0; a < roads.size(); ++a)
+                    for (size_t b = 0; b < roads.size(); ++b)
+                        if (a != b && !roads[a].empty() && !roads[b].empty() && roads[a].last_point() == roads[b].first_point()) {
+                            roads[a].points.insert(roads[a].points.end(), roads[b].points.begin() + 1, roads[b].points.end());
+                            roads[b].points.clear();
+                            b = size_t(-1);
+                        }
+                for (const Polyline &pl : roads)
+                    if (!pl.empty())
+                        emit_into(edge_at, edge, k_last + 1, j == 0 ? outer_proto : side_proto, pl, true);
+                if (edge.empty())
+                    break;
+                per_k.emplace_back(std::move(edge));
+            }
+
         if (flat) {
-            const ExPolygons &hang_outline = layers[layer_at(z_ref + 0.5 * g)]->lslices;
-            auto edge_at = [&](const Vec2d &p, double &z, float &bead, bool &capped) {
-                const float b = S_pad.sample(p), F = floor_at(p);
-                if (std::isnan(b) || std::isnan(F) || b + g > F + EPSILON)
-                    return false;
-                z = b + g, bead = float(g), capped = false;
+            const ExPolygons &support = layers[layer_at(z_ref - 0.5 * g)]->lslices;
+            auto root_at = [&](const Vec2d &, double &z, float &bead, bool &capped) {
+                z = z_ref + g, bead = float(g), capped = false;
                 return z - bead >= layer_top.front() - EPSILON;
             };
-            std::vector<Piece> edge;
-            for (const Polyline &pl : intersection_pl(to_polylines(offset_ex(hang_outline, -float(scale_(0.5 * w)))), footprint))
-                emit_into(edge_at, edge, k_last + 1, outer_proto, pl);
-            per_k.emplace_back(std::move(edge));
+            std::vector<Piece> root;
+            const ExPolygons inside = intersection_ex(offset_ex(footprint, float(scale_(w + pitch))),
+                                                      offset_ex(layers[layer_at(z_ref + 0.5 * g)]->lslices, -float(scale_(w))));
+            for (const Polyline &pl : intersection_pl(to_polylines(support), inside))
+                emit_into(root_at, root, k_first - 1, inner_proto, pl, false);
+            for (const Piece &piece : root) {
+                Polyline pl;
+                for (const Point3 &q : piece.path->polyline.points)
+                    pl.points.emplace_back(q.x(), q.y());
+                root_roads[layer_at(z_ref + 0.5 * g)].emplace_back(std::move(pl));
+            }
+            per_k.emplace_back(std::move(root));
         }
 
         if (free_mode)
@@ -957,42 +1169,21 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
             patch.z_max        = -Inf;
             Point last         = Point::new_scale(grid.node(ix0, iy0).x(), grid.node(ix0, iy0).y());
             for (auto &[sub, pieces] : subs) {
-                std::stable_sort(pieces.begin(), pieces.end(), [](const Piece *a, const Piece *b) { return a->min_z < b->min_z; });
                 ExtrusionEntityCollection shell;
-                for (size_t i = 0; i < pieces.size();) {
-                    size_t               j = i;
-                    ExtrusionEntitiesPtr group;
-                    for (; j < pieces.size() && pieces[j]->min_z <= pieces[i]->min_z + SameHeight; ++j)
-                        ;
-                    std::stable_sort(pieces.begin() + i, pieces.begin() + j, [](const Piece *a, const Piece *b) { return a->k < b->k; });
-                    for (size_t a = i; a < j;) {
-                        size_t b = a + 1;
-                        while (b < j && pieces[b]->k == pieces[a]->k)
-                            ++b;
-                        ExtrusionEntitiesPtr sub_group;
-                        for (size_t q = a; q < b; ++q) {
-                            ExtrusionPathConformal *path = pieces[q]->path.release();
-                            path->patch_id               = patch.id;
-                            path->shell                  = int(patch.shell_paths.size());
-                            for (const Point3 &p : path->polyline.points) {
-                                const double z = layer_top[size_t(host)] + unscale<double>(p.z());
-                                patch.z_min    = std::min(patch.z_min, z);
-                                patch.z_max    = std::max(patch.z_max, z);
-                            }
-                            sub_group.emplace_back(path);
-                        }
-                        chain_and_reorder_extrusion_entities(sub_group, &last);
-                        last = sub_group.back()->last_point();
-                        append(group, std::move(sub_group));
-                        a = b;
+                shell.entities = order_by_support(pieces, last, w, g);
+                for (ExtrusionEntity *ee : shell.entities) {
+                    auto *path     = static_cast<ExtrusionPathConformal *>(ee);
+                    path->patch_id = patch.id;
+                    path->shell    = int(patch.shell_paths.size());
+                    if (path->polyline.points.back().z() < path->polyline.points.front().z())
+                        path->reverse();
+                    for (const Point3 &p : path->polyline.points) {
+                        const double z = layer_top[size_t(host)] + unscale<double>(p.z());
+                        patch.z_min    = std::min(patch.z_min, z);
+                        patch.z_max    = std::max(patch.z_max, z);
                     }
-                    for (ExtrusionEntity *ee : group)
-                        if (auto *path = static_cast<ExtrusionPathConformal *>(ee); path->polyline.points.back().z() < path->polyline.points.front().z())
-                            path->reverse();
-                    last = group.back()->last_point();
-                    append(shell.entities, std::move(group));
-                    i = j;
                 }
+                last = shell.entities.back()->last_point();
                 shell.no_sort = true;
                 patch.shell_paths.emplace_back(std::move(shell));
             }
@@ -1084,6 +1275,8 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
                         else if (!run.points.empty()) {
                             if (run.points.size() == 1)
                                 run.points.emplace_back(run.points.front());
+                            else
+                                run.simplify(scale_(0.001));
                             spans[l].emplace_back(std::move(run));
                             run.points.clear();
                         }
@@ -1099,7 +1292,7 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
         for (size_t l = range.begin(); l < range.end(); ++l) {
             throw_if_canceled(object);
             Mask below(n_nodes, 0);
-            bool any = false;
+            bool any = !root_roads[l].empty();
             for (int i : all_nodes)
                 if (layer_top[l] > Sb.data()[size_t(i)] + EPSILON && layer_bottom[l] < floor_z.data()[size_t(i)] - EPSILON)
                     below[size_t(i)] = 1, any = true;
@@ -1107,6 +1300,8 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
                 continue;
             ExPolygons excl = intersection_ex(intersection_ex(mask_to_expolygons(below, grid), all_footprint),
                                               offset(spans[l], float(scale_(0.5 * w))));
+            if (!root_roads[l].empty())
+                excl = union_ex(excl, offset(root_roads[l], float(scale_(0.5 * w))));
             if (excl.empty())
                 continue;
             const BoundingBox excl_bbox = get_extents(excl);

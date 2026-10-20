@@ -12,6 +12,7 @@
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 #include "libslic3r/libslic3r.h"
+#include <boost/beast/core/detail/base64.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <boost/filesystem/path.hpp>
 #include <boost/nowide/fstream.hpp>
@@ -28,6 +29,7 @@
 #include <iterator>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -151,7 +153,7 @@ void slice_json_record(Json &record, const Args &args)
 {
     record = {{"schema", "orca.nonplanar_slice.v1"}, {"status", "started"},
               {"inputs", {{"printer", args.printer}, {"process", args.process}, {"filaments", args.filaments},
-                          {"vendor", args.vendor}, {"overrides", args.overrides}, {"mode", nullptr}, {"head", nullptr}, {"atom_toolpath", nullptr},
+                          {"vendor", args.vendor}, {"overrides", args.overrides}, {"mode", nullptr}, {"deform", nullptr}, {"head", nullptr}, {"atom_toolpath", nullptr},
                           {"source_sha", git_sha("HEAD")}, {"trunk_sha", git_sha("refs/heads/nonplanar")}}},
               {"results", {{"patches", Json::array()}}}, {"objects", Json::array()},
               {"totals", {{"whole_top_rms_mm", nullptr}, {"zaa_rms_mm", nullptr}, {"planar_rms_mm", nullptr},
@@ -164,8 +166,11 @@ void slice_json_record(Json &record, const Args &args)
               {"tool", Json::object()}, {"text_summary", Json::object()}};
     auto &meshes = record["inputs"]["meshes"];
     meshes = Json::array();
+    if (!args.calib.empty())
+        record["inputs"]["calib"] = {{"kind", args.calib}, {"params", args.calib_params}};
     if (args.plate.empty()) {
-        meshes.push_back({{"file", args.model}, {"sha1", nullptr}});
+        if (!args.model.empty())
+            meshes.push_back({{"file", args.model}, {"sha1", nullptr}});
     } else {
         record["inputs"]["plate"] = {{"file", args.plate}, {"sha1", file_sha1(args.plate)}};
         boost::nowide::ifstream in(args.plate);
@@ -173,17 +178,30 @@ void slice_json_record(Json &record, const Args &args)
         const Json layout = Json::parse(in);
         const fs::path base = fs::path(args.plate).parent_path();
         for (const Json &entry : layout.at("objects")) {
-            fs::path file = entry.at("file").get<std::string>();
-            if (file.is_relative()) file = base / file;
-            Json mesh = {{"file", file.string()}, {"sha1", file_sha1(file.string())}};
-            if (entry.contains("extruder")) mesh["extruder"] = entry.at("extruder");
-            meshes.push_back(std::move(mesh));
+            std::vector<Json> files;
+            if (entry.contains("file")) files.push_back(entry);
+            for (const Json &volume : entry.value("volumes", Json::array())) files.push_back(volume);
+            for (const Json &item : files) {
+                fs::path file = item.at("file").get<std::string>();
+                if (file.is_relative()) file = base / file;
+                Json mesh = {{"file", file.string()}, {"sha1", nullptr}};
+                if (item.contains("extruder")) mesh["extruder"] = item.at("extruder");
+                meshes.push_back(std::move(mesh));
+            }
         }
     }
     for (const auto &part : args.parts)
         meshes.push_back({{"file", part.first}, {"sha1", nullptr}, {"extruder", part.second}});
     for (auto &mesh : meshes) mesh["sha1"] = file_sha1(mesh["file"].get<std::string>());
 }
+
+template<class T> std::string base64_values(const std::vector<T> &values)
+{
+    std::string out(boost::beast::detail::base64::encoded_size(values.size() * sizeof(T)), '\0');
+    out.resize(boost::beast::detail::base64::encode(out.data(), values.data(), values.size() * sizeof(T)));
+    return out;
+}
+std::string base64_floats(const std::vector<float> &values) { return base64_values(values); }
 
 struct SliceGrid
 {
@@ -192,7 +210,8 @@ struct SliceGrid
     int nx, ny;
     std::vector<double> mesh, normal, bead;
     std::vector<unsigned char> conformal, ironed, eligible;
-    explicit SliceGrid(const indexed_triangle_set &its)
+    std::vector<uint16_t> owner;
+    explicit SliceGrid(const indexed_triangle_set &its, const std::vector<uint16_t> &face_owner = {})
     {
         BoundingBoxf box;
         for (const auto &v : its.vertices) box.merge(Vec2d(v.head<2>().cast<double>()));
@@ -204,7 +223,9 @@ struct SliceGrid
         normal.assign(cells, 0.);
         bead = mesh;
         conformal.assign(cells, 0); ironed.assign(cells, 0); eligible.assign(cells, 0);
-        for (const auto &f : its.indices) {
+        if (!face_owner.empty()) owner.assign(cells, 65535);
+        for (size_t face = 0; face < its.indices.size(); ++face) {
+            const auto &f = its.indices[face];
             const Vec3d a = its.vertices[f[0]].cast<double>(), b = its.vertices[f[1]].cast<double>(), c = its.vertices[f[2]].cast<double>();
             const Vec3d n = (b - a).cross(c - a);
             const double d = n.z();
@@ -215,7 +236,10 @@ struct SliceGrid
                 const double v = ((c.x() - p.x()) * (a.y() - p.y()) - (c.y() - p.y()) * (a.x() - p.x())) / d;
                 if (u < -1e-9 || v < -1e-9 || u + v > 1. + 1e-9) return;
                 const double z = u * a.z() + v * b.z() + (1. - u - v) * c.z();
-                if (z > mesh[k]) { mesh[k] = z; normal[k] = d / n.norm(); }
+                if (z > mesh[k]) {
+                    mesh[k] = z; normal[k] = d / n.norm();
+                    if (!owner.empty()) owner[k] = face_owner[face];
+                }
             });
         }
         const int inset = 8;
@@ -277,6 +301,45 @@ struct SliceGrid
                 {"rms_uncovered_mm", finite > covered ? Json(std::sqrt(std::max(0., squared - squared_conformal) / (finite - covered))) : Json(nullptr)},
                 {"gap_cells", gaps}, {"ironed_area_mm2", iron * pitch * pitch}, {"eval_cells", cells},
                 {"finite_cells", finite}};
+    }
+    Json coarse(size_t max_cells) const
+    {
+        int f = 1;
+        while (size_t((nx + f - 1) / f) * size_t((ny + f - 1) / f) > max_cells) ++f;
+        const int cx = (nx + f - 1) / f, cy = (ny + f - 1) / f;
+        const float nan = std::numeric_limits<float>::quiet_NaN();
+        std::vector<float> rms(size_t(cx) * cy, nan), mean = rms, top = rms, curved(rms.size(), 0.f), share(rms.size(), 0.f);
+        std::vector<uint16_t> owners(owner.empty() ? 0 : rms.size(), 65535);
+        for (int Y = 0; Y < cy; ++Y) for (int X = 0; X < cx; ++X) {
+            double squared = 0., sum = 0., z = 0.;
+            size_t measured = 0, eligible_cells = 0, curved_cells = 0, total = 0;
+            std::map<uint16_t, size_t> votes;
+            for (int y = Y * f; y < std::min(ny, (Y + 1) * f); ++y) for (int x = X * f; x < std::min(nx, (X + 1) * f); ++x) {
+                const size_t k = size_t(y) * nx + x;
+                ++total;
+                if (!eligible[k]) continue;
+                ++eligible_cells;
+                z += mesh[k];
+                if (!owner.empty()) ++votes[owner[k]];
+                const double error = bead[k] - mesh[k];
+                if (!std::isfinite(error)) continue;
+                ++measured; squared += error * error; sum += error; curved_cells += conformal[k];
+            }
+            const size_t c = size_t(Y) * cx + X;
+            share[c] = float(double(eligible_cells) / total);
+            if (eligible_cells) top[c] = float(z / eligible_cells);
+            if (measured) {
+                rms[c] = float(std::sqrt(squared / measured)); mean[c] = float(sum / measured);
+                curved[c] = float(double(curved_cells) / measured);
+            }
+            if (!votes.empty())
+                owners[c] = std::max_element(votes.begin(), votes.end(), [](const auto &a, const auto &b) { return a.second < b.second; })->first;
+        }
+        Json out = {{"pitch_mm", pitch * f}, {"fine_pitch_mm", pitch}, {"origin", {origin.x(), origin.y()}}, {"nx", cx}, {"ny", cy},
+                    {"rms_mm", base64_floats(rms)}, {"mean_mm", base64_floats(mean)}, {"mesh_z_mm", base64_floats(top)},
+                    {"curved_fraction", base64_floats(curved)}, {"eligible_fraction", base64_floats(share)}};
+        if (!owners.empty()) out["object"] = base64_values(owners);
+        return out;
     }
 };
 
@@ -405,8 +468,20 @@ void slice_json_results(Json &record, const Args &args, const Print &print, cons
                           {"machine_hit_moves", clearance.machine_hit_moves}, {"first_hits", hits},
                           {"min_clearance_mm", clearance.min_clearance}, {"omissions", clearance.omissions}};
     tool["fallback"] = Json::array();
-    SliceGrid grid(plate_mesh(model));
+    std::vector<uint16_t> face_owner;
+    if (args.surface_grid)
+        for (const ModelObject *object : model.objects)
+            for (const ModelInstance *instance : object->instances) {
+                uint16_t index = 65535;
+                for (size_t i = 0; i < print.objects().size(); ++i)
+                    for (const PrintInstance &printed : print.objects()[i]->instances())
+                        if (printed.model_instance->id() == instance->id()) index = uint16_t(i);
+                face_owner.insert(face_owner.end(), object->raw_indexed_triangle_set().indices.size(), index);
+            }
+    SliceGrid grid(plate_mesh(model), face_owner);
     grid.deposit(result);
+    if (args.surface_grid)
+        record["surface_grid"] = grid.coarse(args.surface_grid_max_cells);
     const Json quality = grid.measure([](const Vec2d &) { return true; });
     totals["whole_top_rms_mm"] = quality["rms_vs_mesh_mm"];
     totals["coverage"] = quality["coverage"];
@@ -423,7 +498,7 @@ void slice_json_results(Json &record, const Args &args, const Print &print, cons
         totals[config.opt_bool("zaa_enabled") ? "zaa_rms_mm" : "planar_rms_mm"] = totals["whole_top_rms_mm"];
     size_t object_id = 0;
     for (const PrintObject *object : print.objects()) {
-        Json entry = {{"id", object_id}, {"name", object->model_object()->name}, {"mode", object->config().nonplanar_mode.serialize()}, {"instances", Json::array()}, {"patches", Json::array()}};
+        Json entry = {{"id", object_id}, {"name", object->model_object()->name}, {"mode", object->config().nonplanar_mode.serialize()}, {"deform", object->config().nonplanar_deform.serialize()}, {"instances", Json::array()}, {"patches", Json::array()}};
         size_t top = 0, bands = 0;
         double footprint = 0.;
         for (const auto &instance : object->instances())

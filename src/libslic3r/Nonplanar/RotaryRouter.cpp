@@ -2,6 +2,8 @@
 #include "AtomToolpath.hpp"
 #include "ConformalShells.hpp"
 #include "LeanVase.hpp"
+#include "MultiplanarConfirm.hpp"
+#include "RotarySkin.hpp"
 
 #include "libslic3r/GCode/ToolKinematics.hpp"
 #include "libslic3r/I18N.hpp"
@@ -73,6 +75,11 @@ const std::vector<RotaryRoute> &rotary_routes()
           lean_vase_flares },
         { "flat_overhangs", RotaryRoute::Stage::Replace, flat_overhangs_claim,
           [](PrintObject &, ConformalResult &) { return false; } },
+        { "wall_skin", RotaryRoute::Stage::Append, rotary_skin_claims,
+          [](PrintObject &object, ConformalResult &result) {
+              build_rotary_skin(object, result);
+              return true;
+          } },
     };
     return routes;
 }
@@ -91,10 +98,16 @@ bool rotary_route_claimed(const PrintObject &object)
            });
 }
 
+static bool appended(const PrintObject &object)
+{
+    return object.config().nonplanar_atom_toolpath.value.empty() && !rotary_auto_measurement() &&
+           (routed(object) || auto_rotary_requested(object));
+}
+
 bool rotary_route_appends(const PrintObject &object)
 {
     const std::vector<RotaryRoute> &routes = rotary_routes();
-    return routed(object) && std::any_of(routes.begin(), routes.end(), [&object](const RotaryRoute &route) {
+    return appended(object) && std::any_of(routes.begin(), routes.end(), [&object](const RotaryRoute &route) {
                return route.stage == RotaryRoute::Stage::Append && route.claims(object);
            });
 }
@@ -102,7 +115,7 @@ bool rotary_route_appends(const PrintObject &object)
 bool build_rotary_routes(PrintObject &object, ConformalResult &result, RotaryRoute::Stage stage)
 {
     const std::vector<RotaryRoute> &routes = rotary_routes();
-    if (routes.empty() || !routed(object))
+    if (routes.empty() || !(stage == RotaryRoute::Stage::Append ? appended(object) : routed(object)))
         return false;
     for (const RotaryRoute &route : routes)
         if (route.stage == stage && route.claims(object) && route.build(object, result) && stage == RotaryRoute::Stage::Replace)

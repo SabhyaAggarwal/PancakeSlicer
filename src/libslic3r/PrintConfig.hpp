@@ -1246,6 +1246,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionInt,                 multiplanar_max_planes))
     ((ConfigOptionFloat,               multiplanar_overhang_threshold))
     ((ConfigOptionBool,                nonplanar_support_interface))
+    ((ConfigOptionBool,                nonplanar_steep_skin))
     ((ConfigOptionString,              nonplanar_atom_toolpath))
 )
 

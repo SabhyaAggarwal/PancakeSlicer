@@ -4279,6 +4279,8 @@ void PlateData::parse_filament_info(GCodeProcessorResult *result)
     bool _BBS_3MF_Importer::_handle_start_assemble_item(const char** attributes, unsigned int num_attributes)
     {
         if (!m_load_model) return true;
+        if (bbs_get_attribute_value_charptr(attributes, num_attributes, INSTANCEID_ATTR) == nullptr)
+            return true;
 
         int object_id = bbs_get_attribute_value_int(attributes, num_attributes, OBJECT_ID_ATTR);
         int instance_id = bbs_get_attribute_value_int(attributes, num_attributes, INSTANCEID_ATTR);

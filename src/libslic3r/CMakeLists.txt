@@ -158,6 +158,8 @@ set(lisbslic3r_sources
     Nonplanar/ConformalSupport.cpp
     Nonplanar/ConformalSupport.hpp
     Nonplanar/CurvedBridge.cpp
+    Nonplanar/RotarySkin.cpp
+    Nonplanar/RotarySkin.hpp
     Nonplanar/CurvedBridge.hpp
     Nonplanar/CurvedOverhang.cpp
     Nonplanar/CurvedOverhang.hpp
@@ -169,6 +171,8 @@ set(lisbslic3r_sources
     Nonplanar/PatchPreview.hpp
     Nonplanar/ConformalVolume.cpp
     Nonplanar/ConformalVolume.hpp
+    Nonplanar/LayerSchedule.cpp
+    Nonplanar/LayerSchedule.hpp
     Nonplanar/PatchTools.cpp
     Nonplanar/PatchTools.hpp
     Nonplanar/Repair.cpp

@@ -832,9 +832,12 @@ void PrintObject::nonplanar_shells()
             this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, warning);
     }
     if (!imported && Nonplanar::rotary_route_appends(*this)) {
-        if (!m_conformal)
+        const bool fresh = !m_conformal;
+        if (fresh)
             m_conformal = std::make_unique<Nonplanar::ConformalResult>();
         Nonplanar::build_rotary_routes(*this, *m_conformal, Nonplanar::RotaryRoute::Stage::Append);
+        if (fresh && m_conformal->patches.empty())
+            m_conformal.reset();
     }
     if (m_conformal)
         record_apply_inputs();
@@ -1497,7 +1500,8 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "nonplanar_deform"
             || opt_key == "multiplanar_max_planes"
             || opt_key == "multiplanar_overhang_threshold"
-            || opt_key == "nonplanar_atom_toolpath") {
+            || opt_key == "nonplanar_atom_toolpath"
+            || opt_key == "nonplanar_steep_skin") {
             steps.emplace_back(posSlice);
         } else if (opt_key == "gap_infill_speed"
             || opt_key == "filter_out_gap_fill" ) {

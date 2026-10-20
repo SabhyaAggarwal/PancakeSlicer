@@ -7680,7 +7680,13 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                         const bool   visible = std::any_of(order.begin() + b, order.begin() + pass_end[k], [](const ExtrusionPathConformal *p) {
                             return p->role() == erTopSolidInfill || p->role() == erBottomSurface || p->role() == erIroning;
                         });
-                        if (!visible)
+                        coord_t lo = std::numeric_limits<coord_t>::max(), hi = std::numeric_limits<coord_t>::lowest();
+                        if (patch.kind == Nonplanar::PatchKind::Overhang)
+                            for (auto it = order.begin() + b; it != order.begin() + pass_end[k]; ++it)
+                                for (const Point3 &q : (*it)->polyline.points)
+                                    lo = std::min(lo, q.z()), hi = std::max(hi, q.z());
+                        const bool flat = patch.kind == Nonplanar::PatchKind::Overhang && hi - lo < scaled<coord_t>(0.02);
+                        if (!visible && !flat)
                             Nonplanar::order_pass_roads(order, b, pass_end[k], reordered);
                     }
                 std::vector<ExtrusionPathConformal> oriented;
@@ -7956,6 +7962,7 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
             slice(part->polyline.points);
             slice(part->bead_height);
             slice(part->tool_axis);
+            slice(part->bead_width);
             m_conformal_points.assign(points.begin() + run.begin, points.begin() + run.end + 1);
             if (run.reversed) {
                 part->reverse();

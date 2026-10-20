@@ -12,6 +12,7 @@
 #include "ConformalIroning.hpp"
 #include "HeadEnvelope.hpp"
 #include "HeightField.hpp"
+#include "LayerSchedule.hpp"
 #include "PatchTools.hpp"
 #include "Repair.hpp"
 #include "Report.hpp"
@@ -817,7 +818,7 @@ ExPolygons hidden_layer_area(const HeightField &layers, int above, const ExPolyg
 }
 
 ExPolygons plumb_wall_band(const PrintObject &object, const HeightField &S, const ExPolygons &candidate, double wall_width, double depth,
-                           double void_depth)
+                           double void_depth, bool any_shape)
 {
     constexpr double Plumb      = 2.;
     constexpr double MaxFitArea = 2200.;
@@ -848,13 +849,13 @@ ExPolygons plumb_wall_band(const PrintObject &object, const HeightField &S, cons
                         return &other != &island &&
                                std::any_of(other.holes.begin(), other.holes.end(), [&](const Polygon &h) { return h.contains(inside); });
                     });
-                    if (nested && fit_round(island.contour) && std::abs(island.contour.area()) * SCALING_FACTOR * SCALING_FACTOR <= MaxFitArea) {
+                    if (nested && (any_shape || fit_round(island.contour)) && std::abs(island.contour.area()) * SCALING_FACTOR * SCALING_FACTOR <= MaxFitArea) {
                         append(rings[i], diff_ex(ExPolygon(island.contour), offset_ex(ExPolygon(island.contour), -w)));
                         append(edges[i], diff_ex(ExPolygon(island.contour), offset_ex(ExPolygon(island.contour), -float(scale_(Edge)))));
                     }
                     ExPolygons solid;
                     for (Polygon hole : island.holes)
-                        if (fit_round(hole) && std::abs(hole.area()) * SCALING_FACTOR * SCALING_FACTOR <= MaxFitArea) {
+                        if ((any_shape || fit_round(hole)) && std::abs(hole.area()) * SCALING_FACTOR * SCALING_FACTOR <= MaxFitArea) {
                             hole.make_counter_clockwise();
                             if (solid.empty())
                                 solid = opening_ex(ExPolygons{ island }, 1.5f * w);
@@ -1505,7 +1506,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
         const int  deepest = object.config().nonplanar_mode.value == NonplanarMode::Auto ?
                                  std::max(settings.shells, planar_top_layers(region.config(), settings.shell_height)) : settings.shells;
         ExPolygons more    = diff_ex(plumb_wall_band(object, S, candidate, wall_width, settings.shells * settings.shell_height,
-                                                     deepest * settings.shell_height), band_cand);
+                                                     deepest * settings.shell_height, field_layers(object)), band_cand);
         more.erase(std::remove_if(more.begin(), more.end(), [](const ExPolygon &e) { return e.area() * SCALING_FACTOR * SCALING_FACTOR < 0.01; }),
                    more.end());
         if (!more.empty())
@@ -1582,6 +1583,8 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
             const auto it = std::lower_bound(layers.begin(), layers.end(), z, [](const Layer *layer, double v) { return layer->print_z < v; });
             return it == layers.end() ? layers.back()->height : (*it)->height;
         };
+        const bool   field          = field_layers(object);
+        const double field_band_max = field && tilt == 0. ? field_layer_slope_max() : 0.;
         if (tilt == 0.)
             steep_tops.emplace(head, h_c, head_band_height(head), h_max, max_slope);
         Mask                steep(n_nodes, 0), admitted(n_nodes, 0);
@@ -1595,7 +1598,8 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                         steep_margin[i]  = float(cap - eff);
                         if (eff > cap) {
                             steep[i] = 1, slope[i] = eff;
-                            admitted[i] = steep_tops && steep_tops->outer_shells(g) > 0;
+                            admitted[i] = steep_tops && (!field || eff > std::max(max_slope, field_band_max)) &&
+                                          steep_tops->outer_shells(g) > 0;
                         }
                     }
         if (steep_tops) {
@@ -2034,6 +2038,29 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
             skipped.emplace_back(component, "flat");
             continue;
         }
+        const double nozzle_d     = object.print()->config().nozzle_diameter.get_at(0);
+        const bool   fine_process = object.config().nonplanar_mode.value == NonplanarMode::Auto &&
+                                  object.print()->config().nonplanar_kinematics.value == RotaryLayout::None && h_c <= 0.3 * nozzle_d + EPSILON;
+        if (field_layers(object) || fine_process) {
+            std::vector<float> slopes;
+            for (int iy = iy0; iy <= iy1; ++iy)
+                for (int ix = ix0; ix <= ix1; ++ix)
+                    if (const size_t i = size_t(iy) * grid.nx() + ix; pmask[i] && !std::isnan(S1.data()[i]))
+                        if (const Vec2d g = S1.gradient(grid.node(ix, iy)); g.allFinite())
+                            slopes.emplace_back(float(g.norm()));
+            if (!slopes.empty()) {
+                auto p90 = slopes.begin() + ptrdiff_t(0.9 * double(slopes.size() - 1));
+                std::nth_element(slopes.begin(), p90, slopes.end());
+                if (field_layers(object) && *p90 < std::tan(Geometry::deg2rad(1.))) {
+                    skipped.emplace_back(component, "flat");
+                    continue;
+                }
+                if (fine_process && *p90 > h_c / banded_outer_width(line_width, nozzle_d, h_c, BandedCapWidth)) {
+                    skipped.emplace_back(component, "steep");
+                    continue;
+                }
+            }
+        }
         const int pad = 3;
         ix0 = std::max(0, ix0 - pad), iy0 = std::max(0, iy0 - pad);
         ix1 = std::min(grid.nx() - 1, ix1 + pad), iy1 = std::min(grid.ny() - 1, iy1 + pad);
@@ -2094,10 +2121,12 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
         pad_lowest(patch.base.edit(), pad);
         ExPolygons  shell_area = diff_ex(patch.footprint, patch.wall_band);
         {
+            BoundingBox near = get_extents(shell_area);
+            near.offset(scale_(1. + 4. * pitch));
             Polygons material;
             for (const Layer *layer : layers)
                 if (layer->print_z > zlo - patch.shells * h_c - EPSILON && layer->print_z - layer->height < zhi + EPSILON)
-                    polygons_append(material, to_polygons(layer->lslices));
+                    polygons_append(material, ClipperUtils::clip_clipper_polygons_with_subject_bbox(layer->lslices, near));
             const Polygons solid = union_(material);
             ExPolygons gaps = diff_ex(intersection_ex(shell_area, closing(solid, float(scale_(2. * pitch)))), solid);
             gaps.erase(std::remove_if(gaps.begin(), gaps.end(), [](const ExPolygon &g) { return g.area() * SCALING_FACTOR * SCALING_FACTOR < 0.01; }),
@@ -2137,6 +2166,7 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
             const auto above = std::partition_point(layer_z.begin(), layer_z.end(), [&](double z) { return face - z >= h_min; });
             return above == layer_z.begin() || above == layer_z.end() ? -1 : int(above - layer_z.begin()) - 1;
         };
+        const bool fine_layers = field_layers(object);
         for (size_t i = 0; i < top.data().size(); ++i) {
             const float s = patch.surface.data()[i];
             if (std::isnan(s))
@@ -2162,11 +2192,11 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                     const double h0   = stack->outer.data()[i];
                     const int    n    = int(stack->count.data()[i]);
                     const double bead = n > 1 ? stack->inner_height(h0, n) : h0;
-                    if ((layer = planar_transition_layer(layer_z, s - m * h_c + bead, bead, h_min, h_max, PatchKind::Top)) >= 0)
+                    if ((layer = planar_transition_layer(layer_z, s - m * h_c + bead, bead, h_min, h_max, PatchKind::Top, fine_layers)) >= 0)
                         break;
                     stack->make_uniform(i);
                 }
-                if ((layer = planar_transition_layer(layer_z, s - (m - 1) * h_c, h_c, h_min, h_max, PatchKind::Top)) >= 0)
+                if ((layer = planar_transition_layer(layer_z, s - (m - 1) * h_c, h_c, h_min, h_max, PatchKind::Top, fine_layers)) >= 0)
                     break;
             }
             if (layer < 0) {
@@ -2583,15 +2613,26 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
                 if (any)
                     append(excl, intersection_ex(mask_to_expolygons(above, B), clip_areas[idx]));
             }
+            if (!excl.empty())
+                result.planar_exclusion[i] = union_ex(excl);
+        }
+    });
+    const bool field_seams = field_layers(object);
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
+        for (size_t i = range.begin(); i < range.end(); ++i) {
+            const ExPolygons &excl = result.planar_exclusion[i];
             if (excl.empty())
                 continue;
-            excl                         = union_ex(excl);
-            const BoundingBox excl_bbox  = get_extents(excl);
+            throw_if_canceled(object);
+            const BoundingBox excl_bbox = get_extents(excl);
+            ExPolygons        under;
+            if (field_seams && i > 0)
+                under = offset_ex(result.planar_exclusion[i - 1], float(scale_(0.25 * line_width)));
+            const ExPolygons *seam = under.empty() ? nullptr : &under;
             for (LayerRegion *layerm : layers[i]->regions()) {
-                clip_extrusions(layerm->fills, excl, excl_bbox);
-                clip_extrusions(layerm->perimeters, excl, excl_bbox);
+                clip_extrusions(layerm->fills, excl, excl_bbox, seam);
+                clip_extrusions(layerm->perimeters, excl, excl_bbox, seam);
             }
-            result.planar_exclusion[i] = std::move(excl);
         }
     });
     {

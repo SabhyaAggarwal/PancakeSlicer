@@ -2,6 +2,7 @@
 
 #include "ConformalIroning.hpp"
 #include "ConformalShells.hpp"
+#include "CurvedOverhang.hpp"
 #include "HeadEnvelope.hpp"
 #include "HeightField.hpp"
 #include "MaterialRules.hpp"
@@ -231,7 +232,8 @@ bool auto_z_contouring(const PrintObject &object, const std::vector<double> &lay
     }
     for (const PrintObject *part : probe.objects())
         for (const ConformalPatch &patch : part->conformal().patches)
-            if (patch.kind == PatchKind::Top || patch.kind == PatchKind::Volume)
+            if (patch.kind == PatchKind::Top || patch.kind == PatchKind::Volume ||
+                (patch.kind == PatchKind::Overhang && !offset_ex(patch.footprint, -float(scale_(BoreHalfSpan))).empty()))
                 return false;
     return true;
 }

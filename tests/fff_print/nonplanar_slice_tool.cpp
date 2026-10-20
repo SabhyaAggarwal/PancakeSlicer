@@ -15,10 +15,13 @@
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/Config.hpp"
 #include "libslic3r/CustomGCode.hpp"
+#include "libslic3r/CutUtils.hpp"
+#include "libslic3r/enum_bitmask.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/FlushVolCalc.hpp"
+#include "libslic3r/Format/STL.hpp"
 #include "libslic3r/Format/bbs_3mf.hpp"
 #include "libslic3r/GCode/ClearanceVerifier.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
@@ -45,6 +48,7 @@
 #include "libslic3r/TriangleMesh.hpp"
 #include "libslic3r/TriangleSelector.hpp"
 #include "libslic3r/Utils.hpp"
+#include "libslic3r/calib.hpp"
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/miniz_extension.hpp"
 
@@ -104,7 +108,7 @@ struct Args
     std::string profiles = std::string(PROFILES_DIR);
     std::string vendor   = "Prusa";
     std::string printer, process, datadir, output, model, config_out, paint, gcode_3mf, json, plate, project_out, head_out, layer_profile, project, save_3mf,
-                tip_out, planned_out, verify_gcode, move_times, calib, calib_head, calib_picks, moves_out, dump_options, dump_presets;
+                tip_out, planned_out, verify_gcode, move_times, calib, calib_head, calib_picks, calib_params, moves_out, dump_options, dump_presets;
     bool        progress = false;
     int         calib_fit = -1;
     int         plate_index = 0;
@@ -117,10 +121,45 @@ struct Args
     bool        explain    = false;
     bool        auto_orient = false;
     bool        orient_only = false;
+    std::string edit;
+    std::string cut, cut_keep = "both";
+    bool        cut_place_lower = false;
+    bool        force_planar    = false;
+    bool        surface_grid    = false;
+    size_t      surface_grid_max_cells = 40000;
+    std::string patch_preview;
+    double      preview_budget        = 2.;
+    size_t      preview_max_triangles = 300000;
     std::string confirm_up;
     std::vector<std::string> argv;
     Vec2d       center     = Vec2d::Zero();
 };
+
+struct StepMeshing
+{
+    double linear_deflection = 0.003;
+    double angle_deflection  = 0.5;
+    bool   split_compound    = false;
+} step_meshing;
+
+void clear_object_modes(Model &model)
+{
+    for (ModelObject *object : model.objects) {
+        object->config.erase("nonplanar_mode");
+        for (ModelVolume *volume : object->volumes)
+            volume->config.erase("nonplanar_mode");
+        for (auto &[range, range_config] : object->layer_config_ranges)
+            range_config.erase("nonplanar_mode");
+    }
+}
+
+Model read_input(const std::string &file)
+{
+    if (boost::algorithm::iends_with(file, ".step") || boost::algorithm::iends_with(file, ".stp"))
+        return Model::read_from_step(file, LoadStrategy::LoadModel | LoadStrategy::AddDefaultInstances, nullptr, nullptr, nullptr,
+                                     step_meshing.linear_deflection, step_meshing.angle_deflection, step_meshing.split_compound);
+    return Model::read_from_file(file, nullptr, nullptr, LoadStrategy::LoadModel | LoadStrategy::AddDefaultInstances);
+}
 
 [[noreturn]] void usage(const std::string &error)
 {
@@ -131,11 +170,19 @@ struct Args
                  "       [--atom TOOLPATH] [--verify] [--explain] [--auto-orient | --orient-only] [--save-3mf PROJECT.3mf]\n"
                  "       [--plate-index N] [--layer-profile adaptive:QUALITY | ramp:H_BOTTOM:H_TOP | range:DEPTH:H] [--calib-head ID]\n"
                  "       -o OUT.gcode (MODEL | PROJECT.3mf | --plate PLATE.json | --project SPEC.json | --calib TEST)\n"
-                 "       [--moves-out FILE] [--progress]\n"
+                 "       [--moves-out FILE] [--progress] [--calib-params key=value,...]\n"
+                 "       [--surface-grid [--surface-grid-max-cells N]]   (with --json: per-cell top surface error)\n"
+                 "       [--force-planar]   (nonplanar_mode off on the plate, objects, volumes and height ranges)\n"
+                 "       [--edit EDITS.json]   (a loaded PROJECT.3mf: add/delete objects and instances, set filaments)\n"
+                 "       [--cut-only Z | X,Y,Z,NX,NY,NZ [--cut-keep upper|lower|both] [--cut-place-lower]]\n"
+                 "       [--patch-preview FILE.json [--patch-preview-budget S] [--patch-preview-max-triangles N]]\n"
+                 "       [--step-linear-deflection MM] [--step-angle-deflection A] [--step-split-compound]\n"
                  "       nonplanar_slice_tool --dump-options FILE | --dump-presets VENDOR FILE [--profiles DIR]\n"
                  "       nonplanar_slice_tool --load-gcode FILE.gcode   (times the preview's G-code load)\n";
     std::exit(2);
 }
+
+std::optional<CalibMode> classic_calib_mode(const std::string &kind);
 
 Args parse_args(int argc, char **argv)
 {
@@ -211,9 +258,40 @@ Args parse_args(int argc, char **argv)
         else if (arg == "--calib-head") a.calib_head = next();
         else if (arg == "--calib-fit") a.calib_fit = std::atoi(next().c_str());
         else if (arg == "--calib-picks") a.calib_picks = next();
+        else if (arg == "--calib-params") a.calib_params = next();
         else if (arg == "--verify") a.verify = true;
         else if (arg == "--auto-orient") a.auto_orient = true;
         else if (arg == "--orient-only") a.auto_orient = a.orient_only = true;
+        else if (arg == "--edit") a.edit = next();
+        else if (arg == "--force-planar") a.force_planar = true;
+        else if (arg == "--surface-grid") a.surface_grid = true;
+        else if (arg == "--surface-grid-max-cells") {
+            const long n = std::atol(next().c_str());
+            if (n < 1) usage("--surface-grid-max-cells expects a positive number");
+            a.surface_grid_max_cells = size_t(n);
+        }
+        else if (arg == "--cut-only") a.cut = next();
+        else if (arg == "--cut-keep") {
+            a.cut_keep = next();
+            if (a.cut_keep != "upper" && a.cut_keep != "lower" && a.cut_keep != "both")
+                usage("--cut-keep expects upper, lower or both");
+        } else if (arg == "--cut-place-lower") a.cut_place_lower = true;
+        else if (arg == "--patch-preview") a.patch_preview = next();
+        else if (arg == "--patch-preview-budget") {
+            a.preview_budget = std::atof(next().c_str());
+            if (!(a.preview_budget > 0.)) usage("--patch-preview-budget expects seconds > 0");
+        } else if (arg == "--patch-preview-max-triangles") {
+            const long n = std::atol(next().c_str());
+            if (n < 1000) usage("--patch-preview-max-triangles expects at least 1000");
+            a.preview_max_triangles = size_t(n);
+        } else if (arg == "--step-linear-deflection" || arg == "--step-angle-deflection") {
+            const std::string value = next();
+            char *end = nullptr;
+            const double v = std::strtod(value.c_str(), &end);
+            if (value.empty() || *end != '\0' || !(v > 0.))
+                usage(arg + " expects a positive number");
+            (arg == "--step-linear-deflection" ? step_meshing.linear_deflection : step_meshing.angle_deflection) = v;
+        } else if (arg == "--step-split-compound") step_meshing.split_compound = true;
         else if (arg == "--confirm-up") a.confirm_up = next();
         else if (arg == "-o" || arg == "--output") a.output = fs::absolute(next()).string();
         else if (arg == "--set") {
@@ -252,11 +330,17 @@ Args parse_args(int argc, char **argv)
     }
     if (!a.dump_options.empty() || !a.dump_presets.empty() || !a.verify_gcode.empty()) return a;
     if (a.printer.empty() || a.process.empty() || a.filaments.empty() ||
-        (a.output.empty() && ! a.orient_only && a.confirm_up.empty() && a.save_3mf.empty()) ||
+        (a.output.empty() && ! a.orient_only && a.confirm_up.empty() && a.save_3mf.empty() && a.patch_preview.empty()) ||
         int(! a.model.empty()) + int(! a.plate.empty()) + int(! a.project.empty()) + int(! a.calib.empty()) != 1)
         usage("--printer, --process, --filament, -o and one of a model, --plate, --project or --calib are required");
-    if (! a.calib.empty() && ! Nonplanar::Calibration::parse_test(a.calib))
+    if (a.surface_grid && a.json.empty())
+        usage("--surface-grid needs --json");
+    if (! a.cut.empty() && a.output.empty())
+        usage("--cut-only needs -o PIECES.3mf or -o PIECES.stl");
+    if (! a.calib.empty() && ! Nonplanar::Calibration::parse_test(a.calib) && ! classic_calib_mode(a.calib))
         usage("unknown --calib test " + a.calib);
+    if (! a.calib_params.empty() && ! classic_calib_mode(a.calib))
+        usage("--calib-params needs a classic --calib KIND");
     return a;
 }
 
@@ -577,7 +661,7 @@ void apply_multi_material(const Args &a, Model &model)
         volume->mmu_segmentation_facets.set(selector);
     }
     for (const auto &[file, extruder] : a.parts) {
-        Model part = Model::read_from_file(file, nullptr, nullptr, LoadStrategy::LoadModel | LoadStrategy::AddDefaultInstances);
+        Model part = read_input(file);
         if (part.objects.empty())
             throw std::runtime_error("no objects in " + file);
         const ModelVolume *src    = part.objects.front()->volumes.front();
@@ -833,6 +917,25 @@ Matrix3d choose_orientation(const Args &args, const Model &model, const DynamicP
     return r;
 }
 
+void add_placed_instances(ModelObject *object, const nlohmann::json &entry, const Vec3d &origin = Vec3d::Zero())
+{
+    const nlohmann::json places = entry.contains("instances") ? entry.at("instances") : nlohmann::json::array({ entry });
+    for (const nlohmann::json &place : places) {
+        ModelInstance *instance = object->add_instance();
+        instance->set_rotation(Vec3d(0., 0., Geometry::deg2rad(place.value("rot", 0.))));
+        instance->printable = place.value("printable", true);
+    }
+    object->ensure_on_bed();
+    const size_t first = object->instances.size() - places.size();
+    for (size_t i = 0; i < places.size(); ++i) {
+        const BoundingBoxf3 box = object->instance_bounding_box(first + i, true);
+        object->instances[first + i]->set_offset(object->instances[first + i]->get_offset() +
+                                                 Vec3d(origin.x() + places[i].at("x").get<double>() - box.center().x(),
+                                                       origin.y() + places[i].at("y").get<double>() - box.center().y(),
+                                                       places[i].contains("z") ? places[i].at("z").get<double>() - box.min.z() : 0.));
+    }
+}
+
 Model load_plate(const std::string &path)
 {
     boost::nowide::ifstream in(path);
@@ -842,37 +945,63 @@ Model load_plate(const std::string &path)
     std::map<std::string, Model> loaded;
     ConfigSubstitutionContext ctx(ForwardCompatibilitySubstitutionRule::Disable);
     for (const nlohmann::json &entry : j.at("objects")) {
-        fs::path file = entry.at("file").get<std::string>();
-        if (file.is_relative())
-            file = dir / file;
-        auto it = loaded.find(file.string());
-        if (it == loaded.end())
-            it = loaded.emplace(file.string(), Model::read_from_file(file.string(), nullptr, nullptr,
-                                                                      LoadStrategy::LoadModel | LoadStrategy::AddDefaultInstances)).first;
-        if (it->second.objects.empty())
-            throw std::runtime_error("no objects in " + file.string());
-        ModelObject *object = model.add_object(*it->second.objects.front());
-        object->name = entry.value("name", file.stem().string());
+        auto source = [&](const std::string &name) -> const Model & {
+            fs::path file = name;
+            if (file.is_relative())
+                file = dir / file;
+            auto it = loaded.find(file.string());
+            if (it == loaded.end())
+                it = loaded.emplace(file.string(), read_input(file.string())).first;
+            if (it->second.objects.empty())
+                throw std::runtime_error("no objects in " + file.string());
+            return it->second;
+        };
+        auto apply_settings = [&ctx](ModelConfig &config, const nlohmann::json &settings) {
+            for (const auto &[key, value] : settings.items())
+                config.set_deserialize(key, value.is_string() ? value.get<std::string>() : value.dump(), ctx);
+        };
+        if (!entry.contains("file") && !entry.contains("volumes"))
+            throw std::runtime_error("plate object " + std::to_string(model.objects.size() + 1) + " needs a file or volumes");
+        ModelObject *object = entry.contains("file") ? model.add_object(*source(entry.at("file").get<std::string>()).objects.front()) : model.add_object();
+        object->name = entry.value("name", fs::path(entry.contains("file") ? entry.at("file").get<std::string>() : "object").stem().string());
         object->clear_instances();
         if (const int extruder = entry.value("extruder", 0); extruder > 0)
             object->config.set("extruder", extruder);
         if (entry.contains("settings"))
-            for (const auto &[key, value] : entry.at("settings").items())
-                object->config.set_deserialize(key, value.is_string() ? value.get<std::string>() : value.dump(), ctx);
-        const nlohmann::json places = entry.contains("instances") ? entry.at("instances") : nlohmann::json::array({ entry });
-        for (const nlohmann::json &place : places) {
-            ModelInstance *instance = object->add_instance();
-            instance->set_rotation(Vec3d(0., 0., Geometry::deg2rad(place.value("rot", 0.))));
-            instance->printable = place.value("printable", true);
+            apply_settings(object->config, entry.at("settings"));
+        for (const nlohmann::json &v : entry.value("volumes", nlohmann::json::array())) {
+            static const std::map<std::string, ModelVolumeType> types = {
+                { "part", ModelVolumeType::MODEL_PART },           { "modifier", ModelVolumeType::PARAMETER_MODIFIER },
+                { "negative", ModelVolumeType::NEGATIVE_VOLUME },  { "support_enforcer", ModelVolumeType::SUPPORT_ENFORCER },
+                { "support_blocker", ModelVolumeType::SUPPORT_BLOCKER } };
+            const auto type = types.find(v.value("type", "part"));
+            if (type == types.end())
+                throw std::runtime_error("unknown volume type " + v.value("type", ""));
+            Transform3d transform = Transform3d::Identity();
+            if (const nlohmann::json m = v.value("transform", nlohmann::json()); !m.is_null()) {
+                const bool flat = m.is_array() && m.size() == 16, rows = m.is_array() && m.size() == 4;
+                if (!flat && !rows)
+                    throw std::runtime_error("a volume transform is a row-major 4x4 matrix: 16 numbers or 4 rows of 4");
+                for (int r = 0; r < 4; ++r)
+                    for (int c = 0; c < 4; ++c)
+                        transform.matrix()(r, c) = (flat ? m.at(r * 4 + c) : m.at(r).at(c)).get<double>();
+            }
+            ModelVolume *volume = object->add_volume(source(v.at("file").get<std::string>()).objects.front()->raw_mesh(), type->second, false);
+            volume->set_transformation(Geometry::Transformation(transform));
+            volume->center_geometry_after_creation();
+            volume->name = v.value("name", fs::path(v.at("file").get<std::string>()).stem().string());
+            if (const int extruder = v.value("extruder", 0); extruder > 0)
+                volume->config.set("extruder", extruder);
+            if (v.contains("settings"))
+                apply_settings(volume->config, v.at("settings"));
         }
-        object->ensure_on_bed();
-        for (size_t i = 0; i < places.size(); ++i) {
-            const BoundingBoxf3 box = object->instance_bounding_box(i, true);
-            object->instances[i]->set_offset(object->instances[i]->get_offset() +
-                                             Vec3d(places[i].at("x").get<double>() - box.center().x(),
-                                                   places[i].at("y").get<double>() - box.center().y(),
-                                                   places[i].contains("z") ? places[i].at("z").get<double>() - box.min.z() : 0.));
+        if (entry.contains("volumes")) {
+            if (std::none_of(object->volumes.begin(), object->volumes.end(), [](const ModelVolume *v) { return v->is_model_part(); }))
+                throw std::runtime_error("plate object " + object->name + " has no part volume");
+            object->sort_volumes(true);
+            object->invalidate_bounding_box();
         }
+        add_placed_instances(object, entry);
     }
     if (model.objects.empty())
         throw std::runtime_error("no objects in " + path);
@@ -886,7 +1015,7 @@ Model load_project(const std::string &path)
     const fs::path          dir = fs::path(path).parent_path();
     auto resolve_path = [&dir](const std::string &file) { return fs::path(file).is_relative() ? (dir / file).string() : file; };
     auto read_model   = [](const std::string &file) {
-        Model m = Model::read_from_file(file, nullptr, nullptr, LoadStrategy::LoadModel | LoadStrategy::AddDefaultInstances);
+        Model m = read_input(file);
         if (m.objects.empty() || m.objects.front()->volumes.empty())
             throw std::runtime_error("no objects in " + file);
         return m;
@@ -1070,7 +1199,7 @@ void restore_loaded_ids(const std::vector<SavedInstance> &instances, Model &mode
 #include "nonplanar_slice_tool_save.ipp"
 
 void save_project(PresetBundle &bundle, const Args &args, Model &model, const DynamicPrintConfig &config, bool loaded_ids,
-                  const PlateDataPtrs &plates)
+                  const PlateDataPtrs &plates, const std::string &cut_information = {})
 {
     model.get_backup_path();
     StoreParams params;
@@ -1085,7 +1214,81 @@ void save_project(PresetBundle &bundle, const Args &args, Model &model, const Dy
         throw std::runtime_error("cannot write " + args.save_3mf);
     Args written = args;
     written.model = args.save_3mf;
-    save_source_project(written, config, true);
+    save_source_project(written, config, true, cut_information);
+}
+
+void cut_only(PresetBundle &bundle, const Args &args, Model &model, DynamicPrintConfig &config)
+{
+    if (model.objects.size() != 1 || model.objects.front()->instances.size() != 1)
+        throw std::runtime_error("--cut-only needs a model of one object with one instance, this has " +
+                                 std::to_string(model.objects.size()) + " objects");
+    double v[6];
+    const int n = std::sscanf(args.cut.c_str(), "%lf,%lf,%lf,%lf,%lf,%lf", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]);
+    Vec3d point = Vec3d::Zero(), normal = Vec3d::UnitZ();
+    if (n == 1)
+        point.z() = v[0];
+    else if (n == 6) {
+        point  = Vec3d(v[0], v[1], v[2]);
+        normal = Vec3d(v[3], v[4], v[5]);
+    }
+    if ((n != 1 && n != 6) || !(normal.norm() > 1e-9))
+        usage("--cut-only expects Z or X,Y,Z,NX,NY,NZ with a nonzero normal");
+    ModelObject *object = model.objects.front();
+    const Transform3d rotation(Eigen::Quaterniond::FromTwoVectors(Vec3d::UnitZ(), normal.normalized()));
+    const Transform3d cut_matrix = Geometry::translation_transform(point - object->instances.front()->get_offset()) * rotation;
+    const bool upper = args.cut_keep != "lower", lower = args.cut_keep != "upper";
+    const ModelObjectCutAttributes attributes = only_if(upper, ModelObjectCutAttribute::KeepUpper) |
+                                                only_if(lower, ModelObjectCutAttribute::KeepLower) |
+                                                ModelObjectCutAttribute::PlaceOnCutUpper |
+                                                only_if(args.cut_place_lower, ModelObjectCutAttribute::PlaceOnCutLower) |
+                                                ModelObjectCutAttribute::InvalidateCutInfo;
+    Cut cut(object, 0, cut_matrix, attributes);
+    const ModelObjectPtrs &pieces = cut.perform_with_plane();
+    if (pieces.size() != size_t(upper) + size_t(lower))
+        throw std::runtime_error("the cut plane does not cross the object");
+    const std::vector<std::string> names = upper && lower ? std::vector<std::string>{ "upper", "lower" } :
+                                                            std::vector<std::string>{ upper ? "upper" : "lower" };
+    Model result;
+    for (const ModelObject *piece : pieces) {
+        ModelObject *added = result.add_object(*piece);
+        added->ensure_on_bed();
+    }
+    for (size_t i = 0; i < result.objects.size(); ++i) {
+        TriangleMesh mesh = result.objects[i]->mesh();
+        std::cout << "cut_piece " << names[i] << " triangles " << mesh.facets_count() << " open_edges "
+                  << its_num_open_edges(mesh.its) << " volume_mm3 " << mesh.volume() << "\n";
+    }
+    if (boost::algorithm::iends_with(args.output, ".3mf")) {
+        double x = 0.;
+        for (ModelObject *piece : result.objects) {
+            const BoundingBoxf3 box = piece->instance_bounding_box(0);
+            piece->instances.front()->set_offset(piece->instances.front()->get_offset() + Vec3d(x - box.min.x(), 0., 0.));
+            piece->invalidate_bounding_box();
+            x += box.size().x() + 10.;
+        }
+        place(args, result, config);
+        PlateDataPtrs plates;
+        auto plate = std::make_unique<PlateData>();
+        plate->plate_index = 0;
+        for (size_t i = 0; i < result.objects.size(); ++i)
+            plate->objects_and_instances.emplace_back(int(i), 0);
+        plates.push_back(plate.get());
+        Args written = args;
+        written.save_3mf = args.output;
+        save_project(bundle, written, result, config, false, plates);
+        std::cout << "cut_project " << args.output << "\n";
+        return;
+    }
+    std::string stem = args.output;
+    if (boost::algorithm::iends_with(stem, ".stl"))
+        stem.resize(stem.size() - 4);
+    for (size_t i = 0; i < result.objects.size(); ++i) {
+        TriangleMesh mesh = result.objects[i]->mesh();
+        const std::string file = stem + "." + names[i] + ".stl";
+        if (!store_stl(file.c_str(), &mesh, true))
+            throw std::runtime_error("cannot write " + file);
+        std::cout << "cut_file " << names[i] << " " << file << "\n";
+    }
 }
 
 }
@@ -1094,6 +1297,9 @@ void save_project(PresetBundle &bundle, const Args &args, Model &model, const Dy
 #include "nonplanar_slice_moves.ipp"
 #include "nonplanar_slice_catalog.ipp"
 #include "nonplanar_model_context.ipp"
+#include "nonplanar_patch_preview.ipp"
+#include "nonplanar_project_edit.ipp"
+#include "nonplanar_calib_classic.ipp"
 
 int main(int argc, char **argv)
 {
@@ -1164,12 +1370,15 @@ int main(int argc, char **argv)
         const bool project_input = boost::algorithm::iequals(fs::path(args.model).extension().string(), ".3mf");
         if (args.plate_index && !project_input)
             throw std::runtime_error("--plate-index requires a saved .3mf project");
+        if (!args.edit.empty() && !project_input)
+            throw std::runtime_error("--edit requires a saved .3mf project");
         bool project_settings = false;
         ContextInstances saved_instances;
         std::unique_ptr<PlateData> source_plate;
         std::vector<SourcePlate> source_plates;
         std::optional<Model> full_model;
         std::optional<DynamicPrintConfig> full_config;
+        std::vector<ObjectID> source_objects;
         if (project_input) {
             ConfigSubstitutionContext substitutions(ForwardCompatibilitySubstitutionRule::EnableSilent);
             En3mfType type;
@@ -1189,8 +1398,15 @@ int main(int argc, char **argv)
             load_slice_config(args.model, config, project_settings);
             const std::vector<SavedInstance> saved = read_saved_instances(args.model);
             restore_loaded_ids(saved, model);
-            if (!args.json.empty() || args.plate_index || !args.save_3mf.empty())
+            for (const ModelObject *object : model.objects)
+                source_objects.push_back(object->id());
+            if (!args.json.empty() || args.plate_index || !args.save_3mf.empty() || !args.edit.empty())
                 saved_instances = context_instances(args.model, model, saved);
+            if (!args.edit.empty()) {
+                DynamicPrintConfig source_layout = config;
+                source_layout.set_key_value("printable_area", source_area->clone());
+                edit_project(args.edit, model, source_layout, plates, saved_instances);
+            }
             if (!args.json.empty()) {
                 auto &sources = record["model_context"]["source_plates"];
                 sources = Json::array();
@@ -1200,7 +1416,8 @@ int main(int argc, char **argv)
             }
             if (!args.save_3mf.empty()) {
                 for (const PlateData *plate : plates)
-                    if (plate) source_plates.push_back({plate->plate_index, plate->plate_name, plate->locked, plate->config});
+                    if (plate) source_plates.push_back({plate->plate_index, plate->plate_name, plate->locked, plate->config,
+                                                        plate->thumbnail_file, plate->no_light_thumbnail_file, plate->top_file, plate->pick_file});
                 if (args.plate_index) {
                     full_model  = model;
                     full_config = config;
@@ -1228,7 +1445,7 @@ int main(int argc, char **argv)
                 plates.clear();
                 const bool changed_colours = !args.colours.empty() || std::any_of(args.overrides.begin(), args.overrides.end(),
                     [](const auto &setting) { return setting.first == "filament_colour"; });
-                if (args.auto_orient || args.center_set || changed_colours || !args.parts.empty() || !args.paint.empty()) {
+                if (args.auto_orient || args.center_set || changed_colours || !args.parts.empty() || !args.paint.empty() || !args.edit.empty()) {
                     source_plate->plate_thumbnail.reset();
                     source_plate->thumbnail_file.clear();
                     source_plate->no_light_thumbnail_file.clear();
@@ -1242,7 +1459,7 @@ int main(int argc, char **argv)
         } else if (args.calib.empty()) {
             model = ! args.plate.empty()   ? load_plate(args.plate) :
                     ! args.project.empty() ? load_project(args.project) :
-                Model::read_from_file(args.model, nullptr, nullptr, LoadStrategy::LoadModel | LoadStrategy::AddDefaultInstances);
+                read_input(args.model);
         }
         if (!args.json.empty())
             record["model_context"]["presets"] = context_presets(config, project_settings);
@@ -1269,8 +1486,14 @@ int main(int argc, char **argv)
         }
 
         std::optional<Nonplanar::Calibration::Plate> calib_plate;
+        std::optional<Calib_Params> classic_params;
         Nonplanar::HeadEnvelope calib_head;
-        if (! args.calib.empty()) {
+        if (classic_calib_mode(args.calib)) {
+            classic_params = classic_calib(args, model, config);
+            for (const auto &[key, value] : args.overrides)
+                config.set_deserialize_strict(key, value);
+            finish_classic_calib(model, config);
+        } else if (! args.calib.empty()) {
             PrintConfig printer_config;
             printer_config.apply(config, true);
             if (! args.calib_head.empty())
@@ -1284,6 +1507,10 @@ int main(int argc, char **argv)
         }
         if (model.objects.empty())
             throw std::runtime_error("no objects in " + args.model);
+        if (! args.cut.empty()) {
+            cut_only(bundle, args, model, config);
+            return 0;
+        }
         apply_multi_material(args, model);
         if (! args.events.empty()) {
             CustomGCode::Info &info = model.plates_custom_gcodes[model.curr_plate_index];
@@ -1304,11 +1531,16 @@ int main(int argc, char **argv)
                 PlateDataPtrs plate_list;
                 for (const auto &plate : plates)
                     plate_list.push_back(plate.get());
-                save_project(bundle, args, saved_model, full_config ? *full_config : config, project_input, plate_list);
+                save_project(bundle, args, saved_model, full_config ? *full_config : config, project_input, plate_list,
+                             project_input ? carried_cut_information(args.model, source_objects, saved_model) : std::string());
             }
             std::cout << "project " << args.save_3mf << "\n";
             if (args.output.empty())
                 return 0;
+        }
+        if (args.force_planar) {
+            config.set_key_value("nonplanar_mode", new ConfigOptionEnum<NonplanarMode>(NonplanarMode::Off));
+            clear_object_modes(model);
         }
         if (! args.confirm_up.empty()) {
             Vec3d up;
@@ -1325,6 +1557,11 @@ int main(int argc, char **argv)
         if (args.orient_only)
             return 0;
         place(args, model, config, project_settings && !args.auto_orient);
+        if (!args.patch_preview.empty()) {
+            write_patch_preview(args, model, config);
+            if (args.output.empty())
+                return 0;
+        }
 
         if (!args.project_out.empty()) {
             fs::create_directories(model.get_backup_path());
@@ -1348,6 +1585,8 @@ int main(int argc, char **argv)
         std::mutex progress_mutex;
         int last_percent = 0;
         Print print;
+        if (classic_params)
+            print.set_calib_params(*classic_params);
         print.is_BBL_printer() = config.opt_string("printer_model").rfind("Bambu Lab", 0) == 0;
         for (ModelObject *object : model.objects)
             print.auto_assign_extruders(object);
@@ -1359,6 +1598,7 @@ int main(int argc, char **argv)
             const std::string file = Nonplanar::HeadLibrary::instance().source_path(head.id);
             record["inputs"]["mode"] = config.opt_serialize("nonplanar_mode");
             record["inputs"]["zaa_enabled"] = config.opt_bool("zaa_enabled");
+            record["inputs"]["deform"] = config.opt_serialize("nonplanar_deform");
             const std::string atom = config.opt_string("nonplanar_atom_toolpath");
             record["inputs"]["atom_toolpath"] = atom.empty() ? nlohmann::json(nullptr) :
                 nlohmann::json{{"file", atom}, {"sha1", file_sha1(atom)}};
@@ -1759,7 +1999,7 @@ int main(int argc, char **argv)
                     if (entry.contains("settings")) {
                         auto &settings = record["objects"][i]["settings"] = nlohmann::json::object();
                         for (const auto &[key, value] : entry.at("settings").items())
-                            settings[key] = object->config.opt_serialize(key);
+                            settings[key] = object->config.has(key) ? nlohmann::json(object->config.opt_serialize(key)) : nlohmann::json(nullptr);
                     }
                 }
             }

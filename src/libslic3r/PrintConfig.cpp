@@ -5462,6 +5462,19 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionBool(true));
 
+    def = this->add("nonplanar_steep_skin", coBool);
+    def->label    = L("Tilted skin on steep faces");
+    def->category = L("Quality");
+    // xgettext:no-c-format, no-boost-format
+    def->tooltip  = L("On a printer with a tilting table or head, replace the outer wall of steep faces (39° to 80° from "
+                      "horizontal, such as chamfers) with roads laid up the face with the nozzle tilted toward it, after the "
+                      "object's last layer. This removes the layer stair on those faces. Only faces bounded by edges are "
+                      "skinned, and only when they make at least 300 mm² and 10% of the visible surface; curved and organic "
+                      "surfaces keep their planar wall. Needs non-planar mode Auto."
+                      " Default: off. Unit: unitless on/off.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
+
     def = this->add("nonplanar_atom_toolpath", coString);
     def->label    = L("Atomizer toolpath");
     def->category = L("Quality");

@@ -164,4 +164,38 @@ PatchPreview preview_conformal_patches(const indexed_triangle_set &its, const He
     return out;
 }
 
+std::vector<double> preview_slope_limits(const HeadEnvelope &head, const PatchPreviewParams &params)
+{
+    std::vector<double> limits = head.slope_map(SlopeAzimuths, params.shell_height);
+    if (params.max_slope > 0.)
+        for (double &limit : limits)
+            limit = std::min(limit, params.max_slope);
+    return limits;
+}
+
+double slope_limit_at(const std::vector<double> &limits, double phi)
+{
+    const int n = int(limits.size());
+    return limits[size_t((int(std::lround(phi / (2. * PI) * n)) % n + n) % n)];
+}
+
+std::pair<double, double> face_slope(const Vec3d &n)
+{
+    return { std::acos(std::clamp(n.z(), -1., 1.)), std::atan2(-n.y(), -n.x()) };
+}
+
+SlopeBand slope_band(double slope, double limit, double max_tilt)
+{
+    constexpr double near_margin = 5. * PI / 180.;
+    if (slope > limit)
+        return slope <= limit + max_tilt ? SlopeBand::Tilt : SlopeBand::Beyond;
+    return slope > limit - std::min(near_margin, 0.25 * limit) ? SlopeBand::Near : SlopeBand::Within;
+}
+
+double preview_pitch(const Vec2d &size, double pitch)
+{
+    constexpr double max_nodes = 4000000.;
+    return size.x() * size.y() / (pitch * pitch) > max_nodes ? std::sqrt(size.x() * size.y() / max_nodes) : pitch;
+}
+
 }
