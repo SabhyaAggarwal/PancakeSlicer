@@ -270,6 +270,22 @@ export function nextFreeSpot(objects: PlateObject[], o: PlateObject, area: THREE
   return null;
 }
 
+export function nearestFreeSpot(objects: PlateObject[], size: THREE.Vector2, from: THREE.Vector2, area: THREE.Vector2[]): THREE.Vector2 | null {
+  const { min, max } = bedBounds(area);
+  const boxes = objects.flatMap((ob) => ob.instances.map((i) => instanceBox(ob, i)));
+  const step = Math.max(2, Math.min(size.x, size.y) / 4);
+  const hx = size.x / 2 + 1, hy = size.y / 2 + 1;
+  let best: THREE.Vector2 | null = null;
+  for (let y = min.y + hy; y <= max.y - hy; y += step)
+    for (let x = min.x + hx; x <= max.x - hx; x += step) {
+      const p = new THREE.Vector2(x, y);
+      if (best && p.distanceTo(from) >= best.distanceTo(from)) continue;
+      const cand = new THREE.Box3(new THREE.Vector3(x - hx, y - hy, -1), new THREE.Vector3(x + hx, y + hy, 1e4));
+      if (!boxes.some((b) => b.intersectsBox(cand))) best = p;
+    }
+  return best;
+}
+
 export function outsideBed(objects: PlateObject[], area: THREE.Vector2[], height: number): Set<number> {
   const out = new Set<number>();
   const poly = area;

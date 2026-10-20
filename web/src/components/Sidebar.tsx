@@ -1,5 +1,6 @@
 import { OPTIONS, type OptionMode } from '../options';
 import { compatible, getState, markStale, printerPreset, setState, useStore } from '../state/store';
+import { undoable } from '../state/history';
 import { lazy, Suspense } from 'react';
 import { flushModified } from '../flush-state';
 import { Icon, IconButton } from './Icon';
@@ -45,7 +46,7 @@ function PrinterSection() {
               Nozzle {nozzleText ?? '—'} mm
             </span>
             {showBed && (
-              <select className="combo bed-combo" title="Plate type" value={bedType} onChange={(e) => setState({ bedType: e.target.value })}>
+              <select className="combo bed-combo" title="Plate type" value={bedType} onChange={(e) => undoable('Change plate type', () => setState({ bedType: e.target.value }))}>
                 {bedDef!.enum_values!.map((v, i) =>
                   machine?.not_support_bed_type?.some((b) => b === v || b === bedDef!.enum_labels?.[i]) ? null : (
                     <option key={v} value={v}>
@@ -69,25 +70,25 @@ function FilamentSection() {
   useStore((s) => s.projectMaterials);
   const s = getState();
   const add = () =>
-    setState((st) => {
+    undoable('Add filament', () => setState((st) => {
       const fils = compatible(st, 'filament');
       const last = st.filamentSlots[st.filamentSlots.length - 1] ?? fils[0]?.name ?? '';
       return { filamentSlots: [...st.filamentSlots, last] };
-    });
+    }));
   const remove = () =>
-    setState((st) => ({
+    undoable('Remove filament', () => setState((st) => ({
       filamentSlots: st.filamentSlots.length > 1 ? st.filamentSlots.slice(0, -1) : st.filamentSlots,
       slotColours: st.slotColours.slice(0, st.filamentSlots.length - 1),
       objects: st.objects.map((o) => (o.extruder >= st.filamentSlots.length ? { ...o, extruder: 1 } : o)),
       events: st.events.filter((e) => e.type !== 'change' || Number(e.text) < st.filamentSlots.length),
-    }));
+    })));
   const flushChanged = useStore((st) => flushModified(st));
   const pickColour = (i: number, colour: string) =>
-    setState((st) => {
+    undoable('Change filament colour', () => setState((st) => {
       const slotColours = [...st.slotColours];
       slotColours[i] = colour.toUpperCase();
       return { slotColours, job: markStale(st.job) };
-    });
+    }), `colour:${i}`);
   return (
     <div className="side-section">
       <SectionTitle icon="filament" title="Filament">

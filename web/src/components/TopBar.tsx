@@ -1,6 +1,8 @@
 import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { arrangeAll, canExport, fileUse, STALE_RESULT_TIP, download, newProject, openFileDialog, openProjectDialog, outputKind, outsideVolumeWarning, saveProject, slice } from '../actions';
 import { deleteAll, removeSelected, setState, useStore } from '../state/store';
+import { canPaste, copySelection, pasteClipboard, selectAll } from '../edit';
+import { historyVersion, redo, redoName, subscribeHistory, undo, undoName } from '../state/history';
 import { CAMERA_VIEWS, VIEW_DIRECTIONS, cameraCommand, cameraSnapshot, subscribeCamera, perspective, autoPerspective } from '../camera';
 import { Icon } from './Icon';
 
@@ -55,11 +57,15 @@ function Menu({ title, items }: { title: string; items: MenuItem[] }) {
 export function TopBar() {
   const [aboutOpen, setAboutOpen] = useState(false);
   useSyncExternalStore(subscribeCamera, cameraSnapshot);
+  useSyncExternalStore(subscribeHistory, historyVersion);
+  const undoLabel = undoName(), redoLabel = redoName();
+  const mod = /Mac/.test(navigator.platform) ? 'Cmd' : 'Ctrl';
   const exportEnabled = useStore(canExport);
   const stale = useStore((s) => s.job.stale);
   const hasObjects = useStore((s) => s.objects.length > 0);
   const hasProjectObjects = useStore((s) => s.objects.length > 0 || s.projectPlates.some((p) => p.objects.length > 0));
   const hasSel = useStore((s) => !!s.selected);
+  const pasteEnabled = useStore(canPaste);
   const mock = useStore((s) => s.api?.mock);
   const name = useStore((s) => (s.project?.name ?? s.objects[0]?.name)?.replace(/\.(stl|obj|3mf)$/i, ''));
   const kind = useStore(outputKind);
@@ -75,6 +81,7 @@ export function TopBar() {
           { label: 'Save Project', shortcut: 'Ctrl+S', action: () => void saveProject(), disabled: !hasProjectObjects, tip: 'Save current project to file' },
           { label: 'Save Project as...', shortcut: 'Ctrl+Shift+S', action: () => void saveProject(true), disabled: !hasProjectObjects, tip: 'Save current project as' },
           { label: 'Open Project...', shortcut: 'Ctrl+O', action: openProjectDialog, tip: 'Open a project file' },
+          { label: 'Recent projects...', action: () => setState({ sessionDialog: 'recent' }) },
           'sep',
           { label: 'Import 3MF/STL/STEP/SVG/OBJ/AMF...', shortcut: 'Ctrl+I', action: openFileDialog, tip: 'Load a model' },
           'sep',
@@ -90,8 +97,16 @@ export function TopBar() {
       <Menu
         title="Edit"
         items={[
-          { label: 'Delete selected', shortcut: 'Del', action: removeSelected, disabled: !hasSel },
-          { label: 'Delete all', shortcut: 'Ctrl+Del', action: deleteAll, disabled: !hasObjects },
+          { label: undoLabel ? `Undo ${undoLabel}` : 'Undo', shortcut: `${mod}+Z`, action: undo, disabled: !undoLabel },
+          { label: redoLabel ? `Redo ${redoLabel}` : 'Redo', shortcut: `${mod}+Y`, action: redo, disabled: !redoLabel },
+          'sep',
+          { label: 'Copy', shortcut: 'Ctrl+C', action: copySelection, disabled: !hasSel, tip: 'Copy selection to clipboard' },
+          { label: 'Paste', shortcut: 'Ctrl+V', action: pasteClipboard, disabled: !pasteEnabled, tip: 'Paste clipboard' },
+          { label: 'Delete selected', shortcut: 'Del', action: removeSelected, disabled: !hasSel, tip: 'Deletes the current selection' },
+          { label: 'Delete all', shortcut: 'Ctrl+Del', action: deleteAll, disabled: !hasObjects, tip: 'Deletes all objects' },
+          'sep',
+          { label: 'Select All', shortcut: 'Ctrl+A', action: selectAll, disabled: !hasObjects, tip: 'Selects all objects' },
+          { label: 'Deselect All', shortcut: 'Esc', action: () => setState({ selected: null }), disabled: !hasSel, tip: 'Deselects all objects' },
           'sep',
           { label: 'Arrange', shortcut: 'A', action: arrangeAll, disabled: !hasObjects },
           'sep',
@@ -122,6 +137,12 @@ export function TopBar() {
           { label: 'About OrcaSlicer', action: () => setAboutOpen(true), tip: 'Version, licence and Corresponding Source' },
         ]}
       />
+      <button type="button" className="icon-btn topbar-btn" title={undoLabel ? `Undo ${undoLabel} (${mod}+Z)` : 'Undo'} aria-label="Undo" disabled={!undoLabel} onClick={undo}>
+        <Icon name={undoLabel ? 'topbar_undo' : 'topbar_undo_inactive'} size={20} />
+      </button>
+      <button type="button" className="icon-btn topbar-btn" title={redoLabel ? `Redo ${redoLabel} (${mod}+Y)` : 'Redo'} aria-label="Redo" disabled={!redoLabel} onClick={redo}>
+        <Icon name={redoLabel ? 'topbar_redo' : 'topbar_redo_inactive'} size={20} />
+      </button>
       {aboutOpen && <Suspense fallback={<div role="status">Loading About…</div>}><About close={() => setAboutOpen(false)} /></Suspense>}
       <div className="topbar-title">
         {name ?? 'Untitled'}

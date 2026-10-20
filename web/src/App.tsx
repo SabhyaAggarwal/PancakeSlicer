@@ -7,15 +7,21 @@ const PlateChoice = lazy(() => import('./components/PlateChoice'));
 const EmptyPlate = lazy(() => import('./components/FirstRun'));
 const Plater3D = lazy(() => import('./plater/Plater3D'));
 import { deleteAll, getState, removeSelected, setState, togglePrintable, useStore } from './state/store';
+import { copySelection, pasteClipboard, selectAll, startRename } from './edit';
+const ContextMenu = lazy(() => import('./components/ContextMenu'));
+import { redo, undo } from './state/history';
 
 const PresetDialog = lazy(() => import('./components/Dialogs').then((m) => ({ default: m.PresetDialog })));
 const FlushDialog = lazy(() => import('./components/FlushDialog').then((m) => ({ default: m.FlushDialog })));
 const PreviewView = lazy(() => import('./components/PreviewView').then((m) => ({ default: m.PreviewView })));
+const SessionDialog = lazy(() => import('./components/SessionDialog'));
 
 export default function App() {
   const multiPlate = useStore((s) => s.projectPlates.length > 1);
   const dialog = useStore((s) => s.dialog);
   const flushDialog = useStore((s) => s.flushDialog);
+  const contextMenu = useStore((s) => !!s.contextMenu);
+  const sessionDialog = useStore((s) => s.sessionDialog);
   const tab = useStore((s) => s.tab);
   const loading = useStore((s) => s.loading);
   const jobDone = useStore((s) => s.job.state === 'done');
@@ -26,14 +32,19 @@ export default function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.closest('input,select,textarea') || getState().dialog || getState().flushDialog) return;
+      if ((e.target as HTMLElement)?.closest('input,select,textarea') || getState().dialog || getState().flushDialog || getState().sessionDialog) return;
       const ctrl = e.ctrlKey || e.metaKey;
-      if (ctrl && e.key.toLowerCase() === 'i') openFileDialog();
+      if (ctrl && e.key.toLowerCase() === 'z') e.shiftKey ? redo() : undo();
+      else if (ctrl && e.key.toLowerCase() === 'y') redo();
+      else if (ctrl && e.key.toLowerCase() === 'i') openFileDialog();
       else if (ctrl && e.key.toLowerCase() === 'o') openProjectDialog();
       else if (ctrl && e.key.toLowerCase() === 'n') newProject();
       else if (ctrl && e.key.toLowerCase() === 's') void saveProject(e.shiftKey);
       else if (ctrl && e.key.toLowerCase() === 'g') download();
       else if (ctrl && e.key === 'Delete') deleteAll();
+      else if (ctrl && e.key.toLowerCase() === 'a' && !e.shiftKey) selectAll();
+      else if (ctrl && e.key.toLowerCase() === 'c' && !window.getSelection()?.toString()) copySelection();
+      else if (ctrl && e.key.toLowerCase() === 'v') pasteClipboard();
       else if (ctrl) return;
       else if (e.key === 'Delete' || e.key === 'Backspace') removeSelected();
       else if (e.key.toLowerCase() === 'q') toolbarOperation('orient', e.shiftKey);
@@ -43,6 +54,8 @@ export default function App() {
       else if (e.key === 'm' || e.key === 'M') setState((s) => ({ gizmo: s.gizmo === 'move' ? 'none' : 'move' }));
       else if (e.key === 'r' || e.key === 'R') setState((s) => ({ gizmo: s.gizmo === 'rotate' ? 'none' : 'rotate' }));
       else if (e.key === 's' || e.key === 'S') setState((s) => ({ gizmo: s.gizmo === 'scale' ? 'none' : 'scale' }));
+      else if (e.key === 'f' || e.key === 'F') setState((s) => ({ gizmo: s.gizmo === 'flatten' || !s.selected || s.selected.all ? 'none' : 'flatten' }));
+      else if (e.key === 'F2') startRename();
       else if (e.key.toLowerCase() === 'v') { const selected = getState().selected; if (selected) togglePrintable(selected.object, selected.allInstances ? undefined : selected.instance); }
       else if (e.key === 'Escape') setState({ selected: null, gizmo: 'none' });
       else return;
@@ -94,6 +107,8 @@ export default function App() {
       <Suspense fallback={<div role="status">Loading dialog…</div>}>
         {dialog && <PresetDialog />}
         {flushDialog && <FlushDialog />}
+        {contextMenu && <ContextMenu />}
+        {sessionDialog && <SessionDialog />}
       </Suspense>
       <Toast />
     </div>

@@ -3,6 +3,7 @@ import type { Config, ConfigValue } from '../api/types';
 import { isHidden, OPTIONS, useTab } from '../options';
 import objectKeys from '../object_options.json';
 import { effectiveConfig, getState, removeObjectOptions, setObjectOption, useStore } from '../state/store';
+import { undoable } from '../state/history';
 import { environment, fieldDefinition, optionState } from '../visibility';
 import { Field } from './Field';
 import { Icon, IconButton } from './Icon';
@@ -59,10 +60,10 @@ export function ObjectSettings() {
       </div>
     );
 
-  const add = (keys: string[], remove: string[] = []) => {
+  const add = (keys: string[], remove: string[] = []) => undoable('Add Settings', () => {
     for (const k of keys) if (!(k in object.settings)) setObjectOption(object.id, k, global[k] ?? (OPTIONS[k]?.default as ConfigValue) ?? '');
     if (remove.length) removeObjectOptions(object.id, remove);
-  };
+  });
   const state = getState();
   const machine = effectiveConfig(state, 'machine');
   const env = environment([machine, global, object.settings], {

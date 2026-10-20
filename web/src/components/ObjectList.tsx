@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { OPTIONS, useTab } from '../options';
 import { getState, setState, updateObject, updateInstance, togglePrintable, useStore } from '../state/store';
+import { renameObject, startRename } from '../edit';
+import { undoable } from '../state/history';
 import { filamentColor } from '../plater/filamentColor';
 import { instanceBox } from '../plater/geometry';
 import { Icon } from './Icon';
@@ -16,16 +18,17 @@ export function ObjectList() {
   const slots = useStore((s) => s.filamentSlots);
   const project = useStore((s) => s.project);
   const record = useStore((s) => (s.job.state === 'done' && !s.job.stale ? (s.job.status?.record as SliceRecord | undefined) : undefined));
-  const [menu, setMenu] = useState<{ x: number; y: number; object: number; instance?: number } | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!menu) return;
-    const close = (e: MouseEvent) => { if (!menuRef.current?.contains(e.target as Node)) setMenu(null); };
-    const escape = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenu(null); };
-    window.addEventListener('mousedown', close);
-    window.addEventListener('keydown', escape);
-    return () => { window.removeEventListener('mousedown', close); window.removeEventListener('keydown', escape); };
-  }, [menu]);
+  const renaming = useStore((s) => s.renaming);
+  const openMenu = (e: React.MouseEvent, object: number, instance?: number) => {
+    e.preventDefault();
+    const o = getState().objects.find((ob) => ob.id === object)!;
+    const sel = getState().selected;
+    const inSelection = sel?.all || (sel?.object === object && (instance === undefined ? sel.allInstances : sel.instance === instance));
+    setState({
+      ...(inSelection ? {} : { selected: instance === undefined ? { object, instance: o.instances[0].id, allInstances: true } : { object, instance } }),
+      contextMenu: { x: e.clientX, y: e.clientY, object, instance },
+    });
+  };
   const printableButton = (object: number, printable: boolean, instance?: number) => (
     <button className="ol-printable" aria-label="Printable" aria-pressed={printable}
       title="Click the icon to toggle printable properties of the object"
@@ -36,18 +39,10 @@ export function ObjectList() {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState<Record<number, boolean>>({});
   const s = getState();
-  const menuPrintable = objects.find((o) => o.id === menu?.object)?.instances.find((i) => menu?.instance === undefined || i.id === menu.instance)?.printable !== false;
   const shown = objects.filter((o) => o.name.toLowerCase().includes(query.toLowerCase()));
 
   return (
     <div className="object-list">
-      {menu && <div ref={menuRef} role="menu" className="menu-pop ol-menu" style={{ left: Math.min(menu.x, window.innerWidth - 180), top: Math.min(menu.y, window.innerHeight - 50) }}>
-        <button className="menu-item" role="menuitemcheckbox"
-          aria-checked={menuPrintable}
-          onClick={() => { togglePrintable(menu.object, menu.instance); setMenu(null); }}>
-          <span>{menuPrintable ? '✓ ' : '　'}Printable</span><span>V</span>
-        </button>
-      </div>}
       <div className="search-bar">
         <Icon name="search" size={16} />
         <input placeholder="Search plate, object and part." value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -60,7 +55,7 @@ export function ObjectList() {
       </div>
       <div className="ol-body">
         {shown.map((o) => {
-          const objSelected = selected?.object === o.id;
+          const objSelected = selected?.object === o.id || !!selected?.all;
           const multi = o.instances.length > 1;
           const sinking = !o.project?.placeholder && o.instances.some((i) => { const b = instanceBox(o, i); return b.min.z < -0.001 && b.max.z >= -0.001; });
           const nSettings = Object.keys(o.settings).length;
@@ -68,8 +63,9 @@ export function ObjectList() {
             <div key={o.id}>
               <div
                 className={`ol-row ${objSelected ? 'selected' : ''}`}
-                onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, object: o.id }); }}
+                onContextMenu={(e) => openMenu(e, o.id)}
                 onClick={() => setState({ selected: { object: o.id, instance: o.instances[0].id, allInstances: true } })}
+                onDoubleClick={() => startRename(o.id)}
               >
                 <span className="ol-name">
                   {multi ? (
@@ -86,9 +82,20 @@ export function ObjectList() {
                     <span className="ol-expand" />
                   )}
                   <Icon name="obj_printable" size={14} />
-                  <span className="ol-text" title={o.project?.placeholder ? `${o.name} — reading the mesh from the project` : o.name}>
-                    {o.name}
-                  </span>
+                  {renaming === o.id ? (
+                    <input className="ol-rename" aria-label="Object name" defaultValue={o.name} autoFocus
+                      onFocus={(e) => e.target.select()}
+                      onClick={(e) => e.stopPropagation()}
+                      onBlur={(e) => renameObject(o.id, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                        else if (e.key === 'Escape') setState({ renaming: null });
+                      }} />
+                  ) : (
+                    <span className="ol-text" title={o.project?.placeholder ? `${o.name} — reading the mesh from the project` : o.name}>
+                      {o.name}
+                    </span>
+                  )}
                   {o.project?.placeholder && (
                     <span className="ol-badge" title={o.project.missing ? 'The project holds no mesh this browser can read for this object' : undefined}>
                       {o.project.missing ? 'no mesh' : 'loading'}
@@ -112,7 +119,7 @@ export function ObjectList() {
                   ))}
                 </select>
                 <span className="ol-status">{sinking && <button className="ol-sinking" title="Click the icon to shift this object to the bed"
-                  onClick={(e) => { e.stopPropagation(); o.instances.forEach((i) => updateInstance(o.id, i.id, { z: 0 })); }} disabled={!!o.project?.placeholder}>
+                  onClick={(e) => { e.stopPropagation(); undoable('Drop to bed', () => o.instances.forEach((i) => updateInstance(o.id, i.id, { z: 0 }))); }} disabled={!!o.project?.placeholder}>
                   <Icon name="objlist_sinking" size={16} />
                 </button>}</span>
               </div>
@@ -135,7 +142,7 @@ export function ObjectList() {
                     <div
                       key={inst.id}
                       className={`ol-row ol-child2 ${selected?.instance === inst.id ? 'selected' : ''}`}
-                      onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, object: o.id, instance: inst.id }); }}
+                      onContextMenu={(e) => openMenu(e, o.id, inst.id)}
                       onClick={() => setState({ selected: { object: o.id, instance: inst.id } })}
                     >
                       <span className="ol-name">Instance {k + 1}</span>

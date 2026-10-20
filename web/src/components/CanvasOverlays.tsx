@@ -1,8 +1,8 @@
 import { slicingText } from '../api/progress';
 import { accessNotice, accessSnapshot, saveAccessToken, subscribeAccess } from '../api/access';
 import { useEffect, useState, useSyncExternalStore } from 'react';
+import * as THREE from 'three';
 import { addInstance, arrangeAll, cancelSlice, download, fileUse, openFileDialog, outputKind, removeInstance, toolbarOperation, outsideVolumeWarning } from '../actions';
-import { objectSize } from '../plater/geometry';
 import { printerPreset, setState, updateInstance, updateObject, useStore, type Gizmo } from '../state/store';
 import { Icon, IconButton } from './Icon';
 
@@ -30,7 +30,7 @@ export function CanvasToolbar() {
   const toggle = (g: Gizmo) => setState({ gizmo: gizmo === g ? 'none' : g });
   const locked = project ? ' — instances cannot be added or removed from an opened project' : '';
   const placeholder = useStore((s) => s.objects.find((o) => o.id === s.selected?.object)?.project?.placeholder);
-  const edit = !!sel && !placeholder;
+  const edit = !!sel && !placeholder && !sel.all;
   return (
     <div className="canvas-toolbar">
       <IconButton size={24} icon="toolbar_open" title="Add (Ctrl+I)" onClick={openFileDialog} />
@@ -48,7 +48,7 @@ export function CanvasToolbar() {
       <IconButton size={24} icon="toolbar_move" title="Move (M)" active={gizmo === 'move'} onClick={() => toggle('move')} disabled={!edit} />
       <IconButton size={24} icon="toolbar_rotate" title="Rotate (R)" active={gizmo === 'rotate'} onClick={() => toggle('rotate')} disabled={!edit} />
       <IconButton size={24} icon="toolbar_scale" title="Scale (S)" active={gizmo === 'scale'} onClick={() => toggle('scale')} disabled={!edit} />
-      <IconButton size={24} icon="toolbar_flatten" title="Lay on Face (F)" disabled />
+      <IconButton size={24} icon="toolbar_flatten" title="Lay on Face (F)" active={gizmo === 'flatten'} onClick={() => toggle('flatten')} disabled={!edit} />
       {LATER_GIZMOS.map(([icon, title]) => (
         <IconButton key={icon} size={24} icon={icon} title={title} disabled />
       ))}
@@ -75,9 +75,13 @@ export function ManipulationPanel() {
   const gizmo = useStore((s) => s.gizmo);
   const o = useStore((s) => s.objects.find((ob) => ob.id === s.selected?.object));
   const instId = useStore((s) => s.selected?.instance);
+  const uniform = useStore((s) => s.uniformScale);
   const inst = o?.instances.find((i) => i.id === instId);
-  if (!o || !inst || gizmo === 'none' || o.project?.placeholder) return null;
-  const size = objectSize(o);
+  if (!o || !inst || gizmo === 'none' || gizmo === 'flatten' || o.project?.placeholder) return null;
+  const mesh = o.geometry.boundingBox!.getSize(new THREE.Vector3());
+  const rescale = (axis: number, factor: number) => updateObject(o.id, {
+    scale: o.scale.map((v, k) => (uniform || k === axis ? v * factor : v)) as [number, number, number],
+  });
   return (
     <div className="manip-panel">
       <div className="manip-title">{gizmo === 'move' ? 'Move' : gizmo === 'rotate' ? 'Rotate' : 'Scale'}</div>
@@ -96,19 +100,18 @@ export function ManipulationPanel() {
         <Num value={inst.rotZ} onCommit={(rotZ) => updateInstance(o.id, inst.id, { rotZ })} />
         <span>Scale %</span>
         {[0, 1, 2].map((a) => (
-          <Num key={a} value={o.scale[a] * 100} onCommit={(v) => updateObject(o.id, { scale: o.scale.map(() => Math.max(0.1, v) / 100) as [number, number, number] })} />
+          <Num key={a} value={Math.abs(o.scale[a]) * 100} onCommit={(v) => rescale(a, Math.max(0.1, v) / 100 / Math.abs(o.scale[a]))} />
         ))}
         <span>Size mm</span>
-        {(['x', 'y', 'z'] as const).map((a) => (
-          <Num
-            key={a}
-            value={size[a]}
-            onCommit={(v) => {
-              const f = Math.max(0.01, v) / Math.max(1e-6, size[a]);
-              updateObject(o.id, { scale: o.scale.map((sv) => sv * f) as [number, number, number] });
-            }}
-          />
+        {(['x', 'y', 'z'] as const).map((a, k) => (
+          <Num key={a} value={Math.abs(o.scale[k]) * mesh[a]} onCommit={(v) => rescale(k, Math.max(0.01, v) / Math.max(1e-6, Math.abs(o.scale[k]) * mesh[a]))} />
         ))}
+        {gizmo === 'scale' && (
+          <label className="manip-lock">
+            <input type="checkbox" checked={uniform} onChange={(e) => setState({ uniformScale: e.target.checked })} />
+            Uniform scale
+          </label>
+        )}
       </div>
     </div>
   );

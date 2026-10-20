@@ -1,6 +1,7 @@
 import type { PresetType } from '../api/types';
 import { choosePrinter } from '../actions';
 import { compatible, getState, presetEdits, setState, useStore } from '../state/store';
+import { undoable } from '../state/history';
 
 export function PresetCombo({ type, slot = 0, className }: { type: PresetType; slot?: number; className?: string }) {
   const value = useStore((s) => (type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot] ?? ''));
@@ -20,17 +21,17 @@ export function PresetCombo({ type, slot = 0, className }: { type: PresetType; s
   const onChange = (name: string) => {
     if (type !== 'filament' && dirty && !window.confirm('The current preset has unsaved changes. Discard them?')) return;
     if (type === 'machine') {
-      choosePrinter(name);
+      undoable('Change printer', () => choosePrinter(name));
       return;
     }
-    setState((st) => ({
+    undoable(type === 'process' ? 'Change process preset' : 'Change filament preset', () => setState((st) => ({
       dirty: type === 'process' ? { ...st.dirty, process: {} } : st.dirty,
       projectPresets: st.projectPresets && (type === 'process'
         ? { ...st.projectPresets, process: {} }
         : { ...st.projectPresets, filaments: st.projectPresets.filaments.map((f, i) => i === slot ? {} : f) }),
       ...(type === 'process' ? { process: name } : { filamentSlots: st.filamentSlots.map((f, i) => (i === slot ? name : f)) }),
       job: st.job.state === 'done' ? { ...st.job, stale: true } : st.job,
-    }));
+    })));
   };
 
   return (

@@ -3,6 +3,7 @@ import { overrides, plateSignature } from '../slice-input';
 import { jobValue } from '../options';
 import { mutation, responseError } from '../api/access';
 import { getState, newId, printerPreset, resolvePreset, setState, toast, type PlateObject } from '../state/store';
+import { undoable } from '../state/history';
 import { bakeStl, instanceMatrix, loadMesh, objectMatrix, request } from './geometry';
 
 const DEG = Math.PI / 180;
@@ -95,8 +96,8 @@ export async function run(operation: 'orient' | 'split', all: boolean) {
     if (signature !== plateSignature(getState())) throw new Error('The plate changed during the operation. Try again.');
     const next = s.objects.flatMap((o) => replacements.get(o.id) ?? [o]);
     const first = replacements.get(objects[0].id)![0];
-    setState({ objects: next, selected: { object: first.id, instance: first.instances[0].id }, toast: null });
-    if (operation === 'split') objects.forEach((o) => o.geometry.dispose());
+    undoable(operation === 'orient' ? 'Orient' : 'Split to Objects',
+      () => setState({ objects: next, selected: { object: first.id, instance: first.instances[0].id }, toast: null }));
   } catch (error) {
     created.forEach((o) => o.geometry.dispose());
     toast(error instanceof Error ? error.message : String(error));

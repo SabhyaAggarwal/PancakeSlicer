@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { MAX_FLUSH_VOLUME, minFlushVolumes, MULTIPLIER_RANGE, parseColour, predictorMinFlush } from '../flush';
 import { autoFlushMatrix, currentFlush, flushInputs } from '../flush-state';
 import { markStale, setState, useStore } from '../state/store';
+import { undoable } from '../state/history';
 
 const TYPICAL_MAX_FLUSH_VOLUME = 900;
 
@@ -55,14 +56,14 @@ function FlushTable() {
     const matrix = raw.map((v) => Math.min(Math.max(v, 0), limit));
     const same = matrix.every((v, i) => v === auto[i]);
     const matrixChanged = raw.some((v, i) => v !== init.matrix[i]);
-    setState((st) => ({
+    undoable('Flushing volumes', () => setState((st) => ({
       flush: {
         matrix: st.project && !matrixChanged ? st.flush.matrix : same && !st.project ? null : matrix,
         multiplier: st.project && mult === init.multiplier ? st.flush.multiplier : mult,
       },
       flushDialog: false,
       job: markStale(st.job),
-    }));
+    })));
   };
   const outOfRange = raw.some((_, i) => Math.floor(i / n) !== i % n && (shown(i) < minVol || shown(i) > MAX_FLUSH_VOLUME));
 

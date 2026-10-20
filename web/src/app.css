@@ -362,3 +362,21 @@ fieldset.opt-field:disabled { opacity: .5; }
 .about-body { padding: 8px 20px; line-height: 1.5; }
 .about-body h2 { font-size: 18px; }
 .about-revision { font-size: 11px; overflow-wrap: anywhere; color: #666; }
+.ctx-menu { position: fixed; z-index: 200; min-width: 210px; }
+.ctx-entry { position: relative; }
+.ctx-sub { top: -5px; left: 100%; min-width: 170px; z-index: 201; }
+.ol-rename { flex: 1; min-width: 0; height: 20px; font: inherit; padding: 0 3px; }
+.manip-lock { grid-column: 2 / span 3; display: flex; align-items: center; gap: 6px; }
+
+.topbar .topbar-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); }
+.topbar .topbar-btn:disabled { opacity: 1; }
+
+.session-offer { display: flex; gap: 14px; padding: 16px; align-items: flex-start; }
+.session-thumb { width: 160px; height: 100px; object-fit: cover; border: 1px solid var(--border); flex: none; background: #f2f2f2; }
+.session-name { display: block; font-weight: 600; margin-bottom: 4px; overflow-wrap: anywhere; }
+.session-meta { display: block; font-size: 12px; color: var(--text-dim); }
+.session-list { overflow: auto; padding: 4px 0; display: flex; flex-direction: column; }
+.session-row { display: flex; align-items: center; padding-right: 8px; }
+.session-row:hover { background: #e5f0ee; }
+.session-open { flex: 1; display: flex; gap: 10px; align-items: center; text-align: left; border: 0; background: none; padding: 4px 12px; cursor: pointer; color: inherit; font: inherit; }
+.session-open .session-thumb { width: 64px; height: 40px; }

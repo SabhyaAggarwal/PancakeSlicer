@@ -152,6 +152,7 @@ export function bakeStl(p: Float32Array, index: Uint32Array | Uint16Array | null
     tp[i + 2] = m[2] * x + m[6] * y + m[10] * z + m[14];
   }
   const tris = (index ? index.length : p.length / 3) / 3;
+  const flip = m[0] * (m[5] * m[10] - m[9] * m[6]) - m[4] * (m[1] * m[10] - m[9] * m[2]) + m[8] * (m[1] * m[6] - m[5] * m[2]) < 0;
   const head = new ArrayBuffer(84);
   new TextEncoder().encodeInto('OrcaSlicer web plate object', new Uint8Array(head, 0, 80));
   new DataView(head).setUint32(80, tris, true);
@@ -163,7 +164,9 @@ export function bakeStl(p: Float32Array, index: Uint32Array | Uint16Array | null
     const count = Math.min(PER, tris - t0);
     const out = new Uint8Array(count * 50);
     for (let t = t0, off = 0; t < t0 + count; t++, off += 50) {
-      const a = 3 * (index ? index[3 * t] : 3 * t), b = 3 * (index ? index[3 * t + 1] : 3 * t + 1), c = 3 * (index ? index[3 * t + 2] : 3 * t + 2);
+      const a = 3 * (index ? index[3 * t] : 3 * t);
+      let b = 3 * (index ? index[3 * t + 1] : 3 * t + 1), c = 3 * (index ? index[3 * t + 2] : 3 * t + 2);
+      if (flip) [b, c] = [c, b];
       const cbx = tp[c] - tp[b], cby = tp[c + 1] - tp[b + 1], cbz = tp[c + 2] - tp[b + 2];
       const abx = tp[a] - tp[b], aby = tp[a + 1] - tp[b + 1], abz = tp[a + 2] - tp[b + 2];
       const nx = cby * abz - cbz * aby, ny = cbz * abx - cbx * abz, nz = cbx * aby - cby * abx;

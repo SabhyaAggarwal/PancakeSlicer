@@ -4,7 +4,8 @@ import * as THREE from 'three';
 import type { Api } from '../api/client';
 import type { Config, ConfigValue, JobStatus, PresetType, SystemPreset, UserPreset } from '../api/types';
 import type { ProjectPlate } from '../plater/threemf';
-import type { OptionMode } from '../options';
+import { OPTIONS, type OptionMode } from '../options';
+import { undoable } from './history';
 
 export interface Instance {
   id: number;
@@ -36,7 +37,7 @@ export interface LayerEvent {
 }
 
 export type MainTab = 'prepare' | 'preview';
-export type Gizmo = 'none' | 'move' | 'rotate' | 'scale';
+export type Gizmo = 'none' | 'move' | 'rotate' | 'scale' | 'flatten';
 
 export interface JobView {
   id?: string;
@@ -70,8 +71,12 @@ export interface State {
   tab: MainTab;
   dialog: { type: 'machine' | 'filament'; slot: number } | null;
   objects: PlateObject[];
-  selected: { object: number; instance: number; allInstances?: boolean } | null;
+  selected: { object: number; instance: number; allInstances?: boolean; all?: boolean } | null;
   gizmo: Gizmo;
+  uniformScale: boolean;
+  contextMenu: { x: number; y: number; object?: number; instance?: number } | null;
+  renaming: number | null;
+  clipboard: PlateObject[];
   processScope: 'global' | 'objects';
   slotColours: (string | undefined)[];
   projectMaterials: { colours: string[]; matrix: number[] | null; multiplier: number | null } | null;
@@ -84,6 +89,7 @@ export interface State {
   projectName: string | null;
   job: JobView;
   toast: string | null;
+  sessionDialog: 'restore' | 'recent' | null;
 }
 
 let state: State = {
@@ -107,6 +113,10 @@ let state: State = {
   objects: [],
   selected: null,
   gizmo: 'none',
+  uniformScale: true,
+  contextMenu: null,
+  renaming: null,
+  clipboard: [],
   processScope: 'global',
   slotColours: [],
   projectMaterials: null,
@@ -119,6 +129,7 @@ let state: State = {
   projectName: null,
   job: { state: 'idle', pct: 0, stage: '' },
   toast: null,
+  sessionDialog: null,
 };
 
 const listeners = new Set<() => void>();
@@ -141,6 +152,7 @@ export function useStore<T>(sel: (s: State) => T): T {
 
 let nextId = 1;
 export const newId = () => nextId++;
+export const reserveIds = (max: number) => { nextId = Math.max(nextId, max + 1); };
 
 export const DEMO_MODELS = ['Bambu Lab A1 mini', 'Bambu Lab A1', 'Bambu Lab P1S', 'Prusa MINI', 'Prusa MINI IS'];
 export const DEFAULT_PRINTER = 'Bambu Lab A1 mini 0.4 nozzle';
@@ -218,19 +230,21 @@ export function presetEdits(s: State, type: PresetType, slot = 0): Config {
   return type === 'filament' ? s.filamentEdits[s.filamentSlots[slot]] ?? EMPTY_EDITS : s.dirty[type];
 }
 
+const settingName = (key: string) => `Change setting "${OPTIONS[key]?.label || key}"`;
+
 export function setOption(type: PresetType, key: string, value: ConfigValue, slot = 0) {
-  setState((s) => {
+  undoable(settingName(key), () => setState((s) => {
     const edits = { ...presetEdits(s, type, slot), [key]: value };
     return {
       ...(type === 'filament' ? { filamentEdits: { ...s.filamentEdits, [s.filamentSlots[slot]]: edits } }
         : { dirty: { ...s.dirty, [type]: edits } }),
       job: markStale(s.job),
     };
-  });
+  }), `${type}:${slot}:${key}`);
 }
 
 export function resetOption(type: PresetType, key: string, slot = 0) {
-  setState((s) => {
+  undoable(`Reset setting "${OPTIONS[key]?.label || key}"`, () => setState((s) => {
     const edits = { ...presetEdits(s, type, slot) };
     delete edits[key];
     return {
@@ -238,7 +252,7 @@ export function resetOption(type: PresetType, key: string, slot = 0) {
         : { dirty: { ...s.dirty, [type]: edits } }),
       job: markStale(s.job),
     };
-  });
+  }));
 }
 
 export async function saveUserPreset(type: PresetType, name: string, slot = 0) {
@@ -278,21 +292,28 @@ export function toast(msg: string) {
   setTimeout(() => getState().toast === msg && setState({ toast: null }), 3500);
 }
 
-export function updateObject(id: number, patch: Partial<PlateObject>) {
-  setState((s) => ({ objects: s.objects.map((o) => (o.id === id ? { ...o, ...patch } : o)), job: markStale(s.job) }));
+function editName(patch: object): string {
+  const k = Object.keys(patch);
+  return k.includes('scale') ? 'Scale' : k.some((x) => x.startsWith('rot')) ? 'Rotate' : k.some((x) => 'xyz'.includes(x)) ? 'Move'
+    : k.includes('extruder') ? 'Change Filament' : k.includes('name') ? 'Rename' : 'Edit object';
 }
 
-export function updateInstance(objectId: number, instanceId: number, patch: Partial<Instance>) {
-  setState((s) => ({
+export function updateObject(id: number, patch: Partial<PlateObject>, name = editName(patch)) {
+  undoable(name, () => setState((s) => ({ objects: s.objects.map((o) => (o.id === id ? { ...o, ...patch } : o)), job: markStale(s.job) })));
+}
+
+export function updateInstance(objectId: number, instanceId: number, patch: Partial<Instance>, name = editName(patch)) {
+  undoable(name, () => setState((s) => ({
     objects: s.objects.map((o) =>
       o.id === objectId ? { ...o, instances: o.instances.map((i) => (i.id === instanceId ? { ...i, ...patch } : i)) } : o,
     ),
     job: markStale(s.job),
-  }));
+  })));
 }
 
 export function removeSelected() {
-  setState((s) => {
+  if (state.selected?.all) return deleteAll();
+  undoable('Delete selected', () => setState((s) => {
     if (!s.selected) return {};
     if (s.objects.some((o) => o.project)) return {};
     const objects = s.objects
@@ -301,22 +322,22 @@ export function removeSelected() {
       )
       .filter((o) => o.instances.length > 0);
     return { objects, selected: null, job: markStale(s.job) };
-  });
-}
-
-export function deleteAll() {
-  setState((s) => ({ objects: [], selected: null, project: null, projectPlates: [], plateIndex: 1, projectName: null, projectMaterials: null, projectPresets: null, projectNotice: null, job: markStale(s.job) }));
-}
-
-export function setObjectOption(id: number, key: string, value: ConfigValue) {
-  setState((s) => ({
-    objects: s.objects.map((o) => (o.id === id ? { ...o, settings: { ...o.settings, [key]: value } } : o)),
-    job: markStale(s.job),
   }));
 }
 
+export function deleteAll() {
+  undoable('Delete all', () => setState((s) => ({ objects: [], selected: null, project: null, projectPlates: [], plateIndex: 1, projectName: null, projectMaterials: null, projectPresets: null, projectNotice: null, job: markStale(s.job) })));
+}
+
+export function setObjectOption(id: number, key: string, value: ConfigValue) {
+  undoable(settingName(key), () => setState((s) => ({
+    objects: s.objects.map((o) => (o.id === id ? { ...o, settings: { ...o.settings, [key]: value } } : o)),
+    job: markStale(s.job),
+  })), `object:${id}:${key}`);
+}
+
 export function removeObjectOptions(id: number, keys: string[]) {
-  setState((s) => ({
+  undoable('Delete Settings', () => setState((s) => ({
     objects: s.objects.map((o) => {
       if (o.id !== id) return o;
       const settings = { ...o.settings };
@@ -324,11 +345,11 @@ export function removeObjectOptions(id: number, keys: string[]) {
       return { ...o, settings };
     }),
     job: markStale(s.job),
-  }));
+  })));
 }
 
-export function setEvents(events: LayerEvent[]) {
-  setState((s) => ({ events: [...events].sort((a, b) => a.z - b.z), job: markStale(s.job) }));
+export function setEvents(events: LayerEvent[], name = 'Edit layer events') {
+  undoable(name, () => setState((s) => ({ events: [...events].sort((a, b) => a.z - b.z), job: markStale(s.job) })));
 }
 
 export { markStale };
@@ -337,5 +358,6 @@ export function togglePrintable(objectId: number, instanceId?: number) {
   const o = state.objects.find((o) => o.id === objectId);
   if (!o) return;
   const printable = (o.instances.find((i) => i.id === instanceId) ?? o.instances[0]).printable === false;
-  updateObject(objectId, { instances: o.instances.map((i) => instanceId === undefined || i.id === instanceId ? { ...i, printable } : i) });
+  updateObject(objectId, { instances: o.instances.map((i) => instanceId === undefined || i.id === instanceId ? { ...i, printable } : i) },
+    printable ? 'Set Printable' : 'Set Unprintable');
 }

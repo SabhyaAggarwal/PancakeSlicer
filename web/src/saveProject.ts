@@ -1,5 +1,6 @@
 import { jobRequest } from './actions';
 import { getState, setState, toast } from './state/store';
+import { markSaved, snapshot } from './state/history';
 
 let savingProject = false;
 
@@ -33,6 +34,7 @@ export async function saveProject(as = false) {
     a.href = href; a.download = name; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(href), 60000);
     setState({ projectName: name });
+    markSaved(snapshot(s));
     toast('Project saved successfully');
   } catch (e) {
     toast(`Save failed: ${e instanceof Error ? e.message : e}`);

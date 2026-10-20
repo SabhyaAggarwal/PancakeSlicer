@@ -11,6 +11,7 @@ import type { ProjectItem } from './plater/threemf';
 import {
   DEFAULT_PRINTER, DEMO_MODELS, effectiveConfig, getState, markStale, newId, printerPreset, resolvePreset, selectPrinter, setState, toast, type PlateObject,
 } from './state/store';
+import { historyDepth, leaveDocument, markSaved, newDocument, undoable } from './state/history';
 
 const VENDORS = ['BBL', 'Prusa'];
 
@@ -92,11 +93,11 @@ export async function importFiles(files: FileList | File[]) {
     }
   }
   if (!added.length) return;
-  setState((s) => {
+  undoable(added.length > 1 ? 'Add objects' : 'Add object', () => setState((s) => {
     const objects = arrange([...s.objects, ...added], bedArea());
     const last = added[added.length - 1];
     return { objects, selected: { object: last.id, instance: last.instances[0].id }, job: s.job.state === 'done' ? { ...s.job, stale: true } : s.job };
-  });
+  }));
 }
 
 function closestPreset(presets: SystemPreset[], config: Config, id: string): SystemPreset | undefined {
@@ -166,6 +167,7 @@ function centreGeometryOnly() {
 export async function openProject(file: File) {
   const s = getState();
   if ((s.objects.length || s.projectPlates.some((p) => p.objects.length)) && !window.confirm('Opening a project replaces the objects on the plate. Continue?')) return;
+  leaveDocument();
   let objects: PlateObject[] = [];
   const patch = (i: number, f: (o: PlateObject) => PlateObject) => {
     const id = objects[i]?.id;
@@ -194,12 +196,14 @@ export async function openProject(file: File) {
           filamentSlots: Array.from({ length: slots }, (_, i) => st.filamentSlots[i] ?? st.filamentSlots[0] ?? ''),
           job: markStale(st.job),
         }));
+        newDocument(true);
       },
       mesh: (i, geometry, centre) =>
         patch(i, (o) => ({ ...o, geometry, project: { ...o.project!, file: file.name, placeholder: false, origin: [centre.x, centre.y, centre.z] }, instances: [{ ...o.instances[0], x: centre.x, y: centre.y, z: centre.z }] })),
       missing: (i) => patch(i, (o) => ({ ...o, project: { ...o.project!, file: file.name, placeholder: true, missing: true } })),
     });
     if (geometryOnly && getState().project === file) centreGeometryOnly();
+    if (getState().project === file && !historyDepth().undo) markSaved();
   } catch (e) {
     toast(`${file.name}: ${e instanceof Error ? e.message : e}`);
   }
@@ -208,7 +212,9 @@ export async function openProject(file: File) {
 export function newProject() {
   const s = getState();
   if ((s.objects.length || s.projectPlates.some((p) => p.objects.length)) && !window.confirm('Start a new project? The objects on the plate are removed.')) return;
+  leaveDocument();
   setState((st) => ({ objects: [], selected: null, project: null, projectPlates: [], plateIndex: 1, projectName: null, projectMaterials: null, projectPresets: null, projectNotice: null, events: [], flush: { matrix: null, multiplier: null }, processScope: 'global', job: markStale(st.job) }));
+  newDocument(true);
 }
 
 export function openProjectDialog() {
@@ -229,7 +235,7 @@ export function openFileDialog() {
 }
 
 export function arrangeAll() {
-  setState((s) => ({ objects: arrange(s.objects, bedArea()) }));
+  undoable('Arrange', () => setState((s) => ({ objects: arrange(s.objects, bedArea()) })));
 }
 
 export function addInstance() {
@@ -239,10 +245,10 @@ export function addInstance() {
   const spot = nextFreeSpot(s.objects, o, bedArea());
   const src = o.instances.find((i) => i.id === s.selected!.instance) ?? o.instances[0];
   const inst = { id: newId(), x: spot?.x ?? src.x, y: spot?.y ?? src.y, rotZ: src.rotZ, z: src.z, printable: src.printable };
-  setState((st) => {
+  undoable('Increase Instances', () => setState((st) => {
     const objects = st.objects.map((ob) => (ob.id === o.id ? { ...ob, instances: [...ob.instances, inst] } : ob));
     return { objects: spot ? objects : arrange(objects, bedArea()), selected: { object: o.id, instance: inst.id } };
-  });
+  }));
 }
 
 export function removeInstance() {
@@ -250,10 +256,10 @@ export function removeInstance() {
   const o = s.objects.find((ob) => ob.id === s.selected?.object);
   if (!o || o.instances.length < 2) return;
   const keep = o.instances.slice(0, -1);
-  setState((st) => ({
+  undoable('Decrease Instances', () => setState((st) => ({
     objects: st.objects.map((ob) => (ob.id === o.id ? { ...ob, instances: keep } : ob)),
     selected: { object: o.id, instance: keep[keep.length - 1].id },
-  }));
+  })));
 }
 
 export { outputKind } from './slice-input';
@@ -266,6 +272,7 @@ export async function jobRequest(s = getState(), saving = false): Promise<JobReq
 }
 
 (window as unknown as { __jobId: unknown }).__jobId = () => getState().job.id;
+(window as unknown as { __signature: unknown }).__signature = () => plateSignature(getState());
 (window as unknown as { __job: unknown }).__job = async () => {
   const r = await jobRequest();
   return {

@@ -3,10 +3,12 @@ import * as THREE from 'three';
 import { CameraViews } from './CameraViews';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { getState, printerPreset, setState, subscribeStore, updateInstance, updateObject, useStore, type State } from '../state/store';
+import { beginStep } from '../state/history';
 import { filamentColor } from './filamentColor';
 import { buildBed } from './Bed';
 import { raycastBvh, type Bvh } from './bvh';
 import { instanceMatrix, outsideBed, parsePoints } from './geometry';
+import { layOnFace, layOnFacePlanes, type LayOnFacePlane } from './transforms';
 
 const OUTSIDE = new THREE.Color(0x4d9ed9);
 
@@ -50,6 +52,12 @@ export default function Plater3D() {
         const t0 = performance.now();
         if (uploads.length) uploadStep();
         renderer.render(scene, views.camera);
+        if (flattenScene.children.length) {
+          renderer.autoClear = false;
+          renderer.clearDepth();
+          renderer.render(flattenScene, views.camera);
+          renderer.autoClear = true;
+        }
         if (frames.length > 4096) frames.splice(0, 2048);
         frames.push({ at: t0, ms: performance.now() - t0 });
       });
@@ -142,7 +150,7 @@ export default function Plater3D() {
         for (const inst of o.instances) {
           const mesh = meshes.get(inst.id);
           if (!mesh) continue;
-          const state = outside.has(inst.id) ? 'outside' : s.selected?.instance === inst.id ? 'selected' : 'normal';
+          const state = outside.has(inst.id) ? 'outside' : s.selected?.instance === inst.id || s.selected?.all ? 'selected' : 'normal';
           mesh.material = material(inst.printable === false ? '#999999' : color, inst.printable === false ? 'normal' : state, !!o.project?.placeholder);
         }
       }
@@ -178,6 +186,7 @@ export default function Plater3D() {
       for (const g of liveGeometries) if (!live.has(g)) g.dispose();
       liveGeometries = live;
       syncGizmo(s);
+      syncFlatten(s);
       render();
     };
 
@@ -189,14 +198,18 @@ export default function Plater3D() {
     scene.add(tcHelper);
     tc.addEventListener('change', render);
     let dragStart: { x: number; y: number; rotX: number; rotY: number; rotZ: number; scale: [number, number, number] } | null = null;
+    let endStep: (() => void) | null = null;
     tc.addEventListener('dragging-changed', (e) => {
+      endStep?.();
+      endStep = (e as unknown as { value: boolean }).value
+        ? beginStep(tc.mode === 'translate' ? 'Move' : tc.mode === 'rotate' ? 'Rotate' : 'Scale') : null;
       controls.enabled = !(e as unknown as { value: boolean }).value;
       const s = getState();
       const o = s.objects.find((ob) => ob.id === s.selected?.object);
       const i = o?.instances.find((ii) => ii.id === s.selected?.instance);
       if ((e as unknown as { value: boolean }).value && o && i) {
         dragStart = { x: i.x, y: i.y, rotX: o.rotX, rotY: o.rotY, rotZ: i.rotZ, scale: [...o.scale] };
-        proxy.rotation.set(0, 0, 0);
+        proxyRotation(o.rotX, o.rotY, i.rotZ);
         proxy.scale.set(1, 1, 1);
       } else dragStart = null;
     });
@@ -211,13 +224,14 @@ export default function Plater3D() {
         updateInstance(object, instance, { rotZ: dragStart.rotZ + proxy.rotation.z * deg });
       } else if (tc.mode === 'scale') {
         const k = Math.max(0.01, (proxy.scale.x + proxy.scale.y + proxy.scale.z) / 3);
-        updateObject(object, { scale: dragStart.scale.map((v) => v * k) as [number, number, number] });
+        const f = proxy.scale.toArray().map((v) => Math.max(0.01, v));
+        updateObject(object, { scale: dragStart.scale.map((v, a) => v * (s.uniformScale ? k : f[a])) as [number, number, number] });
       }
     });
     const syncGizmo = (s: State) => {
       const o = s.objects.find((ob) => ob.id === s.selected?.object);
       const i = o?.instances.find((ii) => ii.id === s.selected?.instance);
-      if (!o || !i || s.gizmo === 'none' || o.project?.placeholder) {
+      if (!o || !i || s.gizmo === 'none' || s.gizmo === 'flatten' || s.selected?.all || o.project?.placeholder) {
         tc.detach();
         return;
       }
@@ -227,10 +241,72 @@ export default function Plater3D() {
       if (!dragStart) {
         const b = new THREE.Box3().setFromObject(meshes.get(i.id)!);
         proxy.position.set(i.x, i.y, mode === 'translate' ? (i.z ?? 0) : (b.min.z + b.max.z) / 2);
-        proxy.rotation.set(0, 0, 0);
+        proxyRotation(o.rotX, o.rotY, i.rotZ);
         proxy.scale.set(1, 1, 1);
       }
       if (tc.object !== proxy) tc.attach(proxy);
+    };
+    const proxyRotation = (rx: number, ry: number, rz: number) => {
+      if (tc.mode === 'scale') proxy.rotation.set(rx * Math.PI / 180, ry * Math.PI / 180, rz * Math.PI / 180, 'ZYX');
+      else proxy.rotation.set(0, 0, 0, 'XYZ');
+    };
+
+    const flattenScene = new THREE.Scene();
+    const FLATTEN = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.96, 0.93, 0.93), transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: true });
+    const FLATTEN_HOVER = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.75, side: THREE.DoubleSide });
+    let flatten: { key: string; object: number; instance: number; planes: LayOnFacePlane[] } | null = null;
+    let planesFor: { geo: THREE.BufferGeometry; key: string; planes: LayOnFacePlane[] } | null = null;
+    let flattenRetry = 0;
+    let hoverPlane = -1;
+    const clearFlatten = () => {
+      for (const m of flattenScene.children as THREE.Mesh[]) m.geometry.dispose();
+      flattenScene.clear();
+      flatten = null;
+      hoverPlane = -1;
+    };
+    const syncFlatten = (s: State) => {
+      const o = s.objects.find((ob) => ob.id === s.selected?.object);
+      const i = o?.instances.find((ii) => ii.id === s.selected?.instance);
+      if (!o || !i || s.gizmo !== 'flatten' || s.selected?.all || o.project?.placeholder) return clearFlatten();
+      const key = `${o.id},${i.id},${o.rotX},${o.rotY},${o.scale},${i.rotZ},${i.x},${i.y},${i.z}`;
+      if (flatten?.key === key) return;
+      const linearKey = `${o.rotX},${o.rotY},${o.scale},${i.rotZ}`;
+      if (planesFor?.geo !== o.geometry || planesFor.key !== linearKey) {
+        const pos = o.geometry.attributes.position;
+        const points = (o.geometry.userData.hull as Float32Array | undefined) ?? (pos.count <= 50_000 ? pos.array : null);
+        if (!points) {
+          clearTimeout(flattenRetry);
+          flattenRetry = window.setTimeout(() => { flatten = null; syncFlatten(getState()); render(); }, 300);
+          return clearFlatten();
+        }
+        const linear = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(o.rotX * Math.PI / 180, o.rotY * Math.PI / 180, i.rotZ * Math.PI / 180, 'ZYX'))
+          .multiply(new THREE.Matrix4().makeScale(...o.scale));
+        planesFor = { geo: o.geometry, key: linearKey, planes: layOnFacePlanes(points, linear).slice(0, 254) };
+      }
+      clearFlatten();
+      flatten = { key, object: o.id, instance: i.id, planes: planesFor.planes };
+      const world = instanceMatrix(o, i);
+      const normals = new THREE.Matrix3().getNormalMatrix(world);
+      for (const plane of flatten.planes) {
+        const c = plane.outline.reduce((a, p) => a.add(p), new THREE.Vector3()).divideScalar(plane.outline.length);
+        const lift = plane.normal.clone().applyMatrix3(normals).normalize().multiplyScalar(0.1);
+        const pts = plane.outline.map((p) => p.clone().multiplyScalar(0.9).addScaledVector(c, 0.1).applyMatrix4(world).add(lift));
+        const geo = new THREE.BufferGeometry().setFromPoints(pts);
+        geo.setIndex(pts.slice(2).flatMap((_, k) => [0, k + 1, k + 2]));
+        flattenScene.add(new THREE.Mesh(geo, FLATTEN));
+      }
+    };
+    const pickPlane = (ev: { clientX: number; clientY: number }) => {
+      if (!flatten) return -1;
+      setRay(ev);
+      const hit = ray.intersectObjects(flattenScene.children, false)[0];
+      return hit ? flattenScene.children.indexOf(hit.object) : -1;
+    };
+    const setHoverPlane = (k: number) => {
+      if (k === hoverPlane) return;
+      (flattenScene.children as THREE.Mesh[]).forEach((m, j) => (m.material = j === k ? FLATTEN_HOVER : FLATTEN));
+      hoverPlane = k;
+      render();
     };
     gizmoRef.current = () => syncGizmo(getState());
 
@@ -285,7 +361,17 @@ export default function Plater3D() {
     let drag: { object: number; instance: number; dx: number; dy: number; moved: boolean } | null = null;
     let downAt: { x: number; y: number } | null = null;
     const onDown = (ev: PointerEvent) => {
+      if (ev.button === 2) rightAt = { x: ev.clientX, y: ev.clientY };
       if (ev.button !== 0 || (tc.dragging || (tc as unknown as { axis: string | null }).axis)) return;
+      const k = pickPlane(ev);
+      if (k >= 0 && flatten) {
+        const o = getState().objects.find((ob) => ob.id === flatten!.object);
+        if (o) {
+          const next = layOnFace(o, flatten.instance, flatten.planes[k].normal);
+          updateObject(o.id, { rotX: next.rotX, rotY: next.rotY, instances: next.instances }, 'Lay on face');
+        }
+        return;
+      }
       downAt = { x: ev.clientX, y: ev.clientY };
       const hit = pick(ev);
       if (!hit) return;
@@ -303,12 +389,14 @@ export default function Plater3D() {
       setRay(ev);
       const p = bedPoint();
       if (!p) return;
+      if (!drag.moved) endStep = beginStep('Move');
       drag.moved = true;
       updateInstance(drag.object, drag.instance, { x: p.x + drag.dx, y: p.y + drag.dy });
     };
     const onUp = (ev: PointerEvent) => {
       if (!drag && downAt && Math.hypot(ev.clientX - downAt.x, ev.clientY - downAt.y) < 4 && !tc.dragging && !pick(ev))
         setState({ selected: null });
+      if (drag?.moved) { endStep?.(); endStep = null; }
       drag = null;
       downAt = null;
       controls.enabled = true;
@@ -336,6 +424,7 @@ export default function Plater3D() {
       if (hoverMs.length > 4096) hoverMs.splice(0, 2048);
       hoverMs.push(performance.now() - t0);
       setHover(hit ? (hit.object.userData as { instance: number }).instance : null);
+      if (flatten) setHoverPlane(pickPlane(hoverAt));
     };
     const onHover = (ev: PointerEvent) => {
       if (ev.buttons || orbiting || tc.dragging) {
@@ -349,7 +438,22 @@ export default function Plater3D() {
     const onLeave = () => {
       hoverAt = null;
       setHover(null);
+      setHoverPlane(-1);
     };
+
+    let rightAt: { x: number; y: number } | null = null;
+    const onContextMenu = (ev: MouseEvent) => {
+      ev.preventDefault();
+      if (!rightAt || Math.hypot(ev.clientX - rightAt.x, ev.clientY - rightAt.y) > 4) return;
+      rightAt = null;
+      const hit = pick(ev);
+      const s = getState();
+      if (!hit) return setState({ contextMenu: { x: ev.clientX, y: ev.clientY } });
+      const { object, instance } = hit.object.userData as { object: number; instance: number };
+      const inSelection = s.selected?.all || (s.selected?.object === object && (s.selected.allInstances || s.selected.instance === instance));
+      setState({ ...(inSelection ? {} : { selected: { object, instance } }), contextMenu: { x: ev.clientX, y: ev.clientY, object } });
+    };
+    renderer.domElement.addEventListener('contextmenu', onContextMenu);
     controls.addEventListener('start', () => {
       orbiting = true;
       onLeave();
@@ -378,7 +482,7 @@ export default function Plater3D() {
       syncBed(s);
       syncObjects(s);
     };
-    (window as unknown as { __plater: unknown }).__plater = { scene, get camera() { return views.camera; }, controls, tc, renderer, meshes, frames, hoverMs, hovered: () => hovered, pick, render, getState, setState };
+    (window as unknown as { __plater: unknown }).__plater = { scene, get camera() { return views.camera; }, controls, tc, renderer, meshes, frames, hoverMs, hovered: () => hovered, flattenPlanes: () => flattenScene.children, pick, render, getState, setState };
     const unsub = subscribeStore(sync);
     sync();
     resize();

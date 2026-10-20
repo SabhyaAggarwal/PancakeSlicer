@@ -80,9 +80,4 @@ export function plateSignature(s: State): string {
     ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value);
 }
 
-const fileIds = new WeakMap<File, number>();
-let nextFileId = 1;
-function fileId(file: File): number {
-  if (!fileIds.has(file)) fileIds.set(file, nextFileId++);
-  return fileIds.get(file)!;
-}
+const fileId = (file: File) => `${file.name}:${file.size}:${file.lastModified}`;

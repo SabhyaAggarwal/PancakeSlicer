@@ -54,11 +54,11 @@ export function EventMenu({ anchor, z, layer, onClose }: { anchor: DOMRect; z: n
   }, [custom]);
 
   const put = (e: LayerEvent) => {
-    setEvents([...getState().events.filter((x) => !sameZ(x.z, z)), e]);
+    setEvents([...getState().events.filter((x) => !sameZ(x.z, z)), e], `Add ${eventLabel(e).toLowerCase()}`);
     onClose();
   };
   const del = () => {
-    setEvents(getState().events.filter((x) => !sameZ(x.z, z)));
+    setEvents(getState().events.filter((x) => !sameZ(x.z, z)), 'Delete layer event');
     onClose();
   };
   const item = (label: string, fn: () => void, tip?: string, swatch?: string) => (
@@ -148,7 +148,7 @@ export function EventList({ onPick }: { onPick?(z: number): void }) {
             {eventLabel(e)}
             {e.type === 'custom' && e.text ? `: ${e.text.split('\n')[0]}` : ''}
           </span>
-          <button className="icon-btn" title="Delete" onClick={() => setEvents(getState().events.filter((x) => x !== e))}>
+          <button className="icon-btn" title="Delete" onClick={() => setEvents(getState().events.filter((x) => x !== e), 'Delete layer event')}>
             ×
           </button>
         </div>
