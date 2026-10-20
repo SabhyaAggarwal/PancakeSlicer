@@ -52,7 +52,10 @@ async function standardRequest() {
   return {
     ...req,
     overrides: { ...req.overrides, ...flat },
-    plate: req.plate && { objects: req.plate.objects.map((o) => ({ ...o, settings: { ...o.settings, nonplanar_mode: 'off', zaa_enabled: '0' } })) },
+    plate: req.plate && { objects: req.plate.objects.map((o) => {
+      const { nonplanar_mode: _, ...rest } = o.settings ?? {};
+      return { ...o, settings: canForcePlanar() ? { ...rest, zaa_enabled: '0' } : { ...rest, nonplanar_mode: 'off', zaa_enabled: '0' } };
+    }) },
     project_settings: req.plate ? undefined : canForcePlanar() ? { zaa_enabled: false } : flat,
     force_planar: canForcePlanar() || undefined,
     output: 'gcode' as const,

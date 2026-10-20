@@ -182,6 +182,7 @@ export function TopBar() {
       <Menu
         title="Help"
         items={[
+          { label: 'What you can do', action: () => setState({ appDialog: 'what' }), tip: 'What the web app does, with screenshots' },
           { label: 'Keyboard Shortcuts', shortcut: '?', action: () => setState({ appDialog: 'shortcuts' }), tip: 'Show the list of keyboard shortcuts' },
           { label: 'Setup Wizard', action: () => setState({ appDialog: 'setup' }), tip: 'Setup Wizard' },
           'sep',

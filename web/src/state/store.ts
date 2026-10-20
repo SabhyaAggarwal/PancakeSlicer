@@ -125,7 +125,7 @@ export interface State {
   projectMaterials: { colours: string[]; matrix: number[] | null; multiplier: number | null; builds?: { object: number; instance: number }[] } | null;
   flush: { matrix: number[] | null; multiplier: number | null };
   flushDialog: boolean;
-  appDialog: 'about' | 'preferences' | 'shortcuts' | 'send' | 'setup' | null;
+  appDialog: 'about' | 'preferences' | 'shortcuts' | 'send' | 'setup' | 'what' | null;
   calibDialog: CalibMenu | null;
   printers: { name: string; kind: string }[];
   events: LayerEvent[];

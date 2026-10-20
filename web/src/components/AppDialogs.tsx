@@ -5,6 +5,7 @@ import { Modal, ModalTitle } from './Modal';
 
 const About = lazy(() => import('./About'));
 const SendDialog = lazy(() => import('./SendDialog'));
+const WhatYouCanDo = lazy(() => import('./WhatYouCanDo'));
 const SetupWizard = lazy(() => import('./FirstRun').then((m) => ({ default: m.SetupWizard })));
 
 const close = () => setState({ appDialog: null });
@@ -95,7 +96,8 @@ function Shortcuts() {
   );
 }
 
-export default function AppDialog({ which }: { which: 'about' | 'preferences' | 'shortcuts' | 'send' | 'setup' }) {
+export default function AppDialog({ which }: { which: 'about' | 'preferences' | 'shortcuts' | 'send' | 'setup' | 'what' }) {
+  if (which === 'what') return <Suspense fallback={null}><WhatYouCanDo close={close} /></Suspense>;
   if (which === 'send') return <Suspense fallback={null}><SendDialog close={close} /></Suspense>;
   if (which === 'setup') return <Suspense fallback={null}><SetupWizard close={close} /></Suspense>;
   if (which === 'preferences') return <Preferences />;
