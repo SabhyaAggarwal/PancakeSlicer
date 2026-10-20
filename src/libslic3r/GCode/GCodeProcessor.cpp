@@ -331,6 +331,7 @@ void GCodeProcessor::TimeMachine::State::reset()
 {
     feedrate = 0.0f;
     safe_feedrate = 0.0f;
+    rotary_feedrate = {};
     axis_feedrate = { 0.0f, 0.0f, 0.0f, 0.0f };
     abs_axis_feedrate = { 0.0f, 0.0f, 0.0f, 0.0f };
     enter_direction = { 0.0f, 0.0f, 0.0f };
@@ -3275,6 +3276,10 @@ void GCodeProcessor::reset()
     m_joints        = JointPose();
     m_rotary_position_known_axes = 0;
     m_inverse_time  = false;
+    m_joint_delta = JointPose();
+    m_joint_feed = 0.;
+    m_rotary_acceleration = {};
+    m_rotary_jerk = {};
     m_nonplanar_patch_shell = 0xFF;
     m_nonplanar_patch = -1;
     m_nonplanar_band = -1;
@@ -4607,7 +4612,11 @@ void GCodeProcessor::process_rotary_G1(const GCodeReader::GCodeLine& line)
     for (int i = 0; i < 2; ++i)
         if (float v; line.has_value(kin.rotary_axes()[i].letter, v))
             joints.rot[i] = (relative ? joints.rot[i] : 0.) + v;
-    const auto old_rot = m_joints.rot;
+    m_joint_delta.xyz = joints.xyz - m_joints.xyz;
+    for (int i = 0; i < 2; ++i)
+        m_joint_delta.rot[i] = joints.rot[i] - m_joints.rot[i];
+    if (line.has_f())
+        m_joint_feed = line.f();
     const Vec3d from = kin.forward(m_joints).tip;
     const Vec3d to   = kin.forward(joints).tip;
     m_joints         = joints;
@@ -4626,20 +4635,8 @@ void GCodeProcessor::process_rotary_G1(const GCodeReader::GCodeLine& line)
     }
     const size_t previous_moves = m_result.moves.size();
     process_G1(g1_axes, g1_feedrate);
-    if (old_rot != joints.rot) {
+    if (m_joint_delta.rot[0] != 0. || m_joint_delta.rot[1] != 0.)
         m_result.nonplanar = true;
-        if (m_result.moves.size() == previous_moves) {
-            store_move_vertex(EMoveType::Travel);
-            double seconds = 0.;
-            for (int i = 0; i < 2; ++i)
-                if (const double speed = kin.rotary_axes()[i].max_speed_deg_s; speed > 0.)
-                    seconds = std::max(seconds, std::abs(joints.rot[i] - old_rot[i]) / speed);
-            if (m_inverse_time && line.has_f() && line.f() > 0.f)
-                seconds = std::max(seconds, 60. / double(line.f()));
-            if (seconds > 0.)
-                simulate_st_synchronize(float(seconds));
-        }
-    }
     for (size_t i = previous_moves; i < m_result.moves.size(); ++i) {
         m_result.moves[i].clearance_pose_known = m_rotary_position_known_axes == 7;
         m_result.moves[i].clearance_from_unknown = from_unknown;
@@ -4705,10 +4702,13 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
         max_abs_delta = std::max<float>(max_abs_delta, std::abs(delta_pos[a]));
     }
 
-    if (max_abs_delta == 0.0f)
+    if (max_abs_delta == 0.0f && (!m_tool_kinematics ||
+        (m_joint_delta.xyz.isZero() && m_joint_delta.rot[0] == 0. && m_joint_delta.rot[1] == 0.)))
         return;
 
     EMoveType type = move_type(delta_pos);
+    if (type == EMoveType::Noop && m_tool_kinematics)
+        type = EMoveType::Travel;
     const float delta_xyz = std::sqrt(sqr(delta_pos[X]) + sqr(delta_pos[Y]) + sqr(delta_pos[Z]));
     m_travel_dist = delta_xyz;
 
@@ -4777,16 +4777,23 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
         }
     }
 
-    auto move_length = [](const AxisCoords& delta_pos) {
-        float sq_xyz_length = sqr(delta_pos[X]) + sqr(delta_pos[Y]) + sqr(delta_pos[Z]);
-        return (sq_xyz_length > 0.0f) ? std::sqrt(sq_xyz_length) : std::abs(delta_pos[E]);
+    AxisCoords time_delta = delta_pos;
+    if (m_tool_kinematics)
+        for (int axis = 0; axis < 3; ++axis)
+            time_delta[axis] = float(m_joint_delta.xyz[axis]);
+    auto move_length = [](const AxisCoords& time_delta) {
+        float sq_xyz_length = sqr(time_delta[X]) + sqr(time_delta[Y]) + sqr(time_delta[Z]);
+        return (sq_xyz_length > 0.0f) ? std::sqrt(sq_xyz_length) : std::abs(time_delta[E]);
     };
 
-    auto is_extrusion_only_move = [](const AxisCoords& delta_pos) {
-        return delta_pos[X] == 0.0f && delta_pos[Y] == 0.0f && delta_pos[Z] == 0.0f && delta_pos[E] != 0.0f;
+    auto is_extrusion_only_move = [](const AxisCoords& time_delta) {
+        return time_delta[X] == 0.0f && time_delta[Y] == 0.0f && time_delta[Z] == 0.0f && time_delta[E] != 0.0f;
     };
 
-    float distance = move_length(delta_pos);
+    float distance = move_length(time_delta);
+    if (m_tool_kinematics && m_joint_delta.xyz.norm() < EPSILON &&
+        (m_joint_delta.rot[0] != 0. || m_joint_delta.rot[1] != 0.))
+        distance = float(std::hypot(m_joint_delta.rot[0], m_joint_delta.rot[1]));
     assert(distance != 0.0f);
     float inv_distance = 1.0f / distance;
     const bool bambu = m_print != nullptr && m_print->is_BBL_printer();
@@ -4800,19 +4807,22 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
         TimeMachine::State& prev = machine.prev;
         std::vector<TimeBlock>& blocks = machine.blocks;
 
-        curr.feedrate = (delta_pos[E] == 0.0f) ?
+        curr.feedrate = (time_delta[E] == 0.0f) ?
             minimum_travel_feedrate(static_cast<PrintEstimatedStatistics::ETimeMode>(i), m_feedrate) :
             minimum_feedrate(static_cast<PrintEstimatedStatistics::ETimeMode>(i), m_feedrate);
 
-        curr.enter_direction = { static_cast<float>(delta_pos[X]), static_cast<float>(delta_pos[Y]), static_cast<float>(delta_pos[Z]) };
+        if (m_tool_kinematics)
+            curr.feedrate = float(m_inverse_time ? distance * m_joint_feed / 60. : m_joint_feed / 60.);
+
+        curr.enter_direction = { static_cast<float>(time_delta[X]), static_cast<float>(time_delta[Y]), static_cast<float>(time_delta[Z]) };
         float norm = curr.enter_direction.norm();
-        if (!is_extrusion_only_move(delta_pos))
+        if (norm > 0.f)
             curr.enter_direction = curr.enter_direction / norm;
         curr.exit_direction = curr.enter_direction;
-        curr.jd_unit_vec = Vec4f(static_cast<float>(delta_pos[X]),
-                                 static_cast<float>(delta_pos[Y]),
-                                 static_cast<float>(delta_pos[Z]),
-                                 static_cast<float>(delta_pos[E])).normalized();
+        curr.jd_unit_vec = Vec4f(static_cast<float>(time_delta[X]),
+                                 static_cast<float>(time_delta[Y]),
+                                 static_cast<float>(time_delta[Z]),
+                                 static_cast<float>(time_delta[E])).normalized();
 
         TimeBlock block;
         block.move_type = type;
@@ -4833,7 +4843,7 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
         if ((!m_marlin_junctions || bambu) &&
             (prev.exit_direction(0) != 0.0f || prev.exit_direction(1) != 0.0f) &&
             (curr.enter_direction(0) != 0.0f || curr.enter_direction(1) != 0.0f) &&
-            std::hypot(delta_pos[X], delta_pos[Y]) > 1e-4) {
+            std::hypot(time_delta[X], time_delta[Y]) > 1e-4) {
             Vec3f v1 = prev.exit_direction;
             v1(2, 0) = 0.0f;
             v1.normalize();
@@ -4846,7 +4856,7 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
                 float cross = v1(0) * v2(1) - v1(1) * v2(0);
                 float angle = float(atan2(double(cross), double(dot)));
                 float sin_theta_2 = sqrt((1.0f - cos(angle)) * 0.5f);
-                float r = sqrt(sqr(delta_pos[X]) + sqr(delta_pos[Y])) * 0.5 / sin_theta_2;
+                float r = sqrt(sqr(time_delta[X]) + sqr(time_delta[Y])) * 0.5 / sin_theta_2;
                 float acc = get_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i));
                 curr.feedrate = std::min(curr.feedrate, sqrt(acc * r));
             }
@@ -4854,7 +4864,7 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
 
         float min_feedrate_factor = 1.0f;
         for (unsigned char a = X; a <= E; ++a) {
-            curr.axis_feedrate[a] = curr.feedrate * delta_pos[a] * inv_distance;
+            curr.axis_feedrate[a] = curr.feedrate * time_delta[a] * inv_distance;
             if (a == E)
                 curr.axis_feedrate[a] *= machine.extrude_factor_override_percentage;
 
@@ -4864,6 +4874,13 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
                 if (axis_max_feedrate != 0.0f) min_feedrate_factor = std::min<float>(min_feedrate_factor, axis_max_feedrate / curr.abs_axis_feedrate[a]);
             }
         }
+        if (m_tool_kinematics)
+            for (int axis = 0; axis < 2; ++axis) {
+                const double rate = std::abs(curr.feedrate * m_joint_delta.rot[axis] * inv_distance);
+                const double limit = m_tool_kinematics->rotary_axes()[axis].max_speed_deg_s;
+                if (rate > 0. && limit > 0.)
+                    min_feedrate_factor = std::min(min_feedrate_factor, float(limit / rate));
+            }
         curr.feedrate *= min_feedrate_factor;
         block.feedrate_profile.cruise = curr.feedrate;
 
@@ -4876,16 +4893,23 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
 
         float acceleration =
             (type == EMoveType::Travel) ? get_travel_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i)) :
-            (is_extrusion_only_move(delta_pos) ?
+            (is_extrusion_only_move(time_delta) ?
                 get_retract_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i)) :
                 get_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i)));
 
         for (unsigned char a = X; a <= E; ++a) {
             float axis_max_acceleration = get_axis_max_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i), static_cast<Axis>(a), m_machine_config_idx);
-            if (acceleration * std::abs(delta_pos[a]) * inv_distance > axis_max_acceleration)
-                acceleration = axis_max_acceleration / (std::abs(delta_pos[a]) * inv_distance);
+            if (acceleration * std::abs(time_delta[a]) * inv_distance > axis_max_acceleration)
+                acceleration = axis_max_acceleration / (std::abs(time_delta[a]) * inv_distance);
         }
 
+        if (m_tool_kinematics)
+            for (int axis = 0; axis < 2; ++axis) {
+                const float component = float(std::abs(m_joint_delta.rot[axis]) * inv_distance);
+                if (component > 0.f && m_rotary_acceleration[axis] > 0.f)
+                    acceleration = std::min(acceleration, m_rotary_acceleration[axis] / component);
+                curr.rotary_feedrate[axis] = float(curr.feedrate * m_joint_delta.rot[axis] * inv_distance);
+            }
         block.acceleration = acceleration;
         if (m_flavor == gcfKlipper)
             block.smooth_acceleration = std::min(acceleration, get_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i)) *
@@ -4910,6 +4934,11 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
             }
         }
 
+        if (m_tool_kinematics)
+            for (int axis = 0; axis < 2; ++axis)
+                if (m_rotary_jerk[axis] > 0.f && std::abs(curr.rotary_feedrate[axis]) > m_rotary_jerk[axis])
+                    curr.safe_feedrate = std::min(curr.safe_feedrate,
+                        curr.feedrate * m_rotary_jerk[axis] / std::abs(curr.rotary_feedrate[axis]));
         block.feedrate_profile.exit = curr.safe_feedrate;
 
         float vmax_junction = use_junction_deviation ? vmax_junction_jd : curr.safe_feedrate;
@@ -4986,6 +5015,17 @@ void GCodeProcessor::process_G1(const std::array<std::optional<double>, 4>& axes
                 }
             }
 
+            if (m_tool_kinematics)
+                for (int axis = 0; axis < 2; ++axis) {
+                    float v_exit = prev.rotary_feedrate[axis] * (prev_speed_larger ? smaller_speed_factor : 1.f);
+                    float v_entry = curr.rotary_feedrate[axis];
+                    const float jerk = v_exit * v_entry >= 0.f ? std::abs(v_entry - v_exit) :
+                                                                               std::max(std::abs(v_exit), std::abs(v_entry));
+                    if (m_rotary_jerk[axis] > 0.f && jerk * v_factor > m_rotary_jerk[axis]) {
+                        v_factor = m_rotary_jerk[axis] / jerk;
+                        limited = true;
+                    }
+                }
             if (limited)
                 vmax_junction *= v_factor;
 
@@ -5933,6 +5973,11 @@ void GCodeProcessor::process_M191(const GCodeReader::GCodeLine& line)
 
 void GCodeProcessor::process_M201(const GCodeReader::GCodeLine& line)
 {
+    if (m_tool_kinematics)
+        for (int axis = 0; axis < 2; ++axis)
+            if (float value; line.has_value(m_tool_kinematics->rotary_axes()[axis].letter, value))
+                m_rotary_acceleration[axis] = std::max(0.f, value);
+
     float factor = ((m_flavor != gcfRepRapSprinter && m_flavor != gcfRepRapFirmware) && m_units == EUnits::Inches) ? INCHES_TO_MM : 1.0f;
 
     auto set_all_slots = [](ConfigOptionFloats &option, size_t mode, float value) {
@@ -6006,6 +6051,11 @@ void GCodeProcessor::process_M204(const GCodeReader::GCodeLine& line)
 
 void GCodeProcessor::process_M205(const GCodeReader::GCodeLine& line)
 {
+    if (m_tool_kinematics)
+        for (int axis = 0; axis < 2; ++axis)
+            if (float value; line.has_value(m_tool_kinematics->rotary_axes()[axis].letter, value))
+                m_rotary_jerk[axis] = std::max(0.f, value);
+
     for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i) {
         if (static_cast<PrintEstimatedStatistics::ETimeMode>(i) == PrintEstimatedStatistics::ETimeMode::Normal ||
             m_time_processor.machine_envelope_processing_enabled) {
@@ -6590,7 +6640,8 @@ void GCodeProcessor::set_print(Print* print)
     m_keep_tips = print != nullptr && std::any_of(print->objects().begin(), print->objects().end(), [](const PrintObject* object) {
         return object->config().nonplanar_mode.value != NonplanarMode::Off;
     });
-    m_marlin_junctions = print != nullptr && Nonplanar::requests_conformal_shells(*print);
+    m_marlin_junctions = print != nullptr && (Nonplanar::requests_conformal_shells(*print) ||
+                                              print->config().nonplanar_kinematics.value != RotaryLayout::None);
 }
 
 unsigned int GCodeProcessor::intern_move_state(const GCodeProcessorResult::MoveState& state)

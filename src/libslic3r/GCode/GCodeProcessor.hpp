@@ -661,6 +661,7 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
             {
                 float feedrate;
                 float safe_feedrate;
+                std::array<float, 2> rotary_feedrate{};
                 AxisCoords axis_feedrate;
                 AxisCoords abs_axis_feedrate;
                 Vec3f enter_direction;
@@ -1074,6 +1075,10 @@ inline constexpr float DEFAULT_FILAMENT_DENSITY = 1.245f;
         JointPose                       m_joints;
         unsigned char                   m_rotary_position_known_axes{ 0 };
         bool                            m_inverse_time{ false };
+        JointPose                       m_joint_delta;
+        double                          m_joint_feed{ 0. };
+        std::array<float, 2>            m_rotary_acceleration{};
+        std::array<float, 2>            m_rotary_jerk{};
         unsigned char                   m_nonplanar_patch_shell{ 0xFF };
         short                           m_nonplanar_patch{ -1 };
         signed char                     m_nonplanar_band{ -1 };

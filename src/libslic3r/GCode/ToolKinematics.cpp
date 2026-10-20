@@ -34,11 +34,16 @@ void ToolKinematics::linearize(const JointPose &ja, const ToolPose &pa, const To
                                               pose.tip.x(), pose.tip.y(), pose.tip.z()));
         return j;
     };
-    const JointPose jb = solve(pb, ja);
+    JointPose jb;
+    if (!this->inverse_for_motion(pb, ja, jb))
+        jb = solve(pb, ja);
     if (this->rotary_count() == 0 || this->firmware_rtcp()) {
         out.push_back(jb);
         return;
     }
+    if ((this->forward(jb).axis - pb.axis.normalized()).norm() > 1e-9 ||
+        (this->forward(ja).axis - pa.axis.normalized()).norm() > 1e-9)
+        tol = std::min(tol, 0.0001);
     constexpr int max_depth = 16;
     std::function<void(const JointPose &, const ToolPose &, const JointPose &, const ToolPose &, int)> subdivide =
         [&](const JointPose &j0, const ToolPose &p0, const JointPose &j1, const ToolPose &p1, int depth) {
@@ -213,6 +218,27 @@ double RotaryKinematics::max_tilt(double phi) const
 }
 
 Matrix3d RotaryTableBC::rotation(double b, double c) const { return rot_y(b) * rot_z(c); }
+
+bool RotaryTableBC::inverse_for_motion(const ToolPose &pose, const JointPose &prev, JointPose &out) const
+{
+    const Vec3d axis = pose.axis.normalized();
+    const double tilt = std::atan2(axis.head<2>().norm(), axis.z());
+    const double hold_deg = std::clamp(m_geo.singularity_hold_deg, 0., 2.);
+    const double axis_error_deg = std::clamp(m_geo.singularity_axis_error_deg, 0., 0.9);
+    if (tilt >= Geometry::deg2rad(hold_deg) || tilt < SingularXY || axis_error_deg <= 0.)
+        return this->inverse(pose, &prev, out);
+    const double blend = std::clamp(2. * (1. - Geometry::rad2deg(tilt) / hold_deg), 0., 1.);
+    const double error = Geometry::deg2rad(axis_error_deg * blend * blend * (3. - 2. * blend));
+    const double allowance = std::asin(std::min(1., std::sin(error) / std::sin(tilt)));
+    const double previous_c = this->kinematic_angles(prev)[1];
+    const double exact_c = std::atan2(axis.y(), -axis.x());
+    const double delta = std::remainder(exact_c - previous_c, M_PI);
+    const double c = previous_c + std::copysign(std::max(0., std::abs(delta) - allowance), delta);
+    const double b = std::atan2(-axis.x() * std::cos(c) + axis.y() * std::sin(c), axis.z());
+    ToolPose adjusted = pose;
+    adjusted.axis = this->rotation(b, c).transpose() * Vec3d::UnitZ();
+    return this->inverse(adjusted, &prev, out);
+}
 
 void RotaryTableBC::solve_axis(const Vec3d &a, double free_angle, std::vector<std::array<double, 2>> &out) const
 {

@@ -15,6 +15,7 @@ double steep_top_share(const indexed_triangle_set &mesh);
 double thin_top_share(const indexed_triangle_set &mesh, double thickness);
 
 bool rotary_auto_measurement();
+bool rotary_measurement_too_slow(double estimated_time);
 
 bool auto_rotary_requested(const PrintObject &object);
 

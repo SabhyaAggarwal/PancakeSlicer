@@ -22,11 +22,14 @@
 #include <tbb/blocked_range.h>
 #include <tbb/parallel_for.h>
 #include <tbb/task_arena.h>
+#include <boost/log/trivial.hpp>
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <atomic>
 #include <cstdint>
+#include <cstdlib>
+#include <sstream>
 #include <unordered_map>
 #include <cstddef>
 #include <functional>
@@ -337,8 +340,10 @@ public:
         uint32_t query = 0;
         std::vector<std::pair<double, const void *>> cells;
         std::vector<std::pair<Vec3d, Vec3d>> bands;
+        uint32_t best_bead = 0;
     };
     Prefix prefix() const { return m_prefix; }
+    Corners bead(uint32_t id) const { return m_beads[id].corners(); }
     explicit TiltedBeads(const Nonplanar::HeadEnvelope &head)
     {
         Group nozzle;
@@ -381,6 +386,12 @@ public:
         for (const Vec3d &v : corners) {
             const Vec3d p = u * v;
             axes.lo = axes.lo.cwiseMin(p); axes.hi = axes.hi.cwiseMax(p);
+        }
+        axes.face = axes.side.cross(b.tip - a.tip);
+        axes.face = axes.face.squaredNorm() < 1e-20 ? axes.n : Vec3d(axes.face.normalized());
+        axes.face_lo = Inf; axes.face_hi = -Inf;
+        for (const Vec3d &v : corners) {
+            axes.face_lo = std::min(axes.face_lo, axes.face.dot(v)); axes.face_hi = std::max(axes.face_hi, axes.face.dot(v));
         }
         m_axes.push_back(axes);
         if (m_chunks.empty() || m_chunks.back().run != run || m_chunks.back().count == ChunkBeads ||
@@ -486,8 +497,11 @@ public:
                                     const double c = u.dot(centre), r = u.cwiseAbs().dot(half);
                                     g = std::max(g, std::max(road.lo[k] - tip[k] - (c + r), c - r - (road.hi[k] - tip[k])));
                                 }
+                                const Vec3d  u = frame * road.face;
+                                const double c = u.dot(centre), r = u.cwiseAbs().dot(half), t = road.face.dot(pose.tip);
+                                g = std::max(g, std::max(road.face_lo - t - (c + r), c - r - (road.face_hi - t)));
                             }
-                            if (g < best || (g == best && index < best_box)) { best = g; best_box = index; }
+                            if (g < best || (g == best && index < best_box)) { best = g; best_box = index; scratch.best_bead = id; }
                         }
                     }
                 }
@@ -602,6 +616,8 @@ private:
     struct Axes
     {
         Vec3d n, side, lo, hi;
+        Vec3d face;
+        double face_lo, face_hi;
         Matrix3d u() const
         {
             Matrix3d u;
@@ -864,6 +880,51 @@ double safe_travel_z(const MaterialColumns &columns, const Nonplanar::HeadEnvelo
     return -gap + std::max(0., hop);
 }
 
+struct TableGuard::Data
+{
+    std::vector<TableObstacle>      obstacles;
+    std::vector<Nonplanar::HeadBox> head;
+    Vec3d                           lo { Vec3d::Constant(Inf) }, hi { Vec3d::Constant(-Inf) };
+};
+
+TableGuard::TableGuard(const Nonplanar::HeadEnvelope &head, const ToolKinematics &kinematics)
+    : m_data(std::make_unique<Data>()), m_kinematics(kinematics), m_margin(head.margin)
+{
+    m_data->obstacles = table_obstacles(head, kinematics);
+    auto strict = head;
+    strict.tip_allowance = {};
+    for (const auto &box : strict.boxes) {
+        m_data->head.push_back(prepared_box(box, strict));
+        m_data->lo = m_data->lo.cwiseMin(m_data->head.back().min);
+        m_data->hi = m_data->hi.cwiseMax(m_data->head.back().max);
+    }
+}
+
+TableGuard::~TableGuard() = default;
+
+bool TableGuard::empty() const { return m_data->obstacles.empty(); }
+
+double TableGuard::clearance(const JointPose &joints) const
+{
+    if (m_data->obstacles.empty()) return Inf;
+    const ToolPose pose  = m_kinematics.forward(joints);
+    const Matrix3d frame = m_kinematics.head_frame(joints);
+    const auto    &geometry = static_cast<const RotaryKinematics &>(m_kinematics).geometry();
+    const double   c = (joints.rot[1] - geometry.home[1]) * (geometry.reversed[1] ? -1. : 1.) * M_PI / 180.;
+    const Matrix3d yaw = Eigen::AngleAxisd(c, Vec3d::UnitZ()).toRotationMatrix();
+    const Vec3d    middle = 0.5 * (m_data->lo + m_data->hi), half = 0.5 * (m_data->hi - m_data->lo);
+    bool           near = false;
+    for (const auto &solid : m_data->obstacles) {
+        const Matrix3d work_to_solid = solid.cradle ? yaw : Matrix3d::Identity();
+        const Matrix3d rotation = work_to_solid * frame.transpose();
+        const Vec3d    centre = work_to_solid * pose.tip + rotation * middle, radius = rotation.cwiseAbs() * half;
+        near |= !((centre.array() + radius.array() < solid.min.array()).any() || (centre.array() - radius.array() > solid.max.array()).any());
+    }
+    if (!near) return Inf;
+    std::string component;
+    return table_clearance(m_data->obstacles, m_data->head, m_kinematics, joints, pose, frame, Vec3d::Zero(), 0., component) + m_margin;
+}
+
 ClearanceReport verify_clearance(const GCodeProcessorResult &result, const ClearanceParams &params,
                                  const ToolKinematics &kinematics, const std::function<void()> &throw_if_canceled)
 {
@@ -978,6 +1039,8 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
             if (box.infinite_x || box.infinite_y) infinite_floor = std::min(infinite_floor, box.min.z());
             else if (list != &allowed_boxes) finite_floor = std::min(finite_floor, box.min.z());
     std::atomic<size_t> unswept { 0 };
+    const char *explain_env = std::getenv("NP_EXPLAIN_MOVE");
+    const size_t explain_move = explain_env != nullptr ? size_t(std::strtoull(explain_env, nullptr, 10)) : size_t(-1);
     BeadGrid beads(result, rotary);
     struct Hits { std::vector<ClearanceHit> hits; double min_clearance = Inf; };
     TiltedBeads tilted(params.head);
@@ -1060,7 +1123,17 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
                     const Vec3d grow = 0.5 * (frame * (sample_end - sample_start)).cwiseAbs() +
                                        Vec3d::Constant((theta * theta * tip_lever + 2. * theta * stride) / 8.);
                     sample_start = sample_end;
-                    record(tilted.clearance(laid, *scratch, pose, frame, grow, theta, c.run, extruding, !strict, best, component), component, pose.tip);
+                    const double bead_gap = tilted.clearance(laid, *scratch, pose, frame, grow, theta, c.run, extruding, !strict, best, component);
+                    if (explain_move == c.move) {
+                        std::ostringstream line;
+                        line << "explain move " << c.move << " sample " << j << "/" << count << " tip " << pose.tip.transpose() << " axis "
+                             << pose.axis.transpose() << " grow " << grow.transpose() << " turn " << theta << " gap " << bead_gap << " " << component;
+                        if (std::isfinite(bead_gap))
+                            for (const Vec3d &v : tilted.bead(scratch->best_bead))
+                                line << " | " << v.transpose();
+                        BOOST_LOG_TRIVIAL(warning) << line.str();
+                    }
+                    record(bead_gap, component, pose.tip);
                     const double machine_gap = table_clearance(obstacles, machine_head, kinematics, q, pose, frame, grow, theta, component);
                     record(machine_gap, component, pose.tip);
                 } else {
@@ -1087,8 +1160,9 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
             }
         }
         if (extruding && move.extrusion_role != erCustom && !(rotary && hits != nullptr)) {
-            for (int j = 0; j < count; ++j) {
-                const double t0 = double(j) / count, t1 = double(j + 1) / count;
+            const int pieces = rotary ? std::max({ 1, int(std::ceil(turn * 180. / M_PI)), int(std::ceil((b - a).norm() / 0.5)) }) : count;
+            for (int j = 0; j < pieces; ++j) {
+                const double t0 = double(j) / pieces, t1 = double(j + 1) / pieces;
                 const Vec3d p0 = a + t0 * (b - a), p1 = a + t1 * (b - a);
                 if (rotary) tilted.deposit(kinematics.forward(lerp(last_joints, move_joints, t0)),
                                            kinematics.forward(lerp(last_joints, move_joints, t1)), move.width, move.height, c.run);

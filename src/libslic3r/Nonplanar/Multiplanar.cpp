@@ -5,6 +5,7 @@
 #include "libslic3r/Point.hpp"
 #include "libslic3r/Polygon.hpp"
 #include "libslic3r/TriangleMesh.hpp"
+#include <admesh/stl.h>
 #include "libslic3r/libslic3r.h"
 #include <cstddef>
 #include <math.h>
@@ -585,9 +586,14 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
     };
 
     int planes = 0;
+    constexpr size_t MaxGivenUp = 64;
     while (planes < params.max_planes) {
         if (throw_if_canceled)
             throw_if_canceled();
+        if (plan.notes.size() > MaxGivenUp) {
+            plan.notes.push_back("search stopped after " + std::to_string(MaxGivenUp) + " seeds stayed");
+            break;
+        }
         std::array<Work, 2>              work { overhang_work(), top_work() };
         std::array<std::optional<Cut>, 2> cuts;
         for (size_t k = 0; k < work.size(); ++k) {
@@ -738,8 +744,16 @@ std::shared_ptr<const MultiplanarPlan> clip_multiplanar_slices(PrintObject &obje
     params.max_planes         = object.config().multiplanar_max_planes.value;
     params.head               = resolve_head_envelope(object.print()->config());
     params.kinematics         = kinematics.get();
-    auto plan = std::make_shared<MultiplanarPlan>(plan_multiplanar(mesh, params,
-                                                                   [&object]() { throw_if_canceled(object); }));
+    static thread_local std::pair<std::string, MultiplanarPlan> last;
+    std::string key(reinterpret_cast<const char *>(mesh.vertices.data()), mesh.vertices.size() * sizeof(stl_vertex));
+    key.append(reinterpret_cast<const char *>(mesh.indices.data()), mesh.indices.size() * sizeof(stl_triangle_vertex_indices));
+    for (const double v : { params.layer_height, params.first_layer_height, params.overhang_threshold, double(params.max_planes) })
+        key.append(reinterpret_cast<const char *>(&v), sizeof(v));
+    for (const std::string &opt : object.print()->config().keys())
+        key += opt + '=' + object.print()->config().opt_serialize(opt) + '\n';
+    if (last.first != key)
+        last = { std::move(key), plan_multiplanar(mesh, params, [&object]() { throw_if_canceled(object); }) };
+    auto plan = std::make_shared<MultiplanarPlan>(last.second);
     for (const std::string &note : plan->notes)
         BOOST_LOG_TRIVIAL(info) << "Multiplanar " << object.model_object()->name << ": " << note;
     BOOST_LOG_TRIVIAL(info) << "Multiplanar " << object.model_object()->name << ": " << plan->chunks.size()

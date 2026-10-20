@@ -27,6 +27,7 @@
 #include <boost/log/trivial.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <iomanip>
@@ -290,7 +291,8 @@ ClearanceRepair::~ClearanceRepair() { m_print.m_clearance_repair = nullptr; }
 void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
 {
     trim_free_memory();
-    if (rotary_auto_measurement())
+    if (rotary_auto_measurement() ||
+        rotary_measurement_too_slow(result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)].time))
         return;
     ClearanceRepair *self = print.m_clearance_repair;
     const auto       mode = print.config().nonplanar_collision_check.value;
@@ -299,12 +301,18 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
             self->m_pass < self->m_max_passes) {
             ClearanceParams params;
             params.head = resolve_head_envelope(print.config());
-            ClearanceReport report = verify_clearance(result, params, *make_tool_kinematics(print.config()),
+            const auto      started = std::chrono::steady_clock::now();
+            ClearanceReport report  = verify_clearance(result, params, *make_tool_kinematics(print.config()),
                                                       [&print] { print.throw_if_canceled(); });
+            const auto      checked = std::chrono::steady_clock::now();
             if (self->m_pass == 0)
                 self->m_first_hits = report.hit_moves;
             self->m_planned.clear();
-            if (report.hit_moves == 0 || self->plan_upright(result, report)) {
+            const bool repaired = report.hit_moves > 0 && self->plan_upright(result, report);
+            BOOST_LOG_TRIVIAL(warning) << "Rotary clearance pass " << self->m_pass << ": " << result.moves.size() << " moves, "
+                                    << report.hit_moves << " hits, verify " << std::chrono::duration<double>(checked - started).count()
+                                    << " s, plan " << std::chrono::duration<double>(std::chrono::steady_clock::now() - checked).count() << " s";
+            if (report.hit_moves == 0 || repaired) {
                 if (report.hit_moves == 0 && self->m_pass > 0)
                     print.active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, self->summary(0));
                 result.clearance_report = std::move(report);

@@ -22,11 +22,11 @@
 #include "Nonplanar/ConformalBottom.hpp"
 #include "Nonplanar/ConformalIroning.hpp"
 #include "Nonplanar/AtomToolpath.hpp"
-#include "Nonplanar/LeanVase.hpp"
 #include "Nonplanar/ConformalShells.hpp"
 #include "Nonplanar/PatchTools.hpp"
 #include "Nonplanar/Multiplanar.hpp"
 #include "Nonplanar/OrientationField.hpp"
+#include "Nonplanar/RotaryRouter.hpp"
 #include "Nonplanar/ConformalSupport.hpp"
 #include "Nonplanar/ConformalVolume.hpp"
 #include "Nonplanar/SubLayerWalls.hpp"
@@ -737,19 +737,15 @@ void PrintObject::nonplanar_shells()
         m_conformal->event_cuts             = Nonplanar::event_cuts(*this);
         m_conformal->tool_changes           = Nonplanar::multi_as_single_tool_changes(*this);
     };
-    if (Nonplanar::lean_vase_considered(*this)) {
-        std::string                why;
-        const Nonplanar::AtomToolpath plan = Nonplanar::lean_vase_toolpath(*this, why);
-        if (!plan.points.empty()) {
-            m_print->set_status(40, L("Leaning the vase wall"));
-            m_conformal = std::make_unique<Nonplanar::ConformalResult>();
-            Nonplanar::host_ordered_plan(*this, plan, Nonplanar::AtomPlacement(), *m_conformal);
+    if (!imported) {
+        auto routed = std::make_unique<Nonplanar::ConformalResult>();
+        if (Nonplanar::build_rotary_routes(*this, *routed, Nonplanar::RotaryRoute::Stage::Replace)) {
+            m_conformal = std::move(routed);
             record_apply_inputs();
             m_print->throw_if_canceled();
             this->set_done(posNonplanar);
             return;
         }
-        BOOST_LOG_TRIVIAL(info) << "Lean vase: " << m_model_object->name << " keeps the spiral vase: " << why;
     }
     if (m_field && m_config.nonplanar_atom_toolpath.value.empty()) {
         m_print->set_status(40, L("Slicing rotary curved layers"));
@@ -834,6 +830,11 @@ void PrintObject::nonplanar_shells()
         m_print->set_status(40, L("Importing the Atomizer toolpath"));
         for (const std::string &warning : Nonplanar::apply_atom_toolpath(*this, *m_conformal))
             this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, warning);
+    }
+    if (!imported && Nonplanar::rotary_route_appends(*this)) {
+        if (!m_conformal)
+            m_conformal = std::make_unique<Nonplanar::ConformalResult>();
+        Nonplanar::build_rotary_routes(*this, *m_conformal, Nonplanar::RotaryRoute::Stage::Append);
     }
     if (m_conformal)
         record_apply_inputs();

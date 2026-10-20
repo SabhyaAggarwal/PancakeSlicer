@@ -170,6 +170,7 @@ public:
     JointPose        get_joints() const;
     void             set_joint_position(const JointPose &joints);
     static constexpr double max_tip_deviation = 0.02;
+    static std::vector<std::array<double, 7>> *planned_moves;
 protected:
     Vec3d           m_pos = Vec3d::Zero();
     double          m_x_offset{ 0 };

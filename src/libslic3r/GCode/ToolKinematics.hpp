@@ -49,6 +49,8 @@ public:
     virtual const std::array<RotaryAxis, 2> &rotary_axes() const = 0;
 
     virtual bool inverse(const ToolPose &pose, const JointPose *prev, JointPose &out) const = 0;
+    virtual bool inverse_for_motion(const ToolPose &pose, const JointPose &prev, JointPose &out) const
+    { return this->inverse(pose, &prev, out); }
     virtual ToolPose forward(const JointPose &joints) const = 0;
 
     virtual Matrix3d head_frame(const JointPose &joints) const = 0;
@@ -89,6 +91,8 @@ struct RotaryGeometry
     double               table_height = 0.;
     std::array<bool, 3>  linear_moves_table { false, false, false };
     double               max_tilt = 0.5 * M_PI;
+    double               singularity_hold_deg = 2.;
+    double               singularity_axis_error_deg = 0.9;
     bool                 firmware_rtcp = false;
     bool                 inverse_time_feed = false;
 };
@@ -124,6 +128,7 @@ class RotaryTableBC : public RotaryKinematics
 public:
     using RotaryKinematics::RotaryKinematics;
     RotaryLayout layout() const override { return RotaryLayout::TableBC; }
+    bool inverse_for_motion(const ToolPose &pose, const JointPose &prev, JointPose &out) const override;
 
 protected:
     Matrix3d rotation(double b, double c) const override;

@@ -7,6 +7,7 @@
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
+#include "libslic3r/GCode/ToolKinematics.hpp"
 #include "libslic3r/GCodeWriter.hpp"
 #include "libslic3r/Nonplanar/TiltBudget.hpp"
 #include "libslic3r/libslic3r.h"
@@ -780,7 +781,7 @@ bool densify_conformal_path(const ExtrusionPathConformal &path, double max_segme
 }
 
 std::vector<RotaryRun> plan_rotary_runs(const ToolKinematics &kinematics, const std::vector<ConformalPoint> &points,
-                                        const JointPose &from, double max_jump_deg)
+                                        const JointPose &from, double max_jump_deg, bool reseed)
 {
     std::vector<RotaryRun> runs;
     RotaryRun              run;
@@ -795,17 +796,53 @@ std::vector<RotaryRun> plan_rotary_runs(const ToolKinematics &kinematics, const 
         JointPose                   out = j;
         out.rot[0] = rotary->machine_angle(0, -kin[0]);
         out.rot[1] = rotary->machine_angle(1, kin[1] + M_PI);
+        const RotaryAxis &axis = rotary->rotary_axes()[1];
+        if (!axis.continuous) {
+            const double first = std::ceil((axis.min_deg - out.rot[1]) / 360.);
+            const double last = std::floor((axis.max_deg - out.rot[1]) / 360.);
+            if (first <= last)
+                out.rot[1] += 360. * std::clamp(std::round((j.rot[1] - out.rot[1]) / 360.), first, last);
+        }
         return out;
     };
     auto jump = [](const JointPose &a, const JointPose &b) { return std::max(std::abs(a.rot[0] - b.rot[0]), std::abs(a.rot[1] - b.rot[1])); };
+    if (reseed && layout_is_table(kinematics.layout())) {
+        JointPose other;
+        const JointPose seed = other_branch(prev);
+        const bool has_other = kinematics.inverse(points.front().pose, &seed, other);
+        double best_cost = std::numeric_limits<double>::infinity();
+        JointPose best;
+        for (const JointPose &start : { prev, has_other ? other : prev }) {
+            JointPose p = start;
+            double cost = std::abs(start.rot[1] - from.rot[1]);
+            bool continuous = true;
+            for (size_t i = 1; i < points.size(); ++i) {
+                JointPose q;
+                if (!kinematics.inverse_for_motion(points[i].pose, p, q) || jump(p, q) > max_jump_deg) {
+                    continuous = false;
+                    break;
+                }
+                cost += std::abs(q.rot[1] - p.rot[1]);
+                p = q;
+            }
+            if (continuous && cost < best_cost) {
+                best_cost = cost;
+                best = start;
+            }
+        }
+        if (std::isfinite(best_cost)) {
+            run.seed = jump(best, prev) > 1e-6 ? best : from;
+            return { run };
+        }
+    }
     for (size_t i = 1; i < points.size(); ++i) {
         JointPose next;
-        if (! kinematics.inverse(points[i].pose, &prev, next))
+        if (! kinematics.inverse_for_motion(points[i].pose, prev, next))
             break;
         if (jump(prev, next) > max_jump_deg) {
             const JointPose seed = other_branch(prev);
             JointPose       start, after;
-            if (kinematics.inverse(points[i - 1].pose, &seed, start) && kinematics.inverse(points[i].pose, &start, after) &&
+            if (kinematics.inverse(points[i - 1].pose, &seed, start) && kinematics.inverse_for_motion(points[i].pose, start, after) &&
                 jump(start, after) <= max_jump_deg) {
                 if (i - 1 == run.begin)
                     run.seed = seed;
@@ -839,7 +876,9 @@ bool alternate_rotary_runs(const ToolKinematics &kinematics, const std::vector<C
         const size_t n = run.end - run.begin + 1;
         for (size_t m = 0; m < n; ++m) {
             JointPose next;
-            if (! kinematics.inverse(points[run.reversed ? run.end - m : run.begin + m].pose, &prev, next) || jump(prev, next) > max_jump_deg)
+            const ToolPose &pose = points[run.reversed ? run.end - m : run.begin + m].pose;
+            if (!(m == 0 ? kinematics.inverse(pose, &prev, next) : kinematics.inverse_for_motion(pose, prev, next)) ||
+                jump(prev, next) > max_jump_deg)
                 return false;
             if (m == 0)
                 run.seed = next;

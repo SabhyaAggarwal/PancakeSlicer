@@ -1,4 +1,5 @@
 #include "MultiplanarConfirm.hpp"
+#include "RotaryRouter.hpp"
 #include "libslic3r/Point.hpp"
 #include "libslic3r/libslic3r.h"
 #include <boost/filesystem/operations.hpp>
@@ -82,6 +83,7 @@ namespace {
 
 thread_local unsigned rotary_measurement_depth = 0;
 thread_local NonplanarMode rotary_measurement_mode = NonplanarMode::Off;
+thread_local double rotary_measurement_time_cap = std::numeric_limits<double>::infinity();
 struct RotaryMeasurement
 {
     const NonplanarMode previous = rotary_measurement_mode;
@@ -111,6 +113,28 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
     const_cast<DynamicPrintConfig &>(copy->config.get()).set_key_value("nonplanar_mode", new ConfigOptionEnum<NonplanarMode>(mode));
     copy->clear_instances();
     copy->add_instance(*object.model_object()->instances.front());
+    static thread_local std::pair<std::string, std::pair<double, std::vector<Bead>>> last_planar;
+    std::string key;
+    if (mode == NonplanarMode::Off) {
+        for (const std::string &opt : config.keys())
+            key += opt + '=' + config.opt_serialize(opt) + '\n';
+        for (const std::string &opt : copy->config.get().keys())
+            key += opt + '=' + copy->config.get().opt_serialize(opt) + '\n';
+        for (const ModelVolume *volume : copy->volumes) {
+            const indexed_triangle_set &its = volume->mesh().its;
+            key.append(reinterpret_cast<const char *>(its.vertices.data()), its.vertices.size() * sizeof(stl_vertex));
+            key.append(reinterpret_cast<const char *>(its.indices.data()), its.indices.size() * sizeof(stl_triangle_vertex_indices));
+            const Transform3d &m = volume->get_matrix();
+            key.append(reinterpret_cast<const char *>(m.data()), 16 * sizeof(double));
+            key += std::to_string(int(volume->type()));
+        }
+        const Transform3d &m = copy->instances.front()->get_matrix();
+        key.append(reinterpret_cast<const char *>(m.data()), 16 * sizeof(double));
+        if (last_planar.first == key) {
+            beads = last_planar.second.second;
+            return last_planar.second.first;
+        }
+    }
     Print                print;
     GCodeProcessorResult result;
     const boost::filesystem::path gcode = boost::filesystem::temp_directory_path() / boost::filesystem::unique_path("np-mf-%%%%-%%%%.gcode");
@@ -138,7 +162,10 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
         beads.push_back({ result.moves[i - 1].position.cast<double>(), m.position.cast<double>(),
                           rotary && result.has_joints() ? kinematics->forward(result.joints[i]).axis : Vec3d::UnitZ(), double(m.width), double(m.height) });
     }
-    return result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)].time;
+    const double time = result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)].time;
+    if (mode == NonplanarMode::Off)
+        last_planar = { std::move(key), { time, beads } };
+    return time;
 }
 
 double normal_rms(indexed_triangle_set mesh, const std::vector<Bead> &beads)
@@ -496,7 +523,12 @@ ChunkCheck check_chunks(const PrintObject &object)
     std::vector<Bead> planar, chunks;
     check.planar_time = measured_slice(object, NonplanarMode::Off, planar);
     throw_if_canceled(object);
-    check.chunks_time = measured_slice(object, NonplanarMode::Multiplanar, chunks);
+    {
+        const double previous = rotary_measurement_time_cap;
+        rotary_measurement_time_cap = 1.1 * multiplanar_time_limit(check.planar_time);
+        check.chunks_time = measured_slice(object, NonplanarMode::Multiplanar, chunks);
+        rotary_measurement_time_cap = previous;
+    }
     TriangleMesh mesh = object.model_object()->raw_mesh();
     mesh.transform(object.model_object()->instances.front()->get_matrix());
     check.planar_rms = normal_rms(mesh.its, planar);
@@ -504,6 +536,11 @@ ChunkCheck check_chunks(const PrintObject &object)
     return check;
 }
 
+}
+
+bool rotary_measurement_too_slow(double estimated_time)
+{
+    return rotary_measurement_depth > 0 && estimated_time >= rotary_measurement_time_cap;
 }
 
 bool rotary_auto_measurement()
@@ -530,29 +567,52 @@ std::string auto_rotary_planar(const PrintObject &object)
     const auto kinematics = make_tool_kinematics(object.print()->config());
     if (kinematics->rotary_count() == 0)
         return {};
+    if (rotary_route_claimed(object))
+        return {};
+
+    TriangleMesh mesh = object.model_object()->raw_mesh();
+    mesh.transform(object.model_object()->instances.front()->get_matrix());
+    if (const RoutePrediction prediction = predict_rotary_route(mesh.its, object); prediction.planar >= PlanarEarlyThreshold) {
+        std::ostringstream why;
+        why << "Auto mode prints planar layers for " << object.model_object()->name
+            << ": no surface of it changes in curved layers (predicted, P = " << prediction.planar << ").";
+        BOOST_LOG_TRIVIAL(info) << why.str();
+        return why.str();
+    }
 
     std::vector<Bead> planar, candidate;
     const double planar_time = measured_slice(object, NonplanarMode::Off, planar);
     throw_if_canceled(object);
-    TriangleMesh mesh = object.model_object()->raw_mesh();
-    mesh.transform(object.model_object()->instances.front()->get_matrix());
     const double planar_rms = rounded_normal_rms(mesh.its, planar);
-    if (!std::isfinite(planar_rms) || !std::isfinite(planar_time) || planar_time <= 0.)
+    if (!std::isfinite(planar_time) || planar_time <= 0.)
         return {};
+    constexpr double RotaryMaxTimeRatio = 2.5, RotaryGainPerTime = 0.5;
     const double candidate_time = measured_slice(object, NonplanarMode::Auto, candidate);
     throw_if_canceled(object);
     const double candidate_rms = rounded_normal_rms(mesh.its, candidate);
-    if (std::isfinite(candidate_time) && candidate_time > 0. && !std::isfinite(candidate_rms))
-        return {};
+    if (!std::isfinite(planar_rms) || (std::isfinite(candidate_time) && candidate_time > 0. && !std::isfinite(candidate_rms))) {
+        if (!(std::isfinite(candidate_time) && candidate_time > RotaryMaxTimeRatio * planar_time))
+            return {};
+        std::ostringstream why;
+        why << "Auto mode prints planar layers for " << object.model_object()->name << ": estimated time " << candidate_time / 60.
+            << " against " << planar_time / 60. << " min planar, past " << RotaryMaxTimeRatio << " x (its error did not measure).";
+        BOOST_LOG_TRIVIAL(warning) << "Rotary auto decision " << object.model_object()->name << ": gain nan time_ratio "
+                                   << candidate_time / planar_time << " keep false gain_only_keep true";
+        return why.str();
+    }
     const double ratio = candidate_time / planar_time;
     const double gain = planar_rms > 0. ? 1. - candidate_rms / planar_rms : 0.;
     const double gain_per_time = gain / std::max(1., ratio);
-    const bool keep = std::isfinite(candidate_rms) && std::isfinite(candidate_time) && candidate_time > 0. && gain_per_time > 0.;
+    const bool measured = std::isfinite(candidate_rms) && std::isfinite(candidate_time) && candidate_time > 0.;
+    const bool earns = gain_per_time > 0.;
+    const bool keep  = measured && earns && ratio <= RotaryMaxTimeRatio && gain >= RotaryGainPerTime * std::max(0., ratio - 1.);
     std::ostringstream why;
     why << "Auto mode " << (keep ? "keeps curved layers for " : "prints planar layers for ")
         << object.model_object()->name << ": measured RMS along the normal " << candidate_rms
         << " mm against " << planar_rms << " mm planar, estimated time " << candidate_time / 60.
         << " against " << planar_time / 60. << " min, gain per relative time " << gain_per_time << ".";
+    BOOST_LOG_TRIVIAL(warning) << "Rotary auto decision " << object.model_object()->name << ": gain " << gain << " time_ratio " << ratio
+                               << " keep " << keep << " gain_only_keep " << (measured && earns);
     BOOST_LOG_TRIVIAL(info) << why.str();
     return keep ? std::string() : why.str();
 }

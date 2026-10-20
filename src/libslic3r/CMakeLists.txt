@@ -138,6 +138,8 @@ set(lisbslic3r_sources
     Nonplanar/MaterialRules.hpp
     Nonplanar/OrientationField.cpp
     Nonplanar/OrientationField.hpp
+    Nonplanar/RotaryRouter.cpp
+    Nonplanar/RotaryRouter.hpp
     GCode/ToolKinematics.cpp
     GCode/ToolKinematics.hpp
     GCode/ClearanceRepair.cpp

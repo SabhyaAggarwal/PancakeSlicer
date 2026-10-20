@@ -10,6 +10,7 @@
 #include "IMEXHelpers.hpp"
 #include "ClipperUtils.hpp"
 #include "Geometry/ArcWelder.hpp"
+#include "GCode/ToolKinematics.hpp"
 #include "Line.hpp"
 #include "LocalesUtils.hpp"
 #include "libslic3r.h"
@@ -1411,7 +1412,7 @@ void GCodeWriter::pose_move(std::string &out, const ToolPose &pose, double dE, c
     std::vector<JointPose> joints;
     kin.linearize(m_joints, from, to, max_tip_deviation, joints);
 
-    const double tip_speed = travel ? this->config.travel_speed.get_at(m_cached_extruder_idx) : m_current_speed / 60.;
+    const double tip_speed = travel ? (speed > 0. ? speed : this->config.travel_speed.get_at(m_cached_extruder_idx)) : m_current_speed / 60.;
     const double total     = (to.tip - from.tip).norm();
     Vec3d        prev_tip  = from.tip;
     for (const JointPose &j : joints) {
@@ -1442,19 +1443,39 @@ void GCodeWriter::move_to_joints(std::string &out, const JointPose &joints, cons
     this->set_current_position_clear(true);
 }
 
+std::vector<std::array<double, 7>> *GCodeWriter::planned_moves = nullptr;
+
 void GCodeWriter::write_joint_move(std::string &out, const JointPose &joints, double tip_length, double tip_speed,
                                    double dE, const std::string &comment)
 {
     const ToolKinematics            &kin  = this->tool_kinematics();
     const std::array<RotaryAxis, 2> &axes = kin.rotary_axes();
+    JointPose printed_from = m_joints, printed_to = joints;
+    for (int axis = 0; axis < 3; ++axis) {
+        printed_from.xyz[axis] = GCodeG1Formatter::quantize_xyzf(m_joints.xyz[axis]);
+        printed_to.xyz[axis] = GCodeG1Formatter::quantize_xyzf(joints.xyz[axis]);
+    }
+    for (int axis = 0; axis < 2; ++axis) {
+        printed_from.rot[axis] = GCodeFormatter::quantize(m_joints.rot[axis], 4);
+        printed_to.rot[axis] = GCodeFormatter::quantize(joints.rot[axis], 4);
+    }
+    if (tip_length > EPSILON) {
+        tip_length = 0.;
+        Vec3d previous = kin.forward(printed_from).tip;
+        for (int sample = 1; sample <= 16; ++sample) {
+            const Vec3d tip = kin.forward(lerp(printed_from, printed_to, sample / 16.)).tip;
+            tip_length += (tip - previous).norm();
+            previous = tip;
+        }
+    }
     double       t      = tip_speed > 0. ? tip_length / tip_speed : 0.;
-    const Vec3d  dq     = joints.xyz - m_joints.xyz;
+    const Vec3d  dq     = printed_to.xyz - printed_from.xyz;
     for (int i = 0; i < 3; ++i)
         if (m_max_joint_speed[i] > 0.)
             t = std::max(t, std::abs(dq[i]) / m_max_joint_speed[i]);
     double rotary_travel = 0.;
     for (int i = 0; i < 2; ++i) {
-        const double d = std::abs(joints.rot[i] - m_joints.rot[i]);
+        const double d = std::abs(printed_to.rot[i] - printed_from.rot[i]);
         rotary_travel += d * d;
         if (axes[i].max_speed_deg_s > 0.)
             t = std::max(t, d / axes[i].max_speed_deg_s);
@@ -1495,6 +1516,9 @@ void GCodeWriter::write_joint_move(std::string &out, const JointPose &joints, do
     w.emit_f(F);
     w.emit_comment(GCodeWriter::full_gcode_comment, comment);
     w.append_to(out);
+    if (planned_moves != nullptr)
+        planned_moves->push_back({ printed_to.xyz.x(), printed_to.xyz.y(), printed_to.xyz.z(), printed_to.rot[0], printed_to.rot[1],
+                                   dE != 0. ? tip_speed : 0., t });
     m_joints             = joints;
     m_joint_feed_written = true;
 }
@@ -1526,7 +1550,8 @@ std::string GCodeWriter::_retract(double length, double restart_extra, const std
     if (this->config.use_firmware_retraction)
         length = 1;
 
-    std::string gcode = m_inverse_time_retractions ? this->end_inverse_time() : std::string();
+    std::string gcode = (m_inverse_time_retractions || this->tool_kinematics().rotary_count() > 0) ?
+                            this->end_inverse_time() : std::string();
     if (double dE = filament()->retract(length, restart_extra);  !is_zero(dE)) {
         if (this->config.use_firmware_retraction) {
             gcode += FLAVOR_IS(gcfMachinekit) ? "G22 ; retract\n" : "G10 ; retract\n";
@@ -1548,7 +1573,8 @@ std::string GCodeWriter::_retract(double length, double restart_extra, const std
 
 std::string GCodeWriter::unretract(float extra_retract)
 {
-    std::string gcode = m_inverse_time_retractions ? this->end_inverse_time() : std::string();
+    std::string gcode = (m_inverse_time_retractions || this->tool_kinematics().rotary_count() > 0) ?
+                            this->end_inverse_time() : std::string();
 
     if (FLAVOR_IS(gcfMakerWare))
         gcode += "M101 ; extruder on\n";

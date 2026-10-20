@@ -511,21 +511,23 @@ struct OrientationFieldBuilder
             facet_normal[f] = n;
             facet_area[f]   = 0.5 * area2;
             facet_bed[f]    = n.z() < -0.95 && std::max({ a.z(), b.z(), c.z() }) < 0.5 * params.first_layer_height + 0.05;
-            const double longest = std::max({ (b - a).norm(), (c - b).norm(), (a - c).norm() });
-            const int    m       = std::max(1, int(std::ceil(longest / step)));
-            const double w       = facet_area[f] / double(m * m);
-            for (int i = 0; i < m; ++i)
-                for (int j = 0; j < m - i; ++j) {
-                    const double u0 = double(i), v0 = double(j);
-                    {
-                        const double u = (u0 + 1. / 3.) / m, v = (v0 + 1. / 3.) / m;
-                        samples.push_back({ a + u * (b - a) + v * (c - a), n, w, f });
-                    }
-                    if (i + j + 1 < m) {
-                        const double u = (u0 + 2. / 3.) / m, v = (v0 + 2. / 3.) / m;
-                        samples.push_back({ a + u * (b - a) + v * (c - a), n, w, f });
-                    }
+            std::vector<std::array<Vec3d, 3>> pieces { { a, b, c } };
+            while (!pieces.empty()) {
+                const std::array<Vec3d, 3> t = pieces.back();
+                pieces.pop_back();
+                int    e = 0;
+                double longest = 0.;
+                for (int k = 0; k < 3; ++k)
+                    if (const double l = (t[(k + 1) % 3] - t[k]).norm(); l > longest)
+                        longest = l, e = k;
+                if (longest <= step) {
+                    samples.push_back({ (t[0] + t[1] + t[2]) / 3., n, 0.5 * (t[1] - t[0]).cross(t[2] - t[0]).norm(), f });
+                    continue;
                 }
+                const Vec3d mid = 0.5 * (t[e] + t[(e + 1) % 3]);
+                pieces.push_back({ t[e], mid, t[(e + 2) % 3] });
+                pieces.push_back({ mid, t[(e + 1) % 3], t[(e + 2) % 3] });
+            }
         }
         cluster_lifts();
         corr_target.assign(samples.size(), Vec3d::UnitZ());

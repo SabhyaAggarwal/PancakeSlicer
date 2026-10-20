@@ -26,6 +26,7 @@
 #include "libslic3r/GCode/ToolKinematics.hpp"
 #include "libslic3r/GCode/WipeTower.hpp"
 #include "libslic3r/GCode/WipeTowerEstimate.hpp"
+#include "libslic3r/GCodeWriter.hpp"
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Nonplanar/AutoOrient.hpp"
@@ -57,6 +58,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -64,6 +66,7 @@
 #include <exception>
 #include <fstream>
 #include <initializer_list>
+#include <iomanip>
 #include <iostream>
 #include <ios>
 #include <limits>
@@ -99,7 +102,7 @@ struct Args
     std::string profiles = std::string(PROFILES_DIR);
     std::string vendor   = "Prusa";
     std::string printer, process, datadir, output, model, config_out, paint, gcode_3mf, json, plate, project_out, head_out, layer_profile, project, save_3mf,
-                tip_out, move_times, calib, calib_head, calib_picks, moves_out, dump_options, dump_presets;
+                tip_out, planned_out, verify_gcode, move_times, calib, calib_head, calib_picks, moves_out, dump_options, dump_presets;
     bool        progress = false;
     int         calib_fit = -1;
     std::vector<std::string> filaments, colours;
@@ -191,6 +194,8 @@ Args parse_args(int argc, char **argv)
         else if (arg == "--project") a.project = next();
         else if (arg == "--save-3mf") a.save_3mf = next();
         else if (arg == "--tip-out") a.tip_out = next();
+        else if (arg == "--planned-out") a.planned_out = next();
+        else if (arg == "--verify-gcode") a.verify_gcode = next();
         else if (arg == "--calib") a.calib = next();
         else if (arg == "--calib-head") a.calib_head = next();
         else if (arg == "--calib-fit") a.calib_fit = std::atoi(next().c_str());
@@ -234,7 +239,7 @@ Args parse_args(int argc, char **argv)
         else
             a.model = arg;
     }
-    if (!a.dump_options.empty() || !a.dump_presets.empty()) return a;
+    if (!a.dump_options.empty() || !a.dump_presets.empty() || !a.verify_gcode.empty()) return a;
     if (a.printer.empty() || a.process.empty() || a.filaments.empty() ||
         (a.output.empty() && ! a.orient_only && a.confirm_up.empty() && a.save_3mf.empty()) ||
         int(! a.model.empty()) + int(! a.plate.empty()) + int(! a.project.empty()) + int(! a.calib.empty()) != 1)
@@ -1033,6 +1038,23 @@ int main(int argc, char **argv)
         set_data_dir(datadir.string());
         set_temporary_dir(datadir.string());
         Nonplanar::HeadLibrary::instance().reload();
+        if (!args.verify_gcode.empty()) {
+            DynamicPrintConfig file_config;
+            file_config.load_from_gcode_file(args.verify_gcode, ForwardCompatibilitySubstitutionRule::Enable);
+            FullPrintConfig full;
+            full.apply(file_config, true);
+            GCodeProcessor processor;
+            processor.apply_config(full);
+            processor.process_file(args.verify_gcode);
+            ClearanceParams params;
+            params.head = Nonplanar::resolve_head_envelope(full);
+            const ClearanceReport report = verify_clearance(processor.get_result(), params, *make_tool_kinematics(full));
+            std::cout << "clearance_hit_moves " << report.hit_moves << "\nclearance_min_mm " << report.min_clearance << "\n";
+            for (const ClearanceHit &hit : report.worst)
+                std::cout << "clearance_hit line " << hit.gcode_line << " move " << hit.move_id << " " << hit.component << " "
+                          << hit.penetration << " mm\n";
+            return 0;
+        }
 
         if (!args.dump_presets.empty()) { dump_presets(args); return 0; }
         PresetBundle       bundle;
@@ -1222,6 +1244,9 @@ int main(int argc, char **argv)
         const double c_export = process_cpu_seconds();
         GCodeProcessorResult result;
         const indexed_triangle_set mesh = plate_mesh(model);
+        std::vector<std::array<double, 7>> planned;
+        if (!args.planned_out.empty())
+            GCodeWriter::planned_moves = &planned;
         print.export_gcode(args.output, &result, [&mesh, &config](const ThumbnailsParams &params) {
             ThumbnailsList list;
             for (const Vec2d &size : params.sizes)
@@ -1229,6 +1254,13 @@ int main(int argc, char **argv)
                     config.option<ConfigOptionStrings>("filament_colour")->get_at(0)));
             return list;
         }, args.verify || !args.json.empty());
+        GCodeWriter::planned_moves = nullptr;
+        if (!args.planned_out.empty()) {
+            boost::nowide::ofstream out(args.planned_out);
+            out << "# x y z b c planned_tip_speed duration\n" << std::setprecision(10);
+            for (const std::array<double, 7> &m : planned)
+                out << m[0] << ' ' << m[1] << ' ' << m[2] << ' ' << m[3] << ' ' << m[4] << ' ' << m[5] << ' ' << m[6] << '\n';
+        }
         const auto   t_done = std::chrono::steady_clock::now();
         const double c_done = process_cpu_seconds();
 

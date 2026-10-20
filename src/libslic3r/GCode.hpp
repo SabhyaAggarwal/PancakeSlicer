@@ -241,7 +241,7 @@ public:
         m_toolchange_count(0),
         m_nominal_z(0.)
         {}
-    virtual ~GCode() = default;
+    virtual ~GCode();
 
 public:
     void            do_export(Print* print, const char* path, GCodeProcessorResult* result = nullptr, ThumbnailsGeneratorCallback thumbnail_cb = nullptr,
@@ -557,6 +557,7 @@ protected:
     bool            rotary_at_home() const;
     std::string     rotary_hop(const ToolPose *target, const JointPose *seed = nullptr);
     std::string     rotary_local_hop(const ToolPose &target);
+    void            clamp_table_tilt(std::vector<Nonplanar::ConformalPoint> &points);
     std::string     rotary_turn_on_spot(const ToolPose &target);
     const Nonplanar::HeadEnvelope &nonplanar_head();
     double          nonplanar_hop();
@@ -688,6 +689,8 @@ protected:
     float                               m_max_layer_z{ 0.0f };
     double                              m_nonplanar_ceiling{ 0. };
     std::unique_ptr<MaterialColumns>      m_material_columns;
+    std::unique_ptr<TableGuard>           m_table_guard;
+    size_t                                m_table_clamped = 0;
     bool                                m_track_nonplanar_material{ false };
     bool m_conformal_lift { false };
     std::vector<Nonplanar::ConformalPoint> m_conformal_points;

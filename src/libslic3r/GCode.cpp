@@ -6,6 +6,7 @@
 #include "GCode/ConformalEmit.hpp"
 #include "GCode/ClearanceRepair.hpp"
 #include "Nonplanar/Repair.hpp"
+#include "GCode/ClearanceVerifier.hpp"
 #include "GCode/ToolKinematics.hpp"
 #include "Nonplanar/HeadEnvelope.hpp"
 #include "Nonplanar/AutoMode.hpp"
@@ -2420,6 +2421,8 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
 
     GCodeWriter::full_gcode_comment = print->config().gcode_comments;
     CNumericLocalesSetter locales_setter;
+    if (GCodeWriter::planned_moves != nullptr)
+        GCodeWriter::planned_moves->clear();
 
     if (print->is_step_done(psGCodeExport) && boost::filesystem::exists(boost::filesystem::path(path)))
         return;
@@ -7714,6 +7717,19 @@ std::string GCode::travel_above_nonplanar(const Polyline &travel, const std::str
     return gcode;
 }
 
+static constexpr double UprightRoadDeg = 5.;
+
+static void snap_upright_roads(const ToolKinematics &kinematics, std::vector<Nonplanar::ConformalPoint> &points)
+{
+    if (kinematics.rotary_count() == 0 || !layout_is_table(kinematics.layout()))
+        return;
+    const double cos_hold = std::cos(Geometry::deg2rad(UprightRoadDeg));
+    if (std::all_of(points.begin(), points.end(),
+                    [cos_hold](const Nonplanar::ConformalPoint &p) { return p.pose.axis.normalized().z() >= cos_hold; }))
+        for (Nonplanar::ConformalPoint &p : points)
+            p.pose.axis = Vec3d::UnitZ();
+}
+
 std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, const std::string &description,
                                           const std::function<Vec2d(const Vec2d &)> &surface_gradient,
                                           const ExtrusionPathConformal *next,
@@ -7798,6 +7814,8 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
         apply_minimal_tilt(m_conformal_points, [&surface_gradient, &origin](const Vec2d &p) { return surface_gradient(p - origin); },
                            kinematics, tilt);
     }
+    snap_upright_roads(kinematics, m_conformal_points);
+    this->clamp_table_tilt(m_conformal_points);
 
     m_wipe.reset_path();
 
@@ -7841,7 +7859,9 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
         m_conformal_on_bead = false;
     }
 
-    std::vector<RotaryRun> runs = rotary ? plan_rotary_runs(kinematics, m_conformal_points, m_writer.get_joints()) :
+    const bool reseed = rotary && !m_conformal_primed &&
+        (!m_last_pos_defined || (m_writer.get_position() - m_conformal_points.front().pose.tip).norm() > EPSILON);
+    std::vector<RotaryRun> runs = rotary ? plan_rotary_runs(kinematics, m_conformal_points, m_writer.get_joints(), 90., reseed) :
                                            std::vector<RotaryRun>(1, RotaryRun{ 0, m_conformal_points.size() - 1, JointPose() });
     const std::vector<ConformalPoint> points = runs.size() > 1 ? m_conformal_points : std::vector<ConformalPoint>();
     Vec3d      hop_to;
@@ -7887,7 +7907,14 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
                 gcode += m_conformal_on_bead || m_conformal_prev != nullptr ? this->conformal_retract() : this->retract();
             m_writer.add_object_change_labels(gcode);
             if (rotary && (r > 0 || start.axis.z() < 1. - EPSILON || ! this->rotary_at_home())) {
-                const std::string local = r == 0 || runs[r].reversed || runs[r - 1].reversed ? this->rotary_local_hop(start) : std::string();
+                JointPose nearest, selected;
+                const JointPose current = m_writer.get_joints();
+                const bool same_branch = kinematics.inverse(start, &current, nearest) &&
+                    kinematics.inverse(start, &run.seed, selected) &&
+                    std::abs(nearest.rot[0] - selected.rot[0]) <= 1e-4 &&
+                    std::abs(nearest.rot[1] - selected.rot[1]) <= 1e-4;
+                const std::string local = same_branch && (r == 0 || runs[r].reversed || runs[r - 1].reversed) ?
+                    this->rotary_local_hop(start) : std::string();
                 gcode += local.empty() ? this->rotary_hop(&start, &run.seed) : local;
             } else if (m_material_columns && !rotary) {
                 const bool lift = !primed && (m_conformal_prev == nullptr || this->conformal_lift_enforced(m_conformal_prev->role()));
@@ -8075,10 +8102,15 @@ std::string GCode::extrude_multiplanar_chunk(const Nonplanar::ConformalPatch &pa
                 } else if (! entered) {
                     gcode += this->rotary_move_safely(&start);
                 } else {
-                    const double level = std::max({ axis.dot(here), axis.dot(start.tip), ceiling + hop });
-                    gcode += m_writer.travel_to_pose({ here + (level - axis.dot(here)) * axis, axis }, "lift along the tool");
-                    gcode += m_writer.travel_to_pose({ start.tip + (level - axis.dot(start.tip)) * axis, axis }, "move in the chunk");
-                    gcode += m_writer.travel_to_pose(start, "lower along the tool");
+                    const std::string local = this->rotary_local_hop(start);
+                    if (!local.empty())
+                        gcode += local;
+                    else {
+                        const double level = std::max({ axis.dot(here), axis.dot(start.tip), ceiling + hop });
+                        gcode += m_writer.travel_to_pose({ here + (level - axis.dot(here)) * axis, axis }, "lift along the tool");
+                        gcode += m_writer.travel_to_pose({ start.tip + (level - axis.dot(start.tip)) * axis, axis }, "move in the chunk");
+                        gcode += m_writer.travel_to_pose(start, "lower along the tool");
+                    }
                 }
             }
             if (! entered) {
@@ -8224,7 +8256,10 @@ std::string GCode::extrude_field_patch(const Nonplanar::ConformalPatch &patch)
                 if (rotary == nullptr || chains(m_writer.get_joints(), chain, travel.size())) {
                     if (moves) {
                         gcode += this->retract();
-                        if (along)
+                        const std::string local = this->rotary_local_hop(start);
+                        if (!local.empty())
+                            gcode += local;
+                        else if (along)
                             for (size_t i = 0; i < travel.size(); ++i)
                                 gcode += m_writer.travel_to_pose(travel[i], i + 1 == travel.size() ? "lower onto the curved layer" : "travel along the curved layers");
                         else
@@ -8267,6 +8302,8 @@ void GCode::emit_conformal_moves(std::string &gcode, const ExtrusionPathConforma
             const Vec2d xy = this->point_to_gcode(p.to_point());
             return Vec3d(xy.x(), xy.y(), m_nominal_z + unscale<double>(p.z()));
         });
+    snap_upright_roads(m_writer.tool_kinematics(), m_conformal_points);
+    this->clamp_table_tilt(m_conformal_points);
 
     const double first_layer_z = m_config.initial_layer_print_height.value + m_config.z_offset.value;
     for (const ConformalPoint &pt : m_conformal_points)
@@ -8970,13 +9007,19 @@ std::string GCode::rotary_hop(const ToolPose *target, const JointPose *seed)
                                        std::max(std::abs(box.min.y()), std::abs(box.max.y())) + grow);
         drop = std::max(drop, r * s - box.min.z() * c);
     }
-    const double safe = std::max({ std::max(m_nonplanar_ceiling, double(m_max_layer_z)) + drop + this->nonplanar_hop(), here.z(),
-                                   target != nullptr ? target->tip.z() : here.z() });
+    constexpr double Withdraw = 5.;
+    const Vec3d away = axis.z() < 1. - EPSILON ? Vec3d(here + Withdraw * axis) : here;
+    const Vec3d onto = target != nullptr && goal.z() < 1. - EPSILON ? Vec3d(target->tip + Withdraw * goal) :
+                       target != nullptr                             ? target->tip : here;
+    const double safe = std::max({ std::max(m_nonplanar_ceiling, double(m_max_layer_z)) + drop + this->nonplanar_hop(), away.z(),
+                                   onto.z() });
     std::string gcode;
-    if (here.z() < safe - EPSILON)
-        gcode += m_writer.travel_to_pose({ Vec3d(here.x(), here.y(), safe), axis }, "lift above the shells");
+    if ((away - here).norm() > EPSILON)
+        gcode += m_writer.travel_to_pose({ away, axis }, "withdraw along the tool");
+    if (away.z() < safe - EPSILON)
+        gcode += m_writer.travel_to_pose({ Vec3d(away.x(), away.y(), safe), axis }, "lift above the shells");
     if (spin) {
-        gcode += m_writer.travel_to_pose({ Vec3d(here.x(), here.y(), safe), Vec3d::UnitZ() }, "turn upright above the shells");
+        gcode += m_writer.travel_to_pose({ Vec3d(away.x(), away.y(), safe), Vec3d::UnitZ() }, "turn upright above the shells");
         JointPose joints;
         if (! kinematics.inverse({ m_writer.get_position() - offset, Vec3d::UnitZ() }, &*spin, joints))
             throw Slic3r::SlicingError(_u8L("Non-planar: the head cannot reach a safe height to turn the rotary axes."));
@@ -8984,7 +9027,9 @@ std::string GCode::rotary_hop(const ToolPose *target, const JointPose *seed)
         m_writer.move_to_joints(gcode, joints, "turn the rotary axes");
     }
     if (target != nullptr) {
-        gcode += m_writer.travel_to_pose({ Vec3d(target->tip.x(), target->tip.y(), safe), goal }, "turn above the shells");
+        gcode += m_writer.travel_to_pose({ Vec3d(onto.x(), onto.y(), safe), goal }, "turn above the shells");
+        if ((onto - target->tip).norm() > EPSILON && safe > onto.z() + EPSILON)
+            gcode += m_writer.travel_to_pose({ onto, goal }, "lower beside the curved shell");
         gcode += m_writer.travel_to_pose(*target, "lower onto the curved shell");
     }
     gcode += m_writer.end_inverse_time();
@@ -9022,54 +9067,148 @@ std::string GCode::rotary_turn_on_spot(const ToolPose &target)
     return gcode;
 }
 
+GCode::~GCode()
+{
+    if (m_table_clamped > 0)
+        BOOST_LOG_TRIVIAL(warning) << "Table clamp: " << m_table_clamped << " poses leaned back from the BC table or cradle";
+}
+
+void GCode::clamp_table_tilt(std::vector<Nonplanar::ConformalPoint> &points)
+{
+    const ToolKinematics &kinematics = m_writer.tool_kinematics();
+    if (kinematics.rotary_count() == 0 || !layout_is_table(kinematics.layout()))
+        return;
+    if (!m_table_guard)
+        m_table_guard = std::make_unique<TableGuard>(this->nonplanar_head(), kinematics);
+    if (m_table_guard->empty())
+        return;
+    const double margin = this->nonplanar_head().margin;
+    const Vec3d  offset(m_writer.get_xy_offset().x(), m_writer.get_xy_offset().y(), 0.);
+    JointPose    seed = m_writer.get_joints();
+    for (Nonplanar::ConformalPoint &p : points) {
+        const Vec3d axis = p.pose.axis.normalized();
+        if (axis.z() > 1. - EPSILON)
+            continue;
+        JointPose q;
+        auto clear = [&](const Vec3d &a) {
+            return kinematics.inverse({ p.pose.tip - offset, a }, &seed, q) && m_table_guard->clearance(q) >= margin;
+        };
+        if (clear(axis)) {
+            seed = q;
+            continue;
+        }
+        const double tilt = std::acos(std::clamp(axis.z(), -1., 1.));
+        const Vec3d  across = (axis - axis.z() * Vec3d::UnitZ()).normalized();
+        auto         leaned = [&](double share) { return Vec3d(std::cos(share * tilt) * Vec3d::UnitZ() + std::sin(share * tilt) * across); };
+        double       lo = 0., hi = 1.;
+        for (int i = 0; i < 12; ++i) {
+            const double mid = 0.5 * (lo + hi);
+            (clear(leaned(mid)) ? lo : hi) = mid;
+        }
+        p.pose.axis = leaned(lo);
+        ++m_table_clamped;
+        if (kinematics.inverse({ p.pose.tip - offset, p.pose.axis }, &seed, q))
+            seed = q;
+    }
+}
+
 std::string GCode::rotary_local_hop(const ToolPose &target)
 {
     const auto *rotary = dynamic_cast<const RotaryKinematics *>(&m_writer.tool_kinematics());
-    if (rotary == nullptr || ! m_material_columns || ! m_last_pos_defined)
+    if (rotary == nullptr || !m_material_columns || !m_last_pos_defined)
         return {};
-    const Vec3d     here   = m_writer.get_position();
-    const Vec3d     axis   = m_writer.get_tool_axis();
-    const Vec3d     offset(m_writer.get_xy_offset().x(), m_writer.get_xy_offset().y(), 0.);
+    const Vec3d here = m_writer.get_position(), axis = m_writer.get_tool_axis();
+    const Vec3d offset(m_writer.get_xy_offset().x(), m_writer.get_xy_offset().y(), 0.);
     const JointPose joints = m_writer.get_joints();
-    if (axis.dot(target.axis) < std::cos(30. * M_PI / 180.) || (target.tip - here).norm() > 50.)
-        return {};
-    const Nonplanar::HeadEnvelope &head   = this->nonplanar_head();
-    const double                   margin = head.margin;
-    auto clearance = [&](const Vec3d &tip, const JointPose &rot) {
-        return m_material_columns->tilted_clearance(tip, rotary->head_frame(rot), head);
-    };
     JointPose end;
-    if (! rotary->inverse({ target.tip - offset, target.axis }, &joints, end))
+    if (!rotary->inverse({ target.tip - offset, target.axis }, &joints, end))
         return {};
-    const double at_here = std::min(margin, clearance(here, joints)) - 0.01;
-    const double at_end  = std::min(margin, clearance(target.tip, end)) - 0.01;
-    const double hop     = this->nonplanar_hop();
-    for (const double lift : { hop, 2. * hop, 4. * hop }) {
-        const Vec3d up = here + lift * axis, down = target.tip + lift * target.axis;
-        bool        ok = true;
-        auto        straight = [&](const Vec3d &a, const Vec3d &b, const JointPose &rot, double floor) {
-            const int steps = std::max(1, int(std::ceil((b - a).norm() / 0.25)));
-            for (int k = 1; k <= steps && ok; ++k)
-                ok = clearance(a + (b - a) * (double(k) / steps), rot) >= floor;
-        };
-        straight(here, up, joints, at_here);
-        straight(target.tip, down, end, at_end);
-        if (ok) {
-            const double turn  = std::max(std::abs(end.rot[0] - joints.rot[0]), std::abs(end.rot[1] - joints.rot[1]));
-            const int    steps = std::max(1, int(std::ceil(std::max((down - up).norm() / 0.25, turn))));
-            for (int k = 1; k < steps && ok; ++k) {
-                const double u   = double(k) / steps;
-                JointPose    rot = joints;
-                for (int i = 0; i < 2; ++i)
-                    rot.rot[i] = joints.rot[i] + u * (end.rot[i] - joints.rot[i]);
-                ok = clearance(up + (down - up) * u, rot) >= margin;
-            }
+    if (std::abs(end.rot[0] - joints.rot[0]) > 90. || std::abs(end.rot[1] - joints.rot[1]) > 90.)
+        return {};
+    const Nonplanar::HeadEnvelope &head = this->nonplanar_head();
+    Nonplanar::HeadEnvelope crossing = head;
+    crossing.tip_allowance = {};
+    if (!m_table_guard)
+        m_table_guard = std::make_unique<TableGuard>(this->nonplanar_head(), *rotary);
+    auto clearance = [&](const Vec3d &tip, const JointPose &rot, const Nonplanar::HeadEnvelope &envelope) {
+        return std::min(m_material_columns->tilted_clearance(tip, rotary->head_frame(rot), envelope),
+                        m_table_guard->clearance(rot) - head.margin);
+    };
+    const double at_here = std::min(0., clearance(here, joints, head)) - 0.01;
+    const double at_end = std::min(0., clearance(target.tip, end, head)) - 0.01;
+    const int count = std::max(1, int(std::ceil((target.tip - here).norm() / 2.)));
+    std::vector<ToolPose> route;
+    route.reserve(size_t(count + 1));
+    for (int i = 0; i <= count; ++i) {
+        const double u = double(i) / count;
+        Vec3d tip = here + u * (target.tip - here);
+        if (i > 0 && i < count) {
+            const double top = m_material_columns->top_in_rect(BoundingBoxf(tip.head<2>() - Vec2d::Constant(0.125),
+                                                                           tip.head<2>() + Vec2d::Constant(0.125)));
+            if (std::isfinite(top))
+                tip.z() = std::max(tip.z(), top);
         }
-        if (! ok)
+        route.push_back({ tip, rotary->forward(lerp(joints, end, u)).axis });
+    }
+    const double limit = std::max({m_nonplanar_ceiling, double(m_max_layer_z), here.z(), target.tip.z()}) + 20.;
+    double lever = std::max(here.norm(), target.tip.norm()) + rotary->geometry().pivot.norm() +
+                   rotary->geometry().tool_mount.norm() + rotary->geometry().tool_length + std::abs(rotary->geometry().table_height);
+    double head_lever = 0.;
+    for (const Nonplanar::HeadBox &box : head.boxes)
+        if (!box.infinite_x && !box.infinite_y)
+            head_lever = std::max(head_lever, box.min.norm() + box.max.norm());
+    lever += head_lever;
+    auto deficit = [&](const JointPose &from, const ToolPose &to, const Nonplanar::HeadEnvelope &envelope,
+                       double floor, JointPose &last) {
+        std::vector<JointPose> segments;
+        last = from;
+        try {
+            rotary->linearize(from, rotary->forward(from), {to.tip - offset, to.axis}, GCodeWriter::max_tip_deviation, segments);
+        } catch (const RuntimeError &) {
+            return std::numeric_limits<double>::infinity();
+        }
+        double need = 0.;
+        for (const JointPose &next : segments) {
+            const double turn = std::abs(next.rot[0] - last.rot[0]) + std::abs(next.rot[1] - last.rot[1]);
+            const double displacement = (next.xyz - last.xyz).norm() + turn * M_PI / 180. * lever;
+            const int samples = std::max(1, int(std::ceil(displacement / 0.25)));
+            for (int k = 0; k <= samples; ++k) {
+                const JointPose q = lerp(last, next, double(k) / samples);
+                need = std::max(need, floor - clearance(rotary->forward(q).tip + offset, q, envelope));
+            }
+            last = next;
+        }
+        return need;
+    };
+    for (int attempt = 0; attempt < 16; ++attempt) {
+        std::vector<double> lifts(route.size(), 0.);
+        JointPose previous = joints;
+        for (size_t i = 0; i < route.size(); ++i) {
+            JointPose next;
+            const double need = deficit(previous, route[i], i == 0 ? head : crossing, i == 0 ? at_here : 0.13, next);
+            if (need > EPSILON) {
+                const double lift = (need + 0.03) / std::max(0.25, route[i].axis.z());
+                lifts[i] = std::max(lifts[i], lift);
+                if (i > 0)
+                    lifts[i - 1] = std::max(lifts[i - 1], lift);
+            }
+            previous = next;
+        }
+        if (std::any_of(lifts.begin(), lifts.end(), [](double lift) { return lift > 0.; })) {
+            for (size_t i = 0; i < route.size(); ++i)
+                route[i].tip += lifts[i] * route[i].axis;
+            if (std::any_of(route.begin(), route.end(), [limit](const ToolPose &p) { return p.tip.z() > limit; }))
+                return {};
             continue;
+        }
+        JointPose landed;
+        if (deficit(previous, target, head, at_end, landed) > EPSILON)
+            return {};
         std::string gcode;
-        gcode += m_writer.travel_to_pose({ up, axis }, "lift along the tool");
-        gcode += m_writer.travel_to_pose({ down, target.axis }, "turn across to the curved shell");
+        for (size_t i = 0; i < route.size(); ++i)
+            if ((m_writer.get_position() - route[i].tip).norm() > EPSILON ||
+                (m_writer.get_tool_axis() - route[i].axis).norm() > EPSILON)
+                gcode += m_writer.travel_to_pose(route[i], i == 0 ? "lift along the tool" : "travel over the curved shell");
         gcode += m_writer.travel_to_pose(target, "lower onto the curved shell");
         gcode += m_writer.end_inverse_time();
         return gcode;

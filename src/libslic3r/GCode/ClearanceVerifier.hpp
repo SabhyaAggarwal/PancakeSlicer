@@ -12,6 +12,7 @@
 namespace Slic3r {
 struct GCodeProcessorResult;
 class ToolKinematics;
+struct JointPose;
 class Print;
 
 class MaterialColumns
@@ -87,5 +88,18 @@ struct ClearanceReport
 ClearanceReport verify_clearance(const GCodeProcessorResult &result, const ClearanceParams &params,
                                  const ToolKinematics &kinematics,
                                  const std::function<void()> &throw_if_canceled = {});
+class TableGuard
+{
+public:
+    TableGuard(const Nonplanar::HeadEnvelope &head, const ToolKinematics &kinematics);
+    ~TableGuard();
+    bool   empty() const;
+    double clearance(const JointPose &joints) const;
+private:
+    struct Data;
+    std::unique_ptr<Data>  m_data;
+    const ToolKinematics  &m_kinematics;
+    double                 m_margin;
+};
 void check_export_clearance(Print &print, GCodeProcessorResult &result);
 }
