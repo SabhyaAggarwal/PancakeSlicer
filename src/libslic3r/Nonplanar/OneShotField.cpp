@@ -422,6 +422,15 @@ std::vector<double> layer_profile(const NpField &f, double blend, double first_l
     return out;
 }
 
+double OneShotState::support_time() const
+{
+    if (solved)
+        for (const auto &[name, value] : solved->terms)
+            if (name == "stat_planar_support_s")
+                return value;
+    return 0.;
+}
+
 NpField blend_toward_planar(const NpField &field, double blend)
 {
     NpField out = field;
@@ -507,6 +516,7 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
     f.proxy_version = ObjectiveVersion;
     f.terms.emplace_back("stat_oneshot_seconds", std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
     f.terms.emplace_back("stat_oneshot_aborted", aborted ? 1. : 0.);
+    f.terms.emplace_back("stat_planar_support_s", planar_support_time(g, m));
     if (const char *dir = std::getenv("NP_ONESHOT_DUMP"); dir != nullptr && *dir != 0) {
         const std::string stem = (boost::filesystem::path(dir) / object.model_object()->name).string();
         save_objective_geometry(stem + ".geom.npz", g);

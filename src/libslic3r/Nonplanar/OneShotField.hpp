@@ -32,12 +32,14 @@ struct OneShotState
     int                            reemits = 0;
     double                         planar_time = -1.;
     std::string                    decision;
+    std::string                    warning;
     std::string                    student = "none";
     int                            polish_k = 0;
     double                         max_time_ratio_override = -1.;
     bool                           aborted = false;
 
     double max_time_ratio() const { return max_time_ratio_override > 0. ? max_time_ratio_override : MaxTimeRatio; }
+    double support_time() const;
 
     bool field() const { return stage == Stage::Field || (stage == Stage::Final && !planar); }
     bool field_path() const { return field() && !z_only; }

@@ -588,8 +588,11 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
         return false;
     const OneShotState &first = objects.front()->oneshot_state();
     const double        time  = result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)].time;
-    if (first.stage == OneShotState::Stage::Final)
+    if (first.stage == OneShotState::Stage::Final) {
+        if (first.planar && !first.warning.empty())
+            m_print.active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, first.warning);
         return false;
+    }
     if (first.stage == OneShotState::Stage::Reference) {
         for (PrintObject *object : objects) {
             OneShotState &s = object->oneshot_state();
@@ -606,16 +609,22 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
     params.head = resolve_head_envelope(m_print.config());
     ClearanceReport report = verify_clearance(result, params, *make_tool_kinematics(m_print.config()), [this] { m_print.throw_if_canceled(); });
     const size_t    hits   = report.hit_moves;
-    const double    ratio  = first.planar_time > 0. ? time / first.planar_time : 1.;
-    const double    blend  = first.blend;
-    BOOST_LOG_TRIVIAL(info) << "One-shot field: blend " << blend << ", " << hits << " clearance hits, " << time << " s = " << ratio << "x planar";
+    double support = 0.;
+    for (PrintObject *object : objects)
+        support += object->oneshot_state().support_time();
+    const std::string base_name = support > 0. ? "planar+support" : "planar";
+    const double      ratio     = first.planar_time > 0. ? time / (first.planar_time + support) : 1.;
+    const double      blend     = first.blend;
+    BOOST_LOG_TRIVIAL(info) << "One-shot field: blend " << blend << ", " << hits << " clearance hits, " << time << " s = " << ratio << "x " << base_name
+                            << " (support " << support << " s)";
     if (hits == 0 && ratio <= first.max_time_ratio()) {
         for (PrintObject *object : objects) {
             OneShotState &s = object->oneshot_state();
             s.stage         = OneShotState::Stage::Final;
-            s.decision      = Slic3r::format("one-shot field: blend %1$.3g, 0 clearance hits, %2$.0f s = %3$.2fx planar%4%", blend, time, ratio,
+            s.decision      = Slic3r::format("one-shot field: blend %1$.3g, 0 clearance hits, %2$.0f s = %3$.2fx %5%%4%", blend, time, ratio,
                                              s.aborted ? ", solve aborted at time cap: planar layers" :
-                                             s.z_only  ? ", z-only: planar layers of varying height" : s.shells ? ", curved top shells" : "");
+                                             s.z_only  ? ", z-only: planar layers of varying height" : s.shells ? ", curved top shells" : "",
+                                             base_name);
         }
         if (std::any_of(objects.begin(), objects.end(), [](PrintObject *object) { return object->oneshot_state().aborted; }))
             m_print.active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL,
@@ -624,7 +633,7 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
         result.clearance        = result.clearance_report.per_move;
         return true;
     }
-    const std::string why = hits > 0 ? Slic3r::format("%1% clearance hits", hits) : Slic3r::format("%1$.2fx the planar time", ratio);
+    const std::string why = hits > 0 ? Slic3r::format("%1% clearance hits", hits) : Slic3r::format("%1$.2fx the %2% time", ratio, base_name);
     for (PrintObject *object : objects) {
         OneShotState &s = object->oneshot_state();
         if (s.shells && !s.z_only)
@@ -636,11 +645,9 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
             s.stage    = OneShotState::Stage::Final;
             s.planar   = true;
             s.decision = Slic3r::format("one-shot field: fell back to planar, %1% at blend %2$.3g", why, blend);
+            s.warning  = Slic3r::format(_u8L("One-shot field: printed in planar layers: %1% at blend %2$.3g."), why, blend);
         }
     }
-    if (const OneShotState &s = objects.front()->oneshot_state(); s.planar)
-        m_print.active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL,
-                                        Slic3r::format(_u8L("One-shot field: printed in planar layers: %1% at blend %2$.3g."), why, blend));
     m_oneshot_reemit = true;
     return true;
 }
