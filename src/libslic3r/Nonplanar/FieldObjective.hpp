@@ -15,8 +15,8 @@
 
 namespace Slic3r::Nonplanar {
 
-inline constexpr const char *ObjectiveVersion = "J v1.5";
-inline constexpr double      ObjectiveVersionNumber = 1.5;
+inline constexpr const char *ObjectiveVersion = "J v1.5.2";
+inline constexpr double      ObjectiveVersionNumber = 1.52;
 
 struct ObjectiveGeometry
 {

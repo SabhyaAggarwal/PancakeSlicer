@@ -16,6 +16,7 @@
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
+#include "libslic3r/GCode/ToolKinematics.hpp"
 #include "libslic3r/Flow.hpp"
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/Layer.hpp"
@@ -391,6 +392,7 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
     std::vector<std::vector<int>> self_supported(free_mode ? layers.size() : 0);
     Polygons                      capped_cover;
 
+    const bool planner_order = make_tool_kinematics(object.print()->config())->rotary_count() > 0;
     std::vector<double> layer_bottom(layers.size()), layer_top(layers.size());
     for (size_t i = 0; i < layers.size(); ++i) {
         layer_top[i]    = layers[i]->print_z;
@@ -476,10 +478,11 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
     const double grad_min  = std::max(0., g / ((1. - min_contact) * w) - std::tan(settings.max_bend));
     std::vector<float> slope(n_nodes, HeightField::NoData);
     Mask               mask(n_nodes, 0);
-    enum Why : uint8_t { Taken, Unsampled, Resting, Rim, SelfSupporting, Unfit, Small, NoRoot, NoBeads, Bridged, Thread };
+    enum Why : uint8_t { Taken, Unsampled, Resting, Rim, SelfSupporting, Unfit, Small, NoRoot, NoBeads, Bridged, Thread, Floating };
     static constexpr const char *why_tag[] = { "overhang_outline", "overhang_unsampled", "overhang_resting", "overhang_rim",
                                                "overhang_self_supporting", "overhang_unfit", "overhang_small",
-                                               "overhang_no_root", "overhang_no_beads", "overhang_bridged", "overhang_thread" };
+                                               "overhang_no_root", "overhang_no_beads", "overhang_bridged", "overhang_thread",
+                                               "overhang_floating" };
     std::vector<uint8_t> why(n_nodes, Taken);
     Mask                 flat_mask(n_nodes, 0);
     for (int iy = 0; iy < grid.ny(); ++iy)
@@ -1121,6 +1124,8 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
                 per_k.emplace_back(std::move(edge));
             }
 
+        const size_t root_layer = layer_at(z_ref + 0.5 * g), root_before = root_roads[root_layer].size(),
+                     capped_before = capped_cover.size();
         if (flat) {
             const ExPolygons &support = layers[layer_at(z_ref - 0.5 * g)]->lslices;
             auto root_at = [&](const Vec2d &, double &z, float &bead, bool &capped) {
@@ -1158,6 +1163,115 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
             reject(NoBeads);
             continue;
         }
+        constexpr double MaxFloatingRoad = 1., MinRun = 0.3, Step = 0.25, Cell = 1.;
+        double planar_floating = 0., z_floor_max = -Inf;
+        for (const float f : F_c.data())
+            if (std::isfinite(f))
+                z_floor_max = std::max(z_floor_max, double(f));
+        const double floating = [&]() {
+            struct Laid { Vec3d tip; double height; };
+            std::vector<Laid> laid;
+            std::unordered_map<int64_t, std::vector<uint32_t>> cells;
+            auto cell_key = [](int x, int y) { return (int64_t(x) << 32) ^ int64_t(uint32_t(y)); };
+            auto add = [&](const Laid &s) {
+                cells[cell_key(int(std::floor(s.tip.x() / Cell)), int(std::floor(s.tip.y() / Cell)))].emplace_back(uint32_t(laid.size()));
+                laid.emplace_back(s);
+            };
+            std::map<size_t, ExPolygons> grown;
+            const double reach = 0.5 * w + g;
+            const ExPolygons columns = offset_ex(footprint_ext, float(scale_(reach)));
+            const double near = 0.5 * w;
+            auto rests = [&](const Vec3d &p, double h, size_t host) {
+                const double lo = p.z() - 2. * h - 0.1, hi = p.z() - 0.1;
+                const Point  xy = Point::new_scale(p.x(), p.y());
+                const bool   under_skin = std::any_of(columns.begin(), columns.end(), [&xy](const ExPolygon &e) { return e.contains(xy); });
+                double       underside  = Inf;
+                if (under_skin) {
+                    underside = Sb.sample(p.head<2>());
+                    if (!std::isfinite(underside))
+                        underside = S_pad.sample(p.head<2>());
+                }
+                for (size_t l = layer_at(lo); l < host && layer_bottom[l] <= hi; ++l) {
+                    if (layer_top[l] < lo || (under_skin && !(layer_top[l] <= underside + 0.5 * g)))
+                        continue;
+                    auto it = grown.find(l);
+                    if (it == grown.end())
+                        it = grown.emplace(l, offset_ex(layers[l]->lslices, float(scale_(near)))).first;
+                    if (std::any_of(it->second.begin(), it->second.end(), [&xy](const ExPolygon &e) { return e.contains(xy); }))
+                        return true;
+                }
+                const int cx = int(std::floor(p.x() / Cell)), cy = int(std::floor(p.y() / Cell)), r = int(std::ceil(reach / Cell));
+                for (int y = cy - r; y <= cy + r; ++y)
+                    for (int x = cx - r; x <= cx + r; ++x)
+                        if (auto it = cells.find(cell_key(x, y)); it != cells.end())
+                            for (uint32_t id : it->second) {
+                                const Laid &s = laid[id];
+                                if ((s.tip.head<2>() - p.head<2>()).norm() <= near && s.tip.z() >= lo && s.tip.z() - s.height <= hi)
+                                    return true;
+                            }
+                return false;
+            };
+            planar_floating = 0.;
+            std::map<size_t, ExPolygons> below;
+            for (size_t l = std::max<size_t>(1, layer_at(z_ref)); l < layers.size() && layer_bottom[l] <= z_floor_max; ++l) {
+                const ExPolygons here = intersection_ex(layers[l]->lslices, columns);
+                if (here.empty())
+                    continue;
+                auto it = below.find(l - 1);
+                if (it == below.end())
+                    it = below.emplace(l - 1, offset_ex(layers[l - 1]->lslices, float(scale_(reach)))).first;
+                for (const Polyline &edge : diff_pl(to_polylines(here), it->second))
+                    planar_floating += unscale<double>(edge.length());
+            }
+            double total = 0.;
+            for (auto &[host, subs] : by_host)
+                for (auto &[sub, pieces] : subs) {
+                    const double      host_top = layer_top[size_t(host)];
+                    std::vector<Laid> band;
+                    for (const Piece *piece : pieces) {
+                        const Points3            &pts = piece->path->polyline.points;
+                        const std::vector<float> &bh  = piece->path->bead_height;
+                        double                    run = 0.;
+                        for (size_t i = 0; i + 1 < pts.size(); ++i) {
+                            auto at = [&](size_t j) {
+                                return Vec3d(unscale<double>(pts[j].x()), unscale<double>(pts[j].y()), host_top + unscale<double>(pts[j].z()));
+                            };
+                            const Vec3d a = at(i), b = at(i + 1);
+                            const double length = (b - a).norm(), height = i < bh.size() && bh[i] > 0.f ? double(bh[i]) : g;
+                            const int    n = std::max(1, int(std::ceil(length / Step)));
+                            for (int j = 0; j < n; ++j) {
+                                const Vec3d p = a + (b - a) * ((j + 0.5) / n);
+                                if (rests(p, height, size_t(host))) {
+                                    if (run > MinRun)
+                                        total += run;
+                                    run = 0.;
+                                } else
+                                    run += length / n;
+                                (planner_order ? laid : band).emplace_back(Laid{ p, height });
+                                if (planner_order)
+                                    cells[cell_key(int(std::floor(p.x() / Cell)), int(std::floor(p.y() / Cell)))].emplace_back(uint32_t(laid.size() - 1));
+                            }
+                        }
+                        if (run > MinRun)
+                            total += run;
+                    }
+                    for (const Laid &s : band)
+                        add(s);
+                }
+            return total;
+        }();
+        constexpr double MaxShareOfPlanar = 0.5, MinPlanarFloating = 10.;
+        if (floating > MaxFloatingRoad && (floating > MaxShareOfPlanar * planar_floating || planar_floating < MinPlanarFloating)) {
+            BOOST_LOG_TRIVIAL(info) << "Curved overhang of " << object.model_object()->name << " left to planar layers: " << floating
+                                    << " mm of its roads would start in air, against " << planar_floating << " mm of planar walls";
+            root_roads[root_layer].resize(root_before);
+            capped_cover.resize(capped_before);
+            reject(Floating);
+            continue;
+        }
+        if (floating > MaxFloatingRoad)
+            BOOST_LOG_TRIVIAL(info) << "Curved overhang of " << object.model_object()->name << " kept: " << floating
+                                    << " mm of its roads in air, against " << planar_floating << " mm of planar walls";
         append(accepted, footprint);
         PatchDiagnostics diag;
         diag.patch_id      = int(result.patches.size());

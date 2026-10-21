@@ -90,8 +90,12 @@ public:
     double                       pitch() const { return m_pitch; }
     const OrientationFieldStats &stats() const { return m_stats; }
     bool                         given() const { return m_given; }
+    std::vector<double>          slice_knots() const;
+    double                       layer_height() const { return m_layer_height; }
+    double                       first_layer() const { return m_first_layer; }
     double                       max_tilt() const { return m_stats.max_tilt; }
     std::vector<std::string>     notes;
+    bool                         given_shells = false;
     const std::vector<FieldConflict> &conflicts() const { return m_conflicts; }
 
     static std::shared_ptr<OrientationField> build(const indexed_triangle_set &mesh, const OrientationFieldParams &params,

@@ -48,6 +48,8 @@ constexpr int    Samples = 8192;
 const double     Cos70   = std::cos(70. * M_PI / 180.);
 constexpr double Inf     = std::numeric_limits<double>::infinity();
 constexpr int    StudentPolish = 3;
+constexpr size_t MaxNodes = 300000;
+
 std::vector<int> columns(const std::vector<std::array<Vec3d, 3>> &tris, const ObjectiveGeometry &g, int axis)
 {
     const int u = axis == 0 ? 1 : 0, w = axis == 2 ? 1 : 2;
@@ -262,6 +264,16 @@ void save_objective_geometry(const std::string &path, const ObjectiveGeometry &g
 
 }
 
+double max_time_ratio_override()
+{
+    const char *env = std::getenv("NP_ONESHOT_MAX_TIME_RATIO");
+    if (env == nullptr || *env == 0)
+        return -1.;
+    char        *end   = nullptr;
+    const double ratio = std::strtod(env, &end);
+    return end != env && *end == 0 && std::isfinite(ratio) && ratio > 0. ? ratio : -1.;
+}
+
 ObjectiveGeometry objective_geometry(const indexed_triangle_set &mesh, int wall_loops, int top_shell_layers, double line_width, double layer_height)
 {
     ObjectiveGeometry                 g;
@@ -297,7 +309,15 @@ ObjectiveGeometry objective_geometry(const indexed_triangle_set &mesh, int wall_
         if (g.cls.back() == 1)
             area_wall += a;
     }
-    const double pitch = std::clamp(box.size().maxCoeff() / 96., 0.5, 2.);
+    double pitch = std::clamp(box.size().maxCoeff() / 96., 0.5, 2.);
+    auto   nodes = [&box](double p) {
+        size_t n = 1;
+        for (int ax = 0; ax < 3; ++ax)
+            n *= size_t(std::ceil((box.max[ax] + 2. * p - (ax < 2 ? box.min[ax] - 2. * p : 0.)) / p)) + 1;
+        return n;
+    };
+    while (nodes(pitch) > MaxNodes)
+        pitch *= 1.02;
     g.origin           = Vec3d(box.min.x() - 2. * pitch, box.min.y() - 2. * pitch, 0.);
     g.spacing          = Vec3d::Constant(pitch);
     for (int ax = 0; ax < 3; ++ax)
@@ -331,13 +351,6 @@ ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeo
     m.rotary             = true;
     m.tilt_max           = tilt_max;
     const double nozzle = pc.nozzle_diameter.get_at(0);
-    m.cover.shell_rms       = 0.028;
-    m.cover.shell_slope_cap = std::atan(m.h / (0.625 * nozzle));
-    m.cover.skin_rms        = -1.;
-    m.cover.skin_tilt_lo    = rad(39.);
-    m.cover.skin_tilt_hi    = rad(80.);
-    m.cover.skin_min_nz     = -0.1;
-    m.cover.skin_time       = 0.192;
     m.line_width     = oc.line_width.get_abs_value(nozzle);
     m.infill_density = rc.sparse_infill_density.value / 100.;
     m.shell_speed    = 0.5 * (rc.outer_wall_speed.get_at(0) + rc.inner_wall_speed.get_at(0));
@@ -399,7 +412,9 @@ std::vector<double> layer_profile(const NpField &f, double blend, double first_l
     std::vector<double> out { 0., first_layer };
     double              below = first_layer;
     for (int j = 1; below < top - 1e-6; ++j) {
-        const double h = std::clamp(inverse(first_layer + j * f.h) - below, min_h, max_h);
+        double h = std::clamp(inverse(first_layer + j * f.h) - below, min_h, max_h);
+        if (const double rest = top - below; rest - h < min_h)
+            h = rest <= max_h ? rest : 0.5 * rest;
         out.insert(out.end(), { below, h, std::min(below + h, top) - 1e-4, h });
         below += h;
     }
@@ -420,8 +435,8 @@ NpField blend_toward_planar(const NpField &field, double blend)
     return out;
 }
 
-NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &mesh, double tilt_max, double budget,
-                       const std::function<void()> &cancel, std::string &student, int &polish_k)
+NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &mesh, double tilt_max, double abort_after,
+                       const std::function<void()> &cancel, std::string &student, int &polish_k, bool &aborted)
 {
     const auto               t0 = std::chrono::steady_clock::now();
     const PrintObjectConfig &oc = object.config();
@@ -435,7 +450,7 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
     params.lottery_keep = 1;
     params.level_rounds = 1;
     params.local_rounds = 0;
-    params.budget       = budget;
+    params.budget       = 0.;
     const std::string model = student_model();
     student  = model.empty() ? std::string("none") : file_sha256(model);
     polish_k = model.empty() ? 0 : StudentPolish;
@@ -458,9 +473,29 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
         params.level_rounds  = 0;
         params.iterations    = StudentPolish;
     }
-    const ObjectiveTerms t = solve_objective(g, m, ObjectiveWeights(), params, f.phi, cancel, [&object](const std::string &line) {
-        BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": " << line;
-    });
+    struct Aborted
+    {};
+    const std::vector<float> planar = f.phi;
+    ObjectiveTerms           t;
+    aborted = false;
+    try {
+        t = solve_objective(g, m, ObjectiveWeights(), params, f.phi,
+                            [&cancel, t0, abort_after]() {
+                                if (cancel)
+                                    cancel();
+                                if (abort_after > 0. && std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() > abort_after)
+                                    throw Aborted();
+                            },
+                            [&object](const std::string &line) {
+                                BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": " << line;
+                            });
+    } catch (const Aborted &) {
+        aborted = true;
+        f.phi   = planar;
+        t       = evaluate_objective(g, m, ObjectiveWeights(), f.phi, true);
+        BOOST_LOG_TRIVIAL(warning) << "One-shot field " << object.model_object()->name << ": solve aborted at the " << abort_after
+                                   << " s time cap, planar layers";
+    }
     BoundingBoxf3 box;
     for (const stl_vertex &v : mesh.vertices)
         box.merge(v.cast<double>());
@@ -471,6 +506,7 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
     f.terms.emplace_back("stat_j_version", ObjectiveVersionNumber);
     f.proxy_version = ObjectiveVersion;
     f.terms.emplace_back("stat_oneshot_seconds", std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
+    f.terms.emplace_back("stat_oneshot_aborted", aborted ? 1. : 0.);
     if (const char *dir = std::getenv("NP_ONESHOT_DUMP"); dir != nullptr && *dir != 0) {
         const std::string stem = (boost::filesystem::path(dir) / object.model_object()->name).string();
         save_objective_geometry(stem + ".geom.npz", g);

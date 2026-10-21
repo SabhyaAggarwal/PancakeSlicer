@@ -25,6 +25,7 @@ struct OneShotState
 
     std::shared_ptr<const NpField> solved;
     bool                           z_only = false;
+    bool                           shells = false;
     Stage                          stage = Stage::Reference;
     double                         blend = 1.;
     bool                           planar = false;
@@ -33,6 +34,10 @@ struct OneShotState
     std::string                    decision;
     std::string                    student = "none";
     int                            polish_k = 0;
+    double                         max_time_ratio_override = -1.;
+    bool                           aborted = false;
+
+    double max_time_ratio() const { return max_time_ratio_override > 0. ? max_time_ratio_override : MaxTimeRatio; }
 
     bool field() const { return stage == Stage::Field || (stage == Stage::Final && !planar); }
     bool field_path() const { return field() && !z_only; }
@@ -51,7 +56,9 @@ ObjectiveGeometry objective_geometry(const indexed_triangle_set &mesh, int wall_
 
 ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeometry &geom, double tilt_max);
 
-NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &mesh, double tilt_max, double budget,
-                       const std::function<void()> &cancel, std::string &student, int &polish_k);
+NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &mesh, double tilt_max, double abort_after,
+                       const std::function<void()> &cancel, std::string &student, int &polish_k, bool &aborted);
+
+double max_time_ratio_override();
 
 }

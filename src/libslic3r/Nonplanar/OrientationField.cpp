@@ -166,6 +166,38 @@ Vec3d OrientationField::map_axis(const Vec3d &p, const Vec3d &deformed_axis) con
     return a.squaredNorm() < 1e-24 ? this->orientation(p) : clamp_tilt(a.normalized(), m_tilt_budget);
 }
 
+std::vector<double> OrientationField::slice_knots() const
+{
+    std::vector<double> z, f;
+    for (int k = 0; k < m_nz; ++k) {
+        double sum = 0.;
+        size_t n   = 0;
+        for (int j = 0; j < m_ny; ++j)
+            for (int i = 0; i < m_nx; ++i)
+                if (const size_t id = node(i, j, k); m_inside[id])
+                    sum += m_phi[id], ++n;
+        if (n > 0 && (f.empty() || sum / double(n) > f.back()))
+            z.push_back(node_pos(0, 0, k).z()), f.push_back(sum / double(n));
+    }
+    auto interp = [](const std::vector<double> &x, const std::vector<double> &y, double v) {
+        if (x.size() < 2)
+            return v;
+        const size_t i = std::clamp<size_t>(size_t(std::upper_bound(x.begin(), x.end(), v) - x.begin()), 1, x.size() - 1);
+        return y[i - 1] + (y[i] - y[i - 1]) * (v - x[i - 1]) / std::max(x[i] - x[i - 1], 1e-12);
+    };
+    for (const double anchor : { m_bed_band, 0. })
+        if (z.empty() || anchor < z.front() - 1e-9)
+            z.insert(z.begin(), anchor), f.insert(f.begin(), anchor);
+    std::vector<double> knots;
+    if (f.size() < 2)
+        return knots;
+    for (int j = 1; m_first_layer + (j - 1) * m_layer_height < f.back(); ++j) {
+        const double lo = interp(f, z, m_first_layer + (j - 1) * m_layer_height), hi = interp(f, z, m_first_layer + j * m_layer_height);
+        knots.push_back(interp(z, f, 0.5 * (lo + hi)));
+    }
+    return knots;
+}
+
 Vec3d OrientationField::forward(const Vec3d &p) const
 {
     return Vec3d(this->trilinear(m_u, p), this->trilinear(m_v, p), this->trilinear(m_phi, p));
@@ -1851,7 +1883,7 @@ bool field_motion_supported(const PrintConfig &config, std::string *why)
 
 namespace {
 
-constexpr double OneShotBudget = 300.;
+constexpr double OneShotAbortTime = 900.;
 
 bool field_requested(PrintObject &object)
 {
@@ -1879,9 +1911,12 @@ std::shared_ptr<const NpLayerField> given_field(PrintObject &object, const index
         OneShotState &state = object.oneshot_state();
         if (!state.solved)
             state.solved = std::make_shared<const NpField>(
-                one_shot_field(object, mesh, max_tilt, OneShotBudget, [&object]() { throw_if_canceled(object); }, state.student,
-                               state.polish_k));
-        return std::make_shared<const NpLayerField>(state.blend < 1. ? blend_toward_planar(*state.solved, state.blend) : *state.solved);
+                one_shot_field(object, mesh, max_tilt, OneShotAbortTime, [&object]() { throw_if_canceled(object); }, state.student,
+                               state.polish_k, state.aborted));
+        NpField f = state.blend < 1. ? blend_toward_planar(*state.solved, state.blend) : *state.solved;
+        if (state.shells)
+            f.terms.emplace_back("stat_top_shells", 1.);
+        return std::make_shared<const NpLayerField>(std::move(f));
     }
     const std::string &path = object.config().nonplanar_field_file.value;
     if (path.empty())
@@ -1906,8 +1941,8 @@ void solve_oneshot(PrintObject &object)
     const std::unique_ptr<ToolKinematics> kinematics = make_tool_kinematics(object.print()->config());
     const double max_tilt = std::max(0., field_tilt_budget(*kinematics) - Geometry::deg2rad(5.));
     state.solved = std::make_shared<const NpField>(
-        one_shot_field(object, slicing_frame_mesh(object), max_tilt, OneShotBudget, [&object]() { throw_if_canceled(object); },
-                       state.student, state.polish_k));
+        one_shot_field(object, slicing_frame_mesh(object), max_tilt, OneShotAbortTime, [&object]() { throw_if_canceled(object); },
+                       state.student, state.polish_k, state.aborted));
     state.z_only = in_plane_spread(*state.solved) < OneShotState::ZOnlySpread;
 }
 
@@ -1922,6 +1957,13 @@ std::shared_ptr<const OrientationField> clip_field_slices(PrintObject &object)
     const indexed_triangle_set   mesh   = slicing_frame_mesh(object);
     params.given                        = given_field(object, mesh, params.max_tilt);
     std::shared_ptr<OrientationField> field = OrientationField::build(mesh, params, [&object]() { throw_if_canceled(object); });
+    if (params.given) {
+        const NpField &f = params.given->file();
+        const auto     t = std::find_if(f.terms.begin(), f.terms.end(), [](const auto &kv) { return kv.first == "stat_top_shells"; });
+        field->given_shells = t != f.terms.end() && t->second > 0.5 && in_plane_spread(f) >= OneShotState::ZOnlySpread;
+        if (field->given_shells)
+            field->notes.emplace_back("curved top shells (the field's stat_top_shells)");
+    }
     const OrientationFieldStats &st = field->stats();
     for (const std::string &note : field->notes)
         BOOST_LOG_TRIVIAL(info) << "Orientation field " << object.model_object()->name << ": " << note;
@@ -1956,11 +1998,28 @@ FieldSlice slice_field(PrintObject &object, const OrientationField &field, const
     DynamicPrintConfig config = chunk_print_config(object);
     config.set_deserialize_strict("initial_layer_print_height", object.print()->config().opt_serialize("initial_layer_print_height"));
     config.set_deserialize_strict("ironing_type", "no ironing");
-    config.set_deserialize_strict("nonplanar_top_shells",
-                                  field.given() ? std::string("0") : object.printing_region(0).config().opt_serialize("nonplanar_top_shells"));
+    config.set_deserialize_strict("nonplanar_top_shells", field.given() && !field.given_shells ? std::string("0") :
+                                                              object.printing_region(0).config().opt_serialize("nonplanar_top_shells"));
     config.set_deserialize_strict("nonplanar_kinematics", tilt_shells ? object.print()->config().opt_serialize("nonplanar_kinematics") : std::string("none"));
 
-    const indexed_triangle_set deformed = field.deform(slicing_frame_mesh(object), 0.75 * field.pitch());
+    const std::vector<double> knots = field.given() ? field.slice_knots() : std::vector<double>();
+    const double              fl = field.first_layer(), lh = field.layer_height();
+    auto remap = [&](double v, bool back) {
+        const int j = int(std::floor((v - fl) / lh)) + 1;
+        if (j < 1 || size_t(j) > knots.size())
+            return v;
+        const double lo = fl + (j - 1) * lh, hi = lo + lh, mid = 0.5 * (lo + hi), knot = std::clamp(knots[size_t(j - 1)], lo + 1e-4, hi - 1e-4);
+        const double a = back ? mid : knot, b = back ? knot : mid;
+        return v <= a ? lo + (v - lo) * (b - lo) / (a - lo) : b + (v - a) * (hi - b) / (hi - a);
+    };
+    auto to_field = [&](Vec3d q) {
+        q.z() = remap(q.z(), true);
+        return q;
+    };
+    indexed_triangle_set deformed = field.deform(slicing_frame_mesh(object), 0.75 * field.pitch());
+    if (!knots.empty())
+        for (stl_vertex &v : deformed.vertices)
+            v.z() = float(remap(double(v.z()), false));
     Model        model;
     ModelObject *model_object = model.add_object();
     model_object->name        = object.model_object()->name + " field";
@@ -2022,7 +2081,7 @@ FieldSlice slice_field(PrintObject &object, const OrientationField &field, const
                     const Vec3d    grad  = j.row(2).transpose();
                     const double   gnorm = std::max(grad.norm(), 1e-6);
                     Vec3d bottom;
-                    const double span = field.given() && field.inverse(dq[i] - Vec3d(0., 0., th[i]), bottom) ?
+                    const double span = field.given() && field.inverse(to_field(dq[i] - Vec3d(0., 0., th[i])), bottom) ?
                                             (tips[i] - bottom).dot(grad / gnorm) : -1.;
                     heights[i]        = float(span > 0. ? std::clamp(span, 0.5 * th[i], 1.6 * th[i]) : th[i] * std::clamp(1. / gnorm, 0.5, 1.6));
                     axes[i] = (ta.empty() ? field.orientation(tips[i]) : field.map_axis(tips[i], ta[i])).cast<float>();
@@ -2074,7 +2133,7 @@ FieldSlice slice_field(PrintObject &object, const OrientationField &field, const
         };
         for (size_t i = 0; i < q.size(); ++i) {
             Vec3d p;
-            if (field.inverse(q[i], p)) {
+            if (field.inverse(to_field(q[i]), p)) {
                 tips.push_back(p);
                 dq.push_back(q[i]);
                 th.push_back(qh[i]);

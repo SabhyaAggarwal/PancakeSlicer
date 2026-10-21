@@ -65,6 +65,7 @@ struct ReportObject
     std::string oneshot;
     std::string oneshot_student;
     int         oneshot_polish_k = 0;
+    double      oneshot_max_time_ratio_override = -1.;
     std::vector<std::string> regions;
     std::vector<std::string> warnings;
 

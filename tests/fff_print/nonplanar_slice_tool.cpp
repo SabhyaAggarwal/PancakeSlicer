@@ -2079,9 +2079,14 @@ int main(int argc, char **argv)
             if (!object.oneshot.empty()) {
                 std::cout << "nonplanar_oneshot " << object.oneshot << "\n"
                           << "nonplanar_oneshot_student " << object.oneshot_student << " polish_k " << object.oneshot_polish_k << "\n";
-                if (!args.json.empty())
+                if (object.oneshot_max_time_ratio_override > 0.)
+                    std::cout << "nonplanar_oneshot_max_time_ratio_override " << object.oneshot_max_time_ratio_override << "\n";
+                if (!args.json.empty()) {
                     record["oneshot"] = { { "decision", object.oneshot }, { "student", object.oneshot_student },
                                           { "polish_k", object.oneshot_polish_k } };
+                    if (object.oneshot_max_time_ratio_override > 0.)
+                        record["oneshot"]["max_time_ratio_override"] = object.oneshot_max_time_ratio_override;
+                }
             }
             std::cout << "nonplanar_object " << object.name << "\n"
                       << "nonplanar_top_patches " << object.top_patches << "\n"

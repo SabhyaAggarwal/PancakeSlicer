@@ -1428,6 +1428,8 @@ ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachin
             for (const double z0 : heights) {
                 if (spent())
                     break;
+                if (cancel)
+                    cancel();
                 for (int k = 1 - params.level_steps / 2 + 1; k <= params.level_steps / 2; ++k) {
                     if (k == 0)
                         continue;

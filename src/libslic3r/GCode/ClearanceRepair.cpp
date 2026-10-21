@@ -595,6 +595,8 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
             OneShotState &s = object->oneshot_state();
             s.planar_time   = time;
             s.stage         = OneShotState::Stage::Field;
+            s.max_time_ratio_override = max_time_ratio_override();
+            s.shells        = !s.z_only;
         }
         BOOST_LOG_TRIVIAL(info) << "One-shot field: planar reference " << time << " s";
         m_oneshot_reemit = true;
@@ -607,13 +609,17 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
     const double    ratio  = first.planar_time > 0. ? time / first.planar_time : 1.;
     const double    blend  = first.blend;
     BOOST_LOG_TRIVIAL(info) << "One-shot field: blend " << blend << ", " << hits << " clearance hits, " << time << " s = " << ratio << "x planar";
-    if (hits == 0 && ratio <= OneShotState::MaxTimeRatio) {
+    if (hits == 0 && ratio <= first.max_time_ratio()) {
         for (PrintObject *object : objects) {
             OneShotState &s = object->oneshot_state();
             s.stage         = OneShotState::Stage::Final;
             s.decision      = Slic3r::format("one-shot field: blend %1$.3g, 0 clearance hits, %2$.0f s = %3$.2fx planar%4%", blend, time, ratio,
-                                             s.z_only ? ", z-only: planar layers of varying height" : "");
+                                             s.aborted ? ", solve aborted at time cap: planar layers" :
+                                             s.z_only  ? ", z-only: planar layers of varying height" : s.shells ? ", curved top shells" : "");
         }
+        if (std::any_of(objects.begin(), objects.end(), [](PrintObject *object) { return object->oneshot_state().aborted; }))
+            m_print.active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL,
+                                            _u8L("One-shot field: the solve was aborted at its time cap; printed in planar layers."));
         result.clearance_report = std::move(report);
         result.clearance        = result.clearance_report.per_move;
         return true;
@@ -621,7 +627,9 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
     const std::string why = hits > 0 ? Slic3r::format("%1% clearance hits", hits) : Slic3r::format("%1$.2fx the planar time", ratio);
     for (PrintObject *object : objects) {
         OneShotState &s = object->oneshot_state();
-        if (s.reemits < OneShotState::MaxReemits) {
+        if (s.shells && !s.z_only)
+            s.shells = false;
+        else if (s.reemits < OneShotState::MaxReemits) {
             s.blend *= 0.5;
             ++s.reemits;
         } else {
