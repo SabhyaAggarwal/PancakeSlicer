@@ -29,6 +29,7 @@ const CHOICE_HINTS: Record<string, Record<string, string>> = {
     manual: 'Custom: the curved-layer settings below, exactly as set.',
     multiplanar: 'Tilted chunks: the bed tilts so each chunk prints its overhangs upright.',
     field: 'Rotary curved layers: every layer curved, the table keeping each line level.',
+    oneshot: 'One-shot: the solver plans layers for this part (slow).',
   },
 };
 

@@ -173,6 +173,7 @@ export const canLoadStep = () => toolFeatures.step === true;
 export const canEditProject = () => toolFeatures.edit === true;
 export const canForcePlanar = () => toolFeatures.force_planar === true;
 export const canCalibrate = () => toolFeatures.calib === true;
+export const canOneShot = () => toolFeatures.oneshot === true;
 
 export async function connect(): Promise<Api> {
   bootstrapAccessToken();
