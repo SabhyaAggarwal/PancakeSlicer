@@ -890,7 +890,17 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
                 } else
                     S_c.data()[i] = F_c.data()[i] = D_c.data()[i] = HeightField::NoData;
             }
-        smooth_inside(D_c, in_c, std::max(2, int(std::ceil(sqr(0.6 / pitch)))));
+        {
+            const HeightField D_orig = D_c;
+            smooth_inside(D_c, in_c, std::max(2, int(std::ceil(sqr(0.6 / pitch)))));
+            double moved = 0.;
+            size_t n     = 0;
+            for (size_t i = 0; i < in_c.size(); ++i)
+                if (in_c[i])
+                    moved += std::abs(D_c.data()[i] - D_orig.data()[i]), ++n;
+            if (n > 0 && moved / double(n) > 0.5 * beta * pitch)
+                D_c = D_orig;
+        }
         for (size_t i = 0; i < in_c.size(); ++i)
             if (in_c[i]) {
                 k_lo = std::min(k_lo, (S_c.data()[i] + D_c.data()[i] + 0.5 * g) / g);

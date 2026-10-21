@@ -537,7 +537,8 @@ protected:
                                            const std::function<Vec2d(const Vec2d &)> &slope_gradient = {});
     bool            conformal_in_band(const ExtrusionPathConformal *prev, const ExtrusionPathConformal *path) const;
     bool            conformal_short_hop(const ExtrusionPathConformal &path, const ExtrusionPathConformal *next, Vec3d &to);
-    bool            conformal_keep_primed(ExtrusionRole from, const ExtrusionPathConformal *next);
+    bool            conformal_keep_primed(ExtrusionRole from, const ExtrusionPathConformal *next,
+                                         const ExtrusionPathConformal *prev = nullptr);
     std::string     extrude_multiplanar_chunk(const Nonplanar::ConformalPatch &patch);
     std::string     extrude_field_patch(const Nonplanar::ConformalPatch &patch);
     std::string     travel_above_nonplanar(const Polyline &travel, const std::string &comment, double z);
@@ -703,6 +704,7 @@ protected:
     bool                                   m_conformal_ramp{ false };
     bool                                   m_conformal_open_end{ false };
     bool                                   m_conformal_scored{ false };
+    bool                                   m_conformal_next_hold{ false };
     bool                                   m_ordered_plan_layer{ false };
     bool                                   m_conformal_scarf{ false };
     std::map<unsigned int, Nonplanar::PressureAdvance> m_start_gcode_pa;

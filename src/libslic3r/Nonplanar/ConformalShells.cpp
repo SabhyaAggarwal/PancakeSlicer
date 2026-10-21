@@ -167,6 +167,7 @@ ExPolygons candidate_top_area(const PrintObject &object, const std::vector<size_
 }
 
 constexpr size_t ContourLoops = 8;
+constexpr double FlatSlope = 0.0175;
 constexpr int ContourRefine = 4;
 constexpr double LengthwiseMaxLines = 4.;
 constexpr double LengthwiseMinAspect = 4.;
@@ -517,12 +518,8 @@ void contour_fill(const HeightField &surface, const ExPolygons &area, double dro
             const ExPolygons middle = intersection_ex(union_ex(*paths[i]->inner), ExPolygons{ piece });
             if (middle.empty())
                 continue;
-            if (std::any_of(middle.begin(), middle.end(), [](const ExPolygon &e) { return !e.holes.empty(); })) {
-                paths[i]     = arachne_paths(piece, flow, layer_height, 0);
-                max_loops[i] = 0;
-                continue;
-            }
             double a = angle;
+            bool   ringed = false;
             {
                 const BoundingBox bb  = get_extents(middle);
                 const Vec2d       lo  = (unscale(bb.min) - surface.origin()) / surface.pitch();
@@ -534,10 +531,27 @@ void contour_fill(const HeightField &surface, const ExPolygons &area, double dro
                 for (size_t n = 0; n < inside.size(); ++n)
                     if (!inside[n])
                         local.data()[n] = HeightField::NoData;
-                if (std::isnan(flat_angle) || !flat_middle(local))
-                    contour_line_angle(local, a, 0.5);
-                else
-                    a = flat_angle;
+                if (std::any_of(middle.begin(), middle.end(), [](const ExPolygon &e) { return !e.holes.empty(); })) {
+                    double slope = 0.;
+                    size_t n     = 0;
+                    for (int iy = 0; iy < local.ny(); ++iy)
+                        for (int ix = 0; ix < local.nx(); ++ix)
+                            if (const Vec2d g = local.gradient(local.node(ix, iy)); g.allFinite())
+                                slope += g.norm(), ++n;
+                    double unused = angle;
+                    ringed = n > 0 && (slope / double(n) < FlatSlope || !contour_line_angle(local, unused));
+                }
+                if (!ringed) {
+                    if (std::isnan(flat_angle) || !flat_middle(local))
+                        contour_line_angle(local, a, 0.5);
+                    else
+                        a = flat_angle;
+                }
+            }
+            if (ringed) {
+                paths[i]     = arachne_paths(piece, flow, layer_height, 0);
+                max_loops[i] = 0;
+                continue;
             }
             const ExPolygons lined = intersection_ex(offset_ex(middle, float(scale_(0.25 * flow.spacing()))), ExPolygons{ piece });
             Polylines pl = fill_solid(lined, outer ? ipMonotonic : ipRectilinear, flow.spacing(), a, outer, flow, z);
@@ -1675,7 +1689,6 @@ static ConformalResult build_region_shells(PrintObject &object, const std::vecto
         for (size_t i = 0; i < n_nodes; ++i)
             if (steep[i] && steep_wide[i])
                 drop(i, DropSteep);
-        constexpr double FlatSlope  = 0.0175;
         constexpr double FlatGround = 2.;
         Mask             flat(n_nodes, 0);
         for (int iy = 0; iy < grid.ny(); ++iy)

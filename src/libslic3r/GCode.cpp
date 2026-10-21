@@ -7668,6 +7668,10 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                 auto         pass   = [&patch](size_t k) -> const ExtrusionEntityCollection & {
                     return k < patch.shell_paths.size() ? patch.shell_paths[k] : patch.ironing;
                 };
+                auto hold_before = [&patch, &pass](size_t k) {
+                    return k > 0 && k < patch.shell_paths.size() && Nonplanar::pass_is_solid(pass(k - 1)) &&
+                           Nonplanar::pass_is_top(pass(k));
+                };
                 const bool imported = !object.config().nonplanar_atom_toolpath.value.empty() || object.conformal().ordered_plan;
                 auto printed = [imported](const ExtrusionEntity *ee) -> const ExtrusionPathConformal * {
                     const auto *path = dynamic_cast<const ExtrusionPathConformal *>(ee);
@@ -7744,13 +7748,15 @@ std::string GCode::extrude_conformal_patches(const Print &print, const std::vect
                         next = pass_end[k];
                         continue;
                     }
-                    if (k > 0 && !ironing && Nonplanar::pass_is_solid(pass(k - 1)) && Nonplanar::pass_is_top(pass(k)))
+                    if (hold_before(k))
                         gcode += this->nonplanar_pass_hold(next < order.size() ? order[next] : nullptr);
                     this->nonplanar_pass_start(patch.footprint, ironing);
                     gcode += ";_NONPLANAR_BEGIN patch=" + std::to_string(patch.id) + " shell=" + std::to_string(k) + " band=" + std::to_string(patch.band) +
                              " rate=" + std::to_string(std::lround(this->conformal_segment_rate())) + "\n";
                     while (next < pass_end[k]) {
                         const ExtrusionPathConformal &path = *order[next++];
+                        const size_t next_pass = size_t(std::upper_bound(pass_end.begin(), pass_end.end(), next) - pass_end.begin());
+                        m_conformal_next_hold = next_pass > k && hold_before(next_pass);
                         gcode += this->extrude_conformal_path(path, what,
                                                               patch.surface.empty() ? std::function<Vec2d(const Vec2d &)>() : surface_gradient,
                                                               next < order.size() ? order[next] : nullptr,
@@ -8054,7 +8060,7 @@ std::string GCode::extrude_conformal_path(const ExtrusionPathConformal &path, co
         return gcode;
     }
     const bool hop      = !glide_on && this->conformal_short_hop(path, next, hop_to);
-    m_conformal_primed  = !glide_on && !hop && !rotary && !path.preserve_points && this->conformal_keep_primed(path.role(), next);
+    m_conformal_primed  = !glide_on && !hop && !rotary && !path.preserve_points && this->conformal_keep_primed(path.role(), next, &path);
     if (!glide_on && !hop) {
         if (!m_conformal_primed)
             gcode += this->wipe_conformal_path();
@@ -8878,18 +8884,25 @@ bool GCode::conformal_lift_enforced(ExtrusionRole role) const
     }
 }
 
-bool GCode::conformal_keep_primed(ExtrusionRole from, const ExtrusionPathConformal *next)
+bool GCode::conformal_keep_primed(ExtrusionRole from, const ExtrusionPathConformal *next, const ExtrusionPathConformal *prev)
 {
     if (next == nullptr || !m_material_columns || m_writer.filament() == nullptr || next->polyline.points.size() < 2 ||
         !next->tool_axis.empty())
         return false;
-    if (next->role() == erTopSolidInfill && from != erTopSolidInfill)
+    const bool in_band = this->conformal_in_band(prev, next);
+    const bool skipped_shell = in_band && next->shell > prev->shell + 1 && !m_conformal_next_hold;
+    if (next->role() == erTopSolidInfill && from != erTopSolidInfill && !skipped_shell)
         return false;
     const Vec2d  xy   = this->point_to_gcode(next->first_point());
     const Vec3d &here = m_writer.get_position();
     const Vec3d  to(xy.x(), xy.y(), m_nominal_z + unscale<double>(next->polyline.points.front().z()));
     const double d = (to - here).head<2>().norm();
     if (d < m_config.retraction_minimum_travel.get_at(m_writer.filament()->id()))
+        return true;
+    const bool   flexible    = Nonplanar::road_material(m_config.filament_type.get_at(m_writer.filament()->id())) ==
+                               Nonplanar::RoadMaterial::Flexible;
+    const double short_glide = flexible ? 10. : 5.;
+    if (in_band && d < short_glide && (next->shell != prev->shell || unscale<double>(next->polyline.length()) < short_glide))
         return true;
     auto buried = [](ExtrusionRole role) { return role == erSolidInfill || role == erInternalInfill; };
     const bool internal = m_config.reduce_infill_retraction.value && m_config.sparse_infill_density.value > 0 && buried(from) &&
