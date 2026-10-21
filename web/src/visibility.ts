@@ -103,6 +103,7 @@ export function fieldDefinition(key: string, env: Environment): Partial<OptionDe
     const rotary = String(env.nonplanar_kinematics ?? 'none') !== 'none';
     return {
       enum_values: all,
+      ...(!rotary && env.nonplanar_mode !== 'oneshot' ? { enum_disabled: ['oneshot'] } : {}),
       enum_labels: all.map((v, i) => `${v === 'oneshot' ? 'One-shot' : def.enum_labels?.[i] ?? v}${!rotary && ['multiplanar', 'field', 'oneshot'].includes(v) ? ' (needs rotary axes)' : ''}`),
     };
   }

@@ -135,7 +135,7 @@ function Widget({ def, value, onCommit }: { def: OptionDef; value: ConfigValue |
       <select className="combo" value={v} disabled={def.readonly} onChange={(e) => onCommit(e.target.value)}>
         {!known && <option value={v}>{v}</option>}
         {def.enum_values.map((ev, i) => (
-          <option key={ev} value={ev}>
+          <option key={ev} value={ev} disabled={def.enum_disabled?.includes(ev)}>
             {def.enum_labels?.[i] ?? ev}
           </option>
         ))}
