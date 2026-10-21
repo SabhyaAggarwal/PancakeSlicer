@@ -44,14 +44,19 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
     size_t instances = 0, multiplanar_instances = 0;
     for (const PrintObject *object : print.objects()) {
         instances += object->instances().size();
-        if (object->config().nonplanar_mode.value == NonplanarMode::Multiplanar || object->config().nonplanar_mode.value == NonplanarMode::Field) {
+        const NonplanarMode mode = object->config().nonplanar_mode.value;
+        const bool          field = mode == NonplanarMode::Field || mode == NonplanarMode::OneShot;
+        if (mode == NonplanarMode::Multiplanar || field) {
             multiplanar_instances += object->instances().size();
             needs_head = enabled = true;
             if (config.spiral_mode)
                 return { L("Multiplanar chunks cannot be combined with spiral vase mode."), object, "nonplanar_mode" };
             if (config.belt_printer)
                 return { L("Multiplanar chunks cannot be combined with a belt printer."), object, "nonplanar_mode" };
-            if (std::string why; object->config().nonplanar_mode.value == NonplanarMode::Field && !field_motion_supported(config, &why))
+            const bool fixed_head_file = mode == NonplanarMode::Field && !object->config().nonplanar_field_file.value.empty() &&
+                                         config.nonplanar_kinematics.value == RotaryLayout::None;
+            if (std::string why; field && !fixed_head_file &&
+                                 !field_motion_supported(config, &why))
                 return { why, object, "nonplanar_mode" };
             const ModelObject &model = *object->model_object();
             if (object->num_printing_regions() > 1 || model.is_mm_painted() ||
@@ -61,7 +66,7 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
                 return { L("Multiplanar and rotary curved layers print one part with one set of settings. Remove negative "
                            "volumes, modifiers, painting and parts with their own settings, or use another non-planar mode."),
                          object, "nonplanar_mode" };
-            if (object->config().nonplanar_mode.value == NonplanarMode::Field && object->config().raft_layers.value > 0)
+            if (field && object->config().raft_layers.value > 0)
                 return { L("Rotary curved layers cannot be printed on a raft."), object, "raft_layers" };
         }
         for (size_t region_id = 0; region_id < object->num_printing_regions(); ++region_id) {

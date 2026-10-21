@@ -62,6 +62,9 @@ struct ReportObject
     double      flat_top      = 0.;
     double      support_free  = 0.;
     std::string orientation;
+    std::string oneshot;
+    std::string oneshot_student;
+    int         oneshot_polish_k = 0;
     std::vector<std::string> regions;
     std::vector<std::string> warnings;
 

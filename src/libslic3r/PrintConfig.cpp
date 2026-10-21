@@ -744,7 +744,8 @@ static const t_config_enum_values s_keys_map_NonplanarMode = {
     { "auto",   int(NonplanarMode::Auto)   },
     { "manual", int(NonplanarMode::Manual) },
     { "multiplanar", int(NonplanarMode::Multiplanar) },
-    { "field",  int(NonplanarMode::Field)  }
+    { "field",  int(NonplanarMode::Field)  },
+    { "oneshot", int(NonplanarMode::OneShot) }
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(NonplanarMode)
 
@@ -5396,7 +5397,9 @@ void PrintConfigDef::init_fff_params()
                       "Manual: the curved settings below, as set.\n"
                       "Multiplanar: the part in chunks of flat layers, each chunk tilted so its overhangs need less support.\n"
                       "Rotary curved layers: the whole part in curved layers, the table tilting so each line is laid level under the "
-                      "nozzle. Needs two rotary axes."
+                      "nozzle. Needs two rotary axes.\n"
+                      "One-shot field (advanced): rotary curved layers whose layer field is solved for the part from its surface "
+                      "error, support, print time and head clearance, within a minute."
                       " Default: Off. Unit: unitless choice. Auto is selected explicitly by a process or object; it does not "
                       "replace the stored mode.");
     def->enum_keys_map = &ConfigOptionEnum<NonplanarMode>::get_enum_values();
@@ -5405,11 +5408,13 @@ void PrintConfigDef::init_fff_params()
     def->enum_values.push_back("manual");
     def->enum_values.push_back("multiplanar");
     def->enum_values.push_back("field");
+    def->enum_values.push_back("oneshot");
     def->enum_labels.push_back(L("Off"));
     def->enum_labels.push_back(L("Auto"));
     def->enum_labels.push_back(L("Manual"));
     def->enum_labels.push_back(L("Multiplanar"));
     def->enum_labels.push_back(L("Rotary curved layers"));
+    def->enum_labels.push_back(L("One-shot field (advanced)"));
     def->mode     = comSimple;
     def->set_default_value(new ConfigOptionEnum<NonplanarMode>(NonplanarMode::Off));
 
@@ -5501,6 +5506,14 @@ void PrintConfigDef::init_fff_params()
     def->tooltip  = L("Path of a toolpath written by Atomizer (.poses or .npz) for this object. When set, the "
                       "object prints that whole-part curved toolpath instead of its layers. Empty slices normally."
                       " Default: empty. Unit: file path. Auto retains this setting.");
+    def->mode     = comDevelop;
+    def->set_default_value(new ConfigOptionString(""));
+
+    def = this->add("nonplanar_field_file", coString);
+    def->label    = L("Layer field file");
+    def->category = L("Quality");
+    def->tooltip  = L("Path of a layer field (.npz, npfield v1) for this object. When set, rotary curved layers follow that field "
+                      "instead of solving their own. Empty solves the field. Default: empty. Unit: file path.");
     def->mode     = comDevelop;
     def->set_default_value(new ConfigOptionString(""));
 

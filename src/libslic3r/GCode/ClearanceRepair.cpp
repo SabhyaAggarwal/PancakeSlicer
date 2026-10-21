@@ -18,6 +18,7 @@
 #include "libslic3r/Nonplanar/HeadBoxLabel.hpp"
 #include "libslic3r/Nonplanar/HeadEnvelope.hpp"
 #include "libslic3r/Nonplanar/MultiplanarConfirm.hpp"
+#include "libslic3r/Nonplanar/OneShotField.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintBase.hpp"
 #include "libslic3r/PrintConfig.hpp"
@@ -303,6 +304,8 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
     ClearanceRepair *self = print.m_clearance_repair;
     const auto       mode = print.config().nonplanar_collision_check.value;
     if (print.config().nonplanar_kinematics.value != RotaryLayout::None) {
+        if (self != nullptr && self->oneshot_step(result))
+            return;
         if (self != nullptr && result.nonplanar && effective_collision_check(print) != NonplanarCollisionCheck::Off &&
             self->m_pass < self->m_max_passes) {
             ClearanceParams params;
@@ -575,8 +578,75 @@ bool ClearanceRepair::plan_upright(const GCodeProcessorResult &result, const Cle
     return discs > 0;
 }
 
+bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
+{
+    std::vector<PrintObject *> objects;
+    for (PrintObject *object : m_print.m_objects)
+        if (oneshot_requested(*object))
+            objects.push_back(object);
+    if (objects.empty())
+        return false;
+    const OneShotState &first = objects.front()->oneshot_state();
+    const double        time  = result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)].time;
+    if (first.stage == OneShotState::Stage::Final)
+        return false;
+    if (first.stage == OneShotState::Stage::Reference) {
+        for (PrintObject *object : objects) {
+            OneShotState &s = object->oneshot_state();
+            s.planar_time   = time;
+            s.stage         = OneShotState::Stage::Field;
+        }
+        BOOST_LOG_TRIVIAL(info) << "One-shot field: planar reference " << time << " s";
+        m_oneshot_reemit = true;
+        return true;
+    }
+    ClearanceParams params;
+    params.head = resolve_head_envelope(m_print.config());
+    ClearanceReport report = verify_clearance(result, params, *make_tool_kinematics(m_print.config()), [this] { m_print.throw_if_canceled(); });
+    const size_t    hits   = report.hit_moves;
+    const double    ratio  = first.planar_time > 0. ? time / first.planar_time : 1.;
+    const double    blend  = first.blend;
+    BOOST_LOG_TRIVIAL(info) << "One-shot field: blend " << blend << ", " << hits << " clearance hits, " << time << " s = " << ratio << "x planar";
+    if (hits == 0 && ratio <= OneShotState::MaxTimeRatio) {
+        for (PrintObject *object : objects) {
+            OneShotState &s = object->oneshot_state();
+            s.stage         = OneShotState::Stage::Final;
+            s.decision      = Slic3r::format("one-shot field: blend %1$.3g, 0 clearance hits, %2$.0f s = %3$.2fx planar%4%", blend, time, ratio,
+                                             s.z_only ? ", z-only: planar layers of varying height" : "");
+        }
+        result.clearance_report = std::move(report);
+        result.clearance        = result.clearance_report.per_move;
+        return true;
+    }
+    const std::string why = hits > 0 ? Slic3r::format("%1% clearance hits", hits) : Slic3r::format("%1$.2fx the planar time", ratio);
+    for (PrintObject *object : objects) {
+        OneShotState &s = object->oneshot_state();
+        if (s.reemits < OneShotState::MaxReemits) {
+            s.blend *= 0.5;
+            ++s.reemits;
+        } else {
+            s.stage    = OneShotState::Stage::Final;
+            s.planar   = true;
+            s.decision = Slic3r::format("one-shot field: fell back to planar, %1% at blend %2$.3g", why, blend);
+        }
+    }
+    if (const OneShotState &s = objects.front()->oneshot_state(); s.planar)
+        m_print.active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL,
+                                        Slic3r::format(_u8L("One-shot field: printed in planar layers: %1% at blend %2$.3g."), why, blend));
+    m_oneshot_reemit = true;
+    return true;
+}
+
 bool ClearanceRepair::apply()
 {
+    if (m_oneshot_reemit) {
+        m_oneshot_reemit = false;
+        for (PrintObject *object : m_print.m_objects)
+            if (oneshot_requested(*object))
+                object->invalidate_step(posSlice);
+        m_planned.clear();
+        return true;
+    }
     if (m_planned.empty())
         return false;
     for (Planned &p : m_planned) {

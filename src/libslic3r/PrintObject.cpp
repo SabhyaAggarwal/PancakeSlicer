@@ -19,6 +19,7 @@
 #include "Layer.hpp"
 #include "MeshBoolean.hpp"
 #include "Nonplanar/AutoMode.hpp"
+#include "Nonplanar/OneShotField.hpp"
 #include "Nonplanar/ConformalBottom.hpp"
 #include "Nonplanar/ConformalIroning.hpp"
 #include "Nonplanar/AtomToolpath.hpp"
@@ -893,6 +894,13 @@ bool PrintObject::has_conformal_support() const
            });
 }
 
+Nonplanar::OneShotState& PrintObject::oneshot_state()
+{
+    if (!m_oneshot)
+        m_oneshot = std::make_shared<Nonplanar::OneShotState>();
+    return *m_oneshot;
+}
+
 const Nonplanar::ConformalResult& PrintObject::conformal() const
 {
     static const Nonplanar::ConformalResult empty;
@@ -1562,7 +1570,8 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "multiplanar_max_planes"
             || opt_key == "multiplanar_overhang_threshold"
             || opt_key == "nonplanar_atom_toolpath"
-            || opt_key == "nonplanar_steep_skin") {
+            || opt_key == "nonplanar_steep_skin"
+            || opt_key == "nonplanar_field_file") {
             steps.emplace_back(posSlice);
         } else if (opt_key == "gap_infill_speed"
             || opt_key == "filter_out_gap_fill" ) {
@@ -1946,8 +1955,10 @@ bool PrintObject::invalidate_state_by_config_options(
         std::any_of(steps.begin(), steps.end(), [](PrintObjectStep step) { return step > posSlice && step <= posNonplanar; }))
         steps.emplace_back(posSlice);
     sort_remove_duplicates(steps);
-    if (!steps.empty() && steps.front() <= posNonplanar)
+    if (!steps.empty() && steps.front() <= posNonplanar) {
         m_nonplanar_repair.reset();
+        m_oneshot.reset();
+    }
     for (PrintObjectStep step : steps)
         invalidated |= this->invalidate_step(step);
     return invalidated;
@@ -2005,6 +2016,7 @@ bool PrintObject::invalidate_all_steps()
 	m_slicing_params.valid = false;
 	m_belt_floor_z_shift_cache_valid = false;
     m_nonplanar_repair.reset();
+    m_oneshot.reset();
 	return result;
 }
 

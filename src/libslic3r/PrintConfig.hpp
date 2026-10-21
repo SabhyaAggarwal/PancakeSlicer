@@ -240,7 +240,7 @@ enum class RotaryLayout : unsigned char { None, TableBC, TableAC, HeadAB, HeadBC
 enum class NonplanarTopPattern : unsigned char { Contour, Rectilinear, Concentric };
 enum class NonplanarFallback : unsigned char { ZAA, Planar, None };
 enum class NonplanarCollisionCheck : unsigned char { Off, Warn, Block };
-enum class NonplanarMode : unsigned char { Off, Auto, Manual, Multiplanar, Field };
+enum class NonplanarMode : unsigned char { Off, Auto, Manual, Multiplanar, Field, OneShot };
 enum class NonplanarDeform : unsigned char { Off, Auto, On, QuickCurve, Conical, Optimized };
 
 enum class SurfaceFillOrder {
@@ -1248,6 +1248,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionBool,                nonplanar_support_interface))
     ((ConfigOptionBool,                nonplanar_steep_skin))
     ((ConfigOptionString,              nonplanar_atom_toolpath))
+    ((ConfigOptionString,              nonplanar_field_file))
 )
 
 PRINT_CONFIG_CLASS_DEFINE(

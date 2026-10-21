@@ -33,6 +33,7 @@
 #include "Nonplanar/LayerSchedule.hpp"
 #include "Nonplanar/Multiplanar.hpp"
 #include "Nonplanar/MultiplanarConfirm.hpp"
+#include "Nonplanar/OneShotField.hpp"
 #include "Nonplanar/OrientationField.hpp"
 #include "MultiMaterialSegmentation.hpp"
 #include "ObjectID.hpp"
@@ -740,6 +741,12 @@ void PrintObject::slice()
         m_config.nonplanar_mode.value = NonplanarMode::Off;
         this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, why);
     }
+    const bool oneshot = Nonplanar::oneshot_requested(*this);
+    if (oneshot) {
+        if (this->oneshot_state().field())
+            Nonplanar::solve_oneshot(*this);
+        m_config.nonplanar_mode.value = this->oneshot_state().field_path() ? NonplanarMode::OneShot : NonplanarMode::Off;
+    }
     if (m_config.nonplanar_mode.value != previous_mode) {
         m_slicing_params.valid = false;
         this->update_slicing_parameters();
@@ -747,7 +754,11 @@ void PrintObject::slice()
     m_print->set_status(5, L("Slicing mesh"), PrintBase::SlicingStatus::RELOAD_SCENE);
     std::vector<coordf_t> layer_height_profile;
     this->update_layer_height_profile(*this->model_object(), m_slicing_params, layer_height_profile);
-    if (Nonplanar::field_layers_considered(*this))
+    if (oneshot && this->oneshot_state().field() && this->oneshot_state().z_only)
+        layer_height_profile = Nonplanar::layer_profile(*this->oneshot_state().solved, this->oneshot_state().blend, m_slicing_params.first_object_layer_height,
+                                                        m_slicing_params.object_print_z_height(), m_slicing_params.min_layer_height,
+                                                        m_slicing_params.max_layer_height);
+    else if (Nonplanar::field_layers_considered(*this))
         if (std::vector<coordf_t> field = Nonplanar::field_layer_profile(*this); !field.empty())
             layer_height_profile = std::move(field);
     m_print->throw_if_canceled();

@@ -31,6 +31,8 @@ public:
     bool plan_upright(const GCodeProcessorResult &result, const ClearanceReport &report);
 
 private:
+    bool oneshot_step(GCodeProcessorResult &result);
+
     struct Planned
     {
         PrintObject *object = nullptr;
@@ -46,6 +48,7 @@ private:
     double                   m_last_min   = 0.;
     std::vector<Planned>     m_planned;
     std::vector<std::string> m_actions;
+    bool                     m_oneshot_reemit = false;
 };
 
 }

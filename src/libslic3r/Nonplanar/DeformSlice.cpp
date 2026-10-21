@@ -15,12 +15,14 @@
 #include "HeadEnvelope.hpp"
 #include "LayerSources.hpp"
 #include "Multiplanar.hpp"
+#include "NpField.hpp"
 #include "PatchTools.hpp"
 #include "StrengthRoads.hpp"
 #include "SurfaceClip.hpp"
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
+#include "libslic3r/Exception.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
 #include "libslic3r/GCode/ConformalCooling.hpp"
 #include "libslic3r/GCode/ConformalEmit.hpp"
@@ -33,6 +35,7 @@
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/SLA/IndexedMesh.hpp"
 #include "libslic3r/ShortestPath.hpp"
+#include "libslic3r/format.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 
 #include <boost/log/trivial.hpp>
@@ -139,7 +142,7 @@ void fill_nodata(HeightField &f, float fallback)
     }
 }
 
-DynamicPrintConfig deform_print_config(const PrintObject &object, double road_angle)
+DynamicPrintConfig deform_print_config(const PrintObject &object, double road_angle, bool given)
 {
     DynamicPrintConfig config = object.print()->full_print_config();
     config.apply(object.config(), true);
@@ -163,7 +166,8 @@ DynamicPrintConfig deform_print_config(const PrintObject &object, double road_an
     set("ironing_type", "no ironing");
     set("adaptive_layer_height_error", "0");
     set("overhang_layer_contact", "0%");
-    set("wall_generator", "classic");
+    if (!given)
+        set("wall_generator", "classic");
     const double nozzle = config.opt<ConfigOptionFloats>("nozzle_diameter")->values.front();
     const double top_w  = object.printing_region(0).config().top_surface_line_width.get_abs_value(nozzle);
     if (top_w <= 0. || top_w > 0.75 * nozzle)
@@ -779,11 +783,20 @@ indexed_triangle_set deform_mesh(const indexed_triangle_set &mesh, const LayerFi
     return its;
 }
 
+bool deform_field_file(const PrintObject &object)
+{
+    const PrintObjectConfig &cfg = object.config();
+    return cfg.nonplanar_mode.value == NonplanarMode::Field && !cfg.nonplanar_field_file.value.empty() &&
+           cfg.nonplanar_atom_toolpath.value.empty() && object.print()->config().nonplanar_kinematics.value == RotaryLayout::None;
+}
+
 bool deform_slice_requested(const PrintObject &object)
 {
     const PrintObjectConfig &cfg = object.config();
     if (!cfg.nonplanar_atom_toolpath.value.empty())
         return false;
+    if (deform_field_file(object))
+        return true;
     switch (cfg.nonplanar_deform.value) {
     case NonplanarDeform::On:
     case NonplanarDeform::QuickCurve:
@@ -1036,7 +1049,7 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
     }
     Print print;
     try {
-        print.apply(model, deform_print_config(object, strength_road_angle(object, mesh_of(), *field, top.empty() ? nullptr : &top)));
+        print.apply(model, deform_print_config(object, strength_road_angle(object, mesh_of(), *field, top.empty() ? nullptr : &top), given != nullptr));
         print.set_status_silent();
         print.process();
     } catch (const std::exception &ex) {
@@ -1973,6 +1986,35 @@ bool choose_deform_slice(PrintObject &object, ConformalResult &result)
 bool build_deform_slice(PrintObject &object, ConformalResult &result, std::string *why)
 {
     DeformSlice slice;
+    if (deform_field_file(object)) {
+        const std::string &path = object.config().nonplanar_field_file.value;
+        std::unique_ptr<NpLayerField> given;
+        try {
+            BoundingBoxf3 box;
+            for (const stl_vertex &v : slicing_frame_mesh(object).vertices)
+                box.merge(v.cast<double>());
+            given = std::make_unique<NpLayerField>(load_npfield_for(path, box, plate_offset(object)));
+        } catch (const RuntimeError &ex) {
+            throw Slic3r::SlicingError(ex.what());
+        }
+        double top = 0.;
+        for (const stl_vertex &v : slicing_frame_mesh(object).vertices)
+            top = std::max(top, double(v.z()));
+        const double first = object.print()->config().initial_layer_print_height.value, h = object.config().layer_height.value;
+        if (given->identity_below() + 1e-6 < first + 2. * h)
+            throw Slic3r::SlicingError(format(_u8L("The layer field %1% curves below %2% mm: a fixed head's first three layers must be planar."),
+                                              path, first + 2. * h));
+        if (given->identity_below() >= top) {
+            BOOST_LOG_TRIVIAL(info) << "Deform slice " << object.model_object()->name << ": the layer field " << path
+                                    << " is planar over the object, which prints its planar layers";
+            return false;
+        }
+        std::string reason;
+        if (!compute_deform_slice(object, slice, &reason, std::numeric_limits<double>::infinity(), given.get()))
+            throw Slic3r::SlicingError(format(_u8L("The layer field %1% cannot be printed on this printer: %2%."), path, reason));
+        apply_deform_slice(object, std::move(slice), result);
+        return true;
+    }
     std::shared_ptr<const LayerField> source;
     if (object.config().nonplanar_deform.value != NonplanarDeform::On) {
         source = build_layer_source(object, why);

@@ -136,6 +136,16 @@ set(lisbslic3r_sources
     Nonplanar/LayerField.hpp
     Nonplanar/MaterialRules.cpp
     Nonplanar/MaterialRules.hpp
+    Nonplanar/FieldOrder.cpp
+    Nonplanar/FieldOrder.hpp
+    Nonplanar/FieldObjective.cpp
+    Nonplanar/FieldObjective.hpp
+    Nonplanar/NpField.cpp
+    Nonplanar/NpField.hpp
+    Nonplanar/OneShotField.cpp
+    Nonplanar/OneShotField.hpp
+    Nonplanar/Npy.cpp
+    Nonplanar/Npy.hpp
     Nonplanar/OrientationField.cpp
     Nonplanar/OrientationField.hpp
     Nonplanar/RotaryRouter.cpp
@@ -200,6 +210,8 @@ set(lisbslic3r_sources
     Nonplanar/LayerFieldOpt.hpp
     Nonplanar/LayerSources.cpp
     Nonplanar/LayerSources.hpp
+    Nonplanar/StudentNet.cpp
+    Nonplanar/StudentNet.hpp
     Nonplanar/Multiplanar.cpp
     Nonplanar/MultiplanarConfirm.cpp
     Nonplanar/MultiplanarConfirm.hpp

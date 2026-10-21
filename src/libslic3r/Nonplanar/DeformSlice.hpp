@@ -83,6 +83,7 @@ indexed_triangle_set deform_mesh(const indexed_triangle_set &mesh, const LayerFi
 double deform_band_height(const HeadEnvelope &head, double slope, double inflation = 0.);
 
 bool deform_slice_requested(const PrintObject &object);
+bool deform_field_file(const PrintObject &object);
 bool deform_slice_considered(const PrintObject &object);
 bool choose_deform_slice(PrintObject &object, ConformalResult &result);
 

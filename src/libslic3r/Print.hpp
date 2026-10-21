@@ -55,7 +55,7 @@
 
 namespace Slic3r {
 
-namespace Nonplanar { struct ConformalResult; struct RepairHints; class ClearanceRepair; struct MultiplanarPlan; class OrientationField; }
+namespace Nonplanar { struct ConformalResult; struct RepairHints; class ClearanceRepair; struct MultiplanarPlan; class OrientationField; struct OneShotState; }
 
 class SlicingErrors;
 
@@ -338,6 +338,8 @@ public:
     const Nonplanar::ConformalResult& conformal() const;
     bool auto_z_contouring() const { return m_shared_object ? m_shared_object->auto_z_contouring() : m_auto_z_contouring; }
     const Nonplanar::RepairHints*     nonplanar_repair() const { return m_nonplanar_repair.get(); }
+    Nonplanar::OneShotState&          oneshot_state();
+    const Nonplanar::OneShotState*    oneshot_state() const { return m_oneshot.get(); }
     bool has_conformal_support() const;
 
     void generate_support_preview();
@@ -531,6 +533,7 @@ private:
     bool                 m_auto_support_critical = false;
     std::unique_ptr<Nonplanar::ConformalResult> m_conformal;
     std::shared_ptr<Nonplanar::RepairHints>     m_nonplanar_repair;
+    std::shared_ptr<Nonplanar::OneShotState>    m_oneshot;
     std::shared_ptr<const Nonplanar::MultiplanarPlan> m_multiplanar;
     std::shared_ptr<const Nonplanar::OrientationField> m_field;
 

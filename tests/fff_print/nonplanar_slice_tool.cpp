@@ -38,6 +38,9 @@
 #include "libslic3r/Nonplanar/AutoMode.hpp"
 #include "libslic3r/Nonplanar/FlowMod.hpp"
 #include "libslic3r/Nonplanar/HeadEnvelope.hpp"
+#include "libslic3r/Nonplanar/Multiplanar.hpp"
+#include "libslic3r/Nonplanar/NpField.hpp"
+#include "libslic3r/Nonplanar/OrientationField.hpp"
 #include "libslic3r/Point.hpp"
 #include "libslic3r/Preset.hpp"
 #include "libslic3r/PresetBundle.hpp"
@@ -108,7 +111,7 @@ struct Args
     std::string profiles = std::string(PROFILES_DIR);
     std::string vendor   = "Prusa";
     std::string printer, process, datadir, output, model, config_out, paint, gcode_3mf, json, plate, project_out, head_out, layer_profile, project, save_3mf,
-                tip_out, planned_out, verify_gcode, move_times, calib, calib_head, calib_picks, calib_params, moves_out, dump_options, dump_presets;
+                tip_out, planned_out, verify_gcode, field_file, dump_field, move_times, calib, calib_head, calib_picks, calib_params, moves_out, dump_options, dump_presets;
     bool        progress = false;
     int         calib_fit = -1;
     int         plate_index = 0;
@@ -167,8 +170,9 @@ Model read_input(const std::string &file)
               << "usage: nonplanar_slice_tool --printer NAME --process NAME --filament NAME [--vendor Prusa]\n"
                  "       [--profiles DIR] [--datadir DIR] [--bed-type NAME] [--set key=value]... [--center X,Y]\n"
                  "       [--config-out FILE] [--project-out FILE] [--head-out FILE] [--gcode-3mf FILE] [--json FILE]\n"
+                 "       [--field-file FIELD.npz] [--dump-field FIELD.npz]\n"
                  "       [--atom TOOLPATH] [--verify] [--explain] [--auto-orient | --orient-only] [--save-3mf PROJECT.3mf]\n"
-                 "       [--plate-index N] [--layer-profile adaptive:QUALITY | ramp:H_BOTTOM:H_TOP | range:DEPTH:H] [--calib-head ID]\n"
+                 "       [--plate-index N] [--layer-profile adaptive:QUALITY | ramp:H_BOTTOM:H_TOP | range:DEPTH:H | file:PATH] [--calib-head ID]\n"
                  "       -o OUT.gcode (MODEL | PROJECT.3mf | --plate PLATE.json | --project SPEC.json | --calib TEST)\n"
                  "       [--moves-out FILE] [--progress] [--calib-params key=value,...]\n"
                  "       [--surface-grid [--surface-grid-max-cells N]]   (with --json: per-cell top surface error)\n"
@@ -183,6 +187,31 @@ Model read_input(const std::string &file)
 }
 
 std::optional<CalibMode> classic_calib_mode(const std::string &kind);
+std::vector<coordf_t> read_layer_profile(const std::string &path)
+{
+    std::ifstream in(path);
+    if (!in)
+        usage("--layer-profile file:" + path + ": cannot open the file");
+    std::vector<coordf_t> profile;
+    std::string           line;
+    for (int number = 1; std::getline(in, line); ++number) {
+        if (line.find_first_not_of(" \t\r") == std::string::npos)
+            continue;
+        std::istringstream fields(line);
+        double             z, h;
+        std::string        rest;
+        if (!(fields >> z >> h) || (fields >> rest) || !std::isfinite(z) || !std::isfinite(h))
+            usage("--layer-profile file:" + path + ": line " + std::to_string(number) + " is not a \"z h\" pair: " + line);
+        if (h <= 0.)
+            usage("--layer-profile file:" + path + ": line " + std::to_string(number) + " has a layer height <= 0");
+        if (!profile.empty() && z <= profile[profile.size() - 2])
+            usage("--layer-profile file:" + path + ": line " + std::to_string(number) + " does not increase z");
+        profile.insert(profile.end(), { z, h });
+    }
+    if (profile.size() < 4)
+        usage("--layer-profile file:" + path + " needs at least two \"z h\" lines");
+    return profile;
+}
 
 Args parse_args(int argc, char **argv)
 {
@@ -219,8 +248,11 @@ Args parse_args(int argc, char **argv)
                 usage("--part expects FILE:EXTRUDER");
             a.parts.emplace_back(spec.substr(0, pos), std::atoi(spec.c_str() + pos + 1));
         } else if (arg == "--paint") a.paint = next();
-        else if (arg == "--layer-profile") a.layer_profile = next();
-        else if (arg == "--vendor") a.vendor = next();
+        else if (arg == "--layer-profile") {
+            a.layer_profile = next();
+            if (a.layer_profile.rfind("file:", 0) == 0)
+                read_layer_profile(a.layer_profile.substr(5));
+        } else if (arg == "--vendor") a.vendor = next();
         else if (arg == "--profiles") a.profiles = next();
         else if (arg == "--datadir") a.datadir = next();
         else if (arg == "--config-out") a.config_out = next();
@@ -234,6 +266,10 @@ Args parse_args(int argc, char **argv)
                 usage("--atom needs a nonempty toolpath filename");
             a.overrides.emplace_back("nonplanar_atom_toolpath", path);
         }
+        else if (arg == "--field-file") {
+            a.field_file = fs::absolute(next()).string();
+            a.overrides.emplace_back("nonplanar_field_file", a.field_file);
+        } else if (arg == "--dump-field") a.dump_field = fs::absolute(next()).string();
         else if (arg == "--json") a.json = next();
         else if (arg == "--moves-out") a.moves_out = next();
         else if (arg == "--dump-options") a.dump_options = next();
@@ -328,6 +364,8 @@ Args parse_args(int argc, char **argv)
         else
             a.model = arg;
     }
+    if (!a.field_file.empty() && std::none_of(a.overrides.begin(), a.overrides.end(), [](const auto &o) { return o.first == "nonplanar_mode"; }))
+        a.overrides.insert(a.overrides.begin(), { "nonplanar_mode", "field" });
     if (!a.dump_options.empty() || !a.dump_presets.empty() || !a.verify_gcode.empty()) return a;
     if (a.printer.empty() || a.process.empty() || a.filaments.empty() ||
         (a.output.empty() && ! a.orient_only && a.confirm_up.empty() && a.save_3mf.empty() && a.patch_preview.empty()) ||
@@ -405,6 +443,42 @@ DynamicPrintConfig resolve(PresetBundle &bundle, const Args &a, const char *kind
 Vec3d emitted_tip(const GCodeProcessorResult &result, size_t i, bool rotary)
 {
     return !rotary && result.has_joints() ? result.joints[i].xyz : Vec3d(result.moves[i].position.cast<double>());
+}
+
+struct WallFragmentation
+{
+    size_t runs = 0;
+    double wall_mm = 0., near_end_mm = 0.;
+};
+WallFragmentation wall_fragmentation(const GCodeProcessorResult &result, bool rotary)
+{
+    WallFragmentation out;
+    double run_mm = 0.;
+    bool   in_run = false;
+    Vec3d  last   = Vec3d::Zero();
+    auto   close  = [&]() {
+        if (in_run)
+            out.near_end_mm += std::min(run_mm, 2.), ++out.runs;
+        in_run = false, run_mm = 0.;
+    };
+    size_t prev = 0;
+    for (size_t i = 1; i < result.moves.size(); ++i) {
+        const auto &m = result.moves[i];
+        if (m.internal_only)
+            continue;
+        const Vec3d a = emitted_tip(result, prev, rotary), b = emitted_tip(result, i, rotary);
+        prev          = i;
+        const bool  wall = m.type == EMoveType::Extrude && m.delta_extruder > 0.f && is_perimeter(m.extrusion_role);
+        if (!wall || (in_run && (a - last).norm() > 1e-3)) {
+            close();
+            if (!wall)
+                continue;
+        }
+        const double l = (b - a).norm();
+        out.wall_mm += l, run_mm += l, in_run = true, last = b;
+    }
+    close();
+    return out;
 }
 
 std::pair<double, double> max_vz(const GCodeProcessorResult &result, size_t *actual_line = nullptr, bool rotary = false)
@@ -706,8 +780,11 @@ void apply_layer_profile(const Args &args, Model &model, Print &print, const Dyn
     const std::string kind = args.layer_profile.substr(0, colon);
     double a = 0., b = 0.;
     const int values = colon == std::string::npos ? 0 : std::sscanf(args.layer_profile.c_str() + colon + 1, "%lf:%lf", &a, &b);
-    if (!((kind == "adaptive" && values >= 1) || ((kind == "ramp" || kind == "range") && values == 2)))
-        usage("--layer-profile expects adaptive:Q, ramp:H0:H1 or range:D:H");
+    std::vector<coordf_t> given;
+    if (kind == "file")
+        given = read_layer_profile(args.layer_profile.substr(colon + 1));
+    else if (!((kind == "adaptive" && values >= 1) || ((kind == "ramp" || kind == "range") && values == 2)))
+        usage("--layer-profile expects adaptive:Q, ramp:H0:H1, range:D:H or file:PATH");
     for (ModelObject *object : model.objects) {
         const PrintObject *print_object = nullptr;
         for (const PrintObject *po : print.objects())
@@ -717,7 +794,18 @@ void apply_layer_profile(const Args &args, Model &model, Print &print, const Dyn
             continue;
         const SlicingParameters &sp  = print_object->slicing_parameters();
         const double             top = sp.object_print_z_uncompensated_height();
-        if (kind == "adaptive")
+        if (kind == "file") {
+            const double height = sp.object_print_z_uncompensated_max - sp.object_print_z_min;
+            std::ostringstream why;
+            why.precision(6);
+            if (std::abs(given[given.size() - 2] - height) > 1e-3)
+                why << "its last z " << given[given.size() - 2] << " is not the object's top " << height << " (within 0.001 mm)";
+            else if (given[1] != sp.first_object_layer_height)
+                why << "its first layer height " << given[1] << " is not the first layer height " << sp.first_object_layer_height;
+            if (!why.str().empty())
+                usage("--layer-profile " + args.layer_profile + ": " + why.str());
+            object->layer_height_profile.set(given);
+        } else if (kind == "adaptive")
             object->layer_height_profile.set(layer_height_profile_adaptive(sp, *object, float(a)));
         else if (kind == "ramp")
             object->layer_height_profile.set(std::vector<coordf_t>{ 0., sp.first_object_layer_height, sp.first_object_layer_height, a, top, b });
@@ -1666,6 +1754,16 @@ int main(int argc, char **argv)
                         std::cout << patch.explain << "\n";
             }
 
+        {
+            const WallFragmentation frag = wall_fragmentation(result, print.config().nonplanar_kinematics.value != RotaryLayout::None);
+            const double            per_mm = frag.wall_mm > 0. ? 2. * double(frag.runs) / frag.wall_mm : 0.;
+            const double            share  = frag.wall_mm > 0. ? frag.near_end_mm / frag.wall_mm : 0.;
+            std::cout << "wall_fragmentation runs " << frag.runs << " wall_mm " << frag.wall_mm << " ends_per_mm " << per_mm
+                      << " share_within_1mm_of_end " << share << "\n";
+            if (!args.json.empty())
+                record["wall_fragmentation"] = { { "runs", frag.runs }, { "wall_mm", frag.wall_mm }, { "ends_per_mm", per_mm },
+                                                 { "share_within_1mm_of_end", share } };
+        }
         size_t     vz_line         = 0;
         const auto [vz, vz_actual] = max_vz(result, &vz_line, print.config().nonplanar_kinematics.value != RotaryLayout::None);
         const auto &normal         = result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)];
@@ -1910,12 +2008,39 @@ int main(int argc, char **argv)
                      << axis.x() << ' ' << axis.y() << ' ' << axis.z() << ' ' << m.width << ' ' << m.height << ' ' << int(part) << '\n';
             }
         }
+        if (!args.dump_field.empty()) {
+            for (size_t i = 0; i < print.objects().size(); ++i) {
+                const PrintObject &object = *print.objects()[i];
+                Nonplanar::NpField file;
+                bool               found = false;
+                for (const Nonplanar::ConformalPatch &patch : object.conformal().patches)
+                    if (patch.kind == Nonplanar::PatchKind::Field && patch.field) {
+                        file  = patch.field->to_npfield();
+                        found = true;
+                        break;
+                    }
+                if (!found) {
+                    const indexed_triangle_set mesh = Nonplanar::slicing_frame_mesh(object);
+                    BoundingBoxf3              box;
+                    for (const stl_vertex &v : mesh.vertices)
+                        box.merge(v.cast<double>());
+                    file = Nonplanar::planar_npfield(box, 1., object.config().layer_height.value, print.config().initial_layer_print_height.value);
+                }
+                Nonplanar::to_plate_frame(file, Nonplanar::plate_offset(object));
+                file.machine = args.printer;
+                const std::string path = print.objects().size() == 1 ? args.dump_field :
+                                                                       args.dump_field + "." + std::to_string(i) + ".npz";
+                Nonplanar::save_npfield(path, file);
+                std::cout << "field_dumped " << path << " " << file.solver << " " << file.dims[0] << "x" << file.dims[1] << "x" << file.dims[2] << "\n";
+            }
+        }
         progress("verify", 100);
         const ClearanceReport &clearance = result.clearance_report;
         std::cout << "clearance_checked " << clearance.ran << "\n";
         if (clearance.ran) {
             std::cout << "clearance_hit_moves " << clearance.hit_moves << "\n"
                       << "clearance_machine_hit_moves " << clearance.machine_hit_moves << "\n"
+                      << "clearance_tolerated_moves " << clearance.tolerated_moves << "\n"
                       << "clearance_min_mm " << clearance.min_clearance << "\n";
             for (const ClearanceHit &hit : clearance.worst)
                 std::cout << "clearance_hit line " << hit.gcode_line << " " << hit.component << " " << hit.penetration << " mm\n";
@@ -1928,6 +2053,7 @@ int main(int argc, char **argv)
             if (clearance.ran) {
                 text["clearance_hit_moves"] = text_value(clearance.hit_moves);
                 text["clearance_machine_hit_moves"] = text_value(clearance.machine_hit_moves);
+                text["clearance_tolerated_moves"]   = text_value(clearance.tolerated_moves);
                 text["clearance_min_mm"] = text_value(clearance.min_clearance);
                 if (!clearance.worst.empty()) {
                     const auto &hit = clearance.worst.front();
@@ -1949,6 +2075,13 @@ int main(int argc, char **argv)
                 std::cout << "nonplanar_auto_z_contouring " << object.name << "\n";
                 if (!args.json.empty())
                     record["auto_z_contouring_objects"].push_back(object.name);
+            }
+            if (!object.oneshot.empty()) {
+                std::cout << "nonplanar_oneshot " << object.oneshot << "\n"
+                          << "nonplanar_oneshot_student " << object.oneshot_student << " polish_k " << object.oneshot_polish_k << "\n";
+                if (!args.json.empty())
+                    record["oneshot"] = { { "decision", object.oneshot }, { "student", object.oneshot_student },
+                                          { "polish_k", object.oneshot_polish_k } };
             }
             std::cout << "nonplanar_object " << object.name << "\n"
                       << "nonplanar_top_patches " << object.top_patches << "\n"

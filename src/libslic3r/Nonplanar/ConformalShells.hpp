@@ -103,6 +103,7 @@ struct ConformalPatch
     std::shared_ptr<const OrientationField> field;
 
     std::vector<ExtrusionEntityCollection> shell_paths;
+    std::vector<ExPolygons>                shell_internal;
     ExtrusionEntityCollection              ironing;
 };
 static_assert(std::is_nothrow_move_constructible_v<ConformalPatch>);

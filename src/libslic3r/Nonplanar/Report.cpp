@@ -1,4 +1,5 @@
 #include "Report.hpp"
+#include "OneShotField.hpp"
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/Point.hpp"
@@ -172,7 +173,8 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
 {
     NonplanarReport report;
     if (!planar_too && std::all_of(print.objects().begin(), print.objects().end(), [](const PrintObject *object) {
-            return object->conformal().patches.empty() && object->conformal().diagnostics.empty();
+            return object->conformal().patches.empty() && object->conformal().diagnostics.empty() &&
+                   (object->oneshot_state() == nullptr || object->oneshot_state()->decision.empty());
         }))
         return report;
     std::string     head_warning;
@@ -186,6 +188,11 @@ NonplanarReport make_report(const Print &print, const GCodeProcessorResult &resu
         out.mode            = object->config().nonplanar_mode.serialize();
         out.layer_source         = conformal.layer_source;
         out.layer_source_refused = conformal.layer_source_refused;
+        if (const OneShotState *oneshot = object->oneshot_state(); oneshot != nullptr) {
+            out.oneshot          = oneshot->decision;
+            out.oneshot_student  = oneshot->student;
+            out.oneshot_polish_k = oneshot->polish_k;
+        }
         for (size_t r = 0; r < object->num_printing_regions(); ++r) {
             const PrintRegionConfig &config = object->printing_region(r).config();
             std::string              keys;
@@ -303,6 +310,8 @@ std::string NonplanarReport::to_json(const std::map<size_t, std::string> &orient
                         { "bands", o.bands }, { "curved_top_mm2", o.curved_top }, { "planar_top_mm2", o.planar_top },
                         { "flat_top_mm2", o.flat_top }, { "curved_share", o.curved_share() }, { "support_free_mm2", o.support_free },
                         { "orientation", note != orientation.end() ? note->second : o.orientation }, { "warnings", o.warnings } };
+        if (!o.oneshot.empty())
+            jo["oneshot"] = json{ { "decision", o.oneshot }, { "student", o.oneshot_student }, { "polish_k", o.oneshot_polish_k } };
         json patches_json = json::array();
         for (const ReportPatch &p : patches)
             if (p.object == i)
