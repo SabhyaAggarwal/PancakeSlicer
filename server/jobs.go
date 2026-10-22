@@ -33,29 +33,32 @@ const (
 func (s JobState) Finished() bool { return s == StateDone || s == StateFailed || s == StateCancelled }
 
 type JobRequest struct {
-	SourcePlates    []projectPlate `json:"source_plates,omitempty"`
-	PlateIndex      int            `json:"plate_index,omitempty"`
-	Orient          bool           `json:"orient,omitempty"`
-	Cut             string         `json:"cut,omitempty"`
-	CutKeep         string         `json:"cut_keep,omitempty"`
-	CutPlaceLower   bool           `json:"cut_place_lower,omitempty"`
-	Vendor          string         `json:"vendor"`
-	Printer         string         `json:"printer"`
-	Process         string         `json:"process"`
-	Filaments       []string       `json:"filaments"`
-	Overrides       [][2]string    `json:"overrides"`
-	Events          []string       `json:"events"`
-	Files           []string       `json:"files"`
-	Plate           bool           `json:"plate"`
-	Output          string         `json:"output"`
-	Filename        string         `json:"filename,omitempty"`
-	ProjectSettings [][2]string    `json:"project_settings,omitempty"`
-	ForcePlanar     bool           `json:"force_planar,omitempty"`
-	Calib           string         `json:"calib,omitempty"`
-	CalibParams     string         `json:"calib_params,omitempty"`
-	Edits           bool           `json:"edits,omitempty"`
-	Priority        string         `json:"priority,omitempty"`
-	PreviewBudget   float64        `json:"preview_budget,omitempty"`
+	SourcePlates      []projectPlate `json:"source_plates,omitempty"`
+	PlateIndex        int            `json:"plate_index,omitempty"`
+	Orient            bool           `json:"orient,omitempty"`
+	Arrange           bool           `json:"arrange,omitempty"`
+	ArrangeSpacing    float64        `json:"arrange_spacing,omitempty"`
+	ArrangeNoRotation bool           `json:"arrange_no_rotation,omitempty"`
+	Cut               string         `json:"cut,omitempty"`
+	CutKeep           string         `json:"cut_keep,omitempty"`
+	CutPlaceLower     bool           `json:"cut_place_lower,omitempty"`
+	Vendor            string         `json:"vendor"`
+	Printer           string         `json:"printer"`
+	Process           string         `json:"process"`
+	Filaments         []string       `json:"filaments"`
+	Overrides         [][2]string    `json:"overrides"`
+	Events            []string       `json:"events"`
+	Files             []string       `json:"files"`
+	Plate             bool           `json:"plate"`
+	Output            string         `json:"output"`
+	Filename          string         `json:"filename,omitempty"`
+	ProjectSettings   [][2]string    `json:"project_settings,omitempty"`
+	ForcePlanar       bool           `json:"force_planar,omitempty"`
+	Calib             string         `json:"calib,omitempty"`
+	CalibParams       string         `json:"calib_params,omitempty"`
+	Edits             bool           `json:"edits,omitempty"`
+	Priority          string         `json:"priority,omitempty"`
+	PreviewBudget     float64        `json:"preview_budget,omitempty"`
 }
 
 type Event struct {
@@ -523,6 +526,16 @@ func (m *JobManager) toolArgs(j *Job) []string {
 		}
 		return append(args, filepath.Join(in, r.Files[0]))
 	}
+	if r.Arrange {
+		args = append(args, "--arrange-only", j.OutputPath("json"))
+		if r.ArrangeSpacing > 0 {
+			args = append(args, "--arrange-spacing", strconv.FormatFloat(r.ArrangeSpacing, 'f', -1, 64))
+		}
+		if r.ArrangeNoRotation {
+			args = append(args, "--arrange-no-rotation")
+		}
+		return append(args, "--plate", filepath.Join(in, "plate.json"))
+	}
 	if r.Output == "patch-preview" {
 		args = append(args, "--patch-preview", j.OutputPath("json"), "--patch-preview-budget", strconv.FormatFloat(r.PreviewBudget, 'f', -1, 64))
 		if r.Plate {
@@ -701,6 +714,9 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 		j.setState(StateFailed, "the slicer output could not be read: "+sanitizeToolError(recordErr))
 	default:
 		kind := j.Request.Output
+		if j.Request.Arrange {
+			kind = "json"
+		}
 		if kind == "patch-preview" {
 			kind = "json"
 			m.keepPreview(j, args, raw)

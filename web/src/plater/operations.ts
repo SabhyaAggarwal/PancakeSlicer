@@ -1,10 +1,11 @@
 import { Box3, Euler, Matrix4, Vector3 } from 'three';
-import { overrides, plateSignature } from '../slice-input';
+import { firstLayer, overrides, plateSignature } from '../slice-input';
 import { jobValue } from '../options';
 import { mutation, responseError } from '../api/access';
 import { getState, newId, printerPreset, resolvePreset, setState, toast, type PlateObject } from '../state/store';
 import { undoable } from '../state/history';
-import { bakeStl, instanceMatrix, loadMesh, objectMatrix, request } from './geometry';
+import { bakeStl, instanceBox, instanceMatrix, loadMesh, objectMatrix, plateJson, request } from './geometry';
+import { bedArea } from '../actions';
 
 const DEG = Math.PI / 180;
 let busy = false;
@@ -103,5 +104,60 @@ export async function run(operation: 'orient' | 'split', all: boolean) {
     toast(error instanceof Error ? error.message : String(error));
   } finally {
     busy = false;
+  }
+}
+
+interface ArrangeResult { schema: string; plates: number; unplaced: number; objects: { instances: { plate: number | null; x?: number; y?: number; rot?: number }[] }[] }
+
+export async function arrangeNative() {
+  const s = getState();
+  if (busy || !s.api || s.api.mock || s.project || !s.objects.length) return;
+  busy = true;
+  setState({ loading: 'Arranging' });
+  try {
+    const { plate, files } = await plateJson(s.objects, firstLayer(s));
+    const fd = new FormData();
+    fd.append('operation', 'arrange');
+    for (const f of files) fd.append('files[]', f.blob, f.name);
+    fd.append('plate', JSON.stringify(plate));
+    fd.append('vendor', printerPreset(s)?.vendor ?? 'BBL');
+    fd.append('printer', resolvePreset(s, 'machine', s.printer).base?.name ?? s.printer);
+    fd.append('process', resolvePreset(s, 'process', s.process).base?.name ?? s.process);
+    for (const f of s.filamentSlots) fd.append('filament[]', resolvePreset(s, 'filament', f).base?.name ?? f);
+    fd.append('overrides', JSON.stringify(overrides(s)));
+    const response = await mutation('/api/jobs', { method: 'POST', body: fd });
+    if (!response.ok) throw await responseError(response);
+    const { id } = await response.json() as { id: string };
+    let result: ArrangeResult;
+    try {
+      result = await new Promise<ArrangeResult>((resolve, reject) => {
+        const stop = s.api!.events(id, {
+          progress() {},
+          done(status) { stop(); resolve(status.record as unknown as ArrangeResult); },
+          error(message) { stop(); reject(new Error(message)); },
+        });
+      });
+    } finally {
+      await s.api.cancel(id);
+    }
+    if (result?.schema !== 'orca.arrange.v1' || result.objects?.length !== s.objects.length) throw new Error('The native tool did not return an arrangement.');
+    if (getState().objects !== s.objects) return;
+    const area = bedArea(), xs = area.map((p) => p.x), width = Math.max(...xs) - Math.min(...xs);
+    let away = 0;
+    const objects = s.objects.map((o, k) => ({ ...o, instances: o.instances.map((inst, m) => {
+      const r = result.objects[k].instances[m];
+      if (!r || r.plate === null || r.x === undefined || r.y === undefined) { away++; return inst; }
+      if (r.plate > 1) away++;
+      const turned = { ...inst, rotZ: r.rot ?? inst.rotZ };
+      const b = instanceBox(o, turned), cx = (b.min.x + b.max.x) / 2, cy = (b.min.y + b.max.y) / 2;
+      return { ...turned, x: turned.x + r.x - cx + (r.plate - 1) * width * 1.2, y: turned.y + r.y - cy };
+    }) }));
+    undoable('Arrange', () => setState({ objects }));
+    if (away) toast(`${away} instance${away > 1 ? 's do' : ' does'} not fit on the plate`);
+  } catch (e) {
+    toast(`Arrange failed: ${e instanceof Error ? e.message : e}`);
+  } finally {
+    busy = false;
+    if (getState().loading === 'Arranging') setState({ loading: null });
   }
 }

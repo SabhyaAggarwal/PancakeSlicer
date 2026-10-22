@@ -337,10 +337,12 @@ export function openFileDialog() {
 }
 
 export function arrangeAll(allPlates = true) {
+  const s = getState();
+  if (s.features.arrange && !s.project && s.api && !s.api.mock) return void import('./plater/operations').then((m) => m.arrangeNative());
   const area = bedArea();
-  undoable('Arrange', () => setState((s) => ({
-    objects: arrange(s.objects, area),
-    ...(allPlates && !s.project ? { projectPlates: s.projectPlates.map((p) => (p.index === s.plateIndex || !p.objects.length ? p : { ...p, objects: arrange(p.objects, area) })) } : {}),
+  undoable('Arrange', () => setState((st) => ({
+    objects: arrange(st.objects, area),
+    ...(allPlates && !st.project ? { projectPlates: st.projectPlates.map((p) => (p.index === st.plateIndex || !p.objects.length ? p : { ...p, objects: arrange(p.objects, area) })) } : {}),
   })));
 }
 

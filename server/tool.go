@@ -35,6 +35,7 @@ type ToolFeatures struct {
 	MeshPlates     bool            `json:"mesh_plates"`
 	Paint          bool            `json:"paint"`
 	LayerProfile   bool            `json:"layer_profile"`
+	Arrange        bool            `json:"arrange"`
 }
 
 type toolOption struct {
@@ -81,6 +82,7 @@ func probeUsage(c Config, f *ToolFeatures) {
 	f.MeshPlates = strings.Contains(usage, `plate JSON objects take "plate"`)
 	f.Paint = strings.Contains(usage, `plate JSON objects and volumes take "paint"`)
 	f.LayerProfile = strings.Contains(usage, `plate JSON objects take "layer_height_profile"`)
+	f.Arrange = strings.Contains(usage, "--arrange-only")
 	if dump, err := toolDump(c, "--dump-presets", "Prusa"); err == nil {
 		f.PresetCompat = bytes.Contains(dump, []byte(`"compatible_printers_evaluated"`))
 	}

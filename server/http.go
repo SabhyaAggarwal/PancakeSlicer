@@ -182,6 +182,20 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 	req := JobRequest{Orient: r.FormValue("operation") == "orient", Vendor: r.FormValue("vendor"), Printer: r.FormValue("printer"), Process: r.FormValue("process"), Filaments: r.MultipartForm.Value["filament[]"], Output: r.FormValue("output"), Filename: r.FormValue("filename")}
 	switch op := r.FormValue("operation"); op {
 	case "", "orient":
+	case "arrange":
+		if !s.cfg.Features.Arrange {
+			fail(w, 400, "arrange requires a tool with --arrange-only")
+			return
+		}
+		req.Arrange, req.ArrangeNoRotation = true, r.FormValue("arrange_rotation") == "0"
+		if raw := r.FormValue("arrange_spacing"); raw != "" {
+			v, err := strconv.ParseFloat(raw, 64)
+			if err != nil || v < 0 || v > 100 || math.IsNaN(v) {
+				fail(w, 400, "arrange_spacing must be 0 to 100 mm")
+				return
+			}
+			req.ArrangeSpacing = v
+		}
 	case "cut":
 		if !s.cfg.Features.Cut {
 			fail(w, 400, "cutting requires a tool with --cut-only")
@@ -529,11 +543,15 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "cut requires one STL without plate JSON or project output")
 		return
 	}
+	if req.Arrange && (!req.Plate || req.Output != "gcode") {
+		fail(w, 400, "arrange requires plate JSON")
+		return
+	}
 	if req.Orient && (req.Output == "3mf" || req.Plate || len(req.Files) != 1 || !strings.EqualFold(filepath.Ext(req.Files[0]), ".stl")) {
 		fail(w, 400, "orient requires one STL without plate JSON or project output")
 		return
 	}
-	if !req.Orient && req.Cut == "" && req.Output != "3mf" && req.Output != "patch-preview" {
+	if !req.Orient && !req.Arrange && req.Cut == "" && req.Output != "3mf" && req.Output != "patch-preview" {
 		if err := validatePlateBounds(filepath.Join(j.Dir, "input"), req, vendor.machines[req.Printer], rawPlate); err != nil {
 			fail(w, 400, err.Error())
 			return
