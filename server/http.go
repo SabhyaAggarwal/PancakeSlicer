@@ -288,6 +288,11 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, err.Error())
 			return
 		}
+		for i, kv := range req.Overrides {
+			if kv[0] == "nonplanar_mode" && kv[1] == "oneshot" {
+				req.Overrides[i][1] = "auto"
+			}
+		}
 	}
 	if raw := r.FormValue("events"); raw != "" {
 		if json.Unmarshal([]byte(raw), &req.Events) != nil {
@@ -395,7 +400,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, err.Error())
 			return
 		}
-		if err := os.WriteFile(filepath.Join(j.Dir, "input", "plate.json"), []byte(raw), 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(j.Dir, "input", "plate.json"), withoutOneShot([]byte(raw)), 0600); err != nil {
 			fail(w, 500, err.Error())
 			return
 		}
@@ -470,6 +475,14 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		if err := projectTransformsWorkaround(filepath.Join(j.Dir, "input", req.Files[0]), instances); err != nil {
 			fail(w, 400, err.Error())
 			return
+		}
+	}
+	for _, name := range req.Files {
+		if strings.EqualFold(filepath.Ext(name), ".3mf") {
+			if err := projectWithoutOneShot(filepath.Join(j.Dir, "input", name)); err != nil {
+				fail(w, 400, err.Error())
+				return
+			}
 		}
 	}
 	if raw := r.FormValue("project_settings"); raw != "" {

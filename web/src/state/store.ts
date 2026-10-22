@@ -6,7 +6,7 @@ import type { Config, ConfigValue, JobStatus, PresetType, SystemPreset, UserPres
 import type { ProjectPlate } from '../plater/threemf';
 import { isHidden, OPTIONS, type OptionMode } from '../options';
 import { undoable } from './history';
-import { canEditProject } from '../api/client';
+import { canEditProject, canOneShot } from '../api/client';
 
 export interface Instance {
   id: number;
@@ -234,7 +234,9 @@ export function effectiveConfig(s: State, type: PresetType, slot = 0): Config {
   const { config } = resolvePreset(s, type, name ?? '');
   const project = type === 'filament' ? s.projectPresets?.filaments[slot] : s.projectPresets?.[type];
   const plate = type === 'process' ? s.projectPlates.find((p) => p.index === s.plateIndex)?.settings : undefined;
-  return { ...config, ...project, ...plate, ...presetEdits(s, type, slot) };
+  const out = { ...config, ...project, ...plate, ...presetEdits(s, type, slot) };
+  if (out.nonplanar_mode === 'oneshot' && !canOneShot()) out.nonplanar_mode = 'auto';
+  return out;
 }
 
 export function isCompatible(p: SystemPreset, printer: string, process?: string): boolean {

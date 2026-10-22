@@ -174,6 +174,39 @@ func patchProjectSettings(path string, settings [][2]string) error {
 	return err
 }
 
+var oneshotSetting = regexp.MustCompile(`((?:"nonplanar_mode"\s*:\s*"|<metadata\s+key="nonplanar_mode"\s+value="|<option\s+opt_key="nonplanar_mode"\s*>))oneshot\b`)
+
+func withoutOneShot(data []byte) []byte {
+	return oneshotSetting.ReplaceAll(data, []byte("${1}auto"))
+}
+
+func projectWithoutOneShot(path string) error {
+	metadata := func(name string) bool {
+		name = strings.ToLower(name)
+		return strings.HasPrefix(name, "metadata/") && (strings.HasSuffix(name, ".config") || strings.HasSuffix(name, ".xml"))
+	}
+	src, err := zip.OpenReader(path)
+	if err != nil {
+		return nil
+	}
+	found := false
+	for _, f := range src.File {
+		if !found && metadata(f.Name) {
+			if r, err := f.Open(); err == nil {
+				data, _ := io.ReadAll(io.LimitReader(r, 256<<20))
+				r.Close()
+				found = oneshotSetting.Match(data)
+			}
+		}
+	}
+	src.Close()
+	if !found {
+		return nil
+	}
+	_, err = rewriteProject(path, metadata, func(data []byte) ([]byte, error) { return withoutOneShot(data), nil })
+	return err
+}
+
 func xmlEscape(s string) string {
 	var b strings.Builder
 	_ = xml.EscapeText(&b, []byte(s))
