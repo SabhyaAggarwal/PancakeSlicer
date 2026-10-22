@@ -15,8 +15,8 @@
 
 namespace Slic3r::Nonplanar {
 
-inline constexpr const char *ObjectiveVersion = "J v1.5.2";
-inline constexpr double      ObjectiveVersionNumber = 1.52;
+inline constexpr const char *ObjectiveVersion = "J v1.5.7";
+inline constexpr double      ObjectiveVersionNumber = 1.57;
 
 struct ObjectiveGeometry
 {
@@ -27,6 +27,9 @@ struct ObjectiveGeometry
     std::array<size_t, 3> dims { 0, 0, 0 };
     std::vector<uint8_t>  occ;
     std::vector<float>    shell;
+    double                bed_area = 0.;
+    Vec3d                 mesh_min { Vec3d::Constant(std::numeric_limits<double>::quiet_NaN()) };
+    Vec3d                 mesh_max { Vec3d::Constant(std::numeric_limits<double>::quiet_NaN()) };
 
     size_t index(size_t i, size_t j, size_t k) const { return (i * dims[1] + j) * dims[2] + k; }
     size_t nodes() const { return dims[0] * dims[1] * dims[2]; }
@@ -46,6 +49,16 @@ struct ObjectiveCover
     int    skin_classes = 0;
 };
 
+struct ObjectiveTerms;
+
+struct TimeModel
+{
+    double c0 = 0., T = 1., F_wallp = 0., F_upp = 0., F_downp = 0., F_flatx = 0., F_shells_top = 0., Ti = 0., layers = 0.,
+           island_layers = 0., T_minlayer = 0., F_first = 0., T_axis = 0., T_unwind = 0., road_pieces = 0., hop_mm = 0.;
+    double cap = 1.15;
+    double operator()(const ObjectiveTerms &t) const;
+};
+
 struct ObjectiveMachine
 {
     double h = 0.2, first_layer = 0.2;
@@ -54,7 +67,7 @@ struct ObjectiveMachine
     bool   rotary = true;
     double tilt_max = 55. * M_PI / 180.;
     std::array<double, 24> slope_cap {};
-    ObjectiveCover cover, cover_planar;
+    ObjectiveCover cover, cover_planar, cover_shells;
     double line_width = 0.4, infill_density = 0.15, shell_speed = 70., sparse_speed = 80., max_volumetric = 12.;
     double b_rate = 0.5, c_rate = 1.;
     bool   c_continuous = false;
@@ -62,11 +75,15 @@ struct ObjectiveMachine
     double min_layer_time = 8.;
     double travel_speed = 80.;
     double plate_radius = 1e9;
-    double time_budget = std::numeric_limits<double>::infinity();
+    TimeModel time_zonly, time_curved;
+    double    time_base_zonly = 0., time_base_curved = 0.;
+    double    first_layer_speed = 0., top_speed = 0.;
+    int       top_shell_layers = 0;
+    bool      shells = false;
     std::vector<HeadSamples> head;
 };
 
-std::vector<HeadSamples> head_points(const HeadEnvelope &head, double pitch, double clip);
+std::vector<HeadSamples> head_points(const HeadEnvelope &head, double pitch, double clip, double dilate = 0.);
 
 struct ObjectiveWeights
 {
@@ -78,6 +95,7 @@ struct ObjectiveTerms
     double J = 0., S = 0., S_smooth = 0., E = 0., E_up = 0., E_wall = 0., E_down = 0., rms = 0., rms_up = 0., rms_wall = 0., rms_down = 0.;
     double T = 0., T_roads = 0., T_minlayer = 0., T_travel = 0., n_travel = 0., hop_mm = 0., island_layers = 0., road_pieces = 0., T_axis = 0., T_unwind = 0.,
            T_skin = 0., layers = 0., road_mm = 0.;
+    double F_wallp = 0., F_upp = 0., F_downp = 0., F_flatx = 0., F_shells_top = 0., Ti = 0., F_first = 0., spread = 0., T_ratio = 0., T_cap = 0.;
     int    H_thickness = 0, H_slope = 0, H_head = 0, H_head_probes = 0, H_bed = 0, H_time = 0;
     bool   feasible() const { return H_thickness == 0 && H_slope == 0 && H_head == 0 && H_bed == 0 && H_time == 0; }
     std::vector<std::pair<std::string, double>> named() const;

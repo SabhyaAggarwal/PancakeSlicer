@@ -29,6 +29,7 @@ namespace Slic3r::Nonplanar {
 namespace {
 
 const double Cos5       = std::cos(5. * M_PI / 180.);
+const double Cos10      = std::cos(10. * M_PI / 180.);
 const double ShellPlanarCos = std::cos(0.5 * M_PI / 180.);
 
 constexpr double HuberDelta = 0.1;
@@ -38,7 +39,11 @@ constexpr double Regular    = 1e-3;
 
 constexpr double WallK = 0.31;
 constexpr double WallC = 0.0213;
+constexpr double TiltK = 1.0;
+constexpr double CeilK = 1.0;
+constexpr double SupportAllowance = 1.0;
 constexpr double UpFloor = 0.011;
+constexpr double ZOnlySpread = 0.05;
 constexpr double PlanarTol = 1e-4;
 
 double e_ref(const ObjectiveMachine &m) { return m.h * std::sin(20. * M_PI / 180.) / std::sqrt(12.); }
@@ -175,12 +180,13 @@ double stair(const Vec3d &n, const Vec3d &gs, double ps, const ObjectiveMachine 
 
 bool walled(int8_t cls, double nd) { return cls == 1 || (cls == 2 && std::abs(nd) < std::cos(70. * M_PI / 180.)); }
 
-double wall_error(int8_t cls, double e, double t, double nd)
+double wall_error(int8_t cls, double e, double t, double nd, double dz)
 {
     if (!walled(cls, nd))
         return e;
     const double flank = WallK * t / 2. * std::sqrt(std::max(0., 1. - nd * nd));
-    return std::sqrt(e * e + flank * flank + WallC * WallC);
+    const double tilt2 = cls == 1 ? TiltK * TiltK * t * t * std::max(0., 1. - dz * dz) : 0.;
+    return std::sqrt(e * e + flank * flank + WallC * WallC + tilt2);
 }
 
 double up_floor(int8_t cls, double e) { return cls == 0 ? std::sqrt(e * e + UpFloor * UpFloor) : e; }
@@ -432,21 +438,34 @@ std::vector<std::pair<std::string, double>> ObjectiveTerms::named() const
              { "stat_H_slope", double(H_slope) },
              { "stat_H_head", double(H_head) },
              { "stat_H_bed", double(H_bed) },
-             { "stat_H_time", double(H_time) } };
+             { "stat_H_time", double(H_time) }, { "stat_T_ratio", T_ratio }, { "stat_T_cap", T_cap }, { "stat_spread", spread },
+             { "stat_F_wallp", F_wallp }, { "stat_F_upp", F_upp }, { "stat_F_flatx", F_flatx }, { "stat_Ti", Ti }, { "stat_F_first", F_first } };
 }
 
-std::vector<HeadSamples> head_points(const HeadEnvelope &head, double pitch, double clip)
+double TimeModel::operator()(const ObjectiveTerms &t) const
+{
+    return c0 + T * t.T + F_wallp * t.F_wallp + F_upp * t.F_upp + F_downp * t.F_downp + F_flatx * t.F_flatx + F_shells_top * t.F_shells_top +
+           Ti * t.Ti + layers * t.layers + island_layers * t.island_layers + T_minlayer * t.T_minlayer + F_first * t.F_first +
+           T_axis * t.T_axis + T_unwind * t.T_unwind + road_pieces * t.road_pieces + hop_mm * t.hop_mm;
+}
+
+std::vector<HeadSamples> head_points(const HeadEnvelope &head, double pitch, double clip, double dilate)
 {
     std::vector<std::pair<Vec3d, Vec3d>> boxes;
     for (HeadBox b : head.boxes) {
         const Vec2d radius = b.min.head<2>().cwiseAbs().cwiseMax(b.max.head<2>().cwiseAbs());
         if (!b.nozzle) {
-            b.min.head<2>().array() -= head.lateral_margin;
-            b.max.head<2>().array() += head.lateral_margin;
-            b.min.z() -= head.margin;
-            b.max.z() += head.margin;
-        } else if (!b.infinite_x && !b.infinite_y && radius.norm() <= head.tip_allowance.radius)
-            b.min.z() = std::max(b.min.z(), head.tip_allowance.height);
+            b.min.head<2>().array() -= head.lateral_margin + dilate;
+            b.max.head<2>().array() += head.lateral_margin + dilate;
+            b.min.z() -= head.margin + dilate;
+            b.max.z() += head.margin + dilate;
+        } else {
+            if (!b.infinite_x && !b.infinite_y && radius.norm() <= head.tip_allowance.radius)
+                b.min.z() = std::max(b.min.z(), head.tip_allowance.height);
+            b.min.head<2>().array() -= dilate;
+            b.max.head<2>().array() += dilate;
+            b.max.z() += dilate;
+        }
         if (b.infinite_x)
             b.min.x() = -clip, b.max.x() = clip;
         if (b.infinite_y)
@@ -529,6 +548,46 @@ double planar_support_time(const ObjectiveGeometry &g, const ObjectiveMachine &m
     return volume * 0.15 / (m.line_width * m.h * m.sparse_speed) * m.road_factor;
 }
 
+
+namespace {
+
+std::vector<double> native_tops(const ObjectiveGeometry &g, const ObjectiveMachine &m, const std::vector<float> &phi)
+{
+    std::vector<double> col(g.dims[2]), z(g.dims[2]);
+    for (size_t k = 0; k < g.dims[2]; ++k) {
+        col[k] = std::max(double(phi[g.index(g.dims[0] / 2, g.dims[1] / 2, k)]), k > 0 ? col[k - 1] : -std::numeric_limits<double>::infinity());
+        z[k]   = g.origin.z() + double(k) * g.spacing.z();
+    }
+    auto inverse = [&](double x) {
+        if (x <= col.front())
+            return z.front();
+        if (x >= col.back())
+            return z.back();
+        const size_t k = size_t(std::upper_bound(col.begin(), col.end(), x) - col.begin());
+        return z[k - 1] + (z[k] - z[k - 1]) * (x - col[k - 1]) / (col[k] - col[k - 1]);
+    };
+    const double        top = g.mesh_max.z();
+    std::vector<double> tops;
+    double              zp = 0.;
+    for (int j = 0; zp < top - 1e-6; ++j) {
+        double       zj = j > 0 ? inverse(m.first_layer + j * m.h) : m.first_layer;
+        const double hj = std::clamp(zj - zp, m.thickness_min, m.thickness_max);
+        zj              = zp + hj < top - 0.5 * m.thickness_min ? std::min(zp + hj, top) : top;
+        tops.push_back(zj);
+        zp = zj;
+    }
+    if (const size_t n = tops.size(); n >= 3 && tops[n - 1] - tops[n - 2] < m.thickness_min) {
+        const double rest = tops[n - 1] - tops[n - 3], last = tops[n - 1], below = tops[n - 3];
+        tops.resize(n - 2);
+        if (rest > m.thickness_max)
+            tops.push_back(below + rest / 2.);
+        tops.push_back(last);
+    }
+    return tops;
+}
+
+}
+
 ObjectiveTerms evaluate_objective(const ObjectiveGeometry &g, const ObjectiveMachine &m, const ObjectiveWeights &w,
                                   const std::vector<float> &phi, bool hard, std::vector<HeadPair> *pairs)
 {
@@ -540,6 +599,24 @@ ObjectiveTerms evaluate_objective(const ObjectiveGeometry &g, const ObjectiveMac
     for (size_t id = 0; id < g.nodes(); ++id)
         dev = std::max(dev, std::abs(double(phi[id]) - node_pos(g, id).z()));
     const ObjectiveCover &cover = dev < PlanarTol ? m.cover_planar : m.cover;
+    double spread = 0.;
+    for (size_t k = 0; k < g.dims[2]; ++k) {
+        double lo = std::numeric_limits<double>::infinity(), hi = -lo;
+        for (size_t i = 0; i < g.dims[0]; ++i)
+            for (size_t j = 0; j < g.dims[1]; ++j) {
+                lo = std::min(lo, double(phi[g.index(i, j, k)]));
+                hi = std::max(hi, double(phi[g.index(i, j, k)]));
+            }
+        spread = std::max(spread, 0.5 * (hi - lo));
+    }
+    t.spread = spread;
+    const std::vector<double> tops = spread < ZOnlySpread && std::isfinite(g.mesh_max.z()) ? native_tops(g, m, phi) : std::vector<double>();
+    auto native_error = [&](size_t s) {
+        const double zs = g.p[s].z() - g.mesh_min.z(), nz = std::abs(g.n[s].z());
+        const size_t jj = std::min(size_t(std::lower_bound(tops.begin(), tops.end(), zs) - tops.begin()), tops.size() - 1);
+        const double lo = jj > 0 ? tops[jj - 1] : 0.;
+        return nz > Cos5 ? std::min(std::abs(zs - tops[jj]), std::abs(zs - lo)) : (tops[jj] - lo) * nz / std::sqrt(12.);
+    };
     for (size_t s = 0; s < g.p.size(); ++s) {
         const Vec3d  gs = interp(g, g.p[s], [&G](size_t id) { return G[id]; });
         const double gl = std::max(gs.norm(), 1e-12);
@@ -547,13 +624,27 @@ ObjectiveTerms evaluate_objective(const ObjectiveGeometry &g, const ObjectiveMac
         if (-nd > sin_t)
             t.S += g.a[s];
         t.S_smooth += g.a[s] * std::max(0., -nd - sin_t) / (1. - sin_t);
+        if (g.n[s].z() < -Cos10) {
+            const double dz = gs.z() / gl;
+            t.S += CeilK * g.a[s] * std::sqrt(std::max(0., 1. - dz * dz)) * gl / m.h;
+        }
         bool         flat, skinned;
         double       r;
         const double ps = interp(g, g.p[s], [&phi](size_t id) { return double(phi[id]); });
-        const double e  = covered(g, s, up_floor(g.cls[s], wall_error(g.cls[s], stair(g.n[s], gs, ps, m, flat, r), m.h / gl, nd)), m, cover,
+        const double e0 = g.cls[s] != 1 && !tops.empty() ? native_error(s) :
+                                                           wall_error(g.cls[s], stair(g.n[s], gs, ps, m, flat, r), m.h / gl, nd, gs.z() / gl);
+        const double e  = covered(g, s, up_floor(g.cls[s], e0), m, cover,
                                   skinned, gs.z() / gl);
         if (skinned)
             skin_area += g.a[s];
+        const double nz = g.n[s].z();
+        t.F_wallp += g.a[s] * std::sqrt(std::max(0., 1. - nz * nz)) * gl / m.h;
+        t.F_upp += g.a[s] * std::max(nz, 0.) * gl / m.h;
+        t.F_downp += g.a[s] * std::max(-nz, 0.) * gl / m.h;
+        if (std::abs(nz) > Cos10) {
+            const double dz = gs.z() / gl;
+            t.F_flatx += g.a[s] * std::sqrt(std::max(0., 1. - dz * dz)) * gl / m.h;
+        }
         const int c = g.cls[s];
         E_c[c] += g.a[s] * (e / er) * (e / er);
         area_c[c] += g.a[s];
@@ -584,9 +675,11 @@ ObjectiveTerms evaluate_objective(const ObjectiveGeometry &g, const ObjectiveMac
         feed[id]            = road[id] / std::max(t_node[id], 1e-12);
         t.T_roads += t_node[id];
         t.road_mm += road[id];
+        t.Ti += unit * (1. - fs) * m.infill_density / std::min(m.sparse_speed, cap);
         lo = std::min(lo, double(phi[id])), hi = std::max(hi, double(phi[id]));
     }
     t.T_roads *= m.road_factor;
+    t.F_first = m.first_layer_speed > 0. ? g.bed_area / (wd * m.first_layer_speed) : 0.;
     {
         const double             pb = g.spacing.minCoeff();
         std::map<int64_t, double> per_bin;
@@ -702,7 +795,19 @@ ObjectiveTerms evaluate_objective(const ObjectiveGeometry &g, const ObjectiveMac
     if (!hard)
         return t;
 
-    t.H_time = t.T > m.time_budget;
+    const bool       curved = t.spread >= ZOnlySpread;
+    if (curved && m.shells && m.top_speed > 0.) {
+        double A_top = 0.;
+        for (size_t s = 0; s < g.p.size(); ++s)
+            if (g.n[s].z() > 0.05)
+                A_top += g.a[s] * g.n[s].z();
+        t.F_shells_top = A_top * m.top_shell_layers / (wd * m.top_speed);
+    }
+    const TimeModel &tm     = curved ? m.time_curved : m.time_zonly;
+    const double     base   = curved ? m.time_base_curved : m.time_base_zonly;
+    t.T_ratio               = base > 0. ? tm(t) / base : 0.;
+    t.T_cap                 = tm.cap;
+    t.H_time                = t.T_ratio > tm.cap;
     const double        gmin = m.h / m.thickness_max, gmax = m.h / m.thickness_min;
     std::vector<size_t> occupied;
     for (size_t id = 0; id < g.nodes(); ++id) {
@@ -937,7 +1042,7 @@ struct Surrogate
             double       e0 = stair(n, gs, ps, m, flat, r);
             if (flat)
                 e0 = m.h / M_PI * std::abs(std::sin(M_PI * r / m.h)) / gl;
-            const double ew = wall_error(g.cls[s], e0, m.h / gl, nd);
+            const double ew = wall_error(g.cls[s], e0, m.h / gl, nd, gh.z());
             const double ef = up_floor(g.cls[s], ew);
             const double e  = covered(g, s, ef, m, m.cover, skinned, gh.z());
             const double cw = class_weight(w, g.cls[s]) * g.a[s] / (er * er);
@@ -959,6 +1064,14 @@ struct Surrogate
                     const Vec3d  dnd   = (n - nd * gh) / gl;
                     const Vec3d  df    = WallK * m.h / 2. * (-gh / (gl * gl) * sn - nd / (gl * sn) * dnd);
                     sys->row(along(sample_st[s], df), flank, cw);
+                }
+                if (g.cls[s] == 1) {
+                    const double q = std::hypot(gs.x(), gs.y());
+                    if (q > 1e-9) {
+                        const Vec3d dq = Vec3d(gs.x() / q, gs.y() / q, 0.);
+                        const Vec3d dt = TiltK * m.h * (dq / (gl * gl) - 2. * q * gs / (gl * gl * gl * gl));
+                        sys->row(along(sample_st[s], dt), TiltK * m.h * q / (gl * gl), cw);
+                    }
                 }
             }
         }
@@ -1205,8 +1318,14 @@ ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachin
     for (size_t id = 0; id < g.nodes(); ++id)
         planar[id] = float(node_pos(g, id).z());
     ObjectiveMachine m = machine;
-    if (!std::isfinite(m.time_budget))
-        m.time_budget = 1.15 * (evaluate_objective(g, m, w, planar, false).T + planar_support_time(g, m));
+    if (m.time_base_zonly <= 0. || m.time_base_curved <= 0.) {
+        const ObjectiveTerms tp      = evaluate_objective(g, m, w, planar, false);
+        const double         support = SupportAllowance * planar_support_time(g, m);
+        if (m.time_base_zonly <= 0.)
+            m.time_base_zonly = m.time_zonly(tp) + support;
+        if (m.time_base_curved <= 0.)
+            m.time_base_curved = m.time_curved(tp) + support;
+    }
     double limit = m.tilt_max;
     if (!m.rotary)
         limit = *std::min_element(m.slope_cap.begin(), m.slope_cap.end());
@@ -1218,66 +1337,59 @@ ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachin
              << ") H " << t.H_thickness << "/" << t.H_slope << "/" << t.H_head << "/" << t.H_bed << "/" << t.H_time << (t.feasible() ? " feasible" : "");
         say(line.str());
     };
+    auto project = [&](std::vector<float> &f) {
+        double             lo = 0., hi = 1.;
+        std::vector<float> trial(f.size());
+        auto blend = [&](double a) {
+            for (size_t id = 0; id < f.size(); ++id)
+                trial[id] = float(double(planar[id]) + a * (double(f[id]) - double(planar[id])));
+        };
+        for (int b = 0; b < 8; ++b) {
+            const double mid = 0.5 * (lo + hi);
+            blend(mid);
+            (evaluate_objective(g, m, w, trial, true).feasible() ? lo : hi) = mid;
+        }
+        blend(lo);
+        f = std::move(trial);
+        return lo;
+    };
+    auto add_pairs = [](std::vector<HeadPair> &to, const std::vector<HeadPair> &from) {
+        for (const HeadPair &hp : from)
+            if (std::none_of(to.begin(), to.end(), [&hp](const HeadPair &o) { return o.node == hp.node; }))
+                to.push_back(hp);
+    };
     auto descend = [&](std::vector<float> &f, int iterations, const std::string &tag) {
-        std::vector<HeadPair> pairs;
-        double                damping = 1e-2, cost = 0.;
+        std::vector<HeadPair> pairs, struck;
+        ObjectiveTerms        t = evaluate_objective(g, m, w, f, true, &pairs);
+        std::string           how;
+        if (!t.feasible()) {
+            report(tag + " (before projection)", t);
+            how   = " (projected toward planar, blend " + std::to_string(project(f)) + ")";
+            pairs.clear();
+            t = evaluate_objective(g, m, w, f, true, &pairs);
+        }
+        double             damping = 1e-2, cost = 0.;
+        std::vector<float> trial;
         for (int it = 0; it < iterations && !spent(); ++it) {
             if (cancel)
                 cancel();
-            if (it % 4 == 0)
-                evaluate_objective(g, m, w, f, true, &pairs);
             const Surrogate sur(g, m, w, params, pairs);
-            if (!step(sur, f, cost, damping) && damping >= 1e4)
-                break;
-        }
-        ObjectiveTerms t = evaluate_objective(g, m, w, f, true);
-        for (int extra = 0; !t.feasible() && extra < iterations && !spent(); ++extra) {
-            if (extra % 4 == 0)
-                evaluate_objective(g, m, w, f, true, &pairs);
-            Surrogate sur(g, m, w, params, pairs);
-            sur.hard = Hard * std::pow(4., double(extra / 4 + 1));
-            if (!step(sur, f, cost, damping) && damping >= 1e4)
-                break;
-            if (extra % 4 == 3)
-                t = evaluate_objective(g, m, w, f, true);
-        }
-        t = evaluate_objective(g, m, w, f, true);
-        if (!t.feasible()) {
-            report(tag + " (before repair)", t);
-            double lo = 0., hi = 1.;
-            std::vector<float> trial(f.size());
-            auto blend = [&](double a) {
-                for (size_t id = 0; id < f.size(); ++id)
-                    trial[id] = float(double(planar[id]) + a * (double(f[id]) - double(planar[id])));
-            };
-            for (int b = 0; b < 8; ++b) {
-                const double mid = 0.5 * (lo + hi);
-                blend(mid);
-                (evaluate_objective(g, m, w, trial, true).feasible() ? lo : hi) = mid;
-            }
-            blend(lo);
-            f = trial;
-            t = evaluate_objective(g, m, w, f, true);
-            std::vector<float> again = f;
-            pairs.clear();
-            damping = 1e-2;
-            for (int it = 0; it < iterations / 2 && !spent(); ++it) {
-                if (it % 4 == 0)
-                    evaluate_objective(g, m, w, again, true, &pairs);
-                Surrogate sur(g, m, w, params, pairs);
-                sur.hard = Hard * 16.;
-                if (!step(sur, again, cost, damping) && damping >= 1e4)
+            trial = f;
+            if (!step(sur, trial, cost, damping)) {
+                if (damping >= 1e4)
                     break;
+                continue;
             }
-            const ObjectiveTerms ta = evaluate_objective(g, m, w, again, true);
-            if (ta.feasible() && ta.J < t.J) {
-                f = std::move(again);
-                t = ta;
-            }
-            report(tag + " (repaired toward planar, blend " + std::to_string(lo) + ")", t);
-            return t;
+            struck.clear();
+            const ObjectiveTerms tt = evaluate_objective(g, m, w, trial, true, &struck);
+            add_pairs(pairs, struck);
+            if (tt.feasible() && tt.J < t.J) {
+                f.swap(trial);
+                t = tt;
+            } else
+                damping = std::min(1e4, damping * 10.);
         }
-        report(tag, t);
+        report(tag + how, t);
         return t;
     };
     auto better = [](const ObjectiveTerms &a, const ObjectiveTerms &b) { return a.feasible() != b.feasible() ? a.feasible() : a.J < b.J; };

@@ -1650,6 +1650,22 @@ std::string log_memory_info(bool ignore_loglevel)
     return out;
 }
 
+double process_cpu_seconds()
+{
+#ifdef _WIN32
+    FILETIME creation, exit, kernel, user;
+    if (!GetProcessTimes(GetCurrentProcess(), &creation, &exit, &kernel, &user))
+        return -1.;
+    auto seconds = [](const FILETIME &t) { return double((uint64_t(t.dwHighDateTime) << 32) | t.dwLowDateTime) * 1e-7; };
+    return seconds(kernel) + seconds(user);
+#else
+    rusage usage;
+    if (getrusage(RUSAGE_SELF, &usage) != 0)
+        return -1.;
+    return double(usage.ru_utime.tv_sec + usage.ru_stime.tv_sec) + 1e-6 * double(usage.ru_utime.tv_usec + usage.ru_stime.tv_usec);
+#endif
+}
+
 size_t total_physical_memory()
 {
 #if defined(_WIN32) && (defined(__CYGWIN__) || defined(__CYGWIN32__))

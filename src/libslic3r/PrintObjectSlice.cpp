@@ -743,8 +743,7 @@ void PrintObject::slice()
     }
     const bool oneshot = Nonplanar::oneshot_requested(*this);
     if (oneshot) {
-        if (this->oneshot_state().field())
-            Nonplanar::solve_oneshot(*this);
+        Nonplanar::solve_oneshot(*this);
         m_config.nonplanar_mode.value = this->oneshot_state().field_path() ? NonplanarMode::OneShot : NonplanarMode::Off;
     }
     if (m_config.nonplanar_mode.value != previous_mode) {
@@ -755,7 +754,7 @@ void PrintObject::slice()
     std::vector<coordf_t> layer_height_profile;
     this->update_layer_height_profile(*this->model_object(), m_slicing_params, layer_height_profile);
     if (oneshot && this->oneshot_state().field() && this->oneshot_state().z_only)
-        layer_height_profile = Nonplanar::layer_profile(*this->oneshot_state().solved, this->oneshot_state().blend, m_slicing_params.first_object_layer_height,
+        layer_height_profile = Nonplanar::layer_profile(*this->oneshot_state().solved, m_slicing_params.first_object_layer_height,
                                                         m_slicing_params.object_print_z_height(), m_slicing_params.min_layer_height,
                                                         m_slicing_params.max_layer_height);
     else if (Nonplanar::field_layers_considered(*this))

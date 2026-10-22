@@ -2541,6 +2541,16 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
         throw;
     }
     file.close();
+    struct RemoveUnlessRenamed
+    {
+        const std::string &path;
+        bool               renamed = false;
+        ~RemoveUnlessRenamed()
+        {
+            if (!renamed)
+                boost::nowide::remove(path.c_str());
+        }
+    } partial{ path_tmp };
 
     check_placeholder_parser_failed();
 
@@ -2638,6 +2648,7 @@ void GCode::do_export(Print* print, const char* path, GCodeProcessorResult* resu
     BOOST_LOG_TRIVIAL(debug) << boost::format("Finished processing gcode to %1% ") % path_tmp;
 
     std::error_code ret = rename_file(path_tmp, path);
+    partial.renamed     = !ret;
     if (ret) {
         {
             LifecycleEventContext ctx;
@@ -3580,8 +3591,6 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
                 file.write_format("; oneshot_student = %s, polish_k = %d\n", oneshot->student.c_str(), oneshot->polish_k);
                 if (oneshot->max_time_ratio_override > 0.)
                     file.write_format("; max_time_ratio_override = %g\n", oneshot->max_time_ratio_override);
-                if (oneshot->aborted)
-                    file.write_format("; oneshot_solve = aborted at time cap\n");
             }
         if (is_bbl_printers)
             file.write_format(";%s\n", GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Estimated_Printing_Time_Placeholder).c_str());

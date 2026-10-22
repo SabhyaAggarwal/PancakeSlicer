@@ -106,6 +106,7 @@ extern std::string format_memsize(size_t bytes, unsigned int decimals = 1);
 extern std::string log_memory_info(bool ignore_loglevel = false);
 extern void disable_multi_threading();
 extern size_t total_physical_memory();
+extern double process_cpu_seconds();
 
 void set_var_dir(const std::string &path);
 const std::string& var_dir();

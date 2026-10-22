@@ -55,7 +55,8 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
                 return { L("Multiplanar chunks cannot be combined with a belt printer."), object, "nonplanar_mode" };
             const bool fixed_head_file = mode == NonplanarMode::Field && !object->config().nonplanar_field_file.value.empty() &&
                                          config.nonplanar_kinematics.value == RotaryLayout::None;
-            if (std::string why; field && !fixed_head_file &&
+            const bool fixed_head_oneshot = mode == NonplanarMode::OneShot && config.nonplanar_kinematics.value == RotaryLayout::None;
+            if (std::string why; field && !fixed_head_file && !fixed_head_oneshot &&
                                  !field_motion_supported(config, &why))
                 return { why, object, "nonplanar_mode" };
             const ModelObject &model = *object->model_object();

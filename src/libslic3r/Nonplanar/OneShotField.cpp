@@ -8,6 +8,7 @@
 #include "Point.hpp"
 #include "StudentNet.hpp"
 #include "libslic3r/Exception.hpp"
+#include "libslic3r/format.hpp"
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/miniz_extension.hpp"
 #include "libslic3r/BoundingBox.hpp"
@@ -24,6 +25,7 @@
 #include <ios>
 #include <functional>
 #include <miniz.h>
+#include <tbb/task_arena.h>
 
 #include <algorithm>
 #include <array>
@@ -48,6 +50,11 @@ constexpr int    Samples = 8192;
 const double     Cos70   = std::cos(70. * M_PI / 180.);
 constexpr double Inf     = std::numeric_limits<double>::infinity();
 constexpr int    StudentPolish = 3;
+constexpr double ClearanceDilation = 0.3;
+constexpr double BodyPathCap = 0.;
+constexpr double OneShotCpuCap    = 900.;
+constexpr int    OneShotCpuThreads = 4;
+constexpr double OneShotWallGuard = 3600.;
 constexpr size_t MaxNodes = 300000;
 
 std::vector<int> columns(const std::vector<std::array<Vec3d, 3>> &tris, const ObjectiveGeometry &g, int axis)
@@ -302,8 +309,10 @@ ObjectiveGeometry objective_geometry(const indexed_triangle_set &mesh, int wall_
         const Vec3d  p  = (1. - s1) * t[0] + s1 * (1. - r2) * t[1] + s1 * r2 * t[2];
         const Vec3d  c  = (t[1] - t[0]).cross(t[2] - t[0]);
         const Vec3d  n  = c / std::max(c.norm(), 1e-30);
-        if (n.z() < -std::cos(M_PI / 180.) && p.z() < 0.05)
+        if (n.z() < -std::cos(M_PI / 180.) && p.z() < 0.05) {
+            g.bed_area += a;
             continue;
+        }
         g.p.push_back(p), g.n.push_back(n), g.a.push_back(a);
         g.cls.push_back(n.z() >= Cos70 ? 0 : n.z() <= -Cos70 ? 2 : 1);
         if (g.cls.back() == 1)
@@ -320,6 +329,8 @@ ObjectiveGeometry objective_geometry(const indexed_triangle_set &mesh, int wall_
         pitch *= 1.02;
     g.origin           = Vec3d(box.min.x() - 2. * pitch, box.min.y() - 2. * pitch, 0.);
     g.spacing          = Vec3d::Constant(pitch);
+    g.mesh_min         = box.min;
+    g.mesh_max         = box.max;
     for (int ax = 0; ax < 3; ++ax)
         g.dims[size_t(ax)] = size_t(std::ceil((box.max[ax] + 2. * pitch - g.origin[ax]) / pitch)) + 1;
     std::vector<uint8_t> votes(g.nodes(), 0);
@@ -336,6 +347,15 @@ ObjectiveGeometry objective_geometry(const indexed_triangle_set &mesh, int wall_
     return g;
 }
 
+namespace {
+
+bool leans(const ObjectiveMachine &m)
+{
+    return m.rotary ? m.tilt_max > 0. : *std::max_element(m.slope_cap.begin(), m.slope_cap.end()) > 0.;
+}
+
+}
+
 ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeometry &geom, double tilt_max)
 {
     const PrintConfig       &pc = object.print()->config();
@@ -348,8 +368,9 @@ ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeo
     m.thickness_min      = 0.5 * m.h;
     m.thickness_max      = 1.6 * m.h;
     m.printable_overhang = rad(oc.multiplanar_overhang_threshold.value);
-    m.rotary             = true;
-    m.tilt_max           = tilt_max;
+    m.rotary             = pc.nonplanar_kinematics.value != RotaryLayout::None;
+    m.tilt_max           = std::min(m.rotary ? tilt_max : 0., BodyPathCap);
+    m.slope_cap.fill(BodyPathCap);
     const double nozzle = pc.nozzle_diameter.get_at(0);
     m.line_width     = oc.line_width.get_abs_value(nozzle);
     m.infill_density = rc.sparse_infill_density.value / 100.;
@@ -358,17 +379,31 @@ ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeo
     m.max_volumetric = pc.filament_max_volumetric_speed.get_at(0);
     m.travel_speed   = pc.travel_speed.get_at(0);
     m.min_layer_time = pc.slow_down_layer_time.get_at(0);
-    m.road_factor = 1.30;
-    m.b_rate       = rad(pc.rotary_max_speed.get_at(0));
-    m.c_rate       = rad(pc.rotary_max_speed.get_at(1));
-    m.c_continuous = pc.rotary_axis_continuous.get_at(1);
+    m.first_layer_speed = pc.initial_layer_speed.get_at(0);
+    m.top_speed         = rc.top_surface_speed.get_at(0);
+    m.top_shell_layers  = rc.top_shell_layers.value;
+    m.shells = false;
+    if (m.rotary) {
+        TimeModel &z = m.time_zonly;
+        z.T = 0., z.c0 = 347.92, z.F_wallp = 0.10143, z.F_upp = 0.0093545, z.Ti = 0.28462, z.F_first = 0.99191, z.cap = 1.069;
+        TimeModel &c = m.time_curved;
+        c.T = 0., c.c0 = 435.33, c.F_flatx = 0.031288, c.F_upp = 0.046025, c.F_shells_top = 1.3976, c.Ti = 10.461, c.layers = 4.3382,
+        c.T_minlayer = 4.0079, c.T_unwind = 0.23456, c.cap = 1.05;
+    }
+    m.road_factor = m.rotary ? 1.30 : 2.42;
+    if (m.rotary) {
+        m.b_rate       = rad(pc.rotary_max_speed.get_at(0));
+        m.c_rate       = rad(pc.rotary_max_speed.get_at(1));
+        m.c_continuous = pc.rotary_axis_continuous.get_at(1);
+    }
     double rmin = Inf, rmax = 0.;
     for (const Vec2d &p : pc.printable_area.values)
         rmin = std::min(rmin, p.norm()), rmax = std::max(rmax, p.norm());
     if (rmax > 0. && rmax - rmin < 0.05 * rmax)
         m.plate_radius = rmax;
     const Vec3d span = Vec3d(double(geom.dims[0]), double(geom.dims[1]), double(geom.dims[2])).cwiseProduct(geom.spacing);
-    m.head           = head_points(resolve_head_envelope(pc), geom.spacing.minCoeff(), span.norm());
+    if (leans(m))
+        m.head = head_points(resolve_head_envelope(pc), geom.spacing.minCoeff(), span.norm(), ClearanceDilation);
     return m;
 }
 
@@ -392,7 +427,7 @@ double in_plane_spread(const NpField &f)
     return spread;
 }
 
-std::vector<double> layer_profile(const NpField &f, double blend, double first_layer, double top, double min_h, double max_h)
+std::vector<double> layer_profile(const NpField &f, double first_layer, double top, double min_h, double max_h)
 {
     std::vector<double> z(f.dims[2]), phi(f.dims[2]);
     for (size_t k = 0; k < f.dims[2]; ++k) {
@@ -401,7 +436,7 @@ std::vector<double> layer_profile(const NpField &f, double blend, double first_l
             for (size_t j = 0; j < f.dims[1]; ++j)
                 sum += f.phi[f.index(i, j, k)];
         z[k]   = f.node(0, 0, k).z();
-        phi[k] = z[k] + blend * (sum / double(f.dims[0] * f.dims[1]) - z[k]);
+        phi[k] = sum / double(f.dims[0] * f.dims[1]);
     }
     auto inverse = [&](double level) {
         for (size_t k = 1; k < z.size(); ++k)
@@ -413,7 +448,7 @@ std::vector<double> layer_profile(const NpField &f, double blend, double first_l
     double              below = first_layer;
     for (int j = 1; below < top - 1e-6; ++j) {
         double h = std::clamp(inverse(first_layer + j * f.h) - below, min_h, max_h);
-        if (const double rest = top - below; rest - h < min_h)
+        if (const double rest = top - below; rest - h < std::max(min_h, 0.5 * f.h))
             h = rest <= max_h ? rest : 0.5 * rest;
         out.insert(out.end(), { below, h, std::min(below + h, top) - 1e-4, h });
         below += h;
@@ -422,30 +457,24 @@ std::vector<double> layer_profile(const NpField &f, double blend, double first_l
     return out;
 }
 
-double OneShotState::support_time() const
+namespace {
+
+double solved_term(const OneShotState &state, const char *name)
 {
-    if (solved)
-        for (const auto &[name, value] : solved->terms)
-            if (name == "stat_planar_support_s")
+    if (state.solved)
+        for (const auto &[key, value] : state.solved->terms)
+            if (key == name)
                 return value;
     return 0.;
 }
 
-NpField blend_toward_planar(const NpField &field, double blend)
-{
-    NpField out = field;
-    for (size_t i = 0; i < field.dims[0]; ++i)
-        for (size_t j = 0; j < field.dims[1]; ++j)
-            for (size_t k = 0; k < field.dims[2]; ++k) {
-                const size_t id = field.index(i, j, k);
-                const double z  = field.node(i, j, k).z();
-                out.phi[id]     = float(z + blend * (double(field.phi[id]) - z));
-            }
-    return out;
 }
 
-NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &mesh, double tilt_max, double abort_after,
-                       const std::function<void()> &cancel, std::string &student, int &polish_k, bool &aborted)
+double OneShotState::time_ratio() const { return solved_term(*this, "stat_T_ratio"); }
+double OneShotState::time_cap() const { return solved_term(*this, "stat_T_cap"); }
+
+NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &mesh, double tilt_max, const std::function<void()> &cancel,
+                       std::string &student, int &polish_k, OneShotAbortReason &abort)
 {
     const auto               t0 = std::chrono::steady_clock::now();
     const PrintObjectConfig &oc = object.config();
@@ -460,7 +489,10 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
     params.level_rounds = 1;
     params.local_rounds = 0;
     params.budget       = 0.;
-    const std::string model = student_model();
+    const bool level_only = !leans(m);
+    if (level_only)
+        params.planar_adaptive = true;
+    const std::string model = level_only ? std::string() : student_model();
     student  = model.empty() ? std::string("none") : file_sha256(model);
     polish_k = model.empty() ? 0 : StudentPolish;
     NpField f;
@@ -483,27 +515,34 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
         params.iterations    = StudentPolish;
     }
     struct Aborted
-    {};
+    {
+        bool wall;
+    };
     const std::vector<float> planar = f.phi;
     ObjectiveTerms           t;
-    aborted = false;
+    const double             cpu0 = process_cpu_seconds();
+    const int                threads = std::clamp(tbb::this_task_arena::max_concurrency(), 1, OneShotCpuThreads);
+    const double             cpu_cap = OneShotCpuCap * threads;
+    abort                         = OneShotAbortReason();
     try {
         t = solve_objective(g, m, ObjectiveWeights(), params, f.phi,
-                            [&cancel, t0, abort_after]() {
+                            [&cancel, t0, cpu0, cpu_cap]() {
                                 if (cancel)
                                     cancel();
-                                if (abort_after > 0. && std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() > abort_after)
-                                    throw Aborted();
+                                if (cpu0 >= 0. && process_cpu_seconds() - cpu0 > cpu_cap)
+                                    throw Aborted { false };
+                                if (std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() > OneShotWallGuard)
+                                    throw Aborted { true };
                             },
                             [&object](const std::string &line) {
                                 BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": " << line;
                             });
-    } catch (const Aborted &) {
-        aborted = true;
-        f.phi   = planar;
-        t       = evaluate_objective(g, m, ObjectiveWeights(), f.phi, true);
-        BOOST_LOG_TRIVIAL(warning) << "One-shot field " << object.model_object()->name << ": solve aborted at the " << abort_after
-                                   << " s time cap, planar layers";
+    } catch (const Aborted &a) {
+        abort.kind = a.wall ? OneShotAbort::WallTime : OneShotAbort::CpuTime;
+        abort.what = a.wall ? Slic3r::format("%1% s wall", OneShotWallGuard) : Slic3r::format("%1% CPU-s", cpu_cap);
+        f.phi      = planar;
+        t          = evaluate_objective(g, m, ObjectiveWeights(), f.phi, true);
+        BOOST_LOG_TRIVIAL(warning) << "One-shot field " << object.model_object()->name << ": solve aborted at " << abort.what;
     }
     BoundingBoxf3 box;
     for (const stl_vertex &v : mesh.vertices)
@@ -515,8 +554,16 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
     f.terms.emplace_back("stat_j_version", ObjectiveVersionNumber);
     f.proxy_version = ObjectiveVersion;
     f.terms.emplace_back("stat_oneshot_seconds", std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
-    f.terms.emplace_back("stat_oneshot_aborted", aborted ? 1. : 0.);
+    f.terms.emplace_back("stat_oneshot_aborted", double(int(abort.kind)));
+    f.terms.emplace_back("stat_oneshot_cpu_seconds", cpu0 >= 0. ? process_cpu_seconds() - cpu0 : -1.);
+    f.terms.emplace_back("stat_oneshot_cpu_threads", double(threads));
     f.terms.emplace_back("stat_planar_support_s", planar_support_time(g, m));
+    std::vector<float> flat(g.nodes());
+    for (size_t i = 0; i < g.dims[0]; ++i)
+        for (size_t j = 0; j < g.dims[1]; ++j)
+            for (size_t k = 0; k < g.dims[2]; ++k)
+                flat[g.index(i, j, k)] = float(g.origin.z() + double(k) * g.spacing.z());
+    f.terms.emplace_back("stat_planar_time_s", evaluate_objective(g, m, ObjectiveWeights(), flat, false).T);
     if (const char *dir = std::getenv("NP_ONESHOT_DUMP"); dir != nullptr && *dir != 0) {
         const std::string stem = (boost::filesystem::path(dir) / object.model_object()->name).string();
         save_objective_geometry(stem + ".geom.npz", g);

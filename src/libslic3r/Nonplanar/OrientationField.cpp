@@ -51,6 +51,7 @@
 #include <tbb/parallel_reduce.h>
 
 #include <algorithm>
+#include <new>
 #include <chrono>
 #include <cstdlib>
 #include <array>
@@ -1883,8 +1884,6 @@ bool field_motion_supported(const PrintConfig &config, std::string *why)
 
 namespace {
 
-constexpr double OneShotAbortTime = 900.;
-
 bool field_requested(PrintObject &object)
 {
     const NonplanarMode mode = object.config().nonplanar_mode.value;
@@ -1908,14 +1907,8 @@ OrientationFieldParams field_params(const PrintObject &object, const ToolKinemat
 std::shared_ptr<const NpLayerField> given_field(PrintObject &object, const indexed_triangle_set &mesh, double max_tilt)
 {
     if (object.config().nonplanar_mode.value == NonplanarMode::OneShot) {
-        OneShotState &state = object.oneshot_state();
-        if (!state.solved)
-            state.solved = std::make_shared<const NpField>(
-                one_shot_field(object, mesh, max_tilt, OneShotAbortTime, [&object]() { throw_if_canceled(object); }, state.student,
-                               state.polish_k, state.aborted));
-        NpField f = state.blend < 1. ? blend_toward_planar(*state.solved, state.blend) : *state.solved;
-        if (state.shells)
-            f.terms.emplace_back("stat_top_shells", 1.);
+        solve_oneshot(object);
+        NpField f = *object.oneshot_state().solved;
         return std::make_shared<const NpLayerField>(std::move(f));
     }
     const std::string &path = object.config().nonplanar_field_file.value;
@@ -1940,10 +1933,21 @@ void solve_oneshot(PrintObject &object)
         return;
     const std::unique_ptr<ToolKinematics> kinematics = make_tool_kinematics(object.print()->config());
     const double max_tilt = std::max(0., field_tilt_budget(*kinematics) - Geometry::deg2rad(5.));
-    state.solved = std::make_shared<const NpField>(
-        one_shot_field(object, slicing_frame_mesh(object), max_tilt, OneShotAbortTime, [&object]() { throw_if_canceled(object); },
-                       state.student, state.polish_k, state.aborted));
-    state.z_only = in_plane_spread(*state.solved) < OneShotState::ZOnlySpread;
+    OneShotAbortReason abort;
+    NpField            field;
+    try {
+        field = one_shot_field(object, slicing_frame_mesh(object), max_tilt, [&object]() { throw_if_canceled(object); }, state.student,
+                               state.polish_k, abort);
+    } catch (const std::bad_alloc &) {
+        throw Slic3r::SlicingError(Slic3r::format(_u8L("One-shot field: %1% is too large for the solve (out of memory)."),
+                                                  object.model_object()->name));
+    }
+    if (abort.kind != OneShotAbort::None)
+        throw Slic3r::SlicingError(Slic3r::format(_u8L("One-shot field: the solve of %1% was stopped by its safety cap (%2%): a solver bug."),
+                                                  object.model_object()->name, abort.what));
+    state.solved                  = std::make_shared<const NpField>(std::move(field));
+    state.z_only                  = in_plane_spread(*state.solved) < OneShotState::ZOnlySpread;
+    state.max_time_ratio_override = max_time_ratio_override();
 }
 
 std::shared_ptr<const OrientationField> clip_field_slices(PrintObject &object)

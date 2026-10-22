@@ -18,30 +18,21 @@ namespace Slic3r::Nonplanar {
 
 struct OneShotState
 {
-    enum class Stage { Reference, Field, Final };
-    static constexpr int    MaxReemits   = 3;
     static constexpr double MaxTimeRatio = 1.15;
     static constexpr double ZOnlySpread  = 0.05;
 
     std::shared_ptr<const NpField> solved;
     bool                           z_only = false;
-    bool                           shells = false;
-    Stage                          stage = Stage::Reference;
-    double                         blend = 1.;
-    bool                           planar = false;
-    int                            reemits = 0;
-    double                         planar_time = -1.;
     std::string                    decision;
-    std::string                    warning;
     std::string                    student = "none";
     int                            polish_k = 0;
     double                         max_time_ratio_override = -1.;
-    bool                           aborted = false;
 
     double max_time_ratio() const { return max_time_ratio_override > 0. ? max_time_ratio_override : MaxTimeRatio; }
-    double support_time() const;
+    double time_ratio() const;
+    double time_cap() const;
 
-    bool field() const { return stage == Stage::Field || (stage == Stage::Final && !planar); }
+    bool field() const { return solved != nullptr; }
     bool field_path() const { return field() && !z_only; }
 };
 
@@ -49,17 +40,22 @@ bool oneshot_requested(const PrintObject &object);
 
 double in_plane_spread(const NpField &field);
 
-std::vector<double> layer_profile(const NpField &field, double blend, double first_layer, double top, double min_h, double max_h);
-
-NpField blend_toward_planar(const NpField &field, double blend);
+std::vector<double> layer_profile(const NpField &field, double first_layer, double top, double min_h, double max_h);
 
 ObjectiveGeometry objective_geometry(const indexed_triangle_set &mesh, int wall_loops, int top_shell_layers, double line_width,
                                      double layer_height);
 
 ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeometry &geom, double tilt_max);
 
-NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &mesh, double tilt_max, double abort_after,
-                       const std::function<void()> &cancel, std::string &student, int &polish_k, bool &aborted);
+enum class OneShotAbort { None, CpuTime, WallTime };
+struct OneShotAbortReason
+{
+    OneShotAbort kind = OneShotAbort::None;
+    std::string  what;
+};
+
+NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &mesh, double tilt_max, const std::function<void()> &cancel,
+                       std::string &student, int &polish_k, OneShotAbortReason &abort);
 
 double max_time_ratio_override();
 

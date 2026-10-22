@@ -334,6 +334,8 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
         check_export_clearance(print, result);
         return;
     }
+    if (self != nullptr && self->oneshot_step(result))
+        return;
     if (self == nullptr || !result.nonplanar || mode == NonplanarCollisionCheck::Off) {
         check_export_clearance(print, result);
         return;
@@ -586,82 +588,32 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
             objects.push_back(object);
     if (objects.empty())
         return false;
-    const OneShotState &first = objects.front()->oneshot_state();
-    const double        time  = result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)].time;
-    if (first.stage == OneShotState::Stage::Final) {
-        if (first.planar && !first.warning.empty())
-            m_print.active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, first.warning);
-        return false;
-    }
-    if (first.stage == OneShotState::Stage::Reference) {
-        for (PrintObject *object : objects) {
-            OneShotState &s = object->oneshot_state();
-            s.planar_time   = time;
-            s.stage         = OneShotState::Stage::Field;
-            s.max_time_ratio_override = max_time_ratio_override();
-            s.shells        = !s.z_only;
-        }
-        BOOST_LOG_TRIVIAL(info) << "One-shot field: planar reference " << time << " s";
-        m_oneshot_reemit = true;
-        return true;
-    }
+    const double    time = result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)].time;
     ClearanceParams params;
-    params.head = resolve_head_envelope(m_print.config());
+    params.head            = resolve_head_envelope(m_print.config());
     ClearanceReport report = verify_clearance(result, params, *make_tool_kinematics(m_print.config()), [this] { m_print.throw_if_canceled(); });
     const size_t    hits   = report.hit_moves;
-    double support = 0.;
-    for (PrintObject *object : objects)
-        support += object->oneshot_state().support_time();
-    const std::string base_name = support > 0. ? "planar+support" : "planar";
-    const double      ratio     = first.planar_time > 0. ? time / (first.planar_time + support) : 1.;
-    const double      blend     = first.blend;
-    BOOST_LOG_TRIVIAL(info) << "One-shot field: blend " << blend << ", " << hits << " clearance hits, " << time << " s = " << ratio << "x " << base_name
-                            << " (support " << support << " s)";
-    if (hits == 0 && ratio <= first.max_time_ratio()) {
-        for (PrintObject *object : objects) {
-            OneShotState &s = object->oneshot_state();
-            s.stage         = OneShotState::Stage::Final;
-            s.decision      = Slic3r::format("one-shot field: blend %1$.3g, 0 clearance hits, %2$.0f s = %3$.2fx %5%%4%", blend, time, ratio,
-                                             s.aborted ? ", solve aborted at time cap: planar layers" :
-                                             s.z_only  ? ", z-only: planar layers of varying height" : s.shells ? ", curved top shells" : "",
-                                             base_name);
-        }
-        if (std::any_of(objects.begin(), objects.end(), [](PrintObject *object) { return object->oneshot_state().aborted; }))
-            m_print.active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL,
-                                            _u8L("One-shot field: the solve was aborted at its time cap; printed in planar layers."));
-        result.clearance_report = std::move(report);
-        result.clearance        = result.clearance_report.per_move;
-        return true;
-    }
-    const std::string why = hits > 0 ? Slic3r::format("%1% clearance hits", hits) : Slic3r::format("%1$.2fx the %2% time", ratio, base_name);
     for (PrintObject *object : objects) {
         OneShotState &s = object->oneshot_state();
-        if (s.shells && !s.z_only)
-            s.shells = false;
-        else if (s.reemits < OneShotState::MaxReemits) {
-            s.blend *= 0.5;
-            ++s.reemits;
-        } else {
-            s.stage    = OneShotState::Stage::Final;
-            s.planar   = true;
-            s.decision = Slic3r::format("one-shot field: fell back to planar, %1% at blend %2$.3g", why, blend);
-            s.warning  = Slic3r::format(_u8L("One-shot field: printed in planar layers: %1% at blend %2$.3g."), why, blend);
-        }
+        s.decision      = Slic3r::format("one-shot field: %1% clearance hits, time ratio %2$.3f (model) <= cap %3$.3f, slicer %4$.0f s%5%", hits,
+                                         s.time_ratio(), s.time_cap(), time, s.z_only ? ", z-only: planar layers of varying height" : "");
+        BOOST_LOG_TRIVIAL(info) << object->model_object()->name << ": " << s.decision;
     }
-    m_oneshot_reemit = true;
+    for (const ClearanceHit &hit : report.worst)
+        BOOST_LOG_TRIVIAL(warning) << "One-shot field: hit at G-code line " << hit.gcode_line << ", layer " << hit.layer << ", "
+                                   << hit.component << " " << hit.penetration << " mm into material, role "
+                                   << (hit.move_id < result.moves.size() ? ExtrusionEntity::role_to_string(result.moves[hit.move_id].extrusion_role) : "-");
+    if (hits > 0)
+        throw Slic3r::SlicingError(Slic3r::format(_u8L("One-shot field: %1% moves strike printed material (a solver bug: the solved field must "
+                                                       "satisfy its constraints)."),
+                                                  hits));
+    result.clearance_report = std::move(report);
+    result.clearance        = result.clearance_report.per_move;
     return true;
 }
 
 bool ClearanceRepair::apply()
 {
-    if (m_oneshot_reemit) {
-        m_oneshot_reemit = false;
-        for (PrintObject *object : m_print.m_objects)
-            if (oneshot_requested(*object))
-                object->invalidate_step(posSlice);
-        m_planned.clear();
-        return true;
-    }
     if (m_planned.empty())
         return false;
     for (Planned &p : m_planned) {

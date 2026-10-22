@@ -43,20 +43,6 @@
 #endif
 
 namespace {
-double process_cpu_seconds()
-{
-#ifdef _WIN32
-    FILETIME created, exited, kernel, user;
-    if (!GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user))
-        throw std::runtime_error("cannot read process CPU time");
-    ULARGE_INTEGER k, u;
-    k.LowPart = kernel.dwLowDateTime; k.HighPart = kernel.dwHighDateTime;
-    u.LowPart = user.dwLowDateTime; u.HighPart = user.dwHighDateTime;
-    return double(k.QuadPart + u.QuadPart) * 1e-7;
-#else
-    return double(std::clock()) / CLOCKS_PER_SEC;
-#endif
-}
 
 using Json = nlohmann::json;
 

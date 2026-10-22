@@ -48,7 +48,6 @@ private:
     double                   m_last_min   = 0.;
     std::vector<Planned>     m_planned;
     std::vector<std::string> m_actions;
-    bool                     m_oneshot_reemit = false;
 };
 
 }

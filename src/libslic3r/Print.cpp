@@ -67,6 +67,7 @@
 #include "Nonplanar/Validate.hpp"
 #include "Nonplanar/ConformalShells.hpp"
 #include "Nonplanar/DeformSlice.hpp"
+#include "Nonplanar/OneShotField.hpp"
 #include "Nonplanar/PatchTools.hpp"
 #include "LifecycleEvents.hpp"
 #include "ShortestPath.hpp"
@@ -92,6 +93,7 @@
 #include <float.h>
 
 #include <algorithm>
+#include <new>
 #include <limits>
 #include <numeric>
 #include <unordered_map>
@@ -3407,7 +3409,13 @@ std::string Print::export_gcode(const std::string& path_template, GCodeProcessor
         this->update_imex_slice_offset();
         const Vec2d imex_off = this->get_imex_slice_offset();
         gcode->set_gcode_offset_with_imex_shift(origin(0), origin(1), imex_off.x(), imex_off.y());
-        gcode->do_export(this, path.c_str(), result, thumbnail_cb, retain_raw_positions);
+        try {
+            gcode->do_export(this, path.c_str(), result, thumbnail_cb, retain_raw_positions);
+        } catch (const std::bad_alloc &) {
+            if (std::none_of(m_objects.begin(), m_objects.end(), [](const PrintObject *object) { return Nonplanar::oneshot_requested(*object); }))
+                throw;
+            throw Slic3r::SlicingError(_u8L("One-shot field: out of memory exporting the field."));
+        }
         if (!repair.apply())
             break;
         this->process();
