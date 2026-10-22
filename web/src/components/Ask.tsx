@@ -1,7 +1,7 @@
 import { useState, useSyncExternalStore } from 'react';
 import { Modal, ModalTitle } from './Modal';
 
-type Ask = { title: string; message?: string; value?: string; range?: [number, number]; resolve(v: string | null): void };
+type Ask = { title: string; message?: string; value?: string; range?: [number, number]; choices?: string[]; resolve(v: string | null): void };
 let current: Ask | null = null;
 const listeners = new Set<() => void>();
 const show = (a: Ask | null) => {
@@ -20,6 +20,9 @@ export const numberDialog = (title: string, prompt: string, value: number, min: 
   ask({ title, message: prompt, value: String(value), range: [min, max] }).then((v) => v === null || v.trim() === '' ? null : Math.min(max, Math.max(min, Math.round(Number(v)))))
     .then((n) => (n === null || Number.isNaN(n) ? null : n));
 
+export const choiceDialog = (title: string, message: string, choices: string[]) =>
+  ask({ title, message, value: '0', choices }).then((v) => (v === null ? null : Number(v)));
+
 function AskDialog({ a }: { a: Ask }) {
   const [text, setText] = useState(a.value ?? '');
   const done = (v: string | null) => {
@@ -35,11 +38,14 @@ function AskDialog({ a }: { a: Ask }) {
             <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>{a.message}
               <input className="text num" type="number" min={a.range[0]} max={a.range[1]} step={1} value={text} data-autofocus onChange={(e) => setText(e.target.value)} />
             </label>
-          ) : a.message && <div>{a.message}</div>}
-          {a.value !== undefined && !a.range && <input className="text" aria-label={a.title} value={text} data-autofocus onChange={(e) => setText(e.target.value)} />}
+          ) : a.message && <div style={{ whiteSpace: 'pre-line' }}>{a.message}</div>}
+          {a.choices?.map((c, i) => (
+            <label key={c} className="select-row"><input type="radio" name="ask-choice" checked={text === String(i)} onChange={() => setText(String(i))} />{c}</label>
+          ))}
+          {a.value !== undefined && !a.range && !a.choices && <input className="text" aria-label={a.title} value={text} data-autofocus onChange={(e) => setText(e.target.value)} />}
         </div>
         <div className="modal-buttons center">
-          <button type="submit" className="btn primary" data-autofocus={a.value === undefined ? '' : undefined}>OK</button>
+          <button type="submit" className="btn primary" data-autofocus={a.value === undefined || a.choices ? '' : undefined}>OK</button>
           <button type="button" className="btn" onClick={() => done(null)}>Cancel</button>
         </div>
       </form>

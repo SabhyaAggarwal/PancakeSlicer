@@ -26,7 +26,7 @@ export function demoPresets(cat: PresetCatalog, models: string[]): PresetCatalog
   const forDemo = (p: { compatible_printers?: string[] }) => (p.compatible_printers ?? []).some((c) => names.has(c));
   return {
     machines,
-    processes: cat.processes.filter((p) => p.name.includes('Non-planar top') && forDemo(p)),
+    processes: cat.processes.filter(forDemo),
     filaments: cat.filaments.filter(forDemo),
   };
 }

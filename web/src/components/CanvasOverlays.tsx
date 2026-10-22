@@ -1,6 +1,6 @@
 import { slicingText } from '../api/progress';
 import { accessNotice, accessSnapshot, saveAccessToken, subscribeAccess } from '../api/access';
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import * as THREE from 'three';
 import { addInstance, arrangeAll, cancelSlice, download, fileUse, openFileDialog, outputKind, removeInstance, toolbarOperation, outsideVolumeWarning } from '../actions';
 import { setCompareWanted } from '../compare';
@@ -227,6 +227,13 @@ export function SliceNotification() {
     return () => timers.forEach(clearTimeout);
   }, [brief, exported]);
   useEffect(() => setClosed(new Set()), [job.id]);
+  const stack = useRef<HTMLDivElement>(null);
+  const newest = useRef<Element>(undefined);
+  useLayoutEffect(() => {
+    const last = stack.current ? [...stack.current.querySelectorAll('.notification')].at(-1) : undefined;
+    if (last !== newest.current && stack.current) stack.current.scrollTop = stack.current.scrollHeight;
+    newest.current = last;
+  });
   const busy = job.state === 'running' || job.state === 'submitting';
   const close = (k: string) => (
     <button className="notif-close icon-btn" title="Close" onClick={() => setClosed((c) => new Set(c).add(k))}>
@@ -246,7 +253,7 @@ export function SliceNotification() {
   const exportLink = (label: string) => <button type="button" className="notif-link" title={exportLabel} onClick={download}>{label}</button>;
   const compareLink = <button type="button" className="notif-link" onClick={() => (setCompareWanted(true), setState({ tab: 'preview' }))}>Compare</button>;
   return (
-    <div className="notifications">
+    <div className="notifications" ref={stack}>
       <InTopLayer>
         <div className="notif-group">
           <AccessNotification />

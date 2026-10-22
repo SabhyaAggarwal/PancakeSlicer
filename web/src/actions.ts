@@ -3,15 +3,15 @@ import type { Config, ConfigValue, JobRequest, PresetCatalog, PresetType, System
 import { sliceProgress } from './api/progress';
 import { canEditProject, canLoadStep, connect } from './api/client';
 import { normalizeConfig } from './config-values';
-import { OPTIONS, loadTab } from './options';
+import { OPTIONS, isHidden, loadTab } from './options';
 import { shortTime } from './preview/format';
 import { calibOverrides, jobFields, outputKind, overrides, plateSignature } from './slice-input';
 import { arrange, bakeStl, bedBounds, loadMesh, loadProject, nextFreeSpot, parsePoints, placeholderGeometry, plateJson, outsideBed } from './plater/geometry';
 import type { ProjectItem } from './plater/threemf';
 import { projectEdits } from './plater/projectTransforms';
-import { confirmDialog, numberDialog } from './components/Ask';
+import { choiceDialog, confirmDialog, numberDialog } from './components/Ask';
 import {
-  DEFAULT_PRINTER, DEMO_MODELS, effectiveConfig, getState, isCompatible, markStale, newId, presetEdits, printerPreset, resolvePreset, selectPrinter, setState, toast, type PlateObject,
+  DEFAULT_PRINTER, DEMO_MODELS, PRESET_META, effectiveConfig, getState, isCompatible, markStale, newId, presetEdits, printerPreset, resolvePreset, selectPrinter, setState, toast, type PlateObject,
 } from './state/store';
 import { historyDepth, leaveDocument, markSaved, newDocument, undoable } from './state/history';
 
@@ -101,22 +101,31 @@ export async function importFiles(files: FileList | File[]) {
   if (!list.length) return;
   setState({ tab: 'prepare' });
   const projectFile = list.find((f) => /\.3mf$/i.test(f.name));
-  if (projectFile) {
+  const project = !!getState().project;
+  const st = getState();
+  const geometry = projectFile && (st.objects.length || st.projectPlates.some((p) => p.objects.length)) && (!project || canEditProject())
+    ? await choiceDialog('Drop project file', `Please select an action\n${projectFile.name}`, ['Open as project', 'Import geometry only'])
+    : 0;
+  if (geometry === null) return;
+  if (projectFile && !geometry) {
     if (list.length > 1) toast(`${projectFile.name} opens as a project; the other files were not added`);
     await openProject(projectFile);
     return;
   }
-  const project = !!getState().project;
   if (project && !canEditProject()) {
     toast('A 3MF project is open; Delete all to start a new plate');
     return;
   }
   const step = /\.(step|stp)$/i;
-  list = list.filter((f) => /\.(stl|obj)$/i.test(f.name) || step.test(f.name) && canLoadStep() ||
+  list = list.filter((f) => /\.(stl|obj|3mf)$/i.test(f.name) || step.test(f.name) && canLoadStep() ||
     (toast(`${f.name} is not a model file. Choose an STL, OBJ${canLoadStep() ? ', STEP' : ''} or 3MF file.`), false));
   const added: PlateObject[] = [];
   for (const f of list) {
     try {
+      if (/\.3mf$/i.test(f.name)) {
+        added.push(...await load3mfGeometry(f));
+        continue;
+      }
       const { geometry, source } = step.test(f.name) ? await loadStep(f)
         : { geometry: await loadMesh(f, (pct) => setState({ loading: `Loading ${f.name} ${Math.round(pct)}%` })), source: f };
       if (getState().loading?.startsWith('Loading ')) setState({ loading: null });
@@ -138,6 +147,21 @@ export async function importFiles(files: FileList | File[]) {
     const last = added[added.length - 1];
     return { objects, selected: { object: last.id, instance: last.instances[0].id }, job: s.job.state === 'done' ? { ...s.job, stale: true } : s.job };
   }));
+}
+
+async function load3mfGeometry(f: File): Promise<PlateObject[]> {
+  const names: string[] = [], meshes: THREE.BufferGeometry[] = [];
+  await loadProject(f, { items: (items) => items.forEach((it, i) => (names[i] = it.name)), mesh: (i, g) => { meshes[i] = g; }, missing() {} }, true);
+  const out: PlateObject[] = [];
+  for (const [i, geometry] of meshes.entries()) {
+    if (!geometry) continue;
+    const mesh = { geometry, rotX: 0, rotY: 0, scale: [1, 1, 1] } as PlateObject;
+    const name = names[i] || f.name.replace(/\.3mf$/i, '');
+    out.push({ id: newId(), name, geometry, rotX: 0, rotY: 0, scale: [1, 1, 1], extruder: 1, settings: {},
+      source: new File([await bakeStl(mesh)], `${name}.stl`), instances: [{ id: newId(), x: 0, y: 0, rotZ: 0 }] });
+  }
+  if (!out.length) throw new Error(`${f.name}: the project has no printable objects`);
+  return out;
 }
 
 async function loadStep(f: File): Promise<{ geometry: THREE.BufferGeometry; source: File }> {
@@ -174,7 +198,7 @@ function closestPreset(presets: SystemPreset[], config: Config, id: string): Sys
   })[0];
 }
 
-function adoptProject(config: Config, slots: number) {
+function adoptProject(config: Config, slots: number, plateKeys: Set<string>) {
   const s = getState();
   const saved = normalizeConfig(config);
   const id = String(saved.printer_settings_id ?? '');
@@ -195,17 +219,24 @@ function adoptProject(config: Config, slots: number) {
   const machineKeys = keys(current.machines), filamentKeys = keys(current.filaments);
   const take = (c: Config, accept: (k: string) => boolean) => Object.fromEntries(Object.entries(c).filter(([k]) => OPTIONS[k] && accept(k)));
   const fallback = !sameNozzle.length || !!id && !current.machines.some((p) => p.name === id);
+  const text = (v: ConfigValue) => JSON.stringify(Array.isArray(v) ? v.map(String) : String(v));
+  const edits = (c: Config, preset?: SystemPreset) => Object.fromEntries(Object.entries(c).filter(([k, v]) =>
+    !PRESET_META.test(k) && !isHidden(k) && !plateKeys.has(k) && (preset?.config[k] === undefined || text(v) !== text(preset.config[k]))));
+  const machine = fallback ? {} : take(saved, (k) => machineKeys.has(k));
+  const processValues = take(saved, (k) => !machineKeys.has(k) && !filamentKeys.has(k));
+  const dirty = { machine: edits(machine, printer), process: edits(processValues, process) };
+  const rest = (c: Config, e: Config) => Object.fromEntries(Object.entries(c).filter(([k]) => !(k in e)));
   setState({
     process: process?.name ?? current.process,
     filamentSlots: filaments.map((p, i) => p?.name ?? current.filamentSlots[i] ?? current.filamentSlots[0]),
     projectPresets: {
-      machine: fallback ? {} : take(saved, (k) => machineKeys.has(k)),
-      process: take(saved, (k) => !machineKeys.has(k) && !filamentKeys.has(k)),
+      machine: rest(machine, dirty.machine),
+      process: rest(processValues, dirty.process),
       filaments: filamentConfigs.map((c) => take(c, (k) => filamentKeys.has(k) && !machineKeys.has(k))),
     },
     projectNotice: fallback ? `Project printer "${id || saved.printer_model || 'unknown'}" is unavailable. Using ${printer.name}.` : null,
     bedType: String(saved.curr_bed_type ?? current.bedType),
-    dirty: { machine: {}, process: {} },
+    dirty,
     filamentEdits: {},
   });
 }
@@ -246,7 +277,7 @@ export async function openProject(file: File) {
         if (!items.length) return toast(`${file.name}: the project has no printable objects`);
         geometryOnly = !materials.hasConfig && materials.plates.length === 1;
         const slots = Math.max(1, materials.colours.length, ...items.map((i) => i.extruder));
-        adoptProject(materials.config, slots);
+        adoptProject(materials.config, slots, new Set(materials.plates.flatMap((p) => Object.keys(p.settings))));
         objects = items.map((it) => {
           const instanceId = newId();
           return {

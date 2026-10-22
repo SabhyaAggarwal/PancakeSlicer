@@ -92,8 +92,8 @@ function parseModel(text: string): { objects: Map<string, Obj>; build: { objecti
   return { objects, build };
 }
 
-function parseSettings(text: string | undefined): Map<string, { name?: string; extruder?: number; settings: Config }> {
-  const out = new Map<string, { name?: string; extruder?: number; settings: Config }>();
+function parseSettings(text: string | undefined): Map<string, { name?: string; extruder?: number; settings: Config; volumes: Set<string> }> {
+  const out = new Map<string, { name?: string; extruder?: number; settings: Config; volumes: Set<string> }>();
   if (!text) return out;
   const re = /<object\s+id="([^"]+)">([\s\S]*?)<\/object>/g;
   for (let m; (m = re.exec(text)); ) {
@@ -102,14 +102,15 @@ function parseSettings(text: string | undefined): Map<string, { name?: string; e
     const settings: Config = {};
     for (const v of own.matchAll(/<metadata\s+key="([^"]+)"\s+value="([^"]*)"/g))
       if (v[1] !== 'name' && v[1] !== 'extruder') settings[v[1]] = unescapeXml(v[2]);
-    out.set(m[1], { name: meta('name'), extruder: Number(meta('extruder')) || undefined, settings });
+    const volumes = new Set([...m[2].matchAll(/<part\s+id="([^"]+)"\s+subtype="([^"]+)"/g)].filter((p) => p[2] !== 'normal_part').map((p) => p[1]));
+    out.set(m[1], { name: meta('name'), extruder: Number(meta('extruder')) || undefined, settings, volumes });
   }
   return out;
 }
 
 const unescapeXml = (s: string) => s.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 
-export async function readProject(file: File): Promise<{ items: ProjectItem[]; materials: ProjectMaterials; mesh(i: number): Float32Array | null }> {
+export async function readProject(file: File, partsOnly = false): Promise<{ items: ProjectItem[]; materials: ProjectMaterials; mesh(i: number): Float32Array | null }> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   const zip = await new Promise<Record<string, Uint8Array>>((resolve, reject) => unzip(bytes, (err, data) => (err ? reject(err) : resolve(data))));
   const entry = (p: string) => zip[p.replace(/^\//, '')] ?? Object.entries(zip).find(([k]) => k.toLowerCase() === p.replace(/^\//, '').toLowerCase())?.[1];
@@ -140,7 +141,9 @@ export async function readProject(file: File): Promise<{ items: ProjectItem[]; m
         out.push(x * t[0] + y * t[3] + z * t[6] + t[9], x * t[1] + y * t[4] + z * t[7] + t[10], x * t[2] + y * t[5] + z * t[8] + t[11]);
       }
     }
-    for (const c of o.components) collect(c.path ?? path, c.objectid, compose(c.transform, t), out, depth + 1);
+    const skip = partsOnly && depth === 0 ? settings.get(id)?.volumes : undefined;
+    for (const c of o.components)
+      if (!skip?.has(c.objectid)) collect(c.path ?? path, c.objectid, compose(c.transform, t), out, depth + 1);
   };
 
   const configBytes = entry('Metadata/project_settings.config');

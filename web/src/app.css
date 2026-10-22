@@ -226,8 +226,8 @@ select, input, textarea { font: inherit; color: var(--text); }
 .axis { text-align: center; font-weight: 600; }
 .axis.x { color: #d0453a; } .axis.y { color: #2ea043; } .axis.z { color: #3b6fd0; }
 
-.notifications { position: absolute; right: 16px; bottom: 16px; width: 340px; z-index: 45; display: flex; flex-direction: column; gap: 8px; }
-.notification { position: relative; background: var(--overlay-97); border-radius: 6px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18); padding: 10px 12px; font-size: 13px; }
+.notifications { position: absolute; right: 156px; bottom: 60px; width: 340px; max-width: calc(100% - 172px); max-height: 45%; overflow: auto; z-index: 45; display: flex; flex-direction: column; gap: 8px; }
+.notification { flex: none; position: relative; background: var(--overlay-97); border-radius: 6px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18); padding: 10px 12px; font-size: 13px; }
 .notification.failed { border-left: 4px solid #d01b1b; }
 .notification.warning { border-left: 4px solid #f1754e; }
 .notification.done { border-left: 4px solid var(--accent-text); }
@@ -415,11 +415,9 @@ fieldset.opt-field:disabled { opacity: .5; }
   .manip-panel { top: 76px; }
   .modal > .settings-tab, .flush-body, .select-list { min-height: 0; }
   .flush-scroll { flex: none; max-width: 100%; }
-  .legend { min-width: 250px; max-width: calc(100% - 460px); max-height: calc(100% - 200px); }
+  .legend { min-width: 250px; max-width: calc(100% - 520px); max-height: calc(100% - 200px); }
   .lg-head select { min-width: 0; }
   .events-panel { max-height: 120px; overflow: auto; }
-  .notifications { right: 96px; bottom: 60px; max-width: calc(100% - 112px); max-height: 30%; overflow: auto; }
-  .notification { flex: none; }
   .move-slider input { min-width: 0; }
 }
 
@@ -515,7 +513,7 @@ kbd { font: inherit; font-size: 12px; background: var(--panel-alt); border: 1px 
   .ls-tick { left: -12px; width: 32px; height: 6px; margin-bottom: -3px; }
   .ls-label.top { margin-bottom: 22px; }
   .ls-label.bottom { margin-top: 22px; }
-  .notifications { right: 128px; bottom: 76px; max-width: calc(100% - 144px); }
+  .notifications { right: 184px; bottom: 76px; max-width: calc(100% - 200px); }
   .move-slider { padding: 8px 16px; }
   .move-slider input { height: 32px; }
   .lg-table tbody tr { height: 30px; }

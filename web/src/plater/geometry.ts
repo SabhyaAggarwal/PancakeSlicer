@@ -84,10 +84,10 @@ export function loadProject(file: File, on: {
   items(items: ProjectItem[], materials: ProjectMaterials): void;
   mesh(i: number, geometry: THREE.BufferGeometry, centre: THREE.Vector3): void;
   missing(i: number): void;
-}): Promise<void> {
+}, partsOnly = false): Promise<void> {
   return new Promise((resolve, reject) => {
     const geos = new Map<number, THREE.BufferGeometry>();
-    request({ type: 'project', file }, (m) => {
+    request({ type: 'project', file, partsOnly }, (m) => {
       if (m.type === 'items') on.items(m.items, m.materials);
       else if (m.type === 'mesh') {
         const geo = toGeometry(m);

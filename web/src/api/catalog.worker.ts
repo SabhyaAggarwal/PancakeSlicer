@@ -25,7 +25,7 @@ interface Entry {
 }
 
 const VERSION = 1;
-const FORMAT = 6;
+const FORMAT = 7;
 
 function db(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {

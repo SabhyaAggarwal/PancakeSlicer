@@ -16,7 +16,7 @@ export interface MeshData {
 export type MeshIn =
   | { type: 'split'; id: number; file: Blob }
   | { type: 'mesh'; id: number; file: File }
-  | { type: 'project'; id: number; file: File }
+  | { type: 'project'; id: number; file: File; partsOnly?: boolean }
   | { type: 'bake'; id: number; positions: Float32Array; index: Uint32Array | Uint16Array | null; matrix: number[] };
 
 export type MeshOut =
@@ -68,7 +68,7 @@ self.onmessage = async (e: MessageEvent<MeshIn>) => {
       progress?.(35);
       finish(m.id, soup, undefined, progress)();
     } else if (m.type === 'project') {
-      const project = await readProject(m.file);
+      const project = await readProject(m.file, m.partsOnly);
       post({ type: 'items', id: m.id, items: project.items, materials: project.materials });
       const hulls: (() => void)[] = [];
       for (let i = 0; i < project.items.length; i++) {
