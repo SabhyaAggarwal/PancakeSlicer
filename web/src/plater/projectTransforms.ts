@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Instance, PlateObject, State } from '../state/store';
 import type { PlateJson } from '../api/types';
 import { instanceMatrix, plateDescription } from './geometry';
+import { toolValue } from '../options';
 
 function projectTransform(o: PlateObject, inst: Instance): number[] | undefined {
   if (!o.project?.origin) return undefined;
@@ -35,6 +36,7 @@ const round = (v: number) => Math.round(v * 1000) / 1000;
 
 export type ProjectEdit =
   | ({ op: 'add_object'; plate: number } & PlateJson['objects'][number])
+  | { op: 'add_volume'; object: number; file: string; type: string; name: string; transform: number[]; extruder?: number; settings?: Record<string, string> }
   | { op: 'add_instance'; object: number; x: number; y: number; rot: number; printable: boolean; plate: number }
   | { op: 'delete'; object: number; instance: number }
   | { op: 'set_extruder'; object: number; extruder: number };
@@ -57,6 +59,29 @@ export function projectEdits(s: Pick<State, 'objects' | 'projectPlates' | 'plate
     }
   }
   for (const [object, extruder] of extruders) edits.push({ op: 'set_extruder', object, extruder });
+  const volumes: { name: string; o: PlateObject; k: number }[] = [];
+  for (const { o } of rows) {
+    const saved = o.project?.saved;
+    if (!saved?.item || !o.project?.origin || !o.volumes?.length) continue;
+    const frame = volumeFrame(o);
+    o.volumes.forEach((v, k) => {
+      const name = `project_${saved.object}_${saved.instance}.v${k + 1}.stl`;
+      const m = frame.clone().multiply(new THREE.Matrix4().fromArray(v.matrix)).transpose().elements;
+      volumes.push({ name, o, k });
+      edits.push({ op: 'add_volume', object: saved.object, file: name, type: v.type, name: v.name, transform: Array.from(m, round6),
+        ...(v.extruder ? { extruder: v.extruder } : {}),
+        ...(Object.keys(v.settings).length ? { settings: Object.fromEntries(Object.entries(v.settings).map(([key, value]) => [key, toolValue(key, value)])) } : {}) });
+    });
+  }
   for (const b of opened) if (!present.has(`${b.object}:${b.instance}`)) edits.push({ op: 'delete', ...b });
-  return { edits, added: added.map((r) => r.o), files: plate.objects.map((e) => e.file) };
+  return { edits, added: added.map((r) => r.o), files: plate.objects.map((e) => e.file), volumes };
+}
+
+const round6 = (v: number) => Math.round(v * 1e6) / 1e6;
+
+function volumeFrame(o: PlateObject): THREE.Matrix4 {
+  const t = o.project!.saved!.item!, [x, y, z] = o.project!.origin!, [px, py] = o.project!.plateOrigin ?? [0, 0];
+  const item = new THREE.Matrix4().set(t[0], t[3], t[6], t[9], t[1], t[4], t[7], t[10], t[2], t[5], t[8], t[11], 0, 0, 0, 1);
+  const opened = instanceMatrix(o, { id: 0, x, y, z, rotZ: 0 });
+  return item.invert().multiply(new THREE.Matrix4().makeTranslation(px, py, 0)).multiply(opened);
 }

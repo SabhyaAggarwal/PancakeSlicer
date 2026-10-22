@@ -70,7 +70,7 @@ export default function ContextMenu() {
   const editable = !!o && !o.project?.placeholder;
   const printable = (o?.instances.find((i) => menu.instance === undefined || i.id === menu.instance) ?? o?.instances[0])?.printable !== false;
   const volume = o?.volumes?.find((v) => v.id === menu.volume);
-  const addVolumes: Item[] = o && !all && s.features.volumes && editable && !s.project ? [...VOLUME_MENU.map(([type, label]) => ({ label, sub: [
+  const addVolumes: Item[] = o && !all && s.features.volumes && editable && (!s.project || s.features.project_volumes && canEditProject()) ? [...VOLUME_MENU.map(([type, label]) => ({ label, sub: [
     { label: 'Load...', action: () => loadVolume(o.id, type) },
     'sep' as const,
     ...SHAPES.map((shape) => ({ label: shape, action: () => addPrimitive(o.id, type, shape) })),

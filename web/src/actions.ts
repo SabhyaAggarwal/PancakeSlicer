@@ -286,7 +286,7 @@ export async function openProject(file: File) {
           return {
             id: newId(), name: it.name, geometry: placeholderGeometry(), rotX: 0, rotY: 0, scale: [1, 1, 1],
             extruder: it.extruder, source: file, settings: it.settings, project: { file: file.name, placeholder: true, buildIndex: it.buildIndex, plateIndex: it.plateIndex, plateOrigin: materials.plates.find((p) => p.index === it.plateIndex)?.origin,
-              saved: { object: Number(it.id), instance: it.instance, instanceId, extruder: it.extruder, rotZ: it.rotZ } },
+              saved: { object: Number(it.id), instance: it.instance, instanceId, extruder: it.extruder, rotZ: it.rotZ, item: it.transform } },
             instances: [{ id: instanceId, x: it.origin[0], y: it.origin[1], z: it.origin[2], rotZ: 0, printable: it.printable }],
           };
         });
@@ -422,9 +422,10 @@ export async function jobRequest(s = getState(), saving = false): Promise<JobReq
   const fields = jobFields(s, saving);
 
   if (s.project) {
-    const { added, files } = fields.project_edits ? projectEdits(s) : { added: [], files: [] };
-    const blobs = await Promise.all(added.map((o) => bakeStl(o)));
-    return { ...fields, files: [{ name: s.project.name, blob: s.project as Blob }, ...files.map((name, i) => ({ name, blob: blobs[i] }))] };
+    const { added, volumes } = fields.project_edits ? projectEdits(s) : { added: [], volumes: [] };
+    const { files } = added.length ? await plateJson(added, firstLayer(s)) : { files: [] };
+    const parts = await Promise.all(volumes.map(({ o, k }) => bakeStl({ ...o, geometry: o.volumes![k].geometry }, new THREE.Matrix4())));
+    return { ...fields, files: [{ name: s.project.name, blob: s.project as Blob }, ...files, ...volumes.map(({ name }, i) => ({ name, blob: parts[i] }))] };
   }
   if (saving && s.projectPlates.length > 1 && s.features.mesh_plates) {
     const plates = currentPlates(s);

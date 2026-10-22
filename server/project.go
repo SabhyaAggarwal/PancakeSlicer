@@ -337,7 +337,7 @@ func savedProjectInstances(path string) ([]projectInstance, error) {
 	return nil, fmt.Errorf("project has no build items")
 }
 
-func writeProjectEdits(dir string, files []string, uploaded map[string]bool, raw string) error {
+func writeProjectEdits(dir string, files []string, uploaded map[string]bool, raw string, volumes bool) error {
 	if !strings.EqualFold(filepath.Ext(files[0]), ".3mf") {
 		return fmt.Errorf("project_edits requires the 3MF project as the first upload")
 	}
@@ -346,23 +346,46 @@ func writeProjectEdits(dir string, files []string, uploaded map[string]bool, raw
 		return fmt.Errorf("project_edits needs a non-empty array of edits")
 	}
 	used := map[string]bool{}
+	mesh := func(file string) bool {
+		return uploaded[file] && file != files[0] && !strings.EqualFold(filepath.Ext(file), ".3mf")
+	}
 	for _, e := range edits {
 		var op string
 		if json.Unmarshal(e["op"], &op) != nil {
 			return fmt.Errorf("project_edits: every edit needs an op")
 		}
 		_, hasFile := e["file"]
-		if op != "add_object" {
+		if op != "add_object" && op != "add_volume" {
 			if hasFile {
-				return fmt.Errorf("project_edits: only add_object takes a file")
+				return fmt.Errorf("project_edits: only add_object and add_volume take a file")
 			}
 			continue
 		}
+		if op == "add_volume" && !volumes {
+			return fmt.Errorf("project_edits: add_volume requires a tool whose --edit takes add_volume")
+		}
 		var file string
-		if json.Unmarshal(e["file"], &file) != nil || !uploaded[file] || file == files[0] || strings.EqualFold(filepath.Ext(file), ".3mf") {
-			return fmt.Errorf("project_edits: add_object must name an uploaded mesh")
+		if json.Unmarshal(e["file"], &file) != nil || !mesh(file) {
+			return fmt.Errorf("project_edits: %s must name an uploaded mesh", op)
 		}
 		used[file] = true
+		if rows, ok := e["volumes"]; ok && op == "add_object" {
+			var list []struct {
+				File string `json:"file"`
+			}
+			if !volumes {
+				return fmt.Errorf("project_edits: add_object volumes require a tool whose --edit takes add_volume")
+			}
+			if json.Unmarshal(rows, &list) != nil {
+				return fmt.Errorf("project_edits: add_object volumes must be an array")
+			}
+			for _, v := range list {
+				if !mesh(v.File) {
+					return fmt.Errorf("project_edits: add_object volumes must name uploaded meshes")
+				}
+				used[v.File] = true
+			}
+		}
 	}
 	for _, f := range files[1:] {
 		if !used[f] {

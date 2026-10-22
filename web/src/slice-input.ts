@@ -91,7 +91,7 @@ export function plateSignature(s: State): string {
   return JSON.stringify({
     ...jobFields(s),
     plate: s.project ? undefined : plateDescription(s.objects, firstLayer(s)),
-    files: s.project ? [fileId(s.project), ...projectEdits(s).added.map(meshSignature)] : s.objects.map(meshSignature),
+    files: s.project ? [fileId(s.project), ...projectEdits(s).added.map(meshSignature), ...projectEdits(s).volumes.map(({ o }) => meshSignature(o))] : s.objects.map(meshSignature),
   }, (key, value) => key === 'transform' && Array.isArray(value) ? value.map((v: number) => Math.round(v * 1e6) / 1e6)
     : value && typeof value === 'object' && !Array.isArray(value)
     ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value);

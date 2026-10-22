@@ -24,6 +24,7 @@ export interface ProjectItem {
   settings: Config;
   origin: [number, number, number];
   rotZ: number;
+  transform: number[];
 }
 
 interface Obj {
@@ -195,8 +196,15 @@ export async function readProject(file: File, partsOnly = false): Promise<{ item
       extruder: meta?.extruder ?? 1,
       origin: [b.transform[9] - (plate?.origin[0] ?? 0), b.transform[10] - (plate?.origin[1] ?? 0), b.transform[11]] as [number, number, number],
       rotZ: Math.atan2(b.transform[1], b.transform[0]) * 180 / Math.PI,
+      transform: loadedItem(b),
     };
   });
+  function loadedItem(b: { objectid: string; transform: number[] }) {
+    const comps = root.objects.get(b.objectid)?.components ?? [];
+    if (comps.length !== 1) return b.transform;
+    const t = compose(comps[0].transform, b.transform);
+    return [...b.transform.slice(0, 9), t[9], t[10], t[11]];
+  }
   const mesh = (i: number) => {
     const tris: number[] = [];
     collect(rootPath, build[i].objectid, build[i].transform, tris);
