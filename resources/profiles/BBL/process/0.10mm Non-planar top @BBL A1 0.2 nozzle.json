@@ -8,6 +8,12 @@
 	"top_surface_acceleration": [
 		"5000"
 	],
+	"nonplanar_raised_top_acceleration": [
+		"5000"
+	],
+	"nonplanar_fallback_top_acceleration": [
+		"2000"
+	],
 	"compatible_printers": [
 		"Bambu Lab A1 0.2 nozzle"
 	],

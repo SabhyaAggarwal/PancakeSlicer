@@ -3701,6 +3701,29 @@ void PrintConfigDef::init_fff_params()
     def->nullable = true;
     def->set_default_value(new ConfigOptionFloatsNullable{500});
 
+    def = this->add("nonplanar_fallback_top_acceleration", coFloats);
+    def->label = L("Planar fallback top surface");
+    def->category = L("Speed");
+    def->tooltip = L("Acceleration of top surface infill on an object Auto prints in planar layers because it found no curved "
+                     "surface for it, while the top surface acceleration keeps the value the process raised it to. 0 uses the "
+                     "top surface acceleration.");
+    def->sidetext = L(u8"mm/s²");
+    def->min = 0;
+    def->mode = comAdvanced;
+    def->nullable = true;
+    def->set_default_value(new ConfigOptionFloatsNullable{0});
+
+    def = this->add("nonplanar_raised_top_acceleration", coFloats);
+    def->label = L("Raised top surface");
+    def->category = L("Speed");
+    def->tooltip = L("The top surface acceleration the process raised for curved tops. The planar fallback top surface "
+                     "acceleration replaces only this value.");
+    def->sidetext = L(u8"mm/s²");
+    def->min = 0;
+    def->mode = comDevelop;
+    def->nullable = true;
+    def->set_default_value(new ConfigOptionFloatsNullable{0});
+
     def = this->add("outer_wall_acceleration", coFloats);
     def->label = L("Outer wall");
     def->category = L("Speed");
@@ -10118,6 +10141,8 @@ std::set<std::string> print_options_with_variant = {
     "sparse_infill_acceleration",
     "internal_solid_infill_acceleration",
     "top_surface_acceleration",
+    "nonplanar_fallback_top_acceleration",
+    "nonplanar_raised_top_acceleration",
     "default_jerk",
     "outer_wall_jerk",
     "inner_wall_jerk",

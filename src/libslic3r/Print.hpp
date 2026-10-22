@@ -337,6 +337,7 @@ public:
     TriangleMesh                 object_frame_mesh(double &ground_offset) const;
     const Nonplanar::ConformalResult& conformal() const;
     bool auto_z_contouring() const { return m_shared_object ? m_shared_object->auto_z_contouring() : m_auto_z_contouring; }
+    bool auto_planar_pass() const { return m_auto_planar_pass; }
     const Nonplanar::RepairHints*     nonplanar_repair() const { return m_nonplanar_repair.get(); }
     Nonplanar::OneShotState&          oneshot_state();
     const Nonplanar::OneShotState*    oneshot_state() const { return m_oneshot.get(); }
@@ -525,6 +526,9 @@ private:
     std::vector<BeltBrimBand>               m_belt_brim_prologue;
     std::shared_ptr<TreeSupportData>        m_tree_support_preview_cache;
     bool m_auto_z_contouring = false;
+    bool m_auto_planar_pass = false;
+    bool m_auto_planar      = false;
+    std::vector<double> m_auto_planar_top_acceleration;
     bool                 m_auto_support = false;
     bool                 m_auto_support_applied = false;
     SupportNecessaryType m_auto_support_need = NoNeedSupp;

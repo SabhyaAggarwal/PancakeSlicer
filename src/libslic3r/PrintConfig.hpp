@@ -1210,6 +1210,8 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloatsNullable,           outer_wall_acceleration))
     ((ConfigOptionFloatsNullable,           inner_wall_acceleration))
     ((ConfigOptionFloatsNullable,           top_surface_acceleration))
+    ((ConfigOptionFloatsNullable,           nonplanar_fallback_top_acceleration))
+    ((ConfigOptionFloatsNullable,           nonplanar_raised_top_acceleration))
     ((ConfigOptionFloatsNullable,           initial_layer_acceleration))
     ((ConfigOptionFloatsOrPercentsNullable, bridge_acceleration))
     ((ConfigOptionFloatsNullable,           travel_acceleration))

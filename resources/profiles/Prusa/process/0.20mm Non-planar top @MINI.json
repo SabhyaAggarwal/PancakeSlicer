@@ -12,6 +12,8 @@
 	"overhang_layer_contact": "50%",
 	"nonplanar_top_speed_factor": "150%",
 	"top_surface_acceleration": "1250",
+	"nonplanar_raised_top_acceleration": "1250",
+	"nonplanar_fallback_top_acceleration": "1000",
 	"compatible_printers": [
 		"Prusa MINI 0.4 nozzle"
 	],

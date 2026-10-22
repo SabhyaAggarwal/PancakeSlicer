@@ -2481,6 +2481,7 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
                             "sparse_infill_acceleration",
                             "internal_solid_infill_acceleration",
                             "top_surface_acceleration",
+                            "nonplanar_fallback_top_acceleration",
                             "travel_acceleration",
                         };
                    else
@@ -2493,6 +2494,7 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
                             "sparse_infill_acceleration",
                             "internal_solid_infill_acceleration",
                             "top_surface_acceleration",
+                            "nonplanar_fallback_top_acceleration",
                         };
                    warning_key = check_motion_ability_object_setting(accel_to_check, max_accel);
                    if (!warning_key.empty()) {
@@ -2978,6 +2980,16 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
             else if (obj->set_started(posNonplanar))
                 obj->set_done(posNonplanar);
         }
+        for (PrintObject *obj : m_objects)
+            if (need_slicing_objects.count(obj) != 0 && obj->auto_planar_pass()) {
+                obj->invalidate_step(posSlice);
+                obj->slice();
+                obj->make_perimeters();
+                obj->prepare_infill();
+                obj->infill();
+                obj->ironing();
+                obj->nonplanar_shells();
+            }
         trim_free_memory();
 
         for (PrintObject *obj : m_objects) {

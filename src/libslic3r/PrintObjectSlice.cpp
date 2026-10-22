@@ -727,7 +727,21 @@ void PrintObject::slice()
     if (! this->set_started(posSlice))
         return;
     const NonplanarMode previous_mode = m_config.nonplanar_mode.value;
-    if (previous_mode == NonplanarMode::Off && Nonplanar::auto_rotary_requested(*this))
+    if (m_auto_planar_pass) {
+        m_config.nonplanar_mode.value = NonplanarMode::Off;
+        m_auto_planar_top_acceleration = m_config.top_surface_acceleration.values;
+        for (size_t i = 0; i < m_config.top_surface_acceleration.values.size(); ++i)
+            if (const double fallback = m_config.nonplanar_fallback_top_acceleration.get_at(i);
+                fallback > 0. && m_config.top_surface_acceleration.values[i] == m_config.nonplanar_raised_top_acceleration.get_at(i))
+                m_config.top_surface_acceleration.values[i] = fallback;
+        m_auto_planar_pass            = false;
+        m_auto_planar                 = true;
+    } else if (m_auto_planar) {
+        m_config.nonplanar_mode.value = NonplanarMode::Auto;
+        m_config.top_surface_acceleration.values = m_auto_planar_top_acceleration;
+        m_auto_planar                 = false;
+    }
+    if (m_config.nonplanar_mode.value == NonplanarMode::Off && Nonplanar::auto_rotary_requested(*this))
         m_config.nonplanar_mode.value = NonplanarMode::Auto;
     if (m_auto_support_applied) {
         m_config.enable_support.value = false;
@@ -866,7 +880,7 @@ void PrintObject::slice()
     }
 
     if (!m_config.enable_support.value && !m_layers.empty() && !Nonplanar::rotary_auto_measurement() &&
-        (m_config.nonplanar_mode.value == NonplanarMode::Auto || Nonplanar::auto_rotary_requested(*this))) {
+        (m_config.nonplanar_mode.value == NonplanarMode::Auto || m_auto_planar || Nonplanar::auto_rotary_requested(*this))) {
         m_auto_support_need = this->is_support_necessary();
         m_auto_support      = m_auto_support_need != NoNeedSupp ||
                               (m_config.nonplanar_mode.value == NonplanarMode::Off && overhang_area(*this) >= MinAutoSupportOverhangArea);

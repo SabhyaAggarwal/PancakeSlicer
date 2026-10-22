@@ -851,6 +851,8 @@ void PrintObject::nonplanar_shells()
         record_apply_inputs();
     }
     m_print->throw_if_canceled();
+    m_auto_planar_pass = m_config.nonplanar_mode.value == NonplanarMode::Auto && !imported && !m_auto_z_contouring &&
+                         !m_print->config().spiral_mode.value && (!m_conformal || m_conformal->patches.empty());
     this->set_done(posNonplanar);
 }
 
@@ -1503,6 +1505,13 @@ bool PrintObject::invalidate_state_by_config_options(
         m_config.support_style.value                 = m_auto_support_style;
         m_config.support_critical_regions_only.value = m_auto_support_critical;
         m_auto_support_applied                       = false;
+        steps.emplace_back(posSlice);
+    }
+    if (m_auto_planar && std::any_of(opt_keys.begin(), opt_keys.end(), [](const t_config_option_key &key) {
+            return key == "nonplanar_mode" || key == "top_surface_acceleration" || key == "nonplanar_fallback_top_acceleration" ||
+                   key == "nonplanar_raised_top_acceleration";
+        })) {
+        m_auto_planar = false;
         steps.emplace_back(posSlice);
     }
     static const std::set<std::string> low_plane_keys = { "nonplanar_top_shells", "nonplanar_fallback", "nonplanar_shell_layer_height",
