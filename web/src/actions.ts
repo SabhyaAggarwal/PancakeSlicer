@@ -414,6 +414,14 @@ export function outsideVolumeWarning(s = getState()): string | null {
   return names.length ? `Following objects are laid over the boundary of plate or exceeds the height limit:\n${names.join('\n')}\nPlease solve the problem by moving it totally on or off the plate, and confirming that the height is within the build volume.\n` : null;
 }
 
+function recordWarnings(record: Record<string, unknown> | undefined, stderr: string[]): string[] {
+  const text = (record?.text_summary ?? {}) as Record<string, unknown>;
+  const lines = [...(Array.isArray(record?.object_warnings) ? record.object_warnings : []), text.export_warning]
+    .filter((w): w is string => typeof w === 'string' && w.trim() !== '').map((w) => w.trim().split('\n')[0]);
+  const shown = new Set(stderr.map((w) => w.trim().split('\n')[0]));
+  return [...stderr, ...new Set(lines.filter((w) => !shown.has(w)))];
+}
+
 export async function slice(calib?: { kind: string; params: string }) {
   const s = getState();
   if (!s.api || !s.objects.length && !calib || s.job.state === 'running' || s.job.state === 'submitting') return;
@@ -449,7 +457,7 @@ export async function slice(calib?: { kind: string; params: string }) {
         if (e.stage === 'verify' && e.pct >= 100 && request.output === 'gcode.3mf') progress.stage = 'Packaging sliced plate';
         setState((st) => progress.pct < st.job.pct ? {} : { job: { ...st.job, ...progress } });
       },
-      done: (status) => generation === sliceGeneration && setState((st) => ({ job: { ...st.job, id, state: 'done', pct: 100, stage: 'done', status, warnings } })),
+      done: (status) => generation === sliceGeneration && setState((st) => ({ job: { ...st.job, id, state: 'done', pct: 100, stage: 'done', status, warnings: recordWarnings(status.record, warnings) } })),
       error: (msg) => generation === sliceGeneration && setState((st) => ({ job: { ...st.job, state: 'failed', error: msg } })),
       log: (stream, line) => {
         if (stream !== 'stderr' || !line.trim()) return;
