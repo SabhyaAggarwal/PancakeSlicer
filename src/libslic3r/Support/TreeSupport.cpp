@@ -1919,6 +1919,18 @@ Polygons TreeSupport::get_trim_support_regions(
     return polygons_trimming;
 }
 
+static void remove_identical_expolygons(ExPolygons &expolys)
+{
+    size_t kept = 0;
+    for (size_t i = 0; i < expolys.size(); ++ i)
+        if (std::find(expolys.begin(), expolys.begin() + kept, expolys[i]) == expolys.begin() + kept) {
+            if (i != kept)
+                expolys[kept] = std::move(expolys[i]);
+            ++ kept;
+        }
+    expolys.resize(kept);
+}
+
 void TreeSupport::draw_circles()
 {
     const PrintObjectConfig &config = m_object->config();
@@ -2114,6 +2126,9 @@ void TreeSupport::draw_circles()
 
                 }
 
+                remove_identical_expolygons(roof_areas);
+                remove_identical_expolygons(roof_base_areas);
+                remove_identical_expolygons(roof_1st_layer);
                 roof_areas     = diff_clipped(closing_ex(roof_areas, line_width_scaled), get_collision(false));
                 roof_areas     = intersection_ex(roof_areas, m_machine_border);
                 roof_base_areas = diff_clipped(closing_ex(roof_base_areas, line_width_scaled), get_collision(false));
