@@ -55,7 +55,7 @@ const SHORTCUTS: [string, [string, string][]][] = [
     [`${mod}+N`, 'New Project'], [`${mod}+O`, 'Open Project'], [`${mod}+S`, 'Save Project'], [`${mod}+Shift+S`, 'Save Project as'],
     [`${mod}+I`, 'Import geometry data from STL/STEP/3MF/OBJ/AMF files'], [`${mod}+R`, 'Slice plate'], [`${mod}+G`, 'Export plate sliced file'],
     [`${mod}+P`, 'Preferences'], ['?', 'Show keyboard shortcuts list'],
-    [`${mod}+0 … ${mod}+6 (or 0 … 6)`, 'Camera view: Default, Top, Bottom, Front, Rear, Left, Right'],
+    ['0 … 6', 'Camera view: Default, Top, Bottom, Front, Rear, Left, Right'],
     ['Esc', 'Deselect All'],
   ]],
   ['Prepare', [

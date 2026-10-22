@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { addInstance, arrangeAll, fillBed, openFileDialog, removeInstance, setInstanceCount, toolbarOperation } from '../actions';
 import { canDrop, canPaste, centreSelection, copySelection, dropSelection, mirrorSelection, pasteClipboard, selectAll, setFilament, startRename } from '../edit';
 import { canEditProject } from '../api/client';
-import { deleteAll, deleteVolume, getState, removeSelected, setState, togglePrintable, updateVolume, useStore } from '../state/store';
-import { addPrimitive, loadVolume, SHAPES, VOLUME_MENU } from '../plater/volumes';
+import { changeVolumeType, deleteAll, deleteVolume, getState, removeSelected, setState, togglePrintable, updateVolume, useStore, VOLUME_ORDER } from '../state/store';
+import { addPrimitive, loadVolume, SHAPES, TYPE_LABEL, VOLUME_MENU } from '../plater/volumes';
 import { menuKeys } from '../keys';
 
 const exportStl = (selection: boolean, multi = false) => import('../exportStl').then((m) => m.exportStl(selection, multi));
@@ -70,6 +70,9 @@ export default function ContextMenu() {
     { label: 'Delete', shortcut: 'Del', action: () => deleteVolume(o.id, volume.id), tip: 'Delete the selected part' },
     ...(volume.type === 'part' ? ['sep' as const, { label: 'Change Filament', sub: [{ label: 'Default', checked: !volume.extruder, action: () => updateVolume(o.id, volume.id, { extruder: 0 }) },
       ...s.filamentSlots.map((_, i) => ({ label: `Filament ${i + 1}`, checked: volume.extruder === i + 1, action: () => updateVolume(o.id, volume.id, { extruder: i + 1 }) }))] }] : []),
+    'sep',
+    { label: 'Change Type', tip: 'Change part type', sub: VOLUME_ORDER.map((type) => (
+      { label: TYPE_LABEL[type], checked: volume.type === type, action: () => volume.type !== type && changeVolumeType(o.id, volume.id, type) })) },
   ] : o ? [
     ...(all ? [] : [
       { label: 'Add instance', shortcut: '+', action: addInstance, disabled: !editable || project, tip: 'Add one more instance of the selected object' },

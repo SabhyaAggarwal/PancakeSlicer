@@ -156,7 +156,7 @@ export function TopBar() {
       <Menu
         title="View"
         items={[
-          ...CAMERA_VIEWS.map((label, i) => ({ label, shortcut: `${MOD}+${i}`, action: () => cameraCommand(VIEW_DIRECTIONS[i]), tip: i ? `${label} View` : label })),
+          ...CAMERA_VIEWS.map((label, i) => ({ label, shortcut: String(i), action: () => cameraCommand(VIEW_DIRECTIONS[i]), tip: i ? `${label} View` : label })),
           'sep',
           { label: 'Use Perspective View', role: 'menuitemradio', checked: perspective, action: () => cameraCommand('perspective') },
           { label: 'Use Orthogonal View', role: 'menuitemradio', checked: !perspective, action: () => cameraCommand('orthogonal') },

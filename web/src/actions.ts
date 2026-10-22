@@ -205,7 +205,8 @@ function adoptProject(config: Config, slots: number, plateKeys: Set<string>) {
   if (!id && saved.printer_model === undefined) return setState({ projectPresets: null, projectNotice: null });
   const sameModel = s.machines.filter((p) => String(p.config.printer_model) === String(saved.printer_model));
   const sameNozzle = sameModel.filter((p) => String(p.config.nozzle_diameter) === String(saved.nozzle_diameter));
-  const printer = closestPreset(sameNozzle.length ? sameNozzle : sameModel.length ? sameModel : s.machines, saved, id);
+  const selected = s.machines.filter((p) => p.name === (resolvePreset(s, 'machine', s.printer).base?.name ?? s.printer));
+  const printer = closestPreset(sameNozzle.length ? sameNozzle : sameModel.length ? sameModel : selected.length ? selected : s.machines, saved, id);
   if (!printer) throw new Error('No system printer is available for this project');
   selectPrinter(printer.name);
   const current = getState();

@@ -3,6 +3,10 @@ import { bedArea } from '../actions';
 import { addVolume, getState, newId, toast, type Volume, type VolumeType } from '../state/store';
 import { bedBounds, instanceBox, instanceMatrix, loadMesh, primitiveGeometry, volumeGeometry } from './geometry';
 
+export const TYPE_LABEL: Record<VolumeType, string> = {
+  part: 'Part', negative: 'Negative Part', modifier: 'Modifier', support_blocker: 'Support Blocker', support_enforcer: 'Support Enforcer',
+};
+
 export type Shape = 'Cube' | 'Cylinder' | 'Sphere' | 'Cone' | 'Disc' | 'Torus';
 export const SHAPES: Shape[] = ['Cube', 'Cylinder', 'Sphere', 'Cone', 'Disc', 'Torus'];
 

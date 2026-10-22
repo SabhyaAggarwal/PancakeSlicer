@@ -454,9 +454,18 @@ export function addVolume(objectId: number, volume: Volume, name: string) {
   undoable(name, () => setState((s) => {
     const o = s.objects.find((ob) => ob.id === objectId);
     if (!o) return {};
-    const volumes = [...(o.volumes ?? []), volume].sort((a, b) => VOLUME_ORDER.indexOf(a.type) - VOLUME_ORDER.indexOf(b.type));
+    const volumes = sortVolumes([...(o.volumes ?? []), volume]);
     return { objects: mapVolumes(s, objectId, () => volumes), selected: { object: objectId, instance: o.instances[0].id, volume: volume.id }, job: markStale(s.job) };
   }));
+}
+
+const sortVolumes = (vs: Volume[]) => vs.sort((a, b) => VOLUME_ORDER.indexOf(a.type) - VOLUME_ORDER.indexOf(b.type));
+
+export function changeVolumeType(objectId: number, volumeId: number, type: VolumeType) {
+  undoable('Change part type', () => setState((s) => ({
+    objects: mapVolumes(s, objectId, (vs) => sortVolumes(vs.map((v) => (v.id === volumeId ? { ...v, type } : v)))),
+    job: markStale(s.job),
+  })));
 }
 export const VOLUME_ORDER: VolumeType[] = ['part', 'negative', 'modifier', 'support_blocker', 'support_enforcer'];
 

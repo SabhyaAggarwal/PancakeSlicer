@@ -222,11 +222,11 @@ export default function Plater3D() {
               if (mesh) scene.remove(mesh);
               mesh = new THREE.Mesh(v.geometry);
               mesh.matrixAutoUpdate = false;
-              mesh.renderOrder = v.type === 'part' ? 0 : 1;
               mesh.userData = { object: o.id, instance: inst.id, volume: v.id };
               volumeMeshes.set(key, mesh);
               scene.add(mesh);
             }
+            mesh.renderOrder = v.type === 'part' ? 0 : 1;
             mesh.matrix.copy(volumeWorld(o, inst, v));
             mesh.matrixWorldNeedsUpdate = true;
           }

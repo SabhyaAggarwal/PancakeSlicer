@@ -12,6 +12,6 @@ export default function PlateChoice() {
         projectPlates: s.projectPlates.map((p) => p.index === s.plateIndex ? { ...p, objects: s.objects } : p),
         objects: s.projectPlates.find((p) => p.index === plate.index)!.objects,
         plateIndex: plate.index, selected: null, gizmo: 'none',
-      })))}>Plate {plate.index}{plate.name ? ` · ${plate.name}` : ''}</button>)}
+      })))}>Plate {plate.index}{plate.name && plate.name !== `Plate ${plate.index}` ? ` · ${plate.name}` : ''}</button>)}
   </div>;
 }
