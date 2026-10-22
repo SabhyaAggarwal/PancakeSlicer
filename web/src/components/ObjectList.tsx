@@ -10,6 +10,7 @@ import { instanceBox } from '../plater/geometry';
 import { Icon } from './Icon';
 import { STYLE_NAMES, styleOf } from '../style-names';
 import { plateResults } from '../recommend';
+import { canAddPlate, OBJECT_DRAG } from '../plater/plates';
 
 interface SliceRecord {
   objects?: { id: number; name: string; mode?: string; instances?: { id: number; shift_mm?: [number, number] }[] }[];
@@ -24,6 +25,7 @@ export function ObjectList() {
   const project = useStore((s) => s.project);
   const record = useStore((s) => (s.job.state === 'done' && !s.job.stale ? (s.job.status?.record as SliceRecord | undefined) : undefined));
   const renaming = useStore((s) => s.renaming);
+  const meshPlates = useStore((s) => canAddPlate(s) && s.projectPlates.length > 1);
   const openMenu = (e: React.MouseEvent, object: number, instance?: number, volume?: number) => {
     e.preventDefault();
     const o = getState().objects.find((ob) => ob.id === object)!;
@@ -92,6 +94,8 @@ export function ObjectList() {
                 aria-selected={objSelected}
                 {...rowKeys(() => setState({ selected: { object: o.id, instance: o.instances[0].id, allInstances: true } }), o.id)}
                 onContextMenu={(e) => openMenu(e, o.id)}
+                draggable={meshPlates}
+                onDragStart={(e) => e.dataTransfer.setData(OBJECT_DRAG, String(selected?.all ? objects.map((ob) => ob.id) : o.id))}
                 onClick={() => setState({ selected: { object: o.id, instance: o.instances[0].id, allInstances: true } })}
                 onDoubleClick={() => startRename(o.id)}
               >

@@ -7,6 +7,8 @@ import type { ProjectPlate } from '../plater/threemf';
 import { isHidden, OPTIONS, type OptionMode } from '../options';
 import { undoable } from './history';
 import { canEditProject, canOneShot } from '../api/client';
+import type { PaintKind, Painting } from '../plater/paint';
+
 
 export interface Instance {
   id: number;
@@ -41,6 +43,8 @@ export interface PlateObject {
   source: File;
   settings: Config;
   volumes?: Volume[];
+  paint?: Partial<Record<PaintKind, Painting>>;
+  layerProfile?: number[];
   project?: { buildIndex?: number; plateIndex?: number; plateOrigin?: [number, number]; file: string; placeholder: boolean; missing?: boolean; origin?: [number, number, number];
     saved?: { object: number; instance: number; instanceId: number; extruder: number; rotZ: number } };
 }
@@ -67,7 +71,7 @@ export type PresetUx =
 
 export type MainTab = 'prepare' | 'preview';
 export type CalibMenu = 'temperature' | 'max-flowrate' | 'pressure-advance' | 'flow-ratio' | 'retraction' | 'cornering' | 'input-shaping-freq' | 'input-shaping-damp' | 'vfa';
-export type Gizmo = 'none' | 'move' | 'rotate' | 'scale' | 'flatten' | 'cut' | 'measure';
+export type Gizmo = 'none' | 'move' | 'rotate' | 'scale' | 'flatten' | 'cut' | 'measure' | 'layers' | PaintKind;
 
 export interface JobView {
   id?: string;
@@ -94,7 +98,7 @@ export interface CutPlane {
 
 export interface State {
   api: Api | null;
-  features: { cut?: boolean; volumes?: boolean; edit?: boolean };
+  features: { cut?: boolean; volumes?: boolean; edit?: boolean; mesh_plates?: boolean; paint?: boolean; layer_profile?: boolean };
   cut: CutPlane | null;
   loading: string | null;
   machines: SystemPreset[];
@@ -129,7 +133,7 @@ export interface State {
   calibDialog: CalibMenu | null;
   printers: { name: string; kind: string }[];
   events: LayerEvent[];
-  projectPlates: (ProjectPlate & { objects: PlateObject[] })[];
+  projectPlates: (ProjectPlate & { objects: PlateObject[]; events?: LayerEvent[] })[];
   plateIndex: number;
   project: File | null;
   projectName: string | null;
@@ -375,6 +379,13 @@ function editName(patch: object): string {
     : k.includes('extruder') ? 'Change Filament' : k.includes('name') ? 'Rename' : 'Edit object';
 }
 
+export function setPaint(id: number, kind: PaintKind, paint: Painting | null, name: string) {
+  undoable(name, () => setState((s) => ({
+    objects: s.objects.map((o) => (o.id === id ? { ...o, paint: { ...o.paint, [kind]: paint ?? undefined } } : o)),
+    job: markStale(s.job),
+  })));
+}
+
 export function updateObject(id: number, patch: Partial<PlateObject>, name = editName(patch)) {
   undoable(name, () => setState((s) => ({ objects: s.objects.map((o) => (o.id === id ? { ...o, ...patch } : o)), job: markStale(s.job) })));
 }
@@ -404,7 +415,8 @@ export function removeSelected() {
 }
 
 export function deleteAll() {
-  undoable('Delete all', () => setState((s) => ({ objects: [], selected: null, project: null, projectPlates: [], plateIndex: 1, projectName: null, projectMaterials: null, projectPresets: null, projectNotice: null, job: markStale(s.job) })));
+  undoable('Delete all', () => setState((s) => !s.project && s.projectPlates.length ? { objects: [], selected: null, job: markStale(s.job) }
+    : { objects: [], selected: null, project: null, projectPlates: [], plateIndex: 1, projectName: null, projectMaterials: null, projectPresets: null, projectNotice: null, job: markStale(s.job) }));
 }
 
 export function setObjectOption(id: number, key: string, value: ConfigValue) {

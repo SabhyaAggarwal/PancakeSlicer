@@ -1,7 +1,9 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { togglePaint } from './plater/paint';
 import { addInstance, arrangeAll, download, importFiles, newProject, openFileDialog, openProjectDialog, removeInstance, slice, toolbarOperation, saveProject } from './actions';
 import { toggleCut } from './plater/cut';
-import { CanvasToolbar, CutPanel, ManipulationPanel, SliceNotification, Toast } from './components/CanvasOverlays';
+import { CanvasToolbar, CutPanel, ManipulationPanel, PaintPanel, SliceNotification, Toast } from './components/CanvasOverlays';
+import { LayerHeightBar, LayerHeightPanel } from './components/LayerHeight';
 import { Sidebar } from './components/Sidebar';
 import { AskHost } from './components/Ask';
 import { TabBar, TopBar } from './components/TopBar';
@@ -93,7 +95,7 @@ export default function App() {
       else if (getState().gizmo === 'measure' && e.key === 'Escape') { if (!dropLastFeature()) setState({ gizmo: 'none' }); }
       else if (e.key === 'Delete' || e.key === 'Backspace') removeSelected();
       else if (e.key.toLowerCase() === 'q') toolbarOperation('orient', e.shiftKey);
-      else if (e.key === 'a' || e.key === 'A') arrangeAll();
+      else if (e.key === 'a' || e.key === 'A') arrangeAll(e.key === 'a');
       else if (e.key === '+' || e.key === '=') addInstance();
       else if (e.key === '-') removeInstance();
       else if (e.key === 'm' || e.key === 'M') setState((s) => ({ gizmo: s.gizmo === 'move' ? 'none' : 'move' }));
@@ -102,6 +104,9 @@ export default function App() {
       else if (e.key === 'f' || e.key === 'F') setState((s) => ({ gizmo: s.gizmo === 'flatten' || !s.selected || s.selected.all ? 'none' : 'flatten' }));
       else if (e.key === 'c' || e.key === 'C') toggleCut();
       else if (e.key === 'u' || e.key === 'U') setState((s) => ({ gizmo: s.gizmo === 'measure' || !s.selected ? 'none' : 'measure' }));
+      else if (e.key.toLowerCase() === 'l') togglePaint('support');
+      else if (e.key.toLowerCase() === 'p') togglePaint('seam');
+      else if (e.key.toLowerCase() === 'h') togglePaint('fuzzy');
       else if (e.key === 'F2') startRename();
       else if (e.key.toLowerCase() === 'v') { const selected = getState().selected; if (selected) togglePrintable(selected.object, selected.allInstances ? undefined : selected.instance); }
       else if (prepare && !e.altKey && nudge(e.key, e.shiftKey)) {  }
@@ -143,9 +148,11 @@ export default function App() {
           <div style={{ display: tab === 'prepare' ? 'contents' : 'none' }}>
             <Suspense fallback={<div role="status">Loading plater…</div>}><Plater3D /></Suspense>
             <CanvasToolbar />
-            {multiPlate && <Suspense fallback={null}><PlateChoice /></Suspense>}
             <ManipulationPanel />
             <CutPanel />
+            <PaintPanel />
+            <LayerHeightPanel />
+            <LayerHeightBar />
             {gizmo === 'measure' && <Suspense fallback={null}><MeasurePanel /></Suspense>}
             {empty && !loading && <Suspense fallback={null}><EmptyPlate /></Suspense>}
           </div>
@@ -156,6 +163,7 @@ export default function App() {
               </Suspense>
             </div>
           )}
+          {multiPlate && <Suspense fallback={null}><PlateChoice /></Suspense>}
           <SliceNotification />
           {loading && <div className="loading">{loading}…</div>}
         </div>

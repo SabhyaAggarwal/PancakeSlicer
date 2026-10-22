@@ -3,10 +3,13 @@ import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { ConfigValue, PlateJson } from '../api/types';
 import { toolValue } from '../options';
 import type { Instance, PlateObject, Volume } from '../state/store';
+import { fitProfile } from './layerProfile';
 import type { Bvh } from './bvh';
 import type { MeshData, MeshIn, MeshOut } from './mesh.worker';
 import type { ShellsIn, ShellsOut } from './shells.worker';
 import type { ProjectItem, ProjectMaterials } from './threemf';
+import { paintJson } from './paint';
+
 
 const DEG = Math.PI / 180;
 
@@ -166,6 +169,8 @@ export function instanceMatrix(o: PlateObject, inst: Instance): THREE.Matrix4 {
   return m.premultiply(new THREE.Matrix4().makeTranslation(inst.x - (b.min.x + b.max.x) / 2, inst.y - (b.min.y + b.max.y) / 2, inst.z ?? 0));
 }
 
+export const objectHeight = (o: PlateObject) => { const b = instanceBox(o, o.instances[0]); return b.max.z - b.min.z; };
+
 export function instanceBox(o: PlateObject, inst: Instance): THREE.Box3 {
   const m = objectMatrix(o).premultiply(new THREE.Matrix4().makeRotationZ(inst.rotZ * DEG));
   const b = transformedBox(o.geometry, m, `${o.rotX},${o.rotY},${o.scale},${inst.rotZ}`).clone();
@@ -240,7 +245,7 @@ function bakeVolume(o: PlateObject, v: Volume): Promise<Blob> {
   );
 }
 
-export function plateDescription(objects: PlateObject[]): PlateJson {
+export function plateDescription(objects: PlateObject[], firstLayer = 0.2): PlateJson {
   const used = new Set<string>();
   const plate: PlateJson = { objects: [] };
   for (const o of objects) {
@@ -259,6 +264,8 @@ export function plateDescription(objects: PlateObject[]): PlateJson {
       extruder: o.extruder,
       instances: o.instances.map((i) => { const p = place(i); return { x: round(p.x), y: round(p.y), rot: round(i.rotZ), z: round(p.z), printable: i.printable !== false }; }),
       ...(Object.keys(o.settings).length ? { settings: settings(o.settings) } : {}),
+      ...(paintJson(o) ? { paint: paintJson(o) } : {}),
+      ...(o.layerProfile ? { layer_height_profile: fitProfile(o.layerProfile, objectHeight(o), firstLayer) } : {}),
       ...(o.volumes?.length ? { volumes: o.volumes.map((v, k) => ({
         file: file.replace(/\.stl$/, `.v${k + 1}.stl`),
         type: v.type,
@@ -271,8 +278,8 @@ export function plateDescription(objects: PlateObject[]): PlateJson {
   return plate;
 }
 
-export async function plateJson(objects: PlateObject[]): Promise<{ plate: PlateJson; files: { name: string; blob: Blob }[] }> {
-  const plate = plateDescription(objects);
+export async function plateJson(objects: PlateObject[], firstLayer?: number): Promise<{ plate: PlateJson; files: { name: string; blob: Blob }[] }> {
+  const plate = plateDescription(objects, firstLayer);
   const blobs = await Promise.all(objects.map((o) => bakeStl(o)));
   const volumes = await Promise.all(objects.map((o) => Promise.all((o.volumes ?? []).map((v) => bakeVolume(o, v)))));
   return { plate, files: plate.objects.flatMap(({ file: name, volumes: vs }, i) => [{ name, blob: blobs[i] },

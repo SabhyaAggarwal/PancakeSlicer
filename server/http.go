@@ -389,6 +389,14 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 				fail(w, 400, "parts and modifiers require a tool with plate-JSON volumes")
 				return
 			}
+			if obj["paint"] != nil && !s.cfg.Features.Paint {
+				fail(w, 400, "painting requires a tool with plate-JSON paint")
+				return
+			}
+			if obj["layer_height_profile"] != nil && !s.cfg.Features.LayerProfile {
+				fail(w, 400, "variable layer height requires a tool with plate-JSON layer height profiles")
+				return
+			}
 			for _, v := range volumes {
 				if !names[v.File] {
 					fail(w, 400, "plate volumes must reference uploaded basenames")
@@ -396,7 +404,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		if err := validatePlatePlacement([]byte(raw), req.Output == "3mf", s.cfg.Features.PlatePlacement); err != nil {
+		if err := validatePlatePlacement([]byte(raw), req.Output == "3mf", s.cfg.Features.PlatePlacement, s.cfg.Features.MeshPlates); err != nil {
 			fail(w, 400, err.Error())
 			return
 		}

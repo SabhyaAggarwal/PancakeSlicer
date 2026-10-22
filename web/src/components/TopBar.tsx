@@ -5,6 +5,7 @@ import { canPaste, copySelection, pasteClipboard, selectAll } from '../edit';
 import { historyVersion, redo, redoName, subscribeHistory, undo, undoName } from '../state/history';
 import { CAMERA_VIEWS, VIEW_DIRECTIONS, cameraCommand, cameraSnapshot, subscribeCamera, perspective, autoPerspective } from '../camera';
 import { Icon } from './Icon';
+import { exportAll, exportablePlates, sliceAll } from '../plater/plates';
 import { canCalibrate, canLoadStep } from '../api/client';
 
 type MenuItem = { label: string; shortcut?: string; action?: () => void; disabled?: boolean; tip?: string; checked?: boolean; role?: 'menuitemradio' | 'menuitemcheckbox' } | 'sep';
@@ -96,6 +97,8 @@ export function TopBar() {
   useSyncExternalStore(subscribeHistory, historyVersion);
   const undoLabel = undoName(), redoLabel = redoName();
   const exportEnabled = useStore(canExport);
+  const plates = useStore((s) => s.projectPlates.length > 1);
+  const exportAllEnabled = useStore((s) => s.projectPlates.length > 1 && s.job.state !== 'running' && s.job.state !== 'submitting' && exportablePlates(s).length > 0);
   const stale = useStore((s) => s.job.stale);
   const hasObjects = useStore((s) => s.objects.length > 0);
   const hasProjectObjects = useStore((s) => s.objects.length > 0 || s.projectPlates.some((p) => p.objects.length > 0));
@@ -124,6 +127,7 @@ export function TopBar() {
           { label: 'Import Configs...', action: () => setState({ presetUx: { kind: 'import' } }), tip: 'Load configs' },
           'sep',
           { label: exportLabel + '...', shortcut: `${MOD}+G`, action: download, disabled: !exportEnabled, tip: stale ? STALE_RESULT_TIP : exportTip },
+          ...(plates ? [{ label: 'Export all plate sliced file...', action: () => void exportAll(), disabled: !exportAllEnabled, tip: 'Export all plate sliced file' }] : []),
           ...(hasPrinters ? [{ label: 'Send...', action: () => setState({ appDialog: 'send' }), disabled: !exportEnabled, tip: 'Upload the sliced file to a printer' }] : []),
           { label: 'Export all objects as one STL...', action: () => void exportStl(false), disabled: !hasMeshes, tip: 'Export all objects as one STL' },
           { label: 'Export all objects as STLs...', action: () => void exportStl(true), disabled: !hasMeshes, tip: 'Export all objects as STLs' },
@@ -208,6 +212,25 @@ export function TopBar() {
   );
 }
 
+function SideOptions({ options, value, onChange }: { options: string[]; value: string; onChange(v: string): void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    window.addEventListener('pointerdown', close);
+    return () => window.removeEventListener('pointerdown', close);
+  }, [open]);
+  return (
+    <span ref={ref} className="side-options">
+      <button className="side-btn side-drop" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}><Icon name="sidebutton_dropdown" size={14} /></button>
+      {open && <div role="menu" className="menu-pop menu-pop-right">
+        {options.map((o) => <button key={o} role="menuitemradio" aria-checked={o === value} className="menu-item" onClick={() => { onChange(o); setOpen(false); }}><span>{o}</span><span /></button>)}
+      </div>}
+    </span>
+  );
+}
+
 export function TabBar() {
   const tab = useStore((s) => s.tab);
   const job = useStore((s) => s.job);
@@ -217,6 +240,12 @@ export function TabBar() {
   const exportEnabled = useStore(canExport);
   const exportLabel = useStore(outputKind) === 'gcode.3mf' ? 'Export plate sliced file' : 'Export G-code file';
   const hasPrinters = useStore((s) => s.printers.length > 0);
+  const plates = useStore((s) => s.projectPlates.length > 1);
+  const [sliceMode, setSliceMode] = useState('Slice plate');
+  const [exportMode, setExportMode] = useState('plate');
+  const allSlice = plates && sliceMode === 'Slice all';
+  const allExport = plates && exportMode === 'all';
+  const exportAllEnabled = useStore((s) => s.projectPlates.length > 1 && !busy && exportablePlates(s).length > 0);
   return (
     <div className="tabbar">
       <div className="tabbar-tabs">
@@ -230,12 +259,23 @@ export function TabBar() {
         </button>
       </div>
       <div className="tabbar-actions">
-        <button className="side-btn" disabled={!hasObjects || busy || !!outside} title={outside ?? (hasObjects ? 'Slice the plate into a printable file and show it in Preview' : 'Add a model to the plate first')} onClick={() => void slice()}>
-          Slice plate
-        </button>
-        <button className="side-btn" disabled={!exportEnabled} onClick={download} title={job.stale ? STALE_RESULT_TIP : outside ?? (exportEnabled ? fileUse() : 'Slice the plate first')}>
-          {exportLabel}
-        </button>
+        {allSlice ? (
+          <button className="side-btn side-split" disabled={busy} title="Slice all plates" onClick={() => void sliceAll()}>Slice all</button>
+        ) : (
+          <button className={`side-btn ${plates ? 'side-split' : ''}`} disabled={!hasObjects || busy || !!outside} title={outside ?? (hasObjects ? 'Slice the plate into a printable file and show it in Preview' : 'Add a model to the plate first')} onClick={() => void slice()}>
+            Slice plate
+          </button>
+        )}
+        {plates && <SideOptions options={['Slice all', 'Slice plate']} value={sliceMode} onChange={setSliceMode} />}
+        {allExport ? (
+          <button className="side-btn side-split" disabled={!exportAllEnabled} onClick={() => void exportAll()} title={exportAllEnabled ? 'Export all sliced plates' : 'Slice the plates first'}>Export all sliced file</button>
+        ) : (
+          <button className={`side-btn ${plates ? 'side-split' : ''}`} disabled={!exportEnabled} onClick={download} title={job.stale ? STALE_RESULT_TIP : outside ?? (exportEnabled ? fileUse() : 'Slice the plate first')}>
+            {exportLabel}
+          </button>
+        )}
+        {plates && <SideOptions options={[exportLabel, 'Export all sliced file']} value={allExport ? 'Export all sliced file' : exportLabel}
+          onChange={(v) => setExportMode(v === 'Export all sliced file' ? 'all' : 'plate')} />}
         {hasPrinters && (
           <button className="side-btn" disabled={!exportEnabled} onClick={() => setState({ appDialog: 'send' })} title={exportEnabled ? 'Upload the sliced file to a printer' : 'Slice the plate first'}>
             Send

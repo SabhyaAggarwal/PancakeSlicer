@@ -2,7 +2,9 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { CameraViews } from './CameraViews';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
-import { getState, printerPreset, setState, subscribeStore, updateInstance, updateObject, updateVolume, useStore, type State, type VolumeType } from '../state/store';
+import { getState, printerPreset, setPaint, setState, subscribeStore, updateInstance, updateObject, updateVolume, useStore, type State, type VolumeType } from '../state/store';
+import { PaintView, meshScale } from './paintView';
+import { brush, fill as fillPaint, isPaint, paintOf, paintTool, PAINT_STEP, RADIUS, setPaintTool, subscribePaintTool, type Painting } from './paint';
 import { beginStep } from '../state/history';
 import { filamentColor } from './filamentColor';
 import { bedKey as bedCacheKey, buildBed, sceneColors } from './Bed';
@@ -368,7 +370,7 @@ export default function Plater3D() {
       const o = s.objects.find((ob) => ob.id === s.selected?.object);
       const i = o?.instances.find((ii) => ii.id === s.selected?.instance);
       const v = o?.volumes?.find((vv) => vv.id === s.selected?.volume);
-      if (!o || !i || s.gizmo === 'none' || s.gizmo === 'flatten' || s.gizmo === 'measure' || s.selected?.all || o.project?.placeholder) {
+      if (!o || !i || s.gizmo === 'none' || s.gizmo === 'flatten' || s.gizmo === 'measure' || isPaint(s.gizmo) || s.gizmo === 'layers' || s.selected?.all || o.project?.placeholder) {
         tc.detach();
         return;
       }
@@ -578,6 +580,93 @@ export default function Plater3D() {
       ev.preventDefault();
     };
     renderer.domElement.addEventListener('pointerdown', onMeasureDown, { capture: true });
+
+    const paintView = new PaintView();
+    scene.add(paintView.group);
+    let stroke: { object: number; instance: number; kind: 'support' | 'seam' | 'fuzzy'; state: 0 | 1 | 2; paint: Painting | null; pointer: number; at: { clientX: number; clientY: number }; world: THREE.Vector3 | null } | null = null;
+    const paintAt = (hit: Hit, view: THREE.Vector3) => {
+      const s = getState();
+      const o = s.objects.find((ob) => ob.id === stroke!.object);
+      const inst = o?.instances.find((i) => i.id === stroke!.instance);
+      if (!o || !inst || hit.tri === undefined || !hit.local) return;
+      const { tool, radius, angle } = paintTool();
+      stroke!.paint = tool === 'fill' ? fillPaint(o.geometry, stroke!.paint, hit.tri, angle, stroke!.state)
+        : brush(o.geometry, stroke!.paint, hit.tri, hit.local, radius / meshScale(o, inst), tool, view, stroke!.state);
+      paintView.sync(s, stroke!.paint);
+      render();
+    };
+    const viewDir = (mesh: THREE.Object3D) => ray.ray.direction.clone().transformDirection(mesh.matrixWorld.clone().invert());
+    const onPaintDown = (ev: PointerEvent) => {
+      const s = getState();
+      if (!isPaint(s.gizmo) || (ev.button !== 0 && ev.button !== 2) || touches.size > 1) return;
+      const state = ev.button === 2 ? 2 : ev.shiftKey ? 0 : 1;
+      const hit = pick(ev);
+      const id = hit?.object.userData as { object: number; instance: number } | undefined;
+      if (!hit || !id) return;
+      ev.stopImmediatePropagation();
+      ev.preventDefault();
+      if (id.object !== s.selected?.object || s.gizmo === 'fuzzy' && state === 2) return;
+      const o = s.objects.find((ob) => ob.id === id.object)!;
+      stroke = { object: id.object, instance: id.instance, kind: s.gizmo, state, paint: paintOf(o, s.gizmo), pointer: ev.pointerId, at: { clientX: ev.clientX, clientY: ev.clientY }, world: null };
+      controls.enabled = false;
+      renderer.domElement.setPointerCapture(ev.pointerId);
+      paintAt(hit, viewDir(hit.object));
+      if (stroke && hit.local) stroke.world = hit.local.clone().applyMatrix4(hit.object.matrixWorld);
+    };
+    const onPaintMove = (ev: PointerEvent) => {
+      const s = getState();
+      if (!isPaint(s.gizmo)) return;
+      const hit = pick(ev);
+      const id = hit?.object.userData as { object: number; instance: number } | undefined;
+      const onSelected = !!hit && id?.object === s.selected?.object && !!hit.local;
+      if (onSelected && hit!.tri !== undefined) {
+        const mesh = hit!.object as THREE.Mesh, o = s.objects.find((ob) => ob.id === id!.object)!;
+        const g = o.geometry, idx = g.index, p = g.attributes.position;
+        const c = (k: number) => new THREE.Vector3().fromBufferAttribute(p, idx ? idx.getX(3 * hit!.tri! + k) : 3 * hit!.tri! + k).applyMatrix4(mesh.matrixWorld);
+        const a = c(0), b = c(1), d = c(2);
+        const normal = d.sub(b).cross(a.clone().sub(b)).normalize();
+        paintView.showCursor(hit!.local!.clone().applyMatrix4(mesh.matrixWorld), normal, paintTool().tool === 'fill' ? 0 : paintTool().radius);
+      } else paintView.showCursor(null);
+      if (stroke && ev.pointerId === stroke.pointer) {
+        ev.stopImmediatePropagation();
+        const from = stroke.at, to = { clientX: ev.clientX, clientY: ev.clientY };
+        const end = onSelected && id!.instance === stroke.instance ? hit!.local!.clone().applyMatrix4(hit!.object.matrixWorld) : null;
+        const steps = paintTool().tool !== 'fill' && end && stroke.world ? Math.min(64, Math.ceil(end.distanceTo(stroke.world) / (paintTool().radius / 2))) : 1;
+        for (let k = 1; k <= steps; k++) {
+          const at = k === steps ? to : { clientX: from.clientX + (to.clientX - from.clientX) * k / steps, clientY: from.clientY + (to.clientY - from.clientY) * k / steps };
+          const h = k === steps ? hit : pick(at);
+          const hid = h?.object.userData as { object: number; instance: number } | undefined;
+          if (h?.local && hid?.object === stroke.object && hid.instance === stroke.instance) paintAt(h, viewDir(h.object));
+        }
+        stroke.at = to;
+        stroke.world = end;
+      }
+      render();
+    };
+    const onPaintUp = (ev: PointerEvent) => {
+      if (!stroke || ev.pointerId !== stroke.pointer) return;
+      ev.stopImmediatePropagation();
+      const { object, kind, paint } = stroke;
+      stroke = null;
+      controls.enabled = true;
+      const o = getState().objects.find((ob) => ob.id === object);
+      if (o && paint !== paintOf(o, kind)) setPaint(object, kind, paint, PAINT_STEP[kind]);
+      else paintView.sync(getState());
+    };
+    const onPaintWheel = (ev: WheelEvent) => {
+      if (!isPaint(getState().gizmo) || !(ev.ctrlKey || ev.metaKey)) return;
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      const t = paintTool(), up = ev.deltaY < 0;
+      if (t.tool === 'fill') setPaintTool({ angle: t.angle + (up ? 5 : -5) });
+      else setPaintTool({ radius: t.radius + (up ? RADIUS.step : -RADIUS.step) });
+    };
+    renderer.domElement.addEventListener('pointerdown', onPaintDown, { capture: true });
+    renderer.domElement.addEventListener('pointermove', onPaintMove, { capture: true });
+    renderer.domElement.addEventListener('pointerup', onPaintUp, { capture: true });
+    renderer.domElement.addEventListener('pointercancel', onPaintUp, { capture: true });
+    renderer.domElement.addEventListener('wheel', onPaintWheel, { capture: true, passive: false });
+    const unsubPaintTool = subscribePaintTool(render);
     renderer.domElement.addEventListener('pointerdown', onDown);
     renderer.domElement.addEventListener('pointermove', onMove);
     renderer.domElement.addEventListener('pointerup', onUp);
@@ -750,6 +839,8 @@ export default function Plater3D() {
       last = s;
       syncBed(s);
       syncObjects(s);
+      paintView.sync(s);
+      if (!isPaint(s.gizmo)) paintView.showCursor(null);
     };
     (window as unknown as { __plater: unknown }).__plater = { scene, get camera() { return views.camera; }, controls, tc, renderer, meshes, frames, hoverMs, hovered: () => hovered, flattenPlanes: () => flattenScene.children, measure: measureState, pick, render, getState, setState };
     const unsub = subscribeStore(sync);
@@ -765,6 +856,7 @@ export default function Plater3D() {
 
     return () => {
       unsub();
+      unsubPaintTool();
       unsubTheme();
       unsubPreview();
       unwatchRatio();

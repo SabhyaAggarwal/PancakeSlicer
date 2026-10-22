@@ -5,6 +5,16 @@ import { canEditProject } from '../api/client';
 import { changeVolumeType, deleteAll, deleteVolume, getState, removeSelected, setState, togglePrintable, updateVolume, useStore, VOLUME_ORDER } from '../state/store';
 import { addPrimitive, loadVolume, SHAPES, TYPE_LABEL, VOLUME_MENU } from '../plater/volumes';
 import { menuKeys } from '../keys';
+import { canAddPlate, deletePlate, renamePlate } from '../plater/plates';
+import { promptDialog } from './Ask';
+
+async function editPlateName() {
+  const s = getState();
+  const plate = s.projectPlates.find((p) => p.index === s.plateIndex);
+  if (!plate) return;
+  const name = await promptDialog('Edit Plate Name', plate.name);
+  if (name !== null) renamePlate(plate.index, name);
+}
 
 const exportStl = (selection: boolean, multi = false) => import('../exportStl').then((m) => m.exportStl(selection, multi));
 
@@ -107,7 +117,11 @@ export default function ContextMenu() {
     'sep',
     { label: 'Select All', shortcut: 'Ctrl+A', action: selectAll, disabled: !s.objects.length, tip: 'Select all objects on the current plate' },
     { label: 'Delete All', shortcut: 'Ctrl+Del', action: deleteAll, disabled: !s.objects.length && !getState().projectPlates.length, tip: 'Delete all objects on the current plate' },
-    { label: 'Arrange', shortcut: 'A', action: arrangeAll, disabled: !s.objects.length },
+    { label: 'Arrange', action: () => arrangeAll(false), disabled: !s.objects.length, tip: 'Arrange current plate' },
+    ...(canAddPlate(s) && s.projectPlates.length > 1 ? [
+      { label: 'Delete Plate', action: () => deletePlate(), tip: 'Remove the selected plate' },
+      { label: 'Edit Plate Name', action: () => void editPlateName() },
+    ] : []),
   ];
   return (
     <div ref={ref} role="menu" className="menu-pop ctx-menu" style={{ left: Math.min(menu.x, window.innerWidth - 230), top: Math.min(menu.y, window.innerHeight - 24 * items.length - 16) }}

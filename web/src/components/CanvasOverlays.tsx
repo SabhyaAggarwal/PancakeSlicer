@@ -7,17 +7,16 @@ import { setCompareWanted } from '../compare';
 import { toggleNonplanarView, useNonplanarView, usePatchPreview, type PreviewFact } from '../patch-preview';
 import { applyRecommended, pendingRecommendations, plateResults, type PlateResult } from '../recommend';
 import { STYLE_NAMES } from '../style-names';
-import { getState, printerPreset, setState, updateInstance, updateObject, updateVolume, useStore, type Gizmo } from '../state/store';
+import { getState, printerPreset, setPaint, setState, updateInstance, updateObject, updateVolume, useStore, type Gizmo } from '../state/store';
 import { instanceMatrix, volumeBox } from '../plater/geometry';
 import { Icon, IconButton } from './Icon';
 import { canPerformCut, cutBlocked, initialCut, performCut, setCut, toggleCut } from '../plater/cut';
 import { InTopLayer } from './Modal';
+import { addPlate, canAddPlate } from '../plater/plates';
+import { ANGLE, RADIUS, canPaint, isPaint, paintOf, PAINT_STEP, paintTool, setPaintTool, subscribePaintTool, togglePaint, type BrushTool, type PaintKind } from '../plater/paint';
+import { canEditLayers } from './LayerHeight';
 
 const LATER_GIZMOS: [icon: string, tooltip: string][] = [
-  ['toolbar_meshboolean', 'Mesh Boolean (B)'],
-  ['toolbar_support', 'Support Painting (L)'],
-  ['toolbar_seam', 'Seam painting (P)'],
-  ['toolbar_fuzzy_skin_paint', 'Paint-on fuzzy skin (H)'],
   ['mmu_segmentation', 'Color Painting (N)'],
   ['toolbar_texture_displacement', 'Texture displacement'],
   ['toolbar_text', 'Emboss (T)'],
@@ -26,9 +25,16 @@ const LATER_GIZMOS: [icon: string, tooltip: string][] = [
   ['toolbar_brimears', 'Brim Ears (E)'],
 ];
 
+const PAINT_GIZMOS: [PaintKind, string, string][] = [
+  ['support', 'toolbar_support', 'Support Painting (L)'],
+  ['seam', 'toolbar_seam', 'Seam painting (P)'],
+  ['fuzzy', 'toolbar_fuzzy_skin_paint', 'Paint-on fuzzy skin (H)'],
+];
+
 export function CanvasToolbar() {
   const gizmo = useStore((s) => s.gizmo);
   const hasObjects = useStore((s) => s.objects.length > 0);
+  const meshPlates = useStore(canAddPlate);
   const sel = useStore((s) => s.selected);
   const instances = useStore((s) => s.objects.find((o) => o.id === s.selected?.object)?.instances.length ?? 0);
   const project = useStore((s) => !!s.project);
@@ -37,20 +43,22 @@ export function CanvasToolbar() {
   const placeholder = useStore((s) => s.objects.find((o) => o.id === s.selected?.object)?.project?.placeholder);
   const edit = !!sel && !placeholder && !sel.all;
   const cutBlock = useStore(cutBlocked);
+  const paint = useStore(canPaint);
+  const layers = useStore(canEditLayers);
   const preview = !!usePatchPreview();
   const nonplanarView = useNonplanarView();
   return (
     <div className="canvas-toolbar">
       <IconButton size={24} icon="toolbar_open" title="Add (Ctrl+I)" onClick={openFileDialog} />
-      <IconButton size={24} icon="toolbar_add_plate" title="Add plate" disabled />
+      <IconButton size={24} icon="toolbar_add_plate" title="Add plate" onClick={addPlate} disabled={!meshPlates} />
       <IconButton size={24} icon="toolbar_orient" title={"Auto orient all/selected objects (Q)\nAuto orient all objects on current plate (Shift+Q)"} onClick={(e) => toolbarOperation('orient', e.shiftKey)} disabled={!hasObjects || project} />
-      <IconButton size={24} icon="toolbar_arrange" title={`Arrange all objects (A)\nArrange objects on selected plates (Shift+A)`} onClick={arrangeAll} disabled={!hasObjects} />
+      <IconButton size={24} icon="toolbar_arrange" title={`Arrange all objects (A)\nArrange objects on selected plates (Shift+A)`} onClick={(e) => arrangeAll(!e.shiftKey)} disabled={!hasObjects} />
       <span className="tb-sep" />
       <IconButton size={24} icon="instance_add" title={`Add instance (+)${locked}`} onClick={addInstance} disabled={!edit || project} />
       <IconButton size={24} icon="instance_remove" title={`Remove instance (-)${locked}`} onClick={removeInstance} disabled={instances < 2 || project} />
       <IconButton size={24} icon="split_objects" title="Split to objects" onClick={() => toolbarOperation('split')} disabled={!edit || project} />
       <IconButton size={24} icon="split_parts" title="Split to parts" disabled />
-      <IconButton size={24} icon="toolbar_variable_layer_height" title="Variable layer height" disabled />
+      <IconButton size={24} icon="toolbar_variable_layer_height" title="Variable layer height" active={gizmo === 'layers'} onClick={() => toggle('layers')} disabled={!layers && gizmo !== 'layers'} />
       <IconButton size={24} icon="toolbar_assemble" title="Assembly View" disabled />
       <span className="tb-sep" />
       <IconButton size={24} icon="toolbar_move" title="Move (M)" active={gizmo === 'move'} onClick={() => toggle('move')} disabled={!edit} />
@@ -59,6 +67,10 @@ export function CanvasToolbar() {
       <IconButton size={24} icon="toolbar_flatten" title="Lay on Face (F)" active={gizmo === 'flatten'} onClick={() => toggle('flatten')} disabled={!edit} />
       <IconButton size={24} icon="toolbar_cut" title={cutBlock ? `Cut (C) — ${cutBlock}` : 'Cut (C)'} active={gizmo === 'cut'} onClick={toggleCut} disabled={!!cutBlock && gizmo !== 'cut'} />
       <IconButton size={24} icon="toolbar_measure" title="Measure (U)" active={gizmo === 'measure'} onClick={() => toggle('measure')} disabled={!sel || !!placeholder} />
+      <IconButton size={24} icon="toolbar_meshboolean" title="Mesh Boolean (B)" disabled />
+      {PAINT_GIZMOS.map(([kind, icon, title]) => (
+        <IconButton key={kind} size={24} icon={icon} title={title} active={gizmo === kind} onClick={() => togglePaint(kind)} disabled={!paint && gizmo !== kind} />
+      ))}
       {LATER_GIZMOS.map(([icon, title]) => (
         <IconButton key={icon} size={24} icon={icon} title={title} disabled />
       ))}
@@ -94,7 +106,7 @@ export function ManipulationPanel() {
   const uniform = useStore((s) => s.uniformScale);
   const volumeId = useStore((s) => s.selected?.volume);
   const inst = o?.instances.find((i) => i.id === instId);
-  if (!o || !inst || gizmo === 'none' || gizmo === 'flatten' || gizmo === 'cut' || gizmo === 'measure' || o.project?.placeholder) return null;
+  if (!o || !inst || gizmo === 'none' || gizmo === 'flatten' || gizmo === 'cut' || gizmo === 'measure' || isPaint(gizmo) || gizmo === 'layers' || o.project?.placeholder) return null;
   const v = o.volumes?.find((vv) => vv.id === volumeId);
   if (v) {
     const box = volumeBox(o, inst, v);
@@ -391,6 +403,44 @@ export function CutPanel() {
         <span style={{ flex: 1 }} />
         <button className="btn primary" disabled={!can} onClick={() => void performCut()}>Perform cut</button>
         <button className="btn" onClick={() => setState({ gizmo: 'none', cut: null })}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+const PAINT_TOOLS: Record<PaintKind, [BrushTool, string, string][]> = {
+  support: [['circle', 'circle_paint', 'Circle'], ['sphere', 'toolbar_modifier_sphere', 'Sphere'], ['fill', 'fill_paint', 'Fill']],
+  seam: [['circle', 'circle_paint', 'Circle'], ['sphere', 'toolbar_modifier_sphere', 'Sphere']],
+  fuzzy: [['circle', 'circle_paint', 'Circle'], ['sphere', 'toolbar_modifier_sphere', 'Sphere'], ['fill', 'fill_paint', 'Fill']],
+};
+const PAINT_TITLE: Record<PaintKind, string> = { support: 'Support Painting', seam: 'Seam painting', fuzzy: 'Paint-on fuzzy skin' };
+
+export function PaintPanel() {
+  const kind = useStore((s) => (isPaint(s.gizmo) ? s.gizmo : null));
+  const object = useStore((s) => s.objects.find((o) => o.id === s.selected?.object));
+  const t = useSyncExternalStore(subscribePaintTool, paintTool);
+  if (!kind || !object) return null;
+  const tools = PAINT_TOOLS[kind];
+  const tool = tools.some(([id]) => id === t.tool) ? t.tool : 'circle';
+  const fill = tool === 'fill';
+  const tips = kind === 'fuzzy' ? 'Left mouse button: Add fuzzy skin\nShift + Left mouse button: Remove fuzzy skin'
+    : `Left mouse button: ${kind === 'seam' ? 'Enforce seam' : 'Enforce supports'}\nRight mouse button: ${kind === 'seam' ? 'Block seam' : 'Block supports'}\nShift + Left mouse button: Erase`;
+  return (
+    <div className="manip-panel">
+      <div className="manip-title" title={`${tips}\nCtrl + Mouse wheel: ${fill ? 'Smart fill angle' : 'Brush size'}`}>{PAINT_TITLE[kind]}</div>
+      <div className="manip-grid" style={{ gridTemplateColumns: 'auto auto auto' }}>
+        <span>Tool type</span>
+        <span style={{ display: 'flex', gap: 2, gridColumn: 'span 2' }}>
+          {tools.map(([id, icon, title]) => <IconButton key={id} icon={icon} title={title} size={20} active={tool === id} onClick={() => setPaintTool({ tool: id })} />)}
+        </span>
+        <span>{fill ? 'Smart fill angle' : 'Brush size'}</span>
+        <input type="range" min={fill ? ANGLE.min : RADIUS.min} max={fill ? ANGLE.max : RADIUS.max} step={fill ? ANGLE.step : RADIUS.step}
+          value={fill ? t.angle : t.radius} onChange={(e) => setPaintTool(fill ? { angle: Number(e.target.value) } : { radius: Number(e.target.value) })} />
+        <Num value={fill ? t.angle : t.radius} step={fill ? ANGLE.step : RADIUS.step} onCommit={(v) => setPaintTool(fill ? { angle: v } : { radius: v })} />
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+        <button className="btn" disabled={!paintOf(object, kind)} onClick={() => setPaint(object.id, kind, null, PAINT_STEP[kind])}>Erase all</button>
+        <button className="btn primary" onClick={() => setState({ gizmo: 'none' })}>Done</button>
       </div>
     </div>
   );

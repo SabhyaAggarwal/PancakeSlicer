@@ -32,6 +32,9 @@ type ToolFeatures struct {
 	Volumes        bool            `json:"volumes"`
 	PresetCompat   bool            `json:"preset_compat"`
 	OneShot        bool            `json:"oneshot"`
+	MeshPlates     bool            `json:"mesh_plates"`
+	Paint          bool            `json:"paint"`
+	LayerProfile   bool            `json:"layer_profile"`
 }
 
 type toolOption struct {
@@ -75,6 +78,9 @@ func probeUsage(c Config, f *ToolFeatures) {
 	f.SurfaceGrid = strings.Contains(usage, "--surface-grid")
 	f.Calib = strings.Contains(usage, "--calib-params")
 	f.Volumes = f.Cut
+	f.MeshPlates = strings.Contains(usage, `plate JSON objects take "plate"`)
+	f.Paint = strings.Contains(usage, `plate JSON objects and volumes take "paint"`)
+	f.LayerProfile = strings.Contains(usage, `plate JSON objects take "layer_height_profile"`)
 	if dump, err := toolDump(c, "--dump-presets", "Prusa"); err == nil {
 		f.PresetCompat = bytes.Contains(dump, []byte(`"compatible_printers_evaluated"`))
 	}

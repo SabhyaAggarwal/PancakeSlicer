@@ -130,6 +130,9 @@ select, input, textarea { font: inherit; color: var(--text); }
 .side-btn { background: var(--accent); color: #fff; border: 0; border-radius: 4px; height: 28px; padding: 0 18px; cursor: pointer; font-size: 13px; min-width: 120px; }
 .side-btn:hover:not(:disabled) { background: var(--accent-hover); }
 .side-btn:disabled { background: #6b7476; color: #c8cbcc; cursor: default; }
+.side-btn.side-split { border-radius: 4px 0 0 4px; }
+.side-options { position: relative; display: inline-flex; margin-left: -8px; }
+.side-btn.side-drop { min-width: 0; padding: 0 5px; border-left: 1px solid rgba(255, 255, 255, 0.4); border-radius: 0 4px 4px 0; display: inline-flex; align-items: center; }
 
 .main { flex: 1; display: flex; min-height: 0; }
 
@@ -220,6 +223,12 @@ select, input, textarea { font: inherit; color: var(--text); }
 .tb-sep { width: 1px; height: 22px; background: var(--line-d4); margin: 0 4px; }
 .manip-panel { position: absolute; top: 60px; left: 12px; background: var(--overlay-95); border-radius: 6px; box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15); padding: 8px 10px; font-size: 12px; }
 .manip-title { font-weight: 600; margin-bottom: 6px; }
+.manip-panel input[type='range'], .manip-panel input[type='checkbox'] { accent-color: var(--accent-text); }
+.layer-bar { position: absolute; top: 0; right: 0; height: 100%; z-index: 4; cursor: crosshair; touch-action: none; border-left: 1px solid var(--border); }
+.layer-bar-bg { fill: var(--bg); }
+.layer-bar-band { fill: var(--accent); opacity: 0.15; }
+.layer-bar-base { stroke: var(--border); stroke-width: 1; }
+.layer-bar-profile { fill: none; stroke: var(--accent); stroke-width: 2; }
 .manip-grid { display: grid; grid-template-columns: 70px repeat(3, 70px); gap: 4px 6px; align-items: center; }
 .manip-num { height: 22px; font-size: 12px; }
 .manip-ro { color: var(--disabled); text-align: center; }
@@ -452,6 +461,7 @@ label.side-btn { display: inline-flex; align-items: center; justify-content: cen
 .ol-menu { position: fixed; z-index: 200; min-width: 170px; }
 
 .plate-choice { position: absolute; left: 16px; top: 110px; display: flex; gap: 6px; max-width: calc(100% - 32px); overflow-x: auto; z-index: 5; }
+.plate-choice.in-preview { left: 340px; top: 12px; }
 .plate-choice button { padding: 7px 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text); white-space: nowrap; cursor: pointer; }
 .plate-choice button[aria-pressed="true"] { border-color: var(--accent-text); box-shadow: inset 0 -2px var(--accent-text); }
 

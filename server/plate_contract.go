@@ -15,19 +15,39 @@ import (
 	"time"
 )
 
-func validatePlatePlacement(raw []byte, saving, native bool) error {
+func validatePlatePlacement(raw []byte, saving, native, meshPlates bool) error {
 	type placement struct {
 		Printable *bool   `json:"printable"`
 		Z         float64 `json:"z"`
+		Plate     int     `json:"plate"`
 	}
 	var plate struct {
 		Objects []struct {
 			placement
 			Instances []placement `json:"instances"`
 		} `json:"objects"`
+		Plates []struct {
+			Index int `json:"index"`
+		} `json:"plates"`
 	}
 	if err := json.Unmarshal(raw, &plate); err != nil {
 		return err
+	}
+	plates := 1
+	for _, p := range plate.Plates {
+		plates = max(plates, p.Index)
+	}
+	for _, object := range plate.Objects {
+		plates = max(plates, object.Plate)
+		for _, p := range object.Instances {
+			plates = max(plates, p.Plate)
+		}
+	}
+	if plates > 1 && !meshPlates {
+		return fmt.Errorf("several plates require a tool with mesh plates")
+	}
+	if plates > 1 && !saving {
+		return fmt.Errorf("slice one plate at a time: send only its objects")
 	}
 	live := 0
 	for _, object := range plate.Objects {

@@ -5,7 +5,7 @@ import { canEditProject, canLoadStep, connect } from './api/client';
 import { normalizeConfig } from './config-values';
 import { OPTIONS, isHidden, loadTab } from './options';
 import { shortTime } from './preview/format';
-import { calibOverrides, jobFields, outputKind, overrides, plateSignature } from './slice-input';
+import { calibOverrides, firstLayer, jobFields, outputKind, overrides, plateSignature } from './slice-input';
 import { arrange, bakeStl, bedBounds, loadMesh, loadProject, nextFreeSpot, parsePoints, placeholderGeometry, plateJson, outsideBed } from './plater/geometry';
 import type { ProjectItem } from './plater/threemf';
 import { projectEdits } from './plater/projectTransforms';
@@ -14,6 +14,7 @@ import {
   DEFAULT_PRINTER, DEMO_MODELS, PRESET_META, effectiveConfig, getState, isCompatible, markStale, newId, presetEdits, printerPreset, resolvePreset, selectPrinter, setState, toast, type PlateObject,
 } from './state/store';
 import { historyDepth, leaveDocument, markSaved, newDocument, undoable } from './state/history';
+import { clearPlateJobs, currentPlates } from './plater/plates';
 
 const VENDORS = ['BBL', 'Prusa', 'Custom'];
 
@@ -263,6 +264,7 @@ export async function openProject(file: File) {
   const s = getState();
   if ((s.objects.length || s.projectPlates.some((p) => p.objects.length)) && !(await confirmDialog('Open Project', 'Opening a project replaces the objects on the plate. Continue?'))) return;
   leaveDocument();
+  clearPlateJobs();
   let objects: PlateObject[] = [];
   const patch = (i: number, f: (o: PlateObject) => PlateObject) => {
     const id = objects[i]?.id;
@@ -312,6 +314,7 @@ export async function newProject() {
   const s = getState();
   if ((s.objects.length || s.projectPlates.some((p) => p.objects.length)) && !(await confirmDialog('New Project', 'Start a new project? The objects on the plate are removed.'))) return;
   leaveDocument();
+  clearPlateJobs();
   setState((st) => ({ objects: [], selected: null, project: null, projectPlates: [], plateIndex: 1, projectName: null, projectMaterials: null, projectPresets: null, projectNotice: null, events: [], flush: { matrix: null, multiplier: null }, processScope: 'global', job: markStale(st.job) }));
   newDocument(true);
 }
@@ -333,8 +336,12 @@ export function openFileDialog() {
   input.click();
 }
 
-export function arrangeAll() {
-  undoable('Arrange', () => setState((s) => ({ objects: arrange(s.objects, bedArea()) })));
+export function arrangeAll(allPlates = true) {
+  const area = bedArea();
+  undoable('Arrange', () => setState((s) => ({
+    objects: arrange(s.objects, area),
+    ...(allPlates && !s.project ? { projectPlates: s.projectPlates.map((p) => (p.index === s.plateIndex || !p.objects.length ? p : { ...p, objects: arrange(p.objects, area) })) } : {}),
+  })));
 }
 
 export function addInstance() {
@@ -417,7 +424,14 @@ export async function jobRequest(s = getState(), saving = false): Promise<JobReq
     const blobs = await Promise.all(added.map((o) => bakeStl(o)));
     return { ...fields, files: [{ name: s.project.name, blob: s.project as Blob }, ...files.map((name, i) => ({ name, blob: blobs[i] }))] };
   }
-  const { plate, files } = await plateJson(s.objects);
+  if (saving && s.projectPlates.length > 1 && s.features.mesh_plates) {
+    const plates = currentPlates(s);
+    const { plate, files } = await plateJson(plates.flatMap((p) => p.objects), firstLayer(s));
+    plates.flatMap((p) => p.objects.map(() => p.index)).forEach((index, k) => { plate.objects[k].plate = index; });
+    plate.plates = plates.map((p) => ({ index: p.index, name: p.name, settings: Object.fromEntries(Object.entries(p.settings).map(([k, v]) => [k, String(v)])) }));
+    return { ...fields, plate, files };
+  }
+  const { plate, files } = await plateJson(s.objects, firstLayer(s));
   return { ...fields, plate, files };
 }
 
@@ -515,13 +529,12 @@ export function cancelSlice() {
   setState({ job: { state: 'canceled', pct: 0, stage: '' } });
 }
 
-export function exportFilename(): string {
-  const s = getState();
+export function exportFilename(s = getState()): string {
   const base = s.job.calib ?? (s.project?.name ?? s.objects[0]?.name)?.replace(/\.(stl|obj|3mf)$/i, '') ?? 'plate';
   const time = Number((s.job.status?.record as { text_summary?: Record<string, string> } | undefined)?.text_summary?.estimated_time_s);
   const firstTool = Math.max(0, Math.min(...s.objects.map((o) => o.extruder - 1)));
   const vars: Config = {
-    ...effectiveConfig(s, 'machine'), ...effectiveConfig(s, 'filament'), ...effectiveConfig(s, 'process'), ...overrides(),
+    ...effectiveConfig(s, 'machine'), ...effectiveConfig(s, 'filament'), ...effectiveConfig(s, 'process'), ...overrides(s),
     input_filename_base: base, initial_tool: firstTool, initial_extruder: firstTool,
     ...(Number.isFinite(time) ? { print_time: shortTime(time) } : {}),
   };
@@ -536,7 +549,7 @@ export function exportFilename(): string {
     return String(Array.isArray(v) ? v[0] : v);
   });
   const stem = !name || unknown ? base : name.replace(/\.gcode$/i, '').replace(/[<>:/\\|?*"]/g, '_');
-  return `${stem}.${outputKind()}`;
+  return `${stem}.${outputKind(s)}`;
 }
 
 export function canExport(s = getState()): boolean {

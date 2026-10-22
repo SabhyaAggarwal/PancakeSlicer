@@ -27,7 +27,7 @@ const ids = new WeakMap<object, number>();
 let lastId = 0;
 const idOf = (v: object) => ids.get(v) ?? (ids.set(v, ++lastId), lastId);
 const contents = (d: Doc) => JSON.stringify({ ...d, selected: null }, (_, v: unknown) =>
-  v && typeof v === 'object' && ('isBufferGeometry' in v || v instanceof Blob) ? `#${idOf(v)}` : v);
+  v && typeof v === 'object' && ('isBufferGeometry' in v || v instanceof Blob || v instanceof Map) ? `#${idOf(v)}` : v);
 
 const listeners = new Set<() => void>();
 let version = 0;

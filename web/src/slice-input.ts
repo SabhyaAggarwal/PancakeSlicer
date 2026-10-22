@@ -48,7 +48,7 @@ export function overrides(s = getState()): Config {
     if (!s.project || s.flush.matrix !== null) out.flush_volumes_matrix = matrix;
     if (!s.project || s.flush.multiplier !== null) out.flush_multiplier = [multiplier];
   }
-  if (s.projectPlates.length > 1) for (const key of ['wipe_tower_x', 'wipe_tower_y']) {
+  if (s.project && s.projectPlates.length > 1) for (const key of ['wipe_tower_x', 'wipe_tower_y']) {
     const value = out[key];
     if (Array.isArray(value) && value.length) out[key] = [Number(value[Math.min(s.plateIndex - 1, value.length - 1)])];
   }
@@ -76,7 +76,7 @@ export function jobFields(s: State, saving = false) {
     printer: sys('machine', s.printer),
     process: sys('process', s.process),
     filaments: s.filamentSlots.map((f) => sys('filament', f)),
-    ...(s.projectPlates.length > 1 ? { plate_index: s.plateIndex } : {}),
+    ...(s.project && s.projectPlates.length > 1 ? { plate_index: s.plateIndex } : {}),
     ...(s.project ? { project_instances: projectInstances(s) } : {}),
     ...(s.project && canEditProject() && projectEdits(s).edits.length ? { project_edits: projectEdits(s).edits } : {}),
     overrides: overrides(saving ? { ...s, projectPlates: [] } : s),
@@ -85,10 +85,12 @@ export function jobFields(s: State, saving = false) {
   };
 }
 
+export const firstLayer = (s: State) => Number(effectiveConfig(s, 'process').initial_layer_print_height) || 0.2;
+
 export function plateSignature(s: State): string {
   return JSON.stringify({
     ...jobFields(s),
-    plate: s.project ? undefined : plateDescription(s.objects),
+    plate: s.project ? undefined : plateDescription(s.objects, firstLayer(s)),
     files: s.project ? [fileId(s.project), ...projectEdits(s).added.map(meshSignature)] : s.objects.map(meshSignature),
   }, (key, value) => key === 'transform' && Array.isArray(value) ? value.map((v: number) => Math.round(v * 1e6) / 1e6)
     : value && typeof value === 'object' && !Array.isArray(value)

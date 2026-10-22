@@ -59,9 +59,13 @@ export interface PlateJson {
     name: string;
     extruder?: number;
     instances: { x: number; y: number; rot: number; z?: number; printable?: boolean }[];
+    plate?: number;
+    paint?: Record<string, Record<string, string>>;
+    layer_height_profile?: number[];
     settings?: Record<string, string>;
     volumes?: { file: string; type: string; name: string; extruder?: number; settings?: Record<string, string> }[];
   }[];
+  plates?: { index: number; name: string; settings: Record<string, string> }[];
 }
 
 export interface JobRequest {
