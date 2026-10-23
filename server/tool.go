@@ -154,7 +154,11 @@ func probeTool(c Config) (ToolFeatures, *cachedResponse) {
 		return ToolFeatures{}, fallback
 	}
 	configKinds = kinds
+	modes, _ := options["nonplanar_mode"]["enum_values"].([]any)
 	oneshot := false
+	for _, mode := range modes {
+		oneshot = oneshot || mode == "oneshot"
+	}
 	log.Printf("using native v1 tool contract (%d options)", len(options))
 	return ToolFeatures{DumpOptions: true, DumpPresets: true, Progress: true, MovesOut: true, ObjectSettings: true, OneShot: oneshot}, response
 }
