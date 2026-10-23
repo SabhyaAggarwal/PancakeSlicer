@@ -7,13 +7,13 @@ import { setCompareWanted } from '../compare';
 import { toggleNonplanarView, useNonplanarView, usePatchPreview, type PreviewFact } from '../patch-preview';
 import { applyRecommended, pendingRecommendations, plateResults, type PlateResult } from '../recommend';
 import { STYLE_NAMES } from '../style-names';
-import { getState, printerPreset, setPaint, setState, updateInstance, updateObject, updateVolume, useStore, type Gizmo } from '../state/store';
+import { effectiveConfig, getState, mapPaint, printerPreset, setState, updateInstance, updateObject, updateVolume, useStore, type Gizmo } from '../state/store';
 import { instanceMatrix, volumeBox } from '../plater/geometry';
 import { Icon, IconButton } from './Icon';
 import { canPerformCut, cutBlocked, initialCut, performCut, setCut, toggleCut } from '../plater/cut';
 import { InTopLayer } from './Modal';
 import { addPlate, canAddPlate } from '../plater/plates';
-import { ANGLE, RADIUS, canPaint, isPaint, paintOf, PAINT_STEP, paintTool, setPaintTool, subscribePaintTool, togglePaint, type BrushTool, type PaintKind } from '../plater/paint';
+import { ANGLE, GAP_AREA, RADIUS, canPaint, gapFill, isPaint, paintOf, PAINT_STEP, paintTool, setPaintTool, subscribePaintTool, togglePaint, type BrushTool, type PaintKind } from '../plater/paint';
 import { canEditLayers } from './LayerHeight';
 
 const LATER_GIZMOS: [icon: string, tooltip: string][] = [
@@ -409,7 +409,7 @@ export function CutPanel() {
 }
 
 const PAINT_TOOLS: Record<PaintKind, [BrushTool, string, string][]> = {
-  support: [['circle', 'circle_paint', 'Circle'], ['sphere', 'toolbar_modifier_sphere', 'Sphere'], ['fill', 'fill_paint', 'Fill']],
+  support: [['circle', 'circle_paint', 'Circle'], ['sphere', 'toolbar_modifier_sphere', 'Sphere'], ['fill', 'fill_paint', 'Fill'], ['gap', 'gap_fill', 'Gap Fill']],
   seam: [['circle', 'circle_paint', 'Circle'], ['sphere', 'toolbar_modifier_sphere', 'Sphere']],
   fuzzy: [['circle', 'circle_paint', 'Circle'], ['sphere', 'toolbar_modifier_sphere', 'Sphere'], ['fill', 'fill_paint', 'Fill']],
 };
@@ -419,10 +419,13 @@ export function PaintPanel() {
   const kind = useStore((s) => (isPaint(s.gizmo) ? s.gizmo : null));
   const object = useStore((s) => s.objects.find((o) => o.id === s.selected?.object));
   const t = useSyncExternalStore(subscribePaintTool, paintTool);
+  const threshold = useStore((s) => object && kind === 'support' ? Number({ ...effectiveConfig(s, 'process'), ...object.settings }.support_threshold_angle) || 0 : 0);
+  useEffect(() => { if (kind === 'support') setPaintTool({ highlight: threshold }); }, [kind, object?.id, threshold]);
   if (!kind || !object) return null;
   const tools = PAINT_TOOLS[kind];
   const tool = tools.some(([id]) => id === t.tool) ? t.tool : 'circle';
-  const fill = tool === 'fill';
+  const fill = tool === 'fill', gap = tool === 'gap';
+  const painted = !!paintOf(object, kind) || !!object.volumes?.some((v) => v.type === 'part' && paintOf(v, kind));
   const tips = kind === 'fuzzy' ? 'Left mouse button: Add fuzzy skin\nShift + Left mouse button: Remove fuzzy skin'
     : `Left mouse button: ${kind === 'seam' ? 'Enforce seam' : 'Enforce supports'}\nRight mouse button: ${kind === 'seam' ? 'Block seam' : 'Block supports'}\nShift + Left mouse button: Erase`;
   return (
@@ -433,13 +436,39 @@ export function PaintPanel() {
         <span style={{ display: 'flex', gap: 2, gridColumn: 'span 2' }}>
           {tools.map(([id, icon, title]) => <IconButton key={id} icon={icon} title={title} size={20} active={tool === id} onClick={() => setPaintTool({ tool: id })} />)}
         </span>
-        <span>{fill ? 'Smart fill angle' : 'Brush size'}</span>
-        <input type="range" min={fill ? ANGLE.min : RADIUS.min} max={fill ? ANGLE.max : RADIUS.max} step={fill ? ANGLE.step : RADIUS.step}
-          value={fill ? t.angle : t.radius} onChange={(e) => setPaintTool(fill ? { angle: Number(e.target.value) } : { radius: Number(e.target.value) })} />
-        <Num value={fill ? t.angle : t.radius} step={fill ? ANGLE.step : RADIUS.step} onCommit={(v) => setPaintTool(fill ? { angle: v } : { radius: v })} />
+        {gap ? (
+          <>
+            <span title="Triangle patch area threshold, triangle patch will be merged to neighbor if its area is less than threshold">Gap area</span>
+            <input type="range" min={GAP_AREA.min} max={GAP_AREA.max} step={GAP_AREA.step} value={t.gapArea} onChange={(e) => setPaintTool({ gapArea: Number(e.target.value) })} />
+            <Num value={t.gapArea} step={GAP_AREA.step} onCommit={(v) => setPaintTool({ gapArea: v })} />
+            <span />
+            <button className="btn" style={{ gridColumn: 'span 2', justifySelf: 'start' }} disabled={!(t.gapArea > 0) || !painted}
+              onClick={() => mapPaint(object.id, kind, PAINT_STEP[kind], (x, scale) => gapFill(x.geometry, paintOf(x, kind), t.gapArea / (scale * scale)))}>Apply</button>
+          </>
+        ) : (
+          <>
+            <span>{fill ? 'Smart fill angle' : 'Brush size'}</span>
+            <input type="range" min={fill ? ANGLE.min : RADIUS.min} max={fill ? ANGLE.max : RADIUS.max} step={fill ? ANGLE.step : RADIUS.step}
+              value={fill ? t.angle : t.radius} onChange={(e) => setPaintTool(fill ? { angle: Number(e.target.value) } : { radius: Number(e.target.value) })} />
+            <Num value={fill ? t.angle : t.radius} step={fill ? ANGLE.step : RADIUS.step} onCommit={(v) => setPaintTool(fill ? { angle: v } : { radius: v })} />
+          </>
+        )}
+        {kind === 'support' && !gap && (
+          <label className="select-row" style={{ gridColumn: '1 / -1' }} title={'Allows painting only on facets selected by: "Highlight overhangs"'}>
+            <input type="checkbox" checked={t.overhangsOnly} onChange={(e) => setPaintTool({ overhangsOnly: e.target.checked })} />On highlighted overhangs only
+          </label>
+        )}
+        {kind === 'support' && (
+          <>
+            <span style={{ gridColumn: '1 / -1' }} className="menu-sep" />
+            <span title={threshold ? `Auto support threshold angle: ${threshold}` : 'No auto support'}>Highlight overhangs</span>
+            <input type="range" min={0} max={90} step={1} value={t.highlight} title="Highlight faces according to overhang angle." onChange={(e) => setPaintTool({ highlight: Number(e.target.value) })} />
+            <Num value={t.highlight} step={1} onCommit={(v) => setPaintTool({ highlight: v })} />
+          </>
+        )}
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-        <button className="btn" disabled={!paintOf(object, kind)} onClick={() => setPaint(object.id, kind, null, PAINT_STEP[kind])}>Erase all</button>
+        <button className="btn" disabled={!painted} onClick={() => mapPaint(object.id, kind, PAINT_STEP[kind], () => null)}>Erase all</button>
         <button className="btn primary" onClick={() => setState({ gizmo: 'none' })}>Done</button>
       </div>
     </div>

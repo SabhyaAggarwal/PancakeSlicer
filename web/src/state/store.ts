@@ -29,6 +29,7 @@ export interface Volume {
   matrix: number[];
   extruder: number;
   settings: Config;
+  paint?: Partial<Record<PaintKind, Painting>>;
 }
 
 export interface PlateObject {
@@ -377,9 +378,26 @@ function editName(patch: object): string {
     : k.includes('extruder') ? 'Change Filament' : k.includes('name') ? 'Rename' : 'Edit object';
 }
 
-export function setPaint(id: number, kind: PaintKind, paint: Painting | null, name: string) {
+export function setPaint(id: number, kind: PaintKind, paint: Painting | null, name: string, volume?: number) {
+  const painted = <T extends { paint?: Partial<Record<PaintKind, Painting>> }>(x: T): T => ({ ...x, paint: { ...x.paint, [kind]: paint ?? undefined } });
   undoable(name, () => setState((s) => ({
-    objects: s.objects.map((o) => (o.id === id ? { ...o, paint: { ...o.paint, [kind]: paint ?? undefined } } : o)),
+    objects: s.objects.map((o) => (o.id !== id ? o : volume === undefined ? painted(o)
+      : { ...o, volumes: o.volumes?.map((v) => (v.id === volume ? painted(v) : v)) })),
+    job: markStale(s.job),
+  })));
+}
+
+export function mapPaint(id: number, kind: PaintKind, name: string, f: (target: { geometry: THREE.BufferGeometry; paint?: Partial<Record<PaintKind, Painting>> }, scale: number) => Painting | null) {
+  undoable(name, () => setState((s) => ({
+    objects: s.objects.map((o) => {
+      if (o.id !== id) return o;
+      const scale = new THREE.Matrix4().compose(new THREE.Vector3(), new THREE.Quaternion(), new THREE.Vector3(...o.scale)).getMaxScaleOnAxis();
+      const next = <T extends { geometry: THREE.BufferGeometry; paint?: Partial<Record<PaintKind, Painting>> }>(x: T): T => {
+        const p = f(x, scale);
+        return p === (x.paint?.[kind] ?? null) ? x : { ...x, paint: { ...x.paint, [kind]: p ?? undefined } };
+      };
+      return { ...next(o), volumes: o.volumes?.map((v) => (v.type === 'part' ? next(v) : v)) };
+    }),
     job: markStale(s.job),
   })));
 }

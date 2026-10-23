@@ -270,6 +270,7 @@ export function plateDescription(objects: PlateObject[], firstLayer = 0.2): Plat
         file: file.replace(/\.stl$/, `.v${k + 1}.stl`),
         type: v.type,
         name: v.name,
+        ...(v.type === 'part' && paintJson(v) ? { paint: paintJson(v) } : {}),
         ...(v.extruder ? { extruder: v.extruder } : {}),
         ...(Object.keys(v.settings).length ? { settings: settings(v.settings) } : {}),
       })) } : {}),

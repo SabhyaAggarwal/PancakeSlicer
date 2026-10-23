@@ -63,7 +63,7 @@ export interface PlateJson {
     paint?: Record<string, Record<string, string>>;
     layer_height_profile?: number[];
     settings?: Record<string, string>;
-    volumes?: { file: string; type: string; name: string; extruder?: number; settings?: Record<string, string> }[];
+    volumes?: { file: string; type: string; name: string; extruder?: number; settings?: Record<string, string>; paint?: Record<string, Record<string, string>> }[];
   }[];
   plates?: { index: number; name: string; settings: Record<string, string> }[];
 }

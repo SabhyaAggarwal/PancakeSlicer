@@ -1,13 +1,18 @@
 import * as THREE from 'three';
-import { instanceMatrix } from './geometry';
-import { isPaint, overlayGeometry, paintOf, type Painting } from './paint';
+import { instanceMatrix, volumeWorld } from './geometry';
+import { gapFill, isPaint, overhangFacets, overhangGeometry, overlayGeometry, paintOf, paintTool, type Paintable, type Painting } from './paint';
 import type { PlateObject, State } from '../state/store';
+
+const LIGHT_RED = 0xc70000;
 
 export class PaintView {
   readonly group = new THREE.Group();
-  private readonly overlays = new Map<number, THREE.Mesh>();
+  private readonly meshes = new Map<string, THREE.Mesh>();
   private readonly material = new THREE.MeshBasicMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 });
+  private readonly overhang = new THREE.MeshBasicMaterial({ color: LIGHT_RED, transparent: true, opacity: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
   private readonly cursor = new THREE.Mesh(new THREE.RingGeometry(0.92, 1, 48), new THREE.MeshBasicMaterial({ color: 0x009688, side: THREE.DoubleSide, depthTest: false, transparent: true }));
+  private readonly overhangCache = new Map<string, THREE.BufferGeometry>();
+  private readonly gapCache = new WeakMap<Painting, Map<number, Painting | null>>();
 
   constructor() {
     this.cursor.visible = false;
@@ -15,32 +20,57 @@ export class PaintView {
     this.group.add(this.cursor);
   }
 
-  sync(s: State, preview?: Painting | null) {
-    const o = isPaint(s.gizmo) ? s.objects.find((ob) => ob.id === s.selected?.object) : undefined;
-    const paint = o && isPaint(s.gizmo) ? (preview !== undefined ? preview : paintOf(o, s.gizmo)) : null;
-    const seen = new Set<number>();
-    if (o && paint) {
-      const geometry = overlayGeometry(o.geometry, paint);
-      for (const inst of o.instances) {
-        seen.add(inst.id);
-        let mesh = this.overlays.get(inst.id);
-        if (!mesh) {
-          mesh = new THREE.Mesh(geometry, this.material);
-          mesh.matrixAutoUpdate = false;
-          this.overlays.set(inst.id, mesh);
-          this.group.add(mesh);
-        }
-        mesh.geometry = geometry;
-        mesh.matrix.copy(instanceMatrix(o, inst));
-        mesh.matrixWorldNeedsUpdate = true;
-      }
+  private put(key: string, geometry: THREE.BufferGeometry, material: THREE.Material, matrix: THREE.Matrix4, seen: Set<string>) {
+    seen.add(key);
+    let mesh = this.meshes.get(key);
+    if (!mesh) {
+      mesh = new THREE.Mesh(geometry, material);
+      mesh.matrixAutoUpdate = false;
+      this.meshes.set(key, mesh);
+      this.group.add(mesh);
     }
-    for (const [id, mesh] of this.overlays)
-      if (!seen.has(id)) { this.group.remove(mesh); this.overlays.delete(id); }
+    mesh.geometry = geometry;
+    mesh.matrix.copy(matrix);
+    mesh.matrixWorldNeedsUpdate = true;
+  }
+
+  private gapPreview(target: Paintable, paint: Painting | null, scale: number): Painting | null {
+    const t = paintTool();
+    if (t.tool !== 'gap' || !(t.gapArea > 0) || !paint) return paint;
+    let byArea = this.gapCache.get(paint);
+    if (!byArea) this.gapCache.set(paint, (byArea = new Map()));
+    if (!byArea.has(t.gapArea)) byArea.set(t.gapArea, gapFill(target.geometry, paint, t.gapArea / (scale * scale)));
+    return byArea.get(t.gapArea)!;
+  }
+
+  sync(s: State, preview?: { volume?: number; paint: Painting | null }) {
+    const kind = isPaint(s.gizmo) ? s.gizmo : null;
+    const o = kind ? s.objects.find((ob) => ob.id === s.selected?.object) : undefined;
+    const seen = new Set<string>();
+    if (o && kind) {
+      const targets: [string, Paintable, number | undefined][] = [['o', o, undefined], ...(o.volumes ?? []).filter((v) => v.type === 'part').map((v) => [`v${v.id}`, v, v.id] as [string, Paintable, number])];
+      for (const inst of o.instances)
+        for (const [id, target, volume] of targets) {
+          const matrix = volume === undefined ? instanceMatrix(o, inst) : volumeWorld(o, inst, o.volumes!.find((v) => v.id === volume)!);
+          const own = preview && preview.volume === volume ? preview.paint : paintOf(target, kind);
+          const paint = this.gapPreview(target, own, matrix.getMaxScaleOnAxis());
+          if (paint) this.put(`${inst.id}:${id}:paint`, overlayGeometry(target.geometry, paint), this.material, matrix, seen);
+          const deg = kind === 'support' ? paintTool().highlight : 0;
+          const normal = new THREE.Matrix3().getNormalMatrix(matrix);
+          const key = `${target.geometry.uuid}:${deg}:${normal.elements.map((e) => e.toFixed(4)).join()}`;
+          const allow = overhangFacets(target.geometry, normal, deg);
+          if (allow) {
+            if (!this.overhangCache.has(key)) this.overhangCache.set(key, overhangGeometry(target.geometry, allow));
+            this.put(`${inst.id}:${id}:overhang`, this.overhangCache.get(key)!, this.overhang, matrix, seen);
+          }
+        }
+    }
+    for (const [key, mesh] of this.meshes)
+      if (!seen.has(key)) { this.group.remove(mesh); this.meshes.delete(key); }
   }
 
   showCursor(point: THREE.Vector3 | null, normal?: THREE.Vector3, radius = 1) {
-    this.cursor.visible = !!point;
+    this.cursor.visible = !!point && radius > 0;
     if (!point || !normal) return;
     this.cursor.position.copy(point).addScaledVector(normal, 0.05);
     this.cursor.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);

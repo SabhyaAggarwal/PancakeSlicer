@@ -3,8 +3,8 @@ import * as THREE from 'three';
 import { CameraViews } from './CameraViews';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { getState, printerPreset, setPaint, setState, subscribeStore, updateInstance, updateObject, updateVolume, useStore, type State, type VolumeType } from '../state/store';
-import { PaintView, meshScale } from './paintView';
-import { brush, fill as fillPaint, isPaint, paintOf, paintTool, PAINT_STEP, RADIUS, setPaintTool, subscribePaintTool, type Painting } from './paint';
+import { PaintView } from './paintView';
+import { brush, fill as fillPaint, isPaint, overhangFacets, paintOf, paintTool, PAINT_STEP, RADIUS, setPaintTool, subscribePaintTool, type Painting } from './paint';
 import { beginStep } from '../state/history';
 import { filamentColor } from './filamentColor';
 import { bedKey as bedCacheKey, buildBed, sceneColors } from './Bed';
@@ -583,16 +583,35 @@ export default function Plater3D() {
 
     const paintView = new PaintView();
     scene.add(paintView.group);
-    let stroke: { object: number; instance: number; kind: 'support' | 'seam' | 'fuzzy'; state: 0 | 1 | 2; paint: Painting | null; pointer: number; at: { clientX: number; clientY: number }; world: THREE.Vector3 | null } | null = null;
-    const paintAt = (hit: Hit, view: THREE.Vector3) => {
+    let stroke: { object: number; instance: number; volume?: number; kind: 'support' | 'seam' | 'fuzzy'; state: 0 | 1 | 2; paint: Painting | null; pointer: number; at: { clientX: number; clientY: number }; world: THREE.Vector3 | null } | null = null;
+    type PaintHit = Hit & { volume?: number };
+    const paintTarget = (s: State, object: number, volume?: number) => {
+      const o = s.objects.find((ob) => ob.id === object);
+      return volume === undefined ? o : o?.volumes?.find((v) => v.id === volume && v.type === 'part');
+    };
+    const paintPick = (ev: { clientX: number; clientY: number }): PaintHit | undefined => {
       const s = getState();
-      const o = s.objects.find((ob) => ob.id === stroke!.object);
-      const inst = o?.instances.find((i) => i.id === stroke!.instance);
-      if (!o || !inst || hit.tri === undefined || !hit.local) return;
-      const { tool, radius, angle } = paintTool();
-      stroke!.paint = tool === 'fill' ? fillPaint(o.geometry, stroke!.paint, hit.tri, angle, stroke!.state)
-        : brush(o.geometry, stroke!.paint, hit.tri, hit.local, radius / meshScale(o, inst), tool, view, stroke!.state);
-      paintView.sync(s, stroke!.paint);
+      let best: PaintHit | undefined = pick(ev);
+      for (const mesh of volumeMeshes.values()) {
+        const ud = mesh.userData as { object: number; instance: number; volume: number };
+        if (ud.object !== s.selected?.object || !paintTarget(s, ud.object, ud.volume)) continue;
+        const h = ray.intersectObject(mesh, false)[0];
+        if (h && h.faceIndex != null && (!best || h.distance < best.distance))
+          best = { object: mesh, distance: h.distance, tri: h.faceIndex, local: mesh.worldToLocal(h.point.clone()), volume: ud.volume };
+      }
+      return best;
+    };
+    const paintAt = (hit: PaintHit, view: THREE.Vector3) => {
+      const s = getState();
+      const target = paintTarget(s, stroke!.object, stroke!.volume);
+      if (!target || hit.tri === undefined || !hit.local) return;
+      const t = paintTool();
+      const world = hit.object.matrixWorld;
+      const allow = (stroke!.kind === 'support' && t.overhangsOnly && overhangFacets(target.geometry, new THREE.Matrix3().getNormalMatrix(world), t.highlight)) || undefined;
+      stroke!.paint = t.tool === 'fill' ? fillPaint(target.geometry, stroke!.paint, hit.tri, t.angle, stroke!.state, allow)
+        : t.tool === 'gap' ? stroke!.paint
+        : brush(target.geometry, stroke!.paint, hit.tri, hit.local, t.radius / world.getMaxScaleOnAxis(), t.tool, view, stroke!.state, allow);
+      paintView.sync(s, { volume: stroke!.volume, paint: stroke!.paint });
       render();
     };
     const viewDir = (mesh: THREE.Object3D) => ray.ray.direction.clone().transformDirection(mesh.matrixWorld.clone().invert());
@@ -600,14 +619,14 @@ export default function Plater3D() {
       const s = getState();
       if (!isPaint(s.gizmo) || (ev.button !== 0 && ev.button !== 2) || touches.size > 1) return;
       const state = ev.button === 2 ? 2 : ev.shiftKey ? 0 : 1;
-      const hit = pick(ev);
+      const hit = paintPick(ev);
       const id = hit?.object.userData as { object: number; instance: number } | undefined;
       if (!hit || !id) return;
       ev.stopImmediatePropagation();
       ev.preventDefault();
-      if (id.object !== s.selected?.object || s.gizmo === 'fuzzy' && state === 2) return;
-      const o = s.objects.find((ob) => ob.id === id.object)!;
-      stroke = { object: id.object, instance: id.instance, kind: s.gizmo, state, paint: paintOf(o, s.gizmo), pointer: ev.pointerId, at: { clientX: ev.clientX, clientY: ev.clientY }, world: null };
+      if (id.object !== s.selected?.object || s.gizmo === 'fuzzy' && state === 2 || paintTool().tool === 'gap') return;
+      const target = paintTarget(s, id.object, hit.volume)!;
+      stroke = { object: id.object, instance: id.instance, volume: hit.volume, kind: s.gizmo, state, paint: paintOf(target, s.gizmo), pointer: ev.pointerId, at: { clientX: ev.clientX, clientY: ev.clientY }, world: null };
       controls.enabled = false;
       renderer.domElement.setPointerCapture(ev.pointerId);
       paintAt(hit, viewDir(hit.object));
@@ -616,27 +635,27 @@ export default function Plater3D() {
     const onPaintMove = (ev: PointerEvent) => {
       const s = getState();
       if (!isPaint(s.gizmo)) return;
-      const hit = pick(ev);
+      const hit = paintPick(ev);
       const id = hit?.object.userData as { object: number; instance: number } | undefined;
       const onSelected = !!hit && id?.object === s.selected?.object && !!hit.local;
       if (onSelected && hit!.tri !== undefined) {
-        const mesh = hit!.object as THREE.Mesh, o = s.objects.find((ob) => ob.id === id!.object)!;
-        const g = o.geometry, idx = g.index, p = g.attributes.position;
+        const mesh = hit!.object as THREE.Mesh, g = (paintTarget(s, id!.object, hit!.volume) ?? s.objects.find((ob) => ob.id === id!.object)!).geometry;
+        const idx = g.index, p = g.attributes.position;
         const c = (k: number) => new THREE.Vector3().fromBufferAttribute(p, idx ? idx.getX(3 * hit!.tri! + k) : 3 * hit!.tri! + k).applyMatrix4(mesh.matrixWorld);
         const a = c(0), b = c(1), d = c(2);
         const normal = d.sub(b).cross(a.clone().sub(b)).normalize();
-        paintView.showCursor(hit!.local!.clone().applyMatrix4(mesh.matrixWorld), normal, paintTool().tool === 'fill' ? 0 : paintTool().radius);
+        paintView.showCursor(hit!.local!.clone().applyMatrix4(mesh.matrixWorld), normal, paintTool().tool === 'fill' || paintTool().tool === 'gap' ? 0 : paintTool().radius);
       } else paintView.showCursor(null);
       if (stroke && ev.pointerId === stroke.pointer) {
         ev.stopImmediatePropagation();
         const from = stroke.at, to = { clientX: ev.clientX, clientY: ev.clientY };
-        const end = onSelected && id!.instance === stroke.instance ? hit!.local!.clone().applyMatrix4(hit!.object.matrixWorld) : null;
+        const end = onSelected && id!.instance === stroke.instance && hit!.volume === stroke.volume ? hit!.local!.clone().applyMatrix4(hit!.object.matrixWorld) : null;
         const steps = paintTool().tool !== 'fill' && end && stroke.world ? Math.min(64, Math.ceil(end.distanceTo(stroke.world) / (paintTool().radius / 2))) : 1;
         for (let k = 1; k <= steps; k++) {
           const at = k === steps ? to : { clientX: from.clientX + (to.clientX - from.clientX) * k / steps, clientY: from.clientY + (to.clientY - from.clientY) * k / steps };
-          const h = k === steps ? hit : pick(at);
+          const h = k === steps ? hit : paintPick(at);
           const hid = h?.object.userData as { object: number; instance: number } | undefined;
-          if (h?.local && hid?.object === stroke.object && hid.instance === stroke.instance) paintAt(h, viewDir(h.object));
+          if (h?.local && hid?.object === stroke.object && hid.instance === stroke.instance && h.volume === stroke.volume) paintAt(h, viewDir(h.object));
         }
         stroke.at = to;
         stroke.world = end;
@@ -646,11 +665,11 @@ export default function Plater3D() {
     const onPaintUp = (ev: PointerEvent) => {
       if (!stroke || ev.pointerId !== stroke.pointer) return;
       ev.stopImmediatePropagation();
-      const { object, kind, paint } = stroke;
+      const { object, volume, kind, paint } = stroke;
       stroke = null;
       controls.enabled = true;
-      const o = getState().objects.find((ob) => ob.id === object);
-      if (o && paint !== paintOf(o, kind)) setPaint(object, kind, paint, PAINT_STEP[kind]);
+      const target = paintTarget(getState(), object, volume);
+      if (target && paint !== paintOf(target, kind)) setPaint(object, kind, paint, PAINT_STEP[kind], volume);
       else paintView.sync(getState());
     };
     const onPaintWheel = (ev: WheelEvent) => {
@@ -666,7 +685,7 @@ export default function Plater3D() {
     renderer.domElement.addEventListener('pointerup', onPaintUp, { capture: true });
     renderer.domElement.addEventListener('pointercancel', onPaintUp, { capture: true });
     renderer.domElement.addEventListener('wheel', onPaintWheel, { capture: true, passive: false });
-    const unsubPaintTool = subscribePaintTool(render);
+    const unsubPaintTool = subscribePaintTool(() => { paintView.sync(getState()); render(); });
     renderer.domElement.addEventListener('pointerdown', onDown);
     renderer.domElement.addEventListener('pointermove', onMove);
     renderer.domElement.addEventListener('pointerup', onUp);

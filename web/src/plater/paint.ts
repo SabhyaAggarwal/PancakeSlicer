@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { setState, type PlateObject, type State } from '../state/store';
+import { setState, type State } from '../state/store';
 
 export type PaintKind = 'support' | 'seam' | 'fuzzy';
-export type BrushTool = 'circle' | 'sphere' | 'fill';
+export type BrushTool = 'circle' | 'sphere' | 'fill' | 'gap';
 export type PaintNode = number | PaintNode[];
 export type Painting = Map<number, PaintNode>;
 
@@ -20,7 +20,9 @@ const children = ([a, b, c]: Tri): Tri[] => {
   return [[a, ab, ca], [ab, b, bc], [bc, c, ca], [ab, bc, ca]];
 };
 
-export function paintOf(o: PlateObject, kind: PaintKind): Painting | null {
+export type Paintable = { geometry: THREE.BufferGeometry; paint?: Partial<Record<PaintKind, Painting>> };
+
+export function paintOf(o: Paintable, kind: PaintKind): Painting | null {
   const p = o.paint?.[kind];
   if (!p || !p.size) return null;
   const T = triangleCount(o.geometry);
@@ -132,21 +134,73 @@ function update(painting: Painting | null, tris: number[], paint: (node: PaintNo
     next ??= new Map(painting ?? []);
     if (after === 0) next.delete(t); else next.set(t, after);
   }
-  return next ?? painting;
+  return next ? (next.size ? next : null) : painting;
 }
 
 export function brush(g: THREE.BufferGeometry, painting: Painting | null, hit: number, point: THREE.Vector3, radius: number,
-  tool: 'circle' | 'sphere', view: THREE.Vector3, state: 0 | 1 | 2): Painting | null {
+  tool: 'circle' | 'sphere', view: THREE.Vector3, state: 0 | 1 | 2, allow: (t: number) => boolean = () => true): Painting | null {
   const cursor = new Cursor(point, radius, tool, view);
   const limit = radius / 3, limit2 = limit * limit;
   const tris = grow(g, hit, (t) => cursor.faces(normalOf(g, t)) && cursor.touches(vertices(g, t)));
-  return update(painting, tris.filter((t) => cursor.faces(normalOf(g, t))), (node, t) => brushNode(node, vertices(g, t), cursor, state, limit2, 0));
+  return update(painting, tris.filter((t) => cursor.faces(normalOf(g, t)) && allow(t)), (node, t) => brushNode(node, vertices(g, t), cursor, state, limit2, 0));
 }
 
-export function fill(g: THREE.BufferGeometry, painting: Painting | null, hit: number, angle: number, state: 0 | 1 | 2): Painting | null {
+export function overhangFacets(g: THREE.BufferGeometry, normalMatrix: THREE.Matrix3, deg: number): ((t: number) => boolean) | null {
+  if (!(deg > 0)) return null;
+  const nrm = faceNormals(g), limit = -Math.cos((deg * Math.PI) / 180), v = new THREE.Vector3();
+  return (t) => v.set(nrm[3 * t], nrm[3 * t + 1], nrm[3 * t + 2]).applyMatrix3(normalMatrix).normalize().z < limit;
+}
+
+export function overhangGeometry(g: THREE.BufferGeometry, allow: (t: number) => boolean): THREE.BufferGeometry {
+  const pos: number[] = [];
+  for (let t = 0, T = triangleCount(g); t < T; t++)
+    if (allow(t)) for (const v of vertices(g, t)) pos.push(v.x, v.y, v.z);
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  return out;
+}
+
+export function fill(g: THREE.BufferGeometry, painting: Painting | null, hit: number, angle: number, state: 0 | 1 | 2,
+  allow: (t: number) => boolean = () => true): Painting | null {
   const nrm = faceNormals(g), limit = Math.cos((angle * Math.PI) / 180) - 1e-9;
-  const tris = grow(g, hit, (t, from) => nrm[3 * t] * nrm[3 * from] + nrm[3 * t + 1] * nrm[3 * from + 1] + nrm[3 * t + 2] * nrm[3 * from + 2] >= limit);
+  if (!allow(hit)) return painting;
+  const tris = grow(g, hit, (t, from) => allow(t) && nrm[3 * t] * nrm[3 * from] + nrm[3 * t + 1] * nrm[3 * from + 1] + nrm[3 * t + 2] * nrm[3 * from + 2] >= limit);
   return update(painting, tris, () => state);
+}
+
+export function gapFill(g: THREE.BufferGeometry, painting: Painting | null, area: number): Painting | null {
+  if (!(area > 0)) return painting;
+  type Leaf = { t: number; path: number[]; tri: Tri; state: number };
+  const leaves: Leaf[] = [];
+  const walk = (node: PaintNode, tri: Tri, t: number, path: number[]) => {
+    if (Array.isArray(node)) children(tri).forEach((c, i) => walk(node[i], c, t, [...path, i]));
+    else leaves.push({ t, path, tri, state: node });
+  };
+  for (let t = 0, T = triangleCount(g); t < T; t++) walk(painting?.get(t) ?? 0, vertices(g, t), t, []);
+  const key = (v: THREE.Vector3) => `${Math.round(v.x * 1e4)},${Math.round(v.y * 1e4)},${Math.round(v.z * 1e4)}`;
+  const at = new Map<string, number[]>();
+  leaves.forEach((l, i) => l.tri.forEach((v) => { const k = key(v); const list = at.get(k); if (list) list.push(i); else at.set(k, [i]); }));
+  const parent = leaves.map((_, i) => i);
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  for (const list of at.values()) for (const j of list.slice(1)) if (leaves[j].state === leaves[list[0]].state) parent[find(j)] = find(list[0]);
+  const areaOf = new Map<number, number>();
+  leaves.forEach((l, i) => { const [a, b, c] = l.tri; const r = find(i); areaOf.set(r, (areaOf.get(r) ?? 0) + b.clone().sub(a).cross(c.clone().sub(a)).length() / 2); });
+  const next = new Map<number, number>();
+  leaves.forEach((l, i) => {
+    const r = find(i);
+    if (areaOf.get(r)! >= area) return;
+    for (const v of l.tri) for (const j of at.get(key(v))!) if (find(j) !== r) next.set(r, Math.min(next.get(r) ?? 3, leaves[j].state));
+  });
+  if (!next.size) return painting;
+  const roots = new Map<number, { path: number[]; state: number }[]>();
+  leaves.forEach((l, i) => { const s = next.get(find(i)); if (s !== undefined && s !== l.state) (roots.get(l.t) ?? roots.set(l.t, []).get(l.t)!).push({ path: l.path, state: s }); });
+  const set = (node: PaintNode, path: number[], state: number): PaintNode => {
+    if (!path.length) return state;
+    const kids = (node as PaintNode[]).slice();
+    kids[path[0]] = set(kids[path[0]], path.slice(1), state);
+    return kids.every((k) => k === kids[0] && typeof k === 'number') ? kids[0] : kids;
+  };
+  return update(painting, [...roots.keys()], (node, t) => roots.get(t)!.reduce((n, c) => set(n, c.path, c.state), node));
 }
 
 const overlayCache = new WeakMap<Painting, THREE.BufferGeometry>();
@@ -178,7 +232,7 @@ export function paintString(node: PaintNode): string {
   return nibbles.reverse().map((v) => v.toString(16).toUpperCase()).join('');
 }
 
-export function paintJson(o: PlateObject): Record<string, Record<string, string>> | undefined {
+export function paintJson(o: Paintable): Record<string, Record<string, string>> | undefined {
   const out: Record<string, Record<string, string>> = {};
   for (const kind of ['support', 'seam', 'fuzzy'] as const) {
     const painting = paintOf(o, kind);
@@ -197,16 +251,22 @@ export function paintJson(o: PlateObject): Record<string, Record<string, string>
   return Object.keys(out).length ? out : undefined;
 }
 
-export interface PaintTool { tool: BrushTool; radius: number; angle: number }
+export interface PaintTool {
+  tool: BrushTool; radius: number; angle: number;
+  gapArea: number; highlight: number; overhangsOnly: boolean;
+}
 export const RADIUS = { min: 0.4, max: 8, step: 0.2 } as const;
 export const ANGLE = { min: 0, max: 90, step: 5 } as const;
-let tool: PaintTool = { tool: 'circle', radius: 1, angle: 30 };
+export const GAP_AREA = { min: 0, max: 5, step: 0.05 } as const;
+let tool: PaintTool = { tool: 'circle', radius: 1, angle: 30, gapArea: 0, highlight: 0, overhangsOnly: false };
 const listeners = new Set<() => void>();
 export const paintTool = () => tool;
 export function setPaintTool(patch: Partial<PaintTool>) {
   tool = { ...tool, ...patch };
   tool.radius = Math.min(RADIUS.max, Math.max(RADIUS.min, Math.round(tool.radius * 100) / 100));
   tool.angle = Math.min(ANGLE.max, Math.max(ANGLE.min, tool.angle));
+  tool.gapArea = Math.min(GAP_AREA.max, Math.max(GAP_AREA.min, tool.gapArea));
+  tool.highlight = Math.min(90, Math.max(0, tool.highlight));
   listeners.forEach((l) => l());
 }
 export const subscribePaintTool = (l: () => void) => (listeners.add(l), () => void listeners.delete(l));
