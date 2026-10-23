@@ -360,6 +360,12 @@ bool leans(const ObjectiveMachine &m)
 
 namespace {
 
+bool organic_support(const PrintObjectConfig &oc)
+{
+    return oc.enable_support.value && is_tree(oc.support_type.value) &&
+           (oc.support_style.value == smsTreeOrganic || oc.support_style.value == smsDefault);
+}
+
 std::vector<double> mode_off_tops(const PrintObject &object)
 {
     const PrintConfig       &pc = object.print()->config();
@@ -368,7 +374,7 @@ std::vector<double> mode_off_tops(const PrintObject &object)
     const bool prime_tower = pc.enable_prime_tower.value && pc.filament_diameter.values.size() > 1;
     sp.surface_error = 0.;
     sp.overhang_reach = 0.;
-    if (!pc.spiral_mode.value && !prime_tower) {
+    if (!pc.spiral_mode.value && !prime_tower && !organic_support(oc)) {
         sp.road_width    = 1.05 * pc.nozzle_diameter.get_at(0);
         sp.surface_error = oc.adaptive_layer_height_error.value;
         if (oc.overhang_layer_contact.value > 0.)
@@ -408,6 +414,21 @@ std::vector<float> anchor_field(const ObjectiveGeometry &g, const std::vector<do
     return f;
 }
 
+ObjectiveWeights machine_weights(const PrintObject &object)
+{
+    ObjectiveWeights   w;
+    const std::string &model = object.print()->config().printer_model.value;
+    if (object.print()->config().nonplanar_kinematics.value != RotaryLayout::None)
+        return w;
+    if (model == "Bambu Lab A1 mini")
+        w.up *= 1.18, w.wall *= 0.70;
+    else if (model == "Prusa MINI" || model == "Prusa MINI IS")
+        w.up *= 1.25, w.wall *= 0.70;
+    else if (model == "Bambu Lab P1S")
+        w.up *= 1.23, w.wall *= 0.77;
+    return w;
+}
+
 }
 
 ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeometry &geom, double tilt_max)
@@ -419,28 +440,22 @@ ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeo
     ObjectiveMachine         m;
     m.h                  = oc.layer_height.value;
     m.first_layer        = pc.initial_layer_print_height.value;
-    const double preset_min = pc.min_layer_height.get_at(0), preset_max = pc.max_layer_height.get_at(0);
-    m.thickness_min = preset_min > 0. ? preset_min : 0.5 * m.h;
-    m.thickness_max = preset_max > 0. ? preset_max : 1.6 * m.h;
+    const SlicingParameters &sp = object.slicing_parameters();
+    m.thickness_min = sp.min_layer_height > 0. ? sp.min_layer_height : 0.5 * m.h;
+    m.thickness_max = sp.max_layer_height > 0. ? sp.max_layer_height : 1.6 * m.h;
+    if (organic_support(oc))
+        m.thickness_min = m.thickness_max = m.h;
+    m.thickness_min *= 0.999;
+    m.thickness_max *= 1.001;
     m.printable_overhang = rad(oc.multiplanar_overhang_threshold.value);
     const std::vector<double> tops = mode_off_tops(object);
     m.anchor = anchor_field(geom, tops, m.first_layer, m.h);
     for (size_t j = 1; j < tops.size(); ++j)
         m.thickness_min = std::min(m.thickness_min, tops[j] - tops[j - 1] - 1e-4);
-    auto planar_g = [&](size_t k) {
-        if (m.anchor.empty() || k + 1 >= geom.dims[2])
-            return 1.f;
-        const size_t c = geom.index(0, 0, k);
-        return float((double(m.anchor[c + 1]) - double(m.anchor[c])) / geom.spacing.z());
-    };
-    if (pc.nonplanar_kinematics.value == RotaryLayout::None) {
-        m.cap_g.assign(geom.dims[2], 0.f);
-        for (size_t k = 0; k < geom.dims[2]; ++k)
-            m.cap_g[k] = 0.99f * planar_g(k);
-    }
     {
         const int    threshold = oc.support_threshold_angle.value > 0 ? oc.support_threshold_angle.value : 30;
         const double cos_s = std::cos(double(threshold) * M_PI / 180.), band = 2. * m.h + geom.spacing.z();
+        m.support_cos      = cos_s;
         m.pinned_v.assign(geom.dims[2], std::numeric_limits<float>::quiet_NaN());
         for (size_t s = 0; s < geom.p.size(); ++s)
             if (-geom.n[s].z() >= cos_s) {
@@ -460,6 +475,13 @@ ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeo
     m.shell_speed    = 0.5 * (rc.outer_wall_speed.get_at(0) + rc.inner_wall_speed.get_at(0));
     m.sparse_speed   = rc.sparse_infill_speed.get_at(0);
     m.max_volumetric = pc.filament_max_volumetric_speed.get_at(0);
+    {
+        const bool   bbl     = object.print()->is_BBL_printer();
+        const double d_comb  = std::min(nozzle_diameter_for_filament(pc, rc.sparse_infill_filament_id.value, bbl),
+                                        nozzle_diameter_for_filament(pc, rc.internal_solid_filament_id.value, bbl));
+        const double max_comb = rc.infill_combination_max_layer_height.get_abs_value(d_comb);
+        m.infill_combine      = max_comb > 0. ? std::min(max_comb, d_comb) : d_comb;
+    }
     m.travel_speed   = pc.travel_speed.get_at(0);
     m.min_layer_time = pc.slow_down_layer_time.get_at(0);
     m.first_layer_speed = pc.initial_layer_speed.get_at(0);
@@ -472,7 +494,22 @@ ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeo
         TimeModel &c = m.time_curved;
         c.T = 0., c.c0 = 435.33, c.F_flatx = 0.031288, c.F_upp = 0.046025, c.F_shells_top = 1.3976, c.Ti = 10.461, c.layers = 4.3382,
         c.T_minlayer = 4.0079, c.T_unwind = 0.23456, c.cap = 1.05;
+    } else {
+        TimeModel &z = m.time_zonly;
+        const double a_default = oc.default_acceleration.get_at(0) > 0. ? oc.default_acceleration.get_at(0) : 5000.;
+        const double a_travel  = oc.travel_acceleration.get_at(0) > 0. ? oc.travel_acceleration.get_at(0) : a_default;
+        z.T = 0., z.c0 = 446.76, z.F_wallt = 1.0471, z.F_upt = 0.98145, z.Ti = 1.1251, z.Li = 0.3468 / m.sparse_speed,
+        z.F_seg = 4.5281 * m.sparse_speed / a_default, z.layers = 116.41 * m.travel_speed / a_travel, z.F_first = 0.846, z.cap = 1.10;
+        const std::string &model = pc.printer_model.value;
+        if (model == "Bambu Lab A1 mini")
+            z.cap = 1.10, m.support_cA = 0.1696, m.support_cH = 0.0155;
+        else if (model == "Prusa MINI" || model == "Prusa MINI IS")
+            z.cap = 1.11, m.support_cA = 0.2132, m.support_cH = 0.0260;
+        else if (model == "Bambu Lab P1S")
+            m.support_cA = 0.0923, m.support_cH = 0.0134;
     }
+    if (m.rotary)
+        m.support_cV = 0.0754, m.support_cS = 0.1563;
     m.road_factor = m.rotary ? 1.30 : 2.42;
     if (m.rotary) {
         m.b_rate       = rad(pc.rotary_max_speed.get_at(0));
@@ -566,6 +603,7 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
     const ObjectiveGeometry  g = objective_geometry(mesh, rc.wall_loops.value, rc.top_shell_layers.value, oc.line_width.get_abs_value(nozzle),
                                                     oc.layer_height.value);
     const ObjectiveMachine   m = objective_machine(object, g, tilt_max);
+    const ObjectiveWeights   W = machine_weights(object);
     ObjectiveParams          params;
     params.max_starts   = 3;
     params.lottery_keep = 1;
@@ -609,8 +647,9 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
     const int                threads = std::clamp(tbb::this_task_arena::max_concurrency(), 1, OneShotCpuThreads);
     const double             cpu_cap = OneShotCpuCap * threads;
     abort                         = OneShotAbortReason();
+    ObjectiveTerms given;
     try {
-        t = solve_objective(g, m, ObjectiveWeights(), params, f.phi,
+        t = solve_objective(g, m, W, params, f.phi,
                             [&cancel, t0, cpu0, cpu_cap]() {
                                 if (cancel)
                                     cancel();
@@ -621,12 +660,20 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
                             },
                             [&object](const std::string &line) {
                                 BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": " << line;
-                            });
+                            },
+                            &given);
+        if (!t.feasible()) {
+            abort.kind = OneShotAbort::Infeasible;
+            abort.what = Slic3r::format("H thickness/slope/head/bed/time %1%/%2%/%3%/%4%/%5%, time ratio %6$.3f vs cap %7$.3f; the start: "
+                                        "%8%/%9%/%10%/%11%/%12%, ratio %13$.3f",
+                                        t.H_thickness, t.H_slope, t.H_head, t.H_bed, t.H_time, t.T_ratio, t.T_cap, given.H_thickness,
+                                        given.H_slope, given.H_head, given.H_bed, given.H_time, given.T_ratio);
+        }
     } catch (const Aborted &a) {
         abort.kind = a.wall ? OneShotAbort::WallTime : OneShotAbort::CpuTime;
         abort.what = a.wall ? Slic3r::format("%1% s wall", OneShotWallGuard) : Slic3r::format("%1% CPU-s", cpu_cap);
         f.phi      = planar;
-        t          = evaluate_objective(g, m, ObjectiveWeights(), f.phi, true);
+        t          = evaluate_objective(g, m, W, f.phi, true);
         BOOST_LOG_TRIVIAL(warning) << "One-shot field " << object.model_object()->name << ": solve aborted at " << abort.what;
     }
     BoundingBoxf3 box;
@@ -640,15 +687,23 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
     f.proxy_version = ObjectiveVersion;
     f.terms.emplace_back("stat_oneshot_seconds", std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
     f.terms.emplace_back("stat_oneshot_aborted", double(int(abort.kind)));
+    f.terms.emplace_back("stat_anchor_ratio", given.T_ratio);
+    f.terms.emplace_back("stat_anchor_feasible", given.feasible() ? 1. : 0.);
+    f.terms.emplace_back("stat_anchor_H", double(given.H_thickness > 0) + 2. * (given.H_slope > 0) + 4. * (given.H_head > 0) +
+                                                8. * (given.H_bed > 0) + 16. * (given.H_time > 0));
     f.terms.emplace_back("stat_oneshot_cpu_seconds", cpu0 >= 0. ? process_cpu_seconds() - cpu0 : -1.);
     f.terms.emplace_back("stat_oneshot_cpu_threads", double(threads));
-    f.terms.emplace_back("stat_planar_support_s", planar_support_time(g, m));
+    f.terms.emplace_back("stat_planar_support_s", support_time(g, m));
     std::vector<float> flat(g.nodes());
     for (size_t i = 0; i < g.dims[0]; ++i)
         for (size_t j = 0; j < g.dims[1]; ++j)
             for (size_t k = 0; k < g.dims[2]; ++k)
                 flat[g.index(i, j, k)] = float(g.origin.z() + double(k) * g.spacing.z());
-    f.terms.emplace_back("stat_planar_time_s", evaluate_objective(g, m, ObjectiveWeights(), flat, false).T);
+    if (m.anchor.size() == g.nodes())
+        flat = m.anchor;
+    ObjectiveMachine m_planar = m;
+    m_planar.infill_combine   = 0.;
+    f.terms.emplace_back("stat_planar_time_s", evaluate_objective(g, m_planar, W, flat, false).T);
     if (const char *dir = std::getenv("NP_ONESHOT_DUMP"); dir != nullptr && *dir != 0) {
         const std::string stem = (boost::filesystem::path(dir) / object.model_object()->name).string();
         save_objective_geometry(stem + ".geom.npz", g);

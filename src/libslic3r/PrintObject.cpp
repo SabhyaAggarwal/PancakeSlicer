@@ -4289,7 +4289,8 @@ void PrintObject::combine_infill()
         const bool enable_combine_infill = region.config().infill_combination.value ||
                                            (this->config().nonplanar_mode.value == NonplanarMode::Auto &&
                                             m_print->config().nonplanar_kinematics.value == RotaryLayout::None &&
-                                            Nonplanar::infill_depth(region.config(), *this) == 0.);
+                                            Nonplanar::infill_depth(region.config(), *this) == 0.) ||
+                                           (Nonplanar::oneshot_requested(*this) && !this->oneshot_state().field_path());
         if (enable_combine_infill == false || region.config().sparse_infill_density == 0.)
             continue;
 

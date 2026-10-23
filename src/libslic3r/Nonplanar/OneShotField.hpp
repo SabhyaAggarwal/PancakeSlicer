@@ -47,7 +47,7 @@ ObjectiveGeometry objective_geometry(const indexed_triangle_set &mesh, int wall_
 
 ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeometry &geom, double tilt_max);
 
-enum class OneShotAbort { None, CpuTime, WallTime };
+enum class OneShotAbort { None, CpuTime, WallTime, Infeasible };
 struct OneShotAbortReason
 {
     OneShotAbort kind = OneShotAbort::None;

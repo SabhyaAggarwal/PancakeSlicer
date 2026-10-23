@@ -55,7 +55,8 @@ struct ObjectiveTerms;
 struct TimeModel
 {
     double c0 = 0., T = 1., F_wallp = 0., F_upp = 0., F_downp = 0., F_flatx = 0., F_shells_top = 0., Ti = 0., layers = 0.,
-           island_layers = 0., T_minlayer = 0., F_first = 0., T_axis = 0., T_unwind = 0., road_pieces = 0., hop_mm = 0.;
+           island_layers = 0., T_minlayer = 0., F_first = 0., T_axis = 0., T_unwind = 0., road_pieces = 0., hop_mm = 0.,
+           F_wallt = 0., F_upt = 0., Li = 0., F_seg = 0.;
     double cap = 1.15;
     double operator()(const ObjectiveTerms &t) const;
 };
@@ -66,7 +67,6 @@ struct ObjectiveMachine
     double thickness_min = 0.1, thickness_max = 0.32;
     std::vector<float> pinned_v;
     std::vector<float> anchor;
-    std::vector<float> cap_g;
     bool pinned(size_t k) const { return k < pinned_v.size() && !std::isnan(pinned_v[k]); }
     double printable_overhang = 45. * M_PI / 180.;
     bool   rotary = true;
@@ -74,6 +74,7 @@ struct ObjectiveMachine
     std::array<double, 24> slope_cap {};
     ObjectiveCover cover, cover_planar, cover_shells;
     double line_width = 0.4, infill_density = 0.15, shell_speed = 70., sparse_speed = 80., max_volumetric = 12.;
+    double infill_combine = 0.;
     double b_rate = 0.5, c_rate = 1.;
     bool   c_continuous = false;
     double road_factor = 1.;
@@ -82,6 +83,10 @@ struct ObjectiveMachine
     double plate_radius = 1e9;
     TimeModel time_zonly, time_curved;
     double    time_base_zonly = 0., time_base_curved = 0.;
+    double    time_support_zonly = 0.;
+    double    support_cA = -1., support_cH = -1.;
+    double    support_cV = -1., support_cS = -1.;
+    double    support_cos = 2.;
     double    first_layer_speed = 0., top_speed = 0.;
     int       top_shell_layers = 0;
     bool      shells = false;
@@ -101,6 +106,8 @@ struct ObjectiveTerms
     double T = 0., T_roads = 0., T_minlayer = 0., T_travel = 0., n_travel = 0., hop_mm = 0., island_layers = 0., road_pieces = 0., T_axis = 0., T_unwind = 0.,
            T_skin = 0., layers = 0., road_mm = 0.;
     double F_wallp = 0., F_upp = 0., F_downp = 0., F_flatx = 0., F_shells_top = 0., Ti = 0., F_first = 0., spread = 0., T_ratio = 0., T_cap = 0.;
+    double F_wallt = 0., F_upt = 0., Li = 0.;
+    double F_seg = 0.;
     int    H_thickness = 0, H_slope = 0, H_head = 0, H_head_probes = 0, H_bed = 0, H_time = 0;
     bool   feasible() const { return H_thickness == 0 && H_slope == 0 && H_head == 0 && H_bed == 0 && H_time == 0; }
     std::vector<std::pair<std::string, double>> named() const;
@@ -113,6 +120,7 @@ struct HeadPair
 };
 
 double planar_support_time(const ObjectiveGeometry &geom, const ObjectiveMachine &machine);
+double support_time(const ObjectiveGeometry &geom, const ObjectiveMachine &machine);
 
 ObjectiveTerms evaluate_objective(const ObjectiveGeometry &geom, const ObjectiveMachine &machine, const ObjectiveWeights &w,
                                   const std::vector<float> &phi, bool hard = true, std::vector<HeadPair> *pairs = nullptr);
@@ -143,6 +151,6 @@ struct ObjectiveParams
 
 ObjectiveTerms solve_objective(const ObjectiveGeometry &geom, const ObjectiveMachine &machine, const ObjectiveWeights &w,
                                const ObjectiveParams &params, std::vector<float> &phi, const std::function<void()> &cancel,
-                               const std::function<void(const std::string &)> &log);
+                               const std::function<void(const std::string &)> &log, ObjectiveTerms *given = nullptr);
 
 }

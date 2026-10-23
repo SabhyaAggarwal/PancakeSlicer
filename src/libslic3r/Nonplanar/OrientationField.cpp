@@ -499,8 +499,27 @@ struct OrientationFieldBuilder
         const Vec3d  size   = box.size();
         const double volume = std::max(1., (size.x() + 6.) * (size.y() + 6.) * (size.z() + 3.));
         double       pitch  = params.pitch > 0. ? params.pitch : std::clamp(std::cbrt(volume / 160000.), 0.6, 2.5);
-        if (params.given)
-            pitch = params.given->file().spacing.minCoeff();
+        if (params.given) {
+            static constexpr double MaxGivenNodes = 8e6;
+            auto grid_nodes = [&box](double p) {
+                const double m = 3. * p;
+                return (std::ceil((box.size().x() + 2. * m) / p) + 2.) * (std::ceil((box.size().y() + 2. * m) / p) + 2.) *
+                       (std::ceil((box.max.z() + m) / p) + 2.);
+            };
+            const Vec3d sp      = params.given->file().spacing;
+            std::array<double, 3> candidates { sp.x(), sp.y(), sp.z() };
+            std::sort(candidates.begin(), candidates.end());
+            const auto fit = std::find_if(candidates.begin(), candidates.end(), [&](double p) { return grid_nodes(p) <= MaxGivenNodes; });
+            if (fit == candidates.end())
+                throw Slic3r::SlicingError(Slic3r::format(_u8L("The layer field file's grid (%1% x %2% x %3% mm) is too fine for this part: "
+                                                               "%4$.0f million nodes at its coarsest spacing, more than %5$.0f million."),
+                                                          sp.x(), sp.y(), sp.z(), grid_nodes(candidates.back()) / 1e6, MaxGivenNodes / 1e6));
+            pitch = *fit;
+            if (fit != candidates.begin())
+                BOOST_LOG_TRIVIAL(warning) << "Layer field: the file's spacing " << sp.transpose() << " mm is sampled at " << pitch
+                                           << " mm on every axis (" << grid_nodes(candidates.front()) / 1e6 << " M nodes at "
+                                           << candidates.front() << " mm)";
+        }
         F.m_pitch           = pitch;
         const double margin = 3. * pitch;
         F.m_origin          = Vec3d(box.min.x() - margin, box.min.y() - margin, 0.);
@@ -1942,6 +1961,9 @@ void solve_oneshot(PrintObject &object)
         throw Slic3r::SlicingError(Slic3r::format(_u8L("One-shot field: %1% is too large for the solve (out of memory)."),
                                                   object.model_object()->name));
     }
+    if (abort.kind == OneShotAbort::Infeasible)
+        throw Slic3r::SlicingError(Slic3r::format(_u8L("One-shot field: the solve of %1% returned a field outside its own limits (%2%): a solver bug."),
+                                                  object.model_object()->name, abort.what));
     if (abort.kind != OneShotAbort::None)
         throw Slic3r::SlicingError(Slic3r::format(_u8L("One-shot field: the solve of %1% was stopped by its safety cap (%2%): a solver bug."),
                                                   object.model_object()->name, abort.what));
@@ -2561,6 +2583,9 @@ void build_field_patch(PrintObject &object, const std::shared_ptr<const Orientat
             }
     if (patch.shell_paths.empty())
         return;
+    for (size_t layer_id = 1; layer_id < object.layers().size(); ++layer_id)
+        if (Layer *layer = object.layers()[layer_id]; layer->print_z > cut + EPSILON)
+            layer->conformal_covered = true;
     patch.shells = int(patch.shell_paths.size());
     host->conformal_patches_after.push_back(patch.id);
     result.patches.push_back(std::move(patch));

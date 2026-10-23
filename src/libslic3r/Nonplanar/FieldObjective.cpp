@@ -1,5 +1,6 @@
 #include "FieldObjective.hpp"
 #include "Point.hpp"
+#include "libslic3r.h"
 #include "Nonplanar/HeadEnvelope.hpp"
 
 #include <Eigen/Core>
@@ -48,10 +49,9 @@ constexpr double PlanarTol = 1e-4;
 
 double e_ref(const ObjectiveMachine &m) { return m.h * std::sin(20. * M_PI / 180.) / std::sqrt(12.); }
 
-std::pair<double, double> grad_bounds(const ObjectiveMachine &m, size_t k)
+std::pair<double, double> grad_bounds(const ObjectiveMachine &m, size_t )
 {
-    const double lo = m.h / m.thickness_max;
-    return { k < m.cap_g.size() ? std::max(lo, double(m.cap_g[k])) : lo, m.h / m.thickness_min };
+    return { m.h / m.thickness_max, m.h / m.thickness_min };
 }
 
 struct Ijk
@@ -445,14 +445,16 @@ std::vector<std::pair<std::string, double>> ObjectiveTerms::named() const
              { "stat_H_head", double(H_head) },
              { "stat_H_bed", double(H_bed) },
              { "stat_H_time", double(H_time) }, { "stat_T_ratio", T_ratio }, { "stat_T_cap", T_cap }, { "stat_spread", spread },
-             { "stat_F_wallp", F_wallp }, { "stat_F_upp", F_upp }, { "stat_F_flatx", F_flatx }, { "stat_Ti", Ti }, { "stat_F_first", F_first } };
+             { "stat_F_wallp", F_wallp }, { "stat_F_upp", F_upp }, { "stat_F_flatx", F_flatx }, { "stat_Ti", Ti }, { "stat_F_first", F_first },
+             { "stat_F_wallt", F_wallt }, { "stat_F_upt", F_upt }, { "stat_Li", Li }, { "stat_F_seg", F_seg } };
 }
 
 double TimeModel::operator()(const ObjectiveTerms &t) const
 {
     return c0 + T * t.T + F_wallp * t.F_wallp + F_upp * t.F_upp + F_downp * t.F_downp + F_flatx * t.F_flatx + F_shells_top * t.F_shells_top +
            Ti * t.Ti + layers * t.layers + island_layers * t.island_layers + T_minlayer * t.T_minlayer + F_first * t.F_first +
-           T_axis * t.T_axis + T_unwind * t.T_unwind + road_pieces * t.road_pieces + hop_mm * t.hop_mm;
+           T_axis * t.T_axis + T_unwind * t.T_unwind + road_pieces * t.road_pieces + hop_mm * t.hop_mm + F_wallt * t.F_wallt +
+           F_upt * t.F_upt + Li * t.Li + F_seg * t.F_seg;
 }
 
 std::vector<HeadSamples> head_points(const HeadEnvelope &head, double pitch, double clip, double dilate)
@@ -531,7 +533,10 @@ std::vector<HeadSamples> head_points(const HeadEnvelope &head, double pitch, dou
     return out;
 }
 
-double planar_support_time(const ObjectiveGeometry &g, const ObjectiveMachine &m)
+
+namespace {
+
+double support_volume(const ObjectiveGeometry &g, const ObjectiveMachine &m)
 {
     const double sin_t = std::sin(m.printable_overhang);
     double       volume = 0.;
@@ -551,7 +556,43 @@ double planar_support_time(const ObjectiveGeometry &g, const ObjectiveMachine &m
         }
         volume += g.a[s] * std::abs(n.z()) * std::max(0., p.z() - top);
     }
-    return volume * 0.15 / (m.line_width * m.h * m.sparse_speed) * m.road_factor;
+    return volume;
+}
+
+double overhang_area(const ObjectiveGeometry &g, const ObjectiveMachine &m)
+{
+    const double sin_t = std::sin(m.printable_overhang);
+    double       area  = 0.;
+    for (size_t s = 0; s < g.p.size(); ++s)
+        if (-g.n[s].z() > sin_t)
+            area += g.a[s];
+    return area;
+}
+
+}
+
+double planar_support_time(const ObjectiveGeometry &g, const ObjectiveMachine &m)
+{
+    return support_volume(g, m) * 0.15 / (m.line_width * m.h * m.sparse_speed) * m.road_factor;
+}
+
+double support_time(const ObjectiveGeometry &g, const ObjectiveMachine &m)
+{
+    if ((m.support_cA >= 0. || m.support_cV >= 0.) && m.support_cos <= 1. &&
+        std::none_of(g.n.begin(), g.n.end(), [&m](const Vec3d &n) { return -n.z() >= m.support_cos; }))
+        return 0.;
+    if (m.support_cV >= 0.)
+        return m.support_cV * support_volume(g, m) + m.support_cS * overhang_area(g, m);
+    if (m.support_cA < 0.)
+        return SupportAllowance * planar_support_time(g, m);
+    const double sin45 = std::sin(M_PI / 4.), z0 = std::isfinite(g.mesh_min.z()) ? g.mesh_min.z() : g.origin.z();
+    double       A = 0., AH = 0.;
+    for (size_t s = 0; s < g.p.size(); ++s)
+        if (g.n[s].z() < -sin45) {
+            A += g.a[s];
+            AH += g.a[s] * std::max(0., g.p[s].z() - z0);
+        }
+    return m.support_cA * A + m.support_cH * AH;
 }
 
 
@@ -590,6 +631,29 @@ std::vector<double> native_tops(const ObjectiveGeometry &g, const ObjectiveMachi
         tops.push_back(last);
     }
     return tops;
+}
+
+std::vector<double> infill_share(const std::vector<double> &tops, double cap)
+{
+    std::vector<double> share(tops.size(), 1.);
+    if (cap <= 0. || tops.size() < 2)
+        return share;
+    auto close = [&](size_t first, size_t last, double height) {
+        for (size_t j = first; j < last; ++j)
+            share[j] = (tops[j] - tops[j - 1]) / height;
+    };
+    size_t first = 1;
+    double height = 0.;
+    for (size_t j = 1; j < tops.size(); ++j) {
+        const double hj = tops[j] - tops[j - 1];
+        if (height + hj >= cap + EPSILON) {
+            close(first, j, height);
+            first = j, height = 0.;
+        }
+        height += hj;
+    }
+    close(first, tops.size(), height);
+    return share;
 }
 
 }
@@ -647,6 +711,9 @@ ObjectiveTerms evaluate_objective(const ObjectiveGeometry &g, const ObjectiveMac
         t.F_wallp += g.a[s] * std::sqrt(std::max(0., 1. - nz * nz)) * gl / m.h;
         t.F_upp += g.a[s] * std::max(nz, 0.) * gl / m.h;
         t.F_downp += g.a[s] * std::max(-nz, 0.) * gl / m.h;
+        const double vcap = m.max_volumetric / (m.line_width * m.h / gl);
+        t.F_wallt += g.a[s] * std::sqrt(std::max(0., 1. - nz * nz)) * gl / m.h / std::min(m.shell_speed, vcap);
+        t.F_upt += g.a[s] * std::max(nz, 0.) * gl / m.h / std::min(m.top_speed, vcap);
         if (std::abs(nz) > Cos10) {
             const double dz = gs.z() / gl;
             t.F_flatx += g.a[s] * std::sqrt(std::max(0., 1. - dz * dz)) * gl / m.h;
@@ -669,22 +736,37 @@ ObjectiveTerms evaluate_objective(const ObjectiveGeometry &g, const ObjectiveMac
     const double        wd = m.line_width;
     double              lo = std::numeric_limits<double>::infinity(), hi = -lo;
     std::vector<double> road(g.nodes(), 0.), feed(g.nodes(), 1.), t_node(g.nodes(), 0.);
+    const std::vector<double> share = tops.empty() ? std::vector<double>() : infill_share(tops, m.infill_combine);
+    double                    sparse_volume = 0.;
     for (size_t id = 0; id < g.nodes(); ++id) {
         if (!g.occ[id])
             continue;
         const double gn     = G[id].norm();
         const double fs     = g.shell[id];
+        double       ks     = 1.;
+        if (!share.empty()) {
+            const double zs = node_pos(g, id).z() - g.mesh_min.z();
+            ks              = share[std::min(size_t(std::lower_bound(tops.begin(), tops.end(), zs) - tops.begin()), tops.size() - 1)];
+        }
         const double cap    = m.max_volumetric / (wd * m.h / std::max(gn, 1e-12));
+        const double cap_s  = cap * ks;
         const double unit   = V * gn / (m.h * wd);
-        road[id]            = unit * (fs + (1. - fs) * m.infill_density);
-        t_node[id]          = unit * (fs / std::min(m.shell_speed, cap) + (1. - fs) * m.infill_density / std::min(m.sparse_speed, cap));
+        const double ti     = unit * ks * (1. - fs) * m.infill_density / std::min(m.sparse_speed, cap_s);
+        road[id]            = unit * (fs + ks * (1. - fs) * m.infill_density);
+        t_node[id]          = unit * fs / std::min(m.shell_speed, cap) + ti;
         feed[id]            = road[id] / std::max(t_node[id], 1e-12);
         t.T_roads += t_node[id];
         t.road_mm += road[id];
-        t.Ti += unit * (1. - fs) * m.infill_density / std::min(m.sparse_speed, cap);
+        t.Ti += ti;
+        t.Li += unit * ks * (1. - fs) * m.infill_density;
+        sparse_volume += V * (1. - fs);
         lo = std::min(lo, double(phi[id])), hi = std::max(hi, double(phi[id]));
     }
     t.T_roads *= m.road_factor;
+    {
+        const double height = std::isfinite(g.mesh_max.z()) ? g.mesh_max.z() - g.mesh_min.z() : 1.;
+        t.F_seg             = t.Li / std::sqrt(std::max(sparse_volume / std::max(height, 1.), 1.));
+    }
     t.F_first = m.first_layer_speed > 0. ? g.bed_area / (wd * m.first_layer_speed) : 0.;
     {
         const double             pb = g.spacing.minCoeff();
@@ -811,7 +893,7 @@ ObjectiveTerms evaluate_objective(const ObjectiveGeometry &g, const ObjectiveMac
     }
     const TimeModel &tm     = curved ? m.time_curved : m.time_zonly;
     const double     base   = curved ? m.time_base_curved : m.time_base_zonly;
-    t.T_ratio               = base > 0. ? tm(t) / base : 0.;
+    t.T_ratio               = base > 0. ? (tm(t) + (curved ? 0. : m.time_support_zonly)) / base : 0.;
     t.T_cap                 = tm.cap;
     t.H_time                = t.T_ratio > tm.cap;
     std::vector<size_t> occupied;
@@ -827,7 +909,7 @@ ObjectiveTerms evaluate_objective(const ObjectiveGeometry &g, const ObjectiveMac
         else
             t.H_slope += std::atan2(std::hypot(G[id].x(), G[id].y()), G[id].z()) > slope_cap_at(m, G[id]);
         if (ijk_of(g, id).k <= bed_layers(g, m))
-            t.H_bed += std::abs(double(phi[id]) - node_pos(g, id).z()) > 0.01;
+            t.H_bed += std::abs(double(phi[id]) - (m.anchor.size() == g.nodes() ? double(m.anchor[id]) : node_pos(g, id).z())) > 0.01;
         else if (const size_t k = ijk_of(g, id).k; m.pinned(k))
             t.H_bed += std::abs(double(phi[id]) - double(m.pinned_v[k])) > 0.01;
     }
@@ -1316,7 +1398,7 @@ void integrate(const ObjectiveGeometry &g, const ObjectiveMachine &m, const std:
 
 ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachine &machine, const ObjectiveWeights &w,
                                const ObjectiveParams &params, std::vector<float> &phi, const std::function<void()> &cancel,
-                               const std::function<void(const std::string &)> &log)
+                               const std::function<void(const std::string &)> &log, ObjectiveTerms *given)
 {
     auto say = [&log](const std::string &s) {
         if (log)
@@ -1331,10 +1413,14 @@ ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachin
         planar[id] = machine.anchor.size() == g.nodes() ? machine.anchor[id] : float(node_pos(g, id).z());
     ObjectiveMachine m = machine;
     if (m.time_base_zonly <= 0. || m.time_base_curved <= 0.) {
-        const ObjectiveTerms tp      = evaluate_objective(g, m, w, planar, false);
-        const double         support = SupportAllowance * planar_support_time(g, m);
-        if (m.time_base_zonly <= 0.)
-            m.time_base_zonly = m.time_zonly(tp) + support;
+        ObjectiveMachine m_planar = m;
+        m_planar.infill_combine   = 0.;
+        const ObjectiveTerms tp      = evaluate_objective(g, m_planar, w, planar, false);
+        const double         support = support_time(g, m);
+        if (m.time_base_zonly <= 0.) {
+            m.time_base_zonly    = m.time_zonly(tp) + support;
+            m.time_support_zonly = support;
+        }
         if (m.time_base_curved <= 0.)
             m.time_base_curved = m.time_curved(tp) + support;
     }
@@ -1408,6 +1494,43 @@ ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachin
     std::vector<float> best   = phi;
     ObjectiveTerms     best_t = evaluate_objective(g, m, w, best, true);
     report("given", best_t);
+    if (given)
+        *given = best_t;
+    for (double t = m.thickness_min; t <= m.thickness_max + 1e-9; t += 0.02) {
+        std::vector<double> col(g.dims[2]);
+        std::vector<uint8_t> held(g.dims[2], 0);
+        for (size_t k = 0; k < g.dims[2]; ++k) {
+            const double z = g.origin.z() + double(k) * g.spacing.z();
+            if (k <= bed_layers(g, m)) {
+                col[k] = m.anchor.size() == g.nodes() ? double(m.anchor[g.index(0, 0, k)]) : z, held[k] = 1;
+                continue;
+            }
+            if (m.pinned(k)) {
+                col[k] = m.pinned_v[k], held[k] = 1;
+                continue;
+            }
+            const double below = std::max(z - g.spacing.z(), m.first_layer);
+            col[k] = col[k - 1] + (below - (z - g.spacing.z())) + (z - below) * m.h / t;
+        }
+        for (size_t a = 0; a < g.dims[2];) {
+            size_t b = a + 1;
+            while (b < g.dims[2] && !held[b])
+                ++b;
+            if (b < g.dims[2] && held[a])
+                for (size_t k = a + 1; k < b; ++k)
+                    col[k] = col[a] + (col[b] - col[a]) * double(k - a) / double(b - a);
+            a = b;
+        }
+        std::vector<float> f(g.nodes());
+        for (size_t id = 0; id < g.nodes(); ++id)
+            f[id] = float(col[ijk_of(g, id).k]);
+        const ObjectiveTerms tf = evaluate_objective(g, m, w, f, true);
+        if (tf.feasible() && better(tf, best_t)) {
+            best   = std::move(f);
+            best_t = tf;
+            report("uniform " + std::to_string(t).substr(0, 4) + " mm", best_t);
+        }
+    }
     if (!params.planar_adaptive && params.warm_adaptive) {
         ObjectiveParams pa = params;
         pa.planar_adaptive = true;
