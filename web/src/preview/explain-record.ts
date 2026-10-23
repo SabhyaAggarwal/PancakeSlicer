@@ -1,4 +1,5 @@
 import { recordConfig, STYLE_NAMES, styleName } from '../style-names';
+import { shortTime } from './format';
 
 type Rec = Record<string, unknown>;
 
@@ -118,9 +119,9 @@ function oneshotFact(record: Rec): { fact: string; curved: boolean } | null {
   const cpu = num(((record.totals ?? {}) as Rec).cpu_seconds);
   const slice = cpu == null ? '' : ` · Slice ${Math.round(cpu)} s CPU`;
   const fell = /fell back to planar, (.*)$/.exec(decision);
-  if (fell) return { fact: `Planar fallback: ${fell[1]}${slice}`, curved: false };
-  const ratio = /= ([\d.]+)x planar|time ratio ([\d.]+)/.exec(decision)?.slice(1).find(Boolean);
-  return { fact: `${decision.includes('z-only') ? 'Flat' : 'Curved'} layers${ratio ? `, ${ratio}× planar time` : ''}${slice}`, curved: true };
+  if (fell) return { fact: `Planar fallback: ${fell[1].replace(/([\d.]+)x the planar time/, '≈$1× planar (estimate)')}${slice}`, curved: false };
+  const print = num(((record.totals ?? {}) as Rec).estimated_time_s);
+  return { fact: `${decision.includes('z-only') ? 'Flat' : 'Curved'} layers${print == null ? '' : ` · ${shortTime(print)} print`}${slice}`, curved: true };
 }
 
 export function objectResults(record: Rec | undefined): ObjectResult[] {
