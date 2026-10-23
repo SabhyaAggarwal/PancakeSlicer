@@ -304,7 +304,7 @@ func savedProjectInstances(path string) ([]projectInstance, error) {
 	return nil, fmt.Errorf("project has no build items")
 }
 
-func writeProjectEdits(dir string, files []string, uploaded map[string]bool, raw string, volumes bool) error {
+func writeProjectEdits(dir string, files []string, uploaded map[string]bool, raw string, volumes, paint bool) error {
 	if !strings.EqualFold(filepath.Ext(files[0]), ".3mf") {
 		return fmt.Errorf("project_edits requires the 3MF project as the first upload")
 	}
@@ -322,6 +322,9 @@ func writeProjectEdits(dir string, files []string, uploaded map[string]bool, raw
 			return fmt.Errorf("project_edits: every edit needs an op")
 		}
 		_, hasFile := e["file"]
+		if op == "set_paint" && !paint {
+			return fmt.Errorf("project_edits: set_paint requires a tool whose --edit takes set_paint")
+		}
 		if op != "add_object" && op != "add_volume" {
 			if hasFile {
 				return fmt.Errorf("project_edits: only add_object and add_volume take a file")

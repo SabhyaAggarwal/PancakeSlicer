@@ -25,12 +25,18 @@ export interface ProjectItem {
   origin: [number, number, number];
   rotZ: number;
   transform: number[];
+  parts: number;
+  paint?: ArchivePaint;
 }
+
+export type ArchivePaint = Partial<Record<'support' | 'seam' | 'fuzzy', Record<string, string>>>;
+const PAINT_ATTRS = [['support', 'paint_supports'], ['seam', 'paint_seam'], ['fuzzy', 'paint_fuzzy_skin']] as const;
 
 interface Obj {
   name?: string;
   vertices?: Float32Array;
   triangles?: Uint32Array;
+  paint?: ArchivePaint;
   components: { objectid: string; path?: string; transform: number[] }[];
 }
 
@@ -71,8 +77,14 @@ function parseModel(text: string): { objects: Map<string, Obj>; build: { objecti
       for (let v; (v = vRe.exec(vText)); ) verts.push(+v[1], +v[2], +v[3]);
       const tText = body.slice(body.indexOf('<triangles', vEnd), body.indexOf('</triangles>', vEnd));
       const tris: number[] = [];
-      const tRe = /<triangle\s+v1="(\d+)"\s+v2="(\d+)"\s+v3="(\d+)"/g;
-      for (let t; (t = tRe.exec(tText)); ) tris.push(+t[1], +t[2], +t[3]);
+      const tRe = /<triangle\s+v1="(\d+)"\s+v2="(\d+)"\s+v3="(\d+)"([^>]*)>/g;
+      for (let t; (t = tRe.exec(tText)); ) {
+        if (t[4].includes('paint_')) for (const [kind, key] of PAINT_ATTRS) {
+          const value = attr(t[4], key);
+          if (value) ((obj.paint ??= {})[kind] ??= {})[String(tris.length / 3)] = value;
+        }
+        tris.push(+t[1], +t[2], +t[3]);
+      }
       obj.vertices = new Float32Array(verts);
       obj.triangles = new Uint32Array(tris);
     }
@@ -147,6 +159,14 @@ export async function readProject(file: File, partsOnly = false): Promise<{ item
       if (!skip?.has(c.objectid)) collect(c.path ?? path, c.objectid, compose(c.transform, t), out, depth + 1);
   };
 
+  const leaves = (path: string, id: string, out: Obj[] = [], depth = 0): Obj[] => {
+    const o = model(path).objects.get(id);
+    if (!o || depth > 8) return out;
+    if (o.vertices && o.triangles) out.push(o);
+    for (const c of o.components) leaves(c.path ?? path, c.objectid, out, depth + 1);
+    return out;
+  };
+
   const configBytes = entry('Metadata/project_settings.config');
   const config = configBytes ? JSON.parse(strFromU8(configBytes)) : {};
   const metadata = entry('Metadata/model_settings.config');
@@ -197,8 +217,13 @@ export async function readProject(file: File, partsOnly = false): Promise<{ item
       origin: [b.transform[9] - (plate?.origin[0] ?? 0), b.transform[10] - (plate?.origin[1] ?? 0), b.transform[11]] as [number, number, number],
       rotZ: Math.atan2(b.transform[1], b.transform[0]) * 180 / Math.PI,
       transform: loadedItem(b),
+      ...volumesOf(b.objectid),
     };
   });
+  function volumesOf(id: string): { parts: number; paint?: ArchivePaint } {
+    const list = leaves(rootPath, id);
+    return { parts: list.length, ...(list.length === 1 && list[0].paint ? { paint: list[0].paint } : {}) };
+  }
   function loadedItem(b: { objectid: string; transform: number[] }) {
     const comps = root.objects.get(b.objectid)?.components ?? [];
     if (comps.length !== 1) return b.transform;

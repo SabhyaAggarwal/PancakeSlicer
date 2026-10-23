@@ -427,7 +427,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, "editing an opened project requires a tool with --edit")
 			return
 		}
-		if err := writeProjectEdits(filepath.Join(j.Dir, "input"), req.Files, names, raw, s.cfg.Features.ProjectVolumes); err != nil {
+		if err := writeProjectEdits(filepath.Join(j.Dir, "input"), req.Files, names, raw, s.cfg.Features.ProjectVolumes, s.cfg.Features.ProjectPaint); err != nil {
 			fail(w, 400, err.Error())
 			return
 		}

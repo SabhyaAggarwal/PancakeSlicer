@@ -47,7 +47,8 @@ export interface PlateObject {
   paint?: Partial<Record<PaintKind, Painting>>;
   layerProfile?: number[];
   project?: { buildIndex?: number; plateIndex?: number; plateOrigin?: [number, number]; file: string; placeholder: boolean; missing?: boolean; origin?: [number, number, number];
-    saved?: { object: number; instance: number; instanceId: number; extruder: number; rotZ: number; item?: number[] } };
+    saved?: { object: number; instance: number; instanceId: number; extruder: number; rotZ: number; item?: number[] };
+    paintable?: boolean; paint?: Partial<Record<'support' | 'seam' | 'fuzzy', Record<string, string>>> };
 }
 
 export interface LayerEvent {
@@ -99,7 +100,7 @@ export interface CutPlane {
 
 export interface State {
   api: Api | null;
-  features: { cut?: boolean; volumes?: boolean; edit?: boolean; mesh_plates?: boolean; paint?: boolean; layer_profile?: boolean; arrange?: boolean; project_volumes?: boolean };
+  features: { cut?: boolean; volumes?: boolean; edit?: boolean; mesh_plates?: boolean; paint?: boolean; layer_profile?: boolean; arrange?: boolean; project_volumes?: boolean; project_paint?: boolean };
   cut: CutPlane | null;
   loading: string | null;
   machines: SystemPreset[];

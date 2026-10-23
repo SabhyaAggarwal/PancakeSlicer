@@ -232,6 +232,49 @@ export function paintString(node: PaintNode): string {
   return nibbles.reverse().map((v) => v.toString(16).toUpperCase()).join('');
 }
 
+export function parsePaintString(text: string): PaintNode | null {
+  const nibbles = [...text].reverse().map((c) => parseInt(c, 16));
+  let k = 0;
+  const read = (): PaintNode | null => {
+    const n = nibbles[k++];
+    if (n === 0b0011) {
+      const children: PaintNode[] = [];
+      for (let i = 3; i >= 0; i--) { const c = read(); if (c === null) return null; children[i] = c; }
+      return children;
+    }
+    return (n & 0b11) === 0 && n >> 2 <= 2 ? n >> 2 : null;
+  };
+  const node = nibbles.some(Number.isNaN) ? null : read();
+  return node !== null && k === nibbles.length ? node : null;
+}
+
+export function archivePainting(paint: Partial<Record<PaintKind, Record<string, string>>>): Partial<Record<PaintKind, Painting>> | null {
+  const out: Partial<Record<PaintKind, Painting>> = {};
+  for (const [kind, map] of Object.entries(paint) as [PaintKind, Record<string, string>][]) {
+    const painting: Painting = new Map();
+    for (const [t, text] of Object.entries(map)) {
+      const node = parsePaintString(text);
+      if (node === null) return null;
+      if (node !== 0) painting.set(Number(t), node);
+    }
+    if (painting.size) out[kind] = painting;
+  }
+  return out;
+}
+
+export function projectPaint(o: Paintable, saved: Partial<Record<PaintKind, Record<string, string>>> = {}) {
+  const out: Record<string, Record<string, string>> = {};
+  for (const kind of ['support', 'seam', 'fuzzy'] as const) {
+    const painting = paintOf(o, kind);
+    const map: Record<string, string> = {};
+    if (painting) for (const [t, node] of [...painting].sort((x, y) => x[0] - y[0])) map[String(t)] = paintString(node);
+    const was = saved[kind] ?? {};
+    const same = Object.keys(map).length === Object.keys(was).length && Object.entries(map).every(([t, v]) => was[t] === v);
+    if (!same) out[kind] = map;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 export function paintJson(o: Paintable): Record<string, Record<string, string>> | undefined {
   const out: Record<string, Record<string, string>> = {};
   for (const kind of ['support', 'seam', 'fuzzy'] as const) {
@@ -271,8 +314,11 @@ export function setPaintTool(patch: Partial<PaintTool>) {
 }
 export const subscribePaintTool = (l: () => void) => (listeners.add(l), () => void listeners.delete(l));
 
-export const canPaint = (s: State) => !!s.features.paint && !!s.selected && !s.selected.all && !s.project &&
-  !!s.objects.find((o) => o.id === s.selected!.object && !o.project);
+export const canPaint = (s: State) => !!s.features.paint && !!s.selected && !s.selected.all &&
+  !!s.objects.find((o) => o.id === s.selected!.object && (!o.project ? !s.project : canPaintProject(s, o)));
+
+const canPaintProject = (s: State, o: State['objects'][number]) => !!s.features.project_paint && !!o.project?.paintable &&
+  !o.project.placeholder && !o.volumes?.some((v) => v.type === 'part');
 
 export const togglePaint = (kind: PaintKind) => setState((s) => ({ gizmo: s.gizmo === kind || !canPaint(s) ? 'none' : kind }));
 

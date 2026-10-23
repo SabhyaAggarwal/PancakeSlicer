@@ -8,6 +8,7 @@ import { shortTime } from './preview/format';
 import { calibOverrides, firstLayer, jobFields, outputKind, overrides, plateSignature } from './slice-input';
 import { arrange, bakeStl, bedBounds, loadMesh, loadProject, nextFreeSpot, parsePoints, placeholderGeometry, plateJson, outsideBed } from './plater/geometry';
 import type { ProjectItem } from './plater/threemf';
+import { archivePainting } from './plater/paint';
 import { projectEdits } from './plater/projectTransforms';
 import { choiceDialog, confirmDialog, numberDialog } from './components/Ask';
 import {
@@ -274,9 +275,11 @@ export async function openProject(file: File) {
     }));
   };
   let geometryOnly = false;
+  let listed: ProjectItem[] = [];
   try {
     await loadProject(file, {
       items(items: ProjectItem[], materials) {
+        listed = items;
         if (!items.length) return toast(`${file.name}: the project has no printable objects`);
         geometryOnly = !materials.hasConfig && materials.plates.length === 1;
         const slots = Math.max(1, materials.colours.length, ...items.map((i) => i.extruder));
@@ -299,8 +302,11 @@ export async function openProject(file: File) {
         }));
         newDocument(true);
       },
-      mesh: (i, geometry, centre) =>
-        patch(i, (o) => ({ ...o, geometry, project: { ...o.project!, file: file.name, placeholder: false, origin: [centre.x, centre.y, centre.z] }, instances: [{ ...o.instances[0], x: centre.x, y: centre.y, z: centre.z }, ...o.instances.slice(1)] })),
+      mesh: (i, geometry, centre) => {
+        const painting = listed[i]?.parts === 1 ? archivePainting(listed[i].paint ?? {}) : null;
+        patch(i, (o) => ({ ...o, geometry, ...(painting && Object.keys(painting).length ? { paint: painting } : {}),
+          project: { ...o.project!, file: file.name, placeholder: false, origin: [centre.x, centre.y, centre.z], paintable: !!painting, ...(listed[i]?.paint ? { paint: listed[i].paint } : {}) }, instances: [{ ...o.instances[0], x: centre.x, y: centre.y, z: centre.z }, ...o.instances.slice(1)] }));
+      },
       missing: (i) => patch(i, (o) => ({ ...o, project: { ...o.project!, file: file.name, placeholder: true, missing: true } })),
     });
     if (geometryOnly && getState().project === file) centreGeometryOnly();

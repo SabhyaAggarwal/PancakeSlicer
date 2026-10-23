@@ -3,6 +3,7 @@ import type { Instance, PlateObject, State } from '../state/store';
 import type { PlateJson } from '../api/types';
 import { instanceMatrix, plateDescription } from './geometry';
 import { toolValue } from '../options';
+import { projectPaint } from './paint';
 
 function projectTransform(o: PlateObject, inst: Instance): number[] | undefined {
   if (!o.project?.origin) return undefined;
@@ -39,7 +40,8 @@ export type ProjectEdit =
   | { op: 'add_volume'; object: number; file: string; type: string; name: string; transform: number[]; extruder?: number; settings?: Record<string, string> }
   | { op: 'add_instance'; object: number; x: number; y: number; rot: number; printable: boolean; plate: number }
   | { op: 'delete'; object: number; instance: number }
-  | { op: 'set_extruder'; object: number; extruder: number };
+  | { op: 'set_extruder'; object: number; extruder: number }
+  | { op: 'set_paint'; object: number; paint: Record<string, Record<string, string>> };
 
 export function projectEdits(s: Pick<State, 'objects' | 'projectPlates' | 'plateIndex' | 'projectMaterials'>) {
   const opened = s.projectMaterials?.builds ?? [];
@@ -59,6 +61,12 @@ export function projectEdits(s: Pick<State, 'objects' | 'projectPlates' | 'plate
     }
   }
   for (const [object, extruder] of extruders) edits.push({ op: 'set_extruder', object, extruder });
+  const painted = new Set<number>();
+  for (const { o } of rows) {
+    const saved = o.project?.saved;
+    const paint = saved && o.project?.paintable && !painted.has(saved.object) ? projectPaint(o, o.project.paint) : null;
+    if (paint) { painted.add(saved!.object); edits.push({ op: 'set_paint', object: saved!.object, paint }); }
+  }
   const volumes: { name: string; o: PlateObject; k: number }[] = [];
   for (const { o } of rows) {
     const saved = o.project?.saved;
