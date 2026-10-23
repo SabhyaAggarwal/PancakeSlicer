@@ -119,7 +119,7 @@ function oneshotFact(record: Rec): { fact: string; curved: boolean } | null {
   const slice = cpu == null ? '' : ` · Slice ${Math.round(cpu)} s CPU`;
   const fell = /fell back to planar, (.*)$/.exec(decision);
   if (fell) return { fact: `Planar fallback: ${fell[1]}${slice}`, curved: false };
-  const ratio = /= ([\d.]+)x planar/.exec(decision)?.[1];
+  const ratio = /= ([\d.]+)x planar|time ratio ([\d.]+)/.exec(decision)?.slice(1).find(Boolean);
   return { fact: `${decision.includes('z-only') ? 'Flat' : 'Curved'} layers${ratio ? `, ${ratio}× planar time` : ''}${slice}`, curved: true };
 }
 

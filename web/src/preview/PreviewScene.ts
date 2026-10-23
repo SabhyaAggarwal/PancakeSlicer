@@ -127,6 +127,13 @@ export class PreviewScene {
     this.request();
   }
 
+  clear() {
+    this.data = null;
+    this.uploaded = 0;
+    this.tool.visible = false;
+    this.request();
+  }
+
   holds(d: PreviewData) {
     return this.data === d;
   }
@@ -281,7 +288,7 @@ export class PreviewScene {
     }
     this.shells.visible = false;
     this.renderer.render(this.scene, this.camera);
-    this.segments.render(this.camera, this.draw, this.renderer.domElement.height);
+    if (this.data) this.segments.render(this.camera, this.draw, this.renderer.domElement.height);
     if (this.shells.children.length) {
       this.shells.visible = true;
       const bedVisible = this.bed?.visible;

@@ -103,8 +103,7 @@ export function fieldDefinition(key: string, env: Environment): Partial<OptionDe
     const rotary = String(env.nonplanar_kinematics ?? 'none') !== 'none';
     return {
       enum_values: all,
-      ...(!rotary && env.nonplanar_mode !== 'oneshot' ? { enum_disabled: ['oneshot'] } : {}),
-      enum_labels: all.map((v, i) => `${v === 'oneshot' ? 'One-shot' : def.enum_labels?.[i] ?? v}${!rotary && ['multiplanar', 'field', 'oneshot'].includes(v) ? ' (needs rotary axes)' : ''}`),
+      enum_labels: all.map((v, i) => `${v === 'oneshot' ? 'One-shot' : def.enum_labels?.[i] ?? v}${!rotary && ['multiplanar', 'field'].includes(v) ? ' (needs rotary axes)' : ''}`),
     };
   }
   if (key === 'brim_width' && env.brim_type === 'brim_ears' && condition('belt_printer == true && (belt_slice_rotation == "x" || belt_slice_rotation == "y") && (belt_slice_rotation_angle >= 1 && belt_slice_rotation_angle <= 85 || belt_slice_rotation_angle <= -1 && belt_slice_rotation_angle >= -85)', env) !== true)

@@ -64,7 +64,7 @@ export default function PrintStyle() {
 
   let line: React.ReactNode = null;
   if (!known)
-    line = <>{nameOf(current)}{current === 'custom' || (current === 'oneshot' && rotary) ? '' : ': needs rotary axes'} · <button type="button" className="ps-link" onClick={showSetting}>Show setting</button></>;
+    line = <>{nameOf(current)}{current === 'custom' || (current === 'oneshot' && rotary) ? '' : current === 'oneshot' ? ': Layer heights only on this printer' : ': needs rotary axes'} · <button type="button" className="ps-link" onClick={showSetting}>Show setting</button></>;
   else if (object && current !== plate) line = <>Only {object.name} · plate: {nameOf(plate, global)}</>;
   else if (!object && /non-planar/i.test(process) && current === 'standard') line = <>This process is tuned for curved tops; Standard prints it flat.</>;
 

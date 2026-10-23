@@ -147,7 +147,16 @@ export function PreviewView() {
   useEffect(() => setDropped(null), [job.id]);
   useEffect(() => {
     const src = dropped ? { key: `file:${dropped.name}:${dropped.size}`, file: dropped } : source();
-    if (!src) return;
+    if (!src) {
+      if (current) {
+        current.cancel();
+        current = null;
+        sceneRef.current?.clear();
+        setData(null);
+        setMovePos(null);
+      }
+      return;
+    }
     if (current?.key === src.key) {
       const d = current.data;
       const scene = sceneRef.current;
