@@ -31,6 +31,8 @@
 #include "libslic3r/GCode/WipeTowerEstimate.hpp"
 #include "libslic3r/GCodeWriter.hpp"
 #include "libslic3r/Geometry.hpp"
+#include "libslic3r/ModelArrange.hpp"
+#include "libslic3r/Arrange.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Nonplanar/AutoOrient.hpp"
 #include "libslic3r/Nonplanar/Calibration.hpp"
@@ -78,10 +80,12 @@
 #include <iostream>
 #include <ios>
 #include <limits>
+#include <cctype>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <tuple>
 #include <ostream>
 #include <stdexcept>
 #include <sstream>
@@ -128,6 +132,9 @@ struct Args
     std::string cut, cut_keep = "both";
     bool        cut_place_lower = false;
     bool        force_planar    = false;
+    std::string arrange_only;
+    double      arrange_spacing  = -1.;
+    bool        arrange_rotation = true;
     bool        surface_grid    = false;
     size_t      surface_grid_max_cells = 40000;
     std::string patch_preview;
@@ -175,10 +182,13 @@ Model read_input(const std::string &file)
                  "       [--plate-index N] [--layer-profile adaptive:QUALITY | ramp:H_BOTTOM:H_TOP | range:DEPTH:H | file:PATH] [--calib-head ID]\n"
                  "       -o OUT.gcode (MODEL | PROJECT.3mf | --plate PLATE.json | --project SPEC.json | --calib TEST)\n"
                  "       [--moves-out FILE] [--progress] [--calib-params key=value,...]\n"
+                 "       (plate JSON objects take \"plate\": N; a plate JSON of several plates slices with --plate-index N)\n"
+                 "       (plate JSON objects and volumes take \"paint\"; plate JSON objects take \"layer_height_profile\")\n"
                  "       [--surface-grid [--surface-grid-max-cells N]]   (with --json: per-cell top surface error)\n"
                  "       [--force-planar]   (nonplanar_mode off on the plate, objects, volumes and height ranges)\n"
-                 "       [--edit EDITS.json]   (a loaded PROJECT.3mf: add/delete objects and instances, set filaments)\n"
+                 "       [--edit EDITS.json]   (a loaded PROJECT.3mf: add/delete objects and instances, set filaments; --edit takes \"add_volume\")\n"
                  "       [--cut-only Z | X,Y,Z,NX,NY,NZ [--cut-keep upper|lower|both] [--cut-place-lower]]\n"
+                 "       [--arrange-only OUT.json [--arrange-spacing MM] [--arrange-no-rotation]]   (the desktop's arrange, no slice)\n"
                  "       [--patch-preview FILE.json [--patch-preview-budget S] [--patch-preview-max-triangles N]]\n"
                  "       [--step-linear-deflection MM] [--step-angle-deflection A] [--step-split-compound]\n"
                  "       nonplanar_slice_tool --dump-options FILE | --dump-presets VENDOR FILE [--profiles DIR]\n"
@@ -307,6 +317,14 @@ Args parse_args(int argc, char **argv)
             a.surface_grid_max_cells = size_t(n);
         }
         else if (arg == "--cut-only") a.cut = next();
+        else if (arg == "--arrange-only") a.arrange_only = next();
+        else if (arg == "--arrange-spacing") {
+            const std::string value = next();
+            char *end = nullptr;
+            a.arrange_spacing = std::strtod(value.c_str(), &end);
+            if (value.empty() || *end != '\0' || !(a.arrange_spacing >= 0.))
+                usage("--arrange-spacing expects a distance in mm >= 0");
+        } else if (arg == "--arrange-no-rotation") a.arrange_rotation = false;
         else if (arg == "--cut-keep") {
             a.cut_keep = next();
             if (a.cut_keep != "upper" && a.cut_keep != "lower" && a.cut_keep != "both")
@@ -368,7 +386,7 @@ Args parse_args(int argc, char **argv)
         a.overrides.insert(a.overrides.begin(), { "nonplanar_mode", "field" });
     if (!a.dump_options.empty() || !a.dump_presets.empty() || !a.verify_gcode.empty()) return a;
     if (a.printer.empty() || a.process.empty() || a.filaments.empty() ||
-        (a.output.empty() && ! a.orient_only && a.confirm_up.empty() && a.save_3mf.empty() && a.patch_preview.empty()) ||
+        (a.output.empty() && ! a.orient_only && a.confirm_up.empty() && a.save_3mf.empty() && a.patch_preview.empty() && a.arrange_only.empty()) ||
         int(! a.model.empty()) + int(! a.plate.empty()) + int(! a.project.empty()) + int(! a.calib.empty()) != 1)
         usage("--printer, --process, --filament, -o and one of a model, --plate, --project or --calib are required");
     if (a.surface_grid && a.json.empty())
@@ -772,6 +790,30 @@ void place_wipe_tower(DynamicPrintConfig &config, const Model &model, size_t fil
     config.option<ConfigOptionFloats>("wipe_tower_y", true)->values = { y + move.y() };
 }
 
+std::string layer_profile_mismatch(const std::vector<coordf_t> &profile, const SlicingParameters &sp)
+{
+    const double height = sp.object_print_z_uncompensated_max - sp.object_print_z_min;
+    std::ostringstream why;
+    why.precision(6);
+    if (std::abs(profile[profile.size() - 2] - height) > 1e-3)
+        why << "its last z " << profile[profile.size() - 2] << " is not the object's top " << height << " (within 0.001 mm)";
+    else if (profile[1] != sp.first_object_layer_height)
+        why << "its first layer height " << profile[1] << " is not the first layer height " << sp.first_object_layer_height;
+    return why.str();
+}
+
+std::vector<ObjectID> plate_layer_profiles;
+
+void check_plate_layer_profiles(const Print &print)
+{
+    for (const PrintObject *po : print.objects()) {
+        if (std::find(plate_layer_profiles.begin(), plate_layer_profiles.end(), po->model_object()->id()) == plate_layer_profiles.end())
+            continue;
+        if (const std::string why = layer_profile_mismatch(po->model_object()->layer_height_profile.get(), po->slicing_parameters()); !why.empty())
+            throw std::runtime_error("plate object " + po->model_object()->name + ": layer_height_profile: " + why);
+    }
+}
+
 void apply_layer_profile(const Args &args, Model &model, Print &print, const DynamicPrintConfig &config)
 {
     if (args.layer_profile.empty())
@@ -795,15 +837,8 @@ void apply_layer_profile(const Args &args, Model &model, Print &print, const Dyn
         const SlicingParameters &sp  = print_object->slicing_parameters();
         const double             top = sp.object_print_z_uncompensated_height();
         if (kind == "file") {
-            const double height = sp.object_print_z_uncompensated_max - sp.object_print_z_min;
-            std::ostringstream why;
-            why.precision(6);
-            if (std::abs(given[given.size() - 2] - height) > 1e-3)
-                why << "its last z " << given[given.size() - 2] << " is not the object's top " << height << " (within 0.001 mm)";
-            else if (given[1] != sp.first_object_layer_height)
-                why << "its first layer height " << given[1] << " is not the first layer height " << sp.first_object_layer_height;
-            if (!why.str().empty())
-                usage("--layer-profile " + args.layer_profile + ": " + why.str());
+            if (const std::string why = layer_profile_mismatch(given, sp); !why.empty())
+                usage("--layer-profile " + args.layer_profile + ": " + why);
             object->layer_height_profile.set(given);
         } else if (kind == "adaptive")
             object->layer_height_profile.set(layer_height_profile_adaptive(sp, *object, float(a)));
@@ -1024,75 +1059,200 @@ void add_placed_instances(ModelObject *object, const nlohmann::json &entry, cons
     }
 }
 
-Model load_plate(const std::string &path)
+void apply_plate_paint(ModelVolume &volume, const nlohmann::json &paint, const std::string &where)
+{
+    const int triangles = int(volume.mesh().its.indices.size());
+    for (const auto &[kind, map] : paint.items()) {
+        FacetsAnnotation &facets = kind == "support" ? volume.supported_facets :
+                                   kind == "seam"    ? volume.seam_facets :
+                                   kind == "fuzzy"   ? volume.fuzzy_skin_facets :
+                                   kind == "color"   ? volume.mmu_segmentation_facets :
+                                                       throw std::runtime_error(where + ": unknown paint " + kind);
+        if (!map.is_object())
+            throw std::runtime_error(where + ": paint " + kind + " is a map of triangle index to paint string");
+        std::map<int, std::string> painted;
+        for (const auto &[key, value] : map.items()) {
+            size_t end = 0;
+            const int triangle = key.empty() || !std::isdigit((unsigned char) key.front()) ? -1 : std::stoi(key, &end);
+            if (end != key.size() || triangle < 0 || triangle >= triangles)
+                throw std::runtime_error(where + ": paint " + kind + " triangle " + key + " is not one of the volume's " +
+                                         std::to_string(triangles) + " triangles");
+            const std::string code = value.is_string() ? value.get<std::string>() : std::string();
+            if (code.empty() || code.find_first_not_of("0123456789ABCDEF") != std::string::npos)
+                throw std::runtime_error(where + ": paint " + kind + " triangle " + key + " is not a paint string (uppercase hex)");
+            painted.emplace(triangle, code);
+        }
+        facets.reset();
+        facets.reserve(int(painted.size()));
+        for (const auto &[triangle, code] : painted) {
+            facets.set_triangle_from_string(triangle, code);
+            if (facets.get_triangle_as_string(triangle) != code)
+                throw std::runtime_error(where + ": paint " + kind + " triangle " + std::to_string(triangle) + " has a malformed paint string");
+        }
+        facets.shrink_to_fit();
+    }
+}
+
+struct PlateLayout
+{
+    int                                                     count = 0;
+    std::map<int, std::pair<std::string, DynamicPrintConfig>> plates;
+    std::map<ObjectID, int>                                 instance_plate;
+};
+
+struct PlateFiles
+{
+    fs::path                                      dir;
+    bool                                          cache = true;
+    std::map<std::string, std::unique_ptr<Model>> loaded;
+
+    const Model &operator()(const std::string &name)
+    {
+        fs::path file = name;
+        if (file.is_relative())
+            file = dir / file;
+        auto it = cache ? loaded.find(file.string()) : loaded.end();
+        if (it == loaded.end())
+            it = loaded.insert_or_assign(file.string(), cache ? std::make_unique<Model>(read_input(file.string())) :
+                                                                std::unique_ptr<Model>(new Model(read_input(file.string())))).first;
+        if (it->second->objects.empty())
+            throw std::runtime_error("no objects in " + file.string());
+        return *it->second;
+    }
+};
+
+void apply_plate_settings(ModelConfig &config, const nlohmann::json &settings)
+{
+    ConfigSubstitutionContext ctx(ForwardCompatibilitySubstitutionRule::Disable);
+    for (const auto &[key, value] : settings.items())
+        config.set_deserialize(key, value.is_string() ? value.get<std::string>() : value.dump(), ctx);
+}
+
+ModelVolume *add_plate_volume(ModelObject &object, const nlohmann::json &v, PlateFiles &files)
+{
+    static const std::map<std::string, ModelVolumeType> types = {
+        { "part", ModelVolumeType::MODEL_PART },           { "modifier", ModelVolumeType::PARAMETER_MODIFIER },
+        { "negative", ModelVolumeType::NEGATIVE_VOLUME },  { "support_enforcer", ModelVolumeType::SUPPORT_ENFORCER },
+        { "support_blocker", ModelVolumeType::SUPPORT_BLOCKER } };
+    const auto type = types.find(v.value("type", "part"));
+    if (type == types.end())
+        throw std::runtime_error("unknown volume type " + v.value("type", ""));
+    Transform3d transform = Transform3d::Identity();
+    if (const nlohmann::json m = v.value("transform", nlohmann::json()); !m.is_null()) {
+        const bool flat = m.is_array() && m.size() == 16, rows = m.is_array() && m.size() == 4;
+        if (!flat && !rows)
+            throw std::runtime_error("a volume transform is a row-major 4x4 matrix: 16 numbers or 4 rows of 4");
+        for (int r = 0; r < 4; ++r)
+            for (int c = 0; c < 4; ++c)
+                transform.matrix()(r, c) = (flat ? m.at(r * 4 + c) : m.at(r).at(c)).get<double>();
+    }
+    ModelVolume *volume = object.add_volume(files(v.at("file").get<std::string>()).objects.front()->raw_mesh(), type->second, false);
+    volume->set_transformation(Geometry::Transformation(transform));
+    volume->center_geometry_after_creation();
+    volume->name = v.value("name", fs::path(v.at("file").get<std::string>()).stem().string());
+    if (const int extruder = v.value("extruder", 0); extruder > 0)
+        volume->config.set("extruder", extruder);
+    if (v.contains("settings"))
+        apply_plate_settings(volume->config, v.at("settings"));
+    if (v.contains("paint"))
+        apply_plate_paint(*volume, v.at("paint"), "plate object " + object.name + " volume " + volume->name);
+    return volume;
+}
+
+ModelObject *add_plate_object(Model &model, const nlohmann::json &entry, PlateFiles &files)
+{
+    if (!entry.contains("file") && !entry.contains("volumes"))
+        throw std::runtime_error("plate object " + std::to_string(model.objects.size() + 1) + " needs a file or volumes");
+    ModelObject *object = entry.contains("file") ? model.add_object(*files(entry.at("file").get<std::string>()).objects.front()) : model.add_object();
+    object->name = entry.value("name", fs::path(entry.contains("file") ? entry.at("file").get<std::string>() : "object").stem().string());
+    object->clear_instances();
+    if (const int extruder = entry.value("extruder", 0); extruder > 0)
+        object->config.set("extruder", extruder);
+    if (entry.contains("settings"))
+        apply_plate_settings(object->config, entry.at("settings"));
+    if (const nlohmann::json paint = entry.value("paint", nlohmann::json()); !paint.is_null()) {
+        const std::string where = "plate object " + object->name;
+        const size_t parts = object->volumes.size();
+        if (!entry.contains("file") || (paint.is_object() && parts != 1) || (paint.is_array() && paint.size() != parts) ||
+            !(paint.is_object() || paint.is_array()))
+            throw std::runtime_error(where + ": paint needs a file and is a map for a file of one part, else a list of one map "
+                                     "per part (this file has " + std::to_string(parts) + ")");
+        for (size_t i = 0; i < parts; ++i)
+            if (const nlohmann::json &p = paint.is_array() ? paint.at(i) : paint; !p.is_null())
+                apply_plate_paint(*object->volumes[i], p, where + " part " + std::to_string(i + 1));
+    }
+    for (const nlohmann::json &v : entry.value("volumes", nlohmann::json::array()))
+        add_plate_volume(*object, v, files);
+    if (entry.contains("volumes")) {
+        if (std::none_of(object->volumes.begin(), object->volumes.end(), [](const ModelVolume *v) { return v->is_model_part(); }))
+            throw std::runtime_error("plate object " + object->name + " has no part volume");
+        object->sort_volumes(true);
+        object->invalidate_bounding_box();
+    }
+    if (const nlohmann::json lhp = entry.value("layer_height_profile", nlohmann::json()); !lhp.is_null()) {
+        const std::string where = "plate object " + object->name + ": layer_height_profile";
+        std::vector<coordf_t> profile;
+        for (const nlohmann::json &v : lhp.is_array() ? lhp : throw std::runtime_error(where + " is a list of z, h pairs")) {
+            if (v.is_array() && v.size() == 2 && v[0].is_number() && v[1].is_number())
+                profile.insert(profile.end(), { v[0].get<double>(), v[1].get<double>() });
+            else if (v.is_number())
+                profile.push_back(v.get<double>());
+            else
+                throw std::runtime_error(where + " is a list of z, h pairs");
+        }
+        if (profile.size() < 4 || profile.size() % 2 != 0)
+            throw std::runtime_error(where + " needs at least two z, h pairs");
+        for (size_t i = 0; i < profile.size(); i += 2) {
+            if (!std::isfinite(profile[i]) || !std::isfinite(profile[i + 1]) || profile[i + 1] <= 0.)
+                throw std::runtime_error(where + " has a layer height <= 0 at z " + std::to_string(profile[i]));
+            if (i > 0 && profile[i] <= profile[i - 2])
+                throw std::runtime_error(where + " does not increase z at " + std::to_string(profile[i]));
+        }
+        object->layer_height_profile.set(profile);
+        plate_layer_profiles.push_back(object->id());
+    }
+    return object;
+}
+
+Model load_plate(const std::string &path, PlateLayout &layout)
 {
     boost::nowide::ifstream in(path);
     const nlohmann::json    j = nlohmann::json::parse(in);
-    const fs::path          dir = fs::path(path).parent_path();
     Model                   model;
-    std::map<std::string, Model> loaded;
+    PlateFiles              files{ fs::path(path).parent_path(), true, {} };
     ConfigSubstitutionContext ctx(ForwardCompatibilitySubstitutionRule::Disable);
     for (const nlohmann::json &entry : j.at("objects")) {
-        auto source = [&](const std::string &name) -> const Model & {
-            fs::path file = name;
-            if (file.is_relative())
-                file = dir / file;
-            auto it = loaded.find(file.string());
-            if (it == loaded.end())
-                it = loaded.emplace(file.string(), read_input(file.string())).first;
-            if (it->second.objects.empty())
-                throw std::runtime_error("no objects in " + file.string());
-            return it->second;
-        };
-        auto apply_settings = [&ctx](ModelConfig &config, const nlohmann::json &settings) {
-            for (const auto &[key, value] : settings.items())
-                config.set_deserialize(key, value.is_string() ? value.get<std::string>() : value.dump(), ctx);
-        };
-        if (!entry.contains("file") && !entry.contains("volumes"))
-            throw std::runtime_error("plate object " + std::to_string(model.objects.size() + 1) + " needs a file or volumes");
-        ModelObject *object = entry.contains("file") ? model.add_object(*source(entry.at("file").get<std::string>()).objects.front()) : model.add_object();
-        object->name = entry.value("name", fs::path(entry.contains("file") ? entry.at("file").get<std::string>() : "object").stem().string());
-        object->clear_instances();
-        if (const int extruder = entry.value("extruder", 0); extruder > 0)
-            object->config.set("extruder", extruder);
-        if (entry.contains("settings"))
-            apply_settings(object->config, entry.at("settings"));
-        for (const nlohmann::json &v : entry.value("volumes", nlohmann::json::array())) {
-            static const std::map<std::string, ModelVolumeType> types = {
-                { "part", ModelVolumeType::MODEL_PART },           { "modifier", ModelVolumeType::PARAMETER_MODIFIER },
-                { "negative", ModelVolumeType::NEGATIVE_VOLUME },  { "support_enforcer", ModelVolumeType::SUPPORT_ENFORCER },
-                { "support_blocker", ModelVolumeType::SUPPORT_BLOCKER } };
-            const auto type = types.find(v.value("type", "part"));
-            if (type == types.end())
-                throw std::runtime_error("unknown volume type " + v.value("type", ""));
-            Transform3d transform = Transform3d::Identity();
-            if (const nlohmann::json m = v.value("transform", nlohmann::json()); !m.is_null()) {
-                const bool flat = m.is_array() && m.size() == 16, rows = m.is_array() && m.size() == 4;
-                if (!flat && !rows)
-                    throw std::runtime_error("a volume transform is a row-major 4x4 matrix: 16 numbers or 4 rows of 4");
-                for (int r = 0; r < 4; ++r)
-                    for (int c = 0; c < 4; ++c)
-                        transform.matrix()(r, c) = (flat ? m.at(r * 4 + c) : m.at(r).at(c)).get<double>();
-            }
-            ModelVolume *volume = object->add_volume(source(v.at("file").get<std::string>()).objects.front()->raw_mesh(), type->second, false);
-            volume->set_transformation(Geometry::Transformation(transform));
-            volume->center_geometry_after_creation();
-            volume->name = v.value("name", fs::path(v.at("file").get<std::string>()).stem().string());
-            if (const int extruder = v.value("extruder", 0); extruder > 0)
-                volume->config.set("extruder", extruder);
-            if (v.contains("settings"))
-                apply_settings(volume->config, v.at("settings"));
-        }
-        if (entry.contains("volumes")) {
-            if (std::none_of(object->volumes.begin(), object->volumes.end(), [](const ModelVolume *v) { return v->is_model_part(); }))
-                throw std::runtime_error("plate object " + object->name + " has no part volume");
-            object->sort_volumes(true);
-            object->invalidate_bounding_box();
-        }
+        ModelObject *object = add_plate_object(model, entry, files);
+        const size_t first = object->instances.size();
         add_placed_instances(object, entry);
+        const nlohmann::json places = entry.contains("instances") ? entry.at("instances") : nlohmann::json::array({ entry });
+        for (size_t i = 0; i < places.size(); ++i) {
+            const nlohmann::json plate = places[i].contains("plate") ? places[i].at("plate") : entry.value("plate", nlohmann::json());
+            if (plate.is_null())
+                continue;
+            if (!plate.is_number_integer() || plate.get<int>() < 1)
+                throw std::runtime_error("plate object " + object->name + ": plate is a 1-based plate number");
+            layout.instance_plate[object->instances[first + i]->id()] = plate.get<int>();
+            layout.count = std::max(layout.count, plate.get<int>());
+        }
     }
     if (model.objects.empty())
         throw std::runtime_error("no objects in " + path);
+    for (const nlohmann::json &plate : j.value("plates", nlohmann::json::array())) {
+        const nlohmann::json index = plate.value("index", nlohmann::json());
+        if (!index.is_number_integer() || index.get<int>() < 1)
+            throw std::runtime_error("plates: each plate needs a 1-based index");
+        auto &[name, config] = layout.plates[index.get<int>()];
+        name = plate.value("name", std::string());
+        const nlohmann::json settings = plate.value("settings", nlohmann::json::object());
+        for (const auto &[key, value] : settings.items())
+            config.set_deserialize(key, value.is_string() ? value.get<std::string>() : value.dump(), ctx);
+        layout.count = std::max(layout.count, index.get<int>());
+    }
+    if (layout.count > 0)
+        for (const ModelObject *object : model.objects)
+            for (const ModelInstance *instance : object->instances)
+                layout.instance_plate.emplace(instance->id(), 1);
     return model;
 }
 
@@ -1305,6 +1465,89 @@ void save_project(PresetBundle &bundle, const Args &args, Model &model, const Dy
     save_source_project(written, config, true, cut_information);
 }
 
+void arrange_only(const Args &args, Model &model, const DynamicPrintConfig &config)
+{
+    arrangement::ArrangePolygons items;
+    std::vector<ModelInstance *> instances;
+    for (ModelObject *object : model.objects)
+        for (ModelInstance *instance : object->instances) {
+            arrangement::ArrangePolygon item = get_instance_arrange_poly(instance, config);
+            item.itemid = int(items.size());
+            items.push_back(std::move(item));
+            instances.push_back(instance);
+        }
+    arrangement::ArrangeParams params;
+    params.allow_rotations         = args.arrange_rotation;
+    params.clearance_height_to_rod = float(config.opt_float("extruder_clearance_height_to_rod"));
+    params.clearance_height_to_lid = float(config.opt_float("extruder_clearance_height_to_lid"));
+    params.clearance_radius        = float(config.opt_float("extruder_clearance_radius"));
+    params.nozzle_height           = float(config.opt_float("nozzle_height"));
+    params.printable_height        = float(config.opt_float("printable_height"));
+    params.align_center            = config.option<ConfigOptionPoint>("best_object_pos")->value;
+    params.is_seq_print            = config.opt_enum<PrintSequence>("print_sequence") == PrintSequence::ByObject;
+    params.align_to_y_axis         = config.opt_enum<PrinterStructure>("printer_structure") == PrinterStructure::psI3;
+    params.min_obj_distance        = args.arrange_spacing >= 0. ? scaled(args.arrange_spacing) : 0;
+    if (params.is_seq_print) {
+        params.bed_shrink_x = BED_SHRINK_SEQ_PRINT;
+        params.bed_shrink_y = BED_SHRINK_SEQ_PRINT;
+    }
+    params.progressind = [](unsigned, std::string) {};
+    arrangement::update_arrange_params(params, &config, items);
+    arrangement::update_selected_items_inflation(items, &config, params);
+    arrangement::update_selected_items_axis_align(items, &config, params);
+    const Points bed = arrangement::get_shrink_bedpts(&config, params);
+    const auto &exclude = config.option<ConfigOptionPoints>("bed_exclude_area")->values;
+    for (size_t i = 0; i + 3 < exclude.size(); i += 4) {
+        BoundingBoxf box;
+        for (size_t k = i; k < i + 4; ++k)
+            box.merge(exclude[k]);
+        arrangement::ArrangePolygon region;
+        region.poly.contour = Polygon({ { scaled(box.min.x()), scaled(box.min.y()) }, { scaled(box.max.x()), scaled(box.min.y()) },
+                                        { scaled(box.max.x()), scaled(box.max.y()) }, { scaled(box.min.x()), scaled(box.max.y()) } });
+        region.is_virt_object = true;
+        region.bed_idx        = 0;
+        region.height         = 1;
+        region.inflation      = scaled(1.);
+        params.excluded_regions.push_back(std::move(region));
+    }
+    arrangement::arrange(items, {}, bed, params);
+
+    nlohmann::json out = { { "schema", "orca.arrange.v1" }, { "objects", nlohmann::json::array() } };
+    int plates = 0, unplaced = 0;
+    for (size_t o = 0; o < model.objects.size(); ++o)
+        out["objects"].push_back({ { "index", o }, { "name", model.objects[o]->name }, { "instances", nlohmann::json::array() } });
+    for (const arrangement::ArrangePolygon &item : items) {
+        ModelInstance *instance = instances[size_t(item.itemid)];
+        ModelObject   *object   = instance->get_object();
+        const size_t   o = std::find(model.objects.begin(), model.objects.end(), object) - model.objects.begin();
+        const size_t   i = std::find(object->instances.begin(), object->instances.end(), instance) - object->instances.begin();
+        nlohmann::json place = { { "index", i } };
+        if (item.bed_idx < 0) {
+            place["plate"] = nullptr;
+            ++unplaced;
+        } else {
+            instance->apply_arrange_result(item.translation.cast<double>(), item.rotation);
+            const BoundingBoxf3 box = object->instance_bounding_box(i);
+            place["plate"] = item.bed_idx + 1;
+            place["x"]     = box.center().x();
+            place["y"]     = box.center().y();
+            place["rot"]   = Geometry::rad2deg(item.rotation);
+            plates         = std::max(plates, item.bed_idx + 1);
+        }
+        out["objects"][o]["instances"].push_back(std::move(place));
+    }
+    for (nlohmann::json &object : out["objects"])
+        std::sort(object["instances"].begin(), object["instances"].end(),
+                  [](const nlohmann::json &a, const nlohmann::json &b) { return a.at("index") < b.at("index"); });
+    out["plates"]   = plates;
+    out["unplaced"] = unplaced;
+    boost::nowide::ofstream file(args.arrange_only);
+    file << out.dump(1) << "\n";
+    if (!file)
+        throw std::runtime_error("cannot write " + args.arrange_only);
+    std::cout << "arranged " << items.size() - unplaced << " plates " << plates << " unplaced " << unplaced << "\n";
+}
+
 void cut_only(PresetBundle &bundle, const Args &args, Model &model, DynamicPrintConfig &config)
 {
     if (model.objects.size() != 1 || model.objects.front()->instances.size() != 1)
@@ -1387,6 +1630,44 @@ void cut_only(PresetBundle &bundle, const Args &args, Model &model, DynamicPrint
 #include "nonplanar_model_context.ipp"
 #include "nonplanar_patch_preview.ipp"
 #include "nonplanar_project_edit.ipp"
+
+void select_layout_plate(const Args &args, Model &model, DynamicPrintConfig &config, const PlateLayout &layout,
+                         std::vector<SourcePlate> &source_plates, ContextInstances &membership,
+                         std::optional<Model> &full_model, std::optional<DynamicPrintConfig> &full_config)
+{
+    PlateDataPtrs plates;
+    ScopeGuard release([&plates] { release_PlateData_list(plates); });
+    for (int index = 1; index <= layout.count; ++index) {
+        SourcePlate &source = source_plates.emplace_back();
+        source.plate_index  = index - 1;
+        if (const auto it = layout.plates.find(index); it != layout.plates.end())
+            std::tie(source.name, source.config) = it->second;
+        auto *plate        = new PlateData;
+        plate->plate_index = source.plate_index;
+        plate->plate_name  = source.name;
+        plate->config      = source.config;
+        plates.push_back(plate);
+    }
+    for (ModelObject *object : model.objects) {
+        for (ModelInstance *instance : object->instances) {
+            const int index = layout.instance_plate.at(instance->id());
+            instance->set_offset(instance->get_offset() + context_plate_origin(config, plates, index));
+            membership[instance->id()] = {{"saved_object_id", nullptr}, {"saved_instance_id", nullptr}, {"source_plate_index", index},
+                                          {"source_plate_name", source_plates[size_t(index - 1)].name}, {"saved_transform", nullptr}};
+        }
+        object->invalidate_bounding_box();
+    }
+    const int selected = args.plate_index ? args.plate_index : layout.count == 1 ? 1 : 0;
+    if (selected == 0 && !(args.output.empty() && (!args.save_3mf.empty() || !args.arrange_only.empty())))
+        throw std::runtime_error("--plate-index is required for a plate JSON of several plates");
+    if (selected == 0)
+        return;
+    if (!args.save_3mf.empty()) {
+        full_model  = model;
+        full_config = config;
+    }
+    select_context_plate(model, config, plates, membership, selected);
+}
 #include "nonplanar_calib_classic.ipp"
 
 int main(int argc, char **argv)
@@ -1456,8 +1737,8 @@ int main(int argc, char **argv)
         apply_filaments(bundle, args, config);
         Model model;
         const bool project_input = boost::algorithm::iequals(fs::path(args.model).extension().string(), ".3mf");
-        if (args.plate_index && !project_input)
-            throw std::runtime_error("--plate-index requires a saved .3mf project");
+        if (args.plate_index && !project_input && args.plate.empty())
+            throw std::runtime_error("--plate-index requires a saved .3mf project or a plate JSON");
         if (!args.edit.empty() && !project_input)
             throw std::runtime_error("--edit requires a saved .3mf project");
         bool project_settings = false;
@@ -1545,9 +1826,14 @@ int main(int argc, char **argv)
             for (Preset *preset : presets)
                 delete preset;
         } else if (args.calib.empty()) {
-            model = ! args.plate.empty()   ? load_plate(args.plate) :
+            PlateLayout layout;
+            model = ! args.plate.empty()   ? load_plate(args.plate, layout) :
                     ! args.project.empty() ? load_project(args.project) :
                 read_input(args.model);
+            if (layout.count > 0)
+                select_layout_plate(args, model, config, layout, source_plates, saved_instances, full_model, full_config);
+            else if (args.plate_index > 1)
+                throw std::runtime_error("--plate-index does not name a plate in this plate JSON");
         }
         if (!args.json.empty())
             record["model_context"]["presets"] = context_presets(config, project_settings);
@@ -1600,6 +1886,10 @@ int main(int argc, char **argv)
             return 0;
         }
         apply_multi_material(args, model);
+        if (! args.arrange_only.empty()) {
+            arrange_only(args, model, config);
+            return 0;
+        }
         if (! args.events.empty()) {
             CustomGCode::Info &info = model.plates_custom_gcodes[model.curr_plate_index];
             info.gcodes             = args.events;
@@ -1680,6 +1970,7 @@ int main(int argc, char **argv)
             print.auto_assign_extruders(object);
         print.apply(model, config);
         Model::setBedPolygon(config, print.config());
+        check_plate_layer_profiles(print);
         apply_layer_profile(args, model, print, config);
         if (! args.json.empty()) {
             const auto head = Nonplanar::resolve_head_envelope(print.config());

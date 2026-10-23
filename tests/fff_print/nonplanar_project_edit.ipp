@@ -23,7 +23,7 @@ void edit_project(const std::string &path, Model &model, const DynamicPrintConfi
     if (!in)
         throw std::runtime_error("cannot read " + path);
     const nlohmann::json edits = nlohmann::json::parse(in).at("edits");
-    const fs::path       dir   = fs::path(path).parent_path();
+    PlateFiles           files{ fs::path(path).parent_path(), false, {} };
     std::map<int, ModelObject *> objects;
     std::map<std::pair<int, int>, ModelInstance *> instances;
     for (ModelObject *object : model.objects)
@@ -50,30 +50,21 @@ void edit_project(const std::string &path, Model &model, const DynamicPrintConfi
         membership[instance->id()] = { { "saved_object_id", nullptr }, { "saved_instance_id", nullptr }, { "source_plate_index", plate },
                                        { "source_plate_name", (*name)->plate_name }, { "saved_transform", nullptr } };
     };
-    ConfigSubstitutionContext ctx(ForwardCompatibilitySubstitutionRule::Disable);
     std::set<ModelInstance *> deleted_instances;
     std::set<ModelObject *>   deleted_objects;
     for (const nlohmann::json &edit : edits) {
         const std::string op = edit.at("op").get<std::string>();
         if (op == "add_object") {
-            fs::path file = edit.at("file").get<std::string>();
-            if (file.is_relative())
-                file = dir / file;
-            const Model source = read_input(file.string());
-            if (source.objects.empty())
-                throw std::runtime_error("no objects in " + file.string());
-            ModelObject *object = model.add_object(*source.objects.front());
-            object->name = edit.value("name", file.stem().string());
-            object->clear_instances();
-            if (const int extruder = edit.value("extruder", 0); extruder > 0)
-                object->config.set("extruder", extruder);
-            if (edit.contains("settings"))
-                for (const auto &[key, value] : edit.at("settings").items())
-                    object->config.set_deserialize(key, value.is_string() ? value.get<std::string>() : value.dump(), ctx);
-            const int plate = plate_of(edit, 1);
+            ModelObject *object = add_plate_object(model, edit, files);
+            const int    plate  = plate_of(edit, 1);
             add_placed_instances(object, edit, context_plate_origin(config, plates, plate));
             for (const ModelInstance *instance : object->instances)
                 join(instance, plate);
+        } else if (op == "add_volume") {
+            ModelObject *object = object_of(edit);
+            add_plate_volume(*object, edit, files);
+            object->sort_volumes(true);
+            object->invalidate_bounding_box();
         } else if (op == "add_instance") {
             ModelObject *object = object_of(edit);
             const auto   first  = membership.find(object->instances.front()->id());
