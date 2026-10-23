@@ -186,7 +186,7 @@ Model read_input(const std::string &file)
                  "       (plate JSON objects and volumes take \"paint\"; plate JSON objects take \"layer_height_profile\")\n"
                  "       [--surface-grid [--surface-grid-max-cells N]]   (with --json: per-cell top surface error)\n"
                  "       [--force-planar]   (nonplanar_mode off on the plate, objects, volumes and height ranges)\n"
-                 "       [--edit EDITS.json]   (a loaded PROJECT.3mf: add/delete objects and instances, set filaments; --edit takes \"add_volume\")\n"
+                 "       [--edit EDITS.json]   (a loaded PROJECT.3mf: add/delete objects and instances, set filaments; --edit takes \"add_volume\"; --edit takes \"set_paint\")\n"
                  "       [--cut-only Z | X,Y,Z,NX,NY,NZ [--cut-keep upper|lower|both] [--cut-place-lower]]\n"
                  "       [--arrange-only OUT.json [--arrange-spacing MM] [--arrange-no-rotation]]   (the desktop's arrange, no slice)\n"
                  "       [--patch-preview FILE.json [--patch-preview-budget S] [--patch-preview-max-triangles N]]\n"

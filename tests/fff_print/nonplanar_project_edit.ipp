@@ -90,6 +90,29 @@ void edit_project(const std::string &path, Model &model, const DynamicPrintConfi
                     throw std::runtime_error("--edit: object " + edit.at("object").dump() + " has no saved instance " + edit.at("instance").dump());
                 deleted_instances.insert(it->second);
             }
+        } else if (op == "set_paint") {
+            ModelObject      *object = object_of(edit);
+            const std::string where  = "--edit set_paint object " + edit.at("object").dump();
+            ModelVolume      *volume = nullptr;
+            if (edit.contains("volume")) {
+                const int index = edit.at("volume").get<int>();
+                if (index < 0 || index >= int(object->volumes.size()))
+                    throw std::runtime_error(where + ": no volume " + std::to_string(index) + " (the object has " +
+                                             std::to_string(object->volumes.size()) + ")");
+                volume = object->volumes[index];
+            } else {
+                for (ModelVolume *v : object->volumes)
+                    if (v->is_model_part()) {
+                        if (volume)
+                            throw std::runtime_error(where + ": the object has several parts; give \"volume\"");
+                        volume = v;
+                    }
+            }
+            if (!volume || !volume->is_model_part())
+                throw std::runtime_error(where + ": paint goes on a part");
+            if (!edit.contains("paint") || !edit.at("paint").is_object())
+                throw std::runtime_error(where + ": paint is a map of kind to triangle paint strings");
+            apply_plate_paint(*volume, edit.at("paint"), where);
         } else if (op == "set_extruder") {
             const int extruder = edit.at("extruder").get<int>();
             const int filaments = int(config.option<ConfigOptionStrings>("filament_colour")->size());
