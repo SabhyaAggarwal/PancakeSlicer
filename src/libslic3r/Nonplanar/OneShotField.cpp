@@ -15,7 +15,9 @@
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
+#include "libslic3r/Slicing.hpp"
 #include "libslic3r/TriangleMesh.hpp"
+#include "libslic3r/libslic3r.h"
 
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/path.hpp>
@@ -356,6 +358,58 @@ bool leans(const ObjectiveMachine &m)
 
 }
 
+namespace {
+
+std::vector<double> mode_off_tops(const PrintObject &object)
+{
+    const PrintConfig       &pc = object.print()->config();
+    const PrintObjectConfig &oc = object.config();
+    SlicingParameters        sp = object.slicing_parameters();
+    const bool prime_tower = pc.enable_prime_tower.value && pc.filament_diameter.values.size() > 1;
+    sp.surface_error = 0.;
+    sp.overhang_reach = 0.;
+    if (!pc.spiral_mode.value && !prime_tower) {
+        sp.road_width    = 1.05 * pc.nozzle_diameter.get_at(0);
+        sp.surface_error = oc.adaptive_layer_height_error.value;
+        if (oc.overhang_layer_contact.value > 0.)
+            sp.overhang_reach = (1. - 0.01 * oc.overhang_layer_contact.value) * sp.road_width;
+    }
+    const ModelObject         &mo      = *object.model_object();
+    const std::vector<coordf_t> profile = (sp.surface_error > 0. || sp.overhang_reach > 0.) && mo.layer_config_ranges.empty() ?
+                                              layer_height_profile_surface_error(sp, mo) :
+                                              layer_height_profile_from_ranges(sp, mo.layer_config_ranges);
+    const std::vector<coordf_t> layers = generate_object_layers(sp, profile, oc.precise_z_height.value);
+    std::vector<double>         tops;
+    for (size_t i = 1; i < layers.size(); i += 2)
+        tops.push_back(layers[i]);
+    return tops;
+}
+
+std::vector<float> anchor_field(const ObjectiveGeometry &g, const std::vector<double> &tops, double first_layer, double h)
+{
+    if (tops.empty())
+        return {};
+    std::vector<double> zk { 0. }, pk { 0. };
+    for (size_t j = 0; j < tops.size(); ++j)
+        zk.push_back(tops[j]), pk.push_back(first_layer + double(j) * h);
+    auto phi = [&](double z) {
+        if (z <= 0.)
+            return z;
+        if (z >= zk.back())
+            return pk.back() + (z - zk.back());
+        const size_t i = size_t(std::upper_bound(zk.begin(), zk.end(), z) - zk.begin());
+        return pk[i - 1] + (pk[i] - pk[i - 1]) * (z - zk[i - 1]) / (zk[i] - zk[i - 1]);
+    };
+    std::vector<float> f(g.nodes());
+    for (size_t i = 0; i < g.dims[0]; ++i)
+        for (size_t j = 0; j < g.dims[1]; ++j)
+            for (size_t k = 0; k < g.dims[2]; ++k)
+                f[g.index(i, j, k)] = float(phi(g.origin.z() + double(k) * g.spacing.z()));
+    return f;
+}
+
+}
+
 ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeometry &geom, double tilt_max)
 {
     const PrintConfig       &pc = object.print()->config();
@@ -365,9 +419,38 @@ ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeo
     ObjectiveMachine         m;
     m.h                  = oc.layer_height.value;
     m.first_layer        = pc.initial_layer_print_height.value;
-    m.thickness_min      = 0.5 * m.h;
-    m.thickness_max      = 1.6 * m.h;
+    const double preset_min = pc.min_layer_height.get_at(0), preset_max = pc.max_layer_height.get_at(0);
+    m.thickness_min = preset_min > 0. ? preset_min : 0.5 * m.h;
+    m.thickness_max = preset_max > 0. ? preset_max : 1.6 * m.h;
     m.printable_overhang = rad(oc.multiplanar_overhang_threshold.value);
+    const std::vector<double> tops = mode_off_tops(object);
+    m.anchor = anchor_field(geom, tops, m.first_layer, m.h);
+    for (size_t j = 1; j < tops.size(); ++j)
+        m.thickness_min = std::min(m.thickness_min, tops[j] - tops[j - 1] - 1e-4);
+    auto planar_g = [&](size_t k) {
+        if (m.anchor.empty() || k + 1 >= geom.dims[2])
+            return 1.f;
+        const size_t c = geom.index(0, 0, k);
+        return float((double(m.anchor[c + 1]) - double(m.anchor[c])) / geom.spacing.z());
+    };
+    if (pc.nonplanar_kinematics.value == RotaryLayout::None) {
+        m.cap_g.assign(geom.dims[2], 0.f);
+        for (size_t k = 0; k < geom.dims[2]; ++k)
+            m.cap_g[k] = 0.99f * planar_g(k);
+    }
+    {
+        const int    threshold = oc.support_threshold_angle.value > 0 ? oc.support_threshold_angle.value : 30;
+        const double cos_s = std::cos(double(threshold) * M_PI / 180.), band = 2. * m.h + geom.spacing.z();
+        m.pinned_v.assign(geom.dims[2], std::numeric_limits<float>::quiet_NaN());
+        for (size_t s = 0; s < geom.p.size(); ++s)
+            if (-geom.n[s].z() >= cos_s) {
+                const double lo = (geom.p[s].z() - band - geom.origin.z()) / geom.spacing.z();
+                const double hi = (geom.p[s].z() + band - geom.origin.z()) / geom.spacing.z();
+                for (long k = std::max(0L, long(std::floor(lo))); k <= std::min(long(geom.dims[2]) - 1, long(std::ceil(hi))); ++k)
+                    m.pinned_v[size_t(k)] = m.anchor.empty() ? float(geom.origin.z() + double(k) * geom.spacing.z()) :
+                                                               m.anchor[geom.index(0, 0, size_t(k))];
+            }
+    }
     m.rotary             = pc.nonplanar_kinematics.value != RotaryLayout::None;
     m.tilt_max           = std::min(m.rotary ? tilt_max : 0., BodyPathCap);
     m.slope_cap.fill(BodyPathCap);
@@ -506,6 +589,8 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
         for (size_t j = 0; j < g.dims[1]; ++j)
             for (size_t k = 0; k < g.dims[2]; ++k)
                 f.phi[g.index(i, j, k)] = float(g.origin.z() + double(k) * g.spacing.z());
+    if (m.anchor.size() == g.nodes())
+        f.phi = m.anchor;
     if (!model.empty()) {
         f.phi                = student_phi(StudentNet(model), g, m);
         params.multi_start   = false;

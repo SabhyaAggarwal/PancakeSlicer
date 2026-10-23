@@ -341,6 +341,10 @@ public:
     const Nonplanar::RepairHints*     nonplanar_repair() const { return m_nonplanar_repair.get(); }
     Nonplanar::OneShotState&          oneshot_state();
     const Nonplanar::OneShotState*    oneshot_state() const { return m_oneshot.get(); }
+    bool                              auto_support() const { return m_auto_support; }
+    SupportNecessaryType              auto_support_need() const { return m_auto_support_need; }
+    SupportMaterialStyle              auto_support_style() const { return m_auto_support_style; }
+    bool                              oneshot_manual_support() const { return m_oneshot_manual_support; }
     bool has_conformal_support() const;
 
     void generate_support_preview();
@@ -534,6 +538,7 @@ private:
     SupportNecessaryType m_auto_support_need = NoNeedSupp;
     SupportType          m_auto_support_type{};
     SupportMaterialStyle m_auto_support_style{};
+    bool                 m_oneshot_manual_support = false;
     bool                 m_auto_support_critical = false;
     std::unique_ptr<Nonplanar::ConformalResult> m_conformal;
     std::shared_ptr<Nonplanar::RepairHints>     m_nonplanar_repair;

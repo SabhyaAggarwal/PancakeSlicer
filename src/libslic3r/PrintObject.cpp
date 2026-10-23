@@ -1017,8 +1017,19 @@ void PrintObject::generate_support_material(bool with_belt_brim)
             m_config.enable_support.value = true;
             m_config.support_type.value   = stTreeAuto;
             m_config.support_critical_regions_only.value = m_config.nonplanar_mode.value == NonplanarMode::Auto;
-            m_config.support_style.value  = smsTreeHybrid;
+            if (!Nonplanar::oneshot_requested(*this))
+                m_config.support_style.value = smsTreeHybrid;
+            else if (m_auto_support_style == smsTreeOrganic || m_auto_support_style == smsDefault)
+                m_config.support_style.value = smsTreeSlim;
             m_slicing_params.valid = false;
+            this->update_slicing_parameters();
+        }
+
+        m_oneshot_manual_support = false;
+        if (Nonplanar::oneshot_requested(*this) && m_config.enable_support.value && !is_auto(m_config.support_type.value)) {
+            m_oneshot_manual_support      = true;
+            m_config.support_type.value   = m_config.support_type.value == stTree ? stTreeAuto : stNormalAuto;
+            m_slicing_params.valid        = false;
             this->update_slicing_parameters();
         }
 
@@ -1054,7 +1065,7 @@ void PrintObject::generate_support_material(bool with_belt_brim)
             m_print->set_status(50, L("Generating support"));
 
             this->_generate_support_material();
-            if (m_auto_support_applied) {
+            if (m_auto_support_applied && !Nonplanar::oneshot_requested(*this)) {
                 constexpr double MinAutoSupportVolume = 100.;
                 double           volume               = 0.;
                 for (const SupportLayer *layer : m_support_layers)

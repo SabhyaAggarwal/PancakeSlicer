@@ -607,6 +607,23 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
         throw Slic3r::SlicingError(Slic3r::format(_u8L("One-shot field: %1% moves strike printed material (a solver bug: the solved field must "
                                                        "satisfy its constraints)."),
                                                   hits));
+    for (PrintObject *object : objects) {
+        const bool planned = std::any_of(object->support_layers().begin(), object->support_layers().end(),
+                                         [](const SupportLayer *layer) { return !layer->support_fills.empty(); });
+        if (object->auto_support_need() != NoNeedSupp && !planned)
+            throw Slic3r::SlicingError(Slic3r::format(_u8L("One-shot field: %1% needs support (%2%), and it prints none (support blockers "
+                                                           "or settings forbid it)."),
+                                                      object->model_object()->name,
+                                                      object->auto_support_need() == SharpTail  ? _u8L("floating regions") :
+                                                      object->auto_support_need() == Cantilever ? _u8L("floating cantilever") :
+                                                                                                    _u8L("large overhangs")));
+        if (planned)
+            object->oneshot_state().decision +=
+                object->oneshot_manual_support() ? ", support on (one-shot): manual -> auto" :
+                object->config().support_style.value == smsTreeSlim && object->auto_support_style() != smsTreeSlim ?
+                                                   ", support on (one-shot), tree_slim: organic needs fixed layers" :
+                                                   ", support on (one-shot)";
+    }
     result.clearance_report = std::move(report);
     result.clearance        = result.clearance_report.per_move;
     return true;

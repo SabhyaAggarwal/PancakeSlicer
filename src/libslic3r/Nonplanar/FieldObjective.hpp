@@ -4,6 +4,7 @@
 #include "libslic3r/Point.hpp"
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -63,6 +64,10 @@ struct ObjectiveMachine
 {
     double h = 0.2, first_layer = 0.2;
     double thickness_min = 0.1, thickness_max = 0.32;
+    std::vector<float> pinned_v;
+    std::vector<float> anchor;
+    std::vector<float> cap_g;
+    bool pinned(size_t k) const { return k < pinned_v.size() && !std::isnan(pinned_v[k]); }
     double printable_overhang = 45. * M_PI / 180.;
     bool   rotary = true;
     double tilt_max = 55. * M_PI / 180.;

@@ -751,6 +751,7 @@ void PrintObject::slice()
         m_auto_support_applied        = false;
     }
     m_auto_support = false;
+    m_auto_support_need = NoNeedSupp;
     if (const std::string why = Nonplanar::auto_rotary_planar(*this); !why.empty()) {
         m_config.nonplanar_mode.value = NonplanarMode::Off;
         this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, why);
@@ -880,11 +881,12 @@ void PrintObject::slice()
     }
 
     if (!m_config.enable_support.value && !m_layers.empty() && !Nonplanar::rotary_auto_measurement() &&
-        (m_config.nonplanar_mode.value == NonplanarMode::Auto || m_auto_planar || Nonplanar::auto_rotary_requested(*this))) {
+        (m_config.nonplanar_mode.value == NonplanarMode::Auto || m_auto_planar || Nonplanar::auto_rotary_requested(*this) || oneshot)) {
         m_auto_support_need = this->is_support_necessary();
-        m_auto_support      = m_auto_support_need != NoNeedSupp ||
+        m_auto_support      = oneshot || m_auto_support_need != NoNeedSupp ||
                               (m_config.nonplanar_mode.value == NonplanarMode::Off && overhang_area(*this) >= MinAutoSupportOverhangArea);
-    }
+    } else if (oneshot && !m_layers.empty())
+        m_auto_support_need = this->is_support_necessary();
 
     this->set_done(posSlice);
 }
