@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "e6ASIkDCRQRAQd46",
 	"instantiation": "true",
+	"top_layer_direction": "45",
 	"nonplanar_mode": "auto",
 	"ironing_type": "top",
 	"compatible_printers": [

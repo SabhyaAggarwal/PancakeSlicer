@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "ARXI2bnYNm5K8fvX",
 	"instantiation": "true",
+	"top_layer_direction": "45",
 	"nonplanar_mode": "auto",
 	"ironing_type": "top",
 	"compatible_printers_condition": "printer_notes=~/.*PRINTER_MODEL_COREONE[^_a-zA-Z0-9].*/ and nozzle_diameter[0]==0.4 and printer_notes=~/.*HF_NOZZLE.*/"

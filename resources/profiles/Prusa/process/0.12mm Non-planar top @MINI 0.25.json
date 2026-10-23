@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "tCWsJTbCeDvHKKFd",
 	"instantiation": "true",
+	"top_layer_direction": "45",
 	"adaptive_layer_height_error": "0.084",
 	"layer_height": "0.12",
 	"nonplanar_shell_layer_height": "0",

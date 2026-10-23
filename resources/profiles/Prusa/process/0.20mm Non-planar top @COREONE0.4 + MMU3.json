@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "LBhaek87iWRO42k9",
 	"instantiation": "true",
+	"top_layer_direction": "45",
 	"nonplanar_mode": "auto",
 	"ironing_type": "top",
 	"compatible_printers": [

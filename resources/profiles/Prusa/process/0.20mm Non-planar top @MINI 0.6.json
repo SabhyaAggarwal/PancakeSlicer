@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "xWPRfFwCqmxwYfm4",
 	"instantiation": "true",
+	"top_layer_direction": "45",
 	"nonplanar_full_conformal_max_thickness": "3",
 	"nonplanar_mode": "auto",
 	"nonplanar_top_speed_factor": "150%",

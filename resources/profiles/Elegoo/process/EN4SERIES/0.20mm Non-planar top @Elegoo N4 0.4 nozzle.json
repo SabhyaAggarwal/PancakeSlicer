@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "dKPxk2IcisiJJkOG",
 	"instantiation": "true",
+	"top_layer_direction": "45",
 	"nonplanar_ironing": "1",
 	"nonplanar_flow_mod": "1",
 	"nonplanar_surface_spacing": "1",

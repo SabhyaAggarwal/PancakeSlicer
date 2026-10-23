@@ -5,6 +5,7 @@
 	"from": "system",
 	"setting_id": "POk6GvUDIwLeiTCQ",
 	"instantiation": "true",
+	"top_layer_direction": "45",
 	"nonplanar_mode": "auto",
 	"ironing_type": "top",
 	"compatible_printers_condition": "printer_notes=~/.*MK4S.*/ and nozzle_diameter[0]==0.4 and printer_notes=~/.*HF_NOZZLE.*/"
