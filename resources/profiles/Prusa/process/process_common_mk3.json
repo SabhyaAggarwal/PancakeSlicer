@@ -3,6 +3,7 @@
 	"name": "process_common_mk3",
 	"from": "system",
 	"instantiation": "false",
+	"top_layer_direction": "45",
 	"bottom_shell_thickness": "0.5",
 	"bottom_surface_pattern": "monotonic",
 	"bridge_angle": "0",
