@@ -202,10 +202,46 @@ export interface ReportObject {
   flatTop: number;
   planarReason: string;
   flatReason: string;
+  share?: number;
+  supportFree?: number;
+  orientation?: string;
+}
+
+type ReportFallbackJson = { reason?: string; class?: string; why?: string; area_mm2?: number; top?: boolean };
+
+function fromReportJson(r: Rec) {
+  const clearance = (r.clearance ?? {}) as Rec;
+  const objects = ((r.objects ?? []) as Rec[]).map((o): ReportObject => {
+    const mainReason = (fallback: boolean) => {
+      const by = new Map<string, [number, string]>();
+      for (const f of (o.fallbacks ?? []) as ReportFallbackJson[]) {
+        if (!f.top || (f.class === 'fallback') !== fallback) continue;
+        const tag = f.reason ?? '', prev = by.get(tag);
+        by.set(tag, [(prev?.[0] ?? 0) + (num(f.area_mm2) ?? 0), f.why || FALLBACK_REASONS[tag]?.[1] || tag]);
+      }
+      return [...by.values()].sort((a, b) => b[0] - a[0])[0]?.[1] ?? '-';
+    };
+    return {
+      name: String(o.name ?? ''), mode: String(o.mode ?? 'off'), topPatches: num(o.top_patches) ?? 0,
+      otherPatches: num(o.other_patches) ?? 0, bands: num(o.bands) ?? 0, curvedTop: num(o.curved_top_mm2) ?? 0,
+      planarTop: num(o.planar_top_mm2) ?? 0, flatTop: num(o.flat_top_mm2) ?? 0,
+      planarReason: mainReason(true), flatReason: mainReason(false), share: num(o.curved_share) ?? undefined,
+      supportFree: num(o.support_free_mm2) ?? 0, orientation: String(o.orientation ?? ''),
+    };
+  });
+  return {
+    head: String(r.head ?? ''), verified: !!clearance.checked, hits: num(clearance.hits) ?? 0,
+    timeS: num(r.time_s) ?? 0, curvedS: num(r.curved_time_s) ?? 0, objects,
+  };
 }
 
 export function readReport(record: Rec | undefined) {
   if (!record || record.status !== 'sliced') return null;
+  const report = record.nonplanar_report as Rec | undefined;
+  if (report && typeof report === 'object') {
+    const own = (report.objects ?? []) as { patches?: unknown[]; fallbacks?: unknown[] }[];
+    return own.some((o) => o.patches?.length || o.fallbacks?.length) ? fromReportJson(report) : null;
+  }
   const objects = (record.objects ?? []) as { id?: number; name?: string; mode?: string }[];
   if (!objects.some((o) => o.mode && o.mode !== 'off')) return null;
   const patches = (((record.results ?? {}) as Rec).patches ?? []) as (Patch & { band?: number | null })[];

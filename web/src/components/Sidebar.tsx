@@ -30,13 +30,16 @@ function headBoxLabel(name: string) {
   return words.length ? words.join(' ') : name;
 }
 
+type VerifierHit = { move_id?: number; gcode_line?: number; layer?: number; penetration_mm?: number; component?: string | null };
+
 function ClearanceWarning() {
   const job = useStore((s) => s.job);
   const v = job.state === 'done' && !job.stale ? (job.status?.record?.totals as { verifier?: Record<string, unknown> } | undefined)?.verifier : undefined;
-  const hits = (v?.first_hits ?? []) as { move_id?: number; gcode_line?: number; penetration_mm?: number; component?: string | null }[];
-  if (!v?.ran || !(Number(v.hit_moves) > 0) || !hits.length) return null;
-  const hit = hits.reduce((a, b) => ((b.penetration_mm ?? 0) > (a.penetration_mm ?? 0) ? b : a));
-  const layer = hit.move_id === undefined ? null : streamLayerOf(job.id, hit.move_id);
+  const worst = (v?.worst ?? []) as VerifierHit[];
+  const hits = (v?.first_hits ?? []) as VerifierHit[];
+  if (!v?.ran || !(Number(v.hit_moves) > 0) || !(worst.length || hits.length)) return null;
+  const hit = worst[0] ?? hits.reduce((a, b) => ((b.penetration_mm ?? 0) > (a.penetration_mm ?? 0) ? b : a));
+  const layer = hit.layer ?? (hit.move_id === undefined ? null : streamLayerOf(job.id, hit.move_id));
   const text = `Moves that would hit printed material: ${v.hit_moves} (worst clearance: ${Number(v.min_clearance_mm).toFixed(3)} mm, ` +
     `${hit.component ? headBoxLabel(hit.component) + ', ' : ''}${layer !== null ? `layer ${layer + 1}, ` : ''}line ${hit.gcode_line}).`;
   return (
@@ -64,11 +67,13 @@ function NonplanarResult() {
   for (const o of report.objects) {
     if (o.topPatches + o.otherPatches === 0 && o.planarTop + o.flatTop === 0) continue;
     lines.push('', `${o.name} (${modeLabel(o.mode)})`);
-    const share = o.curvedTop + o.planarTop > 0 ? o.curvedTop / (o.curvedTop + o.planarTop) : 1;
+    const share = o.share ?? (o.curvedTop + o.planarTop > 0 ? o.curvedTop / (o.curvedTop + o.planarTop) : 1);
     lines.push(o.topPatches > 0 ? `Curved top: ${(100 * share).toFixed(1)} % printed curved, patches: ${o.topPatches}, height bands: ${Math.max(o.bands, 1)}.` : 'No curved top.');
     if (o.otherPatches > 0) lines.push(`Curved undersides, thin parts and bridges: ${o.otherPatches}.`);
     if (o.planarTop > 0) lines.push(`Planar fallback: ${o.planarTop.toFixed(1)} mm², mostly ${o.planarReason}.`);
     if (o.flatTop > 0) lines.push(`Planar by design: ${o.flatTop.toFixed(1)} mm², mostly ${o.flatReason}.`);
+    if (o.supportFree && o.supportFree > 0) lines.push(`Support skipped under ${o.supportFree.toFixed(0)} mm² of overhang the curved layers print.`);
+    if (o.orientation) lines.push(`Orientation: ${o.orientation}.`);
   }
   return (
     <div className="side-section np-result">
