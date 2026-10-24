@@ -61,6 +61,8 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, users *UserPres
 	mux.HandleFunc("POST /api/user-presets", s.saveUserPreset)
 	mux.HandleFunc("DELETE /api/user-presets/{type}/{name}", s.deleteTypedUserPreset)
 	mux.HandleFunc("/api/user-presets/{name}", s.userPreset)
+	mux.HandleFunc("GET /api/user-heads", s.listUserHeads)
+	mux.HandleFunc("POST /api/user-heads", s.saveUserHead)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { fail(w, 404, "unknown API endpoint") })
 	mux.Handle("/", spaFiles(c.StaticDir))
 	if c.Metrics {

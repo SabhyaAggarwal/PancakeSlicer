@@ -599,6 +599,10 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 		return
 	}
 
+	if err := copyUserHeads(m.cfg, filepath.Join(j.Dir, "datadir")); err != nil {
+		j.setState(StateFailed, "cannot copy the user heads: "+err.Error())
+		return
+	}
 	cmd, commandErr := lineBufferedCommand(ctx, m.cfg.Tool, args)
 	if commandErr != nil {
 		j.setState(StateFailed, sanitizeToolError(commandErr))

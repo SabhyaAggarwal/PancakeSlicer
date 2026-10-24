@@ -1,4 +1,5 @@
 import { getState, setState, type HeadInfo } from './state/store';
+import { mutation } from './api/access';
 
 export interface HeadBox {
   name?: string;
@@ -19,11 +20,19 @@ export interface Head extends HeadInfo {
 
 let index: Promise<HeadInfo[]> | null = null;
 const heads = new Map<string, Promise<Head | null>>();
+const userHeads = new Map<string, Record<string, unknown>>();
 
 export function loadHeadIndex(): Promise<HeadInfo[]> {
-  index ??= fetch('/nonplanar/heads/index.json')
-    .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status} ${r.statusText}`))))
-    .then((list: HeadInfo[]) => {
+  index ??= Promise.all([
+    fetch('/nonplanar/heads/index.json').then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status} ${r.statusText}`)))),
+    fetch('/api/user-heads').then((r) => (r.ok ? r.json() : [])).catch(() => []),
+  ])
+    .then(([bundled, user]: [HeadInfo[], Record<string, unknown>[]]) => {
+      userHeads.clear();
+      for (const h of Array.isArray(user) ? user : []) if (typeof h?.id === 'string') userHeads.set(h.id, h);
+      const ids = new Set(bundled.map((h) => h.id));
+      const list = [...bundled, ...[...userHeads.values()].filter((h) => !ids.has(h.id as string))
+        .map((h) => ({ id: h.id as string, name: String(h.name ?? h.id), calibrated: h.calibrated === true, user: true }))];
       setState({ heads: list });
       return list;
     })
@@ -34,11 +43,25 @@ export function loadHeadIndex(): Promise<HeadInfo[]> {
   return index;
 }
 
+export async function loadHeadJson(id: string): Promise<Record<string, unknown> | null> {
+  if (!/^[A-Za-z0-9_-]+$/.test(id)) return null;
+  await loadHeadIndex().catch(() => undefined);
+  if (userHeads.has(id)) return structuredClone(userHeads.get(id)!);
+  return fetch(`/nonplanar/heads/${id}.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+}
+
+export async function saveUserHead(head: Record<string, unknown>) {
+  await mutation('/api/user-heads', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(head, null, 2) }, false, undefined, undefined, true);
+  index = null;
+  heads.delete(head.id as string);
+  await loadHeadIndex();
+}
+
 export function loadHead(id: string): Promise<Head | null> {
-  if (!/^[a-z0-9_-]+$/.test(id)) return Promise.resolve(null);
+  if (!/^[A-Za-z0-9_-]+$/.test(id)) return Promise.resolve(null);
   let head = heads.get(id);
   if (!head) {
-    head = fetch(`/nonplanar/heads/${id}.json`).then((r) => (r.ok ? r.json() : null)).then((h) => h && {
+    head = loadHeadJson(id).then((h: any) => h && {
       id: String(h.id ?? id), name: String(h.name ?? id), calibrated: h.calibrated === true, provenance: h.provenance,
       margin: Number(h.margin ?? 0.3), lateral_margin: Number(h.lateral_margin ?? 0.3),
       tip_allowance: { radius: Number(h.nozzle?.allowance_radius ?? 0), height: Number(h.nozzle?.allowance_height ?? 0) }, boxes: h.boxes ?? [],

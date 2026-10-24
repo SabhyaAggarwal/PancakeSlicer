@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { effectiveConfig, getState, markStale, presetEdits, setState, toast, useStore } from '../state/store';
+import { effectiveConfig, getState, markStale, presetEdits, setOption, setState, toast, useStore } from '../state/store';
 import type { ConfigValue } from '../api/types';
 import { undoable } from '../state/history';
-import { headLabel, loadHead, loadHeadIndex, type Head } from '../heads';
+import { headLabel, loadHead, loadHeadIndex, loadHeadJson, saveUserHead, slopeMap, type Head, type HeadBox } from '../heads';
 import { Modal, ModalTitle } from './Modal';
 import { runCalibration } from './CalibDialog';
 
@@ -46,6 +46,42 @@ function stepClearance(head: Head, s: ClearanceStep, gap: number) {
   return worst;
 }
 
+const FIT_MARGIN = 0.2, TOUCH_MARGIN = 0.05;
+const finiteBody = (b: HeadBox) => !b.nozzle && !b.infinite_x && !b.infinite_y;
+
+function fitClearance(base: Head, json: Record<string, unknown>, lastClean: number, gap: number, id: string, name: string) {
+  const shroud: Head = { ...base, boxes: base.boxes.filter(finiteBody) };
+  if (!shroud.boxes.length) throw new Error('The head has no body above the nozzle to calibrate.');
+  const lowest = Math.min(...shroud.boxes.map((b) => b.min[2]));
+  const needed = (k: number) => -stepClearance(shroud, STEPS[k - 1], gap);
+  let shift = lastClean === 0 ? needed(1) - Math.max(gap, 0.1) : Math.max(...STEPS.slice(0, lastClean).map((_, k) => needed(k + 1)));
+  shift += FIT_MARGIN;
+  if (lastClean < STEPS.length) shift = Math.min(shift, needed(lastClean + 1) - TOUCH_MARGIN);
+  shift = Math.max(shift, -lowest);
+  const floor = lastClean > 0 ? STEPS[lastClean - 1].relief + base.margin - gap : -Infinity;
+  const boxes = (json.boxes as HeadBox[]).map((b) => {
+    const min = [...b.min] as HeadBox['min'], max = [...b.max] as HeadBox['max'];
+    if (finiteBody(b)) { min[2] += shift; max[2] += shift; }
+    else if ((b.infinite_x || b.infinite_y) && min[2] < floor) { max[2] += floor - min[2]; min[2] = floor; }
+    return { ...b, min, max };
+  });
+  const head: Head = { ...base, id, name, calibrated: true, boxes };
+  const step = lastClean === 0 ? 'none' : `${lastClean} (${STEPS[lastClean - 1].slope} deg, ${STEPS[lastClean - 1].relief} mm)`;
+  const provenance = `${base.provenance ? `${base.provenance} ` : ''}Calibrated from ${base.id} with the non-planar clearance plate at layer height ${gap.toFixed(2)} mm: last clean step ${step}; body moved ${shift.toFixed(2)} mm.`;
+  const steep = STEPS[STEPS.length - 1].slope;
+  let lo = 0, hi = 100;
+  if (stepClearance(head, { slope: steep, relief: hi }, gap) >= 0) lo = hi;
+  for (let i = 0; i < 40 && hi - lo > 1e-3; i++) {
+    const mid = 0.5 * (lo + hi);
+    if (stepClearance(head, { slope: steep, relief: mid }, gap) >= 0) lo = mid; else hi = mid;
+  }
+  return {
+    json: { ...json, id, name, calibrated: true, provenance, boxes }, shift, band: lo,
+    slopeCap: (Math.min(...slopeMap(head, 72, gap)) * 180) / Math.PI,
+    gantryFloor: Math.min(...boxes.filter((b) => b.infinite_x || b.infinite_y).map((b) => b.min[2])),
+  };
+}
+
 const stepText = (k: number) => (k === 0 ? 'None (cone 1 already touched)' : `Cone ${k}: ${STEPS[k - 1].slope}°, ${STEPS[k - 1].relief} mm`);
 const firstTouchText = (k: number) => (k > STEPS.length ? 'no cone' : `cone ${k}`);
 const logValue = (log: string[] | undefined, key: string) => log?.find((l) => l.startsWith(`${key} `))?.slice(key.length + 1);
@@ -83,6 +119,8 @@ export default function NonplanarCalibDialog() {
   const [fan, setFan] = useState(memo.fan);
   const [verifyHead, setVerifyHead] = useState(memo.verifyHead || headId);
   const [head, setHead] = useState<Head | null>(null);
+  const [newId, setNewId] = useState(`${headId || 'generic-conservative'}-calibrated`);
+  useEffect(() => setNewId(`${headId || 'generic-conservative'}-calibrated`), [headId]);
   const [result, setResult] = useState<Record<number, string>>({});
   Object.assign(memo, { page, lastClean, tilt, speed, fan, verifyHead });
   useEffect(() => void loadHeadIndex().catch(() => undefined), []);
@@ -93,6 +131,20 @@ export default function NonplanarCalibDialog() {
     void runCalibration(`nonplanar-${test}`, '', test === 'verifier' ? verifyHead : undefined).then((started) => {
       if (started && test === 'tilt-flow') memo.tiltCurve = curve;
     });
+  };
+  const writeHead = async () => {
+    try {
+      if (headId === 'calibration-probe') throw new Error("The printer's head is the calibration probe. Select the printer's own head first.");
+      const json = await loadHeadJson(headId);
+      if (!head || !json) throw new Error('The generic conservative head has no head file to calibrate. Select the printer\'s own head first.');
+      const fit = fitClearance(head, json, lastClean, layerHeight, newId, `${head.name} (calibrated)`);
+      await saveUserHead(fit.json);
+      setOption('machine', 'nonplanar_head', newId);
+      setVerifyHead(newId);
+      setResult({ ...result, 0: `Saved ${newId} and selected it for the printer. Body moved ${fit.shift.toFixed(2)} mm; steepest plane ${fit.slopeCap.toFixed(1)}°, relief at ${STEPS[STEPS.length - 1].slope}°: ${fit.band.toFixed(2)} mm, gantry floor ${fit.gantryFloor.toFixed(1)} mm. Save the printer preset to keep it.` });
+    } catch (e) {
+      toast(`Could not write the calibrated head.\n${e instanceof Error ? e.message : String(e)}`);
+    }
   };
   const writeTilt = () => {
     let base = memo.tiltCurve ?? list(process.nonplanar_tilt_flow);
@@ -125,7 +177,7 @@ export default function NonplanarCalibDialog() {
   const steps = [`Head ${headId || 'generic-conservative'}, layer height ${layerHeight} mm:`, ...STEPS.map((_, k) => stepText(k + 1) + verdict(k))].join('\n');
   const heads = (s.heads ?? []).map((h) => h.id).filter((id) => id !== 'calibration-probe');
   const intro = [
-    "Prints eight cones, each steeper and taller than the one before. The slicer prints every cone curved, whatever the printer's head, so where the nozzle, sock, fan duct or gantry passes over earlier material it scuffs that cone. Pick the last cone whose flank and top are clean.",
+    "Prints eight cones, each steeper and taller than the one before. The slicer prints every cone curved, whatever the printer's head, so where the nozzle, sock, fan duct or gantry passes over earlier material it scuffs that cone. Pick the last cone whose flank and top are clean. Write head saves a calibrated copy of the printer's head that clears exactly those cones and selects it for the printer.",
     "Prints five rows of curved patches at 0, 10, 20, 30 and 40° slope; along each row the flow steps from 0.90 to 1.10 of the current value. Each object's name gives its slope and flow. For each slope pick the patch whose top is closed without ridges, as in the flow rate calibration. Write tilt flow sets Curved top flow by slope in the process preset.",
     'Five dome and saddle pairs in a cross. The front row prints the curved top at 60, 80 and 100% of the top surface speed (left to right); the right column at 0, 50 and 100% extra fan toward the overhang fan speed (front to back), at full speed. Pick the best speed in the front row and the best fan in the right column. Both settings are written to the process preset.',
     'Runs the clearance check with the selected head over the sliced clearance plate. The first cone it finds the head touching should be the one after the last clean cone on your print. Generate the plate, slice it, then check.',
@@ -142,6 +194,11 @@ export default function NonplanarCalibDialog() {
           <button className="btn" onClick={() => generate('clearance')}>Generate clearance plate</button>
           <div style={{ whiteSpace: 'pre-line' }}>{steps}</div>
           <Choice label="Last clean cone" items={STEPS.map((_, k) => stepText(k)).concat(stepText(STEPS.length))} value={lastClean} onChange={setLastClean} />
+          <label className="prefs-row">
+            <span style={{ minWidth: 170 }}>New head ID</span>
+            <input className="text" style={{ width: 300 }} value={newId} onChange={(e) => setNewId(e.target.value)} />
+          </label>
+          <button className="btn" onClick={() => void writeHead()}>Write head</button>
         </>}
         {page === 1 && <>
           <button className="btn" onClick={() => generate('tilt-flow')}>Generate tilted-bead flow plate</button>

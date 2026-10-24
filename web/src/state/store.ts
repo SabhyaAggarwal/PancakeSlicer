@@ -61,6 +61,7 @@ export interface HeadInfo {
   id: string;
   name: string;
   calibrated: boolean;
+  user?: boolean;
 }
 
 export type PresetUx =
