@@ -147,7 +147,7 @@ void slice_json_record(Json &record, const Args &args)
                           {"ironed_area_mm2", nullptr}, {"estimated_time_s", nullptr}, {"cpu_seconds", nullptr},
                           {"gcode_bytes", nullptr}, {"retractions", nullptr}, {"travel_length_mm", nullptr},
                           {"verifier", {{"ran", false}, {"hit_moves", nullptr}, {"machine_hit_moves", nullptr}, {"tolerated_moves", nullptr},
-                                        {"first_hits", Json::array()}, {"min_clearance_mm", nullptr}, {"omissions", Json::array()}}}}},
+                                        {"first_hits", Json::array()}, {"worst", Json::array()}, {"min_clearance_mm", nullptr}, {"omissions", Json::array()}}}}},
               {"measurement", {{"pitch_mm", 0.25}, {"inset_mm", 2.}, {"wall_slope_deg", 70.}, {"gap_threshold_mm", 1.}}},
               {"tool", Json::object()}, {"text_summary", Json::object()}};
     auto &meshes = record["inputs"]["meshes"];
@@ -450,9 +450,15 @@ void slice_json_results(Json &record, const Args &args, const Print &print, cons
         }
     }
     totals["travel_length_mm"] = travel;
+    Json worst = Json::array();
+    for (const ClearanceHit &hit : clearance.worst)
+        worst.push_back({{"move_id", hit.move_id}, {"gcode_line", hit.gcode_line}, {"layer", hit.layer},
+                         {"component", hit.component},
+                         {"class", hit.cls == ClearanceHitClass::Cone ? "cone" : hit.cls == ClearanceHitClass::Land ? "land" : "body"},
+                         {"penetration_mm", hit.penetration}, {"tip_mm", {hit.tip.x(), hit.tip.y(), hit.tip.z()}}});
     totals["verifier"] = {{"ran", clearance.ran}, {"hit_moves", clearance.hit_moves},
                           {"machine_hit_moves", clearance.machine_hit_moves}, {"tolerated_moves", clearance.tolerated_moves},
-                          {"first_hits", hits},
+                          {"first_hits", hits}, {"worst", std::move(worst)},
                           {"min_clearance_mm", clearance.min_clearance}, {"omissions", clearance.omissions}};
     tool["fallback"] = Json::array();
     std::vector<uint16_t> face_owner;

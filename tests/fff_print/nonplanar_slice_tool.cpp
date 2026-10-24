@@ -2442,6 +2442,7 @@ int main(int argc, char **argv)
         if (! args.json.empty()) {
             progress("json", 0);
             slice_json_results(record, args, print, result, model, config);
+            record["nonplanar_report"] = nlohmann::json::parse(report.to_json());
             if (!args.plate.empty()) {
                 boost::nowide::ifstream in(args.plate);
                 const auto layout = nlohmann::json::parse(in);
