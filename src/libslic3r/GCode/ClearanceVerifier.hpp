@@ -58,11 +58,13 @@ private:
 
 double safe_travel_z(const MaterialColumns &columns, const Nonplanar::HeadEnvelope &head,
                      const Vec2d &a, const Vec2d &b, double hop);
+enum class ClearanceHitClass { Body, Cone, Land };
 struct ClearanceHit
 {
     size_t move_id = 0;
     unsigned int gcode_line = 0;
     std::string component;
+    ClearanceHitClass cls = ClearanceHitClass::Body;
     double penetration = 0.;
     Vec3d tip { Vec3d::Zero() };
     unsigned int layer = 0;
@@ -73,6 +75,7 @@ struct ClearanceParams
     double pitch = 0.25;
     double sweep = 0.25;
     double bead_eps = 0.05;
+    bool contact_bar = false;
 };
 struct ClearanceReport
 {
@@ -80,6 +83,8 @@ struct ClearanceReport
     size_t hit_moves = 0;
     size_t machine_hit_moves = 0;
     size_t tolerated_moves = 0;
+    size_t land_strict_moves = 0;
+    size_t hit_land_moves = 0, hit_cone_moves = 0, hit_body_moves = 0, hit_travel_moves = 0, hit_extrusion_moves = 0;
     double min_clearance = std::numeric_limits<double>::infinity();
     std::vector<float> per_move;
     std::vector<ClearanceHit> worst;

@@ -21,6 +21,7 @@
 #include "SurfaceClip.hpp"
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ExPolygon.hpp"
+#include "FieldOrder.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
@@ -1061,6 +1062,14 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
     const PrintObject &sliced = *print.objects().front();
     if (sliced.num_printing_regions() != 1)
         return fail("the deformed slice has several regions");
+    if (deform_field_file(object)) {
+        std::vector<ExPolygons> slices;
+        std::vector<double>     heights;
+        for (const Layer *layer : sliced.layers())
+            slices.push_back(layer->lslices), heights.push_back(layer->height);
+        out.floating_mm = wall_floating_mm(slices, heights, object.printing_region(0).config().wall_loops.value,
+                                           object.config().line_width.get_abs_value(nozzle));
+    }
     const Vec2d center = unscale(sliced.center_offset());
 
     const double seam_gap = scale_(object.printing_region(0).config().seam_gap.get_abs_value(nozzle));
@@ -1216,6 +1225,7 @@ bool compute_deform_slice(const PrintObject &object, DeformSlice &out, std::stri
 
 void apply_deform_slice(PrintObject &object, DeformSlice &&slice, ConformalResult &result)
 {
+    object.set_field_floating_mm(slice.floating_mm);
     LayerPtrs &layers = object.layers();
     for (size_t i = 0; i < layers.size(); ++i) {
         Layer *layer = layers[i];

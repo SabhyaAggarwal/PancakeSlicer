@@ -47,6 +47,7 @@ private:
     size_t                   m_last_hits  = 0;
     double                   m_last_min   = 0.;
     std::vector<Planned>     m_planned;
+    std::vector<PrintObject *> m_repick;
     std::vector<std::string> m_actions;
 };
 

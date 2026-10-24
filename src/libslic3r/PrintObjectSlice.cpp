@@ -27,6 +27,7 @@
 #include "Layer.hpp"
 #include "Model.hpp"
 #include "Nonplanar/ConformalShells.hpp"
+#include "Nonplanar/FieldOrder.hpp"
 #include "Nonplanar/AutoMode.hpp"
 #include "Nonplanar/HeightField.hpp"
 #include "Nonplanar/PatchTools.hpp"
@@ -737,11 +738,12 @@ void PrintObject::slice()
         m_auto_planar_pass            = false;
         m_auto_planar                 = true;
     } else if (m_auto_planar) {
+        m_auto_floating_planar        = false;
         m_config.nonplanar_mode.value = NonplanarMode::Auto;
         m_config.top_surface_acceleration.values = m_auto_planar_top_acceleration;
         m_auto_planar                 = false;
     }
-    if (m_config.nonplanar_mode.value == NonplanarMode::Off && Nonplanar::auto_rotary_requested(*this))
+    if (m_config.nonplanar_mode.value == NonplanarMode::Off && !m_auto_floating_planar && Nonplanar::auto_rotary_requested(*this))
         m_config.nonplanar_mode.value = NonplanarMode::Auto;
     if (m_auto_support_applied) {
         m_config.enable_support.value = false;
@@ -761,6 +763,25 @@ void PrintObject::slice()
         Nonplanar::solve_oneshot(*this);
         m_config.nonplanar_mode.value = this->oneshot_state().field_path() ? NonplanarMode::OneShot : NonplanarMode::Off;
     }
+    std::shared_ptr<const Nonplanar::NpField> zonly_field;
+    m_field_zonly = false;
+    if (m_config.nonplanar_mode.value == NonplanarMode::Field && !m_config.nonplanar_field_file.value.empty() &&
+        m_config.nonplanar_atom_toolpath.value.empty()) {
+        BoundingBoxf3 box;
+        for (const stl_vertex &v : Nonplanar::slicing_frame_mesh(*this).vertices)
+            box.merge(v.cast<double>());
+        try {
+            auto f = std::make_shared<const Nonplanar::NpField>(
+                Nonplanar::load_npfield_for(m_config.nonplanar_field_file.value, box, Nonplanar::plate_offset(*this)));
+            if (Nonplanar::in_plane_spread(*f) < Nonplanar::OneShotState::ZOnlySpread) {
+                zonly_field                   = std::move(f);
+                m_field_zonly                 = true;
+                m_config.nonplanar_mode.value = NonplanarMode::Off;
+            }
+        } catch (const RuntimeError &ex) {
+            throw Slic3r::SlicingError(ex.what());
+        }
+    }
     if (m_config.nonplanar_mode.value != previous_mode) {
         m_slicing_params.valid = false;
         this->update_slicing_parameters();
@@ -772,6 +793,14 @@ void PrintObject::slice()
         layer_height_profile = Nonplanar::layer_profile(*this->oneshot_state().solved, m_slicing_params.first_object_layer_height,
                                                         m_slicing_params.object_print_z_height(), m_slicing_params.min_layer_height,
                                                         m_slicing_params.max_layer_height);
+    else if (zonly_field) {
+        const int threshold = m_config.support_threshold_angle.value > 0 ? m_config.support_threshold_angle.value : 30;
+        layer_height_profile = Nonplanar::layer_profile(
+            *zonly_field, m_slicing_params.first_object_layer_height, m_slicing_params.object_print_z_height(),
+            m_slicing_params.min_layer_height, m_slicing_params.max_layer_height,
+            Nonplanar::supported_underside_bands(Nonplanar::slicing_frame_mesh(*this), threshold, 2. * m_config.layer_height.value),
+            m_config.layer_height.value);
+    }
     else if (Nonplanar::field_layers_considered(*this))
         if (std::vector<coordf_t> field = Nonplanar::field_layer_profile(*this); !field.empty())
             layer_height_profile = std::move(field);
@@ -880,12 +909,14 @@ void PrintObject::slice()
         }
     }
 
+    const bool oneshot_support = oneshot || m_field_zonly;
     if (!m_config.enable_support.value && !m_layers.empty() && !Nonplanar::rotary_auto_measurement() &&
-        (m_config.nonplanar_mode.value == NonplanarMode::Auto || m_auto_planar || Nonplanar::auto_rotary_requested(*this) || oneshot)) {
+        (m_config.nonplanar_mode.value == NonplanarMode::Auto || m_auto_planar || Nonplanar::auto_rotary_requested(*this) || oneshot_support)) {
         m_auto_support_need = this->is_support_necessary();
-        m_auto_support      = oneshot || m_auto_support_need != NoNeedSupp ||
-                              (m_config.nonplanar_mode.value == NonplanarMode::Off && overhang_area(*this) >= MinAutoSupportOverhangArea);
-    } else if (oneshot && !m_layers.empty())
+        m_auto_support      = !m_auto_floating_planar &&
+                              (oneshot_support || m_auto_support_need != NoNeedSupp ||
+                               (m_config.nonplanar_mode.value == NonplanarMode::Off && overhang_area(*this) >= MinAutoSupportOverhangArea));
+    } else if (oneshot_support && !m_layers.empty())
         m_auto_support_need = this->is_support_necessary();
 
     this->set_done(posSlice);
@@ -1270,6 +1301,20 @@ void PrintObject::slice_volumes()
     }
     region_slices.clear();
     m_multiplanar = Nonplanar::clip_multiplanar_slices(*this);
+    m_planar_floating_mm = m_field_floating_mm = -1.;
+    if (m_config.nonplanar_mode.value == NonplanarMode::Field && m_config.nonplanar_atom_toolpath.value.empty() && !m_layers.empty()) {
+        m_auto_support_need = this->is_support_necessary();
+        std::vector<ExPolygons> slices(m_layers.size());
+        std::vector<double>     heights(m_layers.size());
+        for (size_t i = 0; i < m_layers.size(); ++i) {
+            for (const LayerRegion *region : m_layers[i]->regions())
+                append(slices[i], to_expolygons(region->slices.surfaces));
+            slices[i]  = union_ex(slices[i]);
+            heights[i] = m_layers[i]->height;
+        }
+        m_planar_floating_mm = Nonplanar::wall_floating_mm(slices, heights, this->printing_region(0).config().wall_loops.value,
+                                                           m_config.line_width.get_abs_value(m_print->config().nozzle_diameter.get_at(0)));
+    }
     m_field = m_multiplanar ? nullptr : Nonplanar::clip_field_slices(*this);
     if (m_multiplanar && !m_multiplanar->auto_reason.empty())
         this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, m_multiplanar->auto_reason);

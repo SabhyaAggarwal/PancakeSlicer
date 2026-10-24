@@ -8188,7 +8188,7 @@ std::string GCode::extrude_multiplanar_chunk(const Nonplanar::ConformalPatch &pa
         const Vec2d xy = this->point_to_gcode(p.to_point());
         return Vec3d(xy.x(), xy.y(), m_nominal_z + unscale<double>(p.z()));
     };
-    const double in_layer_travel = full_orientation(m_config) && m_writer.filament() != nullptr ?
+    const double in_layer_travel = (full_orientation(m_config) || patch.free_travel) && m_writer.filament() != nullptr ?
         m_config.retraction_minimum_travel.get_at(m_writer.filament()->id()) : 0.;
     auto in_layer = [&](const Vec3d &from, const ExtrusionPathConformal *next) {
         if (next == nullptr || in_layer_travel <= 0.)
@@ -8229,7 +8229,7 @@ std::string GCode::extrude_multiplanar_chunk(const Nonplanar::ConformalPatch &pa
                 } else if (! entered) {
                     gcode += this->rotary_move_safely(&start);
                 } else {
-                    const std::string local = full_orientation(m_config) ? std::string() : this->rotary_local_hop(start);
+                    const std::string local = full_orientation(m_config) || patch.free_travel ? std::string() : this->rotary_local_hop(start);
                     if (!local.empty())
                         gcode += local;
                     else {
@@ -8250,9 +8250,14 @@ std::string GCode::extrude_multiplanar_chunk(const Nonplanar::ConformalPatch &pa
             }
             this->set_last_pos(path->first_point());
             m_need_change_layer_lift_z = false;
+            m_conformal_open_end = patch.free_travel;
             gcode += this->_extrude(*path, "multiplanar chunk");
+            m_conformal_open_end = false;
             const ExtrusionPathConformal *next = i + 1 < paths.size() ? paths[i + 1] : nullptr;
-            reach = ! in_layer(m_writer.get_position(), next) ? Reach::Lift : outer(*path) || outer(*next) ? Reach::Retracted : Reach::Primed;
+            const bool flows_on = patch.free_travel && next != nullptr &&
+                                  (to_writer(next->polyline.points.front()) - m_writer.get_position()).norm() < 0.01;
+            reach = flows_on ? Reach::Primed :
+                    ! in_layer(m_writer.get_position(), next) ? Reach::Lift : outer(*path) || outer(*next) ? Reach::Retracted : Reach::Primed;
             if (reach != Reach::Primed)
                 gcode += this->wipe_conformal_path();
             gcode += m_writer.end_inverse_time();

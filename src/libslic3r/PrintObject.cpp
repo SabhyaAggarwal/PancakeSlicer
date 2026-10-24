@@ -20,6 +20,7 @@
 #include "MeshBoolean.hpp"
 #include "Nonplanar/AutoMode.hpp"
 #include "Nonplanar/OneShotField.hpp"
+#include "Nonplanar/NpField.hpp"
 #include "Nonplanar/ConformalBottom.hpp"
 #include "Nonplanar/ConformalIroning.hpp"
 #include "Nonplanar/AtomToolpath.hpp"
@@ -29,6 +30,8 @@
 #include "Nonplanar/OrientationField.hpp"
 #include "Nonplanar/RotaryRouter.hpp"
 #include "Nonplanar/ConformalSupport.hpp"
+#include "Nonplanar/MultiplanarConfirm.hpp"
+#include "Nonplanar/Rests.hpp"
 #include "Nonplanar/ConformalVolume.hpp"
 #include "Nonplanar/SubLayerWalls.hpp"
 #include "Nonplanar/CurvedBridge.hpp"
@@ -1005,28 +1008,41 @@ void PrintObject::detect_overhangs_for_lift()
     }
 }
 
+bool PrintObject::oneshot_support() const { return Nonplanar::oneshot_requested(*this) || m_field_zonly; }
+
 void PrintObject::generate_support_material(bool with_belt_brim)
 {
     if (this->set_started(posSupportMaterial)) {
         this->clear_support_layers();
-        if (m_auto_support && !m_auto_support_applied && !m_config.enable_support.value) {
-            m_auto_support_type           = m_config.support_type.value;
-            m_auto_support_style          = m_config.support_style.value;
-            m_auto_support_critical       = m_config.support_critical_regions_only.value;
-            m_auto_support_applied        = true;
-            m_config.enable_support.value = true;
-            m_config.support_type.value   = stTreeAuto;
-            m_config.support_critical_regions_only.value = m_config.nonplanar_mode.value == NonplanarMode::Auto;
-            if (!Nonplanar::oneshot_requested(*this))
-                m_config.support_style.value = smsTreeHybrid;
-            else if (m_auto_support_style == smsTreeOrganic || m_auto_support_style == smsDefault)
-                m_config.support_style.value = smsTreeSlim;
+        auto apply_auto_support = [this](bool critical_only, SupportMaterialStyle style) {
+            if (!m_auto_support_applied) {
+                m_auto_support_type     = m_config.support_type.value;
+                m_auto_support_style    = m_config.support_style.value;
+                m_auto_support_critical = m_config.support_critical_regions_only.value;
+            }
+            m_auto_support_applied                       = true;
+            m_config.enable_support.value                = true;
+            m_config.support_type.value                  = stTreeAuto;
+            m_config.support_critical_regions_only.value = critical_only;
+            m_config.support_style.value                 = style;
             m_slicing_params.valid = false;
             this->update_slicing_parameters();
+        };
+        const auto apply_full_support = [&apply_auto_support]() { apply_auto_support(false, smsTreeSlim); };
+        if (m_auto_support && !m_auto_support_applied && !m_config.enable_support.value) {
+            const SupportMaterialStyle style = m_config.support_style.value;
+            if (!this->oneshot_support())
+                apply_auto_support(m_config.nonplanar_mode.value == NonplanarMode::Auto, smsTreeHybrid);
+            else
+                apply_auto_support(m_config.nonplanar_mode.value == NonplanarMode::Auto,
+                                   style == smsTreeOrganic || style == smsDefault ? smsTreeSlim : style);
         }
+        const bool auto_candidate = !m_config.enable_support.value && !Nonplanar::rotary_auto_measurement() && !m_auto_floating_planar &&
+                                    (m_config.nonplanar_mode.value == NonplanarMode::Auto || m_auto_planar ||
+                                     Nonplanar::auto_rotary_requested(*this));
 
         m_oneshot_manual_support = false;
-        if (Nonplanar::oneshot_requested(*this) && m_config.enable_support.value && !is_auto(m_config.support_type.value)) {
+        if (this->oneshot_support() && m_config.enable_support.value && !is_auto(m_config.support_type.value)) {
             m_oneshot_manual_support      = true;
             m_config.support_type.value   = m_config.support_type.value == stTree ? stTreeAuto : stNormalAuto;
             m_slicing_params.valid        = false;
@@ -1044,7 +1060,11 @@ void PrintObject::generate_support_material(bool with_belt_brim)
             double duration{ std::chrono::duration_cast<second_>(clock_::now() - t0).count() };
             BOOST_LOG_TRIVIAL(info) << std::fixed << std::setprecision(0) << "is_support_necessary takes " << duration << " secs.";
 
-            if (sntype != NoNeedSupp) {
+            if (sntype != NoNeedSupp && auto_candidate && m_layers.size() > 1) {
+                m_auto_support      = true;
+                m_auto_support_need = sntype;
+                apply_full_support();
+            } else if (sntype != NoNeedSupp) {
                 std::map<SupportNecessaryType, std::string> reasons = {
                     {SharpTail,L("floating regions")},
                     {Cantilever,L("floating cantilever")},
@@ -1065,13 +1085,24 @@ void PrintObject::generate_support_material(bool with_belt_brim)
             m_print->set_status(50, L("Generating support"));
 
             this->_generate_support_material();
-            if (m_auto_support_applied && !Nonplanar::oneshot_requested(*this)) {
+            if (m_auto_support_applied && !this->oneshot_support()) {
                 constexpr double MinAutoSupportVolume = 100.;
-                double           volume               = 0.;
-                for (const SupportLayer *layer : m_support_layers)
-                    volume += layer->support_fills.total_volume();
+                auto             support_volume       = [this]() {
+                    double volume = 0.;
+                    for (const SupportLayer *layer : m_support_layers)
+                        volume += layer->support_fills.total_volume();
+                    return volume;
+                };
+                double volume = support_volume();
+                if (volume < MinAutoSupportVolume && m_auto_support_need != NoNeedSupp &&
+                    (m_config.support_critical_regions_only.value || m_config.support_style.value != smsTreeSlim)) {
+                    this->clear_support_layers();
+                    apply_full_support();
+                    this->_generate_support_material();
+                    volume = support_volume();
+                }
                 std::string message;
-                if (volume < MinAutoSupportVolume) {
+                if (volume < MinAutoSupportVolume && (m_auto_support_need == NoNeedSupp || volume <= 0.)) {
                     this->clear_support_layers();
                     m_config.enable_support.value = false;
                     m_config.support_type.value   = m_auto_support_type;
@@ -1106,6 +1137,53 @@ void PrintObject::generate_support_material(bool with_belt_brim)
                     m_conformal.reset();
             }
             m_print->throw_if_canceled();
+        }
+        m_auto_floating_demoted = false;
+        if (!m_auto_floating_planar && m_config.nonplanar_mode.value == NonplanarMode::Auto && m_conformal &&
+            !m_conformal->patches.empty() && !Nonplanar::rotary_auto_measurement() && !m_print->config().spiral_mode.value) {
+            const Nonplanar::Floating curved = Nonplanar::floating_road(*this, m_conformal.get());
+            if (Nonplanar::floats_past_bar(curved, {})) {
+                const bool                user_support = m_config.enable_support.value && !m_auto_support_applied;
+                const Nonplanar::Floating planar       = Nonplanar::planar_control_floating(*this, user_support);
+                m_print->throw_if_canceled();
+                m_auto_floating_demoted = planar.part >= 0. && Nonplanar::floats_past_bar(curved, planar);
+                BOOST_LOG_TRIVIAL(warning) << "Auto floating " << this->model_object()->name << ": " << curved.part
+                                           << " mm of part road in air (support " << curved.support << ") against the planar control's "
+                                           << planar.part << " + " << planar.support << (m_auto_floating_demoted ? ", demoted" : ", kept");
+            }
+        }
+        if (m_config.nonplanar_mode.value == NonplanarMode::Field && m_config.nonplanar_atom_toolpath.value.empty()) {
+            constexpr double MinFieldOverhangArea = 20.;
+            const bool planned = std::any_of(m_support_layers.begin(), m_support_layers.end(),
+                                             [](const SupportLayer *layer) { return !layer->support_fills.empty(); });
+            double residual = -1., planar = -1.;
+            if (m_field)
+                residual = m_field->stats().overhang_area, planar = m_field->stats().planar_overhang_area;
+            else if (!m_config.nonplanar_field_file.value.empty()) {
+                for (const auto &[key, value] : Nonplanar::load_npfield(m_config.nonplanar_field_file.value).terms) {
+                    if (key == "stat_overhang_area_mm2")
+                        residual = value;
+                    else if (key == "stat_planar_overhang_area_mm2")
+                        planar = value;
+                }
+            }
+            const double added  = residual >= 0. && planar >= 0. ? residual - planar : 0.;
+            const bool   floats = m_planar_floating_mm >= 0. && m_field_floating_mm >= 0. &&
+                                m_field_floating_mm > m_planar_floating_mm * 1.05 + 2.;
+            BOOST_LOG_TRIVIAL(info) << "Field path " << this->model_object()->name << ": overhang " << residual << " mm2 (planar "
+                                    << planar << "), floating wall " << m_field_floating_mm << " mm (planar " << m_planar_floating_mm
+                                    << "), Orca's check " << int(m_auto_support_need);
+            if (!planned && (m_auto_support_need != NoNeedSupp || added > MinFieldOverhangArea || floats))
+                throw Slic3r::SlicingError(Slic3r::format(
+                    _u8L("The field path can't print the support %1% needs (%2%; %3$.0f mm2 of overhang against planar's %4$.0f, "
+                         "%5$.0f mm of floating wall against planar's %6$.0f): print it one-shot or in planar layers."),
+                    this->model_object()->name,
+                    m_auto_support_need == SharpTail     ? _u8L("floating regions") :
+                    m_auto_support_need == Cantilever    ? _u8L("floating cantilever") :
+                    m_auto_support_need == LargeOverhang ? _u8L("large overhangs") :
+                    floats                               ? _u8L("it floats more than planar") :
+                                                           _u8L("overhang beyond planar's"),
+                    std::max(residual, 0.), std::max(planar, 0.), m_field_floating_mm, m_planar_floating_mm));
         }
         m_belt_brim_pending = true;
         if (with_belt_brim)
@@ -1591,6 +1669,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "multiplanar_overhang_threshold"
             || opt_key == "nonplanar_atom_toolpath"
             || opt_key == "nonplanar_steep_skin"
+            || opt_key == "nonplanar_oneshot_routes"
             || opt_key == "nonplanar_field_file") {
             steps.emplace_back(posSlice);
         } else if (opt_key == "gap_infill_speed"
@@ -4290,7 +4369,8 @@ void PrintObject::combine_infill()
                                            (this->config().nonplanar_mode.value == NonplanarMode::Auto &&
                                             m_print->config().nonplanar_kinematics.value == RotaryLayout::None &&
                                             Nonplanar::infill_depth(region.config(), *this) == 0.) ||
-                                           (Nonplanar::oneshot_requested(*this) && !this->oneshot_state().field_path());
+                                           (Nonplanar::oneshot_requested(*this) && !this->oneshot_state().field_path() &&
+                                            this->oneshot_state().combine_infill());
         if (enable_combine_infill == false || region.config().sparse_infill_density == 0.)
             continue;
 

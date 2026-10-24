@@ -2,6 +2,7 @@
 #include "Point.hpp"
 #include "libslic3r.h"
 #include "Nonplanar/HeadEnvelope.hpp"
+#include "LocalesUtils.hpp"
 
 #include <Eigen/Core>
 #include <Eigen/IterativeLinearSolvers>
@@ -417,7 +418,7 @@ Vec3d du_at(const ObjectiveGeometry &g, size_t id, const Vec3d &u, const std::ve
 
 std::vector<std::pair<std::string, double>> ObjectiveTerms::named() const
 {
-    return { { "J", J },
+    std::vector<std::pair<std::string, double>> out = { { "J", J },
              { "J_S", S },
              { "J_E", E },
              { "J_T", T },
@@ -446,7 +447,11 @@ std::vector<std::pair<std::string, double>> ObjectiveTerms::named() const
              { "stat_H_bed", double(H_bed) },
              { "stat_H_time", double(H_time) }, { "stat_T_ratio", T_ratio }, { "stat_T_cap", T_cap }, { "stat_spread", spread },
              { "stat_F_wallp", F_wallp }, { "stat_F_upp", F_upp }, { "stat_F_flatx", F_flatx }, { "stat_Ti", Ti }, { "stat_F_first", F_first },
-             { "stat_F_wallt", F_wallt }, { "stat_F_upt", F_upt }, { "stat_Li", Li }, { "stat_F_seg", F_seg } };
+             { "stat_F_wallt", F_wallt }, { "stat_F_upt", F_upt }, { "stat_Li", Li }, { "stat_F_seg", F_seg },
+             { "stat_F_stair", F_stair }, { "stat_E_stair", E_stair } };
+    out.insert(out.end(), offers.begin(), offers.end());
+    out.emplace_back("stat_infill_separate", infill_separate ? 1. : 0.);
+    return out;
 }
 
 double TimeModel::operator()(const ObjectiveTerms &t) const
@@ -659,9 +664,11 @@ std::vector<double> infill_share(const std::vector<double> &tops, double cap)
 }
 
 ObjectiveTerms evaluate_objective(const ObjectiveGeometry &g, const ObjectiveMachine &m, const ObjectiveWeights &w,
-                                  const std::vector<float> &phi, bool hard, std::vector<HeadPair> *pairs)
+                                  const std::vector<float> &phi, bool hard, std::vector<HeadPair> *pairs, std::vector<double> *errors)
 {
     ObjectiveTerms           t;
+    if (errors != nullptr)
+        errors->clear();
     const std::vector<Vec3d> G     = node_gradients(g, phi);
     const double             sin_t = std::sin(m.printable_overhang), er = e_ref(m);
     double area_c[3] = { 0., 0., 0. }, sq_c[3] = { 0., 0., 0. }, E_c[3] = { 0., 0., 0. }, area = 0., sq = 0., skin_area = 0.;
@@ -687,9 +694,21 @@ ObjectiveTerms evaluate_objective(const ObjectiveGeometry &g, const ObjectiveMac
         const double lo = jj > 0 ? tops[jj - 1] : 0.;
         return nz > Cos5 ? std::min(std::abs(zs - tops[jj]), std::abs(zs - lo)) : (tops[jj] - lo) * nz / std::sqrt(12.);
     };
+    const double stair_s_min = w.stair_s_min >= 0. ? w.stair_s_min : 2. * m.line_width;
     for (size_t s = 0; s < g.p.size(); ++s) {
         const Vec3d  gs = interp(g, g.p[s], [&G](size_t id) { return G[id]; });
         const double gl = std::max(gs.norm(), 1e-12);
+        if (g.cls[s] == 0) {
+            const double theta = std::acos(std::clamp(std::abs(g.n[s].z()), 0., 1.));
+            double       th    = m.h / gl;
+            if (!tops.empty()) {
+                const double zs = g.p[s].z() - g.mesh_min.z();
+                const size_t jj = std::min(size_t(std::lower_bound(tops.begin(), tops.end(), zs) - tops.begin()), tops.size() - 1);
+                th              = tops[jj] - (jj > 0 ? tops[jj - 1] : 0.);
+            }
+            if (theta >= w.stair_theta_min && th > 0. && th / std::tan(theta) >= stair_s_min)
+                t.F_stair += g.a[s] * std::sin(theta) / th;
+        }
         const double nd = g.n[s].dot(gs) / gl;
         if (-nd > sin_t)
             t.S += g.a[s];
@@ -707,6 +726,8 @@ ObjectiveTerms evaluate_objective(const ObjectiveGeometry &g, const ObjectiveMac
                                   skinned, gs.z() / gl);
         if (skinned)
             skin_area += g.a[s];
+        if (errors != nullptr)
+            errors->push_back(e);
         const double nz = g.n[s].z();
         t.F_wallp += g.a[s] * std::sqrt(std::max(0., 1. - nz * nz)) * gl / m.h;
         t.F_upp += g.a[s] * std::max(nz, 0.) * gl / m.h;
@@ -725,6 +746,8 @@ ObjectiveTerms evaluate_objective(const ObjectiveGeometry &g, const ObjectiveMac
         area += g.a[s];
         sq += g.a[s] * e * e;
     }
+    t.E_stair = w.stair_k * std::pow(0.25 * m.h / er, 2.) * m.line_width * t.F_stair;
+    E_c[0] += t.E_stair;
     t.E_up = E_c[0], t.E_wall = E_c[1], t.E_down = E_c[2];
     t.E        = w.up * E_c[0] + w.wall * E_c[1] + w.down * E_c[2];
     t.rms_up   = std::sqrt(sq_c[0] / std::max(area_c[0], 1e-12));
@@ -1331,6 +1354,8 @@ bool step(const Surrogate &sur, std::vector<float> &phi, double &cost, double &d
     using Sparse = Eigen::SparseMatrix<double>;
     System sys(sur.g, bed_layers(sur.g, sur.m), sur.p.planar_adaptive, &sur.m);
     cost = sur.run(phi, phi, &sys);
+    if (sys.unknowns == 0)
+        return false;
     Sparse A(Eigen::Index(sys.rhs.size()), sys.unknowns);
     A.setFromTriplets(sys.trip.begin(), sys.trip.end());
     Sparse          M = Sparse(A.transpose()) * A;
@@ -1392,6 +1417,84 @@ void integrate(const ObjectiveGeometry &g, const ObjectiveMachine &m, const std:
     for (size_t id = 0; id < phi.size(); ++id)
         if (sys.col[id] >= 0)
             phi[id] = float(double(phi[id]) + delta[sys.col[id]]);
+}
+
+std::vector<float> column_offer(const ObjectiveGeometry &g, const ObjectiveMachine &m, const std::vector<double> &col)
+{
+    const size_t         n = g.dims[2];
+    std::vector<double>  held_v(n, 0.), out(col);
+    std::vector<uint8_t> held(n, 0);
+    for (size_t k = 0; k < n; ++k) {
+        if (k <= bed_layers(g, m))
+            held_v[k] = m.anchor.size() == g.nodes() ? double(m.anchor[g.index(0, 0, k)]) : g.origin.z() + double(k) * g.spacing.z(), held[k] = 1;
+        else if (m.pinned(k))
+            held_v[k] = m.pinned_v[k], held[k] = 1;
+    }
+    for (size_t a = 0; a < n;) {
+        size_t b = a + 1;
+        while (b < n && !held[b])
+            ++b;
+        out[a] = held_v[a];
+        if (b < n) {
+            const double span = col[b] - col[a];
+            for (size_t k = a + 1; k < b; ++k)
+                out[k] = held_v[a] + (span > 1e-9 ? (col[k] - col[a]) / span : double(k - a) / double(b - a)) * (held_v[b] - held_v[a]);
+        } else
+            for (size_t k = a + 1; k < n; ++k)
+                out[k] = held_v[a] + (col[k] - col[a]);
+        a = b;
+    }
+    std::vector<float> f(g.nodes());
+    for (size_t id = 0; id < g.nodes(); ++id)
+        f[id] = float(out[ijk_of(g, id).k]);
+    return f;
+}
+
+struct AdaptiveOffer
+{
+    std::vector<double> A, B;
+    std::vector<double> column(const ObjectiveGeometry &g, const ObjectiveMachine &m, double w_t, double lam) const
+    {
+        const double        gmin = m.h / m.thickness_max, gmax = m.h / m.thickness_min, sz = g.spacing.z();
+        std::vector<double> col(g.dims[2]);
+        col[0] = g.origin.z();
+        for (size_t k = 0; k + 1 < g.dims[2]; ++k)
+            col[k + 1] = col[k] + sz * std::clamp(std::cbrt(2. * A[k] / ((w_t + lam) * std::max(B[k], 1e-9))), gmin, gmax);
+        return col;
+    }
+};
+
+AdaptiveOffer adaptive_offer(const ObjectiveGeometry &g, const ObjectiveMachine &m, const ObjectiveWeights &w, double other)
+{
+    const size_t nk = g.dims[2] - 1;
+    const double sz = g.spacing.z(), er = e_ref(m);
+    AdaptiveOffer o;
+    o.A.assign(nk, 0.);
+    o.B.assign(nk, 0.);
+    for (size_t s = 0; s < g.p.size(); ++s) {
+        const double nz  = std::abs(g.n[s].z());
+        const int    c   = g.cls[s];
+        const double err = std::pow(m.h * nz / std::sqrt(12.), 2.) + (c == 1 ? std::pow(WallK * m.h / 2., 2.) * (1. - nz * nz) : 0.);
+        const size_t k   = std::min(nk - 1, size_t(std::max(0., std::floor((g.p[s].z() - g.origin.z()) / sz))));
+        o.A[k] += (c == 0 ? w.up : c == 1 ? w.wall : w.down) * g.a[s] * err / (er * er);
+    }
+    const double        wd = m.line_width, V = g.spacing.prod(), cap = m.max_volumetric / (wd * m.h);
+    std::vector<double> node_t(g.dims[2], 0.), count(g.dims[2], 0.);
+    for (size_t id = 0; id < g.nodes(); ++id)
+        if (g.occ[id]) {
+            const double fs = g.shell[id];
+            count[ijk_of(g, id).k] += 1.;
+            node_t[ijk_of(g, id).k] += m.road_factor * V / (m.h * wd) *
+                                       (fs / std::min(m.shell_speed, cap) + (1. - fs) * m.infill_density / std::min(m.sparse_speed, cap));
+        }
+    double occupied = 0.;
+    for (const double c : count)
+        occupied += c;
+    for (size_t k = 0; k < g.dims[2]; ++k)
+        node_t[k] += other * count[k] / std::max(occupied, 1.);
+    for (size_t k = 0; k < nk; ++k)
+        o.B[k] = 0.5 * (node_t[k] + node_t[k + 1]);
+    return o;
 }
 
 }
@@ -1496,39 +1599,135 @@ ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachin
     report("given", best_t);
     if (given)
         *given = best_t;
-    for (double t = m.thickness_min; t <= m.thickness_max + 1e-9; t += 0.02) {
-        std::vector<double> col(g.dims[2]);
-        std::vector<uint8_t> held(g.dims[2], 0);
-        for (size_t k = 0; k < g.dims[2]; ++k) {
-            const double z = g.origin.z() + double(k) * g.spacing.z();
-            if (k <= bed_layers(g, m)) {
-                col[k] = m.anchor.size() == g.nodes() ? double(m.anchor[g.index(0, 0, k)]) : z, held[k] = 1;
-                continue;
+    std::vector<std::pair<std::string, double>> offers;
+    auto note_offer = [&offers](const std::string &name, const ObjectiveTerms &t, bool any) {
+        offers.emplace_back("stat_offer_J_" + name, any ? t.J : std::numeric_limits<double>::quiet_NaN());
+        offers.emplace_back("stat_offer_feasible_" + name, any && t.feasible() ? 1. : 0.);
+    };
+    note_offer("anchor", best_t, true);
+    ObjectiveMachine   m_sep = m;
+    m_sep.infill_combine     = 0.;
+    std::vector<float> best_sep;
+    ObjectiveTerms     best_sep_t;
+    std::vector<std::pair<std::string, ObjectiveTerms>> sep_offers;
+    std::vector<TimeCutOffer> time_cut;
+    auto note_time_cut = [&](const std::string &name, const std::vector<float> &f, const ObjectiveTerms &tf) {
+        if (params.time_cut && tf.H_time > 0 && tf.H_thickness == 0 && tf.H_slope == 0 && tf.H_head == 0 && tf.H_bed == 0 &&
+            tf.T_ratio <= tf.T_cap * params.time_cut_band)
+            time_cut.push_back({ name, f, tf });
+    };
+    auto offer_sep = [&](const std::string &name, const std::vector<float> &f) {
+        ObjectiveTerms tf = evaluate_objective(g, m_sep, w, f, true);
+        tf.infill_separate = true;
+        note_time_cut(name + "_sep", f, tf);
+        auto it = std::find_if(sep_offers.begin(), sep_offers.end(), [&name](const auto &o) { return o.first == name; });
+        if (it == sep_offers.end())
+            sep_offers.emplace_back(name, tf);
+        else if (tf.feasible() && (!it->second.feasible() || tf.J < it->second.J))
+            it->second = tf;
+        if (tf.feasible() && (best_sep.empty() || tf.J < best_sep_t.J))
+            best_sep = f, best_sep_t = tf;
+    };
+    if (params.only_offer == "anchor") {
+        phi           = best;
+        best_t.offers = std::move(offers);
+        return best_t;
+    }
+    {
+        ObjectiveTerms best_u;
+        bool           any_u = false;
+        std::vector<double> heights;
+        for (int i = 2; i <= 7; ++i)
+            if (const double t = 0.04 * i; t >= m.thickness_min - 1e-9 && t <= m.thickness_max + 1e-9)
+                heights.push_back(t);
+        const size_t users = heights.size();
+        for (double t = m.thickness_min; t <= m.thickness_max + 1e-9; t += 0.02)
+            if (std::none_of(heights.begin(), heights.begin() + users, [t](double u) { return std::abs(u - t) < 0.005; }))
+                heights.push_back(t);
+        std::sort(heights.begin(), heights.end());
+        for (const double t : heights) {
+            std::vector<double> col(g.dims[2]);
+            for (size_t k = 0; k < g.dims[2]; ++k) {
+                const double z = g.origin.z() + double(k) * g.spacing.z();
+                col[k]         = z <= m.first_layer ? z : m.first_layer + (z - m.first_layer) * m.h / t;
             }
-            if (m.pinned(k)) {
-                col[k] = m.pinned_v[k], held[k] = 1;
-                continue;
+            std::vector<float>   f  = column_offer(g, m, col);
+            const ObjectiveTerms tf = evaluate_objective(g, m, w, f, true);
+            note_time_cut("uniform " + Slic3r::float_to_string_decimal_point(t, 2), f, tf);
+            offer_sep("uniform", f);
+            if (tf.feasible() && (!any_u || tf.J < best_u.J))
+                best_u = tf, any_u = true;
+            if (tf.feasible() && better(tf, best_t)) {
+                best   = std::move(f);
+                best_t = tf;
+                report("uniform " + std::to_string(t).substr(0, 4) + " mm", best_t);
             }
-            const double below = std::max(z - g.spacing.z(), m.first_layer);
-            col[k] = col[k - 1] + (below - (z - g.spacing.z())) + (z - below) * m.h / t;
         }
-        for (size_t a = 0; a < g.dims[2];) {
-            size_t b = a + 1;
-            while (b < g.dims[2] && !held[b])
-                ++b;
-            if (b < g.dims[2] && held[a])
-                for (size_t k = a + 1; k < b; ++k)
-                    col[k] = col[a] + (col[b] - col[a]) * double(k - a) / double(b - a);
-            a = b;
-        }
-        std::vector<float> f(g.nodes());
+        note_offer("uniform", best_u, any_u);
+    }
+    {
+        std::vector<float> zf(g.nodes());
         for (size_t id = 0; id < g.nodes(); ++id)
-            f[id] = float(col[ijk_of(g, id).k]);
+            zf[id] = float(node_pos(g, id).z());
+        const ObjectiveTerms tz = evaluate_objective(g, m, w, zf, false);
+        const AdaptiveOffer  ao = adaptive_offer(g, m, w, tz.T - tz.T_roads);
+        auto at = [&](double lam, std::vector<float> &f) {
+            f = column_offer(g, m, ao.column(g, m, w.time, lam));
+            return evaluate_objective(g, m, w, f, true);
+        };
+        std::vector<float> fa;
+        ObjectiveTerms     ta = at(0., fa);
+        note_time_cut("adaptive", fa, ta);
+        if (!ta.feasible()) {
+            double lo = 0., hi = w.time;
+            bool   found = false;
+            for (int i = 0; i < 12 && !found; ++i, hi *= 4.) {
+                std::vector<float>   fh;
+                const ObjectiveTerms th = at(hi, fh);
+                if (th.feasible()) {
+                    fa = std::move(fh), ta = th, found = true;
+                    break;
+                }
+                lo = hi;
+            }
+            for (int i = 0; found && i < 10; ++i) {
+                const double         mid = 0.5 * (lo + hi);
+                std::vector<float>   fm;
+                const ObjectiveTerms tm  = at(mid, fm);
+                if (tm.feasible())
+                    hi = mid, fa = std::move(fm), ta = tm;
+                else
+                    lo = mid;
+            }
+        }
+        note_offer("adaptive", ta, true);
+        report("offer adaptive", ta);
+        offer_sep("adaptive", fa);
+        if (params.only_offer == "adaptive") {
+            phi       = std::move(fa);
+            ta.offers = std::move(offers);
+            return ta;
+        }
+        if (ta.feasible() && better(ta, best_t)) {
+            best   = std::move(fa);
+            best_t = ta;
+        }
+    }
+    for (const auto &[name, field] : params.native_offers) {
+        if (field.size() != g.nodes())
+            continue;
+        std::vector<double> col(g.dims[2]);
+        for (size_t k = 0; k < g.dims[2]; ++k)
+            col[k] = double(field[g.index(g.dims[0] / 2, g.dims[1] / 2, k)]);
+        std::vector<float>   f  = column_offer(g, m, col);
         const ObjectiveTerms tf = evaluate_objective(g, m, w, f, true);
+        note_offer(name, tf, true);
+        note_time_cut(name, f, tf);
+        offer_sep(name, f);
         if (tf.feasible() && better(tf, best_t)) {
             best   = std::move(f);
             best_t = tf;
-            report("uniform " + std::to_string(t).substr(0, 4) + " mm", best_t);
+            report("offer " + name, best_t);
         }
     }
     if (!params.planar_adaptive && params.warm_adaptive) {
@@ -1654,6 +1853,25 @@ ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachin
         polished = std::move(best);
         t        = best_t;
     }
+    auto ramp = [&](std::vector<float> &f, double z0, double c) {
+        double zb = std::numeric_limits<double>::infinity();
+        for (size_t kb = 0; kb < g.dims[2]; ++kb)
+            if (m.pinned(kb) && g.origin.z() + double(kb) * g.spacing.z() > z0) {
+                zb = g.origin.z() + double(kb) * g.spacing.z();
+                break;
+            }
+        const double r = std::min(params.level_ramp, 0.5 * (zb - z0));
+        if (r < g.spacing.z())
+            return false;
+        auto smooth = [](double x) { x = std::clamp(x, 0., 1.); return x * x * (3. - 2. * x); };
+        for (size_t id = 0; id < g.nodes(); ++id) {
+            const double z = node_pos(g, id).z();
+            const double x = smooth((z - z0) / r) * (std::isfinite(zb) ? 1. - smooth((z - (zb - r)) / r) : 1.);
+            if (x > 0. && ijk_of(g, id).k > bed_layers(g, m) && !m.pinned(ijk_of(g, id).k))
+                f[id] = float(double(f[id]) + c * x);
+        }
+        return true;
+    };
     for (int round = 0; params.level_steps > 1 && round < params.level_rounds && !spent(); ++round) {
         if (round > 0) {
             std::vector<float> again = polished;
@@ -1680,24 +1898,9 @@ ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachin
                 for (int k = 1 - params.level_steps / 2 + 1; k <= params.level_steps / 2; ++k) {
                     if (k == 0)
                         continue;
-                    const double       c = k * m.h / params.level_steps;
                     std::vector<float> f = polished;
-                    double zb = std::numeric_limits<double>::infinity();
-                    for (size_t kb = 0; kb < g.dims[2]; ++kb)
-                        if (m.pinned(kb) && g.origin.z() + double(kb) * g.spacing.z() > z0) {
-                            zb = g.origin.z() + double(kb) * g.spacing.z();
-                            break;
-                        }
-                    const double r = std::min(params.level_ramp, 0.5 * (zb - z0));
-                    if (r < g.spacing.z())
+                    if (!ramp(f, z0, k * m.h / params.level_steps))
                         continue;
-                    auto smooth = [](double x) { x = std::clamp(x, 0., 1.); return x * x * (3. - 2. * x); };
-                    for (size_t id = 0; id < g.nodes(); ++id) {
-                        const double z = node_pos(g, id).z();
-                        const double x = smooth((z - z0) / r) * (std::isfinite(zb) ? 1. - smooth((z - (zb - r)) / r) : 1.);
-                        if (x > 0. && ijk_of(g, id).k > bed_layers(g, m) && !m.pinned(ijk_of(g, id).k))
-                            f[id] = float(double(f[id]) + c * x);
-                    }
                     const ObjectiveTerms tf = evaluate_objective(g, m, w, f, true);
                     if (better(tf, t)) {
                         polished = std::move(f);
@@ -1710,7 +1913,106 @@ ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachin
         if (kept == 0)
             break;
     }
-    phi = std::move(polished);
+    if (t.spread < ZOnlySpread && std::isfinite(g.mesh_max.z())) {
+        std::vector<std::pair<double, double>> up;
+        for (size_t s = 0; s < g.p.size(); ++s)
+            if (g.n[s].z() > Cos5)
+                up.emplace_back(g.p[s].z() - g.mesh_min.z(), g.a[s]);
+        std::sort(up.begin(), up.end());
+        std::vector<double> flats;
+        for (size_t i = 0, j = 0; i < up.size(); i = j + 1) {
+            double a = up[i].second, za = up[i].first * up[i].second;
+            for (j = i; j + 1 < up.size() && up[j + 1].first - up[j].first < 0.02; ++j)
+                a += up[j + 1].second, za += up[j + 1].first * up[j + 1].second;
+            if (a >= 100. && za / a > m.first_layer + 1e-3)
+                flats.push_back(za / a);
+        }
+        auto off = [&](const std::vector<float> &f, double zf, double *th) {
+            const std::vector<double> tops = native_tops(g, m, f);
+            size_t jj = std::min(size_t(std::lower_bound(tops.begin(), tops.end(), zf) - tops.begin()), tops.size() - 1);
+            if (jj > 0 && zf - tops[jj - 1] < tops[jj] - zf)
+                --jj;
+            if (th)
+                *th = tops[jj] - (jj > 0 ? tops[jj - 1] : 0.);
+            return tops[jj] - zf;
+        };
+        int landed = 0;
+        for (const double zf : flats) {
+            double th = m.h;
+            const double d0 = off(polished, zf, &th);
+            if (std::abs(d0) <= 0.01 || th <= 0.)
+                continue;
+            const double z0 = std::max(m.first_layer, zf - params.level_ramp);
+            double c0 = 0., e0 = d0, c1 = d0 * m.h / th, e1 = 0.;
+            std::vector<float> f;
+            for (int it = 0; it < 2; ++it) {
+                f = polished;
+                if (!ramp(f, z0, c1))
+                    break;
+                e1 = off(f, zf, nullptr);
+                if (std::abs(e1) <= 0.002 || std::abs(e1 - e0) < 1e-9)
+                    break;
+                const double c2 = c1 - e1 * (c1 - c0) / (e1 - e0);
+                c0 = c1, e0 = e1, c1 = c2;
+            }
+            if (std::abs(off(f, zf, nullptr)) > 0.01)
+                continue;
+            const ObjectiveTerms tf = evaluate_objective(g, m, w, f, true);
+            if (better(tf, t)) {
+                polished = std::move(f);
+                t        = tf;
+                ++landed;
+            }
+        }
+        if (!flats.empty())
+            report("flats landed " + std::to_string(landed) + " of " + std::to_string(flats.size()), t);
+    }
+    for (const auto &[name, ts] : sep_offers)
+        note_offer(name + "_sep", ts, true);
+    if (!best_sep.empty() && better(best_sep_t, t)) {
+        polished = std::move(best_sep);
+        t        = best_sep_t;
+        report("per-layer infill offer", t);
+    }
+    for (size_t i = 0; i < params.exact_natives.size(); ++i) {
+        const auto &[name, field] = params.exact_natives[i];
+        if (field.size() != g.nodes())
+            continue;
+        ObjectiveMachine mx = m;
+        mx.anchor           = field;
+        mx.pinned_v.clear();
+        for (int sep = 0; sep < 2; ++sep) {
+            if (sep)
+                mx.infill_combine = 0.;
+            ObjectiveTerms tx  = evaluate_objective(g, mx, w, field, true);
+            tx.infill_separate = sep == 1;
+            tx.exact_native    = int(i);
+            const std::string tag = name + (sep ? "_sep" : "");
+            note_offer(tag, tx, true);
+            note_time_cut(tag, field, tx);
+            if (tx.feasible() && better(tx, t)) {
+                polished = field;
+                t        = tx;
+                report("exact native " + tag, t);
+            }
+        }
+    }
+    if (params.time_cut) {
+        std::vector<TimeCutOffer> keep;
+        for (TimeCutOffer &c : time_cut)
+            if (c.terms.J < t.J)
+                keep.push_back(std::move(c));
+        std::stable_sort(keep.begin(), keep.end(), [](const TimeCutOffer &a, const TimeCutOffer &b) { return a.terms.J < b.terms.J; });
+        if (keep.size() > 2)
+            keep.resize(2);
+        for (TimeCutOffer &c : keep) {
+            c.terms.offers = offers;
+            report("time-cut native " + c.name + " (ratio " + Slic3r::float_to_string_decimal_point(c.terms.T_ratio, 3) + ")", c.terms);
+        }
+        *params.time_cut = std::move(keep);
+    }
+    phi      = std::move(polished);
+    t.offers = std::move(offers);
     return t;
 }
 

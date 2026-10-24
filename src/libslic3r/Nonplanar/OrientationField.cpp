@@ -1948,28 +1948,39 @@ std::shared_ptr<const NpLayerField> given_field(PrintObject &object, const index
 void solve_oneshot(PrintObject &object)
 {
     OneShotState &state = object.oneshot_state();
-    if (state.solved)
+    if (state.solved || take_injected_oneshot(state))
         return;
-    const std::unique_ptr<ToolKinematics> kinematics = make_tool_kinematics(object.print()->config());
-    const double max_tilt = std::max(0., field_tilt_budget(*kinematics) - Geometry::deg2rad(5.));
-    OneShotAbortReason abort;
-    NpField            field;
-    try {
-        field = one_shot_field(object, slicing_frame_mesh(object), max_tilt, [&object]() { throw_if_canceled(object); }, state.student,
-                               state.polish_k, abort);
-    } catch (const std::bad_alloc &) {
-        throw Slic3r::SlicingError(Slic3r::format(_u8L("One-shot field: %1% is too large for the solve (out of memory)."),
-                                                  object.model_object()->name));
-    }
-    if (abort.kind == OneShotAbort::Infeasible)
-        throw Slic3r::SlicingError(Slic3r::format(_u8L("One-shot field: the solve of %1% returned a field outside its own limits (%2%): a solver bug."),
-                                                  object.model_object()->name, abort.what));
-    if (abort.kind != OneShotAbort::None)
-        throw Slic3r::SlicingError(Slic3r::format(_u8L("One-shot field: the solve of %1% was stopped by its safety cap (%2%): a solver bug."),
-                                                  object.model_object()->name, abort.what));
-    state.solved                  = std::make_shared<const NpField>(std::move(field));
-    state.z_only                  = in_plane_spread(*state.solved) < OneShotState::ZOnlySpread;
-    state.max_time_ratio_override = max_time_ratio_override();
+    auto solve = [&object, &state]() {
+        const std::unique_ptr<ToolKinematics> kinematics = make_tool_kinematics(object.print()->config());
+        const double max_tilt = std::max(0., field_tilt_budget(*kinematics) - Geometry::deg2rad(5.));
+        OneShotAbortReason   abort;
+        NpField              field;
+        std::vector<NpField> time_cut;
+        try {
+            field = one_shot_field(object, slicing_frame_mesh(object), max_tilt, [&object]() { throw_if_canceled(object); }, state.student,
+                                   state.polish_k, abort, &time_cut);
+        } catch (const std::bad_alloc &) {
+            throw Slic3r::SlicingError(Slic3r::format(_u8L("One-shot field: %1% is too large for the solve (out of memory)."),
+                                                      object.model_object()->name));
+        }
+        if (abort.kind == OneShotAbort::Infeasible)
+            throw Slic3r::SlicingError(Slic3r::format(_u8L("One-shot field: the solve of %1% returned a field outside its own limits (%2%): a solver bug."),
+                                                      object.model_object()->name, abort.what));
+        if (abort.kind != OneShotAbort::None)
+            throw Slic3r::SlicingError(Slic3r::format(_u8L("One-shot field: the solve of %1% was stopped by its safety cap (%2%): a solver bug."),
+                                                      object.model_object()->name, abort.what));
+        state.solved                  = std::make_shared<const NpField>(std::move(field));
+        state.z_only                  = in_plane_spread(*state.solved) < OneShotState::ZOnlySpread;
+        state.max_time_ratio_override = max_time_ratio_override();
+        state.time_cut_note.clear();
+        admit_time_cut(object, state, time_cut);
+        choose_route(object, state);
+    };
+    solve();
+    measured_export_check(object, state, [&state, &solve]() {
+        state.solved.reset();
+        solve();
+    });
 }
 
 std::shared_ptr<const OrientationField> clip_field_slices(PrintObject &object)
@@ -2015,6 +2026,7 @@ struct FieldSlice
     std::vector<double>     top, height;
     std::vector<ExPolygons> internal;
     size_t                  unmapped = 0;
+    double                  floating_mm = -1.;
 };
 
 FieldSlice slice_field(PrintObject &object, const OrientationField &field, const Layer &host, double raft, bool tilt_shells)
@@ -2071,6 +2083,14 @@ FieldSlice slice_field(PrintObject &object, const OrientationField &field, const
         return out;
     const PrintObject     &sliced = *print.objects().front();
     const ConformalResult &shells = sliced.conformal();
+    {
+        std::vector<ExPolygons> slices;
+        std::vector<double>     heights;
+        for (const Layer *layer : sliced.layers())
+            slices.push_back(layer->lslices), heights.push_back(layer->height);
+        out.floating_mm = wall_floating_mm(slices, heights, object.printing_region(0).config().wall_loops.value,
+                                           object.config().line_width.get_abs_value(object.print()->config().nozzle_diameter.get_at(0)));
+    }
     const Vec2d            center = unscale(sliced.center_offset());
     const double           step   = 0.5;
     auto map_road = [&](const ExtrusionPath &path, const std::vector<Vec3d> &dpts, const std::vector<float> &bead_h,
@@ -2478,6 +2498,7 @@ void build_field_patch(PrintObject &object, const std::shared_ptr<const Orientat
         op.layer_height = std::move(slice.height);
         unmapped        = slice.unmapped;
         internal        = std::move(slice.internal);
+        object.set_field_floating_mm(slice.floating_mm);
         order           = field->given() ? layer_order_field_roads(slice.roads, op) :
                                            order_field_roads(slice.roads, *field, op,
                                                              [&](const std::vector<Vec3d> &floating) { return field_support(object, *field, floating, *host, raft); },

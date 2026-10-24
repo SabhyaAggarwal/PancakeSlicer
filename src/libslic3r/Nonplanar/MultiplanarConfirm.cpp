@@ -27,6 +27,8 @@
 #include <boost/log/trivial.hpp>
 
 #include <algorithm>
+#include <map>
+#include <mutex>
 #include <cmath>
 #include <cstdint>
 #include <exception>
@@ -84,6 +86,7 @@ namespace {
 thread_local unsigned rotary_measurement_depth = 0;
 thread_local NonplanarMode rotary_measurement_mode = NonplanarMode::Off;
 thread_local double rotary_measurement_time_cap = std::numeric_limits<double>::infinity();
+thread_local bool rotary_measurement_unchecked = false;
 struct RotaryMeasurement
 {
     const NonplanarMode previous = rotary_measurement_mode;
@@ -98,13 +101,15 @@ struct Bead
 };
 
 double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector<Bead> &beads,
-                      const std::vector<std::pair<std::string, std::string>> &overrides = {})
+                      const std::vector<std::pair<std::string, std::string>> &overrides = {}, const std::string &keep_as = {},
+                      bool verify = true)
 {
     DynamicPrintConfig config = object.print()->full_print_config();
     config.apply(object.config(), true);
     config.apply(object.printing_region(0).config(), true);
     config.set_deserialize_strict("nonplanar_mode", mode == NonplanarMode::Auto ? "auto" :
-                                  mode == NonplanarMode::Multiplanar ? "multiplanar" : "off");
+                                  mode == NonplanarMode::Multiplanar ? "multiplanar" :
+                                  mode == NonplanarMode::OneShot ? "oneshot" : "off");
     if (mode == NonplanarMode::Multiplanar) {
         config.set_deserialize_strict("nonplanar_top_shells", "0");
         config.set_deserialize_strict("nonplanar_bottom_shells", "0");
@@ -120,13 +125,19 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
     }
     copy->clear_instances();
     copy->add_instance(*object.model_object()->instances.front());
-    static thread_local std::pair<std::string, std::pair<double, std::vector<Bead>>> last_planar;
+    static std::mutex                                                          planar_mutex;
+    static std::map<std::string, std::pair<std::pair<double, std::vector<Bead>>, size_t>> planar_memo;
+    static size_t                                                              planar_tick = 0;
+    constexpr size_t                                                           PlanarMemo  = 32;
     std::string key;
     if (mode == NonplanarMode::Off) {
+        auto planar_reads = [](const std::string &opt) { return opt.rfind("nonplanar_", 0) != 0 || opt == "nonplanar_kinematics"; };
         for (const std::string &opt : config.keys())
-            key += opt + '=' + config.opt_serialize(opt) + '\n';
+            if (planar_reads(opt))
+                key += opt + '=' + config.opt_serialize(opt) + '\n';
         for (const std::string &opt : copy->config.get().keys())
-            key += opt + '=' + copy->config.get().opt_serialize(opt) + '\n';
+            if (planar_reads(opt))
+                key += opt + '=' + copy->config.get().opt_serialize(opt) + '\n';
         for (const ModelVolume *volume : copy->volumes) {
             const indexed_triangle_set &its = volume->mesh().its;
             key.append(reinterpret_cast<const char *>(its.vertices.data()), its.vertices.size() * sizeof(stl_vertex));
@@ -137,9 +148,11 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
         }
         const Transform3d &m = copy->instances.front()->get_matrix();
         key.append(reinterpret_cast<const char *>(m.data()), 16 * sizeof(double));
-        if (last_planar.first == key) {
-            beads = last_planar.second.second;
-            return last_planar.second.first;
+        const std::lock_guard<std::mutex> lock(planar_mutex);
+        if (const auto it = planar_memo.find(key); it != planar_memo.end()) {
+            it->second.second = ++planar_tick;
+            beads             = it->second.first.second;
+            return it->second.first.first;
         }
     }
     Print                print;
@@ -148,6 +161,13 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
     boost::system::error_code     ec;
     try {
         const RotaryMeasurement measurement(mode);
+        const bool              unchecked = rotary_measurement_unchecked;
+        rotary_measurement_unchecked      = !verify;
+        struct Restore
+        {
+            bool value;
+            ~Restore() { rotary_measurement_unchecked = value; }
+        } restore { unchecked };
         print.apply(model, config);
         print.set_status_silent();
         print.process();
@@ -157,6 +177,8 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
         boost::filesystem::remove(gcode, ec);
         return std::numeric_limits<double>::quiet_NaN();
     }
+    if (!keep_as.empty())
+        boost::filesystem::copy_file(gcode, keep_as, boost::filesystem::copy_options::overwrite_existing, ec);
     boost::filesystem::remove(gcode, ec);
     const auto kinematics = make_tool_kinematics(print.config());
     const bool rotary     = kinematics->rotary_count() > 0;
@@ -170,8 +192,18 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
                           rotary && result.has_joints() ? kinematics->forward(result.joints[i]).axis : Vec3d::UnitZ(), double(m.width), double(m.height) });
     }
     const double time = result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)].time;
-    if (mode == NonplanarMode::Off)
-        last_planar = { std::move(key), { time, beads } };
+    if (mode == NonplanarMode::Off) {
+        const std::lock_guard<std::mutex> lock(planar_mutex);
+        if (planar_memo.size() >= PlanarMemo) {
+            std::vector<std::pair<size_t, std::string>> age;
+            for (const auto &[k, v] : planar_memo)
+                age.emplace_back(v.second, k);
+            std::sort(age.begin(), age.end());
+            for (size_t i = 0; i < age.size() / 2; ++i)
+                planar_memo.erase(age[i].second);
+        }
+        planar_memo[std::move(key)] = { { time, beads }, ++planar_tick };
+    }
     return time;
 }
 
@@ -550,6 +582,8 @@ bool rotary_measurement_too_slow(double estimated_time)
     return rotary_measurement_depth > 0 && estimated_time >= rotary_measurement_time_cap;
 }
 
+bool rotary_measurement_unverified() { return rotary_measurement_depth > 0 && rotary_measurement_unchecked; }
+
 bool rotary_auto_measurement()
 {
     return rotary_measurement_depth > 0 && rotary_measurement_mode == NonplanarMode::Auto;
@@ -658,6 +692,13 @@ std::string auto_rotary_chunks(const PrintObject &object, const indexed_triangle
         << " % of its stair-steps flat; measured: " << measured.str() << " (MULTIPLANAR.md \"Auto\").";
     BOOST_LOG_TRIVIAL(warning) << why.str();
     return why.str();
+}
+
+double measured_time(const PrintObject &object, NonplanarMode mode, const std::vector<std::pair<std::string, std::string>> &overrides,
+                     const std::string &keep_as, bool verify)
+{
+    std::vector<Bead> beads;
+    return measured_slice(object, mode, beads, overrides, keep_as, verify);
 }
 
 double planar_support_time(const PrintObject &object)

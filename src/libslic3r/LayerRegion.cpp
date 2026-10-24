@@ -9,6 +9,7 @@
 #include "Geometry.hpp"
 #include "Line.hpp"
 #include "PerimeterGenerator.hpp"
+#include "Nonplanar/OneShotField.hpp"
 #include "Point.hpp"
 #include "Polygon.hpp"
 #include "Polyline.hpp"
@@ -139,6 +140,10 @@ void LayerRegion::make_perimeters(const SurfaceCollection &slices, const LayerRe
         g.upper_slices_same_region = &this->layer()->upper_layer->get_region(region_id)->slices;
 
     g.layer_id              = (int)this->layer()->id();
+    if (const PrintObject *object = this->layer()->object();
+        Nonplanar::oneshot_requested(*object) && !(object->oneshot_state() && object->oneshot_state()->field_path()) &&
+        object_config.layer_height.value > 0.)
+        g.top_width_scale = std::min(1., this->layer()->height / object_config.layer_height.value);
     g.ext_perimeter_flow    = this->flow(frExternalPerimeter);
     g.overhang_flow         = this->bridging_flow(frPerimeter, object_config.thick_bridges);
     g.solid_infill_flow     = this->flow(frSolidInfill);

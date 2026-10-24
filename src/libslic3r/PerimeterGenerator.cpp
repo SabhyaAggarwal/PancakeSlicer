@@ -725,7 +725,7 @@ void PerimeterGenerator::split_top_surfaces(const ExPolygons &orig_polygons, ExP
     BoundingBox last_box = get_extents(orig_polygons);
     last_box.offset(SCALED_EPSILON);
 
-    double min_width_top_surface = std::max(double(ext_perimeter_spacing / 2. + 10), scale_(config->min_width_top_surface.get_abs_value(unscale_(perimeter_width))));
+    double min_width_top_surface = std::max(double(ext_perimeter_spacing / 2. + 10), top_width_scale * scale_(config->min_width_top_surface.get_abs_value(unscale_(perimeter_width))));
 
     Polygons upper_polygons_series_clipped;
     if (object_config->interface_shells) {
@@ -2150,7 +2150,7 @@ void PerimeterGenerator::process_arachne()
 
             coord_t perimeter_width = this->perimeter_flow.scaled_width();
 
-            const float top_surface_min_width = std::max<float>(float(ext_perimeter_spacing) / 4.f + scaled<float>(0.00001), float(scale_(config->min_width_top_surface.get_abs_value(unscale_(perimeter_width)))) / 4.f);
+            const float top_surface_min_width = std::max<float>(float(ext_perimeter_spacing) / 4.f + scaled<float>(0.00001), float(top_width_scale * scale_(config->min_width_top_surface.get_abs_value(unscale_(perimeter_width)))) / 4.f);
 
             auto get_top_expolygons = [&](const ExPolygons &contour, bool &uncovered) {
                 BoundingBox contour_bbox = get_extents(contour);

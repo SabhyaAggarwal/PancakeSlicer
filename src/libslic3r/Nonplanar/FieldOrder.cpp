@@ -4,6 +4,7 @@
 #include "ExtrusionEntity.hpp"
 #include "ExtrusionEntityCollection.hpp"
 #include "OrientationField.hpp"
+#include "ClipperUtils.hpp"
 
 #include "Point.hpp"
 #include "Polyline.hpp"
@@ -942,6 +943,25 @@ FieldOrder layer_order_field_roads(std::vector<FieldRoad> &roads, const FieldOrd
     }
     out.stats.groups = out.stats.layers = out.groups.size();
     return out;
+}
+
+double wall_floating_mm(const std::vector<ExPolygons> &slices, const std::vector<double> &heights, int wall_loops, double width)
+{
+    std::vector<double> per_layer(slices.size(), 0.);
+    tbb::parallel_for(tbb::blocked_range<size_t>(1, std::max<size_t>(1, slices.size())), [&](const tbb::blocked_range<size_t> &range) {
+        for (size_t l = range.begin(); l < range.end(); ++l) {
+            if (slices[l].empty())
+                continue;
+            const ExPolygons below = offset_ex(slices[l - 1], float(scale_(0.5 * width + heights[l])));
+            for (int i = 0; i < std::max(1, wall_loops); ++i)
+                for (const Polyline &road : diff_pl(to_polylines(offset_ex(slices[l], -float(scale_((i + 0.5) * width)))), below))
+                    per_layer[l] += unscale<double>(road.length());
+        }
+    });
+    double mm = 0.;
+    for (double v : per_layer)
+        mm += v;
+    return mm;
 }
 
 }

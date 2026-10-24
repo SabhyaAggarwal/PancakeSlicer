@@ -98,6 +98,7 @@ std::vector<HeadSamples> head_points(const HeadEnvelope &head, double pitch, dou
 struct ObjectiveWeights
 {
     double sup = 27.6, up = 1., wall = 1., down = 1., time = 0.5;
+    double stair_k = 0., stair_s_min = -1., stair_theta_min = 0.5 * M_PI / 180.;
 };
 
 struct ObjectiveTerms
@@ -107,9 +108,13 @@ struct ObjectiveTerms
            T_skin = 0., layers = 0., road_mm = 0.;
     double F_wallp = 0., F_upp = 0., F_downp = 0., F_flatx = 0., F_shells_top = 0., Ti = 0., F_first = 0., spread = 0., T_ratio = 0., T_cap = 0.;
     double F_wallt = 0., F_upt = 0., Li = 0.;
+    double F_stair = 0., E_stair = 0.;
     double F_seg = 0.;
     int    H_thickness = 0, H_slope = 0, H_head = 0, H_head_probes = 0, H_bed = 0, H_time = 0;
     bool   feasible() const { return H_thickness == 0 && H_slope == 0 && H_head == 0 && H_bed == 0 && H_time == 0; }
+    std::vector<std::pair<std::string, double>> offers;
+    bool infill_separate = false;
+    int exact_native = -1;
     std::vector<std::pair<std::string, double>> named() const;
 };
 
@@ -123,7 +128,15 @@ double planar_support_time(const ObjectiveGeometry &geom, const ObjectiveMachine
 double support_time(const ObjectiveGeometry &geom, const ObjectiveMachine &machine);
 
 ObjectiveTerms evaluate_objective(const ObjectiveGeometry &geom, const ObjectiveMachine &machine, const ObjectiveWeights &w,
-                                  const std::vector<float> &phi, bool hard = true, std::vector<HeadPair> *pairs = nullptr);
+                                  const std::vector<float> &phi, bool hard = true, std::vector<HeadPair> *pairs = nullptr,
+                                  std::vector<double> *errors = nullptr);
+
+struct TimeCutOffer
+{
+    std::string        name;
+    std::vector<float> phi;
+    ObjectiveTerms     terms;
+};
 
 struct ObjectiveParams
 {
@@ -147,6 +160,11 @@ struct ObjectiveParams
     bool   planar_adaptive  = false;
     double level_ramp       = 2.;
     int    level_rounds     = 3;
+    std::string only_offer;
+    std::vector<std::pair<std::string, std::vector<float>>> native_offers;
+    std::vector<std::pair<std::string, std::vector<float>>> exact_natives;
+    std::vector<TimeCutOffer> *time_cut      = nullptr;
+    double                     time_cut_band = 1.10;
 };
 
 ObjectiveTerms solve_objective(const ObjectiveGeometry &geom, const ObjectiveMachine &machine, const ObjectiveWeights &w,

@@ -1249,6 +1249,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat,               multiplanar_overhang_threshold))
     ((ConfigOptionBool,                nonplanar_support_interface))
     ((ConfigOptionBool,                nonplanar_steep_skin))
+    ((ConfigOptionBool,                nonplanar_oneshot_routes))
     ((ConfigOptionString,              nonplanar_atom_toolpath))
     ((ConfigOptionString,              nonplanar_field_file))
 )

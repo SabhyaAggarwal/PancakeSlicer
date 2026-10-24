@@ -89,6 +89,7 @@ public:
     const SurfaceCollection     *upper_slices_same_region;
     const ExPolygons            *lower_slices;
     double                       layer_height;
+    double                       top_width_scale = 1.;
     int                          layer_id;
     coordf_t                     slice_z;
     Flow                         perimeter_flow;

@@ -5523,6 +5523,17 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionBool(false));
 
+    def = this->add("nonplanar_oneshot_routes", coBool);
+    def->label    = L("One-shot tilted routes");
+    def->category = L("Quality");
+    def->tooltip  = L("On a printer with a tilting table or head, non-planar mode One-shot also offers to print overhanging "
+                      "branches in tilted planar chunks, as Auto plans them, and picks a chunked print over the planar one "
+                      "only where it is better on the same objective and within the same time limit. Printers without "
+                      "rotary axes ignore it."
+                      " Default: on. Unit: unitless on/off.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(true));
+
     def = this->add("nonplanar_atom_toolpath", coString);
     def->label    = L("Atomizer toolpath");
     def->category = L("Quality");

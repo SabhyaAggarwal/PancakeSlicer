@@ -205,6 +205,8 @@ set(lisbslic3r_sources
     Nonplanar/HeightField.cpp
     Nonplanar/HeightField.hpp
     Nonplanar/DeformSlice.cpp
+    Nonplanar/Rests.cpp
+    Nonplanar/Rests.hpp
     Nonplanar/DeformSlice.hpp
     Nonplanar/LayerFieldOpt.cpp
     Nonplanar/LayerFieldOpt.hpp

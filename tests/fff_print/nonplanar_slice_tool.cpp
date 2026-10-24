@@ -1712,12 +1712,29 @@ int main(int argc, char **argv)
             processor.apply_config(full);
             processor.process_file(args.verify_gcode);
             ClearanceParams params;
-            params.head = Nonplanar::resolve_head_envelope(full);
+            params.head        = Nonplanar::resolve_head_envelope(full);
+            params.contact_bar = true;
             const ClearanceReport report = verify_clearance(processor.get_result(), params, *make_tool_kinematics(full));
-            std::cout << "clearance_hit_moves " << report.hit_moves << "\nclearance_min_mm " << report.min_clearance << "\n";
+            std::cout << "clearance_hit_moves " << report.hit_moves << "\nclearance_land_strict_moves " << report.land_strict_moves
+                      << "\nclearance_min_mm " << report.min_clearance << "\n";
             for (const ClearanceHit &hit : report.worst)
                 std::cout << "clearance_hit line " << hit.gcode_line << " move " << hit.move_id << " " << hit.component << " "
                           << hit.penetration << " mm\n";
+            std::cout << "clearance_hit_classes land " << report.hit_land_moves << " cone " << report.hit_cone_moves << " body "
+                      << report.hit_body_moves << " travel " << report.hit_travel_moves << " extrusion " << report.hit_extrusion_moves << "\n";
+            if (const char *lines = std::getenv("NP_VERIFY_LINES")) {
+                std::map<unsigned, float> least;
+                std::stringstream         list(lines);
+                for (std::string item; std::getline(list, item, ',');)
+                    if (!item.empty())
+                        least[unsigned(std::stoul(item))] = std::numeric_limits<float>::infinity();
+                const GCodeProcessorResult &result = processor.get_result();
+                for (size_t i = 0; i < result.moves.size() && i < report.per_move.size(); ++i)
+                    if (auto it = least.find(result.moves[i].gcode_id); it != least.end())
+                        it->second = std::min(it->second, report.per_move[i]);
+                for (const auto &[line, clearance] : least)
+                    std::cout << "clearance_line " << line << " " << clearance << " mm\n";
+            }
             return 0;
         }
 
@@ -1870,13 +1887,17 @@ int main(int argc, char **argv)
         } else if (! args.calib.empty()) {
             PrintConfig printer_config;
             printer_config.apply(config, true);
+            for (const auto &[key, value] : args.overrides)
+                if (key == "nonplanar_head")
+                    printer_config.nonplanar_head.value = value;
             if (! args.calib_head.empty())
                 printer_config.nonplanar_head.value = args.calib_head;
             calib_head  = Nonplanar::resolve_head_envelope(printer_config);
             calib_plate = Nonplanar::Calibration::make_plate(*Nonplanar::Calibration::parse_test(args.calib), config, calib_head);
             config.apply(calib_plate->config);
             for (const auto &[key, value] : args.overrides)
-                config.set_deserialize_strict(key, value);
+                if (key != "nonplanar_head" || ! calib_plate->config.has(key))
+                    config.set_deserialize_strict(key, value);
             Nonplanar::Calibration::add_to_model(*calib_plate, model);
         }
         if (model.objects.empty())
@@ -2276,9 +2297,10 @@ int main(int argc, char **argv)
             }
         }
         progress("verify", 0);
-        if (args.verify && !result.clearance_report.ran) {
+        if (args.verify) {
             ClearanceParams params;
             params.head               = Nonplanar::resolve_head_envelope(print.config());
+            params.contact_bar        = true;
             result.clearance_report   = verify_clearance(result, params, *make_tool_kinematics(print.config()));
         }
         if (!args.tip_out.empty()) {
@@ -2332,11 +2354,14 @@ int main(int argc, char **argv)
             std::cout << "clearance_hit_moves " << clearance.hit_moves << "\n"
                       << "clearance_machine_hit_moves " << clearance.machine_hit_moves << "\n"
                       << "clearance_tolerated_moves " << clearance.tolerated_moves << "\n"
+                      << "clearance_land_strict_moves " << clearance.land_strict_moves << "\n"
                       << "clearance_min_mm " << clearance.min_clearance << "\n";
             for (const ClearanceHit &hit : clearance.worst)
                 std::cout << "clearance_hit line " << hit.gcode_line << " " << hit.component << " " << hit.penetration << " mm\n";
             for (const std::string &omission : clearance.omissions)
                 std::cout << "clearance_omission " << omission << "\n";
+            std::cout << "clearance_hit_classes land " << clearance.hit_land_moves << " cone " << clearance.hit_cone_moves << " body "
+                      << clearance.hit_body_moves << " travel " << clearance.hit_travel_moves << " extrusion " << clearance.hit_extrusion_moves << "\n";
         }
         if (! args.json.empty()) {
             auto &text = record["text_summary"];

@@ -30,6 +30,7 @@ struct NpField
     std::string          proxy_version;
     std::optional<Vec3d> mesh_min;
     std::vector<std::pair<std::string, double>> terms;
+    std::vector<double> layer_tops;
 
     size_t index(size_t i, size_t j, size_t k) const { return (i * dims[1] + j) * dims[2] + k; }
     Vec3d  node(size_t i, size_t j, size_t k) const { return origin + spacing.cwiseProduct(Vec3d(double(i), double(j), double(k))); }

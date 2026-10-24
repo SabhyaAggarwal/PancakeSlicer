@@ -338,6 +338,7 @@ public:
     const Nonplanar::ConformalResult& conformal() const;
     bool auto_z_contouring() const { return m_shared_object ? m_shared_object->auto_z_contouring() : m_auto_z_contouring; }
     bool auto_planar_pass() const { return m_auto_planar_pass; }
+    bool auto_floating_demoted() const { return m_auto_floating_demoted; }
     const Nonplanar::RepairHints*     nonplanar_repair() const { return m_nonplanar_repair.get(); }
     Nonplanar::OneShotState&          oneshot_state();
     const Nonplanar::OneShotState*    oneshot_state() const { return m_oneshot.get(); }
@@ -345,6 +346,8 @@ public:
     SupportNecessaryType              auto_support_need() const { return m_auto_support_need; }
     SupportMaterialStyle              auto_support_style() const { return m_auto_support_style; }
     bool                              oneshot_manual_support() const { return m_oneshot_manual_support; }
+    bool                              oneshot_support() const;
+    void                              set_field_floating_mm(double mm) { m_field_floating_mm = mm; }
     bool has_conformal_support() const;
 
     void generate_support_preview();
@@ -531,6 +534,8 @@ private:
     std::shared_ptr<TreeSupportData>        m_tree_support_preview_cache;
     bool m_auto_z_contouring = false;
     bool m_auto_planar_pass = false;
+    bool m_auto_floating_demoted = false;
+    bool m_auto_floating_planar  = false;
     bool m_auto_planar      = false;
     std::vector<double> m_auto_planar_top_acceleration;
     bool                 m_auto_support = false;
@@ -539,6 +544,9 @@ private:
     SupportType          m_auto_support_type{};
     SupportMaterialStyle m_auto_support_style{};
     bool                 m_oneshot_manual_support = false;
+    bool                 m_field_zonly = false;
+    double               m_planar_floating_mm = -1.;
+    double               m_field_floating_mm  = -1.;
     bool                 m_auto_support_critical = false;
     std::unique_ptr<Nonplanar::ConformalResult> m_conformal;
     std::shared_ptr<Nonplanar::RepairHints>     m_nonplanar_repair;

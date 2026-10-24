@@ -2,6 +2,7 @@
 #include "HeadEnvelope.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
+#include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/Point.hpp"
 
 #include <cmath>
@@ -80,5 +81,7 @@ FieldOrder order_field_roads(std::vector<FieldRoad> &roads, const OrientationFie
                              const std::function<void()> &throw_if_canceled = {});
 
 FieldOrder layer_order_field_roads(std::vector<FieldRoad> &roads, const FieldOrderParams &params);
+
+double wall_floating_mm(const std::vector<ExPolygons> &slices, const std::vector<double> &heights, int wall_loops, double width);
 
 }

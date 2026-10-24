@@ -99,6 +99,7 @@ struct ConformalPatch
     int        region_id = -1;
     int        band = -1;
     bool       from_support = false;
+    bool       free_travel = false;
     std::shared_ptr<const AutoPatchSettings> automatic;
     std::shared_ptr<const OrientationField> field;
 

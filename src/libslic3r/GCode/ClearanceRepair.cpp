@@ -31,6 +31,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <iomanip>
 #include <limits>
 #include <map>
@@ -298,7 +299,7 @@ ClearanceRepair::~ClearanceRepair() { m_print.m_clearance_repair = nullptr; }
 void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
 {
     trim_free_memory();
-    if (rotary_auto_measurement() ||
+    if (rotary_auto_measurement() || rotary_measurement_unverified() ||
         rotary_measurement_too_slow(result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)].time))
         return;
     ClearanceRepair *self = print.m_clearance_repair;
@@ -595,8 +596,14 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
     const size_t    hits   = report.hit_moves;
     for (PrintObject *object : objects) {
         OneShotState &s = object->oneshot_state();
-        s.decision      = Slic3r::format("one-shot field: %1% clearance hits, time ratio %2$.3f (model) <= cap %3$.3f, slicer %4$.0f s%5%", hits,
-                                         s.time_ratio(), s.time_cap(), time, s.z_only ? ", z-only: planar layers of varying height" : "");
+        s.decision      = Slic3r::format("one-shot field: %1% clearance hits, time ratio %2$.3f (model) %6% cap %3$.3f, slicer %4$.0f s%5%", hits,
+                                         s.time_ratio(), s.time_cap(), time, std::string(s.z_only ? ", z-only: planar layers of varying height" : "") + s.offers(),
+                                         s.time_ratio() <= s.time_cap() ? "<=" : ">");
+        if (std::isfinite(s.measured_ratio) && m_print.objects().size() > 1)
+            s.decision += Slic3r::format(", measured %1$.3f x planar + support (private exports; %2% re-picks%3%, %4$.0f s)", s.measured_ratio,
+                                         s.measured_repicks, s.measured_anchor ? ", the anchor" : "", s.measured_seconds);
+        if (!s.route_log.empty())
+            s.decision += (s.route ? ", a tilted route; " : ", the body over its routes; ") + s.route_log;
         BOOST_LOG_TRIVIAL(info) << object->model_object()->name << ": " << s.decision;
     }
     for (const ClearanceHit &hit : report.worst)
@@ -624,6 +631,31 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
                                                    ", support on (one-shot), tree_slim: organic needs fixed layers" :
                                                    ", support on (one-shot)";
     }
+    if (m_print.objects().size() == 1 && std::getenv("NP_ONESHOT_NO_MEASURED_CHECK") == nullptr) {
+        PrintObject  *object = objects.front();
+        OneShotState &s      = object->oneshot_state();
+        if (s.z_only) {
+            const auto   t0   = std::chrono::steady_clock::now();
+            const double t_ps = measured_time(*object, NonplanarMode::Off,
+                                              { { "enable_support", "1" }, { "support_type", "tree(auto)" }, { "support_style", "tree_slim" } },
+                                              {}, false);
+            s.measured_ratio = time / t_ps;
+            s.measured_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+            if (std::isfinite(s.measured_ratio) && s.measured_ratio > OneShotState::MaxTimeRatio && !s.measured_anchor) {
+                BOOST_LOG_TRIVIAL(info) << object->model_object()->name << ": export measured " << s.measured_ratio << " x planar + support, "
+                                        << (s.measured_repicks < MaxRepicks ? "solving again at a tighter cap" : "taking the anchor");
+                if (s.measured_repicks < MaxRepicks)
+                    s.cap_scale *= OneShotState::MaxTimeRatio / s.measured_ratio;
+                else
+                    s.measured_anchor = true;
+                ++s.measured_repicks;
+                s.solved.reset();
+                m_repick.push_back(object);
+            }
+            s.decision += Slic3r::format(", measured %1$.3f x planar + support (the export; %2% re-picks%3%, %4$.0f s)", s.measured_ratio,
+                                         s.measured_repicks, s.measured_anchor ? ", the anchor" : "", s.measured_seconds);
+        }
+    }
     result.clearance_report = std::move(report);
     result.clearance        = result.clearance_report.per_move;
     return true;
@@ -631,6 +663,12 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
 
 bool ClearanceRepair::apply()
 {
+    if (!m_repick.empty()) {
+        for (PrintObject *object : m_repick)
+            object->invalidate_step(posSlice);
+        m_repick.clear();
+        return true;
+    }
     if (m_planned.empty())
         return false;
     for (Planned &p : m_planned) {

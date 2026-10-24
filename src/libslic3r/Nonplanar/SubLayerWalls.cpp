@@ -29,6 +29,7 @@
 #include <cmath>
 #include <cstddef>
 #include <map>
+#include <numeric>
 #include <typeinfo>
 #include <utility>
 #include <vector>
@@ -45,6 +46,7 @@ constexpr double MaxShift    = 0.25;
 constexpr double MinRun      = 2.;
 constexpr double MaxGap      = 1.;
 constexpr double HostReach   = 1.;
+constexpr double StepMargin  = 0.05;
 constexpr double OtherClear  = 1.;
 constexpr double PatchClear  = 3.;
 constexpr double MinLayer    = 0.12;
@@ -453,30 +455,59 @@ void split_sublayer_walls(PrintObject &object)
         }
     });
 
-    const Admitted admitted = admitted_tilts(object, walls);
+    const Admitted      admitted = admitted_tilts(object, walls);
+    std::vector<double> stepped(layers.size(), 0.);
     tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
         for (size_t k = range.begin(); k < range.end(); ++k) {
             const ExPolygons  passes     = k > 0 ? curved_passes(object, *layers[k], *layers[k - 1], PatchClear + 2. * SampleStep) : ExPolygons();
             const BoundingBox passes_box = get_extents(passes);
+            AABBTreeLines::LinesDistancer<Line> host;
+            if (k > 0 && !walls[k].walls.empty()) {
+                Lines lines;
+                for (const auto &loop : outer_loops(*layers[k - 1]))
+                    append(lines, loop.second.lines());
+                host = AABBTreeLines::LinesDistancer<Line>(std::move(lines));
+            }
             for (Wall &w : walls[k].walls) {
-                for (Sample &smp : w.samples) {
-                    smp.sloped = smp.valid && admitted[w.hole][tilt_bin(smp)];
+                const double step = 0.5 * double(wall_path(w).width) + 0.5 * layers[k]->height - StepMargin;
+                for (size_t i = 0; i < w.samples.size(); ++i) {
+                    Sample &smp = w.samples[i];
+                    smp.sloped  = smp.valid && admitted[w.hole][tilt_bin(smp)];
                     if (const Point q = Point::new_scale(smp.p); smp.sloped && passes_box.contains(q))
                         smp.sloped = std::none_of(passes.begin(), passes.end(), [&q](const ExPolygon &e) { return e.contains(q); });
+                    if (smp.sloped && !host.get_lines().empty() &&
+                        unscale<double>(host.distance_from_lines<false>(Point::new_scale(smp.p + smp.lo * smp.n))) > step) {
+                        smp.sloped = false;
+                        stepped[k] += i + 1 < w.samples.size() ? w.samples[i + 1].s - smp.s : 0.;
+                    }
                 }
                 w.runs = runs_of(w.samples);
                 const coord_t up = coord_t(scale_(0.5 * layers[k]->height));
                 for (Run &run : w.runs) {
-                    for (size_t i = run.first; i <= std::min(run.last + 1, w.samples.size() - 1); ++i) {
+                    bool beyond = false;
+                    for (size_t i = run.first; i <= std::min(run.last + 1, w.samples.size() - 1) && !beyond; ++i) {
                         const Sample &smp = w.samples[i];
                         const Point   q   = Point::new_scale(smp.p + (smp.sloped ? smp.lo : 0.) * smp.n);
+                        if (!host.get_lines().empty() && unscale<double>(host.distance_from_lines<false>(q)) > step) {
+                            if (i > run.last)
+                                break;
+                            beyond = true;
+                        }
                         run.raised.points.emplace_back(q.x(), q.y(), up);
+                    }
+                    if (beyond) {
+                        run.raised.points.clear();
+                        stepped[k] += w.samples[run.last].s - w.samples[run.first].s;
                     }
                     run.raised.simplify(scale_(Simplify));
                 }
             }
         }
     });
+
+    if (const double mm = std::accumulate(stepped.begin(), stepped.end(), 0.); mm > 0.)
+        BOOST_LOG_TRIVIAL(info) << "Sub-layer walls: " << object.model_object()->name << " step guard keeps " << mm
+                                << " mm of wall on the single bead";
 
     tbb::parallel_for(tbb::blocked_range<size_t>(1, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
         for (size_t k = range.begin(); k < range.end(); ++k) {

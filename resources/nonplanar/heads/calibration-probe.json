@@ -2,11 +2,11 @@
   "schema": "orca.head_envelope.v1",
   "id": "calibration-probe",
   "name": "Calibration probe (nozzle only)",
-  "provenance": "Built in for the non-planar clearance calibration plate (docs/nonplanar/CALIBRATION.md): a 0.3 mm land and 35-degree nozzle cone to 4 mm, all inside the tip allowance, and a gantry far above, so the slicer neither clips nor bands the plate's steps while its paths still keep clear of the nozzle. Not a real head; never select it for a print.",
+  "provenance": "Built in for the non-planar clearance calibration plate (docs/nonplanar/CALIBRATION.md): a 0.3 mm land and 35-degree nozzle cone to 4 mm, all inside the tip allowance (its 4.5 mm radius takes in the top box's corners at 4.39 mm, so the head band reaches the gantry), and a gantry far above, so the slicer neither clips nor bands the plate's steps while its paths still keep clear of the nozzle. Not a real head; never select it for a print.",
   "calibrated": false,
   "nozzle": {
     "tip_flat_radius": 0.3,
-    "allowance_radius": 3.5,
+    "allowance_radius": 4.5,
     "allowance_height": 4.0
   },
   "margin": 0.3,

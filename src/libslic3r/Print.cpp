@@ -3024,6 +3024,24 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
             }
         );
         for (PrintObject *obj : m_objects)
+            if (need_slicing_objects.count(obj) != 0 && obj->auto_floating_demoted()) {
+                obj->m_auto_floating_demoted = false;
+                obj->m_auto_floating_planar  = true;
+                obj->m_auto_planar_pass      = true;
+                obj->invalidate_step(posSlice);
+                obj->slice();
+                obj->make_perimeters();
+                obj->prepare_infill();
+                obj->infill();
+                obj->ironing();
+                obj->nonplanar_shells();
+                if (obj->need_z_contouring())
+                    obj->contour_z();
+                else if (obj->set_started(posContouring))
+                    obj->set_done(posContouring);
+                obj->generate_support_material(false);
+            }
+        for (PrintObject *obj : m_objects)
             obj->generate_belt_brim();
 
         if (m_pipeline_plugin_active)

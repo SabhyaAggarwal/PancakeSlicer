@@ -1,15 +1,19 @@
 #include "Multiplanar.hpp"
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/Exception.hpp"
+#include "libslic3r/format.hpp"
 #include "libslic3r/Nonplanar/HeadEnvelope.hpp"
 #include "libslic3r/Point.hpp"
+#include "libslic3r/PrintBase.hpp"
 #include "libslic3r/Polygon.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 #include <admesh/stl.h>
 #include "libslic3r/libslic3r.h"
 #include <cstddef>
+#include <cstdlib>
 #include <math.h>
 #include "MultiplanarConfirm.hpp"
+#include "OneShotField.hpp"
 
 #include "ConformalIroning.hpp"
 #include "MaterialRules.hpp"
@@ -67,6 +71,8 @@ constexpr double TopBand        = 6. * M_PI / 180.;
 constexpr double TopSlack       = 10. * M_PI / 180.;
 constexpr double StepWeight     = 0.5;
 constexpr int    MinChunkLayers = 3;
+constexpr double RouteCutMargin = 0.05;
+constexpr double RouteUnderDelta = -0.15;
 constexpr size_t MaxValidated   = 24;
 constexpr double SeamShare      = 0.05;
 
@@ -377,13 +383,23 @@ HeadHit head_blocked(const indexed_triangle_set &piece, const Matrix3d &frame, d
 }
 
 }
+static double route_under_delta()
+{
+    const char *v = std::getenv("NP_ONESHOT_ROUTE_UNDER");
+    return v != nullptr && *v != 0 ? std::atof(v) : RouteUnderDelta;
+}
 
-indexed_triangle_set chunk_piece(const indexed_triangle_set &mesh, const MultiplanarChunk &chunk, double layer_height)
+indexed_triangle_set chunk_piece(const indexed_triangle_set &mesh, const MultiplanarChunk &chunk, double layer_height, double line_width,
+                                 const std::vector<bool> &later)
 {
     std::vector<double> inset(chunk.clips.size(), 0.);
     for (size_t k = 0; k < chunk.clips.size(); ++k)
-        if (int(k) != chunk.base_clip)
-            inset[k] = std::abs(chunk.clips[k].normal.dot(chunk.build_dir)) * 0.5 * layer_height;
+        if (int(k) != chunk.base_clip) {
+            const double nd = std::abs(chunk.clips[k].normal.dot(chunk.build_dir));
+            const bool under = k < later.size() && later[k];
+            inset[k]         = nd * 0.5 * layer_height + (under && line_width > 0. ? route_under_delta() : 0.) +
+                       (line_width > 0. && !under ? std::sqrt(std::max(0., 1. - nd * nd)) * 0.5 * line_width + RouteCutMargin : 0.);
+        }
     return clip_mesh(mesh, chunk.clips, inset);
 }
 
@@ -775,9 +791,7 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
                     rejected = "the rotary axes cannot reach the build direction";
                     continue;
                 }
-                const Matrix3d head = params.kinematics->head_frame(joints);
-                if ((head.row(2).transpose() - cand.dir).norm() < 1e-6 && head.determinant() > 0.)
-                    frame = head;
+                frame = chunk_frame(*params.kinematics, joints, cand.dir);
                 if (! full && box.min.z() + head_drop(params.head, frame) < 0.) {
                     rejected = "the tilted head would reach below the bed";
                     continue;
@@ -911,6 +925,9 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
         for (MultiplanarChunk &other : plan.chunks)
             if (other.parent > idx)
                 ++other.parent;
+        MultiplanarCut record { idx, parent.clips.back(), cut.chunk };
+        record.chunk.piece.clear();
+        plan.cuts.push_back(std::move(record));
         plan.chunks.insert(plan.chunks.begin() + idx + 1, std::move(cut.chunk));
         if (work[k].goal == Goal::Top)
             for (size_t i : work[k].cluster)
@@ -918,6 +935,70 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
         ++planes;
     }
     return finish();
+}
+
+Matrix3d chunk_frame(const ToolKinematics &kinematics, const JointPose &joints, const Vec3d &dir)
+{
+    const Matrix3d head = kinematics.head_frame(joints);
+    return (head.row(2).transpose() - dir).norm() < 1e-6 && head.determinant() > 0. ? head : minimal_frame(dir);
+}
+
+std::string chunk_head_hit(const indexed_triangle_set &mesh, const MultiplanarPlan &plan, size_t ci, const MultiplanarParams &params)
+{
+    std::vector<indexed_triangle_set>         pieces;
+    std::vector<const indexed_triangle_set *> earlier;
+    pieces.reserve(ci);
+    for (size_t j = 0; j < ci; ++j)
+        pieces.push_back(clip_mesh(mesh, plan.chunks[j].clips));
+    for (const indexed_triangle_set &p : pieces)
+        earlier.push_back(&p);
+    const MultiplanarChunk &chunk = plan.chunks[ci];
+    return head_blocked(clip_mesh(mesh, chunk.clips), chunk.frame, params.layer_height, params.head, coarse_head(params.head), earlier,
+                        params.plates)
+        .what;
+}
+
+std::vector<int> multiplanar_cut_parents(const MultiplanarPlan &plan)
+{
+    std::vector<int> ids { -1 }, parents;
+    for (size_t i = 0; i < plan.cuts.size(); ++i) {
+        parents.push_back(ids[size_t(plan.cuts[i].parent)]);
+        ids.insert(ids.begin() + plan.cuts[i].parent + 1, int(i));
+    }
+    return parents;
+}
+
+MultiplanarPlan multiplanar_subset(const MultiplanarPlan &plan, const std::vector<bool> &keep)
+{
+    const std::vector<int> parents = multiplanar_cut_parents(plan);
+    MultiplanarPlan        out;
+    std::vector<int>       ids { -1 };
+    out.chunks.emplace_back();
+    out.chunks.front().frame = Matrix3d::Identity();
+    for (size_t i = 0; i < plan.cuts.size() && i < keep.size(); ++i) {
+        if (!keep[i])
+            continue;
+        const auto at = std::find(ids.begin(), ids.end(), parents[i]);
+        if (at == ids.end())
+            continue;
+        const int        p   = int(at - ids.begin());
+        MultiplanarCut   cut = plan.cuts[i];
+        MultiplanarChunk &c  = cut.chunk;
+        const HalfSpace base = c.clips[size_t(c.base_clip)];
+        c.clips              = out.chunks[size_t(p)].clips;
+        c.base_clip          = int(c.clips.size());
+        c.clips.push_back(base);
+        c.parent             = p;
+        cut.parent           = p;
+        out.chunks[size_t(p)].clips.push_back(cut.parent_clip);
+        for (MultiplanarChunk &other : out.chunks)
+            if (other.parent > p)
+                ++other.parent;
+        out.chunks.insert(out.chunks.begin() + p + 1, c);
+        ids.insert(ids.begin() + p + 1, int(i));
+        out.cuts.push_back(std::move(cut));
+    }
+    return out;
 }
 
 bool full_orientation(const PrintConfig &config)
@@ -960,6 +1041,41 @@ Polygon clip_convex(const Polygon &poly, const Vec2d &normal, double offset)
     return out;
 }
 
+}
+static void place_route_seams(ExtrusionEntityCollection &collection, const std::function<Vec3d(const Point3 &)> &to_object,
+                              const MultiplanarChunk &chunk, const std::vector<bool> &later)
+{
+    const auto covered = [&](const Vec3d &p) {
+        for (size_t k = 0; k < chunk.clips.size(); ++k)
+            if (later[k] && std::abs(chunk.clips[k].normal.dot(p) - chunk.clips[k].offset) < 0.5)
+                return true;
+        return false;
+    };
+    for (ExtrusionEntity *entity : collection.entities)
+        if (auto *coll = dynamic_cast<ExtrusionEntityCollection *>(entity))
+            place_route_seams(*coll, to_object, chunk, later);
+        else if (auto *loop = dynamic_cast<ExtrusionLoop *>(entity)) {
+            std::vector<Point3> pts;
+            for (const ExtrusionPath &path : loop->paths)
+                pts.insert(pts.end(), path.polyline.points.begin(), path.polyline.points.end());
+            if (pts.size() < 3)
+                continue;
+            std::optional<Point> best;
+            double               best_score = std::numeric_limits<double>::infinity();
+            for (size_t i = 0; i < pts.size(); ++i) {
+                const Point3 &a = pts[i], &b = pts[(i + 1) % pts.size()];
+                const Vec3d   pa = to_object(a), pb = to_object(b);
+                if ((pb - pa).norm() < 1.)
+                    continue;
+                const double score = -0.5 * (pa.z() + pb.z()) - (covered(pa) && covered(pb) ? 1e6 : 0.);
+                if (score < best_score) {
+                    best_score = score;
+                    best       = Point((a.x() + b.x()) / 2, (a.y() + b.y()) / 2);
+                }
+            }
+            if (best)
+                loop->split_at(*best, false);
+        }
 }
 
 void collect_paths(const ExtrusionEntity *ee, std::vector<const ExtrusionPath *> &out)
@@ -1014,7 +1130,44 @@ DynamicPrintConfig chunk_print_config(const PrintObject &object)
     return config;
 }
 
-std::shared_ptr<const MultiplanarPlan> clip_multiplanar_slices(PrintObject &object)
+MultiplanarParams multiplanar_params(const PrintObject &object, const ToolKinematics *kinematics)
+{
+    MultiplanarParams params;
+    params.layer_height       = object.config().layer_height.value;
+    params.first_layer_height = object.print()->config().initial_layer_print_height.value;
+    params.overhang_threshold = Geometry::deg2rad(object.config().multiplanar_overhang_threshold.value);
+    params.max_planes         = object.config().multiplanar_max_planes.value;
+    params.head               = resolve_head_envelope(object.print()->config());
+    params.kinematics         = kinematics;
+    if (const std::vector<Vec2d> &area = object.print()->config().printable_area.values; area.size() >= 3)
+        for (const PrintInstance &instance : object.instances()) {
+            Polygon plate;
+            for (const Vec2d &p : area)
+                plate.points.push_back(Point::new_scale(p.x(), p.y()) - instance.shift);
+            params.plates.push_back(std::move(plate));
+        }
+    return params;
+}
+
+MultiplanarPlan object_multiplanar_plan(const PrintObject &object, const indexed_triangle_set &mesh, const MultiplanarParams &params)
+{
+    static thread_local std::pair<std::string, MultiplanarPlan> last;
+    std::string key(reinterpret_cast<const char *>(mesh.vertices.data()), mesh.vertices.size() * sizeof(stl_vertex));
+    key.append(reinterpret_cast<const char *>(mesh.indices.data()), mesh.indices.size() * sizeof(stl_triangle_vertex_indices));
+    for (const double v : { params.layer_height, params.first_layer_height, params.overhang_threshold, double(params.max_planes) })
+        key.append(reinterpret_cast<const char *>(&v), sizeof(v));
+    for (const Polygon &plate : params.plates)
+        key.append(reinterpret_cast<const char *>(plate.points.data()), plate.points.size() * sizeof(Point));
+    for (const std::string &opt : object.print()->config().keys())
+        key += opt + '=' + object.print()->config().opt_serialize(opt) + '\n';
+    if (last.first != key)
+        last = { std::move(key), plan_multiplanar(mesh, params, [&object]() { throw_if_canceled(object); }) };
+    return last.second;
+}
+
+namespace {
+
+std::shared_ptr<MultiplanarPlan> mode_plan(PrintObject &object)
 {
     const NonplanarMode mode = object.config().nonplanar_mode.value;
     if ((mode != NonplanarMode::Multiplanar && mode != NonplanarMode::Auto) || !object.config().nonplanar_atom_toolpath.value.empty())
@@ -1028,32 +1181,8 @@ std::shared_ptr<const MultiplanarPlan> clip_multiplanar_slices(PrintObject &obje
     const bool full = full_orientation(object.print()->config());
     if (mode == NonplanarMode::Auto && ! full && ! auto_rotary_candidate(object, mesh))
         return {};
-    MultiplanarParams params;
-    params.layer_height       = object.config().layer_height.value;
-    params.first_layer_height = object.print()->config().initial_layer_print_height.value;
-    params.overhang_threshold = Geometry::deg2rad(object.config().multiplanar_overhang_threshold.value);
-    params.max_planes         = object.config().multiplanar_max_planes.value;
-    params.head               = resolve_head_envelope(object.print()->config());
-    params.kinematics         = kinematics.get();
-    if (const std::vector<Vec2d> &area = object.print()->config().printable_area.values; area.size() >= 3)
-        for (const PrintInstance &instance : object.instances()) {
-            Polygon plate;
-            for (const Vec2d &p : area)
-                plate.points.push_back(Point::new_scale(p.x(), p.y()) - instance.shift);
-            params.plates.push_back(std::move(plate));
-        }
-    static thread_local std::pair<std::string, MultiplanarPlan> last;
-    std::string key(reinterpret_cast<const char *>(mesh.vertices.data()), mesh.vertices.size() * sizeof(stl_vertex));
-    key.append(reinterpret_cast<const char *>(mesh.indices.data()), mesh.indices.size() * sizeof(stl_triangle_vertex_indices));
-    for (const double v : { params.layer_height, params.first_layer_height, params.overhang_threshold, double(params.max_planes) })
-        key.append(reinterpret_cast<const char *>(&v), sizeof(v));
-    for (const Polygon &plate : params.plates)
-        key.append(reinterpret_cast<const char *>(plate.points.data()), plate.points.size() * sizeof(Point));
-    for (const std::string &opt : object.print()->config().keys())
-        key += opt + '=' + object.print()->config().opt_serialize(opt) + '\n';
-    if (last.first != key)
-        last = { std::move(key), plan_multiplanar(mesh, params, [&object]() { throw_if_canceled(object); }) };
-    auto plan = std::make_shared<MultiplanarPlan>(last.second);
+    const MultiplanarParams params = multiplanar_params(object, kinematics.get());
+    auto plan = std::make_shared<MultiplanarPlan>(object_multiplanar_plan(object, mesh, params));
     for (const std::string &note : plan->notes)
         BOOST_LOG_TRIVIAL(info) << "Multiplanar " << object.model_object()->name << ": " << note;
     BOOST_LOG_TRIVIAL(info) << "Multiplanar " << object.model_object()->name << ": " << plan->chunks.size()
@@ -1073,10 +1202,22 @@ std::shared_ptr<const MultiplanarPlan> clip_multiplanar_slices(PrintObject &obje
         BOOST_LOG_TRIVIAL(warning) << plan->auto_reason;
     } else if (mode == NonplanarMode::Auto && (plan->auto_reason = auto_rotary_chunks(object, mesh, *plan)).empty())
         return {};
+    return plan;
+}
+
+}
+
+std::shared_ptr<const MultiplanarPlan> clip_multiplanar_slices(PrintObject &object)
+{
+    const std::shared_ptr<const MultiplanarPlan> plan = oneshot_requested(object) ? object.oneshot_state().route : mode_plan(object);
+    if (!plan)
+        return {};
 
     const std::vector<HalfSpace> &clips = plan->chunks.front().clips;
     if (clips.empty())
         return plan;
+    const bool   route = object.print()->config().nonplanar_kinematics.value != RotaryLayout::None && oneshot_requested(object);
+    const double under = route ? route_under_delta() : 0.;
     LayerPtrs &layers = object.layers();
     std::vector<char> emptied(layers.size(), 0);
     tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
@@ -1091,8 +1232,9 @@ std::shared_ptr<const MultiplanarPlan> clip_multiplanar_slices(PrintObject &obje
             box.offset(scale_(1.));
             Polygon window { box.min, Point(box.max.x(), box.min.y()), box.max, Point(box.min.x(), box.max.y()) };
             for (const HalfSpace &c : clips) {
-                const double rhs = c.offset - std::abs(c.normal.z()) * 0.5 * layer->height - c.normal.z() * layer->slice_z;
                 const Vec2d  n   = c.normal.head<2>();
+                const double rhs = c.offset - std::abs(c.normal.z()) * 0.5 * layer->height - (n.norm() < 1e-9 ? 0. : under) -
+                                   c.normal.z() * layer->slice_z;
                 if (n.norm() < 1e-9) {
                     if (rhs < 0.)
                         window.clear();
@@ -1118,6 +1260,8 @@ void build_multiplanar_chunks(PrintObject &object, const MultiplanarPlan &plan, 
     if (plan.chunks.size() < 2 || object.layers().empty())
         return;
     const bool   rotary   = object.print()->config().nonplanar_kinematics.value != RotaryLayout::None;
+    const bool   route    = rotary && oneshot_requested(object) && object.oneshot_state().route != nullptr;
+    const double width    = route ? object.config().line_width.get_abs_value(object.print()->config().nozzle_diameter.get_at(0)) : 0.;
     const double h        = object.config().layer_height.value;
     const size_t host_id  = object.layers().size() - 1;
     Layer       *host     = object.layers()[host_id];
@@ -1128,7 +1272,15 @@ void build_multiplanar_chunks(PrintObject &object, const MultiplanarPlan &plan, 
     for (size_t ci = 1; ci < plan.chunks.size(); ++ci) {
         throw_if_canceled(object);
         const MultiplanarChunk &chunk = plan.chunks[ci];
-        indexed_triangle_set    piece = chunk_piece(mesh, chunk, h);
+        std::vector<bool> later(chunk.clips.size(), false);
+        for (size_t j = 0; j < plan.chunks.size(); ++j)
+            if (plan.chunks[j].parent == int(ci) && plan.chunks[j].base_clip >= 0)
+                for (size_t k = 0; k < chunk.clips.size(); ++k) {
+                    const HalfSpace &b = plan.chunks[j].clips[size_t(plan.chunks[j].base_clip)];
+                    if ((chunk.clips[k].normal + b.normal).norm() < 1e-9 && std::abs(chunk.clips[k].offset + b.offset) < 1e-9)
+                        later[k] = true;
+                }
+        indexed_triangle_set    piece = chunk_piece(mesh, chunk, h, width, later);
         if (piece.indices.empty())
             continue;
         for (stl_vertex &v : piece.vertices)
@@ -1150,12 +1302,20 @@ void build_multiplanar_chunks(PrintObject &object, const MultiplanarPlan &plan, 
         if (print.objects().empty())
             continue;
         const PrintObject &sliced = *print.objects().front();
+        if (route)
+            for (int step = 0; step < int(posCount); ++step)
+                for (const auto &warning : sliced.step_state_with_warnings(PrintObjectStep(step)).warnings)
+                    if (warning.message_id == PrintStateBase::SlicingNeedSupportOn &&
+                        (warning.message.find("floating") != std::string::npos || warning.message.find("cantilever") != std::string::npos))
+                        throw Slic3r::SlicingError(Slic3r::format(_u8L("One-shot route: chunk %1% of %2% floats in its own layers (%3%)."), ci,
+                                                                  object.model_object()->name, warning.message));
         const Vec2d        center = unscale(sliced.center_offset());
         const Matrix3d     to_object = chunk.frame.transpose();
 
         ConformalPatch patch;
         patch.id           = int(result.patches.size());
         patch.kind         = PatchKind::Chunk;
+        patch.free_travel  = route;
         patch.shell_height = h;
         patch.host_layer   = host_id;
         patch.region_id    = 0;
@@ -1163,8 +1323,18 @@ void build_multiplanar_chunks(PrintObject &object, const MultiplanarPlan &plan, 
         patch.z_max        = -std::numeric_limits<double>::infinity();
         for (const Layer *layer : sliced.layers()) {
             std::vector<const ExtrusionPath *> paths;
+            std::vector<ExtrusionEntityCollection> perimeters;
+            perimeters.reserve(layer->regions().size());
             for (const LayerRegion *region : layer->regions()) {
-                collect_paths(&region->perimeters, paths);
+                if (route) {
+                    perimeters.push_back(region->perimeters);
+                    place_route_seams(perimeters.back(), [&](const Point3 &pt) {
+                        return Vec3d(to_object * Vec3d(unscale<double>(pt.x()) + center.x(), unscale<double>(pt.y()) + center.y(),
+                                                       layer->print_z + chunk.base));
+                    }, chunk, later);
+                    collect_paths(&perimeters.back(), paths);
+                } else
+                    collect_paths(&region->perimeters, paths);
                 collect_paths(&region->fills, paths);
             }
             ExtrusionEntityCollection shell;
@@ -1201,9 +1371,10 @@ void build_multiplanar_chunks(PrintObject &object, const MultiplanarPlan &plan, 
                 polyline.points.reserve(pts.size());
                 for (const Vec3d &t : tips)
                     polyline.points.push_back(Point3::new_scale(t.x(), t.y(), t.z() - host->print_z));
-                if (rotary)
-                    tool_axis.assign(pts.size(), chunk.build_dir.cast<float>());
-                else
+                if (rotary) {
+                    if (!(route && chunk.build_dir.z() > 1. - 1e-9))
+                        tool_axis.assign(pts.size(), chunk.build_dir.cast<float>());
+                } else
                     for (size_t i = 0; i < pts.size(); ++i) {
                         const Vec3d  d  = i + 1 < pts.size() ? Vec3d(tips[i + 1] - tips[i]) : Vec3d(tips[i] - tips[i - 1]);
                         const double xy = d.head<2>().norm();

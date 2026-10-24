@@ -5,9 +5,12 @@
 
 #include <admesh/stl.h>
 
+#include <array>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Slic3r {
@@ -15,6 +18,8 @@ class PrintObject;
 }
 
 namespace Slic3r::Nonplanar {
+
+struct MultiplanarPlan;
 
 struct OneShotState
 {
@@ -27,10 +32,21 @@ struct OneShotState
     std::string                    student = "none";
     int                            polish_k = 0;
     double                         max_time_ratio_override = -1.;
+    std::shared_ptr<const MultiplanarPlan> route;
+    std::string                    route_log;
+    double                         measured_ratio   = std::numeric_limits<double>::quiet_NaN();
+    int                            measured_repicks = 0;
+    bool                           measured_anchor  = false;
+    double                         measured_seconds = 0.;
+    double                         cap_scale        = 1.;
+    std::string                    time_cut_note;
 
     double max_time_ratio() const { return max_time_ratio_override > 0. ? max_time_ratio_override : MaxTimeRatio; }
+    double measured_room() const { return MaxTimeRatio / measured_ratio - 1.; }
     double time_ratio() const;
     double time_cap() const;
+    bool combine_infill() const;
+    std::string offers() const;
 
     bool field() const { return solved != nullptr; }
     bool field_path() const { return field() && !z_only; }
@@ -38,12 +54,20 @@ struct OneShotState
 
 bool oneshot_requested(const PrintObject &object);
 
+bool take_injected_oneshot(OneShotState &state);
+
+constexpr int MaxRepicks = 2;
+void measured_export_check(PrintObject &object, OneShotState &state, const std::function<void()> &resolve);
+
 double in_plane_spread(const NpField &field);
 
-std::vector<double> layer_profile(const NpField &field, double first_layer, double top, double min_h, double max_h);
+std::vector<double> layer_profile(const NpField &field, double first_layer, double top, double min_h, double max_h,
+                                  const std::vector<std::pair<double, double>> &planar_bands = {}, double planar_h = 0.);
+
+std::vector<std::pair<double, double>> supported_underside_bands(const indexed_triangle_set &mesh, int threshold_deg, double band);
 
 ObjectiveGeometry objective_geometry(const indexed_triangle_set &mesh, int wall_loops, int top_shell_layers, double line_width,
-                                     double layer_height);
+                                     double layer_height, const std::function<bool(const std::array<Vec3d, 3> &)> &unsampled = {});
 
 ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeometry &geom, double tilt_max);
 
@@ -55,7 +79,12 @@ struct OneShotAbortReason
 };
 
 NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &mesh, double tilt_max, const std::function<void()> &cancel,
-                       std::string &student, int &polish_k, OneShotAbortReason &abort);
+                       std::string &student, int &polish_k, OneShotAbortReason &abort, std::vector<NpField> *time_cut = nullptr,
+                       const std::function<bool(const std::array<Vec3d, 3> &)> &unsampled = {});
+
+void choose_route(PrintObject &object, OneShotState &state);
+
+bool admit_time_cut(const PrintObject &object, OneShotState &state, std::vector<NpField> &cuts);
 
 double max_time_ratio_override();
 
