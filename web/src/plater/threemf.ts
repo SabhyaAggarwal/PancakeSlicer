@@ -30,8 +30,8 @@ export interface ProjectItem {
   partTris?: number[];
 }
 
-export type ArchivePaint = Partial<Record<'support' | 'seam' | 'fuzzy', Record<string, string>>>;
-const PAINT_ATTRS = [['support', 'paint_supports'], ['seam', 'paint_seam'], ['fuzzy', 'paint_fuzzy_skin']] as const;
+export type ArchivePaint = Partial<Record<'support' | 'seam' | 'fuzzy' | 'color', Record<string, string>>>;
+const PAINT_ATTRS = [['support', 'paint_supports'], ['seam', 'paint_seam'], ['fuzzy', 'paint_fuzzy_skin'], ['color', 'paint_color']] as const;
 
 interface Obj {
   name?: string;

@@ -4,6 +4,7 @@ import { setThemePref, subscribeTheme, themePref, type ThemePref } from '../them
 import { Modal, ModalTitle } from './Modal';
 
 const About = lazy(() => import('./About'));
+const PlateSettings = lazy(() => import('./PlateSettings'));
 const SendDialog = lazy(() => import('./SendDialog'));
 const WhatYouCanDo = lazy(() => import('./WhatYouCanDo'));
 const SetupWizard = lazy(() => import('./FirstRun').then((m) => ({ default: m.SetupWizard })));
@@ -96,7 +97,8 @@ function Shortcuts() {
   );
 }
 
-export default function AppDialog({ which }: { which: 'about' | 'preferences' | 'shortcuts' | 'send' | 'setup' | 'what' }) {
+export default function AppDialog({ which }: { which: 'about' | 'preferences' | 'shortcuts' | 'send' | 'setup' | 'what' | 'plate' }) {
+  if (which === 'plate') return <Suspense fallback={null}><PlateSettings close={close} /></Suspense>;
   if (which === 'what') return <Suspense fallback={null}><WhatYouCanDo close={close} /></Suspense>;
   if (which === 'send') return <Suspense fallback={null}><SendDialog close={close} /></Suspense>;
   if (which === 'setup') return <Suspense fallback={null}><SetupWizard close={close} /></Suspense>;

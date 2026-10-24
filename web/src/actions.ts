@@ -433,7 +433,7 @@ export async function jobRequest(s = getState(), saving = false): Promise<JobReq
     const parts = await Promise.all(volumes.map(({ o, k }) => bakeStl({ ...o, geometry: o.volumes![k].geometry }, new THREE.Matrix4())));
     return { ...fields, files: [{ name: s.project.name, blob: s.project as Blob }, ...files, ...volumes.map(({ name }, i) => ({ name, blob: parts[i] }))] };
   }
-  if (saving && s.projectPlates.length > 1 && s.features.mesh_plates) {
+  if (saving && s.features.mesh_plates && (s.projectPlates.length > 1 || s.projectPlates.some((p) => Object.keys(p.settings).length || p.name))) {
     const plates = currentPlates(s);
     const { plate, files } = await plateJson(plates.flatMap((p) => p.objects), firstLayer(s));
     plates.flatMap((p) => p.objects.map(() => p.index)).forEach((index, k) => { plate.objects[k].plate = index; });

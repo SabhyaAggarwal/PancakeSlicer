@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { arrangeAll, canExport, fileUse, STALE_RESULT_TIP, download, newProject, openFileDialog, openProjectDialog, outputKind, outsideVolumeWarning, saveProject, slice } from '../actions';
 import { deleteAll, removeSelected, setState, useStore } from '../state/store';
 import { canPaste, copySelection, pasteClipboard, selectAll } from '../edit';
@@ -6,6 +6,9 @@ import { historyVersion, redo, redoName, subscribeHistory, undo, undoName } from
 import { CAMERA_VIEWS, VIEW_DIRECTIONS, cameraCommand, cameraSnapshot, subscribeCamera, perspective, autoPerspective } from '../camera';
 import { Icon } from './Icon';
 import { canAddPlate, duplicatePlate, exportAll, exportablePlates, sliceAll } from '../plater/plates';
+import { openGcode } from '../preview/jump';
+import { toggleViewOption, useViewOptions } from '../plater/viewOptions';
+import { toggleNonplanarView, useNonplanarView } from '../patch-preview';
 import { canCalibrate, canLoadStep } from '../api/client';
 
 type MenuItem = { label: string; shortcut?: string; action?: () => void; disabled?: boolean; tip?: string; checked?: boolean; role?: 'menuitemradio' | 'menuitemcheckbox'; sub?: MenuItem[] } | 'sep';
@@ -111,10 +114,15 @@ function Menu({ title, items }: { title: string; items: MenuItem[] }) {
 
 const exportStl = (multi: boolean) => import('../exportStl').then((m) => m.exportStl(false, multi));
 
+const ArchiveDialog = lazy(() => import('./ArchiveDialog'));
+
 const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? 'Cmd' : 'Ctrl';
 
 export function TopBar() {
   useSyncExternalStore(subscribeCamera, cameraSnapshot);
+  const view = useViewOptions();
+  const nonplanarView = useNonplanarView();
+  const [archive, setArchive] = useState<File[] | null>(null);
   useSyncExternalStore(subscribeHistory, historyVersion);
   const undoLabel = undoName(), redoLabel = redoName();
   const exportEnabled = useStore(canExport);
@@ -136,6 +144,7 @@ export function TopBar() {
   return (
     <div className="topbar">
       <Icon name="OrcaSlicer" size={20} className="topbar-logo" />
+      {archive && <Suspense fallback={null}><ArchiveDialog files={archive} close={() => setArchive(null)} /></Suspense>}
       <Menu
         title="File"
         items={[
@@ -146,6 +155,8 @@ export function TopBar() {
           { label: 'Recent projects...', action: () => setState({ sessionDialog: 'recent' }) },
           'sep',
           { label: canLoadStep() ? 'Import 3MF/STL/STEP/OBJ...' : 'Import 3MF/STL/OBJ...', shortcut: `${MOD}+I`, action: openFileDialog, tip: 'Load a model' },
+          { label: 'Import ZIP Archive...', action: () => void import('./ArchiveDialog').then((m) => m.importZipArchive(setArchive)), tip: 'Load models contained within a ZIP archive' },
+          { label: 'Open G-code...', action: () => openGcode(), tip: 'Open a G-code file' },
           { label: 'Import Configs...', action: () => setState({ presetUx: { kind: 'import' } }), tip: 'Load configs' },
           'sep',
           { label: exportLabel + '...', shortcut: `${MOD}+G`, action: download, disabled: !exportEnabled, tip: stale ? STALE_RESULT_TIP : exportTip },
@@ -189,6 +200,13 @@ export function TopBar() {
           { label: 'Use Perspective View', role: 'menuitemradio', checked: perspective, action: () => cameraCommand('perspective') },
           { label: 'Use Orthogonal View', role: 'menuitemradio', checked: !perspective, action: () => cameraCommand('orthogonal') },
           { label: 'Auto Perspective', role: 'menuitemcheckbox', checked: autoPerspective, action: () => cameraCommand('auto') },
+          'sep',
+          { label: 'Show Gridlines', role: 'menuitemcheckbox', checked: view.gridlines, action: () => toggleViewOption('gridlines'), tip: 'Show Gridlines on plate' },
+          'sep',
+          { label: 'Show Labels', shortcut: 'E', role: 'menuitemcheckbox', checked: view.labels, action: () => toggleViewOption('labels'), tip: 'Show object labels in 3D scene.' },
+          { label: 'Show Overhang', role: 'menuitemcheckbox', checked: view.overhang, action: () => toggleViewOption('overhang'), tip: 'Show object overhang highlight in 3D scene.' },
+          { label: 'Show Non-planar Surfaces', role: 'menuitemcheckbox', checked: nonplanarView, action: toggleNonplanarView, tip: "Color top surfaces by their slope against the print head's limit and show where curved top shells will be printed." },
+          { label: 'Show Selected Outline (beta)', role: 'menuitemcheckbox', checked: view.outline, action: () => toggleViewOption('outline'), tip: 'Show outline around selected object in 3D scene.' },
         ]}
       />
       {canCalibrate() && <Menu

@@ -74,6 +74,18 @@ export function deletePlate(index = getState().plateIndex) {
   }));
 }
 
+export const PLATE_KEYS = ['curr_bed_type', 'print_sequence', 'spiral_mode', 'first_layer_print_sequence', 'other_layers_print_sequence', 'other_layers_print_sequence_nums'] as const;
+
+export function setPlateSettings(name: string, settings: Record<string, string>) {
+  undoable('Plate Settings', () => setState((st) => {
+    const plates = st.projectPlates.length ? st.projectPlates : [{ index: 1, name: '', origin: [0, 0] as [number, number], settings: {}, objects: st.objects, events: st.events }];
+    return {
+      projectPlates: plates.map((p) => (p.index === st.plateIndex ? { ...p, name, settings: { ...Object.fromEntries(Object.entries(p.settings).filter(([k]) => !(PLATE_KEYS as readonly string[]).includes(k))), ...settings } } : p)),
+      job: markStale(st.job),
+    };
+  }));
+}
+
 export function renamePlate(index: number, name: string) {
   undoable('Edit Plate Name', () => setState((st) => ({ projectPlates: st.projectPlates.map((p) => (p.index === index ? { ...p, name } : p)) })));
 }

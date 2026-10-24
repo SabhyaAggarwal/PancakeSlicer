@@ -56,7 +56,7 @@ export class CameraViews {
       return;
     }
     const view = VIEW_DIRECTIONS[Number(event.key)];
-    if (!/^[0-6]$/.test(event.key) || !view) return;
+    if (!/^[0-6]$/.test(event.key) || !view || getState().gizmo === 'color' && event.key !== '0') return;
     event.preventDefault();
     this.view(view);
   };

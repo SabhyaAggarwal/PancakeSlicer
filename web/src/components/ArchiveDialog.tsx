@@ -1,0 +1,53 @@
+import { useState } from 'react';
+import { unzipSync } from 'fflate';
+import { importFiles } from '../actions';
+import { canLoadStep } from '../api/client';
+import { toast } from '../state/store';
+import { Modal, ModalTitle } from './Modal';
+
+const modelPattern = () => new RegExp(`\\.(stl|obj|3mf${canLoadStep() ? '|step|stp' : ''})$`, 'i');
+
+export function importZipArchive(open: (files: File[]) => void) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.zip';
+  input.onchange = async () => {
+    const zip = input.files?.[0];
+    if (!zip) return;
+    try {
+      const pattern = modelPattern();
+      const entries = unzipSync(new Uint8Array(await zip.arrayBuffer()), { filter: (f) => pattern.test(f.name) && !f.name.startsWith('__MACOSX/') });
+      const files = Object.entries(entries).sort(([a], [b]) => a.localeCompare(b))
+        .map(([path, data]) => Object.assign(new File([data as BlobPart], path.split('/').pop()!), { path }));
+      if (!files.length) return toast('The archive holds no model files.');
+      open(files);
+    } catch (e) {
+      toast(`Cannot read the archive: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+  input.click();
+}
+
+export default function ArchiveDialog({ files, close }: { files: (File & { path?: string })[]; close(): void }) {
+  const [checked, setChecked] = useState(() => files.map(() => true));
+  return (
+    <Modal className="small" label="Archive preview" onClose={close}>
+      <ModalTitle title="Archive preview" onClose={close} />
+      <div className="prefs-body archive-list">
+        {files.map((f, i) => (
+          <label key={i} className="prefs-row">
+            <input type="checkbox" checked={checked[i]} onChange={(e) => setChecked(checked.map((c, j) => (j === i ? e.target.checked : c)))} />
+            {f.path ?? f.name}
+          </label>
+        ))}
+      </div>
+      <div className="modal-buttons">
+        <button className="btn" onClick={() => setChecked(files.map(() => true))}>All</button>
+        <button className="btn" onClick={() => setChecked(files.map(() => false))}>None</button>
+        <span style={{ flex: 1 }} />
+        <button className="btn primary" data-autofocus disabled={!checked.some(Boolean)} onClick={() => { close(); void importFiles(files.filter((_, i) => checked[i])); }}>Open</button>
+        <button className="btn" onClick={close}>Cancel</button>
+      </div>
+    </Modal>
+  );
+}

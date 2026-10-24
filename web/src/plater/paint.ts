@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import { setState, type State } from '../state/store';
 
-export type PaintKind = 'support' | 'seam' | 'fuzzy';
-export type BrushTool = 'circle' | 'sphere' | 'fill' | 'gap';
+export type PaintKind = 'support' | 'seam' | 'fuzzy' | 'color';
+export const PAINT_KINDS = ['support', 'seam', 'fuzzy', 'color'] as const;
+export type BrushTool = 'circle' | 'sphere' | 'triangle' | 'height' | 'fill' | 'gap';
+export const EXTRUDERS_LIMIT = 16;
 export type PaintNode = number | PaintNode[];
 export type Painting = Map<number, PaintNode>;
 
@@ -83,7 +85,24 @@ function grow(g: THREE.BufferGeometry, seed: number, accept: (t: number, from: n
   return out;
 }
 
-class Cursor {
+interface CursorShape {
+  inside(p: THREE.Vector3): boolean;
+  faces(n: THREE.Vector3): boolean;
+  touches(tri: Tri): boolean;
+}
+
+class HeightCursor implements CursorShape {
+  constructor(private readonly world: THREE.Matrix4, private readonly z0: number, private readonly height: number) {}
+  private z = (p: THREE.Vector3) => p.clone().applyMatrix4(this.world).z;
+  inside = (p: THREE.Vector3) => { const z = this.z(p); return z > this.z0 - 0.02 && z < this.z0 + this.height + 0.02; };
+  faces = () => true;
+  touches(tri: Tri) {
+    const zs = tri.map(this.z);
+    return !(zs.every((z) => z < this.z0 - 1e-5) || zs.every((z) => z > this.z0 + this.height + 1e-5));
+  }
+}
+
+class Cursor implements CursorShape {
   private readonly d: THREE.Vector3 | null;
   constructor(readonly centre: THREE.Vector3, readonly radius: number, tool: 'circle' | 'sphere', view: THREE.Vector3) {
     this.d = tool === 'circle' ? view.clone().normalize() : null;
@@ -108,7 +127,7 @@ class Cursor {
   }
 }
 
-function brushNode(node: PaintNode, tri: Tri, cursor: Cursor, state: number, limit2: number, depth: number): PaintNode {
+function brushNode(node: PaintNode, tri: Tri, cursor: CursorShape, state: number, limit2: number, depth: number): PaintNode {
   const inside = tri.map(cursor.inside);
   if (inside.every(Boolean)) return state;
   if (!inside.some(Boolean) && !cursor.touches(tri)) return node;
@@ -138,12 +157,22 @@ function update(painting: Painting | null, tris: number[], paint: (node: PaintNo
 }
 
 export function brush(g: THREE.BufferGeometry, painting: Painting | null, hit: number, point: THREE.Vector3, radius: number,
-  tool: 'circle' | 'sphere', view: THREE.Vector3, state: 0 | 1 | 2, allow: (t: number) => boolean = () => true): Painting | null {
+  tool: 'circle' | 'sphere', view: THREE.Vector3, state: number, allow: (t: number) => boolean = () => true): Painting | null {
   const cursor = new Cursor(point, radius, tool, view);
   const limit = radius / 3, limit2 = limit * limit;
   const tris = grow(g, hit, (t) => cursor.faces(normalOf(g, t)) && cursor.touches(vertices(g, t)));
   return update(painting, tris.filter((t) => cursor.faces(normalOf(g, t)) && allow(t)), (node, t) => brushNode(node, vertices(g, t), cursor, state, limit2, 0));
 }
+
+export function heightRange(g: THREE.BufferGeometry, painting: Painting | null, hit: number, world: THREE.Matrix4, z0: number, height: number,
+  state: number): Painting | null {
+  const cursor = new HeightCursor(world, z0, height);
+  const limit = 0.1 / world.getMaxScaleOnAxis(), limit2 = limit * limit;
+  const tris = grow(g, hit, (t) => cursor.touches(vertices(g, t)));
+  return update(painting, tris, (node, t) => brushNode(node, vertices(g, t), cursor, state, limit2, 0));
+}
+
+export const paintTriangle = (painting: Painting | null, hit: number, state: number) => update(painting, [hit], () => state);
 
 export function overhangFacets(g: THREE.BufferGeometry, normalMatrix: THREE.Matrix3, deg: number): ((t: number) => boolean) | null {
   if (!(deg > 0)) return null;
@@ -160,7 +189,7 @@ export function overhangGeometry(g: THREE.BufferGeometry, allow: (t: number) => 
   return out;
 }
 
-export function fill(g: THREE.BufferGeometry, painting: Painting | null, hit: number, angle: number, state: 0 | 1 | 2,
+export function fill(g: THREE.BufferGeometry, painting: Painting | null, hit: number, angle: number, state: number,
   allow: (t: number) => boolean = () => true): Painting | null {
   const nrm = faceNormals(g), limit = Math.cos((angle * Math.PI) / 180) - 1e-9;
   if (!allow(hit)) return painting;
@@ -203,14 +232,16 @@ export function gapFill(g: THREE.BufferGeometry, painting: Painting | null, area
   return update(painting, [...roots.keys()], (node, t) => roots.get(t)!.reduce((n, c) => set(n, c.path, c.state), node));
 }
 
-const overlayCache = new WeakMap<Painting, THREE.BufferGeometry>();
-export function overlayGeometry(g: THREE.BufferGeometry, painting: Painting): THREE.BufferGeometry {
-  let out = overlayCache.get(painting);
-  if (out) return out;
+const overlayCache = new WeakMap<Painting, { key: string; geometry: THREE.BufferGeometry }>();
+export function overlayGeometry(g: THREE.BufferGeometry, painting: Painting, palette?: (readonly number[] | null)[]): THREE.BufferGeometry {
+  const key = palette ? JSON.stringify(palette) : '';
+  const cached = overlayCache.get(painting);
+  if (cached?.key === key) return cached.geometry;
+  let out: THREE.BufferGeometry;
   const pos: number[] = [], col: number[] = [];
   const emit = (node: PaintNode, tri: Tri) => {
     if (Array.isArray(node)) return children(tri).forEach((t, i) => emit(node[i], t));
-    const colour = COLOURS[node];
+    const colour = (palette ?? COLOURS)[node];
     if (!colour) return;
     for (const v of tri) pos.push(v.x, v.y, v.z), col.push(...colour);
   };
@@ -218,7 +249,7 @@ export function overlayGeometry(g: THREE.BufferGeometry, painting: Painting): TH
   out = new THREE.BufferGeometry();
   out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   out.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  overlayCache.set(painting, out);
+  overlayCache.set(painting, { key, geometry: out });
   return out;
 }
 
@@ -226,7 +257,8 @@ export function paintString(node: PaintNode): string {
   const nibbles: number[] = [];
   const put = (n: PaintNode) => {
     if (Array.isArray(n)) { nibbles.push(0b0011); for (let i = 3; i >= 0; i--) put(n[i]); }
-    else nibbles.push((n & 0b11) << 2);
+    else if (n < 3) nibbles.push(n << 2);
+    else nibbles.push(0b1100, ...(n <= 17 ? [n - 3] : [0b1111, n - 18]));
   };
   put(node);
   return nibbles.reverse().map((v) => v.toString(16).toUpperCase()).join('');
@@ -242,7 +274,13 @@ export function parsePaintString(text: string): PaintNode | null {
       for (let i = 3; i >= 0; i--) { const c = read(); if (c === null) return null; children[i] = c; }
       return children;
     }
-    return (n & 0b11) === 0 && n >> 2 <= 2 ? n >> 2 : null;
+    if ((n & 0b11) !== 0) return null;
+    if (n >> 2 < 3) return n >> 2;
+    const e = nibbles[k++];
+    if (e === undefined) return null;
+    if (e < 0b1111) return e + 3;
+    const f = nibbles[k++];
+    return f === undefined ? null : f + 18;
   };
   const node = nibbles.some(Number.isNaN) ? null : read();
   return node !== null && k === nibbles.length ? node : null;
@@ -267,7 +305,7 @@ export function projectPaint(o: Paintable, saved: Partial<Record<PaintKind, Reco
   const edits: { volume?: number; paint: Record<string, Record<string, string>> }[] = [];
   for (let volume = 0, start = 0; volume < ranges.length; start += ranges[volume++]) {
     const end = start + ranges[volume], out: Record<string, Record<string, string>> = {};
-    for (const kind of ['support', 'seam', 'fuzzy'] as const) {
+    for (const kind of PAINT_KINDS) {
       const painting = paintOf(o, kind);
       const map: Record<string, string> = {}, was: Record<string, string> = {};
       if (painting) for (const [t, node] of [...painting].sort((x, y) => x[0] - y[0])) if (t >= start && t < end) map[String(t - start)] = paintString(node);
@@ -282,7 +320,7 @@ export function projectPaint(o: Paintable, saved: Partial<Record<PaintKind, Reco
 
 export function paintJson(o: Paintable): Record<string, Record<string, string>> | undefined {
   const out: Record<string, Record<string, string>> = {};
-  for (const kind of ['support', 'seam', 'fuzzy'] as const) {
+  for (const kind of PAINT_KINDS) {
     const painting = paintOf(o, kind);
     if (!painting) continue;
     const degenerate: number[] = [];
@@ -301,12 +339,14 @@ export function paintJson(o: Paintable): Record<string, Record<string, string>> 
 
 export interface PaintTool {
   tool: BrushTool; radius: number; angle: number;
+  height: number; filament: number;
   gapArea: number; highlight: number; overhangsOnly: boolean;
 }
 export const RADIUS = { min: 0.4, max: 8, step: 0.2 } as const;
 export const ANGLE = { min: 0, max: 90, step: 5 } as const;
+export const HEIGHT = { min: 0.1, max: 8, step: 0.2 } as const;
 export const GAP_AREA = { min: 0, max: 5, step: 0.05 } as const;
-let tool: PaintTool = { tool: 'circle', radius: 1, angle: 30, gapArea: 0, highlight: 0, overhangsOnly: false };
+let tool: PaintTool = { tool: 'circle', radius: 1, angle: 30, height: 1, filament: 1, gapArea: 0, highlight: 0, overhangsOnly: false };
 const listeners = new Set<() => void>();
 export const paintTool = () => tool;
 export function setPaintTool(patch: Partial<PaintTool>) {
@@ -315,6 +355,7 @@ export function setPaintTool(patch: Partial<PaintTool>) {
   tool.angle = Math.min(ANGLE.max, Math.max(ANGLE.min, tool.angle));
   tool.gapArea = Math.min(GAP_AREA.max, Math.max(GAP_AREA.min, tool.gapArea));
   tool.highlight = Math.min(90, Math.max(0, tool.highlight));
+  tool.height = Math.min(HEIGHT.max, Math.max(HEIGHT.min, Math.round(tool.height * 100) / 100));
   listeners.forEach((l) => l());
 }
 export const subscribePaintTool = (l: () => void) => (listeners.add(l), () => void listeners.delete(l));
@@ -327,8 +368,8 @@ const canPaintProject = (s: State, o: State['objects'][number]) => !!s.features.
 
 export const togglePaint = (kind: PaintKind) => setState((s) => ({ gizmo: s.gizmo === kind || !canPaint(s) ? 'none' : kind }));
 
-export const isPaint = (gizmo: string): gizmo is PaintKind => gizmo === 'support' || gizmo === 'seam' || gizmo === 'fuzzy';
+export const isPaint = (gizmo: string): gizmo is PaintKind => (PAINT_KINDS as readonly string[]).includes(gizmo);
 
 export const PAINT_STEP: Record<PaintKind, string> = {
-  support: 'Paint-on supports editing', seam: 'Paint-on seam editing', fuzzy: 'Paint-on fuzzy skin editing',
+  support: 'Paint-on supports editing', seam: 'Paint-on seam editing', fuzzy: 'Paint-on fuzzy skin editing', color: 'Color painting editing',
 };

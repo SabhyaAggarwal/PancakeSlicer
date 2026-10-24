@@ -15,11 +15,11 @@ import { canPerformCut, cutBlocked, initialCut, performCut, setCut, toggleCut } 
 import { InTopLayer } from './Modal';
 import { addPlate, canAddPlate } from '../plater/plates';
 import { arrangeSettings, resetArrangeSettings, setArrangeSettings, subscribeArrangeSettings } from '../plater/arrangeSettings';
-import { ANGLE, GAP_AREA, RADIUS, canPaint, gapFill, isPaint, paintOf, PAINT_STEP, paintTool, setPaintTool, subscribePaintTool, togglePaint, type BrushTool, type PaintKind } from '../plater/paint';
+import { ANGLE, EXTRUDERS_LIMIT, GAP_AREA, HEIGHT, RADIUS, canPaint, gapFill, isPaint, paintOf, PAINT_STEP, paintTool, setPaintTool, subscribePaintTool, togglePaint, type BrushTool, type PaintKind } from '../plater/paint';
+import { filamentColor } from '../plater/filamentColor';
 import { canEditLayers } from './LayerHeight';
 
 const LATER_GIZMOS: [icon: string, tooltip: string][] = [
-  ['mmu_segmentation', 'Color Painting (N)'],
   ['toolbar_texture_displacement', 'Texture displacement'],
   ['toolbar_text', 'Emboss (T)'],
   ['svg_part', 'SVG'],
@@ -31,6 +31,7 @@ const PAINT_GIZMOS: [PaintKind, string, string][] = [
   ['support', 'toolbar_support', 'Support Painting (L)'],
   ['seam', 'toolbar_seam', 'Seam painting (P)'],
   ['fuzzy', 'toolbar_fuzzy_skin_paint', 'Paint-on fuzzy skin (H)'],
+  ['color', 'mmu_segmentation', 'Color Painting (N)'],
 ];
 
 export function CanvasToolbar() {
@@ -445,8 +446,10 @@ const PAINT_TOOLS: Record<PaintKind, [BrushTool, string, string][]> = {
   support: [['circle', 'circle_paint', 'Circle'], ['sphere', 'toolbar_modifier_sphere', 'Sphere'], ['fill', 'fill_paint', 'Fill'], ['gap', 'gap_fill', 'Gap Fill']],
   seam: [['circle', 'circle_paint', 'Circle'], ['sphere', 'toolbar_modifier_sphere', 'Sphere']],
   fuzzy: [['circle', 'circle_paint', 'Circle'], ['sphere', 'toolbar_modifier_sphere', 'Sphere'], ['fill', 'fill_paint', 'Fill']],
+  color: [['circle', 'circle_paint', 'Circle'], ['sphere', 'toolbar_modifier_sphere', 'Sphere'], ['triangle', 'triangle_paint', 'Triangle'],
+    ['height', 'height_range', 'Height Range'], ['fill', 'fill_paint', 'Fill'], ['gap', 'gap_fill', 'Gap Fill']],
 };
-const PAINT_TITLE: Record<PaintKind, string> = { support: 'Support Painting', seam: 'Seam painting', fuzzy: 'Paint-on fuzzy skin' };
+const PAINT_TITLE: Record<PaintKind, string> = { support: 'Support Painting', seam: 'Seam painting', fuzzy: 'Paint-on fuzzy skin', color: 'Color Painting' };
 
 export function PaintPanel() {
   const kind = useStore((s) => (isPaint(s.gizmo) ? s.gizmo : null));
@@ -454,17 +457,32 @@ export function PaintPanel() {
   const t = useSyncExternalStore(subscribePaintTool, paintTool);
   const threshold = useStore((s) => object && kind === 'support' ? Number({ ...effectiveConfig(s, 'process'), ...object.settings }.support_threshold_angle) || 0 : 0);
   useEffect(() => { if (kind === 'support') setPaintTool({ highlight: threshold }); }, [kind, object?.id, threshold]);
+  const filaments = useStore((s) => s.filamentSlots.map((_, i) => filamentColor(s, i + 1)).join(' ')).split(' ').filter(Boolean);
+  useEffect(() => { if (kind && !PAINT_TOOLS[kind].some(([id]) => id === paintTool().tool)) setPaintTool({ tool: 'circle' }); }, [kind, t.tool]);
+  useEffect(() => { if (t.filament > filaments.length) setPaintTool({ filament: 1 }); }, [t.filament, filaments.length]);
   if (!kind || !object) return null;
   const tools = PAINT_TOOLS[kind];
   const tool = tools.some(([id]) => id === t.tool) ? t.tool : 'circle';
-  const fill = tool === 'fill', gap = tool === 'gap';
+  const fill = tool === 'fill', gap = tool === 'gap', height = tool === 'height', triangle = tool === 'triangle';
   const painted = !!paintOf(object, kind) || !!object.volumes?.some((v) => v.type === 'part' && paintOf(v, kind));
-  const tips = kind === 'fuzzy' ? 'Left mouse button: Add fuzzy skin\nShift + Left mouse button: Remove fuzzy skin'
+  const tips = kind === 'color' ? 'Left mouse button: Paint\nShift + Left mouse button: Erase\n1 - 9: Choose filament'
+    : kind === 'fuzzy' ? 'Left mouse button: Add fuzzy skin\nShift + Left mouse button: Remove fuzzy skin'
     : `Left mouse button: ${kind === 'seam' ? 'Enforce seam' : 'Enforce supports'}\nRight mouse button: ${kind === 'seam' ? 'Block seam' : 'Block supports'}\nShift + Left mouse button: Erase`;
   return (
     <div className="manip-panel">
-      <div className="manip-title" title={`${tips}\nCtrl + Mouse wheel: ${fill ? 'Smart fill angle' : 'Brush size'}`}>{PAINT_TITLE[kind]}</div>
+      <div className="manip-title" title={`${tips}\nCtrl + Mouse wheel: ${fill ? 'Smart fill angle' : height ? 'Height range' : 'Brush size'}`}>{PAINT_TITLE[kind]}</div>
       <div className="manip-grid" style={{ gridTemplateColumns: 'auto auto auto' }}>
+        {kind === 'color' && (
+          <>
+            <span>Filaments</span>
+            <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap', gridColumn: 'span 2' }}>
+              {filaments.slice(0, EXTRUDERS_LIMIT).map((c, i) => (
+                <button key={i} type="button" className={`paint-filament ${t.filament === i + 1 ? 'active' : ''}`} style={{ background: c }}
+                  title={`Shortcut Key ${i + 1}`} aria-pressed={t.filament === i + 1} onClick={() => setPaintTool({ filament: i + 1 })}>{i + 1}</button>
+              ))}
+            </span>
+          </>
+        )}
         <span>Tool type</span>
         <span style={{ display: 'flex', gap: 2, gridColumn: 'span 2' }}>
           {tools.map(([id, icon, title]) => <IconButton key={id} icon={icon} title={title} size={20} active={tool === id} onClick={() => setPaintTool({ tool: id })} />)}
@@ -477,6 +495,12 @@ export function PaintPanel() {
             <span />
             <button className="btn" style={{ gridColumn: 'span 2', justifySelf: 'start' }} disabled={!(t.gapArea > 0) || !painted}
               onClick={() => mapPaint(object.id, kind, PAINT_STEP[kind], (x, scale) => gapFill(x.geometry, paintOf(x, kind), t.gapArea / (scale * scale)))}>Apply</button>
+          </>
+        ) : triangle ? null : height ? (
+          <>
+            <span>Height range</span>
+            <input type="range" min={HEIGHT.min} max={HEIGHT.max} step={HEIGHT.step} value={t.height} onChange={(e) => setPaintTool({ height: Number(e.target.value) })} />
+            <Num value={t.height} step={HEIGHT.step} onCommit={(v) => setPaintTool({ height: v })} />
           </>
         ) : (
           <>

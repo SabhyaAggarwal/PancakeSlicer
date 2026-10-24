@@ -1,3 +1,5 @@
+import { unzipSync } from 'fflate';
+import { gcodeToStream } from './gcode';
 import { BLOCK, CHUNK, readHeader, readStates, readStatistics, MoveType, type Header, type LayerRec, type MoveChunk, type States, type StreamMeta } from './format';
 
 const LOD_TOLERANCE = 0.05;
@@ -16,6 +18,19 @@ async function open(src: WorkerIn): Promise<{ stream: ReadableStream<Uint8Array>
   let body: ReadableStream<Uint8Array>;
   let total = 0;
   if (src.file) {
+    const peek = new Uint8Array(await src.file.slice(0, 8).arrayBuffer());
+    const magic = String.fromCharCode(...peek);
+    if (magic.startsWith('PK') || (magic !== 'ORCAMV01' && !(peek[0] === 0x1f && peek[1] === 0x8b))) {
+      let text: string;
+      if (magic.startsWith('PK')) {
+        const zip = unzipSync(new Uint8Array(await src.file.arrayBuffer()), { filter: (f) => /^Metadata\/plate_\d+\.gcode$/.test(f.name) });
+        const name = Object.keys(zip).sort()[0];
+        if (!name) throw new Error('no plate G-code in this 3MF');
+        text = new TextDecoder().decode(zip[name]);
+      } else text = await src.file.text();
+      const stream = new Blob([gcodeToStream(text)]);
+      return { stream: stream.stream() as ReadableStream<Uint8Array>, total: stream.size };
+    }
     body = src.file.stream() as ReadableStream<Uint8Array>;
     total = src.file.size;
   } else {

@@ -48,7 +48,7 @@ export interface PlateObject {
   layerProfile?: number[];
   project?: { buildIndex?: number; plateIndex?: number; plateOrigin?: [number, number]; file: string; placeholder: boolean; missing?: boolean; origin?: [number, number, number];
     saved?: { object: number; instance: number; instanceId: number; extruder: number; rotZ: number; item?: number[] };
-    paintable?: boolean; paint?: Partial<Record<'support' | 'seam' | 'fuzzy', Record<string, string>>>; partTris?: number[] };
+    paintable?: boolean; paint?: Partial<Record<'support' | 'seam' | 'fuzzy' | 'color', Record<string, string>>>; partTris?: number[] };
 }
 
 export interface LayerEvent {
@@ -133,7 +133,7 @@ export interface State {
   projectMaterials: { colours: string[]; matrix: number[] | null; multiplier: number | null; builds?: { object: number; instance: number }[] } | null;
   flush: { matrix: number[] | null; multiplier: number | null };
   flushDialog: boolean;
-  appDialog: 'about' | 'preferences' | 'shortcuts' | 'send' | 'setup' | 'what' | null;
+  appDialog: 'about' | 'preferences' | 'shortcuts' | 'send' | 'setup' | 'what' | 'plate' | null;
   calibDialog: CalibMenu | null;
   printers: { name: string; kind: string }[];
   events: LayerEvent[];

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { instanceMatrix, volumeWorld } from './geometry';
 import { gapFill, isPaint, overhangFacets, overhangGeometry, overlayGeometry, paintOf, paintTool, type Paintable, type Painting } from './paint';
 import type { PlateObject, State } from '../state/store';
+import { filamentColor } from './filamentColor';
 
 const LIGHT_RED = 0xc70000;
 
@@ -47,6 +48,17 @@ export class PaintView {
     const kind = isPaint(s.gizmo) ? s.gizmo : null;
     const o = kind ? s.objects.find((ob) => ob.id === s.selected?.object) : undefined;
     const seen = new Set<string>();
+    const palette = [null, ...s.filamentSlots.map((_, i) => new THREE.Color(filamentColor(s, i + 1)).toArray())];
+    for (const ob of s.objects) {
+      if (ob === o && kind === 'color') continue;
+      const targets: [string, Paintable, number | undefined][] = [['o', ob, undefined], ...(ob.volumes ?? []).filter((v) => v.type === 'part').map((v) => [`v${v.id}`, v, v.id] as [string, Paintable, number])];
+      for (const inst of ob.instances)
+        for (const [id, target, volume] of targets) {
+          const paint = paintOf(target, 'color');
+          if (paint) this.put(`${inst.id}:${id}:color`, overlayGeometry(target.geometry, paint, palette),
+            this.material, volume === undefined ? instanceMatrix(ob, inst) : volumeWorld(ob, inst, ob.volumes!.find((v) => v.id === volume)!), seen);
+        }
+    }
     if (o && kind) {
       const targets: [string, Paintable, number | undefined][] = [['o', o, undefined], ...(o.volumes ?? []).filter((v) => v.type === 'part').map((v) => [`v${v.id}`, v, v.id] as [string, Paintable, number])];
       for (const inst of o.instances)
@@ -54,7 +66,7 @@ export class PaintView {
           const matrix = volume === undefined ? instanceMatrix(o, inst) : volumeWorld(o, inst, o.volumes!.find((v) => v.id === volume)!);
           const own = preview && preview.volume === volume ? preview.paint : paintOf(target, kind);
           const paint = this.gapPreview(target, own, matrix.getMaxScaleOnAxis());
-          if (paint) this.put(`${inst.id}:${id}:paint`, overlayGeometry(target.geometry, paint), this.material, matrix, seen);
+          if (paint) this.put(`${inst.id}:${id}:paint`, overlayGeometry(target.geometry, paint, kind === 'color' ? palette : undefined), this.material, matrix, seen);
           const deg = kind === 'support' ? paintTool().highlight : 0;
           const normal = new THREE.Matrix3().getNormalMatrix(matrix);
           const key = `${target.geometry.uuid}:${deg}:${normal.elements.map((e) => e.toFixed(4)).join()}`;

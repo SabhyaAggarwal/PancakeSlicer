@@ -1,6 +1,7 @@
 import { slicingText } from '../api/progress';
 import { Suspense, lazy, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { effectiveConfig, getState, printerPreset, useStore } from '../state/store';
+import { layerOfMove, peekJump, setGcodeListener, setJumpListener, setLoadedStream, takeGcode, takeJump } from '../preview/jump';
 import { setCompareWanted, useCompareWanted } from '../compare';
 import { computeRanges, drawMasks, hexToRgb, type ColorContext, type NonplanarColor, type Ranges, type ViewType, type Visibility } from '../preview/colors';
 import { loadMoves, type PreviewData } from '../preview/data';
@@ -151,6 +152,7 @@ export function PreviewView() {
       if (current) {
         current.cancel();
         current = null;
+        setLoadedStream(null);
         sceneRef.current?.clear();
         setData(null);
         setMovePos(null);
@@ -176,6 +178,7 @@ export function PreviewView() {
       error: (d) => mine(d) && live?.error(d),
     });
     current = { key: src.key, ...handle };
+    setLoadedStream({ key: src.key, data: handle.data });
     setData(null);
     setLayers([0, Number.MAX_SAFE_INTEGER]);
     setMovePos(null);
@@ -195,6 +198,27 @@ export function PreviewView() {
   const [topFirst, topEnd] = data && layerCount ? data.layerSpan(hi, hi) : [1, 1];
   const topMoves = Math.max(0, topEnd - topFirst);
   const pos = movePos == null ? topMoves : Math.min(movePos, topMoves);
+  useEffect(() => {
+    const f = takeGcode();
+    if (f) setDropped(f);
+    setGcodeListener((file) => setDropped(file));
+    return () => setGcodeListener(null);
+  }, []);
+  const [jumpTick, setJumpTick] = useState(0);
+  useEffect(() => {
+    setJumpListener(() => setJumpTick((n) => n + 1));
+    return () => setJumpListener(null);
+  }, []);
+  useEffect(() => {
+    const move = peekJump();
+    if (move == null || !data?.layers.length) return;
+    const k = layerOfMove(data, move);
+    if (k === null) return;
+    takeJump();
+    setLayers([0, k]);
+    setMovePos(move - data.layers[k].first + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, data?.loaded, data?.done, jumpTick]);
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene || !data) return;

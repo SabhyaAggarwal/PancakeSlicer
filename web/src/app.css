@@ -140,6 +140,10 @@ select, input, textarea { font: inherit; color: var(--text); }
 
 .sidebar { width: var(--sidebar-w); flex: none; border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; overflow: hidden; background: var(--bg); }
 .side-section { flex: none; }
+.np-result .side-title { cursor: pointer; }
+.clearance-warning { padding: 8px; border-bottom: 1px solid var(--line-e4); display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.clearance-warning-text { color: #D01B1B; font-size: 12px; }
+.np-result-text { white-space: pre-line; font-size: 12px; padding: 8px 10px; border-bottom: 1px solid var(--line-e4); }
 .side-title { height: 34px; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 10px; background: var(--title-bg); border-bottom: 1px solid var(--line-e4); font-size: 14px; font-weight: 600; }
 .side-title-text { flex: 1; white-space: nowrap; }
 .side-title-tools { display: flex; align-items: center; gap: 4px; font-weight: 400; }
@@ -607,6 +611,14 @@ kbd { font: inherit; font-size: 12px; background: var(--panel-alt); border: 1px 
 .head-grid input[type=checkbox] { display: block; margin: 3px auto; }
 .head-grid tr.selected td { background: var(--hover); }
 .head-dialog .head-plot { width: 240px; }
+.canvas-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.canvas-label { position: absolute; left: 0; top: 0; padding: 1px 6px; border-radius: 3px; background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 12px; white-space: nowrap; }
+.plate-settings .prefs-row > span:first-child { min-width: 190px; }
+.plate-order { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 6px 198px; }
+.plate-range .plate-order { margin: 0; }
+.plate-order-item { display: inline-flex; align-items: center; gap: 3px; }
+.paint-filament { width: 22px; height: 22px; border-radius: 3px; border: 1px solid var(--line-aaa); color: #fff; font-size: 11px; text-shadow: 0 0 2px #000; cursor: pointer; padding: 0; }
+.paint-filament.active { outline: 2px solid var(--accent-text); outline-offset: 1px; }
 
 .np-field { display: flex; flex-direction: column; gap: 4px; }
 .np-parent { font-size: 12px; }

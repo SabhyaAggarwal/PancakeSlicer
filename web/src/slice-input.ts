@@ -39,8 +39,12 @@ export function overrides(s = getState()): Config {
     if (s.projectMaterials.multiplier !== null) out.flush_multiplier = [s.projectMaterials.multiplier];
   }
   if (s.bedType) out.curr_bed_type = s.bedType;
-  const plateBed = s.projectPlates.find((p) => p.index === s.plateIndex)?.settings.curr_bed_type;
+  const plate = s.projectPlates.find((p) => p.index === s.plateIndex);
+  const plateBed = plate?.settings.curr_bed_type;
   if (plateBed && !s.dirty.machine.curr_bed_type) out.curr_bed_type = plateBed;
+  if (plate && !s.project)
+    for (const k of ['print_sequence', 'spiral_mode', 'first_layer_print_sequence', 'other_layers_print_sequence', 'other_layers_print_sequence_nums'])
+      if (plate.settings[k] !== undefined) out[k] = plate.settings[k];
   if (s.filamentSlots.length > 1 || s.slotColours.some((c) => c !== undefined)) {
     const { matrix, multiplier } = currentFlush(s);
     if (!s.project || s.slotColours.some((c) => c !== undefined))

@@ -1,12 +1,15 @@
 import { OPTIONS, type OptionMode } from '../options';
 import { compatible, getState, markStale, printerPreset, setState, useStore } from '../state/store';
 import { undoable } from '../state/history';
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { flushModified } from '../flush-state';
 import { Icon, IconButton } from './Icon';
 import { PresetCombo } from './PresetCombo';
 import { SettingsTab } from './SettingsTab';
 import { filamentColor } from '../plater/filamentColor';
+import { readReport } from '../preview/explain-record';
+import { jumpToMove, streamLayerOf } from '../preview/jump';
+import { shortTime } from '../preview/format';
 
 const ObjectList = lazy(() => import('./ObjectList').then((m) => ({ default: m.ObjectList })));
 
@@ -18,6 +21,62 @@ function SectionTitle({ icon, title, children }: { icon: string; title: string; 
       <Icon name={icon} size={20} />
       <span className="side-title-text">{title}</span>
       <span className="side-title-tools">{children}</span>
+    </div>
+  );
+}
+
+function headBoxLabel(name: string) {
+  const words = name.replace(/\[[^\]]*\]/g, ' ').split(/[_ ]+/).filter((w) => w && !/\d/.test(w));
+  return words.length ? words.join(' ') : name;
+}
+
+function ClearanceWarning() {
+  const job = useStore((s) => s.job);
+  const v = job.state === 'done' && !job.stale ? (job.status?.record?.totals as { verifier?: Record<string, unknown> } | undefined)?.verifier : undefined;
+  const hits = (v?.first_hits ?? []) as { move_id?: number; gcode_line?: number; penetration_mm?: number; component?: string | null }[];
+  if (!v?.ran || !(Number(v.hit_moves) > 0) || !hits.length) return null;
+  const hit = hits.reduce((a, b) => ((b.penetration_mm ?? 0) > (a.penetration_mm ?? 0) ? b : a));
+  const layer = hit.move_id === undefined ? null : streamLayerOf(job.id, hit.move_id);
+  const text = `Moves that would hit printed material: ${v.hit_moves} (worst clearance: ${Number(v.min_clearance_mm).toFixed(3)} mm, ` +
+    `${hit.component ? headBoxLabel(hit.component) + ', ' : ''}${layer !== null ? `layer ${layer + 1}, ` : ''}line ${hit.gcode_line}).`;
+  return (
+    <div className="side-section clearance-warning">
+      <div className="clearance-warning-text">{text}</div>
+      {hit.move_id !== undefined && <button className="btn" onClick={() => jumpToMove(hit.move_id!)}>Jump to move</button>}
+    </div>
+  );
+}
+
+function NonplanarResult() {
+  const job = useStore((s) => s.job);
+  const heads = useStore((s) => s.heads);
+  const [open, setOpen] = useState(true);
+  const report = job.state === 'done' && !job.stale ? readReport(job.status?.record) : null;
+  if (!report) return null;
+  const labels = OPTIONS.nonplanar_mode;
+  const modeLabel = (m: string) => labels?.enum_labels?.[labels.enum_values?.indexOf(m) ?? -1] ?? m;
+  const head = heads?.find((h) => h.id === report.head);
+  const lines: string[] = [];
+  if (head) lines.push(`Head: ${report.head} (${head.calibrated ? 'calibrated' : 'uncalibrated'}).`);
+  lines.push(!report.verified ? 'Clearance check: not run.' : report.hits === 0 ? 'Clearance check: no move hits printed material.'
+    : `Clearance check: ${report.hits} ${report.hits === 1 ? 'move would' : 'moves would'} hit printed material.`);
+  if (report.timeS > 0) lines.push(`Curved passes: ${shortTime(report.curvedS)} of the ${shortTime(report.timeS)} print.`);
+  for (const o of report.objects) {
+    if (o.topPatches + o.otherPatches === 0 && o.planarTop + o.flatTop === 0) continue;
+    lines.push('', `${o.name} (${modeLabel(o.mode)})`);
+    const share = o.curvedTop + o.planarTop > 0 ? o.curvedTop / (o.curvedTop + o.planarTop) : 1;
+    lines.push(o.topPatches > 0 ? `Curved top: ${(100 * share).toFixed(1)} % printed curved, patches: ${o.topPatches}, height bands: ${Math.max(o.bands, 1)}.` : 'No curved top.');
+    if (o.otherPatches > 0) lines.push(`Curved undersides, thin parts and bridges: ${o.otherPatches}.`);
+    if (o.planarTop > 0) lines.push(`Planar fallback: ${o.planarTop.toFixed(1)} mm², mostly ${o.planarReason}.`);
+    if (o.flatTop > 0) lines.push(`Planar by design: ${o.flatTop.toFixed(1)} mm², mostly ${o.flatReason}.`);
+  }
+  return (
+    <div className="side-section np-result">
+      <div className="side-title" role="button" tabIndex={0} aria-expanded={open} onClick={() => setOpen(!open)} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && setOpen(!open)}>
+        <Icon name="param_nonplanar" size={20} />
+        <span className="side-title-text">Non-planar</span>
+      </div>
+      {open && <div className="np-result-text">{lines.join('\n')}</div>}
     </div>
   );
 }
@@ -162,6 +221,8 @@ export function Sidebar() {
   const objects = useStore((s) => s.processScope === 'objects' && s.objects.length > 0);
   return (
     <aside className="sidebar">
+      <ClearanceWarning />
+      <NonplanarResult />
       <PrinterSection />
       <FilamentSection />
       <ProcessHeader />

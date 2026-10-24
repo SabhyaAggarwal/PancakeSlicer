@@ -122,6 +122,7 @@ export default function ContextMenu() {
       { label: 'Delete Plate', action: () => deletePlate(), tip: 'Remove the selected plate' },
       { label: 'Edit Plate Name', action: () => void editPlateName() },
     ] : []),
+    ...(canAddPlate(s) ? [{ label: 'Plate Settings...', action: () => setState({ appDialog: 'plate' }), tip: 'Customize current plate' }] : []),
   ];
   return (
     <div ref={ref} role="menu" className="menu-pop ctx-menu" style={{ left: Math.min(menu.x, window.innerWidth - 230), top: Math.min(menu.y, window.innerHeight - 24 * items.length - 16) }}

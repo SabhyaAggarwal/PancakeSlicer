@@ -2,9 +2,10 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { CameraViews } from './CameraViews';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
-import { getState, printerPreset, setPaint, setState, subscribeStore, updateInstance, updateObject, updateVolume, useStore, type State, type VolumeType } from '../state/store';
+import { effectiveConfig, getState, printerPreset, setPaint, setState, subscribeStore, updateInstance, updateObject, updateVolume, useStore, type State, type VolumeType } from '../state/store';
 import { PaintView } from './paintView';
-import { brush, fill as fillPaint, isPaint, overhangFacets, paintOf, paintTool, PAINT_STEP, RADIUS, setPaintTool, subscribePaintTool, type Painting } from './paint';
+import { viewOptions, subscribeViewOptions } from './viewOptions';
+import { brush, fill as fillPaint, heightRange, HEIGHT, isPaint, overhangFacets, overhangGeometry, paintOf, paintTool, paintTriangle, PAINT_STEP, RADIUS, setPaintTool, subscribePaintTool, type PaintKind, type Painting } from './paint';
 import { beginStep } from '../state/history';
 import { filamentColor } from './filamentColor';
 import { bedKey as bedCacheKey, buildBed, sceneColors, showBedFor } from './Bed';
@@ -65,8 +66,9 @@ export default function Plater3D() {
         frame = 0;
         const t0 = performance.now();
         if (uploads.length) uploadStep();
-        showBedFor(bed, views.camera);
+        showBedFor(bed, views.camera, viewOptions().gridlines);
         renderer.render(scene, views.camera);
+        placeLabels();
         if (flattenScene.children.length) {
           renderer.autoClear = false;
           renderer.clearDepth();
@@ -127,6 +129,61 @@ export default function Plater3D() {
     let area: THREE.Vector2[] = [];
     let height = 250;
     const fitCamera = () => views.setBed(area);
+    const viewExtras = new THREE.Group();
+    scene.add(viewExtras);
+    const overhangTint = new THREE.MeshBasicMaterial({ color: 0xc70000, transparent: true, opacity: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
+    const outlineLine = new THREE.LineBasicMaterial({ color: 0x009688 });
+    const extrasCache = new Map<string, THREE.BufferGeometry>();
+    const labelLayer = document.createElement('div');
+    labelLayer.className = 'canvas-labels';
+    const syncView = (s: State) => {
+      viewExtras.clear();
+      const opt = viewOptions(), seen = new Set<string>();
+      for (const o of s.objects) {
+        if (o.project?.placeholder) continue;
+        for (const inst of o.instances) {
+          const m = instanceMatrix(o, inst);
+          const put = (key: string, make: () => THREE.BufferGeometry, mesh: (g: THREE.BufferGeometry) => THREE.Object3D) => {
+            seen.add(key);
+            let g = extrasCache.get(key);
+            if (!g) extrasCache.set(key, (g = make()));
+            const obj = mesh(g);
+            obj.matrixAutoUpdate = false;
+            obj.matrix.copy(m);
+            viewExtras.add(obj);
+          };
+          if (opt.overhang) {
+            const deg = Number({ ...effectiveConfig(s, 'process'), ...o.settings }.support_threshold_angle) || 30;
+            const normal = new THREE.Matrix3().getNormalMatrix(m);
+            put(`oh:${o.geometry.uuid}:${deg}:${normal.elements.map((e) => e.toFixed(4)).join()}`,
+              () => overhangGeometry(o.geometry, overhangFacets(o.geometry, normal, deg)!), (g) => new THREE.Mesh(g, overhangTint));
+          }
+          if (opt.outline && (s.selected?.instance === inst.id || s.selected?.all))
+            put(`ol:${o.geometry.uuid}`, () => new THREE.EdgesGeometry(o.geometry, 30), (g) => new THREE.LineSegments(g, outlineLine));
+        }
+      }
+      for (const [k, g] of extrasCache) if (!seen.has(k)) { g.dispose(); extrasCache.delete(k); }
+      labelLayer.replaceChildren(...(opt.labels ? s.objects.flatMap((o) => o.instances.map((inst, i) => {
+        const d = document.createElement('div');
+        d.className = 'canvas-label';
+        d.textContent = o.instances.length > 1 ? `${o.name} (${i + 1})` : o.name;
+        d.dataset.object = String(o.id);
+        d.dataset.instance = String(inst.id);
+        return d;
+      })) : []));
+    };
+    const placeLabels = () => {
+      if (!labelLayer.childElementCount) return;
+      const s = getState(), w = el.clientWidth, h = el.clientHeight;
+      for (const d of labelLayer.children as HTMLCollectionOf<HTMLElement>) {
+        const o = s.objects.find((ob) => ob.id === Number(d.dataset.object)), inst = o?.instances.find((i) => i.id === Number(d.dataset.instance));
+        if (!o || !inst) continue;
+        const b = instanceBox(o, inst), p = new THREE.Vector3((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, b.max.z).project(views.camera);
+        d.style.transform = `translate(-50%, -100%) translate(${((p.x + 1) / 2) * w}px, ${((1 - p.y) / 2) * h}px)`;
+        d.hidden = p.z > 1;
+      }
+    };
+
     const syncBed = (s: State) => {
       const m = printerPreset(s);
       const key = bedCacheKey(m);
@@ -588,7 +645,7 @@ export default function Plater3D() {
 
     const paintView = new PaintView();
     scene.add(paintView.group);
-    let stroke: { object: number; instance: number; volume?: number; kind: 'support' | 'seam' | 'fuzzy'; state: 0 | 1 | 2; paint: Painting | null; pointer: number; at: { clientX: number; clientY: number }; world: THREE.Vector3 | null } | null = null;
+    let stroke: { object: number; instance: number; volume?: number; kind: PaintKind; state: number; paint: Painting | null; pointer: number; at: { clientX: number; clientY: number }; world: THREE.Vector3 | null } | null = null;
     type PaintHit = Hit & { volume?: number };
     const paintTarget = (s: State, object: number, volume?: number) => {
       const o = s.objects.find((ob) => ob.id === object);
@@ -615,6 +672,8 @@ export default function Plater3D() {
       const allow = (stroke!.kind === 'support' && t.overhangsOnly && overhangFacets(target.geometry, new THREE.Matrix3().getNormalMatrix(world), t.highlight)) || undefined;
       stroke!.paint = t.tool === 'fill' ? fillPaint(target.geometry, stroke!.paint, hit.tri, t.angle, stroke!.state, allow)
         : t.tool === 'gap' ? stroke!.paint
+        : t.tool === 'triangle' ? paintTriangle(stroke!.paint, hit.tri, stroke!.state)
+        : t.tool === 'height' ? heightRange(target.geometry, stroke!.paint, hit.tri, world, hit.local.clone().applyMatrix4(world).z, t.height, stroke!.state)
         : brush(target.geometry, stroke!.paint, hit.tri, hit.local, t.radius / world.getMaxScaleOnAxis(), t.tool, view, stroke!.state, allow);
       paintView.sync(s, { volume: stroke!.volume, paint: stroke!.paint });
       render();
@@ -623,7 +682,8 @@ export default function Plater3D() {
     const onPaintDown = (ev: PointerEvent) => {
       const s = getState();
       if (!isPaint(s.gizmo) || (ev.button !== 0 && ev.button !== 2) || touches.size > 1) return;
-      const state = ev.button === 2 ? 2 : ev.shiftKey ? 0 : 1;
+      if (s.gizmo === 'color' && ev.button === 2) return;
+      const state = ev.button === 2 ? 2 : ev.shiftKey ? 0 : s.gizmo === 'color' ? paintTool().filament : 1;
       const hit = paintPick(ev);
       const id = hit?.object.userData as { object: number; instance: number } | undefined;
       if (!hit || !id) return;
@@ -649,13 +709,13 @@ export default function Plater3D() {
         const c = (k: number) => new THREE.Vector3().fromBufferAttribute(p, idx ? idx.getX(3 * hit!.tri! + k) : 3 * hit!.tri! + k).applyMatrix4(mesh.matrixWorld);
         const a = c(0), b = c(1), d = c(2);
         const normal = d.sub(b).cross(a.clone().sub(b)).normalize();
-        paintView.showCursor(hit!.local!.clone().applyMatrix4(mesh.matrixWorld), normal, paintTool().tool === 'fill' || paintTool().tool === 'gap' ? 0 : paintTool().radius);
+        paintView.showCursor(hit!.local!.clone().applyMatrix4(mesh.matrixWorld), normal, ['circle', 'sphere'].includes(paintTool().tool) ? paintTool().radius : 0);
       } else paintView.showCursor(null);
       if (stroke && ev.pointerId === stroke.pointer) {
         ev.stopImmediatePropagation();
         const from = stroke.at, to = { clientX: ev.clientX, clientY: ev.clientY };
         const end = onSelected && id!.instance === stroke.instance && hit!.volume === stroke.volume ? hit!.local!.clone().applyMatrix4(hit!.object.matrixWorld) : null;
-        const steps = paintTool().tool !== 'fill' && end && stroke.world ? Math.min(64, Math.ceil(end.distanceTo(stroke.world) / (paintTool().radius / 2))) : 1;
+        const steps = ['circle', 'sphere'].includes(paintTool().tool) && end && stroke.world ? Math.min(64, Math.ceil(end.distanceTo(stroke.world) / (paintTool().radius / 2))) : 1;
         for (let k = 1; k <= steps; k++) {
           const at = k === steps ? to : { clientX: from.clientX + (to.clientX - from.clientX) * k / steps, clientY: from.clientY + (to.clientY - from.clientY) * k / steps };
           const h = k === steps ? hit : paintPick(at);
@@ -683,6 +743,7 @@ export default function Plater3D() {
       ev.stopImmediatePropagation();
       const t = paintTool(), up = ev.deltaY < 0;
       if (t.tool === 'fill') setPaintTool({ angle: t.angle + (up ? 5 : -5) });
+      else if (t.tool === 'height') setPaintTool({ height: t.height + (up ? HEIGHT.step : -HEIGHT.step) });
       else setPaintTool({ radius: t.radius + (up ? RADIUS.step : -RADIUS.step) });
     };
     renderer.domElement.addEventListener('pointerdown', onPaintDown, { capture: true });
@@ -864,11 +925,14 @@ export default function Plater3D() {
       syncBed(s);
       syncObjects(s);
       paintView.sync(s);
+      syncView(s);
       if (!isPaint(s.gizmo)) paintView.showCursor(null);
     };
     (window as unknown as { __plater: unknown }).__plater = { scene, get camera() { return views.camera; }, controls, tc, renderer, meshes, frames, hoverMs, hovered: () => hovered, flattenPlanes: () => flattenScene.children, measure: measureState, pick, render, getState, setState };
     const unsub = subscribeStore(sync);
     const unsubLayerCursor = subscribeLayerCursor(() => { tint(getState()); render(); });
+    el.appendChild(labelLayer);
+    const unsubView = subscribeViewOptions(() => { syncView(getState()); render(); });
     const unsubTheme = subscribeTheme(() => {
       renderer.setClearColor(sceneColors().background);
       overlayColours();
@@ -882,6 +946,8 @@ export default function Plater3D() {
     return () => {
       unsub();
       unsubLayerCursor();
+      unsubView();
+      labelLayer.remove();
       unsubPaintTool();
       unsubTheme();
       unsubPreview();

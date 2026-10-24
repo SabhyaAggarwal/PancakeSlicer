@@ -12,10 +12,13 @@ export const sceneColors = () => isDark()
 export const bedKey = (machine: SystemPreset | undefined) =>
   `${machine?.name}|${machine?.config.printable_area}|${machine?.config.bed_custom_texture}|${machine?.config.bed_custom_model}|${isDark()}`;
 
-export function showBedFor(bed: THREE.Object3D | null | undefined, camera: THREE.Camera) {
+export function showBedFor(bed: THREE.Object3D | null | undefined, camera: THREE.Camera, gridlines = true) {
   if (!bed) return;
   const below = camera.getWorldDirection(new THREE.Vector3()).z >= 0;
-  for (const c of bed.children) if (c.userData.solid) c.visible = !below && c.userData.on !== false;
+  for (const c of bed.children) {
+    if (c.userData.solid) c.visible = !below && c.userData.on !== false;
+    if (c.userData.grid) c.visible = gridlines;
+  }
 }
 
 const stlCache = new Map<string, Promise<THREE.BufferGeometry | null>>();
@@ -91,7 +94,9 @@ export function buildBed(machine: SystemPreset | undefined, onReady: () => void)
   for (let y = Math.ceil(min.y / 10) * 10; y <= max.y; y += 10) grid.push(min.x, y, 0.02, max.x, y, 0.02);
   const gridGeo = new THREE.BufferGeometry();
   gridGeo.setAttribute('position', new THREE.Float32BufferAttribute(grid, 3));
-  group.add(new THREE.LineSegments(gridGeo, new THREE.LineBasicMaterial({ color: colors.grid, transparent: true, opacity: 0.45 })));
+  const gridLines = new THREE.LineSegments(gridGeo, new THREE.LineBasicMaterial({ color: colors.grid, transparent: true, opacity: 0.45 }));
+  gridLines.userData.grid = true;
+  group.add(gridLines);
 
   const outline = new THREE.LineLoop(
     new THREE.BufferGeometry().setFromPoints(pts.map((p) => new THREE.Vector3(p.x, p.y, 0.03))),

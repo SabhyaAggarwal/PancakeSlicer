@@ -1,0 +1,116 @@
+import { useState } from 'react';
+import { OPTIONS } from '../options';
+import { getState, printerPreset, useStore } from '../state/store';
+import { filamentColor } from '../plater/filamentColor';
+import { setPlateSettings } from '../plater/plates';
+import { Modal, ModalTitle } from './Modal';
+
+type Range = { from: number; to: number; order: number[] };
+const ints = (v: unknown) => String(v ?? '').split(/[,;]/).map((x) => Number(x.trim())).filter((x) => Number.isFinite(x));
+
+function ranges(v: unknown, nums: unknown, n: number): Range[] {
+  const flat = ints(v), count = Number(nums) || 0, out: Range[] = [];
+  for (let k = 0, i = 0; k < count && i + 2 + n <= flat.length; k++, i += 2 + n) out.push({ from: flat[i], to: flat[i + 1], order: flat.slice(i + 2, i + 2 + n) });
+  return out;
+}
+
+function Order({ order, colours, onChange }: { order: number[]; colours: string[]; onChange(o: number[]): void }) {
+  const move = (i: number, d: number) => { const o = [...order]; [o[i], o[i + d]] = [o[i + d], o[i]]; onChange(o); };
+  return (
+    <span className="plate-order">
+      {order.map((f, i) => (
+        <span key={f} className="plate-order-item">
+          <span className="menu-swatch" style={{ background: colours[f - 1] }} />{f}
+          <button type="button" className="btn small" disabled={i === 0} title="Move up" onClick={() => move(i, -1)}>‹</button>
+          <button type="button" className="btn small" disabled={i === order.length - 1} title="Move down" onClick={() => move(i, 1)}>›</button>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+export default function PlateSettings({ close }: { close(): void }) {
+  const plate = useStore((s) => s.projectPlates.find((p) => p.index === s.plateIndex));
+  const s = getState();
+  const n = s.filamentSlots.length, colours = s.filamentSlots.map((_, i) => filamentColor(s, i + 1));
+  const natural = Array.from({ length: n }, (_, i) => i + 1);
+  const cfg = plate?.settings ?? {};
+  const [name, setName] = useState(plate?.name ?? '');
+  const [bed, setBed] = useState(String(cfg.curr_bed_type ?? ''));
+  const [seq, setSeq] = useState(String(cfg.print_sequence ?? ''));
+  const [spiral, setSpiral] = useState(cfg.spiral_mode === undefined ? '' : ['1', 'true'].includes(String(cfg.spiral_mode)) ? '1' : '0');
+  const first0 = ints(cfg.first_layer_print_sequence).filter((f) => f >= 1 && f <= n);
+  const [first, setFirst] = useState(first0.length === n ? first0 : null);
+  const [others, setOthers] = useState<Range[] | null>(() => { const r = ranges(cfg.other_layers_print_sequence, cfg.other_layers_print_sequence_nums, n); return r.length ? r : null; });
+  const bedDef = OPTIONS.curr_bed_type, seqDef = OPTIONS.print_sequence;
+  const machine = printerPreset(s), multiBed = machine?.config.support_multi_bed_types;
+  const bedTypes = machine?.vendor === 'BBL' || multiBed === true || multiBed === 1 || multiBed === '1';
+  const beds = (bedDef?.enum_values ?? []).map((v, i) => [v, bedDef?.enum_labels?.[i] ?? v] as const)
+    .filter(([v, label]) => !machine?.not_support_bed_type?.some((b) => b === v || b === label));
+  const ok = () => {
+    const out: Record<string, string> = {};
+    if (bed) out.curr_bed_type = bed;
+    if (seq) out.print_sequence = seq;
+    if (spiral) out.spiral_mode = spiral;
+    if (first) out.first_layer_print_sequence = first.join(',');
+    if (others?.length) {
+      out.other_layers_print_sequence = others.flatMap((r) => [r.from, r.to, ...r.order]).join(',');
+      out.other_layers_print_sequence_nums = String(others.length);
+    }
+    setPlateSettings(name, out);
+    close();
+  };
+  return (
+    <Modal className="small" label="Plate Settings" onClose={close}>
+      <ModalTitle title="Plate Settings" onClose={close} />
+      <div className="prefs-body plate-settings">
+        <label className="prefs-row"><span>Plate name</span><input className="text" value={name} onChange={(e) => setName(e.target.value)} /></label>
+        <label className="prefs-row"><span>Bed type</span>
+          <select className="combo" value={bed} disabled={!bedTypes} onChange={(e) => setBed(e.target.value)}>
+            <option value="">Same as Global Plate Type</option>
+            {beds.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+          </select>
+        </label>
+        <label className="prefs-row"><span>Print sequence</span>
+          <select className="combo" value={seq} onChange={(e) => setSeq(e.target.value)}>
+            <option value="">Same as Global Print Sequence</option>
+            {seqDef?.enum_values?.map((v, i) => <option key={v} value={v}>{seqDef.enum_labels?.[i] ?? v}</option>)}
+          </select>
+        </label>
+        <label className="prefs-row"><span>Spiral vase</span>
+          <select className="combo" value={spiral} onChange={(e) => setSpiral(e.target.value)}>
+            <option value="">Same as Global</option><option value="1">Enable</option><option value="0">Disable</option>
+          </select>
+        </label>
+        {n > 1 && <>
+          <label className="prefs-row"><span>First layer filament sequence</span>
+            <select className="combo" value={first ? 'c' : 'a'} onChange={(e) => setFirst(e.target.value === 'c' ? natural : null)}>
+              <option value="a">Auto</option><option value="c">Customize</option>
+            </select>
+          </label>
+          {first && <Order order={first} colours={colours} onChange={setFirst} />}
+          <label className="prefs-row"><span>Other layer filament sequence</span>
+            <select className="combo" value={others ? 'c' : 'a'} onChange={(e) => setOthers(e.target.value === 'c' ? [{ from: 2, to: 2, order: natural }] : null)}>
+              <option value="a">Auto</option><option value="c">Customize</option>
+            </select>
+          </label>
+          {others?.map((r, k) => (
+            <div key={k} className="prefs-row plate-range">
+              <span>Layer</span>
+              <input className="text num" type="number" min={2} value={r.from} onChange={(e) => setOthers(others.map((x, j) => (j === k ? { ...x, from: Math.max(2, Number(e.target.value)) } : x)))} />
+              <span>to</span>
+              <input className="text num" type="number" min={r.from} value={r.to} onChange={(e) => setOthers(others.map((x, j) => (j === k ? { ...x, to: Math.max(x.from, Number(e.target.value)) } : x)))} />
+              <Order order={r.order} colours={colours} onChange={(o) => setOthers(others.map((x, j) => (j === k ? { ...x, order: o } : x)))} />
+              <button type="button" className="btn small" title="Delete" onClick={() => setOthers(others.length > 1 ? others.filter((_, j) => j !== k) : null)}>−</button>
+            </div>
+          ))}
+          {others && <button type="button" className="btn small" onClick={() => { const last = others[others.length - 1]; setOthers([...others, { from: last.to + 1, to: last.to + 1, order: natural }]); }}>+</button>}
+        </>}
+      </div>
+      <div className="modal-buttons">
+        <button className="btn primary" data-autofocus onClick={ok}>OK</button>
+        <button className="btn" onClick={close}>Cancel</button>
+      </div>
+    </Modal>
+  );
+}

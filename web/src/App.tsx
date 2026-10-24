@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { togglePaint } from './plater/paint';
+import { setPaintTool, togglePaint } from './plater/paint';
+import { toggleViewOption } from './plater/viewOptions';
 import { addInstance, arrangeAll, download, importFiles, newProject, openFileDialog, openProjectDialog, removeInstance, slice, toolbarOperation, saveProject } from './actions';
 import { toggleCut } from './plater/cut';
 import { CanvasToolbar, CutPanel, ManipulationPanel, PaintPanel, SliceNotification, Toast } from './components/CanvasOverlays';
@@ -108,6 +109,9 @@ export default function App() {
       else if (e.key.toLowerCase() === 'l') togglePaint('support');
       else if (e.key.toLowerCase() === 'p') togglePaint('seam');
       else if (e.key.toLowerCase() === 'h') togglePaint('fuzzy');
+      else if (e.key.toLowerCase() === 'n') togglePaint('color');
+      else if (e.key.toLowerCase() === 'e' && getState().tab === 'prepare') toggleViewOption('labels');
+      else if (getState().gizmo === 'color' && /^[1-9]$/.test(e.key)) { if (Number(e.key) <= getState().filamentSlots.length) setPaintTool({ filament: Number(e.key) }); }
       else if (e.key === 'F2') startRename();
       else if (e.key.toLowerCase() === 'v') { const selected = getState().selected; if (selected) togglePrintable(selected.object, selected.allInstances ? undefined : selected.instance); }
       else if (prepare && !e.altKey && nudge(e.key, e.shiftKey)) {  }

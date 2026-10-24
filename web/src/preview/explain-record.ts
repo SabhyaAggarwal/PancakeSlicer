@@ -172,3 +172,76 @@ export function objectResults(record: Rec | undefined): ObjectResult[] {
   }
   return out;
 }
+
+const FALLBACK_REASONS: Record<string, [string, string]> = {
+  flat: ['flat', 'flat: planar layers print it exactly'],
+  planar_patch: ['flat', 'tilted plane: planar layers, Z contoured'],
+  flat_ground: ['flat', 'flat ground: planar layers, Z contoured, print it exactly'],
+  flat_sliver: ['flat', 'a sliver beside flat ground, printed with it'],
+  steep: ['wall', 'steeper than a curved bead follows (atan(h/w)): planar layers, Z contoured'],
+  steep_strip: ['wall', 'a steep strip between curved tops: planar layers, Z contoured'],
+  narrow: ['wall', 'narrower than half a road: the contoured planar top measured better'],
+  outline: ['outline', 'outline between surface samples'],
+  near_bed: ['fallback', 'too close to the first layer for a shell'],
+  no_transition_layer: ['fallback', 'no planar layer under the first shell within the bead range'],
+  no_pieces: ['fallback', 'the bands laid no road there'],
+  shell_height: ['unreachable', 'shell layer too thick for the nozzle'],
+  edge: ['fallback', 'edge of a curved top: near the bed, too steep or narrower than a road'],
+  head: ['fallback', 'the print head cannot reach it'],
+  untagged: ['fallback', 'no reason recorded'],
+};
+
+export interface ReportObject {
+  name: string;
+  mode: string;
+  topPatches: number;
+  otherPatches: number;
+  bands: number;
+  curvedTop: number;
+  planarTop: number;
+  flatTop: number;
+  planarReason: string;
+  flatReason: string;
+}
+
+export function readReport(record: Rec | undefined) {
+  if (!record || record.status !== 'sliced') return null;
+  const objects = (record.objects ?? []) as { id?: number; name?: string; mode?: string }[];
+  if (!objects.some((o) => o.mode && o.mode !== 'off')) return null;
+  const patches = (((record.results ?? {}) as Rec).patches ?? []) as (Patch & { band?: number | null })[];
+  const text = (record.text_summary ?? {}) as Rec;
+  const v = ((record.totals ?? {}) as Rec).verifier as Rec | undefined;
+  const mainReason = (areas: Map<string, number>) => {
+    const tag = [...areas].sort((a, b) => b[1] - a[1])[0]?.[0];
+    return tag === undefined ? '-' : FALLBACK_REASONS[tag]?.[1] ?? tag;
+  };
+  const out: ReportObject[] = objects.map((o, i) => {
+    const own = patches.filter((p) => (p.object_id ?? 0) === (o.id ?? i));
+    const top = own.filter((p) => p.kind === 'top');
+    const planar = new Map<string, number>(), flat = new Map<string, number>();
+    let planarTop = 0, flatTop = 0;
+    for (const p of own.filter((q) => q.kind === 'fallback')) {
+      const reason = p.reason_tags?.[0] ?? 'untagged', area = num(p.area_mm2) ?? 0;
+      if (!(area > 0) || reason === 'bottom' || reason.startsWith('overhang')) continue;
+      const exact = (FALLBACK_REASONS[reason]?.[0] ?? 'fallback') !== 'fallback';
+      const by = exact ? flat : planar;
+      by.set(reason, (by.get(reason) ?? 0) + area);
+      if (exact) flatTop += area; else planarTop += area;
+    }
+    return {
+      name: String(o.name ?? ''), mode: String(o.mode ?? 'off'), topPatches: top.length,
+      otherPatches: own.filter((p) => p.kind !== 'top' && p.kind !== 'fallback').length,
+      bands: top.reduce((m, p) => Math.max(m, (num(p.band) ?? -1) + 1), 0),
+      curvedTop: top.reduce((a, p) => a + (num(p.area_mm2) ?? 0), 0), planarTop, flatTop,
+      planarReason: mainReason(planar), flatReason: mainReason(flat),
+    };
+  });
+  return {
+    head: String(((record.inputs ?? {}) as Rec & { head?: { id?: string } }).head?.id ?? ''),
+    verified: !!v?.ran,
+    hits: num(v?.hit_moves) ?? 0,
+    timeS: num(text.estimated_time_s) ?? 0,
+    curvedS: (num(text.nonplanar_extrude_time_s) ?? 0) + (num(text.nonplanar_other_time_s) ?? 0),
+    objects: out,
+  };
+}
