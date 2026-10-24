@@ -2,6 +2,7 @@
 
 #include "Nonplanar/HeadEnvelope.hpp"
 #include "ExtrusionEntity.hpp"
+#include "ExPolygon.hpp"
 #include "ExtrusionEntityCollection.hpp"
 #include "OrientationField.hpp"
 #include "ClipperUtils.hpp"

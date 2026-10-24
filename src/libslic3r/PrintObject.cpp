@@ -1049,6 +1049,24 @@ void PrintObject::generate_support_material(bool with_belt_brim)
             this->update_slicing_parameters();
         }
 
+        if (m_oneshot_offer_support) {
+            m_config.support_type.value  = m_oneshot_offer_type;
+            m_config.support_style.value = m_oneshot_offer_style;
+            m_oneshot_offer_support      = false;
+        }
+        if (const Nonplanar::OneShotState *state = m_oneshot.get();
+            state != nullptr && state->offer != Nonplanar::OneShotState::Offer::Body && m_config.enable_support.value &&
+            Nonplanar::oneshot_requested(*this)) {
+            m_oneshot_offer_support      = true;
+            m_oneshot_offer_type         = m_config.support_type.value;
+            m_oneshot_offer_style        = m_config.support_style.value;
+            const bool normal            = state->offer == Nonplanar::OneShotState::Offer::NormalSupport;
+            m_config.support_type.value  = normal ? stNormalAuto : stTreeAuto;
+            m_config.support_style.value = normal ? smsDefault : smsTreeSlim;
+            m_slicing_params.valid       = false;
+            this->update_slicing_parameters();
+        }
+
         if(!has_support() && !m_print->get_no_check_flag()) {
             m_print->set_status(50, L("Checking support necessity"));
             typedef std::chrono::high_resolution_clock clock_;
@@ -1594,6 +1612,14 @@ bool PrintObject::invalidate_state_by_config_options(
         m_config.support_style.value                 = m_auto_support_style;
         m_config.support_critical_regions_only.value = m_auto_support_critical;
         m_auto_support_applied                       = false;
+        steps.emplace_back(posSlice);
+    }
+    if (m_oneshot_offer_support && std::any_of(opt_keys.begin(), opt_keys.end(), [](const t_config_option_key &key) {
+            return key == "enable_support" || key == "support_type" || key == "support_style";
+        })) {
+        m_config.support_type.value  = m_oneshot_offer_type;
+        m_config.support_style.value = m_oneshot_offer_style;
+        m_oneshot_offer_support      = false;
         steps.emplace_back(posSlice);
     }
     if (m_auto_planar && std::any_of(opt_keys.begin(), opt_keys.end(), [](const t_config_option_key &key) {

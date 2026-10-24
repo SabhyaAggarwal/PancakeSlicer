@@ -7,6 +7,7 @@
 #include "Nonplanar/FieldObjective.hpp"
 #include "Nonplanar/MultiplanarConfirm.hpp"
 #include "Nonplanar/NpField.hpp"
+#include "Nonplanar/Rests.hpp"
 #include "Npy.hpp"
 #include "PatchTools.hpp"
 #include "Point.hpp"
@@ -464,23 +465,24 @@ ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeo
     m.thickness_min *= 0.999;
     m.thickness_max *= 1.001;
     m.printable_overhang = rad(oc.multiplanar_overhang_threshold.value);
+    const int    threshold = oc.support_threshold_angle.value > 0 ? oc.support_threshold_angle.value : 30;
+    const double cos_s = std::cos(double(threshold) * M_PI / 180.), band = 2. * m.h + geom.spacing.z();
+    m.support_cos      = cos_s;
+    std::vector<double> faces_z;
+    for (size_t s = 0; s < geom.p.size(); ++s)
+        if (-geom.n[s].z() >= cos_s)
+            faces_z.push_back(geom.p[s].z());
+    std::sort(faces_z.begin(), faces_z.end());
     const std::vector<double> tops = mode_off_tops(object);
     m.anchor = anchor_field(geom, tops, m.first_layer, m.h);
     for (size_t j = 1; j < tops.size(); ++j)
         m.thickness_min = std::min(m.thickness_min, tops[j] - tops[j - 1] - 1e-4);
-    {
-        const int    threshold = oc.support_threshold_angle.value > 0 ? oc.support_threshold_angle.value : 30;
-        const double cos_s = std::cos(double(threshold) * M_PI / 180.), band = 2. * m.h + geom.spacing.z();
-        m.support_cos      = cos_s;
-        m.pinned_v.assign(geom.dims[2], std::numeric_limits<float>::quiet_NaN());
-        for (size_t s = 0; s < geom.p.size(); ++s)
-            if (-geom.n[s].z() >= cos_s) {
-                const double lo = (geom.p[s].z() - band - geom.origin.z()) / geom.spacing.z();
-                const double hi = (geom.p[s].z() + band - geom.origin.z()) / geom.spacing.z();
-                for (long k = std::max(0L, long(std::floor(lo))); k <= std::min(long(geom.dims[2]) - 1, long(std::ceil(hi))); ++k)
-                    m.pinned_v[size_t(k)] = m.anchor.empty() ? float(geom.origin.z() + double(k) * geom.spacing.z()) :
-                                                               m.anchor[geom.index(0, 0, size_t(k))];
-            }
+    m.pinned_v.assign(geom.dims[2], std::numeric_limits<float>::quiet_NaN());
+    for (const double z : faces_z) {
+        const double lo = (z - band - geom.origin.z()) / geom.spacing.z(), hi = (z + band - geom.origin.z()) / geom.spacing.z();
+        for (long k = std::max(0L, long(std::floor(lo))); k <= std::min(long(geom.dims[2]) - 1, long(std::ceil(hi))); ++k)
+            m.pinned_v[size_t(k)] = m.anchor.empty() ? float(geom.origin.z() + double(k) * geom.spacing.z()) :
+                                                       m.anchor[geom.index(0, 0, size_t(k))];
     }
     m.rotary             = pc.nonplanar_kinematics.value != RotaryLayout::None;
     m.tilt_max           = std::min(m.rotary ? tilt_max : 0., BodyPathCap);
@@ -616,6 +618,38 @@ bool admit_time_cut(const PrintObject &object, OneShotState &state, std::vector<
     return admitted;
 }
 
+bool measured_repick(const PrintObject &object, OneShotState &state, double ratio, const Floating &floating, bool support)
+{
+    using Offer              = OneShotState::Offer;
+    state.measured_ratio     = ratio;
+    state.measured_floating  = floating.part;
+    if (state.offer == Offer::Control)
+        return false;
+    const bool time_over = std::isfinite(ratio) && ratio > OneShotState::MaxTimeRatio && !state.measured_anchor;
+    bool float_over = false;
+    if (floating.part >= 0. && floats_past_bar(floating, {})) {
+        const bool     user_support = object.config().enable_support.value && !object.auto_support_applied();
+        const Floating control      = planar_control_floating(object, user_support);
+        state.control_floating      = control.part;
+        float_over                  = control.part >= 0. && floats_past_bar(floating, control);
+    }
+    if (!time_over && !float_over)
+        return false;
+    const bool budget = state.measured_repicks < MaxRepicks;
+    if (float_over)
+        state.offer = budget && support && state.offer == Offer::Body ? Offer::NormalSupport : Offer::Control;
+    else if (budget)
+        state.cap_scale *= OneShotState::MaxTimeRatio / ratio;
+    else
+        state.measured_anchor = true;
+    ++state.measured_repicks;
+    BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": measured " << ratio << " x planar + support, floating "
+                            << floating.part << " mm against the control's " << state.control_floating << ": "
+                            << (float_over ? (state.offer == Offer::Control ? "the control offer" : "the normal(auto) support offer") :
+                                state.measured_anchor ? "taking the anchor" : "solving again at a tighter cap");
+    return true;
+}
+
 void measured_export_check(PrintObject &object, OneShotState &state, const std::function<void()> &resolve)
 {
     if (!state.z_only || std::getenv("NP_ONESHOT_NO_MEASURED_CHECK") != nullptr || object.print()->objects().size() == 1)
@@ -623,28 +657,15 @@ void measured_export_check(PrintObject &object, OneShotState &state, const std::
     const auto t0 = std::chrono::steady_clock::now();
     const double t_ps = measured_time(object, NonplanarMode::Off,
                                       { { "enable_support", "1" }, { "support_type", "tree(auto)" }, { "support_style", "tree_slim" } }, {}, false);
-    auto body = [&object, &state]() {
-        const Injection body_only(state);
-        return measured_time(object, NonplanarMode::OneShot, {}, {}, false);
-    };
-    for (int pick = 0;; ++pick) {
-        const double t_body = body();
-        state.measured_ratio   = t_body / t_ps;
-        state.measured_repicks = pick;
-        if (!std::isfinite(state.measured_ratio) || state.measured_ratio <= OneShotState::MaxTimeRatio || state.measured_anchor)
+    for (;;) {
+        MeasuredPrint body;
+        {
+            const Injection body_only(state);
+            measured_time(object, NonplanarMode::OneShot, {}, {}, false, &body);
+        }
+        if (!measured_repick(object, state, body.time / t_ps, body.floating, body.support))
             break;
-        BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": measured " << state.measured_ratio
-                                << " x planar + support over " << OneShotState::MaxTimeRatio << ", "
-                                << (pick < MaxRepicks ? "re-solving at a tighter cap" : "taking the anchor");
-        if (pick < MaxRepicks)
-            state.cap_scale *= OneShotState::MaxTimeRatio / state.measured_ratio;
-        else
-            state.measured_anchor = true;
-        const double scale = state.cap_scale;
-        const bool   anchor = state.measured_anchor;
         resolve();
-        state.cap_scale       = scale;
-        state.measured_anchor = anchor;
     }
     state.measured_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
 }
@@ -768,6 +789,15 @@ std::string OneShotState::offers() const
     return out;
 }
 
+std::string OneShotState::floating_decision() const
+{
+    if (std::isnan(measured_floating))
+        return {};
+    return Slic3r::format(", floating %1$.1f mm (control %2%) -> %3%", measured_floating,
+                          std::isnan(control_floating) ? std::string("not sliced: under any bar") : Slic3r::format("%1$.1f", control_floating),
+                          offer == Offer::Control ? "control" : offer == Offer::NormalSupport ? "normal(auto) support" : "body");
+}
+
 NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &mesh, double tilt_max, const std::function<void()> &cancel,
                        std::string &student, int &polish_k, OneShotAbortReason &abort, std::vector<NpField> *time_cut,
                        const std::function<bool(const std::array<Vec3d, 3> &)> &unsampled)
@@ -794,7 +824,8 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
     params.budget       = 0.;
     if (const char *only = std::getenv("NP_ONESHOT_ONLY_OFFER"); only != nullptr)
         params.only_offer = only;
-    if (const OneShotState *state = object.oneshot_state(); state != nullptr && state->measured_anchor)
+    if (const OneShotState *state = object.oneshot_state();
+        state != nullptr && (state->measured_anchor || state->offer == OneShotState::Offer::Control))
         params.only_offer = "anchor";
     const bool level_only = !leans(m);
     if (level_only)

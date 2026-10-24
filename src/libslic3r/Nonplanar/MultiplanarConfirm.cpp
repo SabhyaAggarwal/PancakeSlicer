@@ -10,6 +10,7 @@
 #include "AutoMode.hpp"
 #include "Multiplanar.hpp"
 #include "PatchTools.hpp"
+#include "Rests.hpp"
 
 #include "libslic3r/AABBMesh.hpp"
 #include "libslic3r/BoundingBox.hpp"
@@ -17,6 +18,7 @@
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
 #include "libslic3r/GCode/ToolKinematics.hpp"
+#include "libslic3r/Layer.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Point.hpp"
 #include "libslic3r/Print.hpp"
@@ -102,7 +104,7 @@ struct Bead
 
 double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector<Bead> &beads,
                       const std::vector<std::pair<std::string, std::string>> &overrides = {}, const std::string &keep_as = {},
-                      bool verify = true)
+                      bool verify = true, MeasuredPrint *measured = nullptr)
 {
     DynamicPrintConfig config = object.print()->full_print_config();
     config.apply(object.config(), true);
@@ -176,6 +178,12 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
         BOOST_LOG_TRIVIAL(warning) << "Multiplanar check: a measured slice failed: " << ex.what();
         boost::filesystem::remove(gcode, ec);
         return std::numeric_limits<double>::quiet_NaN();
+    }
+    if (measured != nullptr && !print.objects().empty()) {
+        const PrintObject &printed = *print.objects().front();
+        measured->floating         = floating_road(printed, nullptr);
+        measured->support          = std::any_of(printed.support_layers().begin(), printed.support_layers().end(),
+                                                 [](const SupportLayer *layer) { return !layer->support_fills.empty(); });
     }
     if (!keep_as.empty())
         boost::filesystem::copy_file(gcode, keep_as, boost::filesystem::copy_options::overwrite_existing, ec);
@@ -695,10 +703,13 @@ std::string auto_rotary_chunks(const PrintObject &object, const indexed_triangle
 }
 
 double measured_time(const PrintObject &object, NonplanarMode mode, const std::vector<std::pair<std::string, std::string>> &overrides,
-                     const std::string &keep_as, bool verify)
+                     const std::string &keep_as, bool verify, MeasuredPrint *measured)
 {
     std::vector<Bead> beads;
-    return measured_slice(object, mode, beads, overrides, keep_as, verify);
+    const double      time = measured_slice(object, mode, beads, overrides, keep_as, verify, mode == NonplanarMode::Off ? nullptr : measured);
+    if (measured != nullptr)
+        measured->time = time;
+    return time;
 }
 
 double planar_support_time(const PrintObject &object)

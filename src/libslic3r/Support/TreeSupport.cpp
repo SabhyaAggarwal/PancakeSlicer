@@ -3279,13 +3279,14 @@ std::vector<LayerHeightData> TreeSupport::plan_layer_heights()
         coordf_t new_height = layer_heights[layer_nr].height;
         if (std::abs(node1->height - new_height) < EPSILON) continue;
         if (top_z_distance < EPSILON && node1->height < EPSILON) continue;
+        const coordf_t        gap_bottom   = node1->print_z - node1->height;
         coordf_t              accum_height = 0;
         int                   num_layers   = 0;
         for (int i=layer_nr;i>=0;i--){
             if (layer_heights[i].height > EPSILON) {
+                if (num_layers > 0 && layer_heights[i].print_z < gap_bottom + EPSILON) break;
                 accum_height += layer_heights[i].height;
                 num_layers++;
-                if (accum_height > node1->height - EPSILON) break;
             }
         }
         BOOST_LOG_TRIVIAL(debug) << format("plan_layer_heights adjust node's height print_z[%d]=%.2f: (%.3f,%d)->(%.3f,%.3f,%d)", layer_nr, node1->print_z,

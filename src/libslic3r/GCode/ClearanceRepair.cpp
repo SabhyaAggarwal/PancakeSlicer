@@ -19,6 +19,7 @@
 #include "libslic3r/Nonplanar/HeadEnvelope.hpp"
 #include "libslic3r/Nonplanar/MultiplanarConfirm.hpp"
 #include "libslic3r/Nonplanar/OneShotField.hpp"
+#include "libslic3r/Nonplanar/Rests.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintBase.hpp"
 #include "libslic3r/PrintConfig.hpp"
@@ -601,7 +602,8 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
                                          s.time_ratio() <= s.time_cap() ? "<=" : ">");
         if (std::isfinite(s.measured_ratio) && m_print.objects().size() > 1)
             s.decision += Slic3r::format(", measured %1$.3f x planar + support (private exports; %2% re-picks%3%, %4$.0f s)", s.measured_ratio,
-                                         s.measured_repicks, s.measured_anchor ? ", the anchor" : "", s.measured_seconds);
+                                         s.measured_repicks, s.measured_anchor ? ", the anchor" : "", s.measured_seconds) +
+                          s.floating_decision();
         if (!s.route_log.empty())
             s.decision += (s.route ? ", a tilted route; " : ", the body over its routes; ") + s.route_log;
         BOOST_LOG_TRIVIAL(info) << object->model_object()->name << ": " << s.decision;
@@ -631,29 +633,26 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
                                                    ", support on (one-shot), tree_slim: organic needs fixed layers" :
                                                    ", support on (one-shot)";
     }
-    if (m_print.objects().size() == 1 && std::getenv("NP_ONESHOT_NO_MEASURED_CHECK") == nullptr) {
+    if (m_print.objects().size() == 1 && std::getenv("NP_ONESHOT_NO_MEASURED_CHECK") == nullptr && !rotary_auto_measurement()) {
         PrintObject  *object = objects.front();
         OneShotState &s      = object->oneshot_state();
         if (s.z_only) {
-            const auto   t0   = std::chrono::steady_clock::now();
-            const double t_ps = measured_time(*object, NonplanarMode::Off,
-                                              { { "enable_support", "1" }, { "support_type", "tree(auto)" }, { "support_style", "tree_slim" } },
-                                              {}, false);
-            s.measured_ratio = time / t_ps;
+            const auto     t0       = std::chrono::steady_clock::now();
+            const double   t_ps     = measured_time(*object, NonplanarMode::Off,
+                                                    { { "enable_support", "1" }, { "support_type", "tree(auto)" }, { "support_style", "tree_slim" } },
+                                                    {}, false);
+            const Floating floating = floating_road(*object, nullptr);
+            const bool     support  = std::any_of(object->support_layers().begin(), object->support_layers().end(),
+                                                  [](const SupportLayer *layer) { return !layer->support_fills.empty(); });
+            const bool     repick   = measured_repick(*object, s, time / t_ps, floating, support);
             s.measured_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-            if (std::isfinite(s.measured_ratio) && s.measured_ratio > OneShotState::MaxTimeRatio && !s.measured_anchor) {
-                BOOST_LOG_TRIVIAL(info) << object->model_object()->name << ": export measured " << s.measured_ratio << " x planar + support, "
-                                        << (s.measured_repicks < MaxRepicks ? "solving again at a tighter cap" : "taking the anchor");
-                if (s.measured_repicks < MaxRepicks)
-                    s.cap_scale *= OneShotState::MaxTimeRatio / s.measured_ratio;
-                else
-                    s.measured_anchor = true;
-                ++s.measured_repicks;
+            if (repick) {
                 s.solved.reset();
                 m_repick.push_back(object);
             }
             s.decision += Slic3r::format(", measured %1$.3f x planar + support (the export; %2% re-picks%3%, %4$.0f s)", s.measured_ratio,
-                                         s.measured_repicks, s.measured_anchor ? ", the anchor" : "", s.measured_seconds);
+                                         s.measured_repicks, s.measured_anchor ? ", the anchor" : "", s.measured_seconds) +
+                          s.floating_decision();
         }
     }
     result.clearance_report = std::move(report);

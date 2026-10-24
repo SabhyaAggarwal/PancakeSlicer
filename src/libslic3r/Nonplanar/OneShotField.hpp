@@ -1,6 +1,7 @@
 #pragma once
 #include "FieldObjective.hpp"
 #include "NpField.hpp"
+#include "Rests.hpp"
 #include "libslic3r/Point.hpp"
 
 #include <admesh/stl.h>
@@ -40,6 +41,10 @@ struct OneShotState
     double                         measured_seconds = 0.;
     double                         cap_scale        = 1.;
     std::string                    time_cut_note;
+    enum class Offer { Body, NormalSupport, Control };
+    Offer                          offer            = Offer::Body;
+    double                         measured_floating = std::numeric_limits<double>::quiet_NaN();
+    double                         control_floating  = std::numeric_limits<double>::quiet_NaN();
 
     double max_time_ratio() const { return max_time_ratio_override > 0. ? max_time_ratio_override : MaxTimeRatio; }
     double measured_room() const { return MaxTimeRatio / measured_ratio - 1.; }
@@ -47,6 +52,7 @@ struct OneShotState
     double time_cap() const;
     bool combine_infill() const;
     std::string offers() const;
+    std::string floating_decision() const;
 
     bool field() const { return solved != nullptr; }
     bool field_path() const { return field() && !z_only; }
@@ -58,6 +64,7 @@ bool take_injected_oneshot(OneShotState &state);
 
 constexpr int MaxRepicks = 2;
 void measured_export_check(PrintObject &object, OneShotState &state, const std::function<void()> &resolve);
+bool measured_repick(const PrintObject &object, OneShotState &state, double ratio, const Floating &floating, bool support);
 
 double in_plane_spread(const NpField &field);
 

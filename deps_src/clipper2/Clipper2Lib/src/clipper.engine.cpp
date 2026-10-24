@@ -2136,8 +2136,9 @@ namespace Clipper2Lib {
   }
 
 
-  inline void ClipperBase::AdjustCurrXAndCopyToSEL(const int64_t top_y)
+  inline bool ClipperBase::AdjustCurrXAndCopyToSEL(const int64_t top_y)
   {
+    bool sorted = true;
     Active* e = actives_;
     sel_ = e;
     while (e)
@@ -2148,8 +2149,11 @@ namespace Clipper2Lib {
       // it is safe to ignore 'joined' edges here because
       // if necessary they will be split in IntersectEdges()
       e->curr_x = TopX(*e, top_y);
+      if (e->prev_in_sel && e->prev_in_sel->curr_x > e->curr_x)
+        sorted = false;
       e = e->next_in_ael;
     }
+    return sorted;
   }
 
   bool ClipperBase::ExecuteInternal(ClipType ct, FillRule fillrule, bool use_polytrees)
@@ -2419,7 +2423,10 @@ namespace Clipper2Lib {
 
     //Calculate edge positions at the top of the current scanbeam, and from this
     //we will determine the intersections required to reach these new positions.
-    AdjustCurrXAndCopyToSEL(top_y);
+    // Most scanbeams preserve the active edges' order. Their stable merge sort
+    // cannot produce any intersections, so avoid traversing the list at every
+    // merge level when the positions copied above are already sorted.
+    if (AdjustCurrXAndCopyToSEL(top_y)) return false;
     //Find all edge intersections in the current scanbeam using a stable merge
     //sort that ensures only adjacent edges are intersecting. Intersect info is
     //stored in FIntersectList ready to be processed in ProcessIntersectList.
@@ -2437,6 +2444,14 @@ namespace Clipper2Lib {
         l_end = right;
         r_end = right->jump;
         left->jump = r_end;
+        // Both runs are sorted. If their boundary is ordered too, merging
+        // only advances left and cannot add intersections or move any edges.
+        if (right->prev_in_sel->curr_x <= right->curr_x)
+        {
+          prev_base = curr_base;
+          left = r_end;
+          continue;
+        }
         while (left != l_end && right != r_end)
         {
           if (right->curr_x < left->curr_x)

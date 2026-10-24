@@ -34,6 +34,7 @@
 #include "Nonplanar/LayerSchedule.hpp"
 #include "Nonplanar/Multiplanar.hpp"
 #include "Nonplanar/MultiplanarConfirm.hpp"
+#include "Nonplanar/NpField.hpp"
 #include "Nonplanar/OneShotField.hpp"
 #include "Nonplanar/OrientationField.hpp"
 #include "MultiMaterialSegmentation.hpp"

@@ -343,6 +343,7 @@ public:
     Nonplanar::OneShotState&          oneshot_state();
     const Nonplanar::OneShotState*    oneshot_state() const { return m_oneshot.get(); }
     bool                              auto_support() const { return m_auto_support; }
+    bool                              auto_support_applied() const { return m_auto_support_applied; }
     SupportNecessaryType              auto_support_need() const { return m_auto_support_need; }
     SupportMaterialStyle              auto_support_style() const { return m_auto_support_style; }
     bool                              oneshot_manual_support() const { return m_oneshot_manual_support; }
@@ -547,6 +548,9 @@ private:
     bool                 m_field_zonly = false;
     double               m_planar_floating_mm = -1.;
     double               m_field_floating_mm  = -1.;
+    bool                 m_oneshot_offer_support = false;
+    SupportType          m_oneshot_offer_type{};
+    SupportMaterialStyle m_oneshot_offer_style{};
     bool                 m_auto_support_critical = false;
     std::unique_ptr<Nonplanar::ConformalResult> m_conformal;
     std::shared_ptr<Nonplanar::RepairHints>     m_nonplanar_repair;

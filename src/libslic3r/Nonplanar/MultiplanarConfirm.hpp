@@ -1,7 +1,9 @@
 #pragma once
+#include "Rests.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -25,8 +27,14 @@ bool auto_rotary_requested(const PrintObject &object);
 
 constexpr double RotaryMaxTimeRatio = 2.5;
 
+struct MeasuredPrint
+{
+    double   time = std::numeric_limits<double>::quiet_NaN();
+    Floating floating { -1., -1. };
+    bool     support = false;
+};
 double measured_time(const PrintObject &object, NonplanarMode mode, const std::vector<std::pair<std::string, std::string>> &overrides = {},
-                     const std::string &keep_as = {}, bool verify = true);
+                     const std::string &keep_as = {}, bool verify = true, MeasuredPrint *measured = nullptr);
 
 double planar_support_time(const PrintObject &object);
 
