@@ -1,4 +1,4 @@
-import { getState, markStale, setState, subscribeStore, toast, type JobView, type PlateObject, type State } from '../state/store';
+import { getState, markStale, newId, setState, subscribeStore, toast, type JobView, type PlateObject, type State } from '../state/store';
 import { undoable } from '../state/history';
 import { bedArea, canExport, exportFilename, slice } from '../actions';
 import { arrange, nextFreeSpot } from './geometry';
@@ -39,6 +39,17 @@ export function addPlate() {
     const plates = st.projectPlates.length ? currentPlates(st) : [{ index: 1, name: '', origin: [0, 0] as [number, number], settings: {}, objects: st.objects, events: st.events }];
     const index = Math.max(...plates.map((p) => p.index)) + 1;
     return showPlate({ ...st, projectPlates: [...plates, { index, name: '', origin: [0, 0], settings: {}, objects: [], events: [] }] }, index);
+  }));
+}
+
+export function duplicatePlate() {
+  const s = getState();
+  if (!canAddPlate(s) || busy(s)) return;
+  undoable('Duplicate Current Plate', () => setState((st) => {
+    const plates = st.projectPlates.length ? currentPlates(st) : [{ index: 1, name: '', origin: [0, 0] as [number, number], settings: {}, objects: st.objects, events: st.events }];
+    const index = Math.max(...plates.map((p) => p.index)) + 1;
+    const objects = st.objects.map((o) => ({ ...o, id: newId(), settings: { ...o.settings }, instances: o.instances.map((i) => ({ ...i, id: newId() })) }));
+    return showPlate({ ...st, projectPlates: [...plates, { index, name: '', origin: [0, 0], settings: {}, objects, events: [] }] }, index);
   }));
 }
 

@@ -262,17 +262,22 @@ export function archivePainting(paint: Partial<Record<PaintKind, Record<string, 
   return out;
 }
 
-export function projectPaint(o: Paintable, saved: Partial<Record<PaintKind, Record<string, string>>> = {}) {
-  const out: Record<string, Record<string, string>> = {};
-  for (const kind of ['support', 'seam', 'fuzzy'] as const) {
-    const painting = paintOf(o, kind);
-    const map: Record<string, string> = {};
-    if (painting) for (const [t, node] of [...painting].sort((x, y) => x[0] - y[0])) map[String(t)] = paintString(node);
-    const was = saved[kind] ?? {};
-    const same = Object.keys(map).length === Object.keys(was).length && Object.entries(map).every(([t, v]) => was[t] === v);
-    if (!same) out[kind] = map;
+export function projectPaint(o: Paintable, saved: Partial<Record<PaintKind, Record<string, string>>> = {}, partTris?: number[]) {
+  const ranges = partTris ?? [triangleCount(o.geometry)];
+  const edits: { volume?: number; paint: Record<string, Record<string, string>> }[] = [];
+  for (let volume = 0, start = 0; volume < ranges.length; start += ranges[volume++]) {
+    const end = start + ranges[volume], out: Record<string, Record<string, string>> = {};
+    for (const kind of ['support', 'seam', 'fuzzy'] as const) {
+      const painting = paintOf(o, kind);
+      const map: Record<string, string> = {}, was: Record<string, string> = {};
+      if (painting) for (const [t, node] of [...painting].sort((x, y) => x[0] - y[0])) if (t >= start && t < end) map[String(t - start)] = paintString(node);
+      for (const [t, v] of Object.entries(saved[kind] ?? {})) if (+t >= start && +t < end) was[String(+t - start)] = v;
+      const same = Object.keys(map).length === Object.keys(was).length && Object.entries(map).every(([t, v]) => was[t] === v);
+      if (!same) out[kind] = map;
+    }
+    if (Object.keys(out).length) edits.push({ ...(partTris ? { volume } : {}), paint: out });
   }
-  return Object.keys(out).length ? out : null;
+  return edits;
 }
 
 export function paintJson(o: Paintable): Record<string, Record<string, string>> | undefined {

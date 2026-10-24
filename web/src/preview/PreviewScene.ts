@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { CameraViews } from '../plater/CameraViews';
 import { getState } from '../state/store';
 import type { SystemPreset } from '../api/types';
-import { bedKey, buildBed, sceneColors } from '../plater/Bed';
+import { bedKey, buildBed, sceneColors, showBedFor } from '../plater/Bed';
 import { subscribeTheme } from '../theme';
 import { pixelRatio, watchPixelRatio } from '../plater/pixelRatio';
 import { instanceMatrix, parsePoints } from '../plater/geometry';
@@ -287,6 +287,7 @@ export class PreviewScene {
       gl.beginQuery(tq.ext.TIME_ELAPSED_EXT, tq.query!);
     }
     this.shells.visible = false;
+    showBedFor(this.bed, this.camera);
     this.renderer.render(this.scene, this.camera);
     if (this.data) this.segments.render(this.camera, this.draw, this.renderer.domElement.height);
     if (this.shells.children.length) {

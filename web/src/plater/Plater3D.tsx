@@ -7,7 +7,7 @@ import { PaintView } from './paintView';
 import { brush, fill as fillPaint, isPaint, overhangFacets, paintOf, paintTool, PAINT_STEP, RADIUS, setPaintTool, subscribePaintTool, type Painting } from './paint';
 import { beginStep } from '../state/history';
 import { filamentColor } from './filamentColor';
-import { bedKey as bedCacheKey, buildBed, sceneColors } from './Bed';
+import { bedKey as bedCacheKey, buildBed, sceneColors, showBedFor } from './Bed';
 import { subscribeTheme } from '../theme';
 import { pixelRatio, watchPixelRatio } from './pixelRatio';
 import { raycastBvh, type Bvh } from './bvh';
@@ -16,6 +16,8 @@ import { cutNormal, cutPoint, cutTarget } from './cut';
 import { layOnFace, layOnFacePlanes, type LayOnFacePlane } from './transforms';
 import { MeasureView } from './measureView';
 import { measureState, setMeasure, subscribeMeasure } from './measureState';
+import { layerCursor, layerParams, layerProfileOf, subscribeLayerCursor } from '../components/LayerHeight';
+import { layerMaterial } from './layerTexture';
 import { getPatchPreview, inFootprint, nonplanarViewShown, overlayFits, planarReason, subscribePatchPreview, type InstanceOverlay } from '../patch-preview';
 
 const OUTSIDE = new THREE.Color(0x4d9ed9);
@@ -63,6 +65,7 @@ export default function Plater3D() {
         frame = 0;
         const t0 = performance.now();
         if (uploads.length) uploadStep();
+        showBedFor(bed, views.camera);
         renderer.render(scene, views.camera);
         if (flattenScene.children.length) {
           renderer.autoClear = false;
@@ -170,7 +173,9 @@ export default function Plater3D() {
           if (!mesh) continue;
           const state = outside.has(inst.id) ? 'outside' : s.selected?.instance === inst.id || s.selected?.all ? 'selected' : 'normal';
           const ghost = s.selected?.object === o.id && s.selected.volume !== undefined;
-          mesh.material = material(inst.printable === false ? '#999999' : color, inst.printable === false ? 'normal' : state, !!o.project?.placeholder, ghost);
+          mesh.material = s.gizmo === 'layers' && s.selected?.object === o.id
+            ? layerMaterial(layerParams(s, o), layerProfileOf(s, o), layerCursor())
+            : material(inst.printable === false ? '#999999' : color, inst.printable === false ? 'normal' : state, !!o.project?.placeholder, ghost);
           for (const v of o.volumes ?? []) {
             const vm = volumeMeshes.get(`${inst.id}:${v.id}`);
             if (vm) vm.material = volumeMaterial(v.type, filamentColor(s, v.extruder || o.extruder), s.selected?.object === o.id && s.selected.volume === v.id);
@@ -863,6 +868,7 @@ export default function Plater3D() {
     };
     (window as unknown as { __plater: unknown }).__plater = { scene, get camera() { return views.camera; }, controls, tc, renderer, meshes, frames, hoverMs, hovered: () => hovered, flattenPlanes: () => flattenScene.children, measure: measureState, pick, render, getState, setState };
     const unsub = subscribeStore(sync);
+    const unsubLayerCursor = subscribeLayerCursor(() => { tint(getState()); render(); });
     const unsubTheme = subscribeTheme(() => {
       renderer.setClearColor(sceneColors().background);
       overlayColours();
@@ -875,6 +881,7 @@ export default function Plater3D() {
 
     return () => {
       unsub();
+      unsubLayerCursor();
       unsubPaintTool();
       unsubTheme();
       unsubPreview();

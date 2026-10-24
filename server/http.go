@@ -335,10 +335,12 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, "unknown calibration")
 		case !calibParams.MatchString(params):
 			fail(w, 400, "calib_params must be key=value pairs separated by commas")
+		case !calibHead.MatchString(r.FormValue("calib_head")):
+			fail(w, 400, "calib_head must be a head library id")
 		case len(files) > 0 || r.FormValue("plate") != "" || req.Output == "3mf" || req.Orient:
 			fail(w, 400, "a calibration takes no files, plate or project output")
 		default:
-			req.Calib, req.CalibParams = kind, params
+			req.Calib, req.CalibParams, req.CalibHead = kind, params, r.FormValue("calib_head")
 			s.startJob(w, j, req, &started)
 		}
 		return
@@ -548,7 +550,9 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 }
 
 var calibKinds = map[string]bool{"cornering": true, "flow-rate": true, "input-shaping-freq": true, "input-shaping-damp": true,
-	"max-volumetric-speed": true, "pa-line": true, "pa-pattern": true, "pa-tower": true, "retraction": true, "temp-tower": true, "vfa": true}
+	"max-volumetric-speed": true, "pa-line": true, "pa-pattern": true, "pa-tower": true, "retraction": true, "temp-tower": true, "vfa": true,
+	"nonplanar-clearance": true, "nonplanar-tilt-flow": true, "nonplanar-curved-top": true, "nonplanar-verifier": true}
+var calibHead = regexp.MustCompile(`^[a-z0-9_-]{0,64}$`)
 var calibParams = regexp.MustCompile(`^([a-z_]+=[A-Za-z0-9_.;-]*(,[a-z_]+=[A-Za-z0-9_.;-]*)*)?$`)
 
 func (s *Server) startJob(w http.ResponseWriter, j *Job, req JobRequest, started *bool) {

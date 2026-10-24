@@ -13,6 +13,7 @@ export interface Head extends HeadInfo {
   provenance?: string;
   margin: number;
   lateral_margin: number;
+  tip_allowance: { radius: number; height: number };
   boxes: HeadBox[];
 }
 
@@ -39,7 +40,8 @@ export function loadHead(id: string): Promise<Head | null> {
   if (!head) {
     head = fetch(`/nonplanar/heads/${id}.json`).then((r) => (r.ok ? r.json() : null)).then((h) => h && {
       id: String(h.id ?? id), name: String(h.name ?? id), calibrated: h.calibrated === true, provenance: h.provenance,
-      margin: Number(h.margin ?? 0.3), lateral_margin: Number(h.lateral_margin ?? 0.3), boxes: h.boxes ?? [],
+      margin: Number(h.margin ?? 0.3), lateral_margin: Number(h.lateral_margin ?? 0.3),
+      tip_allowance: { radius: Number(h.nozzle?.allowance_radius ?? 0), height: Number(h.nozzle?.allowance_height ?? 0) }, boxes: h.boxes ?? [],
     }).catch(() => null);
     heads.set(id, head);
   }

@@ -56,6 +56,7 @@ type JobRequest struct {
 	ForcePlanar       bool           `json:"force_planar,omitempty"`
 	Calib             string         `json:"calib,omitempty"`
 	CalibParams       string         `json:"calib_params,omitempty"`
+	CalibHead         string         `json:"calib_head,omitempty"`
 	Edits             bool           `json:"edits,omitempty"`
 	Priority          string         `json:"priority,omitempty"`
 	PreviewBudget     float64        `json:"preview_budget,omitempty"`
@@ -573,6 +574,9 @@ func (m *JobManager) toolArgs(j *Job) []string {
 		args = append(args, "--calib", r.Calib)
 		if r.CalibParams != "" {
 			args = append(args, "--calib-params", r.CalibParams)
+		}
+		if r.CalibHead != "" {
+			args = append(args, "--calib-head", r.CalibHead)
 		}
 	} else if r.Plate {
 		args = append(args, "--plate", filepath.Join(in, "plate.json"))

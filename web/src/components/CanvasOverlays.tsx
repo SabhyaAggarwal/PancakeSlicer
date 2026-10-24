@@ -1,6 +1,7 @@
 import { slicingText } from '../api/progress';
 import { accessNotice, accessSnapshot, saveAccessToken, subscribeAccess } from '../api/access';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { createPortal } from 'react-dom';
 import * as THREE from 'three';
 import { addInstance, arrangeAll, cancelSlice, download, fileUse, openFileDialog, outputKind, removeInstance, toolbarOperation, outsideVolumeWarning } from '../actions';
 import { setCompareWanted } from '../compare';
@@ -13,6 +14,7 @@ import { Icon, IconButton } from './Icon';
 import { canPerformCut, cutBlocked, initialCut, performCut, setCut, toggleCut } from '../plater/cut';
 import { InTopLayer } from './Modal';
 import { addPlate, canAddPlate } from '../plater/plates';
+import { arrangeSettings, resetArrangeSettings, setArrangeSettings, subscribeArrangeSettings } from '../plater/arrangeSettings';
 import { ANGLE, GAP_AREA, RADIUS, canPaint, gapFill, isPaint, paintOf, PAINT_STEP, paintTool, setPaintTool, subscribePaintTool, togglePaint, type BrushTool, type PaintKind } from '../plater/paint';
 import { canEditLayers } from './LayerHeight';
 
@@ -47,12 +49,17 @@ export function CanvasToolbar() {
   const layers = useStore(canEditLayers);
   const preview = !!usePatchPreview();
   const nonplanarView = useNonplanarView();
+  const [arranging, setArranging] = useState(false);
+  const arrangeAt = useRef<HTMLSpanElement>(null);
   return (
     <div className="canvas-toolbar">
       <IconButton size={24} icon="toolbar_open" title="Add (Ctrl+I)" onClick={openFileDialog} />
       <IconButton size={24} icon="toolbar_add_plate" title="Add plate" onClick={addPlate} disabled={!meshPlates} />
       <IconButton size={24} icon="toolbar_orient" title={"Auto orient all/selected objects (Q)\nAuto orient all objects on current plate (Shift+Q)"} onClick={(e) => toolbarOperation('orient', e.shiftKey)} disabled={!hasObjects || project} />
-      <IconButton size={24} icon="toolbar_arrange" title={`Arrange all objects (A)\nArrange objects on selected plates (Shift+A)`} onClick={(e) => arrangeAll(!e.shiftKey)} disabled={!hasObjects} />
+      <span ref={arrangeAt} style={{ display: 'inline-flex' }}>
+        <IconButton size={24} icon="toolbar_arrange" title={`Arrange all objects (A)\nArrange objects on selected plates (Shift+A)`} active={arranging} onClick={() => setArranging(!arranging)} disabled={!hasObjects && !arranging} />
+      </span>
+      {arranging && <ArrangeOptions at={arrangeAt.current} />}
       <span className="tb-sep" />
       <IconButton size={24} icon="instance_add" title={`Add instance (+)${locked}`} onClick={addInstance} disabled={!edit || project} />
       <IconButton size={24} icon="instance_remove" title={`Remove instance (-)${locked}`} onClick={removeInstance} disabled={instances < 2 || project} />
@@ -81,6 +88,32 @@ export function CanvasToolbar() {
         </>
       )}
     </div>
+  );
+}
+
+function ArrangeOptions({ at }: { at: HTMLElement | null }) {
+  const a = useSyncExternalStore(subscribeArrangeSettings, arrangeSettings);
+  const hasObjects = useStore((s) => s.objects.length > 0);
+  const r = at?.getBoundingClientRect();
+  return createPortal(
+    <div className="manip-panel" role="dialog" aria-label="Arrange options" style={{ position: 'fixed', top: (r?.bottom ?? 40) + 8, left: r?.left ?? 0, zIndex: 5 }}>
+      <div className="manip-grid" style={{ gridTemplateColumns: '70px 140px 70px' }}>
+        <span>Spacing</span>
+        <input type="range" min={0} max={100} step={0.05} value={a.distance} onChange={(e) => setArrangeSettings({ distance: Number(e.target.value) })} />
+        <Num value={a.distance} step={0.05} onCommit={(v) => setArrangeSettings({ distance: v })} />
+        <span style={{ gridColumn: '1 / -1' }}>0 means auto spacing.</span>
+        <span style={{ gridColumn: '1 / -1' }} className="menu-sep" />
+        <label className="select-row" style={{ gridColumn: '1 / -1' }}>
+          <input type="checkbox" checked={a.rotation} onChange={(e) => setArrangeSettings({ rotation: e.target.checked })} />Auto rotate for arrangement
+        </label>
+        <span style={{ gridColumn: '1 / -1' }} className="menu-sep" />
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+        <button className="btn primary" disabled={!hasObjects} onClick={() => arrangeAll()}>Arrange</button>
+        <button className="btn" onClick={resetArrangeSettings}>Reset</button>
+      </div>
+    </div>,
+    document.body,
   );
 }
 

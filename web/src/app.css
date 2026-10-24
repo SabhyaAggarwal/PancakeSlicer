@@ -119,6 +119,8 @@ select, input, textarea { font: inherit; color: var(--text); }
 .menu-item:disabled { color: var(--disabled); cursor: default; }
 .menu-item > span:first-child { white-space: nowrap; margin-right: 24px; }
 .menu-key { color: var(--text-dim); margin-left: 24px; }
+.menu-subwrap { position: relative; }
+.menu-sub { top: -5px; left: 100%; }
 .menu-sep { height: 1px; background: var(--line-e4); margin: 4px 0; }
 
 .tabbar { height: 40px; flex: none; background: var(--tabbar); display: flex; align-items: stretch; justify-content: space-between; padding: 0 0 0 4px; }
@@ -572,6 +574,7 @@ kbd { font: inherit; font-size: 12px; background: var(--panel-alt); border: 1px 
 .head-combo { width: 100%; max-width: 330px; }
 
 .modal.np-dialog { width: min(880px, 94vw); height: fit-content; max-height: 90vh; }
+.modal.np-calib-dialog { width: min(680px, 94vw); height: fit-content; max-height: 90vh; max-height: 90dvh; }
 .modal.np-dialog.small { width: min(480px, 94vw); }
 .np-dialog-body { padding: 12px 16px; overflow: auto; min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 10px; }
 .np-buttons { justify-content: flex-end; }

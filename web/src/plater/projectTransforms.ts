@@ -41,7 +41,7 @@ export type ProjectEdit =
   | { op: 'add_instance'; object: number; x: number; y: number; rot: number; printable: boolean; plate: number }
   | { op: 'delete'; object: number; instance: number }
   | { op: 'set_extruder'; object: number; extruder: number }
-  | { op: 'set_paint'; object: number; paint: Record<string, Record<string, string>> };
+  | { op: 'set_paint'; object: number; volume?: number; paint: Record<string, Record<string, string>> };
 
 export function projectEdits(s: Pick<State, 'objects' | 'projectPlates' | 'plateIndex' | 'projectMaterials'>) {
   const opened = s.projectMaterials?.builds ?? [];
@@ -64,8 +64,9 @@ export function projectEdits(s: Pick<State, 'objects' | 'projectPlates' | 'plate
   const painted = new Set<number>();
   for (const { o } of rows) {
     const saved = o.project?.saved;
-    const paint = saved && o.project?.paintable && !painted.has(saved.object) ? projectPaint(o, o.project.paint) : null;
-    if (paint) { painted.add(saved!.object); edits.push({ op: 'set_paint', object: saved!.object, paint }); }
+    const paint = saved && o.project?.paintable && !painted.has(saved.object) ? projectPaint(o, o.project.paint, o.project.partTris) : [];
+    if (paint.length) painted.add(saved!.object);
+    for (const p of paint) edits.push({ op: 'set_paint', object: saved!.object, ...p });
   }
   const volumes: { name: string; o: PlateObject; k: number }[] = [];
   for (const { o } of rows) {

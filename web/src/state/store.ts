@@ -48,7 +48,7 @@ export interface PlateObject {
   layerProfile?: number[];
   project?: { buildIndex?: number; plateIndex?: number; plateOrigin?: [number, number]; file: string; placeholder: boolean; missing?: boolean; origin?: [number, number, number];
     saved?: { object: number; instance: number; instanceId: number; extruder: number; rotZ: number; item?: number[] };
-    paintable?: boolean; paint?: Partial<Record<'support' | 'seam' | 'fuzzy', Record<string, string>>> };
+    paintable?: boolean; paint?: Partial<Record<'support' | 'seam' | 'fuzzy', Record<string, string>>>; partTris?: number[] };
 }
 
 export interface LayerEvent {
@@ -72,7 +72,7 @@ export type PresetUx =
   | { kind: 'import' };
 
 export type MainTab = 'prepare' | 'preview';
-export type CalibMenu = 'temperature' | 'max-flowrate' | 'pressure-advance' | 'flow-ratio' | 'retraction' | 'cornering' | 'input-shaping-freq' | 'input-shaping-damp' | 'vfa';
+export type CalibMenu = 'temperature' | 'max-flowrate' | 'pressure-advance' | 'flow-ratio' | 'retraction' | 'cornering' | 'input-shaping-freq' | 'input-shaping-damp' | 'vfa' | 'nonplanar';
 export type Gizmo = 'none' | 'move' | 'rotate' | 'scale' | 'flatten' | 'cut' | 'measure' | 'layers' | PaintKind;
 
 export interface JobView {
@@ -86,6 +86,7 @@ export interface JobView {
   plateSignature?: string;
   warnings?: string[];
   calib?: string;
+  calibLog?: string[];
   exported?: string;
 }
 

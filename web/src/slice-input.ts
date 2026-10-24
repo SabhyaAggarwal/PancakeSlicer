@@ -60,12 +60,12 @@ export function overrides(s = getState()): Config {
   return out;
 }
 
-export function calibOverrides(s = getState()): Config {
+export function calibOverrides(s = getState(), kind = ''): Config {
   const out: Config = {};
   const slots: ['machine' | 'process' | 'filament', string][] = [['machine', s.printer], ['process', s.process], ['filament', s.filamentSlots[0] ?? '']];
   for (const [type, name] of slots) Object.assign(out, resolvePreset(s, type, name).user?.overrides ?? {}, presetEdits(s, type));
   if (s.bedType) out.curr_bed_type = s.bedType;
-  out.nonplanar_mode = 'off';
+  if (!kind.startsWith('nonplanar-')) out.nonplanar_mode = 'off';
   for (const k of Object.keys(out)) if (OPTIONS[k]) out[k] = jobValue(k, out[k]); else delete out[k];
   return out;
 }

@@ -25,6 +25,7 @@ const PreviewView = lazy(() => import('./components/PreviewView').then((m) => ({
 const SessionDialog = lazy(() => import('./components/SessionDialog'));
 const AppDialog = lazy(() => import('./components/AppDialogs'));
 const CalibDialog = lazy(() => import('./components/CalibDialog'));
+const NonplanarCalibDialog = lazy(() => import('./components/NonplanarCalibDialog'));
 
 function nudge(key: string, fine: boolean) {
   const s = getState();
@@ -173,7 +174,7 @@ export default function App() {
         {flushDialog && <FlushDialog />}
         {presetUx && <PresetUx />}
         {appDialog && <AppDialog which={appDialog} />}
-        {calibDialog && <CalibDialog which={calibDialog} />}
+        {calibDialog === 'nonplanar' ? <NonplanarCalibDialog /> : calibDialog && <CalibDialog which={calibDialog} />}
         {contextMenu && <ContextMenu />}
         {sessionDialog && <SessionDialog />}
       </Suspense>

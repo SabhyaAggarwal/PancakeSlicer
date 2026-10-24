@@ -27,6 +27,7 @@ export interface ProjectItem {
   transform: number[];
   parts: number;
   paint?: ArchivePaint;
+  partTris?: number[];
 }
 
 export type ArchivePaint = Partial<Record<'support' | 'seam' | 'fuzzy', Record<string, string>>>;
@@ -220,9 +221,21 @@ export async function readProject(file: File, partsOnly = false): Promise<{ item
       ...volumesOf(b.objectid),
     };
   });
-  function volumesOf(id: string): { parts: number; paint?: ArchivePaint } {
+  function volumesOf(id: string): { parts: number; paint?: ArchivePaint; partTris?: number[] } {
     const list = leaves(rootPath, id);
-    return { parts: list.length, ...(list.length === 1 && list[0].paint ? { paint: list[0].paint } : {}) };
+    if (list.length === 1) return { parts: 1, ...(list[0].paint ? { paint: list[0].paint } : {}) };
+    const nonParts = settings.get(id)?.volumes;
+    const comps = root.objects.get(id)?.components ?? [];
+    if (!list.length || root.objects.get(id)?.vertices || comps.length !== list.length || comps.some((c) => nonParts?.has(c.objectid)))
+      return { parts: list.length };
+    const paint: ArchivePaint = {};
+    let offset = 0;
+    for (const leaf of list) {
+      for (const [kind, map] of Object.entries(leaf.paint ?? {}) as [keyof ArchivePaint, Record<string, string>][])
+        for (const [k, v] of Object.entries(map)) (paint[kind] ??= {})[String(Number(k) + offset)] = v;
+      offset += leaf.triangles!.length / 3;
+    }
+    return { parts: list.length, partTris: list.map((leaf) => leaf.triangles!.length / 3), ...(Object.keys(paint).length ? { paint } : {}) };
   }
   function loadedItem(b: { objectid: string; transform: number[] }) {
     const comps = root.objects.get(b.objectid)?.components ?? [];

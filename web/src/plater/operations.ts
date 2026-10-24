@@ -1,4 +1,5 @@
 import { Box3, Euler, Matrix4, Vector3 } from 'three';
+import { arrangeSettings } from './arrangeSettings';
 import { firstLayer, overrides, plateSignature } from '../slice-input';
 import { jobValue } from '../options';
 import { mutation, responseError } from '../api/access';
@@ -125,6 +126,9 @@ export async function arrangeNative() {
     fd.append('process', resolvePreset(s, 'process', s.process).base?.name ?? s.process);
     for (const f of s.filamentSlots) fd.append('filament[]', resolvePreset(s, 'filament', f).base?.name ?? f);
     fd.append('overrides', JSON.stringify(overrides(s)));
+    const { distance, rotation } = arrangeSettings();
+    if (distance > 0) fd.append('arrange_spacing', String(distance));
+    fd.append('arrange_rotation', rotation ? '1' : '0');
     const response = await mutation('/api/jobs', { method: 'POST', body: fd });
     if (!response.ok) throw await responseError(response);
     const { id } = await response.json() as { id: string };

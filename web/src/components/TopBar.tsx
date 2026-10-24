@@ -5,21 +5,25 @@ import { canPaste, copySelection, pasteClipboard, selectAll } from '../edit';
 import { historyVersion, redo, redoName, subscribeHistory, undo, undoName } from '../state/history';
 import { CAMERA_VIEWS, VIEW_DIRECTIONS, cameraCommand, cameraSnapshot, subscribeCamera, perspective, autoPerspective } from '../camera';
 import { Icon } from './Icon';
-import { exportAll, exportablePlates, sliceAll } from '../plater/plates';
+import { canAddPlate, duplicatePlate, exportAll, exportablePlates, sliceAll } from '../plater/plates';
 import { canCalibrate, canLoadStep } from '../api/client';
 
-type MenuItem = { label: string; shortcut?: string; action?: () => void; disabled?: boolean; tip?: string; checked?: boolean; role?: 'menuitemradio' | 'menuitemcheckbox' } | 'sep';
+type MenuItem = { label: string; shortcut?: string; action?: () => void; disabled?: boolean; tip?: string; checked?: boolean; role?: 'menuitemradio' | 'menuitemcheckbox'; sub?: MenuItem[] } | 'sep';
+
+const popItems = (pop: Element | null | undefined) =>
+  pop ? [...pop.querySelectorAll<HTMLButtonElement>(':scope > .menu-item:not(:disabled), :scope > .menu-subwrap > .menu-item:not(:disabled)')] : [];
 
 function Menu({ title, items }: { title: string; items: MenuItem[] }) {
   const [open, setOpen] = useState(false);
+  const [sub, setSub] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const focusItem = useRef<'first' | 'last' | null>(null);
   useEffect(() => {
-    if (!open) return;
+    if (!open) return setSub(null);
     const close = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
     window.addEventListener('pointerdown', close);
-    const enabled = [...ref.current!.querySelectorAll<HTMLButtonElement>('.menu-item:not(:disabled)')];
+    const enabled = popItems(ref.current!.querySelector('.menu-pop'));
     if (focusItem.current) (focusItem.current === 'first' ? enabled[0] : enabled[enabled.length - 1])?.focus();
     focusItem.current = null;
     return () => window.removeEventListener('pointerdown', close);
@@ -29,7 +33,8 @@ function Menu({ title, items }: { title: string; items: MenuItem[] }) {
     setOpen(true);
   };
   const onKey = (e: React.KeyboardEvent) => {
-    const enabled = [...ref.current!.querySelectorAll<HTMLButtonElement>('.menu-item:not(:disabled)')];
+    const active = document.activeElement as HTMLButtonElement;
+    const enabled = popItems(active.closest('.menu-pop') ?? ref.current!.querySelector('.menu-pop'));
     const at = enabled.indexOf(document.activeElement as HTMLButtonElement);
     const titles = [...document.querySelectorAll<HTMLButtonElement>('.topbar .menu-title')];
     const neighbour = (d: number) => titles[(titles.indexOf(button.current!) + d + titles.length) % titles.length];
@@ -40,7 +45,13 @@ function Menu({ title, items }: { title: string; items: MenuItem[] }) {
       if (!open) show(e.key === 'ArrowDown' ? 'first' : 'last');
       else enabled[(at + (e.key === 'ArrowDown' ? 1 : -1) + enabled.length) % enabled.length]?.focus();
     } else if ((e.key === 'Home' || e.key === 'End') && open) enabled[e.key === 'Home' ? 0 : enabled.length - 1]?.focus();
-    else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && open) {
+    else if (e.key === 'ArrowRight' && open && active.dataset.sub) {
+      setSub(active.dataset.sub);
+      requestAnimationFrame(() => popItems(active.nextElementSibling)[0]?.focus());
+    } else if (e.key === 'ArrowLeft' && open && active.closest('.menu-sub')) {
+      setSub(null);
+      (active.closest('.menu-subwrap')!.firstElementChild as HTMLButtonElement).focus();
+    } else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && open) {
       setOpen(false);
       const next = neighbour(e.key === 'ArrowRight' ? 1 : -1);
       next.focus();
@@ -60,10 +71,19 @@ function Menu({ title, items }: { title: string; items: MenuItem[] }) {
       </button>
       {open && (
         <div className="menu-pop" role="menu" aria-label={title}>
-          {items.map((it, i) =>
-            it === 'sep' ? (
-              <div key={i} className="menu-sep" role="separator" />
-            ) : (
+          {items.map(function item(it: MenuItem, i: number): React.ReactNode {
+            if (it === 'sep') return <div key={i} className="menu-sep" role="separator" />;
+            if (it.sub)
+              return (
+                <div key={it.label} className="menu-subwrap" onPointerEnter={() => setSub(it.label)}>
+                  <button className="menu-item" data-sub={it.label} aria-haspopup="menu" aria-expanded={sub === it.label} title={it.tip} onClick={() => setSub(it.label)}>
+                    <span>{it.label}</span>
+                    <span className="menu-key" aria-hidden="true">▸</span>
+                  </button>
+                  {sub === it.label && <div className="menu-pop menu-sub" role="menu" aria-label={it.label}>{it.sub.map(item)}</div>}
+                </div>
+              );
+            return (
               <button
                 key={it.label}
                 className="menu-item"
@@ -71,6 +91,7 @@ function Menu({ title, items }: { title: string; items: MenuItem[] }) {
                 aria-checked={it.checked}
                 disabled={it.disabled || !it.action}
                 title={it.tip}
+                onPointerEnter={(e) => !e.currentTarget.closest('.menu-sub') && setSub(null)}
                 onClick={() => {
                   setOpen(false);
                   button.current!.focus();
@@ -80,8 +101,8 @@ function Menu({ title, items }: { title: string; items: MenuItem[] }) {
                 <span>{it.label}</span>
                 {it.shortcut && <span className="menu-key" aria-hidden="true">{it.shortcut}</span>}
               </button>
-            ),
-          )}
+            );
+          })}
         </div>
       )}
     </div>
@@ -98,6 +119,7 @@ export function TopBar() {
   const undoLabel = undoName(), redoLabel = redoName();
   const exportEnabled = useStore(canExport);
   const plates = useStore((s) => s.projectPlates.length > 1);
+  const plateTools = useStore(canAddPlate);
   const exportAllEnabled = useStore((s) => s.projectPlates.length > 1 && s.job.state !== 'running' && s.job.state !== 'submitting' && exportablePlates(s).length > 0);
   const stale = useStore((s) => s.job.stale);
   const hasObjects = useStore((s) => s.objects.length > 0);
@@ -148,6 +170,8 @@ export function TopBar() {
           { label: 'Delete selected', shortcut: 'Del', action: removeSelected, disabled: !hasSel, tip: 'Deletes the current selection' },
           { label: 'Delete all', shortcut: `${MOD}+Del`, action: deleteAll, disabled: !hasObjects, tip: 'Deletes all objects' },
           'sep',
+          { label: 'Duplicate Current Plate', action: duplicatePlate, disabled: !plateTools, tip: 'Duplicate the current plate' },
+          'sep',
           { label: 'Select All', shortcut: `${MOD}+A`, action: selectAll, disabled: !hasObjects, tip: 'Selects all objects' },
           { label: 'Deselect All', shortcut: 'Esc', action: () => setState({ selected: null }), disabled: !hasSel, tip: 'Deselects all objects' },
           'sep',
@@ -176,9 +200,12 @@ export function TopBar() {
           { label: 'Flow ratio', action: () => setState({ calibDialog: 'flow-ratio' }), tip: 'Flow Rate Calibration' },
           { label: 'Retraction', action: () => setState({ calibDialog: 'retraction' }), tip: 'Retraction' },
           { label: 'Cornering', action: () => setState({ calibDialog: 'cornering' }), tip: 'Cornering calibration' },
-          { label: 'Input Shaping Frequency', action: () => setState({ calibDialog: 'input-shaping-freq' }), tip: 'Input Shaping Frequency' },
-          { label: 'Input Shaping Damping/zeta factor', action: () => setState({ calibDialog: 'input-shaping-damp' }), tip: 'Input Shaping Damping/zeta factor' },
+          { label: 'Input Shaping', sub: [
+            { label: 'Input Shaping Frequency', action: () => setState({ calibDialog: 'input-shaping-freq' }), tip: 'Input Shaping Frequency' },
+            { label: 'Input Shaping Damping/zeta factor', action: () => setState({ calibDialog: 'input-shaping-damp' }), tip: 'Input Shaping Damping/zeta factor' },
+          ] },
           { label: 'VFA', action: () => setState({ calibDialog: 'vfa' }), tip: 'VFA' },
+          { label: 'Non-planar', action: () => setState({ calibDialog: 'nonplanar' }), tip: 'Non-planar calibration' },
           'sep',
           { label: 'Calibration Guide', action: () => window.open('https://www.orcaslicer.com/wiki/calibration_guide', '_blank', 'noopener'), tip: 'Calibration Guide' },
         ]}

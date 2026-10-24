@@ -12,6 +12,12 @@ export const sceneColors = () => isDark()
 export const bedKey = (machine: SystemPreset | undefined) =>
   `${machine?.name}|${machine?.config.printable_area}|${machine?.config.bed_custom_texture}|${machine?.config.bed_custom_model}|${isDark()}`;
 
+export function showBedFor(bed: THREE.Object3D | null | undefined, camera: THREE.Camera) {
+  if (!bed) return;
+  const below = camera.getWorldDirection(new THREE.Vector3()).z >= 0;
+  for (const c of bed.children) if (c.userData.solid) c.visible = !below && c.userData.on !== false;
+}
+
 const stlCache = new Map<string, Promise<THREE.BufferGeometry | null>>();
 const texCache = new Map<string, Promise<THREE.Texture | null>>();
 
@@ -68,6 +74,7 @@ export function buildBed(machine: SystemPreset | undefined, onReady: () => void)
   plateGeo.translate(0, 0, -1.02);
   const plate = new THREE.Mesh(plateGeo, new THREE.MeshLambertMaterial({ color: colors.plate }));
   plate.receiveShadow = false;
+  plate.userData.solid = true;
   group.add(plate);
 
   const texMat = new THREE.MeshBasicMaterial({ color: colors.texture, transparent: true, depthWrite: false });
@@ -76,6 +83,7 @@ export function buildBed(machine: SystemPreset | undefined, onReady: () => void)
   for (let i = 0; i < sp.count; i++) uv.setXY(i, (sp.getX(i) - min.x) / (max.x - min.x), (sp.getY(i) - min.y) / (max.y - min.y));
   const surf = new THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>(surfGeo, texMat);
   surf.position.z = 0.01;
+  surf.userData.solid = true;
   group.add(surf);
 
   const grid: number[] = [];
@@ -103,8 +111,9 @@ export function buildBed(machine: SystemPreset | undefined, onReady: () => void)
       const bbl = !customModel && !!machine?.bed_model?.startsWith('bbl-3dp-');
       const c = bedBounds(pts).center;
       model.position.set(bbl ? 0 : c.x, bbl ? 0 : c.y, -bb.max.z - 0.03);
+      model.userData.solid = true;
       group.add(model);
-      plate.visible = false;
+      plate.visible = plate.userData.on = false;
       if (bbl) {
         const w = bb.max.x - bb.min.x, h = bb.max.y - bb.min.y;
         const tg = new THREE.PlaneGeometry(w, h);

@@ -303,9 +303,9 @@ export async function openProject(file: File) {
         newDocument(true);
       },
       mesh: (i, geometry, centre) => {
-        const painting = listed[i]?.parts === 1 ? archivePainting(listed[i].paint ?? {}) : null;
+        const painting = listed[i]?.parts === 1 || listed[i]?.partTris ? archivePainting(listed[i].paint ?? {}) : null;
         patch(i, (o) => ({ ...o, geometry, ...(painting && Object.keys(painting).length ? { paint: painting } : {}),
-          project: { ...o.project!, file: file.name, placeholder: false, origin: [centre.x, centre.y, centre.z], paintable: !!painting, ...(listed[i]?.paint ? { paint: listed[i].paint } : {}) }, instances: [{ ...o.instances[0], x: centre.x, y: centre.y, z: centre.z }, ...o.instances.slice(1)] }));
+          project: { ...o.project!, file: file.name, placeholder: false, origin: [centre.x, centre.y, centre.z], paintable: !!painting, ...(listed[i]?.paint ? { paint: listed[i].paint } : {}), ...(painting && listed[i]?.partTris ? { partTris: listed[i].partTris } : {}) }, instances: [{ ...o.instances[0], x: centre.x, y: centre.y, z: centre.z }, ...o.instances.slice(1)] }));
       },
       missing: (i) => patch(i, (o) => ({ ...o, project: { ...o.project!, file: file.name, placeholder: true, missing: true } })),
     });
@@ -477,7 +477,7 @@ function recordWarnings(record: Record<string, unknown> | undefined, stderr: str
   return [...stderr, ...new Set(lines.filter((w) => !shown.has(w)))];
 }
 
-export async function slice(calib?: { kind: string; params: string }) {
+export async function slice(calib?: { kind: string; params: string; head?: string }) {
   const s = getState();
   if (!s.api || !s.objects.length && !calib || s.job.state === 'running' || s.job.state === 'submitting') return;
   const outside = calib ? null : outsideVolumeWarning(s);
@@ -493,7 +493,7 @@ export async function slice(calib?: { kind: string; params: string }) {
   setState({ job: { state: 'submitting', pct: 0, stage: 'uploading', plateSignature: signature, calib: calib?.kind } });
   try {
     const { vendor, printer, process, filaments, output } = jobFields(s);
-    const request: JobRequest = calib ? { vendor, printer, process, filaments, overrides: calibOverrides(s), output, events: [], files: [], calib: calib.kind, calib_params: calib.params }
+    const request: JobRequest = calib ? { vendor, printer, process, filaments, overrides: calibOverrides(s, calib.kind), output, events: [], files: [], calib: calib.kind, calib_params: calib.params, calib_head: calib.head }
       : await jobRequest(s);
     if (generation !== sliceGeneration) return;
     const id = await s.api.submit(request, submission.signal, (fraction) => generation === sliceGeneration &&
@@ -504,7 +504,7 @@ export async function slice(calib?: { kind: string; params: string }) {
     }
     setState((st) => ({ job: { ...st.job, id, state: 'running', pct: 0, stage: 'queued' } }));
     unsubscribe?.();
-    const warnings: string[] = [];
+    const warnings: string[] = [], calibLog: string[] = [];
     unsubscribe = s.api.events(id, {
       progress: (e) => {
         if (generation !== sliceGeneration) return;
@@ -512,9 +512,10 @@ export async function slice(calib?: { kind: string; params: string }) {
         if (e.stage === 'verify' && e.pct >= 100 && request.output === 'gcode.3mf') progress.stage = 'Packaging sliced plate';
         setState((st) => progress.pct < st.job.pct ? {} : { job: { ...st.job, ...progress } });
       },
-      done: (status) => generation === sliceGeneration && setState((st) => ({ job: { ...st.job, id, state: 'done', pct: 100, stage: 'done', status, warnings: recordWarnings(status.record, warnings) } })),
+      done: (status) => generation === sliceGeneration && setState((st) => ({ job: { ...st.job, id, state: 'done', pct: 100, stage: 'done', status, warnings: recordWarnings(status.record, warnings), ...(calib ? { calibLog } : {}) } })),
       error: (msg) => generation === sliceGeneration && setState((st) => ({ job: { ...st.job, state: 'failed', error: msg } })),
       log: (stream, line) => {
+        if (stream === 'stdout' && line.startsWith('calib_')) calibLog.push(line);
         if (stream !== 'stderr' || !line.trim()) return;
         const m = /^warning:\s*(.*)$/i.exec(line);
         if (m) warnings.push(m[1]);

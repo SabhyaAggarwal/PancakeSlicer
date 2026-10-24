@@ -84,6 +84,7 @@ export interface JobRequest {
   project_settings?: Config;
   calib?: string;
   calib_params?: string;
+  calib_head?: string;
   force_planar?: boolean;
   priority?: 'low';
   preview_budget?: number;

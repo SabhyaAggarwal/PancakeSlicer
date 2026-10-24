@@ -56,7 +56,7 @@ const paDefaults = (method: string, bowden: boolean): Values => ({
   print_numbers: method === 'pa-tower' ? '0' : '1',
 });
 
-export const CALIBS: Record<CalibMenu, Calib> = {
+export const CALIBS: Record<Exclude<CalibMenu, 'nonplanar'>, Calib> = {
   temperature: {
     title: 'Temperature calibration', settings: 'Settings', wiki: 'temp_calib',
     groups: [{ legend: 'Filament type', key: 'type', options: [...Object.keys(TEMPS), 'Custom'].map((t) => [t, t]),
@@ -170,7 +170,19 @@ export const CALIBS: Record<CalibMenu, Calib> = {
 const withShapers = (c: Calib, flavor: string): Calib => c.title.startsWith('Input shaping')
   ? { ...c, groups: [...(c.groups ?? []), { legend: 'Input shaper type', key: 'shaper', options: shapers(flavor) }] } : c;
 
-export default function CalibDialog({ which }: { which: CalibMenu }) {
+export async function runCalibration(kind: string, params: string, head?: string) {
+  const s = getState();
+  if (s.objects.length || s.projectPlates.some((pl) => pl.objects.length)) {
+    await newProject();
+    const after = getState();
+    if (after.objects.length || after.projectPlates.some((pl) => pl.objects.length)) return false;
+  }
+  setState({ calibDialog: null });
+  void slice({ kind, params, head });
+  return true;
+}
+
+export default function CalibDialog({ which }: { which: Exclude<CalibMenu, 'nonplanar'> }) {
   const p = printer();
   const c = withShapers(CALIBS[which], p.flavor);
   const [v, setV] = useState<Values>(() => c.defaults(p));
@@ -178,14 +190,7 @@ export default function CalibDialog({ which }: { which: CalibMenu }) {
   const ok = async () => {
     const result = c.run(v, p);
     if (typeof result === 'string') return toast(result);
-    const s = getState();
-    if (s.objects.length || s.projectPlates.some((pl) => pl.objects.length)) {
-      await newProject();
-      const after = getState();
-      if (after.objects.length || after.projectPlates.some((pl) => pl.objects.length)) return;
-    }
-    close();
-    void slice({ kind: result.kind, params: Object.entries(result.params).map(([k, x]) => `${k}=${x}`).join(',') });
+    await runCalibration(result.kind, Object.entries(result.params).map(([k, x]) => `${k}=${x}`).join(','));
   };
   return (
     <Modal className="small calib-dialog" label={c.title} onClose={close}>
