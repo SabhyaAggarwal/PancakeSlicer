@@ -191,7 +191,7 @@ struct SupportParameters {
         }
         if (support_style == smsDefault) {
             if (is_tree(object_config.support_type)) {
-                support_style = smsTreeOrganic;
+                support_style = object.tree_default_style();
             } else {
                 support_style = smsGrid;
             }

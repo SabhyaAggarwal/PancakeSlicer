@@ -282,6 +282,7 @@ private:
     SlicingParameters        m_slicing_params;
     SupportParameters   m_support_params;
     size_t          m_raft_layers = 0;
+    bool            m_contact_gap_recounted = false;
     size_t          m_highest_overhang_layer = 0;
     std::vector<std::vector<MinimumSpanningTree>> m_spanning_trees;
     std::vector< std::unordered_map<Line, bool, LineHash>> m_mst_line_x_layer_contour_caches;

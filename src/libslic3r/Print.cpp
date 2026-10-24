@@ -2077,7 +2077,7 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
     for (size_t print_object_idx = 0; print_object_idx < m_objects.size(); ++ print_object_idx)
         if (const PrintObject &print_object = *m_objects[print_object_idx];
             print_object.has_support_material() && is_tree(print_object.config().support_type.value) && (print_object.config().support_style.value == smsTreeOrganic || 
-                print_object.config().support_style.value == smsDefault) &&
+                (print_object.config().support_style.value == smsDefault && print_object.tree_default_style() == smsTreeOrganic)) &&
             print_object.model_object()->has_custom_layering()) {
             if (const std::vector<coordf_t> &layers = layer_height_profile(print_object_idx); ! layers.empty())
                 if (! check_object_layers_fixed(print_object.slicing_parameters(), layers))
@@ -2232,7 +2232,7 @@ StringObjectException Print::validate(std::vector<StringObjectException> *warnin
 
                 if (is_tree(object->config().support_type.value)) {
                     if (object->config().support_style == smsTreeOrganic ||
-                        object->config().support_style == smsDefault) {
+                        (object->config().support_style == smsDefault && object->tree_default_style() == smsTreeOrganic)) {
 
                         if (object->config().tree_support_wall_count > 1 &&
                             object->config().support_base_pattern != SupportMaterialPattern::smpNone &&

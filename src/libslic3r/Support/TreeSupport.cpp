@@ -1560,8 +1560,18 @@ void TreeSupport::generate_toolpaths()
 
                         Flow interface_base_flow = interface_as_base ? support_flow : interface_flow;
                         ExtrusionRole interface_role = interface_as_base ? erSupportMaterial : erSupportMaterialInterface;
-                        fill_expolygons_generate_paths(ts_layer->support_fills.entities, polys, filler_interface.get(), fill_params, interface_role,
-                                                       interface_base_flow);
+                        if (m_contact_gap_recounted && !interface_as_base && layer_id > 0) {
+                            ExtrusionEntityCollection *temp_support_fills = new ExtrusionEntityCollection();
+                            make_perimeter_and_infill(temp_support_fills->entities, poly, 1, interface_base_flow, interface_role,
+                                                      filler_interface.get(), interface_density, false);
+                            temp_support_fills->no_sort = true;
+                            if (!temp_support_fills->entities.empty())
+                                ts_layer->support_fills.entities.push_back(temp_support_fills);
+                            else
+                                delete temp_support_fills;
+                        } else
+                            fill_expolygons_generate_paths(ts_layer->support_fills.entities, polys, filler_interface.get(), fill_params, interface_role,
+                                                           interface_base_flow);
                     }
                     else {
                         bool support_base_on_bed = (layer_id == 0 && m_raft_layers == 0 && !belt_floor_active);
@@ -3291,6 +3301,8 @@ std::vector<LayerHeightData> TreeSupport::plan_layer_heights()
         }
         BOOST_LOG_TRIVIAL(debug) << format("plan_layer_heights adjust node's height print_z[%d]=%.2f: (%.3f,%d)->(%.3f,%.3f,%d)", layer_nr, node1->print_z,
             node1->height, node1->distance_to_top, new_height, accum_height, -num_layers);
+        if (std::abs(layer_heights[layer_nr].print_z - node1->print_z) > EPSILON)
+            m_contact_gap_recounted = true;
         for (SupportNode *node : contact_nodes[layer_nr]) {
             node->height          = new_height;
             node->distance_to_top = -num_layers;

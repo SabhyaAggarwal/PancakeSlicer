@@ -1010,6 +1010,15 @@ void PrintObject::detect_overhangs_for_lift()
 
 bool PrintObject::oneshot_support() const { return Nonplanar::oneshot_requested(*this) || m_field_zonly; }
 
+SupportMaterialStyle PrintObject::tree_default_style() const
+{
+    if (m_config.nonplanar_mode.value != NonplanarMode::Off || !m_model_object->has_custom_layering())
+        return smsTreeOrganic;
+    std::vector<coordf_t> profile;
+    update_layer_height_profile(*m_model_object, this->slicing_parameters(), profile);
+    return check_object_layers_fixed(this->slicing_parameters(), profile) ? smsTreeOrganic : smsTreeSlim;
+}
+
 void PrintObject::generate_support_material(bool with_belt_brim)
 {
     if (this->set_started(posSupportMaterial)) {
@@ -4521,7 +4530,7 @@ void PrintObject::_generate_support_material()
     if (is_tree(m_config.support_type.value) && std::abs(m_belt_global_z_offset) > EPSILON) {
         auto style = m_config.support_style.value;
         if (style == smsDefault)
-            style = smsTreeOrganic;
+            style = tree_default_style();
         if (style == smsTreeOrganic) {
             for (SupportLayer *sl : m_support_layers)
                 sl->print_z += m_belt_global_z_offset;

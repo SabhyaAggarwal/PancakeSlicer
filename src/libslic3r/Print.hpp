@@ -348,6 +348,7 @@ public:
     SupportMaterialStyle              auto_support_style() const { return m_auto_support_style; }
     bool                              oneshot_manual_support() const { return m_oneshot_manual_support; }
     bool                              oneshot_support() const;
+    SupportMaterialStyle              tree_default_style() const;
     void                              set_field_floating_mm(double mm) { m_field_floating_mm = mm; }
     bool has_conformal_support() const;
 
