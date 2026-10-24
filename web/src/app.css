@@ -598,6 +598,15 @@ kbd { font: inherit; font-size: 12px; background: var(--panel-alt); border: 1px 
 .np-dialog .np-table .diff-new { color: var(--accent-text, #009688); }
 .np-dialog .np-table tr.group-row td { background: var(--bg-f6, #f6f6f6); font-weight: 600; }
 .head-plot .plot-grid { stroke: var(--line-aaa, #aaa); }
+.head-identity input.text { width: 260px; }
+.head-identity label { color: var(--text-666, #666); align-self: center; }
+.head-grid td { padding: 0 !important; }
+.head-grid input.cell { width: 100%; min-width: 56px; border: 0; background: transparent; color: var(--text); padding: 2px 4px; font: inherit; }
+.head-grid input.cell.num { text-align: right; width: 70px; }
+.head-grid td:first-child input.cell { min-width: 140px; }
+.head-grid input[type=checkbox] { display: block; margin: 3px auto; }
+.head-grid tr.selected td { background: var(--hover); }
+.head-dialog .head-plot { width: 240px; }
 
 .np-field { display: flex; flex-direction: column; gap: 4px; }
 .np-parent { font-size: 12px; }

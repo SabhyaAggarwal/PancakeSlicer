@@ -1,17 +1,74 @@
 import { useEffect, useState } from 'react';
-import { loadHead, slopeMap, type Head } from '../heads';
+import { loadHead, loadHeadJson, maxSlope, saveUserHead, slopeMap, type Head, type HeadBox } from '../heads';
+import { toast } from '../state/store';
 import { Modal, ModalTitle } from './Modal';
 
-const fmt = (n: number) => String(Number(n.toFixed(3)));
+const decimal = (n: number) => { const r = Math.round(n * 1e6) / 1e6; return String(r === 0 ? 0 : r); };
+function number(text: string) {
+  const v = Number(text.trim());
+  if (text.trim() === '' || !Number.isFinite(v)) throw new Error('Expected a finite number.');
+  return v;
+}
 
-function SlopePlot({ head, gap }: { head: Head; gap: number }) {
+type Row = { name: string; v: string[]; ix: boolean; iy: boolean; nozzle: boolean };
+const toRow = (b: HeadBox): Row => ({
+  name: b.name ?? '', ix: !!b.infinite_x, iy: !!b.infinite_y, nozzle: !!b.nozzle,
+  v: [b.min[2], b.max[2], (b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.max[0] - b.min[0]) / 2, (b.max[1] - b.min[1]) / 2].map(decimal),
+});
+function toBox(r: Row): HeadBox {
+  const [z0, z1, cx, cy, hx, hy] = r.v.map(number);
+  if (hx < 0 || hy < 0 || z1 < z0) throw new Error('Half extents must be non-negative and Z max must be at least Z min.');
+  return { name: r.name, min: [cx - hx, cy - hy, z0], max: [cx + hx, cy + hy, z1], ...(r.ix && { infinite_x: true }), ...(r.iy && { infinite_y: true }), ...(r.nozzle && { nozzle: true }) };
+}
+const COLUMNS = ['Component', 'Z min (mm)', 'Z max (mm)', 'Center X (mm)', 'Center Y (mm)', 'Half X (mm)', 'Half Y (mm)', 'Infinite X', 'Infinite Y', 'Nozzle'];
+
+const footprint = (b: HeadBox, lateral: number) => {
+  const grow = b.nozzle ? 0 : lateral;
+  return [b.min[0] - grow, b.min[1] - grow, b.max[0] + grow, b.max[1] + grow];
+};
+const projection = (b: HeadBox, grow: number, ux: number, uy: number) => {
+  const [lx, ly, hx, hy] = footprint(b, grow);
+  return (ux >= 0 ? hx : lx) * ux + (uy >= 0 ? hy : ly) * uy;
+};
+
+function fromSlopeStar(base: Head, samples: { azimuth: number; slope: number }[], gap: number, date: string): Head {
+  for (const s of samples)
+    if (!Number.isFinite(s.slope) || s.slope < 0 || s.slope >= Math.PI / 2) throw new Error('Slope star: clean slopes must be in [0, 90) degrees');
+  if (!(gap > 0) || !base.boxes.length) throw new Error('Slope star: select a nonempty base head and a positive layer height');
+  const out: Head = { ...base, boxes: base.boxes.map((b) => ({ ...b, min: [...b.min] as HeadBox['min'], max: [...b.max] as HeadBox['max'] })) };
+  const finite = out.boxes.filter((b) => !b.infinite_x && !b.infinite_y);
+  for (const box of finite) {
+    let floor = box.min[2];
+    for (const s of samples) {
+      const p = projection(box, out.lateral_margin, Math.cos(s.azimuth), Math.sin(s.azimuth));
+      if (p > 0) floor = Math.max(floor, Math.tan(s.slope) * p - gap + (box.nozzle ? 0 : out.margin));
+    }
+    box.min[2] = floor;
+    box.max[2] = Math.max(box.max[2], floor);
+  }
+  for (const s of samples) {
+    if (maxSlope(out, s.azimuth, gap) <= s.slope) continue;
+    const ux = Math.cos(s.azimuth), uy = Math.sin(s.azimuth);
+    let binding: HeadBox | null = null, best = Infinity, proj = 0;
+    for (const box of finite) {
+      const p = projection(box, out.lateral_margin, ux, uy);
+      if (p <= 0) continue;
+      const limit = (gap + box.min[2] - (box.nozzle ? 0 : out.margin)) / p;
+      if (limit < best) { best = limit; binding = box; proj = p; }
+    }
+    if (!binding) throw new Error('Slope star: base head has no finite component toward a reported azimuth');
+    binding.min[2] = Math.tan(s.slope) * proj - gap + (binding.nozzle ? 0 : out.margin) - 1e-10;
+  }
+  return { ...out, calibrated: true, provenance: `slope star ${date}, base ${base.id}` };
+}
+
+function SlopePlot({ head, gap }: { head: Head | null; gap: number }) {
   const size = 300, c = size / 2, radius = c - 30;
-  const slopes = slopeMap(head, 72, gap);
-  const points = slopes.map((s, i) => {
+  const slopes = head && gap > 0 ? slopeMap(head, 72, gap) : null;
+  const points = slopes?.map((s, i) => {
     const phi = (2 * Math.PI * i) / slopes.length, r = (radius * s) / (Math.PI / 2);
     return `${(c + r * Math.cos(phi)).toFixed(1)},${(c - r * Math.sin(phi)).toFixed(1)}`;
   }).join(' ');
-  const min = (Math.min(...slopes) * 180) / Math.PI;
   return (
     <figure className="head-plot">
       <svg viewBox={`0 0 ${size} ${size}`} role="img" aria-label="Clean slope limit by direction">
@@ -20,50 +77,137 @@ function SlopePlot({ head, gap }: { head: Head; gap: number }) {
         <path d={`M ${c - radius} ${c} H ${c + radius} M ${c} ${c - radius} V ${c + radius}`} className="plot-grid" />
         <text x={c + radius - 4} y={c - 16} fontSize="11" fill="currentColor">+X</text>
         <text x={c - 8} y={c - radius - 6} fontSize="11" fill="currentColor">+Y</text>
-        <polygon points={points} fill="rgba(0, 150, 136, 0.18)" stroke="#009688" strokeWidth="1.5" />
+        {points && <polygon points={points} fill="rgba(0, 150, 136, 0.18)" stroke="#009688" strokeWidth="1.5" />}
+        {!slopes && <text x={6} y={16} fontSize="11" fill="currentColor">Enter a valid profile and layer height to show slope limits.</text>}
       </svg>
-      <figcaption>Min {min.toFixed(1)}°</figcaption>
+      {slopes && <figcaption>Min {((Math.min(...slopes) * 180) / Math.PI).toFixed(1)}°</figcaption>}
     </figure>
   );
 }
 
-export default function HeadDialog({ id, layerHeight, close }: { id: string; layerHeight: number; close: () => void }) {
-  const [head, setHead] = useState<Head | null | undefined>(undefined);
-  const [gap, setGap] = useState(layerHeight > 0 ? layerHeight : 0.2);
-  useEffect(() => void loadHead(id || 'generic-conservative').then(setHead), [id]);
+const SLOPE_STAR_TEXT = `For a head that reaches further on one side. Most printers only need Calibration > Non-planar > Head clearance.
+1. Check the head profile and margins on the Head profile tab.
+2. Print resources/calib/nonplanar/slope_star.stl at the layer height shown there. Each of its eight wedges climbs in steps of rising slope toward one direction; thin pillars at the head's reach show scuffing.
+3. For each direction, counterclockwise from +X, enter the last angle that printed clean, or 0° if none did.
+Apply fits the head to these angles; a component shared by several directions can lower the limit in the others. Save it under a new head ID to keep it.`;
+
+export default function HeadDialog({ id, layerHeight, close, onSaved }: { id: string; layerHeight: number; close: () => void; onSaved: (id: string) => void }) {
+  const [base, setBase] = useState<{ head: Head; json: Record<string, unknown> } | null | undefined>(undefined);
+  const [rows, setRows] = useState<Row[]>([]);
+  const [selected, setSelected] = useState(-1);
+  const [fields, setFields] = useState({ id: '', name: '', margin: '', lateral: '', gap: decimal(layerHeight > 0 ? layerHeight : 0.2) });
+  const [calibrated, setCalibrated] = useState(false);
+  const [provenance, setProvenance] = useState('');
+  const [page, setPage] = useState(0);
+  const [angles, setAngles] = useState<string[]>(Array(8).fill(''));
+  useEffect(() => {
+    const key = id || 'generic-conservative';
+    void Promise.all([loadHead(key), loadHeadJson(key)]).then(([head, json]) => {
+      if (!head || !json) return setBase(null);
+      setBase({ head, json });
+      setRows(head.boxes.map(toRow));
+      setFields((f) => ({ ...f, id: `${head.id}-user`, name: head.name, margin: decimal(head.margin), lateral: decimal(head.lateral_margin) }));
+      setCalibrated(head.calibrated);
+      setProvenance(head.provenance ?? '');
+    });
+  }, [id]);
+  const field = (k: keyof typeof fields) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFields({ ...fields, [k]: e.target.value });
+    if (k === 'margin' || k === 'lateral') setCalibrated(false);
+  };
+  const edit = (next: Row[]) => { setRows(next); setCalibrated(false); };
+  const readHead = (): Head => {
+    const margin = number(fields.margin), lateral = number(fields.lateral);
+    if (margin < 0 || lateral < 0) throw new Error('Margins must not be negative.');
+    return { ...base!.head, id: fields.id, name: fields.name, margin, lateral_margin: lateral, calibrated, provenance, boxes: rows.map(toBox) };
+  };
+  const readGap = () => { const g = number(fields.gap); if (g <= 0) throw new Error('Layer height must be positive.'); return g; };
+  let preview: Head | null = null, gap = 0;
+  try { if (base) { preview = readHead(); gap = readGap(); } } catch { preview = null; }
+  const apply = () => {
+    try {
+      const date = new Date().toISOString().slice(0, 10);
+      const samples = angles.map((a, i) => ({ azimuth: (i * Math.PI) / 4, slope: (number(a) * Math.PI) / 180 }));
+      const fitted = fromSlopeStar({ ...readHead(), id: base!.head.id }, samples, readGap(), date);
+      setRows(fitted.boxes.map(toRow));
+      setCalibrated(true);
+      setProvenance(fitted.provenance ?? '');
+      setPage(0);
+    } catch (e) {
+      toast(`Could not calibrate the head. Check all eight clean angles and the head profile.\n${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+  const save = async () => {
+    try {
+      const head = readHead();
+      if (!/^[A-Za-z0-9_-]+$/.test(head.id)) throw new Error('Head id must contain only letters, digits, hyphens and underscores.');
+      const json: Record<string, unknown> = { ...base!.json, id: head.id, name: head.name, calibrated: head.calibrated, margin: head.margin, lateral_margin: head.lateral_margin, boxes: head.boxes };
+      if (head.provenance) json.provenance = head.provenance;
+      delete json.side_profile; delete json.side_profile_top; delete json.sides;
+      await saveUserHead(json);
+      onSaved(head.id);
+      close();
+    } catch (e) {
+      toast(`Could not save the head. Check the profile and choose a new ID of letters, digits, hyphens or underscores.\n${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
   return (
     <Modal className="np-dialog head-dialog" label="Non-planar print head" onClose={close}>
       <ModalTitle title="Non-planar print head" onClose={close} />
       <div className="np-dialog-body">
-        {head === undefined && <div role="status">Loading head…</div>}
-        {head === null && <div role="alert">"{id}" not in head library: generic conservative head</div>}
-        {head && <>
-          <dl className="head-identity">
-            <dt>Head ID</dt><dd>{head.id} {head.calibrated ? '(calibrated)' : '(uncalibrated)'}</dd>
-            <dt>Name</dt><dd>{head.name}</dd>
-            <dt>Vertical margin</dt><dd>{fmt(head.margin)} mm</dd>
-            <dt>Lateral margin</dt><dd>{fmt(head.lateral_margin)} mm</dd>
-            <dt><label htmlFor="head-gap">Layer height</label></dt>
-            <dd><input id="head-gap" className="text num" type="number" min="0.01" max="2" step="0.01" value={gap} onChange={(e) => e.target.valueAsNumber > 0 && setGap(e.target.valueAsNumber)} /> mm</dd>
-          </dl>
-          <div className="head-body">
+        {base === undefined && <div role="status">Loading head…</div>}
+        {base === null && <div role="alert">"{id}" not in head library: generic conservative head</div>}
+        {base && <>
+          <div className="head-identity">
+            <label htmlFor="head-id">New head ID</label><input id="head-id" className="text" value={fields.id} onChange={field('id')} />
+            <label htmlFor="head-name">Name</label><input id="head-name" className="text" value={fields.name} onChange={field('name')} />
+          </div>
+          <div className="page-bar" role="tablist">
+            {['Head profile', 'Per-direction fit'].map((p, i) => <button key={p} role="tab" aria-selected={i === page} className={`page-tab ${i === page ? 'active' : ''}`} onClick={() => setPage(i)}>{p}</button>)}
+          </div>
+          {page === 0 && <>
             <div className="head-boxes">
-              <table className="np-table">
-                <thead><tr>{['Component', 'Z min (mm)', 'Z max (mm)', 'Center X (mm)', 'Center Y (mm)', 'Half X (mm)', 'Half Y (mm)', 'Infinite X', 'Infinite Y', 'Nozzle'].map((h) => <th key={h}>{h}</th>)}</tr></thead>
-                <tbody>{head.boxes.map((b, i) => <tr key={i}>
-                  <td>{b.name ?? ''}</td><td>{fmt(b.min[2])}</td><td>{fmt(b.max[2])}</td>
-                  <td>{fmt((b.min[0] + b.max[0]) / 2)}</td><td>{fmt((b.min[1] + b.max[1]) / 2)}</td>
-                  <td>{fmt((b.max[0] - b.min[0]) / 2)}</td><td>{fmt((b.max[1] - b.min[1]) / 2)}</td>
-                  <td>{b.infinite_x ? '✓' : ''}</td><td>{b.infinite_y ? '✓' : ''}</td><td>{b.nozzle ? '✓' : ''}</td>
-                </tr>)}</tbody>
+              <table className="np-table head-grid">
+                <thead><tr>{COLUMNS.map((h) => <th key={h}>{h}</th>)}</tr></thead>
+                <tbody>{rows.map((r, i) => (
+                  <tr key={i} className={i === selected ? 'selected' : ''} onFocus={() => setSelected(i)} onClick={() => setSelected(i)}>
+                    <td><input className="cell" aria-label="Component" value={r.name} onChange={(e) => edit(rows.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} /></td>
+                    {r.v.map((v, k) => <td key={k}><input className="cell num" aria-label={COLUMNS[k + 1]} value={v}
+                      onChange={(e) => edit(rows.map((x, j) => (j === i ? { ...x, v: x.v.map((y, m) => (m === k ? e.target.value : y)) } : x)))} /></td>)}
+                    {(['ix', 'iy', 'nozzle'] as const).map((k) => <td key={k}><input type="checkbox" aria-label={k} checked={r[k]}
+                      onChange={(e) => edit(rows.map((x, j) => (j === i ? { ...x, [k]: e.target.checked } : x)))} /></td>)}
+                  </tr>
+                ))}</tbody>
               </table>
             </div>
-            <SlopePlot head={head} gap={gap} />
-          </div>
-          {head.provenance && <details className="head-provenance"><summary>Provenance</summary><p>{head.provenance}</p></details>}
+            <div className="row">
+              <button className="btn" onClick={() => edit([...rows, { name: 'New component', v: ['0', '10', '0', '0', '0', '0'], ix: false, iy: false, nozzle: false }])}>Add component</button>
+              <button className="btn" disabled={selected < 0 || selected >= rows.length} onClick={() => { edit(rows.filter((_, j) => j !== selected)); setSelected(-1); }}>Remove selected component</button>
+            </div>
+            <div className="head-body">
+              <div className="head-identity" style={{ alignSelf: 'start' }}>
+                <label htmlFor="head-margin">Vertical margin (mm)</label><input id="head-margin" className="text num" value={fields.margin} onChange={field('margin')} />
+                <label htmlFor="head-lateral">Lateral margin (mm)</label><input id="head-lateral" className="text num" value={fields.lateral} onChange={field('lateral')} />
+                <label htmlFor="head-gap">Layer height (mm)</label><input id="head-gap" className="text num" value={fields.gap} onChange={field('gap')} />
+              </div>
+              <SlopePlot head={preview} gap={gap} />
+            </div>
+          </>}
+          {page === 1 && <>
+            <div style={{ whiteSpace: 'pre-line' }}>{SLOPE_STAR_TEXT}</div>
+            <table className="np-table" style={{ width: 'auto' }}>
+              <thead><tr><th>Azimuth (degrees)</th><th>Last clean angle (degrees)</th></tr></thead>
+              <tbody>{angles.map((a, i) => <tr key={i}><td className="num">{i * 45}</td>
+                <td><input className="cell num" aria-label={`Last clean angle at ${i * 45}°`} value={a} onChange={(e) => setAngles(angles.map((x, j) => (j === i ? e.target.value : x)))} /></td></tr>)}</tbody>
+            </table>
+            <div><button className="btn" onClick={apply}>Apply</button></div>
+          </>}
         </>}
       </div>
-      <div className="modal-buttons np-buttons"><button className="btn primary" type="button" data-autofocus onClick={close}>Close</button></div>
+      <div className="modal-buttons np-buttons">
+        <button className="btn primary" type="button" disabled={!base} onClick={() => void save()}>Save as user head</button>
+        <button className="btn" type="button" data-autofocus onClick={close}>Cancel</button>
+      </div>
     </Modal>
   );
 }

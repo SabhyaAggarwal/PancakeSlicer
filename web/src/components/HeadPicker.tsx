@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { headLabel, loadHeadIndex } from '../heads';
-import { useStore } from '../state/store';
+import { setOption, useStore } from '../state/store';
 
 const HeadDialog = lazy(() => import('./HeadDialog'));
 
@@ -20,7 +20,9 @@ export default function HeadPicker({ value, onCommit }: { value: string; onCommi
 export function HeadShapeButton({ head, layerHeight }: { head: string; layerHeight: number }) {
   const [open, setOpen] = useState(false);
   return <>
-    <button type="button" className="side-btn" title="View the components and margins of the selected head" onClick={() => setOpen(true)}>View…</button>
-    {open && <Suspense fallback={<div role="status">Loading head…</div>}><HeadDialog id={head} layerHeight={layerHeight} close={() => setOpen(false)} /></Suspense>}
+    <button type="button" className="side-btn" title="Edit the components and margins of the selected head and save them as a user head." onClick={() => setOpen(true)}>Edit…</button>
+    {open && <Suspense fallback={<div role="status">Loading head…</div>}>
+      <HeadDialog id={head} layerHeight={layerHeight} close={() => setOpen(false)} onSaved={(id) => setOption('machine', 'nonplanar_head', id)} />
+    </Suspense>}
   </>;
 }
