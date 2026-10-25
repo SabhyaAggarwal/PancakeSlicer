@@ -2117,11 +2117,13 @@ int main(int argc, char **argv)
         }
         for (const auto &warning : print.step_state_with_warnings(psGCodeExport).warnings)
             std::cout << "export_warning " << warning.message << "\n";
-        if (! args.json.empty())
-            for (const auto &warning : print.step_state_with_warnings(psGCodeExport).warnings) {
-                record["text_summary"]["export_warning"] = warning.message;
-                break;
-            }
+        if (! args.json.empty()) {
+            std::string all;
+            for (const auto &warning : print.step_state_with_warnings(psGCodeExport).warnings)
+                all += (all.empty() ? "" : "\n") + warning.message;
+            if (! all.empty())
+                record["text_summary"]["export_warning"] = all;
+        }
         for (const PrintObject *object : print.objects())
             for (int step = 0; step < int(posCount); ++step)
                 for (const auto &warning : object->step_state_with_warnings(PrintObjectStep(step)).warnings) {

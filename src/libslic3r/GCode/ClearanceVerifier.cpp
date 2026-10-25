@@ -29,6 +29,9 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
+#include <mutex>
+#include <fstream>
+#include <ios>
 #include <sstream>
 #include <unordered_map>
 #include <cstddef>
@@ -305,6 +308,7 @@ bool swept_bead_contact(const Corners &bead, const Vec3d &a, const Vec3d &b, con
     }
     return true;
 }
+thread_local uint32_t t_last_struck = uint32_t(-1);
 struct UprightBead { uint32_t move, last, run; uint16_t piece, pieces; };
 class BeadGrid
 {
@@ -378,6 +382,7 @@ public:
         }
         double best = Inf;
         size_t best_q = queries.size();
+        t_last_struck = uint32_t(-1);
         auto measure = [&](size_t qi, uint32_t id) {
             const Query &q = queries[qi];
             const Nonplanar::HeadBox &box = q.prepared->box;
@@ -398,7 +403,7 @@ public:
                 tolerated = true;
                 return;
             }
-            if (gap < best || (gap == best && qi < best_q)) { best = gap; best_q = qi; }
+            if (gap < best || (gap == best && qi < best_q)) { best = gap; best_q = qi; t_last_struck = m_upright[id].move; }
         };
         auto meets = [&](const Query &q, uint32_t id) {
             const auto &c = m_bead_cells[id];
@@ -1292,6 +1297,7 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
             double best = Inf;
             ClearanceHit hit;
             hit.move_id = c.move; hit.gcode_line = move.gcode_id; hit.layer = move.layer_id;
+            uint32_t hit_struck = uint32_t(-1), best_land_struck = uint32_t(-1);
             auto record = [&](double gap, const std::string &component, const Vec3d &tip, ClearanceHitClass cls) {
                 if (gap < best) { best = gap; hit.component = component; hit.tip = tip; hit.cls = cls; }
             };
@@ -1364,28 +1370,34 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
                     if (index >= 0) {
                         sweep.cone_hint = index;
                         component = cone_head.boxes[cone_boxes.boxes[size_t(index)].index].name;
+                        uint32_t cone_struck = uint32_t(-1);
                         if (cone_gap < -ContactTolerance) {
                             cone_gap = std::max(cone_gap, bead_grid.clearance(p0, p1, cone_prisms, c.run, extruding, component, bead_limit, move.layer_id, tolerated));
+                            cone_struck = t_last_struck;
                             if (cone_gap < -ContactTolerance) {
                                 std::string  fine_component;
                                 bool         fine_tolerated = false;
                                 const double fine = bead_grid.clearance(p0, p1, fine_prisms, c.run, extruding, fine_component, bead_limit, move.layer_id, fine_tolerated);
                                 if (fine > cone_gap)
-                                    cone_gap = fine, component = fine_component;
+                                    cone_gap = fine, component = fine_component, cone_struck = t_last_struck;
                             }
                         }
                         if (bar && cone_gap < 0. && -cone_gap <= params.cone_tolerance)
                             cone_gap = 0.;
+                        if (cone_gap < best)
+                            hit_struck = cone_struck;
                         record(cone_gap, component, p1, ClearanceHitClass::Cone);
                     }
                     double land_gap = laid_columns.swept_clearance(p0, p1, land_boxes, best_land, &index, sweep.land_hint);
                     if (index >= 0) {
                         sweep.land_hint = index;
                         std::string lc = land_head.boxes[land_boxes.boxes[size_t(index)].index].name;
+                        uint32_t land_struck = uint32_t(-1);
                         if (land_gap < -ContactTolerance)
-                            land_gap = std::max(land_gap, bead_grid.clearance(p0, p1, land_prisms, c.run, extruding, lc, bead_limit, move.layer_id, tolerated));
+                            land_gap = std::max(land_gap, bead_grid.clearance(p0, p1, land_prisms, c.run, extruding, lc, bead_limit, move.layer_id, tolerated)),
+                            land_struck = t_last_struck;
                         if (land_gap < best_land)
-                            best_land = land_gap, land_component = std::move(lc), land_tip = p1;
+                            best_land = land_gap, land_component = std::move(lc), land_tip = p1, best_land_struck = land_struck;
                     }
                 }
             }
@@ -1398,6 +1410,16 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
                 hits->min_clearance = std::min(hits->min_clearance, clearance);
             if (clearance < -ContactTolerance) {
                 hit.penetration = land_hit && best_land + land_allow < best ? -best_land : -best;
+                if (static const char *path = std::getenv("NP_VERIFY_STRUCK"); path != nullptr) {
+                    static std::mutex struck_mutex;
+                    const uint32_t s = land_hit && best_land + land_allow < best ? best_land_struck : hit_struck;
+                    const std::lock_guard<std::mutex> lock(struck_mutex);
+                    std::ofstream out(path, std::ios::app);
+                    out << hit.gcode_line << ' ' << c.move << ' ' << (s == uint32_t(-1) ? -1 : long(s)) << ' '
+                        << (s == uint32_t(-1) ? -1 : long(result.moves[s].gcode_id)) << ' '
+                        << (hit.cls == ClearanceHitClass::Land ? "land" : hit.cls == ClearanceHitClass::Cone ? "cone" : "body") << ' '
+                        << hit.penetration << '\n';
+                }
                 hits->hits.emplace_back(std::move(hit));
                 ++hits->land_strict;
             } else {

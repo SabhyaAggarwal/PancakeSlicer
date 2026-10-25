@@ -471,10 +471,17 @@ export function outsideVolumeWarning(s = getState()): string | null {
 
 function recordWarnings(record: Record<string, unknown> | undefined, stderr: string[]): string[] {
   const text = (record?.text_summary ?? {}) as Record<string, unknown>;
-  const lines = [...(Array.isArray(record?.object_warnings) ? record.object_warnings : []), text.export_warning]
-    .filter((w): w is string => typeof w === 'string' && w.trim() !== '').map((w) => w.trim().split('\n')[0]);
-  const shown = new Set(stderr.map((w) => w.trim().split('\n')[0]));
-  return [...stderr, ...new Set(lines.filter((w) => !shown.has(w)))];
+  const objects = Array.isArray(record?.object_warnings) ? record.object_warnings : [];
+  const exported = typeof text.export_warning === 'string' ? text.export_warning.split('\n') : [];
+  const firstLine = (w: string) => w.trim().split('\n')[0];
+  const shown = new Set(stderr.map(firstLine));
+  const added: string[] = [];
+  for (const w of [...objects, ...exported]) {
+    if (typeof w !== 'string' || !w.trim() || shown.has(firstLine(w))) continue;
+    shown.add(firstLine(w));
+    added.push(w.trim());
+  }
+  return [...stderr, ...added];
 }
 
 export async function slice(calib?: { kind: string; params: string; head?: string }) {

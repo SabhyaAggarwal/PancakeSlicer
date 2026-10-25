@@ -32,6 +32,7 @@ public:
 
 private:
     bool oneshot_step(GCodeProcessorResult &result);
+    bool contact_guard(const GCodeProcessorResult &result, size_t contacts = 0);
 
     struct Planned
     {
@@ -48,6 +49,8 @@ private:
     double                   m_last_min   = 0.;
     std::vector<Planned>     m_planned;
     std::vector<PrintObject *> m_repick;
+    int                      m_guard_passes = 0;
+    std::vector<std::string> m_guard_warnings;
     std::vector<std::string> m_actions;
 };
 

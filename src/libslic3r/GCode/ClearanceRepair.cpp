@@ -306,9 +306,15 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
         return;
     ClearanceRepair *self = print.m_clearance_repair;
     const auto       mode = print.config().nonplanar_collision_check.value;
+    if (self != nullptr)
+        for (const std::string &warning : self->m_guard_warnings)
+            print.active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, warning);
     if (print.config().nonplanar_kinematics.value != RotaryLayout::None) {
-        if (self != nullptr && self->oneshot_step(result))
+        if (self != nullptr && self->oneshot_step(result)) {
+            if (self->m_repick.empty())
+                self->contact_guard(result);
             return;
+        }
         if (self != nullptr && result.nonplanar && effective_collision_check(print) != NonplanarCollisionCheck::Off &&
             self->m_pass < self->m_max_passes) {
             ClearanceParams params;
@@ -329,12 +335,16 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
                     print.active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, self->summary(0));
                 result.clearance_report = std::move(report);
                 result.clearance        = result.clearance_report.per_move;
+                if (!repaired)
+                    self->contact_guard(result);
                 return;
             }
         }
         if (self != nullptr)
             self->m_planned.clear();
         check_export_clearance(print, result);
+        if (self != nullptr)
+            self->contact_guard(result);
         return;
     }
     if (self != nullptr && self->oneshot_step(result))
@@ -360,7 +370,9 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
     self->m_last_hits  = hits;
     self->m_last_min   = report.min_clearance;
     constexpr int BarRepairPasses = 5;
-    const int     max_passes      = params.contact_bar && self->m_max_passes > 0 ? std::max(self->m_max_passes, BarRepairPasses) : self->m_max_passes;
+    int           max_passes      = params.contact_bar && self->m_max_passes > 0 ? std::max(self->m_max_passes, BarRepairPasses) : self->m_max_passes;
+    if (const char *passes = std::getenv("NP_BAR_REPAIR_PASSES"); passes != nullptr && params.contact_bar)
+        max_passes = std::max(0, std::atoi(passes));
     if (hits > 0 && !stalled && self->plan(result, report, params.head, params.contact_bar) && self->m_pass < max_passes) {
         result.clearance_report = std::move(report);
         result.clearance        = result.clearance_report.per_move;
@@ -374,6 +386,8 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
     result.clearance_report = std::move(report);
     result.clearance        = result.clearance_report.per_move;
     if (self->m_pass == 0 && hits == 0)
+        return;
+    if (params.contact_bar && hits > 0 && self->contact_guard(result, hits))
         return;
     std::string message = self->summary(hits);
     if (conformal_hits > 0) {
@@ -724,6 +738,55 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
     result.clearance_report = std::move(report);
     result.clearance        = result.clearance_report.per_move;
     return true;
+}
+
+bool ClearanceRepair::contact_guard(const GCodeProcessorResult &result, size_t contacts)
+{
+    std::vector<PrintObject *> guarded;
+    for (PrintObject *object : m_print.m_objects)
+        if (oneshot_requested(*object) || object->config().nonplanar_mode.value == NonplanarMode::Auto || object->m_auto_planar ||
+            auto_rotary_requested(*object))
+            guarded.push_back(object);
+    if (guarded.empty() || !result.nonplanar || m_guard_passes >= 2 * int(guarded.size()))
+        return false;
+    if (contacts == 0) {
+        ClearanceParams params;
+        params.head        = resolve_head_envelope(m_print.config());
+        params.contact_bar = true;
+        const ClearanceReport report = verify_clearance(result, params, *make_tool_kinematics(m_print.config()), [this] { m_print.throw_if_canceled(); });
+        for (size_t i = 0; i < result.moves.size() && i < report.per_move.size(); ++i)
+            if (report.per_move[i] < 0.f && result.moves[i].type == EMoveType::Extrude && result.state(result.moves[i]).nonplanar_patch_shell != 0xFF)
+                ++contacts;
+    }
+    if (contacts == 0)
+        return false;
+    for (PrintObject *object : guarded) {
+        const std::string name = object->model_object()->name;
+        if (OneShotState *s = object->m_oneshot.get(); s != nullptr && oneshot_requested(*object)) {
+            if (s->offer == OneShotState::Offer::Auto) {
+                s->offer = OneShotState::Offer::Body;
+                s->decision += Slic3r::format(", Auto's print dropped: %1% curved moves the contact bar strikes", contacts);
+            } else if (!s->measured_anchor) {
+                s->measured_anchor = true;
+                s->solved.reset();
+                s->decision += Slic3r::format(", the pick dropped for the anchor: %1% curved moves the contact bar strikes", contacts);
+            } else
+                continue;
+        } else {
+            if (object->m_auto_floating_planar)
+                continue;
+            object->m_auto_floating_planar = true;
+            object->m_auto_planar_pass     = true;
+        }
+        BOOST_LOG_TRIVIAL(warning) << "Contact guard: " << name << ": " << contacts << " curved moves strike printed material under the "
+                                   << "contact bar; it prints without them";
+        m_guard_warnings.push_back(Slic3r::format(_u8L("%1%: %2% curved moves would graze printed material (nozzle cone), so it prints "
+                                                       "planar layers there instead."),
+                                                  name, contacts));
+        m_repick.push_back(object);
+        ++m_guard_passes;
+    }
+    return !m_repick.empty();
 }
 
 bool ClearanceRepair::apply()
