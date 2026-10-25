@@ -36,6 +36,7 @@ type JobRequest struct {
 	SourcePlates      []projectPlate `json:"source_plates,omitempty"`
 	PlateIndex        int            `json:"plate_index,omitempty"`
 	Orient            bool           `json:"orient,omitempty"`
+	OrientScores      bool           `json:"orient_scores,omitempty"`
 	Arrange           bool           `json:"arrange,omitempty"`
 	ArrangeSpacing    float64        `json:"arrange_spacing,omitempty"`
 	ArrangeNoRotation bool           `json:"arrange_no_rotation,omitempty"`
@@ -518,7 +519,11 @@ func (m *JobManager) toolArgs(j *Job) []string {
 		args = append(args, "--event", e)
 	}
 	if r.Orient {
-		return append(args, "--orient-only", filepath.Join(in, r.Files[0]))
+		flag := "--orient-only"
+		if r.OrientScores {
+			flag = "--orient-scores"
+		}
+		return append(args, flag, filepath.Join(in, r.Files[0]))
 	}
 	if r.Cut != "" {
 		args = append(args, "--cut-only", r.Cut, "--cut-keep", r.CutKeep, "-o", j.OutputPath("stl"))
@@ -632,6 +637,7 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 		return
 	}
 	var rotation []float64
+	var scores []map[string]any
 	var pieces []map[string]any
 	var lastErr lastLines
 	var readers sync.WaitGroup
@@ -640,6 +646,11 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 		defer readers.Done()
 		scanLines(stdout, func(l string) {
 			j.log("stdout", l)
+			if j.Request.OrientScores {
+				if score := orientScoreLine(l); score != nil {
+					scores = append(scores, score)
+				}
+			}
 			if j.Request.Orient && strings.HasPrefix(l, "auto_orient_rotation ") {
 				fields := strings.Fields(l)[1:]
 				if len(fields) == 9 {
@@ -681,7 +692,12 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 	j.exitCode = &code
 	j.mu.Unlock()
 	raw, recordErr := os.ReadFile(j.OutputPath("json"))
-	if j.Request.Orient {
+	if j.Request.OrientScores {
+		raw, recordErr = json.Marshal(map[string]any{"schema": "orca.orient-scores.v1", "scores": scores})
+		if len(scores) == 0 || scores[0]["placement"] != "original" {
+			recordErr = errors.New("missing native orientation scores")
+		}
+	} else if j.Request.Orient {
 		if len(rotation) == 9 {
 			raw, recordErr = json.Marshal(map[string]any{"rotation": rotation})
 		} else {
@@ -801,3 +817,34 @@ func sanitizeToolError(err error) string {
 }
 
 var toolErrorPath = regexp.MustCompile(`(^|[\s"'‘(])((?:[A-Za-z]:[\\/]|/)[^\s"'’<>:]+)`)
+
+func orientScoreLine(l string) map[string]any {
+	f := strings.Fields(l)
+	if len(f) < 3 || (f[0] != "auto_orient_original" && f[0] != "auto_orient_candidate") || f[1] != "up" {
+		return nil
+	}
+	parts := strings.Split(f[2], ",")
+	if len(parts) != 3 {
+		return nil
+	}
+	up := make([]float64, 3)
+	norm := 0.
+	for i, p := range parts {
+		v, err := strconv.ParseFloat(p, 64)
+		if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {
+			return nil
+		}
+		up[i] = v
+		norm += v * v
+	}
+	if math.Abs(math.Sqrt(norm)-1) > 0.01 {
+		return nil
+	}
+	score := map[string]any{"placement": strings.TrimPrefix(f[0], "auto_orient_"), "up": up}
+	for i := 3; i+1 < len(f); i += 2 {
+		if v, err := strconv.ParseFloat(f[i+1], 64); err == nil && !math.IsNaN(v) && !math.IsInf(v, 0) {
+			score[f[i]] = v
+		}
+	}
+	return score
+}

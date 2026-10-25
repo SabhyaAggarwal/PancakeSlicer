@@ -6,8 +6,6 @@
 	"setting_id": "dYseXuv4xa703tvI",
 	"instantiation": "true",
 	"nonplanar_mode": "auto",
-	"adaptive_layer_height_error": "0.32",
-	"overhang_layer_contact": "50%",
 	"line_width": "0.68",
 	"inner_wall_line_width": "0.68",
 	"outer_wall_line_width": "0.68",

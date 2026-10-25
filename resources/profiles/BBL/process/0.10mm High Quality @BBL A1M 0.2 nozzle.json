@@ -6,8 +6,6 @@
     "setting_id": "GP113",
     "instantiation": "true",
     "nonplanar_mode": "auto",
-    "adaptive_layer_height_error": "0.07",
-    "overhang_layer_contact": "50%",
     "description": "Compared with the default profile of a 0.2 mm nozzle, it has lower speeds and acceleration, and the sparse infill pattern is Gyroid. So, it results in much higher printing quality, but a much longer printing time.",
     "default_acceleration": [
         "3000"

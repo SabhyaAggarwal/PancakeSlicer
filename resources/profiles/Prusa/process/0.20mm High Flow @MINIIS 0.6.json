@@ -6,8 +6,6 @@
 	"setting_id": "6OaVdTR4lLVSBCtN",
 	"instantiation": "true",
 	"nonplanar_mode": "auto",
-	"adaptive_layer_height_error": "0.14",
-	"overhang_layer_contact": "50%",
 	"compatible_printers": [
 		"Prusa MINIIS 0.6 nozzle"
 	],

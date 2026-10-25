@@ -6,8 +6,6 @@
     "setting_id": "GP095",
     "instantiation": "true",
     "nonplanar_mode": "auto",
-    "adaptive_layer_height_error": "0.56",
-    "overhang_layer_contact": "50%",
     "nonplanar_shell_layer_height": "0.16",
     "description": "Compared with the default profile of a 0.8 mm nozzle, it has a much bigger layer height, and results in extremely apparent layer lines and much lower printing quality, but much shorter printing time in some printing cases.",
     "default_acceleration": [

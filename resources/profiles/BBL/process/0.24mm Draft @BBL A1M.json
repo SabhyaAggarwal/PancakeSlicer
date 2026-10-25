@@ -6,8 +6,6 @@
     "setting_id": "GP047",
     "instantiation": "true",
     "nonplanar_mode": "auto",
-    "adaptive_layer_height_error": "0.24",
-    "overhang_layer_contact": "50%",
     "nonplanar_shell_layer_height": "0.16",
     "nonplanar_overhangs": "1",
     "nonplanar_bridges": "1",

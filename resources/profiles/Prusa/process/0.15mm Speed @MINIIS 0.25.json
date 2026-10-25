@@ -6,8 +6,6 @@
 	"setting_id": "2Cy0ti9oKfJjasOA",
 	"instantiation": "true",
 	"nonplanar_mode": "auto",
-	"adaptive_layer_height_error": "0.105",
-	"overhang_layer_contact": "50%",
 	"nonplanar_shell_layer_height": "0.09",
 	"line_width": "0.27",
 	"inner_wall_line_width": "0.27",

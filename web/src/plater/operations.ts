@@ -1,4 +1,4 @@
-import { Box3, Euler, Matrix4, Vector3 } from 'three';
+import { Box3, Matrix4, Vector3 } from 'three';
 import { arrangeSettings } from './arrangeSettings';
 import { firstLayer, overrides, plateSignature } from '../slice-input';
 import { jobValue } from '../options';
@@ -7,15 +7,15 @@ import { getState, newId, printerPreset, resolvePreset, setState, toast, type Pl
 import { undoable } from '../state/history';
 import { bakeStl, instanceBox, instanceMatrix, loadMesh, objectMatrix, plateJson, request } from './geometry';
 import { bedArea } from '../actions';
+import { withRotation } from './rotation';
 
-const DEG = Math.PI / 180;
 let busy = false;
 
-async function orient(o: PlateObject): Promise<PlateObject> {
+export async function orientJob(o: PlateObject, operation: 'orient' | 'orient-scores'): Promise<Record<string, unknown> | undefined> {
   const s = getState();
   if (!s.api || s.api.mock) throw new Error('Auto orient requires the native slicing service.');
   const fd = new FormData();
-  fd.append('operation', 'orient');
+  fd.append('operation', operation);
   fd.append('files[]', await bakeStl(o), 'orient.stl');
   fd.append('vendor', printerPreset(s)?.vendor ?? 'BBL');
   fd.append('printer', resolvePreset(s, 'machine', s.printer).base?.name ?? s.printer);
@@ -28,27 +28,23 @@ async function orient(o: PlateObject): Promise<PlateObject> {
   if (!response.ok) throw await responseError(response);
   const { id } = await response.json() as { id: string };
   try {
-    const rotation = await new Promise<number[]>((resolve, reject) => {
+    return await new Promise<Record<string, unknown> | undefined>((resolve, reject) => {
       const stop = s.api!.events(id, {
         progress() {},
-        done(status) { stop(); resolve(status.record?.rotation as number[]); },
+        done(status) { stop(); resolve(status.record); },
         error(message) { stop(); reject(new Error(message)); },
       });
     });
-    if (!Array.isArray(rotation) || rotation.length !== 9 || !rotation.every(Number.isFinite))
-      throw new Error('The native tool did not return an orientation rotation.');
-    const r = new Matrix4().set(
-      rotation[0], rotation[1], rotation[2], 0,
-      rotation[3], rotation[4], rotation[5], 0,
-      rotation[6], rotation[7], rotation[8], 0, 0, 0, 0, 1,
-    );
-    r.multiply(new Matrix4().makeRotationY(o.rotY * DEG)).multiply(new Matrix4().makeRotationX(o.rotX * DEG));
-    const angles = new Euler().setFromRotationMatrix(r, 'ZYX');
-    return { ...o, rotX: angles.x / DEG, rotY: angles.y / DEG,
-      instances: o.instances.map((i) => ({ ...i, rotZ: i.rotZ + angles.z / DEG, z: 0 })) };
   } finally {
     await s.api.cancel(id);
   }
+}
+
+async function orient(o: PlateObject): Promise<PlateObject> {
+  const rotation = (await orientJob(o, 'orient'))?.rotation as number[];
+  if (!Array.isArray(rotation) || rotation.length !== 9 || !rotation.every(Number.isFinite))
+    throw new Error('The native tool did not return an orientation rotation.');
+  return withRotation(o, rotation);
 }
 
 async function splitObject(o: PlateObject): Promise<PlateObject[]> {

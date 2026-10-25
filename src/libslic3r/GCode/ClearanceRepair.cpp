@@ -310,10 +310,13 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
         for (const std::string &warning : self->m_guard_warnings)
             print.active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, warning);
     for (const PrintObject *object : print.objects())
-        if (object->m_auto_planar && !object->auto_plain_reason().empty() && !oneshot_requested(*object))
+        if (object->m_auto_planar && !object->auto_plain_reason().empty()) {
+            const auto *set  = object->model_object()->config.get().option<ConfigOptionEnum<NonplanarMode>>("nonplanar_mode");
+            const bool  shot = (set ? set->value : print.default_object_config().nonplanar_mode.value) == NonplanarMode::OneShot;
             print.active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL,
-                                          Slic3r::format(_u8L("%1%: Auto printed planar: %2%"), object->model_object()->name,
-                                                         object->auto_plain_reason()));
+                                          Slic3r::format(shot ? _u8L("%1%: One-shot printed planar: %2%") : _u8L("%1%: Auto printed planar: %2%"),
+                                                         object->model_object()->name, object->auto_plain_reason()));
+        }
     if (print.config().nonplanar_kinematics.value != RotaryLayout::None) {
         if (self != nullptr && self->oneshot_step(result)) {
             if (self->m_repick.empty())
@@ -733,7 +736,7 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
                 m_band_tried[object] = true;
                 repick               = band_control(*object, s);
             }
-            repick = repick || (budget && auto_offer(*object, s, t_ps, export_normal_rms(*object, result), time));
+            repick = repick || (budget && (auto_offer(*object, s, t_ps, export_normal_rms(*object, result), time) || control_past_cap(*object, s)));
             s.measured_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
             if (repick) {
                 ++m_repicks[object];
@@ -757,6 +760,19 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
     return true;
 }
 
+size_t ClearanceRepair::curved_contacts(const Print &print, const GCodeProcessorResult &result)
+{
+    ClearanceParams params;
+    params.head        = resolve_head_envelope(print.config());
+    params.contact_bar = true;
+    const ClearanceReport report = verify_clearance(result, params, *make_tool_kinematics(print.config()), [&print] { print.throw_if_canceled(); });
+    size_t contacts = 0;
+    for (size_t i = 0; i < result.moves.size() && i < report.per_move.size(); ++i)
+        if (report.per_move[i] < 0.f && result.moves[i].type == EMoveType::Extrude && result.state(result.moves[i]).nonplanar_patch_shell != 0xFF)
+            ++contacts;
+    return contacts;
+}
+
 bool ClearanceRepair::contact_guard(const GCodeProcessorResult &result, size_t contacts)
 {
     std::vector<PrintObject *> guarded;
@@ -766,15 +782,8 @@ bool ClearanceRepair::contact_guard(const GCodeProcessorResult &result, size_t c
             guarded.push_back(object);
     if (guarded.empty() || !result.nonplanar || m_guard_passes >= 2 * int(guarded.size()))
         return false;
-    if (contacts == 0) {
-        ClearanceParams params;
-        params.head        = resolve_head_envelope(m_print.config());
-        params.contact_bar = true;
-        const ClearanceReport report = verify_clearance(result, params, *make_tool_kinematics(m_print.config()), [this] { m_print.throw_if_canceled(); });
-        for (size_t i = 0; i < result.moves.size() && i < report.per_move.size(); ++i)
-            if (report.per_move[i] < 0.f && result.moves[i].type == EMoveType::Extrude && result.state(result.moves[i]).nonplanar_patch_shell != 0xFF)
-                ++contacts;
-    }
+    if (contacts == 0)
+        contacts = curved_contacts(m_print, result);
     if (contacts == 0)
         return false;
     for (PrintObject *object : guarded) {

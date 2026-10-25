@@ -6,8 +6,6 @@
 	"setting_id": "GP007",
 	"instantiation": "true",
 	"nonplanar_mode": "auto",
-	"adaptive_layer_height_error": "0.07",
-	"overhang_layer_contact": "50%",
 	"description": "It has a small layer height, and results in almost negligible layer lines and high printing quality. It is suitable for most general printing cases.",
 	"bridge_speed": [
 		"50",

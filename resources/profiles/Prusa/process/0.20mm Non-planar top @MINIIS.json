@@ -9,8 +9,6 @@
 	"nonplanar_sublayer_walls": "1",
 	"nonplanar_full_conformal_max_thickness": "3",
 	"nonplanar_mode": "auto",
-	"adaptive_layer_height_error": "0.14",
-	"overhang_layer_contact": "50%",
 	"nonplanar_ironing": "1",
 	"ironing_type": "top",
 	"compatible_printers": [

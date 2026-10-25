@@ -26,6 +26,8 @@ public:
 
     static void check_export(Print &print, GCodeProcessorResult &result);
 
+    static size_t curved_contacts(const Print &print, const GCodeProcessorResult &result);
+
     bool apply();
 
     bool plan(const GCodeProcessorResult &result, const ClearanceReport &report, const HeadEnvelope &head, bool bar = false);

@@ -7,8 +7,6 @@
 	"instantiation": "true",
 	"top_layer_direction": "45",
 	"nonplanar_mode": "auto",
-	"adaptive_layer_height_error": "0.14",
-	"overhang_layer_contact": "50%",
 	"nonplanar_ironing": "1",
 	"ironing_type": "top",
 	"compatible_printers": [

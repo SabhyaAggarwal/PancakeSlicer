@@ -6,8 +6,6 @@
 	"setting_id": "lMQ8IpaIIHuYey5D",
 	"instantiation": "true",
 	"nonplanar_mode": "auto",
-	"adaptive_layer_height_error": "0.049",
-	"overhang_layer_contact": "50%",
 	"line_width": "0.27",
 	"inner_wall_line_width": "0.25",
 	"outer_wall_line_width": "0.25",

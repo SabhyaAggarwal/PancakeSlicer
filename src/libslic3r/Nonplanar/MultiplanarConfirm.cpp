@@ -16,6 +16,7 @@
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/Config.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
+#include "libslic3r/GCode/ClearanceRepair.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
 #include "libslic3r/GCode/ToolKinematics.hpp"
 #include "libslic3r/Layer.hpp"
@@ -199,6 +200,8 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
         measured->floating         = floating_road(result, printed);
         measured->support          = std::any_of(printed.support_layers().begin(), printed.support_layers().end(),
                                                  [](const SupportLayer *layer) { return !layer->support_fills.empty(); });
+        if (measured->count_contacts && result.nonplanar)
+            measured->contacts = ClearanceRepair::curved_contacts(print, result);
     }
     if (!keep_as.empty())
         boost::filesystem::copy_file(gcode, keep_as, boost::filesystem::copy_options::overwrite_existing, ec);

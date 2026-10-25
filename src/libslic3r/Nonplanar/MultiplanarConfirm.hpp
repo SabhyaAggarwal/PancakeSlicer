@@ -35,6 +35,8 @@ struct MeasuredPrint
     bool     support = false;
     double   rms     = std::numeric_limits<double>::quiet_NaN();
     bool     as_printed = false;
+    bool     count_contacts = false;
+    size_t   contacts       = 0;
 };
 double measured_time(const PrintObject &object, NonplanarMode mode, const std::vector<std::pair<std::string, std::string>> &overrides = {},
                      const std::string &keep_as = {}, bool verify = true, MeasuredPrint *measured = nullptr);

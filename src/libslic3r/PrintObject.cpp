@@ -914,8 +914,10 @@ void PrintObject::note_auto_fallback(const std::string &why)
         m_oneshot->decision += Note;
 }
 
-double PrintObject::wall_band() const
+double PrintObject::wall_band(double over) const
 {
+    const double top_edge = over > 0. && !m_layers.empty() ? m_layers.back()->print_z - 3. * m_config.layer_height.value
+                                                             : std::numeric_limits<double>::max();
     double weighted = 0., wall = 0., below = 0.;
     for (const Layer *layer : m_layers) {
         double length = 0.;
@@ -928,8 +930,8 @@ double PrintObject::wall_band() const
         }
         if (length <= 0.)
             continue;
-        if (below > 0. && layer->height > 0.) {
-            weighted += std::abs(layer->height - below) / layer->height * length;
+        if (below > 0. && layer->height > 0. && layer->print_z <= top_edge) {
+            weighted += std::max(0., std::abs(layer->height - below) / layer->height - over) * length;
             wall += length;
         }
         below = layer->height;

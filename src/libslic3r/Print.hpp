@@ -340,8 +340,9 @@ public:
     bool auto_planar_pass() const { return m_auto_planar_pass; }
     bool auto_floating_demoted() const { return m_auto_floating_demoted; }
     bool auto_band_demoted() const { return m_auto_band_demoted; }
-    double wall_band() const;
+    double wall_band(double over = 0.) const;
     static constexpr double WallBand = 0.004;
+    static constexpr double OneShotWallBand = 0.001;
     void note_auto_fallback(const std::string &why);
     const std::string &auto_plain_reason() const { return m_auto_plain_reason; }
     const Nonplanar::RepairHints*     nonplanar_repair() const { return m_nonplanar_repair.get(); }

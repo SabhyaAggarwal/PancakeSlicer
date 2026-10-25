@@ -102,7 +102,7 @@ export interface CutPlane {
 
 export interface State {
   api: Api | null;
-  features: { cut?: boolean; volumes?: boolean; edit?: boolean; mesh_plates?: boolean; paint?: boolean; layer_profile?: boolean; arrange?: boolean; project_volumes?: boolean; project_paint?: boolean };
+  features: { cut?: boolean; volumes?: boolean; edit?: boolean; mesh_plates?: boolean; paint?: boolean; layer_profile?: boolean; arrange?: boolean; project_volumes?: boolean; project_paint?: boolean; orient_scores?: boolean };
   cut: CutPlane | null;
   loading: string | null;
   machines: SystemPreset[];
@@ -148,11 +148,21 @@ export interface State {
   presetUx: PresetUx | null;
   settingsFocus: { type: PresetType; page: string; key: string; nonce: number } | null;
   sessionDialog: 'restore' | 'recent' | null;
+  orientPrompts: Record<number, OrientPrompt>;
+  orientDismissed: number[];
+}
+
+export interface OrientPrompt {
+  rotation: number[];
+  faster: number;
+  pose: string;
 }
 
 let state: State = {
   api: null,
   features: {},
+  orientPrompts: {},
+  orientDismissed: [],
   cut: null,
   loading: 'Connecting',
   machines: [],
@@ -224,7 +234,7 @@ let nextId = 1;
 export const newId = () => nextId++;
 export const reserveIds = (max: number) => { nextId = Math.max(nextId, max + 1); };
 
-export const DEMO_MODELS = ['Bambu Lab A1 mini', 'Bambu Lab A1', 'Bambu Lab P1S', 'Prusa MINI', 'Prusa MINI IS', 'Prodcan3 5-axis BC table'];
+export const DEMO_MODELS = ['Bambu Lab A1 mini', 'Bambu Lab A1', 'Bambu Lab P1S', 'Prusa MINI', 'Prusa MINI IS', 'Prodcan3 5-axis BC table', 'Fairino FR3 cell'];
 export const DEFAULT_PRINTER = 'Bambu Lab A1 mini 0.4 nozzle';
 
 export function listFor(s: State, type: PresetType): SystemPreset[] {

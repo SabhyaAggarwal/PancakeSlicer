@@ -673,14 +673,28 @@ bool band_control(const PrintObject &object, OneShotState &state)
     if (state.offer == OneShotState::Offer::Control || state.offer == OneShotState::Offer::Auto || state.measured_anchor ||
         state.route != nullptr)
         return false;
-    const double band = object.wall_band();
-    if (band < PrintObject::WallBand)
+    const double band = object.wall_band(LayerChangeMax), total = object.wall_band();
+    state.band_note = Slic3r::format(", wall band %1$.4f over one step (total %2$.4f)", band, total);
+    if (band < PrintObject::OneShotWallBand)
         return false;
     state.offer = OneShotState::Offer::Control;
     ++state.measured_repicks;
-    state.band_note = Slic3r::format(", wall band %1$.4f -> control", band);
-    BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": wall band " << band << " past " << PrintObject::WallBand
+    state.band_note += " -> control";
+    BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": wall band " << band << " past " << PrintObject::OneShotWallBand
                             << ": the control offer";
+    return true;
+}
+
+bool control_past_cap(const PrintObject &object, OneShotState &state)
+{
+    using Offer = OneShotState::Offer;
+    if (state.offer == Offer::Control || state.offer == Offer::Auto || !state.measured_anchor || !(state.measured_ratio > state.max_time_ratio()))
+        return false;
+    state.offer = Offer::Control;
+    ++state.measured_repicks;
+    state.band_note += Slic3r::format(", the anchor %1$.3f x past the cap -> control", state.measured_ratio);
+    BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": the anchor measured " << state.measured_ratio
+                            << " x planar + support, past the cap: the control offer";
     return true;
 }
 
@@ -692,7 +706,8 @@ bool auto_offer(const PrintObject &object, OneShotState &state, double t_ps, dou
     const auto    t0 = std::chrono::steady_clock::now();
     if (!state.auto_measured) {
         MeasuredPrint automatic;
-        automatic.as_printed = make_tool_kinematics(object.print()->config())->rotary_count() == 0;
+        automatic.as_printed     = make_tool_kinematics(object.print()->config())->rotary_count() == 0;
+        automatic.count_contacts = !automatic.as_printed;
         std::vector<std::pair<std::string, std::string>> user;
         for (const char *key : { "enable_support", "support_type", "support_style", "support_critical_regions_only" }) {
             const ConfigOption *option = object.model_object()->config.get().option(key);
@@ -702,18 +717,31 @@ bool auto_offer(const PrintObject &object, OneShotState &state, double t_ps, dou
                 user.emplace_back(key, option->serialize());
         }
         measured_time(object, NonplanarMode::Auto, user, {}, automatic.as_printed, &automatic);
+        if (automatic.contacts > 0) {
+            MeasuredPrint planar;
+            measured_time(object, NonplanarMode::Off, user, {}, false, &planar);
+            planar.floating   = Floating { -1., -1. };
+            planar.contacts   = automatic.contacts;
+            automatic         = planar;
+            state.auto_planar = true;
+        }
         state.auto_measured = std::make_shared<const MeasuredPrint>(std::move(automatic));
         state.auto_floats = past_floating_bar(object, state, state.auto_measured->floating);
     }
     const MeasuredPrint &automatic = *state.auto_measured;
     state.measured_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     const bool   floats = state.auto_floats;
-    const bool   wins  = !floats && std::isfinite(automatic.rms) && std::isfinite(automatic.time) && (!std::isfinite(pick_rms) || automatic.rms < pick_rms);
-    const double ratio = automatic.time / t_ps;
+    const double ratio  = automatic.time / t_ps;
+    const bool   pick_over = pick_time / t_ps > state.max_time_ratio();
+    const bool   smoother  = !state.auto_planar && (!std::isfinite(pick_rms) || automatic.rms < pick_rms);
+    const bool   wins      = !floats && std::isfinite(automatic.rms) && std::isfinite(automatic.time) &&
+                      (smoother || (pick_over && automatic.time < pick_time));
     state.auto_note = Slic3r::format(", Auto %1$.4f mm %2$.3f x against the pick's %3$.4f mm %4$.3f x%5%", automatic.rms, ratio, pick_rms,
                                      pick_time / t_ps,
                                      floats                                ? Slic3r::format(", Auto floats %1$.1f mm past the bar", automatic.floating.part) :
                                      !wins                                 ? std::string() :
+                                     state.auto_planar                     ? Slic3r::format(" -> Auto taken: its planar control (%1% curved moves the contact bar strikes)", automatic.contacts) :
+                                     std::isfinite(pick_rms) && !(automatic.rms < pick_rms) ? std::string(" -> Auto taken: faster than the pick past the cap") :
                                      ratio > state.max_time_ratio()    ? Slic3r::format(" -> Auto taken: x%1$.2f planar, past the cap", ratio) :
                                                                              std::string(" -> Auto"));
     BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": Auto's own print measured RMS along the normal "
@@ -1110,6 +1138,11 @@ constexpr size_t RouteSubsets = 32;
 const double     SeamCos = std::cos(20. * M_PI / 180.);
 constexpr double SeamK   = 0.25;
 constexpr double JoinRidgeMs  = 0.0108;
+double join_line_k()
+{
+    static const double k = [] { const char *v = std::getenv("NP_ONESHOT_JOIN_LINE"); return v != nullptr && *v != 0 ? std::atof(v) : 1.; }();
+    return k;
+}
 constexpr double SlabLayers   = 3.;
 constexpr double TerminalFaceArea = 20.;
 constexpr double JoinTurnMax = 20.;
@@ -1656,7 +1689,7 @@ void choose_route(PrintObject &object, OneShotState &state)
                                            ci, c.build_dir.x(), c.build_dir.y(), c.build_dir.z(), n.x(), n.y(), n.z(),
                                            c.clips[size_t(c.base_clip)].offset, c.parent, parent_join, own_join);
                 const double er    = h * std::sin(20. * M_PI / 180.) / std::sqrt(12.);
-                const double ridge = JoinRidgeMs / (er * er) * lw * cut_perimeter(mesh, c.clips, size_t(c.base_clip));
+                const double ridge = (1. + join_line_k()) * JoinRidgeMs / (er * er) * lw * cut_perimeter(mesh, c.clips, size_t(c.base_clip));
                 o.J += ridge;
                 o.J_ceil += ridge;
                 o.pieces += Slic3r::format(" (join %1$.0f)", ridge);

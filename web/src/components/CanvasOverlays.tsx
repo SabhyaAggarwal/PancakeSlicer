@@ -293,6 +293,7 @@ export function SliceNotification() {
   const results = done ? sliced : [];
   const suggestIds = useStore((s) => pendingRecommendations(s).map((o) => o.id).join(','));
   const plateObjects = useStore((s) => s.objects);
+  const orientPrompts = useStore((s) => s.orientPrompts);
   const suggest = useMemo(() => plateObjects.filter((o) => suggestIds.split(',').includes(String(o.id))), [plateObjects, suggestIds]);
   const facts = !fresh && !busy && patchPreview ? patchPreview.facts.filter((f) => !suggestIds.split(',').includes(String(f.objectId))) : [];
   const factsKey = `np:${facts.map((f) => `${f.objectId}:${f.curved}`).join(',')}`;
@@ -325,6 +326,18 @@ export function SliceNotification() {
           <div className="notif-body">Print-in-place gaps · <button type="button" className="notif-link" onClick={() => applyRecommended(suggest)}>Use Standard</button></div>
         </div>
       )}
+      {Object.entries(orientPrompts).map(([id, p]) => {
+        const o = plateObjects.find((x) => String(x.id) === id);
+        return o && (
+          <div key={`orient${id}`} className="notification done">
+            <button className="notif-close icon-btn" title="Close" onClick={() => dismissOrientPrompt(o.id)}>
+              <Icon name="notification_close" size={14} />
+            </button>
+            <div className="notif-title">{o.name}</div>
+            <div className="notif-body">Stand this part up: less support{p.faster > 0 ? `, ~${p.faster} % faster` : ''} · <button type="button" className="notif-link" onClick={() => void import('../plater/orientPrompt').then((m) => m.applyOrientPrompt(o.id))}>Apply</button></div>
+          </div>
+        );
+      })}
       {warnings.map((w, i) =>
         closed.has(`w${i}`) ? null : (
           <div key={`w${i}`} className="notification warning">
@@ -530,4 +543,12 @@ export function PaintPanel() {
       </div>
     </div>
   );
+}
+
+function dismissOrientPrompt(id: number) {
+  setState((st) => {
+    const orientPrompts = { ...st.orientPrompts };
+    delete orientPrompts[id];
+    return { orientPrompts, orientDismissed: [...st.orientDismissed, id] };
+  });
 }

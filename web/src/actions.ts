@@ -31,7 +31,10 @@ function mergeCatalog(vendor: string, cat: PresetCatalog) {
 export async function init() {
   const api = await connect();
   setState({ api, loading: 'Loading presets' });
-  if (!api.mock) void fetch('/api/healthz').then((r) => r.json()).then((h) => setState({ features: h?.tool_features ?? {} })).catch(() => {});
+  if (!api.mock) void fetch('/api/healthz').then((r) => r.json()).then((h) => {
+    setState({ features: h?.tool_features ?? {} });
+    if (h?.tool_features?.orient_scores === true) void import('./plater/orientPrompt').then((m) => m.startOrientPrompt());
+  }).catch(() => {});
   if (!api.mock) fetch('/api/printers').then((r) => (r.ok ? r.json() : [])).then((printers) => Array.isArray(printers) && setState({ printers })).catch(() => {});
   const saved = localStorage.getItem('orca.printer');
   const first = localStorage.getItem('orca.vendor') ?? 'BBL';

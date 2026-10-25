@@ -181,9 +181,15 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, status, "invalid multipart upload: "+err.Error())
 		return
 	}
-	req := JobRequest{Orient: r.FormValue("operation") == "orient", Vendor: r.FormValue("vendor"), Printer: r.FormValue("printer"), Process: r.FormValue("process"), Filaments: r.MultipartForm.Value["filament[]"], Output: r.FormValue("output"), Filename: r.FormValue("filename")}
+	req := JobRequest{Orient: r.FormValue("operation") == "orient" || r.FormValue("operation") == "orient-scores", Vendor: r.FormValue("vendor"), Printer: r.FormValue("printer"), Process: r.FormValue("process"), Filaments: r.MultipartForm.Value["filament[]"], Output: r.FormValue("output"), Filename: r.FormValue("filename")}
 	switch op := r.FormValue("operation"); op {
 	case "", "orient":
+	case "orient-scores":
+		if !s.cfg.Features.OrientScores {
+			fail(w, 400, "orientation scores require a tool with --orient-scores")
+			return
+		}
+		req.OrientScores = true
 	case "arrange":
 		if !s.cfg.Features.Arrange {
 			fail(w, 400, "arrange requires a tool with --arrange-only")

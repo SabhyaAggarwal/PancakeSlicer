@@ -59,6 +59,7 @@ struct OneShotState
     bool                           auto_weighed = false;
     std::shared_ptr<const MeasuredPrint> auto_measured;
     bool                           auto_floats = false;
+    bool                           auto_planar = false;
     double                         planar_air  = -1.;
 
     double max_time_ratio() const { return max_time_ratio_override > 0. ? max_time_ratio_override : MaxTimeRatio; }
@@ -81,6 +82,7 @@ constexpr int MaxRepicks = 2;
 void measured_export_check(PrintObject &object, OneShotState &state, const std::function<void()> &resolve);
 bool measured_repick(const PrintObject &object, OneShotState &state, double ratio, const Floating &floating, bool support);
 bool band_control(const PrintObject &object, OneShotState &state);
+bool control_past_cap(const PrintObject &object, OneShotState &state);
 bool past_floating_bar(const PrintObject &object, OneShotState &state, const Floating &floating);
 bool auto_offer(const PrintObject &object, OneShotState &state, double t_ps, double pick_rms, double pick_time);
 
