@@ -20,6 +20,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -72,19 +73,57 @@ func packagePlate(f *os.File) (string, error) {
 	return "", errors.New("the .gcode.3mf package holds no plate G-code")
 }
 
+type connError struct{ stage, msg string }
+
+func (e *connError) Error() string { return e.msg }
+
 func dialTLS(ctx context.Context, host string, port int, config *tls.Config) (*tls.Conn, error) {
-	dialer := &tls.Dialer{NetDialer: &net.Dialer{Timeout: 5 * time.Second}, Config: config}
 	dctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	conn, err := dialer.DialContext(dctx, "tcp", net.JoinHostPort(host, strconv.Itoa(port)))
+	raw, err := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(dctx, "tcp", net.JoinHostPort(host, strconv.Itoa(port)))
 	if err != nil {
 		if cause := context.Cause(ctx); cause != nil {
 			return nil, cause
 		}
-		return nil, netError(err, "the printer")
+		return nil, dialError(err, host, port)
+	}
+	conn := tls.Client(raw, config)
+	if err := conn.HandshakeContext(dctx); err != nil {
+		raw.Close()
+		if cause := context.Cause(ctx); cause != nil {
+			return nil, cause
+		}
+		return nil, handshakeError(err, port)
 	}
 	context.AfterFunc(ctx, func() { conn.SetDeadline(time.Unix(1, 0)) })
-	return conn.(*tls.Conn), nil
+	return conn, nil
+}
+
+func dialError(err error, host string, port int) error {
+	var dns *net.DNSError
+	msg := fmt.Sprintf("cannot connect to %s on port %d: %s", host, port, lastClause(err))
+	switch {
+	case errors.Is(err, syscall.ECONNREFUSED):
+		msg = fmt.Sprintf("%s refused port %d: LAN-only mode is off, or this is not the printer's address", host, port)
+	case errors.Is(err, context.DeadlineExceeded) || os.IsTimeout(err):
+		msg = fmt.Sprintf("no answer from %s on port %d: check the IP address and that the printer is on the server's network", host, port)
+	case errors.Is(err, syscall.EHOSTUNREACH) || errors.Is(err, syscall.ENETUNREACH):
+		msg = fmt.Sprintf("no route from the server to %s", host)
+	case errors.As(err, &dns):
+		msg = "cannot resolve " + host
+	}
+	return &connError{"unreachable", msg}
+}
+
+func handshakeError(err error, port int) error {
+	var serial *serialMismatch
+	switch {
+	case errors.As(err, &serial):
+		return &connError{"serial", serial.Error() + "; check the serial number (Settings > Device on the printer)"}
+	case errors.Is(err, errPinMismatch):
+		return &connError{"tls", "the printer's certificate changed since it was first trusted; if the printer was replaced or reset, remove it and add it again"}
+	}
+	return &connError{"tls", fmt.Sprintf("TLS handshake on port %d failed: %s", port, lastClause(err))}
 }
 
 type ftpConn struct {
@@ -145,43 +184,62 @@ func (e *ftpError) Error() string { return fmt.Sprintf("FTP %d %s", e.code, e.te
 
 var pasvReply = regexp.MustCompile(`(\d+),(\d+),(\d+),(\d+),(\d+),(\d+)`)
 
-func ftpsUpload(ctx context.Context, host string, config *tls.Config, u *upload) (err error) {
+func ftpsLogin(ctx context.Context, host string, config *tls.Config, secret string) (c *ftpConn, err error) {
 	conn, err := dialTLS(ctx, host, 990, config)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer conn.Close()
-	c := &ftpConn{conn: conn, r: bufio.NewReader(conn)}
-	step := "greeting"
+	c = &ftpConn{conn: conn, r: bufio.NewReader(conn)}
 	defer func() {
-		var ftpErr *ftpError
-		switch {
-		case err == nil:
-		case context.Cause(ctx) != nil:
-			err = context.Cause(ctx)
-		case errors.As(err, &ftpErr) && ftpErr.code == 530:
-			err = errors.New("the printer rejected the access code; check it on the printer's screen (Settings > LAN only) and in the server's credential file")
-		case errors.As(err, &ftpErr) && ftpErr.code == 522:
-			err = errors.New("the printer refused the FTP data connection (TLS session reuse); report this with the printer's firmware version")
-		case errors.As(err, &ftpErr):
-			err = fmt.Errorf("the printer's file transfer failed at %s: %v", step, ftpErr)
-		default:
-			err = netError(err, "the printer (FTPS port 990, "+step+")")
+		if err != nil {
+			conn.Close()
+			err = ftpFailure(ctx, err, "login")
 		}
 	}()
 	if code, text, rerr := c.reply(15 * time.Second); rerr != nil {
-		return rerr
+		return nil, rerr
 	} else if code != 220 {
-		return &ftpError{code, text}
+		return nil, &ftpError{code, text}
 	}
-	step = "login"
 	if _, err = c.cmd(331, 15*time.Second, "USER %s", bambuUser); err != nil {
+		return nil, err
+	}
+	if _, err = c.cmd(230, 15*time.Second, "PASS %s", secret); err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+func ftpFailure(ctx context.Context, err error, step string) error {
+	var ftpErr *ftpError
+	var connErr *connError
+	switch {
+	case context.Cause(ctx) != nil:
+		return context.Cause(ctx)
+	case errors.As(err, &connErr):
+		return err
+	case errors.As(err, &ftpErr) && ftpErr.code == 530:
+		return &connError{"access_code", "the printer rejected the access code (FTPS); check it on the printer's screen (Settings > LAN only)"}
+	case errors.As(err, &ftpErr) && ftpErr.code == 522:
+		return errors.New("the printer refused the FTP data connection (TLS session reuse); report this with the printer's firmware version")
+	case errors.As(err, &ftpErr):
+		return fmt.Errorf("the printer's file transfer failed at %s: %v", step, ftpErr)
+	}
+	return netError(err, "the printer (FTPS port 990, "+step+")")
+}
+
+func ftpsUpload(ctx context.Context, host string, config *tls.Config, u *upload) (err error) {
+	c, err := ftpsLogin(ctx, host, config, u.secret)
+	if err != nil {
 		return err
 	}
-	if _, err = c.cmd(230, 15*time.Second, "PASS %s", u.secret); err != nil {
-		return err
-	}
-	step = "setup"
+	defer c.conn.Close()
+	step := "setup"
+	defer func() {
+		if err != nil {
+			err = ftpFailure(ctx, err, step)
+		}
+	}()
 	for _, command := range []string{"PBSZ 0", "PROT P", "TYPE I"} {
 		if _, err = c.cmd(200, 15*time.Second, "%s", command); err != nil {
 			return err
@@ -247,18 +305,14 @@ func ftpsUpload(ctx context.Context, host string, config *tls.Config, u *upload)
 	return nil
 }
 
-func mqttProjectFile(ctx context.Context, p *PrinterConfig, u *upload, plate, md5sum string) (string, error) {
-	tlsConfig := p.tlsConfig(p.Serial)
-	conn, err := dialTLS(ctx, p.Host, 8883, tlsConfig)
+func mqttSession(ctx context.Context, p *PrinterConfig, secret string) (*tls.Conn, *bufio.Reader, error) {
+	conn, err := dialTLS(ctx, p.Host, 8883, p.tlsConfig(p.Serial))
 	if err != nil {
-		return "", fmt.Errorf("uploaded, but the start command failed: %w", err)
+		return nil, nil, err
 	}
-	defer conn.Close()
-	fail := func(err error) (string, error) {
-		if cause := context.Cause(ctx); cause != nil {
-			err = cause
-		}
-		return "", fmt.Errorf("uploaded %s to the SD card, but starting the print failed: %w", u.filename, err)
+	fail := func(err error) (*tls.Conn, *bufio.Reader, error) {
+		conn.Close()
+		return nil, nil, err
 	}
 	r := bufio.NewReader(conn)
 	id := make([]byte, 6)
@@ -267,13 +321,16 @@ func mqttProjectFile(ctx context.Context, p *PrinterConfig, u *upload, plate, md
 	connect = append(connect, 0, 4, 'M', 'Q', 'T', 'T', 4, 0xC2, 0, 60)
 	connect = append(connect, mqttString("orca-web-"+hex.EncodeToString(id))...)
 	connect = append(connect, mqttString(bambuUser)...)
-	connect = append(connect, mqttString(u.secret)...)
+	connect = append(connect, mqttString(secret)...)
 	conn.SetDeadline(time.Now().Add(15 * time.Second))
 	if err := mqttWrite(conn, 0x10, connect); err != nil {
 		return fail(netError(err, "the printer (MQTT port 8883)"))
 	}
 	kind, body, err := mqttRead(r)
 	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return fail(&connError{"access_code", "the printer closed the MQTT connection at login; check the access code"})
+		}
 		return fail(netError(err, "the printer (MQTT port 8883)"))
 	}
 	if kind != 2 || len(body) != 2 {
@@ -282,27 +339,63 @@ func mqttProjectFile(ctx context.Context, p *PrinterConfig, u *upload, plate, md
 	switch body[1] {
 	case 0:
 	case 4, 5:
-		return fail(errors.New("the printer rejected the access code over MQTT"))
+		return fail(&connError{"access_code", "the printer rejected the access code (MQTT); check it on the printer's screen (Settings > LAN only)"})
 	default:
 		return fail(fmt.Errorf("the printer refused the MQTT connection (code %d)", body[1]))
 	}
-	report := "device/" + p.Serial + "/report"
-	subscribe := append([]byte{0, 1}, mqttString(report)...)
+	subscribe := append([]byte{0, 1}, mqttString("device/"+p.Serial+"/report")...)
 	subscribe = append(subscribe, 0)
 	if err := mqttWrite(conn, 0x82, subscribe); err != nil {
 		return fail(err)
 	}
+	return conn, r, nil
+}
+
+func mqttPublish(conn *tls.Conn, p *PrinterConfig, message any) error {
+	command, _ := json.Marshal(message)
+	return mqttWrite(conn, 0x30, append(mqttString("device/"+p.Serial+"/request"), command...))
+}
+
+func mqttPayload(kind byte, body []byte) []byte {
+	if kind != 3 || len(body) < 2 {
+		return nil
+	}
+	topicLength := int(binary.BigEndian.Uint16(body))
+	if 2+topicLength > len(body) {
+		return nil
+	}
+	return body[2+topicLength:]
+}
+
+func refusedForAuth(result, reason string, code int) bool {
+	return !strings.EqualFold(result, "success") && (strings.Contains(strings.ToLower(reason), "verif") || code == 84033543)
+}
+
+func mqttProjectFile(ctx context.Context, p *PrinterConfig, u *upload, plate, md5sum string) (string, error) {
+	fail := func(err error) (string, error) {
+		if cause := context.Cause(ctx); cause != nil {
+			err = cause
+		}
+		return "", fmt.Errorf("uploaded %s to the SD card, but starting the print failed: %w", u.filename, err)
+	}
+	conn, r, err := mqttSession(ctx, p, u.secret)
+	if err != nil {
+		return fail(err)
+	}
+	defer conn.Close()
 	sequence := strconv.FormatInt(time.Now().UnixMilli()%1_000_000_000, 10)
 	name := strings.TrimSuffix(u.filename, ".gcode.3mf")
-	command, _ := json.Marshal(map[string]any{"print": map[string]any{
+	mapping := []int{}
+	if u.options.useAMS {
+		mapping = []int{0}
+	}
+	if err := mqttPublish(conn, p, map[string]any{"print": map[string]any{
 		"sequence_id": sequence, "command": "project_file", "param": plate,
 		"project_id": "0", "profile_id": "0", "task_id": "0", "subtask_id": "0", "subtask_name": name,
 		"file": u.filename, "url": "file:///sdcard/" + u.filename, "md5": md5sum,
-		"timelapse": false, "bed_type": "auto", "bed_leveling": true, "flow_cali": false,
-		"vibration_cali": true, "layer_inspect": false, "use_ams": false, "ams_mapping": []int{},
-	}})
-	publish := append(mqttString("device/"+p.Serial+"/request"), command...)
-	if err := mqttWrite(conn, 0x30, publish); err != nil {
+		"timelapse": u.options.timelapse, "bed_type": "auto", "bed_leveling": u.options.bedLeveling, "flow_cali": false,
+		"vibration_cali": true, "layer_inspect": false, "use_ams": u.options.useAMS, "ams_mapping": mapping,
+	}}); err != nil {
 		return fail(err)
 	}
 	conn.SetDeadline(time.Now().Add(20 * time.Second))
@@ -315,11 +408,8 @@ func mqttProjectFile(ctx context.Context, p *PrinterConfig, u *upload, plate, md
 			}
 			return fail(err)
 		}
-		if kind != 3 || len(body) < 2 {
-			continue
-		}
-		topicLength := int(binary.BigEndian.Uint16(body))
-		if 2+topicLength > len(body) {
+		payload := mqttPayload(kind, body)
+		if payload == nil {
 			continue
 		}
 		var message struct {
@@ -331,10 +421,11 @@ func mqttProjectFile(ctx context.Context, p *PrinterConfig, u *upload, plate, md
 				State     string `json:"gcode_state"`
 				Subtask   string `json:"subtask_name"`
 				ErrorCode int    `json:"print_error"`
+				ErrCode   int    `json:"err_code"`
 				GcodeFile string `json:"gcode_file"`
 			} `json:"print"`
 		}
-		if json.Unmarshal(body[2+topicLength:], &message) != nil {
+		if json.Unmarshal(payload, &message) != nil {
 			continue
 		}
 		m := message.Print
@@ -346,6 +437,9 @@ func mqttProjectFile(ctx context.Context, p *PrinterConfig, u *upload, plate, md
 			reason := m.Reason
 			if reason == "" {
 				reason = m.Result
+			}
+			if refusedForAuth(m.Result, m.Reason, m.ErrCode) {
+				return fail(fmt.Errorf("the printer refused the start command (%s): turn on LAN-only mode and Developer Mode on the printer", reason))
 			}
 			return fail(fmt.Errorf("the printer refused the job: %s", reason))
 		}
@@ -430,4 +524,105 @@ func printerFingerprint(address, resources string) error {
 		fmt.Printf("bambu-ca:    %v (common name %q)\n", verr == nil, leaf.Subject.CommonName)
 	}
 	return nil
+}
+
+type PrinterTest struct {
+	OK      bool   `json:"ok"`
+	Stage   string `json:"stage"`
+	Message string `json:"message"`
+	Model   string `json:"model,omitempty"`
+}
+
+func testBambu(ctx context.Context, p *PrinterConfig, secret string) PrinterTest {
+	failed := func(err error) PrinterTest {
+		var c *connError
+		if errors.As(err, &c) {
+			return PrinterTest{Stage: c.stage, Message: c.msg}
+		}
+		return PrinterTest{Stage: "unreachable", Message: err.Error()}
+	}
+	conn, r, err := mqttSession(ctx, p, secret)
+	if err != nil {
+		return failed(err)
+	}
+	defer conn.Close()
+	sequence := strconv.FormatInt(time.Now().UnixMilli()%1_000_000_000, 10)
+	mqttPublish(conn, p, map[string]any{"info": map[string]any{"sequence_id": sequence, "command": "get_version"}})
+	mqttPublish(conn, p, map[string]any{"print": map[string]any{"sequence_id": sequence, "command": "gcode_line", "param": "; orca-web connection test\n"}})
+	model, answered := "", false
+	conn.SetDeadline(time.Now().Add(8 * time.Second))
+	for model == "" || !answered {
+		kind, body, err := mqttRead(r)
+		if err != nil {
+			break
+		}
+		var message struct {
+			Print struct {
+				Command  string `json:"command"`
+				Sequence string `json:"sequence_id"`
+				Result   string `json:"result"`
+				Reason   string `json:"reason"`
+				ErrCode  int    `json:"err_code"`
+			} `json:"print"`
+			Info struct {
+				Command string `json:"command"`
+				Module  []struct {
+					Product string `json:"product_name"`
+					Project string `json:"project_name"`
+				} `json:"module"`
+			} `json:"info"`
+		}
+		if json.Unmarshal(mqttPayload(kind, body), &message) != nil {
+			continue
+		}
+		if m := message.Print; m.Command == "gcode_line" && m.Sequence == sequence {
+			if refusedForAuth(m.Result, m.Reason, m.ErrCode) {
+				mqttWrite(conn, 0xE0, nil)
+				return PrinterTest{Stage: "developer_mode", Message: "the printer refused a LAN command (" + m.Reason + ")"}
+			}
+			answered = true
+		}
+		if message.Info.Command == "get_version" {
+			for _, m := range message.Info.Module {
+				if model == "" {
+					model = bambuModel(m.Product, m.Project)
+				}
+			}
+			if model == "" {
+				model = "?"
+			}
+		}
+	}
+	mqttWrite(conn, 0xE0, nil)
+	if model == "" || model == "?" {
+		model = bambuModel("", p.Serial[:3])
+	}
+	c, err := ftpsLogin(ctx, p.Host, p.tlsConfig(p.Serial), secret)
+	if err != nil {
+		result := failed(err)
+		if result.Stage == "unreachable" {
+			result.Message = "MQTT works, but " + result.Message
+		}
+		return result
+	}
+	c.cmd(221, 5*time.Second, "QUIT")
+	c.conn.Close()
+	message := "Connected"
+	if model != "" {
+		message += " to " + model
+	}
+	if !answered {
+		message += "; the printer did not answer the test command, so Developer Mode is unconfirmed"
+	}
+	return PrinterTest{OK: true, Stage: "ok", Message: message, Model: model}
+}
+
+func bambuModel(product, code string) string {
+	if product != "" {
+		return strings.TrimPrefix(product, "Bambu Lab ")
+	}
+	return map[string]string{
+		"N1": "A1 mini", "N2S": "A1", "C11": "P1P", "C12": "P1S", "C13": "X1E", "BL-P001": "X1 Carbon", "BL-P002": "X1", "O1D": "H2D",
+		"030": "A1 mini", "039": "A1", "01S": "P1P", "01P": "P1S", "00M": "X1 Carbon", "00W": "X1", "03W": "X1E", "094": "H2D",
+	}[code]
 }

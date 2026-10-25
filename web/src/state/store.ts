@@ -19,6 +19,7 @@ export interface Instance {
   printable?: boolean;
 }
 
+export type SendPrinter = { name: string; kind: string; editable?: boolean; host?: string; serial?: string; model?: string };
 export type VolumeType = 'part' | 'negative' | 'modifier' | 'support_blocker' | 'support_enforcer';
 
 export interface Volume {
@@ -135,7 +136,8 @@ export interface State {
   flushDialog: boolean;
   appDialog: 'about' | 'preferences' | 'shortcuts' | 'send' | 'setup' | 'what' | 'plate' | null;
   calibDialog: CalibMenu | null;
-  printers: { name: string; kind: string }[];
+  printers: SendPrinter[];
+  printerEdit: boolean;
   events: LayerEvent[];
   projectPlates: (ProjectPlate & { objects: PlateObject[]; events?: LayerEvent[] })[];
   plateIndex: number;
@@ -209,6 +211,7 @@ let state: State = {
   appDialog: null,
   calibDialog: null,
   printers: [],
+  printerEdit: false,
   events: [],
   projectPlates: [],
   plateIndex: 1,

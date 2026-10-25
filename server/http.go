@@ -29,7 +29,7 @@ type Server struct {
 }
 
 func NewServer(c Config, jobs *JobManager, presets *PresetIndex, users *UserPresetStore) http.Handler {
-	s := &Server{c, jobs, presets, users, NewSendManager(c.Printers)}
+	s := &Server{c, jobs, presets, users, NewSendManager(c.Printers, c.PrinterStore)}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, r *http.Request) {
 		q, n := jobs.Counts()
@@ -49,6 +49,10 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, users *UserPres
 	mux.HandleFunc("POST /api/jobs/{id}/send", s.sendJob)
 	mux.HandleFunc("GET /api/jobs/{id}/send", s.getSend)
 	mux.HandleFunc("GET /api/printers", s.listPrinters)
+	mux.HandleFunc("POST /api/printers", s.addPrinter)
+	mux.HandleFunc("POST /api/printers/test", s.testPrinter)
+	mux.HandleFunc("PUT /api/printers/{name}", s.updatePrinter)
+	mux.HandleFunc("DELETE /api/printers/{name}", s.removePrinter)
 	mux.HandleFunc("GET /api/presets", s.listPresets)
 	options := c.Options
 	if options == nil {

@@ -42,6 +42,8 @@ type Config struct {
 	TrustedProxies []netip.Prefix
 	PrintersFile   string
 	Printers       []*PrinterConfig
+	PrinterEdit    string
+	PrinterStore   *printerStore
 	Features       ToolFeatures
 	Options        *cachedResponse
 }
@@ -98,6 +100,7 @@ func parseConfig() Config {
 	flag.BoolVar(&c.RequestLog, "request-log", envBool("ORCA_WEB_REQUEST_LOG"), "JSON request logging (ORCA_WEB_REQUEST_LOG)")
 	flag.BoolVar(&c.Metrics, "metrics", envBool("ORCA_WEB_METRICS"), "expose GET /metrics (ORCA_WEB_METRICS)")
 	flag.StringVar(&c.PrintersFile, "printers", env("ORCA_WEB_PRINTERS", ""), "administrator's printer list (JSON) for Send to printer; empty disables sending (ORCA_WEB_PRINTERS)")
+	flag.StringVar(&c.PrinterEdit, "printer-edit", env("ORCA_WEB_PRINTER_EDIT", "auto"), "add Bambu printers in the app: auto (on when a bearer token is set), on or off (ORCA_WEB_PRINTER_EDIT)")
 	proxies := flag.String("trusted-proxies", env("ORCA_WEB_TRUSTED_PROXIES", ""), "comma-separated trusted proxy CIDRs (ORCA_WEB_TRUSTED_PROXIES)")
 	flag.Parse()
 	if err := validateSourceURL(c.SourceURL); err != nil {
@@ -168,6 +171,23 @@ func main() {
 		if cfg.BearerToken == "" {
 			log.Printf("WARNING: printers are configured without a bearer token; anyone who can reach this service can start prints")
 		}
+	}
+	switch cfg.PrinterEdit {
+	case "auto", "on":
+		if cfg.PrinterEdit == "auto" && cfg.BearerToken == "" {
+			log.Printf("adding printers in the app is off: set a bearer token, or -printer-edit on for a private network")
+			break
+		}
+		if cfg.BearerToken == "" {
+			log.Printf("WARNING: printers can be added without a bearer token; anyone who can reach this service can add printers and start prints")
+		}
+		if cfg.PrinterStore, err = loadPrinterStore(filepath.Join(cfg.DataDir, "printers"), cfg.Resources); err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("adding printers in the app: on (%d saved)", len(cfg.PrinterStore.printers))
+	case "off":
+	default:
+		log.Fatal("printer-edit must be auto, on or off")
 	}
 	cfg.Features, cfg.Options = probeTool(cfg)
 	if err := probePlatePlacement(cfg); err != nil {

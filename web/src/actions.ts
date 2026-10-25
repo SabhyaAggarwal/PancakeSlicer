@@ -35,7 +35,7 @@ export async function init() {
     setState({ features: h?.tool_features ?? {} });
     if (h?.tool_features?.orient_scores === true) void import('./plater/orientPrompt').then((m) => m.startOrientPrompt());
   }).catch(() => {});
-  if (!api.mock) fetch('/api/printers').then((r) => (r.ok ? r.json() : [])).then((printers) => Array.isArray(printers) && setState({ printers })).catch(() => {});
+  if (!api.mock) void loadPrinters();
   const saved = localStorage.getItem('orca.printer');
   const first = localStorage.getItem('orca.vendor') ?? 'BBL';
   const vendors = [first, ...VENDORS.filter((v) => v !== first)];
@@ -585,6 +585,14 @@ export function fileUse(machine = printerPreset(getState())) {
 }
 
 export const STALE_RESULT_TIP = 'Settings changed since the last slice; slice again';
+
+export async function loadPrinters() {
+  try {
+    const r = await fetch('/api/printers');
+    const printers = r.ok ? await r.json() : [];
+    if (Array.isArray(printers)) setState({ printers, printerEdit: r.headers.get('X-Printer-Edit') === 'true' });
+  } catch {  }
+}
 
 export async function download() {
   const s = getState();
