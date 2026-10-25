@@ -85,6 +85,7 @@ struct ObjectiveMachine
     double    time_base_zonly = 0., time_base_curved = 0.;
     double    time_support_zonly = 0.;
     double    support_cA = -1., support_cH = -1.;
+    bool      support_on = true;
     double    support_cV = -1., support_cS = -1.;
     double    support_cos = 2.;
     double    first_layer_speed = 0., top_speed = 0.;

@@ -2025,6 +2025,9 @@ int main(int argc, char **argv)
             throw std::runtime_error(print.slicing_errors_message(errors));
         }
         if (args.progress) print.set_status_default();
+        for (const PrintObject *object : print.objects())
+            for (const PrintStateBase::Warning &w : object->step_state_with_warnings(posSupportMaterial).warnings)
+                std::cerr << "warning: " << w.message << "\n";
         if (last_percent < 100) progress("slice", 100);
         progress("export", 0);
         const auto   t_export = std::chrono::steady_clock::now();
@@ -2042,6 +2045,8 @@ int main(int argc, char **argv)
             return list;
         }, args.verify || !args.json.empty());
         GCodeWriter::planned_moves = nullptr;
+        for (const PrintStateBase::Warning &w : print.step_state_with_warnings(psGCodeExport).warnings)
+            std::cerr << "warning: " << w.message << "\n";
         if (!args.planned_out.empty()) {
             boost::nowide::ofstream out(args.planned_out);
             out << "# x y z b c planned_tip_speed duration\n" << std::setprecision(10);

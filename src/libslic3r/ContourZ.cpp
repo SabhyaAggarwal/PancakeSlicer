@@ -345,6 +345,9 @@ void Layer::make_contour_z(const sla::IndexedMesh &mesh)
 			this->print_z > patch.z_min + EPSILON &&
 			this->print_z <= object.get_layer(int(patch.host_layer))->print_z + EPSILON)
 			append(shell_area, diff_ex(patch.footprint, patch.wall_band));
+	for (const auto &diag : object.conformal().diagnostics)
+		if (diag.fallback_reason == "contact")
+			append(shell_area, diag.fallback_shape);
 	ExPolygons covered;
 	bool       covered_ready = false, shells_checked = false;
 

@@ -21,6 +21,7 @@ class PrintObject;
 namespace Slic3r::Nonplanar {
 
 struct MultiplanarPlan;
+struct MeasuredPrint;
 
 struct OneShotState
 {
@@ -28,6 +29,14 @@ struct OneShotState
     static constexpr double ZOnlySpread  = 0.05;
 
     std::shared_ptr<const NpField> solved;
+    struct RawSolve
+    {
+        NpField              field;
+        std::vector<NpField> time_cut;
+        double               cap_scale;
+        bool                 anchor;
+    };
+    std::shared_ptr<const RawSolve> raw;
     bool                           z_only = false;
     std::string                    decision;
     std::string                    student = "none";
@@ -41,10 +50,15 @@ struct OneShotState
     double                         measured_seconds = 0.;
     double                         cap_scale        = 1.;
     std::string                    time_cut_note;
-    enum class Offer { Body, NormalSupport, Control };
+    enum class Offer { Body, NormalSupport, Control, Auto };
     Offer                          offer            = Offer::Body;
     double                         measured_floating = std::numeric_limits<double>::quiet_NaN();
     double                         control_floating  = std::numeric_limits<double>::quiet_NaN();
+    std::string                    auto_note;
+    bool                           auto_weighed = false;
+    std::shared_ptr<const MeasuredPrint> auto_measured;
+    bool                           auto_floats = false;
+    double                         planar_air  = -1.;
 
     double max_time_ratio() const { return max_time_ratio_override > 0. ? max_time_ratio_override : MaxTimeRatio; }
     double measured_room() const { return MaxTimeRatio / measured_ratio - 1.; }
@@ -65,6 +79,8 @@ bool take_injected_oneshot(OneShotState &state);
 constexpr int MaxRepicks = 2;
 void measured_export_check(PrintObject &object, OneShotState &state, const std::function<void()> &resolve);
 bool measured_repick(const PrintObject &object, OneShotState &state, double ratio, const Floating &floating, bool support);
+bool past_floating_bar(const PrintObject &object, OneShotState &state, const Floating &floating);
+bool auto_offer(const PrintObject &object, OneShotState &state, double t_ps, double pick_rms, double pick_time);
 
 double in_plane_spread(const NpField &field);
 

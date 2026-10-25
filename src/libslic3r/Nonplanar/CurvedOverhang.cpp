@@ -10,6 +10,7 @@
 #include "HeightField.hpp"
 #include "LayerSchedule.hpp"
 #include "PatchTools.hpp"
+#include "Repair.hpp"
 
 #include "libslic3r/BoundingBox.hpp"
 #include "libslic3r/ClipperUtils.hpp"
@@ -588,6 +589,12 @@ bool build_overhang_pass(PrintObject &object, ConformalResult &result, int pass,
         publish(self_supported, result.self_supported, false);
         publish(flat, result.flat_printed, true);
     };
+    if (const RepairHints *hints = object.nonplanar_repair(); hints != nullptr && !hints->planar.empty()) {
+        const std::vector<uint8_t> off = planar_disc_mask(*hints, grid);
+        for (size_t i = 0; i < mask.size() && i < off.size(); ++i)
+            if (off[i])
+                mask[i] = 0;
+    }
     int                    n_comp = 0;
     const std::vector<int> label  = label_components(mask, grid.nx(), grid.ny(), n_comp);
     if (n_comp == 0) {

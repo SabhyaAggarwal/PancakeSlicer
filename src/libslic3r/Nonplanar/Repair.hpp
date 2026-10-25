@@ -1,6 +1,7 @@
 #pragma once
 #include <limits>
 #include <cstddef>
+#include <cstdint>
 #include "HeightField.hpp"
 #include "libslic3r/Point.hpp"
 #include <vector>
@@ -19,10 +20,12 @@ struct RepairHints
     std::vector<OrderBand>  order_bands;
     std::vector<Disc>       uniform_beads;
     std::vector<Disc>       upright;
+    std::vector<Disc>       planar;
     double                  travel_lift = 0.;
     std::vector<size_t>     travel_layers;
 };
 
 HeightField surface_cap_field(const RepairHints &hints, const HeightField &like);
+std::vector<uint8_t> planar_disc_mask(const RepairHints &hints, const HeightField &like);
 
 }

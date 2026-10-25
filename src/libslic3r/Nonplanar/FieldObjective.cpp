@@ -583,6 +583,8 @@ double planar_support_time(const ObjectiveGeometry &g, const ObjectiveMachine &m
 
 double support_time(const ObjectiveGeometry &g, const ObjectiveMachine &m)
 {
+    if (!m.support_on)
+        return 0.;
     if ((m.support_cA >= 0. || m.support_cV >= 0.) && m.support_cos <= 1. &&
         std::none_of(g.n.begin(), g.n.end(), [&m](const Vec3d &n) { return -n.z() >= m.support_cos; }))
         return 0.;

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import domeUrl from '../../../tests/data/nonplanar/dome.obj?url';
+import penUrl from '../../../docs/nonplanar/corpus/everyday/pen_holder.stl?url';
 import knobUrl from '../../../tests/data/nonplanar/corpus/w_knob_knurled.stl?url';
 import hookUrl from '../samples/shelf_hook.stl?url';
 import { choosePrinter, importFiles, openFileDialog, openProjectDialog } from '../actions';
@@ -8,7 +8,7 @@ import { Modal, ModalTitle } from './Modal';
 
 const SETUP_KEY = 'orca.setup';
 const SAMPLES = [
-  { url: domeUrl, file: 'dome.obj', label: 'Dome', tip: 'Curved top, the classic non-planar test' },
+  { url: penUrl, file: 'pen_holder.stl', label: 'Pen holder', tip: 'No unneeded support: Auto matches the plain print' },
   { url: knobUrl, file: 'knob.stl', label: 'Knob', tip: 'An everyday part with a rounded, knurled top' },
   { url: hookUrl, file: 'shelf_hook.stl', label: 'Shelf hook', tip: 'A 90° ledge that prints without support' },
 ];

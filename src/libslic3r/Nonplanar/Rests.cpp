@@ -4,7 +4,9 @@
 #include "Multiplanar.hpp"
 
 #include "libslic3r/ExtrusionEntity.hpp"
+#include "libslic3r/GCode/GCodeProcessor.hpp"
 #include "libslic3r/GCode/ToolKinematics.hpp"
+#include "libslic3r/I18N.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
 #include "libslic3r/Config.hpp"
 #include "libslic3r/Layer.hpp"
@@ -13,6 +15,7 @@
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/TriangleMesh.hpp"
+#include "libslic3r/format.hpp"
 #include "libslic3r/libslic3r.h"
 
 #include <boost/log/trivial.hpp>
@@ -25,6 +28,7 @@
 #include <initializer_list>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -45,6 +49,7 @@ struct Sample
     float    length;
     uint32_t run;
     bool     support, sparse;
+    bool     touch;
 };
 struct Probe
 {
@@ -58,7 +63,9 @@ int64_t key(int x, int y, int z) { return (int64_t(x) * 73856093) ^ (int64_t(y) 
 class Walker
 {
 public:
-    Walker(double bed, double layer, double spacing, bool rotary) : m_bed(bed), m_layer(layer), m_spacing(spacing), m_rotary(rotary) {}
+    Walker(double bed, double layer, double spacing, bool rotary, double interface = -1.)
+        : m_bed(bed), m_layer(layer), m_spacing(spacing), m_rotary(rotary), m_interface(interface)
+    {}
 
     void path(const ExtrusionPath &path, double z)
     {
@@ -67,9 +74,6 @@ public:
         const ExtrusionRole role = path.role();
         if (role == erIroning)
             return;
-        const bool checked = role != erInternalInfill && role != erBridgeInfill && role != erInternalBridgeInfill &&
-                             role != erSolidInfill && role != erSupportMaterialInterface && role != erSupportTransition;
-        const bool surface = role == erTopSolidInfill || role == erBottomSurface;
         const auto         *conformal = dynamic_cast<const ExtrusionPathConformal *>(&path);
         const Points3      &pts       = path.polyline.points;
         const uint32_t      run       = m_runs++;
@@ -91,19 +95,32 @@ public:
                 return Vec3d(unscale<double>(pts[j].x()), unscale<double>(pts[j].y()),
                              conformal != nullptr || path.z_contoured ? z + unscale<double>(pts[j].z()) : z) - 0.5 * h * ax;
             };
-            const Vec3d  a = at(i - 1), b = at(i);
-            const double l = (b - a).norm();
-            const int    n = std::max(1, int(std::ceil(l / Step)));
-            for (int k = 0; k < n; ++k) {
-                const Vec3d p = a + (b - a) * ((k + 0.5) / n);
-                const double s = along + l * (k + 0.5) / n;
-                const Probe probe{ p, ax, s, h, run };
-                if (checked && !this->rests(probe, h, w) && !(surface && this->spans(probe)))
-                    m_floating.push_back(m_samples.size());
-                this->add(Sample{ p.cast<float>(), float(s), float(w), float(l / n), run, is_support(role), role == erInternalInfill });
-            }
-            along += l;
+            this->segment(at(i - 1), at(i), ax, w, h, role, run, along);
         }
+    }
+    uint32_t new_run() { return m_runs++; }
+    void     move(const Vec3d &from, const Vec3d &to, double w, double h, ExtrusionRole role, uint32_t run, double &along)
+    {
+        const Vec3d down = 0.5 * h * Vec3d::UnitZ();
+        this->segment(from - down, to - down, Vec3d::UnitZ(), w, h, role, run, along);
+    }
+    void segment(const Vec3d &a, const Vec3d &b, const Vec3d &ax, double w, double h, ExtrusionRole role, uint32_t run, double &along)
+    {
+        const bool   checked = role != erInternalInfill && role != erBridgeInfill && role != erInternalBridgeInfill &&
+                             role != erSolidInfill && role != erSupportMaterialInterface && role != erSupportTransition;
+        const bool   surface = role == erTopSolidInfill || role == erBottomSurface;
+        const double l       = (b - a).norm();
+        const int    n       = std::max(1, int(std::ceil(l / Step)));
+        for (int k = 0; k < n; ++k) {
+            const Vec3d  p = a + (b - a) * ((k + 0.5) / n);
+            const double s = along + l * (k + 0.5) / n;
+            const Probe  probe{ p, ax, s, h, run };
+            if (checked && !this->rests(probe, h, w) && !(surface && this->spans(probe)))
+                m_floating.push_back(m_samples.size());
+            this->add(Sample{ p.cast<float>(), float(s), float(w), float(l / n), run, is_support(role), role == erInternalInfill,
+                              role == erSupportMaterialInterface || p.z() <= m_bed + 0.75 * m_layer });
+        }
+        along += l;
     }
     void raised(const ExtrusionEntity &ee, double z)
     {
@@ -128,6 +145,48 @@ public:
         Floating out;
         for (size_t i : m_floating)
             (m_samples[i].support ? out.support : out.part) += m_samples[i].length;
+        constexpr double    ClusterReach = 1., MaxSpan = 5.;
+        std::vector<size_t> part;
+        for (size_t i : m_floating)
+            if (!m_samples[i].support)
+                part.push_back(i);
+        std::vector<size_t> parent(part.size());
+        std::iota(parent.begin(), parent.end(), size_t(0));
+        const auto find = [&parent](size_t i) {
+            while (parent[i] != i)
+                i = parent[i] = parent[parent[i]];
+            return i;
+        };
+        const auto cell = [](const Vec3f &p, int dx, int dy, int dz) {
+            return key(int(std::floor(p.x() / ClusterReach)) + dx, int(std::floor(p.y() / ClusterReach)) + dy,
+                       int(std::floor(p.z() / ClusterReach)) + dz);
+        };
+        std::unordered_map<int64_t, std::vector<size_t>> grid;
+        for (size_t k = 0; k < part.size(); ++k) {
+            const Vec3f &p = m_samples[part[k]].p;
+            for (int dz = -1; dz <= 1; ++dz)
+                for (int dy = -1; dy <= 1; ++dy)
+                    for (int dx = -1; dx <= 1; ++dx)
+                        if (auto it = grid.find(cell(p, dx, dy, dz)); it != grid.end())
+                            for (size_t o : it->second)
+                                if ((m_samples[part[o]].p - p).norm() <= ClusterReach)
+                                    parent[find(k)] = find(o);
+            grid[cell(p, 0, 0, 0)].push_back(k);
+        }
+        struct Cluster { Vec3f lo, hi; double road = 0.; };
+        std::unordered_map<size_t, Cluster> clusters;
+        for (size_t k = 0; k < part.size(); ++k) {
+            const Sample &s = m_samples[part[k]];
+            auto [it, fresh] = clusters.try_emplace(find(k), Cluster{ s.p, s.p, 0. });
+            it->second.lo = it->second.lo.cwiseMin(s.p);
+            it->second.hi = it->second.hi.cwiseMax(s.p);
+            it->second.road += s.length;
+        }
+        for (const auto &[root, c] : clusters) {
+            const Vec3f extent = c.hi - c.lo;
+            if (extent.z() >= m_layer || std::max(extent.x(), extent.y()) > MaxSpan)
+                out.air += c.road;
+        }
         return out;
     }
 
@@ -151,12 +210,12 @@ private:
         if (s.p.z() <= m_bed + 0.75 * m_layer)
             return true;
         constexpr double LateralSlack = 0.05, WidestBead = 1.5;
-        const double deep = 2. * std::max(h, m_layer) + 0.1, own = 0.5 * w + h;
+        const double deep = std::max(2. * std::max(h, m_layer) + 0.1, m_interface >= 0. ? 0.5 * h + m_interface : 0.), own = 0.5 * w + h;
         const double side = std::max(own, 0.5 * (w + WidestBead) + LateralSlack);
         return this->any_near(s, std::sqrt(deep * deep + side * side), [&](const Sample &m) {
             const Vec3d  v     = m.p.cast<double>() - s.p;
             const double along = v.dot(s.axis);
-            if (along > -0.01 || along < -deep || (v - along * s.axis).norm() > std::max(own, 0.5 * (w + m.width) + LateralSlack))
+            if (along > -0.01 || along < -deep || (v - along * s.axis).norm() > (m.touch ? std::max(own, 0.5 * (w + m.width) + LateralSlack) : own))
                 return false;
             return m.run != s.run || s.along - m.along >= OwnRun;
         });
@@ -191,6 +250,7 @@ private:
 
     double                                             m_bed, m_layer, m_spacing;
     bool                                               m_rotary;
+    double                                             m_interface = -1.;
     uint32_t                                           m_runs = 0;
     std::vector<Sample>                                m_samples;
     std::vector<uint32_t>                              m_floating;
@@ -247,11 +307,66 @@ Floating floating_road(const PrintObject &object, const ConformalResult *result)
     return walker.floating();
 }
 
+Floating floating_road(const GCodeProcessorResult &result, const PrintObject &object)
+{
+    using Move = GCodeProcessorResult::MoveVertex;
+    const auto bead = [](const Move &m) {
+        return m.type == EMoveType::Extrude && m.delta_extruder > 0.f && m.width > 0.f && m.height > 0.f && !m.internal_only &&
+               m.extrusion_role != erSkirt && m.extrusion_role != erBrim && m.extrusion_role != erWipeTower &&
+               m.extrusion_role != erCustom && m.extrusion_role != erIroning && m.extrusion_role != erNone;
+    };
+    double bed = std::numeric_limits<double>::max(), interface_h = 0.;
+    for (const Move &m : result.moves)
+        if (!m.timing_only && bead(m)) {
+            bed = std::min(bed, double(m.position.z()) - 0.5 * m.height);
+            if (m.extrusion_role == erSupportMaterialInterface)
+                interface_h = std::max(interface_h, double(m.height));
+        }
+    if (bed == std::numeric_limits<double>::max())
+        return {};
+    const PrintRegionConfig &rc      = object.printing_region(0).config();
+    const double             nozzle  = object.print()->config().nozzle_diameter.get_at(0);
+    const double             density = 0.01 * rc.sparse_infill_density.value;
+    const double             spacing = density > 0. ? 2. * rc.sparse_infill_line_width.get_abs_value(nozzle) / density : 6.;
+    const double             gap     = object.config().support_top_z_distance.value;
+    Walker walker(bed, object.config().layer_height.value, spacing, false, interface_h > 0. ? gap + 0.5 * interface_h + 0.1 : -1.);
+    std::optional<Vec3d> from;
+    uint32_t             run    = 0;
+    bool                 in_run = false;
+    double               along  = 0.;
+    for (const Move &m : result.moves) {
+        if (m.timing_only)
+            continue;
+        const Vec3d to = m.position.cast<double>();
+        if (from && bead(m)) {
+            if (!in_run) {
+                run    = walker.new_run();
+                along  = 0.;
+                in_run = true;
+            }
+            walker.move(*from, to, m.width, m.height, m.extrusion_role, run, along);
+        } else
+            in_run = false;
+        from = to;
+    }
+    return walker.floating();
+}
+
 bool floats_past_bar(const Floating &print, const Floating &control)
 {
     constexpr double Share = 1.05, Slack = 2.;
     constexpr double MaterialExcess = 10.;
     return print.part > Share * std::max(control.part, 0.) + Slack + MaterialExcess;
+}
+
+std::string may_need_support(const std::string &name, const Floating &planar)
+{
+    constexpr double MayNeedSupportAir = 20.;
+    if (planar.part < 0. || planar.air <= MayNeedSupportAir)
+        return {};
+    return Slic3r::format(_u8L("%1% may need support: printed without it, as planar layers would print it, %2$.0f mm of its road "
+                               "would be laid in the air."),
+                          name, planar.air);
 }
 
 Floating planar_control_floating(const PrintObject &object, bool support)

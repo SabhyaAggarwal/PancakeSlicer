@@ -102,6 +102,21 @@ struct Bead
     double width, height;
 };
 
+void append_beads(const GCodeProcessorResult &result, const PrintConfig &config, std::vector<Bead> &beads)
+{
+    const auto kinematics = make_tool_kinematics(config);
+    const bool rotary     = kinematics->rotary_count() > 0;
+    for (size_t i = 1; i < result.moves.size(); ++i) {
+        const auto &m = result.moves[i];
+        const ExtrusionRole r = m.extrusion_role;
+        if (m.type != EMoveType::Extrude || r == erSkirt || r == erBrim || r == erWipeTower || r == erCustom || r == erNone ||
+            r == erSupportMaterial || r == erSupportMaterialInterface || r == erSupportTransition)
+            continue;
+        beads.push_back({ result.moves[i - 1].position.cast<double>(), m.position.cast<double>(),
+                          rotary && result.has_joints() ? kinematics->forward(result.joints[i]).axis : Vec3d::UnitZ(), double(m.width), double(m.height) });
+    }
+}
+
 double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector<Bead> &beads,
                       const std::vector<std::pair<std::string, std::string>> &overrides = {}, const std::string &keep_as = {},
                       bool verify = true, MeasuredPrint *measured = nullptr)
@@ -162,7 +177,7 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
     const boost::filesystem::path gcode = boost::filesystem::temp_directory_path() / boost::filesystem::unique_path("np-mf-%%%%-%%%%.gcode");
     boost::system::error_code     ec;
     try {
-        const RotaryMeasurement measurement(mode);
+        const RotaryMeasurement measurement(measured != nullptr && measured->as_printed ? NonplanarMode::Off : mode);
         const bool              unchecked = rotary_measurement_unchecked;
         rotary_measurement_unchecked      = !verify;
         struct Restore
@@ -181,24 +196,15 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
     }
     if (measured != nullptr && !print.objects().empty()) {
         const PrintObject &printed = *print.objects().front();
-        measured->floating         = floating_road(printed, nullptr);
+        measured->floating         = make_tool_kinematics(print.config())->rotary_count() == 0 ? floating_road(result, printed) :
+                                                                                                 floating_road(printed, nullptr);
         measured->support          = std::any_of(printed.support_layers().begin(), printed.support_layers().end(),
                                                  [](const SupportLayer *layer) { return !layer->support_fills.empty(); });
     }
     if (!keep_as.empty())
         boost::filesystem::copy_file(gcode, keep_as, boost::filesystem::copy_options::overwrite_existing, ec);
     boost::filesystem::remove(gcode, ec);
-    const auto kinematics = make_tool_kinematics(print.config());
-    const bool rotary     = kinematics->rotary_count() > 0;
-    for (size_t i = 1; i < result.moves.size(); ++i) {
-        const auto &m = result.moves[i];
-        const ExtrusionRole r = m.extrusion_role;
-        if (m.type != EMoveType::Extrude || r == erSkirt || r == erBrim || r == erWipeTower || r == erCustom || r == erNone ||
-            r == erSupportMaterial || r == erSupportMaterialInterface || r == erSupportTransition)
-            continue;
-        beads.push_back({ result.moves[i - 1].position.cast<double>(), m.position.cast<double>(),
-                          rotary && result.has_joints() ? kinematics->forward(result.joints[i]).axis : Vec3d::UnitZ(), double(m.width), double(m.height) });
-    }
+    append_beads(result, print.config(), beads);
     const double time = result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)].time;
     if (mode == NonplanarMode::Off) {
         const std::lock_guard<std::mutex> lock(planar_mutex);
@@ -707,9 +713,22 @@ double measured_time(const PrintObject &object, NonplanarMode mode, const std::v
 {
     std::vector<Bead> beads;
     const double      time = measured_slice(object, mode, beads, overrides, keep_as, verify, mode == NonplanarMode::Off ? nullptr : measured);
-    if (measured != nullptr)
+    if (measured != nullptr) {
         measured->time = time;
+        TriangleMesh mesh = object.model_object()->raw_mesh();
+        mesh.transform(object.model_object()->instances.front()->get_matrix());
+        measured->rms = rounded_normal_rms(mesh.its, beads);
+    }
     return time;
+}
+
+double export_normal_rms(const PrintObject &object, const GCodeProcessorResult &result)
+{
+    std::vector<Bead> beads;
+    append_beads(result, object.print()->config(), beads);
+    TriangleMesh mesh = object.model_object()->raw_mesh();
+    mesh.transform(object.model_object()->instances.front()->get_matrix());
+    return rounded_normal_rms(mesh.its, beads);
 }
 
 double planar_support_time(const PrintObject &object)

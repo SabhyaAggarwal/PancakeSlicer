@@ -1956,9 +1956,15 @@ void solve_oneshot(PrintObject &object)
         OneShotAbortReason   abort;
         NpField              field;
         std::vector<NpField> time_cut;
-        try {
+        const bool           anchor = state.measured_anchor || state.offer == OneShotState::Offer::Control;
+        if (state.raw && state.raw->cap_scale == state.cap_scale && state.raw->anchor == anchor) {
+            field    = state.raw->field;
+            time_cut = state.raw->time_cut;
+        } else try {
             field = one_shot_field(object, slicing_frame_mesh(object), max_tilt, [&object]() { throw_if_canceled(object); }, state.student,
                                    state.polish_k, abort, &time_cut);
+            if (abort.kind == OneShotAbort::None)
+                state.raw = std::make_shared<const OneShotState::RawSolve>(OneShotState::RawSolve{ field, time_cut, state.cap_scale, anchor });
         } catch (const std::bad_alloc &) {
             throw Slic3r::SlicingError(Slic3r::format(_u8L("One-shot field: %1% is too large for the solve (out of memory)."),
                                                       object.model_object()->name));
@@ -1973,7 +1979,10 @@ void solve_oneshot(PrintObject &object)
         state.z_only                  = in_plane_spread(*state.solved) < OneShotState::ZOnlySpread;
         state.max_time_ratio_override = max_time_ratio_override();
         state.time_cut_note.clear();
+        state.auto_weighed = false;
         admit_time_cut(object, state, time_cut);
+        if (state.offer == OneShotState::Offer::Auto)
+            return;
         choose_route(object, state);
     };
     solve();

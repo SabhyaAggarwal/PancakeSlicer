@@ -5,6 +5,7 @@
 #include "libslic3r/Polyline.hpp"
 #include <functional>
 #include "ConformalBottom.hpp"
+#include "Repair.hpp"
 
 #include "AutoMode.hpp"
 #include "ConformalShells.hpp"
@@ -36,6 +37,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <map>
 #include <string>
@@ -247,6 +249,12 @@ static void build_region_bottom(PrintObject &object, ConformalResult &result, si
     Mask mask(n_nodes, 0);
     for (size_t i = 0; i < n_nodes; ++i)
         mask[i] = cand_mask[i] && !std::isnan(S0.data()[i]);
+    if (const RepairHints *hints = object.nonplanar_repair(); hints != nullptr && !hints->planar.empty()) {
+        const std::vector<uint8_t> off = planar_disc_mask(*hints, grid);
+        for (size_t i = 0; i < n_nodes && i < off.size(); ++i)
+            if (off[i])
+                mask[i] = 0;
+    }
     if (const double slab = full_conformal_thickness(region.config(), object); settings.banded && slab > 0.)
         tbb::parallel_for(tbb::blocked_range<size_t>(0, n_nodes), [&](const tbb::blocked_range<size_t> &range) {
             for (size_t i = range.begin(); i < range.end(); ++i)

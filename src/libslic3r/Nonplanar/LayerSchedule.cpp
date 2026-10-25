@@ -68,12 +68,13 @@ bool field_layers(const PrintObject &object)
     return it != g_field.end() && it->second;
 }
 
-bool field_layers_considered(const PrintObject &object)
+bool field_layers_considered(const PrintObject &object, bool planar_pass)
 {
     const PrintObjectConfig &ocfg  = object.config();
     const PrintConfig       &pcfg  = object.print()->config();
     const ModelObject       &model = *object.model_object();
-    return ocfg.nonplanar_mode.value == NonplanarMode::Auto && pcfg.nonplanar_kinematics.value == RotaryLayout::None && ocfg.raft_layers.value == 0 &&
+    return (planar_pass || ocfg.nonplanar_mode.value == NonplanarMode::Auto) && pcfg.nonplanar_kinematics.value == RotaryLayout::None &&
+           ocfg.raft_layers.value == 0 &&
            !(pcfg.enable_prime_tower.value && pcfg.filament_diameter.size() > 1) &&
            !(ocfg.enable_support.value && is_tree(ocfg.support_type.value)) && !pcfg.spiral_mode.value &&
            ocfg.nonplanar_deform.value != NonplanarDeform::On && model.layer_height_profile.empty() &&

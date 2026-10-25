@@ -455,6 +455,7 @@ ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeo
     const PrintRegionConfig &rc = object.printing_region(0).config();
     const auto               rad = [](double deg) { return deg * M_PI / 180.; };
     ObjectiveMachine         m;
+    m.support_on = oc.enable_support.value;
     m.h                  = oc.layer_height.value;
     m.first_layer        = pc.initial_layer_print_height.value;
     const SlicingParameters &sp = object.slicing_parameters();
@@ -558,8 +559,9 @@ ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeo
 bool oneshot_requested(const PrintObject &object)
 {
     const auto *mode = object.model_object()->config.get().option<ConfigOptionEnum<NonplanarMode>>("nonplanar_mode");
+    const OneShotState *state = object.oneshot_state();
     return (mode ? mode->value : object.print()->default_object_config().nonplanar_mode.value) == NonplanarMode::OneShot &&
-           object.config().nonplanar_atom_toolpath.value.empty();
+           object.config().nonplanar_atom_toolpath.value.empty() && (state == nullptr || state->offer != OneShotState::Offer::Auto);
 }
 
 namespace {
@@ -588,7 +590,7 @@ bool admit_time_cut(const PrintObject &object, OneShotState &state, std::vector<
         return false;
     const auto   t0   = std::chrono::steady_clock::now();
     const double t_ps = measured_time(object, NonplanarMode::Off,
-                                      { { "enable_support", "1" }, { "support_type", "tree(auto)" }, { "support_style", "tree_slim" } }, {}, false);
+                                      {}, {}, false);
     bool admitted = false;
     for (NpField &c : cuts) {
         OneShotState trial = state;
@@ -596,10 +598,11 @@ bool admit_time_cut(const PrintObject &object, OneShotState &state, std::vector<
         trial.z_only       = in_plane_spread(*trial.solved) < OneShotState::ZOnlySpread;
         if (!trial.z_only)
             continue;
-        double t_native;
+        double        t_native;
+        MeasuredPrint native;
         {
             const Injection native_only(trial);
-            t_native = measured_time(object, NonplanarMode::OneShot, {}, {}, false);
+            t_native = measured_time(object, NonplanarMode::OneShot, {}, {}, false, &native);
         }
         const double ratio = t_native / t_ps;
         BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": " << trial.solved->solver << " measured " << ratio
@@ -611,11 +614,28 @@ bool admit_time_cut(const PrintObject &object, OneShotState &state, std::vector<
         if (std::isfinite(ratio) && ratio <= OneShotState::MaxTimeRatio) {
             state.solved = trial.solved;
             admitted     = true;
-            break;
+            state.measured_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+            if (object.print()->objects().size() == 1)
+                auto_offer(object, state, t_ps, native.rms, t_native);
+            return admitted;
         }
     }
     state.measured_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     return admitted;
+}
+
+bool past_floating_bar(const PrintObject &object, OneShotState &state, const Floating &floating)
+{
+    bool float_over = false;
+    if (floating.part >= 0. && floats_past_bar(floating, {})) {
+        const bool     user_support = object.config().enable_support.value && !object.auto_support_applied();
+        const Floating control      = planar_control_floating(object, user_support);
+        state.control_floating      = control.part;
+        if (control.part >= 0. && !user_support)
+            state.planar_air = control.air;
+        float_over = control.part >= 0. && floats_past_bar(floating, control);
+    }
+    return float_over;
 }
 
 bool measured_repick(const PrintObject &object, OneShotState &state, double ratio, const Floating &floating, bool support)
@@ -626,13 +646,7 @@ bool measured_repick(const PrintObject &object, OneShotState &state, double rati
     if (state.offer == Offer::Control)
         return false;
     const bool time_over = std::isfinite(ratio) && ratio > OneShotState::MaxTimeRatio && !state.measured_anchor;
-    bool float_over = false;
-    if (floating.part >= 0. && floats_past_bar(floating, {})) {
-        const bool     user_support = object.config().enable_support.value && !object.auto_support_applied();
-        const Floating control      = planar_control_floating(object, user_support);
-        state.control_floating      = control.part;
-        float_over                  = control.part >= 0. && floats_past_bar(floating, control);
-    }
+    const bool float_over = past_floating_bar(object, state, floating);
     if (!time_over && !float_over)
         return false;
     const bool budget = state.measured_repicks < MaxRepicks;
@@ -644,10 +658,51 @@ bool measured_repick(const PrintObject &object, OneShotState &state, double rati
         state.measured_anchor = true;
     ++state.measured_repicks;
     BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": measured " << ratio << " x planar + support, floating "
-                            << floating.part << " mm against the control's " << state.control_floating << ": "
+                            << floating.part << " mm against the control's " << state.control_floating << " (" << state.planar_air << " into the air): "
                             << (float_over ? (state.offer == Offer::Control ? "the control offer" : "the normal(auto) support offer") :
                                 state.measured_anchor ? "taking the anchor" : "solving again at a tighter cap");
     return true;
+}
+
+bool auto_offer(const PrintObject &object, OneShotState &state, double t_ps, double pick_rms, double pick_time)
+{
+    if (state.offer == OneShotState::Offer::Auto || state.auto_weighed || !std::isfinite(t_ps) || t_ps <= 0.)
+        return false;
+    state.auto_weighed = true;
+    const auto    t0 = std::chrono::steady_clock::now();
+    if (!state.auto_measured) {
+        MeasuredPrint automatic;
+        automatic.as_printed = make_tool_kinematics(object.print()->config())->rotary_count() == 0;
+        std::vector<std::pair<std::string, std::string>> user;
+        for (const char *key : { "enable_support", "support_type", "support_style", "support_critical_regions_only" }) {
+            const ConfigOption *option = object.model_object()->config.get().option(key);
+            if (option == nullptr)
+                option = object.print()->default_object_config().option(key);
+            if (option != nullptr)
+                user.emplace_back(key, option->serialize());
+        }
+        measured_time(object, NonplanarMode::Auto, user, {}, automatic.as_printed, &automatic);
+        state.auto_measured = std::make_shared<const MeasuredPrint>(std::move(automatic));
+        state.auto_floats = past_floating_bar(object, state, state.auto_measured->floating);
+    }
+    const MeasuredPrint &automatic = *state.auto_measured;
+    state.measured_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    const bool   floats = state.auto_floats;
+    const bool   wins  = !floats && std::isfinite(automatic.rms) && std::isfinite(automatic.time) && (!std::isfinite(pick_rms) || automatic.rms < pick_rms);
+    const double ratio = automatic.time / t_ps;
+    state.auto_note = Slic3r::format(", Auto %1$.4f mm %2$.3f x against the pick's %3$.4f mm %4$.3f x%5%", automatic.rms, ratio, pick_rms,
+                                     pick_time / t_ps,
+                                     floats                                ? Slic3r::format(", Auto floats %1$.1f mm past the bar", automatic.floating.part) :
+                                     !wins                                 ? std::string() :
+                                     ratio > OneShotState::MaxTimeRatio    ? Slic3r::format(" -> Auto taken: x%1$.2f planar, past the cap", ratio) :
+                                                                             std::string(" -> Auto"));
+    BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": Auto's own print measured RMS along the normal "
+                            << automatic.rms << " mm, " << ratio << " x planar + support, against the pick's " << pick_rms << " mm, "
+                            << pick_time / t_ps << " x, Auto floating " << automatic.floating.part << " mm (support " << automatic.support
+                            << (floats ? ", past the bar" : "") << "): " << (wins ? "Auto's print" : "the pick");
+    if (wins)
+        state.offer = OneShotState::Offer::Auto;
+    return wins;
 }
 
 void measured_export_check(PrintObject &object, OneShotState &state, const std::function<void()> &resolve)
@@ -656,7 +711,7 @@ void measured_export_check(PrintObject &object, OneShotState &state, const std::
         return;
     const auto t0 = std::chrono::steady_clock::now();
     const double t_ps = measured_time(object, NonplanarMode::Off,
-                                      { { "enable_support", "1" }, { "support_type", "tree(auto)" }, { "support_style", "tree_slim" } }, {}, false);
+                                      {}, {}, false);
     for (;;) {
         MeasuredPrint body;
         {
@@ -795,7 +850,7 @@ std::string OneShotState::floating_decision() const
         return {};
     return Slic3r::format(", floating %1$.1f mm (control %2%) -> %3%", measured_floating,
                           std::isnan(control_floating) ? std::string("not sliced: under any bar") : Slic3r::format("%1$.1f", control_floating),
-                          offer == Offer::Control ? "control" : offer == Offer::NormalSupport ? "normal(auto) support" : "body");
+                          offer == Offer::Control ? "control" : offer == Offer::NormalSupport ? "normal(auto) support" : offer == Offer::Auto ? "Auto" : "body");
 }
 
 NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &mesh, double tilt_max, const std::function<void()> &cancel,
@@ -1611,7 +1666,7 @@ void choose_route(PrintObject &object, OneShotState &state)
             const Injection body_only(state);
             t_body = measured_time(object, NonplanarMode::OneShot, {}, keep_as("body"), false);
             t_ps   = measured_time(object, NonplanarMode::Off,
-                                   { { "enable_support", "1" }, { "support_type", "tree(auto)" }, { "support_style", "tree_slim" } },
+                                   {},
                                    keep_as("ps"), false);
         }
         OneShotState offered = state;

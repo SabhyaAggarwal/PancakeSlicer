@@ -10,6 +10,7 @@
 
 namespace Slic3r {
 class PrintObject;
+struct GCodeProcessorResult;
 }
 
 namespace Slic3r::Nonplanar {
@@ -32,9 +33,13 @@ struct MeasuredPrint
     double   time = std::numeric_limits<double>::quiet_NaN();
     Floating floating { -1., -1. };
     bool     support = false;
+    double   rms     = std::numeric_limits<double>::quiet_NaN();
+    bool     as_printed = false;
 };
 double measured_time(const PrintObject &object, NonplanarMode mode, const std::vector<std::pair<std::string, std::string>> &overrides = {},
                      const std::string &keep_as = {}, bool verify = true, MeasuredPrint *measured = nullptr);
+
+double export_normal_rms(const PrintObject &object, const GCodeProcessorResult &result);
 
 double planar_support_time(const PrintObject &object);
 

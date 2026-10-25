@@ -76,6 +76,7 @@ struct ClearanceParams
     double sweep = 0.25;
     double bead_eps = 0.05;
     bool contact_bar = false;
+    double cone_tolerance = 0.05;
 };
 struct ClearanceReport
 {

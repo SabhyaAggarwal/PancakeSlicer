@@ -5497,6 +5497,15 @@ void PrintConfigDef::init_fff_params()
     def->max      = 85;
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(45));
+    def = this->add("nonplanar_auto_support", coBool);
+    def->label    = L("Add support where a part would float");
+    def->category = L("Support");
+    def->tooltip  = L("With support off, Auto and One-shot still add tree support, critical regions only, where the part "
+                      "would otherwise print in the air (floating regions, a floating cantilever), and say so. Off: no support "
+                      "unless you enable it.");
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(true));
+
     def = this->add("nonplanar_support_interface", coBool);
     def->label    = L("Curved support interface");
     def->category = L("Support");

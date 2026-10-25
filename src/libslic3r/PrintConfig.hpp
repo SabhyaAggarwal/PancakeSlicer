@@ -1247,6 +1247,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionEnum<NonplanarDeform>, nonplanar_deform))
     ((ConfigOptionInt,                 multiplanar_max_planes))
     ((ConfigOptionFloat,               multiplanar_overhang_threshold))
+    ((ConfigOptionBool,                nonplanar_auto_support))
     ((ConfigOptionBool,                nonplanar_support_interface))
     ((ConfigOptionBool,                nonplanar_steep_skin))
     ((ConfigOptionBool,                nonplanar_oneshot_routes))

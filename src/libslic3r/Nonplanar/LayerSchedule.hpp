@@ -15,7 +15,7 @@ struct LayerScheduleParams
 };
 
 bool field_layers(const PrintObject &object);
-bool field_layers_considered(const PrintObject &object);
+bool field_layers_considered(const PrintObject &object, bool planar_pass = false);
 
 LayerScheduleParams layer_schedule_params(const PrintObject &object);
 double field_layer_slope_max();

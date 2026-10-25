@@ -1374,6 +1374,8 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
                                     cone_gap = fine, component = fine_component;
                             }
                         }
+                        if (bar && cone_gap < 0. && -cone_gap <= params.cone_tolerance)
+                            cone_gap = 0.;
                         record(cone_gap, component, p1, ClearanceHitClass::Cone);
                     }
                     double land_gap = laid_columns.swept_clearance(p0, p1, land_boxes, best_land, &index, sweep.land_hint);

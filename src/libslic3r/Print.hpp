@@ -346,7 +346,7 @@ public:
     bool                              auto_support_applied() const { return m_auto_support_applied; }
     SupportNecessaryType              auto_support_need() const { return m_auto_support_need; }
     SupportMaterialStyle              auto_support_style() const { return m_auto_support_style; }
-    bool                              oneshot_manual_support() const { return m_oneshot_manual_support; }
+    double                            auto_support_volume() const { return m_auto_support_volume; }
     bool                              oneshot_support() const;
     SupportMaterialStyle              tree_default_style() const;
     void                              set_field_floating_mm(double mm) { m_field_floating_mm = mm; }
@@ -545,7 +545,6 @@ private:
     SupportNecessaryType m_auto_support_need = NoNeedSupp;
     SupportType          m_auto_support_type{};
     SupportMaterialStyle m_auto_support_style{};
-    bool                 m_oneshot_manual_support = false;
     bool                 m_field_zonly = false;
     double               m_planar_floating_mm = -1.;
     double               m_field_floating_mm  = -1.;
@@ -553,6 +552,7 @@ private:
     SupportType          m_oneshot_offer_type{};
     SupportMaterialStyle m_oneshot_offer_style{};
     bool                 m_auto_support_critical = false;
+    double               m_auto_support_volume   = 0.;
     std::unique_ptr<Nonplanar::ConformalResult> m_conformal;
     std::shared_ptr<Nonplanar::RepairHints>     m_nonplanar_repair;
     std::shared_ptr<Nonplanar::OneShotState>    m_oneshot;

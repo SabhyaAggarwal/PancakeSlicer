@@ -85,6 +85,7 @@ const std::map<std::string, ReasonInfo> &reasons()
         { "narrow", { "wall", L("narrower than half a road: the contoured planar top measured better") } },
         { "outline", { "outline", L("outline between surface samples") } },
         { "near_bed", { "fallback", L("too close to the first layer for a shell") } },
+        { "contact", { "fallback", L("the head grazed printed roads there: planar layers, not Z contoured") } },
         { "no_transition_layer", { "fallback", L("no planar layer under the first shell within the bead range") } },
         { "no_pieces", { "fallback", L("the bands laid no road there") } },
         { "shell_height", { "unreachable", L("shell layer too thick for the nozzle") } },

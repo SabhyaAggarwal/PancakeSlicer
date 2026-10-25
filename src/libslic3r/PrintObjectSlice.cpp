@@ -703,25 +703,22 @@ void groupingVolumesForBrim(PrintObject* object, LayerPtrs& layers, int firstLay
     reGroupingLayerPolygons(object->firstLayerObjGroupsMod(), layers.front()->lslices, scaled_resolution);
 }
 
-static constexpr double MinAutoSupportOverhangArea = 20.;
-static double overhang_area(const PrintObject &object)
+static double floating_seed_area(const PrintObject &object)
 {
-    if (object.model_object()->instances.empty())
-        return 0.;
-    TriangleMesh mesh = object.model_object()->raw_mesh();
-    mesh.transform(object.model_object()->instances.front()->get_matrix());
-    const double threshold = object.config().support_threshold_angle.value > 0 ? object.config().support_threshold_angle.value : 30.;
-    const double down      = -std::cos(threshold * M_PI / 180.);
-    const float  bottom    = mesh.bounding_box().min.z();
-    double       area      = 0.;
-    for (const stl_triangle_vertex_indices &face : mesh.its.indices) {
-        const Vec3f a = mesh.its.vertices[face[0]], b = mesh.its.vertices[face[1]], c = mesh.its.vertices[face[2]];
-        const Vec3f n = (b - a).cross(c - a);
-        const float twice = n.norm();
-        if (twice > 0.f && n.z() / twice < down && std::min({ a.z(), b.z(), c.z() }) > bottom + 0.5f)
-            area += 0.5 * twice;
+    constexpr double MaxSeedDrop = 1.;
+    double           largest     = 0.;
+    for (size_t i = 1; i < object.layer_count(); ++i) {
+        const Layer *layer  = object.get_layer(int(i));
+        const double bottom = layer->print_z - layer->height;
+        ExPolygons   below;
+        for (size_t j = i; j-- > 0 && object.get_layer(int(j))->print_z >= bottom - MaxSeedDrop;)
+            append(below, object.get_layer(int(j))->lslices);
+        const BoundingBox box_below = get_extents(below);
+        for (const ExPolygon &island : layer->lslices)
+            if (!get_extents(island).overlap(box_below) || intersection_ex(ExPolygons{ island }, below).empty())
+                largest = std::max(largest, island.area() * SCALING_FACTOR * SCALING_FACTOR);
     }
-    return area;
+    return largest;
 }
 
 void PrintObject::slice()
@@ -759,10 +756,14 @@ void PrintObject::slice()
         m_config.nonplanar_mode.value = NonplanarMode::Off;
         this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, why);
     }
-    const bool oneshot = Nonplanar::oneshot_requested(*this);
-    if (oneshot) {
+    bool oneshot = Nonplanar::oneshot_requested(*this);
+    if (oneshot)
         Nonplanar::solve_oneshot(*this);
+    if (oneshot && m_oneshot->offer != Nonplanar::OneShotState::Offer::Auto) {
         m_config.nonplanar_mode.value = this->oneshot_state().field_path() ? NonplanarMode::OneShot : NonplanarMode::Off;
+    } else if (m_oneshot && m_oneshot->offer == Nonplanar::OneShotState::Offer::Auto && !m_auto_planar) {
+        oneshot = false;
+        m_config.nonplanar_mode.value = NonplanarMode::Auto;
     }
     std::shared_ptr<const Nonplanar::NpField> zonly_field;
     m_field_zonly = false;
@@ -802,7 +803,7 @@ void PrintObject::slice()
             Nonplanar::supported_underside_bands(Nonplanar::slicing_frame_mesh(*this), threshold, 2. * m_config.layer_height.value),
             m_config.layer_height.value);
     }
-    else if (Nonplanar::field_layers_considered(*this))
+    else if (Nonplanar::field_layers_considered(*this, m_auto_planar))
         if (std::vector<coordf_t> field = Nonplanar::field_layer_profile(*this); !field.empty())
             layer_height_profile = std::move(field);
     m_print->throw_if_canceled();
@@ -911,12 +912,14 @@ void PrintObject::slice()
     }
 
     const bool oneshot_support = oneshot || m_field_zonly;
-    if (!m_config.enable_support.value && !m_layers.empty() && !Nonplanar::rotary_auto_measurement() &&
+    if (!m_config.enable_support.value && m_config.nonplanar_auto_support.value && !m_layers.empty() && !Nonplanar::rotary_auto_measurement() &&
         (m_config.nonplanar_mode.value == NonplanarMode::Auto || m_auto_planar || Nonplanar::auto_rotary_requested(*this) || oneshot_support)) {
         m_auto_support_need = this->is_support_necessary();
-        m_auto_support      = !m_auto_floating_planar &&
-                              (oneshot_support || m_auto_support_need != NoNeedSupp ||
-                               (m_config.nonplanar_mode.value == NonplanarMode::Off && overhang_area(*this) >= MinAutoSupportOverhangArea));
+        constexpr double MinFloatingSeed = 30.;
+        const double     seed            = m_auto_support_need == SharpTail ? floating_seed_area(*this) : 0.;
+        m_auto_support = !m_auto_floating_planar && seed >= MinFloatingSeed;
+        BOOST_LOG_TRIVIAL(info) << "Support guard " << this->model_object()->name << ": Orca's check " << int(m_auto_support_need)
+                                << ", largest region starting in the air " << seed << " mm2" << (m_auto_support ? ", supported" : "");
     } else if (oneshot_support && !m_layers.empty())
         m_auto_support_need = this->is_support_necessary();
 

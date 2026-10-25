@@ -3,6 +3,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <vector>
 
 namespace Slic3r::Nonplanar {
 
@@ -23,6 +26,22 @@ HeightField surface_cap_field(const RepairHints &hints, const HeightField &like)
                 }
     }
     return cap;
+}
+
+std::vector<uint8_t> planar_disc_mask(const RepairHints &hints, const HeightField &like)
+{
+    std::vector<uint8_t> out(like.data().size(), 0);
+    for (const RepairHints::Disc &d : hints.planar) {
+        const int ix0 = std::max(0, int(std::floor((d.p.x() - d.radius - like.origin().x()) / like.pitch())));
+        const int iy0 = std::max(0, int(std::floor((d.p.y() - d.radius - like.origin().y()) / like.pitch())));
+        const int ix1 = std::min(like.nx() - 1, int(std::ceil((d.p.x() + d.radius - like.origin().x()) / like.pitch())));
+        const int iy1 = std::min(like.ny() - 1, int(std::ceil((d.p.y() + d.radius - like.origin().y()) / like.pitch())));
+        for (int iy = iy0; iy <= iy1; ++iy)
+            for (int ix = ix0; ix <= ix1; ++ix)
+                if ((like.node(ix, iy) - d.p).squaredNorm() <= d.radius * d.radius)
+                    out[size_t(iy) * size_t(like.nx()) + size_t(ix)] = 1;
+    }
+    return out;
 }
 
 }
