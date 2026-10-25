@@ -729,7 +729,7 @@ void PrintObject::slice()
     if (m_auto_planar_pass) {
         m_config.nonplanar_mode.value = NonplanarMode::Off;
         m_auto_planar_top_acceleration = m_config.top_surface_acceleration.values;
-        for (size_t i = 0; i < m_config.top_surface_acceleration.values.size(); ++i)
+        for (size_t i = 0; i < m_config.top_surface_acceleration.values.size() && !m_auto_planar_exact; ++i)
             if (const double fallback = m_config.nonplanar_fallback_top_acceleration.get_at(i);
                 fallback > 0. && m_config.top_surface_acceleration.values[i] == m_config.nonplanar_raised_top_acceleration.get_at(i))
                 m_config.top_surface_acceleration.values[i] = fallback;
@@ -737,6 +737,7 @@ void PrintObject::slice()
         m_auto_planar                 = true;
     } else if (m_auto_planar) {
         m_auto_floating_planar        = false;
+        m_auto_planar_exact           = false;
         m_config.nonplanar_mode.value = NonplanarMode::Auto;
         m_config.top_surface_acceleration.values = m_auto_planar_top_acceleration;
         m_auto_planar                 = false;
@@ -803,7 +804,7 @@ void PrintObject::slice()
             Nonplanar::supported_underside_bands(Nonplanar::slicing_frame_mesh(*this), threshold, 2. * m_config.layer_height.value),
             m_config.layer_height.value);
     }
-    else if (Nonplanar::field_layers_considered(*this, m_auto_planar))
+    else if (Nonplanar::field_layers_considered(*this, m_auto_planar && !m_auto_planar_exact))
         if (std::vector<coordf_t> field = Nonplanar::field_layer_profile(*this); !field.empty())
             layer_height_profile = std::move(field);
     m_print->throw_if_canceled();

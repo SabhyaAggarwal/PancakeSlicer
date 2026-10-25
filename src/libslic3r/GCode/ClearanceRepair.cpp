@@ -776,6 +776,7 @@ bool ClearanceRepair::contact_guard(const GCodeProcessorResult &result, size_t c
             if (object->m_auto_floating_planar)
                 continue;
             object->m_auto_floating_planar = true;
+            object->m_auto_planar_exact    = true;
             object->m_auto_planar_pass     = true;
         }
         BOOST_LOG_TRIVIAL(warning) << "Contact guard: " << name << ": " << contacts << " curved moves strike printed material under the "

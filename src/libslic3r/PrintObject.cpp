@@ -105,6 +105,7 @@
 #include <Shiny/Shiny.h>
 #include <vector>
 #include <tbb/concurrent_unordered_map.h>
+#include "ExtrusionEntity.hpp"
 #include "ExtrusionEntityCollection.hpp"
 #include "Fill/FillBase.hpp"
 #include "Fill/Lightning/Generator.hpp"
@@ -856,6 +857,10 @@ void PrintObject::nonplanar_shells()
     m_print->throw_if_canceled();
     m_auto_planar_pass = m_config.nonplanar_mode.value == NonplanarMode::Auto && !imported && !m_auto_z_contouring &&
                          !m_print->config().spiral_mode.value && (!m_conformal || m_conformal->patches.empty());
+    if (m_auto_planar_pass) {
+        m_auto_planar_exact    = true;
+        m_auto_floating_planar = true;
+    }
     this->set_done(posNonplanar);
 }
 
@@ -897,6 +902,29 @@ bool PrintObject::has_conformal_support() const
     return std::any_of(conformal.patches.begin(), conformal.patches.end(), [](const Nonplanar::ConformalPatch &patch) {
                return patch.from_support;
            });
+}
+
+double PrintObject::wall_band() const
+{
+    double weighted = 0., wall = 0., below = 0.;
+    for (const Layer *layer : m_layers) {
+        double length = 0.;
+        for (const LayerRegion *layerm : layer->regions()) {
+            std::vector<const ExtrusionPath *> paths;
+            Nonplanar::collect_paths(&layerm->perimeters, paths);
+            for (const ExtrusionPath *path : paths)
+                if (path->role() == erExternalPerimeter)
+                    length += unscale<double>(path->polyline.length());
+        }
+        if (length <= 0.)
+            continue;
+        if (below > 0. && layer->height > 0.) {
+            weighted += std::abs(layer->height - below) / layer->height * length;
+            wall += length;
+        }
+        below = layer->height;
+    }
+    return wall > 0. ? weighted / wall : 0.;
 }
 
 Nonplanar::OneShotState& PrintObject::oneshot_state()
@@ -1131,6 +1159,16 @@ void PrintObject::generate_support_material(bool with_belt_brim)
                     m_conformal.reset();
             }
             m_print->throw_if_canceled();
+        }
+        constexpr double AutoWallBand = 0.004;
+        m_auto_band_demoted = false;
+        if (!m_auto_floating_planar && !m_auto_planar_exact && (m_config.nonplanar_mode.value == NonplanarMode::Auto || m_auto_planar) &&
+            m_print->config().nonplanar_kinematics.value == RotaryLayout::None && !Nonplanar::rotary_auto_measurement() &&
+            !m_print->config().spiral_mode.value) {
+            const double band   = this->wall_band();
+            m_auto_band_demoted = band >= AutoWallBand;
+            BOOST_LOG_TRIVIAL(warning) << "Auto wall band " << this->model_object()->name << ": " << band
+                                       << (m_auto_band_demoted ? ", printed planar exactly" : ", kept");
         }
         m_auto_floating_demoted = false;
         if (!m_auto_floating_planar && m_config.nonplanar_mode.value == NonplanarMode::Auto && m_conformal &&

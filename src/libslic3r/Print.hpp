@@ -339,6 +339,8 @@ public:
     bool auto_z_contouring() const { return m_shared_object ? m_shared_object->auto_z_contouring() : m_auto_z_contouring; }
     bool auto_planar_pass() const { return m_auto_planar_pass; }
     bool auto_floating_demoted() const { return m_auto_floating_demoted; }
+    bool auto_band_demoted() const { return m_auto_band_demoted; }
+    double wall_band() const;
     const Nonplanar::RepairHints*     nonplanar_repair() const { return m_nonplanar_repair.get(); }
     Nonplanar::OneShotState&          oneshot_state();
     const Nonplanar::OneShotState*    oneshot_state() const { return m_oneshot.get(); }
@@ -538,6 +540,8 @@ private:
     bool m_auto_planar_pass = false;
     bool m_auto_floating_demoted = false;
     bool m_auto_floating_planar  = false;
+    bool m_auto_band_demoted     = false;
+    bool m_auto_planar_exact     = false;
     bool m_auto_planar      = false;
     std::vector<double> m_auto_planar_top_acceleration;
     bool                 m_auto_support = false;
