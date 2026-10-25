@@ -102,7 +102,7 @@ export interface CutPlane {
 
 export interface State {
   api: Api | null;
-  features: { cut?: boolean; volumes?: boolean; edit?: boolean; mesh_plates?: boolean; paint?: boolean; layer_profile?: boolean; arrange?: boolean; project_volumes?: boolean; project_paint?: boolean; orient_scores?: boolean };
+  features: { cut?: boolean; volumes?: boolean; edit?: boolean; mesh_plates?: boolean; paint?: boolean; layer_profile?: boolean; arrange?: boolean; project_volumes?: boolean; project_paint?: boolean; orient_scores?: boolean; floating?: boolean };
   cut: CutPlane | null;
   loading: string | null;
   machines: SystemPreset[];
@@ -150,12 +150,24 @@ export interface State {
   sessionDialog: 'restore' | 'recent' | null;
   orientPrompts: Record<number, OrientPrompt>;
   orientDismissed: number[];
+  orientConfirm: OrientConfirm | null;
 }
 
 export interface OrientPrompt {
   rotation: number[];
-  faster: number;
   pose: string;
+  supportArea: [number, number];
+}
+
+export interface OrientSlice { time_s: number | null; support_g: number | null; floating_mm: number | null }
+
+export interface OrientConfirm {
+  id: number;
+  supportOn: boolean;
+  supportArea: [number, number];
+  original?: OrientSlice;
+  standing?: OrientSlice;
+  error?: string;
 }
 
 let state: State = {
@@ -163,6 +175,7 @@ let state: State = {
   features: {},
   orientPrompts: {},
   orientDismissed: [],
+  orientConfirm: null,
   cut: null,
   loading: 'Connecting',
   machines: [],

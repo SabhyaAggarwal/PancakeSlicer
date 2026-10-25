@@ -92,6 +92,7 @@ const realApi: Api = {
     if (req.project_settings) fd.append('project_settings', JSON.stringify(req.project_settings));
     if (req.project_edits) fd.append('project_edits', JSON.stringify(req.project_edits));
     if (req.force_planar) fd.append('force_planar', '1');
+    if (req.floating) fd.append('floating', '1');
     if (req.calib) { fd.append('calib', req.calib); fd.append('calib_params', req.calib_params ?? ''); if (req.calib_head) fd.append('calib_head', req.calib_head); }
     if (req.preview_budget !== undefined) fd.append('budget', String(req.preview_budget));
     const url = req.preview_budget !== undefined ? '/api/patch-preview' : '/api/jobs';

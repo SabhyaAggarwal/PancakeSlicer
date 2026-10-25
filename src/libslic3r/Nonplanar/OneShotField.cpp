@@ -698,6 +698,33 @@ bool control_past_cap(const PrintObject &object, OneShotState &state)
     return true;
 }
 
+constexpr double OneShotBodyBand   = 0.02;
+constexpr double OneShotBodySlower = 1.02;
+
+bool body_earns_control(const PrintObject &object, OneShotState &state, const Floating &floating)
+{
+    using Offer = OneShotState::Offer;
+    if (state.offer == Offer::Control || state.offer == Offer::Auto)
+        return false;
+    std::string why;
+    if (const double band = object.wall_band(); band > OneShotBodyBand)
+        why = Slic3r::format(", wall band %1$.4f past %2$.2f -> control", band, OneShotBodyBand);
+    else if (state.measured_ratio > OneShotBodySlower) {
+        const bool     user_support = object.config().enable_support.value && !object.auto_support_applied();
+        const Floating control      = planar_control_floating(object, user_support);
+        if (!(control.part >= 0. && floating.part >= 0. && floating.part <= 0.5 * control.part && control.part - floating.part >= 1.))
+            why = Slic3r::format(", %1$.3f x the control, floating %2$.1f mm against its %3$.1f -> control", state.measured_ratio,
+                                 floating.part, control.part);
+    }
+    if (why.empty())
+        return false;
+    state.offer = Offer::Control;
+    ++state.measured_repicks;
+    state.band_note += why;
+    BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": the body against its control" << why;
+    return true;
+}
+
 bool auto_offer(const PrintObject &object, OneShotState &state, double t_ps, double pick_rms, double pick_time)
 {
     if (state.offer == OneShotState::Offer::Auto || state.auto_weighed || !std::isfinite(t_ps) || t_ps <= 0.)

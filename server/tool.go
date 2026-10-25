@@ -39,6 +39,7 @@ type ToolFeatures struct {
 	ProjectVolumes bool            `json:"project_volumes"`
 	ProjectPaint   bool            `json:"project_paint"`
 	OrientScores   bool            `json:"orient_scores"`
+	Floating       bool            `json:"floating"`
 }
 
 type toolOption struct {
@@ -89,6 +90,7 @@ func probeUsage(c Config, f *ToolFeatures) {
 	f.ProjectVolumes = strings.Contains(usage, `--edit takes "add_volume"`)
 	f.ProjectPaint = strings.Contains(usage, `--edit takes "set_paint"`)
 	f.OrientScores = strings.Contains(usage, "--orient-scores")
+	f.Floating = strings.Contains(usage, "[--floating]")
 	if dump, err := toolDump(c, "--dump-presets", "Prusa"); err == nil {
 		f.PresetCompat = bytes.Contains(dump, []byte(`"compatible_printers_evaluated"`))
 	}

@@ -8,6 +8,7 @@
 #include "ToolKinematics.hpp"
 
 #include "libslic3r/BoundingBox.hpp"
+#include "libslic3r/Config.hpp"
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/HeapTrim.hpp"
@@ -736,7 +737,8 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
                 m_band_tried[object] = true;
                 repick               = band_control(*object, s);
             }
-            repick = repick || (budget && (auto_offer(*object, s, t_ps, export_normal_rms(*object, result), time) || control_past_cap(*object, s)));
+            repick = repick || (budget && (auto_offer(*object, s, t_ps, export_normal_rms(*object, result), time) || body_earns_control(*object, s, floating) ||
+                                                           control_past_cap(*object, s)));
             s.measured_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
             if (repick) {
                 ++m_repicks[object];

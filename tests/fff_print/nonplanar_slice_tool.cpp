@@ -7,6 +7,7 @@
 #include <Eigen/Geometry>
 #include <boost/filesystem/directory.hpp>
 #include "libslic3r/Nonplanar/Report.hpp"
+#include "libslic3r/Nonplanar/Rests.hpp"
 #include "libslic3r/Nonplanar/ShellBase.hpp"
 #include "libslic3r/Polygon.hpp"
 #include "libslic3r/PrintBase.hpp"
@@ -35,6 +36,7 @@
 #include "libslic3r/Arrange.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Nonplanar/AutoOrient.hpp"
+#include "libslic3r/Orient.hpp"
 #include "libslic3r/Nonplanar/Calibration.hpp"
 #include "libslic3r/Nonplanar/ConformalShells.hpp"
 #include "libslic3r/Nonplanar/AutoMode.hpp"
@@ -128,6 +130,8 @@ struct Args
     bool        explain    = false;
     bool        auto_orient = false;
     bool        orient_only = false;
+    bool        orient_scores = false;
+    bool        floating   = false;
     std::string edit;
     std::string cut, cut_keep = "both";
     bool        cut_place_lower = false;
@@ -178,7 +182,7 @@ Model read_input(const std::string &file)
                  "       [--profiles DIR] [--datadir DIR] [--bed-type NAME] [--set key=value]... [--center X,Y]\n"
                  "       [--config-out FILE] [--project-out FILE] [--head-out FILE] [--gcode-3mf FILE] [--json FILE]\n"
                  "       [--field-file FIELD.npz] [--dump-field FIELD.npz]\n"
-                 "       [--atom TOOLPATH] [--verify] [--explain] [--auto-orient | --orient-only] [--save-3mf PROJECT.3mf]\n"
+                 "       [--atom TOOLPATH] [--verify] [--explain] [--auto-orient | --orient-only | --orient-scores] [--floating] [--save-3mf PROJECT.3mf]\n"
                  "       [--plate-index N] [--layer-profile adaptive:QUALITY | ramp:H_BOTTOM:H_TOP | range:DEPTH:H | file:PATH] [--calib-head ID]\n"
                  "       -o OUT.gcode (MODEL | PROJECT.3mf | --plate PLATE.json | --project SPEC.json | --calib TEST)\n"
                  "       [--moves-out FILE] [--progress] [--calib-params key=value,...]\n"
@@ -308,6 +312,8 @@ Args parse_args(int argc, char **argv)
         else if (arg == "--verify") a.verify = true;
         else if (arg == "--auto-orient") a.auto_orient = true;
         else if (arg == "--orient-only") a.auto_orient = a.orient_only = true;
+        else if (arg == "--orient-scores") a.orient_scores = true;
+        else if (arg == "--floating") a.floating = true;
         else if (arg == "--edit") a.edit = next();
         else if (arg == "--force-planar") a.force_planar = true;
         else if (arg == "--surface-grid") a.surface_grid = true;
@@ -385,6 +391,10 @@ Args parse_args(int argc, char **argv)
     if (!a.field_file.empty() && std::none_of(a.overrides.begin(), a.overrides.end(), [](const auto &o) { return o.first == "nonplanar_mode"; }))
         a.overrides.insert(a.overrides.begin(), { "nonplanar_mode", "field" });
     if (!a.dump_options.empty() || !a.dump_presets.empty() || !a.verify_gcode.empty()) return a;
+    if (a.orient_scores) {
+        if (a.model.empty()) usage("--orient-scores needs a model");
+        return a;
+    }
     if (a.printer.empty() || a.process.empty() || a.filaments.empty() ||
         (a.output.empty() && ! a.orient_only && a.confirm_up.empty() && a.save_3mf.empty() && a.patch_preview.empty() && a.arrange_only.empty()) ||
         int(! a.model.empty()) + int(! a.plate.empty()) + int(! a.project.empty()) + int(! a.calib.empty()) != 1)
@@ -967,6 +977,27 @@ OrientSlice slice_orientation_child(const Args &args, const Vec3d &up, const fs:
     if (! sl.ok && sl.error.empty())
         sl.error = "slice exited with status " + std::to_string(rc);
     return sl;
+}
+
+void print_stock_orient_scores(const Args &args)
+{
+    double angle = 30;
+    for (const auto &[key, value] : args.overrides)
+        if (key == "support_threshold_angle") angle = std::stod(value);
+    const Model model = read_input(args.model);
+    for (size_t o = 0; o < model.objects.size(); ++o)
+        for (const orientation::CandidateScore &c : orientation::score_candidates(model.objects[o]->mesh(), angle)) {
+            Vec3d  axis;
+            double turn;
+            Geometry::rotation_from_two_vectors(c.up, {0, 0, 1}, axis, turn);
+            const nlohmann::json line = {{"object", o}, {"name", model.objects[o]->name},
+                                         {"up", {c.up.x(), c.up.y(), c.up.z()}}, {"axis", {axis.x(), axis.y(), axis.z()}},
+                                         {"angle_deg", turn * 180. / PI}, {"original", c.original}, {"best", c.best},
+                                         {"unprintability", c.unprintability}, {"support_area", c.support_area},
+                                         {"float_area", c.float_area}, {"float_volume", c.float_volume}, {"bottom_area", c.bottom_area},
+                                         {"size", {c.size.x(), c.size.y(), c.size.z()}}};
+            std::cout << line.dump() << "\n";
+        }
 }
 
 void print_orient_score(const char *tag, const Nonplanar::OrientScore &s)
@@ -1691,6 +1722,7 @@ int main(int argc, char **argv)
     try {
         if (!args.dump_options.empty()) dump_options(args.dump_options);
         if (!args.dump_options.empty() && args.dump_presets.empty()) return 0;
+        if (args.orient_scores) { print_stock_orient_scores(args); return 0; }
         if (! args.json.empty()) slice_json_record(record, args);
         auto progress = [&args](const char *stage, int percent) {
             if (args.progress) std::cout << "progress " << stage << " " << percent << std::endl;
@@ -2466,6 +2498,12 @@ int main(int argc, char **argv)
                 }
             }
             record["totals"]["move_count"] = result.moves.size();
+            if (args.floating && !print.objects().empty()) {
+                const auto                t_floating = std::chrono::steady_clock::now();
+                const Nonplanar::Floating floating   = Nonplanar::floating_road(result, *print.objects().front());
+                record["totals"]["floating"] = {{"part_mm", floating.part}, {"air_mm", floating.air},
+                                                {"seconds", std::chrono::duration<double>(std::chrono::steady_clock::now() - t_floating).count()}};
+            }
             slice_model_context(record, print, config, saved_instances);
             record["status"] = "sliced";
             write_slice_json(args.json, record);

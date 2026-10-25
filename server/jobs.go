@@ -55,6 +55,7 @@ type JobRequest struct {
 	Filename          string         `json:"filename,omitempty"`
 	ProjectSettings   [][2]string    `json:"project_settings,omitempty"`
 	ForcePlanar       bool           `json:"force_planar,omitempty"`
+	Floating          bool           `json:"floating,omitempty"`
 	Calib             string         `json:"calib,omitempty"`
 	CalibParams       string         `json:"calib_params,omitempty"`
 	CalibHead         string         `json:"calib_head,omitempty"`
@@ -572,6 +573,9 @@ func (m *JobManager) toolArgs(j *Job) []string {
 	if r.ForcePlanar {
 		args = append(args, "--force-planar")
 	}
+	if r.Floating {
+		args = append(args, "--floating")
+	}
 	if r.Edits {
 		args = append(args, "--edit", filepath.Join(in, "edits.json"))
 	}
@@ -694,7 +698,7 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 	raw, recordErr := os.ReadFile(j.OutputPath("json"))
 	if j.Request.OrientScores {
 		raw, recordErr = json.Marshal(map[string]any{"schema": "orca.orient-scores.v1", "scores": scores})
-		if len(scores) == 0 || scores[0]["placement"] != "original" {
+		if len(scores) == 0 {
 			recordErr = errors.New("missing native orientation scores")
 		}
 	} else if j.Request.Orient {
@@ -819,32 +823,21 @@ func sanitizeToolError(err error) string {
 var toolErrorPath = regexp.MustCompile(`(^|[\s"'‘(])((?:[A-Za-z]:[\\/]|/)[^\s"'’<>:]+)`)
 
 func orientScoreLine(l string) map[string]any {
-	f := strings.Fields(l)
-	if len(f) < 3 || (f[0] != "auto_orient_original" && f[0] != "auto_orient_candidate") || f[1] != "up" {
+	if !strings.HasPrefix(l, "{") {
 		return nil
 	}
-	parts := strings.Split(f[2], ",")
-	if len(parts) != 3 {
+	var score map[string]any
+	if json.Unmarshal([]byte(l), &score) != nil {
 		return nil
 	}
-	up := make([]float64, 3)
-	norm := 0.
-	for i, p := range parts {
-		v, err := strconv.ParseFloat(p, 64)
-		if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {
-			return nil
-		}
-		up[i] = v
-		norm += v * v
-	}
-	if math.Abs(math.Sqrt(norm)-1) > 0.01 {
+	if _, ok := score["original"].(bool); !ok {
 		return nil
 	}
-	score := map[string]any{"placement": strings.TrimPrefix(f[0], "auto_orient_"), "up": up}
-	for i := 3; i+1 < len(f); i += 2 {
-		if v, err := strconv.ParseFloat(f[i+1], 64); err == nil && !math.IsNaN(v) && !math.IsInf(v, 0) {
-			score[f[i]] = v
-		}
+	if axis, ok := score["axis"].([]any); !ok || len(axis) != 3 {
+		return nil
+	}
+	if _, ok := score["angle_deg"].(float64); !ok {
+		return nil
 	}
 	return score
 }

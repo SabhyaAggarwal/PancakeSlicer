@@ -83,6 +83,7 @@ void measured_export_check(PrintObject &object, OneShotState &state, const std::
 bool measured_repick(const PrintObject &object, OneShotState &state, double ratio, const Floating &floating, bool support);
 bool band_control(const PrintObject &object, OneShotState &state);
 bool control_past_cap(const PrintObject &object, OneShotState &state);
+bool body_earns_control(const PrintObject &object, OneShotState &state, const Floating &floating);
 bool past_floating_bar(const PrintObject &object, OneShotState &state, const Floating &floating);
 bool auto_offer(const PrintObject &object, OneShotState &state, double t_ps, double pick_rms, double pick_time);
 

@@ -1,13 +1,21 @@
-import { getState, printerPreset, setState, subscribeStore, type OrientPrompt, type PlateObject, type State } from '../state/store';
+import { Matrix4, Vector3 } from 'three';
+import { firstLayer, jobFields } from '../slice-input';
+import { loadMoves, supportGrams } from '../preview/data';
+import { effectiveConfig, getState, printerPreset, setState, subscribeStore, type OrientPrompt, type OrientSlice, type PlateObject, type State } from '../state/store';
 import { undoable } from '../state/history';
-import { instanceBox, parsePoints } from './geometry';
+import { instanceBox, parsePoints, plateJson } from './geometry';
 import { orientJob } from './operations';
-import { rotationToZ, withRotation } from './rotation';
+import { withRotation } from './rotation';
 
-interface Score { placement?: unknown; up?: unknown; support_volume?: unknown; float_area?: unknown; time_s?: unknown; stable?: unknown }
+interface Score { object?: unknown; original?: unknown; best?: unknown; axis?: unknown; angle_deg?: unknown; support_area?: unknown; float_area?: unknown }
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
 const pose = (o: PlateObject) => JSON.stringify([o.rotX, o.rotY, o.scale]);
+
+function turn(axis: number[], angle: number): number[] {
+  const e = new Matrix4().makeRotationAxis(new Vector3(axis[0], axis[1], axis[2]).normalize(), (angle * Math.PI) / 180).elements;
+  return [e[0], e[4], e[8], e[1], e[5], e[9], e[2], e[6], e[10]];
+}
 
 function fits(o: PlateObject, rotation: number[]) {
   const machine = printerPreset(getState());
@@ -16,23 +24,21 @@ function fits(o: PlateObject, rotation: number[]) {
   const turned = withRotation(o, rotation);
   const box = instanceBox(turned, turned.instances[0]);
   return box.max.x - box.min.x <= Math.max(...xs) - Math.min(...xs) && box.max.y - box.min.y <= Math.max(...ys) - Math.min(...ys) &&
-    box.max.z - box.min.z <= Number(machine.config.printable_height ?? 1e6) + 1e-6;
+    box.max.z - box.min.z < Number(machine.config.printable_height ?? 1e6) - 0.01;
 }
 
 function decide(o: PlateObject, scores: Score[]): OrientPrompt | null {
-  const original = scores.find((x) => x.placement === 'original');
-  const support = num(original?.support_volume), floating = num(original?.float_area), time = num(original?.time_s);
+  const mine = scores.filter((x) => (num(x.object) ?? 0) === 0);
+  const original = mine.find((x) => x.original === true);
+  const support = num(original?.support_area), floating = num(original?.float_area);
   if (support === undefined || floating === undefined || support <= 0) return null;
-  for (const c of scores) {
-    const up = c.up as number[];
-    const s = num(c.support_volume), f = num(c.float_area), t = num(c.time_s);
-    if (c.placement !== 'candidate' || s === undefined || f === undefined || c.stable === 0 || s > 0.5 * support || f > floating) continue;
-    if (!Array.isArray(up) || up.length !== 3 || !up.every(Number.isFinite) || up[2] > Math.cos(2 * Math.PI / 180)) continue;
-    const rotation = rotationToZ(up as [number, number, number]);
-    if (!fits(o, rotation)) continue;
-    return { rotation, faster: time && t !== undefined && t < time ? Math.round((100 * (time - t)) / time) : 0, pose: pose(o) };
-  }
-  return null;
+  const others = mine.filter((x) => x.original === false && num(x.support_area) !== undefined && num(x.float_area) !== undefined);
+  const best = others.find((x) => x.best === true) ?? [...others].sort((a, b) => num(a.support_area)! - num(b.support_area)!)[0];
+  const axis = best?.axis as number[], angle = num(best?.angle_deg);
+  if (!best || !Array.isArray(axis) || axis.length !== 3 || !axis.every(Number.isFinite) || angle === undefined || Math.abs(angle) < 1) return null;
+  if (num(best.support_area)! > 0.5 * support || num(best.float_area)! > floating) return null;
+  const rotation = turn(axis, angle);
+  return fits(o, rotation) ? { rotation, pose: pose(o), supportArea: [support, num(best.support_area)!] } : null;
 }
 
 const without = (st: State, id: number) => {
@@ -79,12 +85,58 @@ export function startOrientPrompt() {
   check();
 }
 
-export function applyOrientPrompt(id: number) {
+async function sliceAlone(o: PlateObject): Promise<OrientSlice> {
+  const s = getState();
+  const area = parsePoints(printerPreset(s)?.config.printable_area), xs = area.map((p) => p.x), ys = area.map((p) => p.y);
+  const alone = { ...o, instances: [{ ...o.instances[0], z: 0 }] };
+  const box = instanceBox(alone, alone.instances[0]);
+  const inst = alone.instances[0];
+  alone.instances = [{ ...inst, x: inst.x + (Math.min(...xs) + Math.max(...xs)) / 2 - (box.min.x + box.max.x) / 2,
+    y: inst.y + (Math.min(...ys) + Math.max(...ys)) / 2 - (box.min.y + box.max.y) / 2 }];
+  const { plate, files } = await plateJson([alone], firstLayer(s));
+  const id = await s.api!.submit({ ...jobFields(s), plate, files, output: 'gcode', priority: 'low', ...(s.features.floating ? { floating: true } : {}) });
+  try {
+    const status = await new Promise<{ record?: Record<string, unknown> }>((resolve, reject) => {
+      const stop = s.api!.events(id, { progress() {}, done(st) { stop(); resolve(st); }, error(m) { stop(); reject(new Error(m)); } });
+    });
+    const record = status.record ?? {};
+    const text = (record.text_summary ?? {}) as Record<string, unknown>;
+    const weight = num((record.statistics as Record<string, unknown> | undefined)?.total_weight_g) ?? null;
+    const data = await new Promise<Parameters<typeof supportGrams>[0]>((resolve) => {
+      loadMoves({ url: s.api!.movesUrl(id) }, { header() {}, chunk() {}, done: resolve, error: () => resolve(null) });
+    });
+    const floating = (record.totals as Record<string, unknown> | undefined)?.floating as Record<string, unknown> | undefined;
+    return { time_s: num(Number(text.estimated_time_s)) ?? null, support_g: supportGrams(data, weight), floating_mm: num(floating?.part_mm) ?? null };
+  } finally {
+    await s.api!.cancel(id);
+  }
+}
+
+export async function confirmOrientPrompt(id: number) {
   const s = getState(), prompt = s.orientPrompts[id], o = s.objects.find((x) => x.id === id);
-  if (!prompt || !o || pose(o) !== prompt.pose) {
+  if (!prompt || !o || pose(o) !== prompt.pose || !s.api) {
     setState((st) => ({ orientPrompts: without(st, id) }));
     return;
   }
+  const support = o.settings.enable_support ?? effectiveConfig(s, 'process').enable_support;
+  const base = { id, supportOn: support === true || support === 1 || support === '1' || support === 'true', supportArea: prompt.supportArea };
+  setState({ orientConfirm: base });
+  try {
+    const original = await sliceAlone(o);
+    if (getState().orientConfirm?.id !== id) return;
+    setState({ orientConfirm: { ...base, original } });
+    const standing = await sliceAlone(withRotation(o, prompt.rotation));
+    if (getState().orientConfirm?.id !== id) return;
+    setState({ orientConfirm: { ...base, original, standing } });
+  } catch (e) {
+    if (getState().orientConfirm?.id === id) setState({ orientConfirm: { ...base, error: e instanceof Error ? e.message : String(e) } });
+  }
+}
+
+export function standUp(id: number) {
+  const s = getState(), prompt = s.orientPrompts[id], o = s.objects.find((x) => x.id === id);
+  setState((st) => ({ orientConfirm: null, orientPrompts: without(st, id) }));
+  if (!prompt || !o || pose(o) !== prompt.pose) return;
   const turned = withRotation(o, prompt.rotation);
-  undoable('Orient', () => setState((st) => ({ objects: st.objects.map((x) => (x.id === id ? turned : x)), orientPrompts: without(st, id) })));
+  undoable('Orient', () => setState((st) => ({ objects: st.objects.map((x) => (x.id === id ? turned : x)) })));
 }

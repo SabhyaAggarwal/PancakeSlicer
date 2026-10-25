@@ -3,6 +3,7 @@
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 
+#include <cstddef>
 #include <limits>
 #include <string>
 #include <utility>

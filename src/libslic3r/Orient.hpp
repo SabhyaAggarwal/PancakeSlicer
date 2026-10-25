@@ -99,6 +99,20 @@ void orient(ModelObject* obj);
 
 void orient(ModelInstance* instance);
 
+struct CandidateScore {
+    Vec3d  up{0, 0, 1};
+    bool   original{false};
+    bool   best{false};
+    float  unprintability{0};
+    float  support_area{0};
+    float  bottom_area{0};
+    double float_area{0};
+    double float_volume{0};
+    Vec3d  size{0, 0, 0};
+};
+
+std::vector<CandidateScore> score_candidates(const TriangleMesh &mesh, double overhang_angle);
+
 void orient_for_cooling(TriangleMesh& mesh, const FanDirection& fan_dir);
 
 }}

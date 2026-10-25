@@ -15,6 +15,8 @@
 #include <algorithm>
 #include <cstdlib>
 #include "Model.hpp"
+#include "AABBMesh.hpp"
+#include "BoundingBox.hpp"
 #include "PrintConfig.hpp"
 #include <numeric>
 #include <boost/geometry/index/rtree.hpp>
@@ -129,7 +131,7 @@ public:
         return Vec3f(floor(n1(0) * 1000) / 1000, floor(n1(1) * 1000) / 1000, floor(n1(2) * 1000) / 1000);
     }
 
-    Vec3d process()
+    void collect_orientations()
     {
         orientations = { { 0,0,-1 } };
 
@@ -146,10 +148,17 @@ public:
 
         if (progressind)
             progressind(30);
+    }
 
+    using Ranked = std::vector<std::pair<Vec3f, CostItems>>;
+
+    Ranked rank(bool log)
+    {
         std::unordered_map<Vec3f, CostItems, VecHash> results;
-        BOOST_LOG_TRIVIAL(info) << CostItems::field_names();
-        std::cout << CostItems::field_names() << std::endl;
+        if (log) {
+            BOOST_LOG_TRIVIAL(info) << CostItems::field_names();
+            std::cout << CostItems::field_names() << std::endl;
+        }
         for (int i = 0; i < orientations.size();i++) {
             Vec3f orientation = -orientations[i];
 
@@ -161,21 +170,26 @@ public:
 
             results[orientation] = cost_items;
 
-            BOOST_LOG_TRIVIAL(info) << std::fixed << std::setprecision(4) << "orientation:" << orientation.transpose() << ", cost:" << std::fixed << std::setprecision(4) << cost_items.field_values();
-            std::cout << std::fixed << std::setprecision(4) << "orientation:" << orientation.transpose() << ", cost:" << std::fixed << std::setprecision(4) << cost_items.field_values() << std::endl;
+            if (log) {
+                BOOST_LOG_TRIVIAL(info) << std::fixed << std::setprecision(4) << "orientation:" << orientation.transpose() << ", cost:" << std::fixed << std::setprecision(4) << cost_items.field_values();
+                std::cout << std::fixed << std::setprecision(4) << "orientation:" << orientation.transpose() << ", cost:" << std::fixed << std::setprecision(4) << cost_items.field_values() << std::endl;
+            }
         }
         if (progressind)
             progressind(60);
 
-        typedef std::pair<Vec3f, CostItems> PAIR;
-        std::vector<PAIR> results_vector(results.begin(), results.end());
-        sort(results_vector.begin(), results_vector.end(), [](const PAIR& p1, const PAIR& p2) {return p1.second.unprintability < p2.second.unprintability; });
+        Ranked results_vector(results.begin(), results.end());
+        sort(results_vector.begin(), results_vector.end(), [](const auto& p1, const auto& p2) {return p1.second.unprintability < p2.second.unprintability; });
 
         if (progressind)
             progressind(80);
+        return results_vector;
+    }
 
+    static size_t best_index(const Ranked &results_vector, Vec3f &best_orientation)
+    {
         Vec3f n1 = {0, 0, 1};
-        auto best_orientation = results_vector[0].first;
+        best_orientation = results_vector[0].first;
         size_t best_index = 0;
 
         for (int i = 1; i< results_vector.size()-1; i++) {
@@ -191,13 +205,31 @@ public:
             }
 
         }
+        return best_index;
+    }
 
-        areas_cooling = results_vector[best_index].second.areas_cooling;
+    Vec3d process()
+    {
+        collect_orientations();
+        Ranked results_vector = rank(true);
+        Vec3f best_orientation;
+        const size_t best = best_index(results_vector, best_orientation);
+
+        areas_cooling = results_vector[best].second.areas_cooling;
 
         BOOST_LOG_TRIVIAL(info) << std::fixed << std::setprecision(6) << "best:" << best_orientation.transpose() << ", costs:" << results_vector[0].second.field_values();
         std::cout << std::fixed << std::setprecision(6) << "best:" << best_orientation.transpose() << ", costs:" << results_vector[0].second.field_values() << std::endl;
 
         return best_orientation.cast<double>();
+    }
+
+    Ranked candidates(size_t &best)
+    {
+        collect_orientations();
+        Ranked ranked = rank(false);
+        Vec3f  best_orientation;
+        best = best_index(ranked, best_orientation);
+        return ranked;
     }
 
     void preprocess()
@@ -640,6 +672,75 @@ void orient(ModelInstance* instance)
     Matrix3d rotation_matrix;
     Geometry::rotation_from_two_vectors(orientation, { 0,0,1 }, axis, angle, &rotation_matrix);
     instance->rotate(rotation_matrix);
+}
+
+std::vector<CandidateScore> score_candidates(const TriangleMesh &mesh, double overhang_angle)
+{
+    OrientMesh om;
+    om.mesh           = mesh;
+    om.overhang_angle = overhang_angle;
+    AutoOrienter      orienter(&om, OrientParams{}, {}, {});
+    size_t            best;
+    const auto        ranked = orienter.candidates(best);
+
+    const OrientParams          params;
+    const float                 ascent  = float(cos(PI - overhang_angle * PI / 180));
+    const indexed_triangle_set &its     = mesh.its;
+    const auto                  normals = its_face_normals(its);
+    const AABBMesh              aabb(its);
+
+    std::vector<CandidateScore> out(ranked.size());
+    tbb::parallel_for(size_t(0), ranked.size(), [&](size_t c) {
+        const Vec3f    up = ranked[c].first;
+        CandidateScore &s = out[c];
+        s.up             = up.cast<double>();
+        s.original       = (up - Vec3f(0, 0, 1)).norm() < EPSILON;
+        s.best           = c == best;
+        s.unprintability = ranked[c].second.unprintability;
+        s.support_area   = ranked[c].second.overhang;
+        s.bottom_area    = ranked[c].second.bottom;
+
+        Vec3d    axis;
+        double   angle;
+        Matrix3d rotation;
+        Geometry::rotation_from_two_vectors(s.up, {0, 0, 1}, axis, angle, &rotation);
+        BoundingBoxf3 box;
+        for (const stl_vertex &v : its.vertices)
+            box.merge(rotation * v.cast<double>());
+        s.size = box.size();
+
+        const double  bed  = box.min.z();
+        const Vec3d   down = -s.up;
+        for (size_t f = 0; f < its.indices.size(); ++f) {
+            const double dot = normals[f].cast<double>().dot(s.up);
+            if (dot >= ascent)
+                continue;
+            const Vec3d p[3] = {its.vertices[its.indices[f][0]].cast<double>(), its.vertices[its.indices[f][1]].cast<double>(),
+                                its.vertices[its.indices[f][2]].cast<double>()};
+            const double h[3] = {(rotation * p[0]).z() - bed, (rotation * p[1]).z() - bed, (rotation * p[2]).z() - bed};
+            if (std::max({h[0], h[1], h[2]}) < params.FIRST_LAY_H / 2.f - EPSILON)
+                continue;
+            const double area = 0.5 * (p[1] - p[0]).cross(p[2] - p[0]).norm();
+            const int    n    = std::clamp(int(std::ceil(std::sqrt(area))), 1, 8);
+            int          floating = 0;
+            double       height   = 0;
+            for (int i = 0; i < n; ++i)
+                for (int j = 0; i + j < n; ++j)
+                    for (int k = 0; k < (i + j + 1 < n ? 2 : 1); ++k) {
+                        const double a = (i + (k ? 2. : 1.) / 3.) / n, b = (j + (k ? 2. : 1.) / 3.) / n;
+                        const Vec3d  q = p[0] + a * (p[1] - p[0]) + b * (p[2] - p[0]);
+                        if (!aabb.query_ray_hit(q + 1e-3 * down, down).is_hit()) {
+                            ++floating;
+                            height += (rotation * q).z() - bed;
+                        }
+                    }
+            const double share = double(floating) / double(n * n);
+            s.float_area += area * share;
+            if (floating > 0)
+                s.float_volume += area * std::abs(dot) * share * height / floating;
+        }
+    });
+    return out;
 }
 
 void orient_for_cooling(TriangleMesh& mesh, const FanDirection& fan_dir)

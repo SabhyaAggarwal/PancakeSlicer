@@ -199,6 +199,13 @@ export interface LoadHandlers {
   error(d: PreviewData, message: string): void;
 }
 
+export function supportGrams(d: PreviewData | null, total: number | null): number | null {
+  if (!d?.done) return null;
+  const mm = d.roleFilament[14] + d.roleFilament[15] + d.roleFilament[16];
+  const all = d.filamentMm.reduce((a, b) => a + (b ?? 0), 0);
+  return mm <= 0 ? 0 : total != null && all > 0 ? (total * mm) / all : null;
+}
+
 export function loadMoves(src: WorkerIn, on: LoadHandlers): { data: PreviewData; cancel(): void } {
   const d = new PreviewData();
   d.sourceUrl = src.url;

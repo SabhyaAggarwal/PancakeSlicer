@@ -243,6 +243,13 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		}
 		req.ForcePlanar = true
 	}
+	if r.FormValue("floating") != "" {
+		if !s.cfg.Features.Floating {
+			fail(w, 400, "floating requires a tool with --floating")
+			return
+		}
+		req.Floating = true
+	}
 	if r.URL.Path == "/api/patch-preview" {
 		if !s.cfg.Features.PatchPreview {
 			fail(w, 501, "this slicer has no patch preview")

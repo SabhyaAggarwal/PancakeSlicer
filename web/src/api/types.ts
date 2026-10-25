@@ -86,6 +86,7 @@ export interface JobRequest {
   calib_params?: string;
   calib_head?: string;
   force_planar?: boolean;
+  floating?: boolean;
   priority?: 'low';
   preview_budget?: number;
 }

@@ -1,6 +1,6 @@
 import { slicingText } from '../api/progress';
 import { accessNotice, accessSnapshot, saveAccessToken, subscribeAccess } from '../api/access';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import * as THREE from 'three';
 import { addInstance, arrangeAll, cancelSlice, download, fileUse, openFileDialog, outputKind, removeInstance, toolbarOperation, outsideVolumeWarning } from '../actions';
@@ -13,6 +13,8 @@ import { instanceMatrix, volumeBox } from '../plater/geometry';
 import { Icon, IconButton } from './Icon';
 import { canPerformCut, cutBlocked, initialCut, performCut, setCut, toggleCut } from '../plater/cut';
 import { InTopLayer } from './Modal';
+
+const OrientConfirm = lazy(() => import('./OrientConfirm').then((m) => ({ default: m.OrientConfirm })));
 import { addPlate, canAddPlate } from '../plater/plates';
 import { arrangeSettings, resetArrangeSettings, setArrangeSettings, subscribeArrangeSettings } from '../plater/arrangeSettings';
 import { ANGLE, EXTRUDERS_LIMIT, GAP_AREA, HEIGHT, RADIUS, canPaint, gapFill, isPaint, paintOf, PAINT_STEP, paintTool, setPaintTool, subscribePaintTool, togglePaint, type BrushTool, type PaintKind } from '../plater/paint';
@@ -294,6 +296,7 @@ export function SliceNotification() {
   const suggestIds = useStore((s) => pendingRecommendations(s).map((o) => o.id).join(','));
   const plateObjects = useStore((s) => s.objects);
   const orientPrompts = useStore((s) => s.orientPrompts);
+  const orientConfirm = useStore((s) => s.orientConfirm !== null);
   const suggest = useMemo(() => plateObjects.filter((o) => suggestIds.split(',').includes(String(o.id))), [plateObjects, suggestIds]);
   const facts = !fresh && !busy && patchPreview ? patchPreview.facts.filter((f) => !suggestIds.split(',').includes(String(f.objectId))) : [];
   const factsKey = `np:${facts.map((f) => `${f.objectId}:${f.curved}`).join(',')}`;
@@ -326,7 +329,8 @@ export function SliceNotification() {
           <div className="notif-body">Print-in-place gaps · <button type="button" className="notif-link" onClick={() => applyRecommended(suggest)}>Use Standard</button></div>
         </div>
       )}
-      {Object.entries(orientPrompts).map(([id, p]) => {
+      {orientConfirm && <Suspense fallback={null}><OrientConfirm /></Suspense>}
+      {Object.keys(orientPrompts).map((id) => {
         const o = plateObjects.find((x) => String(x.id) === id);
         return o && (
           <div key={`orient${id}`} className="notification done">
@@ -334,7 +338,7 @@ export function SliceNotification() {
               <Icon name="notification_close" size={14} />
             </button>
             <div className="notif-title">{o.name}</div>
-            <div className="notif-body">Stand this part up: less support{p.faster > 0 ? `, ~${p.faster} % faster` : ''} · <button type="button" className="notif-link" onClick={() => void import('../plater/orientPrompt').then((m) => m.applyOrientPrompt(o.id))}>Apply</button></div>
+            <div className="notif-body">Stand this part up: less support · <button type="button" className="notif-link" onClick={() => void import('../plater/orientPrompt').then((m) => m.confirmOrientPrompt(o.id))}>Apply</button></div>
           </div>
         );
       })}

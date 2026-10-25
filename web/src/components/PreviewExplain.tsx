@@ -2,7 +2,7 @@ import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { forgetCompare, setStandardData, startCompare, stopCompare, useCompare, useStandardData } from '../compare';
 import { computeRanges, drawMasks, NONPLANAR_PLANAR_COLOR, type Visibility } from '../preview/colors';
-import { loadMoves, type PreviewData } from '../preview/data';
+import { loadMoves, supportGrams, type PreviewData } from '../preview/data';
 import { area, grams, microns, readRecord, supportText, type RecordSummary } from '../preview/explain-record';
 import { MoveType, shortTime } from '../preview/format';
 import { PreviewScene } from '../preview/PreviewScene';
@@ -14,13 +14,6 @@ import { colorContext, type PreviewUi } from './PreviewView';
 const TWO_SCENE_VERTICES = 8e6;
 const NOT_PART = new Set([12, 17, 18]);
 const UNCALIBRATED = 'Head sizes from drawings, not measured on this printer';
-
-function supportGrams(d: PreviewData | null, total: number | null): number | null {
-  if (!d?.done) return null;
-  const mm = d.roleFilament[14] + d.roleFilament[15] + d.roleFilament[16];
-  const all = d.filamentMm.reduce((a, b) => a + (b ?? 0), 0);
-  return mm <= 0 ? 0 : total != null && all > 0 ? (total * mm) / all : null;
-}
 
 function partBox(d: PreviewData): [THREE.Vector3, THREE.Vector3] | null {
   const min = new THREE.Vector3(Infinity, Infinity, Infinity), max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
