@@ -535,6 +535,10 @@ ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeo
             if (pc.printer_model.value == c.model)
                 z.cap = c.cap, m.support_cA = c.support_cA, m.support_cH = c.support_cH;
     }
+    if (const double limit = max_time_ratio_override(); limit > 0.) {
+        m.time_zonly.cap *= limit / OneShotState::MaxTimeRatio;
+        m.time_curved.cap *= limit / OneShotState::MaxTimeRatio;
+    }
     if (const OneShotState *state = object.oneshot_state(); state != nullptr && state->cap_scale < 1.)
         m.time_zonly.cap = std::max(1., m.time_zonly.cap * state->cap_scale);
     if (m.rotary)
@@ -606,12 +610,12 @@ bool admit_time_cut(const PrintObject &object, OneShotState &state, std::vector<
         }
         const double ratio = t_native / t_ps;
         BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": " << trial.solved->solver << " measured " << ratio
-                                << " x planar + support" << (ratio <= OneShotState::MaxTimeRatio ? ", adopted" : ", over the limit");
+                                << " x planar + support" << (ratio <= state.max_time_ratio() ? ", adopted" : ", over the limit");
         const std::string &solver = trial.solved->solver;
         const size_t       at     = solver.rfind(" native ") + 8;
         state.time_cut_note += Slic3r::format(", time-cut native %1% measured %2$.3f%3%", solver.substr(at, solver.size() - at - 1), ratio,
-                                              ratio <= OneShotState::MaxTimeRatio ? " (adopted)" : "");
-        if (std::isfinite(ratio) && ratio <= OneShotState::MaxTimeRatio) {
+                                              ratio <= state.max_time_ratio() ? " (adopted)" : "");
+        if (std::isfinite(ratio) && ratio <= state.max_time_ratio()) {
             state.solved = trial.solved;
             admitted     = true;
             state.measured_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
@@ -645,7 +649,7 @@ bool measured_repick(const PrintObject &object, OneShotState &state, double rati
     state.measured_floating  = floating.part;
     if (state.offer == Offer::Control)
         return false;
-    const bool time_over = std::isfinite(ratio) && ratio > OneShotState::MaxTimeRatio && !state.measured_anchor;
+    const bool time_over = std::isfinite(ratio) && ratio > state.max_time_ratio() && !state.measured_anchor;
     const bool float_over = past_floating_bar(object, state, floating);
     if (!time_over && !float_over)
         return false;
@@ -653,7 +657,7 @@ bool measured_repick(const PrintObject &object, OneShotState &state, double rati
     if (float_over)
         state.offer = budget && support && state.offer == Offer::Body ? Offer::NormalSupport : Offer::Control;
     else if (budget)
-        state.cap_scale *= OneShotState::MaxTimeRatio / ratio;
+        state.cap_scale *= state.max_time_ratio() / ratio;
     else
         state.measured_anchor = true;
     ++state.measured_repicks;
@@ -661,6 +665,22 @@ bool measured_repick(const PrintObject &object, OneShotState &state, double rati
                             << floating.part << " mm against the control's " << state.control_floating << " (" << state.planar_air << " into the air): "
                             << (float_over ? (state.offer == Offer::Control ? "the control offer" : "the normal(auto) support offer") :
                                 state.measured_anchor ? "taking the anchor" : "solving again at a tighter cap");
+    return true;
+}
+
+bool band_control(const PrintObject &object, OneShotState &state)
+{
+    if (state.offer == OneShotState::Offer::Control || state.offer == OneShotState::Offer::Auto || state.measured_anchor ||
+        state.route != nullptr)
+        return false;
+    const double band = object.wall_band();
+    if (band < PrintObject::WallBand)
+        return false;
+    state.offer = OneShotState::Offer::Control;
+    ++state.measured_repicks;
+    state.band_note = Slic3r::format(", wall band %1$.4f -> control", band);
+    BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": wall band " << band << " past " << PrintObject::WallBand
+                            << ": the control offer";
     return true;
 }
 
@@ -694,7 +714,7 @@ bool auto_offer(const PrintObject &object, OneShotState &state, double t_ps, dou
                                      pick_time / t_ps,
                                      floats                                ? Slic3r::format(", Auto floats %1$.1f mm past the bar", automatic.floating.part) :
                                      !wins                                 ? std::string() :
-                                     ratio > OneShotState::MaxTimeRatio    ? Slic3r::format(" -> Auto taken: x%1$.2f planar, past the cap", ratio) :
+                                     ratio > state.max_time_ratio()    ? Slic3r::format(" -> Auto taken: x%1$.2f planar, past the cap", ratio) :
                                                                              std::string(" -> Auto"));
     BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": Auto's own print measured RMS along the normal "
                             << automatic.rms << " mm, " << ratio << " x planar + support, against the pick's " << pick_rms << " mm, "
@@ -738,18 +758,60 @@ double in_plane_spread(const NpField &f)
     return spread;
 }
 
+constexpr double TopSpreadLayers = 6.;
+
+static std::vector<double> tops_profile(const std::vector<double> &tops)
+{
+    std::vector<double> out { 0., tops.front() };
+    for (size_t j = 1; j < tops.size(); ++j) {
+        const double below = tops[j - 1], h = tops[j] - below;
+        out.insert(out.end(), { below, h, tops[j] - 1e-4, h });
+    }
+    out.insert(out.end(), { tops.back(), out.back() });
+    return out;
+}
+
+static std::vector<double> capped_tops(const std::vector<double> &tops, double min_h, double max_h)
+{
+    if (tops.size() < 3)
+        return tops;
+    constexpr double    dz    = 0.01;
+    const double        z0    = tops.front(), top = tops.back();
+    const size_t        n     = size_t(std::ceil((top - z0) / dz)) + 1;
+    std::vector<double> t(n);
+    for (size_t i = 0, j = 1; i < n; ++i) {
+        const double z = z0 + (double(i) + 0.5) * dz;
+        while (j + 1 < tops.size() && tops[j] <= z)
+            ++j;
+        t[i] = std::clamp(tops[j] - tops[j - 1], min_h, max_h);
+    }
+    cap_layer_change(t, dz);
+    auto at = [&](double z) { return t[std::min(n - 1, size_t(std::max(0., (z - z0) / dz)))]; };
+    std::vector<double> out { z0 };
+    for (double below = z0; below < top - 1e-6;) {
+        double h = at(below);
+        for (double z = below; z < below + h && z < top; z += dz)
+            h = std::min(h, std::max(at(z), z - below));
+        h = std::clamp(h, min_h, max_h);
+        const double rest = top - below;
+        size_t       n    = size_t(std::ceil(rest / h - 1e-9));
+        while (n > 1 && rest / double(n) < min_h)
+            --n;
+        if (n <= 1 || rest / double(n) > max_h)
+            h = std::min(rest, max_h);
+        else if (rest < TopSpreadLayers * h)
+            h = rest / double(n);
+        below = std::min(below + h, top);
+        out.push_back(below);
+    }
+    return out;
+}
+
 std::vector<double> layer_profile(const NpField &f, double first_layer, double top, double min_h, double max_h,
                                   const std::vector<std::pair<double, double>> &planar_bands, double planar_h)
 {
-    if (!f.layer_tops.empty()) {
-        std::vector<double> out { 0., f.layer_tops.front() };
-        for (size_t j = 1; j < f.layer_tops.size(); ++j) {
-            const double below = f.layer_tops[j - 1], h = f.layer_tops[j] - below;
-            out.insert(out.end(), { below, h, f.layer_tops[j] - 1e-4, h });
-        }
-        out.insert(out.end(), { f.layer_tops.back(), out.back() });
-        return out;
-    }
+    if (!f.layer_tops.empty())
+        return tops_profile(f.layer_tops);
     std::vector<double> z(f.dims[2]), phi(f.dims[2]);
     for (size_t k = 0; k < f.dims[2]; ++k) {
         double sum = 0.;
@@ -778,6 +840,15 @@ std::vector<double> layer_profile(const NpField &f, double first_layer, double t
         }
         if (const double rest = top - below; rest - h < std::max(min_h, 0.5 * f.h))
             h = rest <= max_h ? rest : 0.5 * rest;
+        if (smooth_layers() && planar_h <= 0.) {
+            const double rest = top - below, h0 = std::clamp(inverse(first_layer + j * f.h) - below, min_h, max_h);
+            if (rest < TopSpreadLayers * h0 && rest > h0 + 1e-6) {
+                size_t parts = size_t(std::ceil(rest / h0 - 1e-9));
+                while (parts > 1 && rest / double(parts) < min_h)
+                    --parts;
+                h = std::min(rest / double(std::max<size_t>(parts, 1)), max_h);
+            }
+        }
         out.insert(out.end(), { below, h, std::min(below + h, top) - 1e-4, h });
         below += h;
     }
@@ -894,6 +965,8 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
             std::vector<double> tops;
             for (size_t i = 1; i < layers.size(); i += 2)
                 tops.push_back(layers[i]);
+            if (smooth_layers())
+                tops = capped_tops(tops, m.thickness_min, m.thickness_max);
             params.native_offers.emplace_back("orca_adaptive_q" + std::to_string(int(std::lround(100. * q))), anchor_field(g, tops, m.first_layer, m.h));
             params.exact_natives.emplace_back("native_orca_q" + std::to_string(int(std::lround(100. * q))), anchor_field(g, tops, m.first_layer, m.h));
             exact_tops.push_back(tops);
@@ -903,6 +976,8 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
             if (t < m.thickness_min - 1e-9 || t > m.thickness_max + 1e-9)
                 continue;
             std::vector<double> tops = mode_off_tops(object, t);
+            if (smooth_layers())
+                tops = capped_tops(tops, m.thickness_min, m.thickness_max);
             params.exact_natives.emplace_back("native_u" + float_to_string_decimal_point(t, 2), anchor_field(g, tops, m.first_layer, m.h));
             exact_tops.push_back(std::move(tops));
         }

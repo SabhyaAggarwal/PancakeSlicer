@@ -1,6 +1,7 @@
 #pragma once
 #include "libslic3r/Nonplanar/Repair.hpp"
 #include <cstddef>
+#include <map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -49,6 +50,8 @@ private:
     double                   m_last_min   = 0.;
     std::vector<Planned>     m_planned;
     std::vector<PrintObject *> m_repick;
+    std::map<const PrintObject *, int> m_repicks;
+    std::map<const PrintObject *, bool> m_band_tried;
     int                      m_guard_passes = 0;
     std::vector<std::string> m_guard_warnings;
     std::vector<std::string> m_actions;

@@ -21,6 +21,19 @@ class ToolKinematics;
 
 namespace Slic3r::Nonplanar {
 
+bool nested_field_slice();
+class NestedFieldSlice
+{
+public:
+    NestedFieldSlice();
+    ~NestedFieldSlice();
+    NestedFieldSlice(const NestedFieldSlice &) = delete;
+    NestedFieldSlice &operator=(const NestedFieldSlice &) = delete;
+
+private:
+    bool m_previous;
+};
+
 struct ConformalResult;
 class NpLayerField;
 struct NpField;

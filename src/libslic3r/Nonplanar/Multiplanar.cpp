@@ -29,6 +29,7 @@
 #include "libslic3r/GCode/ToolKinematics.hpp"
 #include "libslic3r/Line.hpp"
 #include "libslic3r/Geometry.hpp"
+#include "libslic3r/GCode/ConformalEmit.hpp"
 #include "libslic3r/I18N.hpp"
 #include "libslic3r/Layer.hpp"
 #include "libslic3r/Model.hpp"
@@ -1372,7 +1373,7 @@ void build_multiplanar_chunks(PrintObject &object, const MultiplanarPlan &plan, 
                 for (const Vec3d &t : tips)
                     polyline.points.push_back(Point3::new_scale(t.x(), t.y(), t.z() - host->print_z));
                 if (rotary) {
-                    if (!(route && chunk.build_dir.z() > 1. - 1e-9))
+                    if (!(route && chunk.build_dir.z() >= std::cos(Geometry::deg2rad(UprightRoadDeg + 0.01))))
                         tool_axis.assign(pts.size(), chunk.build_dir.cast<float>());
                 } else
                     for (size_t i = 0; i < pts.size(); ++i) {

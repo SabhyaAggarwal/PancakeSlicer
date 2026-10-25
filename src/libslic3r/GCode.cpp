@@ -2123,7 +2123,7 @@ std::vector<std::pair<coordf_t, std::vector<GCode::LayerToPrint>>> GCode::collec
 
     for (size_t i = 0; i < print.objects().size(); ++i) {
         try {
-            per_object[i] = collect_layers_to_print(*print.objects()[i], print.config().belt_printer.value);
+            per_object[i] = collect_layers_to_print(*print.objects()[i], print.config().belt_printer.value || Nonplanar::nested_field_slice());
         } catch (const Slic3r::SlicingError &e) {
             errors.push_back(e);
             continue;
@@ -7824,13 +7824,11 @@ std::string GCode::travel_above_nonplanar(const Polyline &travel, const std::str
     return gcode;
 }
 
-static constexpr double UprightRoadDeg = 5.;
-
 static void snap_upright_roads(const ToolKinematics &kinematics, std::vector<Nonplanar::ConformalPoint> &points)
 {
     if (kinematics.rotary_count() == 0 || !layout_is_table(kinematics.layout()))
         return;
-    const double cos_hold = std::cos(Geometry::deg2rad(UprightRoadDeg));
+    const double cos_hold = std::cos(Geometry::deg2rad(Nonplanar::UprightRoadDeg));
     if (std::all_of(points.begin(), points.end(),
                     [cos_hold](const Nonplanar::ConformalPoint &p) { return p.pose.axis.normalized().z() >= cos_hold; }))
         for (Nonplanar::ConformalPoint &p : points)

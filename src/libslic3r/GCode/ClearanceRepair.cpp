@@ -309,6 +309,11 @@ void ClearanceRepair::check_export(Print &print, GCodeProcessorResult &result)
     if (self != nullptr)
         for (const std::string &warning : self->m_guard_warnings)
             print.active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, warning);
+    for (const PrintObject *object : print.objects())
+        if (object->m_auto_planar && !object->auto_plain_reason().empty() && !oneshot_requested(*object))
+            print.active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL,
+                                          Slic3r::format(_u8L("%1%: Auto printed planar: %2%"), object->model_object()->name,
+                                                         object->auto_plain_reason()));
     if (print.config().nonplanar_kinematics.value != RotaryLayout::None) {
         if (self != nullptr && self->oneshot_step(result)) {
             if (self->m_repick.empty())
@@ -716,23 +721,35 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
     if (m_print.objects().size() == 1 && std::getenv("NP_ONESHOT_NO_MEASURED_CHECK") == nullptr && !rotary_auto_measurement()) {
         PrintObject  *object = objects.front();
         OneShotState &s      = object->oneshot_state();
+        const Floating floating = floating_road(result, *object);
+        const bool     support  = std::any_of(object->support_layers().begin(), object->support_layers().end(),
+                                              [](const SupportLayer *layer) { return !layer->support_fills.empty(); });
         if (s.z_only) {
             const auto     t0       = std::chrono::steady_clock::now();
             const double   t_ps     = measured_time(*object, NonplanarMode::Off, {}, {}, false);
-            const Floating floating = make_tool_kinematics(m_print.config())->rotary_count() == 0 ? floating_road(result, *object) :
-                                                                                                    floating_road(*object, nullptr);
-            const bool     support  = std::any_of(object->support_layers().begin(), object->support_layers().end(),
-                                                  [](const SupportLayer *layer) { return !layer->support_fills.empty(); });
-            const bool     repick   = measured_repick(*object, s, time / t_ps, floating, support) ||
-                                      auto_offer(*object, s, t_ps, export_normal_rms(*object, result), time);
+            const bool     budget   = m_repicks[object] <= MaxRepicks;
+            bool           repick   = budget && measured_repick(*object, s, time / t_ps, floating, support);
+            if (budget && !repick && !m_band_tried[object]) {
+                m_band_tried[object] = true;
+                repick               = band_control(*object, s);
+            }
+            repick = repick || (budget && auto_offer(*object, s, t_ps, export_normal_rms(*object, result), time));
             s.measured_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
             if (repick) {
+                ++m_repicks[object];
                 s.solved.reset();
                 m_repick.push_back(object);
             }
             s.decision += Slic3r::format(", measured %1$.3f x planar + support (the export; %2% re-picks%3%, %4$.0f s)", s.measured_ratio,
                                          s.measured_repicks, s.measured_anchor ? ", the anchor" : "", s.measured_seconds) +
-                          s.floating_decision() + s.auto_note;
+                          s.floating_decision() + s.band_note + s.auto_note;
+        } else {
+            if (m_repicks[object] <= MaxRepicks && measured_repick(*object, s, std::numeric_limits<double>::quiet_NaN(), floating, support)) {
+                ++m_repicks[object];
+                s.solved.reset();
+                m_repick.push_back(object);
+            }
+            s.decision += s.floating_decision();
         }
     }
     result.clearance_report = std::move(report);
@@ -777,11 +794,14 @@ bool ClearanceRepair::contact_guard(const GCodeProcessorResult &result, size_t c
                 continue;
             object->m_auto_floating_planar = true;
             object->m_auto_planar_exact    = true;
+            object->m_nonplanar_repair.reset();
+            object->note_auto_fallback(_u8L("curved moves would graze printed material"));
             object->m_auto_planar_pass     = true;
         }
         BOOST_LOG_TRIVIAL(warning) << "Contact guard: " << name << ": " << contacts << " curved moves strike printed material under the "
                                    << "contact bar; it prints without them";
-        m_guard_warnings.push_back(Slic3r::format(_u8L("%1%: %2% curved moves would graze printed material (nozzle cone), so it prints "
+        if (oneshot_requested(*object))
+            m_guard_warnings.push_back(Slic3r::format(_u8L("%1%: %2% curved moves would graze printed material (nozzle cone), so it prints "
                                                        "planar layers there instead."),
                                                   name, contacts));
         m_repick.push_back(object);

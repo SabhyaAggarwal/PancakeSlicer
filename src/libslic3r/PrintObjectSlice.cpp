@@ -737,6 +737,7 @@ void PrintObject::slice()
         m_auto_planar                 = true;
     } else if (m_auto_planar) {
         m_auto_floating_planar        = false;
+        m_auto_plain_reason.clear();
         m_auto_planar_exact           = false;
         m_config.nonplanar_mode.value = NonplanarMode::Auto;
         m_config.top_surface_acceleration.values = m_auto_planar_top_acceleration;

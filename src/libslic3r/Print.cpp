@@ -3026,6 +3026,9 @@ void Print::process(long long *time_cost_with_cache, bool use_cache)
         for (PrintObject *obj : m_objects)
             if (need_slicing_objects.count(obj) != 0 && (obj->auto_floating_demoted() || obj->auto_band_demoted())) {
                 obj->m_auto_planar_exact     = true;
+                obj->m_nonplanar_repair.reset();
+                obj->note_auto_fallback(obj->auto_floating_demoted() ? _u8L("curved layers would leave road in the air") :
+                                                                       _u8L("layer steps would band the walls"));
                 obj->m_auto_floating_demoted = false;
                 obj->m_auto_band_demoted     = false;
                 obj->m_auto_floating_planar  = true;

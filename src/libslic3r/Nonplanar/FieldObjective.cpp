@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <limits>
 #include <map>
 #include <sstream>
@@ -27,6 +28,28 @@
 #include <utility>
 
 namespace Slic3r::Nonplanar {
+
+constexpr double SmoothTimeMax = 1.03;
+
+bool smooth_layers()
+{
+    static const bool on = [] { const char *v = std::getenv("NP_SMOOTH_LAYERS"); return v == nullptr || *v != '0'; }();
+    return on;
+}
+
+void cap_layer_change(std::vector<double> &t, double dz)
+{
+    auto grow = [dz](double t) {
+        const double c = std::min(LayerChangeMax, LayerChangeAbs / std::max(t, 1e-6));
+        return dz > 0. ? std::pow(1. + c, dz / std::max(t, 1e-6)) : 1. + c;
+    };
+    for (int pass = 0; pass < 2; ++pass) {
+        for (size_t i = 1; i < t.size(); ++i)
+            t[i] = std::min(t[i], t[i - 1] * grow(t[i - 1]));
+        for (size_t i = t.size(); i-- > 1;)
+            t[i - 1] = std::min(t[i - 1], t[i] * grow(t[i]));
+    }
+}
 
 namespace {
 
@@ -1421,7 +1444,76 @@ void integrate(const ObjectiveGeometry &g, const ObjectiveMachine &m, const std:
             phi[id] = float(double(phi[id]) + delta[sys.col[id]]);
 }
 
+std::vector<double> smooth_column(const ObjectiveGeometry &g, const ObjectiveMachine &m, const std::vector<double> &col)
+{
+    const size_t n = g.dims[2], k0 = std::min(n - 1, bed_layers(g, m));
+    if (n < 3 || k0 + 2 >= n)
+        return col;
+    const double        sz = g.spacing.z(), dmin = sz / m.thickness_max, dmax = sz / m.thickness_min;
+    std::vector<double> d(n - 1);
+    for (size_t k = 0; k + 1 < n; ++k)
+        d[k] = std::clamp((col[k + 1] - col[k]) / m.h, dmin, dmax);
+    auto ratio_ok = [&](double a, double b) {
+        const double ta = sz / a, tb = sz / b, c = std::min(LayerChangeMax, LayerChangeAbs / std::min(ta, tb));
+        return std::max(ta, tb) <= std::min(ta, tb) * (1. + c) + 1e-9;
+    };
+    std::vector<int> held_at;
+    std::vector<double> held_v;
+    for (size_t k = k0; k < n; ++k)
+        if (k == k0 || m.pinned(k)) {
+            held_at.push_back(int(k));
+            held_v.push_back(k == k0 ? col[k] : m.pinned_v[k]);
+        }
+    auto project = [&]() {
+        for (size_t r = 0; r + 1 < held_at.size(); ++r) {
+            const size_t a = size_t(held_at[r]), b = size_t(held_at[r + 1]);
+            double       sum = 0.;
+            for (size_t k = a; k < b; ++k)
+                sum += d[k];
+            const double want = (held_v[r + 1] - held_v[r]) / m.h;
+            if (sum > 1e-12 && want > 0.)
+                for (size_t k = a; k < b; ++k)
+                    d[k] *= want / sum;
+        }
+    };
+    project();
+    for (int it = 0; it < 4000; ++it) {
+        bool ok = true;
+        for (size_t k = std::max<size_t>(k0, 1); k < d.size(); ++k)
+            if (!ratio_ok(d[k - 1], d[k])) {
+                ok = false;
+                break;
+            }
+        if (ok)
+            break;
+        std::vector<double> next = d;
+        for (size_t k = k0; k < d.size(); ++k) {
+            const double left = k > 0 ? d[k - 1] : d[k], right = k + 1 < d.size() ? d[k + 1] : d[k];
+            next[k] = d[k] + 0.25 * (left - 2. * d[k] + right);
+        }
+        d.swap(next);
+        project();
+    }
+    std::vector<double> out(col);
+    for (size_t k = k0; k + 1 < n; ++k)
+        out[k + 1] = out[k] + m.h * d[k];
+    return out;
+}
+
+std::vector<double> hold_column(const ObjectiveGeometry &g, const ObjectiveMachine &m, const std::vector<double> &col);
+
 std::vector<float> column_offer(const ObjectiveGeometry &g, const ObjectiveMachine &m, const std::vector<double> &col)
+{
+    std::vector<double> out = hold_column(g, m, smooth_layers() ? smooth_column(g, m, col) : col);
+    for (int round = 1; smooth_layers() && round < 3; ++round)
+        out = hold_column(g, m, smooth_column(g, m, out));
+    std::vector<float> f(g.nodes());
+    for (size_t id = 0; id < g.nodes(); ++id)
+        f[id] = float(out[ijk_of(g, id).k]);
+    return f;
+}
+
+std::vector<double> hold_column(const ObjectiveGeometry &g, const ObjectiveMachine &m, const std::vector<double> &col)
 {
     const size_t         n = g.dims[2];
     std::vector<double>  held_v(n, 0.), out(col);
@@ -1446,10 +1538,7 @@ std::vector<float> column_offer(const ObjectiveGeometry &g, const ObjectiveMachi
                 out[k] = held_v[a] + (col[k] - col[a]);
         a = b;
     }
-    std::vector<float> f(g.nodes());
-    for (size_t id = 0; id < g.nodes(); ++id)
-        f[id] = float(out[ijk_of(g, id).k]);
-    return f;
+    return out;
 }
 
 struct AdaptiveOffer
@@ -2012,6 +2101,20 @@ ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachin
             report("time-cut native " + c.name + " (ratio " + Slic3r::float_to_string_decimal_point(c.terms.T_ratio, 3) + ")", c.terms);
         }
         *params.time_cut = std::move(keep);
+    }
+    if (smooth_layers() && params.planar_adaptive && t.exact_native < 0) {
+        std::vector<double> col(g.dims[2]);
+        for (size_t k = 0; k < g.dims[2]; ++k)
+            col[k] = double(polished[g.index(g.dims[0] / 2, g.dims[1] / 2, k)]);
+        std::vector<float> f = column_offer(g, t.infill_separate ? m_sep : m, col);
+        ObjectiveTerms     tf = evaluate_objective(g, t.infill_separate ? m_sep : m, w, f, true);
+        tf.infill_separate    = t.infill_separate;
+        if (tf.feasible() && tf.T <= t.T * SmoothTimeMax) {
+            polished = std::move(f);
+            t        = tf;
+            report("layers smoothed", t);
+        } else
+            report(tf.feasible() ? "layers smoothed: over the time allowance, kept unsmoothed" : "layers smoothed: infeasible, kept unsmoothed", tf);
     }
     phi      = std::move(polished);
     t.offers = std::move(offers);

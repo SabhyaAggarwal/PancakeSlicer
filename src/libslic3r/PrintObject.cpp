@@ -860,6 +860,8 @@ void PrintObject::nonplanar_shells()
     if (m_auto_planar_pass) {
         m_auto_planar_exact    = true;
         m_auto_floating_planar = true;
+        m_nonplanar_repair.reset();
+        this->note_auto_fallback(_u8L("no curved surface to print"));
     }
     this->set_done(posNonplanar);
 }
@@ -902,6 +904,14 @@ bool PrintObject::has_conformal_support() const
     return std::any_of(conformal.patches.begin(), conformal.patches.end(), [](const Nonplanar::ConformalPatch &patch) {
                return patch.from_support;
            });
+}
+
+void PrintObject::note_auto_fallback(const std::string &why)
+{
+    m_auto_plain_reason = why;
+    constexpr const char *Note = " (fell back to planar control)";
+    if (m_oneshot && m_oneshot->offer == Nonplanar::OneShotState::Offer::Auto && m_oneshot->decision.find(Note) == std::string::npos)
+        m_oneshot->decision += Note;
 }
 
 double PrintObject::wall_band() const
@@ -1160,13 +1170,12 @@ void PrintObject::generate_support_material(bool with_belt_brim)
             }
             m_print->throw_if_canceled();
         }
-        constexpr double AutoWallBand = 0.004;
         m_auto_band_demoted = false;
         if (!m_auto_floating_planar && !m_auto_planar_exact && (m_config.nonplanar_mode.value == NonplanarMode::Auto || m_auto_planar) &&
             m_print->config().nonplanar_kinematics.value == RotaryLayout::None && !Nonplanar::rotary_auto_measurement() &&
             !m_print->config().spiral_mode.value) {
             const double band   = this->wall_band();
-            m_auto_band_demoted = band >= AutoWallBand;
+            m_auto_band_demoted = band >= WallBand;
             BOOST_LOG_TRIVIAL(warning) << "Auto wall band " << this->model_object()->name << ": " << band
                                        << (m_auto_band_demoted ? ", printed planar exactly" : ", kept");
         }

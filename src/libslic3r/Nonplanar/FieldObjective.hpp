@@ -128,6 +128,11 @@ struct HeadPair
 double planar_support_time(const ObjectiveGeometry &geom, const ObjectiveMachine &machine);
 double support_time(const ObjectiveGeometry &geom, const ObjectiveMachine &machine);
 
+bool smooth_layers();
+constexpr double LayerChangeMax = 0.15;
+constexpr double LayerChangeAbs = 0.03;
+void cap_layer_change(std::vector<double> &thickness, double dz);
+
 ObjectiveTerms evaluate_objective(const ObjectiveGeometry &geom, const ObjectiveMachine &machine, const ObjectiveWeights &w,
                                   const std::vector<float> &phi, bool hard = true, std::vector<HeadPair> *pairs = nullptr,
                                   std::vector<double> *errors = nullptr);

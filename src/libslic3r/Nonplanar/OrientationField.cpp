@@ -71,6 +71,14 @@
 namespace Slic3r::Nonplanar {
 
 namespace {
+thread_local bool nested_field_slice_flag = false;
+}
+
+bool nested_field_slice() { return nested_field_slice_flag; }
+NestedFieldSlice::NestedFieldSlice() : m_previous(nested_field_slice_flag) { nested_field_slice_flag = true; }
+NestedFieldSlice::~NestedFieldSlice() { nested_field_slice_flag = m_previous; }
+
+namespace {
 
 constexpr double UprightSnap = 20. * M_PI / 180.;
 constexpr double UprightFull = 28. * M_PI / 180.;
@@ -1983,7 +1991,8 @@ void solve_oneshot(PrintObject &object)
         admit_time_cut(object, state, time_cut);
         if (state.offer == OneShotState::Offer::Auto)
             return;
-        choose_route(object, state);
+        if (state.offer != OneShotState::Offer::Control)
+            choose_route(object, state);
     };
     solve();
     measured_export_check(object, state, [&state, &solve]() {
@@ -2074,6 +2083,7 @@ FieldSlice slice_field(PrintObject &object, const OrientationField &field, const
     model_object->add_instance();
     Print print;
     throw_if_canceled(object);
+    const NestedFieldSlice nested;
     try {
         print.apply(model, config);
         const PrintBase *outer = object.print();
@@ -2084,6 +2094,8 @@ FieldSlice slice_field(PrintObject &object, const OrientationField &field, const
         print.process();
     } catch (const CanceledException &) {
         throw;
+    } catch (const SlicingErrors &errors) {
+        throw Slic3r::SlicingError(std::string(_u8L("Rotary curved layers: slicing failed: ")) + print.slicing_errors_message(errors));
     } catch (const std::exception &ex) {
         throw Slic3r::SlicingError(std::string(_u8L("Rotary curved layers: slicing failed: ")) + ex.what());
     }

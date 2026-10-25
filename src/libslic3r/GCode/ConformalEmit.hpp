@@ -33,6 +33,7 @@ ConformalPoint interpolate(const ConformalPoint &a, const ConformalPoint &b, dou
 using ToWriterFrame = std::function<Vec3d(const Point3 &)>;
 
 constexpr double GlideLift = 0.1;
+constexpr double UprightRoadDeg = 5.;
 
 std::vector<ConformalPoint> conformal_points(const ExtrusionPathConformal &path, const ToWriterFrame &to_writer);
 

@@ -196,8 +196,7 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
     }
     if (measured != nullptr && !print.objects().empty()) {
         const PrintObject &printed = *print.objects().front();
-        measured->floating         = make_tool_kinematics(print.config())->rotary_count() == 0 ? floating_road(result, printed) :
-                                                                                                 floating_road(printed, nullptr);
+        measured->floating         = floating_road(result, printed);
         measured->support          = std::any_of(printed.support_layers().begin(), printed.support_layers().end(),
                                                  [](const SupportLayer *layer) { return !layer->support_fills.empty(); });
     }

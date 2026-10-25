@@ -55,13 +55,14 @@ struct OneShotState
     double                         measured_floating = std::numeric_limits<double>::quiet_NaN();
     double                         control_floating  = std::numeric_limits<double>::quiet_NaN();
     std::string                    auto_note;
+    std::string                    band_note;
     bool                           auto_weighed = false;
     std::shared_ptr<const MeasuredPrint> auto_measured;
     bool                           auto_floats = false;
     double                         planar_air  = -1.;
 
     double max_time_ratio() const { return max_time_ratio_override > 0. ? max_time_ratio_override : MaxTimeRatio; }
-    double measured_room() const { return MaxTimeRatio / measured_ratio - 1.; }
+    double measured_room() const { return max_time_ratio() / measured_ratio - 1.; }
     double time_ratio() const;
     double time_cap() const;
     bool combine_infill() const;
@@ -79,6 +80,7 @@ bool take_injected_oneshot(OneShotState &state);
 constexpr int MaxRepicks = 2;
 void measured_export_check(PrintObject &object, OneShotState &state, const std::function<void()> &resolve);
 bool measured_repick(const PrintObject &object, OneShotState &state, double ratio, const Floating &floating, bool support);
+bool band_control(const PrintObject &object, OneShotState &state);
 bool past_floating_bar(const PrintObject &object, OneShotState &state, const Floating &floating);
 bool auto_offer(const PrintObject &object, OneShotState &state, double t_ps, double pick_rms, double pick_time);
 

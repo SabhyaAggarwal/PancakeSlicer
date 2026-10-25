@@ -99,10 +99,11 @@ public:
         }
     }
     uint32_t new_run() { return m_runs++; }
-    void     move(const Vec3d &from, const Vec3d &to, double w, double h, ExtrusionRole role, uint32_t run, double &along)
+    void     move(const Vec3d &from, const Vec3d &to, double w, double h, ExtrusionRole role, uint32_t run, double &along,
+                  const Vec3d &ax = Vec3d::UnitZ())
     {
-        const Vec3d down = 0.5 * h * Vec3d::UnitZ();
-        this->segment(from - down, to - down, Vec3d::UnitZ(), w, h, role, run, along);
+        const Vec3d down = 0.5 * h * ax;
+        this->segment(from - down, to - down, ax, w, h, role, run, along);
     }
     void segment(const Vec3d &a, const Vec3d &b, const Vec3d &ax, double w, double h, ExtrusionRole role, uint32_t run, double &along)
     {
@@ -329,12 +330,15 @@ Floating floating_road(const GCodeProcessorResult &result, const PrintObject &ob
     const double             density = 0.01 * rc.sparse_infill_density.value;
     const double             spacing = density > 0. ? 2. * rc.sparse_infill_line_width.get_abs_value(nozzle) / density : 6.;
     const double             gap     = object.config().support_top_z_distance.value;
-    Walker walker(bed, object.config().layer_height.value, spacing, false, interface_h > 0. ? gap + 0.5 * interface_h + 0.1 : -1.);
+    const auto kinematics = make_tool_kinematics(object.print()->config());
+    const bool rotary     = kinematics->rotary_count() > 0 && result.has_joints();
+    Walker walker(bed, object.config().layer_height.value, spacing, rotary, interface_h > 0. ? gap + 0.5 * interface_h + 0.1 : -1.);
     std::optional<Vec3d> from;
     uint32_t             run    = 0;
     bool                 in_run = false;
     double               along  = 0.;
-    for (const Move &m : result.moves) {
+    for (size_t i = 0; i < result.moves.size(); ++i) {
+        const Move &m = result.moves[i];
         if (m.timing_only)
             continue;
         const Vec3d to = m.position.cast<double>();
@@ -344,7 +348,11 @@ Floating floating_road(const GCodeProcessorResult &result, const PrintObject &ob
                 along  = 0.;
                 in_run = true;
             }
-            walker.move(*from, to, m.width, m.height, m.extrusion_role, run, along);
+            Vec3d ax = Vec3d::UnitZ();
+            if (rotary && i < result.joints.size())
+                if (const Vec3d a = kinematics->forward(result.joints[i]).axis; a.squaredNorm() > 0.)
+                    ax = a.normalized();
+            walker.move(*from, to, m.width, m.height, m.extrusion_role, run, along, ax);
         } else
             in_run = false;
         from = to;

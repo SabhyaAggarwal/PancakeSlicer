@@ -341,6 +341,9 @@ public:
     bool auto_floating_demoted() const { return m_auto_floating_demoted; }
     bool auto_band_demoted() const { return m_auto_band_demoted; }
     double wall_band() const;
+    static constexpr double WallBand = 0.004;
+    void note_auto_fallback(const std::string &why);
+    const std::string &auto_plain_reason() const { return m_auto_plain_reason; }
     const Nonplanar::RepairHints*     nonplanar_repair() const { return m_nonplanar_repair.get(); }
     Nonplanar::OneShotState&          oneshot_state();
     const Nonplanar::OneShotState*    oneshot_state() const { return m_oneshot.get(); }
@@ -543,6 +546,7 @@ private:
     bool m_auto_band_demoted     = false;
     bool m_auto_planar_exact     = false;
     bool m_auto_planar      = false;
+    std::string m_auto_plain_reason;
     std::vector<double> m_auto_planar_top_acceleration;
     bool                 m_auto_support = false;
     bool                 m_auto_support_applied = false;
