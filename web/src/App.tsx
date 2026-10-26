@@ -8,6 +8,7 @@ import { LayerHeightBar, LayerHeightPanel } from './components/LayerHeight';
 import { Sidebar } from './components/Sidebar';
 import { AskHost } from './components/Ask';
 import { TabBar, TopBar } from './components/TopBar';
+const Navigator = lazy(() => import('./components/Navigator').then((m) => ({ default: m.Navigator })));
 const PlateChoice = lazy(() => import('./components/PlateChoice'));
 const EmptyPlate = lazy(() => import('./components/FirstRun'));
 const Plater3D = lazy(() => import('./plater/Plater3D'));
@@ -169,6 +170,7 @@ export default function App() {
             </div>
           )}
           {multiPlate && <Suspense fallback={null}><PlateChoice /></Suspense>}
+          <Suspense fallback={null}><Navigator /></Suspense>
           <SliceNotification />
           {loading && <div className="loading">{loading}…</div>}
         </div>

@@ -12,9 +12,11 @@ import { Legend } from './PreviewLegend';
 import { LayerSlider, MoveSlider } from './PreviewSliders';
 import { EventList, EventMenu, eventTicks } from './LayerEvents';
 import { ownsKeys } from '../keys';
+import { toggleViewOption, useViewOptions } from '../plater/viewOptions';
 
 const ExplainLegend = lazy(() => import('./PreviewExplain').then((m) => ({ default: m.ExplainLegend })));
 const StandardView = lazy(() => import('./PreviewExplain').then((m) => ({ default: m.StandardView })));
+const GcodeWindow = lazy(() => import('./GcodeWindow').then((m) => ({ default: m.GcodeWindow })));
 
 export function colorContext(d: PreviewData, ui: Pick<PreviewUi, 'view' | 'nonplanar'>, ranges: Ranges): ColorContext {
   const s = getState();
@@ -53,6 +55,7 @@ export function PreviewView() {
   const host = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<PreviewScene | null>(null);
   const [, bump] = useReducer((x: number) => x + 1, 0);
+  const { gcodeWindow } = useViewOptions();
   const [dropped, setDropped] = useState<File | null>(null);
   const [data, setData] = useState<PreviewData | null>(current?.data ?? null);
   const [ui, setUi] = useState<PreviewUi>({
@@ -248,7 +251,8 @@ export function PreviewView() {
       } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         const d = e.key === 'ArrowRight' ? 1 : -1;
         setMovePos((p) => Math.max(1, Math.min(topMoves, (p ?? topMoves) + d)));
-      } else if (e.key === 'Home') setMovePos(1);
+      } else if (e.key === 'c' || e.key === 'C') toggleViewOption('gcodeWindow');
+      else if (e.key === 'Home') setMovePos(1);
       else if (e.key === 'End') setMovePos(null);
       else return;
       e.preventDefault();
@@ -365,6 +369,9 @@ export function PreviewView() {
       )}
       {layerCount > 0 && topMoves > 0 && (
         <MoveSlider count={topMoves} pos={pos} gcodeLine={data!.gcode[topFirst + pos - 1]} onChange={setMovePos} />
+      )}
+      {gcodeWindow && layerCount > 0 && topMoves > 0 && (
+        <Suspense fallback={null}><GcodeWindow line={data!.gcode[topFirst + pos - 1]} file={dropped} /></Suspense>
       )}
     </div>
   );

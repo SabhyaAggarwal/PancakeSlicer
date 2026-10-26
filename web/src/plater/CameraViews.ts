@@ -5,6 +5,9 @@ import { getState, subscribeStore } from '../state/store';
 import { bedBounds } from './geometry';
 import { ownsKeys } from '../keys';
 
+const registry = new Set<CameraViews>();
+export const activeCamera = () => [...registry].find((v) => v.isActive())?.camera ?? null;
+
 export class CameraViews {
   camera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
   readonly controls: OrbitControls;
@@ -21,6 +24,7 @@ export class CameraViews {
     this.controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
     this.controls.zoomToCursor = true;
     this.controls.addEventListener('change', this.onOrbit);
+    registry.add(this);
     window.addEventListener('camera-command', this.onCommand);
     window.addEventListener('keydown', this.onKey);
     let wasActive = this.active();
@@ -123,7 +127,9 @@ export class CameraViews {
     }
     this.camera.updateProjectionMatrix();
   }
+  isActive() { return this.active(); }
   dispose() {
+    registry.delete(this);
     window.removeEventListener('camera-command', this.onCommand);
     window.removeEventListener('keydown', this.onKey);
     this.unsubscribe();

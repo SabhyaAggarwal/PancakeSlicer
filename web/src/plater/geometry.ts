@@ -405,3 +405,13 @@ export function outsideBed(objects: PlateObject[], area: THREE.Vector2[], height
     }
   return out;
 }
+
+export function centred(g: THREE.BufferGeometry): [THREE.BufferGeometry, THREE.Matrix4] {
+  const copy = g.clone();
+  copy.computeBoundingBox();
+  const c = copy.boundingBox!.getCenter(new THREE.Vector3());
+  copy.translate(-c.x, -c.y, -c.z);
+  copy.computeBoundingBox();
+  copy.computeBoundingSphere();
+  return [copy, new THREE.Matrix4().makeTranslation(c.x, c.y, c.z)];
+}

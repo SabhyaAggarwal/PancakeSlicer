@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { bedArea } from '../actions';
 import { getState, newId, printerPreset, setState, toast, updateVolume, type PlateObject, type Volume } from '../state/store';
 import { undoable } from '../state/history';
-import { instanceBox, instanceMatrix, loadMesh, request, volumeBox, volumeWorld } from './geometry';
+import { centred, instanceBox, instanceMatrix, loadMesh, request, volumeBox, volumeWorld } from './geometry';
 
 const replace = (name: string, objects: PlateObject[], selected?: { object: number; instance: number }) =>
   undoable(name, () => setState({ objects, ...(selected ? { selected } : {}) }));
@@ -31,15 +31,6 @@ export function convertUnits(id: number, unit: 'inch' | 'meter' | null) {
     instances: x.instances.map((i) => ({ ...i, z: 0 })) }));
 }
 
-export function centred(g: THREE.BufferGeometry): [THREE.BufferGeometry, THREE.Matrix4] {
-  const copy = g.clone();
-  copy.computeBoundingBox();
-  const c = copy.boundingBox!.getCenter(new THREE.Vector3());
-  copy.translate(-c.x, -c.y, -c.z);
-  copy.computeBoundingBox();
-  copy.computeBoundingSphere();
-  return [copy, new THREE.Matrix4().makeTranslation(c.x, c.y, c.z)];
-}
 
 export function mergeObjects() {
   const s = getState(), objects = s.objects.filter((o) => !o.project);

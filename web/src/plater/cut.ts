@@ -4,8 +4,7 @@ import { mutation, responseError } from '../api/access';
 import { plateSignature } from '../slice-input';
 import { undoable } from '../state/history';
 import { getState, newId, printerPreset, resolvePreset, setState, toast, type CutPlane, type Instance, type PlateObject, type State, type Volume } from '../state/store';
-import { bakeStl, instanceBox, instanceMatrix, loadMesh, nearestFreeSpot, objectMatrix } from './geometry';
-import { centred } from './objectOps';
+import { bakeStl, centred, instanceBox, instanceMatrix, loadMesh, nearestFreeSpot, objectMatrix } from './geometry';
 
 const DEG = Math.PI / 180;
 

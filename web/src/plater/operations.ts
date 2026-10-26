@@ -5,10 +5,9 @@ import { jobValue } from '../options';
 import { mutation, responseError } from '../api/access';
 import { getState, newId, printerPreset, resolvePreset, setState, toast, type PlateObject, type Volume } from '../state/store';
 import { undoable } from '../state/history';
-import { bakeStl, instanceBox, instanceMatrix, loadMesh, objectMatrix, plateJson, request } from './geometry';
+import { bakeStl, centred, instanceBox, instanceMatrix, loadMesh, objectMatrix, plateJson, request } from './geometry';
 import { bedArea } from '../actions';
 import { axisAngle, withRotation } from './rotation';
-import { centred } from './objectOps';
 
 let busy = false;
 

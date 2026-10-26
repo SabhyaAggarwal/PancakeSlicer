@@ -1,15 +1,16 @@
 import { useSyncExternalStore } from 'react';
 
-export interface ViewOptions { gridlines: boolean; labels: boolean; overhang: boolean; outline: boolean }
+export interface ViewOptions { gridlines: boolean; labels: boolean; overhang: boolean; outline: boolean; navigator: boolean; gcodeWindow: boolean }
 const KEY = 'orca.web.view';
 const saved = (() => { try { return JSON.parse(localStorage.getItem(KEY) ?? '{}'); } catch { return {}; } })();
-let options: ViewOptions = { gridlines: saved.gridlines !== false, labels: false, overhang: false, outline: saved.outline === true };
+let options: ViewOptions = { gridlines: saved.gridlines !== false, labels: false, overhang: false, outline: saved.outline === true,
+  navigator: saved.navigator !== false, gcodeWindow: saved.gcodeWindow !== false };
 const listeners = new Set<() => void>();
 export const viewOptions = () => options;
 export const subscribeViewOptions = (l: () => void) => (listeners.add(l), () => void listeners.delete(l));
 export const useViewOptions = () => useSyncExternalStore(subscribeViewOptions, viewOptions);
 export function toggleViewOption(k: keyof ViewOptions) {
   options = { ...options, [k]: !options[k] };
-  localStorage.setItem(KEY, JSON.stringify({ gridlines: options.gridlines, outline: options.outline }));
+  localStorage.setItem(KEY, JSON.stringify({ gridlines: options.gridlines, outline: options.outline, navigator: options.navigator, gcodeWindow: options.gcodeWindow }));
   listeners.forEach((l) => l());
 }

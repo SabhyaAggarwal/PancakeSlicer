@@ -201,6 +201,8 @@ export function TopBar() {
           { label: 'Use Orthogonal View', role: 'menuitemradio', checked: !perspective, action: () => cameraCommand('orthogonal') },
           { label: 'Auto Perspective', role: 'menuitemcheckbox', checked: autoPerspective, action: () => cameraCommand('auto') },
           'sep',
+          { label: 'Show G-code Window', shortcut: 'C', role: 'menuitemcheckbox', checked: view.gcodeWindow, action: () => toggleViewOption('gcodeWindow'), tip: 'Show G-code window in Preview scene.' },
+          { label: 'Show 3D Navigator', role: 'menuitemcheckbox', checked: view.navigator, action: () => toggleViewOption('navigator'), tip: 'Show 3D navigator in Prepare and Preview scene.' },
           { label: 'Show Gridlines', role: 'menuitemcheckbox', checked: view.gridlines, action: () => toggleViewOption('gridlines'), tip: 'Show Gridlines on plate' },
           'sep',
           { label: 'Show Labels', shortcut: 'E', role: 'menuitemcheckbox', checked: view.labels, action: () => toggleViewOption('labels'), tip: 'Show object labels in 3D scene.' },
