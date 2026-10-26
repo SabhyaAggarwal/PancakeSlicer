@@ -46,6 +46,7 @@ export interface PlateObject {
   settings: Config;
   volumes?: Volume[];
   paint?: Partial<Record<PaintKind, Painting>>;
+  units?: 'inch' | 'meter';
   layerProfile?: number[];
   project?: { buildIndex?: number; plateIndex?: number; plateOrigin?: [number, number]; file: string; placeholder: boolean; missing?: boolean; origin?: [number, number, number];
     saved?: { object: number; instance: number; instanceId: number; extruder: number; rotZ: number; item?: number[] };
@@ -99,6 +100,8 @@ export interface CutPlane {
   keepUpper: boolean;
   keepLower: boolean;
   placeLower: boolean;
+  flipUpper?: boolean;
+  toParts?: boolean;
 }
 
 export interface State {
@@ -153,6 +156,7 @@ export interface State {
   orientPrompts: Record<number, OrientPrompt>;
   orientDismissed: number[];
   orientConfirm: OrientConfirm | null;
+  settingsClipboard: Config | null;
 }
 
 export interface OrientPrompt {
@@ -178,6 +182,7 @@ let state: State = {
   orientPrompts: {},
   orientDismissed: [],
   orientConfirm: null,
+  settingsClipboard: null,
   cut: null,
   loading: 'Connecting',
   machines: [],

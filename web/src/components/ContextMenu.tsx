@@ -16,6 +16,7 @@ async function editPlateName() {
   if (name !== null) renamePlate(plate.index, name);
 }
 
+const ops = () => import('../plater/objectOps');
 const exportStl = (selection: boolean, multi = false) => import('../exportStl').then((m) => m.exportStl(selection, multi));
 
 type Item = { label: string; shortcut?: string; action?: () => void; disabled?: boolean; checked?: boolean; tip?: string; sub?: Item[] } | 'sep';
@@ -78,6 +79,9 @@ export default function ContextMenu() {
   const items: Item[] = o && volume ? [
     { label: 'Rename', action: () => setState({ renaming: volume.id }) },
     { label: 'Delete', shortcut: 'Del', action: () => deleteVolume(o.id, volume.id), tip: 'Delete the selected part' },
+    { label: 'Mirror', tip: 'Mirror the part', sub: ([0, 1, 2] as const).map((a) => (
+      { label: `Along ${'XYZ'[a]} Axis`, action: () => void ops().then((m) => m.mirrorVolume(o.id, volume.id, a)), tip: `Mirror along the ${'XYZ'[a]} Axis` })) },
+    { label: 'Export as STL...', action: () => void ops().then((m) => m.exportVolumeStl(o.id, volume.id)), tip: 'Export the part as an STL' },
     ...(volume.type === 'part' ? ['sep' as const, { label: 'Change Filament', sub: [{ label: 'Default', checked: !volume.extruder, action: () => updateVolume(o.id, volume.id, { extruder: 0 }) },
       ...s.filamentSlots.map((_, i) => ({ label: `Filament ${i + 1}`, checked: volume.extruder === i + 1, action: () => updateVolume(o.id, volume.id, { extruder: i + 1 }) }))] }] : []),
     'sep',
@@ -97,8 +101,21 @@ export default function ContextMenu() {
     { label: 'Drop', action: dropSelection, disabled: !editable || !canDrop(s), tip: 'Drop the selection to the bed' },
     ...(all ? [] : [{ label: 'Split', disabled: !editable || !!s.project, sub: [
       { label: 'To Objects', action: () => void toolbarOperation('split'), tip: 'Split the selected object into multiple objects' },
-      { label: 'To Parts', disabled: true, tip: 'Split the selected object into multiple parts' },
+      { label: 'To Parts', action: () => void toolbarOperation('split-parts'), disabled: !s.features.volumes || !!o?.volumes?.length, tip: 'Split the selected object into multiple parts' },
     ] }]),
+    ...(all ? [{ label: 'Merge', action: () => void ops().then((m) => m.mergeObjects()), disabled: !!s.project || s.objects.length < 2,
+      tip: 'Merge the selected objects into one object of parts' }] : [
+      { label: 'Auto orient', action: () => void toolbarOperation('orient'), disabled: !editable || project, tip: 'Auto orient the object to improve print quality' },
+      { label: 'Scale to build volume', action: () => void ops().then((m) => m.scaleToBuildVolume(o.id)), disabled: !editable || !!o.project, tip: 'Scale the selected object to fit the build volume' },
+      ...(o.units ? [{ label: `Restore to ${o.units}`, action: () => void ops().then((m) => m.convertUnits(o.id, null)), disabled: !editable || !!o.project }]
+        : [{ label: 'Convert from inch', action: () => void ops().then((m) => m.convertUnits(o.id, 'inch')), disabled: !editable || !!o.project },
+          { label: 'Convert from meter', action: () => void ops().then((m) => m.convertUnits(o.id, 'meter')), disabled: !editable || !!o.project }]),
+      ...(o.volumes?.some((v) => v.type === 'part') ? [{ label: 'Set as individual objects', action: () => void ops().then((m) => m.partsToObjects(o.id)), disabled: !editable || !!o.project,
+        tip: 'Each part becomes an object' }] : []),
+      { label: 'Copy process settings', action: () => void ops().then((m) => m.copySettings(o.id)), disabled: !Object.keys(o.settings).length, tip: 'Copy the object\'s own process settings' },
+      { label: 'Paste process settings', action: () => void ops().then((m) => m.pasteSettings([o.id])), disabled: !s.settingsClipboard, tip: 'Paste the copied process settings onto this object' },
+      { label: 'Replace 3D file...', action: () => void ops().then((m) => m.replaceFile(o.id)), disabled: !editable || !!o.project, tip: 'Replace the object\'s mesh with another file' },
+    ]),
     { label: 'Mirror', disabled: !editable, tip: 'Mirror object', sub: ([0, 1, 2] as const).map((a) => (
       { label: `Along ${'XYZ'[a]} Axis`, action: () => void mirrorSelection(a), tip: `Mirror along the ${'XYZ'[a]} Axis` })) },
     ...(all ? [] : [{ label: 'Rename', action: () => startRename(o.id), disabled: !!o.project }]),

@@ -3,6 +3,7 @@ import { compatible, getState, markStale, printerPreset, setState, useStore } fr
 import { undoable } from '../state/history';
 import { lazy, Suspense, useState } from 'react';
 import { flushModified } from '../flush-state';
+import { ManipulationPanel } from './CanvasOverlays';
 import { Icon, IconButton } from './Icon';
 import { PresetCombo } from './PresetCombo';
 import { SettingsTab } from './SettingsTab';
@@ -232,6 +233,7 @@ export function Sidebar() {
       <FilamentSection />
       <ProcessHeader />
       {hasObjects && <Suspense fallback={null}><ObjectList /></Suspense>}
+      {hasObjects && <ManipulationPanel docked />}
       <div className="process-panel">
         {objects ? (
           <Suspense fallback={<div role="status">Loading object settings…</div>}>

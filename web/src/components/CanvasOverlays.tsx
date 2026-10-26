@@ -47,6 +47,7 @@ export function CanvasToolbar() {
   const locked = project ? ' — instances cannot be added or removed from an opened project' : '';
   const placeholder = useStore((s) => s.objects.find((o) => o.id === s.selected?.object)?.project?.placeholder);
   const edit = !!sel && !placeholder && !sel.all;
+  const splitParts = useStore((s) => !!s.features.volumes && !s.objects.find((o) => o.id === s.selected?.object)?.volumes?.length);
   const cutBlock = useStore(cutBlocked);
   const paint = useStore(canPaint);
   const layers = useStore(canEditLayers);
@@ -67,7 +68,7 @@ export function CanvasToolbar() {
       <IconButton size={24} icon="instance_add" title={`Add instance (+)${locked}`} onClick={addInstance} disabled={!edit || project} />
       <IconButton size={24} icon="instance_remove" title={`Remove instance (-)${locked}`} onClick={removeInstance} disabled={instances < 2 || project} />
       <IconButton size={24} icon="split_objects" title="Split to objects" onClick={() => toolbarOperation('split')} disabled={!edit || project} />
-      <IconButton size={24} icon="split_parts" title="Split to parts" disabled />
+      <IconButton size={24} icon="split_parts" title="Split to parts" onClick={() => toolbarOperation('split-parts')} disabled={!edit || project || !splitParts} />
       <IconButton size={24} icon="toolbar_variable_layer_height" title="Variable layer height" active={gizmo === 'layers'} onClick={() => toggle('layers')} disabled={!layers && gizmo !== 'layers'} />
       <IconButton size={24} icon="toolbar_assemble" title="Assembly View" disabled />
       <span className="tb-sep" />
@@ -135,14 +136,14 @@ function Num({ value, onCommit, step = 1 }: { value: number; onCommit: (v: numbe
   );
 }
 
-export function ManipulationPanel() {
+export function ManipulationPanel({ docked = false }: { docked?: boolean }) {
   const gizmo = useStore((s) => s.gizmo);
   const o = useStore((s) => s.objects.find((ob) => ob.id === s.selected?.object));
   const instId = useStore((s) => s.selected?.instance);
   const uniform = useStore((s) => s.uniformScale);
   const volumeId = useStore((s) => s.selected?.volume);
   const inst = o?.instances.find((i) => i.id === instId);
-  if (!o || !inst || gizmo === 'none' || gizmo === 'flatten' || gizmo === 'cut' || gizmo === 'measure' || isPaint(gizmo) || gizmo === 'layers' || o.project?.placeholder) return null;
+  if (!o || !inst || (docked ? gizmo !== 'none' : gizmo === 'none') || gizmo === 'flatten' || gizmo === 'cut' || gizmo === 'measure' || isPaint(gizmo) || gizmo === 'layers' || o.project?.placeholder) return null;
   const v = o.volumes?.find((vv) => vv.id === volumeId);
   if (v) {
     const box = volumeBox(o, inst, v);
@@ -156,7 +157,7 @@ export function ManipulationPanel() {
         .multiply(new THREE.Matrix4().makeTranslation(-centre.x, -centre.y, -centre.z)), 'Scale');
     };
     return (
-      <div className="manip-panel">
+      <div className={`manip-panel${docked ? ' docked' : ''}`}>
         <div className="manip-title">{v.name}</div>
         <div className="manip-grid">
           <span />
@@ -167,7 +168,7 @@ export function ManipulationPanel() {
           {[0, 1, 2].map((a) => <Num key={a} value={centre.getComponent(a)} onCommit={(x) => move(a, x)} />)}
           <span>Size mm</span>
           {[0, 1, 2].map((a) => <Num key={a} value={size.getComponent(a)} onCommit={(x) => resize(a, x)} />)}
-          {gizmo === 'scale' && (
+          {(gizmo === 'scale' || docked) && (
             <label className="manip-lock">
               <input type="checkbox" checked={uniform} onChange={(e) => setState({ uniformScale: e.target.checked })} />
               Uniform scale
@@ -182,8 +183,8 @@ export function ManipulationPanel() {
     scale: o.scale.map((v, k) => (uniform || k === axis ? v * factor : v)) as [number, number, number],
   });
   return (
-    <div className="manip-panel">
-      <div className="manip-title">{gizmo === 'move' ? 'Move' : gizmo === 'rotate' ? 'Rotate' : 'Scale'}</div>
+    <div className={`manip-panel${docked ? ' docked' : ''}`}>
+      <div className="manip-title">{docked ? 'Object manipulation' : gizmo === 'move' ? 'Move' : gizmo === 'rotate' ? 'Rotate' : 'Scale'}</div>
       <div className="manip-grid">
         <span />
         <span className="axis x">X</span>
@@ -205,7 +206,7 @@ export function ManipulationPanel() {
         {(['x', 'y', 'z'] as const).map((a, k) => (
           <Num key={a} value={Math.abs(o.scale[k]) * mesh[a]} onCommit={(v) => rescale(k, Math.max(0.01, v) / Math.max(1e-6, Math.abs(o.scale[k]) * mesh[a]))} />
         ))}
-        {gizmo === 'scale' && (
+        {(gizmo === 'scale' || docked) && (
           <label className="manip-lock">
             <input type="checkbox" checked={uniform} onChange={(e) => setState({ uniformScale: e.target.checked })} />
             Uniform scale
@@ -445,10 +446,18 @@ export function CutPanel() {
         <span style={{ gridColumn: '1 / -1' }} className="menu-sep" />
         <span style={{ gridColumn: '1 / -1' }}>After cut:</span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'auto auto auto', gap: '0 12px', alignItems: 'center' }}>
-        {part('Upper part', '#00ffff', cut.keepUpper, (keepUpper) => setCut({ keepUpper }), true)}
-        {part('Lower part', '#ff00ff', cut.keepLower, (keepLower) => setCut({ keepLower }), cut.placeLower, (placeLower) => setCut({ placeLower }))}
-      </div>
+      <label className="select-row" style={{ whiteSpace: 'nowrap' }} title="Both pieces stay one object, the upper piece a part, where they stand">
+        <input type="checkbox" checked={!!cut.toParts} onChange={(e) => setCut({ toParts: e.target.checked })} />Cut to parts
+      </label>
+      {!cut.toParts && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'auto auto auto', gap: '0 12px', alignItems: 'center' }}>
+          {part('Upper part', '#00ffff', cut.keepUpper, (keepUpper) => setCut({ keepUpper }), true)}
+          {part('Lower part', '#ff00ff', cut.keepLower, (keepLower) => setCut({ keepLower }), cut.placeLower, (placeLower) => setCut({ placeLower }))}
+          {cut.keepUpper && <label className="select-row" style={{ gridColumn: '2 / span 2', whiteSpace: 'nowrap' }}>
+            <input type="checkbox" checked={!!cut.flipUpper} onChange={(e) => setCut({ flipUpper: e.target.checked })} />Flip upper part upside down
+          </label>}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
         <button className="btn" disabled={!initial || (cut.z === initial.z && !cut.rotX && !cut.rotY)} onClick={() => initial && setCut({ z: initial.z, rotX: 0, rotY: 0 })}>Reset</button>
         <span style={{ flex: 1 }} />

@@ -1,13 +1,14 @@
-import { Box3, Matrix4, Vector3 } from 'three';
+import { Box3, Matrix4, Vector3, type BufferGeometry } from 'three';
 import { arrangeSettings } from './arrangeSettings';
 import { firstLayer, overrides, plateSignature } from '../slice-input';
 import { jobValue } from '../options';
 import { mutation, responseError } from '../api/access';
-import { getState, newId, printerPreset, resolvePreset, setState, toast, type PlateObject } from '../state/store';
+import { getState, newId, printerPreset, resolvePreset, setState, toast, type PlateObject, type Volume } from '../state/store';
 import { undoable } from '../state/history';
 import { bakeStl, instanceBox, instanceMatrix, loadMesh, objectMatrix, plateJson, request } from './geometry';
 import { bedArea } from '../actions';
-import { withRotation } from './rotation';
+import { axisAngle, withRotation } from './rotation';
+import { centred } from './objectOps';
 
 let busy = false;
 
@@ -41,6 +42,14 @@ export async function orientJob(o: PlateObject, operation: 'orient' | 'orient-sc
 }
 
 async function orient(o: PlateObject): Promise<PlateObject> {
+  if (getState().features.orient_scores) {
+    const scores = (await orientJob(o, 'orient-scores'))?.scores;
+    if (!Array.isArray(scores)) throw new Error('The native tool did not return orientation scores.');
+    const best = (scores as Record<string, unknown>[]).find((x) => (x.object ?? 0) === 0 && x.best === true);
+    const axis = best?.axis as number[], angle = Number(best?.angle_deg);
+    if (!best || best.original === true || !Array.isArray(axis) || axis.length !== 3 || !Number.isFinite(angle) || Math.abs(angle) < 0.01) return o;
+    return withRotation(o, axisAngle(axis, angle));
+  }
   const rotation = (await orientJob(o, 'orient'))?.rotation as number[];
   if (!Array.isArray(rotation) || rotation.length !== 9 || !rotation.every(Number.isFinite))
     throw new Error('The native tool did not return an orientation rotation.');
@@ -74,7 +83,32 @@ async function splitObject(o: PlateObject): Promise<PlateObject[]> {
   return result;
 }
 
-export async function run(operation: 'orient' | 'split', all: boolean) {
+async function splitParts(o: PlateObject): Promise<PlateObject[]> {
+  if (o.volumes?.length) throw new Error('Split to parts needs an object of one part.');
+  const file = await bakeStl(o, new Matrix4());
+  const blobs = await new Promise<Blob[]>((resolve, reject) => request({ type: 'split', file }, (m) => {
+    if (m.type === 'pieces') resolve(m.pieces);
+    else if (m.type === 'error') reject(new Error(m.message));
+  }));
+  if (blobs.length < 2) throw new Error("The selected object couldn't be split.");
+  const base = o.name.replace(/\.(stl|obj|3mf|stp|step)$/i, '');
+  const files = [...blobs].sort((a, b) => b.size - a.size).map((blob, k) => new File([blob], `${base}_${k + 1}.stl`, { type: 'model/stl' }));
+  const pieces = await Promise.all(files.map((f) => loadMesh(f)));
+  const centre = (g: BufferGeometry) => new Vector3(...g.userData.sourceCentre as [number, number, number]);
+  const c0 = centre(pieces[0]);
+  const volumes: Volume[] = pieces.slice(1).map((g, k) => {
+    const [geometry, back] = centred(g);
+    return { id: newId(), name: `${base}_${k + 2}`, type: 'part', geometry,
+      matrix: new Matrix4().makeTranslation(...centre(g).sub(c0).toArray()).multiply(back).elements, extruder: 0, settings: {} };
+  });
+  const next: PlateObject = { ...o, geometry: pieces[0], source: files[0], volumes, paint: undefined };
+  return [{ ...next, instances: o.instances.map((i) => {
+    const before = c0.clone().applyMatrix4(instanceMatrix(o, i)), after = new Vector3().applyMatrix4(instanceMatrix(next, i));
+    return { ...i, x: i.x + before.x - after.x, y: i.y + before.y - after.y, z: (i.z ?? 0) + before.z - after.z };
+  }) }];
+}
+
+export async function run(operation: 'orient' | 'split' | 'split-parts', all: boolean) {
   const s = getState();
   if (busy || s.project || s.tab !== 'prepare') return;
   const objects = operation === 'orient' && (all || !s.selected)
@@ -84,23 +118,24 @@ export async function run(operation: 'orient' | 'split', all: boolean) {
   const signature = plateSignature(s);
   const created: PlateObject[] = [];
   try {
-    setState({ toast: operation === 'orient' ? 'Orienting objects…' : 'Splitting object…' });
+    setState({ toast: null, loading: operation === 'orient' ? 'Orienting objects' : 'Splitting object' });
     const replacements = new Map<number, PlateObject[]>();
     for (const o of objects) {
-      const next = operation === 'orient' ? [await orient(o)] : await splitObject(o);
+      const next = operation === 'orient' ? [await orient(o)] : operation === 'split' ? await splitObject(o) : await splitParts(o);
       replacements.set(o.id, next);
       if (operation === 'split') created.push(...next);
     }
     if (signature !== plateSignature(getState())) throw new Error('The plate changed during the operation. Try again.');
     const next = s.objects.flatMap((o) => replacements.get(o.id) ?? [o]);
     const first = replacements.get(objects[0].id)![0];
-    undoable(operation === 'orient' ? 'Orient' : 'Split to Objects',
+    undoable(operation === 'orient' ? 'Orient' : operation === 'split' ? 'Split to Objects' : 'Split to Parts',
       () => setState({ objects: next, selected: { object: first.id, instance: first.instances[0].id }, toast: null }));
   } catch (error) {
     created.forEach((o) => o.geometry.dispose());
     toast(error instanceof Error ? error.message : String(error));
   } finally {
     busy = false;
+    if (/^(Orienting objects|Splitting object)$/.test(getState().loading ?? '')) setState({ loading: null });
   }
 }
 

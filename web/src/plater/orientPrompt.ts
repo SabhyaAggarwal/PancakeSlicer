@@ -1,21 +1,15 @@
-import { Matrix4, Vector3 } from 'three';
 import { firstLayer, jobFields } from '../slice-input';
 import { loadMoves, supportGrams } from '../preview/data';
 import { effectiveConfig, getState, printerPreset, setState, subscribeStore, type OrientPrompt, type OrientSlice, type PlateObject, type State } from '../state/store';
 import { undoable } from '../state/history';
 import { instanceBox, parsePoints, plateJson } from './geometry';
 import { orientJob } from './operations';
-import { withRotation } from './rotation';
+import { axisAngle, withRotation } from './rotation';
 
 interface Score { object?: unknown; original?: unknown; best?: unknown; axis?: unknown; angle_deg?: unknown; support_area?: unknown; float_area?: unknown }
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
 const pose = (o: PlateObject) => JSON.stringify([o.rotX, o.rotY, o.scale]);
-
-function turn(axis: number[], angle: number): number[] {
-  const e = new Matrix4().makeRotationAxis(new Vector3(axis[0], axis[1], axis[2]).normalize(), (angle * Math.PI) / 180).elements;
-  return [e[0], e[4], e[8], e[1], e[5], e[9], e[2], e[6], e[10]];
-}
 
 function fits(o: PlateObject, rotation: number[]) {
   const machine = printerPreset(getState());
@@ -37,7 +31,7 @@ function decide(o: PlateObject, scores: Score[]): OrientPrompt | null {
   const axis = best?.axis as number[], angle = num(best?.angle_deg);
   if (!best || !Array.isArray(axis) || axis.length !== 3 || !axis.every(Number.isFinite) || angle === undefined || Math.abs(angle) < 1) return null;
   if (num(best.support_area)! > 0.5 * support || num(best.float_area)! > floating) return null;
-  const rotation = turn(axis, angle);
+  const rotation = axisAngle(axis, angle);
   return fits(o, rotation) ? { rotation, pose: pose(o), supportArea: [support, num(best.support_area)!] } : null;
 }
 

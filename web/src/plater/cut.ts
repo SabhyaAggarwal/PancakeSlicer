@@ -3,8 +3,9 @@ import { bedArea } from '../actions';
 import { mutation, responseError } from '../api/access';
 import { plateSignature } from '../slice-input';
 import { undoable } from '../state/history';
-import { getState, newId, printerPreset, resolvePreset, setState, toast, type CutPlane, type Instance, type PlateObject, type State } from '../state/store';
+import { getState, newId, printerPreset, resolvePreset, setState, toast, type CutPlane, type Instance, type PlateObject, type State, type Volume } from '../state/store';
 import { bakeStl, instanceBox, instanceMatrix, loadMesh, nearestFreeSpot, objectMatrix } from './geometry';
+import { centred } from './objectOps';
 
 const DEG = Math.PI / 180;
 
@@ -83,15 +84,15 @@ export async function performCut() {
   const signature = plateSignature(s);
   const created: PlateObject[] = [];
   try {
-    setState({ toast: 'Cutting object…' });
+    setState({ toast: null, loading: 'Cutting object' });
     const toStl = instanceMatrix(o, inst).multiply(objectMatrix(o).invert()).invert();
     const p = cutPoint(s, c)!.applyMatrix4(toStl);
     const n = cutNormal(c).transformDirection(toStl);
     const fd = new FormData();
     fd.append('operation', 'cut');
     fd.append('cut', [p.x, p.y, p.z, n.x, n.y, n.z].map((v) => v.toFixed(6)).join(','));
-    fd.append('cut_keep', c.keepUpper && c.keepLower ? 'both' : c.keepUpper ? 'upper' : 'lower');
-    if (c.placeLower) fd.append('cut_place_lower', '1');
+    fd.append('cut_keep', c.toParts || c.keepUpper && c.keepLower ? 'both' : c.keepUpper ? 'upper' : 'lower');
+    if (c.placeLower && !c.toParts) fd.append('cut_place_lower', '1');
     fd.append('files[]', await bakeStl(o), 'cut.stl');
     fd.append('vendor', printerPreset(s)?.vendor ?? 'BBL');
     fd.append('printer', resolvePreset(s, 'machine', s.printer).base?.name ?? s.printer);
@@ -120,7 +121,8 @@ export async function performCut() {
     } finally {
       await s.api.cancel(id);
     }
-    const turned = (side: Piece['side']) => (side === 'upper' && (c.rotX !== 0 || c.rotY !== 0)) || (side === 'lower' && c.placeLower);
+    const turned = (side: Piece['side']) => (side === 'upper' && (c.rotX !== 0 || c.rotY !== 0 || !!c.flipUpper)) || (side === 'lower' && c.placeLower);
+    if (c.toParts) return void await cutToParts(o, files, signature);
     const others = s.objects.filter((ob) => ob.id !== o.id);
     const placed: PlateObject[] = [];
     for (const side of ['lower', 'upper'] as const) {
@@ -128,7 +130,7 @@ export async function performCut() {
       if (!f) continue;
       const geometry = await loadMesh(f.file);
       const centre = new THREE.Vector3(...geometry.userData.sourceCentre as [number, number, number]);
-      const piece: PlateObject = { ...o, project: undefined, id: newId(), name: f.file.name.replace(/\.stl$/, ''), source: f.file, geometry, rotX: 0, rotY: 0,
+      const piece: PlateObject = { ...o, project: undefined, id: newId(), name: f.file.name.replace(/\.stl$/, ''), source: f.file, geometry, rotX: side === 'upper' && c.flipUpper ? 180 : 0, rotY: 0,
         scale: [1, 1, 1], settings: { ...o.settings }, instances: [] };
       for (const i of o.instances) {
         const m = instanceMatrix(o, i).multiply(objectMatrix(o).invert()).multiply(new THREE.Matrix4().makeTranslation(centre.x, centre.y, centre.z));
@@ -158,5 +160,31 @@ export async function performCut() {
     toast(error instanceof Error ? error.message : String(error));
   } finally {
     busy = false;
+    if (getState().loading === 'Cutting object') setState({ loading: null });
   }
+}
+
+async function cutToParts(o: PlateObject, files: { piece: Piece; file: File }[], signature: string) {
+  const s = getState(), inst = o.instances[0];
+  const load = async (side: Piece['side']) => {
+    const f = files.find((x) => x.piece.side === side);
+    if (!f) throw new Error('The native tool returned one piece: the plane does not cross the object.');
+    const geometry = await loadMesh(f.file);
+    const toWorld = instanceMatrix(o, inst).multiply(objectMatrix(o).invert())
+      .multiply(new THREE.Matrix4().makeTranslation(...geometry.userData.sourceCentre as [number, number, number]));
+    return { f, geometry, toWorld };
+  };
+  const lower = await load('lower'), upper = await load('upper');
+  const box = new THREE.Box3().setFromBufferAttribute(lower.geometry.attributes.position as THREE.BufferAttribute).applyMatrix4(lower.toWorld);
+  const at = box.getCenter(new THREE.Vector3());
+  const base: PlateObject = { ...o, project: undefined, id: newId(), name: o.name.replace(/\.(stl|obj)$/i, ''), source: lower.f.file, geometry: lower.geometry,
+    rotX: 0, rotY: 0, scale: [1, 1, 1], settings: { ...o.settings }, volumes: undefined, paint: undefined, layerProfile: undefined,
+    instances: [{ ...inst, id: newId(), x: at.x, y: at.y, z: 0 }] };
+  const [geometry, back] = centred(upper.geometry);
+  const part: Volume = { id: newId(), name: `${base.name}_A`, type: 'part', geometry, extruder: 0, settings: {},
+    matrix: instanceMatrix(base, base.instances[0]).invert().multiply(upper.toWorld).multiply(back).elements };
+  const object: PlateObject = { ...base, volumes: [part] };
+  if (signature !== plateSignature(getState())) throw new Error('The plate changed during the cut. Try again.');
+  undoable('Cut by Plane', () => setState({ objects: s.objects.flatMap((ob) => (ob.id === o.id ? [object] : [ob])),
+    selected: { object: object.id, instance: object.instances[0].id, allInstances: true }, gizmo: 'none', cut: null, toast: null }));
 }

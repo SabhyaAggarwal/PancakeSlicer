@@ -620,7 +620,7 @@ export async function download() {
   setTimeout(() => URL.revokeObjectURL(href), 60000);
 }
 
-export const toolbarOperation = (operation: 'orient' | 'split', all = false) =>
+export const toolbarOperation = (operation: 'orient' | 'split' | 'split-parts', all = false) =>
   import('./plater/operations').then((m) => m.run(operation, all));
 
 export async function saveProject(as = false) {
