@@ -311,6 +311,11 @@ func validatePlateBounds(dir string, req JobRequest, machine *Preset, rawPlate s
 	if raw := stringValue(machine.Config["printable_area"]); raw != "" {
 		area = strings.Split(raw, ",")
 	}
+	for _, o := range req.Overrides {
+		if o[0] == "printable_area" && o[1] != "" {
+			area = strings.Split(o[1], ",")
+		}
+	}
 	bed := meshBounds{}
 	for _, s := range area {
 		xy := strings.Split(s, "x")

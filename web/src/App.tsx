@@ -11,6 +11,8 @@ import { TabBar, TopBar } from './components/TopBar';
 const BrimEarsPanel = lazy(() => import('./components/BrimEarsPanel'));
 const BooleanPanel = lazy(() => import('./components/BooleanPanel'));
 const TextPanel = lazy(() => import('./components/TextPanel'));
+const SvgPanel = lazy(() => import('./components/SvgPanel'));
+const AssemblyBar = lazy(() => import('./components/AssemblyBar'));
 const CanvasTools = lazy(() => import('./components/CanvasTools'));
 const Navigator = lazy(() => import('./components/Navigator').then((m) => ({ default: m.Navigator })));
 const PlateChoice = lazy(() => import('./components/PlateChoice'));
@@ -23,6 +25,7 @@ const ContextMenu = lazy(() => import('./components/ContextMenu'));
 const MeasurePanel = lazy(() => import('./components/MeasurePanel'));
 import { dropLastFeature, setMeasure } from './plater/measureState';
 import { redo, undo, undoable } from './state/history';
+import { assembly, setAssembly, useAssembly } from './plater/assembly';
 
 const PresetDialog = lazy(() => import('./components/Dialogs').then((m) => ({ default: m.PresetDialog })));
 const PresetUx = lazy(() => import('./components/PresetUx'));
@@ -62,6 +65,7 @@ export default function App() {
   const loading = useStore((s) => s.loading);
   const jobDone = useStore((s) => s.job.state === 'done');
   const empty = useStore((s) => !s.objects.length && !s.project && !!s.printer && s.projectPlates.length < 2);
+  const assemblyOn = useAssembly().on;
   const [dragOver, setDragOver] = useState(false);
   const previewOpened = useRef(false);
   if (tab === 'preview' || jobDone) previewOpened.current = true;
@@ -130,7 +134,7 @@ export default function App() {
       else if (e.key === 'F2') startRename();
       else if (e.key.toLowerCase() === 'v') { const selected = getState().selected; if (selected) togglePrintable(selected.object, selected.allInstances ? undefined : selected.instance); }
       else if (prepare && !e.altKey && nudge(e.key, e.shiftKey)) {  }
-      else if (e.key === 'Escape') setState({ selected: null, gizmo: 'none' });
+      else if (e.key === 'Escape') { if (assembly().on) setAssembly({ on: false }); setState({ selected: null, gizmo: 'none' }); }
       else return;
       e.preventDefault();
     };
@@ -178,6 +182,8 @@ export default function App() {
             {gizmo === 'brimears' && <Suspense fallback={null}><BrimEarsPanel /></Suspense>}
             {gizmo === 'boolean' && <Suspense fallback={null}><BooleanPanel /></Suspense>}
             {gizmo === 'text' && <Suspense fallback={null}><TextPanel /></Suspense>}
+            {gizmo === 'svg' && <Suspense fallback={null}><SvgPanel /></Suspense>}
+            {assemblyOn && <Suspense fallback={null}><AssemblyBar /></Suspense>}
             {empty && !loading && <Suspense fallback={null}><EmptyPlate /></Suspense>}
           </div>
           {previewOpened.current && (

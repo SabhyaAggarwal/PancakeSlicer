@@ -23,9 +23,14 @@ const fields = (t: TextSpec): Record<string, string> => ({
 export const surfaceOk = (s: State, type: VolumeType) => !!s.features.emboss_surface && (type !== 'part' || !!s.features.emboss_surface_outside);
 
 async function surfaceMesh(o: PlateObject, type: VolumeType, t: TextSpec) {
-  const { at, normal } = t.surface!;
-  const { geometry } = await meshJob('text', { ...fields(t), use_surface: '1', at: at.join(','), normal: normal.join(','), ...(type === 'part' ? { outside: '1' } : {}) },
-    [[await bakeStl(o, new THREE.Matrix4()), 'target.stl']], 'text');
+  const { geometry } = await meshJob('text', { ...fields(t), ...surfaceFields(t.surface!, type) }, [[await bakeStl(o, new THREE.Matrix4()), 'target.stl']], 'text');
+  return inFrame(geometry);
+}
+
+export const surfaceFields = ({ at, normal }: NonNullable<TextSpec['surface']>, type: VolumeType): Record<string, string> =>
+  ({ use_surface: '1', at: at.join(','), normal: normal.join(','), ...(type === 'part' ? { outside: '1' } : {}) });
+
+export function inFrame(geometry: THREE.BufferGeometry) {
   geometry.computeBoundingBox();
   const c = new THREE.Vector3(...(geometry.userData.sourceCentre as [number, number, number] ?? [0, 0, 0]));
   const d = geometry.boundingBox!.getCenter(new THREE.Vector3()).add(c);
@@ -81,6 +86,11 @@ export function editedText(s = getState()): { object: PlateObject; volume?: Volu
   const v = s.selected?.volume !== undefined ? o.volumes?.find((x) => x.id === s.selected!.volume) : undefined;
   if (v?.text) return { object: o, volume: v, spec: v.text };
   return o.text && !v ? { object: o, spec: o.text } : null;
+}
+
+export function placeOnSurface(at: [number, number, number], normal: [number, number, number]) {
+  const t = editedText();
+  if (t?.volume) void updateText({ ...t.spec, surface: { at, normal } });
 }
 
 export async function updateText(spec: TextSpec) {

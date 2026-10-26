@@ -3,7 +3,7 @@ import { accessNotice, accessSnapshot, saveAccessToken, subscribeAccess } from '
 import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import * as THREE from 'three';
-import { addInstance, arrangeAll, cancelSlice, download, fileUse, openFileDialog, outputKind, removeInstance, toolbarOperation, outsideVolumeWarning, canBoolean, toggleBoolean, toggleText } from '../actions';
+import { addInstance, arrangeAll, cancelSlice, download, fileUse, openFileDialog, outputKind, removeInstance, toolbarOperation, outsideVolumeWarning, canBoolean, toggleBoolean, toggleSvg, toggleText } from '../actions';
 import { setCompareWanted } from '../compare';
 import { toggleNonplanarView, useNonplanarView, usePatchPreview, type PreviewFact } from '../patch-preview';
 import { applyRecommended, pendingRecommendations, plateResults, type PlateResult } from '../recommend';
@@ -21,6 +21,7 @@ import { arrangeSettings, resetArrangeSettings, setArrangeSettings, subscribeArr
 import { ANGLE, EXTRUDERS_LIMIT, GAP_AREA, HEIGHT, RADIUS, canPaint, gapFill, isPaint, paintOf, PAINT_STEP, paintTool, setPaintTool, subscribePaintTool, togglePaint, type BrushTool, type PaintKind } from '../plater/paint';
 import { filamentColor } from '../plater/filamentColor';
 import { canEditLayers } from './LayerHeight';
+import { setAssembly, useAssembly } from '../plater/assembly';
 
 const LATER_GIZMOS: [icon: string, tooltip: string][] = [
   ['toolbar_texture_displacement', 'Texture displacement'],
@@ -48,6 +49,8 @@ export function CanvasToolbar() {
   const brimEars = useStore((s) => !!s.features.brim_ears);
   const booleanOk = useStore(canBoolean);
   const text = useStore((s) => !!s.features.emboss_text);
+  const assemblyOn = useAssembly().on;
+  const svg = useStore((s) => !!s.features.emboss_svg);
   const native = useStore((s) => !!s.objects.find((o) => o.id === s.selected?.object)?.native);
   const volumes = useStore((s) => !!s.objects.find((o) => o.id === s.selected?.object)?.volumes?.length);
   const locked = project ? ' — instances cannot be added or removed from an opened project' : '';
@@ -76,7 +79,7 @@ export function CanvasToolbar() {
       <IconButton size={24} icon="split_objects" title="Split to objects" onClick={() => toolbarOperation('split')} disabled={!edit || project} />
       <IconButton size={24} icon="split_parts" title="Split to parts" onClick={() => toolbarOperation('split-parts')} disabled={!edit || project || !splitParts} />
       <IconButton size={24} icon="toolbar_variable_layer_height" title="Variable layer height" active={gizmo === 'layers'} onClick={() => toggle('layers')} disabled={!layers && gizmo !== 'layers'} />
-      <IconButton size={24} icon="toolbar_assemble" title="Assembly View" disabled />
+      <IconButton size={24} icon="toolbar_assemble" title="Assembly View" active={assemblyOn} onClick={() => setAssembly({ on: !assemblyOn })} disabled={!hasObjects && !assemblyOn} />
       <span className="tb-sep" />
       <IconButton size={24} icon="toolbar_move" title="Move (M)" active={gizmo === 'move'} onClick={() => toggle('move')} disabled={!edit} />
       <IconButton size={24} icon="toolbar_rotate" title="Rotate (R)" active={gizmo === 'rotate'} onClick={() => toggle('rotate')} disabled={!edit} />
@@ -92,7 +95,9 @@ export function CanvasToolbar() {
         ? <IconButton key={icon} size={24} icon={icon} title={title} active={gizmo === 'brimears'} onClick={() => toggle('brimears')} disabled={!sel || !!placeholder || !!native || volumes} />
         : icon === 'toolbar_text' && text
           ? <IconButton key={icon} size={24} icon={icon} title={title} active={gizmo === 'text'} onClick={toggleText} disabled={!!sel?.all || !!placeholder || !!native} />
-          : <IconButton key={icon} size={24} icon={icon} title={title} disabled />
+          : icon === 'svg_part' && svg
+            ? <IconButton key={icon} size={24} icon={icon} title={title} active={gizmo === 'svg'} onClick={toggleSvg} disabled={!!sel?.all || !!placeholder || !!native} />
+            : <IconButton key={icon} size={24} icon={icon} title={title} disabled />
       ))}
       {preview && (
         <>
@@ -158,7 +163,7 @@ export function ManipulationPanel({ docked = false }: { docked?: boolean }) {
   const uniform = useStore((s) => s.uniformScale);
   const volumeId = useStore((s) => s.selected?.volume);
   const inst = o?.instances.find((i) => i.id === instId);
-  if (!o || !inst || (docked ? gizmo !== 'none' : gizmo === 'none') || gizmo === 'flatten' || gizmo === 'cut' || gizmo === 'measure' || isPaint(gizmo) || gizmo === 'layers' || gizmo === 'brimears' || gizmo === 'boolean' || gizmo === 'text' || o.project?.placeholder) return null;
+  if (!o || !inst || (docked ? gizmo !== 'none' : gizmo === 'none') || gizmo === 'flatten' || gizmo === 'cut' || gizmo === 'measure' || isPaint(gizmo) || gizmo === 'layers' || gizmo === 'brimears' || gizmo === 'boolean' || gizmo === 'text' || gizmo === 'svg' || o.project?.placeholder) return null;
   const v = o.volumes?.find((vv) => vv.id === volumeId);
   if (v) {
     const box = volumeBox(o, inst, v);

@@ -671,3 +671,15 @@ export function toggleBoolean() {
   const s = getState();
   if (s.gizmo === 'boolean' || canBoolean(s)) setState({ gizmo: s.gizmo === 'boolean' ? 'none' : 'boolean' });
 }
+
+export function toggleSvg() {
+  const s = getState();
+  if (!s.features.emboss_svg || s.tab !== 'prepare') return;
+  if (s.gizmo === 'svg') return setState({ gizmo: 'none' });
+  void import('./plater/svg').then((m) => {
+    if (m.editedSvg()) return setState({ gizmo: 'svg' });
+    const o = s.objects.find((x) => x.id === s.selected?.object);
+    if (o && (o.project?.placeholder || o.native || s.selected?.all)) return toast('SVG needs an object of the plate, or nothing selected');
+    void m.addSvg(o ? o.id : null);
+  });
+}

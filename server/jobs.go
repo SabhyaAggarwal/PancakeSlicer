@@ -556,6 +556,13 @@ func (m *JobManager) toolArgs(j *Job) []string {
 	if r.MeshOp == "boolean" {
 		return []string{"--mesh-boolean", r.BooleanOp, "--a", filepath.Join(in, r.Files[0]), "--b", filepath.Join(in, r.Files[1]), j.OutputPath("stl")}
 	}
+	if r.MeshOp == "svg" {
+		args := append([]string{"--emboss-svg", filepath.Join(in, r.Files[0]), j.OutputPath("stl")}, r.Text...)
+		if len(r.TextSurface) > 0 {
+			args = append(append(args, "--use-surface", "--surface", filepath.Join(in, r.Files[1])), r.TextSurface...)
+		}
+		return args
+	}
 	if r.MeshOp == "text" {
 		args := append([]string{"--emboss-text", j.OutputPath("stl"), "--profiles", filepath.Join(m.cfg.Resources, "profiles")}, r.Text...)
 		if len(r.TextSurface) > 0 {

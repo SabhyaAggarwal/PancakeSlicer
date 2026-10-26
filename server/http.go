@@ -278,6 +278,38 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		req.MeshOp, req.BooleanOp = "boolean", op
+	case "svg":
+		if !s.cfg.Features.EmbossSVG {
+			fail(w, 400, "SVG requires a tool with --emboss-svg")
+			return
+		}
+		args := []string{}
+		for _, f := range []struct {
+			key, flag string
+			lo, hi    float64
+		}{{"depth", "--depth", 0.01, 1000}, {"size", "--size", 0.1, 1000}} {
+			raw := r.FormValue(f.key)
+			if raw == "" && f.key == "size" {
+				continue
+			}
+			v, err := strconv.ParseFloat(raw, 64)
+			if err != nil || math.IsNaN(v) || v < f.lo || v > f.hi {
+				fail(w, 400, fmt.Sprintf("%s must be %g to %g", f.key, f.lo, f.hi))
+				return
+			}
+			args = append(args, f.flag, strconv.FormatFloat(v, 'f', -1, 64))
+		}
+		req.MeshOp, req.Text = "svg", args
+		if r.FormValue("use_surface") == "1" {
+			features := s.cfg.Features
+			features.EmbossSurface = features.EmbossSVGSurface
+			surface, err := surfaceArgs(r, features)
+			if err != nil {
+				fail(w, 400, err.Error())
+				return
+			}
+			req.TextSurface = surface
+		}
 	case "text":
 		if !s.cfg.Features.EmbossText {
 			fail(w, 400, "Text requires a tool with --emboss-text")
@@ -492,9 +524,9 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		_, parameters, headerErr := mime.ParseMediaType(f.Header.Get("Content-Disposition"))
 		name := parameters["filename"]
 		ext := strings.ToLower(filepath.Ext(name))
-		step := s.cfg.Features.Step && (ext == ".step" || ext == ".stp") || ext == ".drc"
-		if headerErr != nil || name == "" || len(name) > 240 || strings.IndexFunc(name, unicode.IsControl) >= 0 || strings.ContainsAny(name, "/\\") || name != filepath.Base(name) || (ext != ".stl" && ext != ".obj" && ext != ".3mf" && !step) || names[name] {
-			fail(w, 400, "uploads need unique STL, OBJ, STEP, DRC or 3MF basenames")
+		other := s.cfg.Features.Step && (ext == ".step" || ext == ".stp") || ext == ".drc" || req.MeshOp == "svg" && ext == ".svg"
+		if headerErr != nil || name == "" || len(name) > 240 || strings.IndexFunc(name, unicode.IsControl) >= 0 || strings.ContainsAny(name, "/\\") || name != filepath.Base(name) || (ext != ".stl" && ext != ".obj" && ext != ".3mf" && !other) || names[name] {
+			fail(w, 400, "uploads need unique STL, OBJ, STEP, DRC, SVG or 3MF basenames")
 			return
 		}
 		names[name] = true
@@ -588,7 +620,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		req.Edits = true
-	} else if len(files) != 1 && req.MeshOp != "boolean" {
+	} else if len(files) != 1 && req.MeshOp != "boolean" && req.MeshOp != "svg" {
 		fail(w, 400, "multiple uploads require plate JSON")
 		return
 	}
@@ -686,7 +718,13 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		}
 		req.Overrides = append(selected, req.Overrides...)
 	}
-	if want := map[bool]int{true: 2, false: 1}[req.MeshOp == "boolean"]; req.MeshOp != "" && (req.Output != "gcode" || req.Plate || len(req.Files) != want || !allSTL(req.Files) && !(req.MeshOp == "export" && strings.EqualFold(filepath.Ext(req.Files[0]), ".3mf"))) {
+	if req.MeshOp == "svg" {
+		want := map[bool]int{true: 2, false: 1}[len(req.TextSurface) > 0]
+		if req.Output != "gcode" || req.Plate || len(req.Files) != want || !strings.EqualFold(filepath.Ext(req.Files[0]), ".svg") || want == 2 && !allSTL(req.Files[1:]) {
+			fail(w, 400, "svg takes the SVG, and with use_surface one STL target, without plate JSON or project output")
+			return
+		}
+	} else if want := map[bool]int{true: 2, false: 1}[req.MeshOp == "boolean"]; req.MeshOp != "" && (req.Output != "gcode" || req.Plate || len(req.Files) != want || !allSTL(req.Files) && !(req.MeshOp == "export" && strings.EqualFold(filepath.Ext(req.Files[0]), ".3mf"))) {
 		fail(w, 400, fmt.Sprintf("this mesh operation takes %d STL without plate JSON or project output", want))
 		return
 	}
@@ -702,7 +740,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "orient requires one STL without plate JSON or project output")
 		return
 	}
-	if !req.Orient && !req.Arrange && !req.WipeTower && !req.Explode && req.Cut == "" && req.Output != "3mf" && req.Output != "patch-preview" {
+	if !req.Orient && !req.Arrange && !req.WipeTower && !req.Explode && req.Cut == "" && req.MeshOp == "" && req.Output != "3mf" && req.Output != "patch-preview" {
 		if err := validatePlateBounds(filepath.Join(j.Dir, "input"), req, vendor.machines[req.Printer], rawPlate); err != nil {
 			fail(w, 400, err.Error())
 			return

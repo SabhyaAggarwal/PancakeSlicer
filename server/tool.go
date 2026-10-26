@@ -53,6 +53,8 @@ type ToolFeatures struct {
 	MeshSimplifyError    bool            `json:"mesh_simplify_error"`
 	MeshBoolean          bool            `json:"mesh_boolean"`
 	EmbossText           bool            `json:"emboss_text"`
+	EmbossSVG            bool            `json:"emboss_svg"`
+	EmbossSVGSurface     bool            `json:"emboss_svg_surface"`
 	EmbossSurface        bool            `json:"emboss_surface"`
 	ExportGeneric3MF     bool            `json:"export_generic_3mf"`
 	ExportDRC            bool            `json:"export_drc"`
@@ -125,6 +127,8 @@ func probeUsage(c Config, f *ToolFeatures) {
 	f.MeshBoolean = strings.Contains(usage, "--mesh-boolean union|difference|intersection --a A --b B")
 	f.EmbossText = strings.Contains(usage, "--emboss-text OUT.stl") && strings.Contains(usage, "--emboss-fonts")
 	f.EmbossSurface = f.EmbossText && strings.Contains(usage, "--use-surface --surface TARGET --at X,Y,Z --normal NX,NY,NZ")
+	f.EmbossSVG = strings.Contains(usage, "--emboss-svg IN.svg OUT.stl")
+	f.EmbossSVGSurface = f.EmbossSVG && strings.Contains(usage, "SVG --size scales the larger side; optional --use-surface")
 	f.EmbossSurfaceOutside = f.EmbossSurface && strings.Contains(usage, "--surface-outside")
 	f.ExportGeneric3MF = strings.Contains(usage, "--export-3mf-generic IN.3mf OUT.3mf")
 	f.ExportDRC = strings.Contains(usage, "--export-drc IN OUT.drc")

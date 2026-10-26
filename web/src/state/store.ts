@@ -36,6 +36,15 @@ export interface Volume {
   settings: Config;
   paint?: Partial<Record<PaintKind, Painting>>;
   text?: TextSpec;
+  svg?: SvgSpec;
+}
+
+export interface SvgSpec {
+  svg: string;
+  name: string;
+  depth: number;
+  size?: number;
+  surface?: TextSpec['surface'];
 }
 
 export interface TextSpec {
@@ -81,6 +90,7 @@ export interface PlateObject {
   paint?: Partial<Record<PaintKind, Painting>>;
   brimEars?: { p: [number, number, number]; r: number }[];
   text?: TextSpec;
+  svg?: SvgSpec;
   units?: 'inch' | 'meter';
   layerProfile?: number[];
   project?: { buildIndex?: number; plateIndex?: number; plateOrigin?: [number, number]; file: string; placeholder: boolean; missing?: boolean; origin?: [number, number, number];
@@ -111,7 +121,7 @@ export type PresetUx =
 
 export type MainTab = 'prepare' | 'preview';
 export type CalibMenu = 'temperature' | 'max-flowrate' | 'pressure-advance' | 'flow-ratio' | 'retraction' | 'cornering' | 'input-shaping-freq' | 'input-shaping-damp' | 'vfa' | 'nonplanar';
-export type Gizmo = 'none' | 'move' | 'rotate' | 'scale' | 'flatten' | 'cut' | 'measure' | 'layers' | 'brimears' | 'boolean' | 'text' | PaintKind;
+export type Gizmo = 'none' | 'move' | 'rotate' | 'scale' | 'flatten' | 'cut' | 'measure' | 'layers' | 'brimears' | 'boolean' | 'text' | 'svg' | PaintKind;
 
 export interface JobView {
   id?: string;
@@ -159,7 +169,7 @@ export interface CutGroove { depth: number; depthTolerance: number; width: numbe
 
 export interface State {
   api: Api | null;
-  features: { plate_locks?: boolean; mesh_simplify_error?: boolean; export_drc?: boolean; export_generic_3mf?: boolean; mesh_boolean?: boolean; emboss_text?: boolean; emboss_surface?: boolean; emboss_surface_outside?: boolean; cut?: boolean; volumes?: boolean; edit?: boolean; mesh_plates?: boolean; paint?: boolean; layer_profile?: boolean; arrange?: boolean; project_volumes?: boolean; project_paint?: boolean; orient_scores?: boolean; floating?: boolean;
+  features: { emboss_svg?: boolean; emboss_svg_surface?: boolean; plate_locks?: boolean; mesh_simplify_error?: boolean; export_drc?: boolean; export_generic_3mf?: boolean; mesh_boolean?: boolean; emboss_text?: boolean; emboss_surface?: boolean; emboss_surface_outside?: boolean; cut?: boolean; volumes?: boolean; edit?: boolean; mesh_plates?: boolean; paint?: boolean; layer_profile?: boolean; arrange?: boolean; project_volumes?: boolean; project_paint?: boolean; orient_scores?: boolean; floating?: boolean;
     ranges?: boolean; moves_extended?: boolean; mixed_temperatures?: boolean; arrange_materials?: boolean; wipe_tower?: boolean; explode?: boolean; cut_connectors?: boolean; mesh_repair?: boolean; mesh_simplify?: boolean; brim_ears?: boolean; seam_parts?: boolean };
   cut: CutPlane | null;
   loading: string | null;
@@ -193,7 +203,7 @@ export interface State {
   projectMaterials: { colours: string[]; matrix: number[] | null; multiplier: number | null; builds?: { object: number; instance: number }[] } | null;
   flush: { matrix: number[] | null; multiplier: number | null };
   flushDialog: boolean;
-  appDialog: 'about' | 'preferences' | 'shortcuts' | 'send' | 'setup' | 'what' | 'plate' | 'clone' | 'simplify' | 'filaments' | 'objectTable' | null;
+  appDialog: 'about' | 'preferences' | 'shortcuts' | 'send' | 'setup' | 'what' | 'plate' | 'clone' | 'simplify' | 'filaments' | 'objectTable' | 'createPrinter' | null;
   filamentsToUse: string[] | null;
   calibDialog: CalibMenu | null;
   printers: SendPrinter[];

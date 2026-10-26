@@ -90,9 +90,12 @@ export default function ContextMenu() {
     ...SHAPES.map((shape) => ({ label: shape, action: () => addPrimitive(o.id, type, shape) })),
     ...(s.features.emboss_text && (type === 'part' || type === 'negative' || type === 'modifier')
       ? [{ label: 'Text', action: () => void import('../plater/text').then((m) => m.addText(o.id, type)) }] : []),
+    ...(s.features.emboss_svg && (type === 'part' || type === 'negative' || type === 'modifier')
+      ? [{ label: 'SVG', action: () => void import('../plater/svg').then((m) => m.addSvg(o.id, type)) }] : []),
   ] })), ...heightRanges, 'sep' as const] : heightRanges.length ? [...heightRanges, 'sep'] : [];
   const items: Item[] = o && volume ? [
     ...(volume.text && s.features.emboss_text ? [{ label: 'Edit text', action: () => setState({ gizmo: 'text' }) }] : []),
+    ...(volume.svg && s.features.emboss_svg ? [{ label: 'Edit SVG', action: () => setState({ gizmo: 'svg' }) }] : []),
     { label: 'Rename', action: () => setState({ renaming: volume.id }) },
     { label: 'Delete', shortcut: 'Del', action: () => deleteVolume(o.id, volume.id), tip: 'Delete the selected part' },
     { label: 'Mirror', tip: 'Mirror the part', sub: ([0, 1, 2] as const).map((a) => (
@@ -156,6 +159,7 @@ export default function ContextMenu() {
   ] : [
     { label: 'Add Primitive', disabled: !!s.project, sub: SHAPES.map((shape) => ({ label: shape, action: () => void addPrimitiveObject(shape) })) },
     { label: 'Add Handy models', disabled: !!s.project, sub: HANDY.map(([label], i) => ({ label, action: () => void import('../plater/handy').then((m) => m.addHandyModel(i)) })) },
+    ...(s.features.emboss_svg ? [{ label: 'Add SVG', disabled: !!s.project, action: () => void import('../plater/svg').then((m) => m.addSvg(null)) }] : []),
     { label: 'Add Models', shortcut: 'Ctrl+I', action: openFileDialog },
     { label: 'Paste', shortcut: 'Ctrl+V', action: pasteClipboard, disabled: !canPaste(s) },
     'sep',

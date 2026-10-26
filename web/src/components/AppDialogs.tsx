@@ -9,6 +9,7 @@ const CloneDialog = lazy(() => import('./CloneDialog'));
 const SimplifyDialog = lazy(() => import('./SimplifyDialog'));
 const FilamentsDialog = lazy(() => import('./FilamentsDialog'));
 const ObjectTable = lazy(() => import('./ObjectTable'));
+const CreatePrinter = lazy(() => import('./CreatePrinter'));
 const SendDialog = lazy(() => import('./SendDialog'));
 const WhatYouCanDo = lazy(() => import('./WhatYouCanDo'));
 const SetupWizard = lazy(() => import('./FirstRun').then((m) => ({ default: m.SetupWizard })));
@@ -117,7 +118,8 @@ function Shortcuts() {
   );
 }
 
-export default function AppDialog({ which }: { which: 'about' | 'preferences' | 'shortcuts' | 'send' | 'setup' | 'what' | 'plate' | 'clone' | 'simplify' | 'filaments' | 'objectTable' }) {
+export default function AppDialog({ which }: { which: 'about' | 'preferences' | 'shortcuts' | 'send' | 'setup' | 'what' | 'plate' | 'clone' | 'simplify' | 'filaments' | 'objectTable' | 'createPrinter' }) {
+  if (which === 'createPrinter') return <Suspense fallback={null}><CreatePrinter close={close} /></Suspense>;
   if (which === 'objectTable') return <Suspense fallback={null}><ObjectTable close={close} /></Suspense>;
   if (which === 'filaments') return <Suspense fallback={null}><FilamentsDialog close={close} /></Suspense>;
   if (which === 'simplify') return <Suspense fallback={null}><SimplifyDialog close={close} /></Suspense>;

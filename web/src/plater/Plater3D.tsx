@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { CameraViews } from './CameraViews';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
-import { effectiveConfig, getState, markStale, printerPreset, setPaint, setState, subscribeStore, updateInstance, updateObject, updateVolume, useStore, type CutConnector, type SeamMode, type State, type VolumeType } from '../state/store';
+import { effectiveConfig, getState, markStale, printerPreset, setPaint, setState, subscribeStore, updateInstance, updateObject, updateVolume, useStore, type CutConnector, type Instance, type PlateObject, type SeamMode, type State, type Volume, type VolumeType } from '../state/store';
 import { PaintView } from './paintView';
 import { viewOptions, subscribeViewOptions } from './viewOptions';
 import { sectionView, subscribeSection } from './section';
@@ -11,6 +11,7 @@ import { brush, bucketFill, fill as fillPaint, heightRange, HEIGHT, isPaint, ove
 import { beginStep, undoable } from '../state/history';
 import { TowerView } from './wipeTower';
 import { setTextPlacing, textPlacing } from './textPlacing';
+import { assembly, subscribeAssembly } from './assembly';
 import { gridOrigin, plateOffset, PlateGrid } from './plateGrid';
 import { canAddPlate, moveToPlate, selectPlate } from './plates';
 import { filamentColor } from './filamentColor';
@@ -79,6 +80,9 @@ export default function Plater3D() {
         const t0 = performance.now();
         if (uploads.length) uploadStep();
         showBedFor(bed, views.camera, viewOptions().gridlines);
+        if (bed) bed.visible = !assembly().on;
+        grid.group.visible = !assembly().on;
+        grid.layer.hidden = assembly().on;
         renderer.render(scene, views.camera);
         placeLabels();
         grid.place(views.camera, el.clientWidth, el.clientHeight, viewOptions().gridlines);
@@ -343,6 +347,13 @@ export default function Plater3D() {
       for (const m of materials.values()) m.clippingPlanes = on ? [sectionPlane] : null;
       render();
     };
+    const exploded = (o: PlateObject, inst: Instance, v: Volume) => {
+      const m = volumeWorld(o, inst, v), ratio = assembly().on ? assembly().ratio : 1;
+      if (ratio === 1) return m;
+      const c = instanceBox({ ...o, volumes: [] }, inst).getCenter(new THREE.Vector3());
+      const at = new THREE.Vector3().setFromMatrixPosition(m);
+      return m.premultiply(new THREE.Matrix4().makeTranslation(...at.sub(c).multiplyScalar(ratio - 1).toArray()));
+    };
     const syncObjects = (s: State) => {
       const seen = new Set<number>();
       outside = outsideBed(s.objects, area, height);
@@ -380,7 +391,7 @@ export default function Plater3D() {
               scene.add(mesh);
             }
             mesh.renderOrder = v.type === 'part' ? 0 : 1;
-            mesh.matrix.copy(volumeWorld(o, inst, v));
+            mesh.matrix.copy(exploded(o, inst, v));
             mesh.matrixWorldNeedsUpdate = true;
           }
       for (const [key, mesh] of volumeMeshes)
@@ -584,7 +595,7 @@ export default function Plater3D() {
       const o = s.objects.find((ob) => ob.id === s.selected?.object);
       const i = o?.instances.find((ii) => ii.id === s.selected?.instance);
       const v = o?.volumes?.find((vv) => vv.id === s.selected?.volume);
-      if (!o || !i || s.gizmo === 'none' || s.gizmo === 'flatten' || s.gizmo === 'measure' || isPaint(s.gizmo) || s.gizmo === 'layers' || s.gizmo === 'brimears' || s.gizmo === 'boolean' || s.gizmo === 'text' || s.selected?.all || o.project?.placeholder) {
+      if (!o || !i || s.gizmo === 'none' || s.gizmo === 'flatten' || s.gizmo === 'measure' || isPaint(s.gizmo) || s.gizmo === 'layers' || s.gizmo === 'brimears' || s.gizmo === 'boolean' || s.gizmo === 'text' || s.gizmo === 'svg' || s.selected?.all || o.project?.placeholder) {
         tc.detach();
         return;
       }
@@ -934,7 +945,7 @@ export default function Plater3D() {
     renderer.domElement.addEventListener('pointerdown', onEarsDown, { capture: true });
     const onTextDown = (ev: PointerEvent) => {
       const s = getState();
-      if (ev.button !== 0 || s.gizmo !== 'text' || !textPlacing()) return;
+      if (ev.button !== 0 || (s.gizmo !== 'text' && s.gizmo !== 'svg') || !textPlacing()) return;
       const hit = pick(ev);
       if (!hit?.local || hit.tri === undefined || (hit.object.userData as { object: number }).object !== s.selected?.object) return;
       ev.stopImmediatePropagation();
@@ -943,10 +954,8 @@ export default function Plater3D() {
       const v = [0, 1, 2].map((k) => new THREE.Vector3().fromBufferAttribute(pos, idx ? idx.getX(hit.tri! * 3 + k) : hit.tri! * 3 + k));
       const n = v[1].clone().sub(v[0]).cross(v[2].clone().sub(v[0])).normalize();
       setTextPlacing(false);
-      void import('./text').then((m) => {
-        const t = m.editedText();
-        if (t?.volume) void m.updateText({ ...t.spec, surface: { at: [hit.local!.x, hit.local!.y, hit.local!.z], normal: [n.x, n.y, n.z] } });
-      });
+      const at: [number, number, number] = [hit.local.x, hit.local.y, hit.local.z];
+      void (s.gizmo === 'svg' ? import('./svg') : import('./text')).then((m) => m.placeOnSurface(at, [n.x, n.y, n.z]));
     };
     renderer.domElement.addEventListener('pointerdown', onTextDown, { capture: true });
     renderer.domElement.addEventListener('wheel', onEarsWheel, { capture: true, passive: false });
@@ -1229,6 +1238,7 @@ export default function Plater3D() {
     el.appendChild(grid.layer);
     const unsubView = subscribeViewOptions(() => { tint(getState()); syncView(getState()); render(); });
     const unsubSection = subscribeSection(applySection);
+    const unsubAssembly = subscribeAssembly(() => { last = null; sync(); render(); });
     const onFit = () => {
       const s = getState(), box = new THREE.Box3();
       for (const o of s.objects) for (const i of o.instances)
@@ -1253,6 +1263,7 @@ export default function Plater3D() {
       unsubLayerCursor();
       unsubView();
       unsubSection();
+      unsubAssembly();
       unsubEars();
       window.removeEventListener('camera-fit', onFit);
       labelLayer.remove();

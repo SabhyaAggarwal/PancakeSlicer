@@ -2,6 +2,8 @@ import type { PresetType } from '../api/types';
 import { switchPreset } from '../actions';
 import { compatible, getState, hasUnsavedEdits, presetEdits, setState, useStore } from '../state/store';
 
+const CREATE = '\u0000create-printer';
+
 export function PresetCombo({ type, slot = 0, className }: { type: PresetType; slot?: number; className?: string }) {
   const value = useStore((s) => (type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot] ?? ''));
   const printer = useStore((s) => s.printer);
@@ -20,6 +22,7 @@ export function PresetCombo({ type, slot = 0, className }: { type: PresetType; s
   const user = userPresets.filter((u) => u.type === type && (type === 'machine' || sysNames.has(u.inherits))).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
 
   const onChange = (name: string) => {
+    if (name === CREATE) return setState({ appDialog: 'createPrinter' });
     if (hasUnsavedEdits(getState(), type, slot)) setState({ presetUx: { kind: 'unsaved', type, slot, target: name } });
     else switchPreset(type, slot, name);
   };
@@ -44,6 +47,7 @@ export function PresetCombo({ type, slot = 0, className }: { type: PresetType; s
           </option>
         ))}
       </optgroup>
+      {type === 'machine' && <option value={CREATE}>Create printer…</option>}
     </select>
   );
 }
