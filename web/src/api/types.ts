@@ -68,7 +68,7 @@ export interface PlateJson {
     settings?: Record<string, string>;
     volumes?: { file: string; type: string; name: string; extruder?: number; settings?: Record<string, string>; paint?: Record<string, Record<string, string>> }[];
   }[];
-  plates?: { index: number; name: string; settings: Record<string, string> }[];
+  plates?: { index: number; name: string; settings: Record<string, string>; locked?: boolean }[];
 }
 
 export interface JobRequest {

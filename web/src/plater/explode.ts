@@ -110,7 +110,7 @@ function volumeType(v: Json): { type: VolumeType; seamMode?: SeamMode } {
   return t === 'seam' ? { type: 'seam', seamMode: (String(v.seam_mode ?? 'center') as SeamMode) } : { type: t as VolumeType };
 }
 
-export async function explodeProject(file: File): Promise<{ settings: Config; plates: { index: number; name: string; settings: Config; objects: PlateObject[]; events: LayerEvent[] }[] }> {
+export async function explodeProject(file: File): Promise<{ settings: Config; plates: { index: number; name: string; settings: Config; locked?: boolean; objects: PlateObject[]; events: LayerEvent[] }[] }> {
   const s = getState();
   const fd = new FormData();
   fd.append('operation', 'explode');
@@ -135,7 +135,7 @@ export async function explodeProject(file: File): Promise<{ settings: Config; pl
     })));
     const meshes = new Map<string, THREE.BufferGeometry>();
     await Promise.all(Object.entries(files).map(async ([name, blob]) => meshes.set(name, await volumeMesh(blob))));
-    const plates = ((record.plates ?? []) as Json[]).map((p) => ({ index: Number(p.index), name: String(p.name ?? ''), settings: (p.settings ?? {}) as Config, objects: [] as PlateObject[], events: plateEvents(p) }));
+    const plates = ((record.plates ?? []) as Json[]).map((p) => ({ index: Number(p.index), name: String(p.name ?? ''), settings: (p.settings ?? {}) as Config, ...(p.locked === true ? { locked: true } : {}), objects: [] as PlateObject[], events: plateEvents(p) }));
     if (!plates.length) plates.push({ index: 1, name: '', settings: {}, objects: [], events: [] });
     for (const o of objects) {
       const vols = o.volumes as Json[];
@@ -250,7 +250,8 @@ export async function openExplodedProject(file: File, adopt: (config: Config, sl
   const first = plates[0];
   setState((st) => ({
     project: null, projectName: file.name, projectMaterials: null, objects: first.objects, events: first.events, plateIndex: first.index,
-    projectPlates: plates.map((p) => ({ index: p.index, name: p.name, origin: [0, 0] as [number, number], settings: p.settings, objects: p.objects, events: p.events })),
+    projectPlates: plates.map((p) => ({ index: p.index, name: p.name, origin: [0, 0] as [number, number], settings: p.settings, objects: p.objects, events: p.events,
+      ...(p.locked || materials.plates.find((m) => m.index === p.index)?.locked ? { locked: true } : {}) })),
     filamentSlots: Array.from({ length: slots }, (_, i) => st.filamentSlots[i] ?? st.filamentSlots[0] ?? ''),
     slotColours: materials.colours.map((c) => c || undefined), flush: { matrix: materials.matrix, multiplier: materials.multiplier },
     selected: null, processScope: 'global',

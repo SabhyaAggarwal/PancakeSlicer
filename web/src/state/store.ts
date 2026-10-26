@@ -159,7 +159,7 @@ export interface CutGroove { depth: number; depthTolerance: number; width: numbe
 
 export interface State {
   api: Api | null;
-  features: { mesh_simplify_error?: boolean; export_drc?: boolean; export_generic_3mf?: boolean; mesh_boolean?: boolean; emboss_text?: boolean; emboss_surface?: boolean; emboss_surface_outside?: boolean; cut?: boolean; volumes?: boolean; edit?: boolean; mesh_plates?: boolean; paint?: boolean; layer_profile?: boolean; arrange?: boolean; project_volumes?: boolean; project_paint?: boolean; orient_scores?: boolean; floating?: boolean;
+  features: { plate_locks?: boolean; mesh_simplify_error?: boolean; export_drc?: boolean; export_generic_3mf?: boolean; mesh_boolean?: boolean; emboss_text?: boolean; emboss_surface?: boolean; emboss_surface_outside?: boolean; cut?: boolean; volumes?: boolean; edit?: boolean; mesh_plates?: boolean; paint?: boolean; layer_profile?: boolean; arrange?: boolean; project_volumes?: boolean; project_paint?: boolean; orient_scores?: boolean; floating?: boolean;
     ranges?: boolean; moves_extended?: boolean; mixed_temperatures?: boolean; arrange_materials?: boolean; wipe_tower?: boolean; explode?: boolean; cut_connectors?: boolean; mesh_repair?: boolean; mesh_simplify?: boolean; brim_ears?: boolean; seam_parts?: boolean };
   cut: CutPlane | null;
   loading: string | null;

@@ -24,7 +24,8 @@ export async function saveProject(as = false) {
   const s = getState();
   if (savingProject || !s.api || !s.objects.length && !s.projectPlates.some((p) => p.objects.length)) return;
   if (s.api.mock) { toast('Saving a project requires the slicing service'); return; }
-  let name = s.projectName ?? (s.objects[0].name.replace(/\.(stl|obj|3mf)$/i, '') + '.3mf');
+  const first = s.objects[0] ?? s.projectPlates.flatMap((p) => p.objects)[0];
+  let name = s.projectName ?? (first.name.replace(/\.(stl|obj|3mf)$/i, '') + '.3mf');
   if (as) {
     const proposed = await promptDialog('Save Project as', name);
     if (!proposed) return;

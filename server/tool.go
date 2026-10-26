@@ -33,6 +33,7 @@ type ToolFeatures struct {
 	PresetCompat         bool            `json:"preset_compat"`
 	OneShot              bool            `json:"oneshot"`
 	MeshPlates           bool            `json:"mesh_plates"`
+	PlateLocks           bool            `json:"plate_locks"`
 	Paint                bool            `json:"paint"`
 	LayerProfile         bool            `json:"layer_profile"`
 	Arrange              bool            `json:"arrange"`
@@ -102,6 +103,7 @@ func probeUsage(c Config, f *ToolFeatures) {
 	f.Calib = strings.Contains(usage, "--calib-params")
 	f.Volumes = f.Cut
 	f.MeshPlates = strings.Contains(usage, `plate JSON objects take "plate"`)
+	f.PlateLocks = strings.Contains(usage, `plates take "settings" and "locked"`)
 	f.Paint = strings.Contains(usage, `plate JSON objects and volumes take "paint"`)
 	f.LayerProfile = strings.Contains(usage, `plate JSON objects take "layer_height_profile"`)
 	f.Arrange = strings.Contains(usage, "--arrange-only")
