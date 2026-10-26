@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { addInstance, arrangeAll, fillBed, openFileDialog, removeInstance, setInstanceCount, toolbarOperation } from '../actions';
 import { canDrop, canPaste, centreSelection, copySelection, dropSelection, mirrorSelection, pasteClipboard, selectAll, setFilament, startRename } from '../edit';
 import { canEditProject } from '../api/client';
@@ -19,6 +19,21 @@ async function editPlateName() {
 const ops = () => import('../plater/objectOps');
 const exportStl = (selection: boolean, multi = false) => import('../exportStl').then((m) => m.exportStl(selection, multi));
 
+function useFit(ref: RefObject<HTMLDivElement | null>) {
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect(), over = r.bottom - (window.innerHeight - 8);
+    if (over > 0) el.style.top = `${parseFloat(getComputedStyle(el).top) - Math.min(over, r.top - 8)}px`;
+  });
+}
+
+function Sub({ items, close }: { items: Item[]; close: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useFit(ref);
+  return <div ref={ref} role="menu" className="menu-pop ctx-sub"><Items items={items} close={close} /></div>;
+}
+
 type Item = { label: string; shortcut?: string; action?: () => void; disabled?: boolean; checked?: boolean; tip?: string; sub?: Item[] } | 'sep';
 
 function Items({ items, close }: { items: Item[]; close: () => void }) {
@@ -35,7 +50,7 @@ function Items({ items, close }: { items: Item[]; close: () => void }) {
               <span>{it.label}</span><span>{it.sub ? '▸' : it.shortcut ?? ''}</span>
             </button>
             {it.sub && open === k && !it.disabled && (
-              <div role="menu" className="menu-pop ctx-sub"><Items items={it.sub} close={close} /></div>
+              <Sub items={it.sub} close={close} />
             )}
           </div>
         ),
@@ -48,6 +63,7 @@ export default function ContextMenu() {
   const menu = useStore((s) => s.contextMenu);
   const s = useStore((st) => st);
   const ref = useRef<HTMLDivElement>(null);
+  useFit(ref);
   const close = () => setState({ contextMenu: null });
   const back = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -143,7 +159,7 @@ export default function ContextMenu() {
     ...(canAddPlate(s) ? [{ label: 'Plate Settings...', action: () => setState({ appDialog: 'plate' }), tip: 'Customize current plate' }] : []),
   ];
   return (
-    <div ref={ref} role="menu" className="menu-pop ctx-menu" style={{ left: Math.min(menu.x, window.innerWidth - 230), top: Math.min(menu.y, window.innerHeight - 24 * items.length - 16) }}
+    <div ref={ref} role="menu" className="menu-pop ctx-menu" style={{ left: Math.min(menu.x, window.innerWidth - 230), top: menu.y }}
       onContextMenu={(e) => e.preventDefault()}
       onKeyDown={(e) => {
         const item = document.activeElement as HTMLElement;

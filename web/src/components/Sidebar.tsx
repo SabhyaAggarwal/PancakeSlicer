@@ -138,7 +138,9 @@ function FilamentSection() {
     undoable('Add filament', () => setState((st) => {
       const fils = compatible(st, 'filament');
       const last = st.filamentSlots[st.filamentSlots.length - 1] ?? fils[0]?.name ?? '';
-      return { filamentSlots: [...st.filamentSlots, last] };
+      const slotColours = [...st.slotColours];
+      slotColours[st.filamentSlots.length] = NEXT_COLOURS[nextColour++ % NEXT_COLOURS.length];
+      return { filamentSlots: [...st.filamentSlots, last], slotColours };
     }));
   const remove = () =>
     undoable('Remove filament', () => setState((st) => ({
@@ -221,6 +223,10 @@ function ProcessHeader() {
     </div>
   );
 }
+
+const NEXT_COLOURS = ['#00C1AE', '#F4E2C1', '#ED1C24', '#00FF7F', '#F26722', '#FFEB31', '#7841CE', '#115877',
+  '#ED1E79', '#2EBDEF', '#345B2F', '#800080', '#FA8173', '#800000', '#F7B763', '#A4C41E'];
+let nextColour = 0;
 
 export function Sidebar() {
   const hasObjects = useStore((s) => s.objects.length > 0);

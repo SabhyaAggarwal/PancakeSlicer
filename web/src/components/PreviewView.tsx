@@ -1,6 +1,6 @@
 import { slicingText } from '../api/progress';
 import { Suspense, lazy, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { effectiveConfig, getState, printerPreset, useStore } from '../state/store';
+import { getState, printerPreset, useStore } from '../state/store';
 import { layerOfMove, peekJump, setGcodeListener, setJumpListener, setLoadedStream, takeGcode, takeJump } from '../preview/jump';
 import { setCompareWanted, useCompareWanted } from '../compare';
 import { computeRanges, drawMasks, hexToRgb, type ColorContext, type NonplanarColor, type Ranges, type ViewType, type Visibility } from '../preview/colors';
@@ -13,17 +13,16 @@ import { LayerSlider, MoveSlider } from './PreviewSliders';
 import { EventList, EventMenu, eventTicks } from './LayerEvents';
 import { ownsKeys } from '../keys';
 import { toggleViewOption, useViewOptions } from '../plater/viewOptions';
+import { filamentColor } from '../plater/filamentColor';
 
 const ExplainLegend = lazy(() => import('./PreviewExplain').then((m) => ({ default: m.ExplainLegend })));
 const StandardView = lazy(() => import('./PreviewExplain').then((m) => ({ default: m.StandardView })));
 const GcodeWindow = lazy(() => import('./GcodeWindow').then((m) => ({ default: m.GcodeWindow })));
 
+export const jobColours = () => getState().filamentSlots.map((_, i) => filamentColor(getState(), i + 1));
+
 export function colorContext(d: PreviewData, ui: Pick<PreviewUi, 'view' | 'nonplanar'>, ranges: Ranges): ColorContext {
-  const s = getState();
-  const extruderColors = (d.meta.extruder_colors?.length ? d.meta.extruder_colors : s.filamentSlots.map((_, i) => {
-    const c = effectiveConfig(s, 'filament', i).filament_colour;
-    return Array.isArray(c) ? String(c[0]) : String(c ?? '');
-  })).map(hexToRgb);
+  const extruderColors = (d.meta.extruder_colors?.length ? d.meta.extruder_colors : jobColours()).map(hexToRgb);
   return { view: ui.view, nonplanar: ui.nonplanar, ranges, extruderColors, colorPrintColors: (d.meta.color_print_colors ?? []).map(hexToRgb) };
 }
 
@@ -179,7 +178,7 @@ export function PreviewView() {
       chunk: (d) => mine(d) && live?.chunk(d),
       done: (d) => mine(d) && live?.done(d),
       error: (d) => mine(d) && live?.error(d),
-    });
+    }, src.key.startsWith('job:') ? jobColours() : undefined);
     current = { key: src.key, ...handle };
     setLoadedStream({ key: src.key, data: handle.data });
     setData(null);

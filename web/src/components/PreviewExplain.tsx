@@ -9,7 +9,7 @@ import { PreviewScene } from '../preview/PreviewScene';
 import { ERROR_BINS, surfaceGrid } from '../preview/surface-grid';
 import { getState, printerPreset } from '../state/store';
 import { Icon } from './Icon';
-import { colorContext, type PreviewUi } from './PreviewView';
+import { colorContext, jobColours, type PreviewUi } from './PreviewView';
 
 const TWO_SCENE_VERTICES = 8e6;
 const NOT_PART = new Set([12, 17, 18]);
@@ -248,7 +248,7 @@ function StandardPane(props: {
           void startCompare();
         }
       },
-    });
+    }, jobColours());
     return () => {
       h.cancel();
       setStandardData(null);

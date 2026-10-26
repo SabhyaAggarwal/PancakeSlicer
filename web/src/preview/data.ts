@@ -206,7 +206,7 @@ export function supportGrams(d: PreviewData | null, total: number | null): numbe
   return mm <= 0 ? 0 : total != null && all > 0 ? (total * mm) / all : null;
 }
 
-export function loadMoves(src: WorkerIn, on: LoadHandlers): { data: PreviewData; cancel(): void } {
+export function loadMoves(src: WorkerIn, on: LoadHandlers, colours?: string[]): { data: PreviewData; cancel(): void } {
   const d = new PreviewData();
   d.sourceUrl = src.url;
   const worker = new Worker(new URL('./loader.worker.ts', import.meta.url), { type: 'module' });
@@ -220,7 +220,7 @@ export function loadMoves(src: WorkerIn, on: LoadHandlers): { data: PreviewData;
       d.bytes = m.bytes;
       on.chunk(d, m.chunk.start, m.chunk.count);
     } else if (m.kind === 'done') {
-      d.meta = m.meta;
+      d.meta = colours ? { ...m.meta, extruder_colors: colours } : m.meta;
       d.setLayers(m.layers);
       d.loadMs = m.ms;
       d.bytes = m.bytes;
