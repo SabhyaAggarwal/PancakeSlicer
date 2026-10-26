@@ -406,6 +406,7 @@ func (s *Server) sendJob(w http.ResponseWriter, r *http.Request) {
 		BedLeveling *bool  `json:"bed_leveling"`
 		Timelapse   bool   `json:"timelapse"`
 		UseAMS      bool   `json:"use_ams"`
+		AMSMapping  []int  `json:"ams_mapping"`
 	}
 	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4<<10))
 	if err != nil {
@@ -441,6 +442,16 @@ func (s *Server) sendJob(w http.ResponseWriter, r *http.Request) {
 	if body.UseAMS && (p.Kind != "bambu-lan" || len(j.Request.Filaments) != 1) {
 		fail(w, 400, "AMS slot 1 applies only to a single-filament job sent to a Bambu printer")
 		return
+	}
+	if body.AMSMapping != nil {
+		valid := p.Kind == "bambu-lan" && len(body.AMSMapping) == len(j.Request.Filaments)
+		for _, t := range body.AMSMapping {
+			valid = valid && (t >= 0 && t < 16 || t == externalTray)
+		}
+		if !valid {
+			fail(w, 400, fmt.Sprintf("ams_mapping needs one tray (0 to 15, or %d for the external spool) per filament of the job, for a Bambu printer", externalTray))
+			return
+		}
 	}
 	if len(p.Presets) > 0 && !containsString(p.Presets, j.Request.Printer) {
 		fail(w, 400, fmt.Sprintf("%s accepts G-code sliced for %s, not %s", p.Name, strings.Join(p.Presets, " or "), j.Request.Printer))
@@ -485,7 +496,16 @@ func (s *Server) sendJob(w http.ResponseWriter, r *http.Request) {
 	s.sends.busy[p.Name] = true
 	s.sends.mu.Unlock()
 	audit(map[string]any{"event": "send_accepted", "job_id": j.ID, "printer": p.Name, "kind": p.Kind, "client": client, "start_print": start, "bytes": st.Size()})
-	options := bambuOptions{bedLeveling: body.BedLeveling == nil || *body.BedLeveling, timelapse: body.Timelapse, useAMS: body.UseAMS}
+	options := bambuOptions{bedLeveling: body.BedLeveling == nil || *body.BedLeveling, timelapse: body.Timelapse, useAMS: body.UseAMS, amsMapping: body.AMSMapping}
+	if body.AMSMapping != nil {
+		options.useAMS = false
+		for _, t := range body.AMSMapping {
+			options.useAMS = options.useAMS || t != externalTray
+		}
+		if !options.useAMS {
+			options.amsMapping = nil
+		}
+	}
 	go s.runSend(j, t, p, f, client, options)
 	w.Header().Set("Location", "/api/jobs/"+j.ID+"/send")
 	writeJSON(w, 202, &view)
@@ -523,6 +543,7 @@ type upload struct {
 
 type bambuOptions struct {
 	bedLeveling, timelapse, useAMS bool
+	amsMapping                     []int
 }
 
 func (s *Server) runSend(j *Job, t *Transfer, p *PrinterConfig, f *os.File, client string, options bambuOptions) {

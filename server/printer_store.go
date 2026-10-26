@@ -324,3 +324,30 @@ func (m *SendManager) setModel(p *PrinterConfig, model string) {
 		}
 	}
 }
+
+func (s *Server) amsPrinter(w http.ResponseWriter, r *http.Request) {
+	p := s.sends.printer(r.PathValue("name"))
+	if p == nil || p.Kind != "bambu-lan" {
+		fail(w, 404, "no Bambu printer of that name is configured on this server")
+		return
+	}
+	secret, err := readCredential(p.CredentialFile)
+	if err != nil || secret == "" {
+		fail(w, 409, "the printer's access code is not available on this server")
+		return
+	}
+	client := s.clientIP(r)
+	if ok, retry := s.sends.allowBurst("ams "+client, 10); !ok {
+		w.Header().Set("Retry-After", fmt.Sprint(min(retry, 86400)))
+		fail(w, 429, "too many AMS reads; wait before trying again")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	trays, err := amsBambu(ctx, p, secret)
+	if err != nil {
+		fail(w, 502, redact(err.Error(), secret))
+		return
+	}
+	writeJSON(w, 200, map[string]any{"trays": trays})
+}

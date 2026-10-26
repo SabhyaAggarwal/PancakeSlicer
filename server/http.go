@@ -51,6 +51,7 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, users *UserPres
 	mux.HandleFunc("GET /api/printers", s.listPrinters)
 	mux.HandleFunc("POST /api/printers", s.addPrinter)
 	mux.HandleFunc("POST /api/printers/test", s.testPrinter)
+	mux.HandleFunc("POST /api/printers/{name}/ams", s.amsPrinter)
 	mux.HandleFunc("PUT /api/printers/{name}", s.updatePrinter)
 	mux.HandleFunc("DELETE /api/printers/{name}", s.removePrinter)
 	mux.HandleFunc("GET /api/presets", s.listPresets)

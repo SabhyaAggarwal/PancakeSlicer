@@ -386,7 +386,9 @@ func mqttProjectFile(ctx context.Context, p *PrinterConfig, u *upload, plate, md
 	sequence := strconv.FormatInt(time.Now().UnixMilli()%1_000_000_000, 10)
 	name := strings.TrimSuffix(u.filename, ".gcode.3mf")
 	mapping := []int{}
-	if u.options.useAMS {
+	if u.options.amsMapping != nil {
+		mapping = u.options.amsMapping
+	} else if u.options.useAMS {
 		mapping = []int{0}
 	}
 	if err := mqttPublish(conn, p, map[string]any{"print": map[string]any{
@@ -625,4 +627,76 @@ func bambuModel(product, code string) string {
 		"N1": "A1 mini", "N2S": "A1", "C11": "P1P", "C12": "P1S", "C13": "X1E", "BL-P001": "X1 Carbon", "BL-P002": "X1", "O1D": "H2D",
 		"030": "A1 mini", "039": "A1", "01S": "P1P", "01P": "P1S", "00M": "X1 Carbon", "00W": "X1", "03W": "X1E", "094": "H2D",
 	}[code]
+}
+
+type AMSTray struct {
+	ID    int    `json:"id"`
+	AMS   int    `json:"ams"`
+	Slot  int    `json:"slot"`
+	Type  string `json:"type"`
+	Color string `json:"color"`
+	Name  string `json:"name,omitempty"`
+}
+
+const externalTray = 254
+
+func amsBambu(ctx context.Context, p *PrinterConfig, secret string) ([]AMSTray, error) {
+	conn, r, err := mqttSession(ctx, p, secret)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	sequence := strconv.FormatInt(time.Now().UnixMilli()%1_000_000_000, 10)
+	if err := mqttPublish(conn, p, map[string]any{"pushing": map[string]any{"sequence_id": sequence, "command": "pushall"}}); err != nil {
+		return nil, err
+	}
+	color := func(c string) string {
+		if len(c) >= 6 {
+			return "#" + strings.ToUpper(c[:6])
+		}
+		return ""
+	}
+	conn.SetDeadline(time.Now().Add(10 * time.Second))
+	for {
+		kind, body, err := mqttRead(r)
+		if err != nil {
+			return nil, fmt.Errorf("the printer did not report its AMS: %w", err)
+		}
+		var message struct {
+			Print *struct {
+				AMS *struct {
+					AMS []struct {
+						ID   string `json:"id"`
+						Tray []struct {
+							ID    string `json:"id"`
+							Type  string `json:"tray_type"`
+							Color string `json:"tray_color"`
+							Name  string `json:"tray_sub_brands"`
+						} `json:"tray"`
+					} `json:"ams"`
+				} `json:"ams"`
+				External *struct {
+					Type  string `json:"tray_type"`
+					Color string `json:"tray_color"`
+				} `json:"vt_tray"`
+			} `json:"print"`
+		}
+		if json.Unmarshal(mqttPayload(kind, body), &message) != nil || message.Print == nil || message.Print.AMS == nil && message.Print.External == nil {
+			continue
+		}
+		trays := []AMSTray{}
+		if message.Print.AMS != nil {
+			for _, unit := range message.Print.AMS.AMS {
+				a, _ := strconv.Atoi(unit.ID)
+				for _, t := range unit.Tray {
+					slot, _ := strconv.Atoi(t.ID)
+					trays = append(trays, AMSTray{ID: a*4 + slot, AMS: a, Slot: slot, Type: t.Type, Color: color(t.Color), Name: t.Name})
+				}
+			}
+		}
+		if e := message.Print.External; e != nil {
+			trays = append(trays, AMSTray{ID: externalTray, AMS: -1, Slot: 0, Type: e.Type, Color: color(e.Color), Name: "External spool"})
+		}
+		return trays, nil
+	}
 }

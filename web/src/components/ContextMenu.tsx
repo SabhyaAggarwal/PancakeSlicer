@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { addInstance, arrangeAll, fillBed, openFileDialog, removeInstance, setInstanceCount, toolbarOperation } from '../actions';
 import { canDrop, canPaste, centreSelection, copySelection, dropSelection, mirrorSelection, pasteClipboard, selectAll, setFilament, startRename } from '../edit';
 import { canEditProject } from '../api/client';
-import { changeVolumeType, deleteAll, deleteVolume, getState, removeSelected, setState, togglePrintable, updateVolume, useStore, VOLUME_ORDER } from '../state/store';
+import { changeVolumeType, deleteAll, deleteVolume, effectiveConfig, getState, removeSelected, setState, togglePrintable, updateObject, updateVolume, useStore, VOLUME_ORDER, type PlateObject, type State } from '../state/store';
 import { addPrimitive, loadVolume, SHAPES, TYPE_LABEL, VOLUME_MENU } from '../plater/volumes';
 import { menuKeys } from '../keys';
 import { canAddPlate, deletePlate, renamePlate } from '../plater/plates';
@@ -124,6 +124,7 @@ export default function ContextMenu() {
     ...addVolumes,
     ...(all ? [] : [{ label: 'Change Filament', disabled: project, sub: s.filamentSlots.map((_, i) => (
       { label: `Filament ${i + 1}`, checked: o.extruder === i + 1, action: () => setFilament(o.id, i + 1) })) }]),
+    ...(all ? [] : flushOptions(s, o)),
     { label: 'Printable', shortcut: 'V', checked: printable, action: () => togglePrintable(o.id, menu.instance) },
     'sep',
     { label: 'Export as one STL...', action: () => void exportStl(true), disabled: !editable },
@@ -161,4 +162,18 @@ export default function ContextMenu() {
       <Items items={items} close={close} />
     </div>
   );
+}
+
+const FLUSH: [string, string][] = [['flush_into_infill', "Flush into objects' infill"], ['flush_into_objects', 'Flush into this object'], ['flush_into_support', "Flush into objects' support"]];
+const on = (v: unknown) => v === true || v === 1 || v === '1' || v === 'true';
+
+function flushOptions(s: State, o: PlateObject): Item[] {
+  const used = new Set(s.objects.flatMap((x) => [x.extruder || 1, ...(x.volumes ?? []).map((v) => v.extruder || x.extruder || 1)]));
+  if (used.size < 2) return [];
+  const global = effectiveConfig(s, 'process');
+  const tower = on(global.enable_prime_tower);
+  return [{ label: 'Flush Options', sub: FLUSH.map(([key, label]) => {
+    const value = on(key in o.settings ? o.settings[key] : global[key]);
+    return { label, checked: value, disabled: !tower, action: () => updateObject(o.id, { settings: { ...o.settings, [key]: !value } }, label) };
+  }) }];
 }
