@@ -576,10 +576,11 @@ std::chrono::steady_clock::time_point measure_deadline(OneShotState &state)
     return state.measure_deadline;
 }
 
-double *measure_work(OneShotState &state)
+double *measure_work(const PrintObject &object, OneShotState &state)
 {
     if (std::isnan(state.measure_work_left)) {
-        double budget = MeasureWorkBudget;
+        const double facets = double(std::max<size_t>(object.model_object()->facets_count(), 1));
+        double       budget = MeasureWorkBudget * std::clamp(MeasureWorkFacets / facets, 1., MeasureWorkMaxScale);
         if (const char *env = std::getenv("NP_ONESHOT_MEASURE_WORK"); env != nullptr && *env != 0)
             budget = std::max(0., std::atof(env));
         state.measure_work_left = budget > 0. ? budget : std::numeric_limits<double>::infinity();
@@ -618,7 +619,7 @@ bool take_injected_oneshot(OneShotState &state)
 bool admit_time_cut(const PrintObject &object, OneShotState &state, std::vector<NpField> &cuts)
 {
     const MeasureDeadline deadline(measure_deadline(state));
-    const MeasureWork     work(measure_work(state));
+    const MeasureWork     work(measure_work(object, state));
     if (!state.z_only || cuts.empty())
         return false;
     const auto   t0   = std::chrono::steady_clock::now();
@@ -749,7 +750,7 @@ bool admit_lean_offer(const PrintObject &object, OneShotState &state, std::vecto
 bool past_floating_bar(const PrintObject &object, OneShotState &state, const Floating &floating)
 {
     const MeasureDeadline deadline(measure_deadline(state));
-    const MeasureWork     work(measure_work(state));
+    const MeasureWork     work(measure_work(object, state));
     bool float_over = false;
     if (floating.part >= 0. && floats_past_bar(floating, {})) {
         const bool     user_support = object.config().enable_support.value && !object.auto_support_applied();
@@ -824,7 +825,7 @@ constexpr double OneShotBodySlower = 1.02;
 bool body_earns_control(const PrintObject &object, OneShotState &state, const Floating &floating)
 {
     const MeasureDeadline deadline(measure_deadline(state));
-    const MeasureWork     work(measure_work(state));
+    const MeasureWork     work(measure_work(object, state));
     using Offer = OneShotState::Offer;
     if (state.offer == Offer::Control || state.offer == Offer::Auto)
         return false;
@@ -850,7 +851,7 @@ bool body_earns_control(const PrintObject &object, OneShotState &state, const Fl
 bool auto_offer(const PrintObject &object, OneShotState &state, double t_ps, double pick_rms, double pick_time)
 {
     const MeasureDeadline deadline(measure_deadline(state));
-    const MeasureWork     work(measure_work(state));
+    const MeasureWork     work(measure_work(object, state));
     if (state.offer == OneShotState::Offer::Auto || state.auto_weighed || !std::isfinite(t_ps) || t_ps <= 0.)
         return false;
     state.auto_weighed = true;
@@ -907,7 +908,7 @@ bool auto_offer(const PrintObject &object, OneShotState &state, double t_ps, dou
 void measured_export_check(PrintObject &object, OneShotState &state, const std::function<void()> &resolve)
 {
     const MeasureDeadline deadline(measure_deadline(state));
-    const MeasureWork     work(measure_work(state));
+    const MeasureWork     work(measure_work(object, state));
     if (!state.z_only || std::getenv("NP_ONESHOT_NO_MEASURED_CHECK") != nullptr || object.print()->objects().size() == 1)
         return;
     const auto t0 = std::chrono::steady_clock::now();
@@ -1618,7 +1619,7 @@ MultiplanarPlan route_spec_plan(const std::string &path, const indexed_triangle_
 void choose_route(PrintObject &object, OneShotState &state)
 {
     const MeasureDeadline deadline(measure_deadline(state));
-    const MeasureWork     work(measure_work(state));
+    const MeasureWork     work(measure_work(object, state));
     const PrintConfig                    &pc         = object.print()->config();
     const std::unique_ptr<ToolKinematics> kinematics = make_tool_kinematics(pc);
     if (!state.z_only || !object.config().nonplanar_oneshot_routes.value || kinematics->rotary_count() == 0 || pc.spiral_mode.value)

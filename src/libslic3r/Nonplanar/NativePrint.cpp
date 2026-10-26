@@ -4,14 +4,18 @@
 #include "FieldChart.hpp"
 #include "FieldOrder.hpp"
 #include "HeadEnvelope.hpp"
+#include "HeightField.hpp"
 #include "Multiplanar.hpp"
 #include "NativeLayers.hpp"
 #include "NpField.hpp"
 #include "OneShotField.hpp"
 #include "OrientationField.hpp"
 #include "PatchTools.hpp"
+#include "libslic3r/ClipperUtils.hpp"
+#include "libslic3r/Config.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
+#include "libslic3r/Flow.hpp"
 #include "libslic3r/GCode/ConformalEmit.hpp"
 #include "libslic3r/GCode/ToolKinematics.hpp"
 #include "libslic3r/Geometry.hpp"
@@ -30,10 +34,14 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <deque>
 #include <functional>
 #include <iomanip>
 #include <limits>
 #include <map>
+#include <cstdio>
+#include <unordered_map>
+#include <unordered_set>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -72,13 +80,30 @@ private:
     double                            m_tilt_cap;
 };
 
-void flatten(const ExtrusionEntity *ee, std::vector<const ExtrusionPath *> &out)
+using SeamCost = std::function<double(const Point &)>;
+
+void flatten(const ExtrusionEntity *ee, std::vector<const ExtrusionPath *> &out, const SeamCost *seam_cost = nullptr,
+             std::deque<ExtrusionLoop> *seamed = nullptr)
 {
     if (const auto *c = dynamic_cast<const ExtrusionEntityCollection *>(ee)) {
         for (const ExtrusionEntity *e : c->entities)
-            flatten(e, out);
+            flatten(e, out, seam_cost, seamed);
     } else if (const auto *l = dynamic_cast<const ExtrusionLoop *>(ee)) {
-        for (const ExtrusionPath &p : l->paths)
+        const ExtrusionLoop *loop = l;
+        if (seam_cost && seamed) {
+            ExtrusionLoop &copy = seamed->emplace_back(*l);
+            const Polygon  poly = copy.polygon();
+            if (!poly.points.empty()) {
+                size_t best = 0;
+                double best_cost = std::numeric_limits<double>::max();
+                for (size_t i = 0; i < poly.points.size(); ++i)
+                    if (const double cost = (*seam_cost)(poly.points[i]); cost < best_cost)
+                        best = i, best_cost = cost;
+                copy.split_at(poly.points[best], false);
+            }
+            loop = &copy;
+        }
+        for (const ExtrusionPath &p : loop->paths)
             out.push_back(&p);
     } else if (const auto *m = dynamic_cast<const ExtrusionMultiPath *>(ee)) {
         for (const ExtrusionPath &p : m->paths)
@@ -198,6 +223,386 @@ std::vector<double> adaptive_levels(const indexed_triangle_set &mesh, const Laye
     return tops;
 }
 
+bool native_planar_support()
+{
+    static const bool on = [] { const char *v = std::getenv("NP_NATIVE_PLANAR_SUPPORT"); return v == nullptr || std::atoi(v) != 0; }();
+    return on;
+}
+
+std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, const LayerField &field, const std::vector<FieldRoad> &part,
+                                                   const std::vector<ExPolygons> &domains, const std::vector<double> &tops, double first,
+                                                   double h, double raft, double host_z)
+{
+    std::vector<FieldRoad> out;
+    const size_t K = domains.size();
+    if (K < 3 || part.empty())
+        return out;
+    constexpr double Cell = 0.5;
+    const double gap   = std::max(0., object.config().support_top_z_distance.value);
+    const double w     = 1.125 * object.print()->config().nozzle_diameter.get_at(0);
+    BoundingBox bb;
+    for (const ExPolygons &d : domains)
+        if (!d.empty())
+            bb.merge(get_extents(d));
+    if (!bb.defined)
+        return out;
+    bb.offset(scale_(3.));
+    const HeightField grid = HeightField::layout(BoundingBoxf(unscale(bb.min), unscale(bb.max)), Cell);
+    std::vector<Mask> inside(K);
+    for (size_t k = 0; k < K; ++k)
+        inside[k] = rasterize(offset_ex(domains[k], -float(scale_(0.5 * Cell))), grid);
+    auto cell_of = [&](double x, double y, int &ix, int &iy) {
+        const Vec2d o = (Vec2d(x, y) - grid.origin()) / Cell;
+        ix = int(std::lround(o.x())), iy = int(std::lround(o.y()));
+        return ix >= 0 && iy >= 0 && ix < grid.nx() && iy < grid.ny();
+    };
+    auto key = [](int x, int y) { return (int64_t(x) << 32) ^ int64_t(uint32_t(y)); };
+    std::unordered_map<int64_t, std::vector<std::pair<Vec3d, size_t>>> part_at;
+    auto each_point = [&](const FieldRoad &r, auto &&fn) {
+        const auto *cp = dynamic_cast<const ExtrusionPathConformal *>(r.path.get());
+        auto bead = [&](size_t i) {
+            const double bw = cp && i < cp->bead_width.size() ? cp->bead_width[i] : cp ? cp->width : w;
+            const double bh = cp && i < cp->bead_height.size() ? cp->bead_height[i] : h;
+            return std::make_pair(bw, bh);
+        };
+        for (size_t i = 0; i < r.tip.size(); ++i) {
+            const auto [bw, bh] = bead(i);
+            const int n = i == 0 ? 0 : std::max(1, int(std::ceil((r.tip[i] - r.tip[i - 1]).norm() / 0.25)));
+            for (int t = i == 0 ? 0 : 1; t <= n; ++t)
+                fn(i == 0 ? r.tip[0] : Vec3d(r.tip[i - 1] + (r.tip[i] - r.tip[i - 1]) * (double(t) / n)), bw, bh);
+        }
+    };
+    for (const FieldRoad &r : part)
+        each_point(r, [&](const Vec3d &t, double, double) {
+            int ix, iy;
+            if (cell_of(t.x(), t.y(), ix, iy))
+                part_at[key(ix, iy)].emplace_back(t, r.layer);
+        });
+    std::unordered_map<int64_t, std::vector<double>> under;
+    for (const FieldRoad &r : part)
+        each_point(r, [&](const Vec3d &t, double bw, double bh) {
+            int ix, iy;
+            if (t.z() - bh <= first + 0.05 || !cell_of(t.x(), t.y(), ix, iy))
+                return;
+            const double lateral = 0.5 * bw + bh - 0.025, window = 2. * std::max(bh, h) + 0.1;
+            const int    reach   = int(std::ceil(lateral / Cell));
+            for (int dy = -reach; dy <= reach; ++dy)
+                for (int dx = -reach; dx <= reach; ++dx)
+                    if (auto it = part_at.find(key(ix + dx, iy + dy)); it != part_at.end())
+                        for (const auto &[q, l] : it->second)
+                            if (l < r.layer && t.z() - q.z() >= 0.01 && t.z() - q.z() <= window &&
+                                (q.head<2>() - t.head<2>()).norm() <= lateral)
+                                return;
+            under[key(ix, iy)].push_back(t.z() - bh);
+        });
+    if (under.empty())
+        return out;
+    std::unordered_map<int64_t, std::vector<double>> tops_of;
+    for (const auto &[k, bottoms] : under) {
+        const int x = int(k >> 32), y = int(int32_t(uint32_t(k)));
+        for (int b = -1; b <= 1; ++b)
+            for (int a = -1; a <= 1; ++a) {
+                const int64_t kk = key(x + a, y + b);
+                if (kk != k && under.count(kk))
+                    continue;
+                std::vector<double> &t = tops_of[kk];
+                for (double bottom : bottoms)
+                    t.push_back(bottom - gap);
+            }
+    }
+    struct Column { int x, y; double base, top; };
+    std::FILE *dump = std::getenv("NP_NATIVE_PSUP_DUMP") ? std::fopen(std::getenv("NP_NATIVE_PSUP_DUMP"), "w") : nullptr;
+    std::vector<Column> columns;
+    for (auto &[k, cell_tops] : tops_of) {
+        const int x = int(k >> 32), y = int(int32_t(uint32_t(k)));
+        if (x < 0 || y < 0 || x >= grid.nx() || y >= grid.ny())
+            continue;
+        const Vec2d c = grid.node(x, y);
+        std::sort(cell_tops.begin(), cell_tops.end());
+        for (size_t i = 0; i < cell_tops.size();) {
+            const double top = cell_tops[i];
+            while (i < cell_tops.size() && cell_tops[i] < top + 0.3)
+                ++i;
+            double base = 0.;
+            for (size_t j = K; j-- > 0;)
+                if (inside[j][size_t(y) * grid.nx() + x]) {
+                    const double zj = field.z_at(c, tops[j]);
+                    if (zj < top - h) {
+                        base = zj + gap;
+                        break;
+                    }
+                }
+            if (top - base >= 2. * h)
+                columns.push_back({ x, y, base, top });
+            else if (dump)
+                std::fprintf(dump, "D %.3f %.3f %.3f %.3f\n", c.x(), c.y(), base, top);
+        }
+    }
+    if (dump) {
+        for (const auto &[k, bottoms] : under) {
+            const Vec2d c = grid.node(int(k >> 32), int(int32_t(uint32_t(k))));
+            for (double bottom : bottoms)
+                std::fprintf(dump, "F %.3f %.3f %.3f\n", c.x(), c.y(), bottom);
+        }
+        for (const Column &col : columns) {
+            const Vec2d c = grid.node(col.x, col.y);
+            std::fprintf(dump, "C %.3f %.3f %.3f %.3f\n", c.x(), c.y(), col.base, col.top);
+        }
+        std::fclose(dump);
+    }
+    if (columns.empty())
+        return out;
+    double zmax = 0.;
+    for (const Column &c : columns)
+        zmax = std::max(zmax, c.top);
+    auto square = [&](int x, int y) {
+        const Vec2d c = grid.node(x, y);
+        Polygon     sq;
+        sq.points = { Point::new_scale(c.x() - 0.5 * Cell, c.y() - 0.5 * Cell), Point::new_scale(c.x() + 0.5 * Cell, c.y() - 0.5 * Cell),
+                      Point::new_scale(c.x() + 0.5 * Cell, c.y() + 0.5 * Cell), Point::new_scale(c.x() - 0.5 * Cell, c.y() + 0.5 * Cell) };
+        return sq;
+    };
+    auto grid_top = [&](double top) { return first + std::floor((top - first) / h + 1e-6) * h; };
+    auto cap_of   = [&](const Column &c) {
+        const double z = std::floor(c.top / 0.05 + 1e-6) * 0.05;
+        return z - grid_top(c.top) >= 0.06 ? z : -1.;
+    };
+    std::vector<std::pair<double, double>> specs;
+    for (double z = first; z <= zmax + 1e-6; z += h)
+        specs.emplace_back(z, z == first ? first : h);
+    {
+        std::vector<double> caps;
+        for (const Column &c : columns)
+            if (const double z = cap_of(c); z > 0.)
+                caps.push_back(z);
+        std::sort(caps.begin(), caps.end());
+        caps.erase(std::unique(caps.begin(), caps.end(), [](double a, double b) { return std::abs(a - b) < 1e-6; }), caps.end());
+        for (double z : caps)
+            specs.emplace_back(z, -(z - grid_top(z)));
+        std::stable_sort(specs.begin(), specs.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
+    }
+    const double xy_user = std::max(0., object.config().support_object_xy_distance.value);
+    const double xy_wall = xy_user + 0.5 * w, xy_tip = std::min(xy_user, 0.5 * w) + 0.5 * w;
+    const Flow   sup_flow      = support_material_flow(&object, float(h));
+    const double ws            = sup_flow.width(), sup_pitch = sup_flow.spacing();
+    const double iface_pitch   = std::min(sup_pitch + std::max(0., object.config().support_interface_spacing.value), w + h);
+    const double base_pitch    = sup_pitch + std::max(0., object.config().support_base_pattern_spacing.value);
+    const int    iface_layers  = std::max(0, object.config().support_interface_top_layers.value);
+    auto is_wall = [&](const Vec3d &q, size_t ql) {
+        int ix, iy;
+        if (q.z() <= first + 2. * h || !cell_of(q.x(), q.y(), ix, iy))
+            return true;
+        const double window = 2. * h + 0.1, lateral = 0.5 * w;
+        for (int dy = -1; dy <= 1; ++dy)
+            for (int dx = -1; dx <= 1; ++dx)
+                if (auto it = part_at.find(key(ix + dx, iy + dy)); it != part_at.end())
+                    for (const auto &[p, l] : it->second)
+                        if (l < ql && q.z() - p.z() >= 0.01 && q.z() - p.z() <= window && (p.head<2>() - q.head<2>()).norm() <= lateral)
+                            return true;
+        return false;
+    };
+    auto keep_off = [&](const std::vector<std::pair<int, int>> &cells, double z, double lh, bool tip) {
+        Polygons                     discs;
+        std::unordered_set<int64_t>  seen_cells;
+        const int                    reach = int(std::ceil((xy_wall + 0.5 * Cell) / Cell));
+        for (const auto &[x, y] : cells)
+            for (int dy = -reach; dy <= reach; ++dy)
+                for (int dx = -reach; dx <= reach; ++dx) {
+                    const int64_t k = key(x + dx, y + dy);
+                    if (!seen_cells.insert(k).second)
+                        continue;
+                    if (auto it = part_at.find(k); it != part_at.end())
+                        for (const auto &[q, l] : it->second) {
+                            if (q.z() < z - lh - 1e-6 || q.z() > z + 0.5 * lh + 1e-6)
+                                continue;
+                            const double r = !tip && is_wall(q, l) ? xy_wall : xy_tip;
+                            Polygon disc;
+                            for (int i = 0; i < 12; ++i)
+                                disc.points.push_back(Point::new_scale(q.x() + r * std::cos(i * M_PI / 6.), q.y() + r * std::sin(i * M_PI / 6.)));
+                            discs.push_back(std::move(disc));
+                        }
+                }
+        return union_(discs);
+    };
+    std::vector<std::vector<size_t>> by_layer;
+    int layer = 0;
+    for (const auto &spec : specs) {
+        const double z = spec.first, spec_h = spec.second;
+        const bool   is_cap = spec_h < 0.;
+        const double lh     = std::abs(spec_h);
+        Polygons sparse, dense, contact;
+        {
+            std::vector<std::pair<int, int>> tip_cells, body_cells;
+            Polygons                         cls[3][2];
+            for (const Column &c : columns)
+                if (is_cap ? std::abs(cap_of(c) - z) < 1e-6 : z <= c.top + 1e-6 && z - lh >= c.base - 1e-6) {
+                    const bool tip = c.top - z < 3. * h;
+                    (tip ? tip_cells : body_cells).emplace_back(c.x, c.y);
+                    const int k = is_cap || (iface_layers > 0 && c.top - z < h - 1e-6) ? 0 : c.top - z < iface_layers * h - 1e-6 ? 1 : 2;
+                    cls[k][tip ? 0 : 1].push_back(square(c.x, c.y));
+                }
+            const Polygons off_tip = tip_cells.empty() ? Polygons() : keep_off(tip_cells, z, lh, true);
+            const Polygons off_body = body_cells.empty() ? Polygons() : keep_off(body_cells, z, lh, false);
+            Polygons *dst[3] = { &contact, &dense, &sparse };
+            for (int k = 0; k < 3; ++k) {
+                Polygons parts = diff(union_(cls[k][0]), off_tip);
+                append(parts, diff(union_(cls[k][1]), off_body));
+                *dst[k] = union_(parts);
+            }
+        }
+        std::vector<size_t> made;
+        auto hatch = [&](const Polygons &cells, double spacing, int orient, ExtrusionRole role) {
+            if (cells.empty())
+                return;
+            for (const ExPolygon &ex : union_ex(cells)) {
+                const BoundingBox ebb = ex.contour.bounding_box();
+                Polylines         lines;
+                const bool        long_y  = ebb.size().y() >= ebb.size().x();
+                const bool        along_x = orient == 0 || (orient == 1) == long_y;
+                const coord_t     step    = coord_t(scale_(spacing));
+                const coord_t o  = along_x ? bb.min.y() : bb.min.x(), lo = along_x ? ebb.min.y() : ebb.min.x();
+                for (coord_t t = o + step / 2 + (lo > o ? (lo - o) / step * step : 0); t <= (along_x ? ebb.max.y() : ebb.max.x()); t += step)
+                    lines.push_back(along_x ? Polyline(Point(ebb.min.x() - step, t), Point(ebb.max.x() + step, t)) :
+                                              Polyline(Point(t, ebb.min.y() - step), Point(t, ebb.max.y() + step)));
+                Polylines clipped = intersection_pl(lines, ex);
+                if (std::none_of(clipped.begin(), clipped.end(), [](const Polyline &pl) { return pl.length() >= scale_(0.25); })) {
+                    const coord_t t = along_x ? (ebb.min.y() + ebb.max.y()) / 2 : (ebb.min.x() + ebb.max.x()) / 2;
+                    clipped = intersection_pl(Polylines{ along_x ? Polyline(Point(ebb.min.x() - step, t), Point(ebb.max.x() + step, t)) :
+                                                                   Polyline(Point(t, ebb.min.y() - step), Point(t, ebb.max.y() + step)) }, ex);
+                }
+                for (size_t i = 0; i < clipped.size(); ++i) {
+                    if (i & 1)
+                        clipped[i].reverse();
+                    if (clipped[i].length() < scale_(0.25))
+                        continue;
+                    const double mm3 = lh * (ws - lh * (1. - 0.25 * M_PI));
+                    std::vector<Vec2d> qs;
+                    const Points      &src = clipped[i].points;
+                    for (size_t k = 0; k < src.size(); ++k) {
+                        const int n = k == 0 ? 1 : std::max(1, int(std::ceil(unscale<double>((src[k] - src[k - 1]).cast<double>().norm()) / 0.5)));
+                        for (int t = k == 0 ? 0 : 1; t <= (k == 0 ? 0 : n); ++t)
+                            qs.push_back(k == 0 ? unscale(src[0]) : Vec2d(unscale(src[k - 1]) + (unscale(src[k]) - unscale(src[k - 1])) * (double(t) / n)));
+                    }
+                    for (size_t s0 = 0; s0 + 1 < qs.size(); s0 += 4) {
+                        const size_t s1 = std::min(s0 + 4, qs.size() - 1);
+                        FieldRoad    road;
+                        Polyline3    polyline;
+                        for (size_t k = s0; k <= s1; ++k) {
+                            polyline.points.push_back(Point3::new_scale(qs[k].x(), qs[k].y(), z + raft - host_z));
+                            road.tip.emplace_back(qs[k].x(), qs[k].y(), z);
+                        }
+                        const size_t n = polyline.points.size();
+                        road.path = std::make_unique<ExtrusionPathConformal>(std::move(polyline), ExtrusionPath(role, mm3, float(ws), float(lh)),
+                                                                             std::vector<float>(n, float(lh)), std::vector<Vec3f>(n, Vec3f::UnitZ()));
+                        made.push_back(out.size());
+                        out.push_back(std::move(road));
+                    }
+                }
+            }
+        };
+        hatch(sparse, base_pitch, 0, erSupportMaterial);
+        hatch(dense, iface_pitch, 2, erSupportMaterialInterface);
+        hatch(contact, iface_pitch, 1, erSupportMaterialInterface);
+        if (!made.empty())
+            by_layer.push_back(std::move(made));
+        ++layer;
+    }
+    const size_t groups = K - 1;
+    std::unordered_map<int64_t, size_t> support_g;
+    std::vector<size_t>                 floor_of(out.size(), 0);
+    size_t cycles = 0;
+    for (const std::vector<size_t> &layer_roads : by_layer) {
+        std::vector<std::pair<size_t, size_t>> assigned;
+        for (size_t ri : layer_roads) {
+            size_t g = groups - 1, floor_g = 0;
+            for (const Vec3d &q : out[ri].tip) {
+                const double phi = field.phi(q);
+                const size_t own = size_t(std::max<ptrdiff_t>(0, std::lower_bound(tops.begin(), tops.end(), phi) - tops.begin() - 1));
+                g = std::min(g, std::min(own, groups - 1));
+                int ix, iy;
+                if (!cell_of(q.x(), q.y(), ix, iy))
+                    continue;
+                for (int dy = -1; dy <= 1; ++dy)
+                    for (int dx = -1; dx <= 1; ++dx) {
+                        const int64_t k = key(ix + dx, iy + dy);
+                        if (dx == 0 && dy == 0)
+                            if (auto it = support_g.find(k); it != support_g.end())
+                                floor_g = std::max(floor_g, it->second);
+                        if (auto it = part_at.find(k); it != part_at.end())
+                            for (const auto &[p, l] : it->second) {
+                                const double z = p.z();
+                                if (z > q.z() + 0.3 && z < q.z() + 4.)
+                                    g = std::min(g, l);
+                                if (z < q.z() - 0.05 && z > q.z() - 1.)
+                                    floor_g = std::max(floor_g, l + 1);
+                            }
+                    }
+            }
+            if (floor_g > g)
+                ++cycles;
+            floor_of[ri] = std::min(floor_g, groups - 1);
+            assigned.emplace_back(ri, std::min(std::max(g, floor_g), groups - 1));
+        }
+        for (const auto &[ri, g] : assigned) {
+            out[ri].layer    = g;
+            out[ri].deformed = out[ri].tip;
+            for (Vec3d &d : out[ri].deformed) {
+                d.z() = tops[g + 1];
+                int ix, iy;
+                if (cell_of(d.x(), d.y(), ix, iy)) {
+                    size_t &sg = support_g[key(ix, iy)];
+                    sg         = std::max(sg, g);
+                }
+            }
+        }
+    }
+    constexpr double Above = 4.;
+    const double     land  = 0.8 + 0.5 * w, tan30 = std::tan(M_PI / 6.);
+    const int        reach = int(std::ceil((land + Above * tan30) / Cell));
+    std::unordered_map<int64_t, std::vector<std::pair<double, size_t>>> higher;
+    size_t                                                              head_cycles = 0;
+    for (auto layer_it = by_layer.rbegin(); layer_it != by_layer.rend(); ++layer_it) {
+        std::vector<std::pair<size_t, size_t>> capped;
+        for (size_t ri : *layer_it) {
+            size_t cap = out[ri].layer;
+            for (const Vec3d &q : out[ri].tip) {
+                int ix, iy;
+                if (!cell_of(q.x(), q.y(), ix, iy))
+                    continue;
+                for (int dy = -reach; dy <= reach; ++dy)
+                    for (int dx = -reach; dx <= reach; ++dx)
+                        if (auto it = higher.find(key(ix + dx, iy + dy)); it != higher.end())
+                            for (const auto &[z, g] : it->second) {
+                                const double dz = z - q.z();
+                                if (g < cap && dz > 0.12 && dz < Above &&
+                                    (grid.node(ix + dx, iy + dy) - q.head<2>()).norm() < land + dz * tan30 + 0.5 * Cell)
+                                    cap = g;
+                            }
+            }
+            if (cap < floor_of[ri]) {
+                ++head_cycles;
+                out[ri].path.reset();
+                out[ri].tip.clear();
+                continue;
+            }
+            capped.emplace_back(ri, std::max(cap, floor_of[ri]));
+        }
+        for (const auto &[ri, g] : capped) {
+            out[ri].layer = g;
+            for (Vec3d &d : out[ri].deformed)
+                d.z() = tops[g + 1];
+            for (const Vec3d &q : out[ri].tip) {
+                int ix, iy;
+                if (cell_of(q.x(), q.y(), ix, iy))
+                    higher[key(ix, iy)].emplace_back(q.z(), g);
+            }
+        }
+    }
+    BOOST_LOG_TRIVIAL(info) << "Native planar support " << object.model_object()->name << ": " << columns.size() << " columns, " << by_layer.size()
+                            << " layers, " << out.size() << " roads, " << cycles << " order cycles, " << head_cycles << " head cycles";
+    return out;
+}
+
 void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerField> &field, ConformalResult &result)
 {
     if (!field || object.layers().empty())
@@ -259,6 +664,8 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
         if ((key.rfind("support_", 0) == 0 || key.rfind("tree_support", 0) == 0 || key == "enable_support") && config.has(key))
             config.set_key_value(key, object.config().option(key)->clone());
     config.set_deserialize_strict("independent_support_layer_height", "0");
+    if (native_planar_support())
+        config.set_key_value("enable_support", new ConfigOptionBool(false));
     const double            height = first + double(K - 1) * h;
     TriangleMesh            box    = make_cube(unscale<double>(bbox.size().x()), unscale<double>(bbox.size().y()), height);
     box.translate(float(unscale<double>(bbox.min.x())), float(unscale<double>(bbox.min.y())), 0.f);
@@ -311,12 +718,25 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
             support_paths += support[size_t(k)].size();
         }
     }
+    const SeamPosition        seam_pos = object.config().seam_position.value;
+    const Vec2d               rear(0., unscale<double>(bbox.max.y() - c_scaled.y()) + 10.);
+    size_t                    seam_k   = 0;
+    const SeamCost            seam_cost = [&](const Point &p) {
+        const Vec2d  q = unscale(p);
+        const Vec2d  xy = q + c;
+        const double z  = field->z_at(xy, tops[seam_k]);
+        const double tilt = std::isfinite(z) ? Geometry::rad2deg(std::acos(std::clamp(Native::tool_axis(*field, Vec3d(xy.x(), xy.y(), z), tilt_cap).z(), -1., 1.))) : 0.;
+        return (q - rear).norm() + tilt;
+    };
+    const SeamCost           *seam_at  = seam_pos == spNearest || seam_pos == spRandom ? nullptr : &seam_cost;
+    std::deque<ExtrusionLoop> seamed;
     for (size_t k = 1; k < n; ++k) {
+        seam_k = k;
         const Layer &layer = *sliced.layers()[k];
         internal.push_back(domains[k]);
         std::vector<const ExtrusionPath *> paths = support[k];
         for (const LayerRegion *region : layer.regions()) {
-            flatten(&region->perimeters, paths);
+            flatten(&region->perimeters, paths, seam_at, &seamed);
             flatten(&region->thin_fills, paths);
         }
         for (const LayerRegion *region : layer.regions())
@@ -384,11 +804,18 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
             roads.push_back(std::move(r));
         }
     }
+    if (native_planar_support() && object.config().enable_support.value) {
+        std::vector<FieldRoad> planar = native_planar_support_roads(object, *field, roads, domains, tops, first, h, raft, host->print_z);
+        for (FieldRoad &r : planar)
+            if (r.path)
+                roads.push_back(std::move(r));
+    }
     FieldOrderParams op;
     op.head       = resolve_head_envelope(object.print()->config());
     op.kinematics = kinematics.get();
     op.max_tilt   = std::max(0., tilt_budget(*kinematics) - Geometry::deg2rad(1.));
     op.lean_max   = 0.;
+    op.planar_support = native_planar_support() && object.config().enable_support.value;
     op.layer_top.assign(tops.begin() + 1, tops.begin() + std::ptrdiff_t(n));
     op.layer_height.resize(n - 1);
     for (size_t k = 1; k < n; ++k)
@@ -450,6 +877,7 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
     ConformalPatch patch;
     patch.id           = int(result.patches.size());
     patch.kind         = PatchKind::Field;
+    patch.native       = true;
     patch.shell_height = h;
     patch.host_layer   = host_id;
     patch.region_id    = 0;

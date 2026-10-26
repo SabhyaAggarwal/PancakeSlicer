@@ -8368,7 +8368,7 @@ std::string GCode::extrude_field_patch(const Nonplanar::ConformalPatch &patch)
         }
         return hi;
     };
-    auto field_travel = [&](const Vec3d &a, const Vec3d &b, const ToolPose &target, bool in_layer, std::vector<ToolPose> &poses) -> bool {
+    auto field_travel = [&](const Vec3d &a, const Vec3d &b, const ToolPose &target, bool in_layer, bool upright, std::vector<ToolPose> &poses) -> bool {
         const Vec3d  qa = field.forward(a), qb = field.forward(b);
         const double ends  = std::max(qa.z(), qb.z());
         const double above = top_along(qa, qb);
@@ -8398,7 +8398,7 @@ std::string GCode::extrude_field_patch(const Nonplanar::ConformalPatch &patch)
                 Vec3d p;
                 if (! field.inverse(legs[l - 1] + (legs[l] - legs[l - 1]) * (double(s) / n), p))
                     return false;
-                poses.push_back({ to_writer(p), settled(field.orientation(p)) });
+                poses.push_back({ to_writer(p), upright ? Vec3d::UnitZ() : settled(field.orientation(p)) });
             }
         }
         pin_crossings(poses, [](ToolPose &pose) -> Vec3d & { return pose.axis; });
@@ -8446,7 +8446,9 @@ std::string GCode::extrude_field_patch(const Nonplanar::ConformalPatch &patch)
             } else if ((m_writer.get_position() - start.tip).norm() > EPSILON || rotary != nullptr) {
                 std::vector<ToolPose> travel;
                 const bool moves  = (m_writer.get_position() - start.tip).norm() > EPSILON;
-                const bool along  = moves && field_travel(last, first, start, glide_inside, travel);
+                const bool keep_upright = patch.native && is_support(path->role()) && m_writer.get_tool_axis().z() > 1. - EPSILON &&
+                                          start.axis.z() > 1. - EPSILON;
+                const bool along  = moves && field_travel(last, first, start, glide_inside, keep_upright, travel);
                 std::vector<ToolPose> chain = travel;
                 chain.insert(chain.end(), road.begin(), road.end());
                 const bool upright = m_material_columns && m_writer.get_tool_axis().z() > 1. - EPSILON && start.axis.z() > 1. - EPSILON;

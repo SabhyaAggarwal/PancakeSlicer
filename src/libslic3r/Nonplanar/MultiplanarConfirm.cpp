@@ -220,7 +220,7 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
         }
     }
     if (measure_work_spent()) {
-        BOOST_LOG_TRIVIAL(info) << "One-shot measurement: its work budget is spent, a private slice is not started (unmeasured)";
+        BOOST_LOG_TRIVIAL(warning) << "One-shot measurement: its work budget is spent, a private slice is not started (unmeasured)";
         return std::numeric_limits<double>::quiet_NaN();
     }
     if (measure_deadline_passed()) {

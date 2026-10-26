@@ -55,7 +55,7 @@ void edit_project(const std::string &path, Model &model, const DynamicPrintConfi
     for (const nlohmann::json &edit : edits) {
         const std::string op = edit.at("op").get<std::string>();
         if (op == "add_object") {
-            ModelObject *object = add_plate_object(model, edit, files);
+            ModelObject *object = add_plate_object(model, edit, files, config);
             const int    plate  = plate_of(edit, 1);
             add_placed_instances(object, edit, context_plate_origin(config, plates, plate));
             for (const ModelInstance *instance : object->instances)

@@ -34,6 +34,8 @@
 #include "libslic3r/GCodeWriter.hpp"
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/ModelArrange.hpp"
+#include "libslic3r/MeshBoolean.hpp"
+#include "libslic3r/QuadricEdgeCollapse.hpp"
 #include "libslic3r/Arrange.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Nonplanar/AutoOrient.hpp"
@@ -75,6 +77,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdint>
 #include <cstdlib>
 #include <exception>
 #include <fstream>
@@ -142,6 +145,10 @@ struct Args
     bool        force_planar    = false;
     std::string arrange_only;
     std::string explode_3mf, explode_directory;
+    std::string cut_connectors, cut_mode = "planar", cut_dovetail;
+    std::string mesh_operation, mesh_input, mesh_output;
+    std::optional<double> simplify_ratio;
+    std::optional<uint32_t> simplify_triangles;
     std::string wipe_tower_only;
     double      arrange_spacing  = -1.;
     bool        arrange_rotation = true;
@@ -195,7 +202,9 @@ Model read_input(const std::string &file)
                  "       [--moves-out FILE [--moves-extended]] [--progress] [--calib-params key=value,...]\n"
                  "       (plate JSON objects take \"plate\": N; a plate JSON of several plates slices with --plate-index N)\n"
                  "       (plate JSON objects and volumes take \"paint\"; plate JSON objects take \"layer_height_profile\")\n"
+                 "       (plate JSON volumes take \"type\": \"seam\" and \"seam_mode\": center|left|right|enforced|blocked|neutral)\n"
                  "       (plate JSON objects take \"ranges\")\n"
+                 "       (plate JSON objects take \"brim_ears\": [{\"x\": X, \"y\": Y, \"radius\": R}])\n"
                  "       (plate JSON plates take \"settings\"; --save-3mf preserves per-plate settings)\n"
                  "       [--surface-grid [--surface-grid-max-cells N]]   (with --json: per-cell top surface error)\n"
                  "       [--force-planar]   (nonplanar_mode off on the plate, objects, volumes and height ranges)\n"
@@ -203,12 +212,17 @@ Model read_input(const std::string &file)
                  "       nonplanar_slice_tool --explode-3mf IN.3mf OUTDIR   (editable plate.json and volume meshes, no slice)\n"
                  "       [--edit EDITS.json]   (a loaded PROJECT.3mf: add/delete objects and instances, set filaments; --edit takes \"add_volume\"; --edit takes \"set_paint\")\n"
                  "       [--cut-only Z | X,Y,Z,NX,NY,NZ [--cut-keep upper|lower|both] [--cut-place-lower]]\n"
+                 "       [--cut-connectors JSON]   (plug/dowel/snap, shape, pos, radius, height/depth, tolerance)\n"
+                 "       [--cut-mode planar|dovetail] [--cut-dovetail JSON]\n"
                  "       [--arrange-only OUT.json [--arrange-spacing MM] [--arrange-no-rotation]]   (the desktop's arrange, no slice)\n"
                  "       [--arrange-multi-materials 0|1]   (with --arrange-only; default 1)\n"
                  "       [--wipe-tower-only OUT.json]   (with --plate: per-plate prime tower estimate, no slice)\n"
                  "       [--patch-preview FILE.json [--patch-preview-budget S] [--patch-preview-max-triangles N]]\n"
                  "       [--step-linear-deflection MM] [--step-angle-deflection A] [--step-split-compound]\n"
+                 "       nonplanar_slice_tool --repair-mesh IN OUT.stl|OUT.3mf   (desktop mesh repair, no slice)\n"
+                 "       nonplanar_slice_tool --simplify-mesh IN OUT.stl|OUT.3mf --ratio R | --triangles N   (QEM, no slice)\n"
                  "       nonplanar_slice_tool --dump-options FILE | --dump-presets VENDOR FILE [--profiles DIR]\n"
+                 "       (--dump-presets filament entries carry filament_id and setting_id)\n"
                  "       nonplanar_slice_tool --load-gcode FILE.gcode   (times the preview's G-code load)\n";
     std::exit(2);
 }
@@ -251,7 +265,28 @@ Args parse_args(int argc, char **argv)
                 usage(arg + " needs a value");
             return argv[++i];
         };
-        if (arg == "--printer") a.printer = next();
+        if (arg == "--repair-mesh" || arg == "--simplify-mesh") {
+            if (!a.mesh_operation.empty()) usage("choose one mesh operation");
+            a.mesh_operation = arg == "--repair-mesh" ? "repair" : "simplify";
+            a.mesh_input = next();
+            a.mesh_output = next();
+        } else if (arg == "--ratio") {
+            const std::string value = next();
+            size_t used = 0;
+            try { a.simplify_ratio = std::stod(value, &used); }
+            catch (const std::exception &) { usage("--ratio expects a number in (0, 1]"); }
+            if (used != value.size() || !std::isfinite(*a.simplify_ratio) || *a.simplify_ratio <= 0. || *a.simplify_ratio > 1.)
+                usage("--ratio expects a number in (0, 1]");
+        } else if (arg == "--triangles") {
+            const std::string value = next();
+            size_t used = 0;
+            unsigned long long count = 0;
+            try { count = std::stoull(value, &used); }
+            catch (const std::exception &) { usage("--triangles expects a positive 32-bit count"); }
+            if (used != value.size() || value.front() == '-' || count == 0 || count > std::numeric_limits<uint32_t>::max())
+                usage("--triangles expects a positive 32-bit count");
+            a.simplify_triangles = uint32_t(count);
+        } else if (arg == "--printer") a.printer = next();
         else if (arg == "--process") a.process = next();
         else if (arg == "--filament") a.filaments.push_back(next());
         else if (arg == "--bed-type") {
@@ -338,6 +373,9 @@ Args parse_args(int argc, char **argv)
             a.surface_grid_max_cells = size_t(n);
         }
         else if (arg == "--cut-only") a.cut = next();
+        else if (arg == "--cut-connectors") a.cut_connectors = next();
+        else if (arg == "--cut-mode") a.cut_mode = next();
+        else if (arg == "--cut-dovetail") a.cut_dovetail = next();
         else if (arg == "--arrange-only") a.arrange_only = next();
         else if (arg == "--explode-3mf") { a.explode_3mf = next(); a.explode_directory = next(); }
         else if (arg == "--wipe-tower-only") a.wipe_tower_only = next();
@@ -412,6 +450,21 @@ Args parse_args(int argc, char **argv)
     }
     if (!a.field_file.empty() && std::none_of(a.overrides.begin(), a.overrides.end(), [](const auto &o) { return o.first == "nonplanar_mode"; }))
         a.overrides.insert(a.overrides.begin(), { "nonplanar_mode", "field" });
+    if (a.cut_mode != "planar" && a.cut_mode != "dovetail") usage("--cut-mode takes planar or dovetail");
+    if (a.cut.empty() && (!a.cut_connectors.empty() || a.cut_mode != "planar" || !a.cut_dovetail.empty()))
+        usage("cut connector and dovetail options require --cut-only");
+    if (!a.mesh_operation.empty()) {
+        if (!a.explode_3mf.empty() || !a.dump_options.empty() || !a.dump_presets.empty() || !a.verify_gcode.empty() || a.orient_scores)
+            usage("choose one mesh operation or catalog/project operation");
+        if (a.mesh_input.empty() || a.mesh_output.empty() || !a.model.empty() || !a.plate.empty() || !a.project.empty())
+            usage("mesh operations need IN and OUT instead of a model, plate or project");
+        if (a.mesh_operation == "simplify" && a.simplify_ratio.has_value() == a.simplify_triangles.has_value())
+            usage("--simplify-mesh needs exactly one of --ratio or --triangles");
+        if (a.mesh_operation == "repair" && (a.simplify_ratio || a.simplify_triangles))
+            usage("--ratio and --triangles need --simplify-mesh");
+        return a;
+    }
+    if (a.simplify_ratio || a.simplify_triangles) usage("--ratio and --triangles need --simplify-mesh");
     if (!a.dump_options.empty() || !a.dump_presets.empty() || !a.verify_gcode.empty() || !a.explode_3mf.empty()) return a;
     if (a.orient_scores) {
         if (a.model.empty()) usage("--orient-scores needs a model");
@@ -1283,6 +1336,54 @@ void write_plate_mesh(const std::string &path, const TriangleMesh &mesh)
     if (!store_bbs_3mf(params)) throw std::runtime_error("cannot write volume mesh " + path);
 }
 
+void mesh_only(const Args &args)
+{
+    const std::string extension = fs::path(args.mesh_output).extension().string();
+    if (!boost::algorithm::iequals(extension, ".stl") && !boost::algorithm::iequals(extension, ".3mf"))
+        throw std::runtime_error("mesh output must be .stl or .3mf");
+    Model source = read_input(args.mesh_input);
+    if (source.objects.size() != 1 || source.objects.front()->volumes.size() != 1 || source.objects.front()->instances.size() > 1)
+        throw std::runtime_error("mesh operation needs one object with one volume and at most one instance");
+    const ModelObject *object = source.objects.front();
+    const ModelVolume *volume = object->volumes.front();
+    TriangleMesh mesh = volume->mesh();
+    mesh.transform(object->instances.empty() ? volume->get_matrix() : object->instances.front()->get_matrix() * volume->get_matrix(), true);
+    if (mesh.empty()) throw std::runtime_error("mesh operation needs a nonempty mesh");
+    const size_t before = mesh.its.indices.size();
+    const RepairedMeshErrors imported = mesh.stats().repaired_errors;
+    nlohmann::json result = {{"operation", args.mesh_operation}, {"input", args.mesh_input}, {"output", args.mesh_output},
+                             {"triangles_before", before}};
+    if (args.mesh_operation == "repair") {
+        const size_t open_before = its_num_open_edges(mesh.its);
+        if (open_before != 0) {
+            std::string error;
+            if (!MeshBoolean::cgal::repair(mesh, nullptr, &error))
+                throw std::runtime_error(error.empty() ? "mesh repair failed" : error);
+        }
+        const size_t open_after = its_num_open_edges(mesh.its);
+        result["repair_counts"] = {{"degenerate_facets", imported.degenerate_facets}, {"edges_fixed", imported.edges_fixed},
+            {"facets_removed", imported.facets_removed}, {"facets_reversed", imported.facets_reversed},
+            {"backwards_edges", imported.backwards_edges}, {"duplicate_facets", imported.duplicate_facets},
+            {"nonmanifold_edges", imported.nonmanifold_edges}, {"holes_filled", imported.holes_filled}, {"facets_added", imported.facets_added}};
+        result["open_edges_before_cgal"] = open_before;
+        result["open_edges_after"] = open_after;
+        result["boundary_edges_closed"] = open_before >= open_after ? open_before - open_after : 0;
+    } else {
+        const uint32_t target = args.simplify_triangles ? uint32_t(std::min<size_t>(*args.simplify_triangles, before)) :
+            uint32_t(std::max(1., std::floor(double(before) * *args.simplify_ratio)));
+        indexed_triangle_set its = std::move(mesh.its);
+        float max_error = std::numeric_limits<float>::max();
+        its_quadric_edge_collapse(its, target, &max_error);
+        mesh = TriangleMesh(std::move(its));
+        result["triangles_requested"] = target;
+    }
+    if (mesh.empty()) throw std::runtime_error("mesh operation produced an empty mesh");
+    result["triangles_after"] = mesh.its.indices.size();
+    if (boost::algorithm::iequals(extension, ".3mf")) write_plate_mesh(args.mesh_output, mesh);
+    else if (!store_stl(args.mesh_output.c_str(), &mesh, true)) throw std::runtime_error("cannot write mesh " + args.mesh_output);
+    std::cout << result.dump() << "\n";
+}
+
 ModelVolume *add_plate_volume(ModelObject &object, const nlohmann::json &v, PlateFiles &files)
 {
     static const std::map<std::string, ModelVolumeType> types = {
@@ -1292,9 +1393,11 @@ ModelVolume *add_plate_volume(ModelObject &object, const nlohmann::json &v, Plat
         { "precise_seam_center", ModelVolumeType::PRECISE_SEAM_CENTER }, { "precise_seam_left", ModelVolumeType::PRECISE_SEAM_LEFT },
         { "precise_seam_right", ModelVolumeType::PRECISE_SEAM_RIGHT }, { "precise_seam_enforced", ModelVolumeType::PRECISE_SEAM_ENFORCED },
         { "precise_seam_blocked", ModelVolumeType::PRECISE_SEAM_BLOCKED }, { "precise_seam_neutral", ModelVolumeType::PRECISE_SEAM_NEUTRAL } };
-    const auto type = types.find(v.value("type", "part"));
+    const std::string requested_type = v.value("type", "part");
+    const std::string type_name = requested_type == "seam" ? "precise_seam_" + v.value("seam_mode", "center") : requested_type;
+    const auto type = types.find(type_name);
     if (type == types.end())
-        throw std::runtime_error("unknown volume type " + v.value("type", ""));
+        throw std::runtime_error("unknown volume type " + (requested_type == "seam" ? type_name : v.value("type", "")));
     Geometry::Transformation transform;
     if (const nlohmann::json m = v.value("transform", nlohmann::json()); !m.is_null()) {
         transform = plate_transformation(m);
@@ -1325,7 +1428,7 @@ ModelVolume *add_plate_volume(ModelObject &object, const nlohmann::json &v, Plat
     return volume;
 }
 
-ModelObject *add_plate_object(Model &model, const nlohmann::json &entry, PlateFiles &files, bool native_profile = false)
+ModelObject *add_plate_object(Model &model, const nlohmann::json &entry, PlateFiles &files, const DynamicPrintConfig &config, bool native_profile = false)
 {
     if (!entry.contains("file") && !entry.contains("volumes"))
         throw std::runtime_error("plate object " + std::to_string(model.objects.size() + 1) + " needs a file or volumes");
@@ -1340,6 +1443,21 @@ ModelObject *add_plate_object(Model &model, const nlohmann::json &entry, PlateFi
     }
     for (const auto &point : entry.value("brim_points", nlohmann::json::array()))
         object->brim_points.emplace_back(point.at(0).get<float>(), point.at(1).get<float>(), point.at(2).get<float>(), point.at(3).get<float>());
+    if (entry.contains("brim_ears")) {
+        if (!entry.at("brim_ears").is_array())
+            throw std::runtime_error("plate object " + object->name + ": brim_ears must be an array");
+        object->brim_points.clear();
+        const float default_radius = std::clamp(float(config.get_abs_value("initial_layer_line_width",
+            config.option<ConfigOptionFloats>("nozzle_diameter")->get_at(0)) * 8.0), 0.1f, 100.f);
+        for (const auto &point : entry.at("brim_ears")) {
+            const float radius = point.value("radius", point.value("head_diameter", 2.f * default_radius) * 0.5f);
+            const float x = point.at("x").get<float>(), y = point.at("y").get<float>();
+            const float z = point.value("z", 0.f);
+            if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z) || !std::isfinite(radius) || radius <= 0.f)
+                throw std::runtime_error("plate object " + object->name + ": brim_ears need finite coordinates and a positive radius");
+            object->brim_points.emplace_back(x, y, z, radius);
+        }
+    }
     if (const int extruder = entry.value("extruder", 0); extruder > 0)
         object->config.set("extruder", extruder);
     if (entry.contains("settings"))
@@ -1393,7 +1511,7 @@ ModelObject *add_plate_object(Model &model, const nlohmann::json &entry, PlateFi
     return object;
 }
 
-Model load_plate(const std::string &path, PlateLayout &layout, bool allow_empty = false)
+Model load_plate(const std::string &path, PlateLayout &layout, const DynamicPrintConfig &config, bool allow_empty = false)
 {
     boost::nowide::ifstream in(path);
     const nlohmann::json    j = nlohmann::json::parse(in);
@@ -1411,7 +1529,7 @@ Model load_plate(const std::string &path, PlateLayout &layout, bool allow_empty 
         layout.implicit_plate_settings = j.value("implicit_plate_settings", true);
     }
     for (const nlohmann::json &entry : j.at("objects")) {
-        ModelObject *object = add_plate_object(model, entry, files, layout.settings.has_value());
+        ModelObject *object = add_plate_object(model, entry, files, layout.settings ? *layout.settings : config, layout.settings.has_value());
         const size_t first = object->instances.size();
         add_placed_instances(object, entry);
         const nlohmann::json places = entry.contains("instances") ? entry.at("instances") : nlohmann::json::array({ entry });
@@ -1669,6 +1787,18 @@ void save_project(PresetBundle &bundle, const Args &args, Model &model, const Dy
     params.config          = &saved;
     params.strategy        = SaveStrategy::Silence | SaveStrategy::SplitModel | SaveStrategy::ShareMesh |
                              (loaded_ids ? SaveStrategy::UseLoadedId : SaveStrategy::Default);
+    std::vector<std::pair<ModelObject *, BrimPoints>> original_points;
+    ScopeGuard restore_points([&] {
+        for (auto &[object, points] : original_points)
+            object->brim_points = std::move(points);
+    });
+    for (ModelObject *object : model.objects)
+        if (object->volumes.size() == 1 && !object->brim_points.empty() &&
+            !object->volumes.front()->get_offset().isApprox(Vec3d::Zero())) {
+            original_points.emplace_back(object, object->brim_points);
+            for (BrimPoint &point : object->brim_points)
+                point.pos -= object->volumes.front()->get_offset().cast<float>();
+        }
     if (! store_bbs_3mf(params))
         throw std::runtime_error("cannot write " + args.save_3mf);
     Args written = args;
@@ -1873,6 +2003,104 @@ void arrange_only(const Args &args, Model &model, const DynamicPrintConfig &conf
     std::cout << "arranged " << items.size() - unplaced << " plates " << plates << " unplaced " << unplaced << "\n";
 }
 
+size_t add_cut_connectors(ModelObject &object, const std::string &spec, const Transform3d &cut_matrix)
+{
+    if (spec.empty()) return 0;
+    const auto connectors = nlohmann::json::parse(spec);
+    if (!connectors.is_array()) throw std::runtime_error("--cut-connectors needs a JSON array");
+    size_t dowels = 0;
+    for (const auto &row : connectors) {
+        const auto positive = [&row](const char *key, double fallback) {
+            const double value = row.value(key, fallback);
+            if (!std::isfinite(value) || value <= 0. || value > std::numeric_limits<float>::max()) throw std::runtime_error(std::string("cut connector ") + key + " must be positive");
+            return value;
+        };
+        const auto tolerance = [&row](const char *key) {
+            const double value = row.value(key, row.value("tolerance", 0.1));
+            if (!std::isfinite(value) || value < 0. || value > std::numeric_limits<float>::max()) throw std::runtime_error(std::string("cut connector ") + key + " must be nonnegative");
+            return float(value);
+        };
+        static const std::map<std::string, CutConnectorType> types = {{"plug", CutConnectorType::Plug}, {"dowel", CutConnectorType::Dowel}, {"snap", CutConnectorType::Snap}};
+        static const std::map<std::string, CutConnectorShape> shapes = {{"triangle", CutConnectorShape::Triangle}, {"square", CutConnectorShape::Square}, {"hexagon", CutConnectorShape::Hexagon}, {"circle", CutConnectorShape::Circle}};
+        const auto type = types.find(row.value("type", "plug"));
+        const auto shape = shapes.find(row.value("shape", "circle"));
+        const std::string style = row.value("style", "prism");
+        if (type == types.end() || shape == shapes.end() || (style != "prism" && style != "frustum"))
+            throw std::runtime_error("unknown cut connector type, shape or style");
+        CutConnector connector;
+        connector.attribs = {type->second, style == "prism" ? CutConnectorStyle::Prism : CutConnectorStyle::Frustum, shape->second};
+        connector.radius = float(positive("radius", 2.5));
+        connector.height = float(positive("height", row.value("depth", 5.)));
+        connector.radius_tolerance = tolerance("radius_tolerance");
+        connector.height_tolerance = tolerance("height_tolerance");
+        connector.z_angle = float(Geometry::deg2rad(row.value("angle", 0.)));
+        const auto &pos = row.at("pos");
+        if (!pos.is_array() || pos.size() != 2) throw std::runtime_error("cut connector pos needs two cut-plane coordinates");
+        const Vec3d local(pos.at(0).get<double>(), pos.at(1).get<double>(), 0.);
+        if (!local.allFinite() || !std::isfinite(connector.z_angle)) throw std::runtime_error("cut connector position and angle must be finite");
+        connector.pos = cut_matrix * local;
+        connector.rotation_m = Geometry::Transformation(cut_matrix).get_rotation_matrix();
+        if (connector.attribs.type == CutConnectorType::Dowel) {
+            if (connector.attribs.style == CutConnectorStyle::Prism) connector.height *= 2.f;
+            if (!std::isfinite(connector.height)) throw std::runtime_error("dowel height is too large");
+            ++dowels;
+        } else
+            connector.pos += connector.rotation_m * Vec3d(0., 0., 0.5 * connector.height);
+        const int sectors = shape->second == CutConnectorShape::Triangle ? 3 : shape->second == CutConnectorShape::Square ? 4 : shape->second == CutConnectorShape::Hexagon ? 6 : 360;
+        indexed_triangle_set mesh;
+        if (connector.attribs.type == CutConnectorType::Snap) {
+            const double space = positive("snap_space", 0.3), bulge = positive("snap_bulge", 0.15);
+            if (shape->second != CutConnectorShape::Circle || space >= 1. || bulge > space)
+                throw std::runtime_error("snap connector needs a circle, snap_space < 1 and snap_bulge <= snap_space");
+            mesh = its_make_snap(1., 1., space, bulge);
+        } else if (connector.attribs.style == CutConnectorStyle::Prism)
+            mesh = its_make_cylinder(1., 1., 2. * M_PI / sectors);
+        else if (connector.attribs.type == CutConnectorType::Plug)
+            mesh = its_make_frustum(1., 1., 2. * M_PI / sectors);
+        else
+            mesh = its_make_frustum_dowel(1., 1., sectors);
+        ModelVolume *volume = object.add_volume(TriangleMesh(std::move(mesh)), ModelVolumeType::NEGATIVE_VOLUME);
+        volume->set_transformation(Geometry::translation_transform(connector.pos) * connector.rotation_m *
+            Geometry::rotation_transform(-connector.z_angle * Vec3d::UnitZ()) *
+            Geometry::scale_transform(Vec3d(connector.radius, connector.radius, connector.height)));
+        volume->cut_info = {connector.attribs.type, connector.radius_tolerance, connector.height_tolerance};
+        volume->name = "Connector-" + std::to_string(object.cut_id.connectors_cnt() + 1);
+        object.cut_id.increase_connectors_cnt(1);
+    }
+    return dowels;
+}
+
+void clean_dovetail_mesh(TriangleMesh &mesh)
+{
+    for (Vec3f &vertex : mesh.its.vertices)
+        for (int axis = 0; axis < 3; ++axis)
+            vertex[axis] = float(std::round(double(vertex[axis]) * 1e6) / 1e6);
+    its_merge_vertices(mesh.its);
+    its_remove_degenerate_faces(mesh.its);
+}
+
+TriangleMesh cut_solid_mesh(const ModelObject &object)
+{
+    TriangleMesh result;
+    for (const ModelVolume *volume : object.volumes)
+        if (volume->is_model_part()) {
+            TriangleMesh mesh(volume->mesh());
+            mesh.transform(volume->get_matrix(), true);
+            if (result.empty()) result = std::move(mesh);
+            else MeshBoolean::cgal::plus(result, mesh);
+        }
+    for (const ModelVolume *volume : object.volumes)
+        if (volume->is_negative_volume()) {
+            TriangleMesh mesh(volume->mesh());
+            mesh.transform(volume->get_matrix(), true);
+            MeshBoolean::minus(result, mesh);
+        }
+    result.transform(object.instances.front()->get_matrix(), true);
+    its_merge_vertices(result.its);
+    its_remove_degenerate_faces(result.its);
+    return result;
+}
+
 void cut_only(PresetBundle &bundle, const Args &args, Model &model, DynamicPrintConfig &config)
 {
     if (model.objects.size() != 1 || model.objects.front()->instances.size() != 1)
@@ -1893,24 +2121,84 @@ void cut_only(PresetBundle &bundle, const Args &args, Model &model, DynamicPrint
     const Transform3d rotation(Eigen::Quaterniond::FromTwoVectors(Vec3d::UnitZ(), normal.normalized()));
     const Transform3d cut_matrix = Geometry::translation_transform(point - object->instances.front()->get_offset()) * rotation;
     const bool upper = args.cut_keep != "lower", lower = args.cut_keep != "upper";
+    const bool dovetail = args.cut_mode == "dovetail";
+    const bool connectors = !args.cut_connectors.empty() && !nlohmann::json::parse(args.cut_connectors).empty();
+    if ((connectors || dovetail) && (!upper || !lower))
+        throw std::runtime_error("connectors and dovetails require --cut-keep both");
+    if (dovetail && connectors) throw std::runtime_error("dovetail cuts do not take separate connectors");
+    if (!dovetail && !args.cut_dovetail.empty()) throw std::runtime_error("--cut-dovetail requires --cut-mode dovetail");
+    if ((connectors || dovetail) && object->cut_id.id().invalid()) object->cut_id.init();
+    const size_t dowels = add_cut_connectors(*object, args.cut_connectors, cut_matrix);
+    if (connectors || dovetail) object->cut_id.increase_check_sum(1 + dowels);
     const ModelObjectCutAttributes attributes = only_if(upper, ModelObjectCutAttribute::KeepUpper) |
                                                 only_if(lower, ModelObjectCutAttribute::KeepLower) |
                                                 ModelObjectCutAttribute::PlaceOnCutUpper |
                                                 only_if(args.cut_place_lower, ModelObjectCutAttribute::PlaceOnCutLower) |
-                                                ModelObjectCutAttribute::InvalidateCutInfo;
+                                                only_if(dowels > 0, ModelObjectCutAttribute::CreateDowels) |
+                                                only_if(!connectors && !dovetail, ModelObjectCutAttribute::InvalidateCutInfo);
     Cut cut(object, 0, cut_matrix, attributes);
-    const ModelObjectPtrs &pieces = cut.perform_with_plane();
-    if (pieces.size() != size_t(upper) + size_t(lower))
+    Cut::Groove groove;
+    int groove_count = 1;
+    float groove_gap = 2.f;
+    if (dovetail) {
+        const auto spec = args.cut_dovetail.empty() ? nlohmann::json::object() : nlohmann::json::parse(args.cut_dovetail);
+        groove.depth = spec.value("depth", 2.f);
+        groove.width = spec.value("width", 8.f);
+        groove.flaps_angle = float(Geometry::deg2rad(spec.value("flaps_angle", 60.)));
+        groove.angle = float(Geometry::deg2rad(spec.value("angle", 0.)));
+        groove.depth_tolerance = spec.value("depth_tolerance", spec.value("tolerance", 0.1f));
+        groove.width_tolerance = spec.value("width_tolerance", spec.value("tolerance", 0.1f));
+        groove_count = spec.value("count", 1);
+        groove_gap = spec.value("gap", 2.f);
+        if (!(std::isfinite(groove.depth) && groove.depth > 0.f && std::isfinite(groove.width) && groove.width > 0.f &&
+              std::isfinite(groove.flaps_angle) && groove.flaps_angle > 0.f && groove.flaps_angle <= float(M_PI / 2.) &&
+              std::isfinite(groove.angle) && std::abs(groove.angle) < M_PI / 2. &&
+              std::isfinite(groove.depth_tolerance) && groove.depth_tolerance >= 0.f &&
+              std::isfinite(groove.width_tolerance) && groove.width_tolerance >= 0.f &&
+              std::isfinite(groove_gap) && groove_gap >= 0.f && groove_count >= 1 && groove_count <= 100))
+            throw std::runtime_error("invalid dovetail dimensions, angles, tolerances or count");
+    }
+    const ModelObjectPtrs &pieces = dovetail ? cut.perform_with_groove(groove, rotation, groove_count, groove_gap,
+        float(object->instance_bounding_box(0).radius())) : cut.perform_with_plane();
+    if (pieces.size() != size_t(upper) + size_t(lower) + dowels)
         throw std::runtime_error("the cut plane does not cross the object");
-    const std::vector<std::string> names = upper && lower ? std::vector<std::string>{ "upper", "lower" } :
+    std::vector<std::string> names = upper && lower ? std::vector<std::string>{ "upper", "lower" } :
                                                             std::vector<std::string>{ upper ? "upper" : "lower" };
+    for (size_t i = 0; i < dowels; ++i) names.push_back("dowel-" + std::to_string(i + 1));
     Model result;
     for (const ModelObject *piece : pieces) {
         ModelObject *added = result.add_object(*piece);
+        if (dowels > 0 && result.objects.size() <= 2) {
+            const Vec3d shift = normal.normalized() * (result.objects.size() == 1 ? 0.05 : -0.05);
+            for (ModelVolume *volume : added->volumes)
+                if (volume->is_negative_volume() && volume->cut_info.is_connector &&
+                    volume->cut_info.connector_type == CutConnectorType::Dowel)
+                    volume->set_offset(volume->get_offset() + shift);
+            added->invalidate_bounding_box();
+        }
+        if (dovetail) {
+            for (ModelVolume *volume : added->volumes)
+                if (volume->is_model_part()) {
+                    TriangleMesh mesh(volume->mesh());
+                    MeshBoolean::self_union(mesh);
+                    clean_dovetail_mesh(mesh);
+                    volume->set_mesh(std::move(mesh));
+                    volume->calculate_convex_hull();
+                }
+            added->invalidate_bounding_box();
+        }
         added->ensure_on_bed();
     }
     for (size_t i = 0; i < result.objects.size(); ++i) {
         TriangleMesh mesh = result.objects[i]->mesh();
+        for (const ModelVolume *volume : result.objects[i]->volumes)
+            if (connectors && volume->cut_info.is_connector) {
+                const auto box = volume->mesh().transformed_bounding_box(volume->get_matrix());
+                std::cout << "cut_connector " << names[i] << " " << volume->name << " type " << (volume->cut_info.connector_type == CutConnectorType::Plug ? "plug" :
+                              volume->cut_info.connector_type == CutConnectorType::Dowel ? "dowel" : "snap")
+                          << " negative " << volume->is_negative_volume() << " size_mm " << box.size().transpose()
+                          << " radius_tolerance " << volume->cut_info.radius_tolerance << " height_tolerance " << volume->cut_info.height_tolerance << "\n";
+            }
         std::cout << "cut_piece " << names[i] << " triangles " << mesh.facets_count() << " open_edges "
                   << its_num_open_edges(mesh.its) << " volume_mm3 " << mesh.volume() << "\n";
     }
@@ -1939,7 +2227,8 @@ void cut_only(PresetBundle &bundle, const Args &args, Model &model, DynamicPrint
     if (boost::algorithm::iends_with(stem, ".stl"))
         stem.resize(stem.size() - 4);
     for (size_t i = 0; i < result.objects.size(); ++i) {
-        TriangleMesh mesh = result.objects[i]->mesh();
+        TriangleMesh mesh = connectors ? cut_solid_mesh(*result.objects[i]) : result.objects[i]->mesh();
+        if (dovetail) clean_dovetail_mesh(mesh);
         const std::string file = stem + "." + names[i] + ".stl";
         if (!store_stl(file.c_str(), &mesh, true))
             throw std::runtime_error("cannot write " + file);
@@ -2092,8 +2381,10 @@ void explode_3mf(const Args &args)
             entry["settings"].erase("extruder");
         }
         if (!object->layer_height_profile.get().empty()) entry["layer_height_profile"] = object->layer_height_profile.get();
-        for (const BrimPoint &point : object->brim_points)
+        for (const BrimPoint &point : object->brim_points) {
             entry["brim_points"].push_back({point.pos.x(), point.pos.y(), point.pos.z(), point.head_front_radius});
+            entry["brim_ears"].push_back({{"x", point.pos.x()}, {"y", point.pos.y()}, {"z", point.pos.z()}, {"radius", point.head_front_radius}});
+        }
         for (const auto &[range, settings] : object->layer_config_ranges)
             entry["ranges"].push_back({{"z", {range.first, range.second}}, {"settings", context_settings(settings.get())},
                                       {"layer_height", settings.opt_float("layer_height")}});
@@ -2184,6 +2475,7 @@ int main(int argc, char **argv)
         set_temporary_dir(datadir.string());
         Nonplanar::HeadLibrary::instance().reload();
         if (!args.explode_3mf.empty()) { explode_3mf(args); return 0; }
+        if (!args.mesh_operation.empty()) { mesh_only(args); return 0; }
         if (!args.verify_gcode.empty()) {
             DynamicPrintConfig file_config;
             file_config.load_from_gcode_file(args.verify_gcode, ForwardCompatibilitySubstitutionRule::Enable);
@@ -2325,7 +2617,7 @@ int main(int argc, char **argv)
             for (Preset *preset : presets)
                 delete preset;
         } else if (args.calib.empty()) {
-            model = ! args.plate.empty()   ? load_plate(args.plate, layout, !args.wipe_tower_only.empty()) :
+            model = ! args.plate.empty()   ? load_plate(args.plate, layout, config, !args.wipe_tower_only.empty()) :
                     ! args.project.empty() ? load_project(args.project) :
                 read_input(args.model);
             if (layout.settings) {

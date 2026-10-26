@@ -43,6 +43,7 @@ struct FieldOrderParams
     double              cell = 5.;
     double              max_tilt = M_PI / 3.;
     double              lean_max = 20. * M_PI / 180.;
+    bool                planar_support = false;
 };
 
 struct FieldSupport

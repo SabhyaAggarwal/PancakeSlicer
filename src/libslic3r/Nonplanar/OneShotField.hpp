@@ -78,9 +78,11 @@ struct OneShotState
 };
 
 bool oneshot_requested(const PrintObject &object);
-constexpr double MeasureWorkBudget = 15000.;
-constexpr double MeasureSafetyNet  = 7200.;
-double                               *measure_work(OneShotState &state);
+constexpr double MeasureWorkBudget   = 15000.;
+constexpr double MeasureWorkFacets   = 50000.;
+constexpr double MeasureWorkMaxScale = 10.;
+constexpr double MeasureSafetyNet    = 7200.;
+double                               *measure_work(const PrintObject &object, OneShotState &state);
 std::chrono::steady_clock::time_point measure_deadline(OneShotState &state);
 
 bool take_injected_oneshot(OneShotState &state);

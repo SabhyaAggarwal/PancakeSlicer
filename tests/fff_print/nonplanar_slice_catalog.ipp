@@ -106,6 +106,10 @@ void dump_presets(const Args &args)
                 {"visible", preset.is_visible}, {"instantiation", true}, {"values", values},
                 {"compatible_printers", values.value("compatible_printers", "")},
                 {"compatible_printers_condition", values.value("compatible_printers_condition", "")}};
+            if (collection == &bundle.filaments) {
+                entry["filament_id"] = preset.filament_id;
+                entry["setting_id"] = preset.setting_id;
+            }
             if (collection != &bundle.printers) {
                 const PresetWithVendorProfile self = collection->get_preset_with_vendor_profile(preset);
                 nlohmann::json printers = nlohmann::json::array(), prints = nlohmann::json::array();

@@ -593,8 +593,8 @@ std::vector<double> conformal_speed_caps(const std::vector<ConformalPoint> &poin
     std::vector<double> caps(points.size() < 2 ? 0 : points.size() - 1, inf);
     const bool          rotary = kinematics.rotary_count() > 0;
     JointPose           prev   = start;
-    static const bool once   = std::getenv("NP_JOINT_LIMIT_ONCE") != nullptr;
-    bool                joints = rotary && !once;
+    static const bool twice  = std::getenv("NP_JOINT_LIMIT_TWICE") != nullptr;
+    bool                joints = rotary && twice;
     for (size_t i = 0; i < caps.size(); ++i) {
         const ConformalPoint &a = points[i], &b = points[i + 1];
         const double          len = (b.pose.tip - a.pose.tip).norm();

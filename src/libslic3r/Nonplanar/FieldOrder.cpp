@@ -1,4 +1,5 @@
 #include "FieldOrder.hpp"
+#include <cstdlib>
 
 #include "Nonplanar/HeadEnvelope.hpp"
 #include "ExtrusionEntity.hpp"
@@ -864,10 +865,67 @@ FieldOrder layer_order_field_roads(std::vector<FieldRoad> &roads, const FieldOrd
                                 params.layer_top.begin());
         return std::min(k, layers - 1);
     };
-    for (FieldRoad &road : roads) {
+    static const bool support_first = std::getenv("NP_NATIVE_SUPPORT_FIRST") != nullptr;
+    std::vector<size_t> moved(roads.size(), std::numeric_limits<size_t>::max());
+    std::vector<ExtrusionEntitiesPtr> early(layers);
+    if (support_first && layers > 0) {
+        constexpr double Cell = 0.5, Reach = 4., Lift = 0.3;
+        auto key = [](double x, double y) { return (int64_t(std::floor(x / Cell)) << 32) ^ (int64_t(std::floor(y / Cell)) & 0xffffffff); };
+        auto is_support = [](const FieldRoad &r) { return r.path && (r.path->role() == erSupportMaterial || r.path->role() == erSupportMaterialInterface); };
+        std::unordered_map<int64_t, std::vector<std::pair<double, size_t>>> part;
+        for (const FieldRoad &r : roads)
+            if (r.path)
+                for (size_t i = 0; i < r.tip.size(); ++i)
+                    part[key(r.tip[i].x(), r.tip[i].y())].emplace_back(r.tip[i].z(), point_layer(r, i));
+        std::vector<size_t> order;
+        for (size_t i = 0; i < roads.size(); ++i)
+            if (is_support(roads[i]) && roads[i].tip.size() >= 2)
+                order.push_back(i);
+        std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) { return point_layer(roads[a], 0) < point_layer(roads[b], 0); });
+        std::unordered_map<int64_t, std::vector<std::pair<double, size_t>>> placed_support;
+        size_t n_moved = 0;
+        for (size_t ri : order) {
+            const FieldRoad &r   = roads[ri];
+            const size_t     own = point_layer(r, 0);
+            size_t           g   = own, floor_g = 0;
+            for (size_t i = 0; i < r.tip.size(); ++i) {
+                const Vec3d &t = r.tip[i];
+                for (int dx = -1; dx <= 1; ++dx)
+                    for (int dy = -1; dy <= 1; ++dy) {
+                        const int64_t k = key(t.x() + dx * Cell, t.y() + dy * Cell);
+                        if (auto it = part.find(k); it != part.end())
+                            for (const auto &[z, l] : it->second)
+                                if (l < g && z > t.z() + Lift && z < t.z() + Reach)
+                                    g = l;
+                        if (auto it = placed_support.find(k); it != placed_support.end())
+                            for (const auto &[z, gs] : it->second)
+                                if (z < t.z() - 1e-3 && z > t.z() - 1.)
+                                    floor_g = std::max(floor_g, gs);
+                    }
+            }
+            g = std::max(g, floor_g);
+            for (const Vec3d &t : r.tip)
+                placed_support[key(t.x(), t.y())].emplace_back(t.z(), g);
+            if (g < own) {
+                moved[ri] = g;
+                ++n_moved;
+            }
+        }
+        BOOST_LOG_TRIVIAL(info) << "Native support first: " << n_moved << " of " << order.size() << " support roads moved earlier";
+    }
+    for (size_t ri = 0; ri < roads.size(); ++ri) {
+        FieldRoad   &road = roads[ri];
         const size_t n = road.tip.size();
         if (!road.path || n < 2 || layers == 0)
             continue;
+        if (moved[ri] < layers) {
+            early[moved[ri]].push_back(road.path.release());
+            continue;
+        }
+        if (params.planar_support && (road.path->role() == erSupportMaterial || road.path->role() == erSupportMaterialInterface)) {
+            early[std::min(road.layer, layers - 1)].push_back(road.path.release());
+            continue;
+        }
         std::vector<std::pair<size_t, size_t>> runs;
         for (size_t s = 0; s < n;) {
             size_t e = s + 1;
@@ -890,6 +948,9 @@ FieldOrder layer_order_field_roads(std::vector<FieldRoad> &roads, const FieldOrd
         }
         road.path.reset();
     }
+    for (size_t k = 0; k < layers; ++k)
+        if (!early[k].empty())
+            out.groups[k].entities.insert(out.groups[k].entities.begin(), early[k].begin(), early[k].end());
     for (size_t k = 0; k < out.groups.size(); ++k)
         if (!out.groups[k].entities.empty())
             out.group_layers.push_back(k);
@@ -902,8 +963,10 @@ FieldOrder layer_order_field_roads(std::vector<FieldRoad> &roads, const FieldOrd
         chained.reserve(g.entities.size());
         for (size_t s = 0; s < g.entities.size();) {
             const ExtrusionRole role = g.entities[s]->role();
+            auto z_of = [](const ExtrusionEntity *p) { return static_cast<const ExtrusionPathConformal *>(p)->polyline.points.front().z(); };
+            const bool by_z = params.planar_support && (role == erSupportMaterial || role == erSupportMaterialInterface);
             size_t e = s + 1;
-            while (e < g.entities.size() && g.entities[e]->role() == role)
+            while (e < g.entities.size() && g.entities[e]->role() == role && (!by_z || z_of(g.entities[e]) == z_of(g.entities[s])))
                 ++e;
             if (is_perimeter(role) || !placed) {
                 chained.insert(chained.end(), g.entities.begin() + s, g.entities.begin() + e);

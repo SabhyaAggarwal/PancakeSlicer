@@ -730,7 +730,7 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
         PrintObject  *object = objects.front();
         OneShotState &s      = object->oneshot_state();
         const MeasureDeadline deadline(measure_deadline(s));
-        const MeasureWork     work(measure_work(s));
+        const MeasureWork     work(measure_work(*object, s));
         const Floating floating = floating_road(result, *object);
         const bool     support  = std::any_of(object->support_layers().begin(), object->support_layers().end(),
                                               [](const SupportLayer *layer) { return !layer->support_fills.empty(); });
