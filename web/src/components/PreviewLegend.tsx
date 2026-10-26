@@ -7,7 +7,7 @@ import {
 import type { PreviewData } from '../preview/data';
 import { ROLE_NAMES, shortTime, type PrintStatistics } from '../preview/format';
 import type { PreviewScene } from '../preview/PreviewScene';
-import type { PreviewUi } from './PreviewView';
+import { canExtend, type PreviewUi } from './PreviewView';
 import { clearanceScale } from '../preview/clearance';
 
 const css = (c: RGB) => `rgb(${c[0]},${c[1]},${c[2]})`;
@@ -108,6 +108,7 @@ export function Legend(props: {
     });
 
   const body = () => {
+    if (EXTENDED_VIEWS.has(ui.view) && !d.header?.extended) return <div className="lg-row" role="status">Loading actual speed and clearance…</div>;
     switch (ui.view) {
       case 'feature':
         return (
@@ -187,7 +188,7 @@ export function Legend(props: {
     <div className="legend">
       <div className="lg-head">
         <select value={ui.view} onChange={(e) => setUi((u) => ({ ...u, view: e.target.value as ViewType }))}>
-          {VIEW_TYPES.filter((v) => d.header?.extended || !EXTENDED_VIEWS.has(v.key)).map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}
+          {VIEW_TYPES.filter((v) => d.header?.extended || canExtend(d) || !EXTENDED_VIEWS.has(v.key)).map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}
         </select>
         <button className="lg-collapse" onClick={() => setOpen(!open)} title={open ? 'Collapse' : 'Expand'}>{open ? '▴' : '▾'}</button>
       </div>

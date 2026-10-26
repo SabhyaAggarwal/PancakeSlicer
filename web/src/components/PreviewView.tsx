@@ -30,12 +30,17 @@ export function colorContext(d: PreviewData, ui: Pick<PreviewUi, 'view' | 'nonpl
 let current: { key: string; data: PreviewData; cancel(): void } | null = null;
 let live: { header(d: PreviewData): void; chunk(d: PreviewData): void; done(d: PreviewData): void; error(d: PreviewData): void } | null = null;
 
+const extendedJobs = new Set<string>();
+let extendedView = false;
+export const canExtend = (d: PreviewData) => !!getState().features.moves_extended && !!d.sourceUrl && d.sourceUrl === getState().api?.movesUrl(getState().job.id ?? '');
+
 function source(): { key: string; url?: string; file?: File } | null {
   const q = new URLSearchParams(location.search).get('moves');
   if (q) return { key: `url:${q}`, url: q };
   const s = getState();
-  if (s.job.state === 'done' && s.job.id && s.api) return { key: `job:${s.job.id}`, url: s.api.movesUrl(s.job.id) };
-  return null;
+  if (s.job.state !== 'done' || !s.job.id || !s.api) return null;
+  const ext = extendedJobs.has(s.job.id) || (extendedView && !!s.features.moves_extended);
+  return { key: `job:${s.job.id}${ext ? ':extended' : ''}`, url: s.api.movesUrl(s.job.id) + (ext ? '?extended=1' : '') };
 }
 
 export interface PreviewUi {
@@ -57,6 +62,7 @@ export function PreviewView() {
   const [, bump] = useReducer((x: number) => x + 1, 0);
   const { gcodeWindow } = useViewOptions();
   const [dropped, setDropped] = useState<File | null>(null);
+  const [extendTick, setExtendTick] = useState(0);
   const [data, setData] = useState<PreviewData | null>(current?.data ?? null);
   const [ui, setUi] = useState<PreviewUi>({
     view: 'feature',
@@ -186,7 +192,7 @@ export function PreviewView() {
     setLayers([0, Number.MAX_SAFE_INTEGER]);
     setMovePos(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [job.id, job.state, dropped]);
+  }, [job.id, job.state, dropped, extendTick]);
 
   useEffect(() => {
     if (!data?.header) return;
@@ -271,7 +277,13 @@ export function PreviewView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [record]);
   useEffect(() => {
-    if (data?.header && !data.header.extended && EXTENDED_VIEWS.has(ui.view)) setUi((u) => ({ ...u, view: 'feature' }));
+    extendedView = EXTENDED_VIEWS.has(ui.view);
+    if (!data?.header || data.header.extended || !EXTENDED_VIEWS.has(ui.view)) return;
+    const id = getState().job.id;
+    if (!dropped && id && canExtend(data)) {
+      extendedJobs.add(id);
+      setExtendTick((t) => t + 1);
+    } else setUi((u) => ({ ...u, view: 'feature' }));
   }, [data, ui.view]);
   const status = job.state === 'running' || job.state === 'submitting'
     ? slicingText(job, plateIndex)

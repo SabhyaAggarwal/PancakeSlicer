@@ -226,6 +226,8 @@ func (j *Job) PiecePath(side string) string {
 
 func (j *Job) MovesPath() string { return filepath.Join(j.Dir, "moves.bin") }
 
+func (j *Job) ExtendedMovesPath() string { return filepath.Join(j.Dir, "moves-extended.bin") }
+
 func (j *Job) DownloadName() string {
 	name := j.Request.Filename
 	if name == "" && len(j.Request.Files) > 0 {
@@ -560,9 +562,10 @@ func (m *JobManager) toolArgs(j *Job) []string {
 		return append(args, filepath.Join(in, r.Files[0]))
 	}
 	if m.cfg.Features.MovesOut {
-		args = append(args, "--moves-out", j.MovesPath())
 		if m.cfg.Features.MovesExtended {
-			args = append(args, "--moves-extended")
+			args = append(args, "--moves-out", j.ExtendedMovesPath(), "--moves-extended")
+		} else {
+			args = append(args, "--moves-out", j.MovesPath())
 		}
 	}
 	if m.cfg.Features.Progress {
@@ -767,6 +770,12 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 		if _, err := os.Stat(j.OutputPath(kind)); !j.Request.Orient && j.Request.Cut == "" && err != nil {
 			j.setState(StateFailed, "the slicer finished without writing "+filepath.Base(j.OutputPath(kind)))
 			return
+		}
+		if _, err := os.Stat(j.ExtendedMovesPath()); err == nil {
+			if err := stripExtendedMoves(j.ExtendedMovesPath(), j.MovesPath()); err != nil {
+				j.setState(StateFailed, "the preview stream could not be written: "+sanitizeToolError(err))
+				return
+			}
 		}
 		if !m.cfg.Features.Progress {
 			j.log("server", "progress export 100")

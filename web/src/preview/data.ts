@@ -216,7 +216,7 @@ export function supportGrams(d: PreviewData | null, total: number | null): numbe
 
 export function loadMoves(src: WorkerIn, on: LoadHandlers, colours?: string[]): { data: PreviewData; cancel(): void } {
   const d = new PreviewData();
-  d.sourceUrl = src.url;
+  d.sourceUrl = src.url?.split('?')[0];
   const worker = new Worker(new URL('./loader.worker.ts', import.meta.url), { type: 'module' });
   worker.onmessage = (e: MessageEvent<WorkerOut>) => {
     const m = e.data;

@@ -676,7 +676,13 @@ func (s *Server) moves(w http.ResponseWriter, r *http.Request) {
 	if j == nil {
 		return
 	}
-	f, err := os.Open(j.MovesPath())
+	path := j.MovesPath()
+	if r.URL.Query().Get("extended") == "1" {
+		if _, err := os.Stat(j.ExtendedMovesPath()); err == nil {
+			path = j.ExtendedMovesPath()
+		}
+	}
+	f, err := os.Open(path)
 	if err != nil || j.State() != StateDone {
 		if f != nil {
 			f.Close()
@@ -686,7 +692,7 @@ func (s *Server) moves(w http.ResponseWriter, r *http.Request) {
 	}
 	defer f.Close()
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filepath.Base(j.MovesPath())}))
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filepath.Base(path)}))
 	st, err := f.Stat()
 	if err != nil {
 		fail(w, 500, err.Error())
