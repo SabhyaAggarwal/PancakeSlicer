@@ -270,6 +270,18 @@ export async function openProject(file: File) {
   if ((s.objects.length || s.projectPlates.some((p) => p.objects.length)) && !(await confirmDialog('Open Project', 'Opening a project replaces the objects on the plate. Continue?'))) return;
   leaveDocument();
   clearPlateJobs();
+  if (s.features.explode && s.api && !s.api.mock) {
+    setState({ loading: `Opening ${file.name}` });
+    try {
+      await (await import('./plater/explode')).openExplodedProject(file, adoptProject);
+      newDocument(true);
+      return;
+    } catch (e) {
+      toast(`${file.name}: ${e instanceof Error ? e.message : e}; opened as a project instead`);
+    } finally {
+      setState({ loading: null });
+    }
+  }
   let objects: PlateObject[] = [];
   const patch = (i: number, f: (o: PlateObject) => PlateObject) => {
     const id = objects[i]?.id;

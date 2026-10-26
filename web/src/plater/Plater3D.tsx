@@ -5,7 +5,7 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 import { effectiveConfig, getState, markStale, printerPreset, setPaint, setState, subscribeStore, updateInstance, updateObject, updateVolume, useStore, type State, type VolumeType } from '../state/store';
 import { PaintView } from './paintView';
 import { viewOptions, subscribeViewOptions } from './viewOptions';
-import { brush, fill as fillPaint, heightRange, HEIGHT, isPaint, overhangFacets, overhangGeometry, paintOf, paintTool, paintTriangle, PAINT_STEP, RADIUS, setPaintTool, subscribePaintTool, type PaintKind, type Painting } from './paint';
+import { brush, bucketFill, fill as fillPaint, heightRange, HEIGHT, isPaint, overhangFacets, overhangGeometry, paintOf, paintTool, paintTriangle, PAINT_STEP, RADIUS, setPaintTool, subscribePaintTool, type PaintKind, type Painting } from './paint';
 import { beginStep, undoable } from '../state/history';
 import { TowerView } from './wipeTower';
 import { filamentColor } from './filamentColor';
@@ -700,7 +700,8 @@ export default function Plater3D() {
       const t = paintTool();
       const world = hit.object.matrixWorld;
       const allow = (stroke!.kind === 'support' && t.overhangsOnly && overhangFacets(target.geometry, new THREE.Matrix3().getNormalMatrix(world), t.highlight)) || undefined;
-      stroke!.paint = t.tool === 'fill' ? fillPaint(target.geometry, stroke!.paint, hit.tri, t.angle, stroke!.state, allow)
+      stroke!.paint = t.tool === 'fill' && stroke!.kind === 'color' ? bucketFill(target.geometry, stroke!.paint, hit.tri, t.edges ? t.angle : -1, stroke!.state)
+        : t.tool === 'fill' ? fillPaint(target.geometry, stroke!.paint, hit.tri, t.angle, stroke!.state, allow)
         : t.tool === 'gap' ? stroke!.paint
         : t.tool === 'triangle' ? paintTriangle(stroke!.paint, hit.tri, stroke!.state)
         : t.tool === 'height' ? heightRange(target.geometry, stroke!.paint, hit.tri, world, hit.local.clone().applyMatrix4(world).z, t.height, stroke!.state)
@@ -760,11 +761,12 @@ export default function Plater3D() {
     const onPaintUp = (ev: PointerEvent) => {
       if (!stroke || ev.pointerId !== stroke.pointer) return;
       ev.stopImmediatePropagation();
-      const { object, volume, kind, paint } = stroke;
+      const { object, volume, kind, paint, state } = stroke;
       stroke = null;
       controls.enabled = true;
       const target = paintTarget(getState(), object, volume);
-      if (target && paint !== paintOf(target, kind)) setPaint(object, kind, paint, PAINT_STEP[kind], volume);
+      const step = kind !== 'color' ? PAINT_STEP[kind] : state ? `Painted using: Filament ${state}` : 'Remove painted color';
+      if (target && paint !== paintOf(target, kind)) setPaint(object, kind, paint, step, volume);
       else paintView.sync(getState());
     };
     const onPaintWheel = (ev: WheelEvent) => {

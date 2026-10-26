@@ -15,6 +15,7 @@ export interface Instance {
   x: number;
   y: number;
   rotZ: number;
+  native?: { json: Record<string, unknown>; x: number; y: number; z: number; rotZ: number };
   z?: number;
   printable?: boolean;
 }
@@ -29,8 +30,18 @@ export interface Volume {
   geometry: THREE.BufferGeometry;
   matrix: number[];
   extruder: number;
+  native?: number;
   settings: Config;
   paint?: Partial<Record<PaintKind, Painting>>;
+}
+
+export interface NativeObject {
+  entry: Record<string, unknown>;
+  frame: number[];
+  base: { rotX: number; rotY: number; scale: [number, number, number] };
+  main: number;
+  files: Record<string, Blob>;
+  layerProfile?: number[];
 }
 
 export interface LayerRange { id: number; z: [number, number]; layer_height: number; settings: Config }
@@ -47,6 +58,7 @@ export interface PlateObject {
   source: File;
   settings: Config;
   volumes?: Volume[];
+  native?: NativeObject;
   ranges?: LayerRange[];
   paint?: Partial<Record<PaintKind, Painting>>;
   units?: 'inch' | 'meter';
@@ -110,7 +122,7 @@ export interface CutPlane {
 export interface State {
   api: Api | null;
   features: { cut?: boolean; volumes?: boolean; edit?: boolean; mesh_plates?: boolean; paint?: boolean; layer_profile?: boolean; arrange?: boolean; project_volumes?: boolean; project_paint?: boolean; orient_scores?: boolean; floating?: boolean;
-    ranges?: boolean; moves_extended?: boolean; mixed_temperatures?: boolean; arrange_materials?: boolean; wipe_tower?: boolean };
+    ranges?: boolean; moves_extended?: boolean; mixed_temperatures?: boolean; arrange_materials?: boolean; wipe_tower?: boolean; explode?: boolean };
   cut: CutPlane | null;
   loading: string | null;
   machines: SystemPreset[];

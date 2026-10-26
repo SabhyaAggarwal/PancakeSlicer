@@ -45,6 +45,7 @@ type ToolFeatures struct {
 	MixedTemperatures bool            `json:"mixed_temperatures"`
 	ArrangeMaterials  bool            `json:"arrange_materials"`
 	WipeTower         bool            `json:"wipe_tower"`
+	Explode           bool            `json:"explode"`
 }
 
 type toolOption struct {
@@ -101,6 +102,7 @@ func probeUsage(c Config, f *ToolFeatures) {
 	f.MixedTemperatures = strings.Contains(usage, "--allow-mixed-temperatures")
 	f.ArrangeMaterials = strings.Contains(usage, "--arrange-multi-materials")
 	f.WipeTower = strings.Contains(usage, "--wipe-tower-only")
+	f.Explode = strings.Contains(usage, "--explode-3mf IN.3mf OUTDIR")
 	if dump, err := toolDump(c, "--dump-presets", "Prusa"); err == nil {
 		f.PresetCompat = bytes.Contains(dump, []byte(`"compatible_printers_evaluated"`))
 	}

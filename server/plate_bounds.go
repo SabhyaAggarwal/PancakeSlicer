@@ -437,7 +437,7 @@ func validatePlateBounds(dir string, req JobRequest, machine *Preset, rawPlate s
 		return err
 	}
 	for _, o := range plate.Objects {
-		if isStep(o.File) {
+		if isStep(o.File) || o.File == "" {
 			continue
 		}
 		name := o.Name

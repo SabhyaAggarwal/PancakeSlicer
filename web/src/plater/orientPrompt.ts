@@ -41,6 +41,11 @@ const without = (st: State, id: number) => {
   return next;
 };
 
+function fromProject(o: PlateObject) {
+  const n = o.native;
+  return !!n && o.source === n.files[String((n.entry.volumes as { file: string }[])[n.main].file)];
+}
+
 const scored = new Map<number, string>();
 let queue = Promise.resolve();
 
@@ -63,7 +68,7 @@ function check() {
   if (!s.features.orient_scores || !s.api || s.api.mock || s.project) return;
   for (const o of s.objects) {
     const key = `${s.printer}|${pose(o)}`;
-    if (o.project?.placeholder || s.orientDismissed.includes(o.id) || scored.get(o.id) === key) continue;
+    if (o.project?.placeholder || fromProject(o) || s.orientDismissed.includes(o.id) || scored.get(o.id) === key) continue;
     scored.set(o.id, key);
     if (s.orientPrompts[o.id] && s.orientPrompts[o.id].pose !== pose(o)) setState((st) => ({ orientPrompts: without(st, o.id) }));
     const printer = s.printer;

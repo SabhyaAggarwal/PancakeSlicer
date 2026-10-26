@@ -245,6 +245,12 @@ function bakeVolume(o: PlateObject, v: Volume): Promise<Blob> {
   );
 }
 
+type NativePlate = (o: PlateObject, settings: (c: PlateObject['settings']) => Record<string, string>, profile: () => number[] | undefined, prefix: string) =>
+  { entry: PlateJson['objects'][number]; files: { name: string; blob: () => Blob | Promise<Blob> }[] } | null;
+let nativePlate: NativePlate | null = null;
+export const setNativePlate = (f: NativePlate) => { nativePlate = f; };
+const nativeFiles = new WeakMap<PlateJson['objects'][number], { name: string; blob: () => Blob | Promise<Blob> }[]>();
+
 export function plateDescription(objects: PlateObject[], firstLayer = 0.2): PlateJson {
   const used = new Set<string>();
   const plate: PlateJson = { objects: [] };
@@ -253,6 +259,12 @@ export function plateDescription(objects: PlateObject[], firstLayer = 0.2): Plat
     for (let k = 2; used.has(file); k++) file = file.replace(/(_\d+)?\.stl$/, `_${k}.stl`);
     used.add(file);
     const settings = (c: PlateObject['settings']) => Object.fromEntries(Object.entries(c).map(([k, v]) => [k, toolValue(k, v)]));
+    const native = o.native && nativePlate?.(o, settings, () => o.layerProfile && fitProfile(o.layerProfile, objectHeight(o), firstLayer), file.replace(/\.stl$/, ''));
+    if (native) {
+      nativeFiles.set(native.entry, native.files);
+      plate.objects.push(native.entry);
+      continue;
+    }
     const place = (i: Instance) => {
       if (!o.volumes?.some((v) => v.type === 'part')) return { x: i.x, y: i.y, z: i.z ?? 0 };
       const b = instanceBox(o, i);
@@ -282,10 +294,15 @@ export function plateDescription(objects: PlateObject[], firstLayer = 0.2): Plat
 
 export async function plateJson(objects: PlateObject[], firstLayer?: number): Promise<{ plate: PlateJson; files: { name: string; blob: Blob }[] }> {
   const plate = plateDescription(objects, firstLayer);
-  const blobs = await Promise.all(objects.map((o) => bakeStl(o)));
-  const volumes = await Promise.all(objects.map((o) => Promise.all((o.volumes ?? []).map((v) => bakeVolume(o, v)))));
-  return { plate, files: plate.objects.flatMap(({ file: name, volumes: vs }, i) => [{ name, blob: blobs[i] },
-    ...(vs ?? []).map((v, k) => ({ name: v.file, blob: volumes[i][k] }))]) };
+  const files = new Map<string, Blob>();
+  await Promise.all(plate.objects.map(async (entry, i) => {
+    const own = nativeFiles.get(entry);
+    if (own) return Promise.all(own.map(async (f) => files.set(f.name, await f.blob())));
+    files.set(entry.file, await bakeStl(objects[i]));
+    const vs = await Promise.all((objects[i].volumes ?? []).map((v) => bakeVolume(objects[i], v)));
+    (entry.volumes ?? []).forEach((v, k) => files.set(v.file, vs[k]));
+  }));
+  return { plate, files: [...files].map(([name, blob]) => ({ name, blob })) };
 }
 
 const meshContents = new WeakMap<THREE.BufferGeometry, string>();

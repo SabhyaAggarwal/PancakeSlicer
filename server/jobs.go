@@ -42,6 +42,7 @@ type JobRequest struct {
 	ArrangeNoRotation      bool           `json:"arrange_no_rotation,omitempty"`
 	ArrangeMaterials       string         `json:"arrange_materials,omitempty"`
 	WipeTower              bool           `json:"wipe_tower,omitempty"`
+	Explode                bool           `json:"explode,omitempty"`
 	AllowMixedTemperatures bool           `json:"allow_mixed_temperatures,omitempty"`
 	Cut                    string         `json:"cut,omitempty"`
 	CutKeep                string         `json:"cut_keep,omitempty"`
@@ -225,6 +226,8 @@ func (j *Job) PiecePath(side string) string {
 }
 
 func (j *Job) MovesPath() string { return filepath.Join(j.Dir, "moves.bin") }
+
+func (j *Job) ExplodedDir() string { return filepath.Join(j.Dir, "exploded") }
 
 func (j *Job) ExtendedMovesPath() string { return filepath.Join(j.Dir, "moves-extended.bin") }
 
@@ -508,6 +511,9 @@ func (m *JobManager) reap() {
 func (m *JobManager) toolArgs(j *Job) []string {
 	r := j.Request
 	in := filepath.Join(j.Dir, "input")
+	if r.Explode {
+		return []string{"--explode-3mf", filepath.Join(in, r.Files[0]), j.ExplodedDir()}
+	}
 	args := []string{
 		"--profiles", filepath.Join(m.cfg.Resources, "profiles"),
 		"--datadir", filepath.Join(j.Dir, "datadir"),
@@ -714,7 +720,9 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 	j.exitCode = &code
 	j.mu.Unlock()
 	raw, recordErr := os.ReadFile(j.OutputPath("json"))
-	if j.Request.OrientScores {
+	if j.Request.Explode {
+		raw, recordErr = os.ReadFile(filepath.Join(j.ExplodedDir(), "plate.json"))
+	} else if j.Request.OrientScores {
 		raw, recordErr = json.Marshal(map[string]any{"schema": "orca.orient-scores.v1", "scores": scores})
 		if len(scores) == 0 {
 			recordErr = errors.New("missing native orientation scores")
@@ -767,7 +775,7 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 			kind = "json"
 			m.keepPreview(j, args, raw)
 		}
-		if _, err := os.Stat(j.OutputPath(kind)); !j.Request.Orient && j.Request.Cut == "" && err != nil {
+		if _, err := os.Stat(j.OutputPath(kind)); !j.Request.Orient && !j.Request.Explode && j.Request.Cut == "" && err != nil {
 			j.setState(StateFailed, "the slicer finished without writing "+filepath.Base(j.OutputPath(kind)))
 			return
 		}

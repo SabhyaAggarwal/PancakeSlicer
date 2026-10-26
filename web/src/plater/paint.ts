@@ -197,6 +197,20 @@ export function fill(g: THREE.BufferGeometry, painting: Painting | null, hit: nu
   return update(painting, tris, () => state);
 }
 
+function wholeState(n: PaintNode | undefined): number {
+  if (n === undefined) return 0;
+  if (!Array.isArray(n)) return n;
+  const s = n.map(wholeState);
+  return s.every((v) => v === s[0]) ? s[0] : NaN;
+}
+
+export function bucketFill(g: THREE.BufferGeometry, painting: Painting | null, hit: number, angle: number, state: number): Painting | null {
+  const nrm = faceNormals(g), limit = Math.cos((angle * Math.PI) / 180) - 1e-9, seed = wholeState(painting?.get(hit));
+  const tris = grow(g, hit, (t, from) => wholeState(painting?.get(t)) === seed &&
+    (angle < 0 || nrm[3 * t] * nrm[3 * from] + nrm[3 * t + 1] * nrm[3 * from + 1] + nrm[3 * t + 2] * nrm[3 * from + 2] >= limit));
+  return update(painting, tris, () => state);
+}
+
 export function gapFill(g: THREE.BufferGeometry, painting: Painting | null, area: number): Painting | null {
   if (!(area > 0)) return painting;
   type Leaf = { t: number; path: number[]; tri: Tri; state: number };
@@ -341,12 +355,13 @@ export interface PaintTool {
   tool: BrushTool; radius: number; angle: number;
   height: number; filament: number;
   gapArea: number; highlight: number; overhangsOnly: boolean;
+  edges: boolean;
 }
 export const RADIUS = { min: 0.4, max: 8, step: 0.2 } as const;
 export const ANGLE = { min: 0, max: 90, step: 5 } as const;
 export const HEIGHT = { min: 0.1, max: 8, step: 0.2 } as const;
 export const GAP_AREA = { min: 0, max: 5, step: 0.05 } as const;
-let tool: PaintTool = { tool: 'circle', radius: 1, angle: 30, height: 1, filament: 1, gapArea: 0, highlight: 0, overhangsOnly: false };
+let tool: PaintTool = { tool: 'circle', radius: 1, angle: 30, height: 1, filament: 1, gapArea: 0, highlight: 0, overhangsOnly: false, edges: false };
 const listeners = new Set<() => void>();
 export const paintTool = () => tool;
 export function setPaintTool(patch: Partial<PaintTool>) {

@@ -2,10 +2,11 @@ import type * as THREE from 'three';
 import { loadMesh, loadProject, placeholderGeometry, volumeGeometry } from '../plater/geometry';
 import type { ProjectPlate } from '../plater/threemf';
 import { documentGeneration, newDocument, onLeaveDocument, snapshot, subscribeHistory, unsaved, type Doc } from '../state/history';
-import { getState, reserveIds, setState, subscribeStore, toast, type PlateObject, type State, type Volume } from '../state/store';
+import { getState, reserveIds, setState, subscribeStore, toast, type NativeObject, type PlateObject, type State, type Volume } from '../state/store';
 
 type StoredVolume = Omit<Volume, 'geometry'> & { geometry: { position: Float32Array; normal?: Float32Array; index: Uint32Array | Uint16Array | null } };
-type StoredObject = Omit<PlateObject, 'geometry' | 'source' | 'volumes'> & { source: string; volumes?: StoredVolume[] };
+type StoredObject = Omit<PlateObject, 'geometry' | 'source' | 'volumes' | 'native'> & { source: string; volumes?: StoredVolume[];
+  native?: Omit<NativeObject, 'files'> & { files: Record<string, string> } };
 type StoredDoc = Omit<Doc, 'objects' | 'projectPlates' | 'project'> & {
   objects: StoredObject[];
   projectPlates: (ProjectPlate & { objects: StoredObject[] })[];
@@ -69,8 +70,9 @@ function serialize(doc: Doc): { stored: StoredDoc; blobs: Map<string, Blob> } {
   const volume = ({ geometry: g, ...rest }: Volume): StoredVolume => ({ ...rest, geometry: {
     position: g.attributes.position.array as Float32Array, normal: g.attributes.normal?.array as Float32Array | undefined,
     index: (g.index?.array as Uint32Array | undefined) ?? null } });
-  const object = ({ geometry: _, source, volumes, ...rest }: PlateObject): StoredObject =>
-    ({ ...rest, source: keep(source), ...(volumes ? { volumes: volumes.map(volume) } : {}) });
+  const object = ({ geometry: _, source, volumes, native, ...rest }: PlateObject): StoredObject =>
+    ({ ...rest, source: keep(source), ...(volumes ? { volumes: volumes.map(volume) } : {}),
+      ...(native ? { native: { ...native, files: Object.fromEntries(Object.entries(native.files).map(([k, b]) => [k, keep(b)])) } } : {}) });
   return {
     stored: {
       ...doc,
@@ -229,12 +231,28 @@ export async function restore(id: string) {
         missing: () => {},
       });
     }
-    for (const o of [...rec.doc.objects, ...rec.doc.projectPlates.flatMap((p) => p.objects)])
+    const all = [...rec.doc.objects, ...rec.doc.projectPlates.flatMap((p) => p.objects)];
+    const explode = all.some((o) => o.native) ? await import('../plater/explode') : null;
+    const natives = new Map<StoredObject, NativeObject>();
+    for (const o of all) {
+      if (!o.native) continue;
+      const native = { ...o.native, files: Object.fromEntries(Object.entries(o.native.files).map(([k, key]) => [k, blobs.get(key) as Blob])) };
+      natives.set(o, native);
+      const main = String((native.entry.volumes as { file: string }[])[native.main].file);
+      if (o.source === o.native.files[main] && !meshes.has(o.source)) meshes.set(o.source, await explode!.nativeGeometry(native));
+    }
+    for (const o of all)
       if (!o.project && !meshes.has(o.source)) meshes.set(o.source, await loadMesh(blobs.get(o.source) as File));
-    const revive = ({ volumes, ...o }: StoredObject): PlateObject => {
+    const revive = (stored: StoredObject): PlateObject => {
+      const { volumes, native: _stored, ...o } = stored;
       const source = blobs.get(o.source) as File;
-      if (!o.project) return { ...o, source, geometry: meshes.get(o.source)!,
-        ...(volumes ? { volumes: volumes.map((v) => ({ ...v, geometry: volumeGeometry(v.geometry.position, v.geometry.index, v.geometry.normal) })) } : {}) };
+      const native = natives.get(stored);
+      if (!o.project) return { ...o, native, source, geometry: meshes.get(o.source)!,
+        ...(volumes ? { volumes: volumes.map((v) => {
+          const geometry = v.native !== undefined && explode ? explode.markPristine(explode.rawArrays(v.geometry.position, v.geometry.index))
+            : volumeGeometry(v.geometry.position, v.geometry.index, v.geometry.normal);
+          return { ...v, geometry };
+        }) } : {}) };
       const item = o.project.buildIndex === undefined ? undefined : items.get(o.project.buildIndex);
       if (!item) return { ...o, source, geometry: placeholderGeometry() };
       if (!o.project.placeholder) return { ...o, source, geometry: item.geometry };

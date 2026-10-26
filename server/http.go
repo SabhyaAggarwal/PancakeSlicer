@@ -46,6 +46,7 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, users *UserPres
 	mux.HandleFunc("GET /api/jobs/{id}/events", s.events)
 	mux.HandleFunc("GET /api/jobs/{id}/download", s.download)
 	mux.HandleFunc("GET /api/jobs/{id}/moves", s.moves)
+	mux.HandleFunc("GET /api/jobs/{id}/exploded/{name}", s.exploded)
 	mux.HandleFunc("POST /api/jobs/{id}/send", s.sendJob)
 	mux.HandleFunc("GET /api/jobs/{id}/send", s.getSend)
 	mux.HandleFunc("GET /api/printers", s.listPrinters)
@@ -216,6 +217,12 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			}
 			req.ArrangeMaterials = raw
 		}
+	case "explode":
+		if !s.cfg.Features.Explode {
+			fail(w, 400, "opening a project as an editable plate requires a tool with --explode-3mf")
+			return
+		}
+		req.Explode = true
 	case "wipe-tower":
 		if !s.cfg.Features.WipeTower {
 			fail(w, 400, "the prime tower estimate requires a tool with --wipe-tower-only")
@@ -432,7 +439,8 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			var volumes []struct {
 				File string `json:"file"`
 			}
-			if json.Unmarshal(obj["file"], &file) != nil || !names[file] || (obj["volumes"] != nil && json.Unmarshal(obj["volumes"], &volumes) != nil) {
+			if obj["volumes"] != nil && json.Unmarshal(obj["volumes"], &volumes) != nil ||
+				(obj["file"] != nil || len(volumes) == 0) && (json.Unmarshal(obj["file"], &file) != nil || !names[file]) {
 				fail(w, 400, "plate objects must reference uploaded basenames")
 				return
 			}
@@ -493,7 +501,11 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if !req.Plate && strings.EqualFold(filepath.Ext(req.Files[0]), ".3mf") {
+	if req.Explode && (req.Plate || len(req.Files) != 1 || !strings.EqualFold(filepath.Ext(req.Files[0]), ".3mf") || req.PlateIndex > 0) {
+		fail(w, 400, "explode requires one 3MF project")
+		return
+	}
+	if !req.Plate && !req.Explode && strings.EqualFold(filepath.Ext(req.Files[0]), ".3mf") {
 		layout, layoutErr := readProjectLayout(filepath.Join(j.Dir, "input", req.Files[0]))
 		if layoutErr != nil {
 			fail(w, 400, layoutErr.Error())
@@ -584,7 +596,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "orient requires one STL without plate JSON or project output")
 		return
 	}
-	if !req.Orient && !req.Arrange && !req.WipeTower && req.Cut == "" && req.Output != "3mf" && req.Output != "patch-preview" {
+	if !req.Orient && !req.Arrange && !req.WipeTower && !req.Explode && req.Cut == "" && req.Output != "3mf" && req.Output != "patch-preview" {
 		if err := validatePlateBounds(filepath.Join(j.Dir, "input"), req, vendor.machines[req.Printer], rawPlate); err != nil {
 			fail(w, 400, err.Error())
 			return
@@ -669,6 +681,33 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
 	w.Header().Set("Content-Type", "application/octet-stream")
 	http.ServeContent(w, r, st.Name(), st.ModTime(), f)
+}
+
+var explodedName = regexp.MustCompile(`^object-[0-9]+-volume-[0-9]+\.3mf$`)
+
+func (s *Server) exploded(w http.ResponseWriter, r *http.Request) {
+	j := s.job(w, r)
+	if j == nil {
+		return
+	}
+	name := r.PathValue("name")
+	if !j.Request.Explode || j.State() != StateDone || !explodedName.MatchString(name) {
+		fail(w, 404, "no such exploded mesh")
+		return
+	}
+	f, err := os.Open(filepath.Join(j.ExplodedDir(), name))
+	if err != nil {
+		fail(w, 404, "no such exploded mesh")
+		return
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		fail(w, 500, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "model/3mf")
+	serveStream(w, r, f, st, "private, max-age=300, must-revalidate")
 }
 
 func (s *Server) moves(w http.ResponseWriter, r *http.Request) {

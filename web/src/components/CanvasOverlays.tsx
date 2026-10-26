@@ -15,6 +15,7 @@ import { canPerformCut, cutBlocked, initialCut, performCut, setCut, toggleCut } 
 import { InTopLayer } from './Modal';
 
 const OrientConfirm = lazy(() => import('./OrientConfirm').then((m) => ({ default: m.OrientConfirm })));
+const RemapFilaments = lazy(() => import('./RemapFilaments'));
 import { addPlate, canAddPlate } from '../plater/plates';
 import { arrangeSettings, resetArrangeSettings, setArrangeSettings, subscribeArrangeSettings } from '../plater/arrangeSettings';
 import { ANGLE, EXTRUDERS_LIMIT, GAP_AREA, HEIGHT, RADIUS, canPaint, gapFill, isPaint, paintOf, PAINT_STEP, paintTool, setPaintTool, subscribePaintTool, togglePaint, type BrushTool, type PaintKind } from '../plater/paint';
@@ -515,6 +516,7 @@ export function PaintPanel() {
             </span>
           </>
         )}
+        {kind === 'color' && filaments.length > 1 && <span style={{ gridColumn: '1 / -1' }}><Suspense fallback={null}><RemapFilaments object={object} colours={filaments} /></Suspense></span>}
         <span>Tool type</span>
         <span style={{ display: 'flex', gap: 2, gridColumn: 'span 2' }}>
           {tools.map(([id, icon, title]) => <IconButton key={id} icon={icon} title={title} size={20} active={tool === id} onClick={() => setPaintTool({ tool: id })} />)}
@@ -534,13 +536,18 @@ export function PaintPanel() {
             <input type="range" min={HEIGHT.min} max={HEIGHT.max} step={HEIGHT.step} value={t.height} onChange={(e) => setPaintTool({ height: Number(e.target.value) })} />
             <Num value={t.height} step={HEIGHT.step} onCommit={(v) => setPaintTool({ height: v })} />
           </>
-        ) : (
+        ) : fill && kind === 'color' && !t.edges ? null : (
           <>
             <span>{fill ? 'Smart fill angle' : 'Brush size'}</span>
             <input type="range" min={fill ? ANGLE.min : RADIUS.min} max={fill ? ANGLE.max : RADIUS.max} step={fill ? ANGLE.step : RADIUS.step}
               value={fill ? t.angle : t.radius} onChange={(e) => setPaintTool(fill ? { angle: Number(e.target.value) } : { radius: Number(e.target.value) })} />
             <Num value={fill ? t.angle : t.radius} step={fill ? ANGLE.step : RADIUS.step} onCommit={(v) => setPaintTool(fill ? { angle: v } : { radius: v })} />
           </>
+        )}
+        {kind === 'color' && fill && (
+          <label className="select-row" style={{ gridColumn: '1 / -1' }}>
+            <input type="checkbox" checked={t.edges} onChange={(e) => setPaintTool({ edges: e.target.checked })} />Edge detection
+          </label>
         )}
         {kind === 'support' && !gap && (
           <label className="select-row" style={{ gridColumn: '1 / -1' }} title={'Allows painting only on facets selected by: "Highlight overhangs"'}>
