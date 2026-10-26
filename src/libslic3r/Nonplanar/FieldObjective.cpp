@@ -184,15 +184,17 @@ std::vector<Coef> point_stencil(const ObjectiveGeometry &g, const Vec3d &p)
 std::vector<Vec3d> node_gradients(const ObjectiveGeometry &g, const std::vector<float> &phi)
 {
     std::vector<Vec3d> out(g.nodes());
-    std::vector<Coef>  st;
-    for (size_t id = 0; id < out.size(); ++id) {
-        st.clear();
-        node_gradient_stencil(g, id, 1., st);
-        Vec3d v = Vec3d::Zero();
-        for (const Coef &c : st)
-            v += c.g * double(phi[c.node]);
-        out[id] = v;
-    }
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, out.size(), 4096), [&](const tbb::blocked_range<size_t> &range) {
+        std::vector<Coef> st;
+        for (size_t id = range.begin(); id < range.end(); ++id) {
+            st.clear();
+            node_gradient_stencil(g, id, 1., st);
+            Vec3d v = Vec3d::Zero();
+            for (const Coef &c : st)
+                v += c.g * double(phi[c.node]);
+            out[id] = v;
+        }
+    });
     return out;
 }
 
@@ -689,10 +691,64 @@ std::vector<double> infill_share(const std::vector<double> &tops, double cap)
     return share;
 }
 
+struct EvaluationCache
+{
+    const ObjectiveGeometry &g;
+    std::vector<double> inside_values;
+    std::vector<uint8_t> near_values;
+    std::vector<int> distance_values;
+
+    explicit EvaluationCache(const ObjectiveGeometry &geometry) : g(geometry) {}
+    const std::vector<double> &inside()
+    {
+        if (inside_values.empty())
+            inside_values = inside_distance(g);
+        return inside_values;
+    }
+    const std::vector<uint8_t> &near()
+    {
+        if (near_values.empty())
+            near_values = near_material(g);
+        return near_values;
+    }
+    const std::vector<int> &distance()
+    {
+        if (distance_values.empty())
+            distance_values = material_distance();
+        return distance_values;
+    }
+private:
+    std::vector<int> material_distance() const
+    {
+        std::vector<int> dist(g.nodes(), std::numeric_limits<int>::max() / 2);
+        for (size_t id = 0; id < g.nodes(); ++id)
+            if (g.occ[id])
+                dist[id] = 0;
+        for (int pass = 0; pass < 2; ++pass) {
+            const long d0 = long(g.dims[0]), d1 = long(g.dims[1]), d2 = long(g.dims[2]);
+            for (long n = 0; n < d0 * d1 * d2; ++n) {
+                const long  id = pass ? d0 * d1 * d2 - 1 - n : n;
+                const long  i = id / (d1 * d2), j = id / d2 % d1, k = id % d2;
+                int        &d = dist[size_t(id)];
+                for (long oi = -1; oi <= 1; ++oi)
+                    for (long oj = -1; oj <= 1; ++oj)
+                        for (long ok = -1; ok <= 1; ++ok) {
+                            if ((oi * 9 + oj * 3 + ok < 0) == bool(pass) || (oi == 0 && oj == 0 && ok == 0))
+                                continue;
+                            const long ni = i + oi, nj = j + oj, nk = k + ok;
+                            if (ni >= 0 && ni < d0 && nj >= 0 && nj < d1 && nk >= 0 && nk < d2)
+                                d = std::min(d, dist[size_t((ni * d1 + nj) * d2 + nk)] + 1);
+                        }
+            }
+        }
+        return dist;
+    }
+};
+
 }
 
-ObjectiveTerms evaluate_objective(const ObjectiveGeometry &g, const ObjectiveMachine &m, const ObjectiveWeights &w,
-                                  const std::vector<float> &phi, bool hard, std::vector<HeadPair> *pairs, std::vector<double> *errors)
+static ObjectiveTerms evaluate_objective_cached(const ObjectiveGeometry &g, EvaluationCache &cache, const ObjectiveMachine &m, const ObjectiveWeights &w,
+                                  const std::vector<float> &phi, bool hard, std::vector<HeadPair> *pairs = nullptr, std::vector<double> *errors = nullptr)
 {
     ObjectiveTerms           t;
     if (errors != nullptr)
@@ -832,7 +888,7 @@ ObjectiveTerms evaluate_objective(const ObjectiveGeometry &g, const ObjectiveMac
     t.layers = std::isfinite(lo) ? (hi - lo) / m.h + 1. : 0.;
     double tilted_mm = 0.;
     if (m.rotary) {
-        const std::vector<double> inside = inside_distance(g);
+        const std::vector<double> &inside = cache.inside();
         for (size_t id = 0; id < g.nodes(); ++id) {
             if (!g.occ[id])
                 continue;
@@ -970,7 +1026,7 @@ ObjectiveTerms evaluate_objective(const ObjectiveGeometry &g, const ObjectiveMac
             t.H_bed += std::abs(double(phi[id]) - double(m.pinned_v[k])) > 0.01;
     }
     {
-        const std::vector<uint8_t> near = near_material(g);
+        const std::vector<uint8_t> &near = cache.near();
         for (size_t id = 0; id < g.nodes(); ++id)
             if (ijk_of(g, id).k + 1 < g.dims[2] && (near[id] || near[id + 1])) {
                 const double dphi = double(phi[id + 1]) - double(phi[id]);
@@ -978,26 +1034,7 @@ ObjectiveTerms evaluate_objective(const ObjectiveGeometry &g, const ObjectiveMac
                 t.H_thickness += dphi <= 0. || dphi > hi;
             }
     }
-    std::vector<int> dist(g.nodes(), std::numeric_limits<int>::max() / 2);
-    for (size_t id : occupied)
-        dist[id] = 0;
-    for (int pass = 0; pass < 2; ++pass) {
-        const long d0 = long(g.dims[0]), d1 = long(g.dims[1]), d2 = long(g.dims[2]);
-        for (long n = 0; n < d0 * d1 * d2; ++n) {
-            const long  id = pass ? d0 * d1 * d2 - 1 - n : n;
-            const long  i = id / (d1 * d2), j = id / d2 % d1, k = id % d2;
-            int        &d = dist[size_t(id)];
-            for (long oi = -1; oi <= 1; ++oi)
-                for (long oj = -1; oj <= 1; ++oj)
-                    for (long ok = -1; ok <= 1; ++ok) {
-                        if ((oi * 9 + oj * 3 + ok < 0) == bool(pass) || (oi == 0 && oj == 0 && ok == 0))
-                            continue;
-                        const long ni = i + oi, nj = j + oj, nk = k + ok;
-                        if (ni >= 0 && ni < d0 && nj >= 0 && nj < d1 && nk >= 0 && nk < d2)
-                            d = std::min(d, dist[size_t((ni * d1 + nj) * d2 + nk)] + 1);
-                    }
-        }
-    }
+    const std::vector<int> &dist = cache.distance();
     const double smin = g.spacing.minCoeff(), diag = g.spacing.norm();
     std::vector<double> phi_min(g.dims[2], std::numeric_limits<double>::infinity());
     double phi_scale = 1.;
@@ -1114,6 +1151,13 @@ ObjectiveTerms evaluate_objective(const ObjectiveGeometry &g, const ObjectiveMac
     return t;
 }
 
+ObjectiveTerms evaluate_objective(const ObjectiveGeometry &g, const ObjectiveMachine &m, const ObjectiveWeights &w,
+                                  const std::vector<float> &phi, bool hard, std::vector<HeadPair> *pairs, std::vector<double> *errors)
+{
+    EvaluationCache cache(g);
+    return evaluate_objective_cached(g, cache, m, w, phi, hard, pairs, errors);
+}
+
 namespace {
 
 struct System
@@ -1172,7 +1216,7 @@ struct Surrogate
     std::vector<double>            inside;
 
     Surrogate(const ObjectiveGeometry &g_, const ObjectiveMachine &m_, const ObjectiveWeights &w_, const ObjectiveParams &p_,
-              const std::vector<HeadPair> &pairs_)
+              const std::vector<HeadPair> &pairs_, EvaluationCache &cache)
         : g(g_), m(m_), w(w_), p(p_), pairs(pairs_)
     {
         for (const Vec3d &s : g.p)
@@ -1186,8 +1230,8 @@ struct Surrogate
         for (const HeadPair &hp : pairs)
             pair_st.push_back(point_stencil(g, hp.q));
         if (m.rotary)
-            inside = inside_distance(g);
-        const std::vector<uint8_t> dil = near_material(g);
+            inside = cache.inside();
+        const std::vector<uint8_t> &dil = cache.near();
         near.assign(g.nodes(), 0);
         for (size_t id = 0; id < g.nodes(); ++id)
             near[id] = ijk_of(g, id).k + 1 < g.dims[2] && (dil[id] || dil[id + 1]);
@@ -1678,6 +1722,7 @@ ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachin
                                const ObjectiveParams &params, std::vector<float> &phi, const std::function<void()> &cancel,
                                const std::function<void(const std::string &)> &log, ObjectiveTerms *given)
 {
+    EvaluationCache eval_cache(g);
     auto say = [&log](const std::string &s) {
         if (log)
             log(s);
@@ -1693,7 +1738,7 @@ ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachin
     if (m.time_base_zonly <= 0. || m.time_base_curved <= 0.) {
         ObjectiveMachine m_planar = m;
         m_planar.infill_combine   = 0.;
-        const ObjectiveTerms tp      = evaluate_objective(g, m_planar, w, planar, false);
+        const ObjectiveTerms tp      = evaluate_objective_cached(g, eval_cache, m_planar, w, planar, false);
         const double         support = support_time(g, m);
         if (m.time_base_zonly <= 0.) {
             m.time_base_zonly    = m.time_zonly(tp) + support;
@@ -1723,7 +1768,7 @@ ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachin
         for (int b = 0; b < 8; ++b) {
             const double mid = 0.5 * (lo + hi);
             blend(mid);
-            (evaluate_objective(g, m, w, trial, true).feasible() ? lo : hi) = mid;
+            (evaluate_objective_cached(g, eval_cache, m, w, trial, true).feasible() ? lo : hi) = mid;
         }
         blend(lo);
         f = std::move(trial);
@@ -1736,20 +1781,22 @@ ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachin
     };
     auto descend = [&](std::vector<float> &f, int iterations, const std::string &tag) {
         std::vector<HeadPair> pairs, struck;
-        ObjectiveTerms        t = evaluate_objective(g, m, w, f, true, &pairs);
+        ObjectiveTerms        t = evaluate_objective_cached(g, eval_cache, m, w, f, true, &pairs);
         std::string           how;
         if (!t.feasible()) {
             report(tag + " (before projection)", t);
             how   = " (projected toward planar, blend " + std::to_string(project(f)) + ")";
             pairs.clear();
-            t = evaluate_objective(g, m, w, f, true, &pairs);
+            t = evaluate_objective_cached(g, eval_cache, m, w, f, true, &pairs);
         }
         double             damping = 1e-2, cost = 0.;
         std::vector<float> trial;
         for (int it = 0; it < iterations && !spent(); ++it) {
             if (cancel)
                 cancel();
-            const Surrogate sur(g, m, w, params, pairs);
+            const double damping_before = damping;
+            const size_t pairs_before = pairs.size();
+            const Surrogate sur(g, m, w, params, pairs, eval_cache);
             trial = f;
             if (!step(sur, trial, cost, damping)) {
                 if (damping >= 1e4)
@@ -1757,20 +1804,25 @@ ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachin
                 continue;
             }
             struck.clear();
-            const ObjectiveTerms tt = evaluate_objective(g, m, w, trial, true, &struck);
+            const ObjectiveTerms tt = evaluate_objective_cached(g, eval_cache, m, w, trial, true, &struck);
             add_pairs(pairs, struck);
             if (tt.feasible() && tt.J < t.J) {
                 f.swap(trial);
                 t = tt;
-            } else
+            } else {
                 damping = std::min(1e4, damping * 10.);
+                if (pairs.size() == pairs_before && damping == damping_before) {
+                    say(tag + " fixed-point exit at iteration " + std::to_string(it + 1));
+                    break;
+                }
+            }
         }
         report(tag + how, t);
         return t;
     };
     auto better = [](const ObjectiveTerms &a, const ObjectiveTerms &b) { return a.feasible() != b.feasible() ? a.feasible() : a.J < b.J; };
     std::vector<float> best   = phi;
-    ObjectiveTerms     best_t = evaluate_objective(g, m, w, best, true);
+    ObjectiveTerms     best_t = evaluate_objective_cached(g, eval_cache, m, w, best, true);
     report("given", best_t);
     if (given)
         *given = best_t;
@@ -1792,7 +1844,7 @@ ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachin
             time_cut.push_back({ name, f, tf });
     };
     auto offer_sep = [&](const std::string &name, const std::vector<float> &f) {
-        ObjectiveTerms tf = evaluate_objective(g, m_sep, w, f, true);
+        ObjectiveTerms tf = evaluate_objective_cached(g, eval_cache, m_sep, w, f, true);
         tf.infill_separate = true;
         note_time_cut(name + "_sep", f, tf);
         auto it = std::find_if(sep_offers.begin(), sep_offers.end(), [&name](const auto &o) { return o.first == name; });
@@ -1827,7 +1879,7 @@ ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachin
                 col[k]         = z <= m.first_layer ? z : m.first_layer + (z - m.first_layer) * m.h / t;
             }
             std::vector<float>   f  = column_offer(g, m, col);
-            const ObjectiveTerms tf = evaluate_objective(g, m, w, f, true);
+            const ObjectiveTerms tf = evaluate_objective_cached(g, eval_cache, m, w, f, true);
             note_time_cut("uniform " + Slic3r::float_to_string_decimal_point(t, 2), f, tf);
             offer_sep("uniform", f);
             if (tf.feasible() && (!any_u || tf.J < best_u.J))
@@ -1844,11 +1896,11 @@ ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachin
         std::vector<float> zf(g.nodes());
         for (size_t id = 0; id < g.nodes(); ++id)
             zf[id] = float(node_pos(g, id).z());
-        const ObjectiveTerms tz = evaluate_objective(g, m, w, zf, false);
+        const ObjectiveTerms tz = evaluate_objective_cached(g, eval_cache, m, w, zf, false);
         const AdaptiveOffer  ao = adaptive_offer(g, m, w, tz.T - tz.T_roads);
         auto at = [&](double lam, std::vector<float> &f) {
             f = column_offer(g, m, ao.column(g, m, w.time, lam));
-            return evaluate_objective(g, m, w, f, true);
+            return evaluate_objective_cached(g, eval_cache, m, w, f, true);
         };
         std::vector<float> fa;
         ObjectiveTerms     ta = at(0., fa);
@@ -1895,7 +1947,7 @@ ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachin
         for (size_t k = 0; k < g.dims[2]; ++k)
             col[k] = double(field[g.index(g.dims[0] / 2, g.dims[1] / 2, k)]);
         std::vector<float>   f  = column_offer(g, m, col);
-        const ObjectiveTerms tf = evaluate_objective(g, m, w, f, true);
+        const ObjectiveTerms tf = evaluate_objective_cached(g, eval_cache, m, w, f, true);
         note_offer(name, tf, true);
         note_time_cut(name, f, tf);
         offer_sep(name, f);
@@ -2127,7 +2179,7 @@ ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachin
                     std::vector<float> f = polished;
                     if (!ramp(f, z0, k * m.h / params.level_steps))
                         continue;
-                    const ObjectiveTerms tf = evaluate_objective(g, m, w, f, true);
+                    const ObjectiveTerms tf = evaluate_objective_cached(g, eval_cache, m, w, f, true);
                     if (better(tf, t)) {
                         polished = std::move(f);
                         t        = tf;
@@ -2183,7 +2235,7 @@ ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachin
             }
             if (std::abs(off(f, zf, nullptr)) > 0.01)
                 continue;
-            const ObjectiveTerms tf = evaluate_objective(g, m, w, f, true);
+            const ObjectiveTerms tf = evaluate_objective_cached(g, eval_cache, m, w, f, true);
             if (better(tf, t)) {
                 polished = std::move(f);
                 t        = tf;
@@ -2210,7 +2262,7 @@ ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachin
         for (int sep = 0; sep < 2; ++sep) {
             if (sep)
                 mx.infill_combine = 0.;
-            ObjectiveTerms tx  = evaluate_objective(g, mx, w, field, true);
+            ObjectiveTerms tx  = evaluate_objective_cached(g, eval_cache, mx, w, field, true);
             tx.infill_separate = sep == 1;
             tx.exact_native    = int(i);
             const std::string tag = name + (sep ? "_sep" : "");
@@ -2242,7 +2294,7 @@ ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachin
         for (size_t k = 0; k < g.dims[2]; ++k)
             col[k] = double(polished[g.index(g.dims[0] / 2, g.dims[1] / 2, k)]);
         std::vector<float> f = column_offer(g, t.infill_separate ? m_sep : m, col);
-        ObjectiveTerms     tf = evaluate_objective(g, t.infill_separate ? m_sep : m, w, f, true);
+        ObjectiveTerms     tf = evaluate_objective_cached(g, eval_cache, t.infill_separate ? m_sep : m, w, f, true);
         tf.infill_separate    = t.infill_separate;
         if (tf.feasible() && tf.T <= t.T * SmoothTimeMax) {
             polished = std::move(f);

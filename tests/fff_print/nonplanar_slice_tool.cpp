@@ -22,6 +22,9 @@
 #include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
+#include "libslic3r/Emboss.hpp"
+#include "libslic3r/EmbossShape.hpp"
+#include "libslic3r/TextConfiguration.hpp"
 #include "libslic3r/FlushVolCalc.hpp"
 #include "libslic3r/Format/STL.hpp"
 #include "libslic3r/Format/bbs_3mf.hpp"
@@ -66,6 +69,8 @@
 #include <boost/filesystem/operations.hpp>
 #include <boost/filesystem/path.hpp>
 #include <boost/nowide/fstream.hpp>
+#include <boost/nowide/args.hpp>
+#include <boost/nowide/filesystem.hpp>
 #include <boost/system/error_code.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
@@ -89,6 +94,7 @@
 #include <cctype>
 #include <map>
 #include <memory>
+#include <iterator>
 #include <mutex>
 #include <optional>
 #include <tuple>
@@ -100,6 +106,13 @@
 #include <system_error>
 #include <utility>
 #include <vector>
+
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <stdio.h>
+#include <unistd.h>
+#endif
 
 using namespace Slic3r;
 namespace fs = boost::filesystem;
@@ -147,6 +160,13 @@ struct Args
     std::string explode_3mf, explode_directory;
     std::string cut_connectors, cut_mode = "planar", cut_dovetail;
     std::string mesh_operation, mesh_input, mesh_output;
+    std::vector<std::string> mesh_operands;
+    std::string text_font, text_font_name, text_align = "center";
+    std::optional<int> text_char_gap;
+    bool text_fonts = false, text_set = false;
+    std::optional<float> text_size, text_depth, text_line_spacing;
+    bool text_bold = false, text_italic = false;
+    bool mesh_a_set = false;
     std::optional<double> simplify_ratio;
     std::optional<uint32_t> simplify_triangles;
     std::string wipe_tower_only;
@@ -219,6 +239,10 @@ Model read_input(const std::string &file)
                  "       [--wipe-tower-only OUT.json]   (with --plate: per-plate prime tower estimate, no slice)\n"
                  "       [--patch-preview FILE.json [--patch-preview-budget S] [--patch-preview-max-triangles N]]\n"
                  "       [--step-linear-deflection MM] [--step-angle-deflection A] [--step-split-compound]\n"
+                 "       nonplanar_slice_tool --emboss-fonts   (bundled font catalog as JSON)\n"
+                 "       nonplanar_slice_tool --emboss-text OUT.stl|OUT.3mf --text TEXT [--font FILE | --font-name NAME] --size MM --depth MM\n"
+                 "                           [--bold] [--italic] [--line-spacing FACTOR] [--char-gap N] [--align left|center|right]   (desktop emboss, no slice)\n"
+                 "       nonplanar_slice_tool --mesh-boolean union|difference|intersection --a A --b B [--b C] OUT.stl|OUT.3mf\n"
                  "       nonplanar_slice_tool --repair-mesh IN OUT.stl|OUT.3mf   (desktop mesh repair, no slice)\n"
                  "       nonplanar_slice_tool --simplify-mesh IN OUT.stl|OUT.3mf --ratio R | --triangles N   (QEM, no slice)\n"
                  "       nonplanar_slice_tool --dump-options FILE | --dump-presets VENDOR FILE [--profiles DIR]\n"
@@ -265,7 +289,59 @@ Args parse_args(int argc, char **argv)
                 usage(arg + " needs a value");
             return argv[++i];
         };
-        if (arg == "--repair-mesh" || arg == "--simplify-mesh") {
+        if (arg == "--emboss-text") {
+            if (!a.mesh_operation.empty()) usage("choose one mesh operation");
+            a.mesh_operation = "text";
+            a.mesh_output = next();
+        } else if (arg == "--text") { a.mesh_input = next(); a.text_set = true; }
+        else if (arg == "--emboss-fonts") a.text_fonts = true;
+        else if (arg == "--font-name") {
+            a.text_font_name = next();
+            if (a.text_font_name.empty()) usage("--font-name needs a bundled font name");
+        }
+        else if (arg == "--align") {
+            a.text_align = next();
+            if (a.text_align != "left" && a.text_align != "center" && a.text_align != "right") usage("--align expects left, center or right");
+        } else if (arg == "--char-gap") {
+            const std::string value = next();
+            size_t used = 0;
+            double gap = 0.;
+            try { gap = std::stod(value, &used); } catch (const std::exception &) { usage("--char-gap expects finite font units"); }
+            if (used != value.size() || !std::isfinite(gap) || std::abs(gap) > 20000.) usage("--char-gap expects font units in [-20000, 20000]");
+            a.text_char_gap = int(std::round(gap));
+        } else if (arg == "--font") {
+            a.text_font = next();
+            if (a.text_font.empty()) usage("--font needs a font file");
+        }
+        else if (arg == "--bold") a.text_bold = true;
+        else if (arg == "--italic") a.text_italic = true;
+        else if (arg == "--size" || arg == "--depth" || arg == "--line-spacing") {
+            const std::string value = next();
+            size_t used = 0;
+            double number = 0.;
+            try { number = std::stod(value, &used); }
+            catch (const std::exception &) { usage(arg + " expects a positive finite number"); }
+            if (used != value.size() || !std::isfinite(number) || number <= 0. || number > std::numeric_limits<float>::max() || float(number) == 0.f)
+                usage(arg + " expects a positive finite number");
+            if (arg == "--size") a.text_size = float(number);
+            else if (arg == "--depth") a.text_depth = float(number);
+            else a.text_line_spacing = float(number);
+        } else if (arg == "--mesh-boolean") {
+            if (!a.mesh_operation.empty()) usage("choose one mesh operation");
+            a.mesh_operation = next();
+            if (a.mesh_operation != "union" && a.mesh_operation != "difference" && a.mesh_operation != "intersection")
+                usage("--mesh-boolean expects union, difference or intersection");
+        } else if (arg == "--a") {
+            if (a.mesh_a_set) usage("--a may only be supplied once");
+            a.mesh_a_set = true;
+            a.mesh_input = next();
+        } else if (arg == "--b") {
+            if (!a.model.empty()) {
+                a.mesh_operands.push_back(std::move(a.model));
+                a.model.clear();
+            }
+            a.mesh_operands.push_back(next());
+        } else if (arg == "--repair-mesh" || arg == "--simplify-mesh") {
             if (!a.mesh_operation.empty()) usage("choose one mesh operation");
             a.mesh_operation = arg == "--repair-mesh" ? "repair" : "simplify";
             a.mesh_input = next();
@@ -445,22 +521,40 @@ Args parse_args(int argc, char **argv)
             a.center_set = true;
         } else if (! arg.empty() && arg[0] == '-')
             usage("unknown option " + arg);
-        else
+        else {
+            if ((a.mesh_operation == "union" || a.mesh_operation == "difference" || a.mesh_operation == "intersection") && !a.model.empty())
+                a.mesh_operands.push_back(std::move(a.model));
             a.model = arg;
+        }
     }
     if (!a.field_file.empty() && std::none_of(a.overrides.begin(), a.overrides.end(), [](const auto &o) { return o.first == "nonplanar_mode"; }))
         a.overrides.insert(a.overrides.begin(), { "nonplanar_mode", "field" });
     if (a.cut_mode != "planar" && a.cut_mode != "dovetail") usage("--cut-mode takes planar or dovetail");
     if (a.cut.empty() && (!a.cut_connectors.empty() || a.cut_mode != "planar" || !a.cut_dovetail.empty()))
         usage("cut connector and dovetail options require --cut-only");
+    if ((a.mesh_a_set || !a.mesh_operands.empty()) && a.mesh_operation != "union" && a.mesh_operation != "difference" && a.mesh_operation != "intersection")
+        usage("--a and --b require --mesh-boolean");
+    if (a.text_fonts) {
+        if (!a.mesh_operation.empty() || !a.model.empty() || !a.plate.empty() || !a.project.empty() || !a.explode_3mf.empty()) usage("--emboss-fonts is a standalone operation");
+        return a;
+    }
+    if (a.mesh_operation == "text" && (!a.text_size || !a.text_depth)) usage("--emboss-text needs --size and --depth");
+    if (!a.text_font.empty() && !a.text_font_name.empty()) usage("choose --font or --font-name");
+    if (a.mesh_operation != "text" && (a.text_set || !a.text_font.empty() || !a.text_font_name.empty() || a.text_char_gap || a.text_align != "center" || a.text_size || a.text_depth || a.text_line_spacing || a.text_bold || a.text_italic))
+        usage("--font, --size, --depth, --bold, --italic and --line-spacing need --emboss-text");
     if (!a.mesh_operation.empty()) {
+        if (a.mesh_operation == "union" || a.mesh_operation == "difference" || a.mesh_operation == "intersection") {
+            if (!a.mesh_a_set || a.mesh_operands.empty() || a.model.empty()) usage("--mesh-boolean needs --a A --b B OUT");
+            a.mesh_output = std::move(a.model);
+            a.model.clear();
+        }
         if (!a.explode_3mf.empty() || !a.dump_options.empty() || !a.dump_presets.empty() || !a.verify_gcode.empty() || a.orient_scores)
             usage("choose one mesh operation or catalog/project operation");
         if (a.mesh_input.empty() || a.mesh_output.empty() || !a.model.empty() || !a.plate.empty() || !a.project.empty())
             usage("mesh operations need IN and OUT instead of a model, plate or project");
         if (a.mesh_operation == "simplify" && a.simplify_ratio.has_value() == a.simplify_triangles.has_value())
             usage("--simplify-mesh needs exactly one of --ratio or --triangles");
-        if (a.mesh_operation == "repair" && (a.simplify_ratio || a.simplify_triangles))
+        if (a.mesh_operation != "simplify" && (a.simplify_ratio || a.simplify_triangles))
             usage("--ratio and --triangles need --simplify-mesh");
         return a;
     }
@@ -1336,12 +1430,49 @@ void write_plate_mesh(const std::string &path, const TriangleMesh &mesh)
     if (!store_bbs_3mf(params)) throw std::runtime_error("cannot write volume mesh " + path);
 }
 
-void mesh_only(const Args &args)
+class MeshDiagnosticOutput
 {
-    const std::string extension = fs::path(args.mesh_output).extension().string();
-    if (!boost::algorithm::iequals(extension, ".stl") && !boost::algorithm::iequals(extension, ".3mf"))
-        throw std::runtime_error("mesh output must be .stl or .3mf");
-    Model source = read_input(args.mesh_input);
+public:
+    MeshDiagnosticOutput()
+    {
+        std::cout.flush();
+        std::fflush(stdout);
+        m_saved = duplicate(output_fd());
+        if (m_saved < 0) throw std::runtime_error("Unable to save stdout for mesh diagnostics");
+        if (redirect(error_fd(), output_fd()) < 0) {
+            close_fd(m_saved);
+            throw std::runtime_error("Unable to redirect mesh diagnostics to stderr");
+        }
+    }
+    ~MeshDiagnosticOutput()
+    {
+        std::cout.flush();
+        std::fflush(stdout);
+        redirect(m_saved, output_fd());
+        close_fd(m_saved);
+    }
+    MeshDiagnosticOutput(const MeshDiagnosticOutput &) = delete;
+    MeshDiagnosticOutput &operator=(const MeshDiagnosticOutput &) = delete;
+private:
+#ifdef _WIN32
+    static int output_fd() { return _fileno(stdout); }
+    static int error_fd() { return _fileno(stderr); }
+    static int duplicate(int fd) { return _dup(fd); }
+    static int redirect(int from, int to) { return _dup2(from, to); }
+    static void close_fd(int fd) { _close(fd); }
+#else
+    static int output_fd() { return fileno(stdout); }
+    static int error_fd() { return fileno(stderr); }
+    static int duplicate(int fd) { return dup(fd); }
+    static int redirect(int from, int to) { return dup2(from, to); }
+    static void close_fd(int fd) { close(fd); }
+#endif
+    int m_saved = -1;
+};
+
+TriangleMesh read_operation_mesh(const std::string &path)
+{
+    Model source = read_input(path);
     if (source.objects.size() != 1 || source.objects.front()->volumes.size() != 1 || source.objects.front()->instances.size() > 1)
         throw std::runtime_error("mesh operation needs one object with one volume and at most one instance");
     const ModelObject *object = source.objects.front();
@@ -1349,6 +1480,18 @@ void mesh_only(const Args &args)
     TriangleMesh mesh = volume->mesh();
     mesh.transform(object->instances.empty() ? volume->get_matrix() : object->instances.front()->get_matrix() * volume->get_matrix(), true);
     if (mesh.empty()) throw std::runtime_error("mesh operation needs a nonempty mesh");
+    return mesh;
+}
+
+void mesh_only(const Args &args)
+{
+    std::unique_ptr<MeshDiagnosticOutput> diagnostics;
+    if (args.mesh_operation != "repair" && args.mesh_operation != "simplify")
+        diagnostics = std::make_unique<MeshDiagnosticOutput>();
+    const std::string extension = fs::path(args.mesh_output).extension().string();
+    if (!boost::algorithm::iequals(extension, ".stl") && !boost::algorithm::iequals(extension, ".3mf"))
+        throw std::runtime_error("mesh output must be .stl or .3mf");
+    TriangleMesh mesh = read_operation_mesh(args.mesh_input);
     const size_t before = mesh.its.indices.size();
     const RepairedMeshErrors imported = mesh.stats().repaired_errors;
     nlohmann::json result = {{"operation", args.mesh_operation}, {"input", args.mesh_input}, {"output", args.mesh_output},
@@ -1368,7 +1511,7 @@ void mesh_only(const Args &args)
         result["open_edges_before_cgal"] = open_before;
         result["open_edges_after"] = open_after;
         result["boundary_edges_closed"] = open_before >= open_after ? open_before - open_after : 0;
-    } else {
+    } else if (args.mesh_operation == "simplify") {
         const uint32_t target = args.simplify_triangles ? uint32_t(std::min<size_t>(*args.simplify_triangles, before)) :
             uint32_t(std::max(1., std::floor(double(before) * *args.simplify_ratio)));
         indexed_triangle_set its = std::move(mesh.its);
@@ -1376,11 +1519,187 @@ void mesh_only(const Args &args)
         its_quadric_edge_collapse(its, target, &max_error);
         mesh = TriangleMesh(std::move(its));
         result["triangles_requested"] = target;
+    } else {
+        auto solid_error = [](const TriangleMesh &candidate) -> std::string {
+            if (its_num_open_edges(candidate.its) != 0) return "mesh has open or nonmanifold edges";
+            try {
+                auto solid = MeshBoolean::cgal::triangle_mesh_to_cgal(candidate);
+                if (MeshBoolean::cgal::does_self_intersect(*solid)) return "mesh self-intersects";
+                if (!MeshBoolean::cgal::does_bound_a_volume(*solid)) return "mesh does not bound a volume";
+            } catch (const std::exception &e) { return e.what(); }
+            return {};
+        };
+        result["inputs"] = nlohmann::json::array({args.mesh_input});
+        result["method"] = "cgal";
+        result["best_effort"] = false;
+        result["preflight_reasons"] = nlohmann::json::array();
+        const std::string mcut_operation = args.mesh_operation == "union" ? "UNION" :
+            args.mesh_operation == "difference" ? "A_NOT_B" : "INTERSECTION";
+        for (const std::string &path : args.mesh_operands) {
+            TriangleMesh operand = read_operation_mesh(path);
+            const std::string source_error = solid_error(mesh), operand_error = solid_error(operand);
+            TriangleMesh output;
+            bool fallback = !source_error.empty() || !operand_error.empty();
+            if (!source_error.empty()) result["preflight_reasons"].push_back({{"input", "accumulated result"}, {"reason", source_error}});
+            if (!operand_error.empty()) result["preflight_reasons"].push_back({{"input", path}, {"reason", operand_error}});
+            if (!fallback) {
+                try {
+                    output = mesh;
+                    if (args.mesh_operation == "union") MeshBoolean::cgal::plus(output, operand);
+                    else if (args.mesh_operation == "difference") MeshBoolean::cgal::minus(output, operand);
+                    else MeshBoolean::cgal::intersect(output, operand);
+                } catch (const std::exception &e) {
+                    result["preflight_reasons"].push_back({{"input", path}, {"reason", e.what()}});
+                    fallback = true;
+                }
+            }
+            if (fallback) {
+                std::vector<TriangleMesh> meshes;
+                MeshBoolean::mcut::make_boolean(mesh, operand, meshes, mcut_operation);
+                output = TriangleMesh();
+                for (const TriangleMesh &part : meshes) output.merge(part);
+                result["method"] = "mcut";
+                result["best_effort"] = true;
+            }
+            if (output.empty()) throw std::runtime_error("Unable to perform boolean operation on selected parts: empty result");
+            mesh = std::move(output);
+            result["inputs"].push_back(path);
+        }
+        std::map<std::pair<int, int>, size_t> edges;
+        for (const Vec3i32 &face : mesh.its.indices)
+            for (int i = 0; i < 3; ++i) {
+                const int a = face[i], b = face[(i + 1) % 3];
+                ++edges[{std::min(a, b), std::max(a, b)}];
+            }
+        result["volume_mm3"] = its_mass_properties(mesh.its).volume;
+        result["closed"] = std::all_of(edges.begin(), edges.end(), [](const auto &edge) { return edge.second == 2; });
+        result["manifold"] = std::all_of(edges.begin(), edges.end(), [](const auto &edge) { return edge.second <= 2; });
     }
     if (mesh.empty()) throw std::runtime_error("mesh operation produced an empty mesh");
     result["triangles_after"] = mesh.its.indices.size();
     if (boost::algorithm::iequals(extension, ".3mf")) write_plate_mesh(args.mesh_output, mesh);
     else if (!store_stl(args.mesh_output.c_str(), &mesh, true)) throw std::runtime_error("cannot write mesh " + args.mesh_output);
+    diagnostics.reset();
+    std::cout << result.dump() << "\n";
+}
+
+nlohmann::json emboss_fonts(const Args &args)
+{
+    nlohmann::json fonts = nlohmann::json::array();
+    const fs::path directory = fs::path(args.profiles).parent_path() / "fonts";
+    if (!fs::is_directory(directory)) throw std::runtime_error("emboss fonts directory is missing: " + directory.string());
+    std::vector<fs::path> files;
+    for (const fs::directory_entry &entry : fs::directory_iterator(directory))
+        if (fs::is_regular_file(entry.path()) && boost::algorithm::iequals(entry.path().extension().string(), ".ttf")) files.push_back(entry.path());
+    std::sort(files.begin(), files.end());
+    for (const fs::path &file : files) {
+        std::string name = file.stem().string();
+        std::replace(name.begin(), name.end(), '_', ' ');
+        std::replace(name.begin(), name.end(), '-', ' ');
+        fonts.push_back({{"name", name}, {"id", file.stem().string()}, {"file", file.string()}});
+    }
+    return fonts;
+}
+
+bool emboss_font_tables_valid(const std::vector<unsigned char> &data)
+{
+    auto u16 = [&](size_t at) { return (unsigned(data[at]) << 8) | unsigned(data[at + 1]); };
+    auto u32 = [&](size_t at) { return (uint32_t(u16(at)) << 16) | u16(at + 2); };
+    auto sfnt = [&](size_t offset) {
+        if (offset > data.size() || data.size() - offset < 12) return false;
+        const uint32_t tag = u32(offset);
+        if (tag != 0x00010000 && tag != 0x4f54544f && tag != 0x74727565 && tag != 0x74797031) return false;
+        const size_t count = u16(offset + 4);
+        if (count == 0 || count > (data.size() - offset - 12) / 16) return false;
+        for (size_t i = 0; i < count; ++i) {
+            const size_t table = offset + 12 + i * 16;
+            const size_t start = u32(table + 8), size = u32(table + 12);
+            if (start > data.size() || size > data.size() - start) return false;
+        }
+        return true;
+    };
+    if (data.size() < 12) return false;
+    if (u32(0) != 0x74746366) return sfnt(0);
+    const size_t count = u32(8);
+    if (count == 0 || count > (data.size() - 12) / 4) return false;
+    for (size_t i = 0; i < count; ++i)
+        if (!sfnt(u32(12 + 4 * i))) return false;
+    return true;
+}
+
+void text_mesh(const Args &args)
+{
+    auto diagnostics = std::make_unique<MeshDiagnosticOutput>();
+    const std::string extension = fs::path(args.mesh_output).extension().string();
+    if (!boost::algorithm::iequals(extension, ".stl") && !boost::algorithm::iequals(extension, ".3mf"))
+        throw std::runtime_error("mesh output must be .stl or .3mf");
+    const fs::path fonts = fs::path(args.profiles).parent_path() / "fonts";
+    fs::path font = args.text_font.empty() ? fonts / "HarmonyOS_Sans_SC_Regular.ttf" : fs::path(args.text_font);
+    if (!fs::exists(font) && font.parent_path().empty()) font = fonts / font;
+    if (!args.text_font_name.empty()) {
+        bool found = false;
+        for (const auto &available : emboss_fonts(args))
+            if (boost::algorithm::iequals(args.text_font_name, available.at("name").get<std::string>()) ||
+                boost::algorithm::iequals(args.text_font_name, available.at("id").get<std::string>())) {
+                font = available.at("file").get<std::string>();
+                found = true;
+                break;
+            }
+        if (!found) throw std::runtime_error("unknown bundled emboss font " + args.text_font_name);
+    }
+    bool synthetic_bold = args.text_bold && !boost::algorithm::iends_with(font.stem().string(), "bold");
+    if (args.text_bold) {
+        const std::string filename = font.filename().string();
+        std::string bold_name = filename;
+        for (const std::string &regular : {std::string("_Regular"), std::string("-Regular")}) {
+            const size_t at = bold_name.find(regular);
+            if (at != std::string::npos) bold_name.replace(at, regular.size(), regular.front() + std::string("Bold"));
+        }
+        if (filename == "Sarabun-Medium.ttf") bold_name = "Sarabun-SemiBold.ttf";
+        const fs::path bold_font = font.parent_path() / bold_name;
+        if (bold_name != filename && fs::exists(bold_font)) { font = bold_font; synthetic_bold = false; }
+    }
+    boost::nowide::ifstream font_input(font.string(), std::ios::binary);
+    if (!font_input) throw std::runtime_error("cannot read emboss font " + font.string());
+    auto bytes = std::make_unique<std::vector<unsigned char>>(std::istreambuf_iterator<char>(font_input), std::istreambuf_iterator<char>());
+    if (font_input.bad() || !emboss_font_tables_valid(*bytes)) throw std::runtime_error("invalid emboss font " + font.string());
+    auto file = Emboss::create_font_file(std::move(bytes));
+    if (!file || file->infos.empty()) throw std::runtime_error("cannot load emboss font " + font.string());
+    Emboss::FontFileWithCache cache(std::move(file));
+    const float size = args.text_size.value_or(10.f), depth = args.text_depth.value_or(1.f);
+    const float spacing = args.text_line_spacing.value_or(1.f);
+    FontProp prop(size);
+    prop.char_gap = args.text_char_gap;
+    if (args.text_align == "left") prop.align.first = FontProp::HorizontalAlign::left;
+    else if (args.text_align == "right") prop.align.first = FontProp::HorizontalAlign::right;
+    if (synthetic_bold) prop.boldness = 20.f;
+    if (args.text_italic && !Emboss::is_italic(*cache.font_file, 0)) prop.skew = 0.2f;
+    const auto &info = Emboss::get_font_info(*cache.font_file, prop);
+    const double line_height = double(info.ascent) - info.descent + info.linegap;
+    const double gap = std::round(line_height * (double(spacing) - 1.));
+    if (gap < std::numeric_limits<int>::min() || gap > std::numeric_limits<int>::max() ||
+        line_height + gap > double(std::numeric_limits<int>::max()) / 1000.)
+        throw std::runtime_error("line spacing exceeds the font coordinate range");
+    prop.line_gap = int(gap);
+    const double scale = Emboss::get_text_shape_scale(prop, *cache.font_file);
+    if (!std::isfinite(scale) || scale <= 0.) throw std::runtime_error("invalid emboss font scale");
+    HealedExPolygons shape = Emboss::text2shapes(cache, args.mesh_input.c_str(), prop);
+    if (shape.expolygons.empty()) throw std::runtime_error("text has no drawable glyph outlines in this font");
+    Emboss::ProjectScale projection(std::make_unique<Emboss::ProjectZ>(depth / scale), scale);
+    TriangleMesh mesh(Emboss::polygons2model(shape.expolygons, projection));
+    if (mesh.empty()) throw std::runtime_error("text produced an empty mesh");
+    const BoundingBoxf3 uncentered = mesh.bounding_box();
+    mesh.translate(-uncentered.center().x(), -uncentered.center().y(), 0.);
+    if (boost::algorithm::iequals(extension, ".3mf")) write_plate_mesh(args.mesh_output, mesh);
+    else if (!store_stl(args.mesh_output.c_str(), &mesh, true)) throw std::runtime_error("cannot write mesh " + args.mesh_output);
+    const BoundingBoxf3 box = mesh.bounding_box();
+    nlohmann::json result = {{"operation", "text"}, {"text", args.mesh_input}, {"font", font.string()},
+        {"glyph_outline_bbox", {{box.min.x(), box.min.y()}, {box.max.x(), box.max.y()}}},
+        {"align", args.text_align}, {"char_gap", args.text_char_gap.value_or(0)},
+        {"output", args.mesh_output}, {"size_mm", size}, {"depth_mm", depth}, {"bold", args.text_bold},
+        {"italic", args.text_italic}, {"line_spacing", spacing}, {"triangles_after", mesh.its.indices.size()},
+        {"bbox", {{box.min.x(), box.min.y(), box.min.z()}, {box.max.x(), box.max.y(), box.max.z()}}}};
+    diagnostics.reset();
     std::cout << result.dump() << "\n";
 }
 
@@ -2454,6 +2773,15 @@ int main(int argc, char **argv)
                   << "preview_moves_mb " << double(moves.size() * sizeof(moves.front())) / 1e6 << "\n";
         return 0;
     }
+#ifdef _WIN32
+    std::unique_ptr<boost::nowide::args> utf8_args;
+    for (int i = 1; i < argc; ++i)
+        if (std::string(argv[i]) == "--emboss-text" || std::string(argv[i]) == "--emboss-fonts") {
+            utf8_args = std::make_unique<boost::nowide::args>(argc, argv);
+            boost::nowide::nowide_filesystem();
+            break;
+        }
+#endif
     const Args args = parse_args(argc, argv);
     nlohmann::json record;
     if (const char *level = std::getenv("NP_LOG_LEVEL"))
@@ -2475,6 +2803,8 @@ int main(int argc, char **argv)
         set_temporary_dir(datadir.string());
         Nonplanar::HeadLibrary::instance().reload();
         if (!args.explode_3mf.empty()) { explode_3mf(args); return 0; }
+        if (args.text_fonts) { std::cout << nlohmann::json({{"fonts", emboss_fonts(args)}}).dump() << "\n"; return 0; }
+        if (args.mesh_operation == "text") { text_mesh(args); return 0; }
         if (!args.mesh_operation.empty()) { mesh_only(args); return 0; }
         if (!args.verify_gcode.empty()) {
             DynamicPrintConfig file_config;
