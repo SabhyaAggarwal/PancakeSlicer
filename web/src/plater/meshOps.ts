@@ -71,12 +71,12 @@ export async function fixModel(objectId: number) {
   }
 }
 
-export async function simplifyModel(objectId: number, triangles: number) {
+export async function simplifyModel(objectId: number, triangles: number, maxError?: number) {
   const o = getState().objects.find((x) => x.id === objectId);
   if (!o) return;
   setState({ loading: 'Simplifying model' });
   try {
-    const { record, file, geometry } = await run(o, 'simplify', { simplify_triangles: String(Math.max(1, Math.round(triangles))) });
+    const { record, file, geometry } = await run(o, 'simplify', maxError ? { simplify_max_error: String(maxError) } : { simplify_triangles: String(Math.max(1, Math.round(triangles))) });
     replace(o, file, geometry, 'Simplify Model');
     toast(`${o.name}: ${record.triangles_before} → ${record.triangles_after} triangles`);
   } catch (e) {

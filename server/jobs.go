@@ -52,6 +52,7 @@ type JobRequest struct {
 	MeshOp                 string         `json:"mesh_op,omitempty"`
 	SimplifyRatio          float64        `json:"simplify_ratio,omitempty"`
 	SimplifyTriangles      int            `json:"simplify_triangles,omitempty"`
+	SimplifyMaxError       float64        `json:"simplify_max_error,omitempty"`
 	BooleanOp              string         `json:"boolean_op,omitempty"`
 	Text                   []string       `json:"text,omitempty"`
 	TextSurface            []string       `json:"text_surface,omitempty"`
@@ -564,6 +565,9 @@ func (m *JobManager) toolArgs(j *Job) []string {
 	}
 	if r.MeshOp != "" {
 		args := []string{"--" + r.MeshOp + "-mesh", filepath.Join(in, r.Files[0]), j.OutputPath("stl")}
+		if r.SimplifyMaxError > 0 {
+			return append(args, "--max-error", strconv.FormatFloat(r.SimplifyMaxError, 'f', -1, 64))
+		}
 		if r.SimplifyTriangles > 0 {
 			return append(args, "--triangles", strconv.Itoa(r.SimplifyTriangles))
 		}

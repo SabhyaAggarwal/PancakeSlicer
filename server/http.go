@@ -232,16 +232,19 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		}
 		req.MeshOp = r.FormValue("operation")
 		if req.MeshOp == "simplify" {
-			ratio, triangles := r.FormValue("simplify_ratio"), r.FormValue("simplify_triangles")
+			ratio, triangles, maxErr := r.FormValue("simplify_ratio"), r.FormValue("simplify_triangles"), r.FormValue("simplify_max_error")
 			v, errR := strconv.ParseFloat(ratio, 64)
 			n, errT := strconv.Atoi(triangles)
+			e, errE := strconv.ParseFloat(maxErr, 64)
 			switch {
+			case maxErr != "" && ratio == "" && triangles == "" && s.cfg.Features.MeshSimplifyError && errE == nil && e > 0 && e <= 10:
+				req.SimplifyMaxError = e
 			case ratio != "" && triangles == "" && errR == nil && v > 0 && v <= 1:
 				req.SimplifyRatio = v
 			case triangles != "" && ratio == "" && errT == nil && n > 0:
 				req.SimplifyTriangles = n
 			default:
-				fail(w, 400, "simplify needs simplify_ratio in (0, 1] or a positive simplify_triangles")
+				fail(w, 400, "simplify needs simplify_ratio in (0, 1], a positive simplify_triangles, or simplify_max_error in (0, 10] with a tool that takes --max-error")
 				return
 			}
 		}

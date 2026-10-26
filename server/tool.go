@@ -49,6 +49,7 @@ type ToolFeatures struct {
 	CutConnectors        bool            `json:"cut_connectors"`
 	MeshRepair           bool            `json:"mesh_repair"`
 	MeshSimplify         bool            `json:"mesh_simplify"`
+	MeshSimplifyError    bool            `json:"mesh_simplify_error"`
 	MeshBoolean          bool            `json:"mesh_boolean"`
 	EmbossText           bool            `json:"emboss_text"`
 	EmbossSurface        bool            `json:"emboss_surface"`
@@ -118,6 +119,7 @@ func probeUsage(c Config, f *ToolFeatures) {
 	f.BrimEars = strings.Contains(usage, `plate JSON objects take "brim_ears"`)
 	f.MeshRepair = strings.Contains(usage, "--repair-mesh IN OUT.stl")
 	f.MeshSimplify = strings.Contains(usage, "--simplify-mesh IN OUT.stl")
+	f.MeshSimplifyError = f.MeshSimplify && strings.Contains(usage, "[--max-error E]")
 	f.MeshBoolean = strings.Contains(usage, "--mesh-boolean union|difference|intersection --a A --b B")
 	f.EmbossText = strings.Contains(usage, "--emboss-text OUT.stl") && strings.Contains(usage, "--emboss-fonts")
 	f.EmbossSurface = f.EmbossText && strings.Contains(usage, "--use-surface --surface TARGET --at X,Y,Z --normal NX,NY,NZ")
