@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useSubmenuPlace } from './menuPlace';
 import { getState, useStore, type Mix, type State } from '../state/store';
 import { addMix, blend, broken, componentColour, deleteMixes, editMix, filamentType, physicalCount, recommendations, SLOTS_MAX, watchColours } from '../plater/mixed';
 import { filamentColor } from '../plater/filamentColor';
@@ -13,6 +14,12 @@ const ramp = (s: State, m: Mix) => {
   return `linear-gradient(to bottom, ${m.gradient ? b : a}, ${m.gradient ? a : b})`;
 };
 const swatch = (s: State, m: Mix, i: number) => (m.gradient !== null && m.components.length === 2 ? ramp(s, m) : filamentColor(s, i + 1));
+
+function MergeSub({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useSubmenuPlace(ref);
+  return <div ref={ref} role="menu" className="menu-pop ctx-sub">{children}</div>;
+}
 
 export default function MixedFilaments() {
   const mixes = useStore((s) => s.mixes);
@@ -70,13 +77,13 @@ export default function MixedFilaments() {
           <div className="ctx-entry" onMouseEnter={() => setSub(true)}>
             <button className="menu-item" aria-haspopup="menu" aria-expanded={sub} onClick={() => setSub(true)}><span>Merge with</span><span>▸</span></button>
             {sub && (
-              <div role="menu" className="menu-pop ctx-sub">
+              <MergeSub>
                 {s.filamentSlots.map((_, j) => j !== menu.slot && (
                   <div key={j} className="ctx-entry"><button className="menu-item" onClick={() => { setMenu(null); deleteMixes([menu.slot], j + 1, 'Merge filament'); }}>
                     <span><i className="mixed-dot" style={{ background: filamentColor(s, j + 1) }} />Filament {j + 1}</span><span />
                   </button></div>
                 ))}
-              </div>
+              </MergeSub>
             )}
           </div>
           <div className="menu-sep" />

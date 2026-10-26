@@ -245,6 +245,25 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+	case "export":
+		format := r.FormValue("export_format")
+		if format == "drc" && !s.cfg.Features.ExportDRC || format == "generic3mf" && !s.cfg.Features.ExportGeneric3MF {
+			fail(w, 400, "this export requires a tool with --export-drc / --export-3mf-generic")
+			return
+		}
+		if format != "drc" && format != "generic3mf" {
+			fail(w, 400, "export_format must be generic3mf or drc")
+			return
+		}
+		req.MeshOp, req.ExportFormat = "export", format
+		if raw := r.FormValue("draco_bits"); raw != "" {
+			n, err := strconv.Atoi(raw)
+			if err != nil || n < 0 || n > 30 || format != "drc" {
+				fail(w, 400, "draco_bits must be 0 to 30, for drc only")
+				return
+			}
+			req.DracoBits = n
+		}
 	case "boolean":
 		op := r.FormValue("boolean_op")
 		if !s.cfg.Features.MeshBoolean {
@@ -664,7 +683,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		}
 		req.Overrides = append(selected, req.Overrides...)
 	}
-	if want := map[bool]int{true: 2, false: 1}[req.MeshOp == "boolean"]; req.MeshOp != "" && (req.Output != "gcode" || req.Plate || len(req.Files) != want || !allSTL(req.Files)) {
+	if want := map[bool]int{true: 2, false: 1}[req.MeshOp == "boolean"]; req.MeshOp != "" && (req.Output != "gcode" || req.Plate || len(req.Files) != want || !allSTL(req.Files) && !(req.MeshOp == "export" && strings.EqualFold(filepath.Ext(req.Files[0]), ".3mf"))) {
 		fail(w, 400, fmt.Sprintf("this mesh operation takes %d STL without plate JSON or project output", want))
 		return
 	}
@@ -744,7 +763,7 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 	}
 	path, name := j.OutputPath(j.Request.Output), j.DownloadName()
 	if j.Request.MeshOp != "" {
-		path, name = j.OutputPath("stl"), outputBase(j.Request)+".stl"
+		path, name = j.OutputPath(meshExt(j.Request)), outputBase(j.Request)+"."+meshExt(j.Request)
 	}
 	if j.Request.Cut != "" {
 		side := r.URL.Query().Get("piece")

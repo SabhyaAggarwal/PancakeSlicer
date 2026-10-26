@@ -52,6 +52,8 @@ type ToolFeatures struct {
 	MeshBoolean          bool            `json:"mesh_boolean"`
 	EmbossText           bool            `json:"emboss_text"`
 	EmbossSurface        bool            `json:"emboss_surface"`
+	ExportGeneric3MF     bool            `json:"export_generic_3mf"`
+	ExportDRC            bool            `json:"export_drc"`
 	EmbossSurfaceOutside bool            `json:"emboss_surface_outside"`
 	BrimEars             bool            `json:"brim_ears"`
 	SeamParts            bool            `json:"seam_parts"`
@@ -120,6 +122,8 @@ func probeUsage(c Config, f *ToolFeatures) {
 	f.EmbossText = strings.Contains(usage, "--emboss-text OUT.stl") && strings.Contains(usage, "--emboss-fonts")
 	f.EmbossSurface = f.EmbossText && strings.Contains(usage, "--use-surface --surface TARGET --at X,Y,Z --normal NX,NY,NZ")
 	f.EmbossSurfaceOutside = f.EmbossSurface && strings.Contains(usage, "--surface-outside")
+	f.ExportGeneric3MF = strings.Contains(usage, "--export-3mf-generic IN.3mf OUT.3mf")
+	f.ExportDRC = strings.Contains(usage, "--export-drc IN OUT.drc")
 	f.CutConnectors = strings.Contains(usage, "--cut-connectors") && strings.Contains(usage, "--cut-mode planar|dovetail")
 	if dump, err := toolDump(c, "--dump-presets", "Prusa"); err == nil {
 		f.PresetCompat = bytes.Contains(dump, []byte(`"compatible_printers_evaluated"`))

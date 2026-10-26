@@ -4,7 +4,7 @@ import { getState, markStale, printerPreset, resolvePreset, setState, toast, typ
 import { undoable } from '../state/history';
 import { bakeStl, instanceBox, instanceMatrix, loadMesh } from './geometry';
 
-export async function meshJob(operation: string, fields: Record<string, string>, files: [Blob, string][], name: string) {
+export async function toolJob(operation: string, fields: Record<string, string>, files: [Blob, string][]) {
   const s = getState();
   if (!s.api || s.api.mock) throw new Error('This needs the slicing service.');
   const fd = new FormData();
@@ -24,11 +24,16 @@ export async function meshJob(operation: string, fields: Record<string, string>,
     });
     const r = await fetch(s.api.downloadUrl(id));
     if (!r.ok) throw await responseError(r);
-    const file = new File([await r.blob()], `${name.replace(/\.(stl|obj|3mf|drc|step|stp)$/i, '')}.stl`, { type: 'model/stl' });
-    return { record, file, geometry: await loadMesh(file) };
+    return { record, blob: await r.blob() };
   } finally {
     await s.api.cancel(id);
   }
+}
+
+export async function meshJob(operation: string, fields: Record<string, string>, files: [Blob, string][], name: string) {
+  const { record, blob } = await toolJob(operation, fields, files);
+  const file = new File([blob], `${name.replace(/\.(stl|obj|3mf|drc|step|stp)$/i, '')}.stl`, { type: 'model/stl' });
+  return { record, file, geometry: await loadMesh(file) };
 }
 
 const run = async (o: PlateObject, operation: 'repair' | 'simplify', fields: Record<string, string> = {}) =>

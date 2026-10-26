@@ -55,6 +55,8 @@ type JobRequest struct {
 	BooleanOp              string         `json:"boolean_op,omitempty"`
 	Text                   []string       `json:"text,omitempty"`
 	TextSurface            []string       `json:"text_surface,omitempty"`
+	ExportFormat           string         `json:"export_format,omitempty"`
+	DracoBits              int            `json:"draco_bits,omitempty"`
 	Vendor                 string         `json:"vendor"`
 	Printer                string         `json:"printer"`
 	Process                string         `json:"process"`
@@ -262,6 +264,16 @@ func (j *Job) DownloadName() string {
 		name = "plate_1"
 	}
 	return name + "." + j.Request.Output
+}
+
+func meshExt(r JobRequest) string {
+	switch {
+	case r.MeshOp == "export" && r.ExportFormat == "drc":
+		return "drc"
+	case r.MeshOp == "export":
+		return "3mf"
+	}
+	return "stl"
 }
 
 func outputBase(r JobRequest) string {
@@ -529,6 +541,16 @@ func (m *JobManager) toolArgs(j *Job) []string {
 	in := filepath.Join(j.Dir, "input")
 	if r.Explode {
 		return []string{"--explode-3mf", filepath.Join(in, r.Files[0]), j.ExplodedDir()}
+	}
+	if r.MeshOp == "export" {
+		if r.ExportFormat == "drc" {
+			args := []string{"--export-drc", filepath.Join(in, r.Files[0]), j.OutputPath(meshExt(r))}
+			if r.DracoBits > 0 {
+				args = append(args, "--bits", strconv.Itoa(r.DracoBits))
+			}
+			return args
+		}
+		return []string{"--export-3mf-generic", filepath.Join(in, r.Files[0]), j.OutputPath(meshExt(r))}
 	}
 	if r.MeshOp == "boolean" {
 		return []string{"--mesh-boolean", r.BooleanOp, "--a", filepath.Join(in, r.Files[0]), "--b", filepath.Join(in, r.Files[1]), j.OutputPath("stl")}
@@ -824,7 +846,7 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 			kind = "json"
 		}
 		if j.Request.MeshOp != "" {
-			kind = "stl"
+			kind = meshExt(j.Request)
 		}
 		if kind == "patch-preview" {
 			kind = "json"

@@ -13,8 +13,10 @@ export function PresetCombo({ type, slot = 0, className }: { type: PresetType; s
   const s = getState();
   const base = userPresets.find((u) => u.type === 'machine' && u.name === printer)?.inherits ?? printer;
   const systemUnsorted = type === 'machine' ? machines : compatible(s, type, base);
-  const system = [...systemUnsorted].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
-  const sysNames = new Set(system.map((p) => p.name));
+  const chosen = useStore((st) => (type === 'filament' ? st.filamentsToUse : null));
+  const offered = chosen && systemUnsorted.some((p) => chosen.includes(p.name)) ? systemUnsorted.filter((p) => p.name === value || chosen.includes(p.name)) : systemUnsorted;
+  const system = [...offered].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+  const sysNames = new Set(systemUnsorted.map((p) => p.name));
   const user = userPresets.filter((u) => u.type === type && (type === 'machine' || sysNames.has(u.inherits))).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
 
   const onChange = (name: string) => {

@@ -186,6 +186,7 @@ function FilamentSection() {
         {amsPrinter && <IconButton icon="ams_fila_sync" title={`Synchronize filament list from AMS (${amsPrinter})`} onClick={sync} disabled={syncing} />}
         {physical > 1 && <IconButton icon="delete_filament" title="Remove last filament" onClick={remove} />}
         <IconButton icon="add_filament" title="Add one filament" onClick={add} disabled={slots.length >= 64} />
+        <IconButton icon="settings" title="Set filaments to use" onClick={() => setState({ appDialog: 'filaments' })} />
       </SectionTitle>
       <div className="side-content filament-list">
         {slots.slice(0, physical).map((_, i) => (

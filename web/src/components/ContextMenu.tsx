@@ -5,6 +5,7 @@ import { canEditProject } from '../api/client';
 import { changeVolumeType, deleteAll, deleteVolume, effectiveConfig, getState, removeSelected, setState, togglePrintable, updateObject, updateVolume, useStore, VOLUME_ORDER, type PlateObject, type State } from '../state/store';
 import { addPrimitive, addPrimitiveObject, loadVolume, SEAM_MODES, SHAPES, TYPE_LABEL, VOLUME_MENU } from '../plater/volumes';
 import { menuKeys } from '../keys';
+import { useSubmenuPlace } from './menuPlace';
 import { canAddPlate, deletePlate, editPlateName } from '../plater/plates';
 
 const HANDY = [['Orca Cube'], ['OrcaSliced Combo'], ['Orca Badge'], ['Orca Tolerance Test'], ['3DBenchy'], ['Cali Cat'], ['Autodesk FDM Test'], ['Voron Cube'],
@@ -24,7 +25,7 @@ function useFit(ref: RefObject<HTMLDivElement | null>) {
 
 function Sub({ items, close }: { items: Item[]; close: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
-  useFit(ref);
+  useSubmenuPlace(ref);
   return <div ref={ref} role="menu" className="menu-pop ctx-sub"><Items items={items} close={close} /></div>;
 }
 
@@ -112,6 +113,8 @@ export default function ContextMenu() {
       { label: 'Fill bed with instances...', action: fillBed, disabled: !editable || project, tip: 'Fill the remaining area of bed with instances of the selected object' },
       'sep' as const,
     ]),
+    ...(all && !s.project ? [{ label: 'Assemble', tip: 'Assemble the selected objects into an object with multiple parts', disabled: s.objects.length < 2,
+      action: () => void import('../plater/assemble').then((m) => m.assemble(getState().objects.map((x) => x.id))) }, 'sep' as const] : []),
     { label: 'Copy', shortcut: 'Ctrl+C', action: copySelection, disabled: !editable || !!o.project },
     { label: 'Paste', shortcut: 'Ctrl+V', action: pasteClipboard, disabled: !canPaste(s) },
     { label: 'Clone', shortcut: 'Ctrl+K', action: () => setState({ appDialog: 'clone' }), disabled: !editable || !!o.project, tip: 'Clone copies of selections' },
@@ -146,6 +149,7 @@ export default function ContextMenu() {
       { label: `Filament ${i + 1}`, checked: o.extruder === i + 1, action: () => setFilament(o.id, i + 1) })) }]),
     ...(all ? [] : flushOptions(s, o)),
     { label: 'Printable', shortcut: 'V', checked: printable, action: () => togglePrintable(o.id, menu.instance) },
+    ...(project ? [] : [{ label: 'Edit in Parameter Table', action: () => setState({ appDialog: 'objectTable' }), tip: 'Edit print parameters for a single object' }]),
     'sep',
     { label: 'Export as one STL...', action: () => void exportStl(true), disabled: !editable },
     ...(all ? [{ label: 'Export as STLs...', action: () => void exportStl(true, true), disabled: !editable }] : []),

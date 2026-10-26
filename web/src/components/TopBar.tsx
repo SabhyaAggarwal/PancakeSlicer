@@ -125,6 +125,8 @@ export function TopBar() {
   const [archive, setArchive] = useState<File[] | null>(null);
   useSyncExternalStore(subscribeHistory, historyVersion);
   const undoLabel = undoName(), redoLabel = redoName();
+  const exportDrc = useStore((st) => !!st.features.export_drc);
+  const generic3mf = useStore((st) => !!st.features.export_generic_3mf);
   const exportEnabled = useStore(canExport);
   const plates = useStore((s) => s.projectPlates.length > 1);
   const plateTools = useStore(canAddPlate);
@@ -166,6 +168,8 @@ export function TopBar() {
           ...(hasPrinters ? [{ label: 'Send...', action: () => setState({ appDialog: 'send' }), disabled: !exportEnabled, tip: 'Upload the sliced file to a printer' }] : []),
           { label: 'Export all objects as one STL...', action: () => void exportStl(false), disabled: !hasMeshes, tip: 'Export all objects as one STL' },
           { label: 'Export all objects as STLs...', action: () => void exportStl(true), disabled: !hasMeshes, tip: 'Export all objects as STLs' },
+          ...(exportDrc ? [{ label: 'Export all objects as one DRC...', action: () => void import('../plater/exportModel').then((m) => m.exportModel('drc')), disabled: !hasMeshes, tip: 'Export all objects as one DRC' }] : []),
+          ...(generic3mf ? [{ label: 'Export Generic 3MF...', action: () => void import('../plater/exportModel').then((m) => m.exportModel('generic3mf')), disabled: !hasMeshes, tip: 'Export 3MF file without using some 3mf-extensions' }] : []),
           { label: 'Export toolpaths as OBJ...', tip: 'Export toolpaths as OBJ' },
           { label: 'Export Preset Bundle...', action: () => setState({ presetUx: { kind: 'export' } }), tip: 'Export current configuration to files' },
           'sep',
