@@ -630,12 +630,13 @@ func bambuModel(product, code string) string {
 }
 
 type AMSTray struct {
-	ID    int    `json:"id"`
-	AMS   int    `json:"ams"`
-	Slot  int    `json:"slot"`
-	Type  string `json:"type"`
-	Color string `json:"color"`
-	Name  string `json:"name,omitempty"`
+	ID         int    `json:"id"`
+	AMS        int    `json:"ams"`
+	Slot       int    `json:"slot"`
+	Type       string `json:"type"`
+	Color      string `json:"color"`
+	Name       string `json:"name,omitempty"`
+	FilamentID string `json:"filament_id,omitempty"`
 }
 
 const externalTray = 254
@@ -672,12 +673,14 @@ func amsBambu(ctx context.Context, p *PrinterConfig, secret string) ([]AMSTray, 
 							Type  string `json:"tray_type"`
 							Color string `json:"tray_color"`
 							Name  string `json:"tray_sub_brands"`
+							Idx   string `json:"tray_info_idx"`
 						} `json:"tray"`
 					} `json:"ams"`
 				} `json:"ams"`
 				External *struct {
 					Type  string `json:"tray_type"`
 					Color string `json:"tray_color"`
+					Idx   string `json:"tray_info_idx"`
 				} `json:"vt_tray"`
 			} `json:"print"`
 		}
@@ -690,12 +693,12 @@ func amsBambu(ctx context.Context, p *PrinterConfig, secret string) ([]AMSTray, 
 				a, _ := strconv.Atoi(unit.ID)
 				for _, t := range unit.Tray {
 					slot, _ := strconv.Atoi(t.ID)
-					trays = append(trays, AMSTray{ID: a*4 + slot, AMS: a, Slot: slot, Type: t.Type, Color: color(t.Color), Name: t.Name})
+					trays = append(trays, AMSTray{ID: a*4 + slot, AMS: a, Slot: slot, Type: t.Type, Color: color(t.Color), Name: t.Name, FilamentID: t.Idx})
 				}
 			}
 		}
 		if e := message.Print.External; e != nil {
-			trays = append(trays, AMSTray{ID: externalTray, AMS: -1, Slot: 0, Type: e.Type, Color: color(e.Color), Name: "External spool"})
+			trays = append(trays, AMSTray{ID: externalTray, AMS: -1, Slot: 0, Type: e.Type, Color: color(e.Color), Name: "External spool", FilamentID: e.Idx})
 		}
 		return trays, nil
 	}

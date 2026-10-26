@@ -21,9 +21,11 @@ export interface Instance {
 }
 
 export type SendPrinter = { name: string; kind: string; editable?: boolean; host?: string; serial?: string; model?: string };
-export type VolumeType = 'part' | 'negative' | 'modifier' | 'support_blocker' | 'support_enforcer';
+export type VolumeType = 'part' | 'negative' | 'modifier' | 'support_blocker' | 'support_enforcer' | 'seam';
+export type SeamMode = 'center' | 'left' | 'right' | 'enforced' | 'blocked' | 'neutral';
 
 export interface Volume {
+  seamMode?: SeamMode;
   id: number;
   name: string;
   type: VolumeType;
@@ -46,6 +48,8 @@ export interface NativeObject {
 
 export interface LayerRange { id: number; z: [number, number]; layer_height: number; settings: Config }
 
+export interface Mix { components: number[]; ratios: number[]; gradient: 0 | 1 | null; perPart: boolean }
+
 export interface PlateObject {
   id: number;
   name: string;
@@ -61,6 +65,7 @@ export interface PlateObject {
   native?: NativeObject;
   ranges?: LayerRange[];
   paint?: Partial<Record<PaintKind, Painting>>;
+  brimEars?: { p: [number, number, number]; r: number }[];
   units?: 'inch' | 'meter';
   layerProfile?: number[];
   project?: { buildIndex?: number; plateIndex?: number; plateOrigin?: [number, number]; file: string; placeholder: boolean; missing?: boolean; origin?: [number, number, number];
@@ -91,7 +96,7 @@ export type PresetUx =
 
 export type MainTab = 'prepare' | 'preview';
 export type CalibMenu = 'temperature' | 'max-flowrate' | 'pressure-advance' | 'flow-ratio' | 'retraction' | 'cornering' | 'input-shaping-freq' | 'input-shaping-damp' | 'vfa' | 'nonplanar';
-export type Gizmo = 'none' | 'move' | 'rotate' | 'scale' | 'flatten' | 'cut' | 'measure' | 'layers' | PaintKind;
+export type Gizmo = 'none' | 'move' | 'rotate' | 'scale' | 'flatten' | 'cut' | 'measure' | 'layers' | 'brimears' | PaintKind;
 
 export interface JobView {
   id?: string;
@@ -117,12 +122,30 @@ export interface CutPlane {
   placeLower: boolean;
   flipUpper?: boolean;
   toParts?: boolean;
+  mode?: 'planar' | 'dovetail';
+  connectors?: CutConnector[];
+  connector?: CutConnectorAttribs;
+  selectedConnectors?: number[];
+  editing?: boolean;
+  groove?: CutGroove;
 }
+
+export interface CutConnector { pos: [number, number]; a: CutConnectorAttribs }
+
+export interface CutConnectorAttribs {
+  type: 'plug' | 'dowel' | 'snap';
+  style: 'prism' | 'frustum';
+  shape: 'triangle' | 'square' | 'hexagon' | 'circle';
+  depth: number; depthTolerance: number; size: number; sizeTolerance: number; angle: number;
+  bulge: number; space: number;
+}
+
+export interface CutGroove { depth: number; depthTolerance: number; width: number; widthTolerance: number; flapsAngle: number; angle: number; count: number; gap: number }
 
 export interface State {
   api: Api | null;
   features: { cut?: boolean; volumes?: boolean; edit?: boolean; mesh_plates?: boolean; paint?: boolean; layer_profile?: boolean; arrange?: boolean; project_volumes?: boolean; project_paint?: boolean; orient_scores?: boolean; floating?: boolean;
-    ranges?: boolean; moves_extended?: boolean; mixed_temperatures?: boolean; arrange_materials?: boolean; wipe_tower?: boolean; explode?: boolean };
+    ranges?: boolean; moves_extended?: boolean; mixed_temperatures?: boolean; arrange_materials?: boolean; wipe_tower?: boolean; explode?: boolean; cut_connectors?: boolean; mesh_repair?: boolean; mesh_simplify?: boolean; brim_ears?: boolean; seam_parts?: boolean };
   cut: CutPlane | null;
   loading: string | null;
   machines: SystemPreset[];
@@ -151,10 +174,11 @@ export interface State {
   clipboard: PlateObject[];
   processScope: 'global' | 'objects';
   slotColours: (string | undefined)[];
+  mixes: Record<number, Mix>;
   projectMaterials: { colours: string[]; matrix: number[] | null; multiplier: number | null; builds?: { object: number; instance: number }[] } | null;
   flush: { matrix: number[] | null; multiplier: number | null };
   flushDialog: boolean;
-  appDialog: 'about' | 'preferences' | 'shortcuts' | 'send' | 'setup' | 'what' | 'plate' | null;
+  appDialog: 'about' | 'preferences' | 'shortcuts' | 'send' | 'setup' | 'what' | 'plate' | 'clone' | 'simplify' | null;
   calibDialog: CalibMenu | null;
   printers: SendPrinter[];
   printerEdit: boolean;
@@ -233,6 +257,7 @@ let state: State = {
   clipboard: [],
   processScope: 'global',
   slotColours: [],
+  mixes: {},
   projectMaterials: null,
   flush: { matrix: null, multiplier: null },
   flushDialog: false,
@@ -552,7 +577,7 @@ export function changeVolumeType(objectId: number, volumeId: number, type: Volum
     job: markStale(s.job),
   })));
 }
-export const VOLUME_ORDER: VolumeType[] = ['part', 'negative', 'modifier', 'support_blocker', 'support_enforcer'];
+export const VOLUME_ORDER: VolumeType[] = ['part', 'negative', 'modifier', 'support_blocker', 'support_enforcer', 'seam'];
 
 export function deleteVolume(objectId: number, volumeId: number) {
   undoable('Delete part', () => setState((s) => ({

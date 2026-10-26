@@ -5,6 +5,8 @@ import { Modal, ModalTitle } from './Modal';
 
 const About = lazy(() => import('./About'));
 const PlateSettings = lazy(() => import('./PlateSettings'));
+const CloneDialog = lazy(() => import('./CloneDialog'));
+const SimplifyDialog = lazy(() => import('./SimplifyDialog'));
 const SendDialog = lazy(() => import('./SendDialog'));
 const WhatYouCanDo = lazy(() => import('./WhatYouCanDo'));
 const SetupWizard = lazy(() => import('./FirstRun').then((m) => ({ default: m.SetupWizard })));
@@ -79,7 +81,7 @@ const SHORTCUTS: [string, [string, string][]][] = [
     ['Del / Backspace', 'Delete Selected'], [`${mod}+D / ${mod}+Del`, 'Delete All'], ['+ / -', 'Add / Remove instance'],
     ['V', 'Toggle printable for object/part'], ['A', 'Arrange all objects'], ['Q / Shift+Q', 'Auto orient selected / all objects'],
     ['Arrow keys', 'Move selection 10 mm (Shift: 1 mm)'], ['Page Up / Page Down', 'Rotate selection 45 degrees counterclockwise / clockwise'],
-    ['M / R / S', 'Gizmo move / rotate / scale'], ['I / O', 'Zoom in / out'],
+    [`${mod}+K`, 'Clone selected'], ['M / R / S', 'Gizmo move / rotate / scale'], ['I / O', 'Zoom in / out'], [`${mod}+Shift+Enter`, 'Show/Hide wireframe'],
     ['Left mouse', 'Rotate View'], ['Right mouse', 'Pan View'], ['Mouse wheel', 'Zoom View'],
   ]],
   ['Preview', [
@@ -113,7 +115,9 @@ function Shortcuts() {
   );
 }
 
-export default function AppDialog({ which }: { which: 'about' | 'preferences' | 'shortcuts' | 'send' | 'setup' | 'what' | 'plate' }) {
+export default function AppDialog({ which }: { which: 'about' | 'preferences' | 'shortcuts' | 'send' | 'setup' | 'what' | 'plate' | 'clone' | 'simplify' }) {
+  if (which === 'simplify') return <Suspense fallback={null}><SimplifyDialog close={close} /></Suspense>;
+  if (which === 'clone') return <Suspense fallback={null}><CloneDialog close={close} /></Suspense>;
   if (which === 'plate') return <Suspense fallback={null}><PlateSettings close={close} /></Suspense>;
   if (which === 'what') return <Suspense fallback={null}><WhatYouCanDo close={close} /></Suspense>;
   if (which === 'send') return <Suspense fallback={null}><SendDialog close={close} /></Suspense>;

@@ -190,7 +190,7 @@ export function ObjectList() {
                       onClick={() => pick()}
                       onDoubleClick={() => setState({ renaming: v.id })}>
                       <span className="ol-name">
-                        <Icon name={volumeIcon(v.type)} size={14} />
+                        <Icon name={volumeIcon(v.type, v.seamMode)} size={14} />
                         {renaming === v.id ? (
                           <input className="ol-rename" aria-label="Part name" defaultValue={v.name} autoFocus
                             onFocus={(e) => e.target.select()}

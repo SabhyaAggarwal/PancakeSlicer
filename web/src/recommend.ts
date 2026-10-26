@@ -1,4 +1,4 @@
-import { objectResults, type ObjectResult } from './preview/explain-record';
+import type { ObjectResult } from './preview/explain-record';
 import { applyStyle } from './print-style';
 import { beginStep } from './state/history';
 import { onShellsChecked } from './plater/geometry';
@@ -16,6 +16,13 @@ function refresh() {
 }
 onShellsChecked(refresh);
 subscribeStore(refresh);
+
+let explain: typeof import('./preview/explain-record') | null = null;
+export const explainRecord = () => explain;
+subscribeStore(() => {
+  if (explain || getState().job.state !== 'done') return;
+  void import('./preview/explain-record').then((m) => { if (!explain) { explain = m; kept = null; setState({}); } });
+});
 
 export function pendingRecommendations(s: State): PlateObject[] {
   const global = effectiveConfig(s, 'process');
@@ -35,12 +42,14 @@ export function applyRecommended(objects: PlateObject[]) {
 
 export interface PlateResult extends ObjectResult { objectId?: number; label: string }
 
+const NONE: PlateResult[] = [];
 let kept: { record: unknown; objects: unknown; rec: unknown; out: PlateResult[] } | null = null;
 export function plateResults(s: State): PlateResult[] {
   const record = s.job.state === 'done' && !s.job.stale ? s.job.status?.record : undefined;
   if (kept && kept.record === record && kept.objects === s.objects && kept.rec === s.recommendedStyle) return kept.out;
   const warned = new Set(pendingRecommendations(s).map((o) => o.id));
-  const out = objectResults(record).flatMap((r) => {
+  if (record && !explain) return NONE;
+  const out = (explain?.objectResults(record) ?? []).flatMap((r) => {
     const o = s.objects.find((p) => p.name === r.name || p.name.replace(/\.(stl|obj)$/i, '') === r.name);
     return o && warned.has(o.id) ? [] : [{ ...r, objectId: o?.id, label: o?.name ?? r.name }];
   });

@@ -2,9 +2,11 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { CameraViews } from './CameraViews';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
-import { effectiveConfig, getState, markStale, printerPreset, setPaint, setState, subscribeStore, updateInstance, updateObject, updateVolume, useStore, type State, type VolumeType } from '../state/store';
+import { effectiveConfig, getState, markStale, printerPreset, setPaint, setState, subscribeStore, updateInstance, updateObject, updateVolume, useStore, type CutConnector, type SeamMode, type State, type VolumeType } from '../state/store';
 import { PaintView } from './paintView';
 import { viewOptions, subscribeViewOptions } from './viewOptions';
+import { sectionView, subscribeSection } from './section';
+import { defaultEarRadius, earsUi, setEars, setEarsUi, subscribeEarsUi } from './brimEars';
 import { brush, bucketFill, fill as fillPaint, heightRange, HEIGHT, isPaint, overhangFacets, overhangGeometry, paintOf, paintTool, paintTriangle, PAINT_STEP, RADIUS, setPaintTool, subscribePaintTool, type PaintKind, type Painting } from './paint';
 import { beginStep, undoable } from '../state/history';
 import { TowerView } from './wipeTower';
@@ -14,7 +16,8 @@ import { subscribeTheme } from '../theme';
 import { pixelRatio, watchPixelRatio } from './pixelRatio';
 import { raycastBvh, type Bvh } from './bvh';
 import { instanceBox, instanceMatrix, outsideBed, parsePoints, volumeWorld } from './geometry';
-import { cutNormal, cutPoint, cutTarget } from './cut';
+import { cutNormal, cutPoint, cutTarget, setCut } from './cut';
+import { CONNECTOR, connectorAt, connectorWorld, planeRotation, planeUV, SECTORS } from './cutJoints';
 import { layOnFace, layOnFacePlanes, type LayOnFacePlane } from './transforms';
 import { MeasureView } from './measureView';
 import { measureState, setMeasure, subscribeMeasure } from './measureState';
@@ -25,6 +28,11 @@ import { getPatchPreview, inFootprint, nonplanarViewShown, overlayFits, planarRe
 const OUTSIDE = new THREE.Color(0x4d9ed9);
 const VOLUME_COLOURS: Record<Exclude<VolumeType, 'part'>, [number, number, number, number]> = {
   modifier: [1, 1, 0, 0.6], negative: [0.3, 0.3, 0.3, 0.4], support_enforcer: [0.3, 0.3, 1, 0.4], support_blocker: [1, 0.3, 0.3, 0.4],
+  seam: [1, 0.627, 0.082, 0.6],
+};
+const SEAM_COLOURS: Record<SeamMode, [number, number, number, number]> = {
+  center: [1, 0.627, 0.082, 0.6], left: [1, 0.753, 0, 0.6], right: [1, 0.514, 0, 0.6], enforced: [0.412, 0.82, 0.412, 0.6],
+  blocked: [0.82, 0.412, 0.412, 0.6], neutral: [0.655, 0.655, 0.655, 0.6],
 };
 const CUT_PLANE = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.9, 0.9, 0.9), transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false });
 
@@ -131,9 +139,34 @@ export default function Plater3D() {
     let height = 250;
     const fitCamera = () => views.setBed(area);
     const viewExtras = new THREE.Group();
+    const COM_BALL = new THREE.SphereGeometry(2.5, 32, 16);
+    {
+      const pos = COM_BALL.attributes.position, colors: number[] = [];
+      for (let i = 0; i < pos.count; i++) { const k = pos.getX(i) * pos.getY(i) * pos.getZ(i) > 0 ? 0.05 : 0.95; colors.push(k, k, k); }
+      COM_BALL.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    }
+    const COM_MATERIAL = new THREE.MeshBasicMaterial({ vertexColors: true, depthTest: false });
+    const centroids = new WeakMap<THREE.BufferGeometry, THREE.Vector3>();
+    const centroidOf = (g: THREE.BufferGeometry) => {
+      let c = centroids.get(g);
+      if (c) return c;
+      const p = g.attributes.position, idx = g.index, n = idx ? idx.count : p.count;
+      const a = new THREE.Vector3(), b = new THREE.Vector3(), d = new THREE.Vector3(), sum = new THREE.Vector3();
+      let vol = 0;
+      for (let t = 0; t < n; t += 3) {
+        a.fromBufferAttribute(p, idx ? idx.getX(t) : t); b.fromBufferAttribute(p, idx ? idx.getX(t + 1) : t + 1); d.fromBufferAttribute(p, idx ? idx.getX(t + 2) : t + 2);
+        const v = a.dot(b.clone().cross(d)) / 6;
+        vol += v;
+        sum.addScaledVector(a.clone().add(b).add(d), v / 4);
+      }
+      c = vol ? sum.divideScalar(vol) : (g.computeBoundingBox(), g.boundingBox!.getCenter(new THREE.Vector3()));
+      centroids.set(g, c);
+      return c;
+    };
     scene.add(viewExtras);
     const overhangTint = new THREE.MeshBasicMaterial({ color: 0xc70000, transparent: true, opacity: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
     const outlineLine = new THREE.LineBasicMaterial({ color: 0x009688 });
+    const wireLine = new THREE.LineBasicMaterial({ color: 0x1a1a1a, transparent: true, opacity: 0.45 });
     const extrasCache = new Map<string, THREE.BufferGeometry>();
     const labelLayer = document.createElement('div');
     labelLayer.className = 'canvas-labels';
@@ -159,11 +192,29 @@ export default function Plater3D() {
             put(`oh:${o.geometry.uuid}:${deg}:${normal.elements.map((e) => e.toFixed(4)).join()}`,
               () => overhangGeometry(o.geometry, overhangFacets(o.geometry, normal, deg)!), (g) => new THREE.Mesh(g, overhangTint));
           }
+          if (opt.wireframe) put(`wf:${o.geometry.uuid}`, () => new THREE.WireframeGeometry(o.geometry), (g) => new THREE.LineSegments(g, wireLine));
           if (opt.outline && (s.selected?.instance === inst.id || s.selected?.all))
             put(`ol:${o.geometry.uuid}`, () => new THREE.EdgesGeometry(o.geometry, 30), (g) => new THREE.LineSegments(g, outlineLine));
         }
       }
       for (const [k, g] of extrasCache) if (!seen.has(k)) { g.dispose(); extrasCache.delete(k); }
+      if (opt.axes && area.length) {
+        const xs = area.map((p) => p.x), ys = area.map((p) => p.y);
+        const len = 0.1 * Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), height);
+        [[1, 0, 0, 0xe62e2e], [0, 1, 0, 0x2ee62e], [0, 0, 1, 0x2e5ce6]].forEach(([x, y, z, c]) =>
+          viewExtras.add(new THREE.ArrowHelper(new THREE.Vector3(x, y, z), new THREE.Vector3(0, 0, 0.01), len, c, len * 0.25, len * 0.12)));
+      }
+      if (opt.com && ['none', 'move', 'rotate', 'scale', 'flatten'].includes(s.gizmo))
+        for (const o of s.objects) {
+          if (o.project?.placeholder) continue;
+          const c = centroidOf(o.geometry);
+          for (const inst of o.instances) {
+            const ball = new THREE.Mesh(COM_BALL, COM_MATERIAL);
+            ball.position.copy(c).applyMatrix4(instanceMatrix(o, inst));
+            ball.renderOrder = 4;
+            viewExtras.add(ball);
+          }
+        }
       labelLayer.replaceChildren(...(opt.labels ? s.objects.flatMap((o) => o.instances.map((inst, i) => {
         const d = document.createElement('div');
         d.className = 'canvas-label';
@@ -200,14 +251,15 @@ export default function Plater3D() {
 
     const meshes = new Map<number, THREE.Mesh>();
     const materials = new Map<string, THREE.MeshStandardMaterial>();
-    const material = (color: string, state: 'normal' | 'selected' | 'outside', placeholder = false, ghost = false) => {
-      const k = color + state + placeholder + ghost;
+    const material = (color: string, state: 'normal' | 'selected' | 'outside', placeholder = false, ghost = false, xray = false) => {
+      const k = color + state + placeholder + ghost + xray;
       let m = materials.get(k);
       if (!m) {
         let c = new THREE.Color(color);
         if (state === 'selected') c = brightenColor(c);
         if (state === 'outside') c.lerp(OUTSIDE, 0.7);
-        m = new THREE.MeshStandardMaterial({ color: c, roughness: 0.65, metalness: 0.05, transparent: placeholder || ghost, opacity: placeholder ? 0.35 : ghost ? 0.4 : 1, depthWrite: !ghost });
+        m = new THREE.MeshStandardMaterial({ color: c, roughness: 0.65, metalness: 0.05, transparent: placeholder || ghost || xray, clippingPlanes: sectionView().ratio > 0 ? [sectionPlane] : null,
+          opacity: placeholder ? 0.35 : ghost ? 0.4 : xray ? 0.25 : 1, depthWrite: !ghost && !xray, side: xray ? THREE.DoubleSide : THREE.FrontSide });
         materials.set(k, m);
       }
       return m;
@@ -224,6 +276,7 @@ export default function Plater3D() {
     let outside = new Set<number>();
     let hovered: number | null = null;
     const tint = (s: State) => {
+      const xray = viewOptions().xray && !isPaint(s.gizmo) && s.gizmo !== 'layers';
       for (const o of s.objects) {
         const color = filamentColor(s, o.extruder);
         for (const inst of o.instances) {
@@ -233,27 +286,44 @@ export default function Plater3D() {
           const ghost = s.selected?.object === o.id && s.selected.volume !== undefined;
           mesh.material = s.gizmo === 'layers' && s.selected?.object === o.id
             ? layerMaterial(layerParams(s, o), layerProfileOf(s, o), layerCursor())
-            : material(inst.printable === false ? '#999999' : color, inst.printable === false ? 'normal' : state, !!o.project?.placeholder, ghost);
+            : material(inst.printable === false ? '#999999' : color, inst.printable === false ? 'normal' : state, !!o.project?.placeholder, ghost, xray);
           for (const v of o.volumes ?? []) {
             const vm = volumeMeshes.get(`${inst.id}:${v.id}`);
-            if (vm) vm.material = volumeMaterial(v.type, filamentColor(s, v.extruder || o.extruder), s.selected?.object === o.id && s.selected.volume === v.id);
+            if (vm) vm.material = volumeMaterial(v.type, filamentColor(s, v.extruder || o.extruder), s.selected?.object === o.id && s.selected.volume === v.id, v.seamMode);
           }
         }
       }
     };
     const volumeMeshes = new Map<string, THREE.Mesh>();
-    const volumeMaterial = (type: VolumeType, color: string, selected: boolean) => {
+    const volumeMaterial = (type: VolumeType, color: string, selected: boolean, seam?: SeamMode) => {
       if (type === 'part') return material(color, selected ? 'selected' : 'normal');
-      const k = type + selected;
+      const k = type + (seam ?? '') + selected;
       let m = materials.get(k);
       if (!m) {
-        const [r, g, b, a] = VOLUME_COLOURS[type];
+        const [r, g, b, a] = type === 'seam' ? SEAM_COLOURS[seam ?? 'center'] : VOLUME_COLOURS[type];
         let c = new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
         if (selected) c = brightenColor(c);
-        m = new THREE.MeshStandardMaterial({ color: c, roughness: 0.65, metalness: 0.05, transparent: true, opacity: a, depthWrite: false });
+        m = new THREE.MeshStandardMaterial({ color: c, roughness: 0.65, metalness: 0.05, transparent: true, opacity: a, depthWrite: false, clippingPlanes: sectionView().ratio > 0 ? [sectionPlane] : null });
         materials.set(k, m);
       }
       return m;
+    };
+    const sectionPlane = new THREE.Plane();
+    let sectionNormal: THREE.Vector3 | null = null, sectionAlign = 0;
+    const applySection = () => {
+      const sv = sectionView(), box = new THREE.Box3();
+      for (const m of meshes.values()) if (m.geometry.boundingBox) box.union(m.geometry.boundingBox.clone().applyMatrix4(m.matrixWorld));
+      const on = sv.ratio > 0 && !box.isEmpty();
+      if (on && (!sectionNormal || sv.align !== sectionAlign)) {
+        sectionNormal = views.camera.getWorldDirection(new THREE.Vector3()).negate();
+        sectionAlign = sv.align;
+      }
+      if (on) {
+        const sphere = box.getBoundingSphere(new THREE.Sphere());
+        sectionPlane.set(sectionNormal!.clone().negate(), sectionNormal!.dot(sphere.center) + sphere.radius - 2 * sphere.radius * sv.ratio);
+      }
+      for (const m of materials.values()) m.clippingPlanes = on ? [sectionPlane] : null;
+      render();
     };
     const syncObjects = (s: State) => {
       const seen = new Set<number>();
@@ -326,6 +396,11 @@ export default function Plater3D() {
     });
     cutPlane.renderOrder = 2;
     scene.add(cutProxy);
+    const jointMarks = new THREE.Group();
+    const JOINT = new THREE.MeshBasicMaterial({ color: 0xff8c00, side: THREE.DoubleSide, depthTest: false, transparent: true, opacity: 0.85 });
+    const JOINT_SELECTED = new THREE.MeshBasicMaterial({ color: 0x00ae42, side: THREE.DoubleSide, depthTest: false, transparent: true, opacity: 0.9 });
+    jointMarks.renderOrder = 3;
+    let jointKey = '';
     let cutInstance: number | null = null;
     const syncCut = (s: State) => {
       const t = s.gizmo === 'cut' && s.cut ? cutTarget(s) : null;
@@ -335,7 +410,7 @@ export default function Plater3D() {
         if (m) m.visible = true;
         cutInstance = null;
       }
-      for (const o of [cutPlane, ...cutParts]) {
+      for (const o of [cutPlane, ...cutParts, jointMarks]) {
         if (show && !o.parent) scene.add(o);
         else if (!show && o.parent) scene.remove(o);
       }
@@ -356,7 +431,65 @@ export default function Plater3D() {
         ((m.material as THREE.MeshStandardMaterial).clippingPlanes![0]).setFromNormalAndCoplanarPoint(k === 0 ? n : n.clone().negate(), p);
       });
       if (!cutDrag) cutProxy.position.copy(p);
+      const c = s.cut!;
+      const key = JSON.stringify([c.connectors, c.selectedConnectors, c.z, c.rotX, c.rotY, c.mode]);
+      if (key !== jointKey) {
+        jointKey = key;
+        jointMarks.children.forEach((m) => (m as THREE.Mesh).geometry.dispose());
+        jointMarks.clear();
+        const q = planeRotation(n);
+        (c.mode === 'dovetail' ? [] : c.connectors ?? []).forEach(({ pos, a }, i) => {
+          const sectors = SECTORS[a.type === 'snap' ? 'circle' : a.shape];
+          const m = new THREE.Mesh(new THREE.CircleGeometry(a.size / 2, sectors, Math.PI / 2), c.selectedConnectors?.includes(i) ? JOINT_SELECTED : JOINT);
+          m.position.copy(connectorWorld(s, c, pos));
+          m.quaternion.copy(q).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -a.angle * Math.PI / 180));
+          m.renderOrder = 3;
+          jointMarks.add(m);
+        });
+      }
     };
+    const planeHit = (ev: { clientX: number; clientY: number }) => {
+      const s = getState(), c = s.cut, t = s.gizmo === 'cut' && c?.editing ? cutTarget(s) : null;
+      if (!t || !c) return null;
+      setRay(ev);
+      const at = ray.ray.intersectPlane(new THREE.Plane().setFromNormalAndCoplanarPoint(cutNormal(c), cutPoint(s, c)!), new THREE.Vector3());
+      return at && instanceBox(t.o, t.inst).expandByScalar(0.01).containsPoint(at) ? { s, c, uv: planeUV(s, c, at) } : null;
+    };
+    let jointDrag: { pointer: number; from: [number, number]; start: CutConnector[] } | null = null;
+    const onJointDown = (ev: PointerEvent) => {
+      if (ev.button !== 0 && ev.button !== 2) return;
+      const hit = planeHit(ev);
+      if (!hit) return;
+      ev.stopImmediatePropagation();
+      ev.preventDefault();
+      (document.activeElement as HTMLElement | null)?.blur?.();
+      const { c, uv } = hit, list = c.connectors ?? [], at = connectorAt(list, uv), sel = c.selectedConnectors ?? [];
+      if (ev.button === 2) {
+        if (at >= 0) setCut({ connectors: list.filter((_, k) => k !== at), selectedConnectors: [] });
+        return;
+      }
+      if (at < 0) return setCut({ connectors: [...list, { pos: uv, a: { ...CONNECTOR, ...c.connector } }], selectedConnectors: [list.length] });
+      const next = ev.shiftKey ? (sel.includes(at) ? sel.filter((k) => k !== at) : [...sel, at]) : sel.includes(at) ? sel : [at];
+      setCut({ selectedConnectors: next, ...(next.length === 1 ? { connector: list[next[0]].a } : {}) });
+      if (next.includes(at)) {
+        jointDrag = { pointer: ev.pointerId, from: uv, start: list };
+        renderer.domElement.setPointerCapture(ev.pointerId);
+      }
+    };
+    const onJointMove = (ev: PointerEvent) => {
+      if (!jointDrag || ev.pointerId !== jointDrag.pointer) return;
+      const hit = planeHit(ev);
+      if (!hit) return;
+      ev.stopImmediatePropagation();
+      const d = [hit.uv[0] - jointDrag.from[0], hit.uv[1] - jointDrag.from[1]], sel = hit.c.selectedConnectors ?? [];
+      setCut({ connectors: jointDrag.start.map((k, i) => (sel.includes(i) ? { ...k, pos: [k.pos[0] + d[0], k.pos[1] + d[1]] as [number, number] } : k)) });
+    };
+    const onJointUp = (ev: PointerEvent) => {
+      if (jointDrag && ev.pointerId === jointDrag.pointer) jointDrag = null;
+    };
+    renderer.domElement.addEventListener('pointermove', onJointMove, { capture: true });
+    renderer.domElement.addEventListener('pointerup', onJointUp, { capture: true });
+    renderer.domElement.addEventListener('pointerdown', onJointDown, { capture: true });
     let cutDrag = false;
 
     const proxy = new THREE.Object3D();
@@ -433,7 +566,7 @@ export default function Plater3D() {
       const o = s.objects.find((ob) => ob.id === s.selected?.object);
       const i = o?.instances.find((ii) => ii.id === s.selected?.instance);
       const v = o?.volumes?.find((vv) => vv.id === s.selected?.volume);
-      if (!o || !i || s.gizmo === 'none' || s.gizmo === 'flatten' || s.gizmo === 'measure' || isPaint(s.gizmo) || s.gizmo === 'layers' || s.selected?.all || o.project?.placeholder) {
+      if (!o || !i || s.gizmo === 'none' || s.gizmo === 'flatten' || s.gizmo === 'measure' || isPaint(s.gizmo) || s.gizmo === 'layers' || s.gizmo === 'brimears' || s.selected?.all || o.project?.placeholder) {
         tc.detach();
         return;
       }
@@ -710,6 +843,71 @@ export default function Plater3D() {
       render();
     };
     const viewDir = (mesh: THREE.Object3D) => ray.ray.direction.clone().transformDirection(mesh.matrixWorld.clone().invert());
+    const earMarks = new THREE.Group();
+    const EAR = new THREE.MeshBasicMaterial({ color: 0x6ba6d8, transparent: true, opacity: 0.85, depthTest: false });
+    const EAR_SELECTED = new THREE.MeshBasicMaterial({ color: 0xe8862c, transparent: true, opacity: 0.9, depthTest: false });
+    earMarks.renderOrder = 3;
+    scene.add(earMarks);
+    const syncEars = () => {
+      earMarks.children.forEach((m) => (m as THREE.Mesh).geometry.dispose());
+      earMarks.clear();
+      const s = getState(), o = s.gizmo === 'brimears' ? s.objects.find((x) => x.id === s.selected?.object) : undefined;
+      const inst = o?.instances.find((i) => i.id === s.selected?.instance);
+      if (!o || !inst) return render();
+      const world = instanceMatrix(o, inst), sel = earsUi().selected;
+      (o.brimEars ?? []).forEach((e, i) => {
+        const m = new THREE.Mesh(new THREE.CylinderGeometry(e.r, e.r, 0.4, 32).rotateX(Math.PI / 2), sel.includes(i) ? EAR_SELECTED : EAR);
+        m.position.set(...e.p).applyMatrix4(world);
+        m.renderOrder = 3;
+        earMarks.add(m);
+      });
+      render();
+    };
+    const earAt = (ev: { clientX: number; clientY: number }) => {
+      const s = getState(), o = s.gizmo === 'brimears' ? s.objects.find((x) => x.id === s.selected?.object) : undefined;
+      const inst = o?.instances.find((i) => i.id === s.selected?.instance);
+      if (!o || !inst) return null;
+      const hit = pick(ev), world = instanceMatrix(o, inst);
+      const onObject = hit && (hit.object.userData as { instance?: number }).instance === inst.id ? hit : null;
+      const point = onObject?.local ? onObject.local.clone().applyMatrix4(world) : null;
+      setRay(ev);
+      const probe = point ?? ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), new THREE.Vector3());
+      let ear = -1, best = Infinity;
+      (o.brimEars ?? []).forEach((e, i) => {
+        const c = new THREE.Vector3(...e.p).applyMatrix4(world), d = probe ? Math.hypot(c.x - probe.x, c.y - probe.y) : Infinity;
+        if (d <= e.r && d < best) [ear, best] = [i, d];
+      });
+      return { o, local: onObject?.local ?? null, ear };
+    };
+    const onEarsDown = (ev: PointerEvent) => {
+      if (ev.button !== 0 && ev.button !== 2) return;
+      const at = earAt(ev);
+      if (!at || (at.ear < 0 && (!at.local || ev.button === 2))) return;
+      ev.stopImmediatePropagation();
+      ev.preventDefault();
+      const ears = at.o.brimEars ?? [], sel = earsUi().selected;
+      if (ev.button === 2) {
+        setEars(at.o.id, ears.filter((_, i) => i !== at.ear), 'Delete brim ear');
+        setEarsUi({ selected: [] });
+      } else if (at.ear >= 0) setEarsUi({ selected: ev.shiftKey ? (sel.includes(at.ear) ? sel.filter((k) => k !== at.ear) : [...sel, at.ear]) : [at.ear] });
+      else {
+        setEars(at.o.id, [...ears, { p: [at.local!.x, at.local!.y, at.local!.z], r: earsUi().radius || defaultEarRadius() }], 'Add brim ear');
+        setEarsUi({ selected: [ears.length] });
+      }
+    };
+    const onEarsWheel = (ev: WheelEvent) => {
+      if (getState().gizmo !== 'brimears' || !(ev.ctrlKey || ev.metaKey)) return;
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      const s = getState(), o = s.objects.find((x) => x.id === s.selected?.object), u = earsUi();
+      const radius = Math.min(20, Math.max(0.1, +((u.radius || defaultEarRadius()) + (ev.deltaY < 0 ? 0.1 : -0.1)).toFixed(2)));
+      setEarsUi({ radius });
+      if (o && u.selected.length) setEars(o.id, (o.brimEars ?? []).map((e, i) => (u.selected.includes(i) ? { ...e, r: radius } : e)), 'Change brim ear radius');
+    };
+    renderer.domElement.addEventListener('pointerdown', onEarsDown, { capture: true });
+    renderer.domElement.addEventListener('wheel', onEarsWheel, { capture: true, passive: false });
+    const unsubEars = subscribeEarsUi(syncEars);
+
     const onPaintDown = (ev: PointerEvent) => {
       const s = getState();
       if (!isPaint(s.gizmo) || (ev.button !== 0 && ev.button !== 2) || touches.size > 1) return;
@@ -957,11 +1155,19 @@ export default function Plater3D() {
       }
       if (last && (s.gizmo !== last.gizmo || s.objects !== last.objects || s.selected !== last.selected) && (measureState().first || measureState().hover || last.gizmo === 'measure'))
         setMeasure({});
+      if (last && s.cut !== last.cut && s.gizmo === 'cut') {
+        syncCut(s);
+        syncGizmo(s);
+        render();
+        last = { ...last, cut: s.cut };
+      }
       if (last && s.objects === last.objects && s.selected === last.selected && s.printer === last.printer &&
           s.filamentSlots === last.filamentSlots && s.slotColours === last.slotColours && s.machines === last.machines && s.gizmo === last.gizmo && s.dirty === last.dirty) return;
       last = s;
       syncBed(s);
       syncObjects(s);
+      if (sectionView().ratio > 0) applySection();
+      syncEars();
       paintView.sync(s);
       syncView(s);
       if (!isPaint(s.gizmo)) paintView.showCursor(null);
@@ -970,7 +1176,17 @@ export default function Plater3D() {
     const unsub = subscribeStore(sync);
     const unsubLayerCursor = subscribeLayerCursor(() => { tint(getState()); render(); });
     el.appendChild(labelLayer);
-    const unsubView = subscribeViewOptions(() => { syncView(getState()); render(); });
+    const unsubView = subscribeViewOptions(() => { tint(getState()); syncView(getState()); render(); });
+    const unsubSection = subscribeSection(applySection);
+    const onFit = () => {
+      const s = getState(), box = new THREE.Box3();
+      for (const o of s.objects) for (const i of o.instances)
+        if (s.selected?.all || !s.selected || s.selected.object === o.id && (s.selected.allInstances || s.selected.instance === i.id)) box.union(instanceBox(o, i));
+      if (box.isEmpty()) views.view('plate');
+      else views.fit(box);
+      render();
+    };
+    window.addEventListener('camera-fit', onFit);
     const unsubTheme = subscribeTheme(() => {
       renderer.setClearColor(sceneColors().background);
       overlayColours();
@@ -985,6 +1201,9 @@ export default function Plater3D() {
       unsub();
       unsubLayerCursor();
       unsubView();
+      unsubSection();
+      unsubEars();
+      window.removeEventListener('camera-fit', onFit);
       labelLayer.remove();
       unsubPaintTool();
       unsubTheme();

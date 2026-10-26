@@ -1,8 +1,11 @@
 import type { Config } from './api/types';
-import { calcFlushingVolumes } from './flush';
 import { OPTIONS } from './options';
 import { filamentColor } from './plater/filamentColor';
-import { effectiveConfig, type State } from './state/store';
+import { effectiveConfig, setState, type State } from './state/store';
+
+let flush: typeof import('./flush') | null = null;
+export const flushReady = () => (flush ? Promise.resolve() : import('./flush').then((m) => { if (!flush) { flush = m; setState({}); } }));
+setTimeout(() => void flushReady());
 
 export function flushInputs(s: State) {
   const colours = s.filamentSlots.map((_, i) => filamentColor(s, i + 1));
@@ -13,7 +16,7 @@ export function flushInputs(s: State) {
 
 export function autoFlushMatrix(s: State): number[] {
   const { colours, printer, filaments } = flushInputs(s);
-  return calcFlushingVolumes(colours, printer, filaments);
+  return flush ? flush.calcFlushingVolumes(colours, printer, filaments) : [];
 }
 
 export function defaultMultiplier(s: State): number {
@@ -30,7 +33,7 @@ export function currentFlush(s: State): { matrix: number[]; multiplier: number }
 }
 
 export function flushModified(s: State): boolean {
-  if (s.filamentSlots.length < 2) return false;
+  if (s.filamentSlots.length < 2 || !flush) return false;
   const { matrix, multiplier } = currentFlush(s);
   const auto = autoFlushMatrix(s);
   return multiplier !== defaultMultiplier(s) || matrix.some((v, i) => v !== auto[i]);

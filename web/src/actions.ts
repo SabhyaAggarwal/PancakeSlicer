@@ -5,12 +5,13 @@ import { canEditProject, canLoadStep, connect } from './api/client';
 import { normalizeConfig } from './config-values';
 import { OPTIONS, isHidden, loadTab } from './options';
 import { shortTime } from './preview/format';
-import { calibOverrides, firstLayer, jobFields, outputKind, overrides, plateSignature } from './slice-input';
+import { flushReady } from './flush-state';
+import { calibOverrides, firstLayer, jobFields, MIX_KEYS, outputKind, overrides, plateSignature } from './slice-input';
 import { arrange, bakeStl, bedBounds, loadMesh, loadProject, nextFreeSpot, parsePoints, placeholderGeometry, plateJson, outsideBed } from './plater/geometry';
 import type { ProjectItem } from './plater/threemf';
 import { archivePainting } from './plater/paint';
 import { projectEdits } from './plater/projectTransforms';
-import { choiceDialog, confirmDialog, numberDialog } from './components/Ask';
+import { choiceDialog, confirmDialog, numberDialog, promptDialog } from './components/Ask';
 import {
   DEFAULT_PRINTER, DEMO_MODELS, PRESET_META, effectiveConfig, getState, isCompatible, markStale, newId, presetEdits, printerPreset, resolvePreset, selectPrinter, setState, toast, type PlateObject,
 } from './state/store';
@@ -102,14 +103,14 @@ export function bedArea() {
   return parsePoints(printerPreset(getState())?.config.printable_area);
 }
 
-export async function importFiles(files: FileList | File[]) {
+export async function importFiles(files: FileList | File[], geometryOnly = false) {
   let list = [...files];
   if (!list.length) return;
   setState({ tab: 'prepare' });
   const projectFile = list.find((f) => /\.3mf$/i.test(f.name));
   const project = !!getState().project;
   const st = getState();
-  const geometry = projectFile && (st.objects.length || st.projectPlates.some((p) => p.objects.length)) && (!project || canEditProject())
+  const geometry = geometryOnly ? 1 : projectFile && (st.objects.length || st.projectPlates.some((p) => p.objects.length)) && (!project || canEditProject())
     ? await choiceDialog('Drop project file', `Please select an action\n${projectFile.name}`, ['Open as project', 'Import geometry only'])
     : 0;
   if (geometry === null) return;
@@ -122,8 +123,8 @@ export async function importFiles(files: FileList | File[]) {
     toast('A 3MF project is open; Delete all to start a new plate');
     return;
   }
-  const step = /\.(step|stp)$/i;
-  list = list.filter((f) => /\.(stl|obj|3mf)$/i.test(f.name) || step.test(f.name) && canLoadStep() ||
+  const step = /\.(step|stp|drc)$/i;
+  list = list.filter((f) => /\.(stl|obj|3mf)$/i.test(f.name) || step.test(f.name) && (canLoadStep() || /\.drc$/i.test(f.name)) ||
     (toast(`${f.name} is not a model file. Choose an STL, OBJ${canLoadStep() ? ', STEP' : ''} or 3MF file.`), false));
   const added: PlateObject[] = [];
   for (const f of list) {
@@ -185,7 +186,7 @@ async function loadStep(f: File): Promise<{ geometry: THREE.BufferGeometry; sour
   });
   const response = await fetch(s.api.downloadUrl(id));
   if (!response.ok) throw new Error(`${f.name}: ${response.status} ${response.statusText}`);
-  const stem = f.name.replace(/\.(step|stp)$/i, '');
+  const stem = f.name.replace(/\.(step|stp|drc)$/i, '');
   let geometry: THREE.BufferGeometry | undefined;
   await loadProject(new File([await response.blob()], `${stem}.3mf`), { items() {}, mesh: (i, g) => { if (i === 0) geometry = g; }, missing() {} });
   if (!geometry) throw new Error(`${f.name}: the STEP file has no shape`);
@@ -208,7 +209,7 @@ function adoptProject(config: Config, slots: number, plateKeys: Set<string>) {
   const s = getState();
   const saved = normalizeConfig(config);
   const id = String(saved.printer_settings_id ?? '');
-  if (!id && saved.printer_model === undefined) return setState({ projectPresets: null, projectNotice: null });
+  if (!id && saved.printer_model === undefined) return setState({ projectPresets: null, projectNotice: null, mixes: {} });
   const sameModel = s.machines.filter((p) => String(p.config.printer_model) === String(saved.printer_model));
   const sameNozzle = sameModel.filter((p) => String(p.config.nozzle_diameter) === String(saved.nozzle_diameter));
   const selected = s.machines.filter((p) => p.name === (resolvePreset(s, 'machine', s.printer).base?.name ?? s.printer));
@@ -228,7 +229,7 @@ function adoptProject(config: Config, slots: number, plateKeys: Set<string>) {
   const fallback = !sameNozzle.length || !!id && !current.machines.some((p) => p.name === id);
   const text = (v: ConfigValue) => JSON.stringify(Array.isArray(v) ? v.map(String) : String(v));
   const edits = (c: Config, preset?: SystemPreset) => Object.fromEntries(Object.entries(c).filter(([k, v]) =>
-    !PRESET_META.test(k) && !isHidden(k) && !plateKeys.has(k) && (preset?.config[k] === undefined || text(v) !== text(preset.config[k]))));
+    !PRESET_META.test(k) && !isHidden(k) && !plateKeys.has(k) && !MIX_KEYS.includes(k) && (preset?.config[k] === undefined || text(v) !== text(preset.config[k]))));
   const machine = fallback ? {} : take(saved, (k) => machineKeys.has(k));
   const processValues = take(saved, (k) => !machineKeys.has(k) && !filamentKeys.has(k));
   const dirty = { machine: edits(machine, printer), process: edits(processValues, process) };
@@ -245,7 +246,10 @@ function adoptProject(config: Config, slots: number, plateKeys: Set<string>) {
     bedType: String(saved.curr_bed_type ?? current.bedType),
     dirty,
     filamentEdits: {},
+    mixes: {},
   });
+  if ([saved.filament_is_mixed].flat().some((v) => ['1', 'true'].includes(String(v))))
+    void import('./plater/mixed').then((m) => setState({ mixes: m.readMixes(saved) }));
 }
 
 function centreGeometryOnly() {
@@ -439,8 +443,10 @@ export function fillBed() {
 }
 
 export { outputKind } from './slice-input';
+export { confirmDialog, numberDialog, promptDialog };
 
 export async function jobRequest(s = getState(), saving = false): Promise<JobRequest> {
+  await flushReady();
   const fields = jobFields(s, saving);
 
   if (s.project) {
@@ -501,6 +507,7 @@ function recordWarnings(record: Record<string, unknown> | undefined, stderr: str
 }
 
 export async function slice(calib?: { kind: string; params: string; head?: string }) {
+  await flushReady();
   const s = getState();
   if (!s.api || !s.objects.length && !calib || s.job.state === 'running' || s.job.state === 'submitting') return;
   const outside = calib ? null : outsideVolumeWarning(s);

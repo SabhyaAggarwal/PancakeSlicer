@@ -11,7 +11,7 @@ import { STYLE_NAMES } from '../style-names';
 import { effectiveConfig, getState, mapPaint, printerPreset, setState, updateInstance, updateObject, updateVolume, useStore, type Gizmo } from '../state/store';
 import { instanceMatrix, volumeBox } from '../plater/geometry';
 import { Icon, IconButton } from './Icon';
-import { canPerformCut, cutBlocked, initialCut, performCut, setCut, toggleCut } from '../plater/cut';
+import { canPerformCut, cutBlocked, initialCut, setCut, toggleCut } from '../plater/cut';
 import { InTopLayer } from './Modal';
 
 const OrientConfirm = lazy(() => import('./OrientConfirm').then((m) => ({ default: m.OrientConfirm })));
@@ -45,6 +45,9 @@ export function CanvasToolbar() {
   const instances = useStore((s) => s.objects.find((o) => o.id === s.selected?.object)?.instances.length ?? 0);
   const project = useStore((s) => !!s.project);
   const toggle = (g: Gizmo) => setState({ gizmo: gizmo === g ? 'none' : g });
+  const brimEars = useStore((s) => !!s.features.brim_ears);
+  const native = useStore((s) => !!s.objects.find((o) => o.id === s.selected?.object)?.native);
+  const volumes = useStore((s) => !!s.objects.find((o) => o.id === s.selected?.object)?.volumes?.length);
   const locked = project ? ' — instances cannot be added or removed from an opened project' : '';
   const placeholder = useStore((s) => s.objects.find((o) => o.id === s.selected?.object)?.project?.placeholder);
   const edit = !!sel && !placeholder && !sel.all;
@@ -83,8 +86,9 @@ export function CanvasToolbar() {
       {PAINT_GIZMOS.map(([kind, icon, title]) => (
         <IconButton key={kind} size={24} icon={icon} title={title} active={gizmo === kind} onClick={() => togglePaint(kind)} disabled={!paint && gizmo !== kind} />
       ))}
-      {LATER_GIZMOS.map(([icon, title]) => (
-        <IconButton key={icon} size={24} icon={icon} title={title} disabled />
+      {LATER_GIZMOS.map(([icon, title]) => (icon === 'toolbar_brimears' && brimEars
+        ? <IconButton key={icon} size={24} icon={icon} title={title} active={gizmo === 'brimears'} onClick={() => toggle('brimears')} disabled={!sel || !!placeholder || !!native || volumes} />
+        : <IconButton key={icon} size={24} icon={icon} title={title} disabled />
       ))}
       {preview && (
         <>
@@ -422,17 +426,22 @@ export function Toast() {
   return msg ? <InTopLayer><div className="toast" role="status">{msg}</div></InTopLayer> : null;
 }
 
+const CutJoints = lazy(() => import('./CutJoints'));
+
 export function CutPanel() {
   const cut = useStore((s) => (s.gizmo === 'cut' ? s.cut : null));
   const can = useStore(canPerformCut);
+  const joints = useStore((s) => !!s.features.cut_connectors && !s.objects.find((o) => o.instances.some((i) => i.id === s.selected?.instance))?.project);
   if (!cut) return null;
+  if (cut.editing) return <div className="manip-panel"><Suspense fallback={null}><CutJoints /></Suspense></div>;
+  const joined = cut.mode === 'dovetail' || !!cut.connectors?.length;
   const initial = initialCut(getState());
   const part = (label: string, colour: string, keep: boolean, onKeep: (v: boolean) => void, place: boolean, onPlace?: (v: boolean) => void) => (
     <>
       <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <span style={{ width: 10, height: 10, background: colour, flex: 'none' }} />{label}
       </span>
-      <label className="select-row" style={{ whiteSpace: 'nowrap' }}><input type="checkbox" checked={keep} onChange={(e) => onKeep(e.target.checked)} />Keep</label>
+      <label className="select-row" style={{ whiteSpace: 'nowrap' }}><input type="checkbox" checked={keep} disabled={joined} onChange={(e) => onKeep(e.target.checked)} />Keep</label>
       <label className="select-row" style={{ whiteSpace: 'nowrap' }} title={onPlace ? undefined : 'The upper part is always placed on its cut face'}>
         <input type="checkbox" checked={keep && place} disabled={!keep || !onPlace} onChange={(e) => onPlace?.(e.target.checked)} />Place on cut
       </label>
@@ -450,11 +459,14 @@ export function CutPanel() {
         <Num value={cut.rotX} onCommit={(rotX) => setCut({ rotX })} />
         <Num value={cut.rotY} onCommit={(rotY) => setCut({ rotY })} />
         <span>°</span>
+      </div>
+      {joints && <Suspense fallback={null}><CutJoints /></Suspense>}
+      <div className="manip-grid">
         <span style={{ gridColumn: '1 / -1' }} className="menu-sep" />
         <span style={{ gridColumn: '1 / -1' }}>After cut:</span>
       </div>
       <label className="select-row" style={{ whiteSpace: 'nowrap' }} title="Both pieces stay one object, the upper piece a part, where they stand">
-        <input type="checkbox" checked={!!cut.toParts} onChange={(e) => setCut({ toParts: e.target.checked })} />Cut to parts
+        <input type="checkbox" checked={!!cut.toParts} disabled={joined} onChange={(e) => setCut({ toParts: e.target.checked })} />Cut to parts
       </label>
       {!cut.toParts && (
         <div style={{ display: 'grid', gridTemplateColumns: 'auto auto auto', gap: '0 12px', alignItems: 'center' }}>
@@ -466,9 +478,11 @@ export function CutPanel() {
         </div>
       )}
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-        <button className="btn" disabled={!initial || (cut.z === initial.z && !cut.rotX && !cut.rotY)} onClick={() => initial && setCut({ z: initial.z, rotX: 0, rotY: 0 })}>Reset</button>
+        <button className="btn" title="Flip cut plane" onClick={() => void import('../plater/cutJoints').then((m) => setCut(m.flipped(getState(), cut)))}>Flip</button>
+        <button className="btn" title="Reset cutting plane and remove connectors" disabled={!initial || (cut.z === initial.z && !cut.rotX && !cut.rotY && !cut.connectors?.length)}
+          onClick={() => initial && setCut({ z: initial.z, rotX: 0, rotY: 0, connectors: [] })}>Reset</button>
         <span style={{ flex: 1 }} />
-        <button className="btn primary" disabled={!can} onClick={() => void performCut()}>Perform cut</button>
+        <button className="btn primary" disabled={!can} onClick={() => void import('../plater/cutPerform').then((m) => m.performCut())}>Perform cut</button>
         <button className="btn" onClick={() => setState({ gizmo: 'none', cut: null })}>Cancel</button>
       </div>
     </div>

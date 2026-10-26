@@ -67,6 +67,7 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, users *UserPres
 	mux.HandleFunc("POST /api/user-presets", s.saveUserPreset)
 	mux.HandleFunc("DELETE /api/user-presets/{type}/{name}", s.deleteTypedUserPreset)
 	mux.HandleFunc("/api/user-presets/{name}", s.userPreset)
+	mux.HandleFunc("GET /api/handy-models/{name}", s.handyModel)
 	mux.HandleFunc("GET /api/user-heads", s.listUserHeads)
 	mux.HandleFunc("POST /api/user-heads", s.saveUserHead)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { fail(w, 404, "unknown API endpoint") })
@@ -217,6 +218,26 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			}
 			req.ArrangeMaterials = raw
 		}
+	case "repair", "simplify":
+		if op := r.FormValue("operation"); op == "repair" && !s.cfg.Features.MeshRepair || op == "simplify" && !s.cfg.Features.MeshSimplify {
+			fail(w, 400, "Fix Model and Simplify Model require a tool with --repair-mesh and --simplify-mesh")
+			return
+		}
+		req.MeshOp = r.FormValue("operation")
+		if req.MeshOp == "simplify" {
+			ratio, triangles := r.FormValue("simplify_ratio"), r.FormValue("simplify_triangles")
+			v, errR := strconv.ParseFloat(ratio, 64)
+			n, errT := strconv.Atoi(triangles)
+			switch {
+			case ratio != "" && triangles == "" && errR == nil && v > 0 && v <= 1:
+				req.SimplifyRatio = v
+			case triangles != "" && ratio == "" && errT == nil && n > 0:
+				req.SimplifyTriangles = n
+			default:
+				fail(w, 400, "simplify needs simplify_ratio in (0, 1] or a positive simplify_triangles")
+				return
+			}
+		}
 	case "explode":
 		if !s.cfg.Features.Explode {
 			fail(w, 400, "opening a project as an editable plate requires a tool with --explode-3mf")
@@ -240,6 +261,11 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		}
 		if !validCutPlane(req.Cut) || (req.CutKeep != "upper" && req.CutKeep != "lower" && req.CutKeep != "both") {
 			fail(w, 400, "cut needs a plane Z or X,Y,Z,NX,NY,NZ with a nonzero normal and cut_keep upper, lower or both")
+			return
+		}
+		req.CutConnectors, req.CutDovetail = r.FormValue("cut_connectors"), r.FormValue("cut_dovetail")
+		if msg := cutJoinError(req, s.cfg.Features.CutConnectors); msg != "" {
+			fail(w, 400, msg)
 			return
 		}
 	default:
@@ -401,9 +427,9 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		_, parameters, headerErr := mime.ParseMediaType(f.Header.Get("Content-Disposition"))
 		name := parameters["filename"]
 		ext := strings.ToLower(filepath.Ext(name))
-		step := s.cfg.Features.Step && (ext == ".step" || ext == ".stp")
+		step := s.cfg.Features.Step && (ext == ".step" || ext == ".stp") || ext == ".drc"
 		if headerErr != nil || name == "" || len(name) > 240 || strings.IndexFunc(name, unicode.IsControl) >= 0 || strings.ContainsAny(name, "/\\") || name != filepath.Base(name) || (ext != ".stl" && ext != ".obj" && ext != ".3mf" && !step) || names[name] {
-			fail(w, 400, "uploads need unique STL, OBJ, STEP or 3MF basenames")
+			fail(w, 400, "uploads need unique STL, OBJ, STEP, DRC or 3MF basenames")
 			return
 		}
 		names[name] = true
@@ -438,6 +464,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			var file string
 			var volumes []struct {
 				File string `json:"file"`
+				Type string `json:"type"`
 			}
 			if obj["volumes"] != nil && json.Unmarshal(obj["volumes"], &volumes) != nil ||
 				(obj["file"] != nil || len(volumes) == 0) && (json.Unmarshal(obj["file"], &file) != nil || !names[file]) {
@@ -447,6 +474,12 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			if len(volumes) > 0 && !s.cfg.Features.Volumes {
 				fail(w, 400, "parts and modifiers require a tool with plate-JSON volumes")
 				return
+			}
+			for _, v := range volumes {
+				if (v.Type == "seam" || strings.HasPrefix(v.Type, "precise_seam_")) && !s.cfg.Features.SeamParts {
+					fail(w, 400, "precise seam parts require a tool with plate-JSON seam volumes")
+					return
+				}
 			}
 			if obj["paint"] != nil && !s.cfg.Features.Paint {
 				fail(w, 400, "painting requires a tool with plate-JSON paint")
@@ -458,6 +491,10 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			}
 			if obj["ranges"] != nil && !s.cfg.Features.Ranges {
 				fail(w, 400, "height range modifiers require a tool with plate-JSON ranges")
+				return
+			}
+			if obj["brim_ears"] != nil && !s.cfg.Features.BrimEars {
+				fail(w, 400, "brim ears require a tool with plate-JSON brim_ears")
 				return
 			}
 			for _, v := range volumes {
@@ -584,6 +621,10 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		}
 		req.Overrides = append(selected, req.Overrides...)
 	}
+	if req.MeshOp != "" && (req.Output != "gcode" || req.Plate || len(req.Files) != 1 || !strings.EqualFold(filepath.Ext(req.Files[0]), ".stl")) {
+		fail(w, 400, "Fix Model and Simplify Model take one STL without plate JSON or project output")
+		return
+	}
 	if req.Cut != "" && (req.Output != "gcode" || req.Plate || len(req.Files) != 1 || !strings.EqualFold(filepath.Ext(req.Files[0]), ".stl")) {
 		fail(w, 400, "cut requires one STL without plate JSON or project output")
 		return
@@ -659,10 +700,13 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path, name := j.OutputPath(j.Request.Output), j.DownloadName()
+	if j.Request.MeshOp != "" {
+		path, name = j.OutputPath("stl"), outputBase(j.Request)+".stl"
+	}
 	if j.Request.Cut != "" {
 		side := r.URL.Query().Get("piece")
-		if side != "upper" && side != "lower" {
-			fail(w, 400, "a cut job's download needs piece=upper or piece=lower")
+		if !validPiece(side) {
+			fail(w, 400, "a cut job's download needs piece=upper, lower or dowel-N")
 			return
 		}
 		path, name = j.PiecePath(side), outputBase(j.Request)+"."+side+".stl"
@@ -950,6 +994,27 @@ func (s *Server) deleteTypedUserPreset(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(204)
 }
 
+func cutJoinError(req JobRequest, supported bool) string {
+	if req.CutConnectors == "" && req.CutDovetail == "" {
+		return ""
+	}
+	var connectors []map[string]any
+	var dovetail map[string]any
+	switch {
+	case !supported:
+		return "connectors and dovetails require a tool with --cut-connectors"
+	case req.CutConnectors != "" && req.CutDovetail != "":
+		return "a dovetail cut takes no separate connectors"
+	case req.CutKeep != "both":
+		return "connectors and dovetails need cut_keep both"
+	case req.CutConnectors != "" && (json.Unmarshal([]byte(req.CutConnectors), &connectors) != nil || len(connectors) == 0 || len(connectors) > 256):
+		return "cut_connectors must be a JSON array of 1 to 256 connectors"
+	case req.CutDovetail != "" && json.Unmarshal([]byte(req.CutDovetail), &dovetail) != nil:
+		return "cut_dovetail must be a JSON object"
+	}
+	return ""
+}
+
 func validCutPlane(plane string) bool {
 	fields := strings.Split(plane, ",")
 	if len(fields) != 1 && len(fields) != 6 {
@@ -964,4 +1029,30 @@ func validCutPlane(plane string) bool {
 		v[i] = x
 	}
 	return len(v) == 1 || math.Hypot(math.Hypot(v[3], v[4]), v[5]) > 1e-9
+}
+
+var handyModels = map[string]bool{"OrcaCube_v2.drc": true, "OrcaPlug_v2.drc": true, "OrcaSliced.3mf": true, "OrcaBadge.3mf": true,
+	"OrcaToleranceTest.drc": true, "3DBenchy.drc": true, "calicat.drc": true, "ksr_fdmtest_v4.drc": true, "Voron_Design_Cube_v7.drc": true,
+	"Stanford_Bunny.drc": true, "Orca_stringhell.drc": true}
+
+func (s *Server) handyModel(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if !handyModels[name] {
+		fail(w, 404, "unknown handy model")
+		return
+	}
+	f, err := os.Open(filepath.Join(s.cfg.Resources, "handy_models", name))
+	if err != nil {
+		fail(w, 404, "handy model unavailable")
+		return
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		fail(w, 500, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	http.ServeContent(w, r, name, st.ModTime(), f)
 }

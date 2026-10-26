@@ -1,0 +1,81 @@
+import * as THREE from 'three';
+import { mutation, responseError } from '../api/access';
+import { getState, markStale, printerPreset, resolvePreset, setState, toast, type PlateObject } from '../state/store';
+import { undoable } from '../state/history';
+import { bakeStl, instanceBox, instanceMatrix, loadMesh } from './geometry';
+
+async function run(o: PlateObject, operation: 'repair' | 'simplify', fields: Record<string, string> = {}) {
+  const s = getState();
+  if (!s.api || s.api.mock) throw new Error('This needs the slicing service.');
+  const fd = new FormData();
+  fd.append('operation', operation);
+  for (const [k, v] of Object.entries(fields)) fd.append(k, v);
+  fd.append('vendor', printerPreset(s)?.vendor ?? 'BBL');
+  fd.append('printer', resolvePreset(s, 'machine', s.printer).base?.name ?? s.printer);
+  fd.append('process', resolvePreset(s, 'process', s.process).base?.name ?? s.process);
+  for (const f of s.filamentSlots) fd.append('filament[]', resolvePreset(s, 'filament', f).base?.name ?? f);
+  fd.append('files[]', await bakeStl({ ...o, rotX: 0, rotY: 0, scale: [1, 1, 1] }, new THREE.Matrix4()), 'mesh.stl');
+  const response = await mutation('/api/jobs', { method: 'POST', body: fd });
+  if (!response.ok) throw await responseError(response);
+  const { id } = await response.json() as { id: string };
+  try {
+    const record = await new Promise<Record<string, unknown>>((resolve, reject) => {
+      const stop = s.api!.events(id, { progress() {}, done(st) { stop(); resolve((st.record ?? {}) as Record<string, unknown>); }, error(m) { stop(); reject(new Error(m)); } });
+    });
+    const r = await fetch(s.api.downloadUrl(id));
+    if (!r.ok) throw await responseError(r);
+    const file = new File([await r.blob()], `${o.name.replace(/\.(stl|obj|3mf|drc|step|stp)$/i, '')}.stl`, { type: 'model/stl' });
+    return { record, file, geometry: await loadMesh(file) };
+  } finally {
+    await s.api.cancel(id);
+  }
+}
+
+function replace(o: PlateObject, file: File, geometry: THREE.BufferGeometry, name: string) {
+  const c = new THREE.Vector3(...(geometry.userData.sourceCentre as [number, number, number] ?? [0, 0, 0]));
+  geometry.computeBoundingBox();
+  const next = { ...o, geometry, source: file, paint: undefined };
+  next.instances = o.instances.map((i) => {
+    const was = geometry.boundingBox!.clone().applyMatrix4(instanceMatrix(o, i).multiply(new THREE.Matrix4().makeTranslation(c.x, c.y, c.z)));
+    const now = instanceBox({ ...next, instances: [i] }, i);
+    const d = was.getCenter(new THREE.Vector3()).sub(now.getCenter(new THREE.Vector3()));
+    return { ...i, x: i.x + d.x, y: i.y + d.y };
+  });
+  undoable(name, () => setState((st) => ({ objects: st.objects.map((x) => (x.id === o.id ? next : x)), job: markStale(st.job) })));
+}
+
+export async function fixModel(objectId: number) {
+  const o = getState().objects.find((x) => x.id === objectId);
+  if (!o) return;
+  setState({ loading: 'Repairing model object' });
+  try {
+    const { record, file, geometry } = await run(o, 'repair');
+    const counts = (record.repair_counts ?? {}) as Record<string, number>;
+    const done = Object.entries(counts).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${k.replace(/_/g, ' ')}`);
+    const closed = Number(record.boundary_edges_closed) || 0;
+    if (closed) done.push(`${closed} boundary edges closed`);
+    replace(o, file, geometry, 'Fix Model');
+    toast(done.length ? `${o.name}: repaired (${done.join(', ')})` : `${o.name}: no errors found`);
+  } catch (e) {
+    toast(`Fix Model: ${e instanceof Error ? e.message : String(e)}`);
+  } finally {
+    if (getState().loading === 'Repairing model object') setState({ loading: null });
+  }
+}
+
+export async function simplifyModel(objectId: number, triangles: number) {
+  const o = getState().objects.find((x) => x.id === objectId);
+  if (!o) return;
+  setState({ loading: 'Simplifying model' });
+  try {
+    const { record, file, geometry } = await run(o, 'simplify', { simplify_triangles: String(Math.max(1, Math.round(triangles))) });
+    replace(o, file, geometry, 'Simplify Model');
+    toast(`${o.name}: ${record.triangles_before} → ${record.triangles_after} triangles`);
+  } catch (e) {
+    toast(`Simplify Model: ${e instanceof Error ? e.message : String(e)}`);
+  } finally {
+    if (getState().loading === 'Simplifying model') setState({ loading: null });
+  }
+}
+
+export const triangleCount = (o: PlateObject) => (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3;

@@ -1,3 +1,4 @@
+import { flushReady } from '../flush-state';
 import { firstLayer, jobFields } from '../slice-input';
 import { loadMoves, supportGrams } from '../preview/data';
 import { effectiveConfig, getState, printerPreset, setState, subscribeStore, type OrientPrompt, type OrientSlice, type PlateObject, type State } from '../state/store';
@@ -93,6 +94,7 @@ async function sliceAlone(o: PlateObject): Promise<OrientSlice> {
   alone.instances = [{ ...inst, x: inst.x + (Math.min(...xs) + Math.max(...xs)) / 2 - (box.min.x + box.max.x) / 2,
     y: inst.y + (Math.min(...ys) + Math.max(...ys)) / 2 - (box.min.y + box.max.y) / 2 }];
   const { plate, files } = await plateJson([alone], firstLayer(s));
+  await flushReady();
   const id = await s.api!.submit({ ...jobFields(s), plate, files, output: 'gcode', priority: 'low', ...(s.features.floating ? { floating: true } : {}) });
   try {
     const status = await new Promise<{ record?: Record<string, unknown> }>((resolve, reject) => {

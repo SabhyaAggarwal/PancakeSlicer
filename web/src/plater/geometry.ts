@@ -163,6 +163,11 @@ export function objectMatrix(o: PlateObject): THREE.Matrix4 {
   return m.premultiply(new THREE.Matrix4().makeTranslation(-(b.min.x + b.max.x) / 2, -(b.min.y + b.max.y) / 2, -b.min.z));
 }
 
+export const earsJson = (o: PlateObject) => o.brimEars?.map(({ p, r }) => {
+  const q = new THREE.Vector3(...p).applyMatrix4(objectMatrix(o));
+  return { x: +q.x.toFixed(4), y: +q.y.toFixed(4), z: +q.z.toFixed(4), radius: r };
+});
+
 export function instanceMatrix(o: PlateObject, inst: Instance): THREE.Matrix4 {
   const m = objectMatrix(o).premultiply(new THREE.Matrix4().makeRotationZ(inst.rotZ * DEG));
   const b = transformedBox(o.geometry, m, `${o.rotX},${o.rotY},${o.scale},${inst.rotZ}`);
@@ -277,11 +282,13 @@ export function plateDescription(objects: PlateObject[], firstLayer = 0.2): Plat
       instances: o.instances.map((i) => { const p = place(i); return { x: round(p.x), y: round(p.y), rot: round(i.rotZ), z: round(p.z), printable: i.printable !== false }; }),
       ...(Object.keys(o.settings).length ? { settings: settings(o.settings) } : {}),
       ...(paintJson(o) ? { paint: paintJson(o) } : {}),
+      ...(o.brimEars?.length ? { brim_ears: earsJson(o) } : {}),
       ...(o.ranges?.length ? { ranges: o.ranges.map((r) => ({ z: [round(r.z[0]), round(r.z[1])], layer_height: r.layer_height, settings: settings(r.settings) })) } : {}),
       ...(o.layerProfile ? { layer_height_profile: fitProfile(o.layerProfile, objectHeight(o), firstLayer) } : {}),
       ...(o.volumes?.length ? { volumes: o.volumes.map((v, k) => ({
         file: file.replace(/\.stl$/, `.v${k + 1}.stl`),
         type: v.type,
+        ...(v.type === 'seam' ? { seam_mode: v.seamMode ?? 'center' } : {}),
         name: v.name,
         ...(v.type === 'part' && paintJson(v) ? { paint: paintJson(v) } : {}),
         ...(v.extruder ? { extruder: v.extruder } : {}),

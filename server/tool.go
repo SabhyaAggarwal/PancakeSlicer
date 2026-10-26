@@ -46,6 +46,11 @@ type ToolFeatures struct {
 	ArrangeMaterials  bool            `json:"arrange_materials"`
 	WipeTower         bool            `json:"wipe_tower"`
 	Explode           bool            `json:"explode"`
+	CutConnectors     bool            `json:"cut_connectors"`
+	MeshRepair        bool            `json:"mesh_repair"`
+	MeshSimplify      bool            `json:"mesh_simplify"`
+	BrimEars          bool            `json:"brim_ears"`
+	SeamParts         bool            `json:"seam_parts"`
 }
 
 type toolOption struct {
@@ -103,6 +108,11 @@ func probeUsage(c Config, f *ToolFeatures) {
 	f.ArrangeMaterials = strings.Contains(usage, "--arrange-multi-materials")
 	f.WipeTower = strings.Contains(usage, "--wipe-tower-only")
 	f.Explode = strings.Contains(usage, "--explode-3mf IN.3mf OUTDIR")
+	f.SeamParts = strings.Contains(usage, `plate JSON volumes take "type": "seam"`)
+	f.BrimEars = strings.Contains(usage, `plate JSON objects take "brim_ears"`)
+	f.MeshRepair = strings.Contains(usage, "--repair-mesh IN OUT.stl")
+	f.MeshSimplify = strings.Contains(usage, "--simplify-mesh IN OUT.stl")
+	f.CutConnectors = strings.Contains(usage, "--cut-connectors") && strings.Contains(usage, "--cut-mode planar|dovetail")
 	if dump, err := toolDump(c, "--dump-presets", "Prusa"); err == nil {
 		f.PresetCompat = bytes.Contains(dump, []byte(`"compatible_printers_evaluated"`))
 	}
@@ -228,11 +238,12 @@ func (p *PresetIndex) dumpVendor(vendor string) (*VendorPresets, error) {
 		return nil, err
 	}
 	type entry struct {
-		Name     string                     `json:"name"`
-		Inherits []string                   `json:"inherits"`
-		Values   map[string]json.RawMessage `json:"values"`
-		Printers *[]string                  `json:"compatible_printers_evaluated"`
-		Prints   *[]string                  `json:"compatible_prints_evaluated"`
+		Name       string                     `json:"name"`
+		Inherits   []string                   `json:"inherits"`
+		Values     map[string]json.RawMessage `json:"values"`
+		Printers   *[]string                  `json:"compatible_printers_evaluated"`
+		Prints     *[]string                  `json:"compatible_prints_evaluated"`
+		FilamentID string                     `json:"filament_id"`
 	}
 	var dump struct {
 		Schema   string      `json:"schema"`
@@ -259,7 +270,10 @@ func (p *PresetIndex) dumpVendor(vendor string) (*VendorPresets, error) {
 					config[key] = value
 				}
 			}
-			preset := Preset{Name: e.Name, Vendor: vendor, Inherits: e.Inherits, Config: config, CompatiblePrinters: stringList(config["compatible_printers"])}
+			preset := Preset{Name: e.Name, Vendor: vendor, Inherits: e.Inherits, Config: config, CompatiblePrinters: stringList(config["compatible_printers"]), FilamentID: e.FilamentID}
+			if preset.FilamentID == "" {
+				preset.FilamentID = stringValue(e.Values["filament_id"])
+			}
 			if e.Printers != nil {
 				preset.Evaluated, preset.CompatiblePrinters = true, *e.Printers
 				if e.Prints != nil {

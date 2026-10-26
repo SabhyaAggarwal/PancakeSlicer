@@ -1,17 +1,26 @@
 import type { Config, ConfigValue } from './api/types';
 import { currentFlush } from './flush-state';
-import { eventArg } from './components/LayerEvents';
 import { OPTIONS, jobValue } from './options';
 import { filamentColor } from './plater/filamentColor';
 import { meshSignature, plateDescription } from './plater/geometry';
 import { projectEdits, projectInstances } from './plater/projectTransforms';
 import { canEditProject } from './api/client';
-import { effectiveConfig, getState, presetEdits, printerPreset, resolvePreset, type State } from './state/store';
+import { effectiveConfig, getState, presetEdits, printerPreset, resolvePreset, type LayerEvent, type Mix, type State } from './state/store';
+
+function eventArg(e: LayerEvent): string {
+  const z = String(Math.round(e.z * 1e4) / 1e4);
+  if (e.type === 'custom') return `${z}:custom:${(e.text ?? '').replace(/\r?\n/g, '\\n')}`;
+  if (e.type === 'change') return `${z}:change:${e.text}`;
+  return `${z}:${e.type}`;
+}
 
 export function outputKind(s = getState()): 'gcode' | 'gcode.3mf' {
   const m = printerPreset(s);
   return m?.vendor === 'BBL' ? 'gcode.3mf' : 'gcode';
 }
+
+export const MIX_KEYS = ['filament_is_mixed', 'filament_mixed_components', 'filament_mixed_sublayer_ratios', 'filament_mixed_gradient',
+  'filament_mixed_gradient_range', 'filament_mixed_gradient_curve', 'filament_mixed_gradient_per_part'];
 
 export function overrides(s = getState()): Config {
   const out: Config = s.project ? {
@@ -53,6 +62,20 @@ export function overrides(s = getState()): Config {
       out.filament_colour = s.filamentSlots.map((_, i) => filamentColor(s, i + 1));
     if (!s.project || s.flush.matrix !== null) out.flush_volumes_matrix = matrix;
     if (!s.project || s.flush.multiplier !== null) out.flush_multiplier = [multiplier];
+  }
+  if (Object.keys(s.mixes).length || MIX_KEYS.some((k) => k in out)) {
+    const per = (f: (m: Mix) => string) => s.filamentSlots.map((_, i) => (s.mixes[i] ? f(s.mixes[i]) : ''));
+    const flag = (f: (m: Mix) => boolean) => s.filamentSlots.map((_, i) => (s.mixes[i] && f(s.mixes[i]) ? '1' : '0'));
+    const sum = (m: Mix) => m.ratios.reduce((a, b) => a + b, 0) || 100;
+    Object.assign(out, {
+      filament_is_mixed: flag(() => true),
+      filament_mixed_components: per((m) => m.components.join(',')),
+      filament_mixed_sublayer_ratios: per((m) => m.ratios.map((r) => Math.fround(r / sum(m)).toFixed(4)).join(',')),
+      filament_mixed_gradient: flag((m) => m.gradient !== null),
+      filament_mixed_gradient_range: per((m) => (m.gradient === null || m.components.length !== 2 ? '' : m.gradient ? '0.1000,0.9000' : '0.9000,0.1000')),
+      filament_mixed_gradient_curve: per(() => ''),
+      filament_mixed_gradient_per_part: flag((m) => m.gradient !== null && m.perPart),
+    });
   }
   if (s.project && s.projectPlates.length > 1) for (const key of ['wipe_tower_x', 'wipe_tower_y']) {
     const value = out[key];

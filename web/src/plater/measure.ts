@@ -397,3 +397,18 @@ export function distanceComponents(m: Measurement): V | null {
     : m.distanceStrict ? m.distanceStrict.to.clone().sub(m.distanceStrict.from) : null;
   return v && v.length() > 0.01 ? v : null;
 }
+
+export function transformFeature(f: Feature | undefined, m: THREE.Matrix4, ratio: number): Feature | undefined {
+  if (!f) return f;
+  const t = (v: V) => v.clone().applyMatrix4(m);
+  switch (f.type) {
+    case 'point': return { ...f, p: t(f.p) };
+    case 'edge': return { ...f, a: t(f.a), b: t(f.b) };
+    case 'circle': return { ...f, c: t(f.c), r: f.r * ratio };
+    case 'plane': {
+      const tris = f.tris.slice(), v = new THREE.Vector3();
+      for (let i = 0; i < tris.length; i += 3) v.fromArray(tris, i).applyMatrix4(m).toArray(tris, i);
+      return { ...f, origin: t(f.origin), tris, edges: f.edges.map(([a, b]) => [t(a), t(b)] as Edge) };
+    }
+  }
+}

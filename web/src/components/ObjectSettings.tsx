@@ -75,7 +75,7 @@ export function ObjectSettings() {
     set: (k: string, v: ConfigValue) => setRangeOption(object.id, range.id, k, v),
     remove: (keys: string[]) => removeRangeOptions(object.id, range.id, keys),
   } : volume ? {
-    name: volume.name, icon: volumeIcon(volume.type), settings: volume.settings, region: true,
+    name: volume.name, icon: volumeIcon(volume.type, volume.seamMode), settings: volume.settings, region: true,
     set: (k: string, v: ConfigValue) => setVolumeOption(object.id, volume.id, k, v),
     remove: (keys: string[]) => removeVolumeOptions(object.id, volume.id, keys),
   } : {

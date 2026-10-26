@@ -133,6 +133,8 @@ export function TopBar() {
   const hasObjects = useStore((s) => s.objects.length > 0);
   const hasProjectObjects = useStore((s) => s.objects.length > 0 || s.projectPlates.some((p) => p.objects.length > 0));
   const hasSel = useStore((s) => !!s.selected);
+  const hasProject = useStore((s) => !!s.project);
+  const brimEarsKeys = useStore((s) => !!s.features.brim_ears);
   const hasMeshes = useStore((s) => s.objects.some((o) => !o.project?.placeholder));
   const pasteEnabled = useStore(canPaste);
   const mock = useStore((s) => s.api?.mock);
@@ -180,6 +182,7 @@ export function TopBar() {
           { label: 'Paste', shortcut: `${MOD}+V`, action: pasteClipboard, disabled: !pasteEnabled, tip: 'Paste clipboard' },
           { label: 'Delete selected', shortcut: 'Del', action: removeSelected, disabled: !hasSel, tip: 'Deletes the current selection' },
           { label: 'Delete all', shortcut: `${MOD}+Del`, action: deleteAll, disabled: !hasObjects, tip: 'Deletes all objects' },
+          { label: 'Clone Selected', shortcut: `${MOD}+K`, action: () => setState({ appDialog: 'clone' }), disabled: !hasSel || hasProject, tip: 'Clone copies of selections' },
           'sep',
           { label: 'Duplicate Current Plate', action: duplicatePlate, disabled: !plateTools, tip: 'Duplicate the current plate' },
           'sep',
@@ -205,10 +208,14 @@ export function TopBar() {
           { label: 'Show 3D Navigator', role: 'menuitemcheckbox', checked: view.navigator, action: () => toggleViewOption('navigator'), tip: 'Show 3D navigator in Prepare and Preview scene.' },
           { label: 'Show Gridlines', role: 'menuitemcheckbox', checked: view.gridlines, action: () => toggleViewOption('gridlines'), tip: 'Show Gridlines on plate' },
           'sep',
-          { label: 'Show Labels', shortcut: 'E', role: 'menuitemcheckbox', checked: view.labels, action: () => toggleViewOption('labels'), tip: 'Show object labels in 3D scene.' },
+          { label: 'Show Labels', shortcut: brimEarsKeys ? `${MOD}+E` : 'E', role: 'menuitemcheckbox', checked: view.labels, action: () => toggleViewOption('labels'), tip: 'Show object labels in 3D scene.' },
           { label: 'Show Overhang', role: 'menuitemcheckbox', checked: view.overhang, action: () => toggleViewOption('overhang'), tip: 'Show object overhang highlight in 3D scene.' },
           { label: 'Show Non-planar Surfaces', role: 'menuitemcheckbox', checked: nonplanarView, action: toggleNonplanarView, tip: "Color top surfaces by their slope against the print head's limit and show where curved top shells will be printed." },
           { label: 'Show Selected Outline (beta)', role: 'menuitemcheckbox', checked: view.outline, action: () => toggleViewOption('outline'), tip: 'Show outline around selected object in 3D scene.' },
+          { label: 'Show X-Ray', role: 'menuitemcheckbox', checked: view.xray, action: () => toggleViewOption('xray'), tip: 'Draw models see-through, so hidden parts show.' },
+          { label: 'Show Center of Mass', role: 'menuitemcheckbox', checked: view.com, action: () => toggleViewOption('com'), tip: 'Show the center of mass of each object in 3D scene.' },
+          { label: 'Show Axes', role: 'menuitemcheckbox', checked: view.axes, action: () => toggleViewOption('axes'), tip: 'Show the X, Y and Z axes at the bed origin.' },
+          { label: 'Show Wireframe', shortcut: `${MOD}+Shift+Enter`, role: 'menuitemcheckbox', checked: view.wireframe, action: () => toggleViewOption('wireframe'), tip: 'Show wireframes in 3D scene.' },
         ]}
       />
       {canCalibrate() && <Menu

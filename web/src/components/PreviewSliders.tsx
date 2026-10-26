@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import type { LayerRec } from '../preview/format';
+import { Icon } from './Icon';
 
 export interface SliderTick {
   layer: number;
@@ -7,13 +8,15 @@ export interface SliderTick {
   title: string;
 }
 
-export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus }: {
+export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus, oneLayer = false, onOneLayer }: {
   layers: LayerRec[];
   lo: number;
   hi: number;
   onChange(lo: number, hi: number): void;
   ticks?: SliderTick[];
   onPlus?(anchor: DOMRect): void;
+  oneLayer?: boolean;
+  onOneLayer?(): void;
 }) {
   const track = useRef<HTMLDivElement>(null);
   const n = layers.length;
@@ -91,7 +94,7 @@ export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus }: {
           follow(which, e);
         }}
       >
-        <div className="ls-fill" style={{ bottom: `${frac(lo) * 100}%`, top: `${(1 - frac(hi)) * 100}%` }} />
+        <div className="ls-fill" style={{ bottom: `${frac(oneLayer ? hi : lo) * 100}%`, top: `${(1 - frac(hi)) * 100}%` }} />
         {ticks.map((t) => (
           <div
             key={`${t.layer}-${t.title}`}
@@ -118,11 +121,18 @@ export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus }: {
             </button>
           )}
         </div>
-        <div className="ls-thumb lo" style={{ bottom: `${frac(lo) * 100}%` }} onPointerDown={drag('lo')} title="Lower layer" {...aria('lo')}>
-          <div className="ls-tip">{label(lo)}</div>
-        </div>
+        {!oneLayer && (
+          <div className="ls-thumb lo" style={{ bottom: `${frac(lo) * 100}%` }} onPointerDown={drag('lo')} title="Lower layer" {...aria('lo')}>
+            <div className="ls-tip">{label(lo)}</div>
+          </div>
+        )}
       </div>
       <div className="ls-label bottom">{label(0)}</div>
+      {onOneLayer && (
+        <button type="button" className={`ls-one ${oneLayer ? 'active' : ''}`} aria-pressed={oneLayer} title="On/Off one layer mode of the vertical slider (L)" onClick={onOneLayer}>
+          <Icon name={oneLayer ? 'one_layer_on' : 'one_layer_off'} size={24} />
+        </button>
+      )}
     </div>
   );
 }

@@ -20,13 +20,6 @@ export function eventLabel(e: LayerEvent): string {
   }
 }
 
-export function eventArg(e: LayerEvent): string {
-  const z = String(Math.round(e.z * 1e4) / 1e4);
-  if (e.type === 'custom') return `${z}:custom:${(e.text ?? '').replace(/\r?\n/g, '\\n')}`;
-  if (e.type === 'change') return `${z}:change:${e.text}`;
-  return `${z}:${e.type}`;
-}
-
 const sameZ = (a: number, b: number) => Math.abs(a - b) < 1e-3;
 
 export function eventTicks(events: LayerEvent[], layers: LayerRec[]): SliderTick[] {
@@ -36,7 +29,7 @@ export function eventTicks(events: LayerEvent[], layers: LayerRec[]): SliderTick
   });
 }
 
-export function EventMenu({ anchor, z, layer, onClose }: { anchor: DOMRect; z: number; layer: number; onClose(): void }) {
+export function EventMenu({ anchor, z, layer, onClose, onJump }: { anchor: DOMRect; z: number; layer: number; onClose(): void; onJump?(): void }) {
   const events = useStore((s) => s.events);
   const slots = useStore((s) => s.filamentSlots.length);
   const template = useStore((s) => String(effectiveConfig(s, 'machine').template_custom_gcode ?? ''));
@@ -111,6 +104,7 @@ export function EventMenu({ anchor, z, layer, onClose }: { anchor: DOMRect; z: n
           {item('Add Pause', () => put({ z, type: 'pause' }), 'Insert a pause command at the beginning of this layer.')}
           {item('Add Custom G-code', () => setCustom(''), 'Insert custom G-code at the beginning of this layer.')}
           {template.trim() && item('Add Custom Template', () => put({ z, type: 'template' }), 'Insert template custom G-code at the beginning of this layer.')}
+          {onJump && item('Jump to layer', () => { onClose(); onJump(); })}
           {slots > 1 && (
             <>
               <div className="menu-sep" />

@@ -264,7 +264,7 @@ export async function restore(id: string) {
     const projectPlates = rec.doc.projectPlates.map((p) => ({ ...p, objects: p.objects.map(revive) }));
     reserveIds(Math.max(0, ...[...objects, ...projectPlates.flatMap((p) => p.objects)].flatMap((o) => [o.id, ...o.instances.map((i) => i.id), ...(o.volumes ?? []).map((v) => v.id)])));
     setState({
-      ...rec.doc, objects, projectPlates, project: rec.doc.project ? (blobs.get(rec.doc.project) as File) : null,
+      ...rec.doc, mixes: rec.doc.mixes ?? {}, objects, projectPlates, project: rec.doc.project ? (blobs.get(rec.doc.project) as File) : null,
       tab: 'prepare', gizmo: 'none', dialog: null, loading: null, job: { state: 'idle', pct: 0, stage: '' },
     });
     newDocument(!rec.unsaved);

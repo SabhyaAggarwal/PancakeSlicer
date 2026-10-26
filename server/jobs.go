@@ -47,6 +47,11 @@ type JobRequest struct {
 	Cut                    string         `json:"cut,omitempty"`
 	CutKeep                string         `json:"cut_keep,omitempty"`
 	CutPlaceLower          bool           `json:"cut_place_lower,omitempty"`
+	CutConnectors          string         `json:"cut_connectors,omitempty"`
+	CutDovetail            string         `json:"cut_dovetail,omitempty"`
+	MeshOp                 string         `json:"mesh_op,omitempty"`
+	SimplifyRatio          float64        `json:"simplify_ratio,omitempty"`
+	SimplifyTriangles      int            `json:"simplify_triangles,omitempty"`
 	Vendor                 string         `json:"vendor"`
 	Printer                string         `json:"printer"`
 	Process                string         `json:"process"`
@@ -219,6 +224,14 @@ func (j *Job) EventsSince(from int) ([]Event, <-chan struct{}, bool) {
 
 func (j *Job) OutputPath(kind string) string {
 	return filepath.Join(j.Dir, "out", outputBase(j.Request)+"."+kind)
+}
+
+func validPiece(side string) bool {
+	if side == "upper" || side == "lower" {
+		return true
+	}
+	n, err := strconv.Atoi(strings.TrimPrefix(side, "dowel-"))
+	return strings.HasPrefix(side, "dowel-") && err == nil && n > 0 && strconv.Itoa(n) == side[len("dowel-"):]
 }
 
 func (j *Job) PiecePath(side string) string {
@@ -514,6 +527,16 @@ func (m *JobManager) toolArgs(j *Job) []string {
 	if r.Explode {
 		return []string{"--explode-3mf", filepath.Join(in, r.Files[0]), j.ExplodedDir()}
 	}
+	if r.MeshOp != "" {
+		args := []string{"--" + r.MeshOp + "-mesh", filepath.Join(in, r.Files[0]), j.OutputPath("stl")}
+		if r.SimplifyTriangles > 0 {
+			return append(args, "--triangles", strconv.Itoa(r.SimplifyTriangles))
+		}
+		if r.MeshOp == "simplify" {
+			return append(args, "--ratio", strconv.FormatFloat(r.SimplifyRatio, 'f', -1, 64))
+		}
+		return args
+	}
 	args := []string{
 		"--profiles", filepath.Join(m.cfg.Resources, "profiles"),
 		"--datadir", filepath.Join(j.Dir, "datadir"),
@@ -541,6 +564,12 @@ func (m *JobManager) toolArgs(j *Job) []string {
 		args = append(args, "--cut-only", r.Cut, "--cut-keep", r.CutKeep, "-o", j.OutputPath("stl"))
 		if r.CutPlaceLower {
 			args = append(args, "--cut-place-lower")
+		}
+		if r.CutConnectors != "" {
+			args = append(args, "--cut-connectors", r.CutConnectors)
+		}
+		if r.CutDovetail != "" {
+			args = append(args, "--cut-mode", "dovetail", "--cut-dovetail", r.CutDovetail)
 		}
 		return append(args, filepath.Join(in, r.Files[0]))
 	}
@@ -667,6 +696,7 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 	var rotation []float64
 	var scores []map[string]any
 	var pieces []map[string]any
+	var meshRecord []byte
 	var lastErr lastLines
 	var readers sync.WaitGroup
 	readers.Add(2)
@@ -674,6 +704,9 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 		defer readers.Done()
 		scanLines(stdout, func(l string) {
 			j.log("stdout", l)
+			if j.Request.MeshOp != "" && strings.HasPrefix(l, "{") && json.Valid([]byte(l)) {
+				meshRecord = []byte(l)
+			}
 			if j.Request.OrientScores {
 				if score := orientScoreLine(l); score != nil {
 					scores = append(scores, score)
@@ -697,7 +730,7 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 				triangles, e1 := strconv.Atoi(f[3])
 				open, e2 := strconv.Atoi(f[5])
 				volume, e3 := strconv.ParseFloat(f[7], 64)
-				if e1 == nil && e2 == nil && e3 == nil && (f[1] == "upper" || f[1] == "lower") && !math.IsNaN(volume) && !math.IsInf(volume, 0) {
+				if e1 == nil && e2 == nil && e3 == nil && validPiece(f[1]) && !math.IsNaN(volume) && !math.IsInf(volume, 0) {
 					pieces = append(pieces, map[string]any{"side": f[1], "triangles": triangles, "open_edges": open, "volume_mm3": volume})
 				}
 			}
@@ -732,6 +765,12 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 			raw, recordErr = json.Marshal(map[string]any{"rotation": rotation})
 		} else {
 			recordErr = errors.New("missing native orientation rotation")
+		}
+	}
+	if j.Request.MeshOp != "" {
+		raw, recordErr = meshRecord, nil
+		if meshRecord == nil {
+			recordErr = errors.New("missing mesh operation report")
 		}
 	}
 	if j.Request.Cut != "" {
@@ -770,6 +809,9 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 		kind := j.Request.Output
 		if j.Request.Arrange || j.Request.WipeTower {
 			kind = "json"
+		}
+		if j.Request.MeshOp != "" {
+			kind = "stl"
 		}
 		if kind == "patch-preview" {
 			kind = "json"

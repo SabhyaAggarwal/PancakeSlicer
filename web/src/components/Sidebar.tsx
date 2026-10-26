@@ -8,10 +8,11 @@ import { Icon, IconButton } from './Icon';
 import { PresetCombo } from './PresetCombo';
 import { SettingsTab } from './SettingsTab';
 import { filamentColor } from '../plater/filamentColor';
-import { readReport } from '../preview/explain-record';
+import { explainRecord } from '../recommend';
 import { jumpToMove, streamLayerOf } from '../preview/jump';
 import { shortTime } from '../preview/format';
 
+const MixedFilaments = lazy(() => import('./MixedFilaments'));
 const ObjectList = lazy(() => import('./ObjectList').then((m) => ({ default: m.ObjectList })));
 
 const ObjectSettings = lazy(() => import('./ObjectSettings').then((m) => ({ default: m.ObjectSettings })));
@@ -55,7 +56,8 @@ function NonplanarResult() {
   const job = useStore((s) => s.job);
   const heads = useStore((s) => s.heads);
   const [open, setOpen] = useState(true);
-  const report = job.state === 'done' && !job.stale ? readReport(job.status?.record) : null;
+  const explain = useStore(explainRecord);
+  const report = job.state === 'done' && !job.stale && explain ? explain.readReport(job.status?.record) : null;
   if (!report) return null;
   const labels = OPTIONS.nonplanar_mode;
   const modeLabel = (m: string) => labels?.enum_labels?.[labels.enum_values?.indexOf(m) ?? -1] ?? m;
@@ -130,11 +132,13 @@ function PrinterSection() {
 
 function FilamentSection() {
   const slots = useStore((s) => s.filamentSlots);
+  const physical = slots.length - Object.keys(useStore((s) => s.mixes)).length;
   useStore((s) => s.filamentEdits);
   useStore((s) => s.slotColours);
   useStore((s) => s.projectMaterials);
   const s = getState();
-  const add = () =>
+  const mixed = physical < slots.length;
+  const add = () => mixed ? void import('../plater/mixed').then((m) => m.addPhysical(NEXT_COLOURS[nextColour++ % NEXT_COLOURS.length])) :
     undoable('Add filament', () => setState((st) => {
       const fils = compatible(st, 'filament');
       const last = st.filamentSlots[st.filamentSlots.length - 1] ?? fils[0]?.name ?? '';
@@ -142,7 +146,7 @@ function FilamentSection() {
       slotColours[st.filamentSlots.length] = NEXT_COLOURS[nextColour++ % NEXT_COLOURS.length];
       return { filamentSlots: [...st.filamentSlots, last], slotColours };
     }));
-  const remove = () =>
+  const remove = () => mixed ? void import('../plater/mixed').then((m) => m.removePhysical()) :
     undoable('Remove filament', () => setState((st) => ({
       filamentSlots: st.filamentSlots.length > 1 ? st.filamentSlots.slice(0, -1) : st.filamentSlots,
       slotColours: st.slotColours.slice(0, st.filamentSlots.length - 1),
@@ -180,11 +184,11 @@ function FilamentSection() {
           </button>
         )}
         {amsPrinter && <IconButton icon="ams_fila_sync" title={`Synchronize filament list from AMS (${amsPrinter})`} onClick={sync} disabled={syncing} />}
-        {slots.length > 1 && <IconButton icon="delete_filament" title="Remove last filament" onClick={remove} />}
+        {physical > 1 && <IconButton icon="delete_filament" title="Remove last filament" onClick={remove} />}
         <IconButton icon="add_filament" title="Add one filament" onClick={add} disabled={slots.length >= 64} />
       </SectionTitle>
       <div className="side-content filament-list">
-        {slots.map((_, i) => (
+        {slots.slice(0, physical).map((_, i) => (
           <div key={i} className="filament-row">
             <label className="filament-swatch" style={{ background: filamentColor(s, i + 1) }} title="Click to select filament color">
               {i + 1}
@@ -194,6 +198,7 @@ function FilamentSection() {
             <IconButton icon="edit" title="Click to edit preset" onClick={() => setState({ dialog: { type: 'filament', slot: i } })} />
           </div>
         ))}
+        {physical > 1 && <Suspense fallback={null}><MixedFilaments /></Suspense>}
       </div>
     </div>
   );

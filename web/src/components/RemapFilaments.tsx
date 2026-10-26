@@ -6,7 +6,7 @@ import { EXTRUDERS_LIMIT, type PaintNode, type Painting } from '../plater/paint'
 const remapNode = (n: PaintNode, map: number[]): PaintNode =>
   Array.isArray(n) ? n.map((c) => remapNode(c, map)) : n >= 1 && n <= map.length ? map[n - 1] : n;
 
-function remapObject(o: PlateObject, map: number[]): PlateObject {
+export function remapObject(o: PlateObject, map: number[]): PlateObject {
   const paint = <T extends { paint?: PlateObject['paint'] }>(x: T): T => {
     const p = x.paint?.color;
     return p ? { ...x, paint: { ...x.paint, color: new Map([...p].map(([t, n]) => [t, remapNode(n, map)])) as Painting } } : x;

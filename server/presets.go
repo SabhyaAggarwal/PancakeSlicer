@@ -18,6 +18,7 @@ type Preset struct {
 	Evaluated          bool                       `json:"compatible_evaluated,omitempty"`
 	CompatiblePrints   []string                   `json:"compatible_prints,omitempty"`
 	Config             map[string]json.RawMessage `json:"config"`
+	FilamentID         string                     `json:"filament_id,omitempty"`
 	Model              string                     `json:"model,omitempty"`
 	Variant            string                     `json:"variant,omitempty"`
 	BedModel           string                     `json:"bed_model,omitempty"`
@@ -268,7 +269,8 @@ func (p *PresetIndex) loadVendor(vendor string) (*VendorPresets, error) {
 				continue
 			}
 			config := resolvedConfig(all, name)
-			out = append(out, Preset{Name: name, Vendor: vendor, Inherits: chain(all, name), CompatiblePrinters: stringList(config["compatible_printers"]), Config: config})
+			out = append(out, Preset{Name: name, Vendor: vendor, Inherits: chain(all, name), CompatiblePrinters: stringList(config["compatible_printers"]), Config: config,
+				FilamentID: stringValue(config["filament_id"])})
 		}
 		sort.Slice(out, func(i, j int) bool {
 			ai, aj := strings.HasPrefix(out[i].Name, "Bambu Lab A1 mini "), strings.HasPrefix(out[j].Name, "Bambu Lab A1 mini ")

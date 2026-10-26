@@ -13,6 +13,7 @@ import { Legend } from './PreviewLegend';
 import { LayerSlider, MoveSlider } from './PreviewSliders';
 import { EventList, EventMenu, eventTicks } from './LayerEvents';
 import { ownsKeys } from '../keys';
+import { numberDialog } from '../actions';
 import { toggleViewOption, useViewOptions } from '../plater/viewOptions';
 import { filamentColor } from '../plater/filamentColor';
 
@@ -94,6 +95,8 @@ export function PreviewView() {
   const lastRanges = useRef(0);
   const events = useStore((s) => s.events);
   const [eventMenu, setEventMenu] = useState<{ anchor: DOMRect; layer: number } | null>(null);
+  const [oneLayer, setOneLayer] = useState(false);
+  const oneBackup = useRef<number | null>(null);
   const compare = useCompareWanted();
   const setCompare = setCompareWanted;
 
@@ -202,8 +205,8 @@ export function PreviewView() {
   }, [ui.view, ui.nonplanar, ui.vis]);
 
   const layerCount = data?.layers.length ?? 0;
-  const lo = Math.min(layers[0], Math.max(0, layerCount - 1));
   const hi = Math.min(layers[1], Math.max(0, layerCount - 1));
+  const lo = oneLayer ? hi : Math.min(layers[0], Math.max(0, layerCount - 1));
   const [topFirst, topEnd] = data && layerCount ? data.layerSpan(hi, hi) : [1, 1];
   const topMoves = Math.max(0, topEnd - topFirst);
   const pos = movePos == null ? topMoves : Math.min(movePos, topMoves);
@@ -247,6 +250,29 @@ export function PreviewView() {
     setVis: (v: Partial<Visibility>, shells?: boolean) => setUi((u) => ({ ...u, vis: { ...u.vis, ...v }, shells: shells ?? u.shells })),
   };
 
+  useEffect(() => { oneBackup.current = null; }, [layerCount]);
+  const toggleOneLayer = () => {
+    if (!layerCount) return;
+    const top = layerCount - 1, cur = Math.min(layers[1], top);
+    if (oneLayer) {
+      oneBackup.current = cur;
+      setLayers([0, Number.MAX_SAFE_INTEGER]);
+    } else {
+      const back = oneBackup.current === null || oneBackup.current > top ? Math.floor(top / 2) : oneBackup.current;
+      setLayers([0, cur === top ? back : cur]);
+    }
+    setOneLayer(!oneLayer);
+    setMovePos(null);
+  };
+  const jumpToLayer = () => {
+    if (!layerCount) return;
+    void numberDialog('Jump to layer', `Please enter the layer number. (1 - ${layerCount}):`, hi + 1, 1, layerCount).then((n) => {
+      if (n === null) return;
+      setLayers(([a]) => [Math.min(a, n - 1), n - 1]);
+      setMovePos(null);
+    });
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (ownsKeys(e) || e.ctrlKey || e.metaKey || e.altKey || getState().tab !== 'preview') return;
@@ -258,6 +284,8 @@ export function PreviewView() {
         const d = e.key === 'ArrowRight' ? 1 : -1;
         setMovePos((p) => Math.max(1, Math.min(topMoves, (p ?? topMoves) + d)));
       } else if (e.key === 'c' || e.key === 'C') toggleViewOption('gcodeWindow');
+      else if (e.key === 'l' || e.key === 'L') toggleOneLayer();
+      else if (e.key === 'G' && e.shiftKey) jumpToLayer();
       else if (e.key === 'Home') setMovePos(1);
       else if (e.key === 'End') setMovePos(null);
       else return;
@@ -265,7 +293,7 @@ export function PreviewView() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [layerCount, topMoves]);
+  }, [layerCount, topMoves, oneLayer, layers, hi]);
 
   const loading = data && !data.done && !data.error;
   const api = getState().api;
@@ -360,10 +388,12 @@ export function PreviewView() {
       {layerCount > 0 && (
         <LayerSlider
           layers={data!.layers}
-          lo={lo}
+          lo={oneLayer ? 0 : lo}
           hi={hi}
+          oneLayer={oneLayer}
+          onOneLayer={toggleOneLayer}
           onChange={(a, b) => {
-            setLayers([a, b]);
+            setLayers(oneLayer ? ([x]) => [x, b] : [a, b]);
             setMovePos(null);
           }}
           ticks={eventTicks(events, data!.layers)}
@@ -384,6 +414,7 @@ export function PreviewView() {
           layer={eventMenu.layer}
           z={Math.round(data.layers[eventMenu.layer].z * 1e4) / 1e4}
           onClose={() => setEventMenu(null)}
+          onJump={jumpToLayer}
         />
       )}
       {layerCount > 0 && topMoves > 0 && (

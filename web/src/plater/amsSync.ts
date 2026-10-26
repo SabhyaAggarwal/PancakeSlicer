@@ -3,10 +3,12 @@ import type { SystemPreset } from '../api/types';
 import { compatible, getState, markStale, setState, toast } from '../state/store';
 import { undoable } from '../state/history';
 
-type Tray = { id: number; type: string; color: string; name?: string };
+type Tray = { id: number; type: string; color: string; name?: string; filament_id?: string };
 const EXTERNAL = 254;
 
 function presetFor(t: Tray, fils: SystemPreset[]): SystemPreset | undefined {
+  const byId = t.filament_id && fils.find((f) => f.filament_id === t.filament_id);
+  if (byId) return byId;
   const named = t.name && fils.find((f) => f.name.startsWith(`Bambu ${t.name} @`));
   if (named) return named;
   const generic = fils.filter((f) => f.name.startsWith('Generic '));
@@ -47,7 +49,7 @@ export async function syncAms(printer: string) {
     filamentSlots: slots,
     slotColours: picked.map((p) => p.t.color || undefined),
     filamentEdits: Object.fromEntries(Object.entries(st.filamentEdits).filter(([name]) => slots.includes(name))),
-    flush: { ...st.flush, matrix: null },
+    flush: { ...st.flush, matrix: null }, mixes: {},
     objects: st.objects.map((o) => (o.extruder > n ? { ...o, extruder: 1 } : o)),
     events: st.events.filter((e) => e.type !== 'change' || Number(e.text) <= n),
     job: markStale(st.job),

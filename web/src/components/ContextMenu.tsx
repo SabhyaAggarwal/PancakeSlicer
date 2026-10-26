@@ -3,10 +3,13 @@ import { addInstance, arrangeAll, fillBed, openFileDialog, removeInstance, setIn
 import { canDrop, canPaste, centreSelection, copySelection, dropSelection, mirrorSelection, pasteClipboard, selectAll, setFilament, startRename } from '../edit';
 import { canEditProject } from '../api/client';
 import { changeVolumeType, deleteAll, deleteVolume, effectiveConfig, getState, removeSelected, setState, togglePrintable, updateObject, updateVolume, useStore, VOLUME_ORDER, type PlateObject, type State } from '../state/store';
-import { addPrimitive, loadVolume, SHAPES, TYPE_LABEL, VOLUME_MENU } from '../plater/volumes';
+import { addPrimitive, addPrimitiveObject, loadVolume, SEAM_MODES, SHAPES, TYPE_LABEL, VOLUME_MENU } from '../plater/volumes';
 import { menuKeys } from '../keys';
 import { canAddPlate, deletePlate, renamePlate } from '../plater/plates';
 import { promptDialog } from './Ask';
+
+const HANDY = [['Orca Cube'], ['OrcaSliced Combo'], ['Orca Badge'], ['Orca Tolerance Test'], ['3DBenchy'], ['Cali Cat'], ['Autodesk FDM Test'], ['Voron Cube'],
+  ['Stanford Bunny'], ['Orca String Hell']] as const;
 
 async function editPlateName() {
   const s = getState();
@@ -89,7 +92,7 @@ export default function ContextMenu() {
   const volume = o?.volumes?.find((v) => v.id === menu.volume);
   const heightRanges: Item[] = o && !all && !s.project && editable && s.features.ranges ? [{ label: 'Height Range Modifier',
     action: () => void import('../plater/ranges').then((m) => { m.addHeightRanges(o.id); setState({ processScope: 'objects' }); }) }] : [];
-  const addVolumes: Item[] = o && !all && s.features.volumes && editable && (!s.project || s.features.project_volumes && canEditProject()) ? [...VOLUME_MENU.map(([type, label]) => ({ label, sub: [
+  const addVolumes: Item[] = o && !all && s.features.volumes && editable && (!s.project || s.features.project_volumes && canEditProject()) ? [...VOLUME_MENU.filter(([type]) => type !== 'seam' || s.features.seam_parts).map(([type, label]) => ({ label, sub: [
     { label: 'Load...', action: () => loadVolume(o.id, type) },
     'sep' as const,
     ...SHAPES.map((shape) => ({ label: shape, action: () => addPrimitive(o.id, type, shape) })),
@@ -103,8 +106,10 @@ export default function ContextMenu() {
     ...(volume.type === 'part' ? ['sep' as const, { label: 'Change Filament', sub: [{ label: 'Default', checked: !volume.extruder, action: () => updateVolume(o.id, volume.id, { extruder: 0 }) },
       ...s.filamentSlots.map((_, i) => ({ label: `Filament ${i + 1}`, checked: volume.extruder === i + 1, action: () => updateVolume(o.id, volume.id, { extruder: i + 1 }) }))] }] : []),
     'sep',
-    { label: 'Change Type', tip: 'Change part type', sub: VOLUME_ORDER.map((type) => (
+    { label: 'Change Type', tip: 'Change part type', sub: VOLUME_ORDER.filter((type) => type !== 'seam' || s.features.seam_parts || volume.type === 'seam').map((type) => (
       { label: TYPE_LABEL[type], checked: volume.type === type, action: () => volume.type !== type && changeVolumeType(o.id, volume.id, type) })) },
+    ...(volume.type === 'seam' ? [{ label: 'Precise Seam Type', sub: SEAM_MODES.map(([mode, label]) => (
+      { label, checked: (volume.seamMode ?? 'center') === mode, action: () => updateVolume(o.id, volume.id, { seamMode: mode }) })) }] : []),
   ] : o ? [
     ...(all ? [] : [
       { label: 'Add instance', shortcut: '+', action: addInstance, disabled: !editable || project, tip: 'Add one more instance of the selected object' },
@@ -115,6 +120,9 @@ export default function ContextMenu() {
     ]),
     { label: 'Copy', shortcut: 'Ctrl+C', action: copySelection, disabled: !editable || !!o.project },
     { label: 'Paste', shortcut: 'Ctrl+V', action: pasteClipboard, disabled: !canPaste(s) },
+    { label: 'Clone', shortcut: 'Ctrl+K', action: () => setState({ appDialog: 'clone' }), disabled: !editable || !!o.project, tip: 'Clone copies of selections' },
+    ...(s.features.mesh_repair && !all ? [{ label: 'Fix Model', action: () => void import('../plater/meshOps').then((m) => m.fixModel(o.id)), disabled: !editable || !!o.project || !!o.volumes?.length }] : []),
+    ...(s.features.mesh_simplify && !all ? [{ label: 'Simplify Model', action: () => setState({ appDialog: 'simplify' }), disabled: !editable || !!o.project || !!o.volumes?.length }] : []),
     { label: 'Center', action: centreSelection, disabled: !editable },
     { label: 'Drop', action: dropSelection, disabled: !editable || !canDrop(s), tip: 'Drop the selection to the bed' },
     ...(all ? [] : [{ label: 'Split', disabled: !editable || !!s.project, sub: [
@@ -148,6 +156,8 @@ export default function ContextMenu() {
     { label: 'Export as one STL...', action: () => void exportStl(true), disabled: !editable },
     ...(all ? [{ label: 'Export as STLs...', action: () => void exportStl(true, true), disabled: !editable }] : []),
   ] : [
+    { label: 'Add Primitive', disabled: !!s.project, sub: SHAPES.map((shape) => ({ label: shape, action: () => void addPrimitiveObject(shape) })) },
+    { label: 'Add Handy models', disabled: !!s.project, sub: HANDY.map(([label], i) => ({ label, action: () => void import('../plater/handy').then((m) => m.addHandyModel(i)) })) },
     { label: 'Add Models', shortcut: 'Ctrl+I', action: openFileDialog },
     { label: 'Paste', shortcut: 'Ctrl+V', action: pasteClipboard, disabled: !canPaste(s) },
     'sep',

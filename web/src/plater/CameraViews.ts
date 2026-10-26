@@ -67,6 +67,22 @@ export class CameraViews {
 
   setBed(area: THREE.Vector2[]) { this.area = area; this.view('plate'); }
 
+  fit(box: THREE.Box3) {
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
+    const dir = this.camera.position.clone().sub(this.controls.target).normalize();
+    this.controls.target.copy(sphere.center);
+    if (this.camera instanceof THREE.OrthographicCamera) {
+      this.camera.position.copy(sphere.center).add(dir.multiplyScalar(Math.max(1000, sphere.radius * 4)));
+      this.camera.zoom = Math.min(this.camera.top, this.camera.right) / (sphere.radius * 1.1);
+      this.camera.updateProjectionMatrix();
+    } else {
+      const half = THREE.MathUtils.degToRad(this.camera.fov / 2), fov = Math.min(half, Math.atan(Math.tan(half) * this.camera.aspect));
+      this.camera.position.copy(sphere.center).add(dir.multiplyScalar((sphere.radius * 1.1) / Math.sin(fov)));
+    }
+    this.controls.update();
+    this.changed();
+  }
+
   zoom(factor: number) {
     if (this.camera instanceof THREE.OrthographicCamera) {
       this.camera.zoom = Math.min(50, Math.max(0.05, this.camera.zoom * factor));

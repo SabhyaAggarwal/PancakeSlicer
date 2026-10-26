@@ -1,0 +1,7 @@
+.cut-joints { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.cut-joint-row { display: grid; grid-template-columns: 90px auto auto auto; gap: 6px; align-items: center; }
+.cut-joint-row .num { width: 64px; }
+.cut-joint-radios { display: flex; gap: 10px; }
+.cut-joint-section { font-weight: 600; margin-top: 4px; }
+.cut-joint-hint { font-size: 11px; color: var(--text-dim); }
+.cut-joint-buttons { display: flex; gap: 8px; margin-top: 6px; }

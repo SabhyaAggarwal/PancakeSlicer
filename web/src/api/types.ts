@@ -11,6 +11,7 @@ export interface SystemPreset {
   compatible_printers?: string[];
   compatible_evaluated?: boolean;
   compatible_prints?: string[];
+  filament_id?: string;
   config: Config;
   model?: string;
   variant?: string;
@@ -61,6 +62,7 @@ export interface PlateJson {
     instances: { x: number; y: number; rot: number; z?: number; printable?: boolean }[];
     plate?: number;
     paint?: Record<string, Record<string, string>>;
+    brim_ears?: { x: number; y: number; z: number; radius: number }[];
     layer_height_profile?: number[];
     ranges?: { z: [number, number]; layer_height: number; settings: Record<string, string> }[];
     settings?: Record<string, string>;

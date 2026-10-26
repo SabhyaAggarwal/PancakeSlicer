@@ -2,12 +2,14 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { setPaintTool, togglePaint } from './plater/paint';
 import { toggleViewOption } from './plater/viewOptions';
 import { addInstance, arrangeAll, download, importFiles, newProject, openFileDialog, openProjectDialog, removeInstance, slice, toolbarOperation, saveProject } from './actions';
-import { toggleCut } from './plater/cut';
+import { setCut, toggleCut } from './plater/cut';
 import { CanvasToolbar, CutPanel, ManipulationPanel, PaintPanel, SliceNotification, Toast } from './components/CanvasOverlays';
 import { LayerHeightBar, LayerHeightPanel } from './components/LayerHeight';
 import { Sidebar } from './components/Sidebar';
 import { AskHost } from './components/Ask';
 import { TabBar, TopBar } from './components/TopBar';
+const BrimEarsPanel = lazy(() => import('./components/BrimEarsPanel'));
+const CanvasTools = lazy(() => import('./components/CanvasTools'));
 const Navigator = lazy(() => import('./components/Navigator').then((m) => ({ default: m.Navigator })));
 const PlateChoice = lazy(() => import('./components/PlateChoice'));
 const EmptyPlate = lazy(() => import('./components/FirstRun'));
@@ -90,9 +92,13 @@ export default function App() {
       else if (ctrl && e.key.toLowerCase() === 's') void saveProject(e.shiftKey);
       else if (ctrl && e.key.toLowerCase() === 'g') download();
       else if (ctrl && e.key === 'Delete') deleteAll();
+      else if (ctrl && e.key.toLowerCase() === 'a' && !e.shiftKey && getState().cut?.editing) { const c = getState().cut!; setCut({ selectedConnectors: (c.connectors ?? []).map((_, i) => i) }); }
       else if (ctrl && e.key.toLowerCase() === 'a' && !e.shiftKey) selectAll();
+      else if (ctrl && e.shiftKey && e.key === 'Enter') toggleViewOption('wireframe');
+      else if (ctrl && e.key.toLowerCase() === 'e' && getState().features.brim_ears && getState().tab === 'prepare') toggleViewOption('labels');
       else if (ctrl && e.key.toLowerCase() === 'c' && !window.getSelection()?.toString()) copySelection();
       else if (ctrl && e.key.toLowerCase() === 'v') pasteClipboard();
+      else if (ctrl && e.key.toLowerCase() === 'k') { const s = getState(); if (s.selected && !s.project) setState({ appDialog: 'clone' }); }
       else if (ctrl) return;
       else if (getState().gizmo === 'measure' && (e.key === 'Delete' || e.key === 'Backspace')) setMeasure({});
       else if (getState().gizmo === 'measure' && e.key === 'Escape') { if (!dropLastFeature()) setState({ gizmo: 'none' }); }
@@ -111,7 +117,11 @@ export default function App() {
       else if (e.key.toLowerCase() === 'p') togglePaint('seam');
       else if (e.key.toLowerCase() === 'h') togglePaint('fuzzy');
       else if (e.key.toLowerCase() === 'n') togglePaint('color');
-      else if (e.key.toLowerCase() === 'e' && getState().tab === 'prepare') toggleViewOption('labels');
+      else if (e.key.toLowerCase() === 'e' && getState().tab === 'prepare') {
+        const s = getState(), o = s.objects.find((x) => x.id === s.selected?.object);
+        if (!s.features.brim_ears) toggleViewOption('labels');
+        else if (o && !o.native && !o.volumes?.length) setState({ gizmo: s.gizmo === 'brimears' ? 'none' : 'brimears' });
+      }
       else if (getState().gizmo === 'color' && /^[1-9]$/.test(e.key)) { if (Number(e.key) <= getState().filamentSlots.length) setPaintTool({ filament: Number(e.key) }); }
       else if (e.key === 'F2') startRename();
       else if (e.key.toLowerCase() === 'v') { const selected = getState().selected; if (selected) togglePrintable(selected.object, selected.allInstances ? undefined : selected.instance); }
@@ -160,6 +170,8 @@ export default function App() {
             <LayerHeightPanel />
             <LayerHeightBar />
             {gizmo === 'measure' && <Suspense fallback={null}><MeasurePanel /></Suspense>}
+            {!empty && <Suspense fallback={null}><CanvasTools /></Suspense>}
+            {gizmo === 'brimears' && <Suspense fallback={null}><BrimEarsPanel /></Suspense>}
             {empty && !loading && <Suspense fallback={null}><EmptyPlate /></Suspense>}
           </div>
           {previewOpened.current && (

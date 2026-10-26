@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { unzip, strFromU8 } from 'fflate';
 import type { Config } from '../api/types';
 import { mutation, responseError } from '../api/access';
-import { getState, newId, printerPreset, resolvePreset, setState, type Instance, type LayerEvent, type LayerRange, type NativeObject, type PlateObject, type Volume, type VolumeType } from '../state/store';
+import { getState, newId, printerPreset, resolvePreset, setState, type Instance, type LayerEvent, type LayerRange, type NativeObject, type PlateObject, type SeamMode, type Volume, type VolumeType } from '../state/store';
 import type { PlateJson } from '../api/types';
 import { instanceBox, instanceMatrix, setNativePlate } from './geometry';
 import { archivePainting, paintJson, type PaintKind } from './paint';
@@ -81,7 +81,7 @@ function plateObject(entry: Json, group: Json[], meshes: THREE.BufferGeometry[],
     return { id: newId(), x, y, z, rotZ, printable: inst.printable !== false, native: { json: inst, x, y, z, rotZ } };
   });
   const parts: Volume[] = volumes.flatMap((v, k) => k === main ? [] : [{
-    id: newId(), name: String(v.name ?? `volume ${k + 1}`), type: String(v.type) as VolumeType,
+    id: newId(), name: String(v.name ?? `volume ${k + 1}`), ...volumeType(v),
     geometry: rawGeometry(meshes[k], frame, v.transform as Rows), matrix: new THREE.Matrix4().elements,
     extruder: Number(v.extruder ?? 0), settings: (v.settings ?? {}) as Config,
     ...(v.paint ? { paint: archivePainting(v.paint as Record<PaintKind, Record<string, string>>) ?? undefined } : {}), native: k,
@@ -103,7 +103,14 @@ export async function nativeGeometry(n: NativeObject): Promise<THREE.BufferGeome
   return rawGeometry(await volumeMesh(n.files[String(v.file)]), new THREE.Matrix4().fromArray(n.frame), v.transform as Rows);
 }
 
-export async function explodeProject(file: File): Promise<{ plates: { index: number; name: string; settings: Config; objects: PlateObject[]; events: LayerEvent[] }[] }> {
+function volumeType(v: Json): { type: VolumeType; seamMode?: SeamMode } {
+  const t = String(v.type);
+  const m = /^precise_seam_(center|left|right|enforced|blocked|neutral)$/.exec(t);
+  if (m) return { type: 'seam', seamMode: m[1] as SeamMode };
+  return t === 'seam' ? { type: 'seam', seamMode: (String(v.seam_mode ?? 'center') as SeamMode) } : { type: t as VolumeType };
+}
+
+export async function explodeProject(file: File): Promise<{ settings: Config; plates: { index: number; name: string; settings: Config; objects: PlateObject[]; events: LayerEvent[] }[] }> {
   const s = getState();
   const fd = new FormData();
   fd.append('operation', 'explode');
@@ -143,7 +150,7 @@ export async function explodeProject(file: File): Promise<{ plates: { index: num
         plate.objects.push(plateObject(o, group, vols.map((v) => meshes.get(String(v.file))!), own));
       }
     }
-    return { plates };
+    return { settings: (record.settings ?? {}) as Config, plates };
   } finally {
     await s.api!.cancel(id);
   }
@@ -177,7 +184,7 @@ function nativeEntry(o: PlateObject, settings: (c: Config) => Record<string, str
     if (!w) return;
     const moved = !new THREE.Matrix4().fromArray(w.matrix).equals(new THREE.Matrix4());
     out.push(volume(k, {
-      name: w.name, type: w.type, settings: settings(w.settings), paint: w.type === 'part' ? nativePaint(w, v.paint) : undefined,
+      name: w.name, type: w.type, ...(w.type === 'seam' ? { seam_mode: w.seamMode ?? 'center' } : {}), settings: settings(w.settings), paint: w.type === 'part' ? nativePaint(w, v.paint) : undefined,
       extruder: w.extruder || undefined,
       ...(moved ? { transform: rows(inverse.clone().multiply(new THREE.Matrix4().fromArray(w.matrix)).multiply(frame).multiply(fromRows(v.transform as Rows))) } : {}),
     }));
@@ -185,7 +192,7 @@ function nativeEntry(o: PlateObject, settings: (c: Config) => Record<string, str
   (o.volumes ?? []).filter((v) => !(v.native !== undefined && pristine.has(v.geometry))).forEach((v, k) => {
     const name = `${prefix}.added${k + 1}.stl`;
     files.push({ name, blob: () => rawStl(v.geometry) });
-    out.push({ file: name, name: v.name, type: v.type, mesh_space: 'volume', transform: rows(inverse.clone().multiply(new THREE.Matrix4().fromArray(v.matrix))),
+    out.push({ file: name, name: v.name, type: v.type, ...(v.type === 'seam' ? { seam_mode: v.seamMode ?? 'center' } : {}), mesh_space: 'volume', transform: rows(inverse.clone().multiply(new THREE.Matrix4().fromArray(v.matrix))),
       ...(Object.keys(v.settings).length ? { settings: settings(v.settings) } : {}), ...(v.extruder ? { extruder: v.extruder } : {}),
       ...(v.type === 'part' && paintJson(v) ? { paint: paintJson(v) } : {}) });
   });
@@ -236,7 +243,7 @@ function towers(config: Config, plates: number[]): Record<number, [number, numbe
 export async function openExplodedProject(file: File, adopt: (config: Config, slots: number, plateKeys: Set<string>) => void) {
   const { readProject } = await import('./threemf');
   const { items, materials } = await readProject(file);
-  const { plates } = await explodeProject(file);
+  const { settings, plates } = await explodeProject(file);
   if (!plates.some((p) => p.objects.length)) throw new Error('the project has no printable objects');
   const slots = Math.max(1, materials.colours.length, ...items.map((i) => i.extruder));
   adopt(materials.config, slots, new Set(materials.plates.flatMap((p) => Object.keys(p.settings))));
@@ -246,6 +253,7 @@ export async function openExplodedProject(file: File, adopt: (config: Config, sl
     projectPlates: plates.map((p) => ({ index: p.index, name: p.name, origin: [0, 0] as [number, number], settings: p.settings, objects: p.objects, events: p.events })),
     filamentSlots: Array.from({ length: slots }, (_, i) => st.filamentSlots[i] ?? st.filamentSlots[0] ?? ''),
     slotColours: materials.colours.map((c) => c || undefined), flush: { matrix: materials.matrix, multiplier: materials.multiplier },
-    selected: null, processScope: 'global', wipeTowerPos: towers(materials.config, plates.map((p) => p.index)),
+    selected: null, processScope: 'global',
+    wipeTowerPos: towers(settings.wipe_tower_x !== undefined ? settings : materials.config, plates.map((p) => p.index)),
   }));
 }
