@@ -27,6 +27,8 @@ export class PreviewData {
   extruder = new Uint8Array(0);
   cp = new Uint8Array(0);
   de = new Float32Array(0);
+  actual = new Float32Array(0);
+  clearance = new Float32Array(0);
   feed = new Float32Array(0);
   width = new Float32Array(0);
   height = new Float32Array(0);
@@ -69,6 +71,8 @@ export class PreviewData {
     this.extruder = new Uint8Array(n);
     this.cp = new Uint8Array(n);
     this.de = new Float32Array(n);
+    this.actual = new Float32Array(h.extended ? n : 0);
+    this.clearance = new Float32Array(h.extended ? n : 0);
     this.feed = new Float32Array(n);
     this.width = new Float32Array(n);
     this.height = new Float32Array(n);
@@ -87,6 +91,10 @@ export class PreviewData {
     this.extruder.set(c.extruder, s);
     this.cp.set(c.cp, s);
     this.de.set(c.de, s);
+    if (c.actual.length) {
+      this.actual.set(c.actual, s);
+      this.clearance.set(c.clearance, s);
+    }
     this.feed.set(c.feed, s);
     this.width.set(c.width, s);
     this.height.set(c.height, s);

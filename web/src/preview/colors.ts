@@ -116,18 +116,24 @@ export function roundToBin(value: number): number {
 
 export type ViewType =
   | 'feature' | 'filament' | 'speed' | 'height' | 'width' | 'flow' | 'layer_time' | 'layer_time_log'
-  | 'fan' | 'temperature' | 'acceleration' | 'jerk' | 'pressure_advance' | 'nonplanar';
+  | 'fan' | 'temperature' | 'acceleration' | 'jerk' | 'pressure_advance' | 'nonplanar'
+  | 'actual_speed' | 'actual_flow' | 'clearance';
+
+export const EXTENDED_VIEWS = new Set<ViewType>(['actual_speed', 'actual_flow', 'clearance']);
 
 export const VIEW_TYPES: { key: ViewType; label: string }[] = [
   { key: 'feature', label: 'Line Type' },
   { key: 'filament', label: 'Filament' },
   { key: 'speed', label: 'Speed' },
+  { key: 'actual_speed', label: 'Actual Speed' },
   { key: 'acceleration', label: 'Acceleration' },
   { key: 'jerk', label: 'Jerk' },
+  { key: 'clearance', label: 'Clearance' },
   { key: 'nonplanar', label: 'Non-planar' },
   { key: 'height', label: 'Layer Height' },
   { key: 'width', label: 'Line Width' },
   { key: 'flow', label: 'Flow' },
+  { key: 'actual_flow', label: 'Actual Flow' },
   { key: 'layer_time', label: 'Layer Time' },
   { key: 'layer_time_log', label: 'Layer Time (log)' },
   { key: 'fan', label: 'Fan Speed' },
@@ -173,6 +179,8 @@ export interface Ranges {
   height: ColorRange;
   width: ColorRange;
   speed: ColorRange;
+  actualSpeed: ColorRange;
+  actualFlow: ColorRange;
   fan: ColorRange;
   temperature: ColorRange;
   flow: ColorRange;
@@ -188,13 +196,14 @@ export interface Ranges {
 
 export function computeRanges(d: PreviewData, vis: Visibility): Ranges {
   const r: Ranges = {
-    height: new ColorRange(), width: new ColorRange(), speed: new ColorRange(), fan: new ColorRange(),
+    height: new ColorRange(), width: new ColorRange(), speed: new ColorRange(), actualSpeed: new ColorRange(), actualFlow: new ColorRange(), fan: new ColorRange(),
     temperature: new ColorRange(), flow: new ColorRange(), acceleration: new ColorRange(), jerk: new ColorRange(), pa: new ColorRange(),
     layerTime: new ColorRange(), layerTimeLog: new ColorRange(true), shell: new ColorRange(),
     beadHeight: new ColorRange(), slope: new ColorRange(),
   };
   const s = d.states!;
   const custom = !vis.hiddenRoles.has(18);
+  const ext = d.actual.length > 0;
   for (let i = 1; i < d.loaded; ++i) {
     const t = d.type[i] & 0x7f;
     const st = d.state[i];
@@ -203,6 +212,7 @@ export function computeRanges(d: PreviewData, vis: Visibility): Ranges {
       if (d.role[i] !== 18 || custom) {
         r.width.update(roundToBin(d.width[i]));
         r.flow.update(roundToBin(d.mm3[i] * d.feed[i]));
+        if (ext) r.actualFlow.update(roundToBin(d.mm3[i] * d.actual[i]));
       }
       r.fan.update(roundToBin(s.fan[st]));
       r.temperature.update(roundToBin(s.temp[st]));
@@ -215,6 +225,7 @@ export function computeRanges(d: PreviewData, vis: Visibility): Ranges {
     }
     if ((t === MoveType.Travel && vis.travel) || (t === MoveType.Wipe && vis.wipe) || t === MoveType.Extrude) {
       r.speed.update(d.feed[i]);
+      if (ext) r.actualSpeed.update(d.actual[i]);
       r.acceleration.update(s.accel[st]);
       r.jerk.update(s.jerk[st]);
     }
@@ -232,6 +243,20 @@ export interface ColorContext {
   ranges: Ranges;
   extruderColors: RGB[];
   colorPrintColors: RGB[];
+  clearance?: { margin: number; floor: number };
+}
+
+export function clearanceColor(clearance: number, margin: number, floor: number): RGB {
+  if (Number.isNaN(clearance)) return [128, 128, 128];
+  const red: RGB = [220, 55, 45], amber: RGB = [245, 180, 45], green: RGB = [35, 175, 100];
+  if (clearance <= 0) return red;
+  floor = Math.max(floor, 0.001);
+  if (clearance >= floor) return green;
+  margin = Math.min(Math.max(margin, 0.001), floor);
+  const low = clearance < margin;
+  const a = low ? red : amber, b = low ? amber : green;
+  const t = low ? clearance / margin : (clearance - margin) / (floor - margin);
+  return [0, 1, 2].map((k) => Math.trunc(a[k] + Math.fround(t) * (b[k] - a[k]))) as RGB;
 }
 
 export function hexToRgb(h: string | undefined): RGB {
@@ -266,8 +291,13 @@ export function colorVertices(d: PreviewData, c: ColorContext, out: Uint8Array, 
     if (t === MoveType.Noop) { put(i, DUMMY_COLOR); continue; }
     const extr = t === MoveType.Extrude;
     const travel = t === MoveType.Travel;
+    if (view === 'clearance' && (extr || travel || t === MoveType.Wipe)) {
+      const sc = c.clearance ?? { margin: 0.3, floor: 1 };
+      put(i, clearanceColor(d.clearance.length ? d.clearance[i] : NaN, sc.margin, sc.floor));
+      continue;
+    }
     if (view === 'nonplanar' && extr) { put(i, s.shell[st] === 0xff ? NONPLANAR_PLANAR_COLOR : npColor(i, st)); continue; }
-    if ((t === MoveType.Wipe && view !== 'speed' && view !== 'acceleration' && view !== 'jerk') || (t >= MoveType.Retract && t <= MoveType.CustomGCode)) {
+    if ((t === MoveType.Wipe && view !== 'speed' && view !== 'actual_speed' && view !== 'acceleration' && view !== 'jerk') || (t >= MoveType.Retract && t <= MoveType.CustomGCode)) {
       put(i, optionColor(t));
       continue;
     }
@@ -277,6 +307,8 @@ export function colorVertices(d: PreviewData, c: ColorContext, out: Uint8Array, 
       case 'height': col = travel ? optionColor(t) : r.height.colorAt(d.height[i]); break;
       case 'width': col = travel ? optionColor(t) : r.width.colorAt(d.width[i]); break;
       case 'speed': col = r.speed.colorAt(d.feed[i]); break;
+      case 'actual_speed': col = r.actualSpeed.colorAt(d.actual.length ? d.actual[i] : 0); break;
+      case 'actual_flow': col = travel ? optionColor(t) : r.actualFlow.colorAt(d.actual.length ? d.mm3[i] * d.actual[i] : 0); break;
       case 'acceleration': col = r.acceleration.colorAt(s.accel[st]); break;
       case 'jerk': col = r.jerk.colorAt(s.jerk[st]); break;
       case 'fan': col = travel ? optionColor(t) : r.fan.colorAt(s.fan[st]); break;

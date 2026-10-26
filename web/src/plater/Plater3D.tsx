@@ -2,11 +2,12 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { CameraViews } from './CameraViews';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
-import { effectiveConfig, getState, printerPreset, setPaint, setState, subscribeStore, updateInstance, updateObject, updateVolume, useStore, type State, type VolumeType } from '../state/store';
+import { effectiveConfig, getState, markStale, printerPreset, setPaint, setState, subscribeStore, updateInstance, updateObject, updateVolume, useStore, type State, type VolumeType } from '../state/store';
 import { PaintView } from './paintView';
 import { viewOptions, subscribeViewOptions } from './viewOptions';
 import { brush, fill as fillPaint, heightRange, HEIGHT, isPaint, overhangFacets, overhangGeometry, paintOf, paintTool, paintTriangle, PAINT_STEP, RADIUS, setPaintTool, subscribePaintTool, type PaintKind, type Painting } from './paint';
-import { beginStep } from '../state/history';
+import { beginStep, undoable } from '../state/history';
+import { TowerView } from './wipeTower';
 import { filamentColor } from './filamentColor';
 import { bedKey as bedCacheKey, buildBed, sceneColors, showBedFor } from './Bed';
 import { subscribeTheme } from '../theme';
@@ -579,6 +580,9 @@ export default function Plater3D() {
       return ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), p) ? p : null;
     };
     let drag: { object: number; instance: number; dx: number; dy: number; moved: boolean } | null = null;
+    const tower = new TowerView();
+    scene.add(tower.group);
+    let towerDrag: { dx: number; dy: number; moved: boolean } | null = null;
     let downAt: { x: number; y: number } | null = null;
     const touches = new Set<number>();
     const onTouchDown = (ev: PointerEvent) => {
@@ -608,6 +612,16 @@ export default function Plater3D() {
       }
       downAt = { x: ev.clientX, y: ev.clientY };
       const hit = pick(ev);
+      const towerHit = tower.hit(ray);
+      if (towerHit && (!hit || towerHit.distance < hit.distance)) {
+        const p = bedPoint(), at = tower.corner(getState());
+        if (p && at && getState().gizmo !== 'measure') {
+          towerDrag = { dx: at[0] - p.x, dy: at[1] - p.y, moved: false };
+          controls.enabled = false;
+          renderer.domElement.setPointerCapture(ev.pointerId);
+        }
+        return;
+      }
       if (!hit) return;
       const { object, instance } = hit.object.userData as { object: number; instance: number };
       setState({ selected: { object, instance } });
@@ -620,6 +634,16 @@ export default function Plater3D() {
       renderer.domElement.setPointerCapture(ev.pointerId);
     };
     const onMove = (ev: PointerEvent) => {
+      if (towerDrag) {
+        setRay(ev);
+        const p = bedPoint();
+        if (!p) return;
+        towerDrag.moved = true;
+        tower.dragAt = [p.x + towerDrag.dx, p.y + towerDrag.dy];
+        tower.sync(getState());
+        render();
+        return;
+      }
       if (!drag) return;
       setRay(ev);
       const p = bedPoint();
@@ -632,6 +656,12 @@ export default function Plater3D() {
       if (!drag && downAt && Math.hypot(ev.clientX - downAt.x, ev.clientY - downAt.y) < 4 && !tc.dragging && !pick(ev))
         setState({ selected: null });
       if (drag?.moved) { endStep?.(); endStep = null; }
+      if (towerDrag?.moved && tower.dragAt) {
+        const t = getState().wipeTower, at = t ? TowerView.inBed(tower.dragAt, t, parsePoints(printerPreset(getState())?.config.printable_area)) : tower.dragAt;
+        undoable('Move', () => setState((st) => ({ wipeTowerPos: { ...st.wipeTowerPos, [st.plateIndex]: at }, job: markStale(st.job) })));
+      }
+      tower.dragAt = null;
+      towerDrag = null;
       drag = null;
       downAt = null;
       controls.enabled = true;
@@ -915,8 +945,14 @@ export default function Plater3D() {
     };
 
     let last: State | null = null;
+    let lastTower: [unknown, unknown, unknown] = [null, null, null];
     const sync = () => {
       const s = getState();
+      if (s.wipeTower !== lastTower[0] || s.wipeTowerPos !== lastTower[1] || s.project !== lastTower[2]) {
+        lastTower = [s.wipeTower, s.wipeTowerPos, s.project];
+        tower.sync(s);
+        render();
+      }
       if (last && (s.gizmo !== last.gizmo || s.objects !== last.objects || s.selected !== last.selected) && (measureState().first || measureState().hover || last.gizmo === 'measure'))
         setMeasure({});
       if (last && s.objects === last.objects && s.selected === last.selected && s.printer === last.printer &&

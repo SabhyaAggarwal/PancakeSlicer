@@ -209,6 +209,19 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			}
 			req.ArrangeSpacing = v
 		}
+		if raw := r.FormValue("arrange_multi_materials"); raw != "" {
+			if !s.cfg.Features.ArrangeMaterials || raw != "0" && raw != "1" {
+				fail(w, 400, "arrange_multi_materials must be 0 or 1 and requires a tool with --arrange-multi-materials")
+				return
+			}
+			req.ArrangeMaterials = raw
+		}
+	case "wipe-tower":
+		if !s.cfg.Features.WipeTower {
+			fail(w, 400, "the prime tower estimate requires a tool with --wipe-tower-only")
+			return
+		}
+		req.WipeTower = true
 	case "cut":
 		if !s.cfg.Features.Cut {
 			fail(w, 400, "cutting requires a tool with --cut-only")
@@ -254,6 +267,13 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		req.Floating = true
+	}
+	if r.FormValue("allow_mixed_temperatures") != "" {
+		if !s.cfg.Features.MixedTemperatures {
+			fail(w, 400, "allow_mixed_temperatures requires a tool with --allow-mixed-temperatures")
+			return
+		}
+		req.AllowMixedTemperatures = true
 	}
 	if r.URL.Path == "/api/patch-preview" {
 		if !s.cfg.Features.PatchPreview {
@@ -428,6 +448,10 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 				fail(w, 400, "variable layer height requires a tool with plate-JSON layer height profiles")
 				return
 			}
+			if obj["ranges"] != nil && !s.cfg.Features.Ranges {
+				fail(w, 400, "height range modifiers require a tool with plate-JSON ranges")
+				return
+			}
 			for _, v := range volumes {
 				if !names[v.File] {
 					fail(w, 400, "plate volumes must reference uploaded basenames")
@@ -552,15 +576,15 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "cut requires one STL without plate JSON or project output")
 		return
 	}
-	if req.Arrange && (!req.Plate || req.Output != "gcode") {
-		fail(w, 400, "arrange requires plate JSON")
+	if (req.Arrange || req.WipeTower) && (!req.Plate || req.Output != "gcode") {
+		fail(w, 400, "arrange and the prime tower estimate require plate JSON")
 		return
 	}
 	if req.Orient && (req.Output == "3mf" || req.Plate || len(req.Files) != 1 || !strings.EqualFold(filepath.Ext(req.Files[0]), ".stl")) {
 		fail(w, 400, "orient requires one STL without plate JSON or project output")
 		return
 	}
-	if !req.Orient && !req.Arrange && req.Cut == "" && req.Output != "3mf" && req.Output != "patch-preview" {
+	if !req.Orient && !req.Arrange && !req.WipeTower && req.Cut == "" && req.Output != "3mf" && req.Output != "patch-preview" {
 		if err := validatePlateBounds(filepath.Join(j.Dir, "input"), req, vendor.machines[req.Printer], rawPlate); err != nil {
 			fail(w, 400, err.Error())
 			return

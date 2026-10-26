@@ -150,6 +150,16 @@ function FilamentSection() {
       events: st.events.filter((e) => e.type !== 'change' || Number(e.text) < st.filamentSlots.length),
     })));
   const flushChanged = useStore((st) => flushModified(st));
+  const amsPrinter = useStore((st) => {
+    const bambu = st.printers.filter((p) => p.kind === 'bambu-lan');
+    return (bambu.find((p) => p.name === localStorage.getItem('orca.web.sendPrinter')) ?? bambu[0])?.name;
+  });
+  const [syncing, setSyncing] = useState(false);
+  const sync = () => {
+    if (!amsPrinter) return;
+    setSyncing(true);
+    void import('../plater/amsSync').then((m) => m.syncAms(amsPrinter)).finally(() => setSyncing(false));
+  };
   const pickColour = (i: number, colour: string) =>
     undoable('Change filament colour', () => setState((st) => {
       const slotColours = [...st.slotColours];
@@ -169,6 +179,7 @@ function FilamentSection() {
             Flushing volumes
           </button>
         )}
+        {amsPrinter && <IconButton icon="ams_fila_sync" title={`Synchronize filament list from AMS (${amsPrinter})`} onClick={sync} disabled={syncing} />}
         {slots.length > 1 && <IconButton icon="delete_filament" title="Remove last filament" onClick={remove} />}
         <IconButton icon="add_filament" title="Add one filament" onClick={add} disabled={slots.length >= 64} />
       </SectionTitle>

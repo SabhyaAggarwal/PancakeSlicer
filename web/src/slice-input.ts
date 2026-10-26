@@ -42,6 +42,8 @@ export function overrides(s = getState()): Config {
   const plate = s.projectPlates.find((p) => p.index === s.plateIndex);
   const plateBed = plate?.settings.curr_bed_type;
   if (plateBed && !s.dirty.machine.curr_bed_type) out.curr_bed_type = plateBed;
+  const tower = !s.project ? s.wipeTowerPos[s.plateIndex] : undefined;
+  if (tower) [out.wipe_tower_x, out.wipe_tower_y] = [[tower[0]], [tower[1]]];
   if (plate && !s.project)
     for (const k of ['print_sequence', 'spiral_mode', 'first_layer_print_sequence', 'other_layers_print_sequence', 'other_layers_print_sequence_nums'])
       if (plate.settings[k] !== undefined) out[k] = plate.settings[k];
@@ -87,6 +89,7 @@ export function jobFields(s: State, saving = false) {
     overrides: overrides(saving ? { ...s, projectPlates: [] } : s),
     events: s.events.map(eventArg),
     output: outputKind(s),
+    ...(s.mixedTemperatures && s.features.mixed_temperatures ? { allow_mixed_temperatures: true } : {}),
   };
 }
 

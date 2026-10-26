@@ -88,8 +88,10 @@ class Bytes {
   }
 }
 
-function allocChunk(start: number, count: number): MoveChunk {
+function allocChunk(start: number, count: number, extended: boolean): MoveChunk {
+  const ext = extended ? count : 0;
   return {
+    actual: new Float32Array(ext), clearance: new Float32Array(ext),
     start, count, pos: new Float32Array(count * 4), type: new Uint8Array(count), role: new Uint8Array(count),
     extruder: new Uint8Array(count), cp: new Uint8Array(count), de: new Float32Array(count), feed: new Float32Array(count),
     width: new Float32Array(count), height: new Float32Array(count), mm3: new Float32Array(count),
@@ -98,6 +100,7 @@ function allocChunk(start: number, count: number): MoveChunk {
 }
 
 const near = (a: number, b: number) => Math.abs(a - b) <= 0.05 * Math.max(Math.abs(a), Math.abs(b));
+const sameClearance = (a: number, b: number) => (Number.isNaN(a) ? Number.isNaN(b) : Math.abs(a - b) <= 0.05);
 
 function buildLod(c: MoveChunk, prev: [number, number, number]): { lod: Uint32Array; blocks: Uint32Array } {
   const out: number[] = [];
@@ -139,7 +142,8 @@ function buildLod(c: MoveChunk, prev: [number, number, number]): { lod: Uint32Ar
       let j = i + 1;
       while (j < b1 && (c.type[j] & 0x7f) === t && c.role[j] === c.role[i] && c.extruder[j] === c.extruder[i] &&
              c.cp[j] === c.cp[i] && c.layer[j] === c.layer[i] && c.state[j] === c.state[i] && c.feed[j] === c.feed[i] &&
-             near(c.width[j], c.width[i]) && near(c.height[j], c.height[i]) && near(c.mm3[j], c.mm3[i])) ++j;
+             near(c.width[j], c.width[i]) && near(c.height[j], c.height[i]) && near(c.mm3[j], c.mm3[i]) &&
+             (!c.actual.length || near(c.actual[j], c.actual[i]) && sameClearance(c.clearance[j], c.clearance[i]))) ++j;
       const va = c.start + i - 1, vb = c.start + j - 1;
       keep[va - c.start + 1] = 1;
       keep[vb - c.start + 1] = 1;
@@ -182,7 +186,7 @@ async function run(src: WorkerIn) {
         if (final) throw new Error('truncated move stream (moves)');
         return;
       }
-      const c = allocChunk(parsed, n);
+      const c = allocChunk(parsed, n, h.extended);
       const dv = q.view(n * h.moveStride);
       for (let i = 0, o = 0; i < n; ++i, o += h.moveStride) {
         const v = parsed + i;
@@ -201,6 +205,10 @@ async function run(src: WorkerIn) {
         c.height[i] = dv.getFloat32(o + 32, true);
         c.mm3[i] = dv.getFloat32(o + 36, true);
         c.time[i] = dv.getFloat32(o + 40, true);
+        if (h.extended) {
+          c.actual[i] = dv.getFloat32(o + 52, true);
+          c.clearance[i] = dv.getFloat32(o + 56, true);
+        }
         const layerId = dv.getUint32(o + 44, true);
         let st = dv.getUint32(o + 48, true);
         if (st >= h.stateCount) st = 0;
@@ -226,7 +234,7 @@ async function run(src: WorkerIn) {
       const { lod, blocks } = buildLod(c, prev);
       prev = [c.pos[(n - 1) * 4], c.pos[(n - 1) * 4 + 1], c.pos[(n - 1) * 4 + 2]];
       parsed += n;
-      const buffers = [c.pos, c.type, c.role, c.extruder, c.cp, c.de, c.feed, c.width, c.height, c.mm3, c.time, c.state, c.gcode, c.layer, lod, blocks]
+      const buffers = [c.pos, c.type, c.role, c.extruder, c.cp, c.de, c.actual, c.clearance, c.feed, c.width, c.height, c.mm3, c.time, c.state, c.gcode, c.layer, lod, blocks]
         .map((a) => a.buffer as ArrayBuffer);
       post({ kind: 'chunk', chunk: c, layers: layers.map((l) => ({ ...l })), lod, lodBlocks: blocks, bytes: received }, buffers);
     }

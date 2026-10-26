@@ -33,35 +33,38 @@ const (
 func (s JobState) Finished() bool { return s == StateDone || s == StateFailed || s == StateCancelled }
 
 type JobRequest struct {
-	SourcePlates      []projectPlate `json:"source_plates,omitempty"`
-	PlateIndex        int            `json:"plate_index,omitempty"`
-	Orient            bool           `json:"orient,omitempty"`
-	OrientScores      bool           `json:"orient_scores,omitempty"`
-	Arrange           bool           `json:"arrange,omitempty"`
-	ArrangeSpacing    float64        `json:"arrange_spacing,omitempty"`
-	ArrangeNoRotation bool           `json:"arrange_no_rotation,omitempty"`
-	Cut               string         `json:"cut,omitempty"`
-	CutKeep           string         `json:"cut_keep,omitempty"`
-	CutPlaceLower     bool           `json:"cut_place_lower,omitempty"`
-	Vendor            string         `json:"vendor"`
-	Printer           string         `json:"printer"`
-	Process           string         `json:"process"`
-	Filaments         []string       `json:"filaments"`
-	Overrides         [][2]string    `json:"overrides"`
-	Events            []string       `json:"events"`
-	Files             []string       `json:"files"`
-	Plate             bool           `json:"plate"`
-	Output            string         `json:"output"`
-	Filename          string         `json:"filename,omitempty"`
-	ProjectSettings   [][2]string    `json:"project_settings,omitempty"`
-	ForcePlanar       bool           `json:"force_planar,omitempty"`
-	Floating          bool           `json:"floating,omitempty"`
-	Calib             string         `json:"calib,omitempty"`
-	CalibParams       string         `json:"calib_params,omitempty"`
-	CalibHead         string         `json:"calib_head,omitempty"`
-	Edits             bool           `json:"edits,omitempty"`
-	Priority          string         `json:"priority,omitempty"`
-	PreviewBudget     float64        `json:"preview_budget,omitempty"`
+	SourcePlates           []projectPlate `json:"source_plates,omitempty"`
+	PlateIndex             int            `json:"plate_index,omitempty"`
+	Orient                 bool           `json:"orient,omitempty"`
+	OrientScores           bool           `json:"orient_scores,omitempty"`
+	Arrange                bool           `json:"arrange,omitempty"`
+	ArrangeSpacing         float64        `json:"arrange_spacing,omitempty"`
+	ArrangeNoRotation      bool           `json:"arrange_no_rotation,omitempty"`
+	ArrangeMaterials       string         `json:"arrange_materials,omitempty"`
+	WipeTower              bool           `json:"wipe_tower,omitempty"`
+	AllowMixedTemperatures bool           `json:"allow_mixed_temperatures,omitempty"`
+	Cut                    string         `json:"cut,omitempty"`
+	CutKeep                string         `json:"cut_keep,omitempty"`
+	CutPlaceLower          bool           `json:"cut_place_lower,omitempty"`
+	Vendor                 string         `json:"vendor"`
+	Printer                string         `json:"printer"`
+	Process                string         `json:"process"`
+	Filaments              []string       `json:"filaments"`
+	Overrides              [][2]string    `json:"overrides"`
+	Events                 []string       `json:"events"`
+	Files                  []string       `json:"files"`
+	Plate                  bool           `json:"plate"`
+	Output                 string         `json:"output"`
+	Filename               string         `json:"filename,omitempty"`
+	ProjectSettings        [][2]string    `json:"project_settings,omitempty"`
+	ForcePlanar            bool           `json:"force_planar,omitempty"`
+	Floating               bool           `json:"floating,omitempty"`
+	Calib                  string         `json:"calib,omitempty"`
+	CalibParams            string         `json:"calib_params,omitempty"`
+	CalibHead              string         `json:"calib_head,omitempty"`
+	Edits                  bool           `json:"edits,omitempty"`
+	Priority               string         `json:"priority,omitempty"`
+	PreviewBudget          float64        `json:"preview_budget,omitempty"`
 }
 
 type Event struct {
@@ -541,7 +544,13 @@ func (m *JobManager) toolArgs(j *Job) []string {
 		if r.ArrangeNoRotation {
 			args = append(args, "--arrange-no-rotation")
 		}
+		if r.ArrangeMaterials != "" {
+			args = append(args, "--arrange-multi-materials", r.ArrangeMaterials)
+		}
 		return append(args, "--plate", filepath.Join(in, "plate.json"))
+	}
+	if r.WipeTower {
+		return append(args, "--wipe-tower-only", j.OutputPath("json"), "--plate", filepath.Join(in, "plate.json"))
 	}
 	if r.Output == "patch-preview" {
 		args = append(args, "--patch-preview", j.OutputPath("json"), "--patch-preview-budget", strconv.FormatFloat(r.PreviewBudget, 'f', -1, 64))
@@ -552,6 +561,9 @@ func (m *JobManager) toolArgs(j *Job) []string {
 	}
 	if m.cfg.Features.MovesOut {
 		args = append(args, "--moves-out", j.MovesPath())
+		if m.cfg.Features.MovesExtended {
+			args = append(args, "--moves-extended")
+		}
 	}
 	if m.cfg.Features.Progress {
 		args = append(args, "--progress")
@@ -575,6 +587,9 @@ func (m *JobManager) toolArgs(j *Job) []string {
 	}
 	if r.Floating {
 		args = append(args, "--floating")
+	}
+	if r.AllowMixedTemperatures {
+		args = append(args, "--allow-mixed-temperatures")
 	}
 	if r.Edits {
 		args = append(args, "--edit", filepath.Join(in, "edits.json"))
@@ -742,7 +757,7 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 		j.setState(StateFailed, "the slicer output could not be read: "+sanitizeToolError(recordErr))
 	default:
 		kind := j.Request.Output
-		if j.Request.Arrange {
+		if j.Request.Arrange || j.Request.WipeTower {
 			kind = "json"
 		}
 		if kind == "patch-preview" {

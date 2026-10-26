@@ -3,11 +3,12 @@ import { Suspense, lazy, useEffect, useMemo, useReducer, useRef, useState } from
 import { getState, printerPreset, useStore } from '../state/store';
 import { layerOfMove, peekJump, setGcodeListener, setJumpListener, setLoadedStream, takeGcode, takeJump } from '../preview/jump';
 import { setCompareWanted, useCompareWanted } from '../compare';
-import { computeRanges, drawMasks, hexToRgb, type ColorContext, type NonplanarColor, type Ranges, type ViewType, type Visibility } from '../preview/colors';
+import { computeRanges, drawMasks, EXTENDED_VIEWS, hexToRgb, type ColorContext, type NonplanarColor, type Ranges, type ViewType, type Visibility } from '../preview/colors';
 import { loadMoves, type PreviewData } from '../preview/data';
 import { NonplanarHover, explain, type HoverInfo } from '../preview/hover';
 import { PreviewScene } from '../preview/PreviewScene';
 import { surfaceGrid } from '../preview/surface-grid';
+import { clearanceScale, loadClearanceScale } from '../preview/clearance';
 import { Legend } from './PreviewLegend';
 import { LayerSlider, MoveSlider } from './PreviewSliders';
 import { EventList, EventMenu, eventTicks } from './LayerEvents';
@@ -23,7 +24,7 @@ export const jobColours = () => getState().filamentSlots.map((_, i) => filamentC
 
 export function colorContext(d: PreviewData, ui: Pick<PreviewUi, 'view' | 'nonplanar'>, ranges: Ranges): ColorContext {
   const extruderColors = (d.meta.extruder_colors?.length ? d.meta.extruder_colors : jobColours()).map(hexToRgb);
-  return { view: ui.view, nonplanar: ui.nonplanar, ranges, extruderColors, colorPrintColors: (d.meta.color_print_colors ?? []).map(hexToRgb) };
+  return { view: ui.view, nonplanar: ui.nonplanar, ranges, extruderColors, colorPrintColors: (d.meta.color_print_colors ?? []).map(hexToRgb), clearance: clearanceScale() };
 }
 
 let current: { key: string; data: PreviewData; cancel(): void } | null = null;
@@ -265,6 +266,13 @@ export function PreviewView() {
   const record = data?.sourceUrl && job.id && api && data.sourceUrl === api.movesUrl(job.id) ? job.status?.record : undefined;
   const comparing = compare && !!record && !job.stale;
   useEffect(() => sceneRef.current?.setSurface(ui.surface ? surfaceGrid(record) : null), [ui.surface, record]);
+  useEffect(() => {
+    void loadClearanceScale(record).then((changed) => { if (changed && data?.header) { recolor(data); bump(); } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [record]);
+  useEffect(() => {
+    if (data?.header && !data.header.extended && EXTENDED_VIEWS.has(ui.view)) setUi((u) => ({ ...u, view: 'feature' }));
+  }, [data, ui.view]);
   const status = job.state === 'running' || job.state === 'submitting'
     ? slicingText(job, plateIndex)
     : !data && !source() && !dropped

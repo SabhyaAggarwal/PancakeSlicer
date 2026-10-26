@@ -14,32 +14,37 @@ import (
 )
 
 type ToolFeatures struct {
-	ColourChange   map[string]bool `json:"colour_change"`
-	PlateIndex     bool            `json:"plate_index"`
-	PlatePlacement bool            `json:"plate_placement"`
-	DumpOptions    bool            `json:"dump_options"`
-	DumpPresets    bool            `json:"dump_presets"`
-	Progress       bool            `json:"progress"`
-	MovesOut       bool            `json:"moves_out"`
-	ObjectSettings bool            `json:"object_settings"`
-	Step           bool            `json:"step"`
-	Edit           bool            `json:"edit"`
-	ForcePlanar    bool            `json:"force_planar"`
-	Cut            bool            `json:"cut"`
-	PatchPreview   bool            `json:"patch_preview"`
-	SurfaceGrid    bool            `json:"surface_grid"`
-	Calib          bool            `json:"calib"`
-	Volumes        bool            `json:"volumes"`
-	PresetCompat   bool            `json:"preset_compat"`
-	OneShot        bool            `json:"oneshot"`
-	MeshPlates     bool            `json:"mesh_plates"`
-	Paint          bool            `json:"paint"`
-	LayerProfile   bool            `json:"layer_profile"`
-	Arrange        bool            `json:"arrange"`
-	ProjectVolumes bool            `json:"project_volumes"`
-	ProjectPaint   bool            `json:"project_paint"`
-	OrientScores   bool            `json:"orient_scores"`
-	Floating       bool            `json:"floating"`
+	ColourChange      map[string]bool `json:"colour_change"`
+	PlateIndex        bool            `json:"plate_index"`
+	PlatePlacement    bool            `json:"plate_placement"`
+	DumpOptions       bool            `json:"dump_options"`
+	DumpPresets       bool            `json:"dump_presets"`
+	Progress          bool            `json:"progress"`
+	MovesOut          bool            `json:"moves_out"`
+	ObjectSettings    bool            `json:"object_settings"`
+	Step              bool            `json:"step"`
+	Edit              bool            `json:"edit"`
+	ForcePlanar       bool            `json:"force_planar"`
+	Cut               bool            `json:"cut"`
+	PatchPreview      bool            `json:"patch_preview"`
+	SurfaceGrid       bool            `json:"surface_grid"`
+	Calib             bool            `json:"calib"`
+	Volumes           bool            `json:"volumes"`
+	PresetCompat      bool            `json:"preset_compat"`
+	OneShot           bool            `json:"oneshot"`
+	MeshPlates        bool            `json:"mesh_plates"`
+	Paint             bool            `json:"paint"`
+	LayerProfile      bool            `json:"layer_profile"`
+	Arrange           bool            `json:"arrange"`
+	ProjectVolumes    bool            `json:"project_volumes"`
+	ProjectPaint      bool            `json:"project_paint"`
+	OrientScores      bool            `json:"orient_scores"`
+	Floating          bool            `json:"floating"`
+	Ranges            bool            `json:"ranges"`
+	MovesExtended     bool            `json:"moves_extended"`
+	MixedTemperatures bool            `json:"mixed_temperatures"`
+	ArrangeMaterials  bool            `json:"arrange_materials"`
+	WipeTower         bool            `json:"wipe_tower"`
 }
 
 type toolOption struct {
@@ -91,6 +96,11 @@ func probeUsage(c Config, f *ToolFeatures) {
 	f.ProjectPaint = strings.Contains(usage, `--edit takes "set_paint"`)
 	f.OrientScores = strings.Contains(usage, "--orient-scores")
 	f.Floating = strings.Contains(usage, "[--floating]")
+	f.Ranges = strings.Contains(usage, `plate JSON objects take "ranges"`)
+	f.MovesExtended = strings.Contains(usage, "--moves-extended")
+	f.MixedTemperatures = strings.Contains(usage, "--allow-mixed-temperatures")
+	f.ArrangeMaterials = strings.Contains(usage, "--arrange-multi-materials")
+	f.WipeTower = strings.Contains(usage, "--wipe-tower-only")
 	if dump, err := toolDump(c, "--dump-presets", "Prusa"); err == nil {
 		f.PresetCompat = bytes.Contains(dump, []byte(`"compatible_printers_evaluated"`))
 	}

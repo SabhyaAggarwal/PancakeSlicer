@@ -62,6 +62,7 @@ export interface PlateJson {
     plate?: number;
     paint?: Record<string, Record<string, string>>;
     layer_height_profile?: number[];
+    ranges?: { z: [number, number]; layer_height: number; settings: Record<string, string> }[];
     settings?: Record<string, string>;
     volumes?: { file: string; type: string; name: string; extruder?: number; settings?: Record<string, string>; paint?: Record<string, Record<string, string>> }[];
   }[];
@@ -87,6 +88,7 @@ export interface JobRequest {
   calib_head?: string;
   force_planar?: boolean;
   floating?: boolean;
+  allow_mixed_temperatures?: boolean;
   priority?: 'low';
   preview_budget?: number;
 }

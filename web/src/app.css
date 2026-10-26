@@ -671,3 +671,6 @@ kbd { font: inherit; font-size: 12px; background: var(--panel-alt); border: 1px 
 .gcode-no { display: inline-block; min-width: 6ch; margin-right: 8px; color: var(--text-dim); text-align: right; }
 .ams-map { display: grid; gap: 4px; margin: 6px 0; }
 .ams-swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--border); flex: none; }
+.range-editor { display: grid; gap: 2px; padding: 4px 8px 8px; }
+.range-editor .prefs-row input { width: 80px; }
+.range-tools { display: flex; gap: 4px; }

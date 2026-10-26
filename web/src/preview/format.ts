@@ -61,6 +61,7 @@ export interface Header {
   stateStride: number;
   layerStride: number;
   metaBytes: number;
+  extended: boolean;
 }
 
 export interface States {
@@ -85,6 +86,8 @@ export interface MoveChunk {
   extruder: Uint8Array;
   cp: Uint8Array;
   de: Float32Array;
+  actual: Float32Array;
+  clearance: Float32Array;
   feed: Float32Array;
   width: Float32Array;
   height: Float32Array;
@@ -120,8 +123,9 @@ export function readHeader(dv: DataView): Header {
     stateCount: dv.getUint32(40, true),
     layerCount: dv.getUint32(44, true),
     metaBytes: u64(48),
+    extended: (dv.getUint32(28, true) & 1) !== 0,
   };
-  if (h.headerSize < 64 || h.moveStride < 52 || h.stateStride < 32 || h.layerStride < 16) throw new Error('bad strides');
+  if (h.headerSize < 64 || h.moveStride < (h.extended ? 60 : 52) || h.stateStride < 32 || h.layerStride < 16) throw new Error('bad strides');
   return h;
 }
 

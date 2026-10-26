@@ -33,6 +33,8 @@ export interface Volume {
   paint?: Partial<Record<PaintKind, Painting>>;
 }
 
+export interface LayerRange { id: number; z: [number, number]; layer_height: number; settings: Config }
+
 export interface PlateObject {
   id: number;
   name: string;
@@ -45,6 +47,7 @@ export interface PlateObject {
   source: File;
   settings: Config;
   volumes?: Volume[];
+  ranges?: LayerRange[];
   paint?: Partial<Record<PaintKind, Painting>>;
   units?: 'inch' | 'meter';
   layerProfile?: number[];
@@ -106,7 +109,8 @@ export interface CutPlane {
 
 export interface State {
   api: Api | null;
-  features: { cut?: boolean; volumes?: boolean; edit?: boolean; mesh_plates?: boolean; paint?: boolean; layer_profile?: boolean; arrange?: boolean; project_volumes?: boolean; project_paint?: boolean; orient_scores?: boolean; floating?: boolean };
+  features: { cut?: boolean; volumes?: boolean; edit?: boolean; mesh_plates?: boolean; paint?: boolean; layer_profile?: boolean; arrange?: boolean; project_volumes?: boolean; project_paint?: boolean; orient_scores?: boolean; floating?: boolean;
+    ranges?: boolean; moves_extended?: boolean; mixed_temperatures?: boolean; arrange_materials?: boolean; wipe_tower?: boolean };
   cut: CutPlane | null;
   loading: string | null;
   machines: SystemPreset[];
@@ -123,10 +127,11 @@ export interface State {
   bedType: string;
   uiMode: OptionMode;
   developerMode: boolean;
+  mixedTemperatures: boolean;
   tab: MainTab;
   dialog: { type: 'machine' | 'filament'; slot: number } | null;
   objects: PlateObject[];
-  selected: { object: number; instance: number; allInstances?: boolean; all?: boolean; volume?: number } | null;
+  selected: { object: number; instance: number; allInstances?: boolean; all?: boolean; volume?: number; range?: number } | null;
   gizmo: Gizmo;
   uniformScale: boolean;
   contextMenu: { x: number; y: number; object?: number; instance?: number; volume?: number } | null;
@@ -155,6 +160,8 @@ export interface State {
   sessionDialog: 'restore' | 'recent' | null;
   orientPrompts: Record<number, OrientPrompt>;
   orientDismissed: number[];
+  wipeTowerPos: Record<number, [number, number]>;
+  wipeTower: WipeTowerEstimate | null;
   orientConfirm: OrientConfirm | null;
   settingsClipboard: Config | null;
 }
@@ -165,6 +172,7 @@ export interface OrientPrompt {
   supportArea: [number, number];
 }
 
+export interface WipeTowerEstimate { x: number; y: number; width: number; depth: number; height: number; brim_width: number }
 export interface OrientSlice { time_s: number | null; support_g: number | null; floating_mm: number | null }
 
 export interface OrientConfirm {
@@ -181,6 +189,8 @@ let state: State = {
   features: {},
   orientPrompts: {},
   orientDismissed: [],
+  wipeTowerPos: {},
+  wipeTower: null,
   orientConfirm: null,
   settingsClipboard: null,
   cut: null,
@@ -199,6 +209,7 @@ let state: State = {
   bedType: '',
   uiMode: 'simple',
   developerMode: (() => { try { return localStorage.getItem('orca.developer_mode') === '1'; } catch { return false; } })(),
+  mixedTemperatures: (() => { try { return localStorage.getItem('orca.enable_high_low_temp_mixed_printing') === '1'; } catch { return false; } })(),
   tab: 'prepare',
   dialog: null,
   objects: [],
@@ -466,7 +477,7 @@ export function removeSelected() {
 
 export function deleteAll() {
   undoable('Delete all', () => setState((s) => !s.project && s.projectPlates.length ? { objects: [], selected: null, job: markStale(s.job) }
-    : { objects: [], selected: null, project: null, projectPlates: [], plateIndex: 1, projectName: null, projectMaterials: null, projectPresets: null, projectNotice: null, job: markStale(s.job) }));
+    : { objects: [], selected: null, project: null, projectPlates: [], plateIndex: 1, wipeTowerPos: {}, projectName: null, projectMaterials: null, projectPresets: null, projectNotice: null, job: markStale(s.job) }));
 }
 
 export function setObjectOption(id: number, key: string, value: ConfigValue) {

@@ -98,6 +98,7 @@ export function CanvasToolbar() {
 function ArrangeOptions({ at }: { at: HTMLElement | null }) {
   const a = useSyncExternalStore(subscribeArrangeSettings, arrangeSettings);
   const hasObjects = useStore((s) => s.objects.length > 0);
+  const canMulti = useStore((s) => !!s.features.arrange_materials);
   const r = at?.getBoundingClientRect();
   return createPortal(
     <div className="manip-panel" role="dialog" aria-label="Arrange options" style={{ position: 'fixed', top: (r?.bottom ?? 40) + 8, left: r?.left ?? 0, zIndex: 5 }}>
@@ -110,6 +111,11 @@ function ArrangeOptions({ at }: { at: HTMLElement | null }) {
         <label className="select-row" style={{ gridColumn: '1 / -1' }}>
           <input type="checkbox" checked={a.rotation} onChange={(e) => setArrangeSettings({ rotation: e.target.checked })} />Auto rotate for arrangement
         </label>
+        {canMulti && (
+          <label className="select-row" style={{ gridColumn: '1 / -1' }}>
+            <input type="checkbox" checked={a.multiMaterials} onChange={(e) => setArrangeSettings({ multiMaterials: e.target.checked })} />Allow multiple materials on same plate
+          </label>
+        )}
         <span style={{ gridColumn: '1 / -1' }} className="menu-sep" />
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>

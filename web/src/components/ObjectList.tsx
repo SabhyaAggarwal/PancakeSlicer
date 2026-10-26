@@ -11,6 +11,7 @@ import { Icon } from './Icon';
 import { STYLE_NAMES, styleOf } from '../style-names';
 import { plateResults } from '../recommend';
 import { canAddPlate, OBJECT_DRAG } from '../plater/plates';
+import { rangeLabel } from '../plater/ranges';
 
 interface SliceRecord {
   objects?: { id: number; name: string; mode?: string; instances?: { id: number; shift_mm?: [number, number] }[] }[];
@@ -225,6 +226,22 @@ export function ObjectList() {
                   </div>
                 );
               })}
+              {!!o.ranges?.length && (
+                <>
+                  <div className="ol-row ol-child ol-group"><Icon name="height_range_layer" size={14} /><span className="ol-text">Layers</span></div>
+                  {o.ranges.map((r) => {
+                    const on = selected?.object === o.id && selected.range === r.id;
+                    const pickRange = () => setState({ selected: { object: o.id, instance: o.instances[0].id, allInstances: true, range: r.id }, processScope: 'objects' });
+                    return (
+                      <div key={`r${r.id}`} className={`ol-row ol-child2 ${on ? 'selected' : ''}`} aria-selected={on} {...rowKeys(pickRange, o.id)} onClick={pickRange}
+                        title={Object.keys(r.settings).length ? Object.keys(r.settings).join(', ') : undefined}>
+                        <Icon name="height_range_layer" size={14} />
+                        <span className="ol-text">{rangeLabel(r)}{Object.keys(r.settings).length ? ` · ${Object.keys(r.settings).length} settings` : ''}</span>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
               {multi && open[o.id] && (
                 <>
                   <div className="ol-row ol-child ol-group">Instances</div>

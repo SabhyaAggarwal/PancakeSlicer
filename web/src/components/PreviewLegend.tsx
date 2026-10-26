@@ -1,13 +1,14 @@
 import { useState, type ReactNode } from 'react';
 import { effectiveConfig, getState } from '../state/store';
 import {
-  CURVED_COLOR, NONPLANAR_COLORS, NONPLANAR_HUES, NONPLANAR_PLANAR_COLOR, OPTION_COLORS, RANGE_PALETTE, ROLE_COLORS, VIEW_TYPES, hexToRgb,
+  CURVED_COLOR, EXTENDED_VIEWS, clearanceColor, NONPLANAR_COLORS, NONPLANAR_HUES, NONPLANAR_PLANAR_COLOR, OPTION_COLORS, RANGE_PALETTE, ROLE_COLORS, VIEW_TYPES, hexToRgb,
   nonplanarIndexColor, type ColorRange, type RGB, type Ranges, type ViewType,
 } from '../preview/colors';
 import type { PreviewData } from '../preview/data';
 import { ROLE_NAMES, shortTime, type PrintStatistics } from '../preview/format';
 import type { PreviewScene } from '../preview/PreviewScene';
 import type { PreviewUi } from './PreviewView';
+import { clearanceScale } from '../preview/clearance';
 
 const css = (c: RGB) => `rgb(${c[0]},${c[1]},${c[2]})`;
 
@@ -130,6 +131,20 @@ export function Legend(props: {
       case 'height': return <RangeRows range={ranges?.height} decimals={2} />;
       case 'width': return <RangeRows range={ranges?.width} decimals={2} />;
       case 'speed': return <RangeRows range={ranges?.speed} decimals={0} title="Speed (mm/s)" />;
+      case 'actual_speed': return <RangeRows range={ranges?.actualSpeed} decimals={0} title="Actual Speed (mm/s)" />;
+      case 'actual_flow': return <RangeRows range={ranges?.actualFlow} decimals={2} title="Actual volumetric flow rate (mm³/s)" />;
+      case 'clearance': {
+        if (!d.clearance.some((v) => !Number.isNaN(v))) return <><div className="lg-sub">Clearance (mm)</div><div className="lg-row">Not checked</div></>;
+        const { margin, floor } = clearanceScale();
+        return (
+          <>
+            <div className="lg-sub">Clearance (mm)</div>
+            {[floor, Math.min(margin, floor), 0].map((v, k) => (
+              <div className="lg-row" key={k}><Swatch c={clearanceColor(v, margin, floor)} /><span>{v.toFixed(3)}</span></div>
+            ))}
+          </>
+        );
+      }
       case 'acceleration': return <RangeRows range={ranges?.acceleration} decimals={0} title="Acceleration (mm/s²)" />;
       case 'jerk': return <RangeRows range={ranges?.jerk} decimals={0} title="Jerk (mm/s)" />;
       case 'flow': return <RangeRows range={ranges?.flow} decimals={2} title="Flow (mm³/s)" />;
@@ -172,7 +187,7 @@ export function Legend(props: {
     <div className="legend">
       <div className="lg-head">
         <select value={ui.view} onChange={(e) => setUi((u) => ({ ...u, view: e.target.value as ViewType }))}>
-          {VIEW_TYPES.map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}
+          {VIEW_TYPES.filter((v) => d.header?.extended || !EXTENDED_VIEWS.has(v.key)).map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}
         </select>
         <button className="lg-collapse" onClick={() => setOpen(!open)} title={open ? 'Collapse' : 'Expand'}>{open ? '▴' : '▾'}</button>
       </div>

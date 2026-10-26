@@ -11,6 +11,8 @@ import { environment, fieldDefinition, optionState } from '../visibility';
 import { Field } from './Field';
 import { Icon, IconButton } from './Icon';
 import PrintStyle from './PrintStyle';
+import { addRangeAfter, canAddAfter, deleteRange, editRange, rangeLabel, removeRangeOptions, setRangeOption } from '../plater/ranges';
+import type { LayerRange } from '../state/store';
 
 const OBJECT_KEYS = [...objectKeys.region, ...objectKeys.object];
 
@@ -44,6 +46,7 @@ export function ObjectSettings() {
   const { desc, error } = useTab('process');
   const object = useStore((s) => s.objects.find((o) => o.id === s.selected?.object));
   const volume = useStore((s) => object?.volumes?.find((v) => v.id === s.selected?.volume));
+  const range = useStore((s) => object?.ranges?.find((r) => r.id === s.selected?.range));
   const filaments = useStore((s) => s.filamentSlots.length);
   useStore((s) => s.dirty.process);
   useStore((s) => s.dirty.machine);
@@ -53,7 +56,7 @@ export function ObjectSettings() {
   const global = effectiveConfig(getState(), 'process');
   const [menu, setMenu] = useState(false);
   const [pick, setPick] = useState<[string, string[]] | null>(null);
-  const cats = useMemo(() => hierarchy(filaments, volume ? objectKeys.region : OBJECT_KEYS), [filaments, desc, !!volume]);
+  const cats = useMemo(() => hierarchy(filaments, volume || range ? objectKeys.region : OBJECT_KEYS), [filaments, desc, !!(volume || range)]);
 
   if (!desc) return <div role="status">{error ?? 'Loading settings…'}</div>;
   if (!object)
@@ -67,7 +70,11 @@ export function ObjectSettings() {
 
   if (volume && volume.type !== 'part' && volume.type !== 'modifier')
     return <div className="obj-settings-empty">{volume.name} has no settings.</div>;
-  const target = volume ? {
+  const target = range ? {
+    name: rangeLabel(range), icon: 'height_range_layer', settings: range.settings, region: true,
+    set: (k: string, v: ConfigValue) => setRangeOption(object.id, range.id, k, v),
+    remove: (keys: string[]) => removeRangeOptions(object.id, range.id, keys),
+  } : volume ? {
     name: volume.name, icon: volumeIcon(volume.type), settings: volume.settings, region: true,
     set: (k: string, v: ConfigValue) => setVolumeOption(object.id, volume.id, k, v),
     remove: (keys: string[]) => removeVolumeOptions(object.id, volume.id, keys),
@@ -82,7 +89,7 @@ export function ObjectSettings() {
   });
   const state = getState();
   const machine = effectiveConfig(state, 'machine');
-  const env = environment([machine, global, object.settings, ...(volume ? [volume.settings] : [])], {
+  const env = environment([machine, global, object.settings, ...(volume ? [volume.settings] : []), ...(range ? [range.settings] : [])], {
     settings_scope: 'object', printer_vendor: state.machines.find((p) => p.name === state.printer)?.vendor,
   }, uiMode);
   const states = optionState(desc, env);
@@ -111,15 +118,16 @@ export function ObjectSettings() {
           />
           <IconButton
             icon="delete"
-            title={volume ? 'Delete all settings of this part' : 'Delete all settings of this object'}
+            title={range ? 'Delete all settings of this range' : volume ? 'Delete all settings of this part' : 'Delete all settings of this object'}
             disabled={!Object.keys(target.settings).length}
             onClick={() => target.remove(Object.keys(target.settings))}
           />
         </span>
       </div>
-      {!volume && <PrintStyle />}
+      {!volume && !range && <PrintStyle />}
+      {range && <RangeEditor objectId={object.id} range={range} canAdd={canAddAfter(object, range.id)} />}
       {!Object.keys(target.settings).length && (
-        <div className="obj-settings-empty">{volume ? 'This part uses its object\'s settings.' : 'This object uses the global process settings.'} Add settings with “+”.</div>
+        <div className="obj-settings-empty">{range ? 'This range uses its object\'s settings.' : volume ? 'This part uses its object\'s settings.' : 'This object uses the global process settings.'} Add settings with “+”.</div>
       )}
       <div className="page-body">
         {[...byCat.entries()].map(([cat, keys]) => (
@@ -162,6 +170,29 @@ export function ObjectSettings() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+function RangeEditor({ objectId, range, canAdd }: { objectId: number; range: LayerRange; canAdd: boolean }) {
+  const field = (label: string, value: number, commit: (v: number) => boolean) => (
+    <label className="prefs-row">
+      <span>{label}</span>
+      <input key={`${range.id}:${value}`} className="text" type="number" step={0.01} defaultValue={value} aria-label={label}
+        onBlur={(e) => { const v = Number(e.target.value); if (v !== value && !(Number.isFinite(v) && commit(v))) e.target.value = String(value); }}
+        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
+      <span>mm</span>
+    </label>
+  );
+  return (
+    <div className="range-editor">
+      {field('Min Z', range.z[0], (v) => editRange(objectId, range.id, { z: [v, range.z[1]] }))}
+      {field('Max Z', range.z[1], (v) => editRange(objectId, range.id, { z: [range.z[0], v] }))}
+      {field('Layer height', range.layer_height, (v) => editRange(objectId, range.id, { layer_height: v }))}
+      <span className="range-tools">
+        <IconButton icon="add" title={canAdd ? 'Add a height range after this one' : 'No room for a range after this one'} disabled={!canAdd} onClick={() => addRangeAfter(objectId, range.id)} />
+        <IconButton icon="delete" title="Delete this height range" onClick={() => deleteRange(objectId, range.id)} />
+      </span>
     </div>
   );
 }

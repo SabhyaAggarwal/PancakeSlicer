@@ -1,7 +1,7 @@
 const KEY = 'orca.arrange';
 
-export interface ArrangeSettings { distance: number; rotation: boolean }
-export const ARRANGE_DEFAULTS: ArrangeSettings = { distance: 0, rotation: false };
+export interface ArrangeSettings { distance: number; rotation: boolean; multiMaterials: boolean }
+export const ARRANGE_DEFAULTS: ArrangeSettings = { distance: 0, rotation: false, multiMaterials: true };
 
 let settings: ArrangeSettings = (() => {
   try { return { ...ARRANGE_DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) ?? '{}') }; } catch { return { ...ARRANGE_DEFAULTS }; }

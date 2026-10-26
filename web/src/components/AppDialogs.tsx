@@ -1,5 +1,5 @@
 import { lazy, Suspense, useSyncExternalStore } from 'react';
-import { setState, useStore } from '../state/store';
+import { markStale, setState, useStore } from '../state/store';
 import { setThemePref, subscribeTheme, themePref, type ThemePref } from '../theme';
 import { Modal, ModalTitle } from './Modal';
 
@@ -19,9 +19,16 @@ function setDeveloperMode(developerMode: boolean) {
   setState({ developerMode });
 }
 
+function setMixedTemperatures(on: boolean) {
+  try { localStorage.setItem('orca.enable_high_low_temp_mixed_printing', on ? '1' : '0'); } catch {  }
+  setState((s) => ({ mixedTemperatures: on, job: markStale(s.job) }));
+}
+
 function Preferences() {
   const pref = useSyncExternalStore(subscribeTheme, themePref);
   const developerMode = useStore((s) => s.developerMode);
+  const mixed = useStore((s) => s.mixedTemperatures);
+  const canMix = useStore((s) => !!s.features.mixed_temperatures);
   return (
     <Modal className="small prefs-dialog" label="Preferences" onClose={close}>
       <ModalTitle title="Preferences" onClose={close} />
@@ -43,6 +50,15 @@ function Preferences() {
             Develop mode
           </label>
         </fieldset>
+        {canMix && (
+          <fieldset className="prefs-group">
+            <legend>Slicing</legend>
+            <label className="prefs-row" title="With this option enabled, you can print materials with a large temperature difference together.">
+              <input type="checkbox" checked={mixed} onChange={(e) => setMixedTemperatures(e.target.checked)} />
+              Remove mixed temperature restriction
+            </label>
+          </fieldset>
+        )}
       </div>
       <div className="modal-buttons center">
         <button type="button" className="btn primary" onClick={close}>OK</button>

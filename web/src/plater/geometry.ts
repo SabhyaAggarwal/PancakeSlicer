@@ -265,6 +265,7 @@ export function plateDescription(objects: PlateObject[], firstLayer = 0.2): Plat
       instances: o.instances.map((i) => { const p = place(i); return { x: round(p.x), y: round(p.y), rot: round(i.rotZ), z: round(p.z), printable: i.printable !== false }; }),
       ...(Object.keys(o.settings).length ? { settings: settings(o.settings) } : {}),
       ...(paintJson(o) ? { paint: paintJson(o) } : {}),
+      ...(o.ranges?.length ? { ranges: o.ranges.map((r) => ({ z: [round(r.z[0]), round(r.z[1])], layer_height: r.layer_height, settings: settings(r.settings) })) } : {}),
       ...(o.layerProfile ? { layer_height_profile: fitProfile(o.layerProfile, objectHeight(o), firstLayer) } : {}),
       ...(o.volumes?.length ? { volumes: o.volumes.map((v, k) => ({
         file: file.replace(/\.stl$/, `.v${k + 1}.stl`),

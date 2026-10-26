@@ -87,11 +87,13 @@ export default function ContextMenu() {
   const editable = !!o && !o.project?.placeholder;
   const printable = (o?.instances.find((i) => menu.instance === undefined || i.id === menu.instance) ?? o?.instances[0])?.printable !== false;
   const volume = o?.volumes?.find((v) => v.id === menu.volume);
+  const heightRanges: Item[] = o && !all && !s.project && editable && s.features.ranges ? [{ label: 'Height Range Modifier',
+    action: () => void import('../plater/ranges').then((m) => { m.addHeightRanges(o.id); setState({ processScope: 'objects' }); }) }] : [];
   const addVolumes: Item[] = o && !all && s.features.volumes && editable && (!s.project || s.features.project_volumes && canEditProject()) ? [...VOLUME_MENU.map(([type, label]) => ({ label, sub: [
     { label: 'Load...', action: () => loadVolume(o.id, type) },
     'sep' as const,
     ...SHAPES.map((shape) => ({ label: shape, action: () => addPrimitive(o.id, type, shape) })),
-  ] })), 'sep' as const] : [];
+  ] })), ...heightRanges, 'sep' as const] : heightRanges.length ? [...heightRanges, 'sep'] : [];
   const items: Item[] = o && volume ? [
     { label: 'Rename', action: () => setState({ renaming: volume.id }) },
     { label: 'Delete', shortcut: 'Del', action: () => deleteVolume(o.id, volume.id), tip: 'Delete the selected part' },

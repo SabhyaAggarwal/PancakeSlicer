@@ -34,6 +34,7 @@ export async function init() {
   if (!api.mock) void fetch('/api/healthz').then((r) => r.json()).then((h) => {
     setState({ features: h?.tool_features ?? {} });
     if (h?.tool_features?.orient_scores === true) void import('./plater/orientPrompt').then((m) => m.startOrientPrompt());
+    if (h?.tool_features?.wipe_tower === true) void import('./plater/wipeTower').then((m) => m.startWipeTower());
   }).catch(() => {});
   if (!api.mock) void loadPrinters();
   const saved = localStorage.getItem('orca.printer');
@@ -324,7 +325,7 @@ export async function newProject() {
   if ((s.objects.length || s.projectPlates.some((p) => p.objects.length)) && !(await confirmDialog('New Project', 'Start a new project? The objects on the plate are removed.'))) return;
   leaveDocument();
   clearPlateJobs();
-  setState((st) => ({ objects: [], selected: null, project: null, projectPlates: [], plateIndex: 1, projectName: null, projectMaterials: null, projectPresets: null, projectNotice: null, events: [], flush: { matrix: null, multiplier: null }, processScope: 'global', job: markStale(st.job) }));
+  setState((st) => ({ objects: [], selected: null, project: null, projectPlates: [], plateIndex: 1, wipeTowerPos: {}, projectName: null, projectMaterials: null, projectPresets: null, projectNotice: null, events: [], flush: { matrix: null, multiplier: null }, processScope: 'global', job: markStale(st.job) }));
   newDocument(true);
 }
 

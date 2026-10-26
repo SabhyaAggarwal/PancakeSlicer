@@ -3,7 +3,7 @@ import { arrangeSettings } from './arrangeSettings';
 import { firstLayer, overrides, plateSignature } from '../slice-input';
 import { jobValue } from '../options';
 import { mutation, responseError } from '../api/access';
-import { getState, newId, printerPreset, resolvePreset, setState, toast, type PlateObject, type Volume } from '../state/store';
+import { getState, newId, printerPreset, resolvePreset, setState, toast, type PlateObject, type State, type Volume } from '../state/store';
 import { undoable } from '../state/history';
 import { bakeStl, centred, instanceBox, instanceMatrix, loadMesh, objectMatrix, plateJson, request } from './geometry';
 import { bedArea } from '../actions';
@@ -138,6 +138,20 @@ export async function run(operation: 'orient' | 'split' | 'split-parts', all: bo
   }
 }
 
+export async function plateForm(s: State, operation: string): Promise<FormData> {
+  const { plate, files } = await plateJson(s.objects, firstLayer(s));
+  const fd = new FormData();
+  fd.append('operation', operation);
+  for (const f of files) fd.append('files[]', f.blob, f.name);
+  fd.append('plate', JSON.stringify(plate));
+  fd.append('vendor', printerPreset(s)?.vendor ?? 'BBL');
+  fd.append('printer', resolvePreset(s, 'machine', s.printer).base?.name ?? s.printer);
+  fd.append('process', resolvePreset(s, 'process', s.process).base?.name ?? s.process);
+  for (const f of s.filamentSlots) fd.append('filament[]', resolvePreset(s, 'filament', f).base?.name ?? f);
+  fd.append('overrides', JSON.stringify(overrides(s)));
+  return fd;
+}
+
 interface ArrangeResult { schema: string; plates: number; unplaced: number; objects: { instances: { plate: number | null; x?: number; y?: number; rot?: number }[] }[] }
 
 export async function arrangeNative() {
@@ -146,19 +160,11 @@ export async function arrangeNative() {
   busy = true;
   setState({ loading: 'Arranging' });
   try {
-    const { plate, files } = await plateJson(s.objects, firstLayer(s));
-    const fd = new FormData();
-    fd.append('operation', 'arrange');
-    for (const f of files) fd.append('files[]', f.blob, f.name);
-    fd.append('plate', JSON.stringify(plate));
-    fd.append('vendor', printerPreset(s)?.vendor ?? 'BBL');
-    fd.append('printer', resolvePreset(s, 'machine', s.printer).base?.name ?? s.printer);
-    fd.append('process', resolvePreset(s, 'process', s.process).base?.name ?? s.process);
-    for (const f of s.filamentSlots) fd.append('filament[]', resolvePreset(s, 'filament', f).base?.name ?? f);
-    fd.append('overrides', JSON.stringify(overrides(s)));
-    const { distance, rotation } = arrangeSettings();
+    const fd = await plateForm(s, 'arrange');
+    const { distance, rotation, multiMaterials } = arrangeSettings();
     if (distance > 0) fd.append('arrange_spacing', String(distance));
     fd.append('arrange_rotation', rotation ? '1' : '0');
+    if (s.features.arrange_materials) fd.append('arrange_multi_materials', multiMaterials ? '1' : '0');
     const response = await mutation('/api/jobs', { method: 'POST', body: fd });
     if (!response.ok) throw await responseError(response);
     const { id } = await response.json() as { id: string };
