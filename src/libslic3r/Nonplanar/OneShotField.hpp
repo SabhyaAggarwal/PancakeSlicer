@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 #include "FieldObjective.hpp"
 #include "NpField.hpp"
 #include "Rests.hpp"
@@ -48,6 +49,8 @@ struct OneShotState
     int                            measured_repicks = 0;
     bool                           measured_anchor  = false;
     double                         measured_seconds = 0.;
+    std::chrono::steady_clock::time_point measure_deadline {};
+    double                         measure_work_left = std::numeric_limits<double>::quiet_NaN();
     double                         cap_scale        = 1.;
     std::string                    time_cut_note;
     enum class Offer { Body, NormalSupport, Control, Auto };
@@ -75,6 +78,10 @@ struct OneShotState
 };
 
 bool oneshot_requested(const PrintObject &object);
+constexpr double MeasureWorkBudget = 15000.;
+constexpr double MeasureSafetyNet  = 7200.;
+double                               *measure_work(OneShotState &state);
+std::chrono::steady_clock::time_point measure_deadline(OneShotState &state);
 
 bool take_injected_oneshot(OneShotState &state);
 

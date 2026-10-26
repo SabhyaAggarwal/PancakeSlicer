@@ -54,6 +54,7 @@ struct MultiplanarParams
     const ToolKinematics *kinematics         = nullptr;
     double                min_overhang_area  = 4.;
     Polygons              plates;
+    double                work_budget        = 0.;
 };
 
 struct MultiplanarCut
@@ -71,6 +72,7 @@ struct MultiplanarPlan
     double                        step_area              = 0.;
     double                        planar_step_area       = 0.;
     double                        planar_overhang_area   = 0.;
+    bool                          work_stopped           = false;
     std::vector<std::string>      notes;
     std::string                   auto_reason;
 };
@@ -98,7 +100,10 @@ DynamicPrintConfig chunk_print_config(const PrintObject &object);
 void collect_paths(const ExtrusionEntity *ee, std::vector<const ExtrusionPath *> &out);
 
 MultiplanarParams multiplanar_params(const PrintObject &object, const ToolKinematics *kinematics);
-MultiplanarPlan   object_multiplanar_plan(const PrintObject &object, const indexed_triangle_set &mesh, const MultiplanarParams &params);
+constexpr double OneShotPlannerCuts = 1000.;
+double            oneshot_planner_cuts();
+MultiplanarPlan   object_multiplanar_plan(const PrintObject &object, const indexed_triangle_set &mesh, const MultiplanarParams &params,
+                                          const std::function<void()> &check = {});
 
 std::shared_ptr<const MultiplanarPlan> clip_multiplanar_slices(PrintObject &object);
 

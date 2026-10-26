@@ -1,4 +1,5 @@
 #include "Rests.hpp"
+#include "MultiplanarConfirm.hpp"
 
 #include "ConformalShells.hpp"
 #include "Multiplanar.hpp"
@@ -413,8 +414,11 @@ Floating planar_control_floating(const PrintObject &object, bool support)
     key.append(reinterpret_cast<const char *>(copy->instances.front()->get_matrix().data()), 16 * sizeof(double));
     if (last.first == key)
         return last.second;
+    if (measure_work_spent() || measure_deadline_passed())
+        return { -1., -1. };
     Print print;
     try {
+        const DeadlineWatch watch(print);
         print.apply(model, config);
         print.set_status_silent();
         print.process();

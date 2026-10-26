@@ -567,6 +567,26 @@ ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeo
     return m;
 }
 
+std::chrono::steady_clock::time_point measure_deadline(OneShotState &state)
+{
+    if (state.measure_deadline == std::chrono::steady_clock::time_point {}) {
+        state.measure_deadline = std::chrono::steady_clock::now() +
+                                 std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(MeasureSafetyNet));
+    }
+    return state.measure_deadline;
+}
+
+double *measure_work(OneShotState &state)
+{
+    if (std::isnan(state.measure_work_left)) {
+        double budget = MeasureWorkBudget;
+        if (const char *env = std::getenv("NP_ONESHOT_MEASURE_WORK"); env != nullptr && *env != 0)
+            budget = std::max(0., std::atof(env));
+        state.measure_work_left = budget > 0. ? budget : std::numeric_limits<double>::infinity();
+    }
+    return &state.measure_work_left;
+}
+
 bool oneshot_requested(const PrintObject &object)
 {
     const auto *mode = object.model_object()->config.get().option<ConfigOptionEnum<NonplanarMode>>("nonplanar_mode");
@@ -597,6 +617,8 @@ bool take_injected_oneshot(OneShotState &state)
 
 bool admit_time_cut(const PrintObject &object, OneShotState &state, std::vector<NpField> &cuts)
 {
+    const MeasureDeadline deadline(measure_deadline(state));
+    const MeasureWork     work(measure_work(state));
     if (!state.z_only || cuts.empty())
         return false;
     const auto   t0   = std::chrono::steady_clock::now();
@@ -726,6 +748,8 @@ bool admit_lean_offer(const PrintObject &object, OneShotState &state, std::vecto
 
 bool past_floating_bar(const PrintObject &object, OneShotState &state, const Floating &floating)
 {
+    const MeasureDeadline deadline(measure_deadline(state));
+    const MeasureWork     work(measure_work(state));
     bool float_over = false;
     if (floating.part >= 0. && floats_past_bar(floating, {})) {
         const bool     user_support = object.config().enable_support.value && !object.auto_support_applied();
@@ -799,6 +823,8 @@ constexpr double OneShotBodySlower = 1.02;
 
 bool body_earns_control(const PrintObject &object, OneShotState &state, const Floating &floating)
 {
+    const MeasureDeadline deadline(measure_deadline(state));
+    const MeasureWork     work(measure_work(state));
     using Offer = OneShotState::Offer;
     if (state.offer == Offer::Control || state.offer == Offer::Auto)
         return false;
@@ -823,6 +849,8 @@ bool body_earns_control(const PrintObject &object, OneShotState &state, const Fl
 
 bool auto_offer(const PrintObject &object, OneShotState &state, double t_ps, double pick_rms, double pick_time)
 {
+    const MeasureDeadline deadline(measure_deadline(state));
+    const MeasureWork     work(measure_work(state));
     if (state.offer == OneShotState::Offer::Auto || state.auto_weighed || !std::isfinite(t_ps) || t_ps <= 0.)
         return false;
     state.auto_weighed = true;
@@ -878,6 +906,8 @@ bool auto_offer(const PrintObject &object, OneShotState &state, double t_ps, dou
 
 void measured_export_check(PrintObject &object, OneShotState &state, const std::function<void()> &resolve)
 {
+    const MeasureDeadline deadline(measure_deadline(state));
+    const MeasureWork     work(measure_work(state));
     if (!state.z_only || std::getenv("NP_ONESHOT_NO_MEASURED_CHECK") != nullptr || object.print()->objects().size() == 1)
         return;
     const auto t0 = std::chrono::steady_clock::now();
@@ -1587,6 +1617,8 @@ MultiplanarPlan route_spec_plan(const std::string &path, const indexed_triangle_
 
 void choose_route(PrintObject &object, OneShotState &state)
 {
+    const MeasureDeadline deadline(measure_deadline(state));
+    const MeasureWork     work(measure_work(state));
     const PrintConfig                    &pc         = object.print()->config();
     const std::unique_ptr<ToolKinematics> kinematics = make_tool_kinematics(pc);
     if (!state.z_only || !object.config().nonplanar_oneshot_routes.value || kinematics->rotary_count() == 0 || pc.spiral_mode.value)
@@ -1594,13 +1626,17 @@ void choose_route(PrintObject &object, OneShotState &state)
     const auto                 t_start = std::chrono::steady_clock::now();
     const std::string         &name    = object.model_object()->name;
     const indexed_triangle_set mesh    = slicing_frame_mesh(object);
-    const MultiplanarParams    params  = multiplanar_params(object, kinematics.get());
+    MultiplanarParams          params  = multiplanar_params(object, kinematics.get());
+    params.work_budget = oneshot_planner_cuts();
     const char                *spec    = std::getenv("NP_ONESHOT_ROUTE_SPEC");
     const MultiplanarPlan      plan    = spec != nullptr && *spec != 0 ? route_spec_plan(spec, mesh, *kinematics)
                                                                        : object_multiplanar_plan(object, mesh, params);
+    if (plan.work_stopped)
+        BOOST_LOG_TRIVIAL(warning) << "One-shot routes " << name << ": the chunk planner stopped at its work budget (" << params.work_budget
+                                   << " validated cuts) with " << plan.cuts.size() << " cuts";
     std::ostringstream         log;
     if (plan.cuts.empty()) {
-        state.route_log = "routes: no tilted chunk";
+        state.route_log = plan.work_stopped ? "routes: no tilted chunk within the planner's work budget" : "routes: no tilted chunk";
         return;
     }
     const PrintObjectConfig &oc = object.config();

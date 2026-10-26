@@ -12,6 +12,7 @@
 #include "PatchTools.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/ExtrusionEntityCollection.hpp"
+#include "libslic3r/GCode/ConformalEmit.hpp"
 #include "libslic3r/GCode/ToolKinematics.hpp"
 #include "libslic3r/Geometry.hpp"
 #include "libslic3r/I18N.hpp"
@@ -22,6 +23,7 @@
 #include "libslic3r/format.hpp"
 
 #include <boost/log/trivial.hpp>
+#include <boost/nowide/fstream.hpp>
 
 #include <algorithm>
 #include <atomic>
@@ -29,9 +31,12 @@
 #include <cmath>
 #include <cstdlib>
 #include <functional>
+#include <iomanip>
 #include <limits>
 #include <map>
 #include <mutex>
+#include <stdexcept>
+#include <string>
 #include <utility>
 
 namespace Slic3r::Nonplanar {
@@ -253,6 +258,7 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
     for (const std::string &key : object.config().keys())
         if ((key.rfind("support_", 0) == 0 || key.rfind("tree_support", 0) == 0 || key == "enable_support") && config.has(key))
             config.set_key_value(key, object.config().option(key)->clone());
+    config.set_deserialize_strict("independent_support_layer_height", "0");
     const double            height = first + double(K - 1) * h;
     TriangleMesh            box    = make_cube(unscale<double>(bbox.size().x()), unscale<double>(bbox.size().y()), height);
     box.translate(float(unscale<double>(bbox.min.x())), float(unscale<double>(bbox.min.y())), 0.f);
@@ -330,8 +336,10 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
             std::vector<float> heights(m), widths(m);
             std::vector<Vec3f> axes(m);
             Polyline3          polyline;
+            static const bool  upright_support = [] { const char *v = std::getenv("NP_NATIVE_SUPPORT_UPRIGHT"); return !v || std::atoi(v) != 0; }();
+            const bool         upright         = upright_support && is_support(path->role());
             for (size_t i = 0; i < m; ++i) {
-                const Vec3d a = Native::tool_axis(*field, tips[i], tilt_cap);
+                const Vec3d a = upright ? Vec3d::UnitZ() : Native::tool_axis(*field, tips[i], tilt_cap);
                 axes[i]       = a.cast<float>();
                 heights[i]    = float(std::clamp(Native::bead_height(*field, tips[i], tops[k - 1], tops[k], a), 0.5 * h, 1.6 * h));
                 const Vec3d t = tips[std::min(i + 1, m - 1)] - tips[i > 0 ? i - 1 : 0];
@@ -385,8 +393,59 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
     op.layer_height.resize(n - 1);
     for (size_t k = 1; k < n; ++k)
         op.layer_height[k - 1] = tops[k] - tops[k - 1];
+    const char *dump_prefix = std::getenv("NP_NATIVE_DUMP_ROADS");
+    auto dump = [&](const char *stage, const auto &visit) {
+        if (dump_prefix == nullptr || *dump_prefix == '\0')
+            return;
+        const std::string path = std::string(dump_prefix) + "." +
+                                 std::to_string(object.model_object()->id().id) + "." + stage + ".tsv";
+        boost::nowide::ofstream out(path);
+        if (!out)
+            throw std::runtime_error("Cannot open NP_NATIVE_DUMP_ROADS file: " + path);
+        out << std::setprecision(17)
+            << "# native-road-v1 slicing frame, mm; ordered axes precede G-code settle/RTCP\n"
+            << "group\troad\tpoint\tlayer\tphi_top\trole\tbase_width\tx\ty\tz"
+               "\tax\tay\taz\tused_ax\tused_ay\tused_az\twidth\theight\tgx\tgy\tgz\n";
+        auto write = [&](const ExtrusionPathConformal &path, size_t group, size_t road, size_t layer) {
+            const bool upright = std::all_of(path.tool_axis.begin(), path.tool_axis.end(), [](const Vec3f &a) {
+                return a.cast<double>().normalized().z() >= std::cos(Geometry::deg2rad(UprightRoadDeg));
+            });
+            for (size_t i = 0; i < path.polyline.points.size(); ++i) {
+                const Point3 &point = path.polyline.points[i];
+                const Vec3d p(unscale<double>(point.x()), unscale<double>(point.y()),
+                              unscale<double>(point.z()) + host->print_z - raft);
+                const Vec3d axis = i < path.tool_axis.size() ? Vec3d(path.tool_axis[i].cast<double>()) : Vec3d(Vec3d::UnitZ());
+                const Vec3d used = upright ? Vec3d::UnitZ() : axis;
+                const Vec3d g = field->gradient(p);
+                const double width = i < path.bead_width.size() ? path.bead_width[i] : path.width;
+                const double height = i < path.bead_height.size() ? path.bead_height[i] : path.height;
+                out << group << '\t' << road << '\t' << i << '\t' << layer << '\t' << op.layer_top.at(layer)
+                    << '\t' << int(path.role()) << '\t' << path.width
+                    << '\t' << p.x() << '\t' << p.y() << '\t' << p.z()
+                    << '\t' << axis.x() << '\t' << axis.y() << '\t' << axis.z()
+                    << '\t' << used.x() << '\t' << used.y() << '\t' << used.z()
+                    << '\t' << width << '\t' << height << '\t' << g.x() << '\t' << g.y() << '\t' << g.z() << '\n';
+            }
+        };
+        visit(write);
+        out.flush();
+        if (!out)
+            throw std::runtime_error("Cannot write NP_NATIVE_DUMP_ROADS file: " + path);
+    };
+    dump("raw", [&](const auto &write) {
+        for (size_t ri = 0; ri < roads.size(); ++ri)
+            if (roads[ri].path)
+                write(*roads[ri].path, roads[ri].layer, ri, roads[ri].layer);
+    });
     const size_t n_roads = roads.size();
     FieldOrder   order   = layer_order_field_roads(roads, op);
+
+    dump("ordered", [&](const auto &write) {
+        size_t ri = 0;
+        for (size_t gi = 0; gi < order.groups.size(); ++gi)
+            for (const ExtrusionEntity *entity : order.groups[gi].entities)
+                write(*static_cast<const ExtrusionPathConformal *>(entity), gi, ri++, order.group_layers.at(gi));
+    });
 
     ConformalPatch patch;
     patch.id           = int(result.patches.size());

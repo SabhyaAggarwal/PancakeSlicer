@@ -1,14 +1,14 @@
 #pragma once
 const char *const slice_config_entry = "Metadata/nonplanar_slice_tool.config";
 
-void load_slice_config(const std::string &path, DynamicPrintConfig &config, bool &project_settings)
+bool load_slice_config(const std::string &path, DynamicPrintConfig &config, bool &project_settings)
 {
     mz_zip_archive archive{};
     if (!open_zip_reader(&archive, path))
         throw std::runtime_error("cannot read " + path);
     ScopeGuard close([&] { close_zip_reader(&archive); });
     if (mz_zip_reader_locate_file(&archive, slice_config_entry, nullptr, 0) < 0)
-        return;
+        return false;
     size_t size = 0;
     void *data = mz_zip_reader_extract_file_to_heap(&archive, slice_config_entry, &size, 0);
     if (!data)
@@ -25,6 +25,7 @@ void load_slice_config(const std::string &path, DynamicPrintConfig &config, bool
     }
     config = std::move(loaded);
     project_settings = saved.at("project_settings").get<bool>();
+    return true;
 }
 
 void repair_project_flush(DynamicPrintConfig &config)
@@ -108,12 +109,27 @@ std::string carried_cut_information(const std::string &source, const std::vector
     return xml.str();
 }
 
-void save_source_project(const Args &args, const DynamicPrintConfig &config, bool project_settings,
-                         const std::string &cut_information = {})
+nlohmann::json slice_settings(const DynamicPrintConfig &config)
 {
     nlohmann::json settings = nlohmann::json::object();
     for (const std::string &key : config.keys())
         settings[key] = config.opt_serialize(key);
+    for (const std::string key : {"wipe_tower_x", "wipe_tower_y"})
+        if (const auto *option = config.option<ConfigOptionFloats>(key)) {
+            std::string serialized;
+            for (const double value : option->values) {
+                if (!serialized.empty()) serialized += ',';
+                serialized += nlohmann::json(value).dump();
+            }
+            settings[key] = std::move(serialized);
+        }
+    return settings;
+}
+
+void save_source_project(const Args &args, const DynamicPrintConfig &config, bool project_settings,
+                         const std::string &cut_information = {})
+{
+    nlohmann::json settings = slice_settings(config);
     if (const auto *head = config.option<ConfigOptionString>("nonplanar_head"); head && !head->value.empty()) {
         PrintConfig printer;
         printer.apply(config, true);

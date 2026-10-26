@@ -23,6 +23,7 @@
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Point.hpp"
 #include "libslic3r/Print.hpp"
+#include "libslic3r/PrintBase.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/TriangleMesh.hpp"
 
@@ -32,6 +33,7 @@
 #include <algorithm>
 #include <map>
 #include <mutex>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <exception>
@@ -82,6 +84,50 @@ double thin_top_share(const indexed_triangle_set &mesh, double thickness)
             thin += area;
     }
     return up > 0. ? thin / up : 0.;
+}
+
+namespace {
+thread_local MeasureClock::time_point measure_deadline = MeasureClock::time_point::max();
+}
+
+MeasureDeadline::MeasureDeadline(MeasureClock::time_point at) : m_previous(measure_deadline) { measure_deadline = std::min(measure_deadline, at); }
+MeasureDeadline::~MeasureDeadline() { measure_deadline = m_previous; }
+
+bool measure_deadline_passed() { return measure_deadline != MeasureClock::time_point::max() && MeasureClock::now() >= measure_deadline; }
+
+namespace {
+thread_local double *measure_work_left = nullptr;
+}
+
+MeasureWork::MeasureWork(double *left) : m_previous(measure_work_left) { measure_work_left = left; }
+MeasureWork::~MeasureWork() { measure_work_left = m_previous; }
+
+bool measure_work_spent() { return measure_work_left != nullptr && *measure_work_left <= 0.; }
+bool measure_work_active() { return measure_work_left != nullptr; }
+
+DeadlineWatch::DeadlineWatch(PrintBase &print)
+{
+    if (measure_deadline == MeasureClock::time_point::max())
+        return;
+    m_watch = std::thread([this, &print, at = measure_deadline] {
+        std::unique_lock<std::mutex> lock(m_mutex);
+        if (!m_done.wait_until(lock, at, [this] { return m_finished; })) {
+            BOOST_LOG_TRIVIAL(error) << "One-shot measurement: past the wall-clock safety net, the private slice is canceled (unmeasured): "
+                                    "the work budget should have bound first";
+            print.cancel();
+        }
+    });
+}
+
+DeadlineWatch::~DeadlineWatch()
+{
+    {
+        const std::lock_guard<std::mutex> lock(m_mutex);
+        m_finished = true;
+    }
+    m_done.notify_all();
+    if (m_watch.joinable())
+        m_watch.join();
 }
 
 namespace {
@@ -173,11 +219,22 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
             return it->second.first.first;
         }
     }
+    if (measure_work_spent()) {
+        BOOST_LOG_TRIVIAL(info) << "One-shot measurement: its work budget is spent, a private slice is not started (unmeasured)";
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    if (measure_deadline_passed()) {
+        BOOST_LOG_TRIVIAL(error) << "One-shot measurement: past the wall-clock safety net, a private slice is not started (unmeasured): "
+                                    "the work budget should have bound first";
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    const auto           t_slice = MeasureClock::now();
     Print                print;
     GCodeProcessorResult result;
     const boost::filesystem::path gcode = boost::filesystem::temp_directory_path() / boost::filesystem::unique_path("np-mf-%%%%-%%%%.gcode");
     boost::system::error_code     ec;
     try {
+        const DeadlineWatch watch(print);
         const RotaryMeasurement measurement(measured != nullptr && measured->as_printed ? NonplanarMode::Off : mode);
         const bool              unchecked = rotary_measurement_unchecked;
         rotary_measurement_unchecked      = !verify;
@@ -192,6 +249,10 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
         print.export_gcode(gcode.string(), &result, nullptr);
     } catch (const std::exception &ex) {
         BOOST_LOG_TRIVIAL(warning) << "Multiplanar check: a measured slice failed: " << ex.what();
+        boost::filesystem::remove(gcode, ec);
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    if (measure_deadline_passed()) {
         boost::filesystem::remove(gcode, ec);
         return std::numeric_limits<double>::quiet_NaN();
     }
@@ -216,6 +277,12 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
     boost::filesystem::remove(gcode, ec);
     append_beads(result, print.config(), beads);
     const double time = result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)].time;
+    if (measure_work_left != nullptr && std::isfinite(time))
+        *measure_work_left -= time;
+    BOOST_LOG_TRIVIAL(info) << "One-shot measurement: " << (mode == NonplanarMode::Off ? "off" : mode == NonplanarMode::Auto ? "auto" :
+                                                         mode == NonplanarMode::OneShot ? "oneshot" : "multiplanar")
+                            << " slice, estimated " << time << " s, " << std::chrono::duration<double>(MeasureClock::now() - t_slice).count()
+                            << " s wall, work left " << (measure_work_left != nullptr ? *measure_work_left : -1.);
     if (mode == NonplanarMode::Off) {
         const std::lock_guard<std::mutex> lock(planar_mutex);
         if (planar_memo.size() >= PlanarMemo) {

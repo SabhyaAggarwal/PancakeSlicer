@@ -729,6 +729,8 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
     if (m_print.objects().size() == 1 && std::getenv("NP_ONESHOT_NO_MEASURED_CHECK") == nullptr && !rotary_auto_measurement()) {
         PrintObject  *object = objects.front();
         OneShotState &s      = object->oneshot_state();
+        const MeasureDeadline deadline(measure_deadline(s));
+        const MeasureWork     work(measure_work(s));
         const Floating floating = floating_road(result, *object);
         const bool     support  = std::any_of(object->support_layers().begin(), object->support_layers().end(),
                                               [](const SupportLayer *layer) { return !layer->support_fills.empty(); });

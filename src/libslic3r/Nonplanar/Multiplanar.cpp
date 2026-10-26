@@ -40,6 +40,9 @@
 
 #include <Eigen/Geometry>
 #include <boost/log/trivial.hpp>
+
+#include <atomic>
+#include <chrono>
 #include <tbb/blocked_range.h>
 #include <tbb/parallel_for.h>
 #include <tbb/parallel_reduce.h>
@@ -454,7 +457,11 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
     const bool      rotary     = params.kinematics != nullptr && params.kinematics->rotary_count() > 0;
 
     auto frame_of = [](const MultiplanarChunk &c) { return Frame{ c.build_dir, c.parent < 0 ? 0. : c.base, c.parent < 0 }; };
+    std::atomic<size_t> evaluations { 0 }, validations { 0 };
+    const auto          t_plan = std::chrono::steady_clock::now();
+    auto work_done = [&]() { return double(validations.load()); };
     auto evaluate = [&](const std::vector<HalfSpace> &clips, const Frame &frame) {
+        ++evaluations;
         return tbb::parallel_deterministic_reduce(
             tbb::blocked_range<size_t>(0, n_facets, 1024), Score{},
             [&](const tbb::blocked_range<size_t> &range, Score s) {
@@ -756,6 +763,7 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
                 candidates.erase(candidates.begin() + ci--);
                 continue;
             }
+            ++validations;
             indexed_triangle_set far  = clip_mesh(c.piece, { { -cand.cut, -cand.offset } });
             indexed_triangle_set near = clip_mesh(c.piece, { { cand.cut, cand.offset } });
             double base = cand.base;
@@ -881,9 +889,16 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
     int planes = 0;
     constexpr size_t MaxGivenUp = 64;
     size_t searched_given_up = 0;
+    int rounds = 0;
     while (planes < params.max_planes) {
         if (throw_if_canceled)
             throw_if_canceled();
+        if (params.work_budget > 0. && work_done() > params.work_budget) {
+            plan.notes.push_back("search stopped at its work budget");
+            plan.work_stopped = true;
+            break;
+        }
+        ++rounds;
         if ((full ? searched_given_up : plan.notes.size()) > MaxGivenUp) {
             plan.notes.push_back("search stopped after " + std::to_string(MaxGivenUp) + " seeds stayed");
             break;
@@ -935,6 +950,9 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
                 tried[i] = true;
         ++planes;
     }
+    BOOST_LOG_TRIVIAL(info) << "Multiplanar plan: " << rounds << " rounds, " << evaluations.load() << " scoring passes, " << validations.load()
+                            << " validated cuts over " << n_facets << " facets: work " << work_done() << " (budget " << params.work_budget << "), "
+                            << plan.cuts.size() << " cuts, " << std::chrono::duration<double>(std::chrono::steady_clock::now() - t_plan).count() << " s";
     return finish();
 }
 
@@ -1150,19 +1168,34 @@ MultiplanarParams multiplanar_params(const PrintObject &object, const ToolKinema
     return params;
 }
 
-MultiplanarPlan object_multiplanar_plan(const PrintObject &object, const indexed_triangle_set &mesh, const MultiplanarParams &params)
+double oneshot_planner_cuts()
 {
+    if (const char *env = std::getenv("NP_ONESHOT_ROUTE_WORK"); env != nullptr && *env != 0)
+        return std::max(0., std::atof(env));
+    return OneShotPlannerCuts;
+}
+
+MultiplanarPlan object_multiplanar_plan(const PrintObject &object, const indexed_triangle_set &mesh, const MultiplanarParams &given,
+                                        const std::function<void()> &check)
+{
+    MultiplanarParams params = given;
+    if (params.work_budget <= 0. && measure_work_active())
+        params.work_budget = oneshot_planner_cuts();
     static thread_local std::pair<std::string, MultiplanarPlan> last;
     std::string key(reinterpret_cast<const char *>(mesh.vertices.data()), mesh.vertices.size() * sizeof(stl_vertex));
     key.append(reinterpret_cast<const char *>(mesh.indices.data()), mesh.indices.size() * sizeof(stl_triangle_vertex_indices));
-    for (const double v : { params.layer_height, params.first_layer_height, params.overhang_threshold, double(params.max_planes) })
+    for (const double v : { params.layer_height, params.first_layer_height, params.overhang_threshold, double(params.max_planes), params.work_budget })
         key.append(reinterpret_cast<const char *>(&v), sizeof(v));
     for (const Polygon &plate : params.plates)
         key.append(reinterpret_cast<const char *>(plate.points.data()), plate.points.size() * sizeof(Point));
     for (const std::string &opt : object.print()->config().keys())
         key += opt + '=' + object.print()->config().opt_serialize(opt) + '\n';
     if (last.first != key)
-        last = { std::move(key), plan_multiplanar(mesh, params, [&object]() { throw_if_canceled(object); }) };
+        last = { std::move(key), plan_multiplanar(mesh, params, [&object, &check]() {
+                     throw_if_canceled(object);
+                     if (check)
+                         check();
+                 }) };
     return last.second;
 }
 

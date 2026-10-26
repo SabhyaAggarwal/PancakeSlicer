@@ -14,6 +14,7 @@
 #include <math.h>
 
 #include "libslic3r/BoundingBox.hpp"
+#include "libslic3r/BrimEarsPoint.hpp"
 #include "libslic3r/Config.hpp"
 #include "libslic3r/CustomGCode.hpp"
 #include "libslic3r/CutUtils.hpp"
@@ -90,6 +91,7 @@
 #include <tuple>
 #include <ostream>
 #include <stdexcept>
+#include <set>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -139,6 +141,7 @@ struct Args
     bool        cut_place_lower = false;
     bool        force_planar    = false;
     std::string arrange_only;
+    std::string explode_3mf, explode_directory;
     std::string wipe_tower_only;
     double      arrange_spacing  = -1.;
     bool        arrange_rotation = true;
@@ -193,9 +196,11 @@ Model read_input(const std::string &file)
                  "       (plate JSON objects take \"plate\": N; a plate JSON of several plates slices with --plate-index N)\n"
                  "       (plate JSON objects and volumes take \"paint\"; plate JSON objects take \"layer_height_profile\")\n"
                  "       (plate JSON objects take \"ranges\")\n"
+                 "       (plate JSON plates take \"settings\"; --save-3mf preserves per-plate settings)\n"
                  "       [--surface-grid [--surface-grid-max-cells N]]   (with --json: per-cell top surface error)\n"
                  "       [--force-planar]   (nonplanar_mode off on the plate, objects, volumes and height ranges)\n"
                  "       [--allow-mixed-temperatures]\n"
+                 "       nonplanar_slice_tool --explode-3mf IN.3mf OUTDIR   (editable plate.json and volume meshes, no slice)\n"
                  "       [--edit EDITS.json]   (a loaded PROJECT.3mf: add/delete objects and instances, set filaments; --edit takes \"add_volume\"; --edit takes \"set_paint\")\n"
                  "       [--cut-only Z | X,Y,Z,NX,NY,NZ [--cut-keep upper|lower|both] [--cut-place-lower]]\n"
                  "       [--arrange-only OUT.json [--arrange-spacing MM] [--arrange-no-rotation]]   (the desktop's arrange, no slice)\n"
@@ -334,6 +339,7 @@ Args parse_args(int argc, char **argv)
         }
         else if (arg == "--cut-only") a.cut = next();
         else if (arg == "--arrange-only") a.arrange_only = next();
+        else if (arg == "--explode-3mf") { a.explode_3mf = next(); a.explode_directory = next(); }
         else if (arg == "--wipe-tower-only") a.wipe_tower_only = next();
         else if (arg == "--arrange-multi-materials") {
             const std::string value = next();
@@ -406,7 +412,7 @@ Args parse_args(int argc, char **argv)
     }
     if (!a.field_file.empty() && std::none_of(a.overrides.begin(), a.overrides.end(), [](const auto &o) { return o.first == "nonplanar_mode"; }))
         a.overrides.insert(a.overrides.begin(), { "nonplanar_mode", "field" });
-    if (!a.dump_options.empty() || !a.dump_presets.empty() || !a.verify_gcode.empty()) return a;
+    if (!a.dump_options.empty() || !a.dump_presets.empty() || !a.verify_gcode.empty() || !a.explode_3mf.empty()) return a;
     if (a.orient_scores) {
         if (a.model.empty()) usage("--orient-scores needs a model");
         return a;
@@ -1091,22 +1097,64 @@ Matrix3d choose_orientation(const Args &args, const Model &model, const DynamicP
     return r;
 }
 
+Geometry::Transformation plate_transformation(const nlohmann::json &value)
+{
+    if (value.is_object()) {
+        const auto vector = [&value](const char *key, const Vec3d &fallback) {
+            if (!value.contains(key)) return fallback;
+            const auto &v = value.at(key);
+            if (!v.is_array() || v.size() != 3) throw std::runtime_error(std::string("transform ") + key + " needs three numbers");
+            return Vec3d(v.at(0).get<double>(), v.at(1).get<double>(), v.at(2).get<double>());
+        };
+        Geometry::Transformation transform;
+        transform.set_offset(vector("offset", Vec3d::Zero()));
+        transform.set_rotation(vector("rotation", Vec3d::Zero()));
+        transform.set_scaling_factor(vector("scale", Vec3d::Ones()));
+        transform.set_mirror(vector("mirror", Vec3d::Ones()));
+        return transform;
+    }
+    const bool flat = value.is_array() && value.size() == 16, rows = value.is_array() && value.size() == 4;
+    if (!flat && !rows) throw std::runtime_error("a transform is a row-major 4x4 matrix or offset/rotation/scale/mirror components");
+    Transform3d matrix = Transform3d::Identity();
+    for (int r = 0; r < 4; ++r)
+        for (int c = 0; c < 4; ++c)
+            matrix.matrix()(r, c) = (flat ? value.at(r * 4 + c) : value.at(r).at(c)).get<double>();
+    return Geometry::Transformation(matrix);
+}
+
 void add_placed_instances(ModelObject *object, const nlohmann::json &entry, const Vec3d &origin = Vec3d::Zero())
 {
     const nlohmann::json places = entry.contains("instances") ? entry.at("instances") : nlohmann::json::array({ entry });
     for (const nlohmann::json &place : places) {
         ModelInstance *instance = object->add_instance();
-        instance->set_rotation(Vec3d(0., 0., Geometry::deg2rad(place.value("rot", 0.))));
+        if (place.contains("transform")) {
+            Geometry::Transformation transform = plate_transformation(place.at("transform"));
+            transform.set_offset(transform.get_offset() + origin);
+            if (place.contains("rot") && place.at("rot").get<double>() != Geometry::rad2deg(transform.get_rotation().z())) {
+                Vec3d rotation = transform.get_rotation();
+                rotation.z() = Geometry::deg2rad(place.at("rot").get<double>());
+                transform.set_rotation(rotation);
+            }
+            instance->set_transformation(transform);
+            instance->auto_drop = false;
+        } else
+            instance->set_rotation(Vec3d(0., 0., Geometry::deg2rad(place.value("rot", 0.))));
         instance->printable = place.value("printable", true);
+        if (place.contains("identify_id")) {
+            instance->loaded_id = place.at("identify_id").get<size_t>();
+            instance->use_loaded_id_for_label = true;
+        }
+        instance->arrange_order = place.value("arrange_order", 0);
     }
     object->ensure_on_bed();
     const size_t first = object->instances.size() - places.size();
     for (size_t i = 0; i < places.size(); ++i) {
-        const BoundingBoxf3 box = object->instance_bounding_box(first + i, true);
+        const BoundingBoxf3 box = object->instance_bounding_box(first + i, !places[i].contains("transform"));
         object->instances[first + i]->set_offset(object->instances[first + i]->get_offset() +
-                                                 Vec3d(origin.x() + places[i].at("x").get<double>() - box.center().x(),
-                                                       origin.y() + places[i].at("y").get<double>() - box.center().y(),
+                                                 Vec3d(places[i].contains("x") ? origin.x() + places[i].at("x").get<double>() - box.center().x() : 0.,
+                                                       places[i].contains("y") ? origin.y() + places[i].at("y").get<double>() - box.center().y() : 0.,
                                                        places[i].contains("z") ? places[i].at("z").get<double>() - box.min.z() : 0.));
+        object->instances[first + i]->auto_drop = places[i].value("auto_drop", true);
     }
 }
 
@@ -1149,6 +1197,9 @@ struct PlateLayout
     int                                                     count = 0;
     std::map<int, std::pair<std::string, DynamicPrintConfig>> plates;
     std::map<ObjectID, int>                                 instance_plate;
+    std::optional<DynamicPrintConfig>                       settings;
+    bool                                                   project_settings = false;
+    bool                                                   implicit_plate_settings = true;
 };
 
 struct PlateFiles
@@ -1179,27 +1230,91 @@ void apply_plate_settings(ModelConfig &config, const nlohmann::json &settings)
         config.set_deserialize(key, value.is_string() ? value.get<std::string>() : value.dump(), ctx);
 }
 
+TriangleMesh read_plate_mesh(const std::string &path)
+{
+    mz_zip_archive archive{};
+    if (!open_zip_reader(&archive, path)) throw std::runtime_error("cannot read volume mesh " + path);
+    ScopeGuard close([&] { close_zip_reader(&archive); });
+    size_t size = 0;
+    void *data = mz_zip_reader_extract_file_to_heap(&archive, "3D/3dmodel.model", &size, 0);
+    if (!data) throw std::runtime_error("volume mesh has no 3D/3dmodel.model: " + path);
+    ScopeGuard release([&] { mz_free(data); });
+    std::istringstream input(std::string(static_cast<const char *>(data), size));
+    boost::property_tree::ptree tree;
+    boost::property_tree::read_xml(input, tree);
+    for (const auto &[tag, object] : tree.get_child("model.resources")) {
+        const auto mesh = object.get_child_optional("mesh");
+        if (tag != "object" || !mesh) continue;
+        indexed_triangle_set its;
+        for (const auto &[tag, vertex] : mesh->get_child("vertices"))
+            if (tag == "vertex") {
+                Vec3f v(vertex.get<float>("<xmlattr>.x"), vertex.get<float>("<xmlattr>.y"), vertex.get<float>("<xmlattr>.z"));
+                if (!v.allFinite()) throw std::runtime_error("non-finite volume mesh vertex: " + path);
+                its.vertices.push_back(v);
+            }
+        for (const auto &[tag, triangle] : mesh->get_child("triangles"))
+            if (tag == "triangle") {
+                Vec3i32 face(triangle.get<int>("<xmlattr>.v1"), triangle.get<int>("<xmlattr>.v2"), triangle.get<int>("<xmlattr>.v3"));
+                for (int index : face)
+                    if (index < 0 || size_t(index) >= its.vertices.size()) throw std::runtime_error("invalid volume mesh vertex index: " + path);
+                its.indices.push_back(face);
+                FaceProperty property;
+                property.from_string(triangle.get<std::string>("<xmlattr>.face_property", ""));
+                its.properties.push_back(property);
+            }
+        return TriangleMesh(std::move(its));
+    }
+    throw std::runtime_error("volume 3MF has no mesh: " + path);
+}
+
+void write_plate_mesh(const std::string &path, const TriangleMesh &mesh)
+{
+    Model model;
+    model.get_backup_path();
+    ModelObject *object = model.add_object();
+    object->add_volume(TriangleMesh(mesh), ModelVolumeType::MODEL_PART, false);
+    object->add_instance();
+    StoreParams params;
+    params.path = path;
+    params.model = &model;
+    DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
+    params.config = &config;
+    params.strategy = SaveStrategy::Silence | SaveStrategy::MinimalPublished;
+    if (!store_bbs_3mf(params)) throw std::runtime_error("cannot write volume mesh " + path);
+}
+
 ModelVolume *add_plate_volume(ModelObject &object, const nlohmann::json &v, PlateFiles &files)
 {
     static const std::map<std::string, ModelVolumeType> types = {
         { "part", ModelVolumeType::MODEL_PART },           { "modifier", ModelVolumeType::PARAMETER_MODIFIER },
         { "negative", ModelVolumeType::NEGATIVE_VOLUME },  { "support_enforcer", ModelVolumeType::SUPPORT_ENFORCER },
-        { "support_blocker", ModelVolumeType::SUPPORT_BLOCKER } };
+        { "support_blocker", ModelVolumeType::SUPPORT_BLOCKER },
+        { "precise_seam_center", ModelVolumeType::PRECISE_SEAM_CENTER }, { "precise_seam_left", ModelVolumeType::PRECISE_SEAM_LEFT },
+        { "precise_seam_right", ModelVolumeType::PRECISE_SEAM_RIGHT }, { "precise_seam_enforced", ModelVolumeType::PRECISE_SEAM_ENFORCED },
+        { "precise_seam_blocked", ModelVolumeType::PRECISE_SEAM_BLOCKED }, { "precise_seam_neutral", ModelVolumeType::PRECISE_SEAM_NEUTRAL } };
     const auto type = types.find(v.value("type", "part"));
     if (type == types.end())
         throw std::runtime_error("unknown volume type " + v.value("type", ""));
-    Transform3d transform = Transform3d::Identity();
+    Geometry::Transformation transform;
     if (const nlohmann::json m = v.value("transform", nlohmann::json()); !m.is_null()) {
-        const bool flat = m.is_array() && m.size() == 16, rows = m.is_array() && m.size() == 4;
-        if (!flat && !rows)
-            throw std::runtime_error("a volume transform is a row-major 4x4 matrix: 16 numbers or 4 rows of 4");
-        for (int r = 0; r < 4; ++r)
-            for (int c = 0; c < 4; ++c)
-                transform.matrix()(r, c) = (flat ? m.at(r * 4 + c) : m.at(r).at(c)).get<double>();
+        transform = plate_transformation(m);
     }
-    ModelVolume *volume = object.add_volume(files(v.at("file").get<std::string>()).objects.front()->raw_mesh(), type->second, false);
-    volume->set_transformation(Geometry::Transformation(transform));
-    volume->center_geometry_after_creation();
+    const bool native_mesh = v.value("mesh_space", "object") == "volume";
+    TriangleMesh mesh;
+    if (native_mesh) {
+        fs::path path = v.at("file").get<std::string>();
+        if (path.is_relative()) path = files.dir / path;
+        if (boost::algorithm::iequals(path.extension().string(), ".3mf")) mesh = read_plate_mesh(path.string());
+        else if (!mesh.ReadSTLFile(path.string().c_str(), false)) throw std::runtime_error("cannot read volume mesh " + path.string());
+        if (v.contains("mesh_init_shift")) {
+            const auto &s = v.at("mesh_init_shift");
+            mesh.set_init_shift(Vec3d(s.at(0).get<double>(), s.at(1).get<double>(), s.at(2).get<double>()));
+        }
+    } else
+        mesh = files(v.at("file").get<std::string>()).objects.front()->raw_mesh();
+    ModelVolume *volume = object.add_volume(std::move(mesh), type->second, false);
+    volume->set_transformation(transform);
+    if (!native_mesh) volume->center_geometry_after_creation();
     volume->name = v.value("name", fs::path(v.at("file").get<std::string>()).stem().string());
     if (const int extruder = v.value("extruder", 0); extruder > 0)
         volume->config.set("extruder", extruder);
@@ -1210,13 +1325,21 @@ ModelVolume *add_plate_volume(ModelObject &object, const nlohmann::json &v, Plat
     return volume;
 }
 
-ModelObject *add_plate_object(Model &model, const nlohmann::json &entry, PlateFiles &files)
+ModelObject *add_plate_object(Model &model, const nlohmann::json &entry, PlateFiles &files, bool native_profile = false)
 {
     if (!entry.contains("file") && !entry.contains("volumes"))
         throw std::runtime_error("plate object " + std::to_string(model.objects.size() + 1) + " needs a file or volumes");
     ModelObject *object = entry.contains("file") ? model.add_object(*files(entry.at("file").get<std::string>()).objects.front()) : model.add_object();
     object->name = entry.value("name", fs::path(entry.contains("file") ? entry.at("file").get<std::string>() : "object").stem().string());
     object->clear_instances();
+    if (entry.contains("input_file")) object->input_file = entry.at("input_file").get<std::string>();
+    if (entry.contains("object_printable")) object->printable = entry.at("object_printable").get<bool>();
+    if (entry.contains("origin_translation")) {
+        const auto &v = entry.at("origin_translation");
+        object->origin_translation = Vec3d(v.at(0).get<double>(), v.at(1).get<double>(), v.at(2).get<double>());
+    }
+    for (const auto &point : entry.value("brim_points", nlohmann::json::array()))
+        object->brim_points.emplace_back(point.at(0).get<float>(), point.at(1).get<float>(), point.at(2).get<float>(), point.at(3).get<float>());
     if (const int extruder = entry.value("extruder", 0); extruder > 0)
         object->config.set("extruder", extruder);
     if (entry.contains("settings"))
@@ -1242,7 +1365,7 @@ ModelObject *add_plate_object(Model &model, const nlohmann::json &entry, PlateFi
     if (entry.contains("volumes")) {
         if (std::none_of(object->volumes.begin(), object->volumes.end(), [](const ModelVolume *v) { return v->is_model_part(); }))
             throw std::runtime_error("plate object " + object->name + " has no part volume");
-        object->sort_volumes(true);
+        if (!entry.value("preserve_volume_order", false)) object->sort_volumes(true);
         object->invalidate_bounding_box();
     }
     if (const nlohmann::json lhp = entry.value("layer_height_profile", nlohmann::json()); !lhp.is_null()) {
@@ -1256,16 +1379,16 @@ ModelObject *add_plate_object(Model &model, const nlohmann::json &entry, PlateFi
             else
                 throw std::runtime_error(where + " is a list of z, h pairs");
         }
-        if (profile.size() < 4 || profile.size() % 2 != 0)
+        if (!native_profile && (profile.size() < 4 || profile.size() % 2 != 0))
             throw std::runtime_error(where + " needs at least two z, h pairs");
-        for (size_t i = 0; i < profile.size(); i += 2) {
+        for (size_t i = 0; !native_profile && i < profile.size(); i += 2) {
             if (!std::isfinite(profile[i]) || !std::isfinite(profile[i + 1]) || profile[i + 1] <= 0.)
                 throw std::runtime_error(where + " has a layer height <= 0 at z " + std::to_string(profile[i]));
             if (i > 0 && profile[i] <= profile[i - 2])
                 throw std::runtime_error(where + " does not increase z at " + std::to_string(profile[i]));
         }
         object->layer_height_profile.set(profile);
-        plate_layer_profiles.push_back(object->id());
+        if (!native_profile) plate_layer_profiles.push_back(object->id());
     }
     return object;
 }
@@ -1277,8 +1400,18 @@ Model load_plate(const std::string &path, PlateLayout &layout, bool allow_empty 
     Model                   model;
     PlateFiles              files{ fs::path(path).parent_path(), true, {} };
     ConfigSubstitutionContext ctx(ForwardCompatibilitySubstitutionRule::Disable);
+    if (j.contains("settings")) {
+        layout.settings.emplace();
+        for (const auto &[key, value] : j.at("settings").items()) {
+            ConfigOption *option = layout.settings->option(key, true);
+            if (!option || !value.is_string() || !option->deserialize(value.get<std::string>()))
+                throw std::runtime_error("invalid native plate setting: " + key);
+        }
+        layout.project_settings = j.value("project_settings", true);
+        layout.implicit_plate_settings = j.value("implicit_plate_settings", true);
+    }
     for (const nlohmann::json &entry : j.at("objects")) {
-        ModelObject *object = add_plate_object(model, entry, files);
+        ModelObject *object = add_plate_object(model, entry, files, layout.settings.has_value());
         const size_t first = object->instances.size();
         add_placed_instances(object, entry);
         const nlohmann::json places = entry.contains("instances") ? entry.at("instances") : nlohmann::json::array({ entry });
@@ -1303,7 +1436,29 @@ Model load_plate(const std::string &path, PlateLayout &layout, bool allow_empty 
         const nlohmann::json settings = plate.value("settings", nlohmann::json::object());
         for (const auto &[key, value] : settings.items())
             config.set_deserialize(key, value.is_string() ? value.get<std::string>() : value.dump(), ctx);
+        if (plate.contains("custom_gcode"))
+            model.plates_custom_gcodes[index.get<int>() - 1].from_json(plate.at("custom_gcode"));
         layout.count = std::max(layout.count, index.get<int>());
+    }
+    if (layout.settings) {
+        std::set<size_t> labels;
+        size_t next_label = 0;
+        for (const ModelObject *object : model.objects)
+            for (const ModelInstance *instance : object->instances)
+                next_label = std::max(next_label, std::max(instance->id().id, instance->loaded_id));
+        for (ModelObject *object : model.objects)
+            for (ModelInstance *instance : object->instances)
+                if (instance->loaded_id > 0 && !labels.insert(instance->loaded_id).second) {
+                    instance->loaded_id = ++next_label;
+                    labels.insert(instance->loaded_id);
+                }
+        for (ModelObject *object : model.objects)
+            for (ModelInstance *instance : object->instances)
+                if (instance->loaded_id == 0 && !labels.insert(instance->id().id).second) {
+                    instance->loaded_id = ++next_label;
+                    instance->use_loaded_id_for_label = true;
+                    labels.insert(instance->loaded_id);
+                }
     }
     if (layout.count > 0)
         for (const ModelObject *object : model.objects)
@@ -1503,7 +1658,7 @@ void restore_loaded_ids(const std::vector<SavedInstance> &instances, Model &mode
 #include "nonplanar_slice_tool_save.ipp"
 
 void save_project(PresetBundle &bundle, const Args &args, Model &model, const DynamicPrintConfig &config, bool loaded_ids,
-                  const PlateDataPtrs &plates, const std::string &cut_information = {})
+                  const PlateDataPtrs &plates, const std::string &cut_information = {}, const DynamicPrintConfig *slice_config = nullptr)
 {
     model.get_backup_path();
     StoreParams params;
@@ -1518,7 +1673,7 @@ void save_project(PresetBundle &bundle, const Args &args, Model &model, const Dy
         throw std::runtime_error("cannot write " + args.save_3mf);
     Args written = args;
     written.model = args.save_3mf;
-    save_source_project(written, config, true, cut_information);
+    save_source_project(written, slice_config ? *slice_config : config, true, cut_information);
 }
 
 WipeTowerFootprint model_wipe_tower_footprint(const Model &model, const DynamicPrintConfig &config)
@@ -1836,8 +1991,162 @@ void select_layout_plate(const Args &args, Model &model, DynamicPrintConfig &con
         full_model  = model;
         full_config = config;
     }
+    std::optional<DynamicPrintConfig> implicit_config;
+    if (!args.plate_index && !layout.implicit_plate_settings) implicit_config = config;
     select_context_plate(model, config, plates, membership, selected);
+    if (implicit_config) {
+        config = std::move(*implicit_config);
+        const auto *bed = plates.front()->config.option<ConfigOptionEnum<BedType>>("curr_bed_type");
+        if (bed && bed->value > btDefault && bed->value < btCount)
+            config.apply_only(plates.front()->config, {"curr_bed_type"});
+    }
 }
+DynamicPrintConfig plate_save_config(const Args &args, const Model &model, const DynamicPrintConfig &global,
+                                    const std::vector<SourcePlate> &sources, const ContextInstances &membership,
+                                    bool project_settings)
+{
+    DynamicPrintConfig saved = global;
+    if ((project_settings && !args.auto_orient) || std::any_of(args.overrides.begin(), args.overrides.end(),
+            [](const auto &setting) { return setting.first.rfind("wipe_tower_", 0) == 0; }))
+        return saved;
+    for (const std::string key : {"wipe_tower_x", "wipe_tower_y"}) {
+        auto &values = saved.option<ConfigOptionFloats>(key)->values;
+        values.resize(std::max(values.size(), sources.size()), values.empty() ? 0. : values.back());
+    }
+    for (size_t index = 1; index <= sources.size(); ++index) {
+        auto owned = saved_plates(model, sources, membership);
+        if (owned.at(index - 1)->objects_and_instances.empty()) continue;
+        PlateDataPtrs plates;
+        plates.reserve(owned.size());
+        for (auto &plate : owned) plates.push_back(plate.release());
+        ScopeGuard release([&] { release_PlateData_list(plates); });
+        Model selected = model;
+        DynamicPrintConfig config = global;
+        select_context_plate(selected, config, plates, membership, int(index));
+        for (const auto &[key, value] : args.overrides) config.set_deserialize_strict(key, value);
+        place(args, selected, config, project_settings && !args.auto_orient);
+        for (const std::string key : {"wipe_tower_x", "wipe_tower_y"})
+            saved.option<ConfigOptionFloats>(key)->values[index - 1] = config.option<ConfigOptionFloats>(key)->get_at(0);
+    }
+    return saved;
+}
+
+void explode_3mf(const Args &args)
+{
+    ConfigSubstitutionContext substitutions(ForwardCompatibilitySubstitutionRule::EnableSilent);
+    En3mfType type;
+    PlateDataPtrs plates;
+    std::vector<Preset *> presets;
+    ScopeGuard release([&] { release_PlateData_list(plates); for (Preset *preset : presets) delete preset; });
+    Semver version;
+    DynamicPrintConfig project_config;
+    Model model;
+    model = Model::read_from_archive(args.explode_3mf, &project_config, &substitutions, type,
+        LoadStrategy::LoadModel | LoadStrategy::LoadConfig | LoadStrategy::AddDefaultInstances, &plates, &presets, &version);
+    bool project_settings = !project_config.empty();
+    DynamicPrintConfig config = DynamicPrintConfig::full_print_config();
+    config.apply(project_config);
+    const DynamicPrintConfig source_layout = config;
+    const bool snapshot = load_slice_config(args.explode_3mf, config, project_settings);
+    const bool has_settings = snapshot || !project_config.empty();
+    if (has_settings) { repair_project_flush(config); complete_project_ranges(model, config); }
+    const auto saved = read_saved_instances(args.explode_3mf);
+    restore_loaded_ids(saved, model);
+    const ContextInstances membership = context_instances(args.explode_3mf, model, saved);
+    const fs::path directory(args.explode_directory);
+    fs::create_directories(directory);
+    const auto vector = [](const Vec3d &v) { return Json::array({v.x(), v.y(), v.z()}); };
+    const auto transformation = [](const Geometry::Transformation &t) { return context_transform(t.get_matrix()); };
+    Json out = {{"schema", "orca.plate.v1"}, {"objects", Json::array()}, {"plates", Json::array()}};
+    if (has_settings) {
+        out["settings"] = slice_settings(config);
+        out["project_settings"] = project_settings;
+        out["implicit_plate_settings"] = false;
+    }
+    const std::vector<const char *> event_types = {"ColorChange", "PausePrint", "ToolChange", "Template", "Custom", "Unknown"};
+    int count = 1;
+    for (const PlateData *plate : plates)
+        if (plate) count = std::max(count, plate->plate_index + 1);
+    for (int index = 1; index <= count; ++index) {
+        const auto plate = std::find_if(plates.begin(), plates.end(), [index](const PlateData *p) { return p && p->plate_index + 1 == index; });
+        Json row = {{"index", index}, {"name", plate == plates.end() ? "" : (*plate)->plate_name},
+                    {"settings", plate == plates.end() ? Json::object() : context_settings((*plate)->config)}};
+        if (const auto events = model.plates_custom_gcodes.find(index - 1); events != model.plates_custom_gcodes.end()) {
+            const auto mode = events->second.mode;
+            Json info = {{"mode", mode == CustomGCode::SingleExtruder ? "SingleExtruder" : mode == CustomGCode::MultiAsSingle ?
+                "MultiAsSingle" : mode == CustomGCode::MultiExtruder ? "MultiExtruder" : "Undef"}, {"gcodes", Json::array()}};
+            for (const auto &item : events->second.gcodes)
+                info["gcodes"].push_back({{"type", event_types.at(size_t(item.type))}, {"print_z", item.print_z},
+                    {"extruder", item.extruder}, {"color", item.color}, {"extra", item.extra}});
+            row["custom_gcode"] = std::move(info);
+        }
+        out["plates"].push_back(std::move(row));
+    }
+    for (size_t o = 0; o < model.objects.size(); ++o) {
+        const ModelObject *object = model.objects[o];
+        Json entry = {{"name", object->name}, {"input_file", object->input_file}, {"object_printable", object->printable},
+            {"origin_translation", vector(object->origin_translation)}, {"settings", context_settings(object->config.get())},
+            {"preserve_volume_order", true}, {"volumes", Json::array()}, {"instances", Json::array()}, {"ranges", Json::array()}};
+        if (const ConfigOption *extruder = object->config.option("extruder"); extruder && extruder->getInt() > 0) {
+            entry["extruder"] = extruder->getInt();
+            entry["settings"].erase("extruder");
+        }
+        if (!object->layer_height_profile.get().empty()) entry["layer_height_profile"] = object->layer_height_profile.get();
+        for (const BrimPoint &point : object->brim_points)
+            entry["brim_points"].push_back({point.pos.x(), point.pos.y(), point.pos.z(), point.head_front_radius});
+        for (const auto &[range, settings] : object->layer_config_ranges)
+            entry["ranges"].push_back({{"z", {range.first, range.second}}, {"settings", context_settings(settings.get())},
+                                      {"layer_height", settings.opt_float("layer_height")}});
+        for (size_t v = 0; v < object->volumes.size(); ++v) {
+            const ModelVolume *volume = object->volumes[v];
+            const std::string file = "object-" + std::to_string(o) + "-volume-" + std::to_string(v) + ".3mf";
+            write_plate_mesh((directory / file).string(), volume->mesh());
+            std::string type = ModelVolume::type_to_string(volume->type());
+            if (type == "normal_part") type = "part";
+            else if (type == "modifier_part") type = "modifier";
+            else if (type == "negative_part") type = "negative";
+            Json row = {{"file", file}, {"name", volume->name}, {"type", type}, {"mesh_space", "volume"},
+                {"mesh_init_shift", vector(volume->mesh().get_init_shift())}, {"transform", transformation(volume->get_transformation())},
+                {"settings", context_settings(volume->config.get())}, {"paint", Json::object()}};
+            if (const ConfigOption *extruder = volume->config.option("extruder"); extruder && extruder->getInt() > 0) {
+                row["extruder"] = extruder->getInt();
+                row["settings"].erase("extruder");
+            }
+            for (const auto &[kind, facets] : std::vector<std::pair<std::string, const FacetsAnnotation *>>{
+                {"support", &volume->supported_facets}, {"seam", &volume->seam_facets}, {"color", &volume->mmu_segmentation_facets},
+                {"fuzzy", &volume->fuzzy_skin_facets}})
+                for (const auto &triangle : facets->get_data().triangles_to_split)
+                    row["paint"][kind][std::to_string(triangle.triangle_idx)] = facets->get_triangle_as_string(triangle.triangle_idx);
+            entry["volumes"].push_back(std::move(row));
+        }
+        for (size_t i = 0; i < object->instances.size(); ++i) {
+            const ModelInstance *instance = object->instances[i];
+            int plate = 1;
+            if (const auto it = membership.find(instance->id()); it != membership.end() && it->second.at("source_plate_index").is_number_integer())
+                plate = it->second.at("source_plate_index").get<int>();
+            else
+                for (const PlateData *p : plates)
+                    if (p && std::find(p->objects_and_instances.begin(), p->objects_and_instances.end(), std::make_pair(int(o), int(i))) != p->objects_and_instances.end())
+                        plate = p->plate_index + 1;
+            const Vec3d origin = plate > 1 ? context_plate_origin(source_layout, plates, plate) : Vec3d::Zero();
+            Geometry::Transformation local = instance->get_transformation();
+            local.set_offset(local.get_offset() - origin);
+            const BoundingBoxf3 box = object->instance_bounding_box(i);
+            entry["instances"].push_back({{"transform", transformation(local)}, {"x", box.center().x() - origin.x()},
+                {"y", box.center().y() - origin.y()}, {"z", box.min.z()}, {"rot", Geometry::rad2deg(local.get_rotation().z())},
+                {"plate", plate}, {"printable", instance->printable}, {"auto_drop", instance->auto_drop},
+                {"arrange_order", instance->arrange_order}, {"identify_id", instance->loaded_id > 0 ? instance->loaded_id : instance->get_labeled_id()}});
+        }
+        out["objects"].push_back(std::move(entry));
+    }
+    const fs::path path = directory / "plate.json";
+    boost::nowide::ofstream file(path.string());
+    file << out.dump(1) << "\n";
+    file.close();
+    if (!file) throw std::runtime_error("cannot write " + path.string());
+    std::cout << "exploded_plate " << path.string() << "\n";
+}
+
 #include "nonplanar_calib_classic.ipp"
 
 int main(int argc, char **argv)
@@ -1874,6 +2183,7 @@ int main(int argc, char **argv)
         set_data_dir(datadir.string());
         set_temporary_dir(datadir.string());
         Nonplanar::HeadLibrary::instance().reload();
+        if (!args.explode_3mf.empty()) { explode_3mf(args); return 0; }
         if (!args.verify_gcode.empty()) {
             DynamicPrintConfig file_config;
             file_config.load_from_gcode_file(args.verify_gcode, ForwardCompatibilitySubstitutionRule::Enable);
@@ -2018,6 +2328,10 @@ int main(int argc, char **argv)
             model = ! args.plate.empty()   ? load_plate(args.plate, layout, !args.wipe_tower_only.empty()) :
                     ! args.project.empty() ? load_project(args.project) :
                 read_input(args.model);
+            if (layout.settings) {
+                config = *layout.settings;
+                project_settings = layout.project_settings;
+            }
             if (layout.count > 0) {
                 if (args.wipe_tower_only.empty())
                     select_layout_plate(args, model, config, layout, source_plates, saved_instances, full_model, full_config);
@@ -2034,7 +2348,7 @@ int main(int argc, char **argv)
             if (full_config)
                 full_config->set_deserialize_strict(key, value);
         }
-        if (project_input) {
+        if (project_input || layout.settings) {
             repair_project_flush(config);
             complete_project_ranges(model, config);
             if (full_config) repair_project_flush(*full_config);
@@ -2109,8 +2423,12 @@ int main(int argc, char **argv)
                 PlateDataPtrs plate_list;
                 for (const auto &plate : plates)
                     plate_list.push_back(plate.get());
-                save_project(bundle, args, saved_model, full_config ? *full_config : config, project_input, plate_list,
-                             project_input ? carried_cut_information(args.model, source_objects, saved_model) : std::string());
+                DynamicPrintConfig stored = full_config ? *full_config : config;
+                if (!project_input && layout.count > 0)
+                    stored = plate_save_config(args, saved_model, stored, source_plates, saved_instances, project_settings);
+                save_project(bundle, args, saved_model, stored, project_input, plate_list,
+                             project_input ? carried_cut_information(args.model, source_objects, saved_model) : std::string(),
+                             !project_input && layout.count == 1 ? &config : nullptr);
             }
             std::cout << "project " << args.save_3mf << "\n";
             if (args.output.empty())
