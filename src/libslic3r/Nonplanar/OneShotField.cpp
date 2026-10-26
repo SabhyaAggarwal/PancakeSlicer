@@ -698,7 +698,7 @@ bool control_past_cap(const PrintObject &object, OneShotState &state)
     return true;
 }
 
-constexpr double OneShotBodyBand   = 0.02;
+constexpr double OneShotBodyBand   = 0.01;
 constexpr double OneShotBodySlower = 1.02;
 
 bool body_earns_control(const PrintObject &object, OneShotState &state, const Floating &floating)
