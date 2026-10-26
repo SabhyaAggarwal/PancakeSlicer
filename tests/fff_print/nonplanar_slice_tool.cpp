@@ -119,6 +119,8 @@ struct Args
     std::string printer, process, datadir, output, model, config_out, paint, gcode_3mf, json, plate, project_out, head_out, layer_profile, project, save_3mf,
                 tip_out, planned_out, verify_gcode, field_file, dump_field, move_times, calib, calib_head, calib_picks, calib_params, moves_out, dump_options, dump_presets;
     bool        progress = false;
+    bool        moves_extended = false;
+    bool        allow_mixed_temperatures = false;
     int         calib_fit = -1;
     int         plate_index = 0;
     std::vector<std::string> filaments, colours;
@@ -137,8 +139,10 @@ struct Args
     bool        cut_place_lower = false;
     bool        force_planar    = false;
     std::string arrange_only;
+    std::string wipe_tower_only;
     double      arrange_spacing  = -1.;
     bool        arrange_rotation = true;
+    bool        arrange_multi_materials = true;
     bool        surface_grid    = false;
     size_t      surface_grid_max_cells = 40000;
     std::string patch_preview;
@@ -185,14 +189,18 @@ Model read_input(const std::string &file)
                  "       [--atom TOOLPATH] [--verify] [--explain] [--auto-orient | --orient-only | --orient-scores] [--floating] [--save-3mf PROJECT.3mf]\n"
                  "       [--plate-index N] [--layer-profile adaptive:QUALITY | ramp:H_BOTTOM:H_TOP | range:DEPTH:H | file:PATH] [--calib-head ID]\n"
                  "       -o OUT.gcode (MODEL | PROJECT.3mf | --plate PLATE.json | --project SPEC.json | --calib TEST)\n"
-                 "       [--moves-out FILE] [--progress] [--calib-params key=value,...]\n"
+                 "       [--moves-out FILE [--moves-extended]] [--progress] [--calib-params key=value,...]\n"
                  "       (plate JSON objects take \"plate\": N; a plate JSON of several plates slices with --plate-index N)\n"
                  "       (plate JSON objects and volumes take \"paint\"; plate JSON objects take \"layer_height_profile\")\n"
+                 "       (plate JSON objects take \"ranges\")\n"
                  "       [--surface-grid [--surface-grid-max-cells N]]   (with --json: per-cell top surface error)\n"
                  "       [--force-planar]   (nonplanar_mode off on the plate, objects, volumes and height ranges)\n"
+                 "       [--allow-mixed-temperatures]\n"
                  "       [--edit EDITS.json]   (a loaded PROJECT.3mf: add/delete objects and instances, set filaments; --edit takes \"add_volume\"; --edit takes \"set_paint\")\n"
                  "       [--cut-only Z | X,Y,Z,NX,NY,NZ [--cut-keep upper|lower|both] [--cut-place-lower]]\n"
                  "       [--arrange-only OUT.json [--arrange-spacing MM] [--arrange-no-rotation]]   (the desktop's arrange, no slice)\n"
+                 "       [--arrange-multi-materials 0|1]   (with --arrange-only; default 1)\n"
+                 "       [--wipe-tower-only OUT.json]   (with --plate: per-plate prime tower estimate, no slice)\n"
                  "       [--patch-preview FILE.json [--patch-preview-budget S] [--patch-preview-max-triangles N]]\n"
                  "       [--step-linear-deflection MM] [--step-angle-deflection A] [--step-split-compound]\n"
                  "       nonplanar_slice_tool --dump-options FILE | --dump-presets VENDOR FILE [--profiles DIR]\n"
@@ -286,6 +294,7 @@ Args parse_args(int argc, char **argv)
         } else if (arg == "--dump-field") a.dump_field = fs::absolute(next()).string();
         else if (arg == "--json") a.json = next();
         else if (arg == "--moves-out") a.moves_out = next();
+        else if (arg == "--moves-extended") a.moves_extended = true;
         else if (arg == "--dump-options") a.dump_options = next();
         else if (arg == "--dump-presets") { a.vendor = next(); a.dump_presets = next(); }
         else if (arg == "--progress") a.progress = true;
@@ -316,6 +325,7 @@ Args parse_args(int argc, char **argv)
         else if (arg == "--floating") a.floating = true;
         else if (arg == "--edit") a.edit = next();
         else if (arg == "--force-planar") a.force_planar = true;
+        else if (arg == "--allow-mixed-temperatures") a.allow_mixed_temperatures = true;
         else if (arg == "--surface-grid") a.surface_grid = true;
         else if (arg == "--surface-grid-max-cells") {
             const long n = std::atol(next().c_str());
@@ -324,6 +334,12 @@ Args parse_args(int argc, char **argv)
         }
         else if (arg == "--cut-only") a.cut = next();
         else if (arg == "--arrange-only") a.arrange_only = next();
+        else if (arg == "--wipe-tower-only") a.wipe_tower_only = next();
+        else if (arg == "--arrange-multi-materials") {
+            const std::string value = next();
+            if (value != "0" && value != "1") usage("--arrange-multi-materials expects 0 or 1");
+            a.arrange_multi_materials = value == "1";
+        }
         else if (arg == "--arrange-spacing") {
             const std::string value = next();
             char *end = nullptr;
@@ -396,11 +412,13 @@ Args parse_args(int argc, char **argv)
         return a;
     }
     if (a.printer.empty() || a.process.empty() || a.filaments.empty() ||
-        (a.output.empty() && ! a.orient_only && a.confirm_up.empty() && a.save_3mf.empty() && a.patch_preview.empty() && a.arrange_only.empty()) ||
+        (a.output.empty() && ! a.orient_only && a.confirm_up.empty() && a.save_3mf.empty() && a.patch_preview.empty() && a.arrange_only.empty() && a.wipe_tower_only.empty()) ||
         int(! a.model.empty()) + int(! a.plate.empty()) + int(! a.project.empty()) + int(! a.calib.empty()) != 1)
         usage("--printer, --process, --filament, -o and one of a model, --plate, --project or --calib are required");
     if (a.surface_grid && a.json.empty())
         usage("--surface-grid needs --json");
+    if (!a.wipe_tower_only.empty() && a.plate.empty())
+        usage("--wipe-tower-only needs --plate");
     if (! a.cut.empty() && a.output.empty())
         usage("--cut-only needs -o PIECES.3mf or -o PIECES.stl");
     if (! a.calib.empty() && ! Nonplanar::Calibration::parse_test(a.calib) && ! classic_calib_mode(a.calib))
@@ -912,6 +930,8 @@ OrientSlice slice_orientation(const Args &args, const Model &source, const Matri
             print.auto_assign_extruders(object);
         print.apply(model, config);
         Model::setBedPolygon(config, print.config());
+        if (args.allow_mixed_temperatures)
+            print.set_check_multi_filaments_compatibility(false);
         if (const StringObjectException err = print.validate(); ! err.string.empty())
             throw std::runtime_error("validate: " + err.string);
         print.process();
@@ -1201,6 +1221,11 @@ ModelObject *add_plate_object(Model &model, const nlohmann::json &entry, PlateFi
         object->config.set("extruder", extruder);
     if (entry.contains("settings"))
         apply_plate_settings(object->config, entry.at("settings"));
+    for (const nlohmann::json &r : entry.value("ranges", nlohmann::json::array())) {
+        ModelConfig &config = object->layer_config_ranges[{ r.at("z")[0].get<double>(), r.at("z")[1].get<double>() }];
+        config.set("layer_height", r.value("layer_height", 0.2));
+        apply_plate_settings(config, r.value("settings", nlohmann::json::object()));
+    }
     if (const nlohmann::json paint = entry.value("paint", nlohmann::json()); !paint.is_null()) {
         const std::string where = "plate object " + object->name;
         const size_t parts = object->volumes.size();
@@ -1245,7 +1270,7 @@ ModelObject *add_plate_object(Model &model, const nlohmann::json &entry, PlateFi
     return object;
 }
 
-Model load_plate(const std::string &path, PlateLayout &layout)
+Model load_plate(const std::string &path, PlateLayout &layout, bool allow_empty = false)
 {
     boost::nowide::ifstream in(path);
     const nlohmann::json    j = nlohmann::json::parse(in);
@@ -1267,7 +1292,7 @@ Model load_plate(const std::string &path, PlateLayout &layout)
             layout.count = std::max(layout.count, plate.get<int>());
         }
     }
-    if (model.objects.empty())
+    if (model.objects.empty() && !allow_empty)
         throw std::runtime_error("no objects in " + path);
     for (const nlohmann::json &plate : j.value("plates", nlohmann::json::array())) {
         const nlohmann::json index = plate.value("index", nlohmann::json());
@@ -1496,6 +1521,98 @@ void save_project(PresetBundle &bundle, const Args &args, Model &model, const Dy
     save_source_project(written, config, true, cut_information);
 }
 
+WipeTowerFootprint model_wipe_tower_footprint(const Model &model, const DynamicPrintConfig &config)
+{
+    Print print;
+    print.is_BBL_printer() = config.opt_string("printer_model").rfind("Bambu Lab", 0) == 0;
+    print.apply(model, config);
+    const std::vector<unsigned int> ids = print.extruders(true);
+    if (ids.empty()) return {};
+    double height = 0., layer_height = std::numeric_limits<double>::max();
+    for (const ModelObject *object : model.objects) {
+        for (size_t i = 0; i < object->instances.size(); ++i)
+            height = std::max(height, object->instance_convex_hull_bounding_box(i, true).size().z());
+        const ConfigOption *option = object->config.option("layer_height");
+        layer_height = std::min(layer_height, option ? option->getFloat() : config.opt_float("layer_height"));
+    }
+    if (layer_height == std::numeric_limits<double>::max()) layer_height = config.opt_float("layer_height");
+    return estimate_wipe_tower_footprint(config, resolve_wipe_tower_type(config), ids, layer_height, height);
+}
+
+arrangement::ArrangePolygon model_wipe_tower_polygon(const DynamicPrintConfig &config, const WipeTowerFootprint &fp,
+                                                     size_t plate_index, Vec2d &position)
+{
+    float x = float(config.option<ConfigOptionFloats>("wipe_tower_x")->get_at(plate_index));
+    float y = float(config.option<ConfigOptionFloats>("wipe_tower_y")->get_at(plate_index));
+    float brim = float(fp.brim_width);
+    if (fp.width > 0. && fp.depth > 0.) {
+        const BoundingBox outline = get_extents(estimate_wipe_tower_first_layer_outline(config,
+            resolve_wipe_tower_type(config), fp.width, fp.depth, fp.height));
+        brim += float(std::max({0., unscaled(outline.max.x()) - fp.width, unscaled(outline.max.y()) - fp.depth,
+                                -unscaled(outline.min.x()), -unscaled(outline.min.y())}));
+    }
+    const BoundingBoxf bed(config.option<ConfigOptionPoints>("printable_area")->values);
+    const float margin = float(WIPE_TOWER_MARGIN) + brim, comfort = float(WIPE_TOWER_AUTO_MARGIN) + brim;
+    for (int axis = 0; axis < 2; ++axis) {
+        float &value = axis == 0 ? x : y;
+        const float size = float(axis == 0 ? fp.width : fp.depth);
+        const float lo = float(bed.min[axis]) + margin;
+        const float hi = std::max(lo, float(bed.max[axis]) - size - margin);
+        float comfort_lo = float(bed.min[axis]) + comfort, comfort_hi = float(bed.max[axis]) - size - comfort;
+        if (comfort_lo > comfort_hi) { comfort_lo = lo; comfort_hi = hi; }
+        value = value < lo - 5.f || value > hi + 5.f ? std::clamp(value, comfort_lo, comfort_hi) : std::clamp(value, lo, hi);
+    }
+    position = Vec2d(x, y);
+    arrangement::ArrangePolygon tower;
+    tower.poly.contour = Polygon({Point::new_scale(x - brim, y - brim), Point::new_scale(x + fp.width + brim, y - brim),
+                                  Point::new_scale(x + fp.width + brim, y + fp.depth + brim), Point::new_scale(x - brim, y + fp.depth + brim)});
+    tower.bed_idx = int(plate_index);
+    tower.name = "WipeTower";
+    tower.is_virt_object = tower.is_wipe_tower = true;
+    return tower;
+}
+
+void wipe_tower_only(const Args &args, const Model &model, const DynamicPrintConfig &config, const PlateLayout &layout)
+{
+    nlohmann::json out = {{"schema", "orca.wipe_tower.v1"}, {"plates", nlohmann::json::array()}};
+    const int count = std::max(1, layout.count);
+    for (int index = 1; index <= count; ++index) {
+        if (args.plate_index && args.plate_index != index) continue;
+        Model plate = model;
+        for (size_t o = plate.objects.size(); o-- > 0;) {
+            ModelObject *object = plate.objects[o];
+            for (size_t i = object->instances.size(); i-- > 0;) {
+                const auto it = layout.instance_plate.find(object->instances[i]->id());
+                if ((it == layout.instance_plate.end() ? 1 : it->second) != index) object->delete_instance(i);
+            }
+            if (object->instances.empty()) plate.delete_object(o);
+            else object->invalidate_bounding_box();
+        }
+        DynamicPrintConfig settings = config;
+        if (const auto it = layout.plates.find(index); it != layout.plates.end()) {
+            DynamicPrintConfig overrides = it->second.second;
+            if (const auto *bed = overrides.option<ConfigOptionEnum<BedType>>("curr_bed_type"); bed && bed->value == btDefault)
+                overrides.erase("curr_bed_type");
+            settings.apply(overrides);
+        }
+        for (const auto &[key, value] : args.overrides) settings.set_deserialize_strict(key, value);
+        plate.curr_plate_index = 0;
+        if (!args.events.empty()) {
+            auto &events = plate.plates_custom_gcodes[0];
+            events.gcodes = args.events;
+            events.mode = CustomGCode::MultiAsSingle;
+        }
+        const WipeTowerFootprint fp = model_wipe_tower_footprint(plate, settings);
+        Vec2d position;
+        model_wipe_tower_polygon(settings, fp, size_t(index - 1), position);
+        out["plates"].push_back({{"plate", index}, {"x", position.x()}, {"y", position.y()},
+            {"width", fp.width}, {"depth", fp.depth}, {"height", fp.height}, {"brim_width", fp.brim_width}});
+    }
+    boost::nowide::ofstream file(args.wipe_tower_only);
+    file << out.dump(1) << "\n";
+    if (!file) throw std::runtime_error("cannot write " + args.wipe_tower_only);
+}
+
 void arrange_only(const Args &args, Model &model, const DynamicPrintConfig &config)
 {
     arrangement::ArrangePolygons items;
@@ -1509,6 +1626,7 @@ void arrange_only(const Args &args, Model &model, const DynamicPrintConfig &conf
         }
     arrangement::ArrangeParams params;
     params.allow_rotations         = args.arrange_rotation;
+    params.allow_multi_materials_on_same_plate = args.arrange_multi_materials;
     params.clearance_height_to_rod = float(config.opt_float("extruder_clearance_height_to_rod"));
     params.clearance_height_to_lid = float(config.opt_float("extruder_clearance_height_to_lid"));
     params.clearance_radius        = float(config.opt_float("extruder_clearance_radius"));
@@ -1541,7 +1659,28 @@ void arrange_only(const Args &args, Model &model, const DynamicPrintConfig &conf
         region.inflation      = scaled(1.);
         params.excluded_regions.push_back(std::move(region));
     }
-    arrangement::arrange(items, {}, bed, params);
+    arrangement::ArrangePolygons fixed;
+    if (config.opt_bool("enable_prime_tower") && !params.is_seq_print && !params.is_belt) {
+        bool need_tower = config.opt_enum<TimelapseType>("timelapse_type") == TimelapseType::tlSmooth;
+        std::map<int, std::vector<int>> bed_filaments;
+        for (const auto &item : items) {
+            need_tower |= item.extrude_ids.size() > 1;
+            auto &ids = bed_filaments[item.bed_temp];
+            for (int id : item.extrude_ids)
+                if (std::find(ids.begin(), ids.end(), id) == ids.end()) ids.push_back(id);
+        }
+        if (params.allow_multi_materials_on_same_plate)
+            for (const auto &[temperature, ids] : bed_filaments) need_tower |= ids.size() > 1;
+        if (need_tower) {
+            const WipeTowerFootprint fp = model_wipe_tower_footprint(model, config);
+            if (fp.width > 0. && fp.depth > 0.)
+                for (size_t index = 0; index < items.size(); ++index) {
+                    Vec2d position;
+                    fixed.push_back(model_wipe_tower_polygon(config, fp, index, position));
+                }
+        }
+    }
+    arrangement::arrange(items, fixed, bed, params);
 
     nlohmann::json out = { { "schema", "orca.arrange.v1" }, { "objects", nlohmann::json::array() } };
     int plates = 0, unplaced = 0;
@@ -1796,6 +1935,7 @@ int main(int argc, char **argv)
         std::vector<SourcePlate> source_plates;
         std::optional<Model> full_model;
         std::optional<DynamicPrintConfig> full_config;
+        PlateLayout layout;
         std::vector<ObjectID> source_objects;
         if (project_input) {
             ConfigSubstitutionContext substitutions(ForwardCompatibilitySubstitutionRule::EnableSilent);
@@ -1875,12 +2015,15 @@ int main(int argc, char **argv)
             for (Preset *preset : presets)
                 delete preset;
         } else if (args.calib.empty()) {
-            PlateLayout layout;
-            model = ! args.plate.empty()   ? load_plate(args.plate, layout) :
+            model = ! args.plate.empty()   ? load_plate(args.plate, layout, !args.wipe_tower_only.empty()) :
                     ! args.project.empty() ? load_project(args.project) :
                 read_input(args.model);
-            if (layout.count > 0)
-                select_layout_plate(args, model, config, layout, source_plates, saved_instances, full_model, full_config);
+            if (layout.count > 0) {
+                if (args.wipe_tower_only.empty())
+                    select_layout_plate(args, model, config, layout, source_plates, saved_instances, full_model, full_config);
+                else if (args.plate_index > layout.count)
+                    throw std::runtime_error("--plate-index does not name a plate in this plate JSON");
+            }
             else if (args.plate_index > 1)
                 throw std::runtime_error("--plate-index does not name a plate in this plate JSON");
         }
@@ -1932,13 +2075,17 @@ int main(int argc, char **argv)
                     config.set_deserialize_strict(key, value);
             Nonplanar::Calibration::add_to_model(*calib_plate, model);
         }
-        if (model.objects.empty())
+        if (model.objects.empty() && (args.wipe_tower_only.empty() || !args.paint.empty() || !args.parts.empty()))
             throw std::runtime_error("no objects in " + args.model);
         if (! args.cut.empty()) {
             cut_only(bundle, args, model, config);
             return 0;
         }
-        apply_multi_material(args, model);
+        if (!model.objects.empty()) apply_multi_material(args, model);
+        if (!args.wipe_tower_only.empty()) {
+            wipe_tower_only(args, model, config, layout);
+            return 0;
+        }
         if (! args.arrange_only.empty()) {
             arrange_only(args, model, config);
             return 0;
@@ -2038,6 +2185,8 @@ int main(int argc, char **argv)
         }
 
         std::vector<StringObjectException> warnings;
+        if (args.allow_mixed_temperatures)
+            print.set_check_multi_filaments_compatibility(false);
         if (const StringObjectException err = print.validate(&warnings); ! err.string.empty())
             throw std::runtime_error("validate: " + err.string);
         for (const StringObjectException &w : warnings)
@@ -2092,7 +2241,8 @@ int main(int argc, char **argv)
         if (!args.json.empty() || !args.moves_out.empty()) {
             const auto statistics = print_statistics_json(print, result);
             if (!args.json.empty()) record["statistics"] = statistics;
-            if (!args.moves_out.empty()) write_moves(args.moves_out, result, args.filaments, statistics);
+            if (!args.moves_out.empty() && !args.moves_extended)
+                write_moves(args.moves_out, result, args.filaments, statistics, false);
         }
 
         if (args.explain)
@@ -2342,6 +2492,8 @@ int main(int argc, char **argv)
             params.contact_bar        = true;
             result.clearance_report   = verify_clearance(result, params, *make_tool_kinematics(print.config()));
         }
+        if (!args.moves_out.empty() && args.moves_extended)
+            write_moves(args.moves_out, result, args.filaments, print_statistics_json(print, result), true);
         if (!args.tip_out.empty()) {
             const auto       kinematics = make_tool_kinematics(print.config());
             const bool       rotary     = kinematics->rotary_count() > 0;
@@ -2366,8 +2518,9 @@ int main(int argc, char **argv)
                 Nonplanar::NpField file;
                 bool               found = false;
                 for (const Nonplanar::ConformalPatch &patch : object.conformal().patches)
-                    if (patch.kind == Nonplanar::PatchKind::Field && patch.field) {
-                        file  = patch.field->to_npfield();
+                    if (const auto *of = dynamic_cast<const Nonplanar::OrientationField *>(patch.field.get());
+                        patch.kind == Nonplanar::PatchKind::Field && of != nullptr) {
+                        file  = of->to_npfield();
                         found = true;
                         break;
                     }

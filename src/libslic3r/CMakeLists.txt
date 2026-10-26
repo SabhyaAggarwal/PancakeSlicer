@@ -140,8 +140,18 @@ set(lisbslic3r_sources
     Nonplanar/FieldOrder.hpp
     Nonplanar/FieldObjective.cpp
     Nonplanar/FieldObjective.hpp
+    Nonplanar/FieldTerm.cpp
+    Nonplanar/FieldTerm.hpp
+    Nonplanar/ClearanceTerms.cpp
+    Nonplanar/ClearanceTerms.hpp
+    Nonplanar/StrengthTerm.cpp
+    Nonplanar/StrengthTerm.hpp
     Nonplanar/NpField.cpp
     Nonplanar/NpField.hpp
+    Nonplanar/NativeLayers.cpp
+    Nonplanar/NativeLayers.hpp
+    Nonplanar/NativePrint.cpp
+    Nonplanar/NativePrint.hpp
     Nonplanar/OneShotField.cpp
     Nonplanar/OneShotField.hpp
     Nonplanar/Npy.cpp

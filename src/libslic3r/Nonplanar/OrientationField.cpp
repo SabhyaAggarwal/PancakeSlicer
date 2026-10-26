@@ -1988,6 +1988,7 @@ void solve_oneshot(PrintObject &object)
         state.max_time_ratio_override = max_time_ratio_override();
         state.time_cut_note.clear();
         state.auto_weighed = false;
+        admit_lean_offer(object, state, time_cut);
         admit_time_cut(object, state, time_cut);
         if (state.offer == OneShotState::Offer::Auto)
             return;

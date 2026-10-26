@@ -26,6 +26,7 @@
 #include "I18N.hpp"
 #include "Layer.hpp"
 #include "Model.hpp"
+#include "Nonplanar/NativePrint.hpp"
 #include "Nonplanar/ConformalShells.hpp"
 #include "Nonplanar/FieldOrder.hpp"
 #include "Nonplanar/AutoMode.hpp"
@@ -1300,6 +1301,10 @@ void PrintObject::slice_volumes()
                 });
         }
     }
+    if (const std::vector<ExPolygons> *native = Nonplanar::NativeSliceOverride::find(this->model_object()->name);
+        native != nullptr && region_slices.size() == 1)
+        for (size_t layer_id = 0; layer_id < region_slices.front().size(); ++layer_id)
+            region_slices.front()[layer_id] = layer_id < native->size() ? (*native)[layer_id] : ExPolygons();
     for (size_t region_id = 0; region_id < region_slices.size(); ++ region_id) {
         std::vector<ExPolygons> &by_layer = region_slices[region_id];
         for (size_t layer_id = 0; layer_id < by_layer.size(); ++ layer_id)
@@ -1321,7 +1326,9 @@ void PrintObject::slice_volumes()
         m_planar_floating_mm = Nonplanar::wall_floating_mm(slices, heights, this->printing_region(0).config().wall_loops.value,
                                                            m_config.line_width.get_abs_value(m_print->config().nozzle_diameter.get_at(0)));
     }
-    m_field = m_multiplanar ? nullptr : Nonplanar::clip_field_slices(*this);
+    m_native_summary.clear();
+    m_native_field = !m_multiplanar && Nonplanar::native_requested() ? Nonplanar::native_field(*this) : nullptr;
+    m_field        = m_multiplanar || m_native_field ? nullptr : Nonplanar::clip_field_slices(*this);
     if (m_multiplanar && !m_multiplanar->auto_reason.empty())
         this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, m_multiplanar->auto_reason);
 

@@ -55,7 +55,7 @@
 
 namespace Slic3r {
 
-namespace Nonplanar { struct ConformalResult; struct RepairHints; class ClearanceRepair; struct MultiplanarPlan; class OrientationField; struct OneShotState; }
+namespace Nonplanar { struct ConformalResult; struct RepairHints; class ClearanceRepair; struct MultiplanarPlan; class OrientationField; struct OneShotState; class LayerField; }
 
 class SlicingErrors;
 
@@ -356,6 +356,8 @@ public:
     bool                              oneshot_support() const;
     SupportMaterialStyle              tree_default_style() const;
     void                              set_field_floating_mm(double mm) { m_field_floating_mm = mm; }
+    const std::string                &native_summary() const { return m_native_summary; }
+    void                              set_native_summary(std::string s) { m_native_summary = std::move(s); }
     bool has_conformal_support() const;
 
     void generate_support_preview();
@@ -567,6 +569,8 @@ private:
     std::shared_ptr<Nonplanar::OneShotState>    m_oneshot;
     std::shared_ptr<const Nonplanar::MultiplanarPlan> m_multiplanar;
     std::shared_ptr<const Nonplanar::OrientationField> m_field;
+    std::shared_ptr<const Nonplanar::LayerField>       m_native_field;
+    std::string                                        m_native_summary;
 
     bool                    				m_typed_slices = false;
 

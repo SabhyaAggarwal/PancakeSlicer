@@ -15,6 +15,7 @@
 #include "Nonplanar/MaterialRules.hpp"
 #include "Nonplanar/ConformalBottom.hpp"
 #include "Nonplanar/ConformalShells.hpp"
+#include "Nonplanar/FieldChart.hpp"
 #include "Nonplanar/OrientationField.hpp"
 #include "Nonplanar/PatchTools.hpp"
 #include "Flow.hpp"
@@ -3592,6 +3593,9 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
                 if (oneshot->max_time_ratio_override > 0.)
                     file.write_format("; max_time_ratio_override = %g\n", oneshot->max_time_ratio_override);
             }
+        for (const PrintObject *object : print.objects())
+            if (!object->native_summary().empty())
+                file.write_format("; nonplanar_native = %s: %s\n", object->model_object()->name.c_str(), object->native_summary().c_str());
         if (is_bbl_printers)
             file.write_format(";%s\n", GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Estimated_Printing_Time_Placeholder).c_str());
         file.write_format(";%s\n", GCodeProcessor::reserved_tag(GCodeProcessor::ETags::Total_Layer_Number_Placeholder).c_str());
@@ -8277,7 +8281,7 @@ std::string GCode::extrude_field_patch(const Nonplanar::ConformalPatch &patch)
 {
     using namespace Nonplanar;
     std::string             gcode;
-    const OrientationField &field = *patch.field;
+    const FieldChart       &field = *patch.field;
     const double            hop   = std::max(this->nonplanar_head().margin,
                                              m_writer.filament() != nullptr ? m_config.z_hop.get_at(m_writer.filament()->id()) : 0.);
     const double z_base = m_layer->slice_z + 0.5 * m_layer->height;

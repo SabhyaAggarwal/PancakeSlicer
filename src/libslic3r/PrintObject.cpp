@@ -18,6 +18,7 @@
 #include "I18N.hpp"
 #include "Layer.hpp"
 #include "MeshBoolean.hpp"
+#include "Nonplanar/NativePrint.hpp"
 #include "Nonplanar/AutoMode.hpp"
 #include "Nonplanar/OneShotField.hpp"
 #include "Nonplanar/NpField.hpp"
@@ -751,6 +752,19 @@ void PrintObject::nonplanar_shells()
             this->set_done(posNonplanar);
             return;
         }
+    }
+    if (m_native_field && m_config.nonplanar_atom_toolpath.value.empty()) {
+        m_print->set_status(40, L("Slicing native curved layers"));
+        for (Layer *layer : m_layers) {
+            layer->conformal_patches_before.clear();
+            layer->conformal_patches_after.clear();
+        }
+        m_conformal = std::make_unique<Nonplanar::ConformalResult>();
+        Nonplanar::build_native_patch(*this, m_native_field, *m_conformal);
+        record_apply_inputs();
+        m_print->throw_if_canceled();
+        this->set_done(posNonplanar);
+        return;
     }
     if (m_field && m_config.nonplanar_atom_toolpath.value.empty()) {
         m_print->set_status(40, L("Slicing rotary curved layers"));

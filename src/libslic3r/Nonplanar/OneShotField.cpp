@@ -46,6 +46,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
 #include <fstream>
 #include <iterator>
 #include <limits>
@@ -67,6 +68,11 @@ constexpr double Inf     = std::numeric_limits<double>::infinity();
 constexpr int    StudentPolish = 3;
 constexpr double ClearanceDilation = 0.3;
 constexpr double BodyPathCap = 0.;
+double body_lean_cap()
+{
+    const char *v = std::getenv("NP_ONESHOT_BODY_LEAN");
+    return v != nullptr && *v != 0 ? std::max(0., std::atof(v)) * M_PI / 180. : BodyPathCap;
+}
 constexpr double OneShotCpuCap    = 900.;
 constexpr int    OneShotCpuThreads = 4;
 constexpr double OneShotWallGuard = 3600.;
@@ -479,14 +485,15 @@ ObjectiveMachine objective_machine(const PrintObject &object, const ObjectiveGeo
     for (size_t j = 1; j < tops.size(); ++j)
         m.thickness_min = std::min(m.thickness_min, tops[j] - tops[j - 1] - 1e-4);
     m.pinned_v.assign(geom.dims[2], std::numeric_limits<float>::quiet_NaN());
-    for (const double z : faces_z) {
+    const bool no_pins = std::getenv("NP_ONESHOT_NO_PINS") != nullptr && body_lean_cap() > 0.;
+    for (const double z : no_pins ? std::vector<double>() : faces_z) {
         const double lo = (z - band - geom.origin.z()) / geom.spacing.z(), hi = (z + band - geom.origin.z()) / geom.spacing.z();
         for (long k = std::max(0L, long(std::floor(lo))); k <= std::min(long(geom.dims[2]) - 1, long(std::ceil(hi))); ++k)
             m.pinned_v[size_t(k)] = m.anchor.empty() ? float(geom.origin.z() + double(k) * geom.spacing.z()) :
                                                        m.anchor[geom.index(0, 0, size_t(k))];
     }
     m.rotary             = pc.nonplanar_kinematics.value != RotaryLayout::None;
-    m.tilt_max           = std::min(m.rotary ? tilt_max : 0., BodyPathCap);
+    m.tilt_max           = std::min(m.rotary ? tilt_max : 0., m.rotary ? body_lean_cap() : BodyPathCap);
     m.slope_cap.fill(BodyPathCap);
     const double nozzle = pc.nozzle_diameter.get_at(0);
     m.line_width     = oc.line_width.get_abs_value(nozzle);
@@ -626,6 +633,95 @@ bool admit_time_cut(const PrintObject &object, OneShotState &state, std::vector<
     }
     state.measured_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     return admitted;
+}
+
+bool admit_lean_offer(const PrintObject &object, OneShotState &state, std::vector<NpField> &cuts)
+{
+    std::vector<NpField> leans;
+    for (auto it = cuts.begin(); it != cuts.end();)
+        if (it->solver.rfind("lean offer ", 0) == 0) {
+            leans.push_back(std::move(*it));
+            it = cuts.erase(it);
+        } else
+            ++it;
+    if (leans.empty() || !state.solved)
+        return false;
+    const std::string      name = object.model_object()->name;
+    const ObjectiveWeights W    = machine_weights(object);
+    auto term = [](const NpField &f, const char *key) {
+        for (const auto &[k, v] : f.terms)
+            if (k == key)
+                return v;
+        return std::numeric_limits<double>::quiet_NaN();
+    };
+    const char *keep_dir = std::getenv("NP_ONESHOT_LEAN_KEEP");
+    auto        keep_as  = [&](const std::string &what) {
+        return keep_dir != nullptr && *keep_dir != 0 ? (boost::filesystem::path(keep_dir) / (name + "." + what + ".gcode")).string() : std::string();
+    };
+    const double  t_ps = measured_time(object, NonplanarMode::Off, {}, keep_as("ps"), false);
+    MeasuredPrint mb;
+    double        t_body;
+    {
+        const Injection body_only(state);
+        t_body = measured_time(object, NonplanarMode::OneShot, {}, keep_as("body"), false, &mb);
+    }
+    const bool     user_support = object.config().enable_support.value && !object.auto_support_applied();
+    const Floating control      = planar_control_floating(object, user_support);
+    static const double F = [] { const char *v = std::getenv("NP_ONESHOT_FLOAT_W"); return v != nullptr && *v != 0 ? std::max(0., std::atof(v)) : 0.; }();
+    const double   J_body = term(*state.solved, "J") + F * std::max(0., mb.floating.part), S_body = term(*state.solved, "J_S"),
+                 T_body = term(*state.solved, "J_T");
+    std::shared_ptr<const NpField> best;
+    double                         best_J = J_body;
+    for (NpField &lf : leans) {
+        OneShotState trial = state;
+        trial.solved       = std::make_shared<const NpField>(std::move(lf));
+        trial.z_only       = false;
+        MeasuredPrint mo;
+        double        t_off;
+        {
+            const Injection lean_only(trial);
+            t_off = measured_time(object, NonplanarMode::OneShot, {}, keep_as("lean." + boost::filesystem::path(trial.solved->solver).filename().string()), false, &mo);
+        }
+        const NpField &o     = *trial.solved;
+        const double   S_off = term(o, "J_S"), T_off = term(o, "J_T"), J_off = term(o, "J");
+        const double   sup_ratio = mb.support_mm3 > 0. && std::isfinite(mo.support_mm3) ? mo.support_mm3 / mb.support_mm3 : 1.;
+        const double   S_meas = S_body * sup_ratio;
+        const double   J_meas = J_off - W.sup * S_off + W.sup * S_meas - W.time * T_off + W.time * T_body * t_off / t_body + F * std::max(0., mo.floating.part);
+        std::string    why;
+        if (!std::isfinite(t_off))
+            why = "its measured slice failed";
+        else if (!(t_off <= 1.5 * t_ps))
+            why = Slic3r::format("%1$.2f x planar + support", t_off / t_ps);
+        else if (control.part >= 0. && mo.floating.part > control.part + 1e-6)
+            why = Slic3r::format("part floating %1$.1f mm > the control's %2$.1f", mo.floating.part, control.part);
+        else if (!(J_meas < best_J))
+            why = Slic3r::format("measured J %1$.0f >= %2$.0f", J_meas, best_J);
+        const std::string line = Slic3r::format("%1%: J %2$.0f (S %3$.1f -> measured %4$.1f, support %5$.0f vs the body's %6$.0f mm3; T %7$.0f -> measured "
+                                                "%8$.0f s vs the body's %9$.0f, p+s %10$.0f), measured J %11$.0f vs the body's %12$.0f, floating %13$.1f "
+                                                "(body %14$.1f, control %15$.1f), F %17$.1f%16%",
+                                                o.solver, J_off, S_off, S_meas, mo.support_mm3, mb.support_mm3, T_off, t_off, t_body, t_ps, J_meas, J_body,
+                                                mo.floating.part, mb.floating.part, control.part, why.empty() ? ", candidate" : ", out: " + why, F);
+        BOOST_LOG_TRIVIAL(warning) << "One-shot field " << name << ": " << line;
+        state.time_cut_note += ", " + line;
+        if (why.empty()) {
+            double t_verified;
+            {
+                const Injection lean_only(trial);
+                t_verified = measured_time(object, NonplanarMode::OneShot, {}, {}, true);
+            }
+            if (std::isfinite(t_verified)) {
+                best   = trial.solved;
+                best_J = J_meas;
+            } else
+                state.time_cut_note += " (its verified export hits)";
+        }
+    }
+    if (!best)
+        return false;
+    state.solved = best;
+    state.z_only = false;
+    state.time_cut_note += ", the lean adopted";
+    return true;
 }
 
 bool past_floating_bar(const PrintObject &object, OneShotState &state, const Floating &floating)
@@ -1005,6 +1101,14 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
     params.budget       = 0.;
     if (const char *only = std::getenv("NP_ONESHOT_ONLY_OFFER"); only != nullptr)
         params.only_offer = only;
+    if (const char *search = std::getenv("NP_ONESHOT_SEARCH"); search != nullptr && *search != 0) {
+        int starts = params.max_starts, keep = params.lottery_keep, local = params.local_rounds;
+        if (std::sscanf(search, "%d,%d,%d", &starts, &keep, &local) >= 1) {
+            params.max_starts   = starts;
+            params.lottery_keep = std::max(1, keep);
+            params.local_rounds = std::max(0, local);
+        }
+    }
     if (const OneShotState *state = object.oneshot_state();
         state != nullptr && (state->measured_anchor || state->offer == OneShotState::Offer::Control))
         params.only_offer = "anchor";
@@ -1064,6 +1168,30 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
         params.level_rounds  = 0;
         params.iterations    = StudentPolish;
     }
+    const std::vector<float> anchor_phi  = f.phi;
+    const ObjectiveParams    full_params = params;
+    std::string              init_path;
+    if (const char *init = std::getenv("NP_ONESHOT_INIT"); init != nullptr && *init != 0 && model.empty()) {
+        BoundingBoxf3 box;
+        for (const stl_vertex &v : mesh.vertices)
+            box.merge(v.cast<double>());
+        try {
+            const NpLayerField given_field(load_npfield_for(init, box, plate_offset(object)));
+            for (size_t i = 0; i < g.dims[0]; ++i)
+                for (size_t j = 0; j < g.dims[1]; ++j)
+                    for (size_t k = 0; k < g.dims[2]; ++k)
+                        f.phi[g.index(i, j, k)] = float(given_field.phi(g.origin + g.spacing.cwiseProduct(Vec3d(double(i), double(j), double(k)))));
+            init_path            = init;
+            params.multi_start   = false;
+            params.warm_adaptive = false;
+            params.local_rounds  = 0;
+            params.level_rounds  = 0;
+            const char *iters    = std::getenv("NP_ONESHOT_INIT_ITERS");
+            params.iterations    = iters != nullptr && *iters != 0 ? std::max(1, std::atoi(iters)) : 20;
+        } catch (const std::exception &ex) {
+            BOOST_LOG_TRIVIAL(warning) << "One-shot field " << object.model_object()->name << ": NP_ONESHOT_INIT " << init << " unused: " << ex.what();
+        }
+    }
     struct Aborted
     {
         bool wall;
@@ -1073,8 +1201,9 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
     const double             cpu0 = process_cpu_seconds();
     const int                threads = std::clamp(tbb::this_task_arena::max_concurrency(), 1, OneShotCpuThreads);
     const double             cpu_cap = OneShotCpuCap * threads;
-    abort                         = OneShotAbortReason();
     ObjectiveTerms given;
+    auto solve_once = [&]() {
+    abort                         = OneShotAbortReason();
     try {
         t = solve_objective(g, m, W, params, f.phi,
                             [&cancel, t0, cpu0, cpu_cap]() {
@@ -1102,6 +1231,17 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
         f.phi      = planar;
         t          = evaluate_objective(g, m, W, f.phi, true);
         BOOST_LOG_TRIVIAL(warning) << "One-shot field " << object.model_object()->name << ": solve aborted at " << abort.what;
+    }
+    };
+    solve_once();
+    if (!init_path.empty()) {
+        BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": from " << init_path << ": J " << t.J
+                                << (t.feasible() ? ", feasible" : ", outside the hard set: solved again from planar");
+        if (abort.kind == OneShotAbort::Infeasible) {
+            f.phi  = anchor_phi;
+            params = full_params;
+            solve_once();
+        }
     }
     BoundingBoxf3 box;
     for (const stl_vertex &v : mesh.vertices)
@@ -1145,10 +1285,66 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
             cf.solver += " (time-cut native " + c.name + ")";
             time_cut->push_back(std::move(cf));
         }
+    if (const char *local = std::getenv("NP_ONESHOT_LEAN_LOCAL"); time_cut && local != nullptr && *local != 0 && *local != '0' && model.empty() &&
+        params.only_offer.empty()) {
+        const std::vector<std::vector<float>> leans = overhang_local_leans(g, m, f.phi, 6., { 1., 0.6 });
+        for (size_t i = 0; i < leans.size(); ++i) {
+            NpField lf = f;
+            lf.phi     = leans[i];
+            const ObjectiveTerms lt = evaluate_objective(g, m, W, lf.phi, true);
+            lf.layer_tops.clear();
+            lf.terms  = lt.named();
+            lf.terms.emplace_back("stat_lean_offer", 2.);
+            lf.solver = "lean offer overhang-local " + std::string(i == 0 ? "1.0" : "0.6");
+            BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": " << lf.solver << " J " << lt.J << " S " << lt.S
+                                    << " E_up " << lt.E_up << " E_wall " << lt.E_wall << " E_down " << lt.E_down << " T " << lt.T << " H "
+                                    << lt.H_thickness << "/" << lt.H_slope << "/" << lt.H_head << "/" << lt.H_bed << "/" << lt.H_time << ", spread " << lt.spread;
+            time_cut->push_back(std::move(lf));
+        }
+    }
+    if (const char *lean = std::getenv("NP_ONESHOT_LEAN_OFFER"); time_cut && lean != nullptr && *lean != 0 && model.empty() && params.only_offer.empty()) {
+        BoundingBoxf3 box;
+        for (const stl_vertex &v : mesh.vertices)
+            box.merge(v.cast<double>());
+        std::stringstream paths(lean);
+        for (std::string path; std::getline(paths, path, ',');) {
+            try {
+                NpField            original = load_npfield_for(path, box, plate_offset(object));
+                const NpLayerField given_field(original);
+                NpField            lf = f;
+                for (size_t i = 0; i < g.dims[0]; ++i)
+                    for (size_t j = 0; j < g.dims[1]; ++j)
+                        for (size_t k = 0; k < g.dims[2]; ++k)
+                            lf.phi[g.index(i, j, k)] = float(given_field.phi(g.origin + g.spacing.cwiseProduct(Vec3d(double(i), double(j), double(k)))));
+                const ObjectiveTerms lt = evaluate_objective(g, m, W, lf.phi, true);
+                lf.layer_tops.clear();
+                lf.terms  = lt.named();
+                lf.terms.emplace_back("stat_lean_offer", 1.);
+                lf.solver = "lean offer " + boost::filesystem::path(path).filename().string();
+                BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": " << lf.solver << " J " << lt.J << " S " << lt.S
+                                        << " E_up " << lt.E_up << " E_wall " << lt.E_wall << " E_down " << lt.E_down << " T " << lt.T << " H "
+                                        << lt.H_thickness << "/" << lt.H_slope << "/" << lt.H_head << "/" << lt.H_bed << "/" << lt.H_time;
+                original.terms  = std::move(lf.terms);
+                original.solver = std::move(lf.solver);
+                time_cut->push_back(std::move(original));
+            } catch (const std::exception &ex) {
+                BOOST_LOG_TRIVIAL(warning) << "One-shot field " << object.model_object()->name << ": NP_ONESHOT_LEAN_OFFER " << path << " unused: " << ex.what();
+            }
+        }
+    }
     if (const char *dir = std::getenv("NP_ONESHOT_DUMP"); dir != nullptr && *dir != 0) {
-        const std::string stem = (boost::filesystem::path(dir) / object.model_object()->name).string();
+        const OneShotState *st     = object.oneshot_state();
+        const bool          anchor = st != nullptr && (st->measured_anchor || st->offer == OneShotState::Offer::Control);
+        const std::string   stem   = (boost::filesystem::path(dir) / object.model_object()->name).string() + (anchor ? ".anchor" : "");
         save_objective_geometry(stem + ".geom.npz", g);
         save_npfield(stem + ".field.npz", f);
+        if (const char *only = std::getenv("NP_SOLVE_ONLY"); only != nullptr && *only != 0 && *only != '0') {
+            BOOST_LOG_TRIVIAL(warning) << "One-shot field " << object.model_object()->name << ": solve only: J " << t.J << " S " << t.S << " E "
+                                       << t.E << " T " << t.T << (t.feasible() ? " feasible" : " infeasible") << ", spread " << t.spread << ", "
+                                       << std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() << " s, dumped "
+                                       << stem << ".field.npz";
+            throw Slic3r::SlicingError("NP_SOLVE_ONLY: the field is solved and dumped; no slice");
+        }
     }
     BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": J " << t.J << ", " << g.nodes() << " nodes at "
                             << g.spacing.x() << " mm, " << (t.feasible() ? "feasible" : "infeasible") << ", "

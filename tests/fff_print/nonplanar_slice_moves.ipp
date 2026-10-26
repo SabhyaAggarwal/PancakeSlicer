@@ -9,6 +9,7 @@
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cstddef>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <type_traits>
@@ -39,7 +40,7 @@ void move_float(std::ostream &out, float value)
 }
 
 void write_moves(const std::string &path, const GCodeProcessorResult &result, const std::vector<std::string> &filaments,
-                 const nlohmann::json &statistics)
+                 const nlohmann::json &statistics, bool extended)
 {
     static_assert(uint8_t(EMoveType::Count) < 128, "Move type must leave bit 7 for internal_only");
     struct Layer { uint32_t id; uint64_t first; float z; float extrusion_z; };
@@ -82,7 +83,7 @@ void write_moves(const std::string &path, const GCodeProcessorResult &result, co
     try {
         boost::nowide::ofstream out(temporary.string(), std::ios::binary | std::ios::trunc);
         out.write("ORCAMV01", 8);
-        for (uint32_t value : {64u, 52u, 32u, 16u, 1u, 0u}) move_le(out, value);
+        for (uint32_t value : {64u, extended ? 60u : 52u, 32u, 16u, 1u, extended ? 1u : 0u}) move_le(out, value);
         move_le(out, uint64_t(result.moves.size()));
         move_le(out, uint32_t(result.move_states.size()));
         move_le(out, uint32_t(layers.size()));
@@ -96,6 +97,7 @@ void write_moves(const std::string &path, const GCodeProcessorResult &result, co
             move_le(out, int8_t(state.nonplanar_band));
             move_le(out, int16_t(state.nonplanar_patch));
         }
+        size_t move_index = 0;
         for (const auto &move : result.moves) {
             move_le(out, uint32_t(move.gcode_id));
             move_le(out, uint8_t(uint8_t(move.type) | (move.internal_only ? 0x80 : 0)));
@@ -107,6 +109,13 @@ void write_moves(const std::string &path, const GCodeProcessorResult &result, co
                     move.time[size_t(PrintEstimatedStatistics::ETimeMode::Normal)]}) move_float(out, value);
             move_le(out, uint32_t(move.layer_id));
             move_le(out, uint32_t(move.state));
+            if (extended) {
+                move_float(out, move.actual_feedrate);
+                const auto &clearance = result.clearance_report.per_move;
+                move_float(out, move_index < clearance.size() && std::isfinite(clearance[move_index]) ?
+                    clearance[move_index] : std::numeric_limits<float>::quiet_NaN());
+            }
+            ++move_index;
         }
         for (const Layer &layer : layers) {
             move_le(out, layer.id); move_le(out, layer.first); move_float(out, layer.z);

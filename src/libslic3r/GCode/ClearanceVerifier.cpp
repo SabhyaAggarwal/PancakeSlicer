@@ -497,6 +497,14 @@ public:
         uint32_t query = 0;
         std::vector<std::pair<double, const void *>> cells;
         std::vector<std::pair<Vec3d, Vec3d>> bands;
+        struct CellQuery
+        {
+            const void *grid = nullptr;
+            uint32_t beads = 0;
+            std::array<int, 6> bounds {};
+            std::vector<const void *> cells;
+        };
+        std::vector<CellQuery> cell_queries;
         uint32_t best_bead = 0;
         bool     tolerated = false;
     };
@@ -585,6 +593,7 @@ public:
         size_t best_box = std::numeric_limits<size_t>::max();
         if (laid.beads == 0) return Inf;
         scratch.seen.resize(m_chunks.size(), 0);
+        scratch.cell_queries.resize(m_groups.size());
         const Matrix3d to_work = frame.transpose(), abs_frame = frame.cwiseAbs();
         const double shrink = sweep.norm() + 0.5 * turn * std::hypot(m_allowance.radius, m_allowance.height);
         const double radius = m_allowance.radius - shrink, height = m_allowance.height - shrink;
@@ -634,6 +643,10 @@ public:
                         const Vec3d half = turn_road.cwiseAbs() * (0.5 * (road.hi - road.lo));
                         if (bound_head(centre - half, centre + half, axes, best) > best) continue;
                     }
+                    bool sat_ready = false;
+                    Vec3d sat_tip, sat_face;
+                    std::array<Vec3d, 3> sat_axes;
+                    double sat_face_tip = 0.;
                     const Corners corners = bead.corners();
                     Vec3d bl = Vec3d::Constant(Inf), bh = Vec3d::Constant(-Inf);
                     for (const Vec3d &v : corners) {
@@ -651,14 +664,22 @@ public:
                             double g = gap(box.lo - grow, box.hi + grow, bl, bh, &box);
                             if ((g < best || (g == best && index < best_box)) && !box.infinite_x && !box.infinite_y) {
                                 const Vec3d centre = 0.5 * (box.lo + box.hi), half = 0.5 * (box.hi - box.lo) + grow;
-                                const Vec3d tip = road_u * pose.tip;
+                                if (!sat_ready) {
+                                    sat_tip = road_u * pose.tip;
+                                    for (int k = 0; k < 3; ++k)
+                                        sat_axes[size_t(k)] = frame * road_u.row(k).transpose();
+                                    sat_face = frame * road.face;
+                                    sat_face_tip = road.face.dot(pose.tip);
+                                    sat_ready = true;
+                                }
+                                const Vec3d &tip = sat_tip;
                                 for (int k = 0; k < 3; ++k) {
-                                    const Vec3d u = frame * road_u.row(k).transpose();
+                                    const Vec3d &u = sat_axes[size_t(k)];
                                     const double c = u.dot(centre), r = u.cwiseAbs().dot(half);
                                     g = std::max(g, std::max(road.lo[k] - tip[k] - (c + r), c - r - (road.hi[k] - tip[k])));
                                 }
-                                const Vec3d  u = frame * road.face;
-                                const double c = u.dot(centre), r = u.cwiseAbs().dot(half), t = road.face.dot(pose.tip);
+                                const Vec3d &u = sat_face;
+                                const double c = u.dot(centre), r = u.cwiseAbs().dot(half), t = sat_face_tip;
                                 g = std::max(g, std::max(road.face_lo - t - (c + r), c - r - (road.face_hi - t)));
                             }
                             if (box.ring && g < -ContactTolerance && g >= -SameLayerTolerance && bead.layer == layer) {
@@ -685,10 +706,22 @@ public:
             const Vec3d extent = (work_hi - work_lo) / FineCell;
             const Grid &grid = (extent.x() + 2.) * (extent.y() + 2.) * (extent.z() + 2.) <= 4096. ? m_fine : m_coarse;
             scratch.cells.clear();
-            visit_find(grid, work_lo, work_hi, [&](const Slot &cell) {
+            auto &cached = scratch.cell_queries[size_t(&group - m_groups.data())];
+            const std::array<int, 6> bounds { int(std::floor(work_lo.x() / grid.cell)), int(std::floor(work_hi.x() / grid.cell)),
+                                             int(std::floor(work_lo.y() / grid.cell)), int(std::floor(work_hi.y() / grid.cell)),
+                                             int(std::floor(work_lo.z() / grid.cell)), int(std::floor(work_hi.z() / grid.cell)) };
+            if (cached.grid != &grid || cached.beads != m_prefix.beads || cached.bounds != bounds) {
+                cached.cells.clear();
+                visit_find(grid, work_lo, work_hi, [&](const Slot &cell) { cached.cells.push_back(&cell); });
+                cached.grid = &grid;
+                cached.beads = m_prefix.beads;
+                cached.bounds = bounds;
+            }
+            for (const void *address : cached.cells) {
+                const Slot &cell = *static_cast<const Slot *>(address);
                 if ((cell.lo.array() <= work_hi.array()).all() && (cell.hi.array() >= work_lo.array()).all())
                     scratch.cells.emplace_back(bound(cell.lo, cell.hi, axes), &cell);
-            });
+            }
             std::sort(scratch.cells.begin(), scratch.cells.end(), [](const auto &x, const auto &y) { return x.first < y.first; });
             for (const auto &[cell_bound, address] : scratch.cells) {
                 if (cell_bound > best) break;

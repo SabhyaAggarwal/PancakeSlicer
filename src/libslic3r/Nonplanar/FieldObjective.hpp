@@ -116,6 +116,7 @@ struct ObjectiveTerms
     std::vector<std::pair<std::string, double>> offers;
     bool infill_separate = false;
     int exact_native = -1;
+    std::vector<std::pair<std::string, double>> field_terms;
     std::vector<std::pair<std::string, double>> named() const;
 };
 
@@ -132,6 +133,9 @@ bool smooth_layers();
 constexpr double LayerChangeMax = 0.15;
 constexpr double LayerChangeAbs = 0.03;
 void cap_layer_change(std::vector<double> &thickness, double dz);
+
+std::vector<std::vector<float>> overhang_local_leans(const ObjectiveGeometry &g, const ObjectiveMachine &m, const std::vector<float> &phi,
+                                                     double radius, const std::vector<double> &scales);
 
 ObjectiveTerms evaluate_objective(const ObjectiveGeometry &geom, const ObjectiveMachine &machine, const ObjectiveWeights &w,
                                   const std::vector<float> &phi, bool hard = true, std::vector<HeadPair> *pairs = nullptr,

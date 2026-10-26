@@ -34,7 +34,7 @@ inline bool fit_round(const Polygon &outline)
 }
 
 struct AutoPatchSettings;
-class OrientationField;
+class FieldChart;
 
 enum class PatchKind : unsigned char { Top, Bottom, Volume, Overhang, Chunk, SupportInterface, Bridge, Field, Skin };
 
@@ -101,7 +101,7 @@ struct ConformalPatch
     bool       from_support = false;
     bool       free_travel = false;
     std::shared_ptr<const AutoPatchSettings> automatic;
-    std::shared_ptr<const OrientationField> field;
+    std::shared_ptr<const FieldChart> field;
 
     std::vector<ExtrusionEntityCollection> shell_paths;
     std::vector<ExPolygons>                shell_internal;

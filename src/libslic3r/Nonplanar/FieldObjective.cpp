@@ -1,4 +1,5 @@
 #include "FieldObjective.hpp"
+#include "FieldTerm.hpp"
 #include "Point.hpp"
 #include "libslic3r.h"
 #include "Nonplanar/HeadEnvelope.hpp"
@@ -474,6 +475,8 @@ std::vector<std::pair<std::string, double>> ObjectiveTerms::named() const
              { "stat_F_stair", F_stair }, { "stat_E_stair", E_stair } };
     out.insert(out.end(), offers.begin(), offers.end());
     out.emplace_back("stat_infill_separate", infill_separate ? 1. : 0.);
+    for (const auto &[name, c] : field_terms)
+        out.emplace_back("J_term_" + name, c);
     return out;
 }
 
@@ -928,6 +931,11 @@ ObjectiveTerms evaluate_objective(const ObjectiveGeometry &g, const ObjectiveMac
     t.T_skin   = cover.skin_time * skin_area;
     t.T        = t.T_roads + t.T_minlayer + t.T_travel + AxisAccel * (t.T_axis + t.T_unwind) + t.T_skin;
     t.J        = w.sup * t.S + t.E + w.time * t.T;
+    for (const ActiveFieldTerm &ft : active_field_terms(g)) {
+        const double c = ft.weight * ft.term->cost_field({ g, phi }, G, nullptr, nullptr);
+        t.field_terms.emplace_back(ft.name, c);
+        t.J += c;
+    }
     if (!hard)
         return t;
 
@@ -991,6 +999,42 @@ ObjectiveTerms evaluate_objective(const ObjectiveGeometry &g, const ObjectiveMac
         }
     }
     const double smin = g.spacing.minCoeff(), diag = g.spacing.norm();
+    std::vector<double> phi_min(g.dims[2], std::numeric_limits<double>::infinity());
+    double phi_scale = 1.;
+    for (size_t id = 0; id < g.nodes(); ++id) {
+        phi_min[id % g.dims[2]] = std::min(phi_min[id % g.dims[2]], double(phi[id]));
+        phi_scale = std::max(phi_scale, std::abs(double(phi[id])));
+    }
+    std::vector<double> phi_above = phi_min;
+    for (size_t k = phi_above.size(); k-- > 1;)
+        phi_above[k - 1] = std::min(phi_above[k - 1], phi_above[k]);
+    const double phi_roundoff = 32. * std::numeric_limits<double>::epsilon() * phi_scale;
+    auto clear_above = [&](double level) {
+        const auto next = std::upper_bound(phi_above.begin(), phi_above.end(), level + phi_roundoff);
+        if (next == phi_above.begin())
+            return -std::numeric_limits<double>::infinity();
+        if (next == phi_above.end())
+            return std::numeric_limits<double>::infinity();
+        const size_t k = size_t(next - phi_above.begin());
+        const double t = (level + phi_roundoff - phi_min[k - 1]) / (phi_min[k] - phi_min[k - 1]);
+        const double z = g.origin.z() + g.spacing.z() * (double(k - 1) + t);
+        return z + 64. * std::numeric_limits<double>::epsilon() * (std::abs(z) + g.spacing.z());
+    };
+    struct PatchBounds
+    {
+        Vec3d lo, hi;
+        double roundoff_scale;
+    };
+    std::vector<PatchBounds> patch_bounds;
+    patch_bounds.reserve(m.head.size());
+    for (const HeadSamples &box : m.head) {
+        Vec3d lo = box.centre, hi = box.centre;
+        for (const Vec3d &point : box.points) {
+            lo = lo.cwiseMin(point);
+            hi = hi.cwiseMax(point);
+        }
+        patch_bounds.push_back({ lo, hi, lo.cwiseAbs().cwiseMax(hi.cwiseAbs()).sum() });
+    }
     auto far_from_material = [&](const Vec3d &c, double radius) {
         Vec3d idx = ((c - g.origin).cwiseQuotient(g.spacing)).array().round().matrix();
         for (int a = 0; a < 3; ++a)
@@ -1011,9 +1055,18 @@ ObjectiveTerms evaluate_objective(const ObjectiveGeometry &g, const ObjectiveMac
             const size_t   id    = probes[k];
             const Vec3d    P     = node_pos(g, id);
             const double   level = double(phi[id]) + m.h;
+            const double   z_clear = clear_above(level);
             const Matrix3d R     = m.rotary ? rotation_to(G[id] / std::max(G[id].norm(), 1e-12)) : Matrix3d(Matrix3d::Identity());
             bool           hit   = false;
-            for (const HeadSamples &box : m.head) {
+            for (size_t patch = 0; patch < m.head.size(); ++patch) {
+                const HeadSamples &box = m.head[patch];
+                const PatchBounds &bounds = patch_bounds[patch];
+                double z_min = P.z();
+                for (int a = 0; a < 3; ++a)
+                    z_min += R(2, a) * (R(2, a) < 0. ? bounds.hi[a] : bounds.lo[a]);
+                z_min -= 64. * std::numeric_limits<double>::epsilon() * (std::abs(P.z()) + 1. + bounds.roundoff_scale);
+                if (!(m.rotary && z_min < 0.) && z_min > z_clear)
+                    continue;
                 const Vec3d c = P + R * box.centre;
                 if (!(m.rotary && c.z() < box.radius) && far_from_material(c, box.radius))
                     continue;
@@ -1025,10 +1078,20 @@ ObjectiveTerms evaluate_objective(const ObjectiveGeometry &g, const ObjectiveMac
                             break;
                     }
                     const Vec3d rel = Q - g.origin;
-                    if (!(rel.array() >= 0.).all() || !(rel.array() <= top.array()).all() ||
-                        interp(g, Q, [&g](size_t i) { return double(g.occ[i]); }) < 0.5)
+                    if (!(rel.array() >= 0.).all() || !(rel.array() <= top.array()).all())
                         continue;
-                    const double v = interp(g, Q, [&phi](size_t i) { return double(phi[i]); }) - level;
+                    size_t ids[8];
+                    double weights[8];
+                    corners(g, Q, ids, weights);
+                    double occ = double(g.occ[ids[0]]) * weights[0];
+                    for (int q = 1; q < 8; ++q)
+                        occ += double(g.occ[ids[q]]) * weights[q];
+                    if (occ < 0.5)
+                        continue;
+                    double value = double(phi[ids[0]]) * weights[0];
+                    for (int q = 1; q < 8; ++q)
+                        value += double(phi[ids[q]]) * weights[q];
+                    const double v = value - level;
                     if (v < 0.) {
                         hit = true;
                         if (!pairs)
@@ -1368,6 +1431,27 @@ struct Surrogate
                 cost += wr * d2 * d2;
                 if (sys)
                     sys->row({ { id + stride[a], 1. }, { id, -2. }, { id - stride[a], 1. } }, d2, wr);
+            }
+        }
+        if (const std::vector<ActiveFieldTerm> &terms = active_field_terms(g); !terms.empty()) {
+            std::vector<Vec3d> G(g.nodes()), dG;
+            std::vector<double> dphi;
+            for (size_t id = 0; id < g.nodes(); ++id)
+                G[id] = grad(node_st[id], phi);
+            for (const ActiveFieldTerm &ft : terms) {
+                dG.assign(g.nodes(), Vec3d::Zero());
+                const bool field_values = sys && ft.term->needs_field_values();
+                if (field_values)
+                    dphi.assign(g.nodes(), 0.);
+                cost += ft.weight * ft.term->cost_field({ g, phi }, G, field_values ? &dphi : nullptr, sys ? &dG : nullptr);
+                if (field_values)
+                    for (size_t id = 0; id < g.nodes(); ++id)
+                        if (dphi[id] != 0.)
+                            sys->linear({ { id, dphi[id] } }, ft.weight);
+                if (sys)
+                    for (size_t id : occupied)
+                        if (dG[id].squaredNorm() > 0.)
+                            sys->linear(along(node_st[id], dG[id]), ft.weight);
             }
         }
         return cost;
@@ -1912,6 +1996,57 @@ ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachin
                 near[id] = std::min(near[id], (q - h).squaredNorm());
         }
         bool improved = false;
+        {
+            std::vector<Vec3d> lean_dir;
+            std::vector<double> lean_tilt;
+            std::vector<Vec3d> lean_at;
+            for (size_t s = 0; s < g.p.size(); ++s) {
+                const Vec3d  gs = interp(g, g.p[s], [&G](size_t id) { return G[id]; });
+                const Vec3d  dn = gs.norm() > 1e-12 ? Vec3d(gs.normalized()) : Vec3d(Vec3d::UnitZ());
+                const double c  = -g.n[s].dot(dn);
+                const Vec2d  nh = g.n[s].head<2>();
+                if (c <= sin_t || nh.norm() < 1e-6)
+                    continue;
+                const double tau = std::min(m.rotary ? m.tilt_max : 0., std::asin(std::min(c, 1.)) - std::asin(sin_t) + 5. * M_PI / 180.);
+                if (tau <= 0.)
+                    continue;
+                const Vec2d u = nh.normalized();
+                lean_at.push_back(g.p[s]);
+                lean_dir.emplace_back(std::sin(tau) * u.x(), std::sin(tau) * u.y(), std::cos(tau));
+                lean_tilt.push_back(tau);
+            }
+            if (!lean_at.empty() && !spent()) {
+                std::vector<Vec3d> d(g.nodes());
+                const double       r2 = 2. * params.local_radius * params.local_radius;
+                for (size_t id = 0; id < g.nodes(); ++id) {
+                    const Vec3d q  = node_pos(g, id);
+                    const Vec3d gb = G[id].norm() > 1e-12 ? Vec3d(G[id].normalized()) : Vec3d(Vec3d::UnitZ());
+                    if (q.z() <= m.first_layer + g.spacing.z()) {
+                        d[id] = gb;
+                        continue;
+                    }
+                    Vec3d  acc = Vec3d::Zero();
+                    double wsum = 0.;
+                    for (size_t i = 0; i < lean_at.size(); ++i) {
+                        const double w = std::exp(-(q - lean_at[i]).squaredNorm() / r2);
+                        if (w > 1e-4) {
+                            acc += w * lean_dir[i];
+                            wsum += w;
+                        }
+                    }
+                    const double wgt = std::min(wsum, 1.);
+                    d[id]            = wsum > 0. ? Vec3d(((1. - wgt) * gb + wgt * (acc / wsum)).normalized()) : gb;
+                }
+                std::vector<float> f = best;
+                integrate(g, m, d, f);
+                const ObjectiveTerms t = descend(f, params.start_iterations, "local support-free");
+                if (better(t, best_t)) {
+                    best     = std::move(f);
+                    best_t   = t;
+                    improved = true;
+                }
+            }
+        }
         for (int a = 0; a < 10 && !spent(); ++a) {
             std::vector<Vec3d> d(g.nodes());
             for (size_t id = 0; id < g.nodes(); ++id) {
@@ -2119,6 +2254,71 @@ ObjectiveTerms solve_objective(const ObjectiveGeometry &g, const ObjectiveMachin
     phi      = std::move(polished);
     t.offers = std::move(offers);
     return t;
+}
+
+std::vector<std::vector<float>> overhang_local_leans(const ObjectiveGeometry &g, const ObjectiveMachine &m, const std::vector<float> &phi,
+                                                     double radius, const std::vector<double> &scales)
+{
+    std::vector<std::vector<float>> out;
+    if (!m.rotary || m.tilt_max <= 0. || phi.size() != g.nodes())
+        return out;
+    const std::vector<Vec3d> G     = node_gradients(g, phi);
+    const double             sin_t = std::sin(m.printable_overhang);
+    std::vector<Vec3d>  at, lean;
+    std::vector<double> tau;
+    std::vector<Vec3d>  walls;
+    for (size_t s = 0; s < g.p.size(); ++s) {
+        if (std::abs(g.n[s].z()) < std::sin(10. * M_PI / 180.))
+            walls.push_back(g.p[s]);
+        const Vec3d  gs = interp(g, g.p[s], [&G](size_t id) { return G[id]; });
+        const Vec3d  dn = gs.norm() > 1e-12 ? Vec3d(gs.normalized()) : Vec3d(Vec3d::UnitZ());
+        const double c  = -g.n[s].dot(dn);
+        const Vec2d  nh = g.n[s].head<2>();
+        if (c <= sin_t || nh.norm() < 1e-6)
+            continue;
+        const double t = std::min(m.tilt_max, std::asin(std::min(c, 1.)) - std::asin(sin_t) + 5. * M_PI / 180.);
+        if (t <= 0.)
+            continue;
+        at.push_back(g.p[s]);
+        lean.push_back(Vec3d(nh.normalized().x(), nh.normalized().y(), 0.));
+        tau.push_back(t);
+    }
+    if (at.empty())
+        return out;
+    const double r2 = 2. * radius * radius, w2 = 2. * 1.5 * 1.5;
+    for (const double scale : scales) {
+        std::vector<Vec3d> d(g.nodes());
+        for (size_t id = 0; id < g.nodes(); ++id) {
+            const Vec3d q  = node_pos(g, id);
+            const Vec3d gb = G[id].norm() > 1e-12 ? Vec3d(G[id].normalized()) : Vec3d(Vec3d::UnitZ());
+            d[id]          = gb;
+            if (q.z() <= m.first_layer + g.spacing.z())
+                continue;
+            Vec2d  dir = Vec2d::Zero();
+            double tilt = 0., wsum = 0.;
+            for (size_t i = 0; i < at.size(); ++i) {
+                const double w = std::exp(-(q - at[i]).squaredNorm() / r2);
+                if (w > 1e-4) {
+                    dir += w * lean[i].head<2>();
+                    tilt += w * tau[i];
+                    wsum += w;
+                }
+            }
+            if (wsum <= 0. || dir.norm() < 1e-9)
+                continue;
+            double wall = 0.;
+            for (const Vec3d &p : walls)
+                wall = std::max(wall, std::exp(-(q - p).squaredNorm() / w2));
+            const double w = std::min(wsum, 1.) * (1. - wall);
+            const double t = scale * tilt / wsum * w;
+            const Vec2d  u = dir.normalized();
+            d[id]          = Vec3d(std::sin(t) * u.x(), std::sin(t) * u.y(), std::cos(t));
+        }
+        std::vector<float> f = phi;
+        integrate(g, m, d, f);
+        out.push_back(std::move(f));
+    }
+    return out;
 }
 
 }

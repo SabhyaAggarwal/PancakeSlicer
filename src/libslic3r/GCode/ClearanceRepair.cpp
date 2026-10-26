@@ -706,9 +706,13 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
         throw Slic3r::SlicingError(Slic3r::format(_u8L("One-shot field: %1% moves strike printed material (a solver bug: the solved field must "
                                                        "satisfy its constraints)."),
                                                   hits));
+    const bool exported_support = std::any_of(result.moves.begin(), result.moves.end(), [](const auto &mv) {
+        return mv.type == EMoveType::Extrude && is_support(mv.extrusion_role);
+    });
     for (PrintObject *object : objects) {
         const bool planned = std::any_of(object->support_layers().begin(), object->support_layers().end(),
-                                         [](const SupportLayer *layer) { return !layer->support_fills.empty(); });
+                                         [](const SupportLayer *layer) { return !layer->support_fills.empty(); }) ||
+                             (!object->native_summary().empty() && exported_support);
         if (object->auto_support_need() != NoNeedSupp && !planned && object->config().enable_support.value)
             throw Slic3r::SlicingError(Slic3r::format(_u8L("One-shot field: %1% needs support (%2%), and it prints none (support blockers "
                                                            "or settings forbid it)."),
@@ -782,7 +786,7 @@ bool ClearanceRepair::contact_guard(const GCodeProcessorResult &result, size_t c
         if (oneshot_requested(*object) || object->config().nonplanar_mode.value == NonplanarMode::Auto || object->m_auto_planar ||
             auto_rotary_requested(*object))
             guarded.push_back(object);
-    if (guarded.empty() || !result.nonplanar || m_guard_passes >= 2 * int(guarded.size()))
+    if (guarded.empty() || !result.nonplanar || m_guard_passes >= 2 * int(guarded.size()) || std::getenv("NP_CONTACT_GUARD_OFF") != nullptr)
         return false;
     if (contacts == 0)
         contacts = curved_contacts(m_print, result);

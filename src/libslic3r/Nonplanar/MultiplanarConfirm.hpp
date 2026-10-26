@@ -34,6 +34,7 @@ struct MeasuredPrint
     double   time = std::numeric_limits<double>::quiet_NaN();
     Floating floating { -1., -1. };
     bool     support = false;
+    double   support_mm3 = std::numeric_limits<double>::quiet_NaN();
     double   rms     = std::numeric_limits<double>::quiet_NaN();
     bool     as_printed = false;
     bool     count_contacts = false;

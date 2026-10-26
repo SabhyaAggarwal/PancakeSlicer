@@ -1,5 +1,6 @@
 #pragma once
 #include <math.h>
+#include "FieldChart.hpp"
 #include "HeadEnvelope.hpp"
 #include "LayerField.hpp"
 #include "LayerFieldOpt.hpp"
@@ -86,23 +87,23 @@ struct OrientationFieldStats
     bool   solver_field          = false;
 };
 
-class OrientationField : public LayerField
+class OrientationField : public LayerField, public FieldChart
 {
 public:
     double phi(const Vec3d &p) const override;
     Vec3d  gradient(const Vec3d &p) const override;
     double identity_below() const override { return m_bed_band; }
-    Vec3d  orientation(const Vec3d &p) const;
+    Vec3d  orientation(const Vec3d &p) const override;
     Vec3d  map_axis(const Vec3d &p, const Vec3d &deformed_axis) const;
 
-    Vec3d    forward(const Vec3d &p) const;
+    Vec3d    forward(const Vec3d &p) const override;
     Matrix3d jacobian(const Vec3d &p) const;
-    bool     inverse(const Vec3d &q, Vec3d &p) const;
+    bool     inverse(const Vec3d &q, Vec3d &p) const override;
     bool     inside(const Vec3d &p) const;
 
     double                       pitch() const { return m_pitch; }
     const OrientationFieldStats &stats() const { return m_stats; }
-    bool                         given() const { return m_given; }
+    bool                         given() const override { return m_given; }
     std::vector<double>          slice_knots() const;
     double                       layer_height() const { return m_layer_height; }
     double                       first_layer() const { return m_first_layer; }
