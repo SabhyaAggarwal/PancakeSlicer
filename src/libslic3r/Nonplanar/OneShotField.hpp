@@ -45,6 +45,10 @@ struct OneShotState
     double                         max_time_ratio_override = -1.;
     std::shared_ptr<const MultiplanarPlan> route;
     std::string                    route_log;
+    int                            plinth_layers = 0;
+    bool                           plinth_applied = false;
+    int                            plinth_user_layers = 0;
+    double                         plinth_user_expansion = 0., plinth_user_first_expansion = 0.;
     double                         measured_ratio   = std::numeric_limits<double>::quiet_NaN();
     int                            measured_repicks = 0;
     bool                           measured_anchor  = false;

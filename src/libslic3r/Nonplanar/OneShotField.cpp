@@ -613,6 +613,7 @@ bool take_injected_oneshot(OneShotState &state)
     if (injected == nullptr)
         return false;
     state = *injected;
+    state.plinth_applied = false;
     return true;
 }
 
@@ -1388,6 +1389,8 @@ namespace {
 constexpr double RouteTimeCap = OneShotState::MaxTimeRatio / 1.02;
 constexpr double RouteScreenBand = 1.05;
 constexpr int    RouteMeasured   = 4;
+constexpr std::array<int, 4> PlinthLadder { 8, 15, 25, 40 };
+const std::vector<std::pair<std::string, std::string>> NoOverrides;
 constexpr size_t RouteSubsets = 32;
 const double     SeamCos = std::cos(20. * M_PI / 180.);
 constexpr double SeamK   = 0.25;
@@ -1512,7 +1515,7 @@ std::string grade_joins(MultiplanarPlan &plan, const indexed_triangle_set &mesh,
         if (on_cut == 0)
             continue;
         centre /= double(on_cut);
-        hinge -= sigma * FanReach * u;
+        const Vec3d edge = hinge;
         auto make_fan = [&](int n) {
             std::vector<MultiplanarChunk> fan;
             for (int k = 1; k < n; ++k) {
@@ -1538,23 +1541,40 @@ std::string grade_joins(MultiplanarPlan &plan, const indexed_triangle_set &mesh,
             }
             return fan;
         };
+        std::string tried;
         auto prints = [&](const std::vector<MultiplanarChunk> &fan) {
             MultiplanarChunk rest = plan.chunks[p];
             rest.clips.push_back({ fan.front().build_dir, fan.front().base });
-            if (printable_layers(chunk_piece(mesh, rest, h), rest, h) < FanMinLayers)
-                return false;
-            return std::all_of(fan.begin(), fan.end(),
-                               [&](const MultiplanarChunk &w) { return printable_layers(chunk_piece(mesh, w, h), w, h) >= FanMinLayers; });
+            const int rest_layers = printable_layers(chunk_piece(mesh, rest, h), rest, h);
+            tried += Slic3r::format(" n=%1%: parent %2%, wedges", fan.size() + 1, rest_layers);
+            bool all = rest_layers >= FanMinLayers;
+            for (const MultiplanarChunk &w : fan) {
+                const int layers = printable_layers(chunk_piece(mesh, w, h), w, h);
+                tried += Slic3r::format(" %1%", layers);
+                all = all && layers >= FanMinLayers;
+            }
+            return all;
         };
         std::vector<MultiplanarChunk> fan;
         int                           n  = steps;
         bool                          ok = false;
-        for (const int least = std::max(2, int(std::ceil(Geometry::rad2deg(turn) / JoinTurnMax - 1e-9))); n >= least && !ok; --n)
-            if (fan = make_fan(n); fan.empty() || (ok = prints(fan)))
+        double                        reach = FanReach;
+        const std::vector<double> reaches = chunk_support_requested() ? std::vector<double>{ FanReach, 0.5 * FanReach, 0.25 * FanReach }
+                                                                      : std::vector<double>{ FanReach };
+        for (const double r : reaches) {
+            reach = r;
+            hinge = edge - sigma * r * u;
+            tried += Slic3r::format(" reach %1$.0f:", r);
+            n = steps;
+            for (const int least = std::max(2, int(std::ceil(Geometry::rad2deg(turn) / JoinTurnMax - 1e-9))); n >= least && !ok; --n)
+                if (fan = make_fan(n); fan.empty() || (ok = prints(fan)))
+                    break;
+            if (ok || fan.empty())
                 break;
+        }
         if (!ok) {
-            log += Slic3r::format("join of chunk %1% (%2$.0f deg): %3%; ", ci, Geometry::rad2deg(turn),
-                                  fan.empty() ? "a wedge out of the axes' reach" : "no fan whose wedges all print");
+            log += Slic3r::format("join of chunk %1% (%2$.0f deg): %3%%4%; ", ci, Geometry::rad2deg(turn),
+                                  fan.empty() ? "a wedge out of the axes' reach" : "no fan whose wedges all print", tried.empty() ? "" : " (" + tried.substr(1) + ")");
             continue;
         }
         plan.chunks[p].clips.push_back({ fan.front().build_dir, fan.front().base });
@@ -1563,8 +1583,8 @@ std::string grade_joins(MultiplanarPlan &plan, const indexed_triangle_set &mesh,
             if (other.parent >= int(ci))
                 other.parent += shift;
         plan.chunks[ci].parent = int(ci + fan.size() - 1);
-        log += Slic3r::format("join of chunk %1% graded: %2$.0f deg in %3% steps, hinge %4$.2f,%5$.2f,%6$.2f; ", ci, Geometry::rad2deg(turn), n,
-                              hinge.x(), hinge.y(), hinge.z());
+        log += Slic3r::format("join of chunk %1% graded: %2$.0f deg in %3% steps, hinge %4$.2f,%5$.2f,%6$.2f (reach %7$.0f); ", ci, Geometry::rad2deg(turn), n,
+                              hinge.x(), hinge.y(), hinge.z(), reach);
         plan.chunks.insert(plan.chunks.begin() + ptrdiff_t(ci), std::make_move_iterator(fan.begin()), std::make_move_iterator(fan.end()));
         ci += fan.size();
     }
@@ -1622,6 +1642,7 @@ void choose_route(PrintObject &object, OneShotState &state)
     const MeasureWork     work(measure_work(object, state));
     const PrintConfig                    &pc         = object.print()->config();
     const std::unique_ptr<ToolKinematics> kinematics = make_tool_kinematics(pc);
+    state.plinth_layers = 0;
     if (!state.z_only || !object.config().nonplanar_oneshot_routes.value || kinematics->rotary_count() == 0 || pc.spiral_mode.value)
         return;
     const auto                 t_start = std::chrono::steady_clock::now();
@@ -1629,6 +1650,7 @@ void choose_route(PrintObject &object, OneShotState &state)
     const indexed_triangle_set mesh    = slicing_frame_mesh(object);
     MultiplanarParams          params  = multiplanar_params(object, kinematics.get());
     params.work_budget = oneshot_planner_cuts();
+    const bool                 chunk_support = chunk_support_requested() && object.config().enable_support.value;
     const char                *spec    = std::getenv("NP_ONESHOT_ROUTE_SPEC");
     const MultiplanarPlan      plan    = spec != nullptr && *spec != 0 ? route_spec_plan(spec, mesh, *kinematics)
                                                                        : object_multiplanar_plan(object, mesh, params);
@@ -1667,6 +1689,19 @@ void choose_route(PrintObject &object, OneShotState &state)
     };
     std::map<std::string, PieceTerms>  priced;
     std::map<std::string, std::string> head_hits;
+    const bool plinth_allowed = plinth_requested() && oc.raft_layers.value == 0;
+    std::map<std::string, MultiplanarParams> plinth_params;
+    auto lifted = [&](int layers, const std::vector<HalfSpace> &root) -> const MultiplanarParams & {
+        const std::string key = std::to_string(layers) + "#" + clips_key(root);
+        auto it = plinth_params.find(key);
+        if (it == plinth_params.end()) {
+            Plinth plinth = plinth_for_raft(object, clip_mesh(mesh, root), layers);
+            it = plinth_params.emplace(key, params).first;
+            it->second.plate_z = plinth.plate_z;
+            it->second.plinth  = std::move(plinth.outline);
+        }
+        return it->second;
+    };
     auto price = [&](const MultiplanarChunk &c, bool root) -> const PieceTerms & {
         const std::string key = std::string(root ? "r" : "c") + clips_key(c.clips);
         if (auto it = priced.find(key); it != priced.end())
@@ -1712,6 +1747,8 @@ void choose_route(PrintObject &object, OneShotState &state)
         std::string     pieces;
         std::shared_ptr<const NpField> root;
         double t_measured = std::numeric_limits<double>::quiet_NaN(), J_measured = std::numeric_limits<double>::quiet_NaN();
+        int         plinth = 0;
+        std::string bed_hit;
     };
     const size_t             K       = plan.cuts.size();
     const std::vector<int>   parents = multiplanar_cut_parents(plan);
@@ -1920,7 +1957,7 @@ void choose_route(PrintObject &object, OneShotState &state)
         for (size_t ci = 0; ci < o.plan.chunks.size() && o.why.empty(); ++ci) {
             const MultiplanarChunk &c  = o.plan.chunks[ci];
             const PieceTerms       &pt = price(c, ci == 0);
-            o.J += ci == 0 ? pt.t.J + pt.seam : pt.t.J - W.sup * pt.t.S + pt.seam;
+            o.J += ci == 0 || chunk_support ? pt.t.J + pt.seam : pt.t.J - W.sup * pt.t.S + pt.seam;
             o.J_ceil += pt.t.J + pt.seam;
             o.pieces += Slic3r::format(" [%1%: S %2$.0f over %3$.0f E_up %4$.0f E_wall %5$.0f E_down %6$.0f T %7$.0f]", ci, pt.t.S, pt.overhang,
                                        pt.t.E_up, pt.t.E_wall, pt.t.E_down, pt.t.T);
@@ -1928,7 +1965,7 @@ void choose_route(PrintObject &object, OneShotState &state)
             o.seam += pt.seam;
             if (ci == 0)
                 continue;
-            if (pt.overhang > ChunkOverhangMax) {
+            if (pt.overhang > ChunkOverhangMax && !chunk_support) {
                 o.why = Slic3r::format("chunk %1%: %2$.0f mm2 overhangs in its own layers (> %3$.0f), and a chunk prints no support", ci,
                                        pt.overhang, ChunkOverhangMax);
                 break;
@@ -1973,8 +2010,37 @@ void choose_route(PrintObject &object, OneShotState &state)
             auto hit = head_hits.find(key);
             if (hit == head_hits.end())
                 hit = head_hits.emplace(key, chunk_head_hit(mesh, o.plan, ci, params)).first;
-            if (!hit->second.empty())
+            if (hit->second.empty())
+                continue;
+            if (plinth_allowed && hit->second.find("would meet the bed") != std::string::npos) {
+                if (o.bed_hit.empty())
+                    o.bed_hit = Slic3r::format("chunk %1%: %2%", ci, hit->second);
+            } else
                 o.why = Slic3r::format("chunk %1%: %2%", ci, hit->second);
+        }
+        if (o.why.empty() && !o.bed_hit.empty()) {
+            std::string blocked;
+            for (const int layers : PlinthLadder) {
+                const MultiplanarParams &raised = lifted(layers, o.plan.chunks.front().clips);
+                blocked.clear();
+                for (size_t ci = 1; ci < o.plan.chunks.size() && blocked.empty(); ++ci) {
+                    std::string key = std::to_string(layers) + "#" + clips_key(o.plan.chunks[ci].clips);
+                    for (size_t j = 0; j < ci; ++j)
+                        key += "/" + clips_key(o.plan.chunks[j].clips);
+                    auto hit = head_hits.find(key);
+                    if (hit == head_hits.end())
+                        hit = head_hits.emplace(key, chunk_head_hit(mesh, o.plan, ci, raised)).first;
+                    if (!hit->second.empty())
+                        blocked = Slic3r::format("chunk %1%: %2%", ci, hit->second);
+                }
+                if (blocked.empty()) {
+                    o.plinth = layers;
+                    o.pieces += Slic3r::format(" (plinth: %1% raft layers, %2$.2f mm)", layers, -raised.plate_z);
+                    break;
+                }
+            }
+            if (o.plinth == 0)
+                o.why = o.bed_hit + Slic3r::format("; on a %1%-layer plinth, %2%", PlinthLadder.back(), blocked);
         }
         o.J += W.time * o.T_motion;
         o.J_ceil += W.time * o.T_motion;
@@ -2044,7 +2110,7 @@ void choose_route(PrintObject &object, OneShotState &state)
         double t_route;
         {
             const Injection route(offered);
-            t_route = measured_time(object, NonplanarMode::OneShot, {}, keep_as("route" + o->cuts), false);
+            t_route = measured_time(object, NonplanarMode::OneShot, o->plinth > 0 ? plinth_overrides(o->plinth) : NoOverrides, keep_as("route" + o->cuts), false);
         }
         if (!std::isfinite(t_route)) {
             o->why = "its measured slice failed (a chunk floats, or no slice)";
@@ -2057,7 +2123,7 @@ void choose_route(PrintObject &object, OneShotState &state)
         const double J = o->J - W.time * (o->T + o->T_motion) + W.time * T0 * t_route / t_body;
         o->t_measured  = t_route;
         o->J_measured  = J;
-        log << "offer " << o->cuts << " measured " << std::lround(t_route) << " s (body " << std::lround(t_body) << ", p+s " << std::lround(t_ps)
+        log << "offer " << o->cuts << (o->plinth > 0 ? Slic3r::format(" on a %1%-layer plinth", o->plinth) : std::string()) << " measured " << std::lround(t_route) << " s (body " << std::lround(t_body) << ", p+s " << std::lround(t_ps)
             << "), J " << std::lround(J) << "; ";
         if (J < J0 || forced(*o))
             priced_offers.emplace_back(forced(*o) ? -Inf : J, o);
@@ -2073,7 +2139,7 @@ void choose_route(PrintObject &object, OneShotState &state)
         double t_verified;
         {
             const Injection route(offered);
-            t_verified = measured_time(object, NonplanarMode::OneShot, {}, keep_as("route" + o->cuts), true);
+            t_verified = measured_time(object, NonplanarMode::OneShot, o->plinth > 0 ? plinth_overrides(o->plinth) : NoOverrides, keep_as("route" + o->cuts), true);
         }
         if (std::isfinite(t_verified)) {
             chosen   = o;
@@ -2113,9 +2179,11 @@ void choose_route(PrintObject &object, OneShotState &state)
         f.terms.emplace_back("stat_route_ps_time_s", t_ps);
     if (chosen) {
         auto route = std::make_shared<MultiplanarPlan>(chosen->plan);
-        route->auto_reason = Slic3r::format("One-shot prints %1% with %2% tilted chunks: J %3$.0f against %4$.0f in planar layers.", name,
-                                            route->chunks.size() - 1, J_chosen, J0);
+        route->auto_reason = Slic3r::format("One-shot prints %1% with %2% tilted chunks%5%: J %3$.0f against %4$.0f in planar layers.", name,
+                                            route->chunks.size() - 1, J_chosen, J0,
+                                            chosen->plinth > 0 ? Slic3r::format(" on a %1%-layer raft that lifts it clear of the bed", chosen->plinth) : std::string());
         state.route        = std::move(route);
+        state.plinth_layers = chosen->plinth;
     }
     state.solved = std::make_shared<const NpField>(std::move(f));
     BOOST_LOG_TRIVIAL(warning) << "One-shot routes " << name << ": " << state.route_log;

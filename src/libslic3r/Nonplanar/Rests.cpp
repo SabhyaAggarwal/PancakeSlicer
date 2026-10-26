@@ -397,6 +397,11 @@ Floating planar_control_floating(const PrintObject &object, bool support)
             copy_config.set_deserialize_strict(key, value);
     }
     copy_config.set_key_value("nonplanar_mode", new ConfigOptionEnum<NonplanarMode>(NonplanarMode::Off));
+    if (oneshot_plinth_applied(object)) {
+        config.set_deserialize_strict("raft_layers", "0");
+        if (copy_config.has("raft_layers"))
+            copy_config.set_deserialize_strict("raft_layers", "0");
+    }
     copy->clear_instances();
     copy->add_instance(*object.model_object()->instances.front());
     static thread_local std::pair<std::string, Floating> last;

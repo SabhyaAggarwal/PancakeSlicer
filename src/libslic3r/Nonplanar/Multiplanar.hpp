@@ -1,6 +1,7 @@
 #pragma once
 #include <math.h>
 #include "HeadEnvelope.hpp"
+#include "libslic3r/ExPolygon.hpp"
 #include "libslic3r/Point.hpp"
 #include "libslic3r/Polygon.hpp"
 #include "libslic3r/TriangleMesh.hpp"
@@ -9,6 +10,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Slic3r {
@@ -55,7 +57,22 @@ struct MultiplanarParams
     double                min_overhang_area  = 4.;
     Polygons              plates;
     double                work_budget        = 0.;
+    double                plate_z = 0.;
+    Polygons              plinth;
 };
+
+struct Plinth
+{
+    double   plate_z = 0.;
+    Polygons outline;
+    bool blocked(const Vec3d &p) const;
+};
+Plinth plinth_obstacle(const PrintObject &object);
+bool plinth_requested();
+bool oneshot_plinth_applied(const PrintObject &object);
+constexpr double PlinthExpansion = 0.;
+std::vector<std::pair<std::string, std::string>> plinth_overrides(int raft_layers);
+Plinth plinth_for_raft(const PrintObject &object, const indexed_triangle_set &mesh, int raft_layers);
 
 struct MultiplanarCut
 {
@@ -96,7 +113,14 @@ int printable_layers(const indexed_triangle_set &piece, const MultiplanarChunk &
 
 bool full_orientation(const PrintConfig &config);
 indexed_triangle_set slicing_frame_mesh(const PrintObject &object);
-DynamicPrintConfig chunk_print_config(const PrintObject &object);
+DynamicPrintConfig chunk_print_config(const PrintObject &object, bool support = false);
+bool chunk_support_requested();
+bool chunk_support_grounded();
+bool chunk_support_conformal();
+std::vector<ExPolygons> grounded_route_slices(const PrintObject &object);
+double grounded_route_gap(size_t chunk);
+std::vector<ExPolygons> grounded_route_upper(const PrintObject &object);
+std::vector<Polygons> grounded_route_blockers(const PrintObject &object);
 void collect_paths(const ExtrusionEntity *ee, std::vector<const ExtrusionPath *> &out);
 
 MultiplanarParams multiplanar_params(const PrintObject &object, const ToolKinematics *kinematics);

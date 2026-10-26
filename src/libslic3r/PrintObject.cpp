@@ -1143,7 +1143,37 @@ void PrintObject::generate_support_material(bool with_belt_brim)
         if ((this->has_support() && m_layers.size() > 1) || (this->has_raft() && !m_layers.empty())) {
             m_print->set_status(50, L("Generating support"));
 
-            this->_generate_support_material();
+            std::vector<ExPolygons> grounded = Nonplanar::grounded_route_slices(*this);
+            const std::vector<ExPolygons> upper = Nonplanar::grounded_route_upper(*this);
+            for (size_t i = 0; i + 1 < std::min({ grounded.size(), upper.size(), m_layers.size() }); ++i)
+                if (const ExPolygons chunks = diff_ex(upper[i], m_layers[i + 1]->lslices); !chunks.empty())
+                    grounded[i] = union_ex(grounded[i], chunks);
+            const bool              plate_only = m_config.support_on_build_plate_only.value;
+            auto swap_grounded = [this, &grounded]() {
+                for (size_t i = 0; i < std::min(grounded.size(), m_layers.size()); ++i) {
+                    std::swap(m_layers[i]->lslices, grounded[i]);
+                    m_layers[i]->lslices_bboxes.clear();
+                    for (const ExPolygon &expoly : m_layers[i]->lslices)
+                        m_layers[i]->lslices_bboxes.emplace_back(get_extents(expoly));
+                }
+            };
+            if (!grounded.empty()) {
+                swap_grounded();
+                m_config.support_on_build_plate_only.value = true;
+            }
+            try {
+                this->_generate_support_material();
+            } catch (...) {
+                if (!grounded.empty()) {
+                    swap_grounded();
+                    m_config.support_on_build_plate_only.value = plate_only;
+                }
+                throw;
+            }
+            if (!grounded.empty()) {
+                swap_grounded();
+                m_config.support_on_build_plate_only.value = plate_only;
+            }
             if (m_auto_support_applied) {
                 double volume = 0.;
                 for (const SupportLayer *layer : m_support_layers)

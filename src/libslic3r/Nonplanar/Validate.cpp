@@ -1,4 +1,5 @@
 #include "Validate.hpp"
+#include "Multiplanar.hpp"
 #include "libslic3r/PrintBase.hpp"
 
 #include "AutoMode.hpp"
@@ -67,7 +68,7 @@ StringObjectException validate(const Print &print, std::vector<StringObjectExcep
                 return { L("Multiplanar and rotary curved layers print one part with one set of settings. Remove negative "
                            "volumes, modifiers, painting and parts with their own settings, or use another non-planar mode."),
                          object, "nonplanar_mode" };
-            if (field && object->config().raft_layers.value > 0)
+            if ((mode == NonplanarMode::Field || (mode == NonplanarMode::OneShot && !plinth_requested())) && object->config().raft_layers.value > 0)
                 return { L("Rotary curved layers cannot be printed on a raft."), object, "raft_layers" };
         }
         for (size_t region_id = 0; region_id < object->num_printing_regions(); ++region_id) {

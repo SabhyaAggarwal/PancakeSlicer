@@ -34,6 +34,7 @@
 #include "libslic3r/Layer.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Print.hpp"
+#include "libslic3r/Slicing.hpp"
 #include "libslic3r/PrintConfig.hpp"
 #include "libslic3r/Surface.hpp"
 #include "libslic3r/TriangleMeshSlicer.hpp"
@@ -48,8 +49,10 @@
 #include <tbb/parallel_reduce.h>
 
 #include <algorithm>
+#include <cstring>
 #include <array>
 #include <map>
+#include <mutex>
 #include <optional>
 #include <cmath>
 #include <exception>
@@ -285,8 +288,9 @@ struct HeadHit
 };
 HeadHit head_blocked(const indexed_triangle_set &piece, const Matrix3d &frame, double h, const HeadEnvelope &envelope,
                      const MaterialColumns::PreparedHead &head, const std::vector<const indexed_triangle_set *> &earlier,
-                     const Polygons &plates)
+                     const MultiplanarParams &params)
 {
+    const Polygons &plates = params.plates;
     constexpr double Inf = std::numeric_limits<double>::infinity();
     std::vector<Vec3d> tips;
     sample_surface(piece, ObstaclePitch, [&](const Vec3d &p) { tips.push_back(frame * p); });
@@ -331,22 +335,27 @@ HeadHit head_blocked(const indexed_triangle_set &piece, const Matrix3d &frame, d
     for (const indexed_triangle_set *mesh : earlier)
         sample_surface(*mesh, ObstaclePitch, add);
     const size_t first_plate = obstacles.size();
-    for (const Polygon &plate : plates) {
-        const BoundingBoxf outline(unscaled(get_extents(plate).min), unscaled(get_extents(plate).max));
-        for (double y = outline.min.y(); y <= outline.max.y(); y += ObstaclePitch)
-            for (double x = outline.min.x(); x <= outline.max.x(); x += ObstaclePitch)
-                if (plate.contains(Point::new_scale(x, y))) {
-                    add(Vec3d(x, y, 0.));
-                    add(Vec3d(x, y, -PlateDepth));
-                }
-        for (const Line &edge : plate.lines()) {
-            const Vec2d a = unscaled(edge.a), b = unscaled(edge.b);
-            const int   n = std::max(1, int(std::ceil((b - a).norm() / ObstaclePitch)));
-            for (int i = 0; i <= n; ++i)
-                for (double z = 0.; z >= -PlateDepth; z -= ObstaclePitch)
-                    add(Vec3d(a.x() + (b.x() - a.x()) * i / n, a.y() + (b.y() - a.y()) * i / n, z));
+    auto add_solid = [&](const Polygons &outlines, double top, double bottom) {
+        for (const Polygon &plate : outlines) {
+            const BoundingBoxf outline(unscaled(get_extents(plate).min), unscaled(get_extents(plate).max));
+            for (double y = outline.min.y(); y <= outline.max.y(); y += ObstaclePitch)
+                for (double x = outline.min.x(); x <= outline.max.x(); x += ObstaclePitch)
+                    if (plate.contains(Point::new_scale(x, y))) {
+                        add(Vec3d(x, y, top));
+                        add(Vec3d(x, y, bottom));
+                    }
+            for (const Line &edge : plate.lines()) {
+                const Vec2d a = unscaled(edge.a), b = unscaled(edge.b);
+                const int   n = std::max(1, int(std::ceil((b - a).norm() / ObstaclePitch)));
+                for (int i = 0; i <= n; ++i)
+                    for (double z = top; z >= bottom; z -= ObstaclePitch)
+                        add(Vec3d(a.x() + (b.x() - a.x()) * i / n, a.y() + (b.y() - a.y()) * i / n, z));
+            }
         }
-    }
+    };
+    add_solid(plates, params.plate_z, params.plate_z - PlateDepth);
+    const size_t first_plinth = obstacles.size();
+    add_solid(params.plinth, 0., params.plate_z);
     if (obstacles.empty())
         return {};
     std::vector<double> heights;
@@ -377,7 +386,8 @@ HeadHit head_blocked(const indexed_triangle_set &piece, const Matrix3d &frame, d
             const size_t c = size_t(iy) * nx + ix;
             if (reach_min[c] <= o.z() - lo.z() && TravelHop - reach_neg_max[c] >= o.z() - hi.z()) {
                 std::ostringstream hit;
-                hit << "the head (" << envelope.boxes[b.index].name << ") would meet " << (k < first_plate ? "material printed earlier" : "the bed")
+                hit << "the head (" << envelope.boxes[b.index].name << ") would meet "
+                    << (k < first_plate ? "material printed earlier" : k < first_plinth ? "the bed" : "the plinth")
                     << " at " << where[k].x() << ", " << where[k].y() << ", " << where[k].z();
                 return { hit.str(), k >= first_plate };
             }
@@ -810,7 +820,7 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
                 std::vector<const indexed_triangle_set *> earlier { &near };
                 for (int pi = 0; pi < w.chunk_idx; ++pi)
                     earlier.push_back(&plan.chunks[size_t(pi)].piece);
-                if (const HeadHit hit = head_blocked(far, frame, h, params.head, prepared_head, earlier, params.plates); ! hit.what.empty()) {
+                if (const HeadHit hit = head_blocked(far, frame, h, params.head, prepared_head, earlier, params); ! hit.what.empty()) {
                     blocked.push_back({ cand.dir, cand.cut, cand.offset });
                     if (cand.cut != cand.dir) {
                         const double tilt = std::acos(std::clamp(cand.dir.z(), -1., 1.)) - 2. * TiltStep;
@@ -973,7 +983,7 @@ std::string chunk_head_hit(const indexed_triangle_set &mesh, const MultiplanarPl
         earlier.push_back(&p);
     const MultiplanarChunk &chunk = plan.chunks[ci];
     return head_blocked(clip_mesh(mesh, chunk.clips), chunk.frame, params.layer_height, params.head, coarse_head(params.head), earlier,
-                        params.plates)
+                        params)
         .what;
 }
 
@@ -1112,7 +1122,143 @@ void collect_paths(const ExtrusionEntity *ee, std::vector<const ExtrusionPath *>
         out.push_back(path);
 }
 
-DynamicPrintConfig chunk_print_config(const PrintObject &object)
+bool chunk_support_requested()
+{
+    static const bool on = [] { const char *v = std::getenv("NP_ONESHOT_CHUNK_SUPPORT"); return v != nullptr && (*v == '1' || *v == '2'); }();
+    return on;
+}
+
+bool chunk_support_conformal()
+{
+    static const bool on = [] { const char *v = std::getenv("NP_ONESHOT_CONFORMAL_SUPPORT"); return v != nullptr && *v == '1'; }();
+    return on && chunk_support_grounded();
+}
+
+bool chunk_support_grounded()
+{
+    static const bool on = [] { const char *v = std::getenv("NP_ONESHOT_CHUNK_SUPPORT"); return v != nullptr && *v == '2'; }();
+    return on;
+}
+
+namespace {
+std::mutex                                           grounded_mutex;
+std::map<const PrintObject *, std::vector<ExPolygons>> grounded_slices;
+std::map<const PrintObject *, std::vector<ExPolygons>> grounded_upper;
+}
+
+double grounded_route_gap(size_t chunk)
+{
+    static const std::vector<double> gaps = [] {
+        std::vector<double> out;
+        if (const char *v = std::getenv("NP_ONESHOT_GROUNDED_GAP"); v != nullptr && *v != 0)
+            for (const char *p = v; *p != 0;) {
+                char *end = nullptr;
+                out.push_back(std::strtod(p, &end));
+                p = *end == ',' ? end + 1 : end + std::strlen(end);
+            }
+        return out.empty() ? std::vector<double>{ 0.5 } : out;
+    }();
+    return gaps[std::min(chunk == 0 ? size_t(0) : chunk - 1, gaps.size() - 1)];
+}
+
+std::vector<ExPolygons> grounded_route_upper(const PrintObject &object)
+{
+    const std::lock_guard<std::mutex> lock(grounded_mutex);
+    const auto it = grounded_upper.find(&object);
+    return it == grounded_upper.end() ? std::vector<ExPolygons>() : it->second;
+}
+
+std::vector<ExPolygons> grounded_route_slices(const PrintObject &object)
+{
+    const std::lock_guard<std::mutex> lock(grounded_mutex);
+    const auto it = grounded_slices.find(&object);
+    return it == grounded_slices.end() ? std::vector<ExPolygons>() : it->second;
+}
+
+std::vector<Polygons> grounded_route_blockers(const PrintObject &object)
+{
+    std::vector<Polygons> blockers;
+    const std::vector<ExPolygons> full = grounded_route_slices(object);
+    const OneShotState *state = object.oneshot_state();
+    const std::shared_ptr<const MultiplanarPlan> plan = state != nullptr && oneshot_requested(object) ? state->route : nullptr;
+    if (full.empty() || !plan)
+        return blockers;
+    constexpr double GroundedReach = 1.;
+    const int        threshold = object.config().support_threshold_angle.value > 0 ? object.config().support_threshold_angle.value : 30;
+    const double     cos_t     = std::cos(Geometry::deg2rad(double(threshold)));
+    const indexed_triangle_set mesh = slicing_frame_mesh(object);
+    struct Shadow { double z_min, z_max; Polygon outline; };
+    std::vector<Shadow> shadows;
+    for (size_t ci = 1; ci < plan->chunks.size(); ++ci) {
+        const MultiplanarChunk    &chunk = plan->chunks[ci];
+        const indexed_triangle_set piece = clip_mesh(mesh, chunk.clips);
+        const Vec3d                dir   = chunk.build_dir.normalized();
+        for (const stl_triangle_vertex_indices &f : piece.indices) {
+            const Vec3d a = piece.vertices[f[0]].cast<double>(), b = piece.vertices[f[1]].cast<double>(), c = piece.vertices[f[2]].cast<double>();
+            const Vec3d n = (b - a).cross(c - a);
+            if (n.norm() < 1e-12 || -n.normalized().dot(dir) <= cos_t)
+                continue;
+            if (std::abs(dir.dot(a) - chunk.base) < 0.05 && std::abs(dir.dot(b) - chunk.base) < 0.05 && std::abs(dir.dot(c) - chunk.base) < 0.05)
+                continue;
+            Polygon outline { Point::new_scale(a.x(), a.y()), Point::new_scale(b.x(), b.y()), Point::new_scale(c.x(), c.y()) };
+            if (outline.area() < 0.)
+                outline.reverse();
+            shadows.push_back({ std::min({ a.z(), b.z(), c.z() }), std::max({ a.z(), b.z(), c.z() }), std::move(outline) });
+        }
+    }
+    const auto layers = object.layers();
+    blockers.resize(std::min(full.size(), layers.size()));
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, blockers.size()), [&](const tbb::blocked_range<size_t> &range) {
+        for (size_t i = range.begin(); i < range.end(); ++i) {
+            Polygons allowed;
+            for (const LayerRegion *region : layers[i]->regions())
+                polygons_append(allowed, to_polygons(region->slices.surfaces));
+            Polygons shade;
+            const double z = layers[i]->slice_z;
+            for (const Shadow &s : shadows)
+                if (s.z_min - GroundedReach <= z && z <= s.z_max + GroundedReach)
+                    shade.push_back(s.outline);
+            polygons_append(allowed, offset(union_(shade), float(scale_(GroundedReach))));
+            BoundingBox box = get_extents(full[i]);
+            if (!box.defined)
+                continue;
+            box.offset(scale_(50.));
+            blockers[i] = diff(Polygons { box.polygon() }, union_(allowed));
+        }
+    });
+    return blockers;
+}
+
+namespace {
+bool inside_mesh(const indexed_triangle_set &mesh, const Vec3d &p)
+{
+    const Vec3d dir = Vec3d(1., 1e-4, 2e-4).normalized();
+    int         crossings = 0;
+    for (const stl_triangle_vertex_indices &f : mesh.indices) {
+        const Vec3d a = mesh.vertices[f[0]].cast<double>(), b = mesh.vertices[f[1]].cast<double>(), c = mesh.vertices[f[2]].cast<double>();
+        if (std::max({ a.x(), b.x(), c.x() }) < p.x() || std::min({ a.y(), b.y(), c.y() }) > p.y() + 1. || std::max({ a.y(), b.y(), c.y() }) < p.y() - 1. ||
+            std::min({ a.z(), b.z(), c.z() }) > p.z() + 1. || std::max({ a.z(), b.z(), c.z() }) < p.z() - 1.)
+            continue;
+        const Vec3d  e1 = b - a, e2 = c - a, q = dir.cross(e2);
+        const double det = e1.dot(q);
+        if (std::abs(det) < 1e-12)
+            continue;
+        const Vec3d  s = p - a;
+        const double u = s.dot(q) / det;
+        if (u < 0. || u > 1.)
+            continue;
+        const Vec3d  r = s.cross(e1);
+        const double v = dir.dot(r) / det;
+        if (v < 0. || u + v > 1.)
+            continue;
+        if (e2.dot(r) / det > 0.)
+            ++crossings;
+    }
+    return (crossings & 1) != 0;
+}
+}
+
+DynamicPrintConfig chunk_print_config(const PrintObject &object, bool support)
 {
     DynamicPrintConfig config = object.print()->full_print_config();
     config.apply(object.config(), true);
@@ -1136,7 +1282,8 @@ DynamicPrintConfig chunk_print_config(const PrintObject &object)
         set("ironing_type", "top");
     set("nonplanar_kinematics", "none");
     set("zaa_enabled", "0");
-    set("enable_support", "0");
+    if (!support)
+        set("enable_support", "0");
     set("raft_layers", "0");
     set("brim_type", "no_brim");
     set("skirt_loops", "0");
@@ -1165,7 +1312,69 @@ MultiplanarParams multiplanar_params(const PrintObject &object, const ToolKinema
                 plate.points.push_back(Point::new_scale(p.x(), p.y()) - instance.shift);
             params.plates.push_back(std::move(plate));
         }
+    Plinth plinth  = plinth_obstacle(object);
+    params.plate_z = plinth.plate_z;
+    params.plinth  = std::move(plinth.outline);
     return params;
+}
+
+bool plinth_requested()
+{
+    static const bool on = [] { const char *v = std::getenv("NP_ONESHOT_PLINTH"); return v != nullptr && *v == '1'; }();
+    return on;
+}
+
+Plinth plinth_obstacle(const PrintObject &object)
+{
+    Plinth plinth;
+    if (const SlicingParameters &slicing = object.slicing_parameters(); plinth_requested() && slicing.has_raft()) {
+        plinth.plate_z = -slicing.object_print_z_min;
+        if (!object.layers().empty())
+            plinth.outline = offset(object.layers().front()->lslices,
+                                    float(scale_(std::max(object.config().raft_expansion.value, object.config().raft_first_layer_expansion.value))));
+    }
+    return plinth;
+}
+
+std::vector<std::pair<std::string, std::string>> plinth_overrides(int raft_layers)
+{
+    return { { "raft_layers", std::to_string(raft_layers) },
+             { "raft_expansion", Slic3r::format("%1%", PlinthExpansion) },
+             { "raft_first_layer_expansion", "0" } };
+}
+
+Plinth plinth_for_raft(const PrintObject &object, const indexed_triangle_set &mesh, int raft_layers)
+{
+    PrintObjectConfig config = object.config();
+    config.raft_layers.value                = raft_layers;
+    config.raft_expansion.value             = PlinthExpansion;
+    config.raft_first_layer_expansion.value = 0.;
+    const SlicingParameters slicing = SlicingParameters::create_from_config(object.print()->config(), config, object.model_object()->max_z(),
+                                                                            object.object_extruders(), object.print()->shrinkage_compensation());
+    Plinth plinth;
+    plinth.plate_z = -slicing.object_print_z_min;
+    const std::vector<ExPolygons> first = slice_mesh_ex(mesh, { float(0.5 * slicing.first_object_layer_height) });
+    const char  *inset  = std::getenv("NP_ONESHOT_PLINTH_INSET");
+    const double reach  = inset != nullptr && *inset != 0 ? -std::atof(inset) : PlinthExpansion;
+    if (!first.empty())
+        plinth.outline = offset(to_polygons(first.front()), float(scale_(reach)));
+    return plinth;
+}
+
+bool oneshot_plinth_applied(const PrintObject &object)
+{
+    const OneShotState *state = object.oneshot_state();
+    return state != nullptr && state->plinth_applied;
+}
+
+bool Plinth::blocked(const Vec3d &p) const
+{
+    if (p.z() < plate_z)
+        return true;
+    if (p.z() >= 0.)
+        return false;
+    const Point q = Point::new_scale(p.x(), p.y());
+    return std::any_of(outline.begin(), outline.end(), [&q](const Polygon &polygon) { return polygon.contains(q); });
 }
 
 double oneshot_planner_cuts()
@@ -1188,6 +1397,9 @@ MultiplanarPlan object_multiplanar_plan(const PrintObject &object, const indexed
         key.append(reinterpret_cast<const char *>(&v), sizeof(v));
     for (const Polygon &plate : params.plates)
         key.append(reinterpret_cast<const char *>(plate.points.data()), plate.points.size() * sizeof(Point));
+    key.append(reinterpret_cast<const char *>(&params.plate_z), sizeof(params.plate_z));
+    for (const Polygon &plinth : params.plinth)
+        key.append(reinterpret_cast<const char *>(plinth.points.data()), plinth.points.size() * sizeof(Point));
     for (const std::string &opt : object.print()->config().keys())
         key += opt + '=' + object.print()->config().opt_serialize(opt) + '\n';
     if (last.first != key)
@@ -1253,6 +1465,40 @@ std::shared_ptr<const MultiplanarPlan> clip_multiplanar_slices(PrintObject &obje
     const bool   route = object.print()->config().nonplanar_kinematics.value != RotaryLayout::None && oneshot_requested(object);
     const double under = route ? route_under_delta() : 0.;
     LayerPtrs &layers = object.layers();
+    {
+        std::vector<ExPolygons> full, upper;
+        if (route && chunk_support_grounded() && object.config().enable_support.value) {
+            full.resize(layers.size());
+            for (size_t layer_id = 0; layer_id < layers.size(); ++layer_id) {
+                for (const LayerRegion *region : layers[layer_id]->regions())
+                    append(full[layer_id], to_expolygons(region->slices.surfaces));
+                full[layer_id] = union_ex(full[layer_id]);
+            }
+            const indexed_triangle_set mesh = slicing_frame_mesh(object);
+            upper.resize(layers.size());
+            for (size_t ci = 1; ci < plan->chunks.size(); ++ci) {
+                const double       gap = grounded_route_gap(ci);
+                std::vector<float> zs;
+                for (size_t layer_id = 0; layer_id < layers.size(); ++layer_id) {
+                    const double next = layer_id + 1 < layers.size() ? layers[layer_id + 1]->slice_z - layers[layer_id]->slice_z : layers[layer_id]->height;
+                    zs.push_back(float(layers[layer_id]->slice_z + gap * next));
+                }
+                const std::vector<ExPolygons> sections = slice_mesh_ex(clip_mesh(mesh, plan->chunks[ci].clips), zs);
+                for (size_t layer_id = 0; layer_id < std::min(sections.size(), upper.size()); ++layer_id)
+                    append(upper[layer_id], sections[layer_id]);
+            }
+            for (ExPolygons &u : upper)
+                u = union_ex(u);
+        }
+        const std::lock_guard<std::mutex> lock(grounded_mutex);
+        if (full.empty()) {
+            grounded_slices.erase(&object);
+            grounded_upper.erase(&object);
+        } else {
+            grounded_slices[&object] = std::move(full);
+            grounded_upper[&object]  = std::move(upper);
+        }
+    }
     std::vector<char> emptied(layers.size(), 0);
     tbb::parallel_for(tbb::blocked_range<size_t>(0, layers.size()), [&](const tbb::blocked_range<size_t> &range) {
         for (size_t layer_id = range.begin(); layer_id < range.end(); ++layer_id) {
@@ -1300,7 +1546,10 @@ void build_multiplanar_chunks(PrintObject &object, const MultiplanarPlan &plan, 
     const size_t host_id  = object.layers().size() - 1;
     Layer       *host     = object.layers()[host_id];
     const double raft     = host->print_z - (host->slice_z + 0.5 * host->height);
-    const DynamicPrintConfig  config = chunk_print_config(object);
+    const bool                grounded      = route && chunk_support_grounded() && object.config().enable_support.value;
+    const bool                conformal     = grounded && chunk_support_conformal();
+    const bool                chunk_support = route && chunk_support_requested() && (!grounded || conformal) && object.config().enable_support.value;
+    const DynamicPrintConfig  config = chunk_print_config(object, chunk_support);
     const indexed_triangle_set mesh  = slicing_frame_mesh(object);
 
     for (size_t ci = 1; ci < plan.chunks.size(); ++ci) {
@@ -1336,7 +1585,7 @@ void build_multiplanar_chunks(PrintObject &object, const MultiplanarPlan &plan, 
         if (print.objects().empty())
             continue;
         const PrintObject &sliced = *print.objects().front();
-        if (route)
+        if (route && !chunk_support && !grounded)
             for (int step = 0; step < int(posCount); ++step)
                 for (const auto &warning : sliced.step_state_with_warnings(PrintObjectStep(step)).warnings)
                     if (warning.message_id == PrintStateBase::SlicingNeedSupportOn &&
@@ -1355,16 +1604,63 @@ void build_multiplanar_chunks(PrintObject &object, const MultiplanarPlan &plan, 
         patch.region_id    = 0;
         patch.z_min        = std::numeric_limits<double>::infinity();
         patch.z_max        = -std::numeric_limits<double>::infinity();
-        for (const Layer *layer : sliced.layers()) {
-            std::vector<const ExtrusionPath *> paths;
+        struct Item
+        {
+            double              print_z;
+            const Layer        *layer;
+            const SupportLayer *support;
+        };
+        std::vector<Item> items;
+        for (const Layer *layer : sliced.layers())
+            items.push_back({ layer->print_z, layer, nullptr });
+        if (chunk_support) {
+            for (const SupportLayer *s : sliced.support_layers())
+                if (!s->support_fills.empty())
+                    items.push_back({ s->print_z, nullptr, s });
+            double lowest = std::numeric_limits<double>::infinity();
+            for (const SupportLayer *s : sliced.support_layers())
+                if (!s->support_fills.empty())
+                    lowest = std::min(lowest, s->print_z);
+            size_t points = 0, in_air = 0;
+            for (const SupportLayer *s : sliced.support_layers())
+                if (!s->support_fills.empty() && s->print_z <= lowest + 1e-6) {
+                    std::vector<const ExtrusionPath *> first;
+                    collect_paths(&s->support_fills, first);
+                    for (const ExtrusionPath *path : first)
+                        for (const Point3 &pt : path->polyline.points) {
+                            const Vec3d below = to_object * Vec3d(unscale<double>(pt.x()) + center.x(), unscale<double>(pt.y()) + center.y(),
+                                                                  chunk.base - 0.3);
+                            ++points;
+                            in_air += inside_mesh(mesh, below) ? 0 : 1;
+                        }
+                }
+            if (!conformal && points > 0 && double(in_air) > 0.02 * double(points))
+                throw Slic3r::SlicingError(Slic3r::format(_u8L("One-shot route: the support of chunk %1% of %2% stands in air on its cut (%3% of %4% points)."),
+                                                          ci, object.model_object()->name, in_air, points));
+        }
+        std::stable_sort(items.begin(), items.end(), [](const Item &a, const Item &b) {
+            return a.print_z < b.print_z - 1e-9 || (std::abs(a.print_z - b.print_z) <= 1e-9 && a.support != nullptr && b.support == nullptr);
+        });
+        for (const Item &item : items) {
+            const double                           print_z = item.print_z;
+            std::vector<const ExtrusionPath *>     paths;
             std::vector<ExtrusionEntityCollection> perimeters;
-            perimeters.reserve(layer->regions().size());
-            for (const LayerRegion *region : layer->regions()) {
+            if (item.support != nullptr) {
+                collect_paths(&item.support->support_fills, paths);
+                if (conformal)
+                    paths.erase(std::remove_if(paths.begin(), paths.end(),
+                                               [](const ExtrusionPath *p) { return p->role() != erSupportMaterialInterface; }),
+                                paths.end());
+            }
+            const Layer *layer = item.layer;
+            if (layer != nullptr)
+                perimeters.reserve(layer->regions().size());
+            for (const LayerRegion *region : layer != nullptr ? layer->regions() : LayerRegionPtrs()) {
                 if (route) {
                     perimeters.push_back(region->perimeters);
                     place_route_seams(perimeters.back(), [&](const Point3 &pt) {
                         return Vec3d(to_object * Vec3d(unscale<double>(pt.x()) + center.x(), unscale<double>(pt.y()) + center.y(),
-                                                       layer->print_z + chunk.base));
+                                                       print_z + chunk.base));
                     }, chunk, later);
                     collect_paths(&perimeters.back(), paths);
                 } else
@@ -1380,7 +1676,7 @@ void build_multiplanar_chunks(PrintObject &object, const MultiplanarPlan &plan, 
                     size_t covered = 0;
                     for (const Point3 &pt : pts) {
                         const Vec3d p = to_object * Vec3d(unscale<double>(pt.x()) + center.x(), unscale<double>(pt.y()) + center.y(),
-                                                          layer->print_z + chunk.base);
+                                                          print_z + chunk.base);
                         for (size_t k = 0; k < chunk.clips.size(); ++k)
                             if (int(k) != chunk.base_clip && std::abs(chunk.clips[k].normal.dot(p) - chunk.clips[k].offset) <= 0.75 * h) {
                                 ++covered;
@@ -1393,7 +1689,7 @@ void build_multiplanar_chunks(PrintObject &object, const MultiplanarPlan &plan, 
                 std::vector<Vec3d> tips(pts.size());
                 for (size_t i = 0; i < pts.size(); ++i) {
                     const Vec3d in_chunk(unscale<double>(pts[i].x()) + center.x(), unscale<double>(pts[i].y()) + center.y(),
-                                         layer->print_z + chunk.base);
+                                         print_z + chunk.base);
                     tips[i] = to_object * in_chunk;
                     tips[i].z() += raft;
                     patch.z_min = std::min(patch.z_min, tips[i].z());

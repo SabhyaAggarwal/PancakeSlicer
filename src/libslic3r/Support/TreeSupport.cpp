@@ -13,6 +13,7 @@
 #include <iterator>
 #include <math.h>
 
+#include "libslic3r/Nonplanar/Multiplanar.hpp"
 #include "libslic3r/Point.hpp"
 #include "libslic3r/Polygon.hpp"
 #include "libslic3r/Surface.hpp"
@@ -1021,6 +1022,12 @@ void TreeSupport::detect_overhangs(bool check_support_necessity )
     m_vertical_enforcer_points.clear();
     m_object->project_and_append_custom_facets(false, EnforcerBlockerType::ENFORCER, enforcers, &m_vertical_enforcer_points);
     m_object->project_and_append_custom_facets(false, EnforcerBlockerType::BLOCKER, blockers);
+    if (std::vector<Polygons> grounded = Nonplanar::grounded_route_blockers(*m_object); !grounded.empty()) {
+        if (blockers.size() < grounded.size())
+            blockers.resize(grounded.size());
+        for (size_t i = 0; i < grounded.size(); ++i)
+            polygons_append(blockers[i], std::move(grounded[i]));
+    }
 
     if (is_auto(stype) && config_remove_small_overhangs) {
         for (auto& cluster : overhangClusters) {

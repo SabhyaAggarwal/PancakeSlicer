@@ -510,6 +510,7 @@ public:
     };
     Prefix prefix() const { return m_prefix; }
     Corners bead(uint32_t id) const { return m_beads[id].corners(); }
+    unsigned int bead_layer(uint32_t id) const { return m_beads[id].layer; }
     explicit TiltedBeads(const Nonplanar::HeadEnvelope &head)
     {
         Group nozzle;
@@ -1331,6 +1332,7 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
             ClearanceHit hit;
             hit.move_id = c.move; hit.gcode_line = move.gcode_id; hit.layer = move.layer_id;
             uint32_t hit_struck = uint32_t(-1), best_land_struck = uint32_t(-1);
+            std::string hit_bead;
             auto record = [&](double gap, const std::string &component, const Vec3d &tip, ClearanceHitClass cls) {
                 if (gap < best) { best = gap; hit.component = component; hit.tip = tip; hit.cls = cls; }
             };
@@ -1378,8 +1380,18 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
                                 line << " | " << v.transpose();
                         BOOST_LOG_TRIVIAL(warning) << line.str();
                     }
+                    static const bool log_struck = std::getenv("NP_VERIFY_STRUCK") != nullptr;
+                    if (log_struck && bead_gap < best && std::isfinite(bead_gap)) {
+                        Vec3d centre = Vec3d::Zero();
+                        for (const Vec3d &v : tilted.bead(scratch->best_bead))
+                            centre += v / 8.;
+                        hit_bead = "bead " + std::to_string(tilted.bead_layer(scratch->best_bead)) + " " + std::to_string(centre.x()) + " " +
+                                   std::to_string(centre.y()) + " " + std::to_string(centre.z());
+                    }
                     record(bead_gap, component, pose.tip, rotary_class(component));
                     const double machine_gap = table_clearance(obstacles, machine_head, kinematics, q, pose, frame, grow, theta, component);
+                    if (log_struck && machine_gap < best)
+                        hit_bead = "table";
                     record(machine_gap, component, pose.tip, ClearanceHitClass::Body);
                 } else {
                     int index = -1;
@@ -1451,7 +1463,8 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
                     out << hit.gcode_line << ' ' << c.move << ' ' << (s == uint32_t(-1) ? -1 : long(s)) << ' '
                         << (s == uint32_t(-1) ? -1 : long(result.moves[s].gcode_id)) << ' '
                         << (hit.cls == ClearanceHitClass::Land ? "land" : hit.cls == ClearanceHitClass::Cone ? "cone" : "body") << ' '
-                        << hit.penetration << '\n';
+                        << hit.penetration << ' ' << hit.component << ' ' << hit.tip.x() << ' ' << hit.tip.y() << ' ' << hit.tip.z() << ' '
+                        << (hit_bead.empty() ? "-" : hit_bead) << '\n';
                 }
                 hits->hits.emplace_back(std::move(hit));
                 ++hits->land_strict;

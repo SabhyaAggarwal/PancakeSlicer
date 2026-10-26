@@ -23,10 +23,16 @@
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/Emboss.hpp"
+#include "libslic3r/CutSurface.hpp"
 #include "libslic3r/EmbossShape.hpp"
 #include "libslic3r/TextConfiguration.hpp"
 #include "libslic3r/FlushVolCalc.hpp"
 #include "libslic3r/Format/STL.hpp"
+#include "libslic3r/Format/3mf.hpp"
+#include "libslic3r/Format/DRC.hpp"
+#include "libslic3r/CSGMesh/CSGMesh.hpp"
+#include "libslic3r/CSGMesh/ModelToCSGMesh.hpp"
+#include "libslic3r/CSGMesh/PerformCSGMeshBooleans.hpp"
 #include "libslic3r/Format/bbs_3mf.hpp"
 #include "libslic3r/GCode/ClearanceVerifier.hpp"
 #include "libslic3r/GCode/GCodeProcessor.hpp"
@@ -163,10 +169,14 @@ struct Args
     std::vector<std::string> mesh_operands;
     std::string text_font, text_font_name, text_align = "center";
     std::optional<int> text_char_gap;
-    bool text_fonts = false, text_set = false;
+    bool text_fonts = false, text_set = false, text_use_surface = false;
+    std::string text_surface;
+    std::optional<Vec3d> text_at, text_normal, text_up;
+    std::optional<double> text_angle;
     std::optional<float> text_size, text_depth, text_line_spacing;
     bool text_bold = false, text_italic = false;
     bool mesh_a_set = false;
+    std::optional<int> draco_bits;
     std::optional<double> simplify_ratio;
     std::optional<uint32_t> simplify_triangles;
     std::string wipe_tower_only;
@@ -239,6 +249,9 @@ Model read_input(const std::string &file)
                  "       [--wipe-tower-only OUT.json]   (with --plate: per-plate prime tower estimate, no slice)\n"
                  "       [--patch-preview FILE.json [--patch-preview-budget S] [--patch-preview-max-triangles N]]\n"
                  "       [--step-linear-deflection MM] [--step-angle-deflection A] [--step-split-compound]\n"
+                 "       text surface: --use-surface --surface TARGET --at X,Y,Z --normal NX,NY,NZ [--up UX,UY,UZ] [--angle DEG]\n"
+                 "       nonplanar_slice_tool --export-3mf-generic IN.3mf OUT.3mf   (geometry only)\n"
+                 "       nonplanar_slice_tool --export-drc IN OUT.drc [--bits N]   (geometry only)\n"
                  "       nonplanar_slice_tool --emboss-fonts   (bundled font catalog as JSON)\n"
                  "       nonplanar_slice_tool --emboss-text OUT.stl|OUT.3mf --text TEXT [--font FILE | --font-name NAME] --size MM --depth MM\n"
                  "                           [--bold] [--italic] [--line-spacing FACTOR] [--char-gap N] [--align left|center|right]   (desktop emboss, no slice)\n"
@@ -289,10 +302,41 @@ Args parse_args(int argc, char **argv)
                 usage(arg + " needs a value");
             return argv[++i];
         };
-        if (arg == "--emboss-text") {
+        if (arg == "--export-3mf-generic" || arg == "--export-drc") {
+            if (!a.mesh_operation.empty()) usage("choose one mesh operation");
+            a.mesh_operation = arg == "--export-drc" ? "draco" : "generic3mf";
+            a.mesh_input = next();
+            a.mesh_output = next();
+        } else if (arg == "--bits") {
+            const std::string value = next();
+            size_t used = 0;
+            int bits = 0;
+            try { bits = std::stoi(value, &used); } catch (const std::exception &) { usage("--bits expects 0 or an integer from 8 to 30"); }
+            if (used != value.size() || (bits != 0 && (bits < DRC_BITS_MIN || bits > DRC_BITS_MAX))) usage("--bits expects 0 or an integer from 8 to 30");
+            a.draco_bits = bits;
+        } else if (arg == "--emboss-text") {
             if (!a.mesh_operation.empty()) usage("choose one mesh operation");
             a.mesh_operation = "text";
             a.mesh_output = next();
+        } else if (arg == "--use-surface") a.text_use_surface = true;
+        else if (arg == "--surface") a.text_surface = next();
+        else if (arg == "--at" || arg == "--normal" || arg == "--up") {
+            const std::string value = next();
+            Vec3d vector;
+            char extra;
+            if (std::sscanf(value.c_str(), "%lf,%lf,%lf%c", &vector.x(), &vector.y(), &vector.z(), &extra) != 3 || !vector.allFinite())
+                usage(arg + " expects three finite comma-separated coordinates");
+            if (arg != "--at" && (!std::isfinite(vector.norm()) || vector.norm() < 1e-9)) usage(arg + " needs a nonzero direction");
+            if (arg == "--at") a.text_at = vector;
+            else if (arg == "--normal") a.text_normal = vector;
+            else a.text_up = vector;
+        } else if (arg == "--angle") {
+            const std::string value = next();
+            size_t used = 0;
+            double angle = 0.;
+            try { angle = std::stod(value, &used); } catch (const std::exception &) { usage("--angle expects finite degrees"); }
+            if (used != value.size() || !std::isfinite(angle)) usage("--angle expects finite degrees");
+            a.text_angle = angle;
         } else if (arg == "--text") { a.mesh_input = next(); a.text_set = true; }
         else if (arg == "--emboss-fonts") a.text_fonts = true;
         else if (arg == "--font-name") {
@@ -534,6 +578,11 @@ Args parse_args(int argc, char **argv)
         usage("cut connector and dovetail options require --cut-only");
     if ((a.mesh_a_set || !a.mesh_operands.empty()) && a.mesh_operation != "union" && a.mesh_operation != "difference" && a.mesh_operation != "intersection")
         usage("--a and --b require --mesh-boolean");
+    if (a.text_use_surface) {
+        if (a.mesh_operation != "text" || a.text_surface.empty() || !a.text_at || !a.text_normal)
+            usage("--use-surface needs --emboss-text, --surface TARGET, --at X,Y,Z and --normal X,Y,Z");
+    } else if (!a.text_surface.empty() || a.text_at || a.text_normal || a.text_up || a.text_angle)
+        usage("surface placement options need --use-surface");
     if (a.text_fonts) {
         if (!a.mesh_operation.empty() || !a.model.empty() || !a.plate.empty() || !a.project.empty() || !a.explode_3mf.empty()) usage("--emboss-fonts is a standalone operation");
         return a;
@@ -542,6 +591,7 @@ Args parse_args(int argc, char **argv)
     if (!a.text_font.empty() && !a.text_font_name.empty()) usage("choose --font or --font-name");
     if (a.mesh_operation != "text" && (a.text_set || !a.text_font.empty() || !a.text_font_name.empty() || a.text_char_gap || a.text_align != "center" || a.text_size || a.text_depth || a.text_line_spacing || a.text_bold || a.text_italic))
         usage("--font, --size, --depth, --bold, --italic and --line-spacing need --emboss-text");
+    if (a.draco_bits && a.mesh_operation != "draco") usage("--bits needs --export-drc");
     if (!a.mesh_operation.empty()) {
         if (a.mesh_operation == "union" || a.mesh_operation == "difference" || a.mesh_operation == "intersection") {
             if (!a.mesh_a_set || a.mesh_operands.empty() || a.model.empty()) usage("--mesh-boolean needs --a A --b B OUT");
@@ -1627,6 +1677,45 @@ bool emboss_font_tables_valid(const std::vector<unsigned char> &data)
     return true;
 }
 
+TriangleMesh text_on_surface(const Args &args, const ExPolygons &polygons, double scale)
+{
+    const Vec3d normal = args.text_normal->normalized();
+    Vec3d up = args.text_up.value_or(Vec3d::UnitZ());
+    up -= normal * up.dot(normal);
+    if (!args.text_up && up.norm() < 1e-9) {
+        up = Vec3d::UnitY();
+        up -= normal * up.dot(normal);
+    }
+    if (up.norm() < 1e-9) throw std::runtime_error("--up must not be parallel to --normal");
+    up.normalize();
+    Transform3d frame = Transform3d::Identity();
+    frame.linear().col(0) = up.cross(normal);
+    frame.linear().col(1) = up;
+    frame.linear().col(2) = normal;
+    frame.translation() = *args.text_at;
+    frame.rotate(Eigen::AngleAxisd(args.text_angle.value_or(0.) * M_PI / 180., Vec3d::UnitZ()));
+    TriangleMesh target = read_operation_mesh(args.text_surface);
+    target.transform(frame.inverse());
+    const BoundingBoxf3 box = target.bounding_box();
+    constexpr double margin = 0.3;
+    const double min_z = std::min(0., box.min.z()) - margin;
+    const double max_z = std::max(0., box.max.z()) + margin;
+    const double span = max_z - min_z;
+    Transform3d projection_frame = Transform3d::Identity();
+    const BoundingBox outline_box = get_extents(polygons);
+    const Vec2d center = (outline_box.min.cast<double>() + outline_box.max.cast<double>()) * (scale * 0.5);
+    projection_frame.translate(Vec3d(-center.x(), -center.y(), min_z));
+    projection_frame.scale(scale);
+    Emboss::OrthoProject projection(projection_frame, Vec3d(0., 0., span));
+    SurfaceCut cut = cut_surface(polygons, {target.its}, projection, float(-min_z / span));
+    if (cut.empty()) throw std::runtime_error("text projection found no target surface");
+    Emboss::OrthoProject3d depth(Vec3d(0., 0., -*args.text_depth));
+    TriangleMesh mesh(cut2model(cut, depth));
+    if (mesh.empty()) throw std::runtime_error("surface text produced an empty mesh");
+    mesh.transform(frame);
+    return mesh;
+}
+
 void text_mesh(const Args &args)
 {
     auto diagnostics = std::make_unique<MeshDiagnosticOutput>();
@@ -1690,15 +1779,82 @@ void text_mesh(const Args &args)
     if (mesh.empty()) throw std::runtime_error("text produced an empty mesh");
     const BoundingBoxf3 uncentered = mesh.bounding_box();
     mesh.translate(-uncentered.center().x(), -uncentered.center().y(), 0.);
+    const BoundingBoxf3 glyph_box = mesh.bounding_box();
+    if (args.text_use_surface) mesh = text_on_surface(args, shape.expolygons, scale);
     if (boost::algorithm::iequals(extension, ".3mf")) write_plate_mesh(args.mesh_output, mesh);
     else if (!store_stl(args.mesh_output.c_str(), &mesh, true)) throw std::runtime_error("cannot write mesh " + args.mesh_output);
     const BoundingBoxf3 box = mesh.bounding_box();
     nlohmann::json result = {{"operation", "text"}, {"text", args.mesh_input}, {"font", font.string()},
-        {"glyph_outline_bbox", {{box.min.x(), box.min.y()}, {box.max.x(), box.max.y()}}},
+        {"glyph_outline_bbox", {{glyph_box.min.x(), glyph_box.min.y()}, {glyph_box.max.x(), glyph_box.max.y()}}},
+        {"use_surface", args.text_use_surface},
         {"align", args.text_align}, {"char_gap", args.text_char_gap.value_or(0)},
         {"output", args.mesh_output}, {"size_mm", size}, {"depth_mm", depth}, {"bold", args.text_bold},
         {"italic", args.text_italic}, {"line_spacing", spacing}, {"triangles_after", mesh.its.indices.size()},
         {"bbox", {{box.min.x(), box.min.y(), box.min.z()}, {box.max.x(), box.max.y(), box.max.z()}}}};
+    diagnostics.reset();
+    std::cout << result.dump() << "\n";
+}
+
+void export_mesh(const Args &args)
+{
+    auto diagnostics = std::make_unique<MeshDiagnosticOutput>();
+    Model source = read_input(args.mesh_input);
+    if (source.objects.empty()) throw std::runtime_error("mesh export needs nonempty geometry");
+    const std::string extension = fs::path(args.mesh_output).extension().string();
+    nlohmann::json result = {{"operation", args.mesh_operation}, {"input", args.mesh_input}, {"output", args.mesh_output},
+        {"objects", source.objects.size()}};
+    if (args.mesh_operation == "generic3mf") {
+        if (!boost::algorithm::iequals(extension, ".3mf")) throw std::runtime_error("generic 3MF output must be .3mf");
+        if (!store_3mf(args.mesh_output.c_str(), &source, nullptr, false)) throw std::runtime_error("cannot write generic 3MF " + args.mesh_output);
+        size_t triangles = 0;
+        for (const ModelObject *object : source.objects)
+            for (const ModelVolume *volume : object->volumes) triangles += volume->mesh().its.indices.size();
+        result["triangles_after"] = triangles;
+    } else {
+        if (!boost::algorithm::iequals(extension, ".drc")) throw std::runtime_error("Draco output must be .drc");
+        TriangleMesh mesh;
+        result["best_effort"] = false;
+        result["fallback_reasons"] = nlohmann::json::array();
+        for (const ModelObject *object : source.objects) {
+            std::vector<csg::CSGPart> parts;
+            csg::model_to_csgmesh(*object, Transform3d::Identity(), std::back_inserter(parts),
+                csg::mpartsPositive | csg::mpartsNegative | csg::mpartsDoSplits);
+            const auto input = range(parts);
+            TriangleMesh solid;
+            std::string reason;
+            if (csg::is_all_positive(input)) solid = TriangleMesh(csg::csgmesh_merge_positive_parts(input));
+            else {
+                const auto check = csg::check_csgmesh_booleans(input);
+                if (std::get<0>(check) != csg::BooleanFailReason::OK) {
+                    static const std::map<csg::BooleanFailReason, std::string> reasons = {
+                        {csg::BooleanFailReason::MeshEmpty, "empty mesh"},
+                        {csg::BooleanFailReason::NotBoundAVolume, "mesh does not bound a volume"},
+                        {csg::BooleanFailReason::SelfIntersect, "self-intersecting mesh"},
+                        {csg::BooleanFailReason::NoIntersection, "meshes do not intersect"}};
+                    reason = reasons.at(std::get<0>(check)) + ": " + std::get<1>(check);
+                }
+                else {
+                    try { solid = MeshBoolean::cgal::cgal_to_triangle_mesh(*csg::perform_csgmesh_booleans(input)); }
+                    catch (const std::exception &e) { reason = e.what(); }
+                }
+                if (solid.empty()) {
+                    solid = TriangleMesh(csg::csgmesh_merge_positive_parts(input));
+                    result["best_effort"] = true;
+                    result["fallback_reasons"].push_back({{"object", object->name}, {"reason", reason.empty() ? "boolean produced no geometry; exporting positive parts" : reason}});
+                }
+            }
+            for (const ModelInstance *instance : object->instances) {
+                TriangleMesh placed = solid;
+                placed.transform(instance->get_matrix(), true);
+                mesh.merge(placed);
+            }
+        }
+        if (mesh.empty()) throw std::runtime_error("Draco export needs nonempty part geometry");
+        if (!store_drc(args.mesh_output.c_str(), &mesh, args.draco_bits.value_or(DRC_BITS_DEFAULT)))
+            throw std::runtime_error("cannot write Draco mesh " + args.mesh_output);
+        result["triangles_after"] = mesh.its.indices.size();
+        result["bits"] = args.draco_bits.value_or(DRC_BITS_DEFAULT);
+    }
     diagnostics.reset();
     std::cout << result.dump() << "\n";
 }
@@ -2776,7 +2932,7 @@ int main(int argc, char **argv)
 #ifdef _WIN32
     std::unique_ptr<boost::nowide::args> utf8_args;
     for (int i = 1; i < argc; ++i)
-        if (std::string(argv[i]) == "--emboss-text" || std::string(argv[i]) == "--emboss-fonts") {
+        if (std::string(argv[i]) == "--emboss-text" || std::string(argv[i]) == "--emboss-fonts" || std::string(argv[i]) == "--export-3mf-generic" || std::string(argv[i]) == "--export-drc") {
             utf8_args = std::make_unique<boost::nowide::args>(argc, argv);
             boost::nowide::nowide_filesystem();
             break;
@@ -2805,6 +2961,7 @@ int main(int argc, char **argv)
         if (!args.explode_3mf.empty()) { explode_3mf(args); return 0; }
         if (args.text_fonts) { std::cout << nlohmann::json({{"fonts", emboss_fonts(args)}}).dump() << "\n"; return 0; }
         if (args.mesh_operation == "text") { text_mesh(args); return 0; }
+        if (args.mesh_operation == "generic3mf" || args.mesh_operation == "draco") { export_mesh(args); return 0; }
         if (!args.mesh_operation.empty()) { mesh_only(args); return 0; }
         if (!args.verify_gcode.empty()) {
             DynamicPrintConfig file_config;

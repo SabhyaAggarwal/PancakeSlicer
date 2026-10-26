@@ -138,20 +138,16 @@ std::vector<std::vector<Vec3d>> contours(const indexed_triangle_set &its, const 
             below += f(t[i]) < 0.;
         if (below == 0 || below == 3)
             continue;
-        std::vector<Edge> es;
-        for (int i = 0; i < 3; ++i)
-            if ((f(t[i]) < 0.) != (f(t[(i + 1) % 3]) < 0.))
-                es.push_back(edge(t[i], t[(i + 1) % 3]));
-        Vec3d       p0 = crossing(es[0].first, es[0].second), p1 = crossing(es[1].first, es[1].second);
-        const Vec3d v0 = its.vertices[t[0]].cast<double>(), v1 = its.vertices[t[1]].cast<double>(), v2 = its.vertices[t[2]].cast<double>();
-        const Vec3d n  = (v1 - v0).cross(v2 - v0);
-        const Vec3d g  = field.gradient(0.5 * (p0 + p1));
-        Edge e0 = es[0], e1 = es[1];
-        if ((p1 - p0).dot(g.cross(n)) < 0.) {
-            std::swap(p0, p1);
-            std::swap(e0, e1);
+        Edge e0, e1;
+        for (int i = 0; i < 3; ++i) {
+            const int  a = t[i], b = t[(i + 1) % 3];
+            const bool ba = f(a) < 0., bb = f(b) < 0.;
+            if (!ba && bb)
+                e0 = edge(a, b);
+            else if (ba && !bb)
+                e1 = edge(a, b);
         }
-        by_from.emplace(e0, Seg{ e0, e1, p0, p1 });
+        by_from.emplace(e0, Seg{ e0, e1, crossing(e0.first, e0.second), crossing(e1.first, e1.second) });
     }
     std::vector<std::vector<Vec3d>> loops;
     while (!by_from.empty()) {

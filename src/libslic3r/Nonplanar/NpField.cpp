@@ -9,6 +9,8 @@
 #include "libslic3r/Print.hpp"
 #include "libslic3r/miniz_extension.hpp"
 
+#include <boost/log/trivial.hpp>
+
 #include <cstddef>
 #include <array>
 #include <miniz.h>
@@ -186,6 +188,24 @@ void to_plate_frame(NpField &f, const Vec2d &plate_offset)
 
 NpLayerField::NpLayerField(NpField field) : m_field(std::move(field))
 {
+    {
+        NpField     &mf   = m_field;
+        const double step = 1e-3 * mf.spacing.z();
+        size_t       raised = 0;
+        for (size_t i = 0; i < mf.dims[0]; ++i)
+            for (size_t j = 0; j < mf.dims[1]; ++j)
+                for (size_t k = 1; k < mf.dims[2]; ++k) {
+                    float      &v  = mf.phi[mf.index(i, j, k)];
+                    const float lo = float(double(mf.phi[mf.index(i, j, k - 1)]) + step);
+                    if (v < lo) {
+                        v = lo;
+                        ++raised;
+                    }
+                }
+        if (raised > 0)
+            BOOST_LOG_TRIVIAL(warning) << "Native field: " << raised << " grid nodes raised to keep phi increasing in z (a fold over the field's "
+                                       << mf.dims[0] * mf.dims[1] * mf.dims[2] << " nodes)";
+    }
     const NpField &f = m_field;
     size_t bad = f.dims[2];
     for (size_t k = 0; k < f.dims[2] && bad == f.dims[2]; ++k)

@@ -760,10 +760,28 @@ void PrintObject::slice()
         this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, why);
     }
     bool oneshot = Nonplanar::oneshot_requested(*this);
+    const int raft_before = m_config.raft_layers.value;
+    if (m_oneshot && m_oneshot->plinth_applied) {
+        m_config.raft_layers.value                = m_oneshot->plinth_user_layers;
+        m_config.raft_expansion.value             = m_oneshot->plinth_user_expansion;
+        m_config.raft_first_layer_expansion.value = m_oneshot->plinth_user_first_expansion;
+        m_oneshot->plinth_applied                 = false;
+    }
     if (oneshot)
         Nonplanar::solve_oneshot(*this);
     if (oneshot && m_oneshot->offer != Nonplanar::OneShotState::Offer::Auto) {
         m_config.nonplanar_mode.value = this->oneshot_state().field_path() ? NonplanarMode::OneShot : NonplanarMode::Off;
+        if (this->oneshot_state().field_path() && m_config.raft_layers.value > 0)
+            throw Slic3r::SlicingError(L("Rotary curved layers cannot be printed on a raft."));
+        if (Nonplanar::OneShotState &state = this->oneshot_state();
+            state.route != nullptr && state.plinth_layers > 0 && state.offer != Nonplanar::OneShotState::Offer::Control) {
+            state.plinth_user_layers          = m_config.raft_layers.value;
+            state.plinth_user_expansion       = m_config.raft_expansion.value;
+            state.plinth_user_first_expansion = m_config.raft_first_layer_expansion.value;
+            state.plinth_applied              = true;
+            for (const auto &[key, value] : Nonplanar::plinth_overrides(state.plinth_layers))
+                m_config.set_deserialize_strict(key, value);
+        }
     } else if (m_oneshot && m_oneshot->offer == Nonplanar::OneShotState::Offer::Auto && !m_auto_planar) {
         oneshot = false;
         m_config.nonplanar_mode.value = NonplanarMode::Auto;
@@ -787,7 +805,7 @@ void PrintObject::slice()
             throw Slic3r::SlicingError(ex.what());
         }
     }
-    if (m_config.nonplanar_mode.value != previous_mode) {
+    if (m_config.nonplanar_mode.value != previous_mode || m_config.raft_layers.value != raft_before) {
         m_slicing_params.valid = false;
         this->update_slicing_parameters();
     }
@@ -1333,7 +1351,8 @@ void PrintObject::slice_volumes()
         this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, m_multiplanar->auto_reason);
 
     BOOST_LOG_TRIVIAL(debug) << "Slicing volumes - removing top empty layers";
-    while (! m_layers.empty()) {
+    const bool grounded = m_multiplanar != nullptr && !Nonplanar::grounded_route_slices(*this).empty();
+    while (! m_layers.empty() && ! grounded) {
         const Layer *layer = m_layers.back();
         if (! layer->empty())
             break;
