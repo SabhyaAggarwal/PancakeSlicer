@@ -13,7 +13,7 @@ import { archivePainting } from './plater/paint';
 import { projectEdits } from './plater/projectTransforms';
 import { choiceDialog, confirmDialog, numberDialog, promptDialog } from './components/Ask';
 import {
-  DEFAULT_PRINTER, DEMO_MODELS, PRESET_META, effectiveConfig, getState, isCompatible, markStale, newId, presetEdits, printerPreset, resolvePreset, selectPrinter, setState, toast, type PlateObject,
+  DEFAULT_PRINTER, DEMO_MODELS, PRESET_META, effectiveConfig, getState, isCompatible, markStale, newId, presetEdits, printerPreset, resolvePreset, selectPrinter, setState, toast, type PlateObject, type State,
 } from './state/store';
 import { historyDepth, leaveDocument, markSaved, newDocument, undoable } from './state/history';
 import { clearPlateJobs, currentPlates } from './plater/plates';
@@ -364,11 +364,13 @@ export function openFileDialog() {
 
 export function arrangeAll(allPlates = true) {
   const s = getState();
-  if (s.features.arrange && !s.project && s.api && !s.api.mock) return void import('./plater/operations').then((m) => m.arrangeNative());
+  const locked = !!s.projectPlates.find((p) => p.index === s.plateIndex)?.locked;
+  if (locked && !allPlates) return toast('The plate is locked');
+  if (s.features.arrange && !s.project && s.api && !s.api.mock) return locked ? toast('The plate is locked') : void import('./plater/operations').then((m) => m.arrangeNative());
   const area = bedArea();
   undoable('Arrange', () => setState((st) => ({
-    objects: arrange(st.objects, area),
-    ...(allPlates && !st.project ? { projectPlates: st.projectPlates.map((p) => (p.index === st.plateIndex || !p.objects.length ? p : { ...p, objects: arrange(p.objects, area) })) } : {}),
+    ...(locked ? {} : { objects: arrange(st.objects, area) }),
+    ...(allPlates && !st.project ? { projectPlates: st.projectPlates.map((p) => (p.index === st.plateIndex || p.locked || !p.objects.length ? p : { ...p, objects: arrange(p.objects, area) })) } : {}),
   })));
 }
 
@@ -646,4 +648,25 @@ export const toolbarOperation = (operation: 'orient' | 'split' | 'split-parts', 
 export async function saveProject(as = false) {
   const saving = await import('./saveProject');
   return saving.saveProject(as);
+}
+
+export function toggleText() {
+  const s = getState();
+  if (!s.features.emboss_text || s.tab !== 'prepare') return;
+  if (s.gizmo === 'text') return setState({ gizmo: 'none' });
+  void import('./plater/text').then((m) => {
+    if (m.editedText()) return setState({ gizmo: 'text' });
+    const o = s.objects.find((x) => x.id === s.selected?.object);
+    if (o && (o.project?.placeholder || o.native || s.selected?.all)) return toast('Text needs an object of the plate, or nothing selected');
+    void m.addText(o ? o.id : null);
+  });
+}
+
+export const canBoolean = (s: State) => {
+  const o = s.objects.find((x) => x.id === s.selected?.object);
+  return !!s.features.mesh_boolean && !!o && !s.selected?.all && !o.project?.placeholder && !o.native && !!o.volumes?.length;
+};
+export function toggleBoolean() {
+  const s = getState();
+  if (s.gizmo === 'boolean' || canBoolean(s)) setState({ gizmo: s.gizmo === 'boolean' ? 'none' : 'boolean' });
 }

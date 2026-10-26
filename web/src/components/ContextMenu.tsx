@@ -5,19 +5,10 @@ import { canEditProject } from '../api/client';
 import { changeVolumeType, deleteAll, deleteVolume, effectiveConfig, getState, removeSelected, setState, togglePrintable, updateObject, updateVolume, useStore, VOLUME_ORDER, type PlateObject, type State } from '../state/store';
 import { addPrimitive, addPrimitiveObject, loadVolume, SEAM_MODES, SHAPES, TYPE_LABEL, VOLUME_MENU } from '../plater/volumes';
 import { menuKeys } from '../keys';
-import { canAddPlate, deletePlate, renamePlate } from '../plater/plates';
-import { promptDialog } from './Ask';
+import { canAddPlate, deletePlate, editPlateName } from '../plater/plates';
 
 const HANDY = [['Orca Cube'], ['OrcaSliced Combo'], ['Orca Badge'], ['Orca Tolerance Test'], ['3DBenchy'], ['Cali Cat'], ['Autodesk FDM Test'], ['Voron Cube'],
   ['Stanford Bunny'], ['Orca String Hell']] as const;
-
-async function editPlateName() {
-  const s = getState();
-  const plate = s.projectPlates.find((p) => p.index === s.plateIndex);
-  if (!plate) return;
-  const name = await promptDialog('Edit Plate Name', plate.name);
-  if (name !== null) renamePlate(plate.index, name);
-}
 
 const ops = () => import('../plater/objectOps');
 const exportStl = (selection: boolean, multi = false) => import('../exportStl').then((m) => m.exportStl(selection, multi));
@@ -96,8 +87,11 @@ export default function ContextMenu() {
     { label: 'Load...', action: () => loadVolume(o.id, type) },
     'sep' as const,
     ...SHAPES.map((shape) => ({ label: shape, action: () => addPrimitive(o.id, type, shape) })),
+    ...(s.features.emboss_text && (type === 'part' || type === 'negative' || type === 'modifier')
+      ? [{ label: 'Text', action: () => void import('../plater/text').then((m) => m.addText(o.id, type)) }] : []),
   ] })), ...heightRanges, 'sep' as const] : heightRanges.length ? [...heightRanges, 'sep'] : [];
   const items: Item[] = o && volume ? [
+    ...(volume.text && s.features.emboss_text ? [{ label: 'Edit text', action: () => setState({ gizmo: 'text' }) }] : []),
     { label: 'Rename', action: () => setState({ renaming: volume.id }) },
     { label: 'Delete', shortcut: 'Del', action: () => deleteVolume(o.id, volume.id), tip: 'Delete the selected part' },
     { label: 'Mirror', tip: 'Mirror the part', sub: ([0, 1, 2] as const).map((a) => (

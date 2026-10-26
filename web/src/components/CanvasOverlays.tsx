@@ -3,7 +3,7 @@ import { accessNotice, accessSnapshot, saveAccessToken, subscribeAccess } from '
 import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import * as THREE from 'three';
-import { addInstance, arrangeAll, cancelSlice, download, fileUse, openFileDialog, outputKind, removeInstance, toolbarOperation, outsideVolumeWarning } from '../actions';
+import { addInstance, arrangeAll, cancelSlice, download, fileUse, openFileDialog, outputKind, removeInstance, toolbarOperation, outsideVolumeWarning, canBoolean, toggleBoolean, toggleText } from '../actions';
 import { setCompareWanted } from '../compare';
 import { toggleNonplanarView, useNonplanarView, usePatchPreview, type PreviewFact } from '../patch-preview';
 import { applyRecommended, pendingRecommendations, plateResults, type PlateResult } from '../recommend';
@@ -46,6 +46,8 @@ export function CanvasToolbar() {
   const project = useStore((s) => !!s.project);
   const toggle = (g: Gizmo) => setState({ gizmo: gizmo === g ? 'none' : g });
   const brimEars = useStore((s) => !!s.features.brim_ears);
+  const booleanOk = useStore(canBoolean);
+  const text = useStore((s) => !!s.features.emboss_text);
   const native = useStore((s) => !!s.objects.find((o) => o.id === s.selected?.object)?.native);
   const volumes = useStore((s) => !!s.objects.find((o) => o.id === s.selected?.object)?.volumes?.length);
   const locked = project ? ' — instances cannot be added or removed from an opened project' : '';
@@ -82,13 +84,15 @@ export function CanvasToolbar() {
       <IconButton size={24} icon="toolbar_flatten" title="Lay on Face (F)" active={gizmo === 'flatten'} onClick={() => toggle('flatten')} disabled={!edit} />
       <IconButton size={24} icon="toolbar_cut" title={cutBlock ? `Cut (C) — ${cutBlock}` : 'Cut (C)'} active={gizmo === 'cut'} onClick={toggleCut} disabled={!!cutBlock && gizmo !== 'cut'} />
       <IconButton size={24} icon="toolbar_measure" title="Measure (U)" active={gizmo === 'measure'} onClick={() => toggle('measure')} disabled={!sel || !!placeholder} />
-      <IconButton size={24} icon="toolbar_meshboolean" title="Mesh Boolean (B)" disabled />
+      <IconButton size={24} icon="toolbar_meshboolean" title="Mesh Boolean (B)" active={gizmo === 'boolean'} onClick={toggleBoolean} disabled={!booleanOk && gizmo !== 'boolean'} />
       {PAINT_GIZMOS.map(([kind, icon, title]) => (
         <IconButton key={kind} size={24} icon={icon} title={title} active={gizmo === kind} onClick={() => togglePaint(kind)} disabled={!paint && gizmo !== kind} />
       ))}
       {LATER_GIZMOS.map(([icon, title]) => (icon === 'toolbar_brimears' && brimEars
         ? <IconButton key={icon} size={24} icon={icon} title={title} active={gizmo === 'brimears'} onClick={() => toggle('brimears')} disabled={!sel || !!placeholder || !!native || volumes} />
-        : <IconButton key={icon} size={24} icon={icon} title={title} disabled />
+        : icon === 'toolbar_text' && text
+          ? <IconButton key={icon} size={24} icon={icon} title={title} active={gizmo === 'text'} onClick={toggleText} disabled={!!sel?.all || !!placeholder || !!native} />
+          : <IconButton key={icon} size={24} icon={icon} title={title} disabled />
       ))}
       {preview && (
         <>
@@ -154,7 +158,7 @@ export function ManipulationPanel({ docked = false }: { docked?: boolean }) {
   const uniform = useStore((s) => s.uniformScale);
   const volumeId = useStore((s) => s.selected?.volume);
   const inst = o?.instances.find((i) => i.id === instId);
-  if (!o || !inst || (docked ? gizmo !== 'none' : gizmo === 'none') || gizmo === 'flatten' || gizmo === 'cut' || gizmo === 'measure' || isPaint(gizmo) || gizmo === 'layers' || o.project?.placeholder) return null;
+  if (!o || !inst || (docked ? gizmo !== 'none' : gizmo === 'none') || gizmo === 'flatten' || gizmo === 'cut' || gizmo === 'measure' || isPaint(gizmo) || gizmo === 'layers' || gizmo === 'brimears' || gizmo === 'boolean' || gizmo === 'text' || o.project?.placeholder) return null;
   const v = o.volumes?.find((vv) => vv.id === volumeId);
   if (v) {
     const box = volumeBox(o, inst, v);

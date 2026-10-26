@@ -613,6 +613,15 @@ kbd { font: inherit; font-size: 12px; background: var(--panel-alt); border: 1px 
 .head-grid tr.selected td { background: var(--hover); }
 .head-dialog .head-plot { width: 240px; }
 .canvas-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.plate-icons { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.plate-icons > * { position: absolute; left: 0; top: 0; pointer-events: auto; }
+.plate-icon { padding: 0; border: 0; background: none; cursor: pointer; }
+.plate-icon img { width: 100%; height: 100%; display: block; }
+.plate-icon:disabled { opacity: 0.35; cursor: default; }
+.plate-number { display: flex; align-items: center; justify-content: center; border-radius: 3px; background: var(--border); color: var(--text); pointer-events: none; }
+.plate-number.selected { background: var(--accent); color: #fff; }
+.plate-name { display: flex; align-items: center; gap: 4px; padding: 0 0 2px; border: 0; background: none; color: var(--text); font-size: 12px; cursor: pointer; white-space: nowrap; }
+.plate-name img { width: var(--plate-icon, 16px); height: var(--plate-icon, 16px); }
 .canvas-label { position: absolute; left: 0; top: 0; padding: 1px 6px; border-radius: 3px; background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 12px; white-space: nowrap; }
 .plate-settings .prefs-row > span:first-child { min-width: 190px; }
 .plate-order { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 6px 198px; }
@@ -679,7 +688,8 @@ kbd { font: inherit; font-size: 12px; background: var(--panel-alt); border: 1px 
 .remap-grid { display: grid; gap: 2px; }
 .remap-row { display: flex; align-items: center; gap: 6px; }
 .remap-row .paint-filament { display: inline-grid; place-items: center; width: 20px; height: 20px; }
-.canvas-tools { position: absolute; left: 30px; bottom: 100px; display: flex; flex-direction: column; gap: 4px; z-index: 5; }
+.canvas-tools { position: absolute; left: 30px; bottom: 100px; display: flex; flex-direction: column; gap: 4px; z-index: 5; pointer-events: none; }
+.canvas-tools > * { pointer-events: auto; }
 .canvas-section-panel { position: absolute; left: 40px; bottom: 32px; display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); white-space: nowrap; }
 .canvas-section-panel input[type='range'] { width: 110px; }
 .canvas-section-panel .num { width: 54px; }

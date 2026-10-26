@@ -1,7 +1,7 @@
 import { unzip, strFromU8 } from 'fflate';
 import type { Config } from '../api/types';
 
-export interface ProjectPlate { index: number; name: string; origin: [number, number]; settings: Config }
+export interface ProjectPlate { index: number; name: string; origin: [number, number]; settings: Config;  locked?: boolean }
 
 export interface ProjectMaterials {
   plates: ProjectPlate[];
@@ -187,7 +187,7 @@ export async function readProject(file: File, partsOnly = false): Promise<{ item
     if (settings.bed_type && settings.bed_type !== 'Default Plate') settings.curr_bed_type = settings.bed_type;
     delete settings.bed_type;
     for (const k of ['plater_id', 'plater_name', 'locked']) delete settings[k];
-    plates.push({ index, name: String(values.plater_name ?? ''), origin: [0, 0], settings });
+    plates.push({ index, name: String(values.plater_name ?? ''), origin: [0, 0], settings, ...(values.locked === 'true' ? { locked: true } : {}) });
     for (const inst of p[1].matchAll(/<model_instance\b[^>]*>([\s\S]*?)<\/model_instance>/g)) {
       const v = (key: string) => new RegExp(`<metadata\\s+key="${key}"\\s+value="([^"]*)"`).exec(inst[1])?.[1];
       membership.set(`${v('object_id')}:${v('instance_id')}`, index);

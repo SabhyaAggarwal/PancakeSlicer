@@ -10,6 +10,9 @@ import { defaultEarRadius, earsUi, setEars, setEarsUi, subscribeEarsUi } from '.
 import { brush, bucketFill, fill as fillPaint, heightRange, HEIGHT, isPaint, overhangFacets, overhangGeometry, paintOf, paintTool, paintTriangle, PAINT_STEP, RADIUS, setPaintTool, subscribePaintTool, type PaintKind, type Painting } from './paint';
 import { beginStep, undoable } from '../state/history';
 import { TowerView } from './wipeTower';
+import { setTextPlacing, textPlacing } from './textPlacing';
+import { gridOrigin, plateOffset, PlateGrid } from './plateGrid';
+import { canAddPlate, moveToPlate, selectPlate } from './plates';
 import { filamentColor } from './filamentColor';
 import { bedKey as bedCacheKey, buildBed, sceneColors, showBedFor } from './Bed';
 import { subscribeTheme } from '../theme';
@@ -78,6 +81,7 @@ export default function Plater3D() {
         showBedFor(bed, views.camera, viewOptions().gridlines);
         renderer.render(scene, views.camera);
         placeLabels();
+        grid.place(views.camera, el.clientWidth, el.clientHeight, viewOptions().gridlines);
         if (flattenScene.children.length) {
           renderer.autoClear = false;
           renderer.clearDepth();
@@ -138,6 +142,20 @@ export default function Plater3D() {
     let area: THREE.Vector2[] = [];
     let height = 250;
     const fitCamera = () => views.setBed(area);
+    const grid = new PlateGrid((color) => material(color, 'normal'));
+    scene.add(grid.group);
+    let gridAt: { index: number; count: number } | null = null;
+    const syncGrid = (s: State) => {
+      const count = s.projectPlates.length;
+      if (gridAt && area.length && (gridAt.index !== s.plateIndex || gridAt.count !== count)) {
+        const a = gridOrigin(gridAt.index, gridAt.count, area), b = gridOrigin(s.plateIndex, count, area);
+        views.shift(a[0] - b[0], a[1] - b[1]);
+      }
+      const grew = gridAt !== null && count > gridAt.count;
+      gridAt = { index: s.plateIndex, count };
+      grid.sync(s, bed, area);
+      if (grew) views.fit(grid.box(s));
+    };
     const viewExtras = new THREE.Group();
     const COM_BALL = new THREE.SphereGeometry(2.5, 32, 16);
     {
@@ -376,7 +394,7 @@ export default function Plater3D() {
           scene.remove(mesh);
           meshes.delete(id);
         }
-      const live = new Set(s.objects.flatMap((o) => [o.geometry, ...(o.volumes ?? []).map((v) => v.geometry)]));
+      const live = new Set([...s.objects, ...s.projectPlates.flatMap((p) => p.objects)].flatMap((o) => [o.geometry, ...(o.volumes ?? []).map((v) => v.geometry)]));
       for (const g of liveGeometries) if (!live.has(g)) g.dispose();
       liveGeometries = live;
       syncCut(s);
@@ -566,7 +584,7 @@ export default function Plater3D() {
       const o = s.objects.find((ob) => ob.id === s.selected?.object);
       const i = o?.instances.find((ii) => ii.id === s.selected?.instance);
       const v = o?.volumes?.find((vv) => vv.id === s.selected?.volume);
-      if (!o || !i || s.gizmo === 'none' || s.gizmo === 'flatten' || s.gizmo === 'measure' || isPaint(s.gizmo) || s.gizmo === 'layers' || s.gizmo === 'brimears' || s.selected?.all || o.project?.placeholder) {
+      if (!o || !i || s.gizmo === 'none' || s.gizmo === 'flatten' || s.gizmo === 'measure' || isPaint(s.gizmo) || s.gizmo === 'layers' || s.gizmo === 'brimears' || s.gizmo === 'boolean' || s.gizmo === 'text' || s.selected?.all || o.project?.placeholder) {
         tc.detach();
         return;
       }
@@ -786,9 +804,18 @@ export default function Plater3D() {
       updateInstance(drag.object, drag.instance, { x: p.x + drag.dx, y: p.y + drag.dy });
     };
     const onUp = (ev: PointerEvent) => {
-      if (!drag && downAt && Math.hypot(ev.clientX - downAt.x, ev.clientY - downAt.y) < 4 && !tc.dragging && !pick(ev))
-        setState({ selected: null });
-      if (drag?.moved) { endStep?.(); endStep = null; }
+      if (!drag && downAt && Math.hypot(ev.clientX - downAt.x, ev.clientY - downAt.y) < 4 && !tc.dragging && !pick(ev)) {
+        const k = grid.plateAt(getState(), bedPoint());
+        if (k !== null && k !== getState().plateIndex) selectPlate(k);
+        else setState({ selected: null });
+      }
+      if (drag?.moved) {
+        endStep?.();
+        endStep = null;
+        const s = getState(), o = s.objects.find((ob) => ob.id === drag!.object), i = o?.instances.find((ii) => ii.id === drag!.instance);
+        const k = i && canAddPlate(s) ? grid.plateAt(s, new THREE.Vector3(i.x, i.y, 0)) : null;
+        if (o && k !== null && k !== s.plateIndex) moveToPlate([o.id], k, plateOffset(s, area, k));
+      }
       if (towerDrag?.moved && tower.dragAt) {
         const t = getState().wipeTower, at = t ? TowerView.inBed(tower.dragAt, t, parsePoints(printerPreset(getState())?.config.printable_area)) : tower.dragAt;
         undoable('Move', () => setState((st) => ({ wipeTowerPos: { ...st.wipeTowerPos, [st.plateIndex]: at }, job: markStale(st.job) })));
@@ -905,6 +932,23 @@ export default function Plater3D() {
       if (o && u.selected.length) setEars(o.id, (o.brimEars ?? []).map((e, i) => (u.selected.includes(i) ? { ...e, r: radius } : e)), 'Change brim ear radius');
     };
     renderer.domElement.addEventListener('pointerdown', onEarsDown, { capture: true });
+    const onTextDown = (ev: PointerEvent) => {
+      const s = getState();
+      if (ev.button !== 0 || s.gizmo !== 'text' || !textPlacing()) return;
+      const hit = pick(ev);
+      if (!hit?.local || hit.tri === undefined || (hit.object.userData as { object: number }).object !== s.selected?.object) return;
+      ev.stopImmediatePropagation();
+      ev.preventDefault();
+      const g = (hit.object as THREE.Mesh).geometry, pos = g.attributes.position, idx = g.index;
+      const v = [0, 1, 2].map((k) => new THREE.Vector3().fromBufferAttribute(pos, idx ? idx.getX(hit.tri! * 3 + k) : hit.tri! * 3 + k));
+      const n = v[1].clone().sub(v[0]).cross(v[2].clone().sub(v[0])).normalize();
+      setTextPlacing(false);
+      void import('./text').then((m) => {
+        const t = m.editedText();
+        if (t?.volume) void m.updateText({ ...t.spec, surface: { at: [hit.local!.x, hit.local!.y, hit.local!.z], normal: [n.x, n.y, n.z] } });
+      });
+    };
+    renderer.domElement.addEventListener('pointerdown', onTextDown, { capture: true });
     renderer.domElement.addEventListener('wheel', onEarsWheel, { capture: true, passive: false });
     const unsubEars = subscribeEarsUi(syncEars);
 
@@ -1041,6 +1085,10 @@ export default function Plater3D() {
       if (!rightAt || Math.hypot(ev.clientX - rightAt.x, ev.clientY - rightAt.y) > 4) return;
       rightAt = null;
       const hit = pick(ev);
+      if (!hit) {
+        const k = grid.plateAt(getState(), bedPoint());
+        if (k !== null && k !== getState().plateIndex) selectPlate(k);
+      }
       const s = getState();
       if (!hit) return setState({ contextMenu: { x: ev.clientX, y: ev.clientY } });
       const { object, instance } = hit.object.userData as { object: number; instance: number };
@@ -1161,10 +1209,12 @@ export default function Plater3D() {
         render();
         last = { ...last, cut: s.cut };
       }
-      if (last && s.objects === last.objects && s.selected === last.selected && s.printer === last.printer &&
+      if (last && s.objects === last.objects && s.selected === last.selected && s.printer === last.printer && s.projectPlates === last.projectPlates &&
+          s.plateIndex === last.plateIndex && s.project === last.project && s.job.state === last.job.state &&
           s.filamentSlots === last.filamentSlots && s.slotColours === last.slotColours && s.machines === last.machines && s.gizmo === last.gizmo && s.dirty === last.dirty) return;
       last = s;
       syncBed(s);
+      syncGrid(s);
       syncObjects(s);
       if (sectionView().ratio > 0) applySection();
       syncEars();
@@ -1172,10 +1222,11 @@ export default function Plater3D() {
       syncView(s);
       if (!isPaint(s.gizmo)) paintView.showCursor(null);
     };
-    (window as unknown as { __plater: unknown }).__plater = { scene, get camera() { return views.camera; }, controls, tc, renderer, meshes, frames, hoverMs, hovered: () => hovered, flattenPlanes: () => flattenScene.children, measure: measureState, pick, render, getState, setState };
+    (window as unknown as { __plater: unknown }).__plater = { scene, get camera() { return views.camera; }, controls, tc, renderer, meshes, grid, frames, hoverMs, hovered: () => hovered, flattenPlanes: () => flattenScene.children, measure: measureState, pick, render, getState, setState };
     const unsub = subscribeStore(sync);
     const unsubLayerCursor = subscribeLayerCursor(() => { tint(getState()); render(); });
     el.appendChild(labelLayer);
+    el.appendChild(grid.layer);
     const unsubView = subscribeViewOptions(() => { tint(getState()); syncView(getState()); render(); });
     const unsubSection = subscribeSection(applySection);
     const onFit = () => {
@@ -1205,6 +1256,7 @@ export default function Plater3D() {
       unsubEars();
       window.removeEventListener('camera-fit', onFit);
       labelLayer.remove();
+      grid.layer.remove();
       unsubPaintTool();
       unsubTheme();
       unsubPreview();

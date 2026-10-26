@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { setPaintTool, togglePaint } from './plater/paint';
 import { toggleViewOption } from './plater/viewOptions';
-import { addInstance, arrangeAll, download, importFiles, newProject, openFileDialog, openProjectDialog, removeInstance, slice, toolbarOperation, saveProject } from './actions';
+import { addInstance, arrangeAll, download, importFiles, newProject, openFileDialog, openProjectDialog, removeInstance, slice, toolbarOperation, saveProject, toggleBoolean, toggleText } from './actions';
 import { setCut, toggleCut } from './plater/cut';
 import { CanvasToolbar, CutPanel, ManipulationPanel, PaintPanel, SliceNotification, Toast } from './components/CanvasOverlays';
 import { LayerHeightBar, LayerHeightPanel } from './components/LayerHeight';
@@ -9,6 +9,8 @@ import { Sidebar } from './components/Sidebar';
 import { AskHost } from './components/Ask';
 import { TabBar, TopBar } from './components/TopBar';
 const BrimEarsPanel = lazy(() => import('./components/BrimEarsPanel'));
+const BooleanPanel = lazy(() => import('./components/BooleanPanel'));
+const TextPanel = lazy(() => import('./components/TextPanel'));
 const CanvasTools = lazy(() => import('./components/CanvasTools'));
 const Navigator = lazy(() => import('./components/Navigator').then((m) => ({ default: m.Navigator })));
 const PlateChoice = lazy(() => import('./components/PlateChoice'));
@@ -59,7 +61,7 @@ export default function App() {
   const gizmo = useStore((s) => s.gizmo);
   const loading = useStore((s) => s.loading);
   const jobDone = useStore((s) => s.job.state === 'done');
-  const empty = useStore((s) => !s.objects.length && !s.project && !!s.printer);
+  const empty = useStore((s) => !s.objects.length && !s.project && !!s.printer && s.projectPlates.length < 2);
   const [dragOver, setDragOver] = useState(false);
   const previewOpened = useRef(false);
   if (tab === 'preview' || jobDone) previewOpened.current = true;
@@ -122,6 +124,8 @@ export default function App() {
         if (!s.features.brim_ears) toggleViewOption('labels');
         else if (o && !o.native && !o.volumes?.length) setState({ gizmo: s.gizmo === 'brimears' ? 'none' : 'brimears' });
       }
+      else if (e.key.toLowerCase() === 'b' && !e.ctrlKey && !e.metaKey) toggleBoolean();
+      else if (e.key.toLowerCase() === 't' && !e.ctrlKey && !e.metaKey) toggleText();
       else if (getState().gizmo === 'color' && /^[1-9]$/.test(e.key)) { if (Number(e.key) <= getState().filamentSlots.length) setPaintTool({ filament: Number(e.key) }); }
       else if (e.key === 'F2') startRename();
       else if (e.key.toLowerCase() === 'v') { const selected = getState().selected; if (selected) togglePrintable(selected.object, selected.allInstances ? undefined : selected.instance); }
@@ -172,6 +176,8 @@ export default function App() {
             {gizmo === 'measure' && <Suspense fallback={null}><MeasurePanel /></Suspense>}
             {!empty && <Suspense fallback={null}><CanvasTools /></Suspense>}
             {gizmo === 'brimears' && <Suspense fallback={null}><BrimEarsPanel /></Suspense>}
+            {gizmo === 'boolean' && <Suspense fallback={null}><BooleanPanel /></Suspense>}
+            {gizmo === 'text' && <Suspense fallback={null}><TextPanel /></Suspense>}
             {empty && !loading && <Suspense fallback={null}><EmptyPlate /></Suspense>}
           </div>
           {previewOpened.current && (

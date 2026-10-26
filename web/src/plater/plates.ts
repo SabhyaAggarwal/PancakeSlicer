@@ -2,6 +2,7 @@ import { getState, markStale, newId, setState, subscribeStore, toast, type JobVi
 import { undoable } from '../state/history';
 import { bedArea, canExport, exportFilename, slice } from '../actions';
 import { arrange, nextFreeSpot } from './geometry';
+import { promptDialog } from '../components/Ask';
 
 export const OBJECT_DRAG = 'application/x-orca-object';
 
@@ -16,6 +17,11 @@ export const canAddPlate = (s: State) => !s.project && !!s.features.mesh_plates;
 export function currentPlates(s: State) {
   return s.projectPlates.map((p) => (p.index === s.plateIndex ? { ...p, objects: s.objects, events: s.events } : p));
 }
+
+export const listedPlates = (s: State) =>
+  s.projectPlates.length ? currentPlates(s) : [{ index: 1, name: '', origin: [0, 0] as [number, number], settings: {}, objects: s.objects, events: s.events }];
+
+export const plateLocked = (s: State, index = s.plateIndex) => !!s.projectPlates.find((p) => p.index === index)?.locked;
 
 function showPlate(s: State, index: number): Partial<State> {
   const plates = currentPlates(s);
@@ -36,7 +42,7 @@ export function addPlate() {
   const s = getState();
   if (!canAddPlate(s) || busy(s)) return;
   undoable('Add Plate', () => setState((st) => {
-    const plates = st.projectPlates.length ? currentPlates(st) : [{ index: 1, name: '', origin: [0, 0] as [number, number], settings: {}, objects: st.objects, events: st.events }];
+    const plates = listedPlates(st);
     const index = Math.max(...plates.map((p) => p.index)) + 1;
     return showPlate({ ...st, projectPlates: [...plates, { index, name: '', origin: [0, 0], settings: {}, objects: [], events: [] }] }, index);
   }));
@@ -46,7 +52,7 @@ export function duplicatePlate() {
   const s = getState();
   if (!canAddPlate(s) || busy(s)) return;
   undoable('Duplicate Current Plate', () => setState((st) => {
-    const plates = st.projectPlates.length ? currentPlates(st) : [{ index: 1, name: '', origin: [0, 0] as [number, number], settings: {}, objects: st.objects, events: st.events }];
+    const plates = listedPlates(st);
     const index = Math.max(...plates.map((p) => p.index)) + 1;
     const objects = st.objects.map((o) => ({ ...o, id: newId(), settings: { ...o.settings }, instances: o.instances.map((i) => ({ ...i, id: newId() })) }));
     return showPlate({ ...st, projectPlates: [...plates, { index, name: '', origin: [0, 0], settings: {}, objects, events: [] }] }, index);
@@ -78,7 +84,7 @@ export const PLATE_KEYS = ['curr_bed_type', 'print_sequence', 'spiral_mode', 'fi
 
 export function setPlateSettings(name: string, settings: Record<string, string>) {
   undoable('Plate Settings', () => setState((st) => {
-    const plates = st.projectPlates.length ? st.projectPlates : [{ index: 1, name: '', origin: [0, 0] as [number, number], settings: {}, objects: st.objects, events: st.events }];
+    const plates = listedPlates(st);
     return {
       projectPlates: plates.map((p) => (p.index === st.plateIndex ? { ...p, name, settings: { ...Object.fromEntries(Object.entries(p.settings).filter(([k]) => !(PLATE_KEYS as readonly string[]).includes(k))), ...settings } } : p)),
       job: markStale(st.job),
@@ -86,19 +92,55 @@ export function setPlateSettings(name: string, settings: Record<string, string>)
   }));
 }
 
-export function renamePlate(index: number, name: string) {
-  undoable('Edit Plate Name', () => setState((st) => ({ projectPlates: st.projectPlates.map((p) => (p.index === index ? { ...p, name } : p)) })));
+export function toggleLock(index: number) {
+  undoable(plateLocked(getState(), index) ? 'Unlock Plate' : 'Lock Plate', () => setState((st) => ({
+    projectPlates: listedPlates(st).map((p) => (p.index === index ? { ...p, locked: !p.locked } : p)),
+  })));
 }
 
-export function moveToPlate(ids: number[], index: number) {
+export function movePlateToFront(index: number) {
   const s = getState();
-  if (index === s.plateIndex || !ids.length) return;
+  if (index <= 1 || s.projectPlates.length < 2 || busy(s)) return;
+  undoable('Move plate to front', () => setState((st) => {
+    const plates = currentPlates(st);
+    const renumber = (k: number) => (k === index ? 1 : k < index ? k + 1 : k);
+    const jobs = new Map(plateJobs);
+    jobs.set(st.plateIndex, st.job);
+    plateJobs.clear();
+    for (const [k, j] of jobs) plateJobs.set(renumber(k), j);
+    const selected = renumber(st.plateIndex);
+    const job = plateJobs.get(selected) ?? IDLE;
+    plateJobs.delete(selected);
+    const wipeTowerPos = Object.fromEntries(Object.entries(st.wipeTowerPos).map(([k, v]) => [renumber(Number(k)), v]));
+    return {
+      projectPlates: plates.map((p) => ({ ...p, index: renumber(p.index) })).sort((a, b) => a.index - b.index),
+      plateIndex: selected, job, wipeTowerPos,
+    };
+  }));
+}
+
+export function renamePlate(index: number, name: string) {
+  undoable('Edit Plate Name', () => setState((st) => ({ projectPlates: listedPlates(st).map((p) => (p.index === index ? { ...p, name } : p)) })));
+}
+
+export async function editPlateName() {
+  const s = getState();
+  const plate = listedPlates(s).find((p) => p.index === s.plateIndex);
+  if (!plate) return;
+  const name = await promptDialog('Edit Plate Name', plate.name);
+  if (name !== null) renamePlate(plate.index, name);
+}
+
+export function moveToPlate(ids: number[], index: number, shift?: [number, number]) {
+  const s = getState();
+  if (index === s.plateIndex || !ids.length || plateLocked(s, index)) return;
   undoable(ids.length > 1 ? 'Move objects to plate' : 'Move object to plate', () => setState((st) => {
     const moving = st.objects.filter((o) => ids.includes(o.id));
     const area = bedArea();
     const target = st.projectPlates.find((p) => p.index === index)!;
     let placed = target.objects;
     for (const o of moving) {
+      if (shift) { placed = [...placed, shiftTo(o, o.instances[0].x - shift[0], o.instances[0].y - shift[1])]; continue; }
       const spot = placed.length ? nextFreeSpot(placed, o, area) : null;
       placed = spot ? [...placed, shiftTo(o, spot.x, spot.y)] : arrange([...placed, o], area);
     }

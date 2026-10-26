@@ -52,6 +52,9 @@ type JobRequest struct {
 	MeshOp                 string         `json:"mesh_op,omitempty"`
 	SimplifyRatio          float64        `json:"simplify_ratio,omitempty"`
 	SimplifyTriangles      int            `json:"simplify_triangles,omitempty"`
+	BooleanOp              string         `json:"boolean_op,omitempty"`
+	Text                   []string       `json:"text,omitempty"`
+	TextSurface            []string       `json:"text_surface,omitempty"`
 	Vendor                 string         `json:"vendor"`
 	Printer                string         `json:"printer"`
 	Process                string         `json:"process"`
@@ -526,6 +529,16 @@ func (m *JobManager) toolArgs(j *Job) []string {
 	in := filepath.Join(j.Dir, "input")
 	if r.Explode {
 		return []string{"--explode-3mf", filepath.Join(in, r.Files[0]), j.ExplodedDir()}
+	}
+	if r.MeshOp == "boolean" {
+		return []string{"--mesh-boolean", r.BooleanOp, "--a", filepath.Join(in, r.Files[0]), "--b", filepath.Join(in, r.Files[1]), j.OutputPath("stl")}
+	}
+	if r.MeshOp == "text" {
+		args := append([]string{"--emboss-text", j.OutputPath("stl"), "--profiles", filepath.Join(m.cfg.Resources, "profiles")}, r.Text...)
+		if len(r.TextSurface) > 0 {
+			args = append(append(args, "--use-surface", "--surface", filepath.Join(in, r.Files[0])), r.TextSurface...)
+		}
+		return args
 	}
 	if r.MeshOp != "" {
 		args := []string{"--" + r.MeshOp + "-mesh", filepath.Join(in, r.Files[0]), j.OutputPath("stl")}

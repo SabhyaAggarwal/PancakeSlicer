@@ -14,43 +14,47 @@ import (
 )
 
 type ToolFeatures struct {
-	ColourChange      map[string]bool `json:"colour_change"`
-	PlateIndex        bool            `json:"plate_index"`
-	PlatePlacement    bool            `json:"plate_placement"`
-	DumpOptions       bool            `json:"dump_options"`
-	DumpPresets       bool            `json:"dump_presets"`
-	Progress          bool            `json:"progress"`
-	MovesOut          bool            `json:"moves_out"`
-	ObjectSettings    bool            `json:"object_settings"`
-	Step              bool            `json:"step"`
-	Edit              bool            `json:"edit"`
-	ForcePlanar       bool            `json:"force_planar"`
-	Cut               bool            `json:"cut"`
-	PatchPreview      bool            `json:"patch_preview"`
-	SurfaceGrid       bool            `json:"surface_grid"`
-	Calib             bool            `json:"calib"`
-	Volumes           bool            `json:"volumes"`
-	PresetCompat      bool            `json:"preset_compat"`
-	OneShot           bool            `json:"oneshot"`
-	MeshPlates        bool            `json:"mesh_plates"`
-	Paint             bool            `json:"paint"`
-	LayerProfile      bool            `json:"layer_profile"`
-	Arrange           bool            `json:"arrange"`
-	ProjectVolumes    bool            `json:"project_volumes"`
-	ProjectPaint      bool            `json:"project_paint"`
-	OrientScores      bool            `json:"orient_scores"`
-	Floating          bool            `json:"floating"`
-	Ranges            bool            `json:"ranges"`
-	MovesExtended     bool            `json:"moves_extended"`
-	MixedTemperatures bool            `json:"mixed_temperatures"`
-	ArrangeMaterials  bool            `json:"arrange_materials"`
-	WipeTower         bool            `json:"wipe_tower"`
-	Explode           bool            `json:"explode"`
-	CutConnectors     bool            `json:"cut_connectors"`
-	MeshRepair        bool            `json:"mesh_repair"`
-	MeshSimplify      bool            `json:"mesh_simplify"`
-	BrimEars          bool            `json:"brim_ears"`
-	SeamParts         bool            `json:"seam_parts"`
+	ColourChange         map[string]bool `json:"colour_change"`
+	PlateIndex           bool            `json:"plate_index"`
+	PlatePlacement       bool            `json:"plate_placement"`
+	DumpOptions          bool            `json:"dump_options"`
+	DumpPresets          bool            `json:"dump_presets"`
+	Progress             bool            `json:"progress"`
+	MovesOut             bool            `json:"moves_out"`
+	ObjectSettings       bool            `json:"object_settings"`
+	Step                 bool            `json:"step"`
+	Edit                 bool            `json:"edit"`
+	ForcePlanar          bool            `json:"force_planar"`
+	Cut                  bool            `json:"cut"`
+	PatchPreview         bool            `json:"patch_preview"`
+	SurfaceGrid          bool            `json:"surface_grid"`
+	Calib                bool            `json:"calib"`
+	Volumes              bool            `json:"volumes"`
+	PresetCompat         bool            `json:"preset_compat"`
+	OneShot              bool            `json:"oneshot"`
+	MeshPlates           bool            `json:"mesh_plates"`
+	Paint                bool            `json:"paint"`
+	LayerProfile         bool            `json:"layer_profile"`
+	Arrange              bool            `json:"arrange"`
+	ProjectVolumes       bool            `json:"project_volumes"`
+	ProjectPaint         bool            `json:"project_paint"`
+	OrientScores         bool            `json:"orient_scores"`
+	Floating             bool            `json:"floating"`
+	Ranges               bool            `json:"ranges"`
+	MovesExtended        bool            `json:"moves_extended"`
+	MixedTemperatures    bool            `json:"mixed_temperatures"`
+	ArrangeMaterials     bool            `json:"arrange_materials"`
+	WipeTower            bool            `json:"wipe_tower"`
+	Explode              bool            `json:"explode"`
+	CutConnectors        bool            `json:"cut_connectors"`
+	MeshRepair           bool            `json:"mesh_repair"`
+	MeshSimplify         bool            `json:"mesh_simplify"`
+	MeshBoolean          bool            `json:"mesh_boolean"`
+	EmbossText           bool            `json:"emboss_text"`
+	EmbossSurface        bool            `json:"emboss_surface"`
+	EmbossSurfaceOutside bool            `json:"emboss_surface_outside"`
+	BrimEars             bool            `json:"brim_ears"`
+	SeamParts            bool            `json:"seam_parts"`
 }
 
 type toolOption struct {
@@ -112,6 +116,10 @@ func probeUsage(c Config, f *ToolFeatures) {
 	f.BrimEars = strings.Contains(usage, `plate JSON objects take "brim_ears"`)
 	f.MeshRepair = strings.Contains(usage, "--repair-mesh IN OUT.stl")
 	f.MeshSimplify = strings.Contains(usage, "--simplify-mesh IN OUT.stl")
+	f.MeshBoolean = strings.Contains(usage, "--mesh-boolean union|difference|intersection --a A --b B")
+	f.EmbossText = strings.Contains(usage, "--emboss-text OUT.stl") && strings.Contains(usage, "--emboss-fonts")
+	f.EmbossSurface = f.EmbossText && strings.Contains(usage, "--use-surface --surface TARGET --at X,Y,Z --normal NX,NY,NZ")
+	f.EmbossSurfaceOutside = f.EmbossSurface && strings.Contains(usage, "--surface-outside")
 	f.CutConnectors = strings.Contains(usage, "--cut-connectors") && strings.Contains(usage, "--cut-mode planar|dovetail")
 	if dump, err := toolDump(c, "--dump-presets", "Prusa"); err == nil {
 		f.PresetCompat = bytes.Contains(dump, []byte(`"compatible_printers_evaluated"`))

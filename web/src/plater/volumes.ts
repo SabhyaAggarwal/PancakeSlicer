@@ -23,7 +23,7 @@ export const SEAM_MODES: [SeamMode, string][] = [['center', 'Seam Center'], ['le
   ['enforced', 'Seam Enforced'], ['blocked', 'Seam Blocked'], ['neutral', 'Seam Neutral']];
 export const volumeIcon = (type: VolumeType, mode?: SeamMode) => (type === 'seam' ? `menu_precise_seam_${mode ?? 'center'}` : VOLUME_MENU.find(([t]) => t === type)![2]);
 
-function add(objectId: number, type: VolumeType, name: string, geometry: THREE.BufferGeometry, world: (box: THREE.Box3, size: THREE.Vector3) => THREE.Vector3, step: string) {
+export function placeVolume(objectId: number, type: VolumeType, name: string, geometry: THREE.BufferGeometry, world: (box: THREE.Box3, size: THREE.Vector3) => THREE.Vector3, step: string, extra: Partial<Volume> = {}) {
   const s = getState();
   const o = s.objects.find((ob) => ob.id === objectId);
   if (!o) return;
@@ -31,14 +31,15 @@ function add(objectId: number, type: VolumeType, name: string, geometry: THREE.B
   const size = geometry.boundingBox!.getSize(new THREE.Vector3());
   const at = world(instanceBox(o, inst), size);
   const matrix = instanceMatrix(o, inst).invert().multiply(new THREE.Matrix4().makeTranslation(at.x, at.y, at.z)).elements;
-  const volume: Volume = { id: newId(), name, type, geometry, matrix, extruder: 0, settings: {} };
+  const volume: Volume = { id: newId(), name, type, geometry, matrix, extruder: 0, settings: {}, ...extra };
   addVolume(o.id, volume, step);
+  return volume.id;
 }
 
 export function addPrimitive(objectId: number, type: VolumeType, shape: Shape) {
   const { min, max } = bedBounds(bedArea());
   const geometry = primitiveGeometry(shape, 0.1 * Math.max(max.x - min.x, max.y - min.y));
-  add(objectId, type, `Generic-${shape}`, geometry,
+  placeVolume(objectId, type, `Generic-${shape}`, geometry,
     (b, size) => new THREE.Vector3(b.max.x + size.x / 2, b.min.y + size.y / 2, b.min.z + size.z / 2), 'Add primitive');
 }
 
@@ -53,7 +54,7 @@ export function loadVolume(objectId: number, type: VolumeType) {
       const loaded = await loadMesh(file);
       const geometry = volumeGeometry(loaded.attributes.position.array as Float32Array, loaded.index?.array as Uint32Array,
         loaded.attributes.normal?.array as Float32Array | undefined);
-      add(objectId, type, file.name.replace(/\.(stl|obj)$/i, ''), geometry,
+      placeVolume(objectId, type, file.name.replace(/\.(stl|obj)$/i, ''), geometry,
         (b, size) => new THREE.Vector3((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, b.min.z + size.z / 2),
         type === 'part' ? 'Load Part' : 'Load Modifier');
     } catch (e) {

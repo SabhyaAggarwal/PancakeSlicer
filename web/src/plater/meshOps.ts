@@ -4,7 +4,7 @@ import { getState, markStale, printerPreset, resolvePreset, setState, toast, typ
 import { undoable } from '../state/history';
 import { bakeStl, instanceBox, instanceMatrix, loadMesh } from './geometry';
 
-async function run(o: PlateObject, operation: 'repair' | 'simplify', fields: Record<string, string> = {}) {
+export async function meshJob(operation: string, fields: Record<string, string>, files: [Blob, string][], name: string) {
   const s = getState();
   if (!s.api || s.api.mock) throw new Error('This needs the slicing service.');
   const fd = new FormData();
@@ -14,7 +14,7 @@ async function run(o: PlateObject, operation: 'repair' | 'simplify', fields: Rec
   fd.append('printer', resolvePreset(s, 'machine', s.printer).base?.name ?? s.printer);
   fd.append('process', resolvePreset(s, 'process', s.process).base?.name ?? s.process);
   for (const f of s.filamentSlots) fd.append('filament[]', resolvePreset(s, 'filament', f).base?.name ?? f);
-  fd.append('files[]', await bakeStl({ ...o, rotX: 0, rotY: 0, scale: [1, 1, 1] }, new THREE.Matrix4()), 'mesh.stl');
+  for (const [blob, file] of files) fd.append('files[]', blob, file);
   const response = await mutation('/api/jobs', { method: 'POST', body: fd });
   if (!response.ok) throw await responseError(response);
   const { id } = await response.json() as { id: string };
@@ -24,12 +24,15 @@ async function run(o: PlateObject, operation: 'repair' | 'simplify', fields: Rec
     });
     const r = await fetch(s.api.downloadUrl(id));
     if (!r.ok) throw await responseError(r);
-    const file = new File([await r.blob()], `${o.name.replace(/\.(stl|obj|3mf|drc|step|stp)$/i, '')}.stl`, { type: 'model/stl' });
+    const file = new File([await r.blob()], `${name.replace(/\.(stl|obj|3mf|drc|step|stp)$/i, '')}.stl`, { type: 'model/stl' });
     return { record, file, geometry: await loadMesh(file) };
   } finally {
     await s.api.cancel(id);
   }
 }
+
+const run = async (o: PlateObject, operation: 'repair' | 'simplify', fields: Record<string, string> = {}) =>
+  meshJob(operation, fields, [[await bakeStl({ ...o, rotX: 0, rotY: 0, scale: [1, 1, 1] }, new THREE.Matrix4()), 'mesh.stl']], o.name);
 
 function replace(o: PlateObject, file: File, geometry: THREE.BufferGeometry, name: string) {
   const c = new THREE.Vector3(...(geometry.userData.sourceCentre as [number, number, number] ?? [0, 0, 0]));

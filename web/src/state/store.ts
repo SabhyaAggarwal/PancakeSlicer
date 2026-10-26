@@ -35,6 +35,20 @@ export interface Volume {
   native?: number;
   settings: Config;
   paint?: Partial<Record<PaintKind, Painting>>;
+  text?: TextSpec;
+}
+
+export interface TextSpec {
+  text: string;
+  font: string;
+  size: number;
+  depth: number;
+  bold: boolean;
+  italic: boolean;
+  lineSpacing: number;
+  charGap: number;
+  align: 'left' | 'center' | 'right';
+  surface?: { at: [number, number, number]; normal: [number, number, number] };
 }
 
 export interface NativeObject {
@@ -66,6 +80,7 @@ export interface PlateObject {
   ranges?: LayerRange[];
   paint?: Partial<Record<PaintKind, Painting>>;
   brimEars?: { p: [number, number, number]; r: number }[];
+  text?: TextSpec;
   units?: 'inch' | 'meter';
   layerProfile?: number[];
   project?: { buildIndex?: number; plateIndex?: number; plateOrigin?: [number, number]; file: string; placeholder: boolean; missing?: boolean; origin?: [number, number, number];
@@ -96,7 +111,7 @@ export type PresetUx =
 
 export type MainTab = 'prepare' | 'preview';
 export type CalibMenu = 'temperature' | 'max-flowrate' | 'pressure-advance' | 'flow-ratio' | 'retraction' | 'cornering' | 'input-shaping-freq' | 'input-shaping-damp' | 'vfa' | 'nonplanar';
-export type Gizmo = 'none' | 'move' | 'rotate' | 'scale' | 'flatten' | 'cut' | 'measure' | 'layers' | 'brimears' | PaintKind;
+export type Gizmo = 'none' | 'move' | 'rotate' | 'scale' | 'flatten' | 'cut' | 'measure' | 'layers' | 'brimears' | 'boolean' | 'text' | PaintKind;
 
 export interface JobView {
   id?: string;
@@ -144,7 +159,7 @@ export interface CutGroove { depth: number; depthTolerance: number; width: numbe
 
 export interface State {
   api: Api | null;
-  features: { cut?: boolean; volumes?: boolean; edit?: boolean; mesh_plates?: boolean; paint?: boolean; layer_profile?: boolean; arrange?: boolean; project_volumes?: boolean; project_paint?: boolean; orient_scores?: boolean; floating?: boolean;
+  features: { mesh_boolean?: boolean; emboss_text?: boolean; emboss_surface?: boolean; emboss_surface_outside?: boolean; cut?: boolean; volumes?: boolean; edit?: boolean; mesh_plates?: boolean; paint?: boolean; layer_profile?: boolean; arrange?: boolean; project_volumes?: boolean; project_paint?: boolean; orient_scores?: boolean; floating?: boolean;
     ranges?: boolean; moves_extended?: boolean; mixed_temperatures?: boolean; arrange_materials?: boolean; wipe_tower?: boolean; explode?: boolean; cut_connectors?: boolean; mesh_repair?: boolean; mesh_simplify?: boolean; brim_ears?: boolean; seam_parts?: boolean };
   cut: CutPlane | null;
   loading: string | null;

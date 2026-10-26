@@ -2,6 +2,7 @@ package main
 
 import (
 	"cmp"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,25 +12,30 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 )
 
 type Server struct {
-	cfg     Config
-	jobs    *JobManager
-	presets *PresetIndex
-	users   *UserPresetStore
-	sends   *SendManager
+	cfg       Config
+	jobs      *JobManager
+	presets   *PresetIndex
+	users     *UserPresetStore
+	sends     *SendManager
+	fontsOnce sync.Once
+	fonts     []byte
+	fontsErr  error
 }
 
 func NewServer(c Config, jobs *JobManager, presets *PresetIndex, users *UserPresetStore) http.Handler {
-	s := &Server{c, jobs, presets, users, NewSendManager(c.Printers, c.PrinterStore)}
+	s := &Server{cfg: c, jobs: jobs, presets: presets, users: users, sends: NewSendManager(c.Printers, c.PrinterStore)}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, r *http.Request) {
 		q, n := jobs.Counts()
@@ -68,6 +74,7 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, users *UserPres
 	mux.HandleFunc("DELETE /api/user-presets/{type}/{name}", s.deleteTypedUserPreset)
 	mux.HandleFunc("/api/user-presets/{name}", s.userPreset)
 	mux.HandleFunc("GET /api/handy-models/{name}", s.handyModel)
+	mux.HandleFunc("GET /api/emboss-fonts", s.embossFonts)
 	mux.HandleFunc("GET /api/user-heads", s.listUserHeads)
 	mux.HandleFunc("POST /api/user-heads", s.saveUserHead)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { fail(w, 404, "unknown API endpoint") })
@@ -235,6 +242,34 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 				req.SimplifyTriangles = n
 			default:
 				fail(w, 400, "simplify needs simplify_ratio in (0, 1] or a positive simplify_triangles")
+				return
+			}
+		}
+	case "boolean":
+		op := r.FormValue("boolean_op")
+		if !s.cfg.Features.MeshBoolean {
+			fail(w, 400, "Mesh Boolean requires a tool with --mesh-boolean")
+			return
+		}
+		if op != "union" && op != "difference" && op != "intersection" {
+			fail(w, 400, "boolean_op must be union, difference or intersection")
+			return
+		}
+		req.MeshOp, req.BooleanOp = "boolean", op
+	case "text":
+		if !s.cfg.Features.EmbossText {
+			fail(w, 400, "Text requires a tool with --emboss-text")
+			return
+		}
+		args, err := textArgs(r)
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		req.MeshOp, req.Text = "text", args
+		if r.FormValue("use_surface") == "1" {
+			if req.TextSurface, err = surfaceArgs(r, s.cfg.Features); err != nil {
+				fail(w, 400, err.Error())
 				return
 			}
 		}
@@ -418,6 +453,14 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	if req.MeshOp == "text" && len(req.TextSurface) == 0 {
+		if len(files) > 0 || r.FormValue("plate") != "" || req.Output == "3mf" {
+			fail(w, 400, "text takes no files, plate or project output")
+			return
+		}
+		s.startJob(w, j, req, &started)
+		return
+	}
 	if len(files) == 0 {
 		fail(w, 400, "files[] is required")
 		return
@@ -523,7 +566,7 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		req.Edits = true
-	} else if len(files) != 1 {
+	} else if len(files) != 1 && req.MeshOp != "boolean" {
 		fail(w, 400, "multiple uploads require plate JSON")
 		return
 	}
@@ -621,8 +664,8 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		}
 		req.Overrides = append(selected, req.Overrides...)
 	}
-	if req.MeshOp != "" && (req.Output != "gcode" || req.Plate || len(req.Files) != 1 || !strings.EqualFold(filepath.Ext(req.Files[0]), ".stl")) {
-		fail(w, 400, "Fix Model and Simplify Model take one STL without plate JSON or project output")
+	if want := map[bool]int{true: 2, false: 1}[req.MeshOp == "boolean"]; req.MeshOp != "" && (req.Output != "gcode" || req.Plate || len(req.Files) != want || !allSTL(req.Files)) {
+		fail(w, 400, fmt.Sprintf("this mesh operation takes %d STL without plate JSON or project output", want))
 		return
 	}
 	if req.Cut != "" && (req.Output != "gcode" || req.Plate || len(req.Files) != 1 || !strings.EqualFold(filepath.Ext(req.Files[0]), ".stl")) {
@@ -1034,6 +1077,135 @@ func validCutPlane(plane string) bool {
 var handyModels = map[string]bool{"OrcaCube_v2.drc": true, "OrcaPlug_v2.drc": true, "OrcaSliced.3mf": true, "OrcaBadge.3mf": true,
 	"OrcaToleranceTest.drc": true, "3DBenchy.drc": true, "calicat.drc": true, "ksr_fdmtest_v4.drc": true, "Voron_Design_Cube_v7.drc": true,
 	"Stanford_Bunny.drc": true, "Orca_stringhell.drc": true}
+
+func allSTL(files []string) bool {
+	for _, f := range files {
+		if !strings.EqualFold(filepath.Ext(f), ".stl") {
+			return false
+		}
+	}
+	return true
+}
+
+var fontID = regexp.MustCompile(`^[A-Za-z0-9_ .-]{1,80}$`)
+
+func textArgs(r *http.Request) ([]string, error) {
+	text := r.FormValue("text")
+	if strings.TrimSpace(text) == "" || len(text) > 4000 {
+		return nil, errors.New("text must be 1 to 4000 bytes")
+	}
+	args := []string{"--text", text}
+	if font := r.FormValue("font"); font != "" {
+		if !fontID.MatchString(font) {
+			return nil, errors.New("font must be a bundled font id")
+		}
+		args = append(args, "--font-name", font)
+	}
+	number := func(key string, lo, hi, def float64) (string, error) {
+		raw := r.FormValue(key)
+		if raw == "" {
+			return strconv.FormatFloat(def, 'f', -1, 64), nil
+		}
+		v, err := strconv.ParseFloat(raw, 64)
+		if err != nil || math.IsNaN(v) || v < lo || v > hi {
+			return "", fmt.Errorf("%s must be %g to %g", key, lo, hi)
+		}
+		return strconv.FormatFloat(v, 'f', -1, 64), nil
+	}
+	for _, f := range []struct {
+		key, flag   string
+		lo, hi, def float64
+	}{{"size", "--size", 0.1, 1000, 10}, {"depth", "--depth", 0.01, 1000, 1}, {"line_spacing", "--line-spacing", 0.1, 10, 1}, {"char_gap", "--char-gap", -100, 100, 0}} {
+		v, err := number(f.key, f.lo, f.hi, f.def)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, f.flag, v)
+	}
+	for _, flag := range []string{"bold", "italic"} {
+		if r.FormValue(flag) == "1" {
+			args = append(args, "--"+flag)
+		}
+	}
+	switch align := r.FormValue("align"); align {
+	case "", "center", "left", "right":
+		if align != "" {
+			args = append(args, "--align", align)
+		}
+	default:
+		return nil, errors.New("align must be left, center or right")
+	}
+	return args, nil
+}
+
+var vector3 = regexp.MustCompile(`^-?[0-9.]+(e-?[0-9]+)?,-?[0-9.]+(e-?[0-9]+)?,-?[0-9.]+(e-?[0-9]+)?$`)
+
+func surfaceArgs(r *http.Request, f ToolFeatures) ([]string, error) {
+	if !f.EmbossSurface {
+		return nil, errors.New("Use surface requires a tool with --use-surface")
+	}
+	args := []string{}
+	for _, k := range []string{"at", "normal", "up"} {
+		v := r.FormValue(k)
+		if v == "" && k == "up" {
+			continue
+		}
+		if !vector3.MatchString(v) {
+			return nil, fmt.Errorf("%s must be x,y,z", k)
+		}
+		args = append(args, "--"+k, v)
+	}
+	if v := r.FormValue("angle"); v != "" {
+		a, err := strconv.ParseFloat(v, 64)
+		if err != nil || math.IsNaN(a) || a < -360 || a > 360 {
+			return nil, errors.New("angle must be -360 to 360")
+		}
+		args = append(args, "--angle", strconv.FormatFloat(a, 'f', -1, 64))
+	}
+	if r.FormValue("outside") == "1" {
+		if !f.EmbossSurfaceOutside {
+			return nil, errors.New("raised surface text requires a tool with --surface-outside")
+		}
+		args = append(args, "--surface-outside")
+	}
+	return args, nil
+}
+
+func (s *Server) embossFonts(w http.ResponseWriter, r *http.Request) {
+	if !s.cfg.Features.EmbossText {
+		fail(w, 404, "the tool has no text")
+		return
+	}
+	s.fontsOnce.Do(func() {
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, s.cfg.Tool, "--emboss-fonts", "--profiles", filepath.Join(s.cfg.Resources, "profiles"))
+		configureKill(cmd)
+		cmd.WaitDelay = 5 * time.Second
+		out, err := cmd.Output()
+		var catalog struct {
+			Fonts []struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			} `json:"fonts"`
+		}
+		if err == nil {
+			err = json.Unmarshal(out, &catalog)
+		}
+		if err != nil {
+			s.fontsErr = fmt.Errorf("font catalog: %w", err)
+			return
+		}
+		s.fonts, _ = json.Marshal(map[string]any{"fonts": catalog.Fonts})
+	})
+	if s.fonts == nil {
+		fail(w, 500, fmt.Sprint(s.fontsErr))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Write(s.fonts)
+}
 
 func (s *Server) handyModel(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")

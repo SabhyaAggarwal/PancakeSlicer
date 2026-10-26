@@ -112,8 +112,9 @@ async function splitParts(o: PlateObject): Promise<PlateObject[]> {
 export async function run(operation: 'orient' | 'split' | 'split-parts', all: boolean) {
   const s = getState();
   if (busy || s.project || s.tab !== 'prepare') return;
-  const objects = operation === 'orient' && (all || !s.selected)
-    ? s.objects : s.objects.filter((o) => o.id === s.selected?.object);
+  const plateWide = operation === 'orient' && (all || !s.selected);
+  if (plateWide && s.projectPlates.find((p) => p.index === s.plateIndex)?.locked) return toast('The plate is locked');
+  const objects = plateWide ? s.objects : s.objects.filter((o) => o.id === s.selected?.object);
   if (!objects.length) return;
   busy = true;
   const signature = plateSignature(s);

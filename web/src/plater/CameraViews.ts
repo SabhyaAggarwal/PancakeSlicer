@@ -83,6 +83,14 @@ export class CameraViews {
     this.changed();
   }
 
+  shift(dx: number, dy: number) {
+    const d = new THREE.Vector3(dx, dy, 0);
+    this.camera.position.add(d);
+    this.controls.target.add(d);
+    this.controls.update();
+    this.changed();
+  }
+
   zoom(factor: number) {
     if (this.camera instanceof THREE.OrthographicCamera) {
       this.camera.zoom = Math.min(50, Math.max(0.05, this.camera.zoom * factor));
