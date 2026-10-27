@@ -3,13 +3,13 @@ import { bedArea } from './actions';
 import { bedBounds, instanceBox, nearestFreeSpot } from './plater/geometry';
 import { undoable } from './state/history';
 import { canEditProject } from './api/client';
-import { getState, markStale, newId, setState, toast, updateObject, type Instance, type PlateObject, type State } from './state/store';
+import { getState, isSelected, markStale, newId, setState, toast, updateObject, type Instance, type PlateObject, type State } from './state/store';
 
 export function selectionTargets(s: State = getState()): { o: PlateObject; inst: Instance }[] {
   const sel = s.selected;
   if (!sel) return [];
-  return s.objects.filter((o) => !o.project?.placeholder && (sel.all || o.id === sel.object))
-    .flatMap((o) => o.instances.filter((i) => sel.all || sel.allInstances || i.id === sel.instance).map((inst) => ({ o, inst })));
+  return s.objects.filter((o) => !o.project?.placeholder)
+    .flatMap((o) => o.instances.filter((i) => isSelected(sel, o.id, i.id)).map((inst) => ({ o, inst })));
 }
 
 function selectionBox(s: State = getState()): THREE.Box3 {

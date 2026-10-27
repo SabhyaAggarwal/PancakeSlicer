@@ -7,6 +7,7 @@ import { CAMERA_VIEWS, VIEW_DIRECTIONS, cameraCommand, cameraSnapshot, subscribe
 import { Icon } from './Icon';
 import { canAddPlate, duplicatePlate, exportAll, exportablePlates, sliceAll } from '../plater/plates';
 import { openGcode } from '../preview/jump';
+import { subscribeVisibleToolpaths, visibleToolpaths } from '../preview/visible';
 import { toggleViewOption, useViewOptions } from '../plater/viewOptions';
 import { toggleNonplanarView, useNonplanarView } from '../patch-preview';
 import { canCalibrate, canLoadStep } from '../api/client';
@@ -141,6 +142,9 @@ export function TopBar() {
   const pasteEnabled = useStore(canPaste);
   const mock = useStore((s) => s.api?.mock);
   const name = useStore((s) => (s.project?.name ?? s.objects[0]?.name)?.replace(/\.(stl|obj|3mf)$/i, ''));
+  const toolpaths = useSyncExternalStore(subscribeVisibleToolpaths, visibleToolpaths);
+  const tab = useStore((st) => st.tab);
+  const exportName = name;
   const kind = useStore(outputKind);
   const exportLabel = kind === 'gcode.3mf' ? 'Export plate sliced file' : 'Export G-code';
   const exportTip = kind === 'gcode.3mf' ? 'Export current sliced file' : 'Export current plate as G-code';
@@ -170,10 +174,9 @@ export function TopBar() {
           { label: 'Export all objects as STLs...', action: () => void exportStl(true), disabled: !hasMeshes, tip: 'Export all objects as STLs' },
           ...(exportDrc ? [{ label: 'Export all objects as one DRC...', action: () => void import('../plater/exportModel').then((m) => m.exportModel('drc')), disabled: !hasMeshes, tip: 'Export all objects as one DRC' }] : []),
           ...(generic3mf ? [{ label: 'Export Generic 3MF...', action: () => void import('../plater/exportModel').then((m) => m.exportModel('generic3mf')), disabled: !hasMeshes, tip: 'Export 3MF file without using some 3mf-extensions' }] : []),
-          { label: 'Export toolpaths as OBJ...', tip: 'Export toolpaths as OBJ' },
+          { label: 'Export toolpaths as OBJ...', disabled: !toolpaths || tab !== 'preview', tip: 'Export toolpaths as OBJ',
+            action: () => void import('../preview/objExport').then((m) => m.exportToolpathsObj(exportName || 'toolpaths')) },
           { label: 'Export Preset Bundle...', action: () => setState({ presetUx: { kind: 'export' } }), tip: 'Export current configuration to files' },
-          'sep',
-          { label: 'Quit', tip: 'Quit' },
         ]}
       />
       <Menu
@@ -247,11 +250,6 @@ export function TopBar() {
           { label: 'What you can do', action: () => setState({ appDialog: 'what' }), tip: 'What the web app does, with screenshots' },
           { label: 'Keyboard Shortcuts', shortcut: '?', action: () => setState({ appDialog: 'shortcuts' }), tip: 'Show the list of keyboard shortcuts' },
           { label: 'Setup Wizard', action: () => setState({ appDialog: 'setup' }), tip: 'Setup Wizard' },
-          'sep',
-          { label: 'Show Configuration Folder', tip: 'Show Configuration Folder' },
-          { label: 'Troubleshoot Center' },
-          { label: 'Show Tip of the Day', tip: 'Show Tip of the Day' },
-          { label: 'Check for Updates', tip: 'Check for Updates' },
           'sep',
           { label: 'About OrcaSlicer', action: () => setState({ appDialog: 'about' }), tip: 'Version, licence and Corresponding Source' },
         ]}

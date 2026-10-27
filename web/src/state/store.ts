@@ -191,11 +191,12 @@ export interface State {
   tab: MainTab;
   dialog: { type: 'machine' | 'filament'; slot: number } | null;
   objects: PlateObject[];
-  selected: { object: number; instance: number; allInstances?: boolean; all?: boolean; volume?: number; range?: number } | null;
+  selected: Selected | null;
   gizmo: Gizmo;
   uniformScale: boolean;
   contextMenu: { x: number; y: number; object?: number; instance?: number; volume?: number } | null;
   renaming: number | null;
+  meshErrors: Record<number, number>;
   clipboard: PlateObject[];
   processScope: 'global' | 'objects';
   slotColours: (string | undefined)[];
@@ -225,7 +226,7 @@ export interface State {
   wipeTowerPos: Record<number, [number, number]>;
   wipeTower: WipeTowerEstimate | null;
   orientConfirm: OrientConfirm | null;
-  settingsClipboard: Config | null;
+  settingsClipboard: { kind: 'object' | 'volume'; config: Config } | null;
 }
 
 export interface OrientPrompt {
@@ -281,6 +282,7 @@ let state: State = {
   uniformScale: true,
   contextMenu: null,
   renaming: null,
+  meshErrors: {},
   clipboard: [],
   processScope: 'global',
   slotColours: [],
@@ -524,16 +526,42 @@ export function updateInstance(objectId: number, instanceId: number, patch: Part
   })));
 }
 
+export type Selected = { object: number; instance: number; allInstances?: boolean; all?: boolean; picked?: string[]; volume?: number; range?: number };
+
+export function isSelected(sel: Selected | null, object: number, instance: number) {
+  if (!sel) return false;
+  if (sel.all) return !sel.picked || sel.picked.includes(`${object}:${instance}`);
+  return sel.object === object && (!!sel.allInstances || sel.instance === instance);
+}
+
+export const selectedObjectIds = (s: State) => s.objects.filter((o) => o.instances.some((i) => isSelected(s.selected, o.id, i.id))).map((o) => o.id);
+
+export function selectionOf(s: State, keys: string[]): Selected | null {
+  const items = s.objects.flatMap((o) => o.instances.filter((i) => keys.includes(`${o.id}:${i.id}`)).map((i) => ({ o, i })));
+  if (!items.length) return null;
+  const [{ o, i }] = items;
+  if (items.every((x) => x.o === o)) {
+    if (items.length === 1) return { object: o.id, instance: i.id };
+    if (items.length === o.instances.length) return { object: o.id, instance: i.id, allInstances: true };
+  }
+  return { object: o.id, instance: i.id, all: true, picked: items.map((x) => `${x.o.id}:${x.i.id}`) };
+}
+
+export function toggleSelection(object: number, instances: number[]) {
+  const s = state, keys = instances.map((i) => `${object}:${i}`);
+  const now = s.selected?.volume !== undefined ? [] : s.objects.flatMap((o) => o.instances.filter((i) => isSelected(s.selected, o.id, i.id)).map((i) => `${o.id}:${i.id}`));
+  const inside = keys.every((k) => now.includes(k));
+  setState({ selected: selectionOf(s, inside ? now.filter((k) => !keys.includes(k)) : [...now, ...keys.filter((k) => !now.includes(k))]) });
+}
+
 export function removeSelected() {
-  if (state.selected?.all) return deleteAll();
+  if (state.selected?.all && !state.selected.picked) return deleteAll();
   if (state.selected?.volume !== undefined) return deleteVolume(state.selected.object, state.selected.volume);
   undoable('Delete selected', () => setState((s) => {
     if (!s.selected) return {};
     if (s.objects.some((o) => o.project) && !canEditProject()) return {};
     const objects = s.objects
-      .map((o) =>
-        o.id === s.selected!.object ? { ...o, instances: o.instances.filter((i) => i.id !== s.selected!.instance) } : o,
-      )
+      .map((o) => (o.instances.some((i) => isSelected(s.selected, o.id, i.id)) ? { ...o, instances: o.instances.filter((i) => !isSelected(s.selected, o.id, i.id)) } : o))
       .filter((o) => o.instances.length > 0);
     return { objects, selected: null, job: markStale(s.job) };
   }));

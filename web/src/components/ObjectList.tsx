@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { OPTIONS, useTab } from '../options';
-import { effectiveConfig, getState, setState, updateInstance, updateVolume, togglePrintable, useStore } from '../state/store';
+import { effectiveConfig, getState, isSelected, selectedObjectIds, selectionOf, setState, toggleSelection, updateInstance, updateVolume, togglePrintable, useStore } from '../state/store';
 import { volumeIcon } from '../plater/volumes';
 import { renameObject, setFilament, startRename } from '../edit';
 import { canEditProject } from '../api/client';
@@ -26,6 +26,8 @@ export function ObjectList() {
   const project = useStore((s) => s.project);
   const record = useStore((s) => (s.job.state === 'done' && !s.job.stale ? (s.job.status?.record as SliceRecord | undefined) : undefined));
   const renaming = useStore((s) => s.renaming);
+  const meshErrors = useStore((s) => s.meshErrors);
+  const canFix = useStore((s) => !!s.features.mesh_repair);
   const meshPlates = useStore((s) => canAddPlate(s) && s.projectPlates.length > 1);
   const openMenu = (e: React.MouseEvent, object: number, instance?: number, volume?: number) => {
     e.preventDefault();
@@ -35,7 +37,7 @@ export function ObjectList() {
       return;
     }
     const sel = getState().selected;
-    const inSelection = sel?.all || (sel?.object === object && (instance === undefined ? sel.allInstances : sel.instance === instance));
+    const inSelection = instance === undefined ? (sel?.all ? o.instances.some((i) => isSelected(sel, object, i.id)) : sel?.object === object && !!sel.allInstances) : isSelected(sel, object, instance);
     setState({
       ...(inSelection ? {} : { selected: instance === undefined ? { object, instance: o.instances[0].id, allInstances: true } : { object, instance } }),
       contextMenu: { x: e.clientX, y: e.clientY, object, instance },
@@ -60,6 +62,16 @@ export function ObjectList() {
       e.preventDefault();
     },
   });
+  const clickObject = (e: React.MouseEvent, object: number) => {
+    const s = getState(), o = s.objects.find((ob) => ob.id === object)!;
+    if (e.ctrlKey || e.metaKey) return toggleSelection(object, o.instances.map((i) => i.id));
+    const from = s.selected ? s.objects.findIndex((ob) => ob.id === s.selected!.object) : -1, to = s.objects.indexOf(o);
+    if (e.shiftKey && from >= 0) {
+      const rows = s.objects.slice(Math.min(from, to), Math.max(from, to) + 1);
+      return setState({ selected: selectionOf(s, rows.flatMap((ob) => ob.instances.map((i) => `${ob.id}:${i.id}`))) });
+    }
+    setState({ selected: { object, instance: o.instances[0].id, allInstances: true } });
+  };
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState<Record<number, boolean>>({});
   const s = getState();
@@ -83,8 +95,9 @@ export function ObjectList() {
       </div>
       <div className="ol-body">
         {shown.map((o) => {
-          const objSelected = (selected?.object === o.id && selected.volume === undefined) || !!selected?.all;
+          const objSelected = selected?.volume === undefined && o.instances.some((i) => isSelected(selected, o.id, i.id));
           const multi = o.instances.length > 1;
+          const instSelected = (id: number) => (selected?.all ? isSelected(selected, o.id, id) : selected?.instance === id);
           const sinking = !o.project?.placeholder && o.instances.some((i) => { const b = instanceBox(o, i); return b.min.z < -0.001 && b.max.z >= -0.001; });
           const nSettings = Object.keys(o.settings).length;
           const style = o.project ? plateStyle : styleOf({ ...global, ...o.settings });
@@ -96,8 +109,8 @@ export function ObjectList() {
                 {...rowKeys(() => setState({ selected: { object: o.id, instance: o.instances[0].id, allInstances: true } }), o.id)}
                 onContextMenu={(e) => openMenu(e, o.id)}
                 draggable={meshPlates}
-                onDragStart={(e) => e.dataTransfer.setData(OBJECT_DRAG, String(selected?.all ? objects.map((ob) => ob.id) : o.id))}
-                onClick={() => setState({ selected: { object: o.id, instance: o.instances[0].id, allInstances: true } })}
+                onDragStart={(e) => e.dataTransfer.setData(OBJECT_DRAG, String(selected?.all ? selectedObjectIds(getState()) : o.id))}
+                onClick={(e) => clickObject(e, o.id)}
                 onDoubleClick={() => startRename(o.id)}
               >
                 <span className="ol-name">
@@ -163,6 +176,11 @@ export function ObjectList() {
                 <span className="ol-status">{sinking && <button className="ol-sinking" title="Click the icon to shift this object to the bed"
                   onClick={(e) => { e.stopPropagation(); undoable('Drop to bed', () => o.instances.forEach((i) => updateInstance(o.id, i.id, { z: 0 }))); }} disabled={!!o.project?.placeholder}>
                   <Icon name="objlist_sinking" size={16} />
+                </button>}
+                {(meshErrors[o.id] ?? 0) > 0 && <button className="ol-sinking" disabled={!canFix || !!o.project || !!o.volumes?.length}
+                  title={`Remaining errors:\n\t${meshErrors[o.id]} non-manifold edge${meshErrors[o.id] === 1 ? '' : 's'}\n\nClick the icon to repair model object`}
+                  onClick={(e) => { e.stopPropagation(); void import('../plater/meshOps').then((m) => m.fixModel(o.id)); }}>
+                  <Icon name="obj_warning" size={16} />
                 </button>}</span>
               </div>
               {nSettings > 0 && (
@@ -248,11 +266,11 @@ export function ObjectList() {
                   {o.instances.map((inst, k) => (
                     <div
                       key={inst.id}
-                      className={`ol-row ol-child2 ${selected?.instance === inst.id ? 'selected' : ''}`}
-                      aria-selected={selected?.instance === inst.id}
+                      className={`ol-row ol-child2 ${instSelected(inst.id) ? 'selected' : ''}`}
+                      aria-selected={instSelected(inst.id)}
                       {...rowKeys(() => setState({ selected: { object: o.id, instance: inst.id } }), o.id, inst.id)}
                       onContextMenu={(e) => openMenu(e, o.id, inst.id)}
-                      onClick={() => setState({ selected: { object: o.id, instance: inst.id } })}
+                      onClick={(e) => (e.ctrlKey || e.metaKey ? toggleSelection(o.id, [inst.id]) : setState({ selected: { object: o.id, instance: inst.id } }))}
                     >
                       <span className="ol-name">Instance {k + 1}</span>
                       {printableButton(o.id, inst.printable !== false, inst.id)}

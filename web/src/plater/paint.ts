@@ -388,3 +388,17 @@ export const isPaint = (gizmo: string): gizmo is PaintKind => (PAINT_KINDS as re
 export const PAINT_STEP: Record<PaintKind, string> = {
   support: 'Paint-on supports editing', seam: 'Paint-on seam editing', fuzzy: 'Paint-on fuzzy skin editing', color: 'Color painting editing',
 };
+
+export const PAINT_TOOLS: Record<PaintKind, [BrushTool, string, string][]> = {
+  support: [['circle', 'circle_paint', 'Circle'], ['sphere', 'toolbar_modifier_sphere', 'Sphere'], ['fill', 'fill_paint', 'Fill'], ['gap', 'gap_fill', 'Gap Fill']],
+  seam: [['circle', 'circle_paint', 'Circle'], ['sphere', 'toolbar_modifier_sphere', 'Sphere']],
+  fuzzy: [['circle', 'circle_paint', 'Circle'], ['sphere', 'toolbar_modifier_sphere', 'Sphere'], ['fill', 'fill_paint', 'Fill']],
+  color: [['circle', 'circle_paint', 'Circle'], ['sphere', 'toolbar_modifier_sphere', 'Sphere'], ['triangle', 'triangle_paint', 'Triangle'],
+    ['height', 'height_range', 'Height Range'], ['fill', 'fill_paint', 'Fill'], ['gap', 'gap_fill', 'Gap Fill']],
+};
+
+const PAINT_KEYS: Record<string, BrushTool> = { c: 'circle', s: 'sphere', f: 'fill', g: 'gap', t: 'triangle', h: 'height' };
+export function paintKeyTool(kind: PaintKind, key: string): BrushTool | null {
+  const t = PAINT_KEYS[key.toLowerCase()];
+  return t && PAINT_TOOLS[kind].some(([x]) => x === t) ? t : null;
+}

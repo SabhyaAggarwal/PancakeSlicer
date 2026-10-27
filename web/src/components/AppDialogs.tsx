@@ -76,20 +76,29 @@ const SHORTCUTS: [string, [string, string][]][] = [
   ['Global', [
     [`${mod}+N`, 'New Project'], [`${mod}+O`, 'Open Project'], [`${mod}+S`, 'Save Project'], [`${mod}+Shift+S`, 'Save Project as'],
     [`${mod}+I`, 'Import geometry data from STL/STEP/3MF/OBJ/AMF files'], [`${mod}+R`, 'Slice plate'], [`${mod}+G`, 'Export plate sliced file'],
-    [`${mod}+P`, 'Preferences'], ['?', 'Show keyboard shortcuts list'],
-    ['0 … 6', 'Camera view: Default, Top, Bottom, Front, Rear, Left, Right'],
+    [`${mod}+Z`, 'Undo'], [`${mod}+Y / ${mod}+Shift+Z`, 'Redo'], [`${mod}+F`, 'Search'], [`${mod}+P`, 'Preferences'], ['?', 'Show keyboard shortcuts list'],
+    ['0 … 6', 'Camera view: Default, Top, Bottom, Front, Rear, Left, Right'], ['I / O', 'Zoom in / out'],
     ['Esc', 'Deselect All'],
   ]],
   ['Prepare', [
+    [`${mod}+A`, 'Select all objects'], [`${mod}+C / ${mod}+V`, 'Copy / Paste to clipboard'], [`${mod}+K`, 'Clone selected'],
     ['Del / Backspace', 'Delete Selected'], [`${mod}+D / ${mod}+Del`, 'Delete All'], ['+ / -', 'Add / Remove instance'],
-    ['V', 'Toggle printable for object/part'], ['A', 'Arrange all objects'], ['Q / Shift+Q', 'Auto orient selected / all objects'],
+    ['V', 'Toggle printable for object/part'], ['F2', 'Rename'], ['A / Shift+A', 'Arrange all objects / the selected plate'], ['Q / Shift+Q', 'Auto orient selected / all objects'],
     ['Arrow keys', 'Move selection 10 mm (Shift: 1 mm)'], ['Page Up / Page Down', 'Rotate selection 45 degrees counterclockwise / clockwise'],
-    [`${mod}+K`, 'Clone selected'], ['M / R / S', 'Gizmo move / rotate / scale'], ['I / O', 'Zoom in / out'], [`${mod}+Shift+Enter`, 'Show/Hide wireframe'],
+    ['M / R / S', 'Gizmo move / rotate / scale'], ['F', 'Gizmo place face on bed'], ['C', 'Gizmo cut'], ['U', 'Gizmo measure'],
+    ['B', 'Gizmo mesh boolean'], ['T', 'Gizmo text emboss'], ['E', 'Gizmo brim ears'],
+    ['L / P / H / N', 'Gizmo support / seam / fuzzy skin / color painting'],
+    [`${mod}+E`, 'Show/Hide object labels'], [`${mod}+Shift+Enter`, 'Show/Hide wireframe'],
     ['Left mouse', 'Rotate View'], ['Right mouse', 'Pan View'], ['Mouse wheel', 'Zoom View'],
+  ]],
+  ['Painting', [
+    ['C / S', 'Circle / Sphere'], ['F / G', 'Fill / Gap Fill'], ['T / H', 'Triangle / Height Range (color painting)'],
+    ['1 … 9', 'Color painting: choose the filament'],
   ]],
   ['Preview', [
     ['Up / Down', 'Vertical slider - Move active thumb Up / Down'], ['Left / Right', 'Horizontal slider - Move active thumb Left / Right'],
-    ['Home / End', 'Horizontal slider - Move to start / last position'], ['I / O', 'Zoom in / out'],
+    ['Home / End', 'Horizontal slider - Move to start / last position'], ['L', 'One layer mode'], ['Shift+G', 'Jump to layer'],
+    ['C', 'Show/Hide G-code window'], ['I / O', 'Zoom in / out'],
   ]],
 ];
 

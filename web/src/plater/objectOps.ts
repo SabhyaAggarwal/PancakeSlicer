@@ -3,6 +3,7 @@ import { bedArea } from '../actions';
 import { getState, newId, printerPreset, setState, toast, updateVolume, type PlateObject, type Volume } from '../state/store';
 import { undoable } from '../state/history';
 import { centred, instanceBox, instanceMatrix, loadMesh, request, volumeBox, volumeWorld } from './geometry';
+import objectKeys from '../object_options.json';
 
 const replace = (name: string, objects: PlateObject[], selected?: { object: number; instance: number }) =>
   undoable(name, () => setState({ objects, ...(selected ? { selected } : {}) }));
@@ -32,8 +33,8 @@ export function convertUnits(id: number, unit: 'inch' | 'meter' | null) {
 }
 
 
-export function mergeObjects() {
-  const s = getState(), objects = s.objects.filter((o) => !o.project);
+export function mergeObjects(ids: number[]) {
+  const s = getState(), objects = s.objects.filter((o) => ids.includes(o.id) && !o.project);
   if (objects.length < 2) return;
   const [first, ...rest] = objects, i0 = first.instances[0];
   const into = instanceMatrix(first, i0).invert();
@@ -46,8 +47,8 @@ export function mergeObjects() {
     for (const v of o.volumes ?? []) volumes.push({ ...v, id: newId(), matrix: m.clone().multiply(new THREE.Matrix4().fromArray(v.matrix)).elements });
   }
   const merged: PlateObject = { ...first, volumes, instances: [i0], layerProfile: undefined };
-  const ids = new Set(rest.map((o) => o.id));
-  replace('Merge', s.objects.filter((o) => !ids.has(o.id)).map((o) => (o.id === first.id ? merged : o)), { object: merged.id, instance: i0.id });
+  const gone = new Set(rest.map((o) => o.id));
+  replace('Merge', s.objects.filter((o) => !gone.has(o.id)).map((o) => (o.id === first.id ? merged : o)), { object: merged.id, instance: i0.id });
 }
 
 export async function partsToObjects(id: number) {
@@ -129,13 +130,24 @@ export async function exportVolumeStl(objectId: number, volumeId: number) {
   }
 }
 
-export function copySettings(id: number) {
+export function copySettings(id: number, volumeId?: number) {
   const o = getState().objects.find((x) => x.id === id);
-  if (o) setState({ settingsClipboard: { ...o.settings } });
+  const v = volumeId === undefined ? undefined : o?.volumes?.find((x) => x.id === volumeId);
+  if (!o) return;
+  setState({ settingsClipboard: v ? { kind: 'volume', config: { ...o.settings, ...v.settings } } : { kind: 'object', config: { ...o.settings } } });
 }
-export function pasteSettings(ids: number[]) {
-  const settings = getState().settingsClipboard;
-  if (!settings) return;
-  const set = new Set(ids);
-  replace('Paste settings', getState().objects.map((x) => (set.has(x.id) ? { ...x, settings: { ...settings } } : x)));
+
+export function pasteSettings(targets: { object: number; volume?: number }[]) {
+  const clip = getState().settingsClipboard;
+  if (!clip || !targets.length) return;
+  const { extruder: _e, ...config } = clip.config;
+  const region = new Set(objectKeys.region);
+  const forVolume = Object.fromEntries(Object.entries(config).filter(([k]) => region.has(k)));
+  replace('Paste settings', getState().objects.map((o) => {
+    const mine = targets.filter((t) => t.object === o.id);
+    if (!mine.length) return o;
+    if (clip.kind === 'object') return mine.some((t) => t.volume === undefined) ? { ...o, settings: { ...config } } : o;
+    const ids = new Set(mine.map((t) => t.volume));
+    return { ...o, volumes: o.volumes?.map((v) => (ids.has(v.id) ? { ...v, settings: { ...forVolume } } : v)) };
+  }));
 }

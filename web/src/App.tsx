@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { setPaintTool, togglePaint } from './plater/paint';
+import { isPaint, paintKeyTool, setPaintTool, togglePaint, type PaintKind } from './plater/paint';
 import { toggleViewOption } from './plater/viewOptions';
 import { addInstance, arrangeAll, download, importFiles, newProject, openFileDialog, openProjectDialog, removeInstance, slice, toolbarOperation, saveProject, toggleBoolean, toggleText } from './actions';
 import { setCut, toggleCut } from './plater/cut';
@@ -9,6 +9,7 @@ import { Sidebar } from './components/Sidebar';
 import { AskHost } from './components/Ask';
 import { TabBar, TopBar } from './components/TopBar';
 const BrimEarsPanel = lazy(() => import('./components/BrimEarsPanel'));
+const ObjectInfo = lazy(() => import('./components/ObjectInfo'));
 const BooleanPanel = lazy(() => import('./components/BooleanPanel'));
 const TextPanel = lazy(() => import('./components/TextPanel'));
 const SvgPanel = lazy(() => import('./components/SvgPanel'));
@@ -18,7 +19,7 @@ const Navigator = lazy(() => import('./components/Navigator').then((m) => ({ def
 const PlateChoice = lazy(() => import('./components/PlateChoice'));
 const EmptyPlate = lazy(() => import('./components/FirstRun'));
 const Plater3D = lazy(() => import('./plater/Plater3D'));
-import { deleteAll, getState, removeSelected, setState, togglePrintable, updateInstance, useStore } from './state/store';
+import { deleteAll, getState, isSelected, removeSelected, setState, togglePrintable, updateInstance, useStore } from './state/store';
 import { ownsKeys } from './keys';
 import { copySelection, pasteClipboard, selectAll, startRename } from './edit';
 const ContextMenu = lazy(() => import('./components/ContextMenu'));
@@ -43,7 +44,7 @@ function nudge(key: string, fine: boolean) {
   const turn = key === 'PageUp' ? 45 : key === 'PageDown' ? -45 : 0;
   if (!d && !turn) return false;
   const targets = s.objects.filter((o) => !o.project?.placeholder).flatMap((o) => o.instances
-    .filter((i) => s.selected?.all || (o.id === s.selected?.object && (s.selected.allInstances || i.id === s.selected.instance)))
+    .filter((i) => isSelected(s.selected, o.id, i.id))
     .map((i) => [o.id, i] as const));
   if (!targets.length) return false;
   undoable(d ? 'Move Object' : 'Rotate Object', () => targets.forEach(([o, i]) =>
@@ -109,6 +110,7 @@ export default function App() {
       else if (getState().gizmo === 'measure' && (e.key === 'Delete' || e.key === 'Backspace')) setMeasure({});
       else if (getState().gizmo === 'measure' && e.key === 'Escape') { if (!dropLastFeature()) setState({ gizmo: 'none' }); }
       else if (e.key === 'Delete' || e.key === 'Backspace') removeSelected();
+      else if (isPaint(getState().gizmo) && !e.altKey && paintKeyTool(getState().gizmo as PaintKind, e.key)) setPaintTool({ tool: paintKeyTool(getState().gizmo as PaintKind, e.key)! });
       else if (e.key.toLowerCase() === 'q') toolbarOperation('orient', e.shiftKey);
       else if (e.key === 'a' || e.key === 'A') arrangeAll(e.key === 'a');
       else if (e.key === '+' || e.key === '=') addInstance();
@@ -179,6 +181,7 @@ export default function App() {
             <LayerHeightBar />
             {gizmo === 'measure' && <Suspense fallback={null}><MeasurePanel /></Suspense>}
             {!empty && <Suspense fallback={null}><CanvasTools /></Suspense>}
+            {!empty && <Suspense fallback={null}><ObjectInfo /></Suspense>}
             {gizmo === 'brimears' && <Suspense fallback={null}><BrimEarsPanel /></Suspense>}
             {gizmo === 'boolean' && <Suspense fallback={null}><BooleanPanel /></Suspense>}
             {gizmo === 'text' && <Suspense fallback={null}><TextPanel /></Suspense>}

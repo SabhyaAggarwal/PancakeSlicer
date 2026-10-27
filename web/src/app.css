@@ -658,6 +658,10 @@ kbd { font: inherit; font-size: 12px; background: var(--panel-alt); border: 1px 
 @keyframes search-flash { 0%, 60% { background: var(--selected, #bfe1de); } 100% { background: transparent; } }
 .opt-line.search-flash { animation: search-flash 2s ease-out; border-radius: 3px; }
 .canvas-tip { position: absolute; z-index: 5; padding: 3px 6px; background: var(--bg, #fff); color: var(--text); border: 1px solid var(--border); border-radius: 3px; font-size: 12px; pointer-events: none; white-space: nowrap; }
+.object-info { position: absolute; z-index: 4; left: 110px; bottom: 12px; max-width: 320px; padding: 6px 10px; background: var(--bg, #fff); color: var(--text); border: 1px solid var(--border); border-radius: 4px; font-size: 12px; line-height: 1.5; pointer-events: auto; }
+.object-info-error { color: var(--error, #e14747); white-space: pre-line; }
+.object-info-error .notif-link { margin-left: 6px; }
+.canvas-rect { position: absolute; z-index: 5; border: 1px dashed var(--accent, #009688); background: color-mix(in srgb, var(--accent, #009688) 12%, transparent); pointer-events: none; }
 .orient-table { border-collapse: collapse; margin: 12px 16px 4px; }
 .orient-table th, .orient-table td { padding: 3px 14px 3px 0; text-align: left; }
 .orient-table th { font-weight: 600; }

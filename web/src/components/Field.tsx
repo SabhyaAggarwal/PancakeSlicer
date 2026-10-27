@@ -33,6 +33,9 @@ const CHOICE_HINTS: Record<string, Record<string, string>> = {
   },
 };
 
+const PROMPTED = new Set(['spiral_mode', 'wall_loops', 'top_shell_layers', 'sparse_infill_density', 'enable_support', 'enforce_support_layers', 'detect_thin_wall',
+  'overhang_reverse', 'timelapse_type', 'enable_wrapping_detection', 'layer_height', 'nozzle_temperature', 'nozzle_temperature_initial_layer']);
+
 export const Field = memo(function Field(props: {
   optKey: string;
   type: PresetType;
@@ -60,8 +63,9 @@ export const Field = memo(function Field(props: {
   const current = props.value === undefined ? undefined : normalizeConfigValue(key, props.value);
   const system = props.systemValue === undefined ? undefined : normalizeConfigValue(key, props.systemValue);
   const value = elementOf(current ?? (def.nullable ? undefined : def.default as ConfigValue | undefined), idx, vector);
-  const set = props.onSet ?? ((k: string, v: ConfigValue) => setOption(props.type, k, v, props.slot));
-  const reset = props.onReset ?? ((k: string) => resetOption(props.type, k, props.slot));
+  const prompt = (k: string) => { if (PROMPTED.has(k)) void import('../configPrompts').then((m) => m.checkSetting(props.type, k, props.slot)); };
+  const set = props.onSet ?? ((k: string, v: ConfigValue) => { setOption(props.type, k, v, props.slot); prompt(k); });
+  const reset = props.onReset ?? ((k: string) => { resetOption(props.type, k, props.slot); prompt(k); });
   const commit = (el: ConfigValue) => {
     const next = normalizeConfigValue(key, vector ? withElement(current ?? system ?? def.default as ConfigValue, idx, el) : el);
     if (system !== undefined && toolValue(key, next) === toolValue(key, system) && !props.onSet) reset(key);

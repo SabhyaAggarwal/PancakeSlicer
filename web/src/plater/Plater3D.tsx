@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { CameraViews } from './CameraViews';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
-import { effectiveConfig, getState, markStale, printerPreset, setPaint, setState, subscribeStore, updateInstance, updateObject, updateVolume, useStore, type CutConnector, type Instance, type PlateObject, type SeamMode, type State, type Volume, type VolumeType } from '../state/store';
+import { effectiveConfig, getState, isSelected, markStale, selectionOf, toggleSelection, printerPreset, setPaint, setState, subscribeStore, updateInstance, updateObject, updateVolume, useStore, type CutConnector, type Instance, type PlateObject, type SeamMode, type State, type Volume, type VolumeType } from '../state/store';
 import { PaintView } from './paintView';
 import { viewOptions, subscribeViewOptions } from './viewOptions';
 import { sectionView, subscribeSection } from './section';
@@ -215,7 +215,7 @@ export default function Plater3D() {
               () => overhangGeometry(o.geometry, overhangFacets(o.geometry, normal, deg)!), (g) => new THREE.Mesh(g, overhangTint));
           }
           if (opt.wireframe) put(`wf:${o.geometry.uuid}`, () => new THREE.WireframeGeometry(o.geometry), (g) => new THREE.LineSegments(g, wireLine));
-          if (opt.outline && (s.selected?.instance === inst.id || s.selected?.all))
+          if (opt.outline && isSelected(s.selected, o.id, inst.id))
             put(`ol:${o.geometry.uuid}`, () => new THREE.EdgesGeometry(o.geometry, 30), (g) => new THREE.LineSegments(g, outlineLine));
         }
       }
@@ -304,7 +304,7 @@ export default function Plater3D() {
         for (const inst of o.instances) {
           const mesh = meshes.get(inst.id);
           if (!mesh) continue;
-          const state = outside.has(inst.id) ? 'outside' : s.selected?.instance === inst.id || s.selected?.all ? 'selected' : 'normal';
+          const state = outside.has(inst.id) ? 'outside' : isSelected(s.selected, o.id, inst.id) ? 'selected' : 'normal';
           const ghost = s.selected?.object === o.id && s.selected.volume !== undefined;
           mesh.material = s.gizmo === 'layers' && s.selected?.object === o.id
             ? layerMaterial(layerParams(s, o), layerProfileOf(s, o), layerCursor())
@@ -686,7 +686,7 @@ export default function Plater3D() {
 
     const measuring = new MeasureView(el, () => views.camera);
     const measurable = (s: State, instance: number) => s.objects.some((o) => !o.project?.placeholder && o.instances.some((i) => i.id === instance &&
-      (s.selected?.all || (s.selected?.object === o.id && (s.selected.allInstances || s.selected.instance === i.id)))));
+      isSelected(s.selected, o.id, i.id)));
     const unsubMeasure = subscribeMeasure(() => { measuring.sync(); render(); });
 
     const ray = new THREE.Raycaster();
@@ -741,7 +741,12 @@ export default function Plater3D() {
       const p = new THREE.Vector3();
       return ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), p) ? p : null;
     };
-    let drag: { object: number; instance: number; dx: number; dy: number; moved: boolean } | null = null;
+    let drag: { object: number; instance: number; dx: number; dy: number; x: number; y: number; group: { object: number; instance: number; x: number; y: number }[]; moved: boolean } | null = null;
+    let rect: { x: number; y: number; remove: boolean } | null = null;
+    const rectEl = document.createElement('div');
+    rectEl.className = 'canvas-rect';
+    rectEl.hidden = true;
+    el.appendChild(rectEl);
     const tower = new TowerView();
     scene.add(tower.group);
     let towerDrag: { dx: number; dy: number; moved: boolean } | null = null;
@@ -784,18 +789,35 @@ export default function Plater3D() {
         }
         return;
       }
-      if (!hit) return;
+      if (!hit) {
+        if ((ev.shiftKey || ev.altKey) && getState().gizmo !== 'measure') {
+          rect = { x: ev.clientX, y: ev.clientY, remove: ev.altKey };
+          controls.enabled = false;
+          renderer.domElement.setPointerCapture(ev.pointerId);
+        }
+        return;
+      }
       const { object, instance } = hit.object.userData as { object: number; instance: number };
-      setState({ selected: { object, instance } });
+      if ((ev.ctrlKey || ev.metaKey || ev.shiftKey) && getState().gizmo !== 'measure') return toggleSelection(object, [instance]);
+      const s0 = getState();
+      if (!(s0.selected?.all && isSelected(s0.selected, object, instance))) setState({ selected: { object, instance } });
       if (getState().gizmo === 'measure') return;
       const p = bedPoint();
-      const o = getState().objects.find((ob) => ob.id === object)!;
+      const s = getState(), o = s.objects.find((ob) => ob.id === object)!;
       const i = o.instances.find((ii) => ii.id === instance)!;
-      if (p && !o.project?.placeholder) drag = { object, instance, dx: i.x - p.x, dy: i.y - p.y, moved: false };
+      const group = s.objects.filter((ob) => !ob.project?.placeholder).flatMap((ob) => ob.instances.filter((ii) => isSelected(s.selected, ob.id, ii.id)).map((ii) => ({ object: ob.id, instance: ii.id, x: ii.x, y: ii.y })));
+      if (p && !o.project?.placeholder) drag = { object, instance, dx: i.x - p.x, dy: i.y - p.y, x: i.x, y: i.y, group, moved: false };
       controls.enabled = false;
       renderer.domElement.setPointerCapture(ev.pointerId);
     };
     const onMove = (ev: PointerEvent) => {
+      if (rect) {
+        const r = el.getBoundingClientRect();
+        Object.assign(rectEl.style, { left: `${Math.min(rect.x, ev.clientX) - r.left}px`, top: `${Math.min(rect.y, ev.clientY) - r.top}px`,
+          width: `${Math.abs(ev.clientX - rect.x)}px`, height: `${Math.abs(ev.clientY - rect.y)}px` });
+        rectEl.hidden = false;
+        return;
+      }
       if (towerDrag) {
         setRay(ev);
         const p = bedPoint();
@@ -812,9 +834,28 @@ export default function Plater3D() {
       if (!p) return;
       if (!drag.moved) endStep = beginStep('Move');
       drag.moved = true;
-      updateInstance(drag.object, drag.instance, { x: p.x + drag.dx, y: p.y + drag.dy });
+      const ddx = p.x + drag.dx - drag.x, ddy = p.y + drag.dy - drag.y;
+      for (const g of drag.group) updateInstance(g.object, g.instance, { x: g.x + ddx, y: g.y + ddy });
     };
     const onUp = (ev: PointerEvent) => {
+      if (rect) {
+        const s = getState(), r = renderer.domElement.getBoundingClientRect();
+        const x0 = Math.min(rect.x, ev.clientX), x1 = Math.max(rect.x, ev.clientX), y0 = Math.min(rect.y, ev.clientY), y1 = Math.max(rect.y, ev.clientY);
+        const inside = new Set<string>();
+        if (x1 - x0 >= 4 || y1 - y0 >= 4)
+          for (const o of s.objects) for (const i of o.instances) {
+            const v = instanceBox(o, i).getCenter(new THREE.Vector3()).project(views.camera);
+            const x = r.left + (v.x + 1) / 2 * r.width, y = r.top + (1 - v.y) / 2 * r.height;
+            if (v.z < 1 && x >= x0 && x <= x1 && y >= y0 && y <= y1) inside.add(`${o.id}:${i.id}`);
+          }
+        const now = s.objects.flatMap((o) => o.instances.filter((i) => isSelected(s.selected, o.id, i.id)).map((i) => `${o.id}:${i.id}`));
+        if (inside.size) setState({ selected: selectionOf(s, rect.remove ? now.filter((k) => !inside.has(k)) : [...new Set([...now, ...inside])]) });
+        rect = null;
+        rectEl.hidden = true;
+        controls.enabled = true;
+        downAt = null;
+        return;
+      }
       if (!drag && downAt && Math.hypot(ev.clientX - downAt.x, ev.clientY - downAt.y) < 4 && !tc.dragging && !pick(ev)) {
         const k = grid.plateAt(getState(), bedPoint());
         if (k !== null && k !== getState().plateIndex) selectPlate(k);
@@ -825,7 +866,7 @@ export default function Plater3D() {
         endStep = null;
         const s = getState(), o = s.objects.find((ob) => ob.id === drag!.object), i = o?.instances.find((ii) => ii.id === drag!.instance);
         const k = i && canAddPlate(s) ? grid.plateAt(s, new THREE.Vector3(i.x, i.y, 0)) : null;
-        if (o && k !== null && k !== s.plateIndex) moveToPlate([o.id], k, plateOffset(s, area, k));
+        if (o && k !== null && k !== s.plateIndex) moveToPlate([...new Set(drag.group.map((g) => g.object))], k, plateOffset(s, area, k));
       }
       if (towerDrag?.moved && tower.dragAt) {
         const t = getState().wipeTower, at = t ? TowerView.inBed(tower.dragAt, t, parsePoints(printerPreset(getState())?.config.printable_area)) : tower.dragAt;
@@ -1101,7 +1142,7 @@ export default function Plater3D() {
       const s = getState();
       if (!hit) return setState({ contextMenu: { x: ev.clientX, y: ev.clientY } });
       const { object, instance } = hit.object.userData as { object: number; instance: number };
-      const inSelection = s.selected?.all || (s.selected?.object === object && (s.selected.allInstances || s.selected.instance === instance));
+      const inSelection = isSelected(s.selected, object, instance);
       setState({ ...(inSelection ? {} : { selected: { object, instance } }), contextMenu: { x: ev.clientX, y: ev.clientY, object } });
     };
     renderer.domElement.addEventListener('contextmenu', onContextMenu);
@@ -1242,7 +1283,7 @@ export default function Plater3D() {
     const onFit = () => {
       const s = getState(), box = new THREE.Box3();
       for (const o of s.objects) for (const i of o.instances)
-        if (s.selected?.all || !s.selected || s.selected.object === o.id && (s.selected.allInstances || s.selected.instance === i.id)) box.union(instanceBox(o, i));
+        if (!s.selected || isSelected(s.selected, o.id, i.id)) box.union(instanceBox(o, i));
       if (box.isEmpty()) views.view('plate');
       else views.fit(box);
       render();

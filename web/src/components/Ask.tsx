@@ -1,7 +1,7 @@
 import { useState, useSyncExternalStore } from 'react';
 import { Modal, ModalTitle } from './Modal';
 
-type Ask = { title: string; message?: string; value?: string; range?: [number, number]; choices?: string[]; resolve(v: string | null): void };
+type Ask = { title: string; message?: string; value?: string; range?: [number, number]; choices?: string[]; buttons?: [string, string | null]; resolve(v: string | null): void };
 let current: Ask | null = null;
 const listeners = new Set<() => void>();
 const show = (a: Ask | null) => {
@@ -14,7 +14,8 @@ const ask = (a: Omit<Ask, 'resolve'>) =>
     show({ ...a, resolve });
   });
 
-export const confirmDialog = (title: string, message: string) => ask({ title, message }).then((v) => v !== null);
+export const confirmDialog = (title: string, message: string, buttons?: [string, string]) => ask({ title, message, buttons }).then((v) => v !== null);
+export const messageDialog = (title: string, message: string) => ask({ title, message, buttons: ['OK', null] }).then(() => undefined);
 export const promptDialog = (title: string, value: string) => ask({ title, value }).then((v) => v?.trim() || null);
 export const numberDialog = (title: string, prompt: string, value: number, min: number, max: number) =>
   ask({ title, message: prompt, value: String(value), range: [min, max] }).then((v) => v === null || v.trim() === '' ? null : Math.min(max, Math.max(min, Math.round(Number(v)))))
@@ -45,8 +46,8 @@ function AskDialog({ a }: { a: Ask }) {
           {a.value !== undefined && !a.range && !a.choices && <input className="text" aria-label={a.title} value={text} data-autofocus onChange={(e) => setText(e.target.value)} />}
         </div>
         <div className="modal-buttons center">
-          <button type="submit" className="btn primary" data-autofocus={a.value === undefined || a.choices ? '' : undefined}>OK</button>
-          <button type="button" className="btn" onClick={() => done(null)}>Cancel</button>
+          <button type="submit" className="btn primary" data-autofocus={a.value === undefined || a.choices ? '' : undefined}>{a.buttons?.[0] ?? 'OK'}</button>
+          {a.buttons?.[1] !== null && <button type="button" className="btn" onClick={() => done(null)}>{a.buttons?.[1] ?? 'Cancel'}</button>}
         </div>
       </form>
     </Modal>

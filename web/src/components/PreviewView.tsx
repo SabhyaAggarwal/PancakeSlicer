@@ -16,6 +16,7 @@ import { ownsKeys } from '../keys';
 import { numberDialog } from '../actions';
 import { toggleViewOption, useViewOptions } from '../plater/viewOptions';
 import { filamentColor } from '../plater/filamentColor';
+import { setVisibleToolpaths } from '../preview/visible';
 
 const ExplainLegend = lazy(() => import('./PreviewExplain').then((m) => ({ default: m.ExplainLegend })));
 const StandardView = lazy(() => import('./PreviewExplain').then((m) => ({ default: m.StandardView })));
@@ -250,6 +251,8 @@ export function PreviewView() {
     setVis: (v: Partial<Visibility>, shells?: boolean) => setUi((u) => ({ ...u, vis: { ...u.vis, ...v }, shells: shells ?? u.shells })),
   };
 
+  useEffect(() => { setVisibleToolpaths(data?.done ? { data, layers } : null); }, [data, data?.done, layers]);
+  useEffect(() => () => setVisibleToolpaths(null), []);
   useEffect(() => { oneBackup.current = null; }, [layerCount]);
   const toggleOneLayer = () => {
     if (!layerCount) return;
