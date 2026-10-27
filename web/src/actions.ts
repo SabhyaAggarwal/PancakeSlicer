@@ -17,6 +17,7 @@ import {
 } from './state/store';
 import { historyDepth, leaveDocument, markSaved, newDocument, undoable } from './state/history';
 import { clearPlateJobs, currentPlates } from './plater/plates';
+import { nativeSupportCapable } from './settings-env';
 
 const VENDORS = ['BBL', 'Prusa', 'Custom'];
 
@@ -518,7 +519,7 @@ export async function slice(calib?: { kind: string; params: string; head?: strin
     setState({ job: { state: 'failed', pct: 0, stage: '', error: outside } });
     return;
   }
-  if (!calib && s.features.native_support && (String(effectiveConfig(s, 'process').support_style) === 'native' || s.objects.some((o) => o.settings.support_style === 'native'))) {
+  if (!calib && nativeSupportCapable(s) && (String(effectiveConfig(s, 'process').support_style) === 'native' || s.objects.some((o) => o.settings.support_style === 'native'))) {
     const conflicts = (await import('./plater/nativeSupport')).nativeSupportConflicts(s);
     if (conflicts && !(await confirmDialog('Native support', `${conflicts} Slice anyway?`))) return;
   }
