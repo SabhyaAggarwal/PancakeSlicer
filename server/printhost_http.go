@@ -22,16 +22,9 @@ import (
 func sendHTTP(ctx context.Context, u *upload) (string, error) {
 	p := u.printer
 	base, _ := url.Parse(p.URL)
-	client := &http.Client{
-		Transport: &http.Transport{
-			Proxy:                 nil,
-			DialContext:           (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
-			TLSClientConfig:       p.tlsConfig(base.Hostname()),
-			TLSHandshakeTimeout:   10 * time.Second,
-			ResponseHeaderTimeout: 2 * time.Minute,
-			DisableKeepAlives:     true,
-		},
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	client, err := hostClient(ctx, p, base)
+	if err != nil {
+		return "", err
 	}
 	h := &hostSession{client: client, printer: p, secret: u.secret}
 	probe := map[string]string{"prusalink": "/api/version", "octoprint": "/api/version", "moonraker": "/server/info"}[p.Kind]
@@ -39,7 +32,7 @@ func sendHTTP(ctx context.Context, u *upload) (string, error) {
 		return "", err
 	}
 	build := func() (*http.Request, error) {
-		body := progressReader{u.file, u.progress}
+		body := progressReader{io.LimitReader(u.file, u.size), u.progress}
 		switch p.Kind {
 		case "prusalink":
 			req, err := http.NewRequestWithContext(ctx, "PUT", base.JoinPath("api/v1/files", p.Storage, u.filename).String(), body)
@@ -81,10 +74,13 @@ func sendHTTP(ctx context.Context, u *upload) (string, error) {
 		u.progress.Store(0)
 	}
 	defer resp.Body.Close()
-	answer := printerMessage(resp)
+	answer := ""
+	if p.hosts == nil {
+		answer = printerMessage(resp)
+	}
 	switch {
 	case resp.StatusCode == 401 || resp.StatusCode == 403:
-		return "", errors.New("the printer rejected the credentials; check the API key or password in the server's printer configuration")
+		return "", credentialsRejected(p)
 	case resp.StatusCode == 409:
 		return "", fmt.Errorf("the printer refused the file: it is busy printing or the file is in use%s", answer)
 	case resp.StatusCode == 413:
@@ -96,6 +92,43 @@ func sendHTTP(ctx context.Context, u *upload) (string, error) {
 		return "Uploaded " + u.filename + " to " + p.Name + " and started printing.", nil
 	}
 	return "Uploaded " + u.filename + " to " + p.Name + ".", nil
+}
+
+func credentialsRejected(p *PrinterConfig) error {
+	if p.editable {
+		return errors.New("the printer rejected the credentials; check the API key or password")
+	}
+	return errors.New("the printer rejected the credentials; check the API key or password in the server's printer configuration")
+}
+
+func hostClient(ctx context.Context, p *PrinterConfig, base *url.URL) (*http.Client, error) {
+	dialer := &net.Dialer{Timeout: 5 * time.Second}
+	dial := dialer.DialContext
+	if p.hosts != nil {
+		target, err := p.hosts.resolve(ctx, base)
+		if err != nil {
+			var refused *hostRefusal
+			if errors.As(err, &refused) {
+				audit(map[string]any{"event": "printer_host_refused", "printer": p.Name, "reason": refused.reason})
+			}
+			return nil, err
+		}
+		dial = func(ctx context.Context, network, _ string) (net.Conn, error) {
+			return dialer.DialContext(ctx, "tcp", target.String())
+		}
+	}
+	client := &http.Client{
+		Transport: &http.Transport{
+			Proxy:                 nil,
+			DialContext:           dial,
+			TLSClientConfig:       p.tlsConfig(base.Hostname()),
+			TLSHandshakeTimeout:   10 * time.Second,
+			ResponseHeaderTimeout: 2 * time.Minute,
+			DisableKeepAlives:     true,
+		},
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	return client, nil
 }
 
 func multipartUpload(ctx context.Context, target string, u *upload, file io.Reader, fields [][2]string) (*http.Request, error) {
@@ -268,7 +301,7 @@ func (h *hostSession) preflight(ctx context.Context, target string) error {
 		}
 		switch {
 		case resp.StatusCode == 401 || resp.StatusCode == 403:
-			return errors.New("the printer rejected the credentials; check the API key or password in the server's printer configuration")
+			return credentialsRejected(h.printer)
 		case resp.StatusCode == 404:
 			return fmt.Errorf("the address does not look like %s (HTTP 404 at %s)", map[string]string{"prusalink": "PrusaLink", "octoprint": "OctoPrint", "moonraker": "Moonraker"}[h.printer.Kind], req.URL.Path)
 		case resp.StatusCode < 200 || resp.StatusCode > 299:

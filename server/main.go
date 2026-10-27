@@ -43,6 +43,7 @@ type Config struct {
 	PrintersFile   string
 	Printers       []*PrinterConfig
 	PrinterEdit    string
+	HTTPPrinters   string
 	PrinterStore   *printerStore
 	Features       ToolFeatures
 	Options        *cachedResponse
@@ -101,6 +102,7 @@ func parseConfig() Config {
 	flag.BoolVar(&c.Metrics, "metrics", envBool("ORCA_WEB_METRICS"), "expose GET /metrics (ORCA_WEB_METRICS)")
 	flag.StringVar(&c.PrintersFile, "printers", env("ORCA_WEB_PRINTERS", ""), "administrator's printer list (JSON) for Send to printer; empty disables sending (ORCA_WEB_PRINTERS)")
 	flag.StringVar(&c.PrinterEdit, "printer-edit", env("ORCA_WEB_PRINTER_EDIT", "auto"), "add Bambu printers in the app: auto (on when a bearer token is set), on or off (ORCA_WEB_PRINTER_EDIT)")
+	flag.StringVar(&c.HTTPPrinters, "http-printers", env("ORCA_WEB_HTTP_PRINTERS", ""), "CIDRs and host names where PrusaLink/OctoPrint hosts may be added in the app (needs a bearer token); empty hides the feature (ORCA_WEB_HTTP_PRINTERS)")
 	proxies := flag.String("trusted-proxies", env("ORCA_WEB_TRUSTED_PROXIES", ""), "comma-separated trusted proxy CIDRs (ORCA_WEB_TRUSTED_PROXIES)")
 	flag.Parse()
 	if err := validateSourceURL(c.SourceURL); err != nil {
@@ -172,6 +174,7 @@ func main() {
 			log.Printf("WARNING: printers are configured without a bearer token; anyone who can reach this service can start prints")
 		}
 	}
+	bambu := false
 	switch cfg.PrinterEdit {
 	case "auto", "on":
 		if cfg.PrinterEdit == "auto" && cfg.BearerToken == "" {
@@ -181,13 +184,27 @@ func main() {
 		if cfg.BearerToken == "" {
 			log.Printf("WARNING: printers can be added without a bearer token; anyone who can reach this service can add printers and start prints")
 		}
-		if cfg.PrinterStore, err = loadPrinterStore(filepath.Join(cfg.DataDir, "printers"), cfg.Resources); err != nil {
-			log.Fatal(err)
-		}
-		log.Printf("adding printers in the app: on (%d saved)", len(cfg.PrinterStore.printers))
+		bambu = true
 	case "off":
 	default:
 		log.Fatal("printer-edit must be auto, on or off")
+	}
+	hosts, err := parseHostPolicy(cfg.HTTPPrinters, cfg.Listen)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if hosts != nil && cfg.BearerToken == "" {
+		log.Printf("adding PrusaLink/OctoPrint hosts in the app is off: it needs a bearer token")
+		hosts = nil
+	}
+	if bambu || hosts != nil {
+		if cfg.PrinterStore, err = loadPrinterStore(filepath.Join(cfg.DataDir, "printers"), cfg.Resources, bambu, hosts); err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("adding printers in the app: Bambu %v, PrusaLink/OctoPrint %v (%d saved)", bambu, hosts != nil, len(cfg.PrinterStore.printers))
+		if hosts != nil {
+			log.Printf("PrusaLink/OctoPrint hosts may be added at: %s", hosts)
+		}
 	}
 	cfg.Features, cfg.Options = probeTool(cfg)
 	if err := probePlatePlacement(cfg); err != nil {

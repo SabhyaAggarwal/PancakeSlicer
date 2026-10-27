@@ -148,7 +148,7 @@ export function TopBar() {
   const kind = useStore(outputKind);
   const exportLabel = kind === 'gcode.3mf' ? 'Export plate sliced file' : 'Export G-code';
   const exportTip = kind === 'gcode.3mf' ? 'Export current sliced file' : 'Export current plate as G-code';
-  const hasPrinters = useStore((s) => s.printers.length > 0 || s.printerEdit);
+  const hasPrinters = useStore((s) => s.printers.length > 0 || s.printerEdit || s.printerHosts);
   return (
     <div className="topbar">
       <Icon name="OrcaSlicer" size={20} className="topbar-logo" />
@@ -295,7 +295,7 @@ export function TabBar() {
   const busy = job.state === 'running' || job.state === 'submitting';
   const exportEnabled = useStore(canExport);
   const exportLabel = useStore(outputKind) === 'gcode.3mf' ? 'Export plate sliced file' : 'Export G-code file';
-  const hasPrinters = useStore((s) => s.printers.length > 0 || s.printerEdit);
+  const hasPrinters = useStore((s) => s.printers.length > 0 || s.printerEdit || s.printerHosts);
   const plates = useStore((s) => s.projectPlates.length > 1);
   const [sliceMode, setSliceMode] = useState('Slice plate');
   const [exportMode, setExportMode] = useState('plate');

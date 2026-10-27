@@ -618,7 +618,7 @@ export async function loadPrinters() {
   try {
     const r = await fetch('/api/printers');
     const printers = r.ok ? await r.json() : [];
-    if (Array.isArray(printers)) setState({ printers, printerEdit: r.headers.get('X-Printer-Edit') === 'true' });
+    if (Array.isArray(printers)) setState({ printers, printerEdit: r.headers.get('X-Printer-Edit') === 'true', printerHosts: !!r.headers.get('X-Printer-Hosts') });
   } catch {  }
 }
 

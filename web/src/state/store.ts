@@ -20,7 +20,7 @@ export interface Instance {
   printable?: boolean;
 }
 
-export type SendPrinter = { name: string; kind: string; editable?: boolean; host?: string; serial?: string; model?: string };
+export type SendPrinter = { name: string; kind: string; editable?: boolean; host?: string; serial?: string; model?: string; url?: string; auth?: string; username?: string };
 export type VolumeType = 'part' | 'negative' | 'modifier' | 'support_blocker' | 'support_enforcer' | 'seam';
 export type SeamMode = 'center' | 'left' | 'right' | 'enforced' | 'blocked' | 'neutral';
 
@@ -209,6 +209,7 @@ export interface State {
   calibDialog: CalibMenu | null;
   printers: SendPrinter[];
   printerEdit: boolean;
+  printerHosts: boolean;
   events: LayerEvent[];
   projectPlates: (ProjectPlate & { objects: PlateObject[]; events?: LayerEvent[] })[];
   plateIndex: number;
@@ -294,6 +295,7 @@ let state: State = {
   calibDialog: null,
   printers: [],
   printerEdit: false,
+  printerHosts: false,
   events: [],
   projectPlates: [],
   plateIndex: 1,

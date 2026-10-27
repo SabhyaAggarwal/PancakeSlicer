@@ -41,6 +41,7 @@ type PrinterConfig struct {
 	fingerprint []byte
 	bambuRoots  *x509.CertPool
 	editable    bool
+	hosts       *hostPolicy
 	model       string
 	trusted     func(mode string, fp []byte)
 }
@@ -52,6 +53,19 @@ type PrinterSummary struct {
 	Host     string `json:"host,omitempty"`
 	Serial   string `json:"serial,omitempty"`
 	Model    string `json:"model,omitempty"`
+	URL      string `json:"url,omitempty"`
+	Auth     string `json:"auth,omitempty"`
+	Username string `json:"username,omitempty"`
+}
+
+func (p *PrinterConfig) summary() PrinterSummary {
+	if !p.editable {
+		return PrinterSummary{Name: p.Name, Kind: p.Kind}
+	}
+	if p.Kind != "bambu-lan" {
+		return PrinterSummary{Name: p.Name, Kind: p.Kind, Editable: true, URL: p.URL, Auth: p.Auth, Username: p.Username}
+	}
+	return PrinterSummary{Name: p.Name, Kind: p.Kind, Editable: true, Host: p.Host, Serial: p.Serial, Model: p.model}
 }
 
 var bambuSerial = regexp.MustCompile(`^[A-Za-z0-9]{6,32}$`)
@@ -358,15 +372,15 @@ func (s *Server) listPrinters(w http.ResponseWriter, r *http.Request) {
 	m := s.sends
 	m.mu.Lock()
 	list := []PrinterSummary{}
-	for _, p := range m.admin {
-		list = append(list, PrinterSummary{Name: p.Name, Kind: p.Kind})
-	}
-	for _, p := range m.saved {
-		list = append(list, PrinterSummary{p.Name, p.Kind, true, p.Host, p.Serial, p.model})
+	for _, p := range append(append([]*PrinterConfig{}, m.admin...), m.saved...) {
+		list = append(list, p.summary())
 	}
 	m.mu.Unlock()
-	if m.store != nil {
+	if m.store != nil && m.store.bambu {
 		w.Header().Set("X-Printer-Edit", "true")
+	}
+	if m.store != nil && m.store.hosts != nil {
+		w.Header().Set("X-Printer-Hosts", "prusalink,octoprint")
 	}
 	writeJSON(w, 200, list)
 }

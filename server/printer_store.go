@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -10,6 +11,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,21 +22,40 @@ import (
 type printerStore struct {
 	dir       string
 	resources string
+	bambu     bool
+	hosts     *hostPolicy
 	printers  []*PrinterConfig
+	dormant   []storedPrinter
 }
 
 type storedPrinter struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
-	Host        string `json:"host"`
-	Serial      string `json:"serial"`
+	Host        string `json:"host,omitempty"`
+	Serial      string `json:"serial,omitempty"`
 	Model       string `json:"model,omitempty"`
-	TLS         string `json:"tls"`
+	TLS         string `json:"tls,omitempty"`
 	Fingerprint string `json:"fingerprint,omitempty"`
+	Kind        string `json:"kind,omitempty"`
+	URL         string `json:"url,omitempty"`
+	Auth        string `json:"auth,omitempty"`
+	Username    string `json:"username,omitempty"`
 }
 
-func loadPrinterStore(dir, resources string) (*printerStore, error) {
-	st := &printerStore{dir: dir, resources: resources}
+func (sp storedPrinter) kind() string { return cmp.Or(sp.Kind, "bambu-lan") }
+
+func (st *printerStore) kindOn(kind string) bool {
+	switch kind {
+	case "bambu-lan":
+		return st.bambu
+	case "prusalink", "octoprint":
+		return st.hosts != nil
+	}
+	return false
+}
+
+func loadPrinterStore(dir, resources string, bambu bool, hosts *hostPolicy) (*printerStore, error) {
+	st := &printerStore{dir: dir, resources: resources, bambu: bambu, hosts: hosts}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
@@ -52,6 +73,10 @@ func loadPrinterStore(dir, resources string) (*printerStore, error) {
 		return nil, fmt.Errorf("%s: %w", filepath.Join(dir, "printers.json"), err)
 	}
 	for _, sp := range file.Printers {
+		if !st.kindOn(sp.kind()) {
+			st.dormant = append(st.dormant, sp)
+			continue
+		}
 		p, err := st.config(sp)
 		if err != nil {
 			log.Printf("warning: app-added printer %q skipped: %v", sp.Name, err)
@@ -68,7 +93,25 @@ func (st *printerStore) config(sp storedPrinter) (*PrinterConfig, error) {
 	}
 	p := &PrinterConfig{Name: sp.Name, Kind: "bambu-lan", Host: sp.Host, Serial: sp.Serial, TLS: sp.TLS, Fingerprint: sp.Fingerprint,
 		CredentialFile: filepath.Join(st.dir, sp.ID+".code"), editable: true, model: sp.Model}
+	if sp.kind() != "bambu-lan" {
+		u, err := hostURL(sp.URL)
+		if err != nil {
+			return nil, err
+		}
+		if sp.Kind == "octoprint" && (sp.Auth != "" || sp.Username != "") {
+			return nil, errors.New("OctoPrint takes an API key only")
+		}
+		p = &PrinterConfig{Name: sp.Name, Kind: sp.Kind, URL: u.String(), Auth: sp.Auth, Username: sp.Username,
+			CredentialFile: filepath.Join(st.dir, sp.ID+".code"), editable: true, hosts: st.hosts}
+	}
 	return p, p.validate(st.resources)
+}
+
+func (st *printerStore) stored(id string, p *PrinterConfig) storedPrinter {
+	if p.Kind != "bambu-lan" {
+		return storedPrinter{ID: id, Name: p.Name, Kind: p.Kind, URL: p.URL, Auth: p.Auth, Username: p.Username}
+	}
+	return storedPrinter{ID: id, Name: p.Name, Host: p.Host, Serial: p.Serial, Model: p.model, TLS: p.TLS, Fingerprint: p.Fingerprint}
 }
 
 func (st *printerStore) save() error {
@@ -77,8 +120,9 @@ func (st *printerStore) save() error {
 	}
 	file.Printers = []storedPrinter{}
 	for _, p := range st.printers {
-		file.Printers = append(file.Printers, storedPrinter{printerID(p), p.Name, p.Host, p.Serial, p.model, p.TLS, p.Fingerprint})
+		file.Printers = append(file.Printers, st.stored(printerID(p), p))
 	}
+	file.Printers = append(file.Printers, st.dormant...)
 	b, _ := json.MarshalIndent(file, "", "  ")
 	return writeFileAtomic(filepath.Join(st.dir, "printers.json"), b)
 }
@@ -130,11 +174,23 @@ func (m *SendManager) watchTrust(p *PrinterConfig) {
 }
 
 type printerEdit struct {
+	Kind       string `json:"kind"`
 	Name       string `json:"name"`
 	Host       string `json:"host"`
 	Serial     string `json:"serial"`
 	AccessCode string `json:"access_code"`
 	Model      string `json:"model"`
+	URL        string `json:"url"`
+	Auth       string `json:"auth"`
+	Username   string `json:"username"`
+	Key        string `json:"key"`
+}
+
+func (b *printerEdit) secret() string {
+	if b.Kind == "bambu-lan" {
+		return b.AccessCode
+	}
+	return b.Key
 }
 
 func (s *Server) printerBody(w http.ResponseWriter, r *http.Request) (*printerEdit, bool) {
@@ -145,15 +201,59 @@ func (s *Server) printerBody(w http.ResponseWriter, r *http.Request) (*printerEd
 	var body printerEdit
 	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4<<10))
 	if err != nil || json.Unmarshal(raw, &body) != nil {
-		fail(w, 400, `expected {"name", "host", "serial", "access_code"}`)
+		fail(w, 400, `expected {"name", "host", "serial", "access_code"} or {"kind", "name", "url", "key"}`)
+		return nil, false
+	}
+	body.Kind = cmp.Or(body.Kind, "bambu-lan")
+	if !s.sends.store.kindOn(body.Kind) {
+		fail(w, 403, map[bool]string{true: "adding Bambu printers in the app is off on this server", false: "adding PrusaLink or OctoPrint hosts in the app is off on this server"}[body.Kind == "bambu-lan"])
 		return nil, false
 	}
 	body.Name, body.Host, body.Serial, body.AccessCode = strings.TrimSpace(body.Name), strings.TrimSpace(body.Host), strings.TrimSpace(body.Serial), strings.TrimSpace(body.AccessCode)
+	body.URL, body.Username = strings.TrimSpace(body.URL), strings.TrimSpace(body.Username)
 	if body.AccessCode != "" && (len(body.AccessCode) > 64 || strings.IndexFunc(body.AccessCode, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) >= 0) {
 		fail(w, 400, "the access code is the 8 characters under Settings > LAN only on the printer")
 		return nil, false
 	}
+	if body.Kind != "bambu-lan" {
+		if len(body.Key) > 256 || strings.IndexFunc(body.Key, unicode.IsControl) >= 0 || len(body.Username) > 64 || strings.IndexFunc(body.Username, unicode.IsControl) >= 0 {
+			fail(w, 400, "the API key, user or password is too long or holds control characters")
+			return nil, false
+		}
+		if body.Kind == "octoprint" || body.Auth == "apikey" {
+			body.Auth, body.Username = "", ""
+		}
+		if body.Auth != "" && body.Auth != "digest" {
+			fail(w, 400, "auth must be apikey or digest")
+			return nil, false
+		}
+	}
 	return &body, true
+}
+
+func (s *Server) editConfig(ctx context.Context, body *printerEdit, sp storedPrinter) (*PrinterConfig, error) {
+	st := s.sends.store
+	if body.Kind == "bambu-lan" {
+		sp.Host, sp.Serial = body.Host, strings.ToUpper(body.Serial)
+		return st.config(sp)
+	}
+	u, err := hostURL(body.URL)
+	if err != nil {
+		return nil, err
+	}
+	sp.Kind, sp.URL, sp.Auth, sp.Username = body.Kind, u.String(), body.Auth, body.Username
+	p, err := st.config(sp)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := st.hosts.resolve(ctx, u); err != nil {
+		var refused *hostRefusal
+		if errors.As(err, &refused) {
+			audit(map[string]any{"event": "printer_host_refused", "printer": body.Name, "reason": refused.reason})
+		}
+		return nil, err
+	}
+	return p, nil
 }
 
 func (s *Server) editPrinter(w http.ResponseWriter, r *http.Request, old string) {
@@ -162,37 +262,33 @@ func (s *Server) editPrinter(w http.ResponseWriter, r *http.Request, old string)
 		return
 	}
 	m := s.sends
-	m.mu.Lock()
-	defer m.mu.Unlock()
 	index := -1
+	m.mu.Lock()
+	var prev *PrinterConfig
 	for i, p := range m.saved {
 		if p.Name == old {
-			index = i
+			index, prev = i, p
 		}
 	}
+	m.mu.Unlock()
 	if old != "" && index < 0 {
 		fail(w, 404, "no app-added printer named "+old)
 		return
 	}
-	taken := false
-	for _, p := range m.admin {
-		taken = taken || p.Name == body.Name
-	}
-	for i, p := range m.saved {
-		taken = taken || p.Name == body.Name && i != index
-	}
-	if taken {
-		fail(w, 409, "a printer named "+body.Name+" already exists")
+	if prev != nil && prev.Kind != body.Kind {
+		fail(w, 400, "a printer's kind cannot change; remove it and add it again")
 		return
 	}
-	sp := storedPrinter{Name: body.Name, Host: body.Host, Serial: strings.ToUpper(body.Serial), TLS: "tofu"}
-	if len(body.Model) <= 40 && strings.IndexFunc(body.Model, unicode.IsControl) < 0 {
+	sp := storedPrinter{Name: body.Name, TLS: "tofu"}
+	if body.Kind != "bambu-lan" {
+		sp.TLS = ""
+	}
+	if len(body.Model) <= 40 && strings.IndexFunc(body.Model, unicode.IsControl) < 0 && body.Kind == "bambu-lan" {
 		sp.Model = body.Model
 	}
-	if index >= 0 {
-		prev := m.saved[index]
+	if prev != nil {
 		sp.ID = printerID(prev)
-		if prev.Host == sp.Host && prev.Serial == sp.Serial {
+		if prev.Kind == "bambu-lan" && prev.Host == body.Host && prev.Serial == strings.ToUpper(body.Serial) {
 			sp.TLS, sp.Fingerprint = prev.TLS, prev.Fingerprint
 			if sp.Model == "" {
 				sp.Model = prev.model
@@ -202,19 +298,45 @@ func (s *Server) editPrinter(w http.ResponseWriter, r *http.Request, old string)
 		id := make([]byte, 8)
 		rand.Read(id)
 		sp.ID = hex.EncodeToString(id)
-		if body.AccessCode == "" {
-			fail(w, 400, "enter the printer's access code (Settings > LAN only)")
+		if body.secret() == "" {
+			fail(w, 400, map[bool]string{true: "enter the printer's access code (Settings > LAN only)", false: "enter the printer's API key or password"}[body.Kind == "bambu-lan"])
 			return
 		}
 	}
-	p, err := m.store.config(sp)
+	if body.Kind == "prusalink" && body.Auth == "digest" && body.Username == "" {
+		fail(w, 400, "HTTP digest needs the user name")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	p, err := s.editConfig(ctx, body, sp)
 	if err != nil {
 		fail(w, 400, err.Error())
 		return
 	}
-	if body.AccessCode != "" {
-		if err := writeFileAtomic(p.CredentialFile, []byte(body.AccessCode+"\n")); err != nil {
-			fail(w, 500, "cannot store the access code")
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if index >= 0 && (index >= len(m.saved) || m.saved[index] != prev) {
+		fail(w, 409, "the printer list changed; try again")
+		return
+	}
+	taken := false
+	for _, q := range m.admin {
+		taken = taken || q.Name == body.Name
+	}
+	for i, q := range m.saved {
+		taken = taken || q.Name == body.Name && i != index
+	}
+	for _, q := range m.store.dormant {
+		taken = taken || q.Name == body.Name
+	}
+	if taken {
+		fail(w, 409, "a printer named "+body.Name+" already exists")
+		return
+	}
+	if secret := body.secret(); secret != "" {
+		if err := writeFileAtomic(p.CredentialFile, []byte(secret+"\n")); err != nil {
+			fail(w, 500, "cannot store the printer's credential")
 			return
 		}
 	}
@@ -232,8 +354,8 @@ func (s *Server) editPrinter(w http.ResponseWriter, r *http.Request, old string)
 	}
 	m.saved = saved
 	m.watchTrust(p)
-	audit(map[string]any{"event": map[bool]string{true: "printer_edited", false: "printer_added"}[index >= 0], "printer": p.Name, "client": s.clientIP(r)})
-	writeJSON(w, map[bool]int{true: 200, false: 201}[index >= 0], PrinterSummary{p.Name, p.Kind, true, p.Host, p.Serial, p.model})
+	audit(map[string]any{"event": map[bool]string{true: "printer_edited", false: "printer_added"}[index >= 0], "printer": p.Name, "kind": p.Kind, "client": s.clientIP(r)})
+	writeJSON(w, map[bool]int{true: 200, false: 201}[index >= 0], p.summary())
 }
 
 func (s *Server) addPrinter(w http.ResponseWriter, r *http.Request) { s.editPrinter(w, r, "") }
@@ -276,10 +398,23 @@ func (s *Server) testPrinter(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	client := s.clientIP(r)
+	limit := func() bool {
+		if ok, retry := s.sends.allowBurst("test "+client, 10); !ok {
+			w.Header().Set("Retry-After", fmt.Sprint(min(retry, 86400)))
+			fail(w, 429, "too many tests; wait before testing again")
+			return false
+		}
+		return true
+	}
+	if body.Kind != "bambu-lan" {
+		s.testHost(w, r, body, client, limit)
+		return
+	}
 	p := &PrinterConfig{Name: "test", Kind: "bambu-lan", Host: body.Host, Serial: strings.ToUpper(body.Serial), TLS: "tofu", editable: true, CredentialFile: "-"}
 	fresh := true
 	secret := body.AccessCode
-	if saved := s.sends.printer(body.Name); saved != nil && saved.editable {
+	if saved := s.sends.printer(body.Name); saved != nil && saved.editable && saved.Kind == "bambu-lan" {
 		if saved.Host == p.Host && saved.Serial == p.Serial {
 			p, fresh = saved, false
 		}
@@ -297,10 +432,7 @@ func (s *Server) testPrinter(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	client := s.clientIP(r)
-	if ok, retry := s.sends.allowBurst("test "+client, 10); !ok {
-		w.Header().Set("Retry-After", fmt.Sprint(min(retry, 86400)))
-		fail(w, 429, "too many tests; wait before testing again")
+	if !limit() {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
@@ -311,6 +443,46 @@ func (s *Server) testPrinter(w http.ResponseWriter, r *http.Request) {
 		s.sends.setModel(p, result.Model)
 	}
 	audit(map[string]any{"event": "printer_test", "printer": body.Name, "client": client, "stage": result.Stage})
+	writeJSON(w, 200, result)
+}
+
+func (s *Server) testHost(w http.ResponseWriter, r *http.Request, body *printerEdit, client string, limit func() bool) {
+	secret := body.Key
+	if saved := s.sends.printer(body.Name); saved != nil && saved.editable && saved.Kind == body.Kind && secret == "" {
+		secret, _ = readCredential(saved.CredentialFile)
+	}
+	if secret == "" {
+		fail(w, 400, "enter the printer's API key or password")
+		return
+	}
+	if body.Kind == "prusalink" && body.Auth == "digest" && body.Username == "" {
+		fail(w, 400, "HTTP digest needs the user name")
+		return
+	}
+	if !limit() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	result := PrinterTest{Stage: "ok", OK: true}
+	p, err := s.editConfig(ctx, body, storedPrinter{ID: "0000000000000000", Name: cmp.Or(body.Name, "test")})
+	if err == nil {
+		base, _ := url.Parse(p.URL)
+		var c *http.Client
+		if c, err = hostClient(ctx, p, base); err == nil {
+			h := &hostSession{client: c, printer: p, secret: secret}
+			err = h.preflight(ctx, base.JoinPath("/api/version").String())
+		}
+	}
+	if err != nil {
+		result = PrinterTest{Stage: "host", Message: redact(err.Error(), secret)}
+		if errors.Is(err, errHostRefused) {
+			result.Stage = "address"
+		}
+	} else {
+		result.Message = "connection to " + map[string]string{"prusalink": "PrusaLink", "octoprint": "OctoPrint"}[body.Kind] + " works correctly"
+	}
+	audit(map[string]any{"event": "printer_test", "printer": body.Name, "kind": body.Kind, "client": client, "stage": result.Stage})
 	writeJSON(w, 200, result)
 }
 

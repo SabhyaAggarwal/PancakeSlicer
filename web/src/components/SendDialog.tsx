@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { download, exportFilename, loadPrinters, outputKind } from '../actions';
 import { mutation, responseError } from '../api/access';
 import { effectiveConfig, useStore, type SendPrinter } from '../state/store';
 import { filamentColor } from '../plater/filamentColor';
 import { Modal, ModalTitle } from './Modal';
+
+const HostForm = lazy(() => import('./HostForm'));
 
 type Transfer = { state: 'uploading' | 'starting' | 'done' | 'failed'; sent: number; total: number; message?: string; error?: string };
 type Test = { ok: boolean; stage: string; message: string; model?: string };
@@ -41,8 +43,11 @@ function statusText(t: Transfer) {
 export default function SendDialog({ close }: { close: () => void }) {
   const [editing, setEditing] = useState<SendPrinter | null | undefined>(undefined);
   const [chosen, setChosen] = useState(() => localStorage.getItem(LAST) ?? '');
+  const bambu = useStore(outputKind) === 'gcode.3mf';
   if (editing !== undefined) {
-    return <PrinterForm printer={editing} close={close} done={(name) => { if (name !== undefined) setChosen(name); setEditing(undefined); }} />;
+    const done = (name?: string) => { if (name !== undefined) setChosen(name); setEditing(undefined); };
+    if (editing ? editing.kind !== 'bambu-lan' : !bambu) return <Suspense fallback={null}><HostForm printer={editing} close={close} done={done} /></Suspense>;
+    return <PrinterForm printer={editing} close={close} done={done} />;
   }
   return <SendView close={close} chosen={chosen} choose={setChosen} edit={setEditing} />;
 }
@@ -50,7 +55,7 @@ export default function SendDialog({ close }: { close: () => void }) {
 function SendView({ close, chosen, choose, edit }: { close: () => void; chosen: string; choose: (name: string) => void; edit: (p: SendPrinter | null) => void }) {
   const jobId = useStore((s) => s.job.id);
   const bambu = useStore(outputKind) === 'gcode.3mf';
-  const canAdd = useStore((s) => s.printerEdit) && bambu;
+  const canAdd = useStore((s) => (bambu ? s.printerEdit : s.printerHosts));
   const single = useStore((s) => s.filamentSlots.length === 1);
   const printers = useStore((s) => s.printers).filter((p) => (p.kind === 'bambu-lan') === bambu);
   const current = printers.find((p) => p.name === chosen) ?? printers[0];
