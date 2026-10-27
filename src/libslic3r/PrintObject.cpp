@@ -18,6 +18,7 @@
 #include "I18N.hpp"
 #include "Layer.hpp"
 #include "MeshBoolean.hpp"
+#include "Nonplanar/HeadEnvelope.hpp"
 #include "Nonplanar/NativePrint.hpp"
 #include "Nonplanar/AutoMode.hpp"
 #include "Nonplanar/OneShotField.hpp"
@@ -3957,7 +3958,8 @@ static void clamp_feature_filament_to_valid(ConfigOptionInt &opt, size_t num_ext
         opt.value = 1;
 }
 
-PrintObjectConfig PrintObject::object_config_from_model_object(const PrintObjectConfig &default_object_config, const ModelObject &object, size_t num_extruders, std::vector<int>& variant_index)
+PrintObjectConfig PrintObject::object_config_from_model_object(const PrintObjectConfig &default_object_config, const ModelObject &object, size_t num_extruders, std::vector<int>& variant_index,
+                                                                 const PrintConfig *printer)
 {
     PrintObjectConfig config = default_object_config;
     {
@@ -3967,6 +3969,10 @@ PrintObjectConfig PrintObject::object_config_from_model_object(const PrintObject
     }
     clamp_exturder_to_default(config.support_filament,           num_extruders);
     clamp_exturder_to_default(config.support_interface_filament, num_extruders);
+    if (config.support_style.value == smsNative && printer != nullptr && !Nonplanar::native_support_capable(*printer))
+        config.support_style.value = smsDefault;
+    if (config.support_style.value == smsNative && config.enable_support.value && config.nonplanar_mode.value == NonplanarMode::Auto)
+        config.nonplanar_mode.value = NonplanarMode::Off;
     return config;
 }
 
@@ -4152,7 +4158,7 @@ SlicingParameters PrintObject::slicing_parameters(const DynamicPrintConfig &full
 	object_config.apply(full_config, true);
 	default_region_config.apply(full_config, true);
 	size_t              filament_extruders = print_config.filament_diameter.size();
-	object_config = object_config_from_model_object(object_config, model_object, filament_extruders, variant_index);
+	object_config = object_config_from_model_object(object_config, model_object, filament_extruders, variant_index, &print_config);
 
 	std::vector<unsigned int> object_extruders;
 	for (const ModelVolume* model_volume : model_object.volumes)

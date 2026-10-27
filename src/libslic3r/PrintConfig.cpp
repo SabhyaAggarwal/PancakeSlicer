@@ -8003,7 +8003,7 @@ void PrintConfigDef::init_fff_params()
                      "For tree support, slim and organic style will merge branches more aggressively and save "
                      "a lot of material (default organic), while hybrid style will create similar structure to normal support "
                      "under large flat overhangs.\n"
-                     "Native: upright plate support for planar layers, planned from unsupported beads.");
+                     "Native: upright plate support for planar layers, planned from unsupported beads; non-planar Auto prints planar.");
     def->enum_keys_map = &ConfigOptionEnum<SupportMaterialStyle>::get_enum_values();
     def->enum_values.push_back("default");
     def->enum_values.push_back("grid");

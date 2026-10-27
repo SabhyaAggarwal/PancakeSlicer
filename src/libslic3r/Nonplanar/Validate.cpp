@@ -31,8 +31,20 @@
 
 namespace Slic3r::Nonplanar {
 
-static StringObjectException validate_native_support(const Print &print)
+static StringObjectException validate_native_support(const Print &print, std::vector<StringObjectException> *warnings)
 {
+    if (warnings != nullptr && !native_support_capable(print.config()) &&
+        std::any_of(print.objects().begin(), print.objects().end(), [&print](const PrintObject *object) {
+            const auto *style = object->model_object()->config.get().option<ConfigOptionEnum<SupportMaterialStyle>>("support_style");
+            return object->config().enable_support.value &&
+                   (style != nullptr ? style->value : print.default_object_config().support_style.value) == smsNative;
+        })) {
+        StringObjectException w{ Slic3r::format(_u8L("Native support isn't available on this printer; using %1%."),
+                                                _u8L(print_config_def.get("support_style")->enum_labels[size_t(smsDefault)].c_str())),
+                                 nullptr, "support_style" };
+        w.is_warning = true;
+        warnings->push_back(std::move(w));
+    }
     for (const PrintObject *object : print.objects()) {
         const PrintObjectConfig &config = object->config();
         if (config.support_style.value != smsNative || !config.enable_support.value)
@@ -48,7 +60,8 @@ static StringObjectException validate_native_support(const Print &print)
         if (config.nonplanar_steep_skin.value && print.config().nonplanar_kinematics.value != RotaryLayout::None)
             return refuse(_u8L("the steep-face skin"), L("Turn off the steep-face skin or choose another support style."), "nonplanar_steep_skin");
         if (!is_auto(config.support_type.value))
-            return refuse(_u8L("manual support (enforcers only)"), L("Choose normal(auto) or tree(auto), or another support style."), "support_type");
+            return refuse("'" + _u8L(print_config_def.get("support_type")->enum_labels[size_t(config.support_type.value)].c_str()) + "'",
+                          L("Choose 'Normal (auto)' or 'Tree (auto)', or another support style."), "support_type");
         if (config.support_on_build_plate_only.value)
             return refuse(_u8L("'On build plate only'"), other_style, "support_on_build_plate_only");
         if (config.support_critical_regions_only.value)
@@ -72,7 +85,7 @@ static StringObjectException validate_native_support(const Print &print)
 
 StringObjectException validate(const Print &print, std::vector<StringObjectException> *warnings)
 {
-    if (StringObjectException err = validate_native_support(print); !err.string.empty())
+    if (StringObjectException err = validate_native_support(print, warnings); !err.string.empty())
         return err;
     const PrintConfig &config = print.config();
 

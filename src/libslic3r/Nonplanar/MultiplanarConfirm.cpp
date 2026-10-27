@@ -688,7 +688,7 @@ bool rotary_auto_measurement()
 
 bool auto_rotary_requested(const PrintObject &object)
 {
-    if (rotary_measurement_depth > 0)
+    if (rotary_measurement_depth > 0 || (object.config().support_style.value == smsNative && object.config().enable_support.value))
         return false;
     const auto *mode = object.model_object()->config.get().option<ConfigOptionEnum<NonplanarMode>>("nonplanar_mode");
     return (mode ? mode->value : object.print()->default_object_config().nonplanar_mode.value) == NonplanarMode::Auto &&
