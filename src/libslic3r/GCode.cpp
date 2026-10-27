@@ -3590,6 +3590,8 @@ void GCode::_do_export(Print& print, GCodeOutputStream &file, ThumbnailsGenerato
         for (const PrintObject *object : print.objects())
             if (const Nonplanar::OneShotState *oneshot = object->oneshot_state(); oneshot != nullptr && oneshot->solved) {
                 file.write_format("; oneshot_student = %s, polish_k = %d\n", oneshot->student.c_str(), oneshot->polish_k);
+                if (const std::string offer = "lean offer " + Nonplanar::FieldSolverOffer; oneshot->solved->solver.rfind(offer, 0) == 0)
+                    file.write_format("; oneshot_field_solver = %s\n", oneshot->solved->solver.substr(offer.size()).c_str());
                 if (oneshot->max_time_ratio_override > 0.)
                     file.write_format("; max_time_ratio_override = %g\n", oneshot->max_time_ratio_override);
             }

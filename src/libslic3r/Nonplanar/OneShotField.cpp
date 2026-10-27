@@ -31,6 +31,8 @@
 #include <boost/filesystem/path.hpp>
 #include <boost/filesystem/operations.hpp>
 #include <boost/log/trivial.hpp>
+#include <boost/process/child.hpp>
+#include <boost/process/io.hpp>
 #include <math.h>
 #include <ios>
 #include <functional>
@@ -52,6 +54,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <random>
 #include <utility>
@@ -248,6 +251,48 @@ std::string file_sha256(const std::string &path)
     for (int i = 0; i < 8; ++i)
         std::snprintf(hex + 8 * i, 9, "%08x", h[i]);
     return std::string(hex, 64);
+}
+
+std::string external_field(const std::string &object_name, const std::string &command)
+{
+    static std::mutex                         mutex;
+    static std::map<std::string, std::string> done;
+    std::lock_guard<std::mutex>               lock(mutex);
+    const std::string                         key = object_name + '\n' + command;
+    if (auto it = done.find(key); it != done.end())
+        return it->second;
+    std::string &result = done[key];
+    try {
+        namespace fs = boost::filesystem;
+        const std::string stem = (fs::temp_directory_path() / fs::unique_path("oneshot-field-%%%%%%%%")).string();
+        std::string       cmd  = command;
+        auto              put  = [&cmd](const std::string &what, const std::string &with) {
+            for (size_t at = cmd.find(what); at != std::string::npos; at = cmd.find(what, at + with.size()))
+                cmd.replace(at, what.size(), with);
+        };
+        put("{name}", fs::path(object_name).stem().string());
+        put("{out}", stem + ".npz");
+        const char  *limit   = std::getenv("NP_ONESHOT_FIELD_SOLVER_TIMEOUT");
+        const double seconds = limit != nullptr && std::atof(limit) > 0. ? std::atof(limit) : 300.;
+        const auto   t0      = std::chrono::steady_clock::now();
+        boost::process::child solver(cmd, (boost::process::std_out & boost::process::std_err) > stem + ".log");
+        if (!solver.wait_for(std::chrono::milliseconds(int64_t(1000. * seconds)))) {
+            solver.terminate();
+            BOOST_LOG_TRIVIAL(warning) << "One-shot field " << object_name << ": NP_ONESHOT_FIELD_SOLVER killed after " << seconds << " s, no offer (log " << stem << ".log)";
+        } else if (solver.exit_code() != 0 || !fs::exists(stem + ".npf.npz")) {
+            BOOST_LOG_TRIVIAL(warning) << "One-shot field " << object_name << ": NP_ONESHOT_FIELD_SOLVER exit " << solver.exit_code() << ", no offer (log " << stem << ".log)";
+        } else {
+            result = stem + ".npf.npz";
+            boost::system::error_code ec;
+            fs::remove(stem + ".npz", ec);
+            fs::remove(stem + ".stl", ec);
+            BOOST_LOG_TRIVIAL(info) << "One-shot field " << object_name << ": NP_ONESHOT_FIELD_SOLVER wrote " << result << " in "
+                                    << std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() << " s";
+        }
+    } catch (const std::exception &ex) {
+        BOOST_LOG_TRIVIAL(warning) << "One-shot field " << object_name << ": NP_ONESHOT_FIELD_SOLVER not run, no offer: " << ex.what();
+    }
+    return result;
 }
 
 std::string student_model()
@@ -1320,7 +1365,7 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
             cf.solver += " (time-cut native " + c.name + ")";
             time_cut->push_back(std::move(cf));
         }
-    if (const char *local = std::getenv("NP_ONESHOT_LEAN_LOCAL"); time_cut && local != nullptr && *local != 0 && *local != '0' && model.empty() &&
+    if (const char *local = std::getenv("NP_ONESHOT_LEAN_LOCAL"); time_cut && local != nullptr && *local != 0 && std::string(local) != "0" && model.empty() &&
         params.only_offer.empty()) {
         const std::vector<std::vector<float>> leans = overhang_local_leans(g, m, f.phi, 6., { 1., 0.6 });
         for (size_t i = 0; i < leans.size(); ++i) {
@@ -1338,36 +1383,51 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
             time_cut->push_back(std::move(lf));
         }
     }
-    if (const char *lean = std::getenv("NP_ONESHOT_LEAN_OFFER"); time_cut && lean != nullptr && *lean != 0 && model.empty() && params.only_offer.empty()) {
+    auto offer_file = [&](const std::string &path, const std::string &label) {
         BoundingBoxf3 box;
         for (const stl_vertex &v : mesh.vertices)
             box.merge(v.cast<double>());
+        NpField            original = load_npfield_for(path, box, plate_offset(object));
+        const NpLayerField given_field(original);
+        NpField            lf = f;
+        for (size_t i = 0; i < g.dims[0]; ++i)
+            for (size_t j = 0; j < g.dims[1]; ++j)
+                for (size_t k = 0; k < g.dims[2]; ++k)
+                    lf.phi[g.index(i, j, k)] = float(given_field.phi(g.origin + g.spacing.cwiseProduct(Vec3d(double(i), double(j), double(k)))));
+        const ObjectiveTerms lt = evaluate_objective(g, m, W, lf.phi, true);
+        lf.layer_tops.clear();
+        lf.terms  = lt.named();
+        lf.terms.emplace_back("stat_lean_offer", 1.);
+        lf.solver = "lean offer " + label;
+        BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": " << lf.solver << " J " << lt.J << " S " << lt.S
+                                << " E_up " << lt.E_up << " E_wall " << lt.E_wall << " E_down " << lt.E_down << " T " << lt.T << " H "
+                                << lt.H_thickness << "/" << lt.H_slope << "/" << lt.H_head << "/" << lt.H_bed << "/" << lt.H_time;
+        original.terms  = std::move(lf.terms);
+        original.solver = std::move(lf.solver);
+        time_cut->push_back(std::move(original));
+    };
+    if (const char *lean = std::getenv("NP_ONESHOT_LEAN_OFFER"); time_cut && lean != nullptr && *lean != 0 && model.empty() && params.only_offer.empty()) {
         std::stringstream paths(lean);
         for (std::string path; std::getline(paths, path, ',');) {
             try {
-                NpField            original = load_npfield_for(path, box, plate_offset(object));
-                const NpLayerField given_field(original);
-                NpField            lf = f;
-                for (size_t i = 0; i < g.dims[0]; ++i)
-                    for (size_t j = 0; j < g.dims[1]; ++j)
-                        for (size_t k = 0; k < g.dims[2]; ++k)
-                            lf.phi[g.index(i, j, k)] = float(given_field.phi(g.origin + g.spacing.cwiseProduct(Vec3d(double(i), double(j), double(k)))));
-                const ObjectiveTerms lt = evaluate_objective(g, m, W, lf.phi, true);
-                lf.layer_tops.clear();
-                lf.terms  = lt.named();
-                lf.terms.emplace_back("stat_lean_offer", 1.);
-                lf.solver = "lean offer " + boost::filesystem::path(path).filename().string();
-                BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": " << lf.solver << " J " << lt.J << " S " << lt.S
-                                        << " E_up " << lt.E_up << " E_wall " << lt.E_wall << " E_down " << lt.E_down << " T " << lt.T << " H "
-                                        << lt.H_thickness << "/" << lt.H_slope << "/" << lt.H_head << "/" << lt.H_bed << "/" << lt.H_time;
-                original.terms  = std::move(lf.terms);
-                original.solver = std::move(lf.solver);
-                time_cut->push_back(std::move(original));
+                offer_file(path, boost::filesystem::path(path).filename().string());
             } catch (const std::exception &ex) {
                 BOOST_LOG_TRIVIAL(warning) << "One-shot field " << object.model_object()->name << ": NP_ONESHOT_LEAN_OFFER " << path << " unused: " << ex.what();
             }
         }
     }
+    if (const char *command = std::getenv("NP_ONESHOT_FIELD_SOLVER"); time_cut && command != nullptr && *command != 0 && model.empty() &&
+        params.only_offer.empty())
+        if (const std::string path = external_field(object.model_object()->name, command); !path.empty()) {
+            try {
+                const std::string solver = load_npfield(path).solver;
+                const size_t      open   = solver.rfind(" (");
+                const std::string backend = open != std::string::npos && solver.back() == ')' ? solver.substr(open + 2, solver.size() - open - 3) : "cpu";
+                offer_file(path, FieldSolverOffer + backend + ", sha256 " + file_sha256(path));
+            } catch (const std::exception &ex) {
+                BOOST_LOG_TRIVIAL(warning) << "One-shot field " << object.model_object()->name << ": NP_ONESHOT_FIELD_SOLVER field unused: " << ex.what();
+            }
+        }
     if (const char *dir = std::getenv("NP_ONESHOT_DUMP"); dir != nullptr && *dir != 0) {
         const OneShotState *st     = object.oneshot_state();
         const bool          anchor = st != nullptr && (st->measured_anchor || st->offer == OneShotState::Offer::Control);

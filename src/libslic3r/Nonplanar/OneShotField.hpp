@@ -127,6 +127,7 @@ void choose_route(PrintObject &object, OneShotState &state);
 
 bool admit_time_cut(const PrintObject &object, OneShotState &state, std::vector<NpField> &cuts);
 bool admit_lean_offer(const PrintObject &object, OneShotState &state, std::vector<NpField> &cuts);
+inline const std::string FieldSolverOffer = "field solver ";
 
 double max_time_ratio_override();
 

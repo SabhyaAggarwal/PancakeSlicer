@@ -273,7 +273,8 @@ double measured_slice(const PrintObject &object, NonplanarMode mode, std::vector
             const double d    = print.config().filament_diameter.get_at(0);
             double       fil  = 0.;
             for (const auto &mv : result.moves)
-                if (mv.type == EMoveType::Extrude && is_support(mv.extrusion_role) && mv.delta_extruder > 0.f)
+                if ((mv.type == EMoveType::Extrude || mv.type == EMoveType::Retract || mv.type == EMoveType::Unretract) &&
+                    is_support(mv.extrusion_role) && !mv.internal_only && !mv.timing_only)
                     fil += double(mv.delta_extruder);
             measured->support_mm3 = fil * M_PI * 0.25 * d * d;
         }
