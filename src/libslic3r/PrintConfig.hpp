@@ -1153,6 +1153,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloatsNullable,      support_speed))
     ((ConfigOptionEnum<SupportMaterialStyle>, support_style))
     ((ConfigOptionFloat,                native_support_base_pad))
+    ((ConfigOptionFloat,                native_support_base_pad_min_ratio))
 
     ((ConfigOptionBool,     set_other_flow_ratios))
     ((ConfigOptionFloat,    support_flow_ratio))

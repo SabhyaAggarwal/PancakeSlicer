@@ -8036,6 +8036,16 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionFloat(3.));
 
+    def = this->add("native_support_base_pad_min_ratio", coFloat);
+    def->label = L("Native base pad height/width ratio");
+    def->category = L("Support");
+    def->tooltip = L("Native support only: give the base pad only to a support plate standing taller than this many times its "
+                     "narrowest width. Short or broad plates stand on their own. 0 pads every plate.");
+    def->min = 0;
+    def->max = 1000;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(4.));
+
     def = this->add("independent_support_layer_height", coBool);
     def->label = L("Independent support layer height");
     def->category = L("Support");

@@ -24,6 +24,7 @@
 #include "libslic3r/Point.hpp"
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/Layer.hpp"
+#include "libslic3r/MinAreaBoundingBox.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/Print.hpp"
 #include "libslic3r/PrintConfig.hpp"
@@ -477,6 +478,39 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
                 }
         return union_(discs);
     };
+    constexpr int PadLayers = 3;
+    Polygons      pad_feet;
+    if (base_pad > 0.) {
+        std::vector<double> col_top;
+        for (const Column &c : columns)
+            if (c.base <= 0. && c.top >= first + PadLayers * h - 1e-6) {
+                pad_feet.push_back(c.foot.empty() ? square(c.x, c.y) : c.foot);
+                col_top.push_back(c.top);
+            }
+        if (const double min_ratio = object.config().native_support_base_pad_min_ratio.value; min_ratio > 0. && !pad_feet.empty()) {
+            constexpr double Join   = 0.05;
+            const ExPolygons plates = union_ex(offset(pad_feet, float(scale_(Join))));
+            Polygons         tall;
+            for (const ExPolygon &plate : plates) {
+                const BoundingBox   pbb = get_extents(plate);
+                double              top = 0.;
+                std::vector<size_t> own;
+                for (size_t i = 0; i < pad_feet.size(); ++i)
+                    if (const Point p = pad_feet[i].bounding_box().center(); pbb.contains(p) && plate.contains(p)) {
+                        own.push_back(i);
+                        top = std::max(top, col_top[i]);
+                    }
+                const MinAreaBoundigBox box(plate);
+                const double width = std::max(Cell, double(std::min(box.width(), box.height())) * SCALING_FACTOR - 2. * Join);
+                BOOST_LOG_TRIVIAL(debug) << "Native base pad plate at " << unscale(pbb.center()).transpose() << ": height " << top
+                                         << " mm, width " << width << " mm, ratio " << top / width;
+                if (top / width > min_ratio)
+                    for (size_t i : own)
+                        tall.push_back(pad_feet[i]);
+            }
+            pad_feet = std::move(tall);
+        }
+    }
     std::vector<std::vector<size_t>> by_layer;
     int layer = 0;
     for (const auto &spec : specs) {
@@ -556,24 +590,17 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
         hatch(sparse, base_pitch, 0, erSupportMaterial);
         hatch(dense, iface_pitch, 2, erSupportMaterialInterface);
         hatch(contact, iface_pitch, 1, erSupportMaterialInterface);
-        constexpr int PadLayers = 3;
-        if (const int i = int(std::lround((z - first) / h)); base_pad > 0. && !is_cap && i < PadLayers) {
-            Polygons feet;
-            for (const Column &c : columns)
-                if (c.base <= 0. && c.top >= first + PadLayers * h - 1e-6 && z <= c.top + 1e-6)
-                    feet.push_back(c.foot.empty() ? square(c.x, c.y) : c.foot);
-            if (!feet.empty()) {
-                Polygons near_part, own = sparse;
-                for (size_t k = 0; k < K; ++k)
-                    if (tops[k] > z - lh + 1e-6 && tops[k] < z + gap + h - 1e-6)
-                        append(near_part, to_polygons(domains[k]));
-                append(own, dense);
-                append(own, contact);
-                const Polygons pad = diff(diff(offset(union_(feet), float(scale_(base_pad * double(PadLayers - i) / PadLayers))),
-                                               offset(near_part, float(scale_(xy_user + 0.5 * ws)))),
-                                          own);
-                hatch(pad, sup_pitch, 1, erSupportMaterial);
-            }
+        if (const int i = int(std::lround((z - first) / h)); !pad_feet.empty() && !is_cap && i < PadLayers) {
+            Polygons near_part, own = sparse;
+            for (size_t k = 0; k < K; ++k)
+                if (tops[k] > z - lh + 1e-6 && tops[k] < z + gap + h - 1e-6)
+                    append(near_part, to_polygons(domains[k]));
+            append(own, dense);
+            append(own, contact);
+            const Polygons pad = diff(diff(offset(union_(pad_feet), float(scale_(base_pad * double(PadLayers - i) / PadLayers))),
+                                           offset(near_part, float(scale_(xy_user + 0.5 * ws)))),
+                                      own);
+            hatch(pad, sup_pitch, 1, erSupportMaterial);
         }
         if (!made.empty())
             by_layer.push_back(std::move(made));

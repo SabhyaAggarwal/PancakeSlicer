@@ -1871,6 +1871,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "support_base_pattern"
             || opt_key == "support_style"
             || opt_key == "native_support_base_pad"
+            || opt_key == "native_support_base_pad_min_ratio"
             || opt_key == "support_object_xy_distance"
             || opt_key == "support_object_first_layer_gap"
             || opt_key == "support_base_pattern_spacing"
