@@ -51,6 +51,7 @@ type ToolFeatures struct {
 	MeshRepair           bool            `json:"mesh_repair"`
 	MeshSimplify         bool            `json:"mesh_simplify"`
 	MeshSimplifyError    bool            `json:"mesh_simplify_error"`
+	NativeSupport        bool            `json:"native_support"`
 	MeshBoolean          bool            `json:"mesh_boolean"`
 	EmbossText           bool            `json:"emboss_text"`
 	EmbossSVG            bool            `json:"emboss_svg"`
@@ -153,6 +154,7 @@ func probeTool(c Config) (ToolFeatures, *cachedResponse) {
 		log.Print("using legacy tool contract: invalid options dump")
 		return ToolFeatures{}, fallback
 	}
+	nativeSupport := false
 	options := map[string]map[string]any{}
 	kinds := map[string]string{}
 	for _, raw := range dump.Options {
@@ -161,6 +163,13 @@ func probeTool(c Config) (ToolFeatures, *cachedResponse) {
 		if json.Unmarshal(raw, &option) != nil || json.Unmarshal(raw, &value) != nil || option.Key == "" || option.Type == "" {
 			log.Print("using legacy tool contract: invalid option entry")
 			return ToolFeatures{}, fallback
+		}
+		if option.Key == "support_style" {
+			if values, ok := value["enum_values"].([]any); ok {
+				for _, v := range values {
+					nativeSupport = nativeSupport || v == "native"
+				}
+			}
 		}
 		if hiddenSetting.MatchString(option.Key) {
 			continue
@@ -208,7 +217,7 @@ func probeTool(c Config) (ToolFeatures, *cachedResponse) {
 		oneshot = oneshot || mode == "oneshot"
 	}
 	log.Printf("using native v1 tool contract (%d options)", len(options))
-	return ToolFeatures{DumpOptions: true, DumpPresets: true, Progress: true, MovesOut: true, ObjectSettings: true, OneShot: oneshot}, response
+	return ToolFeatures{DumpOptions: true, DumpPresets: true, Progress: true, MovesOut: true, ObjectSettings: true, OneShot: oneshot, NativeSupport: nativeSupport}, response
 }
 
 func nativeStrings(value string) []string {
@@ -258,12 +267,13 @@ func (p *PresetIndex) dumpVendor(vendor string) (*VendorPresets, error) {
 		return nil, err
 	}
 	type entry struct {
-		Name       string                     `json:"name"`
-		Inherits   []string                   `json:"inherits"`
-		Values     map[string]json.RawMessage `json:"values"`
-		Printers   *[]string                  `json:"compatible_printers_evaluated"`
-		Prints     *[]string                  `json:"compatible_prints_evaluated"`
-		FilamentID string                     `json:"filament_id"`
+		Name                 string                     `json:"name"`
+		Inherits             []string                   `json:"inherits"`
+		Values               map[string]json.RawMessage `json:"values"`
+		Printers             *[]string                  `json:"compatible_printers_evaluated"`
+		Prints               *[]string                  `json:"compatible_prints_evaluated"`
+		FilamentID           string                     `json:"filament_id"`
+		NativeSupportCapable bool                       `json:"native_support_capable"`
 	}
 	var dump struct {
 		Schema   string      `json:"schema"`
@@ -290,7 +300,8 @@ func (p *PresetIndex) dumpVendor(vendor string) (*VendorPresets, error) {
 					config[key] = value
 				}
 			}
-			preset := Preset{Name: e.Name, Vendor: vendor, Inherits: e.Inherits, Config: config, CompatiblePrinters: stringList(config["compatible_printers"]), FilamentID: e.FilamentID}
+			preset := Preset{Name: e.Name, Vendor: vendor, Inherits: e.Inherits, Config: config, CompatiblePrinters: stringList(config["compatible_printers"]), FilamentID: e.FilamentID,
+				NativeSupportCapable: e.NativeSupportCapable}
 			if preset.FilamentID == "" {
 				preset.FilamentID = stringValue(e.Values["filament_id"])
 			}

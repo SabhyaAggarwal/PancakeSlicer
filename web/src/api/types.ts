@@ -6,6 +6,7 @@ export type Config = Record<string, ConfigValue>;
 
 export interface SystemPreset {
   name: string;
+  native_support_capable?: boolean;
   vendor: string;
   type: PresetType;
   compatible_printers?: string[];

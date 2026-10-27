@@ -81,6 +81,7 @@ export function optionState(desc: TabDesc, env: Environment): Record<string, { v
       (states[base] ??= { visible: true, enabled: true })[rule.effect] = value;
     }
   }
+  if (env.support_style === 'native') (states.support_on_build_plate_only ??= { visible: true, enabled: true }).enabled = false;
   return states;
 }
 
@@ -89,7 +90,8 @@ export function fieldDefinition(key: string, env: Environment): Partial<OptionDe
   if (!def) return {};
   let values: string[] | undefined;
   if (key === 'support_style') values = String(env.support_type).startsWith('tree')
-    ? ['default', 'tree_slim', 'tree_strong', 'tree_hybrid', 'organic'] : ['default', 'grid', 'snug'];
+    ? ['default', 'tree_slim', 'tree_strong', 'tree_hybrid', 'organic']
+    : ['default', 'grid', 'snug', ...(def.enum_values?.includes('native') && (env.native_support_capable || env.support_style === 'native') ? ['native'] : [])];
   if (key === 'brim_type') values = def.enum_values?.filter((v) => v !== 'leading_edge_only' || env.belt_printer || env.brim_type === v);
   if (key === 'wipe_tower_wall_type') values = def.enum_values?.filter((v) => v !== 'cone' || env.printer_vendor !== 'BBL');
   if (key === 'input_shaping_type') values = env.gcode_flavor === 'klipper'

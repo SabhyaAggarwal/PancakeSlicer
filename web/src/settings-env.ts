@@ -10,8 +10,11 @@ export function tabEnvironment(state: State, type: PresetType, slot: number, mod
     printer_vendor: resolvePreset(state, 'machine', state.printer).base?.vendor,
     extruders_count: Array.isArray(nozzles) ? nozzles.length : String(nozzles ?? '0.4').split(',').length,
     curr_bed_type: state.bedType, settings_scope: 'global',
+    native_support_capable: nativeSupportCapable(state),
   }, mode);
 }
+
+export const nativeSupportCapable = (state: State) => !!state.features.native_support && !!resolvePreset(state, 'machine', state.printer).base?.native_support_capable;
 
 export function lineMode(line: TabLine, k: string): OptionMode | undefined {
   const key = splitKey(k)[0];

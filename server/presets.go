@@ -11,21 +11,22 @@ import (
 )
 
 type Preset struct {
-	Name               string                     `json:"name"`
-	Vendor             string                     `json:"vendor"`
-	Inherits           []string                   `json:"inherits"`
-	CompatiblePrinters []string                   `json:"compatible_printers"`
-	Evaluated          bool                       `json:"compatible_evaluated,omitempty"`
-	CompatiblePrints   []string                   `json:"compatible_prints,omitempty"`
-	Config             map[string]json.RawMessage `json:"config"`
-	FilamentID         string                     `json:"filament_id,omitempty"`
-	Model              string                     `json:"model,omitempty"`
-	Variant            string                     `json:"variant,omitempty"`
-	BedModel           string                     `json:"bed_model,omitempty"`
-	BedTexture         string                     `json:"bed_texture,omitempty"`
-	DefaultBedType     string                     `json:"default_bed_type,omitempty"`
-	NotSupportBedType  []string                   `json:"not_support_bed_type,omitempty"`
-	DefaultMaterials   []string                   `json:"default_materials,omitempty"`
+	Name                 string                     `json:"name"`
+	Vendor               string                     `json:"vendor"`
+	Inherits             []string                   `json:"inherits"`
+	CompatiblePrinters   []string                   `json:"compatible_printers"`
+	Evaluated            bool                       `json:"compatible_evaluated,omitempty"`
+	CompatiblePrints     []string                   `json:"compatible_prints,omitempty"`
+	Config               map[string]json.RawMessage `json:"config"`
+	FilamentID           string                     `json:"filament_id,omitempty"`
+	Model                string                     `json:"model,omitempty"`
+	Variant              string                     `json:"variant,omitempty"`
+	BedModel             string                     `json:"bed_model,omitempty"`
+	BedTexture           string                     `json:"bed_texture,omitempty"`
+	DefaultBedType       string                     `json:"default_bed_type,omitempty"`
+	NotSupportBedType    []string                   `json:"not_support_bed_type,omitempty"`
+	DefaultMaterials     []string                   `json:"default_materials,omitempty"`
+	NativeSupportCapable bool                       `json:"native_support_capable,omitempty"`
 }
 type VendorPresets struct {
 	Vendor                         string   `json:"vendor"`

@@ -8,6 +8,7 @@ import { effectiveConfig, effectiveMode, getState, removeObjectOptions, removeVo
 import { volumeIcon } from '../plater/volumes';
 import { undoable } from '../state/history';
 import { environment, fieldDefinition, optionState } from '../visibility';
+import { nativeSupportCapable } from '../settings-env';
 import { Field } from './Field';
 import { Icon, IconButton } from './Icon';
 import PrintStyle from './PrintStyle';
@@ -90,7 +91,7 @@ export function ObjectSettings() {
   const state = getState();
   const machine = effectiveConfig(state, 'machine');
   const env = environment([machine, global, object.settings, ...(volume ? [volume.settings] : []), ...(range ? [range.settings] : [])], {
-    settings_scope: 'object', printer_vendor: state.machines.find((p) => p.name === state.printer)?.vendor,
+    settings_scope: 'object', printer_vendor: state.machines.find((p) => p.name === state.printer)?.vendor, native_support_capable: nativeSupportCapable(state),
   }, uiMode);
   const states = optionState(desc, env);
   const byCat = new Map<string, string[]>();
