@@ -423,7 +423,8 @@ static t_config_enum_values s_keys_map_SupportMaterialStyle {
     { "organic",        smsTreeOrganic },
     { "tree_slim",      smsTreeSlim },
     { "tree_strong",    smsTreeStrong },
-    { "tree_hybrid",    smsTreeHybrid }
+    { "tree_hybrid",    smsTreeHybrid },
+    { "native",         smsNative }
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(SupportMaterialStyle)
 
@@ -8001,7 +8002,8 @@ void PrintConfigDef::init_fff_params()
                      "object scarring.\n"
                      "For tree support, slim and organic style will merge branches more aggressively and save "
                      "a lot of material (default organic), while hybrid style will create similar structure to normal support "
-                     "under large flat overhangs.");
+                     "under large flat overhangs.\n"
+                     "Native: upright plate support for planar layers, planned from unsupported beads.");
     def->enum_keys_map = &ConfigOptionEnum<SupportMaterialStyle>::get_enum_values();
     def->enum_values.push_back("default");
     def->enum_values.push_back("grid");
@@ -8010,6 +8012,7 @@ void PrintConfigDef::init_fff_params()
     def->enum_values.push_back("tree_slim");
     def->enum_values.push_back("tree_strong");
     def->enum_values.push_back("tree_hybrid");
+    def->enum_values.push_back("native");
     def->enum_labels.push_back(L("Default (Grid/Organic)"));
     def->enum_labels.push_back(L("Grid"));
     def->enum_labels.push_back(L("Snug"));
@@ -8017,9 +8020,21 @@ void PrintConfigDef::init_fff_params()
     def->enum_labels.push_back(L("Tree Slim"));
     def->enum_labels.push_back(L("Tree Strong"));
     def->enum_labels.push_back(L("Tree Hybrid"));
+    def->enum_labels.push_back(L("Native"));
 
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionEnum<SupportMaterialStyle>(smsDefault));
+
+    def = this->add("native_support_base_pad", coFloat);
+    def->label = L("Native base pad");
+    def->category = L("Support");
+    def->tooltip = L("Native support only: widen the first layers of every support column standing on the build plate "
+                     "into a pad this far around it, so tall, slim columns do not tip over. 0 disables the pad.");
+    def->sidetext = L("mm");
+    def->min = 0;
+    def->max = 10;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(3.));
 
     def = this->add("independent_support_layer_height", coBool);
     def->label = L("Independent support layer height");

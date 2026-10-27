@@ -11,6 +11,11 @@
   },
   "margin": 0.3,
   "lateral_margin": 0.3,
+  "coverage": {
+    "reviewed": "2026-10-27 for the Native support style, planar prints with B = C = 0: the boxes below were checked against this cone (r = 0.5 + (z - 0.05) tan 30 deg to r 3.936 at Z 6) and the lowest body limits (neck r 4 from Z 6, heatblock 8 x 6 from Z 10, heatsink r 12 to Z 42), 0.3 mm margins.",
+    "nozzle_cone": {"tip_radius": 0.5, "half_angle_deg": 30, "top_z": 6, "radius_at_top": 3.936},
+    "duct_limits": {"z_min": 6, "half_width_x": 12, "half_width_y": 12, "top_z": 42}
+  },
   "boxes": [
     {"name": "nozzle_land_00", "min": [-0.174, -0.5, 0.0], "max": [0.174, -0.468, 0.05], "nozzle": true},
     {"name": "nozzle_land_01", "min": [-0.243, -0.469, 0.0], "max": [0.243, -0.437, 0.05], "nozzle": true},

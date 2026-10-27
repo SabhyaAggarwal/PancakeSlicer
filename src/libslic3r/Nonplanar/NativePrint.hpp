@@ -16,6 +16,8 @@ struct ConformalResult;
 
 bool native_requested();
 
+bool generate_planar_native_support(PrintObject &object);
+
 std::shared_ptr<const LayerField> native_field(PrintObject &object);
 
 void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerField> &field, ConformalResult &result);

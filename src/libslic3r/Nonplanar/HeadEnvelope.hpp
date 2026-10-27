@@ -101,4 +101,6 @@ private:
 
 HeadEnvelope resolve_head_envelope(const PrintConfig &config, std::string *warning = nullptr);
 
+bool native_support_capable(const PrintConfig &config);
+
 }

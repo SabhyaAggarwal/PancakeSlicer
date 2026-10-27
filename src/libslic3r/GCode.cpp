@@ -7059,6 +7059,9 @@ void GCode::append_full_config(const Print &print, std::string &str)
         if (key == "nonplanar_field_file")
             if (const auto *opt = cfg.option<ConfigOptionString>(key); opt != nullptr && opt->value.empty())
                 return true;
+        if (key == "native_support_base_pad")
+            if (const auto *opt = cfg.option<ConfigOptionEnum<SupportMaterialStyle>>("support_style"); opt == nullptr || opt->value != smsNative)
+                return true;
         return banned_keys.find(key) != banned_keys.end();
     };
     std::ostringstream ss;

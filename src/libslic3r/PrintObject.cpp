@@ -1869,6 +1869,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "support_bottom_interface_spacing"
             || opt_key == "support_base_pattern"
             || opt_key == "support_style"
+            || opt_key == "native_support_base_pad"
             || opt_key == "support_object_xy_distance"
             || opt_key == "support_object_first_layer_gap"
             || opt_key == "support_base_pattern_spacing"
@@ -4563,6 +4564,8 @@ void PrintObject::combine_infill()
 
 void PrintObject::_generate_support_material()
 {
+    if (Nonplanar::generate_planar_native_support(*this))
+        return;
     if (is_tree(m_config.support_type.value)) {
         TreeSupport tree_support(*this, m_slicing_params);
         tree_support.throw_on_cancel = [this]() { this->throw_if_canceled(); };

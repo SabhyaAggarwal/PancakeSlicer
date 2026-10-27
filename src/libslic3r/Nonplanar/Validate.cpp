@@ -31,8 +31,49 @@
 
 namespace Slic3r::Nonplanar {
 
+static StringObjectException validate_native_support(const Print &print)
+{
+    for (const PrintObject *object : print.objects()) {
+        const PrintObjectConfig &config = object->config();
+        if (config.support_style.value != smsNative || !config.enable_support.value)
+            continue;
+        const ModelObject &model = *object->model_object();
+        auto refuse = [&](const std::string &setting, const char *fix, const std::string &opt_key) {
+            return StringObjectException{ Slic3r::format(_u8L("Native support doesn't support %1% (object: %2%). %3%"), setting, model.name, _u8L(fix)),
+                                          object, opt_key };
+        };
+        static const char *other_style = L("Turn it off or choose another support style.");
+        if (config.nonplanar_mode.value != NonplanarMode::Off)
+            return refuse(_u8L("non-planar printing"), L("Set the non-planar mode to Off or choose another support style."), "nonplanar_mode");
+        if (config.nonplanar_steep_skin.value && print.config().nonplanar_kinematics.value != RotaryLayout::None)
+            return refuse(_u8L("the steep-face skin"), L("Turn off the steep-face skin or choose another support style."), "nonplanar_steep_skin");
+        if (!is_auto(config.support_type.value))
+            return refuse(_u8L("manual support (enforcers only)"), L("Choose normal(auto) or tree(auto), or another support style."), "support_type");
+        if (config.support_on_build_plate_only.value)
+            return refuse(_u8L("'On build plate only'"), other_style, "support_on_build_plate_only");
+        if (config.support_critical_regions_only.value)
+            return refuse(_u8L("'Support critical regions only'"), other_style, "support_critical_regions_only");
+        if (object->has_raft())
+            return refuse(_u8L("a raft"), L("Set the raft layers to 0 or choose another support style."), "raft_layers");
+        if (std::abs(config.support_bottom_z_distance.value - config.support_top_z_distance.value) > EPSILON)
+            return refuse(_u8L("a bottom Z distance different from the top Z distance"),
+                          L("Set both Z distances equal or choose another support style."), "support_bottom_z_distance");
+        if (std::any_of(model.volumes.begin(), model.volumes.end(), [](const ModelVolume *v) { return v->is_support_modifier(); }))
+            return refuse(_u8L("support enforcers or blockers"), L("Remove them or choose another support style."), "support_style");
+        if (std::any_of(model.volumes.begin(), model.volumes.end(), [](const ModelVolume *v) { return v->is_fdm_support_painted(); }))
+            return refuse(_u8L("painted support"), L("Erase the support painting or choose another support style."), "support_style");
+        if (!model.layer_height_profile.empty() ||
+            std::any_of(model.layer_config_ranges.begin(), model.layer_config_ranges.end(),
+                        [](const auto &range) { return range.second.has("layer_height"); }))
+            return refuse(_u8L("variable layer height"), L("Reset the layer height to uniform or choose another support style."), "layer_height");
+    }
+    return {};
+}
+
 StringObjectException validate(const Print &print, std::vector<StringObjectException> *warnings)
 {
+    if (StringObjectException err = validate_native_support(print); !err.string.empty())
+        return err;
     const PrintConfig &config = print.config();
 
     double min_nozzle = 0.;

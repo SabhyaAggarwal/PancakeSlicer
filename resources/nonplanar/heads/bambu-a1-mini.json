@@ -11,6 +11,11 @@
   },
   "margin": 0.3,
   "lateral_margin": 0.3,
+  "coverage": {
+    "reviewed": "2026-10-27 for the Native support style: the boxes below were checked against this cone and these duct limits (estimates from the sources in provenance, 0.3 mm margins).",
+    "nozzle_cone": {"tip_radius": 0.3, "half_angle_deg": 35, "top_z": 4.76, "radius_at_top": 2.0},
+    "duct_limits": {"z_min": 4.76, "half_width_x": 26, "half_width_y": 15, "top_z": 24}
+  },
   "boxes": [
     {"name": "nozzle_land_00", "min": [-0.105, -0.3, 0.0], "max": [0.105, -0.281, 0.05], "nozzle": true},
     {"name": "nozzle_land_01", "min": [-0.146, -0.282, 0.0], "max": [0.146, -0.262, 0.05], "nozzle": true},

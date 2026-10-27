@@ -404,7 +404,7 @@ HeadEnvelope load_head_envelope(const std::string &json_text)
     if (schema != SchemaV1)
         bad_field("schema", "is \"" + schema + "\", expected \"" + SchemaV1 + "\"");
     warn_unknown(j, { "schema", "id", "name", "provenance", "calibrated", "nozzle", "margin", "lateral_margin", "side_profile",
-                      "side_profile_top", "boxes", "sides", "table_obstacles" }, {});
+                      "side_profile_top", "boxes", "sides", "table_obstacles", "coverage" }, {});
 
     HeadEnvelope out;
     auto extensions = j;
@@ -707,6 +707,24 @@ HeadEnvelope resolve_head_envelope(const PrintConfig &config, std::string *warni
         *warning = id.empty() ? _u8L("No non-planar head is set for this printer; using the generic conservative head.")
                               : (boost::format(_u8L("Non-planar head \"%1%\" is missing from the head library or could not be loaded; using the generic conservative head.")) % id).str();
     return HeadLibrary::generic_conservative();
+}
+
+bool native_support_capable(const PrintConfig &config)
+{
+    std::string      warning;
+    const HeadEnvelope head = resolve_head_envelope(config, &warning);
+    if (!warning.empty() || head.extensions.empty())
+        return false;
+    try {
+        const auto coverage = nlohmann::json::parse(head.extensions).at("coverage");
+        const auto &cone = coverage.at("nozzle_cone"), &ducts = coverage.at("duct_limits");
+        const double half_angle = cone.at("half_angle_deg").get<double>();
+        return cone.at("tip_radius").get<double>() > 0. && half_angle > 0. && half_angle < 90. && cone.at("top_z").get<double>() > 0. &&
+               ducts.at("z_min").get<double>() > 0. && ducts.at("half_width_x").get<double>() > 0. &&
+               ducts.at("half_width_y").get<double>() > 0.;
+    } catch (const std::exception &) {
+        return false;
+    }
 }
 
 }

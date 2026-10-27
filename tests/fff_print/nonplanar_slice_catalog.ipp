@@ -1,5 +1,6 @@
 #pragma once
 #include "libslic3r/Config.hpp"
+#include "libslic3r/Nonplanar/HeadEnvelope.hpp"
 #include "libslic3r/Preset.hpp"
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/PrintConfig.hpp"
@@ -106,6 +107,11 @@ void dump_presets(const Args &args)
                 {"visible", preset.is_visible}, {"instantiation", true}, {"values", values},
                 {"compatible_printers", values.value("compatible_printers", "")},
                 {"compatible_printers_condition", values.value("compatible_printers_condition", "")}};
+            if (collection == &bundle.printers) {
+                PrintConfig printer;
+                printer.apply(preset.config, true);
+                entry["native_support_capable"] = Nonplanar::native_support_capable(printer);
+            }
             if (collection == &bundle.filaments) {
                 entry["filament_id"] = preset.filament_id;
                 entry["setting_id"] = preset.setting_id;

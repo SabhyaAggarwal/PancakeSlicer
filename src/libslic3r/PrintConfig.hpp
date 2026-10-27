@@ -315,6 +315,7 @@ enum SupportMaterialPattern {
 
 enum SupportMaterialStyle {
     smsDefault, smsGrid, smsSnug, smsTreeOrganic, smsTreeSlim, smsTreeStrong, smsTreeHybrid,
+    smsNative,
 };
 
 enum LongRectrationLevel
@@ -1151,6 +1152,7 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat,               support_expansion))
     ((ConfigOptionFloatsNullable,      support_speed))
     ((ConfigOptionEnum<SupportMaterialStyle>, support_style))
+    ((ConfigOptionFloat,                native_support_base_pad))
 
     ((ConfigOptionBool,     set_other_flow_ratios))
     ((ConfigOptionFloat,    support_flow_ratio))
