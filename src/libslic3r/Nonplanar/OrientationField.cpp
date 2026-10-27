@@ -452,6 +452,7 @@ NpField OrientationField::to_npfield() const
         for (int j = 0; j < m_ny; ++j)
             for (int k = 0; k < m_nz; ++k)
                 f.phi[f.index(size_t(i), size_t(j), size_t(k))] = float(m_phi[this->node(i, j, k)]);
+    make_z_monotone(f);
     const OrientationFieldStats &st = m_stats;
     f.terms = { { "stat_overhang_area_mm2", st.overhang_area },     { "stat_planar_overhang_area_mm2", st.planar_overhang_area },
                 { "stat_support_volume_mm3", st.support_volume },   { "stat_planar_support_volume_mm3", st.planar_support_volume },

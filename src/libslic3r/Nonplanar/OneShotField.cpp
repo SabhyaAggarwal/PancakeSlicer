@@ -1279,6 +1279,8 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
     for (const stl_vertex &v : mesh.vertices)
         box.merge(v.cast<double>());
     f.mesh_min = box.min;
+    if (const size_t raised = make_z_monotone(f); raised > 0)
+        BOOST_LOG_TRIVIAL(info) << "One-shot field " << object.model_object()->name << ": " << raised << " grid nodes raised to keep phi increasing in z";
     f.solver   = model.empty() ? std::string("one-shot teacher ") + ObjectiveVersion :
                                  "one-shot student " + boost::filesystem::path(model).filename().string() + " " + ObjectiveVersion;
     f.terms    = t.named();
@@ -1309,6 +1311,7 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
         for (TimeCutOffer &c : cuts) {
             NpField cf = f;
             cf.phi     = std::move(c.phi);
+            make_z_monotone(cf);
             cf.layer_tops = c.terms.exact_native >= 0 && size_t(c.terms.exact_native) < exact_tops.size() ? exact_tops[size_t(c.terms.exact_native)] :
                                                                                                            std::vector<double>();
             cf.terms   = c.terms.named();
@@ -1323,6 +1326,7 @@ NpField one_shot_field(const PrintObject &object, const indexed_triangle_set &me
         for (size_t i = 0; i < leans.size(); ++i) {
             NpField lf = f;
             lf.phi     = leans[i];
+            make_z_monotone(lf);
             const ObjectiveTerms lt = evaluate_objective(g, m, W, lf.phi, true);
             lf.layer_tops.clear();
             lf.terms  = lt.named();

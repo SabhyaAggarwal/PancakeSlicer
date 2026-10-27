@@ -42,6 +42,7 @@ NpField planar_npfield(const BoundingBoxf3 &box, double pitch, double h, double 
 void    check_npfield_frame(const NpField &field, const BoundingBoxf3 &mesh_box, const std::string &path);
 NpField load_npfield_for(const std::string &path, const BoundingBoxf3 &slicing_box, const Vec2d &plate_offset);
 void    to_plate_frame(NpField &field, const Vec2d &plate_offset);
+size_t  make_z_monotone(NpField &field);
 Vec2d   plate_offset(const PrintObject &object);
 
 class NpLayerField : public LayerField

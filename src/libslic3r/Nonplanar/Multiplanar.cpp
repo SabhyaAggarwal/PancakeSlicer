@@ -143,6 +143,8 @@ bool overhangs(const indexed_triangle_set &mesh, const Facets &f, size_t i, cons
 {
     if (f.area[i] <= 0. || f.normal[i].dot(frame.dir) >= -sin_threshold)
         return false;
+    if (!frame.bed)
+        return true;
     double top = -std::numeric_limits<double>::infinity();
     for (int k = 0; k < 3; ++k)
         top = std::max(top, frame.dir.dot(mesh.vertices[mesh.indices[i][k]].cast<double>()));
@@ -286,11 +288,32 @@ struct HeadHit
     std::string what;
     bool        bed = false;
 };
+std::vector<Vec3d> solid_samples(const Polygons &plates, double top, double bottom)
+{
+    std::vector<Vec3d> samples;
+    for (const Polygon &plate : plates) {
+        const BoundingBoxf outline(unscaled(get_extents(plate).min), unscaled(get_extents(plate).max));
+        for (double y = outline.min.y(); y <= outline.max.y(); y += ObstaclePitch)
+            for (double x = outline.min.x(); x <= outline.max.x(); x += ObstaclePitch)
+                if (plate.contains(Point::new_scale(x, y))) {
+                    samples.emplace_back(x, y, top);
+                    samples.emplace_back(x, y, bottom);
+                }
+        for (const Line &edge : plate.lines()) {
+            const Vec2d a = unscaled(edge.a), b = unscaled(edge.b);
+            const int   n = std::max(1, int(std::ceil((b - a).norm() / ObstaclePitch)));
+            for (int i = 0; i <= n; ++i)
+                for (double z = top; z >= bottom; z -= ObstaclePitch)
+                    samples.emplace_back(a.x() + (b.x() - a.x()) * i / n, a.y() + (b.y() - a.y()) * i / n, z);
+        }
+    }
+    return samples;
+}
+
 HeadHit head_blocked(const indexed_triangle_set &piece, const Matrix3d &frame, double h, const HeadEnvelope &envelope,
                      const MaterialColumns::PreparedHead &head, const std::vector<const indexed_triangle_set *> &earlier,
-                     const MultiplanarParams &params)
+                     const MultiplanarParams &params, const std::vector<Vec3d> &bed_samples)
 {
-    const Polygons &plates = params.plates;
     constexpr double Inf = std::numeric_limits<double>::infinity();
     std::vector<Vec3d> tips;
     sample_surface(piece, ObstaclePitch, [&](const Vec3d &p) { tips.push_back(frame * p); });
@@ -335,27 +358,11 @@ HeadHit head_blocked(const indexed_triangle_set &piece, const Matrix3d &frame, d
     for (const indexed_triangle_set *mesh : earlier)
         sample_surface(*mesh, ObstaclePitch, add);
     const size_t first_plate = obstacles.size();
-    auto add_solid = [&](const Polygons &outlines, double top, double bottom) {
-        for (const Polygon &plate : outlines) {
-            const BoundingBoxf outline(unscaled(get_extents(plate).min), unscaled(get_extents(plate).max));
-            for (double y = outline.min.y(); y <= outline.max.y(); y += ObstaclePitch)
-                for (double x = outline.min.x(); x <= outline.max.x(); x += ObstaclePitch)
-                    if (plate.contains(Point::new_scale(x, y))) {
-                        add(Vec3d(x, y, top));
-                        add(Vec3d(x, y, bottom));
-                    }
-            for (const Line &edge : plate.lines()) {
-                const Vec2d a = unscaled(edge.a), b = unscaled(edge.b);
-                const int   n = std::max(1, int(std::ceil((b - a).norm() / ObstaclePitch)));
-                for (int i = 0; i <= n; ++i)
-                    for (double z = top; z >= bottom; z -= ObstaclePitch)
-                        add(Vec3d(a.x() + (b.x() - a.x()) * i / n, a.y() + (b.y() - a.y()) * i / n, z));
-            }
-        }
-    };
-    add_solid(plates, params.plate_z, params.plate_z - PlateDepth);
+    for (const Vec3d &p : bed_samples)
+        add(p);
     const size_t first_plinth = obstacles.size();
-    add_solid(params.plinth, 0., params.plate_z);
+    for (const Vec3d &p : solid_samples(params.plinth, 0., params.plate_z))
+        add(p);
     if (obstacles.empty())
         return {};
     std::vector<double> heights;
@@ -371,14 +378,18 @@ HeadHit head_blocked(const indexed_triangle_set &piece, const Matrix3d &frame, d
             continue;
         const int x0 = int(std::floor(-hi.x() / ObstaclePitch)) - 1, x1 = int(std::ceil(-lo.x() / ObstaclePitch)) + 1;
         const int y0 = int(std::floor(-hi.y() / ObstaclePitch)) - 1, y1 = int(std::ceil(-lo.y() / ObstaclePitch)) + 1;
-        for (int iy = 0; iy < ny; ++iy)
+        tbb::parallel_for(0, ny, [&](int iy) {
             sliding_min(lowest, rows, size_t(iy) * nx, nx, 1, x0, x1);
-        for (int ix = 0; ix < nx; ++ix)
+        });
+        tbb::parallel_for(0, nx, [&](int ix) {
             sliding_min(rows, reach_min, size_t(ix), ny, nx, y0, y1);
-        for (int iy = 0; iy < ny; ++iy)
+        });
+        tbb::parallel_for(0, ny, [&](int iy) {
             sliding_min(neg_highest, rows, size_t(iy) * nx, nx, 1, x0, x1);
-        for (int ix = 0; ix < nx; ++ix)
+        });
+        tbb::parallel_for(0, nx, [&](int ix) {
             sliding_min(rows, reach_neg_max, size_t(ix), ny, nx, y0, y1);
+        });
         for (size_t k = 0; k < obstacles.size(); ++k) {
             const Vec3d &o = obstacles[k];
             int ix, iy;
@@ -470,14 +481,20 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
     std::atomic<size_t> evaluations { 0 }, validations { 0 };
     const auto          t_plan = std::chrono::steady_clock::now();
     auto work_done = [&]() { return double(validations.load()); };
-    auto evaluate = [&](const std::vector<HalfSpace> &clips, const Frame &frame) {
+    auto evaluate = [&](const std::vector<HalfSpace> &clips, const Frame &frame, const std::vector<Score> *cached = nullptr) {
         ++evaluations;
         return tbb::parallel_deterministic_reduce(
             tbb::blocked_range<size_t>(0, n_facets, 1024), Score{},
             [&](const tbb::blocked_range<size_t> &range, Score s) {
                 for (size_t i = range.begin(); i < range.end(); ++i)
                     if (inside(clips, f.centroid[i])) {
-                        if (overhangs(mesh, f, i, frame, sin_thresh, h))
+                        if (cached != nullptr) {
+                            const Score &facet = (*cached)[i];
+                            if (facet.overhang > 0.)
+                                s.overhang += facet.overhang;
+                            else
+                                s.steps += facet.steps;
+                        } else if (overhangs(mesh, f, i, frame, sin_thresh, h))
                             s.overhang += f.area[i];
                         else
                             s.steps += step_area(mesh, f, i, frame, h);
@@ -548,6 +565,8 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
     }
     const bool full = rotary && layout_is_table(params.kinematics->layout()) && tilt_max > 0.5 * M_PI + EPSILON;
     const MaterialColumns::PreparedHead prepared_head = full ? coarse_head(params.head) : MaterialColumns::PreparedHead{};
+    std::optional<std::vector<Vec3d>> bed_samples;
+    double bed_samples_z = std::numeric_limits<double>::quiet_NaN();
 
     std::vector<bool> skipped(n_facets, false);
     std::vector<bool> tried(n_facets, false);
@@ -649,6 +668,12 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
 
     auto find_cut = [&](const Work &w, std::string &rejected) -> std::optional<Cut> {
         const MultiplanarChunk &c = plan.chunks[size_t(w.chunk_idx)];
+        const double floor_z = params.first_layer_height + h;
+        std::vector<const stl_vertex *> below_floor;
+        if (full)
+            for (const stl_vertex &v : c.piece.vertices)
+                if (v.z() < floor_z)
+                    below_floor.push_back(&v);
         std::vector<Vec3d> dirs;
         for (double tilt = 0.; tilt <= tilt_max + EPSILON; tilt += TiltStep)
             for (int k = 0; k < (tilt == 0. ? 1 : n_azimuth); ++k)
@@ -686,9 +711,8 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
                     candidates.push_back({ dir, lo - 0.25 * k * h, {}, 0., dir, lo - 0.25 * k * h });
                 if (full && dir.z() < 0.) {
                     double foot = -std::numeric_limits<double>::infinity();
-                    for (const stl_vertex &v : c.piece.vertices)
-                        if (v.z() < params.first_layer_height + h)
-                            foot = std::max(foot, dir.dot(v.cast<double>()));
+                    for (const stl_vertex *v : below_floor)
+                        foot = std::max(foot, dir.dot(v->cast<double>()));
                     if (foot > lo)
                         for (int k = 0; k < 3; ++k)
                             candidates.push_back({ dir, foot + (k + 1) * h, {}, 0., dir, foot + (k + 1) * h });
@@ -707,24 +731,25 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
                     for (int v = 0; v < 3; ++v)
                         lo_u = std::min(lo_u, u.dot(mesh.vertices[mesh.indices[i][v]].cast<double>()));
                 double holder = -std::numeric_limits<double>::infinity();
-                for (const stl_vertex &v : c.piece.vertices)
-                    if (v.z() < params.first_layer_height + h)
-                        holder = std::max(holder, u.dot(v.cast<double>()));
+                for (const stl_vertex *v : below_floor)
+                    holder = std::max(holder, u.dot(v->cast<double>()));
                 std::vector<double> offsets { lo_u, lo_u + 1., lo_u + 2., lo_u + 4., lo_u + 8. };
                 if (holder > -std::numeric_limits<double>::infinity() && holder < lo_u)
                     for (double off : { 0.1, 0.5, 1., 2. })
                         offsets.push_back(holder + off);
-                for (double offset : offsets) {
-                    double base = std::numeric_limits<double>::infinity();
-                    for (const stl_vertex &v : c.piece.vertices)
-                        if (u.dot(v.cast<double>()) >= offset)
-                            base = std::min(base, dir.dot(v.cast<double>()));
-                    if (std::isfinite(base))
-                        candidates.push_back({ dir, base, {}, 0., u, offset, std::isfinite(holder) ? std::max(0., offset - holder) : 0. });
+                std::vector<double> bases(offsets.size(), std::numeric_limits<double>::infinity());
+                for (const stl_vertex &v : c.piece.vertices) {
+                    const double lateral = u.dot(v.cast<double>()), height = dir.dot(v.cast<double>());
+                    for (size_t k = 0; k < offsets.size(); ++k)
+                        if (lateral >= offsets[k])
+                            bases[k] = std::min(bases[k], height);
                 }
+                for (size_t k = 0; k < offsets.size(); ++k)
+                    if (std::isfinite(bases[k]))
+                        candidates.push_back({ dir, bases[k], {}, 0., u, offsets[k],
+                                               std::isfinite(holder) ? std::max(0., offsets[k] - holder) : 0. });
             }
         }
-        const double floor_z = params.first_layer_height + h;
         const stl_vertex *summit = nullptr;
         if (full && w.goal == Goal::Overhang)
             for (const stl_vertex &v : c.piece.vertices)
@@ -733,6 +758,10 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
         candidates.erase(std::remove_if(candidates.begin(), candidates.end(), [&](const Candidate &cand) {
             if (summit != nullptr && cand.cut.dot(summit->cast<double>()) >= cand.offset)
                 return true;
+            if (full)
+                return std::any_of(below_floor.begin(), below_floor.end(), [&](const stl_vertex *v) {
+                    return cand.cut.dot(v->cast<double>()) >= cand.offset;
+                });
             double lowest = std::numeric_limits<double>::infinity();
             for (const stl_vertex &v : c.piece.vertices)
                 if (cand.cut.dot(v.cast<double>()) >= cand.offset)
@@ -741,12 +770,23 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
         }), candidates.end());
 
         const double current = c.overhang_area + StepWeight * c.step_area;
+        std::vector<Score> parent_scores(candidates.empty() ? 0 : n_facets);
+        const Frame parent_frame = frame_of(c);
+        tbb::parallel_for(tbb::blocked_range<size_t>(0, parent_scores.size(), 1024), [&](const tbb::blocked_range<size_t> &range) {
+            for (size_t i = range.begin(); i < range.end(); ++i)
+                if (inside(c.clips, f.centroid[i])) {
+                    if (overhangs(mesh, f, i, parent_frame, sin_thresh, h))
+                        parent_scores[i].overhang = f.area[i];
+                    else
+                        parent_scores[i].steps = step_area(mesh, f, i, parent_frame, h);
+                }
+        });
         auto score = [&](Candidate &cand) {
             std::vector<HalfSpace> far = c.clips, near = c.clips;
             far.push_back({ -cand.cut, -cand.offset });
             near.push_back({ cand.cut, cand.offset });
             cand.far         = evaluate(far, { cand.dir, cand.base, false });
-            const Score rest = evaluate(near, frame_of(c));
+            const Score rest = evaluate(near, parent_frame, &parent_scores);
             cand.score       = cand.far.overhang + rest.overhang + StepWeight * (cand.far.steps + rest.steps) + 1e-3 * std::acos(cand.dir.z()) +
                          StubPenalty * cand.stub;
         };
@@ -820,7 +860,11 @@ MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const Multipl
                 std::vector<const indexed_triangle_set *> earlier { &near };
                 for (int pi = 0; pi < w.chunk_idx; ++pi)
                     earlier.push_back(&plan.chunks[size_t(pi)].piece);
-                if (const HeadHit hit = head_blocked(far, frame, h, params.head, prepared_head, earlier, params); ! hit.what.empty()) {
+                if (!bed_samples || bed_samples_z != params.plate_z) {
+                    bed_samples = solid_samples(params.plates, params.plate_z, params.plate_z - PlateDepth);
+                    bed_samples_z = params.plate_z;
+                }
+                if (const HeadHit hit = head_blocked(far, frame, h, params.head, prepared_head, earlier, params, *bed_samples); ! hit.what.empty()) {
                     blocked.push_back({ cand.dir, cand.cut, cand.offset });
                     if (cand.cut != cand.dir) {
                         const double tilt = std::acos(std::clamp(cand.dir.z(), -1., 1.)) - 2. * TiltStep;
@@ -983,7 +1027,7 @@ std::string chunk_head_hit(const indexed_triangle_set &mesh, const MultiplanarPl
         earlier.push_back(&p);
     const MultiplanarChunk &chunk = plan.chunks[ci];
     return head_blocked(clip_mesh(mesh, chunk.clips), chunk.frame, params.layer_height, params.head, coarse_head(params.head), earlier,
-                        params)
+                        params, solid_samples(params.plates, params.plate_z, params.plate_z - PlateDepth))
         .what;
 }
 

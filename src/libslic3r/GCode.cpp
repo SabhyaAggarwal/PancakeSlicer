@@ -8422,6 +8422,8 @@ std::string GCode::extrude_field_patch(const Nonplanar::ConformalPatch &patch)
             const auto *path = printable(entities[e]);
             if (path == nullptr)
                 continue;
+            if (path->native_road_id != UINT32_MAX)
+                gcode += ";_NATIVE_ROAD_ID=" + std::to_string(path->native_road_id) + "\n";
             m_conformal_points = conformal_points(*path, [this](const Point3 &p) {
                 const Vec2d xy = this->point_to_gcode(p.to_point());
                 return Vec3d(xy.x(), xy.y(), m_nominal_z + unscale<double>(p.z()));
@@ -8512,6 +8514,8 @@ std::string GCode::extrude_field_patch(const Nonplanar::ConformalPatch &patch)
                 gcode += this->wipe_conformal_path();
             gcode += m_writer.end_inverse_time();
             m_conformal_points.clear();
+            if (path->native_road_id != UINT32_MAX)
+                gcode += ";_NATIVE_ROAD_ID=4294967295\n";
         }
         if (k + 1 == patch.shell_paths.size()) {
             gcode += this->retract();

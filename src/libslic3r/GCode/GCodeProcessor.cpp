@@ -41,6 +41,7 @@
 #include <cstring>
 #include <cctype>
 #include <cstdlib>
+#include <cstdint>
 #include <climits>
 #include <fast_float/fast_float.h>
 
@@ -3280,6 +3281,7 @@ void GCodeProcessor::reset()
     m_joint_feed = 0.;
     m_rotary_acceleration = {};
     m_rotary_jerk = {};
+    m_native_road_id = UINT32_MAX;
     m_nonplanar_patch_shell = 0xFF;
     m_nonplanar_patch = -1;
     m_nonplanar_band = -1;
@@ -3890,6 +3892,14 @@ void GCodeProcessor::process_tags(const std::string_view comment, bool producers
     if (producers_enabled && process_producers_tags(comment))
         return;
 
+    constexpr std::string_view road_tag = "_NATIVE_ROAD_ID=";
+    if (boost::starts_with(comment, road_tag)) {
+        const auto value = comment.substr(road_tag.size());
+        uint32_t id = UINT32_MAX;
+        const auto parsed = std::from_chars(value.data(), value.data() + value.size(), id);
+        m_native_road_id = parsed.ec == std::errc() && parsed.ptr == value.data() + value.size() ? id : UINT32_MAX;
+        return;
+    }
     if (boost::starts_with(comment, reserved_tag(ETags::Role))) {
         set_extrusion_role(ExtrusionEntity::string_to_role(comment.substr(reserved_tag(ETags::Role).length())));
         if (m_extrusion_role == erExternalPerimeter)
@@ -6716,6 +6726,7 @@ void GCodeProcessor::store_move_vertex(EMoveType type, EMovePathType path_type, 
     state.nonplanar_patch_shell = m_nonplanar_patch_shell;
     state.nonplanar_band = m_nonplanar_band;
     state.nonplanar_patch = m_nonplanar_patch;
+    state.native_road_id = m_native_road_id;
 
     m_result.moves.push_back({
         m_last_line_id,

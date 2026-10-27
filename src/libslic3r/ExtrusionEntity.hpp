@@ -351,6 +351,7 @@ public:
     std::vector<float> bead_height;
     std::vector<Vec3f> tool_axis;
     std::vector<float> bead_width;
+    uint32_t           native_road_id = UINT32_MAX;
     int                patch_id = -1;
     int                shell    = -1;
     bool               preserve_points = false;

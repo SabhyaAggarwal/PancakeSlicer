@@ -1464,7 +1464,11 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
                         << (s == uint32_t(-1) ? -1 : long(result.moves[s].gcode_id)) << ' '
                         << (hit.cls == ClearanceHitClass::Land ? "land" : hit.cls == ClearanceHitClass::Cone ? "cone" : "body") << ' '
                         << hit.penetration << ' ' << hit.component << ' ' << hit.tip.x() << ' ' << hit.tip.y() << ' ' << hit.tip.z() << ' '
-                        << (hit_bead.empty() ? "-" : hit_bead) << '\n';
+                        << (hit_bead.empty() ? "-" : hit_bead);
+                    const char *road_ids = std::getenv("NP_NATIVE_ROAD_IDS");
+                    if (road_ids != nullptr && *road_ids != '\0' && std::string(road_ids) != "0")
+                        out << ' ' << result.state(move).native_road_id;
+                    out << '\n';
                 }
                 hits->hits.emplace_back(std::move(hit));
                 ++hits->land_strict;

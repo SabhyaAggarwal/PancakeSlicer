@@ -34,6 +34,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <iomanip>
@@ -332,7 +333,7 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
                         break;
                     }
                 }
-            if (top - base >= 2. * h)
+            if (top - base >= (base <= 0. ? first : 2. * h) - 1e-6)
                 columns.push_back({ x, y, base, top });
             else if (dump)
                 std::fprintf(dump, "D %.3f %.3f %.3f %.3f\n", c.x(), c.y(), base, top);
@@ -820,6 +821,18 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
     op.layer_height.resize(n - 1);
     for (size_t k = 1; k < n; ++k)
         op.layer_height[k - 1] = tops[k] - tops[k - 1];
+    const char *road_ids_env = std::getenv("NP_NATIVE_ROAD_IDS");
+    const bool road_ids = road_ids_env != nullptr && *road_ids_env != '\0' && std::string(road_ids_env) != "0";
+    if (road_ids) {
+        static std::atomic<uint64_t> next_road_id{0};
+        for (FieldRoad &road : roads) {
+            const uint64_t id = next_road_id.fetch_add(1, std::memory_order_relaxed);
+            if (id >= UINT32_MAX)
+                throw std::runtime_error("Native road identity exceeds uint32 range");
+            if (road.path)
+                road.path->native_road_id = uint32_t(id);
+        }
+    }
     const char *dump_prefix = std::getenv("NP_NATIVE_DUMP_ROADS");
     auto dump = [&](const char *stage, const auto &visit) {
         if (dump_prefix == nullptr || *dump_prefix == '\0')
@@ -832,7 +845,8 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
         out << std::setprecision(17)
             << "# native-road-v1 slicing frame, mm; ordered axes precede G-code settle/RTCP\n"
             << "group\troad\tpoint\tlayer\tphi_top\trole\tbase_width\tx\ty\tz"
-               "\tax\tay\taz\tused_ax\tused_ay\tused_az\twidth\theight\tgx\tgy\tgz\n";
+               "\tax\tay\taz\tused_ax\tused_ay\tused_az\twidth\theight\tgx\tgy\tgz"
+            << (road_ids ? "\tnative_road_id" : "") << '\n';
         auto write = [&](const ExtrusionPathConformal &path, size_t group, size_t road, size_t layer) {
             const bool upright = std::all_of(path.tool_axis.begin(), path.tool_axis.end(), [](const Vec3f &a) {
                 return a.cast<double>().normalized().z() >= std::cos(Geometry::deg2rad(UprightRoadDeg));
@@ -851,7 +865,10 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
                     << '\t' << p.x() << '\t' << p.y() << '\t' << p.z()
                     << '\t' << axis.x() << '\t' << axis.y() << '\t' << axis.z()
                     << '\t' << used.x() << '\t' << used.y() << '\t' << used.z()
-                    << '\t' << width << '\t' << height << '\t' << g.x() << '\t' << g.y() << '\t' << g.z() << '\n';
+                    << '\t' << width << '\t' << height << '\t' << g.x() << '\t' << g.y() << '\t' << g.z();
+                if (road_ids)
+                    out << '\t' << path.native_road_id;
+                out << '\n';
             }
         };
         visit(write);

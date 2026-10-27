@@ -23,6 +23,7 @@
 #include "libslic3r/Exception.hpp"
 #include "libslic3r/ExtrusionEntity.hpp"
 #include "libslic3r/Emboss.hpp"
+#include "libslic3r/NSVGUtils.hpp"
 #include "libslic3r/CutSurface.hpp"
 #include "libslic3r/EmbossShape.hpp"
 #include "libslic3r/TextConfiguration.hpp"
@@ -113,10 +114,10 @@
 #include <utility>
 #include <vector>
 
+#include <stdio.h>
 #ifdef _WIN32
 #include <io.h>
 #else
-#include <stdio.h>
 #include <unistd.h>
 #endif
 
@@ -169,7 +170,7 @@ struct Args
     std::vector<std::string> mesh_operands;
     std::string text_font, text_font_name, text_align = "center";
     std::optional<int> text_char_gap;
-    bool text_fonts = false, text_set = false, text_use_surface = false;
+    bool text_fonts = false, text_set = false, text_use_surface = false, text_surface_outside = false;
     std::string text_surface;
     std::optional<Vec3d> text_at, text_normal, text_up;
     std::optional<double> text_angle;
@@ -178,6 +179,7 @@ struct Args
     bool mesh_a_set = false;
     std::optional<int> draco_bits;
     std::optional<double> simplify_ratio;
+    std::optional<float> simplify_max_error;
     std::optional<uint32_t> simplify_triangles;
     std::string wipe_tower_only;
     double      arrange_spacing  = -1.;
@@ -235,7 +237,7 @@ Model read_input(const std::string &file)
                  "       (plate JSON volumes take \"type\": \"seam\" and \"seam_mode\": center|left|right|enforced|blocked|neutral)\n"
                  "       (plate JSON objects take \"ranges\")\n"
                  "       (plate JSON objects take \"brim_ears\": [{\"x\": X, \"y\": Y, \"radius\": R}])\n"
-                 "       (plate JSON plates take \"settings\"; --save-3mf preserves per-plate settings)\n"
+                 "       (plate JSON plates take \"settings\" and \"locked\"; --save-3mf preserves per-plate settings and locks)\n"
                  "       [--surface-grid [--surface-grid-max-cells N]]   (with --json: per-cell top surface error)\n"
                  "       [--force-planar]   (nonplanar_mode off on the plate, objects, volumes and height ranges)\n"
                  "       [--allow-mixed-temperatures]\n"
@@ -249,15 +251,17 @@ Model read_input(const std::string &file)
                  "       [--wipe-tower-only OUT.json]   (with --plate: per-plate prime tower estimate, no slice)\n"
                  "       [--patch-preview FILE.json [--patch-preview-budget S] [--patch-preview-max-triangles N]]\n"
                  "       [--step-linear-deflection MM] [--step-angle-deflection A] [--step-split-compound]\n"
-                 "       text surface: --use-surface --surface TARGET --at X,Y,Z --normal NX,NY,NZ [--up UX,UY,UZ] [--angle DEG]\n"
+                 "       text surface: --use-surface --surface TARGET --at X,Y,Z --normal NX,NY,NZ [--up UX,UY,UZ] [--angle DEG] [--surface-outside]\n"
                  "       nonplanar_slice_tool --export-3mf-generic IN.3mf OUT.3mf   (geometry only)\n"
                  "       nonplanar_slice_tool --export-drc IN OUT.drc [--bits N]   (geometry only)\n"
+                 "       nonplanar_slice_tool --emboss-svg IN.svg OUT.stl|OUT.3mf --depth MM [--size MM]\n"
+                 "       SVG --size scales the larger side; optional --use-surface --surface TARGET --at X,Y,Z --normal X,Y,Z [--up X,Y,Z] [--angle DEG] [--surface-outside]\n"
                  "       nonplanar_slice_tool --emboss-fonts   (bundled font catalog as JSON)\n"
                  "       nonplanar_slice_tool --emboss-text OUT.stl|OUT.3mf --text TEXT [--font FILE | --font-name NAME] --size MM --depth MM\n"
                  "                           [--bold] [--italic] [--line-spacing FACTOR] [--char-gap N] [--align left|center|right]   (desktop emboss, no slice)\n"
                  "       nonplanar_slice_tool --mesh-boolean union|difference|intersection --a A --b B [--b C] OUT.stl|OUT.3mf\n"
                  "       nonplanar_slice_tool --repair-mesh IN OUT.stl|OUT.3mf   (desktop mesh repair, no slice)\n"
-                 "       nonplanar_slice_tool --simplify-mesh IN OUT.stl|OUT.3mf --ratio R | --triangles N   (QEM, no slice)\n"
+                 "       nonplanar_slice_tool --simplify-mesh IN OUT.stl|OUT.3mf [--ratio R | --triangles N] [--max-error E]   (QEM, no slice)\n"
                  "       nonplanar_slice_tool --dump-options FILE | --dump-presets VENDOR FILE [--profiles DIR]\n"
                  "       (--dump-presets filament entries carry filament_id and setting_id)\n"
                  "       nonplanar_slice_tool --load-gcode FILE.gcode   (times the preview's G-code load)\n";
@@ -314,11 +318,17 @@ Args parse_args(int argc, char **argv)
             try { bits = std::stoi(value, &used); } catch (const std::exception &) { usage("--bits expects 0 or an integer from 8 to 30"); }
             if (used != value.size() || (bits != 0 && (bits < DRC_BITS_MIN || bits > DRC_BITS_MAX))) usage("--bits expects 0 or an integer from 8 to 30");
             a.draco_bits = bits;
+        } else if (arg == "--emboss-svg") {
+            if (!a.mesh_operation.empty()) usage("choose one mesh operation");
+            a.mesh_operation = "svg";
+            a.mesh_input = next();
+            a.mesh_output = next();
         } else if (arg == "--emboss-text") {
             if (!a.mesh_operation.empty()) usage("choose one mesh operation");
             a.mesh_operation = "text";
             a.mesh_output = next();
         } else if (arg == "--use-surface") a.text_use_surface = true;
+        else if (arg == "--surface-outside") a.text_surface_outside = true;
         else if (arg == "--surface") a.text_surface = next();
         else if (arg == "--at" || arg == "--normal" || arg == "--up") {
             const std::string value = next();
@@ -390,6 +400,14 @@ Args parse_args(int argc, char **argv)
             a.mesh_operation = arg == "--repair-mesh" ? "repair" : "simplify";
             a.mesh_input = next();
             a.mesh_output = next();
+        } else if (arg == "--max-error") {
+            const std::string value = next();
+            size_t used = 0;
+            double error = 0.;
+            try { error = std::stod(value, &used); } catch (const std::exception &) { usage("--max-error expects a finite nonnegative QEM bound"); }
+            if (used != value.size() || !std::isfinite(error) || error < 0. || error > std::numeric_limits<float>::max())
+                usage("--max-error expects a finite nonnegative QEM bound");
+            a.simplify_max_error = float(error);
         } else if (arg == "--ratio") {
             const std::string value = next();
             size_t used = 0;
@@ -579,18 +597,20 @@ Args parse_args(int argc, char **argv)
     if ((a.mesh_a_set || !a.mesh_operands.empty()) && a.mesh_operation != "union" && a.mesh_operation != "difference" && a.mesh_operation != "intersection")
         usage("--a and --b require --mesh-boolean");
     if (a.text_use_surface) {
-        if (a.mesh_operation != "text" || a.text_surface.empty() || !a.text_at || !a.text_normal)
-            usage("--use-surface needs --emboss-text, --surface TARGET, --at X,Y,Z and --normal X,Y,Z");
-    } else if (!a.text_surface.empty() || a.text_at || a.text_normal || a.text_up || a.text_angle)
+        if ((a.mesh_operation != "text" && a.mesh_operation != "svg") || a.text_surface.empty() || !a.text_at || !a.text_normal)
+            usage("--use-surface needs --emboss-text or --emboss-svg, --surface TARGET, --at X,Y,Z and --normal X,Y,Z");
+    } else if (!a.text_surface.empty() || a.text_at || a.text_normal || a.text_up || a.text_angle || a.text_surface_outside)
         usage("surface placement options need --use-surface");
     if (a.text_fonts) {
         if (!a.mesh_operation.empty() || !a.model.empty() || !a.plate.empty() || !a.project.empty() || !a.explode_3mf.empty()) usage("--emboss-fonts is a standalone operation");
         return a;
     }
+    if (a.mesh_operation == "svg" && !a.text_depth) usage("--emboss-svg needs --depth");
     if (a.mesh_operation == "text" && (!a.text_size || !a.text_depth)) usage("--emboss-text needs --size and --depth");
     if (!a.text_font.empty() && !a.text_font_name.empty()) usage("choose --font or --font-name");
-    if (a.mesh_operation != "text" && (a.text_set || !a.text_font.empty() || !a.text_font_name.empty() || a.text_char_gap || a.text_align != "center" || a.text_size || a.text_depth || a.text_line_spacing || a.text_bold || a.text_italic))
+    if (a.mesh_operation != "text" && (a.text_set || !a.text_font.empty() || !a.text_font_name.empty() || a.text_char_gap || a.text_align != "center" || a.text_line_spacing || a.text_bold || a.text_italic))
         usage("--font, --size, --depth, --bold, --italic and --line-spacing need --emboss-text");
+    if (a.mesh_operation != "text" && a.mesh_operation != "svg" && (a.text_size || a.text_depth)) usage("--size and --depth need --emboss-text or --emboss-svg");
     if (a.draco_bits && a.mesh_operation != "draco") usage("--bits needs --export-drc");
     if (!a.mesh_operation.empty()) {
         if (a.mesh_operation == "union" || a.mesh_operation == "difference" || a.mesh_operation == "intersection") {
@@ -602,13 +622,13 @@ Args parse_args(int argc, char **argv)
             usage("choose one mesh operation or catalog/project operation");
         if (a.mesh_input.empty() || a.mesh_output.empty() || !a.model.empty() || !a.plate.empty() || !a.project.empty())
             usage("mesh operations need IN and OUT instead of a model, plate or project");
-        if (a.mesh_operation == "simplify" && a.simplify_ratio.has_value() == a.simplify_triangles.has_value())
-            usage("--simplify-mesh needs exactly one of --ratio or --triangles");
-        if (a.mesh_operation != "simplify" && (a.simplify_ratio || a.simplify_triangles))
-            usage("--ratio and --triangles need --simplify-mesh");
+        if (a.mesh_operation == "simplify" && ((a.simplify_ratio && a.simplify_triangles) || (!a.simplify_ratio && !a.simplify_triangles && !a.simplify_max_error)))
+            usage("--simplify-mesh needs --ratio, --triangles or --max-error; choose at most one triangle target");
+        if (a.mesh_operation != "simplify" && (a.simplify_ratio || a.simplify_triangles || a.simplify_max_error))
+            usage("--ratio, --triangles and --max-error need --simplify-mesh");
         return a;
     }
-    if (a.simplify_ratio || a.simplify_triangles) usage("--ratio and --triangles need --simplify-mesh");
+    if (a.simplify_ratio || a.simplify_triangles || a.simplify_max_error) usage("--ratio, --triangles and --max-error need --simplify-mesh");
     if (!a.dump_options.empty() || !a.dump_presets.empty() || !a.verify_gcode.empty() || !a.explode_3mf.empty()) return a;
     if (a.orient_scores) {
         if (a.model.empty()) usage("--orient-scores needs a model");
@@ -1393,6 +1413,7 @@ struct PlateLayout
 {
     int                                                     count = 0;
     std::map<int, std::pair<std::string, DynamicPrintConfig>> plates;
+    std::map<int, bool>                                     plate_locked;
     std::map<ObjectID, int>                                 instance_plate;
     std::optional<DynamicPrintConfig>                       settings;
     bool                                                   project_settings = false;
@@ -1563,12 +1584,16 @@ void mesh_only(const Args &args)
         result["boundary_edges_closed"] = open_before >= open_after ? open_before - open_after : 0;
     } else if (args.mesh_operation == "simplify") {
         const uint32_t target = args.simplify_triangles ? uint32_t(std::min<size_t>(*args.simplify_triangles, before)) :
-            uint32_t(std::max(1., std::floor(double(before) * *args.simplify_ratio)));
+            args.simplify_ratio ? uint32_t(std::max(1., std::floor(double(before) * *args.simplify_ratio))) : 0;
         indexed_triangle_set its = std::move(mesh.its);
-        float max_error = std::numeric_limits<float>::max();
+        float max_error = args.simplify_max_error.value_or(std::numeric_limits<float>::max());
         its_quadric_edge_collapse(its, target, &max_error);
         mesh = TriangleMesh(std::move(its));
         result["triangles_requested"] = target;
+        if (args.simplify_max_error) {
+            result["max_error"] = *args.simplify_max_error;
+            result["last_collapse_error"] = max_error;
+        }
     } else {
         auto solid_error = [](const TriangleMesh &candidate) -> std::string {
             if (its_num_open_edges(candidate.its) != 0) return "mesh has open or nonmanifold edges";
@@ -1709,7 +1734,15 @@ TriangleMesh text_on_surface(const Args &args, const ExPolygons &polygons, doubl
     Emboss::OrthoProject projection(projection_frame, Vec3d(0., 0., span));
     SurfaceCut cut = cut_surface(polygons, {target.its}, projection, float(-min_z / span));
     if (cut.empty()) throw std::runtime_error("text projection found no target surface");
-    Emboss::OrthoProject3d depth(Vec3d(0., 0., -*args.text_depth));
+    constexpr float safe_surface_offset = 0.015f;
+    double back_from_front = -*args.text_depth;
+    if (args.text_surface_outside) {
+        Transform3d front = Transform3d::Identity();
+        front.translate(Vec3d(0., 0., *args.text_depth));
+        its_transform(cut, front);
+        back_from_front -= safe_surface_offset;
+    }
+    Emboss::OrthoProject3d depth(Vec3d(0., 0., back_from_front));
     TriangleMesh mesh(cut2model(cut, depth));
     if (mesh.empty()) throw std::runtime_error("surface text produced an empty mesh");
     mesh.transform(frame);
@@ -1790,6 +1823,73 @@ void text_mesh(const Args &args)
         {"align", args.text_align}, {"char_gap", args.text_char_gap.value_or(0)},
         {"output", args.mesh_output}, {"size_mm", size}, {"depth_mm", depth}, {"bold", args.text_bold},
         {"italic", args.text_italic}, {"line_spacing", spacing}, {"triangles_after", mesh.its.indices.size()},
+        {"bbox", {{box.min.x(), box.min.y(), box.min.z()}, {box.max.x(), box.max.y(), box.max.z()}}}};
+    diagnostics.reset();
+    std::cout << result.dump() << "\n";
+}
+
+void svg_mesh(const Args &args)
+{
+    auto diagnostics = std::make_unique<MeshDiagnosticOutput>();
+    const std::string extension = fs::path(args.mesh_output).extension().string();
+    if (!boost::algorithm::iequals(extension, ".stl") && !boost::algorithm::iequals(extension, ".3mf"))
+        throw std::runtime_error("mesh output must be .stl or .3mf");
+    EmbossShape shape;
+    shape.svg_file.emplace();
+    shape.svg_file->path = args.mesh_input;
+    if (!init_image(*shape.svg_file)) throw std::runtime_error("cannot load emboss SVG " + args.mesh_input);
+    boost::property_tree::ptree document;
+    std::istringstream xml(*shape.svg_file->file_data);
+    boost::property_tree::read_xml(xml, document, boost::property_tree::xml_parser::no_comments);
+    auto local_name = [](const std::string &name) {
+        const size_t colon = name.find_last_of(':');
+        return name.substr(colon == std::string::npos ? 0 : colon + 1);
+    };
+    if (document.size() != 1 || local_name(document.begin()->first) != "svg")
+        throw std::runtime_error("input is not an SVG document");
+    std::set<std::string> warnings;
+    std::vector<const boost::property_tree::ptree *> nodes{&document};
+    while (!nodes.empty()) {
+        const auto *node = nodes.back();
+        nodes.pop_back();
+        for (const auto &entry : *node) {
+            if (entry.first == "<xmlattr>") continue;
+            const std::string name = local_name(entry.first);
+            if (name == "image") warnings.insert("SVG raster images are ignored");
+            else if (name == "linearGradient" || name == "radialGradient")
+                warnings.insert("SVG gradient colors are ignored; outlines are retained");
+            else if (name == "text") warnings.insert("SVG text is ignored; convert it to paths");
+            nodes.push_back(&entry.second);
+        }
+    }
+    NSVGLineParams params{0.01 / SCALING_FACTOR / SCALING_FACTOR};
+    shape.shapes_with_ids = create_shape_with_ids(*shape.svg_file->image, params);
+    ExPolygons polygons = union_with_delta(shape, Emboss::UNION_DELTA, Emboss::UNION_MAX_ITERATIN);
+    if (polygons.empty()) throw std::runtime_error("SVG has no drawable outlines");
+    const BoundingBox outline = get_extents(polygons);
+    double scale = shape.scale;
+    if (args.text_size) {
+        const coord_t side = std::max(outline.size().x(), outline.size().y());
+        if (side <= 0) throw std::runtime_error("SVG has no drawable extent");
+        scale = *args.text_size / double(side);
+    }
+    const double depth = *args.text_depth;
+    Emboss::ProjectScale projection(std::make_unique<Emboss::ProjectZ>(depth / scale), scale);
+    TriangleMesh mesh(Emboss::polygons2model(polygons, projection));
+    if (mesh.empty()) throw std::runtime_error("SVG produced an empty mesh");
+    const BoundingBoxf3 flat_box = mesh.bounding_box();
+    mesh.translate(-flat_box.center().x(), -flat_box.center().y(), 0.);
+    const BoundingBoxf3 shape_box = mesh.bounding_box();
+    if (args.text_use_surface) mesh = text_on_surface(args, polygons, scale);
+    const bool closed = its_num_open_edges(mesh.its) == 0;
+    if (!closed) warnings.insert("SVG produced a mesh with open edges");
+    if (boost::algorithm::iequals(extension, ".3mf")) write_plate_mesh(args.mesh_output, mesh);
+    else if (!store_stl(args.mesh_output.c_str(), &mesh, true)) throw std::runtime_error("cannot write mesh " + args.mesh_output);
+    const BoundingBoxf3 box = mesh.bounding_box();
+    nlohmann::json result = {{"operation", "svg"}, {"input", args.mesh_input}, {"output", args.mesh_output},
+        {"depth_mm", depth}, {"triangles_after", mesh.its.indices.size()}, {"closed", closed}, {"warnings", warnings},
+        {"use_surface", args.text_use_surface},
+        {"shape_bbox", {{shape_box.min.x(), shape_box.min.y()}, {shape_box.max.x(), shape_box.max.y()}}},
         {"bbox", {{box.min.x(), box.min.y(), box.min.z()}, {box.max.x(), box.max.y(), box.max.z()}}}};
     diagnostics.reset();
     std::cout << result.dump() << "\n";
@@ -2026,6 +2126,7 @@ Model load_plate(const std::string &path, PlateLayout &layout, const DynamicPrin
             throw std::runtime_error("plates: each plate needs a 1-based index");
         auto &[name, config] = layout.plates[index.get<int>()];
         name = plate.value("name", std::string());
+        layout.plate_locked[index.get<int>()] = plate.value("locked", false);
         const nlohmann::json settings = plate.value("settings", nlohmann::json::object());
         for (const auto &[key, value] : settings.items())
             config.set_deserialize(key, value.is_string() ? value.get<std::string>() : value.dump(), ctx);
@@ -2729,11 +2830,14 @@ void select_layout_plate(const Args &args, Model &model, DynamicPrintConfig &con
     for (int index = 1; index <= layout.count; ++index) {
         SourcePlate &source = source_plates.emplace_back();
         source.plate_index  = index - 1;
+        if (const auto it = layout.plate_locked.find(index); it != layout.plate_locked.end())
+            source.locked = it->second;
         if (const auto it = layout.plates.find(index); it != layout.plates.end())
             std::tie(source.name, source.config) = it->second;
         auto *plate        = new PlateData;
         plate->plate_index = source.plate_index;
         plate->plate_name  = source.name;
+        plate->locked      = source.locked;
         plate->config      = source.config;
         plates.push_back(plate);
     }
@@ -2834,6 +2938,7 @@ void explode_3mf(const Args &args)
     for (int index = 1; index <= count; ++index) {
         const auto plate = std::find_if(plates.begin(), plates.end(), [index](const PlateData *p) { return p && p->plate_index + 1 == index; });
         Json row = {{"index", index}, {"name", plate == plates.end() ? "" : (*plate)->plate_name},
+                    {"locked", plate != plates.end() && (*plate)->locked},
                     {"settings", plate == plates.end() ? Json::object() : context_settings((*plate)->config)}};
         if (const auto events = model.plates_custom_gcodes.find(index - 1); events != model.plates_custom_gcodes.end()) {
             const auto mode = events->second.mode;
@@ -2932,7 +3037,7 @@ int main(int argc, char **argv)
 #ifdef _WIN32
     std::unique_ptr<boost::nowide::args> utf8_args;
     for (int i = 1; i < argc; ++i)
-        if (std::string(argv[i]) == "--emboss-text" || std::string(argv[i]) == "--emboss-fonts" || std::string(argv[i]) == "--export-3mf-generic" || std::string(argv[i]) == "--export-drc") {
+        if (std::string(argv[i]) == "--emboss-text" || std::string(argv[i]) == "--emboss-fonts" || std::string(argv[i]) == "--emboss-svg" || std::string(argv[i]) == "--export-3mf-generic" || std::string(argv[i]) == "--export-drc") {
             utf8_args = std::make_unique<boost::nowide::args>(argc, argv);
             boost::nowide::nowide_filesystem();
             break;
@@ -2950,7 +3055,7 @@ int main(int argc, char **argv)
         auto progress = [&args](const char *stage, int percent) {
             if (args.progress) std::cout << "progress " << stage << " " << percent << std::endl;
         };
-        progress("load", 0);
+        if (args.mesh_operation != "svg") progress("load", 0);
         set_resources_dir((fs::path(args.profiles) / "..").lexically_normal().string());
         const fs::path datadir = args.datadir.empty() ? fs::temp_directory_path() / fs::unique_path("np_slice_%%%%%%%%") :
                                                         fs::path(args.datadir);
@@ -2961,6 +3066,7 @@ int main(int argc, char **argv)
         if (!args.explode_3mf.empty()) { explode_3mf(args); return 0; }
         if (args.text_fonts) { std::cout << nlohmann::json({{"fonts", emboss_fonts(args)}}).dump() << "\n"; return 0; }
         if (args.mesh_operation == "text") { text_mesh(args); return 0; }
+        if (args.mesh_operation == "svg") { svg_mesh(args); return 0; }
         if (args.mesh_operation == "generic3mf" || args.mesh_operation == "draco") { export_mesh(args); return 0; }
         if (!args.mesh_operation.empty()) { mesh_only(args); return 0; }
         if (!args.verify_gcode.empty()) {
@@ -2974,7 +3080,11 @@ int main(int argc, char **argv)
             ClearanceParams params;
             params.head        = Nonplanar::resolve_head_envelope(full);
             params.contact_bar = true;
-            const ClearanceReport report = verify_clearance(processor.get_result(), params, *make_tool_kinematics(full));
+            GCodeProcessorResult &result = processor.result();
+            result.clearance_report = verify_clearance(result, params, *make_tool_kinematics(full));
+            const ClearanceReport &report = result.clearance_report;
+            if (!args.moves_out.empty())
+                write_moves(args.moves_out, result, args.filaments, nlohmann::json::object(), args.moves_extended);
             std::cout << "clearance_hit_moves " << report.hit_moves << "\nclearance_land_strict_moves " << report.land_strict_moves
                       << "\nclearance_min_mm " << report.min_clearance << "\n";
             for (const ClearanceHit &hit : report.worst)
@@ -2988,7 +3098,6 @@ int main(int argc, char **argv)
                 for (std::string item; std::getline(list, item, ',');)
                     if (!item.empty())
                         least[unsigned(std::stoul(item))] = std::numeric_limits<float>::infinity();
-                const GCodeProcessorResult &result = processor.get_result();
                 for (size_t i = 0; i < result.moves.size() && i < report.per_move.size(); ++i)
                     if (auto it = least.find(result.moves[i].gcode_id); it != least.end())
                         it->second = std::min(it->second, report.per_move[i]);

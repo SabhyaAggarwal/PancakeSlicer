@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <type_traits>
 #include <initializer_list>
@@ -42,6 +43,8 @@ void move_float(std::ostream &out, float value)
 void write_moves(const std::string &path, const GCodeProcessorResult &result, const std::vector<std::string> &filaments,
                  const nlohmann::json &statistics, bool extended)
 {
+    const char *road_ids_env = std::getenv("NP_NATIVE_ROAD_IDS");
+    const bool road_ids = road_ids_env != nullptr && *road_ids_env != '\0' && std::string(road_ids_env) != "0";
     static_assert(uint8_t(EMoveType::Count) < 128, "Move type must leave bit 7 for internal_only");
     struct Layer { uint32_t id; uint64_t first; float z; float extrusion_z; };
     std::vector<Layer> layers;
@@ -83,7 +86,7 @@ void write_moves(const std::string &path, const GCodeProcessorResult &result, co
     try {
         boost::nowide::ofstream out(temporary.string(), std::ios::binary | std::ios::trunc);
         out.write("ORCAMV01", 8);
-        for (uint32_t value : {64u, extended ? 60u : 52u, 32u, 16u, 1u, extended ? 1u : 0u}) move_le(out, value);
+        for (uint32_t value : {64u, 52u + (extended ? 8u : 0u) + (road_ids ? 4u : 0u), 32u, 16u, 1u, (extended ? 1u : 0u) | (road_ids ? 2u : 0u)}) move_le(out, value);
         move_le(out, uint64_t(result.moves.size()));
         move_le(out, uint32_t(result.move_states.size()));
         move_le(out, uint32_t(layers.size()));
@@ -115,6 +118,8 @@ void write_moves(const std::string &path, const GCodeProcessorResult &result, co
                 move_float(out, move_index < clearance.size() && std::isfinite(clearance[move_index]) ?
                     clearance[move_index] : std::numeric_limits<float>::quiet_NaN());
             }
+            if (road_ids)
+                move_le(out, result.state(move).native_road_id);
             ++move_index;
         }
         for (const Layer &layer : layers) {

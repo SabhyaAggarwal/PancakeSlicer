@@ -103,6 +103,7 @@ ExtrusionPathConformal *sub_path(const ExtrusionPathConformal &src, size_t i0, s
     auto *out = new ExtrusionPathConformal(std::move(polyline), src, std::move(heights), std::move(axes));
     if (!src.bead_width.empty())
         out->bead_width.assign(src.bead_width.begin() + i0, src.bead_width.begin() + i1 + 1);
+    out->native_road_id = src.native_road_id;
     out->patch_id = src.patch_id;
     out->shell    = src.shell;
     return out;
