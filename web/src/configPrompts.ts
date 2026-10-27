@@ -60,8 +60,52 @@ async function checkNozzleTemperature(key: string, slot: number) {
     + `The recommended nozzle temperature for this filament type is [${low}, ${high}] degrees Celsius.`);
 }
 
+const MATERIAL_RANGE = new Map('ABS:190-300 ABS-CF:220-300 ABS-GF:240-280 ASA:220-300 ASA-CF:230-300 ASA-GF:240-300 ASA-AERO:240-280 BVOH:190-240 EVA:175-220 FLEX:210-230 HIPS:220-270 PA:235-280 PA-CF:240-315 PA-GF:240-290 PA6:260-300 PA6-CF:230-300 PA6-GF:260-300 PA11:275-295 PA11-CF:275-295 PA11-GF:275-295 PA12:250-270 PA12-CF:250-300 PA12-GF:255-270 PAHT:260-310 PAHT-CF:270-310 PAHT-GF:270-310 PC:240-300 PC-ABS:230-270 PC-CF:270-295 PC-PBT:260-300 PCL:130-170 PCTG:220-300 PE:175-260 PE-CF:175-260 PE-GF:230-270 PEI-1010:370-430 PEI-1010-CF:380-430 PEI-1010-GF:380-430 PEI-9085:350-390 PEI-9085-CF:365-390 PEI-9085-GF:370-390 PEEK:350-460 PEEK-CF:380-410 PEEK-GF:375-410 PEKK:325-400 PEKK-CF:360-400 PES:340-390 PET:200-290 PET-CF:240-320 PET-GF:280-320 PETG:190-260 PETG-CF:230-290 PETG-GF:210-270 PHA:190-250 PI:390-410 PLA:180-240 PLA-AERO:220-270 PLA-CF:190-250 POM:210-250 PP:200-240 PP-CF:210-250 PP-GF:220-260 PPA-CF:260-300 PPA-GF:260-290 PPS:300-345 PPS-CF:295-350 PPSU:360-420 PSU:350-380 PVA:185-250 PVB:190-250 PVDF:245-265 SBS:195-250 TPI:420-445 TPU:175-260'.split(' ').map((e) => { const [t, r] = e.split(':'); return [t, r.split('-').map(Number)] as const; }));
+
+async function checkRecommendedRange(slot: number) {
+  const c = effectiveConfig(getState(), 'filament', slot);
+  const low = first(c.nozzle_temperature_range_low), high = first(c.nozzle_temperature_range_high);
+  if (!Number.isFinite(low) || !Number.isFinite(high)) return;
+  let type = String(Array.isArray(c.filament_type) ? c.filament_type[0] : c.filament_type ?? '');
+  const [min, max] = MATERIAL_RANGE.get(type) ?? [190, 300];
+  if (!MATERIAL_RANGE.has(type)) type = 'Unknown';
+  let msg = '';
+  if (low < min) msg += `A minimum temperature above ${min}℃ is recommended for ${type}.\n`;
+  if (high > max) msg += `A maximum temperature below ${max}℃ is recommended for ${type}.\n`;
+  if (low > high) msg += 'The recommended minimum temperature cannot be higher than the recommended maximum temperature.\n';
+  if (msg) await messageDialog(TITLE, msg + 'Please check.\n');
+}
+
+async function checkAlternateExtraWall() {
+  const c = effectiveConfig(getState(), 'process');
+  if (!bool(c.alternate_extra_wall) || String(c.ensure_vertical_shell_thickness) !== 'ensure_all') return;
+  const msg = 'Alternate extra wall doesn\'t work well when ensure vertical shell thickness is set to All.\n\nChange these settings automatically?\n'
+    + 'Yes - Change ensure vertical shell thickness to Moderate and enable alternate extra wall\nNo  - Don\'t use alternate extra wall';
+  if (await confirmDialog(TITLE, msg, ['Yes', 'No'])) setOptions('process', { ensure_vertical_shell_thickness: 'ensure_moderate', alternate_extra_wall: '1' }, 'Change setting "Alternate extra wall"');
+  else setOptions('process', { ensure_vertical_shell_thickness: 'ensure_all', alternate_extra_wall: '0' }, 'Change setting "Alternate extra wall"');
+}
+
+async function checkSeamSlope() {
+  const c = effectiveConfig(getState(), 'process');
+  const h = Number(c.layer_height), v = String(c.seam_slope_start_height ?? '0');
+  const start = v.endsWith('%') ? (parseFloat(v) / 100) * h : parseFloat(v);
+  if (String(c.seam_slope_type ?? 'none') === 'none' || !(start >= h)) return;
+  await messageDialog(TITLE, 'seam_slope_start_height needs to be smaller than layer_height.\nReset to 0.');
+  setOptions('process', { seam_slope_start_height: '0' }, 'Change setting "Scarf start height"');
+}
+
+async function checkVolumetricSpeed(slot: number) {
+  if (!(first(effectiveConfig(getState(), 'filament', slot).filament_max_volumetric_speed) < 0.5)) return;
+  await messageDialog(TITLE, 'Too small max volumetric speed.\nValue was reset to 0.5');
+  setOptions('filament', { filament_max_volumetric_speed: '0.5' }, 'Change setting "Max volumetric speed"', slot);
+}
+
 export async function checkSetting(type: PresetType, key: string, slot = 0) {
   if (type === 'process' && SPIRAL_KEYS.includes(key)) return checkSpiral();
-  if (type === 'process' && key === 'layer_height') return checkLayerHeight();
+  if (type === 'process' && key === 'layer_height') { await checkLayerHeight(); return checkSeamSlope(); }
+  if (type === 'process' && (key === 'alternate_extra_wall' || key === 'ensure_vertical_shell_thickness')) return checkAlternateExtraWall();
+  if (type === 'process' && (key === 'seam_slope_type' || key === 'seam_slope_start_height')) return checkSeamSlope();
+  if (type === 'filament' && (key === 'nozzle_temperature_range_low' || key === 'nozzle_temperature_range_high')) return checkRecommendedRange(slot);
+  if (type === 'filament' && key === 'filament_max_volumetric_speed') return checkVolumetricSpeed(slot);
   if (type === 'filament' && (key === 'nozzle_temperature' || key === 'nozzle_temperature_initial_layer')) return checkNozzleTemperature(key, slot);
 }

@@ -16,3 +16,18 @@ export function cameraCommand(command: CameraCommand) {
   if (command === 'perspective' || command === 'orthogonal') cameraProjection(command === 'perspective');
   window.dispatchEvent(new CustomEvent('camera-command', { detail: command }));
 }
+
+export type CameraPrefs = { style: 'default' | 'touchpad'; orbitMult: number; zoomToMouse: boolean; reverseZoom: boolean };
+const PREFS_KEY = 'orca.web.camera';
+export let cameraPrefs: CameraPrefs = { style: 'default', orbitMult: 1, zoomToMouse: true, reverseZoom: false };
+try {
+  const stored = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') as Partial<CameraPrefs>;
+  cameraPrefs = { ...cameraPrefs, ...stored };
+  if (!(cameraPrefs.orbitMult >= 0.05 && cameraPrefs.orbitMult <= 2)) cameraPrefs.orbitMult = 1;
+} catch {  }
+export function setCameraPrefs(patch: Partial<CameraPrefs>) {
+  cameraPrefs = { ...cameraPrefs, ...patch };
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify(cameraPrefs)); } catch {  }
+  listeners.forEach((fn) => fn());
+}
+export const cameraPrefsSnapshot = () => cameraPrefs;

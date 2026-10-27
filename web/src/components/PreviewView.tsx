@@ -21,6 +21,7 @@ import { setVisibleToolpaths } from '../preview/visible';
 const ExplainLegend = lazy(() => import('./PreviewExplain').then((m) => ({ default: m.ExplainLegend })));
 const StandardView = lazy(() => import('./PreviewExplain').then((m) => ({ default: m.StandardView })));
 const GcodeWindow = lazy(() => import('./GcodeWindow').then((m) => ({ default: m.GcodeWindow })));
+const ToolPosition = lazy(() => import('./ToolPosition'));
 
 export const jobColours = () => getState().filamentSlots.map((_, i) => filamentColor(getState(), i + 1));
 
@@ -422,6 +423,9 @@ export function PreviewView() {
       )}
       {layerCount > 0 && topMoves > 0 && (
         <MoveSlider count={topMoves} pos={pos} gcodeLine={data!.gcode[topFirst + pos - 1]} onChange={setMovePos} />
+      )}
+      {layerCount > 0 && pos < topMoves && data!.states && topFirst + pos - 1 < data!.loaded && (
+        <Suspense fallback={null}><ToolPosition data={data!} at={topFirst + pos - 1} view={ui.view} /></Suspense>
       )}
       {gcodeWindow && layerCount > 0 && topMoves > 0 && (
         <Suspense fallback={null}><GcodeWindow line={data!.gcode[topFirst + pos - 1]} file={dropped} /></Suspense>

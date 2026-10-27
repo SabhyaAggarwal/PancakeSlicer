@@ -8,8 +8,8 @@ import { setCompareWanted } from '../compare';
 import { toggleNonplanarView, useNonplanarView, usePatchPreview, type PreviewFact } from '../patch-preview';
 import { applyRecommended, pendingRecommendations, plateResults, type PlateResult } from '../recommend';
 import { STYLE_NAMES } from '../style-names';
-import { effectiveConfig, getState, mapPaint, printerPreset, setState, updateInstance, updateObject, updateVolume, useStore, type Gizmo } from '../state/store';
-import { instanceMatrix, volumeBox } from '../plater/geometry';
+import { effectiveConfig, getState, mapPaint, markStale, printerPreset, setState, updateInstance, updateObject, useStore, type Gizmo } from '../state/store';
+import { undoable } from '../state/history';
 import { Icon, IconButton } from './Icon';
 import { canPerformCut, cutBlocked, initialCut, setCut, toggleCut } from '../plater/cut';
 import { InTopLayer } from './Modal';
@@ -21,6 +21,7 @@ import { arrangeSettings, resetArrangeSettings, setArrangeSettings, subscribeArr
 import { ANGLE, EXTRUDERS_LIMIT, GAP_AREA, HEIGHT, RADIUS, canPaint, gapFill, isPaint, paintOf, PAINT_STEP, PAINT_TOOLS, paintTool, setPaintTool, subscribePaintTool, togglePaint, type PaintKind } from '../plater/paint';
 import { filamentColor } from '../plater/filamentColor';
 import { canEditLayers } from './LayerHeight';
+import { Num } from './Num';
 import { setAssembly, useAssembly } from '../plater/assembly';
 
 const LATER_GIZMOS: [icon: string, tooltip: string][] = [
@@ -141,19 +142,20 @@ function ArrangeOptions({ at }: { at: HTMLElement | null }) {
   );
 }
 
-function Num({ value, onCommit, step = 1 }: { value: number; onCommit: (v: number) => void; step?: number }) {
-  const [text, setText] = useState(value.toFixed(2));
-  useEffect(() => setText(value.toFixed(2)), [value]);
-  return (
-    <input
-      className="text num manip-num"
-      value={text}
-      step={step}
-      onChange={(e) => setText(e.target.value)}
-      onBlur={() => Number.isFinite(Number(text)) && onCommit(Number(text))}
-      onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-    />
-  );
+const PartManipulation = lazy(() => import('./PartManipulation'));
+
+let moveCoordinates: 'world' | 'object' = 'world';
+const DEG = Math.PI / 180;
+const rotationOf = (rot: [number, number, number]) => new THREE.Matrix4().makeRotationZ(rot[2] * DEG)
+  .multiply(new THREE.Matrix4().makeRotationY(rot[1] * DEG)).multiply(new THREE.Matrix4().makeRotationX(rot[0] * DEG));
+
+function setRotation(objectId: number, instanceId: number, rot: [number, number, number]) {
+  undoable('Reset rotation', () => setState((s) => ({
+    objects: s.objects.map((o) => (o.id !== objectId ? o : {
+      ...o, rotX: rot[0], rotY: rot[1], instances: o.instances.map((i) => (i.id === instanceId ? { ...i, rotZ: rot[2] } : i)),
+    })),
+    job: markStale(s.job),
+  })));
 }
 
 export function ManipulationPanel({ docked = false }: { docked?: boolean }) {
@@ -163,61 +165,60 @@ export function ManipulationPanel({ docked = false }: { docked?: boolean }) {
   const uniform = useStore((s) => s.uniformScale);
   const volumeId = useStore((s) => s.selected?.volume);
   const inst = o?.instances.find((i) => i.id === instId);
+  const [coordinates, setCoordinates] = useState(moveCoordinates);
+  const openKey = `${gizmo}|${o?.id}|${instId}`;
+  const [opened, setOpened] = useState<{ key: string; pos: THREE.Vector3; rot: [number, number, number] } | null>(null);
+  if (o && inst && opened?.key !== openKey) setOpened({ key: openKey, pos: new THREE.Vector3(inst.x, inst.y, inst.z ?? 0), rot: [o.rotX, o.rotY, inst.rotZ] });
   if (!o || !inst || (docked ? gizmo !== 'none' : gizmo === 'none') || gizmo === 'flatten' || gizmo === 'cut' || gizmo === 'measure' || isPaint(gizmo) || gizmo === 'layers' || gizmo === 'brimears' || gizmo === 'boolean' || gizmo === 'text' || gizmo === 'svg' || o.project?.placeholder) return null;
   const v = o.volumes?.find((vv) => vv.id === volumeId);
-  if (v) {
-    const box = volumeBox(o, inst, v);
-    const centre = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
-    const change = (m: THREE.Matrix4, name: string) => updateVolume(o.id, v.id,
-      { matrix: instanceMatrix(o, inst).invert().multiply(m).multiply(instanceMatrix(o, inst)).multiply(new THREE.Matrix4().fromArray(v.matrix)).elements }, name);
-    const move = (axis: number, value: number) => change(new THREE.Matrix4().makeTranslation(...[0, 1, 2].map((k) => (k === axis ? value - centre.getComponent(k) : 0)) as [number, number, number]), 'Move');
-    const resize = (axis: number, value: number) => {
-      const f = [0, 1, 2].map((k) => (uniform || k === axis ? Math.max(0.01, value) / Math.max(1e-6, size.getComponent(axis)) : 1));
-      change(new THREE.Matrix4().makeTranslation(centre.x, centre.y, centre.z).multiply(new THREE.Matrix4().makeScale(f[0], f[1], f[2]))
-        .multiply(new THREE.Matrix4().makeTranslation(-centre.x, -centre.y, -centre.z)), 'Scale');
-    };
-    return (
-      <div className={`manip-panel${docked ? ' docked' : ''}`}>
-        <div className="manip-title">{v.name}</div>
-        <div className="manip-grid">
-          <span />
-          <span className="axis x">X</span>
-          <span className="axis y">Y</span>
-          <span className="axis z">Z</span>
-          <span>Position</span>
-          {[0, 1, 2].map((a) => <Num key={a} value={centre.getComponent(a)} onCommit={(x) => move(a, x)} />)}
-          <span>Size mm</span>
-          {[0, 1, 2].map((a) => <Num key={a} value={size.getComponent(a)} onCommit={(x) => resize(a, x)} />)}
-          {(gizmo === 'scale' || docked) && (
-            <label className="manip-lock">
-              <input type="checkbox" checked={uniform} onChange={(e) => setState({ uniformScale: e.target.checked })} />
-              Uniform scale
-            </label>
-          )}
-        </div>
-      </div>
-    );
-  }
+  if (v) return <Suspense fallback={null}><PartManipulation o={o} inst={inst} v={v} docked={docked} /></Suspense>;
   const mesh = o.geometry.boundingBox!.getSize(new THREE.Vector3());
   const rescale = (axis: number, factor: number) => updateObject(o.id, {
     scale: o.scale.map((v, k) => (uniform || k === axis ? v * factor : v)) as [number, number, number],
   });
+  const rot: [number, number, number] = [o.rotX, o.rotY, inst.rotZ];
+  const start = opened?.key === openKey ? opened : { pos: new THREE.Vector3(inst.x, inst.y, inst.z ?? 0), rot };
+  const local = coordinates === 'object' && gizmo === 'move';
+  const axes = rotationOf(rot);
+  const relative = new THREE.Vector3(inst.x, inst.y, inst.z ?? 0).sub(start.pos).applyMatrix4(axes.clone().transpose());
+  const moveTo = (axis: number, value: number) => {
+    if (!local) return updateInstance(o.id, inst.id, [{ x: value }, { y: value }, { z: value }][axis]);
+    const p = relative.clone().setComponent(axis, value).applyMatrix4(axes).add(start.pos);
+    updateInstance(o.id, inst.id, { x: p.x, y: p.y, z: p.z });
+  };
+  const turned = rot.some((r, k) => Math.abs(r - start.rot[k]) > 1e-9);
   return (
     <div className={`manip-panel${docked ? ' docked' : ''}`}>
       <div className="manip-title">{docked ? 'Object manipulation' : gizmo === 'move' ? 'Move' : gizmo === 'rotate' ? 'Rotate' : 'Scale'}</div>
+      {gizmo === 'move' && !docked && (
+        <label className="manip-coords" title="Coordinate system used for transform actions.">
+          <select className="combo" value={coordinates} onChange={(e) => { moveCoordinates = e.target.value as 'world' | 'object'; setCoordinates(moveCoordinates); }}>
+            <option value="world">World</option>
+            <option value="object">Object</option>
+          </select>
+        </label>
+      )}
       <div className="manip-grid">
         <span />
         <span className="axis x">X</span>
         <span className="axis y">Y</span>
         <span className="axis z">Z</span>
-        <span>Position</span>
-        <Num value={inst.x} onCommit={(x) => updateInstance(o.id, inst.id, { x })} />
-        <Num value={inst.y} onCommit={(y) => updateInstance(o.id, inst.id, { y })} />
-        <Num value={inst.z ?? 0} onCommit={(z) => updateInstance(o.id, inst.id, { z })} />
+        <span>{local ? 'Relative' : 'Position'}</span>
+        {[0, 1, 2].map((a) => <Num key={a} value={local ? relative.getComponent(a) : [inst.x, inst.y, inst.z ?? 0][a]} onCommit={(v) => moveTo(a, v)} />)}
         <span>Rotation</span>
         <Num value={o.rotX} onCommit={(rotX) => updateObject(o.id, { rotX })} />
         <Num value={o.rotY} onCommit={(rotY) => updateObject(o.id, { rotY })} />
         <Num value={inst.rotZ} onCommit={(rotZ) => updateInstance(o.id, inst.id, { rotZ })} />
+        {(gizmo === 'rotate' || docked) && (
+          <span className="manip-resets">
+            {!docked && (
+              <button type="button" className="btn" disabled={!turned} title="Reset current rotation to the value when open the rotation tool."
+                onClick={() => setRotation(o.id, inst.id, start.rot)}>Reset</button>
+            )}
+            <button type="button" className="btn" disabled={rot.every((r) => r === 0)} title="Reset current rotation to real zeros."
+              onClick={() => setRotation(o.id, inst.id, [0, 0, 0])}>Reset to 0</button>
+          </span>
+        )}
         <span>Scale %</span>
         {[0, 1, 2].map((a) => (
           <Num key={a} value={Math.abs(o.scale[a]) * 100} onCommit={(v) => rescale(a, Math.max(0.1, v) / 100 / Math.abs(o.scale[a]))} />

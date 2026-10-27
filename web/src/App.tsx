@@ -21,7 +21,7 @@ const EmptyPlate = lazy(() => import('./components/FirstRun'));
 const Plater3D = lazy(() => import('./plater/Plater3D'));
 import { deleteAll, getState, isSelected, removeSelected, setState, togglePrintable, updateInstance, useStore } from './state/store';
 import { ownsKeys } from './keys';
-import { copySelection, pasteClipboard, selectAll, startRename } from './edit';
+import { copySelection, cutSelection, pasteClipboard, selectAll, startRename } from './edit';
 const ContextMenu = lazy(() => import('./components/ContextMenu'));
 const MeasurePanel = lazy(() => import('./components/MeasurePanel'));
 import { dropLastFeature, setMeasure } from './plater/measureState';
@@ -104,9 +104,14 @@ export default function App() {
       else if (ctrl && e.shiftKey && e.key === 'Enter') toggleViewOption('wireframe');
       else if (ctrl && e.key.toLowerCase() === 'e' && getState().features.brim_ears && getState().tab === 'prepare') toggleViewOption('labels');
       else if (ctrl && e.key.toLowerCase() === 'c' && !window.getSelection()?.toString()) copySelection();
+      else if (ctrl && e.key.toLowerCase() === 'x' && !window.getSelection()?.toString() && prepare) cutSelection();
       else if (ctrl && e.key.toLowerCase() === 'v') pasteClipboard();
       else if (ctrl && e.key.toLowerCase() === 'k') { const s = getState(); if (s.selected && !s.project) setState({ appDialog: 'clone' }); }
       else if (ctrl) return;
+      else if (e.key === 'Tab' && !e.shiftKey && !e.altKey && (document.activeElement === document.body || document.activeElement instanceof HTMLCanvasElement)) {
+        e.preventDefault();
+        setState((s) => ({ tab: s.tab === 'prepare' ? 'preview' : 'prepare' }));
+      }
       else if (getState().gizmo === 'measure' && (e.key === 'Delete' || e.key === 'Backspace')) setMeasure({});
       else if (getState().gizmo === 'measure' && e.key === 'Escape') { if (!dropLastFeature()) setState({ gizmo: 'none' }); }
       else if (e.key === 'Delete' || e.key === 'Backspace') removeSelected();

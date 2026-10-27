@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { autoPerspective, cameraProjection, perspective, VIEW_DIRECTIONS, type CameraCommand, type CameraView } from '../camera';
+import { autoPerspective, cameraPrefs, cameraProjection, perspective, subscribeCamera, VIEW_DIRECTIONS, type CameraCommand, type CameraView } from '../camera';
 import { getState, subscribeStore } from '../state/store';
 import { bedBounds } from './geometry';
 import { ownsKeys } from '../keys';
@@ -16,13 +16,16 @@ export class CameraViews {
   private height = 1;
   private axisView = false;
   private unsubscribe: () => void;
+  private unsubscribePrefs: () => void;
 
-  constructor(host: HTMLElement, private active: () => boolean, private changed: () => void) {
+  constructor(private host: HTMLElement, private active: () => boolean, private changed: () => void) {
     this.camera = new THREE.PerspectiveCamera(35, 1, 0.5, 5000);
     this.camera.up.set(0, 0, 1);
     this.controls = new OrbitControls(this.camera, host);
     this.controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
-    this.controls.zoomToCursor = true;
+    this.applyPrefs();
+    this.unsubscribePrefs = subscribeCamera(this.applyPrefs);
+    host.addEventListener('pointermove', this.onTouchpadMove);
     this.controls.addEventListener('change', this.onOrbit);
     registry.add(this);
     window.addEventListener('camera-command', this.onCommand);
@@ -34,6 +37,21 @@ export class CameraViews {
       wasActive = active;
     });
   }
+
+  private applyPrefs = () => {
+    this.controls.zoomToCursor = cameraPrefs.zoomToMouse;
+    this.controls.rotateSpeed = cameraPrefs.orbitMult;
+    this.controls.zoomSpeed = cameraPrefs.reverseZoom ? -1 : 1;
+  };
+  private onTouchpadMove = (event: PointerEvent) => {
+    if (cameraPrefs.style !== 'touchpad' || event.buttons || !this.active() || !(event.altKey || event.shiftKey)) return;
+    const h = this.host.clientHeight || 1;
+    if (event.altKey) {
+      this.controls.rotateLeft(2 * Math.PI * event.movementX / h * cameraPrefs.orbitMult);
+      this.controls.rotateUp(2 * Math.PI * event.movementY / h * cameraPrefs.orbitMult);
+    } else this.controls.pan(event.movementX, event.movementY);
+    this.controls.update();
+  };
 
   private onOrbit = () => {
     if (this.axisView && autoPerspective) {
@@ -157,6 +175,8 @@ export class CameraViews {
     window.removeEventListener('camera-command', this.onCommand);
     window.removeEventListener('keydown', this.onKey);
     this.unsubscribe();
+    this.unsubscribePrefs();
+    this.host.removeEventListener('pointermove', this.onTouchpadMove);
     this.controls.dispose();
   }
 }

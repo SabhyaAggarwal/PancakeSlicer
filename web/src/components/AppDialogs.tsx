@@ -1,6 +1,7 @@
 import { lazy, Suspense, useSyncExternalStore } from 'react';
 import { markStale, setState, useStore } from '../state/store';
 import { setThemePref, subscribeTheme, themePref, type ThemePref } from '../theme';
+import { cameraPrefsSnapshot, setCameraPrefs, subscribeCamera, type CameraPrefs } from '../camera';
 import { Modal, ModalTitle } from './Modal';
 
 const About = lazy(() => import('./About'));
@@ -31,6 +32,7 @@ function setMixedTemperatures(on: boolean) {
 
 function Preferences() {
   const pref = useSyncExternalStore(subscribeTheme, themePref);
+  const camera = useSyncExternalStore(subscribeCamera, cameraPrefsSnapshot);
   const developerMode = useStore((s) => s.developerMode);
   const mixed = useStore((s) => s.mixedTemperatures);
   const canMix = useStore((s) => !!s.features.mixed_temperatures);
@@ -47,6 +49,29 @@ function Preferences() {
               {label}
             </label>
           ))}
+        </fieldset>
+        <fieldset className="prefs-group">
+          <legend>Camera</legend>
+          <label className="prefs-row" title={'Select camera navigation style.\nDefault: LMB+move for rotation, RMB/MMB+move for panning.\nTouchpad: Alt+move for rotation, Shift+move for panning.'}>
+            Camera style
+            <select className="combo" value={camera.style} onChange={(e) => setCameraPrefs({ style: e.target.value as CameraPrefs['style'] })}>
+              <option value="default">Default</option>
+              <option value="touchpad">Touchpad</option>
+            </select>
+          </label>
+          <label className="prefs-row" title="Multiplies the orbit speed for finer or coarser camera movement.">
+            Orbit speed multiplier
+            <input className="text num" type="number" min={0.05} max={2} step={0.05} value={camera.orbitMult}
+              onChange={(e) => { const v = Number(e.target.value); if (v >= 0.05 && v <= 2) setCameraPrefs({ orbitMult: v }); }} />
+          </label>
+          <label className="prefs-row" title="Zoom in towards the mouse pointer's position in the 3D view, rather than the 2D window center.">
+            <input type="checkbox" checked={camera.zoomToMouse} onChange={(e) => setCameraPrefs({ zoomToMouse: e.target.checked })} />
+            Zoom to mouse position
+          </label>
+          <label className="prefs-row" title="If enabled, reverses the direction of zoom with mouse wheel.">
+            <input type="checkbox" checked={camera.reverseZoom} onChange={(e) => setCameraPrefs({ reverseZoom: e.target.checked })} />
+            Reverse mouse zoom
+          </label>
         </fieldset>
         <fieldset className="prefs-group">
           <legend>Develop mode</legend>
@@ -78,10 +103,10 @@ const SHORTCUTS: [string, [string, string][]][] = [
     [`${mod}+I`, 'Import geometry data from STL/STEP/3MF/OBJ/AMF files'], [`${mod}+R`, 'Slice plate'], [`${mod}+G`, 'Export plate sliced file'],
     [`${mod}+Z`, 'Undo'], [`${mod}+Y / ${mod}+Shift+Z`, 'Redo'], [`${mod}+F`, 'Search'], [`${mod}+P`, 'Preferences'], ['?', 'Show keyboard shortcuts list'],
     ['0 … 6', 'Camera view: Default, Top, Bottom, Front, Rear, Left, Right'], ['I / O', 'Zoom in / out'],
-    ['Esc', 'Deselect All'],
+    ['Esc', 'Deselect All'], ['Tab', 'Switch between Prepare/Preview'],
   ]],
   ['Prepare', [
-    [`${mod}+A`, 'Select all objects'], [`${mod}+C / ${mod}+V`, 'Copy / Paste to clipboard'], [`${mod}+K`, 'Clone selected'],
+    [`${mod}+A`, 'Select all objects'], [`${mod}+C / ${mod}+X / ${mod}+V`, 'Copy / Cut / Paste to clipboard'], [`${mod}+K`, 'Clone selected'],
     ['Del / Backspace', 'Delete Selected'], [`${mod}+D / ${mod}+Del`, 'Delete All'], ['+ / -', 'Add / Remove instance'],
     ['V', 'Toggle printable for object/part'], ['F2', 'Rename'], ['A / Shift+A', 'Arrange all objects / the selected plate'], ['Q / Shift+Q', 'Auto orient selected / all objects'],
     ['Arrow keys', 'Move selection 10 mm (Shift: 1 mm)'], ['Page Up / Page Down', 'Rotate selection 45 degrees counterclockwise / clockwise'],

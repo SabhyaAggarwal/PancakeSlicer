@@ -3,7 +3,7 @@ import { bedArea } from './actions';
 import { bedBounds, instanceBox, nearestFreeSpot } from './plater/geometry';
 import { undoable } from './state/history';
 import { canEditProject } from './api/client';
-import { getState, isSelected, markStale, newId, setState, toast, updateObject, type Instance, type PlateObject, type State } from './state/store';
+import { getState, isSelected, markStale, newId, removeSelected, setState, toast, updateObject, type Instance, type PlateObject, type State } from './state/store';
 
 export function selectionTargets(s: State = getState()): { o: PlateObject; inst: Instance }[] {
   const sel = s.selected;
@@ -77,6 +77,12 @@ export function copySelection() {
   const byObject = new Map<PlateObject, Instance[]>();
   for (const { o, inst } of targets) byObject.set(o, [...(byObject.get(o) ?? []), inst]);
   setState({ clipboard: [...byObject].map(([o, instances]) => ({ ...o, settings: { ...o.settings }, scale: [...o.scale], instances: instances.map((i) => ({ ...i })) })) });
+}
+
+export function cutSelection() {
+  const before = getState().clipboard;
+  copySelection();
+  if (getState().clipboard !== before) removeSelected();
 }
 
 export function pasteClipboard() {

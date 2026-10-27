@@ -239,6 +239,8 @@ select, input, textarea { font: inherit; color: var(--text); }
 .manip-num { height: 22px; font-size: 12px; }
 .manip-ro { color: var(--disabled); text-align: center; }
 .axis { text-align: center; font-weight: 600; }
+.manip-coords { display: block; margin-bottom: 6px; }
+.manip-resets { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 6px; }
 .axis.x { color: #d0453a; } .axis.y { color: #2ea043; } .axis.z { color: #3b6fd0; }
 
 .notifications { position: absolute; right: 156px; bottom: 60px; width: 340px; max-width: calc(100% - 172px); max-height: 45%; overflow: auto; z-index: 45; display: flex; flex-direction: column; gap: 8px; }
@@ -322,6 +324,15 @@ dialog.modal.setup-wizard::backdrop { background: rgba(0, 0, 0, 0.3); }
 .ls-thumb.lo .ls-tip { background: var(--bg-f6); }
 .move-slider { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: min(70%, 900px); display: flex; align-items: center; gap: 10px; background: var(--overlay-85); border-radius: 14px; padding: 4px 14px; }
 .move-slider input { flex: 1; accent-color: var(--accent-text); }
+.tool-position { position: absolute; left: 50%; bottom: 58px; transform: translateX(-50%); background: var(--overlay-85); border-radius: 8px; padding: 8px 10px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.tool-position-row { display: flex; align-items: center; gap: 8px; }
+.tool-axes { display: grid; grid-template-columns: repeat(3, 9ch); gap: 1ch; white-space: nowrap; }
+.tool-detail { display: flex; gap: 2ch; white-space: nowrap; }
+.tool-detail span:first-child { min-width: 11ch; }
+.tool-fold { width: 24px; height: 24px; border: 0; border-radius: 4px; background: var(--overlay-95); color: inherit; cursor: pointer; }
+.tool-properties { border-collapse: collapse; margin-bottom: 6px; }
+.tool-properties th { text-align: left; font-weight: normal; color: var(--accent-text); padding: 1px 12px 1px 0; }
+.tool-properties td { padding: 1px 0; white-space: nowrap; }
 .ms-label { font-size: 11px; color: var(--text-dim); white-space: nowrap; min-width: 150px; text-align: right; }
 
 .modal { padding: 0; border: 0; color: var(--text); width: min(940px, 94vw); height: min(760px, 90vh); height: min(760px, 90dvh); max-width: 94vw; max-height: 94vh; max-height: 94dvh; background: var(--bg); border-radius: 6px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3); }
