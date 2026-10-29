@@ -8394,6 +8394,11 @@ std::string GCode::extrude_field_patch(const Nonplanar::ConformalPatch &patch)
         const double level = flat ? ends : std::max(ends, above) + hop;
         std::vector<Vec3d> legs { qa, Vec3d(qa.x(), qa.y(), level), Vec3d(qb.x(), qb.y(), level), qb };
         poses.clear();
+        static const bool travel_slerp = [] { const char *v = std::getenv("NP_NATIVE_TRAVEL_SLERP"); return v && std::atoi(v) != 0; }();
+        const Vec3d       axis_from    = m_writer.get_tool_axis().normalized();
+        double            total = 0., done = 0.;
+        for (size_t l = 1; l < legs.size(); ++l)
+            total += (legs[l] - legs[l - 1]).norm();
         for (size_t l = 1; l < legs.size(); ++l) {
             const double len = (legs[l] - legs[l - 1]).norm();
             if (len < EPSILON)
@@ -8403,8 +8408,12 @@ std::string GCode::extrude_field_patch(const Nonplanar::ConformalPatch &patch)
                 Vec3d p;
                 if (! field.inverse(legs[l - 1] + (legs[l] - legs[l - 1]) * (double(s) / n), p))
                     return false;
-                poses.push_back({ to_writer(p), upright ? Vec3d::UnitZ() : settled(field.orientation(p)) });
+                Vec3d axis = upright ? Vec3d::UnitZ() : settled(field.orientation(p));
+                if (travel_slerp && ! upright && total > EPSILON)
+                    axis = Eigen::Quaterniond::Identity().slerp((done + len * s / n) / total, Eigen::Quaterniond::FromTwoVectors(axis_from, target.axis.normalized())) * axis_from;
+                poses.push_back({ to_writer(p), axis });
             }
+            done += len;
         }
         pin_crossings(poses, [](ToolPose &pose) -> Vec3d & { return pose.axis; });
         if (poses.empty())

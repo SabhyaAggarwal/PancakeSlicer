@@ -92,6 +92,7 @@ struct MultiplanarPlan
     bool                          work_stopped           = false;
     std::vector<std::string>      notes;
     std::string                   auto_reason;
+    bool                          lip = false;
 };
 
 MultiplanarPlan plan_multiplanar(const indexed_triangle_set &mesh, const MultiplanarParams &params,
@@ -118,6 +119,7 @@ bool chunk_support_requested();
 bool chunk_support_grounded();
 bool chunk_support_conformal();
 std::vector<ExPolygons> grounded_route_slices(const PrintObject &object);
+void forget_grounded_route(const PrintObject &object);
 double grounded_route_gap(size_t chunk);
 std::vector<ExPolygons> grounded_route_upper(const PrintObject &object);
 std::vector<Polygons> grounded_route_blockers(const PrintObject &object);

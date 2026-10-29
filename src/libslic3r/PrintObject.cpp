@@ -176,6 +176,7 @@ PrintObject::~PrintObject()
     if (m_shared_regions && -- m_shared_regions->m_ref_cnt == 0) delete m_shared_regions;
     clear_layers();
     clear_support_layers();
+    Nonplanar::forget_grounded_route(*this);
 }
 
 PrintBase::ApplyStatus PrintObject::set_instances(PrintInstances &&instances)
@@ -1144,7 +1145,7 @@ void PrintObject::generate_support_material(bool with_belt_brim)
         if ((this->has_support() && m_layers.size() > 1) || (this->has_raft() && !m_layers.empty())) {
             m_print->set_status(50, L("Generating support"));
 
-            std::vector<ExPolygons> grounded = Nonplanar::grounded_route_slices(*this);
+            std::vector<ExPolygons> grounded = m_multiplanar ? Nonplanar::grounded_route_slices(*this) : std::vector<ExPolygons>();
             const std::vector<ExPolygons> upper = Nonplanar::grounded_route_upper(*this);
             for (size_t i = 0; i + 1 < std::min({ grounded.size(), upper.size(), m_layers.size() }); ++i)
                 if (const ExPolygons chunks = diff_ex(upper[i], m_layers[i + 1]->lslices); !chunks.empty())
@@ -1769,7 +1770,7 @@ bool PrintObject::invalidate_state_by_config_options(
             || opt_key == "multiplanar_overhang_threshold"
             || opt_key == "nonplanar_atom_toolpath"
             || opt_key == "nonplanar_steep_skin"
-            || opt_key == "nonplanar_oneshot_routes"
+            || opt_key == "nonplanar_oneshot_routes" || opt_key == "nonplanar_oneshot_fan_step"
             || opt_key == "nonplanar_field_file") {
             steps.emplace_back(posSlice);
         } else if (opt_key == "gap_infill_speed"

@@ -416,7 +416,7 @@ std::vector<FieldRoad> native_planar_support_roads(const PrintObject &object, co
                       Point::new_scale(c.x() + 0.5 * Cell, c.y() + 0.5 * Cell), Point::new_scale(c.x() - 0.5 * Cell, c.y() + 0.5 * Cell) };
         return sq;
     };
-    auto grid_top = [&](double top) { return first + std::floor((top - first) / h + 1e-6) * h; };
+    auto grid_top = [&](double top) { return std::max(first, first + std::floor((top - first) / h + 1e-6) * h); };
     auto cap_of   = [&](const Column &c) {
         const double z = std::floor(c.top / 0.05 + 1e-6) * 0.05;
         return z - grid_top(c.top) >= 0.06 ? z : -1.;
@@ -976,6 +976,15 @@ void build_native_patch(PrintObject &object, const std::shared_ptr<const LayerFi
                 const double off = std::acos(std::clamp(e.dot(a), -1., 1.));
                 if (off > max_lag)
                     axes[i] = (Eigen::Quaterniond::Identity().slerp(1. - max_lag / off, Eigen::Quaterniond::FromTwoVectors(a, e)) * a).cast<float>();
+            }
+            static const double axis_tube = [] { const char *v = std::getenv("NP_NATIVE_AXIS_TUBE"); return v ? Geometry::deg2rad(std::max(0., std::atof(v))) : 0.; }();
+            static const double axis_smooth = [] { const char *v = std::getenv("NP_NATIVE_AXIS_SMOOTH"); return v ? std::max(0., std::atof(v)) : 0.; }();
+            if (axis_smooth > 0. && !upright)
+                axes = Native::smooth_axes(tips, exact, axis_smooth, max_lag);
+            if (axis_tube > 0. && !upright) {
+                const auto &rot = kinematics->rotary_axes();
+                axes = Native::tube_axes(axis_smooth > 0. ? axes : exact, axis_tube, tilt_cap, rot[0].max_speed_deg_s > 0. ? rot[0].max_speed_deg_s : 1.,
+                                         rot[1].max_speed_deg_s > 0. ? rot[1].max_speed_deg_s : 1.);
             }
             FieldRoad r;
             r.path             = std::make_unique<ExtrusionPathConformal>(std::move(polyline), *path, std::move(heights), std::move(axes));

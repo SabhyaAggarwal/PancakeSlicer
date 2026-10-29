@@ -5,7 +5,6 @@
     "from": "system",
     "setting_id": "GP048",
     "instantiation": "true",
-    "nonplanar_mode": "auto",
     "nonplanar_shell_layer_height": "0.08",
     "nonplanar_overhangs": "1",
     "nonplanar_bridges": "1",

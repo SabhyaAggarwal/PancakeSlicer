@@ -5544,6 +5544,20 @@ void PrintConfigDef::init_fff_params()
     def->mode     = comAdvanced;
     def->set_default_value(new ConfigOptionBool(true));
 
+    def = this->add("nonplanar_oneshot_fan_step", coFloat);
+    def->label    = L("One-shot route joint step");
+    def->category = L("Quality");
+    def->tooltip  = L("Where two chunks of a One-shot tilted route meet, the layers turn from one direction to the other in "
+                      "steps of at most this angle, so the joint shows as a gradual turn instead of a line. Smaller steps make "
+                      "the joint less visible and add a few layers. Where a route planned this way would exceed One-shot's "
+                      "time limit, it is planned again with 10 degree steps. Printers without rotary axes ignore it."
+                      " Default: 7. Unit: degrees.");
+    def->sidetext = u8"°";
+    def->min      = 1;
+    def->max      = 45;
+    def->mode     = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(7.));
+
     def = this->add("nonplanar_atom_toolpath", coString);
     def->label    = L("Atomizer toolpath");
     def->category = L("Quality");

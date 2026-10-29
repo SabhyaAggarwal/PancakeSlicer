@@ -49,6 +49,7 @@ struct OneShotState
     bool                           plinth_applied = false;
     int                            plinth_user_layers = 0;
     double                         plinth_user_expansion = 0., plinth_user_first_expansion = 0.;
+    bool                           injected = false;
     double                         measured_ratio   = std::numeric_limits<double>::quiet_NaN();
     int                            measured_repicks = 0;
     bool                           measured_anchor  = false;

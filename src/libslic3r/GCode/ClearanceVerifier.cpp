@@ -29,6 +29,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
+#include <exception>
 #include <mutex>
 #include <fstream>
 #include <ios>
@@ -49,6 +50,7 @@ constexpr double Inf = std::numeric_limits<double>::infinity();
 constexpr double ContactTolerance = 1e-5;
 constexpr double SameLayerTolerance = 0.02, TipRingHeight = 0.25;
 constexpr double LandContactMax = 0.10, LandContactShare = 0.5, StrictLandContact = 0.02;
+constexpr double ExactNozzleSlack = 0.01;
 
 bool tip_ring(const Nonplanar::HeadBox &raw, const Nonplanar::HeadEnvelope &head, bool nozzle, bool infinite)
 {
@@ -588,7 +590,8 @@ public:
             });
     }
     double clearance(const Prefix &laid, Scratch &scratch, const ToolPose &pose, const Matrix3d &frame, const Vec3d &sweep, double turn,
-                     size_t run, bool extruding, bool allowance, double cutoff, std::string &component, unsigned int layer) const
+                     size_t run, bool extruding, bool allowance, double cutoff, std::string &component, unsigned int layer,
+                     int only = 0) const
     {
         double best = cutoff;
         size_t best_box = std::numeric_limits<size_t>::max();
@@ -620,6 +623,7 @@ public:
             return bound_head(centre - half, centre + half, axes, limit);
         };
         for (const Group &group : m_groups) {
+            if ((only == 1 && group.nozzle) || (only == 2 && !group.nozzle)) continue;
             const double reach = group.infinite ? laid.radius + pose.tip.norm() : group.radius;
             const Vec3d grow = sweep + Vec3d::Constant(0.5 * turn * reach);
             const Vec3d glo = group.lo - grow, ghi = group.hi + grow;
@@ -738,6 +742,106 @@ public:
         if (best_box == std::numeric_limits<size_t>::max()) return Inf;
         component = m_boxes[best_box].name;
         return best;
+    }
+    struct NozzleSolid
+    {
+        double land_r = 0., land_h = 0., tan_half = 0., top_z = 0., top_r = 0.;
+        bool   valid() const { return land_r > 0. && tan_half > 0. && top_z > land_h; }
+        double sdf(double rho, double z) const
+        {
+            const std::array<Vec2d, 6> p { Vec2d(-land_r, 0.), Vec2d(land_r, 0.), Vec2d(land_r, land_h), Vec2d(top_r, top_z),
+                                           Vec2d(-top_r, top_z), Vec2d(-land_r, land_h) };
+            const Vec2d q(rho, z);
+            double d = Inf;
+            for (size_t i = 0; i < p.size(); ++i) {
+                const Vec2d a = p[i], e = p[(i + 1) % p.size()] - a;
+                const double t = std::clamp((q - a).dot(e) / e.squaredNorm(), 0., 1.);
+                d = std::min(d, (q - a - t * e).norm());
+            }
+            const bool inside = z >= 0. && z <= top_z && std::abs(rho) <= (z < land_h ? land_r : land_r + (z - land_h) * tan_half);
+            return inside ? -d : d;
+        }
+    };
+    void exact_nozzle(const Prefix &laid, const std::vector<ToolPose> &poses, const std::vector<Matrix3d> &frames,
+                      const NozzleSolid &nozzle, double &face, double &flank, uint32_t &struck) const
+    {
+        if (laid.beads == 0 || poses.empty()) return;
+        const double reach = std::hypot(nozzle.top_r, nozzle.top_z);
+        Vec3d lo = Vec3d::Constant(Inf), hi = Vec3d::Constant(-Inf);
+        for (const ToolPose &pose : poses) lo = lo.cwiseMin(pose.tip), hi = hi.cwiseMax(pose.tip);
+        lo -= Vec3d::Constant(reach), hi += Vec3d::Constant(reach);
+        if (lo.z() > laid.ceiling) return;
+        std::vector<uint32_t> chunks;
+        visit_find(m_fine, lo, hi, [&](const Slot &cell) {
+            if ((cell.lo.array() <= hi.array()).all() && (cell.hi.array() >= lo.array()).all())
+                chunks.insert(chunks.end(), cell.chunks.begin(), cell.chunks.end());
+        });
+        std::sort(chunks.begin(), chunks.end());
+        chunks.erase(std::unique(chunks.begin(), chunks.end()), chunks.end());
+        constexpr double Step = 0.05;
+        constexpr int    Arc  = 8;
+        std::vector<Vec3d>  points;
+        std::vector<size_t> near;
+        for (const uint32_t chunk_id : chunks) {
+            const Chunk &chunk = m_chunks[chunk_id];
+            if (chunk.first >= laid.beads) continue;
+            if (!((chunk.lo.array() <= hi.array()).all() && (chunk.hi.array() >= lo.array()).all())) continue;
+            for (uint32_t id = chunk.first; id < std::min(chunk.first + chunk.count, laid.beads); ++id) {
+                const Road &bead = m_beads[id];
+                if (!((bead.lo.array() <= hi.array()).all() && (bead.hi.array() >= lo.array()).all())) continue;
+                const Corners corners = bead.corners();
+                Vec3d centre = Vec3d::Zero();
+                for (const Vec3d &v : corners) centre += v / 8.;
+                double r = 0.;
+                for (const Vec3d &v : corners) r = std::max(r, (v - centre).norm());
+                near.clear();
+                for (size_t i = 0; i < poses.size(); ++i) {
+                    const Vec3d uc = frames[i] * (centre - poses[i].tip);
+                    if (uc.z() + r > ContactTolerance && nozzle.sdf(uc.head<2>().norm(), uc.z()) < r + ExactNozzleSlack) near.push_back(i);
+                }
+                if (near.empty()) continue;
+                struct Section { Vec3d c, side, up; double core, rad; };
+                std::array<Section, 2> s;
+                for (int e = 0; e < 2; ++e) {
+                    const Vec3d l = bead.top[size_t(2 * e)], rr = bead.top[size_t(2 * e + 1)], depth = bead.depth[size_t(e)];
+                    const double w = (rr - l).norm(), h = depth.norm();
+                    s[e].side = w > 1e-12 ? Vec3d((rr - l) / w) : Vec3d::Zero();
+                    s[e].up   = h > 1e-12 ? Vec3d(depth / h) : Vec3d::Zero();
+                    s[e].rad  = 0.5 * h;
+                    s[e].core = std::max(0.5 * w - s[e].rad, 0.);
+                    s[e].c    = 0.5 * (l + rr) - 0.5 * depth;
+                }
+                points.clear();
+                const int along = std::max(1, int(std::ceil((s[1].c - s[0].c).norm() / Step)));
+                const int flat  = std::max(1, int(std::ceil(2. * std::max(s[0].core, s[1].core) / Step)));
+                for (int i = 0; i <= along; ++i) {
+                    const double t = double(i) / along;
+                    const Vec3d  c = (1. - t) * s[0].c + t * s[1].c, side = (1. - t) * s[0].side + t * s[1].side,
+                                up = (1. - t) * s[0].up + t * s[1].up;
+                    const double core = (1. - t) * s[0].core + t * s[1].core, rad = (1. - t) * s[0].rad + t * s[1].rad;
+                    for (int k = 0; k <= Arc; ++k) {
+                        const double a = M_PI * (double(k) / Arc - 0.5);
+                        for (const double sign : { -1., 1. })
+                            points.push_back(c + sign * (core + rad * std::cos(a)) * side + rad * std::sin(a) * up);
+                    }
+                    for (int k = 0; k <= flat; ++k) {
+                        const double x = core * (2. * k / flat - 1.);
+                        points.push_back(c + x * side + rad * up);
+                        points.push_back(c + x * side - rad * up);
+                    }
+                }
+                for (const size_t i : near)
+                    for (const Vec3d &p : points) {
+                        const Vec3d u = frames[i] * (p - poses[i].tip);
+                        if (u.z() <= ContactTolerance) continue;
+                        const double rho = u.head<2>().norm(), d = nozzle.sdf(rho, u.z());
+                        if (rho > nozzle.land_r) {
+                            if (ExactNozzleSlack - d > flank) flank = ExactNozzleSlack - d, struck = id;
+                        } else if (d < -ContactTolerance && u.z() > face)
+                            face = u.z(), struck = id;
+                    }
+            }
+        }
     }
 private:
     static constexpr double FineCell = 1., CoarseCell = 4., ChunkSize = 1.;
@@ -1283,6 +1387,23 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
     Nonplanar::HeadEnvelope tilted_head = params.head;
     if (bar) tilted_head.tip_allowance = { land_r, LandContactMax };
     if (measure_planar) tilted_head.tip_allowance = {};
+    TiltedBeads::NozzleSolid nozzle_solid;
+    if (bar && rotary && std::getenv("NP_VERIFY_EXACT_NOZZLE") != nullptr && std::string(std::getenv("NP_VERIFY_EXACT_NOZZLE")) == "1") {
+        try {
+            const auto cone = nlohmann::json::parse(params.head.extensions).at("coverage").at("nozzle_cone");
+            nozzle_solid.land_r   = cone.at("tip_radius").get<double>();
+            nozzle_solid.tan_half = std::tan(cone.at("half_angle_deg").get<double>() * M_PI / 180.);
+            nozzle_solid.top_z    = cone.at("top_z").get<double>();
+            nozzle_solid.top_r    = cone.at("radius_at_top").get<double>();
+            nozzle_solid.land_h   = nozzle_solid.top_z - (nozzle_solid.top_r - nozzle_solid.land_r) / nozzle_solid.tan_half;
+        } catch (const std::exception &) {
+            nozzle_solid = {};
+        }
+        if (!nozzle_solid.valid())
+            BOOST_LOG_TRIVIAL(warning) << "NP_VERIFY_EXACT_NOZZLE: the head has no coverage.nozzle_cone; the nozzle strips judge it";
+    }
+    const bool exact_nozzle = nozzle_solid.valid();
+    if (exact_nozzle) tilted_head.tip_allowance = {};
     TiltedBeads tilted(tilted_head);
     tilted.measure_above_ceiling = measure_planar;
     std::vector<TiltedBeads::Prefix> laid_before;
@@ -1356,6 +1477,7 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
             bool tolerated = false;
             if (scratch) scratch->tolerated = false;
             Vec3d sample_start = rotary ? kinematics.forward(last_joints).tip : a;
+            bool  nozzle_contact = false;
             for (int j = 0; j < count; ++j) {
                 if ((j & 1023) == 0 && throw_if_canceled) throw_if_canceled();
                 const double t0 = double(j) / count, t1 = double(j + 1) / count;
@@ -1370,7 +1492,13 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
                     const Vec3d grow = 0.5 * (frame * (sample_end - sample_start)).cwiseAbs() +
                                        Vec3d::Constant((theta * theta * tip_lever + 2. * theta * stride) / 8.);
                     sample_start = sample_end;
-                    const double bead_gap = tilted.clearance(laid, *scratch, pose, frame, grow, theta, c.run, extruding, bar || !strict, best, component, move.layer_id);
+                    if (exact_nozzle && !nozzle_contact) {
+                        std::string strip;
+                        nozzle_contact = tilted.clearance(laid, *scratch, pose, frame, grow, theta, c.run, false, false, -ContactTolerance,
+                                                          strip, move.layer_id, 2) < Inf;
+                    }
+                    const double bead_gap = tilted.clearance(laid, *scratch, pose, frame, grow, theta, c.run, extruding, bar || !strict, best,
+                                                             component, move.layer_id, exact_nozzle ? 1 : 0);
                     if (explain_move == c.move) {
                         std::ostringstream line;
                         line << "explain move " << c.move << " sample " << j << "/" << count << " tip " << pose.tip.transpose() << " axis "
@@ -1445,6 +1573,29 @@ ClearanceReport verify_clearance(const GCodeProcessorResult &result, const Clear
                             best_land = land_gap, land_component = std::move(lc), land_tip = p1, best_land_struck = land_struck;
                     }
                 }
+            }
+            if (nozzle_contact) {
+                constexpr double ExactNozzleStep = 0.02;
+                const int    poses = std::clamp(int(std::ceil(displacement / ExactNozzleStep)), 1, 4000);
+                double       face = 0., flank = 0.;
+                uint32_t     struck = uint32_t(-1);
+                std::vector<ToolPose> exact_poses;
+                std::vector<Matrix3d> exact_frames;
+                for (int i = 0; i <= poses; ++i) {
+                    const JointPose q = lerp(last_joints, move_joints, double(i) / poses);
+                    exact_poses.push_back(kinematics.forward(q));
+                    exact_frames.push_back(kinematics.head_frame(q));
+                }
+                tilted.exact_nozzle(laid, exact_poses, exact_frames, nozzle_solid, face, flank, struck);
+                if (struck != uint32_t(-1) && std::getenv("NP_VERIFY_STRUCK") != nullptr) {
+                    Vec3d centre = Vec3d::Zero();
+                    for (const Vec3d &v : tilted.bead(struck)) centre += v / 8.;
+                    hit_bead = "bead " + std::to_string(tilted.bead_layer(struck)) + " " + std::to_string(centre.x()) + " " +
+                               std::to_string(centre.y()) + " " + std::to_string(centre.z());
+                }
+                if (flank > params.cone_tolerance) record(-flank, "nozzle_flank", b, ClearanceHitClass::Cone);
+                if (face > 0. && -(face + ExactNozzleSlack) < best_land)
+                    best_land = -(face + ExactNozzleSlack), land_component = "nozzle_face", land_tip = b;
             }
             const bool land_hit = best_land + land_allow < -ContactTolerance;
             if (land_hit && best_land + land_allow < best)

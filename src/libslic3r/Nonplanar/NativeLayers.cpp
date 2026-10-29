@@ -2,8 +2,11 @@
 
 #include "libslic3r/ClipperUtils.hpp"
 #include "libslic3r/Line.hpp"
+#include "libslic3r/Point.hpp"
 #include "libslic3r/libslic3r.h"
 
+#include <Eigen/Geometry>
+#include <math.h>
 #include <tbb/blocked_range.h>
 #include <tbb/parallel_for.h>
 
@@ -374,6 +377,99 @@ Vec3d tool_axis(const LayerField &field, const Vec3d &p, double tilt_cap)
     if (h.squaredNorm() < 1e-24)
         return Vec3d::UnitZ();
     return std::cos(tilt_cap) * Vec3d::UnitZ() + std::sin(tilt_cap) * h.normalized();
+}
+
+std::vector<Vec3f> smooth_axes(const std::vector<Vec3d> &tips, const std::vector<Vec3f> &exact, double sigma, double max_dev)
+{
+    const size_t        m = exact.size();
+    std::vector<double> s(m, 0.);
+    for (size_t i = 1; i < m; ++i)
+        s[i] = s[i - 1] + (tips[i] - tips[i - 1]).norm();
+    std::vector<Vec3f> out(m);
+    size_t             lo = 0, hi = 0;
+    for (size_t i = 0; i < m; ++i) {
+        while (s[i] - s[lo] > 3. * sigma)
+            ++lo;
+        while (hi + 1 < m && s[hi + 1] - s[i] <= 3. * sigma)
+            ++hi;
+        Vec3d sum = Vec3d::Zero();
+        for (size_t j = lo; j <= hi; ++j)
+            sum += std::exp(-0.5 * sqr((s[j] - s[i]) / sigma)) * exact[j].cast<double>();
+        const Vec3d e = exact[i].cast<double>().normalized();
+        Vec3d       a = sum.squaredNorm() > 1e-24 ? Vec3d(sum.normalized()) : e;
+        if (const double off = std::acos(std::clamp(a.dot(e), -1., 1.)); off > max_dev)
+            a = (Eigen::Quaterniond::Identity().slerp(1. - max_dev / off, Eigen::Quaterniond::FromTwoVectors(a, e)) * a).normalized();
+        out[i] = a.cast<float>();
+    }
+    return out;
+}
+
+std::vector<Vec3f> tube_axes(const std::vector<Vec3f> &exact, double tube, double tilt_cap, double rate_b, double rate_c)
+{
+    struct Pose { double tilt, azimuth; };
+    const auto axis_of = [](const Pose &p) {
+        return Vec3d(std::sin(p.tilt) * std::cos(p.azimuth), std::sin(p.tilt) * std::sin(p.azimuth), std::cos(p.tilt));
+    };
+    const auto pose_of = [](const Vec3d &a, const Pose &from) {
+        const double tilt = std::acos(std::clamp(a.z(), -1., 1.));
+        return Pose{ tilt, tilt < 1e-9 ? from.azimuth : from.azimuth + std::remainder(std::atan2(a.y(), a.x()) - from.azimuth, 2. * M_PI) };
+    };
+    const auto cost = [&](const Pose &a, const Pose &b) {
+        const double dc = a.tilt < 1e-9 || b.tilt < 1e-9 ? 0. : std::abs(b.azimuth - a.azimuth);
+        return std::max(std::abs(b.tilt - a.tilt) / rate_b, dc / rate_c) + 1e-4 * b.tilt / rate_b;
+    };
+    const double cos_tube = std::cos(tube);
+    const auto step = [&](const Pose &from, const Vec3d &e) {
+        if (axis_of(from).dot(e) >= cos_tube - 1e-12)
+            return from;
+        Pose       best = pose_of(e, from);
+        double     best_cost = cost(from, best);
+        const auto consider = [&](const Vec3d &a) {
+            const Pose p = pose_of(a, from);
+            if (p.tilt > tilt_cap + 1e-9)
+                return std::numeric_limits<double>::infinity();
+            const double c = cost(from, p);
+            if (c < best_cost) {
+                best      = p;
+                best_cost = c;
+            }
+            return c;
+        };
+        if (std::acos(std::clamp(e.z(), -1., 1.)) <= tube)
+            consider(Vec3d::UnitZ());
+        const Vec3d u = (std::abs(e.z()) < 0.9 ? Vec3d::UnitZ() : Vec3d::UnitX()).cross(e).normalized(), v = e.cross(u);
+        const auto  rim = [&](double t) { return (cos_tube * e + std::sin(tube) * (std::cos(t) * u + std::sin(t) * v)).normalized(); };
+        constexpr int samples = 48;
+        double        t_best = 0., c_best = std::numeric_limits<double>::infinity();
+        for (int s = 0; s < samples; ++s) {
+            const double t = 2. * M_PI * s / samples;
+            if (const double c = consider(rim(t)); c < c_best) {
+                c_best = c;
+                t_best = t;
+            }
+        }
+        for (double span = M_PI / samples; span > 1e-4; span *= 0.5)
+            for (const double t : { t_best - span, t_best + span })
+                if (const double c = consider(rim(t)); c < c_best) {
+                    c_best = c;
+                    t_best = t;
+                }
+        return best;
+    };
+    const size_t m = exact.size();
+    std::vector<Vec3f> out(m);
+    if (m == 0)
+        return out;
+    Pose p{ 0., 0. };
+    p = pose_of(Vec3d(exact.back().cast<double>()), p);
+    p.tilt = 0.;
+    for (size_t q = m; q-- > 0;)
+        p = step(p, exact[q].cast<double>().normalized());
+    for (size_t i = 0; i < m; ++i) {
+        p      = step(p, exact[i].cast<double>().normalized());
+        out[i] = axis_of(p).cast<float>();
+    }
+    return out;
 }
 
 }

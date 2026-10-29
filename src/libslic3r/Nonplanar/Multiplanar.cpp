@@ -1205,6 +1205,13 @@ double grounded_route_gap(size_t chunk)
     return gaps[std::min(chunk == 0 ? size_t(0) : chunk - 1, gaps.size() - 1)];
 }
 
+void forget_grounded_route(const PrintObject &object)
+{
+    const std::lock_guard<std::mutex> lock(grounded_mutex);
+    grounded_slices.erase(&object);
+    grounded_upper.erase(&object);
+}
+
 std::vector<ExPolygons> grounded_route_upper(const PrintObject &object)
 {
     const std::lock_guard<std::mutex> lock(grounded_mutex);
@@ -1500,18 +1507,22 @@ std::shared_ptr<MultiplanarPlan> mode_plan(PrintObject &object)
 std::shared_ptr<const MultiplanarPlan> clip_multiplanar_slices(PrintObject &object)
 {
     const std::shared_ptr<const MultiplanarPlan> plan = oneshot_requested(object) ? object.oneshot_state().route : mode_plan(object);
-    if (!plan)
+    if (!plan) {
+        forget_grounded_route(object);
         return {};
+    }
 
     const std::vector<HalfSpace> &clips = plan->chunks.front().clips;
-    if (clips.empty())
+    if (clips.empty()) {
+        forget_grounded_route(object);
         return plan;
+    }
     const bool   route = object.print()->config().nonplanar_kinematics.value != RotaryLayout::None && oneshot_requested(object);
     const double under = route ? route_under_delta() : 0.;
     LayerPtrs &layers = object.layers();
     {
         std::vector<ExPolygons> full, upper;
-        if (route && chunk_support_grounded() && object.config().enable_support.value) {
+        if (route && (chunk_support_grounded() || plan->lip) && object.config().enable_support.value) {
             full.resize(layers.size());
             for (size_t layer_id = 0; layer_id < layers.size(); ++layer_id) {
                 for (const LayerRegion *region : layers[layer_id]->regions())
@@ -1590,7 +1601,7 @@ void build_multiplanar_chunks(PrintObject &object, const MultiplanarPlan &plan, 
     const size_t host_id  = object.layers().size() - 1;
     Layer       *host     = object.layers()[host_id];
     const double raft     = host->print_z - (host->slice_z + 0.5 * host->height);
-    const bool                grounded      = route && chunk_support_grounded() && object.config().enable_support.value;
+    const bool                grounded      = route && (chunk_support_grounded() || plan.lip) && object.config().enable_support.value;
     const bool                conformal     = grounded && chunk_support_conformal();
     const bool                chunk_support = route && chunk_support_requested() && (!grounded || conformal) && object.config().enable_support.value;
     const DynamicPrintConfig  config = chunk_print_config(object, chunk_support);

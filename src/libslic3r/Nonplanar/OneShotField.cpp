@@ -53,6 +53,8 @@
 #include <iterator>
 #include <limits>
 #include <map>
+#include <numeric>
+#include <tuple>
 #include <memory>
 #include <mutex>
 #include <sstream>
@@ -659,6 +661,7 @@ bool take_injected_oneshot(OneShotState &state)
         return false;
     state = *injected;
     state.plinth_applied = false;
+    state.injected       = true;
     return true;
 }
 
@@ -873,7 +876,7 @@ bool body_earns_control(const PrintObject &object, OneShotState &state, const Fl
     const MeasureDeadline deadline(measure_deadline(state));
     const MeasureWork     work(measure_work(object, state));
     using Offer = OneShotState::Offer;
-    if (state.offer == Offer::Control || state.offer == Offer::Auto)
+    if (state.offer == Offer::Control || state.offer == Offer::Auto || state.route != nullptr)
         return false;
     std::string why;
     if (const double band = object.wall_band(); band > OneShotBodyBand)
@@ -1464,10 +1467,16 @@ double join_line_k()
     static const double k = [] { const char *v = std::getenv("NP_ONESHOT_JOIN_LINE"); return v != nullptr && *v != 0 ? std::atof(v) : 1.; }();
     return k;
 }
+bool force_joins(const std::string &cuts)
+{
+    static const char *force = std::getenv("NP_ONESHOT_ROUTE_FORCE");
+    static const bool  on    = [] { const char *v = std::getenv("NP_ONESHOT_ROUTE_FORCE_JOINS"); return v != nullptr && std::atoi(v) != 0; }();
+    return on && force != nullptr && cuts == force;
+}
 constexpr double SlabLayers   = 3.;
 constexpr double TerminalFaceArea = 20.;
 constexpr double JoinTurnMax = 20.;
-constexpr double FanStep = 10.;
+constexpr double FanStepFallback = 10.;
 constexpr double GradeAbove = 15.;
 constexpr double FanReach = 23.;
 constexpr double ChunkOverhangMax = 50.;
@@ -1549,7 +1558,7 @@ bool slab_joins_exempt()
     return v != nullptr && *v == '1';
 }
 
-std::string grade_joins(MultiplanarPlan &plan, const indexed_triangle_set &mesh, const ToolKinematics &kinematics, double h)
+std::string grade_joins(MultiplanarPlan &plan, const indexed_triangle_set &mesh, const ToolKinematics &kinematics, double h, double fan_step)
 {
     std::string log;
     for (size_t ci = 1; ci < plan.chunks.size(); ++ci) {
@@ -1559,7 +1568,7 @@ std::string grade_joins(MultiplanarPlan &plan, const indexed_triangle_set &mesh,
         const double            bo   = -c.clips[size_t(c.base_clip)].offset;
         const Vec3d             dp   = plan.chunks[p].build_dir;
         const double            turn = std::acos(std::clamp(dp.dot(bn), -1., 1.));
-        const int               steps = int(std::ceil(Geometry::rad2deg(turn) / FanStep - 1e-9));
+        const int               steps = int(std::ceil(Geometry::rad2deg(turn) / fan_step - 1e-9));
         Vec3d                   axis  = dp.cross(bn);
         if (Geometry::rad2deg(turn) <= GradeAbove || steps < 2 || axis.norm() < 1e-9 || face_slab(mesh, c, h))
             continue;
@@ -1655,18 +1664,24 @@ std::string grade_joins(MultiplanarPlan &plan, const indexed_triangle_set &mesh,
     return log;
 }
 
-MultiplanarPlan route_spec_plan(const std::string &path, const indexed_triangle_set &mesh, const ToolKinematics &kinematics)
+struct SpecCut
 {
-    const nlohmann::json spec = nlohmann::json::parse(std::ifstream(path));
-    auto                 vec  = [](const nlohmann::json &a) { return Vec3d(a.at(0).get<double>(), a.at(1).get<double>(), a.at(2).get<double>()); };
+    int    parent = -1;
+    Vec3d  n, dir;
+    double o = 0.;
+    double jvis = 0.;
+};
+
+MultiplanarPlan spec_cut_plan(const std::vector<SpecCut> &cuts, const indexed_triangle_set &mesh, const ToolKinematics &kinematics)
+{
     MultiplanarPlan      plan;
     std::vector<int>     ids { -1 };
     std::vector<std::vector<HalfSpace>> clips { {} };
-    for (const nlohmann::json &c : spec.at("cuts")) {
-        const int    q   = c.value("parent", -1);
-        const Vec3d  n   = Vec3d(vec(c.at("n")).normalized());
-        const double o   = c.at("o").get<double>();
-        const Vec3d  dir = c.contains("dir") ? Vec3d(vec(c.at("dir")).normalized()) : n;
+    for (const SpecCut &c : cuts) {
+        const int    q   = c.parent;
+        const Vec3d  n   = c.n.normalized();
+        const double o   = c.o;
+        const Vec3d  dir = c.dir.normalized();
         const auto   at  = std::find(ids.begin(), ids.end(), q);
         if (at == ids.end())
             throw Slic3r::RuntimeError("NP_ONESHOT_ROUTE_SPEC: a cut's parent is not an earlier cut");
@@ -1698,17 +1713,244 @@ MultiplanarPlan route_spec_plan(const std::string &path, const indexed_triangle_
     }
     return multiplanar_subset(plan, std::vector<bool>(plan.cuts.size(), true));
 }
+
+MultiplanarPlan route_spec_plan(const std::string &path, const indexed_triangle_set &mesh, const ToolKinematics &kinematics)
+{
+    const nlohmann::json spec = nlohmann::json::parse(std::ifstream(path));
+    auto                 vec  = [](const nlohmann::json &a) { return Vec3d(a.at(0).get<double>(), a.at(1).get<double>(), a.at(2).get<double>()); };
+    std::vector<SpecCut> cuts;
+    for (const nlohmann::json &c : spec.at("cuts")) {
+        SpecCut cut;
+        cut.parent = c.value("parent", -1);
+        cut.n      = vec(c.at("n"));
+        cut.o      = c.at("o").get<double>();
+        cut.dir    = c.contains("dir") ? vec(c.at("dir")) : cut.n;
+        cuts.push_back(cut);
+    }
+    return spec_cut_plan(cuts, mesh, kinematics);
 }
 
-void choose_route(PrintObject &object, OneShotState &state)
+constexpr double LipMinZ = 12., LipAccept = 0.7, LipMinPlanar = 50., LipStep = 0.25;
+constexpr double LipTilts[] = { 30., 35., 40., 45., 55. };
+constexpr size_t LipPerTilt = 2;
+constexpr int LipMeasured = 4;
+constexpr double LipRegionBend = 15., LipRegionMin = 50., LipJvisMax = 60., LipJvisWeight = 2.;
+struct LipFaces
 {
+    std::vector<Vec3d>                c, nrm;
+    std::vector<std::array<Vec3d, 3>> tri;
+    std::vector<double>               area, region_area;
+};
+LipFaces lip_faces(const indexed_triangle_set &mesh)
+{
+    LipFaces          f;
+    std::vector<int>  index(mesh.indices.size(), -1);
+    for (size_t i = 0; i < mesh.indices.size(); ++i) {
+        const stl_triangle_vertex_indices &t = mesh.indices[i];
+        const Vec3d  t0 = mesh.vertices[t[0]].cast<double>(), t1 = mesh.vertices[t[1]].cast<double>(), t2 = mesh.vertices[t[2]].cast<double>();
+        const Vec3d  cr = (t1 - t0).cross(t2 - t0);
+        const double a  = 0.5 * cr.norm();
+        if (a <= 0.)
+            continue;
+        index[i] = int(f.c.size());
+        f.c.push_back((t0 + t1 + t2) / 3.), f.nrm.push_back(cr.normalized()), f.area.push_back(a), f.tri.push_back({ t0, t1, t2 });
+    }
+    std::vector<int> parent(f.c.size());
+    std::iota(parent.begin(), parent.end(), 0);
+    std::function<int(int)> root = [&](int x) { return parent[x] == x ? x : parent[x] = root(parent[x]); };
+    std::map<std::pair<int, int>, int> edges;
+    const double cos_bend = std::cos(LipRegionBend * M_PI / 180.);
+    for (size_t i = 0; i < mesh.indices.size(); ++i) {
+        if (index[i] < 0)
+            continue;
+        for (int e = 0; e < 3; ++e) {
+            const int a = mesh.indices[i][e], b = mesh.indices[i][(e + 1) % 3];
+            const auto key = std::minmax(a, b);
+            if (auto it = edges.find(key); it == edges.end())
+                edges.emplace(key, index[i]);
+            else if (f.nrm[size_t(it->second)].dot(f.nrm[size_t(index[i])]) > cos_bend)
+                parent[size_t(root(it->second))] = root(index[i]);
+        }
+    }
+    std::map<int, double> sum;
+    for (size_t i = 0; i < f.c.size(); ++i)
+        sum[root(int(i))] += f.area[i];
+    f.region_area.resize(f.c.size());
+    for (size_t i = 0; i < f.c.size(); ++i) {
+        const double A = sum[root(int(i))];
+        const bool   bed = f.nrm[i].z() < -0.99 && f.c[i].z() < 0.3;
+        f.region_area[i] = A >= LipRegionMin && !bed ? A : 0.;
+    }
+    return f;
+}
+double lip_join_weight(const Vec3d &m, const Vec3d &d, double region_area)
+{
+    const Vec3d  tz = m.cross(Vec3d::UnitZ()), td = m.cross(d);
+    const double theta = tz.norm() < 0.1 ? 90. :
+                         Geometry::rad2deg(std::acos(std::clamp(std::abs(tz.dot(td)) / std::max(tz.norm() * td.norm(), 1e-12), 0., 1.)));
+    return std::min(1., theta / 10.) * std::min(1., region_area / 1000.);
+}
+double lip_jvis(const indexed_triangle_set &mesh, const LipFaces &f, const Vec3d &d, double o)
+{
+    double sum = 0.;
+    size_t k   = 0;
+    for (const stl_triangle_vertex_indices &t : mesh.indices) {
+        const Vec3d p[3] = { mesh.vertices[t[0]].cast<double>(), mesh.vertices[t[1]].cast<double>(), mesh.vertices[t[2]].cast<double>() };
+        if (0.5 * (p[1] - p[0]).cross(p[2] - p[0]).norm() <= 0.)
+            continue;
+        const size_t i = k++;
+        if (f.region_area[i] <= 0.)
+            continue;
+        std::vector<Vec3d> hits;
+        for (int e = 0; e < 3; ++e) {
+            const double s0 = d.dot(p[e]) - o, s1 = d.dot(p[(e + 1) % 3]) - o;
+            if ((s0 < 0.) != (s1 < 0.))
+                hits.push_back(p[e] + (p[(e + 1) % 3] - p[e]) * (s0 / (s0 - s1)));
+        }
+        if (hits.size() == 2)
+            sum += (hits[1] - hits[0]).norm() * lip_join_weight(f.nrm[i], d, f.region_area[i]);
+    }
+    return sum;
+}
+
+std::vector<std::pair<double, SpecCut>> lip_offer_cuts(const indexed_triangle_set &mesh)
+{
+    std::vector<Vec3d>  c, nrm, vtx;
+    std::vector<double> area;
+    for (const stl_triangle_vertex_indices &f : mesh.indices) {
+        const Vec3d  t0 = mesh.vertices[f[0]].cast<double>(), t1 = mesh.vertices[f[1]].cast<double>(), t2 = mesh.vertices[f[2]].cast<double>();
+        const Vec3d  cr = (t1 - t0).cross(t2 - t0);
+        const double a  = 0.5 * cr.norm();
+        if (a <= 0.)
+            continue;
+        c.push_back((t0 + t1 + t2) / 3.), nrm.push_back(cr.normalized()), area.push_back(a);
+    }
+    for (const stl_vertex &v : mesh.vertices)
+        vtx.push_back(v.cast<double>());
+    double planar = 0.;
+    for (size_t i = 0; i < c.size(); ++i)
+        if (c[i].z() >= 0.3 && nrm[i].z() < -0.707)
+            planar += area[i];
+    std::vector<std::pair<double, SpecCut>> out;
+    if (planar < LipMinPlanar)
+        return out;
+    constexpr double     LipJvisSample = 0.05;
+    const LipFaces       faces = lip_faces(mesh);
+    std::vector<Vec3d>   sp;
+    std::vector<double>  sw;
+    std::vector<size_t>  sf;
+    for (size_t i = 0; i < faces.c.size(); ++i) {
+        if (faces.region_area[i] <= 0.)
+            continue;
+        const int                   n = std::max(1, int(std::ceil(std::sqrt(faces.area[i] / LipJvisSample))));
+        const std::array<Vec3d, 3> &T = faces.tri[i];
+        const size_t                first = sp.size();
+        for (int u = 0; u < n; ++u)
+            for (int v = 0; v < n - u; ++v) {
+                const double a = (u + 1. / 3.) / n, b = (v + 1. / 3.) / n;
+                sp.push_back(T[0] + (T[1] - T[0]) * a + (T[2] - T[0]) * b);
+                sf.push_back(i);
+            }
+        sw.insert(sw.end(), sp.size() - first, faces.area[i] / double(sp.size() - first));
+    }
+    for (const double t : LipTilts) {
+        std::vector<std::tuple<double, double, SpecCut>> picks;
+        for (int az = 0; az < 360; az += 15) {
+            const double tr = t * M_PI / 180., ar = az * M_PI / 180.;
+            const Vec3d  d(std::sin(tr) * std::cos(ar), std::sin(tr) * std::sin(ar), std::cos(tr));
+            std::vector<size_t> fi(c.size()), vi(vtx.size());
+            std::iota(fi.begin(), fi.end(), 0), std::iota(vi.begin(), vi.end(), 0);
+            std::sort(fi.begin(), fi.end(), [&](size_t a, size_t b) { return c[a].dot(d) < c[b].dot(d); });
+            std::sort(vi.begin(), vi.end(), [&](size_t a, size_t b) { return vtx[a].dot(d) > vtx[b].dot(d); });
+            std::vector<double> chunk(fi.size() + 1, 0.), root(fi.size() + 1, 0.), chunk_area(fi.size() + 1, 0.);
+            for (size_t k = fi.size(); k-- > 0;) {
+                const size_t i = fi[k];
+                chunk[k]      = chunk[k + 1] + (c[i].z() >= 0.3 && nrm[i].dot(d) < -0.707 ? area[i] : 0.);
+                chunk_area[k] = chunk_area[k + 1] + area[i];
+            }
+            for (size_t k = 0; k < fi.size(); ++k) {
+                const size_t i = fi[k];
+                root[k + 1] = root[k] + (c[i].z() >= 0.3 && nrm[i].z() < -0.707 ? area[i] : 0.);
+            }
+            const double lo = std::floor(vtx[vi.back()].dot(d) / LipStep) * LipStep, hi = vtx[vi.front()].dot(d);
+            double minz = std::numeric_limits<double>::infinity();
+            size_t kv   = 0;
+            std::vector<double> os;
+            for (double o = lo; o < hi; o += LipStep)
+                os.push_back(o);
+            std::vector<double> sc(os.size(), std::numeric_limits<double>::infinity()), frac(os.size(), 1.);
+            for (size_t j = os.size(); j-- > 0;) {
+                while (kv < vi.size() && vtx[vi[kv]].dot(d) >= os[j])
+                    minz = std::min(minz, vtx[vi[kv++]].z());
+                if (kv == 0 || minz < LipMinZ)
+                    continue;
+                const size_t k = size_t(std::lower_bound(fi.begin(), fi.end(), os[j], [&](size_t i, double o) { return c[i].dot(d) < o; }) - fi.begin());
+                if (k == fi.size())
+                    continue;
+                sc[j]   = chunk[k] + root[k];
+                frac[j] = chunk_area[k] / chunk_area[0];
+            }
+            std::vector<double> jvis(os.size(), 0.);
+            std::vector<double> face_w(faces.c.size(), -1.);
+            for (size_t q = 0; q < sp.size(); ++q) {
+                const size_t i = sf[q];
+                if (face_w[i] < 0.) {
+                    const double g = std::sqrt(std::max(0., 1. - std::pow(faces.nrm[i].dot(d), 2)));
+                    face_w[i]      = g * lip_join_weight(faces.nrm[i], d, faces.region_area[i]) / LipStep;
+                }
+                const long b = std::lround((sp[q].dot(d) - lo) / LipStep);
+                if (b >= 0 && b < long(os.size()))
+                    jvis[size_t(b)] += sw[q] * face_w[i];
+            }
+            std::vector<double> obj(os.size(), std::numeric_limits<double>::infinity());
+            for (size_t j = 0; j < os.size(); ++j)
+                if (std::isfinite(sc[j]) && sc[j] <= LipAccept * planar)
+                    obj[j] = sc[j] + LipJvisWeight * jvis[j];
+            const double low = *std::min_element(obj.begin(), obj.end());
+            if (!std::isfinite(low))
+                continue;
+            std::vector<size_t> tied;
+            for (size_t j = 0; j < obj.size(); ++j)
+                if (obj[j] <= low + 0.5)
+                    tied.push_back(j);
+            const size_t j = tied[tied.size() / 2];
+            SpecCut      cut;
+            cut.n = cut.dir = d, cut.o = os[j];
+            picks.emplace_back(low, frac[j], cut);
+        }
+        std::sort(picks.begin(), picks.end(), [](const auto &a, const auto &b) {
+            return std::get<0>(a) < std::get<0>(b) || (std::get<0>(a) == std::get<0>(b) && std::get<1>(a) < std::get<1>(b));
+        });
+        size_t taken = 0;
+        for (size_t k = 0; k < picks.size() && taken < LipPerTilt; ++k) {
+            SpecCut cut = std::get<2>(picks[k]);
+            cut.jvis    = lip_jvis(mesh, faces, cut.dir, cut.o);
+            if (cut.jvis <= LipJvisMax)
+                out.emplace_back(t, cut), ++taken;
+        }
+    }
+    return out;
+}
+
+bool lip_offers_requested()
+{
+    static const bool on = [] { const char *v = std::getenv("NP_ONESHOT_LIP_OFFER"); return v != nullptr && std::atoi(v) != 0; }();
+    return on;
+}
+}
+
+namespace {
+
+bool choose_route_once(PrintObject &object, OneShotState &state, double fan_step)
+{
+    bool cap_refused = false;
     const MeasureDeadline deadline(measure_deadline(state));
     const MeasureWork     work(measure_work(object, state));
     const PrintConfig                    &pc         = object.print()->config();
     const std::unique_ptr<ToolKinematics> kinematics = make_tool_kinematics(pc);
     state.plinth_layers = 0;
     if (!state.z_only || !object.config().nonplanar_oneshot_routes.value || kinematics->rotary_count() == 0 || pc.spiral_mode.value)
-        return;
+        return cap_refused;
     const auto                 t_start = std::chrono::steady_clock::now();
     const std::string         &name    = object.model_object()->name;
     const indexed_triangle_set mesh    = slicing_frame_mesh(object);
@@ -1722,9 +1964,14 @@ void choose_route(PrintObject &object, OneShotState &state)
         BOOST_LOG_TRIVIAL(warning) << "One-shot routes " << name << ": the chunk planner stopped at its work budget (" << params.work_budget
                                    << " validated cuts) with " << plan.cuts.size() << " cuts";
     std::ostringstream         log;
-    if (plan.cuts.empty()) {
+    const std::vector<std::pair<double, SpecCut>> lips = lip_offers_requested() && (spec == nullptr || *spec == 0) ? lip_offer_cuts(mesh) :
+                                                                                                                      std::vector<std::pair<double, SpecCut>>();
+    for (size_t k = 0; k < lips.size(); ++k)
+        log << Slic3r::format("lip cut L%1%: tilt %2$.0f, dir %3$.3f,%4$.3f,%5$.3f @ %6$.2f, J_vis %7$.1f; ", k, lips[k].first, lips[k].second.dir.x(),
+                              lips[k].second.dir.y(), lips[k].second.dir.z(), lips[k].second.o, lips[k].second.jvis);
+    if (plan.cuts.empty() && lips.empty()) {
         state.route_log = plan.work_stopped ? "routes: no tilted chunk within the planner's work budget" : "routes: no tilted chunk";
-        return;
+        return cap_refused;
     }
     const PrintObjectConfig &oc = object.config();
     const PrintRegionConfig &rc = object.printing_region(0).config();
@@ -1972,56 +2219,21 @@ void choose_route(PrintObject &object, OneShotState &state)
         made += v.tag == "a" ? 1 : v.plan.cuts.size() - K;
     log << "terminal-face offers made: " << made << "; ";
     std::vector<Offer> offers;
-    for (size_t pv = 0; pv <= variants.size(); ++pv)
-    for (const std::vector<bool> &keep : masks) {
-        if (pv > 0) {
-            const size_t vc   = variants[pv - 1].cut;
-            bool         leaf = keep[vc];
-            for (size_t j = 0; j < K && leaf; ++j)
-                leaf = !(keep[j] && parents[j] == int(vc));
-            if (!leaf)
-                continue;
-        }
-        Offer o;
-        for (size_t i = 0; i < K; ++i)
-            if (keep[i])
-                o.cuts += (o.cuts.empty() ? "{" : ",") + std::to_string(i) + (pv > 0 && i == variants[pv - 1].cut ? variants[pv - 1].tag : "");
-        o.cuts += "}";
-        std::vector<bool> with = keep;
-        if (pv > 0)
-            with.resize(variants[pv - 1].plan.cuts.size(), true);
-        o.plan = multiplanar_subset(pv > 0 ? variants[pv - 1].plan : plan, with);
-        if (pv > 0)
-            for (const size_t g : variants[pv - 1].global) {
-                const HalfSpace base = variants[pv - 1].plan.cuts[g].chunk.clips.front();
-                const auto      at   = std::find_if(o.plan.chunks.begin(), o.plan.chunks.end(), [&base](const MultiplanarChunk &x) {
-                    return x.base_clip >= 0 && (x.clips[size_t(x.base_clip)].normal - base.normal).norm() < 1e-9 &&
-                           std::abs(x.clips[size_t(x.base_clip)].offset - base.offset) < 1e-9;
-                });
-                if (at == o.plan.chunks.end())
-                    continue;
-                if (at + 1 != o.plan.chunks.end()) {
-                    o.why = "a whole-plane face slab must print last";
-                    break;
-                }
-                at->clips     = { base };
-                at->base_clip = 0;
-                for (auto other = o.plan.chunks.begin(); other != at; ++other)
-                    other->clips.push_back({ -base.normal, -base.offset });
-            }
-        if (o.why.empty())
-            if (const std::string graded = grade_joins(o.plan, mesh, *kinematics, h); !graded.empty()) {
+    auto finish = [&](Offer o) {
+        const bool chunk_supported = chunk_support || (o.plan.lip && object.config().enable_support.value);
+        if (o.why.empty() && !force_joins(o.cuts))
+            if (const std::string graded = grade_joins(o.plan, mesh, *kinematics, h, fan_step); !graded.empty()) {
                 o.cuts += "g";
                 o.pieces += " (" + graded + ")";
             }
         if (!o.why.empty()) {
             offers.push_back(std::move(o));
-            continue;
+            return;
         }
         for (size_t ci = 0; ci < o.plan.chunks.size() && o.why.empty(); ++ci) {
             const MultiplanarChunk &c  = o.plan.chunks[ci];
             const PieceTerms       &pt = price(c, ci == 0);
-            o.J += ci == 0 || chunk_support ? pt.t.J + pt.seam : pt.t.J - W.sup * pt.t.S + pt.seam;
+            o.J += ci == 0 || chunk_supported ? pt.t.J + pt.seam : pt.t.J - W.sup * pt.t.S + pt.seam;
             o.J_ceil += pt.t.J + pt.seam;
             o.pieces += Slic3r::format(" [%1%: S %2$.0f over %3$.0f E_up %4$.0f E_wall %5$.0f E_down %6$.0f T %7$.0f]", ci, pt.t.S, pt.overhang,
                                        pt.t.E_up, pt.t.E_wall, pt.t.E_down, pt.t.T);
@@ -2029,13 +2241,14 @@ void choose_route(PrintObject &object, OneShotState &state)
             o.seam += pt.seam;
             if (ci == 0)
                 continue;
-            if (pt.overhang > ChunkOverhangMax && !chunk_support) {
+            if (pt.overhang > ChunkOverhangMax && !chunk_supported) {
                 o.why = Slic3r::format("chunk %1%: %2$.0f mm2 overhangs in its own layers (> %3$.0f), and a chunk prints no support", ci,
                                        pt.overhang, ChunkOverhangMax);
+                cap_refused = cap_refused || o.cuts.back() == 'g';
                 break;
             }
             if (const double turn = Geometry::rad2deg(std::acos(std::clamp(o.plan.chunks[size_t(c.parent)].build_dir.dot(c.build_dir), -1., 1.)));
-                turn > JoinTurnMax && !(slab_joins_exempt() && face_slab(mesh, c, h))) {
+                turn > JoinTurnMax && !(slab_joins_exempt() && face_slab(mesh, c, h)) && !force_joins(o.cuts)) {
                 o.why = Slic3r::format("chunk %1%: its layers turn %2$.0f deg from its parent's (> %3$.0f): a visible join line", ci, turn, JoinTurnMax);
                 break;
             }
@@ -2109,6 +2322,57 @@ void choose_route(PrintObject &object, OneShotState &state)
         o.J += W.time * o.T_motion;
         o.J_ceil += W.time * o.T_motion;
         offers.push_back(std::move(o));
+    };
+    for (size_t pv = 0; pv <= variants.size(); ++pv)
+    for (const std::vector<bool> &keep : masks) {
+        if (pv > 0) {
+            const size_t vc   = variants[pv - 1].cut;
+            bool         leaf = keep[vc];
+            for (size_t j = 0; j < K && leaf; ++j)
+                leaf = !(keep[j] && parents[j] == int(vc));
+            if (!leaf)
+                continue;
+        }
+        Offer o;
+        for (size_t i = 0; i < K; ++i)
+            if (keep[i])
+                o.cuts += (o.cuts.empty() ? "{" : ",") + std::to_string(i) + (pv > 0 && i == variants[pv - 1].cut ? variants[pv - 1].tag : "");
+        o.cuts += "}";
+        std::vector<bool> with = keep;
+        if (pv > 0)
+            with.resize(variants[pv - 1].plan.cuts.size(), true);
+        o.plan = multiplanar_subset(pv > 0 ? variants[pv - 1].plan : plan, with);
+        if (pv > 0)
+            for (const size_t g : variants[pv - 1].global) {
+                const HalfSpace base = variants[pv - 1].plan.cuts[g].chunk.clips.front();
+                const auto      at   = std::find_if(o.plan.chunks.begin(), o.plan.chunks.end(), [&base](const MultiplanarChunk &x) {
+                    return x.base_clip >= 0 && (x.clips[size_t(x.base_clip)].normal - base.normal).norm() < 1e-9 &&
+                           std::abs(x.clips[size_t(x.base_clip)].offset - base.offset) < 1e-9;
+                });
+                if (at == o.plan.chunks.end())
+                    continue;
+                if (at + 1 != o.plan.chunks.end()) {
+                    o.why = "a whole-plane face slab must print last";
+                    break;
+                }
+                at->clips     = { base };
+                at->base_clip = 0;
+                for (auto other = o.plan.chunks.begin(); other != at; ++other)
+                    other->clips.push_back({ -base.normal, -base.offset });
+            }
+        finish(std::move(o));
+    }
+    for (size_t k = 0; k < lips.size(); ++k) {
+        Offer o;
+        o.cuts = Slic3r::format("{L%1%}", k);
+        try {
+            o.plan     = spec_cut_plan({ lips[k].second }, mesh, *kinematics);
+            o.plan.lip = true;
+        } catch (const std::exception &ex) {
+            log << "offer " << o.cuts << ": " << ex.what() << "; ";
+            continue;
+        }
+        finish(std::move(o));
     }
     const double screen_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t_start).count();
     const char          *force  = std::getenv("NP_ONESHOT_ROUTE_FORCE");
@@ -2129,12 +2393,14 @@ void choose_route(PrintObject &object, OneShotState &state)
     double       J_chosen = J0;
     int          measured = 0;
     std::vector<std::pair<double, Offer *>> priced_offers;
+    int lip_measured = 0;
     for (Offer *o : order) {
-        if (measured == RouteMeasured) {
+        const bool lip = o->cuts.rfind("{L", 0) == 0;
+        if (lip ? lip_measured == LipMeasured : measured == RouteMeasured) {
             o->why = "unmeasured (the measuring budget)";
             continue;
         }
-        ++measured;
+        ++(lip ? lip_measured : measured);
         {
             const std::vector<HalfSpace> &rclips = o->plan.chunks.front().clips;
             const indexed_triangle_set    rmesh  = clip_mesh(mesh, rclips);
@@ -2181,6 +2447,7 @@ void choose_route(PrintObject &object, OneShotState &state)
             continue;
         }
         if (!(t_route <= RouteTimeCap * t_ps)) {
+            cap_refused = true;
             o->why = Slic3r::format("measured %1$.0f s > %2$.3f x planar + support %3$.0f s", t_route, RouteTimeCap, t_ps);
             continue;
         }
@@ -2238,7 +2505,7 @@ void choose_route(PrintObject &object, OneShotState &state)
     f.terms.emplace_back("stat_route_chosen", chosen ? double(chosen->plan.chunks.size() - 1) : 0.);
     f.terms.emplace_back("stat_route_J", J_chosen);
     f.terms.emplace_back("stat_route_seconds", total_s);
-    f.terms.emplace_back("stat_route_measured", double(measured));
+    f.terms.emplace_back("stat_route_measured", double(measured + lip_measured));
     if (std::isfinite(t_ps))
         f.terms.emplace_back("stat_route_ps_time_s", t_ps);
     if (chosen) {
@@ -2251,6 +2518,20 @@ void choose_route(PrintObject &object, OneShotState &state)
     }
     state.solved = std::make_shared<const NpField>(std::move(f));
     BOOST_LOG_TRIVIAL(warning) << "One-shot routes " << name << ": " << state.route_log;
+    return cap_refused;
+}
+
+}
+
+void choose_route(PrintObject &object, OneShotState &state)
+{
+    const double step = std::clamp(object.config().nonplanar_oneshot_fan_step.value, 1., 45.);
+    if (!choose_route_once(object, state, step) || state.route != nullptr || step >= FanStepFallback)
+        return;
+    const std::string fine_log = state.route_log;
+    choose_route_once(object, state, FanStepFallback);
+    state.route_log = Slic3r::format("joins in %1$.0f deg steps put the routes past the time cap or the overhang cap (%2%): planned again in %3$.0f deg steps; ",
+                                     step, fine_log, FanStepFallback) + state.route_log;
 }
 
 }

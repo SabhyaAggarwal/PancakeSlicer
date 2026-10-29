@@ -46,4 +46,8 @@ double bead_height(const LayerField &field, const Vec3d &p, double level_below, 
 
 Vec3d tool_axis(const LayerField &field, const Vec3d &p, double tilt_cap);
 
+std::vector<Vec3f> smooth_axes(const std::vector<Vec3d> &tips, const std::vector<Vec3f> &exact, double sigma, double max_dev);
+
+std::vector<Vec3f> tube_axes(const std::vector<Vec3f> &exact, double tube, double tilt_cap, double rate_b, double rate_c);
+
 }

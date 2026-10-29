@@ -958,6 +958,7 @@ FieldOrder layer_order_field_roads(std::vector<FieldRoad> &roads, const FieldOrd
     out.groups.erase(std::remove_if(out.groups.begin(), out.groups.end(), [](const ExtrusionEntityCollection &g) { return g.entities.empty(); }),
                      out.groups.end());
     Point pos;
+    Vec3d pos_axis = Vec3d::UnitZ();
     bool  placed = false;
     for (ExtrusionEntityCollection &g : out.groups) {
         ExtrusionEntitiesPtr chained;
@@ -980,29 +981,71 @@ FieldOrder layer_order_field_roads(std::vector<FieldRoad> &roads, const FieldOrd
                         lo = std::min(lo, p.z()), hi = std::max(hi, p.z());
                     level[i] = unscale<double>(hi - lo) < 0.1 && role != erTopSolidInfill && role != erIroning;
                 }
+                static const double order_axis = [] { const char *v = std::getenv("NP_NATIVE_ORDER_AXIS"); return v ? std::max(0., std::atof(v)) : 0.; }();
+                const auto axis_at = [](const ExtrusionEntity *ee, bool last) {
+                    const auto &a = static_cast<const ExtrusionPathConformal *>(ee)->tool_axis;
+                    return a.empty() ? Vec3d(Vec3d::UnitZ()) : Vec3d((last ? a.back() : a.front()).cast<double>().normalized());
+                };
+                const auto cost = [&](double d2, const Vec3d &from, const Vec3d &to) {
+                    if (order_axis <= 0.)
+                        return d2;
+                    const double turn = Geometry::rad2deg(std::acos(std::clamp(from.dot(to), -1., 1.)));
+                    return sqr(unscale<double>(std::sqrt(d2)) + order_axis * turn);
+                };
                 while (!left.empty()) {
                     size_t best = 0;
                     bool   flip = false;
                     double best_d = std::numeric_limits<double>::infinity();
+                    const Vec3d &axis = pos_axis;
                     for (size_t i = 0; i < left.size(); ++i) {
-                        if (const double d0 = (left[i]->first_point() - pos).cast<double>().squaredNorm(); d0 < best_d)
+                        if (const double d0 = cost((left[i]->first_point() - pos).cast<double>().squaredNorm(), axis, order_axis > 0. ? axis_at(left[i], false) : axis); d0 < best_d)
                             best_d = d0, best = i, flip = false;
                         if (level[i])
-                            if (const double d1 = (left[i]->last_point() - pos).cast<double>().squaredNorm(); d1 < best_d)
+                            if (const double d1 = cost((left[i]->last_point() - pos).cast<double>().squaredNorm(), axis, order_axis > 0. ? axis_at(left[i], true) : axis); d1 < best_d)
                                 best_d = d1, best = i, flip = true;
                     }
                     if (flip)
                         left[best]->reverse();
                     chained.push_back(left[best]);
                     pos = left[best]->last_point();
+                    if (order_axis > 0.)
+                        pos_axis = axis_at(left[best], true);
                     left.erase(left.begin() + best);
                     level.erase(level.begin() + best);
                 }
             }
             pos    = chained.back()->last_point();
+            if (const auto &a = static_cast<const ExtrusionPathConformal *>(chained.back())->tool_axis; !a.empty())
+                pos_axis = a.back().cast<double>().normalized();
             placed = true;
             s      = e;
         }
+        static const double axis_blend = [] { const char *v = std::getenv("NP_NATIVE_AXIS_BLEND"); return v ? std::max(0., std::atof(v)) : 0.; }();
+        if (axis_blend > 0.)
+            for (size_t i = 1; i < chained.size(); ++i) {
+                auto *a = static_cast<ExtrusionPathConformal *>(chained[i - 1]);
+                auto *b = static_cast<ExtrusionPathConformal *>(chained[i]);
+                if (a->tool_axis.size() != a->polyline.points.size() || b->tool_axis.size() != b->polyline.points.size() || a->tool_axis.empty() ||
+                    b->tool_axis.empty() || (b->polyline.points.front() - a->polyline.points.back()).cast<double>().norm() > scale_(3.))
+                    continue;
+                const Vec3d from = a->tool_axis.back().cast<double>().normalized(), to = b->tool_axis.front().cast<double>().normalized();
+                const Vec3d mid  = Eigen::Quaterniond::Identity().slerp(0.5, Eigen::Quaterniond::FromTwoVectors(from, to)) * from;
+                auto        turn = [&](ExtrusionPathConformal &p, bool at_end) {
+                    const size_t n = p.polyline.points.size();
+                    double       s = 0.;
+                    for (size_t k = 0; k < n; ++k) {
+                        const size_t j = at_end ? n - 1 - k : k;
+                        if (k > 0)
+                            s += unscale<double>((p.polyline.points[j] - p.polyline.points[at_end ? j + 1 : j - 1]).cast<double>().norm());
+                        if (s >= axis_blend)
+                            break;
+                        const Vec3d ax = p.tool_axis[j].cast<double>().normalized();
+                        p.tool_axis[j] = (Eigen::Quaterniond::Identity().slerp(1. - s / axis_blend, Eigen::Quaterniond::FromTwoVectors(ax, mid)) * ax).cast<float>();
+                    }
+                };
+                turn(*a, true);
+                turn(*b, false);
+            }
         g.entities = std::move(chained);
         g.no_sort  = true;
     }

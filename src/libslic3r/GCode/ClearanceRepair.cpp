@@ -683,6 +683,7 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
     const double    time = result.print_statistics.modes[size_t(PrintEstimatedStatistics::ETimeMode::Normal)].time;
     ClearanceParams params;
     params.head            = resolve_head_envelope(m_print.config());
+    params.contact_bar     = true;
     ClearanceReport report = verify_clearance(result, params, *make_tool_kinematics(m_print.config()), [this] { m_print.throw_if_canceled(); });
     const size_t    hits   = report.hit_moves;
     for (PrintObject *object : objects) {
@@ -702,6 +703,27 @@ bool ClearanceRepair::oneshot_step(GCodeProcessorResult &result)
         BOOST_LOG_TRIVIAL(warning) << "One-shot field: hit at G-code line " << hit.gcode_line << ", layer " << hit.layer << ", "
                                    << hit.component << " " << hit.penetration << " mm into material, role "
                                    << (hit.move_id < result.moves.size() ? ExtrusionEntity::role_to_string(result.moves[hit.move_id].extrusion_role) : "-");
+    if (hits > 0) {
+        for (PrintObject *object : objects) {
+            OneShotState &s = object->oneshot_state();
+            if (s.offer == OneShotState::Offer::Control || s.injected || m_repicks[object] > MaxRepicks + 1)
+                continue;
+            ++m_repicks[object];
+            s.offer = OneShotState::Offer::Control;
+            ++s.measured_repicks;
+            s.solved.reset();
+            s.decision += Slic3r::format(", %1% moves the contact bar strikes -> control", hits);
+            m_guard_warnings.push_back(Slic3r::format(_u8L("%1%: the non-planar print would touch printed plastic with the nozzle in %2% "
+                                                           "moves, so it prints planar layers with support instead."),
+                                                      object->model_object()->name, hits));
+            m_repick.push_back(object);
+        }
+        if (!m_repick.empty()) {
+            result.clearance_report = std::move(report);
+            result.clearance        = result.clearance_report.per_move;
+            return true;
+        }
+    }
     if (hits > 0)
         throw Slic3r::SlicingError(Slic3r::format(_u8L("One-shot field: %1% moves strike printed material (a solver bug: the solved field must "
                                                        "satisfy its constraints)."),
@@ -790,8 +812,12 @@ bool ClearanceRepair::contact_guard(const GCodeProcessorResult &result, size_t c
             guarded.push_back(object);
     if (guarded.empty() || !result.nonplanar || m_guard_passes >= 2 * int(guarded.size()) || std::getenv("NP_CONTACT_GUARD_OFF") != nullptr)
         return false;
-    if (contacts == 0)
-        contacts = curved_contacts(m_print, result);
+    if (contacts == 0) {
+        ClearanceParams params;
+        params.head        = resolve_head_envelope(m_print.config());
+        params.contact_bar = true;
+        contacts = verify_clearance(result, params, *make_tool_kinematics(m_print.config()), [this] { m_print.throw_if_canceled(); }).hit_moves;
+    }
     if (contacts == 0)
         return false;
     for (PrintObject *object : guarded) {
@@ -799,11 +825,11 @@ bool ClearanceRepair::contact_guard(const GCodeProcessorResult &result, size_t c
         if (OneShotState *s = object->m_oneshot.get(); s != nullptr && oneshot_requested(*object)) {
             if (s->offer == OneShotState::Offer::Auto) {
                 s->offer = OneShotState::Offer::Body;
-                s->decision += Slic3r::format(", Auto's print dropped: %1% curved moves the contact bar strikes", contacts);
+                s->decision += Slic3r::format(", Auto's print dropped: %1% moves the contact bar strikes", contacts);
             } else if (!s->measured_anchor) {
                 s->measured_anchor = true;
                 s->solved.reset();
-                s->decision += Slic3r::format(", the pick dropped for the anchor: %1% curved moves the contact bar strikes", contacts);
+                s->decision += Slic3r::format(", the pick dropped for the anchor: %1% moves the contact bar strikes", contacts);
             } else
                 continue;
         } else {
@@ -812,15 +838,15 @@ bool ClearanceRepair::contact_guard(const GCodeProcessorResult &result, size_t c
             object->m_auto_floating_planar = true;
             object->m_auto_planar_exact    = true;
             object->m_nonplanar_repair.reset();
-            object->note_auto_fallback(_u8L("curved moves would graze printed material"));
+            object->note_auto_fallback(_u8L("the nozzle would touch printed plastic"));
             object->m_auto_planar_pass     = true;
         }
-        BOOST_LOG_TRIVIAL(warning) << "Contact guard: " << name << ": " << contacts << " curved moves strike printed material under the "
+        BOOST_LOG_TRIVIAL(warning) << "Contact guard: " << name << ": " << contacts << " moves strike printed material under the "
                                    << "contact bar; it prints without them";
         if (oneshot_requested(*object))
-            m_guard_warnings.push_back(Slic3r::format(_u8L("%1%: %2% curved moves would graze printed material (nozzle cone), so it prints "
-                                                       "planar layers there instead."),
-                                                  name, contacts));
+            m_guard_warnings.push_back(Slic3r::format(_u8L("%1%: the non-planar print would touch printed plastic with the nozzle in %2% "
+                                                           "moves, so it prints planar layers with support instead."),
+                                                      name, contacts));
         m_repick.push_back(object);
         ++m_guard_passes;
     }
