@@ -1,4 +1,4 @@
-import { lazy, Suspense, useSyncExternalStore } from 'react';
+import { lazy, Suspense, useState, useSyncExternalStore } from 'react';
 import { markStale, setState, useStore } from '../state/store';
 import { setThemePref, subscribeTheme, themePref, type ThemePref } from '../theme';
 import { cameraPrefsSnapshot, setCameraPrefs, subscribeCamera, type CameraPrefs } from '../camera';
@@ -99,54 +99,71 @@ function Preferences() {
 
 const SHORTCUTS: [string, [string, string][]][] = [
   ['Global', [
-    [`${mod}+N`, 'New Project'], [`${mod}+O`, 'Open Project'], [`${mod}+S`, 'Save Project'], [`${mod}+Shift+S`, 'Save Project as'],
-    [`${mod}+I`, 'Import geometry data from STL/STEP/3MF/OBJ/AMF files'], [`${mod}+R`, 'Slice plate'], [`${mod}+G`, 'Export plate sliced file'],
-    [`${mod}+Z`, 'Undo'], [`${mod}+Y / ${mod}+Shift+Z`, 'Redo'], [`${mod}+F`, 'Search'], [`${mod}+P`, 'Preferences'], ['?', 'Show keyboard shortcuts list'],
-    ['0 … 6', 'Camera view: Default, Top, Bottom, Front, Rear, Left, Right'], ['I / O', 'Zoom in / out'],
-    ['Esc', 'Deselect All'], ['Tab', 'Switch between Prepare/Preview'],
+    [`${mod}+N`, 'New project'], [`${mod}+O`, 'Open project'], [`${mod}+S`, 'Save'], [`${mod}+Shift+S`, 'Save as'],
+    [`${mod}+I`, 'Import models'], [`${mod}+R`, 'Slice'], [`${mod}+G`, 'Export'],
+    [`${mod}+Z`, 'Undo'], [`${mod}+Y / ${mod}+Shift+Z`, 'Redo'], [`${mod}+F`, 'Search settings'], [`${mod}+P`, 'Preferences'],
+    [`${mod}+\\`, 'Hide / show sidebar'], ['Tab', 'Prepare / Preview (in a 3D view)'], ['Shift+Tab / Esc', 'Leave the 3D view'], ['?', 'Shortcuts'],
+    ['0 … 6', 'Views: default, top, bottom, front, rear, left, right'], ['I / O', 'Zoom in / out'],
   ]],
   ['Prepare', [
-    [`${mod}+A`, 'Select all objects'], [`${mod}+C / ${mod}+X / ${mod}+V`, 'Copy / Cut / Paste to clipboard'], [`${mod}+K`, 'Clone selected'],
-    ['Del / Backspace', 'Delete Selected'], [`${mod}+D / ${mod}+Del`, 'Delete All'], ['+ / -', 'Add / Remove instance'],
-    ['V', 'Toggle printable for object/part'], ['F2', 'Rename'], ['A / Shift+A', 'Arrange all objects / the selected plate'], ['Q / Shift+Q', 'Auto orient selected / all objects'],
-    ['Arrow keys', 'Move selection 10 mm (Shift: 1 mm)'], ['Page Up / Page Down', 'Rotate selection 45 degrees counterclockwise / clockwise'],
-    ['M / R / S', 'Gizmo move / rotate / scale'], ['F', 'Gizmo place face on bed'], ['C', 'Gizmo cut'], ['U', 'Gizmo measure'],
-    ['B', 'Gizmo mesh boolean'], ['T', 'Gizmo text emboss'], ['E', 'Gizmo brim ears'],
-    ['L / P / H / N', 'Gizmo support / seam / fuzzy skin / color painting'],
-    [`${mod}+E`, 'Show/Hide object labels'], [`${mod}+Shift+Enter`, 'Show/Hide wireframe'],
-    ['Left mouse', 'Rotate View'], ['Right mouse', 'Pan View'], ['Mouse wheel', 'Zoom View'],
+    [`${mod}+A`, 'Select all'], ['Esc', 'Deselect'], [`${mod}+C / ${mod}+X / ${mod}+V`, 'Copy / cut / paste'], [`${mod}+K`, 'Clone'],
+    ['Del / Backspace', 'Delete'], [`${mod}+D / ${mod}+Del`, 'Delete all'], ['+ / -', 'Add / remove instance'],
+    ['V', 'Printable on / off'], ['F2', 'Rename'], ['A / Shift+A', 'Arrange all / this plate'], ['Q / Shift+Q', 'Orient selected / all'],
+    ['Arrows', 'Move 10 mm (Shift: 1 mm)'], ['PgUp / PgDn', 'Rotate 45°'],
+    ['M / R / S', 'Move / rotate / scale'], ['F', 'Lay on face'], ['C', 'Cut'], ['U', 'Measure'],
+    ['B', 'Boolean'], ['T', 'Text'], ['E', 'Brim ears'], ['L / P / H / N', 'Paint support / seam / fuzzy skin / color'],
+    [`${mod}+E`, 'Labels'], [`${mod}+Shift+Enter`, 'Wireframe'],
+    ['Left drag', 'Orbit'], ['Right drag', 'Pan'], ['Wheel', 'Zoom'],
   ]],
   ['Painting', [
-    ['C / S', 'Circle / Sphere'], ['F / G', 'Fill / Gap Fill'], ['T / H', 'Triangle / Height Range (color painting)'],
-    ['1 … 9', 'Color painting: choose the filament'],
+    ['C / S', 'Circle / sphere'], ['F / G', 'Fill / gap fill'], ['T / H', 'Triangle / height range'], ['1 … 9', 'Filament'],
   ]],
   ['Preview', [
-    ['Up / Down', 'Vertical slider - Move active thumb Up / Down'], ['Left / Right', 'Horizontal slider - Move active thumb Left / Right'],
-    ['Home / End', 'Horizontal slider - Move to start / last position'], ['L', 'One layer mode'], ['Shift+G', 'Jump to layer'],
-    ['C', 'Show/Hide G-code window'], ['I / O', 'Zoom in / out'],
+    ['Up / Down', 'Layer up / down'], ['Left / Right', 'Move back / forward'], ['Home / End', 'First / last move'],
+    ['L', 'One layer'], ['Shift+G', 'Go to layer'], ['C', 'G-code window'],
   ]],
 ];
 
+function Keys({ keys }: { keys: string }) {
+  return (
+    <span className="keys">
+      {keys.split(' / ').map((alt, i) => (
+        <span key={i} className="keys-alt">
+          {i > 0 && <span className="keys-or">/</span>}
+          {(alt === '+' ? ['+'] : alt.split(/(?<=.)\+(?=.)/)).map((k) => <kbd key={k}>{k}</kbd>)}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function Shortcuts() {
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const tab = useStore((s) => s.tab);
+  const pages = [...SHORTCUTS].sort(([a], [b]) => Number(b.toLowerCase() === tab) - Number(a.toLowerCase() === tab))
+    .map(([page, rows]) => [page, rows.filter(([k, what]) => !q || what.toLowerCase().includes(q) || k.toLowerCase().includes(q))] as const)
+    .filter(([, rows]) => rows.length);
   return (
     <Modal className="shortcuts-dialog" label="Keyboard Shortcuts" onClose={close} backdropClose>
       <ModalTitle title="Keyboard Shortcuts" onClose={close} />
+      <div className="shortcuts-search">
+        <input type="text" placeholder="Filter" aria-label="Filter shortcuts" value={query} data-autofocus onChange={(e) => setQuery(e.target.value)} />
+      </div>
       <div className="shortcuts-body" tabIndex={0}>
-        {SHORTCUTS.map(([page, rows]) => (
+        {pages.map(([page, rows]) => (
           <section key={page}>
             <h3>{page}</h3>
             <table className="shortcuts-table">
               <tbody>
                 {rows.map(([key, what]) => (
-                  <tr key={key + what}><th scope="row"><kbd>{key}</kbd></th><td>{what}</td></tr>
+                  <tr key={key + what}><th scope="row"><Keys keys={key} /></th><td>{what}</td></tr>
                 ))}
               </tbody>
             </table>
           </section>
         ))}
-      </div>
-      <div className="modal-buttons center">
-        <button type="button" className="btn primary" data-autofocus onClick={close}>OK</button>
+        {!pages.length && <div className="shortcuts-none">No match</div>}
       </div>
     </Modal>
   );

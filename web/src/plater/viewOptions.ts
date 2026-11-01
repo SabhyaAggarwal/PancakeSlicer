@@ -4,7 +4,7 @@ export interface ViewOptions { gridlines: boolean; labels: boolean; overhang: bo
 const KEY = 'orca.web.view';
 const saved = (() => { try { return JSON.parse(localStorage.getItem(KEY) ?? '{}'); } catch { return {}; } })();
 let options: ViewOptions = { gridlines: saved.gridlines !== false, labels: false, overhang: false, outline: saved.outline === true, wireframe: false, xray: false, axes: saved.axes !== false, com: saved.com === true,
-  navigator: saved.navigator !== false, gcodeWindow: saved.gcodeWindow !== false };
+  navigator: saved.navigator !== false, gcodeWindow: saved.gcodeWindow === true };
 const listeners = new Set<() => void>();
 export const viewOptions = () => options;
 export const subscribeViewOptions = (l: () => void) => (listeners.add(l), () => void listeners.delete(l));

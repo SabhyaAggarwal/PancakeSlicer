@@ -34,9 +34,15 @@ uniform ivec2 range;              // visible segments [x, y)
 uniform int role_mask;            // visible extrusion roles
 uniform int type_mask;            // visible move types (travel, wipe, extrude)
 uniform vec2 radii;               // travel, wipe
+uniform int focus_mask;           // legend hover: roles drawn in full colour, the rest dimmed; -1 none
 in float corner;
 out vec3 color;
 ivec2 tc(int id) { return ivec2(id % ${TEX_WIDTH}, id / ${TEX_WIDTH}); }
+// A hovered legend row isolates its role: everything else fades to a flat grey (SB-16).
+vec3 focused(vec3 c, int type, int role) {
+  if (focus_mask == -1 || (type == ${MoveType.Extrude} && ((focus_mask >> role) & 1) != 0)) return c;
+  return mix(vec3(0.5), vec3(dot(c, vec3(0.299, 0.587, 0.114))), 0.35);
+}
 float direct_lighting(vec3 eye_position, vec3 eye_normal) {
   float top_diffuse = light_top_diffuse * max(dot(eye_normal, light_top_dir), 0.0);
   float front_diffuse = light_front_diffuse * max(dot(eye_normal, light_front_dir), 0.0);
@@ -85,7 +91,7 @@ void main() {
     vec3 p = end_pos + s * half_extent * side;
     vec3 eye_p = (view_matrix * vec4(p, 1.0)).xyz;
     vec3 eye_n = mat3(view_matrix) * (s == 0.0 ? facing : s * side);
-    vec3 base = texelFetch(color_tex, tc(id_b), 0).rgb;
+    vec3 base = focused(texelFetch(color_tex, tc(id_b), 0).rgb, type, role);
     color = base * (ambient + emission + direct_lighting(eye_p, eye_n));
     gl_Position = projection_matrix * vec4(eye_p, 1.0);
     return;
@@ -191,6 +197,7 @@ export interface DrawState {
   roleMask: number;
   typeMask: number;
   optionMask: number;
+  focusMask?: number;
 }
 
 export interface FrameStats {
@@ -240,7 +247,7 @@ export class SegmentRenderer {
     this.prog = compile(gl, SEGMENT_VS, FS);
     this.optProg = compile(gl, OPTION_VS, FS);
     for (const n of ['light_top_dir', 'view_matrix', 'projection_matrix', 'camera_position', 'position_tex', 'attr_tex', 'color_tex',
-      'lod_tex', 'first_instance', 'lod', 'ribbon', 'range', 'role_mask', 'type_mask', 'radii'])
+      'lod_tex', 'first_instance', 'lod', 'ribbon', 'range', 'role_mask', 'type_mask', 'radii', 'focus_mask'])
       this.u[n] = gl.getUniformLocation(this.prog, n);
     for (const n of ['light_top_dir', 'view_matrix', 'projection_matrix', 'position_tex', 'attr_tex', 'color_tex', 'option_tex', 'range', 'type_mask'])
       this.ou[n] = gl.getUniformLocation(this.optProg, n);
@@ -422,6 +429,7 @@ export class SegmentRenderer {
     gl.uniform1i(u.role_mask, state.roleMask);
     gl.uniform1i(u.type_mask, state.typeMask);
     gl.uniform2f(u.radii, TRAVEL_RADIUS, WIPE_RADIUS);
+    gl.uniform1i(u.focus_mask, state.focusMask ?? -1);
     const bind = (unit: number, tex: WebGLTexture, loc: WebGLUniformLocation | null) => {
       gl.activeTexture(gl.TEXTURE0 + unit);
       gl.bindTexture(gl.TEXTURE_2D, tex);

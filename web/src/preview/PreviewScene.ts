@@ -15,6 +15,7 @@ import { binOf, type SurfaceGrid } from './surface-grid';
 const SURFACE_LIFT_MM = 0.15;
 
 const FRAME_BUDGET_MS = 14;
+const STILL_MS = 250;
 
 export class PreviewScene {
   readonly renderer: THREE.WebGLRenderer;
@@ -46,6 +47,8 @@ export class PreviewScene {
   lastFrame: FrameStats & { frameMs: number; gpuMs: number; scale: number } = { blocks: 0, culled: 0, lodBlocks: 0, segments: 0, cpuMs: 0, frameMs: 0, gpuMs: NaN, scale: 1 };
   onFrame: (() => void) | null = null;
   private moving = false;
+  private still = 0;
+  private upscale: { prog: WebGLProgram; vao: WebGLVertexArrayObject; tex: WebGLTexture; scale: WebGLUniformLocation | null; w: number; h: number } | null = null;
   private scale = 1;
   private basePixelRatio = 1;
   private unwatchRatio = watchPixelRatio(() => this.resize());
@@ -62,10 +65,16 @@ export class PreviewScene {
     this.scene.add(this.shells);
     this.views = new CameraViews(this.renderer.domElement, () => getState().tab === 'preview', () => this.request());
     this.controls.addEventListener('change', () => this.request());
-    this.controls.addEventListener('start', () => (this.moving = true));
+    this.controls.addEventListener('start', () => {
+      clearTimeout(this.still);
+      this.moving = true;
+    });
     this.controls.addEventListener('end', () => {
-      this.moving = false;
-      this.request();
+      clearTimeout(this.still);
+      this.still = window.setTimeout(() => {
+        this.moving = false;
+        this.request();
+      }, STILL_MS);
     });
     const cone = new THREE.ConeGeometry(1.2, 4, 24);
     cone.rotateX(-Math.PI / 2);
@@ -87,7 +96,7 @@ export class PreviewScene {
     const base = pixelRatio(w, h);
     if (base !== this.basePixelRatio || size.x !== w || size.y !== h) {
       this.basePixelRatio = base;
-      this.renderer.setPixelRatio(base * this.scale);
+      this.renderer.setPixelRatio(base);
       this.renderer.setSize(w, h);
     }
     this.views.resize(w, h);
@@ -161,12 +170,18 @@ export class PreviewScene {
   }
 
   setDrawState(s: DrawState, toolAt: number | null) {
-    this.draw = s;
+    this.draw = { ...s, focusMask: this.draw.focusMask };
     const d = this.data;
     if (d && toolAt != null && toolAt < d.loaded) {
       this.tool.position.set(d.pos[toolAt * 4], d.pos[toolAt * 4 + 1], d.pos[toolAt * 4 + 2]);
       this.tool.visible = true;
     } else this.tool.visible = false;
+    this.request();
+  }
+
+  setFocus(mask: number | null) {
+    if ((this.draw.focusMask ?? -1) === (mask ?? -1)) return;
+    this.draw = { ...this.draw, focusMask: mask ?? -1 };
     this.request();
   }
 
@@ -275,12 +290,9 @@ export class PreviewScene {
       tq.query = null;
     }
     const cost = Number.isFinite(tq.gpuMs) ? tq.gpuMs : this.lastFrame.frameMs;
-    const scale = !this.moving ? 1 : cost > FRAME_BUDGET_MS * 1.5 ? Math.max(0.5, this.scale * 0.75) : this.scale;
-    if (scale !== this.scale) {
-      this.scale = scale;
-      this.renderer.setPixelRatio(this.basePixelRatio * scale);
-      this.renderer.setSize(this.host.clientWidth, this.host.clientHeight);
-    }
+    const scale = (this.scale = !this.moving ? 1 : cost > FRAME_BUDGET_MS * 1.5 ? 0.5 : this.scale);
+    const w = this.host.clientWidth, h = this.host.clientHeight;
+    if (scale < 1) this.renderer.setViewport(0, 0, w * scale, h * scale);
     const timing = tq.ext && !tq.query;
     if (timing) {
       tq.query = gl.createQuery();
@@ -289,7 +301,7 @@ export class PreviewScene {
     this.shells.visible = false;
     showBedFor(this.bed, this.camera);
     this.renderer.render(this.scene, this.camera);
-    if (this.data) this.segments.render(this.camera, this.draw, this.renderer.domElement.height);
+    if (this.data) this.segments.render(this.camera, this.draw, Math.round(this.renderer.domElement.height * scale));
     if (this.shells.children.length) {
       this.shells.visible = true;
       const bedVisible = this.bed?.visible;
@@ -302,9 +314,63 @@ export class PreviewScene {
       if (this.bed) this.bed.visible = bedVisible!;
       this.tool.visible = tv;
     }
+    if (scale < 1) {
+      this.stretch(gl, scale);
+      this.renderer.setViewport(0, 0, w, h);
+    }
     if (timing) gl.endQuery(tq.ext.TIME_ELAPSED_EXT);
     this.lastFrame = { ...this.segments.stats, frameMs: performance.now() - t0, gpuMs: tq.gpuMs, scale: this.scale };
     this.onFrame?.();
+  }
+
+  private stretch(gl: WebGL2RenderingContext, scale: number) {
+    const W = gl.drawingBufferWidth, H = gl.drawingBufferHeight;
+    const vw = Math.round(W * scale), vh = Math.round(H * scale);
+    let u = this.upscale;
+    if (!u) {
+      const shader = (type: number, src: string) => {
+        const sh = gl.createShader(type)!;
+        gl.shaderSource(sh, src);
+        gl.compileShader(sh);
+        return sh;
+      };
+      const prog = gl.createProgram()!;
+      gl.attachShader(prog, shader(gl.VERTEX_SHADER, `#version 300 es
+out vec2 uv;
+void main() { uv = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); gl_Position = vec4(uv * 2.0 - 1.0, 0.0, 1.0); }`));
+      gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, `#version 300 es
+precision mediump float;
+uniform sampler2D tex;
+uniform vec2 scale;
+in vec2 uv;
+out vec4 frag;
+void main() { frag = texture(tex, uv * scale); }`));
+      gl.linkProgram(prog);
+      u = this.upscale = { prog, vao: gl.createVertexArray()!, tex: gl.createTexture()!, scale: gl.getUniformLocation(prog, 'scale'), w: 0, h: 0 };
+    }
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, u.tex);
+    if (u.w !== W || u.h !== H) {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      u.w = W;
+      u.h = H;
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, vw, vh);
+    gl.viewport(0, 0, W, H);
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.BLEND);
+    gl.disable(gl.SCISSOR_TEST);
+    gl.useProgram(u.prog);
+    gl.bindVertexArray(u.vao);
+    gl.uniform2f(u.scale, (vw - 0.5) / W, (vh - 0.5) / H);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindVertexArray(null);
+    this.renderer.resetState();
   }
 
   bench(frames = 120, zoom = 1): Promise<{ scale: number; medianIntervalMs: number; p95IntervalMs: number; medianFrameMs: number; p95FrameMs: number; medianGpuMs: number; segments: number; lodBlocks: number; blocks: number }> {
@@ -343,6 +409,13 @@ export class PreviewScene {
   }
 
   dispose() {
+    clearTimeout(this.still);
+    if (this.upscale) {
+      const gl = this.renderer.getContext() as WebGL2RenderingContext;
+      gl.deleteProgram(this.upscale.prog);
+      gl.deleteVertexArray(this.upscale.vao);
+      gl.deleteTexture(this.upscale.tex);
+    }
     this.unsubTheme();
     this.unwatchRatio();
     cancelAnimationFrame(this.frame);

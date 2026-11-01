@@ -23,7 +23,8 @@ export default defineConfig({
       output: {
         codeSplitting: {
           groups: [
-            { name: 'three', test: /node_modules[\\/]three[\\/]build[\\/]/ },
+            { name: 'three', test: /node_modules[\\/]three[\\/]build[\\/]three\.core\.js/ },
+            { name: 'three-renderer', test: /node_modules[\\/]three[\\/]build[\\/]three\.module\.js/ },
             { name: 'react', test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/ },
           ],
         },

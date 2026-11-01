@@ -5,9 +5,13 @@ import { bedAsset } from './bed-assets';
 import { bedBounds, parsePoints } from './geometry';
 import { isDark } from '../theme';
 
-export const sceneColors = () => isDark()
-  ? { background: 0x54545a, plate: 0x626269, texture: 0x55555c, grid: 0x6e6e76, outline: 0x8a8a90, model: 0x414148, shell: 0x9a9aa0 }
-  : { background: 0xe9e9e9, plate: 0xb9bcbd, texture: 0xdcdcdc, grid: 0x8f9293, outline: 0x5f6263, model: 0x3c3f40, shell: 0xc8c8c8 };
+const canvasToken = () => parseInt(getComputedStyle(document.documentElement).getPropertyValue('--canvas').trim().slice(1), 16);
+export const sceneColors = () => {
+  const background = canvasToken();
+  return isDark()
+    ? { background: Number.isNaN(background) ? 0x262626 : background, plate: 0x333333, texture: 0x2e2e2e, grid: 0x484848, outline: 0x8a8a8a, model: 0x1c1c1c, shell: 0x9a9a9a }
+    : { background: Number.isNaN(background) ? 0xe6e6e6 : background, plate: 0xbababa, texture: 0xdadada, grid: 0x8f8f8f, outline: 0x5f5f5f, model: 0x3c3c3c, shell: 0xc8c8c8 };
+};
 
 export const bedKey = (machine: SystemPreset | undefined) =>
   `${machine?.name}|${machine?.config.printable_area}|${machine?.config.bed_custom_texture}|${machine?.config.bed_custom_model}|${isDark()}`;

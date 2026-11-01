@@ -3,24 +3,24 @@ import { compatible, getState, markStale, printerPreset, setState, useStore } fr
 import { undoable } from '../state/history';
 import { lazy, Suspense, useState } from 'react';
 import { flushModified } from '../flush-state';
-import { ManipulationPanel } from './CanvasOverlays';
 import { Icon, IconButton } from './Icon';
-import { PresetCombo } from './PresetCombo';
+import { PresetCombo, requestPreset } from './PresetCombo';
 import { SettingsTab } from './SettingsTab';
 import { filamentColor } from '../plater/filamentColor';
 import { explainRecord } from '../recommend';
 import { jumpToMove, streamLayerOf } from '../preview/jump';
 import { shortTime } from '../preview/format';
+import './settings.css';
 
 const MixedFilaments = lazy(() => import('./MixedFilaments'));
+const TransformPanel = lazy(() => import('./Transform').then((m) => ({ default: m.TransformPanel })));
 const ObjectList = lazy(() => import('./ObjectList').then((m) => ({ default: m.ObjectList })));
 
 const ObjectSettings = lazy(() => import('./ObjectSettings').then((m) => ({ default: m.ObjectSettings })));
 
-function SectionTitle({ icon, title, children }: { icon: string; title: string; children?: React.ReactNode }) {
+function SectionTitle({ title, children }: { icon: string; title: string; children?: React.ReactNode }) {
   return (
     <div className="side-title">
-      <Icon name={icon} size={20} />
       <span className="side-title-text">{title}</span>
       <span className="side-title-tools">{children}</span>
     </div>
@@ -89,13 +89,18 @@ function NonplanarResult() {
   );
 }
 
+const nozzleOf = (v: unknown) => Number(Array.isArray(v) ? v[0] : v);
+
 function PrinterSection() {
   const machine = useStore((s) => printerPreset(s));
   const bedType = useStore((s) => s.bedType);
   const bedDef = OPTIONS.curr_bed_type;
   const cover = machine?.model ? `/profiles/${machine.vendor}/${encodeURIComponent(machine.model)}_cover.png` : '/images/printer_placeholder.png';
-  const nozzle = machine?.config.nozzle_diameter;
-  const nozzleText = Array.isArray(nozzle) ? nozzle[0] : nozzle;
+  const machines = useStore((s) => s.machines);
+  const isUser = useStore((s) => s.userPresets.some((u) => u.type === 'machine' && u.name === s.printer));
+  const nozzles = machines.filter((m) => m.model && m.model === machine?.model)
+    .map((m) => ({ name: m.name, d: nozzleOf(m.config.nozzle_diameter) })).sort((a, b) => a.d - b.d);
+  const nozzleNow = nozzleOf(machine?.config.nozzle_diameter);
   const multiBed = machine?.config.support_multi_bed_types;
   const showBed = (machine?.vendor === 'BBL' || multiBed === true || multiBed === 1 || multiBed === '1') && !!bedDef?.enum_values;
   return (
@@ -109,11 +114,14 @@ function PrinterSection() {
             <IconButton icon="edit" title="Click to edit preset" onClick={() => setState({ dialog: { type: 'machine', slot: 0 } })} />
           </div>
           <div className="printer-sub">
-            <span className="chip" title="Nozzle diameter">
-              Nozzle {nozzleText ?? '—'} mm
+            <span className="nozzle-row" title="Nozzle diameter">
+              {isUser || nozzles.length < 2 ? <span className="chip">{nozzleNow || '—'} mm</span> : <><span className="seg num" role="radiogroup" aria-label="Nozzle diameter">{nozzles.map((n) => (
+                <button key={n.name} type="button" role="radio" aria-checked={n.name === machine?.name} className={n.name === machine?.name ? 'active' : ''}
+                  title={n.name} onClick={() => n.name !== machine?.name && requestPreset('machine', 0, n.name)}>{n.d}</button>
+              ))}</span><span className="seg-unit">mm</span></>}
             </span>
             {showBed && (
-              <select className="combo bed-combo" title="Plate type" value={bedType} onChange={(e) => undoable('Change plate type', () => setState({ bedType: e.target.value }))}>
+              <select className="combo bed-combo" title="Plate type" aria-label="Plate type" value={bedType} onChange={(e) => undoable('Change plate type', () => setState({ bedType: e.target.value }))}>
                 {bedDef!.enum_values!.map((v, i) =>
                   machine?.not_support_bed_type?.some((b) => b === v || b === bedDef!.enum_labels?.[i]) ? null : (
                     <option key={v} value={v}>
@@ -207,6 +215,7 @@ function FilamentSection() {
 
 const MODES: OptionMode[] = ['simple', 'advanced', 'develop'];
 const MODE_TIPS = ['Simple settings', 'Advanced settings', 'Expert settings'];
+const MODE_NAMES = ['Simple', 'Advanced', 'Expert'];
 
 function ProcessHeader() {
   const uiMode = useStore((s) => s.uiMode);
@@ -219,21 +228,21 @@ function ProcessHeader() {
     }));
   return (
     <div className="side-title process-title">
-      <Icon name="process" size={20} />
       <span className="side-title-text">Process</span>
-      <span className="mode-switch">
-        <button className={scope === 'global' ? 'active' : ''} onClick={() => setState({ processScope: 'global' })}>
+      <span className="seg" role="radiogroup" aria-label="Settings scope">
+        <button type="button" role="radio" aria-checked={scope === 'global'} className={scope === 'global' ? 'active' : ''} onClick={() => setState({ processScope: 'global' })}>
           Global
         </button>
-        <button className={scope === 'objects' ? 'active' : ''} disabled={!hasObjects} onClick={toObjects} title="Settings of the selected object">
+        <button type="button" role="radio" aria-checked={scope === 'objects'} className={scope === 'objects' ? 'active' : ''} disabled={!hasObjects} onClick={toObjects} title={hasObjects ? 'Settings of the selected object' : 'Add an object first'}>
           Objects
         </button>
       </span>
       <span className="side-title-tools">
-        <IconButton icon="advanced" title="Cycle settings visibility" onClick={() => setState({ uiMode: MODES[(MODES.indexOf(uiMode) + 1) % 3] })} />
-        <span className="mode-view" role="radiogroup">
+        <span className="seg" role="radiogroup" aria-label="Settings visibility">
           {MODES.map((m, i) => (
-            <button key={m} type="button" role="radio" aria-checked={m === uiMode} className={m === uiMode ? 'active' : ''} title={MODE_TIPS[i]} onClick={() => setState({ uiMode: m })} />
+            <button key={m} type="button" role="radio" aria-checked={m === uiMode} className={m === uiMode ? 'active' : ''} title={MODE_TIPS[i]} onClick={() => setState({ uiMode: m })}>
+              {MODE_NAMES[i]}
+            </button>
           ))}
         </span>
       </span>
@@ -256,7 +265,7 @@ export function Sidebar() {
       <FilamentSection />
       <ProcessHeader />
       {hasObjects && <Suspense fallback={null}><ObjectList /></Suspense>}
-      {hasObjects && <ManipulationPanel docked />}
+      {hasObjects && <Suspense fallback={<div className={`xf xf-wait${window.innerHeight < 900 ? ' folded' : ''}`} />}><TransformPanel /></Suspense>}
       <div className="process-panel">
         {objects ? (
           <Suspense fallback={<div role="status">Loading object settings…</div>}>

@@ -2,17 +2,17 @@ import { slicingText } from '../api/progress';
 import { accessNotice, accessSnapshot, saveAccessToken, subscribeAccess } from '../api/access';
 import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import * as THREE from 'three';
 import { addInstance, arrangeAll, cancelSlice, download, fileUse, openFileDialog, outputKind, removeInstance, toolbarOperation, outsideVolumeWarning, canBoolean, toggleBoolean, toggleSvg, toggleText } from '../actions';
 import { setCompareWanted } from '../compare';
 import { toggleNonplanarView, useNonplanarView, usePatchPreview, type PreviewFact } from '../patch-preview';
 import { applyRecommended, pendingRecommendations, plateResults, type PlateResult } from '../recommend';
 import { STYLE_NAMES } from '../style-names';
-import { effectiveConfig, getState, mapPaint, markStale, printerPreset, setState, updateInstance, updateObject, useStore, type Gizmo } from '../state/store';
-import { undoable } from '../state/history';
+import { effectiveConfig, getState, mapPaint, printerPreset, setState, useStore, type Gizmo } from '../state/store';
 import { Icon, IconButton } from './Icon';
 import { canPerformCut, cutBlocked, initialCut, setCut, toggleCut } from '../plater/cut';
 import { InTopLayer } from './Modal';
+import { SliceFailed } from './Notices';
+import './prepare.css';
 
 const OrientConfirm = lazy(() => import('./OrientConfirm').then((m) => ({ default: m.OrientConfirm })));
 const RemapFilaments = lazy(() => import('./RemapFilaments'));
@@ -38,6 +38,8 @@ const PAINT_GIZMOS: [PaintKind, string, string][] = [
   ['fuzzy', 'toolbar_fuzzy_skin_paint', 'Paint-on fuzzy skin (H)'],
   ['color', 'mmu_segmentation', 'Color Painting (N)'],
 ];
+
+const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? 'Cmd' : 'Ctrl';
 
 export function CanvasToolbar() {
   const gizmo = useStore((s) => s.gizmo);
@@ -65,9 +67,20 @@ export function CanvasToolbar() {
   const nonplanarView = useNonplanarView();
   const [arranging, setArranging] = useState(false);
   const arrangeAt = useRef<HTMLSpanElement>(null);
+  const items = useRef<HTMLDivElement>(null);
+  const [overflow, setOverflow] = useState(false);
+  const [more, setMore] = useState(false);
+  useLayoutEffect(() => {
+    const el = items.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setOverflow([...el.children].some((c) => (c as HTMLElement).offsetTop >= 16)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   return (
-    <div className="canvas-toolbar">
-      <IconButton size={24} icon="toolbar_open" title="Add (Ctrl+I)" onClick={openFileDialog} />
+    <div className={`canvas-toolbar${more && overflow ? ' open' : ''}`}>
+      <div className="tb-items" ref={items}>
+      <IconButton size={24} icon="toolbar_open" title={`Add (${MOD}+I)`} onClick={openFileDialog} />
       <IconButton size={24} icon="toolbar_add_plate" title="Add plate" onClick={addPlate} disabled={!meshPlates} />
       <IconButton size={24} icon="toolbar_orient" title={"Auto orient all/selected objects (Q)\nAuto orient all objects on current plate (Shift+Q)"} onClick={(e) => toolbarOperation('orient', e.shiftKey)} disabled={!hasObjects || project} />
       <span ref={arrangeAt} style={{ display: 'inline-flex' }}>
@@ -98,13 +111,17 @@ export function CanvasToolbar() {
           ? <IconButton key={icon} size={24} icon={icon} title={title} active={gizmo === 'text'} onClick={toggleText} disabled={!!sel?.all || !!placeholder || !!native} />
           : icon === 'svg_part' && svg
             ? <IconButton key={icon} size={24} icon={icon} title={title} active={gizmo === 'svg'} onClick={toggleSvg} disabled={!!sel?.all || !!placeholder || !!native} />
-            : <IconButton key={icon} size={24} icon={icon} title={title} disabled />
+            : null
       ))}
       {preview && (
         <>
           <span className="tb-sep" />
           <IconButton size={24} icon="param_nonplanar" title="Non-planar surfaces" active={nonplanarView} onClick={toggleNonplanarView} />
         </>
+      )}
+      </div>
+      {overflow && (
+        <button type="button" className="tb-more" aria-expanded={more} title={more ? 'Fewer tools' : 'More tools'} onClick={() => setMore(!more)}>⋯</button>
       )}
     </div>
   );
@@ -142,102 +159,6 @@ function ArrangeOptions({ at }: { at: HTMLElement | null }) {
   );
 }
 
-const PartManipulation = lazy(() => import('./PartManipulation'));
-
-let moveCoordinates: 'world' | 'object' = 'world';
-const DEG = Math.PI / 180;
-const rotationOf = (rot: [number, number, number]) => new THREE.Matrix4().makeRotationZ(rot[2] * DEG)
-  .multiply(new THREE.Matrix4().makeRotationY(rot[1] * DEG)).multiply(new THREE.Matrix4().makeRotationX(rot[0] * DEG));
-
-function setRotation(objectId: number, instanceId: number, rot: [number, number, number]) {
-  undoable('Reset rotation', () => setState((s) => ({
-    objects: s.objects.map((o) => (o.id !== objectId ? o : {
-      ...o, rotX: rot[0], rotY: rot[1], instances: o.instances.map((i) => (i.id === instanceId ? { ...i, rotZ: rot[2] } : i)),
-    })),
-    job: markStale(s.job),
-  })));
-}
-
-export function ManipulationPanel({ docked = false }: { docked?: boolean }) {
-  const gizmo = useStore((s) => s.gizmo);
-  const o = useStore((s) => s.objects.find((ob) => ob.id === s.selected?.object));
-  const instId = useStore((s) => s.selected?.instance);
-  const uniform = useStore((s) => s.uniformScale);
-  const volumeId = useStore((s) => s.selected?.volume);
-  const inst = o?.instances.find((i) => i.id === instId);
-  const [coordinates, setCoordinates] = useState(moveCoordinates);
-  const openKey = `${gizmo}|${o?.id}|${instId}`;
-  const [opened, setOpened] = useState<{ key: string; pos: THREE.Vector3; rot: [number, number, number] } | null>(null);
-  if (o && inst && opened?.key !== openKey) setOpened({ key: openKey, pos: new THREE.Vector3(inst.x, inst.y, inst.z ?? 0), rot: [o.rotX, o.rotY, inst.rotZ] });
-  if (!o || !inst || (docked ? gizmo !== 'none' : gizmo === 'none') || gizmo === 'flatten' || gizmo === 'cut' || gizmo === 'measure' || isPaint(gizmo) || gizmo === 'layers' || gizmo === 'brimears' || gizmo === 'boolean' || gizmo === 'text' || gizmo === 'svg' || o.project?.placeholder) return null;
-  const v = o.volumes?.find((vv) => vv.id === volumeId);
-  if (v) return <Suspense fallback={null}><PartManipulation o={o} inst={inst} v={v} docked={docked} /></Suspense>;
-  const mesh = o.geometry.boundingBox!.getSize(new THREE.Vector3());
-  const rescale = (axis: number, factor: number) => updateObject(o.id, {
-    scale: o.scale.map((v, k) => (uniform || k === axis ? v * factor : v)) as [number, number, number],
-  });
-  const rot: [number, number, number] = [o.rotX, o.rotY, inst.rotZ];
-  const start = opened?.key === openKey ? opened : { pos: new THREE.Vector3(inst.x, inst.y, inst.z ?? 0), rot };
-  const local = coordinates === 'object' && gizmo === 'move';
-  const axes = rotationOf(rot);
-  const relative = new THREE.Vector3(inst.x, inst.y, inst.z ?? 0).sub(start.pos).applyMatrix4(axes.clone().transpose());
-  const moveTo = (axis: number, value: number) => {
-    if (!local) return updateInstance(o.id, inst.id, [{ x: value }, { y: value }, { z: value }][axis]);
-    const p = relative.clone().setComponent(axis, value).applyMatrix4(axes).add(start.pos);
-    updateInstance(o.id, inst.id, { x: p.x, y: p.y, z: p.z });
-  };
-  const turned = rot.some((r, k) => Math.abs(r - start.rot[k]) > 1e-9);
-  return (
-    <div className={`manip-panel${docked ? ' docked' : ''}`}>
-      <div className="manip-title">{docked ? 'Object manipulation' : gizmo === 'move' ? 'Move' : gizmo === 'rotate' ? 'Rotate' : 'Scale'}</div>
-      {gizmo === 'move' && !docked && (
-        <label className="manip-coords" title="Coordinate system used for transform actions.">
-          <select className="combo" value={coordinates} onChange={(e) => { moveCoordinates = e.target.value as 'world' | 'object'; setCoordinates(moveCoordinates); }}>
-            <option value="world">World</option>
-            <option value="object">Object</option>
-          </select>
-        </label>
-      )}
-      <div className="manip-grid">
-        <span />
-        <span className="axis x">X</span>
-        <span className="axis y">Y</span>
-        <span className="axis z">Z</span>
-        <span>{local ? 'Relative' : 'Position'}</span>
-        {[0, 1, 2].map((a) => <Num key={a} value={local ? relative.getComponent(a) : [inst.x, inst.y, inst.z ?? 0][a]} onCommit={(v) => moveTo(a, v)} />)}
-        <span>Rotation</span>
-        <Num value={o.rotX} onCommit={(rotX) => updateObject(o.id, { rotX })} />
-        <Num value={o.rotY} onCommit={(rotY) => updateObject(o.id, { rotY })} />
-        <Num value={inst.rotZ} onCommit={(rotZ) => updateInstance(o.id, inst.id, { rotZ })} />
-        {(gizmo === 'rotate' || docked) && (
-          <span className="manip-resets">
-            {!docked && (
-              <button type="button" className="btn" disabled={!turned} title="Reset current rotation to the value when open the rotation tool."
-                onClick={() => setRotation(o.id, inst.id, start.rot)}>Reset</button>
-            )}
-            <button type="button" className="btn" disabled={rot.every((r) => r === 0)} title="Reset current rotation to real zeros."
-              onClick={() => setRotation(o.id, inst.id, [0, 0, 0])}>Reset to 0</button>
-          </span>
-        )}
-        <span>Scale %</span>
-        {[0, 1, 2].map((a) => (
-          <Num key={a} value={Math.abs(o.scale[a]) * 100} onCommit={(v) => rescale(a, Math.max(0.1, v) / 100 / Math.abs(o.scale[a]))} />
-        ))}
-        <span>Size mm</span>
-        {(['x', 'y', 'z'] as const).map((a, k) => (
-          <Num key={a} value={Math.abs(o.scale[k]) * mesh[a]} onCommit={(v) => rescale(k, Math.max(0.01, v) / Math.max(1e-6, Math.abs(o.scale[k]) * mesh[a]))} />
-        ))}
-        {(gizmo === 'scale' || docked) && (
-          <label className="manip-lock">
-            <input type="checkbox" checked={uniform} onChange={(e) => setState({ uniformScale: e.target.checked })} />
-            Uniform scale
-          </label>
-        )}
-      </div>
-    </div>
-  );
-}
-
 const cleanError = (msg = '') => msg.replace(/^(error:\s*)?(validate:\s*)?/i, '');
 
 export function AccessNotification() {
@@ -260,6 +181,7 @@ export function AccessNotification() {
           <div className="notif-body">Save the token, then try the action again.</div>
         </form>
       )}
+      {notice.status === 507 && <div className="notif-body">Ask your administrator to free space, then try again.</div>}
     </div>
   );
 }
@@ -323,6 +245,8 @@ export function SliceNotification() {
   const facts = !fresh && !busy && patchPreview ? patchPreview.facts.filter((f) => !suggestIds.split(',').includes(String(f.objectId))) : [];
   const factsKey = `np:${facts.map((f) => `${f.objectId}:${f.curved}`).join(',')}`;
   const exportLink = (label: string) => <button type="button" className="notif-link" title={exportLabel} onClick={download}>{label}</button>;
+  const canSend = useStore((s) => s.printers.length > 0 || s.printerEdit || s.printerHosts);
+  const sendLink = canSend && <>{' · '}<button type="button" className="notif-link" title="Upload the sliced file to a printer" onClick={() => setState({ appDialog: 'send' })}>Send</button></>;
   const compareLink = <button type="button" className="notif-link" onClick={() => (setCompareWanted(true), setState({ tab: 'preview' }))}>Compare</button>;
   return (
     <div className="notifications" ref={stack}>
@@ -330,11 +254,7 @@ export function SliceNotification() {
         <div className="notif-group">
           <AccessNotification />
           {job.state === 'failed' && notice?.message !== cleanError(job.error) && !/Access token required|Server storage full|Server busy\./.test(job.error ?? '') && !closed.has('error') && (
-            <div className="notification failed">
-              {close('error')}
-              <div className="notif-title">Error:</div>
-              <div className="notif-body">{cleanError(job.error)}</div>
-            </div>
+            <SliceFailed error={cleanError(job.error)} onClose={() => setClosed((c) => new Set(c).add('error'))} />
           )}
         </div>
       </InTopLayer>
@@ -414,7 +334,7 @@ export function SliceNotification() {
           <div className="notif-body">
             {plateFact(results)}
             {results.some((r) => r.curved) && <> · {compareLink}</>}
-            {' · '}{exportLink('Export')}
+            {' · '}{exportLink('Export')}{sendLink}
           </div>
         </div>
       )}
@@ -423,7 +343,7 @@ export function SliceNotification() {
           {close(done)}
           <div className="notif-title"><Icon name="notification_slicing_complete" size={16} /> Slice complete</div>
           <div className="notif-body">
-            <button type="button" className="notif-link" onClick={download}>{exportLabel}</button>
+            <button type="button" className="notif-link" onClick={download}>{exportLabel}</button>{sendLink}
           </div>
         </div>
       )}
@@ -431,10 +351,7 @@ export function SliceNotification() {
   );
 }
 
-export function Toast() {
-  const msg = useStore((s) => s.toast ?? s.projectNotice);
-  return msg ? <InTopLayer><div className="toast" role="status">{msg}</div></InTopLayer> : null;
-}
+export { Toast } from './Notices';
 
 const CutJoints = lazy(() => import('./CutJoints'));
 

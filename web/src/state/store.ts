@@ -5,7 +5,7 @@ import type { Api } from '../api/client';
 import type { Config, ConfigValue, JobStatus, PresetType, SystemPreset, UserPreset } from '../api/types';
 import type { ProjectPlate } from '../plater/threemf';
 import { isHidden, OPTIONS, type OptionMode } from '../options';
-import { undoable } from './history';
+import { undo, undoable } from './history';
 import { canEditProject } from '../api/client';
 import type { PaintKind, Painting } from '../plater/paint';
 
@@ -217,11 +217,14 @@ export interface State {
   projectName: string | null;
   job: JobView;
   toast: string | null;
+  toastSeq: number;
+  toastAction: { label: string; run: () => void; msg?: string } | null;
+  toastMs: number | null;
   recommendedStyle: Record<number, 'standard'>;
   heads: HeadInfo[] | null;
   presetUx: PresetUx | null;
   settingsFocus: { type: PresetType; page: string; key: string; nonce: number } | null;
-  sessionDialog: 'restore' | 'recent' | null;
+  sessionDialog: 'recent' | null;
   orientPrompts: Record<number, OrientPrompt>;
   orientDismissed: number[];
   wipeTowerPos: Record<number, [number, number]>;
@@ -303,6 +306,9 @@ let state: State = {
   projectName: null,
   job: { state: 'idle', pct: 0, stage: '' },
   toast: null,
+  toastSeq: 0,
+  toastAction: null,
+  toastMs: null,
   recommendedStyle: {},
   heads: null,
   presetUx: null,
@@ -480,9 +486,8 @@ export async function saveUserPreset(type: PresetType, name: string, slot = 0, d
   });
 }
 
-export function toast(msg: string) {
-  setState({ toast: msg });
-  setTimeout(() => getState().toast === msg && setState({ toast: null }), 3500);
+export function toast(msg: string, action: State['toastAction'] = null, ms = action ? 8000 : null) {
+  setState({ toast: msg, toastSeq: getState().toastSeq + 1, toastAction: action && { ...action, msg }, toastMs: ms });
 }
 
 function editName(patch: object): string {
@@ -570,8 +575,10 @@ export function removeSelected() {
 }
 
 export function deleteAll() {
+  const n = state.objects.length;
   undoable('Delete all', () => setState((s) => !s.project && s.projectPlates.length ? { objects: [], selected: null, job: markStale(s.job) }
     : { objects: [], selected: null, project: null, projectPlates: [], plateIndex: 1, wipeTowerPos: {}, projectName: null, projectMaterials: null, projectPresets: null, projectNotice: null, job: markStale(s.job) }));
+  if (n) toast(n === 1 ? 'Deleted 1 object' : `Deleted ${n} objects`, { label: 'Undo', run: undo });
 }
 
 export function setObjectOption(id: number, key: string, value: ConfigValue) {

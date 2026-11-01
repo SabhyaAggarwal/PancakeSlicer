@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } fro
 import { arrangeAll, canExport, fileUse, STALE_RESULT_TIP, download, newProject, openFileDialog, openProjectDialog, outputKind, outsideVolumeWarning, saveProject, slice } from '../actions';
 import { deleteAll, removeSelected, setState, useStore } from '../state/store';
 import { canPaste, copySelection, cutSelection, pasteClipboard, selectAll } from '../edit';
-import { historyVersion, redo, redoName, subscribeHistory, undo, undoName } from '../state/history';
+import { historyVersion, redo, redoName, redoNames, redoSteps, subscribeHistory, undo, undoName, undoNames, undoSteps } from '../state/history';
 import { CAMERA_VIEWS, VIEW_DIRECTIONS, cameraCommand, cameraSnapshot, subscribeCamera, perspective, autoPerspective } from '../camera';
 import { Icon } from './Icon';
 import { canAddPlate, duplicatePlate, exportAll, exportablePlates, sliceAll } from '../plater/plates';
@@ -11,6 +11,7 @@ import { subscribeVisibleToolpaths, visibleToolpaths } from '../preview/visible'
 import { toggleViewOption, useViewOptions } from '../plater/viewOptions';
 import { toggleNonplanarView, useNonplanarView } from '../patch-preview';
 import { canCalibrate, canLoadStep } from '../api/client';
+import { toggleSidebar, useSidebarHidden } from '../sidebar';
 
 type MenuItem = { label: string; shortcut?: string; action?: () => void; disabled?: boolean; tip?: string; checked?: boolean; role?: 'menuitemradio' | 'menuitemcheckbox'; sub?: MenuItem[] } | 'sep';
 
@@ -79,7 +80,7 @@ function Menu({ title, items }: { title: string; items: MenuItem[] }) {
             if (it === 'sep') return <div key={i} className="menu-sep" role="separator" />;
             if (it.sub)
               return (
-                <div key={it.label} className="menu-subwrap" onPointerEnter={() => setSub(it.label)}>
+                <div key={`${it.label}-${i}`} className="menu-subwrap" onPointerEnter={() => setSub(it.label)}>
                   <button className="menu-item" data-sub={it.label} aria-haspopup="menu" aria-expanded={sub === it.label} title={it.tip} onClick={() => setSub(it.label)}>
                     <span>{it.label}</span>
                     <span className="menu-key" aria-hidden="true">▸</span>
@@ -89,7 +90,7 @@ function Menu({ title, items }: { title: string; items: MenuItem[] }) {
               );
             return (
               <button
-                key={it.label}
+                key={`${it.label}-${i}`}
                 className="menu-item"
                 role={it.role ?? 'menuitem'}
                 aria-checked={it.checked}
@@ -123,6 +124,7 @@ export function TopBar() {
   useSyncExternalStore(subscribeCamera, cameraSnapshot);
   const view = useViewOptions();
   const nonplanarView = useNonplanarView();
+  const sidebarHidden = useSidebarHidden();
   const [archive, setArchive] = useState<File[] | null>(null);
   useSyncExternalStore(subscribeHistory, historyVersion);
   const undoLabel = undoName(), redoLabel = redoName();
@@ -184,6 +186,11 @@ export function TopBar() {
         items={[
           { label: undoLabel ? `Undo ${undoLabel}` : 'Undo', shortcut: `${MOD}+Z`, action: undo, disabled: !undoLabel },
           { label: redoLabel ? `Redo ${redoLabel}` : 'Redo', shortcut: `${MOD}+Y`, action: redo, disabled: !redoLabel },
+          ...(undoLabel || redoLabel ? [{ label: 'History', sub: [
+            ...redoNames().reverse().map((name, i, all): MenuItem => ({ label: `Redo ${name}`, action: () => redoSteps(all.length - i) })),
+            ...(undoLabel && redoLabel ? ['sep' as const] : []),
+            ...undoNames().map((name, i): MenuItem => ({ label: `Undo ${name}`, action: () => undoSteps(i + 1) })),
+          ] } satisfies MenuItem] : []),
           'sep',
           { label: 'Cut', shortcut: `${MOD}+X`, action: cutSelection, disabled: !hasSel, tip: 'Cut selection to clipboard' },
           { label: 'Copy', shortcut: `${MOD}+C`, action: copySelection, disabled: !hasSel, tip: 'Copy selection to clipboard' },
@@ -207,6 +214,8 @@ export function TopBar() {
         title="View"
         items={[
           ...CAMERA_VIEWS.map((label, i) => ({ label, shortcut: String(i), action: () => cameraCommand(VIEW_DIRECTIONS[i]), tip: i ? `${label} View` : label })),
+          'sep',
+          { label: 'Show Sidebar', shortcut: `${MOD}+\\`, role: 'menuitemcheckbox', checked: !sidebarHidden, action: () => toggleSidebar() },
           'sep',
           { label: 'Use Perspective View', role: 'menuitemradio', checked: perspective, action: () => cameraCommand('perspective') },
           { label: 'Use Orthogonal View', role: 'menuitemradio', checked: !perspective, action: () => cameraCommand('orthogonal') },
@@ -263,7 +272,7 @@ export function TopBar() {
       </button>
       <div className="topbar-title">
         {name ?? 'Untitled'}
-        {mock && <span className="mock-badge" title="The slicing service did not answer; jobs are simulated">mock</span>}
+        {mock && <span className="mock-badge" tabIndex={0} title="Demo: slices are simulated and downloads will not print">Demo</span>}
       </div>
     </div>
   );

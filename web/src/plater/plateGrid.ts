@@ -151,7 +151,8 @@ export class PlateGrid {
         a.el.style.transform = `translate(${x}px, ${y}px) translate(0, -100%)`;
         a.el.style.setProperty('--plate-icon', `${px}px`);
       } else {
-        a.el.style.transform = `translate(${x - px / 2}px, ${y - px / 2}px)`;
+        const cx = a.kind === 'number' || a.kind === 'icon' ? Math.min(x, width - px / 2 - 8) : x;
+        a.el.style.transform = `translate(${cx - px / 2}px, ${y - px / 2}px)`;
         a.el.style.width = a.el.style.height = `${px}px`;
         if (a.kind === 'number') a.el.style.fontSize = `${Math.round(px * 0.6)}px`;
       }

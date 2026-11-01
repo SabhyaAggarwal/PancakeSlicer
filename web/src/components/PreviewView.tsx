@@ -1,6 +1,6 @@
 import { slicingText } from '../api/progress';
 import { Suspense, lazy, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { getState, printerPreset, useStore } from '../state/store';
+import { getState, printerPreset, setState, useStore } from '../state/store';
 import { layerOfMove, peekJump, setGcodeListener, setJumpListener, setLoadedStream, takeGcode, takeJump } from '../preview/jump';
 import { setCompareWanted, useCompareWanted } from '../compare';
 import { computeRanges, drawMasks, EXTENDED_VIEWS, hexToRgb, type ColorContext, type NonplanarColor, type Ranges, type ViewType, type Visibility } from '../preview/colors';
@@ -13,11 +13,13 @@ import { Legend } from './PreviewLegend';
 import { LayerSlider, MoveSlider } from './PreviewSliders';
 import { EventList, EventMenu, eventTicks } from './LayerEvents';
 import { ownsKeys } from '../keys';
-import { numberDialog } from '../actions';
+import { numberDialog, openFileDialog, slice } from '../actions';
 import { toggleViewOption, useViewOptions } from '../plater/viewOptions';
 import { filamentColor } from '../plater/filamentColor';
 import { setVisibleToolpaths } from '../preview/visible';
+import './preview.css';
 
+const SHOW_STATS = new URLSearchParams(location.search).has('stats');
 const ExplainLegend = lazy(() => import('./PreviewExplain').then((m) => ({ default: m.ExplainLegend })));
 const StandardView = lazy(() => import('./PreviewExplain').then((m) => ({ default: m.StandardView })));
 const GcodeWindow = lazy(() => import('./GcodeWindow').then((m) => ({ default: m.GcodeWindow })));
@@ -106,7 +108,7 @@ export function PreviewView() {
     const scene = new PreviewScene(host.current!);
     sceneRef.current = scene;
     let lastBump = 0;
-    scene.onFrame = () => {
+    if (SHOW_STATS) scene.onFrame = () => {
       if (performance.now() - lastBump > 500) {
         lastBump = performance.now();
         bump();
@@ -320,7 +322,7 @@ export function PreviewView() {
   const status = job.state === 'running' || job.state === 'submitting'
     ? slicingText(job, plateIndex)
     : !data && !source() && !dropped
-    ? job.state === 'done' ? null : 'No sliced result. Slice the plate to see the result here.'
+    ? job.state === 'done' ? null : objects.length ? 'Not sliced yet' : 'Plate is empty'
     : data?.error
       ? /^404 /.test(data.error)
         ? 'This slicing service did not produce preview data for the job. The sliced file can still be exported.'
@@ -361,7 +363,13 @@ export function PreviewView() {
           {tip.body && <div>{tip.body}</div>}
         </div>
       )}
-      {status && <div className="preview-status">{status}</div>}
+      {status && (
+        <div className="preview-status" role="status">
+          <span>{status}</span>
+          {status === 'Not sliced yet' && <button type="button" className="btn-primary" onClick={() => void slice()} title="Ctrl+R">Slice plate</button>}
+          {status === 'Plate is empty' && <button type="button" className="btn-ghost" onClick={() => { setState({ tab: 'prepare' }); openFileDialog(); }} title="Ctrl+I">Add model</button>}
+        </div>
+      )}
       {data?.header && (
         <Legend
           data={data}
@@ -385,8 +393,11 @@ export function PreviewView() {
         </Suspense>
       )}
       {loading && (
-        <div className="preview-loading">
-          Loading toolpaths… {data!.n ? Math.round((100 * data!.loaded) / data!.n) : 0}% ({(data!.loaded / 1e6).toFixed(2)} of {(data!.n / 1e6).toFixed(2)} M moves)
+        <div className="preview-loading" role="progressbar" aria-label="Loading toolpaths" aria-valuemin={0} aria-valuemax={100}
+          aria-valuenow={data!.n ? Math.round((100 * data!.loaded) / data!.n) : 0}>
+          <span>Loading toolpaths</span>
+          <span className="preview-loading-bar"><span style={{ width: `${data!.n ? (100 * data!.loaded) / data!.n : 0}%` }} /></span>
+          <span className="preview-loading-n">{(data!.loaded / 1e6).toFixed(2)} / {(data!.n / 1e6).toFixed(2)} M</span>
         </div>
       )}
       {layerCount > 0 && (
@@ -422,7 +433,8 @@ export function PreviewView() {
         />
       )}
       {layerCount > 0 && topMoves > 0 && (
-        <MoveSlider count={topMoves} pos={pos} gcodeLine={data!.gcode[topFirst + pos - 1]} onChange={setMovePos} />
+        <MoveSlider count={topMoves} pos={pos} gcodeLine={data!.gcode[topFirst + pos - 1]} onChange={setMovePos}
+          gcodeOpen={gcodeWindow} onGcode={() => toggleViewOption('gcodeWindow')} />
       )}
       {layerCount > 0 && pos < topMoves && data!.states && topFirst + pos - 1 < data!.loaded && (
         <Suspense fallback={null}><ToolPosition data={data!} at={topFirst + pos - 1} view={ui.view} /></Suspense>

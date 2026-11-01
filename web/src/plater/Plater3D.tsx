@@ -15,6 +15,7 @@ import { assembly, subscribeAssembly } from './assembly';
 import { gridOrigin, plateOffset, PlateGrid } from './plateGrid';
 import { canAddPlate, moveToPlate, selectPlate } from './plates';
 import { filamentColor } from './filamentColor';
+import { hoverLink, setHoverLink, subscribeHoverLink } from './hoverLink';
 import { bedKey as bedCacheKey, buildBed, sceneColors, showBedFor } from './Bed';
 import { subscribeTheme } from '../theme';
 import { pixelRatio, watchPixelRatio } from './pixelRatio';
@@ -299,6 +300,8 @@ export default function Plater3D() {
     let hovered: number | null = null;
     const tint = (s: State) => {
       const xray = viewOptions().xray && !isPaint(s.gizmo) && s.gizmo !== 'layers';
+      const link = hoverLink();
+      const dimmed = (o: number, i: number) => link?.source === 'list' && (o !== link.object || (link.instance !== undefined && i !== link.instance));
       for (const o of s.objects) {
         const color = filamentColor(s, o.extruder);
         for (const inst of o.instances) {
@@ -308,7 +311,7 @@ export default function Plater3D() {
           const ghost = s.selected?.object === o.id && s.selected.volume !== undefined;
           mesh.material = s.gizmo === 'layers' && s.selected?.object === o.id
             ? layerMaterial(layerParams(s, o), layerProfileOf(s, o), layerCursor())
-            : material(inst.printable === false ? '#999999' : color, inst.printable === false ? 'normal' : state, !!o.project?.placeholder, ghost, xray);
+            : material(inst.printable === false ? '#999999' : color, inst.printable === false ? 'normal' : state, !!o.project?.placeholder, ghost || dimmed(o.id, inst.id), xray);
           for (const v of o.volumes ?? []) {
             const vm = volumeMeshes.get(`${inst.id}:${v.id}`);
             if (vm) vm.material = volumeMaterial(v.type, filamentColor(s, v.extruder || o.extruder), s.selected?.object === o.id && s.selected.volume === v.id, v.seamMode);
@@ -1089,6 +1092,9 @@ export default function Plater3D() {
     const setHover = (id: number | null) => {
       if (id === hovered) return;
       hovered = id;
+      const object = id === null ? undefined : (meshes.get(id)?.userData as { object?: number } | undefined)?.object;
+      if (object !== undefined) setHoverLink({ object, instance: id!, source: 'canvas' });
+      else if (hoverLink()?.source === 'canvas') setHoverLink(null);
       tint(getState());
       render();
     };
@@ -1279,6 +1285,7 @@ export default function Plater3D() {
     el.appendChild(grid.layer);
     const unsubView = subscribeViewOptions(() => { tint(getState()); syncView(getState()); render(); });
     const unsubSection = subscribeSection(applySection);
+    const unsubHoverLink = subscribeHoverLink(() => { if (hoverLink()?.source !== 'canvas') { tint(getState()); render(); } });
     const unsubAssembly = subscribeAssembly(() => { last = null; sync(); render(); });
     const onFit = () => {
       const s = getState(), box = new THREE.Box3();
@@ -1304,6 +1311,7 @@ export default function Plater3D() {
       unsubLayerCursor();
       unsubView();
       unsubSection();
+      unsubHoverLink();
       unsubAssembly();
       unsubEars();
       window.removeEventListener('camera-fit', onFit);

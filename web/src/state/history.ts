@@ -139,6 +139,11 @@ export function redo() {
   notify();
 }
 
+export function undoSteps(n: number) { for (let i = 0; i < n; i++) undo(); }
+export function redoSteps(n: number) { for (let i = 0; i < n; i++) redo(); }
+export const undoNames = (max = 10) => undoStack.slice(-max).reverse().map((st) => st.name);
+export const redoNames = (max = 10) => redoStack.slice(-max).reverse().map((st) => st.name);
+
 export const undoName = () => undoStack[undoStack.length - 1]?.name ?? null;
 export const redoName = () => redoStack[redoStack.length - 1]?.name ?? null;
 export const historyDepth = () => ({ undo: undoStack.length, redo: redoStack.length });

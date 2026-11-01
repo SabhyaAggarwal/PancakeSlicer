@@ -4,6 +4,11 @@ import { compatible, getState, hasUnsavedEdits, presetEdits, setState, useStore 
 
 const CREATE = '\u0000create-printer';
 
+export function requestPreset(type: PresetType, slot: number, name: string) {
+  if (hasUnsavedEdits(getState(), type, slot)) setState({ presetUx: { kind: 'unsaved', type, slot, target: name } });
+  else switchPreset(type, slot, name);
+}
+
 export function PresetCombo({ type, slot = 0, className }: { type: PresetType; slot?: number; className?: string }) {
   const value = useStore((s) => (type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot] ?? ''));
   const printer = useStore((s) => s.printer);
@@ -21,14 +26,11 @@ export function PresetCombo({ type, slot = 0, className }: { type: PresetType; s
   const sysNames = new Set(systemUnsorted.map((p) => p.name));
   const user = userPresets.filter((u) => u.type === type && (type === 'machine' || sysNames.has(u.inherits))).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
 
-  const onChange = (name: string) => {
-    if (name === CREATE) return setState({ appDialog: 'createPrinter' });
-    if (hasUnsavedEdits(getState(), type, slot)) setState({ presetUx: { kind: 'unsaved', type, slot, target: name } });
-    else switchPreset(type, slot, name);
-  };
+  const onChange = (name: string) => name === CREATE ? setState({ appDialog: 'createPrinter' }) : requestPreset(type, slot, name);
 
   return (
-    <select className={`combo preset-combo ${className ?? ''}`} value={value} onChange={(e) => onChange(e.target.value)} title={value}>
+    <select className={`combo preset-combo ${className ?? ''}`} value={value} onChange={(e) => onChange(e.target.value)} title={value}
+      aria-label={type === 'machine' ? 'Printer preset' : type === 'process' ? 'Process preset' : `Filament ${slot + 1} preset`}>
       {!sysNames.has(value) && !user.some((u) => u.name === value) && <option value={value}>{value || '—'}</option>}
 
       {user.length > 0 && (

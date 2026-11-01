@@ -35,7 +35,7 @@ let queue: Promise<void> = Promise.resolve();
 let warned = false;
 const blobKeys = new WeakMap<Blob, string>();
 const storedBlobs = new Set<string>();
-export let offer: Session | null = null;
+export let previousSession: string | null = null;
 
 function newKey() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -130,7 +130,6 @@ async function write(doc: Doc, id: string, state: State) {
   if (!db || sameDoc(written, doc) && id === sessionId) return;
   const count = plateCount(doc);
   if (!count) {
-    await complete(withTx((tx) => tx.objectStore('sessions').delete(id)));
     written = doc;
     return;
   }
@@ -170,6 +169,8 @@ function save(id = sessionId) {
   return queue;
 }
 
+export const autosaving = () => !!db;
+
 export const flush = () => save();
 
 export async function start() {
@@ -190,6 +191,7 @@ export async function start() {
   subscribeHistory(() => {
     if (documentGeneration() === generation) return;
     generation = documentGeneration();
+    previousSession = sessionId;
     sessionId = newKey();
     written = null;
     warned = false;
@@ -202,10 +204,7 @@ export async function start() {
   });
   document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && void save());
   const last = (await sessions())[0];
-  if (last && !plateCount(getState())) {
-    offer = last;
-    setState({ sessionDialog: 'restore' });
-  }
+  if (last && !plateCount(getState())) toast(`Last session: ${last.name}`, { label: 'Restore', run: () => void restore(last.id) }, 20000);
 }
 
 export async function restore(id: string) {

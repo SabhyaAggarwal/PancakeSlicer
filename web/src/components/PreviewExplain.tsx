@@ -82,7 +82,7 @@ export function ExplainLegend(props: {
 
   return (
     <div className="np-legend">
-      <div className="lg-radios">
+      <div className="np-toggles">
         <label className="lg-opt"><input type="checkbox" checked={compare} onChange={(e) => setCompare(e.target.checked)} />Compare with Standard</label>
         <label className="lg-opt">
           <input type="checkbox" checked={highlight} onChange={(e) => {
@@ -99,16 +99,32 @@ export function ExplainLegend(props: {
       </div>
       {ui.surface && surfaceGrid(record) ? (
         <>
-          <div className="lg-sub">Top error (µm)</div>
+          <div className="lg-sec label-caps">Top error (µm)</div>
           {[...ERROR_BINS].reverse().map((b) => (
             <div className="lg-row" key={b.label}><span className="lg-swatch" style={{ background: `rgb(${b.color.join(',')})` }} />{b.label}</div>
           ))}
         </>
       ) : <>
-      <table className="lg-table np-table">
+      {!compare && (
+        <div className="np-stats">
+          {rows.filter(([label]) => label !== 'Time' && label !== 'Filament').map(([label, , b, , tip]) => (
+            <div key={label} title={label === 'Head hits' && v?.uncalibrated ? [tip, UNCALIBRATED].filter(Boolean).join('\n') : tip}>
+              <span className="np-k">{label === 'Curved shells' ? 'Shells' : label === 'Curved overhangs' ? 'Overhangs' : label}</span>
+              <span className="np-v">{b}{label === 'Head hits' && v?.uncalibrated && <Icon name="warning" size={12} />}</span>
+            </div>
+          ))}
+          {s.flat.length > 0 && (
+            <div title={s.flat.map((f) => `${f.name} ${area(f.area)}: ${f.reason}`).join('\n')}>
+              <span className="np-k">Kept flat</span>
+              <span className="np-v">{area(s.flat.reduce((a, f) => a + f.area, 0))}</span>
+            </div>
+          )}
+        </div>
+      )}
+      {compare && <table className="lg-table np-table">
         <thead>
           <tr>
-            <th></th>
+            <th><span className="lg-hidden">Measure</span></th>
             {compare && <th>Standard</th>}
             <th>{s.style}</th>
           </tr>
@@ -122,7 +138,7 @@ export function ExplainLegend(props: {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table>}
       {compare && cmp.state === 'running' && (
         <button className="lg-mode" onClick={() => setCompare(false)} title="Standard slices after your own slices">Cancel Standard</button>
       )}
@@ -131,12 +147,12 @@ export function ExplainLegend(props: {
           {cmp.busy ? 'Service busy · Retry' : 'Standard failed · Retry'}
         </button>
       )}
-      {v?.uncalibrated && (
+      {compare && v?.uncalibrated && (
         <div className="lg-row np-warn" title={UNCALIBRATED}><Icon name="warning" size={12} />Head model uncalibrated</div>
       )}
-      {s.flat.length > 0 && (
+      {compare && s.flat.length > 0 && (
         <>
-          <div className="lg-sub">Flat areas</div>
+          <div className="lg-sec label-caps">Flat areas</div>
           {s.flat.map((f) => (
             <div className="lg-row" key={f.name} title={f.reason}>
               <span className="lg-swatch" style={{ background: `rgb(${NONPLANAR_PLANAR_COLOR.join(',')})` }} />
@@ -172,8 +188,8 @@ export function StandardView(props: {
   return (
     <>
       <StandardPane main={scene} cmp={cmp} ui={ui} vis={ui.vis} zRange={props.zRange} mainVertices={data.n} />
-      <div className="cmp-label cmp-left">Standard</div>
-      <div className="cmp-label cmp-right">{style}</div>
+      <div className="cmp-label cmp-left label-caps">Standard</div>
+      <div className="cmp-label cmp-right label-caps">{style}</div>
     </>
   );
 }

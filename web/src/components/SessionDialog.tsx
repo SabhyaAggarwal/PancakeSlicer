@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Modal, ModalTitle } from './Modal';
-import { offer, remove, restore, sessions, type Session } from '../persist/session';
+import { remove, restore, sessions, type Session } from '../persist/session';
 import { setState, useStore } from '../state/store';
 
 const when = (t: number) => new Date(t).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
@@ -15,28 +15,9 @@ export default function SessionDialog() {
   const [list, setList] = useState<Session[] | null>(null);
   const close = () => setState({ sessionDialog: null });
   useEffect(() => {
-    if (mode === 'recent') void sessions().then(setList);
+    if (mode) void sessions().then(setList);
   }, [mode]);
 
-  if (mode === 'restore' && offer) {
-    const s = offer;
-    return (
-      <Modal className="small" label="Restore your last session?" onClose={close}>
-          <ModalTitle title="Restore your last session?" onClose={close} />
-          <div className="session-offer">
-            <Thumb s={s} />
-            <div>
-              <div className="session-name">{s.name}</div>
-              <div className="session-meta">{summary(s)}</div>
-            </div>
-          </div>
-          <div className="modal-buttons center">
-            <button className="btn primary" data-autofocus onClick={() => void restore(s.id)}>Restore</button>
-            <button className="btn" onClick={close}>Start new</button>
-          </div>
-      </Modal>
-    );
-  }
   return (
     <Modal className="small" label="Recent projects" onClose={close} backdropClose>
         <ModalTitle title="Recent projects" onClose={close} />

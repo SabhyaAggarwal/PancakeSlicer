@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { effectiveConfig, getState } from '../state/store';
 import {
   CURVED_COLOR, EXTENDED_VIEWS, clearanceColor, NONPLANAR_COLORS, NONPLANAR_HUES, NONPLANAR_PLANAR_COLOR, OPTION_COLORS, RANGE_PALETTE, ROLE_COLORS, VIEW_TYPES, hexToRgb,
@@ -13,6 +13,8 @@ import { clearanceScale } from '../preview/clearance';
 const css = (c: RGB) => `rgb(${c[0]},${c[1]},${c[2]})`;
 
 const SHOW_STATS = new URLSearchParams(location.search).has('stats');
+
+const NARROW = window.matchMedia('(max-width: 599px)');
 
 function compactWeight(g: number): string {
   const a = Math.abs(g);
@@ -37,13 +39,15 @@ function RangeRows({ range, decimals, title }: { range: ColorRange | undefined; 
     : values.map((v, i) => [v, i] as [number, number]).reverse();
   return (
     <>
-      {title && <div className="lg-sub">{title}</div>}
-      {rows.map(([v, i], k) => (
-        <div className="lg-row" key={k}>
-          <Swatch c={RANGE_PALETTE[i]} />
-          <span>{v.toFixed(decimals)}</span>
-        </div>
-      ))}
+      {title && <div className="lg-sec label-caps">{title}</div>}
+      <div className="lg-scale">
+        {rows.map(([v, i], k) => (
+          <div className="lg-row" key={k}>
+            <Swatch c={RANGE_PALETTE[i]} />
+            <span className="lg-num">{v.toFixed(decimals)}</span>
+          </div>
+        ))}
+      </div>
     </>
   );
 }
@@ -77,7 +81,13 @@ export function Legend(props: {
   explainOnly?: boolean;
 }) {
   const { data: d, ui, setUi, ranges } = props;
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(() => !NARROW.matches);
+  const [details, setDetails] = useState(false);
+  useEffect(() => {
+    const fold = () => setOpen(!NARROW.matches);
+    NARROW.addEventListener('change', fold);
+    return () => NARROW.removeEventListener('change', fold);
+  }, []);
   const [mode, setMode] = useState(0);
   const modes = (d.meta.estimated_times ?? []).filter((m) => typeof m?.time === 'number' && m.time > 0).length;
   const total = d.totalTime(mode);
@@ -107,6 +117,9 @@ export function Legend(props: {
       return { ...u, vis: { ...u.vis, hiddenRoles: h } };
     });
 
+  const focusRole = (r: number | null) => props.scene?.setFocus(r === null || ui.view !== 'feature' ? null : 1 << r);
+  useEffect(() => () => props.scene?.setFocus(null), [props.scene, ui.view]);
+
   const body = () => {
     if (EXTENDED_VIEWS.has(ui.view) && !d.header?.extended) return <div className="lg-row" role="status">Loading actual speed and clearance…</div>;
     switch (ui.view) {
@@ -118,8 +131,10 @@ export function Legend(props: {
             </thead>
             <tbody>
               {ROLE_NAMES.map((name, r) => (d.roleTime[r] > 0 || d.roleFilament[r] > 0) && (
-                <tr key={r} className={ui.vis.hiddenRoles.has(r) ? 'off' : ''} onClick={() => toggleRole(r)} title="Click to show or hide">
-                  <td><button type="button" className="lg-role" aria-pressed={!ui.vis.hiddenRoles.has(r)} onClick={(e) => { e.stopPropagation(); toggleRole(r); }}><Swatch c={ROLE_COLORS[r]} />{name}</button></td>
+                <tr key={r} className={ui.vis.hiddenRoles.has(r) ? 'off' : ''} onClick={() => toggleRole(r)} title="Click to show or hide"
+                  onMouseEnter={() => focusRole(r)} onMouseLeave={() => focusRole(null)}>
+                  <td><button type="button" className="lg-role" aria-pressed={!ui.vis.hiddenRoles.has(r)} onClick={(e) => { e.stopPropagation(); toggleRole(r); }}
+                    onFocus={() => focusRole(r)} onBlur={() => focusRole(null)}><Swatch c={ROLE_COLORS[r]} />{name}</button></td>
                   <td>{d.roleTime[r] > 0 ? shortTime(d.roleTime[r]) : ''}</td>
                   <td>{percent(d.roleTime[r], total)}</td>
                   <td>{(d.roleFilament[r] / 1000).toFixed(2)}m</td>
@@ -135,11 +150,11 @@ export function Legend(props: {
       case 'actual_speed': return <RangeRows range={ranges?.actualSpeed} decimals={0} title="Actual Speed (mm/s)" />;
       case 'actual_flow': return <RangeRows range={ranges?.actualFlow} decimals={2} title="Actual volumetric flow rate (mm³/s)" />;
       case 'clearance': {
-        if (!d.clearance.some((v) => !Number.isNaN(v))) return <><div className="lg-sub">Clearance (mm)</div><div className="lg-row">Not checked</div></>;
+        if (!d.clearance.some((v) => !Number.isNaN(v))) return <><div className="lg-sec label-caps">Clearance (mm)</div><div className="lg-row">Not checked</div></>;
         const { margin, floor } = clearanceScale();
         return (
           <>
-            <div className="lg-sub">Clearance (mm)</div>
+            <div className="lg-sec label-caps">Clearance (mm)</div>
             {[floor, Math.min(margin, floor), 0].map((v, k) => (
               <div className="lg-row" key={k}><Swatch c={clearanceColor(v, margin, floor)} /><span>{v.toFixed(3)}</span></div>
             ))}
@@ -184,73 +199,89 @@ export function Legend(props: {
     ['seam', 'Seams', OPTION_COLORS.seam],
   ];
   const stats = props.scene?.lastFrame;
+  const totalMm = printStats?.total_used_filament_mm ?? filMm, totalG = printStats?.total_weight_g ?? filG;
   return (
-    <div className="legend">
+    <div className={open ? 'legend' : 'legend closed'} aria-label="Legend">
       <div className="lg-head">
-        <select value={ui.view} onChange={(e) => setUi((u) => ({ ...u, view: e.target.value as ViewType }))}>
+        <select aria-label="Color scheme" value={ui.view} onChange={(e) => setUi((u) => ({ ...u, view: e.target.value as ViewType }))}>
           {VIEW_TYPES.filter((v) => d.header?.extended || canExtend(d) || !EXTENDED_VIEWS.has(v.key)).map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}
         </select>
-        <button className="lg-collapse" onClick={() => setOpen(!open)} title={open ? 'Collapse' : 'Expand'}>{open ? '▴' : '▾'}</button>
+        <button className="lg-collapse" onClick={() => setOpen(!open)} aria-expanded={open} title={open ? 'Hide legend' : 'Show legend'} aria-label={open ? 'Hide legend' : 'Show legend'}>
+          <span aria-hidden="true" className={open ? 'lg-caret up' : 'lg-caret'} />
+        </button>
       </div>
-      {open && props.explain}
-      {open && !props.explainOnly && (
-        <>
-          <div className="lg-body">{body()}</div>
-          <div className="lg-sub">Options</div>
-          <div className="lg-options">
-            {options.map(([k, label, c]) => (
-              <label key={k} className="lg-opt">
-                <input type="checkbox" checked={ui.vis[k] as boolean} onChange={() => toggle(k)} />
-                <Swatch c={c} />{label}
-                {k === 'travel' && d.travelTime > 0 && <span className="lg-time">{shortTime(d.travelTime)}</span>}
-              </label>
-            ))}
-            <label className="lg-opt">
-              <input type="checkbox" checked={ui.shells} onChange={() => setUi((u) => ({ ...u, shells: !u.shells }))} />
-              Shells
-            </label>
-          </div>
-          <div className="lg-sub">
-            {ui.view === 'feature' ? 'Total estimation' : 'Time Estimation'}
-            {modes > 1 && mode === 0 ? ' [Normal mode]' : ''}
-          </div>
-          <table className="lg-summary">
-            <tbody>
-              {ui.view === 'feature' && (
-                <>
-                  <tr title={printStats ? 'Completed export totals, including flushed filament and wipe tower.' : fallbackTip}>
-                    <td>Total Filament:</td><td>{((printStats?.total_used_filament_mm ?? filMm) / 1000).toFixed(2)} m  {compactWeight(printStats?.total_weight_g ?? filG)}</td>
-                  </tr>
-                  {printStats && <>
-                    <tr title="Preview extrusion consumption excluding prime tower, support and internal speed samples.">
-                      <td>Model Filament:</td><td>{((filMm - towerMm - supportMm) / 1000).toFixed(2)} m  {compactWeight(filG - towerG - supportG)}</td>
-                    </tr>
-                    {towerMm > 0 && <tr><td>Prime tower:</td><td>{(towerMm / 1000).toFixed(2)} m  {compactWeight(towerG)}</td></tr>}
-                    {supportMm > 0 && <tr><td>Support:</td><td>{(supportMm / 1000).toFixed(2)} m  {compactWeight(supportG)}</td></tr>}
-                    <tr title="Export total minus all preview extrusion consumption, including prime tower and support. Weights use the export's per-filament weight per millimeter.">
-                      <td>Flushed filament:</td><td>{(Math.max(0, printStats.total_used_filament_mm - filMm) / 1000).toFixed(2)} m  {compactWeight(Math.max(0, printStats.total_weight_g - filG))}</td>
-                    </tr>
-                    <tr><td>Cost:</td><td>{printStats.total_cost.toFixed(2)}</td></tr>
-                    <tr><td>Tool changes:</td><td>{printStats.total_toolchanges}</td></tr>
-                  </>}
-                </>
+      {!props.explainOnly && (
+        <div className="lg-totals" title={printStats ? undefined : fallbackTip}>
+          <div><span className="lg-k label-caps">Time</span><span className="lg-v">{shortTime(total)}</span></div>
+          <div><span className="lg-k label-caps">Filament</span><span className="lg-v">{compactWeight(totalG)}</span><span className="lg-u">{(totalMm / 1000).toFixed(2)} m</span></div>
+          {printStats && printStats.total_cost > 0 && <div><span className="lg-k label-caps">Cost</span><span className="lg-v">{printStats.total_cost.toFixed(2)}</span></div>}
+        </div>
+      )}
+      {open && (
+        <div className="lg-scroll">
+          {props.explainOnly && props.explain}
+          {!props.explainOnly && (
+            <>
+              <div className="lg-body">{body()}</div>
+              {props.explain}
+              <div className="lg-sec label-caps">Options</div>
+              <div className="lg-options">
+                {options.map(([k, label, c]) => (
+                  <label key={k} className="lg-opt">
+                    <input type="checkbox" checked={ui.vis[k] as boolean} onChange={() => toggle(k)} />
+                    <Swatch c={c} />{label}
+                    {k === 'travel' && d.travelTime > 0 && <span className="lg-time">{shortTime(d.travelTime)}</span>}
+                  </label>
+                ))}
+                <label className="lg-opt">
+                  <input type="checkbox" checked={ui.shells} onChange={() => setUi((u) => ({ ...u, shells: !u.shells }))} />
+                  <span className="lg-swatch blank" />Shells
+                </label>
+              </div>
+              <details className="lg-details" open={details} onToggle={(e) => setDetails(e.currentTarget.open)}>
+              <summary className="lg-sec label-caps">
+                {ui.view === 'feature' ? 'Total estimation' : 'Time Estimation'}
+                {modes > 1 && mode === 0 ? ' [Normal mode]' : ''}
+              </summary>
+              <table className="lg-summary">
+                <tbody>
+                  {ui.view === 'feature' && (
+                    <>
+                      <tr title={printStats ? 'Completed export totals, including flushed filament and wipe tower.' : fallbackTip}>
+                        <td>Total Filament:</td><td>{(totalMm / 1000).toFixed(2)} m  {compactWeight(totalG)}</td>
+                      </tr>
+                      {printStats && <>
+                        <tr title="Preview extrusion consumption excluding prime tower, support and internal speed samples.">
+                          <td>Model Filament:</td><td>{((filMm - towerMm - supportMm) / 1000).toFixed(2)} m  {compactWeight(filG - towerG - supportG)}</td>
+                        </tr>
+                        {towerMm > 0 && <tr><td>Prime tower:</td><td>{(towerMm / 1000).toFixed(2)} m  {compactWeight(towerG)}</td></tr>}
+                        {supportMm > 0 && <tr><td>Support:</td><td>{(supportMm / 1000).toFixed(2)} m  {compactWeight(supportG)}</td></tr>}
+                        <tr title="Export total minus all preview extrusion consumption, including prime tower and support. Weights use the export's per-filament weight per millimeter.">
+                          <td>Flushed filament:</td><td>{(Math.max(0, printStats.total_used_filament_mm - filMm) / 1000).toFixed(2)} m  {compactWeight(Math.max(0, printStats.total_weight_g - filG))}</td>
+                        </tr>
+                        <tr><td>Cost:</td><td>{printStats.total_cost.toFixed(2)}</td></tr>
+                        <tr><td>Tool changes:</td><td>{printStats.total_toolchanges}</td></tr>
+                      </>}
+                    </>
+                  )}
+                  {prepare ? <tr><td>Prepare time:</td><td>{shortTime(prepare)}</td></tr> : null}
+                  <tr><td>Model printing time:</td><td>{shortTime(total - (prepare ?? 0))}</td></tr>
+                </tbody>
+              </table>
+              {modes > 1 && (
+                <button className="lg-mode" onClick={() => setMode(1 - mode)}>{mode ? 'Show normal mode' : 'Show stealth mode'}</button>
               )}
-              {prepare ? <tr><td>Prepare time:</td><td>{shortTime(prepare)}</td></tr> : null}
-              <tr><td>Model printing time:</td><td>{shortTime(total - (prepare ?? 0))}</td></tr>
-              <tr><td>Total time:</td><td>{shortTime(total)}</td></tr>
-            </tbody>
-          </table>
-          {modes > 1 && (
-            <button className="lg-mode" onClick={() => setMode(1 - mode)}>{mode ? 'Show normal mode' : 'Show stealth mode'}</button>
+              </details>
+              {stats && SHOW_STATS && (
+                <div className="lg-perf" title="Last frame: blocks drawn / culled / at level of detail, segments drawn, frame CPU and GPU time">
+                  {stats.blocks} blocks ({stats.lodBlocks} LOD, {stats.culled} culled) · {(stats.segments / 1e6).toFixed(2)} M seg · {stats.frameMs.toFixed(1)} ms
+                  {Number.isFinite(stats.gpuMs) ? ` · GPU ${stats.gpuMs.toFixed(1)} ms` : ''}
+                  {d.done ? ` · loaded in ${(d.loadMs / 1000).toFixed(2)} s` : ''}
+                </div>
+              )}
+            </>
           )}
-          {stats && SHOW_STATS && (
-            <div className="lg-perf" title="Last frame: blocks drawn / culled / at level of detail, segments drawn, frame CPU and GPU time">
-              {stats.blocks} blocks ({stats.lodBlocks} LOD, {stats.culled} culled) · {(stats.segments / 1e6).toFixed(2)} M seg · {stats.frameMs.toFixed(1)} ms
-              {Number.isFinite(stats.gpuMs) ? ` · GPU ${stats.gpuMs.toFixed(1)} ms` : ''}
-              {d.done ? ` · loaded in ${(d.loadMs / 1000).toFixed(2)} s` : ''}
-            </div>
-          )}
-        </>
+        </div>
       )}
     </div>
   );
@@ -287,15 +318,25 @@ function NonplanarKey({ d, ui, setUi, ranges }: { d: PreviewData; ui: PreviewUi;
   else if (ui.nonplanar === 'curved') rows = [{ c: CURVED_COLOR, label: 'Curved' }];
   return (
     <div>
-      <div className="lg-radios">
+      <div className="seg lg-seg" role="radiogroup" aria-label="Colour curved passes by"
+        onKeyDown={(e) => {
+          const i = NONPLANAR_COLORS.findIndex((c) => c.key === ui.nonplanar);
+          const d = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+          if (!d) return;
+          e.preventDefault();
+          const next = NONPLANAR_COLORS[(i + d + NONPLANAR_COLORS.length) % NONPLANAR_COLORS.length].key;
+          setUi((u) => ({ ...u, nonplanar: next }));
+          (e.currentTarget.querySelector(`[data-key="${next}"]`) as HTMLElement | null)?.focus();
+        }}>
         {NONPLANAR_COLORS.map((c) => (
-          <label key={c.key}>
-            <input type="radio" checked={ui.nonplanar === c.key} onChange={() => setUi((u) => ({ ...u, nonplanar: c.key }))} />
-            {c.label}
-          </label>
+          <button key={c.key} type="button" role="radio" data-key={c.key} aria-checked={ui.nonplanar === c.key}
+            tabIndex={ui.nonplanar === c.key || (c.key === 'shell' && !NONPLANAR_COLORS.some((x) => x.key === ui.nonplanar)) ? 0 : -1} title={c.label}
+            onClick={() => setUi((u) => ({ ...u, nonplanar: c.key }))}>
+            {c.key === 'bead_height' ? 'Bead' : c.label}
+          </button>
         ))}
       </div>
-      {shellCount === 0 && <div className="lg-sub">No curved passes</div>}
+      {shellCount === 0 && <div className="lg-row lg-dim">No curved passes</div>}
       {shellCount > 0 && rows.map((r, i) => (
         <div className="lg-row" key={i}><Swatch c={r.c} /><span>{r.label}</span></div>
       ))}

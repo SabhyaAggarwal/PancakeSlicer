@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import * as THREE from 'three';
 import { getState, setState, useStore, type PlateObject } from '../state/store';
 import { instanceBox, instanceMatrix } from '../plater/geometry';
+import { Copyable } from './Copyable';
 
 type Stats = { volume: number; triangles: number; openEdges: number };
 const cache = new WeakMap<THREE.BufferGeometry, Stats>();
@@ -71,14 +72,13 @@ export default function ObjectInfo() {
   const size = instanceBox(o, inst).getSize(new THREE.Vector3());
   return (
     <div className="object-info" role="status" aria-label="Object info">
-      <div>Object name: {o.name}</div>
-      <div>Size: {num(size.x)} x {num(size.y)} x {num(size.z)} mm</div>
-      <div>Volume: {num(st.volume)} mm³</div>
-      <div>Triangles: {st.triangles}</div>
-      {st.openEdges > 0 && <div className="object-info-error">
-        Error: {st.openEdges} non-manifold edge{st.openEdges === 1 ? '' : 's'}.{'\n'}Tips:{'\n'}Use "Fix Model" to repair the mesh.
+      <span title="Size"><Copyable value={`${num(size.x)} × ${num(size.y)} × ${num(size.z)} mm`} /></span>
+      <span title="Volume"><Copyable value={`${num(st.volume)} mm³`} /></span>
+      <span><Copyable value={`${st.triangles} triangles`} /></span>
+      {st.openEdges > 0 && <span className="object-info-error" title={'Use "Fix Model" to repair the mesh.'}>
+        {st.openEdges} non-manifold edge{st.openEdges === 1 ? '' : 's'}
         {fix && <button type="button" className="notif-link" onClick={() => void import('../plater/meshOps').then((m) => m.fixModel(o.id))}>Fix Model</button>}
-      </div>}
+      </span>}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { menuKeys } from '../keys';
 import { accessSnapshot } from '../api/access';
 import type { ConfigValue, PresetType } from '../api/types';
 import { isDeferred, isHidden, modeVisible, OPTIONS, splitKey, useTab, type TabDesc, type TabLine } from '../options';
@@ -28,6 +29,36 @@ async function exportCurrent(type: PresetType, slot: number) {
 const customRow = (line: TabLine) => line.label === 'Head shape' && !line.options.length;
 
 const TAB_OF: Record<PresetType, TabDesc['tab']> = { process: 'process', filament: 'filament', machine: 'printer' };
+const TYPE_NAME: Record<PresetType, string> = { process: 'Process', filament: 'Filament', machine: 'Printer' };
+
+interface MenuItem { icon: string; label: string; title?: string; run(): void; disabled?: boolean }
+
+function PresetMenu({ label, items }: { label: string; items: MenuItem[] }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  const button = () => ref.current?.querySelector<HTMLElement>('.preset-more');
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    window.addEventListener('mousedown', close);
+    ref.current?.querySelector<HTMLElement>('.menu-pop .menu-item:not(:disabled)')?.focus();
+    return () => window.removeEventListener('mousedown', close);
+  }, [open]);
+  return (
+    <span className="menu preset-menu" ref={ref} onKeyDown={(e) => open && menuKeys(e, ref.current!.querySelector('.menu-pop'), () => setOpen(false), button())}>
+      <button type="button" className="icon-btn preset-more" title={label} aria-label={label} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>⋯</button>
+      {open && (
+        <div className="menu-pop menu-pop-right" role="menu" aria-label={label}>
+          {items.map((it) => (
+            <button key={it.label} type="button" role="menuitem" className="menu-item" title={it.title} disabled={it.disabled} onClick={() => { setOpen(false); it.run(); }}>
+              <span className="menu-label"><Icon name={it.icon} size={14} />{it.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
+  );
+}
 
 export function SettingsTab({ type, slot = 0, compact }: { type: PresetType; slot?: number; compact?: boolean }) {
   const { desc, error } = useTab(TAB_OF[type]);
@@ -60,6 +91,7 @@ export function SettingsTab({ type, slot = 0, compact }: { type: PresetType; slo
       .filter((g) => g.lines.length) }))
     .filter((p) => p.groups.length);
   const page = pages[Math.min(pageIdx, pages.length - 1)];
+  const pageModified = (p: TabDesc['pages'][number]) => p.groups.some((g) => g.lines.some((l) => l.options.some((k) => splitKey(k)[0] in dirty)));
   const focus = useStore((s) => (s.settingsFocus?.type === type ? s.settingsFocus : null));
   const body = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -109,17 +141,19 @@ export function SettingsTab({ type, slot = 0, compact }: { type: PresetType; slo
       {bedDialog && <Suspense fallback={<div role="status">Loading bed shape…</div>}><BedShapeDialog config={config} close={() => setBedDialog(false)} /></Suspense>}
       <div className="tab-preset-row">
         <PresetCombo type={type} slot={slot} />
-        <IconButton icon="save" title={modifiedCount ? `Save current ${type === 'machine' ? 'printer' : type} preset (${modifiedCount} modified)` : 'Save as user preset'} onClick={onSave} />
-        <IconButton icon="delete" title="Delete this user preset" onClick={onDelete} disabled={!isUser} />
-        <IconButton icon="compare" title="Compare presets" onClick={() => setState({ presetUx: { kind: 'compare', type, left: presetName } })} />
-        <IconButton icon="design_export" title="Export this preset, with its unsaved changes, as an OrcaSlicer preset file" onClick={() => void exportCurrent(type, slot)} />
         <IconButton icon="search" title="Search in preset (Ctrl+F)" onClick={() => setState({ presetUx: { kind: 'search' } })} />
+        <PresetMenu label={`${TYPE_NAME[type]} preset actions`} items={[
+          { icon: 'save', label: modifiedCount ? `Save preset (${modifiedCount} modified)` : 'Save as user preset', run: onSave },
+          { icon: 'compare', label: 'Compare presets', run: () => setState({ presetUx: { kind: 'compare', type, left: presetName } }) },
+          { icon: 'design_export', label: 'Export preset file', title: 'Export this preset, with its unsaved changes, as an OrcaSlicer preset file', run: () => void exportCurrent(type, slot) },
+          { icon: 'delete', label: 'Delete preset', title: isUser ? 'Delete this user preset' : 'System presets cannot be deleted', run: () => void onDelete(), disabled: !isUser },
+        ]} />
       </div>
       {type === 'process' && compact && <Suspense fallback={null}><PrintStyle /></Suspense>}
       {type === 'process' && compact && <Suspense fallback={null}><NonplanarSummary /></Suspense>}
       <div className="page-bar" role="tablist">
         {pages.map((p, i) => (
-          <button key={p.title} role="tab" className={`page-tab ${p === page ? 'active' : ''}`} onClick={() => setPageIdx(i)}>
+          <button key={p.title} role="tab" aria-selected={p === page} className={`page-tab ${p === page ? 'active' : ''} ${pageModified(p) ? 'modified' : ''}`} onClick={() => setPageIdx(i)}>
             {p.title}
           </button>
         ))}

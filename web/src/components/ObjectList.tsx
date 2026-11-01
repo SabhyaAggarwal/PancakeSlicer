@@ -12,6 +12,7 @@ import { STYLE_NAMES, styleOf } from '../style-names';
 import { plateResults } from '../recommend';
 import { canAddPlate, OBJECT_DRAG } from '../plater/plates';
 import { rangeLabel } from '../plater/ranges';
+import { setHoverLink, useHoverLink } from '../plater/hoverLink';
 
 interface SliceRecord {
   objects?: { id: number; name: string; mode?: string; instances?: { id: number; shift_mm?: [number, number] }[] }[];
@@ -29,6 +30,14 @@ export function ObjectList() {
   const meshErrors = useStore((s) => s.meshErrors);
   const canFix = useStore((s) => !!s.features.mesh_repair);
   const meshPlates = useStore((s) => canAddPlate(s) && s.projectPlates.length > 1);
+  const link = useHoverLink();
+  const linkProps = (object: number, instance?: number) => ({
+    onMouseEnter: () => setHoverLink({ object, instance, source: 'list' }),
+    onMouseLeave: () => setHoverLink(null),
+    onFocus: () => setHoverLink({ object, instance, source: 'list' }),
+    onBlur: () => setHoverLink(null),
+  });
+  const linked = (object: number, instance?: number) => link?.source === 'canvas' && link.object === object && (instance === undefined || link.instance === instance) ? ' linked' : '';
   const openMenu = (e: React.MouseEvent, object: number, instance?: number, volume?: number) => {
     e.preventDefault();
     const o = getState().objects.find((ob) => ob.id === object)!;
@@ -44,11 +53,13 @@ export function ObjectList() {
     });
   };
   const printableButton = (object: number, printable: boolean, instance?: number) => (
+    <span role="gridcell" className="ol-cell">
     <button className="ol-printable" aria-label="Printable" aria-pressed={printable}
       title="Click the icon to toggle printable properties of the object"
       onClick={(e) => { e.stopPropagation(); togglePrintable(object, instance); }}>
       <Icon name={printable ? 'check_on' : 'check_off_focused'} size={16} />
     </button>
+    </span>
   );
   const rowKeys = (pick: () => void, object: number, instance?: number) => ({
     tabIndex: 0,
@@ -87,13 +98,13 @@ export function ObjectList() {
         <Icon name="search" size={16} />
         <input placeholder="Search plate, object and part." value={query} onChange={(e) => setQuery(e.target.value)} />
       </div>
-      <div className="ol-header">
-        <span className="ol-name">Name</span>
-        <span className="ol-status" />
+      <div className="ol-header" aria-hidden="true">
+        <span role="gridcell" className="ol-name">Name</span>
+        <span role="gridcell" className="ol-status" />
         <span className="ol-fila">Fila.</span>
-        <span className="ol-status" />
+        <span role="gridcell" className="ol-status" />
       </div>
-      <div className="ol-body">
+      <div className="ol-body" role="grid" aria-label="Objects" aria-multiselectable="true">
         {shown.map((o) => {
           const objSelected = selected?.volume === undefined && o.instances.some((i) => isSelected(selected, o.id, i.id));
           const multi = o.instances.length > 1;
@@ -104,8 +115,10 @@ export function ObjectList() {
           return (
             <div key={o.id}>
               <div
-                className={`ol-row ${objSelected ? 'selected' : ''}`}
+                role="row"
+                className={`ol-row ${objSelected ? 'selected' : ''}${linked(o.id)}`}
                 aria-selected={objSelected}
+                {...linkProps(o.id)}
                 {...rowKeys(() => setState({ selected: { object: o.id, instance: o.instances[0].id, allInstances: true } }), o.id)}
                 onContextMenu={(e) => openMenu(e, o.id)}
                 draggable={meshPlates}
@@ -113,7 +126,7 @@ export function ObjectList() {
                 onClick={(e) => clickObject(e, o.id)}
                 onDoubleClick={() => startRename(o.id)}
               >
-                <span className="ol-name">
+                <span role="gridcell" className="ol-name">
                   {multi ? (
                     <button
                       className="ol-expand"
@@ -158,8 +171,8 @@ export function ObjectList() {
                   )}
                 </span>
                 {printableButton(o.id, o.instances.some((i) => i.printable !== false))}
-                <select
-                  className="ol-fila-select"
+                <span role="gridcell" className="ol-cell"><select
+                  className="ol-fila-select" aria-label="Filament"
                   disabled={!!o.project && !canEditProject()}
                   title={o.project && !canEditProject() ? 'Set in the 3MF project' : 'Filament'}
                   value={o.extruder}
@@ -172,8 +185,8 @@ export function ObjectList() {
                       {i + 1}
                     </option>
                   ))}
-                </select>
-                <span className="ol-status">{sinking && <button className="ol-sinking" title="Click the icon to shift this object to the bed"
+                </select></span>
+                <span role="gridcell" className="ol-status">{sinking && <button className="ol-sinking" title="Click the icon to shift this object to the bed"
                   onClick={(e) => { e.stopPropagation(); undoable('Drop to bed', () => o.instances.forEach((i) => updateInstance(o.id, i.id, { z: 0 }))); }} disabled={!!o.project?.placeholder}>
                   <Icon name="objlist_sinking" size={16} />
                 </button>}
@@ -185,15 +198,16 @@ export function ObjectList() {
               </div>
               {nSettings > 0 && (
                 <div
+                  role="row"
                   className={`ol-row ol-child ${objSelected && getState().processScope === 'objects' ? 'selected' : ''}`}
                   {...rowKeys(() => setState({ selected: { object: o.id, instance: o.instances[0].id, allInstances: true }, processScope: 'objects' }), o.id)}
                   onClick={() => setState({ selected: { object: o.id, instance: o.instances[0].id, allInstances: true }, processScope: 'objects' })}
                   title={Object.keys(o.settings).join(', ')}
                 >
-                  <Icon name="cog" size={14} />
+                  <span role="gridcell" className="ol-name"><Icon name="cog" size={14} />
                   <span className="ol-text">
                     Settings ({nSettings}): {[...new Set(Object.keys(o.settings).map((k) => OPTIONS[k]?.category || 'Others'))].join(', ')}
-                  </span>
+                  </span></span>
                 </div>
               )}
               {o.volumes?.map((v) => {
@@ -202,12 +216,13 @@ export function ObjectList() {
                 const volSelected = selected?.object === o.id && selected.volume === v.id;
                 return (
                   <div key={`v${v.id}`}>
-                    <div className={`ol-row ol-child ${volSelected ? 'selected' : ''}`} aria-selected={volSelected}
+                    <div role="row"
+                      className={`ol-row ol-child ${volSelected ? 'selected' : ''}`} aria-selected={volSelected}
                       {...rowKeys(() => pick(), o.id)}
                       onContextMenu={(e) => openMenu(e, o.id, undefined, v.id)}
                       onClick={() => pick()}
                       onDoubleClick={() => setState({ renaming: v.id })}>
-                      <span className="ol-name">
+                      <span role="gridcell" className="ol-name">
                         <Icon name={volumeIcon(v.type, v.seamMode)} size={14} />
                         {renaming === v.id ? (
                           <input className="ol-rename" aria-label="Part name" defaultValue={v.name} autoFocus
@@ -220,25 +235,26 @@ export function ObjectList() {
                             }} />
                         ) : <span className="ol-text" title={v.name}>{v.name}</span>}
                       </span>
-                      <span className="ol-status" />
+                      <span role="gridcell" className="ol-status" />
                       {v.type === 'part' ? (
-                        <select className="ol-fila-select" title="Filament" value={v.extruder}
+                        <span role="gridcell" className="ol-cell"><select className="ol-fila-select" aria-label="Filament" title="Filament" value={v.extruder}
                           style={{ borderLeftColor: filamentColor(s, v.extruder || o.extruder) }}
                           onClick={(e) => e.stopPropagation()}
                           onChange={(e) => updateVolume(o.id, v.id, { extruder: Number(e.target.value) })}>
                           <option value={0}>-</option>
                           {slots.map((_, i) => <option key={i} value={i + 1}>{i + 1}</option>)}
-                        </select>
-                      ) : <span className="ol-fila" />}
-                      <span className="ol-status" />
+                        </select></span>
+                      ) : <span role="gridcell" className="ol-fila" />}
+                      <span role="gridcell" className="ol-status" />
                     </div>
                     {nv > 0 && (
-                      <div className={`ol-row ol-child2 ${volSelected && getState().processScope === 'objects' ? 'selected' : ''}`}
+                      <div role="row"
+                        className={`ol-row ol-child2 ${volSelected && getState().processScope === 'objects' ? 'selected' : ''}`}
                         {...rowKeys(() => pick('objects'), o.id)} onClick={() => pick('objects')} title={Object.keys(v.settings).join(', ')}>
-                        <Icon name="cog" size={14} />
+                        <span role="gridcell" className="ol-name"><Icon name="cog" size={14} />
                         <span className="ol-text">
                           Settings ({nv}): {[...new Set(Object.keys(v.settings).map((k) => OPTIONS[k]?.category || 'Others'))].join(', ')}
-                        </span>
+                        </span></span>
                       </div>
                     )}
                   </div>
@@ -246,15 +262,15 @@ export function ObjectList() {
               })}
               {!!o.ranges?.length && (
                 <>
-                  <div className="ol-row ol-child ol-group"><Icon name="height_range_layer" size={14} /><span className="ol-text">Layers</span></div>
+                  <div role="row" className="ol-row ol-child ol-group"><span role="gridcell" className="ol-name"><Icon name="height_range_layer" size={14} /><span className="ol-text">Layers</span></span></div>
                   {o.ranges.map((r) => {
                     const on = selected?.object === o.id && selected.range === r.id;
                     const pickRange = () => setState({ selected: { object: o.id, instance: o.instances[0].id, allInstances: true, range: r.id }, processScope: 'objects' });
                     return (
-                      <div key={`r${r.id}`} className={`ol-row ol-child2 ${on ? 'selected' : ''}`} aria-selected={on} {...rowKeys(pickRange, o.id)} onClick={pickRange}
+                      <div key={`r${r.id}`} role="row" className={`ol-row ol-child2 ${on ? 'selected' : ''}`} aria-selected={on} {...rowKeys(pickRange, o.id)} onClick={pickRange}
                         title={Object.keys(r.settings).length ? Object.keys(r.settings).join(', ') : undefined}>
-                        <Icon name="height_range_layer" size={14} />
-                        <span className="ol-text">{rangeLabel(r)}{Object.keys(r.settings).length ? ` · ${Object.keys(r.settings).length} settings` : ''}</span>
+                        <span role="gridcell" className="ol-name"><Icon name="height_range_layer" size={14} />
+                        <span className="ol-text">{rangeLabel(r)}{Object.keys(r.settings).length ? ` · ${Object.keys(r.settings).length} settings` : ''}</span></span>
                       </div>
                     );
                   })}
@@ -262,19 +278,21 @@ export function ObjectList() {
               )}
               {multi && open[o.id] && (
                 <>
-                  <div className="ol-row ol-child ol-group">Instances</div>
+                  <div role="row" className="ol-row ol-child ol-group"><span role="gridcell">Instances</span></div>
                   {o.instances.map((inst, k) => (
                     <div
                       key={inst.id}
-                      className={`ol-row ol-child2 ${instSelected(inst.id) ? 'selected' : ''}`}
+                      role="row"
+                      className={`ol-row ol-child2 ${instSelected(inst.id) ? 'selected' : ''}${linked(o.id, inst.id)}`}
                       aria-selected={instSelected(inst.id)}
+                      {...linkProps(o.id, inst.id)}
                       {...rowKeys(() => setState({ selected: { object: o.id, instance: inst.id } }), o.id, inst.id)}
                       onContextMenu={(e) => openMenu(e, o.id, inst.id)}
                       onClick={(e) => (e.ctrlKey || e.metaKey ? toggleSelection(o.id, [inst.id]) : setState({ selected: { object: o.id, instance: inst.id } }))}
                     >
-                      <span className="ol-name">Instance {k + 1}</span>
+                      <span role="gridcell" className="ol-name">Instance {k + 1}</span>
                       {printableButton(o.id, inst.printable !== false, inst.id)}
-                      <span className="ol-fila" /><span className="ol-status" />
+                      <span role="gridcell" className="ol-fila" /><span role="gridcell" className="ol-status" />
                     </div>
                   ))}
                 </>
@@ -284,12 +302,12 @@ export function ObjectList() {
         })}
         {project && record?.objects && (
           <div className="ol-record">
-            <div className="ol-row ol-group">Sliced from {project.name}</div>
+            <div role="row" className="ol-row ol-group"><span role="gridcell">Sliced from {project.name}</span></div>
             {record.objects.map((r) => (
-              <div key={r.id} className="ol-row ol-child" title={r.instances?.map((i) => i.shift_mm?.map((v) => v.toFixed(1)).join(', ')).join(' · ')}>
-                <Icon name="obj_printable" size={14} />
-                <span className="ol-text">{r.name}</span>
-                <span className="ol-meta">
+              <div key={r.id} role="row" className="ol-row ol-child" title={r.instances?.map((i) => i.shift_mm?.map((v) => v.toFixed(1)).join(', ')).join(' · ')}>
+                <span role="gridcell" className="ol-name"><Icon name="obj_printable" size={14} />
+                <span className="ol-text">{r.name}</span></span>
+                <span role="gridcell" className="ol-meta">
                   {r.instances?.length ?? 1}× {r.mode ?? ''}
                 </span>
               </div>

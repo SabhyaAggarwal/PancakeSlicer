@@ -44,9 +44,9 @@ export function Navigator() {
   }, [navigator]);
   if (!navigator) return null;
   return (
-    <div className="nav3d" role="group" aria-label="3D navigator">
+    <div className="nav3d" aria-hidden="true">
       {FACES.map((f, k) => (
-        <button key={f.view} type="button" ref={(el) => { faces.current[k] = el; }} className="nav3d-face" title={`${f.label} View`}
+        <button key={f.view} type="button" tabIndex={-1} ref={(el) => { faces.current[k] = el; }} className="nav3d-face" title={`${f.label} View`}
           onClick={() => cameraCommand(f.view)}>{f.label}</button>
       ))}
     </div>

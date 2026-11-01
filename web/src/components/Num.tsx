@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react';
 
-export function Num({ value, onCommit, step = 1 }: { value: number; onCommit: (v: number) => void; step?: number }) {
-  const [text, setText] = useState(value.toFixed(2));
-  useEffect(() => setText(value.toFixed(2)), [value]);
+export function Num({ value, onCommit, step = 1, label }: { value?: number; onCommit: (v: number) => void; step?: number; label?: string }) {
+  const shown = value === undefined ? '' : value.toFixed(2);
+  const [text, setText] = useState(shown);
+  useEffect(() => setText(shown), [shown]);
   return (
     <input
       className="text num manip-num"
+      aria-label={label}
+      inputMode="decimal"
+      disabled={value === undefined}
+      placeholder={value === undefined ? '—' : undefined}
       value={text}
       step={step}
       onChange={(e) => setText(e.target.value)}

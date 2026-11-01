@@ -49,8 +49,10 @@ export function plateResults(s: State): PlateResult[] {
   if (kept && kept.record === record && kept.objects === s.objects && kept.rec === s.recommendedStyle) return kept.out;
   const warned = new Set(pendingRecommendations(s).map((o) => o.id));
   if (record && !explain) return NONE;
-  const out = (explain?.objectResults(record) ?? []).flatMap((r) => {
-    const o = s.objects.find((p) => p.name === r.name || p.name.replace(/\.(stl|obj)$/i, '') === r.name);
+  const results = explain?.objectResults(record) ?? [];
+  const bare = (n: string) => n.replace(/\.(stl|obj|3mf|step|stp)$/i, '');
+  const out = results.flatMap((r) => {
+    const o = s.objects.length === 1 && results.length === 1 ? s.objects[0] : s.objects.find((p) => bare(p.name) === bare(r.name));
     return o && warned.has(o.id) ? [] : [{ ...r, objectId: o?.id, label: o?.name ?? r.name }];
   });
   kept = { record, objects: s.objects, rec: s.recommendedStyle, out };

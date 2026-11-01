@@ -153,7 +153,7 @@ export async function importFiles(files: FileList | File[], geometryOnly = false
       return [...list, { ...o, instances: [{ ...o.instances[0], x: spot.x, y: spot.y }] }];
     }, s.objects) : arrange([...s.objects, ...added], bedArea());
     const last = added[added.length - 1];
-    return { objects, selected: { object: last.id, instance: last.instances[0].id }, job: s.job.state === 'done' ? { ...s.job, stale: true } : s.job };
+    return { objects, selected: { object: last.id, instance: last.instances[0].id, allInstances: true }, job: s.job.state === 'done' ? { ...s.job, stale: true } : s.job };
   }));
 }
 
@@ -272,7 +272,8 @@ function centreGeometryOnly() {
 
 export async function openProject(file: File) {
   const s = getState();
-  if ((s.objects.length || s.projectPlates.some((p) => p.objects.length)) && !(await confirmDialog('Open Project', 'Opening a project replaces the objects on the plate. Continue?'))) return;
+  const offerUndo = await replacePlate('Open Project', 'Opening a project replaces the objects on the plate. Continue?');
+  if (!offerUndo) return;
   leaveDocument();
   clearPlateJobs();
   if (s.features.explode && s.api && !s.api.mock) {
@@ -280,6 +281,7 @@ export async function openProject(file: File) {
     try {
       await (await import('./plater/explode')).openExplodedProject(file, adoptProject);
       newDocument(true);
+      offerUndo();
       return;
     } catch (e) {
       toast(`${file.name}: ${e instanceof Error ? e.message : e}; opened as a project instead`);
@@ -322,6 +324,7 @@ export async function openProject(file: File) {
           job: markStale(st.job),
         }));
         newDocument(true);
+        offerUndo();
       },
       mesh: (i, geometry, centre) => {
         const painting = listed[i]?.parts === 1 || listed[i]?.partTris ? archivePainting(listed[i].paint ?? {}) : null;
@@ -338,12 +341,21 @@ export async function openProject(file: File) {
 }
 
 export async function newProject() {
-  const s = getState();
-  if ((s.objects.length || s.projectPlates.some((p) => p.objects.length)) && !(await confirmDialog('New Project', 'Start a new project? The objects on the plate are removed.'))) return;
+  const offerUndo = await replacePlate('New Project', 'Start a new project? The objects on the plate are removed.');
+  if (!offerUndo) return;
   leaveDocument();
   clearPlateJobs();
   setState((st) => ({ objects: [], selected: null, project: null, projectPlates: [], plateIndex: 1, wipeTowerPos: {}, projectName: null, projectMaterials: null, projectPresets: null, projectNotice: null, events: [], flush: { matrix: null, multiplier: null }, processScope: 'global', job: markStale(st.job) }));
   newDocument(true);
+  offerUndo();
+}
+
+async function replacePlate(title: string, question: string): Promise<(() => void) | null> {
+  const s = getState();
+  if (!s.objects.length && !s.projectPlates.some((p) => p.objects.length)) return () => {};
+  const session = await import('./persist/session');
+  if (!session.autosaving()) return (await confirmDialog(title, question)) ? () => {} : null;
+  return () => toast(title === 'New Project' ? 'New project' : 'Project opened', { label: 'Undo', run: () => void (session.previousSession && session.restore(session.previousSession)) });
 }
 
 export function openProjectDialog() {
@@ -622,9 +634,17 @@ export async function loadPrinters() {
   } catch {  }
 }
 
+function exportBlocker(s: State) {
+  if (!s.objects.length) return 'Nothing to export. Add a model and slice it first.';
+  const outside = outsideVolumeWarning(s);
+  if (outside) return outside;
+  if (s.job.state === 'running' || s.job.state === 'submitting') return 'Still slicing. Export when it finishes.';
+  return s.job.state === 'done' ? 'The plate changed since the last slice. Slice again (Ctrl+R).' : 'Slice the plate first (Ctrl+R).';
+}
+
 export async function download() {
   const s = getState();
-  if (!s.api || !canExport(s) || !s.job.id) return;
+  if (!s.api || !canExport(s) || !s.job.id) return void (s.api && toast(exportBlocker(s)));
   let href: string;
   try {
     const r = await fetch(s.api.downloadUrl(s.job.id));

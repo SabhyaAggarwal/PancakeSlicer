@@ -3,7 +3,8 @@ import { isPaint, paintKeyTool, setPaintTool, togglePaint, type PaintKind } from
 import { toggleViewOption } from './plater/viewOptions';
 import { addInstance, arrangeAll, download, importFiles, newProject, openFileDialog, openProjectDialog, removeInstance, slice, toolbarOperation, saveProject, toggleBoolean, toggleText } from './actions';
 import { setCut, toggleCut } from './plater/cut';
-import { CanvasToolbar, CutPanel, ManipulationPanel, PaintPanel, SliceNotification, Toast } from './components/CanvasOverlays';
+import { CanvasToolbar, CutPanel, PaintPanel, SliceNotification, Toast } from './components/CanvasOverlays';
+import { LoadingState } from './components/Notices';
 import { LayerHeightBar, LayerHeightPanel } from './components/LayerHeight';
 import { Sidebar } from './components/Sidebar';
 import { AskHost } from './components/Ask';
@@ -19,7 +20,7 @@ const Navigator = lazy(() => import('./components/Navigator').then((m) => ({ def
 const PlateChoice = lazy(() => import('./components/PlateChoice'));
 const EmptyPlate = lazy(() => import('./components/FirstRun'));
 const Plater3D = lazy(() => import('./plater/Plater3D'));
-import { deleteAll, getState, isSelected, removeSelected, setState, togglePrintable, updateInstance, useStore } from './state/store';
+import { deleteAll, getState, isSelected, removeSelected, setState, subscribeStore, togglePrintable, updateInstance, useStore } from './state/store';
 import { ownsKeys } from './keys';
 import { copySelection, cutSelection, pasteClipboard, selectAll, startRename } from './edit';
 const ContextMenu = lazy(() => import('./components/ContextMenu'));
@@ -27,6 +28,7 @@ const MeasurePanel = lazy(() => import('./components/MeasurePanel'));
 import { dropLastFeature, setMeasure } from './plater/measureState';
 import { redo, undo, undoable } from './state/history';
 import { assembly, setAssembly, useAssembly } from './plater/assembly';
+import { toggleSidebar, useSidebarHidden } from './sidebar';
 
 const PresetDialog = lazy(() => import('./components/Dialogs').then((m) => ({ default: m.PresetDialog })));
 const PresetUx = lazy(() => import('./components/PresetUx'));
@@ -52,6 +54,23 @@ function nudge(key: string, fine: boolean) {
   return true;
 }
 
+const visibleCanvas = () => [...document.querySelectorAll<HTMLCanvasElement>('.canvas-area canvas')].find((c) => c.offsetParent !== null && c.clientWidth > 0);
+
+function focusSoon(find: () => HTMLElement | null | undefined, frames = 60) {
+  const idle = () => !document.activeElement || document.activeElement === document.body || document.activeElement instanceof HTMLCanvasElement && document.activeElement.offsetParent === null;
+  const step = (left: number) => {
+    if (!idle()) return;
+    const el = find();
+    if (el) {
+      if (el instanceof HTMLCanvasElement && !el.hasAttribute('tabindex')) el.tabIndex = -1;
+      const ring = !(el instanceof HTMLCanvasElement);
+      el.focus({ preventScroll: true, focusVisible: ring } as FocusOptions);
+      if (ring) { el.dataset.focusRing = ''; el.addEventListener('blur', () => delete el.dataset.focusRing, { once: true }); }
+    } else if (left > 0) requestAnimationFrame(() => step(left - 1));
+  };
+  requestAnimationFrame(() => step(frames));
+}
+
 export default function App() {
   const multiPlate = useStore((s) => s.projectPlates.length > 1);
   const dialog = useStore((s) => s.dialog);
@@ -67,6 +86,7 @@ export default function App() {
   const jobDone = useStore((s) => s.job.state === 'done');
   const empty = useStore((s) => !s.objects.length && !s.project && !!s.printer && s.projectPlates.length < 2);
   const assemblyOn = useAssembly().on;
+  const sidebarHidden = useSidebarHidden();
   const [dragOver, setDragOver] = useState(false);
   const previewOpened = useRef(false);
   if (tab === 'preview' || jobDone) previewOpened.current = true;
@@ -105,12 +125,13 @@ export default function App() {
       else if (ctrl && e.key.toLowerCase() === 'e' && getState().features.brim_ears && getState().tab === 'prepare') toggleViewOption('labels');
       else if (ctrl && e.key.toLowerCase() === 'c' && !window.getSelection()?.toString()) copySelection();
       else if (ctrl && e.key.toLowerCase() === 'x' && !window.getSelection()?.toString() && prepare) cutSelection();
-      else if (ctrl && e.key.toLowerCase() === 'v') pasteClipboard();
+      else if (ctrl && e.key === '\\') toggleSidebar();
       else if (ctrl && e.key.toLowerCase() === 'k') { const s = getState(); if (s.selected && !s.project) setState({ appDialog: 'clone' }); }
       else if (ctrl) return;
-      else if (e.key === 'Tab' && !e.shiftKey && !e.altKey && (document.activeElement === document.body || document.activeElement instanceof HTMLCanvasElement)) {
+      else if (e.key === 'Tab' && !e.shiftKey && !e.altKey && document.activeElement instanceof HTMLCanvasElement) {
         e.preventDefault();
         setState((s) => ({ tab: s.tab === 'prepare' ? 'preview' : 'prepare' }));
+        focusSoon(visibleCanvas);
       }
       else if (getState().gizmo === 'measure' && (e.key === 'Delete' || e.key === 'Backspace')) setMeasure({});
       else if (getState().gizmo === 'measure' && e.key === 'Escape') { if (!dropLastFeature()) setState({ gizmo: 'none' }); }
@@ -141,12 +162,58 @@ export default function App() {
       else if (e.key === 'F2') startRename();
       else if (e.key.toLowerCase() === 'v') { const selected = getState().selected; if (selected) togglePrintable(selected.object, selected.allInstances ? undefined : selected.instance); }
       else if (prepare && !e.altKey && nudge(e.key, e.shiftKey)) {  }
-      else if (e.key === 'Escape') { if (assembly().on) setAssembly({ on: false }); setState({ selected: null, gizmo: 'none' }); }
+      else if (e.key === 'Escape') {
+        const s = getState();
+        if (!s.selected && s.gizmo === 'none' && !assembly().on && document.activeElement instanceof HTMLCanvasElement) document.activeElement.blur();
+        if (assembly().on) setAssembly({ on: false });
+        setState({ selected: null, gizmo: 'none' });
+      }
       else return;
       e.preventDefault();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  useEffect(() => {
+    const down = (e: PointerEvent) => {
+      if (!(e.target instanceof HTMLCanvasElement)) return;
+      window.getSelection()?.removeAllRanges();
+      if (!e.target.hasAttribute('tabindex')) e.target.tabIndex = -1;
+      e.target.focus({ preventScroll: true });
+    };
+    window.addEventListener('pointerdown', down, true);
+    return () => window.removeEventListener('pointerdown', down, true);
+  }, []);
+
+  useEffect(() => {
+    let prev = getState();
+    const off = subscribeStore(() => {
+      const s = getState(), was = prev;
+      prev = s;
+      if (document.activeElement && document.activeElement !== document.body) return;
+      if (s.objects.length > was.objects.length) focusSoon(() => {
+        const rows = [...document.querySelectorAll<HTMLElement>('.ol-row:not(.ol-child):not(.ol-child2)')];
+        return rows.find((r) => r.classList.contains('selected')) ?? rows[rows.length - 1];
+      });
+      else if (s.job.state === 'done' && was.job.state !== 'done') focusSoon(() =>
+        [...document.querySelectorAll<HTMLButtonElement>('.tabbar-actions button:not(:disabled)')].find((b) => /^Export/.test(b.textContent ?? '')));
+    });
+    return () => { off(); };
+  }, []);
+
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const s = getState();
+      if (e.target instanceof Element && e.target.closest('input,select,textarea,[contenteditable="true"],dialog')) return;
+      if (s.dialog || s.flushDialog || s.appDialog || s.calibDialog || s.sessionDialog) return;
+      const files = [...(e.clipboardData?.files ?? [])].filter((f) => /\.(stl|obj|3mf|step|stp)$/i.test(f.name));
+      e.preventDefault();
+      if (files.length) void importFiles(files);
+      else pasteClipboard();
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
   }, []);
 
   useEffect(() => {
@@ -171,15 +238,17 @@ export default function App() {
     <div className="app">
       <TopBar />
       <TabBar />
-      <div className="main">
+      <div className={`main ${sidebarHidden ? 'sidebar-hidden' : ''} ${dragOver ? 'drag-over' : ''}`}>
         <div style={{ display: tab === 'prepare' ? 'contents' : 'none' }}>
           <Sidebar />
         </div>
-        <div className={`canvas-area ${dragOver ? 'drag-over' : ''}`}>
+        <div className="canvas-area">
+          {sidebarHidden && tab === 'prepare' && (
+            <button type="button" className="btn-ghost sidebar-reveal" aria-expanded={false} title={`Show sidebar (${navigator.platform.includes('Mac') ? 'Cmd' : 'Ctrl'}+\\)`} onClick={() => toggleSidebar(false)}>Show sidebar</button>
+          )}
           <div style={{ display: tab === 'prepare' ? 'contents' : 'none' }}>
-            <Suspense fallback={<div role="status">Loading plater…</div>}><Plater3D /></Suspense>
+            <Suspense fallback={null}><Plater3D /></Suspense>
             <CanvasToolbar />
-            <ManipulationPanel />
             <CutPanel />
             <PaintPanel />
             <LayerHeightPanel />
@@ -204,7 +273,7 @@ export default function App() {
           {multiPlate && <Suspense fallback={null}><PlateChoice /></Suspense>}
           <Suspense fallback={null}><Navigator /></Suspense>
           <SliceNotification />
-          {loading && <div className="loading">{loading}…</div>}
+          {loading && <LoadingState text={loading} />}
         </div>
       </div>
       <Suspense fallback={<div role="status">Loading dialog…</div>}>

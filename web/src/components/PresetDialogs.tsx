@@ -13,7 +13,7 @@ const TYPE_NAME = { machine: 'Printer', filament: 'Filament', process: 'Process'
 const currentName = (s: State, type: PresetType, slot: number) =>
   (type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot]) ?? '';
 
-function display(key: string, value: ConfigValue | undefined): string {
+export function display(key: string, value: ConfigValue | undefined): string {
   if (value === undefined) return '—';
   const def = OPTIONS[key];
   const v = normalizeConfigValue(key, value);

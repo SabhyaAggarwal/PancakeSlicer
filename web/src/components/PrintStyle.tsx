@@ -60,7 +60,7 @@ export default function PrintStyle() {
     pick(next.id);
     requestAnimationFrame(() => row.current?.querySelector<HTMLElement>(`[data-style="${next.id}"]`)?.focus());
   };
-  const showTip = (style: Style, el: HTMLElement) => setTip({ style, left: el.offsetLeft });
+  const showTip = (style: Style, el: HTMLElement) => setTip({ style, left: Math.max(0, Math.min(el.offsetLeft, (row.current?.clientWidth ?? 0) - 208)) });
 
   let line: React.ReactNode = null;
   if (!known)

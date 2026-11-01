@@ -71,7 +71,7 @@ export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus, oneL
   const label = (i: number) => (
     <>
       <b>{i + 1}</b>
-      <span>{layers[i]?.z.toFixed(2)}</span>
+      <span>{layers[i]?.z.toFixed(2)} mm</span>
     </>
   );
   return (
@@ -82,7 +82,7 @@ export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus, oneL
         onChange(lo, Math.max(lo, Math.min(n - 1, hi + d)));
       }}
     >
-      <div className="ls-label top">{label(n - 1)}</div>
+      <div className={`ls-label top${hi === n - 1 ? ' hidden' : ''}`}>{label(n - 1)}</div>
       <div
         className="ls-track"
         ref={track}
@@ -109,25 +109,26 @@ export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus, oneL
         ))}
         <div className="ls-thumb hi" style={{ bottom: `${frac(hi) * 100}%` }} onPointerDown={drag('hi')} title="Upper layer (Up / Down keys)" {...aria('hi')}>
           <div className="ls-tip">{label(hi)}</div>
-          {onPlus && (
-            <button
-              type="button"
-              className="ls-plus"
-              title={ticks.some((t) => t.layer === hi) ? 'Edit custom G-code of this layer' : 'Add pause, custom G-code or color change'}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => onPlus((e.currentTarget as HTMLElement).getBoundingClientRect())}
-            >
-              {ticks.some((t) => t.layer === hi) ? '✎' : '+'}
-            </button>
-          )}
         </div>
+        {onPlus && (
+          <button
+            type="button"
+            className="ls-plus"
+            style={{ bottom: `${frac(hi) * 100}%` }}
+            title={ticks.some((t) => t.layer === hi) ? 'Edit custom G-code of this layer' : 'Add pause, custom G-code or color change'}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => onPlus((e.currentTarget as HTMLElement).getBoundingClientRect())}
+          >
+            {ticks.some((t) => t.layer === hi) ? '✎' : '+'}
+          </button>
+        )}
         {!oneLayer && (
           <div className="ls-thumb lo" style={{ bottom: `${frac(lo) * 100}%` }} onPointerDown={drag('lo')} title="Lower layer" {...aria('lo')}>
             <div className="ls-tip">{label(lo)}</div>
           </div>
         )}
       </div>
-      <div className="ls-label bottom">{label(0)}</div>
+      <div className={`ls-label bottom${lo === 0 && !oneLayer ? ' hidden' : ''}`}>{label(0)}</div>
       {onOneLayer && (
         <button type="button" className={`ls-one ${oneLayer ? 'active' : ''}`} aria-pressed={oneLayer} title="On/Off one layer mode of the vertical slider (L)" onClick={onOneLayer}>
           <Icon name={oneLayer ? 'one_layer_on' : 'one_layer_off'} size={24} />
@@ -137,7 +138,10 @@ export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus, oneL
   );
 }
 
-export function MoveSlider({ count, pos, gcodeLine, onChange }: { count: number; pos: number; gcodeLine: number; onChange(p: number | null): void }) {
+export function MoveSlider({ count, pos, gcodeLine, onChange, gcodeOpen, onGcode }: {
+  count: number; pos: number; gcodeLine: number; onChange(p: number | null): void;
+  gcodeOpen?: boolean; onGcode?(): void;
+}) {
   return (
     <div className="move-slider">
       <input
@@ -150,10 +154,15 @@ export function MoveSlider({ count, pos, gcodeLine, onChange }: { count: number;
           onChange(v >= count ? null : v);
         }}
         title="Moves of the top layer (Left / Right keys)"
+        aria-label="Move"
+        style={{ '--fill': `${count > 1 ? ((pos - 1) / (count - 1)) * 100 : 100}%` } as React.CSSProperties}
       />
       <span className="ms-label">
-        {pos} / {count} · line {gcodeLine}
+        <b>{pos}</b> / {count}
       </span>
+      {onGcode ? (
+        <button type="button" className="ms-gcode" aria-pressed={!!gcodeOpen} onClick={onGcode} title="Show G-code window (C)">line {gcodeLine}</button>
+      ) : <span className="ms-line">line {gcodeLine}</span>}
     </div>
   );
 }
