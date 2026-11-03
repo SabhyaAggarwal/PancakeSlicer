@@ -1,5 +1,6 @@
 import { memo, useState } from 'react';
 import { Check } from '../components/Check';
+import { Glyph } from '../components/Glyph';
 import type { SelectionEvent } from './selection';
 
 export interface ManagerProfileRowItem {
@@ -36,7 +37,7 @@ export const ManagerProfileRow = memo(function ManagerProfileRow({ item, listId,
     {selectable && <span role="gridcell" className="pf-row-check"><Check aria-label={`Select ${item.fullName ?? item.name}`} checked={selected}
       onClick={event => event.stopPropagation()} onCheckedChange={() => dispatch({ type: 'CLICK', key: item.key, toggle: true })}/></span>}
     {item.swatch !== undefined && (item.swatch ? <span role="gridcell" className="profile-color-swatch" style={{backgroundColor:item.swatch}}/> : <span role="gridcell" className="pf-row-swatch" aria-label="No color"/>)}
-    {item.cover !== undefined && <span role="gridcell" className="pf-row-cover">{item.cover && failedCover !== item.cover && <img src={item.cover} alt="" width={44} height={44} loading="lazy" decoding="async" onError={()=>setFailedCover(item.cover ?? undefined)}/>}</span>}
+    {item.cover !== undefined && <span role="gridcell" className="pf-row-cover">{item.cover && failedCover !== item.cover ? <img src={item.cover} alt="" width={52} height={52} loading="lazy" decoding="async" onError={()=>setFailedCover(item.cover ?? undefined)}/> : <Glyph name="printer" size={28}/>}</span>}
     <span role="gridcell" className="pf-row-label"><span className="pf-item-name">{head && <span className="pf-name-head">{head}</span>}<span className="pf-name-tail">{tail}</span></span>
       {item.meta && <span className="pf-item-meta">{item.meta}</span>}{item.note && <span className="pf-item-note">{item.note}</span>}</span>
     {item.slot !== undefined && <span role="gridcell" className="pf-row-used" aria-label="In use"><svg viewBox="0 0 12 12" width="12" height="12" aria-hidden><path d="M2.5 6.5 5 9l4.5-6"/></svg></span>}

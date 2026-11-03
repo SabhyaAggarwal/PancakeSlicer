@@ -1,4 +1,4 @@
-import { newKey, type ProjectMeta, type ProjectStore, type StoredDocBase, type ProjectCommandAck, type ProjectCommandStatus } from './backend';
+import { newKey, type ProjectMeta, type ProjectStore, type StoredDocBase, type ProjectCommandAck, type ProjectCommandStatus, type ProfileReferenceDocuments } from './backend';
 import { jsonWrite, routeKey, serviceRequest } from './service';
 import { captureProjectWire, prepareOnce, projectJson as serviceJson, projectWrite } from './project-wire';
 interface ProjectRecord { meta: ProjectMeta; doc: StoredDocBase; jobReferences?: unknown }
@@ -111,15 +111,7 @@ export const serviceStore: ProjectStore = {
     if (!found || found[1].status.state !== 'conflict' || found[1].running) throw new Error('Only an explicitly rejected conflict can be discarded. Retry ambiguous commands unchanged.');
     commands.delete(found[0]); publishCommands();
   },
-  async referenceDocuments() {
-    const [live, trash] = await Promise.all([required<ProjectMeta[]>('/api/projects'), required<ProjectMeta[]>('/api/projects?archived=1')]);
-    const documents = await Promise.all([...live.map((meta) => ({ meta, trashed: false })), ...trash.map((meta) => ({ meta, trashed: true }))]
-      .map(async ({ meta, trashed }) => {
-        const record = await required<ProjectRecord>(projectPath(meta.id) + (trashed ? '?archived=1' : ''));
-        return { id: meta.id, name: meta.name, doc: record.doc, trashed };
-      }));
-    return { complete: true, documents };
-  },
+  referenceDocuments: () => required<ProfileReferenceDocuments>('/api/projects/references'),
   async putBlob(_id, key, data) { await serviceRequest(`/api/assets/${routeKey(key)}`, { method: 'PUT', body: data }); },
   async getBlob(_id, key) { const response = await serviceRequest(`/api/assets/${routeKey(key)}`, undefined, true); return response && response.blob(); },
   async hasBlob(_id, key) { return (await serviceRequest(`/api/assets/${routeKey(key)}`, { method: 'HEAD' }, true)) !== null; },
