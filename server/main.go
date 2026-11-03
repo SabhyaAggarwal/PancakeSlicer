@@ -94,7 +94,7 @@ func parseConfig() Config {
 	flag.StringVar(&c.StaticDir, "static", env("ORCA_WEB_STATIC", "web/dist"), "static front end to serve at / when it exists (ORCA_WEB_STATIC)")
 	flag.IntVar(&c.MaxJobs, "max-jobs", envInt("ORCA_WEB_MAX_JOBS", 2), "slices running at once; more jobs queue (ORCA_WEB_MAX_JOBS)")
 	flag.DurationVar(&c.JobTimeout, "job-timeout", envDuration("ORCA_WEB_JOB_TIMEOUT", 15*time.Minute), "wall-clock limit of one slice (ORCA_WEB_JOB_TIMEOUT)")
-	flag.DurationVar(&c.JobTTL, "job-ttl", envDuration("ORCA_WEB_JOB_TTL", 2*time.Hour), "finished jobs and their files are deleted after this (ORCA_WEB_JOB_TTL)")
+	flag.DurationVar(&c.JobTTL, "job-ttl", envDuration("ORCA_WEB_JOB_TTL", 2*time.Hour), "finished job retention; 0 disables automatic expiry (ORCA_WEB_JOB_TTL)")
 	flag.Int64Var(&c.MaxUploadSize, "max-upload", int64(envInt("ORCA_WEB_MAX_UPLOAD_MB", 512))<<20, "largest accepted upload in bytes (ORCA_WEB_MAX_UPLOAD_MB in MB)")
 	flag.Int64Var(&c.UploadMinRate, "upload-min-rate", int64(envInt("ORCA_WEB_UPLOAD_MIN_RATE", 256<<10)), "minimum multipart bytes per second after ten-second grace (ORCA_WEB_UPLOAD_MIN_RATE)")
 	rate, _ := strconv.ParseFloat(env("ORCA_WEB_SUBMIT_RATE", "0"), 64)
@@ -133,8 +133,8 @@ func parseConfig() Config {
 	if c.MaxJobs < 1 {
 		log.Fatal("max-jobs must be positive")
 	}
-	if c.JobTimeout <= 0 || c.JobTTL <= 0 || c.MaxUploadSize <= 0 || c.UploadMinRate <= 0 {
-		log.Fatal("job-timeout, job-ttl, max-upload and upload-min-rate must be positive")
+	if c.JobTimeout <= 0 || c.JobTTL < 0 || c.MaxUploadSize <= 0 || c.UploadMinRate <= 0 {
+		log.Fatal("job-timeout, max-upload and upload-min-rate must be positive; job-ttl must be nonnegative")
 	}
 	if c.SourceArchive != "" {
 		if abs, err := filepath.Abs(c.SourceArchive); err == nil {

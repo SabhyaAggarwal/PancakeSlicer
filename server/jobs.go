@@ -535,7 +535,7 @@ func (m *JobManager) reap() {
 			m.mu.Lock()
 			for _, j := range m.jobs {
 				j.mu.Lock()
-				if j.state.Finished() && now.Sub(j.finished) > m.cfg.JobTTL {
+				if m.cfg.JobTTL > 0 && j.state.Finished() && now.Sub(j.finished) > m.cfg.JobTTL {
 					old = append(old, j)
 				}
 				j.mu.Unlock()
