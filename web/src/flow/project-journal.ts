@@ -18,7 +18,7 @@ export function createDraftJournal<D>(owner: string, storage: () => Promise<Proj
   let serial = 0, tail = Promise.resolve();
   const failures = new Map<string, unknown>();
   type Capture = { checkpoint: DraftCheckpoint; baseRevision: number; document: D; failure: ProjectFailure | null };
-  const pending = new Map<string, { latest: Capture; durable: Promise<ProjectDraft> }>();
+  const pending = new Map<string, { latest: Capture; durable: Promise<ProjectDraft>; release(): void }>();
   return {
     capture(projectId: string, baseRevision: number, document: D, failure: ProjectFailure | null = null) {
       const checkpoint = { id: `${owner}.${projectId}`, sequence: ++serial };
@@ -28,8 +28,14 @@ export function createDraftJournal<D>(owner: string, storage: () => Promise<Proj
         queued.latest = latest; void queued.durable.then(() => finish(), (error: unknown) => finish(error));
         return { checkpoint, durable: queued.durable };
       }
-      const batch = { latest, durable: null! as Promise<ProjectDraft> };
+      let release!: () => void;
+      const delay = new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 250);
+        release = () => { clearTimeout(timer); resolve(); };
+      });
+      const batch = { latest, durable: null! as Promise<ProjectDraft>, release };
       const durable = tail.then(async () => {
+        await delay;
         pending.delete(projectId);
         const { checkpoint, baseRevision, document, failure } = batch.latest;
         const { encode, nameOf, plateCount } = await codec(), { stored, blobs } = encode(document);
@@ -44,6 +50,7 @@ export function createDraftJournal<D>(owner: string, storage: () => Promise<Proj
       return { checkpoint, durable };
     },
     async flush(projectId?: string) {
+      for (const batch of pending.values()) batch.release();
       for (;;) { const waiting = tail; await waiting; if (waiting === tail) break; }
       const error = projectId === undefined ? failures.values().next().value : failures.get(projectId);
       if (error !== undefined) throw error;
