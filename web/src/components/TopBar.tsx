@@ -162,7 +162,7 @@ export function TopBar() {
 }
 
 function SideOptions({ options, value, onChange }: { options: string[]; value: string; onChange(v: string): void }) {
-  return <span className="side-options"><MenuButton className="btn side-drop" label="Output options" items={options.map(o => ({label: o, checked: o === value, action: () => onChange(o)}))}><Caret/></MenuButton></span>;
+  return <span className="side-options"><MenuButton className="btn slant side-drop" label="Output options" items={options.map(o => ({label: o, checked: o === value, action: () => onChange(o)}))}><Caret/></MenuButton></span>;
 }
 
 export function TabBar() {
@@ -203,20 +203,20 @@ export function TabBar() {
         )}
         {plates && <SideOptions options={['Slice all', 'Slice plate']} value={sliceMode} onChange={setSliceMode} />}
         <span className="export-actions">{allExport ? (
-          <button className="btn" disabled={!exportAllEnabled} onClick={() => void exportAll()}>Export all sliced file</button>
+          <button className="btn slant" disabled={!exportAllEnabled} onClick={() => void exportAll()}>Export all sliced file</button>
         ) : (
-          <button className="btn" disabled={!exportEnabled} onClick={download}>
+          <button className="btn slant" disabled={!exportEnabled} onClick={download}>
             {exportLabel}
           </button>
         )}
         {plates && <SideOptions options={[exportLabel, 'Export all sliced file']} value={allExport ? 'Export all sliced file' : exportLabel}
           onChange={(v) => setExportMode(v === 'Export all sliced file' ? 'all' : 'plate')} />}
         {hasPrinters && (
-          <button className="btn" disabled={!exportEnabled} onClick={() => setState({ appDialog: 'send' })}>
+          <button className="btn slant" disabled={!exportEnabled} onClick={() => setState({ appDialog: 'send' })}>
             Send
           </button>
         )}
-        </span><MenuButton className="btn output-overflow" label="Print output" items={[{label:'Slice plate',action:()=>void slice(),disabled:!hasObjects || !printer || busy || !!outside,tip:outside ?? 'Add a model before slicing'}, {label: exportLabel, action: download, disabled: !exportEnabled, tip: job.stale ? STALE_RESULT_TIP : 'Slice the plate first'}, ...(hasPrinters ? [{label: 'Send to printer', action: () => setState({appDialog: 'send'}), disabled: !exportEnabled}] : []), ...(plates ? [{label: 'Slice all plates', action: () => void sliceAll(), disabled: !printer || busy}, {label: 'Export all plates', action: () => void exportAll(), disabled: !exportAllEnabled}] : [])]}>Output</MenuButton>
+        </span><MenuButton className="btn slant output-overflow" label="Print output" items={[{label:'Slice plate',action:()=>void slice(),disabled:!hasObjects || !printer || busy || !!outside,tip:outside ?? 'Add a model before slicing'}, {label: exportLabel, action: download, disabled: !exportEnabled, tip: job.stale ? STALE_RESULT_TIP : 'Slice the plate first'}, ...(hasPrinters ? [{label: 'Send to printer', action: () => setState({appDialog: 'send'}), disabled: !exportEnabled}] : []), ...(plates ? [{label: 'Slice all plates', action: () => void sliceAll(), disabled: !printer || busy}, {label: 'Export all plates', action: () => void exportAll(), disabled: !exportAllEnabled}] : [])]}>Output</MenuButton>
       </div>
     </div>
   );
