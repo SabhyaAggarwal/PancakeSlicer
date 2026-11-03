@@ -13,12 +13,15 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 )
 
 type ProfileLibraryStore struct {
-	dir string
-	mu  sync.Mutex
+	dir      string
+	mu       sync.Mutex
+	response *cachedResponse
+	stamp    [2]int64
 }
 
 func NewProfileLibraryStore(dir string) (*ProfileLibraryStore, error) {
@@ -105,15 +108,26 @@ func (s *ProfileLibraryStore) readLibrary() (*libraryEnvelope, error) {
 	return &envelope, nil
 }
 func (s *Server) getProfileLibrary(w http.ResponseWriter, r *http.Request) {
-	s.library.mu.Lock()
-	defer s.library.mu.Unlock()
-	value, err := s.library.readLibrary()
-	if err != nil {
-		libraryFailure(w, 503, "library_unavailable", "Profiles could not be read.", "retry_storage", 0)
-		return
+	l := s.library
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	info, statErr := os.Stat(filepath.Join(l.dir, "profile-library.json"))
+	response := l.response
+	if response == nil || statErr != nil || fileStamp(info) != l.stamp {
+		value, err := l.readLibrary()
+		if err == nil {
+			response, err = cacheJSON(value.Document)
+		}
+		if err != nil {
+			libraryFailure(w, 503, "library_unavailable", "Profiles could not be read.", "retry_storage", 0)
+			return
+		}
+		l.response = nil
+		if statErr == nil {
+			l.response, l.stamp = response, fileStamp(info)
+		}
 	}
-	w.Header().Set("Cache-Control", privateRevalidate)
-	writeJSON(w, 200, value.Document)
+	response.serve(w, r, "profile-library.json", "application/json", privateRevalidate, time.Time{})
 }
 func libraryProfiles(doc profileLibraryDocument) (map[string]map[string]json.RawMessage, error) {
 	var schema int
