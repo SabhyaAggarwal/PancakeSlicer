@@ -1,5 +1,7 @@
 import { savePreferences, usePreference } from '../saved-preferences';
 import { ProfileLibraryNotice } from '../components/ProfileLibraryNotice';
+import { serviceRecoverySnapshot, subscribeServiceRecovery } from './service-recovery';
+import { ServiceProfileRecoveryPanel } from './ServiceProfileRecoveryPanel';
 import { useEffect, useId, useRef, useSyncExternalStore } from 'react';
 import { createSelection, reduceSelection, selectedVisible, type SelectionEvent } from './selection';
 import { serializeSelected } from './bulk';
@@ -88,13 +90,15 @@ function catalogItems(s: State, type: PresetType): Item[] {
 }
 function AddProfileDetails({type,item,copy,busy,onAdd}: {type:PresetType;item:Item;copy:boolean;busy:boolean;onAdd(name?:string):void}) {
   const [name,setName]=useState(`${item.name} copy`);
+  const library=useStore(s=>s.profileLibraryLoad),blocked=library.state==='ready'?undefined:library.state==='failed'?library.error:'Wait for saved profiles to load before adding.';
   return <section className="pf-add-source" aria-label={copy ? 'Copy existing profile' : 'Add from template'}>
     {item.cover && <img className="pf-source-cover" src={item.cover} alt="" loading="lazy"/>}
     <h2>{item.name}</h2><p>{item.note}</p>
     <p>{copy ? 'Create a separate profile with these saved settings.' : 'Add this template as an editable profile.'}</p>
     {copy && <label className="pf-copy-name">Profile name<input className="text" value={name} onChange={e=>setName(e.target.value)} aria-label="New profile name"/></label>}
     {item.reason && <p role="alert">{item.reason}</p>}
-    <button type="button" className="btn primary" disabled={busy || !!item.reason || copy && !name.trim()} title={item.reason ?? (copy && !name.trim() ? 'Enter a profile name' : undefined)} onClick={()=>onAdd(copy ? name.trim() : undefined)}>{busy ? 'Adding…' : copy ? 'Add copy' : `Add ${type === 'machine' ? 'printer' : type === 'filament' ? 'filament' : 'print settings'}`}</button>
+    {blocked && <p role="status">{blocked}</p>}
+    <button type="button" className="btn primary" disabled={busy || !!blocked || !!item.reason || copy && !name.trim()} title={blocked ?? item.reason ?? (copy && !name.trim() ? 'Enter a profile name' : undefined)} onClick={()=>onAdd(copy ? name.trim() : undefined)}>{busy ? 'Adding…' : copy ? 'Add copy' : `Add ${type === 'machine' ? 'printer' : type === 'filament' ? 'filament' : 'print settings'}`}</button>
   </section>;
 }
 
@@ -153,6 +157,7 @@ function Compare({ type, left, right, names, setRight, close }: { type: PresetTy
 }
 
 export default function PresetsWindow({ type: initialType, name, compare, edit = false,add = false,stage }: { type: PresetType; name?: string; compare?: string; edit?: boolean;add?:boolean;stage?:ProjectProfileChanges }) {
+  const recovery=useSyncExternalStore(subscribeServiceRecovery,serviceRecoverySnapshot,serviceRecoverySnapshot);
   const [type, setType] = useState(initialType), [search, setSearch] = useState(''), [adding, setAdding] = useState(add), [masters,setMasters] = useState(()=>!!name && findProfile(getState(),initialType,name)?.kind === 'master');
   const [addSource,setAddSource]=useState('template');
   const [vendorFilter,setVendorFilter] = useState<string[]>([]), [nozzleFilter,setNozzleFilter] = useState<string[]>([]), [materialFilter,setMaterialFilter] = useState<string[]>([]), [modelFilter,setModelFilter]=useState<string[]>([]), [printerFilter,setPrinterFilter]=useState<string[]>([]);
@@ -313,10 +318,10 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const compareReason = selected.length !== 2 ? 'Select exactly two visible profiles to compare' : undefined;
   const deleteReason = !selected.length ? 'Select profiles to remove' : undefined;
   return <Modal className="np-dialog pf-window" label="Profiles" onClose={close} backdropClose onEscapeKeyDown={event=>{if(busy || selected.length){event.preventDefault();if(!busy)dispatch({type:'ESCAPE'});}}}>
-    <header className="pf-workspace-title"><Dialog.Title asChild><h1>Profiles</h1></Dialog.Title><button type="button" className="btn pf-filter-toggle" aria-expanded={filtersOpen} onClick={()=>setFiltersOpen(!filtersOpen)}>Filters{filtersActive ? ` · ${filtersActive}` : ''}</button><SettingsDetail/><button type="button" className="btn-ghost" aria-label="Close profiles" onClick={close}>×</button></header>
+    <header className="pf-workspace-title"><Dialog.Title asChild><h1>Profiles</h1></Dialog.Title>{recovery.state!=='idle' && recovery.state!=='complete' && adding && <button type="button" className="btn" onClick={()=>setAdding(false)}>Recover saved profiles</button>}<button type="button" className="btn pf-filter-toggle" aria-expanded={filtersOpen} onClick={()=>setFiltersOpen(!filtersOpen)}>Filters{filtersActive ? ` · ${filtersActive}` : ''}</button><SettingsDetail/><button type="button" className="btn-ghost" aria-label="Close profiles" onClick={close}>×</button></header>
     <ProfileLibraryNotice/>
     <div className="np-dialog-body">
-      <div className={`pf-split${filtersOpen ? ' filters-open' : ''}`} ref={split} style={{'--profile-list-width': `${listWidth}px`} as React.CSSProperties} inert={busy}>
+      {recovery.state!=='idle' && recovery.state!=='complete' && !adding?<ServiceProfileRecoveryPanel recovery={recovery} onBrowse={()=>{setAdding(true);setAddSource('template');}}/>:<div className={`pf-split${filtersOpen ? ' filters-open' : ''}`} ref={split} style={{'--profile-list-width': `${listWidth}px`} as React.CSSProperties} inert={busy}>
       <aside className="pf-facets" aria-label="Profile filters">
         <fieldset className="pf-facet-group"><legend>Collection</legend><RadioGroup.Root className="pf-radio-list" aria-label="Profile collection" value={type} onValueChange={v=>void leave(()=>{setDrafts({});clearFilters();pickType(v as PresetType);})}>{TYPES.map(([id,label])=><label key={id} className="pf-facet-choice"><Radio value={id}/><span>{label}</span></label>)}</RadioGroup.Root></fieldset>
         <fieldset className="pf-facet-group"><legend>Library</legend><RadioGroup.Root className="pf-radio-list" aria-label="Library" value={masters ? 'masters' : 'owned'} onValueChange={value=>{setMasters(value === 'masters');setAdding(false);setSearch('');}}>{[{id:'owned',label:'My profiles'},{id:'masters',label:'Master profiles'}].map(o=><label key={o.id} className="pf-facet-choice"><Radio value={o.id}/><span>{o.label}</span></label>)}</RadioGroup.Root></fieldset>
@@ -354,7 +359,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
 
         : item && masters ? <section className="pf-bulk-summary" role={masterLoad?.error ? 'alert' : 'status'}><strong>{item.name}</strong><p>{masterLoad?.error ?? 'Opening editable master…'}</p>{masterLoad?.error && <button type="button" className="btn" onClick={()=>void openMaster(item.key)}>Retry</button>}</section>
         : <section className="pf-bulk-summary"><strong>{selected.length ? `${selected.length} profiles selected` : 'Select a profile'}</strong>{selectedItems.map(i => <div key={i.key} className="pf-bulk-name">{i.name}</div>)}</section>}
-      </div></div>
+      </div></div>}
 
       {contextMenu && <ActionMenu label="Profile actions" at={contextMenu} returnFocus={contextMenu.anchor} onClose={()=>setContextMenu(null)} items={[{label:'Export selected',action:()=>void exportSelected()},{label:'Delete from library',action:()=>void deleteSelected(),shortcut:'Delete'}]}/>}
       {bulkError && <div className="pf-editor-error" role="alert">{bulkError}</div>}

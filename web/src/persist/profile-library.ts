@@ -24,6 +24,7 @@ export class LegacyProfilesPendingError extends Error {
   }
 }
 export async function readProfileLibrary(_mock=false):Promise<ProfileLibraryDocument> {
+  await requireServiceProfileAdoption();
   const response=await fetch('/api/profile-library',{cache:'no-store'});
   if(response.status === 404)throw Object.assign(new Error('The required profile library API is unavailable. Your profile draft is kept. Connect the updated service and retry.'),{code:'profile_api_required',recovery:'update_service'});
   if(response.status===409){
@@ -33,15 +34,15 @@ export async function readProfileLibrary(_mock=false):Promise<ProfileLibraryDocu
   if(!response.ok)throw await responseError(response);
   return validate(await response.json());
 }
-export async function readServiceProfileLibrary():Promise<ProfileLibraryDocument>{
+export async function requireServiceProfileAdoption():Promise<void>{
   const response=await fetch('/api/healthz',{cache:'no-store'});
   if(!response.ok)throw await responseError(response);
   const health=await response.json() as {profile_library_schema?:number;profile_adoption_schema?:number;service_profile_adoption_schema?:number};
   if(health?.profile_library_schema!==1 || health.profile_adoption_schema!==1 || health.service_profile_adoption_schema!==1)throw Object.assign(new Error('The updated service is required to recover saved service profiles. Your current library, setup and drafts are kept.'),{code:'profile_api_required',recovery:'update_service'});
-  return readProfileLibrary();
 }
 export async function persistProfileLibrary(write: ProfileLibraryWrite, _mock = false): Promise<ProfileLibraryWriteResult> {
   validate(write.document);
+  await requireServiceProfileAdoption();
   const response = await mutation('/api/profile-library',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(write)});
   if (!response.ok) throw await responseError(response);
   return response.json();

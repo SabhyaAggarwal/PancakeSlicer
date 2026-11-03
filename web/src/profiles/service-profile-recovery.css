@@ -1,0 +1,18 @@
+.pf-service-identities { display: grid; gap: 16px; min-width: 0; color: var(--text); font-size: 14px; line-height: 1.5; }
+.pf-service-identities p { margin: 0; }
+.pf-service-identity { display: grid; gap: 8px; min-width: 0; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.pf-service-identity h3 { margin: 0; font-size: 16px; }
+.pf-service-identity > label { display: grid; gap: 4px; }
+.pf-service-identity > button { justify-self: start; }
+.pf-service-file { color: var(--label); overflow-wrap: break-word; }
+.pf-service-identity code { overflow-wrap: anywhere; }
+.pf-service-identity pre { max-height: 240px; overflow: auto; font-size: 13px; white-space: pre-wrap; overflow-wrap: break-word; }
+.pf-service-differences { max-height: 280px; overflow: auto; scrollbar-gutter: stable; }
+.pf-service-differences table { width: 100%; table-layout: fixed; }
+.pf-service-differences :is(th,td) { padding: 6px 8px; text-align: left; vertical-align: top; white-space: normal; overflow-wrap: break-word; }
+.pf-service-recovery { flex: 1; min-width: 0; min-height: 0; max-width: 1100px; margin-inline: auto; padding: 20px 24px; overflow: auto; scrollbar-gutter: stable; font-size: 14px; }
+.pf-service-recovery h2 { margin: 0 0 8px; font-size: 18px; }
+.pf-service-recovery-actions { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-block: 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.pf-service-recovery .pf-editor-error { white-space: pre-wrap; }
+.pf-service-keep { display: flex; align-items: flex-start; gap: 8px; margin-block: 8px; }
+.pf-service-keep .check { flex: none; }

@@ -36,18 +36,24 @@ async function openExisting(name: string): Promise<IDBDatabase | null> {
     read.onblocked = () => { abandoned = true; reject(new Error('Close older Orca windows before adopting project storage.')); };
   });
 }
-async function captureDatabase(name: string, wanted: readonly string[]): Promise<LegacyDatabase | null> {
+async function captureDatabase(name: string): Promise<LegacyDatabase | null> {
   const db = await openExisting(name);
   if (!db) return null;
   try {
-    const names = wanted.filter((store) => db.objectStoreNames.contains(store));
+    const names = Array.from(db.objectStoreNames).sort();
     if (!names.length) return { name, version: db.version, stores: [] };
     return await new Promise<LegacyDatabase>((resolve, reject) => {
       const tx = db.transaction(names, 'readonly'), stores: LegacyStore[] = [];
+      db.onversionchange = () => {
+        reject(new Error('Legacy project storage schema changed during capture. Retry adoption.'));
+        try { tx.abort(); } catch {  }
+        db.close();
+      };
       for (const name of names) {
         const records: LegacyStore['records'] = [], read = tx.objectStore(name).openCursor();
         stores.push({ name, records });
         read.onsuccess = () => { const cursor = read.result; if (cursor) { records.push({ key: cursor.key, value: cursor.value }); cursor.continue(); } };
+        read.onerror = () => reject(read.error ?? new Error(`Cannot read legacy project store: ${name}`));
       }
       tx.oncomplete = () => resolve({ name, version: db.version, stores });
       tx.onerror = tx.onabort = () => reject(tx.error ?? new Error('Cannot read legacy project inventory'));
@@ -60,8 +66,8 @@ export async function captureLegacyProjects(): Promise<LegacyProjectInventory> {
   const host = typeof window === 'undefined' ? undefined : window.orcaDesktop?.legacyProjects;
   const desktop = host ? await (await import('./desktop-legacy')).captureDesktopProjects(host) : undefined;
   const databases = await Promise.all([
-    captureDatabase('orca-web', ['sessions', 'blobs', 'trash', 'aliases', 'quarantine', 'tombstones']),
-    captureDatabase('orca-web-drafts', ['drafts', 'metadata']),
+    captureDatabase('orca-web'),
+    captureDatabase('orca-web-drafts'),
   ]);
   const read = (key: string) => typeof sessionStorage === 'undefined' ? null : sessionStorage.getItem(key);
   return { databases: [...databases.filter((db): db is LegacyDatabase => db !== null), ...(desktop ? [desktop.database] : [])], ...(desktop ? { desktop } : {}),

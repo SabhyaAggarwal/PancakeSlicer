@@ -51,9 +51,6 @@ export async function loadCatalog() {
       let inventory:import('./browser-inventory').BrowserProfileInventory|null=null,adoptionError:string|null=null;
       try{
         inventory=await browser.captureBrowserProfileInventory(initial);
-        const response=await fetch('/api/healthz',{cache:'no-store'});if(!response.ok)throw new Error('The service capabilities could not be read.');
-        const health=await response.json();
-        if(health.profile_adoption_schema!==1)throw new Error('Saved profiles are available for browsing. The updated service is required to acknowledge browser data before saving.');
         if(!unchanged())throw new Error('Your setup changed while loading; retry to keep the newer edits.');
         if(pendingBrowserAdoption){
           const prior=pendingBrowserAdoption,known=await storage.readProfileLibraryAdoption(prior.adoption.digest);
@@ -70,7 +67,7 @@ export async function loadCatalog() {
         const receipt=await storage.readProfileLibraryAdoption(adoption.digest);
         if(!receipt || receipt.source!==adoption.source || receipt.sourceId!==adoption.sourceId || receipt.operationId!==plan.operationId)throw new Error('Browser source adoption has not been durably acknowledged. Your original data and draft are kept; retry.');
         if(pendingBrowserAdoption===plan)pendingBrowserAdoption=null;
-      }catch(error){adoptionError=error instanceof Error?error.message:String(error);}
+      }catch(error){if(error instanceof storage.LegacyProfilesPendingError)throw error;adoptionError=error instanceof Error?error.message:String(error);}
       if(!current())return;
       if(!unchanged())throw new Error('Your profiles or setup changed during loading/adoption. Your newer work is kept; retry loading.');
       if(adoptionError && !restoreStartupPlaceholder)throw new Error(adoptionError);
@@ -82,7 +79,11 @@ export async function loadCatalog() {
       setState({...result.patch,profileLibraryLoad:error ? {state:'failed',error} : {state:'ready'}});
       if(!error)acceptHydratedPrinterSetups();
     } catch (error) {
-      if (current()) setState({profileLibraryLoad: {state: 'failed', error: error instanceof Error ? error.message : String(error)}});
+      if(current()){
+        const pending=(error as {code?:string}).code==='legacy_profiles_pending';
+        if(pending){const {beginServiceRecovery}=await import('./service-recovery');if(current())await beginServiceRecovery(error as import('../persist/profile-library').LegacyProfilesPendingError);}
+        if(current())setState({profileLibraryLoad:{state:'failed',error:error instanceof Error?error.message:String(error),...(pending?{recovery:'adopt_service_profiles' as const}:{})}});
+      }
     }
   });
   catalogLibraryTail=library;

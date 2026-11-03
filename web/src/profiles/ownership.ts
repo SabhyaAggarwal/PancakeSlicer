@@ -101,7 +101,9 @@ export interface ProfileLibraryAdoption {
   sourceId: string;
   digest: string;
   source: string;
+  identityResolutions?: ServiceProfileIdentityResolution[];
 }
+export interface ServiceProfileIdentityResolution { path: string; sha256: string; profileId: ProfileKey }
 export interface ProfileLibraryAdoptionReceipt extends ProfileLibraryAdoption {
   durable: true;
   operationId: string;

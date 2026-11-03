@@ -52,6 +52,9 @@ async function settleOutstanding():Promise<Acknowledgement|undefined>{
   if(!pending)return;
   const ack=await acknowledge(pending);publishAcknowledgement(ack);return ack;
 }
+export function acknowledgePendingProfileWrite():Promise<void>{
+  return serialize(async()=>{if(pending)await acknowledge(pending);});
+}
 export interface ProfileCreation {commit():Promise<string>;readonly retryable:boolean}
 export function profileCreation(factory:(s:State)=>UserPreset|string):ProfileCreation{
   let request:FrozenWrite|undefined,key:string|undefined;

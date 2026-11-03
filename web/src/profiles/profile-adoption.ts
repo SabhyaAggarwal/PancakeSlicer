@@ -1,6 +1,6 @@
 import type { ProfileOverlay, SystemPreset, UserPreset } from '../api/types';
 import type { BrowserProfileInventory } from './browser-inventory';
-import { normalizeUserPreset, storedProfile } from './model';
+import { catalogKey, normalizeUserPreset, storedProfile } from './model';
 import type { PrinterMaterialSetup, ProfileLibraryAdoption, ProfileLibraryAdoptionReceipt, ProfileLibraryDocument } from './ownership';
 
 interface ReadonlySource {
@@ -10,17 +10,19 @@ interface ReadonlySource {
   storage: Record<string,string|null>;
   legacyDocument: ProfileLibraryDocument|null;
 }
-export interface BrowserProfileAdoptionPlan {
+export interface ProfileAdoptionPlan {
   document: ProfileLibraryDocument;
   conflicts: string[];
   adoption: ProfileLibraryAdoption;
   operationId: string;
   alreadyAcknowledged: boolean;
 }
+export type BrowserProfileAdoptionPlan = ProfileAdoptionPlan;
 const object=(v:unknown):v is Record<string,unknown>=>!!v && typeof v==='object' && !Array.isArray(v);
 const canonical=(value:unknown):unknown=>Array.isArray(value)?value.map(canonical):object(value)?Object.fromEntries(Object.keys(value).sort().filter(k=>value[k]!==undefined).map(k=>[k,canonical(value[k])])):value;
 const text=(value:unknown)=>JSON.stringify(canonical(value));
 const equal=(a:unknown,b:unknown)=>text(a)===text(b);
+export { equal as profileAdoptionValuesEqual };
 function sourceOf(inventory:BrowserProfileInventory,origin:string):ReadonlySource{
   if(!inventory.complete || inventory.issues.length)throw new Error('Browser profile inventory is incomplete. Keep the original sources for recovery.');
   if(!origin)throw new Error('The browser source origin is unavailable.');
@@ -38,7 +40,9 @@ function decodeSource(source:string):ReadonlySource{
     || Object.values(value.storage).some(v=>v!==null && typeof v!=='string'))throw new Error('The acknowledged browser source is invalid or incomplete.');
   return value as unknown as ReadonlySource;
 }
-type Entry={path:string;kind:'profile'|'setup'|'catalog';key:string;value:unknown};
+export type ProfileAdoptionEntry={path:string;kind:'profile'|'setup'|'catalog';key:string;value:unknown};
+type Entry=ProfileAdoptionEntry;
+export type ProfileAdoptionBaselines=ReadonlyMap<string,readonly {entry:ProfileAdoptionEntry;revision:number}[]>;
 function entries(source:ReadonlySource):Entry[]{
   const result:Entry[]=[];
   const profiles=(values:unknown,path:string)=>{
@@ -56,7 +60,7 @@ function entries(source:ReadonlySource):Entry[]{
     const keys=new Set<string>();
     for(const value of values){
       if(!object(value) || typeof value.name!=='string' || typeof value.vendor!=='string' || !object(value.config) || !['machine','process','filament'].includes(String(value.type)))throw new Error('A legacy Add source needs repair.');
-      const key=text([value.type,value.vendor,value.name]);if(keys.has(key))throw new Error('Legacy Add source identities are ambiguous.');keys.add(key);result.push({path:`${path}/${key}`,kind:'catalog',key,value});
+      const key=catalogKey(value as unknown as SystemPreset);if(keys.has(key))throw new Error('Legacy Add source identities are ambiguous.');keys.add(key);result.push({path:`${path}/${key}`,kind:'catalog',key,value});
     }
   };
   const parse=(key:string)=>JSON.parse(source.storage[key] ?? '[]');
@@ -84,7 +88,7 @@ function mergeDelta(before:unknown,after:unknown,current:unknown,path:string,con
     const next={...current};
     for(const key of new Set([...Object.keys(before),...Object.keys(after)])){
       const value=mergeDelta(before[key],after[key],current[key],`${path}.${key}`,conflicts);
-      if(value===undefined)delete next[key];else next[key]=value;
+      if(value===undefined)delete next[key];else Object.defineProperty(next,key,{value,writable:true,enumerable:true,configurable:true});
     }
     return next;
   }
@@ -96,14 +100,14 @@ export function planBrowserProfileAdoption(remote:ProfileLibraryDocument,invento
   let source:ReadonlySource,currentEntries:Entry[];
   try{
     source=decodeSource(adoption.source);
-    if(adoption.scope!=='profile-library-and-working-setup' || adoption.sourceId!==`browser-profile-library:v1:${source.origin}` || !/^[a-f0-9]{64}$/.test(adoption.digest)
+    if(adoption.identityResolutions !== undefined || adoption.scope!=='profile-library-and-working-setup' || adoption.sourceId!==`browser-profile-library:v1:${source.origin}` || !/^[a-f0-9]{64}$/.test(adoption.digest)
       || adoption.source!==text(sourceOf(inventory,source.origin)))throw new Error('The adoption fingerprint no longer matches this complete readonly capture.');
     currentEntries=entries(source);
   }catch(error){conflicts.push(String(error));return result(remote);}
   const baselines=new Map<string,{entry:Entry;revision:number}[]>();
   for(const receipt of receipts){
     if(receipt.sourceId!==adoption.sourceId)continue;
-    if(receipt.scope!==adoption.scope || receipt.durable!==true || !Number.isInteger(receipt.revision) || receipt.operationId!==`browser-adoption:${receipt.digest}`){conflicts.push('A service adoption receipt needs recovery.');continue;}
+    if(receipt.identityResolutions !== undefined || receipt.scope!==adoption.scope || receipt.durable!==true || !Number.isInteger(receipt.revision) || receipt.operationId!==`browser-adoption:${receipt.digest}`){conflicts.push('A service adoption receipt needs recovery.');continue;}
     try{
       const acknowledged=decodeSource(receipt.source);
       if(acknowledged.origin!==source.origin)throw new Error('The adoption receipt origin does not match.');
@@ -111,10 +115,15 @@ export function planBrowserProfileAdoption(remote:ProfileLibraryDocument,invento
       for(const entry of entries(acknowledged)){const prior=baselines.get(entry.path) ?? [];prior.push({entry,revision:receipt.revision});baselines.set(entry.path,prior);}
     }catch(error){conflicts.push(String(error));}
   }
-  const profiles=new Map(remote.profiles.map(p=>[p.id,p])),setups={...remote.printers.setups},catalog=new Map((remote.catalog ?? []).map(p=>[text([p.type,p.vendor,p.name]),p]));
-  if(profiles.size!==remote.profiles.length || remote.profiles.some(p=>!p.id))conflicts.push('The saved library has duplicate or missing identities.');
+  return result(mergeProfileAdoptionEntries(remote,currentEntries,baselines,conflicts));
+}
+
+export function mergeProfileAdoptionEntries(remote:ProfileLibraryDocument,currentEntries:readonly ProfileAdoptionEntry[],baselines:ProfileAdoptionBaselines,conflicts:string[]):ProfileLibraryDocument{
+  const profiles=new Map(remote.profiles.map(p=>[p.id,p])),setups={...remote.printers.setups},catalog=new Map((remote.catalog ?? []).map(p=>[catalogKey(p),p]));
+  if(profiles.size!==remote.profiles.length || remote.profiles.some(p=>!p.id)){conflicts.push('The saved library has duplicate or missing identities.');return remote;}
+  if(catalog.size!==(remote.catalog ?? []).length){conflicts.push('The saved Add sources have duplicate exact identities.');return remote;}
   for(const entry of currentEntries){
-    const prior=(baselines.get(entry.path) ?? []).sort((a,b)=>b.revision-a.revision);
+    const prior=[...(baselines.get(entry.path) ?? [])].sort((a,b)=>b.revision-a.revision);
     if(prior.some(p=>equal(p.entry.value,entry.value)))continue;
     const map=entry.kind==='profile'?profiles:entry.kind==='catalog'?catalog:undefined;
     const existing=map?map.get(entry.key):setups[entry.key],after=normalized(entry),baseline=prior[0] && normalized(prior[0].entry);
@@ -134,5 +143,5 @@ export function planBrowserProfileAdoption(remote:ProfileLibraryDocument,invento
     for(const key of [...setup.materialIds,...setup.slots.map(slot=>slot.materialId),...Object.keys(setup.tuning)])if(profiles.get(key)?.type!=='filament')conflicts.push(`Retained material ${key} needs recovery.`);
     if(setup.processId && profiles.get(setup.processId)?.type!=='process')conflicts.push(`Retained print settings ${setup.processId} need recovery.`);
   }
-  return result({...remote,profiles:[...profiles.values()],...(catalog.size?{catalog:[...catalog.values()]}:{}),printers:{...remote.printers,revision:equal(setups,remote.printers.setups)?remote.printers.revision:remote.printers.revision+1,setups}});
+  return ({...remote,profiles:[...profiles.values()],...(catalog.size?{catalog:[...catalog.values()]}:{}),printers:{...remote.printers,revision:equal(setups,remote.printers.setups)?remote.printers.revision:remote.printers.revision+1,setups}});
 }

@@ -190,7 +190,7 @@ export interface State {
   processes: SystemPreset[];
   filaments: SystemPreset[];
   userPresets: UserPreset[];
-  profileLibraryLoad: {state: 'loading'} | {state: 'ready'} | {state: 'failed'; error: string};
+  profileLibraryLoad: {state: 'loading'} | {state: 'ready'} | {state: 'failed'; error: string; recovery?:'adopt_service_profiles'};
   printerLibrary: PrinterProfileLibrary;
   profileLibraryRevision: number;
   projectProfileContexts: Record<string,{projectPresets:State['projectPresets'];profileSnapshots:ProjectProfileReferences|null;process:string;dirty:State['dirty']}>;
