@@ -58,7 +58,7 @@ export async function init() {
 
 let catalogLoadGeneration = 0;
 let catalogLibraryTail: Promise<void> = Promise.resolve();
-let pendingBrowserAdoption: {plan: import('./profiles/browser-inventory').BrowserProfileAdoptionPlan; operationId: string} | null = null;
+let pendingBrowserAdoption: import('./profiles/browser-inventory').BrowserProfileAdoptionPlan | null = null;
 export async function loadCatalog() {
   const generation = ++catalogLoadGeneration, initial = getState(), api = initial.api, documentAtStart=documentGeneration();
   if (!api) return;
@@ -71,27 +71,40 @@ export async function loadCatalog() {
     try {
       await settings;
       if(!current())return;
-      const [{readProfileLibrary},{prepareProfileLibraryHydration},browser,{acceptHydratedPrinterSetups}]=await Promise.all([
+      const [storage,{prepareProfileLibraryHydration},browser,{acceptHydratedPrinterSetups}]=await Promise.all([
         import('./persist/profile-library'),import('./profiles/library-hydration'),import('./profiles/browser-inventory'),import('./profiles/printer-setups')]);
-      if(pendingBrowserAdoption){const prior=pendingBrowserAdoption;try{await browser.adoptBrowserProfileInventory(prior.plan,prior.operationId);}catch(error){if((error as {status?:number}).status===409 && pendingBrowserAdoption===prior)pendingBrowserAdoption=null;throw error;}if(pendingBrowserAdoption===prior)pendingBrowserAdoption=null;}
-      let document=await readProfileLibrary();
-      const inventory=await browser.captureBrowserProfileInventory(initial);
+      let document=await storage.readProfileLibrary();
       const unchanged=()=>{const s=getState();return current() && documentGeneration()===documentAtStart && s.projectPresets===initial.projectPresets && s.dirty===initial.dirty && (s.userPresets===initial.userPresets || s.userPresets.length===initial.userPresets.length && s.userPresets.every((p,i)=>p===initial.userPresets[i])) && s.printer===initial.printer && s.filamentSlots===initial.filamentSlots && s.slotColours===initial.slotColours && s.filamentEdits===initial.filamentEdits && s.printerLibrary===initial.printerLibrary;};
-      if(!current())return;
-      if(!unchanged())throw new Error('Your profiles or setup changed while loading. Your work is kept; retry loading the library.');
       const restoreStartupPlaceholder=!initial.printer && !initial.process && !initial.filamentSlots.length && !initial.project && !initial.objects.length && !initial.profileSnapshots && !initial.projectPresets && !Object.keys(initial.dirty.machine).length && !Object.keys(initial.dirty.process).length && !Object.keys(initial.filamentEdits).length && !Object.keys(initial.printerLibrary.setups).length;
-      const plan=browser.planBrowserProfileAdoption(document,inventory);
-      if(!plan.conflicts.length){
-        const pending={plan,operationId:`browser-adoption:${crypto.randomUUID()}`};pendingBrowserAdoption=pending;
-        document=await browser.adoptBrowserProfileInventory(pending.plan,pending.operationId);
-        if(pendingBrowserAdoption===pending)pendingBrowserAdoption=null;
-        if(!unchanged())throw new Error('Browser data was saved, but your working setup changed during adoption. Your newer edits are kept; retry loading.');
-      }
-      const latest=getState();
-      if(plan.conflicts.length && !restoreStartupPlaceholder)throw new Error(`Browser data needs recovery before saving: ${plan.conflicts.join('; ')}. Export browser data to keep both versions.`);
-      const preferred=restoreStartupPlaceholder ? inventory.storage['orca.printer'] : null;
+      let inventory:import('./profiles/browser-inventory').BrowserProfileInventory|null=null,adoptionError:string|null=null;
+      try{
+        inventory=await browser.captureBrowserProfileInventory(initial);
+        const response=await fetch('/api/healthz',{cache:'no-store'});if(!response.ok)throw new Error('The service capabilities could not be read.');
+        const health=await response.json();
+        if(health.profile_adoption_schema!==1)throw new Error('Saved profiles are available for browsing. The updated service is required to acknowledge browser data before saving.');
+        if(!unchanged())throw new Error('Your setup changed while loading; retry to keep the newer edits.');
+        if(pendingBrowserAdoption){
+          const prior=pendingBrowserAdoption,known=await storage.readProfileLibraryAdoption(prior.adoption.digest);
+          try{document=known ? await storage.readProfileLibrary() : await browser.adoptBrowserProfileInventory(prior);}
+          catch(error){if((error as {status?:number}).status===409 && pendingBrowserAdoption===prior)pendingBrowserAdoption=null;throw error;}
+          if(pendingBrowserAdoption===prior)pendingBrowserAdoption=null;
+        }
+        const adoption=await browser.fingerprintBrowserProfileInventory(inventory,location.origin),receipts=await storage.readProfileLibraryAdoptions();
+        document=await storage.readProfileLibrary();
+        if(!unchanged())throw new Error('Your setup changed while loading; retry to keep the newer edits.');
+        const plan=browser.planBrowserProfileAdoption(document,inventory,adoption,receipts);
+        if(plan.conflicts.length)throw new Error(`Browser data needs recovery: ${plan.conflicts.join('; ')}. Both versions are kept.`);
+        if(!plan.alreadyAcknowledged){pendingBrowserAdoption=plan;document=await browser.adoptBrowserProfileInventory(plan);}
+        const receipt=await storage.readProfileLibraryAdoption(adoption.digest);
+        if(!receipt || receipt.source!==adoption.source || receipt.sourceId!==adoption.sourceId || receipt.operationId!==plan.operationId)throw new Error('Browser source adoption has not been durably acknowledged. Your original data and draft are kept; retry.');
+        if(pendingBrowserAdoption===plan)pendingBrowserAdoption=null;
+      }catch(error){adoptionError=error instanceof Error?error.message:String(error);}
+      if(!current())return;
+      if(!unchanged())throw new Error('Your profiles or setup changed during loading/adoption. Your newer work is kept; retry loading.');
+      if(adoptionError && !restoreStartupPlaceholder)throw new Error(adoptionError);
+      const latest=getState(),preferred=restoreStartupPlaceholder ? inventory?.storage['orca.printer'] : null;
       const result=prepareProfileLibraryHydration(preferred ? {...latest,printer:preferred} : latest,document,{restoreStartupPlaceholder});
-      const error=plan.conflicts.length ? `Saved profiles loaded; browser data needs recovery before saving: ${plan.conflicts.join('; ')}` : result.requiresAdoption ? 'Browser printer setups differ from the saved library. Export and review browser data before adopting it. Your working setup is kept.' : null;
+      const error=adoptionError ?? (result.requiresAdoption?'Browser printer setups differ from the saved library. Export and review browser data before restoring them. Your setup is kept.':null);
       setState({...result.patch,profileLibraryLoad:error ? {state:'failed',error} : {state:'ready'}});
       if(!error)acceptHydratedPrinterSetups();
     } catch (error) {
