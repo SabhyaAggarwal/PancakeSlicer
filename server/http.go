@@ -84,6 +84,7 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, library *Profil
 	mux.HandleFunc("POST /api/jobs/{id}/retry", s.retryJob)
 	mux.HandleFunc("GET /api/jobs/{id}/download", s.download)
 	mux.HandleFunc("GET /api/jobs/{id}/moves", s.moves)
+	mux.HandleFunc("GET /api/jobs/{id}/surface-grid", s.surfaceGrid)
 	mux.HandleFunc("GET /api/jobs/{id}/exploded/{name}", s.exploded)
 	mux.HandleFunc("POST /api/jobs/{id}/send", s.sendJob)
 	mux.HandleFunc("GET /api/jobs/{id}/send", s.getSend)
@@ -817,22 +818,38 @@ func (s *Server) job(w http.ResponseWriter, r *http.Request) *Job {
 	return j
 }
 func (s *Server) getJob(w http.ResponseWriter, r *http.Request) {
-	if j := s.job(w, r); j != nil {
-		if r.URL.Query().Get("request") == "0" {
-			v := j.View()
-			var record map[string]json.RawMessage
-			if json.Unmarshal(v.Slice, &record) == nil && record["submission"] != nil {
-				delete(record, "submission")
-				v.Slice, _ = json.Marshal(record)
-			}
-			writeJSON(w, 200, struct {
-				JobView
-				Request *struct{} `json:"request,omitempty"`
-			}{JobView: v})
-			return
-		}
-		writeJSON(w, 200, j.View())
+	j := s.job(w, r)
+	if j == nil {
+		return
 	}
+	v, echo := j.View(), r.URL.Query().Get("request") != "0"
+	if echo {
+		writeJSON(w, 200, v)
+		return
+	}
+	var record map[string]json.RawMessage
+	if json.Unmarshal(v.Slice, &record) == nil && record["submission"] != nil {
+		delete(record, "submission")
+		v.Slice, _ = json.Marshal(record)
+	}
+	writeJSON(w, 200, struct {
+		JobView
+		Request *struct{} `json:"request,omitempty"`
+	}{JobView: v})
+}
+
+func (s *Server) surfaceGrid(w http.ResponseWriter, r *http.Request) {
+	j := s.job(w, r)
+	if j == nil {
+		return
+	}
+	var record map[string]json.RawMessage
+	if !j.Previewable() || json.Unmarshal(j.Record(), &record) != nil || record["surface_grid"] == nil {
+		fail(w, 404, "surface grid is not available")
+		return
+	}
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	writeJSON(w, 200, record["surface_grid"])
 }
 func (s *Server) deleteJob(w http.ResponseWriter, r *http.Request) {
 	j := s.job(w, r)

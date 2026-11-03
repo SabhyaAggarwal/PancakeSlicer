@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -148,9 +149,21 @@ type JobView struct {
 	QueuePosition  int             `json:"queue_position"`
 	ETA            *float64        `json:"eta_seconds,omitempty"`
 	ResultReady    bool            `json:"result_ready,omitempty"`
+	HasSurfaceGrid bool            `json:"has_surface_grid"`
 }
 
 func (j *Job) View() JobView {
+	v := j.snapshotView()
+	var record map[string]json.RawMessage
+	if bytes.Contains(v.Slice, []byte(`"surface_grid"`)) && json.Unmarshal(v.Slice, &record) == nil && record["surface_grid"] != nil {
+		delete(record, "surface_grid")
+		v.Slice, _ = json.Marshal(record)
+		v.HasSurfaceGrid = true
+	}
+	return v
+}
+
+func (j *Job) snapshotView() JobView {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	v := JobView{ID: j.ID, RetryOf: j.RetryOf, State: j.state.legacy(), LifecycleState: j.state, Created: j.Created, Error: j.errMsg, ExitCode: j.exitCode,
@@ -169,6 +182,12 @@ func (j *Job) View() JobView {
 		v.Filename = j.DownloadName()
 	}
 	return v
+}
+
+func (j *Job) Record() json.RawMessage {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.slice
 }
 
 func (j *Job) State() JobState {
