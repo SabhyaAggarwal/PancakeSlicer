@@ -2,20 +2,19 @@ import { useEffect, useRef, useState } from 'react';
 import penUrl from '../../../docs/nonplanar/corpus/everyday/pen_holder.stl?url';
 import knobUrl from '../../../tests/data/nonplanar/corpus/w_knob_knurled.stl?url';
 import hookUrl from '../samples/shelf_hook.stl?url';
-import { choosePrinter, importFiles, openFileDialog, openProjectDialog } from '../actions';
-import { DEMO_MODELS, getState, printerPreset, setState, subscribeStore, toast, useStore } from '../state/store';
+import { importFiles, openFileDialog, openProjectDialog } from '../actions';
+import { getState, setState, subscribeStore, toast, useStore } from '../state/store';
+import { PrinterPicker } from '../profiles/Pickers';
 import { Icon } from './Icon';
 import './first-run.css';
 import { Modal, ModalTitle } from './Modal';
 
 const SETUP_KEY = 'orca.setup';
 const SAMPLES = [
-  { url: penUrl, file: 'pen_holder.stl', label: 'Pen holder', tip: 'No unneeded support: Auto matches the plain print' },
+  { url: penUrl, file: 'pen_holder.stl', label: 'Pen holder', tip: 'Load a simple everyday model' },
   { url: knobUrl, file: 'knob.stl', label: 'Knob', tip: 'An everyday part with a rounded, knurled top' },
   { url: hookUrl, file: 'shelf_hook.stl', label: 'Shelf hook', tip: 'A 90° ledge that prints without support' },
 ];
-
-const nozzleOf = (v: unknown) => Number(Array.isArray(v) ? v[0] : v);
 
 async function addSample(url: string, file: string) {
   setState({ loading: `Loading ${file}` });
@@ -30,48 +29,7 @@ async function addSample(url: string, file: string) {
 }
 
 function PrinterChoice() {
-  const machines = useStore((s) => s.machines);
-  const current = useStore(printerPreset);
-  const rank = (m: string) => DEMO_MODELS.includes(m) ? DEMO_MODELS.indexOf(m) : DEMO_MODELS.length;
-  const models = [...new Set(machines.map((m) => m.model).filter((m): m is string => !!m))].sort((a, b) => rank(a) - rank(b));
-  const nozzles = machines.filter((m) => m.model === current?.model)
-    .map((m) => ({ name: m.name, d: nozzleOf(m.config.nozzle_diameter) }))
-    .sort((a, b) => a.d - b.d);
-  const pick = (model: string) => {
-    const same = machines.filter((m) => m.model === model);
-    const want = nozzleOf(current?.config.nozzle_diameter) || 0.4;
-    const next = same.find((m) => nozzleOf(m.config.nozzle_diameter) === want) ?? same.find((m) => nozzleOf(m.config.nozzle_diameter) === 0.4) ?? same[0];
-    if (next) choosePrinter(next.name);
-  };
-  return (
-    <div className="fr-printer">
-      <div className="label-caps fr-label">Printer</div>
-      <div className="fr-models" role="radiogroup" aria-label="Printer">
-        {models.map((model) => {
-          const vendor = machines.find((m) => m.model === model)!.vendor;
-          return (
-            <button key={model} type="button" role="radio" aria-checked={current?.model === model}
-              className={`fr-model ${current?.model === model ? 'active' : ''}`} onClick={() => pick(model)}>
-              <img src={`/profiles/${vendor}/${encodeURIComponent(model)}_cover.png`} alt="" onError={(e) => ((e.target as HTMLImageElement).src = '/images/printer_placeholder.png')} />
-              <span>{model.replace(/^Bambu Lab /, '')}</span>
-            </button>
-          );
-        })}
-      </div>
-      <div className="fr-nozzles">
-        <span className="label-caps">Nozzle</span>
-        <div className="seg num" role="radiogroup" aria-label="Nozzle">
-          {nozzles.map((n) => (
-            <button key={n.name} type="button" role="radio" aria-checked={n.name === current?.name}
-              onClick={() => choosePrinter(n.name)}>
-              {n.d}
-            </button>
-          ))}
-        </div>
-        <span className="seg-unit">mm</span>
-      </div>
-    </div>
-  );
+  return <div className="fr-printer"><label className="fr-label">Printer</label><PrinterPicker/></div>;
 }
 
 const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';

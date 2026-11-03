@@ -17,8 +17,7 @@ export const fileVerbs = {
 export type FileVerb = keyof typeof fileVerbs;
 
 export async function newProjectFrom(files: FileList | File[]) {
-  await (await api()).newProject();
-  await importFiles(files);
+  if(await (await api()).newProject())await importFiles(files);
 }
 
 window.addEventListener('orca-desktop-menu', (e) => {

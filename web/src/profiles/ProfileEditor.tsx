@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { Config, ConfigValue, PresetType, UserPreset } from '../api/types';
 import { SettingsTab, type ProfileFields } from '../components/SettingsTab';
-import { effectiveMode, getState, resolvePreset, setState, toast, useStore } from '../state/store';
+import { effectiveMode, getState, resolvePreset, toast, useStore } from '../state/store';
 import { changedKeys, saveProfile } from './model';
 import { commitProfileRecords } from './transactions';
 import { linkedProfiles } from './library-actions';
@@ -51,7 +51,7 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { inFlight.current = false; onSavingChange?.(false); }
   };
-  if (!resolved.user || !resolved.base || resolved.error) return <section className="pf-full-editor"><div className="pf-editor-error" role="alert"><strong>{resolved.user?.name ?? 'Profile unavailable'}</strong><p>{resolved.error ?? 'The selected profile could not be resolved. Its draft has been kept.'}</p><button type="button" className="btn" onClick={() => void (async () => {try {const s = getState(); const rows = await s.api!.userPresets(); const fresh = findProfile({userPresets: rows}, type, name); if(!fresh) throw new Error('Profile is still unavailable. Import its profile file to repair it.'); setState(st => ({userPresets: [...st.userPresets.filter(p => p.type !== type || profileKey(p) !== profileKey(fresh)), fresh]}));} catch(e) {setError(e instanceof Error ? e.message : String(e));}})()}>Retry</button>{error && <p>{error}</p>}</div><button type="button" className="btn-ghost" onClick={onBack}>Close profiles</button></section>;
+  if (!resolved.user || !resolved.base || resolved.error) return <section className="pf-full-editor"><div className="pf-editor-error" role="alert"><strong>{resolved.user?.name ?? 'Profile unavailable'}</strong><p>{resolved.error ?? 'The selected profile could not be resolved. Its draft has been kept.'}</p><button type="button" className="btn" onClick={() => void (async () => {try {const {loadCatalog}=await import('../actions');await loadCatalog();const s=getState();if(s.profileLibraryLoad.state==='failed')throw new Error(s.profileLibraryLoad.error);if(!findProfile(s,type,name))throw new Error('Profile is still unavailable. Import its profile file to repair it.');} catch(e) {setError(e instanceof Error ? e.message : String(e));}})()}>Retry</button>{error && <p>{error}</p>}</div><button type="button" className="btn-ghost" onClick={onBack}>Close profiles</button></section>;
   return <section className="pf-full-editor" aria-label={`Edit ${profileName}`}>
     <div className="pf-editor-heading">
       <div className="pf-editor-identity">{type === 'filament' && <ColorPicker value={profileColour(values) ?? ''} label="Default filament color" disabled={saving} onCommit={colour=>set('filament_colour',Array.isArray(values.filament_colour) ? [colour] : colour)}/>}<strong>{profileName}</strong><div className="pf-editor-summary">{profileSummary(type, values)}</div>{draft?.staged && <div className="pf-editor-summary">Reviewing project changes · Save updates this reusable profile</div>}{links.length > 0 && <div className="pf-editor-summary">Linked profiles: {links.map(p=>p.name).join(', ')}</div>}</div>

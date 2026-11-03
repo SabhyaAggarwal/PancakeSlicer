@@ -43,6 +43,7 @@ export interface PrinterMaterialSetup {
   printerId: ProfileKey;
   revision: number;
   materialIds: ProfileKey[];
+  processId?: ProfileKey;
   slots: PrinterMaterialSlot[];
   assignments: Record<string, string>;
   tuning: Record<ProfileKey, Config>;
@@ -59,14 +60,17 @@ export interface ProjectProfileSnapshot extends ProfileConfigSnapshot {
   name: string;
   printerId?: ProfileKey;
   revision: number;
+  profileConfig?: Config;
+  profile?: import('../api/types').ProfileOverlay;
 }
 export interface ProjectProfileReferences {
   schema: 1;
   printer: ProjectProfileSnapshot;
   process: ProjectProfileSnapshot;
   filaments: ProjectProfileSnapshot[];
+  slots?: PrinterMaterialSlot[];
 }
-export type ProfileRecoveryReason = 'missing-profile' | 'missing-base' | 'missing-owner' | 'ambiguous' | 'cycle' | 'foreign-owner' | 'archived';
+export type ProfileRecoveryReason = 'missing-profile' | 'missing-base' | 'missing-owner' | 'ambiguous' | 'cycle' | 'foreign-owner' | 'archived' | 'incompatible';
 export interface ProfileRecovery {
   reason: ProfileRecoveryReason;
   key: ProfileKey;

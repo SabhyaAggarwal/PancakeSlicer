@@ -1,11 +1,8 @@
 import type { Config, PresetType, SystemPreset, UserPreset } from '../api/types';
-import { DEFAULT_PRINTER, getState, type State } from '../state/store';
-import { baseVersion, catalogAnchor, changedKeys, profilesFor, resolveProfile } from './model';
+import { getState, type State } from '../state/store';
+import { catalogAnchor, changedKeys, profilesFor, resolveProfile } from './model';
 import { selectCompatibility } from './compatibility';
-import { defaultsInitialized, markDefaultsInitialized, rememberLocalProfile, importedBases } from '../persist/profiles';
-import { defaultProcesses } from '../intent/default-process-model';
-import { findProfile, profileKey } from './identity';
-import { CURVED_DEFAULTS, surfaceValues } from '../intent/surface';
+import { profileKey } from './identity';
 
 export interface ProfileRow {
   key: string;
@@ -88,75 +85,4 @@ export async function createProfileFromBase(type:PresetType,baseName:string,name
   const profile=makeProfile(s,base,name?.trim() || displayName(base));
   const {commitProfileRecords}=await import('./transactions');
   await commitProfileRecords([profile]);return profileKey(profile);
-}
-
-export function restoreCatalog(s: State): State {
-  const bases = importedBases();
-  if (!bases.length) return s;
-  let result = s;
-  for (const type of ['machine', 'process', 'filament'] as const) {
-    const key = type === 'machine' ? 'machines' : type === 'process' ? 'processes' : 'filaments';
-    const list = [...s[key]];
-    let changed = false;
-    for (const base of bases.filter((p) => p.type === type)) {
-      const index = list.findIndex((p) => p.name === base.name);
-      const current = list[index];
-      if (current?.imported && baseVersion(current) === baseVersion(base)) continue;
-      const shipped = String(current?.version ?? current?.config.version ?? '').split('.').map(Number);
-      const installed = String(base.version ?? '').split('.').map(Number);
-      const difference = shipped.map((n, i) => n - (installed[i] ?? 0)).find((n) => n !== 0);
-      if (current && !current.imported && difference !== undefined && difference > 0) continue;
-      if (index < 0) list.push(base); else list[index] = base;
-      changed = true;
-    }
-    if (changed) result = { ...result, [key]: list };
-  }
-  return result;
-}
-
-export function ensureDefaultProfiles(s: State): State {
-  s = restoreCatalog(s);
-  if (!s.machines.length) return s;
-  let next = { ...s, userPresets: [...s.userPresets] };
-  const add = (base: SystemPreset, name = displayName(base), values: Config = {}) => {
-    const profile = makeProfile(next, base, name, values);
-    next.userPresets = [...next.userPresets,profile];
-    rememberLocalProfile(profile, next.api?.mock);
-    return profileKey(profile);
-  };
-  const own = (type: PresetType, name: string): string => {
-    const profile = findProfile(next,type,name);
-    if (profile) return profileKey(profile);
-    const base = profilesFor(next, type).find((p) => p.name === name);
-    if (!base) return name;
-    const existing = next.userPresets.find((p) => p.type === type && p.base?.name === base.name && !Object.keys(p.overlay ?? p.overrides).length && !p.parent);
-    return existing ? profileKey(existing) : add(base);
-  };
-  let preferred = '';
-  try { preferred = localStorage.getItem('orca.printer') ?? ''; } catch {  }
-  const known = (name: string) => next.machines.some((p) => p.name === name) || !!findProfile(next,'machine',name);
-  next.printer = own('machine', next.printer || preferred || (known(DEFAULT_PRINTER) ? DEFAULT_PRINTER : next.machines[0].name));
-  const printer = resolveProfile(next, 'machine', next.printer).base;
-  if (!printer) return next;
-  const processes = next.processes.filter((p) => selectCompatibility(next,'process',p.name).ok);
-  let filaments = next.filaments.filter((p) => selectCompatibility({...next,process: next.process || processes[0]?.name || ''},'filament',p.name).ok);
-  let firstFilament = filaments.find(p => first(p.config.filament_type) === 'PLA' && first(p.config.filament_vendor) === 'Generic') ?? filaments.find(p => first(p.config.filament_type) === 'PLA') ?? filaments[0];
-  if (!defaultsInitialized() && processes.length && firstFilament) {
-    const choices = defaultProcesses(next);
-    const startingProcess = next.process;
-    for (const choice of choices) {
-      const base = next.processes.find((p) => p.name === choice.preset);
-      if (!base) continue;
-      const name = add(base, `My ${choice.label}`, { layer_height: String(choice.layer), ...surfaceValues(choice.surface),
-        ...(choice.surface === 'smooth' ? CURVED_DEFAULTS : {}) });
-      if (!next.process || choice.id === 'default:standard' && startingProcess === base.name) next.process = name;
-    }
-    markDefaultsInitialized();
-  }
-  if (!next.process && processes[0]) next.process = processes[0].name;
-  next.process = own('process', next.process);
-  filaments = next.filaments.filter(p => selectCompatibility(next,'filament',p.name).ok);
-  firstFilament = filaments.find(p => first(p.config.filament_type) === 'PLA' && first(p.config.filament_vendor) === 'Generic') ?? filaments.find(p => first(p.config.filament_type) === 'PLA') ?? filaments[0];
-  next.filamentSlots = (next.filamentSlots.length ? next.filamentSlots : firstFilament ? [firstFilament.name] : []).map((name) => own('filament', name || firstFilament?.name || ''));
-  return next;
 }

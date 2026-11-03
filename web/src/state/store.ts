@@ -12,11 +12,11 @@ import { undo, undoable } from './history';
 import { selectChanges } from './changes';
 import { canEditProject } from '../api/client';
 import type { PaintKind, Painting } from '../plater/paint';
-import { decideConflict, prepareProfile, preserveProfileParents, profileConflicts, resolveProfile } from '../profiles/model';
-import { rememberProfile, rememberProfileUpdate } from '../persist/profiles';
+import { decideConflict, profileConflicts, resolveProfile } from '../profiles/model';
 import { noticeKind, shouldToast, type NoticeEntry, type NoticeKind } from '../notice-text';
 import { emptyPrinterLibrary, type PrinterProfileLibrary, type ProjectProfileReferences, type ProfileRecovery } from '../profiles/ownership';
-import { ensureDefaultProfiles } from '../profiles/catalog';
+import { capturePrinterMaterials,planPrinterSwitch,reconcilePrinterSelection,type ProfileTransitionSummary } from '../profiles/material-library';
+import { findProfile,profileKey } from '../profiles/identity';
 export { PRESET_META } from '../profiles/model';
 import { effectiveProfileValues } from '../profiles/context';
 import { selectCompatibility } from '../profiles/compatibility';
@@ -127,7 +127,7 @@ export interface HeadInfo {
 
 export type PresetUx =
   | { kind: 'compare'; type: PresetType; left?: string; right?: string }
-  | { kind: 'presets'; type: PresetType; name?: string; edit?: boolean;stage?:import('../profiles/project-draft').ProjectProfileChanges }
+  | { kind: 'presets'; type: PresetType; name?: string; edit?: boolean;add?: boolean;stage?:import('../profiles/project-draft').ProjectProfileChanges }
   | { kind: 'export' }
   | { kind: 'import'; back?: PresetUx };
 
@@ -189,7 +189,11 @@ export interface State {
   processes: SystemPreset[];
   filaments: SystemPreset[];
   userPresets: UserPreset[];
+  profileLibraryLoad: {state: 'loading'} | {state: 'ready'} | {state: 'failed'; error: string};
   printerLibrary: PrinterProfileLibrary;
+  profileLibraryRevision: number;
+  projectProfileContexts: Record<string,{projectPresets:State['projectPresets'];profileSnapshots:ProjectProfileReferences|null;process:string;dirty:State['dirty']}>;
+  lastProfileTransition: ProfileTransitionSummary|null;
   profileSnapshots: ProjectProfileReferences | null;
   profileRecoveries: ProfileRecovery[];
   printer: string;
@@ -282,7 +286,11 @@ let state: State = {
   processes: [],
   filaments: [],
   userPresets: [],
+  profileLibraryLoad: {state: 'loading'},
   printerLibrary: emptyPrinterLibrary(),
+  profileLibraryRevision: 0,
+  projectProfileContexts: {},
+  lastProfileTransition: null,
   profileSnapshots: null,
   profileRecoveries: [],
   printer: '',
@@ -341,21 +349,7 @@ export const getState = () => state;
 export function setState(patch: Partial<State> | ((s: State) => Partial<State>)) {
   const finishTiming = timeInteraction('store');
   let next = { ...state, ...(typeof patch === 'function' ? patch(state) : patch) };
-  if (next.userPresets !== state.userPresets) {
-    const repaired = preserveProfileParents(state, next);
-    repaired.forEach((p, i) => { if (p !== next.userPresets[i]) rememberProfileUpdate(p, next.api?.mock); });
-    next.userPresets = repaired;
-  }
-  if (next.machines !== state.machines || next.processes !== state.processes || next.filaments !== state.filaments || next.userPresets !== state.userPresets
-    || next.printer !== state.printer || next.process !== state.process || next.filamentSlots !== state.filamentSlots) next = ensureDefaultProfiles(next);
-  if (next.userPresets !== state.userPresets || next.machines !== state.machines || next.processes !== state.processes || next.filaments !== state.filaments) {
-    next.userPresets = next.userPresets.map((p) => {
-      if (p.base && p.overlay && p.baseline) return p;
-      const migrated = prepareProfile(next, p);
-      if (migrated.base) rememberProfile(migrated, p, next.api?.mock, true);
-      return migrated;
-    });
-  }
+  if(next.profileLibraryLoad.state==='ready' && next.profileSnapshots===state.profileSnapshots && next.projectPresets===state.projectPresets && next.printerLibrary===state.printerLibrary && (next.printer!==state.printer || next.process!==state.process || next.filamentSlots!==state.filamentSlots || next.slotColours!==state.slotColours || next.filamentEdits!==state.filamentEdits || next.mixes!==state.mixes))next.printerLibrary=capturePrinterMaterials(next);
   const selected = next.selected;
   if (selected && !next.objects.some((o) => o.id === selected.object && o.instances.some((i) => i.id === selected.instance))) {
     next.selected = null;
@@ -458,37 +452,18 @@ export function filamentSwitchReason(s: State, slot: number): string | null {
 }
 
 export function selectPrinter(name: string) {
-  setState((s) => {
-    const next = { ...s, printer: name };
-    const base = resolvePreset(next, 'machine', name).base;
-    const procs = compatible(next, 'process', base?.name ?? name);
-    const defProcess = String(base?.config.default_print_profile ?? '');
-    const currentProcess = resolvePreset(s, 'process', s.process).base?.name ?? s.process;
-    const process = procs.some((p) => p.name === currentProcess)
-      ? s.process
-      : (procs.find((p) => p.name === defProcess)?.name ?? procs[0]?.name ?? '');
-    const fils = compatible(next, 'filament', base?.name ?? name, process);
-    const defFilaments = base?.config.default_filament_profile;
-    const preferred =
-      (Array.isArray(defFilaments) ? defFilaments : [defFilaments]).map(String).find((m) => fils.some((f) => f.name === m)) ??
-      base?.default_materials?.find((m) => fils.some((f) => f.name === m) && /PLA Basic/.test(m)) ??
-      base?.default_materials?.find((m) => fils.some((f) => f.name === m)) ??
-      fils.find((f) => /Generic PLA/.test(f.name))?.name ??
-      fils[0]?.name ??
-      '';
-    const filamentSlots = (s.filamentSlots.length ? s.filamentSlots : ['']).map((f) =>
-      f ? filamentVariant(next, f, name, process) ?? f : preferred,
-    );
-    return {
-      printer: name,
-      projectPresets: null,
-      process,
-      filamentSlots,
-      bedType: base?.default_bed_type || String(base?.config.curr_bed_type ?? ''),
-      dirty: { machine: {}, process: {} },
-      filamentEdits: {},
-      job: markStale(s.job),
-    };
+  const initial=getState();
+  if(initial.profileLibraryLoad.state!=='ready')throw new Error('Load or recover the saved profile library before changing printers. Your current setup is kept.');
+  const target=findProfile(initial,'machine',name);
+  if(!target || target.archived || target.kind==='master')throw new Error('Choose an owned printer profile. Add its template to your library first.');
+  setState(s=>{
+    const key=profileKey(target),setup=planPrinterSwitch(s,key),base=resolvePreset(s,'machine',key).base;
+    const projectContext=s.projectProfileContexts[key];
+    const restored={...s,...setup,profileRecoveries:setup.recoveries,process:projectContext?.process ?? setup.printerLibrary.setups[key]?.processId ?? s.process,
+      projectPresets:projectContext?.projectPresets ?? s.projectPresets,profileSnapshots:projectContext?.profileSnapshots ?? null,
+      bedType:base?.default_bed_type || String(base?.config.curr_bed_type ?? s.bedType),dirty:projectContext?.dirty ?? {machine:{},process:s.dirty.process},job:markStale(s.job)};
+    const next={...restored,...reconcilePrinterSelection(s,restored).patch};
+    return {...next,printerLibrary:capturePrinterMaterials(next)};
   });
 }
 
@@ -504,11 +479,8 @@ const settingName = (key: string) => `Change setting "${OPTIONS[key]?.label || k
 export function setOption(type: PresetType, key: string, value: ConfigValue, slot = 0) {
   undoable(settingName(key), () => setState((s) => {
     const edits = { ...presetEdits(s, type, slot), [key]: value };
-    return {
-      ...(type === 'filament' ? { filamentEdits: { ...s.filamentEdits, [s.filamentSlots[slot]]: edits } }
-        : { dirty: { ...s.dirty, [type]: edits } }),
-      job: markStale(s.job),
-    };
+    const patch:Partial<State>={...(type==='filament' ? {filamentEdits:{...s.filamentEdits,[s.filamentSlots[slot]]:edits}} : {dirty:{...s.dirty,[type]:edits}}),job:markStale(s.job)};
+    return type==='machine' && key==='nozzle_diameter' ? {...patch,...reconcilePrinterSelection(s,{...s,...patch}).patch} : patch;
   }), `${type}:${slot}:${key}`);
 }
 

@@ -10,24 +10,23 @@ importing.machine.subscribe((s) => {
   if (s.value === 'canceled' && /^(Loading |Opening )/.test(getState().loading ?? '')) setState({ loading: null });
 });
 import * as THREE from 'three';
-import type { Config, ConfigValue, JobRequest, PresetCatalog, PresetType, SystemPreset } from './api/types';
+import type { Config, ConfigValue, JobRequest, PresetCatalog, PresetType } from './api/types';
 import { sliceProgress } from './api/progress';
 import { canEditProject, canLoadStep, connect, surfaceConfigBlocker, type Api } from './api/client';
-import { normalizeConfig } from './config-values';
+import { prepareProjectProfileImport } from './profiles/project-import';
 import { validateProfileSubmission } from './profiles/submission';
-import { normalizeUserPreset, saveProfile } from './profiles/model';
-import { rememberLocalProfile } from './persist/profiles';
-import { OPTIONS, isHidden, loadTab } from './options';
+import { normalizeUserPreset } from './profiles/model';
+import { loadTab } from './options';
 import { shortTime } from './preview/format';
 import { flushReady } from './flush-state';
-import { calibOverrides, firstLayer, jobFields, MIX_KEYS, outputKind, overrides, plateSignature } from './slice-input';
+import { calibOverrides, firstLayer, jobFields, outputKind, overrides, plateSignature } from './slice-input';
 import { arrange, bakeStl, bedBounds, loadMesh, loadProject, nextFreeSpot, parsePoints, placeholderGeometry, plateJson, outsideBed } from './plater/geometry';
 import type { ProjectItem } from './plater/threemf';
 import { archivePainting } from './plater/paint';
 import { projectEdits } from './plater/projectTransforms';
 import { choiceDialog, confirmDialog, numberDialog, promptDialog } from './components/Ask';
 import {
-  DEFAULT_PRINTER, DEMO_MODELS, PRESET_META, effectiveConfig, getState, isCompatible, markStale, newId, presetEdits, printerPreset, resolvePreset, selectPrinter, setState, toast, type JobView, type PlateObject, type State,
+  DEMO_MODELS, PRESET_META, effectiveConfig, getState, markStale, newId, presetEdits, printerPreset, resolvePreset, selectPrinter, setState, toast, type JobView, type PlateObject, type State,
 } from './state/store';
 import { documentGeneration, historyDepth, leaveDocument, markSaved, newDocument, undoable } from './state/history';
 import { clearPlateJobs, currentPlates } from './plater/plates';
@@ -57,43 +56,68 @@ export async function init() {
   await loadCatalog();
 }
 
+let catalogLoadGeneration = 0;
+let catalogLibraryTail: Promise<void> = Promise.resolve();
+let pendingBrowserAdoption: {plan: import('./profiles/browser-inventory').BrowserProfileAdoptionPlan; operationId: string} | null = null;
 export async function loadCatalog() {
-  const api = getState().api!;
-  setState({ loading: 'Loading presets' });
-  let saved: string | null = null, first = 'BBL';
-  try { saved = localStorage.getItem('orca.printer'); first = localStorage.getItem('orca.vendor') ?? first; } catch {  }
-  const vendors = [first, ...VENDORS.filter((v) => v !== first)];
-  try {
-    const settings = loadTab('process');
-    const [cat, userPresets] = await Promise.all([
-      api.presets(first, DEMO_MODELS, (c) => mergeCatalog(first, c)),
-      settings.then(() => api.userPresets()),
-    ]);
-    await settings;
-    setState({ ...cat, userPresets, loading: null, filamentSlots: [] });
-    const known = (n: string | null) => !!n && !!resolvePreset(getState(), 'machine', n).base;
-    const printer = [saved, DEFAULT_PRINTER].find(known) ?? cat.machines[0]?.name;
-    if (printer) selectPrinter(printer);
-    app.send({ type: 'READY', hasObjects: getState().objects.length > 0, importing: importing.machine.get().value === 'running' });
-    for (const v of vendors.slice(1)) {
-      mergeCatalog(v, await api.presets(v, DEMO_MODELS, (c) => mergeCatalog(v, c)));
-      if (!printer && known(saved)) selectPrinter(saved!);
+  const generation = ++catalogLoadGeneration, initial = getState(), api = initial.api, documentAtStart=documentGeneration();
+  if (!api) return;
+  setState({ loading: 'Loading presets', profileLibraryLoad: {state: 'loading'} });
+  let first = 'BBL';
+  try { first = localStorage.getItem('orca.vendor') ?? first; } catch {  }
+  const current = () => generation === catalogLoadGeneration;
+  const settings = loadTab('process');
+  const library = catalogLibraryTail.then(async () => {
+    try {
+      await settings;
+      if(!current())return;
+      const [{readProfileLibrary},{prepareProfileLibraryHydration},browser,{acceptHydratedPrinterSetups}]=await Promise.all([
+        import('./persist/profile-library'),import('./profiles/library-hydration'),import('./profiles/browser-inventory'),import('./profiles/printer-setups')]);
+      if(pendingBrowserAdoption){const prior=pendingBrowserAdoption;try{await browser.adoptBrowserProfileInventory(prior.plan,prior.operationId);}catch(error){if((error as {status?:number}).status===409 && pendingBrowserAdoption===prior)pendingBrowserAdoption=null;throw error;}if(pendingBrowserAdoption===prior)pendingBrowserAdoption=null;}
+      let document=await readProfileLibrary();
+      const inventory=await browser.captureBrowserProfileInventory(initial);
+      const unchanged=()=>{const s=getState();return current() && documentGeneration()===documentAtStart && s.projectPresets===initial.projectPresets && s.dirty===initial.dirty && (s.userPresets===initial.userPresets || s.userPresets.length===initial.userPresets.length && s.userPresets.every((p,i)=>p===initial.userPresets[i])) && s.printer===initial.printer && s.filamentSlots===initial.filamentSlots && s.slotColours===initial.slotColours && s.filamentEdits===initial.filamentEdits && s.printerLibrary===initial.printerLibrary;};
+      if(!current())return;
+      if(!unchanged())throw new Error('Your profiles or setup changed while loading. Your work is kept; retry loading the library.');
+      const restoreStartupPlaceholder=!initial.printer && !initial.process && !initial.filamentSlots.length && !initial.project && !initial.objects.length && !initial.profileSnapshots && !initial.projectPresets && !Object.keys(initial.dirty.machine).length && !Object.keys(initial.dirty.process).length && !Object.keys(initial.filamentEdits).length && !Object.keys(initial.printerLibrary.setups).length;
+      const plan=browser.planBrowserProfileAdoption(document,inventory);
+      if(!plan.conflicts.length){
+        const pending={plan,operationId:`browser-adoption:${crypto.randomUUID()}`};pendingBrowserAdoption=pending;
+        document=await browser.adoptBrowserProfileInventory(pending.plan,pending.operationId);
+        if(pendingBrowserAdoption===pending)pendingBrowserAdoption=null;
+        if(!unchanged())throw new Error('Browser data was saved, but your working setup changed during adoption. Your newer edits are kept; retry loading.');
+      }
+      const latest=getState();
+      if(plan.conflicts.length && !restoreStartupPlaceholder)throw new Error(`Browser data needs recovery before saving: ${plan.conflicts.join('; ')}. Export browser data to keep both versions.`);
+      const preferred=restoreStartupPlaceholder ? inventory.storage['orca.printer'] : null;
+      const result=prepareProfileLibraryHydration(preferred ? {...latest,printer:preferred} : latest,document,{restoreStartupPlaceholder});
+      const error=plan.conflicts.length ? `Saved profiles loaded; browser data needs recovery before saving: ${plan.conflicts.join('; ')}` : result.requiresAdoption ? 'Browser printer setups differ from the saved library. Export and review browser data before adopting it. Your working setup is kept.' : null;
+      setState({...result.patch,profileLibraryLoad:error ? {state:'failed',error} : {state:'ready'}});
+      if(!error)acceptHydratedPrinterSetups();
+    } catch (error) {
+      if (current()) setState({profileLibraryLoad: {state: 'failed', error: error instanceof Error ? error.message : String(error)}});
     }
-    if (!getState().printer && getState().machines[0]) selectPrinter(getState().machines[0].name);
-  } catch (e) {
-    setState({ loading: null });
-    if (!getState().printer) app.send({ type: 'FAIL', error: String(e) });
-    toast(`Presets failed to load: ${e}`, { label: 'Retry', run: () => void loadCatalog() });
+  });
+  catalogLibraryTail=library;
+  const failures: string[] = [];
+  for (const vendor of [first, ...VENDORS.filter(v => v !== first)]) {
+    try {
+      const cat = await api.presets(vendor, DEMO_MODELS, c => { if (current()) mergeCatalog(vendor,c); });
+      if (!current()) return;
+      mergeCatalog(vendor,cat);
+    } catch (error) { failures.push(`${vendor}: ${error instanceof Error ? error.message : String(error)}`); }
   }
+  await library;
+  if (!current()) return;
+  setState({loading: null});
+  app.send({type: 'READY', hasObjects: getState().objects.length > 0, importing: importing.machine.get().value === 'running'});
+  if (failures.length) toast(`Catalog could not fully load: ${failures.join('; ')}`, {label: 'Retry', run: () => void loadCatalog()});
 }
 
 export function choosePrinter(name: string) {
   selectPrinter(name);
-  try {
-    localStorage.setItem('orca.printer', name);
-    const vendor = resolvePreset(getState(), 'machine', name).base?.vendor;
-    if (vendor) localStorage.setItem('orca.vendor', vendor);
-  } catch {  }
+  const summary=getState().lastProfileTransition;
+  if(summary?.changes.length || summary?.needsSelection)toast(`${summary.changes.map(c=>`${c.kind==='process'?'Print settings':`Slot ${(c.slot??0)+1}`}: ${c.to ?? c.reason}`).join(' · ')}${summary.needsSelection?' · Choose compatible profiles before slicing':''}`,{label:'Undo',run:()=>void import('./state/history').then(m=>m.undo())});
 }
 
 function switchingChanges(s: State, type: PresetType, slot = 0): Config {
@@ -128,15 +152,7 @@ function applyPresetSwitch(type: PresetType, slot: number, name: string, edits: 
   };
   if (type === 'machine') {
     choosePrinter(name);
-    const next = getState();
-    const machine = carry('machine', name), process = carry('process', next.process);
-    const filaments = next.filamentSlots.map((f, i) => carry('filament', f, i));
-    if (edits === 'transfer') setState({
-      dirty: { machine, process },
-      projectPresets: { machine: {}, process: {}, filaments },
-      filamentEdits: {},
-    });
-    return { kept, dropped };
+    return {kept,dropped};
   }
   const carried = carry(type, name, slot);
   setState((st) => {
@@ -269,87 +285,11 @@ async function loadStep(f: File, signal?: AbortSignal): Promise<{ geometry: THRE
   return { geometry, source: new File([await bakeStl(mesh)], `${stem}.stl`) };
 }
 
-function projectPresets(s: State, type: 'machine' | 'process' | 'filament'): SystemPreset[] {
-  const system = type === 'machine' ? s.machines : type === 'process' ? s.processes : s.filaments;
-  return [...system, ...s.userPresets.filter((p) => p.type === type).flatMap((p) => {
-    const { base, config } = resolvePreset(s, type, p.name);
-    return base ? [{ ...base, name: p.name, config }] : [];
-  })];
-}
-
-function closestPreset(presets: SystemPreset[], config: Config, id: string): SystemPreset | undefined {
-  const exact = presets.find((p) => p.name === id);
-  if (exact) return exact;
-  const text = (v: ConfigValue) => JSON.stringify(Array.isArray(v) ? v.map(String) : String(v));
-  return [...presets].sort((a, b) => {
-    const score = (p: SystemPreset) => Object.entries(p.config).reduce((n, [k, v]) =>
-      n + (config[k] !== undefined && text(v) === text(config[k]) ? 1 : 0), 0);
-    return score(b) - score(a);
-  })[0];
-}
-
-export function adoptProject(config: Config, slots: number, plateKeys: Set<string>) {
-  const s = getState();
-  const saved = normalizeConfig(config);
-  const id = String(saved.printer_settings_id ?? '');
-  if (!id && saved.printer_model === undefined) return setState({ projectPresets: null, projectNotice: null, mixes: {} });
-  const machines = projectPresets(s, 'machine');
-  const sameModel = machines.filter((p) => String(p.config.printer_model) === String(saved.printer_model));
-  const sameNozzle = sameModel.filter((p) => String(p.config.nozzle_diameter) === String(saved.nozzle_diameter));
-  const selected = machines.filter((p) => p.name === (resolvePreset(s, 'machine', s.printer).base?.name ?? s.printer));
-  const printer = closestPreset(sameNozzle.length ? sameNozzle : sameModel.length ? sameModel : selected.length ? selected : machines, saved, id);
-  if (!printer) throw new Error('No printer is available for this project');
-  selectPrinter(printer.name);
-  const current = getState();
-  const printerBase = resolvePreset(current, 'machine', printer.name).base?.name ?? printer.name;
-  const forPrinter = (presets: SystemPreset[]) => presets.filter((p) => isCompatible(p, printerBase));
-  const process = closestPreset(forPrinter(projectPresets(current, 'process')), saved, String(saved.print_settings_id ?? ''));
-  const ids = saved.filament_settings_id;
-  const filamentConfigs = Array.from({ length: slots }, (_, i) => Object.fromEntries(Object.entries(saved).map(([k, v]) =>
-    [k, Array.isArray(v) && current.filaments.some((p) => k in p.config) ? [v[Math.min(i, v.length - 1)] ?? ''] : v])) as Config);
-  const filaments = filamentConfigs.map((c, i) => closestPreset(forPrinter(projectPresets(current, 'filament')), c, String(Array.isArray(ids) ? ids[i] ?? '' : ids ?? '')));
-  const keys = (presets: SystemPreset[]) => new Set(presets.flatMap((p) => Object.keys(p.config)));
-  const machineKeys = keys(current.machines), filamentKeys = keys(current.filaments);
-  const take = (c: Config, accept: (k: string) => boolean) => Object.fromEntries(Object.entries(c).filter(([k]) => OPTIONS[k] && accept(k)));
-  const fallback = !sameNozzle.length;
-  const text = (v: ConfigValue) => JSON.stringify(Array.isArray(v) ? v.map(String) : String(v));
-  const edits = (c: Config, preset?: SystemPreset) => Object.fromEntries(Object.entries(c).filter(([k, v]) =>
-    !PRESET_META.test(k) && !isHidden(k) && !plateKeys.has(k) && !MIX_KEYS.includes(k) && (preset?.config[k] === undefined || text(v) !== text(preset.config[k]))));
-  const machine = fallback ? {} : take(saved, (k) => machineKeys.has(k));
-  const processValues = take(saved, (k) => !machineKeys.has(k) && !filamentKeys.has(k));
-  const dirty = { machine: edits(machine, printer), process: edits(processValues, process) };
-  const profileName = (type: 'machine' | 'process' | 'filament', preset: SystemPreset | undefined, savedId: string, values: Config) => {
-    const st = getState();
-    if (!preset || !savedId || /\(modified\)\s*$/i.test(savedId) || resolvePreset(st, type, savedId).base) return preset?.name ?? '';
-    const base = resolvePreset(st, type, preset.name).base;
-    if (!base) return preset.name;
-    const profile = saveProfile(st, type, savedId, base.name, { ...base.config, ...values });
-    rememberLocalProfile(profile, st.api?.mock);
-    setState({ userPresets: [...st.userPresets, profile] });
-    return profile.name;
-  };
-  const printerName = fallback ? printer.name : profileName('machine', printer, id, machine);
-  const processName = profileName('process', process, String(saved.print_settings_id ?? ''), processValues);
-  const filamentNames = filaments.map((p, i) => profileName('filament', p,
-    String(Array.isArray(ids) ? ids[i] ?? '' : ids ?? ''), take(filamentConfigs[i], (k) => filamentKeys.has(k) && !machineKeys.has(k))));
-  const rest = (c: Config, e: Config) => Object.fromEntries(Object.entries(c).filter(([k]) => !(k in e)));
-  setState({
-    printer: printerName,
-    process: processName || current.process,
-    filamentSlots: filamentNames.map((name, i) => name || current.filamentSlots[i] || current.filamentSlots[0]),
-    projectPresets: {
-      machine: rest(machine, dirty.machine),
-      process: rest(processValues, dirty.process),
-      filaments: filamentConfigs.map((c) => take(c, (k) => filamentKeys.has(k) && !machineKeys.has(k))),
-    },
-    projectNotice: fallback ? `Project printer "${id || saved.printer_model || 'unknown'}" is unavailable. Using ${printer.name}.` : null,
-    bedType: String(saved.curr_bed_type ?? current.bedType),
-    dirty,
-    filamentEdits: {},
-    mixes: {},
-  });
-  if ([saved.filament_is_mixed].flat().some((v) => ['1', 'true'].includes(String(v))))
-    void import('./plater/mixed').then((m) => setState({ mixes: m.readMixes(saved) }));
+export function adoptProject(config:Config,slots:number,plateKeys:Set<string>) {
+  setState(prepareProjectProfileImport(getState(),config,slots,plateKeys));
+  const captured=getState().profileSnapshots,generation=documentGeneration();
+  if([config.filament_is_mixed].flat().some(v=>['1','true'].includes(String(v))))
+    void import('./plater/mixed').then(m=>{if(generation===documentGeneration() && getState().profileSnapshots===captured)setState({mixes:m.readMixes(config)});});
 }
 
 function centreGeometryOnly() {
@@ -458,13 +398,15 @@ export function clearPlate() {
   setState((st) => ({ objects: [], selected: null, gizmo: 'none', project: null, projectPlates: [], plateIndex: 1, wipeTowerPos: {}, projectName: null, projectMaterials: null, projectPresets: null, projectNotice: null, events: [], flush: { matrix: null, multiplier: null }, processScope: 'global', job: markStale(st.job) }));
 }
 
-export async function newProject() {
-  const offerUndo = await replacePlate('New Project', 'Start a new project? The objects on the plate are removed.');
-  if (!offerUndo) return;
-  leaveDocument();
-  clearPlate();
-  newDocument(true);
-  offerUndo();
+let creatingProject:Promise<boolean>|null=null;
+export function newProject():Promise<boolean> {
+  if(creatingProject)return creatingProject;
+  creatingProject=(async()=>{
+    const offerUndo=await replacePlate('New Project','Start a new project? The objects on the plate are removed.');
+    if(!offerUndo)return false;
+    leaveDocument();clearPlate();newDocument(true);offerUndo();return true;
+  })().finally(()=>{creatingProject=null;});
+  return creatingProject;
 }
 
 async function replacePlate(title: string, question: string): Promise<(() => void) | null> {
@@ -582,14 +524,15 @@ export { confirmDialog, numberDialog, promptDialog };
 export async function jobRequest(s = getState(), saving = false): Promise<JobRequest> {
   await flushReady();
   if (!saving) {
+    if(s.profileLibraryLoad.state!=='ready')throw new Error(s.profileLibraryLoad.state==='failed'?s.profileLibraryLoad.error:'Wait for saved profile adoption before slicing.');
+    const {flushPrinterSetups}=await import('./profiles/printer-setups');await flushPrinterSetups();
     validateProfileSubmission(s);
     const [{methodAvailability},{methodSelectionProblem}]=await Promise.all([import('./profiles/method-context'),import('./profiles/capabilities')]);
     const availability=methodAvailability(s), global=effectiveConfig(s,'process');
     const effective=[global,...s.objects.flatMap(o=>[ {...global,...o.settings},...(o.volumes ?? []).map(v=>({...global,...o.settings,...v.settings})),...(o.ranges ?? []).flatMap(r=>(o.volumes?.filter(v=>v.type === 'part') ?? [undefined]).map(v=>({...global,...o.settings,...v?.settings,...r.settings})))])];
     for(const config of effective) {const problem=methodSelectionProblem(availability,config);if(problem) throw new Error(`Slicing method unavailable: ${problem.reason}`);}
     const {readProfileLibrary}=await import('./persist/profile-library'), remote=await readProfileLibrary(s.api?.mock);
-    if(remote?.revision === 0) {const {saveProfileRecords}=await import('./profiles/transactions');await saveProfileRecords(s,s.userPresets,`submit-profiles:${crypto.randomUUID()}`,s.printerLibrary);}
-    else if(remote) for(const [type,key] of [['machine',s.printer],['process',s.process],...s.filamentSlots.map(key=>['filament',key])] as [PresetType,string][]) {
+    for(const [type,key] of [['machine',s.printer],['process',s.process],...s.filamentSlots.map(key=>['filament',key])] as [PresetType,string][]) {
       const local=findProfile(s,type,key), persisted=findProfile({userPresets:remote.profiles.map(normalizeUserPreset)},type,key);
       if(!local || !persisted || (local.revision ?? 0)!==(persisted.revision ?? 0)) throw new Error('A selected profile changed in storage. Reload or save its draft before slicing.');
     }

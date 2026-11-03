@@ -1,3 +1,4 @@
+import { captureProjectProfiles } from '../profiles/project';
 import type * as THREE from 'three';
 import { plateSignature } from '../slice-input';
 import { getState, setState, type PlateObject, type State } from './store';
@@ -5,7 +6,7 @@ import { getState, setState, type PlateObject, type State } from './store';
 const DOC_KEYS = [
   'objects', 'projectPlates', 'plateIndex', 'project', 'projectName', 'projectMaterials', 'projectPresets', 'projectNotice',
   'events', 'filamentSlots', 'slotColours', 'flush', 'printer', 'process', 'dirty', 'filamentEdits', 'bedType', 'selected',
-  'wipeTowerPos', 'mixes',
+  'wipeTowerPos', 'mixes', 'profileSnapshots', 'projectProfileContexts',
 ] as const satisfies readonly (keyof State)[];
 export type Doc = Pick<State, (typeof DOC_KEYS)[number]>;
 
@@ -22,7 +23,7 @@ let restoring = false;
 let saved: Doc | null = null;
 let generation = 0;
 
-export const snapshot = (s: State = getState()): Doc => Object.fromEntries(DOC_KEYS.map((k) => [k, s[k]])) as Doc;
+export const snapshot = (s: State = getState()): Doc => ({...Object.fromEntries(DOC_KEYS.map((k) => [k, s[k]])),profileSnapshots:captureProjectProfiles(s)}) as Doc;
 const sameDoc = (a: Doc, b: Doc) => DOC_KEYS.every((k) => k === 'selected' || a[k] === b[k]);
 const ids = new WeakMap<object, number>();
 let lastId = 0;

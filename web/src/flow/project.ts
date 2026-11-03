@@ -173,15 +173,21 @@ export const project = createMachine<ProjectStateName, ProjectEvent, ProjectCont
 });
 
 let list: ProjectMeta[] | null = null;
+export type ProjectListSnapshot = {state:'loading'|'ready'|'failed';error:string|null};
+let listStatus:ProjectListSnapshot={state:'loading',error:null};
+export const projectListSnapshot=()=>listStatus;
+export const subscribeProjectList=(listener:()=>void)=>{listeners.add(listener);return()=>{listeners.delete(listener);};};
+export async function refreshProjects(){try{if(!store)store=await projectStore(true);refreshList();}catch(error){listStatus={state:'failed',error:errorText(error)};listeners.forEach(f=>f());}}
 const listeners = new Set<() => void>();
 let listing = 0;
 function refreshList() {
   const mine = ++listing;
-  if (!store) { list = []; listeners.forEach((f) => f()); return; }
+  listStatus={state:'loading',error:null};listeners.forEach(f=>f());
+  if (!store) { listStatus={state:'failed',error:'Project storage is unavailable. Retry connecting to the service.'};listeners.forEach(f=>f());return; }
   void store.list().then((l) => {
     if (mine !== listing) return;
-    list = l; listeners.forEach((f) => f());
-  }).catch((e: unknown) => toast(errorText(e)));
+    list = l;listStatus={state:'ready',error:null}; listeners.forEach((f) => f());
+  }).catch((e: unknown) => {if(mine!==listing)return;listStatus={state:'failed',error:errorText(e)};listeners.forEach(f=>f());});
 }
 function adopt(f: () => void) {
   adopting = true;

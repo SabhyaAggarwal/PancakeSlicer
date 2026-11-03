@@ -35,6 +35,15 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
   const [bedDialog, setBedDialog] = useState(false);
   const [pageIdx, setPageIdx] = useState(0);
   const [auxiliaryOn,setAuxiliaryOn] = useState(false);
+  const categoryStrip = useRef<HTMLDivElement>(null);
+  const revealCategory = () => {
+    const strip=categoryStrip.current, tab=strip?.querySelector<HTMLElement>('[data-state=active]');
+    if(!strip || !tab)return;
+    const left=tab.offsetLeft-strip.offsetLeft, right=left+tab.offsetWidth;
+    if(left<strip.scrollLeft)strip.scrollLeft=left;
+    else if(right>strip.scrollLeft+strip.clientWidth)strip.scrollLeft=right-strip.clientWidth;
+  };
+  useEffect(revealCategory,[pageIdx,auxiliaryOn]);
   const machineConfig = useStore((s) => effectiveConfig(s, 'machine'));
   const processConfig = useStore((s) => effectiveConfig(s, 'process'));
   const features = useStore((s) => s.features);
@@ -106,15 +115,15 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
     <div className={`settings-tab ${compact ? 'compact' : ''}`}>
       {bedDialog && <Suspense fallback={<div role="status">Loading bed shape…</div>}><BedShapeDialog config={config} onSet={editor?.set} close={() => setBedDialog(false)} /></Suspense>}
       {!hidePreset && <PresetBar type={type} slot={slot} />}
-      <Tabs.Root value={auxiliaryOn ? 'auxiliary' : String(Math.min(pageIdx, pages.length - 1))} onValueChange={v => {setAuxiliaryOn(v === 'auxiliary'); if(v !== 'auxiliary') setPageIdx(Number(v));}}><Tabs.List className="page-bar" aria-label={`${TYPE_NAME[type]} settings`}>
+      <Tabs.Root className="settings-pages" value={auxiliaryOn ? 'auxiliary' : String(Math.min(pageIdx, pages.length - 1))} onValueChange={v => {setAuxiliaryOn(v === 'auxiliary'); if(v !== 'auxiliary') setPageIdx(Number(v));}}><Tabs.List ref={categoryStrip} onFocusCapture={e=>{const strip=e.currentTarget,tab=e.target as HTMLElement;if(tab.getAttribute('role') === 'tab'){const left=tab.offsetLeft-strip.offsetLeft;if(left<strip.scrollLeft)strip.scrollLeft=left;else if(left+tab.offsetWidth>strip.scrollLeft+strip.clientWidth)strip.scrollLeft=left+tab.offsetWidth-strip.clientWidth;}}} className="page-bar" aria-label={`${TYPE_NAME[type]} settings`}>
         {pages.map((p, i) => (
           <Tabs.Trigger key={p.title} value={String(i)} className={`page-tab ${p === page ? 'active' : ''} ${pageModified(p) ? 'modified' : ''}`} onClick={() => setPageIdx(i)}>
             {p.title}
           </Tabs.Trigger>
         ))}
         {auxiliary && <Tabs.Trigger value="auxiliary" className={`page-tab ${auxiliaryOn ? 'active' : ''} ${auxiliary.modified ? 'modified' : ''}`}>{auxiliary.label}</Tabs.Trigger>}
-      </Tabs.List></Tabs.Root>
-      <div className="page-body" ref={body}>
+      </Tabs.List>
+      <Tabs.Content forceMount value={auxiliaryOn ? 'auxiliary' : String(Math.min(pageIdx,pages.length-1))} className="page-body" ref={body}>
         {auxiliaryOn && auxiliary ? auxiliary.content : <>
         {type === 'machine' && !editor && <NozzleField />}
         {type === 'process' && pageIdx === 0 && <SurfaceSettings config={config} system={system} availability={availability} editor={editor} dirty={dirty} readOnly={readOnly}/>}
@@ -163,7 +172,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
           </section>
         ))}
         </>}
-      </div>
+      </Tabs.Content></Tabs.Root>
     </div>
   );
 }

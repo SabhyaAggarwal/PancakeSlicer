@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState } from 'react';
 import { OPTIONS } from '../options';
-import { compatible, filamentSwitchReason, getState, markStale, printerPreset, selectionOf, setOption, setState, toast, useStore, type State } from '../state/store';
+import { filamentSwitchReason, getState, markStale, printerPreset, selectionOf, setOption, setState, toast, useStore, type State } from '../state/store';
 import { undo, undoable } from '../state/history';
 import { flushModified } from '../flush-state';
 import { IconButton } from '../components/Icon';
@@ -39,8 +39,7 @@ export function addFilament() {
   const s = getState();
   if (Object.keys(s.mixes).length) return void import('../plater/mixed').then((m) => m.addPhysical(NEW_COLOUR()));
   undoable('Add filament', () => setState((st) => {
-    const fils = compatible(st, 'filament');
-    const last = st.filamentSlots[st.filamentSlots.length - 1] ?? fils[0]?.name ?? '';
+    const last = st.filamentSlots[st.filamentSlots.length - 1] ?? '';
     const slotColours = [...st.slotColours];
     slotColours[st.filamentSlots.length] = NEW_COLOUR();
     return { filamentSlots: [...st.filamentSlots, last], slotColours };

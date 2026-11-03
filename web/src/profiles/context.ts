@@ -1,6 +1,8 @@
+import type { ProjectProfileReferences } from './ownership';
 import type { Config, PresetType } from '../api/types';
 import { resolveProfile, type ProfileCatalog, type ResolvedProfile } from './model';
 export interface ProfileContextState extends ProfileCatalog {
+  profileSnapshots?:ProjectProfileReferences|null;
   printer: string; process: string; filamentSlots?: string[];
   dirty?: { machine: Config; process: Config }; filamentEdits?: Record<string, Config>;
   projectPresets?: { machine: Config; process: Config; filaments: Config[] } | null;
@@ -17,7 +19,8 @@ export function effectiveProfileValues(s: ProfileContextState, type: PresetType,
   if (!snapshot) snapshots.set(s, (snapshot = new Map()));
   const previous = snapshot.get(selection);
   if (previous) return previous;
-  const {config} = resolveProfile(s, type, key), project = type === 'filament' ? s.projectPresets?.filaments[slot] : s.projectPresets?.[type];
+  const resolved=resolveProfile(s,type,key), captured=type==='machine'?s.profileSnapshots?.printer:type==='process'?s.profileSnapshots?.process:s.profileSnapshots?.filaments[slot];
+  const config=captured && (captured.id===key || captured.id===resolved.key) ? captured.config : resolved.config, project = type === 'filament' ? s.projectPresets?.filaments[slot] : s.projectPresets?.[type];
   const plate = type === 'process' ? s.projectPlates?.find(p => p.index === s.plateIndex)?.settings : undefined;
   const edits = (type === 'filament' ? s.filamentEdits?.[key] : s.dirty?.[type]) ?? empty;
   let projects = effective.get(config); if (!projects) effective.set(config, (projects = new WeakMap()));

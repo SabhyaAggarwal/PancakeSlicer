@@ -1,15 +1,13 @@
 import { submissionHeaders } from '../flow/submission';
 import { bootstrapAccessToken, mutation, responseError } from './access';
 import { expandCatalog } from './compact-catalog';
-import { normalizeUserPreset } from '../profiles/model';
 import { catalogWorker, onWorkerFailure, workerId } from './worker';
 import type { CatalogIn, CatalogOut } from './catalog.worker';
-import type { Config, JobRequest, JobStatus, PresetCatalog, ProgressEvent, UserPreset } from './types';
+import type { Config, JobRequest, JobStatus, PresetCatalog, ProgressEvent } from './types';
 
 export interface Api {
   mock: boolean;
   presets(vendor: string, models: string[], update?: (c: PresetCatalog) => void): Promise<PresetCatalog>;
-  userPresets(): Promise<UserPreset[]>;
   submit(req: JobRequest, signal?: AbortSignal, onUpload?: (fraction: number) => void): Promise<string>;
   status(id: string): Promise<JobStatus>;
   events(id: string, on: { progress(e: ProgressEvent): void; done(s: JobStatus): void; error(msg: string): void; log?(stream: string, line: string): void }): () => void;
@@ -59,12 +57,6 @@ const realApi: Api = {
       worker.addEventListener('message', on);
       worker.postMessage({ id, vendor, models } satisfies CatalogIn);
     });
-  },
-  async userPresets() {
-    const {readProfileLibrary}=await import('../persist/profile-library');
-    const library=await readProfileLibrary();
-    const {rememberBase}=await import('../persist/profiles');library.catalog?.forEach(rememberBase);
-    return library.profiles.map(normalizeUserPreset);
   },
 
   async submit(req, signal, onUpload) {

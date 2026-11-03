@@ -1,3 +1,4 @@
+import { ProfileLibraryNotice } from '../components/ProfileLibraryNotice';
 import { useEffect, useId, useRef, useSyncExternalStore } from 'react';
 import { createSelection, reduceSelection, selectedVisible, type SelectionEvent } from './selection';
 import { serializeSelected } from './bulk';
@@ -150,8 +151,8 @@ function Compare({ type, left, right, names, setRight, close }: { type: PresetTy
   );
 }
 
-export default function PresetsWindow({ type: initialType, name, compare, edit = false,stage }: { type: PresetType; name?: string; compare?: string; edit?: boolean;stage?:ProjectProfileChanges }) {
-  const [type, setType] = useState(initialType), [search, setSearch] = useState(''), [adding, setAdding] = useState(false), [masters,setMasters] = useState(()=>!!name && findProfile(getState(),initialType,name)?.kind === 'master');
+export default function PresetsWindow({ type: initialType, name, compare, edit = false,add = false,stage }: { type: PresetType; name?: string; compare?: string; edit?: boolean;add?:boolean;stage?:ProjectProfileChanges }) {
+  const [type, setType] = useState(initialType), [search, setSearch] = useState(''), [adding, setAdding] = useState(add), [masters,setMasters] = useState(()=>!!name && findProfile(getState(),initialType,name)?.kind === 'master');
   const [addSource,setAddSource]=useState('template');
   const [vendorFilter,setVendorFilter] = useState<string[]>([]), [nozzleFilter,setNozzleFilter] = useState<string[]>([]), [materialFilter,setMaterialFilter] = useState<string[]>([]), [modelFilter,setModelFilter]=useState<string[]>([]), [printerFilter,setPrinterFilter]=useState<string[]>([]);
   const [filtersOpen,setFiltersOpen]=useState(false);
@@ -309,6 +310,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const deleteReason = !selected.length ? 'Select profiles to remove' : undefined;
   return <Modal className="np-dialog pf-window" label="Profiles" onClose={close} backdropClose onEscapeKeyDown={event=>{if(busy || selected.length){event.preventDefault();if(!busy)dispatch({type:'ESCAPE'});}}}>
     <header className="pf-workspace-title"><Dialog.Title asChild><h1>Profiles</h1></Dialog.Title><button type="button" className="btn pf-filter-toggle" aria-expanded={filtersOpen} onClick={()=>setFiltersOpen(!filtersOpen)}>Filters{filtersActive ? ` · ${filtersActive}` : ''}</button><SettingsDetail/><button type="button" className="btn-ghost" aria-label="Close profiles" onClick={close}>×</button></header>
+    <ProfileLibraryNotice/>
     <div className="np-dialog-body">
       <div className={`pf-split${filtersOpen ? ' filters-open' : ''}`} ref={split} style={{'--profile-list-width': `${listWidth}px`} as React.CSSProperties} inert={busy}>
       <aside className="pf-facets" aria-label="Profile filters">

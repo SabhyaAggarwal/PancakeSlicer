@@ -29,7 +29,7 @@ async function guard<T>(failed: string, f: () => Promise<T>, fallback: T): Promi
   }
 }
 
-export const newProject = () => guard('New project failed', async () => { await project.newProject(); setState({ tab: 'prepare' }); }, undefined);
+export const newProject = () => guard('New project failed', async () => {const created=await project.newProject();if(created)setState({tab:'prepare'});return created;},false);
 export const openProject = (id: string) => guard('Open failed', async () => { await project.openProject(id); setState({ tab: 'prepare' }); }, undefined);
 export const renameProject = (id: string, name: string) => guard('Rename failed', () => project.renameProject(id, name), undefined);
 export const duplicateProject = (id: string) => guard('Duplicate failed', () => project.duplicateProject(id), null);

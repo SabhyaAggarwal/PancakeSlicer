@@ -4,7 +4,8 @@ import { getState, toast } from '../state/store';
 import { reviewChanges } from '../profiles/PresetBar';
 
 export function requestPreset(type: PresetType, slot: number, name: string) {
-  const { kept, dropped } = switchPreset(type, slot, name, 'transfer');
+  let result;try{result=switchPreset(type,slot,name,'transfer');}catch(error){toast(error instanceof Error?error.message:String(error));return;}
+  const {kept,dropped}=result;
   if (!kept && !dropped) return;
   let reviewType = type, reviewSlot = slot;
   if (type === 'machine') {

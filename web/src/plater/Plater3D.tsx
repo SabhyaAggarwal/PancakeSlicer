@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { CameraViews } from './CameraViews';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { effectiveConfig, getState, isSelected, markStale, selectionOf, toggleSelection, printerPreset, setPaint, setState, subscribeStore, updateInstance, updateObject, updateVolume, useStore, type CutConnector, type Instance, type PlateObject, type SeamMode, type State, type Volume, type VolumeType } from '../state/store';
+import { HOVER_COLOR, SELECTION_COLOR, SelectionBounds, selectedSurface } from './selectionVisual';
 import { PaintView } from './paintView';
 import { viewOptions, subscribeViewOptions } from './viewOptions';
 import { sectionView, subscribeSection } from './section';
@@ -86,7 +87,7 @@ export default function Plater3D() {
       if (frame || !el.clientWidth || getState().tab !== 'prepare') return;
       frame = requestAnimationFrame(() => {
         frame = 0;
-        if(!el.clientWidth || getState().tab !== 'prepare')return;
+        if (!el.clientWidth || getState().tab !== 'prepare') return;
         const t0 = performance.now();
         if (uploads.length && !moving) uploadStep();
         const motion = moving && [...meshes.values(), ...volumeMeshes.values()].some((m) => m.geometry.userData.motionLod) && !isPaint(getState().gizmo);
@@ -149,6 +150,7 @@ export default function Plater3D() {
         uploads.shift();
         uploaded.add(u.geo);
         for (const m of meshes.values()) if (m.geometry === u.geo) m.visible = true;
+        tint(getState());
       }
       render();
     };
@@ -207,6 +209,7 @@ export default function Plater3D() {
     const outlineLine = new THREE.LineBasicMaterial({ color: 0x009688 });
     const wireLine = new THREE.LineBasicMaterial({ color: 0x1a1a1a, transparent: true, opacity: 0.45 });
     const extrasCache = new Map<string, THREE.BufferGeometry>();
+    const outlineCache = new Map<THREE.BufferGeometry, THREE.BufferGeometry>();
     const labelLayer = document.createElement('div');
     labelLayer.className = 'canvas-labels';
     const syncView = (s: State) => {
@@ -232,11 +235,20 @@ export default function Plater3D() {
               () => overhangGeometry(o.geometry, overhangFacets(o.geometry, normal, deg)!), (g) => new THREE.Mesh(g, overhangTint));
           }
           if (opt.wireframe) put(`wf:${o.geometry.uuid}`, () => new THREE.WireframeGeometry(o.geometry), (g) => new THREE.LineSegments(g, wireLine));
-          if (opt.outline && isSelected(s.selected, o.id, inst.id))
-            put(`ol:${o.geometry.uuid}`, () => new THREE.EdgesGeometry(o.geometry, 30), (g) => new THREE.LineSegments(g, outlineLine));
+          if (opt.outline && selectedSurface(s.selected, o.id, inst.id)) {
+            const display = (o.geometry.userData.displayLod as THREE.BufferGeometry | undefined) ?? o.geometry;
+            if ((display.index?.count ?? display.attributes.position.count) <= 300_000)
+              put(`ol:${display.uuid}`, () => {
+                let edges = outlineCache.get(display);
+                if (!edges) outlineCache.set(display, (edges = new THREE.EdgesGeometry(display, 30)));
+                return edges;
+              }, (g) => new THREE.LineSegments(g, outlineLine));
+          }
         }
       }
-      for (const [k, g] of extrasCache) if (!seen.has(k)) { g.dispose(); extrasCache.delete(k); }
+      for (const [k, g] of extrasCache) if (!seen.has(k)) { if (!k.startsWith('ol:')) g.dispose(); extrasCache.delete(k); }
+      const sources = new Set(s.objects.flatMap(o => [o.geometry, o.geometry.userData.displayLod]));
+      for (const [source, edges] of outlineCache) if (!sources.has(source)) { edges.dispose(); outlineCache.delete(source); }
       if (opt.axes && area.length) {
         const xs = area.map((p) => p.x), ys = area.map((p) => p.y);
         const len = 0.1 * Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), height);
@@ -290,14 +302,15 @@ export default function Plater3D() {
 
     const meshes = new Map<number, THREE.Mesh>();
     const materials = new Map<string, THREE.MeshStandardMaterial>();
-    const material = (color: string, state: 'normal' | 'selected' | 'outside', placeholder = false, ghost = false, xray = false) => {
-      const k = color + state + placeholder + ghost + xray;
+    const material = (color: string, state: 'normal' | 'selected' | 'outside', placeholder = false, ghost = false, xray = false, selected = state === 'selected', hovered = false, nonprintable = false) => {
+      const k = color + state + placeholder + ghost + xray + selected + hovered + nonprintable;
       let m = materials.get(k);
       if (!m) {
         let c = new THREE.Color(color);
-        if (state === 'selected') c = brightenColor(c);
+        if (state !== 'outside' && !nonprintable && selected) c.lerp(new THREE.Color(SELECTION_COLOR), 0.5);
+        else if (state !== 'outside' && !nonprintable && hovered) c.lerp(new THREE.Color(HOVER_COLOR), 0.25);
         if (state === 'outside') c.lerp(OUTSIDE, 0.7);
-        m = new THREE.MeshStandardMaterial({ color: c, roughness: 0.65, metalness: 0.05, transparent: placeholder || ghost || xray, clippingPlanes: sectionView().ratio > 0 ? [sectionPlane] : null,
+        m = new THREE.MeshStandardMaterial({ color: c, emissive: selected ? SELECTION_COLOR : hovered ? HOVER_COLOR : 0, emissiveIntensity: selected ? 0.22 : 0.08, roughness: 0.65, metalness: 0.05, transparent: placeholder || ghost || xray, clippingPlanes: sectionView().ratio > 0 ? [sectionPlane] : null,
           opacity: placeholder ? 0.35 : ghost ? 0.4 : xray ? 0.25 : 1, depthWrite: !ghost && !xray, side: xray ? THREE.DoubleSide : THREE.FrontSide });
         materials.set(k, m);
       }
@@ -314,26 +327,40 @@ export default function Plater3D() {
     let liveGeometries = new Set<THREE.BufferGeometry>();
     let outside = new Set<number>();
     let hovered: number | null = null;
+    let hoveredVolume: number | undefined;
+    const selectionBounds = new SelectionBounds();
+    scene.add(selectionBounds.group);
     const tint = (s: State) => {
       const xray = viewOptions().xray && !isPaint(s.gizmo) && s.gizmo !== 'layers';
       const link = hoverLink();
+      const over = (object: number, instance: number, volume?: number) => link?.source === 'list'
+        ? link.object === object && (link.instance === undefined || link.instance === instance)
+        : hovered === instance && hoveredVolume === volume;
+      selectionBounds.begin();
       const dimmed = (o: number, i: number) => link?.source === 'list' && (o !== link.object || (link.instance !== undefined && i !== link.instance));
       for (const o of s.objects) {
         const color = filamentColor(s, o.extruder);
         for (const inst of o.instances) {
           const mesh = meshes.get(inst.id);
           if (!mesh) continue;
-          const state = outside.has(inst.id) ? 'outside' : isSelected(s.selected, o.id, inst.id) ? 'selected' : 'normal';
-          const ghost = s.selected?.object === o.id && s.selected.volume !== undefined;
+          const selected = selectedSurface(s.selected, o.id, inst.id), hovered = over(o.id, inst.id);
+          const state = outside.has(inst.id) ? 'outside' : 'normal';
+          const ghost = isSelected(s.selected, o.id, inst.id) && s.selected?.volume !== undefined;
           mesh.material = s.gizmo === 'layers' && s.selected?.object === o.id
             ? layerMaterial(layerParams(s, o), layerProfileOf(s, o), layerCursor())
-            : material(inst.printable === false ? '#999999' : color, inst.printable === false ? 'normal' : state, !!o.project?.placeholder, ghost || dimmed(o.id, inst.id), xray);
+            : material(inst.printable === false ? '#999999' : color, inst.printable === false ? 'normal' : state, !!o.project?.placeholder, ghost || dimmed(o.id, inst.id), xray, selected, hovered, inst.printable === false);
+          selectionBounds.put(mesh, selected, hovered);
           for (const v of o.volumes ?? []) {
             const vm = volumeMeshes.get(`${inst.id}:${v.id}`);
-            if (vm) vm.material = volumeMaterial(v.type, filamentColor(s, v.extruder || o.extruder), s.selected?.object === o.id && s.selected.volume === v.id, v.seamMode);
+            if (vm) {
+              const selected = selectedSurface(s.selected, o.id, inst.id, v.id), hovered = over(o.id, inst.id, v.id);
+              vm.material = volumeMaterial(v.type, filamentColor(s, v.extruder || o.extruder), selected, v.seamMode, hovered, outside.has(inst.id), inst.printable === false);
+              selectionBounds.put(vm, selected, hovered);
+            }
           }
         }
       }
+      selectionBounds.end();
     };
     const volumeMeshes = new Map<string, THREE.Mesh>();
     const drawScene = renderer.render.bind(renderer);
@@ -360,14 +387,15 @@ export default function Plater3D() {
       finally { for (const [mesh, geometry] of reduced) mesh.geometry = geometry; }
     };
 
-    const volumeMaterial = (type: VolumeType, color: string, selected: boolean, seam?: SeamMode) => {
-      if (type === 'part') return material(color, selected ? 'selected' : 'normal');
-      const k = type + (seam ?? '') + selected;
+    const volumeMaterial = (type: VolumeType, color: string, selected: boolean, seam?: SeamMode, hovered = false, outside = false, nonprintable = false) => {
+      if (type === 'part') return material(nonprintable ? '#999999' : color, outside && !nonprintable ? 'outside' : 'normal', false, false, false, selected, hovered, nonprintable);
+      const k = type + (seam ?? '') + selected + hovered;
       let m = materials.get(k);
       if (!m) {
         const [r, g, b, a] = type === 'seam' ? SEAM_COLOURS[seam ?? 'center'] : VOLUME_COLOURS[type];
         let c = new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
         if (selected) c = brightenColor(c);
+        else if (hovered) c.lerp(new THREE.Color(HOVER_COLOR), 0.25);
         m = new THREE.MeshStandardMaterial({ color: c, roughness: 0.65, metalness: 0.05, transparent: true, opacity: a, depthWrite: false, clippingPlanes: sectionView().ratio > 0 ? [sectionPlane] : null });
         materials.set(k, m);
       }
@@ -1141,9 +1169,9 @@ export default function Plater3D() {
     let hoverShift = false;
     let orbiting = false;
     const hoverMs: number[] = [];
-    const setHover = (id: number | null) => {
-      if (id === hovered) return;
-      hovered = id;
+    const setHover = (id: number | null, volume?: number) => {
+      if (id === hovered && volume === hoveredVolume) return;
+      hovered = id; hoveredVolume = volume;
       const object = id === null ? undefined : (meshes.get(id)?.userData as { object?: number } | undefined)?.object;
       if (object !== undefined) setHoverLink({ object, instance: id!, source: 'canvas' });
       else if (hoverLink()?.source === 'canvas') setHoverLink(null);
@@ -1158,7 +1186,7 @@ export default function Plater3D() {
       const hit = axis ? undefined : pick(hoverAt);
       if (hoverMs.length > 4096) hoverMs.splice(0, 2048);
       hoverMs.push(performance.now() - t0);
-      setHover(hit ? (hit.object.userData as { instance: number }).instance : null);
+      setHover(hit ? (hit.object.userData as { instance: number }).instance : null, hit?.object.userData.volume);
       planarTip(hit, hoverAt);
       if (flatten) setHoverPlane(pickPlane(hoverAt));
       if (getState().gizmo === 'measure') {
@@ -1326,7 +1354,9 @@ export default function Plater3D() {
       }
       if (last && s.objects === last.objects && s.selected === last.selected && s.printer === last.printer && s.projectPlates === last.projectPlates &&
           s.plateIndex === last.plateIndex && s.project === last.project && s.job.state === last.job.state &&
-          s.filamentSlots === last.filamentSlots && s.slotColours === last.slotColours && s.machines === last.machines && s.gizmo === last.gizmo && s.dirty === last.dirty) return;
+          s.filamentSlots === last.filamentSlots && s.slotColours === last.slotColours && s.filamentEdits === last.filamentEdits &&
+          s.userPresets === last.userPresets && s.filaments === last.filaments && s.projectMaterials === last.projectMaterials &&
+          s.machines === last.machines && s.gizmo === last.gizmo && s.dirty === last.dirty) return;
       last = s;
       syncBed(s);
       syncGrid(s);
@@ -1396,6 +1426,8 @@ export default function Plater3D() {
       unsubMeasure();
       measuring.dispose();
 
+      selectionBounds.dispose();
+      for (const edges of outlineCache.values()) edges.dispose();
       renderer.dispose();
       el.removeChild(renderer.domElement);
     };

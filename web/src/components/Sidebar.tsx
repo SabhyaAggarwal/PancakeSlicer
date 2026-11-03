@@ -1,3 +1,4 @@
+import { ProfileLibraryNotice } from './ProfileLibraryNotice';
 import { nativeSurfaceSummary } from '../preview/explain-record';
 import { lazy, Suspense, useState } from 'react';
 import { Tabs } from 'radix-ui';
@@ -55,6 +56,7 @@ function EngineLine() {
 export function Sidebar() {
   const objects = useStore(s => s.processScope === 'objects' && !!s.objects.length);
   return <aside className="sidebar">
+    <ProfileLibraryNotice/>
     <PrinterMaterials/>
     <section className="process-section" aria-label="Process profile and settings">
       <SectionHeading level="main">Print settings</SectionHeading>

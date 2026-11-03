@@ -1,3 +1,9 @@
+import type { State } from '../state/store';
+import { selectCompatibility } from './compatibility';
+import { effectiveProfileValues } from './context';
+import { captureProjectProfiles } from './project';
+import { methodAvailability } from './method-context';
+import { methodSelectionProblem } from './capabilities';
 import type { Config, UserPreset } from '../api/types';
 import { findProfile, profileKey, withProfileIdentity, type ProfileKey } from './identity';
 import { catalogAnchor, changedKeys, normalizeUserPreset, resolveProfile, type ProfileCatalog } from './model';
@@ -5,6 +11,7 @@ import { emptyPrinterLibrary, emptyPrinterSetup, type PrinterProfileLibrary, typ
 
 export interface MaterialLibraryState extends ProfileCatalog {
   printer: string;
+  process?: string;
   filamentSlots: string[];
   slotColours: (string | undefined)[];
   filamentEdits: Record<string, Config>;
@@ -71,14 +78,13 @@ export function capturePrinterMaterials(s: MaterialLibraryState): PrinterProfile
   const library = libraryOf(s), printer = findProfile(s, 'machine', s.printer);
   if (!printer) return library;
   const id = profileKey(printer), setup = library.setups[id] ?? emptyPrinterSetup(id);
-  if (s.filamentSlots.some(key => !findProfile(s, 'filament', key))) return library;
-  const slots = s.filamentSlots.map((key, index) => ({ id: setup.slots[index]?.id ?? `slot:${crypto.randomUUID()}`,
-    materialId: profileKey(findProfile(s, 'filament', key)!), colour: s.slotColours[index] }));
+  const slots = s.filamentSlots.map((key, index) => ({ ...setup.slots[index], id: setup.slots[index]?.id ?? `slot:${crypto.randomUUID()}`,
+    materialId: findProfile(s,'filament',key) ? profileKey(findProfile(s, 'filament', key)!) : key, colour: s.slotColours[index] }));
   const tuning = { ...setup.tuning, ...Object.fromEntries(Object.entries(s.filamentEdits).flatMap(([key, config]) => {
     const material = findProfile(s, 'filament', key); return material ? [[profileKey(material), clone(config)]] : [];
   })) };
   for (const slot of slots) if (!Object.keys(s.filamentEdits[slot.materialId] ?? {}).length) delete tuning[slot.materialId];
-  const next = { ...setup, slots, materialIds: [...new Set([...setup.materialIds, ...slots.map(slot => slot.materialId)])], tuning, mixes: clone(s.mixes) };
+  const next = { ...setup, ...(s.process ? {processId:findProfile(s,'process',s.process)?.id ?? s.process} : {}), slots, materialIds: [...new Set([...setup.materialIds, ...slots.map(slot => slot.materialId)])], tuning, mixes: clone(s.mixes) };
   if (JSON.stringify({ ...next, revision: 0 }) === JSON.stringify({ ...setup, revision: 0 })) return library;
   return putSetup(library, next);
 }
@@ -108,7 +114,7 @@ export function planPrinterSwitch(s: MaterialLibraryState, printerKey: string): 
   const library = capturePrinterMaterials(s), printer = findProfile(s, 'machine', printerKey), id = printer && profileKey(printer);
   const setup = id && library.setups[id];
   const result: PrinterMaterialsPlan = { userPresets: s.userPresets, printerLibrary: library, printer: id ?? printerKey,
-    filamentSlots: setup ? setup.slots.map(slot => slot.materialId) : [...s.filamentSlots], slotColours: setup ? setup.slots.map(slot => slot.colour) : [...s.slotColours],
+    filamentSlots: setup ? setup.slots.map(slot => slot.materialId) : s.filamentSlots.length ? [...s.filamentSlots] : [''], slotColours: setup ? setup.slots.map(slot => slot.colour) : [...s.slotColours],
     filamentEdits: setup ? clone(setup.tuning) : {}, mixes: setup ? clone(setup.mixes) : clone(s.mixes), referenceMap: {}, recoveries: [] };
   if (!id) result.recoveries.push({ type: 'machine', key: printerKey, reason: 'missing-owner' });
   if (setup) for (const key of setup.materialIds) if (!findProfile(s, 'filament', key))
@@ -123,4 +129,45 @@ export function planRemoveMaterialSlot(library: PrinterProfileLibrary, printerId
 }
 export function renameOwnedProfile(profile: UserPreset, name: string): UserPreset {
   return { ...withProfileIdentity(profile), name, aliases: [...new Set([...(profile.aliases ?? []), profile.name])], revision: (profile.revision ?? 0) + 1 };
+}
+
+export interface ProfileTransitionSummary {
+  changes:{kind:'process'|'filament';slot?:number;from:string;to?:string;reason:string}[];
+  needsSelection:boolean;
+}
+const scalar=(value:Config[string]|undefined)=>String(Array.isArray(value)?value[0] ?? '':value ?? '');
+export function reconcilePrinterSelection(previous:State,incoming:State):{patch:Partial<State>;summary:ProfileTransitionSummary}{
+  let next={...incoming,filamentSlots:[...incoming.filamentSlots]},summary:ProfileTransitionSummary={changes:[],needsSelection:false};
+  const oldProcess=effectiveProfileValues(previous,'process',previous.process),base=resolveProfile(next,'machine',next.printer).base;
+  const availability=methodAvailability(next),label=(type:'process'|'filament',key:string)=>resolveProfile(next,type,key).name ?? key;
+  const processValid=(key:string,raw=false)=>selectCompatibility(next,'process',key).ok && !methodSelectionProblem(availability,raw?resolveProfile(next,'process',key).config:effectiveProfileValues(next,'process',key));
+  const setup=next.printerLibrary.setups[next.printer],remembered=setup?.processId;
+  if(remembered && processValid(remembered))next.process=remembered;
+  if(!processValid(next.process)){
+    const candidates=next.userPresets.filter(p=>p.type==='process' && !p.archived && p.kind!=='master' && processValid(profileKey(p),true));
+    const standard=scalar(base?.config.default_print_profile),height=Number(scalar(oldProcess.layer_height));
+    const rank=(p:UserPreset)=>{const r=resolveProfile(next,'process',profileKey(p)),c=r.config;return [r.base?.name===standard?0:1,scalar(c.nonplanar_mode)===scalar(oldProcess.nonplanar_mode)?0:1,scalar(c.nonplanar_wave)===scalar(oldProcess.nonplanar_wave)?0:1,Number.isFinite(height)?Math.abs(Number(scalar(c.layer_height))-height):0];};
+    candidates.sort((a,b)=>{const x=rank(a),y=rank(b);for(let i=0;i<x.length;i++)if(Number.isFinite(x[i]-y[i])&&x[i]!==y[i])return x[i]-y[i];return profileKey(a).localeCompare(profileKey(b));});
+    const chosen=candidates[0];summary.changes.push({kind:'process',from:label('process',next.process),to:chosen?.name,reason:chosen?'Compatible print settings selected':'Choose compatible print settings'});
+    if(chosen){next.process=profileKey(chosen);next.dirty={...next.dirty,process:{}};if(next.projectPresets)next.projectPresets={...next.projectPresets,process:{}};if(next.profileSnapshots)next.profileSnapshots={...next.profileSnapshots,process:captureProjectProfiles({...next,profileSnapshots:null,projectPresets:null}).process};}
+    else summary.needsSelection=true;
+  }
+  const defaults=[base?.config.default_filament_profile ?? []].flat().map(String);
+  const materialValid=(key:string)=>selectCompatibility(next,'filament',key).ok;
+  next.filamentSlots.forEach((key,slot)=>{
+    if(materialValid(key))return;
+    const current=resolveProfile(next,'filament',key),material=scalar(current.config.filament_type),brand=scalar(current.config.filament_vendor);
+    const candidates=next.userPresets.filter(p=>p.type==='filament'&&!p.archived&&p.kind!=='master'&&materialValid(profileKey(p)))
+      .filter(p=>!material||scalar(resolveProfile(next,'filament',profileKey(p)).config.filament_type)===material);
+    candidates.sort((a,b)=>{const x=resolveProfile(next,'filament',profileKey(a)),y=resolveProfile(next,'filament',profileKey(b));
+      return Number(!defaults.includes(x.base?.name ?? ''))-Number(!defaults.includes(y.base?.name ?? ''))
+        ||Number(scalar(x.config.filament_vendor)!==brand)-Number(scalar(y.config.filament_vendor)!==brand)||profileKey(a).localeCompare(profileKey(b));});
+    const chosen=candidates[0];summary.changes.push({kind:'filament',slot,from:label('filament',key),to:chosen?.name,reason:chosen?'Compatible filament selected':`Choose compatible ${material || 'filament'}`});
+    if(chosen){next.filamentSlots[slot]=profileKey(chosen);if(next.projectPresets)next.projectPresets={...next.projectPresets,filaments:next.projectPresets.filaments.map((config,i)=>i===slot?{}:config)};if(next.profileSnapshots){const rows=[...next.profileSnapshots.filaments];rows[slot]=captureProjectProfiles({...next,profileSnapshots:null,projectPresets:null}).filaments[slot];next.profileSnapshots={...next.profileSnapshots,filaments:rows};}}
+    else summary.needsSelection=true;
+  });
+  if(next.process!==previous.process && !summary.changes.some(change=>change.kind==='process'))summary.changes.push({kind:'process',from:resolveProfile(previous,'process',previous.process).name ?? previous.process,to:label('process',next.process),reason:'Restored printer print settings'});
+  next.filamentSlots.forEach((key,slot)=>{if(key!==previous.filamentSlots[slot]&&!summary.changes.some(change=>change.kind==='filament'&&change.slot===slot))summary.changes.push({kind:'filament',slot,from:resolveProfile(previous,'filament',previous.filamentSlots[slot] ?? '').name ?? previous.filamentSlots[slot] ?? '',to:label('filament',key),reason:'Restored loaded filament'});});
+  const contexts={...previous.projectProfileContexts,[previous.printer]:{projectPresets:previous.projectPresets,profileSnapshots:captureProjectProfiles(previous),process:previous.process,dirty:previous.dirty}};
+  return{patch:{process:next.process,filamentSlots:next.filamentSlots,dirty:next.dirty,projectPresets:next.projectPresets,profileSnapshots:next.profileSnapshots,projectProfileContexts:contexts,lastProfileTransition:summary},summary};
 }
