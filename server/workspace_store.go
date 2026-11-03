@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"net"
 	"net/http"
@@ -21,8 +22,11 @@ import (
 )
 
 type workspaceStore struct {
-	mu   sync.Mutex
-	root string
+	mu     sync.Mutex
+	root   string
+	cached *workspaceData
+	stamp  [2]int64
+	views  map[string]any
 }
 type workspaceProject struct {
 	Record   json.RawMessage `json:"record"`
@@ -60,11 +64,27 @@ type workspaceData struct {
 func newWorkspaceData() *workspaceData {
 	return &workspaceData{Schema: 1, Projects: map[string]workspaceProject{}, Drafts: map[string]workspaceDraft{}, Values: map[string]workspaceValue{}, Operations: map[string]workspaceReceipt{}, Adoptions: map[string]json.RawMessage{}, Aliases: map[string]string{}, Folders: map[string]workspaceFolder{}}
 }
+func (d *workspaceData) clone() *workspaceData {
+	c := *d
+	c.Projects, c.Drafts, c.Values, c.Operations = maps.Clone(d.Projects), maps.Clone(d.Drafts), maps.Clone(d.Values), maps.Clone(d.Operations)
+	c.Adoptions, c.Aliases, c.Folders = maps.Clone(d.Adoptions), maps.Clone(d.Aliases), maps.Clone(d.Folders)
+	return &c
+}
+func fileStamp(info os.FileInfo) [2]int64 { return [2]int64{info.Size(), info.ModTime().UnixNano()} }
+
 func (st *workspaceStore) read() (*workspaceData, error) {
-	raw, err := os.ReadFile(filepath.Join(st.root, "workspace.json"))
+	path := filepath.Join(st.root, "workspace.json")
+	info, err := os.Stat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return newWorkspaceData(), nil
 	}
+	if err != nil {
+		return nil, err
+	}
+	if st.cached != nil && st.stamp == fileStamp(info) {
+		return st.cached.clone(), nil
+	}
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -93,6 +113,7 @@ func (st *workspaceStore) read() (*workspaceData, error) {
 			return nil, fmt.Errorf("invalid retained project %s: %w", id, err)
 		}
 	}
+	st.cached, st.stamp, st.views = d.clone(), fileStamp(info), nil
 	return &d, nil
 }
 func durableJSON(path string, value any) error {
@@ -133,7 +154,29 @@ func syncWorkspaceDirectory(path string) error {
 	return f.Sync()
 }
 func (st *workspaceStore) save(d *workspaceData) error {
-	return durableJSON(filepath.Join(st.root, "workspace.json"), d)
+	path := filepath.Join(st.root, "workspace.json")
+	st.cached, st.views = nil, nil
+	if err := durableJSON(path, d); err != nil {
+		return err
+	}
+	if info, err := os.Stat(path); err == nil {
+		st.cached, st.stamp = d.clone(), fileStamp(info)
+	}
+	return nil
+}
+
+func (st *workspaceStore) derived(key string, build func() any) any {
+	if v, ok := st.views[key]; ok {
+		return v
+	}
+	v := build()
+	if st.cached != nil {
+		if st.views == nil {
+			st.views = map[string]any{}
+		}
+		st.views[key] = v
+	}
+	return v
 }
 func workspaceID(id string) bool {
 	return id != "" && len(id) <= 200 && strings.Trim(id, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-") == "" && id != "." && id != ".."
@@ -303,53 +346,61 @@ func (st *workspaceStore) register(mux *http.ServeMux) {
 	st.thumbnailRoutes(mux)
 	mux.HandleFunc("GET /api/projects", func(w http.ResponseWriter, r *http.Request) {
 		st.view(w, func(d *workspaceData) {
-			out := []json.RawMessage{}
 			archived := r.URL.Query().Get("archived") == "1"
-			for _, p := range d.Projects {
-				if p.Archived == archived && p.Record != nil {
-					out = append(out, projectMeta(p))
-				}
-			}
-			sort.Slice(out, func(i, j int) bool {
-				var a, b struct {
+			writeJSON(w, 200, st.derived(fmt.Sprint("projects:", archived), func() any {
+				type listed struct {
+					meta    json.RawMessage
 					SavedAt float64 `json:"savedAt"`
 				}
-				json.Unmarshal(out[i], &a)
-				json.Unmarshal(out[j], &b)
-				return a.SavedAt > b.SavedAt
-			})
-			writeJSON(w, 200, out)
+				var rows []listed
+				for _, p := range d.Projects {
+					if p.Archived == archived && p.Record != nil {
+						row := listed{meta: projectMeta(p)}
+						json.Unmarshal(row.meta, &row)
+						rows = append(rows, row)
+					}
+				}
+				sort.Slice(rows, func(i, j int) bool { return rows[i].SavedAt > rows[j].SavedAt })
+				out := make([]json.RawMessage, len(rows))
+				for i, row := range rows {
+					out[i] = row.meta
+				}
+				return out
+			}))
 		})
 	})
 	mux.HandleFunc("GET /api/projects/references", func(w http.ResponseWriter, r *http.Request) {
 		st.view(w, func(d *workspaceData) {
-			type reference struct {
-				ID      string `json:"id"`
-				Name    string `json:"name"`
-				Trashed bool   `json:"trashed"`
-				Doc     struct {
-					Printer       json.RawMessage `json:"printer,omitempty"`
-					Process       json.RawMessage `json:"process,omitempty"`
-					FilamentSlots json.RawMessage `json:"filamentSlots,omitempty"`
-				} `json:"doc"`
-			}
-			documents := []reference{}
-			for id, p := range d.Projects {
-				if p.Record == nil {
-					continue
+			writeJSON(w, 200, st.derived("references", func() any {
+				type reference struct {
+					ID      string `json:"id"`
+					Name    string `json:"name"`
+					Trashed bool   `json:"trashed"`
+					Doc     struct {
+						Printer       json.RawMessage `json:"printer,omitempty"`
+						Process       json.RawMessage `json:"process,omitempty"`
+						FilamentSlots json.RawMessage `json:"filamentSlots,omitempty"`
+					} `json:"doc"`
 				}
-				var record struct {
-					Meta struct {
-						Name string `json:"name"`
-					} `json:"meta"`
-					Doc json.RawMessage `json:"doc"`
+				documents := []reference{}
+				for id, p := range d.Projects {
+					if p.Record == nil {
+						continue
+					}
+					var record struct {
+						Meta struct {
+							Name string `json:"name"`
+						} `json:"meta"`
+						Doc json.RawMessage `json:"doc"`
+					}
+					json.Unmarshal(p.Record, &record)
+					ref := reference{ID: id, Name: record.Meta.Name, Trashed: p.Archived}
+					json.Unmarshal(record.Doc, &ref.Doc)
+					documents = append(documents, ref)
 				}
-				json.Unmarshal(p.Record, &record)
-				ref := reference{ID: id, Name: record.Meta.Name, Trashed: p.Archived}
-				json.Unmarshal(record.Doc, &ref.Doc)
-				documents = append(documents, ref)
-			}
-			writeJSON(w, 200, map[string]any{"complete": true, "documents": documents})
+				sort.Slice(documents, func(i, j int) bool { return documents[i].ID < documents[j].ID })
+				return map[string]any{"complete": true, "documents": documents}
+			}))
 		})
 	})
 	mux.HandleFunc("GET /api/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
