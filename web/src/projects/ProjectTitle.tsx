@@ -1,44 +1,76 @@
-import { useState } from 'react';
-import { useProject } from '../flow/project';
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
+import { retryProject, useProject } from '../flow/project';
 import { renameProject, useProjects } from './api';
 import { useFolders } from './folders';
 import { setState, useStore } from '../state/store';
+import { startVersionTracking, toggleHistory, useHistory, versionTime } from './versions';
+import './title.css';
+import './versions.css';
 
-const SAVED = { editing: 'Unsaved', saving: 'Saving…', saved: 'Saved', opening: 'Opening…', failed: 'Not saved', missing: 'Not saved' } as const;
+const VersionHistory = lazy(() => import('./VersionHistory'));
+
+const clock = <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9M2.5 2.5v2.2h2.2M8 5v3.2l2.2 1.4" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+const warning = <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.2 14.3 13.5H1.7zM8 6.5v3.2M8 11.6v.1" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>;
 
 export function ProjectTitle() {
   const name = useStore((s) => (s.projectName ?? s.project?.name ?? s.objects[0]?.name)?.replace(/\.(stl|obj|3mf|drc)$/i, '')) ?? 'Untitled';
   const state = useProject((p) => p.value);
   const id = useProject((p) => p.context.id);
-  const conflict = useProject((p) => p.context.conflict);
   const folderId = useProjects()?.find((p) => p.id === id)?.folderId;
-  const folders = useFolders().folders;
-  const folder = folderId ? folders.find((f) => f.id === folderId)?.name : undefined;
-  const [editing, setEditing] = useState(false);
-  const commit = (v: string) => {
-    setEditing(false);
-    const next = v.trim();
-    if (!next || next === name) return;
+  const folder = useFolders().folders.find((f) => f.id === folderId)?.name;
+  const [draft, setDraft] = useState<string | null>(null);
+  const cancelled = useRef(false);
+  useEffect(startVersionTracking, []);
+  const begin = () => { cancelled.current = false; setDraft(name); };
+  const commit = () => {
+    const next = draft?.trim();
+    setDraft(null);
+    if (cancelled.current || !next || next === name) return;
     if (id && state !== 'blank') void renameProject(id, next);
     else setState({ projectName: next });
   };
-  const saved = conflict ? 'Conflict' : SAVED[state as keyof typeof SAVED];
   return (
-    <div className="topbar-title">
-      {folder && !editing && <span className="title-folder">{folder} /</span>}
-      {editing ? (
-        <input className="title-edit" autoFocus defaultValue={name} aria-label="Name" size={Math.max(8, name.length + 2)}
-          onFocus={(e) => e.currentTarget.select()} onBlur={(e) => commit(e.currentTarget.value)}
-          onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter') commit(e.currentTarget.value); else if (e.key === 'Escape') setEditing(false); }} />
+    <div className="project-title">
+      <span className="pt-folder">{folder && draft === null ? `${folder} /` : ''}</span>
+      {draft !== null ? (
+        <span className="pt-box pt-editing" data-value={draft}>
+          <input className="pt-input" autoFocus value={draft} aria-label="Project name" size={1} spellCheck={false}
+            onChange={(e) => setDraft(e.currentTarget.value)} onFocus={(e) => e.currentTarget.select()} onBlur={commit}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter') e.currentTarget.blur();
+              else if (e.key === 'Escape') { cancelled.current = true; e.currentTarget.blur(); }
+            }} />
+        </span>
       ) : (
-        <button type="button" className="title-name" aria-description="Rename" onClick={() => setEditing(true)}
-          onKeyDown={(e) => { if (e.key === 'F2') { e.preventDefault(); e.stopPropagation(); setEditing(true); } }}>
-          <span className="title-text">{name}</span>
-          <svg className="title-pencil" width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 12.5l.8-3 6.9-6.9 2.2 2.2-6.9 6.9-3 .8zM9.9 3.9l2.2 2.2" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        <button type="button" className="pt-box pt-name" data-full-text={name} aria-description="Rename" onClick={begin}
+          onKeyDown={(e) => { if (e.key === 'F2') { e.preventDefault(); e.stopPropagation(); begin(); } }}>
+          <span className="pt-text">{name}</span>
+          <svg className="pt-pencil" width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 12.5l.8-3 6.9-6.9 2.2 2.2-6.9 6.9-3 .8zM9.9 3.9l2.2 2.2" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </button>
       )}
-      {conflict && !editing ? <button type="button" className="title-state link" aria-description="Choose Reload latest or Keep mine" onClick={() => setState({ tab: 'prepare' })}>Conflict</button>
-        : saved && !editing && <span className="title-state" role="status" data-state={state}>{saved}</span>}
+      <span className="pt-end"><SaveState /></span>
     </div>
   );
+}
+
+const LABEL = { editing: 'Unsaved changes', saving: 'Saving…', saved: 'Saved' } as const;
+
+function SaveState() {
+  const { value, context } = useProject();
+  const history = useHistory();
+  const status = (tone: string, icon: ReactNode, label: string, props: { onClick(): void; hint?: string; expanded?: boolean }) => (
+    <button type="button" className="pt-status" data-tone={tone} aria-expanded={props.expanded} aria-description={props.hint} onClick={props.onClick}>
+      {icon}<span className="pt-label">{label}</span>
+    </button>
+  );
+  const historyButton = (icon: ReactNode, label: string) => status('quiet', icon, label, { onClick: toggleHistory, expanded: history.open, hint: 'Version history' });
+  let shown: ReactNode = null;
+  if (context.conflict) shown = status('danger', warning, 'Conflict', { onClick: () => setState({ tab: 'prepare' }), hint: 'Choose Reload latest or Keep mine' });
+  else if (history.viewing) shown = status('accent', clock, `Viewing ${versionTime(history.viewing.until)}`, { onClick: toggleHistory, expanded: history.open });
+  else if (value === 'failed') shown = status('danger', warning, 'Retry', { onClick: () => void retryProject(), hint: context.error ?? 'The project was not saved' });
+  else if (value === 'saving') shown = historyButton(<span className="pt-dot" aria-hidden="true" />, LABEL.saving);
+  else if (value === 'editing' || value === 'saved') shown = historyButton(clock, LABEL[value]);
+  else if (value === 'opening') shown = <span className="pt-status" data-tone="quiet" role="status"><span className="pt-label">Opening…</span></span>;
+  return <>{shown}{history.open && <Suspense fallback={null}><VersionHistory /></Suspense>}</>;
 }

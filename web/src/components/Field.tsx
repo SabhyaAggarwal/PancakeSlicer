@@ -108,7 +108,7 @@ export const Field = memo(function Field(props: {
       <span className={`opt-label ${modified ? 'modified' : ''} ${props.hideLabel ? 'field-label-hidden' : ''}`} id={labelId}>
         {def.nullable && <Check className="nullable-toggle" aria-label={`Override ${label}`} checked={checked} disabled={props.overrideDisabled}
         onCheckedChange={(next) => commit(next ? fallback : 'nil')} />}
-        {label}
+        <span className="opt-label-text" data-full-text={fullLabel}>{label}</span>
         {!props.hideLabel && (help || hint) && <InfoTip label={fullLabel}>{label !== fullLabel && <strong>{fullLabel}</strong>}{hint && <p>{hint}</p>}{help && <p>{help}</p>}<code>{key}</code></InfoTip>}
       </span>
       <fieldset className="opt-field" aria-description={disabledReason} disabled={props.disabled || (def.nullable && !checked)}>

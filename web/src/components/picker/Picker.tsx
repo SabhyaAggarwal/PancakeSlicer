@@ -1,6 +1,6 @@
 import { preferenceJson, savePreferences, usePreference } from '../../saved-preferences';
 import { countRender } from '../../interaction-metrics';
-import { Fragment, memo, useCallback, useId, useMemo, useRef, useState, type ComponentPropsWithRef, type PointerEvent, type ReactNode } from 'react';
+import { Fragment, memo, useCallback, useId, useMemo, useRef, useState, type ComponentPropsWithRef, type ReactNode } from 'react';
 import { Popover } from 'radix-ui';
 import { useRowFill } from '../tab-rows';
 import '../menu.css';
@@ -21,10 +21,6 @@ const splitTail = (label: string): [string, string] => {
   for (const re of [/\s\S+\s\S+$/, /\s\S+$/]) { const m = re.exec(label); if (m && m[0].length <= 15 && m.index >= 4) return [label.slice(0, m.index), m[0]]; }
   return [label, ''];
 };
-const fitTitle = (e: PointerEvent<HTMLButtonElement>, full: string) => {
-  const el = e.currentTarget, cut = [...el.querySelectorAll<HTMLElement>('.pk-head, .pk-sub, .pk-meta')].some(n => n.scrollWidth > n.clientWidth);
-  if (cut) el.title = full; else el.removeAttribute('title');
-};
 function PickerArt({ src }: { src: string | null }) {
   const [failed, setFailed] = useState<string>();
   return <span className="pk-art" aria-hidden>{src && failed !== src ? <img src={src} alt="" loading="lazy" draggable={false} onError={() => setFailed(src)}/> : <Glyph name="printer" size={40}/>}</span>;
@@ -36,7 +32,7 @@ const PickerRow = memo(function PickerRow({ row, index, id, active, selected, ad
   countRender('picker-row');
   const media = row.image !== undefined, [head, tail] = splitTail(row.label);
   return <div className={`pk-row ${active ? 'is-active' : ''}`} data-index={index}>
-    <button id={`${id}-${index}`} type="button" role="option" tabIndex={active ? 0 : -1} aria-selected={selected} aria-disabled={!!row.disabled} className="pk-option" onFocus={() => onActive(index)} onPointerMove={() => onActive(index)} onPointerEnter={e => fitTitle(e, [row.label, row.sub, row.meta].filter(Boolean).join(' · '))} onClick={() => onPick(row)}>
+    <button id={`${id}-${index}`} type="button" role="option" tabIndex={active ? 0 : -1} aria-selected={selected} aria-disabled={!!row.disabled} className="pk-option" onFocus={() => onActive(index)} onPointerMove={() => onActive(index)} data-full-text={[row.label, row.sub, row.meta].filter(Boolean).join(' · ')} onClick={() => onPick(row)}>
       <span className="pk-check" aria-hidden>{selected ? '✓' : ''}</span>{media && <PickerArt src={row.image ?? null}/>}{row.swatch !== undefined && <span className="profile-color-swatch" data-unknown={!row.swatch} style={{backgroundColor:row.swatch ?? undefined}}/>}
       <span className="pk-text"><span className="pk-label"><span className="pk-head">{head}</span>{tail && <span className="pk-tail">{tail}</span>}</span>{row.sub && <span className="pk-sub">{row.sub}</span>}{media && row.meta && <span className="pk-sub">{row.meta}</span>}{row.status && <span className="pk-status" data-tone={row.status.tone}>{row.status.label}</span>}</span>
       {!media && row.meta && <span className="pk-meta">{row.meta}</span>}

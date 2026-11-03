@@ -1,0 +1,36 @@
+:where(.orca-parity) .project-title { width: 100%; min-width: 0; height: var(--h-compact); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, max-content) minmax(136px, 1fr); align-items: center; column-gap: var(--s-2); }
+:where(.orca-parity) .pt-folder { justify-self: end; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); font: var(--t-body); }
+:where(.orca-parity) .pt-end { justify-self: start; min-width: 0; display: flex; align-items: center; }
+
+:where(.orca-parity) .pt-box { box-sizing: border-box; height: var(--h-compact); max-width: min(40vw, 100%); min-width: 0; padding: 0 var(--s-3); border: 1px solid transparent; border-radius: var(--control-radius); background: transparent; color: var(--ink); font: 500 14px/20px var(--font-ui); }
+:where(.orca-parity) .pt-name { display: inline-flex; align-items: center; gap: var(--s-2); cursor: text; }
+:where(.orca-parity) .pt-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:where(.orca-parity) .pt-pencil { flex: none; color: var(--ink-3); opacity: 0; transition: opacity .12s; }
+:where(.orca-parity) .pt-name:hover, :where(.orca-parity) .pt-editing { background: var(--control-bg); }
+:where(.orca-parity) .pt-name:hover .pt-pencil, :where(.orca-parity) .pt-name:focus-visible .pt-pencil { opacity: 1; }
+:where(.orca-parity) .pt-name:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+:where(.orca-parity) .pt-editing { display: inline-grid; align-items: center; border-color: var(--focus); }
+:where(.orca-parity) .pt-editing::after { content: attr(data-value); grid-area: 1 / 1; visibility: hidden; white-space: pre; overflow: hidden; padding-right: 16px; }
+:where(.orca-parity) .pt-input { grid-area: 1 / 1; width: 100%; min-width: 4ch; height: 20px; padding: 0; border: 0; outline: none; background: transparent; color: inherit; font: inherit; }
+
+:where(.orca-parity) .pt-status { box-sizing: border-box; display: inline-flex; align-items: center; gap: var(--s-2); height: var(--h-compact); padding: 0 var(--s-3); border: 1px solid transparent; border-radius: var(--control-radius); background: transparent; color: var(--ink-3); font: var(--t-small); line-height: 20px; white-space: nowrap; }
+:where(.orca-parity) button.pt-status { cursor: pointer; }
+:where(.orca-parity) .pt-status svg { flex: none; display: block; }
+:where(.orca-parity) button.pt-status:hover, :where(.orca-parity) .pt-status[aria-expanded=true] { background: var(--control-bg); color: var(--ink-2); }
+:where(.orca-parity) .pt-status:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+:where(.orca-parity) .pt-status[data-tone=danger] { color: var(--danger); }
+:where(.orca-parity) .pt-status[data-tone=accent] { color: var(--accent-text); }
+:where(.orca-parity) .pt-dot { width: 14px; height: 14px; flex: none; display: grid; place-items: center; }
+:where(.orca-parity) .pt-dot::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pt-pulse 1s ease-in-out infinite alternate; }
+@keyframes pt-pulse { from { opacity: .35; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { :where(.orca-parity) .pt-dot::before { animation: none; } }
+
+@media (pointer: coarse), (max-width: 599px) { :where(.orca-parity) .pt-editing { min-height: 44px; } }
+
+@media (max-width: 599px) {
+  :where(.orca-parity) .project-title { grid-template-columns: 0 minmax(0, max-content) minmax(32px, 1fr); }
+  :where(.orca-parity) .pt-folder { visibility: hidden; }
+  :where(.orca-parity) .pt-box { max-width: 100%; }
+  :where(.orca-parity) .pt-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  :where(.orca-parity) .pt-status { padding: 0 var(--s-2); }
+}

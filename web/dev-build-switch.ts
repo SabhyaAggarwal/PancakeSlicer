@@ -2,7 +2,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
-import { build, type Plugin } from 'vite';
+import { spawn } from 'node:child_process';
+import type { Plugin } from 'vite';
 
 const COOKIE = 'orca-build';
 const ON = new RegExp(`(?:^|;\\s*)${COOKIE}=on(?:;|$)`);
@@ -19,9 +20,14 @@ export function devBuildSwitch(): Plugin {
     configureServer(server) {
       const dir = path.join(server.config.cacheDir, 'build');
       let building: Promise<unknown> | null = null;
-      const rebuild = () => building ??= build({
-        configFile: server.config.configFile, root: server.config.root, mode: 'production', logLevel: 'warn',
-        build: { outDir: dir, emptyOutDir: true },
+      const rebuild = () => building ??= new Promise<void>((resolve, reject) => {
+        const child = spawn(process.execPath, [path.join(server.config.root, 'node_modules/vite/bin/vite.js'), 'build',
+          '--config', server.config.configFile!, '--mode', 'production', '--logLevel', 'warn', '--outDir', dir, '--emptyOutDir'],
+        { cwd: server.config.root, env: { ...process.env, NODE_ENV: 'production' }, stdio: ['ignore', 'ignore', 'pipe'] });
+        let stderr = '';
+        child.stderr.on('data', (chunk: Buffer) => { stderr += chunk; });
+        child.on('error', reject);
+        child.on('close', (code) => code === 0 ? resolve() : reject(new Error(stderr.slice(-4000) || `vite build exited ${code}`)));
       }).finally(() => { building = null; });
 
       const redirect = (res: ServerResponse, location: string, cookie: string) => {

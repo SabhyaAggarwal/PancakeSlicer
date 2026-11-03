@@ -52,6 +52,7 @@ let opening = 0;
 let adopting = false;
 let routing = false;
 let previous: string | null = null;
+let versionView = false;
 const sameDoc = (a: Doc | null, b: Doc) => !!a && (Object.keys(b) as (keyof Doc)[]).every((k) => k === 'selected' || a[k] === b[k]);
 const errorText = (e: unknown) => e instanceof Error ? e.message : String(e);
 const blank = (): ProjectContext => ({ id: newKey(), name: 'Untitled', savedAt: 0, revision: 0, error: null, dirty: false, conflict: false, loadError: false, origin: 'new', failure: null, draft: { state: 'none' } });
@@ -239,12 +240,13 @@ async function route() {
     }
     else if (r.kind === 'project') await openProject(r.id, { history: false });
     else if (r.kind === 'blank') {
+      versionView = false;
       await flushProject();
       if (mine !== routeVersion) return;
       epoch++; opening++;
       adopt(() => { leaveDocument(); clearPlateJobs(); clearPlate(); newDocument(true); });
       project.send({ type: 'BLANK' }); setState({ tab: 'prepare' });
-    } else { opening++; epoch++; await flushProject(); project.send({ type: 'MISSING', id: '' }); setState({ tab: 'prepare' }); }
+    } else { versionView = false; opening++; epoch++; await flushProject(); project.send({ type: 'MISSING', id: '' }); setState({ tab: 'prepare' }); }
   } catch (e) { toast(errorText(e)); }
   finally { if (mine === routeVersion) routing = false; }
 }
@@ -269,7 +271,7 @@ async function start(ready: Promise<unknown>) {
   journal = createDraftJournal<Doc>(session.owner, draftStorage, codec, (id) => draftActivity!.beginProjectDraftMutation(id));
   observed = snapshot();
   subscribeStore(() => {
-    if (adopting) return;
+    if (adopting || versionView) return;
     if (project.get().value === 'opening' || project.get().value === 'missing' || project.get().context.loadError) {
       if (getState().tab === 'projects' && !routing) showProjects();
       return;
@@ -291,11 +293,13 @@ async function start(ready: Promise<unknown>) {
     }
   });
   onLeaveDocument(() => {
+    if (versionView) return;
     if (hasUnsavedProject()) checkpointProject();
     project.send({ type: 'FLUSH' });
   });
   subscribeHistory(() => {
     if (adopting || documentGeneration() === generation) return;
+    versionView = false;
     if (hasUnsavedProject() && observed) checkpointProject(observed);
     generation = documentGeneration(); epoch++; opening++;
     previous = project.get().context.id;
@@ -368,7 +372,21 @@ export async function retryProject() {
   }
 }
 export function showProjects() { writeRoute('/projects'); void route(); }
-export const openProject = async (id: string, options: { history?: boolean; reload?: boolean } = {}) => (await recoveryActions()).openProject(recoveryRuntime, id, options);
+export const openProject = async (id: string, options: { history?: boolean; reload?: boolean } = {}) => {
+  if (versionView) { versionView = false; options = { ...options, reload: true }; }
+  return (await recoveryActions()).openProject(recoveryRuntime, id, options);
+};
+export const viewProjectVersion = async (id: string, record: { meta: ProjectMeta; doc: import('../persist/backend').StoredDocBase }) =>
+  (await recoveryActions()).viewProjectVersion(recoveryRuntime, id, record, () => { versionView = true; });
+export const leaveProjectVersion = (id: string) => openProject(id, { reload: true });
+export async function restoreProjectVersion() {
+  if (!versionView) return;
+  versionView = false;
+  observed = snapshot();
+  checkpointProject(observed);
+  project.send({ type: 'EDIT' });
+  await flushProject();
+}
 
 const recoveryActions = () => import('./project-recovery-actions');
 const recoveryRuntime: import('./project-recovery-actions').RecoveryRuntime = {

@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useSyncExternalStore, type ReactNode } from 'react';
 import { Icon } from './Icon';
 import { SectionHeading } from './SectionHeading';
 
@@ -15,15 +15,18 @@ export function setGroupOpen(id: string, open: boolean) {
 export const isGroupOpen = (id: string) => expanded.has(id);
 export const useSettingsGroups = () => useSyncExternalStore(subscribe, () => version);
 
-export function GroupHead({ id, title, icon, modified, open }: { id: string; title: string; icon?: string; modified: boolean; open: boolean }) {
-  return (
+export function GroupHead({ id, title, icon, modified, open, aside, fixed = false }: { id: string; title: string; icon?: string; modified: boolean; open: boolean; aside?: ReactNode; fixed?: boolean }) {
+  const content = <>
+    {fixed ? <span className="optgroup-chevron" aria-hidden /> : <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+    {icon && <Icon name={icon} size={16} />}
+    <span>{title}</span>
+    {modified && <span className="optgroup-mark" aria-label="Modified" role="img" />}
+  </>;
+  const head = (
     <SectionHeading level="sub" className="optgroup-title">
-      <button type="button" className={`optgroup-head ${modified ? 'modified' : ''}`} aria-expanded={open} onClick={() => setGroupOpen(id, !open)}>
-        <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        {icon && <Icon name={icon} size={16} />}
-        <span>{title}</span>
-        {modified && <span className="optgroup-mark" aria-label="Modified" role="img" />}
-      </button>
+      {fixed ? <div className={`optgroup-head fixed ${modified ? 'modified' : ''}`}>{content}</div>
+        : <button type="button" className={`optgroup-head ${modified ? 'modified' : ''}`} aria-expanded={open} onClick={() => setGroupOpen(id, !open)}>{content}</button>}
     </SectionHeading>
   );
+  return aside ? <div className="optgroup-headrow">{head}<div className="optgroup-aside">{aside}</div></div> : head;
 }

@@ -35,10 +35,8 @@ export function planCatalogReadiness(vendors: readonly string[], sources: readon
 
 export async function loadRequiredCatalogs(plan: CatalogReadinessPlan, current: () => boolean,
   load: (vendor: string) => Promise<void>): Promise<boolean> {
-  for (const vendor of plan.required) {
-    if (!current()) return false;
-    await load(vendor);
-  }
+  if (!current()) return false;
+  await Promise.all(plan.required.map((vendor) => load(vendor)));
   return current();
 }
 

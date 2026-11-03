@@ -3,6 +3,9 @@ import { Tooltip } from 'radix-ui';
 const NAV_KEYS = new Set(['Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown', 'Enter', ' ', 'Escape', 'F6']);
 const CONTROL = 'button,a,[role=button],[role=tab],[role=menuitem]';
 const nameOf = (node: HTMLElement) => node.innerText.trim() ? undefined : node.getAttribute('aria-label')?.trim() || node.textContent?.trim() || undefined;
+const FULL = '[data-full-text],[data-truncated]';
+const cutText = (node: HTMLElement) => node.dataset.truncated === 'true' || [node, ...node.querySelectorAll<HTMLElement>('*')].some((n) => n.scrollWidth > n.clientWidth + 1 && getComputedStyle(n).textOverflow === 'ellipsis')
+  ? node.dataset.fullText || node.textContent?.trim() || undefined : undefined;
 const DELAY = 250, SKIP = 300, LONG_PRESS = 500;
 export function ControlHints() {
   const [hint, setHint] = useState<{text: string; x: number; y: number} | null>(null);
@@ -25,12 +28,12 @@ export function ControlHints() {
     const open = (node: HTMLElement | null, delay: number) => {
       if (node === target) return;
       clear();
-      const text = node ? nameOf(node) : undefined;
+      const text = node ? (node.matches(FULL) ? cutText(node) : nameOf(node)) : undefined;
       if (!node || !text) return;
       target = node;
       timer = setTimeout(() => { if (target !== node || !node.isConnected) return; const r = node.getBoundingClientRect(); setHint({text, x: r.left + r.width / 2, y: r.bottom}); }, Date.now() - hiddenAt < SKIP ? 0 : delay);
     };
-    const control = (event: Event) => event.target instanceof Element ? event.target.closest<HTMLElement>(CONTROL) : null;
+    const control = (event: Event) => event.target instanceof Element ? event.target.closest<HTMLElement>(FULL) ?? event.target.closest<HTMLElement>(CONTROL) : null;
     const show = (event: PointerEvent) => { if (event.pointerType === 'mouse') open(control(event), DELAY); };
     const focus = (event: FocusEvent) => { if (root.dataset.input === 'keyboard') open(control(event), 0); };
     const touch = (event: PointerEvent) => { if (event.pointerType === 'mouse') { clear(); return; } const node = control(event); clear(); press = setTimeout(() => open(node, 0), LONG_PRESS); };

@@ -1,8 +1,9 @@
-import { newKey, type ProjectMeta, type ProjectStore, type ProjectCommandStatus } from '../persist/backend';
+import { newKey, type ProjectMeta, type ProjectStore, type ProjectCommandStatus, type StoredDocBase } from '../persist/backend';
+import { changeForSave, savedVersionBase } from '../projects/versions';
 import type { ProjectDraft, ProjectDraftMeta, ProjectDraftStore } from '../persist/drafts';
 import type { StoredDoc } from '../persist/session';
 import { clearPlate } from '../actions';
-import { documentGeneration, leaveDocument, newDocument, type Doc } from '../state/history';
+import { documentGeneration, leaveDocument, newDocument, snapshot, type Doc } from '../state/history';
 import { clearPlateJobs } from '../plater/plates';
 import { setState } from '../state/store';
 import { project, projectList, flushProject, type ProjectDraftInventory } from './project';
@@ -135,7 +136,7 @@ export async function openProject(runtime: RecoveryRuntime, id: string, options:
         job: { state: 'idle', pct: 0, stage: '' } });
       newDocument(true);
     });
-    runtime.setRestored(null); runtime.resetCaptured();
+    runtime.setRestored(null); runtime.resetCaptured(); savedVersionBase(rec.meta.id, snapshot());
     project.send({ type: 'OPENED', meta: rec.meta });
     writeRoute(`/p/${rec.meta.id}`, true);
   } catch (error) {
@@ -143,6 +144,24 @@ export async function openProject(runtime: RecoveryRuntime, id: string, options:
     const failure = projectFailure(error, id, project.get().context.revision, true);
     setState({ loading: null }); project.send({ type: 'ERROR', error: failure.message, failure });
   }
+}
+export async function viewProjectVersion(runtime: RecoveryRuntime, id: string, record: { meta: ProjectMeta; doc: StoredDocBase }, enter: () => void) {
+  const mine = runtime.beginOpen();
+  await flushProject();
+  if (!runtime.isCurrent(mine) || project.get().context.id !== id) return false;
+  const document = recoveryDocument(record.doc) as StoredDoc;
+  await runtime.ensureCatalogs(document, () => runtime.isCurrent(mine));
+  if (!runtime.isCurrent(mine)) return false;
+  const fields = await (await codec()).decode(document, (k) => runtime.storage()!.getBlob(id, k));
+  if (!runtime.isCurrent(mine)) return false;
+  runtime.invalidateWrites();
+  enter();
+  runtime.adopt(() => {
+    leaveDocument(); clearPlateJobs();
+    setState({ ...fields, projectName: record.meta.name, gizmo: 'none', dialog: null, loading: null, job: { state: 'idle', pct: 0, stage: '' } });
+    newDocument(true);
+  });
+  return true;
 }
 export async function renameProject(runtime: RecoveryRuntime, id: string, name: string) {
   if (!name.trim()) return;
@@ -276,9 +295,10 @@ export async function saveProjectSnapshot(runtime: RecoveryRuntime, capture: {
       runtime.known.add(`${id}/${k}`);
     }
     if (runtime.removed.has(id)) return;
-    const meta = { name: nameOf(document), savedAt: Date.now(), objects: plateCount(document), revision };
+    const meta = { name: nameOf(document), savedAt: Date.now(), objects: plateCount(document), revision, change: changeForSave(id, document, revision) };
     const committed: CheckpointDocument = { ...stored, recoveryCheckpoint: receipt.checkpoint };
     const acknowledgement = await storage.save(id, meta, committed, meta.objects === 0 ? null : runtime.activeWrite(id, gen, version) ? thumbnail() ?? undefined : undefined);
+    savedVersionBase(id, document);
     if (runtime.activeWrite(id, gen, version)) project.send({ type: 'SAVED', id, ...meta, ...acknowledgement, checkpoint: receipt.checkpoint });
     if (!runtime.activeWrite(id, gen, version) || !project.get().context.conflict) {
       const drafts = await runtime.drafts().catch(() => null);

@@ -46,7 +46,6 @@
   :where(.orca-parity) .modal { max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
 }
 @media (max-width: 599px) {
-  :where(.orca-parity) .compact-topbar :is(.title-state[data-state=saved], .title-folder) { display: none; }
   :where(.orca-parity) .compact-topbar .view-tab > span { display: none; }
   :where(.orca-parity) .workspace-rail { width: 100%; border-right: 0; box-shadow: none; }
   :where(.orca-parity) .canvas-toolbar > .icon-btn:nth-of-type(4) { display: none; }

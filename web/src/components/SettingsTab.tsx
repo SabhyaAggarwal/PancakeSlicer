@@ -24,6 +24,9 @@ const GcodeWorkbench = lazy(() => import('../gcode/GcodeWorkbench'));
 const isGcode = (key: string) => /_gcode$/.test(key) && (!!OPTIONS[key]?.multiline || OPTIONS[key]?.type === 'string' || OPTIONS[key]?.type === 'strings');
 
 const customRow = (line: TabLine) => line.label === 'Head shape' && !line.options.length;
+const groupName = (s: string) => s.toLowerCase().replace(/\b(enable|enabled|use)\b/g, '').replace(/\s+/g, ' ').trim();
+const groupSwitch = (g: { title: string; lines: TabLine[] }) => !g.title ? -1 : g.lines.findIndex((l) => l.options.length === 1 && !l.index_labels && !l.indexed_columns
+  && OPTIONS[splitKey(l.options[0])[0]]?.type === 'bool' && groupName(l.label ?? OPTIONS[splitKey(l.options[0])[0]]?.label ?? '') === groupName(g.title));
 
 const TAB_OF: Record<PresetType, TabDesc['tab']> = { process: 'process', filament: 'filament', machine: 'printer' };
 const TYPE_NAME: Record<PresetType, string> = { process: 'Process', filament: 'Filament', machine: 'Printer' };
@@ -137,9 +140,25 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
         {groups.map((g) => {
           const single = groups.length === 1 && g.lines.length === 1 && g.lines[0].options.length === 1 && !!OPTIONS[splitKey(g.lines[0].options[0])[0]]?.multiline, id = groupId(page.title, g.title), open = !g.title || single || isGroupOpen(id);
           const modified = g.lines.some((l) => l.options.some((k) => splitKey(k)[0] in dirty));
+          const field = (line: TabLine, keys: string[], k: string, i: number, labels: string[] | undefined, shared: boolean, tooltip: string | undefined, hide = false) => {
+            const key = splitKey(k)[0];
+            return <Field widget={type === 'machine' && key === 'printable_area' ? <button type="button" className="btn" onClick={() => setBedDialog(true)}>Set bed shape</button>
+              : type === 'machine' && key === 'nonplanar_head' ? <Suspense fallback={null}><HeadPicker value={String(config[key] ?? '')} onCommit={(v) => editor ? editor.set(key, v) : v === String(system[key] ?? '') ? resetOption(type, key) : setOption(type, key, v)} /></Suspense>
+              : undefined} key={`${k}:${i}`} optKey={k} type={type} value={config[key]} systemValue={system[key]} dirty={key in dirty}
+              slot={slot} onSet={editor?.set} onReset={editor?.reset}
+              disabled={readOnly || isDeferred(key) || states[key]?.enabled === false}
+              definition={definition(key, line)}
+              inheritedValue={env[key.replace(/^filament_/, '')] as ConfigValue}
+              overrideDisabled={readOnly || OPTIONS[key]?.nullable && key !== 'filament_retraction_length' && !key.startsWith('filament_ironing_') && env.filament_retraction_length != null && Number(env.filament_retraction_length) <= 0}
+              label={labels?.[i] ?? (shared ? line.overrides?.[key]?.label ?? OPTIONS[key]?.label : line.label)}
+              hideLabel={hide || g.lines.length === 1 && keys.length === 1 && !!OPTIONS[key]?.multiline && (line.label ?? OPTIONS[key]?.label ?? '').trim().toLowerCase() === g.title.trim().toLowerCase()}
+              tooltip={tooltip} />;
+          };
+          const own = groupSwitch(g), ownLine = own >= 0 ? g.lines[own] : undefined, fixed = !!ownLine && g.lines.length === 1;
           return <section key={g.title} className="optgroup" data-collapsed={open ? undefined : ''} data-single={single ? '' : undefined}>
-            {g.title && !single && <GroupHead id={id} title={g.title} icon={g.icon} modified={modified} open={open} />}
+            {g.title && !single && <GroupHead id={id} title={g.title} icon={g.icon} modified={modified} open={open || fixed} fixed={fixed} aside={ownLine && field(ownLine, ownLine.options, ownLine.options[0], 0, undefined, false, ownLine.tooltip && OPTIONS[ownLine.tooltip] ? OPTIONS[ownLine.tooltip].tooltip : ownLine.tooltip, true)} />}
             {open && g.lines.map((line, row) => {
+              if (row === own) return null;
               let keys = line.options;
               let labels = line.index_labels;
               if (labels) keys = keys.flatMap((k) => labels!.map((_, i) => `${splitKey(k)[0]}#${i}`));
@@ -156,20 +175,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
               const sharedLabel = line.label ?? (OPTIONS[splitKey(keys[0])[0]]?.full_label || OPTIONS[splitKey(keys[0])[0]]?.label);
               return <div key={row} className={shared ? 'option-row' : undefined}>
                 {shared && <span className="opt-label">{sharedLabel}{tooltip && <InfoTip label={sharedLabel ?? ''}><p>{tooltip}</p></InfoTip>}</span>}
-                {keys.map((k, i) => {
-                  const key = splitKey(k)[0];
-                  return <Field widget={type === 'machine' && key === 'printable_area' ? <button type="button" className="btn" onClick={() => setBedDialog(true)}>Set bed shape</button>
-                    : type === 'machine' && key === 'nonplanar_head' ? <Suspense fallback={null}><HeadPicker value={String(config[key] ?? '')} onCommit={(v) => editor ? editor.set(key, v) : v === String(system[key] ?? '') ? resetOption(type, key) : setOption(type, key, v)} /></Suspense>
-                    : undefined} key={`${k}:${i}`} optKey={k} type={type} value={config[key]} systemValue={system[key]} dirty={key in dirty}
-                    slot={slot} onSet={editor?.set} onReset={editor?.reset}
-                    disabled={readOnly || isDeferred(key) || states[key]?.enabled === false}
-                    definition={definition(key, line)}
-                    inheritedValue={env[key.replace(/^filament_/, '')] as ConfigValue}
-                    overrideDisabled={readOnly || OPTIONS[key]?.nullable && key !== 'filament_retraction_length' && !key.startsWith('filament_ironing_') && env.filament_retraction_length != null && Number(env.filament_retraction_length) <= 0}
-                    label={labels?.[i] ?? (shared ? line.overrides?.[key]?.label ?? OPTIONS[key]?.label : line.label)}
-                    hideLabel={g.lines.length === 1 && keys.length === 1 && !!OPTIONS[key]?.multiline && (line.label ?? OPTIONS[key]?.label ?? '').trim().toLowerCase() === g.title.trim().toLowerCase()}
-                    tooltip={tooltip} />;
-                })}
+                {keys.map((k, i) => field(line, keys, k, i, labels, shared, tooltip))}
               </div>;
             })}
           </section>;
