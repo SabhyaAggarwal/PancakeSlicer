@@ -43,8 +43,9 @@ type libraryReceipt struct {
 	Revision uint64 `json:"revision"`
 }
 type libraryEnvelope struct {
-	Document   profileLibraryDocument    `json:"document"`
-	Operations map[string]libraryReceipt `json:"operations"`
+	Document   profileLibraryDocument            `json:"document"`
+	Operations map[string]libraryReceipt         `json:"operations"`
+	Adoptions  map[string]profileAdoptionReceipt `json:"adoptions,omitempty"`
 }
 type libraryInventory struct {
 	Complete        bool   `json:"complete"`
@@ -61,6 +62,7 @@ type libraryWrite struct {
 	ExpectedRevision uint64                 `json:"expectedRevision"`
 	Document         profileLibraryDocument `json:"document"`
 	Inventory        *libraryInventory      `json:"inventory,omitempty"`
+	Adoption         *profileAdoption       `json:"adoption,omitempty"`
 }
 type libraryError struct {
 	Message  string `json:"error"`
@@ -83,7 +85,7 @@ func emptyProfileLibrary() profileLibraryDocument {
 func (s *ProfileLibraryStore) readLibrary() (*libraryEnvelope, error) {
 	raw, err := os.ReadFile(filepath.Join(s.dir, "profile-library.json"))
 	if errors.Is(err, os.ErrNotExist) {
-		return &libraryEnvelope{emptyProfileLibrary(), map[string]libraryReceipt{}}, nil
+		return &libraryEnvelope{Document: emptyProfileLibrary(), Operations: map[string]libraryReceipt{}, Adoptions: map[string]profileAdoptionReceipt{}}, nil
 	}
 	if err != nil {
 		return nil, err
@@ -94,6 +96,9 @@ func (s *ProfileLibraryStore) readLibrary() (*libraryEnvelope, error) {
 	}
 	if envelope.Document == nil || envelope.Operations == nil {
 		return nil, errors.New("invalid stored profile library")
+	}
+	if envelope.Adoptions == nil {
+		envelope.Adoptions = map[string]profileAdoptionReceipt{}
 	}
 	return &envelope, nil
 }
@@ -233,21 +238,27 @@ func (s *Server) putProfileLibrary(w http.ResponseWriter, r *http.Request) {
 		libraryFailure(w, 400, "library_invalid", "operationId, expectedRevision and a complete document are required.", "repair_profiles", 0)
 		return
 	}
+	if request.Adoption != nil {
+		if request.OperationID != "browser-adoption:"+request.Adoption.Digest {
+			libraryFailure(w, 400, "adoption_invalid", "Use the stable operationId browser-adoption:<source digest>.", "recapture_inventory", 0)
+			return
+		}
+		if err := request.Adoption.validate(); err != nil {
+			libraryFailure(w, 400, "adoption_invalid", err.Error(), "recapture_inventory", 0)
+			return
+		}
+	}
 	canonical, _ := json.Marshal(struct {
 		Revision  uint64
 		Document  profileLibraryDocument
 		Inventory *libraryInventory
-	}{request.ExpectedRevision, request.Document, request.Inventory})
+		Adoption  *profileAdoption `json:",omitempty"`
+	}{request.ExpectedRevision, request.Document, request.Inventory, request.Adoption})
 	var content any
 	json.Unmarshal(canonical, &content)
 	canonical, _ = json.Marshal(content)
 	digest := sha256.Sum256(canonical)
 	digestText := hex.EncodeToString(digest[:])
-	next, err := libraryProfiles(request.Document)
-	if err != nil {
-		libraryFailure(w, 400, "library_invalid", err.Error(), "repair_profiles", 0)
-		return
-	}
 	s.library.mu.Lock()
 	defer s.library.mu.Unlock()
 	envelope, err := s.library.readLibrary()
@@ -256,6 +267,18 @@ func (s *Server) putProfileLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	revision := libraryRevision(envelope.Document)
+	if request.Adoption != nil {
+		if receipt, ok := envelope.Adoptions[request.Adoption.Digest]; ok {
+			if receipt.SourceID != request.Adoption.SourceID {
+				libraryFailure(w, 409, "adoption_identity_conflict", "This capture was acknowledged for a different source identity. Keep the source and review its provenance.", "recapture_inventory", revision)
+				return
+			}
+
+			writeJSON(w, 200, map[string]any{"revision": receipt.Revision, "operationId": receipt.OperationID, "adoption": receipt})
+			return
+		}
+	}
+
 	if receipt, ok := envelope.Operations[request.OperationID]; ok {
 		if receipt.Digest != digestText {
 			libraryFailure(w, 409, "operation_conflict", "This operation ID was already used for different profile changes.", "reload_reapply", revision)
@@ -266,6 +289,11 @@ func (s *Server) putProfileLibrary(w http.ResponseWriter, r *http.Request) {
 	}
 	if request.ExpectedRevision != revision || libraryRevision(request.Document) != revision {
 		libraryFailure(w, 409, "revision_conflict", "The profile library changed. Reload it and reapply this draft.", "reload_reapply", revision)
+		return
+	}
+	next, err := libraryProfiles(request.Document)
+	if err != nil {
+		libraryFailure(w, 400, "library_invalid", err.Error(), "repair_profiles", revision)
 		return
 	}
 	previous, err := libraryProfiles(envelope.Document)
@@ -326,6 +354,10 @@ func (s *Server) putProfileLibrary(w http.ResponseWriter, r *http.Request) {
 	request.Document["revision"] = json.RawMessage(fmt.Sprint(revision + 1))
 	envelope.Document = request.Document
 	envelope.Operations[request.OperationID] = libraryReceipt{digestText, revision + 1}
+	if request.Adoption != nil {
+		envelope.Adoptions[request.Adoption.Digest] = profileAdoptionReceipt{*request.Adoption, request.OperationID, revision + 1, true}
+	}
+
 	encoded, err := json.Marshal(envelope)
 	if err == nil {
 		err = s.library.writeLibrary(encoded)
@@ -334,7 +366,11 @@ func (s *Server) putProfileLibrary(w http.ResponseWriter, r *http.Request) {
 		libraryFailure(w, 507, "library_write_failed", "The profile library could not be saved. Free storage or export your profiles, then retry the same draft.", "export_profiles", revision)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"revision": revision + 1, "operationId": request.OperationID})
+	response := map[string]any{"revision": revision + 1, "operationId": request.OperationID}
+	if request.Adoption != nil {
+		response["adoption"] = envelope.Adoptions[request.Adoption.Digest]
+	}
+	writeJSON(w, 200, response)
 }
 func (s *ProfileLibraryStore) writeLibrary(raw []byte) error {
 	root := s.dir
@@ -351,5 +387,8 @@ func (s *ProfileLibraryStore) writeLibrary(raw []byte) error {
 	if err != nil {
 		return err
 	}
-	return os.Rename(file.Name(), filepath.Join(root, "profile-library.json"))
+	if err := os.Rename(file.Name(), filepath.Join(root, "profile-library.json")); err != nil {
+		return err
+	}
+	return syncWorkspaceDirectory(root)
 }
