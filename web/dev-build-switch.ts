@@ -1,17 +1,31 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import { readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { promisify } from 'node:util';
+import { brotliCompress, constants } from 'node:zlib';
 import type { Plugin } from 'vite';
 
 const COOKIE = 'orca-build';
 const ON = new RegExp(`(?:^|;\\s*)${COOKIE}=on(?:;|$)`);
+const PRECOMPRESSED = /\.(js|css|json|svg|wasm|txt|stl)$/;
 const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp',
   '.woff2': 'font/woff2', '.wasm': 'application/wasm', '.txt': 'text/plain; charset=utf-8', '.stl': 'model/stl',
 };
+
+async function precompress(dir: string) {
+  const compress = promisify(brotliCompress);
+  const files = (await readdir(dir, { recursive: true })).filter((file) => PRECOMPRESSED.test(file));
+  await Promise.all(files.map(async (file) => {
+    const body = await readFile(path.join(dir, file));
+    if (body.length < 1024) return;
+    const br = await compress(body, { params: { [constants.BROTLI_PARAM_QUALITY]: 11, [constants.BROTLI_PARAM_SIZE_HINT]: body.length } });
+    if (br.length < body.length) await writeFile(path.join(dir, file + '.br'), br);
+  }));
+}
 
 export function devBuildSwitch(): Plugin {
   return {
@@ -28,7 +42,7 @@ export function devBuildSwitch(): Plugin {
         child.stderr.on('data', (chunk: Buffer) => { stderr += chunk; });
         child.on('error', reject);
         child.on('close', (code) => code === 0 ? resolve() : reject(new Error(stderr.slice(-4000) || `vite build exited ${code}`)));
-      }).finally(() => { building = null; });
+      }).then(() => precompress(dir)).finally(() => { building = null; });
 
       const redirect = (res: ServerResponse, location: string, cookie: string) => {
         res.writeHead(302, { Location: location, 'Set-Cookie': `${COOKIE}=${cookie}; Path=/; SameSite=Lax`, 'Cache-Control': 'no-store' });
@@ -38,14 +52,18 @@ export function devBuildSwitch(): Plugin {
       async function send(req: IncomingMessage, res: ServerResponse, file: string) {
         const info = await stat(file).catch(() => null);
         if (!info?.isFile()) return false;
-        const etag = `W/"${info.size.toString(16)}-${info.mtimeMs.toString(16)}"`;
+        const br = PRECOMPRESSED.test(file) && /\bbr\b/.test(String(req.headers['accept-encoding'] ?? ''))
+          ? await stat(file + '.br').catch(() => null) : null;
+        const etag = `W/"${info.size.toString(16)}-${info.mtimeMs.toString(16)}${br ? '-br' : ''}"`;
         res.setHeader('Content-Type', TYPES[path.extname(file)] ?? 'application/octet-stream');
         res.setHeader('Cache-Control', file.startsWith(path.join(dir, 'assets') + path.sep) ? 'public, max-age=31536000, immutable' : 'no-cache');
         res.setHeader('ETag', etag);
+        if (PRECOMPRESSED.test(file)) res.setHeader('Vary', 'Accept-Encoding');
         if (req.headers['if-none-match'] === etag) { res.statusCode = 304; res.end(); return true; }
-        res.setHeader('Content-Length', info.size);
+        if (br) res.setHeader('Content-Encoding', 'br');
+        res.setHeader('Content-Length', br ? br.size : info.size);
         if (req.method === 'HEAD') res.end();
-        else createReadStream(file).pipe(res);
+        else createReadStream(br ? file + '.br' : file).pipe(res);
         return true;
       }
 

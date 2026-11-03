@@ -22,9 +22,18 @@ const MATERIALS = ['PLA', 'PETG', 'ABS', 'TPU', 'ASA', 'PC', 'PA', 'PVA'];
 const RARE = /^(PVA|BVOH|HIPS|EVA|COPE|PVB|SUPPORT|OTHER)$/;
 const material = (type: string) => (type.toUpperCase().split(/[-+\s]/)[0] || 'Other').replace(/^PA\d+$/, 'PA');
 
+export function currentEntry(type: PresetType, key: string | undefined, entries: readonly PickerEntry[]): PickerEntry | undefined {
+  if (!key || entries.some((e) => e.key === key)) return undefined;
+  const r = resolvePreset(getState(), type, key);
+  return r.name ? { key, name: r.name, config: r.config, vendor: r.base?.vendor ?? '', mine: true } : undefined;
+}
+export const NOT_COMPATIBLE = 'Not compatible';
+
 function filamentGroups(slot: number | null, catalog = false): PickerGroup[] {
   const s = getState();
-  const entries = catalog ? listCatalog('filament') : listProfiles('filament');
+  let entries = catalog ? listCatalog('filament') : listProfiles('filament');
+  const hidden = catalog || slot === null ? undefined : currentEntry('filament', s.filamentSlots[slot], entries);
+  if (hidden) entries = [...entries, hidden];
   const item = (e: PickerEntry, swatch?: string | null, sub?: string): PickerItem => {
     const brand = first(e.config.filament_vendor) || e.vendor || 'Generic', b = brandName(e.name, e.config);
     const label = e.mine ? e.name : b.name;
@@ -40,6 +49,7 @@ function filamentGroups(slot: number | null, catalog = false): PickerGroup[] {
   const types = new Map<string, PickerItem[]>();
   for (const e of entries) {
     const it = item(e), at = e.name.match(/@\s*(.+)$/)?.[1];
+    if (e === hidden) it.meta = NOT_COMPATIBLE;
     if (!e.mine && at && !/system/i.test(at) && seen.get(it.label + first(e.config.filament_vendor))! > 1) it.label += ` · ${at.replace(/^BBL\s+/, '')}`;
     const type = material(first(e.config.filament_type));
     types.set(type, [...(types.get(type) ?? []), it]);

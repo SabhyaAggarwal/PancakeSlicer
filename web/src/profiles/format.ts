@@ -18,6 +18,6 @@ export function display(key: string, value: ConfigValue | undefined): string {
 }
 
 export const presetLabel = (name: string) =>
-  (name.replace(/\s*@.*$/, '').replace(/\s*[·-]\s*System\b/gi, '').replace(/Non-planar top/gi, 'Custom surface').trim() || name);
+  (name.replace(/\s*@.*$/, '').replace(/\s*[·-]\s*System\b/gi, '').trim() || name);
 
 export const isMetaKey = (key: string) => PRESET_META.test(key) || /^(inherits_group|different_settings_to_system)$/.test(key);

@@ -91,7 +91,7 @@ export function Picker({ label, value, groups, sections = false, onPick, memory 
   const pinnedSet = useMemo(() => new Set(pins), [pins]);
   const allSections = useMemo(() => sections ? [{title: 'Favorites', items: all.filter(r => pinnedSet.has(r.id))}, ...source.map(g => ({title: g.title, items: g.items.filter(r => !pinnedSet.has(r.id))}))].filter(g => g.items.length) : null, [sections, all, pinnedSet, source]);
   const tabbed = useMemo(() => source.filter(g => !g.lead), [source]);
-  const rails = useMemo<RailTab[]>(() => sections ? (tabbed.length > 1 ? [{id: 'all', title: 'All', count: all.length}, ...tabbed.map(g => ({id: g.id, title: g.title, count: g.items.length}))] : []) : [...(all.some(r => pinnedSet.has(r.id)) ? [{id:'pins',title:'Favorites'}] : []), {id:'all',title:adding ? 'All bases' : 'All profiles'}, ...source.map(({id,title}) => ({id,title}))], [sections, adding, pinnedSet, all, source]);
+  const rails = useMemo<RailTab[]>(() => sections ? (tabbed.length > 1 ? [{id: 'all', title: 'All'}, ...tabbed.map(g => ({id: g.id, title: g.title}))] : []) : [...(all.some(r => pinnedSet.has(r.id)) ? [{id:'pins',title:'Favorites'}] : []), {id:'all',title:adding ? 'All bases' : 'All profiles'}, ...source.map(({id,title}) => ({id,title}))], [sections, adding, pinnedSet, all, source]);
   useRowFill(railRef, open && rails.map(r => r.id).join('|'));
   const activeRail = rails.some(r => r.id === rail) ? rail : sections ? tabbed.find(g => g.items.some(i => i.id === value))?.id ?? 'all' : selectDefaultRail(source, pins);
   const sectioned = useMemo(() => {
