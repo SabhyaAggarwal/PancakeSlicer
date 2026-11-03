@@ -245,7 +245,7 @@ func main() {
 	if _, err := presets.names(); err != nil {
 		log.Fatal(err)
 	}
-	for _, vendor := range []string{"BBL", "Prusa"} {
+	for _, vendor := range []string{"BBL", "Prusa", "Custom"} {
 		if _, err := presets.vendor(vendor); err != nil {
 			log.Printf("cannot preload %s presets: %v", vendor, err)
 		}
