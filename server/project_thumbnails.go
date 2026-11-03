@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -31,18 +32,74 @@ func thumbnailImage(record json.RawMessage) (data, contentType string, image []b
 	if json.Unmarshal(record, &r) != nil || r.Meta.Thumbnail == nil {
 		return "", "", nil, false
 	}
-	data = *r.Meta.Thumbnail
+	contentType, image, ok = decodeThumbnail(*r.Meta.Thumbnail)
+	return *r.Meta.Thumbnail, contentType, image, ok
+}
+
+func decodeThumbnail(data string) (contentType string, image []byte, ok bool) {
 	header, payload, found := strings.Cut(data, ",")
 	contentType, isBase64 := strings.CutSuffix(strings.TrimPrefix(header, "data:"), ";base64")
 	if !found || !strings.HasPrefix(header, "data:image/") || !isBase64 {
-		return "", "", nil, false
+		return "", nil, false
 	}
 	image, err := base64.StdEncoding.DecodeString(payload)
-	return data, contentType, image, err == nil
+	return contentType, image, err == nil
+}
+
+func rememberThumbnail(id, data string) {
+	key := id + "\x00" + thumbnailVersion(data)
+	thumbnails.Lock()
+	_, ok := thumbnails.m[key]
+	thumbnails.Unlock()
+	if ok {
+		return
+	}
+	if contentType, image, decoded := decodeThumbnail(data); decoded {
+		storeThumbnail(key, thumbnailEntry{contentType, image})
+	}
+}
+
+func storeThumbnail(key string, e thumbnailEntry) {
+	thumbnails.Lock()
+	defer thumbnails.Unlock()
+	if len(thumbnails.m) >= 1024 {
+		thumbnails.m = map[string]thumbnailEntry{}
+	}
+	thumbnails.m[key] = e
+}
+
+type thumbnailEntry struct {
+	contentType string
+	image       []byte
+}
+
+var thumbnails = struct {
+	sync.Mutex
+	m map[string]thumbnailEntry
+}{m: map[string]thumbnailEntry{}}
+
+func serveThumbnail(w http.ResponseWriter, r *http.Request, version string, e thumbnailEntry) {
+	if r.URL.Query().Get("v") == version {
+		w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	} else {
+		w.Header().Set("Cache-Control", "private, no-cache")
+	}
+	w.Header().Set("Content-Type", e.contentType)
+	w.Header().Set("ETag", `"`+version+`"`)
+	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(e.image))
 }
 
 func (st *workspaceStore) thumbnailRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/project-thumbnails/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if v := r.URL.Query().Get("v"); v != "" {
+			thumbnails.Lock()
+			e, ok := thumbnails.m[r.PathValue("id")+"\x00"+v]
+			thumbnails.Unlock()
+			if ok {
+				serveThumbnail(w, r, v, e)
+				return
+			}
+		}
 		var data, contentType string
 		var image []byte
 		found, read := false, false
@@ -61,13 +118,8 @@ func (st *workspaceStore) thumbnailRoutes(mux *http.ServeMux) {
 			return
 		}
 		version := thumbnailVersion(data)
-		if r.URL.Query().Get("v") == version {
-			w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
-		} else {
-			w.Header().Set("Cache-Control", "private, no-cache")
-		}
-		w.Header().Set("Content-Type", contentType)
-		w.Header().Set("ETag", `"`+version+`"`)
-		http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(image))
+		e := thumbnailEntry{contentType, image}
+		storeThumbnail(r.PathValue("id")+"\x00"+version, e)
+		serveThumbnail(w, r, version, e)
 	})
 }

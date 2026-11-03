@@ -288,6 +288,7 @@ func projectMeta(p workspaceProject) json.RawMessage {
 	var id, thumbnail string
 	if json.Unmarshal(meta["id"], &id) == nil && json.Unmarshal(meta["thumbnail"], &thumbnail) == nil && strings.HasPrefix(thumbnail, "data:image/") {
 		meta["thumbnail"], _ = json.Marshal(thumbnailURL(id, thumbnail))
+		rememberThumbnail(id, thumbnail)
 	}
 	meta["folderId"] = json.RawMessage("null")
 	if p.Folder != "" {
