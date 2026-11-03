@@ -107,6 +107,15 @@ func (c *cachedResponse) serve(w http.ResponseWriter, r *http.Request, name, con
 		etag = strings.TrimSuffix(etag, `"`) + `-gzip"`
 		w.Header().Set("Content-Encoding", "gzip")
 	}
+	base := strings.TrimSuffix(c.etag, `"`)
+	for _, tag := range strings.Split(r.Header.Get("If-None-Match"), ",") {
+		tag = strings.TrimPrefix(strings.TrimSpace(tag), "W/")
+		if tag == c.etag || tag == base+`-gzip"` || tag == base+`-br"` {
+			w.Header().Set("ETag", tag)
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+	}
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 	http.ServeContent(w, r, name, modified, bytes.NewReader(data))

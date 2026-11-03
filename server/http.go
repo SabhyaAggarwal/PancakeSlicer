@@ -84,6 +84,7 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, library *Profil
 	mux.HandleFunc("POST /api/jobs/{id}/retry", s.retryJob)
 	mux.HandleFunc("GET /api/jobs/{id}/download", s.download)
 	mux.HandleFunc("GET /api/jobs/{id}/moves", s.moves)
+	mux.HandleFunc("GET /api/jobs/{id}/gcode-lines", s.gcodeLines)
 	mux.HandleFunc("GET /api/jobs/{id}/surface-grid", s.surfaceGrid)
 	mux.HandleFunc("GET /api/jobs/{id}/exploded/{name}", s.exploded)
 	mux.HandleFunc("POST /api/jobs/{id}/send", s.sendJob)
