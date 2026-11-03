@@ -1,5 +1,137 @@
 import type { LegacyDatabase } from './legacy-projects';
+import type { LegacyRendererInventory, LegacyRendererPartRead, RendererOriginInventory, RendererDomainCoverage,
+  RendererPartReference } from '../../../desktop/src/legacy-renderer';
 import { bytesBase64, parseDocument, sha256 } from './wire';
+export type { LegacyRendererInventory, RendererOriginInventory } from '../../../desktop/src/legacy-renderer';
+
+export interface LegacyDesktopRenderer {
+  version: 1; inventory(): Promise<LegacyRendererInventory>;
+  readPart(request: LegacyRendererPartRead): Promise<Uint8Array>;
+}
+export interface CapturedRendererOrigin extends Omit<RendererOriginInventory, 'databases'> { databases: LegacyDatabase[] }
+export interface DesktopRendererCapture {
+  inventory: LegacyRendererInventory;
+  origins: CapturedRendererOrigin[];
+  parts: { key: string; blob: Blob }[];
+}
+export const desktopLegacyIncomplete = () => Object.assign(new Error('Historical desktop renderer storage is incomplete. Original sources are retained; normal writes remain blocked.'),
+  { name: 'DesktopLegacyIncompleteError', code: 'legacy_renderer_incomplete' });
+const rendererIncomplete = desktopLegacyIncomplete;
+const domains = ['localStorage', 'indexedDB', 'sessionStorage', 'blobs'] as const;
+const completeCoverage = (coverage: RendererDomainCoverage) => coverage && domains.every((key) => coverage[key] === 'decoded' || coverage[key] === 'verified-absent');
+const digestPattern = /^[a-f0-9]{64}$/;
+function jsonTransport(value: unknown, seen = new Set<object>()): boolean {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value) && !Object.is(value, -0);
+  if (!value || typeof value !== 'object' || seen.has(value)) return false;
+  if (!Array.isArray(value) && Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) return false;
+  seen.add(value);
+  return Reflect.ownKeys(value).length === Object.keys(value).length + (Array.isArray(value) ? 1 : 0)
+    && (!Array.isArray(value) || Object.keys(value).length === value.length && Object.keys(value).every((key, index) => key === String(index)))
+    && Object.values(value).every((item) => jsonTransport(item, seen));
+}
+async function checkRendererInventory(inventory: LegacyRendererInventory): Promise<void> {
+  if (!jsonTransport(inventory) || !inventory || inventory.version !== 1 || inventory.status !== 'COMPLETE'
+    || inventory.rendererOrigin !== 'http://127.0.0.1:29731' || !/^electron-session-data:v1:[a-f0-9]{64}$/.test(inventory.sourceProfileId)
+    || !digestPattern.test(inventory.inventoryFingerprint) || !completeCoverage(inventory.coverage)
+    || !Array.isArray(inventory.origins) || !Array.isArray(inventory.issues) || inventory.issues.length) throw rendererIncomplete();
+  if (Object.keys(inventory).join(',') !== 'version,status,rendererOrigin,sourceProfileId,coverage,absence,origins,issues,inventoryFingerprint'
+    || Object.keys(inventory.coverage).join(',') !== domains.join(',')) throw rendererIncomplete();
+  if ((!inventory.origins.length || domains.some((key) => inventory.coverage[key] === 'verified-absent')) && (!inventory.absence || typeof inventory.absence.supportedLayout !== 'string' || !inventory.absence.supportedLayout
+    || !Array.isArray(inventory.absence.sourceRefs) || !inventory.absence.sourceRefs.length
+    || inventory.absence.sourceRefs.some((ref) => typeof ref !== 'string' || !ref || /^[\\/]|^[A-Za-z]:/.test(ref) || ref.split('/').some((part) => part === '..'))
+    || !inventory.origins.length && domains.some((key) => inventory.coverage[key] !== 'verified-absent'))) throw rendererIncomplete();
+  const origins = new Set<string>();
+  for (const origin of inventory.origins) {
+    let url: URL;
+    try { url = new URL(origin.origin); } catch { throw rendererIncomplete(); }
+    if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.origin !== origin.origin || origins.has(origin.origin)
+      || !completeCoverage(origin.coverage) || Object.keys(origin.coverage).join(',') !== domains.join(',')
+      || !Array.isArray(origin.localStorage) || !Array.isArray(origin.databases)
+      || !Array.isArray(origin.sessionStorageNamespaces) || !Array.isArray(origin.binaryParts)) throw rendererIncomplete();
+    origins.add(origin.origin);
+    const values = { localStorage: origin.localStorage, indexedDB: origin.databases, sessionStorage: origin.sessionStorageNamespaces, blobs: origin.binaryParts };
+    if (domains.some((key) => (origin.coverage[key] === 'verified-absent' && values[key].length)
+      || (inventory.coverage[key] === 'verified-absent' && origin.coverage[key] !== 'verified-absent'))) throw rendererIncomplete();
+    const unique = (items: readonly string[]) => items.every((key) => typeof key === 'string') && new Set(items).size === items.length;
+    const strings = (items: { key: string; value: string }[]) => unique(items.map((item) => item.key)) && items.every((item) => typeof item.value === 'string');
+    if (!strings(origin.localStorage) || !unique(origin.databases.map((db) => db.name))
+      || !unique(origin.sessionStorageNamespaces.map((ns) => ns.namespaceId))) throw rendererIncomplete();
+    for (const ns of origin.sessionStorageNamespaces) if (!ns.namespaceId || !Array.isArray(ns.values) || !strings(ns.values)) throw rendererIncomplete();
+    for (const db of origin.databases) {
+      if (!db.name || !Number.isSafeInteger(db.version) || db.version < 1 || !Array.isArray(db.stores) || !unique(db.stores.map((store) => store.name))) throw rendererIncomplete();
+      for (const store of db.stores) if (!store.name || !Array.isArray(store.records)) throw rendererIncomplete();
+    }
+  }
+  const { inventoryFingerprint, ...body } = inventory;
+  if (await sha256(new TextEncoder().encode(JSON.stringify(body))) !== inventoryFingerprint) throw rendererIncomplete();
+}
+export async function verifyDesktopRendererCapture(source: LegacyDesktopRenderer, capture: DesktopRendererCapture): Promise<void> {
+  let current: LegacyRendererInventory;
+  try { current = await source.inventory(); } catch { throw rendererIncomplete(); }
+  await checkRendererInventory(current);
+  if (current.sourceProfileId !== capture.inventory.sourceProfileId || current.inventoryFingerprint !== capture.inventory.inventoryFingerprint) throw rendererIncomplete();
+}
+export async function captureDesktopRenderer(source: LegacyDesktopRenderer): Promise<DesktopRendererCapture> {
+  if (!source || source.version !== 1 || typeof source.inventory !== 'function' || typeof source.readPart !== 'function') throw rendererIncomplete();
+  let inventory: LegacyRendererInventory;
+  try { inventory = await source.inventory(); } catch { throw rendererIncomplete(); }
+  await checkRendererInventory(inventory);
+  const parts = new Map<string, Blob>();
+  for (const origin of inventory.origins) for (const part of origin.binaryParts) {
+    if (typeof part.key !== 'string' || !part.key || parts.has(part.key) || !Number.isSafeInteger(part.size) || part.size < 0 || !digestPattern.test(part.sha256)) throw rendererIncomplete();
+    const chunks: BlobPart[] = [];
+    for (let offset = 0; offset < part.size;) {
+      const length = Math.min(4 * 1024 * 1024, part.size - offset);
+      let bytes: Uint8Array;
+      try { bytes = await source.readPart({ inventoryFingerprint: inventory.inventoryFingerprint, key: part.key, offset, length }); } catch { throw rendererIncomplete(); }
+      if (!(bytes instanceof Uint8Array) || bytes.byteLength !== length) throw rendererIncomplete();
+      chunks.push(new Uint8Array(bytes) as BlobPart); offset += length;
+    }
+    const blob = new Blob(chunks);
+    if (await sha256(await blob.arrayBuffer()) !== part.sha256) throw rendererIncomplete();
+    parts.set(part.key, blob);
+  }
+  async function unpack(value: unknown, allowed: Set<string>): Promise<unknown> {
+    if (!value || typeof value !== 'object') return value;
+    if (Object.hasOwn(value, '$orcaRendererPart')) {
+      const ref = value as RendererPartReference, part = parts.get(ref.$orcaRendererPart);
+      const fields = ref.kind === 'File' ? ['$orcaRendererPart', 'kind', 'mimeType', 'name', 'lastModified']
+        : ref.kind === 'Blob' ? ['$orcaRendererPart', 'kind', 'mimeType'] : ['$orcaRendererPart', 'kind'];
+      if (!part || !allowed.has(ref.$orcaRendererPart) || Object.keys(ref).length !== fields.length || Object.keys(ref).some((key) => !fields.includes(key))) throw rendererIncomplete();
+      if (ref.kind === 'Blob' || ref.kind === 'File') {
+        if (typeof ref.mimeType !== 'string') throw rendererIncomplete();
+        const blob = ref.kind === 'Blob' ? new Blob([part], { type: ref.mimeType })
+          : typeof ref.name === 'string' && Number.isSafeInteger(ref.lastModified) ? new File([part], ref.name, { type: ref.mimeType, lastModified: ref.lastModified }) : null;
+        if (!blob || blob.type !== ref.mimeType || ref.kind === 'File' && (!(blob instanceof File) || blob.name !== ref.name || blob.lastModified !== ref.lastModified)) throw rendererIncomplete();
+        return blob;
+      }
+      try { return parseDocument(JSON.stringify({ $orcaBinary: ref.kind, data: bytesBase64(new Uint8Array(await part.arrayBuffer())) })); }
+      catch { throw rendererIncomplete(); }
+    }
+    if (Object.hasOwn(value, '$orcaDate')) {
+      const ms = (value as {$orcaDate: unknown}).$orcaDate;
+      if (Object.keys(value).length !== 1 || typeof ms !== 'number' || !Number.isSafeInteger(ms) || !Number.isFinite(new Date(ms).getTime())) throw rendererIncomplete();
+      return new Date(ms);
+    }
+    if (Object.keys(value).some((key) => key.startsWith('$orca'))) throw rendererIncomplete();
+    if (Array.isArray(value)) { const result = []; for (const item of value) result.push(await unpack(item, allowed)); return result; }
+    const entries: [string, unknown][] = [];
+    for (const [key, item] of Object.entries(value)) entries.push([key, await unpack(item, allowed)]);
+    return Object.fromEntries(entries);
+  }
+  const validKey = (key: unknown): key is IDBValidKey => typeof key === 'string' || typeof key === 'number' && Number.isFinite(key)
+    || key instanceof Date && Number.isFinite(key.getTime()) || key instanceof ArrayBuffer || ArrayBuffer.isView(key) || Array.isArray(key) && key.every(validKey);
+  const origins: CapturedRendererOrigin[] = [];
+  for (const origin of inventory.origins) {
+    const decoded = await unpack(origin, new Set(origin.binaryParts.map((part) => part.key))) as CapturedRendererOrigin;
+    for (const db of decoded.databases) for (const store of db.stores) for (const row of store.records) if (!validKey(row.key)) throw rendererIncomplete();
+    origins.push(decoded);
+  }
+  const capture = { inventory, origins, parts: [...parts].map(([key, blob]) => ({ key, blob })) };
+  await verifyDesktopRendererCapture(source, capture);
+  return capture;
+}
 export interface DesktopInventory {
   version: 1; complete: true; source: 'electron-user-data'; fingerprint: string;
   roots: { name: string; paths: string[] }[]; directories: string[];
@@ -50,7 +182,7 @@ export async function captureDesktopProjects(source: LegacyDesktopProjects): Pro
       return parseDocument(JSON.stringify({ $orcaBinary: object.$typed, data }));
     }
     if (typeof object.$date === 'number' && Object.keys(object).length === 1) return new Date(object.$date);
-    const result: Record<string, unknown> = {};
+    const result: Record<string, unknown> = Object.create(null);
     for (const [key, item] of Object.entries(object)) result[key] = await decode(item, root);
     return result;
   }

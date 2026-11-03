@@ -43,32 +43,54 @@ export async function loadCatalog() {
     try {
       await settings;
       if(!current())return;
-      const [storage,{prepareProfileLibraryHydration},browser,{acceptHydratedPrinterSetups},{acknowledgePendingProfileWrite}]=await Promise.all([
-        import('../persist/profile-library'),import('./library-hydration'),import('./browser-inventory'),import('./printer-setups'),import('./transactions')]);
+      const [storage,{prepareProfileLibraryHydration},browser,{acceptHydratedPrinterSetups},{acknowledgePendingProfileWrite},workspace]=await Promise.all([
+        import('../persist/profile-library'),import('./library-hydration'),import('./browser-inventory'),import('./printer-setups'),import('./transactions'),import('../persist/project-adoption')]);
       await acknowledgePendingProfileWrite();
       if(!current())return;
       let document=await storage.readProfileLibrary();
       const unchanged=()=>{const s=getState();return current() && documentGeneration()===documentAtStart && s.project===initial.project && s.profileSnapshots===initial.profileSnapshots && s.projectPresets===initial.projectPresets && s.dirty===initial.dirty && (s.userPresets===initial.userPresets || s.userPresets.length===initial.userPresets.length && s.userPresets.every((p,i)=>p===initial.userPresets[i])) && s.printer===initial.printer && s.process===initial.process && s.filamentSlots===initial.filamentSlots && s.slotColours===initial.slotColours && s.filamentEdits===initial.filamentEdits && s.mixes===initial.mixes && s.printerLibrary===initial.printerLibrary;};
       const restoreStartupPlaceholder=!initial.printer && !initial.process && !initial.filamentSlots.length && !initial.project && !initial.objects.length && !initial.profileSnapshots && !initial.projectPresets && !Object.keys(initial.dirty.machine).length && !Object.keys(initial.dirty.process).length && !Object.keys(initial.filamentEdits).length && !Object.keys(initial.printerLibrary.setups).length;
-      let inventory:import('./browser-inventory').BrowserProfileInventory|null=null,adoptionError:string|null=null;
+      let adoptionError:string|null=null;
       try{
-        inventory=await browser.captureBrowserProfileInventory(initial);
-        if(!unchanged())throw new Error('Your setup changed while loading; retry to keep the newer edits.');
+        const requireReceipt=async(plan:import('./browser-inventory').BrowserProfileAdoptionPlan)=>{
+          const receipt=await storage.readProfileLibraryAdoption(plan.adoption.digest);
+          if(!receipt || receipt.source!==plan.adoption.source || receipt.sourceId!==plan.adoption.sourceId || receipt.operationId!==plan.operationId)
+            throw new Error('Profile source adoption has not been durably acknowledged. Your original data and draft are kept; retry.');
+        };
         if(pendingBrowserAdoption){
           const prior=pendingBrowserAdoption,known=await storage.readProfileLibraryAdoption(prior.adoption.digest);
-          try{document=known ? await storage.readProfileLibrary() : await browser.adoptBrowserProfileInventory(prior);}
+          try{document=known ? await storage.readProfileLibrary() : await browser.adoptBrowserProfileInventory(prior);await requireReceipt(prior);}
           catch(error){if((error as {status?:number}).status===409 && pendingBrowserAdoption===prior)pendingBrowserAdoption=null;throw error;}
           if(pendingBrowserAdoption===prior)pendingBrowserAdoption=null;
         }
-        const adoption=await browser.fingerprintBrowserProfileInventory(inventory,location.origin),receipts=await storage.readProfileLibraryAdoptions();
+        const desktop=!!window.orcaDesktop;
+        const sources:{origin:string;inventory:import('./browser-inventory').BrowserProfileInventory}[]=[];
+        if(desktop){
+          await workspace.ensureProjectAdoption(generation>1);
+          const renderer=await workspace.desktopProfileInventory();
+          for(const origin of renderer.origins)sources.push({origin:origin.origin,inventory:browser.captureRendererProfileInventory(initial,origin)});
+        }else sources.push({origin:location.origin,inventory:await browser.captureBrowserProfileInventory(initial)});
+        let receipts=await storage.readProfileLibraryAdoptions();
+        for(const {origin,inventory} of sources){
+          if(!inventory.complete || inventory.issues.length)throw new Error(`Profile source inventory is incomplete: ${inventory.issues.join('; ')}`);
+          if(!unchanged())throw new Error('Your setup changed while loading; retry to keep the newer edits.');
+          if(!inventory.legacyDocument && Object.values(inventory.storage).every(value=>value===null)
+            && !receipts.some(receipt=>receipt.sourceId===`browser-profile-library:v1:${origin}`))continue;
+          const adoption=await browser.fingerprintBrowserProfileInventory(inventory,origin);
+          document=await storage.readProfileLibrary();
+          if(!unchanged())throw new Error('Your setup changed while loading; retry to keep the newer edits.');
+          const plan=browser.planBrowserProfileAdoption(document,inventory,adoption,receipts);
+          if(plan.conflicts.length)throw new Error(`Profile source needs recovery: ${plan.conflicts.join('; ')}. Both versions are kept.`);
+          if(desktop)await workspace.desktopProfileInventory();
+          if(!unchanged())throw new Error('Your setup changed while verifying the original source. Retry to keep the newer edits.');
+          if(!plan.alreadyAcknowledged){pendingBrowserAdoption=plan;document=await browser.adoptBrowserProfileInventory(plan);}
+          await requireReceipt(plan);
+          if(pendingBrowserAdoption===plan)pendingBrowserAdoption=null;
+          receipts=await storage.readProfileLibraryAdoptions();
+        }
+        await workspace.ensureProjectAdoption(generation>1);
+        if(desktop)await workspace.desktopProfileInventory();
         document=await storage.readProfileLibrary();
-        if(!unchanged())throw new Error('Your setup changed while loading; retry to keep the newer edits.');
-        const plan=browser.planBrowserProfileAdoption(document,inventory,adoption,receipts);
-        if(plan.conflicts.length)throw new Error(`Browser data needs recovery: ${plan.conflicts.join('; ')}. Both versions are kept.`);
-        if(!plan.alreadyAcknowledged){pendingBrowserAdoption=plan;document=await browser.adoptBrowserProfileInventory(plan);}
-        const receipt=await storage.readProfileLibraryAdoption(adoption.digest);
-        if(!receipt || receipt.source!==adoption.source || receipt.sourceId!==adoption.sourceId || receipt.operationId!==plan.operationId)throw new Error('Browser source adoption has not been durably acknowledged. Your original data and draft are kept; retry.');
-        if(pendingBrowserAdoption===plan)pendingBrowserAdoption=null;
       }catch(error){if(error instanceof storage.LegacyProfilesPendingError)throw error;adoptionError=error instanceof Error?error.message:String(error);}
       if(!current())return;
       if(!unchanged())throw new Error('Your profiles or setup changed during loading/adoption. Your newer work is kept; retry loading.');

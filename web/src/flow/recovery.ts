@@ -1,5 +1,6 @@
 import { loadServiceSession, patchServiceSession, sessionDocument } from '../persist/service-session';
-import { ensureProjectAdoption } from '../persist/project-adoption';
+import { ensureWorkspaceMutation } from '../persist/project-adoption';
+import { requireWorkspaceService } from '../persist/service';
 export interface Recovery {
   version: 1;
   projectId?: string;
@@ -7,7 +8,7 @@ export interface Recovery {
   send?: { jobId: string; target: string };
 }
 const identifier = (s: unknown): s is string => typeof s === 'string' && /^[A-Za-z0-9._-]{1,160}$/.test(s);
-export async function initialiseRecovery(): Promise<void> { await ensureProjectAdoption(); await loadServiceSession(); }
+export async function initialiseRecovery(): Promise<void> { await requireWorkspaceService(); await loadServiceSession(); }
 export function readRecovery(): Recovery {
   try {
     const r = sessionDocument().fsmRecovery as Recovery | undefined;
@@ -19,7 +20,7 @@ export function readRecovery(): Recovery {
   } catch { return { version: 1 }; }
 }
 export function rememberRecovery(patch: Partial<Omit<Recovery, 'version'>>) {
-  void ensureProjectAdoption().then(() => patchServiceSession({ fsmRecovery: { ...readRecovery(), ...patch, version: 1 } })).catch(() => {});
+  void ensureWorkspaceMutation().then(() => patchServiceSession({ fsmRecovery: { ...readRecovery(), ...patch, version: 1 } })).catch(() => {});
 }
 
 export function recoverySignature(signature: string): string {

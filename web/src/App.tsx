@@ -1,4 +1,3 @@
-import SavedPreferencesNotice from './components/SavedPreferencesNotice';
 import { Modal, ModalTitle } from './components/Modal';
 import { openPalette } from './commands/registry';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
@@ -25,6 +24,7 @@ const CanvasTools = lazy(() => import('./components/CanvasTools'));
 const Navigator = lazy(() => import('./components/Navigator').then((m) => ({ default: m.Navigator })));
 const PlateChoice = lazy(() => import('./components/PlateChoice'));
 const EmptyPlate = lazy(() => import('./components/FirstRun'));
+const SavedPreferencesNotice = lazy(() => import('./components/SavedPreferencesNotice'));
 const Plater3D = lazy(() => import('./plater/Plater3D'));
 import { deleteAll, getState, isSelected, removeSelected, setState, subscribeStore, togglePrintable, updateInstance, useStore } from './state/store';
 import { ownsKeys } from './keys';
@@ -250,7 +250,7 @@ export default function App() {
   return (
     <div className="app">
       <TopBar />
-      <SavedPreferencesNotice />
+      <Suspense fallback={null}><SavedPreferencesNotice /></Suspense>
       {projects && <Suspense fallback={null}><ProjectsView /></Suspense>}
       <div style={{ display: projects ? 'none' : undefined }} className={`main ${sidebarHidden ? 'sidebar-hidden' : ''} ${dragOver ? 'drag-over' : ''}`}>
         <Sidebar />

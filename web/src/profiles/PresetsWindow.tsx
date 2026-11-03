@@ -162,14 +162,17 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const [addSource,setAddSource]=useState('template');
   const [vendorFilter,setVendorFilter] = useState<string[]>([]), [nozzleFilter,setNozzleFilter] = useState<string[]>([]), [materialFilter,setMaterialFilter] = useState<string[]>([]), [modelFilter,setModelFilter]=useState<string[]>([]), [printerFilter,setPrinterFilter]=useState<string[]>([]);
   const [filtersOpen,setFiltersOpen]=useState(false);
-  const split = useRef<HTMLDivElement>(null);
+  const resultsPane = useRef<HTMLElement>(null);
+  const drag = useRef<{id:number;x:number;width:number}|null>(null);
   const savedListWidth = usePreference('orca.profileListWidth');
-  const listWidth = Math.max(260,Math.min(480,Number(savedListWidth) || 340));
+  const minListWidth=260,maxListWidth=480;
+  const listWidth = Math.max(minListWidth,Math.min(maxListWidth,Number(savedListWidth) || 340));
+  const [previewWidth,setPreviewWidth]=useState<number|null>(null);
+  const renderedListWidth=previewWidth ?? listWidth;
   const resizeList = (width: number, commit: boolean) => {
-    const available = split.current?.clientWidth ?? 1000;
-    const next = Math.round(Math.max(240, Math.min(480, available - 420, width)));
-    split.current?.style.setProperty('--profile-list-width', `${next}px`);
-    if(commit) savePreferences({'orca.profileListWidth':next});
+    const next = Math.round(Math.max(minListWidth,Math.min(maxListWidth,width)));
+    setPreviewWidth(commit ? null : next);
+    if(commit && next!==listWidth)savePreferences({'orca.profileListWidth':next});
   };
   const [drafts, setDrafts] = useState<Record<string, ProfileDraft>>({});
   const updateDraft = useCallback((key: string, draft: ProfileDraft | null) => setDrafts(prior => {const next = {...prior}; if(draft && (Object.keys(changedKeys(draft.values, draft.baseline)).length || applicabilityKey(draft.applicability) !== applicabilityKey(draft.baselineApplicability) || draft.staged)) next[key] = draft; else delete next[key]; return next;}), []);
@@ -321,7 +324,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     <header className="pf-workspace-title"><Dialog.Title asChild><h1>Profiles</h1></Dialog.Title>{recovery.state!=='idle' && recovery.state!=='complete' && adding && <button type="button" className="btn" onClick={()=>setAdding(false)}>Recover saved profiles</button>}<button type="button" className="btn pf-filter-toggle" aria-expanded={filtersOpen} onClick={()=>setFiltersOpen(!filtersOpen)}>Filters{filtersActive ? ` · ${filtersActive}` : ''}</button><SettingsDetail/><button type="button" className="btn-ghost" aria-label="Close profiles" onClick={close}>×</button></header>
     <ProfileLibraryNotice/>
     <div className="np-dialog-body">
-      {recovery.state!=='idle' && recovery.state!=='complete' && !adding?<ServiceProfileRecoveryPanel recovery={recovery} onBrowse={()=>{setAdding(true);setAddSource('template');}}/>:<div className={`pf-split${filtersOpen ? ' filters-open' : ''}`} ref={split} style={{'--profile-list-width': `${listWidth}px`} as React.CSSProperties} inert={busy}>
+      {recovery.state!=='idle' && recovery.state!=='complete' && !adding?<ServiceProfileRecoveryPanel recovery={recovery} onBrowse={()=>{setAdding(true);setAddSource('template');}}/>:<div className={`pf-split${filtersOpen ? ' filters-open' : ''}`} style={{'--profile-list-width': `${renderedListWidth}px`} as React.CSSProperties} inert={busy}>
       <aside className="pf-facets" aria-label="Profile filters">
         <fieldset className="pf-facet-group"><legend>Collection</legend><RadioGroup.Root className="pf-radio-list" aria-label="Profile collection" value={type} onValueChange={v=>void leave(()=>{setDrafts({});clearFilters();pickType(v as PresetType);})}>{TYPES.map(([id,label])=><label key={id} className="pf-facet-choice"><Radio value={id}/><span>{label}</span></label>)}</RadioGroup.Root></fieldset>
         <fieldset className="pf-facet-group"><legend>Library</legend><RadioGroup.Root className="pf-radio-list" aria-label="Library" value={masters ? 'masters' : 'owned'} onValueChange={value=>{setMasters(value === 'masters');setAdding(false);setSearch('');}}>{[{id:'owned',label:'My profiles'},{id:'masters',label:'Master profiles'}].map(o=><label key={o.id} className="pf-facet-choice"><Radio value={o.id}/><span>{o.label}</span></label>)}</RadioGroup.Root></fieldset>
@@ -332,7 +335,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
         {type !== 'machine' && <ProfileFilterGroup label={type === 'filament' ? 'Works with printer' : 'Printer'} options={printerOptions} value={printerFilter} onChange={setPrinterFilter}/>}
         {filtersActive > 0 && <button type="button" className="btn-ghost" onClick={clearFilters}>Clear all filters</button>}
       </aside>
-      <section className="pf-my-profiles" aria-label="Profile results">
+      <section className="pf-my-profiles" ref={resultsPane} aria-label="Profile results">
         <div className="pf-results-heading"><strong>{adding ? 'Add '+(type === 'machine' ? 'printer' : type === 'filament' ? 'filament' : 'print settings') : masters ? 'Master profiles' : 'My profiles'}</strong><span>{visible.length} results</span></div>
         <div className="pf-results-tools"><input className="text pf-profile-search" aria-label="Search profiles" placeholder="Search profiles" value={search} onChange={e=>setSearch(e.target.value)}/><button type="button" className="btn" onClick={()=>{setAdding(!adding);setAddSource('template');setSearch('');}}> {adding ? 'Back' : type === 'machine' ? 'Add printer' : type === 'filament' ? 'Add filament' : 'Add print settings'}</button><MenuButton label="Collection actions" className="btn-ghost" items={[{label:'Import Orca / Bambu',action:()=>void leave(()=>setState({presetUx:{kind:'import',back:{kind:'presets',type,name:item?.key}}}))},{label:'Export profiles',action:()=>void leave(()=>setState({presetUx:{kind:'export'}}))}]}>More</MenuButton></div>
         {adding && <><Segmented label="Add profile from" value={addSource} options={[{id:'template',label:'Catalog template'},{id:'copy',label:'Copy existing'}]} onChange={v=>{setAddSource(v);setSearch('');}}/>{type === 'machine' && <button type="button" className="btn-ghost" onClick={()=>setState({appDialog:'createPrinter'})}>New printer…</button>}</>}
@@ -349,11 +352,13 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
           {visible.map(i => <ManagerProfileRow key={i.key} item={i} listId={id} selected={selectedSet.has(i.key)} focused={selection.focus === i.key} dispatch={dispatch}/>)}
           {!visible.length && <p className="pf-profile-empty">{search || filtersActive ? 'No profiles match these filters' : adding ? 'No catalog templates available' : 'Add a profile from the catalog'}</p>}
         </div>
-      </section><div className="pf-resizer" role="separator" aria-label="Resize profile list" aria-orientation="vertical" aria-valuemin={240} aria-valuemax={480} aria-valuenow={listWidth} tabIndex={0}
-        onPointerDown={e => {e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId);}}
-        onPointerMove={e => {if(e.currentTarget.hasPointerCapture(e.pointerId)) resizeList(e.clientX - (split.current?.getBoundingClientRect().left ?? 0), false);}}
-        onPointerUp={e => {if(e.currentTarget.hasPointerCapture(e.pointerId)) {resizeList(e.clientX - (split.current?.getBoundingClientRect().left ?? 0), true); e.currentTarget.releasePointerCapture(e.pointerId);}}}
-        onKeyDown={e => {if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) {e.preventDefault(); resizeList(e.key === 'Home' ? 240 : e.key === 'End' ? 480 : listWidth + (e.key === 'ArrowRight' ? 16 : -16), true);}}}/><div className="pf-detail-pane">{filteredDraft && <div className="pf-filtered-draft" role="status">Editing {filteredDraft.name} outside these filters<button type="button" className="btn-ghost" onClick={()=>{clearFilters();setSearch('');}}>Clear filters</button></div>}{adding ? item ? <AddProfileDetails key={item.key} type={type} item={item} copy={addSource === 'copy'} busy={busy} onAdd={name=>void addSelected(item,name)}/> : <section className="pf-bulk-summary"><strong>Select a catalog template</strong></section>
+      </section><div className="pf-resizer" role="separator" aria-label="Resize profile list" aria-orientation="vertical" aria-valuemin={minListWidth} aria-valuemax={maxListWidth} aria-valuenow={renderedListWidth} tabIndex={0}
+        onPointerDown={e => {if(e.button!==0 || !resultsPane.current)return;e.preventDefault();drag.current={id:e.pointerId,x:e.clientX,width:resultsPane.current.getBoundingClientRect().width};e.currentTarget.setPointerCapture(e.pointerId);}}
+        onPointerMove={e => {const start=drag.current;if(start?.id===e.pointerId && e.currentTarget.hasPointerCapture(e.pointerId))resizeList(start.width+e.clientX-start.x,false);}}
+        onPointerUp={e => {const start=drag.current;if(start?.id===e.pointerId && e.currentTarget.hasPointerCapture(e.pointerId)){drag.current=null;if(e.currentTarget.getClientRects().length)resizeList(start.width+e.clientX-start.x,true);else setPreviewWidth(null);e.currentTarget.releasePointerCapture(e.pointerId);}}}
+        onPointerCancel={e => {drag.current=null;setPreviewWidth(null);if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);}}
+        onLostPointerCapture={()=>{drag.current=null;setPreviewWidth(null);}}
+        onKeyDown={e => {if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) {e.preventDefault();resizeList(e.key==='Home'?minListWidth:e.key==='End'?maxListWidth:renderedListWidth+(e.key==='ArrowRight'?16:-16),true);}}}/><div className="pf-detail-pane">{filteredDraft && <div className="pf-filtered-draft" role="status">Editing {filteredDraft.name} outside these filters<button type="button" className="btn-ghost" onClick={()=>{clearFilters();setSearch('');}}>Clear filters</button></div>}{adding ? item ? <AddProfileDetails key={item.key} type={type} item={item} copy={addSource === 'copy'} busy={busy} onAdd={name=>void addSelected(item,name)}/> : <section className="pf-bulk-summary"><strong>Select a catalog template</strong></section>
         : comparing && selectedItems.length === 2 ? <Compare type={type} left={selectedItems[0].key} right={selectedItems[1].key} names={selectedItems.map(i => i.key)} setRight={() => {}} close={() => setComparing(false)}/>
          : item?.user ? <ProfileEditor key={item.key} type={type} name={item.key} draft={drafts[JSON.stringify([type,item.key])]} update={updateDraft} onSavingChange={setBusy} onBack={close} onRemove={() => void deleteSelected([item.key])}/>
 

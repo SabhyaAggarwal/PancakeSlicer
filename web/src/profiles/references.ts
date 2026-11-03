@@ -107,13 +107,7 @@ export async function refreshProfileReferences(): Promise<ProfileReferenceSnapsh
   try {
     const storage = await projectStore();
     if (!storage) throw new Error('Project storage is unavailable. Profile deletion is disabled.');
-    let loaded: ProfileReferenceDocuments;
-    if (storage.referenceDocuments) loaded = await storage.referenceDocuments();
-    else {
-      const list = await storage.list();
-      const rows = await Promise.all(list.map((p) => storage.load(p.id)));
-      loaded = { complete: false, documents: rows.flatMap((p) => p ? [{ id: p.meta.id, name: p.meta.name, doc: p.doc }] : []) };
-    }
+    let loaded: ProfileReferenceDocuments = await storage.referenceDocuments();
     const drafts = await (await projectDraftStore()).list();
     loaded = { ...loaded, documents: [...loaded.documents, ...drafts.map(draft => ({ id: draft.id, name: `${draft.name} (${draft.kind === 'snapshot' ? 'Snapshot' : 'Draft'})`, doc: draft.doc }))] };
     if (mine !== generation) return snapshot;

@@ -1,7 +1,7 @@
 import type { StoredDocBase } from './backend';
 import { projectId } from './identity';
-import { routeKey, serviceRequest } from './service';
-import { ensureProjectAdoption } from './project-adoption';
+import { requireWorkspaceService, routeKey, serviceRequest } from './service';
+import { ensureWorkspaceMutation } from './project-adoption';
 import { captureProjectWire, prepareOnce, projectJson as serviceJson, projectWrite } from './project-wire';
 export interface ProjectFailure {
   kind: 'conflict' | 'deleted' | 'quota' | 'unavailable' | 'interrupted' | 'decode';
@@ -61,7 +61,7 @@ export function beginProjectDraftMutation(id: string): (error?: unknown) => void
 }
 async function mutate<T>(id: string, operation: () => Promise<T>): Promise<T> {
   const finish = beginProjectDraftMutation(id);
-  try { const result = await operation(); finish(); return result; }
+  try { await ensureWorkspaceMutation(); const result = await operation(); finish(); return result; }
   catch (error) { finish(error); throw error; }
 }
 interface ServiceDraft { id: string; sequence: number; document: Omit<ProjectDraft, 'blobs'> | null; metadata?: ProjectDraftMeta; updatedAt: number }
@@ -138,7 +138,7 @@ const serviceDraftStore: ProjectDraftStore = {
   }),
 };
 export async function projectDraftStore(): Promise<ProjectDraftStore> {
-  await ensureProjectAdoption();
+  await requireWorkspaceService();
   return serviceDraftStore;
 }
 export const draftMetadata = ({ doc: _doc, blobs: _blobs, ...meta }: ProjectDraft): ProjectDraftMeta => meta;

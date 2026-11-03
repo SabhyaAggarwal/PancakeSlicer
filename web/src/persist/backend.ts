@@ -24,7 +24,7 @@ export interface ProjectCommandStatus {
 }
 
 export interface ProjectStore {
-  referenceDocuments?(): Promise<ProfileReferenceDocuments>;
+  referenceDocuments(): Promise<ProfileReferenceDocuments>;
   readonly kind: 'service';
   list(): Promise<ProjectMeta[]>;
   load(id: string): Promise<{ meta: ProjectMeta; doc: StoredDocBase } | null>;
@@ -48,6 +48,7 @@ export const newKey = projectId;
 declare global {
   interface Window { orcaDesktop?: { version: number;
     legacyProjects?: import('./desktop-legacy').LegacyDesktopProjects;
+    legacyRendererStorage?: import('./desktop-legacy').LegacyDesktopRenderer;
     onBeforeClose?(handler: () => Promise<void>): () => void; flushBeforeClose?(): Promise<void> } }
 }
 const storageListeners = new Set<() => void>();
@@ -56,13 +57,13 @@ export const projectReferenceWritePending = () => pendingReferenceWrites > 0;
 export const subscribeProjectStorageChanges = (listener: () => void) => { storageListeners.add(listener); return () => { storageListeners.delete(listener); }; };
 function observableStore(backend: ProjectStore): ProjectStore {
   const result = { ...backend };
-  for (const key of ['save', 'rename', 'duplicate', 'remove', 'restore', 'emptyTrash'] as const) {
+  for (const key of ['save', 'rename', 'duplicate', 'remove', 'restore', 'putBlob', 'emptyTrash'] as const) {
     const operation = backend[key];
     if (!operation) continue;
     Object.assign(result, { [key]: async (...args: unknown[]) => {
       pendingReferenceWrites++;
       storageListeners.forEach((listener) => listener());
-      try { return await Reflect.apply(operation, backend, args); }
+      try { await (await import('./project-adoption')).ensureWorkspaceMutation(); return await Reflect.apply(operation, backend, args); }
       finally { pendingReferenceWrites--; storageListeners.forEach((listener) => listener()); }
     } });
   }
@@ -76,7 +77,7 @@ export const projectStorageError = () => storageError ?? 'The project service is
 export function projectStore(retry = false): Promise<ProjectStore | null> {
   if (retry) { store = null; storageError = null; }
   store ??= (async () => {
-    await (await import('./project-adoption')).ensureProjectAdoption(retry);
+    await (await import('./service')).requireWorkspaceService();
     const { serviceStore } = await import('./project-service');
     await serviceStore.list();
     return observableStore(serviceStore);

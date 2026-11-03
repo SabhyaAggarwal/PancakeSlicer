@@ -70,7 +70,7 @@ function afterFirstVisit() {
   const stop=()=>{unsubscribe();firstVisitObserver=null;delete root.dataset.nudge;};
   const check = () => {
     const s = getState(),preferences=savedPreferencesSnapshot();
-    if(documentGeneration()!==generation || !preferences.hydrated || preferences.state==='failed' || s.job.state!=='idle'
+    if(documentGeneration()!==generation || !preferences.hydrated || !preferences.workspaceReady || s.profileLibraryLoad.state!=='ready' || preferences.state==='failed' || s.job.state!=='idle'
       || !completed && (preferenceText(SETUP_KEY) || preferenceText('orca.printer'))) { stop(); return; }
     if(s.objects.length && !completed){completed=true;savePreferences({[SETUP_KEY]:'1'});root.dataset.nudge='slice';}
     else if(completed && !s.objects.length)stop();
@@ -82,7 +82,8 @@ function afterFirstVisit() {
 export default function EmptyPlate() {
   const preferences=useSyncExternalStore(subscribeSavedPreferences,savedPreferencesSnapshot);
   const setup=usePreference(SETUP_KEY),printer=usePreference('orca.printer');
-  const firstVisit=preferences.hydrated && preferences.state!=='failed' && !setup && !printer;
+  const library=useStore(s=>s.profileLibraryLoad.state);
+  const firstVisit=preferences.hydrated && preferences.workspaceReady && library==='ready' && preferences.state!=='failed' && !setup && !printer;
   useEffect(()=>{if(firstVisit)afterFirstVisit();},[firstVisit]);
   return (
     <div className="empty-plate">

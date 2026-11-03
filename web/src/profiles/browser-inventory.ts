@@ -21,6 +21,14 @@ export interface BrowserProfileInventory {
   working: Pick<State, 'printer' | 'process' | 'filamentSlots' | 'slotColours' | 'filamentEdits' | 'mixes' | 'dirty' | 'projectPresets' | 'profileSnapshots' | 'projectProfileContexts'>;
   issues: string[];
 }
+export interface RendererProfileOrigin {
+  origin: string;
+  coverage: {localStorage:'decoded'|'verified-absent'|'incomplete';indexedDB:'decoded'|'verified-absent'|'incomplete'};
+  localStorage: readonly {key:string;value:string}[];
+  databases: readonly {name:string;version:number;metadata?:Record<string,unknown>;stores:readonly {
+    name:string;metadata?:Record<string,unknown>;records:readonly {key:IDBValidKey;value:unknown}[];
+  }[]}[];
+}
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
   && (Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null);
 const revision = (v: unknown) => Number.isSafeInteger(v) && Number(v) >= 0;
@@ -57,6 +65,14 @@ function knownEnvelope(value: unknown): ProfileLibraryDocument | null {
       || !Object.hasOwn(receipt,'payload') || !Object.hasOwn(receipt,'revision') || typeof receipt.payload !== 'string' || !revision(receipt.revision)))
     throw new Error('The present legacy profile envelope is not a complete known format. Retain the original database and recover it before adoption.');
   return value.document as ProfileLibraryDocument | null;
+}
+function knownStores(stores:readonly {name:string;keys:readonly unknown[];known:boolean}[],current:unknown):ProfileLibraryDocument|null{
+  if(stores.length!==1 || stores[0].name!=='library' || !stores[0].known)
+    throw new Error('Legacy profile storage has unknown stores or schema. Retain the complete database for recovery before adoption.');
+  const keys=stores[0].keys;
+  if(!keys.length && current===undefined)return null;
+  if(keys.length!==1 || keys[0]!=='current')throw new Error('Legacy profile storage contains unrecognized records. Retain the complete database for recovery before adoption.');
+  return knownEnvelope(current);
 }
 async function readLegacyDocument(): Promise<ProfileLibraryDocument | null> {
   if (typeof indexedDB === 'undefined') throw new Error('Browser profile storage is unavailable; its absence has not been established.');
@@ -104,12 +120,7 @@ async function readLegacyDocument(): Promise<ProfileLibraryDocument | null> {
         tx.oncomplete = () => {
           if (settled) return;
           try {
-            if (stores.length !== 1 || stores[0].name !== 'library' || !stores[0].known || !current)
-              throw new Error('Legacy profile storage has unknown stores or schema. Retain the complete database for recovery before adoption.');
-            const keys = stores[0].keys.result;
-            if (keys.length === 0 && current.result === undefined) { done(null); return; }
-            if (keys.length !== 1 || keys[0] !== 'current') throw new Error('Legacy profile storage contains unrecognized records. Retain the complete database for recovery before adoption.');
-            done(knownEnvelope(current.result));
+            done(knownStores(stores.map(store=>({...store,keys:store.keys.result})),current?.result));
           } catch (error) { fail(error); }
         };
       } catch (error) { fail(error); }
@@ -119,13 +130,53 @@ async function readLegacyDocument(): Promise<ProfileLibraryDocument | null> {
 export async function captureBrowserProfileInventory(s: State, storage: Pick<Storage, 'getItem'> = localStorage): Promise<BrowserProfileInventory> {
   const issues: string[] = [], raw: Record<string, string | null> = {};
   for (const key of legacyKeys) try { raw[key] = storage.getItem(key); } catch { issues.push(`Cannot read ${key}.`); }
+  let legacyDocument: ProfileLibraryDocument | null = null;
+  try { legacyDocument = await readLegacyDocument(); } catch (e) { issues.push(String(e)); }
+  return profileInventory(s,raw,legacyDocument,issues);
+}
+export function captureRendererProfileInventory(s:State,origin:RendererProfileOrigin):BrowserProfileInventory{
+  const issues:string[]=[],raw:Record<string,string|null>=Object.fromEntries(legacyKeys.map(key=>[key,null]));
+  let legacyDocument:ProfileLibraryDocument|null=null;
+  try{
+    const url=new URL(origin.origin);
+    if(url.protocol!=='http:' || url.hostname!=='127.0.0.1' || url.origin!==origin.origin || !origin.coverage
+      || !['decoded','verified-absent'].includes(origin.coverage.localStorage) || !['decoded','verified-absent'].includes(origin.coverage.indexedDB)
+      || !Array.isArray(origin.localStorage) || !Array.isArray(origin.databases)
+      || origin.coverage.localStorage==='verified-absent' && origin.localStorage.length
+      || origin.coverage.indexedDB==='verified-absent' && origin.databases.length)throw new Error('Original renderer profile coverage is incomplete. Retain the host source and retry its verified capture.');
+    const keys=new Set<string>();
+    for(const row of origin.localStorage){
+      if(!record(row) || Object.keys(row).length!==2 || typeof row.key!=='string' || typeof row.value!=='string' || keys.has(row.key))throw new Error('Original renderer storage has invalid or duplicated keys.');
+      keys.add(row.key);if(Object.hasOwn(raw,row.key))raw[row.key]=row.value;
+    }
+    const names=new Set<string>();
+    for(const db of origin.databases){
+      if(!record(db) || typeof db.name!=='string' || !db.name || names.has(db.name))throw new Error('Original renderer databases are not completely identified.');
+      names.add(db.name);if(db.name!=='orca-profile-library')continue;
+      const emptyMetadata=(value:unknown)=>value===undefined || record(value) && !Object.keys(value).length;
+      if(!revision(db.version) || !db.version || !Array.isArray(db.stores) || !emptyMetadata(db.metadata)
+        || Object.keys(db).some(key=>!['name','version','stores','metadata'].includes(key)))throw new Error('Original profile database has unknown schema metadata. Retain it for recovery.');
+      let current:unknown;
+      const stores=db.stores.map(store=>{
+        if(!record(store) || typeof store.name!=='string' || !Array.isArray(store.records)
+          || Object.keys(store).some(key=>!['name','records','metadata'].includes(key)))throw new Error('Original profile store inventory is incomplete.');
+        for(const row of store.records){
+          if(!record(row) || Object.keys(row).length!==2 || !Object.hasOwn(row,'key') || !Object.hasOwn(row,'value'))throw new Error('Original profile store contains an unrecognized captured record.');
+          if(store.name==='library' && row.key==='current')current=row.value;
+        }
+        return {name:store.name,keys:store.records.map(row=>row.key),known:emptyMetadata(store.metadata)};
+      });
+      legacyDocument=knownStores(stores,current);
+    }
+  }catch(error){issues.push(error instanceof Error?error.message:String(error));}
+  return profileInventory(s,raw,legacyDocument,issues);
+}
+function profileInventory(s:State,raw:Record<string,string|null>,legacyDocument:ProfileLibraryDocument|null,issues:string[]):BrowserProfileInventory{
   const array = (key: string): unknown[] => {
     if (raw[key] === null || raw[key] === undefined) return [];
     try { const parsed: unknown = JSON.parse(raw[key]!); if (Array.isArray(parsed)) return parsed; } catch {  }
     issues.push(`Cannot decode ${key}.`); return [];
   };
-  let legacyDocument: ProfileLibraryDocument | null = null;
-  try { legacyDocument = await readLegacyDocument(); } catch (e) { issues.push(String(e)); }
   const profiles = new Map<string, ProfileOverlay>();
   const add = (value: unknown) => {
     if (!value || typeof value !== 'object') { issues.push('A legacy profile is not a record.'); return; }

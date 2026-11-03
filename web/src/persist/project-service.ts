@@ -110,7 +110,8 @@ export const serviceStore: ProjectStore = {
         const record = await required<ProjectRecord>(projectPath(meta.id) + (trashed ? '?archived=1' : ''));
         return { id: meta.id, name: meta.name, doc: record.doc, trashed };
       }));
-    return { complete: true, documents };
+    const adoption = (await import('./project-adoption')).projectAdoptionSnapshot();
+    return { complete: adoption.state === 'ready' && adoption.coverage === 'complete', documents };
   },
   async putBlob(_id, key, data) { await serviceRequest(`/api/assets/${routeKey(key)}`, { method: 'PUT', body: data }); },
   async getBlob(_id, key) { const response = await serviceRequest(`/api/assets/${routeKey(key)}`, undefined, true); return response && response.blob(); },
