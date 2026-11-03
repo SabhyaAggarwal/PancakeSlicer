@@ -1,12 +1,18 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Popover } from 'radix-ui';
-import { backToLatest, changeLine, clockTime, closeHistory, dayOf, historyState, restoreVersion, rowTimes, shortDate, useHistory, versionSetup,
+import { backToLatest, changeLine, clockTime, closeHistory, dayOf, historyState, prefetchSetup, restoreVersion, rowTimes, shortDate, useHistory, versionSetup,
   versionTime, viewVersion, type ProjectVersion, type VersionSetup } from './versions';
 
 const short = (s: number) => { const m = Math.round(s / 60); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; };
 const long = (s: number) => { const t = Math.round(s), h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60; return h ? `${h}h ${m}m ${t % 60}s` : `${m}m ${t % 60}s`; };
 
+const tails = (from: string, to: string): [string, string] => {
+  let p = 0;
+  while (p < from.length && from[p] === to[p]) p++;
+  const head = from.slice(0, p), last = head.lastIndexOf(' '), cut = last > 0 ? head.lastIndexOf(' ', last - 1) + 1 : 0;
+  return cut >= 6 ? [`…${from.slice(cut)}`, `…${to.slice(cut)}`] : [from, to];
+};
 const sliced = <svg className="vh-sliced" width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2 14 5 8 8 2 5zM2 8l6 3 6-3M2 11l6 3 6-3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/></svg>;
 const info = <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" strokeWidth="1.3"/><path d="M8 7.2v4M8 4.9v.1" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>;
 
@@ -19,12 +25,15 @@ export default function VersionHistory() {
 
 function Card({ projectId, v, current, close }: { projectId: string; v: ProjectVersion; current: boolean; close: () => void }) {
   const [setup, setSetup] = useState<VersionSetup | null>(null);
-  useEffect(() => { let live = true; versionSetup(projectId, v.id).then((s) => live && setSetup(s), () => {}); return () => { live = false; }; }, [projectId, v.id]);
+  useEffect(() => { let live = true; versionSetup(projectId, v).then((s) => live && setSetup(s), () => live && setSetup({ printer: '', process: '', filaments: [] })); return () => { live = false; }; }, [projectId, v]);
   const s = v.slice;
   const stats = s ? ([[s.timeS != null && long(s.timeS), 'Time'], [s.grams != null && `${s.grams.toFixed(1)} g`, 'Weight'],
     [s.mm != null && `${(s.mm / 1000).toFixed(2)} m`, 'Filament']] as const).filter(([value]) => value) : [];
-  const changes = v.change.map(changeLine);
-  const profiles = setup && ([['Printer', setup.printer], ...setup.filaments.filter((f) => f.name).map((f, i, all) => [all.length > 1 ? `Filament ${i + 1}` : 'Filament', f.name, f.colour]),
+  const changes = v.change.map(changeLine).map((c) => {
+    const [was, now] = c.from && c.to ? tails(c.from, c.to) : [c.from, c.to];
+    return { ...c, full: c.to === undefined ? c.name : `${c.name}: ${c.from ? `${c.from} → ` : ''}${c.to}`, was, now };
+  });
+  const profiles = !setup ? [['Printer'], ['Filament'], ['Process']] as [string, string?, string?][] : ([['Printer', setup.printer], ...setup.filaments.filter((f) => f.name).map((f, i, all) => [all.length > 1 ? `Filament ${i + 1}` : 'Filament', f.name, f.colour]),
     ['Process', setup.process]] as [string, string, string?][]).filter(([, value]) => value);
   const restore = async () => {
     close();
@@ -36,15 +45,16 @@ function Card({ projectId, v, current, close }: { projectId: string; v: ProjectV
       <time className="vh-card-time" dateTime={new Date(v.until).toISOString()}>{clockTime(v.until)}</time>
       <span className="vh-card-sub">{current && 'Current · '}Version {v.id} · {shortDate(v.until)}</span>
     </header>
-    <div className="vh-card-plate">{setup?.picture && <img src={setup.picture} alt="" />}</div>
+    <div className="vh-card-plate">{!setup ? <span className="skel-block" /> : setup.picture && <img src={setup.picture} alt="" />}</div>
     {changes.length > 0 && <ul className="vh-card-changes" aria-label="Changes">{changes.map((c, i) =>
-      <li key={i} className="vh-card-change" data-full-text={c.to === undefined ? c.name : `${c.name}: ${c.from ? `${c.from} → ` : ''}${c.to}`}>
+      <li key={i} className="vh-card-change" data-full-text={c.full} data-truncated={c.was !== c.from || undefined}>
         <span className="vh-card-name">{c.name}</span>
-        {c.to !== undefined && <><span className="vh-card-was">{c.from}</span><span className="vh-card-arrow" aria-hidden="true">→</span><span>{c.to}</span></>}
+        {c.to !== undefined && <><span className="vh-card-was">{c.was}</span><span className="vh-card-arrow" aria-hidden="true">→</span><span>{c.now}</span></>}
       </li>)}</ul>}
-    {profiles && <dl className="vh-card-grid">{profiles.map(([label, value, colour]) => <div key={label}>
+    {profiles.length > 0 && <dl className="vh-card-grid">{profiles.map(([label, value, colour]) => <div key={label}>
       <dt>{label}</dt>
-      <dd data-full-text={value}>{colour && <span className="vh-card-swatch" style={{ background: colour }} aria-hidden="true" />}<span>{value}</span></dd>
+      {value === undefined ? <dd aria-busy="true"><span className="skel-line" /></dd>
+        : <dd data-full-text={value}>{colour && <span className="vh-card-swatch" style={{ background: colour }} aria-hidden="true" />}<span>{value}</span></dd>}
     </div>)}</dl>}
     {stats.length ? <dl className="vh-card-stats">{stats.map(([value, caption]) => <div key={caption}><dd>{value}</dd><dt>{caption}</dt></div>)}</dl>
       : <p className="vh-card-none">Not sliced</p>}
@@ -67,6 +77,7 @@ function Panel() {
   const body = useRef<HTMLUListElement>(null);
   const [now, setNow] = useState(Date.now);
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(timer); }, []);
+  useEffect(() => { if (h.projectId) list?.slice(0, 3).forEach((v) => prefetchSetup(h.projectId!, v)); }, [list, h.projectId]);
   const times = useMemo(() => rowTimes(list?.slice(1) ?? [], now), [list, now]);
   const days = useMemo(() => {
     const out: [string, ProjectVersion[]][] = [];
@@ -110,7 +121,8 @@ function Panel() {
             {rows.map((v) => {
               const current = v.id === list[0].id, open = card?.id === v.id, time = current ? 'Current' : times.get(v.id);
               const print = v.slice?.timeS != null ? short(v.slice.timeS) : v.slice ? 'Sliced' : '';
-              return <Popover.Root key={v.id} open={open} onOpenChange={(next) => !next && setCard(null)}><Popover.Anchor asChild><li role="presentation" className="vh-item">
+              return <Popover.Root key={v.id} open={open} onOpenChange={(next) => !next && setCard(null)}><Popover.Anchor asChild><li role="presentation" className="vh-item"
+                onPointerEnter={() => h.projectId && prefetchSetup(h.projectId, v)} onFocus={() => h.projectId && prefetchSetup(h.projectId, v)}>
                 <button type="button" role="option" className="vh-row" data-version={v.id} data-current={current || undefined} aria-selected={v.id === shown}
                   aria-busy={h.loading === v.id || undefined} aria-label={print ? `${time}. Sliced, ${print}` : time} onClick={() => void viewVersion(v)}>
                   <time className="vh-time" id={`vh-t-${v.id}`} dateTime={new Date(v.until).toISOString()}>{time}</time>

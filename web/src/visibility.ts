@@ -25,9 +25,22 @@ export type Environment = Record<string, unknown>;
 const ranks: Record<string, number> = { Simple: 0, Advanced: 1, Expert: 2, Develop: 3 };
 const truth = (v: Scalar) => v === undefined ? undefined : !!v;
 
+const tokenized = new Map<string, string[] | null>();
+function tokensOf(expression: string): string[] | null {
+  let tokens = tokenized.get(expression);
+  if (tokens === undefined) {
+    const found = expression.match(/"(?:[^"\\]|\\.)*"|(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|[A-Za-z_][\w.]*|&&|\|\||==|!=|>=|<=|[()!<>+*/-]/g) ?? [];
+    tokens = found.join('') === expression.replace(/\s+(?=(?:[^"\\]*"[^"\\]*")*[^"\\]*$)/g, '') ? found : null;
+    tokenized.set(expression, tokens);
+  }
+  return tokens;
+}
+const namesOf = (expression: string) => (tokensOf(expression) ?? []).filter((t) => /^[A-Za-z_]/.test(t) && t !== 'true' && t !== 'false' && t !== 'null');
+
 export function condition(expression: string, env: Environment): boolean | undefined {
-  const tokens = expression.match(/"(?:[^"\\]|\\.)*"|(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|[A-Za-z_][\w.]*|&&|\|\||==|!=|>=|<=|[()!<>+*/-]/g) ?? [];
-  if (tokens.join('') !== expression.replace(/\s+(?=(?:[^"\\]*"[^"\\]*")*[^"\\]*$)/g, '')) return undefined;
+  const found = tokensOf(expression);
+  if (!found) return undefined;
+  const tokens: string[] = found;
   let pos = 0;
   const precedence: Record<string, number> = { '||': 1, '&&': 2, '==': 3, '!=': 3, '<': 4, '>': 4, '<=': 4, '>=': 4, '+': 5, '-': 5, '*': 6, '/': 6 };
   function parse(min = 0): Scalar {
@@ -73,26 +86,48 @@ export function condition(expression: string, env: Environment): boolean | undef
   catch { return undefined; }
 }
 
+function envValue(configs: Config[], key: string): unknown {
+  const def = OPTIONS[key];
+  let v: unknown;
+  for (let i = configs.length - 1; i >= 0; i--) if (Object.hasOwn(configs[i], key)) { v = configs[i][key]; break; }
+  v ??= def.nullable ? null : def.default;
+  if (Array.isArray(v)) v = v[0];
+  if (def.nullable && (v === 'nil' || v === '')) v = null;
+  if (v && typeof v === 'object' && 'value' in v) v = v.value;
+  if (def.type === 'bool' || def.type === 'bools') v = v == null ? null : v === true || v === 1 || v === '1' || v === 'true';
+  else if (/^(float|int|percent)/.test(def.type) && typeof v === 'string') v = Number(v.replace(/%$/, '').split(',')[0]);
+  return v;
+}
 export function environment(configs: Config[], context: Environment, mode: OptionMode): Environment {
-  const merged = Object.assign({}, ...configs) as Config;
-  const env: Environment = {};
-  for (const [key, def] of Object.entries(OPTIONS)) {
-    let v: unknown = merged[key] ?? (def.nullable ? null : def.default);
-    if (Array.isArray(v)) v = v[0];
-    if (def.nullable && (v === 'nil' || v === '')) v = null;
-    if (v && typeof v === 'object' && 'value' in v) v = v.value;
-    if (def.type === 'bool' || def.type === 'bools') v = v == null ? null : v === true || v === 1 || v === '1' || v === 'true';
-    else if (/^(float|int|percent)/.test(def.type) && typeof v === 'string') v = Number(v.replace(/%$/, '').split(',')[0]);
-    env[key] = v;
-  }
-  return { ...env, ...context, mode: mode === 'simple' ? 'Simple' : mode === 'advanced' ? 'Advanced' : mode === 'developer' ? 'Develop' : 'Expert' };
+  const fixed: Environment = { ...context, mode: mode === 'simple' ? 'Simple' : mode === 'advanced' ? 'Advanced' : mode === 'developer' ? 'Develop' : 'Expert' };
+  const values = new Map<string, unknown>();
+  return new Proxy(fixed, {
+    get(target, key) {
+      if (typeof key !== 'string') return undefined;
+      if (Object.hasOwn(target, key)) return target[key];
+      if (!OPTIONS[key]) return undefined;
+      if (!values.has(key)) values.set(key, envValue(configs, key));
+      return values.get(key);
+    },
+    has: (target, key) => typeof key === 'string' && (Object.hasOwn(target, key) || !!OPTIONS[key]),
+  });
+}
+
+type RuleMemo = { names: string[]; values: unknown[]; result: boolean | undefined };
+const ruleMemos = new WeakMap<object, RuleMemo>();
+function ruleValue(rule: { when?: string; condition: string }, env: Environment): boolean | undefined {
+  let memo = ruleMemos.get(rule);
+  if (!memo) ruleMemos.set(rule, (memo = { names: [...new Set([...(rule.when ? namesOf(rule.when) : []), ...namesOf(rule.condition)])], values: [], result: undefined }));
+  const values = memo.names.map((name) => env[name]);
+  if (memo.values.length === values.length && values.length && values.every((v, i) => v === memo!.values[i])) return memo.result;
+  memo.values = values;
+  return (memo.result = rule.when && condition(rule.when, env) !== true ? undefined : condition(rule.condition, env));
 }
 
 export function optionState(desc: TabDesc, env: Environment): Record<string, { visible: boolean; enabled: boolean }> {
   const states: Record<string, { visible: boolean; enabled: boolean }> = {};
   for (const rule of desc.visibility ?? []) {
-    if (rule.when && condition(rule.when, env) !== true) continue;
-    const value = condition(rule.condition, env);
+    const value = ruleValue(rule, env);
     if (value === undefined) continue;
     for (const key of rule.options) {
       const base = splitKey(key)[0];

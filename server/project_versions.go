@@ -311,6 +311,38 @@ func (s *Server) versionRoutes(mux *http.ServeMux) {
 			writeJSON(w, 200, json.RawMessage(raw))
 		})
 	})
+	mux.HandleFunc("GET /api/versions/{id}/{v}/summary", func(w http.ResponseWriter, r *http.Request) {
+		version(w, r, func(_ *workspaceData, id string, _ *versionIndex, v *projectVersion) {
+			etag := `"` + v.Record + `"`
+			w.Header().Set("Cache-Control", "private, no-cache")
+			w.Header().Set("ETag", etag)
+			if r.Header.Get("If-None-Match") == etag {
+				w.WriteHeader(http.StatusNotModified)
+				return
+			}
+			raw, err := os.ReadFile(filepath.Join(st.versionDir(id), "records", v.Record+".json"))
+			var rec struct {
+				Meta struct {
+					Thumbnail json.RawMessage `json:"thumbnail"`
+				} `json:"meta"`
+				Doc map[string]json.RawMessage `json:"doc"`
+			}
+			if err == nil {
+				err = json.Unmarshal(raw, &rec)
+			}
+			if err != nil {
+				workspaceFailure(w, 503, "version_unavailable", "This version could not be read.", "retry_storage", 0)
+				return
+			}
+			doc := map[string]json.RawMessage{}
+			for _, k := range []string{"printer", "process", "filamentSlots", "slotColours", "mixes", "filamentEdits", "projectPresets"} {
+				if x, ok := rec.Doc[k]; ok {
+					doc[k] = x
+				}
+			}
+			writeJSON(w, 200, map[string]any{"meta": map[string]json.RawMessage{"thumbnail": rec.Meta.Thumbnail}, "doc": doc})
+		})
+	})
 	mux.HandleFunc("POST /api/versions/{id}/seal", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Revision uint64 `json:"revision"`

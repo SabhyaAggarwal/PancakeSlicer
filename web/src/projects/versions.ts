@@ -9,7 +9,7 @@ import { project, flushProject, leaveProjectVersion, restoreProjectVersion, view
 import { changeParts, describeChange, profileName, type VersionChange } from './version-change';
 
 export interface ProjectVersion {
-  id: number; revision: number; at: number; until: number; name: string; objects: number;
+  id: number; revision: number; at: number; until: number; record: string; name: string; objects: number;
   change: VersionChange[]; sealed?: boolean;
   slice?: { at: number; timeS?: number; grams?: number; layers?: number; mm?: number; supportG?: number };
 }
@@ -193,13 +193,13 @@ export const changeLine = (c: VersionChange) => {
 
 export interface VersionSetup { printer: string; process: string; filaments: { name: string; colour: string }[]; picture?: string }
 const setups = new Map<string, Promise<VersionSetup>>();
-export function versionSetup(id: string, v: number): Promise<VersionSetup> {
-  const key = `${id}/${v}`;
+export function versionSetup(id: string, v: ProjectVersion): Promise<VersionSetup> {
+  const key = `${id}/${v.id}/${v.record}`;
   let found = setups.get(key);
   if (!found) {
-    found = import('../persist/project-wire').then(({ projectJson }) => projectJson<{ meta?: { thumbnail?: unknown }; doc: Partial<State> & { printer?: unknown; process?: unknown; filamentSlots?: unknown } }>(`${path(id)}/${v}`))
-      .then((record) => {
-        const doc = record?.doc ?? {}, picture = record?.meta?.thumbnail;
+    found = import('../persist/project-wire').then(({ projectJson }) => projectJson<{ meta?: { thumbnail?: unknown }; doc: Partial<State> }>(`${path(id)}/${v.id}/summary`))
+      .then((summary) => {
+        const doc = summary?.doc ?? {}, picture = summary?.meta?.thumbnail;
         return { printer: profileName('machine', doc.printer), process: profileName('process', doc.process),
           filaments: Array.isArray(doc.filamentSlots) ? doc.filamentSlots.map((k, i) => ({ name: profileName('filament', k), colour: slotColour({ ...getState(), ...doc } as State, i) })) : [],
           picture: typeof picture === 'string' && picture.startsWith('data:image/') ? picture : undefined };
@@ -209,3 +209,4 @@ export function versionSetup(id: string, v: number): Promise<VersionSetup> {
   }
   return found;
 }
+export const prefetchSetup = (id: string, v: ProjectVersion) => void versionSetup(id, v).catch(() => {});
