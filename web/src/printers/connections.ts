@@ -95,5 +95,14 @@ export function statusLine(st: PrinterStatus | undefined): string {
   if ((st.state === 'error' || st.state === 'failed') && st.detail && st.detail.toLowerCase() !== st.state) parts.push(st.detail);
   return parts.join(' · ');
 }
+export function pickerStatus(c: PrinterConnections, printer: string): { label: string; tone: 'online' | 'printing' | 'offline' | 'error' } | undefined {
+  const connection = connectionOf(c, printer);
+  if (!connection) return undefined;
+  if (connection.kind === 'bambu-connect') return { label: 'Bambu Connect', tone: 'online' };
+  const st = c.status[printer];
+  if (!st || !st.online) return { label: st ? statusLine(st) : 'Not connected', tone: 'offline' };
+  const tone = st.state === 'failed' || st.state === 'error' ? 'error' : st.state === 'printing' || st.state === 'paused' || st.state === 'busy' ? 'printing' : 'online';
+  return { label: statusLine(st), tone };
+}
 export const tempLine = (st: PrinterStatus | undefined) => [st?.nozzle && `Nozzle ${Math.round(st.nozzle.actual)}${st.nozzle.target ? `/${Math.round(st.nozzle.target)}` : ''} °C`,
   st?.bed && `Bed ${Math.round(st.bed.actual)}${st.bed.target ? `/${Math.round(st.bed.target)}` : ''} °C`].filter(Boolean).join(' · ');

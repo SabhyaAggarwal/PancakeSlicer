@@ -7,6 +7,7 @@ import { filamentColor } from '../plater/filamentColor';
 import { addSlot } from './SetupRows';
 import { FilamentColourMenu } from './FilamentColourMenu';
 import { createProfileFromBase, listCatalog, listProfiles, type PickerEntry } from './pickerSource';
+import { pickerStatus } from '../printers/connections';
 
 const first = (v: unknown) => String([v].flat()[0] ?? '');
 const shortName = (name: string) => name.replace(/\s*@.*$/, '') || name;
@@ -117,11 +118,12 @@ export function PrinterPicker() {
   const printer = useStore((s) => s.printer);
   useStore((s) => s.machines);
   useStore((s) => s.userPresets);
+  const connections = useStore((s) => s.printerConnections);
   const profileGroups = (): PickerGroup[] => {
     const byVendor = new Map<string, PickerItem[]>();
     for (const e of listProfiles('machine')) {
       const v = vendorLabel(e.config, e.vendor);
-      byVendor.set(v, [...(byVendor.get(v) ?? []), { id: e.key, label: e.mine ? e.name : shortName(e.name), sub: rowDetail(e.name, [{ value: modelLabel(e.config, e.vendor) }, nozzleField(first(e.config.nozzle_diameter))], [v]) || undefined, meta: size(e.config), search: e.name, image: printerCover(e.vendor, e.config) ?? null }]);
+      byVendor.set(v, [...(byVendor.get(v) ?? []), { id: e.key, label: e.mine ? e.name : shortName(e.name), sub: rowDetail(e.name, [{ value: modelLabel(e.config, e.vendor) }, nozzleField(first(e.config.nozzle_diameter))], [v]) || undefined, meta: size(e.config), search: e.name, image: printerCover(e.vendor, e.config) ?? null, status: pickerStatus(connections, e.key) }]);
     }
     return byVendorRail(byVendor);
   };
