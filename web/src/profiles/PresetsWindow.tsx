@@ -53,6 +53,7 @@ const NOUNS: Record<PresetType,[string,string]> = {machine:['printer','printers'
 const count = (n:number,[one,many]:[string,string]) => `${n} ${n === 1 ? one : many}`;
 interface Group { key: string; label: string; sub?: string; rows: Item[]; children?: Group[] }
 const heightLabel = (config: Config) => {const h = Number(first(config.layer_height));return Number.isFinite(h) && h > 0 ? `${h.toFixed(2)} mm` : 'Other';};
+const groupHas = (g: Group, match: (i: Item) => boolean): boolean => g.children ? g.children.some((c) => groupHas(c, match)) : g.rows.some(match);
 const byLabel = (a: string, b: string) => a === 'Other' || a === 'Any printer' ? 1 : b === 'Other' || b === 'Any printer' ? -1 : parseFloat(a) - parseFloat(b) || a.localeCompare(b);
 const sessionFolds = new Map<string, boolean>();
 const unique = (rows: Item[]) => [...new Map(rows.map(r => [r.key, r])).values()];
@@ -314,7 +315,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     if(common.length){setMaterialFilter(common);setMaterialDefault(true);}
   },[adding,type,list,printerOptions,printer]);
   const scope = `profiles:${adding ? 'add' : 'owned'}:${type}`, groupKey = (key: string) => `${scope}:${key}`;
-  const isOpen = (g: Group) => query ? !searchFolds.has(groupKey(g.key)) : folds.get(groupKey(g.key)) ?? (type === 'machine' || g.rows.some(r => r.slot !== undefined || r.key === name));
+  const isOpen = (g: Group) => query ? !searchFolds.has(groupKey(g.key)) : folds.get(groupKey(g.key)) ?? (!adding || groupHas(g, r => r.slot !== undefined || r.key === name));
   const order = useMemo(() => {
     const keys: string[] = [], walk = (list: Group[]) => {for(const g of list)if(isOpen(g)){if(g.children)walk(g.children);else keys.push(...g.rows.map(i => i.key));}};
     walk(groups);
@@ -463,8 +464,8 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const renderGroup=(g:Group,depth:number):React.ReactNode=>{
     const open=isOpen(g);
     return <div key={g.key} role="rowgroup" className="pf-group" data-depth={depth}>
-      <div role="row"><span role="rowheader"><button type="button" className="pf-group-toggle" aria-expanded={open} onClick={()=>toggleGroup(g)}><Caret dir={open ? 'down' : 'right'}/><span className="pf-group-label">{g.label}</span>{g.sub && <span className="pf-dim">{g.sub}</span>}</button></span></div>
-      {open && (g.children ? g.children.map(c=>renderGroup(c,depth+1)) : g.rows.map(i => <ManagerProfileRow key={i.key} item={i} listId={id} selected={selectedSet.has(i.key)} open={i.key === openKey} focused={selection.focus === i.key} selectable={!adding} dispatch={dispatch}/>))}
+      <div role="row" className="pf-group-head"><span role="rowheader"><button type="button" className="pf-group-toggle" aria-expanded={open} onClick={()=>toggleGroup(g)}><Caret dir={open ? 'down' : 'right'}/><span className="pf-group-label">{g.label}</span>{g.sub && <span className="pf-dim">{g.sub}</span>}</button></span></div>
+      {open && (g.children ? g.children.map(c=>renderGroup(c,depth+1)) : <div role="presentation" className="pf-group-rows">{g.rows.map(i => <ManagerProfileRow key={i.key} item={i} listId={id} selected={selectedSet.has(i.key)} open={i.key === openKey} focused={selection.focus === i.key} selectable={!adding} dispatch={dispatch}/>)}</div>)}
     </div>;
   };
   const handlers=useRef({close,addVariant,deleteSelected,duplicate});handlers.current={close,addVariant,deleteSelected,duplicate};
@@ -483,7 +484,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     <header className="pf-workspace-title">
       <Dialog.Title asChild><h1>Profiles</h1></Dialog.Title>
       <Segmented label="Profile type" value={type} options={TYPES.map(([id,label])=>({id,label}))} onChange={v=>void leave(()=>{setDrafts({});clearFilters();pickType(v as PresetType);})}/>
-      {!drill && <SettingsDetail/>}
+      {!drill && <SettingsDetail compact/>}
       <button type="button" className="btn-ghost pf-close" aria-label="Close profiles" onClick={close}>×</button>
     </header>
     <ProfileLibraryNotice/>
@@ -509,7 +510,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
         <button type="button" className="btn pf-mobile-show-results" onClick={backToList}>Show {count(visible.length,resultNoun)}</button>
       </aside>
       <section className="pf-my-profiles" ref={resultsPane} aria-label={adding ? 'Master presets' : `My ${nouns[1]}`}>
-        <div className="pf-results-heading" data-selection={bulk || undefined}>{bulk ? <><strong>{selected.length} selected</strong>{bulkActions}</>
+        <div className="pf-list-head"><div className="pf-results-heading" data-selection={bulk || undefined}>{bulk ? <><strong>{selected.length} selected</strong>{bulkActions}</>
           : <><strong>{count(visible.length,resultNoun)}</strong>
           {adding ? <button type="button" className="btn" onClick={()=>showLibrary(false)}>Cancel</button>
             : <button type="button" className="btn" onClick={()=>showLibrary(true)}>Add {typeLabel}</button>}</>}
@@ -517,8 +518,8 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
         <div className="pf-results-tools"><input className="text pf-profile-search" type="search" aria-label="Search" placeholder="Search" value={search} onChange={e=>setSearch(e.target.value)}/>
           <button type="button" className="icon-btn pf-filter-toggle" aria-label={filtersActive ? `Filters, ${filtersActive} active` : 'Filters'} aria-expanded={filtersOpen || mobilePane==='filters'} aria-controls={`${id}-filters`} onClick={()=>{setFiltersOpen(!filtersOpen);setMobilePane(mobilePane==='filters'?'list':'filters');}}><Glyph name="filter"/>{filtersActive ? <span className="pf-filter-count" aria-hidden>{filtersActive}</span> : null}</button>
           {adding ? type === 'machine' && <button type="button" className="btn-ghost" onClick={()=>setState({appDialog:'createPrinter'})}>Custom printer</button>
-            : <MenuButton label="More library actions" className={drill ? 'icon-btn' : 'btn-ghost'} items={[{label:'Import',action:()=>void leave(()=>setState({presetUx:{kind:'import',back:{kind:'presets',type,name:item?.key}}}))},{label:'Export',action:()=>void leave(()=>setState({presetUx:{kind:'export'}}))},'sep',{label:'Reset profiles…',disabled:!libraryReady,action:()=>void leave(()=>void confirmProfileReset())}]}>{drill ? <Glyph name="more"/> : 'More'}</MenuButton>}
-        </div>
+            : <MenuButton label="Import, export or reset profiles" className="icon-btn" items={[{label:'Import',action:()=>void leave(()=>setState({presetUx:{kind:'import',back:{kind:'presets',type,name:item?.key}}}))},{label:'Export',action:()=>void leave(()=>setState({presetUx:{kind:'export'}}))},'sep',{label:'Reset profiles…',disabled:!libraryReady,action:()=>void leave(()=>void confirmProfileReset())}]}><Glyph name="more"/></MenuButton>}
+        </div></div>
         <div className="pf-scroll pf-list" data-multi={bulk || undefined} role="grid" aria-label={adding ? 'Master presets' : `My ${nouns[1]}`} aria-multiselectable={!adding} onContextMenu={e=>{const row=(e.target as Element).closest<HTMLElement>('[data-profile-key]');if(!row || adding) return;e.preventDefault();const key=row.dataset.profileKey!;if(!selectedSet.has(key)) dispatch({type:'CLICK',key});setContextMenu({x:e.clientX,y:e.clientY,anchor:row});}} tabIndex={visible.length ? -1 : 0} onKeyDown={e => {
           if(e.target instanceof Element && e.target.closest('input,textarea,[contenteditable=true]')) return;
           const command = e.ctrlKey || e.metaKey;
@@ -528,7 +529,8 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
           else if((e.key === 'Enter' || e.key === ' ') && e.target instanceof HTMLElement && e.target.dataset.profileKey) {e.preventDefault(); dispatch({type: 'CLICK', key: e.target.dataset.profileKey, toggle: !adding && (command || e.key === ' '), shift: !adding && e.shiftKey});}
         }}>
           {groups.map(g => renderGroup(g, 0))}
-          {!visible.length && <div className="pf-profile-empty">{search || filtersActive ? <><span>No matches</span><button type="button" className="more-toggle" onClick={()=>{clearFilters();setSearch('');}}>Clear filters</button></> : <span>{adding ? 'No master presets' : `No ${nouns[1]} yet`}</span>}</div>}
+          {!visible.length && <div className="pf-profile-empty">{search || filtersActive ? <><span>No {resultNoun[1]} match</span><button type="button" className="btn-ghost" onClick={()=>{clearFilters();setSearch('');}}>Clear filters</button></>
+            : adding ? <span>No master presets</span> : <><span>No {nouns[1]} yet</span><button type="button" className="btn" onClick={()=>showLibrary(true)}>Add {typeLabel}</button></>}</div>}
         </div>
       </section><div className="pf-resizer" role="separator" aria-label="Resize profile list" aria-orientation="vertical" aria-valuemin={minListWidth} aria-valuemax={maxListWidth} aria-valuenow={shownListWidth} tabIndex={0}
         onPointerDown={e => {if(e.button!==0 || !resultsPane.current)return;e.preventDefault();drag.current={id:e.pointerId,x:e.clientX,width:resultsPane.current.getBoundingClientRect().width};e.currentTarget.setPointerCapture(e.pointerId);}}

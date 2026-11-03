@@ -14,7 +14,7 @@ export function FacetGroup({ label, options, value, onChange }: { label: string;
     <div className="facet-head" id={id}>{label}</div>
     {chips ? <div className="chips">{options.map((o) => <button key={o.value} type="button" className="chip" aria-pressed={value.includes(o.value)} onClick={() => toggle(o.value, !value.includes(o.value))}>{o.label}</button>)}</div> : <>
       {options.length > 12 && <input className="text" aria-label={`Find ${label.toLowerCase()}`} placeholder="Find" value={query} onChange={(e) => setQuery(e.target.value)} />}
-      {shown.map((o) => <label key={o.value} className="facet-row"><Check checked={value.includes(o.value)} onCheckedChange={(on) => toggle(o.value, on === true)} /><span>{o.label}</span>{o.count !== undefined && <span className="facet-count">{o.count}</span>}</label>)}
+      {shown.map((o) => <label key={o.value} className="facet-row"><Check checked={value.includes(o.value)} onCheckedChange={(on) => toggle(o.value, on === true)} /><span data-full-text={o.label}>{o.label}</span>{o.count !== undefined && <span className="facet-count">{o.count}</span>}</label>)}
       {!shown.length && <span className="facet-empty">No matches</span>}
       {!query && options.length > SHOWN && <button type="button" className="more-toggle" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? 'Show less' : `Show ${options.length - SHOWN} more`}</button>}
     </>}

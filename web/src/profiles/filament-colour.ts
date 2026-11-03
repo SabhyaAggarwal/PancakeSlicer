@@ -2,8 +2,8 @@ import type { Config } from '../api/types';
 import { getState, markStale, resolvePreset, setState, type State } from '../state/store';
 import { undoable } from '../state/history';
 import { findProfile, profileKey } from './identity';
+import { DEFAULT_FILAMENT_COLOUR as DEFAULT_COLOUR } from './metadata';
 
-const DEFAULT_COLOUR = '#00AE42';
 const hex = (value: unknown): string | undefined => {
   const v = String(Array.isArray(value) ? value[0] ?? '' : value ?? '');
   return /^#[\da-f]{6}/i.test(v) ? v.slice(0, 7).toUpperCase() : undefined;

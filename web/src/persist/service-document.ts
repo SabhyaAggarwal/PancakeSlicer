@@ -64,7 +64,9 @@ export function createServiceDocument<D extends ServiceDocument>(path: string, m
         try { ack = await serviceJson<{revision:number}>(path, jsonWrite(method, body)); }
         catch (error) {
           if ((error as { code?: string }).code !== 'revision_conflict' || ++rebases > 3) throw error;
-          const remote = await serviceJson<{revision:number;document:D}>(path);
+          const carried = error as { revision?: number; document?: D };
+          const remote = carried.document && Number.isSafeInteger(carried.revision) ? { revision: carried.revision!, document: carried.document }
+            : await serviceJson<{revision:number;document:D}>(path);
           if (!remote || !Number.isSafeInteger(remote.revision) || !remote.document || typeof remote.document !== 'object' || Array.isArray(remote.document)) throw error;
           const next: Record<string, unknown> = { ...remote.document };
           for (const key of [...unsaved.keys()]) {

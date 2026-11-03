@@ -9,6 +9,7 @@ import { getState, setState, subscribeStore, toast } from '../state/store';
 import { assertNever, createMachine, useMachine, type Machine, type Snapshot } from './fsm';
 import { currentRoute, writeRoute } from './routes';
 import type { createDraftJournal } from './project-journal';
+import { importing } from './import';
 
 export type { ProjectMeta } from '../persist/backend';
 export { newProject } from '../actions';
@@ -53,6 +54,7 @@ let adopting = false;
 let routing = false;
 let previous: string | null = null;
 let versionView = false;
+let leaving = false;
 const sameDoc = (a: Doc | null, b: Doc) => !!a && (Object.keys(b) as (keyof Doc)[]).every((k) => k === 'selected' || a[k] === b[k]);
 const errorText = (e: unknown) => e instanceof Error ? e.message : String(e);
 const blank = (): ProjectContext => ({ id: newKey(), name: 'Untitled', savedAt: 0, revision: 0, error: null, dirty: false, conflict: false, loadError: false, origin: 'new', failure: null, draft: { state: 'none' } });
@@ -224,7 +226,7 @@ function refreshList() {
 }
 function adopt(f: () => void) {
   adopting = true;
-  try { f(); } finally { adopting = false; }
+  try { f(); } finally { adopting = false; leaving = false; }
   generation = documentGeneration();
   observed = snapshot();
 }
@@ -295,7 +297,7 @@ async function start(ready: Promise<unknown>) {
   journal = createDraftJournal<Doc>(session.owner, draftStorage, codec, (id) => draftActivity!.beginProjectDraftMutation(id));
   observed = snapshot();
   subscribeStore(() => {
-    if (adopting || versionView) return;
+    if (adopting || versionView || leaving) return;
     if (project.get().value === 'opening' || project.get().value === 'missing' || project.get().context.loadError) {
       if (getState().tab === 'projects' && !routing) showProjects();
       return;
@@ -321,8 +323,12 @@ async function start(ready: Promise<unknown>) {
     if (versionView) return;
     if (hasUnsavedProject()) checkpointProject();
     project.send({ type: 'FLUSH' });
+    leaving = true;
+    queueMicrotask(() => { if (importing.machine.get().value !== 'running') leaving = false; });
   });
+  importing.machine.subscribe((s) => { if (s.value !== 'running') leaving = false; });
   subscribeHistory(() => {
+    leaving = false;
     if (adopting || documentGeneration() === generation) return;
     versionView = false;
     if (hasUnsavedProject() && observed) checkpointProject(observed);
@@ -406,7 +412,11 @@ export const viewProjectVersion = async (id: string, record: { meta: ProjectMeta
   (await recoveryActions()).viewProjectVersion(recoveryRuntime, id, record, () => { versionView = true; });
 async function resumeUnsaved(id: string) {
   routing = true;
-  try { return await (await recoveryActions()).resumeUnsavedProject(recoveryRuntime, id); }
+  try {
+    const resumed = await (await recoveryActions()).resumeUnsavedProject(recoveryRuntime, id);
+    if (!resumed) history.replaceState({ ...history.state, [UNSAVED]: undefined }, '');
+    return resumed;
+  }
   catch (e) { toast(errorText(e)); return false; }
   finally { routing = false; routeSavedProject(); }
 }

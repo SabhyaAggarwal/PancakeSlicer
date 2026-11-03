@@ -43,9 +43,10 @@ export function processTitle(name: string, config: Config, scoped: boolean): str
   return title.trim() || name;
 }
 
-export function profileColour(config:Config):string|null {
-  const value=first(config.filament_colour ?? config.default_filament_colour);
-  return /^#[\da-f]{6}$/i.test(value) ? value.toUpperCase() : null;
+export const DEFAULT_FILAMENT_COLOUR = '#F2754E';
+export function profileColour(config:Config):string {
+  for (const value of [config.filament_colour, config.default_filament_colour]) { const v = first(value); if (/^#[\da-f]{6}/i.test(v)) return v.slice(0, 7).toUpperCase(); }
+  return DEFAULT_FILAMENT_COLOUR;
 }
 export function printerCover(vendor:string,config:Config,model?:string):string|undefined {
   const actual=first(config.printer_model) || model;
