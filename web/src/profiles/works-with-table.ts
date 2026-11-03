@@ -3,14 +3,14 @@ import type { Config, PresetType, SystemPreset, UserPreset } from '../api/types'
 import type { State } from '../state/store';
 import { selectCompatibility } from './compatibility';
 import { listProfiles } from './catalog';
-import { processHeights } from './context';
+import { effectiveProfileValues, processHeights } from './context';
 import type { WorksWithRule } from './works-with';
 import type { DynamicProfile } from './dynamic';
 
 const base = (type: PresetType, name: string, config: Config): SystemPreset => ({ name, version: '1', vendor: 'BBL', type, config });
-const owned = (type: PresetType, id: string, baseName: string, extra: { applicability?: WorksWithRule; dynamic?: DynamicProfile } = {}) =>
+const owned = (type: PresetType, id: string, baseName: string, extra: { applicability?: WorksWithRule; dynamic?: DynamicProfile; parentId?: string; baseRole?: 'base' | 'base-only'; overlay?: Config } = {}) =>
   ({ id: `profile:${id}`, type, kind: 'profile', name: id, revision: 1, base: { name: baseName, version: '1', vendor: 'BBL' },
-    overlay: {}, overrides: {}, baseline: {}, ...extra }) as unknown as UserPreset;
+    baseline: {}, ...extra, overlay: extra.overlay ?? {}, overrides: extra.overlay ?? {} }) as unknown as UserPreset;
 const rule = (r: Omit<WorksWithRule, 'schema'>): WorksWithRule => ({ schema: 2, ...r });
 
 const machines = [
@@ -35,14 +35,19 @@ const library: UserPreset[] = [
   owned('process', 'pla-only', 'Standard', { applicability: rule({ filaments: { types: ['PLA'] } }) }),
   owned('process', 'dyn', 'Standard', { dynamic: { schema: 1, reference: { nozzle: 0.4, layerHeight: 0.2 }, layers: [
     { id: 'layer:fine', when: { layerHeight: 0.12 }, values: {} }] } }),
+  owned('process', 'dyn-base', 'Standard', { baseRole: 'base-only', applicability: rule({ printers: { models: ['Bambu Lab A1'] } }),
+    overlay: { wall_loops: '2' }, dynamic: { schema: 1, reference: { nozzle: 0.4, layerHeight: 0.2 }, layers: [{ id: 'layer:b', when: { layerHeight: 0.12 }, values: { wall_loops: '3', top_shell_layers: '7' } }] } }),
+  owned('process', 'dyn-child', 'Standard', { parentId: 'profile:dyn-base', overlay: { wall_loops: '5' } }),
+  owned('process', 'norm-base', 'Standard', { baseRole: 'base', overlay: { wall_loops: '4' } }),
+  owned('process', 'norm-child', 'Standard', { parentId: 'profile:norm-base' }),
   owned('filament', 'pla', 'Generic PLA'), owned('filament', 'petg', 'Generic PETG'),
   owned('filament', 'pla-for-any', 'Generic PLA', { applicability: rule({ prints: { profileIds: ['profile:any'] } }) }),
   owned('filament', 'pla-mini', 'Generic PLA', { applicability: rule({ printers: { models: ['Bambu Lab A1 mini'] } }) }),
 ];
-const state = (printer: string, process: string, slots: string[]) => ({
+const state = (printer: string, process: string, slots: string[], layerHeight?: number) => ({
   machines, processes, filaments, userPresets: library, printer: `profile:${printer}`, process: `profile:${process}`,
   filamentSlots: slots.map((s) => `profile:${s}`), profileSnapshots: null, projectPresets: null, dirty: { machine: {}, process: {} },
-  filamentEdits: {}, projectPlates: [], plateIndex: 1, processVariant: null,
+  filamentEdits: {}, projectPlates: [], plateIndex: 1, processVariant: layerHeight ? { layerHeight } : null,
 }) as unknown as State;
 const offered = (s: State, type: PresetType) => listProfiles(s, type).map((r) => r.name).sort();
 
@@ -50,11 +55,16 @@ export function worksWithTable(): [string, unknown, unknown][] {
   const ok = (s: State, type: PresetType, id: string) => selectCompatibility(s, type, `profile:${id}`).ok;
   const rows: [string, unknown, unknown][] = [];
   const processesOn = (printer: string, slots = ['pla']) => offered(state(printer, 'any', slots), 'process');
-  rows.push(['print profiles on A1 0.4 with PLA', processesOn('a1-04'), ['a1-models', 'a1-not-06', 'any', 'dyn', 'nozzle-03-06', 'nozzle-04', 'pla-only']]);
-  rows.push(['print profiles on A1 0.6 (excluded by id, nozzle size)', processesOn('a1-06'), ['a1-models', 'any', 'dyn', 'nozzle-03-06', 'pla-only']]);
-  rows.push(['print profiles on A1 0.2 (range, dynamic 0.12 only)', processesOn('a1-02'), ['a1-models', 'a1-not-06', 'any', 'dyn', 'pla-only']]);
-  rows.push(['print profiles on A1 1.0 (dynamic has no valid height)', processesOn('a1-10'), ['a1-models', 'a1-not-06', 'any', 'pla-only']]);
-  rows.push(['print profiles on A1 mini 0.4 (individual printer)', processesOn('mini-04'), ['any', 'dyn', 'mini-only', 'nozzle-03-06', 'nozzle-04', 'pla-only']]);
+  rows.push(['print profiles on A1 0.4 with PLA (base-only hidden)', processesOn('a1-04'), ['a1-models', 'a1-not-06', 'any', 'dyn', 'dyn-child', 'norm-base', 'norm-child', 'nozzle-03-06', 'nozzle-04', 'pla-only']]);
+  rows.push(['print profiles on A1 0.6 (excluded by id, nozzle size)', processesOn('a1-06'), ['a1-models', 'any', 'dyn', 'dyn-child', 'norm-base', 'norm-child', 'nozzle-03-06', 'pla-only']]);
+  rows.push(['print profiles on A1 0.2 (range, dynamic 0.12 only)', processesOn('a1-02'), ['a1-models', 'a1-not-06', 'any', 'dyn', 'dyn-child', 'norm-base', 'norm-child', 'pla-only']]);
+  rows.push(['print profiles on A1 1.0 (dynamic has no valid height)', processesOn('a1-10'), ['a1-models', 'a1-not-06', 'any', 'norm-base', 'norm-child', 'pla-only']]);
+  rows.push(['print profiles on A1 mini 0.4 (individual printer; the child takes its base rule)', processesOn('mini-04'), ['any', 'dyn', 'mini-only', 'norm-base', 'norm-child', 'nozzle-03-06', 'nozzle-04', 'pla-only']]);
+  const walls = (process: string, h?: number) => { const v = effectiveProfileValues(state('a1-04', process, ['pla'], h), 'process', `profile:${process}`); return [v.wall_loops, v.top_shell_layers, v.layer_height]; };
+  rows.push(['a chain child: its own key beats the base layer, the layer still adds the rest', walls('dyn-child', 0.12), ['5', '7', '0.12']]);
+  rows.push(['a chain child at the reference height', walls('dyn-child'), ['5', undefined, '0.2']]);
+  rows.push(['a chain child offers the base heights', processHeights(state('a1-04', 'dyn-child', ['pla'])), [0.12, 0.2]]);
+  rows.push(['a normal chain child inherits its base values', walls('norm-child').slice(0, 1), ['4']]);
   rows.push(['print profiles with PETG loaded drop pla-only', processesOn('a1-04', ['petg']).includes('pla-only'), false]);
   rows.push(['print profiles with pla-for-any loaded: only "any" passes its prints condition',
     processesOn('a1-04', ['pla-for-any']), ['any']]);

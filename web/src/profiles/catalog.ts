@@ -47,7 +47,7 @@ export function listProfiles(s: State, type: PresetType, filters: {browseAll?: b
   let cache = profileRows.get(s);
   if (!cache) profileRows.set(s, (cache = new Map()));
   if (!filters.browseAll && cache.has(type)) return cache.get(type)!;
-  const rows: ProfileRow[] = s.userPresets.filter((p) => p.type === type && !p.archived && (p.kind ?? 'profile') === 'profile' && (filters.browseAll || selectCompatibility(s,type,profileKey(p)).ok)).map((p) => {
+  const rows: ProfileRow[] = s.userPresets.filter((p) => p.type === type && !p.archived && (p.kind ?? 'profile') === 'profile' && (filters.browseAll || (p as { baseRole?: string }).baseRole !== 'base-only' && selectCompatibility(s,type,profileKey(p)).ok)).map((p) => {
     const { config, base } = resolveProfile(s, type, profileKey(p));
     return { key: profileKey(p), name: p.name, base: p.base?.name ?? p.inherits, ...metadata(config), vendor: base?.vendor,
       mine: true, changed: Object.keys(p.overlay ?? p.overrides).length > 0 };

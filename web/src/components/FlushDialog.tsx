@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { MAX_FLUSH_VOLUME, minFlushVolumes, MULTIPLIER_RANGE, parseColour, predictorMinFlush } from '../flush';
 import { autoFlushMatrix, currentFlush, flushInputs } from '../flush-state';
 import { markStale, setState, useStore } from '../state/store';
-import { Modal, ModalTitle } from './Modal';
+import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 import { undoable } from '../state/history';
 
 const TYPICAL_MAX_FLUSH_VOLUME = 900;
@@ -64,24 +64,18 @@ function FlushTable() {
   const outOfRange = raw.some((_, i) => Math.floor(i / n) !== i % n && (shown(i) < minVol || shown(i) > MAX_FLUSH_VOLUME));
 
   return (
-    <Modal size="l" className="flush-dialog" label="Flushing volumes for filament change" onClose={close} backdropClose>
-        <ModalTitle title="Flushing volumes for filament change" onClose={close} />
-        <div className="flush-body">
-          <div className="tip-panel">
-            Orca would re-calculate your flushing volumes everytime the filaments color changed or filaments changed. You could disable the
-            auto-calculate in Orca Slicer &gt; Preferences
-          </div>
-          <div className="flush-row">
-            <button className="btn primary" onClick={() => setRaw(auto)}>
-              Re-calculate
-            </button>
-          </div>
+    <Modal size="l" label="Flushing volumes" onClose={close}>
+        <ModalTitle title="Flushing volumes" onClose={close} />
+        <ModalBody>
+          <label className="form-row"><span>Multiplier</span>
+            <input type="number" step="0.1" min={MULTIPLIER_RANGE[0]} max={MULTIPLIER_RANGE[1]} className={`text num multiplier-input ${mult !== 1 ? 'changed' : ''}`}
+              value={multText} onChange={(e) => onMult(e.target.value)} /></label>
           <div className="flush-scroll">
             <table className="flush-table">
               <thead>
                 <tr>
                   <th>
-                    <div className="flush-from-to">from/to</div>
+                    <span className="flush-corner" aria-label="From / to" />
                   </th>
                   {colours.map((c, j) => (
                     <th key={j}>
@@ -123,29 +117,12 @@ function FlushTable() {
               </tbody>
             </table>
           </div>
-          <div className={outOfRange ? 'warning-text' : 'normal-text'}>Volume (mm³), typical {minVol}–{TYPICAL_MAX_FLUSH_VOLUME}</div>
-          <div className="flush-row">
-            <label htmlFor="flush-mult">Multiplier</label>
-            <input
-              id="flush-mult"
-              type="number"
-              step="0.1"
-              min={MULTIPLIER_RANGE[0]}
-              max={MULTIPLIER_RANGE[1]}
-              className={`text num multiplier-input ${mult !== 1 ? 'changed' : ''}`}
-              value={multText}
-              onChange={(e) => onMult(e.target.value)}
-            />
-          </div>
-        </div>
-        <div className="modal-buttons center">
-          <button className="btn primary" onClick={save}>
-            Save
-          </button>
-          <button className="btn" onClick={close}>
-            Cancel
-          </button>
-        </div>
+          <p className={outOfRange ? 'modal-error' : 'flush-note'} role={outOfRange ? 'alert' : undefined}>mm³ from row to column, typically {minVol}–{TYPICAL_MAX_FLUSH_VOLUME}</p>
+        </ModalBody>
+        <ModalFooter lead={<button type="button" className="btn-ghost" onClick={() => setRaw(auto)}>Recalculate</button>}>
+          <button type="button" className="btn" onClick={close}>Cancel</button>
+          <button type="button" className="btn-primary" onClick={save}>Save</button>
+        </ModalFooter>
     </Modal>
   );
 }

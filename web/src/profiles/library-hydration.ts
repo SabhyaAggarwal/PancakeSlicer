@@ -23,7 +23,7 @@ export function prepareProfileLibraryHydration(s: State, document: ProfileLibrar
   if(authoredSetups.some(id=>id!==s.printer || !options.restoreStartupPlaceholder)){
     return {patch:Object.fromEntries(Object.entries(patch).filter(([key])=>['machines','processes','filaments'].includes(key))),requiresAdoption:true};
   }
-  const owned=(type:PresetType)=>userPresets.filter(p=>p.type===type && !p.archived && p.kind!=='master').sort((a,b)=>profileKey(a).localeCompare(profileKey(b)));
+  const owned=(type:PresetType)=>userPresets.filter(p=>p.type===type && !p.archived && p.kind!=='master' && (p as {baseRole?:string}).baseRole!=='base-only').sort((a,b)=>profileKey(a).localeCompare(profileKey(b)));
   const recoveries:ProfileRecovery[]=[];
   const selected=(type:PresetType,key:string):string=>{
     const known=findProfile(next,type,key);

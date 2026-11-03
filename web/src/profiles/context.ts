@@ -1,7 +1,8 @@
 import type { ProjectProfileReferences } from './ownership';
 import type { Config, PresetType } from '../api/types';
 import { resolveProfile, type ProfileCatalog, type ResolvedProfile } from './model';
-import { availableHeights, nearestHeight, resolveDynamic, type DynamicContext, type DynamicRecord, type PrintContext } from './dynamic';
+import { availableHeights, chainRecord, nearestHeight, resolveChain, type ChainLink, type DynamicContext, type DynamicRecord, type PrintContext } from './dynamic';
+import { findProfile } from './identity';
 export interface ProfileContextState extends ProfileCatalog {
   profileSnapshots?:ProjectProfileReferences|null;
   printer: string; process: string; filamentSlots?: string[];
@@ -16,24 +17,39 @@ type PlateCache = WeakMap<Config, EditCache>;
 const effective = new WeakMap<Config, WeakMap<Config, PlateCache>>();
 const snapshots = new WeakMap<ProfileContextState, Map<string, Config>>();
 const scalar = (value: Config[string] | undefined) => Array.isArray(value) ? value[0] : typeof value === 'string' ? value.split(/[;,]/)[0] : value;
-const dynamicOf = (resolved: ResolvedProfile) => (resolved.user as DynamicRecord | undefined)?.dynamic ? resolved.user as DynamicRecord : undefined;
+const chains = new WeakMap<ResolvedProfile, ChainLink[]>();
+export function profileChain(s: ProfileContextState, type: PresetType, resolved: ResolvedProfile): ChainLink[] {
+  let links = chains.get(resolved);
+  if (links) return links;
+  links = [];
+  for (let p = resolved.user, seen = new Set<string>(); p && links.length < 4 && !seen.has(String(p.id)); p = p.parentId ? findProfile(s, type, p.parentId) : undefined) {
+    seen.add(String(p.id));
+    links.unshift({ ...(p as unknown as DynamicRecord), type, id: p.id, name: p.name, overlay: p.overlay ?? p.overrides ?? {} });
+  }
+  chains.set(resolved, links);
+  return links;
+}
+const dynamicOf = (s: ProfileContextState, type: PresetType, resolved: ResolvedProfile) => {
+  const links = profileChain(s, type, resolved);
+  return links.some((l) => l.dynamic) ? chainRecord(links) : undefined;
+};
 export function printContext(s: ProfileContextState): PrintContext {
   const machine = effectiveProfileValues(s, 'machine', s.printer);
   return { printerModel: String(scalar(machine.printer_model) ?? ''), nozzle: Number(scalar(machine.nozzle_diameter)), printerId: resolveProfile(s, 'machine', s.printer).key };
 }
 export function processHeights(s: ProfileContextState): number[] {
-  const p = dynamicOf(resolveProfile(s, 'process', s.process));
+  const p = dynamicOf(s, 'process', resolveProfile(s, 'process', s.process));
   return p ? availableHeights(p, printContext(s)) : [];
 }
 export function effectiveLayerHeight(s: ProfileContextState): number | null {
-  const p = dynamicOf(resolveProfile(s, 'process', s.process));
+  const p = dynamicOf(s, 'process', resolveProfile(s, 'process', s.process));
   if (!p) return null;
   const heights = availableHeights(p, printContext(s));
   return heights.length ? nearestHeight(heights, s.processVariant?.layerHeight ?? p.dynamic!.reference.layerHeight) : null;
 }
 const dynamicValues = new WeakMap<Config, Map<string, Config>>();
 function withDynamic(s: ProfileContextState, type: PresetType, resolved: ResolvedProfile, config: Config): Config {
-  const p = dynamicOf(resolved);
+  const p = dynamicOf(s, type, resolved);
   if (!p) return config;
   const own = type === 'machine' ? { printerModel: String(scalar(config.printer_model) ?? ''), nozzle: Number(scalar(config.nozzle_diameter)) } : printContext(s);
   const layerHeight = type === 'process' ? effectiveLayerHeight(s) : p.dynamic!.reference.layerHeight;
@@ -42,7 +58,7 @@ function withDynamic(s: ProfileContextState, type: PresetType, resolved: Resolve
   let byContext = dynamicValues.get(config);
   if (!byContext) dynamicValues.set(config, (byContext = new Map()));
   let value = byContext.get(id);
-  if (!value) byContext.set(id, (value = { ...config, ...resolveDynamic(p, ctx, config) }));
+  if (!value) byContext.set(id, (value = { ...config, ...resolveChain(profileChain(s, type, resolved), ctx, resolved.base?.config ?? config).config }));
   return value;
 }
 const resolvedDynamic = new WeakMap<ResolvedProfile, Map<string, ResolvedProfile>>();
@@ -64,7 +80,7 @@ export function effectiveProfileValues(s: ProfileContextState, type: PresetType,
   const previous = snapshot.get(selection);
   if (previous) return previous;
   const resolved=resolveProfile(s,type,key), captured=type==='machine'?s.profileSnapshots?.printer:type==='process'?s.profileSnapshots?.process:s.profileSnapshots?.filaments[slot];
-  const pinned=!!captured && (captured.id===key || captured.id===resolved.key) && !dynamicOf(resolved);
+  const pinned=!!captured && (captured.id===key || captured.id===resolved.key) && !dynamicOf(s, type, resolved);
   const config=pinned ? captured!.config : withDynamic(s, type, resolved, resolved.config), project = type === 'filament' ? s.projectPresets?.filaments[slot] : s.projectPresets?.[type];
   const plate = type === 'process' ? s.projectPlates?.find(p => p.index === s.plateIndex)?.settings : undefined;
   const edits = (type === 'filament' ? s.filamentEdits?.[key] : s.dirty?.[type]) ?? empty;

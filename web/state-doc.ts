@@ -9,7 +9,7 @@ const MACHINES: [string, string, unknown[]?][] = [
   ['/src/flow/output.ts', 'output'], ['/src/flow/transfer.ts', 'createTransfer', []], ['/src/flow/modal.ts', 'modals'],
   ['/src/flow/ask.ts', 'asking'], ['/src/flow/tools.ts', 'tools'], ['/src/flow/playback.ts', 'playback'],
   ['/src/flow/viewer.ts', 'viewer'], ['/src/flow/profile-edit.ts', 'createProfileEdit', []],
-  ['/src/flow/engine-health.ts', 'engineHealth'], ['/src/flow/version-view.ts', 'versionView'], ['/src/profiles/editing.ts', 'editing', ['process', 0]],
+  ['/src/flow/engine-health.ts', 'engineHealth'], ['/src/flow/version-view.ts', 'versionView'], ['/src/persist/service-document.ts', 'createServiceDocument', ['/api/preferences', 'PUT']], ['/src/profiles/editing.ts', 'editing', ['process', 0]],
 ];
 
 const target = new EventTarget();

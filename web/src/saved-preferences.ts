@@ -35,7 +35,8 @@ export const subscribeSavedPreferences = (listener: () => void) => { listeners.a
 function sync(hydrated = status.hydrated) {
   if (!controller) return;
   const snapshot = controller.servicePreferencesSnapshot();
-  publish(snapshot.document, { state: snapshot.state, error: snapshot.error ?? null, hydrated });
+  const state = snapshot.state === 'debounced' || snapshot.state === 'writing' ? 'pending' : snapshot.state === 'conflict' ? 'failed' : snapshot.state;
+  publish(snapshot.document, { state, error: snapshot.error ?? null, hydrated });
 }
 export function savePreferences(patch: Record<string, JsonValue>) {
   const changed = Object.fromEntries(Object.entries(patch).filter(([key, value]) => !same(values[key], value)));

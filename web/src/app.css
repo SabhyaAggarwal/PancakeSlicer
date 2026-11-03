@@ -222,21 +222,6 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .flush-btn:hover { background: var(--accent-hover); }
 :where(.orca-parity) .flush-btn.modified { background: var(--bg); color: var(--text); border-color: var(--accent-text); }
 
-:where(.orca-parity) .flush-body { padding: 16px 20px 6px; display: flex; flex-direction: column; gap: 8px; overflow: auto; font-size: 12px; }
-:where(.orca-parity) .tip-panel { background: var(--panel-alt); padding: 10px; font-size: 12px; max-width: 560px; }
-:where(.orca-parity) .flush-row { display: flex; align-items: center; gap: 8px; }
-:where(.orca-parity) .flush-scroll { overflow: auto; max-height: 420px; border: 1px solid var(--line-ccc); }
-:where(.orca-parity) .flush-table { border-collapse: collapse; }
-:where(.orca-parity) .flush-table th, :where(.orca-parity) .flush-table td { border: 1px solid var(--line-ccc); text-align: center; padding: 2px; width: 44px; height: 26px; background: inherit; }
-:where(.orca-parity) .flush-table thead th { position: sticky; top: 0; background: var(--panel-alt); z-index: 2; }
-:where(.orca-parity) .flush-table tbody th { position: sticky; left: 0; background: var(--panel-alt); z-index: 1; }
-:where(.orca-parity) .flush-table tbody tr:nth-child(odd) { background: var(--panel-alt); }
-:where(.orca-parity) .flush-from-to { font-size: 12px; white-space: normal; }
-:where(.orca-parity) .flush-chip { display: inline-block; min-width: 18px; height: 18px; line-height: 16px; border: 1px solid var(--line-999); border-radius: 4px; font-size: 10px; font-weight: 700; }
-:where(.orca-parity) .table-input { width: 40px; height: 20px; text-align: center; border: 0; background: transparent; -moz-appearance: textfield; appearance: textfield; font: inherit; }
-:where(.orca-parity) .table-input::-webkit-inner-spin-button, :where(.orca-parity) .table-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-:where(.orca-parity) .table-input.changed, :where(.orca-parity) .multiplier-input.changed { color: var(--accent-text); }
-:where(.orca-parity) .table-input.bad { color: var(--error); }
 :where(.orca-parity) .multiplier-input { width: 64px; }
 :where(.orca-parity) .normal-text { font-size: 12px; }
 :where(.orca-parity) .warning-text { font-size: 12px; color: var(--error); }
@@ -267,8 +252,7 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
   :where(.orca-parity) .filament-list { max-height: 160px; overflow-y: auto; }
   :where(.orca-parity) .settings-tab, :where(.orca-parity) .tab-preset-row { min-width: 0; }
   :where(.orca-parity) .tab-preset-row { flex: none; }
-  :where(.orca-parity) .modal > .settings-tab, :where(.orca-parity) .flush-body, :where(.orca-parity) .select-list { min-height: 0; }
-  :where(.orca-parity) .flush-scroll { flex: none; max-width: 100%; }
+  :where(.orca-parity) .modal > .settings-tab, :where(.orca-parity) .select-list { min-height: 0; }
 }
 
 :where(.orca-parity) label.side-btn { display: inline-flex; align-items: center; justify-content: center; }
@@ -293,20 +277,10 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .prefs-group legend { padding: 0 5px; font-weight: 600; }
 :where(.orca-parity) .prefs-row { display: flex; align-items: center; gap: 8px; min-height: 28px; cursor: pointer; }
 :where(.orca-parity) .prefs-row input { accent-color: var(--accent-text); margin: 0; }
-:where(.orca-parity) .shortcuts-search { padding: var(--s-3) var(--s-5) 0; }
-:where(.orca-parity) .shortcuts-search input { width: 100%; box-sizing: border-box; }
-:where(.orca-parity) .shortcuts-body { overflow: auto; padding: 0 var(--s-5) var(--s-4); min-height: 0; flex: 1; columns: 2 340px; column-gap: var(--s-7); }
-:where(.orca-parity) .shortcuts-body section { break-inside: avoid; }
-:where(.orca-parity) .shortcuts-body h3 { font: var(--t-label); text-transform: none; color: var(--ink-3); margin: var(--s-4) 0 var(--s-2); }
-:where(.orca-parity) .shortcuts-table { border-collapse: collapse; width: 100%; font: var(--t-body); }
-:where(.orca-parity) .shortcuts-table th { text-align: left; font-weight: 400; white-space: normal; padding: var(--s-2) var(--s-5) var(--s-2) 0; vertical-align: top; width: 1%; }
-:where(.orca-parity) .shortcuts-table td { padding: var(--s-2) 0; color: var(--ink); }
-:where(.orca-parity) .shortcuts-table tr + tr { border-top: 1px solid var(--line); }
 :where(.orca-parity) .keys { display: inline-flex; flex-wrap: wrap; gap: var(--s-2); align-items: center; }
 :where(.orca-parity) .keys-alt { display: inline-flex; gap: var(--s-1); align-items: center; }
 :where(.orca-parity) .keys-or { color: var(--ink-3); margin-right: var(--s-1); }
 :where(.orca-parity) .keys kbd { font: var(--t-small); min-width: 18px; padding: 1px 5px; text-align: center; border: 1px solid var(--line-strong); border-radius: var(--r-1); background: var(--sunken); color: var(--ink); }
-:where(.orca-parity) .shortcuts-none { padding: var(--s-5) 0; color: var(--ink-3); }
 :where(.orca-parity) kbd { font: inherit; font-size: 12px; background: var(--panel-alt); border: 1px solid var(--line-ccc); border-radius: 3px; padding: 0 5px; }
 
 :where(.orca-parity) .topbar :focus-visible, :where(.orca-parity) .tabbar :focus-visible { outline-color: var(--on-chrome); }

@@ -1,12 +1,11 @@
 import { savePreferences } from '../saved-preferences';
 import { Check } from './Check';
-import { Dropdown } from './Dropdown';
 import { lazy, Suspense, useState, useSyncExternalStore } from 'react';
 import { markStale, setState, useStore } from '../state/store';
 import { setThemePref, subscribeTheme, themePref, type ThemePref } from '../theme';
 import { cameraPrefsSnapshot, setCameraPrefs, subscribeCamera, type CameraPrefs } from '../camera';
 import { InfoTip } from './InfoTip';
-import { Modal, ModalTitle } from './Modal';
+import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 
 const About = lazy(() => import('./About'));
 const PlateSettings = lazy(() => import('./PlateSettings'));
@@ -41,59 +40,25 @@ function Preferences() {
   const mixed = useStore((s) => s.mixedTemperatures);
   const canMix = useStore((s) => !!s.features.mixed_temperatures);
   return (
-    <Modal size="m" className="prefs-dialog" label="Preferences" onClose={close}>
+    <Modal size="m" label="Preferences" onClose={close}>
       <ModalTitle title="Preferences" onClose={close} />
-      <div className="prefs-body">
-        <fieldset className="prefs-group">
-          <legend>Dark Mode</legend>
-          {THEMES.map(([value, label]) => (
-            <label key={value} className="prefs-row">
-              <input type="radio" name="theme" value={value} checked={pref === value} data-autofocus={pref === value ? '' : undefined}
-                onChange={() => setThemePref(value)} />
-              {label}
-            </label>
-          ))}
-        </fieldset>
-        <fieldset className="prefs-group">
-          <legend>Camera</legend>
-          <label className="prefs-row form-row">
-            <span>Camera style<InfoTip label="Camera style">{'Default: left drag rotates, right or middle drag pans.\nTouchpad: Alt+drag rotates, Shift+drag pans.'}</InfoTip></span>
-            <Dropdown className="combo" value={camera.style} onValueChange={(next) => setCameraPrefs({ style: next as CameraPrefs['style'] })} options={[{ value: "default", label: 'Default' }, { value: "touchpad", label: 'Touchpad' }]} />
-          </label>
-          <label className="prefs-row form-row">
-            <span>Orbit speed multiplier</span>
-            <input className="text num" type="number" min={0.05} max={2} step={0.05} value={camera.orbitMult}
-              onChange={(e) => { const v = Number(e.target.value); if (v >= 0.05 && v <= 2) setCameraPrefs({ orbitMult: v }); }} />
-          </label>
-          <label className="prefs-row">
-            <Check checked={camera.zoomToMouse} onCheckedChange={(next) => setCameraPrefs({ zoomToMouse: next })} />
-            Zoom to mouse position
-          </label>
-          <label className="prefs-row">
-            <Check checked={camera.reverseZoom} onCheckedChange={(next) => setCameraPrefs({ reverseZoom: next })} />
-            Reverse mouse zoom
-          </label>
-        </fieldset>
-        <fieldset className="prefs-group">
-          <legend>Develop mode</legend>
-          <label className="prefs-row">
-            <Check checked={developerMode} onCheckedChange={(next) => setDeveloperMode(next)} />
-            Develop mode
-          </label>
-        </fieldset>
-        {canMix && (
-          <fieldset className="prefs-group">
-            <legend>Slicing</legend>
-            <label className="prefs-row">
-              <Check checked={mixed} onCheckedChange={(next) => setMixedTemperatures(next)} />
-              Remove mixed temperature restriction
-            </label>
-          </fieldset>
-        )}
-      </div>
-      <div className="modal-buttons center">
-        <button type="button" className="btn primary" onClick={close}>OK</button>
-      </div>
+      <ModalBody className="modal-fields">
+        <div className="form-row"><span>Theme</span><span className="seg" role="radiogroup" aria-label="Theme">{THEMES.map(([value, label]) =>
+          <button key={value} type="button" role="radio" aria-checked={pref === value} data-autofocus={pref === value ? '' : undefined} onClick={() => setThemePref(value)}>{label}</button>)}</span></div>
+        <h3 className="modal-group">Camera</h3>
+        <div className="form-row"><span>Style<InfoTip label="Camera style">{'Default: left drag rotates, right or middle drag pans.\nTouchpad: Alt+drag rotates, Shift+drag pans.'}</InfoTip></span>
+          <span className="seg" role="radiogroup" aria-label="Camera style">{(['default', 'touchpad'] as const).map((value) =>
+            <button key={value} type="button" role="radio" aria-checked={camera.style === value} onClick={() => setCameraPrefs({ style: value as CameraPrefs['style'] })}>{value === 'default' ? 'Default' : 'Touchpad'}</button>)}</span></div>
+        <label className="form-row"><span>Orbit speed</span>
+          <input className="text num" type="number" min={0.05} max={2} step={0.05} value={camera.orbitMult}
+            onChange={(e) => { const v = Number(e.target.value); if (v >= 0.05 && v <= 2) setCameraPrefs({ orbitMult: v }); }} /></label>
+        <label className="modal-check"><Check checked={camera.zoomToMouse} onCheckedChange={(next) => setCameraPrefs({ zoomToMouse: next })} />Zoom to mouse position</label>
+        <label className="modal-check"><Check checked={camera.reverseZoom} onCheckedChange={(next) => setCameraPrefs({ reverseZoom: next })} />Reverse zoom direction</label>
+        <h3 className="modal-group">Advanced</h3>
+        <label className="modal-check"><Check checked={developerMode} onCheckedChange={(next) => setDeveloperMode(next)} />Developer mode</label>
+        {canMix && <label className="modal-check"><Check checked={mixed} onCheckedChange={(next) => setMixedTemperatures(next)} />Allow mixed filament temperatures</label>}
+      </ModalBody>
+      <ModalFooter><button type="button" className="btn-primary" onClick={close}>Close</button></ModalFooter>
     </Modal>
   );
 }
@@ -146,10 +111,10 @@ function Shortcuts() {
     .map(([page, rows]) => [page, rows.filter(([k, what]) => !q || what.toLowerCase().includes(q) || k.toLowerCase().includes(q))] as const)
     .filter(([, rows]) => rows.length);
   return (
-    <Modal size="xl" className="shortcuts-dialog" label="Keyboard Shortcuts" onClose={close} backdropClose>
-      <ModalTitle title="Keyboard Shortcuts" onClose={close} />
+    <Modal size="xl" className="shortcuts-dialog" label="Keyboard shortcuts" onClose={close} backdropClose>
+      <ModalTitle title="Keyboard shortcuts" onClose={close} />
       <div className="shortcuts-search">
-        <input type="text" placeholder="Filter" aria-label="Filter shortcuts" value={query} data-autofocus onChange={(e) => setQuery(e.target.value)} />
+        <input className="text" type="search" placeholder="Filter" aria-label="Filter shortcuts" value={query} data-autofocus onChange={(e) => setQuery(e.target.value)} />
       </div>
       <div className="shortcuts-body" tabIndex={0}>
         {pages.map(([page, rows]) => (
