@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { quick, removed } from 'virtual:option-bootstrap';
 import optionsUrl from './options.generated.json?url&no-inline';
 import processUrl from './tabs/process.json?url&no-inline';
@@ -70,6 +70,26 @@ const URLs = { process: processUrl, filament: filamentUrl, printer: printerUrl }
 const pending = new Map<TabDesc['tab'], Promise<void>>();
 const listeners = new Set<() => void>();
 
+let tooltips: Record<string, string> | null = null, tooltipsRevision = 0;
+let settleTooltips!: () => void;
+const tooltipsSettled = new Promise<void>((resolve) => { settleTooltips = resolve; });
+const tooltipListeners = new Set<() => void>();
+function applyTooltips() {
+  for (const [key, text] of Object.entries(tooltips ?? {})) if (OPTIONS[key]) OPTIONS[key].tooltip = text;
+}
+function loadTooltips(url: string | null | undefined) {
+  if (!url) { settleTooltips(); return; }
+  void fetch(url).then((r) => r.ok ? r.json() as Promise<Record<string, string>> : null).then((map) => {
+    if (!map) return;
+    tooltips = map; applyTooltips(); tooltipsRevision++;
+    for (const listener of [...tooltipListeners, ...listeners]) listener();
+  }).catch(() => {}).finally(settleTooltips);
+}
+export const tooltipsReady = () => tooltipsSettled;
+export function useTooltips() {
+  return useSyncExternalStore((f) => { tooltipListeners.add(f); return () => { tooltipListeners.delete(f); }; }, () => tooltipsRevision);
+}
+
 export function loadTab(tab: TabDesc['tab']): Promise<void> {
   if (TABS[tab]) return Promise.resolve();
   const cached = pending.get(tab);
@@ -88,7 +108,9 @@ export function loadTab(tab: TabDesc['tab']): Promise<void> {
         if (Object.keys(e.data.options).length) {
           for (const key of Object.keys(OPTIONS)) delete OPTIONS[key];
           Object.assign(OPTIONS, e.data.options);
+          applyTooltips();
           setOptionTypes(OPTIONS);
+          loadTooltips(e.data.tooltips);
         }
         TABS[tab] = e.data.tab;
         cleanup();

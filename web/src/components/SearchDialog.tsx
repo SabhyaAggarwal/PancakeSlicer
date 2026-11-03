@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { PresetType } from '../api/types';
-import { loadTab, modeVisible, OPTIONS, splitKey, TABS, isHidden, type OptionMode, type TabDesc } from '../options';
+import { loadTab, modeVisible, OPTIONS, splitKey, TABS, isHidden, useTooltips, type OptionMode, type TabDesc } from '../options';
 import { lineMode, tabEnvironment } from '../settings-env';
 import { effectiveConfig, effectiveMode, getState, setState, useStore } from '../state/store';
 import { condition, optionState } from '../visibility';
@@ -138,7 +138,8 @@ export default function SearchDialog() {
   useEffect(() => {
     Promise.all(TYPES.map(([, tab]) => loadTab(tab))).then(() => setReady(true), (e) => setError(String(e)));
   }, []);
-  const index = useMemo(() => (ready ? buildIndex() : []), [ready]);
+  const tooltips = useTooltips();
+  const index = useMemo(() => (ready ? buildIndex() : []), [ready, tooltips]);
   const results = useMemo(() => search(index, query).map((f) => {
     const tab = TYPES.find(([t]) => t === f.entry.type)![1];
     const shown = modeVisible(f.entry.mode, mode);

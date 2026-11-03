@@ -4,7 +4,7 @@ import { Dropdown, EditableDropdown } from './Dropdown';
 import { createContext, memo, useContext, useEffect, useId, useRef, useState } from 'react';
 import type { ConfigValue, PresetType } from '../api/types';
 import { normalizeConfigValue, toolValue } from '../config-values';
-import { OPTIONS, splitKey, type OptionDef } from '../options';
+import { OPTIONS, splitKey, useTooltips, type OptionDef } from '../options';
 import { effectiveConfig, getState, resetOption, setOption, useStore } from '../state/store';
 import { Glyph } from './Glyph';
 import { LabelTip } from './InfoTip';
@@ -76,6 +76,7 @@ export const Field = memo(function Field(props: {
   scope?: { target?: ChangeTarget };
   widget?: React.ReactNode;
 }) {
+  useTooltips();
   const [key, idx] = splitKey(props.optKey);
   const labelId = useId();
   const baseDef = OPTIONS[key];

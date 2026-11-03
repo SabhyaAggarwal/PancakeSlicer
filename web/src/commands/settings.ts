@@ -1,5 +1,5 @@
 import type { PresetType } from '../api/types';
-import { loadTab, OPTIONS, splitKey, TABS, isHidden, type OptionMode, type TabDesc } from '../options';
+import { loadTab, OPTIONS, splitKey, TABS, isHidden, tooltipsReady, type OptionMode, type TabDesc } from '../options';
 import { lineMode, tabEnvironment } from '../settings-env';
 import { effectiveConfig, getState, setState } from '../state/store';
 import { condition, optionState, settingVisible } from '../visibility';
@@ -124,7 +124,7 @@ let index: Entry[] | null = null;
 let loading: Promise<Entry[]> | null = null;
 export const settingsLoaded = () => !!index;
 export function loadSettings(): Promise<Entry[]> {
-  return loading ??= Promise.all(TYPES.map(([, tab]) => loadTab(tab))).then(() => (index = buildIndex()));
+  return loading ??= Promise.all(TYPES.map(([, tab]) => loadTab(tab))).then(tooltipsReady).then(() => (index = buildIndex()));
 }
 
 export async function settingCommands(query: string): Promise<Command[]> {

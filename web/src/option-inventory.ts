@@ -67,6 +67,7 @@ export interface RuntimeOptions {
   options: Record<string, OptionDef>;
   etag: string | null;
   native: boolean;
+  tooltips: string | null;
 }
 
 export async function loadRuntimeOptions(url: string, mock = false, cached?: RuntimeOptions): Promise<RuntimeOptions> {
@@ -82,7 +83,7 @@ export async function loadRuntimeOptions(url: string, mock = false, cached?: Run
     } catch {
     } finally { clearTimeout(timer); }
   }
-  let etag: string | null = null;
+  let etag: string | null = null, tooltips: string | null = null;
   let selected: Record<string, Metadata> | null;
   if (native) {
     const response = await fetch('/api/options', {
@@ -95,7 +96,10 @@ export async function loadRuntimeOptions(url: string, mock = false, cached?: Run
     }
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}: /api/options`);
     etag = response.headers.get('ETag');
-    selected = records(await response.json());
+    const body = await response.json();
+    if (body?.schema !== 'orca.options.v2' || typeof body.tooltips !== 'string') throw new Error('The slicing service sent an unknown option dictionary format.');
+    tooltips = body.tooltips;
+    selected = records(body.options);
   } else selected = await asset(url).then(records).catch(() => null);
   if (!selected) throw new Error('Shipped option dictionary unavailable');
   const options = normalizeOptions(selected);
@@ -106,5 +110,5 @@ export async function loadRuntimeOptions(url: string, mock = false, cached?: Run
       if (hint[name] !== undefined) Object.assign(def, { [name]: hint[name] });
   }
   setOptionTypes(options);
-  return { options, etag, native };
+  return { options, etag, native, tooltips };
 }

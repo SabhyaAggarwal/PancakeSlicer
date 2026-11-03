@@ -13,7 +13,7 @@ export type CatalogIn = { id: number; type: 'mock'; url: string } | { id: number
 
 export type CatalogOut =
   | { id: number; type: 'catalog'; catalog: CompactCatalog; from: 'cache' | 'network' }
-  | { id: number; type: 'settings'; options: Record<string, OptionDef>; tab: TabDesc }
+  | { id: number; type: 'settings'; options: Record<string, OptionDef>; tooltips?: string | null; tab: TabDesc }
   | { id: number; type: 'done' }
   | { id: number; type: 'error'; message: string };
 
@@ -41,7 +41,7 @@ function remember(entry:Entry) {
 
 const post = (m: CatalogOut) => (self as unknown as Worker).postMessage(m);
 
-let definitions: Promise<Record<string, OptionDef>> | null = null;
+let definitions: Promise<RuntimeOptions> | null = null;
 let definitionsSent = false;
 let mockSnapshot: Promise<CompactCatalog> | undefined;
 async function asset(url: string) {
@@ -55,7 +55,7 @@ async function runtimeOptions(url:string,mock=false) {
   const loaded=await loadRuntimeOptions(url,mock,runtimeCache.get(key));
   runtimeCache.delete(key);runtimeCache.set(key,loaded);
   while(runtimeCache.size>2)runtimeCache.delete(runtimeCache.keys().next().value!);
-  return loaded.options;
+  return loaded;
 }
 
 self.onmessage = async (e: MessageEvent<CatalogIn>) => {
@@ -77,8 +77,8 @@ self.onmessage = async (e: MessageEvent<CatalogIn>) => {
     }
     if (e.data.type === 'settings') {
       definitions ??= runtimeOptions(e.data.optionsUrl, e.data.mock).catch((error) => { definitions = null; throw error; });
-      const [options, tab] = await Promise.all([definitions, asset(e.data.tabUrl)]);
-      post({ id, type: 'settings', options: definitionsSent ? {} : options, tab });
+      const [loaded, tab] = await Promise.all([definitions, asset(e.data.tabUrl)]);
+      post({ id, type: 'settings', ...(definitionsSent ? { options: {} } : { options: loaded.options, tooltips: loaded.tooltips }), tab });
       definitionsSent = true;
       return;
     }
@@ -91,7 +91,7 @@ self.onmessage = async (e: MessageEvent<CatalogIn>) => {
       headers: etag ? { 'If-None-Match': etag } : {},
     });
     const early = entry ? undefined : read();
-    const options = await definitions;
+    const { options } = await definitions;
     const types = JSON.stringify([nativePresetCatalog(), Object.entries(options).map(([key, def]) => [key, def.type])]);
     const cached = entry?.types === types ? entry : undefined;
     if(cached)post({id,type:'catalog',catalog:cached.catalog,from:'cache'});
