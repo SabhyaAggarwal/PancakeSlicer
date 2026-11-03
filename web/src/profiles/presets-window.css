@@ -37,7 +37,7 @@
 :where(.orca-parity) .pf-editor-controls > .dropdown { width: 112px; }
 :where(.orca-parity) .pf-editor-fields { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; margin: 0; padding: 0; border: 0; }
 :where(.orca-parity) .pf-full-editor .settings-tab { flex: 1; min-height: 0; }
-:where(.orca-parity) .pf-full-editor .page-bar { flex-wrap: wrap; overflow: visible; padding: 6px 0; }
+:where(.orca-parity) .pf-full-editor .page-bar { flex-wrap: wrap; overflow: visible; padding: 0; }
 :where(.orca-parity) .pf-full-editor .opt-line { grid-template-columns: minmax(0, 1fr) minmax(160px, 1fr) 24px; min-height: 38px; padding-block: 4px; }
 :where(.orca-parity) .pf-full-editor .opt-label { font-size: 14px; }
 :where(.orca-parity) .pf-full-editor .optgroup-title { font-size: 13px; }

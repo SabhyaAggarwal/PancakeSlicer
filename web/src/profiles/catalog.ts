@@ -1,5 +1,5 @@
 import type { Config, PresetType, SystemPreset, UserPreset } from '../api/types';
-import { DEFAULT_PRINTER, getState, setState, type State } from '../state/store';
+import { DEFAULT_PRINTER, getState, type State } from '../state/store';
 import { baseVersion, catalogAnchor, changedKeys, profilesFor, resolveProfile } from './model';
 import { selectCompatibility } from './compatibility';
 import { defaultsInitialized, markDefaultsInitialized, rememberLocalProfile, importedBases } from '../persist/profiles';
@@ -82,39 +82,12 @@ function makeProfile(s: State, base: SystemPreset, name: string, values: Config 
     overlay, overrides: overlay, baseline: Object.fromEntries(Object.keys(overlay).map((key) => [key, base.config[key] ?? null])) };
 }
 
-export function createProfileFromBase(type: PresetType, baseName: string, name?: string): string {
-  const s = getState(), base = profilesFor(s, type).find((p) => p.name === baseName);
-  if (!base) throw new Error('Base unavailable');
-  const profile = makeProfile(s, base, name?.trim() || displayName(base));
-  rememberLocalProfile(profile, s.api?.mock);
-  setState({ userPresets: [...s.userPresets, profile] });
-  return profileKey(profile);
-}
-
-export function resetToBase(type: PresetType, name: string, key?: string): void {
-  const s = getState(), { base, source: user } = resolveProfile(s, type, name);
-  if (!base || !user) return;
-  const overlay = key ? { ...user.overlay ?? user.overrides } : {};
-  const baseline = key ? { ...user.baseline } : {};
-  if (key) {
-    const parent = user.parent ? resolveProfile(s, type, user.parent).config : base.config;
-    delete overlay[key]; delete baseline[key];
-    if (key in changedKeys({ [key]: base.config[key] }, parent) && base.config[key] !== undefined) {
-      overlay[key] = base.config[key]; baseline[key] = base.config[key];
-    }
-  }
-  const profile: UserPreset = { ...user, revision:(user.revision ?? 0)+1, overlay, overrides: overlay, baseline, parentId: key ? user.parentId : undefined, parent: key ? user.parent : undefined,
-    base: key ? user.base : { name: base.name, version: baseVersion(base) } };
-  rememberLocalProfile(profile, s.api?.mock);
-  const clear = (config: Config) => { const result = key ? { ...config } : {}; if (key) delete result[key]; return result; };
-  setState((st) => ({
-    userPresets: st.userPresets.map((p) => p.type === type && user && profileKey(p) === profileKey(user) ? profile : p),
-    ...(type === 'filament' ? { filamentEdits: { ...st.filamentEdits, [name]: clear(st.filamentEdits[name] ?? {}) } }
-      : (type === 'machine' ? st.printer : st.process) === name ? { dirty: { ...st.dirty, [type]: clear(st.dirty[type]) } } : {}),
-    projectPresets: !st.projectPresets ? null : type === 'filament'
-      ? { ...st.projectPresets, filaments: st.projectPresets.filaments.map((p, i) => st.filamentSlots[i] === name ? clear(p) : p) }
-      : (type === 'machine' ? st.printer : st.process) === name ? { ...st.projectPresets, [type]: clear(st.projectPresets[type]) } : st.projectPresets,
-  }));
+export async function createProfileFromBase(type:PresetType,baseName:string,name?:string):Promise<string> {
+  const s=getState(),base=profilesFor(s,type).find(p=>p.name === baseName);
+  if(!base)throw new Error('Base unavailable');
+  const profile=makeProfile(s,base,name?.trim() || displayName(base));
+  const {commitProfileRecords}=await import('./transactions');
+  await commitProfileRecords([profile]);return profileKey(profile);
 }
 
 export function restoreCatalog(s: State): State {

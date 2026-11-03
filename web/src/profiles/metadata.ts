@@ -9,3 +9,12 @@ export function profileSummary(type: PresetType, config: Config, model?: string)
   const top = wave && wave !== 'off' ? 'Waves' : mode === 'curved_tops' ? 'Curved top' : mode === 'off' || !mode ? 'Flat' : mode === 'auto' ? 'Automatic' : 'Custom surface';
   return [height > 0 ? `${height.toFixed(2)} mm` : '', top].filter(Boolean).join(' · ');
 }
+
+export function profileColour(config:Config):string|null {
+  const value=first(config.filament_colour ?? config.default_filament_colour);
+  return /^#[\da-f]{6}$/i.test(value) ? value.toUpperCase() : null;
+}
+export function printerCover(vendor:string,config:Config,model?:string):string|undefined {
+  const actual=first(config.printer_model) || model;
+  return vendor && actual ? `/profiles/${encodeURIComponent(vendor)}/${encodeURIComponent(actual)}_cover.png` : undefined;
+}

@@ -8,15 +8,17 @@ import { addFilament, removeSlot } from '../profiles/SetupRows';
 import { PresetCombo } from './PresetCombo';
 import { PresetBar } from '../profiles/PresetBar';
 import { SectionHeading } from './SectionHeading';
-import { profileSummary } from '../profiles/metadata';
+import { profileSummary,printerCover } from '../profiles/metadata';
 import { surfaceOf } from '../intent/surface';
 import './settings.css';
 const ObjectSettings = lazy(() => import('./ObjectSettings').then(m => ({default: m.ObjectSettings})));
 const SettingsTab = lazy(() => import('./SettingsTab').then(m => ({default: m.SettingsTab})));
 
 function ProfileRow({type, slot = 0, title, remove}: {type: PresetType; slot?: number; title: string; remove?: () => void}) {
+  const machine=useStore(printerPreset);
+  const cover=type === 'machine' && machine ? printerCover(machine.vendor,machine.config,machine.model) : undefined;
   const name = useStore(s => type === 'machine' ? s.printer : s.filamentSlots[slot]);
-  return <div className="profile-selector-row"><span className="profile-role">{title}</span><PresetCombo type={type} slot={slot}/><button type="button" className="profile-settings-action btn" onClick={() => setState({presetUx: {kind: 'presets', type, name, edit: true}})}>Edit</button>{remove && <button type="button" className="filament-remove icon-btn" aria-label={`Remove filament slot ${slot + 1}`} title={`Remove filament slot ${slot + 1}`} onClick={remove}>×</button>}</div>;
+  return <div className="profile-selector-row"><span className="profile-role">{type === 'machine' ? <img className="rail-printer-cover" src={cover ?? '/images/printer_placeholder.png'} alt="Printer" loading="lazy" width={36} height={36} onError={e=>{if(!e.currentTarget.dataset.fallback){e.currentTarget.dataset.fallback='1';e.currentTarget.src='/images/printer_placeholder.png';}}}/> : title}</span><PresetCombo type={type} slot={slot}/><button type="button" className="profile-settings-action btn" onClick={() => setState({presetUx: {kind: 'presets', type, name, edit: true}})}>Edit</button>{remove && <button type="button" className="filament-remove icon-btn" aria-label={`Remove filament slot ${slot + 1}`} title={`Remove filament slot ${slot + 1}`} onClick={remove}>×</button>}</div>;
 }
 function PrinterMaterials() {
   const machine = useStore(printerPreset), slots = useStore(s => s.filamentSlots);

@@ -13,4 +13,5 @@
 :where(.orca-parity) .dropdown:focus-visible, :where(.orca-parity) .dropdown[data-state=open] { outline: 1px solid var(--focus); outline-offset: 1px; }
 :where(.orca-parity) .dropdown:disabled { opacity: .55; }
 :where(.orca-parity) .dropdown-list { min-width: var(--radix-select-trigger-width); }
-:where(.orca-parity) .menu-scroll { text-align: center; background: var(--panel); }
+
+:where(.orca-parity) .dropdown-list .dropdown-viewport { max-height: min(480px,var(--radix-select-content-available-height,calc(100dvh - 24px))); overflow-y: auto; scrollbar-width: thin; }

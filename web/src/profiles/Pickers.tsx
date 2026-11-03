@@ -1,3 +1,4 @@
+import { profileColour } from './metadata';
 import { ColorPicker } from '../components/ColorPicker';
 import type { Config, PresetType } from '../api/types';
 import { filamentSwitchReason, getState, printerPreset, resolvePreset, setState, useStore } from '../state/store';
@@ -27,7 +28,7 @@ function filamentGroups(slot: number | null, catalog = false): PickerGroup[] {
   const entries = catalog ? listCatalog('filament') : listProfiles('filament');
   const item = (e: PickerEntry, swatch?: string | null, sub?: string): PickerItem => {
     const brand = first(e.config.filament_vendor) || e.vendor || 'Generic', b = brandName(e.name, e.config);
-    return { id: e.key, label: e.mine ? e.name : b.name, sub: sub ?? brand, facet: brand, swatch, disabled: e.reason ?? false, search: `${brand} ${first(e.config.filament_type)} ${e.name}` };
+    return { id: e.key, label: e.mine ? e.name : b.name, sub: sub ?? brand, facet: brand, swatch:swatch ?? profileColour(e.config), disabled: e.reason ?? false, search: `${brand} ${first(e.config.filament_type)} ${e.name}` };
   };
   const loaded = catalog ? [] : s.filamentSlots.flatMap((name, i) => {
     const reason = filamentSwitchReason(s, i), e = entries.find((x) => x.key === name);
@@ -59,7 +60,7 @@ export function FilamentPicker({ slot, onColour }: { slot: number; onColour(colo
   const s = getState();
   const resolved = resolvePreset(s, 'filament', name), c = resolved.config, label = resolved.name ?? 'Unavailable filament';
   const b = brandName(label, c);
-  const colour = filamentColor(s, slot + 1);
+  const colour=s.slotColours[slot] ?? (s.project ? s.projectMaterials?.colours[slot] : undefined) ?? profileColour(c) ?? '';
   return (
     <span className="pk-slot">
       <ColorPicker label={`Filament ${slot + 1} color`} value={colour} onCommit={onColour}/>

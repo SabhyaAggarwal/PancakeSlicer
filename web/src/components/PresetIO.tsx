@@ -1,7 +1,7 @@
 import { Check } from './Check';
 import { useRef, useState } from 'react';
-import type { PresetType, UserPreset } from '../api/types';
-import { downloadArchive, filamentAlias, filamentBundle, planImport, presetZip, printerBundle, readPresetFile, type ExportKind, type ImportPlan } from '../preset-io';
+import type { PresetType,UserPreset } from '../api/types';
+import { applyImportPlans, downloadArchive, filamentAlias, filamentBundle, planImport, presetZip, printerBundle, readPresetFile, type ExportKind, type ImportPlan } from '../preset-io';
 import { getState, setState, toast, useStore } from '../state/store';
 import { Modal, ModalTitle } from './Modal';
 
@@ -29,30 +29,18 @@ export function ImportDialog() {
   };
 
   const run = async () => {
-    const api = getState().api;
-    if (!api || !rows) return;
+    if(!rows)return;
     setBusy(true);
-    const next = [...rows];
-    const saved: UserPreset[] = [];
-    for (const [i, row] of next.entries()) {
-      if (!row.checked || !row.preset) continue;
-      try {
-        await api.saveUserPreset(row.preset);
-        saved.push(row.preset);
-        next[i] = { ...row, ok: true, result: row.status === 'replace' ? 'replaced' : 'imported' };
-      } catch (e) {
-        next[i] = { ...row, ok: false, result: e instanceof Error ? e.message : String(e) };
-      }
-    }
-    setState((s) => ({ userPresets: [...s.userPresets.filter((u) => !saved.some((p) => p.type === u.type && p.name === u.name)), ...saved] }));
-    setRows(next);
-    setBusy(false);
-    setDone(true);
-    const failed = next.filter((r) => r.ok === false).length;
-    toast(`${saved.length} preset${saved.length === 1 ? '' : 's'} imported${failed ? `, ${failed} failed` : ''}`);
+    const chosen=rows.filter(r=>r.checked && (r.preset || r.base));
+    try {
+      const result=await applyImportPlans(chosen);
+      setRows(rows.map(row=>chosen.includes(row) ? {...row,ok:true,result:row.status === 'replace' ? 'replaced' : 'imported'} : row));
+      setDone(true);toast(`Imported ${result.profiles} profiles and ${result.bases} templates`);
+    }catch(error){setRows(rows.map(row=>chosen.includes(row) ? {...row,ok:false,result:error instanceof Error ? error.message : String(error)} : row));}
+    finally {setBusy(false);}
   };
 
-  const count = rows?.filter((r) => r.checked && r.preset).length ?? 0;
+  const count = rows?.filter((r) => r.checked && (r.preset || r.base)).length ?? 0;
   return (
     <Modal className="np-dialog import-dialog" label="Import Configs" onClose={close}>
       <ModalTitle title="Import Configs" onClose={close} />
@@ -68,12 +56,12 @@ export function ImportDialog() {
         {rows && rows.length > 0 && (
           <div className="diff-scroll">
             <table className="np-table">
-              <thead><tr><th><Check aria-label="Select all" disabled={done} checked={rows.every((r) => r.checked || !r.preset)}
-                onCheckedChange={(next) => setRows(rows.map((r) => ({ ...r, checked: !!r.preset && next })))} /></th>
+              <thead><tr><th><Check aria-label="Select all" disabled={done} checked={rows.every((r) => r.checked || !(r.preset || r.base))}
+                onCheckedChange={(next) => setRows(rows.map((r) => ({ ...r, checked: !!(r.preset || r.base) && next })))} /></th>
                 <th>Preset</th><th>Type</th><th>Parent</th><th>{done ? 'Result' : 'Action'}</th></tr></thead>
               <tbody>{rows.map((r, i) => (
                 <tr key={`${r.parsed.file}:${i}`} title={r.parsed.file}>
-                  <td><Check aria-label={`Import ${r.parsed.name}`} disabled={!r.preset || done} checked={r.checked}
+                  <td><Check aria-label={`Import ${r.parsed.name}`} disabled={!(r.preset || r.base) || done} checked={r.checked}
                     onCheckedChange={(next) => setRows(rows.map((x, j) => (j === i ? { ...x, checked: next } : x)))} /></td>
                   <td>{r.parsed.name}</td>
                   <td>{r.parsed.type ? TYPE_NAME[r.parsed.type] : '—'}</td>

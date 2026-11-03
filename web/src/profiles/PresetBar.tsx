@@ -1,6 +1,5 @@
 import { findProfile } from './identity';
 import { profileEdit } from '../flow/profile-edit';
-import { resetToBase } from './catalog';
 import { useEffect, useState } from 'react';
 import type { PresetType } from '../api/types';
 import { MenuButton } from '../components/Menu';
@@ -127,7 +126,6 @@ export function PresetActions({ type, slot = 0 }: { type: PresetType; slot?: num
       { icon: 'save', label: 'Review project changes in profile editor', run: save, disabled: !project && isUser },
 
       { icon: 'undo', label: 'Revert all', run: () => revertAll(type, slot), disabled: !project },
-      { icon: 'undo', label: 'Reset settings', run: () => resetToBase(type, presetName ?? ''), disabled: !isUser },
       { icon: 'compare', label: 'Compare', run: () => setState({ presetUx: { kind: 'compare', type, left: presetName } }) },
       { icon: 'menu_edit_preset', label: 'Edit profile', run: () => setState({ presetUx: { kind: 'presets', type, name: presetName, edit: true } }) },
       { icon: 'design_export', label: 'Export', run: () => void exportCurrent(type, slot) },

@@ -420,9 +420,9 @@ export function selectProfileConflicts(s: State, type: PresetType, name?: string
 
 export async function resolveProfileConflict(type: PresetType, name: string, key: string, choice: 'mine' | 'theirs') {
   const s = getState(), preset = decideConflict(s, type, name, key, choice);
-  if (!preset || !s.api) return;
-  await s.api.saveUserPreset(preset);
-  setState((st) => ({ userPresets: st.userPresets.map((p) => p.type === type && p.name === name ? preset : p), job: markStale(st.job) }));
+  if(!preset)throw new Error('This profile conflict is no longer available. Reload the profile.');
+  const {commitProfileRecords}=await import('../profiles/transactions');
+  await commitProfileRecords([{...preset,revision:(preset.revision ?? 0)+1}]);
 }
 
 export function effectiveConfig(s: State, type: PresetType, slot = 0): Config {

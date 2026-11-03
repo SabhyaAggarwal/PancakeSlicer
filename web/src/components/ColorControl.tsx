@@ -21,7 +21,7 @@ export default function ColorControl({value, onCommit, label = 'Color', disabled
   };
   const swatches = (colors: string[], group: string) => <div className="color-palette" role="group" aria-label={group}>{colors.map(c => <button key={c} type="button" className="color-swatch" style={{backgroundColor: c}} aria-label={c} aria-pressed={color === c} onClick={() => setDraft(c)} />)}</div>;
   return <Popover.Root open={open} onOpenChange={next => { setOpen(next); if (next) setDraft(normalize(value) ?? '#000000'); }}>
-    <Popover.Trigger asChild><button {...named} type="button" className="color-trigger" style={{backgroundColor: normalize(value) ?? '#000000'}} aria-label={label} title={disabled ? `${label}: unavailable for this profile` : `${label}: ${value}`} disabled={disabled}/></Popover.Trigger>
+    <Popover.Trigger asChild><button {...named} type="button" className="color-trigger" style={{backgroundColor:normalize(value) ?? undefined}} data-unknown={!normalize(value)} aria-label={label} title={disabled ? `${label}: unavailable for this profile` : `${label}: ${normalize(value) ?? 'Not set'}`} disabled={disabled}>{!normalize(value) ? '?' : ''}</button></Popover.Trigger>
     <Popover.Portal><Popover.Content className="orca-menu color-popover" aria-label={label} sideOffset={6} collisionPadding={12} onKeyDown={e => e.stopPropagation()}>
       <form onSubmit={e => {e.preventDefault(); apply();}}>
         <div className="color-heading"><span>{label}</span><span className="color-preview" style={{backgroundColor: color}}/></div>

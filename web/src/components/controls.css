@@ -38,3 +38,6 @@
 :where(.orca-parity) .orca-radio-indicator { display: block; width: 8px; height: 8px; border-radius: 50%; background: var(--selected-foreground); }
 :where(.orca-parity) .orca-radio:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 :where(.orca-parity) .orca-radio:disabled { cursor: default; border-color: var(--line); }
+
+:where(.orca-parity) .profile-color-swatch { display: inline-grid; place-items: center; box-sizing: border-box; flex: 0 0 22px; width: 22px; height: 22px; border: 1px solid var(--border-control); border-radius: 2px; margin-top: 1px; background: var(--sunken); color: var(--label); font-size: 12px; }
+:where(.orca-parity) .pf-editor-identity > .color-trigger { float: left; margin: 3px 10px 0 0; }

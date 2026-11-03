@@ -11,7 +11,7 @@ import { changedKeys, profilesFor } from './model';
 import { applicabilityKey } from './WorksWith';
 import { archiveProfiles, commitProfileRecords, ensureEditableMaster, restoreProfiles } from './transactions';
 import { ProfileEditor, type ProfileDraft } from './ProfileEditor';
-import { profileSummary } from './metadata';
+import { profileColour,profileSummary } from './metadata';
 import { Check } from '../components/Check';
 import { Dropdown } from '../components/Dropdown';
 import { ActionMenu, MenuButton } from '../components/Menu';
@@ -37,7 +37,7 @@ const shortName = presetLabel;
 const first = (value: unknown) => String(Array.isArray(value) ? value[0] ?? '' : value ?? '');
 const coverOf = (vendor: string, model: string) => vendor && model ? `/profiles/${encodeURIComponent(vendor)}/${encodeURIComponent(model)}_cover.png` : undefined;
 
-interface Item { key: string; name: string; mine: boolean; parent?: string; changed: number; slot?: number; user?: UserPreset; note: string; vendor: string; model:string; nozzle: string; material: string; cover?: string; reason?: string; config: Config }
+interface Item { key: string; name: string; mine: boolean; parent?: string; changed: number; slot?: number; user?: UserPreset; note: string; vendor: string; model:string; nozzle: string; material: string; cover?: string; swatch?:string|null;reason?: string; config: Config }
 
 const slotsOf = (s: State, type: PresetType, name: string) => {
   const profile = findProfile(s, type, name), matches = (key: string) => profile ? matchesProfile(profile, key) : key === name;
@@ -55,7 +55,7 @@ function items(s: State, type: PresetType): Item[] {
     const identity = user ? profileKey(user) : name;
     const slots = slotsOf(s, type, identity), resolved = resolvePreset(s, type, identity);
     const vendor = resolved.base?.vendor ?? '', model = first(resolved.config.printer_model) || resolved.base?.model || '';
-    return { key: user ? profileKey(user) : `base:${type}:${name}`, name, mine: isMine, parent, user, config:resolved.config, vendor:type === 'filament' ? first(resolved.config.filament_vendor) || vendor : vendor, model, nozzle:first(resolved.config.nozzle_diameter), material:first(resolved.config.filament_type), cover:type === 'machine' ? coverOf(vendor,model) : undefined, slot: slots[0], note: noteOf(s, type, identity), changed: slots.reduce((n, i) => n + changeCount(s, type, i), 0) };
+    return { key: user ? profileKey(user) : `base:${type}:${name}`, name, mine: isMine, parent, user, config:resolved.config,swatch:type === 'filament' ? profileColour(resolved.config) : undefined,vendor:type === 'filament' ? first(resolved.config.filament_vendor) || vendor : vendor, model, nozzle:first(resolved.config.nozzle_diameter), material:first(resolved.config.filament_type), cover:type === 'machine' ? coverOf(vendor,model) : undefined, slot: slots[0], note: noteOf(s, type, identity), changed: slots.reduce((n, i) => n + changeCount(s, type, i), 0) };
   };
   const inUse = (i: Item) => (i.slot === undefined ? 1 : 0);
   const order = (a: Item, b: Item) => inUse(a) - inUse(b) || (a.name < b.name ? -1 : 1);
@@ -81,7 +81,7 @@ export async function removePreset(type: PresetType, profile: UserPreset) {try {
 function catalogItems(s: State, type: PresetType): Item[] {
   return listCatalog(s,type,{browseAll:true}).map(entry => {
     const base = profilesFor(s,type).find(p => p.name === entry.name && p.vendor === entry.vendor), config = base?.config ?? {};
-    return {key:`base:${type}:${entry.name}`,name:entry.name,mine:false,changed:0,note:profileSummary(type,config),vendor:type === 'filament' ? first(config.filament_vendor) || entry.vendor : entry.vendor,model:first(config.printer_model) || base?.model || '',nozzle:first(config.nozzle_diameter),material:first(config.filament_type),cover:type === 'machine' ? coverOf(entry.vendor,first(config.printer_model) || base?.model || '') : undefined,reason:entry.compatible.ok ? undefined : entry.compatible.reason,config};
+    return {key:`base:${type}:${entry.name}`,name:entry.name,mine:false,changed:0,note:profileSummary(type,config),vendor:type === 'filament' ? first(config.filament_vendor) || entry.vendor : entry.vendor,model:first(config.printer_model) || base?.model || '',nozzle:first(config.nozzle_diameter),material:first(config.filament_type),cover:type === 'machine' ? coverOf(entry.vendor,first(config.printer_model) || base?.model || '') : undefined,swatch:type === 'filament' ? profileColour(config) : undefined,reason:entry.compatible.ok ? undefined : entry.compatible.reason,config};
   });
 }
 function AddProfileDetails({type,item,copy,busy,onAdd}: {type:PresetType;item:Item;copy:boolean;busy:boolean;onAdd(name?:string):void}) {
@@ -252,7 +252,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
       const s=getState();
       if(addSource === 'template') {
         const existing=s.userPresets.find(p=>p.type === type && !p.archived && p.kind !== 'master' && (p.base?.name ?? p.inherits) === item.name && (!p.base?.vendor || p.base.vendor === item.vendor));
-        added(existing ? profileKey(existing) : createProfileFromBase(type,item.name));
+        added(existing ? profileKey(existing) : await createProfileFromBase(type,item.name));
       } else {
         if(!item.user || !newName) throw new Error('Choose a profile and enter a name for its copy.');
         if(s.userPresets.some(p=>p.type === type && p.name === newName)) throw new Error('A profile already uses this name. Choose another name.');

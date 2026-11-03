@@ -127,7 +127,6 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .page-bar { display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 0; padding: 0 4px; border-bottom: 1px solid var(--border); background: var(--bg); flex: none; }
 :where(.orca-parity) .page-tab { border: 0; background: none; padding: 8px 7px 6px; white-space: normal; cursor: pointer; border-bottom: 2px solid transparent; color: var(--text-dim); font-size: 13px; }
 :where(.orca-parity) .page-tab:hover { color: var(--text); }
-:where(.orca-parity) .page-tab.active { color: var(--text); border-bottom-color: var(--accent-text); font-weight: 600; }
 :where(.orca-parity) .page-body { flex: 1; overflow: auto; padding: 0 0 24px; min-height: 0; }
 :where(.orca-parity) .optgroup { padding: 4px 0 6px; }
 :where(.orca-parity) .optgroup-title { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-4) var(--s-4) var(--s-2); font: var(--t-label); letter-spacing: var(--label-track); text-transform: none; color: var(--ink-2); }
@@ -585,7 +584,6 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .topbar-title { color: var(--text); }
 :where(.orca-parity) button:disabled, :where(.orca-parity) input:disabled, :where(.orca-parity) textarea:disabled, :where(.orca-parity) [data-disabled] { color: var(--label); opacity: 1; border-color: var(--border-control); }
 :where(.orca-parity) .side-btn:disabled, :where(.orca-parity) .text:disabled, :where(.orca-parity) .text:read-only { border-color: var(--border-control); color: var(--label); }
-:where(.orca-parity) .page-tab { border: 0; }
 :where(.orca-parity) .page-tab:disabled, :where(.orca-parity) .seg > button:disabled { color: var(--label); }
 :root.orca-parity .xf .axis { color: var(--label); }
 :where(.orca-parity) .notif-link { color: var(--label); text-decoration: underline; }
@@ -630,3 +628,8 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 @media (max-width: 1000px) { :where(.orca-parity) .app { --workspace-rail-width: 340px; } :where(.orca-parity) .compact-topbar .visibility-label { display: none; } :where(.orca-parity) .compact-topbar .detail-option { padding-inline: 4px; } }
 @media (max-width: 760px) { :where(.orca-parity) .topbar-project-context { flex-basis: 140px; } :where(.orca-parity) .topbar-project-context .projects-button { display: none; } :where(.orca-parity) .compact-topbar .main-tab > span { display: none; } }
 @media (max-width: 540px) { :where(.orca-parity) .topbar-project-context { flex-basis: 72px; } :where(.orca-parity) .topbar-project-context > .menu-title { display: none; } :where(.orca-parity) .compact-topbar .tabbar-actions > .side-btn, :where(.orca-parity) .compact-topbar .side-options { display: none; } }
+
+:where(.orca-parity) .segmented-control { display: inline-flex; align-items: stretch; gap: 2px; padding: 2px; background: var(--sunken); border: 0; border-radius: 4px; }
+:where(.orca-parity) .segmented-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 28px; padding: 3px 10px; border: 0; border-radius: 3px; background: transparent; color: var(--label); font-size: 12px; line-height: 20px; }
+:where(.orca-parity) .segmented-button:hover { background: var(--hover); }
+:where(.orca-parity) .compact-topbar .main-tab.active::after { display: none; }

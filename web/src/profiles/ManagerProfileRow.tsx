@@ -8,6 +8,7 @@ export interface ManagerProfileRowItem {
   note: string;
   slot?: number;
   cover?: string;
+  swatch?:string|null;
 }
 
 export const ManagerProfileRow = memo(function ManagerProfileRow({ item, listId, selected, focused, dispatch }: {
@@ -23,7 +24,8 @@ export const ManagerProfileRow = memo(function ManagerProfileRow({ item, listId,
     onClick={event => dispatch({ type: 'CLICK', key: item.key, toggle: event.ctrlKey || event.metaKey, shift: event.shiftKey })}>
     <span role="gridcell" className="pf-row-check"><Check aria-label={`Select ${item.name}`} checked={selected}
       onClick={event => event.stopPropagation()} onCheckedChange={() => dispatch({ type: 'CLICK', key: item.key, toggle: true })}/></span>
-    {item.cover && <span role="gridcell" className="pf-row-cover"><img src={item.cover} alt="" width={44} height={44} loading="lazy" decoding="async" onError={e => {e.currentTarget.hidden = true;}}/></span>}
+    {item.swatch !== undefined && <span role="gridcell" className="profile-color-swatch" style={{backgroundColor:item.swatch ?? undefined}} data-unknown={!item.swatch} title={item.swatch ?? 'No saved filament color'}>{!item.swatch ? '?' : ''}</span>}
+    {item.cover && <span role="gridcell" className="pf-row-cover"><img src={item.cover} alt="" width={44} height={44} loading="lazy" decoding="async" onError={e => {if(!e.currentTarget.dataset.fallback){e.currentTarget.dataset.fallback='1';e.currentTarget.src='/images/printer_placeholder.png';}}}/></span>}
     <span role="gridcell" className="pf-row-label"><span className="pf-item-title"><span className="pf-item-name">{item.name}</span>{item.slot !== undefined && <span className="pf-used">✓ In use</span>}</span>
       <span className="pf-dim pf-item-note">{item.note}</span></span>
   </div>;

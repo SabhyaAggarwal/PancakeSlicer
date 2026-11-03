@@ -182,12 +182,12 @@ export function TabBar() {
   const exportAllEnabled = useStore((s) => s.projectPlates.length > 1 && !busy && exportablePlates(s).length > 0);
   return (
     <div className="tabbar">
-      <div className="tabbar-tabs">
-        <button aria-label="Prepare" className={`main-tab ${tab === 'prepare' ? 'active' : ''}`} onClick={() => setState({ tab: 'prepare' })}>
+      <div className="tabbar-tabs segmented-control">
+        <button aria-label="Prepare" className={`main-tab segmented-button ${tab === 'prepare' ? 'active' : ''}`} onClick={() => setState({ tab: 'prepare' })}>
           <Icon name="tab_3d_active" size={20} />
           <span>Prepare</span>
         </button>
-        <button aria-label="Preview" className={`main-tab ${tab === 'preview' ? 'active' : ''}`} onClick={() => setState({ tab: 'preview' })}>
+        <button aria-label="Preview" className={`main-tab segmented-button ${tab === 'preview' ? 'active' : ''}`} onClick={() => setState({ tab: 'preview' })}>
           <Icon name="tab_preview_active" size={20} />
           <span>Preview</span>
         </button>

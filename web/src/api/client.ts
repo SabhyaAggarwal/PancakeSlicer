@@ -1,17 +1,15 @@
 import { submissionHeaders } from '../flow/submission';
 import { bootstrapAccessToken, mutation, responseError } from './access';
 import { expandCatalog } from './compact-catalog';
-import { normalizeUserPreset, prepareProfile } from '../profiles/model';
+import { normalizeUserPreset } from '../profiles/model';
 import { catalogWorker, onWorkerFailure, workerId } from './worker';
 import type { CatalogIn, CatalogOut } from './catalog.worker';
-import type { Config, JobRequest, JobStatus, PresetCatalog, PresetType, ProgressEvent, UserPreset } from './types';
+import type { Config, JobRequest, JobStatus, PresetCatalog, ProgressEvent, UserPreset } from './types';
 
 export interface Api {
   mock: boolean;
   presets(vendor: string, models: string[], update?: (c: PresetCatalog) => void): Promise<PresetCatalog>;
   userPresets(): Promise<UserPreset[]>;
-  saveUserPreset(p: UserPreset): Promise<void>;
-  deleteUserPreset(type: PresetType, name: string): Promise<void>;
   submit(req: JobRequest, signal?: AbortSignal, onUpload?: (fraction: number) => void): Promise<string>;
   status(id: string): Promise<JobStatus>;
   events(id: string, on: { progress(e: ProgressEvent): void; done(s: JobStatus): void; error(msg: string): void; log?(stream: string, line: string): void }): () => void;
@@ -68,12 +66,6 @@ const realApi: Api = {
     const {rememberBase}=await import('../persist/profiles');library.catalog?.forEach(rememberBase);
     return library.profiles.map(normalizeUserPreset);
   },
-  async saveUserPreset(p) {
-    const {getState}=await import('../state/store'),s=getState();
-    const {commitProfileRecords}=await import('../profiles/transactions');
-    await commitProfileRecords([prepareProfile(s,p)]);
-  },
-  async deleteUserPreset() {throw new Error('Permanent deletion requires a complete reference inventory. Use reversible Remove from library.');},
 
   async submit(req, signal, onUpload) {
     if (req.backend && toolFeatures.orcanp_v01 !== true) throw new Error('Orca-NP v0.1 is unavailable on this service. Choose Standard or connect the external engine.');
