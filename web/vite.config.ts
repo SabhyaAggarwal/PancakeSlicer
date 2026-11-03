@@ -6,10 +6,11 @@ import { mockAssets } from './mock-assets.ts';
 import { orcaAssets } from './orca-assets.ts';
 import { licenceNotices } from './licence-notices.ts';
 import { devCompression } from './dev-compression.ts';
+import { devStartup } from './dev-startup.ts';
 import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
-  plugins: [devCompression(), react(), orcaAssets(), optionAssets(), mockAssets(), bundleReport(), licenceNotices()],
+  plugins: [devCompression(), devStartup(), react(), orcaAssets(), optionAssets(), mockAssets(), bundleReport(), licenceNotices()],
   worker: { format: 'es', plugins: () => [optionAssets(false), licenceNotices(false)] },
   server: {
     port: 20120,

@@ -19,7 +19,7 @@
 :where(.orca-parity) .icon-btn.active { background: var(--selected); }
 :where(.orca-parity) .icon-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 :where(.orca-parity) .icon-btn:disabled { opacity: 0.35; cursor: default; }
-:where(.orca-parity) .icon-btn img { filter: grayscale(1) brightness(1.15); }
+:where(.orca-parity) .icon-btn img { filter: var(--icon-filter); }
 
 :where(.orca-parity) .seg { display: inline-flex; flex: none; gap: 2px; padding: 2px; background: var(--sunken); border: 0; border-radius: var(--r-2); font: var(--t-body); overflow: visible; }
 :where(.orca-parity) .seg > button { min-height: calc(var(--h-control) - 4px); padding: 0 var(--control-pad-x); border: 0; border-radius: var(--r-1); background: none; color: var(--ink-2); font: inherit; cursor: pointer; transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease); }

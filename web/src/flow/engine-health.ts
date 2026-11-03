@@ -1,4 +1,6 @@
+import { applyHealth, type SurfaceArtifactManifest } from '../api/client';
 import { readHealth } from '../api/health';
+import { getState, setState } from '../state/store';
 import { assertNever, createMachine, useMachine } from './fsm';
 
 export type EngineState = 'unknown' | 'healthy' | 'degraded' | 'qualified' | 'unqualified';
@@ -28,14 +30,33 @@ export const engineHealth = createMachine<EngineState, HealthEvent, HealthContex
   id: 'engine-health', initial: 'unknown', context: { health: null },
   states: { unknown: { on }, healthy: { on }, degraded: { on }, qualified: { on }, unqualified: { on } },
 });
-let probe: Promise<void> | null = null;
+let probe: Promise<void> | null = null, retry: ReturnType<typeof setTimeout> | undefined, watching = false;
+function adopt(health: EngineHealth) {
+  applyHealth(health as { tool_features?: Record<string, unknown>; artifact_manifest?: SurfaceArtifactManifest });
+  if (health.tool_features && !getState().api?.mock) setState({ features: { ...health.tool_features } });
+}
+function watch() {
+  if (watching) return;
+  watching = true;
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void probeEngine(); });
+  window.addEventListener('online', () => void probeEngine());
+}
 export function probeEngine(): Promise<void> {
   if (probe) return probe;
+  watch();
+  clearTimeout(retry);
   engineHealth.send({ type: 'RETRY' });
   probe = readHealth(5000).then(async (r) => {
     if (!r.ok) throw new Error('Health unavailable');
-    engineHealth.send({ type: 'HEALTH', health: await r.json() as EngineHealth });
-  }).catch(() => engineHealth.send({ type: 'FAIL' })).finally(() => { probe = null; });
+    const health = await r.json() as EngineHealth;
+    adopt(health);
+    engineHealth.send({ type: 'HEALTH', health });
+  }).catch(() => engineHealth.send({ type: 'FAIL' })).finally(() => {
+    probe = null;
+    const { value, context } = engineHealth.get();
+    const tools = context.health?.tool_features, partial = !context.health?.artifact_manifest && (tools?.curved_tops === true || tools?.nonplanar_wave === true);
+    if (value === 'degraded' || partial) retry = setTimeout(() => void probeEngine(), 10000);
+  });
   return probe;
 }
 export function enginePermission(): 'unknown' | 'preview' | 'print' | 'unavailable' {

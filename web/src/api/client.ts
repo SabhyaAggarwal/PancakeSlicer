@@ -169,6 +169,11 @@ export interface SurfaceArtifactManifest {
   wave_modes?: string[];
 }
 export let toolArtifactManifest: SurfaceArtifactManifest | undefined;
+export function applyHealth(health: { tool_features?: Record<string, unknown>; artifact_manifest?: SurfaceArtifactManifest }) {
+  if (!health.tool_features) return;
+  toolFeatures = health.tool_features;
+  toolArtifactManifest = health.artifact_manifest;
+}
 const validatedSurface = (feature: 'curved_tops' | 'nonplanar_wave') => toolFeatures[feature] === true
   && (toolArtifactManifest?.preview_ready ?? toolArtifactManifest?.validated) === true
   && /^[a-f0-9]{64}$/i.test(toolArtifactManifest?.binary_sha256 ?? '')
@@ -207,15 +212,11 @@ export const canOneShot = () => toolFeatures.oneshot === true;
 
 export async function connect(): Promise<Api> {
   bootstrapAccessToken();
-  toolFeatures = {};
-  toolArtifactManifest = undefined;
   try {
     const r = await readHealth(1500);
     const type = r.headers.get('content-type') ?? '';
     if (r.ok && type.includes('json')) {
-      const health = await r.json() as { tool_features?: Record<string, unknown>; artifact_manifest?: SurfaceArtifactManifest };
-      toolFeatures = health.tool_features ?? {};
-      toolArtifactManifest = health.artifact_manifest;
+      applyHealth(await r.json() as { tool_features?: Record<string, unknown>; artifact_manifest?: SurfaceArtifactManifest });
       return guardedApi(realApi);
     }
   } catch {

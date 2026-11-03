@@ -25,6 +25,7 @@ export interface OptionDef {
   enum_values?: string[];
   enum_labels?: string[];
   enum_disabled?: string[];
+  enum_notes?: (string | undefined)[];
   default?: unknown;
   readonly?: boolean;
   nullable?: boolean;

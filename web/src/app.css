@@ -29,7 +29,6 @@
   --overlay-94: var(--panel);
   --overlay-95: var(--panel);
   --overlay-97: var(--panel);
-  --hover: #484855;
   --hover-soft: var(--sunken);
   --selected: var(--accent-tint);
   --track: var(--line-strong);
@@ -526,7 +525,9 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) *:focus-visible { outline: 1px solid var(--focus); outline-offset: 1px; }
 :where(.orca-parity) .topbar .menu-title { padding: 4px 8px; border: 0; border-radius: 3px; color: var(--text); background: transparent; }
 :where(.orca-parity) .topbar .menu-title:hover, :where(.orca-parity) .topbar .menu-title[data-state=open] { background: var(--selected); }
-:where(.orca-parity) .toolbar .icon, :where(.orca-parity) .canvas-toolbar .icon, :where(.orca-parity) .tb-tool .icon { filter: grayscale(1) brightness(1.15); }
+:root.orca-parity { --icon-filter: grayscale(1) brightness(1.15); }
+:root.orca-parity[data-theme='light'] { --icon-filter: grayscale(1); }
+:where(.orca-parity) .toolbar .icon, :where(.orca-parity) .canvas-toolbar .icon, :where(.orca-parity) .tb-tool .icon, :where(.orca-parity) .view-tab > img { filter: var(--icon-filter); }
 :where(.orca-parity) button:disabled, :where(.orca-parity) input:disabled, :where(.orca-parity) textarea:disabled, :where(.orca-parity) [data-disabled] { color: var(--label); opacity: 1; border-color: var(--border-control); }
 :where(.orca-parity) .side-btn:disabled, :where(.orca-parity) .text:disabled, :where(.orca-parity) .text:read-only { border-color: var(--border-control); color: var(--label); }
 :where(.orca-parity) .seg > button:disabled { color: var(--label); }

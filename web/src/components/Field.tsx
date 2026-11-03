@@ -160,11 +160,11 @@ function Widget({ def, value, onCommit }: { def: OptionDef; value: ConfigValue |
     const v = asText(value);
     const known = def.enum_values.includes(v);
     const labels = def.enum_values.map((ev, i) => def.enum_labels?.[i] ?? ev);
-    if (known && segmented(labels)) return <Choice label={def.full_label || def.label || def.key} value={v} disabled={def.readonly} onChange={onCommit}
+    if (known && !def.enum_notes?.some(Boolean) && segmented(labels)) return <Choice label={def.full_label || def.label || def.key} value={v} disabled={def.readonly} onChange={onCommit}
       options={def.enum_values.map((ev, i) => ({ id: ev, label: labels[i], disabled: def.enum_disabled?.includes(ev) }))} />;
     return (
       <Dropdown className="combo" {...named} value={v} disabled={def.readonly} onValueChange={onCommit} options={[...(!known ? [{ value: v, label: v }] : []), ...def.enum_values.map((ev, i) => (
-          ({ value: ev, label: def.enum_labels?.[i] ?? ev, disabled: def.enum_disabled?.includes(ev) })
+          ({ value: ev, label: def.enum_notes?.[i] ? <>{labels[i]}<span className="menu-note">{def.enum_notes[i]}</span></> : labels[i], search: labels[i], disabled: def.enum_disabled?.includes(ev) })
         ))]} />
     );
   }
