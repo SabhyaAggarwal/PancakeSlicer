@@ -129,7 +129,8 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 
 :where(.orca-parity) .canvas-area { flex: 1; position: relative; min-width: 0; background: var(--canvas); overflow: hidden; }
 :where(.orca-parity) .topbar-title { display: flex; align-items: center; gap: var(--s-3); min-width: 0; color: var(--ink); }
-:where(.orca-parity) .compact-topbar .topbar-title { position: absolute; left: 50%; transform: translateX(-50%); max-width: calc(100vw - 2 * (var(--workspace-rail-width) + 216px)); margin: 0; padding: 0; }
+:where(.orca-parity) .title-zone { flex: 1 1 0; min-width: 0; display: flex; justify-content: center; padding: 0 var(--s-3); }
+:where(.orca-parity) .title-zone > .topbar-title { max-width: 100%; }
 :where(.orca-parity) .title-name { display: inline-flex; align-items: center; gap: var(--s-2); min-width: 0; max-width: 100%; height: var(--h-compact); padding: 0 var(--s-3); border: 1px solid transparent; border-radius: var(--control-radius); background: transparent; color: var(--ink); font: 500 14px/20px var(--font-ui); cursor: text; }
 :where(.orca-parity) .title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :where(.orca-parity) .title-pencil { flex: none; color: var(--ink-3); visibility: hidden; }
@@ -138,9 +139,6 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .title-state { flex: none; font: var(--t-small); color: var(--ink-3); white-space: nowrap; }
 :where(.orca-parity) .title-folder { flex: 0 1 auto; min-width: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); font: var(--t-body); }
 :where(.orca-parity) .title-edit { min-width: 0; width: 100%; height: var(--h-compact); padding: 0 var(--s-3); border: 1px solid var(--focus); border-radius: var(--control-radius); background: var(--control-bg); color: var(--ink); font: 500 14px/20px var(--font-ui); }
-@media (max-width: 1239px) {
-  :where(.orca-parity) .compact-topbar .topbar-title { position: static; transform: none; flex: 1 1 auto; max-width: none; margin-left: var(--s-2); padding-left: var(--s-3); border-left: 1px solid var(--line); }
-}
 
 :where(.orca-parity) .view-tab { display: inline-flex; align-items: center; gap: var(--s-2); }
 :where(.orca-parity) .view-tab > img { flex: none; }
@@ -549,7 +547,7 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .output-overflow { display: none; }
 @media (max-width: 1000px) {
   :where(.orca-parity) .app { --workspace-rail-width: var(--user-rail-width, 320px); }
-  :where(.orca-parity) .topbar-project-context { flex-basis: auto; }
+  :where(.orca-parity) .topbar-project-context { flex: none; }
   :where(.orca-parity) .compact-topbar .export-actions { display: none; }
   :where(.orca-parity) .output-overflow { display: inline-flex; align-items: center; min-width: 0; padding: 0 12px; }
 }

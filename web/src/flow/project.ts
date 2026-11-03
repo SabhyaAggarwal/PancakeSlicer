@@ -70,12 +70,20 @@ let draftInventory: ProjectDraftInventory = { status: 'loading', drafts: [], err
 const draftListeners = new Set<() => void>();
 export const projectDraftSnapshot = () => draftInventory;
 export const subscribeProjectDrafts = (listener: () => void) => { draftListeners.add(listener); return () => { draftListeners.delete(listener); }; };
-export async function refreshProjectDrafts(): Promise<ProjectDraftInventory> {
+async function readProjectDrafts(): Promise<ProjectDraftInventory> {
   const mine = ++draftListToken;
   const result = await (await journalTools()).readDraftInventory(draftStorage, draftInventory);
   if (mine === draftListToken) draftInventory = result;
   if (mine === draftListToken) draftListeners.forEach((listener) => listener());
   return draftInventory;
+}
+let draftRead: Promise<ProjectDraftInventory> | null = null, draftReadNext: Promise<ProjectDraftInventory> | null = null;
+export function refreshProjectDrafts(): Promise<ProjectDraftInventory> {
+  if (!draftRead) {
+    const read = readProjectDrafts().finally(() => { if (draftRead === read) draftRead = null; });
+    return draftRead = read;
+  }
+  return draftReadNext ??= draftRead.catch(() => {}).then(() => { draftReadNext = null; return refreshProjectDrafts(); });
 }
 function checkpointProject(document = snapshot(), id = project.get().context.id, revision = project.get().context.revision,
   failure = project.get().context.failure) {

@@ -34,7 +34,9 @@ import { confirmDialog, promptDialog } from '../components/Ask';
 import { diffRows, useTabLoaded } from '../components/PresetDialogs';
 import { display, presetLabel } from './format';
 import { changeCount, takeValue } from './stack';
-import { createProfileFromBase, listCatalog, resolveCatalogEntry } from './catalog';
+import { createProfileFromBase, displayName, listCatalog, resolveCatalogEntry } from './catalog';
+import { colourName, configColour } from './filament-colour';
+import { ColorPicker } from '../components/ColorPicker';
 
 const TYPES: [PresetType, string][] = [['machine', 'Printers'], ['filament', 'Filaments'], ['process', 'Print settings']];
 const shortName = presetLabel;
@@ -43,7 +45,7 @@ const coverOf = (vendor: string, model: string) => vendor && model ? `/profiles/
 type CopyRequest={source:UserPreset;name:string;creation:ProfileCreation;error?:string};
 let pendingCopy:CopyRequest|undefined;
 
-interface Item { base?:SystemPreset; key: string; name: string; mine: boolean; parent?: string; changed: number; slot?: number; user?: UserPreset; note: string; vendor: string; model:string; nozzle: string; material: string; family?: string; cover?: string|null; swatch?:string|null;reason?: string; meta?: string; fullName?: string; config: Config; variants?: Item[] }
+interface Item { base?:SystemPreset; key: string; name: string; mine: boolean; parent?: string; changed: number; slot?: number; user?: UserPreset; note: string; vendor: string; model:string; nozzle: string; material: string; family?: string; cover?: string|null; swatch?:string|null;reason?: string; meta?: string; fullName?: string; child?: boolean; config: Config; variants?: Item[] }
 const COMMON_MATERIALS = ['PLA', 'PETG', 'ABS', 'ASA', 'TPU'];
 const NOUNS: Record<PresetType,[string,string]> = {machine:['printer','printers'],filament:['filament','filaments'],process:['print setting','print settings']};
 const count = (n:number,[one,many]:[string,string]) => `${n} ${n === 1 ? one : many}`;
@@ -118,10 +120,10 @@ function catalogItems(s: State, type: PresetType): Item[] {
     return {key:entry.key,base,name:entry.name,mine:false,changed:0,note:profileSummary(type,config),vendor:type === 'filament' ? first(config.filament_vendor) || entry.vendor : entry.vendor,model:first(config.printer_model) || base?.model || '',nozzle:first(config.nozzle_diameter),material:first(config.filament_type),family:type === 'filament' ? base.filament_id || base.inherits?.[0] || undefined : undefined,cover:type === 'machine' ? coverOf(entry.vendor,first(config.printer_model) || base?.model || '') ?? null : undefined,swatch:type === 'filament' ? profileColour(config) : undefined,reason:entry.compatible.ok ? undefined : entry.compatible.reason,config};
   });
 }
-function AddDetails({type,item,busy,onAdd}: {type:PresetType;item:Item;busy:boolean;onAdd(variant:Item):void}) {
+function AddDetails({type,item,busy,onAdd}: {type:PresetType;item:Item;busy:boolean;onAdd(variant:Item,colour?:string):void}) {
   const load=useStore(s=>s.profileLibraryLoad.state);
   const variants=item.variants ?? [item];
-  const [choice,setChoice]=useState(()=>defaultVariant(type,variants).key),[coverFailed,setCoverFailed]=useState(false);
+  const [choice,setChoice]=useState(()=>defaultVariant(type,variants).key),[coverFailed,setCoverFailed]=useState(false),[colour,setColour]=useState<string>();
   const variant=variants.find(v=>v.key === choice) ?? variants[0];
   return <section className="pf-add-source" aria-label={item.name}>
     {item.cover !== undefined && <span className="pf-source-cover">{item.cover && !coverFailed && <img src={item.cover} alt="" loading="lazy" onError={()=>setCoverFailed(true)}/>}</span>}
@@ -130,7 +132,8 @@ function AddDetails({type,item,busy,onAdd}: {type:PresetType;item:Item;busy:bool
       ? <div className="pf-variant"><span>Nozzle</span><Choice label="Nozzle" value={variant.key} options={variants.map(v=>({id:v.key,label:`${v.nozzle} mm`}))} onChange={setChoice}/></div>
       : <label className="pf-variant"><span>Variant</span><Dropdown className="combo" aria-label="Variant" value={variant.key} onValueChange={setChoice} options={variants.map(v=>({value:v.key,label:v.name}))}/></label>)}
     {variants.length === 1 && variant.note && <p>{variant.note}</p>}
-    <button type="button" className="btn primary" disabled={busy || load !== 'ready'} onClick={()=>onAdd(variant)}>{busy ? 'Adding…' : load === 'loading' ? 'Loading…' : `Add ${type === 'process' ? NOUNS[type][1] : NOUNS[type][0]}`}</button>
+    {type === 'filament' && <div className="pf-variant"><span>Colour</span><span className="pf-colour-choice"><ColorPicker value={colour ?? configColour(variant.config) ?? ''} label="Colour" onCommit={setColour}/>{colour && <button type="button" className="link" onClick={()=>setColour(undefined)}>Catalog colour</button>}</span></div>}
+    <button type="button" className="btn primary" disabled={busy || load !== 'ready'} onClick={()=>onAdd(variant,colour)}>{busy ? 'Adding…' : load === 'loading' ? 'Loading…' : `Add ${type === 'process' ? NOUNS[type][1] : NOUNS[type][0]}`}</button>
   </section>;
 }
 
@@ -261,12 +264,16 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const machineRow=(i:Item):Item=>i.variants ? {...i,fullName:i.model,name:modelLabel(i.config,i.vendor,i.model)}
     : i.user?.kind === 'master' ? {...i,fullName:i.name,name:printerLine(i.config,i.vendor,i.model),note:''}
     : {...i,note:printerLine(i.config,i.vendor,i.model)};
+  const colourFamilies=(list:Item[])=>{
+    const keys=new Set(list.map(i=>i.key)),parentOf=(i:Item)=>i.user?.parentId && keys.has(i.user.parentId) ? i.user.parentId : undefined;
+    return list.filter(i=>!parentOf(i)).flatMap(parent=>[parent,...list.filter(i=>parentOf(i) === parent.key).map(i=>({...i,child:true}))]);
+  };
   const groups=useMemo(():Group[]=>{
     const rows=matching.filter(i=>!query || [i,...i.variants ?? []].some(v=>`${v.name} ${v.note}`.toLocaleLowerCase().includes(query)));
     const bucket=(list:Item[],labelOf:(i:Item)=>string)=>{const m=new Map<string,Item[]>();for(const i of list){const g=labelOf(i);m.set(g,[...m.get(g) ?? [],i]);}return [...m].sort(([a],[b])=>byLabel(a,b));};
     const sortRows=(list:Item[])=>list.sort((a,b)=>a.name.localeCompare(b.name));
     if(type !== 'process')return bucket(rows,i=>type === 'machine' ? vendorLabel(i.config,i.vendor) : i.material || 'Other')
-      .map(([label,list])=>({key:label,label,rows:sortRows(type === 'machine' ? list.map(machineRow) : list)}));
+      .map(([label,list])=>({key:label,label,rows:type === 'machine' ? sortRows(list.map(machineRow)) : type === 'filament' && !adding ? colourFamilies(sortRows(list)) : sortRows(list)}));
     const usual=(()=>{const n=new Map<string,number>();for(const i of rows){const m=processMode(i.config);n.set(m,(n.get(m) ?? 0)+1);}return [...n].sort((a,b)=>b[1]-a[1])[0]?.[0];})();
     const models=new Map<string,{label:string;sub:string;items:{i:Item;nozzles:Set<string>}[]}>();
     for(const i of rows){
@@ -368,12 +375,13 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     return ()=>mounted.current && documentGeneration()===document && getState().api===before.api && selectionRevision.current===revision
       && getState().printer===before.printer && getState().process===before.process && getState().filamentSlots===before.filamentSlots;
   };
-  const addVariant = async (variant:Item) => {
+  const addVariant = async (variant:Item,colour?:string) => {
     if(getState().profileLibraryLoad.state!=='ready')return;
     setBusy(true);setBulkError(null);
     const owns=owner();
     try {
-      const key=await createProfileFromBase(type,variant.key);
+      const recolour=colour && variant.base && colour !== configColour(variant.config) ? colour : undefined;
+      const key=recolour ? await createProfileFromBase(type,variant.key,`${displayName(variant.base!)} ${colourName(recolour)}`,{filament_colour:[recolour]}) : await createProfileFromBase(type,variant.key);
       if(!owns()){toast(`Added ${variant.name}`);return;}
       added(key);
       if(pickerAdd.current === type){pickerAdd.current=null;requestPreset(type,0,key);}
@@ -498,7 +506,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
         onPointerCancel={e => {drag.current=null;setPreviewWidth(null);if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);}}
         onLostPointerCapture={()=>{drag.current=null;setPreviewWidth(null);}}
         onKeyDown={e => {if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) {e.preventDefault();resizeList(e.key==='Home'?minListWidth:e.key==='End'?maxListWidth:renderedListWidth+(e.key==='ArrowRight'?16:-16),true);}}}/><div className="pf-detail-pane">{filteredDraft && <div className="pf-filtered-draft" role="status"><span>Hidden by filters</span><button type="button" className="more-toggle" onClick={()=>{clearFilters();setSearch('');}}>Clear filters</button></div>}
-        {adding ? item ? <AddDetails key={item.key} type={type} item={item} busy={busy} onAdd={variant=>void addVariant(variant)}/> : null
+        {adding ? item ? <AddDetails key={item.key} type={type} item={item} busy={busy} onAdd={(variant,colour)=>void addVariant(variant,colour)}/> : null
         : comparing && selectedItems.length === 2 ? <Compare type={type} left={selectedItems[0].key} right={selectedItems[1].key} names={selectedItems.map(i => i.key)} setRight={() => {}} close={() => setComparing(false)}/>
         : item?.user ? <ProfileEditor key={item.key} type={type} name={item.key} draft={drafts[JSON.stringify([type,item.key])]} update={updateDraft} onSavingChange={setBusy} onBack={close} onRemove={() => void deleteSelected([item.key])} onDuplicate={item.user.kind === 'master' ? undefined : () => void duplicate(item.user!)}/>
         : selected.length > 1 ? <section className="pf-bulk-summary"><strong>{selected.length} selected</strong>{selectedItems.map(i => <div key={i.key} className="pf-bulk-name">{i.name}</div>)}</section> : null}

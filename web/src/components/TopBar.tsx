@@ -154,7 +154,7 @@ export function TopBar() {
     <div className="topbar-project-context"><MenuButton className="app-menu-button" label="Application menu" items={appItems}><Icon name="OrcaSlicer" size={20}/></MenuButton>
     <button type="button" className="menu-title projects-button" onClick={showProjects}>Projects</button>
     <Menu title="File" items={fileItems}/>
-    <ProjectTitle/></div>
+    </div>
     {mock && <span className="mock-badge">Demo</span>}
     {tab !== 'projects' && <TabBar/>}
     {archive && <Suspense fallback={null}><ArchiveDialog files={archive} close={() => setArchive(null)} /></Suspense>}
@@ -193,6 +193,7 @@ export function TabBar() {
           <span>Preview</span>
         </button>
       </div>
+      <div className="title-zone"><ProjectTitle/></div>
       <div className="tabbar-actions">
         {allSlice ? (
           <button className="btn-primary slant" disabled={!printer || busy} onClick={() => void sliceAll()}>Slice all</button>

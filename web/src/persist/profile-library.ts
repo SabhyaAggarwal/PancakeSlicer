@@ -6,7 +6,7 @@ const validate = (doc: ProfileLibraryDocument) => {
   return doc;
 };
 export async function readProfileLibrary(_mock=false):Promise<ProfileLibraryDocument> {
-  const response=await fetch('/api/profile-library',{cache:'no-store'});
+  const response=await fetch('/api/profile-library',{cache:'no-cache'});
   if(!response.ok){
     const error=await responseError(response);
     if(error.code==='legacy_profiles_pending')error.message='The profile service is out of date. Update and restart it, then reload.';

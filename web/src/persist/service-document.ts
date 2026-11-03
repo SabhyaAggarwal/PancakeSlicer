@@ -30,7 +30,9 @@ export function createServiceDocument<D extends ServiceDocument>(path: string, m
     return loading;
   };
   function patch(document: Partial<D>) {
-    const captured = structuredClone(document);
+    const captured = structuredClone(document) as Record<string, unknown>;
+    for (const key of Object.keys(captured)) if (same(captured[key], (current.document as Record<string, unknown>)[key])) delete captured[key];
+    if (!Object.keys(captured).length) return;
     if (!hydrated) beforeHydration = { ...beforeHydration, ...captured };
     serial++; for (const key of Object.keys(captured)) unsaved.set(key, serial);
     publish({ document: { ...current.document, ...captured } });

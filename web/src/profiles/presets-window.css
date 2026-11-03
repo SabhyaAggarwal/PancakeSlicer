@@ -39,6 +39,8 @@
 :where(.orca-parity) .pf-group { --pf-step: 16px; }
 :where(.orca-parity) .pf-group[data-depth='1'] { padding-left: var(--pf-step); }
 :where(.orca-parity) .pf-group > .pf-item { margin-left: var(--pf-step); }
+:where(.orca-parity) .pf-group > .pf-item[data-child] { margin-left: calc(2 * var(--pf-step)); }
+:where(.orca-parity) .pf-colour-choice { display: flex; align-items: center; gap: var(--s-3); }
 :where(.orca-parity) .pf-group[data-depth='1'] + .pf-group[data-depth='1'] { margin-top: 0; }
 :where(.orca-parity) .pf-group-toggle { display: flex; align-items: center; gap: calc(var(--pf-step) - 12px); width: 100%; min-height: var(--h-compact); padding: 0 var(--s-3); border: 0; border-radius: var(--r-1); background: none; color: var(--ink-2); font: var(--t-label); text-align: left; cursor: pointer; }
 :where(.orca-parity) .pf-group-toggle:hover { background: var(--hover); }

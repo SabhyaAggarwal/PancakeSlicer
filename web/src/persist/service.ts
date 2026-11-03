@@ -4,9 +4,9 @@ import { readHealth } from '../api/health';
 
 export async function serviceRequest(path: string, init: RequestInit = {}, missing = false): Promise<Response | null> {
   try {
-    const request = { cache: 'no-store' as const, ...init, signal: init.signal ?? AbortSignal.timeout(30_000) };
-    const response = init.method && init.method !== 'GET' && init.method !== 'HEAD'
-      ? await mutation(path, request) : await fetch(path, request);
+    const write = init.method && init.method !== 'GET' && init.method !== 'HEAD';
+    const request = { cache: write ? 'no-store' as const : 'no-cache' as const, ...init, signal: init.signal ?? AbortSignal.timeout(30_000) };
+    const response = write ? await mutation(path, request) : await fetch(path, request);
     if (missing && response.status === 404) return null;
     if (!response.ok) throw await responseError(response);
     return response;

@@ -37,7 +37,8 @@ export function ProjectTitle() {
           <svg className="title-pencil" width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 12.5l.8-3 6.9-6.9 2.2 2.2-6.9 6.9-3 .8zM9.9 3.9l2.2 2.2" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </button>
       )}
-      {saved && !editing && <span className="title-state" role="status">{saved}</span>}
+      {conflict && !editing ? <button type="button" className="title-state link" aria-description="Choose Reload latest or Keep mine" onClick={() => setState({ tab: 'prepare' })}>Conflict</button>
+        : saved && !editing && <span className="title-state" role="status">{saved}</span>}
     </div>
   );
 }

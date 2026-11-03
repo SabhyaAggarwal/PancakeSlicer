@@ -17,7 +17,7 @@ async function registerDraftOwner(owner: string, storage: () => Promise<ProjectD
   if (lineage.includes(owner)) return;
   const next = [owner, ...new Set(lineage as string[])];
   if (next.length > 32) {
-    const holding = new Set((await (await storage()).list()).map((draft) => draft.owner));
+    const holding = new Set((await (await storage()).listMetadata()).map((draft) => draft.owner));
     for (let i = next.length - 1; i > 0 && next.length > 32; i--) if (!holding.has(next[i])) next.splice(i, 1);
   }
   await patchServiceSession({ projectDraftOwners: next.slice(0, 32) });
