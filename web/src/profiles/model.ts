@@ -2,6 +2,8 @@ import type { Config, ConfigValue, PresetType, ProfileOverlay, SystemPreset, Use
 import { normalizeConfig } from '../config-values';
 import { sameValue } from '../state/value-equality';
 import { OPTIONS } from '../options';
+import { findProfile, lookupProfile, profileKey, withProfileIdentity } from './identity';
+import type { ProfileBaseAnchor, ProfileRecoveryReason } from './ownership';
 
 export const PRESET_META = /^(inherits|name|from|version|type|setting_id|base_id|filament_id|is_custom_defined|instantiation|\w+_settings_id)$/;
 export interface ProfileCatalog { machines: SystemPreset[]; processes: SystemPreset[]; filaments: SystemPreset[]; userPresets: UserPreset[] }
@@ -21,18 +23,54 @@ export function baseVersion(p: SystemPreset): string {
   return version;
 }
 
+
+export const catalogAnchor = (base: SystemPreset): ProfileBaseAnchor => ({ name: base.name, version: baseVersion(base), vendor: base.vendor, ...(base.setting_id ? {id: base.setting_id} : {}), engineName: base.engine_base ?? base.name });
+
 export const changedKeys = (values: Config, below: Config): Config => Object.fromEntries(
   Object.entries(values).filter(([key, value]) => !PRESET_META.test(key) && !sameValue(key, value, below[key] ?? OPTIONS[key]?.default as ConfigValue | undefined)),
 );
 
 export function normalizeUserPreset(p: UserPreset | ProfileOverlay): UserPreset {
   const legacy = p as UserPreset;
-  return { ...p, inherits: p.base?.name ?? legacy.inherits ?? '',
+  return { ...withProfileIdentity(p as UserPreset), revision: p.revision ?? 0, kind: p.kind ?? (p.type === 'filament' && !p.printerId ? 'master' : 'profile'), inherits: p.base?.name ?? legacy.inherits ?? '',
     overrides: normalizeConfig(legacy.overrides ?? p.overlay ?? {}),
     ...(p.overlay ? { overlay: normalizeConfig(p.overlay) } : {}) };
 }
 
-type ResolvedProfile = { base?: SystemPreset; user?: UserPreset; config: Config };
+export interface ProfileResolutionIssue { code: ProfileRecoveryReason; key: string; message: string }
+export interface ResolvedProfile {
+  base?: SystemPreset;
+  user?: UserPreset;
+  source?: UserPreset;
+  key?: string;
+  name?: string;
+  engineName?: string;
+  config: Config;
+  status: 'ready' | 'snapshot' | ProfileRecoveryReason;
+  issue?: ProfileResolutionIssue;
+  error?: string;
+}
+export class ProfileResolutionError extends Error {
+  readonly code: ProfileRecoveryReason;
+  constructor(readonly issue: ProfileResolutionIssue) { super(issue.message); this.name = 'ProfileResolutionError'; this.code = issue.code; }
+}
+const unavailable = (code: ProfileRecoveryReason, key: string, message: string, source?: UserPreset): ResolvedProfile => ({
+  key, name: source?.name, source, user: source, config: source?.snapshot?.config ?? {},
+  status: source?.snapshot ? 'snapshot' : code, issue: { code, key, message }, error: message,
+});
+export function findCatalogBase(s: ProfileCatalog, type: PresetType, anchor: string | ProfileBaseAnchor): { base?: SystemPreset; ambiguous: boolean } {
+  const ref: Partial<ProfileBaseAnchor> & {name: string} = typeof anchor === 'string' ? { name: anchor } : anchor;
+  const catalog = profilesFor(s, type).filter(p => !ref.vendor || p.vendor === ref.vendor);
+  let exact = catalog.filter(p => p.name === ref.name);
+  if (exact.length > 1 && ref.id) exact = exact.filter(p => p.setting_id === ref.id || p.base_id === ref.id);
+  if (exact.length) return { base: exact.length === 1 ? exact[0] : undefined, ambiguous: exact.length > 1 };
+  const renamed = catalog.filter(p => {
+    const field = p.config.renamed_from;
+    const aliases = Array.isArray(field) ? field.map(String) : field === undefined ? [p.name.replace('@', '')] : String(field).split(';').map(n => n.replace(/^ +/, ''));
+    return aliases.includes(ref.name);
+  });
+  return { base: renamed.length === 1 ? renamed[0] : undefined, ambiguous: renamed.length > 1 };
+}
 const resolvedProfiles = new WeakMap<SystemPreset[], WeakMap<UserPreset[], Map<string, ResolvedProfile>>>();
 
 export function resolveProfile(s: ProfileCatalog, type: PresetType, name: string, seen?: Set<string>): ResolvedProfile {
@@ -49,21 +87,34 @@ export function resolveProfile(s: ProfileCatalog, type: PresetType, name: string
   return resolved;
 }
 
-function resolveAncestors(s: ProfileCatalog, type: PresetType, name: string, seen: Set<string>): {
-  base?: SystemPreset; user?: UserPreset; config: Config;
-} {
-  if (seen.has(name)) return { config: {} };
-  seen.add(name);
-  const user = s.userPresets.find((u) => u.type === type && u.name === name);
+function resolveAncestors(s: ProfileCatalog, type: PresetType, name: string, seen: Set<string>): ResolvedProfile {
+  const lookup = lookupProfile(s, type, name), user = lookup.profile;
+  const identity = user ? profileKey(user) : name;
+  if (seen.has(identity)) return unavailable('cycle', identity, 'Profile inheritance contains a cycle', user);
+  seen.add(identity);
   if (!user) {
-    const base = profilesFor(s, type).find((p) => p.name === name);
-    return { base, config: { ...base?.config } };
+    if (lookup.ambiguous)
+      return unavailable('ambiguous', name, 'More than one profile uses this reference. Choose its exact profile.');
+    const result = findCatalogBase(s, type, name), base = result.base;
+    if (!base) return unavailable(result.ambiguous ? 'ambiguous' : 'missing-profile', name, result.ambiguous ? 'The catalog reference is ambiguous.' : 'This profile is unavailable. Reimport it or recover its saved settings.');
+    return { base, name: base.name, engineName: base.engine_base ?? base.name, config: base.config, status: 'ready' };
   }
-  const parentName = user.parent ?? (!user.base && s.userPresets.some((u) => u.type === type && u.name === user.inherits) ? user.inherits : undefined);
+  const parentName = user.parentId ?? user.parent ?? (!user.base && findProfile(s, type, user.inherits) ? user.inherits : undefined);
   const parent = parentName ? resolveAncestors(s, type, parentName, seen) : undefined;
-  const base = profilesFor(s, type).find((p) => p.name === (user.base?.name ?? user.inherits)) ?? parent?.base;
-  const config = { ...base?.config, ...parent?.config, ...(user.overlay ?? user.overrides) };
-  return { base, user: parentName ? { ...user, overrides: { ...parent?.user?.overrides, ...(user.overlay ?? user.overrides) } } : user, config };
+  if (parent?.issue || parentName && !parent?.source)
+    return unavailable(parent?.issue?.code ?? 'missing-profile', identity, parent?.error ?? 'The parent profile is unavailable. Recover its saved settings.', user);
+  const found = findCatalogBase(s, type, user.base ?? user.inherits);
+  const base = found.base ?? (!user.base ? parent?.base : undefined);
+  if (!base) return unavailable(found.ambiguous ? 'ambiguous' : 'missing-base', identity, 'The profile base is unavailable. Reimport the base or recover a copy of its saved settings.', user);
+  if (parent?.base && (parent.base.name !== base.name || parent.base.vendor !== base.vendor))
+    return unavailable('missing-base', identity, 'The parent profile has a different base. Recover a copy before editing.', user);
+  if (type === 'filament' && parent?.source && (parent.source.printerId !== user.printerId || parent.source.kind === 'master'))
+    return unavailable('foreign-owner', identity, 'This material references a different printer library. Recover an independent copy.', user);
+  const owned = { ...parent?.user?.overrides, ...(user.overlay ?? user.overrides) };
+  const pinned = type === 'filament' && user.printerId && user.snapshot && user.base?.version !== baseVersion(base);
+  const config = pinned ? { ...user.snapshot!.config, ...(user.overlay ?? user.overrides) } : { ...base.config, ...owned };
+  return { base, source: user, user: parentName ? { ...user, overrides: owned } : user, key: identity, name: user.name,
+    engineName: base.engine_base ?? base.name, config, status: 'ready' };
 }
 
 export function prepareProfile(s: ProfileCatalog, input: UserPreset): UserPreset {
@@ -75,8 +126,8 @@ export function prepareProfile(s: ProfileCatalog, input: UserPreset): UserPreset
   const overlay = changedKeys(p.overrides, resolved.config);
   const metadata: Config = { ...p.metadata };
   for (const [key, value] of Object.entries(p.overrides)) if (PRESET_META.test(key)) metadata[key] = value;
-  return { ...p, base: { name: base.name, version: baseVersion(base) },
-    parent: resolved.user ? p.inherits : undefined, inherits: base.name, overlay, overrides: overlay,
+  return { ...p, base: catalogAnchor(base), snapshot: {config: { ...resolved.config, ...p.overrides }, base: catalogAnchor(base)},
+    parentId: resolved.source ? profileKey(resolved.source) : undefined, parent: resolved.user ? p.inherits : undefined, inherits: base.name, overlay, overrides: overlay,
     baseline: Object.fromEntries(Object.keys(overlay).map((key) => [key, base.config[key] ?? null])), metadata };
 }
 
@@ -90,24 +141,29 @@ export function profileConflicts(s: ProfileCatalog, type: PresetType, name: stri
 
 export function saveProfile(s: ProfileCatalog, type: PresetType, name: string, current: string, values: Config): UserPreset {
   const resolved = resolveProfile(s, type, current);
-  const prior = resolved.user && prepareProfile(s, resolved.user);
-  const base = resolved.base;
-  if (!base) return { name, type, inherits: prior?.inherits ?? current, overrides: values };
-  let parent = name !== current && prior ? current : prior?.parent;
-  const ancestors = new Set<string>();
-  for (let ancestor = parent; ancestor && !ancestors.has(ancestor);) {
-    if (ancestor === name) { parent = undefined; break; }
-    ancestors.add(ancestor);
-    const profile = s.userPresets.find((p) => p.type === type && p.name === ancestor);
-    ancestor = profile?.parent ?? (!profile?.base ? profile?.inherits : undefined);
+  if (resolved.issue) throw new ProfileResolutionError(resolved.issue);
+  const prior = resolved.source && prepareProfile(s, resolved.source), base = resolved.base!;
+  const same = !!prior && (name === current || name === prior.name || name === profileKey(prior));
+  const label = same ? prior!.name : name;
+  let parentId = same ? prior?.parentId : prior ? profileKey(prior) : undefined;
+  let parent = same ? prior?.parent : prior?.name;
+  const destination = findProfile(s, type, label), ancestors = new Set<string>();
+  for (let key = parentId ?? parent; key && !ancestors.has(key);) {
+    const ancestor = findProfile(s, type, key);
+    if (destination && ancestor && profileKey(destination) === profileKey(ancestor)) { parent = undefined; parentId = undefined; break; }
+    ancestors.add(key); key = ancestor?.parentId ?? ancestor?.parent;
   }
-  const below = parent ? resolveProfile(s, type, parent).config : base.config;
+  const below = parentId || parent ? resolveProfile(s, type, parentId ?? parent!).config : base.config;
   const overlay = changedKeys(values, below);
-  const baseline = Object.fromEntries(Object.keys(overlay).map((key) => [key,
-    name === current && prior?.overlay && sameValue(key, overlay[key], prior.overlay[key]) && key in (prior.baseline ?? {})
+  const baseline = Object.fromEntries(Object.keys(overlay).map(key => [key,
+    same && prior?.overlay && sameValue(key, overlay[key], prior.overlay[key]) && key in (prior.baseline ?? {})
       ? prior.baseline![key] : base.config[key] ?? null]));
-  return { name, type, inherits: base.name, base: name === current && prior?.base ? prior.base : { name: base.name, version: baseVersion(base) },
-    parent, overlay, overrides: overlay, baseline, metadata: prior?.metadata };
+  return { ...(same ? prior : undefined), id: same ? profileKey(prior!) : `profile:${crypto.randomUUID()}`,
+    name: label, type, kind: prior?.kind ?? 'profile', revision: same ? (prior?.revision ?? 0) + 1 : 0,
+    printerId: prior?.printerId, inherits: base.name, base: same && prior?.base ? prior.base : catalogAnchor(base),
+    snapshot: { config: { ...values }, base: same && prior?.base ? prior.base : catalogAnchor(base) },
+    parentId, parent, overlay, overrides: overlay, baseline, metadata: prior?.metadata };
+
 }
 
 export function decideConflict(s: ProfileCatalog, type: PresetType, name: string, key: string, choice: 'mine' | 'theirs'): UserPreset | undefined {
@@ -123,8 +179,10 @@ export function decideConflict(s: ProfileCatalog, type: PresetType, name: string
 }
 
 export function storedProfile(p: UserPreset): ProfileOverlay {
-  return { name: p.name, type: p.type, base: p.base ?? { name: p.inherits, version: '' }, parent: p.parent,
-    overlay: p.overlay ?? p.overrides, baseline: p.baseline, metadata: p.metadata };
+  const { inherits, overrides, ...profile } = withProfileIdentity(p);
+  return { ...profile, revision: p.revision ?? 0, kind: p.kind ?? (p.type === 'filament' && !p.printerId ? 'master' : 'profile'),
+    name: p.name, type: p.type, base: p.base ?? { name: inherits, version: '' },
+    overlay: p.overlay ?? overrides, baseline: p.baseline, metadata: p.metadata };
 }
 
 export function preserveProfileParents(previous: ProfileCatalog, next: ProfileCatalog): UserPreset[] {

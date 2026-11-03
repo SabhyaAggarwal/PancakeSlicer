@@ -43,8 +43,8 @@ export function SurfaceSettings({ config, system }: { config: Config; system: Co
     </div>
     {noCurved && <p className="surface-why" role="note">Curved layers: {noCurved.charAt(0).toLowerCase() + noCurved.slice(1)}</p>}
     {advanced && current !== 'smooth' && <div className="opt-line" data-opt="nonplanar_wave">
-      <span className="opt-label">Top pattern</span>
-      <Dropdown className="surface-pattern" aria-label="Top pattern" value={current === 'waves' ? 'waves' : 'flat'} disabled={current === 'custom' || !!noWaves} title={noWaves} onValueChange={(v) => applySurface(v as SurfaceId)} options={[{value: 'flat', label: 'Plain'}, {value: 'waves', label: 'Rippled'}]} />
+      <span className="opt-label">Layer pattern</span>
+      <Dropdown className="surface-pattern" aria-label="Layer pattern" value={current === 'waves' ? 'waves' : 'flat'} disabled={current === 'custom' || !!noWaves} title={noWaves} onValueChange={(v) => applySurface(v as SurfaceId)} options={[{value: 'flat', label: 'Plain'}, {value: 'waves', label: 'Whole waves'}]} />
     </div>}
     {Object.keys(numeric).filter((key) => OPTIONS[key]).map((key) => <Field key={key} type="process" optKey={key} label={fieldLabels[key]}
       value={config[key]} systemValue={system[key]} dirty={own.some((c) => c.key === key)}

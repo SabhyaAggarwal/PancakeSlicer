@@ -1,3 +1,4 @@
+import type { ProfileBaseAnchor, ProfileOwnership } from '../profiles/ownership';
 import type { ProjectEdit } from '../plater/projectTransforms';
 
 export type PresetType = 'machine' | 'process' | 'filament';
@@ -29,20 +30,20 @@ export interface SystemPreset {
   default_materials?: string[];
 }
 
-export interface ProfileOverlay {
+export interface ProfileOverlay extends ProfileOwnership {
   id?: string;
   aliases?: string[];
   parentId?: string;
   name: string;
   type: PresetType;
-  base: { name: string; version: string };
+  base: ProfileBaseAnchor;
   parent?: string;
   overlay: Config;
   baseline?: Record<string, ConfigValue | null>;
   metadata?: Config;
 }
 
-export interface UserPreset {
+export interface UserPreset extends ProfileOwnership {
   id?: string;
   aliases?: string[];
   parentId?: string;

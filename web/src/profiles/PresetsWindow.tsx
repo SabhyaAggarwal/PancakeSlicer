@@ -1,3 +1,10 @@
+import { useEffect, useId, useRef, useSyncExternalStore } from 'react';
+import { createSelection, reduceSelection, selectedVisible, type SelectionEvent } from './selection';
+import { applyDeleteResult, deleteResult, planDeleteSelected, revalidateDeletePlan, serializeSelected, type DeleteOutcome } from './bulk';
+import { findProfile, matchesProfile, profileKey } from './identity';
+import { ManagerProfileRow } from './ManagerProfileRow';
+import { profileAccess, profileReferenceSnapshot, refreshProfileReferences, subscribeProfileReferences } from './references';
+import { changedKeys } from './model';
 import { ProfileEditor, type ProfileDraft } from './ProfileEditor';
 import { profileSummary } from './metadata';
 import { Check } from '../components/Check';
@@ -21,11 +28,12 @@ import { listCatalog } from './pickerSource';
 const TYPES: [PresetType, string][] = [['machine', 'Printer'], ['filament', 'Filament'], ['process', 'Print settings']];
 const shortName = presetLabel;
 
-interface Item { name: string; mine: boolean; parent?: string; changed: number; slot?: number; user?: UserPreset; note: string }
+interface Item { key: string; name: string; mine: boolean; parent?: string; changed: number; slot?: number; user?: UserPreset; note: string }
 
-const slotsOf = (s: State, type: PresetType, name: string) =>
-  type === 'machine' ? (s.printer === name ? [0] : []) : type === 'process' ? (s.process === name ? [0] : [])
-    : s.filamentSlots.flatMap((f, i) => (f === name ? [i] : []));
+const slotsOf = (s: State, type: PresetType, name: string) => {
+  const profile = findProfile(s, type, name), matches = (key: string) => profile ? matchesProfile(profile, key) : key === name;
+  return type === 'machine' ? (matches(s.printer) ? [0] : []) : type === 'process' ? (matches(s.process) ? [0] : []) : s.filamentSlots.flatMap((f,i) => matches(f) ? [i] : []);
+};
 
 function noteOf(s: State, type: PresetType, name: string) {
   const c = resolvePreset(s, type, name).config;
@@ -37,7 +45,7 @@ function items(s: State, type: PresetType): Item[] {
   const mine = s.userPresets.filter((u) => u.type === type);
   const item = (name: string, isMine: boolean, parent?: string, user?: UserPreset): Item => {
     const slots = slotsOf(s, type, name);
-    return { name, mine: isMine, parent, user, slot: slots[0], note: noteOf(s, type, name), changed: slots.reduce((n, i) => n + changeCount(s, type, i), 0) };
+    return { key: user ? profileKey(user) : `base:${type}:${name}`, name, mine: isMine, parent, user, slot: slots[0], note: noteOf(s, type, name), changed: slots.reduce((n, i) => n + changeCount(s, type, i), 0) };
   };
   const inUse = (i: Item) => (i.slot === undefined ? 1 : 0);
   const order = (a: Item, b: Item) => inUse(a) - inUse(b) || (a.name < b.name ? -1 : 1);
@@ -75,6 +83,10 @@ async function store(p: UserPreset, from?: string) {
 }
 
 export async function removePreset(type: PresetType, u: UserPreset) {
+  await refreshProfileReferences();
+  const access = profileAccess(type), references = access.isInUse(profileKey(u));
+  if (!access.referencesComplete) return void toast('Saved profile references are unavailable. Refresh or recover project storage before deleting.');
+  if (references.length) return void toast(`This profile is used by ${references.map(r => r.label).join(', ')}.`);
   const s = getState();
   const slots = slotsOf(s, type, u.name);
   if (slots.length || s.userPresets.some(p => p !== u && p.type === type && (p.parent === u.name || p.inherits === u.name))) return void toast('This profile is in use. Choose another profile before deleting it.');
@@ -118,15 +130,14 @@ function AddProfile({ type, done, close }: { type: PresetType; done(name: string
   );
 }
 
-function Details({type, item, onCompare, draft, update}: {type: PresetType; item: Item; onCompare(): void; draft?: ProfileDraft; update(key: string, draft: ProfileDraft | null): void}) {
+function Details({type, item, onCompare, draft, onEdit}: {type: PresetType; item: Item; onCompare(): void; draft?: ProfileDraft; onEdit(): void}) {
   const exportOne = async () => { const {exportPresetJson} = await import('../preset-io'); exportPresetJson(item.user ?? {name: item.name, type, inherits: item.name, overrides: {}}); };
-  return <ProfileEditor type={type} name={item.name} draft={draft} update={update} actions={<>
-    {item.slot === undefined && <button type="button" className="btn" disabled={!!draft} title={draft ? "Save or cancel profile edits before using it" : "Select this profile for the project"} onClick={() => requestPreset(type, 0, item.name)}>{type === 'filament' ? 'Use in slot 1' : 'Use in project'}</button>}
-    {item.slot !== undefined && <span className="pf-in-use">✓ In use</span>}
-    <button type="button" className="btn" onClick={onCompare}>Compare</button>
-    <button type="button" className="btn" onClick={() => void exportOne()}>Export</button>
-    {item.user && <button type="button" className="btn-ghost pf-delete" disabled={item.slot !== undefined} title={item.slot !== undefined ? 'This profile is in use by the current project' : 'Delete profile'} onClick={() => void confirmDialog('Delete profile', `Delete “${item.name}” from your profile library?`, ['Delete', 'Cancel']).then(ok => {if(ok && item.user) void removePreset(type, item.user);})}>Delete</button>}
-  </>}/>;
+  return <section className="pf-profile-overview"><strong>{item.name}</strong><div className="pf-editor-summary">{item.note}{item.slot !== undefined ? ' · In use' : ''}</div><div className="pf-overview-actions"><button type="button" className="btn profile-edit-action" disabled={!item.user} title={!item.user ? 'Add an owned profile to edit these settings' : `Edit ${item.name}`} onClick={onEdit}>Edit profile</button>
+    {item.slot === undefined && <button type="button" className="btn" disabled={!!draft} title={draft ? 'Save or cancel profile edits first' : 'Select this profile for the project'} onClick={() => requestPreset(type, 0, item.key)}>{type === 'filament' ? 'Use in slot 1' : 'Use in project'}</button>}
+    <button type="button" className="btn-ghost" onClick={() => void exportOne()}>Export</button>
+    <button type="button" className="btn-ghost" disabled title="Select exactly two profiles in the list to compare" onClick={onCompare}>Compare</button>
+    {draft && <span className="pf-in-use">Unsaved edits</span>}
+  </div></section>;
 }
 
 function configOf(s: State, type: PresetType, name: string) {
@@ -183,60 +194,99 @@ function Compare({ type, left, right, names, setRight, close }: { type: PresetTy
   );
 }
 
-export default function PresetsWindow({ type: initialType, name, compare }: { type: PresetType; name?: string; compare?: string }) {
-  const [type, setType] = useState(initialType);
+export default function PresetsWindow({ type: initialType, name, compare, edit = false }: { type: PresetType; name?: string; compare?: string; edit?: boolean }) {
+  const [type, setType] = useState(initialType), [search, setSearch] = useState('');
   const [drafts, setDrafts] = useState<Record<string, ProfileDraft>>({});
-  const updateDraft = useCallback((key: string, draft: ProfileDraft | null) => setDrafts(prior => {const next = {...prior}; if(draft) next[key] = draft; else delete next[key]; return next;}), []);
-  const [search, setSearch] = useState('');
-  const s = getState();
-  useStore((st) => st.userPresets);
-  useStore((st) => st.dirty);
-  useStore((st) => st.filamentEdits);
-  useStore((st) => st.printer + st.process + st.filamentSlots.join('\n'));
-  const list = items(getState(), type);
-  const current = (t: PresetType) => (t === 'machine' ? s.printer : t === 'process' ? s.process : s.filamentSlots[0]) ?? '';
-  const [sel, setSel] = useState(name ?? current(initialType));
-  const item = list.find((i) => i.name === sel) ?? list[0];
-  const names = list.map((i) => i.name);
-  const partner = (i: Item) => (i.parent && names.includes(i.parent) ? i.parent : names.find((n) => n !== i.name) ?? null);
-  const [adding, setAdding] = useState(false);
-  const [other, setOther] = useState<string | null>(() => (compare === undefined ? null : compare || (item ? partner(item) : null)));
+  const updateDraft = useCallback((key: string, draft: ProfileDraft | null) => setDrafts(prior => {const next = {...prior}; if(draft && Object.keys(changedKeys(draft.values, draft.baseline)).length) next[key] = draft; else delete next[key]; return next;}), []);
+  const users = useStore(st => st.userPresets), dirty = useStore(st => st.dirty), filamentEdits = useStore(st => st.filamentEdits);
+  const machines = useStore(st => st.machines), processes = useStore(st => st.processes), filaments = useStore(st => st.filaments);
+  const printer = useStore(st => st.printer), process = useStore(st => st.process), slots = useStore(st => st.filamentSlots);
+  const list = useMemo(() => items(getState(), type), [type, users, dirty, filamentEdits, machines, processes, filaments, printer, process, slots]);
+  const visible = useMemo(() => list.filter(i => `${i.name} ${i.note}`.toLocaleLowerCase().includes(search.toLocaleLowerCase())), [list, search]);
+  const order = useMemo(() => visible.map(i => i.key), [visible]), scope = `profiles:${type}`;
+  const current = (t: PresetType) => (t === 'machine' ? printer : t === 'process' ? process : slots[0]) ?? '';
+  const [selectionState, setSelection] = useState(() => {
+    let initial = createSelection(scope, order);
+    const target = list.find(i => i.name === name || i.key === name || i.key === current(initialType) || i.name === current(initialType));
+    if(target) initial = reduceSelection(initial, {type: 'CLICK', key: target.key});
+    if(compare !== undefined) {const other = list.find(i => i.name === compare || i.key === compare) ?? list.find(i => i.key !== target?.key); if(other) initial = reduceSelection(initial, {type: 'CLICK', key: other.key, toggle: true});}
+    return initial;
+  });
+  const selection = useMemo(() => reduceSelection(selectionState, {type: 'SYNC', scope, visible: order}), [selectionState, scope, order]);
+  useEffect(() => {setSelection(prior => reduceSelection(prior, {type: 'SYNC', scope, visible: order}));}, [scope, order]);
+  const selected = selectedVisible(selection), selectedSet = useMemo(() => new Set(selected), [selection]);
+  const selectedItems = visible.filter(i => selectedSet.has(i.key)), item = selectedItems.length === 1 ? selectedItems[0] : undefined;
+  const latestSelection = useRef(selection); latestSelection.current = selection;
+  const id = useId();
+  const [editingKey, setEditingKey] = useState<string | null>(() => edit ? list.find(i => i.key === name || i.name === name)?.key ?? null : null);
+  const [adding, setAdding] = useState(false), [comparing, setComparing] = useState(compare !== undefined), [busy, setBusy] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const references = useSyncExternalStore(subscribeProfileReferences, profileReferenceSnapshot);
+  const dispatch = useCallback((event: SelectionEvent, focus = false) => {
+    const next = reduceSelection(latestSelection.current, event); latestSelection.current = next; setSelection(next); setAdding(false); setComparing(false); setEditingKey(null);
+    if(focus && next.focus) requestAnimationFrame(() => {const row = document.getElementById(`${id}:${next.focus}`); row?.focus({preventScroll: true}); row?.scrollIntoView({block: 'nearest'});});
+  }, [id]);
+  const access = useMemo(() => profileAccess(type), [type, references, users]);
+  const plan = useMemo(() => planDeleteSelected(selection, access), [selection, access]);
   const leave = async (action: () => void) => {if(Object.keys(drafts).length && !await confirmDialog('Unsaved profile edits', 'Discard unsaved profile edits?', ['Discard', 'Keep editing'])) return; action();};
-  const close = () => void leave(() => setState({presetUx: null}));
-  const pickType = (t: PresetType) => { setAdding(false); setType(t); setSearch(''); setSel(current(t)); setOther(null); };
-  return (
-    <Modal className="np-dialog pf-window" label="Presets" onClose={close} backdropClose>
-      <ModalTitle title="Presets" onClose={close} />
-      <div className="np-dialog-body">
-        <div className="pf-tabs">
-          <Segmented label="Profile type" value={type} options={TYPES.map(([id, label]) => ({ id, label }))} onChange={(id) => pickType(id as PresetType)} />
-          <span className="spacer" />
-          <button type="button" className="btn" onClick={() => setAdding(true)}>Add from catalog</button>
-          <button type="button" className="btn" onClick={() => void leave(() => setState({presetUx: {kind: 'import', back: {kind: 'presets', type, name: item?.name}}}))}>Import Orca / Bambu</button>
-          <button type="button" className="btn" onClick={() => void leave(() => setState({presetUx: {kind: 'export'}}))}>Export all</button>
+  const close = () => {if(!busy) void leave(() => setState({presetUx: null}));};
+  const pickType = (t: PresetType) => {setAdding(false); setType(t); setSearch(''); setComparing(false); setEditingKey(null); setBulkError(null);};
+  const exportSelected = async () => {
+    setBusy(true); setBulkError(null);
+    try {
+      const state = getState(), {presetJsonText, downloadArchive} = await import('../preset-io'), {strToU8, zipSync} = await import('fflate');
+      const result = serializeSelected(latestSelection.current, {label: access.label, serialize: key => {const p = findProfile(state, type, key); if(!p) throw new Error('Profile unavailable'); return presetJsonText(p, state);}});
+      if(result.files.length) downloadArchive({name: 'selected-profiles.zip', data: zipSync(Object.fromEntries(result.files.map(f => [f.filename, strToU8(f.text)])))});
+      if(result.failed.length) setBulkError(result.failed.map(f => `${f.name}: ${f.error}`).join('\n'));
+    } catch(e) {setBulkError(e instanceof Error ? e.message : String(e));} finally {setBusy(false);}
+  };
+  const deleteSelected = async () => {
+    await refreshProfileReferences();
+    const confirmed = planDeleteSelected(latestSelection.current, profileAccess(type));
+    if(!confirmed.deletable.length) return;
+    const text = [`Delete ${confirmed.deletable.length} profile${confirmed.deletable.length === 1 ? '' : 's'}?`, ...confirmed.confirmation.deleteNames, ...confirmed.blocked.map(p => `${p.name}: ${p.reason}`)].join('\n');
+    if(!await confirmDialog('Delete selected profiles', text, ['Delete', 'Cancel'])) return;
+    await refreshProfileReferences();
+    const final = revalidateDeletePlan(confirmed, latestSelection.current, profileAccess(type)), outcomes: DeleteOutcome[] = [];
+    setBusy(true); setBulkError(null);
+    try {
+      for(const {key, name} of final.deletable) {
+        try {await getState().api!.deleteUserPreset(type, name); outcomes.push({key, status: 'deleted'});}
+        catch(e) {outcomes.push({key, status: 'unknown', error: e instanceof Error ? e.message : String(e)});}
+      }
+      const result = deleteResult(final, outcomes);
+      setState(latest => ({userPresets: applyDeleteResult(latest.userPresets, result, profileKey)}));
+      if(result.failed.length || result.unknown.length || result.notAttempted.length) setBulkError(`${result.deleted.length} deleted; ${result.failed.length + result.unknown.length + result.notAttempted.length} remain. Refresh profile data before retrying.`);
+      else toast(`Deleted ${result.deleted.length} profiles`);
+    } finally {setBusy(false);}
+  };
+  const compareReason = selected.length !== 2 ? 'Select exactly two visible profiles to compare' : undefined;
+  const deleteReason = plan.deletable.length ? undefined : plan.blocked[0]?.reason ?? 'Select profiles to delete';
+  return <Modal className="np-dialog pf-window" label="Profiles" onClose={close} backdropClose onEscapeKeyDown={event => {if(busy || selected.length) {event.preventDefault(); if(!busy) dispatch({type: 'ESCAPE'});}}}>
+    <ModalTitle title="Profiles" onClose={close}/>
+    <div className="np-dialog-body">
+      <div className="pf-tabs"><Segmented label="Profile type" value={type} options={TYPES.map(([id,label]) => ({id,label}))} onChange={v => pickType(v as PresetType)}/><span className="spacer"/><button type="button" className="btn" disabled={busy} onClick={() => setAdding(true)}>Add from catalog</button><button type="button" className="btn" disabled={busy} onClick={() => void leave(() => setState({presetUx: {kind: 'import', back: {kind: 'presets', type, name: item?.name}}}))}>Import Orca / Bambu</button><button type="button" className="btn-ghost" disabled={busy} onClick={() => void leave(() => setState({presetUx: {kind: 'export'}}))}>Export all</button></div>
+      <div className="pf-split"><section className="pf-my-profiles" aria-label="Profiles">
+        <SectionRule title="Profiles"/>
+        <input className="text pf-profile-search" aria-label="Search profiles" placeholder="Search profiles" value={search} onChange={e => setSearch(e.target.value)}/>
+        <div className="pf-selection-bar"><span>{selected.length ? `${selected.length} selected` : 'Select profiles'}</span>{selected.length > 0 && <button type="button" className="btn-ghost" onClick={() => dispatch({type: 'CLEAR'})}>Clear</button>}</div>
+        <div className="pf-scroll pf-list" role="grid" aria-label="Profiles" aria-multiselectable="true" tabIndex={visible.length ? -1 : 0} onKeyDown={e => {
+          if(e.target instanceof Element && e.target.closest('input,textarea,[contenteditable=true]')) return;
+          const command = e.ctrlKey || e.metaKey;
+          if(command && e.key.toLocaleLowerCase() === 'a') {e.preventDefault(); e.stopPropagation(); dispatch({type: 'SELECT_ALL'});}
+          else if(['ArrowDown','ArrowUp','Home','End'].includes(e.key)) {e.preventDefault(); e.stopPropagation(); dispatch({type: 'ARROW', direction: e.key === 'Home' ? 'first' : e.key === 'End' ? 'last' : e.key === 'ArrowUp' ? 'previous' : 'next', shift: e.shiftKey, focusOnly: command}, true);}
+          else if((e.key === 'Enter' || e.key === ' ') && e.target instanceof HTMLElement && e.target.dataset.profileKey) {e.preventDefault(); dispatch({type: 'CLICK', key: e.target.dataset.profileKey, toggle: command || e.key === ' ', shift: e.shiftKey});}
+        }}>
+          {visible.map(i => <ManagerProfileRow key={i.key} item={i} listId={id} selected={selectedSet.has(i.key)} focused={selection.focus === i.key} dispatch={dispatch}/>)}
+          {!visible.length && <p className="pf-profile-empty">{search ? 'No matching profiles' : 'Add a profile from the catalog'}</p>}
         </div>
-        <div className="pf-split">
-          <section className="pf-my-profiles" aria-label="My profiles">
-            <SectionRule title="My profiles" count={list.length} />
-            <input className="text pf-profile-search" aria-label="Search profiles" placeholder="Search profiles" value={search} onChange={(e) => setSearch(e.target.value)} />
-            <div className="pf-scroll pf-list" role="listbox" aria-label="Profiles">
-            {list.filter((i) => i.name.toLowerCase().includes(search.toLowerCase())).map((i) => (
-              <div key={i.name} role="option" title={i.name} className={`pf-item${i === item ? ' is-on' : ''}`} aria-selected={i === item} tabIndex={0} onClick={() => setSel(i.name)}
-                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), setSel(i.name))}
-                onDoubleClick={() => { setSel(i.name); setOther(partner(i)); }}>
-                <span className="pf-item-name" title={i.name}>{shortName(i.name)}</span>
-                <span className="pf-dim pf-item-note">{i.note}</span>
-                {i.changed > 0 && <span className="pf-dim">Changed</span>}
-              </div>
-            ))}
-            {!list.some((i) => i.name.toLowerCase().includes(search.toLowerCase())) && <p className="pf-profile-empty">{search ? 'No matching profiles' : 'Add a profile from the catalog'}</p>}
-            </div>
-          </section>
-          <div className="pf-detail-pane">{adding ? <AddProfile type={type} close={() => setAdding(false)} done={(n) => { setSel(n); setAdding(false); }} />
-            : item && other ? <Compare type={type} left={item.name} right={other} names={names} setRight={setOther} close={() => setOther(null)} />
-            : item ? <Details key={`${type}:${item.name}`} type={type} item={item} draft={drafts[JSON.stringify([type,item.name])]} update={updateDraft} onCompare={() => setOther(partner(item))} /> : <div className="pf-profile-empty">Select or add a profile</div>}</div>
-        </div>
-      </div>
-    </Modal>
-  );
+      </section><div className="pf-detail-pane">{adding ? <AddProfile type={type} close={() => setAdding(false)} done={n => {setAdding(false); const p = findProfile(getState(), type, n); if(p) {const key = profileKey(p); const fullOrder = [...order, key]; const initial = createSelection(scope, fullOrder); setSelection(reduceSelection(initial,{type: 'CLICK',key}));}}}/>
+        : comparing && selectedItems.length === 2 ? <Compare type={type} left={selectedItems[0].name} right={selectedItems[1].name} names={selectedItems.map(i => i.name)} setRight={() => {}} close={() => setComparing(false)}/>
+         : item && editingKey === item.key ? <ProfileEditor key={item.key} type={type} name={item.key} draft={drafts[JSON.stringify([type,item.key])]} update={updateDraft} actions={<button type="button" className="btn-ghost" onClick={() => setEditingKey(null)}>Back to profile</button>}/>
+        : item ? <Details key={item.key} type={type} item={item} draft={drafts[JSON.stringify([type,item.key])]} onEdit={() => setEditingKey(item.key)} onCompare={() => setComparing(true)}/>
+        : <section className="pf-bulk-summary"><strong>{selected.length ? `${selected.length} profiles selected` : 'Select a profile'}</strong>{selectedItems.map(i => <div key={i.key} className="pf-bulk-name">{i.name}</div>)}</section>}
+      </div></div>
+      {!editingKey && selected.length > 1 && <div className="pf-bulk-actions"><button type="button" className="btn" disabled={!selected.length || busy} title={!selected.length ? 'Select visible profiles to export' : 'Export selected profiles'} onClick={() => void exportSelected()}>Export selected</button><button type="button" className="btn" disabled={!!compareReason || busy} title={compareReason ?? 'Compare selected profiles'} onClick={() => {setAdding(false); setComparing(true);}}>Compare</button><button type="button" className="btn-ghost pf-delete" disabled={!!deleteReason || busy} title={deleteReason ?? 'Delete selected profiles'} onClick={() => void deleteSelected()}>Delete selected</button>{bulkError && <div role="alert">{bulkError}</div>}</div>}
+    </div>
+  </Modal>;
 }

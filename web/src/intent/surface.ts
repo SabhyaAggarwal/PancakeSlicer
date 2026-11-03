@@ -6,14 +6,14 @@ import { undoable } from '../state/history';
 import { effectiveConfig, getState } from '../state/store';
 
 export type SurfaceId = 'flat' | 'smooth' | 'waves';
-export const SURFACE_NAMES = { flat: 'Flat layers', smooth: 'Curved layers', waves: 'Rippled top' } as const;
+export const SURFACE_NAMES = { flat: 'Flat layers', smooth: 'Curved layers', waves: 'Whole waves' } as const;
 export const SMOOTH_COMING = 'Needs a newer slicing engine';
 export const WAVES_COMING = 'Needs a newer slicing engine';
 export const text = (v: ConfigValue | undefined) => String(Array.isArray(v) ? v[0] ?? '' : v ?? '');
 const on = (v: ConfigValue | undefined) => ['1', 'true'].includes(text(v));
 
-export const CURVED_DEFAULTS: Config = { nonplanar_curved_max_angle: '12', nonplanar_curved_max_height: '5', nonplanar_curved_shells: '3' };
-export const WAVE_DEFAULTS: Config = { nonplanar_wave_amplitude: '0.4', nonplanar_wave_wavelength: '10', nonplanar_wave_direction: '45' };
+export const CURVED_DEFAULTS: Config = { nonplanar_curved_max_angle: '12', nonplanar_curved_max_height: '5', nonplanar_curved_shells: '3', nonplanar_curved_cone_tolerance: '0.05' };
+export const WAVE_DEFAULTS: Config = { nonplanar_wave_amplitude: '0.4', nonplanar_wave_wavelength: '30', nonplanar_wave_direction: '45' };
 export const SURFACE_KEYS = ['nonplanar_mode', 'nonplanar_wave', 'nonplanar_deform', 'zaa_enabled'];
 
 export function surfaceOf(config: Config): SurfaceId | 'custom' {
@@ -27,14 +27,14 @@ export function surfaceOf(config: Config): SurfaceId | 'custom' {
 
 export function surfaceUnavailable(id: SurfaceId): string | undefined {
   if (id === 'smooth' && (!canCurvedTops() || !OPTIONS.nonplanar_mode?.enum_values?.includes('curved_tops'))) return SMOOTH_COMING;
-  if (id === 'waves' && (!canSurfaceWaves() || !OPTIONS.nonplanar_wave?.enum_values?.includes('top'))) return WAVES_COMING;
+  if (id === 'waves' && (!canSurfaceWaves() || !OPTIONS.nonplanar_wave?.enum_values?.includes('whole'))) return WAVES_COMING;
 }
 
 export function surfaceValues(id: SurfaceId): Config {
   return {
     nonplanar_mode: id === 'smooth' ? 'curved_tops' : 'off',
     nonplanar_deform: 'off', zaa_enabled: '0',
-    ...(OPTIONS.nonplanar_wave ? { nonplanar_wave: id === 'waves' ? 'top' : 'off' } : {}),
+    ...(OPTIONS.nonplanar_wave ? { nonplanar_wave: id === 'waves' ? 'whole' : 'off' } : {}),
   };
 }
 

@@ -47,3 +47,20 @@
 :where(.orca-parity) .pf-in-use { color: var(--accent-text); font-size: 12px; }
 :where(.orca-parity) .pf-window .pf-item.is-on { background: var(--selected); color: var(--selected-foreground); }
 :where(.orca-parity) .pf-window .pf-item-name { font-weight: 600; color: var(--text); }
+:where(.orca-parity) .pf-selection-bar { display: flex; justify-content: space-between; align-items: center; color: var(--muted); min-height: 28px; font-size: 12px; flex: none; }
+:where(.orca-parity) .pf-selection-bar .btn-ghost { padding: 2px 4px; font-size: 12px; }
+:where(.orca-parity) .pf-window .pf-selectable { display: flex; flex-wrap: nowrap; align-items: flex-start; user-select: none; cursor: default; padding: 8px 6px; gap: 8px; }
+:where(.orca-parity) .pf-row-check { padding-top: 2px; flex: none; opacity: 0; }
+:where(.orca-parity) .pf-selectable:hover .pf-row-check, :where(.orca-parity) .pf-selectable:focus-within .pf-row-check, :where(.orca-parity) .pf-selectable.is-on .pf-row-check { opacity: 1; }
+:where(.orca-parity) .pf-row-label { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+:where(.orca-parity) .pf-window .pf-row-label .pf-item-note { max-width: none; }
+:where(.orca-parity) .pf-used { color: var(--accent-text); font-size: 11px; }
+:where(.orca-parity) .pf-bulk-summary { flex: 1; min-width: 0; overflow: auto; padding: 4px 0 16px; }
+:where(.orca-parity) .pf-bulk-name { padding: 6px 0; color: var(--label); overflow-wrap: anywhere; }
+:where(.orca-parity) .pf-bulk-actions { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 20px; border-top: 1px solid var(--line); }
+:where(.orca-parity) .pf-bulk-actions .pf-delete { margin-left: auto; }
+:where(.orca-parity) .pf-bulk-actions [role=alert] { flex-basis: 100%; max-height: 70px; overflow: auto; white-space: pre-line; }
+:where(.orca-parity) .pf-profile-overview { display: flex; flex-direction: column; flex: 1; min-width: 0; padding: 4px 0 20px; }
+:where(.orca-parity) .pf-profile-overview > strong { font-size: 15px; color: var(--text); overflow-wrap: anywhere; }
+:where(.orca-parity) .pf-overview-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 16px 0; }
+:where(.orca-parity) .profile-edit-action { font-weight: 600; background: var(--control-bg); }

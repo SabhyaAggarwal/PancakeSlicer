@@ -76,7 +76,7 @@ const realApi: Api = {
     const { getState } = await import('../state/store');
     const s = getState(), preset = prepareProfile(s, p);
     const resolved = resolveProfile({ ...s, userPresets: [...s.userPresets.filter((u) => u.type !== p.type || u.name !== p.name), preset] }, p.type, p.name);
-    const wire = { name: p.name, type: p.type, inherits: preset.inherits, overrides: resolved.user?.overrides ?? preset.overrides };
+    const wire = { ...preset, overrides: resolved.user?.overrides ?? preset.overrides };
     const r = await mutation('/api/user-presets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(wire) });
     await json(r);
     rememberProfile(preset, wire);
@@ -194,6 +194,7 @@ export interface SurfaceArtifactManifest {
   binary_sha256: string;
   resources_sha256: string;
   features: { curved_tops?: boolean; nonplanar_wave?: boolean };
+  wave_modes?: string[];
 }
 export let toolArtifactManifest: SurfaceArtifactManifest | undefined;
 const validatedSurface = (feature: 'curved_tops' | 'nonplanar_wave') => toolFeatures[feature] === true
@@ -202,12 +203,12 @@ const validatedSurface = (feature: 'curved_tops' | 'nonplanar_wave') => toolFeat
   && /^[a-f0-9]{64}$/i.test(toolArtifactManifest?.resources_sha256 ?? '')
   && toolArtifactManifest?.features?.[feature] === true;
 export const canCurvedTops = () => validatedSurface('curved_tops');
-export const canSurfaceWaves = () => validatedSurface('nonplanar_wave');
+export const canSurfaceWaves = (mode = 'whole') => validatedSurface('nonplanar_wave') && toolArtifactManifest?.wave_modes?.includes(mode) === true;
 
 export function surfaceConfigBlocker(config: Config): string | undefined {
   if (String(config.nonplanar_mode) === 'curved_tops' && !canCurvedTops()) return 'Curved layers need a newer slicing engine';
   const wave = String(config.nonplanar_wave ?? 'off');
-  if (wave !== 'off' && !canSurfaceWaves()) return 'Rippled top needs a newer slicing engine';
+  if (wave !== 'off' && !canSurfaceWaves(wave)) return 'Rippled top needs a newer slicing engine';
 }
 
 function guardedApi(api: Api): Api {

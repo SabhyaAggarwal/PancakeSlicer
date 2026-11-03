@@ -137,7 +137,7 @@ export function PresetActions({ type, slot = 0 }: { type: PresetType; slot?: num
       { icon: 'undo', label: 'Revert all', run: () => revertAll(type, slot), disabled: !project },
       { icon: 'undo', label: 'Reset to base', run: () => resetToBase(type, presetName ?? ''), disabled: !isUser },
       { icon: 'compare', label: 'Compare', run: () => setState({ presetUx: { kind: 'compare', type, left: presetName } }) },
-      { icon: 'menu_edit_preset', label: 'Presets', run: () => setState({ presetUx: { kind: 'presets', type, name: presetName } }) },
+      { icon: 'menu_edit_preset', label: 'Edit profile', run: () => setState({ presetUx: { kind: 'presets', type, name: presetName, edit: true } }) },
       { icon: 'design_export', label: 'Export', run: () => void exportCurrent(type, slot) },
       { icon: 'delete', label: 'Delete', run: onDelete, disabled: !isUser },
     ]} />
@@ -172,6 +172,7 @@ export function PresetBar({ type, slot = 0 }: { type: PresetType; slot?: number 
     <>
       <div className="tab-preset-row">
         {type === 'process' ? <ProcessPresetPicker /> : <PresetPicker type={type} slot={slot} />}
+        <button type="button" className="btn profile-edit-action" onClick={() => setState({presetUx: {kind: 'presets', type, name: presetName, edit: true}})}>Edit</button>
         <ChangesMark type={type} slot={slot} /><PresetActions type={type} slot={slot} />
       </div>
       {presetName && <ConflictLine type={type} name={presetName} slot={slot} />}

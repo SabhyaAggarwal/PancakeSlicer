@@ -14,7 +14,13 @@ export interface StoredDocBase {
   schemaVersion?: 2;
 }
 
+export interface ProfileReferenceDocuments {
+  complete: boolean;
+  documents: { id: string; name: string; doc: StoredDocBase; trashed?: boolean }[];
+}
+
 export interface ProjectStore {
+  referenceDocuments?(): Promise<ProfileReferenceDocuments>;
   readonly kind: 'browser' | 'desktop';
   list(): Promise<ProjectMeta[]>;
   load(id: string): Promise<{ meta: ProjectMeta; doc: StoredDocBase } | null>;
@@ -32,6 +38,7 @@ export interface ProjectStore {
 export const newKey = projectId;
 
 interface DesktopProjects {
+  referenceDocuments?(): Promise<ProfileReferenceDocuments>;
   list(): Promise<ProjectMeta[]>;
   load(id: string): Promise<{ meta: ProjectMeta; doc: StoredDocBase } | null>;
   save(id: string, meta: Omit<ProjectMeta, 'id' | 'thumbnail'>, doc: StoredDocBase, thumbnail?: string | null): Promise<void>;
@@ -148,6 +155,16 @@ async function browserStore(): Promise<ProjectStore> {
 
   return {
     kind: 'browser',
+    async referenceDocuments() {
+      const transaction = db.transaction(['sessions', 'trash', 'quarantine']);
+      const [live, trash, quarantined] = await Promise.all([
+        request(transaction.objectStore('sessions').getAll()), request(transaction.objectStore('trash').getAll()),
+        request(transaction.objectStore('quarantine').count()),
+      ]);
+      const records = [...live.map((record) => ({ record, trashed: false })), ...trash.map((record) => ({ record, trashed: true }))];
+      return { complete: quarantined === 0 && records.every(({ record }) => validRecord(record)),
+        documents: records.flatMap(({ record, trashed }) => validRecord(record) ? [{ id: record.id, name: record.name, doc: record.doc, trashed }] : []) };
+    },
     async list() {
       const all = await request(db.transaction('sessions').objectStore('sessions').getAll() as IDBRequest<Rec[]>);
       return all.filter(validRecord).sort((a, b) => b.savedAt - a.savedAt).map(meta);
@@ -256,6 +273,25 @@ async function browserStore(): Promise<ProjectStore> {
   };
 }
 
+const storageListeners = new Set<() => void>();
+let pendingReferenceWrites = 0;
+export const projectReferenceWritePending = () => pendingReferenceWrites > 0;
+export const subscribeProjectStorageChanges = (listener: () => void) => { storageListeners.add(listener); return () => { storageListeners.delete(listener); }; };
+function observableStore(backend: ProjectStore): ProjectStore {
+  const result = { ...backend };
+  for (const key of ['save', 'rename', 'duplicate', 'remove', 'restore', 'emptyTrash'] as const) {
+    const operation = backend[key];
+    if (!operation) continue;
+    Object.assign(result, { [key]: async (...args: unknown[]) => {
+      pendingReferenceWrites++;
+      storageListeners.forEach((listener) => listener());
+      try { return await Reflect.apply(operation, backend, args); }
+      finally { pendingReferenceWrites--; storageListeners.forEach((listener) => listener()); }
+    } });
+  }
+  return result;
+}
+
 let store: Promise<ProjectStore | null> | null = null;
 let storageError: string | null = null;
 export const projectStorageError = () => storageError ?? 'Project storage is unavailable. Export this project to keep a copy.';
@@ -263,9 +299,9 @@ export function projectStore(retry = false): Promise<ProjectStore | null> {
   if (retry) { store = null; storageError = null; }
   store ??= (async () => {
     const desktop = window.orcaDesktop;
-    if (desktop?.version === 1 && desktop.projects) return desktopStore(desktop.projects);
+    if (desktop?.version === 1 && desktop.projects) return observableStore(desktopStore(desktop.projects));
     if (typeof indexedDB === 'undefined') return null;
-    return browserStore().catch((e: unknown) => { storageError = e instanceof Error ? e.message : String(e); return null; });
+    return browserStore().then(observableStore).catch((e: unknown) => { storageError = e instanceof Error ? e.message : String(e); return null; });
   })();
   return store;
 }

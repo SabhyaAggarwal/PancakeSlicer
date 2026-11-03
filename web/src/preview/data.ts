@@ -1,3 +1,4 @@
+import { timeInteraction } from '../interaction-metrics';
 import { MoveType, ROLE_COUNT, readStatistics, type Header, type LayerRec, type MoveChunk, type States, type StreamMeta } from './format';
 import { updateCachedRanges } from './colors';
 import type { WorkerIn, WorkerOut } from './loader.worker';
@@ -91,6 +92,7 @@ export class PreviewData {
   }
 
   onChunk(c: MoveChunk, layers: LayerRec[], lod: Uint32Array, lodBlocks: Uint32Array) {
+    const finishTiming = timeInteraction('preview-chunk');
     const s = c.start;
     this.pos.set(c.pos, s * 4);
     this.type.set(c.type, s);
@@ -142,6 +144,7 @@ export class PreviewData {
       }
     }
     updateCachedRanges(this);
+    finishTiming();
   }
 
   setLayers(layers: LayerRec[]) {

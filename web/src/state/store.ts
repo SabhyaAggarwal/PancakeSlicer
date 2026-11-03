@@ -1,3 +1,4 @@
+import { timeInteraction } from '../interaction-metrics';
 import { app } from '../flow/app';
 import { tools } from '../flow/tools';
 import { useSyncExternalStore } from 'react';
@@ -125,7 +126,7 @@ export interface HeadInfo {
 export type PresetUx =
   | { kind: 'save'; type: PresetType; slot: number }
   | { kind: 'compare'; type: PresetType; left?: string; right?: string }
-  | { kind: 'presets'; type: PresetType; name?: string }
+  | { kind: 'presets'; type: PresetType; name?: string; edit?: boolean }
   | { kind: 'export' }
   | { kind: 'import'; back?: PresetUx };
 
@@ -331,6 +332,7 @@ let state: State = {
 const listeners = new Set<() => void>();
 export const getState = () => state;
 export function setState(patch: Partial<State> | ((s: State) => Partial<State>)) {
+  const finishTiming = timeInteraction('store');
   let next = { ...state, ...(typeof patch === 'function' ? patch(state) : patch) };
   if (next.userPresets !== state.userPresets) {
     const repaired = preserveProfileParents(state, next);
@@ -362,6 +364,7 @@ export function setState(patch: Partial<State> | ((s: State) => Partial<State>))
   if ((app.get().value === 'empty' && next.objects.length) || (app.get().value === 'ready' && !next.objects.length))
     app.send({ type: 'DOCUMENT', hasObjects: next.objects.length > 0 });
   listeners.forEach((l) => l());
+  finishTiming();
 }
 const subscribe = (l: () => void) => {
   listeners.add(l);

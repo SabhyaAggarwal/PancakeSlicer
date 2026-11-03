@@ -83,14 +83,14 @@ export function CanvasToolbar() {
     ...(preview ? [{label: 'Non-planar surfaces', action: toggleNonplanarView, checked: nonplanarView} as MenuEntry] : []),
   ];
   return <div className="canvas-toolbar">
-    <IconButton size={22} icon="toolbar_move" title="Move (M)" active={gizmo === 'move'} onClick={() => toggle('move')} disabled={!edit}/>
-    <IconButton size={22} icon="toolbar_rotate" title="Rotate (R)" active={gizmo === 'rotate'} onClick={() => toggle('rotate')} disabled={!edit}/>
-    <IconButton size={22} icon="toolbar_scale" title="Scale (S)" active={gizmo === 'scale'} onClick={() => toggle('scale')} disabled={!edit}/>
+    <IconButton size={24} icon="toolbar_move" title="Move (M)" active={gizmo === 'move'} onClick={() => toggle('move')} disabled={!edit}/>
+    <IconButton size={24} icon="toolbar_rotate" title="Rotate (R)" active={gizmo === 'rotate'} onClick={() => toggle('rotate')} disabled={!edit}/>
+    <IconButton size={24} icon="toolbar_scale" title="Scale (S)" active={gizmo === 'scale'} onClick={() => toggle('scale')} disabled={!edit}/>
     <span className="tb-sep"/>
-    <span ref={arrangeAt} style={{display: 'inline-flex'}}><IconButton size={22} icon="toolbar_arrange" title="Arrange (A)" active={arranging} onClick={() => setArranging(!arranging)} disabled={!hasObjects && !arranging}/></span>
+    <span ref={arrangeAt} style={{display: 'inline-flex'}}><IconButton size={24} icon="toolbar_arrange" title="Arrange (A)" active={arranging} onClick={() => setArranging(!arranging)} disabled={!hasObjects && !arranging}/></span>
     {arranging && <ArrangeOptions at={arrangeAt.current}/>}
-    <IconButton size={22} icon="toolbar_orient" title="Auto orient (Q / Shift+Q)" onClick={e => toolbarOperation('orient', e.shiftKey)} disabled={!hasObjects || project}/>
-    <IconButton size={22} icon="toolbar_open" title={`Add model (${MOD}+I)`} onClick={openFileDialog}/>
+    <IconButton size={24} icon="toolbar_orient" title="Auto orient (Q / Shift+Q)" onClick={e => toolbarOperation('orient', e.shiftKey)} disabled={!hasObjects || project}/>
+    <IconButton size={24} icon="toolbar_open" title={`Add model (${MOD}+I)`} onClick={openFileDialog}/>
     <MenuButton className="btn-ghost canvas-more" label="More tools" items={rare}>More</MenuButton>
   </div>;
 }

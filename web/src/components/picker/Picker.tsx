@@ -1,4 +1,5 @@
-import { useId, useMemo, useRef, useState, type ComponentPropsWithRef, type ReactNode } from 'react';
+import { countRender } from '../../interaction-metrics';
+import { memo, useCallback, useId, useMemo, useRef, useState, type ComponentPropsWithRef, type ReactNode } from 'react';
 import { Popover } from 'radix-ui';
 import '../menu.css';
 import './picker.css';
@@ -9,16 +10,28 @@ export interface PickerCatalog { label: string; groups(): PickerGroup[]; onAdd(i
 interface Props { label: string; value?: string; groups(): PickerGroup[]; onPick(id: string): void; facetLabel?: string; memory?: string; footer?: PickerAction[]; catalog?: PickerCatalog; className?: string; triggerProps?: ComponentPropsWithRef<'button'> & { 'data-autofocus'?: boolean | string }; children: ReactNode }
 const read = (key: string): string[] => { try { const v = JSON.parse(localStorage.getItem(key) ?? '[]'); return Array.isArray(v) ? v.filter((s) => typeof s === 'string') : []; } catch { return []; } };
 const write = (key: string, value: string[]) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch {  } };
+const PickerRow = memo(function PickerRow({ row, index, id, active, selected, adding, pinned, onActive, onPick, onPin }: {
+  row: PickerItem; index: number; id: string; active: boolean; selected: boolean; adding: boolean; pinned: boolean;
+  onActive(index: number): void; onPick(row: PickerItem): void; onPin(row: PickerItem): void;
+}) {
+  countRender('picker-row');
+  return <div className={`pk-row ${active ? 'is-active' : ''}`} data-index={index}>
+    <button id={`${id}-${index}`} type="button" role="option" tabIndex={active ? 0 : -1} aria-selected={selected} aria-disabled={!!row.disabled} className="pk-option" title={row.disabled ? `${row.label}\n${typeof row.disabled === 'string' ? row.disabled : 'Not available for the current printer.'}` : row.label} onFocus={() => onActive(index)} onPointerMove={() => onActive(index)} onClick={() => onPick(row)}><span className="pk-check" aria-hidden>{selected ? '✓' : ''}</span><span className="pk-label">{row.label}{row.sub && <span className="pk-sub">{row.sub}</span>}</span>{row.meta && <span className="pk-meta">{row.meta}</span>}</button>
+    {!adding && <button type="button" className="pk-star" title={pinned ? 'Remove favorite' : 'Favorite'} aria-label={`Favorite ${row.label}`} aria-pressed={pinned} onClick={() => onPin(row)}>{pinned ? '★' : '☆'}</button>}
+  </div>;
+});
 export function Picker({ label, value, groups, onPick, memory = `orca.parity.${label}`, footer = [], catalog, className = '', triggerProps, children }: Props) {
+  countRender('picker');
   const [open, setOpen] = useState(false), [adding, setAdding] = useState(false), [rail, setRail] = useState('all'), [active, setActive] = useState(0);
   const [pins, setPins] = useState(() => read(`${memory}.pins`)), [recent, setRecent] = useState(() => read(`${memory}.recent`));
   const list = useRef<HTMLDivElement>(null), typed = useRef({text: '', at: 0});
   const id = useId();
   const source = useMemo(() => open ? (adding && catalog ? catalog.groups() : groups()).filter((g) => g.items.length) : [], [open, adding, groups, catalog]);
-  const all = [...new Map(source.flatMap((g) => g.items).map((item) => [item.id, item])).values()];
-  const rails = [...(!adding && pins.some((id) => all.some((r) => r.id === id)) ? [{ id: 'pins', title: 'Favorites' }] : []), ...(!adding && recent.some((id) => all.some((r) => r.id === id)) ? [{ id: 'recent', title: 'Recent' }] : []), { id: 'all', title: adding ? 'All bases' : 'All profiles' }, ...source.map(({ id, title }) => ({ id, title }))];
-  const rows = rail === 'pins' ? all.filter((r) => pins.includes(r.id)) : rail === 'recent' ? recent.flatMap((id) => all.find((r) => r.id === id) ?? []) : source.find((g) => g.id === rail)?.items ?? all;
-  const enabled = rows.flatMap((r, i) => r.disabled ? [] : [i]);
+  const all = useMemo(() => [...new Map(source.flatMap((g) => g.items).map((item) => [item.id, item])).values()], [source]);
+  const pinnedSet = useMemo(() => new Set(pins), [pins]);
+  const rails = useMemo(() => [...(!adding && pins.some((id) => all.some((r) => r.id === id)) ? [{ id: 'pins', title: 'Favorites' }] : []), ...(!adding && recent.some((id) => all.some((r) => r.id === id)) ? [{ id: 'recent', title: 'Recent' }] : []), { id: 'all', title: adding ? 'All bases' : 'All profiles' }, ...source.map(({ id, title }) => ({ id, title }))], [adding, pins, recent, all, source]);
+  const rows = useMemo(() => rail === 'pins' ? all.filter((r) => pins.includes(r.id)) : rail === 'recent' ? recent.flatMap((id) => all.find((r) => r.id === id) ?? []) : source.find((g) => g.id === rail)?.items ?? all, [rail, all, pins, recent, source]);
+  const enabled = useMemo(() => rows.flatMap((r, i) => r.disabled ? [] : [i]), [rows]);
   const resetType = () => { typed.current = {text: '', at: 0}; };
   const move = (index: number) => {
     if (index < 0 || !rows[index] || rows[index].disabled) return;
@@ -28,13 +41,13 @@ export function Picker({ label, value, groups, onPick, memory = `orca.parity.${l
   };
   const changeRail = (next: string) => { setRail(next); setActive(0); resetType(); };
   const changeCatalog = (next: boolean) => { setAdding(next); changeRail('all'); };
-  const pick = (row: PickerItem) => {
+  const pick = useCallback((row: PickerItem) => {
     if (row.disabled) return;
     if (adding && catalog) catalog.onAdd(row.id); else onPick(row.id);
     const next = [row.id, ...recent.filter((id) => id !== row.id)].slice(0, 8);
     setRecent(next); write(`${memory}.recent`, next); setOpen(false); resetType();
-  };
-  const pin = (row: PickerItem) => { const next = pins.includes(row.id) ? pins.filter((id) => id !== row.id) : [...pins, row.id]; setPins(next); write(`${memory}.pins`, next); };
+  }, [adding, catalog, onPick, recent, memory]);
+  const pin = useCallback((row: PickerItem) => { const next = pins.includes(row.id) ? pins.filter((id) => id !== row.id) : [...pins, row.id]; setPins(next); write(`${memory}.pins`, next); }, [pins, memory]);
   return <Popover.Root open={open} onOpenChange={next => { setOpen(next); resetType(); if (next) { setAdding(false); setRail('all'); setActive(0); } }}>
     <Popover.Trigger asChild><button {...triggerProps} type="button" className={`pk-trigger dropdown ${className}`} data-menu-trigger="orca" aria-label={label} title={triggerProps?.disabled ? `${label}\n${triggerProps.title ?? 'Choose a compatible printer profile first.'}` : triggerProps?.title ?? label} onKeyDown={e => {
       triggerProps?.onKeyDown?.(e);
@@ -59,10 +72,7 @@ export function Picker({ label, value, groups, onPick, memory = `orca.parity.${l
       }
     }}>
       <div className="pk-body"><nav className="pk-rail" aria-label={`${label} groups`}>{rails.map(r => <button type="button" key={r.id} className={rail === r.id ? 'active' : ''} onClick={() => changeRail(r.id)}>{r.title}</button>)}</nav>
-        <div className="pk-list" role="listbox" aria-label={label} ref={list}>{rows.map((row, i) => <div key={row.id} className={`pk-row ${active === i ? 'is-active' : ''}`} data-index={i}>
-          <button id={`${id}-${i}`} type="button" role="option" tabIndex={i === active ? 0 : -1} aria-selected={value === row.id} aria-disabled={!!row.disabled} className="pk-option" title={row.disabled ? `${row.label}\n${typeof row.disabled === 'string' ? row.disabled : 'Not available for the current printer.'}` : row.label} onFocus={() => setActive(i)} onPointerMove={() => setActive(i)} onClick={() => pick(row)}><span className="pk-check" aria-hidden>{value === row.id ? '✓' : ''}</span><span className="pk-label">{row.label}{row.sub && <span className="pk-sub">{row.sub}</span>}</span>{row.meta && <span className="pk-meta">{row.meta}</span>}</button>
-          {!adding && <button type="button" className="pk-star" title={pins.includes(row.id) ? 'Remove favorite' : 'Favorite'} aria-label={`Favorite ${row.label}`} aria-pressed={pins.includes(row.id)} onClick={() => pin(row)}>{pins.includes(row.id) ? '★' : '☆'}</button>}
-        </div>)}{!rows.length && <div className="pk-empty">Add a profile from the catalog</div>}</div>
+        <div className="pk-list" role="listbox" aria-label={label} ref={list}>{rows.map((row, i) => <PickerRow key={row.id} row={row} index={i} id={id} active={active === i} selected={value === row.id} adding={adding} pinned={pinnedSet.has(row.id)} onActive={setActive} onPick={pick} onPin={pin} />)}{!rows.length && <div className="pk-empty">Add a profile from the catalog</div>}</div>
       </div>
       <div className="pk-foot">{adding && <button type="button" className="btn-ghost" onClick={() => changeCatalog(false)}>Back to profiles</button>}{catalog && !adding && <button type="button" className="btn" onClick={() => changeCatalog(true)}>{catalog.label}</button>}{footer.map(a => <button type="button" className="btn" key={a.label} onClick={() => { if (!a.keep) setOpen(false); a.run(); }}>{a.label}</button>)}</div>
     </Popover.Content></Popover.Portal>

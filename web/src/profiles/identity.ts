@@ -23,15 +23,32 @@ export function profileKey(profile: UserPreset): ProfileKey {
 export const withProfileIdentity = (profile: UserPreset): UserPreset => profile.id ? profile : { ...profile, id: profileKey(profile) };
 export const matchesProfile = (profile: UserPreset, key: ProfileKey) => profileKey(profile) === key || profile.name === key || !!profile.aliases?.includes(key);
 
-export function findProfile(s: Pick<State, 'userPresets'>, type: PresetType, key: ProfileKey): UserPreset | undefined {
-  const profiles = s.userPresets.filter((p) => p.type === type);
-  const exact = profiles.filter((p) => profileKey(p) === key);
-  if (exact.length === 1) return exact[0];
-  const named = profiles.filter((p) => p.name === key);
-  if (named.length) return named.length === 1 ? named[0] : undefined;
-  const aliases = profiles.filter((p) => p.aliases?.includes(key));
-  return aliases.length === 1 ? aliases[0] : undefined;
+interface ProfileIndex { ids: Map<string, UserPreset | null>; names: Map<string, UserPreset | null>; aliases: Map<string, UserPreset | null> }
+const profileIndexes = new WeakMap<UserPreset[], Map<string, ProfileIndex>>();
+const indexProfile = (map: Map<string, UserPreset | null>, key: string, profile: UserPreset) => {
+  if (!map.has(key)) map.set(key, profile); else map.set(key, null);
+};
+export function lookupProfile(s: Pick<State, 'userPresets'>, type: PresetType, key: ProfileKey, printerId?: ProfileKey): { profile?: UserPreset; ambiguous: boolean } {
+  let scopes = profileIndexes.get(s.userPresets);
+  if (!scopes) profileIndexes.set(s.userPresets, (scopes = new Map()));
+  const scope = JSON.stringify([type, printerId]);
+  let index = scopes.get(scope);
+  if (!index) {
+    index = { ids: new Map(), names: new Map(), aliases: new Map() };
+    for (const profile of s.userPresets) if (profile.type === type && (printerId === undefined || profile.printerId === printerId)) {
+      indexProfile(index.ids, profileKey(profile), profile);
+      indexProfile(index.names, profile.name, profile);
+      for (const alias of new Set(profile.aliases ?? [])) indexProfile(index.aliases, alias, profile);
+    }
+    scopes.set(scope, index);
+  }
+  for (const map of [index.ids, index.names, index.aliases]) if (map.has(key)) {
+    const profile = map.get(key);
+    return { profile: profile ?? undefined, ambiguous: profile === null };
+  }
+  return { ambiguous: false };
 }
+export const findProfile = (s: Pick<State, 'userPresets'>, type: PresetType, key: ProfileKey, printerId?: ProfileKey): UserPreset | undefined => lookupProfile(s, type, key, printerId).profile;
 
 export function profileReferenceInventory(s: State, type: PresetType, key: ProfileKey, external?: ProfileReferenceSource): ProfileReferenceInventory {
   const p = findProfile(s, type, key);

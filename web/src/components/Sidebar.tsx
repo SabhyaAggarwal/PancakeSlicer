@@ -1,11 +1,11 @@
 import { nativeSurfaceSummary } from '../preview/explain-record';
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense } from 'react';
 import { Tabs } from 'radix-ui';
 import { Dropdown } from './Dropdown';
 import type { PresetType } from '../api/types';
 import { effectiveConfig, printerPreset, setState, useStore } from '../state/store';
 import { filamentSlots as capacity } from '../profiles/machines';
-import { addFilament, removeFilament } from '../profiles/SetupRows';
+import { addFilament, removeSlot } from '../profiles/SetupRows';
 import { PresetCombo } from './PresetCombo';
 import { PresetBar } from '../profiles/PresetBar';
 import { SettingsTab } from './SettingsTab';
@@ -13,19 +13,18 @@ import { surfaceOf } from '../intent/surface';
 import './settings.css';
 const ObjectSettings = lazy(() => import('./ObjectSettings').then(m => ({default: m.ObjectSettings})));
 
-function ProfileSection({type, title}: {type: PresetType; title: string}) {
-  const machine = useStore(printerPreset);
-  const slots = useStore(s => s.filamentSlots);
-  const multi = type === 'filament' && capacity(machine) > 1;
-  const [slot, setSlot] = useState(0);
-  const active = Math.min(slot, Math.max(0, slots.length - 1));
-  const name = useStore(s => type === 'machine' ? s.printer : s.filamentSlots[active]);
-  return <section className="profile-section compact-profile" aria-label={`${title} profile`}>
-    <div className="profile-selector-row"><span className="profile-role">{title}</span><PresetCombo type={type} slot={active}/><button type="button" className="profile-settings-action btn" onClick={() => setState({presetUx: {kind: 'presets', type, name}})}>Settings</button></div>
-    {multi && <div className="filament-hardware" aria-label="Filament hardware slots">
-      {slots.length > 1 && <div className="seg slot-tabs" aria-label="Filament slots">{slots.map((name, i) => <button key={i} type="button" aria-pressed={i === active} title={name} onClick={() => setSlot(i)}>Slot {i + 1}</button>)}</div>}
-      <div className="slot-actions"><button type="button" className="btn-ghost" disabled={slots.length >= capacity(machine)} title={slots.length >= capacity(machine) ? 'All hardware slots are in use' : 'Add a hardware filament slot'} onClick={addFilament}>Add slot</button>{slots.length > 1 && <><button type="button" className="btn-ghost" onClick={removeFilament}>Remove slot</button><button type="button" className="btn-ghost" onClick={() => setState({flushDialog: true})}>Flush volumes</button></>}</div>
-    </div>}
+function ProfileRow({type, slot = 0, title, remove}: {type: PresetType; slot?: number; title: string; remove?: () => void}) {
+  const name = useStore(s => type === 'machine' ? s.printer : s.filamentSlots[slot]);
+  return <div className="profile-selector-row"><span className="profile-role">{title}</span><PresetCombo type={type} slot={slot}/><button type="button" className="profile-settings-action btn" onClick={() => setState({presetUx: {kind: 'presets', type, name, edit: true}})}>Settings</button>{remove && <button type="button" className="filament-remove icon-btn" aria-label={`Remove filament slot ${slot + 1}`} title={`Remove filament slot ${slot + 1}`} onClick={remove}>×</button>}</div>;
+}
+function PrinterMaterials() {
+  const machine = useStore(printerPreset), slots = useStore(s => s.filamentSlots);
+  const lastOnly = useStore(s => !!Object.keys(s.mixes).length || s.objects.some(o => o.paint?.color || o.volumes?.some(v => v.paint?.color)));
+  const multi = capacity(machine) > 1;
+  return <section className="profile-section printer-materials" aria-label="Printer and its filaments">
+    <ProfileRow type="machine" title="Printer"/>
+    <div className="printer-filaments">{slots.map((_name, i) => <ProfileRow key={i} type="filament" slot={i} title={slots.length > 1 ? `Filament ${i + 1}` : 'Filament'} remove={multi && slots.length > 1 && (!lastOnly || i === slots.length - 1) ? () => removeSlot(i) : undefined}/>)}</div>
+    {multi && slots.length < capacity(machine) && <button type="button" className="btn-ghost add-material-slot" onClick={addFilament}>Add slot</button>}
   </section>;
 }
 function ProcessScope() {
@@ -47,8 +46,7 @@ function EngineLine() {
 export function Sidebar() {
   const objects = useStore(s => s.processScope === 'objects' && !!s.objects.length);
   return <aside className="sidebar">
-    <ProfileSection type="machine" title="Printer"/>
-    <ProfileSection type="filament" title="Filament"/>
+    <PrinterMaterials/>
     <section className="process-section" aria-label="Process profile and settings">
       <div className="side-title"><span className="side-title-text">Print settings</span></div>
       <PresetBar type="process"/>

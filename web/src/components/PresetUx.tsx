@@ -13,7 +13,7 @@ export default function PresetUx() {
     <Suspense fallback={<div role="status">Loading…</div>}>
       {ux.kind === 'save' && <SaveDialog key={`${ux.type}:${ux.slot}`} type={ux.type} slot={ux.slot} />}
       {ux.kind === 'compare' && <PresetsWindow type={ux.type} name={ux.left} compare={ux.right ?? ''} />}
-      {ux.kind === 'presets' && <PresetsWindow type={ux.type} name={ux.name} />}
+      {ux.kind === 'presets' && <PresetsWindow type={ux.type} name={ux.name} edit={ux.edit}/>}
       {ux.kind === 'import' && <ImportDialog />}
       {ux.kind === 'export' && <ExportDialog />}
     </Suspense>

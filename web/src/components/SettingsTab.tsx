@@ -5,7 +5,7 @@ import { Tabs } from 'radix-ui';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { Config, ConfigValue, PresetType } from '../api/types';
 import { isDeferred, isHidden, modeVisible, OPTIONS, splitKey, loadTab, useTab, type TabDesc, type TabLine, type OptionDef, type OptionMode } from '../options';
-import { effectiveConfig, effectiveMode, getState, presetEdits, resetOption, resolvePreset, setOption, useStore } from '../state/store';
+import { effectiveConfig, effectiveMode, getState, presetEdits, resetOption, resolvePreset, setOption, setState, useStore } from '../state/store';
 import { condition, environment, fieldDefinition, optionState } from '../visibility';
 import { lineMode, nativeSupportCapable, tabEnvironment } from '../settings-env';
 import { Field } from './Field';
@@ -111,6 +111,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor }: { t
         {type === 'machine' && !editor && <NozzleField />}
         {type === 'process' && !editor && pageIdx === 0 && <SurfaceSettings config={config} system={system} />}
         {!desc && <div className="settings-load" role={error || retryError ? 'alert' : 'status'}><span>{retryError || error ? `Settings failed to load: ${retryError ?? error}` : 'Loading settings…'}</span>{(error || retryError) && <button type="button" className="btn" disabled={retrying} title={retrying ? 'Waiting for the settings request' : 'Load these settings again'} onClick={retry}>{retrying ? 'Retrying…' : 'Retry'}</button>}</div>}
+        {type === 'process' && page?.title === 'Multimaterial' && getState().filamentSlots.length > 1 && <section className="optgroup"><button type="button" className="btn" onClick={() => setState({flushDialog: true})}>Flush volumes</button></section>}
         {page?.groups.map((g) => (
           <section key={g.title} className="optgroup">
             {g.title && (

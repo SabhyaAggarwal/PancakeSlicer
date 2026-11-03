@@ -115,3 +115,10 @@
 :where(.orca-parity) .outliner-body .object-list { border: 0; min-height: 0; max-height: none; }
 :where(.orca-parity) .outliner-body .ol-row { border-radius: 3px; }
 @container (max-width: 780px) { :where(.orca-parity) .objects-outliner.transform-active .outliner-body, :where(.orca-parity) .objects-outliner.transform-active .outliner-edit { display: none; } :where(.orca-parity) .transform-anchor { top: 100px; } }
+
+:where(.orca-parity) .printer-materials { background: var(--chrome-raised); padding: 8px; }
+:where(.orca-parity) .printer-filaments { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; }
+:where(.orca-parity) .printer-materials .profile-role { width: 56px; }
+:where(.orca-parity) .filament-remove { width: 20px; flex: none; }
+:where(.orca-parity) .add-material-slot { margin-left: 62px; padding: 3px 6px; font-size: 12px; }
+:where(.orca-parity) .canvas-toolbar > .icon-btn, :where(.orca-parity) .canvas-toolbar > span > .icon-btn { width: 36px; height: 36px; }
