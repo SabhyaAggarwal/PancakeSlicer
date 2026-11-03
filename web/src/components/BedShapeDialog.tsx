@@ -1,6 +1,5 @@
-import { Dropdown } from './Dropdown';
 import { useState } from 'react';
-import { Modal, ModalTitle } from './Modal';
+import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 import type { Config, ConfigValue } from '../api/types';
 import { bedBounds, parsePoints } from '../plater/geometry';
 import { bedAsset, registerBedAsset } from '../plater/bed-assets';
@@ -27,11 +26,14 @@ export default function BedShapeDialog({ config, close, onSet = (key, value) => 
   const scale = 230 / Math.max(maxX - minX, maxY - minY, 1);
   const px = (n: number) => 30 + (n - minX) * scale;
   const py = (n: number) => 265 - (n - minY) * scale;
-  const pair = (label: string, values: number[], change: (v: number[]) => void, min: number, max: number) => <div className="bed-pair"><span>{label}</span>{['X', 'Y'].map((axis, i) => <label key={axis}>{axis} <input className="text num" aria-label={`${label} ${axis}`} type="number" min={min} max={max} step="any" value={Number.isFinite(values[i]) ? values[i] : ''} onChange={(e) => change(values.map((v, j) => i === j ? e.target.valueAsNumber : v))} /></label>)}<span>mm</span></div>;
-  const asset = (title: string, value: string, set: (v: string) => void, accept: string) => <fieldset><legend>{title}</legend>
-    <input className="text" aria-label={`Custom ${title.toLowerCase()}`} value={value} placeholder="None" onChange={(e) => set(e.target.value)} />
-    <div className="bed-asset-buttons"><label className="side-btn">Load...<input type="file" aria-label={`Load ${title.toLowerCase()}`} accept={accept} hidden onChange={(e) => { const file = e.target.files?.[0]; if (file) set(registerBedAsset(file)); }} /></label><button className="side-btn" type="button" disabled={!value} onClick={() => set('')}>Remove</button></div>
-  </fieldset>;
+  const num = (label: string, value: number, set: (v: number) => void, min: number, max: number) => <label className="form-row"><span>{label}</span>
+    <span className="modal-unit"><input className="text num" type="number" min={min} max={max} step="any" value={Number.isFinite(value) ? value : ''} aria-invalid={!(Number.isFinite(value) && value >= min && value <= max) || undefined}
+      onChange={(e) => set(e.target.valueAsNumber)} /><span>mm</span></span></label>;
+  const at = (values: number[], set: (v: number[]) => void, i: number) => (v: number) => set(values.map((x, j) => (i === j ? v : x)));
+  const asset = (title: string, value: string, set: (v: string) => void, accept: string) => <div className="form-row"><span>{title}</span>
+    <span className="modal-file">{value ? <span className="modal-file-name" data-full-text={value}>{value.split(/[\\/]/).pop()}</span> : <span className="modal-file-none">None</span>}
+      <label className="btn">Choose…<input type="file" aria-label={`Choose ${title.toLowerCase()}`} accept={accept} hidden onChange={(e) => { const file = e.target.files?.[0]; if (file) set(registerBedAsset(file)); }} /></label>
+      {value && <button className="btn-ghost" type="button" aria-label={`Remove ${title.toLowerCase()}`} onClick={() => set('')}>Remove</button>}</span></div>;
   const loadShape = async (file: File) => {
     try {
       const geometry = new STLLoader().parse(await file.arrayBuffer());
@@ -52,20 +54,26 @@ export default function BedShapeDialog({ config, close, onSet = (key, value) => 
       } finally { geometry.dispose(); }
     } catch (e) { setError(e instanceof Error ? e.message : 'Error: invalid model'); }
   };
-  return <Modal size="l" className="bed-dialog" label="Bed Shape" onClose={close}>
+  const invalid = !valid && (shape === 'Custom' ? 'Load an STL outline of the bed.' : 'Enter sizes above 0 mm.');
+  return <Modal size="l" label="Bed shape" onClose={close}>
     <form onSubmit={(e) => { e.preventDefault(); if (!valid) return; onSet('printable_area', points.map(([x, y]) => `${Number(x.toFixed(6))}x${Number(y.toFixed(6))}`)); onSet('bed_custom_texture', texture); onSet('bed_custom_model', model); close(); }}>
-      <ModalTitle title="Bed Shape" onClose={close} />
-      <div className="bed-dialog-body"><div className="bed-dialog-fields"><fieldset><legend>Shape</legend>
-        <Dropdown className="combo" aria-label="Shape" value={shape} onValueChange={setShape} options={[...['Rectangular', 'Circular', 'Custom'].map((name) => ({ value: name, label: name }))]} />
-        {shape === 'Rectangular' && <>{pair('Size', size, setSize, 0, 214700)}{pair('Origin', origin, setOrigin, -107350, 107350)}</>}
-        {shape === 'Circular' && <label>Diameter <input className="text num" type="number" aria-label="Diameter" min="0.01" step="any" value={diameter} onChange={(e) => setDiameter(e.target.valueAsNumber)} /> mm</label>}
-        {shape === 'Custom' && <><label className="side-btn">Load shape from STL...<input type="file" aria-label="Load shape from STL" hidden accept=".stl" onChange={(e) => { const file = e.target.files?.[0]; if (file) void loadShape(file); }} /></label>{error && <div role="alert">{error}</div>}</>}
-      </fieldset>{asset('Texture', texture, setTexture, '.png,.svg')}{asset('Model', model, setModel, '.stl')}</div>
+      <ModalTitle title="Bed shape" onClose={close} />
+      <ModalBody className="modal-split"><div className="modal-fields">
+        <div className="form-row"><span>Shape</span><span className="seg" role="radiogroup" aria-label="Shape">{([['Rectangular', 'Rectangle'], ['Circular', 'Circle'], ['Custom', 'Custom']] as const).map(([name, label]) =>
+          <button key={name} type="button" role="radio" aria-checked={shape === name} onClick={() => setShape(name)}>{label}</button>)}</span></div>
+        {shape === 'Rectangular' && <>{num('Width', size[0], at(size, setSize, 0), 0.01, 214700)}{num('Depth', size[1], at(size, setSize, 1), 0.01, 214700)}
+          {num('Origin X', origin[0], at(origin, setOrigin, 0), -107350, 107350)}{num('Origin Y', origin[1], at(origin, setOrigin, 1), -107350, 107350)}</>}
+        {shape === 'Circular' && num('Diameter', diameter, setDiameter, 0.01, 214700)}
+        {shape === 'Custom' && <div className="form-row"><span>Outline</span><span className="modal-file"><span className="modal-file-none">{custom.length >= 3 ? `${custom.length} points` : 'None'}</span>
+          <label className="btn">Load STL…<input type="file" aria-label="Load shape from STL" hidden accept=".stl" onChange={(e) => { const file = e.target.files?.[0]; if (file) void loadShape(file); }} /></label></span></div>}
+        {asset('Texture', texture, setTexture, '.png,.svg')}{asset('Model', model, setModel, '.stl')}
+        {(error || invalid) && <p className="modal-error" role="alert">{error || invalid}</p>}
+      </div>
       <svg className="bed-2d" viewBox="0 0 300 300" role="img" aria-label="Bed shape preview">
         <defs><pattern id="bed-grid" width={10 * scale || 10} height={10 * scale || 10} patternUnits="userSpaceOnUse"><path d={`M ${10 * scale} 0 L 0 0 0 ${10 * scale}`} fill="none" className="bed-2d-grid" strokeWidth="0.5" /></pattern><clipPath id="bed-clip"><polygon points={points.map(([x, y]) => `${px(x)},${py(y)}`).join(' ')} /></clipPath></defs>
         {valid && <><polygon points={points.map(([x, y]) => `${px(x)},${py(y)}`).join(' ')} className="bed-2d-plate" />{texture && <image href={bedAsset(texture)} x={px(Math.min(...xs))} y={py(Math.max(...ys))} width={(Math.max(...xs) - Math.min(...xs)) * scale} height={(Math.max(...ys) - Math.min(...ys)) * scale} preserveAspectRatio="none" clipPath="url(#bed-clip)" />}<rect width="300" height="300" fill="url(#bed-grid)" clipPath="url(#bed-clip)" /><path d={`M ${px(0)} ${py(0)} h 24 M ${px(0)} ${py(0)} v -24`} className="bed-2d-axes" /><circle cx={px(0)} cy={py(0)} r="3" fill="#00ae42" /><text x={px(0) + 5} y={py(0) + 15} fontSize="11" className="bed-2d-label">0,0</text></>}
-      </svg></div>
-      <div className="bed-dialog-buttons"><button className="side-btn" type="submit" disabled={!valid}>OK</button><button className="side-btn" type="button" onClick={close}>Cancel</button></div>
+      </svg></ModalBody>
+      <ModalFooter><button className="btn" type="button" onClick={close}>Cancel</button><button className="btn-primary" type="submit" disabled={!valid}>Save</button></ModalFooter>
     </form>
   </Modal>;
 }

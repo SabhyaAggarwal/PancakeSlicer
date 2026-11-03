@@ -2,10 +2,11 @@ import { useSyncExternalStore } from 'react';
 import type { StoredDocBase } from '../persist/backend';
 import { plateSignature } from '../slice-input';
 import type { Doc } from '../state/history';
-import { getState, setState, subscribeStore, toast, type JobView, type State } from '../state/store';
+import { getState, subscribeStore, toast, type JobView, type State } from '../state/store';
 import { slotColour } from '../profiles/filament-colour';
 import type { JobStatus } from '../api/types';
 import { project, flushProject, leaveProjectVersion, restoreProjectVersion, viewProjectVersion, type ProjectMeta } from '../flow/project';
+import { versionShown, versionView, versionWanted } from '../flow/version-view';
 import { changeParts, describeChange, profileName, type VersionChange } from './version-change';
 
 export interface ProjectVersion {
@@ -68,45 +69,46 @@ export function openHistory() {
 export function closeHistory() { set({ open: false }); }
 export const toggleHistory = () => (state.open ? closeHistory() : openHistory());
 
-async function showSlice(id: string, v: ProjectVersion) {
-  const status = await post<JobStatus & { id: string }>(`${path(id)}/${v.id}/open-slice`, {});
-  const job: JobView = { id: status.id, state: 'done', pct: 100, stage: 'done', status, plateSignature: plateSignature(getState()), warnings: [] };
-  setState({ job });
+async function showSlice(id: string, v: ProjectVersion, request: number) {
+  try {
+    const status = await post<JobStatus & { id: string }>(`${path(id)}/${v.id}/open-slice`, {});
+    const job: JobView = { id: status.id, state: 'done', pct: 100, stage: 'done', status, plateSignature: plateSignature(getState()), warnings: [] };
+    versionView.send({ type: 'SLICE', request, job });
+  } catch (e) {
+    const current = versionView.get().context.request === request;
+    versionView.send({ type: 'SLICE_FAIL', request });
+    if (current) toast(`Slice not loaded: ${errorText(e)}`);
+  }
 }
 
-let viewToken = 0;
+versionView.subscribe(({ value, context }) => set({ viewing: context.shown, loading: (value === 'opening' ? context.target : value === 'loading-slice' ? context.shown : null)?.id ?? null }));
 export async function viewVersion(v: ProjectVersion) {
   const id = state.projectId ?? project.get().context.id, latest = state.versions?.[0];
-  if (latest && v.id === latest.id && !state.viewing) return;
   if (latest && v.id === latest.id) return backToLatest();
-  const mine = ++viewToken;
-  set({ loading: v.id });
+  versionView.send({ type: 'VIEW', version: v });
+  const request = versionView.get().context.request;
   try {
     const { projectJson } = await import('../persist/project-wire');
     const record = await projectJson<{ meta: ProjectMeta; doc: StoredDocBase }>(`${path(id)}/${v.id}`);
     if (!record) throw new Error('This version is no longer kept.');
-    if (mine !== viewToken) return;
-    if (!(await viewProjectVersion(id, record)) || mine !== viewToken) return;
-    set({ viewing: v });
-    if (v.slice) await showSlice(id, v).catch((e: unknown) => toast(`Slice not loaded: ${errorText(e)}`));
+    if (!versionWanted(request)) return;
+    if (!(await viewProjectVersion(id, record, request))) return void versionView.send({ type: 'FAIL', request });
+    if (v.slice) await showSlice(id, v, request);
   } catch (e) {
-    if (mine === viewToken) toast(errorText(e));
-  } finally {
-    if (mine === viewToken) set({ loading: null });
+    const wanted = versionWanted(request);
+    versionView.send({ type: 'FAIL', request });
+    if (wanted) toast(errorText(e));
   }
 }
 export async function backToLatest() {
-  const id = state.projectId;
-  ++viewToken;
-  set({ viewing: null, loading: null });
-  if (id) await leaveProjectVersion(id);
+  const id = state.projectId, shown = versionShown();
+  versionView.send({ type: 'LATEST' });
+  if (id && shown) await leaveProjectVersion(id);
 }
 export async function restoreVersion() {
-  const v = state.viewing, id = state.projectId;
+  const v = versionShown(), id = state.projectId;
   if (!v || !id) return;
   override = { id, change: [{ key: `restore:${v.until}`, label: 'Restored' }] };
-  ++viewToken;
-  set({ viewing: null, loading: null });
   try {
     await post(`${path(id)}/seal`, { revision: project.get().context.revision }).catch(() => null);
     await restoreProjectVersion();
@@ -158,10 +160,10 @@ export function startVersionTracking() {
   });
   let revision = project.get().context.revision, id = project.get().context.id;
   project.subscribe((snap) => {
-    if (snap.value === 'opening' && state.viewing) { ++viewToken; set({ viewing: null, loading: null }); }
+    if (snap.value === 'opening' || snap.context.id !== id) versionView.send({ type: 'LATEST' });
     if (snap.context.id !== id) {
       id = snap.context.id;
-      if (state.viewing || state.projectId !== id) set({ viewing: null, loading: null, versions: null, projectId: null, open: state.open && snap.value !== 'blank' });
+      if (state.projectId !== id) set({ versions: null, projectId: null, open: state.open && snap.value !== 'blank' });
       if (state.open) void refreshHistory(id);
     } else if (snap.context.revision !== revision && state.open) void refreshHistory(id);
     revision = snap.context.revision;

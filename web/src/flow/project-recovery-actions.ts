@@ -180,7 +180,7 @@ export async function openProject(runtime: RecoveryRuntime, id: string, options:
     setState({ loading: null }); project.send({ type: 'ERROR', error: failure.message, failure });
   }
 }
-export async function viewProjectVersion(runtime: RecoveryRuntime, id: string, record: { meta: ProjectMeta; doc: StoredDocBase }, enter: () => void) {
+export async function viewProjectVersion(runtime: RecoveryRuntime, id: string, record: { meta: ProjectMeta; doc: StoredDocBase }, enter: () => boolean) {
   const mine = runtime.beginOpen();
   await flushProject();
   if (!runtime.isCurrent(mine) || project.get().context.id !== id) return false;
@@ -189,8 +189,8 @@ export async function viewProjectVersion(runtime: RecoveryRuntime, id: string, r
   if (!runtime.isCurrent(mine)) return false;
   const fields = await (await codec()).decode(document, (k) => runtime.storage()!.getBlob(id, k));
   if (!runtime.isCurrent(mine)) return false;
+  if (!enter()) return false;
   runtime.invalidateWrites();
-  enter();
   runtime.adopt(() => {
     leaveDocument(); clearPlateJobs();
     setState({ ...fields, projectName: record.meta.name, gizmo: 'none', dialog: null, loading: null, job: { state: 'idle', pct: 0, stage: '' } });
