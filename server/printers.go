@@ -349,6 +349,7 @@ func NewSendManager(store *printerStore) *SendManager {
 			m.watchTrust(p)
 		}
 		m.history = loadSendHistory(store.dir)
+		m.cards = m.history.cards()
 	}
 	return m
 }

@@ -359,6 +359,23 @@ func (h *sendHistory) record(t Transfer) {
 	}
 }
 
+func (h *sendHistory) cards() map[string]string {
+	out := map[string]string{}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, t := range h.list {
+		key := t.Printer + "\x00" + t.Filename
+		switch {
+		case t.Kind != "bambu-lan" || t.Printer == "":
+		case t.State == "done":
+			out[key] = t.Job
+		case t.Sent > 0 || t.State == "uploading" || t.State == "starting":
+			delete(out, key)
+		}
+	}
+	return out
+}
+
 func (h *sendHistory) recent(age time.Duration) []Transfer {
 	if h == nil {
 		return nil
