@@ -8,25 +8,26 @@ export { display };
 
 const TAB = { machine: 'printer', filament: 'filament', process: 'process' } as const;
 
-export interface DiffRow { key: string; label: string; group: string; left?: ConfigValue; right?: ConfigValue; differs: boolean }
+export interface DiffRow { key: string; label: string; group: string; values: (ConfigValue | undefined)[]; differs: boolean }
 
-export function diffRows(type: PresetType, left: Config, right: Config, all = false): DiffRow[] {
+export function diffRows(type: PresetType, configs: Config[], all = false): DiffRow[] {
   const rows: DiffRow[] = [];
   const seen = new Set<string>();
-  const differs = (k: string) => {
-    const a = left[k] ?? (OPTIONS[k]?.default as ConfigValue | undefined), b = right[k] ?? (OPTIONS[k]?.default as ConfigValue | undefined);
-    return (a === undefined ? '' : toolValue(k, normalizeConfigValue(k, a))) !== (b === undefined ? '' : toolValue(k, normalizeConfigValue(k, b)));
-  };
+  const differs = (k: string) => new Set(configs.map((c) => {
+    const v = c[k] ?? (OPTIONS[k]?.default as ConfigValue | undefined);
+    return v === undefined ? '' : toolValue(k, normalizeConfigValue(k, v));
+  })).size > 1;
+  const values = (k: string) => configs.map((c) => c[k]);
   for (const page of TABS[TAB[type]]?.pages ?? []) for (const group of page.groups) for (const line of group.lines) for (const k of line.options) {
     const key = splitKey(k)[0];
     if (seen.has(key) || !OPTIONS[key] || isHidden(key)) continue;
     seen.add(key);
     const d = differs(key);
-    if (d || all) rows.push({ key, label: OPTIONS[key].label || line.label || key, group: `${page.title} › ${group.title}`, left: left[key], right: right[key], differs: d });
+    if (d || all) rows.push({ key, label: OPTIONS[key].label || line.label || key, group: `${page.title} › ${group.title}`, values: values(key), differs: d });
   }
-  for (const key of new Set([...Object.keys(left), ...Object.keys(right)]))
+  for (const key of new Set(configs.flatMap((c) => Object.keys(c))))
     if (!seen.has(key) && OPTIONS[key] && !isHidden(key) && differs(key))
-      rows.push({ key, label: OPTIONS[key].label || key, group: 'Other', left: left[key], right: right[key], differs: true });
+      rows.push({ key, label: OPTIONS[key].label || key, group: 'Other', values: values(key), differs: true });
   return rows;
 }
 

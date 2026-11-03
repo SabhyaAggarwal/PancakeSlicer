@@ -23,13 +23,14 @@ const splitTail = (label: string): [string, string] => {
   return [label, ''];
 };
 interface RailTab { id: string; title: string; count?: number }
-const AIM_DELAY = 80;
+const AIM_DELAY = 80, AIM_WINDOW = 150;
 function PickerRail({ tabs, active, hover, label, list, railRef, onChange }: { tabs: RailTab[]; active: string; hover: boolean; label: string; list: RefObject<HTMLElement | null>; railRef: RefObject<HTMLElement | null>; onChange(id: string): void }) {
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined), trail = useRef<{ x: number; y: number; t: number }[]>([]), under = useRef('');
   useEffect(() => () => clearTimeout(timer.current), []);
+  const note = (e: { clientX: number; clientY: number; timeStamp: number }) => { trail.current = [...trail.current.filter((p) => e.timeStamp - p.t < AIM_WINDOW), { x: e.clientX, y: e.clientY, t: e.timeStamp }]; };
   const aiming = () => {
-    const box = list.current?.getBoundingClientRect(), pts = trail.current, from = pts[0], at = pts[pts.length - 1];
-    if (!box || !from || !at || at === from || performance.now() - at.t > AIM_DELAY || at.x <= from.x) return false;
+    const now = performance.now(), pts = trail.current.filter((p) => now - p.t < AIM_WINDOW), box = list.current?.getBoundingClientRect(), from = pts[0], at = pts[pts.length - 1];
+    if (!box || pts.length < 2 || now - at.t > AIM_DELAY || at.x <= from.x) return false;
     const slope = (a: { x: number; y: number }, b: { x: number; y: number }) => (b.y - a.y) / (b.x - a.x);
     const top = { x: box.left, y: box.top - 24 }, bottom = { x: box.left, y: box.bottom + 24 };
     return slope(at, top) < slope(from, top) && slope(at, bottom) > slope(from, bottom);
@@ -39,10 +40,10 @@ function PickerRail({ tabs, active, hover, label, list, railRef, onChange }: { t
     const check = () => { if (under.current !== id) return; if (aiming()) timer.current = setTimeout(check, AIM_DELAY); else flushSync(() => onChange(id)); };
     check();
   };
-  return <nav ref={railRef} className="pk-rail" aria-label={label} onPointerMove={hover ? (e) => { if (e.pointerType === 'mouse') trail.current = [...trail.current.slice(-3), { x: e.clientX, y: e.clientY, t: e.timeStamp }]; } : undefined} onPointerLeave={() => { clearTimeout(timer.current); under.current = ''; }}>
+  return <nav ref={railRef} className="pk-rail" aria-label={label} onPointerMove={hover ? (e) => { if (e.pointerType === 'mouse') note(e); } : undefined} onPointerLeave={() => { clearTimeout(timer.current); under.current = ''; }}>
     {tabs.map((r) => <button type="button" key={r.id} data-rail={r.id} className={active === r.id ? 'active' : ''} aria-pressed={active === r.id}
       onClick={() => { clearTimeout(timer.current); onChange(r.id); }}
-      onPointerEnter={hover ? (e) => { if (e.pointerType !== 'mouse') return; if (r.id === active) { clearTimeout(timer.current); under.current = r.id; } else intend(r.id); } : undefined}>
+      onPointerEnter={hover ? (e) => { if (e.pointerType !== 'mouse') return; note(e); if (r.id === active) { clearTimeout(timer.current); under.current = r.id; } else intend(r.id); } : undefined}>
       <span className="pk-rail-title">{r.title}</span>{r.count !== undefined && <span className="pk-count">{r.count}</span>}
     </button>)}
   </nav>;
@@ -61,7 +62,7 @@ const PickerRow = memo(function PickerRow({ row, index, id, active, selected, ad
   countRender('picker-row');
   const media = row.image !== undefined, [head, tail] = splitTail(row.label);
   return <div className={`pk-row ${active ? 'is-active' : ''}`} data-index={index}>
-    <button id={`${id}-${index}`} type="button" role="option" tabIndex={active ? 0 : -1} aria-selected={selected} aria-disabled={!!row.disabled} className="pk-option" onFocus={() => onActive(index)} onPointerMove={() => onActive(index)} data-full-text={[row.label, row.sub, row.meta].filter(Boolean).join(' · ')} onClick={() => onPick(row)}>
+    <button id={`${id}-${index}`} type="button" role="option" tabIndex={active ? 0 : -1} aria-selected={selected} aria-disabled={!!row.disabled} className="pk-option" onFocus={() => onActive(index)} onPointerMove={(e) => { if (e.pointerType === 'mouse') onActive(index); }} data-full-text={[row.label, row.sub, row.meta].filter(Boolean).join(' · ')} onClick={() => onPick(row)}>
       <span className="pk-check" aria-hidden>{selected ? '✓' : ''}</span>{media && <PickerArt src={row.image ?? null}/>}{row.swatch !== undefined && <span className="profile-color-swatch" data-unknown={!row.swatch} style={{backgroundColor:row.swatch ?? undefined}}/>}
       <span className="pk-text"><span className="pk-label"><span className="pk-head">{head}</span>{tail && <span className="pk-tail">{tail}</span>}</span>{row.sub && <span className="pk-sub">{row.sub}</span>}{media && row.meta && <span className="pk-sub">{row.meta}</span>}{row.status && <span className="pk-status" data-tone={row.status.tone}>{row.status.label}</span>}</span>
       {!media && row.meta && <span className="pk-meta">{row.meta}</span>}
@@ -99,13 +100,14 @@ export function Picker({ label, value, groups, sections = false, onPick, memory 
   }, [allSections, rails.length, activeRail, tabbed, pinnedSet]);
   const rows = useMemo(() => sectioned ? sectioned.flatMap(g => g.items) : activeRail === 'pins' ? all.filter(r => pinnedSet.has(r.id)) : activeRail === 'all' ? all : source.find(g => g.id === activeRail)?.items ?? [], [sectioned, activeRail, all, pinnedSet, source]);
   const heads = useMemo(() => { const at = new Map<number, string>(); let i = 0; if (activeRail === 'all' || (sectioned?.length ?? 0) > 1) for (const g of sectioned ?? []) { at.set(i, g.title); i += g.items.length; } return at; }, [sectioned, activeRail]);
-  const railTabs = useMemo<TabRows[] | null>(() => !allSections || !rails.length ? null : rails.map(r => {
+  const railTabs = useMemo<TabRows[] | null>(() => !rails.length ? null : rails.map(r => {
+    if (!allSections) return {tab: r.id, rows: r.id === 'pins' ? all.filter(x => pinnedSet.has(x.id)) : r.id === 'all' ? all : source.find(g => g.id === r.id)?.items ?? [], heads: new Map<number, string>()};
     const g = r.id === 'all' ? undefined : tabbed.find(t => t.id === r.id);
     const secs = g ? [{title: 'Favorites', items: g.items.filter(x => pinnedSet.has(x.id))}, {title: g.title, items: g.items.filter(x => !pinnedSet.has(x.id))}].filter(x => x.items.length) : allSections ?? [];
     const at = new Map<number, string>(); let i = 0;
     if (!g || secs.length > 1) for (const sec of secs) { at.set(i, sec.title); i += sec.items.length; }
     return {tab: r.id, rows: secs.flatMap(sec => sec.items), heads: at};
-  }), [rails, tabbed, pinnedSet, allSections]);
+  }), [rails, tabbed, pinnedSet, allSections, all, source]);
   const tabs = useMemo<TabRows[]>(() => railTabs ?? [{tab: activeRail, rows, heads}], [railTabs, activeRail, rows, heads]);
   const groupsRef = useRef(groups); groupsRef.current = groups;
   const warm = useCallback(() => { for (const g of groupsRef.current()) for (const item of g.items) if (item.image) decodeAhead(item.image); }, []);
@@ -141,19 +143,18 @@ export function Picker({ label, value, groups, sections = false, onPick, memory 
       if (e.key === 'Escape' || e.key === 'Tab') return;
       e.stopPropagation();
       const at = enabled.indexOf(active), inRail = e.target instanceof Element && !!e.target.closest('.pk-rail');
-      if (sections && inRail && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      if (rails.length && inRail && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
         e.preventDefault(); const i = rails.findIndex(r => r.id === activeRail), next = rails[(i + (e.key === 'ArrowDown' ? 1 : -1) + rails.length) % rails.length].id;
         changeRail(next); requestAnimationFrame(() => railTab(next)?.focus());
       }
       else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); resetType(); if (enabled.length) move(enabled[(at + (e.key === 'ArrowDown' ? 1 : -1) + enabled.length) % enabled.length]); }
       else if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); resetType(); move(enabled[e.key === 'Home' ? 0 : enabled.length - 1] ?? -1); }
       else if (e.key === 'Enter' && e.target instanceof Element && e.target.closest('.pk-option') && rows[active]) { e.preventDefault(); e.altKey ? pin(rows[active]) : pick(rows[active]); }
-      else if (sections && rails.length && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+      else if (rails.length && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
         e.preventDefault();
         if (e.key === 'ArrowRight' && inRail) move(enabled[0] ?? -1);
         else if (e.key === 'ArrowLeft' && !inRail) railTab(activeRail)?.focus();
       }
-      else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && rails.length) { e.preventDefault(); const at = rails.findIndex(r => r.id === activeRail); changeRail(rails[(at + (e.key === 'ArrowRight' ? 1 : -1) + rails.length) % rails.length].id); }
       else if (e.key.length === 1 && e.key !== ' ' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         const now = Date.now(), old = now - typed.current.at < 700 ? typed.current.text : '';
@@ -164,7 +165,7 @@ export function Picker({ label, value, groups, sections = false, onPick, memory 
         if (match !== undefined) move(match);
       }
     }}>
-      <div className={`pk-body ${rails.length > 1 ? '' : 'no-rail'}`}>{rails.length > 1 && <PickerRail tabs={rails} active={activeRail} hover={sections} label={`${label} groups`} list={list} railRef={railRef} onChange={changeRail} />}
+      <div className={`pk-body ${rails.length > 1 ? '' : 'no-rail'}`}>{rails.length > 1 && <PickerRail tabs={rails} active={activeRail} hover label={`${label} groups`} list={list} railRef={railRef} onChange={changeRail} />}
         <div className="pk-list" role="listbox" aria-label={label} ref={list}>{tabs.map(t => <PickerTab key={t.tab} t={t} on={t.tab === activeRail} active={t.tab === activeRail ? active : -1} id={id} value={value} adding={adding} pinned={pinnedSet} empty={catalog && !adding ? 'None yet' : 'No profiles'} onActive={setActive} onPick={pick} onPin={pin} />)}</div>
       </div>
       <div className="pk-foot">{adding && ownRows && <button type="button" className="btn-ghost" onClick={() => changeCatalog(false)}>Back</button>}{catalog && !adding && <button type="button" className="btn" onClick={() => changeCatalog(true)}>{catalog.label}</button>}{footer.map(a => <button type="button" className="btn" key={a.label} onClick={() => { if (!a.keep) setOpen(false); a.run(); }}>{a.label}</button>)}</div>

@@ -20,7 +20,7 @@ export function GroupHead({ id, title, icon, modified, open, aside, fixed = fals
     {fixed ? <span className="optgroup-chevron" aria-hidden /> : <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>}
     {icon && <Icon name={icon} size={16} />}
     <span>{title}</span>
-    {modified && <span className="optgroup-mark" aria-label="Modified" role="img" />}
+    {modified && <span className="field-label-hidden">(changed)</span>}
   </>;
   const head = (
     <SectionHeading level="sub" className="optgroup-title">

@@ -148,23 +148,21 @@ function configOf(s: State, type: PresetType, name: string) {
   return { ...config, ...edits };
 }
 
-function Compare({ type, left, right, names, setRight, close }: { type: PresetType; left: string; right: string; names: string[]; setRight(n: string): void; close(): void }) {
+function Compare({ type, names, titles, close }: { type: PresetType; names: string[]; titles: string[]; close(): void }) {
   const ready = useTabLoaded(type);
   const [only, setOnly] = useState(true);
   useStore((s) => s.dirty);
   useStore((s) => s.filamentEdits);
   const s = getState();
-  const leftSlot = slotsOf(s, type, left)[0];
-  const rows = useMemo(() => (ready ? diffRows(type, configOf(s, type, left), configOf(s, type, right), !only) : []), [ready, type, left, right, only, s.dirty, s.filamentEdits]);
+  const useSlot = names.length === 2 ? slotsOf(s, type, names[0])[0] : undefined;
+  const rows = useMemo(() => (ready ? diffRows(type, names.map((n) => configOf(s, type, n)), !only) : []), [ready, type, names.join('\n'), only, s.dirty, s.filamentEdits]);
   const changed = rows.filter((r) => r.differs).length;
+  const value = (r: (typeof rows)[number], i: number) => (r.values[i] ?? OPTIONS[r.key]?.default) as ConfigValue;
   let group = '';
   return (
     <fieldset className="pf-box pf-compare">
       <legend>Compare</legend>
       <div className="pf-compare-bar">
-        <span>{shortName(resolvePreset(s,type,left).name ?? 'Unavailable profile')}</span>
-        <span aria-hidden>↔</span>
-        <Dropdown className="combo" aria-label="Compare with" value={right} onValueChange={setRight} options={[...names.filter((n) => n !== left).map((n) => ({ value: n, label: shortName(resolvePreset(s,type,n).name ?? 'Unavailable profile') }))]} />
         <label className="row"><Check checked={only} onCheckedChange={(next) => setOnly(next)} />Only differences</label>
         <span className="pf-dim">{changed} different</span>
         <span className="spacer" />
@@ -173,16 +171,15 @@ function Compare({ type, left, right, names, setRight, close }: { type: PresetTy
       <div className="pf-scroll pf-diff">
         {!ready ? <div role="status">Loading…</div> : !rows.length ? <div className="pf-dim">No differences</div> : (
           <table className="pf-table">
-            <thead><tr><th>Setting</th><th className="n">{shortName(resolvePreset(s,type,left).name ?? 'Unavailable profile')}</th><th className="n">{shortName(resolvePreset(s,type,right).name ?? 'Unavailable profile')}</th>{leftSlot !== undefined && <th aria-label="Use" />}</tr></thead>
+            <thead><tr><th>Setting</th>{names.map((n, i) => <th key={n} className="n">{titles[i]}</th>)}{useSlot !== undefined && <th aria-label="Use" />}</tr></thead>
             <tbody>{rows.flatMap((r) => {
               const out = [];
-              if (r.group !== group) { group = r.group; out.push(<tr key={`g:${group}`} className="pf-group"><td colSpan={4}>{group}</td></tr>); }
+              if (r.group !== group) { group = r.group; out.push(<tr key={`g:${group}`} className="pf-group"><td colSpan={names.length + 2}>{group}</td></tr>); }
               out.push(
                 <tr key={r.key} className={r.differs ? 'is-diff' : undefined}>
                   <td>{r.label}</td>
-                  <td className="n">{display(r.key, r.left ?? (OPTIONS[r.key]?.default as ConfigValue))}</td>
-                  <td className="n">{display(r.key, r.right ?? (OPTIONS[r.key]?.default as ConfigValue))}</td>
-                  {leftSlot !== undefined && <td>{r.differs && <button type="button" className="pf-link" onClick={() => takeValue(type, r.key, (r.right ?? OPTIONS[r.key]?.default) as ConfigValue, leftSlot)}>← Use</button>}</td>}
+                  {names.map((n, i) => <td key={n} className="n">{display(r.key, value(r, i))}</td>)}
+                  {useSlot !== undefined && <td>{r.differs && <button type="button" className="pf-link" onClick={() => takeValue(type, r.key, value(r, 1), useSlot)}>← Use</button>}</td>}
                 </tr>,
               );
               return out;
@@ -356,13 +353,18 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const selectionRevision=useRef(0);
   const id = useId();
   void edit;
-  const [comparing, setComparing] = useState(compare !== undefined), [busy, setBusy] = useState(false);
+  const [compareHidden, setCompareHidden] = useState<string | null>(null), [busy, setBusy] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [contextMenu,setContextMenu] = useState<{x:number;y:number;anchor:HTMLElement}|null>(null);
   const references = useSyncExternalStore(subscribeProfileReferences, profileReferenceSnapshot);
+  const fallbackKey=useRef<()=>string|undefined>(()=>undefined);
+  fallbackKey.current=()=>{if(adding)return undefined;const used=current(type),shown=visible.filter(i=>order.includes(i.key));return (shown.find(i=>i.key === used || i.name === used) ?? shown[0])?.key;};
   const dispatch = useCallback((event: SelectionEvent, focus = false) => {
     selectionRevision.current++;initializedSelection.current=true;inspected.current=null;
-    const next = reduceSelection(latestSelection.current, event); latestSelection.current = next; setSelection(next); setComparing(false);
+    let next = reduceSelection(latestSelection.current, event);
+    const fallback = next.selected.length ? undefined : fallbackKey.current();
+    if(fallback) next = reduceSelection(next, {type: 'CLICK', key: fallback});
+    latestSelection.current = next; setSelection(next);
     if(event.type==='CLICK' && !event.toggle && !event.shift)setMobilePane('detail');
     if(focus && next.focus) requestAnimationFrame(() => {const row = document.getElementById(`${id}:${next.focus}`); row?.focus({preventScroll: true}); row?.scrollIntoView({block: 'nearest'});});
   }, [id]);
@@ -371,7 +373,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const close=()=>{if(!busy)void leave(()=>setState({presetUx:null}));};
   const pickType = (t: PresetType, target?: string) => {
     selectionRevision.current++;
-    setType(t); setSearch(''); setVendorFilter([]); setNozzleFilter([]); setMaterialFilter([]); setComparing(false); setBulkError(null);
+    setType(t); setSearch(''); setVendorFilter([]); setNozzleFilter([]); setMaterialFilter([]); setBulkError(null);
     const rows = adding ? [] : items(getState(), t), nextScope = `profiles:${adding ? 'add' : 'owned'}:${t}`;
     let next = createSelection(nextScope, rows.map(i => i.key));
     const row = rows.find(i => i.key === target || i.name === target);
@@ -462,11 +464,22 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     const open=isOpen(g);
     return <div key={g.key} role="rowgroup" className="pf-group" data-depth={depth}>
       <div role="row"><span role="rowheader"><button type="button" className="pf-group-toggle" aria-expanded={open} onClick={()=>toggleGroup(g)}><Caret dir={open ? 'down' : 'right'}/><span className="pf-group-label">{g.label}</span>{g.sub && <span className="pf-dim">{g.sub}</span>}</button></span></div>
-      {open && (g.children ? g.children.map(c=>renderGroup(c,depth+1)) : g.rows.map(i => <ManagerProfileRow key={i.key} item={i} listId={id} selected={selectedSet.has(i.key)} focused={selection.focus === i.key} selectable={!adding} dispatch={dispatch}/>))}
+      {open && (g.children ? g.children.map(c=>renderGroup(c,depth+1)) : g.rows.map(i => <ManagerProfileRow key={i.key} item={i} listId={id} selected={selectedSet.has(i.key)} open={i.key === openKey} focused={selection.focus === i.key} selectable={!adding} dispatch={dispatch}/>))}
     </div>;
   };
-  const showLibrary=(master:boolean)=>{if(master === adding)return;void leave(()=>{setDrafts({});clearFilters();setSearch('');setComparing(false);setAdding(master);setMobilePane('list');});};
-  return <Modal className="np-dialog pf-window" label="Profiles" onClose={close} backdropClose onEscapeKeyDown={event=>{if(busy){event.preventDefault();return;}if(drill && mobilePane!=='list'){event.preventDefault();backToList();}else if(selected.length){event.preventDefault();dispatch({type:'ESCAPE'});}}}>
+  const handlers=useRef({close,addVariant,deleteSelected,duplicate});handlers.current={close,addVariant,deleteSelected,duplicate};
+  const editKey=!adding && item?.user ? item.key : undefined,editUser=editKey ? item?.user : undefined,draft=editKey ? drafts[JSON.stringify([type,editKey])] : undefined;
+  const editor=useMemo(()=>editKey && editUser && <ProfileEditor key={editKey} type={type} name={editKey} draft={draft} update={updateDraft} onSavingChange={setBusy} onBack={()=>handlers.current.close()} onRemove={() => void handlers.current.deleteSelected([editKey])} onDuplicate={editUser.kind === 'master' ? undefined : () => void handlers.current.duplicate(editUser)} foldActions={drill}/>,[editKey,editUser,type,draft,drill,updateDraft]);
+  const addDetails=useMemo(()=>adding && item ? <AddDetails key={item.key} type={type} item={item} busy={busy} onAdd={(variant,colour)=>void handlers.current.addVariant(variant,colour)}/> : null,[adding,item,type,busy]);
+  const bulk=selected.length > 1 && !adding, selectionKey=selected.join('\n');
+  const canCompare=bulk && selected.length <= 4 && selectedItems.length === selected.length, comparing=canCompare && compareHidden !== selectionKey;
+  const openKey=comparing ? undefined : item?.key;
+  const bulkActions=<><button type="button" className="btn-ghost" aria-pressed={comparing} disabled={!canCompare || busy} onClick={() => setCompareHidden(comparing ? selectionKey : null)}>Compare</button>
+    <button type="button" className="btn-ghost" disabled={busy} onClick={() => void exportSelected()}>Export</button>
+    <button type="button" className="btn-ghost pf-delete" disabled={busy} onClick={() => void deleteSelected()}>Delete</button>
+    <button type="button" className="icon-btn" aria-label="Clear selection" onClick={() => dispatch({type: 'CLEAR'})}>×</button></>;
+  const showLibrary=(master:boolean)=>{if(master === adding)return;void leave(()=>{setDrafts({});clearFilters();setSearch('');setAdding(master);setMobilePane('list');});};
+  return <Modal className="np-dialog pf-window" label="Profiles" onClose={close} backdropClose onEscapeKeyDown={event=>{if(busy){event.preventDefault();return;}if(drill && mobilePane!=='list'){event.preventDefault();backToList();}else if(selected.length > 1){event.preventDefault();dispatch({type:'ESCAPE'});}}}>
     <header className="pf-workspace-title">
       <Dialog.Title asChild><h1>Profiles</h1></Dialog.Title>
       <Segmented label="Profile type" value={type} options={TYPES.map(([id,label])=>({id,label}))} onChange={v=>void leave(()=>{setDrafts({});clearFilters();pickType(v as PresetType);})}/>
@@ -496,17 +509,17 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
         <button type="button" className="btn pf-mobile-show-results" onClick={backToList}>Show {count(visible.length,resultNoun)}</button>
       </aside>
       <section className="pf-my-profiles" ref={resultsPane} aria-label={adding ? 'Master presets' : `My ${nouns[1]}`}>
-        <div className="pf-results-heading"><strong>{count(visible.length,resultNoun)}</strong>
+        <div className="pf-results-heading" data-selection={bulk || undefined}>{bulk ? <><strong>{selected.length} selected</strong>{bulkActions}</>
+          : <><strong>{count(visible.length,resultNoun)}</strong>
           {adding ? <button type="button" className="btn" onClick={()=>showLibrary(false)}>Cancel</button>
-            : <button type="button" className="btn" onClick={()=>showLibrary(true)}>Add {typeLabel}</button>}
+            : <button type="button" className="btn" onClick={()=>showLibrary(true)}>Add {typeLabel}</button>}</>}
         </div>
         <div className="pf-results-tools"><input className="text pf-profile-search" type="search" aria-label="Search" placeholder="Search" value={search} onChange={e=>setSearch(e.target.value)}/>
           <button type="button" className="icon-btn pf-filter-toggle" aria-label={filtersActive ? `Filters, ${filtersActive} active` : 'Filters'} aria-expanded={filtersOpen || mobilePane==='filters'} aria-controls={`${id}-filters`} onClick={()=>{setFiltersOpen(!filtersOpen);setMobilePane(mobilePane==='filters'?'list':'filters');}}><Glyph name="filter"/>{filtersActive ? <span className="pf-filter-count" aria-hidden>{filtersActive}</span> : null}</button>
           {adding ? type === 'machine' && <button type="button" className="btn-ghost" onClick={()=>setState({appDialog:'createPrinter'})}>Custom printer</button>
             : <MenuButton label="More library actions" className={drill ? 'icon-btn' : 'btn-ghost'} items={[{label:'Import',action:()=>void leave(()=>setState({presetUx:{kind:'import',back:{kind:'presets',type,name:item?.key}}}))},{label:'Export',action:()=>void leave(()=>setState({presetUx:{kind:'export'}}))},'sep',{label:'Reset profiles…',disabled:!libraryReady,action:()=>void leave(()=>void confirmProfileReset())}]}>{drill ? <Glyph name="more"/> : 'More'}</MenuButton>}
         </div>
-        {selected.length > 1 && !adding && <div className="pf-bulk-actions"><span>{selected.length} selected</span><button type="button" className="btn" disabled={selected.length !== 2 || busy} onClick={() => setComparing(true)}>Compare</button><button type="button" className="btn" disabled={busy} onClick={() => void exportSelected()}>Export</button><button type="button" className="btn-ghost pf-delete" disabled={busy} onClick={() => void deleteSelected()}>Delete</button><button type="button" className="btn-ghost" onClick={() => dispatch({type: 'CLEAR'})}>Clear</button></div>}
-        <div className="pf-scroll pf-list" data-multi={selected.length > 1 || undefined} role="grid" aria-label={adding ? 'Master presets' : `My ${nouns[1]}`} aria-multiselectable={!adding} onContextMenu={e=>{const row=(e.target as Element).closest<HTMLElement>('[data-profile-key]');if(!row || adding) return;e.preventDefault();const key=row.dataset.profileKey!;if(!selectedSet.has(key)) dispatch({type:'CLICK',key});setContextMenu({x:e.clientX,y:e.clientY,anchor:row});}} tabIndex={visible.length ? -1 : 0} onKeyDown={e => {
+        <div className="pf-scroll pf-list" data-multi={bulk || undefined} role="grid" aria-label={adding ? 'Master presets' : `My ${nouns[1]}`} aria-multiselectable={!adding} onContextMenu={e=>{const row=(e.target as Element).closest<HTMLElement>('[data-profile-key]');if(!row || adding) return;e.preventDefault();const key=row.dataset.profileKey!;if(!selectedSet.has(key)) dispatch({type:'CLICK',key});setContextMenu({x:e.clientX,y:e.clientY,anchor:row});}} tabIndex={visible.length ? -1 : 0} onKeyDown={e => {
           if(e.target instanceof Element && e.target.closest('input,textarea,[contenteditable=true]')) return;
           const command = e.ctrlKey || e.metaKey;
           if(command && e.key.toLocaleLowerCase() === 'a' && !adding) {e.preventDefault(); e.stopPropagation(); dispatch({type: 'SELECT_ALL'});}
@@ -524,13 +537,13 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
         onPointerCancel={e => {drag.current=null;setPreviewWidth(null);if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);}}
         onLostPointerCapture={()=>{drag.current=null;setPreviewWidth(null);}}
         onKeyDown={e => {if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) {e.preventDefault();resizeList(e.key==='Home'?minListWidth:e.key==='End'?maxListWidth:(resultsPane.current?.getBoundingClientRect().width ?? shownListWidth)+(e.key==='ArrowRight'?16:-16),true);}}}/><div className="pf-detail-pane">{filteredDraft && <div className="pf-filtered-draft" role="status"><span>Hidden by filters</span><button type="button" className="more-toggle" onClick={()=>{clearFilters();setSearch('');}}>Clear filters</button></div>}
-        {adding ? item ? <AddDetails key={item.key} type={type} item={item} busy={busy} onAdd={(variant,colour)=>void addVariant(variant,colour)}/> : null
-        : comparing && selectedItems.length === 2 ? <Compare type={type} left={selectedItems[0].key} right={selectedItems[1].key} names={selectedItems.map(i => i.key)} setRight={() => {}} close={() => setComparing(false)}/>
-        : item?.user ? <ProfileEditor key={item.key} type={type} name={item.key} draft={drafts[JSON.stringify([type,item.key])]} update={updateDraft} onSavingChange={setBusy} onBack={close} onRemove={() => void deleteSelected([item.key])} onDuplicate={item.user.kind === 'master' ? undefined : () => void duplicate(item.user!)} foldActions={drill}/>
-        : selected.length > 1 ? <section className="pf-bulk-summary"><strong>{selected.length} selected</strong>{selectedItems.map(i => <div key={i.key} className="pf-bulk-name">{i.name}</div>)}</section> : null}
+        {adding ? addDetails
+        : comparing ? <Compare type={type} names={selectedItems.map(i => i.key)} titles={selectedItems.map(i => i.name)} close={() => setCompareHidden(selectionKey)}/>
+        : item?.user ? editor
+        : bulk ? <section className="pf-bulk-summary"><strong>{count(selected.length,nouns)} selected</strong><div className="pf-bulk-actions">{bulkActions}</div></section> : null}
       </div></div>
 
-      {contextMenu && <ActionMenu label="Profile actions" at={contextMenu} returnFocus={contextMenu.anchor} onClose={()=>setContextMenu(null)} items={[...(selected.length === 2 ? [{label:'Compare',action:()=>setComparing(true)}] : []),{label:'Export',action:()=>void exportSelected()},{label:'Delete',action:()=>void deleteSelected(),shortcut:'Delete'}]}/>}
+      {contextMenu && <ActionMenu label="Profile actions" at={contextMenu} returnFocus={contextMenu.anchor} onClose={()=>setContextMenu(null)} items={[...(canCompare && !comparing ? [{label:'Compare',action:()=>setCompareHidden(null)}] : []),{label:'Export',action:()=>void exportSelected()},{label:'Delete',action:()=>void deleteSelected(),shortcut:'Delete'}]}/>}
       {bulkError && <div className="pf-editor-error" role="alert">{bulkError}</div>}
     </div>
   </Modal>;

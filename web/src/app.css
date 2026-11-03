@@ -9,7 +9,7 @@
   --disabled: var(--ink-disabled);
   --border: var(--line-strong);
   --title-bg: var(--sunken);
-  --modified: var(--accent-text);
+  --modified: var(--changed);
   --line-eee: var(--line);
   --line-e4: var(--line);
   --line-ddd: var(--line);

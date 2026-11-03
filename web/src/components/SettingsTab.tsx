@@ -12,7 +12,7 @@ import { condition, environment, fieldDefinition, optionState } from '../visibil
 import { lineMode, nativeSupportCapable, tabEnvironment } from '../settings-env';
 import { Field } from './Field';
 import { useTabFit } from './tab-rows';
-import { InfoTip } from './InfoTip';
+import { LabelTip } from './InfoTip';
 import { Icon } from './Icon';
 import { GroupHead, isGroupOpen, setGroupOpen, useSettingsGroups } from './SettingsGroup';
 import './settings.css';
@@ -168,14 +168,14 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
                 keys = keys.flatMap((k) => (labels ?? ['']).map((_, i) => `${splitKey(k)[0]}#${i}`));
               }
               if (customRow(line)) return <div key={row} className="opt-line">
-                <span className="opt-label"><span className="opt-label-text" data-full-text={line.label}>{line.label}</span>{line.tooltip && <InfoTip label={line.label ?? ''}><p>{line.tooltip}</p></InfoTip>}</span>
+                <span className="opt-label"><LabelTip label={line.label} full={line.label}><strong>{line.label}</strong>{line.tooltip && <p>{line.tooltip}</p>}</LabelTip></span>
                 <span className="opt-field"><Suspense fallback={null}><HeadShapeButton head={String(config.nonplanar_head ?? '')} layerHeight={Number(effectiveConfig(getState(), 'process').layer_height) || 0.2} onSaved={editor ? id => editor.set('nonplanar_head', id) : undefined} /></Suspense></span>
               </div>;
               const shared = keys.length > 1;
               const tooltip = line.tooltip && OPTIONS[line.tooltip] ? OPTIONS[line.tooltip].tooltip : line.tooltip;
               const sharedLabel = line.label ?? (OPTIONS[splitKey(keys[0])[0]]?.full_label || OPTIONS[splitKey(keys[0])[0]]?.label);
               return <div key={row} className={shared ? 'option-row' : undefined}>
-                {shared && <span className="opt-label"><span className="opt-label-text" data-full-text={sharedLabel}>{sharedLabel}</span>{tooltip && <InfoTip label={sharedLabel ?? ''}><p>{tooltip}</p></InfoTip>}</span>}
+                {shared && <span className="opt-label"><LabelTip label={sharedLabel} full={sharedLabel}><strong>{sharedLabel}</strong>{tooltip && <p>{tooltip}</p>}</LabelTip></span>}
                 {keys.map((k, i) => field(line, keys, k, i, labels, shared, tooltip))}
               </div>;
             })}

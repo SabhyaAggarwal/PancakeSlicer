@@ -9,20 +9,23 @@
 
 :where(.orca-parity) .pf-changes-trigger { flex: none; white-space: nowrap; }
 :where(.orca-parity) .pf-changes-trigger[aria-expanded='true'] { text-decoration: underline; text-underline-offset: 2px; }
-:where(.orca-parity) .orca-menu.pf-changes-pop { width: min(740px,calc(100vw - 24px)); min-width: 0; max-width: calc(100vw - 24px); max-height: min(560px,var(--radix-popover-content-available-height,calc(100dvh - 24px))); overflow: hidden; display: flex; flex-direction: column; padding: 0; background: var(--panel); }
-:where(.orca-parity) .pf-changes-title { flex: none; padding: 8px 12px; font-size: 15px; font-weight: 650; border-bottom: 1px solid var(--line); }
-:where(.orca-parity) .pf-change-scroll { min-height: 0; overflow: auto; }
-:where(.orca-parity) .pf-change-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 14px; line-height: 20px; }
-:where(.orca-parity) .pf-change-table .change-setting { width: 31%; }
-:where(.orca-parity) .pf-change-table .change-value { width: 18%; }
-:where(.orca-parity) .pf-change-table .change-scope { width: 21%; }
-:where(.orca-parity) .pf-change-table .change-reset { width: 12%; }
-:where(.orca-parity) .pf-change-table th, :where(.orca-parity) .pf-change-table td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); overflow-wrap: break-word; word-break: normal; }
-:where(.orca-parity) .pf-change-table th { position: sticky; top: 0; background: var(--surface); font-size: 13px; font-weight: 600; }
+:where(.orca-parity) .orca-menu.pf-changes-pop { width: max-content; min-width: min(320px, calc(100vw - 24px)); max-width: min(480px, calc(100vw - 24px)); max-height: min(420px, var(--radix-popover-content-available-height, calc(100dvh - 24px))); overflow: hidden; display: flex; flex-direction: column; padding: 0; border-color: var(--border-control); }
+:where(.orca-parity) .pf-change-scroll { min-height: 0; max-height: calc(8 * 28px + 3 * 24px); overflow: auto; display: grid; grid-template-columns: minmax(0, auto) minmax(0, auto) auto minmax(0, 1fr) auto; align-content: start; padding: var(--s-1) var(--s-1) var(--s-2); }
+:where(.orca-parity) .pf-change-group { grid-column: 1 / -1; padding: var(--s-2) var(--s-2) var(--s-1); font: var(--t-small); font-weight: 600; color: var(--ink-3); }
+:where(.orca-parity) .pf-change { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; min-height: 28px; border-radius: var(--r-1); }
+:where(.orca-parity) .pf-change:hover { background: var(--hover); }
+:where(.orca-parity) .pf-change-line { grid-column: 1 / 5; display: grid; grid-template-columns: subgrid; align-items: baseline; column-gap: var(--s-2); min-width: 0; min-height: 28px; padding: 6px var(--s-2); border: 0; border-radius: var(--r-1); background: none; color: var(--ink); font: 400 13px/16px var(--font-ui); font-variant-numeric: tabular-nums; text-align: left; white-space: nowrap; cursor: pointer; }
+:where(.orca-parity) .pf-change-line > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+:where(.orca-parity) .pf-change-name { padding-right: var(--s-3); }
+:where(.orca-parity) :is(.pf-change-was, .pf-change-to, .pf-change-scope) { color: var(--ink-3); }
+:where(.orca-parity) .pf-change-to { font-size: 12px; }
+:where(.orca-parity) .pf-change > .reset-icon { margin: 0 var(--s-1); opacity: 0; }
+:where(.orca-parity) .pf-change:is(:hover, :focus-within) > .reset-icon { opacity: 1; }
+@media (pointer: coarse) { :where(.orca-parity) .pf-change > .reset-icon { opacity: 1; } }
+:where(.orca-parity) .pf-changes-foot { flex: none; display: flex; justify-content: flex-end; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-3); border-top: 1px solid var(--line); }
+:where(.orca-parity) .pf-changes-foot > :is(.btn, .btn-ghost) { min-height: 28px; padding: 0 var(--s-3); font: 500 12px/16px var(--font-ui); }
 :where(.orca-parity) .pf-name { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; }
 :where(.orca-parity) .pf-name:hover { color: var(--accent-text); }
-:where(.orca-parity) .pf-changes-foot { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface); }
-@media (max-width: 580px) { :where(.orca-parity) .pf-change-table, :where(.orca-parity) .pf-change-table tbody, :where(.orca-parity) .pf-change-table tr { display: block; } :where(.orca-parity) .pf-change-table thead, :where(.orca-parity) .pf-change-table colgroup { display: none; } :where(.orca-parity) .pf-change-table tr { padding: 6px 0; border-bottom: 1px solid var(--line); } :where(.orca-parity) .pf-change-table td { display: grid; grid-template-columns: 72px minmax(0,1fr); gap: 8px; padding: 4px 10px; border: 0; } :where(.orca-parity) .pf-change-table td::before { content: attr(data-label); color: var(--label); font-size: 12px; } :where(.orca-parity) .pf-change-table td:last-child { display: flex; justify-content: flex-end; } }
 
 :where(.orca-parity) .scope { display: flex; align-items: center; justify-content: center; width: var(--s-6, 20px); }
 :where(.orca-parity) .scope-use { position: relative; width: 100%; height: var(--h-field); padding: 0; border: 0; background: none; cursor: pointer; }

@@ -20,10 +20,15 @@
 :where(.orca-parity) .pt-status:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 :where(.orca-parity) .pt-status[data-tone=danger] { color: var(--danger); }
 :where(.orca-parity) .pt-status[data-tone=accent] { color: var(--accent-text); }
-:where(.orca-parity) .pt-dot { width: 14px; height: 14px; flex: none; display: grid; place-items: center; }
-:where(.orca-parity) .pt-dot::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pt-pulse 1s ease-in-out infinite alternate; }
-@keyframes pt-pulse { from { opacity: .35; } to { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { :where(.orca-parity) .pt-dot::before { animation: none; } }
+:where(.orca-parity) .pt-saving { width: 14px; height: 14px; flex: none; display: grid; place-items: center; }
+:where(.orca-parity) .pt-saving > svg { grid-area: 1 / 1; }
+:where(.orca-parity) .pt-saving > svg:not(.pt-spinner) { display: none; }
+:where(.orca-parity) .pt-spinner { animation: pt-spin .8s linear infinite; }
+@keyframes pt-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  :where(.orca-parity) .pt-spinner { display: none; }
+  :where(.orca-parity) .pt-saving > svg:not(.pt-spinner) { display: block; }
+}
 
 @media (pointer: coarse), (max-width: 599px) { :where(.orca-parity) .pt-editing { min-height: 44px; } }
 

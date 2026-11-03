@@ -41,14 +41,15 @@ import { toggleSidebar, useSidebarHidden } from './sidebar';
 import { loadedPreviewView, loadPreviewView } from './components/preview-loader';
 
 const PresetDialog = lazy(() => import('./components/Dialogs').then((m) => ({ default: m.PresetDialog })));
-const PresetUx = lazy(() => import('./components/PresetUx'));
+const PresetUx = preloadable(() => import('./components/PresetUx'));
 const FlushDialog = lazy(() => import('./components/FlushDialog').then((m) => ({ default: m.FlushDialog })));
 const PreviewView = lazy(() => loadPreviewView().then((viewer) => ({ default: viewer })));
-const ProjectsView = lazy(() => import('./projects/ProjectsView'));
+const ProjectsView = preloadable(() => import('./projects/ProjectsView'));
 const Palette = lazy(() => import('./commands/Palette'));
 
 import { useSyncExternalStore } from 'react';
 import { paletteQuery, subscribePalette } from './commands/registry';
+import { preloadable, whenIdle } from './preloadable';
 const AppDialog = lazy(() => import('./components/AppDialogs'));
 const CalibDialog = lazy(() => import('./components/CalibDialog'));
 const NonplanarCalibDialog = lazy(() => import('./components/NonplanarCalibDialog'));
@@ -112,6 +113,9 @@ export default function App() {
   const previewViewer = useRef<ComponentType>(undefined);
   if (previewOpened.current) previewViewer.current ??= loadedPreviewView() ?? PreviewView;
   const Viewer = previewViewer.current ?? PreviewView;
+
+  useEffect(() => whenIdle(() => void ProjectsView.preload().catch(() => {})), []);
+  useEffect(() => whenIdle(() => void PresetUx.preload().catch(() => {})), []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

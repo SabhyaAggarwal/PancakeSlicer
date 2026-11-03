@@ -30,8 +30,13 @@
 :where(.orca-parity) .pf-results-heading > .btn { flex: none; }
 :where(.orca-parity) .pf-results-tools { flex: none; display: flex; align-items: center; gap: var(--s-3); }
 :where(.orca-parity) .pf-results-tools .pf-profile-search { flex: 1; min-width: 0; margin: 0; }
-:where(.orca-parity) .pf-bulk-actions { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); font: var(--t-small); color: var(--label); }
-:where(.orca-parity) .pf-bulk-actions > span { margin-right: auto; }
+:where(.orca-parity) .pf-results-heading[data-selection] { gap: var(--s-1); flex-wrap: nowrap; }
+:where(.orca-parity) .pf-results-heading[data-selection] strong { white-space: nowrap; }
+:where(.orca-parity) :is(.pf-results-heading, .pf-bulk-actions) :is(.btn-ghost, .icon-btn) { flex: none; min-height: var(--h-control); padding: 0 var(--s-2); font: var(--t-small); }
+:where(.orca-parity) :is(.pf-results-heading, .pf-bulk-actions) .btn-ghost[aria-pressed=true] { background: var(--hover); }
+:where(.orca-parity) :is(.pf-results-heading, .pf-bulk-actions) .pf-delete:hover:not(:disabled) { color: var(--danger); }
+:where(.orca-parity) .pf-bulk-actions { display: flex; align-items: center; gap: var(--s-1); }
+:where(.orca-parity) .pf-window :is(.pf-results-heading, .pf-bulk-actions) .btn-ghost:disabled { border-color: transparent; background: none; }
 
 :where(.orca-parity) .pf-window .pf-my-profiles .pf-list { flex: 1; min-height: 0; max-height: none; overflow: auto; border: 0; }
 :where(.orca-parity) .pf-list { --pf-row: var(--h-row); }
@@ -49,6 +54,7 @@
 :where(.orca-parity) .pf-window .pf-item { position: relative; display: flex; align-items: center; gap: var(--s-3); min-height: var(--pf-row); padding: 0 var(--s-3); border-radius: var(--r-1); color: var(--ink); font: var(--t-body); cursor: default; user-select: none; }
 :where(.orca-parity) .pf-window .pf-item:hover { background: var(--hover); }
 :where(.orca-parity) .pf-window .pf-item.is-on { background: var(--selected); color: var(--selected-foreground); }
+:where(.orca-parity) .pf-window .pf-item.is-checked { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 :where(.orca-parity) .pf-window .pf-item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 :where(.orca-parity) .pf-row-check { position: absolute; left: var(--s-1); top: 50%; z-index: 1; display: none; transform: translateY(-50%); }
 :where(.orca-parity) :is(.pf-selectable:hover, .pf-selectable:focus-visible, .pf-list[data-multi] .pf-selectable) .pf-row-check { display: flex; }
@@ -66,8 +72,8 @@
 :where(.orca-parity) .pf-item > .profile-color-swatch { flex-basis: 16px; width: 16px; height: 16px; border-radius: 50%; }
 :where(.orca-parity) .pf-used { flex: none; margin-left: auto; padding: 0 var(--s-3); border-radius: 999px; background: var(--accent); color: var(--on-accent); font: var(--t-small); line-height: 20px; white-space: nowrap; }
 :where(.orca-parity) .pf-item.is-on .pf-item-note { color: inherit; }
-:where(.orca-parity) .pf-row-used { flex: none; display: grid; place-items: center; width: 16px; height: 16px; margin-left: auto; color: var(--accent-text); }
-:where(.orca-parity) .pf-row-used svg { fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+:where(.orca-parity) .pf-row-used { flex: none; margin-left: auto; font: var(--t-small); color: var(--muted); white-space: nowrap; }
+:where(.orca-parity) .pf-item.is-on .pf-row-used { color: inherit; }
 @media (pointer: coarse) { :where(.orca-parity) .pf-list { --pf-row: 44px; } }
 :where(.orca-parity) .pf-profile-empty { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-3); padding: var(--s-4) var(--s-3); color: var(--muted); }
 
@@ -76,9 +82,8 @@
 
 :where(.orca-parity) .pf-detail-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: var(--s-4) var(--s-5) 0; overflow: hidden; }
 :where(.orca-parity) .pf-filtered-draft { flex: none; display: flex; align-items: baseline; gap: var(--s-3); padding-bottom: var(--s-3); font: var(--t-small); color: var(--label); }
-:where(.orca-parity) .pf-bulk-summary { flex: 1; min-width: 0; overflow: auto; padding: var(--s-2) 0 var(--s-5); }
-:where(.orca-parity) .pf-bulk-summary p { margin: var(--s-3) 0; color: var(--label); }
-:where(.orca-parity) .pf-bulk-name { padding: var(--s-2) 0; color: var(--label); overflow-wrap: anywhere; }
+:where(.orca-parity) .pf-bulk-summary { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-3); min-width: 0; padding-bottom: var(--s-5); }
+:where(.orca-parity) .pf-bulk-summary strong { font: var(--t-label); color: var(--ink); }
 :where(.orca-parity) .pf-add-source { align-self: stretch; display: flex; flex-direction: column; gap: var(--s-4); min-width: 0; max-width: 560px; padding: var(--s-4) 0; overflow-y: auto; }
 :where(.orca-parity) .pf-add-source h2 { margin: 0; font: var(--t-title); font-size: 18px; line-height: 24px; overflow-wrap: break-word; }
 :where(.orca-parity) .pf-add-source p { margin: 0; color: var(--label); }
@@ -93,7 +98,7 @@
 :where(.orca-parity) .pf-window .pf-box > legend { padding: 0 0 var(--s-4); font: var(--t-title); color: var(--text); }
 :where(.orca-parity) .pf-window .pf-box > .pf-scroll { flex: 1; min-height: 0; max-height: none; overflow: auto; border: 0; }
 :where(.orca-parity) .pf-window .pf-compare-bar { flex: none; flex-wrap: wrap; gap: var(--s-3); }
-:where(.orca-parity) .pf-window .pf-compare-bar > span:first-child { overflow-wrap: anywhere; }
+:where(.orca-parity) .pf-window .pf-compare .pf-table :is(th, td):first-child { width: 160px; min-width: 120px; overflow-wrap: break-word; }
 
 :where(.orca-parity) .pf-full-editor { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 :where(.orca-parity) .pf-editor-heading { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-3) var(--s-5); padding: 0 0 var(--space-section, 16px); }
@@ -149,8 +154,5 @@
   :where(.orca-parity) .pf-workspace-title [role=tablist] > * { flex: 1 1 auto; padding-inline: var(--s-2); white-space: nowrap; }
   :where(.orca-parity) .pf-window .pf-library-item { min-height: 44px; }
   :where(.orca-parity) .pf-list { --pf-row: 44px; }
-  :where(.orca-parity) .pf-full-editor .opt-line { grid-template-columns: minmax(0, 1fr) 44px; gap: var(--s-2); padding-block: var(--s-3); }
-  :where(.orca-parity) .pf-full-editor .opt-line > .opt-label { grid-column: 1 / -1; }
-  :where(.orca-parity) .pf-full-editor .opt-line > .opt-field { grid-column: 1; }
   :where(.orca-parity) .pf-source-cover { width: 96px; height: 96px; }
 }

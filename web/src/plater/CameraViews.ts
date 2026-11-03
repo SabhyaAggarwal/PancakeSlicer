@@ -35,6 +35,7 @@ export class CameraViews {
     this.controls.maxPolarAngle = Math.PI - this.controls.minPolarAngle;
     this.applyPrefs();
     host.addEventListener('wheel', this.onWheel, { capture: true, passive: false });
+    for (const type of ['gesturestart', 'gesturechange']) host.addEventListener(type, this.onGesture, { passive: false });
     this.unsubscribePrefs = subscribeCamera(this.applyPrefs);
     host.addEventListener('pointermove', this.onTouchpadMove);
     this.controls.addEventListener('change', this.onOrbit);
@@ -72,23 +73,57 @@ export class CameraViews {
     this.controls.dispatchEvent({ type: 'end' });
   };
 
+  private zoomBy(scale: number, x: number, y: number) {
+    const c = this.controls as unknown as { _updateZoomParameters(x: number, y: number): void; _dollyIn(s: number): void };
+    this.controls.dispatchEvent({ type: 'start' });
+    c._updateZoomParameters(x, y);
+    c._dollyIn(cameraPrefs.reverseZoom ? 1 / scale : scale);
+    this.controls.update();
+    this.controls.dispatchEvent({ type: 'end' });
+  }
+
   private wheelTrackpad = false;
   private wheelAt = -Infinity;
   private onWheel = (e: WheelEvent) => {
-    if (!this.active() || !this.controls.enabled || !this.controls.enablePan || e.ctrlKey || e.metaKey) return;
+    if (!this.active() || !this.controls.enabled || e.metaKey) return;
+    const k = e.deltaMode === 1 ? 100 / 3 : e.deltaMode === 2 ? 800 : 1;
+    if (e.ctrlKey) {
+      if (!this.controls.enableZoom) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      this.zoomBy(Math.exp(THREE.MathUtils.clamp(e.deltaY * k, -50, 50) / 100), e.clientX, e.clientY);
+      return;
+    }
     if (e.timeStamp - this.wheelAt > 250) {
       const legacy = (e as WheelEvent & { wheelDeltaY?: number }).wheelDeltaY;
       this.wheelTrackpad = cameraPrefs.style === 'touchpad' || e.deltaX !== 0 ||
         e.deltaMode === 0 && (legacy ? legacy === -3 * e.deltaY : Math.abs(e.deltaY) < 50);
     }
     this.wheelAt = e.timeStamp;
-    if (!this.wheelTrackpad) return;
+    if (!this.wheelTrackpad) {
+      if (!this.controls.enableZoom || !e.deltaY) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      this.zoomBy(Math.exp(THREE.MathUtils.clamp(e.deltaY * k, -400, 400) * Math.log(8 / 7) / 100), e.clientX, e.clientY);
+      return;
+    }
+    if (!this.controls.enablePan) return;
     e.preventDefault();
     e.stopImmediatePropagation();
-    const k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1;
+    const px = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1;
     this.controls.dispatchEvent({ type: 'start' });
-    this.controls.pan(-e.deltaX * k, -e.deltaY * k);
+    this.controls.pan(-e.deltaX * px, -e.deltaY * px);
     this.controls.dispatchEvent({ type: 'end' });
+  };
+  private gestureScale = 1;
+  private onGesture = (e: Event) => {
+    const scale = (e as Event & { scale?: number }).scale ?? 1;
+    if (!this.active() || !this.controls.enabled || !this.controls.enableZoom) return;
+    e.preventDefault();
+    if (e.type === 'gesturestart') { this.gestureScale = scale; return; }
+    const { clientX = 0, clientY = 0 } = e as Event & { clientX?: number; clientY?: number };
+    if (scale > 0 && this.gestureScale > 0) this.zoomBy(this.gestureScale / scale, clientX, clientY);
+    this.gestureScale = scale;
   };
 
   private focus(center: THREE.Vector3, radius: number) {
@@ -332,6 +367,7 @@ export class CameraViews {
     this.unsubscribePrefs();
     this.host.removeEventListener('pointermove', this.onTouchpadMove);
     this.host.removeEventListener('wheel', this.onWheel, { capture: true });
+    for (const type of ['gesturestart', 'gesturechange']) this.host.removeEventListener(type, this.onGesture);
     this.controls.dispose();
   }
 }

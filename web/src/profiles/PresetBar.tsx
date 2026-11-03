@@ -8,6 +8,7 @@ import { OPTIONS, splitKey, TABS } from '../options';
 import { getState, presetEdits, resolvePreset, setState, useStore } from '../state/store';
 import { useMachine } from '../flow/fsm';
 import { display, isMetaKey } from './format';
+import { Glyph } from '../components/Glyph';
 import { undoable } from '../state/history';
 import { PresetPicker } from './Pickers';
 import { ProcessPresetPicker } from '../components/ProcessPresetPicker';
@@ -42,23 +43,35 @@ const TAB_OF = { process: 'process', filament: 'filament', machine: 'printer' } 
 
 const where = (c: Change) => c.scope === 'project' ? c.owner.name : `${c.scope === 'object' ? 'Object' : c.scope === 'part' ? 'Part' : 'Range'}: ${c.owner.name}`;
 
-function Changes({ type, list }: { type: PresetType; list: Change[] }) {
-  const [all, setAll] = useState(false);
-  const shown = all ? list : list.slice(0, 6);
+const label = (c: Change) => c.key === 'nonplanar_mode' ? 'Slicing method' : OPTIONS[c.key]?.label || c.key;
+const pageOf = (type: PresetType, key: string) => TABS[TAB_OF[type]]?.pages.findIndex((p) => p.groups.some((g) => g.lines.some((l) => l.options.some((k) => splitKey(k)[0] === key)))) ?? -1;
+
+function Changes({ type, list, onJump }: { type: PresetType; list: Change[]; onJump(): void }) {
   const focus = (c: Change) => {
+    onJump();
     if (c.owner.object !== undefined) {
       const object = getState().objects.find((o) => o.id === c.owner.object);
       if (object) setState({ processScope: 'objects', selected: { object: object.id, instance: object.instances[0]?.id ?? 0, volume: c.owner.volume, range: c.owner.range } });
       return;
     }
-    const page = TABS[TAB_OF[type]]?.pages.find((p) => p.groups.some((g) => g.lines.some((l) => l.options.some((k) => splitKey(k)[0] === c.key))));
+    const page = TABS[TAB_OF[type]]?.pages[pageOf(type, c.key)];
     if (page) setState({ settingsFocus: { type, page: page.title, key: c.key, nonce: Date.now() } });
   };
-  const label=(c:Change)=>c.key === 'nonplanar_mode' ? 'Slicing method' : OPTIONS[c.key]?.label || c.key;
-  return <div className="pf-change-scroll"><table className="pf-change-table"><colgroup><col className="change-setting"/><col className="change-value"/><col className="change-value"/><col className="change-scope"/><col className="change-reset"/></colgroup><thead><tr><th>Setting</th><th>Previous</th><th>Current</th><th>Scope</th><th><span className="field-label-hidden">Reset</span></th></tr></thead><tbody>
-    {shown.map(c=><tr key={`${c.scope}:${c.owner.object ?? ''}:${c.owner.volume ?? ''}:${c.owner.range ?? ''}:${c.key}`}><td data-label="Setting"><button type="button" className="pf-name" onClick={()=>focus(c)}>{label(c)}</button></td><td data-label="Previous">{display(c.key,c.was)}</td><td data-label="Current">{display(c.key,c.now)}</td><td data-label="Scope">{where(c)}</td><td><button type="button" className="btn-ghost" aria-label={`Reset ${label(c)}`} onClick={()=>revert(c)}>Reset</button></td></tr>)}
-  </tbody></table>{list.length > shown.length && <button type="button" className="btn-ghost" onClick={()=>setAll(true)}>Show {list.length - shown.length} more changes</button>}</div>;
-
+  const rows = list.map((c) => ({ c, page: pageOf(type, c.key) })).sort((x, y) => (x.page < 0 ? 1e9 : x.page) - (y.page < 0 ? 1e9 : y.page));
+  const scoped = new Set(list.map(where)).size > 1, grouped = list.length > 4 && new Set(rows.map((r) => r.page)).size > 1;
+  let heading = -2;
+  return <div className="pf-change-scroll" role="list">{rows.flatMap(({ c, page }) => {
+    const out = [];
+    if (grouped && page !== heading) { heading = page; out.push(<div key={`p:${page}`} className="pf-change-group" role="presentation">{TABS[TAB_OF[type]]?.pages[page]?.title ?? 'Other'}</div>); }
+    const name = label(c), was = display(c.key, c.was), now = display(c.key, c.now), scope = scoped ? where(c) : '';
+    out.push(<div key={`${c.scope}:${c.owner.object ?? ''}:${c.owner.volume ?? ''}:${c.owner.range ?? ''}:${c.key}`} className="pf-change" role="listitem">
+      <button type="button" className="pf-change-line" aria-label={`${name}${scope ? `, ${scope}` : ''}: ${was} to ${now}`} data-full-text={`${name}${scope ? ` (${scope})` : ''}: ${was} → ${now}`} onClick={() => focus(c)}>
+        <span className="pf-change-name">{name}</span><span className="pf-change-was">{was}</span><span className="pf-change-to" aria-hidden>→</span><span className="pf-change-now">{now}{scope && <span className="pf-change-scope"> · {scope}</span>}</span>
+      </button>
+      <button type="button" className="reset-icon" aria-label={`Reset ${name}`} onClick={() => revert(c)}><Glyph name="undo" size={14}/></button>
+    </div>);
+    return out;
+  })}</div>;
 }
 
 const REVIEW = 'pf-review';
@@ -75,7 +88,7 @@ export function reviewChanges(type: PresetType, slot = 0) {
   window.dispatchEvent(new CustomEvent(REVIEW, { detail: { type, slot } }));
 }
 
-function ChangesPop({type,slot,list,project,state}: {type:PresetType;slot:number;list:Change[];project:number;state:string}) {
+function ChangesPop({type,slot,list,project,state,save}: {type:PresetType;slot:number;list:Change[];project:number;state:string;save():void}) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     const take = () => {
@@ -89,15 +102,10 @@ function ChangesPop({type,slot,list,project,state}: {type:PresetType;slot:number
   useEffect(() => { if (!list.length && state !== 'saved') setOpen(false); }, [list.length, state]);
   if (!list.length && state !== 'saved') return null;
   const label = state === 'saving' ? 'Saving…' : state === 'saved' && !list.length ? 'Saved to profile' : `${list.length} change${list.length === 1 ? '' : 's'}`;
-  const resetAll = async () => {
-    const {confirmDialog}=await import('../components/Ask');
-    if(await confirmDialog('Revert all changes',`Reset all ${list.length} listed changes, including object and part overrides?`,['Revert all','Cancel'])) undoable('Revert all listed changes',()=>list.forEach(revert));
-  };
-  return <Popover.Root open={open} onOpenChange={setOpen}><Popover.Trigger asChild><button type="button" className="link pf-changes-trigger" aria-expanded={open}>{label}</button></Popover.Trigger><Popover.Portal><Popover.Content className="orca-menu pf-changes-pop" role="dialog" aria-label="Project changes" collisionPadding={12} sideOffset={6} align="end">
-    <div className="pf-changes-title">Project changes</div><Changes type={type} list={list}/>
-    {!!list.length && <div className="pf-changes-foot"><button type="button" className="btn" onClick={()=>void import('../flow/project').then(m=>m.flushProject()).catch(error=>import('../state/store').then(m=>m.toast(`Project save failed: ${error instanceof Error ? error.message : String(error)}`)))}>Save project</button>
-      {project > 0 && <button type="button" className="btn" onClick={()=>{try {reviewProjectProfileChanges(type,slot);setOpen(false);}catch(error){toast(error instanceof Error ? error.message : String(error));}}}>Review in profile editor…</button>}
-      <button type="button" className="btn-ghost" onClick={()=>void resetAll()}>Revert all</button></div>}
+  return <Popover.Root open={open} onOpenChange={setOpen}><Popover.Trigger asChild><button type="button" className="link pf-changes-trigger" aria-expanded={open}>{label}</button></Popover.Trigger><Popover.Portal><Popover.Content className="orca-menu pf-changes-pop" role="dialog" aria-label="Changes" collisionPadding={12} sideOffset={6} align="start">
+    <Changes type={type} list={list} onJump={() => setOpen(false)}/>
+    {!!list.length && <div className="pf-changes-foot"><button type="button" className="btn-ghost" onClick={() => undoable('Revert all changes', () => list.forEach(revert))}>Revert all</button>
+      {project > 0 && <button type="button" className="btn primary" onClick={() => {setOpen(false);save();}}>Save to profile…</button>}</div>}
   </Popover.Content></Popover.Portal></Popover.Root>;
 
 }
@@ -135,8 +143,8 @@ export function PresetActions({ type, slot = 0 }: { type: PresetType; slot?: num
 }
 
 export function ChangesMark({ type, slot = 0 }: { type: PresetType; slot?: number }) {
-  const {list,project,state}=usePresetActions(type,slot);
-  return <ChangesPop type={type} slot={slot} list={list} project={project} state={state} />;
+  const {list,project,state,save}=usePresetActions(type,slot);
+  return <ChangesPop type={type} slot={slot} list={list} project={project} state={state} save={save}/>;
 }
 
 const EMPTY: ProfileConflict[] = [];

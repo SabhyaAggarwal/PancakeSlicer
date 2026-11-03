@@ -10,6 +10,7 @@ import './versions.css';
 const VersionHistory = lazy(() => import('./VersionHistory'));
 
 const clock = <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9M2.5 2.5v2.2h2.2M8 5v3.2l2.2 1.4" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+const spinner = <svg className="pt-spinner" width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2a6 6 0 0 1 6 6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>;
 const warning = <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.2 14.3 13.5H1.7zM8 6.5v3.2M8 11.6v.1" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>;
 
 export function ProjectTitle() {
@@ -69,7 +70,7 @@ function SaveState() {
   if (context.conflict) shown = status('danger', warning, 'Conflict', { onClick: () => setState({ tab: 'prepare' }), hint: 'Choose Reload latest or Keep mine' });
   else if (history.viewing) shown = status('accent', clock, `Viewing ${versionTime(history.viewing.until)}`, { onClick: toggleHistory, expanded: history.open });
   else if (value === 'failed') shown = status('danger', warning, 'Retry', { onClick: () => void retryProject(), hint: context.error ?? 'The project was not saved' });
-  else if (value === 'saving') shown = historyButton(<span className="pt-dot" aria-hidden="true" />, LABEL.saving);
+  else if (value === 'saving') shown = historyButton(<span className="pt-saving" aria-hidden="true">{spinner}{clock}</span>, LABEL.saving);
   else if (value === 'editing' || value === 'saved') shown = historyButton(clock, LABEL[value]);
   else if (value === 'opening') shown = <span className="pt-status" data-tone="quiet" role="status"><span className="pt-label">Opening…</span></span>;
   return <>{shown}{history.open && <Suspense fallback={null}><VersionHistory /></Suspense>}</>;

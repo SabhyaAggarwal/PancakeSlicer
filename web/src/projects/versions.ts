@@ -2,15 +2,17 @@ import { useSyncExternalStore } from 'react';
 import type { StoredDocBase } from '../persist/backend';
 import { plateSignature } from '../slice-input';
 import type { Doc } from '../state/history';
-import { getState, setState, subscribeStore, toast, type JobView } from '../state/store';
+import { getState, resolvePreset, setState, subscribeStore, toast, type JobView } from '../state/store';
 import type { JobStatus } from '../api/types';
 import { project, flushProject, leaveProjectVersion, restoreProjectVersion, viewProjectVersion, type ProjectMeta } from '../flow/project';
-import { describeChange, type VersionChange } from './version-change';
+import { changeText, describeChange, type VersionChange } from './version-change';
+import { presetLabel } from '../profiles/format';
+import type { PresetType } from '../api/types';
 
 export interface ProjectVersion {
   id: number; revision: number; at: number; until: number; name: string; objects: number;
   change: VersionChange[]; sealed?: boolean;
-  slice?: { at: number; timeS?: number; grams?: number; layers?: number };
+  slice?: { at: number; timeS?: number; grams?: number; layers?: number; mm?: number; supportG?: number };
 }
 export interface HistoryState {
   open: boolean;
@@ -53,7 +55,7 @@ export async function refreshHistory(id = project.get().context.id) {
   try {
     const { serviceJson } = await service();
     const list = await serviceJson<{ revision: number; versions: ProjectVersion[] }>(path(id), undefined, true);
-    if (mine === reading) set({ versions: list?.versions ?? [], error: null });
+    if (mine === reading) set({ versions: (list?.versions ?? []).map((v) => ({ ...v, change: Array.isArray(v.change) ? v.change : [] })), error: null });
   } catch (e) {
     if (mine === reading) set({ error: errorText(e) });
   }
@@ -103,7 +105,7 @@ export async function backToLatest() {
 export async function restoreVersion() {
   const v = state.viewing, id = state.projectId;
   if (!v || !id) return;
-  override = { id, change: [{ label: `Restored ${versionTime(v.until)}` }] };
+  override = { id, change: [{ key: `restore:${v.until}`, label: 'Restored' }] };
   ++viewToken;
   set({ viewing: null, loading: null });
   try {
@@ -173,7 +175,7 @@ export function dayOf(t: number, now = Date.now()) {
   const days = Math.round((new Date(today.toDateString()).getTime() - new Date(d.toDateString()).getTime()) / 86_400_000);
   return days === 0 ? 'Today' : days === 1 ? 'Yesterday' : d.toLocaleDateString([], { weekday: days < 7 ? 'long' : undefined, month: 'short', day: 'numeric', year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric' });
 }
-const withSeconds = (t: number) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+export const withSeconds = (t: number) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 export function rowTimes(versions: readonly ProjectVersion[], now = Date.now()): Map<number, string> {
   const base = versions.map((v) => {
     const age = now - v.until;
@@ -182,3 +184,32 @@ export function rowTimes(versions: readonly ProjectVersion[], now = Date.now()):
   return new Map(versions.map((v, i) => [v.id, base[i] === base[i - 1] || base[i] === base[i + 1] ? withSeconds(v.until) : base[i]]));
 }
 export const versionTime = (t: number) => dayOf(t) === 'Today' ? clock(t) : `${dayOf(t)} ${clock(t)}`;
+
+export const changeLine = (c: VersionChange) => {
+  const at = c.key?.startsWith('restore:') ? Number(c.key.slice(8)) : NaN;
+  return Number.isFinite(at) ? `Restored ↺ ${withSeconds(at)}` : changeText(c);
+};
+export const exactTime = (t: number) => new Date(t).toLocaleString([], { dateStyle: 'medium', timeStyle: 'medium' });
+
+export interface VersionSetup { printer: string; process: string; filaments: string[] }
+const setups = new Map<string, Promise<VersionSetup>>();
+const profileName = (type: PresetType, key: unknown) => {
+  if (typeof key !== 'string' || !key) return '';
+  const resolved = resolvePreset(getState(), type, key);
+  return presetLabel(resolved.name ?? resolved.user?.name ?? resolved.base?.name ?? key);
+};
+export function versionSetup(id: string, v: number): Promise<VersionSetup> {
+  const key = `${id}/${v}`;
+  let found = setups.get(key);
+  if (!found) {
+    found = import('../persist/project-wire').then(({ projectJson }) => projectJson<{ doc: { printer?: unknown; process?: unknown; filamentSlots?: unknown } }>(`${path(id)}/${v}`))
+      .then((record) => {
+        const doc = record?.doc ?? {};
+        return { printer: profileName('machine', doc.printer), process: profileName('process', doc.process),
+          filaments: Array.isArray(doc.filamentSlots) ? doc.filamentSlots.map((k) => profileName('filament', k)) : [] };
+      });
+    found.catch(() => setups.delete(key));
+    setups.set(key, found);
+  }
+  return found;
+}

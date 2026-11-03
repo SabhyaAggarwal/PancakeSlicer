@@ -9,6 +9,7 @@ const GLYPH = {
   plus: 'M8 3.5v9M3.5 8h9',
   minus: 'M3.5 8h9',
   printer: 'M2.5 13.5h11M4 13.5v-10h8v10M4 6.5h8M7 6.5v3h2v-3M6.5 11.5h3',
+  undo: 'M4.5 6.5h5.25a2.75 2.75 0 0 1 0 5.5H6.5M4.5 6.5 7 4M4.5 6.5 7 9',
 } as const;
 export type GlyphName = keyof typeof GLYPH;
 

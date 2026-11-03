@@ -1,6 +1,6 @@
 :where(.orca-parity) .canvas-area:has(.vh-panel) .objects-outliner { display: none; }
-:where(.orca-parity) .vh-panel { position: absolute; z-index: 6; top: 56px; right: var(--s-4); width: clamp(220px, 36%, 320px); max-height: calc(100% - 56px - 104px); display: flex; flex-direction: column; border: 1px solid var(--line-strong); border-radius: var(--r-3); background: var(--panel); box-shadow: var(--shadow-pop); color: var(--ink); }
-:where(.orca-parity) .canvas-area[data-viewport=preview] .vh-panel { top: var(--pv-top); right: var(--pv-slider); z-index: 46; width: min(320px, calc(100% - var(--pv-legend-w) - var(--pv-slider) - 2 * var(--pv-inset))); max-height: calc(100% - var(--pv-top) - var(--pv-cube)); }
+:where(.orca-parity) .vh-panel { position: absolute; z-index: 6; top: 56px; right: var(--s-4); width: clamp(220px, 36%, 360px); max-height: calc(100% - 56px - 104px); display: flex; flex-direction: column; border: 1px solid var(--line-strong); border-radius: var(--r-3); background: var(--panel); box-shadow: var(--shadow-pop); color: var(--ink); }
+:where(.orca-parity) .canvas-area[data-viewport=preview] .vh-panel { top: var(--pv-top); right: var(--pv-slider); z-index: 46; width: min(360px, calc(100% - var(--pv-legend-w) - var(--pv-slider) - 2 * var(--pv-inset))); max-height: calc(100% - var(--pv-top) - var(--pv-cube)); }
 :where(.orca-parity) .canvas-area[data-viewport=preview]:has(.vh-panel) .notifications > .notification.done { display: none; }
 @media (max-width: 899px) { :where(.orca-parity) .canvas-area[data-viewport=prepare] .vh-panel { top: 8px; right: max(8px, env(safe-area-inset-right)); width: min(320px, calc(100% - 120px)); } }
 @media (max-width: 599px) {
@@ -12,15 +12,30 @@
 :where(.orca-parity) .vh-empty { margin: 0; padding: var(--s-3) var(--s-4) var(--s-4); font: var(--t-small); color: var(--ink-3); }
 :where(.orca-parity) .vh-list { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 0 var(--s-2) var(--s-2); list-style: none; }
 :where(.orca-parity) .vh-list ul { margin: 0; padding: 0; list-style: none; }
-:where(.orca-parity) .vh-day-name { display: block; padding: var(--s-3) var(--s-3) var(--s-2); font: var(--t-small); font-weight: 600; color: var(--ink-3); }
-:where(.orca-parity) .vh-row { width: 100%; display: grid; gap: var(--s-1); padding: var(--s-2) var(--s-3); border: 0; border-radius: var(--r-1); background: none; color: var(--ink); text-align: left; font: var(--t-body); cursor: pointer; }
+:where(.orca-parity) .vh-day-name { display: block; padding: var(--s-3) var(--s-3) var(--s-1); font: var(--t-small); font-weight: 600; color: var(--ink-3); }
+:where(.orca-parity) .vh-row { position: relative; width: 100%; height: 32px; display: grid; grid-template-columns: 76px minmax(0, 1fr) auto 12px; align-items: center; column-gap: var(--s-3); padding: 0 var(--s-3); border: 0; border-radius: var(--r-1); background: none; color: var(--ink); text-align: left; font: var(--t-small); cursor: pointer; }
 :where(.orca-parity) .vh-row:hover { background: var(--surface); }
 :where(.orca-parity) .vh-row[aria-selected=true] { background: var(--accent-tint); }
 :where(.orca-parity) .vh-row[aria-busy=true] { opacity: .7; cursor: progress; }
-:where(.orca-parity) .vh-line { display: flex; align-items: center; gap: var(--s-3); font: var(--t-label); }
-:where(.orca-parity) .vh-tag { padding: 0 var(--s-2); border-radius: var(--r-1); background: var(--sunken); font: var(--t-small); color: var(--ink-3); }
-:where(.orca-parity) .vh-sliced { color: var(--accent-text); }
-:where(.orca-parity) .vh-what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); font: var(--t-small); }
-:where(.orca-parity) .vh-stats { font: var(--t-small); color: var(--ink-3); }
+:where(.orca-parity) .vh-time { color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; }
+:where(.orca-parity) .vh-row:is([aria-selected=true], [data-current]) .vh-time { color: var(--ink); }
+:where(.orca-parity) .vh-what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:where(.orca-parity) .vh-stats { display: inline-flex; align-items: center; gap: var(--s-2); color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+:where(.orca-parity) .vh-sliced { flex: none; color: var(--accent-text); }
+:where(.orca-parity) .vh-chevron { color: var(--ink-3); opacity: .45; transition: transform .12s; }
+:where(.orca-parity) .vh-row:is(:hover, [aria-selected=true]) .vh-chevron { opacity: 1; }
+:where(.orca-parity) .vh-row[aria-expanded=true] .vh-chevron { transform: rotate(90deg); }
+:where(.orca-parity) .vh-detail { margin: 0 0 var(--s-2); padding: var(--s-2) var(--s-3) var(--s-3) calc(76px + 2 * var(--s-3) - 2px); border-left: 2px solid var(--accent-tint); font: var(--t-small); color: var(--ink-2); }
+:where(.orca-parity) .vh-changes { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--s-1); color: var(--ink); }
+:where(.orca-parity) .vh-detail p { margin: var(--s-2) 0 0; }
+:where(.orca-parity) .vh-meta { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+:where(.orca-parity) .vh-panel[data-expanded] { width: clamp(220px, 44%, 420px); }
+:where(.orca-parity) .canvas-area[data-viewport=preview] .vh-panel[data-expanded] { width: min(420px, calc(100% - var(--pv-legend-w) - var(--pv-slider) - 2 * var(--pv-inset))); }
+@media (max-width: 899px) { :where(.orca-parity) .canvas-area[data-viewport=prepare] .vh-panel[data-expanded] { width: min(420px, calc(100% - 120px)); } }
+@media (max-width: 599px) {
+  :where(.orca-parity) .canvas-area[data-viewport=preview] .vh-panel[data-expanded] { width: auto; }
+  :where(.orca-parity) .vh-detail { padding-left: var(--s-4); }
+  :where(.orca-parity) .vh-stats-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
 :where(.orca-parity) .vh-viewing { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--s-4); border-top: 1px solid var(--line); }
 :where(.orca-parity) .vh-viewing-name { flex: 1 0 max-content; font: var(--t-label); color: var(--accent-text); white-space: nowrap; }

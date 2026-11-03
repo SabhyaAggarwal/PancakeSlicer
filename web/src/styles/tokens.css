@@ -10,12 +10,15 @@
   --t-readout: 500 15px/20px var(--font-ui);
   --t-hero: 600 24px/30px var(--font-ui);
   --label-track: 0;
-  --chrome: #302D2E;
-  --chrome-raised: #383536;
+  --chrome: #1F1D1E;
+  --chrome-raised: #2E2A2B;
   --on-chrome: #F6F3F4;
   --on-chrome-dim: #C0BABB;
   --panel: #383536;
-  --surface: #454142;
+  --surface: #4A4546;
+  --overlay: #585253;
+  --group-fill: #2E2B2C;
+  --changed: #FFA41B;
   --sunken: #242122;
   --canvas: #2A2A2A;
   --line: #565152;
@@ -43,8 +46,8 @@
   --h-compact: 28px; --h-control: 32px; --h-field: 32px; --h-row: 30px; --h-line: 30px; --h-bar: 40px;
   --r-1: 3px; --r-2: 4px; --r-3: 4px;
   --control-height: 32px; --control-radius: 3px; --section-radius: 4px; --row-h: 30px;
-  --control-bg: #454142; --selector-bg: #302D2E; --segment-active: #8E1B30;
-  --raised: #454142; --hover: #403C3D; --label: #E9E5E6; --border-control: #8E8889; --frame: #565152; --rule: #565152; --muted: #C0BABB;
+  --control-bg: #4A4546; --selector-bg: #4A4546; --segment-active: #8E1B30;
+  --raised: #4A4546; --hover: #403C3D; --label: #E9E5E6; --border-control: #8E8889; --frame: #565152; --rule: #565152; --muted: #C0BABB;
   --shadow-pop: 0 6px 18px #0006;
   --icon-filter: grayscale(1) brightness(1.15);
   --space-section: var(--s-5); --space-head: var(--s-3); --space-row: var(--s-3); --space-group: var(--s-6); --control-pad-x: var(--s-4);
@@ -53,7 +56,7 @@
   --info: #56ADF7; --success: #4FD08A;
   --bed-plate: #3A3A3A; --bed-texture: #363636; --bed-grid: #7A7A7A; --bed-outline: #D6D6D6;
   --slant-fill-selected: var(--segment-active); --slant-fill-primary: var(--accent); --slant-fill-primary-hover: var(--accent-strong);
-  --slant-fill-tab: color-mix(in srgb, var(--sunken) 45%, var(--panel));
+  --slant-fill-tab: var(--sunken);
   --dur-1: 80ms; --dur-2: 140ms; --dur-3: 180ms; --ease: ease;
 }
 :root.orca-parity[data-theme='light'] {
@@ -69,7 +72,7 @@
   --raised: #ffffff; --hover: #e6e6e6; --label: #2b2b2b; --border-control: #8f8f8f; --frame: #c8c8c8; --rule: #c8c8c8; --muted: #4a4a4a;
   --shadow-pop: 0 6px 18px #11111133;
   --icon-filter: grayscale(1);
-  --info: #1F6FB8; --success: #1E7F4A;
+  --info: #1F6FB8; --success: #1E7F4A; --changed: #A85400; --overlay: #ffffff; --group-fill: #f7f7f7; --slant-fill-tab: var(--sunken);
   --bed-plate: #cfcfcf; --bed-texture: #c8c8c8; --bed-grid: #a6a6a6; --bed-outline: #6f6f6f;
 }
 :root.orca-parity[data-canvas='dark'] { --canvas: #2A2A2A; }

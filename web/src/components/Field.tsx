@@ -6,8 +6,8 @@ import type { ConfigValue, PresetType } from '../api/types';
 import { normalizeConfigValue, toolValue } from '../config-values';
 import { OPTIONS, splitKey, type OptionDef } from '../options';
 import { effectiveConfig, getState, resetOption, setOption, useStore } from '../state/store';
-import { Icon } from './Icon';
-import { InfoTip } from './InfoTip';
+import { Glyph } from './Glyph';
+import { LabelTip } from './InfoTip';
 import { Switch } from './fields';
 import { Choice } from './kit';
 import { displayLabel } from './fields/labels';
@@ -108,8 +108,10 @@ export const Field = memo(function Field(props: {
       <span className={`opt-label ${modified ? 'modified' : ''} ${props.hideLabel ? 'field-label-hidden' : ''}`} id={labelId}>
         {def.nullable && <Check className="nullable-toggle" aria-label={`Override ${label}`} checked={checked} disabled={props.overrideDisabled}
         onCheckedChange={(next) => commit(next ? fallback : 'nil')} />}
-        <span className="opt-label-text" data-full-text={fullLabel}>{label}</span>
-        {!props.hideLabel && (help || hint) && <InfoTip label={fullLabel}>{label !== fullLabel && <strong>{fullLabel}</strong>}{hint && <p>{hint}</p>}{help && <p>{help}</p>}<code>{key}</code></InfoTip>}
+        {props.hideLabel ? <span className="opt-label-text">{label}</span> : <LabelTip label={label} full={fullLabel}>
+          <strong>{fullLabel}</strong>{hint && <p>{hint}</p>}{help && <p>{help}</p>}
+          {(def.default !== undefined || def.min !== undefined || def.max !== undefined) && <p className="info-meta">{[def.default !== undefined && asText(def.default) !== '' ? `Default ${asText(def.default)}${def.sidetext && !asText(def.default).endsWith('%') ? ` ${def.sidetext}` : ''}` : '', def.min !== undefined || def.max !== undefined ? `Range ${def.min ?? '…'} to ${def.max ?? '…'}` : ''].filter(Boolean).join(' · ')}</p>}
+          <code>{key}</code></LabelTip>}
       </span>
       <fieldset className="opt-field" aria-description={disabledReason} disabled={props.disabled || (def.nullable && !checked)}>
         <LabelId.Provider value={labelId}>
@@ -120,8 +122,8 @@ export const Field = memo(function Field(props: {
       <span className="opt-undo">
         {props.scope ? <ScopeMark type={props.type} slot={props.slot} optKey={key} target={props.scope.target} /> : <>
         {modified && (
-          <button type="button" className="icon-btn" aria-label={`${props.resetTitle ?? 'Reset to the preset value'}: ${label}`} onClick={() => reset(key)}>
-            <Icon name="undo" size={14} />
+          <button type="button" className="reset-icon" aria-label={`${props.resetTitle ?? 'Reset to the preset value'}: ${label}`} onClick={() => reset(key)}>
+            <Glyph name="undo" size={14} />
           </button>
         )}
         {props.extra}</>}
@@ -185,13 +187,15 @@ const floatStep = (n: number) => (n ? 10 ** (Math.floor(Math.log10(Math.abs(n)))
 
 function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean; spin?: boolean; def?: OptionDef; readOnly?: boolean; list?: string; onCommit: (v: ConfigValue) => void }) {
   const named = useLabel();
-  const [text, setText] = useState(props.value);
+  const percentOnly = !!props.numeric && /^percents?$/.test(props.def?.type ?? '') && props.def?.sidetext?.trim() === '%';
+  const shown = (v: string) => percentOnly ? v.replace(/\s*%\s*$/, '') : v;
+  const [text, setText] = useState(shown(props.value));
   const [bad, setBad] = useState(false);
   const latest = useRef(text);
   latest.current = text;
-  useEffect(() => setText(props.value), [props.value]);
+  useEffect(() => setText(shown(props.value)), [props.value]);
   const commit = () => {
-    const text = latest.current;
+    const text = percentOnly && latest.current.trim() && !latest.current.trim().endsWith('%') ? `${latest.current.trim()}%` : latest.current;
     if (text === props.value) return;
     if (props.numeric && props.def) {
       const pct = text.trim().endsWith('%');
@@ -205,12 +209,12 @@ function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean;
   };
   const stepNumber = (direction: number, big = false) => {
     if (props.readOnly || !props.def) return;
-    const raw = latest.current.trim(), pct = raw.endsWith('%'), n = Number(raw.replace('%', '')) || 0;
+    const raw = latest.current.trim(), pct = percentOnly || raw.endsWith('%'), n = Number(raw.replace('%', '')) || 0;
     const step = (props.spin || props.def.type.startsWith('int') ? 1 : floatStep(n)) * (big ? 10 : 1);
     const places = Math.max(0, -Math.floor(Math.log10(step)));
     const next = Math.min(props.def.max ?? Infinity, Math.max(props.def.min ?? -Infinity, Number((n + direction * step).toFixed(places))));
     const value = `${next}${pct ? '%' : ''}`;
-    latest.current = value; setText(value); setBad(false); props.onCommit(value);
+    latest.current = shown(value); setText(shown(value)); setBad(false); props.onCommit(value);
   };
   const input = useRef<HTMLInputElement>(null), stepRef = useRef(stepNumber);
   stepRef.current = stepNumber;
@@ -229,13 +233,13 @@ function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean;
         onChange={(e) => { setText(e.target.value); setBad(false); }} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
     </span>
   );
-  const unit = props.def?.sidetext;
+  const unit = props.def?.sidetext && !(props.def.sidetext.trim() === '%' && text.trim().endsWith('%')) ? props.def.sidetext : undefined;
   return (
-    <span className="control-number" style={unit ? { '--unit-ch': unit.length } as React.CSSProperties : undefined}>
+    <span className="control-number">
       <input
         {...named}
         ref={input}
-        aria-description={unit}
+        aria-description={props.def?.sidetext}
         inputMode={props.def?.min !== undefined && props.def.min >= 0 ? 'decimal' : undefined}
         className={`text num ${unit ? 'has-unit' : ''} ${bad ? 'bad' : ''}`}
         value={text}

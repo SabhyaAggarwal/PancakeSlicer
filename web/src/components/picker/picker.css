@@ -13,9 +13,9 @@
 :where(.orca-parity) .pk-pop[data-state=closed], [data-radix-popper-content-wrapper]:has(> .orca-parity.pk-pop[data-state=closed], > .pk-pop[data-state=closed]) { visibility: hidden; pointer-events: none; }
 :where(.orca-parity) .pk-body { flex: 0 1 auto; display: grid; grid-template-columns: 144px minmax(0, 1fr); min-height: 0; overflow: hidden; }
 :where(.orca-parity) .pk-body.no-rail { grid-template-columns: minmax(0, 1fr); }
-:where(.orca-parity) .pk-rail { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; border-right: 1px solid var(--line); padding: 4px; background: var(--bg-soft); }
+:where(.orca-parity) .pk-rail { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; border-right: 1px solid var(--line); padding: 4px; background: var(--sunken); }
 :where(.orca-parity) .pk-rail > button { display: flex; align-items: baseline; gap: var(--s-3); flex: none; min-height: var(--h-compact); padding: 4px var(--s-3); border: 0; border-radius: var(--r-1); background: transparent; color: var(--text); text-align: left; overflow-wrap: break-word; cursor: pointer; }
-:where(.orca-parity) .pk-rail > button:hover { background: var(--hover); }
+@media (hover: hover) { :where(.orca-parity) .pk-rail > button:not(.active):hover { background: color-mix(in srgb, #fff 9%, var(--sunken)); } }
 :where(.orca-parity) .pk-rail-title { flex: 1; min-width: 0; }
 :where(.orca-parity) .pk-count { flex: none; color: var(--ink-3); font: var(--t-small); font-variant-numeric: tabular-nums; }
 :where(.orca-parity) .pk-rail > button.active .pk-count { color: inherit; }
@@ -25,7 +25,10 @@
 :where(.orca-parity) .pk-tab { grid-area: 1 / 1; min-width: 0; }
 :where(.orca-parity) .pk-tab[data-off] { visibility: hidden; }
 :where(.orca-parity) .pk-row { display: flex; align-items: stretch; min-height: 28px; border-radius: 3px; }
-:where(.orca-parity) .pk-row.is-active { background: var(--selected); }
+:where(.orca-parity) .pk-row:has(> .pk-option[aria-selected=true]) { background: var(--selected); }
+:where(.orca-parity) .pk-row.is-active { background: var(--overlay); }
+:where(.orca-parity) .pk-row.is-active:has(> .pk-option[aria-selected=true]) { background: color-mix(in srgb, #fff 10%, var(--selected)); }
+:where(.orca-parity) .pk-row.is-active .pk-star { color: var(--text); }
 :where(.orca-parity) .pk-option { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; min-height: 28px; padding: 4px 8px; border: 0; border-radius: 3px; background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
 :where(.orca-parity) .pk-option[aria-disabled=true] { color: var(--muted); cursor: default; }
 :where(.orca-parity) .pk-check { color: var(--accent-text); flex: none; width: 14px; }
@@ -37,7 +40,7 @@
 :where(.orca-parity) .pk-media .pk-option { gap: var(--s-4); min-height: 104px; padding: var(--s-3); }
 :where(.orca-parity) .pk-media .pk-text { gap: 2px; }
 :where(.orca-parity) .pk-media .pk-label { font-weight: 500; }
-:where(.orca-parity) .pk-art { flex: none; display: grid; place-items: center; width: 88px; height: 88px; border-radius: var(--r-2); background: var(--surface); color: var(--ink-3); }
+:where(.orca-parity) .pk-art { flex: none; display: grid; place-items: center; width: 88px; height: 88px; border-radius: var(--r-2); background: none; color: var(--ink-3); }
 :where(.orca-parity) .pk-art img { width: 80px; height: 80px; object-fit: contain; }
 :where(.orca-parity) .pk-art svg path { stroke-width: 0.6; }
 :where(.orca-parity) .pk-status { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font: var(--t-small); }
@@ -48,7 +51,7 @@
 :where(.orca-parity) .pk-star { width: 28px; flex: none; padding: 0; border: 0; border-radius: 3px; background: transparent; color: var(--text-dim); cursor: pointer; }
 :where(.orca-parity) .pk-star:hover { color: var(--text); }
 :where(.orca-parity) .pk-star[aria-pressed=true] { color: var(--accent-text); }
-:where(.orca-parity) .pk-foot { flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 8px; border-top: 1px solid var(--line); }
+:where(.orca-parity) .pk-foot { background: var(--sunken); flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 8px; border-top: 1px solid var(--line); }
 :where(.orca-parity) .pk-foot:empty { display: none; }
 :where(.orca-parity) .pk-empty { color: var(--text-dim); padding: 12px 8px; }
 @media (max-width: 600px) {

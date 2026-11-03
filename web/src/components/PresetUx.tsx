@@ -1,7 +1,9 @@
 import { lazy, Suspense } from 'react';
 import { useStore } from '../state/store';
+import { preloadable, whenIdle } from '../preloadable';
 
-const PresetsWindow = lazy(() => import('../profiles/PresetsWindow'));
+const PresetsWindow = preloadable(() => import('../profiles/PresetsWindow'));
+whenIdle(() => void PresetsWindow.preload().catch(() => {}), 1000);
 const ImportDialog = lazy(() => import('./PresetIO').then((m) => ({ default: m.ImportDialog })));
 const ExportDialog = lazy(() => import('./PresetIO').then((m) => ({ default: m.ExportDialog })));
 
