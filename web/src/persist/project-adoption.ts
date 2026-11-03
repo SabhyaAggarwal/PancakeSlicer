@@ -1,7 +1,7 @@
 import type { ProjectDraft } from './drafts';
 import { captureLegacyProjects, hasLegacyProjects, legacyProjectEnvelope, verifyLegacyProjectSource, type LegacyProjectInventory } from './legacy-projects';
 import { requireWorkspaceService, routeKey, serviceJson, serviceRequest } from './service';
-import { flushServiceSession, loadServiceSession, patchServiceSession } from './service-session';
+import { adoptServiceSessionFields, loadServiceSession } from './service-session';
 import { documentText } from './wire';
 type AdoptionReceipt = { durable: true; digest: string; operationId: string; sourceId: string; projectIds: string[]; assetKeys: string[] };
 type AdoptionStatus = { state: 'loading' | 'pending' | 'ready' | 'failed'; coverage: 'unknown' | 'complete' | 'incomplete'; error: string | null; receipt: AdoptionReceipt | null };
@@ -108,7 +108,7 @@ async function adopt() {
     if (!Array.isArray(lineage) || lineage.some((item) => typeof item !== 'string')) throw new Error('Invalid legacy recovery lineage');
     patch.projectDraftOwners = [...new Set([...(source.inventory.owner ? [source.inventory.owner] : []), ...lineage])];
   }
-  if (Object.keys(patch).length) { patchServiceSession(patch); await flushServiceSession(true); }
+  await adoptServiceSessionFields(patch);
   const current = source.inventory.desktop ? null : await legacyProjectEnvelope(await captureLegacyProjects());
   if (current && current.digest !== source.digest) {
     captured = null;

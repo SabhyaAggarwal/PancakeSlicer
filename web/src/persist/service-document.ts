@@ -3,7 +3,7 @@ import { jsonWrite, serviceJson } from './service';
 export type JsonValue = null | boolean | number | string | readonly JsonValue[] | { readonly [key: string]: JsonValue };
 export type ServiceDocument = Record<string, unknown>;
 export type DocumentSnapshot<D> = { state: 'loading' | 'ready' | 'pending' | 'failed'; revision: number; document: D; error: string | null; conflict: boolean };
-export function createServiceDocument<D extends ServiceDocument>(path: string, method: 'PUT' | 'PATCH', beforeWrite: () => Promise<unknown> = () => Promise.resolve()) {
+export function createServiceDocument<D extends ServiceDocument>(path: string, method: 'PUT' | 'PATCH', beforeWrite: (document: D) => Promise<unknown> = () => Promise.resolve()) {
   let current: DocumentSnapshot<D> = { state: 'loading', revision: 0, document: {} as D, error: null, conflict: false };
   let hydrated = false, loading: Promise<DocumentSnapshot<D>> | null = null, running: Promise<void> | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined, serial = 0, savedSerial = 0;
@@ -38,11 +38,11 @@ export function createServiceDocument<D extends ServiceDocument>(path: string, m
     if (running) { await running; if (savedSerial < serial) return flush(retry); return; }
     if (current.state === 'failed' && !retry) throw new Error(current.error ?? 'The service document was not saved');
     running = (async () => {
-      await beforeWrite();
       if (!hydrated) await hydrate();
       while (savedSerial < serial) {
         operation ??= { operationId: projectId(), expectedRevision: current.revision, document: current.document, serial };
         const captured = operation, { serial: _serial, ...body } = captured;
+        await beforeWrite(captured.document);
         const ack = await serviceJson<{revision:number}>(path, jsonWrite(method, body));
         if (!ack || ack.revision !== captured.expectedRevision + 1) throw new Error('Invalid service revision acknowledgement');
         savedSerial = captured.serial; operation = null; publish({ revision: ack.revision });

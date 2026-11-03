@@ -2,22 +2,26 @@ import type { ProjectDraft, ProjectDraftStore, ProjectFailure } from '../persist
 import type { DraftCheckpoint, DraftCodec } from './project-recovery';
 import type { ProjectDraftInventory } from './project';
 import { flushServiceSession, loadServiceSession, patchServiceSession } from '../persist/service-session';
-import { ensureWorkspaceMutation, projectAdoptionSnapshot } from '../persist/project-adoption';
-import { getState } from '../state/store';
+import { ensureWorkspaceMutation } from '../persist/project-adoption';
 export async function draftSession(newOwner: string): Promise<{ owner: string; previousOwner: string | null; previousOwners: readonly string[] }> {
   const remote = await loadServiceSession(), lineage = remote.document.projectDraftOwners ?? [];
   if (!Array.isArray(lineage) || lineage.some((owner) => typeof owner !== 'string')) throw new Error('Invalid service draft lineage');
   const previousOwners = [...new Set(lineage as string[])].slice(0, 32), previousOwner = previousOwners[0] ?? null;
-  if (projectAdoptionSnapshot().state === 'ready' && getState().profileLibraryLoad.state === 'ready') {
-    await ensureWorkspaceMutation();
-    patchServiceSession({ projectDraftOwners: [newOwner, ...previousOwners].slice(0, 32) });
-    await flushServiceSession();
-  }
   return { owner: newOwner, previousOwner, previousOwners };
+}
+async function registerDraftOwner(owner: string): Promise<void> {
+  await ensureWorkspaceMutation();
+  await flushServiceSession(true);
+  const remote = await loadServiceSession(), lineage = remote.document.projectDraftOwners ?? [];
+  if (!Array.isArray(lineage) || lineage.some(value => typeof value !== 'string')) throw new Error('Invalid service draft lineage');
+  if (lineage.includes(owner)) return;
+  await patchServiceSession({ projectDraftOwners: [owner, ...new Set(lineage as string[])].slice(0, 32) });
+  await flushServiceSession();
 }
 export function createDraftJournal<D>(owner: string, storage: () => Promise<ProjectDraftStore>, codec: () => Promise<DraftCodec<D>>,
   beginMutation: (id: string) => (error?: unknown) => void = () => () => {}) {
-  let serial = 0, tail = Promise.resolve();
+  let serial = 0, tail = Promise.resolve(), registered: Promise<void> | null = null;
+  const register = () => registered ??= registerDraftOwner(owner).catch(error => { registered = null; throw error; });
   const failures = new Map<string, unknown>();
   type Capture = { checkpoint: DraftCheckpoint; baseRevision: number; document: D; failure: ProjectFailure | null };
   const pending = new Map<string, { latest: Capture; durable: Promise<ProjectDraft>; release(): void }>();
@@ -44,6 +48,7 @@ export function createDraftJournal<D>(owner: string, storage: () => Promise<Proj
         const draft: ProjectDraft = { ...checkpoint, owner, projectId, baseRevision, doc: stored,
           name: nameOf(document), objects: plateCount(document), updatedAt: Date.now(), kind: 'dirty', failure,
           blobs: Object.fromEntries(blobs) };
+        await register();
         await (await storage()).put(draft); failures.delete(projectId); return draft;
       });
       batch.durable = durable; pending.set(projectId, batch);
