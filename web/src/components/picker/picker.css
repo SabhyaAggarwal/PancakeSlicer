@@ -6,11 +6,14 @@
 :where(.orca-parity) .pk-tail { flex: none; white-space: pre; }
 :where(.orca-parity) .pk-type, :where(.orca-parity) .pk-brand { display: none; }
 :where(.orca-parity) .orca-menu.pk-pop { width: min(560px, calc(100vw - 16px)); padding: 0; overflow: hidden; display: flex; flex-direction: column; max-height: min(520px, var(--radix-popover-content-available-height, calc(100dvh - 16px))); }
-:where(.orca-parity) .pk-body { flex: 0 1 auto; display: grid; grid-template-columns: 144px minmax(0, 1fr); min-height: 0; overflow: hidden; }
+:where(.orca-parity) .pk-body { flex: 0 1 auto; display: grid; grid-template-columns: 144px minmax(0, 1fr); min-height: min(var(--pk-fit, 0px), calc(min(520px, var(--radix-popover-content-available-height, 100dvh)) - 64px)); overflow: hidden; }
 :where(.orca-parity) .pk-body.no-rail { grid-template-columns: minmax(0, 1fr); }
 :where(.orca-parity) .pk-rail { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; border-right: 1px solid var(--line); padding: 4px; background: var(--bg-soft); }
-:where(.orca-parity) .pk-rail > button { flex: none; min-height: var(--h-compact); padding: 4px var(--s-3); border: 0; border-radius: var(--r-1); background: transparent; color: var(--text); text-align: left; overflow-wrap: break-word; cursor: pointer; }
+:where(.orca-parity) .pk-rail > button { display: flex; align-items: baseline; gap: var(--s-3); flex: none; min-height: var(--h-compact); padding: 4px var(--s-3); border: 0; border-radius: var(--r-1); background: transparent; color: var(--text); text-align: left; overflow-wrap: break-word; cursor: pointer; }
 :where(.orca-parity) .pk-rail > button:hover { background: var(--hover); }
+:where(.orca-parity) .pk-rail-title { flex: 1; min-width: 0; }
+:where(.orca-parity) .pk-count { flex: none; color: var(--ink-3); font: var(--t-small); font-variant-numeric: tabular-nums; }
+:where(.orca-parity) .pk-rail > button.active .pk-count { color: inherit; }
 :where(.orca-parity) .pk-rail > button.active { background: var(--selected); color: var(--selected-foreground); font-weight: 500; }
 :where(.orca-parity) .pk-rail button:focus-visible, :where(.orca-parity) .pk-option:focus-visible, :where(.orca-parity) .pk-star:focus-visible { outline-offset: -1px; }
 :where(.orca-parity) .pk-list { min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px; }

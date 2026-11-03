@@ -1,6 +1,6 @@
 import { preferenceJson, savePreferences, usePreference } from '../../saved-preferences';
 import { countRender } from '../../interaction-metrics';
-import { Fragment, memo, useCallback, useId, useMemo, useRef, useState, type ComponentPropsWithRef, type ReactNode } from 'react';
+import { Fragment, memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentPropsWithRef, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { Popover } from 'radix-ui';
 import { useRowFill } from '../tab-rows';
 import '../menu.css';
@@ -21,6 +21,31 @@ const splitTail = (label: string): [string, string] => {
   for (const re of [/\s\S+\s\S+$/, /\s\S+$/]) { const m = re.exec(label); if (m && m[0].length <= 15 && m.index >= 4) return [label.slice(0, m.index), m[0]]; }
   return [label, ''];
 };
+interface RailTab { id: string; title: string; count?: number }
+const HOVER_DELAY = 100, AIM_DELAY = 80;
+function PickerRail({ tabs, active, hover, label, list, railRef, onChange }: { tabs: RailTab[]; active: string; hover: boolean; label: string; list: RefObject<HTMLElement | null>; railRef: RefObject<HTMLElement | null>; onChange(id: string): void }) {
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined), trail = useRef<{ x: number; y: number; t: number }[]>([]);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const aiming = () => {
+    const box = list.current?.getBoundingClientRect(), pts = trail.current, from = pts[0], at = pts[pts.length - 1];
+    if (!box || !from || !at || at === from || performance.now() - at.t > AIM_DELAY || at.x <= from.x) return false;
+    const slope = (a: { x: number; y: number }, b: { x: number; y: number }) => (b.y - a.y) / (b.x - a.x);
+    const top = { x: box.left, y: box.top - 24 }, bottom = { x: box.left, y: box.bottom + 24 };
+    return slope(at, top) < slope(from, top) && slope(at, bottom) > slope(from, bottom);
+  };
+  const intend = (id: string, el: HTMLElement) => {
+    clearTimeout(timer.current);
+    const check = () => { if (aiming()) timer.current = setTimeout(check, AIM_DELAY); else { onChange(id); el.focus({ preventScroll: true }); } };
+    timer.current = setTimeout(check, HOVER_DELAY);
+  };
+  return <nav ref={railRef} className="pk-rail" aria-label={label} onPointerMove={hover ? (e) => { if (e.pointerType === 'mouse') trail.current = [...trail.current.slice(-3), { x: e.clientX, y: e.clientY, t: e.timeStamp }]; } : undefined} onPointerLeave={() => clearTimeout(timer.current)}>
+    {tabs.map((r) => <button type="button" key={r.id} data-rail={r.id} className={active === r.id ? 'active' : ''} aria-pressed={active === r.id}
+      onClick={() => { clearTimeout(timer.current); onChange(r.id); }}
+      onPointerEnter={hover ? (e) => { if (e.pointerType !== 'mouse') return; if (r.id === active) clearTimeout(timer.current); else intend(r.id, e.currentTarget); } : undefined}>
+      <span className="pk-rail-title">{r.title}</span>{r.count !== undefined && <span className="pk-count">{r.count}</span>}
+    </button>)}
+  </nav>;
+}
 function PickerArt({ src }: { src: string | null }) {
   const [failed, setFailed] = useState<string>();
   return <span className="pk-art" aria-hidden>{src && failed !== src ? <img src={src} alt="" loading="lazy" draggable={false} onError={() => setFailed(src)}/> : <Glyph name="printer" size={40}/>}</span>;
@@ -51,12 +76,30 @@ export function Picker({ label, value, groups, sections = false, onPick, memory 
   const ownRows = useMemo(() => open && adding && hasOwn(groups), [open, adding, groups]);
   const all = useMemo(() => [...new Map(source.flatMap((g) => g.items).map((item) => [item.id, item])).values()], [source]);
   const pinnedSet = useMemo(() => new Set(pins), [pins]);
-  const sectioned = useMemo(() => sections ? [{title: 'Favorites', items: all.filter(r => pinnedSet.has(r.id))}, ...source.map(g => ({title: g.title, items: g.items.filter(r => !pinnedSet.has(r.id))}))].filter(g => g.items.length) : null, [sections, all, pinnedSet, source]);
-  const rails = useMemo(() => sections ? [] : [...(all.some(r => pinnedSet.has(r.id)) ? [{id:'pins',title:'Favorites'}] : []), {id:'all',title:adding ? 'All bases' : 'All profiles'}, ...source.map(({id,title}) => ({id,title}))], [sections, adding, pinnedSet, all, source]);
+  const allSections = useMemo(() => sections ? [{title: 'Favorites', items: all.filter(r => pinnedSet.has(r.id))}, ...source.map(g => ({title: g.title, items: g.items.filter(r => !pinnedSet.has(r.id))}))].filter(g => g.items.length) : null, [sections, all, pinnedSet, source]);
+  const tabbed = useMemo(() => source.filter(g => !g.lead), [source]);
+  const rails = useMemo<RailTab[]>(() => sections ? (tabbed.length > 1 ? [{id: 'all', title: 'All', count: all.length}, ...tabbed.map(g => ({id: g.id, title: g.title, count: g.items.length}))] : []) : [...(all.some(r => pinnedSet.has(r.id)) ? [{id:'pins',title:'Favorites'}] : []), {id:'all',title:adding ? 'All bases' : 'All profiles'}, ...source.map(({id,title}) => ({id,title}))], [sections, adding, pinnedSet, all, source]);
   useRowFill(railRef, open && rails.map(r => r.id).join('|'));
-  const activeRail = rails.some(r => r.id === rail) ? rail : selectDefaultRail(source, pins);
+  const activeRail = rails.some(r => r.id === rail) ? rail : sections ? tabbed.find(g => g.items.some(i => i.id === value))?.id ?? 'all' : selectDefaultRail(source, pins);
+  const sectioned = useMemo(() => {
+    const g = allSections && rails.length && activeRail !== 'all' ? tabbed.find(t => t.id === activeRail) : undefined;
+    return g ? [{title: 'Favorites', items: g.items.filter(r => pinnedSet.has(r.id))}, {title: g.title, items: g.items.filter(r => !pinnedSet.has(r.id))}].filter(x => x.items.length) : allSections;
+  }, [allSections, rails.length, activeRail, tabbed, pinnedSet]);
   const rows = useMemo(() => sectioned ? sectioned.flatMap(g => g.items) : activeRail === 'pins' ? all.filter(r => pinnedSet.has(r.id)) : activeRail === 'all' ? all : source.find(g => g.id === activeRail)?.items ?? [], [sectioned, activeRail, all, pinnedSet, source]);
-  const heads = useMemo(() => { const at = new Map<number, string>(); let i = 0; for (const g of sectioned ?? []) { at.set(i, g.title); i += g.items.length; } return at; }, [sectioned]);
+  const heads = useMemo(() => { const at = new Map<number, string>(); let i = 0; if (activeRail === 'all' || (sectioned?.length ?? 0) > 1) for (const g of sectioned ?? []) { at.set(i, g.title); i += g.items.length; } return at; }, [sectioned, activeRail]);
+  const [fit, setFit] = useState(0);
+  useLayoutEffect(() => {
+    if (!open || !rails.length || !allSections) { setFit(0); return; }
+    let frame = 0;
+    const measure = () => {
+      const el = list.current, row = el?.querySelector<HTMLElement>('.pk-row');
+      if (!el || !row) { frame = requestAnimationFrame(measure); return; }
+      const headH = [...el.querySelectorAll<HTMLElement>('.pk-group')].pop()?.offsetHeight ?? 32, pad = parseFloat(getComputedStyle(el).paddingTop) * 2;
+      setFit(f => Math.max(f, allSections.reduce((h, g) => h + headH + g.items.length * row.offsetHeight, pad - 8)));
+    };
+    measure();
+    return () => cancelAnimationFrame(frame);
+  }, [open, rails.length, allSections]);
   const enabled = useMemo(() => rows.flatMap((r, i) => r.disabled ? [] : [i]), [rows]);
   const resetType = () => { typed.current = {text: '', at: 0}; };
   const move = (index: number) => {
@@ -66,6 +109,7 @@ export function Picker({ label, value, groups, sections = false, onPick, memory 
     el?.focus({preventScroll: true}); el?.scrollIntoView({ block: 'nearest' });
   };
   const changeRail = (next: string) => { setRail(next); setActive(0); resetType(); };
+  const railTab = (tab: string) => railRef.current?.querySelector<HTMLButtonElement>(`[data-rail="${CSS.escape(tab)}"]`);
   const changeCatalog = (next: boolean) => { setAdding(next); changeRail(''); };
   const pick = useCallback((row: PickerItem) => {
     if (row.disabled) return;
@@ -73,7 +117,7 @@ export function Picker({ label, value, groups, sections = false, onPick, memory 
     setOpen(false); resetType();
   }, [adding, catalog, onPick]);
   const pin = useCallback((row: PickerItem) => { const next = pins.includes(row.id) ? pins.filter((id) => id !== row.id) : [...pins, row.id]; write(`${memory}.pins`, next); }, [pins, memory]);
-  return <Popover.Root open={open} onOpenChange={next => { setOpen(next); resetType(); if (next) { setAdding(!!catalog && !hasOwn(groups)); setRail(''); setActive(0); } }}>
+  return <Popover.Root open={open} onOpenChange={next => { setOpen(next); resetType(); setFit(0); if (next) { setAdding(!!catalog && !hasOwn(groups)); setRail(''); setActive(0); } }}>
     <Popover.Trigger asChild><button {...triggerProps} type="button" className={`pk-trigger dropdown ${className}`} data-menu-trigger="orca" aria-label={label} onKeyDown={e => {
       triggerProps?.onKeyDown?.(e);
       if (!e.defaultPrevented && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); e.stopPropagation(); resetType(); setAdding(!!catalog && !hasOwn(groups)); setRail(''); setOpen(true); }
@@ -81,10 +125,19 @@ export function Picker({ label, value, groups, sections = false, onPick, memory 
     <Popover.Portal><Popover.Content className={`orca-menu pk-pop ${rows.some(r => r.image !== undefined) ? 'pk-media' : ''}`} data-menu-family="orca" aria-label={adding ? catalog?.label : label} side="bottom" align="start" sideOffset={4} collisionPadding={8} onOpenAutoFocus={e => { e.preventDefault(); const selected = rows.findIndex(r => r.id === value && !r.disabled); move(selected >= 0 ? selected : enabled[0] ?? -1); }} onKeyDown={e => {
       if (e.key === 'Escape' || e.key === 'Tab') return;
       e.stopPropagation();
-      const at = enabled.indexOf(active);
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); resetType(); if (enabled.length) move(enabled[(at + (e.key === 'ArrowDown' ? 1 : -1) + enabled.length) % enabled.length]); }
+      const at = enabled.indexOf(active), inRail = e.target instanceof Element && !!e.target.closest('.pk-rail');
+      if (sections && inRail && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+        e.preventDefault(); const i = rails.findIndex(r => r.id === activeRail), next = rails[(i + (e.key === 'ArrowDown' ? 1 : -1) + rails.length) % rails.length].id;
+        changeRail(next); requestAnimationFrame(() => railTab(next)?.focus());
+      }
+      else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); resetType(); if (enabled.length) move(enabled[(at + (e.key === 'ArrowDown' ? 1 : -1) + enabled.length) % enabled.length]); }
       else if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); resetType(); move(enabled[e.key === 'Home' ? 0 : enabled.length - 1] ?? -1); }
       else if (e.key === 'Enter' && e.target instanceof Element && e.target.closest('.pk-option') && rows[active]) { e.preventDefault(); e.altKey ? pin(rows[active]) : pick(rows[active]); }
+      else if (sections && rails.length && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        e.preventDefault();
+        if (e.key === 'ArrowRight' && inRail) move(enabled[0] ?? -1);
+        else if (e.key === 'ArrowLeft' && !inRail) railTab(activeRail)?.focus();
+      }
       else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && rails.length) { e.preventDefault(); const at = rails.findIndex(r => r.id === activeRail); changeRail(rails[(at + (e.key === 'ArrowRight' ? 1 : -1) + rails.length) % rails.length].id); }
       else if (e.key.length === 1 && e.key !== ' ' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
@@ -96,7 +149,7 @@ export function Picker({ label, value, groups, sections = false, onPick, memory 
         if (match !== undefined) move(match);
       }
     }}>
-      <div className={`pk-body ${rails.length > 1 ? '' : 'no-rail'}`}>{rails.length > 1 && <nav ref={railRef} className="pk-rail" aria-label={`${label} groups`}>{rails.map(r => <button type="button" key={r.id} className={activeRail === r.id ? 'active' : ''} aria-pressed={activeRail === r.id} onClick={() => changeRail(r.id)}>{r.title}</button>)}</nav>}
+      <div className={`pk-body ${rails.length > 1 ? '' : 'no-rail'}`} style={fit ? {'--pk-fit': `${fit}px`} as CSSProperties : undefined}>{rails.length > 1 && <PickerRail tabs={rails} active={activeRail} hover={sections} label={`${label} groups`} list={list} railRef={railRef} onChange={changeRail} />}
         <div className="pk-list" role="listbox" aria-label={label} ref={list}>{rows.map((row, i) => <Fragment key={`${i}:${row.id}`}>{heads.has(i) && <div className="pk-group" role="presentation">{heads.get(i)}</div>}<PickerRow row={row} index={i} id={id} active={active === i} selected={value === row.id} adding={adding} pinned={pinnedSet.has(row.id)} onActive={setActive} onPick={pick} onPin={pin} /></Fragment>)}{!rows.length && <div className="pk-empty">{catalog && !adding ? 'None yet' : 'No profiles'}</div>}</div>
       </div>
       <div className="pk-foot">{adding && ownRows && <button type="button" className="btn-ghost" onClick={() => changeCatalog(false)}>Back</button>}{catalog && !adding && <button type="button" className="btn" onClick={() => changeCatalog(true)}>{catalog.label}</button>}{footer.map(a => <button type="button" className="btn" key={a.label} onClick={() => { if (!a.keep) setOpen(false); a.run(); }}>{a.label}</button>)}</div>
