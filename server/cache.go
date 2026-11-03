@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
@@ -110,6 +111,98 @@ func serveStream(w http.ResponseWriter, r *http.Request, f *os.File, st os.FileI
 	z := gzip.NewWriter(w)
 	defer z.Close()
 	io.Copy(z, f)
+}
+
+func serveGzipped(w http.ResponseWriter, r *http.Request, path string, st os.FileInfo, suffix, etag string, encode func(src io.Reader, dst io.Writer, flush func() error) error) {
+	tag := fmt.Sprintf(etag, st.ModTime().UnixNano(), st.Size())
+	h := w.Header()
+	h.Set("Cache-Control", "private, max-age=31536000, immutable")
+	h.Set("ETag", tag)
+	h.Set("Vary", "Accept-Encoding")
+	if match := r.Header.Get("If-None-Match"); match == tag || match == "*" {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	cached := path + suffix
+	if c, err := os.Stat(cached); err != nil || c.ModTime().Before(st.ModTime()) {
+		streamed, err := writeGzipped(w, r, path, cached, encode)
+		if streamed {
+			return
+		}
+		if err != nil {
+			fail(w, 500, "the output could not be compressed: "+err.Error())
+			return
+		}
+	}
+	f, err := os.Open(cached)
+	if err != nil {
+		fail(w, 500, "the output could not be opened")
+		return
+	}
+	defer f.Close()
+	if acceptsGzip(r) {
+		c, _ := f.Stat()
+		h.Set("Content-Encoding", "gzip")
+		h.Set("Content-Length", fmt.Sprint(c.Size()))
+		if r.Method != http.MethodHead {
+			io.Copy(w, f)
+		}
+		return
+	}
+	z, err := gzip.NewReader(f)
+	if err != nil {
+		fail(w, 500, "the output could not be opened")
+		return
+	}
+	if r.Method != http.MethodHead {
+		io.Copy(w, z)
+	}
+}
+
+func writeGzipped(w http.ResponseWriter, r *http.Request, path, cached string, encode func(io.Reader, io.Writer, func() error) error) (streamed bool, err error) {
+	in, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer in.Close()
+	tmp, err := os.CreateTemp(filepath.Dir(cached), filepath.Base(cached)+".*.tmp")
+	if err != nil {
+		return false, err
+	}
+	defer os.Remove(tmp.Name())
+	defer tmp.Close()
+	file := bufio.NewWriterSize(tmp, 1<<20)
+	streamed = acceptsGzip(r) && r.Method != http.MethodHead
+	out := io.Writer(file)
+	if streamed {
+		w.Header().Set("Content-Encoding", "gzip")
+		out = io.MultiWriter(file, w)
+	}
+	z := gzip.NewWriter(out)
+	controller := http.NewResponseController(w)
+	flush := func() error {
+		if !streamed {
+			return nil
+		}
+		if err := z.Flush(); err != nil {
+			return err
+		}
+		return controller.Flush()
+	}
+	err = encode(in, z, flush)
+	if err == nil {
+		err = z.Close()
+	}
+	if err == nil {
+		err = file.Flush()
+	}
+	if cerr := tmp.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(tmp.Name(), cached)
+	}
+	return streamed, err
 }
 
 type staticEntry struct {

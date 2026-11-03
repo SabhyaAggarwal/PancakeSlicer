@@ -1,4 +1,5 @@
 export const MAGIC = 'ORCAMV01';
+export const TRANSFER_MAGIC = 'ORCAMT01';
 
 export const CHUNK = 16384;
 export const BLOCK = 16384;
@@ -61,6 +62,7 @@ export interface Header {
   stateStride: number;
   layerStride: number;
   metaBytes: number;
+  block: number;
   extended: boolean;
   oriented?: boolean;
   tableRotary?: boolean;
@@ -112,7 +114,7 @@ export interface LayerRec {
 export function readHeader(dv: DataView): Header {
   let magic = '';
   for (let i = 0; i < 8; ++i) magic += String.fromCharCode(dv.getUint8(i));
-  if (magic !== MAGIC) throw new Error(`not a move stream (magic ${JSON.stringify(magic)})`);
+  if (magic !== MAGIC && magic !== TRANSFER_MAGIC) throw new Error(`not a move stream (magic ${JSON.stringify(magic)})`);
   if (dv.getUint32(24, true) !== 1) throw new Error(`unknown units ${dv.getUint32(24, true)}`);
   const u64 = (o: number) => {
     const v = dv.getBigUint64(o, true);
@@ -128,12 +130,14 @@ export function readHeader(dv: DataView): Header {
     stateCount: dv.getUint32(40, true),
     layerCount: dv.getUint32(44, true),
     metaBytes: u64(48),
+    block: magic === TRANSFER_MAGIC ? u64(56) : 0,
     extended: (dv.getUint32(28, true) & 1) !== 0,
     oriented: (dv.getUint32(28, true) & 0x10000) !== 0,
     tableRotary: (dv.getUint32(28, true) & 0x20000) !== 0,
     tableAC: (dv.getUint32(28, true) & 0x40000) !== 0,
   };
   if (h.headerSize < 64 || h.moveStride < (h.extended ? 60 : 52) + (h.oriented ? 16 : 0) || h.stateStride < 32 || h.layerStride < 16) throw new Error('bad strides');
+  if (h.block && (h.block !== CHUNK || h.moveStride % 4)) throw new Error(`unknown transfer blocks (${h.block} moves, stride ${h.moveStride})`);
   return h;
 }
 

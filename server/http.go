@@ -871,7 +871,14 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
 	w.Header().Set("Content-Type", "application/octet-stream")
-	http.ServeContent(w, r, st.Name(), st.ModTime(), f)
+	if strings.HasSuffix(path, ".3mf") || r.Header.Get("Range") != "" {
+		http.ServeContent(w, r, st.Name(), st.ModTime(), f)
+		return
+	}
+	serveGzipped(w, r, path, st, ".gz", `W/"%x-%x"`, func(src io.Reader, dst io.Writer, _ func() error) error {
+		_, err := io.Copy(dst, src)
+		return err
+	})
 }
 
 var explodedName = regexp.MustCompile(`^object-[0-9]+-volume-[0-9]+\.3mf$`)
@@ -920,15 +927,13 @@ func (s *Server) moves(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "moves are not available")
 		return
 	}
-	defer f.Close()
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filepath.Base(path)}))
 	st, err := f.Stat()
+	f.Close()
 	if err != nil {
 		fail(w, 500, err.Error())
 		return
 	}
-	serveStream(w, r, f, st, "private, max-age=300, must-revalidate")
+	serveMoves(w, r, path, st)
 }
 
 func (s *Server) events(w http.ResponseWriter, r *http.Request) {
