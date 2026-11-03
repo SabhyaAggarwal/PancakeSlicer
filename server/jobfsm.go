@@ -314,7 +314,7 @@ func (m *JobManager) restoreJobs() error {
 			j.setState(StateInterrupted, "server restarted before completion")
 		}
 		if j.IdempotencyKey != "" {
-			e := &idempotencyEntry{done: make(chan struct{}), job: j}
+			e := &idempotencyEntry{done: make(chan struct{}), job: j, settled: true}
 			close(e.done)
 			m.idempotency[j.IdempotencyKey] = e
 		}

@@ -1080,8 +1080,9 @@ func orientScoreLine(l string) map[string]any {
 }
 
 type idempotencyEntry struct {
-	done chan struct{}
-	job  *Job
+	done    chan struct{}
+	job     *Job
+	settled bool
 }
 
 func (m *JobManager) reserve(ctx context.Context, key string) (*Job, func(*Job), error) {
@@ -1108,6 +1109,11 @@ func (m *JobManager) reserve(ctx context.Context, key string) (*Job, func(*Job),
 		return nil, func(j *Job) {
 			m.mu.Lock()
 			defer m.mu.Unlock()
+			if e.settled {
+				log.Printf("idempotency key %q settled twice; keeping its first outcome", key)
+				return
+			}
+			e.settled = true
 			e.job = j
 			if j == nil {
 				delete(m.idempotency, key)
