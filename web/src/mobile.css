@@ -10,12 +10,9 @@
   :where(.orca-parity) .title-name { font-size: 15px; }
   :where(.orca-parity) .compact-topbar .projects-button { font-size: 13px; }
   :where(.orca-parity) .compact-topbar .tabbar { display: contents; }
-  :where(.orca-parity) .compact-topbar .tabbar-tabs { grid-column: 1; grid-row: 2; justify-self: start; }
-  :where(.orca-parity) .compact-topbar .main-tab { padding-inline: 10px; font-size: 14px; }
-  :where(.orca-parity) .compact-topbar :is(.main-tab,.detail-option,.menu-title,.app-menu-button,.output-overflow) { min-height: 44px; min-width: 44px; }
-  :where(.orca-parity) .compact-topbar .main-tab > span { display: none; }
-  :where(.orca-parity) .compact-topbar .visibility-control { grid-column: 1 / -1; grid-row: 2; justify-self: end; max-width: 100%; }
-  :where(.orca-parity) .compact-topbar .detail-option { padding-inline: 8px; font-size: 13px; }
+  :where(.orca-parity) .compact-topbar .view-switch { grid-column: 1 / -1; grid-row: 2; justify-self: start; }
+  :where(.orca-parity) .compact-topbar :is(.menu-title,.app-menu-button,.output-overflow), :where(.orca-parity) .compact-topbar .view-switch > .view-tab { min-height: 44px; min-width: 44px; }
+  :where(.orca-parity) .compact-topbar .view-tab > span { display: none; }
   :where(.orca-parity) .compact-topbar .tabbar-actions { grid-column: 2; grid-row: 1; justify-self: end; margin: 0; padding: 0; gap: 0; }
   :where(.orca-parity) .compact-topbar .tabbar-actions > :is(.btn, .btn-primary):not(.output-overflow), :where(.orca-parity) .compact-topbar .side-options, :where(.orca-parity) .compact-topbar .export-actions { display: none; }
   :where(.orca-parity) .output-overflow { display: inline-flex; font-weight: 600; }
@@ -46,7 +43,7 @@
   :where(.orca-parity) .modal { max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
 }
 @media (min-width: 420px) and (max-width: 760px) {
-  :where(.orca-parity) .compact-topbar .main-tab > span { display: inline; }
+  :where(.orca-parity) .compact-topbar .view-tab > span { display: inline; }
 }
 @media (pointer: coarse), (max-width: 760px) {
   :where(.orca-parity) button:not(.check, .pf-radio, .orca-switch, .control-check, .orca-radio, .info-tip, .color-swatch, .color-trigger), :where(.orca-parity) .dropdown, :where(.orca-parity) .text, :where(.orca-parity) [role=menuitem] { min-height: 44px; }

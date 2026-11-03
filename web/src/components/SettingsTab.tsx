@@ -4,19 +4,17 @@ import { methodAvailability } from '../profiles/method-context';
 import { isMethodSettingSupported } from '../profiles/capabilities';
 import { NozzleField } from '../profiles/SetupRows';
 import { Tabs } from 'radix-ui';
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { Config, ConfigValue, PresetType } from '../api/types';
 import { isDeferred, isHidden, modeVisible, OPTIONS, splitKey, loadTab, useTab, type TabDesc, type TabLine, type OptionDef, type OptionMode } from '../options';
 import { effectiveConfig, effectiveMode, getState, presetEdits, resetOption, resolvePreset, setOption, setState, useStore } from '../state/store';
 import { condition, environment, fieldDefinition, optionState } from '../visibility';
 import { lineMode, nativeSupportCapable, tabEnvironment } from '../settings-env';
 import { Field } from './Field';
-import { Icon } from './Icon';
 import { InfoTip } from './InfoTip';
 import { useRowFill } from './tab-rows';
-import { preferenceJson, savedPreferencesSnapshot, savePreferences, subscribeSavedPreferences, usePreference } from '../saved-preferences';
+import { GroupHead, isGroupOpen, setGroupOpen, useSettingsGroups } from './SettingsGroup';
 import './settings.css';
-import { SectionHeading } from './SectionHeading';
 
 const BedShapeDialog = lazy(() => import('./BedShapeDialog'));
 const HeadPicker = lazy(() => import('./HeadPicker'));
@@ -88,19 +86,8 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
     if (same) return prior;
     definitionCache.current.set(key, next); return next;
   };
-  usePreference('settings.collapsed');
-  const prefsLoaded = useSyncExternalStore(subscribeSavedPreferences, savedPreferencesSnapshot).hydrated;
-  const collapsedIds = preferenceJson<unknown>('settings.collapsed', []);
-  const collapsed = new Set(Array.isArray(collapsedIds) ? collapsedIds.filter((id): id is string => typeof id === 'string') : []);
-  const [revealed, setRevealed] = useState<string | null>(null);
+  useSettingsGroups();
   const groupId = (pageTitle: string, groupTitle: string) => `${TAB_OF[type]}/${pageTitle}/${groupTitle}`;
-  const toggleGroup = (id: string, open: boolean) => {
-    if (!prefsLoaded) return;
-    const next = new Set(collapsed);
-    if (open) next.delete(id); else next.add(id);
-    if (!open && revealed === id) setRevealed(null);
-    savePreferences({ 'settings.collapsed': [...next] });
-  };
   const strip = useRef<HTMLDivElement>(null);
   useRowFill(strip, `${pages.map((p) => p.title).join('|')}|${auxiliary?.label ?? ''}`);
   const pageModified = (p: TabDesc['pages'][number]) => p.groups.some((g) => g.lines.some((l) => l.options.some((k) => splitKey(k)[0] in dirty)));
@@ -111,7 +98,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
     const i = pages.findIndex((p) => p.title === focus.page);
     if (i >= 0) setPageIdx(i);
     const holder = pages[i]?.groups.find((g) => g.lines.some((l) => l.options.some((k) => splitKey(k)[0] === focus.key)));
-    if (holder) setRevealed(groupId(pages[i].title, holder.title));
+    if (holder) setGroupOpen(groupId(pages[i].title, holder.title), true);
     const timer = setTimeout(() => {
       const line = body.current?.querySelector<HTMLElement>(`[data-opt="${CSS.escape(focus.key)}"]`);
       if (!line) return;
@@ -142,19 +129,10 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
         {!desc && <div className="settings-load" role={error || retryError ? 'alert' : 'status'}><span>{retryError || error ? `Settings failed to load: ${retryError ?? error}` : 'Loading settings…'}</span>{(error || retryError) && <button type="button" className="btn" disabled={retrying} onClick={retry}>{retrying ? 'Retrying…' : 'Retry'}</button>}</div>}
         {type === 'process' && page?.title === 'Multimaterial' && getState().filamentSlots.length > 1 && <section className="optgroup"><button type="button" className="btn" onClick={() => setState({flushDialog: true})}>Flush volumes</button></section>}
         {page?.groups.map((g) => {
-          const id = groupId(page.title, g.title), open = !g.title || !collapsed.has(id) || revealed === id;
+          const id = groupId(page.title, g.title), open = !g.title || isGroupOpen(id);
           const modified = g.lines.some((l) => l.options.some((k) => splitKey(k)[0] in dirty));
           return <section key={g.title} className="optgroup" data-collapsed={open ? undefined : ''}>
-            {g.title && (
-              <SectionHeading level="sub" className="optgroup-title">
-                <button type="button" className={`optgroup-head ${modified ? 'modified' : ''}`} aria-expanded={open} onClick={() => toggleGroup(id, !open)}>
-                  <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                  {g.icon && <Icon name={g.icon} size={16} />}
-                  <span>{g.title}</span>
-                  {modified && <span className="optgroup-mark" aria-label="Modified" role="img" />}
-                </button>
-              </SectionHeading>
-            )}
+            {g.title && <GroupHead id={id} title={g.title} icon={g.icon} modified={modified} open={open} />}
             {open && g.lines.map((line, row) => {
               let keys = line.options;
               let labels = line.index_labels;

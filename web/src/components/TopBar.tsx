@@ -1,4 +1,3 @@
-import { SettingsDetail } from './VisibilityControl';
 import { ProjectTitle } from '../projects/ProjectTitle';
 import { MenuButton, type MenuEntry } from './Menu';
 import { showProjects } from '../flow/project';
@@ -168,7 +167,6 @@ function SideOptions({ options, value, onChange }: { options: string[]; value: s
 
 export function TabBar() {
   const tab = useStore((s) => s.tab);
-  const profileManager=useStore(s=>s.presetUx?.kind === 'presets' || s.presetUx?.kind === 'compare');
   const job = useStore((s) => s.job);
   const hasObjects = useStore((s) => s.objects.length > 0);
   const outside = useStore(outsideVolumeWarning);
@@ -185,17 +183,16 @@ export function TabBar() {
   const exportAllEnabled = useStore((s) => s.projectPlates.length > 1 && !busy && exportablePlates(s).length > 0);
   return (
     <div className="tabbar">
-      <div className="tabbar-tabs segmented-control">
-        <button aria-label="Prepare" className={`main-tab segmented-button ${tab === 'prepare' ? 'active' : ''}`} onClick={() => setState({ tab: 'prepare' })}>
-          <Icon name="tab_3d_active" size={20} />
+      <div className="seg slant-seg view-switch" role="group" aria-label="View">
+        <button type="button" aria-label="Prepare" aria-pressed={tab === 'prepare'} className="view-tab" onClick={() => setState({ tab: 'prepare' })}>
+          <Icon name="tab_3d_active" size={16} />
           <span>Prepare</span>
         </button>
-        <button aria-label="Preview" className={`main-tab segmented-button ${tab === 'preview' ? 'active' : ''}`} onClick={() => setState({ tab: 'preview' })}>
-          <Icon name="tab_preview_active" size={20} />
+        <button type="button" aria-label="Preview" aria-pressed={tab === 'preview'} className="view-tab" onClick={() => setState({ tab: 'preview' })}>
+          <Icon name="tab_preview_active" size={16} />
           <span>Preview</span>
         </button>
       </div>
-      {!profileManager && <SettingsDetail/>}
       <div className="tabbar-actions">
         {allSlice ? (
           <button className="btn-primary slant" disabled={!printer || busy} onClick={() => void sliceAll()}>Slice all</button>

@@ -4,14 +4,15 @@
 :where(.orca-parity) .page-body > :first-child { padding-top: var(--space-section, var(--s-5)); }
 :where(.orca-parity) .optgroup + .optgroup { margin-top: calc(var(--space-group, var(--s-6)) - var(--space-row, var(--s-3))); }
 :where(.orca-parity) .optgroup-title { margin: 0; padding: 0; border: 0; background: none; color: var(--text); font: var(--t-title); }
-:where(.orca-parity) .optgroup-head { display: flex; align-items: center; gap: var(--s-3); width: 100%; min-height: var(--h-control); margin: 0 0 var(--space-head, var(--s-3)); padding: 0 var(--space-section, var(--s-5)); border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; color: var(--text); font: var(--t-title); text-align: left; cursor: pointer; }
+:where(.orca-parity) .optgroup-head { display: flex; align-items: center; gap: var(--s-3); width: 100%; min-height: 40px; margin: 0 0 var(--space-head, var(--s-3)); padding: 0 var(--space-section, var(--s-5)); border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; color: var(--text); font: var(--t-body); font-weight: 500; text-align: left; cursor: pointer; }
 :where(.orca-parity) .optgroup-head:hover { background: var(--hover-soft); }
 :where(.orca-parity) .optgroup-head > svg { flex: none; color: var(--ink-3); transition: transform var(--dur-1) var(--ease); }
 :where(.orca-parity) .optgroup-head[aria-expanded=false] > svg { transform: rotate(-90deg); }
 :where(.orca-parity) .optgroup-head > img { flex: none; opacity: .85; }
 :where(.orca-parity) .optgroup-head.modified { color: var(--modified); }
 :where(.orca-parity) .optgroup-mark { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--modified); }
-:where(.orca-parity) .optgroup[data-collapsed] { padding-bottom: 0; }
+:where(.orca-parity) .optgroup[data-collapsed] .optgroup-head { margin-bottom: 0; }
+:where(.orca-parity) .optgroup[data-collapsed] + .optgroup[data-collapsed] { margin-top: 0; }
 
 :where(.orca-parity) .opt-line, :where(.orca-parity) .option-row { display: grid; grid-template-columns: minmax(0, 1fr) var(--ctl-w, clamp(112px, 46%, 220px)) var(--opt-end, 20px); align-items: center; column-gap: var(--s-3); min-height: var(--h-control); padding: calc(var(--space-row, var(--s-3)) / 2) var(--space-section, var(--s-5)); }
 :where(.orca-parity) .opt-line.full { grid-template-columns: minmax(0, 1fr) var(--opt-end, 20px); row-gap: var(--s-2); padding-block: var(--s-2); }

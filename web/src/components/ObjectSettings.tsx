@@ -11,6 +11,7 @@ import { undoable } from '../state/history';
 import { environment, fieldDefinition, optionState } from '../visibility';
 import { nativeSupportCapable } from '../settings-env';
 import { Field } from './Field';
+import { GroupHead, isGroupOpen, setGroupOpen, useSettingsGroups } from './SettingsGroup';
 import { addRangeAfter, canAddAfter, deleteRange, editRange, rangeLabel, removeRangeOptions, setRangeOption } from '../plater/ranges';
 import type { LayerRange } from '../state/store';
 import { settingValue } from '../state/changes';
@@ -44,6 +45,7 @@ function hierarchy(filaments: number, keys: string[]): [string, string[]][] {
 }
 
 export function ObjectSettings() {
+  useSettingsGroups();
   const { desc, error } = useTab('process');
   const object = useStore((s) => s.objects.find((o) => o.id === s.selected?.object));
   const volume = useStore((s) => object?.volumes?.find((v) => v.id === s.selected?.volume));
@@ -87,10 +89,13 @@ export function ObjectSettings() {
   };
   const inherited = (key: string) => settingValue(getState(), 'process', key, 0, volume || range ? { object: object.id } : {});
   const changed = new Set(changes.filter((c) => c.owner.object === object.id && (range ? c.scope === 'range' && c.owner.range === range.id : volume ? c.scope === 'part' && c.owner.volume === volume.id : c.scope === 'object')).map((c) => c.key));
-  const add = (keys: string[], remove: string[] = []) => undoable('Add Settings', () => {
-    for (const k of keys) if (!(k in target.settings) && (!target.region || objectKeys.region.includes(k))) target.set(k, inherited(k) ?? '');
-    if (remove.length) target.remove(remove);
-  });
+  const add = (keys: string[], remove: string[] = []) => {
+    undoable('Add Settings', () => {
+      for (const k of keys) if (!(k in target.settings) && (!target.region || objectKeys.region.includes(k))) target.set(k, inherited(k) ?? '');
+      if (remove.length) target.remove(remove);
+    });
+    for (const k of keys) setGroupOpen(`object/${OPTIONS[k]?.category || 'Others'}`, true);
+  };
   const state = getState();
   const machine = effectiveConfig(state, 'machine');
   const env = environment([machine, global, object.settings, ...(volume ? [volume.settings] : []), ...(range ? [range.settings] : [])], {
@@ -127,12 +132,10 @@ export function ObjectSettings() {
         <div className="obj-settings-empty">{range || volume ? 'Uses the object values' : 'Uses the project values'}</div>
       )}
       <div className="page-body">
-        {[...byCat.entries()].map(([cat, keys]) => (
-          <section key={cat} className="optgroup">
-            <header className="optgroup-title">
-              <span>{cat}</span>
-            </header>
-            {keys.map((k) => (
+        {[...byCat.entries()].map(([cat, keys]) => { const id = `object/${cat}`, open = isGroupOpen(id); return (
+          <section key={cat} className="optgroup" data-collapsed={open ? undefined : ''}>
+            <GroupHead id={id} title={cat} modified={keys.some((k) => changed.has(k))} open={open} />
+            {open && keys.map((k) => (
               <Field
                 key={k}
                 optKey={k}
@@ -147,7 +150,7 @@ export function ObjectSettings() {
               />
             ))}
           </section>
-        ))}
+        ); })}
       </div>
       {pick && (
         <SelectSettings
