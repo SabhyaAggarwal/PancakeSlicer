@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -552,8 +553,18 @@ func (st *workspaceStore) putAsset(w http.ResponseWriter, r *http.Request) {
 		err = f.Sync()
 	}
 	err = errors.Join(err, f.Close())
-	if err != nil {
-		workspaceFailure(w, 400, "asset_upload_failed", "The complete asset could not be stored (limit 512 MiB). Retry with original bytes.", "retry_same_asset", 0)
+	var tooLarge *http.MaxBytesError
+	var timeout net.Error
+	switch {
+	case errors.As(err, &tooLarge):
+		workspaceFailure(w, 413, "asset_too_large", "The model exceeds 512 MiB.", "reimport_asset", 0)
+		return
+	case errors.As(err, &timeout) && timeout.Timeout():
+		w.Header().Set("Connection", "close")
+		workspaceFailure(w, 408, "asset_upload_timeout", "The model upload stalled. Retry.", "retry_same_asset", 0)
+		return
+	case err != nil:
+		workspaceFailure(w, 400, "asset_upload_failed", "The model upload did not complete. Retry.", "retry_same_asset", 0)
 		return
 	}
 	digest := hex.EncodeToString(hash.Sum(nil))

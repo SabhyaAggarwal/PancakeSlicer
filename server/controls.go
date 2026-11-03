@@ -405,6 +405,14 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 			fail(w, http.StatusRequestHeaderFieldsTooLarge, "request headers exceed 1 MiB")
 			return
 		}
+		if (r.Method == "PUT" || r.Method == "POST" || r.Method == "PATCH") && r.URL.Path != "/api/jobs" && r.URL.Path != "/api/patch-preview" {
+			controller := http.NewResponseController(w)
+			deadline := time.Now().Add(uploadIdleTimeout)
+			if controller.SetReadDeadline(deadline) == nil {
+				defer controller.SetReadDeadline(time.Time{})
+				r.Body = &uploadBody{ReadCloser: r.Body, controller: controller, rate: s.cfg.UploadMinRate, rateDeadline: deadline}
+			}
+		}
 		next.ServeHTTP(w, r)
 	})
 }
