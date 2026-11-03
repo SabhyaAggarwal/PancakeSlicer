@@ -32,6 +32,7 @@ type Server struct {
 	jobs      *JobManager
 	presets   *PresetIndex
 	library   *ProfileLibraryStore
+	workspace *workspaceStore
 	sends     *SendManager
 	fontsOnce sync.Once
 	fonts     []byte
@@ -43,11 +44,15 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, library *Profil
 	healthProbe := newEngineHealth(c)
 	jobs.cfg.NativeHealth = healthProbe
 	mux := http.NewServeMux()
+	workspace := &workspaceStore{root: filepath.Join(c.DataDir, "workspace")}
+	workspace.register(mux)
+	s.workspace = workspace
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, r *http.Request) {
 		q, n := jobs.Counts()
 		health := healthProbe.snapshot(c.Tool)
 		health["status"], health["queued"], health["running"] = "ok", q, n
 		health["profile_library_schema"] = 1
+		health["workspace_schema"] = 1
 		health["server_revision"] = buildAbout(c).Revision
 		health["max_concurrency"], health["max_queue"] = jobs.cfg.MaxJobs, jobs.cfg.MaxQueue
 		if jobResultStats != nil {

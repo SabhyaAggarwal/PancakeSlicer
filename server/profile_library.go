@@ -273,9 +273,30 @@ func (s *Server) putProfileLibrary(w http.ResponseWriter, r *http.Request) {
 		libraryFailure(w, 503, "library_unavailable", "The stored profile library needs recovery; no changes were written.", "repair_profiles", revision)
 		return
 	}
+	var workspace *workspaceData
+	for id := range previous {
+		if next[id] == nil {
+			if s.workspace == nil {
+				libraryFailure(w, 503, "inventory_unavailable", "Project reference storage is unavailable; no profile was purged.", "reload_references", revision)
+				return
+			}
+			s.workspace.mu.Lock()
+			defer s.workspace.mu.Unlock()
+			workspace, err = s.workspace.read()
+			if err != nil {
+				libraryFailure(w, 503, "inventory_unavailable", "Project and recovery references could not be read; no profile was purged.", "reload_references", revision)
+				return
+			}
+			break
+		}
+	}
 	refs := libraryReferences(request.Document, next)
 	for id, p := range previous {
 		if next[id] == nil {
+			if workspaceHasReference(workspace, id) {
+				libraryFailure(w, 409, "profile_referenced", "A saved project, recovery draft or retained migration inventory still references this profile. Archive it to remove it from the normal library without losing that work.", "archive_profile", revision)
+				return
+			}
 			inv := request.Inventory
 			if inv == nil || !inv.Complete || inv.LibraryRevision != revision {
 				libraryFailure(w, 409, "inventory_required", "Refresh the complete profile and project reference inventory before deleting a profile.", "reload_references", revision)
