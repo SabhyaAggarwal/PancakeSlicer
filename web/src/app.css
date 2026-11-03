@@ -303,9 +303,6 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .plate-choice button:hover:not(:disabled) { background: var(--hover); }
 :where(.orca-parity) .plate-choice button[aria-pressed="true"] { background: var(--segment-active); }
 
-:where(.orca-parity) .about-body { padding: 8px 20px; line-height: 1.5; }
-:where(.orca-parity) .about-body h2 { font-size: 14px; }
-:where(.orca-parity) .about-revision { font-size: 12px; overflow-wrap: anywhere; color: var(--text-666); }
 
 :where(.orca-parity) .prefs-body { padding: 14px 18px; }
 :where(.orca-parity) .prefs-group { border: 1px solid var(--line-ccc); border-radius: 4px; padding: 8px 12px 10px; margin: 0; display: flex; flex-direction: column; gap: 6px; }

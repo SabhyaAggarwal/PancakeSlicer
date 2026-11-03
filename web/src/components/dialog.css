@@ -31,5 +31,9 @@
   :where(.orca-parity) .modal-buttons > .btn, :where(.orca-parity) .modal-buttons > button { min-height: 44px; }
 }
 
+:where(.orca-parity) .modal-grid { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--s-3) var(--s-5); margin: 0; }
+:where(.orca-parity) .modal-grid > dt { color: var(--ink-3); }
+:where(.orca-parity) .modal-grid > dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+
 :where(.orca-parity) .ask-message { white-space: pre-line; overflow-wrap: anywhere; }
 :where(.orca-parity) .ask-choices { display: grid; gap: var(--s-2); }

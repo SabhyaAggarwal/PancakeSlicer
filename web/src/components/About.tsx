@@ -1,20 +1,17 @@
 import { useEffect, useState } from 'react';
-import { Modal, ModalTitle } from './Modal';
+import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 
 export type BuildAbout = { version: string; revision: string; image: string; license: string; source_url: string; source_configured: boolean; source_sha256: string };
 
 export function AboutContent({ about }: { about: BuildAbout }) {
-  return <>
-    <h2>Nonplanar OrcaSlicer</h2>
-    <p>Version {about.version}</p>
-    <p>Licence: <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noreferrer">{about.license}</a></p>
-    {about.source_configured ? <>
-    <p>This program is free software. You can receive the Corresponding Source of this running version at no charge:</p>
-    <p><a href={about.source_url} target="_blank" rel="noreferrer">Get source code for this version</a></p>
-    </> : <p role="alert">The operator must configure the Corresponding Source offer required by AGPL-3.0 §13.</p>}
-    <p><a href="/third-party-licences.txt" target="_blank" rel="noreferrer">Third-party licences</a></p>
-    <p className="about-revision">Revision: {about.revision}{about.image && <><br />Image: {about.image}</>}</p>
-  </>;
+  const link = (href: string, text: string) => <a href={href} target="_blank" rel="noreferrer">{text}</a>;
+  return <dl className="modal-grid">
+    <dt>Version</dt><dd data-truncated="true" data-full-text={about.revision}>{about.version}</dd>
+    {about.image && <><dt>Image</dt><dd>{about.image}</dd></>}
+    <dt>Licence</dt><dd>{link('https://www.gnu.org/licenses/agpl-3.0.html', about.license)}</dd>
+    <dt>Source</dt><dd>{about.source_configured ? link(about.source_url, 'Source code of this version') : <span role="alert">Not configured (required by AGPL-3.0 §13)</span>}</dd>
+    <dt>Licences</dt><dd>{link('/third-party-licences.txt', 'Third-party licences')}</dd>
+  </dl>;
 }
 
 export default function About({ close }: { close: () => void }) {
@@ -32,11 +29,14 @@ export default function About({ close }: { close: () => void }) {
     });
     return () => controller.abort();
   }, [attempt]);
-  return <Modal size="m" className="about-dialog" label="About OrcaSlicer" onClose={close}>
-    <ModalTitle title="About OrcaSlicer" onClose={close} />
-    <div className="about-body">
-      {about ? <AboutContent about={about} /> : error ? <p role="alert">Unable to load source information: {error}. <button className="side-btn" onClick={() => setAttempt(attempt + 1)}>Retry</button></p> : <p role="status">Loading version and source information…</p>}
-    </div>
-    <div className="bed-dialog-buttons"><button className="side-btn" data-autofocus onClick={close}>OK</button></div>
+  return <Modal size="m" label="About Nonplanar OrcaSlicer" onClose={close}>
+    <ModalTitle title="Nonplanar OrcaSlicer" onClose={close} />
+    <ModalBody>
+      {about ? <AboutContent about={about} /> : error ? <p role="alert">Version information did not load: {error}</p> : <p role="status">Loading…</p>}
+    </ModalBody>
+    <ModalFooter>
+      {error && <button type="button" className="btn" onClick={() => setAttempt(attempt + 1)}>Retry</button>}
+      <button type="button" className="btn-primary" onClick={close}>Close</button>
+    </ModalFooter>
   </Modal>;
 }
