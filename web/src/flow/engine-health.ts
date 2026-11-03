@@ -10,7 +10,7 @@ export interface EngineHealth {
     validated?: boolean; preview_ready?: boolean; print_qualified?: boolean };
   engine_state?: string;
 }
-type HealthEvent = { type: 'HEALTH'; health: EngineHealth } | { type: 'FAIL' } | { type: 'RETRY' };
+type HealthEvent = { type: 'HEALTH'; health: EngineHealth } | { type: 'FAIL' };
 interface HealthContext { health: EngineHealth | null }
 export function classifyEngine(health: EngineHealth): Exclude<EngineState, 'unknown'> {
   const manifest = health.artifact_manifest, tools = health.tool_features;
@@ -25,9 +25,9 @@ const healthTransitions = (['healthy', 'degraded', 'qualified', 'unqualified'] a
   target, guard: (_: HealthContext, e: Extract<HealthEvent, { type: 'HEALTH' }>) => classifyEngine(e.health) === target,
   action: (_: HealthContext, e: Extract<HealthEvent, { type: 'HEALTH' }>) => ({ health: e.health }),
 }));
-const on = { HEALTH: healthTransitions, FAIL: 'degraded', RETRY: 'unknown' } as const;
+const on = { HEALTH: healthTransitions, FAIL: 'degraded' } as const;
 export const engineHealth = createMachine<EngineState, HealthEvent, HealthContext>({
-  id: 'engine-health', initial: 'unknown', context: { health: null },
+  id: 'engine-health', initial: 'unknown', strict: true, context: { health: null },
   states: { unknown: { on }, healthy: { on }, degraded: { on }, qualified: { on }, unqualified: { on } },
 });
 let probe: Promise<void> | null = null, retry: ReturnType<typeof setTimeout> | undefined, watching = false;
@@ -45,7 +45,6 @@ export function probeEngine(): Promise<void> {
   if (probe) return probe;
   watch();
   clearTimeout(retry);
-  engineHealth.send({ type: 'RETRY' });
   probe = readHealth(5000).then(async (r) => {
     if (!r.ok) throw new Error('Health unavailable');
     const health = await r.json() as EngineHealth;
