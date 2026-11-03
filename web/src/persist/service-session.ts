@@ -1,6 +1,8 @@
 import { createServiceDocument } from './service-document';
 import { requireWorkspaceService } from './service';
-const session = createServiceDocument('/api/session', 'PATCH', requireWorkspaceService);
+const owners = (remote: unknown, local: unknown) => [...new Set([...(local as string[] ?? []), ...(remote as string[] ?? [])])].slice(0, 32);
+const latest = (_remote: unknown, local: unknown) => local;
+const session = createServiceDocument('/api/session', 'PATCH', requireWorkspaceService, { projectDraftOwners: owners, fsmRecovery: latest });
 export const serviceSessionSnapshot = session.snapshot;
 export const subscribeServiceSession = session.subscribe;
 export const sessionDocument = () => session.snapshot().document;

@@ -94,7 +94,7 @@ export async function mutation(path: string, init: RequestInit, retry = false, s
   }
   if (!response.ok) {
     const error = await responseError(response);
-    accessNotice({ status: response.status, message: error.message });
+    if (error.code !== 'revision_conflict') accessNotice({ status: response.status, message: error.message });
     throw error;
   }
   return response;

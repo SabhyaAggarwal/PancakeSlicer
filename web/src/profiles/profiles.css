@@ -29,8 +29,7 @@
 :where(.orca-parity) .scope-use::after { content: ''; position: absolute; left: 50%; top: 50%; width: 8px; height: 2px; margin: -1px 0 0 -4px; background: var(--ink-2); }
 :where(.orca-parity) .scope-use:hover::after, :where(.orca-parity) .scope-use:focus-visible::after { background: var(--ink); }
 :where(.orca-parity) .opt-line:has(.scope-use) .opt-field :is(input.text, .combo) { box-shadow: inset 0 -2px 0 var(--ink-2); }
-:where(.orca-parity) .sidebar .settings-tab .opt-line[data-opt], :where(.orca-parity) .sidebar .obj-settings .opt-line[data-opt] { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) var(--s-6, 20px); }
-:where(.orca-parity) .sidebar .settings-tab .opt-line.full[data-opt], :where(.orca-parity) .sidebar .obj-settings .opt-line.full[data-opt] { grid-template-columns: minmax(0, 1fr) var(--s-6, 20px); }
+:where(.orca-parity) .sidebar :is(.settings-tab, .obj-settings) { --opt-end: var(--s-6, 20px); }
 :where(.orca-parity) .pf-scope-switch { display: flex; gap: var(--s-2); padding: var(--s-3) var(--s-4); }
 :where(.orca-parity) .pf-scope-switch button { flex: 1; height: var(--control-height); border: 1px solid var(--line); border-radius: var(--control-radius); background: none; font: inherit; color: var(--ink-2); cursor: pointer; }
 :where(.orca-parity) .pf-scope-switch button[aria-pressed='true'] { color: var(--ink); border-color: var(--ink-3); }
@@ -38,8 +37,7 @@
 
 :where(.orca-parity) .pf-pop { position: fixed; z-index: 60; min-width: 260px; max-width: min(340px, calc(100vw - 32px)); padding: var(--s-4); background: var(--panel); border: 1px solid var(--frame); border-radius: var(--r-section); box-shadow: var(--shadow-pop); }
 :where(.orca-parity) .pf-pop-title { margin-bottom: 4px; font: var(--t-small); }
-:where(.orca-parity) .settings-tab .opt-line { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 92px; }
-:where(.orca-parity) .settings-tab .opt-line.full { grid-template-columns: 1fr 92px; }
+:where(.orca-parity) .settings-tab { --opt-end: 92px; }
 :where(.orca-parity) .settings-tab .opt-undo { justify-content: flex-start; gap: 2px; }
 
 :where(.orca-parity) .pf-filaments { table-layout: fixed; }
@@ -76,7 +74,6 @@
 :where(.orca-parity) .pf-table tr.is-diff td { background: color-mix(in srgb, var(--warn) 12%, var(--panel)); }
 :where(.orca-parity) .pf-table tr.pf-group td { background: var(--surface); font-weight: 600; color: var(--ink-2); }
 
-:where(.orca-parity) .settings-tab .option-row > .opt-label { padding-left: var(--s-4); }
 
 
 :where(.orca-parity) .pf-reason { color: var(--warn); }

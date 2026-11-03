@@ -3,12 +3,15 @@ import { jsonWrite, serviceJson } from './service';
 export type JsonValue = null | boolean | number | string | readonly JsonValue[] | { readonly [key: string]: JsonValue };
 export type ServiceDocument = Record<string, unknown>;
 export type DocumentSnapshot<D> = { state: 'loading' | 'ready' | 'pending' | 'failed'; revision: number; document: D; error: string | null; conflict: boolean };
-export function createServiceDocument<D extends ServiceDocument>(path: string, method: 'PUT' | 'PATCH', beforeWrite: (document: D) => Promise<unknown> = () => Promise.resolve()) {
+type KeyMerge = (remote: unknown, local: unknown) => unknown;
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+export function createServiceDocument<D extends ServiceDocument>(path: string, method: 'PUT' | 'PATCH', beforeWrite: (document: D) => Promise<unknown> = () => Promise.resolve(), merge: Record<string, KeyMerge> = {}) {
   let current: DocumentSnapshot<D> = { state: 'loading', revision: 0, document: {} as D, error: null, conflict: false };
   let hydrated = false, loading: Promise<DocumentSnapshot<D>> | null = null, running: Promise<void> | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined, serial = 0, savedSerial = 0;
   let beforeHydration: Partial<D> = {};
   const unsaved = new Map<string, number>();
+  let base = {} as D;
   let operation: { operationId: string; expectedRevision: number; document: D; serial: number } | null = null;
   const listeners = new Set<() => void>();
   const publish = (patch: Partial<DocumentSnapshot<D>>) => { current = { ...current, ...patch }; listeners.forEach((listener) => listener()); };
@@ -16,7 +19,7 @@ export function createServiceDocument<D extends ServiceDocument>(path: string, m
     if (hydrated) return Promise.resolve(current);
     loading ??= serviceJson<{revision:number;document:D}>(path).then((remote) => {
       if (!remote || !Number.isSafeInteger(remote.revision) || remote.revision < 0 || !remote.document || typeof remote.document !== 'object' || Array.isArray(remote.document)) throw new Error('Invalid saved service document');
-      hydrated = true;
+      hydrated = true; base = remote.document;
       publish({ ...remote, document: { ...remote.document, ...beforeHydration },
         state: serial > savedSerial ? 'pending' : 'ready', error: null, conflict: false });
       beforeHydration = {};
@@ -52,13 +55,20 @@ export function createServiceDocument<D extends ServiceDocument>(path: string, m
           if ((error as { code?: string }).code !== 'revision_conflict' || ++rebases > 3) throw error;
           const remote = await serviceJson<{revision:number;document:D}>(path);
           if (!remote || !Number.isSafeInteger(remote.revision) || !remote.document || typeof remote.document !== 'object' || Array.isArray(remote.document)) throw error;
-          const mine = Object.fromEntries([...unsaved.keys()].map((key) => [key, current.document[key]]));
-          operation = null; publish({ revision: remote.revision, document: { ...remote.document, ...mine } });
+          const next: Record<string, unknown> = { ...remote.document };
+          for (const key of [...unsaved.keys()]) {
+            const theirs = remote.document[key], mine = current.document[key];
+            if (same(theirs, base[key])) next[key] = mine;
+            else if (same(theirs, mine)) unsaved.delete(key);
+            else if (merge[key]) next[key] = merge[key](theirs, mine);
+            else throw error;
+          }
+          base = remote.document; operation = null; publish({ revision: remote.revision, document: next as D });
           continue;
         }
         if (!ack || ack.revision !== captured.expectedRevision + 1) throw new Error('Invalid service revision acknowledgement');
         for (const [key, at] of unsaved) if (at <= captured.serial) unsaved.delete(key);
-        savedSerial = captured.serial; operation = null; publish({ revision: ack.revision });
+        base = captured.document; savedSerial = captured.serial; operation = null; publish({ revision: ack.revision });
       }
       publish({ state: 'ready', error: null, conflict: false });
     })().catch((error: unknown) => {

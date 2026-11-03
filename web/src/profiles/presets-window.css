@@ -92,9 +92,7 @@
 :where(.orca-parity) .pf-editor-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); }
 :where(.orca-parity) .pf-editor-fields { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; margin: 0; padding: 0; border: 0; }
 :where(.orca-parity) .pf-full-editor .settings-tab { flex: 1; min-height: 0; }
-:where(.orca-parity) .pf-full-editor .opt-line { grid-template-columns: minmax(0, 1fr) minmax(160px, 1fr) 24px; min-height: 38px; padding-block: var(--s-2); }
-:where(.orca-parity) .pf-full-editor .opt-line.full { grid-template-columns: minmax(0, 1fr) 24px; }
-:where(.orca-parity) .pf-full-editor .opt-line.full .opt-field { grid-column: 1 / -1; }
+:where(.orca-parity) .pf-full-editor { --ctl-w: clamp(160px, 50%, 280px); --opt-end: 24px; }
 :where(.orca-parity) .pf-full-editor .opt-field .num { max-width: none; }
 :where(.orca-parity) .pf-full-editor .text.multiline { min-height: 96px; height: clamp(96px, 18vh, 200px); max-height: 360px; resize: vertical; }
 :where(.orca-parity) .pf-editor-error { margin: var(--s-3) 0; padding: var(--s-3) var(--s-4); color: var(--danger); background: var(--danger-tint); border-radius: var(--r-1); overflow-wrap: anywhere; white-space: pre-line; }

@@ -265,9 +265,8 @@ async function start(ready: Promise<unknown>) {
     }
     const doc = snapshot();
     const before = observed; observed = doc;
-    const empty = !doc.project && !doc.objects.length && !doc.projectPlates.some((p) => p.objects.length);
-    const uneditedBlank = empty && (project.get().value === 'blank' || project.get().value === 'deleted') &&
-      JSON.stringify({ ...before, selected: null }) === JSON.stringify({ ...doc, selected: null });
+    const empty = !doc.project && !doc.projectName && !doc.objects.length && !doc.projectPlates.some((p) => p.objects.length);
+    const uneditedBlank = empty && (project.get().value === 'blank' || project.get().value === 'deleted');
     if (!sameDoc(before, doc) && !uneditedBlank) {
       checkpointProject(doc);
       project.send({ type: 'EDIT' });
