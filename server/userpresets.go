@@ -18,6 +18,44 @@ type UserPreset struct {
 	Type      string          `json:"type,omitempty"`
 	Inherits  string          `json:"inherits,omitempty"`
 	Overrides json.RawMessage `json:"overrides"`
+	metadata  map[string]json.RawMessage
+}
+
+func (p *UserPreset) UnmarshalJSON(raw []byte) error {
+	type wire UserPreset
+	var value wire
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return err
+	}
+	*p = UserPreset(value)
+	p.metadata = fields
+	return nil
+}
+func (p UserPreset) MarshalJSON() ([]byte, error) {
+	type wire UserPreset
+	raw, err := json.Marshal(wire(p))
+	if err != nil {
+		return nil, err
+	}
+	fields := map[string]json.RawMessage{}
+	for key, value := range p.metadata {
+		fields[key] = value
+	}
+	for _, key := range []string{"name", "type", "inherits", "overrides"} {
+		delete(fields, key)
+	}
+	var known map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &known); err != nil {
+		return nil, err
+	}
+	for key, value := range known {
+		fields[key] = value
+	}
+	return json.Marshal(fields)
 }
 
 type UserPresetStore struct {
