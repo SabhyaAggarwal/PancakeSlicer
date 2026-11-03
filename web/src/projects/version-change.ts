@@ -1,8 +1,17 @@
+import type { PresetType } from '../api/types';
 import { OPTIONS } from '../options';
-import { effectiveConfig, getState, type PlateObject, type State } from '../state/store';
+import { display, presetLabel } from '../profiles/format';
+import { effectiveConfig, getState, resolvePreset, type PlateObject, type State } from '../state/store';
 import type { Doc } from '../state/history';
 
 export interface VersionChange { key?: string; label: string; from?: string; to?: string }
+
+export function profileName(type: PresetType, key: unknown): string {
+  if (typeof key !== 'string' || !key) return '';
+  const { user, base } = resolvePreset(getState(), type, key), found = user?.name ?? base?.name;
+  return found ? presetLabel(found) : key.startsWith('profile:') ? '' : presetLabel(key);
+}
+const PROFILE_TYPE: Record<string, PresetType> = { printer: 'machine', process: 'process', filament: 'filament' };
 
 const shown = (v: unknown) => Array.isArray(v) ? v.join(', ') : String(v ?? '');
 const name = (o: PlateObject) => o.name.replace(/\.(stl|obj|3mf|step|stp|drc)$/i, '');
@@ -27,9 +36,13 @@ export function describeChange(before: Doc, after: Doc): VersionChange[] {
   if (before.objects !== after.objects) objectChanges(before.objects, after.objects, out);
   if (before.projectPlates.length !== after.projectPlates.length)
     out.push({ key: 'plates', label: after.projectPlates.length > before.projectPlates.length ? 'Added plate' : 'Removed plate' });
-  if (before.printer !== after.printer) out.push({ key: 'printer', label: 'Printer', from: before.printer, to: after.printer });
-  if (before.process !== after.process) out.push({ key: 'process', label: 'Process', from: before.process, to: after.process });
-  if (before.filamentSlots !== after.filamentSlots && shown(before.filamentSlots) !== shown(after.filamentSlots)) out.push({ key: 'filaments', label: 'Filaments' });
+  if (before.printer !== after.printer) out.push({ key: 'printer', label: 'Printer', from: profileName('machine', before.printer), to: profileName('machine', after.printer) });
+  if (before.process !== after.process) out.push({ key: 'process', label: 'Process', from: profileName('process', before.process), to: profileName('process', after.process) });
+  if (before.filamentSlots !== after.filamentSlots && shown(before.filamentSlots) !== shown(after.filamentSlots)) {
+    const a = before.filamentSlots, b = after.filamentSlots;
+    if (a.length !== b.length) out.push({ key: 'filaments', label: b.length > a.length ? 'Added filament' : 'Removed filament' });
+    else b.forEach((k, i) => k !== a[i] && out.push({ key: `filament:${i}`, label: b.length > 1 ? `Filament ${i + 1}` : 'Filament', from: profileName('filament', a[i]), to: profileName('filament', k) }));
+  }
   if (before.dirty !== after.dirty && before.printer === after.printer && before.process === after.process) {
     const s = getState();
     for (const type of ['process', 'machine'] as const) {
@@ -42,8 +55,17 @@ export function describeChange(before: Doc, after: Doc): VersionChange[] {
         out.push({ key: `${type}:${k}`, label: OPTIONS[k]?.label || k, from: shown(was[k]), to: shown(now[k]) });
     }
   }
-  if (before.filamentEdits !== after.filamentEdits && !out.some((c) => c.key === 'filaments')) out.push({ key: 'filaments', label: 'Filament settings' });
+  if (before.filamentEdits !== after.filamentEdits && !out.some((c) => c.key?.startsWith('filament'))) out.push({ key: 'filaments', label: 'Filament settings' });
   return out.slice(0, 8);
 }
 
-export const changeText = (c: VersionChange) => c.from !== undefined && c.to !== undefined && (c.from || c.to) ? `${c.label} ${c.from || '–'}→${c.to || '–'}` : c.label;
+export function changeText(c: VersionChange): string {
+  if (c.from === undefined || c.to === undefined) return c.label;
+  const type = c.key && PROFILE_TYPE[c.key.split(':')[0]];
+  if (type) {
+    const to = profileName(type, c.to), from = profileName(type, c.from);
+    return !to ? `${c.label} changed` : !from || from === to ? `${c.label} → ${to}` : `${c.label}: ${from} → ${to}`;
+  }
+  const setting = c.key?.split(':')[1], value = (v: string) => (setting && OPTIONS[setting] ? display(setting, v) : v) || '–';
+  return `${c.label}: ${value(c.from)} → ${value(c.to)}`;
+}
