@@ -244,8 +244,8 @@ func projectRecord(raw json.RawMessage, id string, revision uint64) (json.RawMes
 	if json.Unmarshal(meta["name"], &name) != nil || strings.TrimSpace(name) == "" || len(name) > 500 || json.Unmarshal(meta["objects"], &objects) != nil || objects == nil || *objects < 0 || math.Trunc(*objects) != *objects || json.Unmarshal(meta["savedAt"], &savedAt) != nil || savedAt == nil || *savedAt < 0 {
 		return nil, errors.New("project name, nonnegative savedAt and integer object count are required")
 	}
-	if raw := meta["thumbnail"]; len(raw) != 0 && json.Unmarshal(raw, &thumbnail) != nil {
-		return nil, errors.New("project thumbnail must be a string or null")
+	if raw := meta["thumbnail"]; len(raw) != 0 && json.Unmarshal(raw, &thumbnail) != nil || thumbnail != nil && strings.HasPrefix(*thumbnail, thumbnailRoute) {
+		return nil, errors.New("project thumbnail must be an image data URL, another string or null")
 	}
 	meta["id"], _ = json.Marshal(id)
 	meta["revision"], _ = json.Marshal(revision)
@@ -276,6 +276,10 @@ func projectMeta(p workspaceProject) json.RawMessage {
 	if json.Unmarshal(record["meta"], &meta) != nil || meta == nil {
 		return record["meta"]
 	}
+	var id, thumbnail string
+	if json.Unmarshal(meta["id"], &id) == nil && json.Unmarshal(meta["thumbnail"], &thumbnail) == nil && strings.HasPrefix(thumbnail, "data:image/") {
+		meta["thumbnail"], _ = json.Marshal(thumbnailURL(id, thumbnail))
+	}
 	meta["folderId"] = json.RawMessage("null")
 	if p.Folder != "" {
 		meta["folderId"], _ = json.Marshal(p.Folder)
@@ -286,6 +290,7 @@ func projectMeta(p workspaceProject) json.RawMessage {
 func (st *workspaceStore) register(mux *http.ServeMux) {
 	st.adoptionRoutes(mux)
 	st.folderRoutes(mux)
+	st.thumbnailRoutes(mux)
 	mux.HandleFunc("GET /api/projects", func(w http.ResponseWriter, r *http.Request) {
 		st.locked(w, func(d *workspaceData) {
 			out := []json.RawMessage{}

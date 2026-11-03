@@ -14,7 +14,7 @@ export const clean = (p: Partial<ProjectMeta> | null | undefined): ListedProject
   savedAt: Number.isFinite(p.savedAt) ? Number(p.savedAt) : 0,
   ...(Number.isSafeInteger(p.revision) ? { revision: p.revision } : {}),
   objects: Number.isFinite(p.objects) ? Number(p.objects) : 0,
-  thumbnail: typeof p.thumbnail === 'string' && (p.thumbnail.startsWith('data:image/') || p.thumbnail.startsWith('/api/projects/')) ? p.thumbnail : null,
+  thumbnail: typeof p.thumbnail === 'string' && (p.thumbnail.startsWith('data:image/') || p.thumbnail.startsWith('/api/project-thumbnails/')) ? p.thumbnail : null,
   folderId: typeof (p as ListedProject).folderId === 'string' ? (p as ListedProject).folderId : null,
 });
 
