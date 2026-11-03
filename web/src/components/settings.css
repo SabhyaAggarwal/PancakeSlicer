@@ -167,3 +167,9 @@
 :where(.orca-parity) .menu-note { margin-left: auto; padding-left: var(--s-4); color: var(--ink-3); font: var(--t-small); white-space: nowrap; }
 :where(.orca-parity) .dropdown .menu-note { display: none; }
 :where(.orca-parity) .surface-settings .surface-why { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-3); margin: 0; padding: 0 var(--space-section, var(--s-5)) var(--s-2); color: var(--warn); font: var(--t-small); }
+:where(.orca-parity) .opt-line > .field-source { grid-column: 4; grid-row: 1; flex: none; color: var(--ink-3); font: var(--t-small); white-space: nowrap; }
+:where(.orca-parity) .option-row > .opt-line > .field-source { grid-column: 5; grid-row: auto; }
+:where(.orca-parity) .opt-line.full > .field-source { grid-row: 2; }
+:where(.orca-parity) .field-source .link { margin-left: var(--s-2); }
+:where(.orca-parity) .field-source.edited { visibility: hidden; }
+:where(.orca-parity) .field-source .link:disabled { color: var(--ink-3); cursor: default; }

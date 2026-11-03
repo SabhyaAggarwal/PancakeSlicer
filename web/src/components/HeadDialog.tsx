@@ -1,9 +1,8 @@
 import { Check } from './Check';
-import { useEffect, useRef, useState } from 'react';
-import { useTabFit } from './tab-rows';
+import { useEffect, useState } from 'react';
 import { loadHead, loadHeadJson, maxSlope, saveUserHead, slopeMap, type Head, type HeadBox } from '../heads';
 import { toast } from '../state/store';
-import { Modal, ModalTitle } from './Modal';
+import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 
 const decimal = (n: number) => { const r = Math.round(n * 1e6) / 1e6; return String(r === 0 ? 0 : r); };
 function number(text: string) {
@@ -101,8 +100,6 @@ export default function HeadDialog({ id, layerHeight, close, onSaved }: { id: st
   const [calibrated, setCalibrated] = useState(false);
   const [provenance, setProvenance] = useState('');
   const [page, setPage] = useState(0);
-  const strip = useRef<HTMLDivElement>(null);
-  useTabFit(strip, base);
   const [angles, setAngles] = useState<string[]>(Array(8).fill(''));
   useEffect(() => {
     const key = id || 'generic-conservative';
@@ -156,19 +153,19 @@ export default function HeadDialog({ id, layerHeight, close, onSaved }: { id: st
     }
   };
   return (
-    <Modal size="xl" className="head-dialog" label="Non-planar print head" onClose={close}>
-      <ModalTitle title="Non-planar print head" onClose={close} />
-      <div className="np-dialog-body">
-        {base === undefined && <div role="status">Loading head…</div>}
-        {base === null && <div role="alert">"{id}" not in head library: generic conservative head</div>}
+    <Modal size="xl" label="Print head" onClose={close}>
+      <ModalTitle title="Print head" onClose={close} />
+      <ModalBody>
+        {base === undefined && <p role="status">Loading head…</p>}
+        {base === null && <p role="alert">“{id}” is not in the head library; using the generic conservative head.</p>}
         {base && <>
           <div className="head-identity">
-            <label htmlFor="head-id">New head ID</label><input id="head-id" className="text" value={fields.id} onChange={field('id')} />
-            <label htmlFor="head-name">Name</label><input id="head-name" className="text" value={fields.name} onChange={field('name')} />
+            <label className="form-row"><span>ID</span><input className="text" value={fields.id} onChange={field('id')} /></label>
+            <label className="form-row"><span>Name</span><input className="text" value={fields.name} onChange={field('name')} /></label>
           </div>
-          <div ref={strip} className="page-bar" role="tablist">
-            {['Head profile', 'Per-direction fit'].map((p, i) => <button key={p} role="tab" aria-selected={i === page} className={`page-tab ${i === page ? 'active' : ''}`} onClick={() => setPage(i)}><span className="page-tab-label">{p}</span></button>)}
-          </div>
+          <span className="seg head-tabs" role="tablist" aria-label="Head">
+            {['Components', 'Per-direction fit'].map((p, i) => <button key={p} type="button" role="tab" aria-selected={i === page} aria-checked={i === page} onClick={() => setPage(i)}>{p}</button>)}
+          </span>
           {page === 0 && <>
             <div className="head-boxes">
               <table className="np-table head-grid">
@@ -184,34 +181,34 @@ export default function HeadDialog({ id, layerHeight, close, onSaved }: { id: st
                 ))}</tbody>
               </table>
             </div>
-            <div className="row">
-              <button className="btn" onClick={() => edit([...rows, { name: 'New component', v: ['0', '10', '0', '0', '0', '0'], ix: false, iy: false, nozzle: false }])}>Add component</button>
-              <button className="btn" disabled={selected < 0 || selected >= rows.length} onClick={() => { edit(rows.filter((_, j) => j !== selected)); setSelected(-1); }}>Remove selected component</button>
+            <div className="form-actions">
+              <button type="button" className="btn" onClick={() => edit([...rows, { name: 'New component', v: ['0', '10', '0', '0', '0', '0'], ix: false, iy: false, nozzle: false }])}>Add component</button>
+              <button type="button" className="btn-ghost" disabled={selected < 0 || selected >= rows.length} onClick={() => { edit(rows.filter((_, j) => j !== selected)); setSelected(-1); }}>Remove component</button>
             </div>
-            <div className="head-body">
-              <div className="head-identity" style={{ alignSelf: 'start' }}>
-                <label htmlFor="head-margin">Vertical margin (mm)</label><input id="head-margin" className="text num" value={fields.margin} onChange={field('margin')} />
-                <label htmlFor="head-lateral">Lateral margin (mm)</label><input id="head-lateral" className="text num" value={fields.lateral} onChange={field('lateral')} />
-                <label htmlFor="head-gap">Layer height (mm)</label><input id="head-gap" className="text num" value={fields.gap} onChange={field('gap')} />
+            <div className="modal-split">
+              <div className="modal-fields">
+                <label className="form-row"><span>Vertical margin</span><span className="modal-unit"><input id="head-margin" className="text num" value={fields.margin} onChange={field('margin')} /><span>mm</span></span></label>
+                <label className="form-row"><span>Lateral margin</span><span className="modal-unit"><input id="head-lateral" className="text num" value={fields.lateral} onChange={field('lateral')} /><span>mm</span></span></label>
+                <label className="form-row"><span>Layer height</span><span className="modal-unit"><input id="head-gap" className="text num" value={fields.gap} onChange={field('gap')} /><span>mm</span></span></label>
               </div>
               <SlopePlot head={preview} gap={gap} />
             </div>
           </>}
           {page === 1 && <>
-            <div style={{ whiteSpace: 'pre-line' }}>{SLOPE_STAR_TEXT}</div>
-            <table className="np-table" style={{ width: 'auto' }}>
-              <thead><tr><th>Azimuth (degrees)</th><th>Last clean angle (degrees)</th></tr></thead>
-              <tbody>{angles.map((a, i) => <tr key={i}><td className="num">{i * 45}</td>
+            <p className="ask-message">{SLOPE_STAR_TEXT}</p>
+            <table className="np-table head-angles">
+              <thead><tr><th>Azimuth</th><th>Last clean angle</th></tr></thead>
+              <tbody>{angles.map((a, i) => <tr key={i}><td className="num">{i * 45}°</td>
                 <td><input className="cell num" aria-label={`Last clean angle at ${i * 45}°`} value={a} onChange={(e) => setAngles(angles.map((x, j) => (j === i ? e.target.value : x)))} /></td></tr>)}</tbody>
             </table>
-            <div><button className="btn" onClick={apply}>Apply</button></div>
+            <div className="form-actions"><button type="button" className="btn" onClick={apply}>Apply to components</button></div>
           </>}
         </>}
-      </div>
-      <div className="modal-buttons np-buttons">
-        <button className="btn primary" type="button" disabled={!base} onClick={() => void save()}>Save as user head</button>
-        <button className="btn" type="button" data-autofocus onClick={close}>Cancel</button>
-      </div>
+      </ModalBody>
+      <ModalFooter>
+        <button type="button" className="btn" onClick={close}>Cancel</button>
+        <button type="button" className="btn-primary" disabled={!base} onClick={() => void save()}>Save head</button>
+      </ModalFooter>
     </Modal>
   );
 }

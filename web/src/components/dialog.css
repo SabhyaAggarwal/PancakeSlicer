@@ -17,6 +17,7 @@
 :where(.orca-parity) .modal-body, :where(.orca-parity) :is(.modal, .modal > form) > :nth-last-child(1 of :not(.modal-buttons)):not(.modal-title, form) { flex: 1 1 auto; min-height: 0; overflow: auto; }
 :where(.orca-parity) .modal-body { display: flex; flex-direction: column; gap: var(--s-4); padding: var(--s-5); }
 :where(.orca-parity) .modal-body > p { margin: 0; color: var(--ink-2); }
+:where(.orca-parity) .modal-body > * { flex-shrink: 0; }
 
 :where(.orca-parity) .modal-buttons { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--s-3); padding: var(--s-4) var(--s-5); border-top: 1px solid var(--line); background: var(--panel); }
 :where(.orca-parity) .modal-lead { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: var(--s-3); min-width: 0; margin-right: auto; color: var(--ink-3); font: var(--t-small); }
@@ -35,7 +36,7 @@
 :where(.orca-parity) .modal-grid > dt { color: var(--ink-3); }
 :where(.orca-parity) .modal-grid > dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
 
-:where(.orca-parity) .modal-split { flex-direction: row; align-items: flex-start; gap: var(--s-6); }
+:where(.orca-parity) .modal-split { display: flex; flex-direction: row; align-items: flex-start; gap: var(--s-6); }
 :where(.orca-parity) .modal-fields { flex: 1; min-width: 0; display: grid; gap: var(--s-3); align-content: start; }
 :where(.orca-parity) .modal-fields .form-row > .dropdown { flex: 1 1 12rem; min-width: 0; max-width: 20rem; }
 :where(.orca-parity) .modal-unit { display: inline-flex; align-items: center; gap: var(--s-3); }
@@ -106,6 +107,45 @@
 :where(.orca-parity) .gcode-input { width: 100%; min-height: 160px; resize: vertical; font-family: var(--font-mono, monospace); }
 
 :where(.orca-parity) .np-calib-tabs { display: grid; width: 100%; }
+
+:where(.orca-parity) .import-zone { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--s-4); padding: var(--s-6); border: 1px dashed var(--line-strong); border-radius: var(--r-2); color: var(--ink-3); }
+:where(.orca-parity) .import-drop.drag .import-zone { border-color: var(--focus); background: var(--accent-tint); }
+
+:where(.orca-parity) .object-table-body { padding: 0 var(--s-5) var(--s-4); }
+:where(.orca-parity) .object-table { border-collapse: collapse; font: var(--t-small); font-variant-numeric: tabular-nums; }
+:where(.orca-parity) .object-table th { position: sticky; top: 0; z-index: 1; padding: var(--s-3) var(--s-3) var(--s-2); border-bottom: 1px solid var(--line-strong); background: var(--panel); color: var(--ink-3); font-weight: 600; text-align: left; white-space: nowrap; }
+:where(.orca-parity) .object-table td { padding: var(--s-2) var(--s-3); border-bottom: 1px solid var(--line); }
+:where(.orca-parity) .object-table td.name { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:where(.orca-parity) .object-table td.global :is(.num, .combo) { color: var(--ink-3); }
+:where(.orca-parity) .object-table .num { width: 64px; }
+:where(.orca-parity) .object-table .icon-reset { border: 0; background: none; color: var(--accent-text); cursor: pointer; padding: 0 var(--s-1); }
+
+:where(.orca-parity) .head-identity { display: grid; gap: var(--s-3); }
+:where(.orca-parity) .head-tabs { align-self: flex-start; }
+:where(.orca-parity) .head-boxes { max-height: 320px; overflow: auto; border: 1px solid var(--line); border-radius: var(--r-2); }
+:where(.orca-parity) .head-grid { font-variant-numeric: tabular-nums; }
+:where(.orca-parity) .head-grid td { padding: 0; }
+:where(.orca-parity) :is(.head-grid, .head-angles) input.cell { width: 100%; min-width: 56px; height: var(--h-row); padding: 0 var(--s-3); border: 0; background: transparent; color: var(--ink); font: inherit; }
+:where(.orca-parity) :is(.head-grid, .head-angles) input.cell.num { width: 72px; text-align: right; }
+:where(.orca-parity) .head-grid td:first-child input.cell { min-width: 140px; }
+:where(.orca-parity) .head-grid tr.selected td { background: var(--hover); }
+:where(.orca-parity) .head-angles { width: auto; align-self: flex-start; }
+:where(.orca-parity) .head-plot { flex: none; width: 240px; margin: 0; }
+
+:where(.orca-parity) .modal.palette { top: 12dvh; transform: translateX(-50%); max-height: 76dvh; }
+:where(.orca-parity) .pal-input-row { display: flex; align-items: center; gap: var(--s-3); min-height: 48px; padding: 0 var(--s-5); border-bottom: 1px solid var(--line); }
+:where(.orca-parity) .pal-input { flex: 1; min-width: 0; height: 48px; padding: 0; border: 0; outline: none; background: none; color: var(--ink); font: var(--t-title); font-weight: 400; }
+:where(.orca-parity) .pal-scope { flex: none; padding: var(--s-1) var(--s-3); border-radius: var(--r-1); background: var(--sunken); color: var(--ink-2); font: var(--t-small); }
+:where(.orca-parity) .pal-list { margin: 0; padding: var(--s-2); list-style: none; overflow: auto; }
+:where(.orca-parity) .pal-row { display: flex; align-items: center; gap: var(--s-3); min-height: 32px; padding: 0 var(--s-3); border-radius: var(--r-2); cursor: pointer; }
+:where(.orca-parity) .pal-row.active { background: var(--hover); }
+:where(.orca-parity) .pal-row.off { color: var(--ink-3); }
+:where(.orca-parity) .pal-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:where(.orca-parity) .pal-title b { color: var(--accent-text); font-weight: 600; }
+:where(.orca-parity) .pal-detail { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); font: var(--t-small); }
+:where(.orca-parity) .pal-keys { flex: none; }
+:where(.orca-parity) .pal-empty { padding: var(--s-4) var(--s-3); color: var(--ink-3); }
+@media (max-width: 599px) { :root.orca-parity .modal.palette { top: 0; transform: none; height: auto; max-height: 80dvh; } }
 
 :where(.orca-parity) .ask-message { white-space: pre-line; overflow-wrap: anywhere; }
 :where(.orca-parity) .ask-choices { display: grid; gap: var(--s-2); }

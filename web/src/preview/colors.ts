@@ -84,6 +84,10 @@ export class ColorRange {
     return (this.max - this.min) / n;
   }
   colorAt(value: number): RGB {
+    const p = this.packedAt(value);
+    return [p & 255, (p >> 8) & 255, (p >> 16) & 255];
+  }
+  packedAt(value: number): number {
     const f = Math.fround;
     const v = f(Math.min(Math.max(value, this.min), this.max));
     const step = f(this.step());
@@ -95,7 +99,8 @@ export class ColorRange {
     const u = f(Math.min(Math.max(f(t - lo), 0), 1));
     const a = RANGE_PALETTE[lo], b = RANGE_PALETTE[hi];
     const w = f(1 - u);
-    return [0, 1, 2].map((k) => Math.trunc(f(f(w * a[k]) + f(u * b[k])))) as RGB;
+    const ch = (k: number) => Math.trunc(f(f(w * a[k]) + f(u * b[k])));
+    return ch(0) | (ch(1) << 8) | (ch(2) << 16) | 0xff000000;
   }
   values(): number[] {
     if (!(this.max >= this.min)) return [];
@@ -291,23 +296,30 @@ export function hexToRgb(h: string | undefined): RGB {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
+const packRGB = (col: RGB) => col[0] | (col[1] << 8) | (col[2] << 16) | 0xff000000;
+
 export function colorVertices(d: PreviewData, c: ColorContext, out: Uint8Array, from: number, to: number) {
   const s = d.states!;
   const { ranges: r, view } = c;
-  const put = (i: number, col: RGB) => {
-    out[i * 4] = col[0];
-    out[i * 4 + 1] = col[1];
-    out[i * 4 + 2] = col[2];
-    out[i * 4 + 3] = 255;
+  const words = new Uint32Array(out.buffer, out.byteOffset, out.length >> 2);
+  const put = (i: number, col: RGB) => { words[i] = packRGB(col); };
+  const memo = new Map<number, number>();
+  const ranged = (range: ColorRange, v: number) => {
+    let p = memo.get(v);
+    if (p === undefined) {
+      p = range.packedAt(v);
+      if (memo.size < 65536) memo.set(v, p);
+    }
+    return p;
   };
-  const npColor = (i: number, st: number): RGB => {
+  const npColor = (i: number, st: number): number => {
     switch (c.nonplanar) {
-      case 'band': return nonplanarIndexColor(s.band[st]);
-      case 'patch': return nonplanarIndexColor(s.patch[st]);
-      case 'bead_height': return r.beadHeight.colorAt(d.height[i]);
-      case 'slope': return r.slope.colorAt(d.slope ? d.slope[i] : 0);
-      case 'curved': return CURVED_COLOR;
-      default: return r.shell.colorAt(s.shell[st]);
+      case 'band': return packRGB(nonplanarIndexColor(s.band[st]));
+      case 'patch': return packRGB(nonplanarIndexColor(s.patch[st]));
+      case 'bead_height': return ranged(r.beadHeight, d.height[i]);
+      case 'slope': return ranged(r.slope, d.slope ? d.slope[i] : 0);
+      case 'curved': return packRGB(CURVED_COLOR);
+      default: return ranged(r.shell, s.shell[st]);
     }
   };
   for (let i = from; i < to; ++i) {
@@ -321,35 +333,35 @@ export function colorVertices(d: PreviewData, c: ColorContext, out: Uint8Array, 
       put(i, clearanceColor(d.clearance.length ? d.clearance[i] : NaN, sc.margin, sc.floor));
       continue;
     }
-    if (view === 'nonplanar' && extr) { put(i, s.shell[st] === 0xff ? NONPLANAR_PLANAR_COLOR : npColor(i, st)); continue; }
+    if (view === 'nonplanar' && extr) { words[i] = s.shell[st] === 0xff ? packRGB(NONPLANAR_PLANAR_COLOR) : npColor(i, st); continue; }
     if ((t === MoveType.Wipe && view !== 'speed' && view !== 'actual_speed' && view !== 'acceleration' && view !== 'jerk') || (t >= MoveType.Retract && t <= MoveType.CustomGCode)) {
       put(i, optionColor(t));
       continue;
     }
-    let col: RGB;
+    let col: number;
     switch (view) {
-      case 'feature': col = travel ? optionColor(t) : ROLE_COLORS[d.role[i]] ?? DUMMY_COLOR; break;
-      case 'height': col = travel ? optionColor(t) : r.height.colorAt(d.height[i]); break;
-      case 'width': col = travel ? optionColor(t) : r.width.colorAt(d.width[i]); break;
-      case 'speed': col = r.speed.colorAt(d.feed[i]); break;
-      case 'actual_speed': col = r.actualSpeed.colorAt(d.actual.length ? d.actual[i] : 0); break;
-      case 'actual_flow': col = travel ? optionColor(t) : r.actualFlow.colorAt(d.actual.length ? d.mm3[i] * d.actual[i] : 0); break;
-      case 'acceleration': col = r.acceleration.colorAt(s.accel[st]); break;
-      case 'jerk': col = r.jerk.colorAt(s.jerk[st]); break;
-      case 'fan': col = travel ? optionColor(t) : r.fan.colorAt(s.fan[st]); break;
-      case 'temperature': col = travel ? optionColor(t) : r.temperature.colorAt(s.temp[st]); break;
-      case 'pressure_advance': col = travel ? optionColor(t) : r.pa.colorAt(s.pa[st]); break;
-      case 'flow': col = travel ? optionColor(t) : r.flow.colorAt(d.mm3[i] * d.feed[i]); break;
-      case 'layer_time': col = travel ? optionColor(t) : r.layerTime.colorAt(d.layerTimes[d.layer[i]] ?? 0); break;
-      case 'layer_time_log': col = travel ? optionColor(t) : r.layerTimeLog.colorAt(d.layerTimes[d.layer[i]] ?? 0); break;
-      case 'nonplanar': col = optionColor(t); break;
+      case 'feature': col = packRGB(travel ? optionColor(t) : ROLE_COLORS[d.role[i]] ?? DUMMY_COLOR); break;
+      case 'height': col = travel ? packRGB(optionColor(t)) : ranged(r.height, d.height[i]); break;
+      case 'width': col = travel ? packRGB(optionColor(t)) : ranged(r.width, d.width[i]); break;
+      case 'speed': col = ranged(r.speed, d.feed[i]); break;
+      case 'actual_speed': col = ranged(r.actualSpeed, d.actual.length ? d.actual[i] : 0); break;
+      case 'actual_flow': col = travel ? packRGB(optionColor(t)) : ranged(r.actualFlow, d.actual.length ? d.mm3[i] * d.actual[i] : 0); break;
+      case 'acceleration': col = ranged(r.acceleration, s.accel[st]); break;
+      case 'jerk': col = ranged(r.jerk, s.jerk[st]); break;
+      case 'fan': col = travel ? packRGB(optionColor(t)) : ranged(r.fan, s.fan[st]); break;
+      case 'temperature': col = travel ? packRGB(optionColor(t)) : ranged(r.temperature, s.temp[st]); break;
+      case 'pressure_advance': col = travel ? packRGB(optionColor(t)) : ranged(r.pa, s.pa[st]); break;
+      case 'flow': col = travel ? packRGB(optionColor(t)) : ranged(r.flow, d.mm3[i] * d.feed[i]); break;
+      case 'layer_time': col = travel ? packRGB(optionColor(t)) : ranged(r.layerTime, d.layerTimes[d.layer[i]] ?? 0); break;
+      case 'layer_time_log': col = travel ? packRGB(optionColor(t)) : ranged(r.layerTimeLog, d.layerTimes[d.layer[i]] ?? 0); break;
+      case 'nonplanar': col = packRGB(optionColor(t)); break;
       case 'filament': {
         const pal = c.colorPrintColors.length ? c.colorPrintColors : c.extruderColors;
-        col = d.colorPrintOptionLayers.has(d.layer[i]) ? DUMMY_COLOR : pal[d.cp[i] % Math.max(1, pal.length)] ?? DUMMY_COLOR;
+        col = packRGB(d.colorPrintOptionLayers.has(d.layer[i]) ? DUMMY_COLOR : pal[d.cp[i] % Math.max(1, pal.length)] ?? DUMMY_COLOR);
         break;
       }
-      default: col = DUMMY_COLOR;
+      default: col = packRGB(DUMMY_COLOR);
     }
-    put(i, col);
+    words[i] = col;
   }
 }

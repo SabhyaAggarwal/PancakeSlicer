@@ -1,9 +1,7 @@
-import { plateJob, runJob } from '../actions';
-import { flushReady } from '../flush-state';
 import { plateSignature } from '../slice-input';
 import { documentGeneration, subscribeHistory } from '../state/history';
-import { getState, setState, subscribeStore, toast, type JobView, type State } from '../state/store';
-import { createMachine, useMachine, type Machine, type Snapshot } from './fsm';
+import { getState, setState, subscribeStore, type JobView, type State } from '../state/store';
+import { createMachine, useMachine, type Snapshot } from './fsm';
 
 export interface SliceSummary {
   timeS: number | null;
@@ -49,12 +47,10 @@ export type SliceEvent =
   | { type: 'START'; signature: string }
   | { type: 'RESTORE'; result: SliceResult }
   | { type: 'PROGRESS'; pct: number; stage: string }
-  | { type: 'DONE'; result: SliceResult }
   | { type: 'ERROR'; error: string }
   | { type: 'ANNOTATE'; signature: string; part: Partial<SliceSummary> };
 
 const CACHE_SIZE = 12;
-const CACHE_MS = 100 * 60_000;
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v.trim() && Number.isFinite(+v) ? +v : null);
 
@@ -80,11 +76,6 @@ function keep(r: SliceResult) {
     if (old.job.id && old !== ctx.result && old !== ctx.previous) void getState().api?.cancel(old.job.id).catch(() => undefined);
   }
 }
-const cached = (sig: string) => {
-  const r = cache.get(sig);
-  if (r && Date.now() - r.at > CACHE_MS) return void cache.delete(sig);
-  return r;
-};
 
 const ALWAYS: (keyof State)[] = ['objects', 'projectPlates', 'plateIndex', 'project', 'events', 'filamentSlots', 'slotColours', 'flush',
   'printer', 'process', 'filamentEdits', 'bedType', 'wipeTowerPos', 'mixes'];
@@ -97,37 +88,6 @@ function signature(s = getState()): string {
   const sig = plateSignature(new Proxy(s, { get: (t, k, r) => (read.add(k as keyof State), Reflect.get(t, k, r)) }));
   watched = [...read].filter((k) => !NEVER.has(k));
   return sig;
-}
-
-let cancel: (() => void) | null = null;
-let token = 0;
-async function start(sig: string, m: Machine<SliceStateName, SliceEvent, SliceContext>) {
-  const mine = ++token;
-  const s = getState();
-  if (!m.get().context.result) setState({ job: { state: 'submitting', pct: 0, stage: 'Preparing', plateSignature: sig } });
-  const request = await plateJob(s, false).catch((e: unknown) => String(e));
-  if (mine !== token) return;
-  if (request === null || typeof request === 'string') return m.send({ type: 'ERROR', error: request ?? 'Not sliced' });
-  cancel = runJob(s.api!, request, sig, {
-    progress: (p) => {
-      if (mine !== token) return;
-      m.send({ type: 'PROGRESS', pct: p.id && p.stage === 'queued' ? 0 : p.pct, stage: p.stage });
-      if (!m.get().context.result) setState((st) => ({ job: { ...st.job, ...p, state: p.id ? 'running' : st.job.state } }));
-    },
-    done: (job) => mine === token && m.send({ type: 'DONE', result: { signature: sig, job, summary: summarize(job), at: Date.now() } }),
-    failed: (error) => mine === token && m.send({ type: 'ERROR', error }),
-  });
-}
-
-function stop() {
-  ++token;
-  cancel?.();
-  cancel = null;
-}
-
-function show(r: SliceResult | null) {
-  const job = getState().job;
-  if (r && (job.id !== r.job.id || job.stale || job.state !== r.job.state)) setState({ job: r.job });
 }
 
 const advance = (ctx: SliceContext, ev: SliceEvent) => {
@@ -161,22 +121,13 @@ export const slice = createMachine<SliceStateName, SliceEvent, SliceContext>({
     editing: { note: 'not sliced', on: common },
     stale: { note: 'out of date; last result remains visible', on: common },
     slicing: {
-      entry: (ctx, _e, m) => void start(ctx.target!, m),
-      exit: () => stop(),
       on: { ...common,
         PROGRESS: { action: (_, e) => ({ pct: e.pct, stage: e.stage }) },
-        DONE: { target: 'sliced', action: advance },
         ERROR: { target: 'failed', action: (_, e) => ({ error: e.error }) },
       },
     },
-    sliced: { entry: (ctx) => show(ctx.result), on: common },
-    failed: {
-      entry: (ctx) => {
-        if (ctx.result) toast(ctx.error!.split('\n')[0]);
-        else setState({ job: { state: 'failed', pct: 0, stage: '', error: ctx.error! } });
-      },
-      on: common,
-    },
+    sliced: { on: common },
+    failed: { on: common },
   },
 });
 
@@ -193,11 +144,19 @@ export function startSliceTracking() {
     lastSignature = signature();
     slice.send({ type: 'RESET' });
   });
+  const active = (j: JobView) => (j.state === 'submitting' || j.state === 'running') && !j.calib && !!j.plateSignature;
   subscribeStore(() => {
     const s = getState(), was = seen;
     seen = s;
+    if (s.job !== was.job && active(s.job)) {
+      if (!active(was.job) || was.job.plateSignature !== s.job.plateSignature) slice.send({ type: 'START', signature: s.job.plateSignature! });
+      else slice.send({ type: 'PROGRESS', pct: s.job.pct, stage: s.job.stage });
+    } else if (s.job !== was.job && active(was.job) && slice.get().value === 'slicing') {
+      if (s.job.state === 'failed') slice.send({ type: 'ERROR', error: s.job.error ?? 'Not sliced' });
+      else if (s.job.state !== 'done') slice.send({ type: 'CANCEL' });
+    }
     if (s.job !== was.job && s.job.state === 'done' && !s.job.calib && s.job.plateSignature &&
-        s.job.id !== slice.get().context.result?.job.id && s.job.id !== was.job.id) {
+        s.job.id !== slice.get().context.result?.job.id && (s.job.id !== was.job.id || was.job.state !== 'done')) {
       const r: SliceResult = { signature: s.job.plateSignature, job: s.job, summary: summarize(s.job), at: Date.now() };
       keep(r);
       if (!s.job.stale && r.signature === signature(s)) slice.send({ type: 'RESTORE', result: r });
@@ -210,26 +169,11 @@ export function startSliceTracking() {
   slice.subscribe((snap) => { if (snap.context.result && snap.value === 'sliced') keep(snap.context.result); });
 }
 
-let requested = 0;
-export async function sliceNow() {
-  const mine = ++requested, generation = documentGeneration();
-  await flushReady();
-  if (mine !== requested || generation !== documentGeneration()) return;
-  const s = getState();
-  if (!s.api || !s.objects.length) return;
-  const sig = signature(s);
-  const hit = cached(sig);
-  if (hit) return slice.send({ type: 'RESTORE', result: hit });
-  slice.send({ type: 'START', signature: sig });
-}
-
 export function cancelSlice() {
-  ++requested;
   slice.send({ type: 'CANCEL' });
   const result = slice.get().context.result;
   setState({ job: result ? { ...result.job, stale: true } : { state: 'canceled', pct: 0, stage: '' } });
 }
-export const cancelAutoSlice = cancelSlice;
 
 export type SliceSnapshot = Snapshot<SliceStateName, SliceContext>;
 export function useSlice(): SliceSnapshot;

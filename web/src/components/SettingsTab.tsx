@@ -15,6 +15,7 @@ import { useTabFit } from './tab-rows';
 import { LabelTip } from './InfoTip';
 import { Icon } from './Icon';
 import { GroupHead, isGroupOpen, setGroupOpen, useSettingsGroups } from './SettingsGroup';
+import type { SettingSource } from '../profiles/bases';
 import './settings.css';
 
 const BedShapeDialog = lazy(() => import('./BedShapeDialog'));
@@ -31,7 +32,8 @@ const groupSwitch = (g: { title: string; lines: TabLine[] }) => !g.title ? -1 : 
 const TAB_OF: Record<PresetType, TabDesc['tab']> = { process: 'process', filament: 'filament', machine: 'printer' };
 const TYPE_NAME: Record<PresetType, string> = { process: 'Process', filament: 'Filament', machine: 'Printer' };
 
-export interface ProfileFields { name: string; config: Config; baseline: Config; changes: Config; mode?: OptionMode; set(key: string, value: ConfigValue): void; reset(key: string): void }
+export interface ProfileFields { name: string; config: Config; baseline: Config; changes: Config; mode?: OptionMode; set(key: string, value: ConfigValue): void; reset(key: string): void;
+  sources?: Record<string, SettingSource>; resetToBase?(key: string): void }
 export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readOnly = false, auxiliary }: { type: PresetType; slot?: number; compact?: boolean; hidePreset?: boolean; editor?: ProfileFields; readOnly?: boolean; auxiliary?: {label:string; icon?:string; content:React.ReactNode; modified?:boolean;  initial?:boolean} }) {
   const { desc, error } = useTab(TAB_OF[type]);
   const [retrying, setRetrying] = useState(false);
@@ -155,10 +157,13 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
           const modified = g.lines.some((l) => l.options.some((k) => splitKey(k)[0] in dirty));
           const field = (line: TabLine, keys: string[], k: string, i: number, labels: string[] | undefined, shared: boolean, tooltip: string | undefined, hide = false) => {
             const key = splitKey(k)[0];
+            const source = editor?.sources?.[key];
             return <Field widget={type === 'machine' && key === 'printable_area' ? <button type="button" className="btn" onClick={() => setBedDialog(true)}>Set bed shape</button>
               : type === 'machine' && key === 'nonplanar_head' ? <Suspense fallback={null}><HeadPicker value={String(config[key] ?? '')} onCommit={(v) => editor ? editor.set(key, v) : v === String(system[key] ?? '') ? resetOption(type, key) : setOption(type, key, v)} /></Suspense>
               : undefined} key={`${k}:${i}`} optKey={k} type={type} value={config[key]} systemValue={system[key]} dirty={key in dirty}
               slot={slot} onSet={editor?.set} onReset={editor?.reset}
+              source={source?.label} onResetToBase={source?.own && source.base && !readOnly ? editor?.resetToBase : undefined}
+              sourceState={key in dirty ? 'edited' : Object.keys(dirty).length ? 'busy' : undefined}
               disabled={readOnly || isDeferred(key) || states[key]?.enabled === false}
               definition={definition(key, line)}
               inheritedValue={env[key.replace(/^filament_/, '')] as ConfigValue}

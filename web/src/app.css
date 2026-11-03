@@ -332,11 +332,6 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .np-warning { color: var(--modified, var(--accent-text)); }
 :where(.orca-parity) .np-error { color: var(--error, var(--danger)); }
 
-:where(.orca-parity) .head-identity { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; }
-:where(.orca-parity) .head-identity dt { color: var(--text-666, #666); }
-:where(.orca-parity) .head-identity dd { margin: 0; }
-:where(.orca-parity) .head-body { display: flex; gap: 12px; min-height: 0; }
-:where(.orca-parity) .head-boxes { flex: 1; overflow: auto; max-height: 360px; border: 1px solid var(--line-ddd, #ddd); }
 :where(.orca-parity) .head-plot { margin: 0; width: 300px; flex: none; text-align: center; font-size: 12px; color: var(--text-666, #666); }
 :where(.orca-parity) .head-provenance p { white-space: pre-wrap; font-size: 12px; color: var(--text-666, #666); }
 
@@ -347,15 +342,6 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .np-dialog .np-table .diff-new { color: var(--accent-text); }
 :where(.orca-parity) .np-dialog .np-table tr.group-row td { background: var(--bg-f6, #f6f6f6); font-weight: 600; }
 :where(.orca-parity) .head-plot .plot-grid { stroke: var(--line-aaa, #aaa); }
-:where(.orca-parity) .head-identity input.text { width: 260px; }
-:where(.orca-parity) .head-identity label { color: var(--text-666, #666); align-self: center; }
-:where(.orca-parity) .head-grid td { padding: 0 !important; }
-:where(.orca-parity) .head-grid input.cell { width: 100%; min-width: 56px; border: 0; background: transparent; color: var(--text); padding: 2px 4px; font: inherit; }
-:where(.orca-parity) .head-grid input.cell.num { text-align: right; width: 70px; }
-:where(.orca-parity) .head-grid td:first-child input.cell { min-width: 140px; }
-:where(.orca-parity) .head-grid input[type=checkbox] { display: block; margin: 3px auto; }
-:where(.orca-parity) .head-grid tr.selected td { background: var(--hover); }
-:where(.orca-parity) .head-dialog .head-plot { width: 240px; }
 :where(.orca-parity) .canvas-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 :where(.orca-parity) .plate-icons { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 :where(.orca-parity) .plate-icons > * { position: absolute; left: 0; top: 0; pointer-events: auto; }
@@ -380,9 +366,6 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .compare-pickers { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 :where(.orca-parity) .compare-pickers .combo { flex: 1; min-width: 160px; }
 :where(.orca-parity) .compare-pickers .combo:first-child { flex: none; min-width: 90px; }
-:where(.orca-parity) .import-drop.drag { outline: 1px solid var(--focus); outline-offset: -6px; }
-:where(.orca-parity) .export-kinds { border: 0; padding: 0; margin: 0; display: grid; gap: 4px; }
-:where(.orca-parity) .export-list { display: grid; gap: 4px; max-height: 40vh; overflow: auto; border-top: 1px solid var(--line-eee, #eee); padding-top: 8px; }
 
 :where(.orca-parity) .search-input { height: 32px; font-size: 13px; }
 :where(.orca-parity) .search-results { list-style: none; margin: 0; padding: 0; max-height: 60vh; overflow: auto; }
@@ -424,15 +407,6 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .brim-ears .brim-row { display: grid; grid-template-columns: 110px 1fr 64px; gap: 6px; align-items: center; }
 :where(.orca-parity) .brim-warning { color: var(--accent-text); font-size: 12px; display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
 
-:where(.orca-parity) .object-table-dialog { max-width: min(1100px, 96vw); width: fit-content; height: fit-content; }
-:where(.orca-parity) .object-table-body { max-height: 60vh; overflow: auto; padding: 0 12px; }
-:where(.orca-parity) .object-table { border-collapse: collapse; font-size: 12px; }
-:where(.orca-parity) .object-table th { position: sticky; top: 0; background: var(--bg); text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); white-space: normal; }
-:where(.orca-parity) .object-table td { padding: 2px 6px; border-bottom: 1px solid var(--border); white-space: normal; }
-:where(.orca-parity) .object-table td.name { max-width: 180px; overflow: hidden; overflow-wrap: anywhere; }
-:where(.orca-parity) .object-table td.global .num, :where(.orca-parity) .object-table td.global .combo { opacity: 0.6; }
-:where(.orca-parity) .object-table .num { width: 64px; }
-:where(.orca-parity) .object-table .icon-reset { border: 0; background: none; color: var(--accent-text); cursor: pointer; padding: 0 2px; }
 :where(.orca-parity) .assembly-bar { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); z-index: 5; }
 :where(.orca-parity) .assembly-bar input[type='range'] { width: 220px; }
 :where(.orca-parity) .topbar { height: 32px; border-bottom: 1px solid var(--line); }

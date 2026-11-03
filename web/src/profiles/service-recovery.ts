@@ -2,6 +2,7 @@ import { getState, markStale, setState } from '../state/store';
 import { documentGeneration } from '../state/history';
 import { commitProfileRecovery, readProfileLibrary, readProfileRecovery, type ProfileRecoveryWrite } from '../persist/profile-library';
 import { normalizeUserPreset } from './model';
+import { serializeProfileWrite } from './transactions';
 
 export type ProfileRecovery =
   | {state:'idle'}
@@ -23,7 +24,7 @@ export async function refreshProfileRecovery():Promise<void>{
   try{
     const {count,unreadable}=await readProfileRecovery();
     if(mine!==counting || busy() || frozen)return;
-    publish(count || unreadable?{state:'available',count,...(unreadable?{unreadable}:{})}:{state:'idle'});
+    publish(count?{state:'available',count,...(unreadable?{unreadable}:{})}:{state:'idle'});
   }catch{ }
 }
 const rejected=(error:unknown)=>{
@@ -45,9 +46,11 @@ async function run(action:'save'|'reset'):Promise<void>{
   publish({state:action==='save'?'saving':'resetting',count:shown});
   const api=getState().api,generation=documentGeneration(),before=getState();
   try{
-    if(frozen && frozen.action!==action)await settle(frozen);
-    frozen??={operationId:`profile-${action}:${crypto.randomUUID()}`,expectedRevision:(await readProfileLibrary()).revision,action};
-    const document=await settle(frozen);
+    const document=await serializeProfileWrite(async()=>{
+      if(frozen && frozen.action!==action)await settle(frozen);
+      frozen??={operationId:`profile-${action}:${crypto.randomUUID()}`,expectedRevision:(await readProfileLibrary()).revision,action};
+      return settle(frozen);
+    });
     if(getState().api!==api)return publish({state:'idle'});
     setState(s=>{
       const untouched=documentGeneration()===generation && !s.profileSnapshots && s.printer===before.printer && s.process===before.process

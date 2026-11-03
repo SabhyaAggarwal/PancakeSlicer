@@ -1,5 +1,5 @@
 import { preferenceText, savedPreferencesSnapshot, subscribeSavedPreferences } from '../saved-preferences';
-import { projectDraftStore, projectDraftMutationSnapshot, subscribeProjectDraftMutations } from '../persist/drafts';
+import { projectDraftStore, projectDraftMutationSnapshot, subscribeProjectDraftMutations, settleDraftWriters } from '../persist/drafts';
 import type { PresetType } from '../api/types';
 import { projectStore, projectReferenceWritePending, subscribeProjectStorageChanges, type ProfileReferenceDocuments, type StoredDocBase } from '../persist/backend';
 import { getState, subscribeStore, type State } from '../state/store';
@@ -105,6 +105,7 @@ function publish(s: State, status: ProfileReferenceSnapshot['status'], error: st
 }
 
 export async function refreshProfileReferences(): Promise<ProfileReferenceSnapshot> {
+  await settleDraftWriters().catch(() => {});
   const mine = ++generation, draftRevision = projectDraftMutationSnapshot().revision;
   defaults = readDefaults(); publish(getState(), 'loading');
   try {

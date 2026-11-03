@@ -10,12 +10,10 @@
 :where(.orca-parity) .mixed-content i, :where(.orca-parity) .mixed-dot { display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 2px; font-style: normal; font-size: 9px; color: #fff; text-shadow: 0 0 1px #111111; border: 1px solid rgba(0, 0, 0, 0.15); margin-right: 3px; vertical-align: middle; }
 :where(.orca-parity) .mixed-content em { font-style: normal; margin-left: 4px; color: var(--text-dim, var(--ink-2)); }
 :where(.orca-parity) .mixed-row.broken .mixed-content { border-color: var(--danger); }
-:where(.orca-parity) .mixed-section { font-weight: 600; margin: 8px 0 4px; }
 :where(.orca-parity) .mixed-preview { height: 40px; border-radius: 4px; border: 1px solid var(--border); position: relative; }
 :where(.orca-parity) .mixed-preview i { position: absolute; right: 6px; top: 6px; width: 28px; height: 28px; border-radius: 3px; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2); }
-:where(.orca-parity) .mixed-buttons { display: flex; gap: 8px; margin: 4px 0; }
+:where(.orca-parity) .mixed-ratio { display: flex; align-items: center; gap: var(--s-4); font-variant-numeric: tabular-nums; }
 :where(.orca-parity) .mixed-ratio input[type='range'] { flex: 1; }
 :where(.orca-parity) .mixed-recs { display: flex; flex-wrap: wrap; gap: 4px; max-height: 96px; overflow-y: auto; }
 :where(.orca-parity) .mixed-rec { width: 24px; height: 24px; border-radius: 3px; border: 1px solid rgba(0, 0, 0, 0.2); cursor: pointer; padding: 0; }
 :where(.orca-parity) .mixed-rec:hover { outline: 2px solid var(--accent); }
-:where(.orca-parity) .mixed-error { color: var(--danger); margin-top: 8px; font-size: 12px; }

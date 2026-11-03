@@ -1,7 +1,7 @@
 import { Check } from './Check';
 import { Dropdown } from './Dropdown';
 import { Caret } from './Caret';
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { effectiveConfig, getState } from '../state/store';
 import {
   CURVED_COLOR, EXTENDED_VIEWS, clearanceColor, NONPLANAR_COLORS, NONPLANAR_HUES, NONPLANAR_PLANAR_COLOR, OPTION_COLORS, RANGE_PALETTE, ROLE_COLORS, VIEW_TYPES, hexToRgb,
@@ -83,12 +83,12 @@ function filamentInfo(d: PreviewData, statistics?: PrintStatistics) {
   });
 }
 
-export function Legend(props: {
+export const Legend = memo(function Legend(props: {
   data: PreviewData;
+  loaded: number;
   ui: PreviewUi;
   setUi(f: (u: PreviewUi) => PreviewUi): void;
   ranges: Ranges | null;
-  range: [number, number];
   scene: PreviewScene | null;
   explain?: ReactNode;
   explainOnly?: boolean;
@@ -260,7 +260,7 @@ export function Legend(props: {
       )}
     </div>
   );
-}
+});
 
 function NonplanarKey({ d, ui, setUi, ranges }: { d: PreviewData; ui: PreviewUi; setUi(f: (u: PreviewUi) => PreviewUi): void; ranges: Ranges | null }) {
   const st = d.states!;

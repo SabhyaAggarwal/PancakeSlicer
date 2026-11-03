@@ -8,7 +8,7 @@ import { addMix, blend, broken, componentColour, deleteMixes, editMix, filamentT
 import { filamentColor } from '../plater/filamentColor';
 import { confirmDialog } from '../actions';
 import { IconButton } from './Icon';
-import { Modal, ModalTitle } from './Modal';
+import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 import './MixedFilaments.css';
 
 const MIN_RATIO = 10;
@@ -98,32 +98,31 @@ function MixDialog({ slot, close }: { slot: number | null; close(): void }) {
   const ok = () => { if (slot === null) addMix(m); else editMix(slot, m); close(); };
   const recs = recommendations(s, three);
   return (
-    <Modal size="m" label={slot === null ? 'Add Mixed Filament' : 'Edit Mixed Filament'} onClose={close} className="mixed-dialog">
-      <ModalTitle title={slot === null ? 'Add Mixed Filament' : 'Edit Mixed Filament'} onClose={close} />
-      <div className="prefs-body">
-        <div className="mixed-section">Effect Preview</div>
-        <div className="mixed-preview" style={{ background: preview }}><i style={{ background: unset ? '#808080' : blend(colours, m.ratios) }} /></div>
-        <div className="mixed-section">Select Mixed Materials</div>
+    <Modal size="m" label={slot === null ? 'Add mixed filament' : 'Edit mixed filament'} onClose={close} className="mixed-dialog">
+      <ModalTitle title={slot === null ? 'Add mixed filament' : 'Edit mixed filament'} onClose={close} />
+      <ModalBody className="modal-fields">
+                <div className="mixed-preview" style={{ background: preview }}><i style={{ background: unset ? '#808080' : blend(colours, m.ratios) }} /></div>
+        <h3 className="modal-group">Filaments</h3>
         {m.components.map((c, k) => (
-          <label key={k} className="prefs-row"><span>Filament {k + 1}</span>
-            <Dropdown className="combo" value={c} onValueChange={(next) => setM({ ...m, components: m.components.map((x, j) => (j === k ? Number(next) : x)) })} options={[...(!c ? [{ value: 0, label: '-- Select --' }] : []), ...Array.from({ length: n }, (_, j) => j + 1).filter((j) => j === c || !m.components.includes(j)).map((j) => (
+          <label key={k} className="form-row"><span>Filament {k + 1}</span>
+            <Dropdown className="combo" value={c} onValueChange={(next) => setM({ ...m, components: m.components.map((x, j) => (j === k ? Number(next) : x)) })} options={[...(!c ? [{ value: 0, label: 'Choose…' }] : []), ...Array.from({ length: n }, (_, j) => j + 1).filter((j) => j === c || !m.components.includes(j)).map((j) => (
                 ({ value: j, label: <>{j}: {s.filamentSlots[j - 1]}</> })
               ))]} />
           </label>
         ))}
-        <div className="mixed-buttons">
-          {!three && <button type="button" className="btn" disabled={n < 3} title={n < 3 ? 'Maximum number of components reached' : undefined}
-            onClick={() => setM({ ...m, components: [...m.components, 0], ratios: [33, 33, 34], gradient: null, perPart: false })}>+ Add Material</button>}
-          {three && <button type="button" className="btn" title="Remove the third material" onClick={() => setM({ ...m, components: m.components.slice(0, 2), ratios: [50, 50] })}>- Delete Material</button>}
+        <div className="form-actions">
+          {!three && <button type="button" className="btn-ghost" disabled={n < 3}
+            onClick={() => setM({ ...m, components: [...m.components, 0], ratios: [33, 33, 34], gradient: null, perPart: false })}>Add a third filament</button>}
+          {three && <button type="button" className="btn-ghost" onClick={() => setM({ ...m, components: m.components.slice(0, 2), ratios: [50, 50] })}>Remove the third filament</button>}
         </div>
         {(m.gradient === null || three) && <>
-          <div className="mixed-section">Ratio</div>
+          <h3 className="modal-group">Ratio</h3>
           {three ? m.components.map((c, k) => (
-            <label key={k} className="prefs-row"><span><i className="mixed-dot" style={{ background: colours[k] }} />{c || '?'}</span>
-              <input className="text num" type="number" min={MIN_RATIO} max={100 - 2 * MIN_RATIO} value={m.ratios[k]} onChange={(e) => setRatio(k, Number(e.target.value))} /><span>%</span>
+            <label key={k} className="form-row"><span><i className="mixed-dot" style={{ background: colours[k] }} />{c || '?'}</span>
+              <span className="modal-unit"><input className="text num" type="number" min={MIN_RATIO} max={100 - 2 * MIN_RATIO} value={m.ratios[k]} onChange={(e) => setRatio(k, Number(e.target.value))} /><span>%</span></span>
             </label>
           )) : (
-            <label className="prefs-row mixed-ratio">
+            <label className="mixed-ratio">
               <span>{m.ratios[0]}%</span>
               <Range min={MIN_RATIO} max={100 - MIN_RATIO} step={1} value={m.ratios[1]} aria-label="Ratio"
                 style={{ accentColor: colours[1] }} onValueChange={(next) => setRatio(1, next)} />
@@ -132,33 +131,27 @@ function MixDialog({ slot, close }: { slot: number | null; close(): void }) {
           )}
         </>}
         {!three && <>
-          <label className="prefs-row"><span>Gradient Effect</span>
-            <Check checked={m.gradient !== null} onCheckedChange={(next) => setM({ ...m, gradient: next ? 0 : null, perPart: false })} />
-            {m.gradient !== null && (
+          <label className="modal-check"><Check checked={m.gradient !== null} onCheckedChange={(next) => setM({ ...m, gradient: next ? 0 : null, perPart: false })} />Gradient</label>
+          {m.gradient !== null && <label className="form-row"><span>Direction</span>
               <Dropdown className="combo" value={m.gradient} aria-label="Gradient direction" onValueChange={(next) => setM({ ...m, gradient: Number(next) as 0 | 1 })} options={[({ value: 0, label: <>{m.components[0]} → {m.components[1]}</> }), ({ value: 1, label: <>{m.components[1]} → {m.components[0]}</> })]} />
-            )}
-          </label>
-          {m.gradient !== null && (
-            <label className="prefs-row"><span>Enable per-part gradient effect</span>
-              <Check checked={m.perPart} onCheckedChange={(next) => setM({ ...m, perPart: next })} />
-            </label>
-          )}
+</label>}
+          {m.gradient !== null && <label className="modal-check"><Check checked={m.perPart} onCheckedChange={(next) => setM({ ...m, perPart: next })} />Gradient across each part</label>}
         </>}
         {recs.length > 0 && <>
-          <div className="mixed-section">Mixing Recommendations</div>
+          <h3 className="modal-group">Suggestions</h3>
           <div className="mixed-recs">
             {recs.map((r, k) => (
-              <button key={k} type="button" className="mixed-rec" title={r.components.map((c, j) => `${c} (${r.ratios[j]}%)`).join(' + ')}
+              <button key={k} type="button" className="mixed-rec" aria-label={r.components.map((c, j) => `${c} (${r.ratios[j]}%)`).join(' + ')}
                 style={{ background: blend(r.components.map((c) => componentColour(s, c)), r.ratios) }} onClick={() => setM(r)} />
             ))}
           </div>
         </>}
-        {mismatch && <div className="mixed-error">Different filament types cannot be mixed: {m.components.map((c, k) => `Slot ${c} (${types[k]})`).join(', ')}. Please select the same filament type.</div>}
-      </div>
-      <div className="modal-buttons">
-        <button className="btn" onClick={close}>Cancel</button>
-        <button className="btn primary" disabled={unset || mismatch} title={unset ? 'Please select a filament for all components' : mismatch ? 'Cannot mix different filament types' : undefined} onClick={ok}>OK</button>
-      </div>
+        {mismatch && <p className="modal-error" role="alert">Mix filaments of one type ({m.components.map((c, k) => `${c}: ${types[k]}`).join(', ')}).</p>}
+      </ModalBody>
+      <ModalFooter>
+        <button type="button" className="btn" onClick={close}>Cancel</button>
+        <button type="button" className="btn-primary" disabled={unset || mismatch} onClick={ok}>{slot === null ? 'Add' : 'Save'}</button>
+      </ModalFooter>
     </Modal>
   );
 }

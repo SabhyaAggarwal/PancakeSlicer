@@ -54,7 +54,7 @@ export function TopBar() {
   const pasteEnabled = useStore(canPaste);
   const mock = useStore((s) => s.api?.mock);
   const name = useStore((s) => (s.project?.name ?? s.objects[0]?.name)?.replace(/\.(stl|obj|3mf|drc)$/i, ''));
-  const toolpaths = useSyncExternalStore(subscribeVisibleToolpaths, visibleToolpaths);
+  const toolpaths = useSyncExternalStore(subscribeVisibleToolpaths, () => !!visibleToolpaths());
   const tab = useStore((st) => st.tab);
   const exportName = name;
   const kind = useStore(outputKind);

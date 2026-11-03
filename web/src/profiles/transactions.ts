@@ -7,6 +7,7 @@ import { catalogKey, findCatalogBase, normalizeUserPreset, prepareProfile, store
 import { editableMaster, archiveProfile, restoreArchivedProfile } from './library-actions';
 let tail:Promise<unknown>=Promise.resolve();
 const serialize = <T>(action:()=>Promise<T>):Promise<T> => {const result=tail.then(action);tail=result.catch(()=>{});return result;};
+export const serializeProfileWrite=serialize;
 const ordered=(value:unknown):unknown=>Array.isArray(value)?value.map(ordered):value && typeof value==='object'?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).filter(([,v])=>v!==undefined).map(([k,v])=>[k,ordered(v)])):value;
 const equal=(a:unknown,b:unknown)=>JSON.stringify(ordered(a))===JSON.stringify(ordered(b));
 const stored=(p:UserPreset)=>storedProfile(normalizeUserPreset(p));

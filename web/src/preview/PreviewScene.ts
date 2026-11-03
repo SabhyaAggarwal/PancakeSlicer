@@ -17,6 +17,8 @@ import { VOXEL_MM, voxelCentre } from './results';
 const SURFACE_LIFT_MM = 0.15;
 
 const FRAME_BUDGET_MS = 14;
+const RECOLOR_SLICE_MS = 12;
+const RECOLOR_STEP = 32768;
 const STILL_MS = 250;
 
 export class PreviewScene {
@@ -30,6 +32,8 @@ export class PreviewScene {
   private spare: SegmentRenderer | null = null;
   private removed: { mesh: THREE.InstancedMesh; z: Float32Array } | null = null;
   private overlay = new THREE.Group();
+  private hostW = 0;
+  private hostH = 0;
   private diffVisible = false;
   private bed: THREE.Group | null = null;
   private bedKey = '';
@@ -51,6 +55,7 @@ export class PreviewScene {
   private frame = 0;
   private colorCtx: ColorContext | null = null;
   private colorKeyed: string | null = null;
+  private recoloring: { next: number; frame: number } | null = null;
   private timer: { ext: any; query: WebGLQuery | null; gpuMs: number } = { ext: null, query: null, gpuMs: NaN };
   lastFrame: FrameStats & { frameMs: number; gpuMs: number; scale: number } = { blocks: 0, culled: 0, lodBlocks: 0, segments: 0, cpuMs: 0, frameMs: 0, gpuMs: NaN, scale: 1 };
   onFrame: (() => void) | null = null;
@@ -100,7 +105,7 @@ export class PreviewScene {
   }
 
   resize() {
-    const w = this.host.clientWidth, h = this.host.clientHeight;
+    const w = (this.hostW = this.host.clientWidth), h = (this.hostH = this.host.clientHeight);
     if (!w || !h) return;
     const size = this.renderer.getSize(new THREE.Vector2());
     const base = pixelRatio(w, h);
@@ -288,9 +293,24 @@ export class PreviewScene {
     this.colorKeyed = key;
     const d = this.data;
     if (!d || same) return;
-    colorVertices(d, ctx, this.segments.colors, 0, d.loaded);
-    this.segments.uploadColors(0, d.loaded);
-    this.request();
+    if (this.recoloring) cancelAnimationFrame(this.recoloring.frame);
+    const segments = this.segments, job = (this.recoloring = { next: 0, frame: 0 });
+    const slice = () => {
+      if (this.recoloring !== job || this.data !== d || this.segments !== segments) return;
+      const t0 = performance.now(), from = job.next, end = d.loaded;
+      let i = from;
+      while (i < end && performance.now() - t0 < RECOLOR_SLICE_MS) {
+        const to = Math.min(end, i + RECOLOR_STEP);
+        colorVertices(d, ctx, segments.colors, i, to);
+        i = to;
+      }
+      segments.uploadColors(from, i);
+      job.next = i;
+      this.request();
+      if (i < end) job.frame = requestAnimationFrame(slice);
+      else this.recoloring = null;
+    };
+    slice();
   }
 
   setDrawState(s: DrawState, toolAt: number | null) {
@@ -409,10 +429,10 @@ export class PreviewScene {
   }
 
   request() {
-    if (this.frame || !this.host.clientWidth) return;
+    if (this.frame || !this.hostW) return;
     this.frame = requestAnimationFrame(() => {
       this.frame = 0;
-      if(this.host.clientWidth)this.renderNow();
+      if (this.hostW) this.renderNow();
     });
   }
 
@@ -427,7 +447,7 @@ export class PreviewScene {
     }
     const cost = Number.isFinite(tq.gpuMs) ? tq.gpuMs : this.lastFrame.frameMs;
     const scale = (this.scale = !this.moving ? 1 : cost > FRAME_BUDGET_MS * 1.5 ? 0.5 : this.scale);
-    const w = this.host.clientWidth, h = this.host.clientHeight;
+    const w = this.hostW, h = this.hostH;
     if (scale < 1) this.renderer.setViewport(0, 0, w * scale, h * scale);
     const timing = tq.ext && !tq.query;
     if (timing) {

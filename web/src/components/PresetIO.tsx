@@ -3,7 +3,8 @@ import { useRef, useState } from 'react';
 import type { PresetType,UserPreset } from '../api/types';
 import { applyImportPlans, downloadArchive, filamentAlias, filamentBundle, planImport, presetZip, printerBundle, readPresetFile, type ExportKind, type ImportPlan } from '../preset-io';
 import { getState, setState, toast, useStore } from '../state/store';
-import { Modal, ModalTitle } from './Modal';
+import { Dropdown } from './Dropdown';
+import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 import { createMachine, useMachine } from '../flow/fsm';
 
 const TYPE_NAME: Record<PresetType, string> = { machine: 'Printer', filament: 'Filament', process: 'Process' };
@@ -66,18 +67,18 @@ export function ImportDialog() {
 
   const count = rows?.filter((r) => r.checked && importable(r)).length ?? 0;
   return (
-    <Modal className="np-dialog import-dialog" label="Import profiles" onClose={close}>
+    <Modal size="l" className="import-dialog" label="Import profiles" onClose={close}>
       <ModalTitle title="Import profiles" onClose={close} />
-      <div className={`np-dialog-body import-drop ${drag ? 'drag' : ''}`}
-        onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
-        onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setDrag(false); void read(e.dataTransfer.files); }}>
-        <div className="row">
-          <button type="button" className="btn primary" data-autofocus onClick={() => input.current?.click()} disabled={busy}>Choose files…</button>
+      <ModalBody className={`import-drop ${drag ? 'drag' : ''}`}>
+        <div className="import-zone" onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
+          onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setDrag(false); void read(e.dataTransfer.files); }}>
+          <span>Drop .json, .zip or .orca_* files here</span>
+          <button type="button" className="btn" onClick={() => input.current?.click()} disabled={busy}>Choose files…</button>
           <input ref={input} type="file" multiple hidden accept={ACCEPT} aria-label="Profile files" onChange={(e) => { if (e.target.files) void read(e.target.files); e.target.value = ''; }} />
         </div>
         {busy && <div role="status">{value === 'importing' ? 'Importing…' : 'Reading…'}</div>}
-        {error && <div className="np-error" role="alert">{error}</div>}
-        {rows && !rows.length && <div className="hint-text">No profiles found</div>}
+        {error && <p className="modal-error" role="alert">{error}</p>}
+        {rows && !rows.length && <p>No profiles in these files.</p>}
         {rows && rows.length > 0 && (
           <div className="diff-scroll">
             <table className="np-table">
@@ -100,11 +101,11 @@ export function ImportDialog() {
             </table>
           </div>
         )}
-      </div>
-      <div className="modal-buttons np-buttons">
-        {!done && <button type="button" className="btn primary" disabled={busy || !count} onClick={() => void run()}>Import{count ? ` ${count}` : ''}</button>}
+      </ModalBody>
+      <ModalFooter>
         <button type="button" className="btn" onClick={close}>{done ? 'Close' : 'Cancel'}</button>
-      </div>
+        {!done && <button type="button" className="btn-primary" disabled={busy || !count} onClick={() => void run()}>{!count ? 'Import' : count === 1 ? 'Import 1 profile' : `Import ${count} profiles`}</button>}
+      </ModalFooter>
     </Modal>
   );
 }
@@ -143,29 +144,26 @@ export function ExportDialog() {
     close();
   };
   return (
-    <Modal className="np-dialog small export-dialog" label="Export profiles" onClose={close}>
+    <Modal size="m" className="export-dialog" label="Export profiles" onClose={close}>
       <ModalTitle title="Export profiles" onClose={close} />
-      <div className="np-dialog-body">
-        <fieldset className="export-kinds">
-          {KINDS.map(([k, label]) => (
-            <label key={k} className="row"><input type="radio" name="export-kind" checked={kind === k} data-autofocus={kind === k ? '' : undefined}
-              onChange={() => { setKind(k); setPicked(new Set()); }} />{label}</label>
-          ))}
-        </fieldset>
-        <div className="export-list" role="group" aria-label="Profiles to export">
-          {choices.length === 0 && <div className="hint-text">No custom profiles</div>}
-          {choices.length > 0 && <label className="row"><Check checked={selected.length === choices.length}
-            onCheckedChange={(next) => setPicked(new Set(next ? choices : []))} /><b>Select all</b></label>}
-          {choices.map((c) => (
-            <label key={c} className="row"><Check checked={picked.has(c)}
-              onCheckedChange={(checked) => { const next = new Set(picked); if (checked) next.add(c); else next.delete(c); setPicked(next); }} />{c}</label>
-          ))}
-        </div>
-      </div>
-      <div className="modal-buttons np-buttons">
-        <button type="button" className="btn primary" disabled={!selected.length} onClick={run}>Export</button>
+      <ModalBody>
+        <label className="form-row"><span>Export as</span>
+          <Dropdown className="combo" value={kind} onValueChange={(k) => { setKind(k as ExportKind); setPicked(new Set()); }} options={KINDS.map(([k, label]) => ({ value: k, label }))} /></label>
+        {choices.length === 0 ? <p>No saved profiles of this kind.</p> : <div className="modal-pick">
+          <div className="modal-pick-head">
+            <button type="button" className="btn-ghost" onClick={() => setPicked(new Set(choices))}>Select all</button>
+            <button type="button" className="btn-ghost" onClick={() => setPicked(new Set())}>Clear</button>
+          </div>
+          <div className="modal-pick-list" role="group" aria-label="Profiles to export">{choices.map((c) => (
+            <label key={c} className="modal-check"><Check checked={picked.has(c)}
+              onCheckedChange={(checked) => { const next = new Set(picked); if (checked) next.add(c); else next.delete(c); setPicked(next); }} /><span data-full-text={c}>{c}</span></label>
+          ))}</div>
+        </div>}
+      </ModalBody>
+      <ModalFooter lead={choices.length > 0 && `${selected.length} of ${choices.length}`}>
         <button type="button" className="btn" onClick={close}>Cancel</button>
-      </div>
+        <button type="button" className="btn-primary" disabled={!selected.length} onClick={run}>Export</button>
+      </ModalFooter>
     </Modal>
   );
 }

@@ -8,7 +8,7 @@ import { getState, subscribeStore, useStore } from '../state/store';
 import { PrinterPicker } from '../profiles/Pickers';
 import { documentGeneration, onLeaveDocument } from '../state/history';
 import './first-run.css';
-import { Modal, ModalTitle } from './Modal';
+import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 
 const SETUP_KEY = 'orca.setup';
 const SAMPLES = [
@@ -83,16 +83,13 @@ export function SetupWizard({ close }: { close(): void }) {
   const start = useRef(count);
   useEffect(() => { if (count > start.current) close(); }, [count]);
   return (
-    <Modal size="m" label="Setup Wizard" onClose={close} className="setup-wizard" returnFocus=".topbar .menu-title">
-      <ModalTitle title="Setup Wizard" onClose={close} />
-      <div className="setup-wizard-body">
+    <Modal size="m" label="Get started" onClose={close} returnFocus=".topbar .menu-title">
+      <ModalTitle title="Get started" onClose={close} />
+      <ModalBody className="setup-wizard-body">
         <PrinterChoice />
         <DropZone />
-      </div>
-      <div className="modal-buttons">
-        <span style={{ flex: 1 }} />
-        <button type="button" className="btn primary" data-autofocus onClick={close}>OK</button>
-      </div>
+      </ModalBody>
+      <ModalFooter><button type="button" className="btn" onClick={close}>Done</button></ModalFooter>
     </Modal>
   );
 }

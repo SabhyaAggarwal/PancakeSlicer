@@ -351,6 +351,12 @@ export function PreviewView() {
   const loading = data && !data.done && !data.error;
   const record = ownStatus?.record;
   const comparing = compare && !!record && !job.stale;
+  const hasGrid = !!ownStatus?.has_surface_grid;
+  const explainKey = useMemo(() => data && record && (
+    <Suspense fallback={null}>
+      <ExplainLegend data={data} record={record} hasSurfaceGrid={hasGrid} ui={ui} setUi={setUi} compare={comparing} setCompare={setCompare} />
+    </Suspense>
+  ), [data, record, hasGrid, ui, comparing, setCompare]);
   useEffect(() => sceneRef.current?.setSurface(grid), [grid]);
   useEffect(() => {
     void loadClearanceScale(record).then((changed) => { if (changed && data?.header) { recolor(data); bump(); } });
@@ -421,15 +427,11 @@ export function PreviewView() {
           data={data}
           ui={ui}
           setUi={setUi}
+          loaded={data.loaded}
           ranges={ranges.current}
-          range={layerCount ? data.layerSpan(lo, hi) : [1, 1]}
           scene={sceneRef.current}
           explainOnly={comparing || !!grid}
-          explain={record && (
-            <Suspense fallback={null}>
-              <ExplainLegend data={data} record={record} hasSurfaceGrid={!!ownStatus?.has_surface_grid} ui={ui} setUi={setUi} compare={comparing} setCompare={setCompare} />
-            </Suspense>
-          )}
+          explain={explainKey}
         />
       )}
       {comparing && data?.header && (

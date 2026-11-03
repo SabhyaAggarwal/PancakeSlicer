@@ -7,6 +7,7 @@ import { probeEngine } from './engine-health';
 import { startProfileEdits } from './profile-edit';
 import { initialiseRecovery, readRecovery, recoverySignature, rememberRecovery } from './recovery';
 import { restorePrinterSend, printerSend } from './transfer';
+import { startSliceTracking } from './slice';
 import { loadSource } from './viewer';
 
 let adoptTracking = () => {};
@@ -88,5 +89,5 @@ export async function startFlows() {
     rememberRecovery({ job: undefined, send: undefined });
     printerSend.reset(); loadSource(null);
   });
-  startProfileEdits(); restorePrinterSend(); void probeEngine();
+  startSliceTracking(); startProfileEdits(); restorePrinterSend(); void probeEngine();
 }

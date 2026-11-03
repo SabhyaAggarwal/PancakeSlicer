@@ -3,7 +3,7 @@ import { Dropdown } from './Dropdown';
 import { effectiveConfig, getState, markStale, setState, useStore, type PlateObject, type State } from '../state/store';
 import { undoable } from '../state/history';
 import { listedPlates } from '../plater/plates';
-import { Modal, ModalTitle } from './Modal';
+import { Modal, ModalFooter, ModalTitle } from './Modal';
 
 type Col = { key: string; label: string; kind: 'float' | 'int' | 'percent' | 'bool' | 'enum'; choices?: [string, string][] };
 const COLS: Col[] = [
@@ -56,8 +56,8 @@ export default function ObjectTable({ close }: { close(): void }) {
   const s = getState();
   const rows = listedPlates(s).flatMap((p) => p.objects.map((o) => ({ plate: p.index, o })));
   return (
-    <Modal label="Object/Part Settings" onClose={close} className="object-table-dialog">
-      <ModalTitle title="Object/Part Settings" onClose={close} />
+    <Modal size="xl" label="Objects" onClose={close}>
+      <ModalTitle title="Objects" onClose={close} />
       <div className="object-table-body">
         <table className="object-table">
           <thead><tr><th>Printable</th><th>Plate</th><th>Name</th><th>Filament</th>{COLS.map((c) => <th key={c.key}>{c.label}</th>)}</tr></thead>
@@ -67,7 +67,7 @@ export default function ObjectTable({ close }: { close(): void }) {
                 <td><Check aria-label="Printable" checked={o.instances.every((i) => i.printable !== false)}
                   onCheckedChange={(next) => editObject(o.id, 'Change printable', (x) => ({ ...x, instances: x.instances.map((i) => ({ ...i, printable: next })) }))} /></td>
                 <td>{plate}</td>
-                <td className="name" title={o.name}>{o.name}</td>
+                <td className="name" data-full-text={o.name}>{o.name}</td>
                 <td><Dropdown className="combo" value={o.extruder} aria-label="Filament" onValueChange={(next) => editObject(o.id, 'Change filament', (x) => ({ ...x, extruder: Number(next) }))} options={[...s.filamentSlots.map((_, i) => ({ value: i + 1, label: i + 1 }))]} /></td>
                 {COLS.map((c) => <Cell key={c.key} s={s} o={o} col={c} />)}
               </tr>
@@ -75,7 +75,7 @@ export default function ObjectTable({ close }: { close(): void }) {
           </tbody>
         </table>
       </div>
-      <div className="modal-buttons"><span style={{ flex: 1 }} /><button type="button" className="btn primary" onClick={close}>OK</button></div>
+      <ModalFooter><button type="button" className="btn-primary" onClick={close}>Close</button></ModalFooter>
     </Modal>
   );
 }

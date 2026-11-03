@@ -82,7 +82,7 @@ function uniqueName(s: State, type: PresetType, desired: string): string {
   while (s.userPresets.some((p) => p.type === type && p.name === name) || profilesFor(s, type).some((p) => p.name === name)) name = `${desired} (${n++})`;
   return name;
 }
-function makeProfile(s: State, base: SystemPreset, name: string, values: Config = {}): UserPreset {
+export function makeProfile(s: State, base: SystemPreset, name: string, values: Config = {}): UserPreset {
   const overlay = changedKeys(values, base.config);
   return { id: `profile:${crypto.randomUUID()}`, revision: 0, kind: 'profile', name: uniqueName(s, base.type, name), type: base.type, inherits: base.name, base: catalogAnchor(base), snapshot: {base: catalogAnchor(base),config: {...base.config,...overlay}},
     overlay, overrides: overlay, baseline: Object.fromEntries(Object.keys(overlay).map((key) => [key, base.config[key] ?? null])) };

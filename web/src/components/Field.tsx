@@ -75,6 +75,9 @@ export const Field = memo(function Field(props: {
   extra?: React.ReactNode;
   scope?: { target?: ChangeTarget };
   widget?: React.ReactNode;
+  source?: string;
+  onResetToBase?: (key: string) => void;
+  sourceState?: 'edited' | 'busy';
 }) {
   useTooltips();
   const [key, idx] = splitKey(props.optKey);
@@ -134,6 +137,8 @@ export const Field = memo(function Field(props: {
         )}
         {props.extra}</>}
       </span>
+      {props.source && <span className={`field-source ${props.sourceState === 'edited' ? 'edited' : ''}`}>{props.source}
+        {props.onResetToBase && <button type="button" className="link" aria-label={`Reset to base: ${label}`} disabled={!!props.sourceState} onClick={() => props.onResetToBase!(key)}>Reset to base</button>}</span>}
     </div>
   );
 }, sameFieldProps);

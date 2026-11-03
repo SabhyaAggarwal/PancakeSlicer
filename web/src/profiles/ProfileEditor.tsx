@@ -17,6 +17,8 @@ import { renameOwnedProfile } from './material-library';
 import { Glyph } from '../components/Glyph';
 import { useMachine } from '../flow/fsm';
 import { createProfileSave } from '../flow/profile-save';
+import { resetSettingToBase, settingSources } from './bases';
+import { baseMenuItems } from './bases-ui';
 const ConnectionEditor = lazy(() => import('../printers/ConnectionEditor').then(m => ({default: m.ConnectionEditor})));
 export interface ProfileDraft {values: Config; baseline: Config; origin: UserPreset | undefined; printer: string; applicability?: ProfileApplicability; baselineApplicability?: ProfileApplicability;staged?:ProjectProfileChanges}
 export function acknowledgedProfileDraft(current:ProfileDraft,submitted:ProfileDraft,origin:UserPreset,baseline:Config):ProfileDraft|null {
@@ -52,7 +54,8 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
   const latest = useRef({values, baseline, origin: draft?.origin ?? source, printer: draft?.printer ?? ownerPrinter, applicability, baselineApplicability,staged:draft?.staged}); latest.current = {values, baseline, origin: draft?.origin ?? source, printer: draft?.printer ?? ownerPrinter, applicability, baselineApplicability,staged:draft?.staged};
   const set = useCallback((k: string, value: ConfigValue) => { const current = latest.current; update(key, {...current, values: {...current.values, [k]: value}}); }, [key, update]);
   const reset = useCallback((k: string) => { const current = latest.current; const next = {...current.values}; if (current.baseline[k] === undefined) delete next[k]; else next[k] = current.baseline[k]; update(key, {...current, values: next}); }, [key, update]);
-  const editor: ProfileFields = useMemo(() => ({name, config: values, baseline, changes, set, reset, mode}), [name, values, baseline, changes, set, reset, mode]);
+  const resetToBase = useCallback((k: string) => void resetSettingToBase(type, name, k).catch((e) => toast(e instanceof Error ? e.message : String(e))), [type, name]);
+  const editor: ProfileFields = useMemo(() => ({name, config: values, baseline, changes, set, reset, mode, sources: settingSources(getState(), type, name), resetToBase}), [name, values, baseline, changes, set, reset, mode, users, type, resetToBase]);
   const dirty = Object.keys(changes).length > 0 || applicabilityDirty || !!draft?.staged;
   const revert = () => {update(key, null); setError(null);};
   const noPrinter = applicabilityDirty && worksWithNone(type, applicability);
@@ -88,7 +91,10 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
     await commitProfileRecords([renameOwnedProfile(current, next)]);
     const renamed = findProfile(getState(), type, name);
     if (draft && renamed) update(key, {...latest.current, origin: renamed});
-    toast(`Renamed to ${next}`, {label: 'Undo', run: () => void writeName(prior).catch((e) => toast(e instanceof Error ? e.message : String(e)))});
+    toast(`Renamed to ${next}`, {label: 'Undo', run: () => {
+      if (!m.can({type: 'RENAME', name: next})) {toast('Finish saving first, then rename it back.'); return;}
+      m.send({type: 'RENAME', name: next}); m.send({type: 'TYPE', value: prior}); void commitName();
+    }});
   };
   const commitName = async () => {
     const v = m.get().value;
@@ -113,7 +119,7 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
     controls={<><button type="button" className={`btn pf-editor-save${dirty ? ' primary' : ''}`} disabled={saving || !dirty || !ready} onClick={() => void save()}>{saving ? 'Saving…' : 'Save'}</button>
         {dirty && !foldActions && <button type="button" className="btn" disabled={saving} onClick={revert}>Revert</button>}
         {onDuplicate && !foldActions && <button type="button" className="btn" disabled={saving || dirty || !ready} onClick={onDuplicate}>Duplicate</button>}
-        <MenuButton label="Profile actions" className="icon-btn" items={[...(renamable ? [{label: 'Rename', disabled: saving, action: startRename}] : []), ...(foldActions && dirty ? [{label: 'Revert', disabled: saving, action: revert}] : []), ...(foldActions && onDuplicate ? [{label: 'Duplicate', disabled: saving || dirty || !ready, action: onDuplicate}] : []), {label: type === 'filament' ? 'Use in slot 1' : 'Use in project', disabled:saving || dirty, action:()=>requestPreset(type,0,key && profileKey(source!))}, {label:'Export',action:()=>void import('../preset-io').then(m=>m.exportPresetJson(source!))}, {label: 'Reset to base settings', disabled: saving || !resolved.base, action: () => {if(resolved.base) update(key, {...latest.current, values: resolved.base.config});}}, 'sep', {label:'Delete',disabled:saving,action:onRemove}]}>⋯</MenuButton></>}>
+        <MenuButton label="Profile actions" className="icon-btn" items={[...(renamable ? [{label: 'Rename', disabled: saving, action: startRename}] : []), ...(source ? baseMenuItems(type, profileKey(source)).map((i) => ({...i, disabled: saving || dirty || i.disabled})) : []), ...(foldActions && dirty ? [{label: 'Revert', disabled: saving, action: revert}] : []), ...(foldActions && onDuplicate ? [{label: 'Duplicate', disabled: saving || dirty || !ready, action: onDuplicate}] : []), {label: type === 'filament' ? 'Use in slot 1' : 'Use in project', disabled:saving || dirty, action:()=>requestPreset(type,0,key && profileKey(source!))}, {label:'Export',action:()=>void import('../preset-io').then(m=>m.exportPresetJson(source!))}, {label: 'Reset to base settings', disabled: saving || !resolved.base, action: () => {if(resolved.base) update(key, {...latest.current, values: resolved.base.config});}}, 'sep', {label:'Delete',disabled:saving,action:onRemove}]}>⋯</MenuButton></>}>
     <fieldset className="pf-editor-fields" disabled={saving} aria-busy={saving}><SettingsTab type={type} hidePreset editor={editor} auxiliary={!source ? undefined : type !== 'machine' ? {label:'Works with',icon:'param_dependencies_printers',modified:applicabilityDirty,initial:openOnWorksWith,content:<WorksWith type={type} profile={profileKey(source)} source={source} config={values} value={applicability} onChange={next=>update(key,{...latest.current,applicability:next})}/>}
       : connections ? {label:'Connection',icon:'printer_in_lan',content:<Suspense fallback={null}><ConnectionEditor printer={profileKey(source)} name={profileName}/></Suspense>} : undefined}/></fieldset>
   </DetailPane>;
