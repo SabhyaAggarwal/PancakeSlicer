@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type * as THREE from 'three';
+import { T3 } from '../three-runtime';
 import type { Instance, PlateObject, State } from '../state/store';
 import type { PlateJson } from '../api/types';
 import { instanceMatrix, plateDescription } from './geometry';
@@ -8,9 +9,9 @@ import { projectPaint } from './paint';
 function projectTransform(o: PlateObject, inst: Instance): number[] | undefined {
   if (!o.project?.origin) return undefined;
   const [x, y, z] = o.project.origin;
-  const delta = instanceMatrix(o, inst).multiply(new THREE.Matrix4().makeTranslation(-x, -y, -z));
+  const delta = instanceMatrix(o, inst).multiply(new T3.Matrix4().makeTranslation(-x, -y, -z));
   const [px, py] = o.project.plateOrigin ?? [0, 0];
-  const e = new THREE.Matrix4().makeTranslation(px, py, 0).multiply(delta).multiply(new THREE.Matrix4().makeTranslation(-px, -py, 0)).elements;
+  const e = new T3.Matrix4().makeTranslation(px, py, 0).multiply(delta).multiply(new T3.Matrix4().makeTranslation(-px, -py, 0)).elements;
   return [0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14].map((i) => e[i]);
 }
 
@@ -75,7 +76,7 @@ export function projectEdits(s: Pick<State, 'objects' | 'projectPlates' | 'plate
     const frame = volumeFrame(o);
     o.volumes.forEach((v, k) => {
       const name = `project_${saved.object}_${saved.instance}.v${k + 1}.stl`;
-      const m = frame.clone().multiply(new THREE.Matrix4().fromArray(v.matrix)).transpose().elements;
+      const m = frame.clone().multiply(new T3.Matrix4().fromArray(v.matrix)).transpose().elements;
       volumes.push({ name, o, k });
       edits.push({ op: 'add_volume', object: saved.object, file: name, type: v.type, name: v.name, transform: Array.from(m, round6),
         ...(v.extruder ? { extruder: v.extruder } : {}),
@@ -90,7 +91,7 @@ const round6 = (v: number) => Math.round(v * 1e6) / 1e6;
 
 function volumeFrame(o: PlateObject): THREE.Matrix4 {
   const t = o.project!.saved!.item!, [x, y, z] = o.project!.origin!, [px, py] = o.project!.plateOrigin ?? [0, 0];
-  const item = new THREE.Matrix4().set(t[0], t[3], t[6], t[9], t[1], t[4], t[7], t[10], t[2], t[5], t[8], t[11], 0, 0, 0, 1);
+  const item = new T3.Matrix4().set(t[0], t[3], t[6], t[9], t[1], t[4], t[7], t[10], t[2], t[5], t[8], t[11], 0, 0, 0, 1);
   const opened = instanceMatrix(o, { id: 0, x, y, z, rotZ: 0 });
-  return item.invert().multiply(new THREE.Matrix4().makeTranslation(px, py, 0)).multiply(opened);
+  return item.invert().multiply(new T3.Matrix4().makeTranslation(px, py, 0)).multiply(opened);
 }

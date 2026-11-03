@@ -191,16 +191,22 @@ const segmented = (labels: string[]) => labels.length >= 2 && labels.length <= 4
 
 const floatStep = (n: number) => (n ? 10 ** (Math.floor(Math.log10(Math.abs(n))) - 1) : 0.1);
 
+let pendingCommit: (() => void) | null = null;
+const flushCommit = () => { const run = pendingCommit; pendingCommit = null; run?.(); };
+if (typeof window !== 'undefined') for (const type of ['pointerdown', 'keydown', 'pagehide'] as const) window.addEventListener(type, flushCommit, true);
+const afterPaint = (run: () => void) => { flushCommit(); pendingCommit = run; requestAnimationFrame(() => setTimeout(flushCommit, 0)); };
+
 function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean; spin?: boolean; def?: OptionDef; readOnly?: boolean; list?: string; onCommit: (v: ConfigValue) => void }) {
   const named = useLabel();
   const percentOnly = !!props.numeric && /^percents?$/.test(props.def?.type ?? '') && props.def?.sidetext?.trim() === '%';
   const shown = (v: string) => percentOnly ? v.replace(/\s*%\s*$/, '') : v;
   const [text, setText] = useState(shown(props.value));
   const [bad, setBad] = useState(false);
-  const latest = useRef(text);
+  const latest = useRef(text), byKey = useRef(false);
   latest.current = text;
   useEffect(() => setText(shown(props.value)), [props.value]);
   const commit = () => {
+    const keyed = byKey.current; byKey.current = false;
     const text = percentOnly && latest.current.trim() && !latest.current.trim().endsWith('%') ? `${latest.current.trim()}%` : latest.current;
     if (text === props.value) return;
     if (props.numeric && props.def) {
@@ -211,16 +217,18 @@ function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean;
       setBad(!ok);
       if (!ok) return;
     }
-    props.onCommit(text);
+    if (keyed) { const commitText = props.onCommit; afterPaint(() => commitText(text)); }
+    else props.onCommit(text);
   };
-  const stepNumber = (direction: number, big = false) => {
+  const stepNumber = (direction: number, big = false, keyboard = false) => {
     if (props.readOnly || !props.def) return;
     const raw = latest.current.trim(), pct = percentOnly || raw.endsWith('%'), n = Number(raw.replace('%', '')) || 0;
     const step = (props.spin || props.def.type.startsWith('int') ? 1 : floatStep(n)) * (big ? 10 : 1);
     const places = Math.max(0, -Math.floor(Math.log10(step)));
     const next = Math.min(props.def.max ?? Infinity, Math.max(props.def.min ?? -Infinity, Number((n + direction * step).toFixed(places))));
     const value = `${next}${pct ? '%' : ''}`;
-    latest.current = shown(value); setText(shown(value)); setBad(false); props.onCommit(value);
+    latest.current = shown(value); setText(shown(value)); setBad(false);
+    if (keyboard) { const commitText = props.onCommit; afterPaint(() => commitText(value)); } else props.onCommit(value);
   };
   const input = useRef<HTMLInputElement>(null), stepRef = useRef(stepNumber);
   stepRef.current = stepNumber;
@@ -236,7 +244,7 @@ function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean;
   if (!props.numeric) return (
     <span className="control-text">
       <input {...named} className="text" value={text} readOnly={props.readOnly} list={props.list}
-        onChange={(e) => { setText(e.target.value); setBad(false); }} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
+        onChange={(e) => { setText(e.target.value); setBad(false); }} onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') { byKey.current = true; (e.target as HTMLInputElement).blur(); } }} />
     </span>
   );
   const unit = props.def?.sidetext && !(props.def.sidetext.trim() === '%' && text.trim().endsWith('%')) ? props.def.sidetext : undefined;
@@ -253,8 +261,8 @@ function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean;
         onChange={(e) => { setText(e.target.value); setBad(false); }}
         onBlur={commit}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-          else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); stepNumber(e.key === 'ArrowUp' ? 1 : -1, e.shiftKey); }
+          if (e.key === 'Enter') { byKey.current = true; (e.target as HTMLInputElement).blur(); }
+          else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); stepNumber(e.key === 'ArrowUp' ? 1 : -1, e.shiftKey, true); }
         }}
       />
       {unit && <span className="control-unit" aria-hidden>{unit}</span>}

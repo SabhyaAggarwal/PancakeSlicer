@@ -1,5 +1,6 @@
-import * as THREE from 'three';
-import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import type * as THREE from 'three';
+import { T3, T3Utils, threeReady } from '../three-runtime';
+
 import type { ConfigValue, PlateJson } from '../api/types';
 import { toolValue } from '../options';
 import type { Instance, PlateObject, Volume } from '../state/store';
@@ -49,23 +50,23 @@ export function request(msg: DistributiveOmit<MeshIn, 'id'>, on: (m: MeshOut) =>
 type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never;
 
 function toGeometry(d: MeshData & { id: number; item?: number }): THREE.BufferGeometry {
-  const geo = new THREE.BufferGeometry();
+  const geo = new T3.BufferGeometry();
   geo.userData.sourceCentre = d.centre;
   geo.userData.contentSignature = d.contentSignature;
   geo.userData.simplification = d.simplification;
   geo.userData.meshStats = d.stats;
-  geo.setAttribute('position', new THREE.BufferAttribute(d.positions, 3));
-  geo.setAttribute('normal', new THREE.BufferAttribute(d.normals, 3));
-  geo.setIndex(new THREE.BufferAttribute(d.index, 1));
-  geo.boundingBox = new THREE.Box3(new THREE.Vector3(...d.min), new THREE.Vector3(...d.max));
-  geo.boundingSphere = new THREE.Sphere(geo.boundingBox.getCenter(new THREE.Vector3()), d.radius);
+  geo.setAttribute('position', new T3.BufferAttribute(d.positions, 3));
+  geo.setAttribute('normal', new T3.BufferAttribute(d.normals, 3));
+  geo.setIndex(new T3.BufferAttribute(d.index, 1));
+  geo.boundingBox = new T3.Box3(new T3.Vector3(...d.min), new T3.Vector3(...d.max));
+  geo.boundingSphere = new T3.Sphere(geo.boundingBox.getCenter(new T3.Vector3()), d.radius);
   importedShells.set(`${d.id}:${d.item ?? -1}`, geo);
   for (const [key, arrays] of [['displayLod', d.display], ['motionLod', d.motion]] as const) {
     if (!arrays) continue;
-    const display = new THREE.BufferGeometry();
-    display.setAttribute('position', new THREE.BufferAttribute(arrays.positions, 3));
-    display.setAttribute('normal', new THREE.BufferAttribute(arrays.normals, 3));
-    display.setIndex(new THREE.BufferAttribute(arrays.index, 1));
+    const display = new T3.BufferGeometry();
+    display.setAttribute('position', new T3.BufferAttribute(arrays.positions, 3));
+    display.setAttribute('normal', new T3.BufferAttribute(arrays.normals, 3));
+    display.setIndex(new T3.BufferAttribute(arrays.index, 1));
     display.boundingBox = geo.boundingBox;
     display.boundingSphere = geo.boundingSphere;
     geo.userData[key] = display;
@@ -82,7 +83,8 @@ function setBvh(geo: THREE.BufferGeometry, m: { bvh: Bvh; ms: number }) {
   geo.userData.bvhMs = m.ms;
 }
 
-export function loadMesh(file: File, progress?: (pct: number) => void, simplify = true): Promise<THREE.BufferGeometry> {
+export async function loadMesh(file: File, progress?: (pct: number) => void, simplify = true): Promise<THREE.BufferGeometry> {
+  await threeReady;
   return new Promise((resolve, reject) => {
     let geo: THREE.BufferGeometry | null = null;
     request({ type: 'mesh', file, simplify }, (m) => {
@@ -95,11 +97,12 @@ export function loadMesh(file: File, progress?: (pct: number) => void, simplify 
   });
 }
 
-export function loadProject(file: File, on: {
+export async function loadProject(file: File, on: {
   items(items: ProjectItem[], materials: ProjectMaterials): void;
   mesh(i: number, geometry: THREE.BufferGeometry, centre: THREE.Vector3): void;
   missing(i: number): void;
 }, partsOnly = false): Promise<void> {
+  await threeReady;
   return new Promise((resolve, reject) => {
     const geos = new Map<number, THREE.BufferGeometry>();
     request({ type: 'project', file, partsOnly }, (m) => {
@@ -107,7 +110,7 @@ export function loadProject(file: File, on: {
       else if (m.type === 'mesh') {
         const geo = toGeometry(m);
         geos.set(m.item!, geo);
-        on.mesh(m.item!, geo, new THREE.Vector3(...m.centre));
+        on.mesh(m.item!, geo, new T3.Vector3(...m.centre));
       } else if (m.type === 'hull') {
         const geo = geos.get(m.item!);
         if (geo) geo.userData.hull = m.hull;
@@ -122,16 +125,16 @@ export function loadProject(file: File, on: {
 }
 
 export function placeholderGeometry(size = 20): THREE.BufferGeometry {
-  const geo = new THREE.BoxGeometry(size, size, size).translate(0, 0, size / 2);
+  const geo = new T3.BoxGeometry(size, size, size).translate(0, 0, size / 2);
   geo.computeBoundingBox();
   geo.computeBoundingSphere();
   return geo;
 }
 
 function tiltScale(o: PlateObject): THREE.Matrix4 {
-  const m = new THREE.Matrix4().makeScale(...o.scale);
-  m.premultiply(new THREE.Matrix4().makeRotationX(o.rotX * DEG));
-  m.premultiply(new THREE.Matrix4().makeRotationY(o.rotY * DEG));
+  const m = new T3.Matrix4().makeScale(...o.scale);
+  m.premultiply(new T3.Matrix4().makeRotationX(o.rotX * DEG));
+  m.premultiply(new T3.Matrix4().makeRotationY(o.rotY * DEG));
   return m;
 }
 
@@ -157,7 +160,7 @@ function transformedBox(geo: THREE.BufferGeometry, m: THREE.Matrix4, key: string
         min.push(-supportBvh(bvh, p, index, -e[k], -e[k + 4], -e[k + 8]) + e[k + 12]);
         max.push(supportBvh(bvh, p, index, e[k], e[k + 4], e[k + 8]) + e[k + 12]);
       }
-      b = new THREE.Box3(new THREE.Vector3(...min), new THREE.Vector3(...max));
+      b = new T3.Box3(new T3.Vector3(...min), new T3.Vector3(...max));
     } else {
       const p = (axisAligned && geo.boundingBox ? boxCorners(geo.boundingBox) : (geo.attributes.position.array as Float32Array));
       let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
@@ -171,7 +174,7 @@ function transformedBox(geo: THREE.BufferGeometry, m: THREE.Matrix4, key: string
         if (tz < z0) z0 = tz;
         if (tz > z1) z1 = tz;
       }
-      b = new THREE.Box3(new THREE.Vector3(x0, y0, z0), new THREE.Vector3(x1, y1, z1));
+      b = new T3.Box3(new T3.Vector3(x0, y0, z0), new T3.Vector3(x1, y1, z1));
     }
     if (per.size > 64) per.clear();
     per.set(key, b);
@@ -182,33 +185,33 @@ function transformedBox(geo: THREE.BufferGeometry, m: THREE.Matrix4, key: string
 export function objectMatrix(o: PlateObject): THREE.Matrix4 {
   const m = tiltScale(o);
   const b = transformedBox(o.geometry, m, `${o.rotX},${o.rotY},${o.scale}`);
-  return m.premultiply(new THREE.Matrix4().makeTranslation(-(b.min.x + b.max.x) / 2, -(b.min.y + b.max.y) / 2, -b.min.z));
+  return m.premultiply(new T3.Matrix4().makeTranslation(-(b.min.x + b.max.x) / 2, -(b.min.y + b.max.y) / 2, -b.min.z));
 }
 
 export const earsJson = (o: PlateObject) => o.brimEars?.map(({ p, r }) => {
-  const q = new THREE.Vector3(...p).applyMatrix4(objectMatrix(o));
+  const q = new T3.Vector3(...p).applyMatrix4(objectMatrix(o));
   return { x: +q.x.toFixed(4), y: +q.y.toFixed(4), z: +q.z.toFixed(4), radius: r };
 });
 
 export function instanceMatrix(o: PlateObject, inst: Instance): THREE.Matrix4 {
-  const m = objectMatrix(o).premultiply(new THREE.Matrix4().makeRotationZ(inst.rotZ * DEG));
+  const m = objectMatrix(o).premultiply(new T3.Matrix4().makeRotationZ(inst.rotZ * DEG));
   const b = transformedBox(o.geometry, m, `${o.rotX},${o.rotY},${o.scale},${inst.rotZ}`);
-  return m.premultiply(new THREE.Matrix4().makeTranslation(inst.x - (b.min.x + b.max.x) / 2, inst.y - (b.min.y + b.max.y) / 2, inst.z ?? 0));
+  return m.premultiply(new T3.Matrix4().makeTranslation(inst.x - (b.min.x + b.max.x) / 2, inst.y - (b.min.y + b.max.y) / 2, inst.z ?? 0));
 }
 
 export const objectHeight = (o: PlateObject) => { const b = instanceBox(o, o.instances[0]); return b.max.z - b.min.z; };
 
 export function instanceBox(o: PlateObject, inst: Instance): THREE.Box3 {
-  const m = objectMatrix(o).premultiply(new THREE.Matrix4().makeRotationZ(inst.rotZ * DEG));
+  const m = objectMatrix(o).premultiply(new T3.Matrix4().makeRotationZ(inst.rotZ * DEG));
   const b = transformedBox(o.geometry, m, `${o.rotX},${o.rotY},${o.scale},${inst.rotZ}`).clone();
-  const c = new THREE.Vector3((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, 0);
-  b.translate(new THREE.Vector3(inst.x, inst.y, inst.z ?? 0).sub(c));
+  const c = new T3.Vector3((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, 0);
+  b.translate(new T3.Vector3(inst.x, inst.y, inst.z ?? 0).sub(c));
   for (const v of o.volumes ?? []) if (v.type === 'part') b.union(volumeBox(o, inst, v));
   return b;
 }
 
 export function volumeWorld(o: PlateObject, inst: Instance, v: Volume): THREE.Matrix4 {
-  return instanceMatrix(o, inst).multiply(new THREE.Matrix4().fromArray(v.matrix));
+  return instanceMatrix(o, inst).multiply(new T3.Matrix4().fromArray(v.matrix));
 }
 
 export function volumeBox(o: PlateObject, inst: Instance, v: Volume): THREE.Box3 {
@@ -217,13 +220,13 @@ export function volumeBox(o: PlateObject, inst: Instance, v: Volume): THREE.Box3
 }
 
 export function volumeGeometry(position: Float32Array, index: Uint32Array | Uint16Array | null, normal?: Float32Array): THREE.BufferGeometry {
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(position, 3));
-  if (index) geo.setIndex(new THREE.BufferAttribute(index, 1));
-  if (normal) geo.setAttribute('normal', new THREE.BufferAttribute(normal, 3));
+  const geo = new T3.BufferGeometry();
+  geo.setAttribute('position', new T3.BufferAttribute(position, 3));
+  if (index) geo.setIndex(new T3.BufferAttribute(index, 1));
+  if (normal) geo.setAttribute('normal', new T3.BufferAttribute(normal, 3));
   else geo.computeVertexNormals();
   geo.computeBoundingBox();
-  const c = geo.boundingBox!.getCenter(new THREE.Vector3());
+  const c = geo.boundingBox!.getCenter(new T3.Vector3());
   if (c.lengthSq() > 0) {
     geo.translate(-c.x, -c.y, -c.z);
     geo.computeBoundingBox();
@@ -234,20 +237,20 @@ export function volumeGeometry(position: Float32Array, index: Uint32Array | Uint
 
 export function primitiveGeometry(shape: 'Cube' | 'Cylinder' | 'Sphere' | 'Cone' | 'Disc' | 'Torus', side: number): THREE.BufferGeometry {
   const r = side / 2;
-  const g = shape === 'Cube' ? new THREE.BoxGeometry(side, side, side)
-    : shape === 'Cylinder' ? new THREE.CylinderGeometry(r, r, side, 120).rotateX(Math.PI / 2)
-    : shape === 'Sphere' ? new THREE.SphereGeometry(r, 90, 45).rotateX(Math.PI / 2)
-    : shape === 'Cone' ? new THREE.ConeGeometry(r, side, 120).rotateX(Math.PI / 2)
-    : shape === 'Disc' ? new THREE.CylinderGeometry(r, r, 0.2, 120).rotateX(Math.PI / 2)
-    : new THREE.TorusGeometry(r, side / 8, 60, 120);
-  const welded = mergeVertices(new THREE.BufferGeometry().setAttribute('position', g.getAttribute('position')).setIndex(g.index), 1e-4);
+  const g = shape === 'Cube' ? new T3.BoxGeometry(side, side, side)
+    : shape === 'Cylinder' ? new T3.CylinderGeometry(r, r, side, 120).rotateX(Math.PI / 2)
+    : shape === 'Sphere' ? new T3.SphereGeometry(r, 90, 45).rotateX(Math.PI / 2)
+    : shape === 'Cone' ? new T3.ConeGeometry(r, side, 120).rotateX(Math.PI / 2)
+    : shape === 'Disc' ? new T3.CylinderGeometry(r, r, 0.2, 120).rotateX(Math.PI / 2)
+    : new T3.TorusGeometry(r, side / 8, 60, 120);
+  const welded = T3Utils.mergeVertices(new T3.BufferGeometry().setAttribute('position', g.getAttribute('position')).setIndex(g.index), 1e-4);
   g.dispose();
   return volumeGeometry(welded.attributes.position.array as Float32Array, welded.index!.array as Uint32Array);
 }
 
 export function objectSize(o: PlateObject): THREE.Vector3 {
   const b = transformedBox(o.geometry, tiltScale(o), `${o.rotX},${o.rotY},${o.scale}`);
-  return b.getSize(new THREE.Vector3());
+  return b.getSize(new T3.Vector3());
 }
 
 export function bakeStl(o: PlateObject, matrix = objectMatrix(o)): Promise<Blob> {
@@ -255,7 +258,7 @@ export function bakeStl(o: PlateObject, matrix = objectMatrix(o)): Promise<Blob>
 }
 
 function bakeVolume(o: PlateObject, v: Volume): Promise<Blob> {
-  return bake(v.geometry, objectMatrix(o).multiply(new THREE.Matrix4().fromArray(v.matrix)));
+  return bake(v.geometry, objectMatrix(o).multiply(new T3.Matrix4().fromArray(v.matrix)));
 }
 
 const baked = new WeakMap<THREE.BufferGeometry, Map<string, Promise<Blob>>>();
@@ -351,11 +354,11 @@ export function parsePoints(v: ConfigValue | undefined): THREE.Vector2[] {
   return list
     .map((s) => s.split('x').map(Number))
     .filter((p) => p.length === 2 && p.every(Number.isFinite))
-    .map(([x, y]) => new THREE.Vector2(x, y));
+    .map(([x, y]) => new T3.Vector2(x, y));
 }
 
 export function bedBounds(area: THREE.Vector2[]): { min: THREE.Vector2; max: THREE.Vector2; center: THREE.Vector2 } {
-  const min = new THREE.Vector2(Infinity, Infinity), max = new THREE.Vector2(-Infinity, -Infinity);
+  const min = new T3.Vector2(Infinity, Infinity), max = new T3.Vector2(-Infinity, -Infinity);
   for (const p of area) {
     min.min(p);
     max.max(p);
@@ -369,7 +372,7 @@ export function arrange(objects: PlateObject[], area: THREE.Vector2[], spacing =
   const width = max.x - min.x;
   const items = objects.flatMap((o) =>
     o.instances.map((i) => {
-      const s = instanceBox(o, i).getSize(new THREE.Vector3());
+      const s = instanceBox(o, i).getSize(new T3.Vector3());
       return { o, i, w: s.x, d: s.y };
     }),
   );
@@ -404,7 +407,7 @@ export function nextFreeSpot(objects: PlateObject[], o: PlateObject, area: THREE
   const step = Math.max(8, Math.min(size.x, size.y) / 4);
   for (let y = max.y - size.y / 2 - 2; y >= min.y + size.y / 2; y -= step)
     for (let x = min.x + size.x / 2 + 2; x <= max.x - size.x / 2; x += step) {
-      const cand = new THREE.Box3(new THREE.Vector3(x - size.x / 2 - 3, y - size.y / 2 - 3, -1), new THREE.Vector3(x + size.x / 2 + 3, y + size.y / 2 + 3, 1e4));
+      const cand = new T3.Box3(new T3.Vector3(x - size.x / 2 - 3, y - size.y / 2 - 3, -1), new T3.Vector3(x + size.x / 2 + 3, y + size.y / 2 + 3, 1e4));
       if (!boxes.some((b) => b.intersectsBox(cand))) return { x, y };
     }
   return null;
@@ -418,9 +421,9 @@ export function nearestFreeSpot(objects: PlateObject[], size: THREE.Vector2, fro
   let best: THREE.Vector2 | null = null;
   for (let y = min.y + hy; y <= max.y - hy; y += step)
     for (let x = min.x + hx; x <= max.x - hx; x += step) {
-      const p = new THREE.Vector2(x, y);
+      const p = new T3.Vector2(x, y);
       if (best && p.distanceTo(from) >= best.distanceTo(from)) continue;
-      const cand = new THREE.Box3(new THREE.Vector3(x - hx, y - hy, -1), new THREE.Vector3(x + hx, y + hy, 1e4));
+      const cand = new T3.Box3(new T3.Vector3(x - hx, y - hy, -1), new T3.Vector3(x + hx, y + hy, 1e4));
       if (!boxes.some((b) => b.intersectsBox(cand))) best = p;
     }
   return best;
@@ -453,9 +456,9 @@ export function outsideBed(objects: PlateObject[], area: THREE.Vector2[], height
 export function centred(g: THREE.BufferGeometry): [THREE.BufferGeometry, THREE.Matrix4] {
   const copy = g.clone();
   copy.computeBoundingBox();
-  const c = copy.boundingBox!.getCenter(new THREE.Vector3());
+  const c = copy.boundingBox!.getCenter(new T3.Vector3());
   copy.translate(-c.x, -c.y, -c.z);
   copy.computeBoundingBox();
   copy.computeBoundingSphere();
-  return [copy, new THREE.Matrix4().makeTranslation(c.x, c.y, c.z)];
+  return [copy, new T3.Matrix4().makeTranslation(c.x, c.y, c.z)];
 }

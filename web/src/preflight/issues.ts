@@ -8,6 +8,7 @@ import { undoable } from '../state/history';
 import { effectiveConfig, getState, printerPreset, setState, subscribeStore, type PlateObject, type State } from '../state/store';
 import type { Doc } from '../state/history';
 import type { PreflightIn, PreflightOut } from './preflight.worker';
+import { threeReady } from '../three-runtime';
 
 export type IssueKind = 'bed' | 'overhang' | 'contact' | 'footprint';
 export interface Issue {
@@ -69,6 +70,8 @@ const emit = () => { version++; listeners.forEach((l) => l()); };
 
 async function check(s: State) {
   const mine = ++run;
+  await threeReady;
+  if (mine !== run) return;
   const process = effectiveConfig(s, 'process'), machine = printerPreset(s)?.config ?? {};
   const area = bedArea(), height = num(machine.printable_height, 250) || 250;
   const out = area.length ? outsideBed(s.objects, area, height) : new Set<number>();

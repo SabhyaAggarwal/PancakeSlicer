@@ -54,8 +54,8 @@
 :where(.orca-parity) .opt-field .text.num { max-width: none; }
 :where(.orca-parity) .opt-field .text { background: var(--selector-bg); color: var(--text); }
 :where(.orca-parity) .opt-field .text.num { font: var(--t-num); font-variant-numeric: tabular-nums; }
-:where(.orca-parity) .opt-field .seg.choice { flex-wrap: nowrap; min-height: var(--h-compact); }
-:where(.orca-parity) .opt-field .seg.choice > button { flex: 1 1 auto; min-width: 0; min-height: calc(var(--h-compact) - 4px); padding: 0 var(--s-2); white-space: nowrap; }
+:where(.orca-parity) .opt-field .seg.choice { --seg-h: var(--h-compact); }
+:where(.orca-parity) .opt-field .seg.choice > button { padding: 0 var(--s-2); }
 :where(.orca-parity) .opt-side { flex: none; color: var(--ink-3); font: var(--t-small); }
 :where(.orca-parity) .opt-undo { display: flex; align-items: center; justify-content: center; }
 :where(.orca-parity) .opt-undo .icon-btn { width: 20px; height: 20px; min-width: 0; min-height: 0; padding: 0; }
@@ -74,8 +74,7 @@
 :where(.orca-parity) .opt-line, :where(.orca-parity) .option-row { min-height: 26px; padding-block: 1px; }
 :where(.orca-parity) .opt-label { color: var(--ink); font: 400 13px/18px var(--font-ui); }
 :where(.orca-parity) .opt-field :is(input.text, .dropdown) { height: 26px; min-height: 26px; font-size: 13px; }
-:where(.orca-parity) .opt-field .seg.choice { min-height: 26px; }
-:where(.orca-parity) .opt-field .seg.choice > button { min-height: 22px; }
+:where(.orca-parity) .opt-field .seg.choice { --seg-h: 26px; }
 :where(.orca-parity) .opt-line, :where(.orca-parity) .option-row { --ctl-w: 140px; --unit-w: 40px; }
 :where(.orca-parity) .opt-line:not(.full), :where(.orca-parity) .option-row { grid-template-columns: minmax(0, 1fr) var(--ctl-w) var(--opt-end, 20px); }
 :where(.orca-parity) .option-row { grid-template-columns: minmax(0, 1fr) auto var(--ctl-w) var(--opt-end, 20px); row-gap: 2px; }
@@ -95,8 +94,8 @@
 @media (pointer: coarse), (max-width: 599px) {
   :where(.orca-parity) .optgroup-head { min-height: 44px; }
   :where(.orca-parity) .opt-line, :where(.orca-parity) .option-row { min-height: 44px; padding-block: var(--s-2); }
-  :where(.orca-parity) .opt-field :is(input.text, .dropdown, .seg.choice), :where(.orca-parity) .opt-field .control-number > input.text { height: 44px; min-height: 44px; }
-  :where(.orca-parity) .opt-field .seg.choice > button { min-height: 40px; }
+  :where(.orca-parity) .opt-field :is(input.text, .dropdown), :where(.orca-parity) .opt-field .control-number > input.text { height: 44px; min-height: 44px; }
+  :where(.orca-parity) .opt-field .seg.choice { --seg-h: 44px; }
 }
 @media (pointer: coarse) { :where(.orca-parity) .opt-undo .icon-btn { width: 44px; height: 44px; margin: -12px; } }
 

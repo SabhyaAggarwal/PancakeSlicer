@@ -17,6 +17,12 @@
   :where(.orca-parity) .compact-topbar :is(.view-switch > .view-tab, .tabbar-actions > button) { --slant-inset: 4px; min-height: 44px; }
   :where(.orca-parity) .compact-topbar .view-switch > .view-tab { min-width: 44px; padding: 0 var(--s-3); }
   :where(.orca-parity) .compact-topbar .title-zone { padding: 0 var(--s-2); }
+  :where(.orca-parity) .compact-topbar .project-title { display: flex; justify-content: center; }
+  :where(.orca-parity) .compact-topbar .pt-folder { display: none; }
+  :where(.orca-parity) .compact-topbar .pt-box { flex: 0 1 auto; max-width: 100%; padding-inline: var(--s-2); }
+  :where(.orca-parity) .compact-topbar .pt-end { flex: none; }
+  :where(.orca-parity) .compact-topbar .pt-pencil { display: none; }
+  :where(.orca-parity) .compact-topbar .pt-status { padding-inline: var(--s-1); }
   :where(.orca-parity) .workspace-settings-launch { position: absolute; z-index: 8; top: 8px; left: max(8px,env(safe-area-inset-left)); }
   :where(.orca-parity) .workspace-rail { display: none; position: absolute; inset: 0 auto 0 0; z-index: 12; width: min(400px, calc(100% - 48px)); min-width: 0; background: var(--panel); border-right: 1px solid var(--line-strong); box-shadow: var(--shadow-pop); flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
   :where(.orca-parity) .workspace-rail[data-open=true] { display: flex; }

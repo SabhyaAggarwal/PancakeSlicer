@@ -10,7 +10,8 @@ importing.machine.subscribe((s) => {
   else if (app.get().value !== 'booting') app.send({ type: 'SETTLED', hasObjects: getState().objects.length > 0 });
   if (s.value === 'canceled' && /^(Loading |Opening )/.test(getState().loading ?? '')) setState({ loading: null });
 });
-import * as THREE from 'three';
+import type * as THREE from 'three';
+import { T3 } from './three-runtime';
 import type { Config, ConfigValue, JobRequest, JobStatus, PresetType } from './api/types';
 import { sliceProgress } from './api/progress';
 import { canEditProject, canLoadStep, connect, surfaceConfigBlocker, toolFeatures, type Api } from './api/client';
@@ -480,7 +481,7 @@ export async function jobRequest(s = getState(), saving = false): Promise<JobReq
   if (s.project) {
     const { added, volumes } = fields.project_edits ? projectEdits(s) : { added: [], volumes: [] };
     const { files } = added.length ? await plateJson(added, firstLayer(s)) : { files: [] };
-    const parts = await Promise.all(volumes.map(({ o, k }) => bakeStl({ ...o, geometry: o.volumes![k].geometry }, new THREE.Matrix4())));
+    const parts = await Promise.all(volumes.map(({ o, k }) => bakeStl({ ...o, geometry: o.volumes![k].geometry }, new T3.Matrix4())));
     return { ...fields, files: [{ name: s.project.name, blob: s.project as Blob }, ...files, ...volumes.map(({ name }, i) => ({ name, blob: parts[i] }))] };
   }
   const locks = !!s.features.plate_locks;
@@ -513,6 +514,7 @@ export function outsideVolumeWarning(s = getState()): string | null {
   const machine = printerPreset(s);
   if (!machine) return null;
   const objects = s.objects.filter((o) => !o.project?.placeholder);
+  if (!objects.length) return null;
   const outside = outsideBed(objects, parsePoints(machine.config.printable_area), Number(machine.config.printable_height ?? 1e6));
   const names = objects.filter((o) => o.instances.some((i) => outside.has(i.id))).map((o) => o.name);
   return names.length ? `Following objects are laid over the boundary of plate or exceeds the height limit:\n${names.join('\n')}\nPlease solve the problem by moving it totally on or off the plate, and confirming that the height is within the build volume.\n` : null;

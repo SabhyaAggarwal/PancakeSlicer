@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type * as THREE from 'three';
+import { T3 } from './three-runtime';
 import { bedArea } from './actions';
 import { bedBounds, instanceBox, nearestFreeSpot } from './plater/geometry';
 import { undoable } from './state/history';
@@ -13,7 +14,7 @@ export function selectionTargets(s: State = getState()): { o: PlateObject; inst:
 }
 
 function selectionBox(s: State = getState()): THREE.Box3 {
-  const box = new THREE.Box3();
+  const box = new T3.Box3();
   for (const { o, inst } of selectionTargets(s)) box.union(instanceBox(o, inst));
   return box;
 }
@@ -53,7 +54,7 @@ export async function mirrorSelection(axis: 0 | 1 | 2) {
   const { mirror } = await import('./plater/transforms');
   const targets = selectionTargets();
   if (!targets.length) return;
-  const c = selectionBox().getCenter(new THREE.Vector3());
+  const c = selectionBox().getCenter(new T3.Vector3());
   const several = targets.length > 1;
   const ids = new Set(targets.map((t) => t.inst.id));
   undoable('Mirror', () => setState((s) => ({
@@ -91,11 +92,11 @@ export function pasteClipboard() {
     if (s.clipboard.length) toast('A 3MF project is open; its objects share the project archive. Delete all to start a new plate.');
     return;
   }
-  const box = new THREE.Box3();
+  const box = new T3.Box3();
   for (const o of s.clipboard) for (const i of o.instances) box.union(instanceBox(o, i));
-  const size = box.getSize(new THREE.Vector3());
-  const from = new THREE.Vector2((box.min.x + box.max.x) / 2, (box.min.y + box.max.y) / 2);
-  const spot = nearestFreeSpot(s.objects, new THREE.Vector2(size.x, size.y), from, bedArea());
+  const size = box.getSize(new T3.Vector3());
+  const from = new T3.Vector2((box.min.x + box.max.x) / 2, (box.min.y + box.max.y) / 2);
+  const spot = nearestFreeSpot(s.objects, new T3.Vector2(size.x, size.y), from, bedArea());
   const dx = spot ? spot.x - from.x : size.x + 6, dy = spot ? spot.y - from.y : 0;
   const pasted = s.clipboard.map((o) => ({
     ...o, id: newId(), settings: { ...o.settings },

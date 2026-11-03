@@ -1,6 +1,6 @@
 import { observePreference, preferenceText, savePreferences } from './saved-preferences';
 import { useSyncExternalStore } from 'react';
-import * as THREE from 'three';
+import type * as THREE from 'three';
 import { jobRequest } from './actions';
 import { toolFeatures } from './api/client';
 import { instanceMatrix } from './plater/geometry';

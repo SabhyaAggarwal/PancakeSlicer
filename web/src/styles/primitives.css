@@ -22,12 +22,17 @@
 :where(.orca-parity) .icon-btn:disabled { opacity: 0.35; cursor: default; }
 :where(.orca-parity) .icon-btn img { filter: var(--icon-filter); }
 
-:where(.orca-parity) .seg { display: inline-flex; flex: none; gap: 2px; padding: 2px; background: var(--sunken); border: 0; border-radius: var(--r-2); font: var(--t-body); overflow: visible; }
-:where(.orca-parity) .seg > button { min-height: calc(var(--h-control) - 4px); padding: 0 var(--control-pad-x); border: 0; border-radius: var(--r-1); background: none; color: var(--ink-2); font: inherit; cursor: pointer; transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease); }
-:where(.orca-parity) .seg > button:hover:not(:disabled) { color: var(--ink); background: var(--panel); }
-:where(.orca-parity) .seg > button:is([aria-checked=true], [aria-pressed=true], [data-state=active], .on) { background: var(--segment-active); color: var(--text); font-weight: 600; }
+:where(.orca-parity) .seg { display: inline-flex; flex: none; border: 0; font: var(--t-body); overflow: visible; }
+:where(.orca-parity) .seg:not(.slant-seg) { display: inline-grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); max-width: 100%; height: var(--seg-h, var(--h-control)); padding: 0; border: 1px solid var(--line-strong); border-radius: var(--r-2); background: var(--sunken); overflow: hidden; }
+:where(.orca-parity) .seg > button { padding: 0 var(--control-pad-x); border: 0; border-radius: 0; background: none; color: var(--ink-2); font: inherit; font-variant-numeric: tabular-nums; cursor: pointer; transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease); }
+:where(.orca-parity) .seg:not(.slant-seg) > button { display: inline-flex; align-items: center; justify-content: center; min-width: 0; height: 100%; min-height: 0; white-space: nowrap; }
+:where(.orca-parity) .seg:not(.slant-seg) > button + button { box-shadow: inset 1px 0 var(--line); }
+:where(.orca-parity) .seg > button:hover:not(:disabled) { color: var(--ink); background: var(--hover); }
+:where(.orca-parity) .seg > button:is([aria-checked=true], [aria-pressed=true], [data-state=active], .on) { background: var(--segment-active); color: var(--text); }
+:where(.orca-parity) .seg:not(.slant-seg) > :is([aria-checked=true], [aria-pressed=true], [data-state=active], .on), :where(.orca-parity) .seg:not(.slant-seg) > :is([aria-checked=true], [aria-pressed=true], [data-state=active], .on) + button { box-shadow: none; }
 :where(.orca-parity) .seg > button:disabled { color: var(--ink-3); background: none; cursor: not-allowed; }
-:where(.orca-parity) .seg.num > button { font: var(--t-num); font-size: 12px; min-width: 34px; padding: 0 var(--s-3); }
+:where(.orca-parity) .seg.num > button { font: var(--t-num); font-size: 12px; font-variant-numeric: tabular-nums; min-width: 34px; padding: 0 var(--s-3); }
+@media (pointer: coarse) { :where(.orca-parity) .seg:not(.slant-seg) { --seg-h: 44px; } }
 :where(.orca-parity) .seg-unit { font: var(--t-small); color: var(--ink-3); margin-left: var(--s-2); }
 
 :where(.orca-parity) .chip { display: inline-flex; align-items: center; gap: var(--s-2); min-height: 30px; padding: 0 var(--s-3); border: 1px solid var(--line-strong); border-radius: var(--r-2); background: none; color: var(--ink-2); font: var(--t-small); white-space: nowrap; cursor: pointer; }

@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type * as THREE from 'three';
+import { T3 } from '../three-runtime';
 import { setState, type State } from '../state/store';
 
 export type PaintKind = 'support' | 'seam' | 'fuzzy' | 'color';
@@ -15,7 +16,7 @@ export const triangleCount = (g: THREE.BufferGeometry) => (g.index ? g.index.cou
 const corner = (g: THREE.BufferGeometry, t: number, k: number) => (g.index ? g.index.getX(3 * t + k) : 3 * t + k);
 type Tri = [THREE.Vector3, THREE.Vector3, THREE.Vector3];
 const vertices = (g: THREE.BufferGeometry, t: number): Tri =>
-  [0, 1, 2].map((k) => new THREE.Vector3().fromBufferAttribute(g.attributes.position, corner(g, t, k))) as Tri;
+  [0, 1, 2].map((k) => new T3.Vector3().fromBufferAttribute(g.attributes.position, corner(g, t, k))) as Tri;
 const mid = (a: THREE.Vector3, b: THREE.Vector3) => a.clone().add(b).multiplyScalar(0.5);
 const children = ([a, b, c]: Tri): Tri[] => {
   const ab = mid(a, b), bc = mid(b, c), ca = mid(c, a);
@@ -65,7 +66,7 @@ function faceNormals(g: THREE.BufferGeometry): Float32Array {
   normalCache.set(g, out);
   return out;
 }
-const normalOf = (g: THREE.BufferGeometry, t: number) => { const n = faceNormals(g); return new THREE.Vector3(n[3 * t], n[3 * t + 1], n[3 * t + 2]); };
+const normalOf = (g: THREE.BufferGeometry, t: number) => { const n = faceNormals(g); return new T3.Vector3(n[3 * t], n[3 * t + 1], n[3 * t + 2]); };
 
 function grow(g: THREE.BufferGeometry, seed: number, accept: (t: number, from: number) => boolean): number[] {
   const n = neighbours(g);
@@ -176,7 +177,7 @@ export const paintTriangle = (painting: Painting | null, hit: number, state: num
 
 export function overhangFacets(g: THREE.BufferGeometry, normalMatrix: THREE.Matrix3, deg: number): ((t: number) => boolean) | null {
   if (!(deg > 0)) return null;
-  const nrm = faceNormals(g), limit = -Math.cos((deg * Math.PI) / 180), v = new THREE.Vector3();
+  const nrm = faceNormals(g), limit = -Math.cos((deg * Math.PI) / 180), v = new T3.Vector3();
   return (t) => v.set(nrm[3 * t], nrm[3 * t + 1], nrm[3 * t + 2]).applyMatrix3(normalMatrix).normalize().z < limit;
 }
 
@@ -184,8 +185,8 @@ export function overhangGeometry(g: THREE.BufferGeometry, allow: (t: number) => 
   const pos: number[] = [];
   for (let t = 0, T = triangleCount(g); t < T; t++)
     if (allow(t)) for (const v of vertices(g, t)) pos.push(v.x, v.y, v.z);
-  const out = new THREE.BufferGeometry();
-  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  const out = new T3.BufferGeometry();
+  out.setAttribute('position', new T3.Float32BufferAttribute(pos, 3));
   return out;
 }
 
@@ -260,9 +261,9 @@ export function overlayGeometry(g: THREE.BufferGeometry, painting: Painting, pal
     for (const v of tri) pos.push(v.x, v.y, v.z), col.push(...colour);
   };
   for (const [t, node] of painting) emit(node, vertices(g, t));
-  out = new THREE.BufferGeometry();
-  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  out.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  out = new T3.BufferGeometry();
+  out.setAttribute('position', new T3.Float32BufferAttribute(pos, 3));
+  out.setAttribute('color', new T3.Float32BufferAttribute(col, 3));
   overlayCache.set(painting, { key, geometry: out });
   return out;
 }

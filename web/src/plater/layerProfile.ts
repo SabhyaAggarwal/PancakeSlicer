@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import type * as THREE from 'three';
+import { T3 } from '../three-runtime';
 
 const EPSILON = 1e-4;
 const LAYER_HEIGHT_CHANGE_STEP = 0.04;
@@ -17,7 +18,7 @@ interface Face { lo: number; hi: number; cos: number; sin: number }
 
 function faces(positions: ArrayLike<number>, index: ArrayLike<number> | null, matrix: THREE.Matrix4): Face[] {
   const out: Face[] = [];
-  const v = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+  const v = [new T3.Vector3(), new T3.Vector3(), new T3.Vector3()];
   const n = (index ? index.length : positions.length / 3) / 3;
   let zmin = Infinity;
   for (let t = 0; t < n; t++) {

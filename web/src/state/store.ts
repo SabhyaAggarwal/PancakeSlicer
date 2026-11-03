@@ -4,7 +4,8 @@ import { app } from '../flow/app';
 import { tools } from '../flow/tools';
 import { useSyncExternalStore } from 'react';
 import { plateSignature } from '../slice-input';
-import * as THREE from 'three';
+import type * as THREE from 'three';
+import { T3 } from '../three-runtime';
 import type { Api } from '../api/client';
 import type { Config, ConfigValue, JobStatus, PresetType, SystemPreset, UserPreset } from '../api/types';
 import type { ProjectPlate } from '../plater/threemf';
@@ -534,7 +535,7 @@ export function mapPaint(id: number, kind: PaintKind, name: string, f: (target: 
   undoable(name, () => setState((s) => ({
     objects: s.objects.map((o) => {
       if (o.id !== id) return o;
-      const scale = new THREE.Matrix4().compose(new THREE.Vector3(), new THREE.Quaternion(), new THREE.Vector3(...o.scale)).getMaxScaleOnAxis();
+      const scale = new T3.Matrix4().compose(new T3.Vector3(), new T3.Quaternion(), new T3.Vector3(...o.scale)).getMaxScaleOnAxis();
       const next = <T extends { geometry: THREE.BufferGeometry; paint?: Partial<Record<PaintKind, Painting>> }>(x: T): T => {
         const p = f(x, scale);
         return p === (x.paint?.[kind] ?? null) ? x : { ...x, paint: { ...x.paint, [kind]: p ?? undefined } };

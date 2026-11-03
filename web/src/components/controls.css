@@ -61,10 +61,6 @@
   :where(.orca-parity) .orca-switch { min-height: 24px; }
 }
 
-:where(.orca-parity) .seg.choice { flex-wrap: wrap; max-width: 100%; font: var(--t-body); }
-:where(.orca-parity) .seg.choice > button { height: auto; min-height: var(--h-compact); padding: 0 var(--s-4); font-variant-numeric: tabular-nums; }
-@media (pointer: coarse) { :where(.orca-parity) .seg.choice > button { min-height: 40px; } }
-
 :where(.orca-parity) .more-toggle { align-self: flex-start; width: fit-content; min-height: var(--h-compact); margin: 0; padding: 0; border: 0; border-radius: 2px; background: none; color: var(--ink-3); font: var(--t-small); text-align: left; cursor: pointer; }
 :where(.orca-parity) .more-toggle:hover { color: var(--text); }
 @media (pointer: coarse) { :where(.orca-parity) .more-toggle { min-height: 44px; } }
