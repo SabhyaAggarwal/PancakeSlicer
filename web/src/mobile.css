@@ -54,7 +54,10 @@
 @media (max-width: 599px) {
   :root.orca-parity .modal:not(.ask, .orient-confirm, .palette) { top: 0; left: 0; transform: none; width: 100vw; height: 100dvh; max-width: 100vw; max-height: 100dvh; border: 0; border-radius: 0; outline: 0;
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
-  :root.orca-parity .modal:not(.ask, .orient-confirm, .palette) > :not(.modal-title, .modal-buttons) { flex: 1 1 auto; min-height: 0; overflow: auto; }
+  :root.orca-parity .modal:not(.ask, .orient-confirm, .palette, .pf-window) { overflow-y: auto; }
+  :root.orca-parity .modal:not(.ask, .orient-confirm, .palette, .pf-window) > :not(.modal-title, .modal-buttons) { flex: 0 0 auto; min-height: auto; max-height: none; overflow: visible; }
+  :root.orca-parity .modal:not(.ask, .orient-confirm, .palette, .pf-window) > .modal-title { position: sticky; top: 0; z-index: 2; }
+  :root.orca-parity .modal:not(.ask, .orient-confirm, .palette, .pf-window) > .modal-buttons { margin-top: auto; }
   :where(.orca-parity) .modal .modal-buttons { position: sticky; bottom: 0; z-index: 1; flex-wrap: wrap; background: var(--panel); }
   :where(.orca-parity) .modal-title { min-height: 48px; }
   [data-radix-popper-content-wrapper]:has(> .pk-pop) { position: fixed !important; inset: auto 0 0 0 !important; transform: none !important; min-width: 0 !important; }

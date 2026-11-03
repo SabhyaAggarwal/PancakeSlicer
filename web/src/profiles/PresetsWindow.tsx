@@ -223,7 +223,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const machines = useStore(st => st.machines), processes = useStore(st => st.processes), filaments = useStore(st => st.filaments);
   const printer = useStore(st => st.printer), process = useStore(st => st.process), slots = useStore(st => st.filamentSlots);
   const printerOptions=useMemo(()=>users.filter(p=>p.type === 'machine' && !p.archived && p.kind !== 'master').map(p=>({value:profileKey(p),label:p.name})),[users]);
-  const [reveal,setReveal]=useState<{key?:string;closed:ReadonlySet<string>}>({closed:new Set()});
+  const [reveal,setReveal]=useState<{key?:string}>({});
   const list = useMemo(() => {
     const s = getState();
     return adding ? families(type,catalogItems(s,type)) : items(s,type);
@@ -317,14 +317,14 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     const common=type === 'filament' ? COMMON_MATERIALS.filter(m=>facets.materials.includes(m)) : [];
     if(common.length){setMaterialFilter(common);setMaterialDefault(true);}
   },[adding,type,list,printerOptions,printer]);
-  const active = (r: Item) => name ? r.key === name || r.fullName === name : r.slot !== undefined;
   const scope = `profiles:${adding ? 'add' : 'owned'}:${type}`, groupKey = (key: string) => `${scope}:${key}`;
-  const isOpen = (g: Group) => query ? !searchFolds.has(groupKey(g.key)) : reveal.key && groupHas(g, r => r.key === reveal.key) ? !reveal.closed.has(groupKey(g.key)) : folds.get(groupKey(g.key)) ?? (type === 'process' ? groupHas(g, active) : !adding || groupHas(g, r => r.slot !== undefined || r.key === name));
+  const foldOpen = (g: Group) => folds.get(groupKey(g.key)) ?? (type === 'process' ? false : !adding || groupHas(g, r => r.slot !== undefined || r.key === name));
+  const isOpen = (g: Group) => query ? !searchFolds.has(groupKey(g.key)) : foldOpen(g);
   const order = useMemo(() => {
     const keys: string[] = [], walk = (list: Group[]) => {for(const g of list)if(isOpen(g)){if(g.children)walk(g.children);else keys.push(...g.rows.map(i => i.key));}};
     walk(groups);
     return [...new Set(keys)];
-  }, [groups, folds, searchFolds, query, scope, name, reveal]);
+  }, [groups, folds, searchFolds, query, scope, name, adding]);
   const current = (t: PresetType) => (t === 'machine' ? printer : t === 'process' ? process : slots[0]) ?? '';
   const [selectionState, setSelection] = useState(() => {
     let initial = createSelection(scope, order);
@@ -345,7 +345,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
       if(visible.length && next.selected.length === 0 && (initialize || prior.selected.length > 0 && !prior.selected.some(key=>drafts[JSON.stringify([type,key])]))) {
         const selectedKey=current(type), target=visible.find(i=>i.key === name || i.name === name || i.fullName === name) ?? visible.find(i=>i.key === selectedKey || i.name === selectedKey) ?? visible[0];
         next=reduceSelection(next,{type:'CLICK',key:target.key});
-        if(!adding)setReveal({key:target.key,closed:new Set()});
+        if(!adding)setReveal({key:target.key});
       }
       return next;
     });
@@ -370,13 +370,26 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     selectionRevision.current++;initializedSelection.current=true;inspected.current=null;
     let next = reduceSelection(latestSelection.current, event);
     const fallback = next.selected.length ? undefined : fallbackKey.current();
-    if(fallback) {next = reduceSelection(next, {type: 'CLICK', key: fallback}); setReveal({key: fallback, closed: new Set()});}
+    if(fallback) {next = reduceSelection(next, {type: 'CLICK', key: fallback}); setReveal({key: fallback});}
     latestSelection.current = next; setSelection(next);
     if(event.type==='CLICK' && !event.toggle && !event.shift)setMobilePane('detail');
     if(focus && next.focus) requestAnimationFrame(() => {const row = document.getElementById(`${id}:${next.focus}`); row?.focus({preventScroll: true}); row?.scrollIntoView({block: 'nearest'});});
   }, [id]);
   const openRow=adding ? undefined : item?.key;
-  useEffect(() => {if(openRow !== reveal.key)setReveal({key: openRow, closed: new Set()});}, [openRow]);
+  useEffect(() => {if(openRow !== reveal.key)setReveal({key: openRow});}, [openRow]);
+  const clickedIn=useRef<string|undefined>(undefined), [openIn,setOpenIn]=useState<string>(), revealed=useRef<string|undefined>(undefined);
+  const printerModel=useMemo(()=>first(resolvePreset(getState(),'machine',printer).config.printer_model),[printer,machines,users]);
+  const revealPath=(key:string)=>{
+    const paths:Group[][]=[],walk=(list:Group[],at:Group[])=>{for(const g of list){if(g.children)walk(g.children,[...at,g]);else if(g.rows.some(r=>r.key === key))paths.push([...at,g]);}};
+    walk(groups,[]);
+    const path=paths.find(p=>p[p.length-1].key === clickedIn.current) ?? paths.find(p=>p.every(foldOpen)) ?? paths.find(p=>p[0].key === printerModel) ?? paths[0];
+    clickedIn.current=undefined;
+    if(!path)return false;
+    setOpenIn(path[path.length-1].key);
+    if(!path.every(foldOpen))setFolds(prior=>{const next=new Map(prior);for(const g of path)next.set(groupKey(g.key),true);return next;});
+    return true;
+  };
+  useEffect(()=>{if(!openRow || query || revealed.current === `${scope}:${openRow}`)return;if(revealPath(openRow))revealed.current=`${scope}:${openRow}`;},[openRow,groups,query,scope]);
   useEffect(() => {const key=item?.key; if(key) requestAnimationFrame(() => document.getElementById(`${id}:${key}`)?.scrollIntoView({block: 'nearest'}));}, [item?.key, type, adding, !query]);
   const [renameRequest,setRenameRequest]=useState<{key:string;at:number}>();
   const requestRename=(key:string)=>{if(adding)return;if(item?.key !== key)dispatch({type:'CLICK',key});setRenameRequest({key,at:Date.now()});};
@@ -467,16 +480,13 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const backToList=()=>{setMobilePane('list');setFiltersOpen(false);requestAnimationFrame(()=>document.getElementById(`${id}:${latestSelection.current.focus}`)?.focus());};
   const nouns=NOUNS[type], typeLabel=type === 'process' ? nouns[1] : nouns[0];
   const resultNoun:[string,string]=adding && type === 'machine' ? ['model','models'] : adding ? ['preset','presets'] : nouns;
-  const toggleGroup=(g:Group)=>{const k=groupKey(g.key);if(query)setSearchFolds(prior=>{const next=new Set(prior);if(!next.delete(k))next.add(k);return next;});else if(reveal.key && groupHas(g,r=>r.key === reveal.key))setReveal(prior=>{const closed=new Set(prior.closed);if(!closed.delete(k))closed.add(k);return {...prior,closed};});else setFold(k,!isOpen(g));};
-  useEffect(()=>{
-    const key=selection.focus;if(!query || !key)return;
-    for(const g of groups)if(g.rows.some(r=>r.key === key)){setFold(groupKey(g.key),true);for(const c of g.children ?? [])if(c.rows.some(r=>r.key === key))setFold(groupKey(c.key),true);}
-  },[selection.focus]);
+  const toggleGroup=(g:Group)=>{const k=groupKey(g.key);if(query)setSearchFolds(prior=>{const next=new Set(prior);if(!next.delete(k))next.add(k);return next;});else setFold(k,!isOpen(g));};
+  useEffect(()=>{const key=selection.focus;if(query && key && revealPath(key))revealed.current=`${scope}:${key}`;},[selection.focus]);
   const renderGroup=(g:Group,depth:number):React.ReactNode=>{
     const open=isOpen(g);
     return <div key={g.key} role="rowgroup" className="pf-group" data-depth={depth}>
       <div role="row" className="pf-group-head"><span role="rowheader"><button type="button" className="pf-group-toggle" aria-expanded={open} onClick={()=>toggleGroup(g)}><Caret dir={open ? 'down' : 'right'}/><span className="pf-group-label">{g.label}</span>{g.sub && <span className="pf-dim">{g.sub}</span>}</button></span></div>
-      {open && (g.children ? g.children.map(c=>renderGroup(c,depth+1)) : <div role="presentation" className="pf-group-rows">{g.rows.map(i => <ManagerProfileRow key={i.key} item={i} listId={id} selected={selectedSet.has(i.key)} open={i.key === openKey} focused={selection.focus === i.key} selectable={!adding} dispatch={dispatch}/>)}</div>)}
+      {open && (g.children ? g.children.map(c=>renderGroup(c,depth+1)) : <div role="presentation" className="pf-group-rows" onClickCapture={()=>{clickedIn.current=g.key;setOpenIn(g.key);}}>{g.rows.map(i => <ManagerProfileRow key={i.key} item={i} listId={id} selected={selectedSet.has(i.key)} open={i.key === openKey && (!openIn || openIn === g.key || !groups.some(o=>o.key === openIn && groupHas(o,r=>r.key === i.key)))} focused={selection.focus === i.key} selectable={!adding} dispatch={dispatch}/>)}</div>)}
     </div>;
   };
   const handlers=useRef({close,addVariant,deleteSelected,duplicate});handlers.current={close,addVariant,deleteSelected,duplicate};
