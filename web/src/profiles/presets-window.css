@@ -177,6 +177,7 @@
   :where(.orca-parity) .pf-add-source { align-self: stretch; padding: var(--s-2) 0 var(--s-5); }
 }
 @container profiles (max-width: 599px) {
+  :where(.orca-parity) .pf-workspace-title { flex-wrap: wrap; height: auto; min-height: 48px; padding-block: var(--s-2); row-gap: var(--s-2); }
   :where(.orca-parity) .pf-workspace-title h1 { flex: 1; font-size: 14px; }
   :where(.orca-parity) .pf-workspace-title > .pf-close { order: 1; }
   :where(.orca-parity) .pf-workspace-title > :has(> [role=tablist]) { order: 4; flex-basis: 100%; }

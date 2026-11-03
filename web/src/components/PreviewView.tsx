@@ -49,8 +49,8 @@ function startLoad(src: { key: string; url?: string; file?: File }) {
   const handle = loadMoves(src, {
     header: (d) => mine(d) && live?.header(d),
     chunk: (d) => mine(d) && live?.chunk(d),
-    done: (d) => mine(d) && live?.done(d),
-    error: (d) => mine(d) && live?.error(d),
+    done: (d) => mine(d) && (live ? live.done(d) : viewerReady(src.key, d.loaded)),
+    error: (d) => mine(d) && (live ? live.error(d) : viewerError(src.key, d.error ?? 'Unable to load preview')),
   }, src.key.startsWith('job:') ? jobColours() : undefined);
   current = { key: src.key, ...handle };
   setLoadedStream({ key: src.key, data: handle.data });

@@ -74,7 +74,7 @@ export async function loadRuntimeOptions(url: string, mock = false, cached?: Run
   nativePresets = false;
   if (!mock) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 1500);
+    const timer = setTimeout(() => controller.abort(), 15_000);
     try {
       const health = await fetch('/api/healthz', { signal: controller.signal }).then((r) => r.ok ? r.json() : null);
       native = health?.tool_features?.dump_options === true;

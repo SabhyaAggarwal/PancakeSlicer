@@ -2,6 +2,7 @@
   container-type: inline-size; height: clamp(360px, 60vh, 640px); margin: var(--space-row) var(--space-section) var(--space-group); border: 1px solid var(--line); border-radius: var(--r-2); background: var(--panel); overflow: hidden; }
 :where(.orca-parity) .gcode-grid { display: grid; grid-template-columns: minmax(160px, 220px) minmax(0, 1fr); height: 100%; }
 :root.orca-parity[data-theme=light] .gcode-bench { --gc-param: #1d6fa5; --gc-number: #9a6400; --gc-placeholder: #0f7a4c; --gc-control: #a3326f; --gc-string: #9a6400; }
+:where(.orca-parity) .settings-pages .page-body > .gcode-bench { width: auto; }
 :where(.orca-parity) .gcode-bench.fill { height: calc(100% - 2 * var(--space-row)); min-height: 360px; margin-block: var(--space-row); }
 :where(.orca-parity) .gcode-hooks { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; padding: var(--s-2); border-right: 1px solid var(--line); background: var(--sunken); }
 :where(.orca-parity) .gcode-hook { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'name mod' 'meta meta'; align-items: center; column-gap: var(--s-2); min-height: 32px; padding: var(--s-2) var(--s-3); border: 0; border-radius: var(--r-1); background: none; color: var(--text); font: var(--t-body); text-align: left; cursor: pointer; }
@@ -43,7 +44,7 @@
 :where(.orca-parity) .gcode-editor .cm-deletedChunk { background: color-mix(in srgb, var(--danger) 14%, transparent); }
 :where(.orca-parity) .gcode-editor .cm-changedText { background: color-mix(in srgb, #4caf7d 30%, transparent); }
 
-@container (max-width: 560px) {
+@container (max-width: 599px) {
   :where(.orca-parity) .gcode-grid { grid-template-columns: minmax(0, 1fr); }
   :where(.orca-parity) .gcode-grid:not([data-drilled]) .gcode-pane, :where(.orca-parity) .gcode-grid[data-drilled] .gcode-hooks { display: none; }
   :where(.orca-parity) .gcode-hooks { border-right: 0; }

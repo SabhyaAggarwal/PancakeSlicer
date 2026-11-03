@@ -31,7 +31,7 @@ function AskDialog({ a }: { a: Ask }) {
     a.resolve(v);
   };
   return (
-    <Modal className="small" label={a.title} onClose={() => done(null)}>
+    <Modal className="small ask" label={a.title} onClose={() => done(null)}>
       <form method="dialog" onSubmit={(e) => { e.preventDefault(); done(a.value === undefined ? '' : text); }}>
         <ModalTitle title={a.title} onClose={() => done(null)} />
         <div className="flush-body">
