@@ -41,6 +41,7 @@ type Server struct {
 
 func NewServer(c Config, jobs *JobManager, presets *PresetIndex, library *ProfileLibraryStore) http.Handler {
 	s := &Server{cfg: c, jobs: jobs, presets: presets, library: library, sends: NewSendManager(c.Printers, c.PrinterStore)}
+	desktopReadyNonce := os.Getenv("ORCA_DESKTOP_READY_NONCE")
 	healthProbe := newEngineHealth(c)
 	jobs.cfg.NativeHealth = healthProbe
 	mux := http.NewServeMux()
@@ -51,6 +52,10 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, library *Profil
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, r *http.Request) {
 		q, n := jobs.Counts()
 		health := healthProbe.snapshot(c.Tool)
+		if desktopReadyNonce != "" {
+			health["desktop_ready_nonce"] = desktopReadyNonce
+			w.Header().Set("Cache-Control", "no-store")
+		}
 		health["status"], health["queued"], health["running"] = "ok", q, n
 		health["profile_library_schema"] = 1
 		health["profile_adoption_schema"] = 1
