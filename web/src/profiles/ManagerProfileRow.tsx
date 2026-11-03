@@ -13,7 +13,17 @@ export interface ManagerProfileRowItem {
   slot?: number;
   cover?: string | null;
   swatch?:string|null;
+  lead?: string;
+  method?: string;
 }
+
+const METHOD: Record<string, string> = {
+  Flat: 'M3 6h10M3 9h10M3 12h10',
+  'Curved top': 'M3 12h10M3 9.5C4.5 5.5 11.5 5.5 13 9.5',
+  'Custom surface': 'M3 12h10M3 9.5c1.5-3.5 3.5-3.5 5 -1s3 2 5-2.5',
+  Waves: 'M3 8c1.2-1.6 2.8-1.6 4 0s2.8 1.6 4 0 1.5-1.2 2-1M3 12h10',
+  Automatic: 'M8 3v2.5M8 10.5V13M3 8h2.5M10.5 8H13M4.6 4.6l1.8 1.8M9.6 9.6l1.8 1.8M11.4 4.6 9.6 6.4M6.4 9.6l-1.8 1.8',
+};
 
 function splitName(name: string): [string, string] {
   for (const re of [/\s\S+\s\S+$/, /\s\S+$/]) { const m = re.exec(name); if (m && m[0].length <= 15 && m.index >= 4) return [name.slice(0, m.index), '\u00a0' + m[0].slice(1)]; }
@@ -39,8 +49,10 @@ export const ManagerProfileRow = memo(function ManagerProfileRow({ item, listId,
       onClick={event => event.stopPropagation()} onCheckedChange={() => dispatch({ type: 'CLICK', key: item.key, toggle: true })}/></span>}
     {item.swatch !== undefined && (item.swatch ? <span role="gridcell" className="profile-color-swatch" style={{backgroundColor:item.swatch}}/> : <span role="gridcell" className="pf-row-swatch" aria-label="No color"/>)}
     {item.cover !== undefined && <span role="gridcell" className="pf-row-cover">{item.cover && failedCover !== item.cover ? <img src={item.cover} alt="" width={52} height={52} loading="lazy" decoding="async" onError={()=>setFailedCover(item.cover ?? undefined)}/> : <Glyph name="printer" size={28}/>}</span>}
-    <span role="gridcell" className="pf-row-label"><span className="pf-item-name">{head && <span className="pf-name-head">{head}</span>}<span className="pf-name-tail">{tail}</span></span>
+    {item.lead !== undefined && <span role="gridcell" className="pf-row-lead">{item.lead}</span>}
+    <span role="gridcell" className="pf-row-label"><span className="pf-item-name" {...(item.lead !== undefined && item.fullName && item.fullName !== item.name ? {'data-truncated': 'true', 'data-full-text': item.fullName} : {})}>{head && <span className="pf-name-head">{head}</span>}<span className="pf-name-tail">{tail}</span></span>
       {item.meta && <span className="pf-item-meta">{item.meta}</span>}{item.note && <span className="pf-item-note">{item.note}</span>}</span>
+    {item.method && <span role="gridcell" className="pf-row-method" aria-label={item.method} data-truncated="true" data-full-text={item.method}><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden><path d={METHOD[item.method] ?? METHOD.Flat}/></svg></span>}
     {item.slot !== undefined && <span role="gridcell" className="pf-row-used">In use</span>}
   </div>;
 });

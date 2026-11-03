@@ -2,7 +2,7 @@
 :where(.orca-parity) .pt-folder { justify-self: end; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); font: var(--t-body); }
 :where(.orca-parity) .pt-end { justify-self: start; min-width: 0; display: flex; align-items: center; }
 
-:where(.orca-parity) .pt-box { box-sizing: border-box; height: var(--h-compact); max-width: min(40vw, 100%); min-width: 0; padding: 0 var(--s-3); border: 1px solid transparent; border-radius: var(--control-radius); background: transparent; color: var(--ink); font: 500 14px/20px var(--font-ui); }
+:where(.orca-parity) .pt-box { box-sizing: border-box; height: var(--h-compact); max-width: min(40vw, 100%); min-width: 0; padding: 0 var(--s-3); border: 1px solid transparent; border-radius: var(--control-radius); background: transparent; color: var(--ink); font: var(--t-body); }
 :where(.orca-parity) .pt-name { display: inline-flex; align-items: center; gap: var(--s-2); cursor: text; }
 :where(.orca-parity) .pt-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :where(.orca-parity) .pt-pencil { flex: none; color: var(--ink-3); opacity: 0; transition: opacity .12s; }

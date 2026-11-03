@@ -88,7 +88,7 @@ function Panel() {
       <div className="outliner-heading">
         <h2 className="vh-title">History</h2>
         <span id="vh-about" hidden>Details of</span>
-        <button type="button" className="btn-ghost vh-close" aria-label="Close history" onClick={closeHistory}>×</button>
+        <button type="button" className="btn-ghost vh-close" aria-label="Close history" onClick={closeHistory}><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg></button>
       </div>
       {h.error ? <p className="vh-empty" role="alert">{h.error}</p>
         : !list ? <p className="vh-empty" role="status">Loading…</p>

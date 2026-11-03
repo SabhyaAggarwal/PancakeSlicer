@@ -52,7 +52,7 @@ const COMMON_MATERIALS = ['PLA', 'PETG', 'ABS', 'ASA', 'TPU'];
 const NOUNS: Record<PresetType,[string,string]> = {machine:['printer','printers'],filament:['filament','filaments'],process:['print setting','print settings']};
 const count = (n:number,[one,many]:[string,string]) => `${n} ${n === 1 ? one : many}`;
 interface Group { key: string; label: string; sub?: string; rows: Item[]; children?: Group[] }
-const heightLabel = (config: Config) => {const h = Number(first(config.layer_height));return Number.isFinite(h) && h > 0 ? `${h.toFixed(2)} mm` : 'Other';};
+const layerHeight = (config: Config) => {const h = Number(first(config.layer_height));return Number.isFinite(h) && h > 0 ? h : 0;};
 const groupHas = (g: Group, match: (i: Item) => boolean): boolean => g.children ? g.children.some((c) => groupHas(c, match)) : g.rows.some(match);
 const byLabel = (a: string, b: string) => a === 'Other' || a === 'Any printer' ? 1 : b === 'Other' || b === 'Any printer' ? -1 : parseFloat(a) - parseFloat(b) || a.localeCompare(b);
 const sessionFolds = new Map<string, boolean>();
@@ -254,14 +254,15 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     }
     return found;
   };
-  const processRows=(rows:Item[],nozzleOf:(i:Item)=>string,usual:string|undefined)=>{
+  const processRows=(rows:Item[],nozzleOf:(i:Item)=>string)=>{
     const nozzles=new Set(rows.map(nozzleOf));
-    const shown=rows.map(i=>({i,title:processTitle(i.name,i.config,true),nozzle:nozzles.size > 1 ? nozzleOf(i) : ''}));
+    const shown=rows.map(i=>{
+      const h=layerHeight(i.config),title=processTitle(i.name,i.config,true).replace(/(^|\s)(\d+(?:\.\d+)?)\s*mm\s+/i,(token,before:string,value:string)=>Number(value) === h ? before : token).trim() || i.name;
+      return {i,h,title,nozzle:nozzles.size > 1 ? nozzleOf(i) : ''};
+    });
     return shown.map(r=>{
       const clash=shown.filter(q=>q.title === r.title).length > 1,exact=clash && shown.filter(q=>q.title === r.title && q.nozzle === r.nozzle).length > 1;
-      const mode=processMode(r.i.config);
-      const tags=[!exact && r.nozzle ? r.nozzle : '',mode !== usual ? mode : ''].filter(Boolean).join(' · ');
-      return {...r.i,fullName:r.i.name,name:exact ? processTitle(r.i.name,r.i.config,false) : r.title,note:'',meta:tags || undefined};
+      return {...r.i,fullName:r.i.name,name:exact ? processTitle(r.i.name,r.i.config,false) : r.title,note:'',meta:!exact && (r.nozzle || clash) ? r.nozzle || undefined : undefined,lead:r.h > 0 ? r.h.toFixed(2) : '—',method:processMode(r.i.config)};
     });
   };
   const machineRow=(i:Item):Item=>i.variants ? {...i,fullName:i.model,name:modelLabel(i.config,i.vendor,i.model)}
@@ -284,7 +285,6 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     const sortRows=(list:Item[])=>list.sort((a,b)=>a.name.localeCompare(b.name));
     if(type !== 'process')return bucket(rows,i=>type === 'machine' ? vendorLabel(i.config,i.vendor) : i.material || 'Other')
       .map(([label,list])=>({key:label,label,rows:type === 'machine' ? sortRows(list.map(machineRow)) : type === 'filament' ? (adding ? sortRows(list.map(i=>filamentRow(i,label))) : colourFamilies(sortRows(list.map(i=>filamentRow(i,label))))) : sortRows(list)}));
-    const usual=(()=>{const n=new Map<string,number>();for(const i of rows){const m=processMode(i.config);n.set(m,(n.get(m) ?? 0)+1);}return [...n].sort((a,b)=>b[1]-a[1])[0]?.[0];})();
     const models=new Map<string,{label:string;sub:string;items:{i:Item;nozzles:Set<string>}[]}>();
     for(const i of rows){
       const found=compatibleModels(i);
@@ -293,9 +293,9 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     }
     return [...models].sort(([a],[b])=>byLabel(a,b)).map(([full,m])=>{
       const nozzle=new Map(m.items.map(x=>[x.i.key,x.nozzles.size === 1 ? `${[...x.nozzles][0]} mm` : '']));
-      const children=bucket(m.items.map(x=>x.i),i=>heightLabel(i.config)).map(([label,list])=>({key:`${full}\0${label}`,label,rows:processRows(sortRows(list),i=>nozzle.get(i.key) ?? '',usual)}));
+      const list=m.items.map(x=>x.i).sort((a,b)=>(layerHeight(a.config) || Infinity)-(layerHeight(b.config) || Infinity) || a.name.localeCompare(b.name));
       const shared=[...models].some(([other,o])=>other !== full && o.label === m.label);
-      return {key:full,label:m.label,sub:shared ? m.sub : undefined,rows:unique(children.flatMap(c=>c.rows)),children};
+      return {key:full,label:m.label,sub:shared ? m.sub : undefined,rows:processRows(list,i=>nozzle.get(i.key) ?? '')};
     });
   },[matching,query,type,machines,printerFilter,printer]);
   const visible=useMemo(()=>unique(groups.flatMap(g=>g.rows)),[groups]);
@@ -314,8 +314,9 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     const common=type === 'filament' ? COMMON_MATERIALS.filter(m=>facets.materials.includes(m)) : [];
     if(common.length){setMaterialFilter(common);setMaterialDefault(true);}
   },[adding,type,list,printerOptions,printer]);
+  const active = (r: Item) => name ? r.key === name || r.fullName === name : r.slot !== undefined;
   const scope = `profiles:${adding ? 'add' : 'owned'}:${type}`, groupKey = (key: string) => `${scope}:${key}`;
-  const isOpen = (g: Group) => query ? !searchFolds.has(groupKey(g.key)) : folds.get(groupKey(g.key)) ?? (!adding || groupHas(g, r => r.slot !== undefined || r.key === name));
+  const isOpen = (g: Group) => query ? !searchFolds.has(groupKey(g.key)) : folds.get(groupKey(g.key)) ?? (type === 'process' ? groupHas(g, active) : !adding || groupHas(g, r => r.slot !== undefined || r.key === name));
   const order = useMemo(() => {
     const keys: string[] = [], walk = (list: Group[]) => {for(const g of list)if(isOpen(g)){if(g.children)walk(g.children);else keys.push(...g.rows.map(i => i.key));}};
     walk(groups);
@@ -369,6 +370,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     if(event.type==='CLICK' && !event.toggle && !event.shift)setMobilePane('detail');
     if(focus && next.focus) requestAnimationFrame(() => {const row = document.getElementById(`${id}:${next.focus}`); row?.focus({preventScroll: true}); row?.scrollIntoView({block: 'nearest'});});
   }, [id]);
+  useEffect(() => {const key=item?.key; if(key) requestAnimationFrame(() => document.getElementById(`${id}:${key}`)?.scrollIntoView({block: 'nearest'}));}, [type, adding]);
   const access = useMemo(() => profileAccess(type), [type, references, users]);
   const leave = async (action: () => void) => {if(Object.keys(drafts).length && !await confirmDialog('Unsaved profile edits', 'Discard unsaved profile edits?', ['Discard', 'Keep editing'])) return; action();};
   const close=()=>{if(!busy)void leave(()=>setState({presetUx:null}));};
@@ -520,7 +522,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
           {adding ? type === 'machine' && <button type="button" className="btn-ghost" onClick={()=>setState({appDialog:'createPrinter'})}>Custom printer</button>
             : <MenuButton label="Import, export or reset profiles" className="icon-btn" items={[{label:'Import',action:()=>void leave(()=>setState({presetUx:{kind:'import',back:{kind:'presets',type,name:item?.key}}}))},{label:'Export',action:()=>void leave(()=>setState({presetUx:{kind:'export'}}))},'sep',{label:'Reset profiles…',disabled:!libraryReady,action:()=>void leave(()=>void confirmProfileReset())}]}><Glyph name="more"/></MenuButton>}
         </div></div>
-        <div className="pf-scroll pf-list" data-multi={bulk || undefined} role="grid" aria-label={adding ? 'Master presets' : `My ${nouns[1]}`} aria-multiselectable={!adding} onContextMenu={e=>{const row=(e.target as Element).closest<HTMLElement>('[data-profile-key]');if(!row || adding) return;e.preventDefault();const key=row.dataset.profileKey!;if(!selectedSet.has(key)) dispatch({type:'CLICK',key});setContextMenu({x:e.clientX,y:e.clientY,anchor:row});}} tabIndex={visible.length ? -1 : 0} onKeyDown={e => {
+        <div className="pf-scroll pf-list" data-kind={type} data-multi={bulk || undefined} role="grid" aria-label={adding ? 'Master presets' : `My ${nouns[1]}`} aria-multiselectable={!adding} onContextMenu={e=>{const row=(e.target as Element).closest<HTMLElement>('[data-profile-key]');if(!row || adding) return;e.preventDefault();const key=row.dataset.profileKey!;if(!selectedSet.has(key)) dispatch({type:'CLICK',key});setContextMenu({x:e.clientX,y:e.clientY,anchor:row});}} tabIndex={visible.length ? -1 : 0} onKeyDown={e => {
           if(e.target instanceof Element && e.target.closest('input,textarea,[contenteditable=true]')) return;
           const command = e.ctrlKey || e.metaKey;
           if(command && e.key.toLocaleLowerCase() === 'a' && !adding) {e.preventDefault(); e.stopPropagation(); dispatch({type: 'SELECT_ALL'});}

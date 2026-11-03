@@ -30,6 +30,7 @@ import {
 import { captureUndo, documentGeneration, historyDepth, historyVersion, leaveDocument, markSaved, newDocument, undoable } from './state/history';
 import { clearPlateJobs, currentPlates } from './plater/plates';
 import { nativeSupportCapable } from './settings-env';
+import { selectionNotice } from './profiles/material-library';
 import { loadPreviewView } from './components/preview-loader';
 
 export async function init() {
@@ -74,7 +75,7 @@ export function switchPreset(type: PresetType, slot: number, name: string, edits
   const summary=getState().lastProfileTransition;
   if(type==='machine' && historyVersion()!==before && summary && (summary.changes.length || summary.needsSelection)){
     const undoTransition=captureUndo();
-    toast(`${summary.changes.map(c=>`${c.kind==='process'?'Print settings':`Slot ${(c.slot??0)+1}`}: ${c.to ?? c.reason}`).join(' · ')}${summary.needsSelection?' · Choose compatible profiles before slicing':''}`,{label:'Undo',run:()=>{if(!undoTransition())toast('The project changed after this printer switch. Its Undo action has expired; your newer work is kept.');}});
+    toast(selectionNotice(getState(),summary) || summary.changes.map(c=>`${c.kind==='process'?'Print settings':`Slot ${(c.slot??0)+1}`}: ${c.to ?? c.reason}`).join(' · '),{label:'Undo',run:()=>{if(!undoTransition())toast('The project changed after this printer switch. Its Undo action has expired; your newer work is kept.');}});
   }
   return result;
 }
@@ -89,6 +90,7 @@ function applyPresetSwitch(type: PresetType, slot: number, name: string, edits: 
     const config = resolvePreset(getState(), scope, target).config;
     return Object.fromEntries(Object.entries(switchingChanges(before, scope, sourceSlot)).filter(([key]) => {
       if (PRESET_META.test(key)) return false;
+      if (scope === 'filament' && (key === 'filament_colour' || key === 'default_filament_colour')) return false;
       if (key in config) { kept++; return true; }
       dropped++;
       return false;
@@ -115,7 +117,8 @@ function applyPresetSwitch(type: PresetType, slot: number, name: string, edits: 
       dirty: type === 'process' ? { ...st.dirty, process: carried } : st.dirty,
       filamentEdits,
       projectPresets,
-      ...(type === 'process' ? { process: name } : { filamentSlots: st.filamentSlots.map((f, i) => (i === slot ? name : f)) }),
+      ...(type === 'process' ? { process: name } : { filamentSlots: st.filamentSlots.map((f, i) => (i === slot ? name : f)),
+        slotColours: st.mixes[slot] ? st.slotColours : st.slotColours.map((c, i) => (i === slot ? undefined : c)) }),
       job: markStale(st.job),
     };
   });

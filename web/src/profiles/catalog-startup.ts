@@ -10,6 +10,7 @@ import { documentGeneration } from '../state/history';
 import { initialiseSavedPreferences, preferenceText } from '../saved-preferences';
 import { findProfile } from './identity';
 import { catalogAnchor, catalogKey, findCatalogBase, type ProfileCatalog } from './model';
+import { ensureCompatibleSelection } from './material-library';
 import { planCatalogReadiness, loadRequiredCatalogs, loadBackgroundCatalogs, type CatalogBaseDependency, type CatalogDependencySource } from './catalog-readiness';
 const VENDORS = ['BBL', 'Prusa', 'Custom'];
 
@@ -75,7 +76,11 @@ export async function loadCatalog() {
       }
       const error=result.requiresAdoption?'Your printer setup has unsaved changes that differ from the saved one. Save or discard them, then reload profiles.':null;
       setState({...result.patch,profileLibraryLoad:error ? {state:'failed',error} : {state:'ready'}});
-      if(!error){acceptHydratedPrinterSetups();retryDelay=1000;}
+      if(!error){
+        acceptHydratedPrinterSetups();retryDelay=1000;
+        const fixed=ensureCompatibleSelection(getState());
+        if(fixed){setState(fixed.patch);if(fixed.notice)toast(fixed.notice);}
+      }
     } catch (error) {
       if(current()){
         setState({profileLibraryLoad:{state:'failed',error:error instanceof Error?error.message:String(error)}});

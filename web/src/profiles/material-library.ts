@@ -136,15 +136,16 @@ export interface ProfileTransitionSummary {
   needsSelection:boolean;
 }
 const scalar=(value:Config[string]|undefined)=>String(Array.isArray(value)?value[0] ?? '':value ?? '');
-export function reconcilePrinterSelection(previous:State,incoming:State):{patch:Partial<State>;summary:ProfileTransitionSummary}{
+export function reconcilePrinterSelection(previous:State,incoming:State,{definiteOnly=false}={}):{patch:Partial<State>;summary:ProfileTransitionSummary}{
   let next={...incoming,filamentSlots:[...incoming.filamentSlots]},summary:ProfileTransitionSummary={changes:[],needsSelection:false};
   const oldProcess=effectiveProfileValues(previous,'process',previous.process),base=resolveProfile(next,'machine',next.printer).base;
   const availability=methodAvailability(next),label=(type:'process'|'filament',key:string)=>resolveProfile(next,type,key).name ?? key;
-  const processValid=(key:string,raw=false)=>selectCompatibility(next,'process',key).ok && !methodSelectionProblem(availability,raw?resolveProfile(next,'process',key).config:effectiveProfileValues(next,'process',key));
+  const kept=(c:{ok:boolean;unknown?:boolean})=>c.ok || definiteOnly && !!c.unknown;
+  const processValid=(key:string,raw=false,strict=false)=>(strict?selectCompatibility(next,'process',key).ok:kept(selectCompatibility(next,'process',key))) && !methodSelectionProblem(availability,raw?resolveProfile(next,'process',key).config:effectiveProfileValues(next,'process',key));
   const setup=next.printerLibrary.setups[next.printer],remembered=setup?.processId;
   if(remembered && processValid(remembered))next.process=remembered;
   if(!processValid(next.process)){
-    const candidates=next.userPresets.filter(p=>p.type==='process' && !p.archived && p.kind!=='master' && processValid(profileKey(p),true));
+    const candidates=next.userPresets.filter(p=>p.type==='process' && !p.archived && p.kind!=='master' && processValid(profileKey(p),true,true));
     const standard=scalar(base?.config.default_print_profile),height=Number(scalar(oldProcess.layer_height));
     const rank=(p:UserPreset)=>{const r=resolveProfile(next,'process',profileKey(p)),c=r.config;return [r.base?.name===standard?0:1,scalar(c.nonplanar_mode)===scalar(oldProcess.nonplanar_mode)?0:1,scalar(c.nonplanar_wave)===scalar(oldProcess.nonplanar_wave)?0:1,Number.isFinite(height)?Math.abs(Number(scalar(c.layer_height))-height):0];};
     candidates.sort((a,b)=>{const x=rank(a),y=rank(b);for(let i=0;i<x.length;i++)if(Number.isFinite(x[i]-y[i])&&x[i]!==y[i])return x[i]-y[i];return profileKey(a).localeCompare(profileKey(b));});
@@ -153,14 +154,14 @@ export function reconcilePrinterSelection(previous:State,incoming:State):{patch:
     else summary.needsSelection=true;
   }
   const defaults=[base?.config.default_filament_profile ?? []].flat().map(String);
-  const materialValid=(key:string)=>selectCompatibility(next,'filament',key).ok;
+  const materialValid=(key:string)=>kept(selectCompatibility(next,'filament',key));
   next.filamentSlots.forEach((key,slot)=>{
-    if(materialValid(key))return;
+    if(!key || materialValid(key))return;
     const current=resolveProfile(next,'filament',key),material=scalar(current.config.filament_type),brand=scalar(current.config.filament_vendor);
-    const candidates=next.userPresets.filter(p=>p.type==='filament'&&!p.archived&&p.kind!=='master'&&materialValid(profileKey(p)))
-      .filter(p=>!material||scalar(resolveProfile(next,'filament',profileKey(p)).config.filament_type)===material);
+    const candidates=next.userPresets.filter(p=>p.type==='filament'&&!p.archived&&p.kind!=='master'&&selectCompatibility(next,'filament',profileKey(p)).ok);
+    const sameMaterial=(p:UserPreset)=>!material||scalar(resolveProfile(next,'filament',profileKey(p)).config.filament_type)===material;
     candidates.sort((a,b)=>{const x=resolveProfile(next,'filament',profileKey(a)),y=resolveProfile(next,'filament',profileKey(b));
-      return Number(!defaults.includes(x.base?.name ?? ''))-Number(!defaults.includes(y.base?.name ?? ''))
+      return Number(!sameMaterial(a))-Number(!sameMaterial(b))||Number(!defaults.includes(x.base?.name ?? ''))-Number(!defaults.includes(y.base?.name ?? ''))
         ||Number(scalar(x.config.filament_vendor)!==brand)-Number(scalar(y.config.filament_vendor)!==brand)||profileKey(a).localeCompare(profileKey(b));});
     const chosen=candidates[0];summary.changes.push({kind:'filament',slot,from:label('filament',key),to:chosen?.name,reason:chosen?'Compatible filament selected':`Choose compatible ${material || 'filament'}`});
     if(chosen){next.filamentSlots[slot]=profileKey(chosen);if(next.projectPresets)next.projectPresets={...next.projectPresets,filaments:next.projectPresets.filaments.map((config,i)=>i===slot?{}:config)};if(next.profileSnapshots){const rows=[...next.profileSnapshots.filaments];rows[slot]=captureProjectProfiles({...next,profileSnapshots:null,projectPresets:null}).filaments[slot];next.profileSnapshots={...next.profileSnapshots,filaments:rows};}}
@@ -170,4 +171,18 @@ export function reconcilePrinterSelection(previous:State,incoming:State):{patch:
   next.filamentSlots.forEach((key,slot)=>{if(key!==previous.filamentSlots[slot]&&!summary.changes.some(change=>change.kind==='filament'&&change.slot===slot))summary.changes.push({kind:'filament',slot,from:resolveProfile(previous,'filament',previous.filamentSlots[slot] ?? '').name ?? previous.filamentSlots[slot] ?? '',to:label('filament',key),reason:'Restored loaded filament'});});
   const contexts={...previous.projectProfileContexts,[previous.printer]:{projectPresets:previous.projectPresets,profileSnapshots:captureProjectProfiles(previous),process:previous.process,dirty:previous.dirty}};
   return{patch:{process:next.process,filamentSlots:next.filamentSlots,dirty:next.dirty,projectPresets:next.projectPresets,profileSnapshots:next.profileSnapshots,projectProfileContexts:contexts,lastProfileTransition:summary},summary};
+}
+export function selectionNotice(s:State,summary:ProfileTransitionSummary):string{
+  const printer=resolveProfile(s,'machine',s.printer).name ?? s.printer;
+  return summary.changes.filter(c=>c.to && c.reason!=='Restored loaded filament' && c.reason!=='Restored printer print settings')
+    .map(c=>`${c.kind==='process'?'Print settings':s.filamentSlots.length>1?`Slot ${(c.slot??0)+1} filament`:'Filament'} changed to ${c.to}: ${c.from} isn't compatible with ${printer}`)
+    .concat(summary.needsSelection?[`Choose ${summary.changes.some(c=>c.kind==='process'&&!c.to)?'print settings':'a filament'} compatible with ${printer}`]:[]).join(' · ');
+}
+export function ensureCompatibleSelection(s:State):{patch:Partial<State>;notice:string}|null{
+  if(s.profileLibraryLoad.state!=='ready' || !s.printer)return null;
+  const {patch,summary}=reconcilePrinterSelection(s,s,{definiteOnly:true});
+  const changed=patch.process!==s.process || patch.filamentSlots!.some((key,i)=>key!==s.filamentSlots[i]);
+  if(!changed && !summary.needsSelection)return null;
+  const {projectProfileContexts:_contexts,...rest}=patch;
+  return {patch:changed?rest:{lastProfileTransition:summary},notice:selectionNotice({...s,...rest},summary)};
 }

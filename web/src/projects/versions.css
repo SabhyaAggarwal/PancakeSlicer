@@ -8,7 +8,7 @@
   :where(.orca-parity) .canvas-area[data-viewport=preview]:has(.vh-panel) .preview > .legend { display: none; }
 }
 :where(.orca-parity) .vh-title { margin: 0; padding: var(--s-2); font: var(--t-title); }
-:where(.orca-parity) .vh-close { width: var(--h-compact); min-height: var(--h-compact); padding: 0; font-size: 18px; line-height: 1; }
+:where(.orca-parity) .vh-close { width: var(--h-compact); min-height: var(--h-compact); padding: 0; display: grid; place-items: center; }
 :where(.orca-parity) .vh-empty { margin: 0; padding: var(--s-3) var(--s-4) var(--s-4); font: var(--t-small); color: var(--ink-3); }
 :where(.orca-parity) .vh-list { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 0 var(--s-2) var(--s-2); list-style: none; }
 :where(.orca-parity) .vh-list ul { margin: 0; padding: 0; list-style: none; }

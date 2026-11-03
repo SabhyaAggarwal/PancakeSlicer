@@ -5,7 +5,8 @@ import type { StoredDoc } from '../persist/session';
 import { clearPlate } from '../actions';
 import { documentGeneration, leaveDocument, newDocument, snapshot, type Doc } from '../state/history';
 import { clearPlateJobs } from '../plater/plates';
-import { setState } from '../state/store';
+import { getState, setState, toast } from '../state/store';
+import { ensureCompatibleSelection } from '../profiles/material-library';
 import { project, projectList, flushProject, writeProjectRoute, type ProjectDraftInventory } from './project';
 import { writeRoute } from './routes';
 import { checkpointCommitted, conflictFailure, failureError, projectFailure, recoveryDocument, type DraftCheckpoint, type ProjectFailure, type CheckpointDocument } from './project-recovery';
@@ -23,6 +24,12 @@ export interface RecoveryRuntime {
   drafts(): Promise<ProjectDraftStore>; refreshDrafts(): Promise<ProjectDraftInventory>;
 }
 const codec = () => import('../persist/session');
+function keepCompatible() {
+  const fixed = ensureCompatibleSelection(getState());
+  if (!fixed) return;
+  setState(fixed.patch);
+  if (fixed.notice) toast(fixed.notice);
+}
 export async function adoptProjectDraft(runtime: RecoveryRuntime, draft: ProjectDraft, canonical: ProjectMeta | null, mine: number) {
   const document = recoveryDocument(draft.doc) as StoredDoc;
   await runtime.ensureCatalogs(document, () => runtime.isCurrent(mine));
@@ -45,6 +52,7 @@ export async function adoptProjectDraft(runtime: RecoveryRuntime, draft: Project
   });
   runtime.setRestored(draft); runtime.resetCaptured();
   project.send({ type: 'RECOVERED', meta, draft, failure });
+  keepCompatible();
   runtime.checkpointRecovered(draft.projectId, draft.baseRevision, failure);
   writeProjectRoute(true);
 }
@@ -157,6 +165,7 @@ export async function openProject(runtime: RecoveryRuntime, id: string, options:
     });
     runtime.setRestored(null); runtime.resetCaptured(); savedVersionBase(rec.meta.id, snapshot());
     project.send({ type: 'OPENED', meta: rec.meta });
+    keepCompatible();
     writeRoute(`/p/${rec.meta.id}`, true);
   } catch (error) {
     if (!runtime.isCurrent(mine)) return;
