@@ -2,9 +2,14 @@ let worker: Worker | null = null;
 let id = 0;
 const failures = new Set<(error: Error) => void>();
 
+const started = globalThis as { __orcaCatalogWorker?: Worker & { failed?: boolean } };
+
 export function catalogWorker() {
   if (worker) return worker;
-  const w = new Worker(new URL('./catalog.worker.ts', import.meta.url), { type: 'module' });
+  const early = started.__orcaCatalogWorker;
+  delete started.__orcaCatalogWorker;
+  if (early?.failed) early.terminate();
+  const w = early && !early.failed ? early : new Worker(new URL('./catalog.worker.ts', import.meta.url), { type: 'module' });
   const fail = (message: string) => {
     if (worker === w) worker = null;
     w.terminate();

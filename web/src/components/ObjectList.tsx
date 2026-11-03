@@ -1,4 +1,4 @@
-import { Dropdown } from './Dropdown';
+import { SlotPicker } from './SlotChip';
 import { Caret } from './Caret';
 import { useState } from 'react';
 import { useTab } from '../options';
@@ -7,7 +7,6 @@ import { volumeIcon } from '../plater/volumes';
 import { renameObject, setFilament, startRename } from '../edit';
 import { canEditProject } from '../api/client';
 import { undoable } from '../state/history';
-import { filamentColor } from '../plater/filamentColor';
 import { instanceBox } from '../plater/geometry';
 import { Icon } from './Icon';
 import { STYLE_NAMES, styleOf } from '../style-names';
@@ -26,8 +25,6 @@ export function ObjectList() {
   const objects = useStore((s) => s.objects);
   const results = useStore(plateResults);
   const selected = useStore((s) => s.selected);
-  const slots = useStore((s) => s.filamentSlots);
-  const manyFilaments = slots.length > 1;
   const project = useStore((s) => s.project);
   const record = useStore((s) => (s.job.state === 'done' && !s.job.stale ? (s.job.status?.record as SliceRecord | undefined) : undefined));
   const renaming = useStore((s) => s.renaming);
@@ -170,15 +167,8 @@ export function ObjectList() {
                   )}
                 </span>
                 {printableButton(o.id, o.instances.some((i) => i.printable !== false))}
-                {manyFilaments && <span role="gridcell" className="ol-cell"><Dropdown
-                  className="ol-fila-select" aria-label="Filament"
-                  disabled={!!o.project && !canEditProject()}
-                  title={o.project && !canEditProject() ? 'Set in the 3MF project' : 'Filament'}
-                  value={o.extruder}
-                  style={{ borderLeftColor: filamentColor(s, o.extruder) }}
-                  onClick={(e) => e.stopPropagation()}
-                  onValueChange={(next) => setFilament(o.id, Number(next))}
-                  options={slots.map((_, i) => ({ value: i + 1, label: i + 1 }))} /></span>}
+                <span role="gridcell" className="ol-fila"><SlotPicker label="Filament" value={o.extruder || 1} disabled={!!o.project && !canEditProject()}
+                  onChange={(next) => setFilament(o.id, next)} /></span>
                 <span role="gridcell" className="ol-status">{sinking && <button className="ol-sinking" aria-label="Drop to bed"
                   onClick={(e) => { e.stopPropagation(); undoable('Drop to bed', () => o.instances.forEach((i) => updateInstance(o.id, i.id, { z: 0 }))); }} disabled={!!o.project?.placeholder}>
                   <Icon name="objlist_sinking" size={16} />
@@ -229,11 +219,9 @@ export function ObjectList() {
                         ) : <span className="ol-text">{v.name}</span>}
                       </span>
                       <span role="gridcell" className="ol-status" />
-                      {!manyFilaments ? null : v.type === 'part' ? (
-                        <span role="gridcell" className="ol-cell"><Dropdown className="ol-fila-select" aria-label="Filament" title="Filament" value={v.extruder}
-                          style={{ borderLeftColor: filamentColor(s, v.extruder || o.extruder) }}
-                          onClick={(e) => e.stopPropagation()}
-                          onValueChange={(next) => updateVolume(o.id, v.id, { extruder: Number(next) })} options={[{ value: 0, label: '-' }, ...slots.map((_, i) => ({ value: i + 1, label: i + 1 }))]} /></span>
+                      {v.type === 'part' ? (
+                        <span role="gridcell" className="ol-fila"><SlotPicker label="Filament" value={v.extruder} inherit={o.extruder || 1}
+                          onChange={(next) => updateVolume(o.id, v.id, { extruder: next })} /></span>
                       ) : <span role="gridcell" className="ol-fila" />}
                       <span role="gridcell" className="ol-status" />
                     </div>
@@ -282,7 +270,7 @@ export function ObjectList() {
                     >
                       <span role="gridcell" className="ol-name">Instance {k + 1}</span>
                       {printableButton(o.id, inst.printable !== false, inst.id)}
-                      {manyFilaments && <span role="gridcell" className="ol-fila" />}<span role="gridcell" className="ol-status" />
+                      <span role="gridcell" className="ol-fila" /><span role="gridcell" className="ol-status" />
                     </div>
                   ))}
                 </>

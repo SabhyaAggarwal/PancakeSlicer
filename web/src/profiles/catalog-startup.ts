@@ -5,14 +5,14 @@ import type { ProfileBaseAnchor, ProfileLibraryDocument, ProjectProfileSnapshot 
 import { app } from '../flow/app';
 import { importing } from '../flow/import';
 import { loadTab } from '../options';
-import { DEMO_MODELS, getState, setState, toast } from '../state/store';
+import { getState, setState, toast } from '../state/store';
+import { DEMO_MODELS, VENDORS } from '../api/catalog-scope';
 import { documentGeneration } from '../state/history';
 import { initialiseSavedPreferences, preferenceText } from '../saved-preferences';
 import { findProfile } from './identity';
 import { catalogAnchor, catalogKey, findCatalogBase, type ProfileCatalog } from './model';
 import { ensureCompatibleSelection, replaceMissingSelection } from './material-library';
 import { planCatalogReadiness, loadRequiredCatalogs, loadBackgroundCatalogs, type CatalogBaseDependency, type CatalogDependencySource } from './catalog-readiness';
-const VENDORS = ['BBL', 'Prusa', 'Custom'];
 
 function mergeCatalog(vendor: string, cat: PresetCatalog) {
   const order = <T extends { vendor: string }>(l: T[]) => [...l].sort((a, b) => VENDORS.indexOf(a.vendor) - VENDORS.indexOf(b.vendor));

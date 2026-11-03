@@ -102,5 +102,5 @@ export async function decode(doc: StoredDoc, get: (key: string) => Promise<Blob 
   const projectPlates = doc.projectPlates.map((p) => ({ ...p, objects: p.objects.map(revive) }));
   reserveIds(Math.max(0, ...[...objects, ...projectPlates.flatMap((p) => p.objects)].flatMap((o) => [o.id, ...o.instances.map((i) => i.id), ...(o.volumes ?? []).map((v) => v.id)])));
   const { files: _files, ...fields } = doc;
-  return { ...fields, mixes: doc.mixes ?? {}, objects, projectPlates, project: doc.project ? (blobs.get(doc.project) as File) : null };
+  return { ...fields, mixes: doc.mixes ?? {}, processVariant: doc.processVariant ?? null, objects, projectPlates, project: doc.project ? (blobs.get(doc.project) as File) : null };
 }

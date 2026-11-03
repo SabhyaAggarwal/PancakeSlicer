@@ -27,6 +27,6 @@
 :where(.orca-parity) .connection-editor .prefs-row > .combo { flex: 1; min-width: 0; }
 :where(.orca-parity) .connection-buttons { display: flex; flex-wrap: wrap; gap: var(--s-2); }
 :where(.orca-parity) .connection-found { display: grid; gap: var(--s-1); padding: var(--s-2) 0; border-top: 1px solid var(--line); }
-:where(.orca-parity) .connection-found-row { display: flex; align-items: center; gap: var(--s-2); font-size: var(--t-small); color: var(--ink-2); min-height: var(--h-row); }
+:where(.orca-parity) .connection-found-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); font-size: var(--t-small); color: var(--ink-2); min-height: var(--h-row); }
 :where(.orca-parity) .connection-found-row > .btn { flex: none; }
-:where(.orca-parity) .connection-found-row > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:where(.orca-parity) .connection-found-row > span:first-child { flex: 1 1 240px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

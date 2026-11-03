@@ -9,6 +9,7 @@ import './picker.css';
 import { Caret } from '../Caret';
 import { Glyph } from '../Glyph';
 import { edgeOf, type Edge } from '../anchor';
+import { SlotChip } from '../SlotChip';
 export interface PickerItem { id: string; label: string; sub?: string; swatch?: string | null; meta?: string; facet?: string; search?: string; disabled?: boolean | string;
   image?: string | null; status?: { label: string; tone: 'online' | 'printing' | 'offline' | 'error' }; slots?: { n: number; colour: string }[] }
 export interface PickerGroup { id: string; title: string; items: PickerItem[]; filter?: boolean }
@@ -52,7 +53,6 @@ function PickerRail({ tabs, active, hover, label, level, list, railRef, onChange
 const decoded = new Map<string, HTMLImageElement>();
 const decodeAhead = (src: string) => { if (decoded.has(src)) return; const img = new Image(); img.src = src; decoded.set(src, img); img.decode().catch(() => {}); };
 const idle = (run: () => void) => typeof requestIdleCallback === 'function' ? requestIdleCallback(run, { timeout: 3000 }) : setTimeout(run, 1500);
-const inkOn = (hex: string) => { const m = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})/i.exec(hex); return m && (0.2126 * parseInt(m[1], 16) + 0.7152 * parseInt(m[2], 16) + 0.0722 * parseInt(m[3], 16)) > 150 ? 'dark' : 'light'; };
 function PickerArt({ src }: { src: string | null }) {
   const [failed, setFailed] = useState<string>();
   return <span className="pk-art" aria-hidden>{src && failed !== src ? <img src={src} alt="" draggable={false} onError={() => setFailed(src)}/> : <Glyph name="printer" size={40}/>}</span>;
@@ -68,7 +68,7 @@ const PickerRow = memo(function PickerRow({ row, index, id, active, selected, ad
       {media && <PickerArt src={row.image ?? null}/>}{row.swatch !== undefined && <span className="profile-color-swatch" data-unknown={!row.swatch} style={{backgroundColor:row.swatch ?? undefined}}/>}
       <span className="pk-text"><span className="pk-label"><span className="pk-head">{head}</span>{tail && <span className="pk-tail">{tail}</span>}</span>{row.sub && <span className="pk-sub">{row.sub}</span>}{media && row.meta && <span className="pk-sub">{row.meta}</span>}{row.status && <span className="pk-status" data-tone={row.status.tone}>{row.status.label}</span>}</span>
       {!media && row.meta && <span className="pk-meta">{row.meta}</span>}
-      {!!row.slots?.length && <span className="pk-slots">{row.slots.map(c => <span key={c.n} className="slot-chip" role="img" aria-label={`Also in slot ${c.n}`} data-ink={inkOn(c.colour)} style={{backgroundColor: c.colour}}>{c.n}</span>)}</span>}
+      {!!row.slots?.length && <span className="pk-slots" role="img" aria-label={`Also in slot ${row.slots.map(c => c.n).join(', ')}`}>{row.slots.map(c => <SlotChip key={c.n} n={c.n} colour={c.colour}/>)}</span>}
     </button>
     {!adding && <button type="button" className="pk-star" aria-label={`Favorite ${row.label}`} aria-pressed={pinned} onClick={() => onPin(row)}>{pinned ? '★' : '☆'}</button>}
   </div>;

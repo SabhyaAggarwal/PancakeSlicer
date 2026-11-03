@@ -104,8 +104,12 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .ol-name { display: flex; align-items: center; gap: 4px; min-width: 0; flex: 1; }
 :where(.orca-parity) .ol-text { overflow: hidden; overflow-wrap: anywhere; white-space: normal; }
 :where(.orca-parity) .ol-expand { width: 16px; border: 0; background: none; padding: 0; cursor: pointer; color: var(--text-dim); display: inline-block; }
-:where(.orca-parity) .ol-fila, :where(.orca-parity) .ol-fila-select { width: 44px; text-align: center; }
-:where(.orca-parity) .ol-fila-select { border: 1px solid var(--line-ddd); border-left-width: 6px; border-radius: 3px; background: var(--bg); font-size: 12px; height: 20px; }
+:where(.orca-parity) .ol-fila { flex: none; display: inline-grid; place-items: center; width: 28px; }
+:where(.orca-parity) .slot-pick { display: inline-grid; place-items: center; width: 28px; height: 28px; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: var(--control-radius); background: none; cursor: pointer; }
+:where(.orca-parity) button.slot-pick:hover:not(:disabled), :where(.orca-parity) .slot-pick[data-state=open] { background: var(--hover); }
+:where(.orca-parity) button.slot-pick:disabled { cursor: default; }
+:where(.orca-parity) .slot-pick[data-follows] .slot-chip { opacity: 0.55; }
+:where(.orca-parity) .slot-menu .menu-item[data-current] { background: var(--selected); }
 :where(.orca-parity) .ol-child { padding-left: 40px; color: var(--text-dim); }
 :where(.orca-parity) .ol-child2 { padding-left: 56px; justify-content: flex-start; }
 
@@ -352,7 +356,6 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
   :where(.orca-parity) .ol-printable, :where(.orca-parity) .ol-sinking { width: 32px; height: 32px; }
   :where(.orca-parity) .ol-expand { width: 28px; height: 28px; }
   :where(.orca-parity) .search-bar input { height: 28px; }
-  :where(.orca-parity) .ol-fila-select { height: 28px; }
   :where(.orca-parity) .select-row input, :where(.orca-parity) .prefs-row input { width: 22px; height: 22px; }
   :where(.orca-parity) .combo, :where(.orca-parity) .text { height: 32px; }
   :where(.orca-parity) .chk { width: 24px; height: 24px; }
@@ -539,11 +542,11 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .seg > button:disabled { color: var(--label); }
 :root.orca-parity .xf .axis { color: var(--label); }
 :where(.orca-parity) .notif-link { color: var(--label); text-decoration: underline; }
-:where(.orca-parity) .menu-check, :where(.orca-parity) .pk-check { color: var(--text); }
+:where(.orca-parity) .menu-check { color: var(--text); }
 :where(.orca-parity) .pk-option[aria-disabled=true] { color: var(--label); }
 :where(.orca-parity) .modal-overlay { background: #000a; }
 :root.orca-parity button:disabled, :root.orca-parity input:disabled, :root.orca-parity textarea:disabled, :root.orca-parity .btn:disabled, :root.orca-parity .dropdown:disabled, :root.orca-parity .orca-menu [data-disabled] { opacity: 1; color: var(--disabled-foreground); border-color: var(--border-control); }
-:where(.orca-parity) .pk-row.is-active .pk-check, :where(.orca-parity) .pk-row.is-active .pk-option { color: var(--selected-foreground); }
+:where(.orca-parity) .pk-row.is-active .pk-option { color: var(--selected-foreground); }
 :where(.orca-parity) .app { --workspace-rail-width: var(--user-rail-width, clamp(340px,28vw,440px)); }
 :where(.orca-parity) .compact-topbar { height: 40px; min-height: 40px; flex-wrap: nowrap; gap: 8px; padding: 0 8px; }
 :where(.orca-parity) .app-menu-button { display: grid; grid-auto-flow: column; place-items: center; gap: 2px; min-width: 28px; height: 28px; padding: 0; border: 0; border-radius: 3px; background: transparent; flex: none; cursor: pointer; }

@@ -6,12 +6,13 @@ import { mockAssets } from './mock-assets.ts';
 import { orcaAssets } from './orca-assets.ts';
 import { licenceNotices } from './licence-notices.ts';
 import { devCompression } from './dev-compression.ts';
+import { catalogWorkerStart } from './catalog-worker-start.ts';
 import { buildStartup, devStartup } from './dev-startup.ts';
 import { devBuildSwitch } from './dev-build-switch.ts';
 import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
-  plugins: [devCompression(), devBuildSwitch(), devStartup(), buildStartup(), react(), orcaAssets(), optionAssets(), mockAssets(), bundleReport(), licenceNotices()],
+  plugins: [devCompression(), devBuildSwitch(), devStartup(), buildStartup(), catalogWorkerStart(), react(), orcaAssets(), optionAssets(), mockAssets(), bundleReport(), licenceNotices()],
   worker: { format: 'es', plugins: () => [optionAssets(false), licenceNotices(false)] },
   server: {
     port: 20120,

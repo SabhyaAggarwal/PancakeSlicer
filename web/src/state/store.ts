@@ -21,7 +21,7 @@ import { capturePrinterMaterials,planPrinterSwitch,reconcilePrinterSelection,typ
 import { findProfile,profileKey } from '../profiles/identity';
 import type { PrinterConnections } from '../printers/connections';
 export { PRESET_META } from '../profiles/model';
-import { effectiveProfileValues } from '../profiles/context';
+import { effectiveProfileValues, resolvedWithDynamic } from '../profiles/context';
 import { selectCompatibility } from '../profiles/compatibility';
 export { isCompatible, selectCompatibility } from '../profiles/compatibility';
 
@@ -222,6 +222,7 @@ export interface State {
   processScope: 'global' | 'objects';
   slotColours: (string | undefined)[];
   mixes: Record<number, Mix>;
+  processVariant: { layerHeight: number } | null;
   projectMaterials: { colours: string[]; matrix: number[] | null; multiplier: number | null; builds?: { object: number; instance: number }[] } | null;
   flush: { matrix: number[] | null; multiplier: number | null };
   flushDialog: boolean;
@@ -319,6 +320,7 @@ let state: State = {
   processScope: 'global',
   slotColours: [],
   mixes: {},
+  processVariant: null,
   projectMaterials: null,
   flush: { matrix: null, multiplier: null },
   flushDialog: false,
@@ -382,7 +384,7 @@ let nextId = 1;
 export const newId = () => nextId++;
 export const reserveIds = (max: number) => { nextId = Math.max(nextId, max + 1); };
 
-export const DEMO_MODELS = ['Bambu Lab A1 mini', 'Bambu Lab A1', 'Bambu Lab P1S', 'Prusa MINI', 'Prusa MINI IS', 'Prodcan3 5-axis BC table', 'Fairino FR3 cell'];
+export { DEMO_MODELS } from '../api/catalog-scope';
 export const DEFAULT_PRINTER = 'Bambu Lab A1 mini 0.4 nozzle';
 
 export function listFor(s: State, type: PresetType): SystemPreset[] {
@@ -399,7 +401,7 @@ export function resolvePreset(s: Parameters<typeof resolveProfile>[0], type: Pre
   const key = `${type}:${name}`;
   let result = values.get(key);
   if (!result) values.set(key, (result = resolveProfile(s, type, name)));
-  return result;
+  return 'printer' in s ? resolvedWithDynamic(s as State, type, result) : result;
 }
 
 const profileConflictRows = new WeakMap<State, Map<string, ReturnType<typeof profileConflicts>>>();
@@ -482,6 +484,10 @@ export function setOption(type: PresetType, key: string, value: ConfigValue, slo
     const patch:Partial<State>={...(type==='filament' ? {filamentEdits:{...s.filamentEdits,[s.filamentSlots[slot]]:edits}} : {dirty:{...s.dirty,[type]:edits}}),job:markStale(s.job)};
     return type==='machine' && key==='nozzle_diameter' ? {...patch,...reconcilePrinterSelection(s,{...s,...patch}).patch} : patch;
   }), `${type}:${slot}:${key}`);
+}
+
+export function setLayerHeight(layerHeight: number) {
+  undoable('Layer height', () => setState((s) => ({ processVariant: { layerHeight }, job: markStale(s.job) })), 'process:layer_height');
 }
 
 export function resetOption(type: PresetType, key: string, slot = 0) {

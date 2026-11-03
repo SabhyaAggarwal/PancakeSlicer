@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createReadStream } from 'node:fs';
-import { readdir, readlink, stat } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { readdir, readFile, readlink, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { Plugin } from 'vite';
 
@@ -21,12 +22,23 @@ function wantsBuild(req: IncomingMessage) {
   return !LOOPBACK.test(String(h['x-forwarded-host'] ?? h.host ?? '')) || !!(h['x-forwarded-for'] || h['cf-ray']);
 }
 
+const digests = new Map<string, Promise<string>>();
+const digest = (file: string) => {
+  let d = digests.get(file);
+  if (!d) {
+    d = readFile(file).then((b) => createHash('sha256').update(b).digest('hex').slice(0, 16));
+    digests.set(file, d);
+    if (digests.size > 4096) digests.delete(digests.keys().next().value!);
+  }
+  return d;
+};
+
 async function send(req: IncomingMessage, res: ServerResponse, sha: string, name: string) {
   const file = path.join(BUILDS, sha, name);
   const info = await stat(file).catch(() => null);
   if (!info?.isFile()) return false;
   const br = /\bbr\b/.test(String(req.headers['accept-encoding'] ?? '')) ? await stat(file + '.br').catch(() => null) : null;
-  const etag = `W/"${sha.slice(0, 12)}-${info.size.toString(16)}${br ? '-br' : ''}"`;
+  const etag = `W/"${await digest(file)}-${info.size.toString(16)}${br ? '-br' : ''}"`;
   res.setHeader('Content-Type', TYPES[path.extname(file)] ?? 'application/octet-stream');
   res.setHeader('Cache-Control', name.startsWith('assets' + path.sep) ? 'public, max-age=31536000, immutable' : 'no-cache');
   res.setHeader('ETag', etag);

@@ -5,6 +5,7 @@ import { changeVolumeType, deleteAll, deleteVolume, effectiveConfig, getState, r
 import { addPrimitive, addPrimitiveObject, loadVolume, SEAM_MODES, SHAPES, TYPE_LABEL, VOLUME_MENU } from '../plater/volumes';
 import { ActionMenu, type MenuEntry as Item } from './Menu';
 import { canAddPlate, deletePlate, editPlateName } from '../plater/plates';
+import { SlotChip, slotsOf } from './SlotChip';
 
 const HANDY = [['Orca Cube'], ['OrcaSliced Combo'], ['Orca Badge'], ['Orca Tolerance Test'], ['3DBenchy'], ['Cali Cat'], ['Autodesk FDM Test'], ['Voron Cube'],
   ['Stanford Bunny'], ['Orca String Hell']] as const;
@@ -47,8 +48,8 @@ export default function ContextMenu() {
     { label: 'Mirror', tip: 'Mirror the part', sub: ([0, 1, 2] as const).map((a) => (
       { label: `Along ${'XYZ'[a]} Axis`, action: () => void ops().then((m) => m.mirrorVolume(o.id, volume.id, a)), tip: `Mirror along the ${'XYZ'[a]} Axis` })) },
     { label: 'Export as STL...', action: () => void ops().then((m) => m.exportVolumeStl(o.id, volume.id)), tip: 'Export the part as an STL' },
-    ...(volume.type === 'part' ? ['sep' as const, { label: 'Change Filament', sub: [{ label: 'Default', checked: !volume.extruder, action: () => updateVolume(o.id, volume.id, { extruder: 0 }) },
-      ...s.filamentSlots.map((_, i) => ({ label: `Filament ${i + 1}`, checked: volume.extruder === i + 1, action: () => updateVolume(o.id, volume.id, { extruder: i + 1 }) }))] }] : []),
+    ...(volume.type === 'part' ? ['sep' as const, { label: 'Change Filament', sub: [{ label: 'Object’s filament', checked: !volume.extruder, action: () => updateVolume(o.id, volume.id, { extruder: 0 }) },
+      ...slotsOf(s).map((slot) => ({ label: slot.name, icon: <SlotChip n={slot.n} colour={slot.colour} />, role: 'menuitemradio' as const, checked: volume.extruder === slot.n, action: () => updateVolume(o.id, volume.id, { extruder: slot.n }) }))] }] : []),
     'sep',
     { label: 'Change Type', tip: 'Change part type', sub: VOLUME_ORDER.filter((type) => type !== 'seam' || s.features.seam_parts || volume.type === 'seam').map((type) => (
       { label: TYPE_LABEL[type], checked: volume.type === type, action: () => volume.type !== type && changeVolumeType(o.id, volume.id, type) })) },
@@ -96,8 +97,8 @@ export default function ContextMenu() {
     { label: 'Delete', shortcut: 'Del', action: removeSelected, disabled: project, tip: 'Delete the selected object' },
     'sep',
     ...addVolumes,
-    ...(all ? [] : [{ label: 'Change Filament', disabled: project, sub: s.filamentSlots.map((_, i) => (
-      { label: `Filament ${i + 1}`, checked: o.extruder === i + 1, action: () => setFilament(o.id, i + 1) })) }]),
+    ...(all ? [] : [{ label: 'Change Filament', disabled: project, sub: slotsOf(s).map((slot) => (
+      { label: slot.name, icon: <SlotChip n={slot.n} colour={slot.colour} />, role: 'menuitemradio' as const, checked: (o.extruder || 1) === slot.n, action: () => setFilament(o.id, slot.n) })) }]),
     ...(all ? [] : flushOptions(s, o)),
     { label: 'Printable', shortcut: 'V', checked: printable, action: () => togglePrintable(o.id, menu.instance) },
     ...(project ? [] : [{ label: 'Edit in Parameter Table', action: () => setState({ appDialog: 'objectTable' }), tip: 'Edit print parameters for a single object' }]),
