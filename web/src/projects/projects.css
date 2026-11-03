@@ -23,6 +23,10 @@
 :where(.orca-parity) .pj-card-actions .btn, :where(.orca-parity) .pj-more { min-height: 32px; min-width: 64px; }
 :where(.orca-parity) .pj-selection, :where(.orca-parity) .pj-feedback { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 28px; background: var(--surface); border-bottom: 1px solid var(--line); font-size: 14px; }
 :where(.orca-parity) .pj-feedback[role=alert] { color: var(--danger); }
+:where(.orca-parity) .pj-commands { flex: none; max-height: min(260px,40vh); overflow-y: auto; scrollbar-gutter: stable; border-bottom: 1px solid var(--line); }
+:where(.orca-parity) .pj-command { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 10px 28px; font-size: 14px; background: var(--surface); }
+:where(.orca-parity) .pj-command > div { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 4px; overflow-wrap: break-word; }
+:where(.orca-parity) .pj-command span { color: var(--label); }
 :where(.orca-parity) .pj-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 28px; text-align: center; color: var(--label); font-size: 15px; }
 :where(.orca-parity) .pj-empty strong { color: var(--text); font-size: 18px; }
 @container (min-width: 1500px) { :where(.orca-parity) .pj-grid { grid-template-columns: repeat(4,minmax(0,1fr)); } }

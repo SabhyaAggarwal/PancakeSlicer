@@ -1,4 +1,4 @@
-import { newKey, type ProjectMeta, type ProjectStore } from '../persist/backend';
+import { newKey, type ProjectMeta, type ProjectStore, type ProjectCommandStatus } from '../persist/backend';
 import type { ProjectDraft, ProjectDraftMeta, ProjectDraftStore } from '../persist/drafts';
 import type { StoredDoc } from '../persist/session';
 import { clearPlate } from '../actions';
@@ -146,32 +146,108 @@ export async function openProject(runtime: RecoveryRuntime, id: string, options:
 }
 export async function renameProject(runtime: RecoveryRuntime, id: string, name: string) {
   if (!name.trim()) return;
-  if (id === project.get().context.id) { setState({ projectName: name.trim() }); return; }
+  const storage = runtime.storage();
+  if (!storage) throw new Error('Project storage is unavailable');
+  const current = id === project.get().context.id, gen = documentGeneration();
+  let resumed = false;
+  for (const pending of storage.commands()) if (pending.id === id && pending.kind === 'rename' && pending.name !== undefined) {
+    await storage.rename(id, pending.name); resumed ||= pending.name === name.trim();
+  }
+  if (current) {
+    if (id === project.get().context.id && gen === documentGeneration()) setState({ projectName: name.trim() });
+    return;
+  }
+  if (resumed) { runtime.publish('saved', id); runtime.refreshList(); return; }
   await runtime.waitForWrites();
-  await runtime.storage()?.rename(id, name.trim()); runtime.publish('saved', id); runtime.refreshList();
+  await storage.rename(id, name.trim()); runtime.publish('saved', id); runtime.refreshList();
+}
+interface PendingAction<T> { run(): Promise<T>; matches(command: Readonly<ProjectCommandStatus>): boolean; task: Promise<T> | null }
+const duplicateIntents = new WeakMap<RecoveryRuntime, Map<string, PendingAction<ProjectMeta>>>();
+const deleteIntents = new WeakMap<RecoveryRuntime, Map<string, PendingAction<() => Promise<void>>>>();
+const removalOwners = new WeakMap<RecoveryRuntime, Map<string, { revision: number | null; dismissedRestore: boolean }>>();
+function actionMap<T>(owners: WeakMap<RecoveryRuntime, Map<string, PendingAction<T>>>, runtime: RecoveryRuntime) {
+  let map = owners.get(runtime);
+  if (!map) { map = new Map(); owners.set(runtime, map); }
+  return map;
+}
+function attemptAction<T>(map: Map<string, PendingAction<T>>, id: string, create: () => Omit<PendingAction<T>, 'task'>): Promise<T> {
+  let intent = map.get(id);
+  if (!intent) { intent = { ...create(), task: null }; map.set(id, intent); }
+  if (!intent.task) {
+    const retained = intent, task = Promise.resolve().then(retained.run);
+    retained.task = task;
+    void task.then(() => { if (map.get(id) === retained) map.delete(id); }, () => {}).finally(() => {
+      if (retained.task === task) retained.task = null;
+    });
+  }
+  return intent.task!;
+}
+export function discardRejectedProjectCommand(runtime: RecoveryRuntime, operationId: string): void {
+  const storage = runtime.storage();
+  if (!storage) throw new Error('Project storage is unavailable');
+  const command = storage.commands().find((entry) => entry.operationId === operationId);
+  if (!command || command.state !== 'conflict') throw new Error('Only a rejected conflict can be dismissed. Retry ambiguous commands unchanged.');
+  const map = command.kind === 'duplicate' ? duplicateIntents.get(runtime) : command.kind === 'archive' ? deleteIntents.get(runtime) : undefined;
+  const action = map?.get(command.id), matching = action?.matches(command);
+  if (matching && action?.task) throw new Error('Wait for the rejected command to settle before dismissing it.');
+  storage.discardRejectedCommand(operationId);
+  if (matching && map && map.get(command.id) === action) map.delete(command.id);
+  const owner = removalOwners.get(runtime)?.get(command.id);
+  if (command.kind === 'restore' && owner?.revision === command.expectedRevision) owner.dismissedRestore = true;
 }
 export async function duplicateProject(runtime: RecoveryRuntime, id: string): Promise<ProjectMeta | null> {
   const store = runtime.storage();
   if (!store) return null;
-  if (id === project.get().context.id) await flushProject();
-  await runtime.waitForWrites();
-  const name = projectList()?.find((p) => p.id === id)?.name ?? project.get().context.name;
-  const meta = await store.duplicate(id, newKey(), `${name} copy`);
-  runtime.publish('saved', meta.id); runtime.refreshList(); return meta;
+  return attemptAction(actionMap(duplicateIntents, runtime), id, () => {
+    const newId = newKey(), name = `${projectList()?.find((p) => p.id === id)?.name ?? project.get().context.name} copy`;
+    const current = id === project.get().context.id, gen = documentGeneration();
+    let prepared = false, meta: ProjectMeta | null = null;
+    return { matches: (command) => command.kind === 'duplicate' && command.newId === newId && command.name === name, run: async () => {
+      if (!prepared) {
+        if (current && id === project.get().context.id && gen === documentGeneration()) await flushProject();
+        await runtime.waitForWrites(); prepared = true;
+      }
+      meta ??= await store.duplicate(id, newId, name);
+      runtime.publish('saved', meta.id); runtime.refreshList(); return meta;
+    } };
+  });
 }
 export async function deleteProject(runtime: RecoveryRuntime, id: string): Promise<() => Promise<void>> {
   const storage = runtime.storage();
-  if (!storage) return async () => {};
-  await runtime.waitForWrites();
-  await storage.remove(id);
-  runtime.removed.add(id);
-  if (id === project.get().context.id) {
-    runtime.invalidateWrites(); runtime.beginOpen(); project.send({ type: 'DELETED' });
-    runtime.adopt(() => { clearPlateJobs(); clearPlate(); newDocument(true); });
-    setState({ tab: 'projects' }); writeRoute('/projects');
-  }
-  runtime.publish('deleted', id); runtime.refreshList();
-  return async () => { await storage.restore(id); runtime.removed.delete(id); runtime.publish('saved', id); runtime.refreshList(); };
+  if (!storage) throw new Error('Project storage is unavailable');
+  return attemptAction(actionMap(deleteIntents, runtime), id, () => {
+    const gen = documentGeneration(), current = id === project.get().context.id, owner = { revision: null as number | null, dismissedRestore: false };
+    let owners = removalOwners.get(runtime);
+    if (!owners) { owners = new Map(); removalOwners.set(runtime, owners); }
+    const retainedOwners = owners;
+    let ack: Awaited<ReturnType<ProjectStore['remove']>> | null = null, restored = false, restoring: Promise<void> | null = null;
+    const undo = () => {
+      if (owner.dismissedRestore) return Promise.reject(new Error('This rejected Undo was dismissed. Review the current project before a new restore intent.'));
+      if (restored) return Promise.resolve();
+      if (!restoring) {
+        const task = Promise.resolve().then(async () => {
+          if (retainedOwners.get(id) !== owner) throw new Error('A newer delete owns this project. Use its Undo action.');
+          await storage.restore(id, ack!.revision);
+          restored = true;
+          if (retainedOwners.get(id) === owner) { retainedOwners.delete(id); runtime.removed.delete(id); }
+          runtime.publish('saved', id); runtime.refreshList();
+        });
+        restoring = task;
+        void task.finally(() => { if (restoring === task) restoring = null; }).catch(() => {});
+      }
+      return restoring;
+    };
+    return { matches: (command) => command.kind === 'archive', run: async () => {
+      if (!ack) { await runtime.waitForWrites(); ack = await storage.remove(id); }
+      owner.revision = ack.revision; retainedOwners.set(id, owner); runtime.removed.add(id);
+      if (current && id === project.get().context.id && gen === documentGeneration()) {
+        runtime.invalidateWrites(); runtime.beginOpen(); project.send({ type: 'DELETED' });
+        runtime.adopt(() => { clearPlateJobs(); clearPlate(); newDocument(true); });
+        setState({ tab: 'projects' }); writeRoute('/projects');
+      }
+      runtime.publish('deleted', id); runtime.refreshList(); return undo;
+    } };
+  });
 }
 
 export async function saveProjectSnapshot(runtime: RecoveryRuntime, capture: {

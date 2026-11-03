@@ -11,17 +11,19 @@ const ordered=(value:unknown):unknown=>Array.isArray(value)?value.map(ordered):v
 const equal=(a:unknown,b:unknown)=>JSON.stringify(ordered(a))===JSON.stringify(ordered(b));
 const stored=(p:UserPreset)=>storedProfile(normalizeUserPreset(p));
 const conflict=(message:string)=>Object.assign(new Error(message),{code:'revision_conflict',recovery:'reload_profiles'});
-interface FrozenWrite {write:ProfileLibraryWrite;records:UserPreset[];origins:Map<string,UserPreset|undefined>;signature:string;retryable:boolean}
-interface Acknowledgement {request:FrozenWrite;document:import('./ownership').ProfileLibraryDocument;records:UserPreset[];changed:Set<string>}
+interface FrozenWrite {write:ProfileLibraryWrite;records:UserPreset[];origins:Map<string,UserPreset|undefined>;signature:string;retryable:boolean;setupBaseline?:PrinterProfileLibrary}
+interface Acknowledgement {request:FrozenWrite;document:import('./ownership').ProfileLibraryDocument;records:UserPreset[];changed:Set<string>;setupsChanged?:boolean}
 let pending:FrozenWrite|undefined;
 const ownAcknowledgements=new WeakMap<UserPreset,UserPreset>();
+const ownSetupAcknowledgements=new WeakMap<PrinterProfileLibrary,PrinterProfileLibrary>();
+export interface PrinterSetupSaveContext {baseline:PrinterProfileLibrary;isCurrent():boolean}
 export function profileOriginIsCurrent(current:UserPreset|undefined,origin:UserPreset|undefined):boolean{
   return current===origin || !!current && !!origin && !!ownAcknowledgements.get(origin) && equal(stored(current),stored(ownAcknowledgements.get(origin)!));
 }
 const signature=(records:UserPreset[],printers?:PrinterProfileLibrary,catalog?:SystemPreset[])=>JSON.stringify(ordered({records:records.map(stored),printers,catalog}));
 const ready=(s:State)=>{if(s.profileLibraryLoad.state!=='ready')throw new Error(s.profileLibraryLoad.state==='failed'?s.profileLibraryLoad.error:'Wait for the saved profile library to load. Your draft is kept.');};
-function freezeWrite(s:State,write:ProfileLibraryWrite,records:UserPreset[],requestSignature:string):FrozenWrite{
-  return {write:structuredClone(write),records,signature:requestSignature,retryable:true,origins:new Map(records.map(p=>[profileKey(p),findProfile(s,p.type,profileKey(p))]))};
+function freezeWrite(s:State,write:ProfileLibraryWrite,records:UserPreset[],requestSignature:string,setupBaseline?:PrinterProfileLibrary):FrozenWrite{
+  return {write:structuredClone(write),records,signature:requestSignature,retryable:true,setupBaseline,origins:new Map(records.map(p=>[profileKey(p),findProfile(s,p.type,profileKey(p))]))};
 }
 async function acknowledge(request:FrozenWrite):Promise<Acknowledgement>{
   pending=request;
@@ -40,8 +42,10 @@ async function acknowledge(request:FrozenWrite):Promise<Acknowledgement>{
     if(!sent || !equal(stored(record),stored(sent as UserPreset)))changed.add(profileKey(submitted));
     else {const origin=request.origins.get(profileKey(submitted));if(origin)ownAcknowledgements.set(origin,record);}
   }
+  const setupsChanged=!!request.setupBaseline && !equal(document.printers,request.write.document.printers);
+  if(request.setupBaseline && !setupsChanged)ownSetupAcknowledgements.set(request.setupBaseline,document.printers);
   request.retryable=false;if(pending===request)pending=undefined;
-  return {request,document,records,changed};
+  return {request,document,records,changed,setupsChanged};
 }
 function publishAcknowledgement(ack:Acknowledgement,apply?:(s:State)=>Partial<State>){
   const ids=new Set(ack.records.map(profileKey));
@@ -81,16 +85,19 @@ export function profileCreation(factory:(s:State)=>UserPreset|string):ProfileCre
     return key!;
   })};
 }
-async function performSave(s:State,records:UserPreset[],operationId?:string,printers?:PrinterProfileLibrary,catalog?:SystemPreset[]):Promise<Acknowledgement>{
+async function performSave(s:State,records:UserPreset[],operationId?:string,printers?:PrinterProfileLibrary,catalog?:SystemPreset[],setup?:PrinterSetupSaveContext):Promise<Acknowledgement>{
   ready(s);ready(getState());
   const requestSignature=signature(records,printers,catalog),outstanding=pending;
   const priorAck=outstanding?await acknowledge(outstanding):undefined;
   if(priorAck && outstanding!.signature===requestSignature){
-    if(priorAck.changed.size){publishAcknowledgement(priorAck);throw conflict('The saved profile changed after your write. Your draft is kept for comparison.');}
+    if(priorAck.changed.size || priorAck.setupsChanged){publishAcknowledgement(priorAck);throw conflict('The saved profile or printer setup changed after your write. Your draft is kept for comparison.');}
     return priorAck;
   }
   if(priorAck)publishAcknowledgement(priorAck);
+  const current=()=>{if(setup && !setup.isCurrent())throw Object.assign(new Error('The printer setup context changed while waiting. Your newer setup is kept.'),{code:'setup_context_changed'});};
+  current();
   const remote=priorAck?.document ?? await readProfileLibrary(s.api?.mock);
+  current();
   ready(getState());if(getState().api!==s.api)throw new Error('The profile service changed while saving. Your draft is kept.');
   const profiles=new Map(remote.profiles.map(p=>[p.id,p]));
   if(profiles.size!==remote.profiles.length || remote.profiles.some(p=>!p.id))throw conflict('The saved library contains duplicate or missing identities.');
@@ -106,17 +113,18 @@ async function performSave(s:State,records:UserPreset[],operationId?:string,prin
     if(actual)prepared={...prepared,revision:Math.max(prepared.revision ?? 0,(actual.revision ?? 0)+1)};
     profiles.set(id,storedProfile(prepared));submitted.push(prepared);
   }
-  if(printers && s.profileLibraryRevision>0 && remote.revision!==s.profileLibraryRevision && !(priorAck && equal(remote.printers,priorAck.request.write.document.printers)))throw conflict('The saved printer setups changed. Reload before replacing them; your working setup is kept.');
+  if(printers && (setup ? !equal(remote.printers,ownSetupAcknowledgements.get(setup.baseline) ?? setup.baseline)
+    : s.profileLibraryRevision>0 && remote.revision!==s.profileLibraryRevision && !(priorAck && equal(remote.printers,priorAck.request.write.document.printers))))throw conflict('The saved printer setups changed. Reload before replacing them; your working setup is kept.');
   const catalogKeys=new Set(catalog?.map(catalogKey));
   const document={...remote,profiles:[...profiles.values()],...(catalog?.length?{catalog:[...(remote.catalog ?? []).filter(p=>!catalogKeys.has(catalogKey(p))),...catalog]}:{}),printers:printers ?? remote.printers ?? s.printerLibrary ?? emptyPrinterLibrary()};
   if(equal(document,remote))return {request:freezeWrite(s,{operationId:operationId ?? '',expectedRevision:remote.revision,document},submitted,requestSignature),document:remote,records:submitted,changed:new Set()};
-  const request=freezeWrite(s,{operationId:operationId ?? `save:${crypto.randomUUID()}`,expectedRevision:remote.revision,document},submitted,requestSignature);
+  const request=freezeWrite(s,{operationId:operationId ?? `save:${crypto.randomUUID()}`,expectedRevision:remote.revision,document},submitted,requestSignature,printers ? setup?.baseline ?? s.printerLibrary : undefined);
   const ack=await acknowledge(request);
-  if(ack.changed.size){publishAcknowledgement(ack);throw conflict('This profile changed after your write. Your draft is kept for comparison.');}
+  if(ack.changed.size || ack.setupsChanged){publishAcknowledgement(ack);throw conflict('This profile or printer setup changed after your write. Your draft is kept for comparison.');}
   return ack;
 }
-export function saveProfileRecords(s:State,records:UserPreset[],operationId?:string,printers?:PrinterProfileLibrary,catalog?:SystemPreset[]):Promise<void>{
-  return serialize(async()=>{const ack=await performSave(s,records,operationId,printers,catalog);publishAcknowledgement(ack);});
+export function saveProfileRecords(s:State,records:UserPreset[],operationId?:string,printers?:PrinterProfileLibrary,catalog?:SystemPreset[],setup?:PrinterSetupSaveContext):Promise<void>{
+  return serialize(async()=>{const ack=await performSave(s,records,operationId,printers,catalog,setup);publishAcknowledgement(ack);});
 }
 export function commitProfileRecords(records:UserPreset[],options:{operationId?:string;printers?:PrinterProfileLibrary;bases?:SystemPreset[];apply?(s:State):Partial<State>}={}):Promise<void>{
   const expected=getState();

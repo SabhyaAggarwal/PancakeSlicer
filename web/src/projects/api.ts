@@ -33,7 +33,4 @@ export const newProject = () => guard('New project failed', async () => {const c
 export const openProject = (id: string) => guard('Open failed', async () => { await project.openProject(id); setState({ tab: 'prepare' }); }, undefined);
 export const renameProject = (id: string, name: string) => guard('Rename failed', () => project.renameProject(id, name), undefined);
 export const duplicateProject = (id: string) => guard('Duplicate failed', () => project.duplicateProject(id), null);
-export const deleteProject = (id: string) => guard('Delete failed', async () => {
-  const undo = await project.deleteProject(id);
-  return () => guard('Undo failed', undo, undefined);
-}, null);
+export const deleteProject = (id: string) => guard('Delete failed', () => project.deleteProject(id), null);

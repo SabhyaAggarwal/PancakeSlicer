@@ -6,7 +6,7 @@ import hookUrl from '../samples/shelf_hook.stl?url';
 import { importFiles, openFileDialog, openProjectDialog } from '../actions';
 import { getState, setState, subscribeStore, toast, useStore } from '../state/store';
 import { PrinterPicker } from '../profiles/Pickers';
-import { documentGeneration } from '../state/history';
+import { documentGeneration, onLeaveDocument } from '../state/history';
 import { Icon } from './Icon';
 import './first-run.css';
 import { Modal, ModalTitle } from './Modal';
@@ -61,6 +61,7 @@ function DropZone() {
 }
 
 let firstVisitObserver: (() => void) | null = null;
+onLeaveDocument(() => firstVisitObserver?.());
 function afterFirstVisit() {
   if(firstVisitObserver || getState().objects.length)return;
   const generation=documentGeneration();

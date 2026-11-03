@@ -17,6 +17,11 @@ export interface ProfileReferenceDocuments {
   complete: boolean;
   documents: { id: string; name: string; doc: StoredDocBase; trashed?: boolean }[];
 }
+export interface ProjectCommandAck { revision: number; operationId: string }
+export interface ProjectCommandStatus {
+  operationId: string; id: string; kind: 'rename' | 'duplicate' | 'archive' | 'restore'; name?: string; newId?: string;
+  expectedRevision: number | null; state: 'preparing' | 'sending' | 'failed' | 'conflict' | 'acknowledged'; error: string | null;
+}
 
 export interface ProjectStore {
   referenceDocuments?(): Promise<ProfileReferenceDocuments>;
@@ -24,10 +29,13 @@ export interface ProjectStore {
   list(): Promise<ProjectMeta[]>;
   load(id: string): Promise<{ meta: ProjectMeta; doc: StoredDocBase } | null>;
   save(id: string, meta: Omit<ProjectMeta, 'id' | 'thumbnail'>, doc: StoredDocBase, thumbnail?: string | null): Promise<{ revision: number; savedAt: number }>;
-  rename(id: string, name: string): Promise<void>;
+  rename(id: string, name: string): Promise<ProjectCommandAck>;
   duplicate(id: string, newId: string, name: string): Promise<ProjectMeta>;
-  remove(id: string): Promise<void>;
-  restore(id: string): Promise<void>;
+  remove(id: string): Promise<ProjectCommandAck>;
+  restore(id: string, expectedRevision?: number): Promise<ProjectCommandAck>;
+  commands(): readonly Readonly<ProjectCommandStatus>[];
+  subscribeCommands(listener: () => void): () => void;
+  discardRejectedCommand(operationId: string): void;
   putBlob(id: string, key: string, data: Blob): Promise<void>;
   getBlob(id: string, key: string): Promise<Blob | null>;
   hasBlob(id: string, key: string): Promise<boolean>;

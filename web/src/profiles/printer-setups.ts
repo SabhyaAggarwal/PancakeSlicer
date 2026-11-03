@@ -2,15 +2,20 @@ import { getState, setState, subscribeStore, type State } from '../state/store';
 import { readProfileLibrary } from '../persist/profile-library';
 import { saveProfileRecords } from './transactions';
 import { capturePrinterMaterials, planPrinterSwitch } from './material-library';
+import { documentGeneration } from '../state/history';
+import type { PrinterProfileLibrary } from './ownership';
 export interface PrinterSetupPersistence {state:'idle'|'saving'|'error';error:string|null;recovery?:'adopt_browser_inventory'|'reload_profiles'}
-let status:PrinterSetupPersistence={state:'idle',error:null},tail:Promise<void>=Promise.resolve(),running=false,desired:State|null=null,watching=false,generation=0,hydrated=false;
+interface SetupIntent {snapshot:State;baseline:PrinterProfileLibrary;isCurrent():boolean}
+let status:PrinterSetupPersistence={state:'idle',error:null},tail:Promise<void>=Promise.resolve(),running=false,desired:SetupIntent|null=null,watching=false,generation=0,hydrated=false;
+let baseline:PrinterProfileLibrary|undefined;
 const listeners=new Set<()=>void>();
 const publish=(next:PrinterSetupPersistence)=>{status=next;listeners.forEach(l=>l());};
 export const printerSetupPersistence=()=>status;
 export const subscribePrinterSetupPersistence=(listener:()=>void)=>{listeners.add(listener);return()=>{listeners.delete(listener);};};
-export function acceptHydratedPrinterSetups():void{hydrated=true;publish({state:'idle',error:null});watchPrinterSetups();}
+export function acceptHydratedPrinterSetups():void{baseline=getState().printerLibrary;generation++;hydrated=true;publish({state:'idle',error:null});watchPrinterSetups();}
 export async function hydratePrinterSetups(options:{restoreStartupPlaceholder?:boolean}={}):Promise<void>{
   const initial=getState(),mine=++generation;
+  hydrated=false;
   let library;
   try{library=await readProfileLibrary(initial.api?.mock);if(!library)throw new Error('The required profile-library API is unavailable. Keep browser edits and update the service.');}
   catch(error){if(mine===generation){hydrated=false;publish({state:'error',error:String(error),recovery:'reload_profiles'});}throw error;}
@@ -31,22 +36,28 @@ export async function hydratePrinterSetups(options:{restoreStartupPlaceholder?:b
       ...(selected?{filamentSlots:selected.slots.map(slot=>slot.materialId),slotColours:selected.slots.map(slot=>slot.colour),filamentEdits:selected.tuning,mixes:selected.mixes}:{}),
       profileRecoveries:setup.recoveries});
   }else setState({profileLibraryRevision:0});
-  hydrated=true;publish({state:'idle',error:null});
+  baseline=library.printers;hydrated=true;publish({state:'idle',error:null});watchPrinterSetups();
 }
 function schedule(s:State){
-  if(!hydrated){publish({state:'error',error:'Restore or adopt the saved printer setups before saving this working setup.',recovery:'adopt_browser_inventory'});return;}
-  desired=s;if(running)return;running=true;
+  if(!hydrated || !baseline){publish({state:'error',error:'Restore or adopt the saved printer setups before saving this working setup.',recovery:'adopt_browser_inventory'});return;}
+  const mine=generation,document=documentGeneration();
+  desired={snapshot:s,baseline,isCurrent:()=>{const now=getState();return mine===generation && document===documentGeneration() && now.api===s.api
+    && now.printer===s.printer && now.process===s.process && now.printerLibrary===s.printerLibrary && now.filamentSlots===s.filamentSlots
+    && now.slotColours===s.slotColours && now.filamentEdits===s.filamentEdits && now.mixes===s.mixes;}};
+  if(running)return;running=true;
   tail=(async()=>{
     publish({state:'saving',error:null});
-    while(desired){const snapshot=desired;desired=null;try{await saveProfileRecords({...snapshot,profileLibraryRevision:getState().profileLibraryRevision},[],`printer-setup:${crypto.randomUUID()}`,snapshot.printerLibrary);}
-      catch(error){desired=null;publish({state:'error',error:error instanceof Error?error.message:String(error)});throw error;}}
+    while(desired){const intent=desired;desired=null;try{await saveProfileRecords(intent.snapshot,[],`printer-setup:${crypto.randomUUID()}`,intent.snapshot.printerLibrary,undefined,intent);}
+      catch(error){if(desired && (error as {code?:string}).code==='setup_context_changed')continue;
+        desired ??= intent;publish({state:'error',error:error instanceof Error?error.message:String(error)});throw error;}}
     publish({state:'idle',error:null});
   })().finally(()=>{running=false;});
   void tail.catch(()=>{});
 }
 export function watchPrinterSetups():void{
   if(watching)return;watching=true;let previous=getState();
-  subscribeStore(()=>{const current=getState();if(current.printerLibrary!==previous.printerLibrary)schedule(current);previous=current;});
+  subscribeStore(()=>{const current=getState(),before=previous;previous=current;
+    if(current.profileLibraryLoad.state==='ready' && before.profileLibraryLoad.state==='ready' && current.printerLibrary!==before.printerLibrary)schedule(current);});
 }
 export const flushPrinterSetups=():Promise<void>=>status.state==='error'?Promise.reject(new Error(status.error ?? 'Printer setups need recovery.')):tail;
 export function retryPrinterSetups():Promise<void>{schedule(getState());return tail;}

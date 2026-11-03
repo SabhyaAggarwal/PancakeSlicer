@@ -8,7 +8,15 @@ import { createSelection, reduceSelection, selectedVisible, type SelectionEvent 
 import { deleteProject, duplicateProject, openProject, useProjects, type ProjectMeta } from './api';
 import { fileVerbs, newProjectFrom } from './verbs';
 import { setProjectsQuery, useProjectsQuery } from './query';
+import { projectStore, type ProjectCommandStatus, type ProjectStore } from '../persist/backend';
 import './projects.css';
+
+const noCommands: readonly Readonly<ProjectCommandStatus>[] = Object.freeze([]);
+const noSubscribe = () => () => {};
+const emptyCommands = () => noCommands;
+type ProjectUndo = {id:string;name:string;run:()=>Promise<void>};
+const projectUndos = new Map<string,ProjectUndo>();
+const commandVerb = {rename:'Rename',duplicate:'Duplicate',archive:'Delete',restore:'Undo delete'};
 
 const ago = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto', style: 'short' });
 function edited(t: number) {
@@ -27,8 +35,8 @@ async function exportProject(p:ProjectMeta) {
   catch(error){toast(`Export failed: ${error instanceof Error?error.message:String(error)}`);}
 }
 
-function Card({p,current,selected,focused,renaming,setRenaming,select,onMenu}: {
-  p:ProjectMeta;current:boolean;selected:boolean;focused:boolean;renaming:boolean;setRenaming(on:boolean):void;
+function Card({p,current,selected,focused,renaming,blocked,setRenaming,select,onMenu}: {
+  p:ProjectMeta;current:boolean;selected:boolean;focused:boolean;renaming:boolean;blocked:boolean;setRenaming(on:boolean):void;
   select(event:SelectionEvent):void;onMenu(at:{x:number;y:number}):void;
 }) {
   const committed=useRef(false),[renameError,setRenameError]=useState<string|null>(null),[renameSaving,setRenameSaving]=useState(false);
@@ -42,7 +50,7 @@ function Card({p,current,selected,focused,renaming,setRenaming,select,onMenu}: {
       <span className="pj-check" onClick={e=>e.stopPropagation()}><Check checked={selected} aria-label={`Select ${p.name}`} onCheckedChange={()=>select({type:'CLICK',key:p.id,toggle:true})}/></span>
       {current && <span className="pj-current">Current project</span>}
     </div>
-    <div className="pj-meta" role="gridcell">{renaming ? <input className="text pj-rename" disabled={renameSaving} aria-busy={renameSaving} autoFocus defaultValue={p.name} aria-label="Project name" onClick={e=>e.stopPropagation()} onFocus={e=>e.currentTarget.select()} onBlur={e=>commit(e.currentTarget.value)} onKeyDown={e=>{e.stopPropagation();if(e.key==='Enter')commit(e.currentTarget.value);else if(e.key==='Escape'){committed.current=true;setRenaming(false);}}}/> : <strong className="pj-name">{p.name}</strong>}
+    <div className="pj-meta" role="gridcell">{renaming ? <input className="text pj-rename" disabled={renameSaving || blocked} aria-busy={renameSaving} autoFocus defaultValue={p.name} aria-label="Project name" onClick={e=>e.stopPropagation()} onFocus={e=>e.currentTarget.select()} onBlur={e=>commit(e.currentTarget.value)} onKeyDown={e=>{e.stopPropagation();if(e.key==='Enter')commit(e.currentTarget.value);else if(e.key==='Escape'){committed.current=true;setRenaming(false);}}}/> : <strong className="pj-name">{p.name}</strong>}
       {renameError && <span className="pj-rename-error" role="alert">{renameError}</span>}<span className="pj-time" title={p.savedAt ? new Date(p.savedAt).toLocaleString() : undefined}>{p.objects} {p.objects===1?'object':'objects'} · {edited(p.savedAt)}</span>
     </div>
     <div className="pj-card-actions" role="gridcell" onClick={e=>e.stopPropagation()}><button type="button" className="btn" onClick={()=>void openProject(p.id)}>Open</button><button type="button" className="btn-ghost pj-more" aria-label={`Actions for ${p.name}`} aria-haspopup="menu" onClick={e=>{const r=e.currentTarget.getBoundingClientRect();onMenu({x:r.left,y:r.bottom+2});}}>More</button></div>
@@ -58,6 +66,10 @@ export default function ProjectsView(){return <Boundary><Projects/></Boundary>;}
 
 function Projects() {
   const list=useProjects(),current=useProject(s=>s.context.id),status=useSyncExternalStore(subscribeProjectList,projectListSnapshot);
+  const [storage,setStorage]=useState<ProjectStore|null>(null);
+  useEffect(()=>{let active=true;void projectStore().then(store=>{if(active)setStorage(store);});return()=>{active=false;};},[status.state==='ready']);
+  const commands=useSyncExternalStore(storage ? storage.subscribeCommands : noSubscribe,storage ? storage.commands : emptyCommands);
+  const blocked=(id:string)=>commands.some(c=>c.id===id);
   const query=useProjectsQuery(),q=query.trim().toLocaleLowerCase();
   const shown=useMemo(()=>(list??[]).filter(p=>!q || p.name.toLocaleLowerCase().includes(q)),[list,q]);
   const visible=useMemo(()=>shown.map(p=>p.id),[shown]);
@@ -65,16 +77,51 @@ function Projects() {
   const latest=useRef(selection);latest.current=selection;
   const selected=selectedVisible(selection),selectedSet=useMemo(()=>new Set(selected),[selection]);
   const [renaming,setRenaming]=useState<string|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null);
+  const [undoBusy,setUndoBusy]=useState(false),[retrying,setRetrying]=useState<string|null>(null);
   const [menu,setMenu]=useState<{id:string;x:number;y:number}|null>(null),grid=useRef<HTMLDivElement>(null);
   const dispatch=(event:SelectionEvent,focus=false)=>{const next=reduceSelection(latest.current,event);latest.current=next;setSelection(next);if(focus && next.focus)requestAnimationFrame(()=>{const row=[...(grid.current?.querySelectorAll<HTMLElement>('[data-id]')??[])].find(el=>el.dataset.id===next.focus);row?.focus();row?.scrollIntoView({block:'nearest'});});};
+  const restore=async(entries:readonly ProjectUndo[])=>{
+    if(undoBusy)return;
+    setUndoBusy(true);let restored=0;const failed:string[]=[];
+    try{
+      for(const entry of entries)try{await entry.run();if(projectUndos.get(entry.id)===entry)projectUndos.delete(entry.id);restored++;}
+      catch(error){failed.push(`${entry.name}: ${error instanceof Error?error.message:String(error)}`);}
+      setError(failed.length?`${restored} restored; ${failed.length} Undo not confirmed. ${failed.join('; ')}. The original Undo requests are kept for Retry.`:null);
+      if(restored)toast(`${restored} ${restored===1?'project':'projects'} restored`);
+    }finally{setUndoBusy(false);}
+  };
+  const retry=async(command:Readonly<ProjectCommandStatus>)=>{
+    if(retrying)return;setRetrying(command.operationId);setError(null);
+    try{
+      const flow=await import('../flow/project');
+      if(command.kind==='rename'){await flow.renameProject(command.id,command.name!);setRenaming(id=>id===command.id?null:id);}
+      else if(command.kind==='duplicate')await flow.duplicateProject(command.id);
+      else if(command.kind==='archive'){
+        const run=await flow.deleteProject(command.id);projectUndos.set(command.id,{id:command.id,name:list?.find(p=>p.id===command.id)?.name ?? command.id,run});
+      }else {const entry=projectUndos.get(command.id);if(!entry)throw new Error('Retry from the original Undo action; its captured deletion owns this request.');await restore([entry]);}
+    }catch(error){setError(error instanceof Error?error.message:String(error));}
+    finally{setRetrying(null);}
+  };
+  const dismiss=async(command:Readonly<ProjectCommandStatus>)=>{
+    if(retrying)return;
+    setRetrying(command.operationId);
+    const undo=projectUndos.get(command.id);
+    try{
+      await (await import('../flow/project')).discardRejectedProjectCommand(command.operationId);
+      if(command.kind==='restore' && projectUndos.get(command.id)===undo)projectUndos.delete(command.id);
+      setError('The rejected request was dismissed. Review the latest saved project before starting a new action.');
+      await refreshProjects();
+    }catch(error){setError(error instanceof Error?error.message:String(error));}
+    finally{setRetrying(null);}
+  };
   const remove=async(ids:readonly string[])=>{
-    const targets=shown.filter(p=>ids.includes(p.id));if(busy || !targets.length)return;
+    const targets=shown.filter(p=>ids.includes(p.id));if(busy || !targets.length || targets.some(p=>blocked(p.id)))return;
     if(!await confirmDialog(`Delete ${targets.length===1?'project':targets.length+' projects'}`,`Move to Trash?\n${targets.map(p=>p.name).join('\n')}`,['Delete','Cancel']))return;
-    setBusy(true);setError(null);const undo:{id:string;run:()=>Promise<void>}[]=[],failed:string[]=[];
-    try{for(const p of targets){const restore=await deleteProject(p.id);if(restore)undo.push({id:p.id,run:restore});else failed.push(p.name);}
+    setBusy(true);setError(null);const undo:ProjectUndo[]=[],failed:string[]=[];
+    try{for(const p of targets){const run=await deleteProject(p.id);if(run){const entry={id:p.id,name:p.name,run};undo.push(entry);projectUndos.set(p.id,entry);}else failed.push(p.name);}
       setSelection(s=>reduceSelection(s,{type:'SYNC',scope:'projects',visible:visible.filter(id=>!undo.some(p=>p.id===id))}));
-      if(failed.length)setError(`Could not delete: ${failed.join(', ')}. These projects are kept.`);
-      if(undo.length)toast(`${undo.length} ${undo.length===1?'project':'projects'} moved to Trash`,{label:'Undo',run:()=>void Promise.all(undo.map(p=>p.run()))},10000);
+      if(failed.length)setError(`${undo.length} deletes confirmed; ${failed.length} not confirmed: ${failed.join(', ')}. Retry the retained requests below.`);
+      if(undo.length)toast(`${undo.length} ${undo.length===1?'project':'projects'} moved to Trash`,{label:'Undo confirmed deletes',run:()=>void restore(undo)},10000);
     }finally{setBusy(false);}
   };
   const onKey=(e:KeyboardEvent)=>{
@@ -89,7 +136,7 @@ function Projects() {
       for(let i=0;i<steps;i++)dispatch({type:'ARROW',direction,shift:e.shiftKey,focusOnly:command},i===steps-1);
     }else if(e.key==='Enter' && focus)void openProject(focus);
     else if(e.key===' ' && focus)dispatch({type:'CLICK',key:focus,toggle:true,shift:e.shiftKey});
-    else if(e.key==='F2' && selected.length===1)setRenaming(selected[0]);
+    else if(e.key==='F2' && selected.length===1 && !blocked(selected[0]))setRenaming(selected[0]);
     else if(e.key==='Delete' || e.key==='Backspace')void remove(selected.length?selected:focus?[focus]:[]);
     else if((e.key==='ContextMenu'||e.shiftKey&&e.key==='F10') && focus){const row=[...(grid.current?.querySelectorAll<HTMLElement>('[data-id]')??[])].find(el=>el.dataset.id===focus);if(row){const r=row.getBoundingClientRect();setMenu({id:focus,x:r.left+8,y:r.bottom-8});}}
     else return;e.preventDefault();e.stopPropagation();
@@ -100,8 +147,19 @@ function Projects() {
     <header className="pj-bar"><div className="pj-heading-context"><h1>Projects</h1><span className="pj-count">{list ? `${shown.length} of ${list.length} projects` : 'Loading library'}</span></div><input className="text pj-search" type="search" placeholder="Search projects" aria-label="Search projects" value={query} onChange={e=>setProjectsQuery(e.target.value)}/><button type="button" className="btn-primary" onClick={fileVerbs.new}>New project</button><button type="button" className="btn" onClick={fileVerbs.import}>Import</button></header>
     {status.state==='failed' && <div className="pj-feedback" role="alert"><span>{status.error}</span><button type="button" className="btn" onClick={refreshProjects}>Retry</button></div>}
     {error && <div className="pj-feedback" role="alert">{error}</div>}
-    {selected.length>0 && <div className="pj-selection"><strong>{selected.length} selected</strong>{selected.length===1 && <><button type="button" className="btn" onClick={()=>void openProject(selected[0])}>Open</button><button type="button" className="btn-ghost" onClick={()=>setRenaming(selected[0])}>Rename</button><button type="button" className="btn-ghost" onClick={()=>void duplicateProject(selected[0])}>Duplicate</button></>}<button type="button" className="btn-ghost" disabled={busy} onClick={()=>void remove(selected)}>Delete{selected.length>1?' selected':''}</button><button type="button" className="btn-ghost" onClick={()=>dispatch({type:'CLEAR'})}>Clear selection</button></div>}
-    {!list ? <div className="pj-empty" role="status">{status.state==='failed'?'Project library could not load.':'Loading projects…'}</div> : !shown.length ? <div className="pj-empty"><strong>{list.length?'No matching projects':'No projects yet'}</strong>{list.length ? <button type="button" className="btn" onClick={()=>setProjectsQuery('')}>Clear search</button> : <><span>Import a model or start a new project.</span><button type="button" className="btn" onClick={fileVerbs.import}>Import model</button></>}</div> : <div ref={grid} className="pj-grid" role="grid" aria-label="Projects" aria-multiselectable="true" aria-busy={busy || status.state==='loading'} onKeyDown={onKey}>{shown.map(p=><Card key={p.id} p={p} current={p.id===current} selected={selectedSet.has(p.id)} focused={p.id===(selection.focus??visible[0])} renaming={renaming===p.id} setRenaming={on=>setRenaming(on?p.id:null)} select={event=>dispatch(event)} onMenu={at=>setMenu({id:p.id,...at})}/>)}</div>}
-    {menu && menuProject && <ActionMenu label="Project actions" at={menu} onClose={()=>setMenu(null)} items={[{label:'Open',action:()=>void openProject(menuProject.id)},{label:'Rename',shortcut:'F2',action:()=>setRenaming(menuProject.id)},{label:'Duplicate',action:()=>void duplicateProject(menuProject.id)},{label:'Export 3MF…',action:()=>void exportProject(menuProject)},{label:'Delete',shortcut:'Del',action:()=>void remove([menuProject.id])}]}/>}
+    {!!commands.length && <section className="pj-commands" aria-label="Project requests" aria-live="polite">
+      {commands.map(command=>{
+        const pending=command.state==='preparing' || command.state==='sending',name=list?.find(p=>p.id===command.id)?.name ?? command.name ?? command.id;
+        return <div className="pj-command" key={command.operationId} aria-busy={pending}>
+          <div><strong>{commandVerb[command.kind]} · {name}</strong><span>{pending?'Waiting for service confirmation…':command.state==='acknowledged'?'Confirmed; finish the original action.':command.state==='conflict'?`Conflict: ${command.error}. The captured request has not been rebased.`:`Not confirmed: ${command.error}. Retry keeps the exact request.`}</span></div>
+          {!pending && (command.kind!=='restore' || projectUndos.has(command.id)) && <button type="button" className="btn" disabled={!!retrying || undoBusy} onClick={()=>void retry(command)}>{command.state==='acknowledged'?'Finish action':'Retry exact request'}</button>}
+          {command.state==='conflict' && <button type="button" className="btn" disabled={!!retrying || undoBusy} onClick={()=>void dismiss(command)}>Dismiss rejected request</button>}
+        </div>;
+      })}
+    </section>}
+    {!!projectUndos.size && <div className="pj-selection"><span>{projectUndos.size} confirmed {projectUndos.size===1?'delete':'deletes'} available to Undo</span><button type="button" className="btn" disabled={undoBusy} onClick={()=>void restore([...projectUndos.values()])}>{undoBusy?'Restoring…':'Undo confirmed deletes'}</button></div>}
+    {selected.length>0 && <div className="pj-selection"><strong>{selected.length} selected</strong>{selected.length===1 && <><button type="button" className="btn" onClick={()=>void openProject(selected[0])}>Open</button><button type="button" className="btn-ghost" disabled={blocked(selected[0])} onClick={()=>setRenaming(selected[0])}>Rename</button><button type="button" className="btn-ghost" disabled={blocked(selected[0])} onClick={()=>void duplicateProject(selected[0])}>Duplicate</button></>}<button type="button" className="btn-ghost" disabled={busy || selected.some(blocked)} onClick={()=>void remove(selected)}>Delete{selected.length>1?' selected':''}</button><button type="button" className="btn-ghost" onClick={()=>dispatch({type:'CLEAR'})}>Clear selection</button></div>}
+    {!list ? <div className="pj-empty" role="status">{status.state==='failed'?'Project library could not load.':'Loading projects…'}</div> : !shown.length ? <div className="pj-empty"><strong>{list.length?'No matching projects':'No projects yet'}</strong>{list.length ? <button type="button" className="btn" onClick={()=>setProjectsQuery('')}>Clear search</button> : <><span>Import a model or start a new project.</span><button type="button" className="btn" onClick={fileVerbs.import}>Import model</button></>}</div> : <div ref={grid} className="pj-grid" role="grid" aria-label="Projects" aria-multiselectable="true" aria-busy={busy || status.state==='loading'} onKeyDown={onKey}>{shown.map(p=><Card key={p.id} p={p} current={p.id===current} selected={selectedSet.has(p.id)} focused={p.id===(selection.focus??visible[0])} renaming={renaming===p.id} blocked={blocked(p.id)} setRenaming={on=>{if(!on || !blocked(p.id))setRenaming(on?p.id:null);}} select={event=>dispatch(event)} onMenu={at=>setMenu({id:p.id,...at})}/>)}</div>}
+    {menu && menuProject && <ActionMenu label="Project actions" at={menu} onClose={()=>setMenu(null)} items={[{label:'Open',action:()=>void openProject(menuProject.id)},{label:'Rename',shortcut:'F2',disabled:blocked(menuProject.id),tip:'Resolve the pending project request first.',action:()=>setRenaming(menuProject.id)},{label:'Duplicate',disabled:blocked(menuProject.id),tip:'Resolve the pending project request first.',action:()=>void duplicateProject(menuProject.id)},{label:'Export 3MF…',action:()=>void exportProject(menuProject)},{label:'Delete',shortcut:'Del',disabled:busy || blocked(menuProject.id),tip:'Resolve the pending project request first.',action:()=>void remove([menuProject.id])}]}/>}
   </div>;
 }
