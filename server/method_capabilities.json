@@ -1,16 +1,127 @@
 {
   "schema": 1,
-  "kinematicsAxes": {"none":3,"table_bc":5,"table_ac":5,"head_ab":5,"head_bc":5,"hybrid_ac":5},
+  "kinematicsAxes": {
+    "none": 3,
+    "table_bc": 5,
+    "table_ac": 5,
+    "head_ab": 5,
+    "head_bc": 5,
+    "hybrid_ac": 5
+  },
   "methods": [
-    {"id":"off","target":"mode","hardware":"any"},
-    {"id":"manual","target":"mode","hardware":"known"},
-    {"id":"multiplanar","target":"mode","hardware":"rotary","settingPrefixes":["multiplanar_"]},
-    {"id":"field","target":"mode","hardware":"rotary","settingPrefixes":["nonplanar_field_"]},
-    {"id":"curved_tops","target":"mode","hardware":"known","feature":"curved_tops","readiness":"curved_tops","settingPrefixes":["nonplanar_curved_"]},
-    {"id":"oneshot","target":"mode","hardware":"known","feature":"oneshot","settingPrefixes":["nonplanar_oneshot_"]},
-    {"id":"auto","target":"mode","hardware":"known","auto":true},
-    {"id":"whole","target":"wave","hardware":"known","feature":"nonplanar_wave","readiness":"nonplanar_wave"},
-    {"id":"top","target":"wave","hardware":"known","feature":"nonplanar_wave","readiness":"nonplanar_wave"},
-    {"id":"infill","target":"wave","hardware":"known","feature":"nonplanar_wave","readiness":"nonplanar_wave"}
-  ]
+    {
+      "id": "off",
+      "target": "mode",
+      "hardware": "any"
+    },
+    {
+      "id": "manual",
+      "target": "mode",
+      "hardware": "known"
+    },
+    {
+      "id": "multiplanar",
+      "target": "mode",
+      "hardware": "rotary",
+      "settingPrefixes": [
+        "multiplanar_"
+      ]
+    },
+    {
+      "id": "field",
+      "target": "mode",
+      "hardware": "rotary",
+      "settingPrefixes": [
+        "nonplanar_field_"
+      ]
+    },
+    {
+      "id": "curved_tops",
+      "target": "mode",
+      "hardware": "known",
+      "feature": "curved_tops",
+      "readiness": "curved_tops",
+      "settingPrefixes": [
+        "nonplanar_curved_"
+      ]
+    },
+    {
+      "id": "oneshot",
+      "target": "mode",
+      "hardware": "known",
+      "feature": "oneshot",
+      "settingPrefixes": [
+        "nonplanar_oneshot_"
+      ]
+    },
+    {
+      "id": "auto",
+      "target": "mode",
+      "hardware": "known",
+      "auto": true
+    },
+    {
+      "id": "whole",
+      "target": "wave",
+      "hardware": "known",
+      "feature": "nonplanar_wave",
+      "readiness": "nonplanar_wave"
+    },
+    {
+      "id": "top",
+      "target": "wave",
+      "hardware": "known",
+      "feature": "nonplanar_wave",
+      "readiness": "nonplanar_wave"
+    },
+    {
+      "id": "infill",
+      "target": "wave",
+      "hardware": "known",
+      "feature": "nonplanar_wave",
+      "readiness": "nonplanar_wave"
+    }
+  ],
+  "kinematicsAxisNames": {
+    "none": [
+      "X",
+      "Y",
+      "Z"
+    ],
+    "table_bc": [
+      "X",
+      "Y",
+      "Z",
+      "B",
+      "C"
+    ],
+    "table_ac": [
+      "X",
+      "Y",
+      "Z",
+      "A",
+      "C"
+    ],
+    "head_ab": [
+      "X",
+      "Y",
+      "Z",
+      "A",
+      "B"
+    ],
+    "head_bc": [
+      "X",
+      "Y",
+      "Z",
+      "B",
+      "C"
+    ],
+    "hybrid_ac": [
+      "X",
+      "Y",
+      "Z",
+      "A",
+      "C"
+    ]
+  }
 }

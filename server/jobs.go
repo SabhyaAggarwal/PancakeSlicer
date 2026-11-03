@@ -22,50 +22,53 @@ import (
 )
 
 type JobRequest struct {
-	SourcePlates           []projectPlate `json:"source_plates,omitempty"`
-	PlateIndex             int            `json:"plate_index,omitempty"`
-	Orient                 bool           `json:"orient,omitempty"`
-	OrientScores           bool           `json:"orient_scores,omitempty"`
-	Arrange                bool           `json:"arrange,omitempty"`
-	ArrangeSpacing         float64        `json:"arrange_spacing,omitempty"`
-	ArrangeNoRotation      bool           `json:"arrange_no_rotation,omitempty"`
-	ArrangeMaterials       string         `json:"arrange_materials,omitempty"`
-	WipeTower              bool           `json:"wipe_tower,omitempty"`
-	Explode                bool           `json:"explode,omitempty"`
-	AllowMixedTemperatures bool           `json:"allow_mixed_temperatures,omitempty"`
-	Cut                    string         `json:"cut,omitempty"`
-	CutKeep                string         `json:"cut_keep,omitempty"`
-	CutPlaceLower          bool           `json:"cut_place_lower,omitempty"`
-	CutConnectors          string         `json:"cut_connectors,omitempty"`
-	CutDovetail            string         `json:"cut_dovetail,omitempty"`
-	MeshOp                 string         `json:"mesh_op,omitempty"`
-	SimplifyRatio          float64        `json:"simplify_ratio,omitempty"`
-	SimplifyTriangles      int            `json:"simplify_triangles,omitempty"`
-	SimplifyMaxError       float64        `json:"simplify_max_error,omitempty"`
-	BooleanOp              string         `json:"boolean_op,omitempty"`
-	Text                   []string       `json:"text,omitempty"`
-	TextSurface            []string       `json:"text_surface,omitempty"`
-	ExportFormat           string         `json:"export_format,omitempty"`
-	DracoBits              int            `json:"draco_bits,omitempty"`
-	Vendor                 string         `json:"vendor"`
-	Printer                string         `json:"printer"`
-	Process                string         `json:"process"`
-	Filaments              []string       `json:"filaments"`
-	Overrides              [][2]string    `json:"overrides"`
-	Events                 []string       `json:"events"`
-	Files                  []string       `json:"files"`
-	Plate                  bool           `json:"plate"`
-	Output                 string         `json:"output"`
-	Filename               string         `json:"filename,omitempty"`
-	ProjectSettings        [][2]string    `json:"project_settings,omitempty"`
-	ForcePlanar            bool           `json:"force_planar,omitempty"`
-	Floating               bool           `json:"floating,omitempty"`
-	Calib                  string         `json:"calib,omitempty"`
-	CalibParams            string         `json:"calib_params,omitempty"`
-	CalibHead              string         `json:"calib_head,omitempty"`
-	Edits                  bool           `json:"edits,omitempty"`
-	Priority               string         `json:"priority,omitempty"`
-	PreviewBudget          float64        `json:"preview_budget,omitempty"`
+	ProfileIDs             *jobProfileIDs                        `json:"profile_ids,omitempty"`
+	ProfileSnapshot        map[string]map[string]json.RawMessage `json:"profile_snapshot,omitempty"`
+	Submission             *submittedConfig                      `json:"submission,omitempty"`
+	SourcePlates           []projectPlate                        `json:"source_plates,omitempty"`
+	PlateIndex             int                                   `json:"plate_index,omitempty"`
+	Orient                 bool                                  `json:"orient,omitempty"`
+	OrientScores           bool                                  `json:"orient_scores,omitempty"`
+	Arrange                bool                                  `json:"arrange,omitempty"`
+	ArrangeSpacing         float64                               `json:"arrange_spacing,omitempty"`
+	ArrangeNoRotation      bool                                  `json:"arrange_no_rotation,omitempty"`
+	ArrangeMaterials       string                                `json:"arrange_materials,omitempty"`
+	WipeTower              bool                                  `json:"wipe_tower,omitempty"`
+	Explode                bool                                  `json:"explode,omitempty"`
+	AllowMixedTemperatures bool                                  `json:"allow_mixed_temperatures,omitempty"`
+	Cut                    string                                `json:"cut,omitempty"`
+	CutKeep                string                                `json:"cut_keep,omitempty"`
+	CutPlaceLower          bool                                  `json:"cut_place_lower,omitempty"`
+	CutConnectors          string                                `json:"cut_connectors,omitempty"`
+	CutDovetail            string                                `json:"cut_dovetail,omitempty"`
+	MeshOp                 string                                `json:"mesh_op,omitempty"`
+	SimplifyRatio          float64                               `json:"simplify_ratio,omitempty"`
+	SimplifyTriangles      int                                   `json:"simplify_triangles,omitempty"`
+	SimplifyMaxError       float64                               `json:"simplify_max_error,omitempty"`
+	BooleanOp              string                                `json:"boolean_op,omitempty"`
+	Text                   []string                              `json:"text,omitempty"`
+	TextSurface            []string                              `json:"text_surface,omitempty"`
+	ExportFormat           string                                `json:"export_format,omitempty"`
+	DracoBits              int                                   `json:"draco_bits,omitempty"`
+	Vendor                 string                                `json:"vendor"`
+	Printer                string                                `json:"printer"`
+	Process                string                                `json:"process"`
+	Filaments              []string                              `json:"filaments"`
+	Overrides              [][2]string                           `json:"overrides"`
+	Events                 []string                              `json:"events"`
+	Files                  []string                              `json:"files"`
+	Plate                  bool                                  `json:"plate"`
+	Output                 string                                `json:"output"`
+	Filename               string                                `json:"filename,omitempty"`
+	ProjectSettings        [][2]string                           `json:"project_settings,omitempty"`
+	ForcePlanar            bool                                  `json:"force_planar,omitempty"`
+	Floating               bool                                  `json:"floating,omitempty"`
+	Calib                  string                                `json:"calib,omitempty"`
+	CalibParams            string                                `json:"calib_params,omitempty"`
+	CalibHead              string                                `json:"calib_head,omitempty"`
+	Edits                  bool                                  `json:"edits,omitempty"`
+	Priority               string                                `json:"priority,omitempty"`
+	PreviewBudget          float64                               `json:"preview_budget,omitempty"`
 }
 
 type Event struct {
@@ -218,7 +221,7 @@ func (j *Job) EventsSince(after int) ([]Event, <-chan struct{}, bool) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	var out []Event
-	if len(j.events) > 0 && after > 0 && after < j.events[0].ID-1 {
+	if len(j.events) > 0 && after < j.events[0].ID-1 {
 		id := j.events[0].ID - 1
 		pos := j.queuePosition
 		out = append(out, Event{ID: id, Seq: uint64(id), Type: "reset", ReplayGap: true,

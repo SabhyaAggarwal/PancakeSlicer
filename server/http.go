@@ -31,15 +31,15 @@ type Server struct {
 	cfg       Config
 	jobs      *JobManager
 	presets   *PresetIndex
-	users     *UserPresetStore
+	library   *ProfileLibraryStore
 	sends     *SendManager
 	fontsOnce sync.Once
 	fonts     []byte
 	fontsErr  error
 }
 
-func NewServer(c Config, jobs *JobManager, presets *PresetIndex, users *UserPresetStore) http.Handler {
-	s := &Server{cfg: c, jobs: jobs, presets: presets, users: users, sends: NewSendManager(c.Printers, c.PrinterStore)}
+func NewServer(c Config, jobs *JobManager, presets *PresetIndex, library *ProfileLibraryStore) http.Handler {
+	s := &Server{cfg: c, jobs: jobs, presets: presets, library: library, sends: NewSendManager(c.Printers, c.PrinterStore)}
 	healthProbe := newEngineHealth(c)
 	jobs.cfg.NativeHealth = healthProbe
 	mux := http.NewServeMux()
@@ -47,6 +47,8 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, users *UserPres
 		q, n := jobs.Counts()
 		health := healthProbe.snapshot(c.Tool)
 		health["status"], health["queued"], health["running"] = "ok", q, n
+		health["profile_library_schema"] = 1
+		health["server_revision"] = buildAbout(c).Revision
 		health["max_concurrency"], health["max_queue"] = jobs.cfg.MaxJobs, jobs.cfg.MaxQueue
 		if jobResultStats != nil {
 			health["result_cache"] = jobResultStats(jobs)
@@ -84,10 +86,8 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, users *UserPres
 	mux.HandleFunc("GET /api/options", func(w http.ResponseWriter, r *http.Request) {
 		options.serve(w, r, "options.json", "application/json", catalogCache, time.Time{})
 	})
-	mux.HandleFunc("GET /api/user-presets", s.listUserPresets)
-	mux.HandleFunc("POST /api/user-presets", s.saveUserPreset)
-	mux.HandleFunc("DELETE /api/user-presets/{type}/{name}", s.deleteTypedUserPreset)
-	mux.HandleFunc("/api/user-presets/{name}", s.userPreset)
+	mux.HandleFunc("GET /api/profile-library", s.getProfileLibrary)
+	mux.HandleFunc("PUT /api/profile-library", s.putProfileLibrary)
 	mux.HandleFunc("GET /api/handy-models/{name}", s.handyModel)
 	mux.HandleFunc("GET /api/emboss-fonts", s.embossFonts)
 	mux.HandleFunc("GET /api/user-heads", s.listUserHeads)
@@ -232,6 +232,13 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req := JobRequest{Orient: r.FormValue("operation") == "orient" || r.FormValue("operation") == "orient-scores", Vendor: r.FormValue("vendor"), Printer: r.FormValue("printer"), Process: r.FormValue("process"), Filaments: r.MultipartForm.Value["filament[]"], Output: r.FormValue("output"), Filename: r.FormValue("filename")}
+	if raw := r.FormValue("profile_ids"); raw != "" {
+		req.ProfileIDs = &jobProfileIDs{}
+		if json.Unmarshal([]byte(raw), req.ProfileIDs) != nil {
+			fail(w, 400, "profile_ids must contain the saved profile IDs and revisions")
+			return
+		}
+	}
 	switch op := r.FormValue("operation"); op {
 	case "", "orient":
 	case "orient-scores":
@@ -448,51 +455,10 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "output must be gcode, gcode.3mf or 3mf")
 		return
 	}
-	if req.Vendor == "" {
-		req.Vendor = s.presets.VendorOfPrinter(req.Printer)
-	}
-	if _, err := s.presets.names(); err != nil {
-		fail(w, 500, "preset catalog unavailable")
+	vendor, problem := s.resolveJobProfiles(&req)
+	if problem != nil {
+		problem.write(w)
 		return
-	}
-	if s.presets.known[req.Vendor] == nil {
-		fail(w, 400, "unknown vendor")
-		return
-	}
-	for _, selection := range []struct{ kind, label, name string }{{"machine", "printer", req.Printer}, {"process", "process", req.Process}} {
-		if !s.presets.knownPreset(req.Vendor, selection.kind, selection.name) {
-			fail(w, 400, "unknown "+selection.label+" preset: "+presetDisplayName(selection.name))
-			return
-		}
-	}
-	for _, name := range req.Filaments {
-		if !s.presets.knownPreset(req.Vendor, "filament", name) {
-			fail(w, 400, "unknown filament preset: "+presetDisplayName(name))
-			return
-		}
-	}
-	vendor, ok := s.presets.Vendor(req.Vendor)
-	if !ok {
-		fail(w, 400, "unknown vendor")
-		return
-	}
-	if vendor.machines[req.Printer] == nil {
-		fail(w, 400, "unknown printer preset: "+presetDisplayName(req.Printer))
-		return
-	}
-	if vendor.processes[req.Process] == nil {
-		fail(w, 400, "unknown process preset: "+presetDisplayName(req.Process))
-		return
-	}
-	if len(req.Filaments) == 0 {
-		fail(w, 400, "at least one filament[] is required")
-		return
-	}
-	for _, f := range req.Filaments {
-		if vendor.filaments[f] == nil {
-			fail(w, 400, "unknown filament preset: "+presetDisplayName(f))
-			return
-		}
 	}
 	if raw := r.FormValue("overrides"); raw != "" {
 		req.Overrides, err = overrides(raw)
@@ -792,6 +758,23 @@ var calibHead = regexp.MustCompile(`^[a-z0-9_-]{0,64}$`)
 var calibParams = regexp.MustCompile(`^([a-z_]+=[A-Za-z0-9_.;-]*(,[a-z_]+=[A-Za-z0-9_.;-]*)*)?$`)
 
 func (s *Server) startJob(w http.ResponseWriter, j *Job, req JobRequest, started *bool) {
+	vendor, problem := s.resolveJobProfiles(&req)
+	if problem != nil {
+		problem.write(w)
+		return
+	}
+	if problem := s.validateProfileBindings(&req); problem != nil {
+		problem.write(w)
+		return
+	}
+	if problem := s.validateJobMethods(j, req, vendor); problem != nil {
+		writeJSON(w, 409, problem)
+		return
+	}
+	if err := s.captureSubmission(j, &req, vendor); err != nil {
+		fail(w, 500, "The submitted configuration could not be saved. Try again before slicing.")
+		return
+	}
 	j.Request = req
 	if err := s.jobs.Start(j); err != nil {
 		admissionFailure(w, err)
@@ -852,7 +835,12 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		fail(w, 404, "download expired")
+		if os.IsNotExist(err) {
+			j.setState(StateStale, "completed output is unavailable; slice again")
+			writeJSON(w, 410, map[string]string{"error": "This output is no longer available. Slice the project again.", "code": "job_output_expired", "recovery": "slice_again"})
+		} else {
+			fail(w, 503, "The output could not be opened. Try downloading again.")
+		}
 		return
 	}
 	defer f.Close()
@@ -990,56 +978,6 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
-func (s *Server) userPreset(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	if err := validPresetName(name); err != nil {
-		fail(w, 400, err.Error())
-		return
-	}
-	switch r.Method {
-	case "PUT":
-		b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
-		if err != nil {
-			fail(w, 413, err.Error())
-			return
-		}
-		if _, err = overrides(string(b)); err != nil {
-			fail(w, 400, err.Error())
-			return
-		}
-		err = s.users.Put(&UserPreset{Name: name, Overrides: b})
-		if err != nil {
-			fail(w, 500, err.Error())
-			return
-		}
-		writeJSON(w, 200, json.RawMessage(b))
-	case "GET":
-		p, err := s.users.Get(name)
-		if errors.Is(err, errPresetNotFound) {
-			fail(w, 404, err.Error())
-			return
-		}
-		if err != nil {
-			fail(w, 500, err.Error())
-			return
-		}
-		writeJSON(w, 200, p.Overrides)
-	case "DELETE":
-		err := s.users.Delete(name)
-		if errors.Is(err, errPresetNotFound) {
-			fail(w, 404, err.Error())
-			return
-		}
-		if err != nil {
-			fail(w, 500, err.Error())
-			return
-		}
-		w.WriteHeader(204)
-	default:
-		w.Header().Set("Allow", "GET, PUT, DELETE")
-		fail(w, 405, "method not allowed")
-	}
-}
 
 func spaFiles(dir string) http.Handler {
 	cache := &staticCache{files: map[string]staticEntry{}}
@@ -1078,66 +1016,6 @@ func spaFiles(dir string) http.Handler {
 		}
 		cache.serve(w, r, file, st)
 	})
-}
-
-func validPresetType(t string) bool { return t == "machine" || t == "process" || t == "filament" }
-func (s *Server) listUserPresets(w http.ResponseWriter, r *http.Request) {
-	ps, err := s.users.List()
-	if err != nil {
-		fail(w, 500, err.Error())
-		return
-	}
-	writeJSON(w, 200, ps)
-}
-func (s *Server) saveUserPreset(w http.ResponseWriter, r *http.Request) {
-	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
-	if err != nil {
-		fail(w, 413, err.Error())
-		return
-	}
-	var p UserPreset
-	if json.Unmarshal(b, &p) != nil {
-		fail(w, 400, "expected {name,type,inherits,overrides}")
-		return
-	}
-	if err := validPresetName(p.Name); err != nil {
-		fail(w, 400, err.Error())
-		return
-	}
-	if !validPresetType(p.Type) || strings.TrimSpace(p.Inherits) == "" {
-		fail(w, 400, "type must be machine, process or filament; inherits is required")
-		return
-	}
-	if _, err := overrides(string(p.Overrides)); err != nil {
-		fail(w, 400, err.Error())
-		return
-	}
-	if err := s.users.Put(&p); err != nil {
-		fail(w, 500, err.Error())
-		return
-	}
-	writeJSON(w, 200, p)
-}
-func (s *Server) deleteTypedUserPreset(w http.ResponseWriter, r *http.Request) {
-	t, name := r.PathValue("type"), r.PathValue("name")
-	if !validPresetType(t) {
-		fail(w, 400, "unknown preset type")
-		return
-	}
-	if err := validPresetName(name); err != nil {
-		fail(w, 400, err.Error())
-		return
-	}
-	err := s.users.DeleteTyped(t, name)
-	if errors.Is(err, errPresetNotFound) {
-		fail(w, 404, err.Error())
-		return
-	}
-	if err != nil {
-		fail(w, 500, err.Error())
-		return
-	}
-	w.WriteHeader(204)
 }
 
 func cutJoinError(req JobRequest, supported bool) string {
@@ -1373,6 +1251,33 @@ func (s *Server) retryJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	j.IdempotencyKey = key
+	req := j.Request
+	vendor, problem := s.resolveJobProfiles(&req)
+	if problem != nil {
+		s.jobs.releaseUpload(j)
+		os.RemoveAll(j.Dir)
+		problem.write(w)
+		return
+	}
+	if problem := s.validateProfileBindings(&req); problem != nil {
+		s.jobs.releaseUpload(j)
+		os.RemoveAll(j.Dir)
+		problem.write(w)
+		return
+	}
+	if problem := s.validateJobMethods(j, req, vendor); problem != nil {
+		s.jobs.releaseUpload(j)
+		os.RemoveAll(j.Dir)
+		writeJSON(w, 409, problem)
+		return
+	}
+	if err := s.captureSubmission(j, &req, vendor); err != nil {
+		s.jobs.releaseUpload(j)
+		os.RemoveAll(j.Dir)
+		fail(w, 500, "The retry configuration could not be saved. Submit the project again.")
+		return
+	}
+	j.Request = req
 	if err := s.jobs.Start(j); err != nil {
 		s.jobs.releaseUpload(j)
 		os.RemoveAll(j.Dir)

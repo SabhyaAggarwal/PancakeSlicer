@@ -354,7 +354,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 				log.Writer().Write(append(b, '\n'))
 			}()
 		}
-		protected := r.Method == "DELETE" || (r.Method == "POST" && (r.URL.Path == "/api/jobs" || strings.HasPrefix(r.URL.Path, "/api/jobs/"))) || ((r.Method == "POST" || r.Method == "PUT" || r.Method == "PATCH") && (r.URL.Path == "/api/user-presets" || strings.HasPrefix(r.URL.Path, "/api/user-presets/") || r.URL.Path == "/api/user-heads" || r.URL.Path == "/api/printers" || strings.HasPrefix(r.URL.Path, "/api/printers/")))
+		protected := r.Method == "DELETE" || (r.Method == "POST" && (r.URL.Path == "/api/jobs" || strings.HasPrefix(r.URL.Path, "/api/jobs/"))) || ((r.Method == "POST" || r.Method == "PUT" || r.Method == "PATCH") && (r.URL.Path == "/api/profile-library" || r.URL.Path == "/api/user-heads" || r.URL.Path == "/api/printers" || strings.HasPrefix(r.URL.Path, "/api/printers/")))
 		if s.cfg.BearerToken != "" && protected {
 			token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 			if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") || subtle.ConstantTimeCompare([]byte(token), []byte(s.cfg.BearerToken)) != 1 {

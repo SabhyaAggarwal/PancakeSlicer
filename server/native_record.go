@@ -61,6 +61,9 @@ func bindNativeRecord(raw []byte, c Config, j *Job) []byte {
 	if json.Unmarshal(raw, &record) != nil || record == nil {
 		return raw
 	}
+	if j.Request.Submission != nil {
+		record["submission"], _ = json.Marshal(j.Request.Submission)
+	}
 	if c.NativeHealth != nil {
 		snapshot := c.NativeHealth.snapshot(c.Tool)
 		if artifact, ok := snapshot["artifact_manifest"].(map[string]any); ok && artifact != nil {

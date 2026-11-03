@@ -234,7 +234,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	users, err := NewUserPresetStore(filepath.Join(cfg.DataDir, "user-presets"))
+	library, err := NewProfileLibraryStore(cfg.DataDir)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -250,7 +250,7 @@ func main() {
 			log.Printf("cannot preload %s presets: %v", vendor, err)
 		}
 	}
-	srv := &http.Server{Addr: cfg.Listen, Handler: NewServer(cfg, jobs, presets, users), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 10 * time.Second, MaxHeaderBytes: 2 << 20}
+	srv := &http.Server{Addr: cfg.Listen, Handler: NewServer(cfg, jobs, presets, library), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 10 * time.Second, MaxHeaderBytes: 2 << 20}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

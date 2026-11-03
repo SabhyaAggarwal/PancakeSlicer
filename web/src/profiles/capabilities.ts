@@ -33,8 +33,10 @@ export function deriveMethodAvailability(context: MethodContext): MethodAvailabi
   const expected = (table.kinematicsAxes as Record<string, number>)[kinematics] ?? 0;
   const stated = context.printer.axes ? new Set(context.printer.axes.map(a => a.toUpperCase())) : undefined;
   const axes = stated ? ['X', 'Y', 'Z'].every(a => stated.has(a)) ? stated.size : 0 : expected;
+  const required = (table.kinematicsAxisNames as Record<string, string[]>)[kinematics] ?? [];
+  const axesMatch = !stated || required.every(axis => stated.has(axis));
   const nozzle = nozzleKnown(config.nozzle_diameter);
-  const known = context.printer.known && config.printer_technology === 'FFF' && expected > 0 && axes >= expected && nozzle;
+  const known = context.printer.known && config.printer_technology === 'FFF' && expected > 0 && axes >= expected && axesMatch && nozzle;
   const rotary = known && kinematics !== 'none' && axes >= 4;
   const verified = (artifact?.preview_ready ?? artifact?.validated) === true
     && /^[a-f0-9]{64}$/i.test(artifact?.binary_sha256 ?? '') && /^[a-f0-9]{64}$/i.test(artifact?.resources_sha256 ?? '');
