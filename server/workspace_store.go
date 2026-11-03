@@ -204,6 +204,13 @@ func (st *workspaceStore) locked(w http.ResponseWriter, fn func(*workspaceData))
 	}
 	fn(d)
 }
+
+func (st *workspaceStore) view(w http.ResponseWriter, fn func(*workspaceData)) {
+	st.locked(w, func(d *workspaceData) {
+		w.Header().Set("Cache-Control", privateRevalidate)
+		fn(d)
+	})
+}
 func workspaceReplay(w http.ResponseWriter, d *workspaceData, op, digest string) bool {
 	if op == "" || len(op) > 200 {
 		workspaceFailure(w, 400, "operation_required", "A stable operationId is required for safe retry.", "retry_same_operation", 0)
@@ -292,7 +299,7 @@ func (st *workspaceStore) register(mux *http.ServeMux) {
 	st.folderRoutes(mux)
 	st.thumbnailRoutes(mux)
 	mux.HandleFunc("GET /api/projects", func(w http.ResponseWriter, r *http.Request) {
-		st.locked(w, func(d *workspaceData) {
+		st.view(w, func(d *workspaceData) {
 			out := []json.RawMessage{}
 			archived := r.URL.Query().Get("archived") == "1"
 			for _, p := range d.Projects {
@@ -312,7 +319,7 @@ func (st *workspaceStore) register(mux *http.ServeMux) {
 		})
 	})
 	mux.HandleFunc("GET /api/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
-		st.locked(w, func(d *workspaceData) {
+		st.view(w, func(d *workspaceData) {
 			id, err := canonicalWorkspaceProject(d, r.PathValue("id"))
 			if err != nil {
 				workspaceFailure(w, 409, "project_alias_invalid", err.Error(), "repair_aliases", 0)
@@ -339,17 +346,18 @@ func (st *workspaceStore) register(mux *http.ServeMux) {
 		mux.HandleFunc("POST /api/projects/{id}/"+action, func(w http.ResponseWriter, r *http.Request) { st.projectWrite(w, r, action) })
 	}
 	mux.HandleFunc("GET /api/drafts", func(w http.ResponseWriter, r *http.Request) {
-		st.locked(w, func(d *workspaceData) {
+		st.view(w, func(d *workspaceData) {
 			out := []workspaceDraft{}
 			for _, v := range d.Drafts {
 				v.Document = nil
 				out = append(out, v)
 			}
+			sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 			writeJSON(w, 200, out)
 		})
 	})
 	mux.HandleFunc("GET /api/drafts/{id}", func(w http.ResponseWriter, r *http.Request) {
-		st.locked(w, func(d *workspaceData) {
+		st.view(w, func(d *workspaceData) {
 			v, ok := d.Drafts[r.PathValue("id")]
 			if !ok {
 				workspaceFailure(w, 404, "draft_missing", "Recovery draft not found.", "open_projects", 0)
@@ -362,7 +370,7 @@ func (st *workspaceStore) register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/drafts/{id}", st.deleteDraft)
 	for _, kind := range []string{"session", "preferences"} {
 		mux.HandleFunc("GET /api/"+kind, func(w http.ResponseWriter, r *http.Request) {
-			st.locked(w, func(d *workspaceData) {
+			st.view(w, func(d *workspaceData) {
 				v := d.Values[kind]
 				if v.Document == nil {
 					v.Document = json.RawMessage(`{}`)
@@ -628,8 +636,11 @@ func (st *workspaceStore) getAsset(w http.ResponseWriter, r *http.Request) {
 		workspaceFailure(w, 503, "asset_unavailable", "The model asset could not be read.", "retry_storage", 0)
 		return
 	}
-	w.Header().Set("X-Content-SHA256", hex.EncodeToString(h.Sum(nil)))
+	sum := hex.EncodeToString(h.Sum(nil))
+	w.Header().Set("X-Content-SHA256", sum)
 	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Cache-Control", privateRevalidate)
+	w.Header().Set("ETag", `"`+sum+`"`)
 	f.Seek(0, io.SeekStart)
 	stat, err := f.Stat()
 	if err != nil {

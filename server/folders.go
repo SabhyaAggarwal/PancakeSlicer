@@ -65,7 +65,7 @@ func foldersView(d *workspaceData) map[string]any {
 
 func (st *workspaceStore) folderRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/folders", func(w http.ResponseWriter, r *http.Request) {
-		st.locked(w, func(d *workspaceData) { writeJSON(w, 200, foldersView(d)) })
+		st.view(w, func(d *workspaceData) { writeJSON(w, 200, foldersView(d)) })
 	})
 	mux.HandleFunc("POST /api/folders", func(w http.ResponseWriter, r *http.Request) { st.folderWrite(w, r, "create") })
 	mux.HandleFunc("PATCH /api/folders/{id}", func(w http.ResponseWriter, r *http.Request) { st.folderWrite(w, r, "update") })

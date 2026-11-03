@@ -112,7 +112,7 @@ func (s *Server) getProfileLibrary(w http.ResponseWriter, r *http.Request) {
 		libraryFailure(w, 503, "library_unavailable", "Profiles could not be read.", "retry_storage", 0)
 		return
 	}
-	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Cache-Control", privateRevalidate)
 	writeJSON(w, 200, value.Document)
 }
 func libraryProfiles(doc profileLibraryDocument) (map[string]map[string]json.RawMessage, error) {
