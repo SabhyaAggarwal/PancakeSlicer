@@ -246,6 +246,7 @@ export function loadMoves(src: WorkerIn, on: LoadHandlers, colours?: string[]): 
   };
   worker.onerror = (e) => { e.preventDefault(); fail(e.message || 'Preview worker stopped'); };
   worker.onmessageerror = () => fail('Preview data could not be transferred');
+  let frameWork = 0, frameWatched = false;
   worker.onmessage = (e: MessageEvent<WorkerOut>) => {
     try {
       const m = e.data;
@@ -253,13 +254,22 @@ export function loadMoves(src: WorkerIn, on: LoadHandlers, colours?: string[]): 
         d.onHeader(m.header, m.states, m.bytesTotal);
         on.header(d);
       } else if (m.kind === 'chunk') {
+        const t0 = performance.now();
         d.onChunk(m.chunk, m.layers, m.lod, m.lodBlocks);
         d.bytes = m.bytes;
         on.chunk(d, m.chunk.start, m.chunk.count);
+        frameWork += performance.now() - t0;
+        if (!frameWatched) {
+          frameWatched = true;
+          requestAnimationFrame(() => { frameWatched = false; frameWork = 0; });
+        }
         let ready = false;
         const ack = () => { if (!ready) { ready = true; worker.postMessage({ kind: 'ready' }); } };
-        const timer = setTimeout(ack, 32);
-        requestAnimationFrame(() => { clearTimeout(timer); ack(); });
+        if (frameWork < 8) setTimeout(ack, 0);
+        else {
+          const timer = setTimeout(ack, 32);
+          requestAnimationFrame(() => { clearTimeout(timer); ack(); });
+        }
       } else if (m.kind === 'done') {
         d.meta = colours ? { ...m.meta, extruder_colors: colours } : m.meta;
         d.setLayers(m.layers);

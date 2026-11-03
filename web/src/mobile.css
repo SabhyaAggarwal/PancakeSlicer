@@ -37,6 +37,7 @@
   :where(.orca-parity) .nav-view-control { display: inline-flex; position: absolute; z-index: 7; top: 60px; left: max(8px,env(safe-area-inset-left)); align-items: center; gap: 10px; background: var(--panel); }
   :where(.orca-parity) .transform-anchor { left: max(8px,env(safe-area-inset-left)); }
   :where(.orca-parity) .canvas-unavailable { padding-top: 116px; }
+  :where(.orca-parity) .rail-head { --rail-act: 40px; }
   :where(.orca-parity) .canvas-area .manip-panel { top: 112px; left: max(8px,env(safe-area-inset-left)); max-width: calc(100% - 16px); max-height: calc(100% - 112px - 72px); overflow: auto; z-index: 46; }
   :where(.orca-parity) .notification, :where(.orca-parity) .toast { max-width: calc(100vw - 16px); overflow-wrap: anywhere; }
   :where(.orca-parity) .saved-preferences-notice { padding: 4px max(8px,env(safe-area-inset-right)) 4px max(8px,env(safe-area-inset-left)); }

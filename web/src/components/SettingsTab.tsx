@@ -12,7 +12,8 @@ import { condition, environment, fieldDefinition, optionState } from '../visibil
 import { lineMode, nativeSupportCapable, tabEnvironment } from '../settings-env';
 import { Field } from './Field';
 import { InfoTip } from './InfoTip';
-import { useRowFill } from './tab-rows';
+import { useTabFit } from './tab-rows';
+import { Icon } from './Icon';
 import { GroupHead, isGroupOpen, setGroupOpen, useSettingsGroups } from './SettingsGroup';
 import './settings.css';
 
@@ -89,7 +90,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
   useSettingsGroups();
   const groupId = (pageTitle: string, groupTitle: string) => `${TAB_OF[type]}/${pageTitle}/${groupTitle}`;
   const strip = useRef<HTMLDivElement>(null);
-  useRowFill(strip, `${pages.map((p) => p.title).join('|')}|${auxiliary?.label ?? ''}`);
+  useTabFit(strip, `${pages.map((p) => p.title).join('|')}|${auxiliary?.label ?? ''}|${pageIdx}|${auxiliaryOn}`);
   const pageModified = (p: TabDesc['pages'][number]) => p.groups.some((g) => g.lines.some((l) => l.options.some((k) => splitKey(k)[0] in dirty)));
   const focus = useStore((s) => (s.settingsFocus?.type === type ? s.settingsFocus : null));
   const body = useRef<HTMLDivElement>(null);
@@ -116,11 +117,11 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
       {!hidePreset && <PresetBar type={type} slot={slot} />}
       <Tabs.Root className="settings-pages" value={auxiliaryOn ? 'auxiliary' : String(Math.min(pageIdx, pages.length - 1))} onValueChange={v => {setAuxiliaryOn(v === 'auxiliary'); if(v !== 'auxiliary') setPageIdx(Number(v));}}><Tabs.List ref={strip} className="page-bar" aria-label={`${TYPE_NAME[type]} settings`}>
         {pages.map((p, i) => (
-          <Tabs.Trigger key={p.title} value={String(i)} className={`page-tab ${p === page ? 'active' : ''} ${pageModified(p) ? 'modified' : ''}`} onClick={() => setPageIdx(i)}>
-            {p.title}
+          <Tabs.Trigger key={p.title} value={String(i)} aria-label={p.title} className={`page-tab ${p === page ? 'active' : ''} ${pageModified(p) ? 'modified' : ''}`} onClick={() => setPageIdx(i)}>
+            {p.icon && <Icon name={p.icon} size={16}/>}<span className="page-tab-label">{p.title}</span>
           </Tabs.Trigger>
         ))}
-        {auxiliary && <Tabs.Trigger value="auxiliary" className={`page-tab ${auxiliaryOn ? 'active' : ''} ${auxiliary.modified ? 'modified' : ''}`}>{auxiliary.label}</Tabs.Trigger>}
+        {auxiliary && <Tabs.Trigger value="auxiliary" className={`page-tab ${auxiliaryOn ? 'active' : ''} ${auxiliary.modified ? 'modified' : ''}`}><span className="page-tab-label">{auxiliary.label}</span></Tabs.Trigger>}
       </Tabs.List>
       <Tabs.Content forceMount value={auxiliaryOn ? 'auxiliary' : String(Math.min(pageIdx,pages.length-1))} className="page-body" ref={body}>
         {auxiliaryOn && auxiliary ? auxiliary.content : <>
@@ -129,10 +130,10 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
         {!desc && <div className="settings-load" role={error || retryError ? 'alert' : 'status'}><span>{retryError || error ? `Settings failed to load: ${retryError ?? error}` : 'Loading settings…'}</span>{(error || retryError) && <button type="button" className="btn" disabled={retrying} onClick={retry}>{retrying ? 'Retrying…' : 'Retry'}</button>}</div>}
         {type === 'process' && page?.title === 'Multimaterial' && getState().filamentSlots.length > 1 && <section className="optgroup"><button type="button" className="btn" onClick={() => setState({flushDialog: true})}>Flush volumes</button></section>}
         {page?.groups.map((g) => {
-          const id = groupId(page.title, g.title), open = !g.title || isGroupOpen(id);
+          const single = page.groups.length === 1 && g.lines.length === 1 && g.lines[0].options.length === 1 && !!OPTIONS[splitKey(g.lines[0].options[0])[0]]?.multiline, id = groupId(page.title, g.title), open = !g.title || single || isGroupOpen(id);
           const modified = g.lines.some((l) => l.options.some((k) => splitKey(k)[0] in dirty));
-          return <section key={g.title} className="optgroup" data-collapsed={open ? undefined : ''}>
-            {g.title && <GroupHead id={id} title={g.title} icon={g.icon} modified={modified} open={open} />}
+          return <section key={g.title} className="optgroup" data-collapsed={open ? undefined : ''} data-single={single ? '' : undefined}>
+            {g.title && !single && <GroupHead id={id} title={g.title} icon={g.icon} modified={modified} open={open} />}
             {open && g.lines.map((line, row) => {
               let keys = line.options;
               let labels = line.index_labels;

@@ -99,6 +99,17 @@ export function PreviewView() {
     setTip(id < 0 ? null : { ...explain(data, id, job.status?.record), x, y });
   };
   const lastRanges = useRef(0);
+  const loadBump = useRef<{ pending: boolean } | null>(null);
+  const bumpLoad = () => {
+    if (loadBump.current) return void (loadBump.current.pending = true);
+    bump();
+    const slot = { pending: false };
+    loadBump.current = slot;
+    setTimeout(() => {
+      loadBump.current = null;
+      if (slot.pending) bump();
+    }, 100);
+  };
   const events = useStore((s) => s.events);
   const [eventMenu, setEventMenu] = useState<{ anchor: DOMRect; layer: number } | null>(null);
   const [oneLayer, setOneLayer] = useState(false);
@@ -145,7 +156,7 @@ export function PreviewView() {
     chunk: (d) => {
       if (!ranges.current || performance.now() - lastRanges.current > 500) recolor(d);
       sceneRef.current?.sync();
-      bump();
+      bumpLoad();
     },
     done: (d) => {
       recolor(d);

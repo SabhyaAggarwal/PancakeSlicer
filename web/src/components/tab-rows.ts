@@ -14,3 +14,21 @@ export function useRowFill(ref: RefObject<HTMLElement | null>, key: unknown) {
     return () => observer.disconnect();
   }, [ref, key]);
 }
+
+export function useTabFit(ref: RefObject<HTMLElement | null>, key: unknown) {
+  useLayoutEffect(() => {
+    const strip = ref.current;
+    if (!strip) return;
+    const fit = () => {
+      strip.removeAttribute('data-compact');
+      strip.setAttribute('data-measure', '');
+      const over = strip.scrollWidth > strip.clientWidth + 1;
+      strip.removeAttribute('data-measure');
+      strip.toggleAttribute('data-compact', over);
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(strip);
+    return () => observer.disconnect();
+  }, [ref, key]);
+}

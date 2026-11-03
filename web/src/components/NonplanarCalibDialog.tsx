@@ -1,6 +1,6 @@
 import { Dropdown } from './Dropdown';
 import { useEffect, useRef, useState } from 'react';
-import { useRowFill } from './tab-rows';
+import { useTabFit } from './tab-rows';
 import { effectiveConfig, getState, markStale, presetEdits, setOption, setState, toast, useStore } from '../state/store';
 import type { ConfigValue } from '../api/types';
 import { undoable } from '../state/history';
@@ -115,7 +115,7 @@ export default function NonplanarCalibDialog() {
   const layerHeight = Number(process.layer_height) || 0.2;
   const [page, setPage] = useState(memo.page);
   const strip = useRef<HTMLDivElement>(null);
-  useRowFill(strip, null);
+  useTabFit(strip, page);
   const [lastClean, setLastClean] = useState(memo.lastClean);
   const [tilt, setTilt] = useState(memo.tilt);
   const [speed, setSpeed] = useState(memo.speed);
@@ -189,7 +189,7 @@ export default function NonplanarCalibDialog() {
     <Modal className="np-calib-dialog" label="Non-planar calibration" onClose={close}>
       <ModalTitle title="Non-planar calibration" onClose={close} />
       <div ref={strip} className="page-bar" role="tablist">
-        {PAGES.map((p, i) => <button key={p} role="tab" aria-selected={i === page} className={`page-tab ${i === page ? 'active' : ''}`} onClick={() => setPage(i)}>{p}</button>)}
+        {PAGES.map((p, i) => <button key={p} role="tab" aria-selected={i === page} className={`page-tab ${i === page ? 'active' : ''}`} onClick={() => setPage(i)}><span className="page-tab-label">{p}</span></button>)}
       </div>
       <div className="prefs-body" role="tabpanel" aria-label={PAGES[page]} style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
         {page === 0 && <>

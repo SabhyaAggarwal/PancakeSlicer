@@ -30,7 +30,8 @@ export const ManagerProfileRow = memo(function ManagerProfileRow({ item, listId,
       onClick={event => event.stopPropagation()} onCheckedChange={() => dispatch({ type: 'CLICK', key: item.key, toggle: true })}/></span>}
     {item.swatch !== undefined && (item.swatch ? <span role="gridcell" className="profile-color-swatch" style={{backgroundColor:item.swatch}}/> : <span role="gridcell" className="pf-row-swatch" aria-label="No color"/>)}
     {item.cover !== undefined && <span role="gridcell" className="pf-row-cover">{item.cover && failedCover !== item.cover && <img src={item.cover} alt="" width={44} height={44} loading="lazy" decoding="async" onError={()=>setFailedCover(item.cover ?? undefined)}/>}</span>}
-    <span role="gridcell" className="pf-row-label"><span className="pf-item-title"><span className="pf-item-name">{item.name}</span>{item.meta && <span className="pf-item-meta">{item.meta}</span>}{item.slot !== undefined && <span className="pf-used">✓ In use</span>}</span>
+    <span role="gridcell" className="pf-row-label"><span className="pf-item-title"><span className="pf-item-name">{item.name}</span>{item.meta && <span className="pf-item-meta">{item.meta}</span>}</span>
       {item.note && <span className="pf-dim pf-item-note">{item.note}</span>}</span>
+    {item.slot !== undefined && <span role="gridcell" className="pf-used">In use</span>}
   </div>;
 });
