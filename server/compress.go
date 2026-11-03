@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"strings"
+
+	"github.com/andybalholm/brotli"
 )
 
 const gzipMinBytes = 1024
@@ -33,11 +35,17 @@ func gzipJSON(next http.Handler) http.Handler {
 			fail(w, http.StatusUnsupportedMediaType, "request bodies may be gzip or identity")
 			return
 		}
-		if !strings.HasPrefix(r.URL.Path, "/api/") || !acceptsGzip(r) {
+		encoding := ""
+		if acceptsBrotli(r) {
+			encoding = "br"
+		} else if acceptsGzip(r) {
+			encoding = "gzip"
+		}
+		if !strings.HasPrefix(r.URL.Path, "/api/") || encoding == "" {
 			next.ServeHTTP(w, r)
 			return
 		}
-		g := &gzipWriter{ResponseWriter: w}
+		g := &gzipWriter{ResponseWriter: w, encoding: encoding}
 		defer g.close()
 		next.ServeHTTP(g, r)
 	})
@@ -45,11 +53,16 @@ func gzipJSON(next http.Handler) http.Handler {
 
 type gzipWriter struct {
 	http.ResponseWriter
-	status  int
-	decided bool
-	plain   bool
-	pending []byte
-	z       *gzip.Writer
+	status   int
+	decided  bool
+	plain    bool
+	pending  []byte
+	encoding string
+	z        interface {
+		io.Writer
+		Flush() error
+		Close() error
+	}
 }
 
 func (g *gzipWriter) WriteHeader(status int) {
@@ -75,9 +88,13 @@ func (g *gzipWriter) decide(plain bool) {
 	if !plain {
 		h := g.Header()
 		h.Del("Content-Length")
-		h.Set("Content-Encoding", "gzip")
+		h.Set("Content-Encoding", g.encoding)
 		h.Add("Vary", "Accept-Encoding")
-		g.z, _ = gzip.NewWriterLevel(g.ResponseWriter, gzip.BestSpeed)
+		if g.encoding == "br" {
+			g.z = brotli.NewWriterLevel(g.ResponseWriter, 5)
+		} else {
+			g.z, _ = gzip.NewWriterLevel(g.ResponseWriter, gzip.BestSpeed)
+		}
 	}
 	g.ResponseWriter.WriteHeader(g.status)
 }

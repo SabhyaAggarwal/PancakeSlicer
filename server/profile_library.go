@@ -8,10 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -26,7 +28,51 @@ type ProfileLibraryStore struct {
 }
 
 func NewProfileLibraryStore(dir string) (*ProfileLibraryStore, error) {
-	return &ProfileLibraryStore{dir: dir}, os.MkdirAll(dir, 0700)
+	s := &ProfileLibraryStore{dir: dir}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return nil, err
+	}
+	return s, s.migrateWorksWith()
+}
+
+func (s *ProfileLibraryStore) migrateWorksWith() error {
+	envelope, err := s.readLibrary()
+	if err != nil {
+		return err
+	}
+	var profiles []map[string]json.RawMessage
+	if json.Unmarshal(envelope.Document["profiles"], &profiles) != nil {
+		return nil
+	}
+	changed := 0
+	for _, p := range profiles {
+		if raw, ok := p["applicability"]; ok {
+			if rule, old := worksWithFromSchema1(raw); old {
+				if rule == nil {
+					delete(p, "applicability")
+				} else {
+					p["applicability"] = rule
+				}
+				changed++
+			}
+		}
+	}
+	if changed == 0 {
+		return nil
+	}
+	if err := s.backup(time.Now().UTC().Format("20060102T150405Z"), "works-with-2", &legacySource{}); err != nil {
+		return err
+	}
+	envelope.Document["profiles"], _ = json.Marshal(profiles)
+	envelope.Document["revision"] = json.RawMessage(fmt.Sprint(libraryRevision(envelope.Document) + 1))
+	encoded, err := json.Marshal(envelope)
+	if err == nil {
+		err = s.writeLibrary(encoded)
+	}
+	if err == nil {
+		log.Printf("profile library: rewrote %d Works with associations as schema 2 rules", changed)
+	}
+	return err
 }
 func validProfileType(t string) bool { return t == "machine" || t == "process" || t == "filament" }
 func validProfileName(name string) error {
@@ -168,14 +214,17 @@ func libraryProfiles(doc profileLibraryDocument) (map[string]map[string]json.Raw
 			return nil, errors.New("every profile needs revision, base name/version and an overlay object in the canonical schema")
 		}
 		if raw, ok := p["applicability"]; ok {
-			var a struct {
-				Schema     int      `json:"schema"`
-				Mode       string   `json:"mode"`
-				PrinterIDs []string `json:"printerIds"`
+			if _, err := parseWorksWith(raw, typ); err != nil {
+				return nil, fmt.Errorf("%s: %w", name, err)
 			}
-			if json.Unmarshal(raw, &a) != nil || a.Schema != 1 || (a.Mode != "inherit" && a.Mode != "only") || a.Mode == "only" && a.PrinterIDs == nil {
-				return nil, errors.New("applicability must be inherit or only with an explicit printerIds array")
+		}
+		if raw, ok := p["dynamic"]; ok {
+			if _, err := parseDynamic(raw, typ); err != nil {
+				return nil, fmt.Errorf("%s: %w", name, err)
 			}
+		}
+		if raw, ok := p["mergedInto"]; ok && !strings.HasPrefix(stringValue(raw), "profile:") {
+			return nil, errors.New("mergedInto names the dynamic profile's ID")
 		}
 		if raw, ok := p["archived"]; ok {
 			var archive struct {
@@ -210,13 +259,24 @@ func libraryReferences(doc profileLibraryDocument, profiles map[string]map[strin
 		for _, key := range []string{"parentId", "parent", "printerId", "masterId"} {
 			add(stringValue(p[key]), id+" "+key)
 		}
-		var a struct {
-			PrinterIDs []string `json:"printerIds"`
-		}
+		var a worksWithRule
 		json.Unmarshal(p["applicability"], &a)
-		for _, pid := range a.PrinterIDs {
-			add(pid, id+" Works with")
+		if a.Printers != nil {
+			for _, pid := range a.Printers.PrinterIDs {
+				add(pid, id+" Works with")
+			}
 		}
+		if a.Filaments != nil {
+			for _, fid := range a.Filaments.ProfileIDs {
+				add(fid, id+" Works with")
+			}
+		}
+		if a.Prints != nil {
+			for _, pid := range a.Prints.ProfileIDs {
+				add(pid, id+" Works with")
+			}
+		}
+		add(stringValue(p["mergedInto"]), id+" merged into")
 	}
 	var printers struct {
 		Setups map[string]struct {
@@ -245,31 +305,96 @@ func libraryReferences(doc profileLibraryDocument, profiles map[string]map[strin
 	return refs
 }
 
-func worksWithNone(next, previous map[string]map[string]json.RawMessage) string {
-	type only struct {
-		Mode       string   `json:"mode"`
-		PrinterIDs []string `json:"printerIds"`
-	}
+func (s *Server) worksWithNone(next, previous map[string]map[string]json.RawMessage) string {
 	live := func(p map[string]json.RawMessage) bool {
 		return len(p["archived"]) == 0 || string(p["archived"]) == "null"
 	}
-	none := func(doc map[string]map[string]json.RawMessage, a only) bool {
-		return a.Mode == "only" && !slices.ContainsFunc(a.PrinterIDs, func(id string) bool {
-			m := doc[id]
-			return m != nil && stringValue(m["type"]) == "machine" && live(m)
-		})
+	printers := func(doc map[string]map[string]json.RawMessage) func() []printerFacts {
+		var facts []printerFacts
+		read := false
+		return func() []printerFacts {
+			if !read {
+				for id, m := range doc {
+					if stringValue(m["type"]) == "machine" && live(m) {
+						facts = append(facts, s.printerFactsOf(id, m))
+					}
+				}
+				read = true
+			}
+			return facts
+		}
+	}
+	nextPrinters, previousPrinters := printers(next), printers(previous)
+	none := func(facts func() []printerFacts, raw json.RawMessage, typ string) bool {
+		rule, err := parseWorksWith(raw, typ)
+		return err == nil && !slices.ContainsFunc(facts(), rule.matchesPrinter)
 	}
 	for id, p := range next {
-		var a, was only
-		if stringValue(p["type"]) == "machine" || !live(p) || json.Unmarshal(p["applicability"], &a) != nil || !none(next, a) {
+		typ := stringValue(p["type"])
+		raw, ruled := p["applicability"]
+		if typ == "machine" || !live(p) || !ruled {
 			continue
 		}
-		if old := previous[id]; old != nil && json.Unmarshal(old["applicability"], &was) == nil && (none(previous, was) || was.Mode == a.Mode && slices.Equal(was.PrinterIDs, a.PrinterIDs)) {
-			continue
+		if old := previous[id]; old != nil {
+			if was, ok := old["applicability"]; ok && (jsonEqual(was, raw) || none(previousPrinters, was, typ)) {
+				continue
+			}
 		}
-		return stringValue(p["name"])
+		if none(nextPrinters, raw, typ) {
+			return stringValue(p["name"])
+		}
 	}
 	return ""
+}
+func jsonEqual(a, b json.RawMessage) bool {
+	var x, y any
+	return json.Unmarshal(a, &x) == nil && json.Unmarshal(b, &y) == nil && fmt.Sprint(x) == fmt.Sprint(y)
+}
+
+func (s *Server) profileValue(p map[string]json.RawMessage, key string) json.RawMessage {
+	var overlay map[string]json.RawMessage
+	json.Unmarshal(p["overlay"], &overlay)
+	if v, ok := overlay[key]; ok {
+		return v
+	}
+	var base struct{ Name, Vendor, EngineName string }
+	json.Unmarshal(p["base"], &base)
+	if base.EngineName == "" {
+		base.EngineName = base.Name
+	}
+	if s.presets == nil {
+		return nil
+	}
+	vendor, ok := s.presets.Vendor(base.Vendor)
+	if !ok {
+		return nil
+	}
+	native := map[string]map[string]*Preset{"machine": vendor.machines, "process": vendor.processes, "filament": vendor.filaments}[stringValue(p["type"])][base.EngineName]
+	if native == nil {
+		return nil
+	}
+	return native.Config[key]
+}
+func (s *Server) printerFactsOf(id string, p map[string]json.RawMessage) printerFacts {
+	nozzle, _ := strconv.ParseFloat(firstConfigText(s.profileValue(p, "nozzle_diameter")), 64)
+	return printerFacts{ID: id, Model: firstConfigText(s.profileValue(p, "printer_model")), Nozzle: nozzle}
+}
+
+func firstConfigText(raw json.RawMessage) string {
+	var list []any
+	if json.Unmarshal(raw, &list) == nil {
+		if len(list) == 0 {
+			return ""
+		}
+		return strings.TrimSpace(fmt.Sprint(list[0]))
+	}
+	var scalar any
+	json.Unmarshal(raw, &scalar)
+	if scalar == nil {
+		return ""
+	}
+	text, _, _ := strings.Cut(fmt.Sprint(scalar), ",")
+	return strings.Trim(strings.TrimSpace(text), `"`)
 }
 func (s *Server) putProfileLibrary(w http.ResponseWriter, r *http.Request) {
 	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 8<<20))
@@ -326,9 +451,33 @@ func (s *Server) putProfileLibrary(w http.ResponseWriter, r *http.Request) {
 		libraryFailure(w, 503, "library_unavailable", "The stored profile library needs recovery; no changes were written.", "repair_profiles", revision)
 		return
 	}
-	if name := worksWithNone(next, previous); name != "" {
+	convert := false
+	for id, old := range previous {
+		p := next[id]
+		if p == nil {
+			continue
+		}
+		if _, was := old["dynamic"]; was {
+			if _, still := p["dynamic"]; !still {
+				libraryFailure(w, 409, "profile_kind_locked", "A dynamic profile cannot become a normal profile. Use Split into normal profiles.", "reload", revision)
+				return
+			}
+		} else if _, now := p["dynamic"]; now {
+			convert = true
+		}
+		if _, merged := p["mergedInto"]; merged && old["mergedInto"] == nil {
+			convert = true
+		}
+	}
+	if name := s.worksWithNone(next, previous); name != "" {
 		libraryFailure(w, 422, "profile_works_with_none", "A profile must work with at least one printer: "+name, "edit_applicability", revision)
 		return
+	}
+	if convert {
+		if err := s.library.backup(request.OperationID, "convert", &legacySource{}); err != nil {
+			libraryFailure(w, 507, "library_write_failed", "Profiles could not be backed up before converting. Free storage and retry.", "retry_storage", revision)
+			return
+		}
 	}
 	var workspace *workspaceData
 	for id := range previous {

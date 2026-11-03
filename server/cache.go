@@ -17,7 +17,10 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/andybalholm/brotli"
 )
 
 //go:embed options.json
@@ -26,14 +29,32 @@ var optionData []byte
 type cachedResponse struct {
 	plain, zipped []byte
 	etag          string
+	brotli        atomic.Pointer[[]byte]
 }
+
+var brotliSlot = make(chan struct{}, 1)
 
 func cacheResponse(b []byte) *cachedResponse {
 	var zipped bytes.Buffer
 	z := gzip.NewWriter(&zipped)
 	z.Write(b)
 	z.Close()
-	return &cachedResponse{b, zipped.Bytes(), fmt.Sprintf(`"%x"`, sha256.Sum256(b))}
+	c := &cachedResponse{plain: b, zipped: zipped.Bytes(), etag: fmt.Sprintf(`"%x"`, sha256.Sum256(b))}
+	go func() {
+		brotliSlot <- struct{}{}
+		defer func() { <-brotliSlot }()
+		level := brotli.BestCompression
+		if len(b) > 1<<20 {
+			level = 5
+		}
+		var out bytes.Buffer
+		w := brotli.NewWriterLevel(&out, level)
+		w.Write(b)
+		w.Close()
+		encoded := out.Bytes()
+		c.brotli.Store(&encoded)
+	}()
+	return c
 }
 func cacheJSON(value any) (*cachedResponse, error) {
 	b, err := json.Marshal(value)
@@ -43,7 +64,10 @@ func cacheJSON(value any) (*cachedResponse, error) {
 	return cacheResponse(append(b, '\n')), nil
 }
 
-func acceptsGzip(r *http.Request) bool {
+func acceptsGzip(r *http.Request) bool   { return acceptsEncoding(r, "gzip") }
+func acceptsBrotli(r *http.Request) bool { return acceptsEncoding(r, "br") }
+
+func acceptsEncoding(r *http.Request, encoding string) bool {
 	wildcard := false
 	for _, part := range strings.Split(r.Header.Get("Accept-Encoding"), ",") {
 		fields := strings.Split(strings.TrimSpace(part), ";")
@@ -60,7 +84,7 @@ func acceptsGzip(r *http.Request) bool {
 				}
 			}
 		}
-		if name == "gzip" {
+		if name == encoding {
 			return quality > 0
 		}
 		if name == "*" {
@@ -74,7 +98,11 @@ func (c *cachedResponse) serve(w http.ResponseWriter, r *http.Request, name, con
 	w.Header().Set("Cache-Control", policy)
 	w.Header().Set("Content-Type", contentType)
 	data, etag := c.plain, c.etag
-	if acceptsGzip(r) {
+	if encoded := c.brotli.Load(); encoded != nil && acceptsBrotli(r) {
+		data = *encoded
+		etag = strings.TrimSuffix(etag, `"`) + `-br"`
+		w.Header().Set("Content-Encoding", "br")
+	} else if acceptsGzip(r) {
 		data = c.zipped
 		etag = strings.TrimSuffix(etag, `"`) + `-gzip"`
 		w.Header().Set("Content-Encoding", "gzip")
