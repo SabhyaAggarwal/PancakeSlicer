@@ -1,8 +1,8 @@
 import { nativeSurfaceSummary } from '../preview/explain-record';
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { Tabs } from 'radix-ui';
 import type { PresetType } from '../api/types';
-import { effectiveConfig, printerPreset, setState, useStore } from '../state/store';
+import { effectiveConfig, printerPreset, resolvePreset, setState, useStore } from '../state/store';
 import { filamentSlots as capacity } from '../profiles/machines';
 import { addFilament, removeSlot } from '../profiles/SetupRows';
 import { PresetCombo } from './PresetCombo';
@@ -16,18 +16,21 @@ const SettingsTab = lazy(() => import('./SettingsTab').then(m => ({default: m.Se
 
 function ProfileRow({type, slot = 0, title, remove}: {type: PresetType; slot?: number; title: string; remove?: () => void}) {
   const machine=useStore(printerPreset);
-  const cover=type === 'machine' && machine ? printerCover(machine.vendor,machine.config,machine.model) : undefined;
+  const error=useStore(s=>resolvePreset(s,type,type === 'machine' ? s.printer : s.filamentSlots[slot]).error);
+  const [failedCover,setFailedCover]=useState<string>();
+  const cover=type === 'machine' && machine && !error ? printerCover(machine.vendor,machine.config,machine.model) : undefined;
   const name = useStore(s => type === 'machine' ? s.printer : s.filamentSlots[slot]);
-  return <div className="profile-selector-row"><span className="profile-role">{type === 'machine' ? <img className="rail-printer-cover" src={cover ?? '/images/printer_placeholder.png'} alt="Printer" loading="lazy" width={36} height={36} onError={e=>{if(!e.currentTarget.dataset.fallback){e.currentTarget.dataset.fallback='1';e.currentTarget.src='/images/printer_placeholder.png';}}}/> : title}</span><PresetCombo type={type} slot={slot}/><button type="button" className="profile-settings-action btn" onClick={() => setState({presetUx: {kind: 'presets', type, name, edit: true}})}>Edit</button>{remove && <button type="button" className="filament-remove icon-btn" aria-label={`Remove filament slot ${slot + 1}`} title={`Remove filament slot ${slot + 1}`} onClick={remove}>×</button>}</div>;
+  return <div className="profile-selector-row">{type === 'machine' ? cover && failedCover !== cover && <span className="profile-role"><img className="rail-printer-cover" src={cover} alt="" loading="lazy" width={36} height={36} onError={()=>setFailedCover(cover)}/></span> : <span className="profile-role">{title}</span>}<PresetCombo type={type} slot={slot}/><button type="button" className="profile-settings-action btn" disabled={!name || !!error} title={!name ? `Choose a ${type === 'machine' ? 'printer' : 'filament'} to edit` : error ?? 'Edit selected profile'} onClick={() => setState({presetUx: {kind: 'presets', type, name, edit: true}})}>Edit</button>{remove && <button type="button" className="filament-remove icon-btn" aria-label={`Remove filament slot ${slot + 1}`} title={`Remove filament slot ${slot + 1}`} onClick={remove}>×</button>}</div>;
 }
 function PrinterMaterials() {
   const machine = useStore(printerPreset), slots = useStore(s => s.filamentSlots);
   const lastOnly = useStore(s => !!Object.keys(s.mixes).length || s.objects.some(o => o.paint?.color || o.volumes?.some(v => v.paint?.color)));
-  const multi = capacity(machine) > 1;
+  const machineError=useStore(s=>resolvePreset(s,'machine',s.printer).error);
+  const multi = !machineError && capacity(machine) > 1;
   return <section className="profile-section printer-materials" aria-label="Printer and its filaments">
     <SectionHeading level="main">Printer setup</SectionHeading>
     <div className="printer-setup-body">
-    <ProfileRow type="machine" title="Printer"/><div className="printer-hardware-summary">{machine && profileSummary('machine',machine.config)}</div>
+    <ProfileRow type="machine" title="Printer"/>{machine && !machineError && <div className="printer-hardware-summary">{profileSummary('machine',machine.config)}</div>}
     <section className="printer-filaments" aria-label="Filaments for this printer"><SectionHeading level="sub">Filaments</SectionHeading>{slots.map((_name, i) => <ProfileRow key={i} type="filament" slot={i} title={String(i + 1)} remove={multi && slots.length > 1 && (!lastOnly || i === slots.length - 1) ? () => removeSlot(i) : undefined}/>)}
     {multi && slots.length < capacity(machine) && <button type="button" className="btn-ghost add-material-slot" onClick={addFilament}>Add slot</button>}
     </section></div>
