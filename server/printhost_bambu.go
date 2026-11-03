@@ -47,8 +47,9 @@ func sendBambu(ctx context.Context, u *upload) (string, error) {
 	if err := ftpsUpload(ctx, p.Host, tlsConfig, u); err != nil {
 		return "", err
 	}
+	u.stored()
 	if !u.start {
-		return "Uploaded " + u.filename + " to " + p.Name + "'s SD card.", nil
+		return u.placed() + ".", nil
 	}
 	u.starting()
 	return mqttProjectFile(ctx, p, u, plate, strings.ToUpper(hex.EncodeToString(digest.Sum(nil))))
@@ -245,6 +246,14 @@ func ftpsUpload(ctx context.Context, host string, config *tls.Config, u *upload)
 			return err
 		}
 	}
+	if u.resend {
+		if text, err := c.cmd(213, 15*time.Second, "SIZE %s", u.filename); err == nil && strings.TrimSpace(text) == strconv.FormatInt(u.size, 10) {
+			u.onCard = true
+			u.progress.Store(u.size)
+			c.cmd(221, 5*time.Second, "QUIT")
+			return nil
+		}
+	}
 	text, err := c.cmd(227, 15*time.Second, "PASV")
 	if err != nil {
 		return err
@@ -376,7 +385,7 @@ func mqttProjectFile(ctx context.Context, p *PrinterConfig, u *upload, plate, md
 		if cause := context.Cause(ctx); cause != nil {
 			err = cause
 		}
-		return "", fmt.Errorf("uploaded %s to the SD card, but starting the print failed: %w", u.filename, err)
+		return "", fmt.Errorf("%s, but starting the print failed: %w", u.placed(), err)
 	}
 	conn, r, err := mqttSession(ctx, p, u.secret)
 	if err != nil {
@@ -434,7 +443,7 @@ func mqttProjectFile(ctx context.Context, p *PrinterConfig, u *upload, plate, md
 		if m.Command == "project_file" && m.Sequence == sequence {
 			if strings.EqualFold(m.Result, "success") {
 				mqttWrite(conn, 0xE0, nil)
-				return "Uploaded " + u.filename + " to " + p.Name + " and started printing.", nil
+				return u.placed() + " and started printing.", nil
 			}
 			reason := m.Reason
 			if reason == "" {
@@ -447,7 +456,7 @@ func mqttProjectFile(ctx context.Context, p *PrinterConfig, u *upload, plate, md
 		}
 		if (m.State == "PREPARE" || m.State == "RUNNING") && (m.Subtask == name || m.GcodeFile == u.filename) {
 			mqttWrite(conn, 0xE0, nil)
-			return "Uploaded " + u.filename + " to " + p.Name + " and started printing.", nil
+			return u.placed() + " and started printing.", nil
 		}
 	}
 }

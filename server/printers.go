@@ -310,6 +310,7 @@ type SendManager struct {
 	store   *printerStore
 	mu      sync.Mutex
 	busy    map[string]bool
+	cards   map[string]string
 	buckets map[string]tokenBucket
 }
 
@@ -503,6 +504,9 @@ func (s *Server) sendJob(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "this job is already being sent")
 		return
 	}
+	card := p.Name + "\x00" + filename
+	resend := s.sends.cards[card] == j.ID
+	delete(s.sends.cards, card)
 	t := &Transfer{Printer: p.Name, Kind: p.Kind, Start: start, Filename: filename, State: "uploading", Total: st.Size(), Started: time.Now().UTC(), sent: &atomic.Int64{}}
 	j.send = t
 	view := *t
@@ -520,7 +524,7 @@ func (s *Server) sendJob(w http.ResponseWriter, r *http.Request) {
 			options.amsMapping = nil
 		}
 	}
-	go s.runSend(j, t, p, f, client, options)
+	go s.runSend(j, t, p, f, client, options, resend)
 	w.Header().Set("Location", "/api/jobs/"+j.ID+"/send")
 	writeJSON(w, 202, &view)
 }
@@ -544,15 +548,24 @@ const sendTimeout = 30 * time.Minute
 const sendStall = 30 * time.Second
 
 type upload struct {
-	printer  *PrinterConfig
-	secret   string
-	filename string
-	file     *os.File
-	size     int64
-	start    bool
-	progress *atomic.Int64
-	starting func()
-	options  bambuOptions
+	printer        *PrinterConfig
+	secret         string
+	filename       string
+	file           *os.File
+	size           int64
+	start          bool
+	progress       *atomic.Int64
+	starting       func()
+	stored         func()
+	options        bambuOptions
+	resend, onCard bool
+}
+
+func (u *upload) placed() string {
+	if u.onCard {
+		return u.filename + " was already on " + u.printer.Name + "'s SD card"
+	}
+	return "Uploaded " + u.filename + " to " + u.printer.Name
 }
 
 type bambuOptions struct {
@@ -560,7 +573,7 @@ type bambuOptions struct {
 	amsMapping                     []int
 }
 
-func (s *Server) runSend(j *Job, t *Transfer, p *PrinterConfig, f *os.File, client string, options bambuOptions) {
+func (s *Server) runSend(j *Job, t *Transfer, p *PrinterConfig, f *os.File, client string, options bambuOptions, resend bool) {
 	defer f.Close()
 	began := time.Now()
 	base, cancelTimeout := context.WithTimeoutCause(context.Background(), sendTimeout, errors.New("the upload took longer than 30 minutes"))
@@ -569,7 +582,15 @@ func (s *Server) runSend(j *Job, t *Transfer, p *PrinterConfig, f *os.File, clie
 	defer cancel(nil)
 	stalled := watchProgress(ctx, cancel, t.sent, t.Total)
 	u := &upload{printer: p, filename: t.Filename, file: f, size: t.Total, start: t.Start, progress: t.sent,
-		starting: func() { j.mu.Lock(); t.State = "starting"; j.mu.Unlock() }, options: options}
+		starting: func() { j.mu.Lock(); t.State = "starting"; j.mu.Unlock() },
+		stored: func() {
+			s.sends.mu.Lock()
+			if s.sends.cards == nil {
+				s.sends.cards = map[string]string{}
+			}
+			s.sends.cards[p.Name+"\x00"+t.Filename] = j.ID
+			s.sends.mu.Unlock()
+		}, options: options, resend: resend}
 	var message string
 	var err error
 	if p.CredentialFile != "" {
@@ -606,7 +627,7 @@ func (s *Server) runSend(j *Job, t *Transfer, p *PrinterConfig, f *os.File, clie
 	s.sends.mu.Lock()
 	delete(s.sends.busy, p.Name)
 	s.sends.mu.Unlock()
-	audit(map[string]any{"event": "send_" + result, "job_id": j.ID, "printer": p.Name, "kind": p.Kind, "client": client, "start_print": t.Start, "bytes": t.sent.Load(), "duration_ms": time.Since(began).Milliseconds(), "error": errText})
+	audit(map[string]any{"event": "send_" + result, "job_id": j.ID, "printer": p.Name, "kind": p.Kind, "client": client, "start_print": t.Start, "bytes": t.sent.Load(), "on_card": u.onCard, "duration_ms": time.Since(began).Milliseconds(), "error": errText})
 }
 
 func watchProgress(ctx context.Context, cancel context.CancelCauseFunc, sent *atomic.Int64, total int64) *atomic.Bool {
