@@ -4,6 +4,7 @@ document.documentElement.classList.add('orca-parity');
 import './styles/tokens.css';
 import './styles/primitives.css';
 import './app.css';
+import './mobile.css';
 import './components/controls.css';
 
 const root = document.getElementById('root')!;

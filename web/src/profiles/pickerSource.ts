@@ -40,6 +40,7 @@ function selectionOwner(){
 }
 const sameOwner=(a:ReturnType<typeof selectionOwner>,b:ReturnType<typeof selectionOwner>)=>Object.keys(a).every(k=>a[k as keyof typeof a]===b[k as keyof typeof b]);
 export function createProfileFromBase(type:PresetType,base:string,slot=0,select?:(key:string)=>void):Promise<void>{
+  if(getState().profileLibraryLoad.state!=='ready')return import('./service-recovery').then(m=>m.explainProfileWriteBlock());
   let callback=0;
   if(select){callback=callbacks.get(select) ?? ++nextCallback;callbacks.set(select,callback);}
   let source:string;
@@ -55,6 +56,6 @@ export function createProfileFromBase(type:PresetType,base:string,slot=0,select?
     const s=getState(),profile=findProfile(s,type,name);
     if(!profile || profile.archived || profile.kind==='master' || !selectCompatibility(s,type,name).ok)throw new Error('The added profile needs compatibility repair before use. It remains in your library.');
     (select ?? ((value)=>requestPreset(type,slot,value)))(name);
-  })().catch(error=>{toast(`Add profile failed: ${error instanceof Error?error.message:String(error)}`);}).finally(()=>{if(intents.get(key)===intent)intents.delete(key);});
+  })().catch(async error=>{if(!await(await import('./service-recovery')).handleProfileWriteError(error))toast(`Add profile failed: ${error instanceof Error?error.message:String(error)}`);}).finally(()=>{if(intents.get(key)===intent)intents.delete(key);});
   return intent.flight;
 }

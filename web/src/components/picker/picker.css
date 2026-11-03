@@ -19,4 +19,13 @@
 :where(.orca-parity) .pk-star[aria-pressed=true] { color: var(--accent); }
 :where(.orca-parity) .pk-foot { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; border-top: 1px solid var(--border); }
 :where(.orca-parity) .pk-empty { color: var(--text-dim); padding: 12px; }
-@media (max-width: 500px) { :where(.orca-parity) .pk-body { grid-template-columns: 108px minmax(0, 1fr); } :where(.orca-parity) .pk-meta { display: none; } }
+@media (max-width: 600px) {
+  :where(.orca-parity) .pk-pop { width: calc(100vw - 16px); max-width: calc(100vw - 16px); overflow-y: auto; }
+  :where(.orca-parity) .pk-body { display: flex; flex-direction: column; min-height: 0; max-height: min(420px,60dvh); }
+  :where(.orca-parity) .pk-rail { flex-direction: row; flex: none; max-width: 100%; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+  :where(.orca-parity) .pk-rail button { flex: none; white-space: nowrap; min-height: 44px; }
+  :where(.orca-parity) .pk-list { min-height: 80px; flex: 1 1 auto; }
+  :where(.orca-parity) .pk-meta { display: none; }
+  :where(.orca-parity) .pk-option, :where(.orca-parity) .pk-foot button { min-height: 44px; }
+  :where(.orca-parity) .pk-foot { flex: none; }
+}

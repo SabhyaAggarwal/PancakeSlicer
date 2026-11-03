@@ -16,3 +16,10 @@
 .pf-service-recovery .pf-editor-error { white-space: pre-wrap; }
 .pf-service-keep { display: flex; align-items: flex-start; gap: 8px; margin-block: 8px; }
 .pf-service-keep .check { flex: none; }
+@media (max-width: 640px) {
+  .pf-service-recovery { width: 100%; padding: 16px 12px; }
+  .pf-service-recovery h2 { font-size: 22px; }
+  .pf-service-recovery-actions { position: static; align-items: stretch; }
+  .pf-service-recovery-actions > button { flex: 1 1 100%; min-height: 44px; }
+  .pf-service-differences :is(th,td) { padding: 6px 4px; overflow-wrap: anywhere; }
+}

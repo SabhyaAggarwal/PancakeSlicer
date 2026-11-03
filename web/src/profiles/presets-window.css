@@ -93,9 +93,46 @@
 :where(.orca-parity) .pf-results-tools .pf-profile-search { min-width: 0; margin: 0; flex: 1; }
 :where(.orca-parity) .pf-filtered-draft { flex: none; padding-bottom: 8px; color: var(--label); font-size: 13px; }
 :where(.orca-parity) .pf-filter-toggle { display: none; }
+:where(.orca-parity) .pf-mobile-navigation, :where(.orca-parity) .pf-mobile-show-results { display: none; }
+:where(.orca-parity) .pf-split[hidden], :where(.orca-parity) .pf-recovery-container[hidden] { display: none; }
+:where(.orca-parity) .pf-recovery-container { display: flex; flex: 1; min-width: 0; min-height: 0; }
+:where(.orca-parity) .pf-copy-pending { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; flex: none; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--sunken); font-size: 13px; overflow-wrap: anywhere; }
+:where(.orca-parity) .pf-copy-pending > span { flex: 1 1 240px; min-width: 0; }
 
 @media (max-width: 1200px) { :where(.orca-parity) .pf-window .pf-split { grid-template-columns: minmax(220px,28%) minmax(0,1fr); position: relative; } :where(.orca-parity) .pf-resizer { display: none; } :where(.orca-parity) .pf-facets { display: none; } :where(.orca-parity) .filters-open .pf-facets { display: flex; flex-direction: column; position: absolute; z-index: 12; inset: 0 auto 0 0; width: 240px; box-shadow: var(--shadow-pop); } :where(.orca-parity) .pf-filter-toggle { display: inline-flex; } }
-@media (max-width: 640px) { :where(.orca-parity) .modal.np-dialog.pf-window { width: calc(100vw - 24px); height: calc(100dvh - 24px); max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); } :where(.orca-parity) .pf-window .pf-split { grid-template-columns: minmax(130px,30%) minmax(0,1fr); } :where(.orca-parity) .pf-window .pf-my-profiles { padding: 8px; } :where(.orca-parity) .pf-results-tools { flex-wrap: wrap; } }
+@media (max-width: 640px) {
+  :where(.orca-parity) .modal.np-dialog.pf-window { width: 100vw; height: 100dvh; max-width: 100vw; max-height: 100dvh; border: 0; border-radius: 0; padding-block: env(safe-area-inset-top) env(safe-area-inset-bottom); }
+  :where(.orca-parity) .pf-workspace-title { gap: 6px; padding: 8px 12px; }
+  :where(.orca-parity) .pf-workspace-title h1 { flex: 1; font-size: 22px; }
+  :where(.orca-parity) .pf-workspace-title > .visibility-control { order: 5; width: 100%; margin: 0; }
+  :where(.orca-parity) .pf-workspace-title .detail-options { display: flex; }
+  :where(.orca-parity) .pf-workspace-title .detail-option { flex: 1; }
+  :where(.orca-parity) .pf-window .profile-library-notice { max-height: 28dvh; overflow: auto; }
+  :where(.orca-parity) .pf-copy-pending { max-height: 22dvh; overflow: auto; padding: 8px 12px; }
+  :where(.orca-parity) .pf-window .pf-split { display: flex; flex-direction: column; min-width: 0; }
+  :where(.orca-parity) .pf-window .pf-split > :is(.pf-facets,.pf-my-profiles,.pf-detail-pane) { display: none; }
+  :where(.orca-parity) .pf-window .pf-split[data-mobile-pane=list] > .pf-my-profiles,
+  :where(.orca-parity) .pf-window .pf-split[data-mobile-pane=detail] > .pf-detail-pane,
+  :where(.orca-parity) .pf-window .pf-split[data-mobile-pane=filters] > .pf-facets { display: flex; flex: 1; min-height: 0; min-width: 0; }
+  :where(.orca-parity) .pf-window .pf-split[data-mobile-pane=filters] > .pf-facets { position: static; width: 100%; overflow: auto; box-shadow: none; }
+  :where(.orca-parity) .pf-window .pf-split:not([data-mobile-pane=list]) > .pf-mobile-navigation { display: flex !important; flex: none; align-items: center; gap: 12px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+  :where(.orca-parity) .pf-mobile-navigation strong { min-width: 0; overflow-wrap: anywhere; }
+  :where(.orca-parity) .pf-window .pf-my-profiles { padding: 12px; }
+  :where(.orca-parity) .pf-detail-pane { padding: 12px 12px 0; }
+  :where(.orca-parity) .pf-results-tools { flex-wrap: wrap; }
+  :where(.orca-parity) .pf-results-tools .pf-profile-search { flex-basis: 100%; }
+  :where(.orca-parity) .pf-window :is(.text,.dropdown,.btn,.btn-ghost,.page-tab,.detail-option) { min-height: 44px; }
+  :where(.orca-parity) .pf-window :is(input,textarea,.text,.dropdown) { font-size: 16px; }
+  :where(.orca-parity) .pf-mobile-show-results { display: block !important; flex: none; }
+  :where(.orca-parity) .pf-full-editor .opt-line { grid-template-columns: minmax(0,1fr) 44px; gap: 6px; padding-block: 8px; }
+  :where(.orca-parity) .pf-full-editor .opt-line > .opt-label { grid-column: 1 / -1; }
+  :where(.orca-parity) .pf-full-editor .opt-line > .opt-field { grid-column: 1; }
+  :where(.orca-parity) .pf-editor-identity { min-width: 0; flex-basis: 100%; }
+  :where(.orca-parity) .pf-editor-controls { width: 100%; }
+  :where(.orca-parity) .pf-add-source { align-self: stretch; padding: 4px 0 16px; overflow-y: auto; }
+  :where(.orca-parity) .pf-source-cover { width: 96px; height: 96px; }
+  :where(.orca-parity) .pf-editor-heading { padding-bottom: 8px; }
+}
 
 :where(.orca-parity) .pf-radio-list { display: flex; flex-direction: column; gap: 10px; }
 :where(.orca-parity) .pf-facet-group > .btn-ghost { align-self: flex-start; width: auto; text-align: left; padding-left: 0; }

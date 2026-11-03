@@ -11,7 +11,7 @@ const ordered=(value:unknown):unknown=>Array.isArray(value)?value.map(ordered):v
 const equal=(a:unknown,b:unknown)=>JSON.stringify(ordered(a))===JSON.stringify(ordered(b));
 const stored=(p:UserPreset)=>storedProfile(normalizeUserPreset(p));
 const conflict=(message:string)=>Object.assign(new Error(message),{code:'revision_conflict',recovery:'reload_profiles'});
-interface FrozenWrite {write:ProfileLibraryWrite;records:UserPreset[];origins:Map<string,UserPreset|undefined>;signature:string;retryable:boolean;setupBaseline?:PrinterProfileLibrary}
+interface FrozenWrite {write:ProfileLibraryWrite;records:UserPreset[];origins:Map<string,UserPreset|undefined>;signature:string;retryable:boolean;acknowledged?:boolean;setupBaseline?:PrinterProfileLibrary}
 interface Acknowledgement {request:FrozenWrite;document:import('./ownership').ProfileLibraryDocument;records:UserPreset[];changed:Set<string>;setupsChanged?:boolean}
 let pending:FrozenWrite|undefined;
 const ownAcknowledgements=new WeakMap<UserPreset,UserPreset>();
@@ -44,7 +44,7 @@ async function acknowledge(request:FrozenWrite):Promise<Acknowledgement>{
   }
   const setupsChanged=!!request.setupBaseline && !equal(document.printers,request.write.document.printers);
   if(request.setupBaseline && !setupsChanged)ownSetupAcknowledgements.set(request.setupBaseline,document.printers);
-  request.retryable=false;if(pending===request)pending=undefined;
+  request.acknowledged=true;request.retryable=false;if(pending===request)pending=undefined;
   return {request,document,records,changed,setupsChanged};
 }
 function publishAcknowledgement(ack:Acknowledgement,apply?:(s:State)=>Partial<State>){
@@ -59,13 +59,14 @@ async function settleOutstanding():Promise<Acknowledgement|undefined>{
 export function acknowledgePendingProfileWrite():Promise<void>{
   return serialize(async()=>{if(pending)await acknowledge(pending);});
 }
-export interface ProfileCreation {commit():Promise<string>;readonly retryable:boolean}
+export interface ProfileCreation {commit():Promise<string>; readonly retryable:boolean}
 export function profileCreation(factory:(s:State)=>UserPreset|string):ProfileCreation{
-  let request:FrozenWrite|undefined,key:string|undefined;
-  return {get retryable(){return !!request?.retryable;},commit:()=>serialize(async()=>{
+  let request:FrozenWrite|undefined,key:string|undefined,flight:Promise<string>|undefined,service:State['api'];
+  return {get retryable(){return !!request && (request.retryable || !!request.acknowledged);},commit:()=>flight ??= serialize(async()=>{
     ready(getState());
+    if(request && getState().api!==service)throw conflict('The profile service changed. Retain this creation intent for recovery before adding again.');
     if(pending && pending!==request)await settleOutstanding();
-    if(!request || !request.retryable){
+    if(!request){
       const initial=getState();ready(initial);
       const remote=await readProfileLibrary(initial.api?.mock),latest=getState();ready(latest);
       if(latest.api!==initial.api)throw new Error('The profile service changed while adding. Your current setup is kept.');
@@ -77,13 +78,28 @@ export function profileCreation(factory:(s:State)=>UserPreset|string):ProfileCre
         setState(s=>{const current=findProfile(s,record.type,created);return {profileLibraryRevision:Math.max(s.profileLibraryRevision,remote.revision),
           userPresets:current && equal(stored(current),stored(record))?s.userPresets:[...s.userPresets.filter(p=>profileKey(p)!==created),record]};});return created;
       }
-      key=profileKey(created);
-      request=freezeWrite(canonical,{operationId:`create-profile:${crypto.randomUUID()}`,expectedRevision:remote.revision,document:{...remote,profiles:[...remote.profiles,storedProfile(prepareProfile(canonical,created))]}},[created],signature([created]));
+      const captured=structuredClone(created);key=profileKey(captured);service=initial.api;
+      request=freezeWrite(canonical,{operationId:`create-profile:${crypto.randomUUID()}`,expectedRevision:remote.revision,document:{...remote,profiles:[...remote.profiles,storedProfile(prepareProfile(canonical,captured))]}},[captured],signature([captured]));
     }
-    const ack=await acknowledge(request);publishAcknowledgement(ack);
+    if(getState().api!==service)throw conflict('The profile service changed. Retain this creation intent for recovery before adding again.');
+    const ack=await acknowledge(request);
+    if(getState().api!==service)throw conflict('The profile service changed before acknowledgement. Retain this intent and its saved identity for recovery.');
+    publishAcknowledgement(ack);
     if(ack.changed.has(key!) || ack.records.some(p=>p.archived))throw conflict('The added profile changed before selection. Its current record and your setup are kept.');
     return key!;
-  })};
+  }).finally(()=>{flight=undefined;})};
+}
+export function profileCopyCreation(source:UserPreset,name:string):ProfileCreation{
+  const captured=structuredClone(source),service=getState().api;
+  return profileCreation(s=>{
+    if(!captured.id || !name.trim())throw new Error('Choose a saved profile identity and enter a name for its copy.');
+    if(!s.api || s.api!==service)throw conflict('The profile service changed before copying. Reopen the saved source; your requested copy is kept.');
+    const current=findProfile(s,captured.type,captured.id);
+    if(!current || !equal(stored(current),stored(captured)))throw conflict('The saved source changed before copying. Review it before creating a new copy.');
+    if(s.userPresets.some(p=>p.type===captured.type && p.name===name))throw new Error('A profile already uses this name. Choose another name.');
+    return {...captured,id:`profile:${crypto.randomUUID()}`,kind:'profile',name,revision:0,aliases:[],archived:undefined,
+      provenance:{source:'profile',sourceId:captured.id,sourceName:captured.name,sourceRevision:captured.revision,operationId:crypto.randomUUID()}};
+  });
 }
 async function performSave(s:State,records:UserPreset[],operationId?:string,printers?:PrinterProfileLibrary,catalog?:SystemPreset[],setup?:PrinterSetupSaveContext):Promise<Acknowledgement>{
   ready(s);ready(getState());

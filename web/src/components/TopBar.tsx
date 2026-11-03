@@ -4,7 +4,7 @@ import { MenuButton, type MenuEntry } from './Menu';
 import { showProjects } from '../flow/project';
 import { openPalette } from '../commands/registry';
 import { lazy, Suspense, useState, useSyncExternalStore } from 'react';
-import { arrangeAll, canExport, fileUse, STALE_RESULT_TIP, download, newProject, openFileDialog, openProjectDialog, outputKind, outsideVolumeWarning, saveProject, slice } from '../actions';
+import { arrangeAll, canExport, STALE_RESULT_TIP, download, newProject, openFileDialog, openProjectDialog, outputKind, outsideVolumeWarning, saveProject, slice } from '../actions';
 import { deleteAll, removeSelected, setState, useStore } from '../state/store';
 import { canPaste, copySelection, cutSelection, pasteClipboard, selectAll } from '../edit';
 import { historyVersion, redo, redoName, redoNames, redoSteps, subscribeHistory, undo, undoName, undoNames, undoSteps } from '../state/history';
@@ -17,6 +17,7 @@ import { toggleViewOption, useViewOptions } from '../plater/viewOptions';
 import { toggleNonplanarView, useNonplanarView } from '../patch-preview';
 import { canCalibrate, canLoadStep } from '../api/client';
 import { toggleSidebar, useSidebarHidden } from '../sidebar';
+import { printerReady, showSettings } from '../workspace-sheet';
 
 type MenuItem = MenuEntry;
 function Menu({title, items}: {title: string; items: MenuItem[]}) { return <MenuButton label={title} items={items} className="menu-title" />; }
@@ -81,7 +82,7 @@ export function TopBar() {
             action: () => void import('../preview/objExport').then((m) => m.exportToolpathsObj(exportName || 'toolpaths')) },
           { label: 'Export Preset Bundle...', action: () => setState({ presetUx: { kind: 'export' } }), tip: 'Export current configuration to files' },
         ];
-  const appItems: MenuItem[] = [{label:'Projects',action:showProjects},{label:'Profiles',action:()=>setState({presetUx:{kind:'presets',type:'machine'}})},'sep',{label: 'Edit', sub: [
+  const appItems: MenuItem[] = [{label:'Add model…',action:openFileDialog},{label:'File',sub:fileItems},{label:'Settings',action:showSettings},{label:'Projects',action:showProjects},{label:'Profiles',action:()=>setState({presetUx:{kind:'presets',type:'machine'}})},'sep',{label: 'Edit', sub: [
           { label: undoLabel ? `Undo ${undoLabel}` : 'Undo', shortcut: `${MOD}+Z`, action: undo, disabled: !undoLabel },
           { label: redoLabel ? `Redo ${redoLabel}` : 'Redo', shortcut: `${MOD}+Y`, action: redo, disabled: !redoLabel },
           ...(undoLabel || redoLabel ? [{ label: 'History', sub: [
@@ -154,7 +155,7 @@ export function TopBar() {
     <button type="button" className="menu-title projects-button" onClick={showProjects}>Projects</button>
     <Menu title="File" items={fileItems}/>
     <ProjectTitle/></div>
-    {mock && <span className="mock-badge" title="Demo: slices are simulated">Demo</span>}
+    {mock && <span className="mock-badge">Demo</span>}
     {tab !== 'projects' && <TabBar/>}
     {archive && <Suspense fallback={null}><ArchiveDialog files={archive} close={() => setArchive(null)} /></Suspense>}
   </header>;
@@ -172,7 +173,8 @@ export function TabBar() {
   const outside = useStore(outsideVolumeWarning);
   const busy = job.state === 'running' || job.state === 'submitting';
   const exportEnabled = useStore(canExport);
-  const exportLabel = useStore(outputKind) === 'gcode.3mf' ? 'Export plate sliced file' : 'Export G-code file';
+  const exportLabel = useStore(outputKind) === 'gcode.3mf' ? 'Export sliced file' : 'Export G-code';
+  const printer = useStore(printerReady);
   const hasPrinters = useStore((s) => s.printers.length > 0 || s.printerEdit || s.printerHosts);
   const plates = useStore((s) => s.projectPlates.length > 1);
   const [sliceMode, setSliceMode] = useState('Slice plate');
@@ -195,28 +197,28 @@ export function TabBar() {
       {!profileManager && <SettingsDetail/>}
       <div className="tabbar-actions">
         {allSlice ? (
-          <button className="side-btn side-split" disabled={busy} title="Slice all plates" onClick={() => void sliceAll()}>Slice all</button>
+          <button className="side-btn side-split" disabled={!printer || busy} onClick={() => void sliceAll()}>Slice all</button>
         ) : (
-          <button className={`side-btn ${plates ? 'side-split' : ''}`} disabled={!hasObjects || busy || !!outside} title={outside ?? (hasObjects ? 'Slice the plate into a printable file and show it in Preview' : 'Add a model to the plate first')} onClick={() => void slice()}>
+          <button className={`side-btn ${plates ? 'side-split' : ''}`} disabled={!hasObjects || !printer || busy || !!outside} onClick={() => void slice()}>
             Slice plate
           </button>
         )}
         {plates && <SideOptions options={['Slice all', 'Slice plate']} value={sliceMode} onChange={setSliceMode} />}
         <span className="export-actions">{allExport ? (
-          <button className="side-btn side-split" disabled={!exportAllEnabled} onClick={() => void exportAll()} title={exportAllEnabled ? 'Export all sliced plates' : 'Slice the plates first'}>Export all sliced file</button>
+          <button className="side-btn side-split" disabled={!exportAllEnabled} onClick={() => void exportAll()}>Export all sliced file</button>
         ) : (
-          <button className={`side-btn ${plates ? 'side-split' : ''}`} disabled={!exportEnabled} onClick={download} title={job.stale ? STALE_RESULT_TIP : outside ?? (exportEnabled ? fileUse() : 'Slice the plate first')}>
+          <button className={`side-btn ${plates ? 'side-split' : ''}`} disabled={!exportEnabled} onClick={download}>
             {exportLabel}
           </button>
         )}
         {plates && <SideOptions options={[exportLabel, 'Export all sliced file']} value={allExport ? 'Export all sliced file' : exportLabel}
           onChange={(v) => setExportMode(v === 'Export all sliced file' ? 'all' : 'plate')} />}
         {hasPrinters && (
-          <button className="side-btn" disabled={!exportEnabled} onClick={() => setState({ appDialog: 'send' })} title={exportEnabled ? 'Upload the sliced file to a printer' : 'Slice the plate first'}>
+          <button className="side-btn" disabled={!exportEnabled} onClick={() => setState({ appDialog: 'send' })}>
             Send
           </button>
         )}
-        </span><MenuButton className="btn output-overflow" label="More output actions" items={[{label:'Slice plate',action:()=>void slice(),disabled:!hasObjects || busy || !!outside,tip:outside ?? 'Add a model before slicing'}, {label: exportLabel, action: download, disabled: !exportEnabled, tip: job.stale ? STALE_RESULT_TIP : 'Slice the plate first'}, ...(hasPrinters ? [{label: 'Send to printer', action: () => setState({appDialog: 'send'}), disabled: !exportEnabled}] : []), ...(plates ? [{label: 'Slice all plates', action: () => void sliceAll(), disabled: busy}, {label: 'Export all plates', action: () => void exportAll(), disabled: !exportAllEnabled}] : [])]}>More</MenuButton>
+        </span><MenuButton className="btn output-overflow" label="Print output" items={[{label:'Slice plate',action:()=>void slice(),disabled:!hasObjects || !printer || busy || !!outside,tip:outside ?? 'Add a model before slicing'}, {label: exportLabel, action: download, disabled: !exportEnabled, tip: job.stale ? STALE_RESULT_TIP : 'Slice the plate first'}, ...(hasPrinters ? [{label: 'Send to printer', action: () => setState({appDialog: 'send'}), disabled: !exportEnabled}] : []), ...(plates ? [{label: 'Slice all plates', action: () => void sliceAll(), disabled: !printer || busy}, {label: 'Export all plates', action: () => void exportAll(), disabled: !exportAllEnabled}] : [])]}>Output</MenuButton>
       </div>
     </div>
   );

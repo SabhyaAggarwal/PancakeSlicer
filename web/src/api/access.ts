@@ -1,4 +1,3 @@
-const TOKEN_KEY = 'orca.web.bearerToken';
 let token = '';
 export type AccessNotice = { status: number; message: string };
 let notice: AccessNotice | null = null;
@@ -14,10 +13,6 @@ export function accessNotice(value: AccessNotice | null) {
 }
 export function saveAccessToken(value: string) {
   token = value.trim();
-  try {
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-    else localStorage.removeItem(TOKEN_KEY);
-  } catch {  }
 }
 export function bootstrapAccessToken() {
   const url = new URL(location.href);
@@ -25,8 +20,6 @@ export function bootstrapAccessToken() {
     saveAccessToken(url.searchParams.get('token') ?? '');
     url.searchParams.delete('token');
     history.replaceState(history.state, '', url.pathname + url.search + url.hash);
-  } else {
-    try { token = localStorage.getItem(TOKEN_KEY) ?? ''; } catch { token = ''; }
   }
 }
 

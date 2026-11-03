@@ -63,6 +63,7 @@ export function CanvasToolbar() {
   const [arranging, setArranging] = useState(false);
   const arrangeAt = useRef<HTMLSpanElement>(null);
   const rare: MenuEntry[] = [
+    {label:'Auto orient',action:()=>toolbarOperation('orient'),disabled:!hasObjects || project},
     {label: 'Add plate', action: addPlate, disabled: !meshPlates},
     {label: 'Add instance', action: addInstance, disabled: !edit || project, tip: locked || undefined},
     {label: 'Remove instance', action: removeInstance, disabled: instances < 2 || project, tip: locked || undefined},
@@ -91,7 +92,7 @@ export function CanvasToolbar() {
     {arranging && <ArrangeOptions at={arrangeAt.current}/>}
     <IconButton size={24} icon="toolbar_orient" title="Auto orient (Q / Shift+Q)" onClick={e => toolbarOperation('orient', e.shiftKey)} disabled={!hasObjects || project}/>
     <IconButton size={24} icon="toolbar_open" title={`Add model (${MOD}+I)`} onClick={openFileDialog}/>
-    <MenuButton className="btn-ghost canvas-more" label="More tools" items={rare}>More</MenuButton>
+    <MenuButton className="btn-ghost canvas-more" label="Model tools" items={rare}>Tools</MenuButton>
   </div>;
 }
 
@@ -135,7 +136,7 @@ export function AccessNotification() {
   if (!notice) return null;
   return (
     <div className={`notification ${notice.status === 429 || notice.status === 503 ? 'warning' : 'failed'}`} role="alert">
-      <button className="notif-close icon-btn" title="Close" onClick={() => accessNotice(null)}><Icon name="notification_close" size={14} /></button>
+      <button className="notif-close icon-btn" aria-label="Close" onClick={() => accessNotice(null)}><Icon name="notification_close" size={14} /></button>
       <div className="notif-title">{notice.message}</div>
       {notice.status === 401 && (
         <form className="access-token-form" onSubmit={(event) => {
@@ -196,7 +197,7 @@ export function SliceNotification() {
   });
   const busy = job.state === 'running' || job.state === 'submitting';
   const close = (k: string) => (
-    <button className="notif-close icon-btn" title="Close" onClick={() => setClosed((c) => new Set(c).add(k))}>
+    <button className="notif-close icon-btn" aria-label="Close" onClick={() => setClosed((c) => new Set(c).add(k))}>
       <Icon name="notification_close" size={14} />
     </button>
   );
@@ -212,9 +213,9 @@ export function SliceNotification() {
   const suggest = useMemo(() => plateObjects.filter((o) => suggestIds.split(',').includes(String(o.id))), [plateObjects, suggestIds]);
   const facts = !fresh && !busy && patchPreview ? patchPreview.facts.filter((f) => !suggestIds.split(',').includes(String(f.objectId))) : [];
   const factsKey = `np:${facts.map((f) => `${f.objectId}:${f.curved}`).join(',')}`;
-  const exportLink = (label: string) => <button type="button" className="notif-link" title={exportLabel} onClick={download}>{label}</button>;
+  const exportLink = (label: string) => <button type="button" className="notif-link" onClick={download}>{label}</button>;
   const canSend = useStore((s) => s.printers.length > 0 || s.printerEdit || s.printerHosts);
-  const sendLink = canSend && <>{' · '}<button type="button" className="notif-link" title="Upload the sliced file to a printer" onClick={() => setState({ appDialog: 'send' })}>Send</button></>;
+  const sendLink = canSend && <>{' · '}<button type="button" className="notif-link" onClick={() => setState({ appDialog: 'send' })}>Send</button></>;
   const compareLink = <button type="button" className="notif-link" onClick={() => (setCompareWanted(true), setState({ tab: 'preview' }))}>Compare</button>;
   return (
     <div className="notifications" ref={stack}>
@@ -244,7 +245,7 @@ export function SliceNotification() {
         const o = plateObjects.find((x) => String(x.id) === id);
         return o && (
           <div key={`orient${id}`} className="notification done">
-            <button className="notif-close icon-btn" title="Close" onClick={() => dismissOrientPrompt(o.id)}>
+            <button className="notif-close icon-btn" aria-label="Close" onClick={() => dismissOrientPrompt(o.id)}>
               <Icon name="notification_close" size={14} />
             </button>
             <div className="notif-title">{o.name}</div>
@@ -272,7 +273,7 @@ export function SliceNotification() {
         <div className="notification running">
           <div className="notif-text">
             {slicingText(job, plateIndex)}
-            <button className="notif-cancel icon-btn" title="Cancel" onClick={cancelSlice}>
+            <button className="notif-cancel icon-btn" aria-label="Cancel slicing" onClick={cancelSlice}>
               <Icon name="notification_cancel" size={16} />
             </button>
           </div>
@@ -337,7 +338,7 @@ export function CutPanel() {
         <span style={{ width: 10, height: 10, background: colour, flex: 'none' }} />{label}
       </span>
       <label className="select-row" style={{ whiteSpace: 'nowrap' }}><Check checked={keep} disabled={joined} onCheckedChange={(next) => onKeep(next)} />Keep</label>
-      <label className="select-row" style={{ whiteSpace: 'nowrap' }} title={onPlace ? undefined : 'The upper part is always placed on its cut face'}>
+      <label className="select-row" style={{ whiteSpace: 'nowrap' }}>
         <Check checked={keep && place} disabled={!keep || !onPlace} onCheckedChange={(next) => onPlace?.(next)} />Place on cut
       </label>
     </>
@@ -360,7 +361,7 @@ export function CutPanel() {
         <span style={{ gridColumn: '1 / -1' }} className="menu-sep" />
         <span style={{ gridColumn: '1 / -1' }}>After cut:</span>
       </div>
-      <label className="select-row" style={{ whiteSpace: 'nowrap' }} title="Both pieces stay one object, the upper piece a part, where they stand">
+      <label className="select-row" style={{ whiteSpace: 'nowrap' }}>
         <Check checked={!!cut.toParts} disabled={joined} onCheckedChange={(next) => setCut({ toParts: next })} />Cut to parts
       </label>
       {!cut.toParts && (
@@ -373,8 +374,8 @@ export function CutPanel() {
         </div>
       )}
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-        <button className="btn" title="Flip cut plane" onClick={() => void import('../plater/cutJoints').then((m) => setCut(m.flipped(getState(), cut)))}>Flip</button>
-        <button className="btn" title="Reset cutting plane and remove connectors" disabled={!initial || (cut.z === initial.z && !cut.rotX && !cut.rotY && !cut.connectors?.length)}
+        <button className="btn" onClick={() => void import('../plater/cutJoints').then((m) => setCut(m.flipped(getState(), cut)))}>Flip</button>
+        <button className="btn" disabled={!initial || (cut.z === initial.z && !cut.rotX && !cut.rotY && !cut.connectors?.length)}
           onClick={() => initial && setCut({ z: initial.z, rotX: 0, rotY: 0, connectors: [] })}>Reset</button>
         <span style={{ flex: 1 }} />
         <button className="btn primary" disabled={!can} onClick={() => void import('../plater/cutPerform').then((m) => m.performCut())}>Perform cut</button>
@@ -400,12 +401,9 @@ export function PaintPanel() {
   const tool = tools.some(([id]) => id === t.tool) ? t.tool : 'circle';
   const fill = tool === 'fill', gap = tool === 'gap', height = tool === 'height', triangle = tool === 'triangle';
   const painted = !!paintOf(object, kind) || !!object.volumes?.some((v) => v.type === 'part' && paintOf(v, kind));
-  const tips = kind === 'color' ? 'Left mouse button: Paint\nShift + Left mouse button: Erase\n1 - 9: Choose filament'
-    : kind === 'fuzzy' ? 'Left mouse button: Add fuzzy skin\nShift + Left mouse button: Remove fuzzy skin'
-    : `Left mouse button: ${kind === 'seam' ? 'Enforce seam' : 'Enforce supports'}\nRight mouse button: ${kind === 'seam' ? 'Block seam' : 'Block supports'}\nShift + Left mouse button: Erase`;
   return (
     <div className="manip-panel">
-      <div className="manip-title" title={`${tips}\nCtrl + Mouse wheel: ${fill ? 'Smart fill angle' : height ? 'Height range' : 'Brush size'}`}>{PAINT_TITLE[kind]}</div>
+      <div className="manip-title">{PAINT_TITLE[kind]}</div>
       <div className="manip-grid" style={{ gridTemplateColumns: 'auto auto auto' }}>
         {kind === 'color' && (
           <>
@@ -413,7 +411,7 @@ export function PaintPanel() {
             <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap', gridColumn: 'span 2' }}>
               {filaments.slice(0, EXTRUDERS_LIMIT).map((c, i) => (
                 <button key={i} type="button" className={`paint-filament ${t.filament === i + 1 ? 'active' : ''}`} style={{ background: c }}
-                  title={`Shortcut Key ${i + 1}`} aria-pressed={t.filament === i + 1} onClick={() => setPaintTool({ filament: i + 1 })}>{i + 1}</button>
+                  aria-label={`Filament ${i + 1}`} aria-pressed={t.filament === i + 1} onClick={() => setPaintTool({ filament: i + 1 })}>{i + 1}</button>
               ))}
             </span>
           </>
@@ -425,7 +423,7 @@ export function PaintPanel() {
         </span>
         {gap ? (
           <>
-            <span title="Triangle patch area threshold, triangle patch will be merged to neighbor if its area is less than threshold">Gap area</span>
+            <span>Gap area</span>
             <Range min={GAP_AREA.min} max={GAP_AREA.max} step={GAP_AREA.step} value={t.gapArea} onValueChange={(next) => setPaintTool({ gapArea: next })} />
             <Num value={t.gapArea} step={GAP_AREA.step} onCommit={(v) => setPaintTool({ gapArea: v })} />
             <span />
@@ -452,15 +450,15 @@ export function PaintPanel() {
           </label>
         )}
         {kind === 'support' && !gap && (
-          <label className="select-row" style={{ gridColumn: '1 / -1' }} title={'Allows painting only on facets selected by: "Highlight overhangs"'}>
+          <label className="select-row" style={{ gridColumn: '1 / -1' }}>
             <Check checked={t.overhangsOnly} onCheckedChange={(next) => setPaintTool({ overhangsOnly: next })} />On highlighted overhangs only
           </label>
         )}
         {kind === 'support' && (
           <>
             <span style={{ gridColumn: '1 / -1' }} className="menu-sep" />
-            <span title={threshold ? `Auto support threshold angle: ${threshold}` : 'No auto support'}>Highlight overhangs</span>
-            <Range min={0} max={90} step={1} value={t.highlight} title="Highlight faces according to overhang angle." onValueChange={(next) => setPaintTool({ highlight: next })} />
+            <span>Highlight overhangs</span>
+            <Range min={0} max={90} step={1} value={t.highlight} aria-label="Highlight overhangs" onValueChange={(next) => setPaintTool({ highlight: next })} />
             <Num value={t.highlight} step={1} onCommit={(v) => setPaintTool({ highlight: v })} />
           </>
         )}

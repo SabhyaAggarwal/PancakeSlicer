@@ -1,6 +1,6 @@
 import { savePreferences, usePreference } from '../saved-preferences';
 import { ProfileLibraryNotice } from '../components/ProfileLibraryNotice';
-import { serviceRecoverySnapshot, subscribeServiceRecovery } from './service-recovery';
+import { serviceRecoverySnapshot, subscribeServiceRecovery, handleProfileWriteError, explainProfileWriteBlock, openSavedProfileRecovery } from './service-recovery';
 import { ServiceProfileRecoveryPanel } from './ServiceProfileRecoveryPanel';
 import { useEffect, useId, useRef, useSyncExternalStore } from 'react';
 import { createSelection, reduceSelection, selectedVisible, type SelectionEvent } from './selection';
@@ -13,7 +13,8 @@ import { ManagerProfileRow } from './ManagerProfileRow';
 import { profileAccess, profileReferenceSnapshot, subscribeProfileReferences } from './references';
 import { changedKeys, findCatalogBase } from './model';
 import { applicabilityKey } from './WorksWith';
-import { archiveProfiles, commitProfileRecords, ensureEditableMaster, restoreProfiles } from './transactions';
+import { archiveProfiles, profileCopyCreation, ensureEditableMaster, restoreProfiles, type ProfileCreation } from './transactions';
+import { documentGeneration } from '../state/history';
 import { ProfileEditor, type ProfileDraft } from './ProfileEditor';
 import { profileColour,profileSummary } from './metadata';
 import { Check } from '../components/Check';
@@ -40,6 +41,8 @@ const TYPES: [PresetType, string][] = [['machine', 'Printers'], ['filament', 'Fi
 const shortName = presetLabel;
 const first = (value: unknown) => String(Array.isArray(value) ? value[0] ?? '' : value ?? '');
 const coverOf = (vendor: string, model: string) => vendor && model ? `/profiles/${encodeURIComponent(vendor)}/${encodeURIComponent(model)}_cover.png` : undefined;
+type CopyRequest={source:UserPreset;name:string;creation:ProfileCreation;error?:string};
+let pendingCopy:CopyRequest|undefined;
 
 interface Item { base?:SystemPreset; key: string; name: string; mine: boolean; parent?: string; changed: number; slot?: number; user?: UserPreset; note: string; vendor: string; model:string; nozzle: string; material: string; cover?: string; swatch?:string|null;reason?: string; config: Config }
 
@@ -89,16 +92,17 @@ function catalogItems(s: State, type: PresetType): Item[] {
   });
 }
 function AddProfileDetails({type,item,copy,busy,onAdd}: {type:PresetType;item:Item;copy:boolean;busy:boolean;onAdd(name?:string):void}) {
-  const [name,setName]=useState(`${item.name} copy`);
+  const [name,setName]=useState(()=>pendingCopy && pendingCopy.source.id===item.user?.id?pendingCopy.name:`${item.name} copy`);
   const library=useStore(s=>s.profileLibraryLoad),blocked=library.state==='ready'?undefined:library.state==='failed'?library.error:'Wait for saved profiles to load before adding.';
   return <section className="pf-add-source" aria-label={copy ? 'Copy existing profile' : 'Add from template'}>
     {item.cover && <img className="pf-source-cover" src={item.cover} alt="" loading="lazy"/>}
     <h2>{item.name}</h2><p>{item.note}</p>
     <p>{copy ? 'Create a separate profile with these saved settings.' : 'Add this template as an editable profile.'}</p>
-    {copy && <label className="pf-copy-name">Profile name<input className="text" value={name} onChange={e=>setName(e.target.value)} aria-label="New profile name"/></label>}
+    {copy && <label className="pf-copy-name">Profile name<input className="text" value={name} disabled={busy || !!pendingCopy?.creation.retryable} onChange={e=>setName(e.target.value)} aria-label="New profile name"/></label>}
     {item.reason && <p role="alert">{item.reason}</p>}
     {blocked && <p role="status">{blocked}</p>}
-    <button type="button" className="btn primary" disabled={busy || !!blocked || !!item.reason || copy && !name.trim()} title={blocked ?? item.reason ?? (copy && !name.trim() ? 'Enter a profile name' : undefined)} onClick={()=>onAdd(copy ? name.trim() : undefined)}>{busy ? 'Adding…' : copy ? 'Add copy' : `Add ${type === 'machine' ? 'printer' : type === 'filament' ? 'filament' : 'print settings'}`}</button>
+    {blocked && <button type="button" className="btn" onClick={openSavedProfileRecovery}>Review saved profiles</button>}
+    <button type="button" className="btn primary" disabled={busy || !!blocked || !!item.reason || copy && !name.trim()} title={blocked ?? item.reason ?? (copy && !name.trim() ? 'Enter a profile name' : undefined)} onClick={()=>onAdd(copy ? name.trim() : undefined)}>{busy ? 'Waiting for confirmation…' : copy ? pendingCopy?'Retry copy request':'Add copy' : `Add ${type === 'machine' ? 'printer' : type === 'filament' ? 'filament' : 'print settings'}`}</button>
   </section>;
 }
 
@@ -156,8 +160,15 @@ function Compare({ type, left, right, names, setRight, close }: { type: PresetTy
   );
 }
 
-export default function PresetsWindow({ type: initialType, name, compare, edit = false,add = false,stage }: { type: PresetType; name?: string; compare?: string; edit?: boolean;add?:boolean;stage?:ProjectProfileChanges }) {
+export default function PresetsWindow({ type: initialType, name, compare, edit = false,add = false,stage,request }: { type: PresetType; name?: string; compare?: string; edit?: boolean;add?:boolean;stage?:ProjectProfileChanges;request?:object }) {
   const recovery=useSyncExternalStore(subscribeServiceRecovery,serviceRecoverySnapshot,serviceRecoverySnapshot);
+  const libraryReady=useStore(s=>s.profileLibraryLoad.state==='ready');
+  const [recoveryOpen,setRecoveryOpen]=useState(!add);
+  const [mobilePane,setMobilePane]=useState<'list'|'detail'|'filters'>(edit || stage || compare!==undefined?'detail':'list');
+  const mobileBack=useRef<HTMLButtonElement>(null),mounted=useRef(true);
+  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
+  useEffect(()=>{if(!request)return;if(add){setAdding(true);setRecoveryOpen(false);}else setRecoveryOpen(true);},[request]);
+  useEffect(()=>{if(window.matchMedia('(max-width:640px)').matches && mobilePane!=='list')mobileBack.current?.focus();},[mobilePane]);
   const [type, setType] = useState(initialType), [search, setSearch] = useState(''), [adding, setAdding] = useState(add), [masters,setMasters] = useState(()=>!!name && findProfile(getState(),initialType,name)?.kind === 'master');
   const [addSource,setAddSource]=useState('template');
   const [vendorFilter,setVendorFilter] = useState<string[]>([]), [nozzleFilter,setNozzleFilter] = useState<string[]>([]), [materialFilter,setMaterialFilter] = useState<string[]>([]), [modelFilter,setModelFilter]=useState<string[]>([]), [printerFilter,setPrinterFilter]=useState<string[]>([]);
@@ -244,6 +255,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const dispatch = useCallback((event: SelectionEvent, focus = false) => {
     selectionRevision.current++;initializedSelection.current=true;inspected.current=null;
     const next = reduceSelection(latestSelection.current, event); latestSelection.current = next; setSelection(next); setComparing(false);
+    if(event.type==='CLICK' && !event.toggle && !event.shift)setMobilePane('detail');
     if(focus && next.focus) requestAnimationFrame(() => {const row = document.getElementById(`${id}:${next.focus}`); row?.focus({preventScroll: true}); row?.scrollIntoView({block: 'nearest'});});
   }, [id]);
   const access = useMemo(() => profileAccess(type), [type, references, users]);
@@ -258,23 +270,41 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     if(row) next = reduceSelection(next, {type: 'CLICK', key: row.key});
     setSelection(next);
   };
-  const added = (n: string) => {setMasters(false); setAdding(false); setSearch(''); setVendorFilter([]); setNozzleFilter([]); setMaterialFilter([]); const p = findProfile(getState(), type, n); if(p) {const key = profileKey(p); const initial = createSelection(`profiles:owned:${type}`, [key]); setSelection(reduceSelection(initial,{type: 'CLICK',key}));}};
+  const added = (n: string,targetType=type) => {setType(targetType);setMasters(false); setAdding(false); setMobilePane('detail');setSearch(''); setVendorFilter([]); setNozzleFilter([]); setMaterialFilter([]); const p = findProfile(getState(), targetType, n); if(p) {const key = profileKey(p); const initial = createSelection(`profiles:owned:${targetType}`, [key]); setSelection(reduceSelection(initial,{type: 'CLICK',key}));}};
+  const consumeCopy=async(captured:CopyRequest,owns:()=>boolean)=>{
+    const key=await captured.creation.commit();
+    if(owns() && pendingCopy===captured){pendingCopy=undefined;added(key,captured.source.type);}
+    else captured.error='The copy result is retained. Your document or selection changed; explicitly finish this request to inspect the saved profile.';
+  };
   const addSelected = async (item:Item,newName?:string) => {
+    if(getState().profileLibraryLoad.state!=='ready'){explainProfileWriteBlock();return;}
     setBusy(true);setBulkError(null);
+    const revision=selectionRevision.current,document=documentGeneration(),before=getState();
+    const owns=()=>mounted.current && documentGeneration()===document && getState().api===before.api && selectionRevision.current===revision
+      && getState().printer===before.printer && getState().process===before.process && getState().filamentSlots===before.filamentSlots;
     try {
-      const s=getState();
       if(addSource === 'template') {
-        added(await createProfileFromBase(type,item.key));
+        const key=await createProfileFromBase(type,item.key);if(owns())added(key);
       } else {
         if(!item.user || !newName) throw new Error('Choose a profile and enter a name for its copy.');
-        if(s.userPresets.some(p=>p.type === type && p.name === newName)) throw new Error('A profile already uses this name. Choose another name.');
-        if(!s.api) throw new Error('Profile service unavailable. Reconnect and try again.');
-        const p:UserPreset={...item.user,id:`profile:${crypto.randomUUID()}`,kind:'profile',name:newName,revision:0,aliases:[],archived:undefined,provenance:{source:'profile',sourceId:profileKey(item.user),sourceName:item.user.name,sourceRevision:item.user.revision,operationId:crypto.randomUUID()}};
-        await commitProfileRecords([p]);added(profileKey(p));
+        if(pendingCopy && (pendingCopy.source.id!==item.user.id || pendingCopy.name!==newName))throw new Error('A different copy request is retained. Finish or explicitly review that request before starting another.');
+        pendingCopy ??= {source:item.user,name:newName,creation:profileCopyCreation(item.user,newName)};
+        await consumeCopy(pendingCopy,owns);
       }
-    } catch(error) {setBulkError(error instanceof Error ? error.message : String(error));}
-    finally {setBusy(false);}
+    } catch(error) {if(pendingCopy)pendingCopy.error=error instanceof Error?error.message:String(error);if(!await handleProfileWriteError(error) && mounted.current)setBulkError(error instanceof Error ? error.message : String(error));}
+    finally {if(mounted.current)setBusy(false);}
   };
+  const resumeCopy=()=>{if(!pendingCopy)return;const copy=pendingCopy;setAdding(true);setAddSource('copy');pickType(copy.source.type,copy.source.id);setMobilePane('detail');};
+  const retryCopy=async()=>{
+    const copy=pendingCopy;if(!copy || busy)return;
+    if(getState().profileLibraryLoad.state!=='ready'){explainProfileWriteBlock();return;}
+    const document=documentGeneration(),before=getState(),revision=selectionRevision.current;
+    setBusy(true);
+    try{await consumeCopy(copy,()=>mounted.current && documentGeneration()===document && getState().api===before.api && selectionRevision.current===revision && getState().printer===before.printer && getState().process===before.process && getState().filamentSlots===before.filamentSlots);}
+    catch(error){copy.error=error instanceof Error?error.message:String(error);await handleProfileWriteError(error);}
+    finally{if(mounted.current)setBusy(false);}
+  };
+  const dismissRejectedCopy=async()=>{const copy=pendingCopy;if(!copy || copy.creation.retryable || busy)return;if(await confirmDialog('Review rejected copy','Discard this uncommitted request and review its source/name?', ['Review source','Keep request']) && pendingCopy===copy){pendingCopy=undefined;setBulkError(null);}};
   const exportSelected = async () => {
     setBusy(true); setBulkError(null);
     try {
@@ -287,7 +317,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const deleteSelected = async (keys?:string[]) => {
     setBusy(true); setBulkError(null);
     try {await archiveRecords(type,keys ?? selectedVisible(latestSelection.current));}
-    catch(error) {setBulkError(error instanceof Error ? error.message : String(error));}
+    catch(error) {await handleProfileWriteError(error);setBulkError(error instanceof Error ? error.message : String(error));}
     finally {setBusy(false);}
   };
   const [masterLoad,setMasterLoad] = useState<{key:string;error?:string}|null>(null);
@@ -298,10 +328,10 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
       const key=await ensureEditableMaster(type,baseKey);
       if(latestSelection.current.scope === scope && selectionRevision.current === intent)setSelection(reduceSelection(createSelection(scope,[key]),{type:'CLICK',key}));
       setMasterLoad(null);
-    } catch(error) {setMasterLoad({key:baseKey,error:error instanceof Error ? error.message : String(error)});}
+    } catch(error) {await handleProfileWriteError(error);setMasterLoad({key:baseKey,error:error instanceof Error ? error.message : String(error)});}
     finally {setBusy(false);}
   };
-  useEffect(()=>{if(masters && !adding && item && !item.user && masterLoad?.key !== item.key) void openMaster(item.key);},[masters,adding,item?.key]);
+  useEffect(()=>{if(libraryReady && masters && !adding && item && !item.user && masterLoad?.key !== item.key) void openMaster(item.key);},[libraryReady,masters,adding,item?.key]);
   const staged=useRef<string|null>(null);
   useEffect(()=>{
     if(!stage || staged.current === stage.id)return;
@@ -320,12 +350,17 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   },[initialType,name]);
   const compareReason = selected.length !== 2 ? 'Select exactly two visible profiles to compare' : undefined;
   const deleteReason = !selected.length ? 'Select profiles to remove' : undefined;
-  return <Modal className="np-dialog pf-window" label="Profiles" onClose={close} backdropClose onEscapeKeyDown={event=>{if(busy || selected.length){event.preventDefault();if(!busy)dispatch({type:'ESCAPE'});}}}>
-    <header className="pf-workspace-title"><Dialog.Title asChild><h1>Profiles</h1></Dialog.Title>{recovery.state!=='idle' && recovery.state!=='complete' && adding && <button type="button" className="btn" onClick={()=>setAdding(false)}>Recover saved profiles</button>}<button type="button" className="btn pf-filter-toggle" aria-expanded={filtersOpen} onClick={()=>setFiltersOpen(!filtersOpen)}>Filters{filtersActive ? ` · ${filtersActive}` : ''}</button><SettingsDetail/><button type="button" className="btn-ghost" aria-label="Close profiles" onClick={close}>×</button></header>
-    <ProfileLibraryNotice/>
+  const showRecovery=recovery.state!=='idle' && recovery.state!=='complete' && recoveryOpen;
+  const backToList=()=>{setMobilePane('list');setFiltersOpen(false);requestAnimationFrame(()=>document.getElementById(`${id}:${latestSelection.current.focus}`)?.focus());};
+  return <Modal className="np-dialog pf-window" label="Profiles" onClose={close} backdropClose onEscapeKeyDown={event=>{if(busy){event.preventDefault();return;}if(window.matchMedia('(max-width:640px)').matches && mobilePane!=='list' && !showRecovery){event.preventDefault();backToList();}else if(selected.length){event.preventDefault();dispatch({type:'ESCAPE'});}}}>
+    <header className="pf-workspace-title"><Dialog.Title asChild><h1>Profiles</h1></Dialog.Title>{recovery.state!=='idle' && recovery.state!=='complete' && !showRecovery && <button type="button" className="btn" onClick={()=>setRecoveryOpen(true)}>Review saved profiles</button>}<button type="button" className="btn pf-filter-toggle" aria-expanded={filtersOpen || mobilePane==='filters'} aria-controls={`${id}-filters`} onClick={()=>{setFiltersOpen(!filtersOpen);setMobilePane(mobilePane==='filters'?'list':'filters');}}>Filters{filtersActive ? ` · ${filtersActive}` : ''}</button><SettingsDetail/><button type="button" className="btn-ghost" aria-label="Close profiles" onClick={close}>×</button></header>
+    {!showRecovery && <ProfileLibraryNotice recoveryContext/>}
+    {pendingCopy && <div className="pf-copy-pending" role="status"><strong>Copy request · {pendingCopy.name}</strong><span>{pendingCopy.error ?? 'This copy request is retained until you consume its result.'}</span><button type="button" className="btn" disabled={busy} onClick={()=>void retryCopy()}>Retry exact copy request</button><button type="button" className="btn-ghost" disabled={busy} onClick={resumeCopy}>Inspect source</button>{!pendingCopy.creation.retryable && <button type="button" className="btn-ghost" disabled={busy} onClick={()=>void dismissRejectedCopy()}>Review source/name</button>}</div>}
     <div className="np-dialog-body">
-      {recovery.state!=='idle' && recovery.state!=='complete' && !adding?<ServiceProfileRecoveryPanel recovery={recovery} onBrowse={()=>{setAdding(true);setAddSource('template');}}/>:<div className={`pf-split${filtersOpen ? ' filters-open' : ''}`} style={{'--profile-list-width': `${renderedListWidth}px`} as React.CSSProperties} inert={busy}>
-      <aside className="pf-facets" aria-label="Profile filters">
+      {recovery.state!=='idle' && <div className="pf-recovery-container" style={{display:showRecovery?'flex':'none'}} hidden={!showRecovery}><ServiceProfileRecoveryPanel recovery={recovery} onBrowse={()=>{setRecoveryOpen(false);if(!adding){setAdding(true);setAddSource('template');}setMobilePane('list');}}/></div>}
+      <div className={`pf-split${filtersOpen ? ' filters-open' : ''}`} hidden={showRecovery} data-mobile-pane={mobilePane} style={{display:showRecovery?'none':undefined,'--profile-list-width': `${renderedListWidth}px`} as React.CSSProperties} inert={busy}>
+      <div className="pf-mobile-navigation" style={{display:'none'}}><button ref={mobileBack} type="button" className="btn" onClick={backToList}>Back to profiles</button><strong>{mobilePane==='filters'?'Filters':item?.name ?? 'Profile details'}</strong></div>
+      <aside id={`${id}-filters`} className="pf-facets" aria-label="Profile filters">
         <fieldset className="pf-facet-group"><legend>Collection</legend><RadioGroup.Root className="pf-radio-list" aria-label="Profile collection" value={type} onValueChange={v=>void leave(()=>{setDrafts({});clearFilters();pickType(v as PresetType);})}>{TYPES.map(([id,label])=><label key={id} className="pf-facet-choice"><Radio value={id}/><span>{label}</span></label>)}</RadioGroup.Root></fieldset>
         <fieldset className="pf-facet-group"><legend>Library</legend><RadioGroup.Root className="pf-radio-list" aria-label="Library" value={masters ? 'masters' : 'owned'} onValueChange={value=>{setMasters(value === 'masters');setAdding(false);setSearch('');}}>{[{id:'owned',label:'My profiles'},{id:'masters',label:'Master profiles'}].map(o=><label key={o.id} className="pf-facet-choice"><Radio value={o.id}/><span>{o.label}</span></label>)}</RadioGroup.Root></fieldset>
         <ProfileFilterGroup label="Brand" options={facets.vendors.map(value=>({value,label:value}))} value={vendorFilter} onChange={setVendorFilter}/>
@@ -334,10 +369,11 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
         {type === 'filament' && <ProfileFilterGroup label="Material type" options={facets.materials.map(value=>({value,label:value}))} value={materialFilter} onChange={setMaterialFilter}/>}
         {type !== 'machine' && <ProfileFilterGroup label={type === 'filament' ? 'Works with printer' : 'Printer'} options={printerOptions} value={printerFilter} onChange={setPrinterFilter}/>}
         {filtersActive > 0 && <button type="button" className="btn-ghost" onClick={clearFilters}>Clear all filters</button>}
+        <button type="button" className="btn pf-mobile-show-results" style={{display:'none'}} onClick={backToList}>Show {visible.length} profiles</button>
       </aside>
       <section className="pf-my-profiles" ref={resultsPane} aria-label="Profile results">
         <div className="pf-results-heading"><strong>{adding ? 'Add '+(type === 'machine' ? 'printer' : type === 'filament' ? 'filament' : 'print settings') : masters ? 'Master profiles' : 'My profiles'}</strong><span>{visible.length} results</span></div>
-        <div className="pf-results-tools"><input className="text pf-profile-search" aria-label="Search profiles" placeholder="Search profiles" value={search} onChange={e=>setSearch(e.target.value)}/><button type="button" className="btn" onClick={()=>{setAdding(!adding);setAddSource('template');setSearch('');}}> {adding ? 'Back' : type === 'machine' ? 'Add printer' : type === 'filament' ? 'Add filament' : 'Add print settings'}</button><MenuButton label="Collection actions" className="btn-ghost" items={[{label:'Import Orca / Bambu',action:()=>void leave(()=>setState({presetUx:{kind:'import',back:{kind:'presets',type,name:item?.key}}}))},{label:'Export profiles',action:()=>void leave(()=>setState({presetUx:{kind:'export'}}))}]}>More</MenuButton></div>
+        <div className="pf-results-tools"><input className="text pf-profile-search" aria-label="Search profiles" placeholder="Search profiles" value={search} onChange={e=>setSearch(e.target.value)}/><button type="button" className="btn" onClick={()=>{setAdding(!adding);setAddSource('template');setSearch('');}}> {adding ? 'My profiles' : type === 'machine' ? 'Add printer' : type === 'filament' ? 'Add filament' : 'Add print settings'}</button><MenuButton label="Profile file actions" className="btn-ghost" items={[{label:'Import Orca / Bambu',action:()=>void leave(()=>setState({presetUx:{kind:'import',back:{kind:'presets',type,name:item?.key}}}))},{label:'Export profiles',action:()=>void leave(()=>setState({presetUx:{kind:'export'}}))}]}>Files</MenuButton></div>
         {adding && <><Segmented label="Add profile from" value={addSource} options={[{id:'template',label:'Catalog template'},{id:'copy',label:'Copy existing'}]} onChange={v=>{setAddSource(v);setSearch('');}}/>{type === 'machine' && <button type="button" className="btn-ghost" onClick={()=>setState({appDialog:'createPrinter'})}>New printer…</button>}</>}
         {selected.length > 1 && <div className="pf-selection-bar"><span>{selected.length} selected</span><button type="button" className="btn-ghost" onClick={() => dispatch({type: 'CLEAR'})}>Clear</button></div>}
         {!adding && !editingKey && selected.length > 1 && <div className="pf-bulk-actions"><button type="button" className="btn" disabled={!selected.length || busy} title={!selected.length ? 'Select visible profiles to export' : 'Export selected profiles'} onClick={() => void exportSelected()}>Export selected</button><button type="button" className="btn" disabled={!!compareReason || busy} title={compareReason ?? 'Compare selected profiles'} onClick={() => {setAdding(false); setComparing(true);}}>Compare</button><button type="button" className="btn-ghost pf-delete" disabled={!!deleteReason || busy} title={deleteReason ?? 'Delete selected profiles'} onClick={() => void deleteSelected()}>Delete selected</button></div>}
@@ -364,7 +400,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
 
         : item && masters ? <section className="pf-bulk-summary" role={masterLoad?.error ? 'alert' : 'status'}><strong>{item.name}</strong><p>{masterLoad?.error ?? 'Opening editable master…'}</p>{masterLoad?.error && <button type="button" className="btn" onClick={()=>void openMaster(item.key)}>Retry</button>}</section>
         : <section className="pf-bulk-summary"><strong>{selected.length ? `${selected.length} profiles selected` : 'Select a profile'}</strong>{selectedItems.map(i => <div key={i.key} className="pf-bulk-name">{i.name}</div>)}</section>}
-      </div></div>}
+      </div></div>
 
       {contextMenu && <ActionMenu label="Profile actions" at={contextMenu} returnFocus={contextMenu.anchor} onClose={()=>setContextMenu(null)} items={[{label:'Export selected',action:()=>void exportSelected()},{label:'Delete from library',action:()=>void deleteSelected(),shortcut:'Delete'}]}/>}
       {bulkError && <div className="pf-editor-error" role="alert">{bulkError}</div>}

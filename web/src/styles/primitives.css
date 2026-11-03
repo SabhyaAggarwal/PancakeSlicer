@@ -1,12 +1,16 @@
 :where(.orca-parity) .num { font: var(--t-num); font-variant-numeric: tabular-nums; }
 :where(.orca-parity) .label-caps { font: var(--t-label); letter-spacing: var(--label-track); text-transform: none; color: var(--ink-2); }
 
-:where(.orca-parity) .btn-primary { height: var(--h-control); padding: 0 var(--s-5); border: 0; border-radius: var(--r-2); background: var(--accent); color: var(--accent-ink);
+:where(.orca-parity) .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); height: auto; min-height: var(--h-control); padding: 0 var(--s-4); border: 1px solid var(--border-control); border-radius: var(--control-radius); background: var(--control-bg); color: var(--ink);
+  font: var(--t-body); cursor: pointer; transition: background var(--dur-1) var(--ease); }
+:where(.orca-parity) .btn:hover:not(:disabled) { background: var(--hover); }
+:where(.orca-parity) .btn:disabled { cursor: not-allowed; }
+:where(.orca-parity) .btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); height: auto; min-height: var(--h-control); padding: 0 var(--s-5); border: 0; border-radius: var(--r-2); background: var(--accent); color: var(--accent-ink);
   font: var(--t-body); font-weight: 600; cursor: pointer; transition: background var(--dur-1) var(--ease); }
 :where(.orca-parity) .btn-primary:hover:not(:disabled) { background: var(--accent-strong); }
-:where(.orca-parity) .btn-ghost { height: var(--h-control); padding: 0 var(--s-4); border: 0; border-radius: var(--r-2); background: none; color: var(--ink);
+:where(.orca-parity) .btn-ghost { display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); height: auto; min-height: var(--h-control); padding: 0 var(--s-4); border: 0; border-radius: var(--r-2); background: none; color: var(--ink);
   font: var(--t-body); cursor: pointer; transition: background var(--dur-1) var(--ease); }
-:where(.orca-parity) .btn-ghost:hover:not(:disabled) { background: var(--sunken); }
+:where(.orca-parity) .btn-ghost:hover:not(:disabled) { background: var(--hover); }
 :where(.orca-parity) .btn-primary:disabled, :where(.orca-parity) .btn-ghost:disabled { color: var(--ink-3); cursor: not-allowed; }
 :where(.orca-parity) .btn-primary:disabled { background: var(--sunken); }
 

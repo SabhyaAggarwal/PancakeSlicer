@@ -24,28 +24,19 @@ interface Entry {
   catalog: CompactCatalog;
 }
 
-const VERSION = 1;
 const FORMAT = 7;
-
-function db(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open('orca-catalog', VERSION);
-    req.onupgradeneeded = () => {
-      const d = req.result;
-      if (d.objectStoreNames.contains('catalogs')) d.deleteObjectStore('catalogs');
-      d.createObjectStore('catalogs', { keyPath: 'key' });
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-function tx<T>(d: IDBDatabase, mode: IDBTransactionMode, op: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const req = op(d.transaction('catalogs', mode).objectStore('catalogs'));
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+const catalogs = new Map<string, {entry:Entry; bytes:number}>();
+const runtimeCache = new Map<string, RuntimeOptions>();
+let catalogBytes = 0;
+function remember(entry:Entry) {
+  const prior=catalogs.get(entry.key); if(prior)catalogBytes-=prior.bytes;
+  catalogs.delete(entry.key);
+  const bytes=JSON.stringify(entry.catalog).length*2;
+  if(bytes>24*1024*1024)return;
+  catalogs.set(entry.key,{entry,bytes});catalogBytes+=bytes;
+  while(catalogs.size>6 || catalogBytes>24*1024*1024){
+    const first=catalogs.keys().next().value!;catalogBytes-=catalogs.get(first)!.bytes;catalogs.delete(first);
+  }
 }
 
 const post = (m: CatalogOut) => (self as unknown as Worker).postMessage(m);
@@ -59,16 +50,12 @@ async function asset(url: string) {
   return r.json();
 }
 
-async function runtimeOptions(url: string, mock = false) {
-  const key = `options|${FORMAT}|${url}|${mock}`;
-  const store = await db().catch(() => null);
-  try {
-    const cached = store ? await tx<RuntimeOptions | undefined>(store, 'readonly', (s) => s.get(key)).catch(() => undefined) : undefined;
-    const loaded = await loadRuntimeOptions(url, mock, cached);
-    if (store && loaded !== cached)
-      await tx(store, 'readwrite', (s) => s.put({ key, ...loaded })).catch(() => undefined);
-    return loaded.options;
-  } finally { store?.close(); }
+async function runtimeOptions(url:string,mock=false) {
+  const key=`options|${FORMAT}|${url}|${mock}`;
+  const loaded=await loadRuntimeOptions(url,mock,runtimeCache.get(key));
+  runtimeCache.delete(key);runtimeCache.set(key,loaded);
+  while(runtimeCache.size>2)runtimeCache.delete(runtimeCache.keys().next().value!);
+  return loaded.options;
 }
 
 self.onmessage = async (e: MessageEvent<CatalogIn>) => {
@@ -98,12 +85,11 @@ self.onmessage = async (e: MessageEvent<CatalogIn>) => {
     definitions ??= runtimeOptions(optionsUrl).catch((error) => { definitions = null; throw error; });
     const { vendor, models } = e.data;
     const key = `${FORMAT}|${vendor}|${models.join(',')}`;
-    const store = await db().catch(() => null);
-    const entry = store ? await tx<Entry | undefined>(store, 'readonly', (s) => s.get(key)).catch(() => undefined) : undefined;
-    if (entry) post({ id, type: 'catalog', catalog: entry.catalog, from: 'cache' });
+    const entry = catalogs.get(key)?.entry;
     const options = await definitions;
     const types = JSON.stringify([nativePresetCatalog(), Object.entries(options).map(([key, def]) => [key, def.type])]);
     const cached = entry?.types === types ? entry : undefined;
+    if(cached)post({id,type:'catalog',catalog:cached.catalog,from:'cache'});
     const r = await fetch(`/api/presets?vendor=${encodeURIComponent(vendor)}`, {
       cache: 'no-store',
       headers: cached?.etag ? { 'If-None-Match': cached.etag } : {},
@@ -112,8 +98,8 @@ self.onmessage = async (e: MessageEvent<CatalogIn>) => {
       if (!r.ok) throw new Error(`${r.status} ${r.statusText}: ${(await r.text()).slice(0, 300)}`);
       const catalog = compactCatalog(normalizeCatalog(await r.json(), vendor, nativePresetCatalog(), models));
       if (!cached || JSON.stringify(cached.catalog) !== JSON.stringify(catalog)) post({ id, type: 'catalog', catalog, from: 'network' });
-      if (store) await tx(store, 'readwrite', (s) => s.put({ key, etag: r.headers.get('ETag'), types, catalog } satisfies Entry)).catch(() => undefined);
-    }
+      remember({key,etag:r.headers.get('ETag'),types,catalog});
+    } else if(!cached)throw new Error('Catalog validation returned 304 without a matching memory entry.');
     post({ id, type: 'done' });
   } catch (err) {
     post({ id, type: 'error', message: err instanceof Error ? err.message : String(err) });

@@ -43,6 +43,7 @@ export default function CreatePrinter({ close }: { close(): void }) {
     : mode === 'printer' && (s.machines.some((m) => m.name === name) || s.userPresets.some((u) => u.type === 'machine' && u.name === name)) ? `A printer named "${name}" already exists` : '';
   const create = async () => {
     if (!base || missing) return;
+    if(getState().profileLibraryLoad.state!=='ready'){(await import('../profiles/service-recovery')).explainProfileWriteBlock();return;}
     const nd = base.config.nozzle_diameter;
     const overrides: Config = {
       printable_area: `${-ox}x${-oy},${w - ox}x${-oy},${w - ox}x${d - oy},${-ox}x${d - oy}`,
@@ -56,7 +57,7 @@ export default function CreatePrinter({ close }: { close(): void }) {
       toast(`Created printer ${name}`);
       close();
     } catch (e) {
-      toast(`Create printer failed: ${e instanceof Error ? e.message : String(e)}`);
+      if(!await(await import('../profiles/service-recovery')).handleProfileWriteError(e))toast(`Create printer failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
   const num = (label: string, v: number, set: (n: number) => void, min = -1000) => (

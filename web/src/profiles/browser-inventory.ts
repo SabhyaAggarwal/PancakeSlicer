@@ -74,6 +74,61 @@ function knownStores(stores:readonly {name:string;keys:readonly unknown[];known:
   if(keys.length!==1 || keys[0]!=='current')throw new Error('Legacy profile storage contains unrecognized records. Retain the complete database for recovery before adoption.');
   return knownEnvelope(current);
 }
+const emptyMetadata=(value:unknown)=>value===undefined || record(value) && !Object.keys(value).length;
+const metadataFields=(value:unknown,required:readonly string[],optional:readonly string[]):value is Record<string,unknown>=>record(value) && jsonData(value)
+  && required.every(key=>Object.hasOwn(value,key)) && Object.keys(value).every(key=>required.includes(key)||optional.includes(key));
+function metadataInteger(value:unknown):bigint|undefined{
+  if(typeof value==='number' && revision(value) && !Object.is(value,-0))return BigInt(value);
+  if(typeof value==='string' && /^[1-9][0-9]{15,18}$/.test(value)){
+    const n=BigInt(value);if(n>BigInt(Number.MAX_SAFE_INTEGER) && n<(1n<<63n))return n;
+  }
+}
+function metadataIds(value:unknown,min:bigint,max:bigint,live:bigint):boolean{
+  if(value===undefined)return true;
+  if(!Array.isArray(value))return false;
+  const ids=value.map(metadataInteger);
+  return new Set(ids).size===ids.length && ids.every(id=>id!==undefined && id>=min && id<=max && id!==live);
+}
+function knownRendererProfileSchema(db:Record<string,unknown>,origin:string):boolean{
+  if(!Array.isArray(db.stores))return false;
+  if(emptyMetadata(db.metadata))return db.stores.every(store=>record(store) && emptyMetadata(store.metadata));
+  const m=db.metadata;
+  if(db.version!==1 || !metadataFields(m,['id','originIdentifier','global'],[
+    'originName','databaseName','userStringVersion','maxObjectStoreId','blobNumberGenerator','freeObjectStoreIds']))return false;
+  const id=metadataInteger(m.id),g=m.global,identifier=/^http_127\.0\.0\.1_([1-9][0-9]{0,4})@1$/.exec(String(m.originIdentifier));
+  if(id===undefined || id===0n || typeof m.originIdentifier!=='string' || !identifier
+    || Number(identifier[1])>65535 || `http://127.0.0.1:${identifier[1]}`!==origin
+    || m.originName!==undefined && m.originName!==m.originIdentifier
+    || m.databaseName!==undefined && m.databaseName!==db.name
+    || m.userStringVersion!==undefined && typeof m.userStringVersion!=='string'
+    || !metadataFields(g,['schemaVersion','dataVersion','maxDatabaseId'],[
+      'scopesVersion','freeDatabaseIds','recoveryBlobJournal','activeBlobJournal','earliestSweepTime','earliestCompactionTime']))return false;
+  const maxDb=metadataInteger(g.maxDatabaseId),format=metadataInteger(g.dataVersion);
+  if(![4,5].includes(Number(g.schemaVersion)) || typeof g.schemaVersion!=='number' || maxDb===undefined || id>maxDb || format===undefined
+    || ![15n,16n].includes(format>>32n) || (format&0xffffffffn)<16n || (format&0xffffffffn)>21n
+    || g.scopesVersion!==undefined && g.scopesVersion!==1
+    || !metadataIds(g.freeDatabaseIds,1n,maxDb,id))return false;
+  for(const field of ['recoveryBlobJournal','activeBlobJournal'])if(g[field]!==undefined && (!Array.isArray(g[field]) || g[field].length))return false;
+  for(const field of ['earliestSweepTime','earliestCompactionTime'])if(g[field]!==undefined && metadataInteger(g[field])===undefined)return false;
+  for(const field of ['maxObjectStoreId','blobNumberGenerator'])if(m[field]!==undefined && metadataInteger(m[field])===undefined)return false;
+  const maxStore=metadataInteger(m.maxObjectStoreId)??((1n<<63n)-1n),storeIds=new Set<bigint>();
+  for(const store of db.stores){
+    if(!record(store))return false;
+    const s=store.metadata;
+    if(!metadataFields(s,['id','keyPath','autoIncrement'],['hasKeyPath','evictable','lastVersion','maxIndexId','keyGeneratorCurrentNumber',
+      'indexes','freeIndexIds','externalObjectRecords','orphanExternalObjects','indexEntries']))return false;
+    const sid=metadataInteger(s.id);
+    if(sid===undefined || sid===0n || sid>maxStore || storeIds.has(sid) || !metadataIds(m.freeObjectStoreIds,1n,maxStore,sid)
+      || s.autoIncrement!==false || s.hasKeyPath!==undefined && s.hasKeyPath!==false
+      || !(s.keyPath===null || s.keyPath==='' && s.hasKeyPath===false)
+      || s.evictable!==undefined && typeof s.evictable!=='boolean')return false;
+    storeIds.add(sid);
+    for(const field of ['lastVersion','maxIndexId','keyGeneratorCurrentNumber'])if(s[field]!==undefined && metadataInteger(s[field])===undefined)return false;
+    for(const field of ['indexes','externalObjectRecords','orphanExternalObjects','indexEntries'])if(s[field]!==undefined && (!Array.isArray(s[field]) || s[field].length))return false;
+    if(!metadataIds(s.freeIndexIds,30n,metadataInteger(s.maxIndexId)??((1n<<63n)-1n),0n))return false;
+  }
+  return true;
+}
 async function readLegacyDocument(): Promise<ProfileLibraryDocument | null> {
   if (typeof indexedDB === 'undefined') throw new Error('Browser profile storage is unavailable; its absence has not been established.');
   if (!indexedDB.databases) throw new Error('This browser cannot enumerate legacy profile storage. Export it from the previous app before adoption.');
@@ -153,8 +208,7 @@ export function captureRendererProfileInventory(s:State,origin:RendererProfileOr
     for(const db of origin.databases){
       if(!record(db) || typeof db.name!=='string' || !db.name || names.has(db.name))throw new Error('Original renderer databases are not completely identified.');
       names.add(db.name);if(db.name!=='orca-profile-library')continue;
-      const emptyMetadata=(value:unknown)=>value===undefined || record(value) && !Object.keys(value).length;
-      if(!revision(db.version) || !db.version || !Array.isArray(db.stores) || !emptyMetadata(db.metadata)
+      if(!revision(db.version) || !db.version || !Array.isArray(db.stores)
         || Object.keys(db).some(key=>!['name','version','stores','metadata'].includes(key)))throw new Error('Original profile database has unknown schema metadata. Retain it for recovery.');
       let current:unknown;
       const stores=db.stores.map(store=>{
@@ -164,8 +218,9 @@ export function captureRendererProfileInventory(s:State,origin:RendererProfileOr
           if(!record(row) || Object.keys(row).length!==2 || !Object.hasOwn(row,'key') || !Object.hasOwn(row,'value'))throw new Error('Original profile store contains an unrecognized captured record.');
           if(store.name==='library' && row.key==='current')current=row.value;
         }
-        return {name:store.name,keys:store.records.map(row=>row.key),known:emptyMetadata(store.metadata)};
+        return {name:store.name,keys:store.records.map(row=>row.key),known:true};
       });
+      if(!knownRendererProfileSchema(db,origin.origin))throw new Error('Original profile database has unknown physical schema or pending state. Retain the full host inventory for recovery.');
       legacyDocument=knownStores(stores,current);
     }
   }catch(error){issues.push(error instanceof Error?error.message:String(error));}

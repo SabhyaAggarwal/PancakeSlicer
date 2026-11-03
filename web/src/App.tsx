@@ -24,7 +24,9 @@ const CanvasTools = lazy(() => import('./components/CanvasTools'));
 const Navigator = lazy(() => import('./components/Navigator').then((m) => ({ default: m.Navigator })));
 const PlateChoice = lazy(() => import('./components/PlateChoice'));
 const EmptyPlate = lazy(() => import('./components/FirstRun'));
+const WorkspaceRail = lazy(() => import('./components/WorkspaceRail'));
 const SavedPreferencesNotice = lazy(() => import('./components/SavedPreferencesNotice'));
+const ProjectStatus = lazy(() => import('./projects/ProjectStatus').then((m) => ({ default: m.ProjectStatus })));
 const Plater3D = lazy(() => import('./plater/Plater3D'));
 import { deleteAll, getState, isSelected, removeSelected, setState, subscribeStore, togglePrintable, updateInstance, useStore } from './state/store';
 import { ownsKeys } from './keys';
@@ -253,11 +255,11 @@ export default function App() {
       <Suspense fallback={null}><SavedPreferencesNotice /></Suspense>
       {projects && <Suspense fallback={null}><ProjectsView /></Suspense>}
       <div style={{ display: projects ? 'none' : undefined }} className={`main ${sidebarHidden ? 'sidebar-hidden' : ''} ${dragOver ? 'drag-over' : ''}`}>
-        <Sidebar />
+        <Suspense fallback={null}><WorkspaceRail><Sidebar /></WorkspaceRail></Suspense>
         <div className="canvas-area" data-viewport={tab}>
           {!empty && <Suspense fallback={null}><ObjectsOutliner/></Suspense>}
           {sidebarHidden && (
-            <button type="button" className="btn-ghost sidebar-reveal" aria-expanded={false} title={`Show sidebar (${navigator.platform.includes('Mac') ? 'Cmd' : 'Ctrl'}+\\)`} onClick={() => toggleSidebar(false)}>Show sidebar</button>
+            <button type="button" className="btn sidebar-reveal" aria-expanded={false} onClick={() => toggleSidebar(false)}>Settings</button>
           )}
           <div style={{ display: tab === 'prepare' ? 'contents' : 'none' }}>
             <Suspense fallback={null}><Plater3D /></Suspense>
@@ -286,6 +288,7 @@ export default function App() {
           )}
           {multiPlate && <Suspense fallback={null}><PlateChoice /></Suspense>}
           <Suspense fallback={null}><Navigator /></Suspense>
+          <Suspense fallback={null}><ProjectStatus /></Suspense>
           <SliceNotification />
           {loading && <LoadingState text={loading} />}
         </div>

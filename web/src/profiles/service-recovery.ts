@@ -1,4 +1,4 @@
-import { getState, setState } from '../state/store';
+import { getState, setState, toast } from '../state/store';
 import { documentGeneration } from '../state/history';
 import { LegacyProfilesPendingError, persistProfileLibrary, readProfileLibraryAdoption, readProfileLibraryAdoptions, readProfileLibrary, requireServiceProfileAdoption } from '../persist/profile-library';
 import { inspectServiceProfileAdoption, planServiceProfileAdoption, type ServiceProfileReview, type ServiceProfilePlanningDecision } from './service-adoption';
@@ -18,6 +18,27 @@ export const subscribeServiceRecovery=(listener:()=>void)=>{listeners.add(listen
 const publish=(value:ServiceRecoverySnapshot)=>{snapshot=value;listeners.forEach(fn=>fn());};
 const message=(error:unknown)=>error instanceof Error?error.message:String(error);
 const sameSource=(a:ProfileLibraryAdoption,b:ProfileLibraryAdoption)=>a.sourceId===b.sourceId && a.digest===b.digest && a.source===b.source;
+export function openSavedProfileRecovery():void {
+  const ux=getState().presetUx;
+  setState({presetUx:ux?.kind==='presets'?{...ux,add:false}:{kind:'presets',type:'machine'}});
+  if(snapshot.state==='idle')void readProfileLibrary().catch(async error=>{
+    if(error instanceof LegacyProfilesPendingError)await beginServiceRecovery(error);
+  });
+}
+export function explainProfileWriteBlock():void {
+  const load=getState().profileLibraryLoad;
+  toast(load.state==='loading'?'Saved profiles are still loading. Your choices are kept.':'Review your saved profiles before adding or saving. Your current choices are kept.',
+    {label:'Review saved profiles',run:openSavedProfileRecovery});
+}
+export async function handleProfileWriteError(error:unknown):Promise<boolean> {
+  if(!(error instanceof LegacyProfilesPendingError) && (error as {code?:string})?.code!=='legacy_profiles_pending')return false;
+  setState({profileLibraryLoad:{state:'failed',error:'Earlier profile files need a one-time review before new profiles can be saved. Original files and your edits are kept.',recovery:'adopt_service_profiles'}});
+  try {
+    if(error instanceof LegacyProfilesPendingError)await beginServiceRecovery(error);
+    else try{await readProfileLibrary();}catch(pending){if(pending instanceof LegacyProfilesPendingError)await beginServiceRecovery(pending);}
+  } finally {explainProfileWriteBlock();}
+  return true;
+}
 function workingContext(){
   const before=getState(),document=documentGeneration();
   return ()=>{
