@@ -27,13 +27,19 @@ var deniedPrefixes = []netip.Prefix{
 
 var nat64 = netip.MustParsePrefix("64:ff9b::/96")
 
+var lanPrefixes = []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "fc00::/7"}
+
 func parseHostPolicy(list, listen string) (*hostPolicy, error) {
 	if strings.TrimSpace(list) == "" {
 		return nil, nil
 	}
 	h := &hostPolicy{}
 	for _, entry := range strings.FieldsFunc(list, func(r rune) bool { return r == ',' || r == ' ' || r == '\n' || r == '\t' }) {
-		if prefix, err := netip.ParsePrefix(entry); err == nil {
+		if entry == "lan" {
+			for _, p := range lanPrefixes {
+				h.prefixes = append(h.prefixes, netip.MustParsePrefix(p))
+			}
+		} else if prefix, err := netip.ParsePrefix(entry); err == nil {
 			h.prefixes = append(h.prefixes, unmapPrefix(prefix.Masked()))
 		} else if ip, err := netip.ParseAddr(entry); err == nil {
 			ip = ip.Unmap()
@@ -41,7 +47,7 @@ func parseHostPolicy(list, listen string) (*hostPolicy, error) {
 		} else if name := strings.ToLower(strings.TrimSuffix(entry, ".")); validHostName(strings.TrimPrefix(name, ".")) {
 			h.names = append(h.names, name)
 		} else {
-			return nil, fmt.Errorf("http-printers: %q is not a CIDR, an address or a host name", entry)
+			return nil, fmt.Errorf("printer-network: %q is not lan, a CIDR, an address or a host name", entry)
 		}
 	}
 	if _, port, err := net.SplitHostPort(listen); err == nil {
@@ -84,7 +90,7 @@ func (h *hostPolicy) String() string {
 	return strings.Join(append(parts, h.names...), ", ")
 }
 
-var errHostRefused = errors.New("this server does not allow printers at that address; ask its administrator")
+var errHostRefused = errors.New("this service does not allow printers at that address (its printer network setting)")
 
 type hostRefusal struct{ reason string }
 

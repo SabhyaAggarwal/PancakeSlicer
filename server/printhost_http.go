@@ -74,10 +74,7 @@ func sendHTTP(ctx context.Context, u *upload) (string, error) {
 		u.progress.Store(0)
 	}
 	defer resp.Body.Close()
-	answer := ""
-	if p.hosts == nil {
-		answer = printerMessage(resp)
-	}
+	answer := printerMessage(resp)
 	switch {
 	case resp.StatusCode == 401 || resp.StatusCode == 403:
 		return "", credentialsRejected(p)
@@ -94,28 +91,22 @@ func sendHTTP(ctx context.Context, u *upload) (string, error) {
 	return "Uploaded " + u.filename + " to " + p.Name + ".", nil
 }
 
-func credentialsRejected(p *PrinterConfig) error {
-	if p.editable {
-		return errors.New("the printer rejected the credentials; check the API key or password")
-	}
-	return errors.New("the printer rejected the credentials; check the API key or password in the server's printer configuration")
+func credentialsRejected(*PrinterConfig) error {
+	return errors.New("the printer rejected the credentials; check the API key or password in its Connection settings")
 }
 
 func hostClient(ctx context.Context, p *PrinterConfig, base *url.URL) (*http.Client, error) {
 	dialer := &net.Dialer{Timeout: 5 * time.Second}
-	dial := dialer.DialContext
-	if p.hosts != nil {
-		target, err := p.hosts.resolve(ctx, base)
-		if err != nil {
-			var refused *hostRefusal
-			if errors.As(err, &refused) {
-				audit(map[string]any{"event": "printer_host_refused", "printer": p.Name, "reason": refused.reason})
-			}
-			return nil, err
+	target, err := p.hosts.resolve(ctx, base)
+	if err != nil {
+		var refused *hostRefusal
+		if errors.As(err, &refused) {
+			audit(map[string]any{"event": "printer_host_refused", "printer": p.Printer, "reason": refused.reason})
 		}
-		dial = func(ctx context.Context, network, _ string) (net.Conn, error) {
-			return dialer.DialContext(ctx, "tcp", target.String())
-		}
+		return nil, err
+	}
+	dial := func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return dialer.DialContext(ctx, "tcp", target.String())
 	}
 	client := &http.Client{
 		Transport: &http.Transport{
@@ -191,10 +182,15 @@ type hostSession struct {
 	secret  string
 	digest  map[string]string
 	nc      int
+	session string
 }
 
 func (h *hostSession) authorize(req *http.Request) {
-	if h.secret == "" {
+	if h.session != "" {
+		req.Header.Set("X-Session-Key", h.session)
+		return
+	}
+	if h.secret == "" || h.printer.Kind == "duet" {
 		return
 	}
 	if h.printer.Auth != "digest" {
@@ -303,7 +299,7 @@ func (h *hostSession) preflight(ctx context.Context, target string) error {
 		case resp.StatusCode == 401 || resp.StatusCode == 403:
 			return credentialsRejected(h.printer)
 		case resp.StatusCode == 404:
-			return fmt.Errorf("the address does not look like %s (HTTP 404 at %s)", map[string]string{"prusalink": "PrusaLink", "octoprint": "OctoPrint", "moonraker": "Moonraker"}[h.printer.Kind], req.URL.Path)
+			return fmt.Errorf("the address does not look like %s (HTTP 404 at %s)", connectionKinds[h.printer.Kind], req.URL.Path)
 		case resp.StatusCode < 200 || resp.StatusCode > 299:
 			return fmt.Errorf("the printer answered HTTP %d", resp.StatusCode)
 		}

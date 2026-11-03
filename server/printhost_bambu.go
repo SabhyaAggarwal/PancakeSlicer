@@ -6,9 +6,7 @@ import (
 	"context"
 	"crypto/md5"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -44,7 +42,11 @@ func sendBambu(ctx context.Context, u *upload) (string, error) {
 	}
 	tlsConfig := p.tlsConfig(p.Serial)
 	tlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache(4)
-	if err := ftpsUpload(ctx, p.Host, tlsConfig, u); err != nil {
+	host, err := p.resolvedHost(ctx)
+	if err != nil {
+		return "", err
+	}
+	if err := ftpsUpload(ctx, host, tlsConfig, u); err != nil {
 		return "", err
 	}
 	u.stored()
@@ -220,7 +222,7 @@ func ftpFailure(ctx context.Context, err error, step string) error {
 	case errors.As(err, &connErr):
 		return err
 	case errors.As(err, &ftpErr) && ftpErr.code == 530:
-		return &connError{"access_code", "the printer rejected the access code (FTPS); check it on the printer's screen (Settings > LAN only)"}
+		return &connError{"access_code", "the printer rejected the access code (FTPS); check it on the printer's screen (Settings > Network)"}
 	case errors.As(err, &ftpErr) && ftpErr.code == 522:
 		return errors.New("the printer refused the FTP data connection (TLS session reuse); report this with the printer's firmware version")
 	case errors.As(err, &ftpErr):
@@ -299,9 +301,12 @@ func ftpsUpload(ctx context.Context, host string, config *tls.Config, u *upload)
 			return rerr
 		}
 	}
-	if err = data.Close(); err != nil {
+	if err = data.CloseWrite(); err != nil {
 		return err
 	}
+	data.SetReadDeadline(time.Now().Add(2 * time.Second))
+	io.Copy(io.Discard, data)
+	data.Close()
 	step = "completion"
 	code, text, err := c.reply(2 * time.Minute)
 	if err != nil {
@@ -315,7 +320,11 @@ func ftpsUpload(ctx context.Context, host string, config *tls.Config, u *upload)
 }
 
 func mqttSession(ctx context.Context, p *PrinterConfig, secret string) (*tls.Conn, *bufio.Reader, error) {
-	conn, err := dialTLS(ctx, p.Host, 8883, p.tlsConfig(p.Serial))
+	host, err := p.resolvedHost(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	conn, err := dialTLS(ctx, host, 8883, p.tlsConfig(p.Serial))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -348,7 +357,7 @@ func mqttSession(ctx context.Context, p *PrinterConfig, secret string) (*tls.Con
 	switch body[1] {
 	case 0:
 	case 4, 5:
-		return fail(&connError{"access_code", "the printer rejected the access code (MQTT); check it on the printer's screen (Settings > LAN only)"})
+		return fail(&connError{"access_code", "the printer rejected the access code (MQTT); check it on the printer's screen (Settings > Network)"})
 	default:
 		return fail(fmt.Errorf("the printer refused the MQTT connection (code %d)", body[1]))
 	}
@@ -404,7 +413,7 @@ func mqttProjectFile(ctx context.Context, p *PrinterConfig, u *upload, plate, md
 		"sequence_id": sequence, "command": "project_file", "param": plate,
 		"project_id": "0", "profile_id": "0", "task_id": "0", "subtask_id": "0", "subtask_name": name,
 		"file": u.filename, "url": "file:///sdcard/" + u.filename, "md5": md5sum,
-		"timelapse": u.options.timelapse, "bed_type": "auto", "bed_leveling": u.options.bedLeveling, "flow_cali": false,
+		"timelapse": u.options.timelapse, "bed_type": "auto", "bed_leveling": u.options.bedLeveling, "flow_cali": u.options.flowCali,
 		"vibration_cali": true, "layer_inspect": false, "use_ams": u.options.useAMS, "ams_mapping": mapping,
 	}}); err != nil {
 		return fail(err)
@@ -513,30 +522,6 @@ func mqttRead(r *bufio.Reader) (byte, []byte, error) {
 	return header >> 4, body, nil
 }
 
-func printerFingerprint(address, resources string) error {
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}, "tcp", address, &tls.Config{InsecureSkipVerify: true})
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-	chain := conn.ConnectionState().PeerCertificates
-	leaf := chain[0]
-	sum := sha256.Sum256(leaf.Raw)
-	fmt.Printf("subject:     %s\nissuer:      %s\nvalid:       %s to %s\nfingerprint: sha256:%s\n",
-		leaf.Subject, leaf.Issuer, leaf.NotBefore.Format(time.DateOnly), leaf.NotAfter.Format(time.DateOnly), hex.EncodeToString(sum[:]))
-	if pem, err := os.ReadFile(resources + "/cert/printer.cer"); err == nil {
-		roots := x509.NewCertPool()
-		roots.AppendCertsFromPEM(pem)
-		intermediates := x509.NewCertPool()
-		for _, cert := range chain[1:] {
-			intermediates.AddCert(cert)
-		}
-		_, verr := leaf.Verify(x509.VerifyOptions{Roots: roots, Intermediates: intermediates, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny}})
-		fmt.Printf("bambu-ca:    %v (common name %q)\n", verr == nil, leaf.Subject.CommonName)
-	}
-	return nil
-}
-
 type PrinterTest struct {
 	OK      bool   `json:"ok"`
 	Stage   string `json:"stage"`
@@ -608,7 +593,11 @@ func testBambu(ctx context.Context, p *PrinterConfig, secret string) PrinterTest
 	if model == "" || model == "?" {
 		model = bambuModel("", p.Serial[:3])
 	}
-	c, err := ftpsLogin(ctx, p.Host, p.tlsConfig(p.Serial), secret)
+	host, err := p.resolvedHost(ctx)
+	if err != nil {
+		return failed(err)
+	}
+	c, err := ftpsLogin(ctx, host, p.tlsConfig(p.Serial), secret)
 	if err != nil {
 		result := failed(err)
 		if result.Stage == "unreachable" {
@@ -650,6 +639,99 @@ type AMSTray struct {
 
 const externalTray = 254
 
+type bambuReport struct {
+	State     string   `json:"gcode_state"`
+	Percent   *float64 `json:"mc_percent"`
+	Remaining *int     `json:"mc_remaining_time"`
+	Layer     *int     `json:"layer_num"`
+	Layers    *int     `json:"total_layer_num"`
+	Nozzle    *float64 `json:"nozzle_temper"`
+	NozzleSet *float64 `json:"nozzle_target_temper"`
+	Bed       *float64 `json:"bed_temper"`
+	BedSet    *float64 `json:"bed_target_temper"`
+	Subtask   string   `json:"subtask_name"`
+	Error     int64    `json:"print_error"`
+	AMS       *struct {
+		AMS []struct {
+			ID   string `json:"id"`
+			Tray []struct {
+				ID    string `json:"id"`
+				Type  string `json:"tray_type"`
+				Color string `json:"tray_color"`
+				Name  string `json:"tray_sub_brands"`
+				Idx   string `json:"tray_info_idx"`
+			} `json:"tray"`
+		} `json:"ams"`
+	} `json:"ams"`
+	External *struct {
+		Type  string `json:"tray_type"`
+		Color string `json:"tray_color"`
+		Idx   string `json:"tray_info_idx"`
+	} `json:"vt_tray"`
+}
+
+func (b *bambuReport) trays() []AMSTray {
+	if b.AMS == nil && b.External == nil {
+		return nil
+	}
+	color := func(c string) string {
+		if len(c) >= 6 {
+			return "#" + strings.ToUpper(c[:6])
+		}
+		return ""
+	}
+	trays := []AMSTray{}
+	if b.AMS != nil {
+		for _, unit := range b.AMS.AMS {
+			a, _ := strconv.Atoi(unit.ID)
+			for _, t := range unit.Tray {
+				slot, _ := strconv.Atoi(t.ID)
+				trays = append(trays, AMSTray{ID: a*4 + slot, AMS: a, Slot: slot, Type: t.Type, Color: color(t.Color), Name: t.Name, FilamentID: t.Idx})
+			}
+		}
+	}
+	if e := b.External; e != nil {
+		trays = append(trays, AMSTray{ID: externalTray, AMS: -1, Slot: 0, Type: e.Type, Color: color(e.Color), Name: "External spool", FilamentID: e.Idx})
+	}
+	return trays
+}
+
+func (b *bambuReport) status() PrinterStatus {
+	st := PrinterStatus{Online: true, Detail: b.State, File: b.Subtask, Layer: b.Layer, Layers: b.Layers, Trays: b.trays()}
+	st.State = map[string]string{"IDLE": "idle", "PREPARE": "busy", "SLICING": "busy", "RUNNING": "printing", "PAUSE": "paused", "FINISH": "finished", "FAILED": "failed"}[b.State]
+	if st.State == "" {
+		st.State = "busy"
+	}
+	if b.Percent != nil && (st.State == "printing" || st.State == "paused" || st.State == "busy") {
+		st.Progress = ptr(*b.Percent / 100)
+	}
+	if b.Remaining != nil && (st.State == "printing" || st.State == "paused") {
+		st.Remaining = ptr(*b.Remaining * 60)
+	}
+	if b.Nozzle != nil {
+		st.Nozzle = &Temp{*b.Nozzle, deref(b.NozzleSet)}
+	}
+	if b.Bed != nil {
+		st.Bed = &Temp{*b.Bed, deref(b.BedSet)}
+	}
+	if b.Error != 0 {
+		st.Detail = fmt.Sprintf("%s, error %08X", b.State, b.Error)
+	}
+	return st
+}
+
+func mergeReport(into, delta map[string]any) {
+	for k, v := range delta {
+		if dm, ok := v.(map[string]any); ok {
+			if im, ok := into[k].(map[string]any); ok {
+				mergeReport(im, dm)
+				continue
+			}
+		}
+		into[k] = v
+	}
+}
+
 func amsBambu(ctx context.Context, p *PrinterConfig, secret string) ([]AMSTray, error) {
 	conn, r, err := mqttSession(ctx, p, secret)
 	if err != nil {
@@ -660,12 +742,6 @@ func amsBambu(ctx context.Context, p *PrinterConfig, secret string) ([]AMSTray, 
 	if err := mqttPublish(conn, p, map[string]any{"pushing": map[string]any{"sequence_id": sequence, "command": "pushall"}}); err != nil {
 		return nil, err
 	}
-	color := func(c string) string {
-		if len(c) >= 6 {
-			return "#" + strings.ToUpper(c[:6])
-		}
-		return ""
-	}
 	conn.SetDeadline(time.Now().Add(10 * time.Second))
 	for {
 		kind, body, err := mqttRead(r)
@@ -673,42 +749,99 @@ func amsBambu(ctx context.Context, p *PrinterConfig, secret string) ([]AMSTray, 
 			return nil, fmt.Errorf("the printer did not report its AMS: %w", err)
 		}
 		var message struct {
-			Print *struct {
-				AMS *struct {
-					AMS []struct {
-						ID   string `json:"id"`
-						Tray []struct {
-							ID    string `json:"id"`
-							Type  string `json:"tray_type"`
-							Color string `json:"tray_color"`
-							Name  string `json:"tray_sub_brands"`
-							Idx   string `json:"tray_info_idx"`
-						} `json:"tray"`
-					} `json:"ams"`
-				} `json:"ams"`
-				External *struct {
-					Type  string `json:"tray_type"`
-					Color string `json:"tray_color"`
-					Idx   string `json:"tray_info_idx"`
-				} `json:"vt_tray"`
-			} `json:"print"`
+			Print *bambuReport `json:"print"`
 		}
-		if json.Unmarshal(mqttPayload(kind, body), &message) != nil || message.Print == nil || message.Print.AMS == nil && message.Print.External == nil {
+		if json.Unmarshal(mqttPayload(kind, body), &message) != nil || message.Print == nil {
 			continue
 		}
-		trays := []AMSTray{}
-		if message.Print.AMS != nil {
-			for _, unit := range message.Print.AMS.AMS {
-				a, _ := strconv.Atoi(unit.ID)
-				for _, t := range unit.Tray {
-					slot, _ := strconv.Atoi(t.ID)
-					trays = append(trays, AMSTray{ID: a*4 + slot, AMS: a, Slot: slot, Type: t.Type, Color: color(t.Color), Name: t.Name, FilamentID: t.Idx})
-				}
+		if trays := message.Print.trays(); trays != nil {
+			return trays, nil
+		}
+	}
+}
+
+func monitorBambu(ctx context.Context, p *PrinterConfig, secret string, publish func(PrinterStatus)) error {
+	conn, r, err := mqttSession(ctx, p, secret)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	sequence := strconv.FormatInt(time.Now().UnixMilli()%1_000_000_000, 10)
+	if err := mqttPublish(conn, p, map[string]any{"pushing": map[string]any{"sequence_id": sequence, "command": "pushall"}}); err != nil {
+		return err
+	}
+	state := map[string]any{}
+	heard := time.Now()
+	for {
+		conn.SetReadDeadline(time.Now().Add(20 * time.Second))
+		kind, body, err := mqttRead(r)
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
 			}
+			if os.IsTimeout(err) && time.Since(heard) < 65*time.Second {
+				conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+				if err := mqttWrite(conn, 0xC0, nil); err != nil {
+					return netError(err, "the printer (MQTT port 8883)")
+				}
+				continue
+			}
+			return netError(err, "the printer (MQTT port 8883)")
 		}
-		if e := message.Print.External; e != nil {
-			trays = append(trays, AMSTray{ID: externalTray, AMS: -1, Slot: 0, Type: e.Type, Color: color(e.Color), Name: "External spool", FilamentID: e.Idx})
+		heard = time.Now()
+		var message struct {
+			Print map[string]any `json:"print"`
 		}
-		return trays, nil
+		if json.Unmarshal(mqttPayload(kind, body), &message) != nil || message.Print == nil {
+			continue
+		}
+		mergeReport(state, message.Print)
+		raw, _ := json.Marshal(state)
+		var report bambuReport
+		if json.Unmarshal(raw, &report) == nil && report.State != "" {
+			publish(report.status())
+		}
+	}
+}
+
+func controlBambu(ctx context.Context, p *PrinterConfig, secret, action string) error {
+	conn, r, err := mqttSession(ctx, p, secret)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	sequence := strconv.FormatInt(time.Now().UnixMilli()%1_000_000_000, 10)
+	if err := mqttPublish(conn, p, map[string]any{"print": map[string]any{"sequence_id": sequence, "command": action, "param": ""}}); err != nil {
+		return err
+	}
+	conn.SetDeadline(time.Now().Add(5 * time.Second))
+	for {
+		kind, body, err := mqttRead(r)
+		if err != nil {
+			mqttWrite(conn, 0xE0, nil)
+			return nil
+		}
+		var message struct {
+			Print struct {
+				Command  string `json:"command"`
+				Sequence string `json:"sequence_id"`
+				Result   string `json:"result"`
+				Reason   string `json:"reason"`
+				ErrCode  int    `json:"err_code"`
+			} `json:"print"`
+		}
+		if json.Unmarshal(mqttPayload(kind, body), &message) != nil {
+			continue
+		}
+		if m := message.Print; m.Command == action && m.Sequence == sequence {
+			mqttWrite(conn, 0xE0, nil)
+			if refusedForAuth(m.Result, m.Reason, m.ErrCode) {
+				return errors.New("the printer refused the command: turn on LAN Only and Developer Mode on the printer")
+			}
+			if m.Result != "" && !strings.EqualFold(m.Result, "success") {
+				return fmt.Errorf("the printer refused %s: %s", action, cmpOr(m.Reason, m.Result))
+			}
+			return nil
+		}
 	}
 }

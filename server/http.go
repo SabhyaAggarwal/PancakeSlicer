@@ -41,7 +41,7 @@ type Server struct {
 }
 
 func NewServer(c Config, jobs *JobManager, presets *PresetIndex, library *ProfileLibraryStore) http.Handler {
-	s := &Server{cfg: c, jobs: jobs, presets: presets, library: library, sends: NewSendManager(c.Printers, c.PrinterStore)}
+	s := &Server{cfg: c, jobs: jobs, presets: presets, library: library, sends: NewSendManager(c.PrinterStore)}
 	desktopReadyNonce := os.Getenv("ORCA_DESKTOP_READY_NONCE")
 	healthProbe := newEngineHealth(c)
 	jobs.cfg.NativeHealth = healthProbe
@@ -89,12 +89,18 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, library *Profil
 	mux.HandleFunc("GET /api/jobs/{id}/exploded/{name}", s.exploded)
 	mux.HandleFunc("POST /api/jobs/{id}/send", s.sendJob)
 	mux.HandleFunc("GET /api/jobs/{id}/send", s.getSend)
-	mux.HandleFunc("GET /api/printers", s.listPrinters)
-	mux.HandleFunc("POST /api/printers", s.addPrinter)
-	mux.HandleFunc("POST /api/printers/test", s.testPrinter)
-	mux.HandleFunc("POST /api/printers/{name}/ams", s.amsPrinter)
-	mux.HandleFunc("PUT /api/printers/{name}", s.updatePrinter)
-	mux.HandleFunc("DELETE /api/printers/{name}", s.removePrinter)
+	mux.HandleFunc("POST /api/jobs/{id}/send/cancel", s.cancelSend)
+	mux.HandleFunc("GET /api/printer-connections", s.listConnections)
+	mux.HandleFunc("GET /api/printer-connections/events", s.connectionEvents)
+	mux.HandleFunc("POST /api/printer-connections/test", s.testConnection)
+	mux.HandleFunc("POST /api/printer-connections/discover", s.discoverPrinters)
+	mux.HandleFunc("PUT /api/printer-connections/{printer}", s.putConnection)
+	mux.HandleFunc("DELETE /api/printer-connections/{printer}", s.deleteConnection)
+	mux.HandleFunc("POST /api/printer-connections/{printer}/adopt", s.adoptConnection)
+	mux.HandleFunc("POST /api/printer-connections/{printer}/legacy", s.importLegacyConnection)
+	mux.HandleFunc("POST /api/printer-connections/{printer}/ams", s.amsConnection)
+	mux.HandleFunc("POST /api/printer-connections/{printer}/control", s.controlConnection)
+	mux.HandleFunc("GET /api/printer-sends", s.listSends)
 	mux.HandleFunc("GET /api/presets", s.listPresets)
 	options := c.Options
 	if options == nil {

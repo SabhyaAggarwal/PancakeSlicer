@@ -44,10 +44,7 @@ type Config struct {
 	RequestLog            bool
 	Metrics               bool
 	TrustedProxies        []netip.Prefix
-	PrintersFile          string
-	Printers              []*PrinterConfig
-	PrinterEdit           string
-	HTTPPrinters          string
+	PrinterNetwork        string
 	PrinterStore          *printerStore
 	Features              ToolFeatures
 	Options               *cachedResponse
@@ -107,9 +104,7 @@ func parseConfig() Config {
 	flag.Int64Var(&c.DiskQuota, "disk-quota", quota, "job directory quota in bytes; 0 disables (ORCA_WEB_DISK_QUOTA)")
 	flag.BoolVar(&c.RequestLog, "request-log", envBool("ORCA_WEB_REQUEST_LOG"), "JSON request logging (ORCA_WEB_REQUEST_LOG)")
 	flag.BoolVar(&c.Metrics, "metrics", envBool("ORCA_WEB_METRICS"), "expose GET /metrics (ORCA_WEB_METRICS)")
-	flag.StringVar(&c.PrintersFile, "printers", env("ORCA_WEB_PRINTERS", ""), "administrator's printer list (JSON) for Send to printer; empty disables sending (ORCA_WEB_PRINTERS)")
-	flag.StringVar(&c.PrinterEdit, "printer-edit", env("ORCA_WEB_PRINTER_EDIT", "auto"), "add Bambu printers in the app: auto (on when a bearer token is set), on or off (ORCA_WEB_PRINTER_EDIT)")
-	flag.StringVar(&c.HTTPPrinters, "http-printers", env("ORCA_WEB_HTTP_PRINTERS", ""), "CIDRs and host names where PrusaLink/OctoPrint hosts may be added in the app (needs a bearer token); empty hides the feature (ORCA_WEB_HTTP_PRINTERS)")
+	flag.StringVar(&c.PrinterNetwork, "printer-network", env("ORCA_WEB_PRINTER_NETWORK", ""), "where printers may live, for printer connections and Send: lan (private IPv4/IPv6 ranges), or CIDRs and host names; empty turns printer connections off (ORCA_WEB_PRINTER_NETWORK)")
 	proxies := flag.String("trusted-proxies", env("ORCA_WEB_TRUSTED_PROXIES", ""), "comma-separated trusted proxy CIDRs (ORCA_WEB_TRUSTED_PROXIES)")
 	flag.Parse()
 	if _, err := fallbackOrigins(c.FallbackBackend); err != nil {
@@ -150,12 +145,6 @@ func parseConfig() Config {
 }
 
 func main() {
-	if len(os.Args) == 3 && os.Args[1] == "printer-fingerprint" {
-		if err := printerFingerprint(os.Args[2], env("ORCA_WEB_RESOURCES", "resources")); err != nil {
-			log.Fatal(err)
-		}
-		return
-	}
 	cfg := parseConfig()
 	if cfg.SourceURL == "" && cfg.SourceArchive == "" {
 		log.Printf("WARNING: no Corresponding Source offer configured; operator must set ORCA_WEB_SOURCE_URL or ORCA_WEB_SOURCE_ARCHIVE (AGPL-3.0 section 13)")
@@ -173,47 +162,17 @@ func main() {
 	if st, err := os.Stat(filepath.Join(cfg.Resources, "profiles")); err != nil || !st.IsDir() {
 		log.Fatalf("no profiles directory under %s", cfg.Resources)
 	}
-	printers, err := loadPrinters(cfg.PrintersFile, cfg.Resources)
+	hosts, err := parseHostPolicy(cfg.PrinterNetwork, cfg.Listen)
 	if err != nil {
 		log.Fatal(err)
 	}
-	cfg.Printers = printers
-	if len(printers) > 0 {
-		log.Printf("send to printer: %d configured printer(s)", len(printers))
-		if cfg.BearerToken == "" {
-			log.Printf("WARNING: printers are configured without a bearer token; anyone who can reach this service can start prints")
-		}
-	}
-	bambu := false
-	switch cfg.PrinterEdit {
-	case "auto", "on":
-		if cfg.PrinterEdit == "auto" && cfg.BearerToken == "" {
-			log.Printf("adding printers in the app is off: set a bearer token, or -printer-edit on for a private network")
-			break
-		}
-		if cfg.BearerToken == "" {
-			log.Printf("WARNING: printers can be added without a bearer token; anyone who can reach this service can add printers and start prints")
-		}
-		bambu = true
-	case "off":
-	default:
-		log.Fatal("printer-edit must be auto, on or off")
-	}
-	hosts, err := parseHostPolicy(cfg.HTTPPrinters, cfg.Listen)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if hosts != nil && cfg.BearerToken == "" {
-		log.Printf("adding PrusaLink/OctoPrint hosts in the app is off: it needs a bearer token")
-		hosts = nil
-	}
-	if bambu || hosts != nil {
-		if cfg.PrinterStore, err = loadPrinterStore(filepath.Join(cfg.DataDir, "printers"), cfg.Resources, bambu, hosts); err != nil {
+	if hosts != nil {
+		if cfg.PrinterStore, err = loadPrinterStore(filepath.Join(cfg.DataDir, "printers"), cfg.Resources, hosts); err != nil {
 			log.Fatal(err)
 		}
-		log.Printf("adding printers in the app: Bambu %v, PrusaLink/OctoPrint %v (%d saved)", bambu, hosts != nil, len(cfg.PrinterStore.printers))
-		if hosts != nil {
-			log.Printf("PrusaLink/OctoPrint hosts may be added at: %s", hosts)
+		log.Printf("printer connections: %d saved; printers may live at %s", len(cfg.PrinterStore.printers), hosts)
+		if cfg.BearerToken == "" {
+			log.Printf("WARNING: printer connections are on without a bearer token; anyone who can reach this service can add printers and start prints")
 		}
 	}
 	cfg.Features, cfg.Options = probeTool(cfg)
