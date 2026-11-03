@@ -43,10 +43,22 @@ function sendWithProgress(path: string, init: RequestInit, headers: Headers, onU
   });
 }
 
+const GZIP_MIN = 16 << 10;
+async function gzipBody(init: RequestInit): Promise<RequestInit> {
+  const body = typeof init.body === 'string' ? new Blob([init.body]) : init.body instanceof Blob ? init.body : null;
+  if (!body || body.size < GZIP_MIN || typeof CompressionStream === 'undefined') return init;
+  const magic = new TextDecoder('latin1').decode(await body.slice(0, 5).arrayBuffer());
+  if (magic.startsWith('PK\x03\x04') || magic === 'DRACO') return init;
+  const headers = new Headers(init.headers);
+  headers.set('Content-Encoding', 'gzip');
+  return { ...init, headers, body: await new Response(body.stream().pipeThrough(new CompressionStream('gzip'))).blob() };
+}
+
 const showNotice = (value: AccessNotice | null) => accessNotice(value);
 
 export async function mutation(path: string, init: RequestInit, retry = false, signal?: AbortSignal, onUpload?: (fraction: number) => void, quiet = false): Promise<Response> {
   const accessNotice = quiet ? () => undefined : showNotice;
+  init = await gzipBody(init);
   const send = () => {
     const headers = new Headers(init.headers);
     if (token) headers.set('Authorization', `Bearer ${token}`);

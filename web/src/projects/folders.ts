@@ -55,6 +55,7 @@ export async function createFolder(name: string, parentId: string | null): Promi
   return id;
 }
 export const renameFolder = (id: string, name: string) => write('PATCH', `/api/folders/${encodeURIComponent(id)}`, { name });
+export const moveFolder = (id: string, parentId: string | null) => write('PATCH', `/api/folders/${encodeURIComponent(id)}`, { parentId });
 export const deleteFolder = (id: string) => write('POST', `/api/folders/${encodeURIComponent(id)}/delete`, {}, true);
 export const moveProjects = (projectIds: readonly string[], folderId: string | null) => write('POST', '/api/folders/move', { projectIds, folderId }, true);
 

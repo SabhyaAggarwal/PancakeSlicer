@@ -2,12 +2,12 @@ import { Component, useEffect, useMemo, useRef, useState, useSyncExternalStore, 
 import { ActionMenu, type MenuEntry } from '../components/Menu';
 import { Check } from '../components/Check';
 import { Dropdown } from '../components/Dropdown';
-import { confirmDialog, promptDialog } from '../components/Ask';
+import { confirmDialog } from '../components/Ask';
 import { toast } from '../state/store';
 import { projectListSnapshot, refreshProjects, subscribeProjectList, useProject } from '../flow/project';
 import { createSelection, reduceSelection, selectedVisible, type SelectionEvent } from '../profiles/selection';
 import { deleteProject, duplicateProject, listTrash, openProject, useProjects, type ListedProject } from './api';
-import { childFolders, createFolder, deleteFolder, folderPath, folderTree, moveProjects, renameFolder, useFolders, type Folder } from './folders';
+import { childFolders, createFolder, deleteFolder, folderPath, folderTree, moveFolder, moveProjects, renameFolder, useFolders, type Folder } from './folders';
 import { fileVerbs, newProjectFrom } from './verbs';
 import { setProjectsQuery, useProjectsQuery } from './query';
 import { projectStore, type ProjectCommandStatus, type ProjectStore } from '../persist/backend';
@@ -29,7 +29,7 @@ type View = 'grid'|'list';
 const PLACES = [{kind:'home',label:'Home'},{kind:'recent',label:'Recent'},{kind:'favorites',label:'Favorites'},{kind:'unsorted',label:'Unsorted'}] as const;
 const SORTS = [{value:'edited',label:'Last edited'},{value:'name',label:'Name'},{value:'objects',label:'Objects'}] as const;
 const RECENT_MS = 7 * 86400_000, HOME_RECENT = 6;
-const DRAG = 'application/x-orca-projects';
+const DRAG = 'application/x-orca-projects', FOLDER_DRAG = 'application/x-orca-folder';
 let lastPlace: Place = {kind:'home'};
 const collapsed = new Set<string>();
 
@@ -60,15 +60,26 @@ async function exportProject(p:ProjectMeta) {
 }
 
 function Thumb({p}:{p:ProjectMeta}) {
-  return p.thumbnail && p.objects > 0 ? <img src={p.thumbnail} alt="" draggable={false} loading="lazy" decoding="async"/> : <svg className="pj-placeholder" viewBox="0 0 24 24" aria-hidden><path d="M12 3 4 7.5v9L12 21l8-4.5v-9L12 3Zm0 2.3 5.6 3.2L12 11.7 6.4 8.5 12 5.3ZM6 10.2l5 2.9v5.6l-5-2.8v-5.7Zm7 8.5v-5.6l5-2.9v5.7l-5 2.8Z" fill="currentColor"/></svg>;
+  return p.thumbnail && p.objects > 0 ? <img src={p.thumbnail} alt="" draggable={false} loading="lazy" decoding="async"/> : null;
+}
+function FolderIcon() {
+  return <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.6l2 2h8.4A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5v-11Z" fill="currentColor"/></svg>;
+}
+const Dots = () => <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden><circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="19" cy="12" r="1.8" fill="currentColor"/></svg>;
+function FolderName({f,editing,done}:{f:Folder;editing:boolean;done(name:string|null):void}) {
+  const settled=useRef(false);
+  useEffect(()=>{if(editing)settled.current=false;},[editing]);
+  const finish=(name:string|null)=>{if(settled.current)return;settled.current=true;done(name);};
+  return editing ? <input className="text pj-folder-input" autoFocus defaultValue={f.name} aria-label="Folder name" onFocus={e=>e.currentTarget.select()} onClick={e=>e.stopPropagation()}
+    onBlur={e=>finish(e.currentTarget.value)} onKeyDown={e=>{e.stopPropagation();if(e.key==='Enter')finish(e.currentTarget.value);else if(e.key==='Escape')finish(null);}}/> : <span className="pj-name">{f.name}</span>;
 }
 function Star({on}:{on:boolean}) {
   return <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden><path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5Z" fill={on?'currentColor':'none'} stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>;
 }
 
-function Item({p,view,trash,current,selected,selecting,focused,favorite,canFavorite,renaming,blocked,folder,setRenaming,select,onMenu,onFavorite,onRestore,onDrag}: {
+function Item({p,view,trash,current,selected,selecting,focused,favorite,canFavorite,renaming,blocked,folder,setRenaming,select,onMenu,onFavorite,onRestore,onDrag,onDragEnd}: {
   p:ProjectMeta;view:View;trash:boolean;current:boolean;selected:boolean;selecting:boolean;focused:boolean;favorite:boolean;canFavorite:boolean;renaming:boolean;blocked:boolean;folder?:string;
-  setRenaming(on:boolean):void;select(event:SelectionEvent):void;onMenu(at:{x:number;y:number}):void;onFavorite():void;onRestore():void;onDrag(e:DragEvent):void;
+  setRenaming(on:boolean):void;select(event:SelectionEvent):void;onMenu(at:{x:number;y:number}):void;onFavorite():void;onRestore():void;onDrag(e:DragEvent):void;onDragEnd():void;
 }) {
   const committed=useRef(false),[renameError,setRenameError]=useState<string|null>(null),[renameSaving,setRenameSaving]=useState(false);
   const commit=async(name:string)=>{if(committed.current)return;if(!name.trim()){setRenameError('Enter a name.');return;}if(name.trim()===p.name){setRenaming(false);return;}committed.current=true;setRenameSaving(true);try{await (await import('../flow/project')).renameProject(p.id,name.trim());setRenameError(null);setRenaming(false);}catch(error){setRenameError(message(error));committed.current=false;}finally{setRenameSaving(false);}};
@@ -89,20 +100,20 @@ function Item({p,view,trash,current,selected,selecting,focused,favorite,canFavor
     ? <button type="button" className="btn pj-restore" disabled={blocked} onClick={onRestore}>Restore</button>
     : <>
       <button type="button" className={`icon-btn pj-icon pj-fav${favorite?' on':''}`} aria-label="Favorite" aria-pressed={favorite} disabled={!canFavorite} onClick={onFavorite}><Star on={favorite}/></button>
-      <button type="button" className="icon-btn pj-icon" aria-label={`Actions for ${p.name}`} aria-haspopup="menu" onClick={more}><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden><circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="19" cy="12" r="1.8" fill="currentColor"/></svg></button>
+      <button type="button" className="icon-btn pj-icon" aria-label={`Actions for ${p.name}`} aria-haspopup="menu" onClick={more}><Dots/></button>
     </>;
-  const info=<>{current && <span className="pj-badge">Open</span>}<span>{objects(p.objects)}</span></>,where=folder!==undefined && <span className="pj-in">{folder}</span>;
+  const time=<time dateTime={p.savedAt?new Date(p.savedAt).toISOString():undefined}>{edited(p.savedAt)}</time>;
+  const details=<span className="pj-sub">{current && <span className="pj-open">Open</span>}{folder!==undefined && <span>{folder}</span>}<span>{objects(p.objects)}</span>{time}</span>;
   return <div className={`pj-item${trash?' trash':''}${current?' current':''}${selected?' selected':''}${selecting?' selecting':''}`} role="row" tabIndex={focused?0:-1} data-id={p.id} aria-label={p.name} aria-selected={trash?undefined:selected} aria-current={current || undefined}
-    draggable={!trash && !renaming} onDragStart={onDrag} onClick={click} onContextMenu={e=>{if(trash || renaming)return;e.preventDefault();if(!selected)select({type:'CLICK',key:p.id});onMenu({x:e.clientX,y:e.clientY});}}>
+    draggable={!trash && !renaming} onDragStart={onDrag} onDragEnd={onDragEnd} onClick={click} onContextMenu={e=>{if(trash || renaming)return;e.preventDefault();if(!selected)select({type:'CLICK',key:p.id});onMenu({x:e.clientX,y:e.clientY});}}>
     {view==='grid' ? <>
       <div className="pj-thumb" role="gridcell"><Thumb p={p}/>{check}<span className="pj-overlay" onClick={e=>e.stopPropagation()}>{actions}</span></div>
-      <div className="pj-meta" role="gridcell">{name}{renameError && <span className="pj-rename-error" role="alert">{renameError}</span>}{where}
-        <span className="pj-sub">{info}<span aria-hidden>·</span><time dateTime={p.savedAt?new Date(p.savedAt).toISOString():undefined}>{edited(p.savedAt)}</time></span></div>
+      <div className="pj-meta" role="gridcell">{name}{renameError ? <span className="pj-rename-error" role="alert">{renameError}</span> : details}</div>
     </> : <>
       <div className="pj-cell pj-lead" role="gridcell">{check}<span className="pj-mini"><Thumb p={p}/></span></div>
-      <div className="pj-cell pj-title" role="gridcell">{name}{renameError && <span className="pj-rename-error" role="alert">{renameError}</span>}{where}</div>
-      <div className="pj-cell pj-col-objects" role="gridcell">{info}</div>
-      <div className="pj-cell pj-col-edited" role="gridcell"><time dateTime={p.savedAt?new Date(p.savedAt).toISOString():undefined}>{edited(p.savedAt)}</time></div>
+      <div className="pj-cell pj-title" role="gridcell">{name}{renameError && <span className="pj-rename-error" role="alert">{renameError}</span>}{(current || folder!==undefined) && <span className="pj-sub">{current && <span className="pj-open">Open</span>}{folder!==undefined && <span>{folder}</span>}</span>}</div>
+      <div className="pj-cell pj-col-objects" role="gridcell">{objects(p.objects)}</div>
+      <div className="pj-cell pj-col-edited" role="gridcell">{time}</div>
       <div className="pj-cell pj-row-actions" role="gridcell" onClick={e=>e.stopPropagation()}>{actions}</div>
     </>}
   </div>;
@@ -153,7 +164,6 @@ function Projects() {
     if(place.kind==='home')return [...all].sort(sorters.edited).slice(0,HOME_RECENT);
     return all.filter(p=>place.kind==='recent'?now-p.savedAt<RECENT_MS:place.kind==='favorites'?favorites.has(p.id):place.kind==='unsorted'?!folderOf(p):place.kind==='folder' && folderOf(p)===place.id).sort(sorters[sort]);
   },[list,trash,place,inTrash,searching,q,sort,favoriteKey,known]);
-  const homeFavorites=useMemo(()=>place.kind==='home' && !searching?(list??[]).filter(p=>favorites.has(p.id)).sort(sorters.edited):[],[list,place,searching,favoriteKey]);
   const subfolders=searching?folders.filter(f=>f.name.toLocaleLowerCase().includes(q)):place.kind==='home'?childFolders(folders,null):placeFolder?childFolders(folders,placeFolder.id):[];
   const folderName=(p:ProjectMeta)=>{const f=folderOf(p);return f?folders.find(x=>x.id===f)!.name:'Unsorted';};
   const visible=useMemo(()=>inTrash?[]:shown.map(p=>p.id),[shown,inTrash]);
@@ -213,9 +223,9 @@ function Projects() {
     }catch(error){setError(message(error));}
     finally{setRetrying(null);}
   };
-  const remove=async(ids:readonly string[])=>{
+  const remove=async(ids:readonly string[],ask=true)=>{
     const targets=(list??[]).filter(p=>ids.includes(p.id));if(busy || !targets.length || targets.some(p=>blocked(p.id)))return;
-    if(!await confirmDialog(targets.length===1?'Move to Trash?':`Move ${targets.length} projects to Trash?`,names(targets),['Move to Trash','Cancel'],true))return;
+    if(ask && !await confirmDialog(targets.length===1?'Move to Trash?':`Move ${targets.length} projects to Trash?`,names(targets),['Move to Trash','Cancel'],true))return;
     setBusy(true);setError(null);const undo:ProjectUndo[]=[],failed:string[]=[];
     try{for(const p of targets){const run=await deleteProject(p.id);if(run){const entry={id:p.id,name:p.name,run};undo.push(entry);projectUndos.set(p.id,entry);}else failed.push(p.name);}
       setSelection(s=>reduceSelection(s,{type:'SYNC',scope:'projects',visible:visible.filter(id=>!undo.some(p=>p.id===id))}));
@@ -249,34 +259,56 @@ function Projects() {
     else return;e.preventDefault();e.stopPropagation();
   };
   const onDrop=(e:DragEvent)=>{if(!e.dataTransfer.files.length)return;e.preventDefault();void newProjectFrom(e.dataTransfer.files);};
+  const [dragging,setDragging]=useState<'projects'|'folder'|null>(null),[editing,setEditing]=useState<string|null>(null);
   const dragIds=(id:string)=>selected.includes(id)?selected:[id];
-  const onDrag=(id:string)=>(e:DragEvent)=>{e.dataTransfer.setData(DRAG,JSON.stringify(dragIds(id)));e.dataTransfer.effectAllowed='move';};
+  const ghost=(e:DragEvent,text:string)=>{
+    const el=document.createElement('div');el.className='pj-ghost';el.textContent=text;document.body.append(el);
+    e.dataTransfer.setDragImage(el,14,14);setTimeout(()=>el.remove());
+  };
+  const onDrag=(id:string)=>(e:DragEvent)=>{
+    const ids=dragIds(id);e.dataTransfer.setData(DRAG,JSON.stringify(ids));e.dataTransfer.effectAllowed='move';
+    ghost(e,ids.length===1?(list?.find(p=>p.id===id)?.name ?? 'Project'):`${ids.length} projects`);setDragging('projects');
+  };
+  const onFolderDrag=(f:Folder)=>(e:DragEvent)=>{e.stopPropagation();e.dataTransfer.setData(FOLDER_DRAG,f.id);e.dataTransfer.effectAllowed='move';ghost(e,f.name);setDragging('folder');};
+  const endDrag=()=>{setDragging(null);document.querySelectorAll('.projects .drop').forEach(el=>el.classList.remove('drop'));};
   const move=async(ids:readonly string[],folder:string|null)=>{
     if(!ids.length)return;
     const name=folder?folders.find(f=>f.id===folder)?.name ?? 'folder':'Unsorted';
     try{await moveProjects(ids,folder);toast(`${ids.length===1?(list?.find(p=>p.id===ids[0])?.name ?? 'Project'):`${ids.length} projects`} moved to ${name}`);if(ids.length>1)dispatch({type:'CLEAR'});}
     catch(error){setError(`Move failed: ${message(error)}`);}
   };
-  const dropTarget=(folder:string|null)=>({
-    onDragOver:(e:DragEvent<HTMLElement>)=>{if(!e.dataTransfer.types.includes(DRAG))return;e.preventDefault();e.stopPropagation();e.dataTransfer.dropEffect='move';e.currentTarget.classList.add('drop');},
-    onDragLeave:(e:DragEvent<HTMLElement>)=>{if(!e.currentTarget.contains(e.relatedTarget as Node))e.currentTarget.classList.remove('drop');},
-    onDrop:(e:DragEvent<HTMLElement>)=>{
-      e.currentTarget.classList.remove('drop');const raw=e.dataTransfer.getData(DRAG);if(!raw)return;e.preventDefault();e.stopPropagation();
-      let ids:unknown;try{ids=JSON.parse(raw);}catch{return;}
-      if(Array.isArray(ids))void move(ids.filter((id):id is string=>typeof id==='string'),folder);
-    },
-  });
-  const newFolder=async(parent:string|null,then?:readonly string[])=>{
-    const siblings=new Set(childFolders(folders,parent).map(f=>f.name.toLocaleLowerCase()));
-    let suggestion='New folder';for(let n=2;siblings.has(suggestion.toLocaleLowerCase());n++)suggestion=`New folder ${n}`;
-    const name=await promptDialog('New folder',suggestion);if(!name)return;
-    try{const id=await createFolder(name,parent);if(parent)collapsed.delete(parent);if(then?.length)await move(then,id);}
+  const uniqueName=(parent:string|null)=>{const taken=new Set(childFolders(folders,parent).map(f=>f.name.toLocaleLowerCase()));let name='New folder';for(let n=2;taken.has(name.toLocaleLowerCase());n++)name=`New folder ${n}`;return name;};
+  const newFolder=async(parent:string|null,ids?:readonly string[])=>{
+    try{const id=await createFolder(uniqueName(parent),parent);if(parent)collapsed.delete(parent);if(ids?.length)await moveProjects(ids,id);setEditing(id);}
     catch(error){setError(`New folder failed: ${message(error)}`);}
   };
-  const renameAt=async(f:Folder)=>{
-    const name=await promptDialog('Rename folder',f.name);if(!name || name===f.name)return;
-    try{await renameFolder(f.id,name);}catch(error){setError(`Rename failed: ${message(error)}`);}
+  const named=(f:Folder)=>async(name:string|null)=>{
+    setEditing(null);const next=name?.trim();if(!next || next===f.name)return;
+    try{await renameFolder(f.id,next);}catch(error){setError(`Rename failed: ${message(error)}`);}
   };
+  const nest=async(id:string,parent:string|null)=>{
+    const f=folders.find(x=>x.id===id);if(!f || (f.parentId ?? null)===parent || id===parent)return;
+    try{await moveFolder(id,parent);if(parent)collapsed.delete(parent);}catch(error){setError(`Move failed: ${message(error)}`);}
+  };
+  type Target={folder:string|null}|'trash'|'new';
+  const dropTarget=(target:Target,folders=true)=>({
+    onDragOver:(e:DragEvent<HTMLElement>)=>{
+      const projects=e.dataTransfer.types.includes(DRAG),folder=folders && e.dataTransfer.types.includes(FOLDER_DRAG) && typeof target==='object';
+      if(!projects && !folder)return;e.preventDefault();e.stopPropagation();e.dataTransfer.dropEffect='move';e.currentTarget.classList.add('drop');
+    },
+    onDragLeave:(e:DragEvent<HTMLElement>)=>{if(!e.currentTarget.contains(e.relatedTarget as Node))e.currentTarget.classList.remove('drop');},
+    onDrop:(e:DragEvent<HTMLElement>)=>{
+      e.currentTarget.classList.remove('drop');
+      const folder=e.dataTransfer.getData(FOLDER_DRAG),raw=e.dataTransfer.getData(DRAG);
+      if(folder && typeof target==='object'){e.preventDefault();e.stopPropagation();endDrag();void nest(folder,target.folder);return;}
+      if(!raw)return;e.preventDefault();e.stopPropagation();endDrag();
+      let parsed:unknown;try{parsed=JSON.parse(raw);}catch{return;}
+      const ids=Array.isArray(parsed)?parsed.filter((id):id is string=>typeof id==='string'):[];
+      if(target==='trash')void remove(ids,false);
+      else if(target==='new')void newFolder(placeFolder?.id ?? null,ids);
+      else void move(ids,target.folder);
+    },
+  });
   const removeFolder=async(f:Folder)=>{
     const n=counts.inFolder.get(f.id) ?? 0,inner=childFolders(folders,f.id).length;
     const detail=[`${count(n,'project moves','projects move')} to Unsorted.`,inner?`${count(inner,'folder moves','folders move')} up a level.`:''].filter(Boolean).join(' ');
@@ -290,15 +322,15 @@ function Projects() {
       {label:'Unsorted',disabled:ids.every(id=>at(id)===null),action:()=>void move(ids,null)},
       ...folderTree(folders).map(({folder,depth}):MenuEntry=>({label:`${' '.repeat(depth)}${folder.name}`,disabled:ids.every(id=>at(id)===folder.id),action:()=>void move(ids,folder.id)})),
       'sep',
-      {label:'New folder…',action:()=>void newFolder(null,ids)},
+      {label:'New folder',action:()=>void newFolder(null,ids)},
     ];
   };
-  const [folderMenu,setFolderMenu]=useState<{id:string;x:number;y:number}|null>(null),[moveMenu,setMoveMenu]=useState<{ids:readonly string[];x:number;y:number}|null>(null);
+  const [folderMenu,setFolderMenu]=useState<{id:string;x:number;y:number}|null>(null);
   const folderMenuAt=(f:Folder)=>(e:MouseEvent<HTMLElement>)=>{e.preventDefault();e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setFolderMenu({id:f.id,...(e.type==='contextmenu'?{x:e.clientX,y:e.clientY}:{x:r.left,y:r.bottom+2})});};
   const folderItems=(f:Folder):MenuEntry[]=>[
     {label:'Open',action:()=>go({kind:'folder',id:f.id})},
-    {label:'New folder inside…',action:()=>void newFolder(f.id)},
-    {label:'Rename…',action:()=>void renameAt(f)},
+    {label:'New folder inside',action:()=>void newFolder(f.id)},
+    {label:'Rename',action:()=>setEditing(f.id)},
     'sep',
     {label:'Delete folder…',action:()=>void removeFolder(f)},
   ];
@@ -317,37 +349,43 @@ function Projects() {
   const title=searching?'Search':placeFolder?placeFolder.name:inTrash?'Trash':PLACES.find(x=>x.kind===place.kind)?.label ?? 'Home';
   const loading=inTrash?!trash && !trashError:!list;
   const failed=inTrash?trashError:status.state==='failed'?status.error:folderState.state==='failed'?folderState.error:null;
-  const empty=inTrash?'Trash is empty':place.kind==='favorites'?'No favorites':place.kind==='recent'?'Nothing edited this week':place.kind==='unsorted'?'Nothing unsorted':placeFolder?'This folder is empty':'No projects yet';
-  const item=(p:ProjectMeta,grid:boolean)=><Item key={p.id} p={p} view={view} trash={inTrash} current={!inTrash && p.id===current} selected={grid && selectedSet.has(p.id)} selecting={grid && selected.length>0} focused={grid && p.id===focusKey} favorite={favorites.has(p.id)} canFavorite={prefsLoaded} renaming={renaming===p.id} blocked={blocked(p.id) || retrying===p.id}
-    folder={searching?folderName(p):undefined} setRenaming={on=>{if(!on || !blocked(p.id))setRenaming(on?p.id:null);}} select={event=>{if(grid)dispatch(event);else void openProject(p.id);}} onMenu={at=>setMenu({id:p.id,...at})} onFavorite={()=>toggleFavorite(p.id)} onRestore={()=>void restoreFromTrash(p)} onDrag={onDrag(p.id)}/>;
+  const empty=inTrash?'Trash is empty':place.kind==='favorites'?'No favorites':place.kind==='recent'?'Nothing edited this week':place.kind==='unsorted'?'Nothing unsorted':placeFolder?'Drag projects here':'No projects yet';
+  const item=(p:ProjectMeta)=><Item key={p.id} p={p} view={view} trash={inTrash} current={!inTrash && p.id===current} selected={selectedSet.has(p.id)} selecting={selected.length>0} focused={p.id===focusKey} favorite={favorites.has(p.id)} canFavorite={prefsLoaded} renaming={renaming===p.id} blocked={blocked(p.id) || retrying===p.id}
+    folder={searching?folderName(p):undefined} setRenaming={on=>{if(!on || !blocked(p.id))setRenaming(on?p.id:null);}} select={event=>dispatch(event)} onMenu={at=>setMenu({id:p.id,...at})} onFavorite={()=>toggleFavorite(p.id)} onRestore={()=>void restoreFromTrash(p)} onDrag={onDrag(p.id)} onDragEnd={endDrag}/>;
   const head=view==='list' && <div className="pj-head" role="row"><span role="columnheader" className="pj-lead"/><span role="columnheader">Name</span><span role="columnheader" className="pj-col-objects">Objects</span><span role="columnheader" className="pj-col-edited">Edited</span><span role="columnheader" className="pj-row-actions"/></div>;
-  const railItem=(key:string,label:string,on:boolean,n:number|undefined,open:()=>void,drop?:string|null)=>
-    <button key={key} type="button" className={`pj-filter${on?' on':''}`} aria-current={on?'page':undefined} onClick={open} {...(drop!==undefined?dropTarget(drop):{})}>
+  const railItem=(key:string,label:string,on:boolean,n:number|undefined,open:()=>void,target?:Target)=>
+    <button key={key} type="button" className={`pj-filter${on?' on':''}`} aria-current={on?'page':undefined} onClick={open} {...(target?dropTarget(target):{})}>
       <span>{label}</span>{n!==undefined && <span className="pj-n">{n}</span>}
     </button>;
+  const tileEditing=!inTrash && (place.kind==='home' || !!placeFolder || searching) && subfolders.some(f=>f.id===editing);
   const tree=folderTree(folders).filter(({folder})=>!folderPath(folders,folder.parentId ?? null).some(a=>collapsed.has(a.id)));
-  const folderCards=!inTrash && subfolders.length>0 && <div className="pj-folders" role="list" aria-label="Folders">
-    {subfolders.map(f=><div key={f.id} role="listitem" className="pj-folder" {...dropTarget(f.id)} onContextMenu={folderMenuAt(f)}>
-      <button type="button" className="pj-folder-open" onClick={()=>go({kind:'folder',id:f.id})}>
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.6l2 2h8.4A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5v-11Z" fill="currentColor"/></svg>
-        <span className="pj-name">{f.name}</span><span className="pj-n">{counts.inFolder.get(f.id) ?? 0}</span>
-      </button>
-      <button type="button" className="icon-btn pj-icon" aria-label={`Actions for ${f.name}`} aria-haspopup="menu" onClick={folderMenuAt(f)}><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden><circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="19" cy="12" r="1.8" fill="currentColor"/></svg></button>
+  const tiles=!inTrash && (place.kind==='home' || placeFolder || searching) && <div className="pj-tiles" role="list" aria-label="Folders">
+    {place.kind==='home' && !searching && <div role="listitem" className="pj-tile" {...dropTarget({folder:null},false)}>
+      <button type="button" className="pj-tile-open" onClick={()=>go({kind:'unsorted'})}><span className="pj-tile-icon"><FolderIcon/></span><span className="pj-tile-text"><span className="pj-name">Unsorted</span><span className="pj-sub">{count(counts.unsorted,'project','projects')}</span></span></button>
+    </div>}
+    {subfolders.map(f=><div key={f.id} role="listitem" className="pj-tile" draggable={editing!==f.id} onDragStart={onFolderDrag(f)} onDragEnd={endDrag} {...dropTarget({folder:f.id})} onContextMenu={folderMenuAt(f)}>
+      <button type="button" className="pj-tile-open" onClick={()=>{if(editing!==f.id)go({kind:'folder',id:f.id});}}><span className="pj-tile-icon"><FolderIcon/></span><span className="pj-tile-text"><FolderName f={f} editing={editing===f.id} done={named(f)}/><span className="pj-sub">{count(counts.inFolder.get(f.id) ?? 0,'project','projects')}</span></span></button>
+      <button type="button" className="icon-btn pj-icon" aria-label={`Actions for ${f.name}`} aria-haspopup="menu" onClick={folderMenuAt(f)}><Dots/></button>
     </div>)}
+    {!searching && <div role="listitem" className="pj-tile pj-tile-new" {...dropTarget('new',false)}>
+      <button type="button" className="pj-tile-open" onClick={()=>void newFolder(placeFolder?.id ?? null)}><span className="pj-tile-icon">+</span><span className="pj-tile-text"><span className="pj-name">New folder</span></span></button>
+    </div>}
   </div>;
-  const section=(label:string,more?:Place)=>place.kind==='home' && !searching && <div className="pj-section"><h2>{label}</h2>{more && <button type="button" className="btn-ghost" onClick={()=>go(more)}>Show all</button>}</div>;
-  return <div className="projects" onDragOver={e=>e.preventDefault()} onDrop={onDrop}><div className="pj-layout">
+  const grid_=shown.length>0 && <div ref={grid} className={`pj-${view}`} role="grid" aria-label={title} aria-multiselectable={inTrash?undefined:true} aria-busy={busy || status.state==='loading'} onKeyDown={onKey}>{head}{shown.map(item)}</div>;
+  return <div className={`projects${dragging?` dragging-${dragging}`:''}`} onDragOver={e=>{if(e.dataTransfer.types.includes('Files'))e.preventDefault();}} onDrop={onDrop}><div className="pj-layout">
     <nav className="pj-side" aria-label="Projects">
-      {PLACES.map(x=>railItem(x.kind,x.label,place.kind===x.kind && !searching,x.kind==='home'?undefined:counts[x.kind],()=>go({kind:x.kind}),x.kind==='unsorted'?null:undefined))}
-      <div className="pj-side-head"><span>Folders</span><button type="button" className="icon-btn pj-icon-add" aria-label="New folder" onClick={()=>void newFolder(null)}><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden><path d="M7 2h2v5h5v2H9v5H7V9H2V7h5z" fill="currentColor"/></svg></button></div>
+      {PLACES.map(x=>railItem(x.kind,x.label,place.kind===x.kind && !searching,x.kind==='home'?undefined:counts[x.kind],()=>go({kind:x.kind}),x.kind==='unsorted'?{folder:null}:x.kind==='home'?{folder:null}:undefined))}
       <div className="pj-tree" role="tree" aria-label="Folders">
         {tree.map(({folder:f,depth})=>{const has=childFolders(folders,f.id).length>0,open=!collapsed.has(f.id),on=place.kind==='folder' && place.id===f.id && !searching;
-          return <div key={f.id} className="pj-node" role="treeitem" aria-level={depth+1} aria-expanded={has?open:undefined} aria-selected={on} style={{paddingLeft:`${depth*12}px`}} {...dropTarget(f.id)} onContextMenu={folderMenuAt(f)}>
+          return <div key={f.id} className="pj-node" role="treeitem" aria-level={depth+1} aria-expanded={has?open:undefined} aria-selected={on} style={{paddingLeft:`${depth*12}px`}}
+            draggable={editing!==f.id} onDragStart={onFolderDrag(f)} onDragEnd={endDrag} {...dropTarget({folder:f.id})} onContextMenu={folderMenuAt(f)}>
             {has ? <button type="button" className={`pj-caret${open?' open':''}`} aria-label={open?`Collapse ${f.name}`:`Expand ${f.name}`} onClick={()=>{if(!collapsed.delete(f.id))collapsed.add(f.id);redraw(n=>n+1);}}><svg viewBox="0 0 16 16" width="12" height="12" aria-hidden><path d="m6 4 4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.6"/></svg></button> : <span className="pj-caret" aria-hidden/>}
-            <button type="button" className={`pj-filter${on?' on':''}`} aria-current={on?'page':undefined} onClick={()=>go({kind:'folder',id:f.id})}><span>{f.name}</span><span className="pj-n">{counts.inFolder.get(f.id) ?? 0}</span></button>
+            {editing===f.id && !tileEditing ? <FolderName f={f} editing done={named(f)}/>
+              : <button type="button" className={`pj-filter${on?' on':''}`} aria-current={on?'page':undefined} onClick={()=>go({kind:'folder',id:f.id})}><span>{f.name}</span><span className="pj-n">{counts.inFolder.get(f.id) ?? 0}</span></button>}
           </div>;})}
+        <button type="button" className="pj-filter pj-add" {...dropTarget('new',false)} onClick={()=>void newFolder(null)}><span>+ New folder</span></button>
       </div>
-      <div className="pj-side-end">{railItem('trash','Trash',inTrash,counts.trash,()=>go({kind:'trash'}))}</div>
+      <div className="pj-side-end">{railItem('trash','Trash',inTrash,counts.trash,()=>go({kind:'trash'}),'trash')}</div>
     </nav>
     <section className="pj-main" aria-label={title}>
       <header className="pj-bar">
@@ -357,14 +395,13 @@ function Projects() {
             ? <span key={f.id}><span aria-hidden>›</span><button type="button" className="btn-ghost" onClick={()=>go({kind:'folder',id:f.id})}>{f.name}</button></span>
             : <span key={f.id}><span aria-hidden>›</span><h1>{f.name}</h1></span>)}
         </nav> : <h1>{title}</h1>}
-        <input className="text pj-search" type="search" placeholder="Search all projects" aria-label="Search all projects" value={query} onChange={e=>setProjectsQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Escape' && query){e.stopPropagation();setProjectsQuery('');}}}/>
+        <input className="text pj-search" type="search" placeholder="Search" aria-label="Search all projects" value={query} onChange={e=>setProjectsQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Escape' && query){e.stopPropagation();setProjectsQuery('');}}}/>
         <div className="pj-tools">
           <Dropdown className="pj-sort" aria-label="Sort by" options={SORTS} value={sort} onValueChange={v=>savePreferences({'projects.sort':v})}/>
           <div className="seg pj-view" role="group" aria-label="View">
             <button type="button" aria-pressed={view==='grid'} aria-label="Grid" onClick={()=>savePreferences({'projects.view':'grid'})}><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden><path d="M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z" fill="currentColor"/></svg></button>
             <button type="button" aria-pressed={view==='list'} aria-label="List" onClick={()=>savePreferences({'projects.view':'list'})}><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden><path d="M2 3h12v2H2zM2 7h12v2H2zM2 11h12v2H2z" fill="currentColor"/></svg></button>
           </div>
-          {placeFolder && !searching && <button type="button" className="btn" onClick={()=>void newFolder(placeFolder.id)}>New folder</button>}
           <button type="button" className="btn" onClick={fileVerbs.import}>Import</button>
           <button type="button" className="btn-primary" onClick={fileVerbs.new}>New project</button>
         </div>
@@ -383,29 +420,18 @@ function Projects() {
       {!!projectUndos.size && !inTrash && <div className="pj-line"><span>{projectUndos.size} moved to Trash</span><button type="button" className="btn" disabled={undoBusy} onClick={()=>void restore([...projectUndos.values()])}>{undoBusy?'Restoring…':'Undo'}</button></div>}
       {selected.length>0 && !inTrash && <div className="pj-line pj-selection">
         <strong>{selected.length} selected</strong>
-        {selected.length===1 && <>
-          <button type="button" className="btn-ghost" onClick={()=>void openProject(selected[0])}>Open</button>
-          <button type="button" className="btn-ghost" disabled={blocked(selected[0])} onClick={()=>setRenaming(selected[0])}>Rename</button>
-          <button type="button" className="btn-ghost" disabled={blocked(selected[0])} onClick={()=>void duplicateProject(selected[0])}>Duplicate</button>
-        </>}
-        <button type="button" className="btn-ghost" aria-haspopup="menu" onClick={e=>{const r=e.currentTarget.getBoundingClientRect();setMoveMenu({ids:selected,x:r.left,y:r.bottom+2});}}>Move to…</button>
         <button type="button" className="btn-ghost" disabled={busy || selected.some(blocked)} onClick={()=>void remove(selected)}>Move to Trash</button>
         <button type="button" className="btn-ghost pj-clear" onClick={()=>dispatch({type:'CLEAR'})}>Clear</button>
       </div>}
       {loading ? <div className="pj-empty" role="status">Loading…</div>
         : <div className="pj-scroll scroll-fade">
-          {folderCards}
-          {section('Recent',{kind:'recent'})}
-          {!shown.length ? !(place.kind==='home' && subfolders.length) && <div className="pj-empty">{failed ? null : q ? <><strong>No matches</strong><button type="button" className="btn" onClick={()=>setProjectsQuery('')}>Clear search</button></>
-            : <><strong>{empty}</strong>{place.kind==='home' && <div className="pj-empty-actions"><button type="button" className="btn-primary" onClick={fileVerbs.new}>New project</button><button type="button" className="btn" onClick={fileVerbs.import}>Import model</button></div>}</>}</div>
-          : <div ref={grid} className={`pj-${view}`} role="grid" aria-label={title} aria-multiselectable={inTrash?undefined:true} aria-busy={busy || status.state==='loading'} onKeyDown={onKey}>
-            {head}{shown.map(p=>item(p,true))}
-          </div>}
-          {homeFavorites.length>0 && <>{section('Favorites',{kind:'favorites'})}<div className={`pj-${view}`} role="grid" aria-label="Favorites">{head}{homeFavorites.map(p=>item(p,false))}</div></>}
+          {tiles}
+          {place.kind==='home' && !searching && shown.length>0 && <div className="pj-section"><h2>Recent</h2><button type="button" className="btn-ghost" onClick={()=>go({kind:'recent'})}>Show all</button></div>}
+          {grid_ || (!(tiles && !searching && place.kind==='home') && <div className="pj-empty">{failed ? null : q ? <><strong>No matches</strong><button type="button" className="btn" onClick={()=>setProjectsQuery('')}>Clear search</button></>
+            : <><strong>{empty}</strong>{place.kind==='home' && <div className="pj-empty-actions"><button type="button" className="btn-primary" onClick={fileVerbs.new}>New project</button><button type="button" className="btn" onClick={fileVerbs.import}>Import model</button></div>}</>}</div>)}
         </div>}
     </section></div>
     {menu && menuProject && <ActionMenu label="Project actions" at={menu} onClose={()=>setMenu(null)} items={menuItems(menuProject)}/>}
     {folderMenu && folders.some(f=>f.id===folderMenu.id) && <ActionMenu label="Folder actions" at={folderMenu} onClose={()=>setFolderMenu(null)} items={folderItems(folders.find(f=>f.id===folderMenu.id)!)}/>}
-    {moveMenu && <ActionMenu label="Move to" at={moveMenu} onClose={()=>setMoveMenu(null)} items={moveEntries(moveMenu.ids)}/>}
   </div>;
 }

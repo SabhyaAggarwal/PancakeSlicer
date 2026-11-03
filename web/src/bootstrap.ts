@@ -6,8 +6,10 @@ import './styles/primitives.css';
 import './app.css';
 import './mobile.css';
 import './components/controls.css';
+import { registerServiceWorker } from './sw';
 
 const root = document.getElementById('root')!;
+registerServiceWorker();
 checkBrowserSupport().then(() => {
   import('./main').catch(() => showBrowserNotice(root,
     'The application could not load. Check your connection and reload the page.', 'Unable to start OrcaSlicer'));
