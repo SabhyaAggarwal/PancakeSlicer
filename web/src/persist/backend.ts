@@ -77,8 +77,13 @@ export function projectStore(retry = false): Promise<ProjectStore | null> {
   store ??= (async () => {
     await (await import('./service')).requireWorkspaceService();
     const { serviceStore } = await import('./project-service');
-    await serviceStore.list();
-    return observableStore(serviceStore);
+    let primed: Awaited<ReturnType<ProjectStore['list']>> | null = await serviceStore.list();
+    const unsubscribe = subscribeProjectStorageChanges(() => { primed = null; unsubscribe(); });
+    return { ...observableStore(serviceStore), list: () => {
+      const first = primed;
+      primed = null;
+      return first ? Promise.resolve(first) : serviceStore.list();
+    } };
   })().catch((error: unknown) => { storageError = error instanceof Error ? error.message : String(error); return null; });
   return store;
 }

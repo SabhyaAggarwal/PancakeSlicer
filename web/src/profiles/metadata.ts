@@ -10,6 +10,17 @@ export function profileSummary(type: PresetType, config: Config, model?: string)
   return [height > 0 ? `${height.toFixed(2)} mm` : '', top].filter(Boolean).join(' · ');
 }
 
+export function vendorLabel(config: Config, vendor: string): string {
+  return (first(config.printer_vendor) || vendor || 'Custom').replace(/^BBL$/, 'Bambu Lab');
+}
+export function modelLabel(config: Config, vendor: string, model?: string): string {
+  const full = first(config.printer_model) || model || '', brand = vendorLabel(config, vendor);
+  return full.startsWith(`${brand} `) ? full.slice(brand.length + 1) : full;
+}
+export function printerLine(config: Config, vendor: string, model?: string): string {
+  const nozzle = first(config.nozzle_diameter);
+  return [modelLabel(config, vendor, model), nozzle && `${nozzle} mm`].filter(Boolean).join(' · ');
+}
 export function processMode(config: Config): string {
   return profileSummary('process', config).split(' · ').pop() ?? '';
 }

@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -54,6 +55,8 @@ type vendorCache struct {
 	presets  *VendorPresets
 	response *cachedResponse
 	err      error
+	mu       sync.Mutex
+	byModels map[string]*cachedResponse
 }
 type PresetIndex struct {
 	root           string
@@ -308,6 +311,57 @@ func (p *PresetIndex) response(name string) (*cachedResponse, error) {
 	}
 	entry, _ := p.cache.Load(name)
 	return entry.(*vendorCache).response, nil
+}
+
+func (p *PresetIndex) modelsResponse(name string, models []string) (*cachedResponse, error) {
+	v, err := p.vendor(name)
+	if err != nil {
+		return nil, err
+	}
+	models = slices.Clone(models)
+	slices.Sort(models)
+	key := strings.Join(models, "\x00")
+	entry, _ := p.cache.Load(name)
+	c := entry.(*vendorCache)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if r := c.byModels[key]; r != nil {
+		return r, nil
+	}
+	narrowed := VendorPresets{Vendor: v.Vendor, Machines: []Preset{}, Processes: []Preset{}, Filaments: []Preset{}}
+	machines := map[string]bool{}
+	for _, m := range v.Machines {
+		model := m.Model
+		if model == "" {
+			model = stringValue(m.Config["printer_model"])
+		}
+		if slices.Contains(models, model) {
+			narrowed.Machines = append(narrowed.Machines, m)
+			machines[m.Name] = true
+		}
+	}
+	listed := func(p Preset) bool {
+		return slices.ContainsFunc(p.CompatiblePrinters, func(n string) bool { return machines[n] })
+	}
+	for _, p := range v.Processes {
+		if listed(p) {
+			narrowed.Processes = append(narrowed.Processes, p)
+		}
+	}
+	for _, f := range v.Filaments {
+		if listed(f) || !f.Evaluated && len(f.CompatiblePrinters) == 0 && stringValue(f.Config["compatible_printers_condition"]) == "" {
+			narrowed.Filaments = append(narrowed.Filaments, f)
+		}
+	}
+	r, err := cacheJSON(narrowed)
+	if err != nil {
+		return nil, err
+	}
+	if c.byModels == nil || len(c.byModels) >= 8 {
+		c.byModels = map[string]*cachedResponse{}
+	}
+	c.byModels[key] = r
+	return r, nil
 }
 
 func (p *PresetIndex) allResponseJSON() (*cachedResponse, error) {

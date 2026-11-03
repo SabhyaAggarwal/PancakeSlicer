@@ -128,6 +128,9 @@ func fail(w http.ResponseWriter, status int, message string) {
 func (s *Server) listPresets(w http.ResponseWriter, r *http.Request) {
 	if name := r.URL.Query().Get("vendor"); name != "" {
 		v, err := s.presets.response(name)
+		if models := r.URL.Query()["model"]; len(models) > 0 {
+			v, err = s.presets.modelsResponse(name, models)
+		}
 		if errors.Is(err, os.ErrNotExist) {
 			fail(w, 404, "unknown vendor")
 			return

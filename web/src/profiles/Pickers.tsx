@@ -1,4 +1,4 @@
-import { profileColour } from './metadata';
+import { printerLine, profileColour, vendorLabel } from './metadata';
 import { ColorPicker } from '../components/ColorPicker';
 import type { Config, PresetType } from '../api/types';
 import { filamentSwitchReason, getState, resolvePreset, setState, useStore } from '../state/store';
@@ -92,7 +92,6 @@ const size = (c: Config) => { const pts = [c.printable_area].flat().map((p) => S
 const byVendorRail = (byVendor: Map<string, PickerItem[]>): PickerGroup[] =>
   [...byVendor].sort((a, b) => vendorRank(a[0]) - vendorRank(b[0]) || b[1].length - a[1].length || a[0].localeCompare(b[0]))
     .map(([v, items]) => ({ id: `v:${v}`, title: v, items: items.sort((a, b) => a.label.localeCompare(b.label)) }));
-const vendorOf = (c: Config, fallback: string) => (first(c.printer_vendor) || fallback || 'Custom').replace(/^BBL$/, 'Bambu Lab');
 
 export function PrinterPicker() {
   const printer = useStore((s) => s.printer);
@@ -101,15 +100,17 @@ export function PrinterPicker() {
   const profileGroups = (): PickerGroup[] => {
     const byVendor = new Map<string, PickerItem[]>();
     for (const e of listProfiles('machine')) {
-      const v = vendorOf(e.config, e.vendor);
-      byVendor.set(v, [...(byVendor.get(v) ?? []), { id: e.key, label: e.mine ? e.name : shortName(e.name), meta: size(e.config), search: e.name }]);
+      const v = vendorLabel(e.config, e.vendor);
+      byVendor.set(v, [...(byVendor.get(v) ?? []), { id: e.key, label: e.mine ? e.name : shortName(e.name), sub: printerLine(e.config, e.vendor), meta: size(e.config), search: e.name }]);
     }
     return byVendorRail(byVendor);
   };
+  const selected = resolvePreset(getState(), 'machine', printer);
   return (
     <Picker label="Printer" value={printer} memory="orca.web.picker.printers" groups={profileGroups} onPick={(name) => name !== printer && requestPreset('machine', 0, name)}
       footer={[{ label: 'Add printer', run: () => setState({ presetUx: { kind: 'presets', type: 'machine', add: true } }) }, presets('machine', printer)]}>
-      <span className="pk-name">{resolvePreset(getState(),'machine',printer).name ?? 'Choose printer'}</span>
+      <span className="pk-name">{selected.name ?? 'Choose printer'}</span>
+      {selected.name && !selected.error && <span className="pk-sub">{printerLine(selected.config, selected.base?.vendor ?? '')}</span>}
     </Picker>
   );
 }

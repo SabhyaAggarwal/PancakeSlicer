@@ -90,13 +90,13 @@ self.onmessage = async (e: MessageEvent<CatalogIn>) => {
     const types = JSON.stringify([nativePresetCatalog(), Object.entries(options).map(([key, def]) => [key, def.type])]);
     const cached = entry?.types === types ? entry : undefined;
     if(cached)post({id,type:'catalog',catalog:cached.catalog,from:'cache'});
-    const r = await fetch(`/api/presets?vendor=${encodeURIComponent(vendor)}`, {
-      cache: 'no-store',
+    const r = await fetch(`/api/presets?${new URLSearchParams([['vendor', vendor], ...models.map((m) => ['model', m])])}`, {
+      cache: 'no-cache',
       headers: cached?.etag ? { 'If-None-Match': cached.etag } : {},
     });
     if (r.status !== 304) {
       if (!r.ok) throw new Error(`${r.status} ${r.statusText}: ${(await r.text()).slice(0, 300)}`);
-      const catalog = compactCatalog(normalizeCatalog(await r.json(), vendor, nativePresetCatalog(), models));
+      const catalog = compactCatalog(normalizeCatalog(await r.json(), vendor, nativePresetCatalog()));
       if (!cached || JSON.stringify(cached.catalog) !== JSON.stringify(catalog)) post({ id, type: 'catalog', catalog, from: 'network' });
       remember({key,etag:r.headers.get('ETag'),types,catalog});
     } else if(!cached)throw new Error('Catalog validation returned 304 without a matching memory entry.');

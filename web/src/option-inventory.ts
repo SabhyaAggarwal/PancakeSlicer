@@ -86,7 +86,7 @@ export async function loadRuntimeOptions(url: string, mock = false, cached?: Run
   let selected: Record<string, Metadata> | null;
   if (native) {
     const response = await fetch('/api/options', {
-      cache: 'no-store',
+      cache: 'no-cache',
       headers: cached?.native && cached.etag ? { 'If-None-Match': cached.etag } : {},
     });
     if (response.status === 304 && cached?.native) {
