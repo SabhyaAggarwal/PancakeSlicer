@@ -121,7 +121,10 @@ func durableJSON(path string, value any) error {
 	if err != nil {
 		return err
 	}
-	if err = os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	return durableWrite(path, raw)
+}
+func durableWrite(path string, raw []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
 	f, err := os.CreateTemp(filepath.Dir(path), ".workspace-*")
@@ -156,12 +159,73 @@ func syncWorkspaceDirectory(path string) error {
 func (st *workspaceStore) save(d *workspaceData) error {
 	path := filepath.Join(st.root, "workspace.json")
 	st.cached, st.views = nil, nil
-	if err := durableJSON(path, d); err != nil {
+	raw, err := d.encode()
+	if err != nil {
+		return err
+	}
+	if err := durableWrite(path, raw); err != nil {
 		return err
 	}
 	if info, err := os.Stat(path); err == nil {
 		st.cached, st.stamp = d.clone(), fileStamp(info)
 	}
+	return nil
+}
+
+func (d *workspaceData) encode() ([]byte, error) {
+	rest := *d
+	rest.Projects, rest.Drafts = nil, nil
+	head, err := json.Marshal(rest)
+	if err != nil {
+		return nil, err
+	}
+	var projects, drafts bytes.Buffer
+	if err = encodeVerbatim(&projects, d.Projects, `{"record":null`, func(p workspaceProject) (workspaceProject, json.RawMessage) {
+		raw := p.Record
+		p.Record = nil
+		return p, raw
+	}); err != nil {
+		return nil, err
+	}
+	if err = encodeVerbatim(&drafts, d.Drafts, `,"document":null`, func(dr workspaceDraft) (workspaceDraft, json.RawMessage) {
+		raw := dr.Document
+		dr.Document = nil
+		return dr, raw
+	}); err != nil {
+		return nil, err
+	}
+	return bytes.Replace(head, []byte(`"projects":null,"drafts":null`), []byte(`"projects":`+projects.String()+`,"drafts":`+drafts.String()), 1), nil
+}
+
+func encodeVerbatim[V any](b *bytes.Buffer, m map[string]V, marker string, split func(V) (V, json.RawMessage)) error {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	b.WriteByte('{')
+	for i, key := range keys {
+		value, raw := split(m[key])
+		entry, err := json.Marshal(value)
+		if err != nil {
+			return err
+		}
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		k, _ := json.Marshal(key)
+		b.Write(k)
+		b.WriteByte(':')
+		if at := bytes.Index(entry, []byte(marker)); at >= 0 && raw != nil {
+			at += len(marker) - len("null")
+			b.Write(entry[:at])
+			b.Write(raw)
+			b.Write(entry[at+len("null"):])
+		} else {
+			b.Write(entry)
+		}
+	}
+	b.WriteByte('}')
 	return nil
 }
 
