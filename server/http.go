@@ -1368,12 +1368,15 @@ var qualifiedNativeSources = map[string]bool{
 	"1e6bad5db420789671ec1ed7728e59f872919ece": true,
 }
 
-var healthTransitions = map[HealthState]map[HealthState]bool{
-	HealthUnknown:     {HealthHealthy: true, HealthDegraded: true, HealthQualified: true, HealthUnqualified: true},
-	HealthHealthy:     {HealthDegraded: true, HealthQualified: true, HealthUnqualified: true},
-	HealthDegraded:    {HealthHealthy: true, HealthQualified: true, HealthUnqualified: true},
-	HealthQualified:   {HealthHealthy: true, HealthDegraded: true, HealthUnqualified: true},
-	HealthUnqualified: {HealthHealthy: true, HealthDegraded: true, HealthQualified: true},
+var engineTransitions = map[HealthState]map[HealthState]bool{
+	HealthUnknown:  {HealthHealthy: true, HealthDegraded: true},
+	HealthHealthy:  {HealthDegraded: true},
+	HealthDegraded: {},
+}
+var artifactTransitions = map[HealthState]map[HealthState]bool{
+	HealthUnknown:     {HealthUnqualified: true, HealthQualified: true},
+	HealthUnqualified: {HealthQualified: true},
+	HealthQualified:   {HealthUnqualified: true},
 }
 
 type engineHealth struct {
@@ -1387,16 +1390,41 @@ type engineHealth struct {
 	outputs       map[string]bool
 }
 
-func (h *engineHealth) setState(next HealthState) {
-	if h.state == next {
-		return
+func moveHealth(table map[HealthState]map[HealthState]bool, field *HealthState, next HealthState, what string) bool {
+	if *field == next {
+		return true
 	}
-	if !healthTransitions[h.state][next] {
-		log.Printf("illegal engine health transition %s -> %s", h.state, next)
-		return
+	if !table[*field][next] {
+		log.Printf("illegal %s transition %s -> %s", what, *field, next)
+		return false
 	}
-	log.Printf("engine health %s -> %s", h.state, next)
-	h.state = next
+	log.Printf("%s %s -> %s", what, *field, next)
+	*field = next
+	return true
+}
+
+func (h *engineHealth) setEngine(next HealthState) {
+	if moveHealth(engineTransitions, &h.state, next, "engine health") && next == HealthDegraded {
+		h.setArtifact(HealthUnqualified)
+		h.outputs = nil
+	}
+}
+
+func (h *engineHealth) setArtifact(next HealthState) {
+	moveHealth(artifactTransitions, &h.artifactState, next, "artifact qualification")
+}
+
+func (h *engineHealth) wireState() HealthState {
+	if h.state != HealthDegraded && h.artifactState != HealthUnknown {
+		return h.artifactState
+	}
+	return h.state
+}
+
+func (h *engineHealth) qualifiedOutput(hash string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.outputs[hash]
 }
 
 func bundleFileHash(name string) (string, error) {
@@ -1465,11 +1493,11 @@ func newEngineHealth(c Config) *engineHealth {
 	st, err := os.Stat(c.Tool)
 	if err != nil || !st.Mode().IsRegular() {
 		h.reason = "engine executable unavailable"
-		h.setState(HealthDegraded)
+		h.setEngine(HealthDegraded)
 		return h
 	}
 	h.tool = st
-	h.setState(HealthHealthy)
+	h.setEngine(HealthHealthy)
 	manifestPath := c.SurfaceManifest
 	if manifestPath == "" {
 		manifestPath = os.Getenv("ORCA_WEB_SURFACE_MANIFEST")
@@ -1480,7 +1508,7 @@ func newEngineHealth(c Config) *engineHealth {
 	if manifestPath == "" {
 		return h
 	}
-	h.artifactState = HealthUnqualified
+	h.setArtifact(HealthUnqualified)
 	raw, err := os.ReadFile(manifestPath)
 	var manifest struct {
 		Backend        string          `json:"backend"`
@@ -1496,14 +1524,14 @@ func newEngineHealth(c Config) *engineHealth {
 	}
 	if err != nil || json.Unmarshal(raw, &manifest) != nil {
 		h.reason = "artifact manifest unreadable"
-		h.setState(HealthDegraded)
+		h.setEngine(HealthDegraded)
 		return h
 	}
 	binary, binaryErr := bundleFileHash(c.Tool)
 	resources, resourceErr := bundleResourceHash(c.Resources)
 	if binaryErr != nil || resourceErr != nil || manifest.Binary != binary || manifest.Resources != resources || !manifest.Available {
 		h.reason = "artifact identity mismatch"
-		h.setState(HealthDegraded)
+		h.setEngine(HealthDegraded)
 		return h
 	}
 	var proof struct {
@@ -1524,10 +1552,7 @@ func newEngineHealth(c Config) *engineHealth {
 		proof.Binary == binary && proof.Resources == resources && proof.Manifest == hex.EncodeToString(manifestHash[:]) && manifest.PrintQualified
 	if qualified {
 		h.outputs = nativeOutputHashes(raw)
-		h.artifactState = HealthQualified
-		h.setState(HealthQualified)
-	} else {
-		h.setState(HealthUnqualified)
+		h.setArtifact(HealthQualified)
 	}
 	wave := qualified && manifest.Preview && manifest.Wave && manifest.Features["nonplanar_wave"]
 	modes := []string{}
@@ -1546,12 +1571,11 @@ func (h *engineHealth) snapshot(tool string) map[string]any {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	st, err := os.Stat(tool)
-	if err != nil || h.tool == nil || !os.SameFile(st, h.tool) || st.Size() != h.tool.Size() || !st.ModTime().Equal(h.tool.ModTime()) {
+	if h.state != HealthDegraded && (err != nil || h.tool == nil || !os.SameFile(st, h.tool) || st.Size() != h.tool.Size() || !st.ModTime().Equal(h.tool.ModTime())) {
 		h.reason = "engine executable changed; restart to reprobe"
-		h.artifactState = HealthUnqualified
 		h.manifest = nil
-		h.setState(HealthDegraded)
+		h.setEngine(HealthDegraded)
 	}
-	return map[string]any{"engine_state": h.state, "artifact_state": h.artifactState, "reason": h.reason,
+	return map[string]any{"engine_state": h.wireState(), "artifact_state": h.artifactState, "reason": h.reason,
 		"artifact_manifest": h.manifest, "tool_features": h.features}
 }

@@ -84,7 +84,7 @@ func bindNativeRecord(raw []byte, c Config, j *Job) []byte {
 			}
 			if j.Request.Output == "gcode" || j.Request.Output == "gcode.3mf" {
 				delete(record, "print_qualification")
-				if hash, err := bundleFileHash(j.OutputPath(j.Request.Output)); err == nil && c.NativeHealth.outputs[hash] {
+				if hash, err := bundleFileHash(j.OutputPath(j.Request.Output)); err == nil && c.NativeHealth.qualifiedOutput(hash) {
 					record["print_qualification"], _ = json.Marshal(map[string]any{"passed": true, "output_sha256": hash})
 				}
 			}
