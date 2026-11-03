@@ -34,7 +34,7 @@ const exportable = () => {
 };
 const busy = (st: State) => st.job.state === 'running' || st.job.state === 'submitting';
 const gizmo = (g: Gizmo) => () => setState((st) => ({ gizmo: st.gizmo === g ? 'none' : g, tab: 'prepare' }));
-const printers = () => s().printers.length > 0 || s().printerEdit || s().printerHosts || 'No printer set up';
+const printers = () => s().printerConnections.enabled || 'Printer connections are off on this service';
 const app = (d: NonNullable<State['appDialog']>) => () => setState({ appDialog: d });
 
 const VIEW_TOGGLES: [keyof ViewOptions, string, string?][] = [

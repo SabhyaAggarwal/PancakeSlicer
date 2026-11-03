@@ -43,7 +43,7 @@ export async function init() {
     if (toolFeatures.orient_scores === true) void import('./plater/orientPrompt').then((m) => m.startOrientPrompt());
     if (toolFeatures.wipe_tower === true) void import('./plater/wipeTower').then((m) => m.startWipeTower());
   }
-  if (!api.mock) void loadPrinters();
+  if (!api.mock) void import('./printers/connections').then((m) => m.followConnections());
   await loadCatalog();
 }
 
@@ -680,14 +680,6 @@ export function fileUse(machine = printerPreset(getState())) {
 }
 
 export const STALE_RESULT_TIP = 'Settings changed since the last slice; slice again';
-
-export async function loadPrinters() {
-  try {
-    const r = await fetch('/api/printers');
-    const printers = r.ok ? await r.json() : [];
-    if (Array.isArray(printers)) setState({ printers, printerEdit: r.headers.get('X-Printer-Edit') === 'true', printerHosts: !!r.headers.get('X-Printer-Hosts') });
-  } catch {  }
-}
 
 function exportBlocker(s: State) {
   if (!s.objects.length) return 'Nothing to export. Add a model and slice it first.';

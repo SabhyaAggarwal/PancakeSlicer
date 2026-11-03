@@ -19,6 +19,7 @@ import { noticeKind, shouldToast, type NoticeEntry, type NoticeKind } from '../n
 import { emptyPrinterLibrary, type PrinterProfileLibrary, type ProjectProfileReferences, type ProfileRecovery } from '../profiles/ownership';
 import { capturePrinterMaterials,planPrinterSwitch,reconcilePrinterSelection,type ProfileTransitionSummary } from '../profiles/material-library';
 import { findProfile,profileKey } from '../profiles/identity';
+import type { PrinterConnections } from '../printers/connections';
 export { PRESET_META } from '../profiles/model';
 import { effectiveProfileValues } from '../profiles/context';
 import { selectCompatibility } from '../profiles/compatibility';
@@ -35,7 +36,6 @@ export interface Instance {
   printable?: boolean;
 }
 
-export type SendPrinter = { name: string; kind: string; editable?: boolean; host?: string; serial?: string; model?: string; url?: string; auth?: string; username?: string };
 export type VolumeType = 'part' | 'negative' | 'modifier' | 'support_blocker' | 'support_enforcer' | 'seam';
 export type SeamMode = 'center' | 'left' | 'right' | 'enforced' | 'blocked' | 'neutral';
 
@@ -228,9 +228,7 @@ export interface State {
   appDialog: 'about' | 'preferences' | 'shortcuts' | 'send' | 'setup' | 'plate' | 'clone' | 'simplify' | 'filaments' | 'objectTable' | 'createPrinter' | null;
   filamentsToUse: string[] | null;
   calibDialog: CalibMenu | null;
-  printers: SendPrinter[];
-  printerEdit: boolean;
-  printerHosts: boolean;
+  printerConnections: PrinterConnections;
   events: LayerEvent[];
   projectPlates: (ProjectPlate & { objects: PlateObject[]; events?: LayerEvent[] })[];
   plateIndex: number;
@@ -326,9 +324,7 @@ let state: State = {
   flushDialog: false,
   appDialog: null,
   calibDialog: null,
-  printers: [],
-  printerEdit: false,
-  printerHosts: false,
+  printerConnections: { enabled: false, live: false, connections: [], status: {}, transfers: [] },
   events: [],
   projectPlates: [],
   plateIndex: 1,

@@ -169,6 +169,7 @@ async function startServer(): Promise<string> {
     '--resources', path.join(engine, 'resources'),
     '--data-dir', path.join(data, 'data'),
     '--job-root', path.join(data, 'jobs'),
+    '--printer-network', 'lan',
   ], { env, stdio: ['ignore', log, log], windowsHide: true });
   fs.closeSync(log);
   server = child;
@@ -295,6 +296,31 @@ function storage() {
     if (!origin || new URL(e.senderFrame?.url ?? 'about:blank').origin !== origin) throw new Error('not the app');
     return legacyRenderer.readPart(request);
   });
+  ipcMain.handle('orca-desktop:bambu-connect', (e, jobId: unknown, filename: unknown) => {
+    if (!origin || new URL(e.senderFrame?.url ?? 'about:blank').origin !== origin) throw new Error('not the app');
+    return openInBambuConnect(jobId, filename);
+  });
+}
+
+async function openInBambuConnect(jobId: unknown, filename: unknown) {
+  if (typeof jobId !== 'string' || !/^[0-9a-f]{16,64}$/.test(jobId)) throw new Error('Invalid job.');
+  if (typeof filename !== 'string' || !/\.gcode\.3mf$/i.test(filename) || /[\\/\u0000-\u001f]/.test(filename) || filename.length > 240) throw new Error('Invalid file name.');
+  const dir = path.join(app.getPath('temp'), 'orca-bambu-connect');
+  fs.mkdirSync(dir, { recursive: true });
+  const target = path.join(dir, filename);
+  await new Promise<void>((resolve, reject) => {
+    http.get(`${DESKTOP_ORIGIN}/api/jobs/${jobId}/download`, (res) => {
+      if (res.statusCode !== 200) { res.resume(); reject(new Error(`The sliced file is unavailable (HTTP ${res.statusCode}). Slice again.`)); return; }
+      const out = fs.createWriteStream(target);
+      res.pipe(out);
+      out.on('finish', () => resolve());
+      out.on('error', reject);
+    }).on('error', reject);
+  });
+  const name = filename.replace(/\.gcode\.3mf$/i, '');
+  const url = `bambu-connect://import-file?path=${encodeURIComponent(process.platform === 'win32' ? target.replace(/\\/g, '/') : target)}&name=${encodeURIComponent(name)}&version=1.0.0`;
+  try { await shell.openExternal(url); }
+  catch { throw new Error('Bambu Connect is not installed on this computer. Install it from bambulab.com, then send again.'); }
 }
 
 async function start() {

@@ -60,7 +60,7 @@ export function TopBar() {
   const kind = useStore(outputKind);
   const exportLabel = kind === 'gcode.3mf' ? 'Export plate sliced file' : 'Export G-code';
   const exportTip = kind === 'gcode.3mf' ? 'Export current sliced file' : 'Export current plate as G-code';
-  const hasPrinters = useStore((s) => s.printers.length > 0 || s.printerEdit || s.printerHosts);
+  const hasPrinters = useStore((s) => s.printerConnections.enabled);
   const fileItems: MenuItem[] = [
           { label: 'New Project', shortcut: `${MOD}+N`, action: newProject, tip: 'Start a new project' },
           { label: 'Save Project', shortcut: `${MOD}+S`, action: () => void saveProject(), disabled: !hasProjectObjects, tip: 'Save current project to file' },
@@ -176,7 +176,7 @@ export function TabBar() {
   const exportEnabled = useStore(canExport);
   const exportLabel = useStore(outputKind) === 'gcode.3mf' ? 'Export sliced file' : 'Export G-code';
   const printer = useStore(printerReady);
-  const hasPrinters = useStore((s) => s.printers.length > 0 || s.printerEdit || s.printerHosts);
+  const hasPrinters = useStore((s) => s.printerConnections.enabled);
   const plates = useStore((s) => s.projectPlates.length > 1);
   const [sliceMode, setSliceMode] = useState('Slice plate');
   const [exportMode, setExportMode] = useState('plate');

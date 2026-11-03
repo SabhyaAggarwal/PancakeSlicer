@@ -479,19 +479,10 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .orient-table th { font-weight: 600; }
 :where(.orca-parity) .orient-note { margin: 6px 16px 10px; }
 
-:where(.orca-parity) .modal.send-dialog { width: min(600px, 94vw); }
-:where(.orca-parity) .send-dialog .modal-buttons .btn { white-space: normal; }
-:where(.orca-parity) .send-body { display: flex; flex-direction: column; gap: 8px; }
-:where(.orca-parity) .send-body .prefs-row > .combo { flex: 1; }
-:where(.orca-parity) .send-options { display: flex; gap: 18px; }
-:where(.orca-parity) .printer-form .prefs-row > span:first-child { min-width: 96px; }
-:where(.orca-parity) .send-ok { font-size: 12px; color: var(--accent-text); }
 :where(.orca-parity) .nav3d { position: absolute; left: var(--s-5); bottom: var(--s-5); width: 56px; height: 56px; transform-style: preserve-3d; perspective: 180px; pointer-events: none; z-index: 5; }
 :where(.orca-parity) .nav3d-face { position: absolute; inset: 0; display: grid; place-items: center; padding: 0; font: 600 10px/1 var(--font-ui); color: var(--ink-2); background: var(--panel);
   border: 1px solid var(--line-strong); backface-visibility: hidden; pointer-events: auto; cursor: pointer; user-select: none; }
 :where(.orca-parity) .nav3d-face:hover { color: var(--accent-text); border-color: var(--accent-text); }
-:where(.orca-parity) .ams-map { display: grid; gap: 4px; margin: 6px 0; }
-:where(.orca-parity) .ams-swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--border); flex: none; }
 :where(.orca-parity) .range-editor { display: grid; gap: 2px; padding: 4px 8px 8px; }
 :where(.orca-parity) .range-editor .prefs-row input { width: 80px; }
 :where(.orca-parity) .range-tools { display: flex; gap: 4px; }

@@ -3,7 +3,7 @@ import type { Config, ConfigValue, PresetType, SystemPreset, UserPreset } from '
 import { normalizeConfigValue, unescapeConfigString } from './config-values';
 import { isHidden, OPTIONS } from './options';
 import { compatible, getState, listFor, PRESET_META, resolvePreset, type State } from './state/store';
-import { profileKey } from './profiles/identity';
+import { findProfile, profileKey } from './profiles/identity';
 import { validApplicability } from './profiles/applicability';
 import { baseVersion, normalizeUserPreset, saveProfile, storedProfile } from './profiles/model';
 
@@ -51,6 +51,7 @@ export interface ParsedPreset {
   printers: string[];
   metadata?: Config;
   appProfile?: UserPreset;
+  physical?: { printers: string[]; config: Config };
 }
 
 function typeOf(raw: Record<string, unknown>): PresetType | undefined {
@@ -72,6 +73,11 @@ export function parsePresetJson(text: string, file: string): ParsedPreset {
   const r = raw as Record<string, unknown>;
   const str = (v: unknown) => (Array.isArray(v) ? String(v[0] ?? '') : v == null ? '' : String(v));
   const parsed: ParsedPreset = { ...base, name: str(r.name) || base.name, inherits: str(r.inherits), type: typeOf(r), from: str(r.from), metadata: {} };
+  if (!parsed.type && r.print_host !== undefined && (r.preset_names !== undefined || r.preset_name !== undefined)) {
+    const printers = [r.preset_names ?? r.preset_name].flat().flatMap((v) => String(v).split(';')).map((n) => n.trim()).filter(Boolean);
+    const config = Object.fromEntries(Object.entries(r).filter(([k, v]) => /^(host_type|print_host|printhost_)/.test(k) && (typeof v === 'string' || typeof v === 'number'))) as Config;
+    return { ...parsed, physical: { printers, config } };
+  }
   if (!parsed.type) return { ...parsed, error: 'unknown preset type (no printer_settings_id, print_settings_id or filament_settings_id)' };
   if (!/^\d+(\.\d+){1,3}/.test(str(r.version))) return { ...parsed, error: 'missing or invalid "version"' };
   if (r.orca_web_profile !== undefined) {
@@ -149,6 +155,7 @@ export function planImport(s: State, parsed: ParsedPreset[]): ImportPlan[] {
     if (ready) return ready;
     const skip = (note?: string): ImportPlan => { const plan: ImportPlan = { parsed: p, status: 'skip', note }; plans.set(p, plan); return plan; };
     if (visiting.has(p)) return skip('cyclic parent');
+    if (p.physical) { const plan: ImportPlan = { parsed: p, status: 'new', note: `Connection for ${p.physical.printers.join(', ') || 'no printer'}` }; plans.set(p, plan); return plan; }
     if (p.error || !p.type) return skip(p.error);
     if (first.get(id(p)) !== p) return skip('duplicate');
     const type = p.type;
@@ -224,10 +231,31 @@ export function planImport(s: State, parsed: ParsedPreset[]): ImportPlan[] {
   return parsed.map(build);
 }
 
-export async function applyImportPlans(plans: ImportPlan[]): Promise<{ profiles: number; bases: number }> {
+export async function applyImportPlans(plans: ImportPlan[]): Promise<{ profiles: number; bases: number; connections: number; problems: string[] }> {
   const accepted = plans.filter(p => p.status !== 'skip'), bases = accepted.flatMap(p => p.base ? [p.base] : []), profiles = accepted.flatMap(p => p.preset ? [p.preset] : []);
   if(profiles.length || bases.length){const {commitProfileRecords}=await import('./profiles/transactions');await commitProfileRecords(profiles,{bases,operationId:`import:${crypto.randomUUID()}`});}
-  return {profiles:profiles.length,bases:bases.length};
+  const migrated = await migrateHosts(accepted);
+  return {profiles:profiles.length,bases:bases.length,...migrated};
+}
+
+async function migrateHosts(plans: ImportPlan[]): Promise<{ connections: number; problems: string[] }> {
+  const hosts: { printer: string; config: Config }[] = [];
+  for (const plan of plans) {
+    if (plan.preset?.type === 'machine' && plan.parsed.metadata?.print_host) hosts.push({ printer: plan.preset.name, config: plan.parsed.metadata });
+    for (const printer of plan.parsed.physical?.printers ?? []) hosts.push({ printer, config: plan.parsed.physical!.config });
+  }
+  if (!hosts.length) return { connections: 0, problems: [] };
+  if (!getState().printerConnections.enabled) return { connections: 0, problems: ['Printer connections are off on this service; the print host settings were not migrated.'] };
+  const { migrateLegacyHost } = await import('./printers/connections');
+  let connections = 0;
+  const problems: string[] = [];
+  for (const { printer, config } of hosts) {
+    const profile = findProfile(getState(), 'machine', printer);
+    if (!profile) { problems.push(`${printer}: no saved printer profile of that name. Add the printer, then import its physical printer again.`); continue; }
+    const problem = await migrateLegacyHost(profileKey(profile), profile.name, config);
+    if (problem) problems.push(problem); else connections++;
+  }
+  return { connections, problems };
 }
 
 function download(name: string, data: Uint8Array | string, mime: string) {

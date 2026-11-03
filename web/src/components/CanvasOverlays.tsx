@@ -226,7 +226,7 @@ export function SliceNotification() {
   const facts = !fresh && !busy && patchPreview ? patchPreview.facts.filter((f) => !suggestIds.split(',').includes(String(f.objectId))) : [];
   const factsKey = `np:${facts.map((f) => `${f.objectId}:${f.curved}`).join(',')}`;
   const exportLink = (label: string) => <button type="button" className="notif-link" onClick={download}>{label}</button>;
-  const canSend = useStore((s) => s.printers.length > 0 || s.printerEdit || s.printerHosts);
+  const canSend = useStore((s) => s.printerConnections.enabled);
   const sendLink = canSend && <>{' · '}<button type="button" className="notif-link" onClick={() => setState({ appDialog: 'send' })}>Send</button></>;
   const [held, setHeld] = useState(false);
   const transient = [exported, done && (results.length ? `${done}:r` : done), facts.length ? factsKey : null,

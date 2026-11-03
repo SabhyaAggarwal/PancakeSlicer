@@ -1,4 +1,3 @@
-import { preferenceText } from '../saved-preferences';
 import { lazy, Suspense, useState } from 'react';
 import { OPTIONS } from '../options';
 import { filamentSwitchReason, getState, markStale, printerPreset, selectionOf, setOption, setState, toast, useStore, type State } from '../state/store';
@@ -74,8 +73,6 @@ export function removeSlot(i: number) {
   })));
   toast('Removed', { label: 'Undo', run: undo });
 }
-
-const lastSendPrinter = () => preferenceText('orca.web.sendPrinter') ?? null;
 
 const usersOf = (s: State, n: number) => s.objects.filter((o) => o.extruder === n || o.volumes?.some((v) => v.extruder === n));
 
@@ -170,10 +167,7 @@ export function MaterialTools() {
   const slots = useStore((s) => s.filamentSlots.length);
   const physical = slots - Object.keys(useStore((s) => s.mixes)).length;
   const flushChanged = useStore((st) => flushModified(st));
-  const amsPrinter = useStore((st) => {
-    const bambu = st.printers.filter((p) => p.kind === 'bambu-lan');
-    return (bambu.find((p) => p.name === lastSendPrinter()) ?? bambu[0])?.name;
-  });
+  const amsPrinter = useStore((st) => st.printerConnections.connections.some((c) => c.printer === st.printer && c.kind === 'bambu-lan') ? st.printer : undefined);
   const [syncing, setSyncing] = useState(false);
   const sync = () => {
     if (!amsPrinter) return;

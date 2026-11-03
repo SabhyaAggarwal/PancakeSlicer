@@ -1,9 +1,8 @@
-import { mutation, responseError } from '../api/access';
 import type { SystemPreset } from '../api/types';
+import { readTrays, type Tray } from '../printers/connections';
 import { compatible, getState, markStale, setState, toast } from '../state/store';
 import { undoable } from '../state/history';
 
-type Tray = { id: number; type: string; color: string; name?: string; filament_id?: string };
 const EXTERNAL = 254;
 
 function presetFor(t: Tray, fils: SystemPreset[]): SystemPreset | undefined {
@@ -22,9 +21,7 @@ function presetFor(t: Tray, fils: SystemPreset[]): SystemPreset | undefined {
 export async function syncAms(printer: string) {
   let trays: Tray[];
   try {
-    const r = await mutation(`/api/printers/${encodeURIComponent(printer)}/ams`, { method: 'POST' });
-    if (!r.ok) throw await responseError(r);
-    trays = ((await r.json()).trays ?? []) as Tray[];
+    trays = await readTrays(printer);
   } catch (e) {
     toast(`Sync filaments with AMS: ${e instanceof Error ? e.message : String(e)}`);
     return;
@@ -32,7 +29,7 @@ export async function syncAms(printer: string) {
   const loaded = trays.filter((t) => t.type && t.id !== EXTERNAL);
   const used = loaded.length ? loaded : trays.filter((t) => t.type && t.id === EXTERNAL);
   if (!used.length) {
-    toast(`Sync filaments with AMS: ${printer} reports no loaded filament.`);
+    toast('Sync filaments with AMS: the printer reports no loaded filament.');
     return;
   }
   const s = getState(), fils = compatible(s, 'filament');

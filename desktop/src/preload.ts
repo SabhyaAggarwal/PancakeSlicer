@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('orcaDesktop', {
     inventory,
     readFile: (request: LegacyRead): Promise<Uint8Array> => ipcRenderer.invoke('orca-desktop:legacy-projects:read-file', request),
   },
+  bambuConnect: (jobId: string, filename: string): Promise<void> => ipcRenderer.invoke('orca-desktop:bambu-connect', jobId, filename),
   legacyRendererStorage: {
     version: 1,
     inventory: (): Promise<LegacyRendererInventory> => ipcRenderer.invoke('orca-desktop:legacy-renderer:inventory'),

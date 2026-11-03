@@ -10,6 +10,7 @@ const ACCEPT = '.json,.zip,.bbscfg,.orca_printer,.orca_filament,.orca_bundle';
 const close = () => setState({ presetUx: null });
 
 type Row = ImportPlan & { checked: boolean; result?: string; ok?: boolean };
+const importable = (r: ImportPlan) => !!(r.preset || r.base || r.parsed.physical);
 
 export function ImportDialog() {
   const [rows, setRows] = useState<Row[] | null>(null);
@@ -31,16 +32,16 @@ export function ImportDialog() {
   const run = async () => {
     if(!rows)return;
     setBusy(true);
-    const chosen=rows.filter(r=>r.checked && (r.preset || r.base));
+    const chosen=rows.filter(r=>r.checked && importable(r));
     try {
       const result=await applyImportPlans(chosen);
       setRows(rows.map(row=>chosen.includes(row) ? {...row,ok:true,result:row.status === 'replace' ? 'replaced' : 'imported'} : row));
-      setDone(true);toast(`Imported ${result.profiles} profiles and ${result.bases} templates`);
+      setDone(true);toast([`Imported ${result.profiles} profiles and ${result.bases} templates`,...(result.connections?[`${result.connections} printer connection${result.connections>1?'s':''}`]:[]),...result.problems].join('\n'));
     }catch(error){setRows(rows.map(row=>chosen.includes(row) ? {...row,ok:false,result:error instanceof Error ? error.message : String(error)} : row));}
     finally {setBusy(false);}
   };
 
-  const count = rows?.filter((r) => r.checked && (r.preset || r.base)).length ?? 0;
+  const count = rows?.filter((r) => r.checked && importable(r)).length ?? 0;
   return (
     <Modal className="np-dialog import-dialog" label="Import profiles" onClose={close}>
       <ModalTitle title="Import profiles" onClose={close} />
@@ -56,18 +57,18 @@ export function ImportDialog() {
         {rows && rows.length > 0 && (
           <div className="diff-scroll">
             <table className="np-table">
-              <thead><tr><th><Check aria-label="Select all" disabled={done} checked={rows.every((r) => r.checked || !(r.preset || r.base))}
-                onCheckedChange={(next) => setRows(rows.map((r) => ({ ...r, checked: !!(r.preset || r.base) && next })))} /></th>
+              <thead><tr><th><Check aria-label="Select all" disabled={done} checked={rows.every((r) => r.checked || !importable(r))}
+                onCheckedChange={(next) => setRows(rows.map((r) => ({ ...r, checked: importable(r) && next })))} /></th>
                 <th>Preset</th><th>Type</th><th>Parent</th><th>{done ? 'Result' : 'Action'}</th></tr></thead>
               <tbody>{rows.map((r, i) => (
                 <tr key={`${r.parsed.file}:${i}`}>
-                  <td><Check aria-label={`Import ${r.parsed.name}`} disabled={!(r.preset || r.base) || done} checked={r.checked}
+                  <td><Check aria-label={`Import ${r.parsed.name}`} disabled={!importable(r) || done} checked={r.checked}
                     onCheckedChange={(next) => setRows(rows.map((x, j) => (j === i ? { ...x, checked: next } : x)))} /></td>
                   <td>{r.parsed.name}</td>
-                  <td>{r.parsed.type ? TYPE_NAME[r.parsed.type] : '—'}</td>
+                  <td>{r.parsed.type ? TYPE_NAME[r.parsed.type] : r.parsed.physical ? 'Physical printer' : '—'}</td>
                   <td>{r.preset?.inherits ?? r.parsed.inherits ?? ''}</td>
                   <td className={r.ok === false ? 'np-error' : r.status === 'replace' && !done ? 'np-warn-text' : undefined}>
-                    {done ? (r.result ?? (r.preset ? 'not selected' : `skipped: ${r.note}`))
+                    {done ? (r.result ?? (importable(r) ? 'not selected' : `skipped: ${r.note}`))
                       : r.status === 'skip' ? `skip: ${r.note}` : `${r.status === 'replace' ? 'overwrite' : 'import'}${r.note ? ` (${r.note})` : ''}`}
                   </td>
                 </tr>

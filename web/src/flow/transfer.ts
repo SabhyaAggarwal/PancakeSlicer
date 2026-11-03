@@ -1,7 +1,9 @@
 import { mutation, responseError } from '../api/access';
+import { getState, subscribeStore } from '../state/store';
 import { assertNever, createMachine, useMachine } from './fsm';
 import { readRecovery, rememberRecovery } from './recovery';
-export type Transfer = { state: 'uploading' | 'starting' | 'done' | 'failed'; sent: number; total: number; message?: string; error?: string };
+export type Transfer = { id: string; job: string; printer: string; name: string; kind: string; start: boolean; filename: string;
+  state: 'uploading' | 'starting' | 'done' | 'failed' | 'cancelled'; sent: number; total: number; message?: string; error?: string };
 export type TransferState = 'idle' | 'connecting' | 'sending' | 'sent' | 'failed';
 type TransferEvent = { type: 'START'; jobId: string; target: string } | { type: 'STATUS'; transfer: Transfer }
   | { type: 'FAIL'; error: string } | { type: 'RESET' } | { type: 'CANCEL' } | { type: 'RETRY' };
@@ -17,18 +19,16 @@ function transferState(transfer: Transfer): 'sending' | 'sent' | 'failed' {
   switch (state) {
     case 'uploading': case 'starting': return 'sending';
     case 'done': return 'sent';
-    case 'failed': return 'failed';
+    case 'failed': case 'cancelled': return 'failed';
     default: return assertNever(state);
   }
 }
 const status = (['sending', 'sent', 'failed'] as const).map((target) => ({ target,
   guard: (_: TransferContext, e: Extract<TransferEvent, { type: 'STATUS' }>) => transferState(e.transfer) === target,
   action: (_: TransferContext, e: Extract<TransferEvent, { type: 'STATUS' }>) => ({ transfer: e.transfer,
-    error: e.transfer.state === 'failed' ? e.transfer.error ?? e.transfer.message ?? 'Send failed' : '' }),
+    error: transferState(e.transfer) === 'failed' ? e.transfer.error ?? e.transfer.message ?? 'Send failed' : '' }),
 }));
-const common = { RESET: reset, CANCEL: { target: 'failed' as const, action: (_: TransferContext, _e: TransferEvent, m: object) => {
-  transferEffects.get(m)?.cancel(); return { error: 'Send interrupted. Reconnect to check the printer before retrying.' };
-} } };
+const common = { RESET: reset, CANCEL: { action: (_: TransferContext, _e: TransferEvent, m: object) => { transferEffects.get(m)?.cancel(); } } };
 const running = { ...common, STATUS: status, FAIL: { target: 'failed' as const, action: (_: TransferContext, e: { error: string }) => ({ error: e.error }) } };
 export const createTransfer = () => createMachine<TransferState, TransferEvent, TransferContext>({
   id: 'transfer', initial: 'idle', context: { jobId: null, target: null, transfer: null, error: '' },
@@ -41,34 +41,49 @@ export const createTransfer = () => createMachine<TransferState, TransferEvent, 
 });
 export function createPrinterSend() {
   const machine = createTransfer();
-  let ctl: AbortController | null = null, timer: ReturnType<typeof setTimeout> | undefined, epoch = 0;
-  const stop = () => { epoch++; ctl?.abort(); ctl = null; clearTimeout(timer); };
+  let unfollow = () => {}, epoch = 0;
+  const stop = () => { epoch++; unfollow(); unfollow = () => {}; };
+  const follow = (jobId: string, target: string, id: string) => {
+    const mine = epoch;
+    let last = '', live = getState().printerConnections.live;
+    unfollow = subscribeStore(() => {
+      if (mine !== epoch) return;
+      const c = getState().printerConnections, t = c.transfers.find((x) => x.id === id);
+      if (c.live && !live) void connect(jobId, target);
+      live = c.live;
+      if (!t || JSON.stringify(t) === last) return;
+      last = JSON.stringify(t);
+      machine.send({ type: 'STATUS', transfer: t });
+      if (machine.get().value !== 'sending') { unfollow(); if (machine.get().value === 'sent') rememberRecovery({ send: undefined }); }
+    });
+  };
   const connect = async (jobId: string, target: string, body?: Record<string, unknown>) => {
-    if (!machine.can({ type: 'START', jobId, target })) return;
-    stop(); const mine = epoch, controller = ctl = new AbortController();
-    machine.send({ type: 'START', jobId, target });
+    if (body !== undefined && !machine.can({ type: 'START', jobId, target })) return;
+    stop(); const mine = epoch;
+    if (body !== undefined || machine.get().value !== 'sending') machine.send({ type: 'START', jobId, target });
     rememberRecovery({ send: { jobId, target } });
-    const poll = async (submit = false) => {
-      const timeout = setTimeout(() => controller.abort(), 10_000);
-      try {
-        const path = `/api/jobs/${encodeURIComponent(jobId)}/send`;
-        const r = submit ? await mutation(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...body, printer: target }), signal: controller.signal }) : await fetch(path, { signal: controller.signal });
-        if (!r.ok) throw await responseError(r);
-        const transfer = await r.json() as Transfer;
-        if (mine !== epoch) return;
-        machine.send({ type: 'STATUS', transfer });
-        if (machine.get().value === 'sending') timer = setTimeout(() => void poll(), 500);
-        else if (machine.get().value === 'sent') rememberRecovery({ send: undefined });
-      } catch (e) {
-        if (mine === epoch) machine.send({ type: 'FAIL', error: e instanceof Error ? e.message : 'Send interrupted. Reconnect to check its status.' });
-      } finally { clearTimeout(timeout); }
-    };
-    await poll(body !== undefined);
+    try {
+      const path = `/api/jobs/${encodeURIComponent(jobId)}/send`;
+      const r = body !== undefined ? await mutation(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...body, printer: target }) }) : await fetch(path);
+      if (!r.ok) throw await responseError(r);
+      const transfer = await r.json() as Transfer;
+      if (mine !== epoch) return;
+      machine.send({ type: 'STATUS', transfer });
+      if (machine.get().value === 'sending') follow(jobId, target, transfer.id);
+      else if (machine.get().value === 'sent') rememberRecovery({ send: undefined });
+    } catch (e) {
+      if (mine === epoch) machine.send({ type: 'FAIL', error: e instanceof Error ? e.message : 'Send interrupted. Reconnect to check its status.' });
+    }
   };
   let retryRequest = Promise.resolve();
   transferEffects.set(machine, {
-    cancel: stop,
+    cancel: () => {
+      const { jobId } = machine.get().context;
+      if (jobId) void mutation(`/api/jobs/${encodeURIComponent(jobId)}/send/cancel`, { method: 'POST' }).then(async (r) => {
+        if (!r.ok && r.status !== 409) machine.send({ type: 'FAIL', error: (await responseError(r)).message });
+      });
+    },
     reset: () => { stop(); rememberRecovery({ send: undefined }); },
     retry: () => {
       const { jobId, target } = machine.get().context;
@@ -77,7 +92,6 @@ export function createPrinterSend() {
   });
   return { machine,
     submit: (printer: string, job: string, options: Record<string, unknown> = {}) => connect(job, printer, options),
-    start: (jobId: string, target: string, body: Record<string, unknown>) => connect(jobId, target, body),
     reconnect: (jobId: string, target: string) => connect(jobId, target),
     retry: () => { machine.send({ type: 'RETRY' }); return retryRequest; },
     cancel: () => machine.send({ type: 'CANCEL' }),

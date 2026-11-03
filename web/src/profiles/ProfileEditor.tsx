@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Config, ConfigValue, PresetType, UserPreset } from '../api/types';
 import { SettingsTab, type ProfileFields } from '../components/SettingsTab';
 import { effectiveMode, getState, resolvePreset, toast, useStore } from '../state/store';
@@ -15,6 +15,7 @@ import { requestPreset } from '../components/PresetCombo';
 import { sameValue } from '../state/value-equality';
 import { renameOwnedProfile } from './material-library';
 import { Glyph } from '../components/Glyph';
+const ConnectionEditor = lazy(() => import('../printers/ConnectionEditor').then(m => ({default: m.ConnectionEditor})));
 export interface ProfileDraft {values: Config; baseline: Config; origin: UserPreset | undefined; printer: string; applicability?: ProfileApplicability; baselineApplicability?: ProfileApplicability;staged?:ProjectProfileChanges}
 export function acknowledgedProfileDraft(current:ProfileDraft,submitted:ProfileDraft,origin:UserPreset,baseline:Config):ProfileDraft|null {
   const keys=new Set([...Object.keys(current.values),...Object.keys(submitted.values)]);
@@ -40,6 +41,7 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
   const applicabilityDirty = applicabilityKey(applicability) !== applicabilityKey(baselineApplicability);
   const changes = useMemo(() => changedKeys(values, baseline), [values, baseline]);
   const mode=useStore(effectiveMode);
+  const connections=useStore(s=>s.printerConnections.enabled);
   const [saveState, setSaveState] = useState<{value: 'idle' | 'saving'} | {value: 'failed'; message: string}>({value: 'idle'});
   const saving = saveState.value === 'saving', error = saveState.value === 'failed' ? saveState.message : null;
   const setError = (message: string | null) => setSaveState(message ? {value: 'failed', message} : {value: 'idle'});
@@ -108,6 +110,7 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
       </div>
     </div>
     {error && <div className="pf-editor-error" role="alert">{error}</div>}
-    <fieldset className="pf-editor-fields" disabled={saving} aria-busy={saving}><SettingsTab type={type} hidePreset editor={editor} auxiliary={type !== 'machine' && source ? {label:'Works with',icon:'param_dependencies_printers',modified:applicabilityDirty,initial:openOnWorksWith,content:<WorksWith source={source} config={values} value={applicability} onChange={next=>update(key,{...latest.current,applicability:next})}/>} : undefined}/></fieldset>
+    <fieldset className="pf-editor-fields" disabled={saving} aria-busy={saving}><SettingsTab type={type} hidePreset editor={editor} auxiliary={!source ? undefined : type !== 'machine' ? {label:'Works with',icon:'param_dependencies_printers',modified:applicabilityDirty,initial:openOnWorksWith,content:<WorksWith source={source} config={values} value={applicability} onChange={next=>update(key,{...latest.current,applicability:next})}/>}
+      : connections ? {label:'Connection',icon:'printer_in_lan',content:<Suspense fallback={null}><ConnectionEditor printer={profileKey(source)} name={profileName}/></Suspense>} : undefined}/></fieldset>
   </section>;
 }
