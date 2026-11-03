@@ -359,14 +359,14 @@ async function prepareQuit() {
       flush().then(() => true),
       new Promise<false>((resolve) => { timer = setTimeout(() => resolve(false), 10000); }),
     ]);
-    if (!finished) console.error('Autosave did not finish within 10 seconds; keeping the last atomic project snapshot.');
+    if (!finished) throw new Error('Saving is still in progress or has not been confirmed. The window remains open. Try closing again after saving finishes.');
     quitReady = true;
     app.quit();
   } catch (e) {
     quitting = false;
     closing = false;
     win?.setEnabled(true);
-    dialog.showErrorBox('Project not saved', String(e));
+    dialog.showErrorBox('Close not confirmed', String(e));
   } finally {
     if (timer) clearTimeout(timer);
   }
