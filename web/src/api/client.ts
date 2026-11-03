@@ -92,7 +92,7 @@ const realApi: Api = {
   status(id) {
     let pending = statusRequests.get(id);
     if (!pending) {
-      pending = fetch(`/api/jobs/${id}`).then((r) => json<JobStatus>(r)).finally(() => statusRequests.delete(id));
+      pending = fetch(`/api/jobs/${id}?request=0`).then((r) => json<JobStatus>(r)).finally(() => statusRequests.delete(id));
       statusRequests.set(id, pending);
     }
     return pending;
