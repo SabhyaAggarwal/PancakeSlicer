@@ -1,3 +1,4 @@
+import { Check } from './Check';
 import { Dropdown } from './Dropdown';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { changeVolumeType, setState, useStore, type TextSpec } from '../state/store';
@@ -59,8 +60,8 @@ export default function TextPanel() {
       {v && (
         <label className="prefs-row cut-joint-row" title={canSurface ? undefined : v.type === 'part' ? 'Raised text on a surface needs a newer slicing tool; use Cut or Modifier' : 'Use surface needs a newer slicing tool'}>
           <span>Use surface</span>
-          <input type="checkbox" checked={!!spec.surface || placing} disabled={!canSurface && !spec.surface}
-            onChange={(e) => { if (e.target.checked) setTextPlacing(true); else { setTextPlacing(false); if (spec.surface) edit({ surface: undefined }); } }} />
+          <Check checked={!!spec.surface || placing} disabled={!canSurface && !spec.surface}
+            onCheckedChange={(next) => { if (next) setTextPlacing(true); else { setTextPlacing(false); if (spec.surface) edit({ surface: undefined }); } }} />
         </label>
       )}
       {placing && <div className="cut-joint-hint">Click on the object's surface to place the text</div>}

@@ -1,3 +1,4 @@
+import { Check } from './Check';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { forgetCompare, setStandardData, startCompare, stopCompare, useCompare, useStandardData } from '../compare';
@@ -84,17 +85,17 @@ export function ExplainLegend(props: {
     <div className="np-legend">
       {nativeSurfaceSummary(record) && <p role="status">{nativeSurfaceSummary(record)}</p>}
       <div className="np-toggles">
-        <label className="lg-opt"><input type="checkbox" checked={compare} onChange={(e) => setCompare(e.target.checked)} />Compare with Standard</label>
+        <label className="lg-opt"><Check checked={compare} onCheckedChange={(next) => setCompare(next)} />Compare with Standard</label>
         <label className="lg-opt">
-          <input type="checkbox" checked={highlight} onChange={(e) => {
-            const on = e.target.checked;
+          <Check checked={highlight} onCheckedChange={(next) => {
+            const on = next;
             if (on) previous.current = { view: ui.view, nonplanar: ui.nonplanar };
             setUi((u) => ({ ...u, ...(on ? { view: 'nonplanar', nonplanar: 'curved' } : previous.current) }));
           }} />Highlight curved
         </label>
         {surfaceGrid(record) && (
           <label className="lg-opt">
-            <input type="checkbox" checked={ui.surface} onChange={(e) => setUi((u) => ({ ...u, surface: e.target.checked }))} />Surface error
+            <Check checked={ui.surface} onCheckedChange={(next) => setUi((u) => ({ ...u, surface: next }))} />Surface error
           </label>
         )}
       </div>

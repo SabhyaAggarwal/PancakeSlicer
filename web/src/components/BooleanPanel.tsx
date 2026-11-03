@@ -1,3 +1,4 @@
+import { Check } from './Check';
 import { Dropdown } from './Dropdown';
 import { useState } from 'react';
 import { useStore } from '../state/store';
@@ -34,7 +35,7 @@ export default function BooleanPanel() {
       {second !== undefined && pick(op === 'difference' ? 'Subtract with' : 'Part 2', second, setB)}
       {op !== 'union' && (
         <label className="prefs-row cut-joint-row"><span>Delete input</span>
-          <input type="checkbox" checked={del[op]} onChange={(e) => setDel({ ...del, [op]: e.target.checked })} />
+          <Check checked={del[op]} onCheckedChange={(next) => setDel({ ...del, [op]: next })} />
         </label>
       )}
       <div className="cut-joint-buttons"><span style={{ flex: 1 }} />

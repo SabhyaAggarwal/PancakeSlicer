@@ -1,3 +1,4 @@
+import { Check } from './Check';
 import { useRef, useState } from 'react';
 import type { PresetType, UserPreset } from '../api/types';
 import { downloadArchive, filamentAlias, filamentBundle, planImport, presetZip, printerBundle, readPresetFile, type ExportKind, type ImportPlan } from '../preset-io';
@@ -67,13 +68,13 @@ export function ImportDialog() {
         {rows && rows.length > 0 && (
           <div className="diff-scroll">
             <table className="np-table">
-              <thead><tr><th><input type="checkbox" aria-label="Select all" disabled={done} checked={rows.every((r) => r.checked || !r.preset)}
-                onChange={(e) => setRows(rows.map((r) => ({ ...r, checked: !!r.preset && e.target.checked })))} /></th>
+              <thead><tr><th><Check aria-label="Select all" disabled={done} checked={rows.every((r) => r.checked || !r.preset)}
+                onCheckedChange={(next) => setRows(rows.map((r) => ({ ...r, checked: !!r.preset && next })))} /></th>
                 <th>Preset</th><th>Type</th><th>Parent</th><th>{done ? 'Result' : 'Action'}</th></tr></thead>
               <tbody>{rows.map((r, i) => (
                 <tr key={`${r.parsed.file}:${i}`} title={r.parsed.file}>
-                  <td><input type="checkbox" aria-label={`Import ${r.parsed.name}`} disabled={!r.preset || done} checked={r.checked}
-                    onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, checked: e.target.checked } : x)))} /></td>
+                  <td><Check aria-label={`Import ${r.parsed.name}`} disabled={!r.preset || done} checked={r.checked}
+                    onCheckedChange={(next) => setRows(rows.map((x, j) => (j === i ? { ...x, checked: next } : x)))} /></td>
                   <td>{r.parsed.name}</td>
                   <td>{r.parsed.type ? TYPE_NAME[r.parsed.type] : '—'}</td>
                   <td>{r.preset?.inherits ?? r.parsed.inherits ?? ''}</td>
@@ -140,11 +141,11 @@ export function ExportDialog() {
         </fieldset>
         <div className="export-list" role="group" aria-label="Presets to export">
           {choices.length === 0 && <div className="hint-text">No user presets</div>}
-          {choices.length > 0 && <label className="row"><input type="checkbox" checked={selected.length === choices.length}
-            onChange={(e) => setPicked(new Set(e.target.checked ? choices : []))} /><b>Select all</b></label>}
+          {choices.length > 0 && <label className="row"><Check checked={selected.length === choices.length}
+            onCheckedChange={(next) => setPicked(new Set(next ? choices : []))} /><b>Select all</b></label>}
           {choices.map((c) => (
-            <label key={c} className="row"><input type="checkbox" checked={picked.has(c)}
-              onChange={(e) => { const next = new Set(picked); if (e.target.checked) next.add(c); else next.delete(c); setPicked(next); }} />{c}</label>
+            <label key={c} className="row"><Check checked={picked.has(c)}
+              onCheckedChange={(checked) => { const next = new Set(picked); if (checked) next.add(c); else next.delete(c); setPicked(next); }} />{c}</label>
           ))}
         </div>
       </div>

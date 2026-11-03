@@ -1,22 +1,24 @@
+import { ProfileEditor, type ProfileDraft } from './ProfileEditor';
+import { profileSummary } from './metadata';
+import { Check } from '../components/Check';
 import { Dropdown } from '../components/Dropdown';
-import { Group, Row, SectionRule, Segmented } from '../components/kit';
+import { SectionRule, Segmented } from '../components/kit';
 import './presets-window.css';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { ConfigValue, PresetType, UserPreset } from '../api/types';
 import { accessSnapshot } from '../api/access';
 import { OPTIONS } from '../options';
 import { compatible, getState, resolvePreset, setState, toast, useStore, type State } from '../state/store';
 import { Modal, ModalTitle } from '../components/Modal';
+import { confirmDialog } from '../components/Ask';
 import { diffRows, useTabLoaded } from '../components/PresetDialogs';
 import { display, presetLabel } from './format';
 import { changeCount, takeValue } from './stack';
-import { editing } from './editing';
 import { requestPreset } from '../components/PresetCombo';
-import { ConflictLine } from './PresetBar';
-import { createProfileFromBase, resetToBase } from './catalog';
+import { createProfileFromBase } from './catalog';
 import { listCatalog } from './pickerSource';
 
-const TYPES: [PresetType, string][] = [['machine', 'Printer'], ['filament', 'Filament'], ['process', 'Process']];
+const TYPES: [PresetType, string][] = [['machine', 'Printer'], ['filament', 'Filament'], ['process', 'Print settings']];
 const shortName = presetLabel;
 
 interface Item { name: string; mine: boolean; parent?: string; changed: number; slot?: number; user?: UserPreset; note: string }
@@ -27,10 +29,7 @@ const slotsOf = (s: State, type: PresetType, name: string) =>
 
 function noteOf(s: State, type: PresetType, name: string) {
   const c = resolvePreset(s, type, name).config;
-  const first = (v: ConfigValue | undefined) => (Array.isArray(v) ? v[0] : v);
-  if (type === 'process') return c.layer_height === undefined ? '' : `${first(c.layer_height)} mm`;
-  if (type === 'machine') return c.nozzle_diameter === undefined ? '' : `${first(c.nozzle_diameter)} mm`;
-  return String(first(c.filament_type) ?? '');
+  return profileSummary(type, c);
 }
 
 function items(s: State, type: PresetType): Item[] {
@@ -77,8 +76,9 @@ async function store(p: UserPreset, from?: string) {
 
 export async function removePreset(type: PresetType, u: UserPreset) {
   const s = getState();
-  try { await s.api!.deleteUserPreset(type, u.name); } catch (e) { return failed('Delete', e); }
   const slots = slotsOf(s, type, u.name);
+  if (slots.length || s.userPresets.some(p => p !== u && p.type === type && (p.parent === u.name || p.inherits === u.name))) return void toast('This profile is in use. Choose another profile before deleting it.');
+  try { await s.api!.deleteUserPreset(type, u.name); } catch (e) { return failed('Delete', e); }
   setState((st) => {
     const patch: Partial<State> = { userPresets: st.userPresets.filter((x) => !(x.type === type && x.name === u.name)) };
     if (type === 'machine' && st.printer === u.name) patch.printer = u.inherits;
@@ -96,7 +96,7 @@ function AddProfile({ type, done, close }: { type: PresetType; done(name: string
   useStore((st) => st.printer);
   const rows = listCatalog(type).filter((r) => `${r.name} ${r.vendor}`.toLowerCase().includes(search.toLowerCase()));
   const add = (base: string) => {
-    try { const name = createProfileFromBase(type, base); requestPreset(type, 0, name); done(name); } catch (e) { failed('Add', e); }
+    try { const name = createProfileFromBase(type, base); done(name); } catch (e) { failed('Add', e); }
   };
   return (
     <fieldset className="pf-box pf-details">
@@ -118,37 +118,15 @@ function AddProfile({ type, done, close }: { type: PresetType; done(name: string
   );
 }
 
-function Details({ type, item, onCompare }: { type: PresetType; item: Item; onCompare(): void }) {
-  const u = item.user;
-  const inUse = item.slot !== undefined;
-  const saveAs = () => { editing(type, item.slot ?? 0).send({ type: 'SAVE_AS' }); setState({ presetUx: { kind: 'save', type, slot: item.slot ?? 0 } }); };
-  const save = () => editing(type, item.slot ?? 0).send({ type: 'SAVE' });
-  const exportOne = async () => {
-    const { exportPresetJson } = await import('../preset-io');
-    exportPresetJson(u ?? { name: item.name, type, inherits: item.name, overrides: {} });
-  };
-  const config = resolvePreset(getState(), type, item.name).config;
-  const fields = type === 'machine' ? ['nozzle_diameter', 'printable_height'] : type === 'filament' ? ['filament_type', 'nozzle_temperature', 'filament_flow_ratio'] : ['layer_height', 'wall_loops', 'sparse_infill_density'];
-  return (
-    <section className="pf-details pf-profile-detail" aria-label={item.name}>
-      <SectionRule title={<span title={item.name}>{shortName(item.name)}</span>} />
-      <Group>
-        {item.parent && <Row label="Based on" title={item.parent}><span>{shortName(item.parent)}</span></Row>}
-        {fields.filter((key) => config[key] !== undefined).map((key) => <Row key={key} label={OPTIONS[key]?.label ?? key} title={key}><span>{display(key, config[key]!)}</span></Row>)}
-      </Group>
-      <div className="pf-dim">{[item.note, inUse && (type === 'filament' ? `Slot ${slotsOf(getState(), type, item.name).map((i) => i + 1).join(', ')}` : 'In use'), inUse && item.changed > 0 && `${item.changed} changes`].filter(Boolean).join(' · ')}</div>
-      {u && <ConflictLine type={type} name={u.name} />}
-      <div className="pf-actions">
-        {type === 'machine' && !inUse && <button type="button" className="btn" onClick={() => requestPreset('machine', 0, item.name)}>Use</button>}
-        {inUse && u && <button type="button" className="btn" disabled={!item.changed} onClick={save}>Save</button>}
-        {inUse && <button type="button" className="btn" onClick={saveAs}>Save as new</button>}
-        <button type="button" className="btn" onClick={onCompare}>Compare</button>
-        <button type="button" className="btn" onClick={() => void exportOne()}>Export</button>
-        {u && <button type="button" className="btn" onClick={() => { try { resetToBase(type, u.name); } catch (e) { failed('Reset', e); } }}>Reset to base</button>}
-        {u && <button type="button" className="btn" onClick={() => void removePreset(type, u)}>Delete</button>}
-      </div>
-    </section>
-  );
+function Details({type, item, onCompare, draft, update}: {type: PresetType; item: Item; onCompare(): void; draft?: ProfileDraft; update(key: string, draft: ProfileDraft | null): void}) {
+  const exportOne = async () => { const {exportPresetJson} = await import('../preset-io'); exportPresetJson(item.user ?? {name: item.name, type, inherits: item.name, overrides: {}}); };
+  return <ProfileEditor type={type} name={item.name} draft={draft} update={update} actions={<>
+    {item.slot === undefined && <button type="button" className="btn" disabled={!!draft} title={draft ? "Save or cancel profile edits before using it" : "Select this profile for the project"} onClick={() => requestPreset(type, 0, item.name)}>{type === 'filament' ? 'Use in slot 1' : 'Use in project'}</button>}
+    {item.slot !== undefined && <span className="pf-in-use">✓ In use</span>}
+    <button type="button" className="btn" onClick={onCompare}>Compare</button>
+    <button type="button" className="btn" onClick={() => void exportOne()}>Export</button>
+    {item.user && <button type="button" className="btn-ghost pf-delete" disabled={item.slot !== undefined} title={item.slot !== undefined ? 'This profile is in use by the current project' : 'Delete profile'} onClick={() => void confirmDialog('Delete profile', `Delete “${item.name}” from your profile library?`, ['Delete', 'Cancel']).then(ok => {if(ok && item.user) void removePreset(type, item.user);})}>Delete</button>}
+  </>}/>;
 }
 
 function configOf(s: State, type: PresetType, name: string) {
@@ -176,7 +154,7 @@ function Compare({ type, left, right, names, setRight, close }: { type: PresetTy
         <span>{shortName(left)}</span>
         <span aria-hidden>↔</span>
         <Dropdown className="combo" aria-label="Compare with" value={right} onValueChange={setRight} options={[...names.filter((n) => n !== left).map((n) => ({ value: n, label: shortName(n) }))]} />
-        <label className="row"><input type="checkbox" checked={only} onChange={(e) => setOnly(e.target.checked)} />Only differences</label>
+        <label className="row"><Check checked={only} onCheckedChange={(next) => setOnly(next)} />Only differences</label>
         <span className="pf-dim">{changed}</span>
         <span className="spacer" />
         <button type="button" className="pf-link" onClick={close}>Close</button>
@@ -207,6 +185,8 @@ function Compare({ type, left, right, names, setRight, close }: { type: PresetTy
 
 export default function PresetsWindow({ type: initialType, name, compare }: { type: PresetType; name?: string; compare?: string }) {
   const [type, setType] = useState(initialType);
+  const [drafts, setDrafts] = useState<Record<string, ProfileDraft>>({});
+  const updateDraft = useCallback((key: string, draft: ProfileDraft | null) => setDrafts(prior => {const next = {...prior}; if(draft) next[key] = draft; else delete next[key]; return next;}), []);
   const [search, setSearch] = useState('');
   const s = getState();
   useStore((st) => st.userPresets);
@@ -221,7 +201,8 @@ export default function PresetsWindow({ type: initialType, name, compare }: { ty
   const partner = (i: Item) => (i.parent && names.includes(i.parent) ? i.parent : names.find((n) => n !== i.name) ?? null);
   const [adding, setAdding] = useState(false);
   const [other, setOther] = useState<string | null>(() => (compare === undefined ? null : compare || (item ? partner(item) : null)));
-  const close = () => setState({ presetUx: null });
+  const leave = async (action: () => void) => {if(Object.keys(drafts).length && !await confirmDialog('Unsaved profile edits', 'Discard unsaved profile edits?', ['Discard', 'Keep editing'])) return; action();};
+  const close = () => void leave(() => setState({presetUx: null}));
   const pickType = (t: PresetType) => { setAdding(false); setType(t); setSearch(''); setSel(current(t)); setOther(null); };
   return (
     <Modal className="np-dialog pf-window" label="Presets" onClose={close} backdropClose>
@@ -231,11 +212,11 @@ export default function PresetsWindow({ type: initialType, name, compare }: { ty
           <Segmented label="Profile type" value={type} options={TYPES.map(([id, label]) => ({ id, label }))} onChange={(id) => pickType(id as PresetType)} />
           <span className="spacer" />
           <button type="button" className="btn" onClick={() => setAdding(true)}>Add from catalog</button>
-          <button type="button" className="btn" onClick={() => setState({ presetUx: { kind: 'import', back: { kind: 'presets', type, name: item?.name } } })}>Import Orca / Bambu</button>
-          <button type="button" className="btn" onClick={() => setState({ presetUx: { kind: 'export' } })}>Export all</button>
+          <button type="button" className="btn" onClick={() => void leave(() => setState({presetUx: {kind: 'import', back: {kind: 'presets', type, name: item?.name}}}))}>Import Orca / Bambu</button>
+          <button type="button" className="btn" onClick={() => void leave(() => setState({presetUx: {kind: 'export'}}))}>Export all</button>
         </div>
         <div className="pf-split">
-          <section className="pf-my-profiles">
+          <section className="pf-my-profiles" aria-label="My profiles">
             <SectionRule title="My profiles" count={list.length} />
             <input className="text pf-profile-search" aria-label="Search profiles" placeholder="Search profiles" value={search} onChange={(e) => setSearch(e.target.value)} />
             <div className="pf-scroll pf-list" role="listbox" aria-label="Profiles">
@@ -245,17 +226,16 @@ export default function PresetsWindow({ type: initialType, name, compare }: { ty
                 onDoubleClick={() => { setSel(i.name); setOther(partner(i)); }}>
                 <span className="pf-item-name" title={i.name}>{shortName(i.name)}</span>
                 <span className="pf-dim pf-item-note">{i.note}</span>
-                {i.mine && <span className="pf-dim">Mine</span>}
                 {i.changed > 0 && <span className="pf-dim">Changed</span>}
               </div>
             ))}
             {!list.some((i) => i.name.toLowerCase().includes(search.toLowerCase())) && <p className="pf-profile-empty">{search ? 'No matching profiles' : 'Add a profile from the catalog'}</p>}
             </div>
           </section>
-          {adding ? <AddProfile type={type} close={() => setAdding(false)} done={(n) => { setSel(n); setAdding(false); }} />
-            : item && <Details key={item.name} type={type} item={item} onCompare={() => setOther(partner(item))} />}
+          <div className="pf-detail-pane">{adding ? <AddProfile type={type} close={() => setAdding(false)} done={(n) => { setSel(n); setAdding(false); }} />
+            : item && other ? <Compare type={type} left={item.name} right={other} names={names} setRight={setOther} close={() => setOther(null)} />
+            : item ? <Details key={`${type}:${item.name}`} type={type} item={item} draft={drafts[JSON.stringify([type,item.name])]} update={updateDraft} onCompare={() => setOther(partner(item))} /> : <div className="pf-profile-empty">Select or add a profile</div>}</div>
         </div>
-        {item && other && <Compare type={type} left={item.name} right={other} names={names} setRight={setOther} close={() => setOther(null)} />}
       </div>
     </Modal>
   );

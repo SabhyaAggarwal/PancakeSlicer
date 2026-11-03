@@ -1,3 +1,5 @@
+import { Check } from './Check';
+import { Range } from './Range';
 import { useRef, useState } from 'react';
 import { effectiveConfig, getState, setState, useStore, type PlateObject, type State } from '../state/store';
 import { beginStep, undoable } from '../state/history';
@@ -57,14 +59,14 @@ export function LayerHeightPanel() {
       <div className="manip-grid" style={{ gridTemplateColumns: 'auto auto auto' }}>
         <button className="btn" style={{ gridColumn: '1 / -1', justifySelf: 'start' }} onClick={adaptive}>Adaptive</button>
         <span>Quality / Speed</span>
-        <input type="range" min={0} max={1} step={0.05} value={quality} onChange={(e) => setQuality(Number(e.target.value))} />
+        <Range min={0} max={1} step={0.05} value={quality} onValueChange={(next) => setQuality(next)} />
         <span>{quality.toFixed(2)}</span>
         <button className="btn" style={{ gridColumn: '1 / -1', justifySelf: 'start' }} onClick={smooth}>Smooth</button>
         <span>Radius</span>
-        <input type="range" min={1} max={10} step={1} value={radius} onChange={(e) => setRadius(Number(e.target.value))} />
+        <Range min={1} max={10} step={1} value={radius} onValueChange={(next) => setRadius(next)} />
         <span>{radius}</span>
         <span>Keep min</span>
-        <input type="checkbox" checked={keepMin} onChange={(e) => setKeepMin(e.target.checked)} style={{ justifySelf: 'start' }} />
+        <Check checked={keepMin} onCheckedChange={(next) => setKeepMin(next)} style={{ justifySelf: 'start' }} />
         <span />
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>

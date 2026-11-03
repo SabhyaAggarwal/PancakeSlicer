@@ -1,3 +1,4 @@
+import { Range } from './Range';
 import { useEffect, useSyncExternalStore } from 'react';
 import { getState, setState, updateObject, useStore } from '../state/store';
 import { autoGenerate, brimPainted, defaultEarRadius, earsUi, setEars, setEarsUi, subscribeEarsUi } from '../plater/brimEars';
@@ -11,7 +12,7 @@ export default function BrimEarsPanel() {
   const ears = o.brimEars ?? [];
   const row = (label: string, value: number, min: number, max: number, step: number, set: (v: number) => void) => (
     <label className="prefs-row brim-row"><span>{label}</span>
-      <input type="range" min={min} max={max} step={step} value={value} aria-label={label} onChange={(e) => set(Number(e.target.value))} />
+      <Range min={min} max={max} step={step} value={value} aria-label={label} onValueChange={(next) => set(next)} />
       <input className="text num" type="number" min={min} max={max} step={step} value={value} onChange={(e) => set(Math.min(max, Math.max(min, Number(e.target.value) || min)))} />
     </label>
   );

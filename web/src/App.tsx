@@ -10,8 +10,11 @@ import { LoadingState } from './components/Notices';
 import { LayerHeightBar, LayerHeightPanel } from './components/LayerHeight';
 import { Sidebar } from './components/Sidebar';
 import { AskHost } from './components/Ask';
-import { TabBar, TopBar } from './components/TopBar';
+import { TopBar } from './components/TopBar';
+const ControlHints = lazy(() => import('./components/ControlHints').then(m => ({default: m.ControlHints})));
 const BrimEarsPanel = lazy(() => import('./components/BrimEarsPanel'));
+const TransformPanel = lazy(() => import('./components/Transform').then(m => ({ default: m.TransformPanel })));
+const ObjectsOutliner = lazy(() => import('./components/ObjectsOutliner'));
 const ObjectInfo = lazy(() => import('./components/ObjectInfo'));
 const BooleanPanel = lazy(() => import('./components/BooleanPanel'));
 const TextPanel = lazy(() => import('./components/TextPanel'));
@@ -174,7 +177,8 @@ export default function App() {
         const s = getState();
         if (!s.selected && s.gizmo === 'none' && !assembly().on && document.activeElement instanceof HTMLCanvasElement) document.activeElement.blur();
         if (assembly().on) setAssembly({ on: false });
-        setState({ selected: null, gizmo: 'none' });
+        if (s.gizmo === 'move' || s.gizmo === 'rotate' || s.gizmo === 'scale') setState({gizmo: 'none'});
+        else setState({ selected: null, gizmo: 'none' });
       }
       else return;
       e.preventDefault();
@@ -245,19 +249,18 @@ export default function App() {
   return (
     <div className="app">
       <TopBar />
-      {!projects && <TabBar />}
       {projects && <Suspense fallback={null}><ProjectsView /></Suspense>}
       <div style={{ display: projects ? 'none' : undefined }} className={`main ${sidebarHidden ? 'sidebar-hidden' : ''} ${dragOver ? 'drag-over' : ''}`}>
-        <div style={{ display: tab === 'prepare' ? 'contents' : 'none' }}>
-          <Sidebar />
-        </div>
-        <div className="canvas-area">
-          {sidebarHidden && tab === 'prepare' && (
+        <Sidebar />
+        <div className="canvas-area" data-viewport={tab}>
+          {!empty && <Suspense fallback={null}><ObjectsOutliner/></Suspense>}
+          {sidebarHidden && (
             <button type="button" className="btn-ghost sidebar-reveal" aria-expanded={false} title={`Show sidebar (${navigator.platform.includes('Mac') ? 'Cmd' : 'Ctrl'}+\\)`} onClick={() => toggleSidebar(false)}>Show sidebar</button>
           )}
           <div style={{ display: tab === 'prepare' ? 'contents' : 'none' }}>
             <Suspense fallback={null}><Plater3D /></Suspense>
             <CanvasToolbar />
+            {!projects && tab === 'prepare' && (gizmo === 'move' || gizmo === 'rotate' || gizmo === 'scale') && <Suspense fallback={null}><TransformPanel /></Suspense>}
             <CutPanel />
             <PaintPanel />
             <LayerHeightPanel />
@@ -295,6 +298,7 @@ export default function App() {
         {sessionDialog && <Modal label="Projects" onClose={() => setState({ sessionDialog: null })}><ModalTitle title="Projects" onClose={() => setState({ sessionDialog: null })} /><ProjectsView /></Modal>}
         {palette !== null && <Palette />}
       </Suspense>
+      <Suspense fallback={null}><ControlHints /></Suspense>
       <AskHost />
       <Toast />
     </div>

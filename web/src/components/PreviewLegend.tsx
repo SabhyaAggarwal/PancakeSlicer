@@ -1,3 +1,4 @@
+import { Check } from './Check';
 import { Dropdown } from './Dropdown';
 import { useEffect, useState, type ReactNode } from 'react';
 import { effectiveConfig, getState } from '../state/store';
@@ -204,12 +205,12 @@ export function Legend(props: {
               <div className="lg-options">
                 {options.map(([k, label, c]) => (
                   <label key={k} className="lg-opt">
-                    <input type="checkbox" checked={ui.vis[k] as boolean} onChange={() => toggle(k)} />
+                    <Check checked={ui.vis[k] as boolean} onCheckedChange={() => toggle(k)} />
                     <Swatch c={c} />{label}
                   </label>
                 ))}
                 <label className="lg-opt">
-                  <input type="checkbox" checked={ui.shells} onChange={() => setUi((u) => ({ ...u, shells: !u.shells }))} />
+                  <Check checked={ui.shells} onCheckedChange={() => setUi((u) => ({ ...u, shells: !u.shells }))} />
                   <span className="lg-swatch blank" />Shells
                 </label>
               </div>

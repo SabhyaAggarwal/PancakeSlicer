@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+import { probeEngine, useEngineHealth } from '../flow/engine-health';
 import { Dropdown } from './Dropdown';
 import type { Config } from '../api/types';
 import { OPTIONS } from '../options';
@@ -7,6 +9,7 @@ import { effectiveMode, useStore } from '../state/store';
 import { revert } from '../profiles/stack';
 import { useChanges } from '../state/useChanges';
 import { Field } from './Field';
+import { Icon } from './Icon';
 import './process-settings.css';
 
 const fieldLabels: Record<string, string> = {
@@ -15,6 +18,8 @@ const fieldLabels: Record<string, string> = {
 };
 
 export function SurfaceSettings({ config, system }: { config: Config; system: Config }) {
+  const engine = useEngineHealth();
+  useEffect(() => { void probeEngine(); }, []);
   const current = surfaceOf(config);
   const advanced = useStore(effectiveMode) !== 'simple';
   const changes = useChanges('process');
@@ -24,8 +29,8 @@ export function SurfaceSettings({ config, system }: { config: Config; system: Co
   const noWaves = surfaceUnavailable('waves');
   const choice = (id: SurfaceId, label: string, hint: string, off?: string) => <button type="button" key={id} role="radio" aria-checked={current === id || (id === 'flat' && current === 'waves')}
     aria-disabled={!!off} className={off ? 'off' : undefined} title={off ? `${label} is unavailable: ${off}` : hint} onClick={() => !off && applySurface(id)}>{label}</button>;
-  return <div className="surface-settings" data-opt="nonplanar_mode">
-    <div className="opt-line">
+  return <section className="optgroup surface-settings" data-opt="nonplanar_mode" data-engine-state={engine.value}>
+    <div className="opt-line surface-title-row">
       <span className="opt-label" title="Shape of the top layers">Top surface</span>
       <div className="opt-field">
         <div className="seg surface-segments" role="radiogroup" aria-label="Top surface">
@@ -33,8 +38,8 @@ export function SurfaceSettings({ config, system }: { config: Config; system: Co
           {choice('smooth', 'Curved', 'Curved: the top layers follow the shape of the part, for smoother tops.', noCurved)}
         </div>
       </div>
-      {own.length > 0 && <span className="opt-undo"><span className="scope"><button type="button" className="scope-use" title="Use preset value" aria-label="Use preset value: Top surface"
-        onClick={() => undoable('Revert top surface', () => own.forEach(revert))} /></span></span>}
+      {own.length > 0 && <span className="opt-undo"><button type="button" className="icon-btn" title="Use preset value" aria-label="Use preset value: Top surface"
+        onClick={() => undoable('Revert top surface', () => own.forEach(revert))}><Icon name="undo" size={14}/></button></span>}
     </div>
     {noCurved && <p className="surface-why" role="note">Curved layers: {noCurved.charAt(0).toLowerCase() + noCurved.slice(1)}</p>}
     {advanced && current !== 'smooth' && <div className="opt-line" data-opt="nonplanar_wave">
@@ -45,5 +50,5 @@ export function SurfaceSettings({ config, system }: { config: Config; system: Co
       value={config[key]} systemValue={system[key]} dirty={own.some((c) => c.key === key)}
       onReset={(key) => { const c = own.find((c) => c.key === key); if (c) revert(c); }}
       disabled={!!surfaceUnavailable(current as SurfaceId)} />)}
-  </div>;
+  </section>;
 }

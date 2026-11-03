@@ -18,35 +18,36 @@ import (
 )
 
 type Config struct {
-	SourceURL      string
-	SourceArchive  string
-	DataDir        string
-	Listen         string
-	Tool           string
-	Resources      string
-	JobRoot        string
-	StaticDir      string
-	MaxJobs        int
-	JobTimeout     time.Duration
-	JobTTL         time.Duration
-	MaxUploadSize  int64
-	UploadMinRate  int64
-	SubmitRate     float64
-	SubmitBurst    int
-	MaxClientJobs  int
-	MaxQueue       int
-	BearerToken    string
-	DiskQuota      int64
-	RequestLog     bool
-	Metrics        bool
-	TrustedProxies []netip.Prefix
-	PrintersFile   string
-	Printers       []*PrinterConfig
-	PrinterEdit    string
-	HTTPPrinters   string
-	PrinterStore   *printerStore
-	Features       ToolFeatures
-	Options        *cachedResponse
+	FallbackBackend string
+	SourceURL       string
+	SourceArchive   string
+	DataDir         string
+	Listen          string
+	Tool            string
+	Resources       string
+	JobRoot         string
+	StaticDir       string
+	MaxJobs         int
+	JobTimeout      time.Duration
+	JobTTL          time.Duration
+	MaxUploadSize   int64
+	UploadMinRate   int64
+	SubmitRate      float64
+	SubmitBurst     int
+	MaxClientJobs   int
+	MaxQueue        int
+	BearerToken     string
+	DiskQuota       int64
+	RequestLog      bool
+	Metrics         bool
+	TrustedProxies  []netip.Prefix
+	PrintersFile    string
+	Printers        []*PrinterConfig
+	PrinterEdit     string
+	HTTPPrinters    string
+	PrinterStore    *printerStore
+	Features        ToolFeatures
+	Options         *cachedResponse
 }
 
 func env(key, def string) string {
@@ -80,6 +81,7 @@ func parseConfig() Config {
 	flag.StringVar(&c.SourceArchive, "source-archive", env("ORCA_WEB_SOURCE_ARCHIVE", ""), "mounted Corresponding Source archive matching build metadata (ORCA_WEB_SOURCE_ARCHIVE)")
 	flag.StringVar(&c.SourceURL, "source-url", env("ORCA_WEB_SOURCE_URL", ""), "Corresponding Source repository URL or exact URL containing {revision} (ORCA_WEB_SOURCE_URL)")
 	flag.StringVar(&c.DataDir, "data-dir", env("ORCA_WEB_DATA_DIR", "data"), "persistent user preset directory (ORCA_WEB_DATA_DIR)")
+	flag.StringVar(&c.FallbackBackend, "fallback-backend", env("ORCA_WEB_FALLBACK_BACKEND", ""), "comma-separated previous loopback backends for read-only historical jobs")
 	flag.StringVar(&c.Listen, "listen", env("ORCA_WEB_LISTEN", "127.0.0.1:8780"), "listen address (ORCA_WEB_LISTEN)")
 	flag.StringVar(&c.Tool, "tool", env("ORCA_WEB_TOOL", "build-nogui/tests/fff_print/nonplanar_slice_tool"), "nonplanar_slice_tool path (ORCA_WEB_TOOL)")
 	flag.StringVar(&c.Resources, "resources", env("ORCA_WEB_RESOURCES", "resources"), "resources directory holding profiles/ and nonplanar/ (ORCA_WEB_RESOURCES)")
@@ -105,6 +107,9 @@ func parseConfig() Config {
 	flag.StringVar(&c.HTTPPrinters, "http-printers", env("ORCA_WEB_HTTP_PRINTERS", ""), "CIDRs and host names where PrusaLink/OctoPrint hosts may be added in the app (needs a bearer token); empty hides the feature (ORCA_WEB_HTTP_PRINTERS)")
 	proxies := flag.String("trusted-proxies", env("ORCA_WEB_TRUSTED_PROXIES", ""), "comma-separated trusted proxy CIDRs (ORCA_WEB_TRUSTED_PROXIES)")
 	flag.Parse()
+	if _, err := fallbackOrigins(c.FallbackBackend); err != nil {
+		log.Fatal(err)
+	}
 	if err := validateSourceURL(c.SourceURL); err != nil {
 		log.Fatal(err)
 	}

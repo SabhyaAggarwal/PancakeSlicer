@@ -1,6 +1,6 @@
 import { Dropdown } from './Dropdown';
 import { useState } from 'react';
-import { OPTIONS, useTab } from '../options';
+import { useTab } from '../options';
 import { effectiveConfig, getState, isSelected, selectedObjectIds, selectionOf, setState, toggleSelection, updateInstance, updateVolume, togglePrintable, useStore } from '../state/store';
 import { volumeIcon } from '../plater/volumes';
 import { renameObject, setFilament, startRename } from '../edit';
@@ -198,7 +198,7 @@ export function ObjectList() {
                 >
                   <span role="gridcell" className="ol-name"><Icon name="cog" size={14} />
                   <span className="ol-text">
-                    Settings ({nSettings}): {[...new Set(Object.keys(o.settings).map((k) => OPTIONS[k]?.category || 'Others'))].join(', ')}
+                    Overrides
                   </span></span>
                 </div>
               )}
@@ -242,7 +242,7 @@ export function ObjectList() {
                         {...rowKeys(() => pick('objects'), o.id)} onClick={() => pick('objects')} title={Object.keys(v.settings).join(', ')}>
                         <span role="gridcell" className="ol-name"><Icon name="cog" size={14} />
                         <span className="ol-text">
-                          Settings ({nv}): {[...new Set(Object.keys(v.settings).map((k) => OPTIONS[k]?.category || 'Others'))].join(', ')}
+                          Overrides
                         </span></span>
                       </div>
                     )}

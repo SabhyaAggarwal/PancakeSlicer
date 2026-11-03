@@ -40,7 +40,38 @@ export interface Machine<S extends string, E extends Ev, C> {
 const list = <T>(t: T | T[] | undefined): T[] => (t === undefined ? [] : Array.isArray(t) ? t : [t]);
 const norm = <S extends string, C, E extends Ev>(t: S | Transition<S, C, E>): Transition<S, C, E> => (typeof t === 'string' ? { target: t } : t);
 
+export function assertNever(value: never): never {
+  throw new Error(`Unhandled machine variant: ${String(value)}`);
+}
+
+export interface TransitionRecord {
+  seq: number; at: number; machine: string; instance: number;
+  from: string; event: string; to: string; accepted: boolean;
+}
+const LOG_LIMIT = 128;
+const LOG_MACHINES = 64;
+const logs = new Map<number, TransitionRecord[]>();
+let instanceSerial = 0, transitionSerial = 0;
+export function fsmLog(): TransitionRecord[] {
+  return [...logs.values()].flat().sort((a, b) => a.seq - b.seq).map((r) => ({ ...r }));
+}
+declare global { interface Window { __fsmLog: typeof fsmLog } }
+if (typeof window !== 'undefined') window.__fsmLog = fsmLog;
+function record(instance: number, machine: string, from: string, event: string, to: string, accepted: boolean) {
+  let ring = logs.get(instance);
+  if (!ring) {
+    if (logs.size >= LOG_MACHINES) logs.delete(logs.keys().next().value!);
+    logs.set(instance, (ring = []));
+  }
+  const row = { seq: ++transitionSerial, at: Date.now(), machine, instance, from, event, to, accepted };
+  if (ring.length === LOG_LIMIT) ring.shift();
+  ring.push(row);
+  try { if (typeof localStorage !== 'undefined' && localStorage.getItem('fsm-debug')) console.debug('[fsm]', row); }
+  catch {  }
+}
+
 export function createMachine<S extends string, E extends Ev, C>(def: MachineDef<S, E, C>): Machine<S, E, C> {
+  const instance = ++instanceSerial;
   let snap: Snapshot<S, C> = { value: def.initial, context: def.context };
   let timer: ReturnType<typeof setTimeout> | undefined;
   let busy = false;
@@ -82,7 +113,10 @@ export function createMachine<S extends string, E extends Ev, C>(def: MachineDef
         for (let e; (e = queue.shift()); ) {
           const after = def.states[snap.value].after;
           const t = e.type === '@after' ? (after && (!after.guard || after.guard(snap.context, e)) ? after : undefined) : pick(e);
-          if (t) take(t, e);
+          const from = snap.value;
+          const accepted = !!t && (t.target === undefined || Object.hasOwn(def.states, t.target));
+          if (accepted) take(t!, e);
+          record(instance, def.id, from, Object.hasOwn(def.states[from].on ?? {}, e.type) || e.type === '@after' ? e.type : '@rejected', snap.value, accepted);
         }
       } finally {
         busy = false;

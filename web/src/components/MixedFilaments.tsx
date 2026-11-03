@@ -1,3 +1,5 @@
+import { Check } from './Check';
+import { Range } from './Range';
 import { Dropdown } from './Dropdown';
 import { useEffect, useState } from 'react';
 import { ActionMenu } from './Menu';
@@ -123,22 +125,22 @@ function MixDialog({ slot, close }: { slot: number | null; close(): void }) {
           )) : (
             <label className="prefs-row mixed-ratio">
               <span>{m.ratios[0]}%</span>
-              <input type="range" min={MIN_RATIO} max={100 - MIN_RATIO} step={1} value={m.ratios[1]} aria-label="Ratio"
-                style={{ accentColor: colours[1] }} onChange={(e) => setRatio(1, Number(e.target.value))} />
+              <Range min={MIN_RATIO} max={100 - MIN_RATIO} step={1} value={m.ratios[1]} aria-label="Ratio"
+                style={{ accentColor: colours[1] }} onValueChange={(next) => setRatio(1, next)} />
               <span>{m.ratios[1]}%</span>
             </label>
           )}
         </>}
         {!three && <>
           <label className="prefs-row"><span>Gradient Effect</span>
-            <input type="checkbox" checked={m.gradient !== null} onChange={(e) => setM({ ...m, gradient: e.target.checked ? 0 : null, perPart: false })} />
+            <Check checked={m.gradient !== null} onCheckedChange={(next) => setM({ ...m, gradient: next ? 0 : null, perPart: false })} />
             {m.gradient !== null && (
               <Dropdown className="combo" value={m.gradient} aria-label="Gradient direction" onValueChange={(next) => setM({ ...m, gradient: Number(next) as 0 | 1 })} options={[({ value: 0, label: <>{m.components[0]} → {m.components[1]}</> }), ({ value: 1, label: <>{m.components[1]} → {m.components[0]}</> })]} />
             )}
           </label>
           {m.gradient !== null && (
             <label className="prefs-row"><span>Enable per-part gradient effect</span>
-              <input type="checkbox" checked={m.perPart} onChange={(e) => setM({ ...m, perPart: e.target.checked })} />
+              <Check checked={m.perPart} onCheckedChange={(next) => setM({ ...m, perPart: next })} />
             </label>
           )}
         </>}

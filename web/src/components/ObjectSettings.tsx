@@ -1,3 +1,4 @@
+import { Check } from './Check';
 import { useMemo, useRef, useState } from 'react';
 import { Modal, ModalTitle } from './Modal';
 import { ActionMenu } from './Menu';
@@ -10,7 +11,6 @@ import { undoable } from '../state/history';
 import { environment, fieldDefinition, optionState } from '../visibility';
 import { nativeSupportCapable } from '../settings-env';
 import { Field } from './Field';
-import { Icon } from './Icon';
 import { addRangeAfter, canAddAfter, deleteRange, editRange, rangeLabel, removeRangeOptions, setRangeOption } from '../plater/ranges';
 import type { LayerRange } from '../state/store';
 import { settingValue } from '../state/changes';
@@ -108,10 +108,7 @@ export function ObjectSettings() {
   return (
     <div className="obj-settings">
       <div className="obj-settings-head">
-        <Icon name={target.icon} size={14} />
-        <span className="ol-text" title={target.name}>
-          {target.name}
-        </span>
+        <span className="override-context" title={`Settings for ${target.name}`}>{range ? 'Layer overrides' : volume ? 'Part overrides' : 'Object overrides'}</span>
         <span className="obj-settings-tools">
           <AddMenu
             open={menu}
@@ -120,8 +117,8 @@ export function ObjectSettings() {
             cats={cats}
             onCategory={(c) => setPick(c)}
           />
-          <button type="button" className="btn" title="Clear settings" disabled={!Object.keys(target.settings).length}
-            onClick={() => target.remove(Object.keys(target.settings))}>Clear</button>
+          {Object.keys(target.settings).length > 0 && <button type="button" className="btn-ghost" title={`Clear overrides for ${target.name}`}
+            onClick={() => target.remove(Object.keys(target.settings))}>Clear</button>}
         </span>
       </div>
       
@@ -224,7 +221,7 @@ function SelectSettings(props: { title: string; keys: string[]; current: Config;
         <div className="select-list">
           {props.keys.map((k) => (
             <label key={k} className="select-row" title={OPTIONS[k]?.tooltip}>
-              <input type="checkbox" checked={checked.has(k)} onChange={() => toggle(k)} />
+              <Check checked={checked.has(k)} onCheckedChange={() => toggle(k)} />
               <span>{labelOf(k)}</span>
             </label>
           ))}

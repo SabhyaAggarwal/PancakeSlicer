@@ -1,3 +1,4 @@
+import { Range } from './Range';
 import { useRef } from 'react';
 import type { LayerRec } from '../preview/format';
 import { Icon } from './Icon';
@@ -144,13 +145,12 @@ export function MoveSlider({ count, pos, gcodeLine, onChange, gcodeOpen, onGcode
 }) {
   return (
     <div className="move-slider">
-      <input
-        type="range"
+      <Range
         min={1}
         max={count}
         value={pos}
-        onChange={(e) => {
-          const v = Number(e.target.value);
+        onValueChange={(next) => {
+          const v = next;
           onChange(v >= count ? null : v);
         }}
         title="Moves of the top layer (Left / Right keys)"

@@ -1,3 +1,4 @@
+import { Check } from './Check';
 import { useState } from 'react';
 import { newProject, slice } from '../actions';
 import { effectiveConfig, getState, setState, toast, type CalibMenu } from '../state/store';
@@ -213,7 +214,7 @@ export default function CalibDialog({ which }: { which: Exclude<CalibMenu, 'nonp
             <legend>{c.settings}</legend>
             {c.fields.filter((f) => !f.show || f.show(v)).map((f) => 'check' in f ? (
               <label key={f.key} className="prefs-row">
-                <input type="checkbox" checked={v[f.key] === '1'} onChange={(e) => setV({ ...v, [f.key]: e.target.checked ? '1' : '0' })} />
+                <Check checked={v[f.key] === '1'} onCheckedChange={(next) => setV({ ...v, [f.key]: next ? '1' : '0' })} />
                 {f.label}
               </label>
             ) : (

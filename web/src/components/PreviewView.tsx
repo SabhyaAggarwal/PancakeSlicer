@@ -1,3 +1,5 @@
+import { OrderBar } from './OrderBar';
+import { loadSource, viewerReady, viewerError, scrubViewer } from '../flow/viewer';
 import { slicingText } from '../api/progress';
 import { Suspense, lazy, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { getState, printerPreset, setState, useStore } from '../state/store';
@@ -10,7 +12,7 @@ import { PreviewScene } from '../preview/PreviewScene';
 import { surfaceGrid } from '../preview/surface-grid';
 import { clearanceScale, loadClearanceScale } from '../preview/clearance';
 import { Legend } from './PreviewLegend';
-import { LayerSlider, MoveSlider } from './PreviewSliders';
+import { LayerSlider } from './PreviewSliders';
 import { EventList, EventMenu, eventTicks } from './LayerEvents';
 import { ownsKeys } from '../keys';
 import { numberDialog, openFileDialog, slice } from '../actions';
@@ -147,9 +149,11 @@ export function PreviewView() {
     },
     done: (d) => {
       recolor(d);
+      if (current) viewerReady(current.key, d.loaded);
       bump();
     },
     error: (d) => {
+      if (current) viewerError(current.key, d.error ?? 'Unable to load preview');
       setData(d);
       bump();
     },
@@ -165,6 +169,7 @@ export function PreviewView() {
   useEffect(() => {
     const src = dropped ? { key: `file:${dropped.name}:${dropped.size}`, file: dropped } : source();
     if (!src) {
+      loadSource(null);
       if (current) {
         current.cancel();
         current = null;
@@ -176,6 +181,9 @@ export function PreviewView() {
       return;
     }
     if (current?.key === src.key) {
+      loadSource({id: src.key});
+      if (current.data.done) viewerReady(src.key, current.data.loaded);
+      else if (current.data.error) viewerError(src.key, current.data.error);
       const d = current.data;
       const scene = sceneRef.current;
       if (d.header && scene && !scene.holds(d)) {
@@ -186,6 +194,7 @@ export function PreviewView() {
       return;
     }
     current?.cancel();
+    loadSource({id: src.key});
     const mine = (d: PreviewData) => current?.data === d;
     const handle = loadMoves(src, {
       header: (d) => mine(d) && live?.header(d),
@@ -214,6 +223,14 @@ export function PreviewView() {
   const [topFirst, topEnd] = data && layerCount ? data.layerSpan(hi, hi) : [1, 1];
   const topMoves = Math.max(0, topEnd - topFirst);
   const pos = movePos == null ? topMoves : Math.min(movePos, topMoves);
+  const seekOrder = (vertex: number) => {
+    if (!data?.layers.length) return;
+    const move = Math.max(1, Math.min(data.loaded - 1, vertex));
+    const layer = layerOfMove(data, move);
+    if (layer === null) return;
+    setLayers(([first]) => [Math.min(first, layer), layer]);
+    setMovePos(move - data.layers[layer].first + 1);
+  };
   useEffect(() => {
     const f = takeGcode();
     if (f) setDropped(f);
@@ -282,6 +299,7 @@ export function PreviewView() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (ownsKeys(e) || e.ctrlKey || e.metaKey || e.altKey || getState().tab !== 'preview') return;
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) scrubViewer(topFirst + pos - 1, hi);
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         const d = e.key === 'ArrowUp' ? 1 : -1;
         setLayers(([a, b]) => [a, Math.max(a, Math.min(layerCount - 1, Math.min(b, layerCount - 1) + d))]);
@@ -433,7 +451,7 @@ export function PreviewView() {
         />
       )}
       {layerCount > 0 && topMoves > 0 && (
-        <MoveSlider count={topMoves} pos={pos} gcodeLine={data!.gcode[topFirst + pos - 1]} onChange={setMovePos}
+        <OrderBar data={data!} at={topFirst + pos - 1} onSeek={seekOrder}
           gcodeOpen={gcodeWindow} onGcode={() => toggleViewOption('gcodeWindow')} />
       )}
       {layerCount > 0 && pos < topMoves && data!.states && topFirst + pos - 1 < data!.loaded && (

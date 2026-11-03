@@ -1,14 +1,14 @@
 import { Dropdown } from './Dropdown';
 import { useState } from 'react';
 import { Modal, ModalTitle } from './Modal';
-import type { Config } from '../api/types';
+import type { Config, ConfigValue } from '../api/types';
 import { bedBounds, parsePoints } from '../plater/geometry';
 import { bedAsset, registerBedAsset } from '../plater/bed-assets';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { union, type Polygon, type Pair } from 'polygon-clipping';
 import { setOption } from '../state/store';
 
-export default function BedShapeDialog({ config, close }: { config: Config; close: () => void }) {
+export default function BedShapeDialog({ config, close, onSet = (key, value) => setOption('machine', key, value) }: { config: Config; close(): void; onSet?(key: string, value: ConfigValue): void }) {
   const initial = parsePoints(config.printable_area);
   const bounds = bedBounds(initial);
   const [custom, setCustom] = useState(initial.map((p) => [p.x, p.y]));
@@ -53,7 +53,7 @@ export default function BedShapeDialog({ config, close }: { config: Config; clos
     } catch (e) { setError(e instanceof Error ? e.message : 'Error: invalid model'); }
   };
   return <Modal className="bed-dialog" label="Bed Shape" onClose={close}>
-    <form onSubmit={(e) => { e.preventDefault(); if (!valid) return; setOption('machine', 'printable_area', points.map(([x, y]) => `${Number(x.toFixed(6))}x${Number(y.toFixed(6))}`)); setOption('machine', 'bed_custom_texture', texture); setOption('machine', 'bed_custom_model', model); close(); }}>
+    <form onSubmit={(e) => { e.preventDefault(); if (!valid) return; onSet('printable_area', points.map(([x, y]) => `${Number(x.toFixed(6))}x${Number(y.toFixed(6))}`)); onSet('bed_custom_texture', texture); onSet('bed_custom_model', model); close(); }}>
       <ModalTitle title="Bed Shape" onClose={close} />
       <div className="bed-dialog-body"><div className="bed-dialog-fields"><fieldset><legend>Shape</legend>
         <Dropdown className="combo" aria-label="Shape" value={shape} onValueChange={setShape} options={[...['Rectangular', 'Circular', 'Custom'].map((name) => ({ value: name, label: name }))]} />

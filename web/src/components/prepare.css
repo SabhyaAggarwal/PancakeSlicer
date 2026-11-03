@@ -1,7 +1,6 @@
-:where(.orca-parity) .ol-row.linked:not(.selected) { background: var(--sunken); box-shadow: inset 2px 0 var(--ink-2); }
+:where(.orca-parity) .ol-row.linked:not(.selected) { background: var(--sunken); box-shadow: none; }
 
 :where(.orca-parity) .xf { flex: none; padding: var(--s-2) var(--s-4) var(--s-3); border-bottom: 1px solid var(--line); background: var(--panel); }
-:where(.orca-parity) .xf.folded { padding-bottom: var(--s-2); }
 :where(.orca-parity) .xf-head { display: flex; align-items: center; gap: var(--s-3); height: var(--h-compact); }
 :where(.orca-parity) .xf-label { margin-right: auto; font: var(--t-label); letter-spacing: var(--label-track); text-transform: none; color: var(--ink-2); overflow: hidden; overflow-wrap: anywhere; white-space: normal; }
 :where(.orca-parity) .xf-fold { display: grid; place-items: center; width: var(--h-compact); height: var(--h-compact); padding: 0; border: 0; border-radius: var(--r-2); background: none; color: var(--ink-2); cursor: pointer; }
@@ -26,24 +25,26 @@
 :where(.orca-parity) .tb-items { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; min-width: 0; height: 32px; overflow: hidden; }
 :where(.orca-parity) .canvas-toolbar.open .tb-items { height: auto; }
 :where(.orca-parity) .tb-items > * { height: 32px; }
-:where(.orca-parity) .tb-sep { background: var(--line-strong); align-self: center; height: 20px; }
+:where(.orca-parity) .tb-sep { background: var(--line); align-self: center; height: 20px; }
 :where(.orca-parity) .tb-more { flex: none; align-self: flex-start; width: 32px; height: 32px; padding: 0; border: 0; border-left: 1px solid var(--line); background: none; color: var(--ink-2); font: var(--t-title); letter-spacing: 1px; cursor: pointer; }
 :where(.orca-parity) .tb-more:hover, :where(.orca-parity) .canvas-toolbar.open .tb-more { color: var(--ink); background: var(--sunken); }
-:where(.orca-parity) .canvas-toolbar .icon-btn.active { background: var(--accent-tint); box-shadow: inset 0 -2px var(--accent); }
+:where(.orca-parity) .canvas-toolbar .icon-btn.active { background: var(--segment-active); box-shadow: none; }
 
 :where(.orca-parity) .nav3d-face { background: var(--panel); color: var(--ink-2); border: 1px solid var(--line-strong); font: var(--t-label); font-size: 9px; letter-spacing: var(--label-track); text-transform: none; }
 :where(.orca-parity) .nav3d-face:hover { color: var(--ink); background: var(--sunken); border-color: var(--ink-2); }
 :where(.orca-parity) .tb-items { flex: 1 1 auto; } :where(.orca-parity) .canvas-toolbar.open { align-items: flex-start; }
-:where(.orca-parity) .xf-wait { height: 156px; }
 :where(.orca-parity) .ol-cell { display: inline-flex; flex: none; align-items: center; }
 
-:where(.orca-parity) .xf-hint { font: var(--t-num); font-size: 12px; color: var(--ink-3); white-space: normal; font-variant-numeric: tabular-nums; }
 :where(.orca-parity) .xf-btn { display: grid; place-items: center; width: var(--h-compact); height: var(--h-compact); padding: 0; border: 0; border-radius: var(--r-2); background: none; color: var(--ink-2); cursor: pointer; }
 :where(.orca-parity) .xf-btn:hover:not(:disabled) { color: var(--ink); background: var(--sunken); }
 :where(.orca-parity) .xf-btn[aria-pressed='true'] { color: var(--ink); background: var(--sunken); }
 :where(.orca-parity) .xf-btn:disabled { color: var(--ink-disabled); cursor: default; }
-:where(.orca-parity) .xf-wait.folded { height: 33px; }
 :where(.orca-parity) .xf-grid:has(.manip-num:disabled) .xf-key, :where(.orca-parity) .xf-grid:has(.manip-num:disabled) .axis { color: var(--ink-3); }
 
 :where(.orca-parity) .canvas-toolbar .icon-btn:disabled { opacity: 0.3; }
 :where(.orca-parity) .canvas-toolbar .icon-btn:not(:disabled):hover { background: var(--sunken); }
+
+:where(.orca-parity) .transform-anchor { position: absolute; left: 12px; top: 56px; width: 0; height: 0; pointer-events: none; }
+:where(.orca-parity) .transform-floating { z-index: 30; width: min(380px, calc(100vw - 24px)); max-height: var(--radix-popover-content-available-height); overflow: auto; padding: 8px 12px 12px; border: 1px solid var(--line-strong); border-radius: 4px; background: var(--panel); box-shadow: var(--shadow-pop); }
+:where(.orca-parity) .transform-floating .xf-head { height: auto; min-height: 28px; }
+:where(.orca-parity) .xf-selection { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; padding: 2px 0 6px; }

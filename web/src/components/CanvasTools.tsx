@@ -1,3 +1,4 @@
+import { Range } from './Range';
 import { useSyncExternalStore } from 'react';
 import { alignSection, sectionView, setSection, subscribeSection } from '../plater/section';
 import { IconButton } from './Icon';
@@ -13,7 +14,7 @@ export default function CanvasTools() {
       {s.open && (
         <div className="canvas-section-panel">
           <span>Section view</span>
-          <input type="range" min={0} max={1} step={0.01} value={s.ratio} aria-label="Section view" onChange={(e) => setSection({ ratio: Number(e.target.value) })} />
+          <Range min={0} max={1} step={0.01} value={s.ratio} aria-label="Section view" onValueChange={(next) => setSection({ ratio: next })} />
           <input className="text num" type="number" min={0} max={1} step={0.05} value={s.ratio.toFixed(2)} aria-label="Section view ratio" onChange={(e) => setSection({ ratio: Number(e.target.value) || 0 })} />
           <button type="button" className="btn small" onClick={alignSection}>Set viewing angle</button>
           <IconButton icon="revert_btn" size={14} title="Reset" disabled={!active} onClick={() => setSection({ ratio: 0 })} />

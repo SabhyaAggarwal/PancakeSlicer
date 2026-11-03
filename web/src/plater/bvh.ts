@@ -92,6 +92,33 @@ export function buildBvh(p: Float32Array, index: Uint32Array): Bvh {
 const stack = new Uint32Array(128);
 const stackT = new Float64Array(128);
 
+export function supportBvh(bvh: Bvh, p: ArrayLike<number>, index: ArrayLike<number>, x: number, y: number, z: number): number {
+  const { bounds, nodes, tris } = bvh;
+  const upper = (i: number) => {
+    const b = i * 6;
+    return x * bounds[b + (x < 0 ? 0 : 3)] + y * bounds[b + (y < 0 ? 1 : 4)] + z * bounds[b + (z < 0 ? 2 : 5)];
+  };
+  let best = -Infinity, top = 0;
+  stack[top++] = 0;
+  while (top) {
+    const i = stack[--top];
+    if (upper(i) <= best) continue;
+    const meta = nodes[i * 2 + 1];
+    if (meta & LEAF) {
+      const first = nodes[i * 2], end = first + (meta & ~LEAF);
+      for (let k = first; k < end; ++k) for (let v = 0; v < 3; ++v) {
+        const a = 3 * index[3 * tris[k] + v];
+        best = Math.max(best, x * p[a] + y * p[a + 1] + z * p[a + 2]);
+      }
+    } else {
+      const left = i + 1, right = nodes[i * 2];
+      if (upper(left) > upper(right)) { stack[top++] = right; stack[top++] = left; }
+      else { stack[top++] = left; stack[top++] = right; }
+    }
+  }
+  return best;
+}
+
 export function raycastBvh(bvh: Bvh, p: ArrayLike<number>, index: ArrayLike<number>, o: ArrayLike<number>, d: ArrayLike<number>, far = Infinity, out?: { tri: number }): number {
   const { bounds, nodes, tris } = bvh;
   const ox = o[0], oy = o[1], oz = o[2], dx = d[0], dy = d[1], dz = d[2];

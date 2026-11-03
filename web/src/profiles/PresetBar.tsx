@@ -1,3 +1,4 @@
+import { profileEdit } from '../flow/profile-edit';
 import { resetToBase } from './catalog';
 import { useEffect, useState } from 'react';
 import type { PresetType } from '../api/types';
@@ -149,9 +150,11 @@ export function ChangesMark({ type, slot = 0 }: { type: PresetType; slot?: numbe
 }
 
 const EMPTY: ProfileConflict[] = [];
-export function ConflictLine({ type, name }: { type: PresetType; name: string }) {
+export function ConflictLine({ type, name, slot = 0 }: { type: PresetType; name: string; slot?: number }) {
   const s = useStore((s) => s);
-  const rows = name ? selectProfileConflicts(s, type, name) : EMPTY;
+  const lifecycle = useMachine(profileEdit(type, slot));
+  const current = type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot];
+  const rows = name === current ? lifecycle.context.conflicts : name ? selectProfileConflicts(s, type, name) : EMPTY;
   if (!rows.length) return null;
   const c = rows[0];
   return (
@@ -171,7 +174,7 @@ export function PresetBar({ type, slot = 0 }: { type: PresetType; slot?: number 
         {type === 'process' ? <ProcessPresetPicker /> : <PresetPicker type={type} slot={slot} />}
         <ChangesMark type={type} slot={slot} /><PresetActions type={type} slot={slot} />
       </div>
-      {presetName && <ConflictLine type={type} name={presetName} />}
+      {presetName && <ConflictLine type={type} name={presetName} slot={slot} />}
     </>
   );
 }

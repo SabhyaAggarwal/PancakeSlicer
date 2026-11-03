@@ -1,3 +1,4 @@
+import { Check } from './Check';
 import { Dropdown } from './Dropdown';
 import { lazy, Suspense, useState, useSyncExternalStore } from 'react';
 import { markStale, setState, useStore } from '../state/store';
@@ -63,18 +64,18 @@ function Preferences() {
               onChange={(e) => { const v = Number(e.target.value); if (v >= 0.05 && v <= 2) setCameraPrefs({ orbitMult: v }); }} />
           </label>
           <label className="prefs-row" title="Zoom in towards the mouse pointer's position in the 3D view, rather than the 2D window center.">
-            <input type="checkbox" checked={camera.zoomToMouse} onChange={(e) => setCameraPrefs({ zoomToMouse: e.target.checked })} />
+            <Check checked={camera.zoomToMouse} onCheckedChange={(next) => setCameraPrefs({ zoomToMouse: next })} />
             Zoom to mouse position
           </label>
           <label className="prefs-row" title="If enabled, reverses the direction of zoom with mouse wheel.">
-            <input type="checkbox" checked={camera.reverseZoom} onChange={(e) => setCameraPrefs({ reverseZoom: e.target.checked })} />
+            <Check checked={camera.reverseZoom} onCheckedChange={(next) => setCameraPrefs({ reverseZoom: next })} />
             Reverse mouse zoom
           </label>
         </fieldset>
         <fieldset className="prefs-group">
           <legend>Develop mode</legend>
           <label className="prefs-row" title="Show the developer-only settings">
-            <input type="checkbox" checked={developerMode} onChange={(e) => setDeveloperMode(e.target.checked)} />
+            <Check checked={developerMode} onCheckedChange={(next) => setDeveloperMode(next)} />
             Develop mode
           </label>
         </fieldset>
@@ -82,7 +83,7 @@ function Preferences() {
           <fieldset className="prefs-group">
             <legend>Slicing</legend>
             <label className="prefs-row" title="With this option enabled, you can print materials with a large temperature difference together.">
-              <input type="checkbox" checked={mixed} onChange={(e) => setMixedTemperatures(e.target.checked)} />
+              <Check checked={mixed} onCheckedChange={(next) => setMixedTemperatures(next)} />
               Remove mixed temperature restriction
             </label>
           </fieldset>

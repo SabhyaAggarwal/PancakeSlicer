@@ -4,7 +4,7 @@ import type { ConfigValue, PlateJson } from '../api/types';
 import { toolValue } from '../options';
 import type { Instance, PlateObject, Volume } from '../state/store';
 import { fitProfile } from './layerProfile';
-import type { Bvh } from './bvh';
+import { supportBvh, type Bvh } from './bvh';
 import type { MeshData, MeshIn, MeshOut } from './mesh.worker';
 import type { ProjectItem, ProjectMaterials } from './threemf';
 import { paintJson } from './paint';
@@ -149,20 +149,30 @@ function transformedBox(geo: THREE.BufferGeometry, m: THREE.Matrix4, key: string
   if (!b) {
     const e = m.elements;
     const axisAligned = [0, 4, 8].every((c) => [e[c], e[c + 1], e[c + 2]].filter((v) => Math.abs(v) > 1e-12).length === 1);
-    const p = (geo.userData.hull as Float32Array | undefined) ??
-      (axisAligned && geo.boundingBox ? boxCorners(geo.boundingBox) : (geo.attributes.position.array as Float32Array));
-    let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
-    for (let i = 0; i < p.length; i += 3) {
-      const x = p[i], y = p[i + 1], z = p[i + 2];
-      const tx = e[0] * x + e[4] * y + e[8] * z + e[12], ty = e[1] * x + e[5] * y + e[9] * z + e[13], tz = e[2] * x + e[6] * y + e[10] * z + e[14];
-      if (tx < x0) x0 = tx;
-      if (tx > x1) x1 = tx;
-      if (ty < y0) y0 = ty;
-      if (ty > y1) y1 = ty;
-      if (tz < z0) z0 = tz;
-      if (tz > z1) z1 = tz;
+    const bvh = geo.userData.bvh as Bvh | undefined;
+    if (!axisAligned && bvh && geo.index) {
+      const p = geo.attributes.position.array, index = geo.index.array;
+      const min = [], max = [];
+      for (let k = 0; k < 3; ++k) {
+        min.push(-supportBvh(bvh, p, index, -e[k], -e[k + 4], -e[k + 8]) + e[k + 12]);
+        max.push(supportBvh(bvh, p, index, e[k], e[k + 4], e[k + 8]) + e[k + 12]);
+      }
+      b = new THREE.Box3(new THREE.Vector3(...min), new THREE.Vector3(...max));
+    } else {
+      const p = (axisAligned && geo.boundingBox ? boxCorners(geo.boundingBox) : (geo.attributes.position.array as Float32Array));
+      let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+      for (let i = 0; i < p.length; i += 3) {
+        const x = p[i], y = p[i + 1], z = p[i + 2];
+        const tx = e[0] * x + e[4] * y + e[8] * z + e[12], ty = e[1] * x + e[5] * y + e[9] * z + e[13], tz = e[2] * x + e[6] * y + e[10] * z + e[14];
+        if (tx < x0) x0 = tx;
+        if (tx > x1) x1 = tx;
+        if (ty < y0) y0 = ty;
+        if (ty > y1) y1 = ty;
+        if (tz < z0) z0 = tz;
+        if (tz > z1) z1 = tz;
+      }
+      b = new THREE.Box3(new THREE.Vector3(x0, y0, z0), new THREE.Vector3(x1, y1, z1));
     }
-    b = new THREE.Box3(new THREE.Vector3(x0, y0, z0), new THREE.Vector3(x1, y1, z1));
     if (per.size > 64) per.clear();
     per.set(key, b);
   }

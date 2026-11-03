@@ -1,3 +1,4 @@
+import { Check } from './Check';
 import { useState } from 'react';
 import { unzipSync } from 'fflate';
 import { importFiles } from '../actions';
@@ -36,7 +37,7 @@ export default function ArchiveDialog({ files, close }: { files: (File & { path?
       <div className="prefs-body archive-list">
         {files.map((f, i) => (
           <label key={i} className="prefs-row">
-            <input type="checkbox" checked={checked[i]} onChange={(e) => setChecked(checked.map((c, j) => (j === i ? e.target.checked : c)))} />
+            <Check checked={checked[i]} onCheckedChange={(next) => setChecked(checked.map((c, j) => (j === i ? next : c)))} />
             {f.path ?? f.name}
           </label>
         ))}

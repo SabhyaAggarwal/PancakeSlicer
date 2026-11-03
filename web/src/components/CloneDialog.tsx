@@ -1,3 +1,4 @@
+import { Check } from './Check';
 import { useState } from 'react';
 import { arrangeAll, fillBed } from '../actions';
 import { copySelection, pasteClipboard } from '../edit';
@@ -31,7 +32,7 @@ export default function CloneDialog({ close }: { close(): void }) {
             onKeyDown={(e) => e.key === 'Enter' && ok()} />
         </label>
         <label className="prefs-row"><span>Auto arrange plate after cloning:</span>
-          <input type="checkbox" checked={arrange} onChange={(e) => setArrange(e.target.checked)} />
+          <Check checked={arrange} onCheckedChange={(next) => setArrange(next)} />
         </label>
       </div>
       <div className="modal-buttons">

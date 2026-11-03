@@ -1,14 +1,13 @@
-import { Suspense, lazy, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
+import { Popover } from 'radix-ui';
 import * as THREE from 'three';
-import { isSelected, setState, updateInstance, updateObject, useStore, markStale } from '../state/store';
+import { setState, updateInstance, updateObject, useStore, markStale } from '../state/store';
 import { undoable } from '../state/history';
 import { Num } from './Num';
 
 const PartManipulation = lazy(() => import('./PartManipulation'));
 
 let moveCoordinates: 'world' | 'object' = 'world';
-export const FOLD_BELOW = 900;
-let transformFolded = window.innerHeight < FOLD_BELOW;
 const DEG = Math.PI / 180;
 const AX = ['X', 'Y', 'Z'];
 const rotationOf = (rot: [number, number, number]) => new THREE.Matrix4().makeRotationZ(rot[2] * DEG)
@@ -35,18 +34,6 @@ export function CoordToggle({ value, onChange, enabled }: { value: 'world' | 'ob
   );
 }
 
-function Header({ title, folded, onFold, children }: { title: string; folded: boolean; onFold: () => void; children?: React.ReactNode }) {
-  return (
-    <div className="xf-head">
-      <span className="xf-label">{title}</span>
-      {children}
-      <button type="button" className="xf-fold" aria-expanded={!folded} title={folded ? 'Show position, rotation and size' : 'Hide position, rotation and size'} onClick={onFold}>
-        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d={folded ? 'M2 3.5 5 6.5 8 3.5' : 'M2 6.5 5 3.5 8 6.5'} fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
-      </button>
-    </div>
-  );
-}
-
 function RowButton({ d, title, onClick, disabled, pressed }: { d: string; title: string; onClick: () => void; disabled?: boolean; pressed?: boolean }) {
   return (
     <button type="button" className="xf-btn" title={disabled ? `${title}\nThe transform is already at its reset value.` : title} aria-label={title} aria-pressed={pressed} disabled={disabled} onClick={onClick}>
@@ -70,11 +57,12 @@ export function TransformPanel() {
   const sel = useStore((s) => s.selected);
   const o = useStore((s) => (s.selected && !s.selected.all ? s.objects.find((ob) => ob.id === s.selected!.object) : undefined));
   const uniform = useStore((s) => s.uniformScale);
-  const count = useStore((s) => (s.selected?.all ? new Set(s.objects.filter((ob) => ob.instances.some((i) => isSelected(s.selected, ob.id, i.id))).map((ob) => ob.id)).size : 0));
   const inst = o?.instances.find((i) => i.id === sel?.instance);
   const [coordinates, setCoordinates] = useState(moveCoordinates);
-  const [folded, setFolded] = useState(transformFolded);
-  const fold = () => { transformFolded = !folded; setFolded(transformFolded); };
+  const active = gizmo === 'move' || gizmo === 'rotate' || gizmo === 'scale';
+  const valid = !!o && !!inst && !sel?.all && !o.project?.placeholder;
+  const close = () => setState({gizmo: 'none'});
+  useEffect(() => { if (active && !valid) setState({gizmo: 'none'}); }, [active, valid]);
   const openKey = `${gizmo}|${o?.id}|${inst?.id}`;
   const [opened, setOpened] = useState<{ key: string; pos: THREE.Vector3; rot: [number, number, number] } | null>(null);
   if (o && inst && opened?.key !== openKey) setOpened({ key: openKey, pos: new THREE.Vector3(inst.x, inst.y, inst.z ?? 0), rot: [o.rotX, o.rotY, inst.rotZ] });
@@ -85,12 +73,10 @@ export function TransformPanel() {
   const lock = <RowButton pressed={uniform} title={uniform ? 'Uniform scale: on' : 'Uniform scale: off'} onClick={() => setState({ uniformScale: !uniform })}
     d={uniform ? 'M5 7V5a3 3 0 0 1 6 0v2M4 7h8v6H4z' : 'M5 7V5a3 3 0 0 1 6 0M4 7h8v6H4z'} />;
   let body: React.ReactNode;
-  let hint = '';
   if (live && inst && v) body = <Suspense fallback={null}><PartManipulation o={live} inst={inst} v={v} local={coordinates === 'object' && gizmo === 'move'} lock={lock} /></Suspense>;
   else if (live && inst) {
     const o = live;
     const mesh = o.geometry.boundingBox!.getSize(new THREE.Vector3());
-    hint = [0, 1, 2].map((k) => Number((Math.abs(o.scale[k]) * mesh.getComponent(k)).toFixed(1))).join(' × ') + ' mm';
     const rescale = (axis: number, factor: number) => updateObject(o.id, {
       scale: o.scale.map((s, k) => (uniform || k === axis ? s * factor : s)) as [number, number, number],
     });
@@ -121,7 +107,6 @@ export function TransformPanel() {
     );
   } else {
     const none = () => undefined;
-    hint = sel?.all ? `${count} objects` : 'No selection';
     body = (
       <>
         <Row label="Position" names="Position" onCommit={none} />
@@ -131,19 +116,15 @@ export function TransformPanel() {
       </>
     );
   }
-  return (
-    <section className={`xf${folded ? ' folded' : ''}`} aria-label="Transform">
-      <Header title={v ? v.name : title} folded={folded} onFold={fold}>{!folded && toggle ? toggle : hint && (folded || !live || !inst) ? <span className="xf-hint">{hint}</span> : null}</Header>
-      {!folded && (
-        <div className="xf-grid">
-          <span />
-          <span className="axis x">X</span>
-          <span className="axis y">Y</span>
-          <span className="axis z">Z</span>
-          <span />
-          {body}
-        </div>
-      )}
-    </section>
-  );
+  if (!active || !valid) return null;
+  return <Popover.Root open onOpenChange={open => { if (!open) close(); }}>
+    <Popover.Anchor asChild><div className="transform-anchor" /></Popover.Anchor>
+    <Popover.Portal><Popover.Content className="xf transform-floating" aria-label={`${title} ${v?.name ?? o.name}`} side="bottom" align="start" sideOffset={0} collisionPadding={12}
+      onOpenAutoFocus={e => e.preventDefault()} onCloseAutoFocus={e => e.preventDefault()}
+      onInteractOutside={e => e.preventDefault()} onEscapeKeyDown={e => { e.stopPropagation(); close(); }}>
+      <div className="xf-head"><span className="xf-label">{title}</span>{toggle}<button type="button" className="xf-fold" aria-label="Close transform" title="Close transform (Escape)" onClick={close}>×</button></div>
+      <div className="xf-selection">{v?.name ?? o.name}</div>
+      <div className="xf-grid"><span/><span className="axis x">X</span><span className="axis y">Y</span><span className="axis z">Z</span><span/>{body}</div>
+    </Popover.Content></Popover.Portal>
+  </Popover.Root>;
 }

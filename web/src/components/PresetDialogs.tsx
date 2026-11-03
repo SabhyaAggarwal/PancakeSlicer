@@ -1,3 +1,4 @@
+import { Check } from './Check';
 import { useEffect, useRef, useState } from 'react';
 import type { Config, ConfigValue, PresetType } from '../api/types';
 import { normalizeConfigValue, toolValue } from '../config-values';
@@ -90,7 +91,7 @@ export function SaveDialog({ type, slot }: { type: PresetType; slot: number }) {
         </label>
         <div className="np-field"><span>Parent</span><span>{base?.name ?? '—'}</span></div>
         <label className="row">
-          <input type="checkbox" checked={detach} onChange={(e) => setDetach(e.target.checked)} />
+          <Check checked={detach} onCheckedChange={(next) => setDetach(next)} />
           Detach
         </label>
         {error && <div className="np-error" role="alert">{error}</div>}

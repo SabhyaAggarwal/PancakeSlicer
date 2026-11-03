@@ -1,5 +1,5 @@
 import type { Config, PresetType, SystemPreset, UserPreset } from '../api/types';
-import { DEFAULT_PRINTER, getState, selectPrinter, setState, type State } from '../state/store';
+import { DEFAULT_PRINTER, getState, setState, type State } from '../state/store';
 import { baseVersion, changedKeys, profilesFor, resolveProfile } from './model';
 import { isCompatible, selectCompatibility } from './compatibility';
 import { defaultsInitialized, markDefaultsInitialized, rememberLocalProfile, importedBases } from '../persist/profiles';
@@ -85,11 +85,6 @@ export function createProfileFromBase(type: PresetType, baseName: string, name?:
   const profile = makeProfile(s, base, name?.trim() || displayName(base));
   rememberLocalProfile(profile, s.api?.mock);
   setState({ userPresets: [...s.userPresets, profile] });
-  if (type === 'machine') selectPrinter(profile.name);
-  else if (type === 'process') setState((st) => ({ process: profile.name, dirty: { ...st.dirty, process: {} },
-    projectPresets: st.projectPresets ? { ...st.projectPresets, process: {} } : null }));
-  else setState((st) => ({ filamentSlots: st.filamentSlots.length ? [profile.name, ...st.filamentSlots.slice(1)] : [profile.name],
-    projectPresets: st.projectPresets ? { ...st.projectPresets, filaments: [{}, ...st.projectPresets.filaments.slice(1)] } : null }));
   return profile.name;
 }
 

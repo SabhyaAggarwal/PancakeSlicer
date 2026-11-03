@@ -1,3 +1,5 @@
+import { Check } from './Check';
+import { ColorPicker } from './ColorPicker';
 import { Dropdown, EditableDropdown } from './Dropdown';
 import { createContext, memo, useContext, useEffect, useId, useRef, useState } from 'react';
 import type { ConfigValue, PresetType } from '../api/types';
@@ -101,8 +103,8 @@ export const Field = memo(function Field(props: {
       if (!(e.target as HTMLElement).closest('input, button')) commit(isOn ? '0' : '1');
     } : undefined}>
       <span className={`opt-label ${modified ? 'modified' : ''}`} title={tooltip} id={labelId}>
-        {def.nullable && <input className="nullable-toggle" type="checkbox" aria-label={`Override ${label}`} checked={checked} disabled={props.overrideDisabled} title={props.overrideDisabled ? "Enable the parent override first" : undefined}
-        onChange={(e) => commit(e.target.checked ? fallback : 'nil')} />}
+        {def.nullable && <Check className="nullable-toggle" aria-label={`Override ${label}`} checked={checked} disabled={props.overrideDisabled} title={props.overrideDisabled ? "Enable the parent override first" : undefined}
+        onCheckedChange={(next) => commit(next ? fallback : 'nil')} />}
         {label}
       </span>
       <fieldset className="opt-field" title={disabledReason ?? hint} aria-description={disabledReason} disabled={props.disabled || (def.nullable && !checked)} style={def.sidetext ? { '--side-ch': def.sidetext.length } as React.CSSProperties : undefined}>
@@ -161,7 +163,7 @@ function Widget({ def, value, onCommit }: { def: OptionDef; value: ConfigValue |
   }
   if (def.gui_type === 'color' || /colou?r$/.test(def.key)) {
     const v = asText(value) || '#000000';
-    return <input type="color" className="color" {...named} value={v.slice(0, 7)} onChange={(e) => onCommit(e.target.value.toUpperCase())} />;
+    return <ColorPicker {...named} label={def.label || def.full_label || "Color"} value={v.slice(0, 7)} onCommit={onCommit} disabled={def.readonly}/>;
   }
   if (def.multiline || (base === 'string' && /gcode|notes|post_process/.test(def.key))) {
     return <TextBox value={asText(value)} multiline onCommit={onCommit} readOnly={def.readonly} />;
@@ -191,12 +193,18 @@ function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean;
   };
   if (props.multiline)
     return <textarea className="text multiline" {...named} value={text} readOnly={props.readOnly} spellCheck={false} onChange={(e) => setText(e.target.value)} onBlur={commit} />;
+  const stepNumber = (direction: number) => {
+    if (props.readOnly || !props.def) return;
+    const next = Math.min(props.def.max ?? Infinity, Math.max(props.def.min ?? -Infinity, (Number(text) || 0) + direction));
+    setText(String(next)); setBad(false); props.onCommit(String(next));
+  };
   const spin = props.spin && props.def ? {
     type: 'number', step: 1, min: props.def.min, max: props.def.max,
     onMouseUp: () => setTimeout(commit),
     onKeyUp: (e: React.KeyboardEvent) => (e.key === 'ArrowUp' || e.key === 'ArrowDown') && commit(),
   } : {};
   return (
+    <span className={props.spin ? "control-number" : "control-text"}>
     <input
       {...spin}
       {...named}
@@ -211,5 +219,7 @@ function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean;
       onBlur={commit}
       onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
     />
+    {props.spin && <span className="number-steps"><button type="button" tabIndex={-1} aria-label="Increase value" disabled={props.readOnly} onMouseDown={e => e.preventDefault()} onClick={() => stepNumber(1)}>+</button><button type="button" tabIndex={-1} aria-label="Decrease value" disabled={props.readOnly} onMouseDown={e => e.preventDefault()} onClick={() => stepNumber(-1)}>−</button></span>}
+    </span>
   );
 }

@@ -1,0 +1,28 @@
+:where(.orca-parity) .control-check { display: inline-grid; place-items: center; width: 16px; height: 16px; padding: 0; flex: none; vertical-align: middle; border: 1px solid var(--border-control); border-radius: 3px; background: var(--selector-bg); color: var(--selected-foreground); cursor: pointer; }
+:where(.orca-parity) .control-check[data-state=checked], :where(.orca-parity) .control-check[data-state=indeterminate] { background: var(--selected); border-color: var(--focus); }
+:where(.orca-parity) .control-check-mark { font-size: 12px; line-height: 1; }
+:where(.orca-parity) input[type=radio] { appearance: none; width: 16px; height: 16px; padding: 3px; border: 1px solid var(--border-control); border-radius: 50%; background: var(--selector-bg); background-clip: content-box; vertical-align: middle; flex: none; cursor: pointer; }
+:where(.orca-parity) input[type=radio]:checked { background-color: var(--accent-text); border-color: var(--focus); }
+:where(.orca-parity) input[type=number] { appearance: textfield; }
+:where(.orca-parity) input[type=number]::-webkit-inner-spin-button, :where(.orca-parity) input[type=number]::-webkit-outer-spin-button { appearance: none; margin: 0; }
+:where(.orca-parity) .color-trigger, :where(.orca-parity) .color-swatch { width: 24px; height: 24px; flex: none; padding: 0; border: 1px solid var(--border-control); border-radius: 3px; cursor: pointer; }
+:where(.orca-parity) .color-swatch[aria-pressed=true] { outline: 1px solid var(--text); outline-offset: 2px; }
+:where(.orca-parity) .color-popover { width: min(312px, calc(100vw - 24px)); padding: 12px; }
+:where(.orca-parity) .color-heading { display: flex; align-items: center; justify-content: space-between; font-weight: 600; padding-bottom: 12px; }
+:where(.orca-parity) .color-preview { width: 32px; height: 24px; border: 1px solid var(--border-control); border-radius: 3px; }
+:where(.orca-parity) .color-palette { display: flex; flex-wrap: wrap; gap: 8px; }
+:where(.orca-parity) .color-caption { font-size: 12px; color: var(--muted); margin: 12px 0 6px; }
+:where(.orca-parity) .color-hex { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 8px; align-items: center; margin: 14px 0 8px; }
+:where(.orca-parity) .color-channel { display: grid; grid-template-columns: 20px minmax(0, 1fr) 52px; gap: 8px; align-items: center; padding: 2px 0; }
+:where(.orca-parity) .color-channel .text { width: 100%; }
+:where(.orca-parity) .color-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+:where(.orca-parity) .control-error { color: var(--text); font-size: 12px; padding-top: 6px; }
+:where(.orca-parity) [aria-invalid=true] { border-color: var(--focus); }
+:where(.orca-parity) .hint-anchor { position: fixed; width: 1px; height: 1px; pointer-events: none; }
+:where(.orca-parity) .control-tooltip { z-index: 2100; max-width: min(360px, calc(100vw - 24px)); padding: 8px 10px; background: var(--raised); color: var(--text); border: 1px solid var(--border-control); border-radius: 4px; font: var(--t-small); white-space: pre-line; overflow-wrap: anywhere; box-shadow: var(--shadow-pop); pointer-events: none; }
+:where(.orca-parity) .control-text { display: contents; }
+:where(.orca-parity) .control-number { display: flex; min-width: 0; width: 100%; }
+:where(.orca-parity) .control-number > input { flex: 1; min-width: 0; border-radius: 3px 0 0 3px; }
+:where(.orca-parity) .number-steps { display: flex; flex-direction: column; width: 20px; flex: none; border: 1px solid var(--border-control); border-left: 0; border-radius: 0 3px 3px 0; overflow: hidden; }
+:where(.orca-parity) .number-steps > button { flex: 1; min-height: 13px; padding: 0; border: 0; background: var(--control-bg); color: var(--label); font-size: 11px; line-height: 12px; }
+:where(.orca-parity) .number-steps > button:hover { background: var(--hover); }

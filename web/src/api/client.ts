@@ -1,3 +1,4 @@
+import { submissionHeaders } from '../flow/submission';
 import { bootstrapAccessToken, mutation, responseError } from './access';
 import { expandCatalog } from './compact-catalog';
 import { prepareProfile, resolveProfile } from '../profiles/model';
@@ -110,7 +111,7 @@ const realApi: Api = {
     if (req.calib) { fd.append('calib', req.calib); fd.append('calib_params', req.calib_params ?? ''); if (req.calib_head) fd.append('calib_head', req.calib_head); }
     if (req.preview_budget !== undefined) fd.append('budget', String(req.preview_budget));
     const url = req.backend ? '/api/backends/orcanp-v01/jobs' : req.preview_budget !== undefined ? '/api/patch-preview' : '/api/jobs';
-    const j = await json<{ id: string }>(await mutation(url, { method: 'POST', body: fd }, req.preview_budget === undefined, signal, onUpload, req.preview_budget !== undefined));
+    const j = await json<{ id: string }>(await mutation(url, { method: 'POST', headers: submissionHeaders(req), body: fd }, req.preview_budget === undefined, signal, onUpload, req.preview_budget !== undefined));
     return j.id;
   },
   async status(id) {

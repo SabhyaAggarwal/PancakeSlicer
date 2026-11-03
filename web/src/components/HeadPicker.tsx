@@ -16,12 +16,12 @@ export default function HeadPicker({ value, onCommit }: { value: string; onCommi
   );
 }
 
-export function HeadShapeButton({ head, layerHeight }: { head: string; layerHeight: number }) {
+export function HeadShapeButton({ head, layerHeight, onSaved = id => setOption('machine', 'nonplanar_head', id) }: { head: string; layerHeight: number; onSaved?(id: string): void }) {
   const [open, setOpen] = useState(false);
   return <>
     <button type="button" className="side-btn" title="Edit the components and margins of the selected head and save them as a user head." onClick={() => setOpen(true)}>Edit…</button>
     {open && <Suspense fallback={<div role="status">Loading head…</div>}>
-      <HeadDialog id={head} layerHeight={layerHeight} close={() => setOpen(false)} onSaved={(id) => setOption('machine', 'nonplanar_head', id)} />
+      <HeadDialog id={head} layerHeight={layerHeight} close={() => setOpen(false)} onSaved={onSaved} />
     </Suspense>}
   </>;
 }

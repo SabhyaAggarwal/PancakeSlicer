@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
 import { slice } from '../actions';
-import { noticeKind, noticeMs, sliceFailure, toastStep } from '../notice-text';
+import { noticeKind, noticeMs, sliceFailure } from '../notice-text';
 import { setState, useStore } from '../state/store';
 import { Icon } from './Icon';
 import { InTopLayer } from './Modal';
 import './notices.css';
 
-const KIND_ICON = { error: 'error', success: 'create_success', info: 'info' } as const;
 
 export function Toast() {
   const toast = useStore((s) => s.toast);
@@ -24,19 +23,16 @@ export function Toast() {
   useEffect(() => setHeld(false), [msg]);
   if (!msg) return null;
   const kind = toast ? noticeKind(msg) : 'info';
-  const step = kind === 'error' ? toastStep(msg) : null;
   const reload = /^Presets failed to load/i.test(msg);
   return (
     <InTopLayer>
       <div className={`toast toast-${kind}`} role={kind === 'error' ? 'alert' : 'status'}
         onMouseEnter={() => setHeld(true)} onMouseLeave={() => setHeld(false)}
         onFocus={() => setHeld(true)} onBlur={() => setHeld(false)}>
-        <Icon name={KIND_ICON[kind]} size={16} className="toast-icon" />
         <div className="toast-text">
           <div>{msg}</div>
-          {step && <div className="toast-step">{step}</div>}
         </div>
-        {reload && <button type="button" className="btn-ghost toast-action" onClick={() => location.reload()}>Reload</button>}
+        {reload && !action && <button type="button" className="btn-ghost toast-action" onClick={() => location.reload()}>Reload</button>}
         {action && <button type="button" className="btn-ghost toast-action" onClick={() => { setState({ toast: null }); action.run(); }}>{action.label}</button>}
         {toast && (
           <button type="button" className="toast-close icon-btn" title="Close" aria-label="Close" onClick={() => setState({ toast: null })}>

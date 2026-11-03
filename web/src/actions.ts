@@ -1,3 +1,5 @@
+import { beginSlicePreview, bindSlicePreview } from './flow/preview-navigation';
+import { project as projectFlow } from './flow/project';
 import { app } from './flow/app';
 import { importing } from './flow/import';
 import { output } from './flow/output';
@@ -717,18 +719,20 @@ export async function slice(calib?: { kind: string; params: string; head?: strin
   await flushReady();
   const s = getState();
   if (!s.api || !s.objects.length && !calib || s.job.state === 'running' || s.job.state === 'submitting') return;
-  const generation = ++sliceGeneration;
+  const generation = ++sliceGeneration, document = documentGeneration(), projectId = projectFlow.get().context.id, plate = s.plateIndex;
+  const current = () => generation === sliceGeneration && document === documentGeneration() && projectId === projectFlow.get().context.id && plate === getState().plateIndex;
   const signature = plateSignature(s);
   const { vendor, printer, process, filaments, output } = jobFields(s);
   const request = calib ? { vendor, printer, process, filaments, overrides: calibOverrides(s, calib.kind), output, events: [], files: [], calib: calib.kind, calib_params: calib.params, calib_head: calib.head }
     : await plateJob(s).catch((e: unknown) => String(e));
-  if (generation !== sliceGeneration || request === null) return;
+  if (!current() || request === null) return;
   if (typeof request === 'string') return void setState({ job: { state: 'failed', pct: 0, stage: '', error: request } });
-  setState({ tab: 'preview', job: { state: 'submitting', pct: 0, stage: 'uploading', plateSignature: signature, calib: calib?.kind } });
+  const navigation = beginSlicePreview(signature);
+  setState({ tab: 'prepare', job: { state: 'submitting', pct: 0, stage: 'uploading', plateSignature: signature, calib: calib?.kind } });
   cancelJob = runJob(s.api, request, signature, {
-    progress: ({ id, ...p }) => setState((st) => (id ? { job: { ...st.job, id, state: 'running', ...p } } : st.job.state === 'submitting' ? { job: { ...st.job, ...p } } : {})),
-    done: (job) => setState({ job }),
-    failed: (error) => setState((st) => ({ job: { ...st.job, state: 'failed', error } })),
+    progress: ({ id, ...p }) => { if (!current()) return; bindSlicePreview(navigation, id); setState(st => id ? {job: {...st.job, id, state: 'running', ...p}} : st.job.state === 'submitting' ? {job: {...st.job, ...p}} : {}); },
+    done: (job) => { if (!current()) return; bindSlicePreview(navigation, job.id); setState({job: {...job, stale: plateSignature(getState()) !== signature}}); },
+    failed: (error) => { if (current()) setState(st => ({job: {...st.job, state: 'failed', error}})); },
   }, calib?.kind);
 }
 

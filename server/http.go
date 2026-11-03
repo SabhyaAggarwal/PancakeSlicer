@@ -3,10 +3,14 @@ package main
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"log"
 	"math"
 	"mime"
 	"net"
@@ -36,10 +40,17 @@ type Server struct {
 
 func NewServer(c Config, jobs *JobManager, presets *PresetIndex, users *UserPresetStore) http.Handler {
 	s := &Server{cfg: c, jobs: jobs, presets: presets, users: users, sends: NewSendManager(c.Printers, c.PrinterStore)}
+	healthProbe := newEngineHealth(c)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, r *http.Request) {
 		q, n := jobs.Counts()
-		writeJSON(w, 200, map[string]any{"status": "ok", "queued": q, "running": n, "tool_features": c.Features})
+		health := healthProbe.snapshot(c.Tool)
+		health["status"], health["queued"], health["running"] = "ok", q, n
+		health["max_concurrency"], health["max_queue"] = jobs.cfg.MaxJobs, jobs.cfg.MaxQueue
+		if jobResultStats != nil {
+			health["result_cache"] = jobResultStats(jobs)
+		}
+		writeJSON(w, 200, health)
 	})
 	mux.HandleFunc("GET /api/source", s.source)
 	mux.HandleFunc("GET /api/about", func(w http.ResponseWriter, r *http.Request) {
@@ -52,6 +63,7 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, users *UserPres
 	mux.HandleFunc("GET /api/jobs/{id}/events", s.events)
 	mux.HandleFunc("GET /api/jobs/{id}/transitions", s.jobTransitions)
 	mux.HandleFunc("POST /api/jobs/{id}/cancel", s.cancelJob)
+	mux.HandleFunc("POST /api/jobs/{id}/retry", s.retryJob)
 	mux.HandleFunc("GET /api/jobs/{id}/download", s.download)
 	mux.HandleFunc("GET /api/jobs/{id}/moves", s.moves)
 	mux.HandleFunc("GET /api/jobs/{id}/exploded/{name}", s.exploded)
@@ -84,7 +96,7 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, users *UserPres
 	if c.Metrics {
 		mux.HandleFunc("GET /metrics", s.metrics)
 	}
-	return s.middleware(mux)
+	return s.middleware(s.fallbackJobReads(mux))
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
@@ -151,13 +163,34 @@ func (b *uploadBody) Read(p []byte) (int, error) {
 }
 
 func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
+	key, err := submissionKey(r.URL.Path, r.Header.Get("Idempotency-Key"))
+	if err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	existing, finish, err := s.jobs.reserve(r.Context(), key)
+	if err != nil {
+		fail(w, 408, err.Error())
+		return
+	}
+	if existing != nil {
+		w.Header().Set("Location", "/api/jobs/"+existing.ID)
+		writeJSON(w, 202, existing.View())
+		return
+	}
+	var accepted *Job
+	defer func() { finish(accepted) }()
 	j, err := s.jobs.NewJob(s.clientIP(r))
 	if err != nil {
 		admissionFailure(w, err)
 		return
 	}
+	j.IdempotencyKey = key
 	started := false
 	defer func() {
+		if started {
+			accepted = j
+		}
 		s.jobs.releaseUpload(j)
 		if !started {
 			os.RemoveAll(j.Dir)
@@ -371,11 +404,11 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		req.Output = "gcode"
 	}
 	switch p := r.FormValue("priority"); p {
-	case "", "normal":
-	case "low":
+	case "", "normal", "interactive":
+	case "low", "batch":
 		req.Priority = p
 	default:
-		fail(w, 400, "priority must be normal or low")
+		fail(w, 400, "priority must be interactive/normal or batch/low")
 		return
 	}
 	if r.FormValue("force_planar") != "" {
@@ -785,7 +818,7 @@ func (s *Server) deleteJob(w http.ResponseWriter, r *http.Request) {
 	if j == nil {
 		return
 	}
-	if s.jobs.Cancel(j) {
+	if s.jobs.Cancel(j) || !j.State().Finished() {
 		writeJSON(w, 202, map[string]string{"id": j.ID, "state": "cancelling"})
 		return
 	}
@@ -897,11 +930,18 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	from := 0
 	if last := r.Header.Get("Last-Event-ID"); last != "" {
 		n, err := strconv.Atoi(last)
-		if err != nil || n < 0 || n >= maxEvents+10 {
+		if err != nil || n < 0 {
 			fail(w, 400, "invalid Last-Event-ID")
 			return
 		}
-		from = n + 1
+		j.mu.Lock()
+		latest := j.nextEvent
+		j.mu.Unlock()
+		if n > latest {
+			fail(w, 400, "Last-Event-ID is ahead of this job")
+			return
+		}
+		from = n
 	}
 	controller := http.NewResponseController(w)
 	if _, ok := w.(http.Flusher); !ok {
@@ -924,7 +964,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 			if _, err := fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", e.ID, e.Type, b); err != nil {
 				return
 			}
-			from = e.ID + 1
+			from = e.ID
 		}
 		if err := controller.Flush(); err != nil {
 			return
@@ -1302,4 +1342,232 @@ func (s *Server) cancelJob(w http.ResponseWriter, r *http.Request) {
 		s.jobs.Cancel(j)
 		writeJSON(w, 200, j.View())
 	}
+}
+
+func (s *Server) retryJob(w http.ResponseWriter, r *http.Request) {
+	key, err := submissionKey(r.URL.Path, r.Header.Get("Idempotency-Key"))
+	if err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	existing, finish, err := s.jobs.reserve(r.Context(), key)
+	if err != nil {
+		fail(w, 408, err.Error())
+		return
+	}
+	if existing != nil {
+		w.Header().Set("Location", "/api/jobs/"+existing.ID)
+		writeJSON(w, 202, existing.View())
+		return
+	}
+	var accepted *Job
+	defer func() { finish(accepted) }()
+	parent := s.job(w, r)
+	if parent == nil {
+		return
+	}
+	j, err := s.jobs.Retry(parent, s.clientIP(r))
+	if err != nil {
+		admissionFailure(w, err)
+		return
+	}
+	j.IdempotencyKey = key
+	if err := s.jobs.Start(j); err != nil {
+		s.jobs.releaseUpload(j)
+		os.RemoveAll(j.Dir)
+		admissionFailure(w, err)
+		return
+	}
+	accepted = j
+	w.Header().Set("Location", "/api/jobs/"+j.ID)
+	writeJSON(w, 202, j.View())
+}
+
+type HealthState string
+
+const (
+	HealthUnknown     HealthState = "unknown"
+	HealthHealthy     HealthState = "healthy"
+	HealthDegraded    HealthState = "degraded"
+	HealthQualified   HealthState = "qualified"
+	HealthUnqualified HealthState = "unqualified"
+)
+
+var healthTransitions = map[HealthState]map[HealthState]bool{
+	HealthUnknown:     {HealthHealthy: true, HealthDegraded: true, HealthQualified: true, HealthUnqualified: true},
+	HealthHealthy:     {HealthDegraded: true, HealthQualified: true, HealthUnqualified: true},
+	HealthDegraded:    {HealthHealthy: true, HealthQualified: true, HealthUnqualified: true},
+	HealthQualified:   {HealthHealthy: true, HealthDegraded: true, HealthUnqualified: true},
+	HealthUnqualified: {HealthHealthy: true, HealthDegraded: true, HealthQualified: true},
+}
+
+type engineHealth struct {
+	mu            sync.Mutex
+	state         HealthState
+	artifactState HealthState
+	reason        string
+	manifest      map[string]any
+	tool          os.FileInfo
+	features      map[string]any
+}
+
+func (h *engineHealth) setState(next HealthState) {
+	if h.state == next {
+		return
+	}
+	if !healthTransitions[h.state][next] {
+		log.Printf("illegal engine health transition %s -> %s", h.state, next)
+		return
+	}
+	log.Printf("engine health %s -> %s", h.state, next)
+	h.state = next
+}
+
+func bundleFileHash(name string) (string, error) {
+	f, err := os.Open(name)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err = io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func bundleResourceHash(root string) (string, error) {
+	h := sha256.New()
+	err := filepath.WalkDir(root, func(name string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if !d.Type().IsRegular() {
+			return errors.New("nonregular resource")
+		}
+		digest, err := bundleFileHash(name)
+		if err != nil {
+			return err
+		}
+		relative, err := filepath.Rel(root, name)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(h, "%s\x00%s\n", filepath.ToSlash(relative), digest)
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func newEngineHealth(c Config) *engineHealth {
+	h := &engineHealth{state: HealthUnknown, artifactState: HealthUnknown, features: map[string]any{}}
+	b, _ := json.Marshal(c.Features)
+	json.Unmarshal(b, &h.features)
+	if c.Features.DumpOptions && c.Options != nil {
+		var options map[string]struct {
+			Values []string `json:"enum_values"`
+		}
+		if json.Unmarshal(c.Options.plain, &options) == nil {
+			for _, v := range options["nonplanar_mode"].Values {
+				if v == "curved_tops" {
+					h.features["curved_tops"] = true
+				}
+			}
+			for _, v := range options["nonplanar_wave"].Values {
+				if v == "whole" {
+					h.features["nonplanar_wave"] = true
+				}
+			}
+		}
+	}
+	st, err := os.Stat(c.Tool)
+	if err != nil || !st.Mode().IsRegular() {
+		h.reason = "engine executable unavailable"
+		h.setState(HealthDegraded)
+		return h
+	}
+	h.tool = st
+	h.setState(HealthHealthy)
+	manifestPath := os.Getenv("ORCA_WEB_SURFACE_MANIFEST")
+	if manifestPath == "" {
+		manifestPath = os.Getenv("ORCA_WEB_ARTIFACT_MANIFEST")
+	}
+	if manifestPath == "" {
+		return h
+	}
+	h.artifactState = HealthUnqualified
+	raw, err := os.ReadFile(manifestPath)
+	var manifest struct {
+		Backend        string          `json:"backend"`
+		Source         string          `json:"source_sha"`
+		Available      bool            `json:"available"`
+		Preview        bool            `json:"preview_ready"`
+		PrintQualified bool            `json:"print_qualified"`
+		Binary         string          `json:"binary_sha256"`
+		Resources      string          `json:"resources_sha256"`
+		Curved         bool            `json:"validated_curved_benchy_clearance"`
+		Wave           bool            `json:"validated_wave_export"`
+		Features       map[string]bool `json:"features"`
+	}
+	if err != nil || json.Unmarshal(raw, &manifest) != nil {
+		h.reason = "artifact manifest unreadable"
+		h.setState(HealthDegraded)
+		return h
+	}
+	binary, binaryErr := bundleFileHash(c.Tool)
+	resources, resourceErr := bundleResourceHash(c.Resources)
+	if binaryErr != nil || resourceErr != nil || manifest.Binary != binary || manifest.Resources != resources || !manifest.Available {
+		h.reason = "artifact identity mismatch"
+		h.setState(HealthDegraded)
+		return h
+	}
+	var proof struct {
+		Ready     bool   `json:"ready"`
+		Source    string `json:"source_sha"`
+		Binary    string `json:"binary_sha256"`
+		Resources string `json:"resources_sha256"`
+		Manifest  string `json:"manifest_sha256"`
+	}
+	proofRaw, proofErr := os.ReadFile(os.Getenv("ORCA_WEB_ARTIFACT_QUALIFICATION"))
+	manifestHash := sha256.Sum256(raw)
+	qualified := proofErr == nil && json.Unmarshal(proofRaw, &proof) == nil && proof.Ready &&
+		manifest.Source == "7ab64368bbd9483b9d2fe46aafa27e8585426a0d" && proof.Source == manifest.Source &&
+		proof.Binary == binary && proof.Resources == resources && proof.Manifest == hex.EncodeToString(manifestHash[:]) && manifest.PrintQualified
+	if qualified {
+		h.artifactState = HealthQualified
+		h.setState(HealthQualified)
+	} else {
+		h.setState(HealthUnqualified)
+	}
+	wave := qualified && manifest.Preview && manifest.Wave && manifest.Features["nonplanar_wave"]
+	modes := []string{}
+	if wave {
+		modes = append(modes, "whole")
+	}
+	h.manifest = map[string]any{"backend": manifest.Backend, "source_sha": manifest.Source,
+		"validated": manifest.Preview, "preview_ready": manifest.Preview, "print_qualified": qualified,
+		"binary_sha256": binary, "resources_sha256": resources, "wave_modes": modes,
+		"features":            map[string]bool{"curved_tops": manifest.Preview && manifest.Curved, "nonplanar_wave": wave},
+		"qualification_scope": "exact audited reference outputs"}
+	return h
+}
+
+func (h *engineHealth) snapshot(tool string) map[string]any {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	st, err := os.Stat(tool)
+	if err != nil || h.tool == nil || !os.SameFile(st, h.tool) || st.Size() != h.tool.Size() || !st.ModTime().Equal(h.tool.ModTime()) {
+		h.reason = "engine executable changed; restart to reprobe"
+		h.artifactState = HealthUnqualified
+		h.manifest = nil
+		h.setState(HealthDegraded)
+	}
+	return map[string]any{"engine_state": h.state, "artifact_state": h.artifactState, "reason": h.reason,
+		"artifact_manifest": h.manifest, "tool_features": h.features}
 }

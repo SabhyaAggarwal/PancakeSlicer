@@ -5,7 +5,7 @@ import { newKey, projectStore, projectStorageError, type ProjectMeta, type Proje
 import type { StoredDoc } from '../persist/session';
 import { documentGeneration, leaveDocument, newDocument, onLeaveDocument, snapshot, subscribeHistory, type Doc } from '../state/history';
 import { getState, setState, subscribeStore, toast } from '../state/store';
-import { createMachine, useMachine, type Machine, type Snapshot } from './fsm';
+import { assertNever, createMachine, useMachine, type Machine, type Snapshot } from './fsm';
 import { currentRoute, writeRoute } from './routes';
 
 export type { ProjectMeta } from '../persist/backend';
@@ -20,6 +20,7 @@ export interface ProjectContext {
   dirty: boolean;
   conflict: boolean;
   loadError: boolean;
+  origin: 'new' | 'loaded' | 'saved';
 }
 export type ProjectEvent =
   | { type: 'EDIT' } | { type: 'FLUSH' } | { type: 'RETRY' } | { type: 'BLANK' } | { type: 'OPEN' }
@@ -44,7 +45,7 @@ const sameDoc = (a: Doc | null, b: Doc) => !!a && (Object.keys(b) as (keyof Doc)
 const errorText = (e: unknown) => e instanceof Error && e.name === 'QuotaExceededError'
   ? 'Storage is full. Delete old projects or export this project, then retry.'
   : e instanceof Error ? e.message : String(e);
-const blank = (): ProjectContext => ({ id: newKey(), name: 'Untitled', savedAt: 0, revision: 0, error: null, dirty: false, conflict: false, loadError: false });
+const blank = (): ProjectContext => ({ id: newKey(), name: 'Untitled', savedAt: 0, revision: 0, error: null, dirty: false, conflict: false, loadError: false, origin: 'new' });
 const activeWrite = (id: string, gen: number, version: number) =>
   id === project.get().context.id && gen === documentGeneration() && version === epoch;
 
@@ -85,7 +86,7 @@ export const project = createMachine<ProjectStateName, ProjectEvent, ProjectCont
     blank: { note: 'has an ID, not stored', entry: blank,
       on: { ...leave, ...notices, EDIT: 'saving' } },
     opening: { on: { ...leave,
-      OPENED: { target: 'saved', action: (_, e) => ({ ...e.meta, revision: e.meta.revision ?? 0, error: null, dirty: false, conflict: false, loadError: false }) },
+      OPENED: { target: 'saved', action: (_, e) => ({ ...e.meta, revision: e.meta.revision ?? 0, origin: 'loaded', error: null, dirty: false, conflict: false, loadError: false }) },
       ERROR: { target: 'failed', action: (_, e) => ({ error: e.error, loadError: true }) },
     } },
     editing: { note: 'unsaved; debounce resets only on document edits',
@@ -95,9 +96,9 @@ export const project = createMachine<ProjectStateName, ProjectEvent, ProjectCont
       on: { ...leave, ...notices, EDIT: { action: () => ({ dirty: true }) },
         SAVED: [
           { target: 'editing', guard: (ctx, e) => ctx.id === e.id && ctx.dirty,
-            action: (_, e) => ({ name: e.name, savedAt: e.savedAt, revision: e.revision, dirty: false, error: null }) },
+            action: (_, e) => ({ name: e.name, savedAt: e.savedAt, revision: e.revision, origin: 'saved', dirty: false, error: null }) },
           { target: 'saved', guard: (ctx, e) => ctx.id === e.id,
-            action: (_, e) => ({ name: e.name, savedAt: e.savedAt, revision: e.revision, error: null, dirty: false }) },
+            action: (_, e) => ({ name: e.name, savedAt: e.savedAt, revision: e.revision, origin: 'saved', error: null, dirty: false }) },
         ],
         ERROR: { target: 'failed', action: (_, e) => ({ error: e.error, dirty: false }) },
       } },
@@ -236,6 +237,7 @@ async function start(ready: Promise<unknown>) {
     project.send({ type: 'EDIT' }); writeRoute(`/p/${project.get().context.id}`, true);
   } else await route();
   if (!store) project.send({ type: 'ERROR', error: projectStorageError() });
+  (await import('./boot')).startFlows();
 }
 
 export const storing = () => !!store;
@@ -339,3 +341,21 @@ export function useProject<T>(sel?: (s: ProjectSnapshot) => T) { return useMachi
 export const projectList = () => list;
 export const useProjects = () => useSyncExternalStore((l) => (listeners.add(l), () => void listeners.delete(l)), () => list);
 (window as unknown as { __project: unknown }).__project = { machine: project, list: () => list };
+
+export type ProjectLifecycle = { value: 'new' | 'loading' | 'ready' | 'dirty' | 'saving' | 'saved'; id: string }
+  | { value: 'conflict'; id: string; dirty: boolean }
+  | { value: 'missing'; id: string } | { value: 'failed'; id: string; error: string };
+export function projectLifecycle(): ProjectLifecycle {
+  const { value, context: c } = project.get();
+  if (c.conflict) return { value: 'conflict', id: c.id, dirty: c.dirty || value === 'editing' };
+  switch (value) {
+    case 'blank': case 'deleted': return { value: 'new', id: c.id };
+    case 'opening': return { value: 'loading', id: c.id };
+    case 'editing': return { value: 'dirty', id: c.id };
+    case 'saving': return { value, id: c.id };
+    case 'saved': return { value: c.origin === 'loaded' ? 'ready' : 'saved', id: c.id };
+    case 'missing': return { value, id: c.id };
+    case 'failed': return { value, id: c.id, error: c.error ?? 'Project unavailable' };
+    default: return assertNever(value);
+  }
+}

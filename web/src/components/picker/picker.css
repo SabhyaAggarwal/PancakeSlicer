@@ -3,8 +3,6 @@
 :where(.orca-parity) .pk-type, :where(.orca-parity) .pk-brand { display: none; }
 :where(.orca-parity) .pk-caret { flex: none; color: var(--text-dim); }
 :where(.orca-parity) .pk-pop { width: min(600px, calc(100vw - 16px)); padding: 0; max-height: min(580px, var(--radix-popover-content-available-height)); display: flex; flex-direction: column; }
-:where(.orca-parity) .pk-head { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--border); }
-:where(.orca-parity) .pk-head input { width: 100%; min-width: 0; height: 28px; }
 :where(.orca-parity) .pk-body { display: grid; grid-template-columns: 136px minmax(0, 1fr); min-height: 180px; max-height: 390px; overflow: hidden; }
 :where(.orca-parity) .pk-rail { display: flex; flex-direction: column; overflow: auto; border-right: 1px solid var(--border); padding: 4px; background: var(--bg-soft); }
 :where(.orca-parity) .pk-rail button { background: transparent; border: 0; border-radius: 3px; color: var(--text); min-height: 30px; text-align: left; padding: 4px 8px; overflow-wrap: anywhere; }
@@ -14,7 +12,7 @@
 :where(.orca-parity) .pk-row.is-active { background: var(--selected); }
 :where(.orca-parity) .pk-option { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; min-height: 30px; padding: 5px 6px; border: 0; background: transparent; color: var(--text); text-align: left; font: inherit; }
 :where(.orca-parity) .pk-option[aria-disabled=true] { color: var(--muted); }
-:where(.orca-parity) .pk-check { color: var(--accent); flex: none; width: 14px; }
+:where(.orca-parity) .pk-check { color: var(--selected-foreground); flex: none; width: 14px; }
 :where(.orca-parity) .pk-sub { display: block; color: var(--text-dim); font-size: 12px; }
 :where(.orca-parity) .pk-meta { flex: none; color: var(--text-dim); font-size: 12px; }
 :where(.orca-parity) .pk-star { width: 28px; flex: none; padding: 0; border: 0; background: transparent; color: var(--text-dim); }

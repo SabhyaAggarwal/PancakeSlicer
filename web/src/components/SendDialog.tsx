@@ -1,3 +1,5 @@
+import { Check } from './Check';
+import { printerSend, usePrinterSend, type Transfer } from '../flow/transfer';
 import { Dropdown } from './Dropdown';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { download, exportFilename, loadPrinters, outputKind } from '../actions';
@@ -8,7 +10,6 @@ import { Modal, ModalTitle } from './Modal';
 
 const HostForm = lazy(() => import('./HostForm'));
 
-type Transfer = { state: 'uploading' | 'starting' | 'done' | 'failed'; sent: number; total: number; message?: string; error?: string };
 type Test = { ok: boolean; stage: string; message: string; model?: string };
 type Tray = { id: number; ams: number; slot: number; type: string; color: string; name?: string };
 const EXTERNAL = 254;
@@ -43,7 +44,7 @@ function statusText(t: Transfer) {
 
 export default function SendDialog({ close }: { close: () => void }) {
   const [editing, setEditing] = useState<SendPrinter | null | undefined>(undefined);
-  const [chosen, setChosen] = useState(() => localStorage.getItem(LAST) ?? '');
+  const [chosen, setChosen] = useState(() => { try { return localStorage.getItem(LAST) ?? ''; } catch { return ''; } });
   const bambu = useStore(outputKind) === 'gcode.3mf';
   if (editing !== undefined) {
     const done = (name?: string) => { if (name !== undefined) setChosen(name); setEditing(undefined); };
@@ -69,24 +70,14 @@ function SendView({ close, chosen, choose, edit }: { close: () => void; chosen: 
   const [trays, setTrays] = useState<Tray[] | null>(null);
   const [amsError, setAmsError] = useState('');
   const [mapping, setMapping] = useState<number[]>([]);
-  const [transfer, setTransfer] = useState<Transfer | null>(null);
-  const [error, setError] = useState('');
-  const busy = transfer?.state === 'uploading' || transfer?.state === 'starting';
-
+  const sendState = usePrinterSend();
+  const {transfer, error} = sendState.context;
+  const busy = sendState.value === 'connecting' || sendState.value === 'sending';
   useEffect(() => {
-    if (!busy || !jobId) return;
-    const timer = setInterval(async () => {
-      try {
-        const r = await fetch(`/api/jobs/${jobId}/send`);
-        if (!r.ok) throw await responseError(r);
-        setTransfer(await r.json());
-      } catch (e) {
-        setTransfer(null);
-        setError(errorText(e));
-      }
-    }, 500);
-    return () => clearInterval(timer);
-  }, [busy, jobId]);
+    const current = printerSend.machine.get().context;
+    if (current.jobId && (current.jobId !== jobId || current.target !== printer)) printerSend.reset();
+    return () => { if (printerSend.machine.get().value === 'connecting' || printerSend.machine.get().value === 'sending') printerSend.cancel(); };
+  }, [jobId, printer]);
 
   useEffect(() => {
     setTrays(null);
@@ -110,20 +101,13 @@ function SendView({ close, chosen, choose, edit }: { close: () => void; chosen: 
 
   const send = async (start: boolean) => {
     if (!jobId || !printer) return;
-    setError('');
-    localStorage.setItem(LAST, printer);
+    try { localStorage.setItem(LAST, printer); } catch {  }
     const options = !bambu ? {} : trays && mapping.length === filaments.length ? { bed_leveling: leveling, timelapse, ams_mapping: mapping }
       : { bed_leveling: leveling, timelapse, use_ams: single && ams };
-    try {
-      const r = await mutation(`/api/jobs/${jobId}/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ printer, start, filename: exportFilename(), ...options }) });
-      if (!r.ok) throw await responseError(r);
-      setTransfer(await r.json());
-    } catch (e) {
-      setError(errorText(e));
-    }
+    await printerSend.submit(printer, jobId, {start, filename: exportFilename(), ...options});
   };
 
-  const status = sentence(error || (transfer ? statusText(transfer) : ''));
+  const status = sentence(error || (transfer ? statusText(transfer) : sendState.value === 'connecting' ? 'Connecting to printer…' : ''));
   const failed = !!error || transfer?.state === 'failed';
   const title = bambu ? 'Send print job to' : 'Send G-code to printer host';
   return (
@@ -145,9 +129,9 @@ function SendView({ close, chosen, choose, edit }: { close: () => void; chosen: 
         <div className="hint-text">{exportFilename()}</div>
         {bambu && printers.length > 0 && (
           <div className="send-options">
-            <label className="prefs-row"><input type="checkbox" checked={leveling} disabled={busy} onChange={(e) => setLeveling(e.target.checked)} />Bed Leveling</label>
-            <label className="prefs-row"><input type="checkbox" checked={timelapse} disabled={busy} onChange={(e) => setTimelapse(e.target.checked)} />Timelapse</label>
-            {!trays && single && <label className="prefs-row" title="Print filament 1 from AMS slot 1; off prints from the external spool"><input type="checkbox" checked={ams} disabled={busy} onChange={(e) => setAms(e.target.checked)} />Use AMS (slot 1)</label>}
+            <label className="prefs-row"><Check checked={leveling} disabled={busy} onCheckedChange={(next) => setLeveling(next)} />Bed Leveling</label>
+            <label className="prefs-row"><Check checked={timelapse} disabled={busy} onCheckedChange={(next) => setTimelapse(next)} />Timelapse</label>
+            {!trays && single && <label className="prefs-row" title="Print filament 1 from AMS slot 1; off prints from the external spool"><Check checked={ams} disabled={busy} onCheckedChange={(next) => setAms(next)} />Use AMS (slot 1)</label>}
           </div>
         )}
         {bambu && printers.length > 0 && (
@@ -167,12 +151,13 @@ function SendView({ close, chosen, choose, edit }: { close: () => void; chosen: 
         {bambu && <div className="hint-text">The printer must be in LAN-only mode with Developer Mode on</div>}
         {busy && (
           <div className="progress">
-            <div className="progress-fill" style={{ width: `${(100 * transfer.sent) / Math.max(1, transfer.total)}%` }} />
+            <div className="progress-fill" style={{ width: `${(100 * (transfer?.sent ?? 0)) / Math.max(1, (transfer?.total ?? 1))}%` }} />
           </div>
         )}
         {status && <div role={failed ? 'alert' : 'status'} className={failed ? 'warning-text' : 'hint-text'}>{status}</div>}
       </div>
       <div className="modal-buttons center">
+        {sendState.value === 'failed' && <button type="button" className="btn" onClick={() => void printerSend.retry()}>Reconnect</button>}
         <button type="button" className="btn primary" disabled={busy || !printer || !jobId || bambu && !single && !trays} onClick={() => void send(true)}>Upload and Print</button>
         <button type="button" className="btn" disabled={busy || !printer || !jobId || bambu && !single && !trays} onClick={() => void send(false)}>Upload</button>
         {bambu && <button type="button" className="btn" onClick={() => void download()}>Download .gcode.3mf instead</button>}

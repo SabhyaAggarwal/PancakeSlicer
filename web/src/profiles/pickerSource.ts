@@ -33,6 +33,8 @@ export function listCatalog(type: PresetType): PickerEntry[] {
 }
 
 export function createProfileFromBase(type: PresetType, base: string, slot = 0, select: (name: string) => void = (name) => requestPreset(type, slot, name)) {
-  const name = catalog.createProfileFromBase(type, base);
+  const s = getState();
+  const owned = s.userPresets.filter(p => p.type === type && (p.base?.name ?? p.inherits) === base);
+  const name = owned.find(p => inUse(type).includes(p.name))?.name ?? owned[0]?.name ?? catalog.createProfileFromBase(type, base);
   select(name);
 }

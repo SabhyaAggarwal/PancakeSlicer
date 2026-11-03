@@ -1,3 +1,4 @@
+import { ProjectTitle } from '../projects/ProjectTitle';
 import { MenuButton, type MenuEntry } from './Menu';
 import { showProjects } from '../flow/project';
 import { openPalette } from '../commands/registry';
@@ -56,13 +57,7 @@ export function TopBar() {
   const exportLabel = kind === 'gcode.3mf' ? 'Export plate sliced file' : 'Export G-code';
   const exportTip = kind === 'gcode.3mf' ? 'Export current sliced file' : 'Export current plate as G-code';
   const hasPrinters = useStore((s) => s.printers.length > 0 || s.printerEdit || s.printerHosts);
-  return (
-    <div className="topbar">
-      <Icon name="OrcaSlicer" size={20} className="topbar-logo" /><button type="button" className="menu-title" onClick={showProjects}>Projects</button>
-      {archive && <Suspense fallback={null}><ArchiveDialog files={archive} close={() => setArchive(null)} /></Suspense>}
-      <Menu
-        title="File"
-        items={[
+  const fileItems: MenuItem[] = [
           { label: 'New Project', shortcut: `${MOD}+N`, action: newProject, tip: 'Start a new project' },
           { label: 'Save Project', shortcut: `${MOD}+S`, action: () => void saveProject(), disabled: !hasProjectObjects, tip: 'Save current project to file' },
           { label: 'Save Project as...', shortcut: `${MOD}+Shift+S`, action: () => void saveProject(true), disabled: !hasProjectObjects, tip: 'Save current project as' },
@@ -84,11 +79,8 @@ export function TopBar() {
           { label: 'Export toolpaths as OBJ...', disabled: !toolpaths || tab !== 'preview', tip: 'Export toolpaths as OBJ',
             action: () => void import('../preview/objExport').then((m) => m.exportToolpathsObj(exportName || 'toolpaths')) },
           { label: 'Export Preset Bundle...', action: () => setState({ presetUx: { kind: 'export' } }), tip: 'Export current configuration to files' },
-        ]}
-      />
-      <Menu
-        title="Edit"
-        items={[
+        ];
+  const appItems: MenuItem[] = [{label: 'Edit', sub: [
           { label: undoLabel ? `Undo ${undoLabel}` : 'Undo', shortcut: `${MOD}+Z`, action: undo, disabled: !undoLabel },
           { label: redoLabel ? `Redo ${redoLabel}` : 'Redo', shortcut: `${MOD}+Y`, action: redo, disabled: !redoLabel },
           ...(undoLabel || redoLabel ? [{ label: 'History', sub: [
@@ -113,11 +105,7 @@ export function TopBar() {
           'sep',
           { label: 'Search settings...', shortcut: `${MOD}+F`, action: () => openPalette('/'), tip: 'Search in all printer, filament and process settings' },
           { label: 'Preferences', shortcut: `${MOD}+P`, action: () => setState({ appDialog: 'preferences' }) },
-        ]}
-      />
-      <Menu
-        title="View"
-        items={[
+        ]}, {label: 'View', sub: [
           ...CAMERA_VIEWS.map((label, i) => ({ label, shortcut: String(i), action: () => cameraCommand(VIEW_DIRECTIONS[i]), tip: i ? `${label} View` : label })),
           'sep',
           { label: 'Show Sidebar', shortcut: `${MOD}+\\`, role: 'menuitemcheckbox', checked: !sidebarHidden, action: () => toggleSidebar() },
@@ -138,11 +126,7 @@ export function TopBar() {
           { label: 'Show Center of Mass', role: 'menuitemcheckbox', checked: view.com, action: () => toggleViewOption('com'), tip: 'Show the center of mass of each object in 3D scene.' },
           { label: 'Show Axes', role: 'menuitemcheckbox', checked: view.axes, action: () => toggleViewOption('axes'), tip: 'Show the X, Y and Z axes at the bed origin.' },
           { label: 'Show Wireframe', shortcut: `${MOD}+Shift+Enter`, role: 'menuitemcheckbox', checked: view.wireframe, action: () => toggleViewOption('wireframe'), tip: 'Show wireframes in 3D scene.' },
-        ]}
-      />
-      {canCalibrate() && <Menu
-        title="Calibration"
-        items={[
+        ]}, ...(canCalibrate() ? [{label: 'Calibration', sub: [
           { label: 'Temperature', action: () => setState({ calibDialog: 'temperature' }), tip: 'Temperature Calibration' },
           { label: 'Max flowrate', action: () => setState({ calibDialog: 'max-flowrate' }), tip: 'Max flowrate' },
           { label: 'Pressure advance', action: () => setState({ calibDialog: 'pressure-advance' }), tip: 'Pressure advance' },
@@ -157,30 +141,22 @@ export function TopBar() {
           { label: 'Non-planar', action: () => setState({ calibDialog: 'nonplanar' }), tip: 'Non-planar calibration' },
           'sep',
           { label: 'Calibration Guide', action: () => window.open('https://www.orcaslicer.com/wiki/calibration_guide', '_blank', 'noopener'), tip: 'Calibration Guide' },
-        ]}
-      />}
-      <Menu
-        title="Help"
-        items={[
+        ]} as MenuItem] : []), {label: 'Help', sub: [
           { label: 'What you can do', action: () => setState({ appDialog: 'shortcuts' }), tip: 'What the web app does, with screenshots' },
           { label: 'Keyboard Shortcuts', shortcut: '?', action: () => setState({ appDialog: 'shortcuts' }), tip: 'Show the list of keyboard shortcuts' },
           { label: 'Setup Wizard', action: () => setState({ appDialog: 'setup' }), tip: 'Setup Wizard' },
           'sep',
           { label: 'About OrcaSlicer', action: () => setState({ appDialog: 'about' }), tip: 'Version, licence and Corresponding Source' },
-        ]}
-      />
-      <button type="button" className="icon-btn topbar-btn" title={undoLabel ? `Undo ${undoLabel} (${MOD}+Z)` : 'Undo'} aria-label="Undo" disabled={!undoLabel} onClick={undo}>
-        <Icon name={undoLabel ? 'topbar_undo' : 'topbar_undo_inactive'} size={20} />
-      </button>
-      <button type="button" className="icon-btn topbar-btn" title={redoLabel ? `Redo ${redoLabel} (${MOD}+Y)` : 'Redo'} aria-label="Redo" disabled={!redoLabel} onClick={redo}>
-        <Icon name={redoLabel ? 'topbar_redo' : 'topbar_redo_inactive'} size={20} />
-      </button>
-      <div className="topbar-title">
-        {name ?? 'Untitled'}
-        {mock && <span className="mock-badge" tabIndex={0} title="Demo: slices are simulated and downloads will not print">Demo</span>}
-      </div>
-    </div>
-  );
+        ]}];
+  return <header className="topbar compact-topbar">
+    <MenuButton className="app-menu-button" label="Application menu" items={appItems}><Icon name="OrcaSlicer" size={20}/></MenuButton>
+    <button type="button" className="menu-title projects-button" onClick={showProjects}>Projects</button>
+    <Menu title="File" items={fileItems}/>
+    <ProjectTitle/>
+    {mock && <span className="mock-badge" title="Demo: slices are simulated">Demo</span>}
+    {tab !== 'projects' && <TabBar/>}
+    {archive && <Suspense fallback={null}><ArchiveDialog files={archive} close={() => setArchive(null)} /></Suspense>}
+  </header>;
 }
 
 function SideOptions({ options, value, onChange }: { options: string[]; value: string; onChange(v: string): void }) {
@@ -223,7 +199,7 @@ export function TabBar() {
           </button>
         )}
         {plates && <SideOptions options={['Slice all', 'Slice plate']} value={sliceMode} onChange={setSliceMode} />}
-        {allExport ? (
+        <span className="export-actions">{allExport ? (
           <button className="side-btn side-split" disabled={!exportAllEnabled} onClick={() => void exportAll()} title={exportAllEnabled ? 'Export all sliced plates' : 'Slice the plates first'}>Export all sliced file</button>
         ) : (
           <button className={`side-btn ${plates ? 'side-split' : ''}`} disabled={!exportEnabled} onClick={download} title={job.stale ? STALE_RESULT_TIP : outside ?? (exportEnabled ? fileUse() : 'Slice the plate first')}>
@@ -237,6 +213,7 @@ export function TabBar() {
             Send
           </button>
         )}
+        </span><MenuButton className="btn output-overflow" label="More output actions" items={[{label: exportLabel, action: download, disabled: !exportEnabled, tip: job.stale ? STALE_RESULT_TIP : 'Slice the plate first'}, ...(hasPrinters ? [{label: 'Send to printer', action: () => setState({appDialog: 'send'}), disabled: !exportEnabled}] : []), ...(plates ? [{label: 'Slice all plates', action: () => void sliceAll(), disabled: busy}, {label: 'Export all plates', action: () => void exportAll(), disabled: !exportAllEnabled}] : [])]}>More</MenuButton>
       </div>
     </div>
   );

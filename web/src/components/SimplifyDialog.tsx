@@ -1,3 +1,4 @@
+import { Range } from './Range';
 import { Dropdown } from './Dropdown';
 import { useState } from 'react';
 import { getState, useStore } from '../state/store';
@@ -27,7 +28,7 @@ export default function SimplifyDialog({ close }: { close(): void }) {
           </label>
         )}
         <label className="prefs-row"><span>{levels && <input type="radio" name="simplify-mode" checked={count} onChange={() => setUseCount(true)} />} Decimate ratio</span>
-          <input type="range" min={0} max={99} step={1} value={ratio} disabled={!count} aria-label="Decimate ratio" onChange={(e) => setRatio(Number(e.target.value))} />
+          <Range min={0} max={99} step={1} value={ratio} disabled={!count} aria-label="Decimate ratio" onValueChange={(next) => setRatio(next)} />
           <input className="text num" type="number" min={0} max={99} step={0.5} value={ratio} disabled={!count} onChange={(e) => setRatio(Math.min(99, Math.max(0, Number(e.target.value) || 0)))} /><span>%</span>
         </label>
         {count && <div className="prefs-row"><span /><span>{wanted.toLocaleString()} triangles</span></div>}

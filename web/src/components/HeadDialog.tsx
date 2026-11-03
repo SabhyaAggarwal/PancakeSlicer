@@ -1,3 +1,4 @@
+import { Check } from './Check';
 import { useEffect, useState } from 'react';
 import { loadHead, loadHeadJson, maxSlope, saveUserHead, slopeMap, type Head, type HeadBox } from '../heads';
 import { toast } from '../state/store';
@@ -174,8 +175,8 @@ export default function HeadDialog({ id, layerHeight, close, onSaved }: { id: st
                     <td><input className="cell" aria-label="Component" value={r.name} onChange={(e) => edit(rows.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} /></td>
                     {r.v.map((v, k) => <td key={k}><input className="cell num" aria-label={COLUMNS[k + 1]} value={v}
                       onChange={(e) => edit(rows.map((x, j) => (j === i ? { ...x, v: x.v.map((y, m) => (m === k ? e.target.value : y)) } : x)))} /></td>)}
-                    {(['ix', 'iy', 'nozzle'] as const).map((k) => <td key={k}><input type="checkbox" aria-label={k} checked={r[k]}
-                      onChange={(e) => edit(rows.map((x, j) => (j === i ? { ...x, [k]: e.target.checked } : x)))} /></td>)}
+                    {(['ix', 'iy', 'nozzle'] as const).map((k) => <td key={k}><Check aria-label={k} checked={r[k]}
+                      onCheckedChange={(next) => edit(rows.map((x, j) => (j === i ? { ...x, [k]: next } : x)))} /></td>)}
                   </tr>
                 ))}</tbody>
               </table>

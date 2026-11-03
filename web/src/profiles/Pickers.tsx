@@ -1,3 +1,4 @@
+import { ColorPicker } from '../components/ColorPicker';
 import type { Config, PresetType } from '../api/types';
 import { filamentSwitchReason, getState, printerPreset, resolvePreset, setState, useStore } from '../state/store';
 import { Picker, type PickerAction, type PickerGroup, type PickerItem } from '../components/picker/Picker';
@@ -61,9 +62,7 @@ export function FilamentPicker({ slot, onColour }: { slot: number; onColour(colo
   const colour = filamentColor(s, slot + 1);
   return (
     <span className="pk-slot">
-      <label className="pk-swatch" style={{ background: colour }} title="Colour">
-        <input type="color" value={colour} aria-label={`Filament ${slot + 1} colour`} onChange={(e) => onColour(e.target.value)} />
-      </label>
+      <ColorPicker label={`Filament ${slot + 1} color`} value={colour} onCommit={onColour}/>
       <Picker label={`Filament ${slot + 1}`} value={name} memory="orca.web.picker.filament" facetLabel="Vendor" groups={() => filamentGroups(slot)}
         catalog={{ label: 'Add filament', groups: () => filamentGroups(slot, true), onAdd: (id) => createProfileFromBase('filament', id, slot) }}
         onPick={(id) => id !== name && requestPreset('filament', slot, id)} footer={[presets('filament', name)]}>

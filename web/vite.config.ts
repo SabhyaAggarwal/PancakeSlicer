@@ -15,7 +15,7 @@ export default defineConfig({
     host: '127.0.0.1',
     allowedHosts: [],
     proxy: {
-      '/api': { target: process.env.ORCA_API ?? 'http://127.0.0.1:20196', changeOrigin: true },
+      '/api': { target: process.env.ORCA_API ?? 'http://127.0.0.1:20198', changeOrigin: true },
     },
   },
   build: {

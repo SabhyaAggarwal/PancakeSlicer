@@ -1,0 +1,6 @@
+:where(.orca-parity) .orca-range { display: flex; align-items: center; position: relative; min-width: 70px; height: 28px; flex: 1; touch-action: none; user-select: none; }
+:where(.orca-parity) .orca-range-track { position: relative; height: 4px; border-radius: 2px; background: var(--border-control); flex: 1; }
+:where(.orca-parity) .orca-range-fill { position: absolute; height: 100%; border-radius: 2px; background: var(--accent); }
+:where(.orca-parity) .orca-range-thumb { display: block; width: 14px; height: 18px; border: 1px solid var(--border-control); border-radius: 3px; background: var(--selected); }
+:where(.orca-parity) .orca-range-thumb:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:where(.orca-parity) .orca-range[data-disabled] .orca-range-fill { background: var(--muted); }

@@ -203,3 +203,9 @@
   :where(.orca-parity) .move-slider input { height: 32px; }
   :where(.orca-parity) .events-row .icon-btn, :where(.orca-parity) .events-z { min-height: 32px; }
 }
+:where(.orca-parity) .order-bar { flex-wrap: wrap; width: min(90%, 1040px); gap: 6px; }
+:where(.orca-parity) .ob-btn { width: 28px; height: 28px; padding: 0; border: 1px solid var(--border-control); border-radius: 3px; background: var(--sunken); color: var(--text); }
+:where(.orca-parity) .ob-btn[aria-pressed=true] { background: var(--selected); }
+:where(.orca-parity) .order-bar .orca-range { min-width: 100px; }
+:where(.orca-parity) .ob-time, :where(.orca-parity) .ob-layer { white-space: nowrap; }
+:where(.orca-parity) .ob-rate { width: 70px; flex: none; }

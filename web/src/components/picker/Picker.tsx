@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ComponentPropsWithRef, type ReactNode } from 'react';
+import { useId, useMemo, useRef, useState, type ComponentPropsWithRef, type ReactNode } from 'react';
 import { Popover } from 'radix-ui';
 import '../menu.css';
 import './picker.css';
@@ -10,29 +10,61 @@ interface Props { label: string; value?: string; groups(): PickerGroup[]; onPick
 const read = (key: string): string[] => { try { const v = JSON.parse(localStorage.getItem(key) ?? '[]'); return Array.isArray(v) ? v.filter((s) => typeof s === 'string') : []; } catch { return []; } };
 const write = (key: string, value: string[]) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch {  } };
 export function Picker({ label, value, groups, onPick, memory = `orca.parity.${label}`, footer = [], catalog, className = '', triggerProps, children }: Props) {
-  const [open, setOpen] = useState(false), [adding, setAdding] = useState(false), [query, setQuery] = useState(''), [rail, setRail] = useState('all'), [active, setActive] = useState(0);
+  const [open, setOpen] = useState(false), [adding, setAdding] = useState(false), [rail, setRail] = useState('all'), [active, setActive] = useState(0);
   const [pins, setPins] = useState(() => read(`${memory}.pins`)), [recent, setRecent] = useState(() => read(`${memory}.recent`));
-  const input = useRef<HTMLInputElement>(null), list = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLDivElement>(null), typed = useRef({text: '', at: 0});
+  const id = useId();
   const source = useMemo(() => open ? (adding && catalog ? catalog.groups() : groups()).filter((g) => g.items.length) : [], [open, adding, groups, catalog]);
   const all = [...new Map(source.flatMap((g) => g.items).map((item) => [item.id, item])).values()];
-  const rails = [{ id: 'all', title: adding ? 'All bases' : 'All profiles' }, ...(!adding && pins.some((id) => all.some((r) => r.id === id)) ? [{ id: 'pins', title: 'Favorites' }] : []), ...(!adding && recent.some((id) => all.some((r) => r.id === id)) ? [{ id: 'recent', title: 'Recent' }] : []), ...source.map(({ id, title }) => ({ id, title }))];
-  const filtered = query ? all : rail === 'pins' ? all.filter((r) => pins.includes(r.id)) : rail === 'recent' ? recent.flatMap((id) => all.find((r) => r.id === id) ?? []) : source.find((g) => g.id === rail)?.items ?? all;
-  const rows = filtered.filter((r) => `${r.label} ${r.search ?? ''} ${r.sub ?? ''}`.toLowerCase().includes(query.toLowerCase()));
+  const rails = [...(!adding && pins.some((id) => all.some((r) => r.id === id)) ? [{ id: 'pins', title: 'Favorites' }] : []), ...(!adding && recent.some((id) => all.some((r) => r.id === id)) ? [{ id: 'recent', title: 'Recent' }] : []), { id: 'all', title: adding ? 'All bases' : 'All profiles' }, ...source.map(({ id, title }) => ({ id, title }))];
+  const rows = rail === 'pins' ? all.filter((r) => pins.includes(r.id)) : rail === 'recent' ? recent.flatMap((id) => all.find((r) => r.id === id) ?? []) : source.find((g) => g.id === rail)?.items ?? all;
   const enabled = rows.flatMap((r, i) => r.disabled ? [] : [i]);
-  const pick = (row: PickerItem) => { if (row.disabled) return; if (adding && catalog) catalog.onAdd(row.id); else onPick(row.id); const next = [row.id, ...recent.filter((id) => id !== row.id)].slice(0, 8); setRecent(next); write(`${memory}.recent`, next); setOpen(false); };
+  const resetType = () => { typed.current = {text: '', at: 0}; };
+  const move = (index: number) => {
+    if (index < 0 || !rows[index] || rows[index].disabled) return;
+    setActive(index);
+    const el = list.current?.querySelector<HTMLButtonElement>(`[data-index="${index}"] .pk-option`);
+    el?.focus({preventScroll: true}); el?.scrollIntoView({ block: 'nearest' });
+  };
+  const changeRail = (next: string) => { setRail(next); setActive(0); resetType(); };
+  const changeCatalog = (next: boolean) => { setAdding(next); changeRail('all'); };
+  const pick = (row: PickerItem) => {
+    if (row.disabled) return;
+    if (adding && catalog) catalog.onAdd(row.id); else onPick(row.id);
+    const next = [row.id, ...recent.filter((id) => id !== row.id)].slice(0, 8);
+    setRecent(next); write(`${memory}.recent`, next); setOpen(false); resetType();
+  };
   const pin = (row: PickerItem) => { const next = pins.includes(row.id) ? pins.filter((id) => id !== row.id) : [...pins, row.id]; setPins(next); write(`${memory}.pins`, next); };
-  const move = (index: number) => { setActive(index); list.current?.querySelector(`[data-index="${index}"]`)?.scrollIntoView({ block: 'nearest' }); };
-  return <Popover.Root open={open} onOpenChange={(next) => { setOpen(next); if (next) { setAdding(false); setQuery(''); setRail('all'); setActive(0); } }}><Popover.Trigger asChild><button {...triggerProps} type="button" className={`pk-trigger dropdown ${className}`} data-menu-trigger="orca" aria-label={label} title={triggerProps?.disabled ? `${label}\n${triggerProps.title ?? "Choose a compatible printer profile first."}` : triggerProps?.title ?? label}>{children}<span aria-hidden className="pk-caret">⌄</span></button></Popover.Trigger><Popover.Portal><Popover.Content className="orca-menu pk-pop" data-menu-family="orca" aria-label={adding ? catalog?.label : label} side="bottom" align="start" sideOffset={4} collisionPadding={8} onOpenAutoFocus={(e) => { e.preventDefault(); input.current?.focus(); }} onKeyDown={(e) => {
-    if (e.key === 'Escape' || e.key === 'Tab') return;
-    e.stopPropagation();
-    const at = Math.max(0, enabled.indexOf(active));
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); move(enabled[(at + (e.key === 'ArrowDown' ? 1 : -1) + enabled.length) % enabled.length] ?? 0); }
-    else if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); move(enabled[e.key === 'Home' ? 0 : enabled.length - 1] ?? 0); }
-    else if (e.key === 'Enter' && rows[active]) { e.preventDefault(); e.altKey ? pin(rows[active]) : pick(rows[active]); }
-    else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !query) { e.preventDefault(); const at = rails.findIndex((r) => r.id === rail); setRail(rails[(at + (e.key === 'ArrowRight' ? 1 : -1) + rails.length) % rails.length].id); setActive(0); }
-  }}>
-    <div className="pk-head">{adding && <button type="button" className="btn" onClick={() => { setAdding(false); setQuery(''); setRail('all'); }}>Back</button>}<input ref={input} className="text" aria-label={`Search ${adding ? 'catalog' : label.toLowerCase()}`} placeholder="Search…" value={query} onChange={(e) => { setQuery(e.target.value); setActive(0); }} /></div>
-    <div className="pk-body"><nav className="pk-rail" aria-label={`${label} groups`}>{rails.map((r) => <button type="button" key={r.id} className={rail === r.id && !query ? 'active' : ''} onClick={() => { setRail(r.id); setQuery(''); setActive(0); input.current?.focus(); }}>{r.title}</button>)}</nav><div className="pk-list" role="listbox" aria-label={label} ref={list}>{rows.map((row, i) => <div key={row.id} className={`pk-row ${active === i ? 'is-active' : ''}`} data-index={i}><button type="button" role="option" aria-selected={value === row.id} aria-disabled={!!row.disabled} className="pk-option" title={row.disabled ? `${row.label}\n${typeof row.disabled === 'string' ? row.disabled : "Not available for the current printer."}` : row.label} onPointerMove={() => setActive(i)} onClick={() => pick(row)}><span className="pk-check" aria-hidden>{value === row.id ? '✓' : ''}</span><span className="pk-label">{row.label}{row.sub && <span className="pk-sub">{row.sub}</span>}</span>{row.meta && <span className="pk-meta">{row.meta}</span>}</button>{!adding && <button type="button" className="pk-star" title={pins.includes(row.id) ? 'Remove favorite' : 'Favorite'} aria-label={`Favorite ${row.label}`} aria-pressed={pins.includes(row.id)} onClick={() => pin(row)}>{pins.includes(row.id) ? '★' : '☆'}</button>}</div>)}{!rows.length && <div className="pk-empty">{query ? 'No matching profiles' : 'Add a profile from the catalog'}</div>}</div></div>
-    <div className="pk-foot">{catalog && !adding && <button type="button" className="btn" onClick={() => { setAdding(true); setQuery(''); setRail('all'); setActive(0); input.current?.focus(); }}>{catalog.label}</button>}{footer.map((a) => <button type="button" className="btn" key={a.label} onClick={() => { if (!a.keep) setOpen(false); a.run(); }}>{a.label}</button>)}</div>
-  </Popover.Content></Popover.Portal></Popover.Root>;
+  return <Popover.Root open={open} onOpenChange={next => { setOpen(next); resetType(); if (next) { setAdding(false); setRail('all'); setActive(0); } }}>
+    <Popover.Trigger asChild><button {...triggerProps} type="button" className={`pk-trigger dropdown ${className}`} data-menu-trigger="orca" aria-label={label} title={triggerProps?.disabled ? `${label}\n${triggerProps.title ?? 'Choose a compatible printer profile first.'}` : triggerProps?.title ?? label} onKeyDown={e => {
+      triggerProps?.onKeyDown?.(e);
+      if (!e.defaultPrevented && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); e.stopPropagation(); resetType(); setAdding(false); setRail('all'); setOpen(true); }
+    }}>{children}<span aria-hidden className="pk-caret">⌄</span></button></Popover.Trigger>
+    <Popover.Portal><Popover.Content className="orca-menu pk-pop" data-menu-family="orca" aria-label={adding ? catalog?.label : label} side="bottom" align="start" sideOffset={4} collisionPadding={8} onOpenAutoFocus={e => { e.preventDefault(); const selected = rows.findIndex(r => r.id === value && !r.disabled); move(selected >= 0 ? selected : enabled[0] ?? -1); }} onKeyDown={e => {
+      if (e.key === 'Escape' || e.key === 'Tab') return;
+      e.stopPropagation();
+      const at = enabled.indexOf(active);
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); resetType(); if (enabled.length) move(enabled[(at + (e.key === 'ArrowDown' ? 1 : -1) + enabled.length) % enabled.length]); }
+      else if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); resetType(); move(enabled[e.key === 'Home' ? 0 : enabled.length - 1] ?? -1); }
+      else if (e.key === 'Enter' && e.target instanceof Element && e.target.closest('.pk-option') && rows[active]) { e.preventDefault(); e.altKey ? pin(rows[active]) : pick(rows[active]); }
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); const at = rails.findIndex(r => r.id === rail); changeRail(rails[(at + (e.key === 'ArrowRight' ? 1 : -1) + rails.length) % rails.length].id); }
+      else if (e.key.length === 1 && e.key !== ' ' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        const now = Date.now(), old = now - typed.current.at < 700 ? typed.current.text : '';
+        const key = e.key.toLocaleLowerCase(), term = old === key ? key : old + key;
+        typed.current = {text: term, at: now};
+        const ordered = [...enabled.filter(i => i > active), ...enabled.filter(i => i <= active)];
+        const match = ordered.find(i => `${rows[i].label} ${rows[i].sub ?? ''} ${rows[i].search ?? ''}`.toLocaleLowerCase().split(/\s+/).some(word => word.startsWith(term)) || rows[i].label.toLocaleLowerCase().replace(/^my\s+/, '').startsWith(term));
+        if (match !== undefined) move(match);
+      }
+    }}>
+      <div className="pk-body"><nav className="pk-rail" aria-label={`${label} groups`}>{rails.map(r => <button type="button" key={r.id} className={rail === r.id ? 'active' : ''} onClick={() => changeRail(r.id)}>{r.title}</button>)}</nav>
+        <div className="pk-list" role="listbox" aria-label={label} ref={list}>{rows.map((row, i) => <div key={row.id} className={`pk-row ${active === i ? 'is-active' : ''}`} data-index={i}>
+          <button id={`${id}-${i}`} type="button" role="option" tabIndex={i === active ? 0 : -1} aria-selected={value === row.id} aria-disabled={!!row.disabled} className="pk-option" title={row.disabled ? `${row.label}\n${typeof row.disabled === 'string' ? row.disabled : 'Not available for the current printer.'}` : row.label} onFocus={() => setActive(i)} onPointerMove={() => setActive(i)} onClick={() => pick(row)}><span className="pk-check" aria-hidden>{value === row.id ? '✓' : ''}</span><span className="pk-label">{row.label}{row.sub && <span className="pk-sub">{row.sub}</span>}</span>{row.meta && <span className="pk-meta">{row.meta}</span>}</button>
+          {!adding && <button type="button" className="pk-star" title={pins.includes(row.id) ? 'Remove favorite' : 'Favorite'} aria-label={`Favorite ${row.label}`} aria-pressed={pins.includes(row.id)} onClick={() => pin(row)}>{pins.includes(row.id) ? '★' : '☆'}</button>}
+        </div>)}{!rows.length && <div className="pk-empty">Add a profile from the catalog</div>}</div>
+      </div>
+      <div className="pk-foot">{adding && <button type="button" className="btn-ghost" onClick={() => changeCatalog(false)}>Back to profiles</button>}{catalog && !adding && <button type="button" className="btn" onClick={() => changeCatalog(true)}>{catalog.label}</button>}{footer.map(a => <button type="button" className="btn" key={a.label} onClick={() => { if (!a.keep) setOpen(false); a.run(); }}>{a.label}</button>)}</div>
+    </Popover.Content></Popover.Portal>
+  </Popover.Root>;
 }

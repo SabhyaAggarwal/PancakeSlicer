@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -68,6 +69,10 @@ type JobRequest struct {
 }
 
 type Event struct {
+	Seq            uint64   `json:"seq"`
+	QueuePosition  *int     `json:"queue_position,omitempty"`
+	ETA            *float64 `json:"eta_seconds,omitempty"`
+	ReplayGap      bool     `json:"replay_gap,omitempty"`
 	ID             int      `json:"id"`
 	Type           string   `json:"type"`
 	Stream         string   `json:"stream,omitempty"`
@@ -83,11 +88,21 @@ const maxEvents = 20000
 const maxEventBytes = 8 << 20
 
 type Job struct {
-	ID      string
-	Client  string
-	Dir     string
-	Request JobRequest
-	Created time.Time
+	ID             string
+	Client         string
+	Dir            string
+	Request        JobRequest
+	IdempotencyKey string
+	RetryOf        string
+	Created        time.Time
+
+	nextEvent      int
+	queuePosition  int
+	eta            *float64
+	stageStarted   time.Time
+	stageDurations map[string]float64
+	stageHistory   *stageHistory
+	persistenceErr error
 
 	mu            sync.Mutex
 	transitions   []JobTransition
@@ -125,13 +140,16 @@ type JobView struct {
 	EventsURL      string          `json:"events_url"`
 	Slice          json.RawMessage `json:"record,omitempty"`
 	Filename       string          `json:"filename,omitempty"`
+	RetryOf        string          `json:"retry_of,omitempty"`
+	QueuePosition  int             `json:"queue_position"`
+	ETA            *float64        `json:"eta_seconds,omitempty"`
 }
 
 func (j *Job) View() JobView {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	v := JobView{ID: j.ID, State: j.state.legacy(), LifecycleState: j.state, Created: j.Created, Error: j.errMsg, ExitCode: j.exitCode,
-		Stage: j.stage, Progress: j.progress, Request: j.Request, EventsURL: "/api/jobs/" + j.ID + "/events", Slice: j.slice}
+	v := JobView{ID: j.ID, RetryOf: j.RetryOf, State: j.state.legacy(), LifecycleState: j.state, Created: j.Created, Error: j.errMsg, ExitCode: j.exitCode,
+		Stage: j.stage, Progress: j.progress, Request: j.Request, QueuePosition: j.queuePosition, ETA: j.eta, EventsURL: "/api/jobs/" + j.ID + "/events", Slice: j.slice}
 	if !j.started.IsZero() {
 		t := j.started
 		v.Started = &t
@@ -159,13 +177,21 @@ func (j *Job) notifyLocked() {
 }
 
 func (j *Job) appendLocked(e Event) {
-	if (e.Type == "log" || e.Type == "progress") && (len(j.events) >= maxEvents || len(e.Line) > maxEventBytes-j.eventBytes) {
-		j.dropped++
-		return
+	j.nextEvent++
+	e.ID, e.Seq = j.nextEvent, uint64(j.nextEvent)
+	if len(e.Line) > maxEventBytes {
+		e.Line = e.Line[:maxEventBytes]
 	}
 	j.eventBytes += len(e.Line)
-	e.ID = len(j.events)
 	j.events = append(j.events, e)
+	trimmed := false
+	for len(j.events) > maxEvents || j.eventBytes > maxEventBytes {
+		j.eventBytes -= len(j.events[0].Line)
+		j.events = j.events[1:]
+		j.dropped++
+		trimmed = true
+	}
+	j.writeEventLocked(e, trimmed && j.nextEvent%1024 == 0)
 	j.notifyLocked()
 }
 
@@ -174,23 +200,35 @@ func (j *Job) log(stream, line string) {
 	defer j.mu.Unlock()
 	e := Event{Type: "log", Stream: stream, Line: line}
 	fields := strings.Fields(line)
-	if (stream == "stdout" || stream == "server") && len(fields) == 3 && fields[0] == "progress" {
-		if pct, err := strconv.ParseFloat(fields[2], 64); err == nil && pct >= 0 && pct <= 100 {
+	if (stream == "stdout" || stream == "server") && len(fields) == 3 && fields[0] == "progress" && len(fields[1]) <= 64 {
+		if pct, err := strconv.ParseFloat(fields[2], 64); err == nil && pct >= 0 && pct <= 100 && !math.IsNaN(pct) && !math.IsInf(pct, 0) {
 			e.Type = "progress"
 			e.Stage = fields[1]
 			e.Pct = &pct
-			j.stage, j.progress = e.Stage, e.Pct
+			j.progressLocked(&e)
 		}
 	}
 	j.appendLocked(e)
+	if e.Type == "progress" {
+		j.persistLocked()
+	}
 }
 
-func (j *Job) EventsSince(from int) ([]Event, <-chan struct{}, bool) {
+func (j *Job) EventsSince(after int) ([]Event, <-chan struct{}, bool) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	var out []Event
-	if from < len(j.events) {
-		out = append(out, j.events[from:]...)
+	if len(j.events) > 0 && after > 0 && after < j.events[0].ID-1 {
+		id := j.events[0].ID - 1
+		pos := j.queuePosition
+		out = append(out, Event{ID: id, Seq: uint64(id), Type: "reset", ReplayGap: true,
+			State: j.state.legacy(), LifecycleState: j.state, Stage: j.stage, Pct: j.progress,
+			ETA: j.eta, QueuePosition: &pos})
+	}
+	for _, e := range j.events {
+		if e.ID > after {
+			out = append(out, e)
+		}
 	}
 	return out, j.changed, j.state.Finished()
 }
@@ -259,10 +297,13 @@ func outputBase(r JobRequest) string {
 
 type JobManager struct {
 	cfg           Config
-	sem           chan struct{}
+	pending       []*queuedJob
+	active        int
+	stages        *stageHistory
 	wg            sync.WaitGroup
 	mu            sync.Mutex
 	jobs          map[string]*Job
+	idempotency   map[string]*idempotencyEntry
 	stop          chan struct{}
 	reaped        chan struct{}
 	closing       bool
@@ -284,18 +325,16 @@ func NewJobManager(cfg Config) (*JobManager, error) {
 	if err := os.MkdirAll(cfg.JobRoot, 0o755); err != nil {
 		return nil, err
 	}
-	entries, err := os.ReadDir(cfg.JobRoot)
-	if err != nil {
+	if cfg.MaxJobs < 1 {
+		cfg.MaxJobs = 1
+	}
+	if cfg.MaxQueue < 0 {
+		cfg.MaxQueue = 64
+	}
+	m := &JobManager{cfg: cfg, jobs: map[string]*Job{}, idempotency: map[string]*idempotencyEntry{}, stop: make(chan struct{}), reaped: make(chan struct{}), uploads: map[string]*Job{}, buckets: map[string]tokenBucket{}, stages: &stageHistory{durations: map[string]float64{}}}
+	if err := m.restoreJobs(); err != nil {
 		return nil, err
 	}
-	for _, e := range entries {
-		if e.IsDir() && jobIDPattern.MatchString(e.Name()) {
-			if err := os.RemoveAll(filepath.Join(cfg.JobRoot, e.Name())); err != nil {
-				return nil, fmt.Errorf("remove orphan job: %w", err)
-			}
-		}
-	}
-	m := &JobManager{cfg: cfg, sem: make(chan struct{}, cfg.MaxJobs), jobs: map[string]*Job{}, stop: make(chan struct{}), reaped: make(chan struct{}), uploads: map[string]*Job{}, buckets: map[string]tokenBucket{}}
 	go m.reap()
 	return m, nil
 }
@@ -303,6 +342,10 @@ func NewJobManager(cfg Config) (*JobManager, error) {
 func (m *JobManager) NewJob(client string) (*Job, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.newJobLocked(client)
+}
+
+func (m *JobManager) newJobLocked(client string) (*Job, error) {
 	if err := m.admitLocked(client); err != nil {
 		return nil, err
 	}
@@ -318,7 +361,7 @@ func (m *JobManager) NewJob(client string) (*Job, error) {
 			return nil, errors.Join(err, os.RemoveAll(dir))
 		}
 	}
-	j := &Job{ID: id, Client: client, Dir: dir, Created: time.Now(), state: StateIdle, changed: make(chan struct{})}
+	j := &Job{ID: id, Client: client, Dir: dir, Created: time.Now(), state: StateIdle, changed: make(chan struct{}), stageHistory: m.stages, stageDurations: map[string]float64{}}
 	m.uploads[id] = j
 	return j, nil
 }
@@ -326,60 +369,39 @@ func (m *JobManager) NewJob(client string) (*Job, error) {
 func (m *JobManager) Start(j *Job) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.jobs[j.ID] == j {
+		return nil
+	}
 	if m.closing {
 		return &admissionError{503, "service is shutting down", 1}
 	}
 	if err := m.quotaLocked(); err != nil {
 		return err
 	}
-	delete(m.uploads, j.ID)
 	ctx, cancel := context.WithCancel(context.Background())
 	j.mu.Lock()
 	j.cancel = cancel
+	j.queuePosition = 1
+	for _, q := range m.pending {
+		if batchJob(j) || !batchJob(q.job) {
+			j.queuePosition++
+		}
+	}
 	j.setStateLocked(StateQueued, "")
+	err := j.persistenceErr
 	j.mu.Unlock()
+	if err != nil {
+		cancel()
+		return fmt.Errorf("persist job: %w", err)
+	}
+	delete(m.uploads, j.ID)
 	m.jobs[j.ID] = j
+	m.pending = append(m.pending, &queuedJob{job: j, ctx: ctx, cancel: cancel})
 	if m.cfg.Metrics {
 		m.submitted++
 	}
-	m.wg.Add(1)
-	go func() {
-		defer m.wg.Done()
-		defer m.completed(j)
-		defer cancel()
-		if !m.acquire(ctx, j.Request.Priority == "low") {
-			j.setState(StateCancelled, "cancelled before it started")
-			return
-		}
-		defer func() { <-m.sem }()
-		m.run(ctx, j)
-	}()
+	m.dispatchLocked()
 	return nil
-}
-
-func (m *JobManager) acquire(ctx context.Context, low bool) bool {
-	if !low {
-		select {
-		case m.sem <- struct{}{}:
-			return true
-		case <-ctx.Done():
-			return false
-		}
-	}
-	t := time.NewTicker(250 * time.Millisecond)
-	defer t.Stop()
-	for {
-		select {
-		case m.sem <- struct{}{}:
-			return true
-		default:
-		}
-		select {
-		case <-t.C:
-		case <-ctx.Done():
-			return false
-		}
-	}
 }
 
 func (m *JobManager) Get(id string) *Job {
@@ -389,15 +411,35 @@ func (m *JobManager) Get(id string) *Job {
 }
 
 func (m *JobManager) Cancel(j *Job) bool {
+	m.mu.Lock()
 	j.mu.Lock()
-	defer j.mu.Unlock()
 	if j.state.Finished() || j.state == StateCanceling {
+		j.mu.Unlock()
+		m.mu.Unlock()
 		return false
 	}
+	queued := j.state == StateQueued
 	j.stopReason = "cancelled"
 	j.setStateLocked(StateCanceling, j.stopReason)
 	if j.cancel != nil {
 		j.cancel()
+	}
+	if queued {
+		j.setStateLocked(StateCancelled, j.stopReason)
+	}
+	j.mu.Unlock()
+	if queued {
+		for i, q := range m.pending {
+			if q.job == j {
+				m.pending = append(m.pending[:i], m.pending[i+1:]...)
+				break
+			}
+		}
+		m.dispatchLocked()
+	}
+	m.mu.Unlock()
+	if queued {
+		m.completed(j)
 	}
 	return true
 }
@@ -413,6 +455,9 @@ func (m *JobManager) removeLocked(j *Job) error {
 		return err
 	}
 	delete(m.jobs, j.ID)
+	if e := m.idempotency[j.IdempotencyKey]; e != nil && e.job == j {
+		delete(m.idempotency, j.IdempotencyKey)
+	}
 	return nil
 }
 
@@ -432,38 +477,33 @@ func (m *JobManager) Counts() (queued, running int) {
 
 func (m *JobManager) Shutdown() {
 	m.mu.Lock()
+	if m.closing {
+		m.mu.Unlock()
+		m.wg.Wait()
+		return
+	}
 	m.closing = true
 	close(m.stop)
-	m.mu.Unlock()
-	<-m.reaped
-	m.mu.Lock()
 	for _, j := range m.jobs {
 		j.mu.Lock()
-		if !j.state.Finished() && j.cancel != nil {
-			if j.stopReason == "" {
-				j.stopReason = "server shutting down"
+		if !j.state.Finished() {
+			j.stopReason = "server shutting down"
+			if j.cancel != nil {
+				j.cancel()
 			}
-			j.cancel()
+			if j.state == StateQueued {
+				j.setStateLocked(StateInterrupted, j.stopReason)
+			}
 		}
 		j.mu.Unlock()
 	}
+	m.pending = nil
 	m.mu.Unlock()
+	<-m.reaped
 	m.wg.Wait()
 }
 
-func (m *JobManager) Cleanup() {
-	m.mu.Lock()
-	remaining := make([]*Job, 0, len(m.jobs))
-	for _, j := range m.jobs {
-		remaining = append(remaining, j)
-	}
-	m.mu.Unlock()
-	for _, j := range remaining {
-		if err := m.Remove(j); err != nil {
-			log.Printf("remove job %s: %v", j.ID, err)
-		}
-	}
-}
+func (m *JobManager) Cleanup() {}
 
 func (m *JobManager) reap() {
 	defer close(m.reaped)
@@ -667,14 +707,16 @@ func (m *JobManager) toolArgs(j *Job) []string {
 func (m *JobManager) run(ctx context.Context, j *Job) {
 	ctx, cancel := context.WithTimeout(ctx, m.cfg.JobTimeout)
 	defer cancel()
-	if !j.setState(StatePreparing, "") {
+	if ctx.Err() != nil {
+		j.setState(StateInterrupted, "worker interrupted before preparation")
 		return
 	}
+	j.log("server", "progress preparing 0")
 	args := m.toolArgs(j)
-	if !m.cfg.Features.Progress {
-		j.log("server", "progress slicing 0")
-	}
 	j.log("server", "nonplanar_slice_tool "+quoteArgs(args))
+	if jobResultGet != nil && jobResultGet(m, j, args) {
+		return
+	}
 	if j.Request.Output == "patch-preview" && m.previewCached(j, args) {
 		return
 	}
@@ -689,8 +731,12 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 		return
 	}
 	cmd.Dir = j.Dir
-	cmd.Env = append(os.Environ(), "TMPDIR="+filepath.Join(j.Dir, "tmp"))
-	configureKill(cmd)
+	cmd.Env = append(os.Environ(), "TMPDIR="+filepath.Join(j.Dir, "tmp"), "TMP="+filepath.Join(j.Dir, "tmp"), "TEMP="+filepath.Join(j.Dir, "tmp"))
+	if err := limitJobMemory(cmd); err != nil {
+		j.setState(StateFailed, err.Error())
+		return
+	}
+	configureJobProcess(cmd)
 	cmd.WaitDelay = 5 * time.Second
 	stdout, stdoutWriter := io.Pipe()
 	stderr, stderrWriter := io.Pipe()
@@ -702,6 +748,9 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 	cmd.Stderr = stderrWriter
 	if !j.setState(StateSlicing, "") {
 		return
+	}
+	if !m.cfg.Features.Progress {
+		j.log("server", "progress slicing 0")
 	}
 	if err := cmd.Start(); err != nil {
 		switch {
@@ -851,6 +900,9 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 		if !m.cfg.Features.Progress {
 			j.log("server", "progress export 100")
 		}
+		if jobResultPut != nil && ctx.Err() == nil {
+			jobResultPut(m, j, args, raw)
+		}
 		j.setState(StateDone, "")
 	}
 	log.Printf("job %s %s (exit %d)", j.ID, j.State(), code)
@@ -935,4 +987,103 @@ func orientScoreLine(l string) map[string]any {
 		return nil
 	}
 	return score
+}
+
+type idempotencyEntry struct {
+	done chan struct{}
+	job  *Job
+}
+
+func (m *JobManager) reserve(ctx context.Context, key string) (*Job, func(*Job), error) {
+	if key == "" {
+		return nil, func(*Job) {}, nil
+	}
+	for {
+		m.mu.Lock()
+		if e := m.idempotency[key]; e != nil {
+			m.mu.Unlock()
+			select {
+			case <-ctx.Done():
+				return nil, nil, ctx.Err()
+			case <-e.done:
+				if e.job != nil {
+					return e.job, func(*Job) {}, nil
+				}
+				continue
+			}
+		}
+		e := &idempotencyEntry{done: make(chan struct{})}
+		m.idempotency[key] = e
+		m.mu.Unlock()
+		return nil, func(j *Job) {
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			e.job = j
+			if j == nil {
+				delete(m.idempotency, key)
+			}
+			close(e.done)
+		}, nil
+	}
+}
+
+func submissionKey(endpoint, key string) (string, error) {
+	if key == "" {
+		return "", nil
+	}
+	if len(key) > 200 {
+		return "", errors.New("Idempotency-Key exceeds 200 bytes")
+	}
+	for _, c := range key {
+		if c < 33 || c > 126 {
+			return "", errors.New("Idempotency-Key must contain visible ASCII")
+		}
+	}
+	h := sha256.Sum256([]byte(endpoint + "\x00" + key))
+	return hex.EncodeToString(h[:]), nil
+}
+
+func (m *JobManager) Retry(parent *Job, client string) (*Job, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.jobs[parent.ID] != parent {
+		return nil, &admissionError{404, "job expired", 0}
+	}
+	if !parent.State().Finished() {
+		return nil, &admissionError{409, "retry requires a finished job", 0}
+	}
+	j, err := m.newJobLocked(client)
+	if err != nil {
+		return nil, err
+	}
+	j.Request, j.RetryOf = parent.Request, parent.ID
+	entries, err := os.ReadDir(filepath.Join(parent.Dir, "input"))
+	if err == nil {
+		for _, e := range entries {
+			if !e.Type().IsRegular() {
+				err = errors.New("invalid retry input")
+				break
+			}
+			var src, dst *os.File
+			src, err = os.Open(filepath.Join(parent.Dir, "input", e.Name()))
+			if err != nil {
+				break
+			}
+			dst, err = os.OpenFile(filepath.Join(j.Dir, "input", e.Name()), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+			if err == nil {
+				_, err = io.Copy(dst, src)
+				err = errors.Join(err, dst.Close())
+			}
+			src.Close()
+			if err != nil {
+				break
+			}
+		}
+	}
+	if err != nil {
+		delete(m.uploads, j.ID)
+		os.RemoveAll(j.Dir)
+		return nil, err
+	}
+	return j, nil
 }

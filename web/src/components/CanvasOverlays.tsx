@@ -1,3 +1,6 @@
+import { MenuButton, type MenuEntry } from './Menu';
+import { Check } from './Check';
+import { Range } from './Range';
 import { slicingText } from '../api/progress';
 import { accessNotice, accessSnapshot, saveAccessToken, subscribeAccess } from '../api/access';
 import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
@@ -23,14 +26,6 @@ import { filamentColor } from '../plater/filamentColor';
 import { canEditLayers } from './LayerHeight';
 import { Num } from './Num';
 import { setAssembly, useAssembly } from '../plater/assembly';
-
-const LATER_GIZMOS: [icon: string, tooltip: string][] = [
-  ['toolbar_texture_displacement', 'Texture displacement'],
-  ['toolbar_text', 'Emboss (T)'],
-  ['svg_part', 'SVG'],
-  ['toolbar_assembly', 'Assemble (Y)'],
-  ['toolbar_brimears', 'Brim Ears (E)'],
-];
 
 const PAINT_GIZMOS: [PaintKind, string, string][] = [
   ['support', 'toolbar_support', 'Support Painting (L)'],
@@ -67,64 +62,37 @@ export function CanvasToolbar() {
   const nonplanarView = useNonplanarView();
   const [arranging, setArranging] = useState(false);
   const arrangeAt = useRef<HTMLSpanElement>(null);
-  const items = useRef<HTMLDivElement>(null);
-  const [overflow, setOverflow] = useState(false);
-  const [more, setMore] = useState(false);
-  useLayoutEffect(() => {
-    const el = items.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setOverflow([...el.children].some((c) => (c as HTMLElement).offsetTop >= 16)));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return (
-    <div className={`canvas-toolbar${more && overflow ? ' open' : ''}`}>
-      <div className="tb-items" ref={items}>
-      <IconButton size={24} icon="toolbar_open" title={`Add (${MOD}+I)`} onClick={openFileDialog} />
-      <IconButton size={24} icon="toolbar_add_plate" title="Add plate" onClick={addPlate} disabled={!meshPlates} />
-      <IconButton size={24} icon="toolbar_orient" title={"Auto orient all/selected objects (Q)\nAuto orient all objects on current plate (Shift+Q)"} onClick={(e) => toolbarOperation('orient', e.shiftKey)} disabled={!hasObjects || project} />
-      <span ref={arrangeAt} style={{ display: 'inline-flex' }}>
-        <IconButton size={24} icon="toolbar_arrange" title={`Arrange all objects (A)\nArrange objects on selected plates (Shift+A)`} active={arranging} onClick={() => setArranging(!arranging)} disabled={!hasObjects && !arranging} />
-      </span>
-      {arranging && <ArrangeOptions at={arrangeAt.current} />}
-      <span className="tb-sep" />
-      <IconButton size={24} icon="instance_add" title={`Add instance (+)${locked}`} onClick={addInstance} disabled={!edit || project} />
-      <IconButton size={24} icon="instance_remove" title={`Remove instance (-)${locked}`} onClick={removeInstance} disabled={instances < 2 || project} />
-      <IconButton size={24} icon="split_objects" title="Split to objects" onClick={() => toolbarOperation('split')} disabled={!edit || project} />
-      <IconButton size={24} icon="split_parts" title="Split to parts" onClick={() => toolbarOperation('split-parts')} disabled={!edit || project || !splitParts} />
-      <IconButton size={24} icon="toolbar_variable_layer_height" title="Variable layer height" active={gizmo === 'layers'} onClick={() => toggle('layers')} disabled={!layers && gizmo !== 'layers'} />
-      <IconButton size={24} icon="toolbar_assemble" title="Assembly View" active={assemblyOn} onClick={() => setAssembly({ on: !assemblyOn })} disabled={!hasObjects && !assemblyOn} />
-      <span className="tb-sep" />
-      <IconButton size={24} icon="toolbar_move" title="Move (M)" active={gizmo === 'move'} onClick={() => toggle('move')} disabled={!edit} />
-      <IconButton size={24} icon="toolbar_rotate" title="Rotate (R)" active={gizmo === 'rotate'} onClick={() => toggle('rotate')} disabled={!edit} />
-      <IconButton size={24} icon="toolbar_scale" title="Scale (S)" active={gizmo === 'scale'} onClick={() => toggle('scale')} disabled={!edit} />
-      <IconButton size={24} icon="toolbar_flatten" title="Lay on Face (F)" active={gizmo === 'flatten'} onClick={() => toggle('flatten')} disabled={!edit} />
-      <IconButton size={24} icon="toolbar_cut" title={cutBlock ? `Cut (C) — ${cutBlock}` : 'Cut (C)'} active={gizmo === 'cut'} onClick={toggleCut} disabled={!!cutBlock && gizmo !== 'cut'} />
-      <IconButton size={24} icon="toolbar_measure" title="Measure (U)" active={gizmo === 'measure'} onClick={() => toggle('measure')} disabled={!sel || !!placeholder} />
-      <IconButton size={24} icon="toolbar_meshboolean" title="Mesh Boolean (B)" active={gizmo === 'boolean'} onClick={toggleBoolean} disabled={!booleanOk && gizmo !== 'boolean'} />
-      {PAINT_GIZMOS.map(([kind, icon, title]) => (
-        <IconButton key={kind} size={24} icon={icon} title={title} active={gizmo === kind} onClick={() => togglePaint(kind)} disabled={!paint && gizmo !== kind} />
-      ))}
-      {LATER_GIZMOS.map(([icon, title]) => (icon === 'toolbar_brimears' && brimEars
-        ? <IconButton key={icon} size={24} icon={icon} title={title} active={gizmo === 'brimears'} onClick={() => toggle('brimears')} disabled={!sel || !!placeholder || !!native || volumes} />
-        : icon === 'toolbar_text' && text
-          ? <IconButton key={icon} size={24} icon={icon} title={title} active={gizmo === 'text'} onClick={toggleText} disabled={!!sel?.all || !!placeholder || !!native} />
-          : icon === 'svg_part' && svg
-            ? <IconButton key={icon} size={24} icon={icon} title={title} active={gizmo === 'svg'} onClick={toggleSvg} disabled={!!sel?.all || !!placeholder || !!native} />
-            : null
-      ))}
-      {preview && (
-        <>
-          <span className="tb-sep" />
-          <IconButton size={24} icon="param_nonplanar" title="Non-planar surfaces" active={nonplanarView} onClick={toggleNonplanarView} />
-        </>
-      )}
-      </div>
-      {overflow && (
-        <button type="button" className="tb-more" aria-expanded={more} title={more ? 'Fewer tools' : 'More tools'} onClick={() => setMore(!more)}>⋯</button>
-      )}
-    </div>
-  );
+  const rare: MenuEntry[] = [
+    {label: 'Add plate', action: addPlate, disabled: !meshPlates},
+    {label: 'Add instance', action: addInstance, disabled: !edit || project, tip: locked || undefined},
+    {label: 'Remove instance', action: removeInstance, disabled: instances < 2 || project, tip: locked || undefined},
+    {label: 'Split to objects', action: () => toolbarOperation('split'), disabled: !edit || project},
+    {label: 'Split to parts', action: () => toolbarOperation('split-parts'), disabled: !edit || project || !splitParts},
+    'sep',
+    {label: 'Lay on face', shortcut: 'F', action: () => toggle('flatten'), disabled: !edit, checked: gizmo === 'flatten'},
+    {label: 'Cut', shortcut: 'C', action: toggleCut, disabled: !!cutBlock && gizmo !== 'cut', tip: cutBlock ?? undefined},
+    {label: 'Measure', shortcut: 'U', action: () => toggle('measure'), disabled: !sel || !!placeholder, checked: gizmo === 'measure'},
+    {label: 'Variable layer height', action: () => toggle('layers'), disabled: !layers && gizmo !== 'layers'},
+    {label: 'Assembly view', action: () => setAssembly({on: !assemblyOn}), disabled: !hasObjects && !assemblyOn},
+    {label: 'Mesh boolean', shortcut: 'B', action: toggleBoolean, disabled: !booleanOk && gizmo !== 'boolean'},
+    'sep',
+    ...PAINT_GIZMOS.map(([kind, _icon, label]): MenuEntry => ({label, action: () => togglePaint(kind), disabled: !paint && gizmo !== kind, checked: gizmo === kind})),
+    ...(brimEars ? [{label: 'Brim ears', action: () => toggle('brimears'), disabled: !sel || !!placeholder || !!native || volumes} as MenuEntry] : []),
+    ...(text ? [{label: 'Emboss text', shortcut: 'T', action: toggleText, disabled: !!sel?.all || !!placeholder || !!native} as MenuEntry] : []),
+    ...(svg ? [{label: 'SVG', action: toggleSvg, disabled: !!sel?.all || !!placeholder || !!native} as MenuEntry] : []),
+    ...(preview ? [{label: 'Non-planar surfaces', action: toggleNonplanarView, checked: nonplanarView} as MenuEntry] : []),
+  ];
+  return <div className="canvas-toolbar">
+    <IconButton size={22} icon="toolbar_move" title="Move (M)" active={gizmo === 'move'} onClick={() => toggle('move')} disabled={!edit}/>
+    <IconButton size={22} icon="toolbar_rotate" title="Rotate (R)" active={gizmo === 'rotate'} onClick={() => toggle('rotate')} disabled={!edit}/>
+    <IconButton size={22} icon="toolbar_scale" title="Scale (S)" active={gizmo === 'scale'} onClick={() => toggle('scale')} disabled={!edit}/>
+    <span className="tb-sep"/>
+    <span ref={arrangeAt} style={{display: 'inline-flex'}}><IconButton size={22} icon="toolbar_arrange" title="Arrange (A)" active={arranging} onClick={() => setArranging(!arranging)} disabled={!hasObjects && !arranging}/></span>
+    {arranging && <ArrangeOptions at={arrangeAt.current}/>}
+    <IconButton size={22} icon="toolbar_orient" title="Auto orient (Q / Shift+Q)" onClick={e => toolbarOperation('orient', e.shiftKey)} disabled={!hasObjects || project}/>
+    <IconButton size={22} icon="toolbar_open" title={`Add model (${MOD}+I)`} onClick={openFileDialog}/>
+    <MenuButton className="btn-ghost canvas-more" label="More tools" items={rare}>More</MenuButton>
+  </div>;
 }
 
 function ArrangeOptions({ at }: { at: HTMLElement | null }) {
@@ -136,16 +104,16 @@ function ArrangeOptions({ at }: { at: HTMLElement | null }) {
     <div className="manip-panel" role="dialog" aria-label="Arrange options" style={{ position: 'fixed', top: (r?.bottom ?? 40) + 8, left: r?.left ?? 0, zIndex: 5 }}>
       <div className="manip-grid" style={{ gridTemplateColumns: '70px 140px 70px' }}>
         <span>Spacing</span>
-        <input type="range" min={0} max={100} step={0.05} value={a.distance} onChange={(e) => setArrangeSettings({ distance: Number(e.target.value) })} />
+        <Range min={0} max={100} step={0.05} value={a.distance} onValueChange={(next) => setArrangeSettings({ distance: next })} />
         <Num value={a.distance} step={0.05} onCommit={(v) => setArrangeSettings({ distance: v })} />
         <span style={{ gridColumn: '1 / -1' }}>0 means auto spacing.</span>
         <span style={{ gridColumn: '1 / -1' }} className="menu-sep" />
         <label className="select-row" style={{ gridColumn: '1 / -1' }}>
-          <input type="checkbox" checked={a.rotation} onChange={(e) => setArrangeSettings({ rotation: e.target.checked })} />Auto rotate for arrangement
+          <Check checked={a.rotation} onCheckedChange={(next) => setArrangeSettings({ rotation: next })} />Auto rotate for arrangement
         </label>
         {canMulti && (
           <label className="select-row" style={{ gridColumn: '1 / -1' }}>
-            <input type="checkbox" checked={a.multiMaterials} onChange={(e) => setArrangeSettings({ multiMaterials: e.target.checked })} />Allow multiple materials on same plate
+            <Check checked={a.multiMaterials} onCheckedChange={(next) => setArrangeSettings({ multiMaterials: next })} />Allow multiple materials on same plate
           </label>
         )}
         <span style={{ gridColumn: '1 / -1' }} className="menu-sep" />
@@ -368,9 +336,9 @@ export function CutPanel() {
       <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <span style={{ width: 10, height: 10, background: colour, flex: 'none' }} />{label}
       </span>
-      <label className="select-row" style={{ whiteSpace: 'nowrap' }}><input type="checkbox" checked={keep} disabled={joined} onChange={(e) => onKeep(e.target.checked)} />Keep</label>
+      <label className="select-row" style={{ whiteSpace: 'nowrap' }}><Check checked={keep} disabled={joined} onCheckedChange={(next) => onKeep(next)} />Keep</label>
       <label className="select-row" style={{ whiteSpace: 'nowrap' }} title={onPlace ? undefined : 'The upper part is always placed on its cut face'}>
-        <input type="checkbox" checked={keep && place} disabled={!keep || !onPlace} onChange={(e) => onPlace?.(e.target.checked)} />Place on cut
+        <Check checked={keep && place} disabled={!keep || !onPlace} onCheckedChange={(next) => onPlace?.(next)} />Place on cut
       </label>
     </>
   );
@@ -393,14 +361,14 @@ export function CutPanel() {
         <span style={{ gridColumn: '1 / -1' }}>After cut:</span>
       </div>
       <label className="select-row" style={{ whiteSpace: 'nowrap' }} title="Both pieces stay one object, the upper piece a part, where they stand">
-        <input type="checkbox" checked={!!cut.toParts} disabled={joined} onChange={(e) => setCut({ toParts: e.target.checked })} />Cut to parts
+        <Check checked={!!cut.toParts} disabled={joined} onCheckedChange={(next) => setCut({ toParts: next })} />Cut to parts
       </label>
       {!cut.toParts && (
         <div style={{ display: 'grid', gridTemplateColumns: 'auto auto auto', gap: '0 12px', alignItems: 'center' }}>
           {part('Upper part', '#00ffff', cut.keepUpper, (keepUpper) => setCut({ keepUpper }), true)}
           {part('Lower part', '#ff00ff', cut.keepLower, (keepLower) => setCut({ keepLower }), cut.placeLower, (placeLower) => setCut({ placeLower }))}
           {cut.keepUpper && <label className="select-row" style={{ gridColumn: '2 / span 2', whiteSpace: 'nowrap' }}>
-            <input type="checkbox" checked={!!cut.flipUpper} onChange={(e) => setCut({ flipUpper: e.target.checked })} />Flip upper part upside down
+            <Check checked={!!cut.flipUpper} onCheckedChange={(next) => setCut({ flipUpper: next })} />Flip upper part upside down
           </label>}
         </div>
       )}
@@ -458,7 +426,7 @@ export function PaintPanel() {
         {gap ? (
           <>
             <span title="Triangle patch area threshold, triangle patch will be merged to neighbor if its area is less than threshold">Gap area</span>
-            <input type="range" min={GAP_AREA.min} max={GAP_AREA.max} step={GAP_AREA.step} value={t.gapArea} onChange={(e) => setPaintTool({ gapArea: Number(e.target.value) })} />
+            <Range min={GAP_AREA.min} max={GAP_AREA.max} step={GAP_AREA.step} value={t.gapArea} onValueChange={(next) => setPaintTool({ gapArea: next })} />
             <Num value={t.gapArea} step={GAP_AREA.step} onCommit={(v) => setPaintTool({ gapArea: v })} />
             <span />
             <button className="btn" style={{ gridColumn: 'span 2', justifySelf: 'start' }} disabled={!(t.gapArea > 0) || !painted}
@@ -467,32 +435,32 @@ export function PaintPanel() {
         ) : triangle ? null : height ? (
           <>
             <span>Height range</span>
-            <input type="range" min={HEIGHT.min} max={HEIGHT.max} step={HEIGHT.step} value={t.height} onChange={(e) => setPaintTool({ height: Number(e.target.value) })} />
+            <Range min={HEIGHT.min} max={HEIGHT.max} step={HEIGHT.step} value={t.height} onValueChange={(next) => setPaintTool({ height: next })} />
             <Num value={t.height} step={HEIGHT.step} onCommit={(v) => setPaintTool({ height: v })} />
           </>
         ) : fill && kind === 'color' && !t.edges ? null : (
           <>
             <span>{fill ? 'Smart fill angle' : 'Brush size'}</span>
-            <input type="range" min={fill ? ANGLE.min : RADIUS.min} max={fill ? ANGLE.max : RADIUS.max} step={fill ? ANGLE.step : RADIUS.step}
-              value={fill ? t.angle : t.radius} onChange={(e) => setPaintTool(fill ? { angle: Number(e.target.value) } : { radius: Number(e.target.value) })} />
+            <Range min={fill ? ANGLE.min : RADIUS.min} max={fill ? ANGLE.max : RADIUS.max} step={fill ? ANGLE.step : RADIUS.step}
+              value={fill ? t.angle : t.radius} onValueChange={(next) => setPaintTool(fill ? { angle: next } : { radius: next })} />
             <Num value={fill ? t.angle : t.radius} step={fill ? ANGLE.step : RADIUS.step} onCommit={(v) => setPaintTool(fill ? { angle: v } : { radius: v })} />
           </>
         )}
         {kind === 'color' && fill && (
           <label className="select-row" style={{ gridColumn: '1 / -1' }}>
-            <input type="checkbox" checked={t.edges} onChange={(e) => setPaintTool({ edges: e.target.checked })} />Edge detection
+            <Check checked={t.edges} onCheckedChange={(next) => setPaintTool({ edges: next })} />Edge detection
           </label>
         )}
         {kind === 'support' && !gap && (
           <label className="select-row" style={{ gridColumn: '1 / -1' }} title={'Allows painting only on facets selected by: "Highlight overhangs"'}>
-            <input type="checkbox" checked={t.overhangsOnly} onChange={(e) => setPaintTool({ overhangsOnly: e.target.checked })} />On highlighted overhangs only
+            <Check checked={t.overhangsOnly} onCheckedChange={(next) => setPaintTool({ overhangsOnly: next })} />On highlighted overhangs only
           </label>
         )}
         {kind === 'support' && (
           <>
             <span style={{ gridColumn: '1 / -1' }} className="menu-sep" />
             <span title={threshold ? `Auto support threshold angle: ${threshold}` : 'No auto support'}>Highlight overhangs</span>
-            <input type="range" min={0} max={90} step={1} value={t.highlight} title="Highlight faces according to overhang angle." onChange={(e) => setPaintTool({ highlight: Number(e.target.value) })} />
+            <Range min={0} max={90} step={1} value={t.highlight} title="Highlight faces according to overhang angle." onValueChange={(next) => setPaintTool({ highlight: next })} />
             <Num value={t.highlight} step={1} onCommit={(v) => setPaintTool({ highlight: v })} />
           </>
         )}

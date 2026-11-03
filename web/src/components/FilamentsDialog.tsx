@@ -1,3 +1,4 @@
+import { Check } from './Check';
 import { Dropdown } from './Dropdown';
 import { useMemo, useState } from 'react';
 import { compatible, getState, setState } from '../state/store';
@@ -38,7 +39,7 @@ export default function FilamentsDialog({ close }: { close(): void }) {
         </div>
         <div className="filaments-list" style={{ maxHeight: 320, overflowY: 'auto' }}>
           {shown.map((p) => (
-            <label key={p.name} className="select-row"><input type="checkbox" checked={chosen.has(p.name)} onChange={(e) => mark([p.name], e.target.checked)} />{p.name}</label>
+            <label key={p.name} className="select-row"><Check checked={chosen.has(p.name)} onCheckedChange={(next) => mark([p.name], next)} />{p.name}</label>
           ))}
         </div>
       </div>

@@ -1,3 +1,4 @@
+import { Check } from './Check';
 import { Dropdown } from './Dropdown';
 import { effectiveConfig, getState, markStale, setState, useStore, type PlateObject, type State } from '../state/store';
 import { undoable } from '../state/history';
@@ -35,7 +36,7 @@ function Cell({ s, o, col }: { s: State; o: PlateObject; col: Col }) {
   const value = String(own ?? effectiveConfig(s, 'process')[col.key] ?? '');
   const set = (v: string) => setting(o.id, col.key, v);
   const input = col.kind === 'bool'
-    ? <input type="checkbox" checked={value === '1' || value === 'true'} aria-label={col.label} onChange={(e) => set(e.target.checked ? '1' : '0')} />
+    ? <Check checked={value === '1' || value === 'true'} aria-label={col.label} onCheckedChange={(next) => set(next ? '1' : '0')} />
     : col.kind === 'enum'
       ? <Dropdown className="combo" value={value} aria-label={col.label} onValueChange={set} options={[...col.choices!.map(([k, l]) => ({ value: k, label: l }))]} />
       : <input className="text num" type="number" step={col.kind === 'float' ? 0.01 : 1} defaultValue={parseFloat(value) || 0} key={value} aria-label={col.label}
@@ -63,8 +64,8 @@ export default function ObjectTable({ close }: { close(): void }) {
           <tbody>
             {rows.map(({ plate, o }) => (
               <tr key={o.id}>
-                <td><input type="checkbox" aria-label="Printable" checked={o.instances.every((i) => i.printable !== false)}
-                  onChange={(e) => editObject(o.id, 'Change printable', (x) => ({ ...x, instances: x.instances.map((i) => ({ ...i, printable: e.target.checked })) }))} /></td>
+                <td><Check aria-label="Printable" checked={o.instances.every((i) => i.printable !== false)}
+                  onCheckedChange={(next) => editObject(o.id, 'Change printable', (x) => ({ ...x, instances: x.instances.map((i) => ({ ...i, printable: next })) }))} /></td>
                 <td>{plate}</td>
                 <td className="name" title={o.name}>{o.name}</td>
                 <td><Dropdown className="combo" value={o.extruder} aria-label="Filament" onValueChange={(next) => editObject(o.id, 'Change filament', (x) => ({ ...x, extruder: Number(next) }))} options={[...s.filamentSlots.map((_, i) => ({ value: i + 1, label: i + 1 }))]} /></td>

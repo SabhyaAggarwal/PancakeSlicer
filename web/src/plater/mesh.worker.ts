@@ -109,12 +109,14 @@ async function finish(id: number, soup: Float32Array, item?: number, progress?: 
   const motion = motionResult ? { positions: motionResult.positions, index: motionResult.index, normals: vertexNormals(motionResult.positions, motionResult.index) } : undefined;
   checkShells(id, positions, index, item);
   const keep = positions.slice(), keepIndex = index.slice();
+  const hullSource = keep.length <= 150_000 ? keep
+    : display && display.positions.length <= 150_000 ? display.positions.slice() : null;
   post({ type: 'mesh', id, item, stats, positions, index, normals, display, motion, contentSignature, simplification, ...box, radius: Math.sqrt(r2) }, [positions.buffer, index.buffer, normals.buffer, ...(display ? [display.positions.buffer, display.index.buffer, display.normals.buffer] : []), ...(motion ? [motion.positions.buffer, motion.index.buffer, motion.normals.buffer] : [])]);
   return () => {
     const t0 = performance.now();
     const bvh = buildBvh(keep, keepIndex);
     post({ type: 'bvh', id, item, bvh, ms: performance.now() - t0 }, [bvh.bounds.buffer, bvh.nodes.buffer, bvh.tris.buffer]);
-    const hull = hullPoints(keep);
+    const hull = hullSource ? hullPoints(hullSource) : new Float32Array(0);
     post({ type: 'hull', id, item, hull }, [hull.buffer]);
   };
 }

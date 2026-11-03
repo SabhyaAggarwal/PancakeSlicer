@@ -15,9 +15,9 @@
   font: inherit; cursor: pointer; transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease); }
 :where(.orca-parity) .seg > button + button { border-left: 0; }
 :where(.orca-parity) .seg > button:hover:not(:disabled):not([aria-checked='true']):not([aria-pressed='true']):not(.on) { color: var(--ink); background: var(--panel); }
-:where(.orca-parity) .seg > button[aria-checked='true'], :where(.orca-parity) .seg > button[aria-pressed='true'], :where(.orca-parity) .seg > button.on { background: var(--ink); color: var(--panel); font-weight: 500; }
+:where(.orca-parity) .seg > button[aria-checked='true'], :where(.orca-parity) .seg > button[aria-pressed='true'], :where(.orca-parity) .seg > button.on { background: var(--segment-active); color: var(--text); font-weight: 500; }
 :where(.orca-parity) .seg > button:disabled { color: var(--ink-3); background: none; cursor: not-allowed; }
-:where(.orca-parity) .seg > button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+:where(.orca-parity) .seg > button:focus-visible { outline: 1px solid var(--focus); outline-offset: 1px; }
 :where(.orca-parity) .seg.num > button { font: var(--t-num); font-size: 12px; min-width: 34px; padding: 0 var(--s-2); }
 :where(.orca-parity) .seg-unit { font: var(--t-small); color: var(--ink-3); margin-left: var(--s-2); }
 :where(.orca-parity) .seg > button:disabled[aria-checked='true'], :where(.orca-parity) .seg > button:disabled[aria-pressed='true'], :where(.orca-parity) .seg > button:disabled.on { background: var(--line); color: var(--ink-2); }
