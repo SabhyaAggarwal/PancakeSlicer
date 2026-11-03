@@ -4,6 +4,7 @@
 :where(.orca-parity) .pk-caret { flex: none; color: var(--text-dim); }
 :where(.orca-parity) .orca-menu.pk-pop { width: min(560px, calc(100vw - 16px)); padding: 0; overflow: hidden; display: flex; flex-direction: column; max-height: min(520px, var(--radix-popover-content-available-height, calc(100dvh - 16px))); }
 :where(.orca-parity) .pk-body { flex: 1 1 auto; display: grid; grid-template-columns: 144px minmax(0, 1fr); min-height: min(288px, calc(var(--radix-popover-content-available-height, 100dvh) - 64px)); overflow: hidden; }
+:where(.orca-parity) .pk-body.no-rail { grid-template-columns: minmax(0, 1fr); }
 :where(.orca-parity) .pk-rail { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; border-right: 1px solid var(--line); padding: 4px; background: var(--bg-soft); scrollbar-width: thin; }
 :where(.orca-parity) .pk-rail button { flex: none; background: transparent; border: 0; border-radius: 3px; color: var(--text); min-height: 28px; text-align: left; padding: 4px 8px; overflow-wrap: break-word; cursor: pointer; }
 :where(.orca-parity) .pk-rail button:hover { background: var(--hover); }

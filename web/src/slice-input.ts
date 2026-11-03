@@ -109,7 +109,6 @@ export function jobFields(s: State, saving = false) {
   const profile_ids=context.printer.id && context.process.id && context.filaments.every(p=>!!p.id) ? {schema:1 as const,printer:context.printer.id,process:context.process.id,filaments:context.filaments.map(p=>p.id!),revisions:{printer:context.printer.revision,process:context.process.revision,filaments:context.filaments.map(p=>p.revision)}} : undefined;
   return {
     ...(profile_ids ? {profile_ids} : {}),
-    ...(!saving && effectiveConfig(s, 'process').web_slice_backend === 'orcanp-v01' ? { backend: 'orcanp-v01' as const } : {}),
     vendor: printerPreset(s)?.vendor ?? 'BBL',
     printer: sys('machine', s.printer),
     process: sys('process', s.process),

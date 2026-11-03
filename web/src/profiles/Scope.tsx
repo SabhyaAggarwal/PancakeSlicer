@@ -38,7 +38,7 @@ export function ScopeMark({ type, slot = 0, optKey, target = {} }: Props) {
   const label = `Use ${below} value`;
   return (
     <span className="scope">
-      <button type="button" className="scope-use" title={label} aria-label={`${label}: ${key}`}
+      <button type="button" className="scope-use" aria-label={`${label}: ${key}`}
         onClick={() => undoable(label, () => dropOf(getState(), type, key, slot, target)?.run())}
         onKeyDown={(e) => {
           if (e.key !== 'Backspace' && e.key !== 'Delete') return;

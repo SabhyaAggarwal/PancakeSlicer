@@ -253,8 +253,9 @@ export async function deleteProject(runtime: RecoveryRuntime, id: string): Promi
 export async function restoreArchivedProject(runtime: RecoveryRuntime, id: string, expectedRevision?: number) {
   const storage = runtime.storage();
   if (!storage) throw new Error('Project storage is unavailable');
+  const owner = removalOwners.get(runtime)?.get(id), removed = runtime.removed.has(id);
   await storage.restore(id, expectedRevision);
-  removalOwners.get(runtime)?.delete(id); runtime.removed.delete(id);
+  if (removed && removalOwners.get(runtime)?.get(id) === owner) { removalOwners.get(runtime)?.delete(id); runtime.removed.delete(id); }
   runtime.publish('saved', id); runtime.refreshList();
 }
 

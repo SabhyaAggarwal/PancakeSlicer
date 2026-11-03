@@ -7,7 +7,7 @@ export interface ManagerProfileRowItem {
   name: string;
   note: string;
   slot?: number;
-  cover?: string;
+  cover?: string | null;
   swatch?:string|null;
 }
 
@@ -26,8 +26,8 @@ export const ManagerProfileRow = memo(function ManagerProfileRow({ item, listId,
     onClick={event => dispatch({ type: 'CLICK', key: item.key, toggle: selectable && (event.ctrlKey || event.metaKey), shift: selectable && event.shiftKey })}>
     {selectable && <span role="gridcell" className="pf-row-check"><Check aria-label={`Select ${item.name}`} checked={selected}
       onClick={event => event.stopPropagation()} onCheckedChange={() => dispatch({ type: 'CLICK', key: item.key, toggle: true })}/></span>}
-    {item.swatch !== undefined && <span role="gridcell" className="profile-color-swatch" style={{backgroundColor:item.swatch ?? undefined}} data-unknown={!item.swatch} aria-label={item.swatch ? undefined : 'No color'}>{!item.swatch ? '?' : ''}</span>}
-    {item.cover && failedCover !== item.cover && <span role="gridcell" className="pf-row-cover"><img src={item.cover} alt="" width={44} height={44} loading="lazy" decoding="async" onError={()=>setFailedCover(item.cover)}/></span>}
+    {item.swatch !== undefined && <span role="gridcell" className="profile-color-swatch" style={{backgroundColor:item.swatch ?? undefined}} data-unknown={!item.swatch} aria-label={item.swatch ? undefined : 'No color'}/>}
+    {item.cover !== undefined && <span role="gridcell" className="pf-row-cover">{item.cover && failedCover !== item.cover && <img src={item.cover} alt="" width={44} height={44} loading="lazy" decoding="async" onError={()=>setFailedCover(item.cover ?? undefined)}/>}</span>}
     <span role="gridcell" className="pf-row-label"><span className="pf-item-title"><span className="pf-item-name">{item.name}</span>{item.slot !== undefined && <span className="pf-used">✓ In use</span>}</span>
       <span className="pf-dim pf-item-note">{item.note}</span></span>
   </div>;

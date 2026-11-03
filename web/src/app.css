@@ -150,6 +150,7 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .color { width: 44px; height: 24px; border: 1px solid var(--border); padding: 0 2px; background: var(--bg); }
 
 :where(.orca-parity) .canvas-area { flex: 1; position: relative; min-width: 0; background: var(--canvas); overflow: hidden; }
+:where(.orca-parity) .canvas-unavailable { position: absolute; inset: 0; display: grid; place-items: start center; padding: 64px var(--s-6) var(--s-6); color: var(--ink-2); font: var(--t-body); text-align: center; }
 :where(.orca-parity) .main.drag-over { position: relative; }
 :where(.orca-parity) .main.drag-over::after { content: 'Drop to import'; position: absolute; inset: var(--s-4); border: 2px solid var(--ink); display: grid; place-items: center; color: var(--ink); font: var(--t-title); background: color-mix(in srgb, var(--panel) 88%, transparent); pointer-events: none; z-index: 20; }
 :where(.orca-parity) .canvas-toolbar { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-3); padding: 3px 6px;  }

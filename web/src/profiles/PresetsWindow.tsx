@@ -1,10 +1,9 @@
 import { savePreferences, usePreference } from '../saved-preferences';
-import { ProfileLibraryNotice } from '../components/ProfileLibraryNotice';
+import { ProfileLibraryNotice, confirmProfileReset } from '../components/ProfileLibraryNotice';
 import { useEffect, useId, useRef, useSyncExternalStore } from 'react';
 import { createSelection, reduceSelection, selectedVisible, type SelectionEvent } from './selection';
 import { serializeSelected } from './bulk';
 import { findProfile, matchesProfile, profileKey } from './identity';
-import { Radio } from '../components/Radio';
 import { ProfileFilterGroup } from './ProfileFilters';
 import { selectCompatibility } from './compatibility';
 import { ManagerProfileRow } from './ManagerProfileRow';
@@ -18,7 +17,7 @@ import { profileColour,profileSummary } from './metadata';
 import { Check } from '../components/Check';
 import { Dropdown } from '../components/Dropdown';
 import { ActionMenu, MenuButton } from '../components/Menu';
-import { Segmented } from '../components/kit';
+import { Choice, Segmented } from '../components/kit';
 import './presets-window.css';
 import { useCallback, useMemo, useState } from 'react';
 import type { Config, ConfigValue, PresetType, SystemPreset, UserPreset } from '../api/types';
@@ -27,7 +26,7 @@ import { OPTIONS } from '../options';
 import { getState, resolvePreset, setState, toast, useStore, type State } from '../state/store';
 import { Modal } from '../components/Modal';
 import { SettingsDetail } from '../components/VisibilityControl';
-import { Dialog,RadioGroup } from 'radix-ui';
+import { Dialog } from 'radix-ui';
 import type { ProjectProfileChanges } from './project-draft';
 import { confirmDialog, promptDialog } from '../components/Ask';
 import { diffRows, useTabLoaded } from '../components/PresetDialogs';
@@ -116,23 +115,22 @@ export async function removePreset(type: PresetType, profile: UserPreset) {try {
 function catalogItems(s: State, type: PresetType): Item[] {
   return listCatalog(s,type,{browseAll:true}).map(entry => {
     const {base}=resolveCatalogEntry(s,type,entry.key), config=base.config;
-    return {key:entry.key,base,name:entry.name,mine:false,changed:0,note:profileSummary(type,config),vendor:type === 'filament' ? first(config.filament_vendor) || entry.vendor : entry.vendor,model:first(config.printer_model) || base?.model || '',nozzle:first(config.nozzle_diameter),material:first(config.filament_type),family:first(config.filament_id) || undefined,cover:type === 'machine' ? coverOf(entry.vendor,first(config.printer_model) || base?.model || '') ?? null : undefined,swatch:type === 'filament' ? profileColour(config) : undefined,reason:entry.compatible.ok ? undefined : entry.compatible.reason,config};
+    return {key:entry.key,base,name:entry.name,mine:false,changed:0,note:profileSummary(type,config),vendor:type === 'filament' ? first(config.filament_vendor) || entry.vendor : entry.vendor,model:first(config.printer_model) || base?.model || '',nozzle:first(config.nozzle_diameter),material:first(config.filament_type),family:type === 'filament' ? base.filament_id || base.inherits?.[0] || undefined : undefined,cover:type === 'machine' ? coverOf(entry.vendor,first(config.printer_model) || base?.model || '') ?? null : undefined,swatch:type === 'filament' ? profileColour(config) : undefined,reason:entry.compatible.ok ? undefined : entry.compatible.reason,config};
   });
 }
 function AddDetails({type,item,busy,onAdd}: {type:PresetType;item:Item;busy:boolean;onAdd(variant:Item):void}) {
   const load=useStore(s=>s.profileLibraryLoad.state);
   const variants=item.variants ?? [item];
-  const [choice,setChoice]=useState(()=>defaultVariant(type,variants).key);
+  const [choice,setChoice]=useState(()=>defaultVariant(type,variants).key),[coverFailed,setCoverFailed]=useState(false);
   const variant=variants.find(v=>v.key === choice) ?? variants[0];
   return <section className="pf-add-source" aria-label={item.name}>
-    {item.cover !== undefined && <span className="pf-source-cover">{item.cover && <img src={item.cover} alt="" loading="lazy"/>}</span>}
+    {item.cover !== undefined && <span className="pf-source-cover">{item.cover && !coverFailed && <img src={item.cover} alt="" loading="lazy" onError={()=>setCoverFailed(true)}/>}</span>}
     <h2>{item.name}</h2>
     {variants.length > 1 && (type === 'machine'
-      ? <div className="pf-variant"><span>Nozzle</span><Segmented label="Nozzle" value={variant.key} options={variants.map(v=>({id:v.key,label:`${v.nozzle} mm`}))} onChange={setChoice}/></div>
+      ? <div className="pf-variant"><span>Nozzle</span><Choice label="Nozzle" value={variant.key} options={variants.map(v=>({id:v.key,label:`${v.nozzle} mm`}))} onChange={setChoice}/></div>
       : <label className="pf-variant"><span>Variant</span><Dropdown className="combo" aria-label="Variant" value={variant.key} onValueChange={setChoice} options={variants.map(v=>({value:v.key,label:v.name}))}/></label>)}
     {variants.length === 1 && variant.note && <p>{variant.note}</p>}
-    {load === 'ready' && variant.reason && <p role="alert">{variant.reason}</p>}
-    <button type="button" className="btn primary" disabled={busy || load !== 'ready' || !!variant.reason} onClick={()=>onAdd(variant)}>{busy ? 'Adding…' : load === 'loading' ? 'Loading…' : `Add ${NOUNS[type][0]}`}</button>
+    <button type="button" className="btn primary" disabled={busy || load !== 'ready'} onClick={()=>onAdd(variant)}>{busy ? 'Adding…' : load === 'loading' ? 'Loading…' : `Add ${NOUNS[type][0]}`}</button>
   </section>;
 }
 
@@ -195,10 +193,9 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const [mobilePane,setMobilePane]=useState<'list'|'detail'|'filters'>(edit || stage || compare!==undefined?'detail':'list');
   const mobileBack=useRef<HTMLButtonElement>(null),mounted=useRef(true);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
-  useEffect(()=>{if(!request)return;setAdding(!!add);if(add)setAddSource('template');},[request]);
+  useEffect(()=>{if(request)setAdding(!!add);},[request]);
   useEffect(()=>{if(window.matchMedia('(max-width:640px)').matches && mobilePane!=='list')mobileBack.current?.focus();},[mobilePane]);
-  const [type, setType] = useState(initialType), [search, setSearch] = useState(''), [adding, setAdding] = useState(add), [masters,setMasters] = useState(()=>!!name && findProfile(getState(),initialType,name)?.kind === 'master');
-  const [addSource,setAddSource]=useState('template');
+  const [type, setType] = useState(initialType), [search, setSearch] = useState(''), [adding, setAdding] = useState(add);
   const [vendorFilter,setVendorFilter] = useState<string[]>([]), [nozzleFilter,setNozzleFilter] = useState<string[]>([]), [materialFilter,setMaterialFilter] = useState<string[]>([]), [modelFilter,setModelFilter]=useState<string[]>([]), [printerFilter,setPrinterFilter]=useState<string[]>([]);
   const [filtersOpen,setFiltersOpen]=useState(false);
   const resultsPane = useRef<HTMLElement>(null);
@@ -218,30 +215,40 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const users = useStore(st => st.userPresets), dirty = useStore(st => st.dirty), filamentEdits = useStore(st => st.filamentEdits);
   const machines = useStore(st => st.machines), processes = useStore(st => st.processes), filaments = useStore(st => st.filaments);
   const printer = useStore(st => st.printer), process = useStore(st => st.process), slots = useStore(st => st.filamentSlots);
-  const list = useMemo(() => {
-    const s = getState(); if(adding) return addSource === 'copy' ? items(s,type).filter(i=>i.user?.kind !== 'master') : catalogItems(s,type);
-    const records = items(s,type).filter(i=>(i.user?.kind === 'master') === masters);
-    if(!masters) return records;
-    return [...records,...catalogItems(s,type).filter(i=>!s.userPresets.some(p=>p.type === type && p.kind === 'master' && p.base && findCatalogBase(s,type,p.base).base === i.base))];
-  }, [adding,addSource,masters,type,users,dirty,filamentEdits,machines,processes,filaments,printer,process,slots]);
   const printerOptions=useMemo(()=>users.filter(p=>p.type === 'machine' && !p.archived && p.kind !== 'master').map(p=>({value:profileKey(p),label:p.name})),[users]);
+  const list = useMemo(() => {
+    const s = getState();
+    return adding ? families(type,catalogItems(s,type)) : items(s,type);
+  }, [adding,type,users,dirty,filamentEdits,machines,processes,filaments,printer,process,slots]);
+  useEffect(()=>{if(adding && type !== 'machine' && printerOptions.some(o=>o.value === printer))setPrinterFilter([printer]);},[adding,type]);
   const facets=useMemo(()=>{
-    const rows=list.filter(i=>!vendorFilter.length || vendorFilter.includes(i.vendor));
+    const flat=list.flatMap(i=>i.variants ?? [i]);
+    const rows=flat.filter(i=>!vendorFilter.length || vendorFilter.includes(i.vendor));
     const contexts=machines.filter(p=>!modelFilter.length || modelFilter.includes(first(p.config.printer_model) || p.model || ''));
     const unique=(values:string[])=>[...new Set(values.filter(Boolean))].sort();
-    return {vendors:unique(list.map(i=>i.vendor)),models:unique(type === 'machine' ? rows.map(i=>i.model) : machines.map(p=>first(p.config.printer_model) || p.model || '')),nozzles:unique(type === 'machine' ? rows.filter(i=>!modelFilter.length || modelFilter.includes(i.model)).map(i=>i.nozzle) : contexts.map(p=>first(p.config.nozzle_diameter))),materials:unique(rows.map(i=>i.material))};
+    return {vendors:unique(flat.map(i=>i.vendor)),models:unique(type === 'machine' ? rows.map(i=>i.model) : machines.map(p=>first(p.config.printer_model) || p.model || '')),nozzles:unique(type === 'machine' ? rows.filter(i=>!modelFilter.length || modelFilter.includes(i.model)).map(i=>i.nozzle) : contexts.map(p=>first(p.config.nozzle_diameter))),materials:unique(rows.map(i=>i.material))};
   },[list,type,machines,vendorFilter,modelFilter]);
   useEffect(()=>{setNozzleFilter(prior=>{const next=prior.filter(n=>facets.nozzles.includes(n));return next.length === prior.length ? prior : next;});},[facets.nozzles]);
   const matching=useMemo(()=>{
     const state=getState();
     const hasContext=type !== 'machine' && (printerFilter.length || modelFilter.length || nozzleFilter.length);
     const contexts=hasContext ? printerFilter.length ? printerFilter : machines.filter(p=>(!modelFilter.length || modelFilter.includes(first(p.config.printer_model) || p.model || '')) && (!nozzleFilter.length || nozzleFilter.includes(first(p.config.nozzle_diameter)))).map(p=>p.name) : [];
-    return list.filter(i=>(!vendorFilter.length || vendorFilter.includes(i.vendor)) && (!materialFilter.length || materialFilter.includes(i.material)) && (type === 'machine' ? (!modelFilter.length || modelFilter.includes(i.model)) && (!nozzleFilter.length || nozzleFilter.includes(i.nozzle)) : !hasContext || contexts.some(key=>selectCompatibility(state,type,i.user ? i.key : i.name,key).ok)));
+    return list.filter(i=>{const variants=i.variants ?? [i];return (!vendorFilter.length || vendorFilter.includes(i.vendor)) && (!materialFilter.length || materialFilter.includes(i.material)) && (type === 'machine' ? (!modelFilter.length || modelFilter.includes(i.model)) && (!nozzleFilter.length || variants.some(v=>nozzleFilter.includes(v.nozzle))) : !hasContext || variants.some(v=>contexts.some(key=>selectCompatibility(state,type,v.user ? v.key : v.name,key).ok)));});
   },[list,type,vendorFilter,materialFilter,modelFilter,nozzleFilter,printerFilter,machines,users,printer,process,dirty,filamentEdits]);
-  const visible=useMemo(()=>matching.filter(i=>`${i.name} ${i.note}`.toLocaleLowerCase().includes(search.toLocaleLowerCase())).sort((a,b)=>a.name.localeCompare(b.name)),[matching,search]);
+  const query=search.trim().toLocaleLowerCase();
+  const groups=useMemo(()=>{
+    const byGroup=new Map<string,Item[]>();
+    for(const i of matching)if(!query || [i,...i.variants ?? []].some(v=>`${v.name} ${v.note}`.toLocaleLowerCase().includes(query))){
+      const g=groupOf(type,i);if(!byGroup.has(g))byGroup.set(g,[]);byGroup.get(g)!.push(i);
+    }
+    return [...byGroup].sort(([a],[b])=>groupOrder(type,a,b)).map(([label,rows])=>({label,rows:rows.sort((a,b)=>a.name.localeCompare(b.name))}));
+  },[matching,query,type]);
+  const visible=useMemo(()=>groups.flatMap(g=>g.rows),[groups]);
+  const [collapsed,setCollapsed]=useState<ReadonlySet<string>>(new Set());
   const filtersActive=vendorFilter.length+modelFilter.length+nozzleFilter.length+materialFilter.length+printerFilter.length;
   const clearFilters=()=>{setVendorFilter([]);setModelFilter([]);setNozzleFilter([]);setMaterialFilter([]);setPrinterFilter([]);};
-  const order = useMemo(() => visible.map(i => i.key), [visible]), scope = `profiles:${adding ? `add:${addSource}` : masters ? 'masters' : 'owned'}:${type}`;
+  const scope = `profiles:${adding ? 'add' : 'owned'}:${type}`, groupKey = (label: string) => `${scope}:${label}`;
+  const order = useMemo(() => groups.flatMap(g => !query && collapsed.has(groupKey(g.label)) ? [] : g.rows.map(i => i.key)), [groups, collapsed, query, scope]);
   const current = (t: PresetType) => (t === 'machine' ? printer : t === 'process' ? process : slots[0]) ?? '';
   const [selectionState, setSelection] = useState(() => {
     let initial = createSelection(scope, order);
@@ -259,7 +266,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     setSelection(prior=>{
       let next=reduceSelection(prior,{type:'SYNC',scope,visible:order});
       if(order.length && next.selected.length === 0 && (initialize || prior.selected.length > 0 && !prior.selected.some(key=>drafts[JSON.stringify([type,key])]))) {
-        const selectedKey=current(type), target=visible.find(i=>i.key === name || i.name === name) ?? visible.find(i=>i.key === selectedKey || i.name === selectedKey) ?? visible[0];
+        const selectedKey=current(type), shown=visible.filter(i=>order.includes(i.key)), target=shown.find(i=>i.key === name || i.name === name) ?? shown.find(i=>i.key === selectedKey || i.name === selectedKey) ?? shown[0];
         next=reduceSelection(next,{type:'CLICK',key:target.key});
       }
       return next;
@@ -291,13 +298,13 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const pickType = (t: PresetType, target?: string) => {
     selectionRevision.current++;
     setType(t); setSearch(''); setVendorFilter([]); setNozzleFilter([]); setMaterialFilter([]); setComparing(false); setBulkError(null);
-    const rows = items(getState(), t), nextScope = `profiles:${adding ? `add:${addSource}` : masters ? 'masters' : 'owned'}:${t}`;
+    const rows = adding ? [] : items(getState(), t), nextScope = `profiles:${adding ? 'add' : 'owned'}:${t}`;
     let next = createSelection(nextScope, rows.map(i => i.key));
     const row = rows.find(i => i.key === target || i.name === target);
     if(row) next = reduceSelection(next, {type: 'CLICK', key: row.key});
     setSelection(next);
   };
-  const added = (n: string,targetType=type) => {setType(targetType);setMasters(false); setAdding(false); setMobilePane('detail');setSearch(''); setVendorFilter([]); setNozzleFilter([]); setMaterialFilter([]); const p = findProfile(getState(), targetType, n); if(p) {const key = profileKey(p); const initial = createSelection(`profiles:owned:${targetType}`, [key]); setSelection(reduceSelection(initial,{type: 'CLICK',key}));}};
+  const added = (n: string,targetType=type) => {setType(targetType); setAdding(false); setMobilePane('detail');setSearch(''); setVendorFilter([]); setNozzleFilter([]); setMaterialFilter([]); const p = findProfile(getState(), targetType, n); if(p) {const key = profileKey(p); const initial = createSelection(`profiles:owned:${targetType}`, [key]); setSelection(reduceSelection(initial,{type: 'CLICK',key}));}};
   const consumeCopy=async(captured:CopyRequest,owns:()=>boolean)=>{
     const key=await captured.creation.commit();
     if(pendingCopy===captured)pendingCopy=undefined;
@@ -308,21 +315,12 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     return ()=>mounted.current && documentGeneration()===document && getState().api===before.api && selectionRevision.current===revision
       && getState().printer===before.printer && getState().process===before.process && getState().filamentSlots===before.filamentSlots;
   };
-  const addSelected = async (item:Item,newName?:string) => {
+  const addVariant = async (variant:Item) => {
     if(getState().profileLibraryLoad.state!=='ready')return;
     setBusy(true);setBulkError(null);
     const owns=owner();
-    try {
-      if(addSource === 'template') {
-        const key=await createProfileFromBase(type,item.key);if(owns())added(key);
-      } else {
-        if(!item.user || !newName) throw new Error('Enter a name for the copy.');
-        if(pendingCopy && pendingCopy.source.id!==item.user.id)throw new Error(`Finish or discard the copy of ${pendingCopy.source.name} first.`);
-        pendingCopy ??= {source:item.user,name:newName,creation:profileCopyCreation(item.user,newName)};
-        pendingCopy.error=undefined;
-        await consumeCopy(pendingCopy,owns);
-      }
-    } catch(error) {const message=error instanceof Error?error.message:String(error);if(pendingCopy)pendingCopy.error=message;else if(mounted.current)setBulkError(message);}
+    try {const key=await createProfileFromBase(type,variant.key);if(owns())added(key);else toast(`Added ${variant.name}`);}
+    catch(error) {if(mounted.current)setBulkError(error instanceof Error?error.message:String(error));}
     finally {if(mounted.current)setBusy(false);}
   };
   const retryCopy=async()=>{
@@ -331,6 +329,15 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     try{await consumeCopy(copy,owner());}
     catch(error){copy.error=error instanceof Error?error.message:String(error);}
     finally{if(mounted.current)setBusy(false);}
+  };
+  const duplicate=async(source:UserPreset)=>{
+    if(busy || !libraryReady)return;
+    if(pendingCopy){if(pendingCopy.source.id===source.id)await retryCopy();else setBulkError(`Finish or discard the copy of ${pendingCopy.source.name} first.`);return;}
+    const copyName=await promptDialog(`Duplicate ${NOUNS[type][0]}`,`${source.name} copy`);
+    if(!copyName || pendingCopy)return;
+    if(getState().userPresets.some(p=>p.type === source.type && !p.archived && p.name === copyName)){setBulkError(`${copyName} already exists.`);return;}
+    pendingCopy={source,name:copyName,creation:profileCopyCreation(source,copyName)};
+    await retryCopy();
   };
   const [,refresh]=useState(0);
   const discardCopy=()=>{if(pendingCopy && !pendingCopy.creation.retryable && !busy){pendingCopy=undefined;refresh(n=>n+1);}};
@@ -349,18 +356,6 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     catch(error) {setBulkError(error instanceof Error ? error.message : String(error));}
     finally {setBusy(false);}
   };
-  const [masterLoad,setMasterLoad] = useState<{key:string;error?:string}|null>(null);
-  const openMaster = async (baseKey:string) => {
-    const intent=selectionRevision.current;
-    setMasterLoad({key:baseKey}); setBusy(true);
-    try {
-      const key=await ensureEditableMaster(type,baseKey);
-      if(latestSelection.current.scope === scope && selectionRevision.current === intent)setSelection(reduceSelection(createSelection(scope,[key]),{type:'CLICK',key}));
-      setMasterLoad(null);
-    } catch(error) {setMasterLoad({key:baseKey,error:error instanceof Error ? error.message : String(error)});}
-    finally {setBusy(false);}
-  };
-  useEffect(()=>{if(libraryReady && masters && !adding && item && !item.user && masterLoad?.key !== item.key) void openMaster(item.key);},[libraryReady,masters,adding,item?.key]);
   const staged=useRef<string|null>(null);
   useEffect(()=>{
     if(!stage || staged.current === stage.id)return;
@@ -373,12 +368,13 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   useEffect(()=>{
     const prior=targetRequest.current;targetRequest.current={type:initialType,name};
     if(prior.type === initialType && prior.name === name || initialType === type && (name === item?.key || name === item?.name))return;
-    const p=name ? findProfile(getState(),initialType,name) : undefined;
-    if(p)setMasters(p.kind === 'master');
     setAdding(!!add);pickType(initialType,name);
   },[initialType,name]);
   const backToList=()=>{setMobilePane('list');setFiltersOpen(false);requestAnimationFrame(()=>document.getElementById(`${id}:${latestSelection.current.focus}`)?.focus());};
-  const typeLabel=type === 'machine' ? 'printer' : type === 'filament' ? 'filament' : 'print settings';
+  const nouns=NOUNS[type], typeLabel=nouns[0];
+  const resultNoun:[string,string]=adding && type === 'machine' ? ['model','models'] : adding ? ['preset','presets'] : nouns;
+  const toggleGroup=(label:string)=>setCollapsed(prior=>{const next=new Set(prior),key=groupKey(label);if(!next.delete(key))next.add(key);return next;});
+  const showLibrary=(master:boolean)=>{if(master === adding)return;void leave(()=>{setDrafts({});clearFilters();setSearch('');setComparing(false);setAdding(master);setMobilePane('list');});};
   return <Modal className="np-dialog pf-window" label="Profiles" onClose={close} backdropClose onEscapeKeyDown={event=>{if(busy){event.preventDefault();return;}if(window.matchMedia('(max-width:640px)').matches && mobilePane!=='list'){event.preventDefault();backToList();}else if(selected.length){event.preventDefault();dispatch({type:'ESCAPE'});}}}>
     <header className="pf-workspace-title">
       <Dialog.Title asChild><h1>Profiles</h1></Dialog.Title>
@@ -387,36 +383,39 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
       <button type="button" className="btn-ghost pf-close" aria-label="Close profiles" onClick={close}>×</button>
     </header>
     <ProfileLibraryNotice/>
-    {pendingCopy && !(adding && addSource === 'copy' && item?.user?.id === pendingCopy.source.id) && <div className="pf-copy-pending" role={pendingCopy.error ? 'alert' : 'status'}>
-      <strong>{pendingCopy.name}</strong><span>{pendingCopy.error ?? 'Copy not finished'}</span>
+    {pendingCopy && <div className="pf-copy-pending" role={pendingCopy.error ? 'alert' : 'status'}>
+      <strong>{pendingCopy.name}</strong><span>{pendingCopy.error ?? 'Duplicate not finished'}</span>
       <button type="button" className="btn" disabled={busy || !libraryReady} onClick={()=>void retryCopy()}>Retry</button>
       {!pendingCopy.creation.retryable && <button type="button" className="btn-ghost" disabled={busy} onClick={discardCopy}>Discard</button>}
     </div>}
     <div className="np-dialog-body">
       <div className={`pf-split${filtersOpen ? ' filters-open' : ''}`} data-mobile-pane={mobilePane} style={{'--profile-list-width': `${renderedListWidth}px`} as React.CSSProperties} inert={busy}>
       <div className="pf-mobile-navigation"><button ref={mobileBack} type="button" className="btn" onClick={backToList}>Back</button><strong>{mobilePane==='filters'?'Filters':item?.name ?? ''}</strong></div>
-      <aside id={`${id}-filters`} className="pf-facets" aria-label="Filters">
-        {!adding && <fieldset className="pf-facet-group"><legend>Library</legend><RadioGroup.Root className="pf-radio-list" aria-label="Library" value={masters ? 'masters' : 'owned'} onValueChange={value=>{setMasters(value === 'masters');setSearch('');}}>{[{id:'owned',label:'My profiles'},{id:'masters',label:'System profiles'}].map(o=><label key={o.id} className="pf-facet-choice"><Radio value={o.id}/><span>{o.label}</span></label>)}</RadioGroup.Root></fieldset>}
+      <aside id={`${id}-filters`} className="pf-facets" aria-label="Library and filters">
+        <nav className="pf-library" aria-label="Library">
+          <button type="button" className="pf-library-item" aria-current={!adding ? 'page' : undefined} onClick={()=>showLibrary(false)}>My {nouns[1]}</button>
+          <button type="button" className="pf-library-item" aria-current={adding ? 'page' : undefined} onClick={()=>showLibrary(true)}>Master presets</button>
+        </nav>
         <ProfileFilterGroup label="Brand" options={facets.vendors.map(value=>({value,label:value}))} value={vendorFilter} onChange={setVendorFilter}/>
         {type !== 'filament' && <ProfileFilterGroup label="Printer model" options={facets.models.map(value=>({value,label:value}))} value={modelFilter} onChange={setModelFilter}/>}
         {type !== 'filament' && <ProfileFilterGroup label="Nozzle" options={facets.nozzles.map(value=>({value,label:`${value} mm`}))} value={nozzleFilter} onChange={setNozzleFilter}/>}
         {type === 'filament' && <ProfileFilterGroup label="Material" options={facets.materials.map(value=>({value,label:value}))} value={materialFilter} onChange={setMaterialFilter}/>}
         {type !== 'machine' && <ProfileFilterGroup label={type === 'filament' ? 'Works with' : 'Printer'} options={printerOptions} value={printerFilter} onChange={setPrinterFilter}/>}
-        {filtersActive > 0 && <button type="button" className="btn-ghost" onClick={clearFilters}>Clear filters</button>}
-        <button type="button" className="btn pf-mobile-show-results" onClick={backToList}>Show {visible.length} results</button>
+        {filtersActive > 0 && <button type="button" className="more-toggle" onClick={clearFilters}>Clear filters</button>}
+        <button type="button" className="btn pf-mobile-show-results" onClick={backToList}>Show {count(visible.length,resultNoun)}</button>
       </aside>
-      <section className="pf-my-profiles" ref={resultsPane} aria-label={adding ? `Add ${typeLabel}` : 'Profiles'}>
-        <div className="pf-results-heading"><strong>{adding ? `Add ${typeLabel}` : masters ? 'System profiles' : 'My profiles'}</strong><span>{visible.length}</span>
-          {adding ? <button type="button" className="btn" onClick={()=>{setAdding(false);setSearch('');}}>Cancel</button>
-            : <button type="button" className="btn primary" onClick={()=>{setAdding(true);setAddSource('template');setSearch('');}}>Add {typeLabel}</button>}
+      <section className="pf-my-profiles" ref={resultsPane} aria-label={adding ? 'Master presets' : `My ${nouns[1]}`}>
+        <div className="pf-results-heading"><strong>{count(visible.length,resultNoun)}</strong>
+          {adding ? <button type="button" className="btn" onClick={()=>showLibrary(false)}>Cancel</button>
+            : <button type="button" className="btn" onClick={()=>showLibrary(true)}>Add {typeLabel}</button>}
         </div>
         <div className="pf-results-tools"><input className="text pf-profile-search" type="search" aria-label="Search" placeholder="Search" value={search} onChange={e=>setSearch(e.target.value)}/>
           <button type="button" className="btn pf-filter-toggle" aria-expanded={filtersOpen || mobilePane==='filters'} aria-controls={`${id}-filters`} onClick={()=>{setFiltersOpen(!filtersOpen);setMobilePane(mobilePane==='filters'?'list':'filters');}}>Filters{filtersActive ? ` · ${filtersActive}` : ''}</button>
-          {!adding && <MenuButton label="Import or export profiles" className="btn-ghost" items={[{label:'Import',action:()=>void leave(()=>setState({presetUx:{kind:'import',back:{kind:'presets',type,name:item?.key}}}))},{label:'Export',action:()=>void leave(()=>setState({presetUx:{kind:'export'}}))}]}>Files</MenuButton>}
+          {adding ? type === 'machine' && <button type="button" className="btn-ghost" onClick={()=>setState({appDialog:'createPrinter'})}>Custom printer</button>
+            : <MenuButton label="More library actions" className="btn-ghost" items={[{label:'Import',action:()=>void leave(()=>setState({presetUx:{kind:'import',back:{kind:'presets',type,name:item?.key}}}))},{label:'Export',action:()=>void leave(()=>setState({presetUx:{kind:'export'}}))},'sep',{label:'Reset profiles…',disabled:!libraryReady,action:()=>void leave(()=>void confirmProfileReset())}]}>More</MenuButton>}
         </div>
-        {adding && <div className="pf-add-from"><Segmented label="Add from" value={addSource} options={[{id:'template',label:'Catalog'},{id:'copy',label:'Copy'}]} onChange={v=>{setAddSource(v);setSearch('');}}/>{type === 'machine' && <button type="button" className="btn-ghost" onClick={()=>setState({appDialog:'createPrinter'})}>Custom printer</button>}</div>}
         {selected.length > 1 && !adding && <div className="pf-bulk-actions"><span>{selected.length} selected</span><button type="button" className="btn" disabled={selected.length !== 2 || busy} onClick={() => setComparing(true)}>Compare</button><button type="button" className="btn" disabled={busy} onClick={() => void exportSelected()}>Export</button><button type="button" className="btn-ghost pf-delete" disabled={busy} onClick={() => void deleteSelected()}>Delete</button><button type="button" className="btn-ghost" onClick={() => dispatch({type: 'CLEAR'})}>Clear</button></div>}
-        <div className="pf-scroll pf-list" role="grid" aria-label={adding ? 'Catalog' : 'Profiles'} aria-multiselectable={!adding} onContextMenu={e=>{const row=(e.target as Element).closest<HTMLElement>('[data-profile-key]');if(!row || adding) return;e.preventDefault();const key=row.dataset.profileKey!;if(!selectedSet.has(key)) dispatch({type:'CLICK',key});setContextMenu({x:e.clientX,y:e.clientY,anchor:row});}} tabIndex={visible.length ? -1 : 0} onKeyDown={e => {
+        <div className="pf-scroll pf-list" role="grid" aria-label={adding ? 'Master presets' : `My ${nouns[1]}`} aria-multiselectable={!adding} onContextMenu={e=>{const row=(e.target as Element).closest<HTMLElement>('[data-profile-key]');if(!row || adding) return;e.preventDefault();const key=row.dataset.profileKey!;if(!selectedSet.has(key)) dispatch({type:'CLICK',key});setContextMenu({x:e.clientX,y:e.clientY,anchor:row});}} tabIndex={visible.length ? -1 : 0} onKeyDown={e => {
           if(e.target instanceof Element && e.target.closest('input,textarea,[contenteditable=true]')) return;
           const command = e.ctrlKey || e.metaKey;
           if(command && e.key.toLocaleLowerCase() === 'a' && !adding) {e.preventDefault(); e.stopPropagation(); dispatch({type: 'SELECT_ALL'});}
@@ -424,8 +423,14 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
           else if(e.key === 'Delete' || e.key === 'Backspace') {e.preventDefault(); e.stopPropagation(); if(!adding) void deleteSelected();}
           else if((e.key === 'Enter' || e.key === ' ') && e.target instanceof HTMLElement && e.target.dataset.profileKey) {e.preventDefault(); dispatch({type: 'CLICK', key: e.target.dataset.profileKey, toggle: !adding && (command || e.key === ' '), shift: !adding && e.shiftKey});}
         }}>
-          {visible.map(i => <ManagerProfileRow key={i.key} item={i} listId={id} selected={selectedSet.has(i.key)} focused={selection.focus === i.key} selectable={!adding} dispatch={dispatch}/>)}
-          {!visible.length && <div className="pf-profile-empty">{search || filtersActive ? <><span>No matches</span><button type="button" className="btn-ghost" onClick={()=>{clearFilters();setSearch('');}}>Clear filters</button></> : adding ? <span>Catalog is empty</span> : <span>No {masters ? 'system profiles' : `${TYPES.find(([t])=>t===type)![1].toLocaleLowerCase()} yet`}</span>}</div>}
+          {groups.map(g => {
+            const open = !!query || !collapsed.has(groupKey(g.label));
+            return <div key={g.label} role="rowgroup" className="pf-group">
+              <div role="row"><span role="rowheader"><button type="button" className="pf-group-toggle" aria-expanded={open} onClick={()=>toggleGroup(g.label)}><span>{g.label}</span><span className="pf-dim">{count(g.rows.length,resultNoun)}</span></button></span></div>
+              {open && g.rows.map(i => <ManagerProfileRow key={i.key} item={i} listId={id} selected={selectedSet.has(i.key)} focused={selection.focus === i.key} selectable={!adding} dispatch={dispatch}/>)}
+            </div>;
+          })}
+          {!visible.length && <div className="pf-profile-empty">{search || filtersActive ? <><span>No matches</span><button type="button" className="more-toggle" onClick={()=>{clearFilters();setSearch('');}}>Clear filters</button></> : <span>{adding ? 'No master presets' : `No ${nouns[1]} yet`}</span>}</div>}
         </div>
       </section><div className="pf-resizer" role="separator" aria-label="Resize profile list" aria-orientation="vertical" aria-valuemin={minListWidth} aria-valuemax={maxListWidth} aria-valuenow={renderedListWidth} tabIndex={0}
         onPointerDown={e => {if(e.button!==0 || !resultsPane.current)return;e.preventDefault();drag.current={id:e.pointerId,x:e.clientX,width:resultsPane.current.getBoundingClientRect().width};e.currentTarget.setPointerCapture(e.pointerId);}}
@@ -433,11 +438,11 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
         onPointerUp={e => {const start=drag.current;if(start?.id===e.pointerId && e.currentTarget.hasPointerCapture(e.pointerId)){drag.current=null;if(e.currentTarget.getClientRects().length)resizeList(start.width+e.clientX-start.x,true);else setPreviewWidth(null);e.currentTarget.releasePointerCapture(e.pointerId);}}}
         onPointerCancel={e => {drag.current=null;setPreviewWidth(null);if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);}}
         onLostPointerCapture={()=>{drag.current=null;setPreviewWidth(null);}}
-        onKeyDown={e => {if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) {e.preventDefault();resizeList(e.key==='Home'?minListWidth:e.key==='End'?maxListWidth:renderedListWidth+(e.key==='ArrowRight'?16:-16),true);}}}/><div className="pf-detail-pane">{filteredDraft && <div className="pf-filtered-draft" role="status"><span>Hidden by filters</span><button type="button" className="btn-ghost" onClick={()=>{clearFilters();setSearch('');}}>Clear filters</button></div>}{adding ? item ? <AddProfileDetails key={item.key} type={type} item={item} copy={addSource === 'copy'} busy={busy} onAdd={name=>void addSelected(item,name)} onDiscard={discardCopy}/> : <section className="pf-bulk-summary"><strong>Choose a {addSource === 'copy' ? 'profile to copy' : typeLabel}</strong></section>
+        onKeyDown={e => {if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) {e.preventDefault();resizeList(e.key==='Home'?minListWidth:e.key==='End'?maxListWidth:renderedListWidth+(e.key==='ArrowRight'?16:-16),true);}}}/><div className="pf-detail-pane">{filteredDraft && <div className="pf-filtered-draft" role="status"><span>Hidden by filters</span><button type="button" className="more-toggle" onClick={()=>{clearFilters();setSearch('');}}>Clear filters</button></div>}
+        {adding ? item ? <AddDetails key={item.key} type={type} item={item} busy={busy} onAdd={variant=>void addVariant(variant)}/> : null
         : comparing && selectedItems.length === 2 ? <Compare type={type} left={selectedItems[0].key} right={selectedItems[1].key} names={selectedItems.map(i => i.key)} setRight={() => {}} close={() => setComparing(false)}/>
-         : item?.user ? <ProfileEditor key={item.key} type={type} name={item.key} draft={drafts[JSON.stringify([type,item.key])]} update={updateDraft} onSavingChange={setBusy} onBack={close} onRemove={() => void deleteSelected([item.key])}/>
-        : item && masters ? <section className="pf-bulk-summary" role={masterLoad?.error ? 'alert' : 'status'}><strong>{item.name}</strong><p>{masterLoad?.error ?? 'Opening…'}</p>{masterLoad?.error && <button type="button" className="btn" onClick={()=>void openMaster(item.key)}>Retry</button>}</section>
-        : <section className="pf-bulk-summary"><strong>{selected.length ? `${selected.length} selected` : visible.length ? 'Select a profile' : ''}</strong>{selectedItems.map(i => <div key={i.key} className="pf-bulk-name">{i.name}</div>)}</section>}
+        : item?.user ? <ProfileEditor key={item.key} type={type} name={item.key} draft={drafts[JSON.stringify([type,item.key])]} update={updateDraft} onSavingChange={setBusy} onBack={close} onRemove={() => void deleteSelected([item.key])} onDuplicate={item.user.kind === 'master' ? undefined : () => void duplicate(item.user!)}/>
+        : selected.length > 1 ? <section className="pf-bulk-summary"><strong>{selected.length} selected</strong>{selectedItems.map(i => <div key={i.key} className="pf-bulk-name">{i.name}</div>)}</section> : null}
       </div></div>
 
       {contextMenu && <ActionMenu label="Profile actions" at={contextMenu} returnFocus={contextMenu.anchor} onClose={()=>setContextMenu(null)} items={[...(selected.length === 2 ? [{label:'Compare',action:()=>setComparing(true)}] : []),{label:'Export',action:()=>void exportSelected()},{label:'Delete',action:()=>void deleteSelected(),shortcut:'Delete'}]}/>}

@@ -109,7 +109,6 @@ export interface JobProfileIds {
 }
 export interface JobRequest {
   profile_ids?: JobProfileIds;
-  backend?: 'orcanp-v01';
   files: { name: string; blob: Blob }[];
   vendor: string;
   printer: string;

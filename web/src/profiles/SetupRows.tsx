@@ -113,7 +113,7 @@ export function MaterialRows() {
   return (
     <table className="pf-table pf-filaments">
       <colgroup><col className="c-n" /><col /><col className="c-obj" /><col className="c-act" /></colgroup>
-      <thead><tr><th className="n">#</th><th>Filament</th><th className="n" title="Objects">Obj</th><th aria-label="Actions" /></tr></thead>
+      <thead><tr><th className="n">#</th><th>Filament</th><th className="n" aria-label="Objects">Obj</th><th aria-label="Actions" /></tr></thead>
       <tbody>
         {slots.slice(0, physical).map((_, i) => {
           const used = usersOf(s, i + 1).length;
@@ -172,12 +172,12 @@ export function SlotStrip({ slot, pick }: { slot: number; pick(i: number): void 
   return (
     <div className="rail-slots" role="tablist" aria-label="Filament slots">
       {slots.slice(0, physical).map((_, i) => (
-        <button key={i} type="button" role="tab" aria-selected={i === slot} className="rail-slot" title={`Filament ${i + 1}`} onClick={() => pick(i)}>
+        <button key={i} type="button" role="tab" aria-selected={i === slot} className="rail-slot" aria-label={`Filament ${i + 1}`} onClick={() => pick(i)}>
           <span className="pk-swatch" style={{ background: filamentColor(getState(), i + 1) }} />{i + 1}
         </button>
       ))}
       <AddFilamentPicker disabled={slots.length >= Math.max(capacity, 1)} />
-      {used > 0 && <button type="button" className="pf-link rail-uses" title="Select the objects printed with this slot" onClick={() => selectUsers(slot + 1)}>{used} {used === 1 ? 'object' : 'objects'}</button>}
+      {used > 0 && <button type="button" className="pf-link rail-uses" onClick={() => selectUsers(slot + 1)}>{used} {used === 1 ? 'object' : 'objects'}</button>}
       {physical > 1 && <IconButton icon="delete" title="Remove filament" onClick={() => removeSlot(slot)} />}
     </div>
   );

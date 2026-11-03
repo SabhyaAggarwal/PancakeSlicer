@@ -491,8 +491,8 @@ export default function Plater3D() {
 
     const cutPlane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), CUT_PLANE);
     const cutProxy = new THREE.Object3D();
-    const cutParts = [THREE.ColorManagement.toWorkingColorSpace(new THREE.Color(0, 1, 1), THREE.SRGBColorSpace),
-      THREE.ColorManagement.toWorkingColorSpace(new THREE.Color(1, 0, 1), THREE.SRGBColorSpace)].map((color) => {
+    const cutParts = [THREE.ColorManagement.colorSpaceToWorking(new THREE.Color(0, 1, 1), THREE.SRGBColorSpace),
+      THREE.ColorManagement.colorSpaceToWorking(new THREE.Color(1, 0, 1), THREE.SRGBColorSpace)].map((color) => {
       const m = new THREE.Mesh(undefined, new THREE.MeshStandardMaterial({ color, roughness: 0.65, metalness: 0.05, clippingPlanes: [new THREE.Plane()] }));
       m.matrixAutoUpdate = false;
       return m;

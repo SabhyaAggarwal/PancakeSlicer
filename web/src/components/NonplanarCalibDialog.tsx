@@ -4,6 +4,7 @@ import { effectiveConfig, getState, markStale, presetEdits, setOption, setState,
 import type { ConfigValue } from '../api/types';
 import { undoable } from '../state/history';
 import { headLabel, loadHead, loadHeadIndex, loadHeadJson, saveUserHead, slopeMap, type Head, type HeadBox } from '../heads';
+import { InfoTip } from './InfoTip';
 import { Modal, ModalTitle } from './Modal';
 import { runCalibration } from './CalibDialog';
 
@@ -97,9 +98,9 @@ const memo = { page: 0, lastClean: Math.floor(STEPS.length / 2), tilt: TILT_SLOP
 
 function Choice({ label, items, value, onChange }: { label: string; items: string[]; value: number; onChange(i: number): void }) {
   return (
-    <label className="prefs-row">
-      <span style={{ minWidth: 170 }}>{label}</span>
-      <Dropdown className="combo" style={{ width: 300 }} value={value} onValueChange={(next) => onChange(Number(next))} options={[...items.map((it, i) => ({ value: i, label: it }))]} />
+    <label className="form-row">
+      <span>{label}</span>
+      <Dropdown className="combo" value={value} onValueChange={(next) => onChange(Number(next))} options={[...items.map((it, i) => ({ value: i, label: it }))]} />
     </label>
   );
 }
@@ -188,19 +189,18 @@ export default function NonplanarCalibDialog() {
         {PAGES.map((p, i) => <button key={p} role="tab" aria-selected={i === page} className={`page-tab ${i === page ? 'active' : ''}`} onClick={() => setPage(i)}>{p}</button>)}
       </div>
       <div className="prefs-body" role="tabpanel" aria-label={PAGES[page]} style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
-        <div>{intro}</div>
         {page === 0 && <>
-          <button className="btn" onClick={() => generate('clearance')}>Generate clearance plate</button>
+          <div className="form-actions"><button className="btn" onClick={() => generate('clearance')}>Generate clearance plate</button><InfoTip label={PAGES[page]}>{intro}</InfoTip></div>
           <div style={{ whiteSpace: 'pre-line' }}>{steps}</div>
           <Choice label="Last clean cone" items={STEPS.map((_, k) => stepText(k)).concat(stepText(STEPS.length))} value={lastClean} onChange={setLastClean} />
-          <label className="prefs-row">
-            <span style={{ minWidth: 170 }}>New head ID</span>
-            <input className="text" style={{ width: 300 }} value={newId} onChange={(e) => setNewId(e.target.value)} />
+          <label className="form-row">
+            <span>New head ID</span>
+            <input className="text" value={newId} onChange={(e) => setNewId(e.target.value)} />
           </label>
           <button className="btn" onClick={() => void writeHead()}>Write head</button>
         </>}
         {page === 1 && <>
-          <button className="btn" onClick={() => generate('tilt-flow')}>Generate tilted-bead flow plate</button>
+          <div className="form-actions"><button className="btn" onClick={() => generate('tilt-flow')}>Generate tilted-bead flow plate</button><InfoTip label={PAGES[page]}>{intro}</InfoTip></div>
           {TILT_SLOPES.map((slope, i) => (
             <Choice key={slope} label={`Best patch at ${slope}°`} items={TILT_MULTIPLIERS.map((m, j) => `Patch ${j + 1} (×${m.toFixed(2)})`)} value={tilt[i]}
               onChange={(v) => setTilt(tilt.map((x, j) => (j === i ? v : x)))} />
@@ -208,16 +208,16 @@ export default function NonplanarCalibDialog() {
           <button className="btn" onClick={writeTilt}>Write tilt flow</button>
         </>}
         {page === 2 && <>
-          <button className="btn" onClick={() => generate('curved-top')}>Generate curved-top plate</button>
+          <div className="form-actions"><button className="btn" onClick={() => generate('curved-top')}>Generate curved-top plate</button><InfoTip label={PAGES[page]}>{intro}</InfoTip></div>
           <Choice label="Best speed (front row)" items={TOP_SPEEDS.map((x) => `${x}% of top surface speed`)} value={speed} onChange={setSpeed} />
           <Choice label="Best fan (right column)" items={TOP_FANS.map((x) => `${x}% fan boost`)} value={fan} onChange={setFan} />
           <button className="btn" onClick={writeTop}>Write curved-top settings</button>
         </>}
         {page === 3 && <>
-          <button className="btn" onClick={() => generate('verifier')}>Generate clearance plate</button>
-          <label className="prefs-row">
-            <span style={{ minWidth: 170 }}>Head</span>
-            <Dropdown className="combo" style={{ width: 300 }} value={verifyHead} onValueChange={setVerifyHead} options={[...(heads.includes(verifyHead) ? heads : [verifyHead, ...heads]).map((id) => ({ value: id, label: id ? headLabel(id) : headLabel('') }))]} />
+          <div className="form-actions"><button className="btn" onClick={() => generate('verifier')}>Generate clearance plate</button><InfoTip label={PAGES[page]}>{intro}</InfoTip></div>
+          <label className="form-row">
+            <span>Head</span>
+            <Dropdown className="combo" value={verifyHead} onValueChange={setVerifyHead} options={[...(heads.includes(verifyHead) ? heads : [verifyHead, ...heads]).map((id) => ({ value: id, label: id ? headLabel(id) : headLabel('') }))]} />
           </label>
           <button className="btn" onClick={check}>Check sliced plate</button>
         </>}

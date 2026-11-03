@@ -11,6 +11,7 @@ import { LayerHeightBar, LayerHeightPanel } from './components/LayerHeight';
 import { Sidebar } from './components/Sidebar';
 import { AskHost } from './components/Ask';
 import { TopBar } from './components/TopBar';
+import { graphicsCapability } from './browser-support';
 const ControlHints = lazy(() => import('./components/ControlHints').then(m => ({default: m.ControlHints})));
 const BrimEarsPanel = lazy(() => import('./components/BrimEarsPanel'));
 const TransformPanel = lazy(() => import('./components/Transform').then(m => ({ default: m.TransformPanel })));
@@ -65,6 +66,9 @@ function nudge(key: string, fine: boolean) {
     updateInstance(o, i.id, d ? { x: i.x + d[0], y: i.y + d[1] } : { rotZ: i.rotZ + turn })), d ? 'nudge-move' : 'nudge-rotate');
   return true;
 }
+
+const graphics = graphicsCapability();
+const NoGraphics = () => graphics.webgl2 ? null : <div className="canvas-unavailable" role="alert">{graphics.reason}</div>;
 
 const visibleCanvas = () => [...document.querySelectorAll<HTMLCanvasElement>('.canvas-area canvas')].find((c) => c.offsetParent !== null && c.clientWidth > 0);
 
@@ -262,7 +266,7 @@ export default function App() {
             <button type="button" className="btn sidebar-reveal" aria-expanded={false} onClick={() => toggleSidebar(false)}>Settings</button>
           )}
           <div style={{ display: tab === 'prepare' ? 'contents' : 'none' }}>
-            <Suspense fallback={null}><Plater3D /></Suspense>
+            {graphics.webgl2 ? <Suspense fallback={null}><Plater3D /></Suspense> : <NoGraphics />}
             <CanvasToolbar />
             {!projects && tab === 'prepare' && (gizmo === 'move' || gizmo === 'rotate' || gizmo === 'scale') && <Suspense fallback={null}><TransformPanel /></Suspense>}
             <CutPanel />
@@ -281,9 +285,9 @@ export default function App() {
           </div>
           {previewOpened.current && (
             <div style={{ display: tab === 'preview' ? 'contents' : 'none' }}>
-              <Suspense fallback={<div role="status">Loading preview…</div>}>
+              {graphics.webgl2 ? <Suspense fallback={<div role="status">Loading preview…</div>}>
                 <PreviewView />
-              </Suspense>
+              </Suspense> : <NoGraphics />}
             </div>
           )}
           {multiPlate && <Suspense fallback={null}><PlateChoice /></Suspense>}

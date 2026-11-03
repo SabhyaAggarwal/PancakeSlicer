@@ -14,9 +14,9 @@
   :where(.orca-parity) .compact-topbar .main-tab { padding-inline: 10px; font-size: 14px; }
   :where(.orca-parity) .compact-topbar :is(.main-tab,.detail-option,.menu-title,.app-menu-button,.output-overflow) { min-height: 44px; min-width: 44px; }
   :where(.orca-parity) .compact-topbar .main-tab > span { display: none; }
-  :where(.orca-parity) .compact-topbar .visibility-control { grid-column: 2; grid-row: 2; justify-self: end; max-width: 100%; }
+  :where(.orca-parity) .compact-topbar .visibility-control { grid-column: 1 / -1; grid-row: 2; justify-self: end; max-width: 100%; }
   :where(.orca-parity) .compact-topbar .detail-option { padding-inline: 8px; font-size: 13px; }
-  :where(.orca-parity) .compact-topbar .tabbar-actions { grid-column: 2; grid-row: 1; margin: 0; padding: 0; gap: 0; }
+  :where(.orca-parity) .compact-topbar .tabbar-actions { grid-column: 2; grid-row: 1; justify-self: end; margin: 0; padding: 0; gap: 0; }
   :where(.orca-parity) .compact-topbar .tabbar-actions > .side-btn, :where(.orca-parity) .compact-topbar .side-options, :where(.orca-parity) .compact-topbar .export-actions { display: none; }
   :where(.orca-parity) .output-overflow { display: inline-flex; font-weight: 600; }
   :where(.orca-parity) .mock-badge { display: none; }
@@ -39,6 +39,7 @@
   :where(.orca-parity) .nav3d { display: none; }
   :where(.orca-parity) .nav-view-control { display: inline-flex; position: absolute; z-index: 7; top: 60px; left: max(8px,env(safe-area-inset-left)); align-items: center; gap: 10px; background: var(--panel); }
   :where(.orca-parity) .transform-anchor { left: max(8px,env(safe-area-inset-left)); }
+  :where(.orca-parity) .canvas-unavailable { padding-top: 116px; }
   :where(.orca-parity) .canvas-area .manip-panel { max-width: calc(100% - 16px); max-height: calc(100% - 140px); overflow: auto; }
   :where(.orca-parity) .notification, :where(.orca-parity) .toast { max-width: calc(100vw - 16px); overflow-wrap: anywhere; }
   :where(.orca-parity) .saved-preferences-notice { padding: 4px max(8px,env(safe-area-inset-right)) 4px max(8px,env(safe-area-inset-left)); }
@@ -48,7 +49,7 @@
   :where(.orca-parity) .compact-topbar .main-tab > span { display: inline; }
 }
 @media (pointer: coarse), (max-width: 760px) {
-  :where(.orca-parity) button:not(.check):not(.pf-radio):not(.orca-switch), :where(.orca-parity) .dropdown, :where(.orca-parity) .text, :where(.orca-parity) [role=menuitem] { min-height: 44px; }
+  :where(.orca-parity) button:not(.check, .pf-radio, .orca-switch, .control-check, .orca-radio, .info-tip, .color-swatch), :where(.orca-parity) .dropdown, :where(.orca-parity) .text, :where(.orca-parity) [role=menuitem] { min-height: 44px; }
   :where(.orca-parity) .icon-btn, :where(.orca-parity) .app-menu-button, :where(.orca-parity) .pk-star, :where(.orca-parity) .opt-undo { min-width: 44px; }
   :where(.orca-parity) .text, :where(.orca-parity) input, :where(.orca-parity) textarea, :where(.orca-parity) select { font-size: 16px; }
   :where(.orca-parity) .pf-facet-choice, :where(.orca-parity) .select-row { min-height: 44px; align-items: center; }

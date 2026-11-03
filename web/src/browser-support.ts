@@ -1,7 +1,17 @@
 export const SUPPORTED_BROWSERS = 'Chrome or Edge 109+, Firefox 115+, or Safari 16.4+ (macOS or iPadOS)';
 
 export function unsupportedBrowserMessage(detail: string): string {
-  return `Use ${SUPPORTED_BROWSERS} with WebGL2 enabled. ${detail}`;
+  return `Use ${SUPPORTED_BROWSERS}. ${detail}`;
+}
+
+export type GraphicsCapability = { webgl2: true } | { webgl2: false; reason: string };
+let graphics: GraphicsCapability | undefined;
+export function graphicsCapability(): GraphicsCapability {
+  if (graphics) return graphics;
+  const gl = document.createElement('canvas').getContext('webgl2');
+  gl?.getExtension('WEBGL_lose_context')?.loseContext();
+  return graphics = gl ? { webgl2: true }
+    : { webgl2: false, reason: 'The 3D view needs WebGL2. Enable hardware acceleration or update your graphics driver.' };
 }
 
 export function showBrowserNotice(root: HTMLElement, detail: string, title = 'Unsupported browser'): void {
@@ -24,11 +34,7 @@ export async function checkBrowserSupport(): Promise<void> {
       typeof DecompressionStream === 'undefined' || typeof ResizeObserver === 'undefined' ||
       typeof Blob === 'undefined' || typeof Blob.prototype.stream !== 'function')
     throw new Error('Required worker, streaming or resize features are unavailable.');
-
-  const canvas = document.createElement('canvas');
-  const gl = canvas.getContext('webgl2');
-  if (!gl) throw new Error('WebGL2 is unavailable. Enable hardware acceleration or update your graphics driver.');
-  gl.getExtension('WEBGL_lose_context')?.loseContext();
+  graphicsCapability();
 
   await new Promise<void>((resolve, reject) => {
     const worker = new Worker(new URL('./browser-support.worker.ts', import.meta.url), { type: 'module' });

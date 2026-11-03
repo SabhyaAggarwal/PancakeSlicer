@@ -24,7 +24,7 @@ export function acknowledgedProfileDraft(current:ProfileDraft,submitted:ProfileD
   }
   return {...current,values,baseline,origin,baselineApplicability:origin.applicability};
 }
-export function ProfileEditor({type, name, draft, update, onBack, onSavingChange, onRemove}: {type: PresetType; name: string; draft?: ProfileDraft; update(key: string, draft: ProfileDraft | null): void; onBack(): void; onRemove(): void; onSavingChange?(saving: boolean): void}) {
+export function ProfileEditor({type, name, draft, update, onBack, onSavingChange, onRemove, onDuplicate}: {type: PresetType; name: string; draft?: ProfileDraft; update(key: string, draft: ProfileDraft | null): void; onBack(): void; onRemove(): void; onDuplicate?(): void; onSavingChange?(saving: boolean): void}) {
   const users = useStore(s => s.userPresets);
   const ready=useStore(s=>s.profileLibraryLoad.state==='ready');
   const machines = useStore(s => s.machines), filaments = useStore(s => s.filaments), processes = useStore(s => s.processes);
@@ -72,6 +72,7 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
       <div className="pf-editor-controls">
         <button type="button" className="btn primary pf-editor-save" disabled={saving || !dirty || !ready} onClick={() => void save()}>{saving ? 'Saving…' : 'Save'}</button>
         <button type="button" className="btn" disabled={saving || !dirty} onClick={() => {update(key, null); setError(null);}}>Cancel edits</button>
+        {onDuplicate && <button type="button" className="btn" disabled={saving || dirty || !ready} onClick={onDuplicate}>Duplicate</button>}
         <MenuButton label="Profile actions" className="btn-ghost" items={[{label: type === 'filament' ? 'Use in slot 1' : 'Use in project', disabled:saving || dirty, action:()=>requestPreset(type,0,key && profileKey(source!))}, {label:'Export',action:()=>void import('../preset-io').then(m=>m.exportPresetJson(source!))}, {label: 'Reset to base settings', disabled: saving || !resolved.base, action: () => {if(resolved.base) update(key, {...latest.current, values: resolved.base.config});}}, 'sep', {label:'Delete',disabled:saving,action:onRemove}]}>More</MenuButton>
       </div>
     </div>

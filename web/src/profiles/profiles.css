@@ -3,8 +3,6 @@
 :where(.orca-parity) .pf-table th { background: var(--surface); font-weight: 600; color: var(--ink-2); }
 :where(.orca-parity) .pf-table .n { text-align: right; font-variant-numeric: tabular-nums; white-space: normal; }
 :where(.orca-parity) .pf-table tr.is-on td { background: var(--accent-tint); font-weight: 600; }
-:where(.orca-parity) .pf-table td:last-child:has(.icon-btn) { width: 22px; padding: 0 1px; text-align: center; }
-:where(.orca-parity) .pf-table .icon-btn { width: 20px; height: 20px; }
 :where(.orca-parity) .pf-link { background: none; border: 0; padding: 0; font: inherit; color: var(--accent-text); cursor: pointer; text-align: left; text-decoration: underline; text-underline-offset: 2px; }
 :where(.orca-parity) .pf-link:hover { color: var(--ink); }
 :where(.orca-parity) .pf-dim { color: var(--ink-3); font: var(--t-small); }
@@ -21,7 +19,6 @@
 :where(.orca-parity) .pf-change-table .change-reset { width: 12%; }
 :where(.orca-parity) .pf-change-table th, :where(.orca-parity) .pf-change-table td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); overflow-wrap: break-word; word-break: normal; }
 :where(.orca-parity) .pf-change-table th { position: sticky; top: 0; background: var(--surface); font-size: 13px; font-weight: 600; }
-:where(.orca-parity) .pf-change-table .btn-ghost { min-height: 28px; padding: 2px 4px; }
 :where(.orca-parity) .pf-name { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; }
 :where(.orca-parity) .pf-name:hover { color: var(--accent-text); }
 :where(.orca-parity) .pf-changes-foot { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface); }
@@ -53,7 +50,6 @@
 :where(.orca-parity) .pf-filaments .preset-combo { width: 100%; height: calc(var(--h-field) - 2px); }
 :where(.orca-parity) .pf-filaments td:nth-child(3) { overflow: hidden; overflow-wrap: anywhere; white-space: normal; }
 :where(.orca-parity) .pf-acts { white-space: normal; }
-:where(.orca-parity) .pf-acts .icon-btn { width: 22px; height: 22px; }
 :where(.orca-parity) .pf-filaments .pf-add-row td { height: auto; padding: 2px 6px; }
 
 :where(.orca-parity) .pf-add { width: 560px; }

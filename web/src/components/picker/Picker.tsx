@@ -76,7 +76,7 @@ export function Picker({ label, value, groups, onPick, memory = `orca.parity.${l
         if (match !== undefined) move(match);
       }
     }}>
-      <div className="pk-body"><nav className="pk-rail" aria-label={`${label} groups`}>{rails.map(r => <button type="button" key={r.id} className={activeRail === r.id ? 'active' : ''} aria-pressed={activeRail === r.id} onClick={() => changeRail(r.id)}>{r.title}</button>)}</nav>
+      <div className={`pk-body ${rails.length > 1 ? '' : 'no-rail'}`}>{rails.length > 1 && <nav className="pk-rail" aria-label={`${label} groups`}>{rails.map(r => <button type="button" key={r.id} className={activeRail === r.id ? 'active' : ''} aria-pressed={activeRail === r.id} onClick={() => changeRail(r.id)}>{r.title}</button>)}</nav>}
         <div className="pk-list" role="listbox" aria-label={label} ref={list}>{rows.map((row, i) => <PickerRow key={row.id} row={row} index={i} id={id} active={active === i} selected={value === row.id} adding={adding} pinned={pinnedSet.has(row.id)} onActive={setActive} onPick={pick} onPin={pin} />)}{!rows.length && <div className="pk-empty">{catalog && !adding ? 'None yet' : 'No profiles'}</div>}</div>
       </div>
       <div className="pk-foot">{adding && ownRows && <button type="button" className="btn-ghost" onClick={() => changeCatalog(false)}>Back</button>}{catalog && !adding && <button type="button" className="btn" onClick={() => changeCatalog(true)}>{catalog.label}</button>}{footer.map(a => <button type="button" className="btn" key={a.label} onClick={() => { if (!a.keep) setOpen(false); a.run(); }}>{a.label}</button>)}</div>

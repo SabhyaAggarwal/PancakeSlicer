@@ -60,10 +60,8 @@ const realApi: Api = {
   },
 
   async submit(req, signal, onUpload) {
-    if (req.backend && toolFeatures.orcanp_v01 !== true) throw new Error('Orca-NP v0.1 is unavailable on this service. Choose Standard or connect the external engine.');
     const fd = new FormData();
     for (const f of req.files) fd.append('files[]', f.blob, f.name);
-    if (req.backend) fd.append('backend', req.backend);
     if(req.profile_ids)fd.append('profile_ids',JSON.stringify(req.profile_ids));
     fd.append('vendor', req.vendor);
     fd.append('printer', req.printer);
@@ -83,7 +81,7 @@ const realApi: Api = {
     if (req.allow_mixed_temperatures) fd.append('allow_mixed_temperatures', '1');
     if (req.calib) { fd.append('calib', req.calib); fd.append('calib_params', req.calib_params ?? ''); if (req.calib_head) fd.append('calib_head', req.calib_head); }
     if (req.preview_budget !== undefined) fd.append('budget', String(req.preview_budget));
-    const url = req.backend ? '/api/backends/orcanp-v01/jobs' : req.preview_budget !== undefined ? '/api/patch-preview' : '/api/jobs';
+    const url = req.preview_budget !== undefined ? '/api/patch-preview' : '/api/jobs';
     const j = await json<{ id: string }>(await mutation(url, { method: 'POST', headers: submissionHeaders(req), body: fd }, req.preview_budget === undefined, signal, onUpload, req.preview_budget !== undefined));
     return j.id;
   },

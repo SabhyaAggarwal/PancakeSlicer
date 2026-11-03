@@ -39,8 +39,9 @@
 :where(.orca-parity) .profile-color-swatch { display: inline-grid; place-items: center; box-sizing: border-box; flex: 0 0 22px; width: 22px; height: 22px; border: 1px solid var(--border-control); border-radius: 2px; margin-top: 1px; background: var(--sunken); color: var(--label); font-size: 12px; }
 :where(.orca-parity) .pf-editor-identity > .color-trigger { float: left; margin: 3px 10px 0 0; }
 
-:where(.orca-parity) .info-tip { display: inline-grid; place-items: center; width: 16px; height: 16px; margin-left: 6px; padding: 0; flex: none; vertical-align: -2px; border: 1px solid var(--line-strong); border-radius: 50%; background: none; color: var(--ink-3); font: 600 11px/1 var(--font-ui); cursor: pointer; opacity: 0; }
-:where(.orca-parity) :is(.opt-line, .option-row, .opt-label):hover .info-tip, :where(.orca-parity) .info-tip:focus-visible, :where(.orca-parity) .info-tip[data-state=open] { opacity: 1; }
+:where(.orca-parity) .info-tip { display: inline-grid; place-items: center; width: 16px; height: 16px; margin-left: 6px; padding: 0; flex: none; vertical-align: -2px; border: 1px solid var(--line-strong); border-radius: 50%; background: none; color: var(--ink-3); font: 600 11px/1 var(--font-ui); cursor: pointer; }
+:where(.orca-parity) :is(.opt-line, .option-row) .info-tip { opacity: 0; }
+:where(.orca-parity) :is(.opt-line, .option-row):hover .info-tip, :where(.orca-parity) .info-tip:focus-visible, :where(.orca-parity) .info-tip[data-state=open] { opacity: 1; }
 :where(.orca-parity) .info-tip:hover, :where(.orca-parity) .info-tip[data-state=open] { color: var(--text); border-color: var(--focus); }
 :where(.orca-parity) .info-tip:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 :where(.orca-parity) .info-pop { z-index: 1000; max-width: min(360px, calc(100vw - 16px)); max-height: min(360px, var(--radix-popover-content-available-height, 60dvh)); overflow: auto; padding: 8px 12px; background: var(--raised); color: var(--text); border: 1px solid var(--border-control); border-radius: 4px; font: var(--t-small); white-space: pre-line; overflow-wrap: break-word; box-shadow: var(--shadow-pop); }
@@ -49,7 +50,9 @@
 :where(.orca-parity) .info-pop code { display: block; color: var(--ink-3); font: var(--t-small); }
 
 @media (pointer: coarse) {
-  :where(.orca-parity) .info-tip { opacity: 1; width: 24px; height: 24px; }
+  :where(.orca-parity) :is(.opt-line, .option-row) .info-tip, :where(.orca-parity) .info-tip { opacity: 1; width: 24px; height: 24px; }
+  :where(.orca-parity) :is(.control-check, .orca-radio, .info-tip) { position: relative; min-width: 0; min-height: 0; }
+  :where(.orca-parity) :is(.control-check, .orca-radio, .info-tip)::before { content: ''; position: absolute; inset: 50% auto auto 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); }
   :where(.orca-parity) .number-steps { width: 32px; }
   :where(.orca-parity) .color-trigger, :where(.orca-parity) .color-swatch { width: 32px; height: 32px; }
   :where(.orca-parity) .orca-switch { min-height: 24px; }
@@ -64,3 +67,9 @@
 :where(.orca-parity) .more-toggle:focus { outline: 0; }
 :where(.orca-parity) .more-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 @media (pointer: coarse) { :where(.orca-parity) .more-toggle { min-height: 44px; } }
+
+:where(.orca-parity) .form-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-4); width: 100%; min-height: var(--h-control); }
+:where(.orca-parity) .form-row > :first-child { flex: 0 0 11rem; min-width: 0; }
+:where(.orca-parity) .form-row > :last-child { flex: 1 1 12rem; min-width: 0; max-width: 20rem; }
+:where(.orca-parity) .form-row > .text { width: 100%; height: var(--h-field); }
+:where(.orca-parity) .form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); }

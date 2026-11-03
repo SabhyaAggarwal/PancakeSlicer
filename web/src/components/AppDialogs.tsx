@@ -56,12 +56,12 @@ function Preferences() {
         </fieldset>
         <fieldset className="prefs-group">
           <legend>Camera</legend>
-          <label className="prefs-row">
+          <label className="prefs-row form-row">
             <span>Camera style<InfoTip label="Camera style">{'Default: left drag rotates, right or middle drag pans.\nTouchpad: Alt+drag rotates, Shift+drag pans.'}</InfoTip></span>
             <Dropdown className="combo" value={camera.style} onValueChange={(next) => setCameraPrefs({ style: next as CameraPrefs['style'] })} options={[{ value: "default", label: 'Default' }, { value: "touchpad", label: 'Touchpad' }]} />
           </label>
-          <label className="prefs-row">
-            Orbit speed multiplier
+          <label className="prefs-row form-row">
+            <span>Orbit speed multiplier</span>
             <input className="text num" type="number" min={0.05} max={2} step={0.05} value={camera.orbitMult}
               onChange={(e) => { const v = Number(e.target.value); if (v >= 0.05 && v <= 2) setCameraPrefs({ orbitMult: v }); }} />
           </label>
