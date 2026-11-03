@@ -192,6 +192,7 @@ func (m *SendManager) watchTrust(p *PrinterConfig) {
 				log.Printf("warning: cannot record printer %q certificate: %v", p.Name, err)
 				return
 			}
+			m.hub.changed()
 			log.Printf("printer %q: trusted its %s certificate on first use", p.Name, map[string]string{"pin": "self-signed", "bambu-ca": "Bambu-signed"}[mode])
 		}
 	}
@@ -352,6 +353,10 @@ func (s *Server) putConnection(w http.ResponseWriter, r *http.Request) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.printerLocked(key) != prev {
+		fail(w, 409, "this printer's connection changed meanwhile; try again")
+		return
+	}
 	if prev != nil && m.busy[key] {
 		fail(w, 409, "this printer is receiving an upload; change its connection when it finishes")
 		return
@@ -388,6 +393,10 @@ func (s *Server) deleteConnection(w http.ResponseWriter, r *http.Request) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if !m.holds(p) {
+		fail(w, 404, "this printer has no connection")
+		return
+	}
 	if m.busy[p.Printer] && p.Printer != "" {
 		fail(w, 409, "this printer is receiving an upload; remove its connection when it finishes")
 		return
@@ -424,13 +433,11 @@ func (s *Server) adoptConnection(w http.ResponseWriter, r *http.Request) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var prev *PrinterConfig
-	for _, p := range m.conns {
-		if p.Printer == key {
-			prev = p
-		}
+	if !m.holds(src) {
+		fail(w, 404, "no unassigned connection with that id")
+		return
 	}
-	if prev != nil {
+	if m.printerLocked(key) != nil {
 		fail(w, 409, "this printer already has a connection; remove it first")
 		return
 	}
@@ -501,6 +508,10 @@ func (s *Server) importLegacyConnection(w http.ResponseWriter, r *http.Request) 
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if q := m.printerLocked(key); q != nil {
+		writeJSON(w, 409, map[string]any{"error": "this printer already has a connection", "code": "connection_exists", "connection": q.view()})
+		return
+	}
 	if edit.Key != "" {
 		if err := writeFileAtomic(p.CredentialFile, []byte(edit.Key+"\n")); err != nil {
 			fail(w, 500, "cannot store the printer's credential")

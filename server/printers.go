@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -328,6 +329,10 @@ func NewSendManager(store *printerStore) *SendManager {
 func (m *SendManager) printer(key string) *PrinterConfig {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.printerLocked(key)
+}
+
+func (m *SendManager) printerLocked(key string) *PrinterConfig {
 	for _, p := range m.conns {
 		if p.Printer == key && key != "" {
 			return p
@@ -335,6 +340,8 @@ func (m *SendManager) printer(key string) *PrinterConfig {
 	}
 	return nil
 }
+
+func (m *SendManager) holds(p *PrinterConfig) bool { return slices.Contains(m.conns, p) }
 
 func (m *SendManager) connections() []*PrinterConfig {
 	m.mu.Lock()
@@ -517,8 +524,10 @@ func (s *Server) sendJob(w http.ResponseWriter, r *http.Request) {
 	card := p.Printer + "\x00" + filename
 	resend := m.cards[card] == j.ID
 	delete(m.cards, card)
+	base, stopTimeout := context.WithTimeoutCause(context.Background(), sendTimeout, errors.New("the upload took longer than 30 minutes"))
+	ctx, cancel := context.WithCancelCause(base)
 	t := &Transfer{ID: newSendID(), Job: j.ID, Printer: p.Printer, Name: p.Name, Kind: p.Kind, Start: start, Filename: filename, State: "uploading",
-		Total: st.Size(), Started: time.Now().UTC(), sent: &atomic.Int64{}}
+		Total: st.Size(), Started: time.Now().UTC(), sent: &atomic.Int64{}, cancel: cancel}
 	j.send = t
 	view := *t
 	j.mu.Unlock()
@@ -538,7 +547,7 @@ func (s *Server) sendJob(w http.ResponseWriter, r *http.Request) {
 			options.amsMapping = nil
 		}
 	}
-	go s.runSend(j, t, p, f, client, options, resend)
+	go s.runSend(ctx, stopTimeout, j, t, p, f, client, options, resend)
 	w.Header().Set("Location", "/api/jobs/"+j.ID+"/send")
 	writeJSON(w, 202, &view)
 }
@@ -578,18 +587,13 @@ type bambuOptions struct {
 	amsMapping                               []int
 }
 
-func (s *Server) runSend(j *Job, t *Transfer, p *PrinterConfig, f *os.File, client string, options bambuOptions, resend bool) {
+func (s *Server) runSend(ctx context.Context, stopTimeout context.CancelFunc, j *Job, t *Transfer, p *PrinterConfig, f *os.File, client string, options bambuOptions, resend bool) {
 	defer f.Close()
 	m := s.sends
 	began := time.Now()
-	base, cancelTimeout := context.WithTimeoutCause(context.Background(), sendTimeout, errors.New("the upload took longer than 30 minutes"))
-	defer cancelTimeout()
-	ctx, cancel := context.WithCancelCause(base)
-	defer cancel(nil)
-	j.mu.Lock()
-	t.cancel = cancel
-	j.mu.Unlock()
-	stalled := watchProgress(ctx, cancel, t.sent, t.Total)
+	defer stopTimeout()
+	defer t.cancel(nil)
+	stalled := watchProgress(ctx, t.cancel, t.sent, t.Total)
 	u := &upload{printer: p, filename: t.Filename, file: f, size: t.Total, start: t.Start, progress: t.sent,
 		starting: func() { j.mu.Lock(); t.State = "starting"; j.mu.Unlock(); m.hub.changed() },
 		stored: func() {
