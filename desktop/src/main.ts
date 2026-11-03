@@ -25,7 +25,11 @@ app.setPath('userData', process.env.ORCA_DESKTOP_USER_DATA ?? path.join(app.getP
 
 const originalUserData = app.getPath('userData');
 const originalSessionData = app.getPath('sessionData');
-const legacyRenderer = new LegacyRendererSource(originalUserData, originalSessionData);
+const legacyRenderer = new LegacyRendererSource(originalUserData, originalSessionData, () =>
+  process.versions.electron === '45.2.1' && (process.platform === 'linux' || process.platform === 'darwin')
+  && app.hasSingleInstanceLock() && app.getPath('userData') === originalUserData
+  && originalSessionData === originalUserData
+  && !['user-data-dir', 'profile-directory', 'session-data-dir'].some((name) => app.commandLine.hasSwitch(name)));
 const sessionCacheRoot = path.join(app.getPath('appData'), 'OrcaSlicer Web Cache');
 let ownedSessionDirectory: { path: string; dev: number; ino: number } | null = null;
 
