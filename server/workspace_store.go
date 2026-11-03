@@ -28,6 +28,7 @@ type workspaceProject struct {
 	Record   json.RawMessage `json:"record"`
 	Archived bool            `json:"archived,omitempty"`
 	Revision uint64          `json:"revision"`
+	Folder   string          `json:"folder,omitempty"`
 }
 type workspaceDraft struct {
 	ID        string          `json:"id"`
@@ -45,17 +46,19 @@ type workspaceReceipt struct {
 	Response json.RawMessage `json:"response"`
 }
 type workspaceData struct {
-	Schema     int                         `json:"schema"`
-	Projects   map[string]workspaceProject `json:"projects"`
-	Drafts     map[string]workspaceDraft   `json:"drafts"`
-	Values     map[string]workspaceValue   `json:"values"`
-	Operations map[string]workspaceReceipt `json:"operations"`
-	Adoptions  map[string]json.RawMessage  `json:"adoptions"`
-	Aliases    map[string]string           `json:"aliases"`
+	Schema         int                         `json:"schema"`
+	Projects       map[string]workspaceProject `json:"projects"`
+	Drafts         map[string]workspaceDraft   `json:"drafts"`
+	Values         map[string]workspaceValue   `json:"values"`
+	Operations     map[string]workspaceReceipt `json:"operations"`
+	Adoptions      map[string]json.RawMessage  `json:"adoptions"`
+	Aliases        map[string]string           `json:"aliases"`
+	Folders        map[string]workspaceFolder  `json:"folders,omitempty"`
+	FolderRevision uint64                      `json:"folderRevision,omitempty"`
 }
 
 func newWorkspaceData() *workspaceData {
-	return &workspaceData{1, map[string]workspaceProject{}, map[string]workspaceDraft{}, map[string]workspaceValue{}, map[string]workspaceReceipt{}, map[string]json.RawMessage{}, map[string]string{}}
+	return &workspaceData{Schema: 1, Projects: map[string]workspaceProject{}, Drafts: map[string]workspaceDraft{}, Values: map[string]workspaceValue{}, Operations: map[string]workspaceReceipt{}, Adoptions: map[string]json.RawMessage{}, Aliases: map[string]string{}, Folders: map[string]workspaceFolder{}}
 }
 func (st *workspaceStore) read() (*workspaceData, error) {
 	raw, err := os.ReadFile(filepath.Join(st.root, "workspace.json"))
@@ -71,6 +74,9 @@ func (st *workspaceStore) read() (*workspaceData, error) {
 	}
 	if d.Schema != 1 || d.Projects == nil || d.Drafts == nil || d.Values == nil || d.Operations == nil || d.Adoptions == nil || d.Aliases == nil {
 		return nil, errors.New("invalid workspace schema")
+	}
+	if d.Folders == nil {
+		d.Folders = map[string]workspaceFolder{}
 	}
 	for id, project := range d.Projects {
 		if bytes.Equal(bytes.TrimSpace(project.Record), []byte("null")) {
@@ -243,6 +249,7 @@ func projectRecord(raw json.RawMessage, id string, revision uint64) (json.RawMes
 	}
 	meta["id"], _ = json.Marshal(id)
 	meta["revision"], _ = json.Marshal(revision)
+	delete(meta, "folderId")
 	record["meta"], _ = json.Marshal(meta)
 	return json.Marshal(record)
 }
@@ -265,10 +272,20 @@ func (st *workspaceStore) checkAssets(record json.RawMessage) error {
 func projectMeta(p workspaceProject) json.RawMessage {
 	var record map[string]json.RawMessage
 	json.Unmarshal(p.Record, &record)
-	return record["meta"]
+	var meta map[string]json.RawMessage
+	if json.Unmarshal(record["meta"], &meta) != nil || meta == nil {
+		return record["meta"]
+	}
+	meta["folderId"] = json.RawMessage("null")
+	if p.Folder != "" {
+		meta["folderId"], _ = json.Marshal(p.Folder)
+	}
+	raw, _ := json.Marshal(meta)
+	return raw
 }
 func (st *workspaceStore) register(mux *http.ServeMux) {
 	st.adoptionRoutes(mux)
+	st.folderRoutes(mux)
 	mux.HandleFunc("GET /api/projects", func(w http.ResponseWriter, r *http.Request) {
 		st.locked(w, func(d *workspaceData) {
 			out := []json.RawMessage{}

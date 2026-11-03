@@ -230,7 +230,10 @@ func (st *workspaceStore) adopt(w http.ResponseWriter, r *http.Request) {
 					conflict(e.Error())
 					return
 				}
-				next := workspaceProject{normalized, index == 1, v.Meta.Revision}
+				next := workspaceProject{Record: normalized, Archived: index == 1, Revision: v.Meta.Revision}
+				if old, ok := d.Projects[v.Meta.ID]; ok {
+					next.Folder = old.Folder
+				}
 				if old, ok := d.Projects[v.Meta.ID]; ok && !canonicalEqual(old, next) {
 					conflict("An existing project revision or document differs.")
 					return
