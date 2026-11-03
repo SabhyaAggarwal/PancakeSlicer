@@ -277,26 +277,53 @@ func (p *PrinterConfig) trust(mode string, fp []byte) {
 }
 
 type Transfer struct {
-	ID       string     `json:"id"`
-	Job      string     `json:"job"`
-	Printer  string     `json:"printer"`
-	Name     string     `json:"name"`
-	Kind     string     `json:"kind"`
-	Start    bool       `json:"start"`
-	Filename string     `json:"filename"`
-	State    string     `json:"state"`
-	Sent     int64      `json:"sent"`
-	Total    int64      `json:"total"`
-	Message  string     `json:"message,omitempty"`
-	Error    string     `json:"error,omitempty"`
-	Started  time.Time  `json:"started"`
-	Finished *time.Time `json:"finished,omitempty"`
+	ID       string        `json:"id"`
+	Job      string        `json:"job"`
+	Printer  string        `json:"printer"`
+	Name     string        `json:"name"`
+	Kind     string        `json:"kind"`
+	Start    bool          `json:"start"`
+	Filename string        `json:"filename"`
+	State    TransferState `json:"state"`
+	Sent     int64         `json:"sent"`
+	Total    int64         `json:"total"`
+	Message  string        `json:"message,omitempty"`
+	Error    string        `json:"error,omitempty"`
+	Started  time.Time     `json:"started"`
+	Finished *time.Time    `json:"finished,omitempty"`
 
 	sent   *atomic.Int64
 	cancel context.CancelCauseFunc
 }
 
-func (t *Transfer) active() bool { return t.State == "uploading" || t.State == "starting" }
+type TransferState string
+
+const (
+	TransferUploading TransferState = "uploading"
+	TransferStarting  TransferState = "starting"
+	TransferDone      TransferState = "done"
+	TransferFailed    TransferState = "failed"
+	TransferCancelled TransferState = "cancelled"
+)
+
+var transferTransitions = map[TransferState]map[TransferState]bool{
+	TransferUploading: {TransferStarting: true, TransferDone: true, TransferFailed: true, TransferCancelled: true},
+	TransferStarting:  {TransferDone: true, TransferFailed: true, TransferCancelled: true},
+	TransferDone:      {},
+	TransferFailed:    {},
+	TransferCancelled: {},
+}
+
+func (t *Transfer) to(next TransferState) bool {
+	if !transferTransitions[t.State][next] {
+		log.Printf("send %s: illegal transition %s -> %s", t.ID, t.State, next)
+		return false
+	}
+	t.State = next
+	return true
+}
+
+func (t *Transfer) active() bool { return t.State == TransferUploading || t.State == TransferStarting }
 
 type SendManager struct {
 	store   *printerStore
@@ -526,7 +553,7 @@ func (s *Server) sendJob(w http.ResponseWriter, r *http.Request) {
 	delete(m.cards, card)
 	base, stopTimeout := context.WithTimeoutCause(context.Background(), sendTimeout, errors.New("the upload took longer than 30 minutes"))
 	ctx, cancel := context.WithCancelCause(base)
-	t := &Transfer{ID: newSendID(), Job: j.ID, Printer: p.Printer, Name: p.Name, Kind: p.Kind, Start: start, Filename: filename, State: "uploading",
+	t := &Transfer{ID: newSendID(), Job: j.ID, Printer: p.Printer, Name: p.Name, Kind: p.Kind, Start: start, Filename: filename, State: TransferUploading,
 		Total: st.Size(), Started: time.Now().UTC(), sent: &atomic.Int64{}, cancel: cancel}
 	j.send = t
 	view := *t
@@ -595,7 +622,7 @@ func (s *Server) runSend(ctx context.Context, stopTimeout context.CancelFunc, j 
 	defer t.cancel(nil)
 	stalled := watchProgress(ctx, t.cancel, t.sent, t.Total)
 	u := &upload{printer: p, filename: t.Filename, file: f, size: t.Total, start: t.Start, progress: t.sent,
-		starting: func() { j.mu.Lock(); t.State = "starting"; j.mu.Unlock(); m.hub.changed() },
+		starting: func() { j.mu.Lock(); t.to(TransferStarting); j.mu.Unlock(); m.hub.changed() },
 		stored: func() {
 			m.mu.Lock()
 			m.cards[p.Printer+"\x00"+t.Filename] = j.ID
@@ -629,11 +656,14 @@ func (s *Server) runSend(ctx context.Context, stopTimeout context.CancelFunc, j 
 	t.Finished = &finished
 	switch {
 	case cancelled:
-		t.State, t.Error = "cancelled", map[bool]string{true: "Cancelled after the file reached the printer; check the printer before printing it", false: "Cancelled; the file did not reach the printer"}[t.State == "starting"]
+		t.Error = map[bool]string{true: "Cancelled after the file reached the printer; check the printer before printing it", false: "Cancelled; the file did not reach the printer"}[t.State == TransferStarting]
+		t.to(TransferCancelled)
 	case err != nil:
-		t.State, t.Error = "failed", redact(err.Error(), u.secret)
+		t.Error = redact(err.Error(), u.secret)
+		t.to(TransferFailed)
 	default:
-		t.State, t.Message = "done", redact(message, u.secret)
+		t.Message = redact(message, u.secret)
+		t.to(TransferDone)
 	}
 	view := *t
 	view.Sent = t.sent.Load()
@@ -644,7 +674,7 @@ func (s *Server) runSend(ctx context.Context, stopTimeout context.CancelFunc, j 
 	m.mu.Unlock()
 	m.history.record(view)
 	m.hub.changed()
-	audit(map[string]any{"event": "send_" + view.State, "job_id": j.ID, "printer": p.Printer, "kind": p.Kind, "client": client, "start_print": t.Start, "bytes": view.Sent, "on_card": u.onCard, "duration_ms": time.Since(began).Milliseconds(), "error": view.Error})
+	audit(map[string]any{"event": "send_" + string(view.State), "job_id": j.ID, "printer": p.Printer, "kind": p.Kind, "client": client, "start_print": t.Start, "bytes": view.Sent, "on_card": u.onCard, "duration_ms": time.Since(began).Milliseconds(), "error": view.Error})
 }
 
 func (m *SendManager) activeTransfers() []Transfer {

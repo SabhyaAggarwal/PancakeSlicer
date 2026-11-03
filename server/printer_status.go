@@ -325,7 +325,8 @@ func loadSendHistory(dir string) *sendHistory {
 	now := time.Now().UTC()
 	for i := range h.list {
 		if t := &h.list[i]; t.active() {
-			t.State, t.Error, t.Finished = "failed", "The service restarted during this transfer; check the printer before sending again", &now
+			t.Error, t.Finished = "The service restarted during this transfer; check the printer before sending again", &now
+			t.to(TransferFailed)
 		}
 	}
 	return h
