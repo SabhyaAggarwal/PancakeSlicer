@@ -20,18 +20,6 @@ import (
 	"time"
 )
 
-type JobState string
-
-const (
-	StateQueued    JobState = "queued"
-	StateRunning   JobState = "running"
-	StateDone      JobState = "done"
-	StateFailed    JobState = "failed"
-	StateCancelled JobState = "canceled"
-)
-
-func (s JobState) Finished() bool { return s == StateDone || s == StateFailed || s == StateCancelled }
-
 type JobRequest struct {
 	SourcePlates           []projectPlate `json:"source_plates,omitempty"`
 	PlateIndex             int            `json:"plate_index,omitempty"`
@@ -80,14 +68,15 @@ type JobRequest struct {
 }
 
 type Event struct {
-	ID     int      `json:"id"`
-	Type   string   `json:"type"`
-	Stream string   `json:"stream,omitempty"`
-	Line   string   `json:"line,omitempty"`
-	State  JobState `json:"state,omitempty"`
-	Error  string   `json:"error,omitempty"`
-	Stage  string   `json:"stage,omitempty"`
-	Pct    *float64 `json:"pct,omitempty"`
+	ID             int      `json:"id"`
+	Type           string   `json:"type"`
+	Stream         string   `json:"stream,omitempty"`
+	Line           string   `json:"line,omitempty"`
+	State          JobState `json:"state,omitempty"`
+	LifecycleState JobState `json:"lifecycle_state,omitempty"`
+	Error          string   `json:"error,omitempty"`
+	Stage          string   `json:"stage,omitempty"`
+	Pct            *float64 `json:"pct,omitempty"`
 }
 
 const maxEvents = 20000
@@ -100,45 +89,48 @@ type Job struct {
 	Request JobRequest
 	Created time.Time
 
-	mu         sync.Mutex
-	state      JobState
-	started    time.Time
-	finished   time.Time
-	errMsg     string
-	exitCode   *int
-	slice      json.RawMessage
-	events     []Event
-	dropped    int
-	eventBytes int
-	changed    chan struct{}
-	cancel     context.CancelFunc
-	stopReason string
-	stage      string
-	progress   *float64
-	send       *Transfer
+	mu            sync.Mutex
+	transitions   []JobTransition
+	transitionSeq uint64
+	state         JobState
+	started       time.Time
+	finished      time.Time
+	errMsg        string
+	exitCode      *int
+	slice         json.RawMessage
+	events        []Event
+	dropped       int
+	eventBytes    int
+	changed       chan struct{}
+	cancel        context.CancelFunc
+	stopReason    string
+	stage         string
+	progress      *float64
+	send          *Transfer
 }
 
 type JobView struct {
-	ID          string          `json:"id"`
-	Stage       string          `json:"stage,omitempty"`
-	Progress    *float64        `json:"progress,omitempty"`
-	State       JobState        `json:"state"`
-	Created     time.Time       `json:"created"`
-	Started     *time.Time      `json:"started,omitempty"`
-	Finished    *time.Time      `json:"finished,omitempty"`
-	Error       string          `json:"error,omitempty"`
-	ExitCode    *int            `json:"exit_code,omitempty"`
-	Request     JobRequest      `json:"request"`
-	DownloadURL string          `json:"download_url,omitempty"`
-	EventsURL   string          `json:"events_url"`
-	Slice       json.RawMessage `json:"record,omitempty"`
-	Filename    string          `json:"filename,omitempty"`
+	ID             string          `json:"id"`
+	Stage          string          `json:"stage,omitempty"`
+	Progress       *float64        `json:"progress,omitempty"`
+	State          JobState        `json:"state"`
+	LifecycleState JobState        `json:"lifecycle_state"`
+	Created        time.Time       `json:"created"`
+	Started        *time.Time      `json:"started,omitempty"`
+	Finished       *time.Time      `json:"finished,omitempty"`
+	Error          string          `json:"error,omitempty"`
+	ExitCode       *int            `json:"exit_code,omitempty"`
+	Request        JobRequest      `json:"request"`
+	DownloadURL    string          `json:"download_url,omitempty"`
+	EventsURL      string          `json:"events_url"`
+	Slice          json.RawMessage `json:"record,omitempty"`
+	Filename       string          `json:"filename,omitempty"`
 }
 
 func (j *Job) View() JobView {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	v := JobView{ID: j.ID, State: j.state, Created: j.Created, Error: j.errMsg, ExitCode: j.exitCode,
+	v := JobView{ID: j.ID, State: j.state.legacy(), LifecycleState: j.state, Created: j.Created, Error: j.errMsg, ExitCode: j.exitCode,
 		Stage: j.stage, Progress: j.progress, Request: j.Request, EventsURL: "/api/jobs/" + j.ID + "/events", Slice: j.slice}
 	if !j.started.IsZero() {
 		t := j.started
@@ -191,31 +183,6 @@ func (j *Job) log(stream, line string) {
 		}
 	}
 	j.appendLocked(e)
-}
-
-func (j *Job) setState(s JobState, errMsg string) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	if s.Finished() && j.stopReason != "" {
-		s = StateCancelled
-		errMsg = j.stopReason
-	}
-	j.state = s
-	j.errMsg = errMsg
-	switch {
-	case s == StateRunning:
-		j.started = time.Now()
-	case s.Finished():
-		j.finished = time.Now()
-		if j.dropped > 0 {
-			j.appendLocked(Event{Type: "log", Stream: "server", Line: fmt.Sprintf("%d further output lines not kept", j.dropped)})
-		}
-	}
-	eventType := "state"
-	if s.Finished() {
-		eventType = "done"
-	}
-	j.appendLocked(Event{Type: eventType, State: s, Error: errMsg})
 }
 
 func (j *Job) EventsSince(from int) ([]Event, <-chan struct{}, bool) {
@@ -351,7 +318,7 @@ func (m *JobManager) NewJob(client string) (*Job, error) {
 			return nil, errors.Join(err, os.RemoveAll(dir))
 		}
 	}
-	j := &Job{ID: id, Client: client, Dir: dir, Created: time.Now(), state: StateQueued, changed: make(chan struct{})}
+	j := &Job{ID: id, Client: client, Dir: dir, Created: time.Now(), state: StateIdle, changed: make(chan struct{})}
 	m.uploads[id] = j
 	return j, nil
 }
@@ -369,7 +336,7 @@ func (m *JobManager) Start(j *Job) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	j.mu.Lock()
 	j.cancel = cancel
-	j.appendLocked(Event{Type: "state", State: StateQueued})
+	j.setStateLocked(StateQueued, "")
 	j.mu.Unlock()
 	m.jobs[j.ID] = j
 	if m.cfg.Metrics {
@@ -424,11 +391,14 @@ func (m *JobManager) Get(id string) *Job {
 func (m *JobManager) Cancel(j *Job) bool {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	if j.state.Finished() {
+	if j.state.Finished() || j.state == StateCanceling {
 		return false
 	}
 	j.stopReason = "cancelled"
-	j.cancel()
+	j.setStateLocked(StateCanceling, j.stopReason)
+	if j.cancel != nil {
+		j.cancel()
+	}
 	return true
 }
 
@@ -453,7 +423,7 @@ func (m *JobManager) Counts() (queued, running int) {
 		switch j.State() {
 		case StateQueued:
 			queued++
-		case StateRunning:
+		case StatePreparing, StateSlicing, StateCanceling:
 			running++
 		}
 	}
@@ -697,7 +667,9 @@ func (m *JobManager) toolArgs(j *Job) []string {
 func (m *JobManager) run(ctx context.Context, j *Job) {
 	ctx, cancel := context.WithTimeout(ctx, m.cfg.JobTimeout)
 	defer cancel()
-	j.setState(StateRunning, "")
+	if !j.setState(StatePreparing, "") {
+		return
+	}
 	args := m.toolArgs(j)
 	if !m.cfg.Features.Progress {
 		j.log("server", "progress slicing 0")
@@ -728,6 +700,9 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 	defer stderrWriter.Close()
 	cmd.Stdout = stdoutWriter
 	cmd.Stderr = stderrWriter
+	if !j.setState(StateSlicing, "") {
+		return
+	}
 	if err := cmd.Start(); err != nil {
 		switch {
 		case errors.Is(ctx.Err(), context.Canceled):

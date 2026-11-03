@@ -50,6 +50,8 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, users *UserPres
 	mux.HandleFunc("GET /api/jobs/{id}", s.getJob)
 	mux.HandleFunc("DELETE /api/jobs/{id}", s.deleteJob)
 	mux.HandleFunc("GET /api/jobs/{id}/events", s.events)
+	mux.HandleFunc("GET /api/jobs/{id}/transitions", s.jobTransitions)
+	mux.HandleFunc("POST /api/jobs/{id}/cancel", s.cancelJob)
 	mux.HandleFunc("GET /api/jobs/{id}/download", s.download)
 	mux.HandleFunc("GET /api/jobs/{id}/moves", s.moves)
 	mux.HandleFunc("GET /api/jobs/{id}/exploded/{name}", s.exploded)
@@ -1287,4 +1289,17 @@ func (s *Server) handyModel(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
 	http.ServeContent(w, r, name, st.ModTime(), f)
+}
+
+func (s *Server) jobTransitions(w http.ResponseWriter, r *http.Request) {
+	if j := s.job(w, r); j != nil {
+		writeJSON(w, 200, j.Transitions())
+	}
+}
+
+func (s *Server) cancelJob(w http.ResponseWriter, r *http.Request) {
+	if j := s.job(w, r); j != nil {
+		s.jobs.Cancel(j)
+		writeJSON(w, 200, j.View())
+	}
 }
