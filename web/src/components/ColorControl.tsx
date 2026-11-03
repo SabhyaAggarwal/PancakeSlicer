@@ -2,9 +2,10 @@ import { preferenceJson, savePreferences, usePreference } from '../saved-prefere
 import { useId, useState } from 'react';
 import { Popover } from 'radix-ui';
 import { Range } from './Range';
+import { FILAMENT_PALETTE, paletteName } from './filament-palette';
 import './controls.css';
 const KEY = 'orca.web.recent-colors';
-const PALETTE = ['#FFFFFF','#B6B6BE','#52525B','#17171B','#D34F56','#D99245','#E1C85B','#4C9970','#4389B5','#785EB0','#B96692','#8C6A52'];
+const PALETTE = FILAMENT_PALETTE.map((c) => c.hex);
 const normalize = (s: string) => /^#?[\da-f]{6}$/i.test(s) ? `#${s.replace('#', '').toUpperCase()}` : null;
 const read = (): string[] => { const x = preferenceJson<unknown>(KEY, []); return Array.isArray(x) ? x.map(String).map(normalize).filter((v): v is string => !!v).slice(0,8) : []; };
 export default function ColorControl({value, onCommit, label = 'Color', disabled, ...named}: {value: string; onCommit(value: string): void; label?: string; disabled?: boolean; 'aria-labelledby'?: string}) {
@@ -21,7 +22,7 @@ export default function ColorControl({value, onCommit, label = 'Color', disabled
     savePreferences({[KEY]:next});
     setOpen(false);
   };
-  const swatches = (colors: string[], group: string) => <div className="color-palette" role="group" aria-label={group}>{colors.map(c => <button key={c} type="button" className="color-swatch" style={{backgroundColor: c}} aria-label={c} aria-pressed={color === c} onClick={() => setDraft(c)} />)}</div>;
+  const swatches = (colors: string[], group: string) => <div className="color-palette" role="group" aria-label={group}>{colors.map(c => <button key={c} type="button" className="color-swatch" style={{backgroundColor: c}} aria-label={paletteName(c) ?? c} aria-pressed={color === c} onClick={() => setDraft(c)} />)}</div>;
   return <Popover.Root open={open} onOpenChange={next => { setOpen(next); if (next) setDraft(normalize(value) ?? '#000000'); }}>
     <Popover.Trigger asChild><button {...named} type="button" className="color-trigger" style={{backgroundColor:normalize(value) ?? undefined}} data-unknown={!normalize(value)} aria-label={`${label}: ${normalize(value) ?? 'Not set'}`} disabled={disabled}/></Popover.Trigger>
     <Popover.Portal><Popover.Content className="orca-menu color-popover" aria-label={label} side="bottom" align="start" sideOffset={6} collisionPadding={12} onKeyDown={e => e.stopPropagation()}>

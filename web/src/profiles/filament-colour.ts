@@ -2,6 +2,7 @@ import type { Config } from '../api/types';
 import { getState, markStale, resolvePreset, setState, type State } from '../state/store';
 import { undoable } from '../state/history';
 import { findProfile, profileKey } from './identity';
+import { paletteName } from '../components/filament-palette';
 import { DEFAULT_FILAMENT_COLOUR as DEFAULT_COLOUR } from './metadata';
 
 const hex = (value: unknown): string | undefined => {
@@ -55,7 +56,9 @@ export async function changeFilamentColour(slot: number, colour: string): Promis
 
 const COLOUR_NAMES: [number, string][] = [[15, 'Red'], [40, 'Orange'], [65, 'Yellow'], [165, 'Green'], [195, 'Cyan'], [255, 'Blue'], [290, 'Purple'], [335, 'Pink'], [360, 'Red']];
 export function colourName(colour: string): string {
-  const v = hex(colour) ?? DEFAULT_COLOUR, [r, g, b] = [1, 3, 5].map((i) => parseInt(v.slice(i, i + 2), 16) / 255);
+  const v = hex(colour) ?? DEFAULT_COLOUR, preset = paletteName(v);
+  if (preset) return preset;
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(v.slice(i, i + 2), 16) / 255);
   const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
   const sat = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
   if (l < 0.12) return 'Black';

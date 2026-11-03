@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { Popover } from 'radix-ui';
 import { getState, toast, useStore } from '../state/store';
 import { inkOn } from '../components/SlotChip';
+import { FILAMENT_PALETTE } from '../components/filament-palette';
 import { findProfile } from './identity';
 import { changeFilamentColour, colourName, saveFilamentAsColour, slotColour, slotColourOverride, useProfileColour } from './filament-colour';
 
-const PALETTE = ['#FFFFFF', '#B6B6BE', '#52525B', '#17171B', '#D34F56', '#D99245', '#E1C85B', '#4C9970', '#4389B5', '#785EB0', '#B96692', '#8C6A52'];
+const PALETTE = FILAMENT_PALETTE.map((c) => c.hex);
 const normal = (v: string) => /^#?[\da-f]{6}$/i.test(v) ? `#${v.replace('#', '').toUpperCase()}` : null;
 
 export function FilamentColourMenu({ slot }: { slot: number }) {
