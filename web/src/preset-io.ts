@@ -176,7 +176,7 @@ export function planImport(s: State, parsed: ParsedPreset[]): ImportPlan[] {
         base_id: String(p.metadata?.base_id ?? ''), filament_id: String(p.metadata?.filament_id ?? '') || undefined,
         inherits: p.inherits ? [p.inherits] : [], config, compatible_printers: rawPrinters === undefined ? inherited?.compatible_printers : p.printers,
         compatible_evaluated: rawPrinters === undefined ? inherited?.compatible_evaluated : false,
-        compatible_prints: Array.isArray(config.compatible_prints) ? config.compatible_prints.map(String) : inherited?.compatible_prints,
+        compatible_prints: Array.isArray(config.compatible_prints) && config.compatible_prints.length ? config.compatible_prints.map(String) : inherited?.compatible_prints,
         model: type === 'machine' ? String(config.printer_model ?? anchor?.model ?? '') : undefined,
         imported: true, engine_base: anchor?.engine_base ?? anchor?.name };
       const key = type === 'machine' ? 'machines' : type === 'process' ? 'processes' : 'filaments';

@@ -314,7 +314,7 @@ func (p *PresetIndex) dumpVendor(vendor string) (*VendorPresets, error) {
 			}
 			if e.Printers != nil {
 				preset.Evaluated, preset.CompatiblePrinters = true, *e.Printers
-				if e.Prints != nil {
+				if e.Prints != nil && (len(stringList(config["compatible_prints"])) > 0 || stringValue(config["compatible_prints_condition"]) != "") {
 					preset.CompatiblePrints = *e.Prints
 				}
 			}
