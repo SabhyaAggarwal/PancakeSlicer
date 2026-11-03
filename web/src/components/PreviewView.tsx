@@ -19,12 +19,13 @@ import { numberDialog, openFileDialog, slice } from '../actions';
 import { toggleViewOption, useViewOptions } from '../plater/viewOptions';
 import { filamentColor } from '../plater/filamentColor';
 import { setVisibleToolpaths } from '../preview/visible';
+import { preloadable, whenIdle } from '../preloadable';
 import './preview.css';
 
 const SHOW_STATS = new URLSearchParams(location.search).has('stats');
 const ExplainLegend = lazy(() => import('./PreviewExplain').then((m) => ({ default: m.ExplainLegend })));
 const StandardView = lazy(() => import('./PreviewExplain').then((m) => ({ default: m.StandardView })));
-const GcodeWindow = lazy(() => import('./GcodeWindow').then((m) => ({ default: m.GcodeWindow })));
+const GcodeWindow = preloadable(() => import('./GcodeWindow'));
 const ToolPosition = lazy(() => import('./ToolPosition'));
 
 export const jobColours = () => getState().filamentSlots.map((_, i) => filamentColor(getState(), i + 1));
@@ -287,6 +288,7 @@ export function PreviewView() {
     setVis: (v: Partial<Visibility>, shells?: boolean) => setUi((u) => ({ ...u, vis: { ...u.vis, ...v }, shells: shells ?? u.shells })),
   };
 
+  useEffect(() => { if (data?.done) whenIdle(() => void GcodeWindow.preload().catch(() => {})); }, [data?.done]);
   useEffect(() => { setVisibleToolpaths(data?.done ? { data, layers } : null); }, [data, data?.done, layers]);
   useEffect(() => () => setVisibleToolpaths(null), []);
   useEffect(() => { oneBackup.current = null; }, [layerCount]);
@@ -439,7 +441,6 @@ export function PreviewView() {
           lo={oneLayer ? 0 : lo}
           hi={hi}
           oneLayer={oneLayer}
-          onOneLayer={toggleOneLayer}
           onChange={(a, b) => {
             setLayers(oneLayer ? ([x]) => [x, b] : [a, b]);
             setMovePos(null);
@@ -467,13 +468,13 @@ export function PreviewView() {
       )}
       {layerCount > 0 && topMoves > 0 && (
         <OrderBar data={data!} at={topFirst + pos - 1} onSeek={seekOrder}
-          gcodeOpen={gcodeWindow} onGcode={() => toggleViewOption('gcodeWindow')} />
+          gcodeOpen={gcodeWindow} onGcode={() => toggleViewOption('gcodeWindow')} oneLayer={oneLayer} onOneLayer={toggleOneLayer} />
       )}
       {layerCount > 0 && pos < topMoves && data!.states && topFirst + pos - 1 < data!.loaded && (
         <Suspense fallback={null}><ToolPosition data={data!} at={topFirst + pos - 1} view={ui.view} /></Suspense>
       )}
       {gcodeWindow && layerCount > 0 && topMoves > 0 && (
-        <Suspense fallback={null}><GcodeWindow line={data!.gcode[topFirst + pos - 1]} file={dropped} /></Suspense>
+        <Suspense fallback={null}><GcodeWindow line={data!.gcode[topFirst + pos - 1]} file={dropped} onClose={() => toggleViewOption('gcodeWindow')} /></Suspense>
       )}
     </div>
   );

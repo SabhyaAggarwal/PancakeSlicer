@@ -19,7 +19,7 @@
 :where(.orca-parity) .pk-rail-title { flex: 1; min-width: 0; }
 :where(.orca-parity) .pk-count { flex: none; color: var(--ink-3); font: var(--t-small); font-variant-numeric: tabular-nums; }
 :where(.orca-parity) .pk-rail > button.active .pk-count { color: inherit; }
-:where(.orca-parity) .pk-rail > button.active { background: var(--selected); color: var(--selected-foreground); font-weight: 500; }
+:where(.orca-parity) .pk-rail > button.active { background: var(--selected); color: var(--selected-foreground); font-weight: 600; }
 :where(.orca-parity) .pk-rail button:focus-visible, :where(.orca-parity) .pk-option:focus-visible, :where(.orca-parity) .pk-star:focus-visible { outline-offset: -1px; }
 :where(.orca-parity) .pk-list { display: grid; align-content: start; min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--s-4); }
 :where(.orca-parity) .pk-tab { grid-area: 1 / 1; min-width: 0; }
@@ -34,12 +34,12 @@
 :where(.orca-parity) .pk-check { color: var(--accent-text); flex: none; width: 14px; }
 :where(.orca-parity) .pk-sub { display: block; overflow: hidden; color: var(--text-dim); font: var(--t-small); white-space: nowrap; text-overflow: ellipsis; }
 :where(.orca-parity) .pk-meta { flex: 0 10000 auto; min-width: 3em; margin-left: auto; padding-left: var(--s-4); overflow: hidden; color: var(--text-dim); font: var(--t-small); white-space: nowrap; text-overflow: ellipsis; }
-:where(.orca-parity) .pk-group { padding: var(--s-5) var(--s-3) 6px calc(var(--s-3) * 2 + 14px); color: var(--ink-3); font: 500 12px/16px var(--font-ui); }
+:where(.orca-parity) .pk-group { padding: var(--s-5) var(--s-3) 6px calc(var(--s-3) * 2 + 14px); color: var(--ink-3); font: 600 12px/16px var(--font-ui); }
 :where(.orca-parity) .pk-group:first-child { padding-top: var(--s-2); }
 :where(.orca-parity) .orca-menu.pk-pop.pk-media { width: min(640px, calc(100vw - 16px)); }
 :where(.orca-parity) .pk-media .pk-option { gap: var(--s-4); min-height: 104px; padding: var(--s-3); }
 :where(.orca-parity) .pk-media .pk-text { gap: 2px; }
-:where(.orca-parity) .pk-media .pk-label { font-weight: 500; }
+:where(.orca-parity) .pk-media .pk-label { font-weight: 600; }
 :where(.orca-parity) .pk-art { flex: none; display: grid; place-items: center; width: 88px; height: 88px; border-radius: var(--r-2); background: none; color: var(--ink-3); }
 :where(.orca-parity) .pk-art img { width: 80px; height: 80px; object-fit: contain; }
 :where(.orca-parity) .pk-art svg path { stroke-width: 0.6; }

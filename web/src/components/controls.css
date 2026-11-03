@@ -92,7 +92,7 @@
 :where(.orca-parity) .facets { display: flex; flex-direction: column; gap: var(--s-5); min-width: 0; }
 :where(.orca-parity) .facets-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); min-height: var(--h-compact); color: var(--ink-3); font: var(--t-small); }
 :where(.orca-parity) .facet-group { display: flex; flex-direction: column; min-width: 0; }
-:where(.orca-parity) .facet-head { margin: 0 0 var(--s-2); color: var(--ink-3); font: 600 11px/16px var(--font-ui); letter-spacing: .04em; text-transform: uppercase; }
+:where(.orca-parity) .facet-head { margin: 0 0 var(--s-2); color: var(--ink-3); font: 600 12px/16px var(--font-ui); }
 :where(.orca-parity) .facet-group > .text { margin-bottom: var(--s-2); }
 :where(.orca-parity) .facet-row { display: flex; align-items: center; gap: var(--s-3); min-height: var(--h-compact); color: var(--text); font: var(--t-body); cursor: pointer; }
 :where(.orca-parity) .facet-row > span:not(.facet-count) { flex: 1; min-width: 0; overflow-wrap: break-word; }

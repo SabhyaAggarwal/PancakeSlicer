@@ -2,7 +2,7 @@
 
 :where(.orca-parity) .xf { flex: none; padding: var(--s-2) var(--s-4) var(--s-3); border-bottom: 1px solid var(--line); background: var(--panel); }
 :where(.orca-parity) .xf-head { display: flex; align-items: center; gap: var(--s-3); height: var(--h-compact); }
-:where(.orca-parity) .xf-label { margin-right: auto; font: var(--t-label); letter-spacing: var(--label-track); text-transform: none; color: var(--ink-2); overflow: hidden; overflow-wrap: anywhere; white-space: normal; }
+:where(.orca-parity) .xf-label { margin-right: auto; font: var(--t-label); text-transform: none; color: var(--ink-2); overflow: hidden; overflow-wrap: anywhere; white-space: normal; }
 :where(.orca-parity) .xf-fold { display: grid; place-items: center; width: var(--h-compact); height: var(--h-compact); padding: 0; border: 0; border-radius: var(--r-2); background: none; color: var(--ink-2); cursor: pointer; }
 :where(.orca-parity) .xf-fold:hover { color: var(--ink); background: var(--sunken); }
 :where(.orca-parity) .xf-grid { display: grid; grid-template-columns: 64px repeat(3, minmax(0, 1fr)) var(--h-compact); gap: var(--s-2) var(--s-2); align-items: center; }
@@ -26,7 +26,7 @@
 :where(.orca-parity) .canvas-toolbar.open .tb-items { height: auto; }
 :where(.orca-parity) .tb-items > * { height: 32px; }
 :where(.orca-parity) .tb-sep { background: var(--line); align-self: center; height: 20px; }
-:where(.orca-parity) .tb-more { flex: none; align-self: flex-start; width: 32px; height: 32px; padding: 0; border: 0; border-left: 1px solid var(--line); background: none; color: var(--ink-2); font: var(--t-title); letter-spacing: 1px; cursor: pointer; }
+:where(.orca-parity) .tb-more { flex: none; align-self: flex-start; width: 32px; height: 32px; padding: 0; border: 0; border-left: 1px solid var(--line); background: none; color: var(--ink-2); font: var(--t-title); cursor: pointer; }
 :where(.orca-parity) .tb-more:hover, :where(.orca-parity) .canvas-toolbar.open .tb-more { color: var(--ink); background: var(--sunken); }
 
 :where(.orca-parity) .nav3d-face { background: var(--panel); color: var(--ink-2); border: 1px solid var(--line-strong); font: var(--t-label); font-size: 9px; letter-spacing: var(--label-track); text-transform: none; }

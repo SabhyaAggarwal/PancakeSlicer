@@ -10,11 +10,18 @@ const GLYPH = {
   minus: 'M3.5 8h9',
   printer: 'M2.5 13.5h11M4 13.5v-10h8v10M4 6.5h8M7 6.5v3h2v-3M6.5 11.5h3',
   undo: 'M4.5 6.5h5.25a2.75 2.75 0 0 1 0 5.5H6.5M4.5 6.5 7 4M4.5 6.5 7 9',
+  play: 'M5 3.5v9l7.5-4.5z',
+  pause: 'M5.5 3.5v9M10.5 3.5v9',
+  prev: 'M11 4L6 8l5 4M4.5 4v8',
+  next: 'M5 4l5 4-5 4M11.5 4v8',
+  layers: 'M8 2.5l5.5 3L8 8.5l-5.5-3zM2.5 8.5L8 11.5l5.5-3M2.5 11L8 14l5.5-3',
+  code: 'M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5M9 3l-2 10',
+  close: 'M4 4l8 8M12 4l-8 8',
 } as const;
 export type GlyphName = keyof typeof GLYPH;
 
 export function Glyph({ name, size = 16 }: { name: GlyphName; size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden="true">
-    <path d={GLYPH[name]} fill="none" stroke="currentColor" strokeWidth={name === 'more' ? 2.4 : 1.3} strokeLinecap="round" strokeLinejoin="round"/>
+    <path d={GLYPH[name]} fill={name === 'play' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={name === 'more' ? 2.4 : 1.3} strokeLinecap="round" strokeLinejoin="round"/>
   </svg>;
 }

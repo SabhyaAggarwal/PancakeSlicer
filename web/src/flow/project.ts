@@ -420,6 +420,10 @@ async function resumeUnsaved(id: string) {
   catch (e) { toast(errorText(e)); return false; }
   finally { routing = false; routeSavedProject(); }
 }
+export function confirmProjectSelection() {
+  if (project.get().value === 'missing' || project.get().value === 'opening') return;
+  observed = snapshot(); checkpointProject(observed); project.send({ type: 'EDIT' });
+}
 export const leaveProjectVersion = (id: string) => openProject(id, { reload: true });
 export async function restoreProjectVersion() {
   if (!versionView) return;

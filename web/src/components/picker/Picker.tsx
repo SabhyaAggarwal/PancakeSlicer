@@ -8,6 +8,7 @@ import '../menu.css';
 import './picker.css';
 import { Caret } from '../Caret';
 import { Glyph } from '../Glyph';
+import { edgeOf, type Edge } from '../anchor';
 export interface PickerItem { id: string; label: string; sub?: string; swatch?: string | null; meta?: string; facet?: string; search?: string; disabled?: boolean | string;
   image?: string | null; status?: { label: string; tone: 'online' | 'printing' | 'offline' | 'error' } }
 export interface PickerGroup { id: string; title: string; items: PickerItem[]; lead?: boolean }
@@ -79,6 +80,7 @@ const PickerTab = memo(function PickerTab({ t, on, active, id, value, adding, pi
 });
 export function Picker({ label, value, groups, sections = false, onPick, memory = `orca.parity.${label}`, footer = [], catalog, className = '', triggerProps, children }: Props) {
   countRender('picker');
+  const triggerEl = useRef<HTMLButtonElement | null>(null), [edge, setEdge] = useState<Edge>({ align: 'start', alignOffset: 0 });
   const [open, setOpen] = useState(false), [primed, setPrimed] = useState(false), [adding, setAdding] = useState(false), [rail, setRail] = useState(''), [active, setActive] = useState(0);
   const savedPins = usePreference(`${memory}.pins`);
   const pins = useMemo(() => read(`${memory}.pins`), [memory,savedPins]);
@@ -134,12 +136,12 @@ export function Picker({ label, value, groups, sections = false, onPick, memory 
     setOpen(false); resetType();
   }, [adding, catalog, onPick]);
   const pin = useCallback((row: PickerItem) => { const next = pins.includes(row.id) ? pins.filter((id) => id !== row.id) : [...pins, row.id]; write(`${memory}.pins`, next); }, [pins, memory]);
-  return <Popover.Root open={open} onOpenChange={next => { setOpen(next); resetType(); if (!next) setPrimed(false); if (next) { setAdding(!!catalog && !hasOwn(groups)); setRail(''); setActive(0); } }}>
-    <Popover.Trigger asChild><button {...triggerProps} type="button" className={`pk-trigger dropdown ${className}`} data-menu-trigger="orca" aria-label={label} onPointerEnter={prime} onFocus={warm} onPointerLeave={unprime} onKeyDown={e => {
+  return <Popover.Root open={open} onOpenChange={next => { setOpen(next); resetType(); if (!next) setPrimed(false); if (next) { setEdge(edgeOf(triggerEl.current)); setAdding(!!catalog && !hasOwn(groups)); setRail(''); setActive(0); } }}>
+    <Popover.Trigger asChild><button {...triggerProps} ref={(el) => { triggerEl.current = el; const r = triggerProps?.ref; if (typeof r === 'function') r(el); else if (r) r.current = el; }} type="button" className={`pk-trigger dropdown ${className}`} data-menu-trigger="orca" aria-label={label} onPointerEnter={prime} onFocus={warm} onPointerLeave={unprime} onKeyDown={e => {
       triggerProps?.onKeyDown?.(e);
       if (!e.defaultPrevented && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); e.stopPropagation(); resetType(); setAdding(!!catalog && !hasOwn(groups)); setRail(''); setOpen(true); }
     }}>{children}<Caret className="pk-caret"/></button></Popover.Trigger>
-    <Popover.Portal forceMount={primed || undefined}><Popover.Content forceMount={primed || undefined} className={`orca-menu pk-pop ${rows.some(r => r.image !== undefined) ? 'pk-media' : ''}`} data-menu-family="orca" aria-label={adding ? catalog?.label : label} side="bottom" align="start" sideOffset={4} collisionPadding={8} onOpenAutoFocus={e => { e.preventDefault(); if (open) focusChoice(); }} onKeyDown={e => {
+    <Popover.Portal forceMount={primed || undefined}><Popover.Content forceMount={primed || undefined} className={`orca-menu pk-pop ${rows.some(r => r.image !== undefined) ? 'pk-media' : ''}`} data-menu-family="orca" aria-label={adding ? catalog?.label : label} side="bottom" align={edge.align} sideOffset={4} collisionPadding={8} onOpenAutoFocus={e => { e.preventDefault(); if (open) focusChoice(); }} onKeyDown={e => {
       if (e.key === 'Escape' || e.key === 'Tab') return;
       e.stopPropagation();
       const at = enabled.indexOf(active), inRail = e.target instanceof Element && !!e.target.closest('.pk-rail');

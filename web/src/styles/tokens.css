@@ -2,13 +2,13 @@
   color-scheme: dark;
   --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: var(--font-ui);
-  --t-label: 600 14px/20px var(--font-ui);
+  --t-label: 600 13px/18px var(--font-ui);
   --t-small: 400 12px/16px var(--font-ui);
-  --t-body: 400 14px/20px var(--font-ui);
-  --t-num: 500 14px/20px var(--font-ui);
+  --t-body: 400 13px/18px var(--font-ui);
+  --t-num: 400 13px/18px var(--font-ui);
   --t-title: 600 14px/20px var(--font-ui);
-  --t-readout: 500 15px/20px var(--font-ui);
-  --t-hero: 600 24px/30px var(--font-ui);
+  --t-readout: 600 14px/20px var(--font-ui);
+  --t-hero: 600 14px/20px var(--font-ui);
   --label-track: 0;
   --chrome: #1F1D1E;
   --chrome-raised: #2E2A2B;

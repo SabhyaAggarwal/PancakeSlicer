@@ -22,7 +22,7 @@
   :where(.orca-parity) .workspace-rail[data-open=true] { display: flex; }
   :where(.orca-parity) .workspace-scrim { display: block; position: absolute; inset: 0; z-index: 11; background: var(--scrim); }
   :where(.orca-parity) .workspace-sheet-heading { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 8px; min-height: 48px; padding: 0 max(12px,env(safe-area-inset-right)) 0 max(12px,env(safe-area-inset-left)); border-bottom: 1px solid var(--line); background: var(--chrome); }
-  :where(.orca-parity) .workspace-sheet-heading strong { min-width: 0; font: var(--t-title); font-size: 16px; }
+  :where(.orca-parity) .workspace-sheet-heading strong { min-width: 0; font: var(--t-title); }
   :where(.orca-parity) .workspace-rail .sidebar { display: flex; width: 100%; min-width: 0; flex: 1 1 0; border: 0; overflow-y: auto; transition: none; }
   :where(.orca-parity) .workspace-rail .process-section { flex: 1 0 320px; }
   :where(.orca-parity) .sidebar-reveal { display: none; }

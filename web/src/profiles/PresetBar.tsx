@@ -120,7 +120,7 @@ function ChangesPop({type,slot,list,project,state,save}: {type:PresetType;slot:n
   useEffect(() => { if (!list.length && state !== 'saved') setOpen(false); }, [list.length, state]);
   if (!list.length && state !== 'saved') return null;
   const label = state === 'saving' ? 'Saving…' : state === 'saved' && !list.length ? 'Saved to profile' : `${list.length} change${list.length === 1 ? '' : 's'}`;
-  return <Popover.Root open={open} onOpenChange={setOpen}><Popover.Trigger asChild><button type="button" className="link pf-changes-trigger" aria-expanded={open}>{label}</button></Popover.Trigger><Popover.Portal><Popover.Content className="orca-menu pf-changes-pop" role="dialog" aria-label="Changes" collisionPadding={12} sideOffset={6} align="start" onCloseAutoFocus={(e) => {if (jumped.current) {jumped.current = false; e.preventDefault();}}}>
+  return <Popover.Root open={open} onOpenChange={setOpen}><Popover.Trigger asChild><button type="button" className="link pf-changes-trigger" aria-expanded={open}>{label}</button></Popover.Trigger><Popover.Portal><Popover.Content className="orca-menu pf-changes-pop" role="dialog" aria-label="Changes" collisionPadding={12} side="bottom" sideOffset={4} align="start" onCloseAutoFocus={(e) => {if (jumped.current) {jumped.current = false; e.preventDefault();}}}>
     <Changes type={type} list={list} onJump={() => {jumped.current = true; setOpen(false);}}/>
     {!!list.length && <div className="pf-changes-foot"><button type="button" className="btn-ghost" onClick={() => undoable('Revert all changes', () => list.forEach(revert))}>Revert all</button>
       {project > 0 && <button type="button" className="btn primary" onClick={() => {setOpen(false);save();}}>Save to profile…</button>}</div>}

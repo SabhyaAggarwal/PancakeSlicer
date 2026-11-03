@@ -19,6 +19,9 @@ const SHOW_STATS = new URLSearchParams(location.search).has('stats');
 
 const FOLD_BELOW = 1000;
 
+const spacedTime = (s: number) => shortTime(s).replace(/(\d)([a-z]+)(?=\d)/g, '$1$2 ');
+const spacedWeight = (g: number) => g >= 1000 ? `${(g / 1000).toFixed(2)} kg` : `${g.toFixed(1)} g`;
+
 function compactWeight(g: number): string {
   const a = Math.abs(g);
   const [v, unit] = a >= 1e6 ? [a / 1e6, 't'] : a >= 1e3 ? [a / 1e3, 'kg'] : [a, 'g'];
@@ -149,18 +152,14 @@ export function Legend(props: {
     switch (ui.view) {
       case 'feature':
         return (
-          <table className="lg-table">
-            <tbody>
-              {ROLE_NAMES.map((name, r) => (d.roleTime[r] > 0 || d.roleFilament[r] > 0) && (
-                <tr key={r} className={ui.vis.hiddenRoles.has(r) ? 'off' : ''} onClick={() => toggleRole(r)}
-                  onMouseEnter={() => focusRole(r)} onMouseLeave={() => focusRole(null)}>
-                  <td><button type="button" className="lg-role" aria-pressed={!ui.vis.hiddenRoles.has(r)} onClick={(e) => { e.stopPropagation(); toggleRole(r); }}
-                    onFocus={() => focusRole(r)} onBlur={() => focusRole(null)}><Swatch c={ROLE_COLORS[r]} />{name}</button></td>
-                  <td>{d.roleTime[r] > 0 ? shortTime(d.roleTime[r]) : ''}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="lg-roles" role="group" aria-label="Line types">
+            {ROLE_NAMES.map((name, r) => (d.roleTime[r] > 0 || d.roleFilament[r] > 0) && (
+              <button key={r} type="button" className="lg-role-row" aria-pressed={!ui.vis.hiddenRoles.has(r)} onClick={() => toggleRole(r)}
+                onMouseEnter={() => focusRole(r)} onMouseLeave={() => focusRole(null)} onFocus={() => focusRole(r)} onBlur={() => focusRole(null)}>
+                <Swatch c={ROLE_COLORS[r]} /><span className="lg-role-name">{name}</span><span className="lg-role-time">{d.roleTime[r] > 0 ? spacedTime(d.roleTime[r]) : ''}</span>
+              </button>
+            ))}
+          </div>
         );
       case 'height': return <RangeRows range={ranges?.height} decimals={2} />;
       case 'width': return <RangeRows range={ranges?.width} decimals={2} />;
@@ -220,20 +219,19 @@ export function Legend(props: {
   return (
     <div ref={panel} className={open ? 'legend' : 'legend closed'} aria-label="Legend">
       <div className="lg-head">
-        <Dropdown aria-label="Color scheme" value={ui.view} onValueChange={(next) => setUi((u) => ({ ...u, view: next as ViewType }))} options={[...VIEW_TYPES.filter((v) => d.header?.extended || canExtend(d) || !EXTENDED_VIEWS.has(v.key)).map((v) => ({ value: v.key, label: v.label }))]} />
+        <Dropdown className="lg-view" aria-label="Color scheme" value={ui.view} onValueChange={(next) => setUi((u) => ({ ...u, view: next as ViewType }))} options={[...VIEW_TYPES.filter((v) => d.header?.extended || canExtend(d) || !EXTENDED_VIEWS.has(v.key)).map((v) => ({ value: v.key, label: v.label }))]} />
+        <button type="button" className="lg-totals" aria-expanded={open} aria-label={`${spacedTime(total)}, ${spacedWeight(totalG)}; ${open ? 'fold' : 'open'} legend`} onClick={() => setOpen(!open)}>
+          <span className="lg-sum">{spacedTime(total)} · {spacedWeight(totalG)}</span>
+        </button>
       </div>
-      <button type="button" className="lg-totals" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <div><span className="lg-k">Time</span><span className="lg-v">{shortTime(total)}</span></div>
-        <div><span className="lg-k">Filament</span><span className="lg-v">{compactWeight(totalG)}</span></div>
-      </button>
       {open && (
         <div className="lg-scroll">
           {props.explainOnly && props.explain}
           {!props.explainOnly && (
             <>
-              <Fold id="key" title={ui.view === 'feature' ? 'Line types' : VIEW_TYPES.find((v) => v.key === ui.view)?.label ?? 'Key'}>{body()}</Fold>
+              <div className="lg-body">{body()}</div>
               {props.explain}
-              <Fold id="show" title="Show">
+              <Fold id="show" title="Travel, seams and shells">
                 <div className="lg-options">
                   {options.map(([k, label, c]) => (
                     <label key={k} className="lg-opt">

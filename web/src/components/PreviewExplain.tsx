@@ -1,4 +1,3 @@
-import { Check } from './Check';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { forgetCompare, setStandardData, startCompare, stopCompare, useCompare, useStandardData } from '../compare';
@@ -11,7 +10,7 @@ import { ERROR_BINS, useSurfaceGrid } from '../preview/surface-grid';
 import { getState, printerPreset } from '../state/store';
 import { Icon } from './Icon';
 import { colorContext, jobColours, type PreviewUi } from './PreviewView';
-import { Fold } from './PreviewLegend';
+import { Switch } from './fields';
 
 const TWO_SCENE_VERTICES = 8e6;
 const NOT_PART = new Set([12, 17, 18]);
@@ -84,21 +83,21 @@ export function ExplainLegend(props: {
 
   const summary = nativeSurfaceSummary(record);
   return (
-    <Fold id="curved" title="Curved">
-    <div className="np-legend">
+    <section className="lg-section np-legend" aria-label="Curved">
+      <div className="lg-section-title">Curved</div>
       {summary && <div className="np-summary-line" role="status">{summary}</div>}
       <div className="np-toggles">
-        <label className="lg-opt"><Check checked={compare} onCheckedChange={(next) => setCompare(next)} />Compare with Standard</label>
-        <label className="lg-opt">
-          <Check checked={highlight} onCheckedChange={(next) => {
+        <label className="lg-switch"><Switch checked={compare} onChange={(next) => setCompare(next)} />Compare with Standard</label>
+        <label className="lg-switch">
+          <Switch checked={highlight} onChange={(next) => {
             const on = next;
             if (on) previous.current = { view: ui.view, nonplanar: ui.nonplanar };
             setUi((u) => ({ ...u, ...(on ? { view: 'nonplanar', nonplanar: 'curved' } : previous.current) }));
           }} />Highlight curved
         </label>
         {hasSurfaceGrid && (
-          <label className="lg-opt">
-            <Check checked={ui.surface} onCheckedChange={(next) => setUi((u) => ({ ...u, surface: next }))} />Surface error
+          <label className="lg-switch">
+            <Switch checked={ui.surface} onChange={(next) => setUi((u) => ({ ...u, surface: next }))} />Surface error
           </label>
         )}
       </div>
@@ -112,18 +111,13 @@ export function ExplainLegend(props: {
       ) : <>
       {!compare && (
         <div className="np-stats">
-          {rows.filter(([label]) => label !== 'Time' && label !== 'Filament').map(([label, , b]) => (
-            <div key={label}>
+          {rows.filter(([label]) => !['Time', 'Filament', 'Curved top'].includes(label)).map(([label, , b]) => (
+            <span key={label}>
               <span className="np-k">{label === 'Curved shells' ? 'Shells' : label === 'Curved overhangs' ? 'Overhangs' : label}</span>
               <span className="np-v">{b}</span>
-            </div>
+            </span>
           ))}
-          {s.flat.length > 0 && (
-            <div>
-              <span className="np-k">Kept flat</span>
-              <span className="np-v">{area(s.flat.reduce((a, f) => a + f.area, 0))}</span>
-            </div>
-          )}
+          {s.flat.length > 0 && <span><span className="np-k">Kept flat</span><span className="np-v">{area(s.flat.reduce((a, f) => a + f.area, 0))}</span></span>}
         </div>
       )}
       {compare && <table className="lg-table np-table">
@@ -167,8 +161,7 @@ export function ExplainLegend(props: {
         </>
       )}
       </>}
-    </div>
-    </Fold>
+    </section>
   );
 }
 

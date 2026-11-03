@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Config, ConfigValue, PresetType, UserPreset } from '../api/types';
 import { SettingsTab, type ProfileFields } from '../components/SettingsTab';
 import { effectiveMode, getState, resolvePreset, toast, useStore } from '../state/store';
@@ -13,6 +13,8 @@ import type { ProfileApplicability } from './applicability';
 import { acknowledgeProjectProfileChanges,type ProjectProfileChanges } from './project-draft';
 import { requestPreset } from '../components/PresetCombo';
 import { sameValue } from '../state/value-equality';
+import { renameOwnedProfile } from './material-library';
+import { Glyph } from '../components/Glyph';
 export interface ProfileDraft {values: Config; baseline: Config; origin: UserPreset | undefined; printer: string; applicability?: ProfileApplicability; baselineApplicability?: ProfileApplicability;staged?:ProjectProfileChanges}
 export function acknowledgedProfileDraft(current:ProfileDraft,submitted:ProfileDraft,origin:UserPreset,baseline:Config):ProfileDraft|null {
   const keys=new Set([...Object.keys(current.values),...Object.keys(submitted.values)]);
@@ -24,7 +26,7 @@ export function acknowledgedProfileDraft(current:ProfileDraft,submitted:ProfileD
   }
   return {...current,values,baseline,origin,baselineApplicability:origin.applicability};
 }
-export function ProfileEditor({type, name, draft, update, onBack, onSavingChange, onRemove, onDuplicate, foldActions = false}: {type: PresetType; name: string; draft?: ProfileDraft; update(key: string, draft: ProfileDraft | null): void; onBack(): void; onRemove(): void; onDuplicate?(): void; onSavingChange?(saving: boolean): void; foldActions?: boolean}) {
+export function ProfileEditor({type, name, draft, update, onBack, onSavingChange, onRemove, onDuplicate, foldActions = false, renameRequest}: {type: PresetType; name: string; draft?: ProfileDraft; renameRequest?: {key: string; at: number}; update(key: string, draft: ProfileDraft | null): void; onBack(): void; onRemove(): void; onDuplicate?(): void; onSavingChange?(saving: boolean): void; foldActions?: boolean}) {
   const users = useStore(s => s.userPresets);
   const ready=useStore(s=>s.profileLibraryLoad.state==='ready');
   const machines = useStore(s => s.machines), filaments = useStore(s => s.filaments), processes = useStore(s => s.processes);
@@ -66,15 +68,40 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { inFlight.current = false; onSavingChange?.(false); }
   };
+  const renamable = !!source && source.kind !== 'master';
+  const [naming, setNaming] = useState<string | null>(null), [nameError, setNameError] = useState<string | null>(null);
+  const nameInput = useRef<HTMLInputElement>(null);
+  const startRename = () => {if (!renamable || saving) return; setNaming(profileName); setNameError(null);};
+  useEffect(() => {if (renameRequest?.key === name && Date.now() - renameRequest.at < 2000) startRename();}, [renameRequest]);
+  const renameTo = async (raw: string): Promise<boolean> => {
+    const next = raw.trim(), s = getState(), current = findProfile(s, type, name);
+    if (!current) return false;
+    if (next === current.name) return true;
+    if (!next) {setNameError('Enter a name'); return false;}
+    if (s.userPresets.some((p) => p.type === type && !p.archived && profileKey(p) !== profileKey(current) && p.name.toLocaleLowerCase() === next.toLocaleLowerCase())) {setNameError(`“${next}” is already taken`); return false;}
+    const prior = current.name;
+    try {
+      await commitProfileRecords([renameOwnedProfile(current, next)]);
+      const renamed = findProfile(getState(), type, name);
+      if (draft && renamed) update(key, {...latest.current, origin: renamed});
+      toast(`Renamed to ${next}`, {label: 'Undo', run: () => void renameTo(prior)});
+      return true;
+    } catch (e) {setError(e instanceof Error ? e.message : String(e)); return false;}
+  };
+  const commitName = async () => {if (naming === null) return; const value = naming; if (await renameTo(value)) {setNaming(null); setNameError(null);}};
   if (!resolved.user || !resolved.base || resolved.error) return <section className="pf-full-editor"><div className="pf-editor-error" role="alert"><strong>{resolved.user?.name ?? 'Profile unavailable'}</strong><p>{resolved.error ?? 'This profile could not be loaded.'}</p><button type="button" className="btn" onClick={() => void (async () => {try {const {loadCatalog}=await import('../actions');await loadCatalog();const s=getState();if(s.profileLibraryLoad.state==='failed')throw new Error(s.profileLibraryLoad.error);if(!findProfile(s,type,name))throw new Error('Profile is still unavailable.');} catch(e) {setError(e instanceof Error ? e.message : String(e));}})()}>Retry</button>{error && <p>{error}</p>}</div><button type="button" className="btn-ghost" onClick={onBack}>Close profiles</button></section>;
   return <section className="pf-full-editor" aria-label={`Edit ${profileName}`}>
     <div className="pf-editor-heading">
-      <div className="pf-editor-identity">{type === 'filament' && <ColorPicker value={profileColour(values) ?? ''} label="Default filament color" disabled={saving} onCommit={colour=>set('filament_colour',Array.isArray(values.filament_colour) ? [colour] : colour)}/>}<strong>{profileName}</strong><div className="pf-editor-summary">{profileSummary(type, values)}{draft?.staged ? ' · Includes project changes' : ''}</div></div>
+      <div className="pf-editor-identity">{type === 'filament' && <ColorPicker value={profileColour(values) ?? ''} label="Default filament color" disabled={saving} onCommit={colour=>set('filament_colour',Array.isArray(values.filament_colour) ? [colour] : colour)}/>}{naming !== null ? <input ref={nameInput} autoFocus onFocus={e => e.currentTarget.select()} className="pf-name-input" aria-label="Profile name" aria-invalid={!!nameError} aria-describedby={nameError ? `${key}-name-error` : undefined} value={naming} autoComplete="off" spellCheck={false}
+        onChange={e => {setNaming(e.target.value); setNameError(null);}} onBlur={() => void commitName()}
+        onKeyDown={e => {if (e.key === 'Enter') {e.preventDefault(); void commitName();} else if (e.key === 'Escape') {e.preventDefault(); e.stopPropagation(); setNaming(null); setNameError(null);}}}/>
+        : <span className="pf-editor-name"><strong onClick={renamable ? startRename : undefined} data-renamable={renamable || undefined}>{profileName}</strong>{renamable && <button type="button" className="reset-icon pf-rename" aria-label="Rename" disabled={saving} onClick={startRename}><Glyph name="edit" size={14}/></button>}</span>}
+      {nameError ? <div className="pf-editor-summary pf-name-error" id={`${key}-name-error`} role="alert">{nameError}</div> : <div className="pf-editor-summary">{profileSummary(type, values)}{draft?.staged ? ' · Includes project changes' : ''}</div>}</div>
       <div className="pf-editor-controls">
         <button type="button" className={`btn pf-editor-save${dirty ? ' primary' : ''}`} disabled={saving || !dirty || !ready} onClick={() => void save()}>{saving ? 'Saving…' : 'Save'}</button>
         {dirty && !foldActions && <button type="button" className="btn" disabled={saving} onClick={revert}>Revert</button>}
         {onDuplicate && !foldActions && <button type="button" className="btn" disabled={saving || dirty || !ready} onClick={onDuplicate}>Duplicate</button>}
-        <MenuButton label="Profile actions" className="icon-btn" items={[...(foldActions && dirty ? [{label: 'Revert', disabled: saving, action: revert}] : []), ...(foldActions && onDuplicate ? [{label: 'Duplicate', disabled: saving || dirty || !ready, action: onDuplicate}] : []), {label: type === 'filament' ? 'Use in slot 1' : 'Use in project', disabled:saving || dirty, action:()=>requestPreset(type,0,key && profileKey(source!))}, {label:'Export',action:()=>void import('../preset-io').then(m=>m.exportPresetJson(source!))}, {label: 'Reset to base settings', disabled: saving || !resolved.base, action: () => {if(resolved.base) update(key, {...latest.current, values: resolved.base.config});}}, 'sep', {label:'Delete',disabled:saving,action:onRemove}]}>⋯</MenuButton>
+        <MenuButton label="Profile actions" className="icon-btn" items={[...(renamable ? [{label: 'Rename', disabled: saving, action: startRename}] : []), ...(foldActions && dirty ? [{label: 'Revert', disabled: saving, action: revert}] : []), ...(foldActions && onDuplicate ? [{label: 'Duplicate', disabled: saving || dirty || !ready, action: onDuplicate}] : []), {label: type === 'filament' ? 'Use in slot 1' : 'Use in project', disabled:saving || dirty, action:()=>requestPreset(type,0,key && profileKey(source!))}, {label:'Export',action:()=>void import('../preset-io').then(m=>m.exportPresetJson(source!))}, {label: 'Reset to base settings', disabled: saving || !resolved.base, action: () => {if(resolved.base) update(key, {...latest.current, values: resolved.base.config});}}, 'sep', {label:'Delete',disabled:saving,action:onRemove}]}>⋯</MenuButton>
       </div>
     </div>
     {error && <div className="pf-editor-error" role="alert">{error}</div>}

@@ -223,6 +223,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const machines = useStore(st => st.machines), processes = useStore(st => st.processes), filaments = useStore(st => st.filaments);
   const printer = useStore(st => st.printer), process = useStore(st => st.process), slots = useStore(st => st.filamentSlots);
   const printerOptions=useMemo(()=>users.filter(p=>p.type === 'machine' && !p.archived && p.kind !== 'master').map(p=>({value:profileKey(p),label:p.name})),[users]);
+  const [reveal,setReveal]=useState<{key?:string;closed:ReadonlySet<string>}>({closed:new Set()});
   const list = useMemo(() => {
     const s = getState();
     return adding ? families(type,catalogItems(s,type)) : items(s,type);
@@ -241,8 +242,10 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     const hasContext=type !== 'machine' && (printerFilter.length || modelFilter.length || nozzleFilter.length);
     const contexts=hasContext ? printerFilter.length ? printerFilter : machines.filter(p=>(!modelFilter.length || modelFilter.includes(first(p.config.printer_model) || p.model || '')) && (!nozzleFilter.length || nozzleFilter.includes(first(p.config.nozzle_diameter)))).map(p=>p.name) : [];
     const materials=search.trim() && materialDefault ? [] : materialFilter;
-    return list.filter(i=>{const variants=i.variants ?? [i];return (!vendorFilter.length || vendorFilter.includes(i.vendor)) && (!materials.length || materials.includes(i.material)) && (type === 'machine' ? (!modelFilter.length || modelFilter.includes(i.model)) && (!nozzleFilter.length || variants.some(v=>nozzleFilter.includes(v.nozzle))) : !hasContext || variants.some(v=>contexts.some(key=>selectCompatibility(state,type,v.user ? v.key : v.name,key).ok)));});
-  },[list,type,vendorFilter,materialFilter,materialDefault,search,modelFilter,nozzleFilter,printerFilter,machines,users,printer,process,dirty,filamentEdits]);
+    const out=list.filter(i=>{const variants=i.variants ?? [i];return (!vendorFilter.length || vendorFilter.includes(i.vendor)) && (!materials.length || materials.includes(i.material)) && (type === 'machine' ? (!modelFilter.length || modelFilter.includes(i.model)) && (!nozzleFilter.length || variants.some(v=>nozzleFilter.includes(v.nozzle))) : !hasContext || variants.some(v=>contexts.some(key=>selectCompatibility(state,type,v.user ? v.key : v.name,key).ok)));});
+    const pinned=reveal.key && !out.some(i=>i.key === reveal.key) ? list.find(i=>i.key === reveal.key) : undefined;
+    return pinned ? [...out,pinned] : out;
+  },[list,type,vendorFilter,materialFilter,materialDefault,search,modelFilter,nozzleFilter,printerFilter,machines,users,printer,process,dirty,filamentEdits,reveal.key]);
   const query=search.trim().toLocaleLowerCase();
   const compatibleModels=(i:Item)=>{
     const found=new Map<string,{label:string;sub:string;nozzles:Set<string>}>();
@@ -316,12 +319,12 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   },[adding,type,list,printerOptions,printer]);
   const active = (r: Item) => name ? r.key === name || r.fullName === name : r.slot !== undefined;
   const scope = `profiles:${adding ? 'add' : 'owned'}:${type}`, groupKey = (key: string) => `${scope}:${key}`;
-  const isOpen = (g: Group) => query ? !searchFolds.has(groupKey(g.key)) : folds.get(groupKey(g.key)) ?? (type === 'process' ? groupHas(g, active) : !adding || groupHas(g, r => r.slot !== undefined || r.key === name));
+  const isOpen = (g: Group) => query ? !searchFolds.has(groupKey(g.key)) : reveal.key && groupHas(g, r => r.key === reveal.key) ? !reveal.closed.has(groupKey(g.key)) : folds.get(groupKey(g.key)) ?? (type === 'process' ? groupHas(g, active) : !adding || groupHas(g, r => r.slot !== undefined || r.key === name));
   const order = useMemo(() => {
     const keys: string[] = [], walk = (list: Group[]) => {for(const g of list)if(isOpen(g)){if(g.children)walk(g.children);else keys.push(...g.rows.map(i => i.key));}};
     walk(groups);
     return [...new Set(keys)];
-  }, [groups, folds, searchFolds, query, scope, name]);
+  }, [groups, folds, searchFolds, query, scope, name, reveal]);
   const current = (t: PresetType) => (t === 'machine' ? printer : t === 'process' ? process : slots[0]) ?? '';
   const [selectionState, setSelection] = useState(() => {
     let initial = createSelection(scope, order);
@@ -331,20 +334,22 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     return initial;
   });
   const previousScope = useRef(scope), initializedSelection = useRef(order.length > 0);
-  const selection = useMemo(() => reduceSelection(selectionState, {type: 'SYNC', scope, visible: order}), [selectionState, scope, order]);
+  const kept = useMemo(() => reveal.key && !order.includes(reveal.key) && visible.some(i => i.key === reveal.key) ? [...order, reveal.key] : order, [order, reveal.key, visible]);
+  const selection = useMemo(() => reduceSelection(selectionState, {type: 'SYNC', scope, visible: kept}), [selectionState, scope, kept]);
   useEffect(() => {
     const changed=previousScope.current !== scope; previousScope.current=scope;
     const initialize = changed || !initializedSelection.current;
     if(order.length) initializedSelection.current=true;
     setSelection(prior=>{
-      let next=reduceSelection(prior,{type:'SYNC',scope,visible:order});
-      if(order.length && next.selected.length === 0 && (initialize || prior.selected.length > 0 && !prior.selected.some(key=>drafts[JSON.stringify([type,key])]))) {
-        const selectedKey=current(type), shown=visible.filter(i=>order.includes(i.key)), target=shown.find(i=>i.key === name || i.name === name) ?? shown.find(i=>i.key === selectedKey || i.name === selectedKey) ?? shown[0];
+      let next=reduceSelection(prior,{type:'SYNC',scope,visible:kept});
+      if(visible.length && next.selected.length === 0 && (initialize || prior.selected.length > 0 && !prior.selected.some(key=>drafts[JSON.stringify([type,key])]))) {
+        const selectedKey=current(type), target=visible.find(i=>i.key === name || i.name === name || i.fullName === name) ?? visible.find(i=>i.key === selectedKey || i.name === selectedKey) ?? visible[0];
         next=reduceSelection(next,{type:'CLICK',key:target.key});
+        if(!adding)setReveal({key:target.key,closed:new Set()});
       }
       return next;
     });
-  },[scope,order]);
+  },[scope,kept,visible.length]);
   const selected = selectedVisible(selection), selectedSet = useMemo(() => new Set(selected), [selection]);
   const selectedItems=visible.filter(i=>selectedSet.has(i.key));
   const inspected=useRef<string|null>(null);
@@ -360,17 +365,21 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const [contextMenu,setContextMenu] = useState<{x:number;y:number;anchor:HTMLElement}|null>(null);
   const references = useSyncExternalStore(subscribeProfileReferences, profileReferenceSnapshot);
   const fallbackKey=useRef<()=>string|undefined>(()=>undefined);
-  fallbackKey.current=()=>{if(adding)return undefined;const used=current(type),shown=visible.filter(i=>order.includes(i.key));return (shown.find(i=>i.key === used || i.name === used) ?? shown[0])?.key;};
+  fallbackKey.current=()=>{if(adding)return undefined;const used=current(type);return (visible.find(i=>i.key === used || i.name === used) ?? visible[0])?.key;};
   const dispatch = useCallback((event: SelectionEvent, focus = false) => {
     selectionRevision.current++;initializedSelection.current=true;inspected.current=null;
     let next = reduceSelection(latestSelection.current, event);
     const fallback = next.selected.length ? undefined : fallbackKey.current();
-    if(fallback) next = reduceSelection(next, {type: 'CLICK', key: fallback});
+    if(fallback) {next = reduceSelection(next, {type: 'CLICK', key: fallback}); setReveal({key: fallback, closed: new Set()});}
     latestSelection.current = next; setSelection(next);
     if(event.type==='CLICK' && !event.toggle && !event.shift)setMobilePane('detail');
     if(focus && next.focus) requestAnimationFrame(() => {const row = document.getElementById(`${id}:${next.focus}`); row?.focus({preventScroll: true}); row?.scrollIntoView({block: 'nearest'});});
   }, [id]);
-  useEffect(() => {const key=item?.key; if(key) requestAnimationFrame(() => document.getElementById(`${id}:${key}`)?.scrollIntoView({block: 'nearest'}));}, [type, adding]);
+  const openRow=adding ? undefined : item?.key;
+  useEffect(() => {if(openRow !== reveal.key)setReveal({key: openRow, closed: new Set()});}, [openRow]);
+  useEffect(() => {const key=item?.key; if(key) requestAnimationFrame(() => document.getElementById(`${id}:${key}`)?.scrollIntoView({block: 'nearest'}));}, [item?.key, type, adding, !query]);
+  const [renameRequest,setRenameRequest]=useState<{key:string;at:number}>();
+  const requestRename=(key:string)=>{if(adding)return;if(item?.key !== key)dispatch({type:'CLICK',key});setRenameRequest({key,at:Date.now()});};
   const access = useMemo(() => profileAccess(type), [type, references, users]);
   const leave = async (action: () => void) => {if(Object.keys(drafts).length && !await confirmDialog('Unsaved profile edits', 'Discard unsaved profile edits?', ['Discard', 'Keep editing'])) return; action();};
   const close=()=>{if(!busy)void leave(()=>setState({presetUx:null}));};
@@ -458,7 +467,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const backToList=()=>{setMobilePane('list');setFiltersOpen(false);requestAnimationFrame(()=>document.getElementById(`${id}:${latestSelection.current.focus}`)?.focus());};
   const nouns=NOUNS[type], typeLabel=type === 'process' ? nouns[1] : nouns[0];
   const resultNoun:[string,string]=adding && type === 'machine' ? ['model','models'] : adding ? ['preset','presets'] : nouns;
-  const toggleGroup=(g:Group)=>{const k=groupKey(g.key);if(query)setSearchFolds(prior=>{const next=new Set(prior);if(!next.delete(k))next.add(k);return next;});else setFold(k,!isOpen(g));};
+  const toggleGroup=(g:Group)=>{const k=groupKey(g.key);if(query)setSearchFolds(prior=>{const next=new Set(prior);if(!next.delete(k))next.add(k);return next;});else if(reveal.key && groupHas(g,r=>r.key === reveal.key))setReveal(prior=>{const closed=new Set(prior.closed);if(!closed.delete(k))closed.add(k);return {...prior,closed};});else setFold(k,!isOpen(g));};
   useEffect(()=>{
     const key=selection.focus;if(!query || !key)return;
     for(const g of groups)if(g.rows.some(r=>r.key === key)){setFold(groupKey(g.key),true);for(const c of g.children ?? [])if(c.rows.some(r=>r.key === key))setFold(groupKey(c.key),true);}
@@ -472,7 +481,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   };
   const handlers=useRef({close,addVariant,deleteSelected,duplicate});handlers.current={close,addVariant,deleteSelected,duplicate};
   const editKey=!adding && item?.user ? item.key : undefined,editUser=editKey ? item?.user : undefined,draft=editKey ? drafts[JSON.stringify([type,editKey])] : undefined;
-  const editor=useMemo(()=>editKey && editUser && <ProfileEditor key={editKey} type={type} name={editKey} draft={draft} update={updateDraft} onSavingChange={setBusy} onBack={()=>handlers.current.close()} onRemove={() => void handlers.current.deleteSelected([editKey])} onDuplicate={editUser.kind === 'master' ? undefined : () => void handlers.current.duplicate(editUser)} foldActions={drill}/>,[editKey,editUser,type,draft,drill,updateDraft]);
+  const editor=useMemo(()=>editKey && editUser && <ProfileEditor key={editKey} type={type} name={editKey} draft={draft} update={updateDraft} onSavingChange={setBusy} onBack={()=>handlers.current.close()} onRemove={() => void handlers.current.deleteSelected([editKey])} onDuplicate={editUser.kind === 'master' ? undefined : () => void handlers.current.duplicate(editUser)} foldActions={drill} renameRequest={renameRequest}/>,[editKey,editUser,type,draft,drill,updateDraft,renameRequest]);
   const addDetails=useMemo(()=>adding && item ? <AddDetails key={item.key} type={type} item={item} busy={busy} onAdd={(variant,colour)=>void handlers.current.addVariant(variant,colour)}/> : null,[adding,item,type,busy]);
   const bulk=selected.length > 1 && !adding, selectionKey=selected.join('\n');
   const canCompare=bulk && selected.length <= 4 && selectedItems.length === selected.length, comparing=canCompare && compareHidden !== selectionKey;
@@ -482,7 +491,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     <button type="button" className="btn-ghost pf-delete" disabled={busy} onClick={() => void deleteSelected()}>Delete</button>
     <button type="button" className="icon-btn" aria-label="Clear selection" onClick={() => dispatch({type: 'CLEAR'})}>×</button></>;
   const showLibrary=(master:boolean)=>{if(master === adding)return;void leave(()=>{setDrafts({});clearFilters();setSearch('');setAdding(master);setMobilePane('list');});};
-  return <Modal className="np-dialog pf-window" label="Profiles" onClose={close} backdropClose onEscapeKeyDown={event=>{if(busy){event.preventDefault();return;}if(drill && mobilePane!=='list'){event.preventDefault();backToList();}else if(selected.length > 1){event.preventDefault();dispatch({type:'ESCAPE'});}}}>
+  return <Modal className="np-dialog pf-window" label="Profiles" onClose={close} backdropClose onEscapeKeyDown={event=>{if(busy || (event.target as Element | null)?.closest?.('.pf-name-input')){event.preventDefault();return;}if(drill && mobilePane!=='list'){event.preventDefault();backToList();}else if(selected.length > 1){event.preventDefault();dispatch({type:'ESCAPE'});}}}>
     <header className="pf-workspace-title">
       <Dialog.Title asChild><h1>Profiles</h1></Dialog.Title>
       <Segmented label="Profile type" value={type} options={TYPES.map(([id,label])=>({id,label}))} onChange={v=>void leave(()=>{setDrafts({});clearFilters();pickType(v as PresetType);})}/>
@@ -522,11 +531,12 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
           {adding ? type === 'machine' && <button type="button" className="btn-ghost" onClick={()=>setState({appDialog:'createPrinter'})}>Custom printer</button>
             : <MenuButton label="Import, export or reset profiles" className="icon-btn" items={[{label:'Import',action:()=>void leave(()=>setState({presetUx:{kind:'import',back:{kind:'presets',type,name:item?.key}}}))},{label:'Export',action:()=>void leave(()=>setState({presetUx:{kind:'export'}}))},'sep',{label:'Reset profiles…',disabled:!libraryReady,action:()=>void leave(()=>void confirmProfileReset())}]}><Glyph name="more"/></MenuButton>}
         </div></div>
-        <div className="pf-scroll pf-list" data-kind={type} data-multi={bulk || undefined} role="grid" aria-label={adding ? 'Master presets' : `My ${nouns[1]}`} aria-multiselectable={!adding} onContextMenu={e=>{const row=(e.target as Element).closest<HTMLElement>('[data-profile-key]');if(!row || adding) return;e.preventDefault();const key=row.dataset.profileKey!;if(!selectedSet.has(key)) dispatch({type:'CLICK',key});setContextMenu({x:e.clientX,y:e.clientY,anchor:row});}} tabIndex={visible.length ? -1 : 0} onKeyDown={e => {
+        <div className="pf-scroll pf-list" data-kind={type} data-multi={bulk || undefined} role="grid" aria-label={adding ? 'Master presets' : `My ${nouns[1]}`} aria-multiselectable={!adding} onDoubleClick={e=>{const row=(e.target as Element).closest<HTMLElement>('[data-profile-key]');if(row && (e.target as Element).closest('.pf-item-name'))requestRename(row.dataset.profileKey!);}} onContextMenu={e=>{const row=(e.target as Element).closest<HTMLElement>('[data-profile-key]');if(!row || adding) return;e.preventDefault();const key=row.dataset.profileKey!;if(!selectedSet.has(key)) dispatch({type:'CLICK',key});setContextMenu({x:e.clientX,y:e.clientY,anchor:row});}} tabIndex={visible.length ? -1 : 0} onKeyDown={e => {
           if(e.target instanceof Element && e.target.closest('input,textarea,[contenteditable=true]')) return;
           const command = e.ctrlKey || e.metaKey;
           if(command && e.key.toLocaleLowerCase() === 'a' && !adding) {e.preventDefault(); e.stopPropagation(); dispatch({type: 'SELECT_ALL'});}
           else if(['ArrowDown','ArrowUp','Home','End'].includes(e.key)) {e.preventDefault(); e.stopPropagation(); dispatch({type: 'ARROW', direction: e.key === 'Home' ? 'first' : e.key === 'End' ? 'last' : e.key === 'ArrowUp' ? 'previous' : 'next', shift: !adding && e.shiftKey, focusOnly: command}, true);}
+          else if(e.key === 'F2' && e.target instanceof HTMLElement && e.target.dataset.profileKey) {e.preventDefault(); requestRename(e.target.dataset.profileKey);}
           else if(e.key === 'Delete' || e.key === 'Backspace') {e.preventDefault(); e.stopPropagation(); if(!adding) void deleteSelected();}
           else if((e.key === 'Enter' || e.key === ' ') && e.target instanceof HTMLElement && e.target.dataset.profileKey) {e.preventDefault(); dispatch({type: 'CLICK', key: e.target.dataset.profileKey, toggle: !adding && (command || e.key === ' '), shift: !adding && e.shiftKey});}
         }}>
@@ -547,7 +557,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
         : bulk ? <section className="pf-bulk-summary"><strong>{count(selected.length,nouns)} selected</strong><div className="pf-bulk-actions">{bulkActions}</div></section> : null}
       </div></div>
 
-      {contextMenu && <ActionMenu label="Profile actions" at={contextMenu} returnFocus={contextMenu.anchor} onClose={()=>setContextMenu(null)} items={[...(canCompare && !comparing ? [{label:'Compare',action:()=>setCompareHidden(null)}] : []),{label:'Export',action:()=>void exportSelected()},{label:'Delete',action:()=>void deleteSelected(),shortcut:'Delete'}]}/>}
+      {contextMenu && <ActionMenu label="Profile actions" at={contextMenu} returnFocus={contextMenu.anchor} onClose={()=>setContextMenu(null)} items={[...(selected.length === 1 && selectedItems[0]?.user && selectedItems[0].user.kind !== 'master' ? [{label:'Rename',action:()=>requestRename(selectedItems[0].key),shortcut:'F2'}] : []),...(canCompare && !comparing ? [{label:'Compare',action:()=>setCompareHidden(null)}] : []),{label:'Export',action:()=>void exportSelected()},{label:'Delete',action:()=>void deleteSelected(),shortcut:'Delete'}]}/>}
       {bulkError && <div className="pf-editor-error" role="alert">{bulkError}</div>}
     </div>
   </Modal>;

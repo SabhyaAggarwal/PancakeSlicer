@@ -296,8 +296,6 @@ export function nativeSurfaceSummary(record: Rec): string | null {
   const fraction = !valid ? null : objects.length === 1 ? objects[0].curved_top_area_fraction!
     : area > 0 && objects.every((o) => Number(o.curved_top_area_denominator_mm2) > 0)
       ? objects.reduce((sum, o) => sum + o.curved_top_area_fraction! * o.curved_top_area_denominator_mm2!, 0) / area : null;
-  const coverage = fraction != null && fraction >= 0 && fraction <= 1 ? `${(fraction * 100).toFixed(1)}% top curved` : 'Curved tops';
-  const qualification = record.print_qualification as { passed?: boolean; output_sha256?: string } | undefined;
-  const qualified = qualification?.passed === true && /^[a-f0-9]{64}$/i.test(qualification.output_sha256 ?? '');
-  return `${coverage} · ${qualified ? 'qualified' : 'not qualified'}`;
+  const coverage = fraction != null && fraction >= 0 && fraction <= 1 ? `${(fraction * 100).toFixed(1)} % of top surface curved` : 'Curved top surfaces';
+  return coverage;
 }

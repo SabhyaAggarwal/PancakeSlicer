@@ -178,6 +178,25 @@ export function selectionNotice(s:State,summary:ProfileTransitionSummary):string
     .map(c=>`${c.kind==='process'?'Print settings':s.filamentSlots.length>1?`Slot ${(c.slot??0)+1} filament`:'Filament'} changed to ${c.to}: ${c.from} isn't compatible with ${printer}`)
     .concat(summary.needsSelection?[`Choose ${summary.changes.some(c=>c.kind==='process'&&!c.to)?'print settings':'a filament'} compatible with ${printer}`]:[]).join(' · ');
 }
+const owned=(p:UserPreset|undefined)=>!!p && !p.archived && p.kind!=='master';
+export function replaceMissingSelection(s:State,active?:string):{patch:Partial<State>;notice:string}|null{
+  if(s.profileLibraryLoad.state!=='ready')return null;
+  const printers=s.userPresets.filter(p=>p.type==='machine' && owned(p));
+  const printerMissing=!owned(findProfile(s,'machine',s.printer));
+  const lost=(type:'process'|'filament',key:string)=>!!key && !owned(findProfile(s,type,key));
+  if(!printers.length || !printerMissing && !lost('process',s.process) && !s.filamentSlots.some(key=>lost('filament',key)))return null;
+  const byReference=printers.find(p=>p.name===s.printer || p.aliases?.includes(s.printer) || resolveProfile(s,'machine',profileKey(p)).base?.name===s.printer);
+  const printer=printerMissing ? profileKey(byReference ?? printers.find(p=>profileKey(p)===active) ?? printers[0]) : s.printer;
+  const next={...s,printer,process:lost('process',s.process) ? '' : s.process,
+    filamentSlots:s.filamentSlots.map(key=>lost('filament',key) ? `missing:${key}` : key)};
+  const {patch,summary}=reconcilePrinterSelection(s,next);
+  const {projectProfileContexts:_contexts,lastProfileTransition:_summary,...rest}=patch;
+  const name=(type:'machine'|'process'|'filament',key:string)=>resolveProfile({...s,...rest},type,key).name ?? key;
+  const lines=[...(printerMissing ? [`This project's printer isn't in your library: using ${name('machine',printer)}`] : []),
+    ...(lost('process',s.process) ? [`Its print settings aren't in your library: using ${name('process',rest.process ?? '')}`] : []),
+    ...s.filamentSlots.flatMap((key,i)=>lost('filament',key) ? [`${s.filamentSlots.length>1?`Slot ${i+1} filament`:'Its filament'} isn't in your library: using ${name('filament',rest.filamentSlots?.[i] ?? '')}`] : [])];
+  return {patch:{...rest,printer,...(summary.needsSelection?{lastProfileTransition:summary}:{})},notice:lines.map((line,i)=>i===0?line.replace(/^Its /,"This project's "):line).join(' · ')};
+}
 export function ensureCompatibleSelection(s:State):{patch:Partial<State>;notice:string}|null{
   if(s.profileLibraryLoad.state!=='ready' || !s.printer)return null;
   const {patch,summary}=reconcilePrinterSelection(s,s,{definiteOnly:true});

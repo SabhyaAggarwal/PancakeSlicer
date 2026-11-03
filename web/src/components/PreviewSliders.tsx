@@ -1,7 +1,6 @@
-import { Range } from './Range';
 import { useRef } from 'react';
 import type { LayerRec } from '../preview/format';
-import { Icon } from './Icon';
+import { Glyph } from './Glyph';
 
 export interface SliderTick {
   layer: number;
@@ -9,7 +8,7 @@ export interface SliderTick {
   title: string;
 }
 
-export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus, oneLayer = false, onOneLayer }: {
+export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus, oneLayer = false }: {
   layers: LayerRec[];
   lo: number;
   hi: number;
@@ -17,7 +16,6 @@ export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus, oneL
   ticks?: SliderTick[];
   onPlus?(anchor: DOMRect): void;
   oneLayer?: boolean;
-  onOneLayer?(): void;
 }) {
   const track = useRef<HTMLDivElement>(null);
   const n = layers.length;
@@ -72,7 +70,7 @@ export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus, oneL
   const label = (i: number) => (
     <>
       <b>{i + 1}</b>
-      <span>{layers[i]?.z.toFixed(2)} mm</span>
+      <span>· {layers[i]?.z.toFixed(2)} mm</span>
     </>
   );
   return (
@@ -83,7 +81,6 @@ export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus, oneL
         onChange(lo, Math.max(lo, Math.min(n - 1, hi + d)));
       }}
     >
-      <div className={`ls-label top${hi === n - 1 ? ' hidden' : ''}`}>{label(n - 1)}</div>
       <div
         className="ls-track"
         ref={track}
@@ -114,13 +111,13 @@ export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus, oneL
         {onPlus && (
           <button
             type="button"
-            className="ls-plus"
+            className="ls-plus icon-btn"
             style={{ bottom: `${frac(hi) * 100}%` }}
-
+            aria-label={ticks.some((t) => t.layer === hi) ? `Edit the pause or G-code at layer ${hi + 1}` : `Add a pause, colour change or G-code at layer ${hi + 1}`}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => onPlus((e.currentTarget as HTMLElement).getBoundingClientRect())}
           >
-            {ticks.some((t) => t.layer === hi) ? '✎' : '+'}
+            <Glyph name={ticks.some((t) => t.layer === hi) ? 'edit' : 'plus'} size={14} />
           </button>
         )}
         {!oneLayer && (
@@ -129,40 +126,6 @@ export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus, oneL
           </div>
         )}
       </div>
-      <div className={`ls-label bottom${lo === 0 && !oneLayer ? ' hidden' : ''}`}>{label(0)}</div>
-      {onOneLayer && (
-        <button type="button" className={`ls-one ${oneLayer ? 'active' : ''}`} aria-pressed={oneLayer} aria-label="One layer" onClick={onOneLayer}>
-          <Icon name={oneLayer ? 'one_layer_on' : 'one_layer_off'} size={24} />
-        </button>
-      )}
-    </div>
-  );
-}
-
-export function MoveSlider({ count, pos, gcodeLine, onChange, gcodeOpen, onGcode }: {
-  count: number; pos: number; gcodeLine: number; onChange(p: number | null): void;
-  gcodeOpen?: boolean; onGcode?(): void;
-}) {
-  return (
-    <div className="move-slider">
-      <Range
-        min={1}
-        max={count}
-        value={pos}
-        onValueChange={(next) => {
-          const v = next;
-          onChange(v >= count ? null : v);
-        }}
-        title="Moves of the top layer (Left / Right keys)"
-        aria-label="Move"
-        style={{ '--fill': `${count > 1 ? ((pos - 1) / (count - 1)) * 100 : 100}%` } as React.CSSProperties}
-      />
-      <span className="ms-label">
-        <b>{pos}</b> / {count}
-      </span>
-      {onGcode ? (
-        <button type="button" className="ms-gcode" aria-pressed={!!gcodeOpen} onClick={onGcode}>line {gcodeLine}</button>
-      ) : <span className="ms-line">line {gcodeLine}</span>}
     </div>
   );
 }

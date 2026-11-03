@@ -19,7 +19,7 @@ export function FilamentColourMenu({ slot }: { slot: number }) {
   };
   return <Popover.Root open={open} onOpenChange={(next) => { setOpen(next); if (next) setDraft(colour); }}>
     <Popover.Trigger asChild><button type="button" className="color-trigger" style={{ backgroundColor: colour }} data-modified={override ? true : undefined} aria-label={`Filament ${slot + 1} colour: ${colourName(colour)}${override ? ', changed in this project' : ''}`}/></Popover.Trigger>
-    <Popover.Portal><Popover.Content className="orca-menu color-popover" aria-label={`Filament ${slot + 1} colour`} sideOffset={6} collisionPadding={12} onKeyDown={(e) => e.stopPropagation()}>
+    <Popover.Portal><Popover.Content className="orca-menu color-popover" aria-label={`Filament ${slot + 1} colour`} side="bottom" align="start" sideOffset={4} collisionPadding={12} onKeyDown={(e) => e.stopPropagation()}>
       <div className="color-heading"><span>{picked ? colourName(picked) : 'Colour'}</span><span className="color-preview" style={{ backgroundColor: picked ?? colour }}/></div>
       <div className="color-palette" role="group" aria-label="Palette">{PALETTE.map((c) => <button key={c} type="button" className="color-swatch" style={{ backgroundColor: c }} aria-label={colourName(c)} aria-pressed={picked === c} onClick={() => setDraft(c)}/>)}</div>
       <label className="color-hex"><span>HEX</span><input className="text" aria-label="HEX colour" aria-invalid={!picked} value={draft} spellCheck={false} maxLength={7} onChange={(e) => setDraft(e.target.value)}/></label>

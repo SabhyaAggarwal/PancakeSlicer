@@ -10,7 +10,7 @@ import { documentGeneration } from '../state/history';
 import { initialiseSavedPreferences, preferenceText } from '../saved-preferences';
 import { findProfile } from './identity';
 import { catalogAnchor, catalogKey, findCatalogBase, type ProfileCatalog } from './model';
-import { ensureCompatibleSelection } from './material-library';
+import { ensureCompatibleSelection, replaceMissingSelection } from './material-library';
 import { planCatalogReadiness, loadRequiredCatalogs, loadBackgroundCatalogs, type CatalogBaseDependency, type CatalogDependencySource } from './catalog-readiness';
 const VENDORS = ['BBL', 'Prusa', 'Custom'];
 
@@ -78,6 +78,8 @@ export async function loadCatalog() {
       setState({...result.patch,profileLibraryLoad:error ? {state:'failed',error} : {state:'ready'}});
       if(!error){
         acceptHydratedPrinterSetups();retryDelay=1000;
+        const missing=replaceMissingSelection(getState(),preferenceText('orca.printer'));
+        if(missing)setState(missing.patch);
         const fixed=ensureCompatibleSelection(getState());
         if(fixed){setState(fixed.patch);if(fixed.notice)toast(fixed.notice);}
       }
