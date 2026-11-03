@@ -3,7 +3,7 @@ import { getState, markStale, setState, type State } from '../state/store';
 import { readProfileLibrary, persistProfileLibrary } from '../persist/profile-library';
 import { emptyPrinterLibrary, type PrinterProfileLibrary, type ProfileLibraryWrite } from './ownership';
 import { findProfile, profileKey } from './identity';
-import { normalizeUserPreset, prepareProfile, storedProfile } from './model';
+import { catalogKey, findCatalogBase, normalizeUserPreset, prepareProfile, storedProfile } from './model';
 import { editableMaster, archiveProfile, restoreArchivedProfile } from './library-actions';
 let tail:Promise<unknown>=Promise.resolve();
 const serialize = <T>(action:()=>Promise<T>):Promise<T> => {const result=tail.then(action);tail=result.catch(()=>{});return result;};
@@ -104,7 +104,8 @@ async function performSave(s:State,records:UserPreset[],operationId?:string,prin
     profiles.set(id,storedProfile(prepared));submitted.push(prepared);
   }
   if(printers && s.profileLibraryRevision>0 && remote.revision!==s.profileLibraryRevision && !(priorAck && equal(remote.printers,priorAck.request.write.document.printers)))throw conflict('The saved printer setups changed. Reload before replacing them; your working setup is kept.');
-  const document={...remote,profiles:[...profiles.values()],...(catalog?.length?{catalog:[...(remote.catalog ?? []).filter(p=>!catalog.some(n=>n.type===p.type && n.vendor===p.vendor && n.name===p.name)),...catalog]}:{}),printers:printers ?? remote.printers ?? s.printerLibrary ?? emptyPrinterLibrary()};
+  const catalogKeys=new Set(catalog?.map(catalogKey));
+  const document={...remote,profiles:[...profiles.values()],...(catalog?.length?{catalog:[...(remote.catalog ?? []).filter(p=>!catalogKeys.has(catalogKey(p))),...catalog]}:{}),printers:printers ?? remote.printers ?? s.printerLibrary ?? emptyPrinterLibrary()};
   if(equal(document,remote))return {request:freezeWrite(s,{operationId:operationId ?? '',expectedRevision:remote.revision,document},submitted,requestSignature),document:remote,records:submitted,changed:new Set()};
   const request=freezeWrite(s,{operationId:operationId ?? `save:${crypto.randomUUID()}`,expectedRevision:remote.revision,document},submitted,requestSignature);
   const ack=await acknowledge(request);
@@ -119,13 +120,32 @@ export function commitProfileRecords(records:UserPreset[],options:{operationId?:
   return serialize(async()=>{
     for(const p of records)if(!profileOriginIsCurrent(findProfile(getState(),p.type,profileKey(p)),findProfile(expected,p.type,profileKey(p))))throw conflict('This profile changed while waiting to save. Your draft is kept.');
     const ack=await performSave(expected,records,options.operationId,options.printers,options.bases);
-    publishAcknowledgement(ack,s=>({...options.apply?.(s),...(options.bases?Object.fromEntries((['machine','process','filament'] as const).map(type=>{const key=type==='machine'?'machines':type==='process'?'processes':'filaments',incoming=options.bases!.filter(b=>b.type===type);return[key,[...s[key].filter(b=>!incoming.some(n=>n.name===b.name&&n.vendor===b.vendor)),...incoming]];})):{}),...(options.printers?{printerLibrary:ack.document.printers}:{})}));
+    publishAcknowledgement(ack,s=>({...options.apply?.(s),...(options.bases?Object.fromEntries((['machine','process','filament'] as const).map(type=>{const key=type==='machine'?'machines':type==='process'?'processes':'filaments',incoming=options.bases!.filter(b=>b.type===type),incomingKeys=new Set(incoming.map(catalogKey));return[key,[...s[key].filter(b=>!incomingKeys.has(catalogKey(b))),...incoming]];})):{}),...(options.printers?{printerLibrary:ack.document.printers}:{})}));
   });
 }
+const masterCreations=new Map<string,ProfileCreation>();
 export async function ensureEditableMaster(type:PresetType,baseKey:string):Promise<string>{
-  const s=getState(),master=editableMaster(s,type,baseKey);
-  if(!findProfile(s,type,profileKey(master)))await commitProfileRecords([master]);
-  return profileKey(master);
+  const s=getState(),existing=findProfile(s,type,baseKey);
+  if(existing?.kind==='master' && profileKey(existing)===baseKey)return profileKey(existing);
+  const base=findCatalogBase(s,type,baseKey).base;
+  if(!base)throw new Error('Choose the exact available catalog source before editing its master.');
+  const token=catalogKey(base);
+  let creation=masterCreations.get(token);
+  if(!creation){
+    creation=profileCreation(latest=>{
+      const master=editableMaster(latest,type,token);
+      return findProfile(latest,type,profileKey(master)) ? profileKey(master) : master;
+    });
+    masterCreations.set(token,creation);
+  }
+  try{
+    const key=await creation.commit();
+    if(masterCreations.get(token)===creation)masterCreations.delete(token);
+    return key;
+  }catch(error){
+    if(!creation.retryable && masterCreations.get(token)===creation)masterCreations.delete(token);
+    throw error;
+  }
 }
 export interface ProfileArchiveUndo {type:PresetType;keys:string[];operationId:string}
 export async function archiveProfiles(type:PresetType,keys:readonly string[]):Promise<ProfileArchiveUndo>{

@@ -1,9 +1,10 @@
 import type { Config, PresetType, SystemPreset, UserPreset } from '../api/types';
 import { getState, type State } from '../state/store';
-import { catalogAnchor, changedKeys, findCatalogBase, profilesFor, resolveProfile } from './model';
+import { catalogAnchor, catalogKey, changedKeys, findCatalogBase, profilesFor, resolveProfile } from './model';
 import { selectCompatibility } from './compatibility';
 import { findProfile, profileKey } from './identity';
 import type { ProfileCreation } from './transactions';
+export { catalogKey } from './model';
 
 export interface ProfileRow {
   key: string;
@@ -17,6 +18,7 @@ export interface ProfileRow {
   changed: boolean;
 }
 export interface CatalogRow {
+  key: string;
   name: string;
   vendor: string;
   model?: string;
@@ -62,10 +64,16 @@ export function listCatalog(s: State, type: PresetType, filters: CatalogFilters 
     && (!filters.model || (p.model ?? first(p.config.printer_model)) === filters.model)
     && (!filters.material || first(p.config.filament_type) === filters.material)
     && (!filters.search || `${p.name} ${p.vendor} ${p.model ?? ''}`.toLowerCase().includes(filters.search.toLowerCase())))
-    .map((p) => ({ name: p.name, vendor: p.vendor, model: (p.model ?? first(p.config.printer_model)) || undefined,
-      ...metadata(p.config), compatible: selectCompatibility(s, type, p.name, filters.printer ?? s.printer, filters.nozzle) })).filter(row => filters.browseAll || row.compatible.ok);
+    .map((p) => ({ key: catalogKey(p), name: p.name, vendor: p.vendor, model: (p.model ?? first(p.config.printer_model)) || undefined,
+      ...metadata(p.config), compatible: selectCompatibility(s, type, catalogKey(p), filters.printer ?? s.printer, filters.nozzle) })).filter(row => filters.browseAll || row.compatible.ok);
   cache.set(key, rows);
   return rows;
+}
+
+export function resolveCatalogEntry(s: State, type: PresetType, key: string) {
+  const found = findCatalogBase(s,type,key);
+  if (!found.base) throw new Error(found.ambiguous ? 'This catalog name is ambiguous. Choose its exact source again.' : 'This catalog source is unavailable. Reopen Add and choose it again.');
+  return {key: catalogKey(found.base), base: found.base, anchor: catalogAnchor(found.base)};
 }
 
 const displayName = (base: SystemPreset) => `My ${base.name.replace(/\s*@.*$/, '').replace(/\s+nozzle\b/i, '').trim()}`;
@@ -81,16 +89,14 @@ function makeProfile(s: State, base: SystemPreset, name: string, values: Config 
 }
 
 const pendingCreations=new Map<string,{creation:ProfileCreation;flight?:Promise<string>}>();
-const baseIdentity=(base:SystemPreset)=>JSON.stringify([base.type,base.vendor,base.setting_id ?? base.base_id ?? base.name,base.name]);
+const baseIdentity=catalogKey;
 export async function createProfileFromBase(type:PresetType,baseName:string,name?:string):Promise<string> {
-  const base=findCatalogBase(getState(),type,baseName).base;
-  if(!base)throw new Error('Base unavailable');
-  const identity=baseIdentity(base),anchor=catalogAnchor(base),explicit=name?.trim();
+  const {key:identity}=resolveCatalogEntry(getState(),type,baseName),explicit=name?.trim();
   const {profileCreation}=await import('./transactions');
   let entry=explicit?undefined:pendingCreations.get(identity);
   if(!entry){
     entry={creation:profileCreation(s=>{
-      const current=findCatalogBase(s,type,anchor).base;
+      const current=findCatalogBase(s,type,identity).base;
       if(!current || baseIdentity(current)!==identity)throw new Error('The catalog source changed. Reopen Add and choose it again.');
       if(!explicit){
         const selected=type==='machine'?[s.printer]:type==='process'?[s.process]:s.filamentSlots;

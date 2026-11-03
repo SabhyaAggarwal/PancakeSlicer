@@ -25,8 +25,8 @@ export function listProfiles(type: PresetType): PickerEntry[] {
 
 export function listCatalog(type: PresetType): PickerEntry[] {
   const s = getState();
-  return catalog.listCatalog(s,type).filter(row => row.compatible.ok).map(row => ({key:row.name,name:row.name,
-    config:resolvePreset(s,type,row.name).config,vendor:row.vendor,mine:false}));
+  return catalog.listCatalog(s,type).filter(row => row.compatible.ok).map(row => ({key:row.key,name:row.name,
+    config:catalog.resolveCatalogEntry(s,type,row.key).base.config,vendor:row.vendor,mine:false}));
 }
 
 const callbacks=new WeakMap<(key:string)=>void,number>();let nextCallback=0;
@@ -42,11 +42,14 @@ const sameOwner=(a:ReturnType<typeof selectionOwner>,b:ReturnType<typeof selecti
 export function createProfileFromBase(type:PresetType,base:string,slot=0,select?:(key:string)=>void):Promise<void>{
   let callback=0;
   if(select){callback=callbacks.get(select) ?? ++nextCallback;callbacks.set(select,callback);}
-  const key=JSON.stringify([type,base,slot,callback]),owner=selectionOwner(),pending=intents.get(key);
+  let source:string;
+  try { source=catalog.resolveCatalogEntry(getState(),type,base).key; }
+  catch(error){toast(`Add profile failed: ${error instanceof Error?error.message:String(error)}`);return Promise.resolve();}
+  const key=JSON.stringify([type,source,slot,callback]),owner=selectionOwner(),pending=intents.get(key);
   if(pending && sameOwner(pending.owner,owner))return pending.flight;
   const intent:Intent={owner,flight:Promise.resolve()};intents.set(key,intent);
   intent.flight=(async()=>{
-    const name=await catalog.createProfileFromBase(type,base);
+    const name=await catalog.createProfileFromBase(type,source);
     if(intents.get(key)!==intent || !sameOwner(owner,selectionOwner()))return;
     intents.delete(key);
     const s=getState(),profile=findProfile(s,type,name);

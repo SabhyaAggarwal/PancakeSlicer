@@ -1,7 +1,7 @@
 import type { PresetType } from '../api/types';
 import type { State } from '../state/store';
 import { findProfile, profileKey } from './identity';
-import { normalizeUserPreset, resolveProfile } from './model';
+import { catalogKey, normalizeUserPreset, resolveProfile } from './model';
 import { selectCompatibility } from './compatibility';
 import type { ProfileLibraryDocument, ProfileRecovery } from './ownership';
 
@@ -16,7 +16,7 @@ export function prepareProfileLibraryHydration(s: State, document: ProfileLibrar
   const patch:Partial<State>={userPresets,printerLibrary:document.printers,profileLibraryRevision:document.revision};
   for(const type of ['machine','process','filament'] as const){
     const key=type==='machine'?'machines':type==='process'?'processes':'filaments',incoming=document.catalog?.filter(p=>p.type===type) ?? [];
-    if(incoming.length){patch[key]=[...s[key].filter(p=>!incoming.some(b=>b.name===p.name && b.vendor===p.vendor)),...incoming];next={...next,[key]:patch[key]};}
+    if(incoming.length){patch[key]=[...s[key].filter(p=>!incoming.some(b=>catalogKey(b)===catalogKey(p))),...incoming];next={...next,[key]:patch[key]};}
   }
   const differs=(id:string)=>JSON.stringify(s.printerLibrary.setups[id])!==JSON.stringify(document.printers.setups[id]);
   const authoredSetups=Object.keys(s.printerLibrary.setups).filter(differs);

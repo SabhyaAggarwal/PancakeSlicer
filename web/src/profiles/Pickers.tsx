@@ -1,3 +1,4 @@
+import { catalogKey } from './catalog';
 import { profileColour } from './metadata';
 import { ColorPicker } from '../components/ColorPicker';
 import type { Config, PresetType } from '../api/types';
@@ -111,17 +112,17 @@ export function PrinterPicker() {
   const catalogGroups = (): PickerGroup[] => {
     const s = getState(), d = machine ? nozzleOf(machine) : 0.4;
     const byVendor = new Map<string, PickerItem[]>();
-    for (const [key, list] of printerModels(s)) {
+    for (const [key, list] of printerModels({...s,userPresets:[]})) {
       const m = modelPreset(list, printer, d), v = vendorOf(m.config, m.vendor);
       byVendor.set(v, [...(byVendor.get(v) ?? []), { id: key, label: m.model || m.name, meta: size(m.config), search: list.map((p) => p.name).join(' ') }]);
     }
     return byVendorRail(byVendor);
   };
   const add = (key: string) => {
-    const s = getState(), list = printerModels(s).get(key);
+    const s = getState(), list = printerModels({...s,userPresets:[]}).get(key);
     if (!list) return;
     const current = printerPreset(s);
-    createProfileFromBase('machine', modelPreset(list, s.printer, current ? nozzleOf(current) : 0.4).name);
+    return createProfileFromBase('machine', catalogKey(modelPreset(list, s.printer, current ? nozzleOf(current) : 0.4)));
   };
   return (
     <Picker label="Printer" value={printer} memory="orca.web.picker.printers" groups={profileGroups} onPick={(name) => name !== printer && requestPreset('machine', 0, name)}

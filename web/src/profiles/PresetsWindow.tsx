@@ -9,7 +9,7 @@ import { ProfileFilterGroup } from './ProfileFilters';
 import { selectCompatibility } from './compatibility';
 import { ManagerProfileRow } from './ManagerProfileRow';
 import { profileAccess, profileReferenceSnapshot, subscribeProfileReferences } from './references';
-import { changedKeys, profilesFor } from './model';
+import { changedKeys, findCatalogBase } from './model';
 import { applicabilityKey } from './WorksWith';
 import { archiveProfiles, commitProfileRecords, ensureEditableMaster, restoreProfiles } from './transactions';
 import { ProfileEditor, type ProfileDraft } from './ProfileEditor';
@@ -20,7 +20,7 @@ import { ActionMenu, MenuButton } from '../components/Menu';
 import { Segmented } from '../components/kit';
 import './presets-window.css';
 import { useCallback, useMemo, useState } from 'react';
-import type { Config, ConfigValue, PresetType, UserPreset } from '../api/types';
+import type { Config, ConfigValue, PresetType, SystemPreset, UserPreset } from '../api/types';
 import { accessSnapshot } from '../api/access';
 import { OPTIONS } from '../options';
 import { getState, resolvePreset, setState, toast, useStore, type State } from '../state/store';
@@ -32,14 +32,14 @@ import { confirmDialog } from '../components/Ask';
 import { diffRows, useTabLoaded } from '../components/PresetDialogs';
 import { display, presetLabel } from './format';
 import { changeCount, takeValue } from './stack';
-import { createProfileFromBase, listCatalog } from './catalog';
+import { createProfileFromBase, listCatalog, resolveCatalogEntry } from './catalog';
 
 const TYPES: [PresetType, string][] = [['machine', 'Printers'], ['filament', 'Filaments'], ['process', 'Print settings']];
 const shortName = presetLabel;
 const first = (value: unknown) => String(Array.isArray(value) ? value[0] ?? '' : value ?? '');
 const coverOf = (vendor: string, model: string) => vendor && model ? `/profiles/${encodeURIComponent(vendor)}/${encodeURIComponent(model)}_cover.png` : undefined;
 
-interface Item { key: string; name: string; mine: boolean; parent?: string; changed: number; slot?: number; user?: UserPreset; note: string; vendor: string; model:string; nozzle: string; material: string; cover?: string; swatch?:string|null;reason?: string; config: Config }
+interface Item { base?:SystemPreset; key: string; name: string; mine: boolean; parent?: string; changed: number; slot?: number; user?: UserPreset; note: string; vendor: string; model:string; nozzle: string; material: string; cover?: string; swatch?:string|null;reason?: string; config: Config }
 
 const slotsOf = (s: State, type: PresetType, name: string) => {
   const profile = findProfile(s, type, name), matches = (key: string) => profile ? matchesProfile(profile, key) : key === name;
@@ -82,8 +82,8 @@ export async function removePreset(type: PresetType, profile: UserPreset) {try {
 
 function catalogItems(s: State, type: PresetType): Item[] {
   return listCatalog(s,type,{browseAll:true}).map(entry => {
-    const base = profilesFor(s,type).find(p => p.name === entry.name && p.vendor === entry.vendor), config = base?.config ?? {};
-    return {key:`base:${type}:${entry.name}`,name:entry.name,mine:false,changed:0,note:profileSummary(type,config),vendor:type === 'filament' ? first(config.filament_vendor) || entry.vendor : entry.vendor,model:first(config.printer_model) || base?.model || '',nozzle:first(config.nozzle_diameter),material:first(config.filament_type),cover:type === 'machine' ? coverOf(entry.vendor,first(config.printer_model) || base?.model || '') : undefined,swatch:type === 'filament' ? profileColour(config) : undefined,reason:entry.compatible.ok ? undefined : entry.compatible.reason,config};
+    const {base}=resolveCatalogEntry(s,type,entry.key), config=base.config;
+    return {key:entry.key,base,name:entry.name,mine:false,changed:0,note:profileSummary(type,config),vendor:type === 'filament' ? first(config.filament_vendor) || entry.vendor : entry.vendor,model:first(config.printer_model) || base?.model || '',nozzle:first(config.nozzle_diameter),material:first(config.filament_type),cover:type === 'machine' ? coverOf(entry.vendor,first(config.printer_model) || base?.model || '') : undefined,swatch:type === 'filament' ? profileColour(config) : undefined,reason:entry.compatible.ok ? undefined : entry.compatible.reason,config};
   });
 }
 function AddProfileDetails({type,item,copy,busy,onAdd}: {type:PresetType;item:Item;copy:boolean;busy:boolean;onAdd(name?:string):void}) {
@@ -175,7 +175,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     const s = getState(); if(adding) return addSource === 'copy' ? items(s,type).filter(i=>i.user?.kind !== 'master') : catalogItems(s,type);
     const records = items(s,type).filter(i=>(i.user?.kind === 'master') === masters);
     if(!masters) return records;
-    return [...records,...catalogItems(s,type).filter(i=>!s.userPresets.some(p=>p.type === type && p.kind === 'master' && p.base?.name === i.name && (!p.base.vendor || p.base.vendor === i.vendor)))];
+    return [...records,...catalogItems(s,type).filter(i=>!s.userPresets.some(p=>p.type === type && p.kind === 'master' && p.base && findCatalogBase(s,type,p.base).base === i.base))];
   }, [adding,addSource,masters,type,users,dirty,filamentEdits,machines,processes,filaments,printer,process,slots]);
   const printerOptions=useMemo(()=>users.filter(p=>p.type === 'machine' && !p.archived && p.kind !== 'master').map(p=>({value:profileKey(p),label:p.name})),[users]);
   const facets=useMemo(()=>{
@@ -225,6 +225,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const item=filteredDraft ?? (selectedItems.length === 1 ? selectedItems[0] : undefined);
   if(item && !filteredDraft)inspected.current=item.key;
   const latestSelection = useRef(selection); latestSelection.current = selection;
+  const selectionRevision=useRef(0);
   const id = useId();
   const editingKey = item?.key ?? null;
   void edit;
@@ -233,7 +234,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const [contextMenu,setContextMenu] = useState<{x:number;y:number;anchor:HTMLElement}|null>(null);
   const references = useSyncExternalStore(subscribeProfileReferences, profileReferenceSnapshot);
   const dispatch = useCallback((event: SelectionEvent, focus = false) => {
-    initializedSelection.current=true;inspected.current=null;
+    selectionRevision.current++;initializedSelection.current=true;inspected.current=null;
     const next = reduceSelection(latestSelection.current, event); latestSelection.current = next; setSelection(next); setComparing(false);
     if(focus && next.focus) requestAnimationFrame(() => {const row = document.getElementById(`${id}:${next.focus}`); row?.focus({preventScroll: true}); row?.scrollIntoView({block: 'nearest'});});
   }, [id]);
@@ -241,6 +242,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const leave = async (action: () => void) => {if(Object.keys(drafts).length && !await confirmDialog('Unsaved profile edits', 'Discard unsaved profile edits?', ['Discard', 'Keep editing'])) return; action();};
   const close=()=>{if(!busy)void leave(()=>setState({presetUx:null}));};
   const pickType = (t: PresetType, target?: string) => {
+    selectionRevision.current++;
     setType(t); setSearch(''); setVendorFilter([]); setNozzleFilter([]); setMaterialFilter([]); setComparing(false); setBulkError(null);
     const rows = items(getState(), t), nextScope = `profiles:${adding ? `add:${addSource}` : masters ? 'masters' : 'owned'}:${t}`;
     let next = createSelection(nextScope, rows.map(i => i.key));
@@ -254,8 +256,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     try {
       const s=getState();
       if(addSource === 'template') {
-        const existing=s.userPresets.find(p=>p.type === type && !p.archived && p.kind !== 'master' && (p.base?.name ?? p.inherits) === item.name && (!p.base?.vendor || p.base.vendor === item.vendor));
-        added(existing ? profileKey(existing) : await createProfileFromBase(type,item.name));
+        added(await createProfileFromBase(type,item.key));
       } else {
         if(!item.user || !newName) throw new Error('Choose a profile and enter a name for its copy.');
         if(s.userPresets.some(p=>p.type === type && p.name === newName)) throw new Error('A profile already uses this name. Choose another name.');
@@ -283,15 +284,16 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   };
   const [masterLoad,setMasterLoad] = useState<{key:string;error?:string}|null>(null);
   const openMaster = async (baseKey:string) => {
+    const intent=selectionRevision.current;
     setMasterLoad({key:baseKey}); setBusy(true);
     try {
       const key=await ensureEditableMaster(type,baseKey);
-      if(latestSelection.current.scope === scope && latestSelection.current.focus === `base:${type}:${baseKey}`)setSelection(reduceSelection(createSelection(scope,[key]),{type:'CLICK',key}));
+      if(latestSelection.current.scope === scope && selectionRevision.current === intent)setSelection(reduceSelection(createSelection(scope,[key]),{type:'CLICK',key}));
       setMasterLoad(null);
     } catch(error) {setMasterLoad({key:baseKey,error:error instanceof Error ? error.message : String(error)});}
     finally {setBusy(false);}
   };
-  useEffect(()=>{if(masters && !adding && item && !item.user && masterLoad?.key !== item.name) void openMaster(item.name);},[masters,adding,item?.key]);
+  useEffect(()=>{if(masters && !adding && item && !item.user && masterLoad?.key !== item.key) void openMaster(item.key);},[masters,adding,item?.key]);
   const staged=useRef<string|null>(null);
   useEffect(()=>{
     if(!stage || staged.current === stage.id)return;
@@ -350,7 +352,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
         : comparing && selectedItems.length === 2 ? <Compare type={type} left={selectedItems[0].key} right={selectedItems[1].key} names={selectedItems.map(i => i.key)} setRight={() => {}} close={() => setComparing(false)}/>
          : item?.user ? <ProfileEditor key={item.key} type={type} name={item.key} draft={drafts[JSON.stringify([type,item.key])]} update={updateDraft} onSavingChange={setBusy} onBack={close} onRemove={() => void deleteSelected([item.key])}/>
 
-        : item && masters ? <section className="pf-bulk-summary" role={masterLoad?.error ? 'alert' : 'status'}><strong>{item.name}</strong><p>{masterLoad?.error ?? 'Opening editable master…'}</p>{masterLoad?.error && <button type="button" className="btn" onClick={()=>void openMaster(item.name)}>Retry</button>}</section>
+        : item && masters ? <section className="pf-bulk-summary" role={masterLoad?.error ? 'alert' : 'status'}><strong>{item.name}</strong><p>{masterLoad?.error ?? 'Opening editable master…'}</p>{masterLoad?.error && <button type="button" className="btn" onClick={()=>void openMaster(item.key)}>Retry</button>}</section>
         : <section className="pf-bulk-summary"><strong>{selected.length ? `${selected.length} profiles selected` : 'Select a profile'}</strong>{selectedItems.map(i => <div key={i.key} className="pf-bulk-name">{i.name}</div>)}</section>}
       </div></div>
 

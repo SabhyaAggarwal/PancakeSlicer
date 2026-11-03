@@ -1,8 +1,8 @@
 import type { StoredDocBase } from './backend';
 import { projectId } from './identity';
-import { jsonWrite, routeKey, serviceJson, serviceRequest } from './service';
+import { routeKey, serviceRequest } from './service';
 import { ensureProjectAdoption } from './project-adoption';
-import { documentText, sha256 } from './wire';
+import { captureProjectWire, prepareOnce, projectJson as serviceJson, projectWrite } from './project-wire';
 export interface ProjectFailure {
   kind: 'conflict' | 'deleted' | 'quota' | 'unavailable' | 'interrupted' | 'decode';
   name: string; message: string; projectId: string; expectedRevision: number;
@@ -76,7 +76,7 @@ function validMetadata(meta: ProjectDraftMeta | undefined): meta is ProjectDraft
 const assetPath = (key: string) => `/api/assets/${routeKey(key)}`;
 const draftPath = (key: string) => `/api/drafts/${routeKey(key)}`;
 const uploaded = new WeakMap<Blob, Set<string>>();
-const pendingDrafts = new Map<string, RequestInit>();
+const pendingDrafts = new Map<string, Promise<RequestInit>>();
 const serviceDraftStore: ProjectDraftStore = {
   async list(projectId) {
     const metadata = await this.listMetadata(projectId);
@@ -112,9 +112,11 @@ const serviceDraftStore: ProjectDraftStore = {
   put: (draft) => mutate(draft.id, async () => {
     const { blobs: _blobs, ...document } = draft;
     const payload = { sequence: draft.sequence, document, metadata: draftMetadata(draft) };
-    const key = `${draft.id}/${draft.sequence}/${await sha256(new TextEncoder().encode(documentText(payload)))}`;
-    let request = pendingDrafts.get(key);
-    if (!request) { request = jsonWrite('PUT', { operationId: projectId(), ...payload }); pendingDrafts.set(key, request); }
+    const capture = await captureProjectWire(payload);
+    const key = `${draft.id}/${draft.sequence}/${capture.digest}`;
+    const preparation = prepareOnce(pendingDrafts, key, async () => projectWrite(await capture.draft(projectId())));
+    let request: RequestInit;
+    try { request = await preparation; } finally { capture.release(); }
     for (const key of Object.keys(draft.doc.files ?? {})) {
       const blob = draft.blobs[key];
       if (!(blob instanceof Blob)) throw new Error(`Draft model file is missing: ${key}`);
@@ -125,7 +127,7 @@ const serviceDraftStore: ProjectDraftStore = {
     }
     const ack = await serviceJson<{sequence:number}>(draftPath(draft.id), request);
     if (!ack || ack.sequence !== draft.sequence) throw new Error('Invalid draft acknowledgement');
-    pendingDrafts.delete(key);
+    if (pendingDrafts.get(key) === preparation) pendingDrafts.delete(key);
   }),
   remove: (id, throughSequence) => mutate(id, async () => {
     try { await serviceRequest(`${draftPath(id)}?throughSequence=${throughSequence}`, { method: 'DELETE' }, true); }

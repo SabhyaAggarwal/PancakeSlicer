@@ -10,6 +10,11 @@ export interface ProfileCatalog { machines: SystemPreset[]; processes: SystemPre
 export interface ProfileConflict { key: string; mine: ConfigValue; theirs: ConfigValue | undefined }
 export const profilesFor = (s: ProfileCatalog, type: PresetType) => type === 'machine' ? s.machines : type === 'process' ? s.processes : s.filaments;
 
+const catalogIdentity = (p: SystemPreset) => [p.type, p.vendor, p.name, p.setting_id ?? null, p.base_id ?? null, p.engine_base ?? p.name];
+export const catalogKey = (base: SystemPreset): string => `catalog:v1:${JSON.stringify(catalogIdentity(base))}`;
+const isCatalogKey = (key: string) => key.startsWith('catalog:');
+const catalogTokens = new WeakMap<SystemPreset[], Map<string, SystemPreset | null>>();
+
 const contentVersions = new WeakMap<Config, string>();
 export function baseVersion(p: SystemPreset): string {
   if (p.version || p.config.version) return String(p.version || p.config.version);
@@ -24,7 +29,7 @@ export function baseVersion(p: SystemPreset): string {
 }
 
 
-export const catalogAnchor = (base: SystemPreset): ProfileBaseAnchor => ({ name: base.name, version: baseVersion(base), vendor: base.vendor, ...(base.setting_id ? {id: base.setting_id} : {}), engineName: base.engine_base ?? base.name });
+export const catalogAnchor = (base: SystemPreset): ProfileBaseAnchor => ({ name: base.name, version: baseVersion(base), vendor: base.vendor, ...((base.setting_id ?? base.base_id) ? {id: base.setting_id ?? base.base_id} : {}), engineName: base.engine_base ?? base.name });
 
 export const changedKeys = (values: Config, below: Config): Config => Object.fromEntries(
   Object.entries(values).filter(([key, value]) => !PRESET_META.test(key) && !sameValue(key, value, below[key] ?? OPTIONS[key]?.default as ConfigValue | undefined)),
@@ -59,10 +64,24 @@ const unavailable = (code: ProfileRecoveryReason, key: string, message: string, 
   status: source?.snapshot ? 'snapshot' : code, issue: { code, key, message }, error: message,
 });
 export function findCatalogBase(s: ProfileCatalog, type: PresetType, anchor: string | ProfileBaseAnchor): { base?: SystemPreset; ambiguous: boolean } {
+  if (typeof anchor === 'string' && isCatalogKey(anchor)) {
+    const catalog = profilesFor(s,type);
+    let index = catalogTokens.get(catalog);
+    if (!index) {
+      index = new Map();
+      for (const p of catalog) {
+        const key = catalogKey(p);
+        index.set(key,index.has(key) ? null : p);
+      }
+      catalogTokens.set(catalog,index);
+    }
+    const base = index.get(anchor);
+    return {base: base?.type === type ? base : undefined, ambiguous: base === null};
+  }
   const ref: Partial<ProfileBaseAnchor> & {name: string} = typeof anchor === 'string' ? { name: anchor } : anchor;
-  const catalog = profilesFor(s, type).filter(p => !ref.vendor || p.vendor === ref.vendor);
-  let exact = catalog.filter(p => p.name === ref.name);
-  if (exact.length > 1 && ref.id) exact = exact.filter(p => p.setting_id === ref.id || p.base_id === ref.id);
+  const catalog = profilesFor(s, type).filter(p => (!ref.vendor || p.vendor === ref.vendor)
+    && (!ref.id || p.setting_id === ref.id || p.base_id === ref.id));
+  const exact = catalog.filter(p => p.name === ref.name);
   if (exact.length) return { base: exact.length === 1 ? exact[0] : undefined, ambiguous: exact.length > 1 };
   const renamed = catalog.filter(p => {
     const field = p.config.renamed_from;
@@ -88,7 +107,7 @@ export function resolveProfile(s: ProfileCatalog, type: PresetType, name: string
 }
 
 function resolveAncestors(s: ProfileCatalog, type: PresetType, name: string, seen: Set<string>): ResolvedProfile {
-  const lookup = lookupProfile(s, type, name), user = lookup.profile;
+  const lookup = isCatalogKey(name) ? {profile: undefined, ambiguous: false} : lookupProfile(s, type, name), user = lookup.profile;
   const identity = user ? profileKey(user) : name;
   if (seen.has(identity)) return unavailable('cycle', identity, 'Profile inheritance contains a cycle', user);
   seen.add(identity);
@@ -106,17 +125,18 @@ function resolveAncestors(s: ProfileCatalog, type: PresetType, name: string, see
   const found = findCatalogBase(s, type, user.base ?? user.inherits);
   const base = found.base ?? (!user.base ? parent?.base : undefined);
   if (!base) return unavailable(found.ambiguous ? 'ambiguous' : 'missing-base', identity, 'The profile base is unavailable. Reimport the base or recover a copy of its saved settings.', user);
-  if (parent?.base && (parent.base.name !== base.name || parent.base.vendor !== base.vendor))
+  if (parent?.base && parent.base !== base)
     return unavailable('missing-base', identity, 'The parent profile has a different base. Recover a copy before editing.', user);
   let master: ResolvedProfile | undefined;
   if (user.kind !== 'master' && !parentName) {
     const candidates = user.masterId ? [findProfile(s,type,user.masterId)].filter((p): p is UserPreset => !!p)
-      : s.userPresets.filter(p => p.type === type && p.kind === 'master' && p.base?.name === base.name && (!p.base.vendor || p.base.vendor === base.vendor));
+      : s.userPresets.filter(p => p.type === type && p.kind === 'master' && p.base && findCatalogBase(s,type,p.base).base === base);
     if (candidates.length > 1) return unavailable('ambiguous', identity, 'Choose the exact local master for this profile.', user);
     if (user.masterId && !candidates.length) return unavailable('missing-profile', identity, 'The linked master is unavailable. Recover the saved settings.', user);
     if (candidates[0]) {
       master = resolveAncestors(s,type,profileKey(candidates[0]),seen);
       if (master.issue && master.status !== 'archived') return unavailable(master.issue.code,identity,master.error!,user);
+      if (master.base !== base) return unavailable('missing-base',identity,'The linked master has a different base. Recover its saved settings before editing.',user);
     }
   }
   const constraints = Object.fromEntries(Object.entries(user.metadata ?? {}).filter(([key]) => /^compatible_(printers|prints)(_condition)?$/.test(key)));
@@ -173,7 +193,7 @@ export function saveProfile(s: ProfileCatalog, type: PresetType, name: string, c
     if (destination && ancestor && profileKey(destination) === profileKey(ancestor)) { parent = undefined; parentId = undefined; break; }
     ancestors.add(key); key = ancestor?.parentId ?? ancestor?.parent;
   }
-  const linkedMaster = prior?.masterId ? findProfile(s,type,prior.masterId) : type && s.userPresets.find(p => p.type === type && p.kind === 'master' && p.base?.name === base.name && (!p.base.vendor || p.base.vendor === base.vendor));
+  const linkedMaster = prior?.masterId ? findProfile(s,type,prior.masterId) : type && s.userPresets.find(p => p.type === type && p.kind === 'master' && p.base && findCatalogBase(s,type,p.base).base === base);
   const below = parentId || parent ? resolveProfile(s, type, parentId ?? parent!).config : prior?.kind !== 'master' && linkedMaster ? resolveProfile(s,type,profileKey(linkedMaster)).config : base.config;
   const overlay = changedKeys(values, below);
   const baseline = Object.fromEntries(Object.keys(overlay).map(key => [key,

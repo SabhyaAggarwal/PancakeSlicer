@@ -1,4 +1,4 @@
-import type { PresetCatalog, PresetType, ProfileOverlay, UserPreset } from '../api/types';
+import type { PresetCatalog, PresetType, ProfileOverlay, SystemPreset, UserPreset } from '../api/types';
 import type { Api } from '../api/client';
 import type { StoredDoc } from '../persist/session';
 import type { ProfileBaseAnchor, ProfileLibraryDocument, ProjectProfileSnapshot } from './ownership';
@@ -9,16 +9,20 @@ import { DEMO_MODELS, getState, setState, toast } from '../state/store';
 import { documentGeneration } from '../state/history';
 import { preferenceText } from '../saved-preferences';
 import { findProfile } from './identity';
-import { catalogAnchor, findCatalogBase, type ProfileCatalog } from './model';
+import { catalogAnchor, catalogKey, findCatalogBase, type ProfileCatalog } from './model';
 import { planCatalogReadiness, loadRequiredCatalogs, loadBackgroundCatalogs, type CatalogBaseDependency, type CatalogDependencySource } from './catalog-readiness';
 const VENDORS = ['BBL', 'Prusa', 'Custom'];
 
 function mergeCatalog(vendor: string, cat: PresetCatalog) {
   const order = <T extends { vendor: string }>(l: T[]) => [...l].sort((a, b) => VENDORS.indexOf(a.vendor) - VENDORS.indexOf(b.vendor));
-  setState((s) => ({
-    machines: order([...s.machines.filter((p) => p.vendor !== vendor), ...cat.machines]),
-    processes: order([...s.processes.filter((p) => p.vendor !== vendor), ...cat.processes]),
-    filaments: [...new Map(order([...s.filaments.filter((p) => p.vendor !== vendor), ...cat.filaments]).map((p) => [JSON.stringify([p.vendor,p.name]), p])).values()],
+  const merge=(current:SystemPreset[],incoming:SystemPreset[])=>{
+    const keys=new Set(incoming.map(catalogKey));
+    return order([...current.filter(p=>(p.imported || p.vendor!==vendor) && !keys.has(catalogKey(p))),...incoming]);
+  };
+  setState(s=>({
+    machines:merge(s.machines,cat.machines),
+    processes:merge(s.processes,cat.processes),
+    filaments:[...new Map(merge(s.filaments,cat.filaments).map(p=>[catalogKey(p),p])).values()],
   }));
 }
 
@@ -112,10 +116,13 @@ function createSession(api: Api, current: () => boolean): CatalogSession {
   return captured;
 }
 function withImportedCatalog(document?: ProfileLibraryDocument): ProfileCatalog {
-  const s=getState(),extra=document?.catalog ?? [];
-  return {...s,machines:[...s.machines,...extra.filter(p=>p.type==='machine' && !s.machines.some(q=>q.name===p.name && q.vendor===p.vendor))],
-    processes:[...s.processes,...extra.filter(p=>p.type==='process' && !s.processes.some(q=>q.name===p.name && q.vendor===p.vendor))],
-    filaments:[...s.filaments,...extra.filter(p=>p.type==='filament' && !s.filaments.some(q=>q.name===p.name && q.vendor===p.vendor))]};
+  const s=getState(),extra=document?.catalog;
+  if(!extra?.length)return s;
+  const merge=(current:SystemPreset[],type:PresetType)=>{
+    const keys=new Set(current.map(catalogKey));
+    return [...current,...extra.filter(p=>p.type===type && !keys.has(catalogKey(p)))];
+  };
+  return {...s,machines:merge(s.machines,'machine'),processes:merge(s.processes,'process'),filaments:merge(s.filaments,'filament')};
 }
 function dependencies(catalog: ProfileCatalog) {
   const bases:CatalogBaseDependency[]=[],visited=new Set<object>();let complete=true;
@@ -150,7 +157,8 @@ async function ensure(source:CatalogDependencySource,captured:CatalogSession,isC
   if(!isCurrent())return;
   if(!captured.current())throw new Error('The catalog source changed. Retry restoring this project.');
   for(const {base} of source.bases)if(base.vendor && !captured.vendors.includes(base.vendor))captured.vendors.push(base.vendor);
-  const plan=planCatalogReadiness(captured.vendors,[source],dependency=>!!findCatalogBase(withImportedCatalog(document),dependency.type,dependency.base).base);
+  const catalog=withImportedCatalog(document);
+  const plan=planCatalogReadiness(captured.vendors,[source],dependency=>!!findCatalogBase(catalog,dependency.type,dependency.base).base);
   const completed=await loadRequiredCatalogs(plan,()=>captured.current() && isCurrent(),vendor=>captured.load(vendor));
   if(isCurrent() && (!completed || !captured.current()))throw new Error('The catalog source changed. Retry restoring this project.');
 }

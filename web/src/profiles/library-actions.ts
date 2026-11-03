@@ -18,10 +18,10 @@ export function restoreArchivedProfile(profile: UserPreset): UserPreset {
 }
 export function editableMaster(s: ProfileCatalog, type: PresetType, baseKey: string): UserPreset {
   const existing = findProfile(s,type,baseKey);
-  if (existing?.kind === 'master') return existing;
+  if (existing?.kind === 'master' && profileKey(existing) === baseKey) return existing;
   const found = findCatalogBase(s,type,baseKey), base = found.base;
   if (!base) throw new Error(found.ambiguous ? 'Choose the exact base vendor.' : 'Base unavailable. Refresh the catalog.');
-  const masters = s.userPresets.filter(p => p.type === type && p.kind === 'master' && p.base?.name === base.name && (!p.base.vendor || p.base.vendor === base.vendor));
+  const masters = s.userPresets.filter(p => p.type === type && p.kind === 'master' && p.base && findCatalogBase(s,type,p.base).base === base);
   if (masters.length > 1) throw new Error('More than one local master uses this base. Choose its exact identity.');
   if (masters[0]) return masters[0];
   return {id:`profile:${crypto.randomUUID()}`,name:base.name,type,kind:'master',revision:0,base:catalogAnchor(base),inherits:base.name,
@@ -30,6 +30,7 @@ export function editableMaster(s: ProfileCatalog, type: PresetType, baseKey: str
 }
 export function linkedProfiles(s: ProfileCatalog, type: PresetType, masterKey: string): UserPreset[] {
   const master = findProfile(s,type,masterKey); if (!master) return [];
+  const base = master.base && findCatalogBase(s,type,master.base).base;
   return s.userPresets.filter(p => p.type === type && profileKey(p) !== profileKey(master) &&
-    (p.masterId === profileKey(master) || p.parentId === profileKey(master) || !p.masterId && p.kind !== 'master' && p.base?.name === master.base?.name && p.base?.vendor === master.base?.vendor));
+    (p.masterId === profileKey(master) || p.parentId === profileKey(master) || !p.masterId && p.kind !== 'master' && !!base && !!p.base && findCatalogBase(s,type,p.base).base === base));
 }
