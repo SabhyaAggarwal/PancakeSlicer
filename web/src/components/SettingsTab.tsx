@@ -74,14 +74,15 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
     const key = splitKey(k)[0], rank = lineMode(line, k);
     return OPTIONS[key] && rank && !isHidden(key) && modeVisible(rank, uiMode) && (type !== 'process' || !TOP_METHOD_KEYS.has(key)) && isMethodSettingSupported(key,config,availability);
   };
+  const focusKey = useStore((s) => (s.settingsFocus?.type === type ? s.settingsFocus.key : null));
   const pages = useMemo(() => (desc?.pages ?? []).filter((p) => !p.condition || condition(p.condition, env) !== false)
     .map((p) => ({ ...p, groups: p.groups.filter((g) => !g.condition || condition(g.condition, env) !== false)
       .map((g) => ({ ...g, lines: g.lines.filter((line) =>
-        !line.options.some((k) => states[splitKey(k)[0]]?.visible === false) && !(line.options.length && line.options.every((k) => states[splitKey(k)[0]]?.enabled === false)))
+        line.options.some((k) => splitKey(k)[0] === focusKey) || !line.options.some((k) => states[splitKey(k)[0]]?.visible === false) && !(line.options.length && line.options.every((k) => states[splitKey(k)[0]]?.enabled === false)))
         .map((line) => ({ ...line, options: line.options.filter((k) => fieldVisible(k, line)) }))
         .filter((line, _, all) => line.options.length || (customRow(line) && all.some((l) => l.options.includes('nonplanar_head')))) }))
       .filter((g) => g.lines.length) }))
-    .filter((p) => p.groups.length), [desc, env, states, uiMode, config, availability, type]);
+    .filter((p) => p.groups.length), [desc, env, states, uiMode, config, availability, type, focusKey]);
   const page = pages[Math.min(pageIdx, pages.length - 1)];
   const gcodeKeys = page ? page.groups.flatMap((g) => g.lines.flatMap((l) => l.options.map((k) => splitKey(k)[0]))).filter(isGcode) : [];
   const gcodeLabels = Object.fromEntries((page?.groups ?? []).flatMap((g) => g.lines.flatMap((l) => l.options.map((k) => splitKey(k)[0]).filter(isGcode).map((k) => [k, (g.lines.length === 1 && g.title) || l.label || OPTIONS[k]?.label || k]))));
@@ -108,15 +109,18 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
     if (i >= 0) setPageIdx(i);
     const holder = pages[i]?.groups.find((g) => g.lines.some((l) => l.options.some((k) => splitKey(k)[0] === focus.key)));
     if (holder) setGroupOpen(groupId(pages[i].title, holder.title), true);
-    const timer = setTimeout(() => {
+    let tries = 0, timer: ReturnType<typeof setTimeout>;
+    const reveal = () => {
       const line = body.current?.querySelector<HTMLElement>(`[data-opt="${CSS.escape(focus.key)}"]`);
-      if (!line) return;
+      if (!line) { if (++tries < 30) timer = setTimeout(reveal, 33); return; }
       line.scrollIntoView({ block: 'center' });
       line.classList.remove('search-flash');
       void line.offsetWidth;
       line.classList.add('search-flash');
-      line.querySelector<HTMLElement>('input:not([type=checkbox].nullable-toggle),select,textarea,button')?.focus({ preventScroll: true });
-    }, 30);
+      const control = 'input:not([type=checkbox].nullable-toggle),select,textarea,button';
+      (line.querySelector<HTMLElement>(`.opt-field :is(${control})`) ?? line.querySelector<HTMLElement>(control))?.focus({ preventScroll: true });
+    };
+    timer = setTimeout(reveal, 30);
     return () => clearTimeout(timer);
   }, [focus?.nonce, !!desc]);
   return (
