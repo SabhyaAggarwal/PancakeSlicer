@@ -93,7 +93,8 @@ const SLOPE_STAR_TEXT = `For a head that reaches further on one side. Most print
 Apply fits the head to these angles; a component shared by several directions can lower the limit in the others. Save it under a new head ID to keep it.`;
 
 export default function HeadDialog({ id, layerHeight, close, onSaved }: { id: string; layerHeight: number; close: () => void; onSaved: (id: string) => void }) {
-  const [base, setBase] = useState<{ head: Head; json: Record<string, unknown> } | null | undefined>(undefined);
+  const [load, setLoad] = useState<{ state: 'loading' | 'missing' } | { state: 'failed'; error: string } | { state: 'ready' | 'saving'; head: Head; json: Record<string, unknown> }>({ state: 'loading' });
+  const base = 'head' in load ? { head: load.head, json: load.json } : load.state === 'loading' ? undefined : null;
   const [rows, setRows] = useState<Row[]>([]);
   const [selected, setSelected] = useState(-1);
   const [fields, setFields] = useState({ id: '', name: '', margin: '', lateral: '', gap: decimal(layerHeight > 0 ? layerHeight : 0.2) });
@@ -103,14 +104,18 @@ export default function HeadDialog({ id, layerHeight, close, onSaved }: { id: st
   const [angles, setAngles] = useState<string[]>(Array(8).fill(''));
   useEffect(() => {
     const key = id || 'generic-conservative';
-    void Promise.all([loadHead(key), loadHeadJson(key)]).then(([head, json]) => {
-      if (!head || !json) return setBase(null);
-      setBase({ head, json });
+    let live = true;
+    setLoad({ state: 'loading' });
+    Promise.all([loadHead(key), loadHeadJson(key)]).then(([head, json]) => {
+      if (!live) return;
+      if (!head || !json) return setLoad({ state: 'missing' });
+      setLoad({ state: 'ready', head, json });
       setRows(head.boxes.map(toRow));
       setFields((f) => ({ ...f, id: `${head.id}-user`, name: head.name, margin: decimal(head.margin), lateral: decimal(head.lateral_margin) }));
       setCalibrated(head.calibrated);
       setProvenance(head.provenance ?? '');
-    });
+    }, (e: unknown) => { if (live) setLoad({ state: 'failed', error: e instanceof Error ? e.message : String(e) }); });
+    return () => { live = false; };
   }, [id]);
   const field = (k: keyof typeof fields) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setFields({ ...fields, [k]: e.target.value });
@@ -139,6 +144,8 @@ export default function HeadDialog({ id, layerHeight, close, onSaved }: { id: st
     }
   };
   const save = async () => {
+    if (load.state !== 'ready') return;
+    setLoad({ ...load, state: 'saving' });
     try {
       const head = readHead();
       if (!/^[A-Za-z0-9_-]+$/.test(head.id)) throw new Error('Head id must contain only letters, digits, hyphens and underscores.');
@@ -150,6 +157,7 @@ export default function HeadDialog({ id, layerHeight, close, onSaved }: { id: st
       close();
     } catch (e) {
       toast(`Could not save the head. Check the profile and choose a new ID of letters, digits, hyphens or underscores.\n${e instanceof Error ? e.message : String(e)}`);
+      setLoad(load);
     }
   };
   return (
@@ -157,7 +165,8 @@ export default function HeadDialog({ id, layerHeight, close, onSaved }: { id: st
       <ModalTitle title="Print head" onClose={close} />
       <ModalBody>
         {base === undefined && <p role="status">Loading head…</p>}
-        {base === null && <p role="alert">“{id}” is not in the head library; using the generic conservative head.</p>}
+        {load.state === 'missing' && <p role="alert">“{id}” is not in the head library; using the generic conservative head.</p>}
+        {load.state === 'failed' && <p role="alert">The head could not be read: {load.error}</p>}
         {base && <>
           <div className="head-identity">
             <label className="form-row"><span>ID</span><input className="text" value={fields.id} onChange={field('id')} /></label>
@@ -207,7 +216,7 @@ export default function HeadDialog({ id, layerHeight, close, onSaved }: { id: st
       </ModalBody>
       <ModalFooter>
         <button type="button" className="btn" onClick={close}>Cancel</button>
-        <button type="button" className="btn-primary" disabled={!base} onClick={() => void save()}>Save head</button>
+        <button type="button" className="btn-primary" disabled={load.state !== 'ready'} onClick={() => void save()}>Save head</button>
       </ModalFooter>
     </Modal>
   );

@@ -246,14 +246,15 @@ export default function App() {
 
   useEffect(() => {
     let depth = 0;
-    const files = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files') && !document.querySelector('dialog[open]');
-    const enter = (e: DragEvent) => { if (files(e)) { depth++; setDragOver(true); } };
-    const leave = (e: DragEvent) => { if (files(e) && --depth <= 0) { depth = 0; setDragOver(false); } };
-    const over = (e: DragEvent) => { if (files(e)) e.preventDefault(); };
+    const isFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files');
+    const accepts = (e: DragEvent) => isFiles(e) && !document.querySelector('dialog[open]');
+    const enter = (e: DragEvent) => { if (isFiles(e)) { depth++; setDragOver(accepts(e)); } };
+    const leave = (e: DragEvent) => { if (isFiles(e) && --depth <= 0) { depth = 0; setDragOver(false); } };
+    const over = (e: DragEvent) => { if (accepts(e)) e.preventDefault(); };
     const drop = (e: DragEvent) => {
       depth = 0;
       setDragOver(false);
-      if (!files(e) || e.defaultPrevented) return;
+      if (!accepts(e) || e.defaultPrevented) return;
       e.preventDefault();
       void importFiles(e.dataTransfer!.files);
     };

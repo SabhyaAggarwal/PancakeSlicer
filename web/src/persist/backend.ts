@@ -75,7 +75,8 @@ let storageError: string | null = null;
 export const projectStorageError = () => storageError ?? 'The project service is unavailable. Keep this window open and retry.';
 export function projectStore(retry = false): Promise<ProjectStore | null> {
   if (retry) { store = null; storageError = null; }
-  store ??= (async () => {
+  if (store) return store;
+  const attempt: Promise<ProjectStore | null> = (async () => {
     await (await import('./service')).requireWorkspaceService();
     const { serviceStore } = await import('./project-service');
     let primed: Awaited<ReturnType<ProjectStore['list']>> | null = await serviceStore.list();
@@ -85,6 +86,6 @@ export function projectStore(retry = false): Promise<ProjectStore | null> {
       primed = null;
       return first ? Promise.resolve(first) : serviceStore.list();
     } };
-  })().catch((error: unknown) => { storageError = error instanceof Error ? error.message : String(error); return null; });
-  return store;
+  })().catch((error: unknown) => { if (store === attempt) storageError = error instanceof Error ? error.message : String(error); return null; });
+  return (store = attempt);
 }
