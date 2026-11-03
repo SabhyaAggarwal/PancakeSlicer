@@ -62,6 +62,7 @@ type ToolFeatures struct {
 	ExportGeneric3MF     bool            `json:"export_generic_3mf"`
 	ExportDRC            bool            `json:"export_drc"`
 	EmbossSurfaceOutside bool            `json:"emboss_surface_outside"`
+	PresetCache          bool            `json:"preset_cache"`
 	BrimEars             bool            `json:"brim_ears"`
 	SeamParts            bool            `json:"seam_parts"`
 }
@@ -106,6 +107,7 @@ func probeUsage(c Config, f *ToolFeatures) {
 	f.PatchPreview = strings.Contains(usage, "--patch-preview FILE")
 	f.SurfaceGrid = strings.Contains(usage, "--surface-grid")
 	f.Calib = strings.Contains(usage, "--calib-params")
+	f.PresetCache = strings.Contains(usage, "--preset-cache DIR")
 	f.Volumes = f.Cut
 	f.MeshPlates = strings.Contains(usage, `plate JSON objects take "plate"`)
 	f.PlateLocks = strings.Contains(usage, `plates take "settings" and "locked"`)

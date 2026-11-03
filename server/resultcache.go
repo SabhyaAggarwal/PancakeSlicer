@@ -283,6 +283,14 @@ func init() {
 		if _, err := cacheForManager(m); err != nil {
 			log.Printf("result cache unavailable: %v", err)
 		}
+		if current := presetCacheDir(m); current != "" {
+			entries, _ := os.ReadDir(filepath.Dir(current))
+			for _, e := range entries {
+				if e.Name() != filepath.Base(current) {
+					_ = os.RemoveAll(filepath.Join(filepath.Dir(current), e.Name()))
+				}
+			}
+		}
 	}
 	jobResultStats = func(m *JobManager) any {
 		resultCaches.Lock()
@@ -333,6 +341,17 @@ func cacheForManager(m *JobManager) (*managerResultCache, error) {
 	state = &managerResultCache{cache, info, resourceSHA}
 	resultCaches.managers[m] = state
 	return state, nil
+}
+
+func presetCacheDir(m *JobManager) string {
+	if !m.cfg.Features.PresetCache {
+		return ""
+	}
+	state, err := cacheForManager(m)
+	if err != nil || state == nil {
+		return ""
+	}
+	return filepath.Join(m.cfg.JobRoot, "preset-cache", state.cache.artifact[:16]+"-"+state.resources[:16])
 }
 
 func cacheableJob(m *JobManager, j *Job) bool {

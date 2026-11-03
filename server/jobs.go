@@ -606,6 +606,9 @@ func (m *JobManager) toolArgs(j *Job) []string {
 		"--printer", r.Printer,
 		"--process", r.Process,
 	}
+	if dir := presetCacheDir(m); dir != "" {
+		args = append(args, "--preset-cache", dir)
+	}
 	for _, f := range r.Filaments {
 		args = append(args, "--filament", f)
 	}
