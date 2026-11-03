@@ -27,21 +27,28 @@ const num = (v: unknown, d: number) => { const n = parseFloat(String(Array.isArr
 
 let worker: Worker | null = null;
 let seq = 0;
-const waiting = new Map<number, (o: PreflightOut) => void>();
+const waiting = new Map<number, { resolve(o: PreflightOut): void; reject(e: Error): void; key: string }>();
 const cache = new Map<string, Promise<PreflightOut>>();
 function analysis(o: PlateObject, firstLayer: number, threshold: number, nozzle: number): Promise<PreflightOut> {
   const m = objectMatrix(o).elements;
   const key = `${o.geometry.uuid}:${m.map((e) => e.toFixed(4)).join()}:${firstLayer}:${threshold}:${nozzle}`;
   let p = cache.get(key);
   if (p) return p;
+  const fail = (e: Event) => {
+    const error = new Error(e instanceof ErrorEvent && e.message ? e.message : 'The preflight worker stopped');
+    worker?.terminate(); worker = null;
+    for (const w of waiting.values()) { cache.delete(w.key); w.reject(error); }
+    waiting.clear();
+  };
   worker ??= Object.assign(new Worker(new URL('./preflight.worker.ts', import.meta.url), { type: 'module' }), {
-    onmessage: (e: MessageEvent<PreflightOut>) => { waiting.get(e.data.id)?.(e.data); waiting.delete(e.data.id); },
+    onmessage: (e: MessageEvent<PreflightOut>) => { waiting.get(e.data.id)?.resolve(e.data); waiting.delete(e.data.id); },
+    onerror: fail, onmessageerror: fail,
   });
   const pos = o.geometry.attributes.position.array as Float32Array;
   const index = o.geometry.index ? Uint32Array.from(o.geometry.index.array) : Uint32Array.from({ length: pos.length / 3 }, (_, i) => i);
   const id = ++seq;
   const msg: PreflightIn = { id, positions: Float32Array.from(pos), index, matrix: [...m], firstLayer, threshold, nozzle };
-  p = new Promise<PreflightOut>((resolve) => waiting.set(id, resolve));
+  p = new Promise<PreflightOut>((resolve, reject) => waiting.set(id, { resolve, reject, key }));
   worker.postMessage(msg, [msg.positions.buffer, msg.index.buffer]);
   if (cache.size > 64) cache.delete(cache.keys().next().value!);
   cache.set(key, p);
@@ -86,8 +93,9 @@ async function check(s: State) {
       const fits = size.x <= Math.max(...xs) - Math.min(...xs) && size.y <= Math.max(...ys) - Math.min(...ys) && size.z <= height;
       push('bed', new Uint32Array(), fits ? { label: 'Arrange', run: () => arrangeAll(false) } : { label: 'Scale to fit', run: () => scaleToBuildVolume(o.id) });
     }
-    const a = await analysis(o, num(cfg.initial_layer_print_height, 0.2), num(cfg.support_threshold_angle, 30) || 30, num(machine.nozzle_diameter, 0.4));
+    const a = await analysis(o, num(cfg.initial_layer_print_height, 0.2), num(cfg.support_threshold_angle, 30) || 30, num(machine.nozzle_diameter, 0.4)).catch(() => null);
     if (mine !== run) return;
+    if (!a) continue;
     const point = a.height > 2 && a.contact < POINT_CONTACT_MM2;
     if (point) push('contact', new Uint32Array(), layFlat(o));
     else if (a.height > TALL_MM && a.contact < SMALL_FOOT_MM2 && String(cfg.brim_type) === 'no_brim')
