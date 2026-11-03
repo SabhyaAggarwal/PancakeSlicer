@@ -7,7 +7,7 @@ import { loadMoves, supportGrams, type PreviewData } from '../preview/data';
 import { area, grams, microns, nativeSurfaceSummary, readRecord, supportText, type RecordSummary } from '../preview/explain-record';
 import { MoveType, shortTime } from '../preview/format';
 import { PreviewScene } from '../preview/PreviewScene';
-import { ERROR_BINS, surfaceGrid } from '../preview/surface-grid';
+import { ERROR_BINS, useSurfaceGrid } from '../preview/surface-grid';
 import { getState, printerPreset } from '../state/store';
 import { Icon } from './Icon';
 import { colorContext, jobColours, type PreviewUi } from './PreviewView';
@@ -38,12 +38,13 @@ const time = (s: number | null) => (s == null ? '–' : shortTime(s));
 export function ExplainLegend(props: {
   data: PreviewData;
   record: Record<string, unknown>;
+  hasSurfaceGrid: boolean;
   ui: PreviewUi;
   setUi(f: (u: PreviewUi) => PreviewUi): void;
   compare: boolean;
   setCompare(on: boolean): void;
 }) {
-  const { data, record, ui, setUi, compare, setCompare } = props;
+  const { data, record, hasSurfaceGrid, ui, setUi, compare, setCompare } = props;
   const s = useMemo(() => readRecord(record), [record]);
   const cmp = useCompare();
   const stdData = useStandardData();
@@ -95,13 +96,13 @@ export function ExplainLegend(props: {
             setUi((u) => ({ ...u, ...(on ? { view: 'nonplanar', nonplanar: 'curved' } : previous.current) }));
           }} />Highlight curved
         </label>
-        {surfaceGrid(record) && (
+        {hasSurfaceGrid && (
           <label className="lg-opt">
             <Check checked={ui.surface} onCheckedChange={(next) => setUi((u) => ({ ...u, surface: next }))} />Surface error
           </label>
         )}
       </div>
-      {ui.surface && surfaceGrid(record) ? (
+      {ui.surface && hasSurfaceGrid ? (
         <>
           <div className="lg-sec label-caps">Top error (µm)</div>
           {[...ERROR_BINS].reverse().map((b) => (
@@ -213,7 +214,7 @@ function StandardPane(props: {
   const [data, setData] = useState<PreviewData | null>(null);
   const [tooLarge, setTooLarge] = useState(false);
   const [tip, setTip] = useState<{ text: string; x: number; y: number } | null>(null);
-  const grid = ui.surface && cmp.state === 'done' ? surfaceGrid(cmp.status.record) : null;
+  const grid = useSurfaceGrid(cmp.state === 'done' ? cmp.status : undefined, ui.surface);
   useEffect(() => scene?.setSurface(grid), [scene, grid]);
   const [, bump] = useReducer((x: number) => x + 1, 0);
   const id = cmp.state === 'done' ? cmp.id : null;

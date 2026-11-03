@@ -1,3 +1,5 @@
+import { useEffect, useReducer } from 'react';
+import type { JobStatus } from '../api/types';
 import { RANGE_PALETTE, type RGB } from './colors';
 
 export interface SurfaceGrid {
@@ -29,18 +31,42 @@ function f32(b64: unknown, n: number): Float32Array | null {
   return out;
 }
 
-const cache = new WeakMap<object, SurfaceGrid | null>();
-
-export function surfaceGrid(record: Record<string, unknown> | undefined): SurfaceGrid | null {
-  const g = record?.surface_grid as Record<string, unknown> | undefined;
-  if (!g || typeof g !== 'object') return null;
-  if (cache.has(g)) return cache.get(g)!;
+function decode(g: Record<string, unknown>): SurfaceGrid | null {
   const nx = Number(g.nx), ny = Number(g.ny), n = nx * ny;
   const origin = g.origin as number[];
   const rms = f32(g.rms_mm, n), meshZ = f32(g.mesh_z_mm, n), eligible = f32(g.eligible_fraction, n);
-  const grid = Number.isInteger(n) && n > 0 && rms && meshZ && eligible && Array.isArray(origin)
+  return Number.isInteger(n) && n > 0 && rms && meshZ && eligible && Array.isArray(origin)
     ? { pitch: Number(g.pitch_mm), origin: [Number(origin[0]), Number(origin[1])] as [number, number], nx, ny, rms, meshZ, eligible }
     : null;
-  cache.set(g, grid);
-  return grid;
+}
+
+const loaded = new Map<string, SurfaceGrid | null>();
+const pending = new Map<string, Promise<void>>();
+
+export function loadSurfaceGrid(id: string): Promise<void> {
+  if (loaded.has(id)) return Promise.resolve();
+  let p = pending.get(id);
+  if (!p) {
+    p = fetch(`/api/jobs/${id}/surface-grid`)
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`${r.status}`);
+        const g = await r.json();
+        loaded.set(id, g && typeof g === 'object' ? decode(g) : null);
+      })
+      .finally(() => pending.delete(id));
+    pending.set(id, p);
+  }
+  return p;
+}
+
+export function useSurfaceGrid(status: JobStatus | undefined, wanted: boolean): SurfaceGrid | null {
+  const id = status?.has_surface_grid ? status.id : null;
+  const [, bump] = useReducer((x: number) => x + 1, 0);
+  useEffect(() => {
+    if (!id || !wanted || loaded.has(id)) return;
+    let live = true;
+    loadSurfaceGrid(id).then(() => live && bump(), () => {});
+    return () => { live = false; };
+  }, [id, wanted]);
+  return id && wanted ? loaded.get(id) ?? null : null;
 }

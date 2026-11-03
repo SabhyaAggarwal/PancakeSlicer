@@ -9,7 +9,7 @@ import { computeRanges, drawMasks, EXTENDED_VIEWS, hexToRgb, type ColorContext, 
 import { loadMoves, type PreviewData } from '../preview/data';
 import { NonplanarHover, explain, type HoverInfo } from '../preview/hover';
 import { PreviewScene } from '../preview/PreviewScene';
-import { surfaceGrid } from '../preview/surface-grid';
+import { loadSurfaceGrid, useSurfaceGrid } from '../preview/surface-grid';
 import { clearanceScale, loadClearanceScale } from '../preview/clearance';
 import { Legend } from './PreviewLegend';
 import { LayerSlider } from './PreviewSliders';
@@ -78,6 +78,11 @@ export function PreviewView() {
     shells: false,
     surface: false,
   });
+  const ownStatus = data?.sourceUrl && job.id && data.sourceUrl === getState().api?.movesUrl(job.id) ? job.status : undefined;
+  const grid = useSurfaceGrid(ownStatus, ui.surface);
+  useEffect(() => {
+    if (data?.done && ownStatus?.has_surface_grid) loadSurfaceGrid(ownStatus.id).catch(() => {});
+  }, [data?.done, ownStatus?.id, ownStatus?.has_surface_grid]);
   const [layers, setLayers] = useState<[number, number]>([0, Number.MAX_SAFE_INTEGER]);
   const [movePos, setMovePos] = useState<number | null>(null);
   const ranges = useRef<Ranges | null>(null);
@@ -89,10 +94,10 @@ export function PreviewView() {
     const scene = sceneRef.current;
     const r = host.current!.getBoundingClientRect();
     const x = e.clientX - r.left, y = e.clientY - r.top;
-    const grid = ui.surface && !busy && scene ? surfaceGrid(record) : null;
-    if (grid) {
+    const cells = !busy && scene ? grid : null;
+    if (cells) {
       const cell = scene!.pickSurface(x, y);
-      return setTip(cell < 0 ? null : { title: `Top error ${Math.round(grid.rms[cell] * 1000)} µm`, body: '', x, y });
+      return setTip(cell < 0 ? null : { title: `Top error ${Math.round(cells.rms[cell] * 1000)} µm`, body: '', x, y });
     }
     if (ui.view !== 'nonplanar' || busy || !scene || !data?.states) return tip && setTip(null);
     const id = hover.current.pick(data, scene.camera, r.width, r.height, drawRange.current, ui.vis.hiddenRoles, x, y);
@@ -269,9 +274,9 @@ export function PreviewView() {
     const [s0] = layerCount ? data.layerSpan(lo, hi) : [1];
     const s1 = topFirst + pos;
     drawRange.current = [s0, s1];
-    scene.setDrawState({ range: [s0, s1], ...drawMasks(ui.vis, ui.surface && !!surfaceGrid(record)) }, pos < topMoves ? s1 - 1 : null);
+    scene.setDrawState({ range: [s0, s1], ...drawMasks(ui.vis, !!grid) }, pos < topMoves ? s1 - 1 : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, data?.loaded, data?.done, lo, hi, pos, topFirst, topMoves, ui.vis, ui.surface, layerCount, job.status]);
+  }, [data, data?.loaded, data?.done, lo, hi, pos, topFirst, topMoves, ui.vis, ui.surface, layerCount, job.status, grid]);
 
   (window as unknown as { __preview: unknown }).__preview = {
     scene: sceneRef.current,
@@ -331,10 +336,9 @@ export function PreviewView() {
   }, [layerCount, topMoves, oneLayer, layers, hi]);
 
   const loading = data && !data.done && !data.error;
-  const api = getState().api;
-  const record = data?.sourceUrl && job.id && api && data.sourceUrl === api.movesUrl(job.id) ? job.status?.record : undefined;
+  const record = ownStatus?.record;
   const comparing = compare && !!record && !job.stale;
-  useEffect(() => sceneRef.current?.setSurface(ui.surface ? surfaceGrid(record) : null), [ui.surface, record]);
+  useEffect(() => sceneRef.current?.setSurface(grid), [grid]);
   useEffect(() => {
     void loadClearanceScale(record).then((changed) => { if (changed && data?.header) { recolor(data); bump(); } });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -407,10 +411,10 @@ export function PreviewView() {
           ranges={ranges.current}
           range={layerCount ? data.layerSpan(lo, hi) : [1, 1]}
           scene={sceneRef.current}
-          explainOnly={comparing || (ui.surface && !!surfaceGrid(record))}
+          explainOnly={comparing || !!grid}
           explain={record && (
             <Suspense fallback={null}>
-              <ExplainLegend data={data} record={record} ui={ui} setUi={setUi} compare={comparing} setCompare={setCompare} />
+              <ExplainLegend data={data} record={record} hasSurfaceGrid={!!ownStatus?.has_surface_grid} ui={ui} setUi={setUi} compare={comparing} setCompare={setCompare} />
             </Suspense>
           )}
         />
