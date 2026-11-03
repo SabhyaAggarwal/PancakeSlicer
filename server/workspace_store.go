@@ -539,6 +539,36 @@ func (st *workspaceStore) register(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/assets/{key}", st.putAsset)
 	mux.HandleFunc("GET /api/assets/{key}", st.getAsset)
 }
+
+type workspaceProjectState string
+
+const (
+	projectAbsent    workspaceProjectState = "absent"
+	projectLive      workspaceProjectState = "live"
+	projectTrashed   workspaceProjectState = "trashed"
+	projectTombstone workspaceProjectState = "tombstone"
+)
+
+var workspaceProjectActions = map[workspaceProjectState]map[string]bool{
+	projectAbsent:    {"save": true},
+	projectLive:      {"save": true, "rename": true, "duplicate": true, "archive": true},
+	projectTrashed:   {"restore": true},
+	projectTombstone: {},
+}
+
+func workspaceProjectStateOf(p workspaceProject, exists bool) workspaceProjectState {
+	switch {
+	case !exists:
+		return projectAbsent
+	case p.Archived && p.Record == nil:
+		return projectTombstone
+	case p.Archived:
+		return projectTrashed
+	default:
+		return projectLive
+	}
+}
+
 func (st *workspaceStore) projectWrite(w http.ResponseWriter, r *http.Request, action string) {
 	var in struct {
 		OperationID      string          `json:"operationId"`
@@ -565,16 +595,17 @@ func (st *workspaceStore) projectWrite(w http.ResponseWriter, r *http.Request, a
 			workspaceFailure(w, 409, "revision_conflict", "Another writer changed this project. Reload or keep a separate copy.", "reload_and_reapply", p.Revision)
 			return
 		}
-		if !exists && action != "save" {
-			workspaceFailure(w, 404, "project_missing", "Project not found.", "open_projects", 0)
-			return
-		}
-		if p.Archived && p.Record == nil {
-			workspaceFailure(w, 410, "project_archived", "This deleted project has no retained document to restore. Keep its deletion marker and open another project.", "open_projects", p.Revision)
-			return
-		}
-		if p.Archived && action != "restore" {
-			workspaceFailure(w, 410, "project_archived", "This project is in Trash. Restore it before saving.", "restore_project", p.Revision)
+		if state := workspaceProjectStateOf(p, exists); !workspaceProjectActions[state][action] {
+			switch state {
+			case projectAbsent:
+				workspaceFailure(w, 404, "project_missing", "Project not found.", "open_projects", 0)
+			case projectTombstone:
+				workspaceFailure(w, 410, "project_archived", "This deleted project has no retained document to restore. Keep its deletion marker and open another project.", "open_projects", p.Revision)
+			case projectTrashed:
+				workspaceFailure(w, 410, "project_archived", "This project is in Trash. Restore it before saving.", "restore_project", p.Revision)
+			default:
+				workspaceFailure(w, 409, "project_not_archived", "This project is not in Trash.", "open_project", p.Revision)
+			}
 			return
 		}
 		next := p
