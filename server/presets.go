@@ -146,7 +146,7 @@ func (p *PresetIndex) vendor(name string) (*VendorPresets, error) {
 			v.presets.machines = presetMap(v.presets.Machines)
 			v.presets.processes = presetMap(v.presets.Processes)
 			v.presets.filaments = presetMap(v.presets.Filaments)
-			v.response, v.err = cacheJSON(v.presets)
+			v.response, v.err = cacheJSON(compactPresets(v.presets))
 		}
 	})
 	return v.presets, v.err
@@ -353,7 +353,7 @@ func (p *PresetIndex) modelsResponse(name string, models []string) (*cachedRespo
 			narrowed.Filaments = append(narrowed.Filaments, f)
 		}
 	}
-	r, err := cacheJSON(narrowed)
+	r, err := cacheJSON(compactPresets(&narrowed))
 	if err != nil {
 		return nil, err
 	}
@@ -371,7 +371,11 @@ func (p *PresetIndex) allResponseJSON() (*cachedResponse, error) {
 			p.allError = err
 			return
 		}
-		p.allResponse, p.allError = cacheJSON(vs)
+		all := make([]compactVendor, len(vs))
+		for i := range vs {
+			all[i] = compactPresets(&vs[i])
+		}
+		p.allResponse, p.allError = cacheJSON(all)
 	})
 	return p.allResponse, p.allError
 }
