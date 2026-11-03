@@ -107,12 +107,12 @@ func (h *statusHub) reconcile() {
 	h.wake = make(chan struct{})
 }
 
-func (h *statusHub) set(key string, st PrinterStatus) {
+func (h *statusHub) set(from *monitor, st PrinterStatus) {
+	key := from.cfg.Printer
 	st.Printer = key
 	h.mu.Lock()
 	prev, ok := h.status[key]
-	mon := h.monitors[key]
-	if mon == nil {
+	if h.monitors[key] != from {
 		h.mu.Unlock()
 		return
 	}
@@ -155,7 +155,7 @@ func (h *statusHub) run(ctx context.Context, mon *monitor) {
 		secret, err := p.secret()
 		began := time.Now()
 		if err == nil {
-			publish := func(st PrinterStatus) { h.set(p.Printer, st) }
+			publish := func(st PrinterStatus) { h.set(mon, st) }
 			switch p.Kind {
 			case "bambu-lan":
 				err = monitorBambu(ctx, p, secret, publish)
@@ -166,7 +166,7 @@ func (h *statusHub) run(ctx context.Context, mon *monitor) {
 		if ctx.Err() != nil {
 			return
 		}
-		h.set(p.Printer, PrinterStatus{State: "offline", Detail: redact(fmt.Sprint(err), secret)})
+		h.set(mon, PrinterStatus{State: "offline", Detail: redact(fmt.Sprint(err), secret)})
 		if time.Since(began) > time.Minute {
 			backoff = 3 * time.Second
 		}
