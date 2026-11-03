@@ -54,6 +54,7 @@ const count = (n:number,[one,many]:[string,string]) => `${n} ${n === 1 ? one : m
 interface Group { key: string; label: string; sub?: string; rows: Item[]; children?: Group[] }
 const heightLabel = (config: Config) => {const h = Number(first(config.layer_height));return Number.isFinite(h) && h > 0 ? `${h.toFixed(2)} mm` : 'Other';};
 const byLabel = (a: string, b: string) => a === 'Other' || a === 'Any printer' ? 1 : b === 'Other' || b === 'Any printer' ? -1 : parseFloat(a) - parseFloat(b) || a.localeCompare(b);
+const sessionFolds = new Map<string, boolean>();
 const unique = (rows: Item[]) => [...new Map(rows.map(r => [r.key, r])).values()];
 function families(type: PresetType, list: Item[]): Item[] {
   if(type === 'process') return list;
@@ -300,7 +301,9 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     });
   },[matching,query,type,machines,printerFilter,printer]);
   const visible=useMemo(()=>unique(groups.flatMap(g=>g.rows)),[groups]);
-  const [toggled,setToggled]=useState<ReadonlySet<string>>(new Set());
+  const [folds,setFolds]=useState<ReadonlyMap<string,boolean>>(()=>new Map(sessionFolds)),[searchFolds,setSearchFolds]=useState<ReadonlySet<string>>(new Set());
+  useEffect(()=>setSearchFolds(new Set()),[query]);
+  const setFold=(key:string,open:boolean)=>{sessionFolds.set(key,open);setFolds(prior=>new Map(prior).set(key,open));};
   const filtersActive=vendorFilter.length+modelFilter.length+nozzleFilter.length+materialFilter.length+printerFilter.length;
   const clearFilters=()=>{setVendorFilter([]);setModelFilter([]);setNozzleFilter([]);setMaterialFilter([]);setPrinterFilter([]);setMaterialDefault(false);};
   const defaulted=useRef('');
@@ -314,12 +317,12 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     if(common.length){setMaterialFilter(common);setMaterialDefault(true);}
   },[adding,type,list,printerOptions,printer]);
   const scope = `profiles:${adding ? 'add' : 'owned'}:${type}`, groupKey = (key: string) => `${scope}:${key}`;
-  const isOpen = (g: Group) => !!query || (type !== 'process' || g.rows.some(r => r.slot !== undefined || r.key === name)) !== toggled.has(groupKey(g.key));
+  const isOpen = (g: Group) => query ? !searchFolds.has(groupKey(g.key)) : folds.get(groupKey(g.key)) ?? (type === 'machine' || g.rows.some(r => r.slot !== undefined || r.key === name));
   const order = useMemo(() => {
     const keys: string[] = [], walk = (list: Group[]) => {for(const g of list)if(isOpen(g)){if(g.children)walk(g.children);else keys.push(...g.rows.map(i => i.key));}};
     walk(groups);
     return [...new Set(keys)];
-  }, [groups, toggled, query, scope, name]);
+  }, [groups, folds, searchFolds, query, scope, name]);
   const current = (t: PresetType) => (t === 'machine' ? printer : t === 'process' ? process : slots[0]) ?? '';
   const [selectionState, setSelection] = useState(() => {
     let initial = createSelection(scope, order);
@@ -450,11 +453,15 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const backToList=()=>{setMobilePane('list');setFiltersOpen(false);requestAnimationFrame(()=>document.getElementById(`${id}:${latestSelection.current.focus}`)?.focus());};
   const nouns=NOUNS[type], typeLabel=type === 'process' ? nouns[1] : nouns[0];
   const resultNoun:[string,string]=adding && type === 'machine' ? ['model','models'] : adding ? ['preset','presets'] : nouns;
-  const toggleGroup=(key:string)=>setToggled(prior=>{const next=new Set(prior),k=groupKey(key);if(!next.delete(k))next.add(k);return next;});
+  const toggleGroup=(g:Group)=>{const k=groupKey(g.key);if(query)setSearchFolds(prior=>{const next=new Set(prior);if(!next.delete(k))next.add(k);return next;});else setFold(k,!isOpen(g));};
+  useEffect(()=>{
+    const key=selection.focus;if(!query || !key)return;
+    for(const g of groups)if(g.rows.some(r=>r.key === key)){setFold(groupKey(g.key),true);for(const c of g.children ?? [])if(c.rows.some(r=>r.key === key))setFold(groupKey(c.key),true);}
+  },[selection.focus]);
   const renderGroup=(g:Group,depth:number):React.ReactNode=>{
     const open=isOpen(g);
     return <div key={g.key} role="rowgroup" className="pf-group" data-depth={depth}>
-      <div role="row"><span role="rowheader"><button type="button" className="pf-group-toggle" aria-expanded={open} onClick={()=>toggleGroup(g.key)}><Caret dir={open ? 'down' : 'right'}/><span className="pf-group-label">{g.label}</span>{g.sub && <span className="pf-dim">{g.sub}</span>}</button></span></div>
+      <div role="row"><span role="rowheader"><button type="button" className="pf-group-toggle" aria-expanded={open} onClick={()=>toggleGroup(g)}><Caret dir={open ? 'down' : 'right'}/><span className="pf-group-label">{g.label}</span>{g.sub && <span className="pf-dim">{g.sub}</span>}</button></span></div>
       {open && (g.children ? g.children.map(c=>renderGroup(c,depth+1)) : g.rows.map(i => <ManagerProfileRow key={i.key} item={i} listId={id} selected={selectedSet.has(i.key)} focused={selection.focus === i.key} selectable={!adding} dispatch={dispatch}/>))}
     </div>;
   };

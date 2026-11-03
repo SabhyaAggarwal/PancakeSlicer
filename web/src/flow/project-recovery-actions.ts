@@ -6,7 +6,7 @@ import { clearPlate } from '../actions';
 import { documentGeneration, leaveDocument, newDocument, snapshot, type Doc } from '../state/history';
 import { clearPlateJobs } from '../plater/plates';
 import { setState } from '../state/store';
-import { project, projectList, flushProject, type ProjectDraftInventory } from './project';
+import { project, projectList, flushProject, writeProjectRoute, type ProjectDraftInventory } from './project';
 import { writeRoute } from './routes';
 import { checkpointCommitted, conflictFailure, failureError, projectFailure, recoveryDocument, type DraftCheckpoint, type ProjectFailure, type CheckpointDocument } from './project-recovery';
 export interface RecoveryRuntime {
@@ -45,7 +45,22 @@ export async function adoptProjectDraft(runtime: RecoveryRuntime, draft: Project
   runtime.setRestored(draft); runtime.resetCaptured();
   project.send({ type: 'RECOVERED', meta, draft, failure });
   runtime.checkpointRecovered(draft.projectId, draft.baseRevision, failure);
-  writeRoute(`/p/${draft.projectId}`, true);
+  writeProjectRoute(true);
+}
+export async function resumeUnsavedProject(runtime: RecoveryRuntime, id: string): Promise<boolean> {
+  const mine = runtime.beginOpen();
+  const [rec, drafts] = await Promise.all([runtime.storage()?.load(id) ?? null,
+    runtime.drafts().then((storage) => storage.list(id)).catch(() => [] as ProjectDraft[])]);
+  if (!runtime.isCurrent(mine)) return true;
+  if (rec) { await openProject(runtime, id, { history: false }); return true; }
+  const owners = [runtime.session.owner, ...runtime.session.previousOwners];
+  const draft = drafts.filter((d) => d.kind === 'dirty' && d.baseRevision === 0 && owners.includes(d.owner))
+    .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  if (!draft) return false;
+  project.send({ type: 'OPEN' });
+  await adoptProjectDraft(runtime, draft, null, mine);
+  if (runtime.isCurrent(mine) && project.get().context.id === id) project.send({ type: 'RETRY' });
+  return true;
 }
 export async function keepProjectVersion(runtime: RecoveryRuntime) {
   const id = project.get().context.id, gen = documentGeneration();
@@ -283,7 +298,7 @@ export async function saveProjectSnapshot(runtime: RecoveryRuntime, capture: {
   receipt: { checkpoint: DraftCheckpoint; durable: Promise<ProjectDraft> };
 }) {
   const { id, document, gen, version, revision, storage, receipt } = capture;
-    await receipt.durable.catch(() => null);
+    if (revision > 0) await receipt.durable.catch(() => null);
     if (!storage) throw new Error('Project storage is unavailable');
     if (runtime.removed.has(id)) return;
     if (runtime.activeWrite(id, gen, version) && project.get().context.conflict) throw failureError(project.get().context.failure ?? conflictFailure(id, revision));
@@ -301,6 +316,7 @@ export async function saveProjectSnapshot(runtime: RecoveryRuntime, capture: {
     savedVersionBase(id, document);
     if (runtime.activeWrite(id, gen, version)) project.send({ type: 'SAVED', id, ...meta, ...acknowledgement, checkpoint: receipt.checkpoint });
     if (!runtime.activeWrite(id, gen, version) || !project.get().context.conflict) {
+      await receipt.durable.catch(() => null);
       const drafts = await runtime.drafts().catch(() => null);
       await drafts?.remove(receipt.checkpoint.id, receipt.checkpoint.sequence).catch(() => {});
       if (runtime.activeWrite(id, gen, version) && runtime.restored()?.projectId === id && runtime.restored()?.kind === 'dirty') {

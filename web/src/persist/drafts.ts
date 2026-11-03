@@ -120,7 +120,7 @@ const serviceDraftStore: ProjectDraftStore = {
       const blob = draft.blobs[key];
       if (!(blob instanceof Blob)) throw new Error(`Draft model file is missing: ${key}`);
       if (!uploaded.get(blob)?.has(key)) {
-        await serviceRequest(assetPath(key), { method: 'PUT', body: blob });
+        if (!await serviceRequest(assetPath(key), { method: 'HEAD' }, true)) await serviceRequest(assetPath(key), { method: 'PUT', body: blob });
         const keys = uploaded.get(blob) ?? new Set<string>(); keys.add(key); uploaded.set(blob, keys);
       }
     }

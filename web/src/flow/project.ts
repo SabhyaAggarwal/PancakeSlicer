@@ -93,12 +93,23 @@ function checkpointProject(document = snapshot(), id = project.get().context.id,
   captured = { id, document, revision, failure, receipt };
   project.send({ type: 'DRAFT', id, durability: { state: 'pending', checkpoint: receipt.checkpoint } });
   void receipt.durable.then((draft) => {
-    if (activeWrite(id, gen, version)) project.send({ type: 'DRAFT', id, durability: { state: 'durable', checkpoint: receipt.checkpoint, updatedAt: draft.updatedAt } });
+    if (activeWrite(id, gen, version) && project.get().value !== 'saved') project.send({ type: 'DRAFT', id, durability: { state: 'durable', checkpoint: receipt.checkpoint, updatedAt: draft.updatedAt } });
     void refreshProjectDrafts();
   }, (error: unknown) => {
     if (activeWrite(id, gen, version)) project.send({ type: 'DRAFT', id, durability: { state: 'failed', checkpoint: receipt.checkpoint, message: errorText(error) } });
   });
   return receipt;
+}
+const UNSAVED = 'unsavedProject';
+export function writeProjectRoute(replace = false) {
+  const { id, savedAt } = project.get().context;
+  if (savedAt) { writeRoute(`/p/${id}`, replace); return; }
+  writeRoute('/', replace);
+  if (hasUnsavedProject()) history.replaceState({ ...history.state, [UNSAVED]: id }, '');
+}
+function routeSavedProject() {
+  const c = project.get().context;
+  if (c.savedAt && !routing && getState().tab !== 'projects' && currentRoute().kind === 'blank') writeRoute(`/p/${c.id}`, true);
 }
 function hasUnsavedProject() {
   const { value, context } = project.get();
@@ -283,15 +294,15 @@ async function start(ready: Promise<unknown>) {
     if (!sameDoc(before, doc) && !uneditedBlank) {
       checkpointProject(doc);
       project.send({ type: 'EDIT' });
-      if (getState().tab !== 'projects' && !routing) writeRoute(`/p/${project.get().context.id}`, !project.get().context.savedAt);
+      if (getState().tab !== 'projects' && !routing) writeProjectRoute(!project.get().context.savedAt);
     }
     if (!routing) {
       const r = currentRoute(), tab = getState().tab;
       if (tab === 'projects' && r.kind !== 'projects') writeRoute('/projects');
-      else if (tab !== 'projects' && r.kind === 'projects')
-        writeRoute(project.get().value === 'blank' || project.get().value === 'deleted' ? '/' : `/p/${project.get().context.id}`);
+      else if (tab !== 'projects' && r.kind === 'projects') writeProjectRoute();
     }
   });
+  project.subscribe(routeSavedProject);
   onLeaveDocument(() => {
     if (versionView) return;
     if (hasUnsavedProject()) checkpointProject();
@@ -309,7 +320,7 @@ async function start(ready: Promise<unknown>) {
     if (observed.objects.length || observed.project) {
       checkpointProject(observed);
       project.send({ type: 'EDIT' });
-      if (!routing) writeRoute(`/p/${project.get().context.id}`, true);
+      if (!routing) writeProjectRoute(true);
     }
   });
   const flush = () => { void flushProject().catch(() => {}); };
@@ -327,10 +338,11 @@ async function start(ready: Promise<unknown>) {
     channel = new BroadcastChannel('orca.projects'); channel.onmessage = (e) => remote(e.data);
   }
   refreshList(); void refreshProjectDrafts();
+  const unsaved: unknown = currentRoute().kind === 'blank' ? history.state?.[UNSAVED] : null;
   if (currentRoute().kind === 'blank' && observed && (observed.objects.length || observed.project)) {
     checkpointProject(observed);
-    project.send({ type: 'EDIT' }); writeRoute(`/p/${project.get().context.id}`, true);
-  } else await route();
+    project.send({ type: 'EDIT' }); writeProjectRoute(true);
+  } else if (!(typeof unsaved === 'string' && await resumeUnsaved(unsaved))) await route();
   if (!store) project.send({ type: 'ERROR', error: projectStorageError() });
   (await import('./boot')).startFlows();
 }
@@ -378,6 +390,12 @@ export const openProject = async (id: string, options: { history?: boolean; relo
 };
 export const viewProjectVersion = async (id: string, record: { meta: ProjectMeta; doc: import('../persist/backend').StoredDocBase }) =>
   (await recoveryActions()).viewProjectVersion(recoveryRuntime, id, record, () => { versionView = true; });
+async function resumeUnsaved(id: string) {
+  routing = true;
+  try { return await (await recoveryActions()).resumeUnsavedProject(recoveryRuntime, id); }
+  catch (e) { toast(errorText(e)); return false; }
+  finally { routing = false; routeSavedProject(); }
+}
 export const leaveProjectVersion = (id: string) => openProject(id, { reload: true });
 export async function restoreProjectVersion() {
   if (!versionView) return;

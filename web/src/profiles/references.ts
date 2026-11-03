@@ -119,6 +119,11 @@ export async function refreshProfileReferences(): Promise<ProfileReferenceSnapsh
   }
   return snapshot;
 }
+let stale = false;
+const refreshWatched = () => {
+  if (listeners.size) void refreshProfileReferences();
+  else if (!stale) { stale = true; ++generation; documents = { ...documents, complete: false }; publish(getState(), 'incomplete'); }
+};
 function start() {
   if (started) return;
   started = true;
@@ -130,24 +135,29 @@ function start() {
     prior = s;
   });
   subscribeSavedPreferences(() => { defaults = readDefaults(); publish(getState(),snapshot.status,snapshot.error); });
-  subscribeProjectStorageChanges(() => { void refreshProfileReferences(); });
+  subscribeProjectStorageChanges(refreshWatched);
   subscribeProjectDraftMutations(() => {
     ++generation; documents = { ...documents, complete: false }; publish(getState(), 'incomplete');
     const mutation = projectDraftMutationSnapshot();
-    if (!mutation.pending && !mutation.error) void refreshProfileReferences();
+    if (!mutation.pending && !mutation.error) refreshWatched();
   });
   if (typeof window !== 'undefined') {
-    window.addEventListener('storage', (event) => { if (event.key === 'orca.project-change' || event.key === 'orca.printer' || event.key?.startsWith('orca.profile')) void refreshProfileReferences(); });
-    window.addEventListener('focus', () => { void refreshProfileReferences(); });
+    window.addEventListener('storage', (event) => { if (event.key === 'orca.project-change' || event.key === 'orca.printer' || event.key?.startsWith('orca.profile')) refreshWatched(); });
+    window.addEventListener('focus', refreshWatched);
     if (typeof BroadcastChannel !== 'undefined') {
       const channel = new BroadcastChannel('orca.projects');
-      channel.addEventListener('message', () => { void refreshProfileReferences(); });
+      channel.addEventListener('message', refreshWatched);
     }
   }
   void refreshProfileReferences();
 }
 export const profileReferenceSnapshot = (): ProfileReferenceSnapshot => snapshot;
-export function subscribeProfileReferences(listener: () => void): () => void { listeners.add(listener); start(); return () => { listeners.delete(listener); }; }
+export function subscribeProfileReferences(listener: () => void): () => void {
+  listeners.add(listener);
+  if (started && stale) { stale = false; void refreshProfileReferences(); }
+  start();
+  return () => { listeners.delete(listener); };
+}
 export function profileAccess(type: PresetType): ProfileAccess {
   start();
   const s = getState(), current = snapshot;

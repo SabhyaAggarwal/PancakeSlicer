@@ -602,6 +602,7 @@ export async function slice(calib?: { kind: string; params: string; head?: strin
   if (!current() || request === null) return;
   if (typeof request === 'string') return void setState({ job: { state: 'failed', pct: 0, stage: '', error: request } });
   const navigation = beginSlicePreview(signature);
+  void import('./components/PreviewView');
   setState({ tab: 'prepare', job: { state: 'submitting', pct: 0, stage: 'uploading', plateSignature: signature, calib: calib?.kind } });
   cancelJob = runJob(s.api, request, signature, {
     progress: ({ id, ...p }) => { if (!current()) return; bindSlicePreview(navigation, id); setState(st => id ? {job: {...st.job, id, state: 'running', ...p}} : st.job.state === 'submitting' ? {job: {...st.job, ...p}} : {}); },
