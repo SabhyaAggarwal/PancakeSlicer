@@ -11,8 +11,10 @@
 :where(.orca-parity) .pk-type, :where(.orca-parity) .pk-brand { display: none; }
 :where(.orca-parity) .orca-menu.pk-pop { width: min(600px, calc(100vw - 16px)); max-width: calc(100vw - 16px); padding: 0; overflow: hidden; display: flex; flex-direction: column; max-height: min(600px, var(--radix-popover-content-available-height, calc(100dvh - 16px))); }
 :where(.orca-parity) .pk-pop[data-state=closed], [data-radix-popper-content-wrapper]:has(> .orca-parity.pk-pop[data-state=closed], > .pk-pop[data-state=closed]) { visibility: hidden; pointer-events: none; }
-:where(.orca-parity) .pk-body { flex: 0 1 auto; display: grid; grid-template-columns: 192px minmax(0, 1fr); min-height: min(320px, calc(min(600px, var(--radix-popover-content-available-height, 100dvh)) - 72px)); overflow: hidden; }
+:where(.orca-parity) .pk-body { flex: 0 1 auto; display: grid; grid-template-columns: 192px minmax(0, 1fr); min-height: min(max(320px, var(--pk-fill, 0px)), calc(min(600px, var(--radix-popover-content-available-height, 100dvh)) - var(--pk-chrome, 72px))); overflow: hidden; }
 :where(.orca-parity) .pk-body.no-rail { grid-template-columns: minmax(0, 1fr); }
+:where(.orca-parity) .orca-menu.pk-pop.pk-faceted { width: min(720px, calc(100vw - 16px)); }
+:where(.orca-parity) .pk-body.two-rail { grid-template-columns: 168px 128px minmax(0, 1fr); }
 :where(.orca-parity) .pk-rail { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; border-right: 1px solid var(--line); padding: var(--s-3); background: var(--sunken); }
 :where(.orca-parity) .pk-rail > button { display: flex; align-items: baseline; gap: var(--s-3); flex: none; min-height: var(--h-compact); padding: 6px 10px; border: 0; border-radius: var(--r-1); background: transparent; color: var(--text); text-align: left; overflow-wrap: break-word; cursor: pointer; }
 @media (hover: hover) { :where(.orca-parity) .pk-rail > button:not(.active):hover { background: color-mix(in srgb, #fff 9%, var(--sunken)); } }
@@ -23,7 +25,7 @@
 :where(.orca-parity) .pk-rail button:focus-visible, :where(.orca-parity) .pk-option:focus-visible, :where(.orca-parity) .pk-star:focus-visible { outline-offset: -1px; }
 :where(.orca-parity) .pk-list { display: grid; align-content: start; min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--s-4); }
 :where(.orca-parity) .pk-tab { grid-area: 1 / 1; min-width: 0; }
-:where(.orca-parity) .pk-tab[data-off] { visibility: hidden; }
+:where(.orca-parity) .pk-tab[data-off] { visibility: hidden; height: 0; overflow: hidden; }
 :where(.orca-parity) .pk-row { display: flex; align-items: stretch; min-height: 28px; border-radius: 3px; }
 :where(.orca-parity) .pk-row:has(> .pk-option[aria-selected=true]) { background: var(--selected); }
 :where(.orca-parity) .pk-row.is-active { background: var(--overlay); }
@@ -59,6 +61,7 @@
   :where(.orca-parity) .pk-body { display: flex; flex-direction: column; }
   :where(.orca-parity) .pk-rail { flex: none; flex-direction: row; flex-wrap: wrap; overflow: visible; border-right: 0; border-bottom: 1px solid var(--line); }
   :where(.orca-parity) .pk-rail button[data-row-fill] { flex: 1 1 auto; text-align: center; }
+  :where(.orca-parity) .pk-body.two-rail .pk-rail { max-height: 30dvh; overflow-y: auto; }
   :where(.orca-parity) .pk-list { flex: 1 1 auto; }
   :where(.orca-parity) .pk-meta { display: none; }
 }

@@ -1,6 +1,7 @@
 import type { Api } from '../api/client';
 import type { JobStatus, ProgressEvent } from '../api/types';
 import { mutation, responseError } from '../api/access';
+import { followJobStream } from '../api/job-stream';
 import { assertNever, createMachine, type StateNode } from './fsm';
 
 export function waitForJob(api: Api, id: string, signal?: AbortSignal, progress?: (p: ProgressEvent) => void): Promise<void> {
@@ -108,36 +109,18 @@ export function jobSnapshot(machine = job): JobSnapshot {
     : { ...identity, value, error: c.error };
 }
 
-export async function readJobEvents(id: string, seq: number, signal: AbortSignal,
+export function readJobEvents(id: string, seq: number, signal: AbortSignal,
   receive: (data: Record<string, unknown>, seq: number) => void): Promise<void> {
-  const r = await fetch(`/api/jobs/${encodeURIComponent(id)}/events`, { signal,
-    headers: seq >= 0 ? { 'Last-Event-ID': String(seq), Accept: 'text/event-stream' } : { Accept: 'text/event-stream' } });
-  if (!r.ok) throw await responseError(r);
-  if (!r.body || !r.headers.get('content-type')?.includes('text/event-stream')) throw new Error('Job stream unavailable');
-  const reader = r.body.getReader(), decoder = new TextDecoder();
-  let buffer = '', last = seq;
-  try {
-    while (!signal.aborted) {
-      const { value, done } = await reader.read();
-      buffer = (buffer + decoder.decode(value, { stream: !done })).replace(/\r\n/g, '\n');
-      let at: number;
-      while ((at = buffer.indexOf('\n\n')) >= 0) {
-        const block = buffer.slice(0, at); buffer = buffer.slice(at + 2);
-        let eventSeq = -1;
-        const data: string[] = [];
-        for (const line of block.split('\n')) {
-          if (line.startsWith('id:')) eventSeq = Number(line.slice(3).trim());
-          if (line.startsWith('data:')) data.push(line.slice(5).trimStart());
-        }
-        if (!data.length || !Number.isSafeInteger(eventSeq) || eventSeq <= last) continue;
-        let event: Record<string, unknown>;
-        try { event = JSON.parse(data.join('\n')); } catch { continue; }
-        last = eventSeq; receive(event, eventSeq);
-      }
-      if (buffer.length > 1_048_576) throw new Error('Job event exceeds stream limit');
-      if (done) return;
-    }
-  } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) return resolve();
+    const abort = () => { stop(); resolve(); };
+    const stop = followJobStream(id, seq, (e) => {
+      let event: Record<string, unknown>;
+      try { event = JSON.parse(e.data); } catch { return; }
+      receive(event, e.seq);
+    }, (error) => { signal.removeEventListener('abort', abort); if (error) reject(error); else resolve(); });
+    signal.addEventListener('abort', abort, { once: true });
+  });
 }
 
 export function followJob(api: Api, tracked: TrackedJob, options: {

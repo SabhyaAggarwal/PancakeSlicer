@@ -59,13 +59,13 @@ export function describeChange(before: Doc, after: Doc): VersionChange[] {
   return out.slice(0, 8);
 }
 
-export function changeText(c: VersionChange): string {
-  if (c.from === undefined || c.to === undefined) return c.label;
+export function changeParts(c: VersionChange): { name: string; from?: string; to?: string } {
+  if (c.from === undefined || c.to === undefined) return { name: c.label };
   const type = c.key && PROFILE_TYPE[c.key.split(':')[0]];
   if (type) {
     const to = profileName(type, c.to), from = profileName(type, c.from);
-    return !to ? `${c.label} changed` : !from || from === to ? `${c.label} → ${to}` : `${c.label}: ${from} → ${to}`;
+    return !to ? { name: `${c.label} changed` } : { name: c.label, from: from && from !== to ? from : undefined, to };
   }
   const setting = c.key?.split(':')[1], value = (v: string) => (setting && OPTIONS[setting] ? display(setting, v) : v) || '–';
-  return `${c.label}: ${value(c.from)} → ${value(c.to)}`;
+  return { name: c.label, from: value(c.from), to: value(c.to) };
 }

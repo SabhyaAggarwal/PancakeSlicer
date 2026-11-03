@@ -81,7 +81,7 @@ export async function loadCatalog() {
         const missing=replaceMissingSelection(getState(),preferenceText('orca.printer'));
         if(missing)setState(missing.patch);
         const fixed=ensureCompatibleSelection(getState());
-        if(fixed){setState(fixed.patch);if(fixed.notice)toast(fixed.notice);}
+        if(fixed){setState(fixed.patch);if(fixed.notice)toast(fixed.notice,null,undefined,'warning');}
       }
     } catch (error) {
       if(current()){

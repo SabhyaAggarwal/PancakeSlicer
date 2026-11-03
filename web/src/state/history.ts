@@ -28,14 +28,13 @@ const sameDoc = (a: Doc, b: Doc) => DOC_KEYS.every((k) => k === 'selected' || a[
 const ids = new WeakMap<object, number>();
 let lastId = 0;
 const idOf = (v: object) => ids.get(v) ?? (ids.set(v, ++lastId), lastId);
-const contents = (d: Doc) => {
-  const objects = (list: PlateObject[]) => list.map((o) => ({ ...o, geometry: `#${idOf(o.geometry)}`,
-    volumes: o.volumes?.map((v) => ({ ...v, geometry: `#${idOf(v.geometry)}` })),
-  }));
-  return JSON.stringify({ ...d, selected: null, objects: objects(d.objects),
-    projectPlates: d.projectPlates.map((p) => ({ ...p, objects: objects(p.objects) })),
-  }, (_, v: unknown) => v && typeof v === 'object' && (v instanceof Blob || v instanceof Map) ? `#${idOf(v)}` : v);
-};
+const objects = (list: PlateObject[]) => list.map((o) => ({ ...o, geometry: `#${idOf(o.geometry)}`,
+  volumes: o.volumes?.map((v) => ({ ...v, geometry: `#${idOf(v.geometry)}` })),
+}));
+const contents = (key: (typeof DOC_KEYS)[number], value: unknown) => JSON.stringify(
+  key === 'objects' ? objects(value as PlateObject[]) : key === 'projectPlates' ? (value as Doc['projectPlates']).map((p) => ({ ...p, objects: objects(p.objects) })) : value,
+  (_, v: unknown) => v && typeof v === 'object' && (v instanceof Blob || v instanceof Map) ? `#${idOf(v)}` : v);
+const sameContents = (a: Doc, b: Doc) => DOC_KEYS.every((k) => k === 'selected' || a[k] === b[k] || contents(k, a[k]) === contents(k, b[k]));
 
 const listeners = new Set<() => void>();
 let version = 0;
@@ -77,7 +76,7 @@ export function beginStep(name: string, merge?: string): () => void {
 
 function commit(name: string, before: Doc, merge?: string) {
   const after = snapshot();
-  if (restoring || sameDoc(before, after) || contents(before) === contents(after)) return;
+  if (restoring || sameDoc(before, after) || sameContents(before, after)) return;
   const top = undoStack[undoStack.length - 1];
   const now = Date.now();
   if (top && merge && top.merge === merge && top.name === name && !redoStack.length && now - top.at < MERGE_MS && sameDoc(top.after, before)) {

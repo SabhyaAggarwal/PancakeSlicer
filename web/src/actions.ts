@@ -75,7 +75,8 @@ export function switchPreset(type: PresetType, slot: number, name: string, edits
   const summary=getState().lastProfileTransition;
   if(type==='machine' && historyVersion()!==before && summary && (summary.changes.length || summary.needsSelection)){
     const undoTransition=captureUndo();
-    toast(selectionNotice(getState(),summary) || summary.changes.map(c=>`${c.kind==='process'?'Print settings':`Slot ${(c.slot??0)+1}`}: ${c.to ?? c.reason}`).join(' · '),{label:'Undo',run:()=>{if(!undoTransition())toast('The project changed after this printer switch. Its Undo action has expired; your newer work is kept.');}});
+    const replaced=selectionNotice(getState(),summary);
+    toast(replaced || summary.changes.map(c=>`${c.kind==='process'?'Print settings':`Slot ${(c.slot??0)+1}`}: ${c.to ?? c.reason}`).join(' · '),{label:'Undo',run:()=>{if(!undoTransition())toast('The project changed after this printer switch. Its Undo action has expired; your newer work is kept.');}},undefined,replaced?'warning':undefined);
   }
   return result;
 }

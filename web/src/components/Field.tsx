@@ -50,6 +50,11 @@ const PROMPTED = new Set(['spiral_mode', 'wall_loops', 'top_shell_layers', 'spar
   'nozzle_temperature_range_low', 'nozzle_temperature_range_high', 'alternate_extra_wall', 'ensure_vertical_shell_thickness', 'seam_slope_type',
   'seam_slope_start_height', 'filament_max_volumetric_speed']);
 
+const sameValue = (a: unknown, b: unknown) => a === b || (Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => x === b[i]));
+const sameFieldProps = (a: Record<string, unknown>, b: Record<string, unknown>) => {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((k) => sameValue(a[k], b[k]));
+};
 export const Field = memo(function Field(props: {
   optKey: string;
   type: PresetType;
@@ -130,7 +135,7 @@ export const Field = memo(function Field(props: {
       </span>
     </div>
   );
-});
+}, sameFieldProps);
 
 const FILAMENT_SLOT_KEYS = new Set(['support_filament', 'support_interface_filament', 'wipe_tower_filament', 'outer_wall_filament_id',
   'inner_wall_filament_id', 'sparse_infill_filament_id', 'internal_solid_filament_id', 'top_surface_filament_id', 'bottom_surface_filament_id']);

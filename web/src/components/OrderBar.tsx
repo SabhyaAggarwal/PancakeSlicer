@@ -3,7 +3,7 @@ import { pauseViewer, playViewer, scrubViewer } from '../flow/viewer';
 import { useStore } from '../state/store';
 import { Dropdown } from './Dropdown';
 import { Glyph } from './Glyph';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import type { PreviewData } from '../preview/data';
 import { layerOfMove } from '../preview/jump';
 import { shortTime } from '../preview/format';
@@ -91,26 +91,38 @@ export function OrderBar({ data, at, onSeek, gcodeOpen, onGcode, oneLayer, onOne
       window.removeEventListener('pagehide', pause);
     };
   }, [playing]);
+  const bar = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = bar.current, area = el?.closest<HTMLElement>('.canvas-area');
+    if (!el || !area) return;
+    const fit = () => area.style.setProperty('--pv-bar-h', `${Math.ceil(el.getBoundingClientRect().height)}px`);
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => { ro.disconnect(); area.style.removeProperty('--pv-bar-h'); };
+  }, []);
   const seek = (next: number) => { scrubViewer(next, layerOfMove(data, next) ?? 0); onSeek(next); };
   const step = (d: number) => seek(Math.max(1, Math.min(last, at + d)));
   const k = layerOfMove(data, at);
   const total = e[e.length - 1] ?? 0;
   return (
-    <div className="order-bar" role="group" aria-label="Playback">
-      <button type="button" className="ob-btn ob-step" aria-label="Previous move" onClick={() => step(-1)}><Glyph name="prev" /></button>
-      <button type="button" className="ob-btn ob-play" aria-label={playing ? 'Pause' : 'Play'} aria-pressed={playing} onClick={() => playing ? pauseViewer() : playViewer()}>
-        <Glyph name={playing ? 'pause' : 'play'} />
-      </button>
-      <button type="button" className="ob-btn ob-step" aria-label="Next move" onClick={() => step(1)}><Glyph name="next" /></button>
-      <Range min={1} max={last} value={Math.min(at, last)} aria-label="Print order" onValueChange={seek} />
-      <span className="ob-readout">
-        <span className="ob-time">{shortTime(e[Math.min(at, e.length - 1)] ?? 0)} / {shortTime(total)}</span>
-        <span className="ob-layer"> · Layer {k == null ? '–' : k + 1} / {data.layers.length}</span>
+    <div ref={bar} className="order-bar" role="group" aria-label="Playback">
+      <span className="ob-transport">
+        <button type="button" className="ob-btn ob-step" aria-label="Previous move" onClick={() => step(-1)}><Glyph name="prev" /></button>
+        <button type="button" className="ob-btn ob-play" aria-label={playing ? 'Pause' : 'Play'} aria-pressed={playing} onClick={() => playing ? pauseViewer() : playViewer()}>
+          <Glyph name={playing ? 'pause' : 'play'} />
+        </button>
+        <button type="button" className="ob-btn ob-step" aria-label="Next move" onClick={() => step(1)}><Glyph name="next" /></button>
       </span>
-      <Dropdown className="ob-rate" aria-label="Playback speed" value={rate} onValueChange={(next) => playback.send({ type: 'RATE', rate: Number(next) })} options={[...RATES.map((r) => ({ value: r, label: <>{r}×</> }))]} />
-      <span className="ob-sep" aria-hidden />
-      <button type="button" className="ob-btn ob-one" aria-label="Show one layer (L)" aria-pressed={oneLayer} onClick={onOneLayer}><Glyph name="layers" /></button>
-      <button type="button" className="ob-btn ob-gcode" aria-label="G-code viewer (C)" aria-pressed={gcodeOpen} onClick={onGcode}><Glyph name="code" /></button>
+      <Range min={1} max={last} value={Math.min(at, last)} aria-label="Print order" onValueChange={seek} />
+      <span className="ob-info">
+        <span className="ob-group ob-time" aria-label="Time"><span className="ob-v">{shortTime(e[Math.min(at, e.length - 1)] ?? 0)}</span> / {shortTime(total)}</span>
+        <span className="ob-group ob-layer"><span className="ob-k">Layer</span> <span className="ob-v">{k == null ? '–' : k + 1}</span> / {data.layers.length}</span>
+        <Dropdown className="ob-rate" aria-label="Playback speed" value={rate} onValueChange={(next) => playback.send({ type: 'RATE', rate: Number(next) })} options={[...RATES.map((r) => ({ value: r, label: <>{r}×</> }))]} />
+        <span className="ob-sep" aria-hidden />
+        <button type="button" className="ob-btn ob-one" aria-label="Show one layer (L)" aria-pressed={oneLayer} onClick={onOneLayer}><Glyph name="layers" /></button>
+        <button type="button" className="ob-btn ob-gcode" aria-label="G-code viewer (C)" aria-pressed={gcodeOpen} onClick={onGcode}><Glyph name="code" /></button>
+      </span>
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { OrderBar } from './OrderBar';
 import { loadSource, viewerReady, viewerError, scrubViewer } from '../flow/viewer';
 import { slicingText } from '../api/progress';
 import { Suspense, lazy, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { getState, printerPreset, setState, useStore } from '../state/store';
+import { getState, printerPreset, setState, subscribeStore, useStore } from '../state/store';
 import { layerOfMove, peekJump, setGcodeListener, setJumpListener, setLoadedStream, takeGcode, takeJump } from '../preview/jump';
 import { setCompareWanted, useCompareWanted } from '../compare';
 import { computeRanges, drawMasks, EXTENDED_VIEWS, hexToRgb, type ColorContext, type NonplanarColor, type Ranges, type ViewType, type Visibility } from '../preview/colors';
@@ -41,6 +41,27 @@ let live: { header(d: PreviewData): void; chunk(d: PreviewData): void; done(d: P
 const extendedJobs = new Set<string>();
 let extendedView = false;
 export const canExtend = (d: PreviewData) => !!getState().features.moves_extended && !!d.sourceUrl && d.sourceUrl === getState().api?.movesUrl(getState().job.id ?? '');
+
+function startLoad(src: { key: string; url?: string; file?: File }) {
+  current?.cancel();
+  loadSource({ id: src.key });
+  const mine = (d: PreviewData) => current?.data === d;
+  const handle = loadMoves(src, {
+    header: (d) => mine(d) && live?.header(d),
+    chunk: (d) => mine(d) && live?.chunk(d),
+    done: (d) => mine(d) && live?.done(d),
+    error: (d) => mine(d) && live?.error(d),
+  }, src.key.startsWith('job:') ? jobColours() : undefined);
+  current = { key: src.key, ...handle };
+  setLoadedStream({ key: src.key, data: handle.data });
+}
+
+subscribeStore(() => {
+  const { job } = getState();
+  if (live || job.state !== 'done' || !job.id || current?.key.startsWith(`job:${job.id}`)) return;
+  const src = source();
+  if (src?.key.startsWith('job:')) startLoad(src);
+});
 
 function source(): { key: string; url?: string; file?: File } | null {
   const q = new URLSearchParams(location.search).get('moves');
@@ -210,17 +231,7 @@ export function PreviewView() {
       }
       return;
     }
-    current?.cancel();
-    loadSource({id: src.key});
-    const mine = (d: PreviewData) => current?.data === d;
-    const handle = loadMoves(src, {
-      header: (d) => mine(d) && live?.header(d),
-      chunk: (d) => mine(d) && live?.chunk(d),
-      done: (d) => mine(d) && live?.done(d),
-      error: (d) => mine(d) && live?.error(d),
-    }, src.key.startsWith('job:') ? jobColours() : undefined);
-    current = { key: src.key, ...handle };
-    setLoadedStream({ key: src.key, data: handle.data });
+    startLoad(src);
     setData(null);
     setLayers([0, Number.MAX_SAFE_INTEGER]);
     setMovePos(null);

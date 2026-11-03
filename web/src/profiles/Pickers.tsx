@@ -29,6 +29,19 @@ export function currentEntry(type: PresetType, key: string | undefined, entries:
 }
 export const NOT_COMPATIBLE = 'Not compatible';
 
+export function usePickerPending(resolved: boolean): boolean {
+  const load = useStore((s) => s.profileLibraryLoad.state), api = useStore((s) => !!s.api);
+  return !api || load === 'loading' || load === 'failed' && !resolved;
+}
+export const PickerSkeleton = () => <><span className="pk-name" aria-label="Loading"><span className="skel-line pk-skel-name"/></span><span className="pk-sub"><span className="skel-line pk-skel-sub"/></span></>;
+
+const listCache = new Map<string, { at: unknown; value: PickerGroup[] }>();
+export const sameStateGroups = (key: string, build: () => PickerGroup[]) => (): PickerGroup[] => {
+  const at = getState(), hit = listCache.get(key);
+  if (hit && hit.at === at) return hit.value;
+  const value = build(); listCache.set(key, { at, value }); return value;
+};
+
 function filamentGroups(slot: number | null, catalog = false): PickerGroup[] {
   const s = getState();
   let entries = catalog ? listCatalog('filament') : listProfiles('filament');
@@ -68,16 +81,16 @@ export function FilamentPicker({ slot }: { slot: number }) {
   useStore((s) => s.userPresets);
   const s = getState();
   const resolved = resolvePreset(s, 'filament', name), c = resolved.config, label = resolved.name ?? 'Unavailable filament';
-  const b = brandName(label, c);
+  const b = brandName(label, c), pending = usePickerPending(!!resolved.name);
   return (
     <span className="pk-slot">
       <FilamentColourMenu slot={slot}/>
-      <Picker label={`Filament ${slot + 1}`} value={name} sections memory="orca.web.picker.filament" facetLabel="Vendor" groups={() => filamentGroups(slot)}
-        catalog={{ label: 'Add filament', groups: () => filamentGroups(slot, true), onAdd: (id) => createProfileFromBase('filament', id, slot) }}
+      <Picker label={`Filament ${slot + 1}`} value={name} sections memory="orca.web.picker.filament" facetLabel="Vendor" groups={sameStateGroups(`filament:${slot}`, () => filamentGroups(slot))}
+        catalog={{ label: 'Add filament', groups: sameStateGroups(`filament-catalog:${slot}`, () => filamentGroups(slot, true)), onAdd: (id) => createProfileFromBase('filament', id, slot) }}
         onPick={(id) => id !== name && requestPreset('filament', slot, id)} footer={[presets('filament', name)]}>
-        <span className="pk-type">{first(c.filament_type) || '—'}</span>
+        {pending ? <PickerSkeleton/> : <><span className="pk-type">{first(c.filament_type) || '—'}</span>
         <span className="pk-brand">{b.brand}</span>
-        <span className="pk-name">{label}</span>
+        <span className="pk-name">{label}</span></>}
       </Picker>
     </span>
   );
@@ -86,7 +99,7 @@ export function FilamentPicker({ slot }: { slot: number }) {
 export function AddFilamentPicker({ disabled }: { disabled?: boolean }) {
   if (disabled) return null;
   return (
-    <Picker label="Add filament" className="is-link" sections memory="orca.web.picker.filament" facetLabel="Vendor" groups={() => filamentGroups(null)} catalog={{ label: 'Add filament', groups: () => filamentGroups(null, true), onAdd: (id) => createProfileFromBase('filament', id, 0, addSlot) }} onPick={(id) => addSlot(id)}
+    <Picker label="Add filament" className="is-link" sections memory="orca.web.picker.filament" facetLabel="Vendor" groups={sameStateGroups('filament:add', () => filamentGroups(null))} catalog={{ label: 'Add filament', groups: sameStateGroups('filament-catalog:add', () => filamentGroups(null, true)), onAdd: (id) => createProfileFromBase('filament', id, 0, addSlot) }} onPick={(id) => addSlot(id)}
       footer={[presets('filament')]}>
       Add
     </Picker>
@@ -114,12 +127,12 @@ export function PrinterPicker() {
     }
     return byVendorRail(byVendor);
   };
-  const selected = resolvePreset(getState(), 'machine', printer);
+  const selected = resolvePreset(getState(), 'machine', printer), pending = usePickerPending(!!selected.name);
   return (
-    <Picker label="Printer" value={printer} memory="orca.web.picker.printers" groups={profileGroups} onPick={(name) => name !== printer && requestPreset('machine', 0, name)}
+    <Picker label="Printer" value={printer} memory="orca.web.picker.printers" groups={sameStateGroups('printer', profileGroups)} onPick={(name) => name !== printer && requestPreset('machine', 0, name)}
       footer={[{ label: 'Add printer', run: () => setState({ presetUx: { kind: 'presets', type: 'machine', add: true } }) }, presets('machine', printer)]}>
-      <span className="pk-name">{selected.name ?? 'Choose printer'}</span>
-      {selected.name && !selected.error && (() => { const sub = rowDetail(selected.name, [{ value: modelLabel(selected.config, selected.base?.vendor ?? '') }, nozzleField(first(selected.config.nozzle_diameter))]); return sub && <span className="pk-sub">{sub}</span>; })()}
+      {pending ? <PickerSkeleton/> : <span className="pk-name">{selected.name ?? 'Choose printer'}</span>}
+      {!pending && selected.name && !selected.error && (() => { const sub = rowDetail(selected.name, [{ value: modelLabel(selected.config, selected.base?.vendor ?? '') }, nozzleField(first(selected.config.nozzle_diameter))]); return sub && <span className="pk-sub">{sub}</span>; })()}
     </Picker>
   );
 }

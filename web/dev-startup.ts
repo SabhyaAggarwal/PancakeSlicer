@@ -12,7 +12,7 @@ const STARTUP_MODULES = [
   '/src/persist/wire-worker.ts', '/src/flow/boot.ts',
 ];
 
-const LATE_STARTUP = new Set(['src/plater/Plater3D.tsx', 'src/components/Navigator.tsx']);
+const LATE_STARTUP = new Set(['src/plater/Plater3D.tsx', 'src/components/Navigator.tsx', 'src/preflight/marks.ts', 'src/plater/orientPrompt.ts']);
 
 const TIMESTAMP = /([?&])t=\d+&?/;
 const IMPORT = /([?&])import&?/;
@@ -119,7 +119,13 @@ export function buildStartup(): Plugin {
         if (!bundle) return [];
         const startup = new Set(STARTUP_MODULES.map((url) => path.join(root, url)));
         const chunks = new Map(Object.values(bundle).flatMap((c) => c.type === 'chunk' ? [[c.fileName, c] as const] : []));
-        const seen = new Set([entry?.fileName, ...(entry?.imports ?? [])]);
+        const seen = new Set<string | undefined>();
+        const vite = (name: string | undefined) => {
+          if (seen.has(name)) return;
+          seen.add(name);
+          if (name) chunks.get(name)?.imports.forEach(vite);
+        };
+        vite(entry?.fileName);
         const files: string[] = [], late = new Set<string>(), styles = new Set<string>();
         const visit = (name: string, low: boolean) => {
           const c = chunks.get(name);

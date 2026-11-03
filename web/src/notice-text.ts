@@ -1,7 +1,7 @@
-export type NoticeKind = 'error' | 'success' | 'info';
+export type NoticeKind = 'error' | 'warning' | 'success' | 'info';
 export interface NoticeEntry { id: number; message: string; kind: NoticeKind }
 
-const ERROR = /\b(fail(ed|s)?|could not|cannot|can't|unable|not supported|requires|is locked|is not a model|are supported|no (model|printable|compatible|more)|does not fit|do not fit|is full|paused|best effort|open edges|unknown or incompatible|isn't in your library|isn't compatible with)\b/i;
+const ERROR = /\b(fail(ed|s)?|could not|cannot|can't|unable|not supported|requires|is locked|is not a model|are supported|no (model|printable|compatible|more)|does not fit|do not fit|is full|paused|best effort|open edges|unknown or incompatible)\b/i;
 const SUCCESS = /\b(saved|exported|created|imported|repaired)\b|successfully/i;
 
 export function noticeKind(msg: string): NoticeKind {
@@ -9,7 +9,8 @@ export function noticeKind(msg: string): NoticeKind {
   return SUCCESS.test(msg) && !/…$/.test(msg) ? 'success' : 'info';
 }
 
-export const shouldToast = (msg: string, action?: { label: string } | null) => noticeKind(msg) === 'error' || action?.label === 'Undo';
+export const shouldToast = (msg: string, action?: { label: string } | null, kind?: NoticeKind) =>
+  (kind ? kind === 'error' || kind === 'warning' : noticeKind(msg) === 'error') || action?.label === 'Undo';
 
 export const noticeMs = (msg: string) => (noticeKind(msg) === 'error' ? 8000 : 3500);
 

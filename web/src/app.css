@@ -182,6 +182,10 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
   :where(.orca-parity) .canvas-area[data-viewport=preview]:has(.preview > .legend:not(.closed)) .notifications { left: calc(var(--pv-legend-w) + 2 * var(--pv-inset)); }
 } }
 @media (max-width: 899px) { :where(.orca-parity) .canvas-area[data-viewport=preview] .notifications { top: auto; bottom: calc(var(--pv-inset) + var(--pv-bar-h) + var(--s-3)); left: var(--pv-inset); width: auto; max-height: 30%; } }
+:where(.orca-parity) .canvas-area[data-viewport=preview]:has(.gcode-window) .notifications { top: auto; bottom: var(--pv-floor); left: auto; right: var(--pv-slider);
+  width: min(440px, calc(100% - var(--pv-legend-w) - var(--pv-slider) - 2 * var(--pv-inset))); max-height: calc(40% - var(--pv-floor)); }
+@media (max-width: 899px) { :where(.orca-parity) .canvas-area[data-viewport=preview]:has(.gcode-window) .notifications { left: var(--pv-inset); width: auto; } }
+@media (min-width: 600px) and (max-width: 899px) { :where(.orca-parity) .canvas-area[data-viewport=preview]:has(.preview > .legend:not(.closed)) .notifications { left: calc(var(--pv-legend-w) + 2 * var(--pv-inset)); } }
 :where(.orca-parity) .notif-body { white-space: pre-wrap; word-break: break-word; margin-top: 2px; padding-right: 16px; }
 :where(.orca-parity) .notif-close { position: absolute; top: 6px; right: 6px; }
 :where(.orca-parity) .notif-text { display: flex; gap: 8px; align-items: center; }

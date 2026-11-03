@@ -95,7 +95,7 @@ export async function performCut() {
     const objects = s.objects.flatMap((ob) => (ob.id === o.id ? pieces : [ob]));
     const open = files.filter((f) => f.piece.open_edges > 0);
     undoable('Cut by Plane', () => setState({ objects, selected: { object: pieces[0].id, instance: pieces[0].instances[0].id, allInstances: true },
-      gizmo: 'none', cut: null, toast: open.length ? `${open.map((f) => f.file.name).join(', ')}: open edges after the cut` : null }));
+      gizmo: 'none', cut: null, toast: open.length ? `${open.map((f) => f.file.name).join(', ')}: open edges after the cut` : null, toastKind: null }));
   } catch (error) {
     created.forEach((x) => x.geometry.dispose());
     toast(error instanceof Error ? error.message : String(error));

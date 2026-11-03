@@ -90,15 +90,33 @@ export function findCatalogBase(s: ProfileCatalog, type: PresetType, anchor: str
   });
   return { base: renamed.length === 1 ? renamed[0] : undefined, ambiguous: renamed.length > 1 };
 }
-const resolvedProfiles = new WeakMap<SystemPreset[], WeakMap<UserPreset[], Map<string, ResolvedProfile>>>();
+const resolvedProfiles = new WeakMap<SystemPreset[], Map<string, Map<string, ResolvedProfile>>>();
+const objectIds = new WeakMap<object, number>();
+let objectSerial = 0;
+const signatures = new WeakMap<UserPreset[], Map<PresetType, string>>();
+function librarySignature(list: UserPreset[], type: PresetType): string {
+  let byType = signatures.get(list);
+  if (!byType) signatures.set(list, (byType = new Map()));
+  let signature = byType.get(type);
+  if (signature === undefined) {
+    signature = list.filter((p) => p.type === type).map((p) => objectIds.get(p) ?? (objectIds.set(p, ++objectSerial), objectSerial)).join(',');
+    byType.set(type, signature);
+  }
+  return signature;
+}
 
 export function resolveProfile(s: ProfileCatalog, type: PresetType, name: string, seen?: Set<string>): ResolvedProfile {
   if (seen) return resolveAncestors(s, type, name, seen);
   const catalog = profilesFor(s, type);
   let libraries = resolvedProfiles.get(catalog);
-  if (!libraries) resolvedProfiles.set(catalog, (libraries = new WeakMap()));
-  let values = libraries.get(s.userPresets);
-  if (!values) libraries.set(s.userPresets, (values = new Map()));
+  if (!libraries) resolvedProfiles.set(catalog, (libraries = new Map()));
+  const signature = librarySignature(s.userPresets, type);
+  let values = libraries.get(signature);
+  if (values) { libraries.delete(signature); libraries.set(signature, values); }
+  else {
+    libraries.set(signature, (values = new Map()));
+    if (libraries.size > 8) libraries.delete(libraries.keys().next().value!);
+  }
   const key = `${type}:${name}`, cached = values.get(key);
   if (cached) return cached;
   const resolved = resolveAncestors(s, type, name, new Set());

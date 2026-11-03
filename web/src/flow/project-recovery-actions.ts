@@ -28,12 +28,12 @@ function keepCompatible(runtime: RecoveryRuntime, active: string) {
   const missing = replaceMissingSelection(getState(), active);
   if (missing) {
     runtime.adopt(() => setState(missing.patch));
-    toast(missing.notice, { label: 'Save to project', run: confirmProjectSelection });
+    toast(missing.notice, { label: 'Save to project', run: confirmProjectSelection }, undefined, 'warning');
   }
   const fixed = ensureCompatibleSelection(getState());
   if (!fixed) return;
   setState(fixed.patch);
-  if (fixed.notice) toast(fixed.notice);
+  if (fixed.notice) toast(fixed.notice, null, undefined, 'warning');
 }
 export async function adoptProjectDraft(runtime: RecoveryRuntime, draft: ProjectDraft, canonical: ProjectMeta | null, mine: number) {
   const document = recoveryDocument(draft.doc) as StoredDoc;

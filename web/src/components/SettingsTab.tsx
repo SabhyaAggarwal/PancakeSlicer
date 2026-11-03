@@ -32,7 +32,7 @@ const TAB_OF: Record<PresetType, TabDesc['tab']> = { process: 'process', filamen
 const TYPE_NAME: Record<PresetType, string> = { process: 'Process', filament: 'Filament', machine: 'Printer' };
 
 export interface ProfileFields { name: string; config: Config; baseline: Config; changes: Config; mode?: OptionMode; set(key: string, value: ConfigValue): void; reset(key: string): void }
-export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readOnly = false, auxiliary }: { type: PresetType; slot?: number; compact?: boolean; hidePreset?: boolean; editor?: ProfileFields; readOnly?: boolean; auxiliary?: {label:string; icon?:string; content:React.ReactNode; modified?:boolean} }) {
+export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readOnly = false, auxiliary }: { type: PresetType; slot?: number; compact?: boolean; hidePreset?: boolean; editor?: ProfileFields; readOnly?: boolean; auxiliary?: {label:string; icon?:string; content:React.ReactNode; modified?:boolean;  initial?:boolean} }) {
   const { desc, error } = useTab(TAB_OF[type]);
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
@@ -42,7 +42,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
   };
   const [bedDialog, setBedDialog] = useState(false);
   const [pageIdx, setPageIdx] = useState(0);
-  const [auxiliaryOn,setAuxiliaryOn] = useState(false);
+  const [auxiliaryOn,setAuxiliaryOn] = useState(!!auxiliary?.initial);
   const machineConfig = useStore((s) => effectiveConfig(s, 'machine'));
   const processConfig = useStore((s) => effectiveConfig(s, 'process'));
   const features = useStore((s) => s.features);

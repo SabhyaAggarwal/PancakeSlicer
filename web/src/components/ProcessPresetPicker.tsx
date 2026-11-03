@@ -1,7 +1,7 @@
 import { getState, resolvePreset, useStore } from '../state/store';
 import { requestPreset } from './PresetCombo';
 import { createProfileFromBase, listCatalog, listProfiles } from '../profiles/pickerSource';
-import { currentEntry, NOT_COMPATIBLE, presets } from '../profiles/Pickers';
+import { currentEntry, NOT_COMPATIBLE, PickerSkeleton, presets, sameStateGroups, usePickerPending } from '../profiles/Pickers';
 import { Picker, type PickerGroup, type PickerItem } from './picker/Picker';
 import './process-settings.css';
 export function ProcessPresetPicker() {
@@ -19,5 +19,6 @@ export function ProcessPresetPicker() {
     return [...byHeight].sort(([a], [b]) => (a || Infinity) - (b || Infinity))
       .map(([height, items]) => ({id: `h:${height}`, title: height ? `${height.toFixed(2)} mm` : 'Other', items: items.sort((a, b) => a.label.localeCompare(b.label))}));
   };
-  return <div className="process-preset-picker"><Picker label="Print settings" value={process} sections groups={() => groups()} memory="orca.parity.process" onPick={name => requestPreset('process', 0, name)} catalog={{label: 'Add print settings', groups: () => groups(true), onAdd: name => createProfileFromBase('process', name)}} footer={[presets('process', process)]}><span className="pk-name">{resolvePreset(getState(),'process',process).name ?? 'Choose print settings'}</span></Picker></div>;
+  const sel = resolvePreset(getState(), 'process', process), pending = usePickerPending(!!sel.name);
+  return <div className="process-preset-picker"><Picker label="Print settings" value={process} sections groups={sameStateGroups('process', () => groups())} memory="orca.parity.process" onPick={name => requestPreset('process', 0, name)} catalog={{label: 'Add print settings', groups: sameStateGroups('process-catalog', () => groups(true)), onAdd: name => createProfileFromBase('process', name)}} footer={[presets('process', process)]}>{pending ? <PickerSkeleton/> : <span className="pk-name">{sel.name ?? 'Choose print settings'}</span>}</Picker></div>;
 }

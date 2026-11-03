@@ -1,5 +1,6 @@
 import { Check } from './Check';
 import { Dropdown } from './Dropdown';
+import { Caret } from './Caret';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { effectiveConfig, getState } from '../state/store';
 import {
@@ -16,8 +17,6 @@ import { BP } from '../breakpoints';
 const css = (c: RGB) => `rgb(${c[0]},${c[1]},${c[2]})`;
 
 const SHOW_STATS = new URLSearchParams(location.search).has('stats');
-
-const FOLD_BELOW = 1000;
 
 const spacedTime = (s: number) => shortTime(s).replace(/(\d)([a-z]+)(?=\d)/g, '$1$2 ');
 const spacedWeight = (g: number) => g >= 1000 ? `${(g / 1000).toFixed(2)} kg` : `${g.toFixed(1)} g`;
@@ -102,8 +101,8 @@ export function Legend(props: {
     if (!area) return;
     let band: number | null = null;
     const fit = () => {
-      const w = area.clientWidth, b = w >= FOLD_BELOW ? 2 : w >= BP.narrow ? 1 : 0;
-      if (w && b !== band) { band = b; setOpen(b === 2); }
+      const w = area.clientWidth, b = w >= BP.narrow ? 1 : 0;
+      if (w && b !== band) { band = b; setOpen(b === 1); }
     };
     fit();
     const ro = new ResizeObserver(fit);
@@ -216,13 +215,16 @@ export function Legend(props: {
   ];
   const stats = props.scene?.lastFrame;
   const totalG = printStats?.total_weight_g ?? filG;
+  const totalMm = totalsByExtruder.reduce((a, f) => a + f.mm, 0);
   return (
     <div ref={panel} className={open ? 'legend' : 'legend closed'} aria-label="Legend">
       <div className="lg-head">
         <Dropdown className="lg-view" aria-label="Color scheme" value={ui.view} onValueChange={(next) => setUi((u) => ({ ...u, view: next as ViewType }))} options={[...VIEW_TYPES.filter((v) => d.header?.extended || canExtend(d) || !EXTENDED_VIEWS.has(v.key)).map((v) => ({ value: v.key, label: v.label }))]} />
-        <button type="button" className="lg-totals" aria-expanded={open} aria-label={`${spacedTime(total)}, ${spacedWeight(totalG)}; ${open ? 'fold' : 'open'} legend`} onClick={() => setOpen(!open)}>
-          <span className="lg-sum">{spacedTime(total)} · {spacedWeight(totalG)}</span>
-        </button>
+        <button type="button" className="lg-collapse" aria-expanded={open} aria-label={open ? 'Fold legend' : 'Open legend'} onClick={() => setOpen(!open)}><Caret dir={open ? 'up' : 'down'} /></button>
+      </div>
+      <div className="lg-summary">
+        <div className="lg-stat"><span className="lg-stat-v">{spacedTime(total)}</span><span className="lg-stat-k">Print time</span></div>
+        <div className="lg-stat"><span className="lg-stat-v">{spacedWeight(totalG)}</span><span className="lg-stat-k">Filament{totalMm > 0 ? ` · ${(totalMm / 1000).toFixed(2)} m` : ''}</span></div>
       </div>
       {open && (
         <div className="lg-scroll">

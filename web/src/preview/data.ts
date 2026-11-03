@@ -227,12 +227,19 @@ export function supportGrams(d: PreviewData | null, total: number | null): numbe
   return mm <= 0 ? 0 : total != null && all > 0 ? (total * mm) / all : null;
 }
 
+const spawnLoader = () => new Worker(new URL('./loader.worker.ts', import.meta.url), { type: 'module' });
+let spare: Worker | null = null;
+export function prewarmMovesLoader() {
+  try { spare ??= spawnLoader(); } catch {  }
+}
+
 export function loadMoves(src: WorkerIn, on: LoadHandlers, colours?: string[]): { data: PreviewData; cancel(): void } {
   const d = new PreviewData();
   d.sourceUrl = src.url?.split('?')[0];
   let worker: Worker;
   try {
-    worker = new Worker(new URL('./loader.worker.ts', import.meta.url), { type: 'module' });
+    worker = spare ?? spawnLoader();
+    spare = null;
   } catch (err) {
     d.error = String(err instanceof Error ? err.message : err);
     queueMicrotask(() => on.error(d, d.error!));

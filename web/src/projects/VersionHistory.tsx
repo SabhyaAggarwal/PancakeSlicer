@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Popover } from 'radix-ui';
-import { backToLatest, changeLine, closeHistory, dayOf, exactTime, historyState, restoreVersion, rowTimes, useHistory, versionSetup, versionTime,
-  viewVersion, type ProjectVersion, type VersionSetup } from './versions';
+import { backToLatest, changeLine, clockTime, closeHistory, dayOf, historyState, restoreVersion, rowTimes, shortDate, useHistory, versionSetup,
+  versionTime, viewVersion, type ProjectVersion, type VersionSetup } from './versions';
 
 const short = (s: number) => { const m = Math.round(s / 60); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; };
 const long = (s: number) => { const t = Math.round(s), h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60; return h ? `${h}h ${m}m ${t % 60}s` : `${m}m ${t % 60}s`; };
 
-const changes = (v: ProjectVersion, first: boolean) => v.change.length ? v.change.map(changeLine) : [first ? 'Created' : 'Edited'];
 const sliced = <svg className="vh-sliced" width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2 14 5 8 8 2 5zM2 8l6 3 6-3M2 11l6 3 6-3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/></svg>;
 const info = <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" strokeWidth="1.3"/><path d="M8 7.2v4M8 4.9v.1" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>;
 
@@ -18,24 +17,38 @@ export default function VersionHistory() {
   return h.open && host ? createPortal(<Panel />, host) : null;
 }
 
-function Card({ projectId, v, first, current, close }: { projectId: string; v: ProjectVersion; first: boolean; current: boolean; close: () => void }) {
+function Card({ projectId, v, current, close }: { projectId: string; v: ProjectVersion; current: boolean; close: () => void }) {
   const [setup, setSetup] = useState<VersionSetup | null>(null);
   useEffect(() => { let live = true; versionSetup(projectId, v.id).then((s) => live && setSetup(s), () => {}); return () => { live = false; }; }, [projectId, v.id]);
   const s = v.slice;
-  const stats = s ? [s.timeS != null && long(s.timeS), s.grams != null && `${s.grams.toFixed(1)} g`, s.mm != null && `${(s.mm / 1000).toFixed(2)} m`,
-    s.layers != null && `${s.layers} layers`, s.supportG ? `support ${s.supportG.toFixed(1)} g` : false].filter(Boolean).join(' · ') : 'Not sliced';
+  const stats = s ? ([[s.timeS != null && long(s.timeS), 'Time'], [s.grams != null && `${s.grams.toFixed(1)} g`, 'Weight'],
+    [s.mm != null && `${(s.mm / 1000).toFixed(2)} m`, 'Filament']] as const).filter(([value]) => value) : [];
+  const changes = v.change.map(changeLine);
+  const profiles = setup && ([['Printer', setup.printer], ...setup.filaments.filter((f) => f.name).map((f, i, all) => [all.length > 1 ? `Filament ${i + 1}` : 'Filament', f.name, f.colour]),
+    ['Process', setup.process]] as [string, string, string?][]).filter(([, value]) => value);
   const restore = async () => {
     close();
     if (historyState().viewing?.id !== v.id) await viewVersion(v);
     if (historyState().viewing?.id === v.id) await restoreVersion();
   };
   return <>
-    {setup?.picture ? <img className="vh-card-plate" src={setup.picture} alt="" /> : <div className="vh-card-plate" />}
-    <ul className="vh-changes">{changes(v, first).map((c, i) => <li key={i}>{c}</li>)}</ul>
-    {setup && <p>{[setup.printer, setup.filaments.filter(Boolean).join(', '), setup.process].filter(Boolean).join(' · ')}</p>}
-    <p>{stats}</p>
-    <p className="vh-meta"><time dateTime={new Date(v.until).toISOString()}>{exactTime(v.until)}</time> · Version {v.id}</p>
-    {!current && <button type="button" className="btn btn-primary vh-card-restore" onClick={() => void restore()}>Restore</button>}
+    <header className="vh-card-head">
+      <time className="vh-card-time" dateTime={new Date(v.until).toISOString()}>{clockTime(v.until)}</time>
+      <span className="vh-card-sub">{current && 'Current · '}Version {v.id} · {shortDate(v.until)}</span>
+    </header>
+    <div className="vh-card-plate">{setup?.picture && <img src={setup.picture} alt="" />}</div>
+    {changes.length > 0 && <ul className="vh-card-changes" aria-label="Changes">{changes.map((c, i) =>
+      <li key={i} className="vh-card-change" data-full-text={c.to === undefined ? c.name : `${c.name}: ${c.from ? `${c.from} → ` : ''}${c.to}`}>
+        <span className="vh-card-name">{c.name}</span>
+        {c.to !== undefined && <><span className="vh-card-was">{c.from}</span><span className="vh-card-arrow" aria-hidden="true">→</span><span>{c.to}</span></>}
+      </li>)}</ul>}
+    {profiles && <dl className="vh-card-grid">{profiles.map(([label, value, colour]) => <div key={label}>
+      <dt>{label}</dt>
+      <dd data-full-text={value}>{colour && <span className="vh-card-swatch" style={{ background: colour }} aria-hidden="true" />}<span>{value}</span></dd>
+    </div>)}</dl>}
+    {stats.length ? <dl className="vh-card-stats">{stats.map(([value, caption]) => <div key={caption}><dd>{value}</dd><dt>{caption}</dt></div>)}</dl>
+      : <p className="vh-card-none">Not sliced</p>}
+    {!current && <footer className="vh-card-foot"><button type="button" className="btn vh-card-restore" onClick={() => void restore()}>Restore this version</button></footer>}
   </>;
 }
 
@@ -82,7 +95,6 @@ function Panel() {
     } else if (e.key === 'ArrowLeft' && inList) { e.preventDefault(); e.stopPropagation(); setCard(null); }
     else if (e.key === 'Escape') { e.stopPropagation(); if (card) setCard(null); else if (h.viewing) void backToLatest(); else closeHistory(); }
   };
-  const last = list?.[list.length - 1]?.id;
   return (
     <section className="vh-panel" aria-label="Version history" onKeyDown={keys}>
       <div className="outliner-heading">
@@ -113,7 +125,7 @@ function Panel() {
                 </li></Popover.Anchor>
                 <Popover.Portal><Popover.Content className="vh-card" side={narrow ? 'bottom' : 'left'} align="start" sideOffset={narrow ? 4 : 16} collisionPadding={8}
                   onOpenAutoFocus={(e) => e.preventDefault()} onCloseAutoFocus={(e) => e.preventDefault()} onPointerEnter={hover(v.id)} onPointerLeave={hover(null)}>
-                  {h.projectId && <Card projectId={h.projectId} v={v} first={v.id === last} current={current} close={() => setCard(null)} />}
+                  {h.projectId && <Card projectId={h.projectId} v={v} current={current} close={() => setCard(null)} />}
                 </Popover.Content></Popover.Portal>
               </Popover.Root>;
             })}

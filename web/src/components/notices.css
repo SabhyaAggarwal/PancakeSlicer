@@ -2,6 +2,7 @@
   min-width: 260px; max-width: min(560px, calc(100vw - 2 * var(--s-5))); padding: var(--s-3) var(--s-3) var(--s-3) var(--s-4); background: var(--panel); color: var(--ink);
   font: var(--t-body); border: 1px solid var(--line-strong);  border-radius: var(--r-2); animation: notice-in var(--dur-2) var(--ease); }
 :where(.orca-parity) .toast-error { border-left: 3px solid var(--danger); }
+:where(.orca-parity) .toast-warning { border-left: 3px solid var(--warn); }
 :where(.orca-parity) .toast-success { border-left: 3px solid var(--accent); }
 :where(.orca-parity) .toast-icon { flex: none; margin-top: 1px; }
 :where(.orca-parity) .toast-text { flex: 1; min-width: 0; overflow-wrap: anywhere; user-select: text; }

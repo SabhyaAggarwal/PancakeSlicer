@@ -101,20 +101,26 @@
 :where(.orca-parity) .pj-empty strong { color: var(--text); font: var(--t-title); }
 :where(.orca-parity) .pj-empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s-3); }
 
+:where(.orca-parity) .pj-place, :where(.orca-parity) .pj-scrim { display: none; }
+@container (max-width: 899px) {
+  :where(.orca-parity) .pj-layout { position: relative; }
+  :where(.orca-parity) .pj-side { display: none; position: absolute; inset: 0 auto 0 0; z-index: 12; width: min(280px, calc(100% - 48px)); border-right: 1px solid var(--line-strong); box-shadow: var(--shadow-pop); }
+  :where(.orca-parity) .pj-side[data-open=true] { display: flex; }
+  :where(.orca-parity) .pj-scrim { display: block; position: absolute; inset: 0; z-index: 11; background: var(--scrim); }
+  :where(.orca-parity) .pj-place { display: inline-flex; flex: 0 1 auto; min-width: 0; gap: var(--s-2); margin-right: auto; font-weight: 600; }
+  :where(.orca-parity) .pj-place > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  :where(.orca-parity) .pj-bar > :is(h1, .pj-crumbs) { display: none; }
+  :where(.orca-parity) .pj-search.text { flex: 1 1 140px; width: auto; min-width: 0; }
+}
 @container (max-width: 640px) {
-  :where(.orca-parity) .pj-layout { flex-direction: column; }
-  :where(.orca-parity) .pj-side { width: auto; flex-direction: row; flex-wrap: wrap; padding: var(--s-3) var(--s-4); border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
-  :where(.orca-parity) .pj-filter { flex: none; }
-  :where(.orca-parity) .pj-tree { display: none; }
-  :where(.orca-parity) .pj-side-end { margin: 0; padding: 0; }
   :where(.orca-parity) .pj-tiles, :where(.orca-parity) .pj-grid { grid-template-columns: repeat(auto-fill,minmax(144px,1fr)); }
   :where(.orca-parity) .pj-tiles { gap: var(--s-3); padding: var(--s-4) var(--s-4) 0; }
   :where(.orca-parity) .pj-section { padding: var(--s-3) var(--s-4) 0; }
   :where(.orca-parity) .pj-bar { padding: var(--s-3) var(--s-4); }
-  :where(.orca-parity) .pj-bar h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   :where(.orca-parity) .pj-tools { display: contents; }
-  :where(.orca-parity) .pj-search.text { order: 1; flex: 1 1 160px; width: auto; }
-  :where(.orca-parity) .pj-tools .btn-primary { order: 2; }
+  :where(.orca-parity) .pj-place { margin-right: 0; max-width: 50%; }
+  :where(.orca-parity) .pj-search.text { order: 1; flex: 1 1 120px; width: auto; }
+  :where(.orca-parity) .pj-tools .btn-primary { order: 6; }
   :where(.orca-parity) .pj-sort { order: 3; min-width: 0; flex: 0 1 auto; }
   :where(.orca-parity) .pj-view { order: 4; }
   :where(.orca-parity) .pj-tools .btn { order: 5; margin-left: auto; }

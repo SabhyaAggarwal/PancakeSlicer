@@ -1,5 +1,6 @@
 export const MAGIC = 'ORCAMV01';
 export const TRANSFER_MAGIC = 'ORCAMT02';
+export const PLANES_MAGIC = 'ORCAMT01';
 export const TRANSFER_FORM = 'mt2';
 
 export const CHUNK = 16384;
@@ -65,6 +66,7 @@ export interface Header {
   layerStride: number;
   metaBytes: number;
   block: number;
+  transfer: 0 | 1 | 2;
   extended: boolean;
   oriented?: boolean;
   tableRotary?: boolean;
@@ -116,7 +118,7 @@ export interface LayerRec {
 export function readHeader(dv: DataView): Header {
   let magic = '';
   for (let i = 0; i < 8; ++i) magic += String.fromCharCode(dv.getUint8(i));
-  if (magic !== MAGIC && magic !== TRANSFER_MAGIC) throw new Error(`not a move stream (magic ${JSON.stringify(magic)})`);
+  if (magic !== MAGIC && magic !== TRANSFER_MAGIC && magic !== PLANES_MAGIC) throw new Error(`not a move stream (magic ${JSON.stringify(magic)})`);
   if (dv.getUint32(24, true) !== 1) throw new Error(`unknown units ${dv.getUint32(24, true)}`);
   const u64 = (o: number) => {
     const v = dv.getBigUint64(o, true);
@@ -132,7 +134,8 @@ export function readHeader(dv: DataView): Header {
     stateCount: dv.getUint32(40, true),
     layerCount: dv.getUint32(44, true),
     metaBytes: u64(48),
-    block: magic === TRANSFER_MAGIC ? u64(56) : 0,
+    block: magic === MAGIC ? 0 : u64(56),
+    transfer: magic === TRANSFER_MAGIC ? 2 : magic === PLANES_MAGIC ? 1 : 0,
     extended: (dv.getUint32(28, true) & 1) !== 0,
     oriented: (dv.getUint32(28, true) & 0x10000) !== 0,
     tableRotary: (dv.getUint32(28, true) & 0x20000) !== 0,

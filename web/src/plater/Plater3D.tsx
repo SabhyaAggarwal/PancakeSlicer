@@ -1351,6 +1351,7 @@ export default function Plater3D() {
 
     let last: State | null = null;
     let lastTower: [unknown, unknown, unknown] = [null, null, null];
+    const drawnEdits = (s: State) => viewOptions().overhang ? `${effectiveConfig(s, 'process').support_threshold_angle}` : '';
     const sync = () => {
       const s = getState();
       if (s.wipeTower !== lastTower[0] || s.wipeTowerPos !== lastTower[1] || s.project !== lastTower[2]) {
@@ -1370,7 +1371,8 @@ export default function Plater3D() {
           s.plateIndex === last.plateIndex && s.project === last.project && s.job.state === last.job.state &&
           s.filamentSlots === last.filamentSlots && s.slotColours === last.slotColours && s.filamentEdits === last.filamentEdits &&
           s.userPresets === last.userPresets && s.filaments === last.filaments && s.projectMaterials === last.projectMaterials &&
-          s.machines === last.machines && s.gizmo === last.gizmo && s.dirty === last.dirty) return;
+          s.machines === last.machines && s.gizmo === last.gizmo && s.dirty.machine === last.dirty.machine &&
+          (s.dirty.process === last.dirty.process || drawnEdits(s) === drawnEdits(last))) return;
       last = s;
       syncBed(s);
       syncGrid(s);

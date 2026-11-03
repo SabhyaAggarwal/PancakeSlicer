@@ -2,6 +2,7 @@ import { submissionHeaders } from '../flow/submission';
 import { bootstrapAccessToken, mutation, responseError } from './access';
 import { attachFiles, postJob } from './blobs';
 import { readHealth } from './health';
+import { followJobStream, type JobStreamEvent } from './job-stream';
 import { expandCatalog } from './compact-catalog';
 import { catalogWorker, onWorkerFailure, workerId } from './worker';
 import type { CatalogIn, CatalogOut } from './catalog.worker';
@@ -98,67 +99,66 @@ const realApi: Api = {
     return pending;
   },
   events(id, on) {
-    const es = new EventSource(`/api/jobs/${id}/events`);
-    let finished = false;
-    let disposed = false;
-    let checking = false;
-    let reason: string | undefined;
-    const finish = async () => {
+    let finished = false, disposed = false, checking = false, resulted = false, last = -1;
+    let reason: string | undefined, stop = () => {}, retry: ReturnType<typeof setTimeout> | undefined;
+    const close = () => { finished = true; stop(); clearTimeout(retry); };
+    const finish = async (reconnect = false) => {
       if (finished || checking) return;
       checking = true;
       try {
         const s = await realApi.status(id);
         if (disposed) return;
-        if (s.state === 'queued' || s.state === 'running') return;
-        finished = true;
-        es.close();
+        if (s.state === 'queued' || s.state === 'running') {
+          if (reconnect) retry = setTimeout(follow, 1000);
+          return;
+        }
+        close();
         if (s.state === 'done') on.done(s);
         else on.error(s.error ?? `job ${s.state}`);
       } catch (e) {
         if (!disposed) {
-          finished = true;
-          es.close();
+          close();
           on.error(reason ?? String(e));
         }
       } finally {
         checking = false;
       }
     };
-    const onData = (ev: MessageEvent) => {
+    const receive = (e: JobStreamEvent) => {
       if (finished) return;
-      const p = parseProgress(ev.data);
-      if (p) on.progress(p);
-      if (/"state"\s*:\s*"(done|failed|canceled)"/.test(ev.data)) void finish();
-    };
-    es.onmessage = onData;
-    es.addEventListener('progress', onData as EventListener);
-    es.addEventListener('state', onData as EventListener);
-    es.addEventListener('log', ((ev: MessageEvent) => {
-      try {
-        const j = JSON.parse(ev.data);
-        on.log?.(String(j.stream ?? ''), String(j.line ?? ''));
-      } catch {
-      }
-    }) as EventListener);
-    for (const t of ['done', 'end', 'complete', 'failed', 'error_event'])
-      es.addEventListener(t, ((ev: MessageEvent) => {
-        try {
-          reason = JSON.parse(ev.data).error || reason;
-        } catch {
+      last = e.seq;
+      switch (e.type) {
+        case 'message': case 'progress': case 'state': {
+          const p = parseProgress(e.data);
+          if (p) on.progress(p);
+          if (/"state"\s*:\s*"(done|failed|canceled)"/.test(e.data)) void finish();
+          return;
         }
-        void finish();
-      }) as EventListener);
-    let resulted = false;
-    if (on.result) es.addEventListener('result', (() => {
-      if (resulted || finished) return;
-      resulted = true;
-      void realApi.status(id).then((s) => { if (!finished && !disposed && s.record) on.result!(s); }).catch(() => undefined);
-    }) as EventListener);
-    es.onerror = () => void finish();
+        case 'log':
+          try {
+            const j = JSON.parse(e.data);
+            on.log?.(String(j.stream ?? ''), String(j.line ?? ''));
+          } catch {
+          }
+          return;
+        case 'result':
+          if (!on.result || resulted) return;
+          resulted = true;
+          void realApi.status(id).then((s) => { if (!finished && !disposed && s.record) on.result!(s); }).catch(() => undefined);
+          return;
+        case 'done': case 'end': case 'complete': case 'failed': case 'error_event':
+          try {
+            reason = JSON.parse(e.data).error || reason;
+          } catch {
+          }
+          void finish();
+      }
+    };
+    const follow = () => { if (!finished && !disposed) stop = followJobStream(id, last, receive, () => void finish(true)); };
+    follow();
     return () => {
       disposed = true;
-      finished = true;
-      es.close();
+      close();
     };
   },
   async cancel(id) {

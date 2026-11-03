@@ -48,15 +48,16 @@
 :where(.orca-parity) .pf-list { --pf-row: var(--h-row); }
 :where(.orca-parity) .pf-list .pf-group { --pf-step: calc(12px + var(--s-2)); position: relative; display: flex; flex-direction: column; }
 :where(.orca-parity) .pf-list .pf-group > :not(:first-child) { margin-left: var(--pf-step); }
-:where(.orca-parity) .pf-list > .pf-group { border-bottom: 1px solid var(--line); }
-:where(.orca-parity) .pf-list > .pf-group > :not(:first-child) { margin-left: 0; }
+:where(.orca-parity) .pf-list > .pf-group { border-top: 1px solid var(--line); }
+:where(.orca-parity) .pf-list > .pf-group:first-child { border-top: 0; }
+:where(.orca-parity) .pf-list > .pf-group:last-child { border-bottom: 1px solid var(--line); }
 :where(.orca-parity) .pf-colour-choice { display: flex; align-items: center; gap: var(--s-3); }
 :where(.orca-parity) .pf-group-toggle { display: flex; align-items: center; gap: var(--s-2); width: 100%; min-height: var(--pf-row); padding: 0 var(--s-3); border: 0; border-radius: var(--r-1); background: none; color: var(--ink); font: var(--t-label); text-align: left; cursor: pointer; }
 :where(.orca-parity) .pf-group[data-depth='0'] > .pf-group-head { position: sticky; top: 0; z-index: 2; background: var(--sunken); }
 :where(.orca-parity) .pf-group[data-depth='0'] > .pf-group-head .pf-group-toggle { min-height: 32px; padding: 0 var(--s-5); border-radius: 0; color: var(--ink); font: var(--t-label); }
 :where(.orca-parity) .pf-group[data-depth]:not([data-depth='0']) > [role=row] .pf-group-toggle { color: var(--ink-3); font-weight: 600; font-size: 13px; }
-:where(.orca-parity) .pf-group-rows { display: flex; flex-direction: column; }
-:where(.orca-parity) .pf-window .pf-group-rows > .pf-item { padding: 0 var(--s-5) 0 calc(var(--s-5) + 12px + var(--s-2)); border-top: 1px solid var(--line); border-radius: 0; }
+:where(.orca-parity) .pf-list .pf-group > .pf-group-rows { display: flex; flex-direction: column; margin: 0 0 var(--s-3) calc(var(--s-5) + 6px); border-left: 1px solid var(--line); }
+:where(.orca-parity) .pf-window .pf-group-rows > .pf-item { padding: 0 var(--s-5) 0 calc(12px + var(--s-2) - 7px); border-radius: 0 var(--r-1) var(--r-1) 0; }
 :where(.orca-parity) .pf-group-toggle .caret { color: var(--ink-3); }
 :where(.orca-parity) .pf-group-toggle > .pf-dim { flex: none; }
 :where(.orca-parity) .pf-group-toggle:hover { background: var(--hover); }
@@ -69,7 +70,7 @@
 :where(.orca-parity) .pf-window .pf-item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 :where(.orca-parity) .pf-row-check { position: absolute; left: var(--s-1); top: 50%; z-index: 1; display: none; transform: translateY(-50%); }
 :where(.orca-parity) :is(.pf-selectable:hover, .pf-selectable:focus-visible, .pf-list[data-multi] .pf-selectable) .pf-row-check { display: flex; }
-:where(.orca-parity) .pf-group-rows > .pf-item .pf-row-check { left: var(--s-4); }
+:where(.orca-parity) .pf-group-rows > .pf-item .pf-row-check { left: calc(-1 * (var(--s-5) + 6px) + var(--s-1)); }
 :where(.orca-parity) .pf-window .pf-item:has(> .pf-row-cover) { min-height: 64px; }
 :where(.orca-parity) .pf-row-cover { flex: none; display: grid; place-items: center; width: 56px; height: 56px; padding: var(--s-1); background: var(--panel); border-radius: var(--r-2); color: var(--ink-3); }
 :where(.orca-parity) .pf-row-cover img { width: 100%; height: 100%; object-fit: contain; }
@@ -81,7 +82,6 @@
 :where(.orca-parity) .pf-item.is-on .pf-item-meta { color: inherit; }
 :where(.orca-parity) .pf-row-swatch { flex: none; width: 16px; height: 16px; border: 1px solid var(--line-strong); border-radius: 50%; background: linear-gradient(135deg, transparent calc(50% - .75px), var(--ink-3) calc(50% - .75px), var(--ink-3) calc(50% + .75px), transparent calc(50% + .75px)); }
 :where(.orca-parity) .pf-item > .profile-color-swatch { flex-basis: 16px; width: 16px; height: 16px; border-radius: 50%; }
-:where(.orca-parity) .pf-used { flex: none; margin-left: auto; padding: 0 var(--s-3); border-radius: 999px; background: var(--accent); color: var(--on-accent); font: var(--t-small); line-height: 20px; white-space: nowrap; }
 :where(.orca-parity) .pf-item.is-on .pf-item-note { color: inherit; }
 :where(.orca-parity) .pf-row-used { flex: none; margin-left: auto; font: var(--t-small); color: var(--muted); white-space: nowrap; }
 :where(.orca-parity) .pf-item.is-on .pf-row-used { color: inherit; }
@@ -89,6 +89,8 @@
 :where(.orca-parity) .pf-row-method { flex: none; display: grid; place-items: center; margin-left: auto; color: var(--ink-3); }
 :where(.orca-parity) .pf-row-method svg { fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
 :where(.orca-parity) .pf-row-method + .pf-row-used { margin-left: var(--s-3); }
+:where(.orca-parity) .pf-row-flag { flex: none; margin-left: auto; font: var(--t-small); color: var(--muted); white-space: nowrap; }
+:where(.orca-parity) .pf-row-flag ~ :is(.pf-row-method, .pf-row-used) { margin-left: var(--s-3); }
 :where(.orca-parity) .pf-item.is-on :is(.pf-row-lead, .pf-row-method) { color: inherit; }
 @media (pointer: coarse) { :where(.orca-parity) .pf-list { --pf-row: 44px; } }
 :where(.orca-parity) .pf-profile-empty { display: flex; flex-direction: column; align-items: center; gap: var(--s-3); padding: var(--s-7) var(--s-4); color: var(--muted); text-align: center; }

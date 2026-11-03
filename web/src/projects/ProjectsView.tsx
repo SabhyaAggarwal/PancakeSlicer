@@ -13,6 +13,8 @@ import { setProjectsQuery, useProjectsQuery } from './query';
 import { projectStore, type ProjectCommandStatus, type ProjectStore } from '../persist/backend';
 import { preferenceJson, preferenceText, savedPreferencesSnapshot, savePreferences, subscribeSavedPreferences, usePreference } from '../saved-preferences';
 import './projects.css';
+import { Glyph } from '../components/Glyph';
+import { Caret } from '../components/Caret';
 
 const noCommands: readonly Readonly<ProjectCommandStatus>[] = Object.freeze([]);
 const noSubscribe = () => () => {};
@@ -140,7 +142,8 @@ function Projects() {
   const toggleFavorite=(id:string)=>{if(!prefsLoaded)return;const next=new Set(favorites);if(!next.delete(id))next.add(id);savePreferences({'projects.favorites':[...next]});};
   const folderState=useFolders(),folders=folderState.folders;
   const [place,setPlaceState]=useState<Place>(lastPlace);
-  const go=(next:Place)=>{lastPlace=next;setPlaceState(next);setRenaming(null);setMenu(null);setProjectsQuery('');};
+  const [railOpen,setRailOpen]=useState(false),closeRail=()=>setRailOpen(false);
+  const go=(next:Place)=>{lastPlace=next;setPlaceState(next);setRenaming(null);setMenu(null);setProjectsQuery('');closeRail();};
   const inTrash=place.kind==='trash',placeFolder=place.kind==='folder'?folders.find(f=>f.id===place.id):undefined;
   useEffect(()=>{if(place.kind==='folder' && folderState.state==='ready' && !placeFolder)go({kind:'home'});},[place,folderState.state,placeFolder]);
   const [,redraw]=useState(0);
@@ -373,7 +376,8 @@ function Projects() {
   </div>;
   const grid_=shown.length>0 && <div ref={grid} className={`pj-${view}`} role="grid" aria-label={title} aria-multiselectable={inTrash?undefined:true} aria-busy={busy || status.state==='loading'} onKeyDown={onKey}>{head}{shown.map(item)}</div>;
   return <div className={`projects${dragging?` dragging-${dragging}`:''}`} onDragOver={e=>{if(e.dataTransfer.types.includes('Files'))e.preventDefault();}} onDrop={onDrop}><div className="pj-layout">
-    <nav className="pj-side" aria-label="Projects">
+    {railOpen && <div className="pj-scrim" aria-hidden onClick={closeRail}/>}
+    <nav className="pj-side" id="pj-rail" aria-label="Projects" data-open={railOpen} onKeyDown={e=>{if(railOpen && e.key==='Escape'){e.stopPropagation();closeRail();}}}>
       {PLACES.map(x=>railItem(x.kind,x.label,place.kind===x.kind && !searching,x.kind==='home'?undefined:counts[x.kind],()=>go({kind:x.kind}),x.kind==='unsorted'?{folder:null}:x.kind==='home'?{folder:null}:undefined))}
       <div className="pj-tree" role="tree" aria-label="Folders">
         {tree.map(({folder:f,depth})=>{const has=childFolders(folders,f.id).length>0,open=!collapsed.has(f.id),on=place.kind==='folder' && place.id===f.id && !searching;
@@ -389,6 +393,7 @@ function Projects() {
     </nav>
     <section className="pj-main" aria-label={title}>
       <header className="pj-bar">
+        <button type="button" className="btn pj-place" aria-expanded={railOpen} aria-controls="pj-rail" onClick={()=>setRailOpen(true)}><Glyph name="rail"/><span>{title}</span><Caret/></button>
         {crumbs.length && !searching ? <nav className="pj-crumbs" aria-label="Folder path">
           <button type="button" className="btn-ghost" onClick={()=>go({kind:'home'})}>Home</button>
           {crumbs.map((f,i)=>i<crumbs.length-1

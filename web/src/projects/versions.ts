@@ -2,10 +2,11 @@ import { useSyncExternalStore } from 'react';
 import type { StoredDocBase } from '../persist/backend';
 import { plateSignature } from '../slice-input';
 import type { Doc } from '../state/history';
-import { getState, setState, subscribeStore, toast, type JobView } from '../state/store';
+import { getState, setState, subscribeStore, toast, type JobView, type State } from '../state/store';
+import { slotColour } from '../profiles/filament-colour';
 import type { JobStatus } from '../api/types';
 import { project, flushProject, leaveProjectVersion, restoreProjectVersion, viewProjectVersion, type ProjectMeta } from '../flow/project';
-import { changeText, describeChange, profileName, type VersionChange } from './version-change';
+import { changeParts, describeChange, profileName, type VersionChange } from './version-change';
 
 export interface ProjectVersion {
   id: number; revision: number; at: number; until: number; name: string; objects: number;
@@ -182,24 +183,25 @@ export function rowTimes(versions: readonly ProjectVersion[], now = Date.now()):
   return new Map(versions.map((v, i) => [v.id, base[i] === base[i - 1] || base[i] === base[i + 1] ? withSeconds(v.until) : base[i]]));
 }
 export const versionTime = (t: number) => dayOf(t) === 'Today' ? clock(t) : `${dayOf(t)} ${clock(t)}`;
+export const clockTime = (t: number) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+export const shortDate = (t: number) => new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric', year: new Date(t).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
 
 export const changeLine = (c: VersionChange) => {
   const at = c.key?.startsWith('restore:') ? Number(c.key.slice(8)) : NaN;
-  return Number.isFinite(at) ? `Restored ${withSeconds(at)}` : changeText(c);
+  return Number.isFinite(at) ? { name: 'Restored', to: withSeconds(at) } : changeParts(c);
 };
-export const exactTime = (t: number) => new Date(t).toLocaleString([], { dateStyle: 'medium', timeStyle: 'medium' });
 
-export interface VersionSetup { printer: string; process: string; filaments: string[]; picture?: string }
+export interface VersionSetup { printer: string; process: string; filaments: { name: string; colour: string }[]; picture?: string }
 const setups = new Map<string, Promise<VersionSetup>>();
 export function versionSetup(id: string, v: number): Promise<VersionSetup> {
   const key = `${id}/${v}`;
   let found = setups.get(key);
   if (!found) {
-    found = import('../persist/project-wire').then(({ projectJson }) => projectJson<{ meta?: { thumbnail?: unknown }; doc: { printer?: unknown; process?: unknown; filamentSlots?: unknown } }>(`${path(id)}/${v}`))
+    found = import('../persist/project-wire').then(({ projectJson }) => projectJson<{ meta?: { thumbnail?: unknown }; doc: Partial<State> & { printer?: unknown; process?: unknown; filamentSlots?: unknown } }>(`${path(id)}/${v}`))
       .then((record) => {
         const doc = record?.doc ?? {}, picture = record?.meta?.thumbnail;
         return { printer: profileName('machine', doc.printer), process: profileName('process', doc.process),
-          filaments: Array.isArray(doc.filamentSlots) ? doc.filamentSlots.map((k) => profileName('filament', k)) : [],
+          filaments: Array.isArray(doc.filamentSlots) ? doc.filamentSlots.map((k, i) => ({ name: profileName('filament', k), colour: slotColour({ ...getState(), ...doc } as State, i) })) : [],
           picture: typeof picture === 'string' && picture.startsWith('data:image/') ? picture : undefined };
       });
     found.catch(() => setups.delete(key));

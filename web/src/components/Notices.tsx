@@ -13,6 +13,7 @@ export function Toast() {
   const projectNotice = useStore((s) => s.projectNotice);
   const action = useStore((s) => (s.toast && s.toastAction?.msg === s.toast ? s.toastAction : null));
   const ms = useStore((s) => s.toastMs);
+  const given = useStore((s) => s.toastKind);
   const msg = toast ?? projectNotice;
   const [held, setHeld] = useState(false);
   useEffect(() => {
@@ -22,11 +23,11 @@ export function Toast() {
   }, [toast, seq, held, ms]);
   useEffect(() => setHeld(false), [msg]);
   if (!msg) return null;
-  const kind = toast ? noticeKind(msg) : 'info';
+  const kind = toast ? given ?? noticeKind(msg) : 'info';
   const reload = /^Presets failed to load/i.test(msg);
   return (
     <InTopLayer>
-      <div className={`toast toast-${kind}`} role={kind === 'error' ? 'alert' : 'status'}
+      <div className={`toast toast-${kind}`} role={kind === 'error' || kind === 'warning' ? 'alert' : 'status'}
         onMouseEnter={() => setHeld(true)} onMouseLeave={() => setHeld(false)}
         onFocus={() => setHeld(true)} onBlur={() => setHeld(false)}>
         <div className="toast-text">

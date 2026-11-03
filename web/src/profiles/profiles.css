@@ -101,9 +101,13 @@
 :where(.orca-parity) .works-with-printer { display: flex; align-items: center; gap: var(--s-3); }
 :where(.orca-parity) .works-with-name { min-width: 0; overflow-wrap: anywhere; }
 :where(.orca-parity) .works-with-cell { display: flex; align-items: center; gap: var(--s-2); }
+:where(.orca-parity) .works-with-used { flex: none; font: var(--t-small); color: var(--muted); }
+:where(.orca-parity) .works-with-none { color: var(--warn); }
 :where(.orca-parity) .works-with-table tr.is-override td:last-child { color: var(--modified); }
 :where(.orca-parity) .works-with-table tr.is-override .control-check { border-color: var(--modified); }
 
 :where(.orca-parity) .color-trigger[data-modified] { position: relative; }
 :where(.orca-parity) .color-trigger[data-modified]::after { content: ''; position: absolute; top: -3px; right: -3px; width: 6px; height: 6px; border-radius: 50%; background: var(--modified); box-shadow: 0 0 0 1px var(--panel); }
 :where(.orca-parity) .filament-colour-actions { flex-wrap: wrap; }
+:where(.orca-parity) .pk-skel-name { width: 9em; max-width: 100%; height: 12px; }
+:where(.orca-parity) .pk-skel-sub { width: 6em; max-width: 70%; height: 10px; margin-top: var(--s-2); }

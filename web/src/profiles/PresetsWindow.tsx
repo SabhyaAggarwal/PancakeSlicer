@@ -10,7 +10,7 @@ import { selectCompatibility } from './compatibility';
 import { ManagerProfileRow } from './ManagerProfileRow';
 import { profileAccess, profileReferenceSnapshot, subscribeProfileReferences } from './references';
 import { changedKeys } from './model';
-import { applicabilityKey } from './WorksWith';
+import { applicabilityKey, worksWithNone } from './WorksWith';
 import { archiveProfiles, profileCopyCreation, restoreProfiles, type ProfileCreation } from './transactions';
 import { documentGeneration } from '../state/history';
 import { ProfileEditor, type ProfileDraft } from './ProfileEditor';
@@ -47,7 +47,7 @@ const coverOf = (vendor: string, model: string) => vendor && model ? `/profiles/
 type CopyRequest={source:UserPreset;name:string;creation:ProfileCreation;error?:string};
 let pendingCopy:CopyRequest|undefined;
 
-interface Item { base?:SystemPreset; key: string; name: string; mine: boolean; parent?: string; changed: number; slot?: number; user?: UserPreset; note: string; vendor: string; model:string; nozzle: string; material: string; family?: string; cover?: string|null; swatch?:string|null;reason?: string; meta?: string; fullName?: string; child?: boolean; config: Config; variants?: Item[] }
+interface Item { base?:SystemPreset; key: string; name: string; mine: boolean; flag?: string; parent?: string; changed: number; slot?: number; user?: UserPreset; note: string; vendor: string; model:string; nozzle: string; material: string; family?: string; cover?: string|null; swatch?:string|null;reason?: string; meta?: string; fullName?: string; child?: boolean; config: Config; variants?: Item[] }
 const COMMON_MATERIALS = ['PLA', 'PETG', 'ABS', 'ASA', 'TPU'];
 const NOUNS: Record<PresetType,[string,string]> = {machine:['printer','printers'],filament:['filament','filaments'],process:['print setting','print settings']};
 const count = (n:number,[one,many]:[string,string]) => `${n} ${n === 1 ? one : many}`;
@@ -95,7 +95,7 @@ function items(s: State, type: PresetType): Item[] {
     const identity = user ? profileKey(user) : name;
     const slots = slotsOf(s, type, identity), resolved = resolvePreset(s, type, identity);
     const vendor = resolved.base?.vendor ?? '', model = first(resolved.config.printer_model) || resolved.base?.model || '';
-    return { key: user ? profileKey(user) : `base:${type}:${name}`, name, mine: isMine, parent, user, base: resolved.base, config:resolved.config,swatch:type === 'filament' ? profileColour(resolved.config) : undefined,vendor:type === 'filament' ? first(resolved.config.filament_vendor) || vendor : vendor, model, nozzle:first(resolved.config.nozzle_diameter), material:first(resolved.config.filament_type), cover:type === 'machine' ? coverOf(vendor,model) ?? null : undefined, slot: slots[0], note: noteOf(s, type, identity), changed: slots.reduce((n, i) => n + changeCount(s, type, i), 0) };
+    return { key: user ? profileKey(user) : `base:${type}:${name}`, name, mine: isMine, parent, user, base: resolved.base, config:resolved.config,flag:user && user.kind !== 'master' && type !== 'machine' && worksWithNone(user, resolved.config, user.applicability) ? 'Works with no printer' : undefined,swatch:type === 'filament' ? profileColour(resolved.config) : undefined,vendor:type === 'filament' ? first(resolved.config.filament_vendor) || vendor : vendor, model, nozzle:first(resolved.config.nozzle_diameter), material:first(resolved.config.filament_type), cover:type === 'machine' ? coverOf(vendor,model) ?? null : undefined, slot: slots[0], note: noteOf(s, type, identity), changed: slots.reduce((n, i) => n + changeCount(s, type, i), 0) };
   };
   const inUse = (i: Item) => (i.slot === undefined ? 1 : 0);
   const order = (a: Item, b: Item) => inUse(a) - inUse(b) || (a.name < b.name ? -1 : 1);

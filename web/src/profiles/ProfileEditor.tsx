@@ -8,7 +8,7 @@ import { findProfile, profileKey } from './identity';
 import { ColorPicker } from '../components/ColorPicker';
 import { profileColour,profileSummary } from './metadata';
 import { MenuButton } from '../components/Menu';
-import { WorksWith, applicabilityKey } from './WorksWith';
+import { WorksWith, applicabilityKey, worksWithNone } from './WorksWith';
 import type { ProfileApplicability } from './applicability';
 import { acknowledgeProjectProfileChanges,type ProjectProfileChanges } from './project-draft';
 import { requestPreset } from '../components/PresetCombo';
@@ -50,8 +50,11 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
   const editor: ProfileFields = useMemo(() => ({name, config: values, baseline, changes, set, reset, mode}), [name, values, baseline, changes, set, reset, mode]);
   const dirty = Object.keys(changes).length > 0 || applicabilityDirty || !!draft?.staged;
   const revert = () => {update(key, null); setError(null);};
+  const noPrinter = type !== 'machine' && !!source && worksWithNone(source, values, applicability);
+  const openOnWorksWith = useRef(noPrinter).current;
   const save = async () => {
     if (inFlight.current || !dirty) return;
+    if (noPrinter) {setError('A profile must work with at least one printer. Choose one under Works with, or reset it to the template.'); return;}
     const s = getState(), currentSource=findProfile(s,type,name);
     const submitted={...latest.current,values:structuredClone(latest.current.values),applicability:structuredClone(latest.current.applicability)};
     if (!s.api) {setError('Not connected. Your edits are kept.'); return;}
@@ -105,6 +108,6 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
       </div>
     </div>
     {error && <div className="pf-editor-error" role="alert">{error}</div>}
-    <fieldset className="pf-editor-fields" disabled={saving} aria-busy={saving}><SettingsTab type={type} hidePreset editor={editor} auxiliary={type !== 'machine' && source ? {label:'Works with',icon:'param_dependencies_printers',modified:applicabilityDirty,content:<WorksWith source={source} config={values} value={applicability} onChange={next=>update(key,{...latest.current,applicability:next})}/>} : undefined}/></fieldset>
+    <fieldset className="pf-editor-fields" disabled={saving} aria-busy={saving}><SettingsTab type={type} hidePreset editor={editor} auxiliary={type !== 'machine' && source ? {label:'Works with',icon:'param_dependencies_printers',modified:applicabilityDirty,initial:openOnWorksWith,content:<WorksWith source={source} config={values} value={applicability} onChange={next=>update(key,{...latest.current,applicability:next})}/>} : undefined}/></fieldset>
   </section>;
 }

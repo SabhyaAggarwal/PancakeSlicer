@@ -1,6 +1,6 @@
 import { unzipSync } from 'fflate';
 import { gcodeToStream } from './gcode';
-import { BLOCK, CHUNK, MAGIC, TRANSFER_FORM, TRANSFER_MAGIC, readHeader, transferBlockSize, readStates, readStatistics, MoveType, type Header, type LayerRec, type MoveChunk, type States, type StreamMeta } from './format';
+import { BLOCK, CHUNK, MAGIC, PLANES_MAGIC, TRANSFER_FORM, TRANSFER_MAGIC, readHeader, transferBlockSize, readStates, readStatistics, MoveType, type Header, type LayerRec, type MoveChunk, type States, type StreamMeta } from './format';
 
 const LOD_TOLERANCE = 0.05;
 const CUSTOM_ROLE = 18;
@@ -20,7 +20,7 @@ async function open(src: WorkerIn): Promise<{ stream: ReadableStream<Uint8Array>
   if (src.file) {
     const peek = new Uint8Array(await src.file.slice(0, 8).arrayBuffer());
     const magic = String.fromCharCode(...peek);
-    if (magic.startsWith('PK') || (magic !== MAGIC && magic !== TRANSFER_MAGIC && !(peek[0] === 0x1f && peek[1] === 0x8b))) {
+    if (magic.startsWith('PK') || (magic !== MAGIC && magic !== TRANSFER_MAGIC && magic !== PLANES_MAGIC && !(peek[0] === 0x1f && peek[1] === 0x8b))) {
       let text: string;
       if (magic.startsWith('PK')) {
         const zip = unzipSync(new Uint8Array(await src.file.arrayBuffer()), { filter: (f) => /^Metadata\/plate_\d+\.gcode$/.test(f.name) });
@@ -87,6 +87,18 @@ class Bytes {
   }
   view(n: number) {
     return new DataView(this.buf.buffer, this.buf.byteOffset + this.pos, n);
+  }
+}
+
+function unplane(q: Bytes, n: number, stride: number) {
+  const src = q.buf.slice(q.pos, q.pos + n * stride);
+  const out = q.view(n * stride);
+  for (let w = 0, at = 0; w < stride / 4; ++w, at += 4 * n) {
+    let v = 0;
+    for (let i = 0; i < n; ++i) {
+      v = (v + (src[at + i] | src[at + n + i] << 8 | src[at + 2 * n + i] << 16 | src[at + 3 * n + i] << 24)) >>> 0;
+      out.setUint32(i * stride + w * 4, v, true);
+    }
   }
 }
 
@@ -211,16 +223,18 @@ async function run(src: WorkerIn) {
   const flushMoves = async (final: boolean) => {
     const h = header!;
     while (parsed < h.moveCount) {
-      const n = Math.min(h.block ? transferBlockSize(block) : CHUNK, h.moveCount - parsed);
-      const counts = h.block && q.avail >= 8 ? q.view(8) : null;
+      const copies2 = h.transfer === 2;
+      const n = Math.min(copies2 ? transferBlockSize(block) : CHUNK, h.moveCount - parsed);
+      const counts = copies2 && q.avail >= 8 ? q.view(8) : null;
       const literals = counts?.getUint32(0, true) ?? 0, copies = counts?.getUint32(4, true) ?? 0;
-      const size = !h.block ? n * h.moveStride : counts ? 8 + 12 * copies + literals * h.moveStride : Infinity;
+      const size = !copies2 ? n * h.moveStride : counts ? 8 + 12 * copies + literals * h.moveStride : Infinity;
       if (q.avail < size) {
         if (final) throw new Error('truncated move stream (moves)');
         return;
       }
       const words = h.moveStride / 4;
-      const dv = h.block ? untransfer(q, parsed, n, literals, copies, words, diffs, last, records) : q.view(size);
+      if (h.transfer === 1) unplane(q, n, h.moveStride);
+      const dv = copies2 ? untransfer(q, parsed, n, literals, copies, words, diffs, last, records) : q.view(size);
       const c = allocChunk(parsed, n, h.extended, !!h.oriented);
       for (let i = 0, o = 0; i < n; ++i, o += h.moveStride) {
         const v = parsed + i;
@@ -302,7 +316,7 @@ async function run(src: WorkerIn) {
     if (stage === 'states' && header && q.avail >= header.stateCount * header.stateStride) {
       states = readStates(q.view(header.stateCount * header.stateStride), 0, header);
       q.pos += header.stateCount * header.stateStride;
-      if (header.block) {
+      if (header.transfer === 2) {
         const words = header.moveStride / 4;
         diffs = new Uint32Array(header.moveCount * words);
         last = new Uint32Array(words);

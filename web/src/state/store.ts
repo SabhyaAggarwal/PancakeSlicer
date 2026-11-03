@@ -240,6 +240,7 @@ export interface State {
   toast: string | null;
   toastSeq: number;
   toastAction: { label: string; run: () => void; msg?: string } | null;
+  toastKind: NoticeKind | null;
   toastMs: number | null;
   recommendedStyle: Record<number, 'standard'>;
   heads: HeadInfo[] | null;
@@ -337,6 +338,7 @@ let state: State = {
   toast: null,
   toastSeq: 0,
   toastAction: null,
+  toastKind: null,
   toastMs: null,
   recommendedStyle: {},
   heads: null,
@@ -507,10 +509,10 @@ export function logNotice(message: string, kind: NoticeKind = noticeKind(message
   setState((s) => ({ noticeLog: [...s.noticeLog.slice(-99), { id: (s.noticeLog.at(-1)?.id ?? 0) + 1, message, kind }] }));
 }
 
-export function toast(msg: string, action: State['toastAction'] = null, ms = action ? 8000 : null) {
-  logNotice(msg);
-  if (shouldToast(msg, action))
-    setState({ toast: msg, toastSeq: getState().toastSeq + 1, toastAction: action && { ...action, msg }, toastMs: ms });
+export function toast(msg: string, action: State['toastAction'] = null, ms = action ? 8000 : null, kind?: NoticeKind) {
+  logNotice(msg, kind);
+  if (shouldToast(msg, action, kind))
+    setState({ toast: msg, toastSeq: getState().toastSeq + 1, toastAction: action && { ...action, msg }, toastMs: ms, toastKind: kind ?? null });
 }
 
 function editName(patch: object): string {
