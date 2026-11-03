@@ -335,6 +335,26 @@ func (st *workspaceStore) adopt(w http.ResponseWriter, r *http.Request) {
 			if len(raw) == 0 {
 				continue
 			}
+			if kind == "preferences" {
+				old := d.Values[kind]
+				incoming := map[string]json.RawMessage{}
+				saved := map[string]json.RawMessage{}
+				if json.Unmarshal(raw, &incoming) != nil || incoming == nil || len(old.Document) > 0 && (json.Unmarshal(old.Document, &saved) != nil || saved == nil) {
+					conflict("Saved preferences must be complete JSON objects.")
+					return
+				}
+				for key, value := range saved {
+					next, ok := incoming[key]
+					if !ok || !canonicalEqual(value, next) {
+						conflict("An existing saved preference is missing or changed in the legacy union.")
+						return
+					}
+				}
+				if len(incoming) > len(saved) {
+					d.Values[kind] = workspaceValue{old.Revision + 1, raw}
+				}
+				continue
+			}
 			if old, ok := d.Values[kind]; ok && !canonicalEqual(old.Document, raw) {
 				conflict("Saved " + kind + " differs from the legacy capture.")
 				return
