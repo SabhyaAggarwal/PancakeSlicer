@@ -1,12 +1,14 @@
 import type { Config, PresetType, SystemPreset, UserPreset } from '../api/types';
 import { DEFAULT_PRINTER, getState, setState, type State } from '../state/store';
-import { baseVersion, changedKeys, profilesFor, resolveProfile } from './model';
-import { isCompatible, selectCompatibility } from './compatibility';
+import { baseVersion, catalogAnchor, changedKeys, profilesFor, resolveProfile } from './model';
+import { selectCompatibility } from './compatibility';
 import { defaultsInitialized, markDefaultsInitialized, rememberLocalProfile, importedBases } from '../persist/profiles';
 import { defaultProcesses } from '../intent/default-process-model';
+import { findProfile, profileKey } from './identity';
 import { CURVED_DEFAULTS, surfaceValues } from '../intent/surface';
 
 export interface ProfileRow {
+  key: string;
   name: string;
   base: string;
   layerHeight?: number;
@@ -31,6 +33,7 @@ export interface CatalogFilters {
   printer?: string;
   nozzle?: string | number;
   search?: string;
+  browseAll?: boolean;
 }
 
 const first = (value: Config[string] | undefined) => String(Array.isArray(value) ? value[0] ?? '' : value ?? '');
@@ -40,29 +43,29 @@ const metadata = (config: Config) => ({ layerHeight: number(config.layer_height)
 const profileRows = new WeakMap<State, Map<PresetType, ProfileRow[]>>();
 const catalogRows = new WeakMap<State, Map<string, CatalogRow[]>>();
 
-export function listProfiles(s: State, type: PresetType): ProfileRow[] {
+export function listProfiles(s: State, type: PresetType, filters: {browseAll?: boolean} = {}): ProfileRow[] {
   let cache = profileRows.get(s);
   if (!cache) profileRows.set(s, (cache = new Map()));
-  if (cache.has(type)) return cache.get(type)!;
-  const rows: ProfileRow[] = s.userPresets.filter((p) => p.type === type).map((p) => {
-    const { config, base } = resolveProfile(s, type, p.name);
-    return { name: p.name, base: p.base?.name ?? p.inherits, ...metadata(config), vendor: base?.vendor,
+  if (!filters.browseAll && cache.has(type)) return cache.get(type)!;
+  const rows: ProfileRow[] = s.userPresets.filter((p) => p.type === type && !p.archived && (p.kind ?? 'profile') === 'profile' && (filters.browseAll || selectCompatibility(s,type,profileKey(p)).ok)).map((p) => {
+    const { config, base } = resolveProfile(s, type, profileKey(p));
+    return { key: profileKey(p), name: p.name, base: p.base?.name ?? p.inherits, ...metadata(config), vendor: base?.vendor,
       mine: true, changed: Object.keys(p.overlay ?? p.overrides).length > 0 };
   });
-  cache.set(type, rows);
+  if (!filters.browseAll) cache.set(type, rows);
   return rows;
 }
 export function listCatalog(s: State, type: PresetType, filters: CatalogFilters = {}): CatalogRow[] {
   let cache = catalogRows.get(s);
   if (!cache) catalogRows.set(s, (cache = new Map()));
-  const key = JSON.stringify([type, filters.vendor, filters.model, filters.material, filters.printer, filters.nozzle, filters.search]);
+  const key = JSON.stringify([type, filters.vendor, filters.model, filters.material, filters.printer, filters.nozzle, filters.search, filters.browseAll]);
   if (cache.has(key)) return cache.get(key)!;
   const rows = profilesFor(s, type).filter((p) => (!filters.vendor || p.vendor === filters.vendor)
     && (!filters.model || (p.model ?? first(p.config.printer_model)) === filters.model)
     && (!filters.material || first(p.config.filament_type) === filters.material)
     && (!filters.search || `${p.name} ${p.vendor} ${p.model ?? ''}`.toLowerCase().includes(filters.search.toLowerCase())))
     .map((p) => ({ name: p.name, vendor: p.vendor, model: (p.model ?? first(p.config.printer_model)) || undefined,
-      ...metadata(p.config), compatible: selectCompatibility(s, type, p.name, filters.printer ?? s.printer, filters.nozzle) }));
+      ...metadata(p.config), compatible: selectCompatibility(s, type, p.name, filters.printer ?? s.printer, filters.nozzle) })).filter(row => filters.browseAll || row.compatible.ok);
   cache.set(key, rows);
   return rows;
 }
@@ -75,7 +78,7 @@ function uniqueName(s: State, type: PresetType, desired: string): string {
 }
 function makeProfile(s: State, base: SystemPreset, name: string, values: Config = {}): UserPreset {
   const overlay = changedKeys(values, base.config);
-  return { name: uniqueName(s, base.type, name), type: base.type, inherits: base.name, base: { name: base.name, version: baseVersion(base) },
+  return { id: `profile:${crypto.randomUUID()}`, revision: 0, kind: 'profile', name: uniqueName(s, base.type, name), type: base.type, inherits: base.name, base: catalogAnchor(base), snapshot: {base: catalogAnchor(base),config: {...base.config,...overlay}},
     overlay, overrides: overlay, baseline: Object.fromEntries(Object.keys(overlay).map((key) => [key, base.config[key] ?? null])) };
 }
 
@@ -85,11 +88,11 @@ export function createProfileFromBase(type: PresetType, baseName: string, name?:
   const profile = makeProfile(s, base, name?.trim() || displayName(base));
   rememberLocalProfile(profile, s.api?.mock);
   setState({ userPresets: [...s.userPresets, profile] });
-  return profile.name;
+  return profileKey(profile);
 }
 
 export function resetToBase(type: PresetType, name: string, key?: string): void {
-  const s = getState(), { base, user } = resolveProfile(s, type, name);
+  const s = getState(), { base, source: user } = resolveProfile(s, type, name);
   if (!base || !user) return;
   const overlay = key ? { ...user.overlay ?? user.overrides } : {};
   const baseline = key ? { ...user.baseline } : {};
@@ -100,12 +103,12 @@ export function resetToBase(type: PresetType, name: string, key?: string): void 
       overlay[key] = base.config[key]; baseline[key] = base.config[key];
     }
   }
-  const profile: UserPreset = { ...user, overlay, overrides: overlay, baseline, parent: key ? user.parent : undefined,
+  const profile: UserPreset = { ...user, revision:(user.revision ?? 0)+1, overlay, overrides: overlay, baseline, parentId: key ? user.parentId : undefined, parent: key ? user.parent : undefined,
     base: key ? user.base : { name: base.name, version: baseVersion(base) } };
   rememberLocalProfile(profile, s.api?.mock);
   const clear = (config: Config) => { const result = key ? { ...config } : {}; if (key) delete result[key]; return result; };
   setState((st) => ({
-    userPresets: st.userPresets.map((p) => p.type === type && p.name === name ? profile : p),
+    userPresets: st.userPresets.map((p) => p.type === type && user && profileKey(p) === profileKey(user) ? profile : p),
     ...(type === 'filament' ? { filamentEdits: { ...st.filamentEdits, [name]: clear(st.filamentEdits[name] ?? {}) } }
       : (type === 'machine' ? st.printer : st.process) === name ? { dirty: { ...st.dirty, [type]: clear(st.dirty[type]) } } : {}),
     projectPresets: !st.projectPresets ? null : type === 'filament'
@@ -144,27 +147,27 @@ export function ensureDefaultProfiles(s: State): State {
   let next = { ...s, userPresets: [...s.userPresets] };
   const add = (base: SystemPreset, name = displayName(base), values: Config = {}) => {
     const profile = makeProfile(next, base, name, values);
-    next.userPresets.push(profile);
+    next.userPresets = [...next.userPresets,profile];
     rememberLocalProfile(profile, next.api?.mock);
-    return profile.name;
+    return profileKey(profile);
   };
   const own = (type: PresetType, name: string): string => {
-    if (next.userPresets.some((p) => p.type === type && p.name === name)) return name;
-    const selectedPrinter = resolveProfile(next, 'machine', next.printer).base?.name ?? next.printer;
-    const base = profilesFor(next, type).find((p) => p.name === name)
-      ?? profilesFor(next, type).find((p) => type === 'machine' || isCompatible(p, selectedPrinter));
+    const profile = findProfile(next,type,name);
+    if (profile) return profileKey(profile);
+    const base = profilesFor(next, type).find((p) => p.name === name);
     if (!base) return name;
     const existing = next.userPresets.find((p) => p.type === type && p.base?.name === base.name && !Object.keys(p.overlay ?? p.overrides).length && !p.parent);
-    return existing?.name ?? add(base);
+    return existing ? profileKey(existing) : add(base);
   };
   let preferred = '';
   try { preferred = localStorage.getItem('orca.printer') ?? ''; } catch {  }
-  const known = (name: string) => next.machines.some((p) => p.name === name) || next.userPresets.some((p) => p.type === 'machine' && p.name === name);
-  next.printer = own('machine', next.printer || (known(preferred) ? preferred : known(DEFAULT_PRINTER) ? DEFAULT_PRINTER : next.machines[0].name));
+  const known = (name: string) => next.machines.some((p) => p.name === name) || !!findProfile(next,'machine',name);
+  next.printer = own('machine', next.printer || preferred || (known(DEFAULT_PRINTER) ? DEFAULT_PRINTER : next.machines[0].name));
   const printer = resolveProfile(next, 'machine', next.printer).base;
-  const processes = next.processes.filter((p) => isCompatible(p, printer?.name ?? next.printer));
-  const filaments = next.filaments.filter((p) => isCompatible(p, printer?.name ?? next.printer));
-  const firstFilament = filaments.find((p) => /Generic PLA/.test(p.name)) ?? filaments.find((p) => /PLA.*Basic/.test(p.name)) ?? filaments[0];
+  if (!printer) return next;
+  const processes = next.processes.filter((p) => selectCompatibility(next,'process',p.name).ok);
+  let filaments = next.filaments.filter((p) => selectCompatibility({...next,process: next.process || processes[0]?.name || ''},'filament',p.name).ok);
+  let firstFilament = filaments.find(p => first(p.config.filament_type) === 'PLA' && first(p.config.filament_vendor) === 'Generic') ?? filaments.find(p => first(p.config.filament_type) === 'PLA') ?? filaments[0];
   if (!defaultsInitialized() && processes.length && firstFilament) {
     const choices = defaultProcesses(next);
     const startingProcess = next.process;
@@ -179,6 +182,8 @@ export function ensureDefaultProfiles(s: State): State {
   }
   if (!next.process && processes[0]) next.process = processes[0].name;
   next.process = own('process', next.process);
+  filaments = next.filaments.filter(p => selectCompatibility(next,'filament',p.name).ok);
+  firstFilament = filaments.find(p => first(p.config.filament_type) === 'PLA' && first(p.config.filament_vendor) === 'Generic') ?? filaments.find(p => first(p.config.filament_type) === 'PLA') ?? filaments[0];
   next.filamentSlots = (next.filamentSlots.length ? next.filamentSlots : firstFilament ? [firstFilament.name] : []).map((name) => own('filament', name || firstFilament?.name || ''));
   return next;
 }

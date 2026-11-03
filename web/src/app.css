@@ -29,7 +29,7 @@
   --overlay-94: var(--panel);
   --overlay-95: var(--panel);
   --overlay-97: var(--panel);
-  --hover: #2f2f37;
+  --hover: #484855;
   --hover-soft: var(--sunken);
   --selected: var(--accent-tint);
   --track: var(--line-strong);
@@ -617,3 +617,16 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .canvas-area[data-viewport=preview] .objects-outliner { right: 92px; top: 12px; width: clamp(140px, 28%, 260px); }
 :where(.orca-parity) .canvas-area[data-viewport=preview] .legend { max-width: min(316px, calc(72% - 128px)); }
 :where(.orca-parity) .outliner-heading { flex-wrap: wrap; }
+:where(.orca-parity) .compact-topbar .topbar-title { flex: 0 1 220px; }
+:where(.orca-parity) .compact-topbar .tabbar { flex: 1 1 auto; min-width: 0; }
+:where(.orca-parity) .compact-topbar .tabbar-tabs { flex: none; }
+
+:where(.orca-parity) .app { --workspace-rail-width: clamp(340px,28vw,440px); }
+:where(.orca-parity) .sidebar { width: var(--workspace-rail-width); }
+:where(.orca-parity) .topbar-project-context { display: flex; align-items: center; gap: 4px; flex: 0 0 calc(var(--workspace-rail-width) - 14px); min-width: 0; }
+:where(.orca-parity) .topbar-project-context .topbar-title { flex: 1; min-width: 0; }
+:where(.orca-parity) .compact-topbar .tabbar { justify-content: flex-start; gap: 8px; }
+:where(.orca-parity) .compact-topbar .tabbar-actions { margin-left: auto; }
+@media (max-width: 1000px) { :where(.orca-parity) .app { --workspace-rail-width: 340px; } :where(.orca-parity) .compact-topbar .visibility-label { display: none; } :where(.orca-parity) .compact-topbar .detail-option { padding-inline: 4px; } }
+@media (max-width: 760px) { :where(.orca-parity) .topbar-project-context { flex-basis: 140px; } :where(.orca-parity) .topbar-project-context .projects-button { display: none; } :where(.orca-parity) .compact-topbar .main-tab > span { display: none; } }
+@media (max-width: 540px) { :where(.orca-parity) .topbar-project-context { flex-basis: 72px; } :where(.orca-parity) .topbar-project-context > .menu-title { display: none; } :where(.orca-parity) .compact-topbar .tabbar-actions > .side-btn, :where(.orca-parity) .compact-topbar .side-options { display: none; } }

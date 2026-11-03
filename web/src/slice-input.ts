@@ -5,6 +5,7 @@ import { filamentColor } from './plater/filamentColor';
 import { meshSignature, plateDescription } from './plater/geometry';
 import { projectEdits, projectInstances } from './plater/projectTransforms';
 import { canEditProject } from './api/client';
+import { profileContext } from './profiles/context';
 import { effectiveConfig, getState, presetEdits, printerPreset, resolvePreset, type LayerEvent, type Mix, type State } from './state/store';
 
 function eventArg(e: LayerEvent): string {
@@ -102,10 +103,12 @@ export function calibOverrides(s = getState(), kind = ''): Config {
 
 export function jobFields(s: State, saving = false) {
   const sys = (type: 'machine' | 'process' | 'filament', n: string) => {
-    const base = resolvePreset(s, type, n).base;
-    return base?.engine_base ?? base?.name ?? n;
+    return resolvePreset(s,type,n).engineName ?? '';
   };
+  const context=profileContext(s);
+  const profile_ids=context.printer.id && context.process.id && context.filaments.every(p=>!!p.id) ? {schema:1 as const,printer:context.printer.id,process:context.process.id,filaments:context.filaments.map(p=>p.id!),revisions:{printer:context.printer.revision,process:context.process.revision,filaments:context.filaments.map(p=>p.revision)}} : undefined;
   return {
+    ...(profile_ids ? {profile_ids} : {}),
     ...(!saving && effectiveConfig(s, 'process').web_slice_backend === 'orcanp-v01' ? { backend: 'orcanp-v01' as const } : {}),
     vendor: printerPreset(s)?.vendor ?? 'BBL',
     printer: sys('machine', s.printer),

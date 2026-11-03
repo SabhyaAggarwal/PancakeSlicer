@@ -100,7 +100,15 @@ export interface PlateJson {
   plates?: { index: number; name: string; settings: Record<string, string>; locked?: boolean }[];
 }
 
+export interface JobProfileIds {
+  schema: 1;
+  printer: string;
+  process: string;
+  filaments: string[];
+  revisions: {printer: number; process: number; filaments: number[]};
+}
 export interface JobRequest {
+  profile_ids?: JobProfileIds;
   backend?: 'orcanp-v01';
   files: { name: string; blob: Blob }[];
   vendor: string;

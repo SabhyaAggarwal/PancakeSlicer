@@ -1,3 +1,4 @@
+import { findProfile } from './identity';
 import { profileEdit } from '../flow/profile-edit';
 import { resetToBase } from './catalog';
 import { useEffect, useState } from 'react';
@@ -8,7 +9,7 @@ import { OPTIONS, splitKey, TABS } from '../options';
 import { getState, presetEdits, resolvePreset, setState, useStore } from '../state/store';
 import { useMachine } from '../flow/fsm';
 import { display, isMetaKey } from './format';
-import { Icon } from '../components/Icon';
+import { undoable } from '../state/history';
 import { PresetPicker } from './Pickers';
 import { ProcessPresetPicker } from '../components/ProcessPresetPicker';
 import '../components/process-settings.css';
@@ -17,6 +18,8 @@ import { resolveProfileConflict, selectProfileConflicts, type ProfileConflict } 
 import type { SettingChange as Change } from '../state/changes';
 import { useChanges } from '../state/useChanges';
 export { useChanges } from '../state/useChanges';
+import { reviewProjectProfileChanges } from './project-draft';
+import { toast } from '../state/store';
 import { editing } from './editing';
 
 async function exportCurrent(type: PresetType, slot: number) {
@@ -25,7 +28,7 @@ async function exportCurrent(type: PresetType, slot: number) {
   const { base, user } = resolvePreset(s, type, name);
   const project = type === 'filament' ? s.projectPresets?.filaments[slot] : s.projectPresets?.[type];
   const { exportPresetJson } = await import('../preset-io');
-  exportPresetJson({ name, type, inherits: base?.name ?? name, overrides: { ...user?.overrides, ...project, ...presetEdits(s, type, slot) } });
+  exportPresetJson({ name: user?.name ?? base?.name ?? 'Profile', type, inherits: base?.name ?? name, overrides: { ...user?.overrides, ...project, ...presetEdits(s, type, slot) } });
 }
 
 interface MenuItem { icon: string; label: string; run(): void; disabled?: boolean }
@@ -52,25 +55,11 @@ function Changes({ type, list }: { type: PresetType; list: Change[] }) {
     const page = TABS[TAB_OF[type]]?.pages.find((p) => p.groups.some((g) => g.lines.some((l) => l.options.some((k) => splitKey(k)[0] === c.key))));
     if (page) setState({ settingsFocus: { type, page: page.title, key: c.key, nonce: Date.now() } });
   };
-  return (
-    <table className="pf-table pf-changes">
-      <thead><tr><th>Setting</th><th className="n">Was</th><th className="n">Now</th><th>Where</th><th aria-label="Revert" /></tr></thead>
-      <tbody>
-        {shown.map((c) => (
-          <tr key={`${c.scope}:${c.owner.object ?? ''}:${c.owner.volume ?? ''}:${c.owner.range ?? ''}:${c.key}`}>
-            <td><button type="button" className="pf-name" onClick={() => focus(c)} title={c.key}>{OPTIONS[c.key]?.label || c.key}</button></td>
-            <td className="n">{display(c.key, c.was)}</td>
-            <td className="n">{display(c.key, c.now)}</td>
-            <td>{where(c)}</td>
-            <td><button type="button" className="icon-btn" aria-label={`Revert ${OPTIONS[c.key]?.label || c.key}`} title="Revert" onClick={() => revert(c)}><Icon name="undo" size={14} /></button></td>
-          </tr>
-        ))}
-        {list.length > shown.length && (
-          <tr><td colSpan={5}><button type="button" className="pf-name" onClick={() => setAll(true)}>{list.length - shown.length} more</button></td></tr>
-        )}
-      </tbody>
-    </table>
-  );
+  const label=(c:Change)=>c.key === 'nonplanar_mode' ? 'Slicing method' : OPTIONS[c.key]?.label || c.key;
+  return <div className="pf-change-scroll"><table className="pf-change-table"><colgroup><col className="change-setting"/><col className="change-value"/><col className="change-value"/><col className="change-scope"/><col className="change-reset"/></colgroup><thead><tr><th>Setting</th><th>Previous</th><th>Current</th><th>Scope</th><th><span className="field-label-hidden">Reset</span></th></tr></thead><tbody>
+    {shown.map(c=><tr key={`${c.scope}:${c.owner.object ?? ''}:${c.owner.volume ?? ''}:${c.owner.range ?? ''}:${c.key}`}><td data-label="Setting"><button type="button" className="pf-name" onClick={()=>focus(c)} title={c.key}>{label(c)}</button></td><td data-label="Previous">{display(c.key,c.was)}</td><td data-label="Current">{display(c.key,c.now)}</td><td data-label="Scope">{where(c)}</td><td><button type="button" className="btn-ghost" aria-label={`Reset ${label(c)}`} onClick={()=>revert(c)}>Reset</button></td></tr>)}
+  </tbody></table>{list.length > shown.length && <button type="button" className="btn-ghost" onClick={()=>setAll(true)}>Show {list.length - shown.length} more changes</button>}</div>;
+
 }
 
 const REVIEW = 'pf-review';
@@ -87,7 +76,7 @@ export function reviewChanges(type: PresetType, slot = 0) {
   window.dispatchEvent(new CustomEvent(REVIEW, { detail: { type, slot } }));
 }
 
-function ChangesPop({ type, slot, list, project, state, isUser, save, saveAs }: { type: PresetType; slot: number; list: Change[]; project: number; state: string; isUser: boolean; save(): void; saveAs(): void }) {
+function ChangesPop({type,slot,list,project,state}: {type:PresetType;slot:number;list:Change[];project:number;state:string}) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     const take = () => {
@@ -100,9 +89,16 @@ function ChangesPop({ type, slot, list, project, state, isUser, save, saveAs }: 
   }, [type, slot]);
   useEffect(() => { if (!list.length && state !== 'saved') setOpen(false); }, [list.length, state]);
   if (!list.length && state !== 'saved') return null;
-  const label = state === 'saving' ? 'Saving' : state === 'saved' ? 'Saved' : `${list.length} changes`;
-  return <Popover.Root open={open} onOpenChange={setOpen}><Popover.Trigger asChild><button type="button" className="pf-mark" aria-label={label} title={label}>⁎</button></Popover.Trigger><Popover.Portal><Popover.Content className="orca-menu pf-changes-pop" aria-label="Changes" collisionPadding={8} sideOffset={4}>
-    <Changes type={type} list={list} /><div className="pf-changes-foot">{project > 0 && state !== 'saving' && <><button type="button" className="btn" onClick={isUser ? save : saveAs}>{isUser ? 'Save' : 'Save as new'}</button><button type="button" className="btn" onClick={() => revertAll(type, slot)}>Revert all</button></>}</div>
+  const label = state === 'saving' ? 'Saving…' : state === 'saved' && !list.length ? 'Saved to profile' : `Changes · ${list.length}`;
+  const resetAll = async () => {
+    const {confirmDialog}=await import('../components/Ask');
+    if(await confirmDialog('Revert all changes',`Reset all ${list.length} listed changes, including object and part overrides?`,['Revert all','Cancel'])) undoable('Revert all listed changes',()=>list.forEach(revert));
+  };
+  return <Popover.Root open={open} onOpenChange={setOpen}><Popover.Trigger asChild><button type="button" className="btn pf-changes-trigger" aria-label={label} aria-expanded={open}>{label}</button></Popover.Trigger><Popover.Portal><Popover.Content className="orca-menu pf-changes-pop" role="dialog" aria-label="Project changes" collisionPadding={12} sideOffset={6} align="end">
+    <div className="pf-changes-title">Project changes</div><Changes type={type} list={list}/>
+    {!!list.length && <div className="pf-changes-foot"><button type="button" className="btn" onClick={()=>void import('../flow/project').then(m=>m.flushProject()).catch(error=>import('../state/store').then(m=>m.toast(`Project save failed: ${error instanceof Error ? error.message : String(error)}`)))}>Save project</button>
+      {project > 0 && <button type="button" className="btn" onClick={()=>{try {reviewProjectProfileChanges(type,slot);setOpen(false);}catch(error){toast(error instanceof Error ? error.message : String(error));}}}>Review in profile editor…</button>}
+      <button type="button" className="btn-ghost" onClick={()=>void resetAll()}>Revert all</button></div>}
   </Popover.Content></Popover.Portal></Popover.Root>;
 
 }
@@ -114,28 +110,24 @@ function usePresetActions(type: PresetType, slot: number) {
   const state = useMachine(m, (x) => x.value);
   useEffect(() => m.send({ type: 'EDITS', n: project }), [m, project]);
   const presetName = useStore((s) => (type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot]));
-  const isUser = useStore((s) => s.userPresets.some((u) => u.type === type && u.name === presetName));
+  const isUser = useStore((s) => !!findProfile(s,type,presetName ?? ''));
 
   const onDelete = () => {
-    const u = getState().userPresets.find((x) => x.type === type && x.name === presetName);
+    const u = findProfile(getState(),type,presetName ?? '');
     if (u) void import('./PresetsWindow').then((m) => m.removePreset(type, u));
   };
-  const save = () => {
-    m.send({ type: 'SAVE' });
-    if (m.get().value === 'naming') setState({ presetUx: { kind: 'save', type, slot } });
-  };
-  const saveAs = () => { m.send({ type: 'SAVE_AS' }); setState({ presetUx: { kind: 'save', type, slot } }); };
-  return { list, project, state, presetName, isUser, onDelete, save, saveAs };
+  const save=()=>{try {reviewProjectProfileChanges(type,slot);}catch(error){toast(error instanceof Error ? error.message : String(error));}};
+  return { list, project, state, presetName, isUser, onDelete, save };
 }
 
 export function PresetActions({ type, slot = 0 }: { type: PresetType; slot?: number }) {
-  const { project, presetName, isUser, onDelete, save, saveAs } = usePresetActions(type, slot);
+  const { project, presetName, isUser, onDelete, save } = usePresetActions(type, slot);
   return (
     <PresetMenu label={`${TYPE_NAME[type]} preset actions`} items={[
-      { icon: 'save', label: isUser ? 'Save' : 'Save as new', run: isUser ? save : saveAs, disabled: !project && isUser },
-      ...(isUser ? [{ icon: 'save', label: 'Save as new', run: saveAs }] : []),
+      { icon: 'save', label: 'Review project changes in profile editor', run: save, disabled: !project && isUser },
+
       { icon: 'undo', label: 'Revert all', run: () => revertAll(type, slot), disabled: !project },
-      { icon: 'undo', label: 'Reset to base', run: () => resetToBase(type, presetName ?? ''), disabled: !isUser },
+      { icon: 'undo', label: 'Reset settings', run: () => resetToBase(type, presetName ?? ''), disabled: !isUser },
       { icon: 'compare', label: 'Compare', run: () => setState({ presetUx: { kind: 'compare', type, left: presetName } }) },
       { icon: 'menu_edit_preset', label: 'Edit profile', run: () => setState({ presetUx: { kind: 'presets', type, name: presetName, edit: true } }) },
       { icon: 'design_export', label: 'Export', run: () => void exportCurrent(type, slot) },
@@ -145,8 +137,8 @@ export function PresetActions({ type, slot = 0 }: { type: PresetType; slot?: num
 }
 
 export function ChangesMark({ type, slot = 0 }: { type: PresetType; slot?: number }) {
-  const { list, project, state, isUser, save, saveAs } = usePresetActions(type, slot);
-  return <ChangesPop type={type} slot={slot} list={list} project={project} state={state} isUser={isUser} save={save} saveAs={saveAs} />;
+  const {list,project,state}=usePresetActions(type,slot);
+  return <ChangesPop type={type} slot={slot} list={list} project={project} state={state} />;
 }
 
 const EMPTY: ProfileConflict[] = [];
@@ -171,9 +163,9 @@ export function PresetBar({ type, slot = 0 }: { type: PresetType; slot?: number 
   return (
     <>
       <div className="tab-preset-row">
-        {type === 'process' ? <ProcessPresetPicker /> : <PresetPicker type={type} slot={slot} />}
-        <button type="button" className="btn profile-edit-action" onClick={() => setState({presetUx: {kind: 'presets', type, name: presetName, edit: true}})}>Edit</button>
-        <ChangesMark type={type} slot={slot} /><PresetActions type={type} slot={slot} />
+        <div className="profile-choice-row">{type === 'process' ? <ProcessPresetPicker/> : <PresetPicker type={type} slot={slot}/>}</div>
+        <div className="profile-action-row"><button type="button" className="btn profile-edit-action" onClick={() => setState({presetUx: {kind: 'presets', type, name: presetName, edit: true}})}>Edit</button>
+        <ChangesMark type={type} slot={slot}/><PresetActions type={type} slot={slot}/></div>
       </div>
       {presetName && <ConflictLine type={type} name={presetName} slot={slot} />}
     </>

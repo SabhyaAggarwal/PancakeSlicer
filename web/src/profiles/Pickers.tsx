@@ -27,10 +27,10 @@ function filamentGroups(slot: number | null, catalog = false): PickerGroup[] {
   const entries = catalog ? listCatalog('filament') : listProfiles('filament');
   const item = (e: PickerEntry, swatch?: string | null, sub?: string): PickerItem => {
     const brand = first(e.config.filament_vendor) || e.vendor || 'Generic', b = brandName(e.name, e.config);
-    return { id: e.name, label: e.mine ? e.name : b.name, sub: sub ?? brand, facet: brand, swatch, disabled: e.reason ?? false, search: `${brand} ${first(e.config.filament_type)} ${e.name}` };
+    return { id: e.key, label: e.mine ? e.name : b.name, sub: sub ?? brand, facet: brand, swatch, disabled: e.reason ?? false, search: `${brand} ${first(e.config.filament_type)} ${e.name}` };
   };
   const loaded = catalog ? [] : s.filamentSlots.flatMap((name, i) => {
-    const reason = filamentSwitchReason(s, i), e = entries.find((x) => x.name === name);
+    const reason = filamentSwitchReason(s, i), e = entries.find((x) => x.key === name);
     if ((i === slot && !reason) || !e) return [];
     return [{ ...item(e, filamentColor(s, i + 1), `Slot ${i + 1}`), disabled: reason ?? false }];
   }).filter((it, i, all) => all.findIndex((x) => x.id === it.id) === i);
@@ -57,8 +57,8 @@ export function FilamentPicker({ slot, onColour }: { slot: number; onColour(colo
   useStore((s) => s.filamentEdits);
   useStore((s) => s.userPresets);
   const s = getState();
-  const c = resolvePreset(s, 'filament', name).config;
-  const b = brandName(name, c);
+  const resolved = resolvePreset(s, 'filament', name), c = resolved.config, label = resolved.name ?? 'Unavailable filament';
+  const b = brandName(label, c);
   const colour = filamentColor(s, slot + 1);
   return (
     <span className="pk-slot">
@@ -68,7 +68,7 @@ export function FilamentPicker({ slot, onColour }: { slot: number; onColour(colo
         onPick={(id) => id !== name && requestPreset('filament', slot, id)} footer={[presets('filament', name)]}>
         <span className="pk-type">{first(c.filament_type) || '—'}</span>
         <span className="pk-brand">{b.brand}</span>
-        <span className="pk-name" title={name}>{name}</span>
+        <span className="pk-name" title={resolved.error ?? label}>{label}</span>
       </Picker>
     </span>
   );
@@ -103,7 +103,7 @@ export function PrinterPicker() {
     const byVendor = new Map<string, PickerItem[]>();
     for (const e of listProfiles('machine')) {
       const v = vendorOf(e.config, e.vendor);
-      byVendor.set(v, [...(byVendor.get(v) ?? []), { id: e.name, label: e.mine ? e.name : shortName(e.name), meta: size(e.config), search: e.name }]);
+      byVendor.set(v, [...(byVendor.get(v) ?? []), { id: e.key, label: e.mine ? e.name : shortName(e.name), meta: size(e.config), search: e.name }]);
     }
     return byVendorRail(byVendor);
   };
@@ -126,7 +126,7 @@ export function PrinterPicker() {
     <Picker label="Printer" value={printer} memory="orca.web.picker.printers" groups={profileGroups} onPick={(name) => name !== printer && requestPreset('machine', 0, name)}
       catalog={{ label: 'Add printer', groups: catalogGroups, onAdd: add }}
       footer={[presets('machine', printer), { label: 'Create printer', run: () => setState({ appDialog: 'createPrinter' }) }]}>
-      <span className="pk-name" title={printer}>{printer}</span>
+      <span className="pk-name" title={resolvePreset(getState(),'machine',printer).error ?? undefined}>{resolvePreset(getState(),'machine',printer).name ?? 'Choose printer'}</span>
     </Picker>
   );
 }

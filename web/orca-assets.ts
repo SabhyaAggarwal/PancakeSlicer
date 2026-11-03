@@ -6,7 +6,7 @@ import type { Plugin } from 'vite';
 const RESOURCES = fileURLToPath(new URL('../resources', import.meta.url));
 const IMAGES = path.join(RESOURCES, 'images');
 const PROFILES = path.join(RESOURCES, 'profiles');
-const VENDORS = ['BBL', 'Prusa', 'Custom'];
+const VENDORS = fs.readdirSync(PROFILES).filter(v => fs.existsSync(path.join(PROFILES, `${v}.json`)) && fs.statSync(path.join(PROFILES, v)).isDirectory());
 const HEADS = path.join(RESOURCES, 'nonplanar', 'heads');
 function headIndex(): string {
   const heads = fs.readdirSync(HEADS).filter((f) => f.endsWith('.json')).map((f) => {
@@ -48,13 +48,14 @@ function darkIcon(name: string): string | null {
 }
 
 function resolveAsset(url: string): string | null {
-  const clean = decodeURIComponent(url.split('?')[0]);
+  let clean: string;
+  try { clean = decodeURIComponent(url.split('?')[0]); } catch { return null; }
   let m = /^\/images\/([A-Za-z0-9_.+-]+\.(?:svg|png))$/.exec(clean);
   if (m) return path.join(IMAGES, m[1]);
   m = /^\/nonplanar\/heads\/([a-z0-9_-]+\.json)$/.exec(clean);
   if (m && m[1] !== 'index.json') return path.join(HEADS, m[1]);
-  m = /^\/profiles\/([A-Za-z0-9_-]+)\/([A-Za-z0-9 _.+-]+\.(?:svg|png|stl))$/.exec(clean);
-  if (m) return path.join(PROFILES, m[1], m[2]);
+  m = /^\/profiles\/([^/\\\x00]+)\/([^/\\\x00]+\.(?:svg|png|stl))$/.exec(clean);
+  if (m && m[1] !== '.' && m[1] !== '..') return path.join(PROFILES, m[1], m[2]);
   return null;
 }
 
@@ -136,14 +137,14 @@ export function orcaAssets(): Plugin {
       const quoted = (name: string) => new RegExp(`["'\`]${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'\`]`).test(text);
       for (const v of VENDORS) {
         const beds = new Set<string>();
-        for (const f of fs.readdirSync(path.join(PROFILES, v, 'machine'))) {
+        for (const f of fs.existsSync(path.join(PROFILES, v, 'machine')) ? fs.readdirSync(path.join(PROFILES, v, 'machine')) : []) {
           if (!f.endsWith('.json')) continue;
           const m = JSON.parse(fs.readFileSync(path.join(PROFILES, v, 'machine', f), 'utf8'));
           if (m.type === 'machine_model' && quoted(m.name)) for (const b of [m.bed_model, m.bed_texture]) if (b) beds.add(b);
         }
         for (const f of fs.readdirSync(path.join(PROFILES, v))) {
           const cover = /^(.*)_cover\.png$/.exec(f);
-          if (!/\.(svg|png|stl)$/.test(f) || !(text.includes(f) || beds.has(f) || (cover && quoted(cover[1])))) continue;
+          if (!/\.(svg|png|stl)$/.test(f) || !(text.includes(f) || beds.has(f) || cover)) continue;
           this.emitFile({ type: 'asset', fileName: `profiles/${v}/${f}`, source: assetSource(path.join(PROFILES, v, f)) });
         }
       }

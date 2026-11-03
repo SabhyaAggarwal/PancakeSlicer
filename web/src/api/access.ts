@@ -107,12 +107,18 @@ export async function mutation(path: string, init: RequestInit, retry = false, s
   return response;
 }
 
-export async function responseError(response: Response): Promise<Error & { status: number }> {
+export interface ApiError extends Error { status:number; code?:string; recovery?:string; profile?:{kind:string;name:string;vendor:string;slot?:number}; revision?:number }
+export async function responseError(response: Response): Promise<ApiError> {
   const text = await response.text();
   let message = `${response.status} ${response.statusText}: ${text.slice(0, 300)}`;
+  const details: Partial<ApiError> = {};
   try {
     const j = JSON.parse(text);
     if (typeof j?.error === 'string' && j.error) message = j.error;
+    if(typeof j.code === 'string')details.code=j.code;
+    if(typeof j.recovery === 'string')details.recovery=j.recovery;
+    if(Number.isInteger(j.revision))details.revision=j.revision;
+    if(j.profile && typeof j.profile.kind === 'string' && typeof j.profile.name === 'string')details.profile=j.profile;
   } catch {  }
-  return Object.assign(new Error(message), { status: response.status });
+  return Object.assign(new Error(message), { status: response.status },details);
 }

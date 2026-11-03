@@ -406,7 +406,7 @@ export class PreviewScene {
     if (this.frame || !this.host.clientWidth) return;
     this.frame = requestAnimationFrame(() => {
       this.frame = 0;
-      this.renderNow();
+      if(this.host.clientWidth)this.renderNow();
     });
   }
 

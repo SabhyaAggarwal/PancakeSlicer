@@ -12,12 +12,14 @@ import { undo, undoable } from './history';
 import { selectChanges } from './changes';
 import { canEditProject } from '../api/client';
 import type { PaintKind, Painting } from '../plater/paint';
-import { decideConflict, prepareProfile, preserveProfileParents, profileConflicts, resolveProfile, saveProfile } from '../profiles/model';
+import { decideConflict, prepareProfile, preserveProfileParents, profileConflicts, resolveProfile } from '../profiles/model';
 import { rememberProfile, rememberProfileUpdate } from '../persist/profiles';
 import { noticeKind, shouldToast, type NoticeEntry, type NoticeKind } from '../notice-text';
+import { emptyPrinterLibrary, type PrinterProfileLibrary, type ProjectProfileReferences, type ProfileRecovery } from '../profiles/ownership';
 import { ensureDefaultProfiles } from '../profiles/catalog';
 export { PRESET_META } from '../profiles/model';
-import { isCompatible } from '../profiles/compatibility';
+import { effectiveProfileValues } from '../profiles/context';
+import { selectCompatibility } from '../profiles/compatibility';
 export { isCompatible, selectCompatibility } from '../profiles/compatibility';
 
 
@@ -124,9 +126,8 @@ export interface HeadInfo {
 }
 
 export type PresetUx =
-  | { kind: 'save'; type: PresetType; slot: number }
   | { kind: 'compare'; type: PresetType; left?: string; right?: string }
-  | { kind: 'presets'; type: PresetType; name?: string; edit?: boolean }
+  | { kind: 'presets'; type: PresetType; name?: string; edit?: boolean;stage?:import('../profiles/project-draft').ProjectProfileChanges }
   | { kind: 'export' }
   | { kind: 'import'; back?: PresetUx };
 
@@ -188,6 +189,9 @@ export interface State {
   processes: SystemPreset[];
   filaments: SystemPreset[];
   userPresets: UserPreset[];
+  printerLibrary: PrinterProfileLibrary;
+  profileSnapshots: ProjectProfileReferences | null;
+  profileRecoveries: ProfileRecovery[];
   printer: string;
   process: string;
   filamentSlots: string[];
@@ -278,6 +282,9 @@ let state: State = {
   processes: [],
   filaments: [],
   userPresets: [],
+  printerLibrary: emptyPrinterLibrary(),
+  profileSnapshots: null,
+  profileRecoveries: [],
   printer: '',
   process: '',
   filamentSlots: [],
@@ -286,7 +293,7 @@ let state: State = {
   projectPresets: null,
   projectNotice: null,
   bedType: '',
-  uiMode: 'simple',
+  uiMode: (()=>{try {const mode=localStorage.getItem('orca.settings_detail');return mode === 'advanced' || mode === 'develop' ? mode : 'simple';}catch {return 'simple';}})(),
   developerMode: (() => { try { return localStorage.getItem('orca.developer_mode') === '1'; } catch { return false; } })(),
   filamentsToUse: (() => { try { return JSON.parse(localStorage.getItem('orca.web.filamentsToUse') ?? 'null'); } catch { return null; } })(),
   mixedTemperatures: (() => { try { return localStorage.getItem('orca.enable_high_low_temp_mixed_printing') === '1'; } catch { return false; } })(),
@@ -418,25 +425,13 @@ export async function resolveProfileConflict(type: PresetType, name: string, key
   setState((st) => ({ userPresets: st.userPresets.map((p) => p.type === type && p.name === name ? preset : p), job: markStale(st.job) }));
 }
 
-const effectiveValues = new WeakMap<Config, Map<string, { project: Config | undefined; plate: Config | undefined; edits: Config; value: Config }>>();
 export function effectiveConfig(s: State, type: PresetType, slot = 0): Config {
-  const name = type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot];
-  const { config } = resolvePreset(s, type, name ?? '');
-  const project = type === 'filament' ? s.projectPresets?.filaments[slot] : s.projectPresets?.[type];
-  const plate = type === 'process' ? s.projectPlates.find((p) => p.index === s.plateIndex)?.settings : undefined;
-  const edits = presetEdits(s, type, slot), key = `${type}:${slot}`;
-  let values = effectiveValues.get(config);
-  if (!values) effectiveValues.set(config, (values = new Map()));
-  const cached = values.get(key);
-  if (cached && cached.project === project && cached.plate === plate && cached.edits === edits) return cached.value;
-  const value = { ...config, ...project, ...plate, ...edits };
-  values.set(key, { project, plate, edits, value });
-  return value;
+  const key = type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot] ?? '';
+  return effectiveProfileValues(s,type,key,slot);
 }
 
 export function compatible(s: State, type: 'process' | 'filament', printer = s.printer, process = s.process): SystemPreset[] {
-  const print = type === 'filament' ? resolvePreset(s, 'process', process).base?.name ?? process : undefined;
-  return listFor(s, type).filter((p) => isCompatible(p, printer, print));
+  return listFor(s,type).filter(p => selectCompatibility({...s,process},type,p.name,printer).ok);
 }
 
 const printerCache = new WeakMap<SystemPreset, WeakMap<Config, SystemPreset>>();
@@ -454,16 +449,7 @@ export function printerPreset(s: State): SystemPreset | undefined {
 }
 
 export function filamentVariant(s: State, name: string, printer = s.printer, process = s.process): string | undefined {
-  const { base } = resolvePreset(s, 'filament', name);
-  const machine = resolvePreset(s, 'machine', printer).base?.name ?? printer;
-  const print = resolvePreset(s, 'process', process).base?.name ?? process;
-  if (base && isCompatible(base, machine, print)) return name;
-  const identity = (n: string) => n.replace(/\s*@.*$/, '').trim();
-  const variants = compatible(s, 'filament', machine, process);
-  return (variants.find((p) => identity(p.name) === identity(base?.name ?? name))
-    ?? variants.find((p) => !!base?.filament_id && p.filament_id === base.filament_id
-      && String(p.config.filament_vendor) === String(base.config.filament_vendor)
-      && String(p.config.filament_type) === String(base.config.filament_type)))?.name;
+  return selectCompatibility({...s,process},'filament',name,printer).ok ? name : undefined;
 }
 
 export function filamentSwitchReason(s: State, slot: number): string | null {
@@ -543,34 +529,6 @@ export function hasUnsavedEdits(s: State, type: PresetType, slot: number) {
   return type !== 'filament' || !s.filamentSlots.some((f, i) => i !== slot && f === s.filamentSlots[slot]);
 }
 
-export async function saveUserPreset(type: PresetType, name: string, slot = 0, _detach = false) {
-  const s = getState();
-  const current = type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot];
-  const project = type === 'filament' ? s.projectPresets?.filaments[slot] : s.projectPresets?.[type];
-  const values = { ...resolvePreset(s, type, current).config, ...project, ...presetEdits(s, type, slot) };
-  const preset = saveProfile(s, type, name, current, values);
-  await s.api!.saveUserPreset(preset);
-  setState((st) => {
-    const patch: Partial<State> = {
-      userPresets: [...st.userPresets.filter((u) => !(u.type === type && u.name === name)), preset],
-    };
-    if (type === 'filament') {
-      const filamentEdits = { ...st.filamentEdits };
-      delete filamentEdits[current];
-      patch.filamentEdits = filamentEdits;
-      patch.filamentSlots = st.filamentSlots.map((f) => f === current ? name : f);
-      if (st.projectPresets) patch.projectPresets = { ...st.projectPresets,
-        filaments: st.projectPresets.filaments.map((c, i) => i === slot ? {}
-          : st.filamentSlots[i] === current ? { ...c, ...presetEdits(s, type, slot) } : c) };
-    } else {
-      patch.dirty = { ...st.dirty, [type]: {} };
-      if (type === 'machine') patch.printer = name;
-      else patch.process = name;
-      if (st.projectPresets) patch.projectPresets = { ...st.projectPresets, [type]: {} };
-    }
-    return patch;
-  });
-}
 
 export function logNotice(message: string, kind: NoticeKind = noticeKind(message)) {
   setState((s) => ({ noticeLog: [...s.noticeLog.slice(-99), { id: (s.noticeLog.at(-1)?.id ?? 0) + 1, message, kind }] }));

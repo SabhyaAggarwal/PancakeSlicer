@@ -1,3 +1,4 @@
+import { SettingsDetail } from './VisibilityControl';
 import { ProjectTitle } from '../projects/ProjectTitle';
 import { MenuButton, type MenuEntry } from './Menu';
 import { showProjects } from '../flow/project';
@@ -80,7 +81,7 @@ export function TopBar() {
             action: () => void import('../preview/objExport').then((m) => m.exportToolpathsObj(exportName || 'toolpaths')) },
           { label: 'Export Preset Bundle...', action: () => setState({ presetUx: { kind: 'export' } }), tip: 'Export current configuration to files' },
         ];
-  const appItems: MenuItem[] = [{label: 'Edit', sub: [
+  const appItems: MenuItem[] = [{label:'Projects',action:showProjects},{label:'Profiles',action:()=>setState({presetUx:{kind:'presets',type:'machine'}})},'sep',{label: 'Edit', sub: [
           { label: undoLabel ? `Undo ${undoLabel}` : 'Undo', shortcut: `${MOD}+Z`, action: undo, disabled: !undoLabel },
           { label: redoLabel ? `Redo ${redoLabel}` : 'Redo', shortcut: `${MOD}+Y`, action: redo, disabled: !redoLabel },
           ...(undoLabel || redoLabel ? [{ label: 'History', sub: [
@@ -149,10 +150,10 @@ export function TopBar() {
           { label: 'About OrcaSlicer', action: () => setState({ appDialog: 'about' }), tip: 'Version, licence and Corresponding Source' },
         ]}];
   return <header className="topbar compact-topbar">
-    <MenuButton className="app-menu-button" label="Application menu" items={appItems}><Icon name="OrcaSlicer" size={20}/></MenuButton>
+    <div className="topbar-project-context"><MenuButton className="app-menu-button" label="Application menu" items={appItems}><Icon name="OrcaSlicer" size={20}/></MenuButton>
     <button type="button" className="menu-title projects-button" onClick={showProjects}>Projects</button>
     <Menu title="File" items={fileItems}/>
-    <ProjectTitle/>
+    <ProjectTitle/></div>
     {mock && <span className="mock-badge" title="Demo: slices are simulated">Demo</span>}
     {tab !== 'projects' && <TabBar/>}
     {archive && <Suspense fallback={null}><ArchiveDialog files={archive} close={() => setArchive(null)} /></Suspense>}
@@ -165,6 +166,7 @@ function SideOptions({ options, value, onChange }: { options: string[]; value: s
 
 export function TabBar() {
   const tab = useStore((s) => s.tab);
+  const profileManager=useStore(s=>s.presetUx?.kind === 'presets' || s.presetUx?.kind === 'compare');
   const job = useStore((s) => s.job);
   const hasObjects = useStore((s) => s.objects.length > 0);
   const outside = useStore(outsideVolumeWarning);
@@ -181,15 +183,16 @@ export function TabBar() {
   return (
     <div className="tabbar">
       <div className="tabbar-tabs">
-        <button className={`main-tab ${tab === 'prepare' ? 'active' : ''}`} onClick={() => setState({ tab: 'prepare' })}>
+        <button aria-label="Prepare" className={`main-tab ${tab === 'prepare' ? 'active' : ''}`} onClick={() => setState({ tab: 'prepare' })}>
           <Icon name="tab_3d_active" size={20} />
           <span>Prepare</span>
         </button>
-        <button className={`main-tab ${tab === 'preview' ? 'active' : ''}`} onClick={() => setState({ tab: 'preview' })}>
+        <button aria-label="Preview" className={`main-tab ${tab === 'preview' ? 'active' : ''}`} onClick={() => setState({ tab: 'preview' })}>
           <Icon name="tab_preview_active" size={20} />
           <span>Preview</span>
         </button>
       </div>
+      {!profileManager && <SettingsDetail/>}
       <div className="tabbar-actions">
         {allSlice ? (
           <button className="side-btn side-split" disabled={busy} title="Slice all plates" onClick={() => void sliceAll()}>Slice all</button>
@@ -213,7 +216,7 @@ export function TabBar() {
             Send
           </button>
         )}
-        </span><MenuButton className="btn output-overflow" label="More output actions" items={[{label: exportLabel, action: download, disabled: !exportEnabled, tip: job.stale ? STALE_RESULT_TIP : 'Slice the plate first'}, ...(hasPrinters ? [{label: 'Send to printer', action: () => setState({appDialog: 'send'}), disabled: !exportEnabled}] : []), ...(plates ? [{label: 'Slice all plates', action: () => void sliceAll(), disabled: busy}, {label: 'Export all plates', action: () => void exportAll(), disabled: !exportAllEnabled}] : [])]}>More</MenuButton>
+        </span><MenuButton className="btn output-overflow" label="More output actions" items={[{label:'Slice plate',action:()=>void slice(),disabled:!hasObjects || busy || !!outside,tip:outside ?? 'Add a model before slicing'}, {label: exportLabel, action: download, disabled: !exportEnabled, tip: job.stale ? STALE_RESULT_TIP : 'Slice the plate first'}, ...(hasPrinters ? [{label: 'Send to printer', action: () => setState({appDialog: 'send'}), disabled: !exportEnabled}] : []), ...(plates ? [{label: 'Slice all plates', action: () => void sliceAll(), disabled: busy}, {label: 'Export all plates', action: () => void exportAll(), disabled: !exportAllEnabled}] : [])]}>More</MenuButton>
       </div>
     </div>
   );

@@ -2,9 +2,10 @@ import { strToU8, unzipSync, zipSync, type Zippable } from 'fflate';
 import type { Config, ConfigValue, PresetType, SystemPreset, UserPreset } from './api/types';
 import { normalizeConfigValue, unescapeConfigString } from './config-values';
 import { isHidden, OPTIONS } from './options';
-import { compatible, getState, listFor, PRESET_META, resolvePreset, setState, type State } from './state/store';
-import { rememberBase, rememberLocalProfile } from './persist/profiles';
-import { baseVersion, saveProfile } from './profiles/model';
+import { compatible, getState, listFor, PRESET_META, resolvePreset, type State } from './state/store';
+import { profileKey } from './profiles/identity';
+import { validApplicability } from './profiles/applicability';
+import { baseVersion, normalizeUserPreset, saveProfile, storedProfile } from './profiles/model';
 
 export const PRESET_VERSION = '02.08.01.55';
 const SETTINGS_ID: Record<PresetType, string> = { machine: 'printer_settings_id', process: 'print_settings_id', filament: 'filament_settings_id' };
@@ -20,8 +21,8 @@ function orcaValue(key: string, value: ConfigValue): string | string[] {
 }
 
 export function toOrcaJson(p: UserPreset, s: State = getState()): Record<string, string | string[]> {
-  const withProfile = { ...s, userPresets: [...s.userPresets.filter((u) => u.type !== p.type || u.name !== p.name), p] };
-  const { config, base } = resolvePreset(withProfile, p.type, p.name);
+  const withProfile = { ...s, userPresets: [...s.userPresets.filter((u) => u.type !== p.type || profileKey(u) !== profileKey(p)), p] };
+  const { config, base } = resolvePreset(withProfile, p.type, profileKey(p));
   const out: Record<string, string | string[]> = {};
   for (const [key, value] of Object.entries({ ...config, ...p.metadata }))
     if (!PRESET_META.test(key)) out[key] = orcaValue(key, value);
@@ -32,6 +33,7 @@ export function toOrcaJson(p: UserPreset, s: State = getState()): Record<string,
   Object.assign(out, { from: 'User', inherits: p.parent ?? (p.metadata?.inherits === '' ? '' : p.base?.name ?? p.inherits), name: p.name,
     version: String(p.metadata?.version ?? PRESET_VERSION) });
   out[SETTINGS_ID[p.type]] = p.type === 'filament' ? [p.name] : p.name;
+  out.orca_web_profile = JSON.stringify({schema:1,profile:{...storedProfile(p),snapshot:p.base ? {base:p.base,config} : p.snapshot}});
   return out;
 }
 
@@ -48,6 +50,7 @@ export interface ParsedPreset {
   from?: string;
   printers: string[];
   metadata?: Config;
+  appProfile?: UserPreset;
 }
 
 function typeOf(raw: Record<string, unknown>): PresetType | undefined {
@@ -71,7 +74,18 @@ export function parsePresetJson(text: string, file: string): ParsedPreset {
   const parsed: ParsedPreset = { ...base, name: str(r.name) || base.name, inherits: str(r.inherits), type: typeOf(r), from: str(r.from), metadata: {} };
   if (!parsed.type) return { ...parsed, error: 'unknown preset type (no printer_settings_id, print_settings_id or filament_settings_id)' };
   if (!/^\d+(\.\d+){1,3}/.test(str(r.version))) return { ...parsed, error: 'missing or invalid "version"' };
+  if (r.orca_web_profile !== undefined) {
+    try {
+      const app = typeof r.orca_web_profile === 'string' ? JSON.parse(r.orca_web_profile) : r.orca_web_profile;
+      const p = app?.profile;
+      if (app?.schema !== 1 || !p || p.type !== parsed.type || typeof p.name !== 'string' || !p.base || typeof p.base.name !== 'string'
+        || typeof p.base.version !== 'string' || !p.overlay || typeof p.overlay !== 'object' || Array.isArray(p.overlay)
+        || p.applicability !== undefined && !validApplicability(p.applicability)) throw new Error('invalid app metadata');
+      parsed.appProfile = normalizeUserPreset(p);
+    } catch { return {...parsed,error:'The saved profile metadata is invalid. Repair or re-export the profile.'}; }
+  }
   for (const [key, value] of Object.entries(r)) {
+    if (key === 'orca_web_profile') continue;
     if (!(typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
       || Array.isArray(value) && (value.every((x) => typeof x === 'string') || value.every((x) => typeof x === 'number')))) {
       parsed.dropped.push(key);
@@ -127,7 +141,7 @@ export interface ImportPlan {
 export function planImport(s: State, parsed: ParsedPreset[]): ImportPlan[] {
   const working = { ...s, userPresets: [...s.userPresets] };
   const plans = new Map<ParsedPreset, ImportPlan>(), visiting = new Set<ParsedPreset>();
-  const id = (p: ParsedPreset) => `${p.type}\0${p.name}`;
+  const id = (p: ParsedPreset) => `${p.type}\0${p.appProfile?.id ?? p.name}`;
   const first = new Map<string, ParsedPreset>();
   for (const p of parsed) if (!first.has(id(p))) first.set(id(p), p);
   const build = (p: ParsedPreset): ImportPlan => {
@@ -138,6 +152,13 @@ export function planImport(s: State, parsed: ParsedPreset[]): ImportPlan[] {
     if (p.error || !p.type) return skip(p.error);
     if (first.get(id(p)) !== p) return skip('duplicate');
     const type = p.type;
+    if (p.appProfile) {
+      const profile = p.appProfile;
+      const same = working.userPresets.find(u => u.type === type && profileKey(u) === profileKey(profile));
+      const plan: ImportPlan = {parsed:p,preset:profile,status:same ? 'replace' : 'new'};
+      working.userPresets = [...working.userPresets.filter(u => u.type !== type || profileKey(u) !== profileKey(profile)),profile];
+      plans.set(p,plan); return plan;
+    }
     visiting.add(p);
     if (p.from?.toLowerCase() === 'system') {
       const incoming = first.get(`${type}\0${p.inherits}`);
@@ -204,27 +225,9 @@ export function planImport(s: State, parsed: ParsedPreset[]): ImportPlan[] {
 }
 
 export async function applyImportPlans(plans: ImportPlan[]): Promise<{ profiles: number; bases: number }> {
-  const accepted = plans.filter((p) => p.status !== 'skip');
-  const bases = accepted.flatMap((p) => p.base ? [p.base] : []);
-  bases.forEach(rememberBase);
-  if (bases.length) setState((s) => Object.fromEntries((['machine', 'process', 'filament'] as const).map((type) => {
-    const key = type === 'machine' ? 'machines' : type === 'process' ? 'processes' : 'filaments';
-    const incoming = bases.filter((b) => b.type === type);
-    return [key, [...s[key].filter((b) => !incoming.some((n) => n.name === b.name)), ...incoming]];
-  })));
-  const profiles = accepted.flatMap((p) => p.preset ? [p.preset] : []);
-  const stored = new Set<UserPreset>();
-  const save = async (p: UserPreset) => {
-    if (stored.has(p)) return;
-    stored.add(p);
-    const parent = profiles.find((other) => other.type === p.type && other.name === p.parent);
-    if (parent) await save(parent);
-    const s = getState();
-    if (s.api) await s.api.saveUserPreset(p); else rememberLocalProfile(p);
-    setState((st) => ({ userPresets: [...st.userPresets.filter((u) => u.type !== p.type || u.name !== p.name), p] }));
-  };
-  for (const p of profiles) await save(p);
-  return { profiles: profiles.length, bases: bases.length };
+  const accepted = plans.filter(p => p.status !== 'skip'), bases = accepted.flatMap(p => p.base ? [p.base] : []), profiles = accepted.flatMap(p => p.preset ? [p.preset] : []);
+  if(profiles.length || bases.length){const {commitProfileRecords}=await import('./profiles/transactions');await commitProfileRecords(profiles,{bases,operationId:`import:${crypto.randomUUID()}`});}
+  return {profiles:profiles.length,bases:bases.length};
 }
 
 function download(name: string, data: Uint8Array | string, mime: string) {

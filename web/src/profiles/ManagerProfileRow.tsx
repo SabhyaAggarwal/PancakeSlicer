@@ -7,6 +7,7 @@ export interface ManagerProfileRowItem {
   name: string;
   note: string;
   slot?: number;
+  cover?: string;
 }
 
 export const ManagerProfileRow = memo(function ManagerProfileRow({ item, listId, selected, focused, dispatch }: {
@@ -22,7 +23,8 @@ export const ManagerProfileRow = memo(function ManagerProfileRow({ item, listId,
     onClick={event => dispatch({ type: 'CLICK', key: item.key, toggle: event.ctrlKey || event.metaKey, shift: event.shiftKey })}>
     <span role="gridcell" className="pf-row-check"><Check aria-label={`Select ${item.name}`} checked={selected}
       onClick={event => event.stopPropagation()} onCheckedChange={() => dispatch({ type: 'CLICK', key: item.key, toggle: true })}/></span>
-    <span role="gridcell" className="pf-row-label"><span className="pf-item-name">{item.name}</span>
-      <span className="pf-dim pf-item-note">{item.note}</span>{item.slot !== undefined && <span className="pf-used">✓ In use</span>}</span>
+    {item.cover && <span role="gridcell" className="pf-row-cover"><img src={item.cover} alt="" width={44} height={44} loading="lazy" decoding="async" onError={e => {e.currentTarget.hidden = true;}}/></span>}
+    <span role="gridcell" className="pf-row-label"><span className="pf-item-title"><span className="pf-item-name">{item.name}</span>{item.slot !== undefined && <span className="pf-used">✓ In use</span>}</span>
+      <span className="pf-dim pf-item-note">{item.note}</span></span>
   </div>;
 });

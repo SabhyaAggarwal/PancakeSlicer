@@ -83,9 +83,10 @@ export default function Plater3D() {
     });
     const frames: { at: number; ms: number }[] = [];
     const render = () => {
-      if (frame || !el.clientWidth) return;
+      if (frame || !el.clientWidth || getState().tab !== 'prepare') return;
       frame = requestAnimationFrame(() => {
         frame = 0;
+        if(!el.clientWidth || getState().tab !== 'prepare')return;
         const t0 = performance.now();
         if (uploads.length && !moving) uploadStep();
         const motion = moving && [...meshes.values(), ...volumeMeshes.values()].some((m) => m.geometry.userData.motionLod) && !isPaint(getState().gizmo);

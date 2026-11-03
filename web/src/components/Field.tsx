@@ -57,6 +57,7 @@ export const Field = memo(function Field(props: {
   dirty: boolean;
   disabled?: boolean;
   label?: string;
+  hideLabel?: boolean;
   tooltip?: string;
   definition?: Partial<OptionDef>;
   inheritedValue?: ConfigValue;
@@ -102,7 +103,7 @@ export const Field = memo(function Field(props: {
     <div className={`opt-line ${def.full_width || def.multiline ? 'full' : ''} ${isSwitch ? 'is-switch' : ''}`} data-opt={key} onClick={isSwitch && !locked ? (e) => {
       if (!(e.target as HTMLElement).closest('input, button')) commit(isOn ? '0' : '1');
     } : undefined}>
-      <span className={`opt-label ${modified ? 'modified' : ''}`} title={tooltip} id={labelId}>
+      <span className={`opt-label ${modified ? 'modified' : ''} ${props.hideLabel ? 'field-label-hidden' : ''}`} title={tooltip} id={labelId}>
         {def.nullable && <Check className="nullable-toggle" aria-label={`Override ${label}`} checked={checked} disabled={props.overrideDisabled} title={props.overrideDisabled ? "Enable the parent override first" : undefined}
         onCheckedChange={(next) => commit(next ? fallback : 'nil')} />}
         {label}

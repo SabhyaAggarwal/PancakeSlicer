@@ -1,3 +1,4 @@
+import { findProfile } from './profiles/identity';
 import { beginSlicePreview, bindSlicePreview } from './flow/preview-navigation';
 import { project as projectFlow } from './flow/project';
 import { app } from './flow/app';
@@ -13,7 +14,8 @@ import type { Config, ConfigValue, JobRequest, PresetCatalog, PresetType, System
 import { sliceProgress } from './api/progress';
 import { canEditProject, canLoadStep, connect, surfaceConfigBlocker, type Api } from './api/client';
 import { normalizeConfig } from './config-values';
-import { saveProfile } from './profiles/model';
+import { validateProfileSubmission } from './profiles/submission';
+import { normalizeUserPreset, saveProfile } from './profiles/model';
 import { rememberLocalProfile } from './persist/profiles';
 import { OPTIONS, isHidden, loadTab } from './options';
 import { shortTime } from './preview/format';
@@ -65,7 +67,7 @@ export async function loadCatalog() {
     const settings = loadTab('process');
     const [cat, userPresets] = await Promise.all([
       api.presets(first, DEMO_MODELS, (c) => mergeCatalog(first, c)),
-      settings.then(() => api.userPresets()).catch(() => []),
+      settings.then(() => api.userPresets()),
     ]);
     await settings;
     setState({ ...cat, userPresets, loading: null, filamentSlots: [] });
@@ -580,6 +582,17 @@ export { confirmDialog, numberDialog, promptDialog };
 export async function jobRequest(s = getState(), saving = false): Promise<JobRequest> {
   await flushReady();
   if (!saving) {
+    validateProfileSubmission(s);
+    const [{methodAvailability},{methodSelectionProblem}]=await Promise.all([import('./profiles/method-context'),import('./profiles/capabilities')]);
+    const availability=methodAvailability(s), global=effectiveConfig(s,'process');
+    const effective=[global,...s.objects.flatMap(o=>[ {...global,...o.settings},...(o.volumes ?? []).map(v=>({...global,...o.settings,...v.settings})),...(o.ranges ?? []).flatMap(r=>(o.volumes?.filter(v=>v.type === 'part') ?? [undefined]).map(v=>({...global,...o.settings,...v?.settings,...r.settings})))])];
+    for(const config of effective) {const problem=methodSelectionProblem(availability,config);if(problem) throw new Error(`Slicing method unavailable: ${problem.reason}`);}
+    const {readProfileLibrary}=await import('./persist/profile-library'), remote=await readProfileLibrary(s.api?.mock);
+    if(remote?.revision === 0) {const {saveProfileRecords}=await import('./profiles/transactions');await saveProfileRecords(s,s.userPresets,`submit-profiles:${crypto.randomUUID()}`,s.printerLibrary);}
+    else if(remote) for(const [type,key] of [['machine',s.printer],['process',s.process],...s.filamentSlots.map(key=>['filament',key])] as [PresetType,string][]) {
+      const local=findProfile(s,type,key), persisted=findProfile({userPresets:remote.profiles.map(normalizeUserPreset)},type,key);
+      if(!local || !persisted || (local.revision ?? 0)!==(persisted.revision ?? 0)) throw new Error('A selected profile changed in storage. Reload or save its draft before slicing.');
+    }
     const configs = [effectiveConfig(s, 'process'), ...s.objects.flatMap((o) =>
       [o.settings, ...o.volumes?.map((v) => v.settings) ?? [], ...o.ranges?.map((r) => r.settings) ?? []])];
     for (const config of configs) {
@@ -717,8 +730,11 @@ let cancelJob: (() => void) | null = null;
 
 export async function slice(calib?: { kind: string; params: string; head?: string }) {
   await flushReady();
+  const [{methodAvailability}, {methodSelectionProblem}] = await Promise.all([import('./profiles/method-context'), import('./profiles/capabilities')]);
   const s = getState();
   if (!s.api || !s.objects.length && !calib || s.job.state === 'running' || s.job.state === 'submitting') return;
+  const methodProblem = methodSelectionProblem(methodAvailability(s), effectiveConfig(s,'process'));
+  if(methodProblem) return void setState({job:{state:'failed',pct:0,stage:'',error:`Slicing method unavailable: ${methodProblem.reason}`}});
   const generation = ++sliceGeneration, document = documentGeneration(), projectId = projectFlow.get().context.id, plate = s.plateIndex;
   const current = () => generation === sliceGeneration && document === documentGeneration() && projectId === projectFlow.get().context.id && plate === getState().plateIndex;
   const signature = plateSignature(s);

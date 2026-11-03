@@ -5,6 +5,7 @@ import { optionAssets } from './option-assets.ts';
 import { mockAssets } from './mock-assets.ts';
 import { orcaAssets } from './orca-assets.ts';
 import { licenceNotices } from './licence-notices.ts';
+import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
   plugins: [react(), orcaAssets(), optionAssets(), mockAssets(), bundleReport(), licenceNotices()],
@@ -14,6 +15,7 @@ export default defineConfig({
     strictPort: true,
     host: '127.0.0.1',
     allowedHosts: [],
+    fs: { allow: [fileURLToPath(new URL('.', import.meta.url)), fileURLToPath(new URL('../server/method_capabilities.json', import.meta.url))] },
     proxy: {
       '/api': { target: process.env.ORCA_API ?? 'http://127.0.0.1:20198', changeOrigin: true },
     },

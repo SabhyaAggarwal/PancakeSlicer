@@ -21,7 +21,10 @@ export interface ProfileConfigSnapshot {
 }
 export interface ProfileOwnership {
   id?: ProfileKey;
+  applicability?: import('./applicability').ProfileApplicability;
   kind?: 'profile' | 'master';
+  masterId?: ProfileKey;
+  archived?: { at: number; operationId: string };
   printerId?: ProfileKey;
   revision?: number;
   provenance?: ProfileProvenance;
@@ -31,6 +34,9 @@ export interface PrinterMaterialSlot {
   id: string;
   materialId: ProfileKey;
   colour?: string;
+  overrides?: Config;
+  metadata?: Record<string, unknown>;
+  snapshot?: ProjectProfileSnapshot;
 }
 export interface PrinterMaterialSetup {
   schema: 1;
@@ -60,7 +66,7 @@ export interface ProjectProfileReferences {
   process: ProjectProfileSnapshot;
   filaments: ProjectProfileSnapshot[];
 }
-export type ProfileRecoveryReason = 'missing-profile' | 'missing-base' | 'missing-owner' | 'ambiguous' | 'cycle' | 'foreign-owner';
+export type ProfileRecoveryReason = 'missing-profile' | 'missing-base' | 'missing-owner' | 'ambiguous' | 'cycle' | 'foreign-owner' | 'archived';
 export interface ProfileRecovery {
   reason: ProfileRecoveryReason;
   key: ProfileKey;
@@ -71,6 +77,7 @@ export interface ProfileLibraryDocument {
   schema: 1;
   revision: number;
   profiles: import('../api/types').ProfileOverlay[];
+  catalog?: import('../api/types').SystemPreset[];
   printers: PrinterProfileLibrary;
 }
 export interface ProfileLibraryWrite {

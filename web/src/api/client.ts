@@ -1,8 +1,7 @@
 import { submissionHeaders } from '../flow/submission';
 import { bootstrapAccessToken, mutation, responseError } from './access';
 import { expandCatalog } from './compact-catalog';
-import { prepareProfile, resolveProfile } from '../profiles/model';
-import { restoreProfiles, rememberProfile, forgetProfile } from '../persist/profiles';
+import { normalizeUserPreset, prepareProfile } from '../profiles/model';
 import { catalogWorker, onWorkerFailure, workerId } from './worker';
 import type { CatalogIn, CatalogOut } from './catalog.worker';
 import type { Config, JobRequest, JobStatus, PresetCatalog, PresetType, ProgressEvent, UserPreset } from './types';
@@ -38,7 +37,6 @@ export function parseProgress(data: string): ProgressEvent | null {
   return m && Number.isFinite(Number(m[2])) ? { stage: m[1], pct: Number(m[2]) } : null;
 }
 
-let browserProfiles = false;
 const realApi: Api = {
   mock: false,
   presets(vendor, models, update) {
@@ -65,33 +63,24 @@ const realApi: Api = {
     });
   },
   async userPresets() {
-    const r = await fetch('/api/user-presets');
-    browserProfiles = r.status === 404;
-    if (browserProfiles) return restoreProfiles(await (await mock()).userPresets());
-    const j = await json<any>(r);
-    return restoreProfiles(Array.isArray(j) ? j : (j.presets ?? []));
+    const {readProfileLibrary}=await import('../persist/profile-library');
+    const library=await readProfileLibrary();
+    const {rememberBase}=await import('../persist/profiles');library.catalog?.forEach(rememberBase);
+    return library.profiles.map(normalizeUserPreset);
   },
   async saveUserPreset(p) {
-    if (browserProfiles) return (await mock()).saveUserPreset(p);
-    const { getState } = await import('../state/store');
-    const s = getState(), preset = prepareProfile(s, p);
-    const resolved = resolveProfile({ ...s, userPresets: [...s.userPresets.filter((u) => u.type !== p.type || u.name !== p.name), preset] }, p.type, p.name);
-    const wire = { ...preset, overrides: resolved.user?.overrides ?? preset.overrides };
-    const r = await mutation('/api/user-presets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(wire) });
-    await json(r);
-    rememberProfile(preset, wire);
+    const {getState}=await import('../state/store'),s=getState();
+    const {commitProfileRecords}=await import('../profiles/transactions');
+    await commitProfileRecords([prepareProfile(s,p)]);
   },
-  async deleteUserPreset(type, name) {
-    if (browserProfiles) { await (await mock()).deleteUserPreset(type, name); forgetProfile(type, name); return; }
-    const r = await mutation(`/api/user-presets/${type}/${encodeURIComponent(name)}`, { method: 'DELETE' });
-    if (!r.ok) throw await responseError(r);
-    forgetProfile(type, name);
-  },
+  async deleteUserPreset() {throw new Error('Permanent deletion requires a complete reference inventory. Use reversible Remove from library.');},
+
   async submit(req, signal, onUpload) {
     if (req.backend && toolFeatures.orcanp_v01 !== true) throw new Error('Orca-NP v0.1 is unavailable on this service. Choose Standard or connect the external engine.');
     const fd = new FormData();
     for (const f of req.files) fd.append('files[]', f.blob, f.name);
     if (req.backend) fd.append('backend', req.backend);
+    if(req.profile_ids)fd.append('profile_ids',JSON.stringify(req.profile_ids));
     fd.append('vendor', req.vendor);
     fd.append('printer', req.printer);
     fd.append('process', req.process);
@@ -182,7 +171,6 @@ const realApi: Api = {
   movesUrl: (id) => `/api/jobs/${id}/moves`,
 };
 
-const mock = () => import('./mock').then((m) => m.mockApi);
 
 export let toolFeatures: Record<string, unknown> = {};
 export interface SurfaceArtifactManifest {
@@ -237,7 +225,6 @@ export async function connect(): Promise<Api> {
   bootstrapAccessToken();
   toolFeatures = {};
   toolArtifactManifest = undefined;
-  if (new URLSearchParams(location.search).has('mock')) return guardedApi(await mock());
   try {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 1500);
@@ -252,5 +239,5 @@ export async function connect(): Promise<Api> {
     }
   } catch {
   }
-  return guardedApi(await mock());
+  throw new Error('The slicing service is unavailable. Reconnect and retry.');
 }

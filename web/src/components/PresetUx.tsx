@@ -1,7 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { useStore } from '../state/store';
 
-const SaveDialog = lazy(() => import('./PresetDialogs').then((m) => ({ default: m.SaveDialog })));
 const PresetsWindow = lazy(() => import('../profiles/PresetsWindow'));
 const ImportDialog = lazy(() => import('./PresetIO').then((m) => ({ default: m.ImportDialog })));
 const ExportDialog = lazy(() => import('./PresetIO').then((m) => ({ default: m.ExportDialog })));
@@ -11,9 +10,8 @@ export default function PresetUx() {
   if (!ux) return null;
   return (
     <Suspense fallback={<div role="status">Loading…</div>}>
-      {ux.kind === 'save' && <SaveDialog key={`${ux.type}:${ux.slot}`} type={ux.type} slot={ux.slot} />}
       {ux.kind === 'compare' && <PresetsWindow type={ux.type} name={ux.left} compare={ux.right ?? ''} />}
-      {ux.kind === 'presets' && <PresetsWindow type={ux.type} name={ux.name} edit={ux.edit}/>}
+      {ux.kind === 'presets' && <PresetsWindow type={ux.type} name={ux.name} edit={ux.edit} stage={ux.stage}/>}
       {ux.kind === 'import' && <ImportDialog />}
       {ux.kind === 'export' && <ExportDialog />}
     </Suspense>

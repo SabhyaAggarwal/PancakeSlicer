@@ -1,6 +1,5 @@
 import type { PresetType } from '../api/types';
 import { profileConflicts, type ProfileConflict } from '../profiles/model';
-import { editing } from '../profiles/editing';
 import { getState, presetEdits, subscribeStore } from '../state/store';
 import { createMachine, type Machine } from './fsm';
 type ProfileState = 'clean' | 'overlay-dirty' | 'saving' | 'reset' | 'conflict';
@@ -31,25 +30,16 @@ export function profileEdit(type: PresetType, slot = 0) {
   let m = machines.get(key);
   if (m) return m;
   const machine = createProfileEdit(); machines.set(key, machine);
-  const legacy = editing(type, slot);
-  let saving = false, wasDirty = false;
+  let wasDirty = false;
   const syncStore = () => {
     const s = getState(), name = type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot];
     const conflicts = name ? profileConflicts(s, type, name) : [];
     const dirty = Object.keys(presetEdits(s, type, slot)).length > 0;
-    if (saving && !conflicts.length) return;
     if (wasDirty && !dirty) machine.send({ type: 'RESET' });
     wasDirty = dirty;
     machine.send({ type: 'SYNC', dirty, conflicts });
   };
-  legacy.subscribe(({ value, context }) => {
-    if (value === 'saving') { saving = true; machine.send({ type: 'SAVE' }); }
-    else {
-      saving = false;
-      if (value === 'failed') machine.send({ type: 'FAIL', error: context.error });
-      syncStore();
-    }
-  });
+
   subscribeStore(syncStore); syncStore();
   return machine;
 }

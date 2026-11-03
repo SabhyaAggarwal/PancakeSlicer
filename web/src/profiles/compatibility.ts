@@ -1,48 +1,55 @@
-import type { PresetType, SystemPreset } from '../api/types';
-import { resolveProfile, type ProfileCatalog } from './model';
-
-export interface Compatibility { ok: boolean; reason: string }
+import type { Config, PresetType, SystemPreset } from '../api/types';
+import { normalizeConfigValue } from '../config-values';
+import { resolveProfile } from './model';
+import { profileContext, type ContextProfile, type ProfileContextState } from './context';
+import { evaluateProfileCondition } from './condition';
+import { resolveApplicability } from './applicability';
+export interface Compatibility { ok: boolean; reason: string; unknown?: boolean }
+const strings = (key: string, value: Config[string] | undefined): string[] => {
+  if (value === undefined || value === '') return [];
+  const native = normalizeConfigValue(key,value); return Array.isArray(native) ? native.map(String) : [String(native)];
+};
+const allowed = (): Compatibility => ({ok:true,reason:''});
+const denied = (reason: string, unknown = false): Compatibility => ({ok:false,reason,...(unknown ? {unknown:true} : {})});
 export function isCompatible(p: SystemPreset, printer: string, process?: string): boolean {
-  if (!p.compatible_evaluated) return !p.compatible_printers?.length || p.compatible_printers.includes(printer);
-  return !!p.compatible_printers?.includes(printer) && (!process || !p.compatible_prints || p.compatible_prints.includes(process));
+  if (p.compatible_evaluated) return !!p.compatible_printers?.includes(printer) && (!process || !p.compatible_prints || p.compatible_prints.includes(process));
+  const list = strings('compatible_printers',p.config.compatible_printers ?? p.compatible_printers);
+  return list.length ? list.includes(printer) : !p.config.compatible_printers_condition;
 }
-
-const nozzleOf = (name: string) => /(?:^|\s)(\d+(?:\.\d+)?)\s*(?:mm\s*)?nozzle\b/i.exec(name)?.[1];
-const machineOf = (name: string) => name.replace(/\s+\d+(?:\.\d+)?\s*(?:mm\s*)?nozzle\b/i, '').trim();
-
-export function selectCompatibility(s: ProfileCatalog & { printer: string; process: string }, type: PresetType, name: string,
-  printer = s.printer, nozzle?: string | number): Compatibility {
-  const profile = resolveProfile(s, type, name);
-  if (!profile.base && !profile.user) return { ok: false, reason: 'Unavailable for this machine' };
-  if (type === 'machine') return { ok: true, reason: '' };
-  const machine = resolveProfile(s, 'machine', printer);
-  const printerName = machine.base?.name ?? printer;
-  const process = type === 'filament' ? resolveProfile(s, 'process', s.process).base?.name ?? s.process : undefined;
-  const metadata = profile.user?.metadata;
-  const explicit = metadata?.compatible_printers ?? profile.user?.overrides.compatible_printers;
-  const prints = metadata?.compatible_prints ?? profile.user?.overrides.compatible_prints;
-  const p: SystemPreset = { ...profile.base!, name, type,
-    compatible_printers: explicit === undefined ? profile.base?.compatible_printers : Array.isArray(explicit) ? explicit.map(String) : [],
-    compatible_evaluated: explicit === undefined ? profile.base?.compatible_evaluated : false,
-    compatible_prints: prints === undefined ? profile.base?.compatible_prints : Array.isArray(prints) ? prints.map(String) : [],
-  };
-  const requested = nozzle === undefined ? undefined : Number(nozzle);
-  const variant = requested === undefined ? printerName : s.machines.find((m) =>
-    (m.model ?? machineOf(m.name)) === (machine.base?.model ?? machineOf(printerName))
-    && Number(Array.isArray(m.config.nozzle_diameter) ? m.config.nozzle_diameter[0] : m.config.nozzle_diameter ?? nozzleOf(m.name)) === requested)?.name;
-  const target = variant ?? printerName;
-  const allowed = p.compatible_printers ?? [];
-  const currentNozzle = requested ?? Number(nozzleOf(target));
-  const sameMachine = allowed.filter((n) => machineOf(n) === machineOf(printerName));
-  const required = [...new Set(sameMachine.map(nozzleOf).filter((n): n is string => !!n))];
-  const wrongNozzle = required.length > 0 && Number.isFinite(currentNozzle) && !required.some((n) => Number(n) === currentNozzle);
-  if (!wrongNozzle && isCompatible(p, target, process) && (!prints || !process || !p.compatible_prints?.length || p.compatible_prints.includes(process)))
-    return { ok: true, reason: '' };
-  if (wrongNozzle) return { ok: false, reason: `Needs ${required.join(' / ')} nozzle` };
-  if (allowed.includes(target) && process && p.compatible_prints && !p.compatible_prints.includes(process))
-    return { ok: false, reason: 'Other process' };
-  const vendors = allowed.map((n) => s.machines.find((m) => m.name === n)?.vendor).filter(Boolean);
-  if (vendors.length && machine.base?.vendor && vendors.every((v) => v !== machine.base!.vendor))
-    return { ok: false, reason: 'Other vendor' };
-  return { ok: false, reason: allowed.length ? 'Other printer' : 'Unavailable for this machine' };
+function nativeConstraint(config: Config, kind: 'printers' | 'prints', active: ContextProfile): Compatibility {
+  const key = kind === 'printers' ? 'compatible_printers' : 'compatible_prints', list = strings(key, config[key]);
+  if (list.length) return list.includes(active.name ?? '') || kind === 'printers' && !!active.source && !!active.parentName && list.includes(active.parentName)
+    ? allowed() : denied(kind === 'printers' ? 'Other printer' : 'Other print settings');
+  const expression = String(config[`${key}_condition`] ?? '');
+  if (!expression) return allowed();
+  const env: Config = kind === 'printers' ? {...active.config,printer_preset:active.name ?? '',num_extruders:[active.config.nozzle_diameter ?? []].flat().length} : active.config;
+  const result = evaluateProfileCondition(expression,env);
+  return !result.ok ? denied(`Compatibility needs repair: ${result.error}`,true) : result.value ? allowed() : denied(kind === 'printers' ? 'Printer settings do not match' : 'Print settings do not match');
+}
+export function selectNativeCompatibility(s: ProfileContextState, type: PresetType, key: string, printer = s.printer, nozzle?: string | number): Compatibility {
+  const profile = resolveProfile(s,type,key);
+  if (profile.issue) return denied(profile.error ?? 'Profile unavailable',true);
+  if (type === 'machine') return allowed();
+  const context = profileContext(s,{printer,nozzle});
+  if (context.printer.issue) return denied(context.printer.error ?? 'Printer unavailable',true);
+  const config = {...profile.config};
+  if (config.compatible_printers === undefined && !profile.base?.compatible_evaluated && profile.base?.compatible_printers)
+    config.compatible_printers = profile.base.compatible_printers;
+  const printers = nativeConstraint(config,'printers',context.printer);
+  if (!printers.ok) return printers;
+  const raw = strings('compatible_printers',config.compatible_printers), expression = String(config.compatible_printers_condition ?? '');
+  const overridden = !!profile.source && ['compatible_printers','compatible_printers_condition'].some(key => key in (profile.source!.overlay ?? profile.source!.overrides) || key in (profile.source!.metadata ?? {}));
+  if (!raw.length && !expression && !overridden && profile.base?.compatible_evaluated
+    && !profile.base.compatible_printers?.includes(context.printer.baseName ?? '')) return denied('A printer-specific material takes precedence');
+  if (type === 'filament') {
+    if (context.process.issue) return denied(context.process.error ?? 'Print settings unavailable',true);
+    return nativeConstraint(config,'prints',context.process);
+  }
+  return printers;
+}
+export function selectCompatibility(s: ProfileContextState, type: PresetType, key: string, printer = s.printer, nozzle?: string | number): Compatibility {
+  const native = selectNativeCompatibility(s,type,key,printer,nozzle);
+  if (!native.ok || type === 'machine') return native;
+  const applicability = resolveApplicability(s,type,key,printer);
+  return applicability.effective;
 }

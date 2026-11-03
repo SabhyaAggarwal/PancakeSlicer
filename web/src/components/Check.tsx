@@ -1,6 +1,5 @@
-import { Checkbox } from 'radix-ui';
-import type { ComponentProps } from 'react';
-type Props = Omit<ComponentProps<typeof Checkbox.Root>, 'onCheckedChange'> & {onCheckedChange?(checked: boolean): void};
-export function Check({className = '', onCheckedChange, ...props}: Props) {
-  return <Checkbox.Root {...props} type="button" onCheckedChange={next => onCheckedChange?.(next === true)} className={`control-check ${className}`}><Checkbox.Indicator className="control-check-mark">{props.checked === 'indeterminate' ? '−' : '✓'}</Checkbox.Indicator></Checkbox.Root>;
+import { lazy, Suspense, type ComponentProps } from 'react';
+const CheckControl = lazy(() => import('./CheckControl'));
+export function Check(props: ComponentProps<typeof CheckControl>) {
+  return <Suspense fallback={<span className="control-check" aria-busy="true"/>}><CheckControl {...props}/></Suspense>;
 }

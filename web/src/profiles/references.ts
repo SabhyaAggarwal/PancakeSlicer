@@ -1,8 +1,9 @@
+import { projectDraftStore, projectDraftMutationSnapshot, subscribeProjectDraftMutations } from '../persist/drafts';
 import type { PresetType } from '../api/types';
 import { projectStore, projectReferenceWritePending, subscribeProjectStorageChanges, type ProfileReferenceDocuments, type StoredDocBase } from '../persist/backend';
 import { getState, subscribeStore, type State } from '../state/store';
 import type { ProfileAccess } from './bulk';
-import { findProfile, profileKey, profileReferenceInventory, type ProfileKey, type ProfileReference, type ProfileReferenceSource } from './identity';
+import { findProfile, profileKey, type ProfileKey, type ProfileReference, type ProfileReferenceSource } from './identity';
 
 export interface ProfileReferenceSnapshot {
   status: 'loading' | 'ready' | 'incomplete' | 'error';
@@ -31,6 +32,31 @@ export function buildProfileReferenceSource(s: State, projects: ProfileReference
   };
   for (const type of ['machine', 'process', 'filament'] as const)
     for (const key of defaults[type]) add(type, key, { kind: 'default', label: type === 'machine' ? 'Default printer' : type === 'process' ? 'Default process' : 'Default filament' });
+  for (const child of s.userPresets) {
+    if (child.applicability?.mode === 'only') for (const printerId of child.applicability.printerIds)
+      add('machine', printerId, {kind:'inheritance',label:`Works with: ${child.name}`,owner:profileKey(child)});
+    if (child.masterId) add(child.type,child.masterId,{kind:'inheritance',label:child.name,owner:profileKey(child)});
+    else if (child.kind !== 'master') {
+      const masters = s.userPresets.filter(p => p.type === child.type && p.kind === 'master' && p.base?.name === child.base?.name && (!p.base?.vendor || p.base.vendor === child.base?.vendor));
+      if (masters.length > 1) complete = false;
+      else if (masters[0]) add(child.type,profileKey(masters[0]),{kind:'inheritance',label:child.name,owner:profileKey(child)});
+    }
+  }
+  for (const material of s.userPresets) if (material.type === 'filament' && material.printerId)
+    add('machine', material.printerId, { kind: 'inheritance', label: material.name, owner: profileKey(material) });
+  for (const [ownerId, setup] of Object.entries(s.printerLibrary?.setups ?? {})) {
+    const owner = findProfile(s, 'machine', ownerId);
+    if (!owner || ownerId !== setup.printerId) { complete = false; continue; }
+    const label = `Printer material library: ${owner.name}`;
+    add('machine', ownerId, { kind: 'default', label });
+    if (!Array.isArray(setup.materialIds) || !Array.isArray(setup.slots) || !setup.tuning || !setup.assignments) { complete = false; continue; }
+    for (const key of new Set([...setup.materialIds, ...setup.slots.map(slot => slot.materialId), ...Object.keys(setup.tuning)])) {
+      const material = findProfile(s, 'filament', key);
+      if (!material) { complete = false; continue; }
+      add('filament', key, { kind: 'inheritance', label, owner: ownerId });
+    }
+    if (Object.values(setup.assignments).some(slot => !setup.slots.some(s => s.id === slot))) complete = false;
+  }
   for (const project of projects.documents) {
     const doc = project.doc as ReferenceDoc;
     if (doc.printer !== undefined && typeof doc.printer !== 'string' || doc.process !== undefined && typeof doc.process !== 'string'
@@ -54,7 +80,21 @@ const notify = () => listeners.forEach((listener) => listener());
 function publish(s: State, status: ProfileReferenceSnapshot['status'], error: string | null = null) {
   const source = buildProfileReferenceSource(s, documents, defaults);
   const references = new Map<ProfileKey, readonly ProfileReference[]>();
-  for (const p of s.userPresets) references.set(profileKey(p), profileReferenceInventory(s, p.type, profileKey(p), source).references);
+  const push = (key: string, reference: ProfileReference) => references.set(key, [...(references.get(key) ?? []), reference]);
+  for (const p of s.userPresets) references.set(profileKey(p), []);
+  for (const type of ['machine', 'process', 'filament'] as const) {
+    const active = type === 'machine' ? [s.printer] : type === 'process' ? [s.process] : s.filamentSlots;
+    active.forEach((key, slot) => {
+      const profile = findProfile(s, type, key); if (!profile) return;
+      push(profileKey(profile), {kind: 'active', label: type === 'filament' ? `Filament ${slot + 1}` : type === 'machine' ? 'Printer' : 'Process'});
+      if (s.project || s.projectName) push(profileKey(profile), {kind: 'project', label: s.projectName ?? s.project?.name ?? 'Current project'});
+    });
+  }
+  for (const child of s.userPresets) if (child.parentId || child.parent) {
+    const parent = findProfile(s, child.type, child.parentId ?? child.parent!);
+    if (parent) push(profileKey(parent), {kind: 'inheritance', label: child.name, owner: profileKey(child)});
+  }
+  for (const item of source.references) push(item.key, item.reference);
   const complete = status === 'ready' && source.complete;
   snapshot = { status: status === 'ready' && !complete ? 'incomplete' : status, referencesComplete: complete, references,
     error: error ?? (!complete && status === 'ready' ? 'Some saved profile references could not be resolved. Refresh or recover those projects before deleting profiles.' : null) };
@@ -62,7 +102,7 @@ function publish(s: State, status: ProfileReferenceSnapshot['status'], error: st
 }
 
 export async function refreshProfileReferences(): Promise<ProfileReferenceSnapshot> {
-  const mine = ++generation;
+  const mine = ++generation, draftRevision = projectDraftMutationSnapshot().revision;
   defaults = readDefaults(); publish(getState(), 'loading');
   try {
     const storage = await projectStore();
@@ -74,8 +114,12 @@ export async function refreshProfileReferences(): Promise<ProfileReferenceSnapsh
       const rows = await Promise.all(list.map((p) => storage.load(p.id)));
       loaded = { complete: false, documents: rows.flatMap((p) => p ? [{ id: p.meta.id, name: p.meta.name, doc: p.doc }] : []) };
     }
+    const drafts = await (await projectDraftStore()).list();
+    loaded = { ...loaded, documents: [...loaded.documents, ...drafts.map(draft => ({ id: draft.id, name: `${draft.name} (${draft.kind === 'snapshot' ? 'Snapshot' : 'Draft'})`, doc: draft.doc }))] };
     if (mine !== generation) return snapshot;
-    documents = projectReferenceWritePending() ? { ...loaded, complete: false } : loaded; defaults = readDefaults(); publish(getState(), 'ready');
+    const draftMutation = projectDraftMutationSnapshot();
+    const stale = draftMutation.revision !== draftRevision || draftMutation.pending > 0 || draftMutation.error !== null;
+    documents = projectReferenceWritePending() || stale ? { ...loaded, complete: false } : loaded; defaults = readDefaults(); publish(getState(), 'ready');
   } catch (error) {
     if (mine === generation) { documents = { ...documents, complete: false }; publish(getState(), 'error', error instanceof Error ? error.message : String(error)); }
   }
@@ -87,11 +131,16 @@ function start() {
   let prior = getState();
   subscribeStore(() => {
     const s = getState();
-    if (s.userPresets !== prior.userPresets || s.printer !== prior.printer || s.process !== prior.process || s.filamentSlots !== prior.filamentSlots
+    if (s.printerLibrary !== prior.printerLibrary || s.userPresets !== prior.userPresets || s.printer !== prior.printer || s.process !== prior.process || s.filamentSlots !== prior.filamentSlots
       || s.projectName !== prior.projectName || s.project !== prior.project) publish(s, snapshot.status, snapshot.error);
     prior = s;
   });
   subscribeProjectStorageChanges(() => { void refreshProfileReferences(); });
+  subscribeProjectDraftMutations(() => {
+    ++generation; documents = { ...documents, complete: false }; publish(getState(), 'incomplete');
+    const mutation = projectDraftMutationSnapshot();
+    if (!mutation.pending && !mutation.error) void refreshProfileReferences();
+  });
   if (typeof window !== 'undefined') {
     window.addEventListener('storage', (event) => { if (event.key === 'orca.project-change' || event.key === 'orca.printer' || event.key?.startsWith('orca.profile')) void refreshProfileReferences(); });
     window.addEventListener('focus', () => { void refreshProfileReferences(); });

@@ -1,5 +1,7 @@
 import { PresetBar } from '../profiles/PresetBar';
-import { SurfaceSettings } from './SurfaceSettings';
+import { SurfaceSettings, TOP_METHOD_KEYS } from './SurfaceSettings';
+import { methodAvailability } from '../profiles/method-context';
+import { isMethodSettingSupported } from '../profiles/capabilities';
 import { NozzleField } from '../profiles/SetupRows';
 import { Tabs } from 'radix-ui';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
@@ -10,6 +12,7 @@ import { condition, environment, fieldDefinition, optionState } from '../visibil
 import { lineMode, nativeSupportCapable, tabEnvironment } from '../settings-env';
 import { Field } from './Field';
 import { Icon } from './Icon';
+import { SectionHeading } from './SectionHeading';
 
 const BedShapeDialog = lazy(() => import('./BedShapeDialog'));
 const HeadPicker = lazy(() => import('./HeadPicker'));
@@ -21,7 +24,7 @@ const TAB_OF: Record<PresetType, TabDesc['tab']> = { process: 'process', filamen
 const TYPE_NAME: Record<PresetType, string> = { process: 'Process', filament: 'Filament', machine: 'Printer' };
 
 export interface ProfileFields { name: string; config: Config; baseline: Config; changes: Config; mode?: OptionMode; set(key: string, value: ConfigValue): void; reset(key: string): void }
-export function SettingsTab({ type, slot = 0, compact, hidePreset, editor }: { type: PresetType; slot?: number; compact?: boolean; hidePreset?: boolean; editor?: ProfileFields }) {
+export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readOnly = false, auxiliary }: { type: PresetType; slot?: number; compact?: boolean; hidePreset?: boolean; editor?: ProfileFields; readOnly?: boolean; auxiliary?: {label:string; content:React.ReactNode; modified?:boolean} }) {
   const { desc, error } = useTab(TAB_OF[type]);
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
@@ -31,7 +34,10 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor }: { t
   };
   const [bedDialog, setBedDialog] = useState(false);
   const [pageIdx, setPageIdx] = useState(0);
-  const machineEdits = useStore((s) => s.dirty.machine);
+  const [auxiliaryOn,setAuxiliaryOn] = useState(false);
+  const machineConfig = useStore((s) => effectiveConfig(s, 'machine'));
+  const processConfig = useStore((s) => effectiveConfig(s, 'process'));
+  const features = useStore((s) => s.features);
   const printer = useStore((s) => s.printer);
   const bedType = useStore((s) => s.bedType);
   const projectMode = useStore(effectiveMode);
@@ -40,25 +46,25 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor }: { t
   const dirty = editor?.changes ?? projectDirty;
   const presetName = useStore((s) => (type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot]));
   const userPresets = useStore((s) => s.userPresets);
-  const lists = useStore((s) => s.machines.length + s.processes.length + s.filaments.length);
-  const project = useStore((s) => s.projectPresets);
-  const projectConfig = useMemo(() => effectiveConfig(getState(), type, slot), [type, slot, presetName, projectDirty, userPresets, lists, project]);
+  const machines = useStore(s => s.machines), processes = useStore(s => s.processes), filaments = useStore(s => s.filaments);
+  const projectConfig = useStore(s => effectiveConfig(s, type, slot));
   const config = editor?.config ?? projectConfig;
-  const savedConfig = useMemo(() => resolvePreset(getState(), type, presetName ?? '').config, [type, presetName, userPresets, lists]);
+  const savedConfig = useMemo(() => resolvePreset(getState(), type, presetName ?? '').config, [type, presetName, userPresets, machines, processes, filaments]);
   const system = editor?.baseline ?? savedConfig;
 
   const env = useMemo(() => {
     const state = getState();
     if (!editor) return tabEnvironment(state, type, slot, uiMode);
-    const machine = type === 'machine' ? config : effectiveConfig(state, 'machine');
+    const machine = type === 'machine' ? config : machineConfig;
     const base = resolvePreset(state, type, editor.name).base;
-    return environment([machine, effectiveConfig(state, 'process'), config], {printer_vendor: type === 'machine' ? base?.vendor : resolvePreset(state, 'machine', state.printer).base?.vendor,
+    return environment([machine, processConfig, config], {printer_vendor: type === 'machine' ? base?.vendor : resolvePreset(state, 'machine', state.printer).base?.vendor,
       extruders_count: Array.isArray(machine.nozzle_diameter) ? machine.nozzle_diameter.length : 1, curr_bed_type: state.bedType, settings_scope: 'global', native_support_capable: type === 'machine' ? !!state.features.native_support && !!base?.native_support_capable : nativeSupportCapable(state)}, uiMode);
-  }, [config, machineEdits, printer, bedType, uiMode, editor?.name]);
+  }, [config, machineConfig, processConfig, features, printer, bedType, uiMode, editor?.name, type, slot, machines, processes, filaments]);
+  const availability = useMemo(() => methodAvailability(getState(), type === 'machine' && editor ? config : machineConfig), [machineConfig,config,type,!!editor,features,machines,userPresets]);
   const states = useMemo(() => desc ? optionState(desc, env) : {}, [desc, env]);
   const fieldVisible = (k: string, line: TabLine) => {
     const key = splitKey(k)[0], rank = lineMode(line, k);
-    return OPTIONS[key] && rank && !isHidden(key) && modeVisible(rank, uiMode);
+    return OPTIONS[key] && rank && !isHidden(key) && modeVisible(rank, uiMode) && (type !== 'process' || !TOP_METHOD_KEYS.has(key)) && isMethodSettingSupported(key,config,availability);
   };
   const pages = useMemo(() => (desc?.pages ?? []).filter((p) => !p.condition || condition(p.condition, env) !== false)
     .map((p) => ({ ...p, groups: p.groups.filter((g) => !g.condition || condition(g.condition, env) !== false)
@@ -67,7 +73,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor }: { t
         .map((line) => ({ ...line, options: line.options.filter((k) => fieldVisible(k, line)) }))
         .filter((line, _, all) => line.options.length || (customRow(line) && all.some((l) => l.options.includes('nonplanar_head')))) }))
       .filter((g) => g.lines.length) }))
-    .filter((p) => p.groups.length), [desc, env, states, uiMode]);
+    .filter((p) => p.groups.length), [desc, env, states, uiMode, config, availability, type]);
   const page = pages[Math.min(pageIdx, pages.length - 1)];
   const definitionCache = useRef(new Map<string, Partial<OptionDef>>());
   const definition = (key: string, line: TabLine) => {
@@ -100,25 +106,27 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor }: { t
     <div className={`settings-tab ${compact ? 'compact' : ''}`}>
       {bedDialog && <Suspense fallback={<div role="status">Loading bed shape…</div>}><BedShapeDialog config={config} onSet={editor?.set} close={() => setBedDialog(false)} /></Suspense>}
       {!hidePreset && <PresetBar type={type} slot={slot} />}
-      <Tabs.Root value={String(Math.min(pageIdx, pages.length - 1))} onValueChange={(v) => setPageIdx(Number(v))}><Tabs.List className="page-bar" aria-label={`${TYPE_NAME[type]} settings`}>
+      <Tabs.Root value={auxiliaryOn ? 'auxiliary' : String(Math.min(pageIdx, pages.length - 1))} onValueChange={v => {setAuxiliaryOn(v === 'auxiliary'); if(v !== 'auxiliary') setPageIdx(Number(v));}}><Tabs.List className="page-bar" aria-label={`${TYPE_NAME[type]} settings`}>
         {pages.map((p, i) => (
           <Tabs.Trigger key={p.title} value={String(i)} className={`page-tab ${p === page ? 'active' : ''} ${pageModified(p) ? 'modified' : ''}`} onClick={() => setPageIdx(i)}>
             {p.title}
           </Tabs.Trigger>
         ))}
+        {auxiliary && <Tabs.Trigger value="auxiliary" className={`page-tab ${auxiliaryOn ? 'active' : ''} ${auxiliary.modified ? 'modified' : ''}`}>{auxiliary.label}</Tabs.Trigger>}
       </Tabs.List></Tabs.Root>
       <div className="page-body" ref={body}>
+        {auxiliaryOn && auxiliary ? auxiliary.content : <>
         {type === 'machine' && !editor && <NozzleField />}
-        {type === 'process' && !editor && pageIdx === 0 && <SurfaceSettings config={config} system={system} />}
+        {type === 'process' && pageIdx === 0 && <SurfaceSettings config={config} system={system} availability={availability} editor={editor} dirty={dirty} readOnly={readOnly}/>}
         {!desc && <div className="settings-load" role={error || retryError ? 'alert' : 'status'}><span>{retryError || error ? `Settings failed to load: ${retryError ?? error}` : 'Loading settings…'}</span>{(error || retryError) && <button type="button" className="btn" disabled={retrying} title={retrying ? 'Waiting for the settings request' : 'Load these settings again'} onClick={retry}>{retrying ? 'Retrying…' : 'Retry'}</button>}</div>}
         {type === 'process' && page?.title === 'Multimaterial' && getState().filamentSlots.length > 1 && <section className="optgroup"><button type="button" className="btn" onClick={() => setState({flushDialog: true})}>Flush volumes</button></section>}
         {page?.groups.map((g) => (
           <section key={g.title} className="optgroup">
             {g.title && (
-              <header className="optgroup-title">
+              <SectionHeading level="sub" className="optgroup-title">
                 {g.icon && <Icon name={g.icon} size={16} />}
                 <span>{g.title}</span>
-              </header>
+              </SectionHeading>
             )}
             {g.lines.map((line, row) => {
               let keys = line.options;
@@ -142,17 +150,19 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor }: { t
                     : type === 'machine' && key === 'nonplanar_head' ? <Suspense fallback={null}><HeadPicker value={String(config[key] ?? '')} onCommit={(v) => editor ? editor.set(key, v) : v === String(system[key] ?? '') ? resetOption(type, key) : setOption(type, key, v)} /></Suspense>
                     : undefined} key={`${k}:${i}`} optKey={k} type={type} value={config[key]} systemValue={system[key]} dirty={key in dirty}
                     slot={slot} onSet={editor?.set} onReset={editor?.reset}
-                    disabled={isDeferred(key) || states[key]?.enabled === false}
+                    disabled={readOnly || isDeferred(key) || states[key]?.enabled === false}
                     definition={definition(key, line)}
                     inheritedValue={env[key.replace(/^filament_/, '')] as ConfigValue}
-                    overrideDisabled={OPTIONS[key]?.nullable && key !== 'filament_retraction_length' && !key.startsWith('filament_ironing_') && env.filament_retraction_length != null && Number(env.filament_retraction_length) <= 0}
+                    overrideDisabled={readOnly || OPTIONS[key]?.nullable && key !== 'filament_retraction_length' && !key.startsWith('filament_ironing_') && env.filament_retraction_length != null && Number(env.filament_retraction_length) <= 0}
                     label={labels?.[i] ?? (shared ? line.overrides?.[key]?.label ?? OPTIONS[key]?.label : line.label)}
+                    hideLabel={g.lines.length === 1 && keys.length === 1 && !!OPTIONS[key]?.multiline && (line.label ?? OPTIONS[key]?.label ?? '').trim().toLowerCase() === g.title.trim().toLowerCase()}
                     tooltip={tooltip} />;
                 })}
               </div>;
             })}
           </section>
         ))}
+        </>}
       </div>
     </div>
   );

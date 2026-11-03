@@ -1,15 +1,14 @@
 import { lazy, Suspense, useState } from 'react';
 import { OPTIONS } from '../options';
-import { compatible, filamentSwitchReason, getState, markStale, printerPreset, selectionOf, setState, toast, useStore, type State } from '../state/store';
+import { compatible, filamentSwitchReason, getState, markStale, printerPreset, selectionOf, setOption, setState, toast, useStore, type State } from '../state/store';
 import { undo, undoable } from '../state/history';
 import { flushModified } from '../flush-state';
 import { IconButton } from '../components/Icon';
 import { Dropdown } from '../components/Dropdown';
-import { requestPreset } from '../components/PresetCombo';
 import { AddFilamentPicker, FilamentPicker } from './Pickers';
 import { filamentColor } from '../plater/filamentColor';
 import './profiles.css';
-import { filamentSlots, modelKey, modelPreset, nozzleOf, printerModels } from './machines';
+import { filamentSlots, modelKey, nozzleOf, printerModels } from './machines';
 
 const MixedFilaments = lazy(() => import('../components/MixedFilaments'));
 
@@ -17,7 +16,6 @@ export function NozzleField() {
   const machine = useStore((s) => printerPreset(s));
   useStore((s) => s.machines);
   useStore((s) => s.userPresets);
-  const printer = useStore((s) => s.printer);
   const variants = machine ? printerModels(getState()).get(modelKey(machine)) ?? [] : [];
   const sizes = [...new Set(variants.map(nozzleOf).filter((d) => Number.isFinite(d) && d > 0))].sort((a, b) => a - b);
   if (sizes.length < 2 || !machine) return null;
@@ -28,8 +26,7 @@ export function NozzleField() {
         <Dropdown className="combo" aria-label="Nozzle" value={String(nozzleOf(machine))}
           options={sizes.map((d) => ({ value: String(d), label: `${d} mm` }))}
           onValueChange={(v) => {
-            const next = modelPreset(variants.filter((p) => nozzleOf(p) === Number(v)), printer, Number(v));
-            if (next.name !== printer) requestPreset('machine', 0, next.name);
+            setOption('machine','nozzle_diameter',[v]);
           }} />
       </span>
     </div>
