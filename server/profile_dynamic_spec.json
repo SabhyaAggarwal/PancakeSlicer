@@ -12,7 +12,9 @@
         {"id": "layer:h006", "when": {"layerHeight": 0.06}, "values": {"wall_loops": "4"}},
         {"id": "layer:n02h006", "when": {"nozzle": 0.2, "layerHeight": 0.06}, "values": {"wall_loops": "5"}},
         {"id": "layer:mini", "when": {"printerModel": "Bambu Lab A1 mini"}, "values": {"top_shell_layers": "5", "sparse_infill_density": "20%"}},
-        {"id": "layer:h012", "when": {"layerHeight": 0.12}, "values": {"sparse_infill_density": "10%"}}
+        {"id": "layer:h012", "when": {"layerHeight": 0.12}, "values": {"sparse_infill_density": "10%"}},
+        {"id": "layer:n04h008", "when": {"nozzle": 0.4, "layerHeight": 0.08}, "values": {}},
+        {"id": "layer:n02h004", "when": {"nozzle": 0.2, "layerHeight": 0.04}, "values": {}}
       ]
     },
     "below": {"line_width": "0.42", "outer_wall_line_width": "0.42", "inner_wall_line_width": "100%", "sparse_infill_line_width": "0", "layer_height": "0.2"}
@@ -35,8 +37,8 @@
      "config": {"layer_height": "0.2", "line_width": "0.63", "outer_wall_line_width": "0.63"}, "conflicts": []}
   ],
   "heights": [
-    {"ctx": {"printerModel": "Bambu Lab A1 mini", "nozzle": 0.2}, "heights": [0.06, 0.08, 0.12]},
-    {"ctx": {"printerModel": "Bambu Lab A1", "nozzle": 0.4}, "heights": [0.12, 0.2]},
+    {"ctx": {"printerModel": "Bambu Lab A1 mini", "nozzle": 0.2}, "heights": [0.04, 0.06, 0.08, 0.12]},
+    {"ctx": {"printerModel": "Bambu Lab A1", "nozzle": 0.4}, "heights": [0.08, 0.12, 0.2]},
     {"ctx": {"printerModel": "Bambu Lab A1", "nozzle": 0.6}, "heights": [0.2]},
     {"ctx": {"printerModel": "Bambu Lab X1 Carbon", "nozzle": 0.4}, "heights": []}
   ],

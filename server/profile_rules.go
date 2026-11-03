@@ -210,8 +210,8 @@ func parseDynamic(raw json.RawMessage, typ string) (*dynamicProfile, error) {
 		if w.LayerHeight != nil && typ != "process" || w.PrinterModel != nil && typ == "machine" {
 			return nil, invalid("layer height applies to print profiles and printer model to print and filament profiles")
 		}
-		if l.Values == nil || len(l.Values) == 0 {
-			return nil, invalid("a layer holds at least one value")
+		if l.Values == nil || len(l.Values) == 0 && (w.Nozzle == nil || w.LayerHeight == nil) {
+			return nil, invalid("a layer holds at least one value unless it declares a layer height for a nozzle")
 		}
 		for _, other := range d.Layers[:i] {
 			if sameWhen(other.When, w) {
@@ -317,19 +317,19 @@ func (d *dynamicProfile) availableHeights(rule *worksWithRule, ctx dynamicContex
 		return nil
 	}
 	var heights []float64
-	add := func(h float64) {
-		if h >= 0.25*ctx.Nozzle-0.0005 && h <= 0.75*ctx.Nozzle+0.0005 && !slices.ContainsFunc(heights, func(x float64) bool { return sameMm(x, h) }) {
+	add := func(h float64, declared bool) {
+		if (declared || h >= 0.25*ctx.Nozzle-0.0005 && h <= 0.75*ctx.Nozzle+0.0005) && !slices.ContainsFunc(heights, func(x float64) bool { return sameMm(x, h) }) {
 			heights = append(heights, round3(h))
 		}
 	}
-	add(d.Reference.LayerHeight)
+	add(d.Reference.LayerHeight, sameMm(d.Reference.Nozzle, ctx.Nozzle))
 	here := dynamicWhen{PrinterModel: &ctx.PrinterModel, Nozzle: &ctx.Nozzle}
 	for _, l := range d.Layers {
 		if l.When.LayerHeight != nil {
 			w := l.When
 			w.LayerHeight = nil
 			if covers(here, w) {
-				add(*l.When.LayerHeight)
+				add(*l.When.LayerHeight, l.When.Nozzle != nil)
 			}
 		}
 	}
