@@ -98,3 +98,7 @@
 :where(.orca-parity) .works-with-cell { display: flex; align-items: center; gap: var(--s-2); }
 :where(.orca-parity) .works-with-table tr.is-override td:last-child { color: var(--modified); }
 :where(.orca-parity) .works-with-table tr.is-override .control-check { border-color: var(--modified); }
+
+:where(.orca-parity) .color-trigger[data-modified] { position: relative; }
+:where(.orca-parity) .color-trigger[data-modified]::after { content: ''; position: absolute; top: -3px; right: -3px; width: 6px; height: 6px; border-radius: 50%; background: var(--modified); box-shadow: 0 0 0 1px var(--panel); }
+:where(.orca-parity) .filament-colour-actions { flex-wrap: wrap; }

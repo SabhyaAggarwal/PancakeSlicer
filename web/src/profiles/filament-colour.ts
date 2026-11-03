@@ -1,5 +1,5 @@
 import type { Config } from '../api/types';
-import { effectiveConfig, getState, markStale, resolvePreset, setState, type State } from '../state/store';
+import { getState, markStale, resolvePreset, setState, type State } from '../state/store';
 import { undoable } from '../state/history';
 import { findProfile, profileKey } from './identity';
 
@@ -11,22 +11,30 @@ const hex = (value: unknown): string | undefined => {
 export const configColour = (config: Config) => hex(config.filament_colour) ?? hex(config.default_filament_colour);
 
 export function profileSlotColour(s: State, slot: number): string {
-  return (s.filamentSlots[slot] ?? s.filamentSlots[0]) ? configColour(effectiveConfig(s, 'filament', slot)) ?? DEFAULT_COLOUR : DEFAULT_COLOUR;
+  const key = s.filamentSlots[slot] ?? s.filamentSlots[0];
+  return key ? configColour(resolvePreset(s, 'filament', key).config) ?? DEFAULT_COLOUR : DEFAULT_COLOUR;
 }
 export function slotColourOverride(s: State, slot: number): string | undefined {
   if (s.mixes[slot]) return undefined;
-  const own = hex(s.slotColours[slot]);
+  const key = s.filamentSlots[slot] ?? '';
+  const own = hex(s.slotColours[slot]) ?? configColour({ ...s.projectPresets?.filaments[slot], ...s.filamentEdits[key] });
   return own && own !== profileSlotColour(s, slot) ? own : undefined;
+}
+const COLOUR_KEYS = ['filament_colour', 'default_filament_colour'];
+const withoutColour = (config: Config | undefined) => config && Object.fromEntries(Object.entries(config).filter(([k]) => !COLOUR_KEYS.includes(k)));
+function followProfile(st: State, slot: number): Partial<State> {
+  const key = st.filamentSlots[slot] ?? '', slotColours = [...st.slotColours]; slotColours[slot] = undefined;
+  const presets = st.projectPresets?.filaments[slot], edits = st.filamentEdits[key];
+  return { slotColours, job: markStale(st.job),
+    ...(presets && COLOUR_KEYS.some((k) => k in presets) ? { projectPresets: { ...st.projectPresets!, filaments: st.projectPresets!.filaments.map((f, i) => (i === slot ? withoutColour(f)! : f)) } } : {}),
+    ...(edits && COLOUR_KEYS.some((k) => k in edits) ? { filamentEdits: { ...st.filamentEdits, [key]: withoutColour(edits)! } } : {}) };
 }
 export function slotColour(s: State, slot: number): string {
   return (s.mixes[slot] ? hex(s.slotColours[slot]) : slotColourOverride(s, slot)) ?? profileSlotColour(s, slot);
 }
 
 export function useProfileColour(slot: number) {
-  undoable('Use profile colour', () => setState((st) => {
-    const slotColours = [...st.slotColours]; slotColours[slot] = undefined;
-    return { slotColours, job: markStale(st.job) };
-  }));
+  undoable('Use profile colour', () => setState((st) => followProfile(st, slot)));
 }
 
 const ownedSource = (s: State, slot: number) => {
@@ -42,8 +50,7 @@ export async function changeFilamentColour(slot: number, colour: string): Promis
   const s = getState(), source = ownedSource(s, slot), key = profileKey(source);
   const [{ saveProfile }, { commitProfileRecords }] = await Promise.all([import('./model'), import('./transactions')]);
   const record = { ...saveProfile(s, 'filament', source.name, key, withColour(resolvePreset(s, 'filament', key).config, value)), id: key };
-  await commitProfileRecords([record], { apply: (st) => ({
-    slotColours: st.slotColours.map((c, i) => st.filamentSlots[i] === key && hex(c) === value ? undefined : c) }) });
+  await commitProfileRecords([record], { apply: (st) => (st.filamentSlots[slot] === key ? followProfile(st, slot) : {}) });
 }
 
 const COLOUR_NAMES: [number, string][] = [[15, 'Red'], [40, 'Orange'], [65, 'Yellow'], [165, 'Green'], [195, 'Cyan'], [255, 'Blue'], [290, 'Purple'], [335, 'Pink'], [360, 'Red']];
@@ -70,6 +77,6 @@ export async function saveFilamentAsColour(slot: number, colour: string): Promis
     return { ...saveProfile(st, 'filament', name, key, withColour(resolvePreset(st, 'filament', key).config, value)), id: `profile:${crypto.randomUUID()}`, revision: 0 };
   }).commit();
   (await import('../components/PresetCombo')).requestPreset('filament', slot, id);
-  setState((st) => { const slotColours = [...st.slotColours]; slotColours[slot] = undefined; return { slotColours }; });
+  setState((st) => (st.filamentSlots[slot] === id ? followProfile(st, slot) : {}));
   return id;
 }

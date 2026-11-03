@@ -20,9 +20,8 @@ export function requestPreset(type: PresetType, slot: number, name: string) {
   });
 }
 
-import { pickColour } from '../profiles/SetupRows';
 import { PrinterPicker, FilamentPicker } from '../profiles/Pickers';
 import { ProcessPresetPicker } from './ProcessPresetPicker';
 export function PresetCombo({ type, slot = 0, className }: { type: PresetType; slot?: number; className?: string }) {
-  return <span className={`preset-combo ${className ?? ''}`}>{type === 'machine' ? <PrinterPicker /> : type === 'process' ? <ProcessPresetPicker /> : <FilamentPicker slot={slot} onColour={(c) => pickColour(slot, c)} />}</span>;
+  return <span className={`preset-combo ${className ?? ''}`}>{type === 'machine' ? <PrinterPicker /> : type === 'process' ? <ProcessPresetPicker /> : <FilamentPicker slot={slot} />}</span>;
 }

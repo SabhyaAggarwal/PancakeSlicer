@@ -6,8 +6,7 @@
   :where(.orca-parity) .canvas-area { min-height: 0; flex: 1 1 0; }
   :where(.orca-parity) .compact-topbar { height: auto; min-height: 0; display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 4px 8px; padding: calc(4px + env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) 4px max(8px,env(safe-area-inset-left)); }
   :where(.orca-parity) .topbar-project-context { grid-column: 1; grid-row: 1; min-width: 0; gap: 4px; flex-basis: auto; }
-  :where(.orca-parity) .compact-topbar .topbar-title { display: flex; min-width: 0; max-width: none; width: auto; margin: 0; }
-  :where(.orca-parity) .title-name { font-size: 15px; }
+  :where(.orca-parity) .compact-topbar .topbar-title { margin: 0; padding-left: var(--s-2); }
   :where(.orca-parity) .compact-topbar .projects-button { font-size: 13px; }
   :where(.orca-parity) .compact-topbar .tabbar { display: contents; }
   :where(.orca-parity) .compact-topbar .view-switch { grid-column: 1 / -1; grid-row: 2; justify-self: start; }

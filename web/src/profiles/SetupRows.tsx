@@ -56,13 +56,6 @@ export function removeFilament() {
   })));
 }
 
-export const pickColour = (i: number, colour: string) =>
-  undoable('Change filament colour', () => setState((st) => {
-    const slotColours = [...st.slotColours];
-    slotColours[i] = colour.toUpperCase();
-    return { slotColours, job: markStale(st.job) };
-  }), `colour:${i}`);
-
 export function removeSlot(i: number) {
   const s = getState();
   const painted = s.objects.some((o) => o.paint?.color || o.volumes?.some((v) => v.paint?.color));
@@ -110,7 +103,7 @@ export function MaterialRows() {
           return (
             <tr key={i}>
               <td className="n">{i + 1}</td>
-              <td><FilamentPicker slot={i} onColour={(c) => pickColour(i, c)} />{(() => { const r = filamentSwitchReason(s, i); return r && <div className="pf-dim pf-reason">{r}</div>; })()}</td>
+              <td><FilamentPicker slot={i} />{(() => { const r = filamentSwitchReason(s, i); return r && <div className="pf-dim pf-reason">{r}</div>; })()}</td>
               <td className="n">{used ? <button type="button" className="pf-link" onClick={() => selectUsers(i + 1)}>{used}</button> : <span className="pf-dim">0</span>}</td>
               <td className="pf-acts">
                 <IconButton icon="edit" title="Edit" onClick={() => setState({ dialog: { type: 'filament', slot: i } })} />

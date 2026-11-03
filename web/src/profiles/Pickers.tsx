@@ -1,12 +1,11 @@
 import { printerLine, profileColour, vendorLabel } from './metadata';
-import { ColorPicker } from '../components/ColorPicker';
 import type { Config, PresetType } from '../api/types';
 import { filamentSwitchReason, getState, resolvePreset, setState, useStore } from '../state/store';
 import { Picker, type PickerAction, type PickerGroup, type PickerItem } from '../components/picker/Picker';
 import { requestPreset } from '../components/PresetCombo';
 import { filamentColor } from '../plater/filamentColor';
-import { slotColour } from './filament-colour';
-import { addSlot, pickColour } from './SetupRows';
+import { addSlot } from './SetupRows';
+import { FilamentColourMenu } from './FilamentColourMenu';
 import { createProfileFromBase, listCatalog, listProfiles, type PickerEntry } from './pickerSource';
 
 const first = (v: unknown) => String([v].flat()[0] ?? '');
@@ -52,18 +51,16 @@ function filamentGroups(slot: number | null, catalog = false): PickerGroup[] {
   return groups;
 }
 
-export function FilamentPicker({ slot, onColour }: { slot: number; onColour(colour: string): void }) {
+export function FilamentPicker({ slot }: { slot: number }) {
   const name = useStore((s) => s.filamentSlots[slot] ?? '');
-  useStore((s) => s.slotColours);
   useStore((s) => s.filamentEdits);
   useStore((s) => s.userPresets);
   const s = getState();
   const resolved = resolvePreset(s, 'filament', name), c = resolved.config, label = resolved.name ?? 'Unavailable filament';
   const b = brandName(label, c);
-  const colour=slotColour(s,slot);
   return (
     <span className="pk-slot">
-      <ColorPicker label={`Filament ${slot + 1} color`} value={colour} onCommit={onColour}/>
+      <FilamentColourMenu slot={slot}/>
       <Picker label={`Filament ${slot + 1}`} value={name} memory="orca.web.picker.filament" facetLabel="Vendor" groups={() => filamentGroups(slot)}
         catalog={{ label: 'Add filament', groups: () => filamentGroups(slot, true), onAdd: (id) => createProfileFromBase('filament', id, slot) }}
         onPick={(id) => id !== name && requestPreset('filament', slot, id)} footer={[presets('filament', name)]}>
@@ -118,5 +115,5 @@ export function PrinterPicker() {
 
 export function PresetPicker({ type, slot = 0 }: { type: PresetType; slot?: number }) {
   if (type === 'machine') return <PrinterPicker />;
-  return <FilamentPicker slot={slot} onColour={(c) => pickColour(slot, c)} />;
+  return <FilamentPicker slot={slot} />;
 }

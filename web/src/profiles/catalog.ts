@@ -90,7 +90,7 @@ function makeProfile(s: State, base: SystemPreset, name: string, values: Config 
 
 const pendingCreations=new Map<string,{creation:ProfileCreation;flight?:Promise<string>}>();
 const baseIdentity=catalogKey;
-export async function createProfileFromBase(type:PresetType,baseName:string,name?:string):Promise<string> {
+export async function createProfileFromBase(type:PresetType,baseName:string,name?:string,values?:Config):Promise<string> {
   const {key:identity}=resolveCatalogEntry(getState(),type,baseName),explicit=name?.trim();
   const {profileCreation}=await import('./transactions');
   let entry=explicit?undefined:pendingCreations.get(identity);
@@ -109,7 +109,7 @@ export async function createProfileFromBase(type:PresetType,baseName:string,name
         const reuse=owned.find(p=>active.has(profileKey(p))) ?? owned.sort((a,b)=>profileKey(a).localeCompare(profileKey(b)))[0];
         if(reuse)return profileKey(reuse);
       }
-      return makeProfile(s,current,explicit || displayName(current));
+      return makeProfile(s,current,explicit || displayName(current),explicit && values ? {...current.config,...values} : {});
     })};
     if(!explicit)pendingCreations.set(identity,entry);
   }

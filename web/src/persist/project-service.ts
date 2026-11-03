@@ -78,17 +78,25 @@ export const serviceStore: ProjectStore = {
   load: (id) => serviceJson<ProjectRecord>(projectPath(id), undefined, true),
   async save(id, meta, doc, thumbnail) {
     const capture = await captureProjectWire({ doc, name: meta.name, objects: meta.objects });
-    const key = `${id}/${meta.revision ?? 0}/${capture.digest}`;
+    let revision = meta.revision ?? 0;
+    for (const [prior, preparation] of [...pendingSaves]) {
+      if (!prior.startsWith(`${id}/${revision}/`) || prior === `${id}/${revision}/${capture.digest}`) continue;
+      const request = await preparation.then((p) => p.request, () => null);
+      const replay = request && await required<{revision:number}>(projectPath(id), request).catch(() => null);
+      if (pendingSaves.get(prior) === preparation) pendingSaves.delete(prior);
+      if (replay?.revision === revision + 1) { revision = replay.revision; break; }
+    }
+    const key = `${id}/${revision}/${capture.digest}`;
     const preparation = prepareOnce(pendingSaves, key, async () => {
-      const previous = (meta.revision ?? 0) > 0 ? await required<ProjectRecord>(projectPath(id)) : null;
-      if (previous && (previous.meta.revision ?? 0) !== meta.revision) throw Object.assign(new Error('This project changed. Reload or reapply your draft.'), { name: 'ProjectConflictError' });
-      const record = { ...previous, meta: { ...previous?.meta, ...meta, id, thumbnail: thumbnail === undefined ? previous?.meta.thumbnail ?? null : thumbnail }, doc: null };
-      return { request: projectWrite(await capture.project({ operationId: newKey(), expectedRevision: meta.revision ?? 0, record })), savedAt: meta.savedAt };
+      const previous = revision > 0 ? await required<ProjectRecord>(projectPath(id)) : null;
+      if (previous && (previous.meta.revision ?? 0) !== revision) throw Object.assign(new Error('This project changed. Reload or reapply your draft.'), { name: 'ProjectConflictError' });
+      const record = { ...previous, meta: { ...previous?.meta, ...meta, revision, id, thumbnail: thumbnail === undefined ? previous?.meta.thumbnail ?? null : thumbnail }, doc: null };
+      return { request: projectWrite(await capture.project({ operationId: newKey(), expectedRevision: revision, record })), savedAt: meta.savedAt };
     });
     let pending: Awaited<typeof preparation>;
     try { pending = await preparation; } finally { capture.release(); }
     const ack = await required<{revision:number}>(projectPath(id), pending.request);
-    if (ack.revision !== (meta.revision ?? 0) + 1) throw new Error('Invalid project revision acknowledgement');
+    if (ack.revision !== revision + 1) throw new Error('Invalid project revision acknowledgement');
     if (pendingSaves.get(key) === preparation) pendingSaves.delete(key);
     return { revision: ack.revision, savedAt: pending.savedAt };
   },
