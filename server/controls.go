@@ -13,6 +13,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -285,6 +286,7 @@ type requestWriter struct {
 	http.ResponseWriter
 	status int
 	bytes  uint64
+	failed []byte
 }
 
 func (w *requestWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
@@ -304,6 +306,9 @@ func (w *requestWriter) Write(b []byte) (int, error) {
 	}
 	n, err := w.ResponseWriter.Write(b)
 	w.bytes += uint64(n)
+	if w.status >= 400 && len(w.failed) < 1024 {
+		w.failed = append(w.failed, b[:min(n, 1024-len(w.failed))]...)
+	}
 	return n, err
 }
 func (w *requestWriter) Flush() { _ = w.FlushError() }
@@ -314,12 +319,39 @@ func (w *requestWriter) FlushError() error {
 	return http.NewResponseController(w.ResponseWriter).Flush()
 }
 
+func logFailure(r *http.Request, recorder *requestWriter) {
+	var body struct {
+		Code  string `json:"code"`
+		Error string `json:"error"`
+	}
+	json.Unmarshal(recorder.failed, &body)
+	detail := body.Code
+	if detail == "" {
+		detail = logPrefix(body.Error, 160)
+	}
+	log.Printf("%s %s -> %d %s", logPrefix(r.Method, 32), logPrefix(r.URL.Path, 256), recorder.status, detail)
+}
+
 func (s *Server) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		recorder := &requestWriter{ResponseWriter: w}
+		w = recorder
+		defer func() {
+			if v := recover(); v != nil {
+				if v == http.ErrAbortHandler {
+					panic(v)
+				}
+				log.Printf("%s %s panic: %v\n%s", logPrefix(r.Method, 32), logPrefix(r.URL.Path, 256), v, debug.Stack())
+				if recorder.status == 0 {
+					fail(recorder, 500, "internal server error")
+				}
+			}
+			if recorder.status >= 400 && !s.cfg.RequestLog {
+				logFailure(r, recorder)
+			}
+		}()
 		if s.cfg.RequestLog || s.cfg.Metrics {
 			started := time.Now()
-			recorder := &requestWriter{ResponseWriter: w}
-			w = recorder
 			defer func() {
 				status := recorder.status
 				if status == 0 {
