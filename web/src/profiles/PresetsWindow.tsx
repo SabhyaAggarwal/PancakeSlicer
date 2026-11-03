@@ -14,7 +14,7 @@ import { applicabilityKey } from './WorksWith';
 import { archiveProfiles, profileCopyCreation, restoreProfiles, type ProfileCreation } from './transactions';
 import { documentGeneration } from '../state/history';
 import { ProfileEditor, type ProfileDraft } from './ProfileEditor';
-import { profileColour,profileSummary } from './metadata';
+import { processMode, processTitle, profileColour, profileSummary } from './metadata';
 import { Check } from '../components/Check';
 import { Dropdown } from '../components/Dropdown';
 import { requestPreset } from '../components/PresetCombo';
@@ -43,9 +43,9 @@ const coverOf = (vendor: string, model: string) => vendor && model ? `/profiles/
 type CopyRequest={source:UserPreset;name:string;creation:ProfileCreation;error?:string};
 let pendingCopy:CopyRequest|undefined;
 
-interface Item { base?:SystemPreset; key: string; name: string; mine: boolean; parent?: string; changed: number; slot?: number; user?: UserPreset; note: string; vendor: string; model:string; nozzle: string; material: string; family?: string; cover?: string|null; swatch?:string|null;reason?: string; meta?: string; config: Config; variants?: Item[] }
+interface Item { base?:SystemPreset; key: string; name: string; mine: boolean; parent?: string; changed: number; slot?: number; user?: UserPreset; note: string; vendor: string; model:string; nozzle: string; material: string; family?: string; cover?: string|null; swatch?:string|null;reason?: string; meta?: string; fullName?: string; config: Config; variants?: Item[] }
 const COMMON_MATERIALS = ['PLA', 'PETG', 'ABS', 'ASA', 'TPU'];
-const NOUNS: Record<PresetType,[string,string]> = {machine:['printer','printers'],filament:['filament','filaments'],process:['print settings','print settings']};
+const NOUNS: Record<PresetType,[string,string]> = {machine:['printer','printers'],filament:['filament','filaments'],process:['print setting','print settings']};
 const count = (n:number,[one,many]:[string,string]) => `${n} ${n === 1 ? one : many}`;
 function groupOf(type: PresetType, i: Item) {
   if(type === 'machine') return i.vendor || 'Other';
@@ -128,12 +128,12 @@ function AddDetails({type,item,busy,onAdd}: {type:PresetType;item:Item;busy:bool
   const variant=variants.find(v=>v.key === choice) ?? variants[0];
   return <section className="pf-add-source" aria-label={item.name}>
     {item.cover !== undefined && <span className="pf-source-cover">{item.cover && !coverFailed && <img src={item.cover} alt="" loading="lazy" onError={()=>setCoverFailed(true)}/>}</span>}
-    <h2>{item.name}</h2>
+    <h2>{item.fullName ?? item.name}</h2>
     {variants.length > 1 && (type === 'machine'
       ? <div className="pf-variant"><span>Nozzle</span><Choice label="Nozzle" value={variant.key} options={variants.map(v=>({id:v.key,label:`${v.nozzle} mm`}))} onChange={setChoice}/></div>
       : <label className="pf-variant"><span>Variant</span><Dropdown className="combo" aria-label="Variant" value={variant.key} onValueChange={setChoice} options={variants.map(v=>({value:v.key,label:v.name}))}/></label>)}
     {variants.length === 1 && variant.note && <p>{variant.note}</p>}
-    <button type="button" className="btn primary" disabled={busy || load !== 'ready'} onClick={()=>onAdd(variant)}>{busy ? 'Adding…' : load === 'loading' ? 'Loading…' : `Add ${NOUNS[type][0]}`}</button>
+    <button type="button" className="btn primary" disabled={busy || load !== 'ready'} onClick={()=>onAdd(variant)}>{busy ? 'Adding…' : load === 'loading' ? 'Loading…' : `Add ${type === 'process' ? NOUNS[type][1] : NOUNS[type][0]}`}</button>
   </section>;
 }
 
@@ -241,13 +241,34 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     return list.filter(i=>{const variants=i.variants ?? [i];return (!vendorFilter.length || vendorFilter.includes(i.vendor)) && (!materials.length || materials.includes(i.material)) && (type === 'machine' ? (!modelFilter.length || modelFilter.includes(i.model)) && (!nozzleFilter.length || variants.some(v=>nozzleFilter.includes(v.nozzle))) : !hasContext || variants.some(v=>contexts.some(key=>selectCompatibility(state,type,v.user ? v.key : v.name,key).ok)));});
   },[list,type,vendorFilter,materialFilter,materialDefault,search,modelFilter,nozzleFilter,printerFilter,machines,users,printer,process,dirty,filamentEdits]);
   const query=search.trim().toLocaleLowerCase();
+  const processRows=(rows:Item[])=>{
+    const scoped=printerFilter.length === 1 && printerFilter[0] === printer;
+    const usual=(()=>{const n=new Map<string,number>();for(const i of matching){const m=processMode(i.config);n.set(m,(n.get(m) ?? 0)+1);}return [...n].sort((a,b)=>b[1]-a[1])[0]?.[0];})();
+    const shown=rows.map(i=>{
+      const compatible=scoped || !i.base ? [] : (i.base.compatible_printers ?? []).flatMap(name=>{const m=machines.find(p=>p.name === name);return m ? [{model:first(m.config.printer_model) || m.model || '',nozzle:first(m.config.nozzle_diameter)}] : [];}).filter(c=>c.model);
+      const models=[...new Set(compatible.map(c=>c.model))],nozzles=[...new Set(compatible.map(c=>c.nozzle).filter(Boolean))];
+      const printerTag=models.length ? models[0]+(models.length > 1 ? ` +${models.length-1}` : '') : '';
+      return {i,title:processTitle(i.name,i.config,scoped || !!printerTag),printerTag,nozzleTag:nozzles.length === 1 ? `${nozzles[0]} mm` : ''};
+    });
+    const key=(r:typeof shown[number],nozzle:boolean)=>`${r.title}\0${r.printerTag}${nozzle ? r.nozzleTag : ''}`;
+    return shown.map(r=>{
+      const clash=shown.filter(q=>key(q,false) === key(r,false)).length > 1;
+      const exact=clash && shown.filter(q=>key(q,true) === key(r,true)).length > 1;
+      const title=exact ? processTitle(r.i.name,r.i.config,false) : r.title;
+      const mode=processMode(r.i.config);
+      const tags=[r.printerTag && (clash && !exact && r.nozzleTag ? `${r.printerTag} ${r.nozzleTag}` : r.printerTag),mode !== usual ? mode : ''].filter(Boolean).join(' · ');
+      return {...r.i,fullName:r.i.name,name:title,note:'',meta:tags || undefined};
+    });
+  };
+
   const groups=useMemo(()=>{
     const byGroup=new Map<string,Item[]>();
     for(const i of matching)if(!query || [i,...i.variants ?? []].some(v=>`${v.name} ${v.note}`.toLocaleLowerCase().includes(query))){
       const g=groupOf(type,i);if(!byGroup.has(g))byGroup.set(g,[]);byGroup.get(g)!.push(i);
     }
-    return [...byGroup].sort(([a],[b])=>groupOrder(type,a,b)).map(([label,rows])=>({label,rows:rows.sort((a,b)=>a.name.localeCompare(b.name))}));
-  },[matching,query,type]);
+    const sorted=[...byGroup].sort(([a],[b])=>groupOrder(type,a,b)).map(([label,rows])=>({label,rows:rows.sort((a,b)=>a.name.localeCompare(b.name))}));
+    return type === 'process' ? sorted.map(g=>({...g,rows:processRows(g.rows)})) : sorted;
+  },[matching,query,type,printerFilter,printer]);
   const visible=useMemo(()=>groups.flatMap(g=>g.rows),[groups]);
   const [collapsed,setCollapsed]=useState<ReadonlySet<string>>(new Set());
   const filtersActive=vendorFilter.length+modelFilter.length+nozzleFilter.length+materialFilter.length+printerFilter.length;
@@ -391,7 +412,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     setAdding(!!add);pickType(initialType,name);
   },[initialType,name]);
   const backToList=()=>{setMobilePane('list');setFiltersOpen(false);requestAnimationFrame(()=>document.getElementById(`${id}:${latestSelection.current.focus}`)?.focus());};
-  const nouns=NOUNS[type], typeLabel=nouns[0];
+  const nouns=NOUNS[type], typeLabel=type === 'process' ? nouns[1] : nouns[0];
   const resultNoun:[string,string]=adding && type === 'machine' ? ['model','models'] : adding ? ['preset','presets'] : nouns;
   const toggleGroup=(label:string)=>setCollapsed(prior=>{const next=new Set(prior),key=groupKey(label);if(!next.delete(key))next.add(key);return next;});
   const showLibrary=(master:boolean)=>{if(master === adding)return;void leave(()=>{setDrafts({});clearFilters();setSearch('');setComparing(false);setAdding(master);setMobilePane('list');});};

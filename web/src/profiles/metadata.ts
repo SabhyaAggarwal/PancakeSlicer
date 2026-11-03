@@ -10,6 +10,17 @@ export function profileSummary(type: PresetType, config: Config, model?: string)
   return [height > 0 ? `${height.toFixed(2)} mm` : '', top].filter(Boolean).join(' · ');
 }
 
+export function processMode(config: Config): string {
+  return profileSummary('process', config).split(' · ').pop() ?? '';
+}
+export function processTitle(name: string, config: Config, scoped: boolean): string {
+  let title = name;
+  const lead = /^(\d+(?:\.\d+)?)\s*mm\s+/i.exec(title);
+  if (lead && Number(lead[1]) === Number(first(config.layer_height))) title = title.slice(lead[0].length);
+  if (scoped) title = title.replace(/\s*@.*$/, '');
+  return title.trim() || name;
+}
+
 export function profileColour(config:Config):string|null {
   const value=first(config.filament_colour ?? config.default_filament_colour);
   return /^#[\da-f]{6}$/i.test(value) ? value.toUpperCase() : null;
