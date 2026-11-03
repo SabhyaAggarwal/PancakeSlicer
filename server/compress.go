@@ -2,6 +2,7 @@ package main
 
 import (
 	"compress/gzip"
+	"io"
 	"net/http"
 	"strings"
 )
@@ -10,6 +11,25 @@ const gzipMinBytes = 1024
 
 func gzipJSON(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch encoding := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Encoding"))); encoding {
+		case "", "identity":
+		case "gzip":
+			z, err := gzip.NewReader(r.Body)
+			if err != nil {
+				fail(w, 400, "gzip request body is unreadable")
+				return
+			}
+			r.Body = struct {
+				io.Reader
+				io.Closer
+			}{z, r.Body}
+			r.Header.Del("Content-Encoding")
+			r.Header.Del("Content-Length")
+			r.ContentLength = -1
+		default:
+			fail(w, http.StatusUnsupportedMediaType, "request bodies may be gzip or identity")
+			return
+		}
 		if !strings.HasPrefix(r.URL.Path, "/api/") || !acceptsGzip(r) {
 			next.ServeHTTP(w, r)
 			return
