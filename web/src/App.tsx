@@ -9,6 +9,7 @@ import { CanvasToolbar, CutPanel, PaintPanel, SliceNotification, Toast } from '.
 import { LoadingState } from './components/Notices';
 import { LayerHeightBar, LayerHeightPanel } from './components/LayerHeight';
 import { Sidebar } from './components/Sidebar';
+import WorkspaceRail from './components/WorkspaceRail';
 import { AskHost } from './components/Ask';
 import { TopBar } from './components/TopBar';
 import { graphicsCapability } from './browser-support';
@@ -25,7 +26,6 @@ const CanvasTools = lazy(() => import('./components/CanvasTools'));
 const Navigator = lazy(() => import('./components/Navigator').then((m) => ({ default: m.Navigator })));
 const PlateChoice = lazy(() => import('./components/PlateChoice'));
 const EmptyPlate = lazy(() => import('./components/FirstRun'));
-const WorkspaceRail = lazy(() => import('./components/WorkspaceRail'));
 const SavedPreferencesNotice = lazy(() => import('./components/SavedPreferencesNotice'));
 const ProjectStatus = lazy(() => import('./projects/ProjectStatus').then((m) => ({ default: m.ProjectStatus })));
 const Plater3D = lazy(() => import('./plater/Plater3D'));

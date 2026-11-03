@@ -4,6 +4,10 @@ declare module 'virtual:option-bootstrap' {
   export const removed: string[];
 }
 
+declare module 'virtual:option-hints' {
+  export const hints: Record<string, { type: string; gui_type?: string; multiline?: boolean; full_width?: boolean }>;
+}
+
 declare module 'virtual:mock-presets' {
   const url: string;
   export default url;

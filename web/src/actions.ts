@@ -34,7 +34,7 @@ import { loadPreviewView } from './components/preview-loader';
 
 export async function init() {
   app.send({ type: 'BOOT' });
-  const api = await connect();
+  const api = await connectService();
   setState({ api, loading: 'Loading presets' });
   if (!api.mock) {
     setState({ features: toolFeatures });
@@ -43,6 +43,16 @@ export async function init() {
   }
   if (!api.mock) void loadPrinters();
   await loadCatalog();
+}
+
+async function connectService(): Promise<Api> {
+  for (let delay = 500, wait = 1500; ; delay = Math.min(delay * 2, 5000), wait = Math.min(wait * 2, 15_000)) {
+    try { return await connect(wait); } catch {  }
+    await new Promise<void>((resolve) => {
+      const done = () => { clearTimeout(timer); window.removeEventListener('online', done); resolve(); };
+      const timer = setTimeout(done, delay); window.addEventListener('online', done);
+    });
+  }
 }
 
 export async function loadCatalog() { await (await import('./profiles/catalog-startup')).loadCatalog(); }

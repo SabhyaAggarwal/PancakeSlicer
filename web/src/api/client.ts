@@ -35,6 +35,8 @@ export function parseProgress(data: string): ProgressEvent | null {
   return m && Number.isFinite(Number(m[2])) ? { stage: m[1], pct: Number(m[2]) } : null;
 }
 
+const statusRequests = new Map<string, Promise<JobStatus>>();
+
 const realApi: Api = {
   mock: false,
   presets(vendor, models, update) {
@@ -87,8 +89,13 @@ const realApi: Api = {
     const j = await json<{ id: string }>(await postJob(fd, url, { headers: submissionHeaders(req), retry: req.preview_budget === undefined, signal, quiet: req.preview_budget !== undefined }));
     return j.id;
   },
-  async status(id) {
-    return json<JobStatus>(await fetch(`/api/jobs/${id}`));
+  status(id) {
+    let pending = statusRequests.get(id);
+    if (!pending) {
+      pending = fetch(`/api/jobs/${id}`).then((r) => json<JobStatus>(r)).finally(() => statusRequests.delete(id));
+      statusRequests.set(id, pending);
+    }
+    return pending;
   },
   events(id, on) {
     const es = new EventSource(`/api/jobs/${id}/events`);
@@ -216,10 +223,10 @@ export const canForcePlanar = () => toolFeatures.force_planar === true;
 export const canCalibrate = () => toolFeatures.calib === true;
 export const canOneShot = () => toolFeatures.oneshot === true;
 
-export async function connect(): Promise<Api> {
+export async function connect(timeoutMs = 1500): Promise<Api> {
   bootstrapAccessToken();
   try {
-    const r = await readHealth(1500);
+    const r = await readHealth(timeoutMs);
     const type = r.headers.get('content-type') ?? '';
     if (r.ok && type.includes('json')) {
       applyHealth(await r.json() as { tool_features?: Record<string, unknown>; artifact_manifest?: SurfaceArtifactManifest });

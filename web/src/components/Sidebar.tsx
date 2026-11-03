@@ -76,9 +76,17 @@ function SliceSummary() {
   const summary = useStore(s => s.job.state === 'done' && !s.job.stale && s.job.status?.record ? nativeSurfaceSummary(s.job.status.record) : null);
   return summary ? <div className="engine-line" role="status">{summary}</div> : null;
 }
+function RailSkeleton() {
+  const bar = (k: number, wide?: boolean) => <div key={k} className={`rail-row rail-skel${wide ? ' rail-row-wide' : ''}`}><span className="skel-block"/></div>;
+  return <div className="rail-skeleton" role="status" aria-label="Loading profiles">
+    <RailSection title="Filament">{bar(0)}</RailSection>
+    <RailSection title="Print settings" className="process-section">{bar(1, true)}<div className="process-panel">{[2, 3, 4, 5, 6, 7].map(k => <div key={k} className="skel-line"/>)}</div></RailSection>
+  </div>;
+}
 export function Sidebar() {
   const objects = useStore(s => s.processScope === 'objects' && !!s.objects.length);
   const ready = useStore(printerReady), process = useStore(s => s.process);
+  const loading = useStore(s => !s.api || s.profileLibraryLoad.state === 'loading');
   return <aside className="sidebar scroll-fade">
     <ProfileLibraryNotice/>
     <PrinterSection/>
@@ -91,5 +99,6 @@ export function Sidebar() {
       </RailSection>
       <SliceSummary/>
     </>}
+    {!ready && loading && <RailSkeleton/>}
   </aside>;
 }

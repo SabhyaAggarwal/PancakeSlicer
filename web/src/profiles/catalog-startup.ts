@@ -27,6 +27,13 @@ function mergeCatalog(vendor: string, cat: PresetCatalog) {
 }
 
 let catalogLoadGeneration = 0;
+const transient = (error: unknown) => error instanceof TypeError || [408, 429].includes((error as {status?:number}).status ?? 0) || ((error as {status?:number}).status ?? 0) >= 500;
+let retryDelay = 1000;
+function retryCatalog(generation: number) {
+  const again = () => { clearTimeout(timer); window.removeEventListener('online', again); if (generation === catalogLoadGeneration) void loadCatalog(); };
+  const timer = setTimeout(again, retryDelay); window.addEventListener('online', again);
+  retryDelay = Math.min(retryDelay * 2, 10_000);
+}
 let catalogLibraryTail: Promise<void> = Promise.resolve();
 export async function loadCatalog() {
   const generation = ++catalogLoadGeneration, initial = getState(), api = initial.api, documentAtStart=documentGeneration();
@@ -68,9 +75,12 @@ export async function loadCatalog() {
       }
       const error=result.requiresAdoption?'Your printer setup has unsaved changes that differ from the saved one. Save or discard them, then reload profiles.':null;
       setState({...result.patch,profileLibraryLoad:error ? {state:'failed',error} : {state:'ready'}});
-      if(!error)acceptHydratedPrinterSetups();
+      if(!error){acceptHydratedPrinterSetups();retryDelay=1000;}
     } catch (error) {
-      if(current())setState({profileLibraryLoad:{state:'failed',error:error instanceof Error?error.message:String(error)}});
+      if(current()){
+        setState({profileLibraryLoad:{state:'failed',error:error instanceof Error?error.message:String(error)}});
+        if(transient(error))retryCatalog(generation);
+      }
     }
   });
   catalogLibraryTail=library;

@@ -567,6 +567,14 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .saved-preferences-notice > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
 :where(.orca-parity) .rail-section { flex: none; padding: var(--s-3) 0; }
+:where(.orca-parity) .rail-skeleton { display: contents; }
+:where(.orca-parity) .skel-block, :where(.orca-parity) .skel-line { display: block; border-radius: var(--control-radius); background: var(--sunken); animation: skel-pulse 1.4s var(--ease) infinite; }
+:where(.orca-parity) .rail-skel .skel-block { grid-column: 1 / -1; height: var(--h-field); }
+:where(.orca-parity) .rail-skeleton .skel-line { height: 14px; margin: var(--s-4) var(--s-3) var(--s-4) var(--space-section); }
+:where(.orca-parity) .rail-skeleton .skel-line:nth-child(odd) { width: 55%; }
+:where(.orca-parity) .rail-skeleton .skel-line:nth-child(even) { width: 70%; }
+@keyframes skel-pulse { 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { :where(.orca-parity) .skel-block, :where(.orca-parity) .skel-line { animation: none; } }
 :where(.orca-parity) .rail-section + .rail-section { border-top: 1px solid var(--line); }
 :where(.orca-parity) .sidebar > .rail-section.process-section { flex: 1 1 0; margin: 0; padding-bottom: 0; background: none; }
 :where(.orca-parity) .rail-head { --rail-act: 24px; display: flex; align-items: center; gap: var(--s-3); min-height: var(--rail-act); padding: 0 var(--s-3) 0 var(--space-section); }

@@ -5,16 +5,23 @@ export function optionAssets(bootstrapTypes = true): Plugin {
   return {
     name: 'orca-option-bootstrap',
     resolveId(id) {
-      if (id === 'virtual:option-bootstrap') return '\0' + id;
+      if (id === 'virtual:option-bootstrap' || id === 'virtual:option-hints') return '\0' + id;
     },
     load(id) {
-      if (id !== '\0virtual:option-bootstrap') return;
+      if (id !== '\0virtual:option-bootstrap' && id !== '\0virtual:option-hints') return;
       const read = (path: string) => {
         const file = new URL(path, import.meta.url);
         this.addWatchFile(file.pathname);
         return JSON.parse(readFileSync(file, 'utf8'));
       };
       const options = read('./src/options.generated.json');
+      if (id === '\0virtual:option-hints') {
+        const names = ['gui_type', 'multiline', 'full_width'];
+        const hints = Object.fromEntries(Object.entries<Record<string, unknown>>(options)
+          .filter(([, def]) => names.some((name) => def[name] !== undefined))
+          .map(([key, def]) => [key, Object.fromEntries(['type', ...names].filter((name) => def[name] !== undefined).map((name) => [name, def[name]]))]));
+        return `export const hints = ${JSON.stringify(hints)};`;
+      }
       const quick = Object.fromEntries(['curr_bed_type', 'flush_multiplier'].map((key) => [key, options[key]]));
       const vectors = Object.fromEntries((bootstrapTypes ? Object.keys(options) : [])
         .filter((key) => /^(Floats|Ints|Percents|Bools|FloatsOrPercents|Points|Enums|Strings|PointsGroups|String|Point|Point3)$/.test(options[key].type))

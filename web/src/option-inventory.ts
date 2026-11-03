@@ -1,6 +1,7 @@
 import type { ConfigValue } from './api/types';
 import type { OptionDef, OptionMode } from './options';
 import { normalizeConfigValue, setOptionTypes, unescapeConfigString, vectorType } from './config-values';
+import { hints } from 'virtual:option-hints';
 
 let nativePresets = false;
 export const nativePresetCatalog = () => nativePresets;
@@ -34,12 +35,14 @@ function defaultValue(def: Metadata): unknown {
   return value;
 }
 
+const optionType = (type: string) => type.replace(/^co/, '').replace(/Or/g, '_or_').replace(/Groups/g, '_groups').toLowerCase();
+
 export function normalizeOptions(inventory: Record<string, Metadata>): Record<string, OptionDef> {
   return Object.fromEntries(Object.entries(inventory).map(([key, def]) => [key, {
     ...def,
     key,
     enum_values: (def.enum_values ?? []).filter((value): value is string => typeof value === 'string'),
-    type: def.type.replace(/^co/, '').replace(/Or/g, '_or_').replace(/Groups/g, '_groups').toLowerCase(),
+    type: optionType(def.type),
     mode: MODES[def.mode],
     default: defaultValue(def),
   }]));
@@ -67,9 +70,6 @@ export interface RuntimeOptions {
 }
 
 export async function loadRuntimeOptions(url: string, mock = false, cached?: RuntimeOptions): Promise<RuntimeOptions> {
-  let shippedPromise: Promise<Record<string, Metadata> | null> | undefined;
-  const shippedAsset = () => shippedPromise ??= asset(url).then(records).catch(() => null);
-  if (!cached?.native) void shippedAsset();
   let native = false;
   nativePresets = false;
   if (!mock) {
@@ -96,14 +96,12 @@ export async function loadRuntimeOptions(url: string, mock = false, cached?: Run
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}: /api/options`);
     etag = response.headers.get('ETag');
     selected = records(await response.json());
-  } else selected = await shippedAsset();
+  } else selected = await asset(url).then(records).catch(() => null);
   if (!selected) throw new Error('Shipped option dictionary unavailable');
   const options = normalizeOptions(selected);
-  const shipped = native ? await shippedAsset() : null;
-  const hints = shipped ? normalizeOptions(shipped) : {};
   if (native) for (const [key, def] of Object.entries(options)) {
     const hint = hints[key];
-    if (!hint || hint.type !== def.type) continue;
+    if (!hint || optionType(hint.type) !== def.type) continue;
     for (const name of ['gui_type', 'multiline', 'full_width'] as const)
       if (hint[name] !== undefined) Object.assign(def, { [name]: hint[name] });
   }
