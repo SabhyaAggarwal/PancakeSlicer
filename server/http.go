@@ -99,9 +99,7 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, library *Profil
 	if options == nil {
 		options = cacheResponse(optionData)
 	}
-	mux.HandleFunc("GET /api/options", func(w http.ResponseWriter, r *http.Request) {
-		options.serve(w, r, "options.json", "application/json", catalogCache, time.Time{})
-	})
+	registerOptions(mux, options)
 	mux.HandleFunc("GET /api/profile-library", s.getProfileLibrary)
 	mux.HandleFunc("PUT /api/profile-library", s.putProfileLibrary)
 	mux.HandleFunc("GET /api/profile-library/recovery", s.getProfileRecovery)
