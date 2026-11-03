@@ -37,6 +37,8 @@ type versionSlice struct {
 	TimeS  *float64 `json:"timeS,omitempty"`
 	Grams  *float64 `json:"grams,omitempty"`
 	Layers *float64 `json:"layers,omitempty"`
+	Mm     *float64 `json:"mm,omitempty"`
+	Supp   *float64 `json:"supportG,omitempty"`
 }
 type projectVersion struct {
 	ID       uint64          `json:"id"`
@@ -44,6 +46,7 @@ type projectVersion struct {
 	At       int64           `json:"at"`
 	Until    int64           `json:"until"`
 	Record   string          `json:"record"`
+	Content  string          `json:"content,omitempty"`
 	Name     string          `json:"name"`
 	Objects  int             `json:"objects"`
 	Change   []versionChange `json:"change"`
@@ -102,6 +105,9 @@ next:
 	if len(out) > 8 {
 		out = out[len(out)-8:]
 	}
+	if out == nil {
+		out = []versionChange{}
+	}
 	return out
 }
 
@@ -135,19 +141,37 @@ func (st *workspaceStore) writeVersion(id string, revision uint64, record json.R
 	}
 	json.Unmarshal(record, &meta)
 	now := time.Now().UnixMilli()
-	n := len(x.Versions)
-	if n > 0 && x.Versions[n-1].Record == sha && x.Versions[n-1].Name == meta.Meta.Name {
-		x.Versions[n-1].Revision, x.Versions[n-1].Until = revision, now
+	content := recordContent(record)
+	if last := lastVersion(x); last != nil && (last.Record == sha || content != "" && last.Content == content) && last.Name == meta.Meta.Name {
+		last.Revision, last.Until, last.Record, last.Content = revision, now, sha, content
 	} else if last := lastVersion(x); last != nil && kind != "duplicate" && !last.Sealed && last.Slice == nil &&
 		now-last.Until < versionIdle.Milliseconds() && now-last.At < versionSpan.Milliseconds() {
-		last.Revision, last.Until, last.Record, last.Name, last.Objects = revision, now, sha, meta.Meta.Name, meta.Meta.Objects
+		last.Revision, last.Until, last.Record, last.Content, last.Name, last.Objects = revision, now, sha, content, meta.Meta.Name, meta.Meta.Objects
 		last.Change = mergeChanges(last.Change, change)
 	} else {
-		x.Versions = append(x.Versions, projectVersion{ID: x.Next, Revision: revision, At: now, Until: now, Record: sha,
+		x.Versions = append(x.Versions, projectVersion{ID: x.Next, Revision: revision, At: now, Until: now, Record: sha, Content: content,
 			Name: meta.Meta.Name, Objects: meta.Meta.Objects, Change: mergeChanges(nil, change)})
 		x.Next++
 	}
 	return st.saveVersions(id, x)
+}
+
+func recordContent(record json.RawMessage) string {
+	var r map[string]json.RawMessage
+	var meta map[string]json.RawMessage
+	if json.Unmarshal(record, &r) != nil || json.Unmarshal(r["meta"], &meta) != nil {
+		return ""
+	}
+	delete(meta, "savedAt")
+	delete(meta, "revision")
+	delete(meta, "thumbnail")
+	r["meta"], _ = json.Marshal(meta)
+	var doc map[string]json.RawMessage
+	if json.Unmarshal(r["doc"], &doc) == nil && doc != nil {
+		delete(doc, "recoveryCheckpoint")
+		r["doc"], _ = json.Marshal(doc)
+	}
+	return workspaceDigest(r)
 }
 func lastVersion(x *versionIndex) *projectVersion {
 	if len(x.Versions) == 0 {
@@ -220,6 +244,8 @@ func sliceNumbers(raw json.RawMessage, s *versionSlice) {
 	s.TimeS = num(r.Totals, r.Text)("estimated_time_s")
 	s.Grams = num(r.Statistics)("total_weight_g")
 	s.Layers = num(r.Totals, r.Statistics)("layer_count")
+	s.Mm = num(r.Statistics)("total_used_filament_mm")
+	s.Supp = num(r.Statistics)("support_weight_g")
 }
 
 func sliceJob(j *Job) bool {
