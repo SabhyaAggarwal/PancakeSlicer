@@ -88,12 +88,24 @@ export interface ProfileLibraryWrite {
   operationId: string;
   expectedRevision: number;
   document: ProfileLibraryDocument;
+  adoption?: ProfileLibraryAdoption;
   inventory?: {
     complete: true;
     libraryRevision: number;
     projectRevision?: string;
     references: Record<ProfileKey, readonly import('./identity').ProfileReference[]>;
   };
+}
+export interface ProfileLibraryAdoption {
+  scope: 'profile-library-and-working-setup';
+  sourceId: string;
+  digest: string;
+  source: string;
+}
+export interface ProfileLibraryAdoptionReceipt extends ProfileLibraryAdoption {
+  durable: true;
+  operationId: string;
+  revision: number;
 }
 export interface ProfileLibraryWriteResult { revision: number; operationId: string }
 
