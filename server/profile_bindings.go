@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"slices"
 )
 
@@ -25,13 +24,6 @@ func (s *Server) savedProfileBindings() (map[string]map[string]json.RawMessage, 
 	if err != nil {
 		return nil, err
 	}
-	pending, err := s.library.pendingLegacyProfiles(envelope)
-	if err != nil {
-		return nil, err
-	}
-	if pending != nil {
-		return nil, errLegacyProfilesPending
-	}
 	return libraryProfiles(envelope.Document)
 }
 func (s *Server) validateProfileBindings(req *JobRequest) *profileProblem {
@@ -41,9 +33,6 @@ func (s *Server) validateProfileBindings(req *JobRequest) *profileProblem {
 	}
 	profiles, err := s.savedProfileBindings()
 	if err != nil {
-		if errors.Is(err, errLegacyProfilesPending) {
-			return &profileProblem{Message: err.Error(), Code: "legacy_profiles_pending", Recovery: "adopt_service_profiles", status: 409}
-		}
 		return profileCatalogProblem(req.Vendor, err)
 	}
 	problem := func(code, recovery, message, kind, name string, slot int) *profileProblem {

@@ -48,7 +48,6 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, library *Profil
 	workspace := &workspaceStore{root: filepath.Join(c.DataDir, "workspace")}
 	workspace.register(mux)
 	s.workspace = workspace
-	s.profileAdoptionRoutes(mux)
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, r *http.Request) {
 		q, n := jobs.Counts()
 		health := healthProbe.snapshot(c.Tool)
@@ -58,8 +57,7 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, library *Profil
 		}
 		health["status"], health["queued"], health["running"] = "ok", q, n
 		health["profile_library_schema"] = 1
-		health["profile_adoption_schema"] = 1
-		health["service_profile_adoption_schema"] = 1
+		health["profile_recovery_schema"] = 1
 		health["workspace_schema"] = 1
 		health["server_revision"] = buildAbout(c).Revision
 		health["max_concurrency"], health["max_queue"] = jobs.cfg.MaxJobs, jobs.cfg.MaxQueue
@@ -101,6 +99,8 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, library *Profil
 	})
 	mux.HandleFunc("GET /api/profile-library", s.getProfileLibrary)
 	mux.HandleFunc("PUT /api/profile-library", s.putProfileLibrary)
+	mux.HandleFunc("GET /api/profile-library/recovery", s.getProfileRecovery)
+	mux.HandleFunc("POST /api/profile-library/recovery", s.postProfileRecovery)
 	mux.HandleFunc("GET /api/handy-models/{name}", s.handyModel)
 	mux.HandleFunc("GET /api/emboss-fonts", s.embossFonts)
 	mux.HandleFunc("GET /api/user-heads", s.listUserHeads)

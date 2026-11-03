@@ -39,13 +39,16 @@ func validProfileName(name string) error {
 
 type profileLibraryDocument map[string]json.RawMessage
 type libraryReceipt struct {
-	Digest   string `json:"digest"`
-	Revision uint64 `json:"revision"`
+	Digest   string          `json:"digest"`
+	Revision uint64          `json:"revision"`
+	Result   *recoveryResult `json:"result,omitempty"`
 }
+
 type libraryEnvelope struct {
-	Document   profileLibraryDocument            `json:"document"`
-	Operations map[string]libraryReceipt         `json:"operations"`
-	Adoptions  map[string]profileAdoptionReceipt `json:"adoptions,omitempty"`
+	Document   profileLibraryDocument     `json:"document"`
+	Operations map[string]libraryReceipt  `json:"operations"`
+	Legacy     map[string]string          `json:"legacy,omitempty"`
+	Adoptions  map[string]json.RawMessage `json:"adoptions,omitempty"`
 }
 type libraryInventory struct {
 	Complete        bool   `json:"complete"`
@@ -62,7 +65,6 @@ type libraryWrite struct {
 	ExpectedRevision uint64                 `json:"expectedRevision"`
 	Document         profileLibraryDocument `json:"document"`
 	Inventory        *libraryInventory      `json:"inventory,omitempty"`
-	Adoption         *profileAdoption       `json:"adoption,omitempty"`
 }
 type libraryError struct {
 	Message  string `json:"error"`
@@ -85,7 +87,7 @@ func emptyProfileLibrary() profileLibraryDocument {
 func (s *ProfileLibraryStore) readLibrary() (*libraryEnvelope, error) {
 	raw, err := os.ReadFile(filepath.Join(s.dir, "profile-library.json"))
 	if errors.Is(err, os.ErrNotExist) {
-		return &libraryEnvelope{Document: emptyProfileLibrary(), Operations: map[string]libraryReceipt{}, Adoptions: map[string]profileAdoptionReceipt{}}, nil
+		return &libraryEnvelope{Document: emptyProfileLibrary(), Operations: map[string]libraryReceipt{}, Legacy: map[string]string{}}, nil
 	}
 	if err != nil {
 		return nil, err
@@ -97,8 +99,8 @@ func (s *ProfileLibraryStore) readLibrary() (*libraryEnvelope, error) {
 	if envelope.Document == nil || envelope.Operations == nil {
 		return nil, errors.New("invalid stored profile library")
 	}
-	if envelope.Adoptions == nil {
-		envelope.Adoptions = map[string]profileAdoptionReceipt{}
+	if envelope.Legacy == nil {
+		envelope.Legacy = map[string]string{}
 	}
 	return &envelope, nil
 }
@@ -107,16 +109,7 @@ func (s *Server) getProfileLibrary(w http.ResponseWriter, r *http.Request) {
 	defer s.library.mu.Unlock()
 	value, err := s.library.readLibrary()
 	if err != nil {
-		libraryFailure(w, 503, "library_unavailable", "The profile library could not be read. Export your profiles before retrying storage.", "retry_storage", 0)
-		return
-	}
-	pending, err := s.library.pendingLegacyProfiles(value)
-	if err != nil {
-		legacyInventoryFailure(w, libraryRevision(value.Document))
-		return
-	}
-	if pending != nil {
-		legacyProfilesPending(w, value, pending)
+		libraryFailure(w, 503, "library_unavailable", "Profiles could not be read.", "retry_storage", 0)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
@@ -239,7 +232,7 @@ func libraryReferences(doc profileLibraryDocument, profiles map[string]map[strin
 func (s *Server) putProfileLibrary(w http.ResponseWriter, r *http.Request) {
 	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 8<<20))
 	if err != nil {
-		libraryFailure(w, 413, "library_too_large", "The profile library exceeds 8 MiB.", "export_profiles", 0)
+		libraryFailure(w, 413, "library_too_large", "The profile library exceeds 8 MiB.", "", 0)
 		return
 	}
 	var request libraryWrite
@@ -247,22 +240,11 @@ func (s *Server) putProfileLibrary(w http.ResponseWriter, r *http.Request) {
 		libraryFailure(w, 400, "library_invalid", "operationId, expectedRevision and a complete document are required.", "repair_profiles", 0)
 		return
 	}
-	if request.Adoption != nil {
-		if request.OperationID != request.Adoption.operationID() {
-			libraryFailure(w, 400, "adoption_invalid", "Use the stable source-specific adoption operationId.", "recapture_inventory", 0)
-			return
-		}
-		if err := request.Adoption.validate(); err != nil {
-			libraryFailure(w, 400, "adoption_invalid", err.Error(), "recapture_inventory", 0)
-			return
-		}
-	}
 	canonical, _ := json.Marshal(struct {
 		Revision  uint64
 		Document  profileLibraryDocument
 		Inventory *libraryInventory
-		Adoption  *profileAdoption `json:",omitempty"`
-	}{request.ExpectedRevision, request.Document, request.Inventory, request.Adoption})
+	}{request.ExpectedRevision, request.Document, request.Inventory})
 	var content any
 	json.Unmarshal(canonical, &content)
 	canonical, _ = json.Marshal(content)
@@ -276,7 +258,7 @@ func (s *Server) putProfileLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	revision := libraryRevision(envelope.Document)
-	if receipt, ok := envelope.Operations[request.OperationID]; request.Adoption == nil && ok {
+	if receipt, ok := envelope.Operations[request.OperationID]; ok {
 		if receipt.Digest != digestText {
 			libraryFailure(w, 409, "operation_conflict", "This operation ID was already used for different profile changes.", "reload_reapply", revision)
 			return
@@ -284,31 +266,8 @@ func (s *Server) putProfileLibrary(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"revision": receipt.Revision, "operationId": request.OperationID})
 		return
 	}
-	if request.Adoption != nil {
-		if receipt, ok := envelope.Adoptions[request.Adoption.Digest]; ok {
-			if receipt.SourceID != request.Adoption.SourceID {
-				libraryFailure(w, 409, "adoption_identity_conflict", "This capture was acknowledged for a different source identity. Keep the source and review its provenance.", "recapture_inventory", revision)
-				return
-			}
-
-			writeJSON(w, 200, map[string]any{"revision": receipt.Revision, "operationId": receipt.OperationID, "adoption": receipt})
-			return
-		}
-	}
-
-	pending, err := s.library.pendingLegacyProfiles(envelope)
-	if err != nil {
-		legacyInventoryFailure(w, revision)
-		return
-	}
-	serviceAdoption := request.Adoption != nil && strings.HasPrefix(request.Adoption.SourceID, serviceProfilePrefix)
-	if serviceAdoption {
-		if !request.Adoption.sameSource(pending) {
-			libraryFailure(w, 409, "legacy_source_changed", "The original service profile capture changed. Reload its inventory and reconcile against the current library.", "recapture_inventory", revision)
-			return
-		}
-	} else if pending != nil {
-		legacyProfilesPending(w, envelope, pending)
+	if stringValue(request.Document["epoch"]) != stringValue(envelope.Document["epoch"]) {
+		libraryFailure(w, 409, "library_reset", "Profiles were reset. Reload them.", "reload", revision)
 		return
 	}
 	if request.ExpectedRevision != revision || libraryRevision(request.Document) != revision {
@@ -319,12 +278,6 @@ func (s *Server) putProfileLibrary(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		libraryFailure(w, 400, "library_invalid", err.Error(), "repair_profiles", revision)
 		return
-	}
-	if serviceAdoption {
-		if err := request.Adoption.validateIdentityResolutions(next, envelope); err != nil {
-			libraryFailure(w, 400, "legacy_identity_unresolved", err.Error(), "resolve_profile_identity", revision)
-			return
-		}
 	}
 	previous, err := libraryProfiles(envelope.Document)
 	if err != nil {
@@ -381,37 +334,19 @@ func (s *Server) putProfileLibrary(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if serviceAdoption {
-		current, err := s.library.captureLegacyProfiles()
-		if err != nil {
-			legacyInventoryFailure(w, revision)
-			return
-		}
-		if !request.Adoption.sameSource(current) {
-			libraryFailure(w, 409, "legacy_source_changed", "The original service profile capture changed before commit. Keep it and recapture before retrying.", "recapture_inventory", revision)
-			return
-		}
-	}
 	request.Document["revision"] = json.RawMessage(fmt.Sprint(revision + 1))
 	envelope.Document = request.Document
-	envelope.Operations[request.OperationID] = libraryReceipt{digestText, revision + 1}
-	if request.Adoption != nil {
-		envelope.Adoptions[request.Adoption.Digest] = profileAdoptionReceipt{*request.Adoption, request.OperationID, revision + 1, true}
-	}
+	envelope.Operations[request.OperationID] = libraryReceipt{Digest: digestText, Revision: revision + 1}
 
 	encoded, err := json.Marshal(envelope)
 	if err == nil {
 		err = s.library.writeLibrary(encoded)
 	}
 	if err != nil {
-		libraryFailure(w, 507, "library_write_failed", "The profile library could not be saved. Free storage or export your profiles, then retry the same draft.", "export_profiles", revision)
+		libraryFailure(w, 507, "library_write_failed", "Profiles could not be saved. Free storage and retry.", "retry_storage", revision)
 		return
 	}
-	response := map[string]any{"revision": revision + 1, "operationId": request.OperationID}
-	if request.Adoption != nil {
-		response["adoption"] = envelope.Adoptions[request.Adoption.Digest]
-	}
-	writeJSON(w, 200, response)
+	writeJSON(w, 200, map[string]any{"revision": revision + 1, "operationId": request.OperationID})
 }
 func (s *ProfileLibraryStore) writeLibrary(raw []byte) error {
 	root := s.dir

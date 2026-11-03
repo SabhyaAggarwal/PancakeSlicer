@@ -128,7 +128,7 @@ function healthy(nonce: string, expected: BundleIdentity): Promise<boolean> {
           const health = JSON.parse(body);
           const artifact = health.artifact_manifest;
           resolve(health.desktop_ready_nonce === nonce && health.server_revision === expected.server_source
-            && ['profile_library_schema', 'profile_adoption_schema', 'service_profile_adoption_schema', 'workspace_schema'].every((key) => health[key] === 1)
+            && ['profile_library_schema', 'profile_recovery_schema', 'workspace_schema'].every((key) => health[key] === 1)
             && artifact?.source_sha === expected.native_source && artifact.binary_sha256 === expected.native_binary_sha256
             && artifact.resources_sha256 === expected.native_resources_sha256);
         } catch { resolve(false); }

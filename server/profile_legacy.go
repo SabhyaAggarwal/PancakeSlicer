@@ -1,39 +1,35 @@
 package main
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strings"
 )
 
-const serviceProfilePrefix = "service-profile-library:v1:"
-
-var errLegacyProfilesPending = errors.New("original service profiles require lossless adoption before submission")
-
-type legacyServiceFile struct {
-	Path   string `json:"path"`
-	Size   int64  `json:"size"`
-	SHA256 string `json:"sha256"`
-	Mode   uint32 `json:"mode"`
-	Bytes  string `json:"bytes"`
+type legacyFile struct {
+	Path   string
+	SHA256 string
+	Raw    []byte
 }
-type legacyServiceSource struct {
-	Version     int                 `json:"version"`
-	Complete    bool                `json:"complete"`
-	Kind        string              `json:"kind"`
-	Origin      string              `json:"origin"`
-	Root        string              `json:"root"`
-	Directories []string            `json:"directories"`
-	Files       []legacyServiceFile `json:"files"`
+type legacyProfile struct {
+	Path   string
+	Record map[string]json.RawMessage
+}
+type legacySource struct {
+	Files      []legacyFile
+	Profiles   []legacyProfile
+	Unreadable int
+	Nonregular []string
 }
 
 func sourceHash(raw []byte) string {
@@ -41,236 +37,348 @@ func sourceHash(raw []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func (s *ProfileLibraryStore) captureLegacyProfiles() (*profileAdoption, error) {
-	abs, err := filepath.Abs(s.dir)
-	if err != nil {
-		return nil, err
+func handledLegacyFiles(envelope *libraryEnvelope) map[string]string {
+	handled := map[string]string{}
+	for path, sum := range envelope.Legacy {
+		handled[path] = sum
 	}
-	origin := "service-data:" + sourceHash([]byte(filepath.Clean(abs)))
-	scan := func() (*legacyServiceSource, error) {
-		source := &legacyServiceSource{1, true, "service-user-presets", origin, "user-presets", []string{}, []legacyServiceFile{}}
-		var total int64
-		var visit func(string) error
-		visit = func(relative string) error {
-			full := filepath.Join(s.dir, filepath.FromSlash(relative))
-			before, err := os.Lstat(full)
-			if errors.Is(err, os.ErrNotExist) && relative == source.Root {
-				return nil
-			}
-			if err != nil {
-				return err
-			}
-			if before.Mode()&os.ModeSymlink != 0 || (!before.IsDir() && !before.Mode().IsRegular()) {
-				return errors.New("legacy profile inventory contains a symbolic link or nonregular entry")
-			}
-			if before.IsDir() {
-				source.Directories = append(source.Directories, relative)
-				if len(source.Directories)+len(source.Files) > 4096 {
-					return errors.New("legacy profile inventory exceeds 4096 entries; export it before adoption")
-				}
-				entries, err := os.ReadDir(full)
-				if err != nil {
-					return err
-				}
-				for _, entry := range entries {
-					if err := visit(relative + "/" + entry.Name()); err != nil {
-						return err
-					}
-				}
-			} else {
-				total += before.Size()
-				if total > 2<<20 || len(source.Directories)+len(source.Files) >= 4096 {
-					return errors.New("legacy profile inventory exceeds the bounded adoption size; export it before adoption")
-				}
-				file, err := os.Open(full)
-				if err != nil {
-					return err
-				}
-				opened, statErr := file.Stat()
-				if statErr != nil || !os.SameFile(before, opened) {
-					file.Close()
-					return errors.New("legacy profile file changed while opening")
-				}
-				raw, readErr := io.ReadAll(io.LimitReader(file, before.Size()+1))
-				after, statErr := file.Stat()
-				closeErr := file.Close()
-				if err := errors.Join(readErr, statErr, closeErr); err != nil {
-					return err
-				}
-				if int64(len(raw)) != before.Size() || !sameLegacyEntry(before, after) {
-					return errors.New("legacy profile file changed while reading")
-				}
-				if strings.EqualFold(filepath.Ext(relative), ".json") {
-					if err := legacyProfileIdentity(raw); err != nil {
-						return err
-					}
-				}
-				source.Files = append(source.Files, legacyServiceFile{relative, before.Size(), sourceHash(raw), uint32(before.Mode()), base64.StdEncoding.EncodeToString(raw)})
-			}
-			after, err := os.Lstat(full)
-			if err != nil || !sameLegacyEntry(before, after) {
-				return errors.New("legacy profile inventory changed while reading")
-			}
-			return nil
+	for _, raw := range envelope.Adoptions {
+		var receipt struct {
+			Durable  bool   `json:"durable"`
+			SourceID string `json:"sourceId"`
+			Source   string `json:"source"`
 		}
-		if err := visit(source.Root); err != nil {
-			return nil, err
+		var source struct {
+			Files []struct {
+				Path   string `json:"path"`
+				SHA256 string `json:"sha256"`
+			} `json:"files"`
 		}
-		sort.Strings(source.Directories)
-		sort.Slice(source.Files, func(i, j int) bool { return source.Files[i].Path < source.Files[j].Path })
-		return source, nil
-	}
-	first, err := scan()
-	if err != nil {
-		return nil, err
-	}
-	second, err := scan()
-	if err != nil || !reflect.DeepEqual(first, second) {
-		return nil, errors.New("legacy profile inventory is unreadable or changed between captures")
-	}
-	if len(first.Files) == 0 {
-		return nil, nil
-	}
-	raw, err := json.Marshal(first)
-	if err != nil {
-		return nil, err
-	}
-	return &profileAdoption{Scope: "profile-library-and-working-setup", SourceID: serviceProfilePrefix + origin, Digest: sourceHash(raw), Source: string(raw)}, nil
-}
-
-func sameLegacyEntry(a, b os.FileInfo) bool {
-	return a != nil && b != nil && os.SameFile(a, b) && a.Mode() == b.Mode() && a.Size() == b.Size() && a.ModTime() == b.ModTime()
-}
-
-func legacyProfileIdentity(raw []byte) error {
-	var fields map[string]json.RawMessage
-	if !json.Valid(raw) {
-		return errors.New("legacy profile JSON requires explicit recovery before adoption")
-	}
-	if json.Unmarshal(raw, &fields) != nil || fields == nil {
-		return nil
-	}
-	if fields["name"] == nil && fields["type"] == nil && fields["id"] == nil && fields["overrides"] == nil {
-		return nil
-	}
-	if validProfileName(stringValue(fields["name"])) != nil || !validProfileType(stringValue(fields["type"])) {
-		return errors.New("legacy profile name/type is unresolved; retain and recover the original inventory")
-	}
-	if id, ok := fields["id"]; ok && (!strings.HasPrefix(stringValue(id), "profile:") || len(stringValue(id)) <= 8 || len(stringValue(id)) > 200 || strings.ContainsAny(stringValue(id), "\r\n\x00")) {
-		return errors.New("legacy profile stable identity is malformed; retain and recover the original inventory")
-	}
-	return nil
-}
-
-func (s *ProfileLibraryStore) pendingLegacyProfiles(envelope *libraryEnvelope) (*profileAdoption, error) {
-	source, err := s.captureLegacyProfiles()
-	if err != nil || source == nil {
-		return source, err
-	}
-	if receipt, ok := envelope.Adoptions[source.Digest]; ok && receipt.Durable && receipt.sameSource(source) {
-		return nil, nil
-	}
-	return source, nil
-}
-
-func legacyInventoryFailure(w http.ResponseWriter, revision uint64) {
-	libraryFailure(w, 503, "legacy_inventory_unavailable", "The original service profile inventory is unreadable, changing or needs identity recovery. Keep the originals and export them before retrying; no profiles were changed.", "export_profiles", revision)
-}
-func legacyProfilesPending(w http.ResponseWriter, envelope *libraryEnvelope, adoption *profileAdoption) {
-	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, 409, struct {
-		libraryError
-		Document profileLibraryDocument `json:"document"`
-		Adoption *profileAdoption       `json:"adoption"`
-	}{libraryError{"Original service profiles require explicit lossless adoption before new library changes.", "legacy_profiles_pending", "adopt_service_profiles", libraryRevision(envelope.Document)}, envelope.Document, adoption})
-}
-
-func (a *profileAdoption) operationID() string {
-	if strings.HasPrefix(a.SourceID, serviceProfilePrefix) {
-		return "service-adoption:" + a.Digest
-	}
-	return "browser-adoption:" + a.Digest
-}
-
-func (a *profileAdoption) validateIdentityResolutions(profiles map[string]map[string]json.RawMessage, envelope *libraryEnvelope) error {
-	var source legacyServiceSource
-	if err := json.Unmarshal([]byte(a.Source), &source); err != nil {
-		return err
-	}
-	choices := map[string]serviceProfileResolution{}
-	for _, choice := range a.IdentityResolutions {
-		if _, duplicate := choices[choice.Path]; duplicate || !strings.HasPrefix(choice.ProfileID, "profile:") || len(choice.ProfileID) <= 8 {
-			return errors.New("each identity choice requires a unique source path and an explicit stable profile ID")
+		if json.Unmarshal(raw, &receipt) == nil && receipt.Durable && strings.HasPrefix(receipt.SourceID, "service-profile-library:") && json.Unmarshal([]byte(receipt.Source), &source) == nil {
+			for _, file := range source.Files {
+				handled[file.Path] = file.SHA256
+			}
 		}
-		choices[choice.Path] = choice
 	}
-	usedIDs := map[string]bool{}
-	for _, file := range source.Files {
-		if !strings.EqualFold(filepath.Ext(file.Path), ".json") {
-			continue
+	return handled
+}
+
+func (s *ProfileLibraryStore) scanLegacyProfiles(envelope *libraryEnvelope) (*legacySource, error) {
+	root := filepath.Join(s.dir, "user-presets")
+	source := &legacySource{}
+	handled := handledLegacyFiles(envelope)
+	var total int64
+	err := filepath.WalkDir(root, func(full string, entry fs.DirEntry, err error) error {
+		if errors.Is(err, fs.ErrNotExist) && full == root {
+			return fs.SkipAll
 		}
-		raw, err := base64.StdEncoding.DecodeString(file.Bytes)
 		if err != nil {
 			return err
 		}
-		var fields map[string]json.RawMessage
-		json.Unmarshal(raw, &fields)
-		if !validProfileType(stringValue(fields["type"])) || fields["name"] == nil {
-			continue
+		relative, _ := filepath.Rel(s.dir, full)
+		relative = filepath.ToSlash(relative)
+		isJSON := strings.EqualFold(filepath.Ext(relative), ".json")
+		if entry.IsDir() {
+			return nil
 		}
-		id := stringValue(fields["id"])
-		acknowledged := a.acknowledgedFile(file, envelope)
-		choice, chosen := choices[file.Path]
-		if id != "" {
-			if chosen {
-				return errors.New("an existing stable source ID cannot be rewritten by an identity choice")
+		if !entry.Type().IsRegular() {
+			if isJSON && handled[relative] == "" {
+				source.Unreadable++
+				source.Nonregular = append(source.Nonregular, relative)
 			}
-			if !acknowledged && (profiles[id] == nil || stringValue(profiles[id]["type"]) != stringValue(fields["type"])) {
-				return errors.New("a new or changed identified source profile must be retained with its original stable ID and type")
-			}
-		} else {
-			if !chosen || choice.SHA256 != file.SHA256 {
-				return errors.New("every ID-less legacy profile requires an explicit identity bound to its exact file SHA256")
-			}
-			id = choice.ProfileID
-			if !acknowledged && (profiles[id] == nil || stringValue(profiles[id]["type"]) != stringValue(fields["type"])) {
-				return errors.New("the confirmed identity must exist in the submitted library with the original profile type")
-			}
-			for _, receipt := range envelope.Adoptions {
-				if receipt.SourceID == a.SourceID {
-					for _, prior := range receipt.IdentityResolutions {
-						if prior.Path == file.Path && prior.SHA256 == file.SHA256 && prior.ProfileID != id {
-							return errors.New("an unchanged acknowledged file already has a different confirmed identity")
-						}
-					}
-				}
-			}
-			delete(choices, file.Path)
+			return nil
 		}
-		if usedIDs[id] {
-			return errors.New("multiple source records resolve to one identity; reconcile the collision explicitly")
+		info, err := entry.Info()
+		if err != nil {
+			return err
 		}
-		usedIDs[id] = true
+		if total += info.Size(); total > 64<<20 {
+			return errors.New("the earlier profile folder exceeds 64 MiB")
+		}
+		file, err := os.Open(full)
+		if err != nil {
+			return err
+		}
+		raw, err := io.ReadAll(file)
+		file.Close()
+		if err != nil {
+			return err
+		}
+		sum := sourceHash(raw)
+		if handled[relative] == sum {
+			return nil
+		}
+		source.Files = append(source.Files, legacyFile{relative, sum, raw})
+		if !isJSON {
+			return nil
+		}
+		record, recognized := legacyRecord(raw)
+		if record != nil {
+			source.Profiles = append(source.Profiles, legacyProfile{relative, record})
+		} else if recognized {
+			source.Unreadable++
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	if len(choices) > 0 {
-		return errors.New("an identity choice references a foreign, unknown or already-identified source file")
-	}
-	return nil
+	sort.Slice(source.Files, func(i, j int) bool { return source.Files[i].Path < source.Files[j].Path })
+	sort.Slice(source.Profiles, func(i, j int) bool { return source.Profiles[i].Path < source.Profiles[j].Path })
+	return source, nil
 }
 
-func (a *profileAdoption) acknowledgedFile(file legacyServiceFile, envelope *libraryEnvelope) bool {
-	for _, receipt := range envelope.Adoptions {
-		if !receipt.Durable || receipt.SourceID != a.SourceID {
-			continue
-		}
-		var baseline legacyServiceSource
-		if json.Unmarshal([]byte(receipt.Source), &baseline) == nil {
-			for _, prior := range baseline.Files {
-				if prior.Path == file.Path && prior.SHA256 == file.SHA256 {
-					return true
-				}
-			}
+func legacyRecord(raw []byte) (record map[string]json.RawMessage, recognized bool) {
+	var fields map[string]json.RawMessage
+	if !json.Valid(raw) {
+		return nil, true
+	}
+	if json.Unmarshal(raw, &fields) != nil || fields == nil {
+		return nil, false
+	}
+	if fields["name"] == nil && fields["type"] == nil && fields["id"] == nil && fields["overrides"] == nil && fields["overlay"] == nil {
+		return nil, false
+	}
+	record = map[string]json.RawMessage{}
+	for key, value := range fields {
+		if key != "inherits" && key != "overrides" {
+			record[key] = value
 		}
 	}
-	return false
+	if record["overlay"] == nil {
+		record["overlay"] = fields["overrides"]
+	}
+	var base map[string]json.RawMessage
+	json.Unmarshal(fields["base"], &base)
+	if base == nil {
+		base = map[string]json.RawMessage{"name": fields["inherits"]}
+	}
+	if stringValue(base["version"]) == "" {
+		base["version"] = json.RawMessage(`"legacy:unknown"`)
+	}
+	record["base"], _ = json.Marshal(base)
+	if record["kind"] == nil {
+		record["kind"] = json.RawMessage(`"profile"`)
+	}
+	var revision uint64
+	if json.Unmarshal(record["revision"], &revision) != nil {
+		record["revision"] = json.RawMessage(`0`)
+	}
+	if record["id"] == nil {
+		record["id"] = json.RawMessage(`"profile:legacy-check"`)
+	}
+	single := emptyProfileLibrary()
+	single["profiles"], _ = json.Marshal([]map[string]json.RawMessage{record})
+	if _, err := libraryProfiles(single); err != nil {
+		return nil, true
+	}
+	if fields["id"] == nil {
+		delete(record, "id")
+	}
+	return record, true
+}
+
+func legacyAdditions(doc profileLibraryDocument, source *legacySource) ([]map[string]json.RawMessage, error) {
+	profiles, err := libraryProfiles(doc)
+	if err != nil {
+		return nil, err
+	}
+	names := map[string]bool{}
+	for _, p := range profiles {
+		names[stringValue(p["type"])+"\x00"+stringValue(p["name"])] = true
+	}
+	var added []map[string]json.RawMessage
+	for _, file := range source.Profiles {
+		record := map[string]json.RawMessage{}
+		for key, value := range file.Record {
+			record[key] = value
+		}
+		if record["id"] == nil {
+			record["id"], _ = json.Marshal("profile:legacy-" + sourceHash([]byte(file.Path))[:32])
+		}
+		key := stringValue(record["type"]) + "\x00" + stringValue(record["name"])
+		if profiles[stringValue(record["id"])] != nil || names[key] {
+			continue
+		}
+		profiles[stringValue(record["id"])], names[key] = record, true
+		added = append(added, record)
+	}
+	return added, nil
+}
+
+type recoveryRequest struct {
+	OperationID      string `json:"operationId"`
+	ExpectedRevision uint64 `json:"expectedRevision"`
+	Action           string `json:"action"`
+}
+type recoveryResult struct {
+	OperationID string `json:"operationId"`
+	Action      string `json:"action"`
+	Revision    uint64 `json:"revision"`
+	Saved       int    `json:"saved"`
+	Unreadable  int    `json:"unreadable"`
+}
+
+func (s *Server) getProfileRecovery(w http.ResponseWriter, r *http.Request) {
+	s.library.mu.Lock()
+	defer s.library.mu.Unlock()
+	w.Header().Set("Cache-Control", "no-store")
+	envelope, err := s.library.readLibrary()
+	if err != nil {
+		libraryFailure(w, 503, "library_unavailable", "Profiles could not be read.", "retry_storage", 0)
+		return
+	}
+	source, err := s.library.scanLegacyProfiles(envelope)
+	if err != nil {
+		libraryFailure(w, 503, "recovery_unavailable", "Earlier profiles could not be read.", "retry_storage", libraryRevision(envelope.Document))
+		return
+	}
+	added, err := legacyAdditions(envelope.Document, source)
+	if err != nil {
+		libraryFailure(w, 503, "library_unavailable", "Profiles could not be read.", "retry_storage", libraryRevision(envelope.Document))
+		return
+	}
+	writeJSON(w, 200, map[string]int{"count": len(added), "unreadable": source.Unreadable})
+}
+
+func (s *Server) postProfileRecovery(w http.ResponseWriter, r *http.Request) {
+	var request recoveryRequest
+	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&request) != nil || request.OperationID == "" || len(request.OperationID) > 200 || (request.Action != "save" && request.Action != "reset") {
+		libraryFailure(w, 400, "recovery_invalid", "operationId, expectedRevision and action save or reset are required.", "", 0)
+		return
+	}
+	canonical, _ := json.Marshal(request)
+	digest := "recovery:" + sourceHash(canonical)
+	s.library.mu.Lock()
+	defer s.library.mu.Unlock()
+	envelope, err := s.library.readLibrary()
+	if err != nil {
+		libraryFailure(w, 503, "library_unavailable", "Profiles could not be read. Nothing was changed.", "retry_storage", 0)
+		return
+	}
+	revision := libraryRevision(envelope.Document)
+	if receipt, ok := envelope.Operations[request.OperationID]; ok {
+		if receipt.Digest != digest || receipt.Result == nil {
+			libraryFailure(w, 409, "operation_conflict", "This action was already used for a different change.", "reload", revision)
+			return
+		}
+		writeJSON(w, 200, receipt.Result)
+		return
+	}
+	if request.ExpectedRevision != revision {
+		libraryFailure(w, 409, "revision_conflict", "Profiles changed. Reload and try again.", "reload", revision)
+		return
+	}
+	source, err := s.library.scanLegacyProfiles(envelope)
+	if err != nil && request.Action == "save" {
+		libraryFailure(w, 503, "recovery_unavailable", "Earlier profiles could not be read. Nothing was changed.", "retry_storage", revision)
+		return
+	}
+	if err != nil {
+		source = &legacySource{}
+	}
+	result := &recoveryResult{OperationID: request.OperationID, Action: request.Action, Revision: revision}
+	next := envelope.Document
+	if request.Action == "save" {
+		added, err := legacyAdditions(envelope.Document, source)
+		if err != nil {
+			libraryFailure(w, 503, "library_unavailable", "The saved profiles need repair. Nothing was changed.", "reset", revision)
+			return
+		}
+		result.Saved, result.Unreadable = len(added), source.Unreadable
+		if len(added) > 0 {
+			var profiles []json.RawMessage
+			json.Unmarshal(envelope.Document["profiles"], &profiles)
+			for _, record := range added {
+				raw, _ := json.Marshal(record)
+				profiles = append(profiles, raw)
+			}
+			next = profileLibraryDocument{}
+			for key, value := range envelope.Document {
+				next[key] = value
+			}
+			next["profiles"], _ = json.Marshal(profiles)
+			result.Revision = revision + 1
+		}
+	} else {
+		var printers struct {
+			Revision uint64 `json:"revision"`
+		}
+		json.Unmarshal(envelope.Document["printers"], &printers)
+		epoch := make([]byte, 16)
+		if _, err := rand.Read(epoch); err != nil {
+			libraryFailure(w, 503, "library_unavailable", "Profiles could not be reset. Nothing was changed.", "retry_storage", revision)
+			return
+		}
+		next = emptyProfileLibrary()
+		next["epoch"], _ = json.Marshal(hex.EncodeToString(epoch))
+		next["printers"] = json.RawMessage(fmt.Sprintf(`{"schema":1,"revision":%d,"setups":{}}`, printers.Revision+1))
+		result.Revision = revision + 1
+	}
+	if result.Revision != revision {
+		if _, err := libraryProfiles(next); err != nil {
+			libraryFailure(w, 400, "library_invalid", "Earlier profiles could not be combined. Nothing was changed.", "reset", revision)
+			return
+		}
+		next["revision"] = json.RawMessage(fmt.Sprint(result.Revision))
+	}
+	if result.Revision != revision || len(source.Files) > 0 {
+		if err := s.library.backup(request.OperationID, request.Action, source); err != nil {
+			libraryFailure(w, 507, "library_write_failed", "The backup could not be written. Nothing was changed.", "retry_storage", revision)
+			return
+		}
+	}
+	for _, file := range source.Files {
+		envelope.Legacy[file.Path] = file.SHA256
+	}
+	for _, path := range source.Nonregular {
+		envelope.Legacy[path] = "nonregular"
+	}
+	envelope.Document = next
+	envelope.Operations[request.OperationID] = libraryReceipt{Digest: digest, Revision: result.Revision, Result: result}
+	encoded, err := json.Marshal(envelope)
+	if err == nil {
+		err = s.library.writeLibrary(encoded)
+	}
+	if err != nil {
+		libraryFailure(w, 507, "library_write_failed", "Profiles could not be saved. Nothing was changed.", "retry_storage", revision)
+		return
+	}
+	writeJSON(w, 200, result)
+}
+
+func (s *ProfileLibraryStore) backup(operationID, action string, source *legacySource) error {
+	dir := filepath.Join(s.dir, "profile-backups", sourceHash([]byte(operationID))[:16]+"-"+action)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	write := func(path string, raw []byte) error {
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			return err
+		}
+		file, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+		if err != nil {
+			return err
+		}
+		_, err = file.Write(raw)
+		if err == nil {
+			err = file.Sync()
+		}
+		return errors.Join(err, file.Close())
+	}
+	current, err := os.ReadFile(filepath.Join(s.dir, "profile-library.json"))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err == nil {
+		if err := write(filepath.Join(dir, "profile-library.json"), current); err != nil {
+			return err
+		}
+	}
+	for _, file := range source.Files {
+		if err := write(filepath.Join(dir, filepath.FromSlash(file.Path)), file.Raw); err != nil {
+			return err
+		}
+	}
+	return syncWorkspaceDirectory(dir)
 }
