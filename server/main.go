@@ -18,36 +18,39 @@ import (
 )
 
 type Config struct {
-	FallbackBackend string
-	SourceURL       string
-	SourceArchive   string
-	DataDir         string
-	Listen          string
-	Tool            string
-	Resources       string
-	JobRoot         string
-	StaticDir       string
-	MaxJobs         int
-	JobTimeout      time.Duration
-	JobTTL          time.Duration
-	MaxUploadSize   int64
-	UploadMinRate   int64
-	SubmitRate      float64
-	SubmitBurst     int
-	MaxClientJobs   int
-	MaxQueue        int
-	BearerToken     string
-	DiskQuota       int64
-	RequestLog      bool
-	Metrics         bool
-	TrustedProxies  []netip.Prefix
-	PrintersFile    string
-	Printers        []*PrinterConfig
-	PrinterEdit     string
-	HTTPPrinters    string
-	PrinterStore    *printerStore
-	Features        ToolFeatures
-	Options         *cachedResponse
+	SurfaceManifest       string
+	ArtifactQualification string
+	NativeHealth          *engineHealth
+	FallbackBackend       string
+	SourceURL             string
+	SourceArchive         string
+	DataDir               string
+	Listen                string
+	Tool                  string
+	Resources             string
+	JobRoot               string
+	StaticDir             string
+	MaxJobs               int
+	JobTimeout            time.Duration
+	JobTTL                time.Duration
+	MaxUploadSize         int64
+	UploadMinRate         int64
+	SubmitRate            float64
+	SubmitBurst           int
+	MaxClientJobs         int
+	MaxQueue              int
+	BearerToken           string
+	DiskQuota             int64
+	RequestLog            bool
+	Metrics               bool
+	TrustedProxies        []netip.Prefix
+	PrintersFile          string
+	Printers              []*PrinterConfig
+	PrinterEdit           string
+	HTTPPrinters          string
+	PrinterStore          *printerStore
+	Features              ToolFeatures
+	Options               *cachedResponse
 }
 
 func env(key, def string) string {
@@ -78,6 +81,8 @@ func envBool(key string) bool {
 
 func parseConfig() Config {
 	var c Config
+	flag.StringVar(&c.SurfaceManifest, "surface-manifest", env("ORCA_WEB_SURFACE_MANIFEST", env("ORCA_WEB_ARTIFACT_MANIFEST", "")), "native identity manifest")
+	flag.StringVar(&c.ArtifactQualification, "artifact-qualification", env("ORCA_WEB_ARTIFACT_QUALIFICATION", ""), "exact native reference qualification ready record")
 	flag.StringVar(&c.SourceArchive, "source-archive", env("ORCA_WEB_SOURCE_ARCHIVE", ""), "mounted Corresponding Source archive matching build metadata (ORCA_WEB_SOURCE_ARCHIVE)")
 	flag.StringVar(&c.SourceURL, "source-url", env("ORCA_WEB_SOURCE_URL", ""), "Corresponding Source repository URL or exact URL containing {revision} (ORCA_WEB_SOURCE_URL)")
 	flag.StringVar(&c.DataDir, "data-dir", env("ORCA_WEB_DATA_DIR", "data"), "persistent user preset directory (ORCA_WEB_DATA_DIR)")

@@ -8,12 +8,17 @@ export interface ProfileCatalog { machines: SystemPreset[]; processes: SystemPre
 export interface ProfileConflict { key: string; mine: ConfigValue; theirs: ConfigValue | undefined }
 export const profilesFor = (s: ProfileCatalog, type: PresetType) => type === 'machine' ? s.machines : type === 'process' ? s.processes : s.filaments;
 
+const contentVersions = new WeakMap<Config, string>();
 export function baseVersion(p: SystemPreset): string {
   if (p.version || p.config.version) return String(p.version || p.config.version);
+  const cached = contentVersions.get(p.config);
+  if (cached) return cached;
   const text = JSON.stringify(Object.entries(p.config).sort(([a], [b]) => a.localeCompare(b)));
   let hash = 2166136261;
   for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
-  return `content:${(hash >>> 0).toString(16)}`;
+  const version = `content:${(hash >>> 0).toString(16)}`;
+  contentVersions.set(p.config, version);
+  return version;
 }
 
 export const changedKeys = (values: Config, below: Config): Config => Object.fromEntries(
@@ -27,7 +32,24 @@ export function normalizeUserPreset(p: UserPreset | ProfileOverlay): UserPreset 
     ...(p.overlay ? { overlay: normalizeConfig(p.overlay) } : {}) };
 }
 
-export function resolveProfile(s: ProfileCatalog, type: PresetType, name: string, seen = new Set<string>()): {
+type ResolvedProfile = { base?: SystemPreset; user?: UserPreset; config: Config };
+const resolvedProfiles = new WeakMap<SystemPreset[], WeakMap<UserPreset[], Map<string, ResolvedProfile>>>();
+
+export function resolveProfile(s: ProfileCatalog, type: PresetType, name: string, seen?: Set<string>): ResolvedProfile {
+  if (seen) return resolveAncestors(s, type, name, seen);
+  const catalog = profilesFor(s, type);
+  let libraries = resolvedProfiles.get(catalog);
+  if (!libraries) resolvedProfiles.set(catalog, (libraries = new WeakMap()));
+  let values = libraries.get(s.userPresets);
+  if (!values) libraries.set(s.userPresets, (values = new Map()));
+  const key = `${type}:${name}`, cached = values.get(key);
+  if (cached) return cached;
+  const resolved = resolveAncestors(s, type, name, new Set());
+  if (resolved.base || resolved.user) values.set(key, resolved);
+  return resolved;
+}
+
+function resolveAncestors(s: ProfileCatalog, type: PresetType, name: string, seen: Set<string>): {
   base?: SystemPreset; user?: UserPreset; config: Config;
 } {
   if (seen.has(name)) return { config: {} };
@@ -38,7 +60,7 @@ export function resolveProfile(s: ProfileCatalog, type: PresetType, name: string
     return { base, config: { ...base?.config } };
   }
   const parentName = user.parent ?? (!user.base && s.userPresets.some((u) => u.type === type && u.name === user.inherits) ? user.inherits : undefined);
-  const parent = parentName ? resolveProfile(s, type, parentName, seen) : undefined;
+  const parent = parentName ? resolveAncestors(s, type, parentName, seen) : undefined;
   const base = profilesFor(s, type).find((p) => p.name === (user.base?.name ?? user.inherits)) ?? parent?.base;
   const config = { ...base?.config, ...parent?.config, ...(user.overlay ?? user.overrides) };
   return { base, user: parentName ? { ...user, overrides: { ...parent?.user?.overrides, ...(user.overlay ?? user.overrides) } } : user, config };

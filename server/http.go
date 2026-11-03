@@ -41,6 +41,7 @@ type Server struct {
 func NewServer(c Config, jobs *JobManager, presets *PresetIndex, users *UserPresetStore) http.Handler {
 	s := &Server{cfg: c, jobs: jobs, presets: presets, users: users, sends: NewSendManager(c.Printers, c.PrinterStore)}
 	healthProbe := newEngineHealth(c)
+	jobs.cfg.NativeHealth = healthProbe
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, r *http.Request) {
 		q, n := jobs.Counts()
@@ -1409,6 +1410,7 @@ type engineHealth struct {
 	manifest      map[string]any
 	tool          os.FileInfo
 	features      map[string]any
+	outputs       map[string]bool
 }
 
 func (h *engineHealth) setState(next HealthState) {
@@ -1494,7 +1496,10 @@ func newEngineHealth(c Config) *engineHealth {
 	}
 	h.tool = st
 	h.setState(HealthHealthy)
-	manifestPath := os.Getenv("ORCA_WEB_SURFACE_MANIFEST")
+	manifestPath := c.SurfaceManifest
+	if manifestPath == "" {
+		manifestPath = os.Getenv("ORCA_WEB_SURFACE_MANIFEST")
+	}
 	if manifestPath == "" {
 		manifestPath = os.Getenv("ORCA_WEB_ARTIFACT_MANIFEST")
 	}
@@ -1534,12 +1539,17 @@ func newEngineHealth(c Config) *engineHealth {
 		Resources string `json:"resources_sha256"`
 		Manifest  string `json:"manifest_sha256"`
 	}
-	proofRaw, proofErr := os.ReadFile(os.Getenv("ORCA_WEB_ARTIFACT_QUALIFICATION"))
+	proofPath := c.ArtifactQualification
+	if proofPath == "" {
+		proofPath = os.Getenv("ORCA_WEB_ARTIFACT_QUALIFICATION")
+	}
+	proofRaw, proofErr := os.ReadFile(proofPath)
 	manifestHash := sha256.Sum256(raw)
 	qualified := proofErr == nil && json.Unmarshal(proofRaw, &proof) == nil && proof.Ready &&
 		manifest.Source == "7ab64368bbd9483b9d2fe46aafa27e8585426a0d" && proof.Source == manifest.Source &&
 		proof.Binary == binary && proof.Resources == resources && proof.Manifest == hex.EncodeToString(manifestHash[:]) && manifest.PrintQualified
 	if qualified {
+		h.outputs = nativeOutputHashes(raw)
 		h.artifactState = HealthQualified
 		h.setState(HealthQualified)
 	} else {

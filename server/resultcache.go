@@ -375,6 +375,7 @@ func restoreJobResult(m *JobManager, j *Job, args []string) bool {
 	if !hit {
 		return false
 	}
+	raw = bindNativeRecord(raw, m.cfg, j)
 	j.mu.Lock()
 	code := 0
 	j.slice, j.exitCode = raw, &code

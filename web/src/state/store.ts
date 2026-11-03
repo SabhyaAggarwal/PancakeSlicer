@@ -436,13 +436,17 @@ export function compatible(s: State, type: 'process' | 'filament', printer = s.p
   return listFor(s, type).filter((p) => isCompatible(p, printer, print));
 }
 
-const printerCache = new WeakMap<State, SystemPreset>();
+const printerCache = new WeakMap<SystemPreset, WeakMap<Config, SystemPreset>>();
 export function printerPreset(s: State): SystemPreset | undefined {
-  if (printerCache.has(s)) return printerCache.get(s);
   const { base } = resolvePreset(s, 'machine', s.printer);
   if (!base) return undefined;
-  const preset = { ...base, config: effectiveConfig(s, 'machine') };
-  printerCache.set(s, preset);
+  const config = effectiveConfig(s, 'machine');
+  let configs = printerCache.get(base);
+  if (!configs) printerCache.set(base, (configs = new WeakMap()));
+  const cached = configs.get(config);
+  if (cached) return cached;
+  const preset = { ...base, config };
+  configs.set(config, preset);
   return preset;
 }
 

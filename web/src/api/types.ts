@@ -30,6 +30,9 @@ export interface SystemPreset {
 }
 
 export interface ProfileOverlay {
+  id?: string;
+  aliases?: string[];
+  parentId?: string;
   name: string;
   type: PresetType;
   base: { name: string; version: string };
@@ -40,6 +43,9 @@ export interface ProfileOverlay {
 }
 
 export interface UserPreset {
+  id?: string;
+  aliases?: string[];
+  parentId?: string;
   name: string;
   type: PresetType;
   inherits: string;

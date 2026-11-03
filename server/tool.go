@@ -32,6 +32,8 @@ type ToolFeatures struct {
 	Volumes              bool            `json:"volumes"`
 	PresetCompat         bool            `json:"preset_compat"`
 	OneShot              bool            `json:"oneshot"`
+	CurvedTops           bool            `json:"curved_tops"`
+	NonplanarWave        bool            `json:"nonplanar_wave"`
 	MeshPlates           bool            `json:"mesh_plates"`
 	PlateLocks           bool            `json:"plate_locks"`
 	Paint                bool            `json:"paint"`
@@ -212,12 +214,17 @@ func probeTool(c Config) (ToolFeatures, *cachedResponse) {
 	}
 	configKinds = kinds
 	modes, _ := options["nonplanar_mode"]["enum_values"].([]any)
-	oneshot := false
+	oneshot, curvedTops, wave := false, false, false
 	for _, mode := range modes {
 		oneshot = oneshot || mode == "oneshot"
+		curvedTops = curvedTops || mode == "curved_tops"
+	}
+	waveModes, _ := options["nonplanar_wave"]["enum_values"].([]any)
+	for _, mode := range waveModes {
+		wave = wave || mode == "whole"
 	}
 	log.Printf("using native v1 tool contract (%d options)", len(options))
-	return ToolFeatures{DumpOptions: true, DumpPresets: true, Progress: true, MovesOut: true, ObjectSettings: true, OneShot: oneshot, NativeSupport: nativeSupport}, response
+	return ToolFeatures{DumpOptions: true, DumpPresets: true, Progress: true, MovesOut: true, ObjectSettings: true, OneShot: oneshot, CurvedTops: curvedTops, NonplanarWave: wave, NativeSupport: nativeSupport}, response
 }
 
 func nativeStrings(value string) []string {

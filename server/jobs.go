@@ -862,6 +862,7 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 		recordErr = errors.New("invalid slice JSON")
 	}
 	if recordErr == nil {
+		raw = bindNativeRecord(raw, m.cfg, j)
 		j.mu.Lock()
 		j.slice = raw
 		j.mu.Unlock()
