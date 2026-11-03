@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -243,6 +244,33 @@ func libraryReferences(doc profileLibraryDocument, profiles map[string]map[strin
 	}
 	return refs
 }
+
+func worksWithNone(next, previous map[string]map[string]json.RawMessage) string {
+	type only struct {
+		Mode       string   `json:"mode"`
+		PrinterIDs []string `json:"printerIds"`
+	}
+	live := func(p map[string]json.RawMessage) bool {
+		return len(p["archived"]) == 0 || string(p["archived"]) == "null"
+	}
+	none := func(doc map[string]map[string]json.RawMessage, a only) bool {
+		return a.Mode == "only" && !slices.ContainsFunc(a.PrinterIDs, func(id string) bool {
+			m := doc[id]
+			return m != nil && stringValue(m["type"]) == "machine" && live(m)
+		})
+	}
+	for id, p := range next {
+		var a, was only
+		if stringValue(p["type"]) == "machine" || !live(p) || json.Unmarshal(p["applicability"], &a) != nil || !none(next, a) {
+			continue
+		}
+		if old := previous[id]; old != nil && json.Unmarshal(old["applicability"], &was) == nil && (none(previous, was) || was.Mode == a.Mode && slices.Equal(was.PrinterIDs, a.PrinterIDs)) {
+			continue
+		}
+		return stringValue(p["name"])
+	}
+	return ""
+}
 func (s *Server) putProfileLibrary(w http.ResponseWriter, r *http.Request) {
 	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 8<<20))
 	if err != nil {
@@ -296,6 +324,10 @@ func (s *Server) putProfileLibrary(w http.ResponseWriter, r *http.Request) {
 	previous, err := libraryProfiles(envelope.Document)
 	if err != nil {
 		libraryFailure(w, 503, "library_unavailable", "The stored profile library needs recovery; no changes were written.", "repair_profiles", revision)
+		return
+	}
+	if name := worksWithNone(next, previous); name != "" {
+		libraryFailure(w, 422, "profile_works_with_none", "A profile must work with at least one printer: "+name, "edit_applicability", revision)
 		return
 	}
 	var workspace *workspaceData
