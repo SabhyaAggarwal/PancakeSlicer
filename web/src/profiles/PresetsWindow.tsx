@@ -16,6 +16,7 @@ import { ProfileEditor, type ProfileDraft } from './ProfileEditor';
 import { profileColour,profileSummary } from './metadata';
 import { Check } from '../components/Check';
 import { Dropdown } from '../components/Dropdown';
+import { requestPreset } from '../components/PresetCombo';
 import { ActionMenu, MenuButton } from '../components/Menu';
 import { Choice, Segmented } from '../components/kit';
 import './presets-window.css';
@@ -193,7 +194,8 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const [mobilePane,setMobilePane]=useState<'list'|'detail'|'filters'>(edit || stage || compare!==undefined?'detail':'list');
   const mobileBack=useRef<HTMLButtonElement>(null),mounted=useRef(true);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
-  useEffect(()=>{if(request)setAdding(!!add);},[request]);
+  const pickerAdd=useRef<PresetType|null>(add ? initialType : null);
+  useEffect(()=>{if(!request)return;setAdding(!!add);pickerAdd.current=add ? initialType : null;},[request]);
   useEffect(()=>{if(window.matchMedia('(max-width:640px)').matches && mobilePane!=='list')mobileBack.current?.focus();},[mobilePane]);
   const [type, setType] = useState(initialType), [search, setSearch] = useState(''), [adding, setAdding] = useState(add);
   const [vendorFilter,setVendorFilter] = useState<string[]>([]), [nozzleFilter,setNozzleFilter] = useState<string[]>([]), [materialFilter,setMaterialFilter] = useState<string[]>([]), [modelFilter,setModelFilter]=useState<string[]>([]), [printerFilter,setPrinterFilter]=useState<string[]>([]);
@@ -319,7 +321,12 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     if(getState().profileLibraryLoad.state!=='ready')return;
     setBusy(true);setBulkError(null);
     const owns=owner();
-    try {const key=await createProfileFromBase(type,variant.key);if(owns())added(key);else toast(`Added ${variant.name}`);}
+    try {
+      const key=await createProfileFromBase(type,variant.key);
+      if(!owns()){toast(`Added ${variant.name}`);return;}
+      added(key);
+      if(pickerAdd.current === type){pickerAdd.current=null;requestPreset(type,0,key);}
+    }
     catch(error) {if(mounted.current)setBulkError(error instanceof Error?error.message:String(error));}
     finally {if(mounted.current)setBusy(false);}
   };

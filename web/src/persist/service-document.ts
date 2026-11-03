@@ -8,6 +8,7 @@ export function createServiceDocument<D extends ServiceDocument>(path: string, m
   let hydrated = false, loading: Promise<DocumentSnapshot<D>> | null = null, running: Promise<void> | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined, serial = 0, savedSerial = 0;
   let beforeHydration: Partial<D> = {};
+  const unsaved = new Map<string, number>();
   let operation: { operationId: string; expectedRevision: number; document: D; serial: number } | null = null;
   const listeners = new Set<() => void>();
   const publish = (patch: Partial<DocumentSnapshot<D>>) => { current = { ...current, ...patch }; listeners.forEach((listener) => listener()); };
@@ -28,7 +29,8 @@ export function createServiceDocument<D extends ServiceDocument>(path: string, m
   function patch(document: Partial<D>) {
     const captured = structuredClone(document);
     if (!hydrated) beforeHydration = { ...beforeHydration, ...captured };
-    serial++; publish({ document: { ...current.document, ...captured } });
+    serial++; for (const key of Object.keys(captured)) unsaved.set(key, serial);
+    publish({ document: { ...current.document, ...captured } });
     if (current.state === 'failed') return;
     publish({ state: 'pending', error: null }); clearTimeout(timer);
     timer = setTimeout(() => { void flush().catch(() => {}); }, 500);
@@ -39,12 +41,23 @@ export function createServiceDocument<D extends ServiceDocument>(path: string, m
     if (current.state === 'failed' && !retry) throw new Error(current.error ?? 'The service document was not saved');
     running = (async () => {
       if (!hydrated) await hydrate();
+      let rebases = 0;
       while (savedSerial < serial) {
         operation ??= { operationId: projectId(), expectedRevision: current.revision, document: current.document, serial };
         const captured = operation, { serial: _serial, ...body } = captured;
         await beforeWrite(captured.document);
-        const ack = await serviceJson<{revision:number}>(path, jsonWrite(method, body));
+        let ack: { revision: number } | null;
+        try { ack = await serviceJson<{revision:number}>(path, jsonWrite(method, body)); }
+        catch (error) {
+          if ((error as { code?: string }).code !== 'revision_conflict' || ++rebases > 3) throw error;
+          const remote = await serviceJson<{revision:number;document:D}>(path);
+          if (!remote || !Number.isSafeInteger(remote.revision) || !remote.document || typeof remote.document !== 'object' || Array.isArray(remote.document)) throw error;
+          const mine = Object.fromEntries([...unsaved.keys()].map((key) => [key, current.document[key]]));
+          operation = null; publish({ revision: remote.revision, document: { ...remote.document, ...mine } });
+          continue;
+        }
         if (!ack || ack.revision !== captured.expectedRevision + 1) throw new Error('Invalid service revision acknowledgement');
+        for (const [key, at] of unsaved) if (at <= captured.serial) unsaved.delete(key);
         savedSerial = captured.serial; operation = null; publish({ revision: ack.revision });
       }
       publish({ state: 'ready', error: null, conflict: false });
@@ -60,7 +73,7 @@ export function createServiceDocument<D extends ServiceDocument>(path: string, m
     async reload() {
       if (running) await running.catch(() => {});
       const previous = current, previousSerial = serial, previousSaved = savedSerial;
-      clearTimeout(timer); loading = null; hydrated = false; beforeHydration = {}; serial = savedSerial = 0;
+      clearTimeout(timer); loading = null; hydrated = false; beforeHydration = {}; serial = savedSerial = 0; unsaved.clear();
       try { const remote = await hydrate(); operation = null; return remote; }
       catch (error) { serial += previousSerial; savedSerial = previousSaved; hydrated = true; publish({ ...previous, document: { ...previous.document, ...beforeHydration }, state: 'failed', error: error instanceof Error ? error.message : String(error) }); throw error; }
     },

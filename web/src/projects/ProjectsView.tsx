@@ -10,7 +10,7 @@ import { deleteProject, duplicateProject, listTrash, openProject, useProjects, t
 import { fileVerbs, newProjectFrom } from './verbs';
 import { setProjectsQuery, useProjectsQuery } from './query';
 import { projectStore, type ProjectCommandStatus, type ProjectStore } from '../persist/backend';
-import { preferenceJson, savedPreferencesSnapshot, savePreferences, subscribeSavedPreferences, usePreference } from '../saved-preferences';
+import { preferenceJson, preferenceText, savedPreferencesSnapshot, savePreferences, subscribeSavedPreferences, usePreference } from '../saved-preferences';
 import './projects.css';
 
 const noCommands: readonly Readonly<ProjectCommandStatus>[] = Object.freeze([]);
@@ -87,7 +87,7 @@ function Item({p,view,trash,current,selected,selecting,focused,favorite,canFavor
       <button type="button" className="icon-btn pj-icon" aria-label={`Actions for ${p.name}`} aria-haspopup="menu" onClick={more}><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden><circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="19" cy="12" r="1.8" fill="currentColor"/></svg></button>
     </>;
   const info=<>{current && <span className="pj-badge">Open</span>}<span>{objects(p.objects)}</span></>;
-  return <div className={`pj-item${current?' current':''}${selected?' selected':''}${selecting?' selecting':''}`} role="row" tabIndex={focused?0:-1} data-id={p.id} aria-label={p.name} aria-selected={trash?undefined:selected} aria-current={current || undefined}
+  return <div className={`pj-item${trash?' trash':''}${current?' current':''}${selected?' selected':''}${selecting?' selecting':''}`} role="row" tabIndex={focused?0:-1} data-id={p.id} aria-label={p.name} aria-selected={trash?undefined:selected} aria-current={current || undefined}
     onClick={click} onContextMenu={e=>{if(trash || renaming)return;e.preventDefault();if(!selected)select({type:'CLICK',key:p.id});onMenu({x:e.clientX,y:e.clientY});}}>
     {view==='grid' ? <>
       <div className="pj-thumb" role="gridcell"><Thumb p={p}/>{check}<span className="pj-overlay" onClick={e=>e.stopPropagation()}>{actions}</span></div>
@@ -118,8 +118,8 @@ function Projects() {
   const blocked=(id:string)=>commands.some(c=>c.id===id);
   usePreference('projects.favorites');usePreference('projects.view');usePreference('projects.sort');
   const favoriteIds=preferenceJson<unknown>('projects.favorites',[]),favorites=new Set(Array.isArray(favoriteIds)?favoriteIds.filter((id):id is string=>typeof id==='string'):[]),favoriteKey=[...favorites].join('\n');
-  const view:View=preferenceJson<string>('projects.view','grid')==='list'?'list':'grid';
-  const sortPref=preferenceJson<string>('projects.sort','edited'),sort:Sort=Object.hasOwn(sorters,sortPref)?sortPref as Sort:'edited';
+  const view:View=preferenceText('projects.view')==='list'?'list':'grid';
+  const sortPref=preferenceText('projects.sort') ?? 'edited',sort:Sort=Object.hasOwn(sorters,sortPref)?sortPref as Sort:'edited';
   const prefsLoaded=useSyncExternalStore(subscribeSavedPreferences,savedPreferencesSnapshot).hydrated;
   const toggleFavorite=(id:string)=>{if(!prefsLoaded)return;const next=new Set(favorites);if(!next.delete(id))next.add(id);savePreferences({'projects.favorites':[...next]});};
   const [filter,setFilterState]=useState<Filter>(lastFilter);
@@ -202,7 +202,7 @@ function Projects() {
     }finally{setBusy(false);}
   };
   const onKey=(e:KeyboardEvent)=>{
-    const command=e.ctrlKey||e.metaKey,focus=focusKey;
+    const command=e.ctrlKey||e.metaKey,focus=(e.target as Element).closest<HTMLElement>('.pj-item[data-id]')?.dataset.id ?? focusKey;
     if((e.target as Element).closest('input,textarea,[contenteditable=true]') || busy)return;
     if((e.target as Element).closest('button') && !(command&&e.key.toLowerCase()==='a') && e.key!=='Escape')return;
     if(filter==='trash'){
