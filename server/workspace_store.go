@@ -659,6 +659,9 @@ func (st *workspaceStore) getAsset(w http.ResponseWriter, r *http.Request) {
 		workspaceFailure(w, 503, "asset_unavailable", "The model asset could not be read.", "retry_storage", 0)
 		return
 	}
+	if serveAssetGzip(w, r, f, stat.Size(), sum) {
+		return
+	}
 	http.ServeContent(w, r, "model", stat.ModTime(), f)
 }
 

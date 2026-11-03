@@ -131,3 +131,32 @@ func (g *gzipWriter) Flush() {
 }
 
 func (g *gzipWriter) Unwrap() http.ResponseWriter { return g.ResponseWriter }
+
+func serveAssetGzip(w http.ResponseWriter, r *http.Request, f io.ReadSeeker, size int64, sum string) bool {
+	if size < 16<<10 || r.Header.Get("Range") != "" || !acceptsGzip(r) {
+		return false
+	}
+	magic := make([]byte, 5)
+	n, _ := io.ReadFull(f, magic)
+	f.Seek(0, io.SeekStart)
+	if m := string(magic[:n]); strings.HasPrefix(m, "PK\x03\x04") || m == "DRACO" {
+		return false
+	}
+	etag := `"` + sum + `-gzip"`
+	w.Header().Set("Vary", "Accept-Encoding")
+	w.Header().Set("ETag", etag)
+	for _, tag := range strings.Split(r.Header.Get("If-None-Match"), ",") {
+		if t := strings.TrimPrefix(strings.TrimSpace(tag), "W/"); t == etag || t == `"`+sum+`"` || t == "*" {
+			w.WriteHeader(http.StatusNotModified)
+			return true
+		}
+	}
+	w.Header().Set("Content-Encoding", "gzip")
+	if r.Method == http.MethodHead {
+		return true
+	}
+	z, _ := gzip.NewWriterLevel(w, gzip.BestSpeed)
+	io.Copy(z, f)
+	z.Close()
+	return true
+}
