@@ -19,7 +19,7 @@ const PickerRow = memo(function PickerRow({ row, index, id, active, selected, ad
 }) {
   countRender('picker-row');
   return <div className={`pk-row ${active ? 'is-active' : ''}`} data-index={index}>
-    <button id={`${id}-${index}`} type="button" role="option" tabIndex={active ? 0 : -1} aria-selected={selected} aria-disabled={!!row.disabled} className="pk-option" onFocus={() => onActive(index)} onPointerMove={() => onActive(index)} onClick={() => onPick(row)}><span className="pk-check" aria-hidden>{selected ? '✓' : ''}</span>{row.swatch !== undefined && <span className="profile-color-swatch" data-unknown={!row.swatch} style={{backgroundColor:row.swatch ?? undefined}}>{!row.swatch ? '?' : ''}</span>}<span className="pk-label">{row.label}{row.sub && <span className="pk-sub">{row.sub}</span>}</span>{row.meta && <span className="pk-meta">{row.meta}</span>}</button>
+    <button id={`${id}-${index}`} type="button" role="option" tabIndex={active ? 0 : -1} aria-selected={selected} aria-disabled={!!row.disabled} className="pk-option" onFocus={() => onActive(index)} onPointerMove={() => onActive(index)} onClick={() => onPick(row)}><span className="pk-check" aria-hidden>{selected ? '✓' : ''}</span>{row.swatch !== undefined && <span className="profile-color-swatch" data-unknown={!row.swatch} style={{backgroundColor:row.swatch ?? undefined}}/>}<span className="pk-label">{row.label}{row.sub && <span className="pk-sub">{row.sub}</span>}</span>{row.meta && <span className="pk-meta">{row.meta}</span>}</button>
     {!adding && <button type="button" className="pk-star" aria-label={`Favorite ${row.label}`} aria-pressed={pinned} onClick={() => onPin(row)}>{pinned ? '★' : '☆'}</button>}
   </div>;
 });

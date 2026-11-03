@@ -3,8 +3,6 @@
 :where(.orca-parity) .pf-workspace-title h1 { margin: 0; font: var(--t-title); font-size: 16px; color: var(--text); }
 :where(.orca-parity) .pf-workspace-title > .visibility-control { margin-left: auto; }
 :where(.orca-parity) .pf-window .profile-library-notice { padding: var(--s-3) var(--s-5); }
-:where(.orca-parity) .pf-window .profile-library-notice > div { align-items: center; }
-:where(.orca-parity) .pf-window .profile-library-notice strong { margin-right: auto; }
 :where(.orca-parity) .pf-copy-pending { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--s-5); border-bottom: 1px solid var(--line); background: var(--surface); font: var(--t-body); overflow-wrap: anywhere; }
 :where(.orca-parity) .pf-copy-pending > span { flex: 1 1 200px; min-width: 0; color: var(--label); }
 :where(.orca-parity) .pf-window .np-dialog-body { position: relative; display: flex; flex: 1; min-height: 0; padding: 0; overflow: hidden; gap: 0; }

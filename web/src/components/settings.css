@@ -60,7 +60,7 @@
 :where(.orca-parity) .sidebar .opt-field:has(.text.num) { display: grid; grid-template-columns: minmax(0, 1fr) 38px; }
 :where(.orca-parity) .sidebar .opt-side { white-space: normal; overflow-wrap: anywhere; }
 :where(.orca-parity) .profile-selector-row { display: flex; align-items: center; gap: 6px; min-height: 30px; }
-:where(.orca-parity) .pk-name, :where(.orca-parity) .pk-trigger .dropdown-value { color: var(--text); font-weight: 550; }
+:where(.orca-parity) .pk-name, :where(.orca-parity) .pk-trigger .dropdown-value { color: var(--text); font-weight: 400; }
 
 :where(.orca-parity) .printer-materials .profile-role { width: 56px; }
 :where(.orca-parity) .filament-remove { width: 20px; flex: none; }
