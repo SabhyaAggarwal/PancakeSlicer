@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -78,7 +80,7 @@ func discover(ctx context.Context, policy *hostPolicy, resources string) ([]Disc
 	}
 	note := func(text string) { mu.Lock(); notes = append(notes, text); mu.Unlock() }
 	var wg sync.WaitGroup
-	for _, run := range []func(context.Context, func(DiscoveredPrinter, netip.Addr), func(string), string){discoverBambu, discoverMDNS, probeMoonraker} {
+	for _, run := range []func(context.Context, func(DiscoveredPrinter, netip.Addr), func(string), string){discoverBambu, discoverMDNS, probeLocal} {
 		wg.Add(1)
 		go func() { defer wg.Done(); run(ctx, add, note, resources) }()
 	}
@@ -143,7 +145,7 @@ func discoverBambu(ctx context.Context, add func(DiscoveredPrinter, netip.Addr),
 		code := headers["devmodel.bambu.com"]
 		model := models[code]
 		d := DiscoveredPrinter{Kind: "bambu-lan", Host: ip.String(), Serial: strings.ToUpper(serial), Name: headers["devname.bambu.com"],
-			Model: cmpOr(model[0], bambuModel("", code)), Preset: model[1], Connection: headers["devconnect.bambu.com"], Source: "ssdp"}
+			Model: strings.TrimPrefix(cmpOr(model[0], bambuModel("", code)), "Bambu Lab "), Preset: model[1], Connection: headers["devconnect.bambu.com"], Source: "ssdp"}
 		add(d, ip)
 	}
 	listen := func(address string) net.PacketConn {
@@ -346,7 +348,7 @@ func parseDNS(msg []byte) ([]dnsRecord, error) {
 	return out, nil
 }
 
-func probeMoonraker(ctx context.Context, add func(DiscoveredPrinter, netip.Addr), note func(string), _ string) {
+func probeLocal(ctx context.Context, add func(DiscoveredPrinter, netip.Addr), note func(string), resources string) {
 	var targets []netip.Addr
 	ifaces, _ := net.Interfaces()
 	for _, iface := range ifaces {
@@ -369,6 +371,11 @@ func probeMoonraker(ctx context.Context, add func(DiscoveredPrinter, netip.Addr)
 			}
 		}
 	}
+	roots := x509.NewCertPool()
+	if pem, err := os.ReadFile(filepath.Join(resources, "cert", "printer.cer")); err == nil {
+		roots.AppendCertsFromPEM(pem)
+	}
+	models := bambuModels(resources)
 	work := make(chan netip.Addr)
 	var wg sync.WaitGroup
 	for i := 0; i < 64; i++ {
@@ -377,6 +384,7 @@ func probeMoonraker(ctx context.Context, add func(DiscoveredPrinter, netip.Addr)
 			defer wg.Done()
 			for ip := range work {
 				probeOne(ctx, ip, add)
+				probeBambu(ctx, ip, roots, models, add)
 			}
 		}()
 	}
@@ -388,6 +396,43 @@ func probeMoonraker(ctx context.Context, add func(DiscoveredPrinter, netip.Addr)
 	}
 	close(work)
 	wg.Wait()
+}
+
+func probeBambu(ctx context.Context, ip netip.Addr, roots *x509.CertPool, models map[string][2]string, add func(DiscoveredPrinter, netip.Addr)) {
+	dctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+	defer cancel()
+	raw, err := (&net.Dialer{Timeout: 400 * time.Millisecond}).DialContext(dctx, "tcp", netip.AddrPortFrom(ip, 8883).String())
+	if err != nil {
+		return
+	}
+	defer raw.Close()
+	var leaf *x509.Certificate
+	conn := tls.Client(raw, &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12, VerifyConnection: func(cs tls.ConnectionState) error {
+		if len(cs.PeerCertificates) == 0 {
+			return errors.New("no certificate")
+		}
+		intermediates := x509.NewCertPool()
+		for _, c := range cs.PeerCertificates[1:] {
+			intermediates.AddCert(c)
+		}
+		if _, err := cs.PeerCertificates[0].Verify(x509.VerifyOptions{Roots: roots, Intermediates: intermediates, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny}}); err != nil {
+			return err
+		}
+		leaf = cs.PeerCertificates[0]
+		return nil
+	}})
+	if conn.HandshakeContext(dctx) != nil || leaf == nil || !bambuSerial.MatchString(leaf.Subject.CommonName) {
+		return
+	}
+	conn.Close()
+	serial := strings.ToUpper(leaf.Subject.CommonName)
+	d := DiscoveredPrinter{Kind: "bambu-lan", Host: ip.String(), Serial: serial, Model: bambuModel("", serial[:3]), Source: "probe"}
+	for _, m := range models {
+		if m[0] == "Bambu Lab "+d.Model {
+			d.Preset = m[1]
+		}
+	}
+	add(d, ip)
 }
 
 func probeOne(ctx context.Context, ip netip.Addr, add func(DiscoveredPrinter, netip.Addr)) {
