@@ -32,7 +32,26 @@ func NewProfileLibraryStore(dir string) (*ProfileLibraryStore, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
-	return s, s.migrateWorksWith()
+	if err := s.migrateWorksWith(); err != nil {
+		return nil, err
+	}
+	s.logLegacyProblems()
+	return s, nil
+}
+
+func (s *ProfileLibraryStore) logLegacyProblems() {
+	envelope, err := s.readLibrary()
+	if err != nil {
+		return
+	}
+	source, err := s.scanLegacyProfiles(envelope)
+	if err != nil {
+		log.Printf("earlier profiles: %v", err)
+		return
+	}
+	for _, problem := range source.Problems {
+		log.Printf("earlier profile file unreadable: %s", problem)
+	}
 }
 
 func (s *ProfileLibraryStore) migrateWorksWith() error {

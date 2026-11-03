@@ -30,6 +30,7 @@ type legacySource struct {
 	Profiles   []legacyProfile
 	Unreadable int
 	Nonregular []string
+	Problems   []string
 }
 
 func sourceHash(raw []byte) string {
@@ -85,6 +86,7 @@ func (s *ProfileLibraryStore) scanLegacyProfiles(envelope *libraryEnvelope) (*le
 			if isJSON && handled[relative] == "" {
 				source.Unreadable++
 				source.Nonregular = append(source.Nonregular, relative)
+				source.Problems = append(source.Problems, relative+": not a regular file")
 			}
 			return nil
 		}
@@ -112,11 +114,12 @@ func (s *ProfileLibraryStore) scanLegacyProfiles(envelope *libraryEnvelope) (*le
 		if !isJSON {
 			return nil
 		}
-		record, recognized := legacyRecord(raw)
+		record, recognized, reason := legacyRecord(raw)
 		if record != nil {
 			source.Profiles = append(source.Profiles, legacyProfile{relative, record})
 		} else if recognized {
 			source.Unreadable++
+			source.Problems = append(source.Problems, relative+": "+reason)
 		}
 		return nil
 	})
@@ -128,16 +131,16 @@ func (s *ProfileLibraryStore) scanLegacyProfiles(envelope *libraryEnvelope) (*le
 	return source, nil
 }
 
-func legacyRecord(raw []byte) (record map[string]json.RawMessage, recognized bool) {
+func legacyRecord(raw []byte) (record map[string]json.RawMessage, recognized bool, reason string) {
 	var fields map[string]json.RawMessage
 	if !json.Valid(raw) {
-		return nil, true
+		return nil, true, "invalid JSON"
 	}
 	if json.Unmarshal(raw, &fields) != nil || fields == nil {
-		return nil, false
+		return nil, false, ""
 	}
 	if fields["name"] == nil && fields["type"] == nil && fields["id"] == nil && fields["overrides"] == nil && fields["overlay"] == nil {
-		return nil, false
+		return nil, false, ""
 	}
 	record = map[string]json.RawMessage{}
 	for key, value := range fields {
@@ -160,6 +163,13 @@ func legacyRecord(raw []byte) (record map[string]json.RawMessage, recognized boo
 	if record["kind"] == nil {
 		record["kind"] = json.RawMessage(`"profile"`)
 	}
+	if rule, old := worksWithFromSchema1(record["applicability"]); old {
+		if rule == nil {
+			delete(record, "applicability")
+		} else {
+			record["applicability"] = rule
+		}
+	}
 	var revision uint64
 	if json.Unmarshal(record["revision"], &revision) != nil {
 		record["revision"] = json.RawMessage(`0`)
@@ -170,12 +180,12 @@ func legacyRecord(raw []byte) (record map[string]json.RawMessage, recognized boo
 	single := emptyProfileLibrary()
 	single["profiles"], _ = json.Marshal([]map[string]json.RawMessage{record})
 	if _, err := libraryProfiles(single); err != nil {
-		return nil, true
+		return nil, true, err.Error()
 	}
 	if fields["id"] == nil {
 		delete(record, "id")
 	}
-	return record, true
+	return record, true, ""
 }
 
 func legacyAdditions(doc profileLibraryDocument, source *legacySource) ([]map[string]json.RawMessage, error) {
