@@ -1,11 +1,12 @@
-import { preferenceText, savePreferences } from '../saved-preferences';
-import { useEffect, useRef, useState } from 'react';
+import { preferenceText, savePreferences, savedPreferencesSnapshot, subscribeSavedPreferences, usePreference } from '../saved-preferences';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import penUrl from '../../../docs/nonplanar/corpus/everyday/pen_holder.stl?url';
 import knobUrl from '../../../tests/data/nonplanar/corpus/w_knob_knurled.stl?url';
 import hookUrl from '../samples/shelf_hook.stl?url';
 import { importFiles, openFileDialog, openProjectDialog } from '../actions';
 import { getState, setState, subscribeStore, toast, useStore } from '../state/store';
 import { PrinterPicker } from '../profiles/Pickers';
+import { documentGeneration } from '../state/history';
 import { Icon } from './Icon';
 import './first-run.css';
 import { Modal, ModalTitle } from './Modal';
@@ -59,20 +60,29 @@ function DropZone() {
   );
 }
 
+let firstVisitObserver: (() => void) | null = null;
 function afterFirstVisit() {
+  if(firstVisitObserver || getState().objects.length)return;
+  const generation=documentGeneration();
   const root = document.documentElement;
+  let completed=false;
+  const stop=()=>{unsubscribe();firstVisitObserver=null;delete root.dataset.nudge;};
   const check = () => {
-    const s = getState();
-    if (s.job.state !== 'idle') { delete root.dataset.nudge; stop(); return; }
-    if (s.objects.length) { savePreferences({[SETUP_KEY]:'1'}); root.dataset.nudge = 'slice'; } else delete root.dataset.nudge;
+    const s = getState(),preferences=savedPreferencesSnapshot();
+    if(documentGeneration()!==generation || !preferences.hydrated || preferences.state==='failed' || s.job.state!=='idle'
+      || !completed && (preferenceText(SETUP_KEY) || preferenceText('orca.printer'))) { stop(); return; }
+    if(s.objects.length && !completed){completed=true;savePreferences({[SETUP_KEY]:'1'});root.dataset.nudge='slice';}
+    else if(completed && !s.objects.length)stop();
   };
-  const stop = subscribeStore(check);
-  check();
+  const unsubscribe=subscribeStore(check);
+  firstVisitObserver=stop;
 }
 
 export default function EmptyPlate() {
-  const [firstVisit] = useState(() => !preferenceText(SETUP_KEY) && !preferenceText('orca.printer'));
-  useEffect(() => () => { if (firstVisit) afterFirstVisit(); }, []);
+  const preferences=useSyncExternalStore(subscribeSavedPreferences,savedPreferencesSnapshot);
+  const setup=usePreference(SETUP_KEY),printer=usePreference('orca.printer');
+  const firstVisit=preferences.hydrated && preferences.state!=='failed' && !setup && !printer;
+  useEffect(()=>{if(firstVisit)afterFirstVisit();},[firstVisit]);
   return (
     <div className="empty-plate">
       {firstVisit && <PrinterChoice />}

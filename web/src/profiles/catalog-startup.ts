@@ -7,7 +7,7 @@ import { importing } from '../flow/import';
 import { loadTab } from '../options';
 import { DEMO_MODELS, getState, setState, toast } from '../state/store';
 import { documentGeneration } from '../state/history';
-import { preferenceText } from '../saved-preferences';
+import { initialiseSavedPreferences, preferenceText } from '../saved-preferences';
 import { findProfile } from './identity';
 import { catalogAnchor, catalogKey, findCatalogBase, type ProfileCatalog } from './model';
 import { planCatalogReadiness, loadRequiredCatalogs, loadBackgroundCatalogs, type CatalogBaseDependency, type CatalogDependencySource } from './catalog-readiness';
@@ -48,7 +48,7 @@ export async function loadCatalog() {
       await acknowledgePendingProfileWrite();
       if(!current())return;
       let document=await storage.readProfileLibrary();
-      const unchanged=()=>{const s=getState();return current() && documentGeneration()===documentAtStart && s.projectPresets===initial.projectPresets && s.dirty===initial.dirty && (s.userPresets===initial.userPresets || s.userPresets.length===initial.userPresets.length && s.userPresets.every((p,i)=>p===initial.userPresets[i])) && s.printer===initial.printer && s.filamentSlots===initial.filamentSlots && s.slotColours===initial.slotColours && s.filamentEdits===initial.filamentEdits && s.printerLibrary===initial.printerLibrary;};
+      const unchanged=()=>{const s=getState();return current() && documentGeneration()===documentAtStart && s.project===initial.project && s.profileSnapshots===initial.profileSnapshots && s.projectPresets===initial.projectPresets && s.dirty===initial.dirty && (s.userPresets===initial.userPresets || s.userPresets.length===initial.userPresets.length && s.userPresets.every((p,i)=>p===initial.userPresets[i])) && s.printer===initial.printer && s.process===initial.process && s.filamentSlots===initial.filamentSlots && s.slotColours===initial.slotColours && s.filamentEdits===initial.filamentEdits && s.mixes===initial.mixes && s.printerLibrary===initial.printerLibrary;};
       const restoreStartupPlaceholder=!initial.printer && !initial.process && !initial.filamentSlots.length && !initial.project && !initial.objects.length && !initial.profileSnapshots && !initial.projectPresets && !Object.keys(initial.dirty.machine).length && !Object.keys(initial.dirty.process).length && !Object.keys(initial.filamentEdits).length && !Object.keys(initial.printerLibrary.setups).length;
       let inventory:import('./browser-inventory').BrowserProfileInventory|null=null,adoptionError:string|null=null;
       try{
@@ -75,8 +75,20 @@ export async function loadCatalog() {
       if(adoptionError && !restoreStartupPlaceholder)throw new Error(adoptionError);
       await ensureOwnedCatalogs(document,native,unchanged);
       if(!unchanged())throw new Error('Your setup changed while native profile bases loaded. Retry to preserve your newer work.');
-      const latest=getState(),preferred=restoreStartupPlaceholder ? inventory?.storage['orca.printer'] : null;
+      if(restoreStartupPlaceholder){
+        if(getState().loading==='Loading presets')setState({loading:null});
+        await initialiseSavedPreferences();
+      }
+      if(!unchanged())throw new Error('Your setup changed while saved preferences loaded. Retry to preserve your newer work.');
+      const latest=getState(),preferred=restoreStartupPlaceholder ? preferenceText('orca.printer') : undefined;
+      const remembered=document.profiles.find(p=>p.type==='machine' && p.id===preferred && p.kind!=='master');
       const result=prepareProfileLibraryHydration(preferred ? {...latest,printer:preferred} : latest,document,{restoreStartupPlaceholder});
+      if(restoreStartupPlaceholder && (!remembered || remembered.archived)){
+        Object.assign(result.patch,{printer:remembered?.id ?? '',process:latest.process,filamentSlots:latest.filamentSlots,
+          slotColours:latest.slotColours,filamentEdits:latest.filamentEdits,mixes:latest.mixes,
+          profileRecoveries:[{type:'machine',key:preferred ?? '',reason:remembered?.archived?'archived':'missing-profile'}]});
+        toast(preferred?'The remembered printer is unavailable or archived. Choose a saved printer or review Profiles.':'Choose a saved printer or add a printer template to continue.');
+      }
       const error=adoptionError ?? (result.requiresAdoption?'Browser printer setups differ from the saved library. Export and review browser data before restoring them. Your setup is kept.':null);
       setState({...result.patch,profileLibraryLoad:error ? {state:'failed',error} : {state:'ready'}});
       if(!error)acceptHydratedPrinterSetups();

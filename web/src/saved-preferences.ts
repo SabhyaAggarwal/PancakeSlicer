@@ -1,9 +1,9 @@
 import { useSyncExternalStore } from 'react';
 import type { JsonValue } from './persist/service-document';
 type Controller = typeof import('./persist/preferences');
-type Status = { state: 'loading' | 'ready' | 'pending' | 'failed'; error: string | null };
+type Status = { state: 'loading' | 'ready' | 'pending' | 'failed'; error: string | null; hydrated: boolean };
 let values: Record<string, JsonValue> = {}, queued: Record<string, JsonValue> = {};
-let status: Status = { state: 'loading', error: null }, controller: Controller | null = null;
+let status: Status = { state: 'loading', error: null, hydrated: false }, controller: Controller | null = null;
 let loading: Promise<void> | null = null;
 const listeners = new Set<() => void>();
 const keyListeners = new Map<string, Set<() => void>>();
@@ -32,10 +32,10 @@ export function observePreference(key: string, listener: () => void) { listener(
 export const usePreference = (key: string) => useSyncExternalStore(listener => subscribePreference(key, listener), () => preference(key));
 export const savedPreferencesSnapshot = () => status;
 export const subscribeSavedPreferences = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
-function sync() {
+function sync(hydrated = status.hydrated) {
   if (!controller) return;
   const snapshot = controller.servicePreferencesSnapshot();
-  publish({ ...snapshot.document, ...queued }, { state: Object.keys(queued).length && snapshot.state === 'ready' ? 'pending' : snapshot.state, error: snapshot.error });
+  publish({ ...snapshot.document, ...queued }, { state: Object.keys(queued).length && snapshot.state === 'ready' ? 'pending' : snapshot.state, error: snapshot.error, hydrated });
 }
 export function savePreferences(patch: Record<string, JsonValue>) {
   const changed = Object.fromEntries(Object.entries(patch).filter(([key, value]) => !same(values[key], value)));
@@ -55,9 +55,9 @@ export function initialiseSavedPreferences(retry = false): Promise<void> {
       controller.subscribeServicePreferences(sync); sync();
     }
     await controller.hydrateServicePreferences();
-    sync(); if (retry) await controller.flushServicePreferences(true);
+    sync(true); if (retry) await controller.flushServicePreferences(true);
   })().catch((error: unknown) => {
-    loading = null; publish(values, { state: 'failed', error: error instanceof Error ? error.message : String(error) }); throw error;
+    loading = null; publish(values, { ...status, state: 'failed', error: error instanceof Error ? error.message : String(error) }); throw error;
   });
   return loading;
 }

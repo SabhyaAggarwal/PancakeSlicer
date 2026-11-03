@@ -7,18 +7,30 @@ export function bytesBase64(bytes: Uint8Array): string {
   for (let at = 0; at < bytes.length; at += 16384) chunks.push(String.fromCharCode(...bytes.subarray(at, at + 16384)));
   return btoa(chunks.join(''));
 }
-export function documentText(value: unknown): string {
+type BinaryField = Readonly<{ $orcaBinary: string; data: string }>;
+function stringifyDocument(value: unknown, binaries?: WeakMap<object, BinaryField>): string {
   return JSON.stringify(value, function (this: Record<string, unknown>, key, item: unknown) {
     if (this[key] instanceof Date) return { $orcaDate: this[key].getTime() };
-    if (item instanceof ArrayBuffer) return { [tag]: 'ArrayBuffer', data: bytesBase64(new Uint8Array(item)) };
-    if (ArrayBuffer.isView(item)) {
-      const type = item instanceof DataView ? 'DataView' : item.constructor.name;
-      if (type !== 'DataView' && !Object.hasOwn(arrays, type)) throw new Error(`Unsupported document array: ${type}`);
-      return { [tag]: type, data: bytesBase64(new Uint8Array(item.buffer, item.byteOffset, item.byteLength)) };
+    if (item instanceof ArrayBuffer || ArrayBuffer.isView(item)) {
+      const cached = binaries?.get(item);
+      if (cached) return cached;
+      const type = item instanceof ArrayBuffer ? 'ArrayBuffer' : item instanceof DataView ? 'DataView' : item.constructor.name;
+      if (!(item instanceof ArrayBuffer) && type !== 'DataView' && !Object.hasOwn(arrays, type)) throw new Error(`Unsupported document array: ${type}`);
+      const bytes = item instanceof ArrayBuffer ? new Uint8Array(item) : new Uint8Array(item.buffer, item.byteOffset, item.byteLength);
+      const field = Object.freeze({ [tag]: type, data: bytesBase64(bytes) });
+      binaries?.set(item, field);
+      return field;
     }
     if (typeof item === 'number' && !Number.isFinite(item)) throw new Error('Project contains a non-finite number');
     return item;
   });
+}
+export function documentText(value: unknown): string { return stringifyDocument(value); }
+
+export function prepareDocumentText(value: unknown) {
+  const binaries = new WeakMap<object, BinaryField>();
+  const stringify = (envelope: unknown) => stringifyDocument(envelope, binaries);
+  return { text: stringify(value), stringify };
 }
 export function parseDocument<T>(text: string): T {
   return JSON.parse(text, (_key, item: unknown) => {
