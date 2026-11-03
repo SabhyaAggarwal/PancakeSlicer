@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -69,6 +70,21 @@ func (st *workspaceStore) read() (*workspaceData, error) {
 	}
 	if d.Schema != 1 || d.Projects == nil || d.Drafts == nil || d.Values == nil || d.Operations == nil || d.Adoptions == nil || d.Aliases == nil {
 		return nil, errors.New("invalid workspace schema")
+	}
+	for id, project := range d.Projects {
+		if bytes.Equal(bytes.TrimSpace(project.Record), []byte("null")) {
+			project.Record = nil
+			d.Projects[id] = project
+		}
+		if project.Record == nil {
+			if !project.Archived {
+				return nil, fmt.Errorf("active project %s has no retained record", id)
+			}
+			continue
+		}
+		if _, err := projectRecord(project.Record, id, project.Revision); err != nil {
+			return nil, fmt.Errorf("invalid retained project %s: %w", id, err)
+		}
 	}
 	return &d, nil
 }
@@ -256,7 +272,11 @@ func (st *workspaceStore) register(mux *http.ServeMux) {
 				workspaceFailure(w, 404, "project_missing", "Project not found.", "open_projects", 0)
 				return
 			}
-			if p.Archived && (r.URL.Query().Get("archived") != "1" || p.Record == nil) {
+			if p.Record == nil {
+				workspaceFailure(w, 410, "project_archived", "This project was deleted and has no retained document. Its deletion marker prevents stale writers from recreating it.", "open_projects", p.Revision)
+				return
+			}
+			if p.Archived && r.URL.Query().Get("archived") != "1" {
 				workspaceFailure(w, 410, "project_archived", "This project is in Trash. Restore it before editing.", "restore_project", p.Revision)
 				return
 			}
@@ -336,6 +356,10 @@ func (st *workspaceStore) projectWrite(w http.ResponseWriter, r *http.Request, a
 		}
 		if !exists && action != "save" {
 			workspaceFailure(w, 404, "project_missing", "Project not found.", "open_projects", 0)
+			return
+		}
+		if p.Archived && p.Record == nil {
+			workspaceFailure(w, 410, "project_archived", "This deleted project has no retained document to restore. Keep its deletion marker and open another project.", "open_projects", p.Revision)
 			return
 		}
 		if p.Archived && action != "restore" {
