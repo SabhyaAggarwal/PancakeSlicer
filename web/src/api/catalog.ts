@@ -1,22 +1,30 @@
 import { normalizeConfig } from '../config-values';
-import type { PresetCatalog, PresetType, SystemPreset } from './types';
+import type { CompactCatalog } from './compact-catalog';
+import type { ConfigValue, PresetCatalog, PresetType } from './types';
 
-export function normalizeCatalog(raw: any, vendor: string, native = raw?.schema === 'orca.presets.v1'): PresetCatalog {
-  const pick = (...keys: string[]) => keys.map((k) => raw?.[k]).find(Array.isArray) ?? [];
-  const norm = (type: PresetType) => (p: any): SystemPreset => ({
-    ...p,
-    type,
-    vendor: p.vendor ?? vendor,
-    config: p.config ?? p.values ?? {},
+type ServicePreset = Omit<CompactCatalog['machines'][number], 'type' | 'vendor'> & { vendor?: string };
+
+export interface ServicePresets {
+  schema: 'orca.presets.compact.v1';
+  vendor: string;
+  keys: string[];
+  values: ConfigValue[];
+  value_keys: number[];
+  bases: number[][];
+  machines: ServicePreset[];
+  processes: ServicePreset[];
+  filaments: ServicePreset[];
+}
+
+export function normalizeCatalog(raw: ServicePresets, vendor: string, native: boolean): CompactCatalog {
+  if (raw?.schema !== 'orca.presets.compact.v1') throw new Error('The slicing service sent an unknown preset catalog format.');
+  const values = raw.values.map((value, i) => {
+    const key = raw.keys[raw.value_keys[i]];
+    return normalizeConfig({ [key]: value }, native)[key];
   });
-  const catalog = {
-    machines: pick('machines', 'machine', 'printers').map(norm('machine')),
-    processes: pick('processes', 'process', 'prints').map(norm('process')),
-    filaments: pick('filaments', 'filament').map(norm('filament')),
-  };
-  for (const presets of Object.values(catalog))
-    for (const preset of presets) preset.config = normalizeConfig(preset.config, native);
-  return catalog;
+  const kind = (type: PresetType, presets: ServicePresets['machines']) => presets.map((p) => ({ ...p, type, vendor: p.vendor ?? vendor }));
+  return { keys: raw.keys, values, bases: raw.bases,
+    machines: kind('machine', raw.machines), processes: kind('process', raw.processes), filaments: kind('filament', raw.filaments) };
 }
 
 export function demoPresets(cat: PresetCatalog, models: string[]): PresetCatalog {

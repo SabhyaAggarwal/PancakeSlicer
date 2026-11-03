@@ -1,4 +1,4 @@
-import { compactCatalog, type CompactCatalog } from './compact-catalog';
+import type { CompactCatalog } from './compact-catalog';
 import { normalizeCatalog } from './catalog';
 import { loadRuntimeOptions, nativePresetCatalog, type RuntimeOptions } from '../option-inventory';
 import optionsUrl from '../options.generated.json?url&no-inline';
@@ -98,7 +98,7 @@ self.onmessage = async (e: MessageEvent<CatalogIn>) => {
     const r = await (early ?? read(cached?.etag));
     if (r.status !== 304) {
       if (!r.ok) throw new Error(`${r.status} ${r.statusText}: ${(await r.text()).slice(0, 300)}`);
-      const catalog = compactCatalog(normalizeCatalog(await r.json(), vendor, nativePresetCatalog()));
+      const catalog = normalizeCatalog(await r.json(), vendor, nativePresetCatalog());
       if (!cached || JSON.stringify(cached.catalog) !== JSON.stringify(catalog)) post({ id, type: 'catalog', catalog, from: 'network' });
       remember({key,etag:r.headers.get('ETag'),types,catalog});
     } else if(!cached)throw new Error('Catalog validation returned 304 without a matching memory entry.');
