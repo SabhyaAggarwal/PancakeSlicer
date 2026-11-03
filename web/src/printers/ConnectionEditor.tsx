@@ -93,28 +93,28 @@ export function ConnectionEditor({ printer, name, onSaved }: { printer: string; 
           {tempLine(status) && <span className="send-meta">{tempLine(status)}</span>}
         </div>
       )}
-      <label className="prefs-row"><span>Host type</span>
+      <label className="form-row"><span>Host type</span>
         <Dropdown className="combo" value={kind} onValueChange={(v) => changed(setKind)(v as ConnectionKind)}
           options={(Object.keys(KIND_LABEL) as ConnectionKind[]).map((k) => ({ value: k, label: KIND_LABEL[k] }))} />
       </label>
       {bambu && <>
-        <label className="prefs-row"><span>Printer IP</span><input className="text" value={host} placeholder="192.168.1.60" spellCheck={false} onChange={(e) => changed(setHost)(e.target.value)} /></label>
-        <label className="prefs-row"><span>Serial number</span><input className="text" value={serial} spellCheck={false} onChange={(e) => changed(setSerial)(e.target.value)} /></label>
-        <label className="prefs-row"><span>Access code</span><input className="text" type="password" autoComplete="new-password" value={secret} placeholder={hasSecret ? 'Stored' : ''} onChange={(e) => changed(setSecret)(e.target.value)} /></label>
-        <div className="hint-text">On the printer: Settings › Network › LAN Only on, then Developer Mode on. The access code is shown there.</div>
+        <label className="form-row"><span>Printer IP</span><input className="text" value={host} placeholder="192.168.1.60" spellCheck={false} onChange={(e) => changed(setHost)(e.target.value)} /></label>
+        <label className="form-row"><span>Serial number</span><input className="text" value={serial} spellCheck={false} onChange={(e) => changed(setSerial)(e.target.value)} /></label>
+        <label className="form-row"><span>Access code</span><input className="text" type="password" autoComplete="new-password" value={secret} placeholder={hasSecret ? 'Stored' : ''} onChange={(e) => changed(setSecret)(e.target.value)} /></label>
+        <div className="hint-text connection-hint">On the printer: Settings › Network › LAN Only, then Developer Mode. The access code is shown there.</div>
       </>}
       {kind === 'bambu-connect' && <div className="hint-text">{DESKTOP
         ? 'Send hands the sliced file to Bambu Connect on this computer, which prints through your Bambu account. Use it when the printer stays in cloud mode.'
         : 'Bambu Connect runs on your computer: sending through it needs the desktop app. In the browser, download the .gcode.3mf and open it in Bambu Connect.'}</div>}
       {http && <>
-        <label className="prefs-row"><span>Hostname, IP or URL</span><input className="text" value={url} placeholder={kind === 'moonraker' ? '192.168.1.70:7125' : '192.168.1.70'} spellCheck={false} onChange={(e) => changed(setUrl)(e.target.value)} /></label>
+        <label className="form-row"><span>Hostname, IP or URL</span><input className="text" value={url} placeholder={kind === 'moonraker' ? '192.168.1.70:7125' : '192.168.1.70'} spellCheck={false} onChange={(e) => changed(setUrl)(e.target.value)} /></label>
         {kind === 'prusalink' && (
-          <label className="prefs-row"><span>Authorization</span>
+          <label className="form-row"><span>Authorization</span>
             <Dropdown className="combo" value={auth} onValueChange={(v) => changed(setAuth)(v)} options={[{ value: 'apikey', label: 'API key' }, { value: 'digest', label: 'HTTP digest' }]} />
           </label>
         )}
-        {digest && <label className="prefs-row"><span>User</span><input className="text" value={user} autoComplete="off" spellCheck={false} onChange={(e) => changed(setUser)(e.target.value)} /></label>}
-        <label className="prefs-row"><span>{digest || kind === 'duet' ? 'Password' : 'API key'}{keyOptional ? ' (optional)' : ''}</span>
+        {digest && <label className="form-row"><span>User</span><input className="text" value={user} autoComplete="off" spellCheck={false} onChange={(e) => changed(setUser)(e.target.value)} /></label>}
+        <label className="form-row"><span>{digest || kind === 'duet' ? 'Password' : 'API key'}{keyOptional ? ' (optional)' : ''}</span>
           <input className="text" type="password" autoComplete="new-password" value={secret} placeholder={hasSecret ? 'Stored' : ''} onChange={(e) => changed(setSecret)(e.target.value)} />
         </label>
       </>}
@@ -130,40 +130,54 @@ export function ConnectionEditor({ printer, name, onSaved }: { printer: string; 
           setTest(result);
           if (result.ok && result.model && bambu) setModel(result.model);
         })}>Test connection</button>
-        <button type="button" className="btn primary" disabled={!ready || !!working} onClick={() => void run('save', async () => {
+        <button type="button" className="btn-primary" disabled={!ready || !!working} onClick={() => void run('save', async () => {
           await saveConnection(printer, edit()); setSecret(''); toast(`Saved the connection of ${name}`); onSaved?.();
         })}>Save</button>
         <button type="button" className="btn" disabled={!!working} onClick={() => void run('find', async () => setFound(await discoverPrinters()))}>{working === 'find' ? 'Searching…' : 'Find printers'}</button>
-        {saved && <button type="button" className="btn" disabled={!!working} onClick={() => void run('remove', async () => { await removeConnection(printer); toast(`Removed the connection of ${name}`); })}>Remove connection</button>}
+        {saved && <button type="button" className="btn-ghost connection-remove" disabled={!!working} onClick={() => void run('remove', async () => { await removeConnection(printer); toast(`Removed the connection of ${name}`); })}>Remove connection</button>}
       </div>
-      {found && (
-        <div className="connection-found" aria-label="Printers found">
-          {!found.printers.length && <div className="hint-text">No printers answered on the network.{found.notes.length ? ` ${found.notes.join(' ')}` : ''}</div>}
+      {found && (!found.printers.length
+        ? <div className="hint-text">No printers answered on the network.{found.notes.length ? ` ${found.notes.join(' ')}` : ''}</div>
+        : <table className="found-table" aria-label="Printers found"><tbody>
           {found.printers.map((d) => {
             const usedBy = d.assigned && d.assigned !== printer ? resolvePreset(getState(), 'machine', d.assigned).user?.name ?? 'another printer' : '';
             const preset = d.preset && machines.some((m) => m.name === d.preset);
             const other = modelOf(d.preset), mismatch = !!other && !!setupModel && other !== setupModel;
+            const label = d.model ?? d.name ?? KIND_LABEL[d.kind];
             return (
-              <div className="connection-found-row" key={`${d.kind}${d.serial ?? ''}${d.host ?? ''}${d.url ?? ''}`}>
-                <span>{[d.name, d.model, d.host ?? d.url?.replace(/^http:\/\//, ''), KIND_LABEL[d.kind], d.connection === 'cloud' ? 'cloud mode' : ''].filter(Boolean).join(' · ')}{usedBy ? ` · used by ${usedBy}` : ''}{mismatch ? ` · not a ${setupModel}` : ''}</span>
-                <button type="button" className="btn" disabled={!!working} onClick={() => void use(d)} title={`Use for ${name}`}>Use</button>
-                {preset && <button type="button" className="btn" disabled={!!working} onClick={() => void addAsNew(d)}>Add as new printer</button>}
-              </div>
+              <tr key={`${d.kind}${d.serial ?? ''}${d.host ?? ''}${d.url ?? ''}`}>
+                <th scope="row">{label}</th>
+                <td className="found-addr">{d.host ?? d.url?.replace(/^http:\/\//, '')}</td>
+                <td className="found-kind">{KIND_LABEL[d.kind]}</td>
+                <td className="found-tags">
+                  {mismatch && <span className="found-tag" aria-label={`Not a ${setupModel}`}>other model</span>}
+                  {usedBy && <span className="found-tag" aria-label={`Used by ${usedBy}`}>in use</span>}
+                  {d.connection === 'cloud' && <span className="found-tag">cloud mode</span>}
+                </td>
+                <td className="found-acts">
+                  <button type="button" className="btn-ghost" disabled={!!working} aria-label={`Use ${label} for ${name}`} onClick={() => void use(d)}>Use</button>
+                  {preset && <button type="button" className="btn-ghost" disabled={!!working} aria-label={`Add ${label} as a new printer`} onClick={() => void addAsNew(d)}>Add</button>}
+                </td>
+              </tr>
             );
           })}
-        </div>
-      )}
+        </tbody></table>)}
       {!saved && earlier.length > 0 && (
-        <div className="connection-found" aria-label="Earlier printer connections">
-          <div className="hint-text">Printers added before connections belonged to printer profiles</div>
-          {earlier.map((c) => (
-            <div className="connection-found-row" key={c.id}>
-              <span>{[c.name, c.model, c.host ?? c.url?.replace(/^http:\/\//, ''), KIND_LABEL[c.kind]].filter(Boolean).join(' · ')}</span>
-              <button type="button" className="btn" disabled={!!working} onClick={() => void run('adopt', async () => { await adoptConnection(printer, c.id, name); onSaved?.(); })} title={`Use for ${name}`}>Use</button>
-              <button type="button" className="btn" disabled={!!working} onClick={() => void run('remove', () => removeConnection(`unassigned:${c.id}`))}>Remove</button>
-            </div>
-          ))}
-        </div>
+        <table className="found-table" aria-label="Earlier printer connections">
+          <caption>Earlier connections</caption>
+          <tbody>{earlier.map((c) => (
+            <tr key={c.id}>
+              <th scope="row">{c.model ?? c.name ?? KIND_LABEL[c.kind]}</th>
+              <td className="found-addr">{c.host ?? c.url?.replace(/^http:\/\//, '')}</td>
+              <td className="found-kind">{KIND_LABEL[c.kind]}</td>
+              <td className="found-tags" />
+              <td className="found-acts">
+                <button type="button" className="btn-ghost" disabled={!!working} aria-label={`Use this connection for ${name}`} onClick={() => void run('adopt', async () => { await adoptConnection(printer, c.id, name); onSaved?.(); })}>Use</button>
+                <button type="button" className="btn-ghost" disabled={!!working} aria-label="Remove this connection" onClick={() => void run('remove', () => removeConnection(`unassigned:${c.id}`))}>Remove</button>
+              </td>
+            </tr>
+          ))}</tbody>
+        </table>
       )}
     </div>
   );

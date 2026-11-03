@@ -1,6 +1,8 @@
 import { SlotPicker } from './SlotChip';
 import { Caret } from './Caret';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Glyph } from './Glyph';
+import { requestAddSettings } from './add-settings-request';
 import { useTab } from '../options';
 import { effectiveConfig, getState, isSelected, selectedObjectIds, selectionOf, setState, toggleSelection, updateInstance, updateVolume, togglePrintable, useStore } from '../state/store';
 import { volumeIcon } from '../plater/volumes';
@@ -83,6 +85,22 @@ export function ObjectList() {
     }
     setState({ selected: { object, instance: o.instances[0].id, allInstances: true } });
   };
+  const settingsCell = (n: number, name: string, pick: () => void) => (
+    <span role="gridcell" className="ol-set">
+      <button type="button" className={`ol-set-btn${n ? ' has' : ''}`} aria-label={n ? `${name}: ${n} setting${n === 1 ? '' : 's'}` : `Add settings to ${name}`}
+        onClick={(e) => { e.stopPropagation(); pick(); if (!n) requestAddSettings(); }}>
+        {n ? <><Icon name="cog" size={14} />{n}</> : <Glyph name="plus" size={14} />}
+      </button>
+    </span>
+  );
+  const list = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const box = list.current?.closest<HTMLElement>('.rail-objects'), row = list.current?.querySelector<HTMLElement>('.ol-row.selected');
+    if (!box || !row) return;
+    const b = box.getBoundingClientRect(), r = row.getBoundingClientRect();
+    if (r.top < b.top) box.scrollTop -= b.top - r.top;
+    else if (r.bottom > b.bottom) box.scrollTop += r.bottom - b.bottom;
+  }, [selected]);
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState<Record<number, boolean>>({});
   const s = getState();
@@ -93,7 +111,7 @@ export function ObjectList() {
   const plateStyle = styleOf(global);
 
   return (
-    <div className="object-list">
+    <div className="object-list" ref={list}>
       {objects.length > 8 && (
         <div className="search-bar">
           <Icon name="search" size={16} />
@@ -107,6 +125,10 @@ export function ObjectList() {
           const instSelected = (id: number) => (selected?.all ? isSelected(selected, o.id, id) : selected?.instance === id);
           const sinking = !o.project?.placeholder && o.instances.some((i) => { const b = instanceBox(o, i); return b.min.z < -0.001 && b.max.z >= -0.001; });
           const nSettings = Object.keys(o.settings).length;
+          const expandable = multi || !!o.volumes?.length || !!o.ranges?.length;
+          const expanded = open[o.id] ?? (!!o.volumes?.length || !!o.ranges?.length);
+          const pickSettings = () => setState((st) => ({ processScope: 'objects',
+            selected: objSelected && st.selected?.all ? st.selected : { object: o.id, instance: o.instances[0].id, allInstances: true } }));
           const style = o.project ? plateStyle : styleOf({ ...global, ...o.settings });
           return (
             <div key={o.id}>
@@ -123,15 +145,15 @@ export function ObjectList() {
                 onDoubleClick={() => startRename(o.id)}
               >
                 <span role="gridcell" className="ol-name">
-                  {multi ? (
+                  {expandable ? (
                     <button
-                      className="ol-expand"
+                      className="ol-expand" aria-expanded={expanded} aria-label={expanded ? 'Fold' : 'Open'}
                       onClick={(e) => {
                         e.stopPropagation();
-                        setOpen({ ...open, [o.id]: !open[o.id] });
+                        setOpen({ ...open, [o.id]: !expanded });
                       }}
                     >
-                      <Caret dir={open[o.id] ? 'down' : 'right'}/>
+                      <Caret dir={expanded ? 'down' : 'right'}/>
                     </button>
                   ) : (
                     <span className="ol-expand" />
@@ -158,7 +180,7 @@ export function ObjectList() {
                   )}
                   {results.length > 1 && results.find((r) => r.objectId === o.id) && (() => {
                     const r = results.find((x) => x.objectId === o.id)!;
-                    return <span className="ol-meta">{r.pct}%</span>;
+                    return (r.pct ?? 0) > 0 ? <span className="ol-meta" title="Top printed curved">{r.pct}% curved</span> : null;
                   })()}
                   {o.project?.placeholder && (
                     <span className="ol-badge">
@@ -167,6 +189,7 @@ export function ObjectList() {
                   )}
                 </span>
                 {printableButton(o.id, o.instances.some((i) => i.printable !== false))}
+                {o.project ? <span role="gridcell" className="ol-set" /> : settingsCell(nSettings, o.name, pickSettings)}
                 <span role="gridcell" className="ol-fila"><SlotPicker label="Filament" value={o.extruder || 1} disabled={!!o.project && !canEditProject()}
                   onChange={(next) => setFilament(o.id, next)} /></span>
                 <span role="gridcell" className="ol-status">{sinking && <button className="ol-sinking" aria-label="Drop to bed"
@@ -179,21 +202,7 @@ export function ObjectList() {
                   <Icon name="obj_warning" size={16} />
                 </button>}</span>
               </div>
-              {nSettings > 0 && (
-                <div
-                  role="row"
-                  className={`ol-row ol-child ${objSelected && getState().processScope === 'objects' ? 'selected' : ''}`}
-                  {...rowKeys(() => setState({ selected: { object: o.id, instance: o.instances[0].id, allInstances: true }, processScope: 'objects' }), o.id)}
-                  onClick={() => setState({ selected: { object: o.id, instance: o.instances[0].id, allInstances: true }, processScope: 'objects' })}
-
-                >
-                  <span role="gridcell" className="ol-name"><Icon name="cog" size={14} />
-                  <span className="ol-text">
-                    Overrides
-                  </span></span>
-                </div>
-              )}
-              {o.volumes?.map((v) => {
+              {expanded && o.volumes?.map((v) => {
                 const pick = (scope?: 'objects') => setState({ selected: { object: o.id, instance: o.instances[0].id, allInstances: true, volume: v.id }, ...(scope ? { processScope: scope } : {}) });
                 const nv = Object.keys(v.settings).length;
                 const volSelected = selected?.object === o.id && selected.volume === v.id;
@@ -218,27 +227,17 @@ export function ObjectList() {
                             }} />
                         ) : <span className="ol-text">{v.name}</span>}
                       </span>
-                      <span role="gridcell" className="ol-status" />
+                      {v.type === 'part' || v.type === 'modifier' ? settingsCell(nv, v.name, () => pick('objects')) : <span role="gridcell" className="ol-set" />}
                       {v.type === 'part' ? (
                         <span role="gridcell" className="ol-fila"><SlotPicker label="Filament" value={v.extruder} inherit={o.extruder || 1}
                           onChange={(next) => updateVolume(o.id, v.id, { extruder: next })} /></span>
                       ) : <span role="gridcell" className="ol-fila" />}
                       <span role="gridcell" className="ol-status" />
                     </div>
-                    {nv > 0 && (
-                      <div role="row"
-                        className={`ol-row ol-child2 ${volSelected && getState().processScope === 'objects' ? 'selected' : ''}`}
-                        {...rowKeys(() => pick('objects'), o.id)} onClick={() => pick('objects')}>
-                        <span role="gridcell" className="ol-name"><Icon name="cog" size={14} />
-                        <span className="ol-text">
-                          Overrides
-                        </span></span>
-                      </div>
-                    )}
                   </div>
                 );
               })}
-              {!!o.ranges?.length && (
+              {expanded && !!o.ranges?.length && (
                 <>
                   <div role="row" className="ol-row ol-child ol-group"><span role="gridcell" className="ol-name"><Icon name="height_range_layer" size={14} /><span className="ol-text">Layers</span></span></div>
                   {o.ranges.map((r) => {
@@ -254,7 +253,7 @@ export function ObjectList() {
                   })}
                 </>
               )}
-              {multi && open[o.id] && (
+              {multi && expanded && (
                 <>
                   <div role="row" className="ol-row ol-child ol-group"><span role="gridcell">Instances</span></div>
                   {o.instances.map((inst, k) => (
@@ -270,7 +269,7 @@ export function ObjectList() {
                     >
                       <span role="gridcell" className="ol-name">Instance {k + 1}</span>
                       {printableButton(o.id, inst.printable !== false, inst.id)}
-                      <span role="gridcell" className="ol-fila" /><span role="gridcell" className="ol-status" />
+                      <span role="gridcell" className="ol-set" /><span role="gridcell" className="ol-fila" /><span role="gridcell" className="ol-status" />
                     </div>
                   ))}
                 </>

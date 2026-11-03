@@ -7,6 +7,7 @@
 :where(.orca-parity) .optgroup + .optgroup { border-top: 1px solid var(--line); }
 :where(.orca-parity) .optgroup:has(> :is(.optgroup-title, .optgroup-headrow)):not(:has(~ .optgroup)) { border-bottom: 1px solid var(--line); }
 :where(.orca-parity) .optgroup:has(> :is(.optgroup-title, .optgroup-headrow)) { --row-inset: calc(var(--space-section, var(--s-5)) + 12px + var(--s-3)); }
+:where(.orca-parity) .page-flow > .opt-line { --row-inset: calc(var(--space-section, var(--s-5)) + 12px + var(--s-3)); }
 :where(.orca-parity) .optgroup-headrow { display: flex; align-items: center; }
 :where(.orca-parity) .optgroup-headrow > .optgroup-title { flex: 1; min-width: 0; }
 :where(.orca-parity) .optgroup-aside { flex: none; padding-right: var(--space-section, var(--s-5)); }
@@ -32,11 +33,11 @@
 :where(.orca-parity) .optgroup[data-single] .text.multiline { height: 100%; min-height: 240px; max-height: none; resize: none; }
 :where(.orca-parity) .pf-full-editor .page-body { padding-inline: var(--space-section, var(--s-5)); }
 :where(.orca-parity) .pf-full-editor .page-body > * { width: 100%; }
-:where(.orca-parity) .pf-full-editor .page-flow { column-width: 420px; column-gap: var(--s-5); }
+:where(.orca-parity) :is(.pf-full-editor, .modal > .settings-tab) .page-flow { column-width: 420px; column-gap: var(--s-5); }
 :where(.orca-parity) .page-flow > * { break-inside: avoid; }
-:where(.orca-parity) .pf-full-editor .page-flow .opt-line:not(.full) { --ctl-w: 168px; grid-template-columns: minmax(0, var(--label-w, 240px)) var(--ctl-w) var(--opt-end, 20px); justify-content: start; }
-:where(.orca-parity) .pf-full-editor .page-flow .option-row { --ctl-w: 168px; grid-template-columns: minmax(0, calc(var(--label-w, 240px) - 72px - var(--s-3))) 72px var(--ctl-w) var(--opt-end, 20px); justify-content: start; }
-:where(.orca-parity) .pf-full-editor .page-flow .opt-field > .control-number { grid-template-columns: 96px var(--unit-w); justify-content: start; }
+:where(.orca-parity) :is(.pf-full-editor, .modal > .settings-tab) .page-flow .opt-line:not(.full) { --ctl-w: 168px; grid-template-columns: minmax(0, var(--label-w, 240px)) var(--ctl-w) var(--opt-end, 20px); justify-content: start; }
+:where(.orca-parity) :is(.pf-full-editor, .modal > .settings-tab) .page-flow .option-row { --ctl-w: 168px; grid-template-columns: minmax(0, calc(var(--label-w, 240px) - 72px - var(--s-3))) 72px var(--ctl-w) var(--opt-end, 20px); justify-content: start; }
+:where(.orca-parity) :is(.pf-full-editor, .modal > .settings-tab) .page-flow .opt-field > .control-number { grid-template-columns: 96px var(--unit-w); justify-content: start; }
 :where(.orca-parity) .pf-full-editor .page-bar { margin-bottom: 0; }
 @media (max-width: 599px) { :where(.orca-parity) .pf-full-editor .page-body { padding-inline: 0; } }
 :where(.orca-parity) .opt-line, :where(.orca-parity) .option-row { display: grid; grid-template-columns: minmax(0, 1fr) var(--ctl-w, clamp(112px, 46%, 220px)) var(--opt-end, 20px); align-items: center; column-gap: var(--s-3); min-height: var(--h-control); padding: calc(var(--space-row, var(--s-3)) / 2) var(--space-section, var(--s-5)) calc(var(--space-row, var(--s-3)) / 2) var(--row-inset, var(--space-section, var(--s-5))); }
@@ -135,6 +136,9 @@
 :where(.orca-parity) .profile-choice-row > * { flex: 1; min-width: 0; width: 100%; }
 :where(.orca-parity) .profile-action-row { display: flex; gap: 6px; align-items: center; }
 :where(.orca-parity) .profile-action-row > .preset-more { margin-left: auto; }
+:where(.orca-parity) .modal > .settings-tab > .tab-preset-row { flex-direction: row; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--s-5); border-bottom: 1px solid var(--line); }
+:where(.orca-parity) .modal > .settings-tab > .tab-preset-row > .profile-choice-row { flex: 0 1 420px; }
+:where(.orca-parity) .modal > .settings-tab > .tab-preset-row .preset-more { margin-left: 0; }
 :where(.orca-parity) .scope-target { display: flex; gap: 10px; align-items: center; }
 :where(.orca-parity) .scope-caption { color: var(--label); font-size: 13px; flex: none; }
 :where(.orca-parity) .scope-target > [dir] { flex: 1; min-width: 0; }

@@ -26,9 +26,10 @@ export function buildProfileReferenceSource(s: State, projects: ProfileReference
     let profile = findProfile(s, type, key);
     if (!profile) {
       const wrappers = s.userPresets.filter((p) => p.type === type && (p.base?.name ?? p.inherits) === key && !p.parent && !p.parentId && !Object.keys(p.overlay ?? p.overrides).length);
-      if (wrappers.length === 1) profile = wrappers[0];
+      if (wrappers.length > 1) { complete = false; return; }
+      profile = wrappers[0];
     }
-    if (!profile) { complete = false; return; }
+    if (!profile) return;
     references.push({ type, key: profileKey(profile), reference });
   };
   for (const type of ['machine', 'process', 'filament'] as const)
@@ -55,8 +56,6 @@ export function buildProfileReferenceSource(s: State, projects: ProfileReference
     add('machine', ownerId, { kind: 'default', label });
     if (!Array.isArray(setup.materialIds) || !Array.isArray(setup.slots) || !setup.tuning || !setup.assignments) { complete = false; continue; }
     for (const key of new Set([...setup.materialIds, ...setup.slots.map(slot => slot.materialId), ...Object.keys(setup.tuning)])) {
-      const material = findProfile(s, 'filament', key);
-      if (!material) { complete = false; continue; }
       add('filament', key, { kind: 'inheritance', label, owner: ownerId });
     }
     if (Object.values(setup.assignments).some(slot => !setup.slots.some(s => s.id === slot))) complete = false;

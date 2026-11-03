@@ -16,6 +16,7 @@ const recordOf = (s: ProfileContextState, type: PresetType, resolved: ResolvedPr
   return links.length ? chainRecord(links) : undefined;
 };
 const ruleOf = (s: ProfileContextState, type: PresetType, resolved: ResolvedProfile) => recordOf(s, type, resolved)?.applicability as WorksWithRule | undefined;
+export const hasWorksWithRule = (s: ProfileContextState, type: PresetType, key: string) => ruleOf(s, type, resolveProfile(s, type, key)) !== undefined;
 
 export function worksWithReason(s: ProfileContextState, type: PresetType, key: string, printerKey = s.printer, nozzle?: string | number): string {
   const resolved = resolveProfile(s, type, key), record = recordOf(s, type, resolved), rule = record?.applicability as WorksWithRule | undefined;

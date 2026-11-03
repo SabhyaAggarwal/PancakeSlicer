@@ -1,5 +1,6 @@
 import type { ConfigValue } from './api/types';
 import type { OptionDef, OptionMode } from './options';
+import type { EngineCapabilities } from './api/health';
 import { normalizeConfigValue, setOptionTypes, unescapeConfigString, vectorType } from './config-values';
 import { hints } from 'virtual:option-hints';
 
@@ -70,19 +71,9 @@ export interface RuntimeOptions {
   tooltips: string | null;
 }
 
-export async function loadRuntimeOptions(url: string, mock = false, cached?: RuntimeOptions): Promise<RuntimeOptions> {
-  let native = false;
-  nativePresets = false;
-  if (!mock) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 15_000);
-    try {
-      const health = await fetch('/api/healthz', { signal: controller.signal }).then((r) => r.ok ? r.json() : null);
-      native = health?.tool_features?.dump_options === true;
-      nativePresets = health?.tool_features?.dump_presets === true;
-    } catch {
-    } finally { clearTimeout(timer); }
-  }
+export async function loadRuntimeOptions(url: string, engine: EngineCapabilities | null, cached?: RuntimeOptions): Promise<RuntimeOptions> {
+  const native = engine?.options === true;
+  nativePresets = engine?.presets === true;
   let etag: string | null = null, tooltips: string | null = null;
   let selected: Record<string, Metadata> | null;
   if (native) {

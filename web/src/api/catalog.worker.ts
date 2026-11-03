@@ -3,12 +3,14 @@ import { normalizeCatalog } from './catalog';
 import { loadRuntimeOptions, nativePresetCatalog, type RuntimeOptions } from '../option-inventory';
 import optionsUrl from '../options.generated.json?url&no-inline';
 import type { OptionDef, TabDesc } from '../options';
+import type { EngineCapabilities } from './health';
 
-export type CatalogIn = { id: number; type: 'mock'; url: string } | { id: number; type: 'settings'; optionsUrl: string; tabUrl: string; mock?: boolean } | {
+export type CatalogIn = { id: number; type: 'mock'; url: string } | { id: number; type: 'settings'; optionsUrl: string; tabUrl: string; engine: EngineCapabilities | null } | {
   type?: 'catalog';
   id: number;
   vendor: string;
   models: string[];
+  engine: EngineCapabilities;
 }
 
 export type CatalogOut =
@@ -41,7 +43,7 @@ function remember(entry:Entry) {
 
 const post = (m: CatalogOut) => (self as unknown as Worker).postMessage(m);
 
-let definitions: Promise<RuntimeOptions> | null = null;
+let definitions: Promise<RuntimeOptions> | null = null, definitionsEngine = '';
 let definitionsSent = false;
 let mockSnapshot: Promise<CompactCatalog> | undefined;
 async function asset(url: string) {
@@ -50,12 +52,20 @@ async function asset(url: string) {
   return r.json();
 }
 
-async function runtimeOptions(url:string,mock=false) {
-  const key=`options|${FORMAT}|${url}|${mock}`;
-  const loaded=await loadRuntimeOptions(url,mock,runtimeCache.get(key));
+async function runtimeOptions(url:string,engine:EngineCapabilities|null) {
+  const key=`options|${FORMAT}|${url}|${JSON.stringify(engine)}`;
+  const loaded=await loadRuntimeOptions(url,engine,runtimeCache.get(key));
   runtimeCache.delete(key);runtimeCache.set(key,loaded);
   while(runtimeCache.size>2)runtimeCache.delete(runtimeCache.keys().next().value!);
   return loaded;
+}
+
+function loadDefinitions(url: string, engine: EngineCapabilities | null): Promise<RuntimeOptions> {
+  const key = JSON.stringify(engine);
+  if (definitions && definitionsEngine === key) return definitions;
+  definitionsEngine = key; definitionsSent = false;
+  const loading: Promise<RuntimeOptions> = runtimeOptions(url, engine).catch((error) => { if (definitions === loading) definitions = null; throw error; });
+  return definitions = loading;
 }
 
 self.onmessage = async (e: MessageEvent<CatalogIn>) => {
@@ -76,13 +86,12 @@ self.onmessage = async (e: MessageEvent<CatalogIn>) => {
       return;
     }
     if (e.data.type === 'settings') {
-      definitions ??= runtimeOptions(e.data.optionsUrl, e.data.mock).catch((error) => { definitions = null; throw error; });
-      const [loaded, tab] = await Promise.all([definitions, asset(e.data.tabUrl)]);
+      const [loaded, tab] = await Promise.all([loadDefinitions(e.data.optionsUrl, e.data.engine), asset(e.data.tabUrl)]);
       post({ id, type: 'settings', ...(definitionsSent ? { options: {} } : { options: loaded.options, tooltips: loaded.tooltips }), tab });
       definitionsSent = true;
       return;
     }
-    definitions ??= runtimeOptions(optionsUrl).catch((error) => { definitions = null; throw error; });
+    const loading = loadDefinitions(optionsUrl, e.data.engine);
     const { vendor, models } = e.data;
     const key = `${FORMAT}|${vendor}|${models.join(',')}`;
     const entry = catalogs.get(key)?.entry;
@@ -91,7 +100,7 @@ self.onmessage = async (e: MessageEvent<CatalogIn>) => {
       headers: etag ? { 'If-None-Match': etag } : {},
     });
     const early = entry ? undefined : read();
-    const { options } = await definitions;
+    const { options } = await loading;
     const types = JSON.stringify([nativePresetCatalog(), Object.entries(options).map(([key, def]) => [key, def.type])]);
     const cached = entry?.types === types ? entry : undefined;
     if(cached)post({id,type:'catalog',catalog:cached.catalog,from:'cache'});

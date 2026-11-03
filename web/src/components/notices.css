@@ -12,6 +12,7 @@
 @media (min-width: 900px) { :where(.orca-parity) .app:has(.main:not(.sidebar-hidden) .sidebar) .toast { left: calc(50% + var(--workspace-rail-width) / 2); } }
 :where(.orca-parity) .app:has(.canvas-area[data-viewport=preview]) .toast { bottom: 76px; }
 @keyframes notice-in { from { opacity: 0; transform: translate(-50%, var(--s-2)); } }
+:where(.orca-parity) .notifications > .toast { position: static; transform: none; left: auto; bottom: auto; min-width: 0; max-width: none; width: 100%; box-sizing: border-box; animation: notice-slide var(--dur-2) var(--ease); }
 
 :where(.orca-parity) .notification { animation: notice-slide var(--dur-2) var(--ease); }
 @keyframes notice-slide { from { opacity: 0; transform: translateY(var(--s-2)); } }

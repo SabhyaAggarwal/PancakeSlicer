@@ -2,7 +2,7 @@ import { ProjectTitle } from '../projects/ProjectTitle';
 import { MenuButton, type MenuEntry } from './Menu';
 import { showProjects } from '../flow/project';
 import { openPalette } from '../commands/registry';
-import { lazy, Suspense, useState, useSyncExternalStore } from 'react';
+import { lazy, Suspense, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { arrangeAll, canExport, STALE_RESULT_TIP, download, newProject, openFileDialog, openProjectDialog, outputKind, outsideVolumeWarning, saveProject, slice } from '../actions';
 import { deleteAll, removeSelected, setState, useStore } from '../state/store';
 import { canPaste, copySelection, cutSelection, pasteClipboard, selectAll } from '../edit';
@@ -182,6 +182,9 @@ export function TabBar() {
   const [exportMode, setExportMode] = useState('plate');
   const exportAllEnabled = useStore((s) => s.projectPlates.length > 1 && !busy && exportablePlates(s).length > 0);
   const tier = useTier(), wide = tier === 'wide', folded = tier === 'narrow' || tier === 'phone';
+  const ready = job.state === 'done' && !job.stale && exportEnabled && !folded;
+  const sliceClass = `${ready ? 'btn' : 'btn-primary'} slant${busy ? ' slicing' : ''}`, exportClass = `${ready ? 'btn-primary' : 'btn'} slant`;
+  const progress = busy ? { '--p': `${Math.round(job.pct)}%` } as CSSProperties : undefined;
   const allSlice = wide && plates && sliceMode === 'Slice all';
   const allExport = wide && plates && exportMode === 'all';
   const more: MenuEntry[] = [
@@ -204,17 +207,17 @@ export function TabBar() {
       <div className="title-zone"><ProjectTitle/></div>
       <div className="tabbar-actions">
         {allSlice ? (
-          <button className="btn-primary slant" disabled={!printer || busy} onClick={() => void sliceAll()}>Slice all</button>
+          <button className={sliceClass} style={progress} disabled={!printer || busy} onClick={() => void sliceAll()}>Slice all</button>
         ) : (
-          <button className="btn-primary slant" disabled={!hasObjects || !printer || busy || !!outside} onClick={() => void slice()}>
+          <button className={sliceClass} style={progress} disabled={!hasObjects || !printer || busy || !!outside} onClick={() => void slice()}>
             {tier === 'phone' ? 'Slice' : 'Slice plate'}
           </button>
         )}
         {wide && plates && <SideOptions options={['Slice all', 'Slice plate']} value={sliceMode} onChange={setSliceMode} />}
         {!folded && <span className="export-actions">{allExport ? (
-          <button className="btn slant" disabled={!exportAllEnabled} onClick={() => void exportAll()}>Export all sliced file</button>
+          <button className={exportClass} disabled={!exportAllEnabled} onClick={() => void exportAll()}>Export all sliced file</button>
         ) : (
-          <button className="btn slant" disabled={!exportEnabled} onClick={download}>
+          <button className={exportClass} disabled={!exportEnabled} onClick={download}>
             {exportLabel}
           </button>
         )}

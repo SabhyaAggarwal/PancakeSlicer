@@ -57,10 +57,9 @@ export default function SendDialog({ close }: { close: () => void }) {
       {choices.length > 1
         ? <Dropdown className="combo" value={printer} aria-label="Printer" onValueChange={setTarget} options={choices.map((k) => ({ value: k, label: setupName(k) }))} />
         : <span className="send-target-name">{name}</span>}
-      {connection && <button type="button" className="btn" onClick={() => setEditing(!editing)}>{editing ? 'Done' : 'Connection'}</button>}
+      <span className="send-target-state">{connection ? [statusLine(status), KIND_LABEL[connection.kind], connection.host ?? connection.url?.replace(/^https?:\/\//, ''), tempLine(status)].filter(Boolean).join(' · ') : 'Not connected'}</span>
+      {connection && <button type="button" className="btn-ghost send-target-edit" onClick={() => setEditing(!editing)}>{editing ? 'Done' : 'Connection'}</button>}
     </div>
-    {connection && <div className="send-meta">{[KIND_LABEL[connection.kind], connection.host ?? connection.url?.replace(/^https?:\/\//, ''), statusLine(status), tempLine(status)].filter(Boolean).join(' · ')}</div>}
-    {!connection && <div className="hint-text">{name} has no connection yet. Find it on the network or enter its address.</div>}
     {(!connection || editing) && <ConnectionEditor key={printer} printer={printer} name={name} onSaved={() => setEditing(false)} />}
   </>;
   return (

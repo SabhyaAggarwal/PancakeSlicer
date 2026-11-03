@@ -18,7 +18,7 @@ const ramp = (s: State, m: Mix) => {
 };
 const swatch = (s: State, m: Mix, i: number) => (m.gradient !== null && m.components.length === 2 ? ramp(s, m) : filamentColor(s, i + 1));
 
-export default function MixedFilaments() {
+export default function MixedFilaments({ close }: { close(): void }) {
   const mixes = useStore((s) => s.mixes);
   useStore((s) => s.slotColours);
   useStore((s) => s.filamentSlots);
@@ -28,41 +28,36 @@ export default function MixedFilaments() {
   useEffect(watchColours, []);
   const slots = Object.keys(mixes).map(Number).sort((a, b) => a - b);
   const full = s.filamentSlots.length >= SLOTS_MAX;
-  const removeAll = () => void confirmDialog('Mixed Filament', `Remove all ${slots.length} mixed filaments?`).then((ok) => ok && deleteMixes(slots, undefined, 'Remove all mixed filaments'));
+  const removeAll = () => void confirmDialog('Mixed filament', `Remove all ${slots.length} mixed filaments?`).then((ok) => ok && deleteMixes(slots, undefined, 'Remove all mixed filaments'));
   return (
-    <div className="mixed-filaments">
-      {!slots.length ? (
-        <button type="button" className="mixed-add" disabled={full} onClick={() => setDialog({ slot: null })}>+ Add Mixed Filament</button>
-      ) : (
-        <>
-          <div className="mixed-title">
-            <span>Mixed Filament</span>
-            <IconButton icon="delete_filament" title="Remove last mixed filament" onClick={() => deleteMixes([slots[slots.length - 1]])} />
-            <IconButton icon="delete_all_filaments" title="Remove all mixed filaments" onClick={removeAll} />
-            <IconButton icon="add_filament" title="Add mixed filament" disabled={full} onClick={() => setDialog({ slot: null })} />
-          </div>
-          <div className="mixed-list">
-            {slots.map((i) => {
-              const m = mixes[i], bad = broken(s, m);
-              return (
-                <div key={i} className={`mixed-row ${bad ? 'broken' : ''}`}>
-                  <button type="button" className="filament-swatch" style={{ background: swatch(s, m, i) }} onClick={() => setDialog({ slot: i })}>{i + 1}</button>
-                  <button type="button" className="mixed-content" title={m.components.map((c, k) => `${c} (${m.ratios[k]}%)`).join(' + ')} onClick={() => setDialog({ slot: i })}>
-                    {m.components.map((c, k) => (
-                      <span key={k}>{k > 0 && (m.gradient !== null ? '→' : '+')}<i style={{ background: componentColour(s, c) }}>{c || '?'}</i></span>
-                    ))}
-                    {m.gradient === null && <em>{m.ratios.map((r) => `${r}%`).join(' ')}</em>}
-                  </button>
-                  <IconButton icon={bad ? 'error' : 'menu_filament'} title={bad ? 'Mixed filament has broken component references' : 'Edit / Delete / Merge'}
-                    onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu(menu?.slot === i ? null : { slot: i, x: Math.min(r.left, window.innerWidth - 230), y: r.bottom }); }} />
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
+    <Modal size="m" label="Mixed filament" onClose={close}>
+      <ModalTitle title="Mixed filament" onClose={close} />
+      <ModalBody>
+        {!slots.length ? <p className="mixed-empty">No mixed filaments</p> : <div className="mixed-list">
+          {slots.map((i) => {
+            const m = mixes[i], bad = broken(s, m);
+            const parts = m.components.map((c, k) => `${c} (${m.ratios[k]}%)`).join(' + ');
+            return (
+              <div key={i} className={`mixed-row ${bad ? 'broken' : ''}`}>
+                <button type="button" className="filament-swatch" aria-label={`Edit filament ${i + 1}`} style={{ background: swatch(s, m, i) }} onClick={() => setDialog({ slot: i })}>{i + 1}</button>
+                <button type="button" className="mixed-content" aria-label={`Filament ${i + 1}: ${parts}`} onClick={() => setDialog({ slot: i })}>
+                  {m.components.map((c, k) => (
+                    <span key={k}>{k > 0 && (m.gradient !== null ? '→' : '+')}<i style={{ background: componentColour(s, c) }}>{c || '?'}</i></span>
+                  ))}
+                  {m.gradient === null && <em>{m.ratios.map((r) => `${r}%`).join(' ')}</em>}
+                </button>
+                <IconButton icon={bad ? 'error' : 'menu_filament'} title={bad ? 'Broken component references' : 'Edit, merge or delete'}
+                  onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu(menu?.slot === i ? null : { slot: i, x: Math.min(r.left, window.innerWidth - 230), y: r.bottom }); }} />
+              </div>
+            );
+          })}
+        </div>}
+      </ModalBody>
+      <ModalFooter lead={slots.length > 1 && <button type="button" className="btn-ghost" onClick={removeAll}>Remove all</button>}>
+        <button type="button" className="btn" disabled={full} onClick={() => setDialog({ slot: null })}>Add mixed filament</button>
+        <button type="button" className="btn-primary" onClick={close}>Done</button>
+      </ModalFooter>
       {menu && <ActionMenu label={`Filament ${menu.slot + 1}`} at={menu} onClose={() => setMenu(null)} items={[
-        { label: 'Mixed filament', header: true },
         { label: 'Edit', action: () => setDialog({ slot: menu.slot }) },
         { label: 'Merge with', sub: s.filamentSlots.flatMap((_, j) => j === menu.slot ? [] : [{ label: `Filament ${j + 1}`,
           icon: <i className="mixed-dot" style={{ background: filamentColor(s, j + 1) }} />,
@@ -70,7 +65,7 @@ export default function MixedFilaments() {
         'sep', { label: 'Delete', action: () => deleteMixes([menu.slot]) },
       ]} />}
       {dialog && <MixDialog slot={dialog.slot} close={() => setDialog(null)} />}
-    </div>
+    </Modal>
   );
 }
 

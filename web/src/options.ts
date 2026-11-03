@@ -7,7 +7,8 @@ import printerUrl from './tabs/printer.json?url&no-inline';
 import { setOptionTypes } from './config-values';
 import { normalizeOptions } from './option-inventory';
 import { catalogWorker, onWorkerFailure, workerId } from './api/worker';
-import type { CatalogOut } from './api/catalog.worker';
+import type { CatalogIn, CatalogOut } from './api/catalog.worker';
+import { engineCapabilities } from './api/health';
 
 export type OptionMode = 'simple' | 'advanced' | 'develop' | 'developer';
 
@@ -94,7 +95,8 @@ export function loadTab(tab: TabDesc['tab']): Promise<void> {
   if (TABS[tab]) return Promise.resolve();
   const cached = pending.get(tab);
   if (cached) return cached;
-  const promise = new Promise<void>((resolve, reject) => {
+  const mock = new URLSearchParams(location.search).has('mock');
+  const promise = (mock ? Promise.resolve(null) : engineCapabilities()).then((engine) => new Promise<void>((resolve, reject) => {
     const worker = catalogWorker();
     const id = workerId();
     const cleanup = () => {
@@ -123,8 +125,8 @@ export function loadTab(tab: TabDesc['tab']): Promise<void> {
     };
     const unsubscribe = onWorkerFailure(fail);
     worker.addEventListener('message', on);
-    worker.postMessage({ id, type: 'settings', mock: new URLSearchParams(location.search).has('mock'), optionsUrl: new URL(optionsUrl, location.href).href, tabUrl: new URL(URLs[tab], location.href).href });
-  }).catch((error) => { pending.delete(tab); throw error; });
+    worker.postMessage({ id, type: 'settings', engine, optionsUrl: new URL(optionsUrl, location.href).href, tabUrl: new URL(URLs[tab], location.href).href } satisfies CatalogIn);
+  })).catch((error) => { pending.delete(tab); throw error; });
   pending.set(tab, promise);
   return promise;
 }

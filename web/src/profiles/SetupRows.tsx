@@ -1,16 +1,13 @@
-import { lazy, Suspense, useState } from 'react';
+import { useState } from 'react';
 import { OPTIONS } from '../options';
-import { filamentSwitchReason, getState, markStale, printerPreset, selectionOf, setOption, setState, toast, useStore, type State } from '../state/store';
+import { getState, markStale, printerPreset, setOption, setState, toast, useStore } from '../state/store';
 import { undo, undoable } from '../state/history';
 import { flushModified } from '../flush-state';
-import { IconButton } from '../components/Icon';
 import { Dropdown } from '../components/Dropdown';
-import { AddFilamentPicker, FilamentPicker } from './Pickers';
-import { filamentColor } from '../plater/filamentColor';
+import { Glyph } from '../components/Glyph';
+import { MenuButton, type MenuEntry } from '../components/Menu';
 import './profiles.css';
-import { filamentSlots, modelKey, nozzleOf, printerModels } from './machines';
-
-const MixedFilaments = lazy(() => import('../components/MixedFilaments'));
+import { modelKey, nozzleOf, printerModels } from './machines';
 
 export function NozzleField() {
   const machine = useStore((s) => printerPreset(s));
@@ -33,6 +30,25 @@ export function NozzleField() {
   );
 }
 
+export function PlateTypeField() {
+  const machine = useStore((s) => printerPreset(s));
+  const bedType = useStore((s) => s.bedType);
+  const bedDef = OPTIONS.curr_bed_type;
+  const multiBed = machine?.config.support_multi_bed_types;
+  if (!(machine?.vendor === 'BBL' || multiBed === true || multiBed === 1 || multiBed === '1') || !bedDef?.enum_values) return null;
+  return (
+    <div className="opt-line">
+      <span className="opt-label">Plate type</span>
+      <span className="opt-field">
+        <Dropdown className="combo" aria-label="Plate type" value={bedType}
+          onValueChange={(value) => undoable('Change plate type', () => setState({ bedType: value }))}
+          options={bedDef.enum_values.flatMap((v, i) =>
+            machine?.not_support_bed_type?.some((b) => b === v || b === bedDef.enum_labels?.[i])
+              ? [] : [{ value: v, label: bedDef.enum_labels?.[i] ?? v }])} />
+      </span>
+    </div>
+  );
+}
 
 export function addFilament() {
   const s = getState();
@@ -44,140 +60,30 @@ export function addSlot(name: string) {
   undoable('Add filament', () => setState((st) => ({ filamentSlots: [...st.filamentSlots, name], job: markStale(st.job) })));
 }
 
-export function removeFilament() {
-  const s = getState();
-  if (Object.keys(s.mixes).length) return void import('../plater/mixed').then((m) => m.removePhysical());
-  undoable('Remove filament', () => setState((st) => ({
-    filamentSlots: st.filamentSlots.length > 1 ? st.filamentSlots.slice(0, -1) : st.filamentSlots,
-    slotColours: st.slotColours.slice(0, st.filamentSlots.length - 1),
-    objects: st.objects.map((o) => (o.extruder >= st.filamentSlots.length ? { ...o, extruder: 1 } : o)),
-    events: st.events.filter((e) => e.type !== 'change' || Number(e.text) < st.filamentSlots.length),
-  })));
-}
-
 export function removeSlot(i: number) {
   void import('../plater/mixed').then(({ removeSlotAt }) => {
     const done = removeSlotAt(i + 1);
-    if (done) toast(done.moved ? `Removed filament ${i + 1}; ${done.moved} object${done.moved === 1 ? '' : 's'} moved to slot ${done.to}` : `Removed filament ${i + 1}`, { label: 'Undo', run: undo });
+    if (!done) return;
+    const notes = [done.moved ? `${done.moved} object${done.moved === 1 ? '' : 's'} moved to slot ${done.to}` : '', ...done.merged.map((d) => `mix ${d.mix} merged into slot ${d.into}`)].filter(Boolean);
+    toast([`Removed filament ${i + 1}`, ...notes].join('; '), { label: 'Undo', run: undo });
   });
 }
 
-const usersOf = (s: State, n: number) => s.objects.filter((o) => o.extruder === n || o.volumes?.some((v) => v.extruder === n));
-
-function selectUsers(n: number) {
-  const list = usersOf(getState(), n);
-  if (!list.length) return;
-  setState({ selected: selectionOf(getState(), list.flatMap((o) => o.instances.map((inst) => `${o.id}:${inst.id}`))) });
-}
-
-export function MaterialRows() {
-  const slots = useStore((s) => s.filamentSlots);
-  const physical = slots.length - Object.keys(useStore((s) => s.mixes)).length;
-  useStore((s) => s.filamentEdits);
-  useStore((s) => s.slotColours);
-  useStore((s) => s.projectMaterials);
-  useStore((s) => s.objects);
-  const s = getState();
-  return (
-    <table className="pf-table pf-filaments">
-      <colgroup><col className="c-n" /><col /><col className="c-obj" /><col className="c-act" /></colgroup>
-      <thead><tr><th className="n">#</th><th>Filament</th><th className="n" aria-label="Objects">Obj</th><th aria-label="Actions" /></tr></thead>
-      <tbody>
-        {slots.slice(0, physical).map((_, i) => {
-          const used = usersOf(s, i + 1).length;
-          return (
-            <tr key={i}>
-              <td className="n">{i + 1}</td>
-              <td><FilamentPicker slot={i} />{(() => { const r = filamentSwitchReason(s, i); return r && <div className="pf-dim pf-reason">{r}</div>; })()}</td>
-              <td className="n">{used ? <button type="button" className="pf-link" onClick={() => selectUsers(i + 1)}>{used}</button> : <span className="pf-dim">0</span>}</td>
-              <td className="pf-acts">
-                <IconButton icon="edit" title="Edit" onClick={() => setState({ dialog: { type: 'filament', slot: i } })} />
-                {physical > 1 && <IconButton icon="delete" title="Remove" onClick={() => removeSlot(i)} />}
-              </td>
-            </tr>
-          );
-        })}
-        <tr className="pf-add-row">
-          <td colSpan={4}>{Object.keys(getState().mixes).length
-            ? <button type="button" className="pf-link" onClick={addFilament} disabled={slots.length >= 64}>Add</button>
-            : <AddFilamentPicker disabled={slots.length >= 64} />}</td>
-        </tr>
-      </tbody>
-    </table>
-  );
-}
-
-
-export function PlateRow() {
-  return <><NozzleField /><PlateType /></>;
-}
-
-function PlateType() {
-  const machine = useStore((s) => printerPreset(s));
-  const bedType = useStore((s) => s.bedType);
-  const bedDef = OPTIONS.curr_bed_type;
-  const multiBed = machine?.config.support_multi_bed_types;
-  if (!(machine?.vendor === 'BBL' || multiBed === true || multiBed === 1 || multiBed === '1') || !bedDef?.enum_values) return null;
-  return (
-    <div className="opt-line">
-      <span className="opt-label">Plate type</span>
-      <Dropdown className="combo bed-combo" aria-label="Plate type" value={bedType}
-        onValueChange={(value) => undoable('Change plate type', () => setState({ bedType: value }))}
-        options={bedDef.enum_values.flatMap((v, i) =>
-          machine?.not_support_bed_type?.some((b) => b === v || b === bedDef.enum_labels?.[i])
-            ? [] : [{ value: v, label: bedDef.enum_labels?.[i] ?? v }])} />
-    </div>
-  );
-}
-
-export function SlotStrip({ slot, pick }: { slot: number; pick(i: number): void }) {
-  const slots = useStore((s) => s.filamentSlots);
-  useStore((s) => s.slotColours);
-  const physical = slots.length - Object.keys(useStore((s) => s.mixes)).length;
-  const capacity = useStore((st) => filamentSlots(printerPreset(st)));
-  useStore((st) => st.objects);
-  const used = usersOf(getState(), slot + 1).length;
-  return (
-    <div className="rail-slots" role="tablist" aria-label="Filament slots">
-      {slots.slice(0, physical).map((_, i) => (
-        <button key={i} type="button" role="tab" aria-selected={i === slot} className="rail-slot" aria-label={`Filament ${i + 1}`} onClick={() => pick(i)}>
-          <span className="pk-swatch" style={{ background: filamentColor(getState(), i + 1) }} />{i + 1}
-        </button>
-      ))}
-      <AddFilamentPicker disabled={slots.length >= Math.max(capacity, 1)} />
-      {used > 0 && <button type="button" className="pf-link rail-uses" onClick={() => selectUsers(slot + 1)}>{used} {used === 1 ? 'object' : 'objects'}</button>}
-      {physical > 1 && <IconButton icon="delete" title="Remove filament" onClick={() => removeSlot(slot)} />}
-    </div>
-  );
-}
-
-export function MaterialTools() {
+export function FilamentMenu() {
   const slots = useStore((s) => s.filamentSlots.length);
   const physical = slots - Object.keys(useStore((s) => s.mixes)).length;
   const flushChanged = useStore((st) => flushModified(st));
   const amsPrinter = useStore((st) => st.printerConnections.connections.some((c) => c.printer === st.printer && c.kind === 'bambu-lan') ? st.printer : undefined);
   const [syncing, setSyncing] = useState(false);
   const sync = () => {
-    if (!amsPrinter) return;
+    if (!amsPrinter || syncing) return;
     setSyncing(true);
     void import('../plater/amsSync').then((m) => m.syncAms(amsPrinter)).finally(() => setSyncing(false));
   };
-  if (slots < 2 && !amsPrinter) return null;
-  return (
-    <>
-      <div className="setup-row setup-tools">
-        {slots > 1 && <button type="button" className={`btn pf-flush ${flushChanged ? 'modified' : ''}`} onClick={() => setState({ flushDialog: true })}>Flushing</button>}
-        {amsPrinter && <IconButton icon="ams_fila_sync" title="Sync AMS" onClick={sync} disabled={syncing} />}
-      </div>
-      {physical > 1 && <Suspense fallback={null}><MixedFilaments /></Suspense>}
-    </>
-  );
-}
-
-
-
-export function FilamentSlotsView({ slot, pick }: { slot: number; pick(i: number): void }) {
-  const multi = useStore((st) => filamentSlots(printerPreset(st)) > 1 || st.filamentSlots.length > 1);
-  if (!multi) return null;
-  return <><SlotStrip slot={slot} pick={pick} /><MaterialTools /></>;
+  const items: MenuEntry[] = [
+    ...(physical > 1 ? [{ label: flushChanged ? 'Flushing volumes (edited)…' : 'Flushing volumes…', action: () => setState({ flushDialog: true }) }] : []),
+    ...(amsPrinter ? [{ label: syncing ? 'Syncing from AMS…' : 'Sync from AMS', disabled: syncing, action: sync }] : []),
+    ...(physical > 1 ? [{ label: 'Mixed filament…', action: () => setState({ appDialog: 'mixed' }) }] : []),
+  ];
+  return items.length ? <MenuButton className="icon-btn rail-act" label="Filament tools" items={items}><Glyph name="more"/></MenuButton> : null;
 }

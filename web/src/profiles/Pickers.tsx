@@ -31,8 +31,9 @@ function brandName(name: string, c: Config) {
   return { brand, name: short.toLowerCase().startsWith(word.toLowerCase() + ' ') ? short.slice(word.length + 1) : short };
 }
 
-const MATERIALS = ['PLA', 'PETG', 'ABS', 'TPU', 'ASA', 'PC', 'PA', 'PVA'];
+const MATERIALS = ['PLA', 'PETG', 'ABS', 'ASA', 'TPU', 'PC', 'PA', 'PVA'];
 const RARE = /^(PVA|BVOH|HIPS|EVA|COPE|PVB|SUPPORT|OTHER)$/;
+export const materialRank = (t: string) => { const i = MATERIALS.indexOf(t.toUpperCase()); return i >= 0 ? i : RARE.test(t.toUpperCase()) ? 99 : 50; };
 const material = (type: string) => (type.toUpperCase().split(/[-+\s]/)[0] || 'Other').replace(/^PA\d+$/, 'PA');
 
 export function currentEntry(type: PresetType, key: string | undefined, entries: readonly PickerEntry[]): PickerEntry | undefined {
@@ -78,7 +79,7 @@ function filamentGroups(slot: number | null, catalog = false): PickerGroup[] {
     types.set(type, [...(types.get(type) ?? []), it]);
     if (it.slots) loaded.push(it);
   }
-  const rank = (t: string) => { const i = MATERIALS.indexOf(t); return i >= 0 ? i : RARE.test(t) ? 99 : 50; };
+  const rank = materialRank;
   const groups: PickerGroup[] = [];
   if (loaded.length > 1) groups.push({ id: 'loaded', title: 'Loaded', items: [...loaded].sort((a, b) => a.slots![0].n - b.slots![0].n), filter: true });
   for (const type of [...types.keys()].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b)))

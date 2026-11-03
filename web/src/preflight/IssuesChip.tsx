@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { Glyph } from '../components/Glyph';
 import { currentResult } from '../flow/slice';
 import { speculate } from '../flow/speculate';
 import { getState, setState } from '../state/store';
@@ -79,7 +80,7 @@ export default function IssuesChip() {
               </button>
               <span className="issue-cost num">{i.fix.edit ? costs[i.key] ?? '…' : ''}</span>
               <button type="button" className="btn-ghost issue-fix" onClick={() => { hoverIssue(null); i.fix.run(); }}>{i.fix.label}</button>
-              <button type="button" className="icon-btn issue-dismiss" aria-label="Dismiss" onClick={() => dismissIssue(i.key)}>×</button>
+              <button type="button" className="icon-btn issue-dismiss" aria-label="Dismiss" onClick={() => dismissIssue(i.key)}><Glyph name="close" size={14} /></button>
             </div>
           ))}
         </div>

@@ -16,7 +16,6 @@ import { graphicsCapability } from './browser-support';
 const ControlHints = lazy(() => import('./components/ControlHints').then(m => ({default: m.ControlHints})));
 const BrimEarsPanel = lazy(() => import('./components/BrimEarsPanel'));
 const TransformPanel = lazy(() => import('./components/Transform').then(m => ({ default: m.TransformPanel })));
-const ObjectsOutliner = lazy(() => import('./components/ObjectsOutliner'));
 const ObjectInfo = lazy(() => import('./components/ObjectInfo'));
 const BooleanPanel = lazy(() => import('./components/BooleanPanel'));
 const TextPanel = lazy(() => import('./components/TextPanel'));
@@ -271,7 +270,6 @@ export default function App() {
       <div style={{ display: projects ? 'none' : undefined }} className={`main ${sidebarHidden ? 'sidebar-hidden' : ''} ${dragOver ? 'drag-over' : ''}`}>
         <Suspense fallback={null}><WorkspaceRail><Sidebar /></WorkspaceRail></Suspense>
         <div className="canvas-area" data-viewport={tab}>
-          {!empty && tab === 'prepare' && <Suspense fallback={null}><ObjectsOutliner/></Suspense>}
           {sidebarHidden && (
             <button type="button" className="btn sidebar-reveal" aria-expanded={false} onClick={() => toggleSidebar(false)}>Settings</button>
           )}

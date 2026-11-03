@@ -91,23 +91,25 @@ export function Picker({ label, value, groups, sections = false, onPick, facetLa
   const live = open || primed;
   const pool = useMemo(() => live ? (adding && catalog ? catalog.groups() : groups()).map(g => ({...g, items:g.items.filter(item => !item.disabled)})).filter((g) => g.items.length) : [], [live, adding, groups, catalog]);
   const home = useMemo(() => { if (!live) return undefined; for (const g of groups()) if (!g.filter) { const it = g.items.find(i => i.id === value); if (it) return {facet: it.facet, group: g.id}; } return undefined; }, [live, groups, value]);
+  const pinnedSet = useMemo(() => new Set(pins), [pins]);
+  const tabbedAll = useMemo(() => pool.filter(g => !g.allOnly), [pool]);
+  const rails = useMemo<RailTab[]>(() => sections ? [{id: 'all', title: 'All'}, ...tabbedAll.map(g => ({id: g.id, title: g.title}))] : [...(pool.some(g => g.items.some(r => pinnedSet.has(r.id))) ? [{id:'pins',title:'Favorites'}] : []), {id:'all',title:adding ? 'All bases' : 'All profiles'}, ...pool.map(({id,title}) => ({id,title}))], [sections, adding, pinnedSet, pool, tabbedAll]);
+  const railed = rails.length > 0;
+  const activeRail = rails.some(r => r.id === rail) ? rail : sections ? tabbedAll.find(g => !g.filter && g.items.some(i => i.id === value))?.id ?? (rails.some(r => r.id === home?.group) ? home!.group : 'all') : selectDefaultRail(pool, pins);
   const facets = useMemo<RailTab[]>(() => {
     if (!sections || !facetLabel) return [];
-    const names = [...new Set(pool.filter(g => !g.filter && !g.allOnly).flatMap(g => g.items.flatMap(i => i.facet ? [i.facet] : [])))].sort((a, b) => a.localeCompare(b, undefined, {sensitivity: 'base'}));
-    return names.length > 1 ? [{id: 'all', title: 'All'}, ...names.map(n => ({id: `f:${n}`, title: n}))] : [];
-  }, [sections, facetLabel, pool]);
+    const base = activeRail === 'all' ? tabbedAll.filter(g => !g.filter) : tabbedAll.filter(g => g.id === activeRail);
+    const names = [...new Set(base.flatMap(g => g.items.flatMap(i => i.facet ? [i.facet] : [])))].sort((a, b) => a.localeCompare(b, undefined, {sensitivity: 'base'}));
+    return names.length ? [{id: 'all', title: 'All'}, ...names.map(n => ({id: `f:${n}`, title: n}))] : [];
+  }, [sections, facetLabel, tabbedAll, activeRail]);
   const activeFacet = facets.some(f => f.id === facet) ? facet : facets.some(f => f.id === `f:${home?.facet}`) ? `f:${home?.facet}` : 'all';
   const source = useMemo(() => activeFacet === 'all' ? pool : pool.map(g => ({...g, items: g.items.flatMap(i => `f:${i.facet}` !== activeFacet ? [] : i.sub === i.facet ? [{...i, sub: undefined}] : [i])})).filter(g => g.items.length), [pool, activeFacet]);
   const ownRows = useMemo(() => open && adding && hasOwn(groups), [open, adding, groups]);
   const all = useMemo(() => [...new Map(source.filter(g => !g.filter).flatMap((g) => g.items).map((item) => [item.id, item])).values()], [source]);
-  const pinnedSet = useMemo(() => new Set(pins), [pins]);
   const allSections = useMemo(() => sections ? [{title: 'Favorites', items: all.filter(r => pinnedSet.has(r.id))}, ...[...source.filter(g => !g.filter && !g.allOnly), ...source.filter(g => g.allOnly)].map(g => ({title: g.title, items: g.items.filter(r => !pinnedSet.has(r.id))}))].filter(g => g.items.length) : null, [sections, all, pinnedSet, source]);
   const tabbed = useMemo(() => source.filter(g => !g.allOnly), [source]);
-  const rails = useMemo<RailTab[]>(() => sections ? (tabbed.length > 1 ? [{id: 'all', title: 'All'}, ...tabbed.map(g => ({id: g.id, title: g.title}))] : facets.length ? tabbed.map(g => ({id: g.id, title: g.title})) : []) : [...(all.some(r => pinnedSet.has(r.id)) ? [{id:'pins',title:'Favorites'}] : []), {id:'all',title:adding ? 'All bases' : 'All profiles'}, ...source.map(({id,title}) => ({id,title}))], [sections, adding, pinnedSet, all, source, facets.length]);
-  const railed = rails.length > 1 || (!!facets.length && !!rails.length);
   useRowFill(railRef, open && rails.map(r => r.id).join('|'));
   useRowFill(facetRef, open && facets.map(r => r.id).join('|'));
-  const activeRail = rails.some(r => r.id === rail) ? rail : sections ? tabbed.find(g => !g.filter && g.items.some(i => i.id === value))?.id ?? (rails.some(r => r.id === home?.group) ? home!.group : rails.some(r => r.id === 'all') ? 'all' : rails[0]?.id ?? 'all') : selectDefaultRail(source, pins);
   const sectioned = useMemo(() => {
     const g = allSections && rails.length && activeRail !== 'all' ? tabbed.find(t => t.id === activeRail) : undefined;
     return g ? [{title: 'Favorites', items: g.items.filter(r => pinnedSet.has(r.id))}, {title: g.title, items: g.items.filter(r => !pinnedSet.has(r.id))}].filter(x => x.items.length) : allSections;
@@ -117,6 +119,7 @@ export function Picker({ label, value, groups, sections = false, onPick, facetLa
   const railTabs = useMemo<TabRows[] | null>(() => !rails.length ? null : rails.map(r => {
     if (!allSections) return {tab: r.id, rows: r.id === 'pins' ? all.filter(x => pinnedSet.has(x.id)) : r.id === 'all' ? all : source.find(g => g.id === r.id)?.items ?? [], heads: new Map<number, string>()};
     const g = r.id === 'all' ? undefined : tabbed.find(t => t.id === r.id);
+    if (r.id !== 'all' && !g) return {tab: r.id, rows: [], heads: new Map<number, string>()};
     const secs = g ? [{title: 'Favorites', items: g.items.filter(x => pinnedSet.has(x.id))}, {title: g.title, items: g.items.filter(x => !pinnedSet.has(x.id))}].filter(x => x.items.length) : allSections ?? [];
     const at = new Map<number, string>(); let i = 0;
     if (!g || secs.length > 1) for (const sec of secs) { at.set(i, sec.title); i += sec.items.length; }
@@ -182,10 +185,10 @@ export function Picker({ label, value, groups, sections = false, onPick, facetLa
       else if (e.key === 'Enter' && e.target instanceof Element && e.target.closest('.pk-option') && rows[active]) { e.preventDefault(); e.altKey ? pin(rows[active]) : pick(rows[active]); }
       else if ((railed || facets.length) && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
         e.preventDefault();
-        const toGroups = () => railed ? railTab(activeRail)?.focus() : railTab(activeFacet, facetRef)?.focus();
-        if (e.key === 'ArrowRight') { if (level === 'facet' && railed) toGroups(); else if (inRail) move(enabled[0] ?? -1); }
-        else if (level === 'group' && facets.length) railTab(activeFacet, facetRef)?.focus();
-        else if (!inRail) toGroups();
+        const toLast = () => facets.length ? railTab(activeFacet, facetRef)?.focus() : railTab(activeRail)?.focus();
+        if (e.key === 'ArrowRight') { if (level === 'group' && facets.length) railTab(activeFacet, facetRef)?.focus(); else if (inRail) move(enabled[0] ?? -1); }
+        else if (level === 'facet') railTab(activeRail)?.focus();
+        else if (!inRail) toLast();
       }
       else if (e.key.length === 1 && e.key !== ' ' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
@@ -198,8 +201,8 @@ export function Picker({ label, value, groups, sections = false, onPick, facetLa
       }
     }}>
       <div ref={body} className={`pk-body ${railed && facets.length ? 'two-rail' : railed || facets.length ? '' : 'no-rail'}`}>
-        {!!facets.length && <PickerRail tabs={facets} active={activeFacet} hover level="facet" label={`${label} ${facetLabel!.toLowerCase()}s`} list={railed ? railRef : list} railRef={facetRef} onChange={changeFacet} />}
-        {railed && <PickerRail tabs={rails} active={activeRail} hover level="group" label={`${label} groups`} list={list} railRef={railRef} onChange={changeRail} />}
+        {railed && <PickerRail tabs={rails} active={activeRail} hover level="group" label={`${label} groups`} list={facets.length ? facetRef : list} railRef={railRef} onChange={changeRail} />}
+        {!!facets.length && <PickerRail tabs={facets} active={activeFacet} hover level="facet" label={`${label} ${facetLabel!.toLowerCase()}s`} list={list} railRef={facetRef} onChange={changeFacet} />}
         <div className="pk-list" role="listbox" aria-label={label} ref={list}>{tabs.map(t => <PickerTab key={t.tab} t={t} on={t.tab === activeRail} active={t.tab === activeRail ? active : -1} id={id} value={value} adding={adding} pinned={pinnedSet} empty={catalog && !adding ? 'None yet' : 'No profiles'} onActive={setActive} onPick={pick} onPin={pin} />)}</div>
       </div>
       <div className="pk-foot">{adding && ownRows && <button type="button" className="btn-ghost" onClick={() => changeCatalog(false)}>Back</button>}{catalog && !adding && <button type="button" className="btn" onClick={() => changeCatalog(true)}>{catalog.label}</button>}{footer.map(a => <button type="button" className="btn" key={a.label} onClick={() => { if (!a.keep) setOpen(false); a.run(); }}>{a.label}</button>)}</div>

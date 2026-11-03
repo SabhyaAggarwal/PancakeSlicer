@@ -252,7 +252,8 @@ function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean;
         onChange={(e) => { setText(e.target.value); setBad(false); }} onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') { byKey.current = true; (e.target as HTMLInputElement).blur(); } }} />
     </span>
   );
-  const unit = props.def?.sidetext && !(props.def.sidetext.trim() === '%' && text.trim().endsWith('%')) ? props.def.sidetext : undefined;
+  const side = props.def?.sidetext?.trim(), either = side?.match(/^(.+?) or %$/)?.[1], pct = text.trim().endsWith('%');
+  const unit = !side ? undefined : pct ? (side === '%' || either ? undefined : side) : either ?? side;
   return (
     <span className="control-number">
       <input

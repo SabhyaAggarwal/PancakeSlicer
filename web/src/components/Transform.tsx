@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
+import { Glyph } from './Glyph';
 import { Popover } from 'radix-ui';
 import * as THREE from 'three';
 import { setState, updateInstance, updateObject, useStore, markStale } from '../state/store';
@@ -122,7 +123,7 @@ export function TransformPanel() {
     <Popover.Portal><Popover.Content className="xf transform-floating" aria-label={`${title} ${v?.name ?? o.name}`} side="bottom" align="start" sideOffset={0} collisionPadding={12}
       onOpenAutoFocus={e => e.preventDefault()} onCloseAutoFocus={e => e.preventDefault()}
       onInteractOutside={e => e.preventDefault()} onEscapeKeyDown={e => { e.stopPropagation(); close(); }}>
-      <div className="xf-head"><span className="xf-label">{title}</span>{toggle}<button type="button" className="xf-fold" aria-label="Close transform" onClick={close}>×</button></div>
+      <div className="xf-head"><span className="xf-label">{title}</span>{toggle}<button type="button" className="xf-fold" aria-label="Close transform" onClick={close}><Glyph name="close" size={14} /></button></div>
       <div className="xf-selection">{v?.name ?? o.name}</div>
       <div className="xf-grid"><span/><span className="axis x">X</span><span className="axis y">Y</span><span className="axis z">Z</span><span/>{body}</div>
     </Popover.Content></Popover.Portal>

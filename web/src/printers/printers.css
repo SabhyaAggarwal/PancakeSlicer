@@ -2,16 +2,18 @@
 :where(.orca-parity) .send-body { display: flex; flex-direction: column; gap: var(--s-2); }
 :where(.orca-parity) .send-body .prefs-row > .combo { flex: 1; }
 :where(.orca-parity) .send-options { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-5); }
-:where(.orca-parity) .send-ok { font-size: var(--t-small); color: var(--success); }
+:where(.orca-parity) .send-ok { font: var(--t-small); color: var(--success); }
 :where(.orca-parity) .ams-map { display: grid; gap: var(--s-1); }
 :where(.orca-parity) .ams-swatch { display: inline-block; width: 14px; height: 14px; border-radius: var(--r-1); border: 1px solid var(--line-strong); flex: none; }
 
-:where(.orca-parity) .send-target { display: flex; align-items: center; gap: var(--s-2); min-height: var(--h-row); }
-:where(.orca-parity) .send-target-name { font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:where(.orca-parity) .send-target { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-3); min-height: var(--h-control); }
+:where(.orca-parity) .send-target-name { font: var(--t-title); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:where(.orca-parity) .send-target-state { flex: 1 1 auto; min-width: 0; color: var(--ink-3); font: var(--t-small); }
+:where(.orca-parity) .send-target-edit { flex: none; margin-left: auto; }
 :where(.orca-parity) .send-target > .combo { flex: 1; min-width: 0; }
-:where(.orca-parity) .send-meta { font-size: var(--t-small); color: var(--ink-3); }
+:where(.orca-parity) .send-meta { font: var(--t-small); color: var(--ink-3); }
 :where(.orca-parity) .send-live { display: grid; gap: var(--s-1); padding: var(--s-2) var(--s-3); border: 1px solid var(--line); border-radius: var(--r-2); background: var(--sunken); }
-:where(.orca-parity) .send-live-row { display: flex; align-items: center; gap: var(--s-2); font-size: var(--t-small); color: var(--ink-2); }
+:where(.orca-parity) .send-live-row { display: flex; align-items: center; gap: var(--s-2); font: var(--t-small); color: var(--ink-2); }
 :where(.orca-parity) .send-live-row .btn { margin-left: auto; }
 :where(.orca-parity) .send-live-row .btn + .btn { margin-left: 0; }
 
@@ -20,15 +22,25 @@
 :where(.orca-parity) .printer-dot.active { background: var(--accent); }
 :where(.orca-parity) .printer-dot.problem { background: var(--danger); }
 
-:where(.orca-parity) .connection-editor { display: flex; flex-direction: column; gap: var(--s-2); max-width: 560px; }
-:where(.orca-parity) .connection-editor .prefs-row > span:first-child { min-width: 128px; color: var(--label); }
-:where(.orca-parity) .connection-editor .prefs-row > input.text,
-:where(.orca-parity) .connection-editor .prefs-row > .combo { flex: 1; min-width: 0; }
-:where(.orca-parity) .connection-buttons { display: flex; flex-wrap: wrap; gap: var(--s-2); }
-:where(.orca-parity) .connection-found { display: grid; gap: var(--s-1); padding: var(--s-2) 0; border-top: 1px solid var(--line); }
-:where(.orca-parity) .connection-found-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); font-size: var(--t-small); color: var(--ink-2); min-height: var(--h-row); }
-:where(.orca-parity) .connection-found-row > .btn { flex: none; }
-:where(.orca-parity) .connection-found-row > span:first-child { flex: 1 1 240px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:where(.orca-parity) .connection-editor { display: grid; gap: var(--s-2); }
+:where(.orca-parity) .connection-hint { padding-left: calc(11rem + var(--s-4)); }
+@media (max-width: 599px) { :where(.orca-parity) .connection-hint { padding-left: 0; } }
+:where(.orca-parity) .connection-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin-top: var(--s-1); }
+:where(.orca-parity) .connection-remove { margin-left: auto; }
+:where(.orca-parity) .found-table { width: 100%; border-collapse: collapse; margin-top: var(--s-2); border-top: 1px solid var(--line); font: var(--t-small); color: var(--ink-2); }
+:where(.orca-parity) .found-table caption { padding: var(--s-3) 0 var(--s-1); text-align: left; caption-side: top; color: var(--ink-3); font: var(--t-small); font-weight: 600; }
+:where(.orca-parity) .found-table tr { height: var(--h-control); border-bottom: 1px solid var(--line); }
+:where(.orca-parity) .found-table tr:hover { background: var(--hover); }
+:where(.orca-parity) .found-table :is(th, td) { padding: 0 var(--s-2); white-space: nowrap; vertical-align: middle; }
+:where(.orca-parity) .found-table th { color: var(--ink); font: var(--t-label); text-align: left; }
+:where(.orca-parity) .found-addr { font-variant-numeric: tabular-nums; }
+:where(.orca-parity) .found-kind { color: var(--ink-3); }
+:where(.orca-parity) .found-tags { width: 100%; }
+:where(.orca-parity) .found-tag { display: inline-block; margin-right: var(--s-1); padding: 0 var(--s-2); border-radius: var(--r-1); background: var(--sunken); color: var(--ink-3); font: var(--t-small); line-height: 18px; }
+:where(.orca-parity) .found-acts { text-align: right; }
+:where(.orca-parity) .found-acts .btn-ghost { min-height: var(--h-compact); padding: 0 var(--s-3); font: var(--t-small); color: var(--accent-text); }
+@media (hover: hover) { :where(.orca-parity) .found-table tr:not(:hover):not(:focus-within) .found-acts > * { visibility: hidden; } }
+@media (max-width: 599px) { :where(.orca-parity) .found-kind { display: none; } }
 :where(.orca-parity) .printer-live { display: grid; grid-template-columns: 8px minmax(0, 1fr); align-items: center; column-gap: var(--s-2); row-gap: var(--s-1); width: calc(100% - 2 * var(--space-section) - 40px - var(--s-3)); margin: var(--s-1) var(--space-section) 0 calc(var(--space-section) + 40px + var(--s-3)); padding: var(--s-1) 0; border: 0; background: none; color: var(--ink-3); font: var(--t-small); text-align: left; cursor: pointer; }
 :where(.orca-parity) .printer-live:hover .printer-live-text { color: var(--ink); }
 :where(.orca-parity) .printer-live-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

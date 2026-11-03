@@ -23,6 +23,7 @@
   :where(.orca-parity) .compact-topbar .pt-end { flex: none; }
   :where(.orca-parity) .compact-topbar .pt-pencil { display: none; }
   :where(.orca-parity) .compact-topbar .pt-status { padding-inline: var(--s-1); }
+  :where(.orca-parity) .canvas-area { isolation: isolate; }
   :where(.orca-parity) .workspace-settings-launch { position: absolute; z-index: 8; top: 8px; left: max(8px,env(safe-area-inset-left)); }
   :where(.orca-parity) .workspace-rail { display: none; position: absolute; inset: 0 auto 0 0; z-index: 12; width: min(400px, calc(100% - 48px)); min-width: 0; background: var(--panel); border-right: 1px solid var(--line-strong); box-shadow: var(--shadow-pop); flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
   :where(.orca-parity) .workspace-rail[data-open=true] { display: flex; }
@@ -35,9 +36,6 @@
   :where(.orca-parity) .canvas-toolbar { top: auto; bottom: max(8px,env(safe-area-inset-bottom)); padding: 3px; gap: 2px; max-width: calc(100% - 16px); }
   :where(.orca-parity) .canvas-toolbar .tb-sep { display: none; }
   :where(.orca-parity) .canvas-more { padding-inline: 8px; }
-  :where(.orca-parity) .canvas-area .objects-outliner { top: 8px; right: max(8px,env(safe-area-inset-right)); width: min(270px,calc(100% - 120px)); }
-  :where(.orca-parity) .outliner-heading { min-height: 44px; padding: 0 6px; }
-  :where(.orca-parity) .outliner-body { max-height: min(260px,45dvh); }
   :where(.orca-parity) .canvas-tools { left: auto; right: max(8px,env(safe-area-inset-right)); bottom: 60px; align-items: flex-end; z-index: 46; }
   :where(.orca-parity) .canvas-tools .canvas-section-panel { left: auto; right: 40px; width: max-content; max-width: calc(100vw - 64px); flex-wrap: wrap; }
   :where(.orca-parity) .canvas-area .object-info { left: 8px; bottom: 66px; max-width: calc(100% - 16px - 48px); font-size: 12px; flex-wrap: nowrap; white-space: nowrap; overflow: hidden; }

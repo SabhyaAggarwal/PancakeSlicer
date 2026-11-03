@@ -26,12 +26,12 @@
 :where(.orca-parity) .lg-head { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--s-3) var(--s-3) var(--s-4); }
 :where(.orca-parity) .lg-head .lg-view { flex: none; height: var(--h-compact); min-height: 0; max-width: 60%; }
 
-:where(.orca-parity) .lg-scroll { overflow: auto; min-height: 0; padding: 0 var(--s-4) var(--s-3); user-select: text; scrollbar-width: thin; }
+:where(.orca-parity) .lg-scroll { overflow: auto; min-height: 0; padding: 0 var(--s-4) var(--s-3); user-select: text; scrollbar-width: thin; overflow-anchor: auto; }
 :where(.orca-parity) .lg-body { padding-top: var(--s-1); }
 :where(.orca-parity) .lg-roles { display: grid; margin: 0 calc(-1 * var(--s-2)); }
 :where(.orca-parity) .lg-role-row { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; align-items: center; gap: var(--s-3); height: 22px; padding: 0 var(--s-2);
   border: 0; border-radius: var(--r-1); background: none; color: var(--ink); font: var(--t-small); text-align: left; cursor: pointer; }
-:where(.orca-parity) .lg-role-row:hover { background: var(--overlay); }
+:where(.orca-parity) .lg-role-row:hover { background: var(--hover); }
 :where(.orca-parity) .lg-role-row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 :where(.orca-parity) .lg-role-row[aria-pressed='false'] { color: var(--ink-3); }
 :where(.orca-parity) .lg-role-row[aria-pressed='false'] .lg-swatch { opacity: 0.35; }
@@ -79,6 +79,9 @@
 
 :where(.orca-parity) .np-summary-line { min-height: 20px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :where(.orca-parity) .np-toggles { display: grid; margin-top: var(--s-2); }
+:where(.orca-parity) .lg-scroll > .np-legend:first-child { display: contents; }
+:where(.orca-parity) .np-head { position: sticky; top: 0; z-index: 1; padding: var(--s-1) 0 var(--s-1); background: var(--raised); }
+:where(.orca-parity) .np-legend + .lg-body { margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--line); }
 :where(.orca-parity) .lg-switch { display: flex; align-items: center; gap: var(--s-3); min-height: 26px; cursor: pointer; white-space: nowrap; }
 :where(.orca-parity) .np-stats { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-4); margin-top: var(--s-2); }
 :where(.orca-parity) .np-stats > span { display: inline-flex; align-items: baseline; gap: var(--s-2); white-space: nowrap; }

@@ -59,6 +59,9 @@ function Chips<T extends string | number>({label, options, value, onChange}: {la
     : <div className="ww-chip-grid" role="group" aria-label={label}>{groups.map((g) => [<span key={`${g}:label`} className="ww-brand">{g}</span>,
       <div key={g} className="chips ww-chips">{options.filter((o) => (o.group ?? '') === g).map(chip)}</div>])}</div>;
 }
+function Modes({active, modes}: {active: string; modes: Record<string, ReactNode>}) {
+  return <div className="ww-modes">{Object.entries(modes).map(([id, node]) => <div key={id} className="ww-mode" data-on={id === active || undefined} inert={id !== active || undefined}>{node}</div>)}</div>;
+}
 function Condition({label, summary, children}: {label: string; summary: string; children?: ReactNode}) {
   return <div className="ww-condition"><span className="ww-label">{label}</span>
     {children ? <Popover.Root><Popover.Trigger asChild><button type="button" className="dropdown ww-trigger" aria-label={`${label}: ${summary}`}><span className="dropdown-value">{summary}</span><Caret className="dropdown-caret"/></button></Popover.Trigger>
@@ -103,37 +106,41 @@ export function WorksWith({type, profile, source, config, value, onChange}: {typ
   const printSummary = !rule.prints ? 'Any' : list(rule.prints.profileIds, prints.map((p) => ({id: p.id, label: p.name})));
   const filamentCount = type === 'process' ? ` · ${plural(filaments.filter((f) => matchesFilament(rule, f)).length, 'filament')}` : ` · ${plural(prints.filter((p) => matchesPrint(rule, p.id)).length, 'print setting')}`;
   return <section className="works-with" aria-label="Works with">
-    {stored && onChange && <div className="ww-changed">Changed from base · <button type="button" className="link" onClick={() => onChange(undefined)}>Reset</button></div>}
     <div className="ww-rule">
       <Condition label="Printers" summary={printerSummary}>{set && <>
         <Choice label="Printers" value={printerMode} options={[{id: 'all', label: 'All'}, {id: 'models', label: 'Models'}, {id: 'printers', label: 'My printers'}]}
           onChange={(id) => set(id === 'all' ? without(rule, 'printers') : {...rule, printers: id === 'models' ? {models: [here?.printerModel || models[0]?.id].filter(Boolean)} : {printerIds: [mine.find((p) => p.id === here?.id)?.id ?? mine[0]?.id].filter((x): x is string => !!x)}})}/>
-        {printerMode === 'models' && <Chips label="Printer models" options={models} value={(rule.printers as {models: string[]}).models} onChange={(m) => set({...rule, printers: {models: m}})}/>}
-        {printerMode === 'printers' && <Chips label="My printers" options={mine.map((p) => ({id: p.id, label: p.label, group: p.brand, tip: [p.name, ...[p.printerModel, p.nozzle > 0 ? String(p.nozzle) : ''].filter((x) => x && !p.name.includes(x)).map((x) => x === String(p.nozzle) ? mm(p.nozzle) : x)].join(' · ')}))} value={(rule.printers as {printerIds: string[]}).printerIds} onChange={(ids) => set({...rule, printers: {printerIds: ids}})}/>}
+        <Modes active={printerMode} modes={{all: null,
+          models: <Chips label="Printer models" options={models} value={printerMode === 'models' ? (rule.printers as {models: string[]}).models : []} onChange={(m) => set({...rule, printers: {models: m}})}/>,
+          printers: <Chips label="My printers" options={mine.map((p) => ({id: p.id, label: p.label, group: p.brand, tip: [p.name, ...[p.printerModel, p.nozzle > 0 ? String(p.nozzle) : ''].filter((x) => x && !p.name.includes(x)).map((x) => x === String(p.nozzle) ? mm(p.nozzle) : x)].join(' · ')}))} value={printerMode === 'printers' ? (rule.printers as {printerIds: string[]}).printerIds : []} onChange={(ids) => set({...rule, printers: {printerIds: ids}})}/>}}/>
       </>}</Condition>
       <Condition label="Nozzle" summary={nozzleSummary}>{set && <>
         <Choice label="Nozzle" value={nozzleMode} options={[{id: 'any', label: 'Any'}, {id: 'sizes', label: 'Sizes'}, {id: 'range', label: 'Range'}]}
           onChange={(id) => set(id === 'any' ? without(rule, 'nozzle') : {...rule, nozzle: id === 'sizes' ? {sizes: [here?.nozzle || 0.4]} : {min: range[0] ?? 0.2, max: range[range.length - 1] ?? 0.8}})}/>
-        {nozzleMode === 'sizes' && <Chips label="Nozzle sizes" options={sizes.map((n) => ({id: n, label: String(n)}))} value={(rule.nozzle as {sizes: number[]}).sizes} onChange={(n) => set({...rule, nozzle: {sizes: n}})}/>}
-        {nozzleMode === 'range' && (() => {
-          const r = rule.nozzle as {min: number; max: number}, put = (min: number, max: number) => {if (min > 0 && max >= min) set({...rule, nozzle: {min, max}});};
+        <Modes active={nozzleMode} modes={{any: null,
+          sizes: <Chips label="Nozzle sizes" options={sizes.map((n) => ({id: n, label: String(n)}))} value={nozzleMode === 'sizes' ? (rule.nozzle as {sizes: number[]}).sizes : []} onChange={(n) => set({...rule, nozzle: {sizes: n}})}/>,
+          range: (() => {
+          const r = nozzleMode === 'range' ? rule.nozzle as {min: number; max: number} : {min: range[0] ?? 0.2, max: range[range.length - 1] ?? 0.8}, put = (min: number, max: number) => {if (min > 0 && max >= min) set({...rule, nozzle: {min, max}});};
           return <span className="ww-range"><input className="text" type="number" inputMode="decimal" step={0.05} min={0.05} aria-label="Smallest nozzle" value={r.min} onChange={(e) => put(Number(e.target.value), r.max)}/>
             <span aria-hidden>–</span><input className="text" type="number" inputMode="decimal" step={0.05} min={0.05} aria-label="Largest nozzle" value={r.max} onChange={(e) => put(r.min, Number(e.target.value))}/><span className="ww-unit">mm</span></span>;
-        })()}
+        })()}}/>
       </>}</Condition>
       {type === 'process' ? <Condition label="Filament" summary={filamentSummary}>{set && <>
         <Choice label="Filament" value={filamentMode} options={[{id: 'any', label: 'Any'}, {id: 'types', label: 'Types'}, {id: 'profiles', label: 'Filaments'}]}
           onChange={(id) => set(id === 'any' ? without(rule, 'filaments') : {...rule, filaments: id === 'types' ? {types: [slot?.type || types[0] || 'PLA']} : {profileIds: [slot?.id ?? filaments[0]?.id].filter((x): x is string => !!x)}})}/>
-        {filamentMode === 'types' && <Chips label="Filament types" options={types.map((t) => ({id: t, label: t}))} value={(rule.filaments as {types: string[]}).types} onChange={(t) => set({...rule, filaments: {types: t}})}/>}
-        {filamentMode === 'profiles' && <Chips label="Filaments" options={filaments.map((f) => ({id: f.id, label: f.name}))} value={(rule.filaments as {profileIds: string[]}).profileIds} onChange={(ids) => set({...rule, filaments: {profileIds: ids}})}/>}
+        <Modes active={filamentMode} modes={{any: null,
+          types: <Chips label="Filament types" options={types.map((t) => ({id: t, label: t}))} value={filamentMode === 'types' ? (rule.filaments as {types: string[]}).types : []} onChange={(t) => set({...rule, filaments: {types: t}})}/>,
+          profiles: <Chips label="Filaments" options={filaments.map((f) => ({id: f.id, label: f.name}))} value={filamentMode === 'profiles' ? (rule.filaments as {profileIds: string[]}).profileIds : []} onChange={(ids) => set({...rule, filaments: {profileIds: ids}})}/>}}/>
       </>}</Condition> : <Condition label="Print settings" summary={printSummary}>{set && <>
         <Choice label="Print settings" value={rule.prints ? 'profiles' : 'any'} options={[{id: 'any', label: 'Any'}, {id: 'profiles', label: 'Print settings'}]}
           onChange={(id) => set(id === 'any' ? without(rule, 'prints') : {...rule, prints: {profileIds: [prints.find((p) => p.id === process)?.id ?? prints[0]?.id].filter((x): x is string => !!x)}})}/>
-        {rule.prints && <Chips label="Print settings" options={prints.map((p) => ({id: p.id, label: p.name}))} value={rule.prints.profileIds} onChange={(ids) => set({...rule, prints: {profileIds: ids}})}/>}
+        <Modes active={rule.prints ? 'profiles' : 'any'} modes={{any: null,
+          profiles: <Chips label="Print settings" options={prints.map((p) => ({id: p.id, label: p.name}))} value={rule.prints?.profileIds ?? []} onChange={(ids) => set({...rule, prints: {profileIds: ids}})}/>}}/>
       </>}</Condition>}
     </div>
     <div className="ww-matched">
-      <div className="ww-matched-head">{working.length ? `Works with ${plural(working.length, 'printer')}${filamentCount}` : <span className="works-with-none" role="alert">Works with no printer</span>}</div>
+      <div className="ww-matched-head">{working.length ? `Works with ${plural(working.length, 'printer')}${filamentCount}` : <span className="works-with-none" role="alert">Works with no printer</span>}
+        {stored && onChange && <> · Changed from base · <button type="button" className="link" onClick={() => onChange(undefined)}>Reset</button></>}</div>
       {matched.length > 0 && <ul className="ww-printers">{matched.map((p) => {
         const out = !!stored?.exclude?.includes(p.id);
         return <li key={p.id} className={out ? 'is-excluded' : undefined}>

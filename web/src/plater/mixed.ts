@@ -69,26 +69,30 @@ const paints = (p: Painting | undefined, n: number): boolean => {
 const usesSlot = (o: PlateObject, n: number) => o.extruder === n || paints(o.paint?.color, n)
   || !!o.volumes?.some((v) => v.type === 'part' && (v.extruder === n || paints(v.paint?.color, n)));
 
-export function removeSlotAt(n: number): { moved: number; to: number } | null {
+export function removeSlotAt(n: number): { moved: number; to: number; merged: { mix: number; into: number }[] } | null {
   const st0 = getState(), total = st0.filamentSlots.length, p = physicalCount(st0);
   if (n < 1 || n > total || total < 2 || (n <= p && p < 2)) return null;
   const target = n > 1 ? n - 1 : 2;
   const renumber = (j: number) => (j > n ? j - 1 : j);
   const to = renumber(target);
-  const map = Array.from({ length: total }, (_, k) => (k + 1 === n ? to : renumber(k + 1)));
+  const physical = (c: number) => (c === n ? to : c >= 1 && c <= total ? renumber(c) : c);
+  const remixed = Object.entries(st0.mixes).flatMap(([k, m]) => (Number(k) === n - 1 ? [] : [[Number(k), { ...m, components: m.components.map(physical) }] as const]));
+  const merged = remixed.filter(([, m]) => new Set(m.components).size === 1).map(([k, m]) => ({ mix: k + 1, into: m.components[0] }));
+  const gone = new Set([n - 1, ...merged.map((d) => d.mix - 1)]);
+  const kept = Array.from({ length: total }, (_, k) => k).filter((k) => !gone.has(k));
+  const map = Array.from({ length: total }, (_, k) => (k === n - 1 ? to : merged.find((d) => d.mix === k + 1)?.into ?? kept.indexOf(k) + 1));
   const moved = st0.objects.filter((o) => usesSlot(o, n)).length;
   undoable('Remove filament', () => setState((st) => {
-    const keep = (_: unknown, j: number) => j !== n - 1;
-    const mixes = Object.fromEntries(Object.entries(st.mixes).flatMap(([k, m]) => (Number(k) === n - 1 ? []
-      : [[renumber(Number(k) + 1) - 1, { ...m, components: m.components.map((c) => (c >= 1 && c <= total ? map[c - 1] : c)) }]])));
+    const pick = <T,>(a: T[]) => kept.map((k) => Array.from(a)[k]);
     return {
       ...remapAll(st, map),
-      filamentSlots: st.filamentSlots.filter(keep), slotColours: st.slotColours.filter(keep), mixes,
-      projectPresets: st.projectPresets && { ...st.projectPresets, filaments: st.projectPresets.filaments.filter(keep) },
+      filamentSlots: pick(st.filamentSlots), slotColours: pick(st.slotColours),
+      mixes: Object.fromEntries(remixed.filter(([k]) => !gone.has(k)).map(([k, m]) => [kept.indexOf(k), m])),
+      projectPresets: st.projectPresets && { ...st.projectPresets, filaments: pick(st.projectPresets.filaments) },
       flush: { ...st.flush, matrix: null },
     };
   }));
-  return { moved, to };
+  return { moved, to, merged };
 }
 
 export function addPhysical(colour?: string) {

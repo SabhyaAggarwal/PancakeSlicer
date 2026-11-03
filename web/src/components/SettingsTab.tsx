@@ -2,7 +2,7 @@ import { PresetBar } from '../profiles/PresetBar';
 import { SurfaceSettings, TOP_METHOD_KEYS } from './SurfaceSettings';
 import { methodAvailability } from '../profiles/method-context';
 import { isMethodSettingSupported } from '../profiles/capabilities';
-import { NozzleField } from '../profiles/SetupRows';
+import { NozzleField, PlateTypeField } from '../profiles/SetupRows';
 import { Tabs } from 'radix-ui';
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Config, ConfigValue, PresetType } from '../api/types';
@@ -148,7 +148,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
       </Tabs.List>
       <Tabs.Content forceMount value={auxiliaryOn ? 'auxiliary' : String(Math.min(pageIdx,pages.length-1))} className="page-body" ref={body}>
         {auxiliaryOn && auxiliary ? auxiliary.content : <><div className="page-flow">
-        {type === 'machine' && !editor && <NozzleField />}
+        {type === 'machine' && !editor && <><NozzleField /><PlateTypeField /></>}
         {type === 'process' && pageIdx === 0 && <SurfaceSettings config={config} system={system} availability={availability} editor={editor} dirty={dirty} readOnly={readOnly}/>}
         {!desc && <div className="settings-load" role={error || retryError ? 'alert' : 'status'}><span>{retryError || error ? `Settings failed to load: ${retryError ?? error}` : 'Loading settings…'}</span>{(error || retryError) && <button type="button" className="btn" disabled={retrying} onClick={retry}>{retrying ? 'Retrying…' : 'Retry'}</button>}</div>}
         {type === 'process' && page?.title === 'Multimaterial' && getState().filamentSlots.length > 1 && <section className="optgroup"><button type="button" className="btn" onClick={() => setState({flushDialog: true})}>Flush volumes</button></section>}

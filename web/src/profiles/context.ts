@@ -52,7 +52,10 @@ function withDynamic(s: ProfileContextState, type: PresetType, resolved: Resolve
   const p = dynamicOf(s, type, resolved);
   if (!p) return config;
   const own = type === 'machine' ? { printerModel: String(scalar(config.printer_model) ?? ''), nozzle: Number(scalar(config.nozzle_diameter)) } : printContext(s);
-  const layerHeight = type === 'process' ? effectiveLayerHeight(s) : p.dynamic!.reference.layerHeight;
+  const reference = p.dynamic!.reference.layerHeight, selected = resolved.key === resolveProfile(s, 'process', s.process).key;
+  const offered = type === 'process' && !selected ? availableHeights(p, printContext(s)) : [];
+  const layerHeight = type !== 'process' ? reference : selected ? effectiveLayerHeight(s)
+    : offered.length ? nearestHeight(offered, s.processVariant?.layerHeight ?? reference) : reference;
   if (!(own.nozzle > 0) || layerHeight === null) return config;
   const ctx: DynamicContext = { printerModel: own.printerModel, nozzle: own.nozzle, layerHeight }, id = `${ctx.printerModel}|${ctx.nozzle}|${layerHeight}`;
   let byContext = dynamicValues.get(config);

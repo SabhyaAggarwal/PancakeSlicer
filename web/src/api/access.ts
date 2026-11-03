@@ -106,7 +106,7 @@ export async function mutation(path: string, init: RequestInit, retry = false, s
   }
   if (!response.ok) {
     const error = await responseError(response);
-    if (error.code !== 'revision_conflict' && error.code !== 'draft_conflict' && error.code !== 'blob_missing') accessNotice({ status: response.status, message: error.message });
+    if (error.code !== 'revision_conflict' && error.code !== 'draft_conflict' && error.code !== 'blob_missing' && error.code !== 'project_not_archived') accessNotice({ status: response.status, message: error.message });
     throw error;
   }
   return response;

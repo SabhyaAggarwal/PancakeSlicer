@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { Glyph } from './Glyph';
 import { slice } from '../actions';
 import { noticeKind, noticeMs, sliceFailure } from '../notice-text';
-import { setState, useStore } from '../state/store';
+import { getState, setState, useStore } from '../state/store';
 import { Icon } from './Icon';
 import { InTopLayer } from './Modal';
 import './notices.css';
@@ -22,11 +24,11 @@ export function Toast() {
     return () => clearTimeout(t);
   }, [toast, seq, held, ms]);
   useEffect(() => setHeld(false), [msg]);
+  const lane = useNoticeLane(msg);
   if (!msg) return null;
   const kind = toast ? given ?? noticeKind(msg) : 'info';
   const reload = /^Presets failed to load/i.test(msg);
-  return (
-    <InTopLayer>
+  const card = (
       <div className={`toast toast-${kind}`} role={kind === 'error' || kind === 'warning' ? 'alert' : 'status'}
         onMouseEnter={() => setHeld(true)} onMouseLeave={() => setHeld(false)}
         onFocus={() => setHeld(true)} onBlur={() => setHeld(false)}>
@@ -37,12 +39,22 @@ export function Toast() {
         {action && <button type="button" className="btn-ghost toast-action" onClick={() => { setState({ toast: null }); action.run(); }}>{action.label}</button>}
         {toast && (
           <button type="button" className="toast-close icon-btn" aria-label="Close" onClick={() => setState({ toast: null })}>
-            <Icon name="notification_close" size={14} />
+            <Glyph name="close" size={14} />
           </button>
         )}
       </div>
-    </InTopLayer>
   );
+  return lane ? createPortal(card, lane) : <InTopLayer>{card}</InTopLayer>;
+}
+
+function useNoticeLane(msg: ReactNode): Element | null {
+  const tab = useStore((s) => s.tab);
+  const dialogOpen = useStore((s) => !!(s.dialog || s.appDialog || s.flushDialog || s.calibDialog || s.sessionDialog || s.presetUx));
+  const [lane, setLane] = useState<Element | null>(null);
+  useEffect(() => {
+    setLane(msg && tab !== 'projects' && !dialogOpen && !getState().loading ? document.querySelector('.canvas-area .notifications') : null);
+  }, [msg, tab, dialogOpen]);
+  return lane;
 }
 
 export function SliceFailed({ error, onClose }: { error: string; onClose(): void }) {
@@ -52,7 +64,7 @@ export function SliceFailed({ error, onClose }: { error: string; onClose(): void
   return (
     <div className="notification failed slice-failed" role="alert">
       <button type="button" className="notif-close icon-btn" aria-label="Close" onClick={onClose}>
-        <Icon name="notification_close" size={14} />
+        <Glyph name="close" size={14} />
       </button>
       <div className="notif-title"><Icon name="error" size={16} /> {title}</div>
       <div className="notif-body">{step}</div>

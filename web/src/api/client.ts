@@ -1,7 +1,7 @@
 import { submissionHeaders } from '../flow/submission';
 import { bootstrapAccessToken, mutation, responseError } from './access';
 import { attachFiles, postJob } from './blobs';
-import { readHealth } from './health';
+import { noteCapabilities, readHealth } from './health';
 import { followJobStream, type JobStreamEvent } from './job-stream';
 import { expandCatalog } from './compact-catalog';
 import { catalogWorker, onWorkerFailure, workerId } from './worker';
@@ -60,7 +60,7 @@ const realApi: Api = {
       };
       const unsubscribe = onWorkerFailure(fail);
       worker.addEventListener('message', on);
-      worker.postMessage({ id, vendor, models } satisfies CatalogIn);
+      worker.postMessage({ id, vendor, models, engine: { options: toolFeatures.dump_options === true, presets: toolFeatures.dump_presets === true } } satisfies CatalogIn);
     });
   },
 
@@ -185,6 +185,7 @@ export let toolArtifactManifest: SurfaceArtifactManifest | undefined;
 export function applyHealth(health: { tool_features?: Record<string, unknown>; artifact_manifest?: SurfaceArtifactManifest }) {
   if (!health.tool_features) return;
   toolFeatures = health.tool_features;
+  noteCapabilities(health.tool_features);
   toolArtifactManifest = health.artifact_manifest;
 }
 const validatedSurface = (feature: 'curved_tops' | 'nonplanar_wave') => toolFeatures[feature] === true

@@ -228,11 +228,10 @@ export const Legend = memo(function Legend(props: {
       </div>
       {open && (
         <div className="lg-scroll">
-          {props.explainOnly && props.explain}
+          {props.explain}
           {!props.explainOnly && (
             <>
               <div className="lg-body">{body()}</div>
-              {props.explain}
               <Fold id="show" title="Travel, seams and shells">
                 <div className="lg-options">
                   {options.map(([k, label, c]) => (

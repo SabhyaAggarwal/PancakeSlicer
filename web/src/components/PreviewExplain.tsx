@@ -84,6 +84,7 @@ export function ExplainLegend(props: {
   const summary = nativeSurfaceSummary(record);
   return (
     <section className="lg-section np-legend" aria-label="Curved">
+      <div className="np-head">
       <div className="lg-section-title">Curved</div>
       {summary && <div className="np-summary-line" role="status">{summary}</div>}
       <div className="np-toggles">
@@ -100,6 +101,7 @@ export function ExplainLegend(props: {
             <Switch checked={ui.surface} onChange={(next) => setUi((u) => ({ ...u, surface: next }))} />Surface error
           </label>
         )}
+      </div>
       </div>
       {ui.surface && hasSurfaceGrid ? (
         <>

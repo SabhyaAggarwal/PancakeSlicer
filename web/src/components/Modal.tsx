@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react';
+import { Glyph } from './Glyph';
 import { Dialog } from 'radix-ui';
 import './dialog.css';
 
@@ -25,9 +26,8 @@ export function Modal({ label, onClose, className = '', size = 'window', alert =
       onCloseAutoFocus={(e) => { const back = returnFocus ? document.querySelector<HTMLElement>(returnFocus) : null; if (back) { e.preventDefault(); back.focus(); } }}
       onKeyDown={(e) => e.stopPropagation()}>{children}</Dialog.Content></Dialog.Portal></Dialog.Root>;
 }
-const close = <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>;
 export function ModalTitle({ title, onClose }: { title: ReactNode; onClose(): void }) {
-  return <div className="modal-title"><Dialog.Title asChild><h2>{title}</h2></Dialog.Title><button type="button" className="modal-close" aria-label="Close" onClick={onClose}>{close}</button></div>;
+  return <div className="modal-title"><Dialog.Title asChild><h2>{title}</h2></Dialog.Title><button type="button" className="modal-close" aria-label="Close" onClick={onClose}><Glyph name="close" size={14} /></button></div>;
 }
 export function ModalBody({ className = '', children }: { className?: string; children: ReactNode }) { return <div className={`modal-body ${className}`}>{children}</div>; }
 export function ModalFooter({ lead, children }: { lead?: ReactNode; children: ReactNode }) {

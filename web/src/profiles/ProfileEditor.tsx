@@ -19,8 +19,14 @@ import { useMachine } from '../flow/fsm';
 import { createProfileSave } from '../flow/profile-save';
 import { resetSettingToBase, settingSources } from './bases';
 import { baseMenuItems } from './bases-ui';
+import { openSplit } from './dynamic-conversions';
+import { chainIsDynamic } from './chain-dynamic';
+import { Choice } from '../components/kit';
+import { OPTIONS } from '../options';
+import { printContext } from './context';
+import { availableHeights, defaultScope, dynamicConflicts, nearestHeight, scopeWhen, withLayerValue, type DynamicContext, type DynamicProfile, type DynamicRecord, type DynamicScope, type DynamicWhen } from './dynamic';
 const ConnectionEditor = lazy(() => import('../printers/ConnectionEditor').then(m => ({default: m.ConnectionEditor})));
-export interface ProfileDraft {values: Config; baseline: Config; origin: UserPreset | undefined; printer: string; applicability?: ProfileApplicability; baselineApplicability?: ProfileApplicability;staged?:ProjectProfileChanges}
+export interface ProfileDraft { applyTo?: DynamicScope; values: Config; baseline: Config; origin: UserPreset | undefined; printer: string; applicability?: ProfileApplicability; baselineApplicability?: ProfileApplicability;staged?:ProjectProfileChanges}
 export function acknowledgedProfileDraft(current:ProfileDraft,submitted:ProfileDraft,origin:UserPreset,baseline:Config):ProfileDraft|null {
   const keys=new Set([...Object.keys(current.values),...Object.keys(submitted.values)]);
   const unchanged=[...keys].every(key=>sameValue(key,current.values[key],submitted.values[key]));
@@ -51,7 +57,7 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
   const setError = (message: string | null) => m.send(message ? {type: 'REJECT', error: message} : {type: 'DISMISS'});
   useEffect(() => {onSavingChange?.(saving);}, [saving]);
   useEffect(() => () => {if (m.get().value === 'saving' || m.get().value === 'renaming') onSavingChange?.(false);}, []);
-  const latest = useRef({values, baseline, origin: draft?.origin ?? source, printer: draft?.printer ?? ownerPrinter, applicability, baselineApplicability,staged:draft?.staged}); latest.current = {values, baseline, origin: draft?.origin ?? source, printer: draft?.printer ?? ownerPrinter, applicability, baselineApplicability,staged:draft?.staged};
+  const latest = useRef<ProfileDraft>({values, baseline, origin: draft?.origin ?? source, printer: draft?.printer ?? ownerPrinter, applicability, baselineApplicability,staged:draft?.staged}); latest.current = {values, baseline, origin: draft?.origin ?? source, printer: draft?.printer ?? ownerPrinter, applicability, baselineApplicability,staged:draft?.staged,applyTo:draft?.applyTo};
   const set = useCallback((k: string, value: ConfigValue) => { const current = latest.current; update(key, {...current, values: {...current.values, [k]: value}}); }, [key, update]);
   const reset = useCallback((k: string) => { const current = latest.current; const next = {...current.values}; if (current.baseline[k] === undefined) delete next[k]; else next[k] = current.baseline[k]; update(key, {...current, values: next}); }, [key, update]);
   const resetToBase = useCallback((k: string) => void resetSettingToBase(type, name, k).catch((e) => toast(e instanceof Error ? e.message : String(e))), [type, name]);
@@ -60,6 +66,17 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
   const revert = () => {update(key, null); setError(null);};
   const noPrinter = applicabilityDirty && worksWithNone(type, applicability);
   const openOnWorksWith = useRef(!!source && worksWithNone(type, source.applicability)).current;
+  const printer = useStore((st) => st.printer), variant = useStore((st) => st.processVariant);
+  const dyn = (source as UserPreset & DynamicRecord | undefined)?.dynamic ? source as UserPreset & DynamicRecord & {dynamic: DynamicProfile} : undefined;
+  const dctx = useMemo(() => dyn && dynamicContext(dyn, variant), [dyn, printer, variant, machines]);
+  const conflicts = useMemo(() => dyn && dctx ? dynamicConflicts(dyn, dctx) : [], [dyn, dctx]);
+  const scopes: DynamicScope[] = !dctx ? [] : type === 'process' ? ['all', 'nozzle', 'layer', 'combo'] : ['all', 'nozzle'];
+  const resolveConflict = (setting: string, when: DynamicWhen, value: ConfigValue) => {
+    if (!dyn || !m.can({type: 'SAVE'})) return;
+    m.send({type: 'SAVE'}); const request = m.get().context.request;
+    commitProfileRecords([{...dyn, id: profileKey(dyn), dynamic: withLayerValue(dyn.dynamic, when, setting, value)} as UserPreset])
+      .then(() => m.send({type: 'SAVED', request}), (e) => m.send({type: 'FAIL', request, error: e instanceof Error ? e.message : String(e)}));
+  };
   const save = async () => {
     if (!m.can({type: 'SAVE'}) || !dirty) return;
     if (noPrinter) {setError('Works with matches no printer.'); return;}
@@ -71,7 +88,8 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
     m.send({type: 'SAVE'});
     const request = m.get().context.request;
     try {
-      const p = {...saveProfile(s, type, currentSource!.name, profileKey(currentSource!), submitted.values), id: profileKey(currentSource!), applicability:submitted.applicability};
+      const p = dyn && dctx ? {...scopedSave(dyn, submitted, dctx), applicability: submitted.applicability} as UserPreset
+        : {...saveProfile(s, type, currentSource!.name, profileKey(currentSource!), submitted.values), id: profileKey(currentSource!), applicability:submitted.applicability};
       await commitProfileRecords([p],{apply:submitted.staged ? state=>acknowledgeProjectProfileChanges(state,submitted.staged!,submitted.values) : undefined});
       const saved=getState(),origin=findProfile(saved,type,profileKey(p)),acknowledged=resolvePreset(saved,type,profileKey(p));
       if(!origin || acknowledged.error || !profileOriginIsCurrent(origin,submitted.origin))throw new Error('The profile changed again while saving. Your edits are kept.');
@@ -119,7 +137,15 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
     controls={<><button type="button" className={`btn pf-editor-save${dirty ? ' primary' : ''}`} disabled={saving || !dirty || !ready} onClick={() => void save()}>{saving ? 'Saving…' : 'Save'}</button>
         {dirty && !foldActions && <button type="button" className="btn" disabled={saving} onClick={revert}>Revert</button>}
         {onDuplicate && !foldActions && <button type="button" className="btn" disabled={saving || dirty || !ready} onClick={onDuplicate}>Duplicate</button>}
-        <MenuButton label="Profile actions" className="icon-btn" items={[...(renamable ? [{label: 'Rename', disabled: saving, action: startRename}] : []), ...(source ? baseMenuItems(type, profileKey(source)).map((i) => ({...i, disabled: saving || dirty || i.disabled})) : []), ...(foldActions && dirty ? [{label: 'Revert', disabled: saving, action: revert}] : []), ...(foldActions && onDuplicate ? [{label: 'Duplicate', disabled: saving || dirty || !ready, action: onDuplicate}] : []), {label: type === 'filament' ? 'Use in slot 1' : 'Use in project', disabled:saving || dirty, action:()=>requestPreset(type,0,key && profileKey(source!))}, {label:'Export',action:()=>void import('../preset-io').then(m=>m.exportPresetJson(source!))}, {label: 'Reset to base settings', disabled: saving || !resolved.base, action: () => {if(resolved.base) update(key, {...latest.current, values: resolved.base.config});}}, 'sep', {label:'Delete',disabled:saving,action:onRemove}]}>⋯</MenuButton></>}>
+        <MenuButton label="Profile actions" className="icon-btn" items={[...(renamable ? [{label: 'Rename', disabled: saving, action: startRename}] : []), ...(source ? baseMenuItems(type, profileKey(source)).map((i) => ({...i, disabled: saving || dirty || i.disabled})) : []), ...(source && chainIsDynamic(getState(), type, profileKey(source)) ? [{label: 'Split into normal profiles…', disabled: saving || dirty, action: () => openSplit(type, profileKey(source))}] : []), ...(foldActions && dirty ? [{label: 'Revert', disabled: saving, action: revert}] : []), ...(foldActions && onDuplicate ? [{label: 'Duplicate', disabled: saving || dirty || !ready, action: onDuplicate}] : []), {label: type === 'filament' ? 'Use in slot 1' : 'Use in project', disabled:saving || dirty, action:()=>requestPreset(type,0,key && profileKey(source!))}, {label:'Export',action:()=>void import('../preset-io').then(m=>m.exportPresetJson(source!))}, {label: 'Reset to base settings', disabled: saving || !resolved.base, action: () => {if(resolved.base) update(key, {...latest.current, values: resolved.base.config});}}, 'sep', {label:'Delete',disabled:saving,action:onRemove}]}>⋯</MenuButton></>}>
+    {dctx && Object.keys(changes).length > 0 && <div className="pf-apply-to"><span>Apply changes to</span>
+      <Choice label="Apply changes to" value={draft?.applyTo ?? ('' as DynamicScope)} options={scopes.map((id) => ({id, label: scopeLabel(id, dctx)}))} onChange={(applyTo) => update(key, {...latest.current, applyTo})}/></div>}
+    {dyn && conflicts.length > 0 && <div className="pf-conflicts" role="status">{conflicts.slice(0, 3).map((c) => {
+      const winner = dyn.dynamic.layers.find((l) => l.id === c.winner)!, loser = dyn.dynamic.layers.find((l) => l.id === c.loser)!, both = {...loser.when, ...winner.when};
+      return <div key={`${c.key}:${c.winner}:${c.loser}`} className="pf-conflict-row"><span>{OPTIONS[c.key]?.label || c.key}: {whenText(winner.when)} wins over {whenText(loser.when)}</span>
+        <button type="button" className="link" disabled={saving || dirty} onClick={() => resolveConflict(c.key, both, loser.values[c.key])}>Use {whenText(loser.when)}</button>
+        <button type="button" className="link" disabled={saving || dirty} onClick={() => resolveConflict(c.key, both, winner.values[c.key])}>Keep {whenText(winner.when)}</button></div>;
+    })}{conflicts.length > 3 && <span className="pf-conflict-more">{conflicts.length - 3} more</span>}</div>}
     <fieldset className="pf-editor-fields" disabled={saving} aria-busy={saving}><SettingsTab type={type} hidePreset editor={editor} auxiliary={!source ? undefined : type !== 'machine' ? {label:'Works with',icon:'param_dependencies_printers',modified:applicabilityDirty,initial:openOnWorksWith,content:<WorksWith type={type} profile={profileKey(source)} source={source} config={values} value={applicability} onChange={next=>update(key,{...latest.current,applicability:next})}/>}
       : connections ? {label:'Connection',icon:'printer_in_lan',content:<Suspense fallback={null}><ConnectionEditor printer={profileKey(source)} name={profileName}/></Suspense>} : undefined}/></fieldset>
   </DetailPane>;
@@ -133,6 +159,24 @@ function DetailPane({label, identity, summary, controls, error, children}: {labe
   </section>;
 }
 const noop = () => {};
+const mmText = (n: number) => String(Math.round(n * 1000) / 1000);
+const whenText = (w: DynamicWhen) => [w.printerModel, w.nozzle !== undefined ? `${mmText(w.nozzle)} nozzle` : '', w.layerHeight !== undefined ? `${w.layerHeight.toFixed(2)} layer` : ''].filter(Boolean).join(' × ');
+const scopeLabel = (scope: DynamicScope, c: DynamicContext) => scope === 'all' ? 'All' : scope === 'nozzle' ? `${mmText(c.nozzle)} nozzle` : scope === 'layer' ? `${c.layerHeight.toFixed(2)} layer` : `${mmText(c.nozzle)} × ${c.layerHeight.toFixed(2)}`;
+function dynamicContext(p: DynamicRecord & {dynamic: DynamicProfile}, variant: {layerHeight: number} | null): DynamicContext {
+  const pc = printContext(getState()), want = variant?.layerHeight ?? p.dynamic.reference.layerHeight;
+  const heights = p.type === 'process' ? availableHeights(p, pc) : [];
+  return {printerModel: pc.printerModel, nozzle: pc.nozzle, layerHeight: heights.length ? nearestHeight(heights, want) : p.dynamic.reference.layerHeight};
+}
+function scopedSave(p: UserPreset & DynamicRecord & {dynamic: DynamicProfile}, draft: ProfileDraft, ctx: DynamicContext): UserPreset {
+  const overlay: Config = {...(p.overlay ?? p.overrides ?? {})};
+  let dynamic = p.dynamic;
+  for (const k of Object.keys(changedKeys(draft.values, draft.baseline))) {
+    const value = draft.values[k], scope = draft.applyTo ?? defaultScope(p, k, ctx);
+    if (scope === 'all') {if (value === undefined) delete overlay[k]; else overlay[k] = value;}
+    else dynamic = withLayerValue(dynamic, scopeWhen(scope, ctx)!, k, value);
+  }
+  return {...p, id: profileKey(p), overlay, overrides: overlay, dynamic} as UserPreset;
+}
 export function MasterPresetDetail({type, preset, name, config, identity, controls}: {type: PresetType; preset: string; name: string; config: Config; identity?: ReactNode; controls: ReactNode}) {
   const mode = useStore(effectiveMode);
   const editor: ProfileFields = useMemo(() => ({name: preset, config, baseline: config, changes: {}, set: noop, reset: noop, mode}), [preset, config, mode]);

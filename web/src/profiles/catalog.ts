@@ -77,7 +77,7 @@ export function resolveCatalogEntry(s: State, type: PresetType, key: string) {
 }
 
 export const displayName = (base: SystemPreset) => `My ${base.name.replace(/\s*@.*$/, '').replace(/\s+nozzle\b/i, '').trim()}`;
-function uniqueName(s: State, type: PresetType, desired: string): string {
+export function uniqueName(s: State, type: PresetType, desired: string): string {
   let name = desired, n = 2;
   while (s.userPresets.some((p) => p.type === type && p.name === name) || profilesFor(s, type).some((p) => p.name === name)) name = `${desired} (${n++})`;
   return name;

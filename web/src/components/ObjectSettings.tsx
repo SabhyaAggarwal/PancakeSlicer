@@ -5,7 +5,8 @@ import { ActionMenu } from './Menu';
 import type { Config, ConfigValue } from '../api/types';
 import { isHidden, OPTIONS, useTab } from '../options';
 import objectKeys from '../object_options.json';
-import { effectiveConfig, effectiveMode, getState, removeObjectOptions, removeVolumeOptions, setObjectOption, setVolumeOption, useStore } from '../state/store';
+import { effectiveConfig, effectiveMode, getState, removeObjectOptions, removeVolumeOptions, selectedObjectIds, setObjectOption, setVolumeOption, useStore } from '../state/store';
+import { useAddSettingsRequest } from './add-settings-request';
 import { volumeIcon } from '../plater/volumes';
 import { undoable } from '../state/history';
 import { environment, fieldDefinition, optionState } from '../visibility';
@@ -50,6 +51,7 @@ export function ObjectSettings() {
   const object = useStore((s) => s.objects.find((o) => o.id === s.selected?.object));
   const volume = useStore((s) => object?.volumes?.find((v) => v.id === s.selected?.volume));
   const range = useStore((s) => object?.ranges?.find((r) => r.id === s.selected?.range));
+  const ids = useStore((s) => (s.selected?.volume === undefined && s.selected?.range === undefined ? selectedObjectIds(s).join(',') : ''));
   const filaments = useStore((s) => s.filamentSlots.length);
   useStore((s) => s.dirty.process);
   useStore((s) => s.dirty.machine);
@@ -60,11 +62,14 @@ export function ObjectSettings() {
   const global = effectiveConfig(getState(), 'process');
   const [menu, setMenu] = useState(false);
   const [pick, setPick] = useState<[string, string[]] | null>(null);
+  const head = useRef<HTMLDivElement>(null);
+  const editable = !!desc && !!object && !object.project && (!volume || volume.type === 'part' || volume.type === 'modifier');
+  useAddSettingsRequest(editable, () => { head.current?.scrollIntoView({ block: 'nearest' }); setMenu(true); });
   const cats = useMemo(() => hierarchy(filaments, volume || range ? objectKeys.region : OBJECT_KEYS), [filaments, desc, !!(volume || range)]);
 
   if (!desc) return <div role="status">{error ?? 'Loading settings…'}</div>;
   if (!object)
-    return <div className="obj-settings-empty">No selection</div>;
+    return <div className="obj-settings-empty">Select an object</div>;
   if (object.project)
     return (
       <div className="obj-settings-empty">
@@ -82,11 +87,16 @@ export function ObjectSettings() {
     name: volume.name, icon: volumeIcon(volume.type, volume.seamMode), settings: volume.settings, region: true,
     set: (k: string, v: ConfigValue) => setVolumeOption(object.id, volume.id, k, v),
     remove: (keys: string[]) => removeVolumeOptions(object.id, volume.id, keys),
-  } : {
-    name: object.name, icon: 'obj_printable', settings: object.settings, region: false,
-    set: (k: string, v: ConfigValue) => setObjectOption(object.id, k, v),
-    remove: (keys: string[]) => removeObjectOptions(object.id, keys),
-  };
+  } : (() => {
+    const objects = getState().objects.filter((o) => o.id !== object.id && ids.split(',').includes(String(o.id)));
+    const all = [object, ...objects];
+    return {
+      name: all.map((o) => o.name.replace(/\.(stl|obj|3mf|drc|step|stp)$/i, '')).join(', '), icon: 'obj_printable',
+      settings: Object.assign({}, ...objects.map((o) => o.settings), object.settings) as Config, region: false,
+      set: (k: string, v: ConfigValue) => undoable('Edit Settings', () => all.forEach((o) => setObjectOption(o.id, k, v)), `objects:${ids}:${k}`),
+      remove: (keys: string[]) => undoable('Delete Settings', () => all.forEach((o) => removeObjectOptions(o.id, keys))),
+    };
+  })();
   const inherited = (key: string) => settingValue(getState(), 'process', key, 0, volume || range ? { object: object.id } : {});
   const changed = new Set(changes.filter((c) => c.owner.object === object.id && (range ? c.scope === 'range' && c.owner.range === range.id : volume ? c.scope === 'part' && c.owner.volume === volume.id : c.scope === 'object')).map((c) => c.key));
   const add = (keys: string[], remove: string[] = []) => {
@@ -112,8 +122,9 @@ export function ObjectSettings() {
 
   return (
     <div className="obj-settings">
-      <div className="obj-settings-head">
-        <span className="override-context">{range ? 'Layer overrides' : volume ? 'Part overrides' : 'Object overrides'}</span>
+      <div className="obj-settings-head" ref={head}>
+        <span className="override-context">{range ? 'Layer overrides' : volume ? 'Part overrides' : 'Object overrides'}
+          <span className="override-target" title={target.name}>{target.name}</span></span>
         <span className="obj-settings-tools">
           <AddMenu
             open={menu}

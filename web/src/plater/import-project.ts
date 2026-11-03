@@ -2,14 +2,12 @@ import * as THREE from 'three';
 import type { PlateObject } from '../state/store';
 import type { Config } from '../api/types';
 import { getState, setState } from '../state/store';
-import { documentGeneration } from '../state/history';
 import { prepareProjectProfileImport } from '../profiles/project-import';
+import { readMixes } from './mixed';
 
 export function adoptProject(config:Config,slots:number,plateKeys:Set<string>) {
-  setState(prepareProjectProfileImport(getState(),config,slots,plateKeys));
-  const captured=getState().profileSnapshots,generation=documentGeneration();
-  if([config.filament_is_mixed].flat().some(v=>['1','true'].includes(String(v))))
-    void import('./mixed').then(m=>{if(generation===documentGeneration() && getState().profileSnapshots===captured)setState({mixes:m.readMixes(config)});});
+  const mixed=[config.filament_is_mixed].flat().some(v=>['1','true'].includes(String(v)));
+  setState({...prepareProjectProfileImport(getState(),config,slots,plateKeys),...(mixed?{mixes:readMixes(config)}:{})});
 }
 
 export function centreGeometryOnly(bed: {x:number;y:number}[]) {

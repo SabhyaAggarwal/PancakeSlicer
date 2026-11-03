@@ -1,4 +1,5 @@
 import { MenuButton, type MenuEntry } from './Menu';
+import { Glyph } from './Glyph';
 import { Check } from './Check';
 import { Range } from './Range';
 import { slicingText } from '../api/progress';
@@ -146,7 +147,7 @@ export function AccessNotification() {
   if (!notice) return null;
   return (
     <div className={`notification ${notice.status === 429 || notice.status === 503 ? 'warning' : 'failed'}`} role="alert">
-      <button className="notif-close icon-btn" aria-label="Close" onClick={() => accessNotice(null)}><Icon name="notification_close" size={14} /></button>
+      <button className="notif-close icon-btn" aria-label="Close" onClick={() => accessNotice(null)}><Glyph name="close" size={14} /></button>
       <div className="notif-title">{notice.message}</div>
       {notice.status === 401 && (
         <form className="access-token-form" onSubmit={(event) => {
@@ -210,7 +211,7 @@ export function SliceNotification() {
   const busy = job.state === 'running' || job.state === 'submitting';
   const close = (k: string) => (
     <button className="notif-close icon-btn" aria-label="Close" onClick={() => setClosed((c) => new Set(c).add(k))}>
-      <Icon name="notification_close" size={14} />
+      <Glyph name="close" size={14} />
     </button>
   );
   const warnings = job.state === 'done' && !job.stale ? (job.warnings ?? []) : [];
@@ -246,7 +247,7 @@ export function SliceNotification() {
       return o && !expired.has(`orient${id}`) && (
         <div key={`orient${id}`} className="notification done">
           <button className="notif-close icon-btn" aria-label="Close" onClick={() => dismissOrientPrompt(o.id)}>
-            <Icon name="notification_close" size={14} />
+            <Glyph name="close" size={14} />
           </button>
           <div className="notif-title">{o.name}</div>
           <div className="notif-body">Stand this part up: less support · <button type="button" className="notif-link" onClick={() => void import('../plater/orientPrompt').then((m) => m.confirmOrientPrompt(o.id))}>Apply</button></div>

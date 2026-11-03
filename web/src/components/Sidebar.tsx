@@ -5,7 +5,7 @@ import type { PresetType } from '../api/types';
 import { effectiveMode, printerPreset, resolvePreset, setState, useStore } from '../state/store';
 import { printerReady } from '../workspace-sheet';
 import { filamentSlots as capacity } from '../profiles/machines';
-import { addFilament, removeSlot } from '../profiles/SetupRows';
+import { addFilament, FilamentMenu, removeSlot } from '../profiles/SetupRows';
 import { PresetCombo } from './PresetCombo';
 import { ChangesMark, ConflictLine, PresetActions } from '../profiles/PresetBar';
 import { MenuButton, type MenuEntry } from './Menu';
@@ -18,6 +18,7 @@ import { LayerHeightChooser } from '../profiles/LayerHeightChooser';
 import { PrinterLive } from '../printers/PrinterLive';
 const ObjectSettings = lazy(() => import('./ObjectSettings').then(m => ({default: m.ObjectSettings})));
 const SettingsTab = lazy(() => import('./SettingsTab').then(m => ({default: m.SettingsTab})));
+const ObjectList = lazy(() => import('./ObjectList').then(m => ({default: m.ObjectList})));
 
 function RailSection({title, meta, actions, className = '', children}: {title: string; meta?: ReactNode; actions?: ReactNode; className?: string; children: ReactNode}) {
   return <section className={`rail-section ${className}`} aria-label={title}>
@@ -47,29 +48,39 @@ function FilamentSection() {
   return <RailSection title="Filament" actions={<>
     {max > 1 && slots.length < max && <RailAction glyph="plus" label="Add filament slot" onClick={addFilament}/>}
     <RailAction glyph="edit" label="Edit filament" disabled={onlyError} onClick={() => edit('filament', only)}/>
+    <FilamentMenu/>
   </>}>
     {slots.map((_name, i) => <div key={i} className="rail-row rail-slot"><PresetCombo type="filament" slot={i}/>
       {slots.length > 1 && <button type="button" className="icon-btn rail-slot-remove" aria-label={`Remove filament slot ${i + 1}`} onClick={() => removeSlot(i)}><Glyph name="close" size={14}/></button>}</div>)}
   </RailSection>;
 }
+let objectsOpen = true;
+function ObjectsSection() {
+  const count = useStore(s => s.objects.length);
+  const [open, setOpen] = useState(objectsOpen);
+  if (!count) return null;
+  return <section className="rail-section objects-section" aria-label="Objects">
+    <header className="rail-head"><h2 className="rail-title"><button type="button" className="rail-fold" aria-expanded={open} onClick={() => setOpen(objectsOpen = !open)}>Objects<Caret dir={open ? 'down' : 'right'}/></button></h2><span className="rail-count">{count}</span></header>
+    {open && <div className="rail-objects scroll-fade"><Suspense fallback={null}><ObjectList/></Suspense></div>}
+  </section>;
+}
 const DETAIL = [['simple', 'Simple'], ['advanced', 'Advanced'], ['develop', 'Expert']] as const;
 type Detail = (typeof DETAIL)[number][0];
 function useViewChoices() {
   const scope = useStore(s => s.processScope), hasObjects = useStore(s => !!s.objects.length);
-  const target = useStore(s => { const sel = s.selected; if (!sel) return ''; if (sel.all) return sel.picked ? `${sel.picked.length} selected` : 'All'; return s.objects.find(o => o.id === sel.object)?.name.replace(/\.(stl|obj|3mf|drc)$/i, '') ?? ''; });
   const mode = useStore(effectiveMode), detail: Detail = mode === 'developer' ? 'develop' : mode;
   const setScope = (v: 'global' | 'objects') => setState(s => ({processScope: v, selected: v === 'objects' ? s.selected ?? (s.objects[0] ? {object: s.objects[0].id, instance: s.objects[0].instances[0].id} : null) : s.selected}));
   const setDetail = (id: Detail) => { savePreferences({'orca.settings_detail': id, 'orca.developer_mode': '0'}); setState({uiMode: id, developerMode: false}); };
   const scopeItems: MenuEntry[] = [{label: 'Project', role: 'menuitemradio', checked: scope === 'global', action: () => setScope('global')}, {label: 'Objects', role: 'menuitemradio', checked: scope === 'objects', action: () => setScope('objects')}];
   const detailItems: MenuEntry[] = DETAIL.map(([id, text]) => ({label: text, role: 'menuitemradio', checked: id === detail, action: () => setDetail(id)}));
   const objects = hasObjects && scope === 'objects';
-  return {hasObjects, objects, target, detailLabel: DETAIL.find(([id]) => id === detail)?.[1] ?? 'Simple', scopeItems, detailItems};
+  return {hasObjects, objects, detailLabel: DETAIL.find(([id]) => id === detail)?.[1] ?? 'Simple', scopeItems, detailItems};
 }
 function ViewChoices() {
   const v = useViewChoices();
   return <>
     <span className="rail-menus">
-      {v.hasObjects && <MenuButton className="rail-menu" label={`Apply to: ${v.objects ? 'Objects' : 'Project'}`} items={v.scopeItems}>{v.objects ? 'Objects' : 'Project'}{v.objects && v.target && <span className="rail-menu-sub">{v.target}</span>}<Caret/></MenuButton>}
+      {v.hasObjects && <MenuButton className="rail-menu" label={`Apply to: ${v.objects ? 'Objects' : 'Project'}`} items={v.scopeItems}>{v.objects ? 'Objects' : 'Project'}<Caret/></MenuButton>}
       <MenuButton className="rail-menu" label={`Settings detail: ${v.detailLabel}`} items={v.detailItems}>{v.detailLabel}<Caret/></MenuButton>
     </span>
     <MenuButton className="icon-btn rail-act rail-menus-folded" label="View options" items={[...(v.hasObjects ? [{label: 'Apply to', header: true} as MenuEntry, ...v.scopeItems, 'sep' as const] : []), {label: 'Detail', header: true}, ...v.detailItems]}><Glyph name="settings"/></MenuButton>
@@ -95,6 +106,7 @@ export function Sidebar() {
     <PrinterSection/>
     {ready && <>
       <FilamentSection/>
+      <ObjectsSection/>
       <RailSection title="Print settings" className="process-section" meta={<ChangesMark type="process"/>} actions={<><ViewChoices/><RailAction glyph="edit" label="Edit print settings" disabled={!process} onClick={() => edit('process', process)}/><PresetActions type="process"/></>}>
         <div className="rail-row rail-row-wide"><PresetCombo type="process"/></div>
         <LayerHeightChooser/>

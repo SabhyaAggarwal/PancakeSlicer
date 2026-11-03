@@ -47,15 +47,8 @@
 
 :where(.orca-parity) .canvas-area { container-type: inline-size; }
 :where(.orca-parity) .canvas-toolbar img, :where(.orca-parity) .toolbar img { filter: var(--icon-filter); }
-:where(.orca-parity) .objects-outliner { position: absolute; z-index: 6; top: 56px; right: var(--s-4); width: clamp(180px, 36%, 280px); border: 1px solid var(--line-strong); border-radius: var(--r-3); background: var(--panel); box-shadow: var(--shadow-pop); }
 :where(.orca-parity) .outliner-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-2); padding: var(--s-2) var(--s-3); }
-:where(.orca-parity) .outliner-toggle { display: flex; gap: var(--s-3); align-items: center; border: 0; background: transparent; padding: var(--s-2); font: var(--t-title); color: var(--ink); cursor: pointer; }
-:where(.orca-parity) .outliner-edit { min-height: var(--h-compact); padding: 0 var(--s-3); font: var(--t-small); }
-:where(.orca-parity) .outliner-body { max-height: min(240px, 34vh); overflow: auto; padding: 0 var(--s-2) var(--s-2); }
-:where(.orca-parity) .outliner-body .object-list { border: 0; min-height: 0; max-height: none; }
-:where(.orca-parity) .outliner-body .ol-row { border-radius: var(--r-1); }
 @container (max-width: 780px) {
-  :where(.orca-parity) .objects-outliner.transform-active .outliner-body, :where(.orca-parity) .objects-outliner.transform-active .outliner-edit { display: none; }
   :where(.orca-parity) .transform-anchor { top: 112px; }
 }
 

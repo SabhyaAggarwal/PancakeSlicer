@@ -28,6 +28,14 @@ function publishCommands() {
   commandSnapshot = Object.freeze([...commands.values()].map((entry) => Object.freeze({ ...entry.status })));
   commandListeners.forEach((listener) => listener());
 }
+async function alreadyRestored(entry: PendingCommand, error: unknown): Promise<ProjectCommandAck> {
+  const { status, code } = error as { status?: number; code?: string };
+  if (entry.command.kind !== 'restore' || status !== 409 || code !== 'project_not_archived' && code !== 'revision_conflict') throw error;
+  const live = await metadata(entry.command.id).catch(() => null);
+  if (!Number.isSafeInteger(live?.revision)) throw error;
+  entry.status.expectedRevision = live!.revision! - 1;
+  return { operationId: entry.status.operationId, revision: live!.revision! };
+}
 function executeCommand(entry: PendingCommand): Promise<ProjectCommandAck | ProjectMeta> {
   if (entry.result) return Promise.resolve(entry.result);
   if (entry.running) return entry.running;
@@ -45,7 +53,8 @@ function executeCommand(entry: PendingCommand): Promise<ProjectCommandAck | Proj
         ...(name !== undefined ? { name } : {}), ...(newId !== undefined ? { newId } : {}) }));
     }
     entry.status.state = 'sending'; entry.status.error = null; publishCommands();
-    const ack = await required<ProjectCommandAck | ProjectMeta>(projectPath(entry.command.id) + '/' + entry.command.kind, entry.request);
+    const ack = await required<ProjectCommandAck | ProjectMeta>(projectPath(entry.command.id) + '/' + entry.command.kind, entry.request)
+      .catch((error: unknown) => alreadyRestored(entry, error));
     if (entry.command.kind === 'duplicate') {
       if (!('id' in ack) || ack.id !== entry.command.newId || ack.revision !== 1) throw new Error('Invalid duplicate acknowledgement');
     } else if (!('operationId' in ack) || ack.operationId !== entry.status.operationId || ack.revision !== entry.status.expectedRevision! + 1)
