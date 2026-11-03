@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { confirmDialog } from '../components/Ask';
 import { Dropdown } from '../components/Dropdown';
 import { getState, resolvePreset, toast, useStore } from '../state/store';
 import {
@@ -56,14 +57,22 @@ export function ConnectionEditor({ printer, name, onSaved }: { printer: string; 
   const hasSecret = !!saved?.has_secret && sameKind;
   const ready = kind === 'bambu-connect' || (bambu ? !!host.trim() && !!serial.trim() && (!!secret || hasSecret)
     : !!url.trim() && (keyOptional || !!secret || hasSecret) && (!digest || !!user.trim()));
-  const changed = <T,>(set: (v: T) => void) => (v: T) => { set(v); setTest(null); };
+  const fields = useRef(0);
+  const touched = () => { fields.current++; setTest(null); };
+  const changed = <T,>(set: (v: T) => void) => (v: T) => { set(v); touched(); };
 
   const run = async (what: string, action: () => Promise<void>) => {
     setWorking(what); setError('');
     try { await action(); } catch (e) { setError(errorText(e)); } finally { setWorking(''); }
   };
-  const use = (d: Discovered) => {
-    setKind(d.kind); setTest(null);
+  const modelOf = (preset?: string) => preset ? machines.find((m) => m.name === preset)?.model : undefined;
+  const setupModel = useStore((s) => String(resolvePreset(s, 'machine', printer).config?.printer_model ?? '')) || undefined;
+  const use = async (d: Discovered) => {
+    const found = modelOf(d.preset);
+    if (found && setupModel && found !== setupModel && !await confirmDialog('Different printer model',
+      `${d.model ?? found} at ${d.host ?? d.url} is not a ${setupModel}. G-code sliced with ${name} is made for a ${setupModel}; sent to this printer it can crash the head or print wrongly. Use it anyway?`,
+      ['Use anyway', 'Cancel'], true)) return;
+    setKind(d.kind); touched();
     if (d.kind === 'bambu-lan') { setHost(d.host ?? ''); setSerial(d.serial ?? ''); setModel(d.model ?? ''); }
     else setUrl((d.url ?? '').replace(/^http:\/\//, ''));
   };
@@ -115,7 +124,9 @@ export function ConnectionEditor({ printer, name, onSaved }: { printer: string; 
       {error && <div role="alert" className="warning-text">{error}</div>}
       <div className="connection-buttons">
         <button type="button" className="btn" disabled={!ready || !!working} onClick={() => void run('test', async () => {
+          const mine = fields.current;
           const result = await testConnection(printer, edit());
+          if (mine !== fields.current) return;
           setTest(result);
           if (result.ok && result.model && bambu) setModel(result.model);
         })}>Test connection</button>
@@ -131,10 +142,11 @@ export function ConnectionEditor({ printer, name, onSaved }: { printer: string; 
           {found.printers.map((d) => {
             const usedBy = d.assigned && d.assigned !== printer ? resolvePreset(getState(), 'machine', d.assigned).user?.name ?? 'another printer' : '';
             const preset = d.preset && machines.some((m) => m.name === d.preset);
+            const other = modelOf(d.preset), mismatch = !!other && !!setupModel && other !== setupModel;
             return (
               <div className="connection-found-row" key={`${d.kind}${d.serial ?? ''}${d.host ?? ''}${d.url ?? ''}`}>
-                <span>{[d.name, d.model, d.host ?? d.url?.replace(/^http:\/\//, ''), KIND_LABEL[d.kind], d.connection === 'cloud' ? 'cloud mode' : ''].filter(Boolean).join(' · ')}{usedBy ? ` · used by ${usedBy}` : ''}</span>
-                <button type="button" className="btn" disabled={!!working} onClick={() => use(d)} title={`Use for ${name}`}>Use</button>
+                <span>{[d.name, d.model, d.host ?? d.url?.replace(/^http:\/\//, ''), KIND_LABEL[d.kind], d.connection === 'cloud' ? 'cloud mode' : ''].filter(Boolean).join(' · ')}{usedBy ? ` · used by ${usedBy}` : ''}{mismatch ? ` · not a ${setupModel}` : ''}</span>
+                <button type="button" className="btn" disabled={!!working} onClick={() => void use(d)} title={`Use for ${name}`}>Use</button>
                 {preset && <button type="button" className="btn" disabled={!!working} onClick={() => void addAsNew(d)}>Add as new printer</button>}
               </div>
             );

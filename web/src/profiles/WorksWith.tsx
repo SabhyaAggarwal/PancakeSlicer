@@ -60,13 +60,13 @@ function Condition({label, count, children}: {label: string; count: string; chil
   return <div className="ww-condition" role="group" aria-label={label}><span className="ww-label">{label}</span><div className="ww-choice">{children}</div><span className="ww-count">{count}</span></div>;
 }
 
-export function WorksWith({source, config, value, onChange}: {source: UserPreset; config: Config; value?: unknown; onChange(value: WorksWithRule | undefined): void}) {
+export function WorksWith({type, profile, source, config, value, onChange}: {type: PresetType; profile: string; source?: UserPreset; config: Config; value?: unknown; onChange?(value: WorksWithRule | undefined): void}) {
   const users = useStore((s) => s.userPresets), slots = useStore((s) => s.filamentSlots), process = useStore((s) => s.process);
   const facts = useMemo(libraryFacts, [users]);
-  const rule = worksWithRule(value), type = source.type, key = profileKey(source);
+  const rule = worksWithRule(value), key = profile;
   const native = useMemo(() => {
     if (rule) return [];
-    const s = getState(), draft = {...source, overlay: config, overrides: config}, state = {...s, userPresets: s.userPresets.map((p) => profileKey(p) === key ? draft : p)};
+    const s = getState(), draft = source && {...source, overlay: config, overrides: config}, state = draft ? {...s, userPresets: s.userPresets.map((p) => profileKey(p) === key ? draft : p)} : s;
     return facts.printers.filter((p) => selectNativeCompatibility(state, type, key, p.id).ok);
   }, [rule, facts, config, source, type, key]);
   if (type === 'machine') return null;
@@ -79,7 +79,7 @@ export function WorksWith({source, config, value, onChange}: {source: UserPreset
   for (const m of rule?.printers && 'models' in rule.printers ? rule.printers.models : []) if (!models.some((o) => o.id === m)) models.push({id: m, label: m, tip: m});
   const sizes = [...new Set([...NOZZLES, ...printers.map((p) => p.nozzle).filter((n) => n > 0), ...(rule?.nozzle && 'sizes' in rule.nozzle ? rule.nozzle.sizes : [])])].sort((a, b) => a - b);
   const types = [...new Set([...filaments.map((f) => f.type).filter(Boolean), ...(rule?.filaments && 'types' in rule.filaments ? rule.filaments.types : [])])].sort();
-  const set = (next: WorksWithRule) => onChange(next);
+  const set = (next: WorksWithRule) => onChange?.(next);
   const base = rule ?? {schema: 2} as WorksWithRule;
   const matched = rule ? printers.filter((p) => matchesPrinter(without(rule, 'exclude'), p)) : native;
   const working = rule ? matched.filter((p) => !rule.exclude?.includes(p.id)) : native;
@@ -90,8 +90,8 @@ export function WorksWith({source, config, value, onChange}: {source: UserPreset
   const slot = filaments.find((f) => f.id === slots[0] || f.name === slots[0]);
   const range = sizes.filter((n) => printers.some((p) => Math.abs(p.nozzle - n) < 0.0005));
   return <section className="works-with" aria-label="Works with">
-    <Choice label="Works with" value={rule ? 'rule' : 'base'} options={[{id: 'base', label: 'Same as base'}, {id: 'rule', label: 'Custom'}]}
-      onChange={(id) => onChange(id === 'base' ? undefined : {schema: 2, printers: {printerIds: native.length ? native.map((p) => p.id) : here ? [here.id] : []}})}/>
+    {onChange && <Choice label="Works with" value={rule ? 'rule' : 'base'} options={[{id: 'base', label: 'Same as base'}, {id: 'rule', label: 'Custom'}]}
+      onChange={(id) => onChange(id === 'base' ? undefined : {schema: 2, printers: {printerIds: native.length ? native.map((p) => p.id) : here ? [here.id] : []}})}/>}
     {rule && <div className="ww-rule">
       <Condition label="Printers" count={plural(printers.filter((p) => matchesPrinter({schema: 2, printers: rule.printers}, p)).length, 'printer')}>
         <Choice label="Printers" value={printerMode} options={[{id: 'all', label: 'All'}, {id: 'models', label: 'Models'}, {id: 'printers', label: 'My printers'}]}
@@ -127,7 +127,7 @@ export function WorksWith({source, config, value, onChange}: {source: UserPreset
         return <li key={p.id} className={out ? 'is-excluded' : undefined}>
           <span className="ww-printer-name">{p.label}</span><span className="ww-printer-detail">{p.detail}</span>
           {p.id === facts.current && <span className="works-with-used">In use</span>}
-          {rule && <button type="button" className="btn-ghost ww-exclude" aria-label={`${out ? 'Include' : 'Exclude'} ${p.label}`} onClick={() => {
+          {rule && onChange && <button type="button" className="btn-ghost ww-exclude" aria-label={`${out ? 'Include' : 'Exclude'} ${p.label}`} onClick={() => {
             const exclude = out ? rule.exclude!.filter((id) => id !== p.id) : [...rule.exclude ?? [], p.id];
             set(exclude.length ? {...rule, exclude} : without(rule, 'exclude'));
           }}>{out ? 'Include' : 'Exclude'}</button>}

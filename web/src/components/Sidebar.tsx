@@ -15,6 +15,7 @@ import { printerCover } from '../profiles/metadata';
 import './settings.css';
 import { Glyph, type GlyphName } from './Glyph';
 import { LayerHeightChooser } from '../profiles/LayerHeightChooser';
+import { PrinterLive } from '../printers/PrinterLive';
 const ObjectSettings = lazy(() => import('./ObjectSettings').then(m => ({default: m.ObjectSettings})));
 const SettingsTab = lazy(() => import('./SettingsTab').then(m => ({default: m.SettingsTab})));
 
@@ -35,6 +36,7 @@ function PrinterSection() {
   const cover = ready && machine ? printerCover(machine.vendor, machine.config, machine.model) : undefined;
   return <RailSection title="Printer" actions={<RailAction glyph="edit" label="Edit printer" disabled={!ready} onClick={() => edit('machine', name)}/>}>
     <div className="rail-row">{cover && failedCover !== cover && <img className="rail-cover" src={cover} alt="" loading="lazy" width={40} height={40} onError={() => setFailedCover(cover)}/>}<PresetCombo type="machine"/></div>
+    <PrinterLive/>
   </RailSection>;
 }
 function FilamentSection() {

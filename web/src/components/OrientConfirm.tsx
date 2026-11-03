@@ -1,5 +1,5 @@
 import { setState, useStore, type OrientSlice } from '../state/store';
-import { Modal, ModalTitle } from './Modal';
+import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 import { supportText } from '../preview/explain-record';
 import { shortTime } from '../preview/format';
 
@@ -26,23 +26,25 @@ export function OrientConfirm() {
   const advice = more != null && more >= FLOAT_MARGIN_MM ? `Stood up, ${more.toFixed(0)} mm more road prints in the air: keep the original.`
     : slower && !(more != null && more <= -FLOAT_MARGIN_MM) ? 'Stood up, it prints slower: keep the original.' : null;
   return (
-    <Modal size="m" label="Stand this part up?" onClose={close} className="orient-confirm">
+    <Modal size="s" label="Stand this part up?" onClose={close}>
       <ModalTitle title={`Stand ${name} up?`} onClose={close} />
+      <ModalBody>
       <table className="orient-table">
         <thead><tr><th /><th>As loaded</th><th>Stood up</th></tr></thead>
         <tbody>
           <tr><td>Time</td><td>{time(a)}</td><td>{time(b)}</td></tr>
           {c.supportOn
             ? <tr><td>Support</td><td>{support(a)}</td><td>{support(b)}</td></tr>
-            : <tr><td>Support needed (est.)</td><td>{area(c.supportArea[0])}</td><td>{area(c.supportArea[1])}</td></tr>}
+            : <tr><td>Support area</td><td>{area(c.supportArea[0])}</td><td>{area(c.supportArea[1])}</td></tr>}
           <tr><td>Floating</td><td>{floating(a)}</td><td>{floating(b)}</td></tr>
         </tbody>
       </table>
-      {c.error ? <div className="orient-note">{c.error}</div> : !b ? <div className="orient-note">Slicing both…</div> : advice && <div className="orient-note">{advice}</div>}
-      <div className="modal-buttons center">
-        <button type="button" className={`btn ${advice ? 'primary' : ''}`} onClick={keep}>Keep original</button>
-        <button type="button" className={`btn ${advice ? '' : 'primary'}`} disabled={!b} onClick={() => void import('../plater/orientPrompt').then((m) => m.standUp(c.id))}>Stand up</button>
-      </div>
+      {c.error ? <p className="modal-error" role="alert">{c.error}</p> : !b ? <p role="status">Slicing both…</p> : advice && <p>{advice}</p>}
+      </ModalBody>
+      <ModalFooter>
+        <button type="button" className={advice ? 'btn-primary' : 'btn'} onClick={keep}>Keep original</button>
+        <button type="button" className={advice ? 'btn' : 'btn-primary'} disabled={!b} onClick={() => void import('../plater/orientPrompt').then((m) => m.standUp(c.id))}>Stand up</button>
+      </ModalFooter>
     </Modal>
   );
 }

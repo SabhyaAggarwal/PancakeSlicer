@@ -5,6 +5,7 @@ import type { JobStatus } from './api/types';
 import type { PreviewData } from './preview/data';
 import { jobValue } from './options';
 import { getState } from './state/store';
+import { createMachine, type StateNode } from './flow/fsm';
 
 export type CompareState =
   | { state: 'idle' }
@@ -12,20 +13,48 @@ export type CompareState =
   | { state: 'done'; key: string; id: string; status: JobStatus }
   | { state: 'failed'; key: string; error: string; busy: boolean };
 
-let current: CompareState = { state: 'idle' };
-const listeners = new Set<() => void>();
+type CompareEvent = { type: 'START'; key: string } | { type: 'SHOW'; key: string; id: string; status: JobStatus } | { type: 'STOP' }
+  | { type: 'FORGET'; key: string } | { type: 'PROGRESS'; request: number; queued: boolean; pct: number }
+  | { type: 'DONE'; request: number; id: string; status: JobStatus } | { type: 'FAIL'; request: number; error: string; busy: boolean };
+interface CompareContext { request: number; view: CompareState }
 const cache = new Map<string, { id: string; status: JobStatus }>();
 let active: { id?: string; stop?: () => void; submission: AbortController } | null = null;
-let generation = 0;
-
-function set(next: CompareState) {
-  current = next;
-  for (const l of listeners) l();
+function stopActive() {
+  const a = active;
+  active = null;
+  a?.submission.abort();
+  a?.stop?.();
+  if (a?.id) void getState().api?.cancel(a.id).catch(() => undefined);
 }
+type Ctx = CompareContext;
+type On = NonNullable<StateNode<CompareState['state'], CompareEvent, Ctx>['on']>;
+const listeners = new Set<() => void>();
+const mine = (c: Ctx, e: { request: number }) => e.request === c.request;
+const key = (c: Ctx) => c.view.state === 'idle' ? '' : c.view.key;
+const start: On['START'] = { target: 'running', action: (c, e) => ({ request: c.request + 1, view: { state: 'running', key: e.key, queued: true, pct: 0 } }) };
+const show: On['SHOW'] = { target: 'done', action: (c, e) => ({ request: c.request + 1, view: { state: 'done', key: e.key, id: e.id, status: e.status } }) };
+const stopped = (c: Ctx): Partial<Ctx> => ({ request: c.request + 1, view: { state: 'idle' } });
+const late = {};
+const settled: On = { START: start, SHOW: show, STOP: { target: 'idle', action: stopped },
+  FORGET: [{ target: 'idle', guard: (c, e) => key(c) === e.key, action: stopped }, late], PROGRESS: late, DONE: late, FAIL: late };
+const compare = createMachine<CompareState['state'], CompareEvent, CompareContext>({
+  id: 'compare', initial: 'idle', strict: true, context: { request: 0, view: { state: 'idle' } },
+  states: {
+    idle: { on: { ...settled, STOP: {} } },
+    running: { exit: () => { stopActive(); }, on: { ...settled,
+      PROGRESS: [{ guard: mine, action: (c, e) => ({ view: { state: 'running', key: key(c), queued: e.queued, pct: e.pct } }) }, late],
+      DONE: [{ target: 'done', guard: mine, action: (c, e) => { cache.set(key(c), { id: e.id, status: e.status }); return { view: { state: 'done', key: key(c), id: e.id, status: e.status } }; } }, late],
+      FAIL: [{ target: 'failed', guard: mine, action: (c, e) => ({ view: { state: 'failed', key: key(c), error: e.error, busy: e.busy } }) }, late],
+    } },
+    done: { on: settled },
+    failed: { on: settled },
+  },
+});
+export const compareMachine = compare;
 
 const subscribe = (l: () => void) => (listeners.add(l), () => void listeners.delete(l));
 export function useCompare(): CompareState {
-  return useSyncExternalStore(subscribe, () => current);
+  return useSyncExternalStore(compare.subscribe, () => compare.get().context.view);
 }
 
 let wanted = false;
@@ -68,50 +97,32 @@ export async function startCompare() {
   const key = s.job.plateSignature;
   if (!s.api || s.job.state !== 'done' || !key) return;
   const kept = cache.get(key);
-  if (kept) return set({ state: 'done', key, ...kept });
-  if (current.state === 'running' && current.key === key) return;
-  stopCompare();
-  const mine = ++generation;
-  const submission = new AbortController();
-  active = { submission };
-  set({ state: 'running', key, queued: true, pct: 0 });
+  if (kept) return compare.send({ type: 'SHOW', key, ...kept });
+  const now = compare.get().context.view;
+  if (now.state === 'running' && now.key === key) return;
+  compare.send({ type: 'START', key });
+  const request = compare.get().context.request, submission = new AbortController(), own = { submission } as NonNullable<typeof active>;
+  active = own;
+  const current = () => compare.get().context.request === request;
   try {
     const id = await s.api.submit(await standardRequest(), submission.signal);
-    if (mine !== generation) return void s.api.cancel(id).catch(() => undefined);
-    active.id = id;
-    active.stop = s.api.events(id, {
-      progress: (e) => mine === generation && set({ state: 'running', key, queued: e.stage === 'queued', pct: Math.max(0, Math.min(100, e.pct)) }),
-      done: (status) => {
-        if (mine !== generation) return;
-        cache.set(key, { id, status });
-        active = null;
-        set({ state: 'done', key, id, status });
-      },
-      error: (error) => {
-        if (mine !== generation) return;
-        active = null;
-        set({ state: 'failed', key, error, busy: false });
-      },
+    if (!current()) return void s.api.cancel(id).catch(() => undefined);
+    own.id = id;
+    own.stop = s.api.events(id, {
+      progress: (e) => compare.send({ type: 'PROGRESS', request, queued: e.stage === 'queued', pct: Math.max(0, Math.min(100, e.pct)) }),
+      done: (status) => { if (current()) active = null; compare.send({ type: 'DONE', request, id, status }); },
+      error: (error) => { if (current()) active = null; compare.send({ type: 'FAIL', request, error, busy: false }); },
     });
   } catch (e) {
-    if (mine !== generation) return;
-    active = null;
+    if (current()) active = null;
     const status = (e as { status?: number }).status;
-    set({ state: 'failed', key, error: String((e as Error).message ?? e), busy: status === 429 || status === 503 });
+    compare.send({ type: 'FAIL', request, error: String((e as Error).message ?? e), busy: status === 429 || status === 503 });
   }
 }
 
-export function stopCompare() {
-  ++generation;
-  const a = active;
-  active = null;
-  a?.submission.abort();
-  a?.stop?.();
-  if (a?.id) void getState().api?.cancel(a.id).catch(() => undefined);
-  if (current.state !== 'idle') set({ state: 'idle' });
-}
+export const stopCompare = () => compare.send({ type: 'STOP' });
 
 export function forgetCompare(key: string) {
   cache.delete(key);
-  if (current.state === 'done' && current.key === key) set({ state: 'idle' });
+  compare.send({ type: 'FORGET', key });
 }

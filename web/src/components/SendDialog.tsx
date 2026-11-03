@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Check } from './Check';
 import { confirmDialog } from './Ask';
 import { Dropdown } from './Dropdown';
-import { Modal, ModalTitle } from './Modal';
+import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 import { download, exportFilename, outputKind } from '../actions';
 import { printerSend, usePrinterSend, type Transfer } from '../flow/transfer';
 import { filamentColor } from '../plater/filamentColor';
@@ -51,29 +51,28 @@ export default function SendDialog({ close }: { close: () => void }) {
   const status = useStore((s) => s.printerConnections.status[printer]);
   const [editing, setEditing] = useState(false);
   const title = 'Send to printer';
+  const head = <>
+    <div className="send-target">
+      <span className={`printer-dot ${statusClass(status)}`} aria-hidden />
+      {choices.length > 1
+        ? <Dropdown className="combo" value={printer} aria-label="Printer" onValueChange={setTarget} options={choices.map((k) => ({ value: k, label: setupName(k) }))} />
+        : <span className="send-target-name">{name}</span>}
+      {connection && <button type="button" className="btn" onClick={() => setEditing(!editing)}>{editing ? 'Done' : 'Connection'}</button>}
+    </div>
+    {connection && <div className="send-meta">{[KIND_LABEL[connection.kind], connection.host ?? connection.url?.replace(/^https?:\/\//, ''), statusLine(status), tempLine(status)].filter(Boolean).join(' · ')}</div>}
+    {!connection && <div className="hint-text">{name} has no connection yet. Find it on the network or enter its address.</div>}
+    {(!connection || editing) && <ConnectionEditor key={printer} printer={printer} name={name} onSaved={() => setEditing(false)} />}
+  </>;
   return (
     <Modal size="m" className="send-dialog" label={title} onClose={close}>
       <ModalTitle title={title} onClose={close} />
-      <div className="prefs-body send-body">
-        <div className="send-target">
-          <span className={`printer-dot ${statusClass(status)}`} aria-hidden />
-          {choices.length > 1
-            ? <Dropdown className="combo" value={printer} aria-label="Printer" onValueChange={setTarget} options={choices.map((k) => ({ value: k, label: setupName(k) }))} />
-            : <span className="send-target-name">{name}</span>}
-          {connection && <button type="button" className="btn" onClick={() => setEditing(!editing)}>{editing ? 'Done' : 'Connection'}</button>}
-        </div>
-        {connection && <div className="send-meta">{[KIND_LABEL[connection.kind], connection.host ?? connection.url?.replace(/^https?:\/\//, ''), statusLine(status), tempLine(status)].filter(Boolean).join(' · ')}</div>}
-        {!connection && <div className="hint-text">{name} has no connection yet. Find it on the network or enter its address.</div>}
-        {(!connection || editing) && <ConnectionEditor key={printer} printer={printer} name={name} onSaved={() => setEditing(false)} />}
-      </div>
-      {connection && !editing ? <SendView close={close} printer={printer} /> : (
-        <div className="modal-buttons center"><button type="button" className="btn" onClick={close}>Close</button></div>
-      )}
+      {connection && !editing ? <SendView close={close} printer={printer} head={head} />
+        : <><ModalBody className="send-body">{head}</ModalBody><ModalFooter><button type="button" className="btn" onClick={close}>Close</button></ModalFooter></>}
     </Modal>
   );
 }
 
-function SendView({ close, printer }: { close: () => void; printer: string }) {
+function SendView({ close, printer, head }: { close: () => void; printer: string; head: ReactNode }) {
   const connection = useStore((s) => connectionOf(s.printerConnections, printer))!;
   const status = useStore((s) => s.printerConnections.status[printer]);
   const jobId = useStore((s) => s.job.id);
@@ -103,8 +102,9 @@ function SendView({ close, printer }: { close: () => void; printer: string }) {
     const current = printerSend.machine.get().context;
     if (current.jobId && (current.jobId !== jobId || current.target !== printer) && printerSend.machine.get().value !== 'sending') printerSend.reset();
   }, [jobId, printer]);
+  useEffect(() => setMapping(null), [printer]);
   useEffect(() => {
-    setReadTrays(null); setAmsError(''); setMapping(null);
+    setReadTrays(null); setAmsError('');
     if (!bambu || liveTrays) return;
     let live = true;
     readTrays(printer).then((list) => { if (live) setReadTrays(list); }, (e) => { if (live) setAmsError(errorText(e)); });
@@ -135,7 +135,8 @@ function SendView({ close, printer }: { close: () => void; printer: string }) {
   const blocked = !jobId || !jobReady ? 'Slice the plate first.' : !fits ? `${KIND_LABEL[kind]} takes .${connectionOutput(kind)} files; this printer profile exports .${output}.` : '';
   const needsMap = bambu && !single && !trays;
   return <>
-    <div className="prefs-body send-body">
+    <ModalBody className="send-body">
+      {head}
       <div className="send-meta">Plate {plateIndex} · {exportFilename()}</div>
       {blocked && <div className="warning-text">{blocked}</div>}
       {bambu && fits && (
@@ -180,16 +181,16 @@ function SendView({ close, printer }: { close: () => void; printer: string }) {
           {(tempLine(status) || status!.layers) && <div className="send-live-row">{[tempLine(status), status!.layers ? `Layer ${status!.layer ?? 0} of ${status!.layers}` : ''].filter(Boolean).join(' · ')}</div>}
         </div>
       )}
-    </div>
-    <div className="modal-buttons center">
+    </ModalBody>
+    <ModalFooter>
+      <button type="button" className="btn" onClick={close}>Close</button>
       {sendState.value === 'failed' && mine && <button type="button" className="btn" onClick={() => void printerSend.retry()}>Reconnect</button>}
       {kind === 'bambu-connect' ? (window.orcaDesktop?.bambuConnect
-        ? <button type="button" className="btn primary" disabled={!!blocked || !!working} onClick={() => void handOff()}>Open in Bambu Connect</button>
-        : <button type="button" className="btn primary" disabled={!!blocked} onClick={() => void download()}>Download .gcode.3mf</button>) : <>
-        <button type="button" className="btn primary" disabled={busy || !!blocked || needsMap || running} title={running ? 'The printer is printing' : undefined} onClick={() => void send(true)}>Print</button>
+        ? <button type="button" className="btn-primary" disabled={!!blocked || !!working} onClick={() => void handOff()}>Open in Bambu Connect</button>
+        : <button type="button" className="btn-primary" disabled={!!blocked} onClick={() => void download()}>Download .gcode.3mf</button>) : <>
         <button type="button" className="btn" disabled={busy || !!blocked || needsMap} onClick={() => void send(false)}>Upload only</button>
+        <button type="button" className="btn-primary" disabled={busy || !!blocked || needsMap || running} title={running ? 'The printer is printing' : undefined} onClick={() => void send(true)}>Print</button>
       </>}
-      <button type="button" className="btn" onClick={close}>Close</button>
-    </div>
+    </ModalFooter>
   </>;
 }

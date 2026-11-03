@@ -4,7 +4,7 @@ import { OPTIONS } from '../options';
 import { getState, printerPreset, useStore } from '../state/store';
 import { filamentColor } from '../plater/filamentColor';
 import { setPlateSettings } from '../plater/plates';
-import { Modal, ModalTitle } from './Modal';
+import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 
 type Range = { from: number; to: number; order: number[] };
 const ints = (v: unknown) => String(v ?? '').split(/[,;]/).map((x) => Number(x.trim())).filter((x) => Number.isFinite(x));
@@ -61,45 +61,41 @@ export default function PlateSettings({ close }: { close(): void }) {
     setPlateSettings(name, out);
     close();
   };
+  const seg = (label: string, value: string, set: (v: string) => void, options: [string, string][]) => <div className="form-row"><span>{label}</span>
+    <span className="seg" role="radiogroup" aria-label={label}>{options.map(([v, text]) => <button key={v} type="button" role="radio" aria-checked={value === v} onClick={() => set(v)}>{text}</button>)}</span></div>;
   return (
-    <Modal size="m" label="Plate Settings" onClose={close}>
-      <ModalTitle title="Plate Settings" onClose={close} />
-      <div className="prefs-body plate-settings">
-        <label className="prefs-row"><span>Plate name</span><input className="text" value={name} onChange={(e) => setName(e.target.value)} /></label>
-        <label className="prefs-row"><span>Bed type</span>
-          <Dropdown className="combo" value={bed} disabled={!bedTypes} onValueChange={setBed} options={[{ value: "", label: 'Same as Global Plate Type' }, ...beds.map(([v, label]) => ({ value: v, label }))]} />
+    <Modal size="m" label="Plate settings" onClose={close}>
+      <ModalTitle title="Plate settings" onClose={close} />
+      <ModalBody className="modal-fields">
+        <label className="form-row"><span>Name</span><input className="text" value={name} onChange={(e) => setName(e.target.value)} /></label>
+        <label className="form-row"><span>Bed type</span>
+          <Dropdown className="combo" value={bed} disabled={!bedTypes} onValueChange={setBed} options={[{ value: "", label: 'Project default' }, ...beds.map(([v, label]) => ({ value: v, label }))]} />
         </label>
-        <label className="prefs-row"><span>Print sequence</span>
-          <Dropdown className="combo" value={seq} onValueChange={setSeq} options={[{ value: "", label: 'Same as Global Print Sequence' }, ...(seqDef?.enum_values?.map((v, i) => ({ value: v, label: seqDef.enum_labels?.[i] ?? v })) ?? [])]} />
+        <label className="form-row"><span>Print sequence</span>
+          <Dropdown className="combo" value={seq} onValueChange={setSeq} options={[{ value: "", label: 'Project default' }, ...(seqDef?.enum_values?.map((v, i) => ({ value: v, label: seqDef.enum_labels?.[i] ?? v })) ?? [])]} />
         </label>
-        <label className="prefs-row"><span>Spiral vase</span>
-          <Dropdown className="combo" value={spiral} onValueChange={setSpiral} options={[{ value: "", label: 'Same as Global' }, { value: "1", label: 'Enable' }, { value: "0", label: 'Disable' }]} />
-        </label>
+        {seg('Spiral vase', spiral, setSpiral, [['', 'Default'], ['1', 'On'], ['0', 'Off']])}
         {n > 1 && <>
-          <label className="prefs-row"><span>First layer filament sequence</span>
-            <Dropdown className="combo" value={first ? 'c' : 'a'} onValueChange={(next) => setFirst(next === 'c' ? natural : null)} options={[{ value: "a", label: 'Auto' }, { value: "c", label: 'Customize' }]} />
-          </label>
+          {seg('First layer order', first ? 'c' : 'a', (next) => setFirst(next === 'c' ? natural : null), [['a', 'Auto'], ['c', 'Custom']])}
           {first && <Order order={first} colours={colours} onChange={setFirst} />}
-          <label className="prefs-row"><span>Other layer filament sequence</span>
-            <Dropdown className="combo" value={others ? 'c' : 'a'} onValueChange={(next) => setOthers(next === 'c' ? [{ from: 2, to: 2, order: natural }] : null)} options={[{ value: "a", label: 'Auto' }, { value: "c", label: 'Customize' }]} />
-          </label>
+          {seg('Other layers order', others ? 'c' : 'a', (next) => setOthers(next === 'c' ? [{ from: 2, to: 2, order: natural }] : null), [['a', 'Auto'], ['c', 'Custom']])}
           {others?.map((r, k) => (
-            <div key={k} className="prefs-row plate-range">
-              <span>Layer</span>
-              <input className="text num" type="number" min={2} value={r.from} onChange={(e) => setOthers(others.map((x, j) => (j === k ? { ...x, from: Math.max(2, Number(e.target.value)) } : x)))} />
+            <div key={k} className="plate-range">
+              <span>Layers</span>
+              <input className="text num" type="number" min={2} aria-label="From layer" value={r.from} onChange={(e) => setOthers(others.map((x, j) => (j === k ? { ...x, from: Math.max(2, Number(e.target.value)) } : x)))} />
               <span>to</span>
-              <input className="text num" type="number" min={r.from} value={r.to} onChange={(e) => setOthers(others.map((x, j) => (j === k ? { ...x, to: Math.max(x.from, Number(e.target.value)) } : x)))} />
+              <input className="text num" type="number" min={r.from} aria-label="To layer" value={r.to} onChange={(e) => setOthers(others.map((x, j) => (j === k ? { ...x, to: Math.max(x.from, Number(e.target.value)) } : x)))} />
               <Order order={r.order} colours={colours} onChange={(o) => setOthers(others.map((x, j) => (j === k ? { ...x, order: o } : x)))} />
-              <button type="button" className="btn small" aria-label="Delete" onClick={() => setOthers(others.length > 1 ? others.filter((_, j) => j !== k) : null)}>−</button>
+              <button type="button" className="btn-ghost" aria-label={`Remove layers ${r.from}–${r.to}`} onClick={() => setOthers(others.length > 1 ? others.filter((_, j) => j !== k) : null)}>Remove</button>
             </div>
           ))}
-          {others && <button type="button" className="btn small" onClick={() => { const last = others[others.length - 1]; setOthers([...others, { from: last.to + 1, to: last.to + 1, order: natural }]); }}>+</button>}
+          {others && <button type="button" className="btn plate-add" onClick={() => { const last = others[others.length - 1]; setOthers([...others, { from: last.to + 1, to: last.to + 1, order: natural }]); }}>Add layer range</button>}
         </>}
-      </div>
-      <div className="modal-buttons">
-        <button className="btn primary" data-autofocus onClick={ok}>OK</button>
-        <button className="btn" onClick={close}>Cancel</button>
-      </div>
+      </ModalBody>
+      <ModalFooter>
+        <button type="button" className="btn" onClick={close}>Cancel</button>
+        <button type="button" className="btn-primary" onClick={ok}>Save</button>
+      </ModalFooter>
     </Modal>
   );
 }

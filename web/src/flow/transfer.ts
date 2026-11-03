@@ -66,6 +66,7 @@ export function createPrinterSend() {
       const path = `/api/jobs/${encodeURIComponent(jobId)}/send`;
       const r = body !== undefined ? await mutation(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...body, printer: target }) }) : await fetch(path);
+      if (body === undefined && r.status === 404) { if (mine === epoch) machine.send({ type: 'RESET' }); return; }
       if (!r.ok) throw await responseError(r);
       const transfer = await r.json() as Transfer;
       if (mine !== epoch) return;
@@ -79,9 +80,9 @@ export function createPrinterSend() {
   let retryRequest = Promise.resolve();
   transferEffects.set(machine, {
     cancel: () => {
-      const { jobId } = machine.get().context;
+      const { jobId } = machine.get().context, mine = epoch;
       if (jobId) void mutation(`/api/jobs/${encodeURIComponent(jobId)}/send/cancel`, { method: 'POST' }).then(async (r) => {
-        if (!r.ok && r.status !== 409) machine.send({ type: 'FAIL', error: (await responseError(r)).message });
+        if (!r.ok && r.status !== 409) { const error = (await responseError(r)).message; if (mine === epoch) machine.send({ type: 'FAIL', error }); }
       });
     },
     reset: () => { stop(); rememberRecovery({ send: undefined }); },

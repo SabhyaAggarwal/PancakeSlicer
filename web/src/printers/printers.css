@@ -1,4 +1,3 @@
-:where(.orca-parity) .modal.send-dialog { width: min(560px, 94vw); }
 :where(.orca-parity) .send-dialog .modal-buttons .btn { white-space: normal; }
 :where(.orca-parity) .send-body { display: flex; flex-direction: column; gap: var(--s-2); }
 :where(.orca-parity) .send-body .prefs-row > .combo { flex: 1; }
@@ -30,3 +29,8 @@
 :where(.orca-parity) .connection-found-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); font-size: var(--t-small); color: var(--ink-2); min-height: var(--h-row); }
 :where(.orca-parity) .connection-found-row > .btn { flex: none; }
 :where(.orca-parity) .connection-found-row > span:first-child { flex: 1 1 240px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:where(.orca-parity) .printer-live { display: grid; grid-template-columns: 8px minmax(0, 1fr); align-items: center; column-gap: var(--s-2); row-gap: var(--s-1); width: calc(100% - 2 * var(--space-section) - 40px - var(--s-3)); margin: var(--s-1) var(--space-section) 0 calc(var(--space-section) + 40px + var(--s-3)); padding: var(--s-1) 0; border: 0; background: none; color: var(--ink-3); font: var(--t-small); text-align: left; cursor: pointer; }
+:where(.orca-parity) .printer-live:hover .printer-live-text { color: var(--ink); }
+:where(.orca-parity) .printer-live-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:where(.orca-parity) .printer-live-bar { grid-column: 2; height: 3px; border-radius: 2px; background: var(--line); overflow: hidden; }
+:where(.orca-parity) .printer-live-bar > span { display: block; height: 100%; background: var(--accent); }

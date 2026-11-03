@@ -3,7 +3,7 @@ import { Check } from './Check';
 import { Dropdown } from './Dropdown';
 import { useMemo, useState } from 'react';
 import { compatible, getState, setState } from '../state/store';
-import { Modal, ModalTitle } from './Modal';
+import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 
 const first = (v: unknown) => String([v].flat()[0] ?? '');
 
@@ -25,31 +25,27 @@ export default function FilamentsDialog({ close }: { close(): void }) {
     close();
   };
   return (
-    <Modal size="m" label="Filaments" onClose={close} className="filaments-dialog">
-      <ModalTitle title="Filaments" onClose={close} />
-      <div className="prefs-body">
-        <label className="prefs-row"><span>Vendor</span>
-          <Dropdown className="combo" value={vendor} onValueChange={setVendor} options={[{ value: "", label: 'All' }, ...vendors.map((v) => ({ value: v, label: v }))]} />
-        </label>
-        <label className="prefs-row"><span>Type</span>
-          <Dropdown className="combo" value={type} onValueChange={setType} options={[{ value: "", label: 'All' }, ...types.map((t) => ({ value: t, label: t }))]} />
-        </label>
-        <div className="cut-joint-buttons">
-          <button type="button" className="btn" onClick={() => mark(shown.map((p) => p.name), true)}>All</button>
-          <button type="button" className="btn" onClick={() => mark(shown.map((p) => p.name), false)}>None</button>
+    <Modal size="m" label="Filaments to show" onClose={close}>
+      <ModalTitle title="Filaments to show" onClose={close} />
+      <ModalBody>
+        <div className="filament-filters">
+          <Dropdown className="combo" aria-label="Vendor" value={vendor} onValueChange={setVendor} options={[{ value: "", label: 'All vendors' }, ...vendors.map((v) => ({ value: v, label: v }))]} />
+          <Dropdown className="combo" aria-label="Type" value={type} onValueChange={setType} options={[{ value: "", label: 'All types' }, ...types.map((t) => ({ value: t, label: t }))]} />
         </div>
-        <div className="filaments-list" style={{ maxHeight: 320, overflowY: 'auto' }}>
-          {shown.map((p) => (
-            <label key={p.name} className="select-row"><Check checked={chosen.has(p.name)} onCheckedChange={(next) => mark([p.name], next)} />{p.name}</label>
-          ))}
+        <div className="filament-pick">
+          <div className="filament-pick-head">
+            <button type="button" className="btn-ghost" onClick={() => mark(shown.map((p) => p.name), true)}>Select all</button>
+            <button type="button" className="btn-ghost" onClick={() => mark(shown.map((p) => p.name), false)}>Clear</button>
+          </div>
+          <div className="filament-pick-list">{shown.map((p) => (
+            <label key={p.name} className="modal-check"><Check checked={chosen.has(p.name)} onCheckedChange={(next) => mark([p.name], next)} /><span data-full-text={p.name}>{p.name}</span></label>
+          ))}</div>
         </div>
-      </div>
-      <div className="modal-buttons">
-        <span>{count} of {all.length}</span>
-        <span style={{ flex: 1 }} />
+      </ModalBody>
+      <ModalFooter lead={`${count} of ${all.length}`}>
         <button type="button" className="btn" onClick={close}>Cancel</button>
-        <button type="button" className="btn primary" disabled={!count} onClick={ok}>OK</button>
-      </div>
+        <button type="button" className="btn-primary" disabled={!count} onClick={ok}>Save</button>
+      </ModalFooter>
     </Modal>
   );
 }

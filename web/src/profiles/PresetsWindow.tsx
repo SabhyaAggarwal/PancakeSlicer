@@ -13,7 +13,7 @@ import { changedKeys } from './model';
 import { applicabilityKey, worksWithNone } from './WorksWith';
 import { archiveProfiles, profileCopyCreation, restoreProfiles, type ProfileCreation } from './transactions';
 import { documentGeneration } from '../state/history';
-import { ProfileEditor, type ProfileDraft } from './ProfileEditor';
+import { MasterPresetDetail, ProfileEditor, type ProfileDraft } from './ProfileEditor';
 import { modelLabel, nozzleField, printerLine, processMode, processTitle, profileColour, profileSummary, rowDetail, vendorField, vendorLabel } from './metadata';
 import { Check } from '../components/Check';
 import { Dropdown } from '../components/Dropdown';
@@ -127,18 +127,16 @@ function catalogItems(s: State, type: PresetType): Item[] {
 function AddDetails({type,item,busy,onAdd}: {type:PresetType;item:Item;busy:boolean;onAdd(variant:Item,colour?:string):void}) {
   const load=useStore(s=>s.profileLibraryLoad.state);
   const variants=item.variants ?? [item];
-  const [choice,setChoice]=useState(()=>defaultVariant(type,variants).key),[coverFailed,setCoverFailed]=useState(false),[colour,setColour]=useState<string>();
+  const [choice,setChoice]=useState(()=>defaultVariant(type,variants).key),[colour,setColour]=useState<string>();
   const variant=variants.find(v=>v.key === choice) ?? variants[0];
-  return <section className="pf-add-source" aria-label={item.name}>
-    {item.cover !== undefined && <span className="pf-source-cover">{item.cover && !coverFailed && <img src={item.cover} alt="" loading="lazy" onError={()=>setCoverFailed(true)}/>}</span>}
-    <h2>{item.fullName ?? item.name}</h2>
-    {variants.length > 1 && (type === 'machine'
-      ? <div className="pf-variant"><span>Nozzle</span><Choice label="Nozzle" value={variant.key} options={variants.map(v=>({id:v.key,label:`${v.nozzle} mm`}))} onChange={setChoice}/></div>
-      : <label className="pf-variant"><span>Variant</span><Dropdown className="combo" aria-label="Variant" value={variant.key} onValueChange={setChoice} options={variants.map(v=>({value:v.key,label:v.name}))}/></label>)}
-    {variants.length === 1 && variant.note && <p>{variant.note}</p>}
-    {type === 'filament' && <div className="pf-variant"><span>Colour</span><span className="pf-colour-choice"><ColorPicker value={colour ?? configColour(variant.config) ?? ''} label="Colour" onCommit={setColour}/>{colour && <button type="button" className="link" onClick={()=>setColour(undefined)}>Catalog colour</button>}</span></div>}
-    <button type="button" className="btn primary" disabled={busy || load !== 'ready'} onClick={()=>onAdd(variant,colour)}>{busy ? 'Adding…' : load === 'loading' ? 'Loading…' : `Add ${type === 'process' ? NOUNS[type][1] : NOUNS[type][0]}`}</button>
-  </section>;
+  return <MasterPresetDetail key={variant.key} type={type} preset={variant.key} name={variant.fullName ?? variant.name} config={variant.config}
+    identity={type === 'filament' && <ColorPicker value={colour ?? configColour(variant.config) ?? ''} label="Colour" onCommit={setColour}/>}
+    controls={<>
+      {variants.length > 1 && (type === 'machine'
+        ? <Choice label="Nozzle" value={variant.key} options={variants.map(v=>({id:v.key,label:`${v.nozzle} mm`}))} onChange={setChoice}/>
+        : <Dropdown className="combo" aria-label="Variant" value={variant.key} onValueChange={setChoice} options={variants.map(v=>({value:v.key,label:v.name}))}/>)}
+      <button type="button" className="btn primary" disabled={busy || load !== 'ready'} onClick={()=>onAdd(variant,colour)}>{busy ? 'Adding…' : load === 'loading' ? 'Loading…' : `Add ${type === 'process' ? NOUNS[type][1] : NOUNS[type][0]}`}</button>
+    </>}/>;
 }
 
 function configOf(s: State, type: PresetType, name: string) {
@@ -263,7 +261,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
       return {i,h,title};
     });
     return shown.map(r=>{
-      const clash=shown.filter(q=>q.title === r.title).length > 1,nozzle=nozzleOf(r.i);
+      const clash=shown.filter(q=>q.title === r.title && q.h === r.h).length > 1,nozzle=nozzleOf(r.i);
       return {...r.i,fullName:r.i.name,label:nozzle ? `${r.i.name}, ${nozzle} nozzle` : r.i.name,name:clash ? processTitle(r.i.name,r.i.config,false) : r.title,note:'',meta:undefined,lead:r.h > 0 ? r.h.toFixed(2) : '—',method:processMode(r.i.config)};
     });
   };
@@ -320,7 +318,8 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     if(common.length){setMaterialFilter(common);setMaterialDefault(true);}
   },[adding,type,list,printerOptions,printer]);
   const scope = `profiles:${adding ? 'add' : 'owned'}:${type}`, groupKey = (key: string) => `${scope}:${key}`;
-  const foldOpen = (g: Group) => folds.get(groupKey(g.key)) ?? (type === 'process' ? false : !adding || groupHas(g, r => r.slot !== undefined || r.key === name));
+  const printerModel=useMemo(()=>first(resolvePreset(getState(),'machine',printer).config.printer_model),[printer,machines,users]);
+  const foldOpen = (g: Group) => folds.get(groupKey(g.key)) ?? (type === 'process' ? adding && (g.key === printerModel || groups.length === 1) : !adding || groupHas(g, r => r.slot !== undefined || r.key === name));
   const isOpen = (g: Group) => query ? !searchFolds.has(groupKey(g.key)) : foldOpen(g);
   const order = useMemo(() => {
     const keys: string[] = [], walk = (list: Group[]) => {for(const g of list)if(isOpen(g)){if(g.children)walk(g.children);else keys.push(...g.rows.map(i => i.key));}};
@@ -380,7 +379,6 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const openRow=adding ? undefined : item?.key;
   useEffect(() => {if(openRow !== reveal.key)setReveal({key: openRow});}, [openRow]);
   const clickedIn=useRef<string|undefined>(undefined), [openIn,setOpenIn]=useState<string>(), revealed=useRef<string|undefined>(undefined);
-  const printerModel=useMemo(()=>first(resolvePreset(getState(),'machine',printer).config.printer_model),[printer,machines,users]);
   const revealPath=(key:string)=>{
     const paths:Group[][]=[],walk=(list:Group[],at:Group[])=>{for(const g of list){if(g.children)walk(g.children,[...at,g]);else if(g.rows.some(r=>r.key === key))paths.push([...at,g]);}};
     walk(groups,[]);

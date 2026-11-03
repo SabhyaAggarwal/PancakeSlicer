@@ -371,10 +371,6 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .plate-name { display: flex; align-items: center; gap: 4px; padding: 0 0 2px; border: 0; background: none; color: var(--text); font-size: 12px; cursor: pointer; white-space: normal; }
 :where(.orca-parity) .plate-name img { width: var(--plate-icon, 16px); height: var(--plate-icon, 16px); }
 :where(.orca-parity) .canvas-label { position: absolute; left: 0; top: 0; padding: 1px 6px; border-radius: 3px; background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 12px; white-space: normal; }
-:where(.orca-parity) .plate-settings .prefs-row > span:first-child { min-width: 190px; }
-:where(.orca-parity) .plate-order { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 6px 198px; }
-:where(.orca-parity) .plate-range .plate-order { margin: 0; }
-:where(.orca-parity) .plate-order-item { display: inline-flex; align-items: center; gap: 3px; }
 :where(.orca-parity) .paint-filament { width: 22px; height: 22px; border-radius: 3px; border: 1px solid var(--line-aaa); color: #fff; font-size: 11px; text-shadow: 0 0 2px #000; cursor: pointer; padding: 0; }
 :where(.orca-parity) .paint-filament.active { outline: 2px solid var(--accent-text); outline-offset: 1px; }
 
@@ -412,10 +408,6 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .object-info-error { color: var(--danger); white-space: pre-line; }
 :where(.orca-parity) .object-info-error .notif-link { margin-left: 6px; }
 :where(.orca-parity) .canvas-rect { position: absolute; z-index: 5; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); pointer-events: none; }
-:where(.orca-parity) .orient-table { border-collapse: collapse; margin: 12px 16px 4px; }
-:where(.orca-parity) .orient-table th, :where(.orca-parity) .orient-table td { padding: 3px 14px 3px 0; text-align: left; }
-:where(.orca-parity) .orient-table th { font-weight: 600; }
-:where(.orca-parity) .orient-note { margin: 6px 16px 10px; }
 
 :where(.orca-parity) .nav3d { position: absolute; left: var(--s-5); bottom: var(--s-5); width: 56px; height: 56px; transform-style: preserve-3d; perspective: 180px; pointer-events: none; z-index: 5; }
 :where(.orca-parity) .nav3d-face { position: absolute; inset: 0; display: grid; place-items: center; padding: 0; font: 600 10px/1 var(--font-ui); color: var(--ink-2); background: var(--panel);
