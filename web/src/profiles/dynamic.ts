@@ -118,7 +118,7 @@ export function defaultScope(p: DynamicRecord, key: string, ctx: DynamicContext)
 }
 
 const newLayerId = () => `layer:${crypto.randomUUID()}`;
-export const declaresHeight = (w: DynamicWhen) => w.nozzle !== undefined && w.layerHeight !== undefined;
+export const declaresHeight = (w: DynamicWhen) => w.layerHeight !== undefined;
 export function withLayerValue(d: DynamicProfile, when: DynamicWhen, key: string, value: ConfigValue | undefined): DynamicProfile {
   const index = d.layers.findIndex((l) => sameWhen(l.when, when));
   const layer = index >= 0 ? d.layers[index] : { id: newLayerId(), when, values: {} };

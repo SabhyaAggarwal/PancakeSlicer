@@ -210,8 +210,8 @@ func parseDynamic(raw json.RawMessage, typ string) (*dynamicProfile, error) {
 		if w.LayerHeight != nil && typ != "process" || w.PrinterModel != nil && typ == "machine" {
 			return nil, invalid("layer height applies to print profiles and printer model to print and filament profiles")
 		}
-		if l.Values == nil || len(l.Values) == 0 && (w.Nozzle == nil || w.LayerHeight == nil) {
-			return nil, invalid("a layer holds at least one value unless it declares a layer height for a nozzle")
+		if l.Values == nil || len(l.Values) == 0 && w.LayerHeight == nil {
+			return nil, invalid("a layer holds at least one value unless it offers a layer height")
 		}
 		for _, other := range d.Layers[:i] {
 			if sameWhen(other.When, w) {
