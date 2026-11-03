@@ -9,6 +9,7 @@ export interface ManagerProfileRowItem {
   note: string;
   meta?: string;
   fullName?: string;
+  label?: string;
   child?: boolean;
   slot?: number;
   cover?: string | null;
@@ -42,7 +43,7 @@ export const ManagerProfileRow = memo(function ManagerProfileRow({ item, listId,
 }) {
   const [failedCover,setFailedCover]=useState<string>();
   const [head,tail]=splitName(item.name);
-  return <div id={`${listId}:${item.key}`} data-profile-key={item.key} role="row" aria-label={item.fullName} aria-selected={selected} data-child={item.child || undefined}
+  return <div id={`${listId}:${item.key}`} data-profile-key={item.key} role="row" aria-label={item.label ?? item.fullName} aria-selected={selected} data-child={item.child || undefined}
     className={`pf-item pf-selectable${open ? ' is-on' : selected ? ' is-checked' : ''}`} tabIndex={focused ? 0 : -1}
     onMouseDown={event => { if (event.shiftKey) event.preventDefault(); }}
     onClick={event => dispatch({ type: 'CLICK', key: item.key, toggle: selectable && (event.ctrlKey || event.metaKey), shift: selectable && event.shiftKey })}>

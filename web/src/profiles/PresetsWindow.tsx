@@ -258,14 +258,13 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     return found;
   };
   const processRows=(rows:Item[],nozzleOf:(i:Item)=>string)=>{
-    const nozzles=new Set(rows.map(nozzleOf));
     const shown=rows.map(i=>{
       const h=layerHeight(i.config),title=processTitle(i.name,i.config,true).replace(/(^|\s)(\d+(?:\.\d+)?)\s*mm\s+/i,(token,before:string,value:string)=>Number(value) === h ? before : token).trim() || i.name;
-      return {i,h,title,nozzle:nozzles.size > 1 ? nozzleOf(i) : ''};
+      return {i,h,title};
     });
     return shown.map(r=>{
-      const clash=shown.filter(q=>q.title === r.title).length > 1,exact=clash && shown.filter(q=>q.title === r.title && q.nozzle === r.nozzle).length > 1;
-      return {...r.i,fullName:r.i.name,name:exact ? processTitle(r.i.name,r.i.config,false) : r.title,note:'',meta:!exact && (r.nozzle || clash) ? r.nozzle || undefined : undefined,lead:r.h > 0 ? r.h.toFixed(2) : '—',method:processMode(r.i.config)};
+      const clash=shown.filter(q=>q.title === r.title).length > 1,nozzle=nozzleOf(r.i);
+      return {...r.i,fullName:r.i.name,label:nozzle ? `${r.i.name}, ${nozzle} nozzle` : r.i.name,name:clash ? processTitle(r.i.name,r.i.config,false) : r.title,note:'',meta:undefined,lead:r.h > 0 ? r.h.toFixed(2) : '—',method:processMode(r.i.config)};
     });
   };
   const machineRow=(i:Item):Item=>i.variants ? {...i,fullName:i.model,name:modelLabel(i.config,i.vendor,i.model)}
@@ -296,7 +295,8 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     }
     return [...models].sort(([a],[b])=>byLabel(a,b)).map(([full,m])=>{
       const nozzle=new Map(m.items.map(x=>[x.i.key,x.nozzles.size === 1 ? `${[...x.nozzles][0]} mm` : '']));
-      const list=m.items.map(x=>x.i).sort((a,b)=>(layerHeight(a.config) || Infinity)-(layerHeight(b.config) || Infinity) || a.name.localeCompare(b.name));
+      const size=(i:Item)=>parseFloat(nozzle.get(i.key) ?? '') || Infinity;
+      const list=m.items.map(x=>x.i).sort((a,b)=>size(a)-size(b) || (layerHeight(a.config) || Infinity)-(layerHeight(b.config) || Infinity) || a.name.localeCompare(b.name));
       const shared=[...models].some(([other,o])=>other !== full && o.label === m.label);
       return {key:full,label:m.label,sub:shared ? m.sub : undefined,rows:processRows(list,i=>nozzle.get(i.key) ?? '')};
     });
