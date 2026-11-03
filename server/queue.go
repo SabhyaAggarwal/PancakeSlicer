@@ -14,6 +14,8 @@ var jobResultGet func(*JobManager, *Job, []string) bool
 var jobResultPut func(*JobManager, *Job, []string, []byte)
 var jobResultStats func(*JobManager) any
 
+var jobResultWarm func(*JobManager)
+
 type queuedJob struct {
 	job    *Job
 	ctx    context.Context

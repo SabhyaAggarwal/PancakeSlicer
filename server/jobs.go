@@ -339,6 +339,9 @@ func NewJobManager(cfg Config) (*JobManager, error) {
 		return nil, err
 	}
 	go m.reap()
+	if jobResultWarm != nil {
+		go jobResultWarm(m)
+	}
 	return m, nil
 }
 

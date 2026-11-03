@@ -279,6 +279,11 @@ var resultCaches = struct {
 func init() {
 	jobResultGet = restoreJobResult
 	jobResultPut = storeJobResult
+	jobResultWarm = func(m *JobManager) {
+		if _, err := cacheForManager(m); err != nil {
+			log.Printf("result cache unavailable: %v", err)
+		}
+	}
 	jobResultStats = func(m *JobManager) any {
 		resultCaches.Lock()
 		state := resultCaches.managers[m]
