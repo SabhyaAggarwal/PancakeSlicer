@@ -43,8 +43,10 @@ export async function loadCatalog() {
     try {
       await settings;
       if(!current())return;
-      const [storage,{prepareProfileLibraryHydration},browser,{acceptHydratedPrinterSetups}]=await Promise.all([
-        import('../persist/profile-library'),import('./library-hydration'),import('./browser-inventory'),import('./printer-setups')]);
+      const [storage,{prepareProfileLibraryHydration},browser,{acceptHydratedPrinterSetups},{acknowledgePendingProfileWrite}]=await Promise.all([
+        import('../persist/profile-library'),import('./library-hydration'),import('./browser-inventory'),import('./printer-setups'),import('./transactions')]);
+      await acknowledgePendingProfileWrite();
+      if(!current())return;
       let document=await storage.readProfileLibrary();
       const unchanged=()=>{const s=getState();return current() && documentGeneration()===documentAtStart && s.projectPresets===initial.projectPresets && s.dirty===initial.dirty && (s.userPresets===initial.userPresets || s.userPresets.length===initial.userPresets.length && s.userPresets.every((p,i)=>p===initial.userPresets[i])) && s.printer===initial.printer && s.filamentSlots===initial.filamentSlots && s.slotColours===initial.slotColours && s.filamentEdits===initial.filamentEdits && s.printerLibrary===initial.printerLibrary;};
       const restoreStartupPlaceholder=!initial.printer && !initial.process && !initial.filamentSlots.length && !initial.project && !initial.objects.length && !initial.profileSnapshots && !initial.projectPresets && !Object.keys(initial.dirty.machine).length && !Object.keys(initial.dirty.process).length && !Object.keys(initial.filamentEdits).length && !Object.keys(initial.printerLibrary.setups).length;
