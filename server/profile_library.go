@@ -110,6 +110,15 @@ func (s *Server) getProfileLibrary(w http.ResponseWriter, r *http.Request) {
 		libraryFailure(w, 503, "library_unavailable", "The profile library could not be read. Export your profiles before retrying storage.", "retry_storage", 0)
 		return
 	}
+	pending, err := s.library.pendingLegacyProfiles(value)
+	if err != nil {
+		legacyInventoryFailure(w, libraryRevision(value.Document))
+		return
+	}
+	if pending != nil {
+		legacyProfilesPending(w, value, pending)
+		return
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, 200, value.Document)
 }
@@ -239,8 +248,8 @@ func (s *Server) putProfileLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if request.Adoption != nil {
-		if request.OperationID != "browser-adoption:"+request.Adoption.Digest {
-			libraryFailure(w, 400, "adoption_invalid", "Use the stable operationId browser-adoption:<source digest>.", "recapture_inventory", 0)
+		if request.OperationID != request.Adoption.operationID() {
+			libraryFailure(w, 400, "adoption_invalid", "Use the stable source-specific adoption operationId.", "recapture_inventory", 0)
 			return
 		}
 		if err := request.Adoption.validate(); err != nil {
@@ -267,6 +276,14 @@ func (s *Server) putProfileLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	revision := libraryRevision(envelope.Document)
+	if receipt, ok := envelope.Operations[request.OperationID]; request.Adoption == nil && ok {
+		if receipt.Digest != digestText {
+			libraryFailure(w, 409, "operation_conflict", "This operation ID was already used for different profile changes.", "reload_reapply", revision)
+			return
+		}
+		writeJSON(w, 200, map[string]any{"revision": receipt.Revision, "operationId": request.OperationID})
+		return
+	}
 	if request.Adoption != nil {
 		if receipt, ok := envelope.Adoptions[request.Adoption.Digest]; ok {
 			if receipt.SourceID != request.Adoption.SourceID {
@@ -279,12 +296,19 @@ func (s *Server) putProfileLibrary(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if receipt, ok := envelope.Operations[request.OperationID]; ok {
-		if receipt.Digest != digestText {
-			libraryFailure(w, 409, "operation_conflict", "This operation ID was already used for different profile changes.", "reload_reapply", revision)
+	pending, err := s.library.pendingLegacyProfiles(envelope)
+	if err != nil {
+		legacyInventoryFailure(w, revision)
+		return
+	}
+	serviceAdoption := request.Adoption != nil && strings.HasPrefix(request.Adoption.SourceID, serviceProfilePrefix)
+	if serviceAdoption {
+		if !request.Adoption.sameSource(pending) {
+			libraryFailure(w, 409, "legacy_source_changed", "The original service profile capture changed. Reload its inventory and reconcile against the current library.", "recapture_inventory", revision)
 			return
 		}
-		writeJSON(w, 200, map[string]any{"revision": receipt.Revision, "operationId": request.OperationID})
+	} else if pending != nil {
+		legacyProfilesPending(w, envelope, pending)
 		return
 	}
 	if request.ExpectedRevision != revision || libraryRevision(request.Document) != revision {
@@ -295,6 +319,12 @@ func (s *Server) putProfileLibrary(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		libraryFailure(w, 400, "library_invalid", err.Error(), "repair_profiles", revision)
 		return
+	}
+	if serviceAdoption {
+		if err := request.Adoption.validateIdentityResolutions(next, envelope); err != nil {
+			libraryFailure(w, 400, "legacy_identity_unresolved", err.Error(), "resolve_profile_identity", revision)
+			return
+		}
 	}
 	previous, err := libraryProfiles(envelope.Document)
 	if err != nil {
@@ -349,6 +379,17 @@ func (s *Server) putProfileLibrary(w http.ResponseWriter, r *http.Request) {
 				libraryFailure(w, 409, "profile_referenced", "This profile is still referenced. Reassign its slots, projects or dependent profiles before deleting it.", "reassign_references", revision)
 				return
 			}
+		}
+	}
+	if serviceAdoption {
+		current, err := s.library.captureLegacyProfiles()
+		if err != nil {
+			legacyInventoryFailure(w, revision)
+			return
+		}
+		if !request.Adoption.sameSource(current) {
+			libraryFailure(w, 409, "legacy_source_changed", "The original service profile capture changed before commit. Keep it and recapture before retrying.", "recapture_inventory", revision)
+			return
 		}
 	}
 	request.Document["revision"] = json.RawMessage(fmt.Sprint(revision + 1))

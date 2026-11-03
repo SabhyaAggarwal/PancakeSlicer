@@ -11,10 +11,16 @@ import (
 )
 
 type profileAdoption struct {
-	Scope    string `json:"scope"`
-	SourceID string `json:"sourceId"`
-	Digest   string `json:"digest"`
-	Source   string `json:"source"`
+	Scope               string                     `json:"scope"`
+	SourceID            string                     `json:"sourceId"`
+	Digest              string                     `json:"digest"`
+	Source              string                     `json:"source"`
+	IdentityResolutions []serviceProfileResolution `json:"identityResolutions,omitempty"`
+}
+type serviceProfileResolution struct {
+	Path      string `json:"path"`
+	SHA256    string `json:"sha256"`
+	ProfileID string `json:"profileId"`
 }
 type profileAdoptionReceipt struct {
 	profileAdoption
@@ -24,7 +30,11 @@ type profileAdoptionReceipt struct {
 }
 
 func (a *profileAdoption) validate() error {
-	if a.Scope != "profile-library-and-working-setup" || !strings.HasPrefix(a.SourceID, "browser-profile-library:v1:") || len(a.SourceID) <= len("browser-profile-library:v1:") || len(a.SourceID) > 500 || a.Source == "" {
+	prefix := "browser-profile-library:v1:"
+	if strings.HasPrefix(a.SourceID, serviceProfilePrefix) {
+		prefix = serviceProfilePrefix
+	}
+	if a.Scope != "profile-library-and-working-setup" || !strings.HasPrefix(a.SourceID, prefix) || len(a.SourceID) <= len(prefix) || len(a.SourceID) > 500 || a.Source == "" {
 		return errors.New("adoption requires scope, stable sourceId and the exact readonly source string")
 	}
 	sum := sha256.Sum256([]byte(a.Source))
@@ -38,7 +48,17 @@ func (a *profileAdoption) validate() error {
 	if raw := capture["complete"]; string(raw) != "true" {
 		return errors.New("an incomplete or unknown source capture cannot be acknowledged")
 	}
+	if prefix == serviceProfilePrefix && (stringValue(capture["kind"]) != "service-user-presets" || a.SourceID != prefix+stringValue(capture["origin"])) {
+		return errors.New("service profile capture requires its original service provenance")
+	}
+	if prefix != serviceProfilePrefix && len(a.IdentityResolutions) > 0 {
+		return errors.New("service file identity resolutions cannot alter a browser capture")
+	}
 	return nil
+}
+
+func (a *profileAdoption) sameSource(b *profileAdoption) bool {
+	return a != nil && b != nil && a.Scope == b.Scope && a.SourceID == b.SourceID && a.Digest == b.Digest && a.Source == b.Source
 }
 
 func (s *Server) profileAdoptionRoutes(mux *http.ServeMux) {

@@ -11,13 +11,14 @@ var buildRevision string
 var buildImage string
 
 type About struct {
-	Version          string `json:"version"`
-	Revision         string `json:"revision"`
-	Image            string `json:"image"`
-	License          string `json:"license"`
-	SourceURL        string `json:"source_url"`
-	SourceConfigured bool   `json:"source_configured"`
-	SourceSHA256     string `json:"source_sha256"`
+	Version                      string `json:"version"`
+	Revision                     string `json:"revision"`
+	Image                        string `json:"image"`
+	License                      string `json:"license"`
+	SourceURL                    string `json:"source_url"`
+	SourceConfigured             bool   `json:"source_configured"`
+	SourceSHA256                 string `json:"source_sha256"`
+	ServiceProfileAdoptionSchema int    `json:"service_profile_adoption_schema"`
 }
 
 func validateSourceURL(source string) error {
@@ -68,5 +69,5 @@ func buildAbout(c Config) About {
 	} else {
 		source = strings.TrimRight(source, "/") + "/tree/" + url.PathEscape(revision)
 	}
-	return About{Version: version, Revision: revision, Image: env("ORCA_BUILD_IMAGE", buildImage), License: "AGPL-3.0", SourceURL: source, SourceConfigured: source != "", SourceSHA256: sourceSHA256()}
+	return About{Version: version, Revision: revision, Image: env("ORCA_BUILD_IMAGE", buildImage), License: "AGPL-3.0", SourceURL: source, SourceConfigured: source != "", SourceSHA256: sourceSHA256(), ServiceProfileAdoptionSchema: 1}
 }
