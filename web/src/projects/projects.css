@@ -61,7 +61,6 @@
 :where(.orca-parity) .pj-rename.text { width: 100%; }
 :where(.orca-parity) .pj-rename-error { color: var(--danger); font: var(--t-small); }
 :where(.orca-parity) .pj-open { color: var(--accent-text); }
-:where(.orca-parity) .pj-open::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: var(--s-2); border-radius: 50%; background: var(--accent); vertical-align: 1px; }
 :where(.orca-parity) .pj-check { display: flex; }
 :where(.orca-parity) .pj-fav.on { color: var(--warn); }
 :where(.orca-parity) .pj-item .pj-check, :where(.orca-parity) .pj-item .pj-icon:not(.on) { opacity: 0; }

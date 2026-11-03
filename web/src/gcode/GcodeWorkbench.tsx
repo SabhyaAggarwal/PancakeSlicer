@@ -45,9 +45,8 @@ export default function GcodeWorkbench({ type, slot = 0, keys, labels, config, s
 
   return <div className={`gcode-bench ${fill ? 'fill' : ''}`}><div className="gcode-grid" data-drilled={drilled || undefined}>
     <div className="gcode-hooks" role="listbox" aria-label="Custom G-code">
-      {keys.map((k) => { const n = lines(value(k)); return <button key={k} type="button" role="option" aria-selected={k === key} className="gcode-hook" onClick={() => open(k)}>
+      {keys.map((k) => { const n = lines(value(k)); return <button key={k} type="button" role="option" aria-selected={k === key} className="gcode-hook" data-modified={modified(k) || undefined} aria-description={modified(k) ? 'Modified' : undefined} onClick={() => open(k)}>
         <span className="gcode-hook-name">{shortLabel(k)}</span>
-        {modified(k) && <span className="gcode-mod" role="img" aria-label="Modified" />}
         <span className="gcode-hook-meta">{n ? `${n} line${n > 1 ? 's' : ''}` : 'Empty'}</span>
       </button>; })}
     </div>

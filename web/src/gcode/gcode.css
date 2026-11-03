@@ -10,7 +10,7 @@
 :where(.orca-parity) .gcode-hook[aria-selected=true] { background: var(--selected); }
 :where(.orca-parity) .gcode-hook-name { grid-area: name; min-width: 0; overflow-wrap: break-word; }
 :where(.orca-parity) .gcode-hook-meta { grid-area: meta; color: var(--ink-3); font: var(--t-small); }
-:where(.orca-parity) .gcode-mod { grid-area: mod; width: 6px; height: 6px; border-radius: 50%; background: var(--modified); }
+:where(.orca-parity) .gcode-hook[data-modified] .gcode-hook-name { color: var(--modified); }
 :where(.orca-parity) .gcode-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 :where(.orca-parity) .gcode-pane-head { display: flex; align-items: center; gap: var(--s-3); min-height: 40px; padding: 0 var(--s-2) 0 var(--s-4); border-bottom: 1px solid var(--line); }
 :where(.orca-parity) .gcode-title { flex: 1; min-width: 0; margin: 0; font: var(--t-title); color: var(--text); overflow-wrap: break-word; }

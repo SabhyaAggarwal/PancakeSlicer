@@ -3,6 +3,7 @@ import { Caret } from './Caret';
 import { useEffect, useRef, useState } from 'react';
 import { Glyph } from './Glyph';
 import { requestAddSettings } from './add-settings-request';
+import { showSettings } from '../workspace-sheet';
 import { useTab } from '../options';
 import { effectiveConfig, getState, isSelected, selectedObjectIds, selectionOf, setState, toggleSelection, updateInstance, updateVolume, togglePrintable, useStore } from '../state/store';
 import { volumeIcon } from '../plater/volumes';
@@ -15,6 +16,7 @@ import { STYLE_NAMES, styleOf } from '../style-names';
 import { plateResults } from '../recommend';
 import { canAddPlate, OBJECT_DRAG } from '../plater/plates';
 import { rangeLabel } from '../plater/ranges';
+import { overrideCount } from '../plater/overrides';
 import { setHoverLink, useHoverLink } from '../plater/hoverLink';
 import './prepare.css';
 
@@ -88,14 +90,14 @@ export function ObjectList() {
   const settingsCell = (n: number, name: string, pick: () => void) => (
     <span role="gridcell" className="ol-set">
       <button type="button" className={`ol-set-btn${n ? ' has' : ''}`} aria-label={n ? `${name}: ${n} setting${n === 1 ? '' : 's'}` : `Add settings to ${name}`}
-        onClick={(e) => { e.stopPropagation(); pick(); if (!n) requestAddSettings(); }}>
+        onClick={(e) => { e.stopPropagation(); pick(); showSettings(); if (!n) requestAddSettings(); }}>
         {n ? <><Icon name="cog" size={14} />{n}</> : <Glyph name="plus" size={14} />}
       </button>
     </span>
   );
   const list = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const box = list.current?.closest<HTMLElement>('.rail-objects'), row = list.current?.querySelector<HTMLElement>('.ol-row.selected');
+    const box = list.current?.closest<HTMLElement>('.op-body'), row = list.current?.querySelector<HTMLElement>('.ol-row.selected');
     if (!box || !row) return;
     const b = box.getBoundingClientRect(), r = row.getBoundingClientRect();
     if (r.top < b.top) box.scrollTop -= b.top - r.top;
@@ -124,9 +126,9 @@ export function ObjectList() {
           const multi = o.instances.length > 1;
           const instSelected = (id: number) => (selected?.all ? isSelected(selected, o.id, id) : selected?.instance === id);
           const sinking = !o.project?.placeholder && o.instances.some((i) => { const b = instanceBox(o, i); return b.min.z < -0.001 && b.max.z >= -0.001; });
-          const nSettings = Object.keys(o.settings).length;
           const expandable = multi || !!o.volumes?.length || !!o.ranges?.length;
           const expanded = open[o.id] ?? (!!o.volumes?.length || !!o.ranges?.length);
+          const nSettings = expanded ? Object.keys(o.settings).length : overrideCount(o);
           const pickSettings = () => setState((st) => ({ processScope: 'objects',
             selected: objSelected && st.selected?.all ? st.selected : { object: o.id, instance: o.instances[0].id, allInstances: true } }));
           const style = o.project ? plateStyle : styleOf({ ...global, ...o.settings });

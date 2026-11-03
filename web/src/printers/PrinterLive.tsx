@@ -2,8 +2,6 @@ import { setState, useStore } from '../state/store';
 import { pickerStatus } from './connections';
 import './printers.css';
 
-const DOT = { online: 'online', printing: 'active', error: 'problem', offline: '' } as const;
-
 export function PrinterLive() {
   const enabled = useStore((s) => s.printerConnections.enabled);
   const label = useStore((s) => pickerStatus(s.printerConnections, s.printer)?.label);
@@ -15,9 +13,8 @@ export function PrinterLive() {
   if (!enabled) return null;
   const open = () => setState({ appDialog: 'send' });
   return (
-    <button type="button" className="printer-live" onClick={open} title={label ? 'Printer status and Send' : 'Connect this printer'}>
-      <span className={`printer-dot ${tone ? DOT[tone] : ''}`} aria-hidden />
-      <span className="printer-live-text">{label ?? 'Not connected · Connect'}</span>
+    <button type="button" className="printer-live" onClick={open} aria-label={label ? `${label}. Printer status and Send` : 'Not connected. Connect this printer'}>
+      <span className="printer-live-text">{label ? <span className="status-text" data-tone={tone}>{label}</span> : <><span className="status-text" data-tone="offline">Not connected</span> · <span className="printer-live-action">Connect</span></>}</span>
       {progress != null && <span className="printer-live-bar" aria-hidden><span style={{ width: `${100 * progress}%` }} /></span>}
     </button>
   );

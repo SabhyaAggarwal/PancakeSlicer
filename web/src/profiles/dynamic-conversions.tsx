@@ -90,7 +90,7 @@ function MergeDialog({ type }: { type: PresetType }) {
       setBusy(false);
     }
   };
-  return <Modal size="m" label="Merge similar profiles" onClose={close}>
+  return <Modal size={proposals.length ? 'm' : 's'} label="Merge similar profiles" onClose={close}>
     <ModalTitle title="Merge similar profiles" onClose={close} />
     <ModalBody>
       {proposals.length ? <div className="modal-pick"><div className="modal-pick-list">{proposals.map(({ group, merged }, i) =>
@@ -121,7 +121,10 @@ const contextLabel = (type: PresetType, c: DynamicContext) => type === 'process'
 function SplitDialog({ type, profile }: { type: PresetType; profile: string }) {
   const name = useStore((s) => findProfile(s, type, profile)?.name ?? '');
   const [split] = useState(() => splitSource(getState(), type, profile));
-  const [checked, setChecked] = useState(() => { const nozzle = printContext(getState()).nozzle; return split?.list.map((c) => sameMm(c.nozzle, nozzle)) ?? []; });
+  const [checked, setChecked] = useState(() => {
+    const nozzle = printContext(getState()).nozzle, own = split?.list.map((c) => sameMm(c.nozzle, nozzle)) ?? [];
+    return own.some(Boolean) ? own : own.map(() => true);
+  });
   const [busy, setBusy] = useState(false);
   const count = checked.filter(Boolean).length;
   const run = async () => {
@@ -136,7 +139,11 @@ function SplitDialog({ type, profile }: { type: PresetType; profile: string }) {
       const { commitProfileRecords } = await import('./transactions');
       await commitProfileRecords(records, { operationId });
       close();
-      toast(records.length === 1 ? `Added ${records[0].name}` : `Added ${records.length} profiles`);
+      const undo = async () => {
+        const now = getState(), added = records.flatMap((r) => { const p = findProfile(now, type, profileKey(r)); return p && !p.archived ? [archiveProfile(now, type, profileKey(p), operationId)] : []; });
+        if (added.length) await commitProfileRecords(added).catch((e) => toast(e instanceof Error ? e.message : String(e), null, null, 'error'));
+      };
+      toast(records.length === 1 ? `Added ${records[0].name}` : `Added ${records.length} profiles`, { label: 'Undo', run: () => void undo() });
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), null, null, 'error');
       setBusy(false);

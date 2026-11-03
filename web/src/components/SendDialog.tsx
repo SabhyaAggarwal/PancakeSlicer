@@ -7,8 +7,8 @@ import { download, exportFilename, outputKind } from '../actions';
 import { printerSend, usePrinterSend, type Transfer } from '../flow/transfer';
 import { filamentColor } from '../plater/filamentColor';
 import { effectiveConfig, getState, resolvePreset, toast, useStore } from '../state/store';
-import { ConnectionEditor, statusClass } from '../printers/ConnectionEditor';
-import { connectionOf, connectionOutput, controlPrinter, KIND_LABEL, readTrays, statusLine, tempLine, type Tray } from '../printers/connections';
+import { ConnectionEditor } from '../printers/ConnectionEditor';
+import { connectionOf, connectionOutput, controlPrinter, KIND_LABEL, readTrays, statusLine, statusTone, tempLine, type Tray } from '../printers/connections';
 import '../printers/printers.css';
 
 const EXTERNAL = 254;
@@ -53,11 +53,10 @@ export default function SendDialog({ close }: { close: () => void }) {
   const title = 'Send to printer';
   const head = <>
     <div className="send-target">
-      <span className={`printer-dot ${statusClass(status)}`} aria-hidden />
       {choices.length > 1
         ? <Dropdown className="combo" value={printer} aria-label="Printer" onValueChange={setTarget} options={choices.map((k) => ({ value: k, label: setupName(k) }))} />
         : <span className="send-target-name">{name}</span>}
-      <span className="send-target-state">{connection ? [statusLine(status), KIND_LABEL[connection.kind], connection.host ?? connection.url?.replace(/^https?:\/\//, ''), tempLine(status)].filter(Boolean).join(' · ') : 'Not connected'}</span>
+      <span className="send-target-state"><span className="status-text" data-tone={statusTone(status)}>{(connection && statusLine(status)) || 'Not connected'}</span>{connection && [KIND_LABEL[connection.kind], connection.host ?? connection.url?.replace(/^https?:\/\//, ''), tempLine(status)].filter(Boolean).map((x) => ` · ${x}`).join('')}</span>
       {connection && <button type="button" className="btn-ghost send-target-edit" onClick={() => setEditing(!editing)}>{editing ? 'Done' : 'Connection'}</button>}
     </div>
     {(!connection || editing) && <ConnectionEditor key={printer} printer={printer} name={name} onSaved={() => setEditing(false)} />}
@@ -172,7 +171,7 @@ function SendView({ close, printer, head }: { close: () => void; printer: string
       {running && (
         <div className="send-live" aria-label="Printer status">
           <div className="send-live-row">
-            <span>{statusLine(status)}{status!.file ? ` · ${status!.file}` : ''}</span>
+            <span><span className="status-text" data-tone={statusTone(status)}>{statusLine(status)}</span>{status!.file ? ` · ${status!.file}` : ''}</span>
             <button type="button" className="btn" disabled={!!working} onClick={() => void control(status!.state === 'paused' ? 'resume' : 'pause')}>{status!.state === 'paused' ? 'Resume' : 'Pause'}</button>
             <button type="button" className="btn" disabled={!!working} onClick={() => void control('stop')}>Stop</button>
           </div>

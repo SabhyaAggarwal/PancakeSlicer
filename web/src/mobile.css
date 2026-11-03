@@ -41,6 +41,8 @@
   :where(.orca-parity) .canvas-area .object-info { left: 8px; bottom: 66px; max-width: calc(100% - 16px - 48px); font-size: 12px; flex-wrap: nowrap; white-space: nowrap; overflow: hidden; }
   :where(.orca-parity) .nav3d { display: none; }
   :where(.orca-parity) .nav-view-control { display: inline-grid; position: absolute; z-index: 7; top: 8px; left: calc(max(8px,env(safe-area-inset-left)) + var(--canvas-chip) + 4px); }
+  :where(.orca-parity) .canvas-area .objects-panel { top: 8px; left: calc(max(8px,env(safe-area-inset-left)) + 2 * var(--canvas-chip) + 8px); --op-w: min(300px, calc(100% - 2 * var(--canvas-chip) - 24px)); max-height: calc(50% - 60px); }
+  :where(.orca-parity) .canvas-area .op-head { min-height: var(--canvas-chip); }
   :where(.orca-parity) .transform-anchor { left: max(8px,env(safe-area-inset-left)); }
   :where(.orca-parity) .canvas-unavailable { padding-top: 60px; }
   :where(.orca-parity) .rail-head { --rail-act: 40px; }

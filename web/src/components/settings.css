@@ -114,10 +114,6 @@
 :where(.orca-parity) .process-section > .tab-preset-row { flex: none; border: 0; padding: 6px 8px; }
 :where(.orca-parity) .scope-tabs { display: flex; }
 :where(.orca-parity) .scope-tabs > button { flex: 1; }
-:where(.orca-parity) .obj-settings-head { background: transparent; border: 0; padding: 8px; gap: 8px; flex-wrap: wrap; font-weight: 400; }
-:where(.orca-parity) .override-context { flex: 1; color: var(--muted); font-size: 12px; }
-:where(.orca-parity) .obj-settings-tools { gap: 6px; flex-wrap: wrap; }
-:where(.orca-parity) .obj-settings-empty { padding: 4px 8px 12px; }
 :where(.orca-parity) .pk-name, :where(.orca-parity) .pk-trigger .dropdown-value { color: var(--text); font-weight: 400; }
 
 

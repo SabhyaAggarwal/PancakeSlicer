@@ -97,7 +97,7 @@ export function FilamentPicker({ slot }: { slot: number }) {
   return (
     <span className="pk-slot">
       <FilamentColourMenu slot={slot}/>
-      <Picker label={`Filament ${slot + 1}`} value={name} sections memory="orca.web.picker.filament" facetLabel="Vendor" groups={sameStateGroups(`filament:${slot}`, () => filamentGroups(slot))}
+      <Picker label={`Filament ${slot + 1}`} value={name} sections memory="orca.web.picker.filament" facetHeads groups={sameStateGroups(`filament:${slot}`, () => filamentGroups(slot))}
         catalog={{ label: 'Add filament', groups: sameStateGroups(`filament-catalog:${slot}`, () => filamentGroups(slot, true)), onAdd: (id) => createProfileFromBase('filament', id, slot) }}
         onPick={(id) => pickOrOpen('filament', id, (id) => id !== name && requestPreset('filament', slot, id))} footer={[presets('filament', name)]}>
         {pending ? <PickerSkeleton/> : <><span className="pk-type">{first(c.filament_type) || '—'}</span>
@@ -111,7 +111,7 @@ export function FilamentPicker({ slot }: { slot: number }) {
 export function AddFilamentPicker({ disabled }: { disabled?: boolean }) {
   if (disabled) return null;
   return (
-    <Picker label="Add filament" className="is-link" sections memory="orca.web.picker.filament" facetLabel="Vendor" groups={sameStateGroups('filament:add', () => filamentGroups(null))} catalog={{ label: 'Add filament', groups: sameStateGroups('filament-catalog:add', () => filamentGroups(null, true)), onAdd: (id) => createProfileFromBase('filament', id, 0, addSlot) }} onPick={(id) => pickOrOpen('filament', id, addSlot)}
+    <Picker label="Add filament" className="is-link" sections memory="orca.web.picker.filament" facetHeads groups={sameStateGroups('filament:add', () => filamentGroups(null))} catalog={{ label: 'Add filament', groups: sameStateGroups('filament-catalog:add', () => filamentGroups(null, true)), onAdd: (id) => createProfileFromBase('filament', id, 0, addSlot) }} onPick={(id) => pickOrOpen('filament', id, addSlot)}
       footer={[presets('filament')]}>
       Add
     </Picker>

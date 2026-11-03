@@ -3,8 +3,8 @@ import { confirmDialog } from '../components/Ask';
 import { Dropdown } from '../components/Dropdown';
 import { getState, resolvePreset, toast, useStore } from '../state/store';
 import {
-  adoptConnection, connectionOf, discoverPrinters, KIND_LABEL, removeConnection, saveConnection, statusLine, tempLine, testConnection, unassigned,
-  type ConnectionEdit, type ConnectionKind, type ConnectionTest, type Discovered, type PrinterStatus,
+  adoptConnection, connectionOf, discoverPrinters, KIND_LABEL, removeConnection, saveConnection, statusLine, statusTone, tempLine, testConnection, unassigned,
+  type ConnectionEdit, type ConnectionKind, type ConnectionTest, type Discovered,
 } from './connections';
 import './printers.css';
 
@@ -21,12 +21,6 @@ function defaultKind(printer: string): ConnectionKind {
   if (base?.vendor === 'BBL' || /bambu/i.test(base?.name ?? '')) return 'bambu-lan';
   if (base?.vendor === 'Prusa') return 'prusalink';
   return String(config?.gcode_flavor ?? '') === 'klipper' ? 'moonraker' : 'octoprint';
-}
-
-export function statusClass(st: PrinterStatus | undefined) {
-  if (!st?.online) return '';
-  if (st.state === 'failed' || st.state === 'error') return 'problem';
-  return st.state === 'printing' || st.state === 'paused' || st.state === 'busy' ? 'active' : 'online';
 }
 
 export function ConnectionEditor({ printer, name, onSaved }: { printer: string; name: string; onSaved?(): void }) {
@@ -88,8 +82,7 @@ export function ConnectionEditor({ printer, name, onSaved }: { printer: string; 
     <div className="connection-editor">
       {saved && (
         <div className="send-target" role="status">
-          <span className={`printer-dot ${statusClass(status)}`} />
-          <span>{statusLine(status) || 'Saved'}</span>
+          <span className="status-text" data-tone={statusTone(status)}>{statusLine(status) || 'Saved'}</span>
           {tempLine(status) && <span className="send-meta">{tempLine(status)}</span>}
         </div>
       )}

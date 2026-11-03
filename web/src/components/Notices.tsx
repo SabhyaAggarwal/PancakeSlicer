@@ -5,7 +5,7 @@ import { slice } from '../actions';
 import { noticeKind, noticeMs, sliceFailure } from '../notice-text';
 import { getState, setState, useStore } from '../state/store';
 import { Icon } from './Icon';
-import { InTopLayer } from './Modal';
+import { InTopLayer, useModalCount } from './Modal';
 import './notices.css';
 
 
@@ -25,6 +25,18 @@ export function Toast() {
   }, [toast, seq, held, ms]);
   useEffect(() => setHeld(false), [msg]);
   const lane = useNoticeLane(msg);
+  const overDialog = useModalCount() > 0;
+  const undoKey = overDialog && action?.label === 'Undo';
+  useEffect(() => {
+    if (!undoKey || !action) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'z' || (e.target instanceof Element && e.target.closest('input,select,textarea,[contenteditable="true"]'))) return;
+      e.preventDefault(); e.stopPropagation();
+      setState({ toast: null }); action.run();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [undoKey, action]);
   if (!msg) return null;
   const kind = toast ? given ?? noticeKind(msg) : 'info';
   const reload = /^Presets failed to load/i.test(msg);
@@ -36,7 +48,7 @@ export function Toast() {
           <div>{msg}</div>
         </div>
         {reload && !action && <button type="button" className="btn-ghost toast-action" onClick={() => location.reload()}>Reload</button>}
-        {action && <button type="button" className="btn-ghost toast-action" onClick={() => { setState({ toast: null }); action.run(); }}>{action.label}</button>}
+        {action && <button type="button" className="btn-ghost toast-action" aria-keyshortcuts={undoKey ? 'Control+Z Meta+Z' : undefined} onClick={() => { setState({ toast: null }); action.run(); }}>{action.label}</button>}
         {toast && (
           <button type="button" className="toast-close icon-btn" aria-label="Close" onClick={() => setState({ toast: null })}>
             <Glyph name="close" size={14} />

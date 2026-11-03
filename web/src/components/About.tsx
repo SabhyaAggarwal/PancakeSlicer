@@ -4,7 +4,7 @@ import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 export type BuildAbout = { version: string; revision: string; image: string; license: string; source_url: string; source_configured: boolean; source_sha256: string };
 
 export function AboutContent({ about }: { about: BuildAbout }) {
-  const link = (href: string, text: string) => <a href={href} target="_blank" rel="noreferrer">{text}</a>;
+  const link = (href: string, text: string) => <a className="link" href={href} target="_blank" rel="noreferrer">{text}</a>;
   return <dl className="modal-grid">
     <dt>Version</dt><dd data-truncated="true" data-full-text={about.revision}>{about.version}</dd>
     {about.image && <><dt>Image</dt><dd>{about.image}</dd></>}

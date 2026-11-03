@@ -16,9 +16,8 @@ import './settings.css';
 import { Glyph, type GlyphName } from './Glyph';
 import { LayerHeightChooser } from '../profiles/LayerHeightChooser';
 import { PrinterLive } from '../printers/PrinterLive';
-const ObjectSettings = lazy(() => import('./ObjectSettings').then(m => ({default: m.ObjectSettings})));
+const ObjectScope = lazy(() => import('./ObjectOverrides'));
 const SettingsTab = lazy(() => import('./SettingsTab').then(m => ({default: m.SettingsTab})));
-const ObjectList = lazy(() => import('./ObjectList').then(m => ({default: m.ObjectList})));
 
 function RailSection({title, meta, actions, className = '', children}: {title: string; meta?: ReactNode; actions?: ReactNode; className?: string; children: ReactNode}) {
   return <section className={`rail-section ${className}`} aria-label={title}>
@@ -53,16 +52,6 @@ function FilamentSection() {
     {slots.map((_name, i) => <div key={i} className="rail-row rail-slot"><PresetCombo type="filament" slot={i}/>
       {slots.length > 1 && <button type="button" className="icon-btn rail-slot-remove" aria-label={`Remove filament slot ${i + 1}`} onClick={() => removeSlot(i)}><Glyph name="close" size={14}/></button>}</div>)}
   </RailSection>;
-}
-let objectsOpen = true;
-function ObjectsSection() {
-  const count = useStore(s => s.objects.length);
-  const [open, setOpen] = useState(objectsOpen);
-  if (!count) return null;
-  return <section className="rail-section objects-section" aria-label="Objects">
-    <header className="rail-head"><h2 className="rail-title"><button type="button" className="rail-fold" aria-expanded={open} onClick={() => setOpen(objectsOpen = !open)}>Objects<Caret dir={open ? 'down' : 'right'}/></button></h2><span className="rail-count">{count}</span></header>
-    {open && <div className="rail-objects scroll-fade"><Suspense fallback={null}><ObjectList/></Suspense></div>}
-  </section>;
 }
 const DETAIL = [['simple', 'Simple'], ['advanced', 'Advanced'], ['develop', 'Expert']] as const;
 type Detail = (typeof DETAIL)[number][0];
@@ -106,12 +95,13 @@ export function Sidebar() {
     <PrinterSection/>
     {ready && <>
       <FilamentSection/>
-      <ObjectsSection/>
-      <RailSection title="Print settings" className="process-section" meta={<ChangesMark type="process"/>} actions={<><ViewChoices/><RailAction glyph="edit" label="Edit print settings" disabled={!process} onClick={() => edit('process', process)}/><PresetActions type="process"/></>}>
-        <div className="rail-row rail-row-wide"><PresetCombo type="process"/></div>
-        <LayerHeightChooser/>
-        {process && <ConflictLine type="process" name={process}/>}
-        <div className="process-panel"><Suspense fallback={<div className="settings-load" role="status">Loading settings…</div>}>{objects ? <ObjectSettings/> : <SettingsTab type="process" compact hidePreset/>}</Suspense></div>
+      <RailSection title="Print settings" className="process-section" meta={!objects && <ChangesMark type="process"/>} actions={<><ViewChoices/>{!objects && <><RailAction glyph="edit" label="Edit print settings" disabled={!process} onClick={() => edit('process', process)}/><PresetActions type="process"/></>}</>}>
+        {objects ? <Suspense fallback={<div className="settings-load" role="status">Loading settings…</div>}><ObjectScope/></Suspense> : <>
+          <div className="rail-row rail-row-wide"><PresetCombo type="process"/></div>
+          <LayerHeightChooser/>
+          {process && <ConflictLine type="process" name={process}/>}
+          <div className="process-panel"><Suspense fallback={<div className="settings-load" role="status">Loading settings…</div>}><SettingsTab type="process" compact hidePreset/></Suspense></div>
+        </>}
       </RailSection>
       <SliceSummary/>
     </>}

@@ -17,10 +17,7 @@
 :where(.orca-parity) .send-live-row .btn { margin-left: auto; }
 :where(.orca-parity) .send-live-row .btn + .btn { margin-left: 0; }
 
-:where(.orca-parity) .printer-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--ink-disabled); }
-:where(.orca-parity) .printer-dot.online { background: var(--success); }
-:where(.orca-parity) .printer-dot.active { background: var(--accent); }
-:where(.orca-parity) .printer-dot.problem { background: var(--danger); }
+:where(.orca-parity) .printer-live-action { color: var(--accent-text); text-decoration: underline; text-underline-offset: 2px; }
 
 :where(.orca-parity) .connection-editor { display: grid; gap: var(--s-2); }
 :where(.orca-parity) .connection-hint { padding-left: calc(11rem + var(--s-4)); }
@@ -41,8 +38,8 @@
 :where(.orca-parity) .found-acts .btn-ghost { min-height: var(--h-compact); padding: 0 var(--s-3); font: var(--t-small); color: var(--accent-text); }
 @media (hover: hover) { :where(.orca-parity) .found-table tr:not(:hover):not(:focus-within) .found-acts > * { visibility: hidden; } }
 @media (max-width: 599px) { :where(.orca-parity) .found-kind { display: none; } }
-:where(.orca-parity) .printer-live { display: grid; grid-template-columns: 8px minmax(0, 1fr); align-items: center; column-gap: var(--s-2); row-gap: var(--s-1); width: calc(100% - 2 * var(--space-section) - 40px - var(--s-3)); margin: var(--s-1) var(--space-section) 0 calc(var(--space-section) + 40px + var(--s-3)); padding: var(--s-1) 0; border: 0; background: none; color: var(--ink-3); font: var(--t-small); text-align: left; cursor: pointer; }
+:where(.orca-parity) .printer-live { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; column-gap: var(--s-2); row-gap: var(--s-1); width: calc(100% - 2 * var(--space-section) - 40px - var(--s-3)); margin: var(--s-1) var(--space-section) 0 calc(var(--space-section) + 40px + var(--s-3)); padding: var(--s-1) 0; border: 0; background: none; color: var(--ink-3); font: var(--t-small); text-align: left; cursor: pointer; }
 :where(.orca-parity) .printer-live:hover .printer-live-text { color: var(--ink); }
 :where(.orca-parity) .printer-live-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-:where(.orca-parity) .printer-live-bar { grid-column: 2; height: 3px; border-radius: 2px; background: var(--line); overflow: hidden; }
+:where(.orca-parity) .printer-live-bar { grid-column: 1; height: 3px; border-radius: 2px; background: var(--line); overflow: hidden; }
 :where(.orca-parity) .printer-live-bar > span { display: block; height: 100%; background: var(--accent); }

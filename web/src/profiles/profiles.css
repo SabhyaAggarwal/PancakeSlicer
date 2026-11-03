@@ -34,7 +34,7 @@
 :where(.orca-parity) .scope-use::after { content: ''; position: absolute; left: 50%; top: 50%; width: 8px; height: 2px; margin: -1px 0 0 -4px; background: var(--ink-2); }
 :where(.orca-parity) .scope-use:hover::after, :where(.orca-parity) .scope-use:focus-visible::after { background: var(--ink); }
 :where(.orca-parity) .opt-line:has(.scope-use) .opt-field :is(input.text, .combo) { box-shadow: inset 0 -2px 0 var(--ink-2); }
-:where(.orca-parity) .sidebar :is(.settings-tab, .obj-settings) { --opt-end: var(--s-6, 20px); }
+:where(.orca-parity) .sidebar .settings-tab { --opt-end: var(--s-6, 20px); }
 :where(.orca-parity) .pf-scope-switch { display: flex; gap: var(--s-2); padding: var(--s-3) var(--s-4); }
 :where(.orca-parity) .pf-scope-switch button { flex: 1; height: var(--control-height); border: 1px solid var(--line); border-radius: var(--control-radius); background: none; font: inherit; color: var(--ink-2); cursor: pointer; }
 :where(.orca-parity) .pf-scope-switch button[aria-pressed='true'] { color: var(--ink); border-color: var(--ink-3); }
@@ -107,7 +107,7 @@
 :where(.orca-parity) .color-trigger[data-ink] { display: inline-grid; place-items: center; color: #fff; font: var(--t-small); font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
 :where(.orca-parity) .color-trigger[data-ink=dark] { color: #1a1a1a; }
 :where(.orca-parity) .color-trigger[data-modified] { position: relative; }
-:where(.orca-parity) .color-trigger[data-modified]::after { content: ''; position: absolute; top: -3px; right: -3px; width: 6px; height: 6px; border-radius: 50%; background: var(--modified); box-shadow: 0 0 0 1px var(--panel); }
+:where(.orca-parity) .color-trigger[data-modified] { outline: 2px solid var(--modified); outline-offset: 1px; }
 :where(.orca-parity) .filament-colour-actions { flex-wrap: wrap; }
 :where(.orca-parity) .pk-skel-name { width: 9em; max-width: 100%; height: 12px; }
 :where(.orca-parity) .pk-skel-sub { width: 6em; max-width: 70%; height: 10px; margin-top: var(--s-2); }

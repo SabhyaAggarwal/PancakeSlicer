@@ -47,6 +47,23 @@
 
 :where(.orca-parity) .canvas-area { container-type: inline-size; }
 :where(.orca-parity) .canvas-toolbar img, :where(.orca-parity) .toolbar img { filter: var(--icon-filter); }
+:where(.orca-parity) .objects-panel { --op-w: clamp(220px, 30cqw, 280px); position: absolute; z-index: 6; top: 56px; left: var(--s-4); display: flex; flex-direction: column;
+  max-width: var(--op-w); max-height: calc(100% - 56px - 200px); background: var(--raised); border: 1px solid var(--line); border-radius: var(--r-3); box-shadow: var(--shadow-pop); color: var(--ink); }
+:where(.orca-parity) .objects-panel[data-open] { width: var(--op-w); }
+:where(.orca-parity) .op-head { flex: none; display: flex; align-items: center; gap: var(--s-3); width: 100%; min-height: var(--h-compact); padding: var(--s-2) var(--s-3) var(--s-2) var(--s-4);
+  border: 0; border-radius: inherit; background: none; color: var(--ink); font: var(--t-title); text-align: left; cursor: pointer; }
+:where(.orca-parity) .op-head:hover { background: var(--hover); }
+:where(.orca-parity) .objects-panel[data-open] .op-head > :last-child { margin-left: auto; }
+:where(.orca-parity) .op-count { color: var(--ink-3); font: var(--t-small); font-variant-numeric: tabular-nums; }
+:where(.orca-parity) .op-body { min-height: 0; overflow: auto; padding: 0 var(--s-2) var(--s-2); scrollbar-width: none; overscroll-behavior: contain; }
+:where(.orca-parity) .op-body::-webkit-scrollbar { display: none; }
+:where(.orca-parity) .op-body .object-list { max-height: none; min-height: 0; border: 0; }
+:where(.orca-parity) .op-body .ol-row { border-radius: var(--r-1); }
+:where(.orca-parity) .op-body .search-bar { margin-bottom: var(--s-1); border-radius: var(--control-radius); }
+:where(.orca-parity) .canvas-area:has(.objects-panel) :is(.transform-anchor, .manip-panel) { top: 100px; }
+@media (min-width: 900px) {
+  :where(.orca-parity) .canvas-area:has(.objects-panel) .notifications { max-width: calc(100% - 156px - 2 * var(--s-4) - clamp(220px, 30cqw, 280px)); }
+}
 :where(.orca-parity) .outliner-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-2); padding: var(--s-2) var(--s-3); }
 @container (max-width: 780px) {
   :where(.orca-parity) .transform-anchor { top: 112px; }

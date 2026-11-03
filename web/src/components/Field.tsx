@@ -78,8 +78,12 @@ export const Field = memo(function Field(props: {
   source?: string;
   onResetToBase?: (key: string) => void;
   sourceState?: 'edited' | 'busy';
+  mixed?: string;
 }) {
   useTooltips();
+  const [unmixed, setUnmixed] = useState(false);
+  const fieldRef = useRef<HTMLFieldSetElement>(null);
+  useEffect(() => setUnmixed(false), [props.mixed]);
   const [key, idx] = splitKey(props.optKey);
   const labelId = useId();
   const baseDef = OPTIONS[key];
@@ -122,9 +126,13 @@ export const Field = memo(function Field(props: {
           {(def.default !== undefined || def.min !== undefined || def.max !== undefined) && <p className="info-meta">{[def.default !== undefined && asText(def.default) !== '' ? `Default ${asText(def.default)}${def.sidetext && !asText(def.default).endsWith('%') ? ` ${def.sidetext}` : ''}` : '', def.min !== undefined || def.max !== undefined ? `Range ${def.min ?? '…'} to ${def.max ?? '…'}` : ''].filter(Boolean).join(' · ')}</p>}
           <code>{key}</code></LabelTip>}
       </span>
-      <fieldset className="opt-field" aria-description={disabledReason} disabled={props.disabled || (def.nullable && !checked)}>
+      <fieldset ref={fieldRef} className="opt-field" aria-description={disabledReason} disabled={props.disabled || (def.nullable && !checked)}>
         <LabelId.Provider value={labelId}>
-          {props.widget ?? <Widget def={def} value={def.nullable && !checked ? fallback : value} onCommit={commit} />}
+          {props.widget ?? (props.mixed && !unmixed
+            ? <button type="button" className="field-mixed" aria-label={`${label}: mixed values ${props.mixed}; set one value`}
+              onClick={() => { setUnmixed(true); requestAnimationFrame(() => fieldRef.current?.querySelector<HTMLElement>('input, button, [role=combobox]')?.focus()); }}>
+              <span>Mixed</span><span className="field-mixed-values">{props.mixed}</span></button>
+            : <Widget def={def} value={def.nullable && !checked ? fallback : value} onCommit={commit} />)}
         </LabelId.Provider>
         {def.sidetext && (props.widget || !NUMERIC.has(def.type)) && <span className="opt-side">{def.sidetext}</span>}
       </fieldset>

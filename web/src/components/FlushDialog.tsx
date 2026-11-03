@@ -1,16 +1,12 @@
 import { useState } from 'react';
-import { MAX_FLUSH_VOLUME, minFlushVolumes, MULTIPLIER_RANGE, parseColour, predictorMinFlush } from '../flush';
+import { MAX_FLUSH_VOLUME, minFlushVolumes, MULTIPLIER_RANGE, predictorMinFlush } from '../flush';
 import { autoFlushMatrix, currentFlush, flushInputs } from '../flush-state';
 import { markStale, setState, useStore } from '../state/store';
 import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
+import { SlotChip } from './SlotChip';
 import { undoable } from '../state/history';
 
 const TYPICAL_MAX_FLUSH_VOLUME = 900;
-
-const textOn = (hex: string) => {
-  const [r, g, b] = parseColour(hex).rgb;
-  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.5 ? '#000' : '#fff';
-};
 
 export function FlushDialog() {
   const open = useStore((s) => s.flushDialog);
@@ -64,7 +60,7 @@ function FlushTable() {
   const outOfRange = raw.some((_, i) => Math.floor(i / n) !== i % n && (shown(i) < minVol || shown(i) > MAX_FLUSH_VOLUME));
 
   return (
-    <Modal size="l" label="Flushing volumes" onClose={close}>
+    <Modal size={n > 6 ? 'l' : 'm'} label="Flushing volumes" onClose={close}>
         <ModalTitle title="Flushing volumes" onClose={close} />
         <ModalBody>
           <label className="form-row"><span>Multiplier</span>
@@ -78,22 +74,14 @@ function FlushTable() {
                     <span className="flush-corner" aria-label="From / to" />
                   </th>
                   {colours.map((c, j) => (
-                    <th key={j}>
-                      <span className="flush-chip" style={{ background: c, color: textOn(c) }}>
-                        {j + 1}
-                      </span>
-                    </th>
+                    <th key={j} aria-label={`To filament ${j + 1}`}><SlotChip n={j + 1} colour={c} /></th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {colours.map((c, i) => (
                   <tr key={i}>
-                    <th>
-                      <span className="flush-chip" style={{ background: c, color: textOn(c) }}>
-                        {i + 1}
-                      </span>
-                    </th>
+                    <th aria-label={`From filament ${i + 1}`}><SlotChip n={i + 1} colour={c} /></th>
                     {colours.map((_, j) => {
                       const k = i * n + j;
                       const v = i === j ? 0 : shown(k);

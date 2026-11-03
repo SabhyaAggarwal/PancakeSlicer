@@ -14,6 +14,11 @@
 @keyframes notice-in { from { opacity: 0; transform: translate(-50%, var(--s-2)); } }
 :where(.orca-parity) .notifications > .toast { position: static; transform: none; left: auto; bottom: auto; min-width: 0; max-width: none; width: 100%; box-sizing: border-box; animation: notice-slide var(--dur-2) var(--ease); }
 
+:where(.orca-parity) .top-layer { position: fixed; inset: 0 auto auto 0; z-index: 110; pointer-events: none; }
+:where(.orca-parity) .top-layer > * { pointer-events: auto; }
+:where(.orca-parity) .top-layer > .notif-group { position: fixed; top: var(--s-5); left: 50%; transform: translateX(-50%); width: min(420px, calc(100vw - 2 * var(--s-5)));
+  display: flex; flex-direction: column; gap: var(--s-3); }
+:where(.orca-parity) .top-layer > .notif-group:empty { display: none; }
 :where(.orca-parity) .notification { animation: notice-slide var(--dur-2) var(--ease); }
 @keyframes notice-slide { from { opacity: 0; transform: translateY(var(--s-2)); } }
 :where(.orca-parity) .slice-failed .notif-title img { flex: none; }

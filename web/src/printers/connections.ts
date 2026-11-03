@@ -86,7 +86,7 @@ export async function migrateLegacyHost(printer: string, name: string, config: R
 export function statusLine(st: PrinterStatus | undefined): string {
   if (!st) return '';
   if (!st.online) return st.state === 'connecting' ? 'Connecting…' : 'Offline';
-  const word = { idle: 'Idle', printing: 'Printing', paused: 'Paused', finished: 'Finished', failed: 'Last print failed', busy: 'Busy', error: 'Error', offline: 'Printer offline', connecting: 'Connecting…' }[st.state];
+  const word = { idle: 'Connected', printing: 'Printing', paused: 'Paused', finished: 'Finished', failed: 'Last print failed', busy: 'Busy', error: 'Error', offline: 'Printer offline', connecting: 'Connecting…' }[st.state];
   const parts = [word + (st.progress != null && (st.state === 'printing' || st.state === 'paused') ? ` ${Math.round(st.progress * 100)}%` : '')];
   if (st.remaining_s && st.state === 'printing') {
     const m = Math.round(st.remaining_s / 60);
@@ -95,14 +95,19 @@ export function statusLine(st: PrinterStatus | undefined): string {
   if ((st.state === 'error' || st.state === 'failed') && st.detail && st.detail.toLowerCase() !== st.state) parts.push(st.detail);
   return parts.join(' · ');
 }
-export function pickerStatus(c: PrinterConnections, printer: string): { label: string; tone: 'online' | 'printing' | 'offline' | 'error' } | undefined {
+export type StatusTone = 'online' | 'printing' | 'paused' | 'error' | 'offline';
+export function statusTone(st: PrinterStatus | undefined): StatusTone {
+  if (!st?.online) return 'offline';
+  if (st.state === 'failed' || st.state === 'error') return 'error';
+  return st.state === 'paused' ? 'paused' : st.state === 'printing' || st.state === 'busy' ? 'printing' : 'online';
+}
+export function pickerStatus(c: PrinterConnections, printer: string): { label: string; tone: StatusTone } | undefined {
   const connection = connectionOf(c, printer);
   if (!connection) return undefined;
   if (connection.kind === 'bambu-connect') return { label: 'Bambu Connect', tone: 'online' };
   const st = c.status[printer];
   if (!st || !st.online) return { label: st ? statusLine(st) : 'Not connected', tone: 'offline' };
-  const tone = st.state === 'failed' || st.state === 'error' ? 'error' : st.state === 'printing' || st.state === 'paused' || st.state === 'busy' ? 'printing' : 'online';
-  return { label: statusLine(st), tone };
+  return { label: statusLine(st), tone: statusTone(st) };
 }
 export const tempLine = (st: PrinterStatus | undefined) => [st?.nozzle && `Nozzle ${Math.round(st.nozzle.actual)}${st.nozzle.target ? `/${Math.round(st.nozzle.target)}` : ''} °C`,
   st?.bed && `Bed ${Math.round(st.bed.actual)}${st.bed.target ? `/${Math.round(st.bed.target)}` : ''} °C`].filter(Boolean).join(' · ');

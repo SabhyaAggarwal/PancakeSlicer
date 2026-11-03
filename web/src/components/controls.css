@@ -64,6 +64,12 @@
   :where(.orca-parity) .orca-switch { min-height: 24px; }
 }
 
+:where(.orca-parity) .status-text { color: var(--ink-3); }
+:where(.orca-parity) .status-text[data-tone=online] { color: var(--success); }
+:where(.orca-parity) .status-text[data-tone=printing] { color: var(--info); }
+:where(.orca-parity) .status-text[data-tone=paused] { color: var(--status-warn); }
+:where(.orca-parity) .status-text[data-tone=error] { color: var(--danger); }
+
 :where(.orca-parity) .more-toggle { align-self: flex-start; width: fit-content; min-height: var(--h-compact); margin: 0; padding: 0; border: 0; border-radius: 2px; background: none; color: var(--ink-3); font: var(--t-small); text-align: left; cursor: pointer; }
 :where(.orca-parity) .more-toggle:hover { color: var(--text); }
 @media (pointer: coarse) { :where(.orca-parity) .more-toggle { min-height: 44px; } }
