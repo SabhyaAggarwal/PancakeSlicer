@@ -273,6 +273,9 @@ func canonicalWorkspaceProject(d *workspaceData, id string) (string, error) {
 	return id, nil
 }
 func workspaceFailure(w http.ResponseWriter, status int, code, message, recovery string, revision uint64) {
+	writeJSON(w, status, workspaceError(code, message, recovery, revision))
+}
+func workspaceError(code, message, recovery string, revision uint64) map[string]any {
 	name := "WorkspaceError"
 	if code == "revision_conflict" {
 		name = "ProjectConflictError"
@@ -280,7 +283,7 @@ func workspaceFailure(w http.ResponseWriter, status int, code, message, recovery
 	if code == "project_archived" {
 		name = "ProjectDeletedError"
 	}
-	writeJSON(w, status, map[string]any{"error": message, "name": name, "code": code, "recovery": recovery, "revision": revision})
+	return map[string]any{"error": message, "name": name, "code": code, "recovery": recovery, "revision": revision}
 }
 func workspaceDecode(w http.ResponseWriter, r *http.Request, v any) bool {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<20))
@@ -708,7 +711,9 @@ func (st *workspaceStore) putValue(w http.ResponseWriter, r *http.Request, kind 
 		}
 		v := d.Values[kind]
 		if v.Revision != in.ExpectedRevision {
-			workspaceFailure(w, 409, "revision_conflict", "Another writer changed saved "+kind+". Reload before applying changes.", "reload_and_reapply", v.Revision)
+			failure := workspaceError("revision_conflict", "Another writer changed saved "+kind+". Reload before applying changes.", "reload_and_reapply", v.Revision)
+			failure["document"] = v.Document
+			writeJSON(w, 409, failure)
 			return
 		}
 		v = workspaceValue{v.Revision + 1, in.Document}
