@@ -99,7 +99,10 @@ func (s *Server) methodDecisions(printer map[string]any) []methodDecision {
 		ready = artifact["validated"] == true
 	}
 	ready = ready && methodDigest.MatchString(fmt.Sprint(artifact["binary_sha256"])) && methodDigest.MatchString(fmt.Sprint(artifact["resources_sha256"]))
-	af, _ := artifact["features"].(map[string]any)
+	af := map[string]bool{}
+	if raw, err := json.Marshal(artifact["features"]); err == nil {
+		json.Unmarshal(raw, &af)
+	}
 	waveModes := []string{}
 	if raw, err := json.Marshal(artifact["wave_modes"]); err == nil {
 		json.Unmarshal(raw, &waveModes)
@@ -117,7 +120,7 @@ func (s *Server) methodDecisions(printer map[string]any) []methodDecision {
 			case !s.cfg.Features.DumpOptions || rule.Target == "mode" && !slices.Contains(options["nonplanar_mode"].Values, rule.ID) || rule.Feature != "" && features[rule.Feature] != true:
 				d.Reason = "The current engine does not support this method."
 				d.Recovery = "update_engine"
-			case rule.Readiness != "" && (!ready || af[rule.Readiness] != true || rule.Target == "wave" && !slices.Contains(waveModes, rule.ID)):
+			case rule.Readiness != "" && (!ready || !af[rule.Readiness] || rule.Target == "wave" && !slices.Contains(waveModes, rule.ID)):
 				d.Reason = "This method is not ready in the current engine bundle."
 				d.Recovery = "update_engine"
 			case rule.Auto:

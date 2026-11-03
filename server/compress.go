@@ -3,6 +3,7 @@ package main
 import (
 	"compress/gzip"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 )
@@ -16,6 +17,7 @@ func gzipJSON(next http.Handler) http.Handler {
 		case "gzip":
 			z, err := gzip.NewReader(r.Body)
 			if err != nil {
+				log.Printf("%s %s 400: unreadable gzip request body", logPrefix(r.Method, 32), logPrefix(r.URL.Path, 256))
 				fail(w, 400, "gzip request body is unreadable")
 				return
 			}
@@ -27,6 +29,7 @@ func gzipJSON(next http.Handler) http.Handler {
 			r.Header.Del("Content-Length")
 			r.ContentLength = -1
 		default:
+			log.Printf("%s %s 415: request Content-Encoding %q", logPrefix(r.Method, 32), logPrefix(r.URL.Path, 256), logPrefix(encoding, 64))
 			fail(w, http.StatusUnsupportedMediaType, "request bodies may be gzip or identity")
 			return
 		}

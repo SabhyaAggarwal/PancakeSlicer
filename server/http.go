@@ -1327,6 +1327,11 @@ const (
 	HealthUnqualified HealthState = "unqualified"
 )
 
+var qualifiedNativeSources = map[string]bool{
+	"7ab64368bbd9483b9d2fe46aafa27e8585426a0d": true,
+	"1e6bad5db420789671ec1ed7728e59f872919ece": true,
+}
+
 var healthTransitions = map[HealthState]map[HealthState]bool{
 	HealthUnknown:     {HealthHealthy: true, HealthDegraded: true, HealthQualified: true, HealthUnqualified: true},
 	HealthHealthy:     {HealthDegraded: true, HealthQualified: true, HealthUnqualified: true},
@@ -1479,7 +1484,7 @@ func newEngineHealth(c Config) *engineHealth {
 	proofRaw, proofErr := os.ReadFile(proofPath)
 	manifestHash := sha256.Sum256(raw)
 	qualified := proofErr == nil && json.Unmarshal(proofRaw, &proof) == nil && proof.Ready &&
-		manifest.Source == "7ab64368bbd9483b9d2fe46aafa27e8585426a0d" && proof.Source == manifest.Source &&
+		qualifiedNativeSources[manifest.Source] && proof.Source == manifest.Source &&
 		proof.Binary == binary && proof.Resources == resources && proof.Manifest == hex.EncodeToString(manifestHash[:]) && manifest.PrintQualified
 	if qualified {
 		h.outputs = nativeOutputHashes(raw)
