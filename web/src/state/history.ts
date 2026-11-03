@@ -43,6 +43,14 @@ const notify = () => { version++; listeners.forEach((l) => l()); };
 export const subscribeHistory = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; };
 export const historyVersion = () => version;
 
+export function captureUndo(): () => boolean {
+  const step=undoStack.at(-1),document=generation,revision=version;
+  return () => {
+    if(!step || open || generation!==document || version!==revision || undoStack.at(-1)!==step || !sameDoc(snapshot(),step.after))return false;
+    undo();return true;
+  };
+}
+
 export function undoable<T>(name: string, fn: () => T, merge?: string): T {
   const end = beginStep(name, merge);
   try {

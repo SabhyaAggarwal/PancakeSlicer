@@ -28,7 +28,7 @@ import { choiceDialog, confirmDialog, numberDialog, promptDialog } from './compo
 import {
   DEMO_MODELS, PRESET_META, effectiveConfig, getState, markStale, newId, presetEdits, printerPreset, resolvePreset, selectPrinter, setState, toast, type JobView, type PlateObject, type State,
 } from './state/store';
-import { documentGeneration, historyDepth, leaveDocument, markSaved, newDocument, undoable } from './state/history';
+import { captureUndo, documentGeneration, historyDepth, historyVersion, leaveDocument, markSaved, newDocument, undoable } from './state/history';
 import { clearPlateJobs, currentPlates } from './plater/plates';
 import { nativeSupportCapable } from './settings-env';
 
@@ -114,12 +114,6 @@ export async function loadCatalog() {
   if (failures.length) toast(`Catalog could not fully load: ${failures.join('; ')}`, {label: 'Retry', run: () => void loadCatalog()});
 }
 
-export function choosePrinter(name: string) {
-  selectPrinter(name);
-  const summary=getState().lastProfileTransition;
-  if(summary?.changes.length || summary?.needsSelection)toast(`${summary.changes.map(c=>`${c.kind==='process'?'Print settings':`Slot ${(c.slot??0)+1}`}: ${c.to ?? c.reason}`).join(' · ')}${summary.needsSelection?' · Choose compatible profiles before slicing':''}`,{label:'Undo',run:()=>void import('./state/history').then(m=>m.undo())});
-}
-
 function switchingChanges(s: State, type: PresetType, slot = 0): Config {
   const name = type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot];
   const { config, user } = resolvePreset(s, type, name);
@@ -131,8 +125,15 @@ function switchingChanges(s: State, type: PresetType, slot = 0): Config {
 }
 
 export function switchPreset(type: PresetType, slot: number, name: string, edits: 'discard' | 'transfer' = 'transfer') {
-  return undoable(type === 'machine' ? 'Change printer' : type === 'process' ? 'Change process preset' : 'Change filament preset',
+  const before=historyVersion();
+  const result=undoable(type === 'machine' ? 'Change printer' : type === 'process' ? 'Change process preset' : 'Change filament preset',
     () => applyPresetSwitch(type, slot, name, edits));
+  const summary=getState().lastProfileTransition;
+  if(type==='machine' && historyVersion()!==before && summary && (summary.changes.length || summary.needsSelection)){
+    const undoTransition=captureUndo();
+    toast(`${summary.changes.map(c=>`${c.kind==='process'?'Print settings':`Slot ${(c.slot??0)+1}`}: ${c.to ?? c.reason}`).join(' · ')}${summary.needsSelection?' · Choose compatible profiles before slicing':''}`,{label:'Undo',run:()=>{if(!undoTransition())toast('The project changed after this printer switch. Its Undo action has expired; your newer work is kept.');}});
+  }
+  return result;
 }
 
 function applyPresetSwitch(type: PresetType, slot: number, name: string, edits: 'discard' | 'transfer') {
@@ -151,7 +152,7 @@ function applyPresetSwitch(type: PresetType, slot: number, name: string, edits: 
     }));
   };
   if (type === 'machine') {
-    choosePrinter(name);
+    selectPrinter(name);
     return {kept,dropped};
   }
   const carried = carry(type, name, slot);
