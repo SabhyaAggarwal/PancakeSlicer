@@ -11,7 +11,7 @@ export class PaintView {
   private readonly meshes = new Map<string, THREE.Mesh>();
   private readonly material = new THREE.MeshBasicMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 });
   private readonly overhang = new THREE.MeshBasicMaterial({ color: LIGHT_RED, transparent: true, opacity: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
-  private readonly cursor = new THREE.Mesh(new THREE.RingGeometry(0.92, 1, 48), new THREE.MeshBasicMaterial({ color: 0x009688, side: THREE.DoubleSide, depthTest: false, transparent: true }));
+  private readonly cursor = new THREE.Mesh(new THREE.RingGeometry(0.92, 1, 48), new THREE.MeshBasicMaterial({ color: 0xf2a0b0, side: THREE.DoubleSide, depthTest: false, transparent: true }));
   private readonly overhangCache = new Map<string, THREE.BufferGeometry>();
   private readonly gapCache = new WeakMap<Painting, Map<number, Painting | null>>();
 

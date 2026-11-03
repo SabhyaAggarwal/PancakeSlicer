@@ -206,7 +206,7 @@ export default function Plater3D() {
     };
     scene.add(viewExtras);
     const overhangTint = new THREE.MeshBasicMaterial({ color: 0xc70000, transparent: true, opacity: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
-    const outlineLine = new THREE.LineBasicMaterial({ color: 0x009688 });
+    const outlineLine = new THREE.LineBasicMaterial({ color: 0xf2a0b0 });
     const wireLine = new THREE.LineBasicMaterial({ color: 0x1a1a1a, transparent: true, opacity: 0.45 });
     const extrasCache = new Map<string, THREE.BufferGeometry>();
     const outlineCache = new Map<THREE.BufferGeometry, THREE.BufferGeometry>();
@@ -307,10 +307,10 @@ export default function Plater3D() {
       let m = materials.get(k);
       if (!m) {
         let c = new THREE.Color(color);
-        if (state !== 'outside' && !nonprintable && selected) c.lerp(new THREE.Color(SELECTION_COLOR), 0.5);
-        else if (state !== 'outside' && !nonprintable && hovered) c.lerp(new THREE.Color(HOVER_COLOR), 0.25);
+        if (state !== 'outside' && !nonprintable && selected) c.lerp(new THREE.Color(SELECTION_COLOR), 0.22);
+        else if (state !== 'outside' && !nonprintable && hovered) c.lerp(new THREE.Color(HOVER_COLOR), 0.12);
         if (state === 'outside') c.lerp(OUTSIDE, 0.7);
-        m = new THREE.MeshStandardMaterial({ color: c, emissive: selected ? SELECTION_COLOR : hovered ? HOVER_COLOR : 0, emissiveIntensity: selected ? 0.22 : 0.08, roughness: 0.65, metalness: 0.05, transparent: placeholder || ghost || xray, clippingPlanes: sectionView().ratio > 0 ? [sectionPlane] : null,
+        m = new THREE.MeshStandardMaterial({ color: c, emissive: selected ? SELECTION_COLOR : hovered ? HOVER_COLOR : 0, emissiveIntensity: selected ? 0.06 : 0.04, roughness: 0.65, metalness: 0.05, transparent: placeholder || ghost || xray, clippingPlanes: sectionView().ratio > 0 ? [sectionPlane] : null,
           opacity: placeholder ? 0.35 : ghost ? 0.4 : xray ? 0.25 : 1, depthWrite: !ghost && !xray, side: xray ? THREE.DoubleSide : THREE.FrontSide });
         materials.set(k, m);
       }
@@ -1278,7 +1278,7 @@ export default function Plater3D() {
 
     const overlayRoot = new THREE.Group();
     scene.add(overlayRoot);
-    const css = (v: string) => getComputedStyle(document.documentElement).getPropertyValue(v).trim() || '#009688';
+    const css = (v: string) => getComputedStyle(document.documentElement).getPropertyValue(v).trim() || '#8e1b30';
     const topMat = new THREE.MeshBasicMaterial({ polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
     const ledgeMat = new THREE.LineBasicMaterial();
     const overlayColours = () => {

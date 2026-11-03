@@ -79,7 +79,7 @@ function SlopePlot({ head, gap }: { head: Head | null; gap: number }) {
         <path d={`M ${c - radius} ${c} H ${c + radius} M ${c} ${c - radius} V ${c + radius}`} className="plot-grid" />
         <text x={c + radius - 4} y={c - 16} fontSize="11" fill="currentColor">+X</text>
         <text x={c - 8} y={c - radius - 6} fontSize="11" fill="currentColor">+Y</text>
-        {points && <polygon points={points} fill="rgba(0, 150, 136, 0.18)" stroke="#009688" strokeWidth="1.5" />}
+        {points && <polygon points={points} style={{ fill: 'color-mix(in srgb, var(--accent) 18%, transparent)', stroke: 'var(--accent-text)' }} strokeWidth="1.5" />}
         {!slopes && <text x={6} y={16} fontSize="11" fill="currentColor">Enter a valid profile and layer height to show slope limits.</text>}
       </svg>
       {slopes && <figcaption>Min {((Math.min(...slopes) * 180) / Math.PI).toFixed(1)}°</figcaption>}

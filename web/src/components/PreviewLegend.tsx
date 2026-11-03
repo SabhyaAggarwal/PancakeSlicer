@@ -1,7 +1,6 @@
 import { Check } from './Check';
 import { Dropdown } from './Dropdown';
-import { Caret } from './Caret';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { effectiveConfig, getState } from '../state/store';
 import {
   CURVED_COLOR, EXTENDED_VIEWS, clearanceColor, NONPLANAR_COLORS, NONPLANAR_HUES, NONPLANAR_PLANAR_COLOR, OPTION_COLORS, RANGE_PALETTE, ROLE_COLORS, VIEW_TYPES, hexToRgb,
@@ -12,12 +11,13 @@ import { ROLE_NAMES, shortTime, type PrintStatistics } from '../preview/format';
 import type { PreviewScene } from '../preview/PreviewScene';
 import { canExtend, type PreviewUi } from './PreviewView';
 import { clearanceScale } from '../preview/clearance';
+import { BP } from '../breakpoints';
 
 const css = (c: RGB) => `rgb(${c[0]},${c[1]},${c[2]})`;
 
 const SHOW_STATS = new URLSearchParams(location.search).has('stats');
 
-const NARROW = window.matchMedia('(max-width: 599px)');
+const FOLD_BELOW = 1000;
 
 function compactWeight(g: number): string {
   const a = Math.abs(g);
@@ -25,6 +25,18 @@ function compactWeight(g: number): string {
   return `${g < 0 ? '-' : ''}${v.toFixed(2)}${unit}`;
 }
 
+
+const folds: Record<string, boolean> = { key: true, curved: true, show: false };
+
+export function Fold({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(folds[id] ?? true);
+  return (
+    <details className="lg-fold" open={open} onToggle={(e) => { folds[id] = e.currentTarget.open; setOpen(e.currentTarget.open); }}>
+      <summary>{title}</summary>
+      {open && children}
+    </details>
+  );
+}
 
 function Swatch({ c }: { c: RGB }) {
   return <span className="lg-swatch" style={{ background: css(c) }} />;
@@ -80,12 +92,35 @@ export function Legend(props: {
   explainOnly?: boolean;
 }) {
   const { data: d, ui, setUi, ranges } = props;
-  const [open, setOpen] = useState(() => !NARROW.matches);
-  useEffect(() => {
-    const fold = () => setOpen(!NARROW.matches);
-    NARROW.addEventListener('change', fold);
-    return () => NARROW.removeEventListener('change', fold);
+  const [open, setOpen] = useState(true);
+  const panel = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const area = panel.current?.parentElement;
+    if (!area) return;
+    let band: number | null = null;
+    const fit = () => {
+      const w = area.clientWidth, b = w >= FOLD_BELOW ? 2 : w >= BP.narrow ? 1 : 0;
+      if (w && b !== band) { band = b; setOpen(b === 2); }
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(area);
+    return () => ro.disconnect();
   }, []);
+  useLayoutEffect(() => {
+    const el = panel.current, views = props.scene?.views;
+    if (!el || !views) return;
+    const fit = () => {
+      const host = props.scene!.renderer.domElement.getBoundingClientRect(), r = el.getBoundingClientRect();
+      const slider = el.parentElement?.querySelector('.layer-slider')?.getBoundingClientRect();
+      views.setInsets(open && r.width ? r.right - host.left + 12 : 0, slider ? host.right - slider.left : 0);
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    if (el.parentElement) ro.observe(el.parentElement);
+    return () => { ro.disconnect(); views.setInsets(0, 0); };
+  }, [open, props.scene]);
   const total = d.totalTime(0);
   const state = getState();
   const record = d.sourceUrl && state.job.id && d.sourceUrl === state.api?.movesUrl(state.job.id)
@@ -183,38 +218,35 @@ export function Legend(props: {
   const stats = props.scene?.lastFrame;
   const totalG = printStats?.total_weight_g ?? filG;
   return (
-    <div className={open ? 'legend' : 'legend closed'} aria-label="Legend">
+    <div ref={panel} className={open ? 'legend' : 'legend closed'} aria-label="Legend">
       <div className="lg-head">
         <Dropdown aria-label="Color scheme" value={ui.view} onValueChange={(next) => setUi((u) => ({ ...u, view: next as ViewType }))} options={[...VIEW_TYPES.filter((v) => d.header?.extended || canExtend(d) || !EXTENDED_VIEWS.has(v.key)).map((v) => ({ value: v.key, label: v.label }))]} />
-        <button className="lg-collapse" onClick={() => setOpen(!open)} aria-expanded={open} aria-label={open ? 'Hide legend' : 'Show legend'}>
-          <Caret dir={open ? 'up' : 'down'}/>
-        </button>
       </div>
-      {!props.explainOnly && (
-        <div className="lg-totals">
-          <div><span className="lg-k label-caps">Time</span><span className="lg-v">{shortTime(total)}</span></div>
-          <div><span className="lg-k label-caps">Filament</span><span className="lg-v">{compactWeight(totalG)}</span></div>
-        </div>
-      )}
+      <button type="button" className="lg-totals" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <div><span className="lg-k">Time</span><span className="lg-v">{shortTime(total)}</span></div>
+        <div><span className="lg-k">Filament</span><span className="lg-v">{compactWeight(totalG)}</span></div>
+      </button>
       {open && (
         <div className="lg-scroll">
           {props.explainOnly && props.explain}
           {!props.explainOnly && (
             <>
-              <div className="lg-body">{body()}</div>
+              <Fold id="key" title={ui.view === 'feature' ? 'Line types' : VIEW_TYPES.find((v) => v.key === ui.view)?.label ?? 'Key'}>{body()}</Fold>
               {props.explain}
-              <div className="lg-options">
-                {options.map(([k, label, c]) => (
-                  <label key={k} className="lg-opt">
-                    <Check checked={ui.vis[k] as boolean} onCheckedChange={() => toggle(k)} />
-                    <Swatch c={c} />{label}
+              <Fold id="show" title="Show">
+                <div className="lg-options">
+                  {options.map(([k, label, c]) => (
+                    <label key={k} className="lg-opt">
+                      <Check checked={ui.vis[k] as boolean} onCheckedChange={() => toggle(k)} />
+                      <Swatch c={c} />{label}
+                    </label>
+                  ))}
+                  <label className="lg-opt">
+                    <Check checked={ui.shells} onCheckedChange={() => setUi((u) => ({ ...u, shells: !u.shells }))} />
+                    <span className="lg-swatch blank" />Shells
                   </label>
-                ))}
-                <label className="lg-opt">
-                  <Check checked={ui.shells} onCheckedChange={() => setUi((u) => ({ ...u, shells: !u.shells }))} />
-                  <span className="lg-swatch blank" />Shells
-                </label>
-              </div>
+                </div>
+              </Fold>
               {stats && SHOW_STATS && (
                 <div className="lg-perf">
                   {stats.blocks} blocks ({stats.lodBlocks} LOD, {stats.culled} culled) · {(stats.segments / 1e6).toFixed(2)} M seg · {stats.frameMs.toFixed(1)} ms

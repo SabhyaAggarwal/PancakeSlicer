@@ -38,7 +38,7 @@ export function ProjectTitle() {
         </button>
       )}
       {conflict && !editing ? <button type="button" className="title-state link" aria-description="Choose Reload latest or Keep mine" onClick={() => setState({ tab: 'prepare' })}>Conflict</button>
-        : saved && !editing && <span className="title-state" role="status">{saved}</span>}
+        : saved && !editing && <span className="title-state" role="status" data-state={state}>{saved}</span>}
     </div>
   );
 }

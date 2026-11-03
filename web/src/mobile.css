@@ -1,31 +1,32 @@
 :where(.orca-parity) .workspace-rail { display: contents; }
-:where(.orca-parity) .nav-view-control { display: none; }
-@media (max-width: 760px) {
+:where(.orca-parity) .nav-view-control, :where(.orca-parity) .workspace-scrim { display: none; }
+:where(.orca-parity) .app { --canvas-chip: 36px; }
+:where(.orca-parity) .canvas-chip { width: var(--canvas-chip); height: var(--canvas-chip); color: var(--ink); background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--r-3); }
+:where(.orca-parity) .canvas-chip:hover:not(:disabled) { background: var(--hover); }
+@media (max-width: 899px) {
   :where(.orca-parity) .app { height: 100dvh; width: 100%; min-width: 0; overflow: hidden; }
   :where(.orca-parity) .main { position: relative; flex-direction: row; overflow: hidden; min-width: 0; }
   :where(.orca-parity) .canvas-area { min-height: 0; flex: 1 1 0; }
-  :where(.orca-parity) .compact-topbar { height: auto; min-height: 0; display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 4px 8px; padding: calc(4px + env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) 4px max(8px,env(safe-area-inset-left)); }
-  :where(.orca-parity) .topbar-project-context { grid-column: 1 / 3; grid-row: 1; min-width: 0; gap: 4px; flex-basis: auto; }
-  :where(.orca-parity) .compact-topbar .projects-button { font-size: 13px; }
-  :where(.orca-parity) .compact-topbar .tabbar { display: contents; }
-  :where(.orca-parity) .compact-topbar .view-switch { grid-column: 1; grid-row: 2; justify-self: start; }
-  :where(.orca-parity) .compact-topbar .title-zone { grid-column: 2 / -1; grid-row: 2; justify-content: flex-end; padding: 0; }
-  :where(.orca-parity) .compact-topbar :is(.menu-title,.app-menu-button,.output-overflow), :where(.orca-parity) .compact-topbar .view-switch > .view-tab { min-height: 44px; min-width: 44px; }
-  :where(.orca-parity) .compact-topbar .view-tab > span { display: none; }
-  :where(.orca-parity) .compact-topbar .tabbar-actions { grid-column: 3; grid-row: 1; justify-self: end; margin: 0; padding: 0; gap: 0; }
-  :where(.orca-parity) .compact-topbar .tabbar-actions > :is(.btn, .btn-primary):not(.output-overflow), :where(.orca-parity) .compact-topbar .side-options, :where(.orca-parity) .compact-topbar .export-actions { display: none; }
-  :where(.orca-parity) .output-overflow { display: inline-flex; font-weight: 600; }
-  :where(.orca-parity) .mock-badge { display: none; }
-  :where(.orca-parity) .workspace-settings-launch { display: inline-flex; align-items: center; position: absolute; z-index: 8; top: 8px; left: max(8px,env(safe-area-inset-left)); font-weight: 600; background: var(--panel); }
-  :where(.orca-parity) .workspace-rail { display: none; position: absolute; inset: 0; z-index: 12; min-width: 0; background: var(--panel); flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
+  :where(.orca-parity) .compact-topbar { height: 48px; min-height: 48px; gap: 4px; padding: env(safe-area-inset-top) max(4px,env(safe-area-inset-right)) 0 max(4px,env(safe-area-inset-left)); }
+  :where(.orca-parity) .topbar-project-context { flex: none; }
+  :where(.orca-parity) .compact-topbar :is(.projects-button, .menu-title), :where(.orca-parity) .mock-badge { display: none; }
+  :where(.orca-parity) .app-menu-button { min-width: 44px; height: 44px; padding: 0 4px; }
+  :where(.orca-parity) .app-menu-button > .app-menu-caret { display: inline-flex; }
+  :where(.orca-parity) .compact-topbar .tabbar { height: 48px; gap: 4px; }
+  :where(.orca-parity) .compact-topbar .tabbar-actions { gap: 4px; }
+  :where(.orca-parity) .compact-topbar :is(.view-switch > .view-tab, .tabbar-actions > button) { --slant-inset: 4px; min-height: 44px; }
+  :where(.orca-parity) .compact-topbar .view-switch > .view-tab { min-width: 44px; padding: 0 var(--s-3); }
+  :where(.orca-parity) .compact-topbar .title-zone { padding: 0 var(--s-2); }
+  :where(.orca-parity) .workspace-settings-launch { position: absolute; z-index: 8; top: 8px; left: max(8px,env(safe-area-inset-left)); }
+  :where(.orca-parity) .workspace-rail { display: none; position: absolute; inset: 0 auto 0 0; z-index: 12; width: min(400px, calc(100% - 48px)); min-width: 0; background: var(--panel); border-right: 1px solid var(--line-strong); box-shadow: var(--shadow-pop); flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
   :where(.orca-parity) .workspace-rail[data-open=true] { display: flex; }
-  :where(.orca-parity) .workspace-sheet-heading { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 8px; padding: 4px max(12px,env(safe-area-inset-right)) 4px max(12px,env(safe-area-inset-left)); border-bottom: 1px solid var(--line); background: var(--chrome); }
+  :where(.orca-parity) .workspace-scrim { display: block; position: absolute; inset: 0; z-index: 11; background: var(--scrim); }
+  :where(.orca-parity) .workspace-sheet-heading { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 8px; min-height: 48px; padding: 0 max(12px,env(safe-area-inset-right)) 0 max(12px,env(safe-area-inset-left)); border-bottom: 1px solid var(--line); background: var(--chrome); }
   :where(.orca-parity) .workspace-sheet-heading strong { min-width: 0; font: var(--t-title); font-size: 16px; }
   :where(.orca-parity) .workspace-rail .sidebar { display: flex; width: 100%; min-width: 0; flex: 1 1 0; border: 0; overflow-y: auto; transition: none; }
   :where(.orca-parity) .workspace-rail .process-section { flex: 1 0 320px; }
   :where(.orca-parity) .sidebar-reveal { display: none; }
   :where(.orca-parity) .canvas-toolbar { top: auto; bottom: max(8px,env(safe-area-inset-bottom)); padding: 3px; gap: 2px; max-width: calc(100% - 16px); }
-  :where(.orca-parity) .canvas-toolbar > .icon-btn:nth-of-type(4) { display: none; }
   :where(.orca-parity) .canvas-toolbar .tb-sep { display: none; }
   :where(.orca-parity) .canvas-more { padding-inline: 8px; }
   :where(.orca-parity) .canvas-area .objects-outliner { top: 8px; right: max(8px,env(safe-area-inset-right)); width: min(270px,calc(100% - 120px)); }
@@ -33,27 +34,33 @@
   :where(.orca-parity) .outliner-body { max-height: min(260px,45dvh); }
   :where(.orca-parity) .object-info { left: 8px; bottom: 66px; max-width: calc(100% - 16px); font-size: 12px; flex-wrap: wrap; }
   :where(.orca-parity) .nav3d { display: none; }
-  :where(.orca-parity) .nav-view-control { display: inline-flex; position: absolute; z-index: 7; top: 60px; left: max(8px,env(safe-area-inset-left)); align-items: center; gap: 10px; background: var(--panel); }
+  :where(.orca-parity) .nav-view-control { display: inline-grid; position: absolute; z-index: 7; top: 8px; left: calc(max(8px,env(safe-area-inset-left)) + var(--canvas-chip) + 4px); }
   :where(.orca-parity) .transform-anchor { left: max(8px,env(safe-area-inset-left)); }
-  :where(.orca-parity) .canvas-unavailable { padding-top: 116px; }
+  :where(.orca-parity) .canvas-unavailable { padding-top: 60px; }
   :where(.orca-parity) .rail-head { --rail-act: 40px; }
-  :where(.orca-parity) .canvas-area .manip-panel { top: 112px; left: max(8px,env(safe-area-inset-left)); max-width: calc(100% - 16px); max-height: calc(100% - 112px - 72px); overflow: auto; z-index: 46; }
+  :where(.orca-parity) .canvas-area .manip-panel { top: 60px; left: max(8px,env(safe-area-inset-left)); max-width: calc(100% - 16px); max-height: calc(100% - 60px - 72px); overflow: auto; z-index: 46; }
   :where(.orca-parity) .notification, :where(.orca-parity) .toast { max-width: calc(100vw - 16px); overflow-wrap: anywhere; }
+  :where(.orca-parity) .canvas-area .notifications { left: max(8px,env(safe-area-inset-left)); right: max(8px,env(safe-area-inset-right)); bottom: 60px; width: auto; max-width: 480px; margin-inline: auto; max-height: 40%; }
+  :where(.orca-parity) .canvas-area:has(.object-info) .notifications { bottom: 120px; }
   :where(.orca-parity) .saved-preferences-notice { padding: 4px max(8px,env(safe-area-inset-right)) 4px max(8px,env(safe-area-inset-left)); }
   :where(.orca-parity) .modal { max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
 }
-@media (min-width: 420px) and (max-width: 760px) {
-  :where(.orca-parity) .compact-topbar .view-tab > span { display: inline; }
+@media (max-width: 599px) {
+  :where(.orca-parity) .compact-topbar :is(.title-state[data-state=saved], .title-folder) { display: none; }
+  :where(.orca-parity) .compact-topbar .view-tab > span { display: none; }
+  :where(.orca-parity) .workspace-rail { width: 100%; border-right: 0; box-shadow: none; }
+  :where(.orca-parity) .canvas-toolbar > .icon-btn:nth-of-type(4) { display: none; }
 }
-@media (pointer: coarse), (max-width: 760px) {
-  :where(.orca-parity) button:not(.check, .pf-radio, .orca-switch, .control-check, .orca-radio, .info-tip, .color-swatch, .color-trigger, .ls-plus), :where(.orca-parity) .dropdown, :where(.orca-parity) .text, :where(.orca-parity) [role=menuitem] { min-height: 44px; }
+@media (pointer: coarse), (max-width: 599px) {
+  :where(.orca-parity) button:not(.check, .pf-radio, .orca-switch, .control-check, .orca-radio, .info-tip, .color-swatch, .color-trigger, .ls-plus, .notif-link), :where(.orca-parity) .dropdown, :where(.orca-parity) .text, :where(.orca-parity) [role=menuitem] { min-height: 44px; }
   :where(.orca-parity) .icon-btn, :where(.orca-parity) .app-menu-button, :where(.orca-parity) .pk-star, :where(.orca-parity) .opt-undo { min-width: 44px; }
   :where(.orca-parity) .text, :where(.orca-parity) input, :where(.orca-parity) textarea, :where(.orca-parity) select { font-size: 16px; }
   :where(.orca-parity) .pf-facet-choice, :where(.orca-parity) .select-row { min-height: 44px; align-items: center; }
   :where(.orca-parity) .pf-row-check { opacity: 1; }
   :where(.orca-parity) .orca-menu .menu-item { min-height: 44px; }
+  :where(.orca-parity) .app { --canvas-chip: 44px; }
 }
-@media (pointer: coarse) and (min-width: 761px) {
+@media (pointer: coarse) and (min-width: 900px) {
   :where(.orca-parity) .nav3d { display: none; }
-  :where(.orca-parity) .nav-view-control { display: inline-flex; position: absolute; z-index: 7; left: 16px; bottom: 16px; align-items: center; gap: 10px; background: var(--panel); }
+  :where(.orca-parity) .nav-view-control { display: inline-grid; position: absolute; z-index: 7; left: 16px; bottom: 16px; }
 }

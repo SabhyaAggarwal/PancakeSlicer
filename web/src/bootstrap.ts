@@ -10,6 +10,7 @@ import { registerServiceWorker } from './sw';
 
 const root = document.getElementById('root')!;
 registerServiceWorker();
+if (typeof Worker !== 'undefined') void import('./api/worker').then((m) => m.catalogWorker()).catch(() => {});
 checkBrowserSupport().then(() => {
   import('./main').catch(() => showBrowserNotice(root,
     'The application could not load. Check your connection and reload the page.', 'Unable to start OrcaSlicer'));

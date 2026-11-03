@@ -94,11 +94,11 @@ export function OrderBar({ data, at, onSeek, gcodeOpen, onGcode }: {
   const total = e[e.length - 1] ?? 0;
   return (
     <div className="move-slider order-bar">
-      <button type="button" className="ob-btn" aria-label="Previous move" onClick={() => step(-1)}>‹</button>
+      <button type="button" className="ob-btn ob-step" aria-label="Previous move" onClick={() => step(-1)}>‹</button>
       <button type="button" className="ob-btn ob-play" aria-label={playing ? 'Pause' : 'Play'} aria-pressed={playing} onClick={() => playing ? pauseViewer() : playViewer()}>
         {playing ? '❚❚' : '▶'}
       </button>
-      <button type="button" className="ob-btn" aria-label="Next move" onClick={() => step(1)}>›</button>
+      <button type="button" className="ob-btn ob-step" aria-label="Next move" onClick={() => step(1)}>›</button>
       <Range min={1} max={last} value={Math.min(at, last)} aria-label="Print order" onValueChange={seek} />
       <span className="ms-label ob-time">{shortTime(e[Math.min(at, e.length - 1)] ?? 0)} / {shortTime(total)}</span>
       <span className="ms-label ob-layer">Layer {k == null ? '–' : k + 1} / {data.layers.length}</span>

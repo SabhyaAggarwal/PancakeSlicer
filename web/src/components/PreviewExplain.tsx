@@ -11,6 +11,7 @@ import { ERROR_BINS, surfaceGrid } from '../preview/surface-grid';
 import { getState, printerPreset } from '../state/store';
 import { Icon } from './Icon';
 import { colorContext, jobColours, type PreviewUi } from './PreviewView';
+import { Fold } from './PreviewLegend';
 
 const TWO_SCENE_VERTICES = 8e6;
 const NOT_PART = new Set([12, 17, 18]);
@@ -80,9 +81,11 @@ export function ExplainLegend(props: {
 
   (window as unknown as { __compare: unknown }).__compare = { state: cmp, summary: s, standard: std, stdData, rows };
 
+  const summary = nativeSurfaceSummary(record);
   return (
+    <Fold id="curved" title="Curved">
     <div className="np-legend">
-      {nativeSurfaceSummary(record) && <p role="status">{nativeSurfaceSummary(record)}</p>}
+      {summary && <div className="np-summary-line" role="status">{summary}</div>}
       <div className="np-toggles">
         <label className="lg-opt"><Check checked={compare} onCheckedChange={(next) => setCompare(next)} />Compare with Standard</label>
         <label className="lg-opt">
@@ -111,7 +114,7 @@ export function ExplainLegend(props: {
           {rows.filter(([label]) => label !== 'Time' && label !== 'Filament').map(([label, , b]) => (
             <div key={label}>
               <span className="np-k">{label === 'Curved shells' ? 'Shells' : label === 'Curved overhangs' ? 'Overhangs' : label}</span>
-              <span className="np-v">{b}{label === 'Head hits' && v?.uncalibrated && <Icon name="warning" size={12} />}</span>
+              <span className="np-v">{b}</span>
             </div>
           ))}
           {s.flat.length > 0 && (
@@ -164,6 +167,7 @@ export function ExplainLegend(props: {
       )}
       </>}
     </div>
+    </Fold>
   );
 }
 

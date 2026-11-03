@@ -13,6 +13,7 @@ import { Caret } from './Caret';
 import { savePreferences } from '../saved-preferences';
 import { printerCover } from '../profiles/metadata';
 import './settings.css';
+import { Glyph, type GlyphName } from './Glyph';
 const ObjectSettings = lazy(() => import('./ObjectSettings').then(m => ({default: m.ObjectSettings})));
 const SettingsTab = lazy(() => import('./SettingsTab').then(m => ({default: m.SettingsTab})));
 
@@ -22,9 +23,7 @@ function RailSection({title, meta, actions, className = '', children}: {title: s
     {children}
   </section>;
 }
-const GLYPH = { edit: 'M3.5 12.5l.8-3 6.9-6.9 2.2 2.2-6.9 6.9-3 .8zM9.9 3.9l2.2 2.2', plus: 'M8 3.5v9M3.5 8h9', minus: 'M3.5 8h9', options: 'M3 5h10M3 11h10M6 3.5v3M10 9.5v3' };
-const Glyph = ({name}: {name: keyof typeof GLYPH}) => <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d={GLYPH[name]} fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>;
-function RailAction({glyph, label, disabled, onClick}: {glyph: keyof typeof GLYPH; label: string; disabled?: boolean; onClick(): void}) {
+function RailAction({glyph, label, disabled, onClick}: {glyph: GlyphName; label: string; disabled?: boolean; onClick(): void}) {
   return <button type="button" className="icon-btn rail-act" aria-label={label} disabled={disabled} onClick={onClick}><Glyph name={glyph}/></button>;
 }
 const edit = (type: PresetType, name?: string) => setState({presetUx: {kind: 'presets', type, ...(name ? {name, edit: true} : {})}});
@@ -70,7 +69,7 @@ function ViewChoices() {
       {v.hasObjects && <MenuButton className="rail-menu" label={`Apply to: ${v.objects ? 'Objects' : 'Project'}`} items={v.scopeItems}>{v.objects ? 'Objects' : 'Project'}{v.objects && v.target && <span className="rail-menu-sub">{v.target}</span>}<Caret/></MenuButton>}
       <MenuButton className="rail-menu" label={`Settings detail: ${v.detailLabel}`} items={v.detailItems}>{v.detailLabel}<Caret/></MenuButton>
     </span>
-    <MenuButton className="icon-btn rail-act rail-menus-folded" label="View options" items={[...(v.hasObjects ? [{label: 'Apply to', header: true} as MenuEntry, ...v.scopeItems, 'sep' as const] : []), {label: 'Detail', header: true}, ...v.detailItems]}><Glyph name="options"/></MenuButton>
+    <MenuButton className="icon-btn rail-act rail-menus-folded" label="View options" items={[...(v.hasObjects ? [{label: 'Apply to', header: true} as MenuEntry, ...v.scopeItems, 'sep' as const] : []), {label: 'Detail', header: true}, ...v.detailItems]}><Glyph name="settings"/></MenuButton>
   </>;
 }
 function SliceSummary() {

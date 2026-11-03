@@ -256,12 +256,15 @@ export function startProjects(ready: Promise<unknown> = Promise.resolve()): Prom
   return started;
 }
 async function start(ready: Promise<unknown>) {
+  const modules = Promise.all([import('./project-recovery'), import('../persist/drafts'), journalTools()]);
+  const listed = projectStore();
+  const lineage = modules.then(([, , tools]) => tools.draftSession(session.owner));
+  lineage.catch(() => {});
   await ready.catch(() => {});
-  recoveryCore = await import('./project-recovery');
-  draftActivity = await import('../persist/drafts');
-  const { createDraftJournal, draftSession } = await journalTools();
-  store = await projectStore();
-  try { if (store) Object.assign(session, await draftSession(session.owner)); }
+  const [recovery, drafts, { createDraftJournal }] = await modules;
+  recoveryCore = recovery; draftActivity = drafts;
+  store = await listed;
+  try { if (store) Object.assign(session, await lineage); }
   catch (error) { toast(errorText(error)); }
   journal = createDraftJournal<Doc>(session.owner, draftStorage, codec, (id) => draftActivity!.beginProjectDraftMutation(id));
   observed = snapshot();

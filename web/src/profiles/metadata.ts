@@ -10,6 +10,17 @@ export function profileSummary(type: PresetType, config: Config, model?: string)
   return [height > 0 ? `${height.toFixed(2)} mm` : '', top].filter(Boolean).join(' · ');
 }
 
+export interface RowField { value: string; says?: string }
+const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const mentions = (title: string, words: string) => !!words && new RegExp(`(^|[^\\w.])${escape(words)}($|[^\\w.])`, 'i').test(title);
+export function rowDetail(title: string, fields: (RowField | undefined | false)[], groups: string[] = []): string {
+  const said = new Set(groups.map((g) => g.toLocaleLowerCase()));
+  return fields.filter((f): f is RowField => !!f && !!f.value && !said.has(f.value.toLocaleLowerCase()) && !mentions(title, f.says ?? f.value))
+    .map((f) => f.value).join(' · ');
+}
+export const vendorField = (vendor: string): RowField => ({ value: vendor, says: vendor.split(/\s+/)[0] });
+export const nozzleField = (nozzle: string): RowField | undefined => nozzle ? { value: `${nozzle} mm`, says: nozzle } : undefined;
+
 export function vendorLabel(config: Config, vendor: string): string {
   return (first(config.printer_vendor) || vendor || 'Custom').replace(/^BBL$/, 'Bambu Lab');
 }

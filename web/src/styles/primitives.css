@@ -7,6 +7,7 @@
 :where(.orca-parity) .btn:active:not(:disabled) { background: var(--sunken); }
 :where(.orca-parity) :is(.btn-primary, .btn.primary) { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); font-weight: 600; }
 :where(.orca-parity) :is(.btn-primary, .btn.primary):hover:not(:disabled) { border-color: var(--accent-strong); background: var(--accent-strong); }
+:where(.orca-parity) :is(.btn-primary, .btn.primary):active:not(:disabled) { border-color: var(--accent-pressed); background: var(--accent-pressed); }
 :where(.orca-parity) .btn-danger { border-color: var(--danger); background: var(--danger-tint); color: var(--danger); font-weight: 600; }
 :where(.orca-parity) .btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--danger-tint) 80%, var(--danger)); }
 :where(.orca-parity) :is(.btn, .btn-primary, .btn-danger):disabled { border-color: var(--line); background: var(--sunken); color: var(--ink-3); font-weight: 400; cursor: not-allowed; }
@@ -43,6 +44,7 @@
 :where(.orca-parity) .seg.slant-seg > button:is([aria-checked=true], [aria-pressed=true], [data-state=active], .on) { --slant-bg: var(--slant-fill-selected); background: none; }
 :where(.orca-parity) :is(.btn-primary, .btn.primary).slant { --slant-bg: var(--slant-fill-primary); --slant-line: var(--slant-fill-primary); padding: 0 var(--s-5); }
 :where(.orca-parity) :is(.btn-primary, .btn.primary).slant:hover:not(:disabled) { --slant-bg: var(--slant-fill-primary-hover); --slant-line: var(--slant-fill-primary-hover); }
+:where(.orca-parity) :is(.btn-primary, .btn.primary).slant:active:not(:disabled) { --slant-bg: var(--accent-pressed); --slant-line: var(--accent-pressed); }
 :where(.orca-parity) :is(.slant, .seg.slant-seg > button):disabled { --slant-bg: var(--sunken); --slant-line: var(--line); background: none; }
 :where(.orca-parity) .seg.slant-seg { gap: 0; padding: 0 calc(var(--h-control) * tan(var(--slant-angle)) / 2); background: none; border-radius: 0; }
 :where(.orca-parity) .seg.slant-seg > button { --slant-bg: var(--sunken); min-height: var(--h-control); }
@@ -50,8 +52,8 @@
 :where(.orca-parity) .seg.slant-seg > button:not(:first-child)::before { border-top-left-radius: 0; border-bottom-left-radius: 0; }
 :where(.orca-parity) .seg.slant-seg > button:not(:last-child)::before { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 :where(.orca-parity) :is(.slant, .seg.slant-seg > button, .page-tab, .slant-tab):focus-visible { outline: none; }
-:root.orca-parity:not([data-input=pointer]) :is(.slant, .seg.slant-seg > button):focus-visible::before { outline: 1px solid var(--focus); outline-offset: 1px; }
-@media (pointer: coarse), (max-width: 760px) { :where(.orca-parity) :is(.slant, .seg.slant-seg > button) { --slant-inset: 4px; } }
+:root.orca-parity:not([data-input=pointer]) :is(.slant, .seg.slant-seg > button):focus-visible::before { outline: 2px solid var(--focus); outline-offset: 1px; }
+@media (pointer: coarse), (max-width: 599px) { :where(.orca-parity) :is(.slant, .seg.slant-seg > button) { --slant-inset: 4px; } }
 
 :where(.orca-parity) :is(.slant-tab, .page-tab) { --slant-bg: var(--slant-fill-tab); --slant-line: var(--slant-border); position: relative; isolation: isolate; cursor: pointer; }
 :where(.orca-parity) :is(.slant-tab, .page-tab)::before, :where(.orca-parity) :is(.slant-tab, .page-tab)::after { content: ''; position: absolute; top: var(--slant-inset, 0px); bottom: 1px; width: 55%; z-index: -1; box-sizing: border-box;
@@ -59,10 +61,10 @@
 :where(.orca-parity) :is(.slant-tab, .page-tab)::before { left: 0; border-right: 0; border-top-left-radius: var(--slant-radius); transform: skewX(calc(-1 * var(--slant-angle))); transform-origin: 0 100%; }
 :where(.orca-parity) :is(.slant-tab, .page-tab)::after { right: 0; border-left: 0; border-top-right-radius: var(--slant-radius); transform: skewX(var(--slant-angle)); transform-origin: 100% 100%; }
 :where(.orca-parity) :is(.slant-tab, .page-tab):hover:not(:disabled):not([data-state=active]):not([aria-selected=true]) { --slant-bg: color-mix(in srgb, var(--slant-fill-tab) 60%, var(--panel)); color: var(--text); }
-:where(.orca-parity) :is(.slant-tab, .page-tab):is([data-state=active], [aria-selected=true]) { z-index: 1; --slant-bg: var(--panel); color: var(--text); }
+:where(.orca-parity) :is(.slant-tab, .page-tab):is([data-state=active], [aria-selected=true]) { z-index: 1; --slant-bg: var(--accent); --slant-line: var(--accent); color: var(--on-accent); }
+:where(.orca-parity) :is(.slant-tab, .page-tab):is([data-state=active], [aria-selected=true]) > img { filter: brightness(0) invert(1); }
 :where(.orca-parity) :is(.slant-tab, .page-tab):is([data-state=active], [aria-selected=true])::before, :where(.orca-parity) :is(.slant-tab, .page-tab):is([data-state=active], [aria-selected=true])::after { bottom: 0; }
 :root.orca-parity:not([data-input=pointer]) :is(.slant-tab, .page-tab):focus-visible { --slant-line: var(--focus); }
 
 
-:where(.orca-parity) .link { background: none; border: 0; padding: 0; font: inherit; color: var(--accent-text); cursor: pointer; text-decoration: none; }
-:where(.orca-parity) .link:hover { text-decoration: underline; text-underline-offset: 2px; }
+:where(.orca-parity) .link { background: none; border: 0; padding: 0; font: inherit; color: var(--accent-text); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }

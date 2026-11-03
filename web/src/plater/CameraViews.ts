@@ -15,6 +15,7 @@ export class CameraViews {
   private area: THREE.Vector2[] = [];
   private width = 1;
   private height = 1;
+  private insets = { left: 0, right: 0 };
   private axisView = false;
   private axisDirection = new THREE.Vector3();
   private handedOff = false;
@@ -272,6 +273,7 @@ export class CameraViews {
     }
     this.camera = camera;
     this.controls.object = camera;
+    this.resize(this.width, this.height);
     this.zoomLimits();
     this.controls.update();
     this.clip();
@@ -300,13 +302,24 @@ export class CameraViews {
     this.changed();
   }
 
+  setInsets(left: number, right: number) {
+    left = Math.max(0, Math.round(left)); right = Math.max(0, Math.round(right));
+    if (left === this.insets.left && right === this.insets.right) return;
+    this.insets = { left, right };
+    this.resize(this.width, this.height);
+    this.changed();
+  }
+
   resize(width: number, height: number) {
     this.width = Math.max(1, width); this.height = Math.max(1, height);
-    if (this.camera instanceof THREE.PerspectiveCamera) this.camera.aspect = this.width / this.height;
+    const full = Math.max(this.width / 2, this.width + this.insets.left - this.insets.right);
+    if (this.camera instanceof THREE.PerspectiveCamera) this.camera.aspect = full / this.height;
     else {
-      this.camera.right = this.camera.top * this.width / this.height;
+      this.camera.right = this.camera.top * full / this.height;
       this.camera.left = -this.camera.right;
     }
+    if (full !== this.width) this.camera.setViewOffset(full, this.height, 0, 0, this.width, this.height);
+    else this.camera.view = null;
     this.camera.updateProjectionMatrix();
   }
   isActive() { return this.active(); }

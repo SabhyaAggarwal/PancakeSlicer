@@ -8,8 +8,8 @@
 :where(.orca-parity) .toast-step { color: var(--ink-2); }
 :where(.orca-parity) .toast-action { flex: none; height: auto; padding: 0 var(--s-2); }
 :where(.orca-parity) .toast-close { flex: none; margin: calc(-1 * var(--s-1)) calc(-1 * var(--s-1)) 0 0; }
-:where(.orca-parity) .app:has(.main > div[style*='contents'] > .sidebar) .toast { left: calc(50% + var(--sidebar-w) / 2); }
-@media (max-width: 599px) { :where(.orca-parity) .app .toast { left: 50%; } }
+@media (min-width: 900px) { :where(.orca-parity) .app:has(.main:not(.sidebar-hidden) .sidebar) .toast { left: calc(50% + var(--workspace-rail-width) / 2); } }
+:where(.orca-parity) .app:has(.canvas-area[data-viewport=preview]) .toast { bottom: 76px; }
 @keyframes notice-in { from { opacity: 0; transform: translate(-50%, var(--s-2)); } }
 
 :where(.orca-parity) .notification { animation: notice-slide var(--dur-2) var(--ease); }

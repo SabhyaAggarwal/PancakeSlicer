@@ -1,4 +1,4 @@
-import { printerLine, profileColour, vendorLabel } from './metadata';
+import { modelLabel, nozzleField, printerCover, profileColour, rowDetail, vendorField, vendorLabel } from './metadata';
 import type { Config, PresetType } from '../api/types';
 import { filamentSwitchReason, getState, resolvePreset, setState, useStore } from '../state/store';
 import { Picker, type PickerAction, type PickerGroup, type PickerItem } from '../components/picker/Picker';
@@ -27,7 +27,8 @@ function filamentGroups(slot: number | null, catalog = false): PickerGroup[] {
   const entries = catalog ? listCatalog('filament') : listProfiles('filament');
   const item = (e: PickerEntry, swatch?: string | null, sub?: string): PickerItem => {
     const brand = first(e.config.filament_vendor) || e.vendor || 'Generic', b = brandName(e.name, e.config);
-    return { id: e.key, label: e.mine ? e.name : b.name, sub: sub ?? brand, facet: brand, swatch:swatch ?? profileColour(e.config), disabled: e.reason ?? false, search: `${brand} ${first(e.config.filament_type)} ${e.name}` };
+    const label = e.mine ? e.name : b.name;
+    return { id: e.key, label, sub: sub ?? (rowDetail(label, [vendorField(brand)]) || undefined), facet: brand, swatch:swatch ?? profileColour(e.config), disabled: e.reason ?? false, search: `${brand} ${first(e.config.filament_type)} ${e.name}` };
   };
   const loaded = catalog ? [] : s.filamentSlots.flatMap((name, i) => {
     const reason = filamentSwitchReason(s, i), e = entries.find((x) => x.key === name);
@@ -61,7 +62,7 @@ export function FilamentPicker({ slot }: { slot: number }) {
   return (
     <span className="pk-slot">
       <FilamentColourMenu slot={slot}/>
-      <Picker label={`Filament ${slot + 1}`} value={name} memory="orca.web.picker.filament" facetLabel="Vendor" groups={() => filamentGroups(slot)}
+      <Picker label={`Filament ${slot + 1}`} value={name} sections memory="orca.web.picker.filament" facetLabel="Vendor" groups={() => filamentGroups(slot)}
         catalog={{ label: 'Add filament', groups: () => filamentGroups(slot, true), onAdd: (id) => createProfileFromBase('filament', id, slot) }}
         onPick={(id) => id !== name && requestPreset('filament', slot, id)} footer={[presets('filament', name)]}>
         <span className="pk-type">{first(c.filament_type) || '—'}</span>
@@ -75,7 +76,7 @@ export function FilamentPicker({ slot }: { slot: number }) {
 export function AddFilamentPicker({ disabled }: { disabled?: boolean }) {
   if (disabled) return null;
   return (
-    <Picker label="Add filament" className="is-link" memory="orca.web.picker.filament" facetLabel="Vendor" groups={() => filamentGroups(null)} catalog={{ label: 'Add filament', groups: () => filamentGroups(null, true), onAdd: (id) => createProfileFromBase('filament', id, 0, addSlot) }} onPick={(id) => addSlot(id)}
+    <Picker label="Add filament" className="is-link" sections memory="orca.web.picker.filament" facetLabel="Vendor" groups={() => filamentGroups(null)} catalog={{ label: 'Add filament', groups: () => filamentGroups(null, true), onAdd: (id) => createProfileFromBase('filament', id, 0, addSlot) }} onPick={(id) => addSlot(id)}
       footer={[presets('filament')]}>
       Add
     </Picker>
@@ -86,7 +87,7 @@ const POPULAR = [/bambu|bbl/i, /prusa/i, /creality/i, /anycubic/i, /elegoo/i, /v
 const vendorRank = (v: string) => { const i = POPULAR.findIndex((r) => r.test(v)); return i >= 0 ? i : /custom|generic/i.test(v) ? 99 : 50; };
 
 const size = (c: Config) => { const pts = [c.printable_area].flat().map((p) => String(p).split('x').map(Number)); const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
-  return pts.length > 1 ? `${Math.round(Math.max(...xs) - Math.min(...xs))}×${Math.round(Math.max(...ys) - Math.min(...ys))}` : ''; };
+  return pts.length > 1 ? `${Math.round(Math.max(...xs) - Math.min(...xs))} × ${Math.round(Math.max(...ys) - Math.min(...ys))} mm` : ''; };
 const byVendorRail = (byVendor: Map<string, PickerItem[]>): PickerGroup[] =>
   [...byVendor].sort((a, b) => vendorRank(a[0]) - vendorRank(b[0]) || b[1].length - a[1].length || a[0].localeCompare(b[0]))
     .map(([v, items]) => ({ id: `v:${v}`, title: v, items: items.sort((a, b) => a.label.localeCompare(b.label)) }));
@@ -99,7 +100,7 @@ export function PrinterPicker() {
     const byVendor = new Map<string, PickerItem[]>();
     for (const e of listProfiles('machine')) {
       const v = vendorLabel(e.config, e.vendor);
-      byVendor.set(v, [...(byVendor.get(v) ?? []), { id: e.key, label: e.mine ? e.name : shortName(e.name), sub: printerLine(e.config, e.vendor), meta: size(e.config), search: e.name }]);
+      byVendor.set(v, [...(byVendor.get(v) ?? []), { id: e.key, label: e.mine ? e.name : shortName(e.name), sub: rowDetail(e.name, [{ value: modelLabel(e.config, e.vendor) }, nozzleField(first(e.config.nozzle_diameter))], [v]) || undefined, meta: size(e.config), search: e.name, image: printerCover(e.vendor, e.config) ?? null }]);
     }
     return byVendorRail(byVendor);
   };
@@ -108,7 +109,7 @@ export function PrinterPicker() {
     <Picker label="Printer" value={printer} memory="orca.web.picker.printers" groups={profileGroups} onPick={(name) => name !== printer && requestPreset('machine', 0, name)}
       footer={[{ label: 'Add printer', run: () => setState({ presetUx: { kind: 'presets', type: 'machine', add: true } }) }, presets('machine', printer)]}>
       <span className="pk-name">{selected.name ?? 'Choose printer'}</span>
-      {selected.name && !selected.error && <span className="pk-sub">{printerLine(selected.config, selected.base?.vendor ?? '')}</span>}
+      {selected.name && !selected.error && (() => { const sub = rowDetail(selected.name, [{ value: modelLabel(selected.config, selected.base?.vendor ?? '') }, nozzleField(first(selected.config.nozzle_diameter))]); return sub && <span className="pk-sub">{sub}</span>; })()}
     </Picker>
   );
 }

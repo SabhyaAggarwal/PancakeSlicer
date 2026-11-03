@@ -22,9 +22,11 @@ export function useTabFit(ref: RefObject<HTMLElement | null>, key: unknown) {
     const fit = () => {
       strip.removeAttribute('data-compact');
       strip.setAttribute('data-measure', '');
-      const over = strip.scrollWidth > strip.clientWidth + 1;
+      const over = () => strip.scrollWidth > strip.clientWidth + 1;
+      let compact = over() ? '' : null;
+      if (compact !== null) { strip.setAttribute('data-compact', ''); if (over()) compact = 'icons'; }
       strip.removeAttribute('data-measure');
-      strip.toggleAttribute('data-compact', over);
+      if (compact === null) strip.removeAttribute('data-compact'); else strip.setAttribute('data-compact', compact);
     };
     fit();
     const observer = new ResizeObserver(fit);

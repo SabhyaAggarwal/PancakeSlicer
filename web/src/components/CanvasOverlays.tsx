@@ -3,7 +3,7 @@ import { Check } from './Check';
 import { Range } from './Range';
 import { slicingText } from '../api/progress';
 import { accessNotice, accessSnapshot, saveAccessToken, subscribeAccess } from '../api/access';
-import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement } from 'react';
 import { createPortal } from 'react-dom';
 import { addInstance, arrangeAll, cancelSlice, download, fileUse, openFileDialog, outputKind, removeInstance, toolbarOperation, outsideVolumeWarning, canBoolean, toggleBoolean, toggleSvg, toggleText } from '../actions';
 import { setCompareWanted } from '../compare';
@@ -14,6 +14,7 @@ import { effectiveConfig, getState, mapPaint, printerPreset, setState, useStore,
 import { Icon, IconButton } from './Icon';
 import { canPerformCut, cutBlocked, initialCut, setCut, toggleCut } from '../plater/cut';
 import { InTopLayer } from './Modal';
+import { useTier } from '../breakpoints';
 import { SliceFailed } from './Notices';
 import './prepare.css';
 
@@ -169,6 +170,8 @@ function plateFact(results: PlateResult[]) {
   return curved ? `Curved tops on ${curved} of ${results.length}` : 'Flat tops, prints as Standard';
 }
 
+const TRANSIENT_MS = 8000;
+
 export function SliceNotification() {
   const notice = useSyncExternalStore(subscribeAccess, accessSnapshot);
   const plateIndex = useStore((s) => s.plateIndex);
@@ -182,11 +185,11 @@ export function SliceNotification() {
   const exportLabel = useStore(outputKind) === 'gcode.3mf' ? 'Export plate sliced file' : 'Export G-code file';
   const exported = job.exported ? `exported:${job.id}:${job.exported}` : null;
   useEffect(() => {
-    const timers = ([[brief, 3000], [exported, 20000]] as const)
+    const timers = ([[brief, 3000]] as const)
       .filter(([k]) => k)
       .map(([k, ms]) => setTimeout(() => setExpired((e) => new Set(e).add(k!)), ms));
     return () => timers.forEach(clearTimeout);
-  }, [brief, exported]);
+  }, [brief]);
   useEffect(() => setClosed(new Set()), [job.id]);
   const stack = useRef<HTMLDivElement>(null);
   const newest = useRef<Element>(undefined);
@@ -216,9 +219,74 @@ export function SliceNotification() {
   const exportLink = (label: string) => <button type="button" className="notif-link" onClick={download}>{label}</button>;
   const canSend = useStore((s) => s.printers.length > 0 || s.printerEdit || s.printerHosts);
   const sendLink = canSend && <>{' · '}<button type="button" className="notif-link" onClick={() => setState({ appDialog: 'send' })}>Send</button></>;
+  const [held, setHeld] = useState(false);
+  const transient = [exported, done && (results.length ? `${done}:r` : done), facts.length ? factsKey : null,
+    ...Object.keys(orientPrompts).map((id) => `orient${id}`)].filter((k): k is string => !!k && !expired.has(k));
+  useEffect(() => {
+    if (held) return;
+    const timers = transient.map((k) => setTimeout(() => setExpired((e) => new Set(e).add(k)), TRANSIENT_MS));
+    return () => timers.forEach(clearTimeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transient.join('|'), held]);
   const compareLink = <button type="button" className="notif-link" onClick={() => (setCompareWanted(true), setState({ tab: 'preview' }))}>Compare</button>;
+  const tier = useTier();
+  const [tipsOpen, setTipsOpen] = useState(false);
+  const tips = [
+    ...Object.keys(orientPrompts).map((id) => {
+      const o = plateObjects.find((x) => String(x.id) === id);
+      return o && !expired.has(`orient${id}`) && (
+        <div key={`orient${id}`} className="notification done">
+          <button className="notif-close icon-btn" aria-label="Close" onClick={() => dismissOrientPrompt(o.id)}>
+            <Icon name="notification_close" size={14} />
+          </button>
+          <div className="notif-title">{o.name}</div>
+          <div className="notif-body">Stand this part up: less support · <button type="button" className="notif-link" onClick={() => void import('../plater/orientPrompt').then((m) => m.confirmOrientPrompt(o.id))}>Apply</button></div>
+        </div>
+      );
+    }),
+    exported && !expired.has(exported) && !closed.has(exported) && (
+      <div key="exported" className="notification done">
+        {close(exported)}
+        <div className="notif-title">Exported successfully</div>
+        <div className="notif-body">{job.exported}{'\n'}{fileUse(machine)}</div>
+      </div>
+    ),
+    brief && !expired.has(brief) && (
+      <div key="brief" className="notification done">
+        <div className="notif-title">Slicing Canceled</div>
+      </div>
+    ),
+    facts.length > 0 && !closed.has(factsKey) && !expired.has(factsKey) && (
+      <div key="facts" className="notification done">
+        {close(factsKey)}
+        <div className="notif-title">{facts.length === 1 ? `${facts[0].name}: Auto` : 'Auto'}</div>
+        <div className="notif-body">{previewFact(facts)}</div>
+      </div>
+    ),
+    done && results.length > 0 && !closed.has(`${done}:r`) && !expired.has(`${done}:r`) && (
+      <div key="results" className="notification done">
+        {close(`${done}:r`)}
+        <div className="notif-title">{results.length === 1 ? `${results[0].label}: ${results[0].style}` : results.every((r) => r.style === results[0].style) ? results[0].style : 'Auto'}</div>
+        <div className="notif-body">
+          {plateFact(results)}
+          {results.some((r) => r.curved) && <> · {compareLink}</>}
+          {' · '}{exportLink('Export')}{sendLink}
+        </div>
+      </div>
+    ),
+    done && !results.length && !closed.has(done) && !expired.has(done) && (
+      <div key="done" className="notification done">
+        {close(done)}
+        <div className="notif-title"><Icon name="notification_slicing_complete" size={16} /> Slice complete</div>
+        <div className="notif-body">
+          <button type="button" className="notif-link" onClick={download}>{exportLabel}</button>{sendLink}
+        </div>
+      </div>
+    ),
+  ].filter((el): el is ReactElement => !!el);
+  useEffect(() => { if (tips.length < 2) setTipsOpen(false); }, [tips.length]);
   return (
-    <div className="notifications" ref={stack}>
+    <div className="notifications" ref={stack} onPointerEnter={() => setHeld(true)} onPointerLeave={() => setHeld(false)}>
       <InTopLayer>
         <div className="notif-group">
           <AccessNotification />
@@ -241,18 +309,6 @@ export function SliceNotification() {
         </div>
       )}
       {orientConfirm && <Suspense fallback={null}><OrientConfirm /></Suspense>}
-      {Object.keys(orientPrompts).map((id) => {
-        const o = plateObjects.find((x) => String(x.id) === id);
-        return o && (
-          <div key={`orient${id}`} className="notification done">
-            <button className="notif-close icon-btn" aria-label="Close" onClick={() => dismissOrientPrompt(o.id)}>
-              <Icon name="notification_close" size={14} />
-            </button>
-            <div className="notif-title">{o.name}</div>
-            <div className="notif-body">Stand this part up: less support · <button type="button" className="notif-link" onClick={() => void import('../plater/orientPrompt').then((m) => m.confirmOrientPrompt(o.id))}>Apply</button></div>
-          </div>
-        );
-      })}
       {warnings.map((w, i) =>
         closed.has(`w${i}`) ? null : (
           <div key={`w${i}`} className="notification warning">
@@ -261,13 +317,6 @@ export function SliceNotification() {
             <div className="notif-body">{w}</div>
           </div>
         ),
-      )}
-      {exported && !expired.has(exported) && !closed.has(exported) && (
-        <div className="notification done">
-          {close(exported)}
-          <div className="notif-title">Exported successfully</div>
-          <div className="notif-body">{job.exported}{'\n'}{fileUse(machine)}</div>
-        </div>
       )}
       {busy && (
         <div className="notification running">
@@ -284,38 +333,10 @@ export function SliceNotification() {
           </div>
         </div>
       )}
-      {brief && !expired.has(brief) && (
-        <div className="notification done">
-          <div className="notif-title">Slicing Canceled</div>
-        </div>
+      {tips.length > 1 && tier === 'phone' && (
+        <button type="button" className="notif-chip" aria-expanded={tipsOpen} onClick={() => setTipsOpen(!tipsOpen)}>{tips.length} tips</button>
       )}
-      {facts.length > 0 && !closed.has(factsKey) && (
-        <div className="notification done">
-          {close(factsKey)}
-          <div className="notif-title">{facts.length === 1 ? `${facts[0].name}: Auto` : 'Auto'}</div>
-          <div className="notif-body">{previewFact(facts)}</div>
-        </div>
-      )}
-      {done && results.length > 0 && !closed.has(`${done}:r`) && (
-        <div className="notification done">
-          {close(`${done}:r`)}
-          <div className="notif-title">{results.length === 1 ? `${results[0].label}: ${results[0].style}` : results.every((r) => r.style === results[0].style) ? results[0].style : 'Auto'}</div>
-          <div className="notif-body">
-            {plateFact(results)}
-            {results.some((r) => r.curved) && <> · {compareLink}</>}
-            {' · '}{exportLink('Export')}{sendLink}
-          </div>
-        </div>
-      )}
-      {done && !results.length && !closed.has(done) && (
-        <div className="notification done">
-          {close(done)}
-          <div className="notif-title"><Icon name="notification_slicing_complete" size={16} /> Slice complete</div>
-          <div className="notif-body">
-            <button type="button" className="notif-link" onClick={download}>{exportLabel}</button>{sendLink}
-          </div>
-        </div>
-      )}
+      {(tips.length < 2 || tier !== 'phone' || tipsOpen) && tips}
     </div>
   );
 }

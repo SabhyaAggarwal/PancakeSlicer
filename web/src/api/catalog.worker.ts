@@ -86,14 +86,16 @@ self.onmessage = async (e: MessageEvent<CatalogIn>) => {
     const { vendor, models } = e.data;
     const key = `${FORMAT}|${vendor}|${models.join(',')}`;
     const entry = catalogs.get(key)?.entry;
+    const read = (etag?: string | null) => fetch(`/api/presets?${new URLSearchParams([['vendor', vendor], ...models.map((m) => ['model', m])])}`, {
+      cache: 'no-cache',
+      headers: etag ? { 'If-None-Match': etag } : {},
+    });
+    const early = entry ? undefined : read();
     const options = await definitions;
     const types = JSON.stringify([nativePresetCatalog(), Object.entries(options).map(([key, def]) => [key, def.type])]);
     const cached = entry?.types === types ? entry : undefined;
     if(cached)post({id,type:'catalog',catalog:cached.catalog,from:'cache'});
-    const r = await fetch(`/api/presets?${new URLSearchParams([['vendor', vendor], ...models.map((m) => ['model', m])])}`, {
-      cache: 'no-cache',
-      headers: cached?.etag ? { 'If-None-Match': cached.etag } : {},
-    });
+    const r = await (early ?? read(cached?.etag));
     if (r.status !== 304) {
       if (!r.ok) throw new Error(`${r.status} ${r.statusText}: ${(await r.text()).slice(0, 300)}`);
       const catalog = compactCatalog(normalizeCatalog(await r.json(), vendor, nativePresetCatalog()));

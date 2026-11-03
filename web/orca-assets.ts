@@ -33,10 +33,13 @@ function assetSource(file: string): Buffer | string {
 }
 
 const DARK_COLOURS: [string, string][] = [
-  ['#262E30', '#EFEFF0'], ['#323A3D', '#B3B3B5'], ['#808080', '#818183'], ['#CECECE', '#54545B'],
-  ['#6B6B6B', '#818182'], ['#909090', '#FFFFFF'], ['#F1F1F1', '#36363B'],
-  ['#DBDBDB', '#4A4A51'], ['#F0F0F1', '#333337'], ['#515151', '#B3B3B5'],
+  ['#262E30', '#F1EDEE'], ['#323A3D', '#B9B3B4'], ['#808080', '#847E7F'], ['#CECECE', '#585253'],
+  ['#6B6B6B', '#847E7F'], ['#909090', '#FFFFFF'], ['#F1F1F1', '#3A3637'],
+  ['#DBDBDB', '#4D4748'], ['#F0F0F1', '#363233'], ['#515151', '#B9B3B4'],
 ];
+
+const ACCENT = /#(?:009688|00675B)(?![0-9A-Fa-f])/gi;
+const lightIcon = (file: string) => String(assetSource(file)).replace(ACCENT, '#8E1B30');
 
 function darkIcon(name: string): string | null {
   const own = path.join(IMAGES, `${name}_dark.svg`);
@@ -44,7 +47,7 @@ function darkIcon(name: string): string | null {
   if (!fs.existsSync(file)) return null;
   let svg = String(assetSource(file));
   for (const [from, to] of DARK_COLOURS) svg = svg.replace(new RegExp(`${from}(?![0-9A-Fa-f])`, 'gi'), to);
-  return svg;
+  return svg.replace(ACCENT, '#F2A0B0');
 }
 
 function resolveAsset(url: string): string | null {
@@ -102,7 +105,7 @@ export function orcaAssets(): Plugin {
         if (!file || !fs.existsSync(file)) return next();
         res.setHeader('Content-Type', MIME[path.extname(file)] ?? 'application/octet-stream');
         res.setHeader('Cache-Control', 'max-age=3600');
-        if (file.endsWith('.svg')) res.end(assetSource(file));
+        if (file.endsWith('.svg')) res.end(path.dirname(file) === IMAGES ? lightIcon(file) : assetSource(file));
         else fs.createReadStream(file).pipe(res);
       });
     },
@@ -124,7 +127,7 @@ export function orcaAssets(): Plugin {
       for (const f of fs.readdirSync(IMAGES)) {
         if (!f.endsWith('.svg')) continue;
         if (tokens.has(f.slice(0, -4)) || tokens.has(f)) {
-          this.emitFile({ type: 'asset', fileName: `images/${f}`, source: assetSource(path.join(IMAGES, f)) });
+          this.emitFile({ type: 'asset', fileName: `images/${f}`, source: lightIcon(path.join(IMAGES, f)) });
           this.emitFile({ type: 'asset', fileName: `images/dark/${f}`, source: darkIcon(f.slice(0, -4))! });
         }
       }

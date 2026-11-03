@@ -5,10 +5,10 @@ import { bedAsset } from './bed-assets';
 import { bedBounds, parsePoints } from './geometry';
 import { isDark } from '../theme';
 
-const canvasToken = () => parseInt(getComputedStyle(document.documentElement).getPropertyValue('--canvas').trim().slice(1), 16);
+const token = (name: string, fallback: number) => { const v = parseInt(getComputedStyle(document.documentElement).getPropertyValue(name).trim().slice(1), 16); return Number.isNaN(v) ? fallback : v; };
 export const sceneColors = () => {
-  const background = canvasToken();
-  return { background: Number.isNaN(background) ? 0xd3d3d7 : background, plate: 0x333338, texture: 0x303036, grid: 0x62626b, outline: 0x9898a5, model: 0x28282e, shell: 0x9898a5 };
+  const outline = token('--bed-outline', 0x9e9e9e);
+  return { background: token('--canvas', 0xd3d3d3), plate: token('--bed-plate', 0x363636), texture: token('--bed-texture', 0x323232), grid: token('--bed-grid', 0x646464), outline, model: token('--bed-texture', 0x2c2c2c), shell: outline };
 };
 
 export const bedKey = (machine: SystemPreset | undefined) =>

@@ -7,7 +7,7 @@
 :where(.orca-parity) .mixed-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
 :where(.orca-parity) .mixed-row .filament-swatch { padding: 0; }
 :where(.orca-parity) .mixed-content { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; border: 1px solid var(--border); border-radius: 3px; background: var(--bg); color: var(--text); height: 24px; padding: 0 4px; font-size: 11px; cursor: pointer; overflow: hidden; white-space: normal; }
-:where(.orca-parity) .mixed-content i, :where(.orca-parity) .mixed-dot { display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 2px; font-style: normal; font-size: 9px; color: #fff; text-shadow: 0 0 1px #111114; border: 1px solid rgba(0, 0, 0, 0.15); margin-right: 3px; vertical-align: middle; }
+:where(.orca-parity) .mixed-content i, :where(.orca-parity) .mixed-dot { display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 2px; font-style: normal; font-size: 9px; color: #fff; text-shadow: 0 0 1px #111111; border: 1px solid rgba(0, 0, 0, 0.15); margin-right: 3px; vertical-align: middle; }
 :where(.orca-parity) .mixed-content em { font-style: normal; margin-left: 4px; color: var(--text-dim, var(--ink-2)); }
 :where(.orca-parity) .mixed-row.broken .mixed-content { border-color: var(--danger); }
 :where(.orca-parity) .mixed-section { font-weight: 600; margin: 8px 0 4px; }

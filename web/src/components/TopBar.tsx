@@ -18,6 +18,8 @@ import { toggleNonplanarView, useNonplanarView } from '../patch-preview';
 import { canCalibrate, canLoadStep } from '../api/client';
 import { toggleSidebar, useSidebarHidden } from '../sidebar';
 import { printerReady, showSettings } from '../workspace-sheet';
+import { useTier } from '../breakpoints';
+import { Glyph } from './Glyph';
 
 type MenuItem = MenuEntry;
 function Menu({title, items}: {title: string; items: MenuItem[]}) { return <MenuButton label={title} items={items} className="menu-title" />; }
@@ -151,7 +153,7 @@ export function TopBar() {
           { label: 'About OrcaSlicer', action: () => setState({ appDialog: 'about' }), tip: 'Version, licence and Corresponding Source' },
         ]}];
   return <header className="topbar compact-topbar">
-    <div className="topbar-project-context"><MenuButton className="app-menu-button" label="Application menu" items={appItems}><Icon name="OrcaSlicer" size={20}/></MenuButton>
+    <div className="topbar-project-context"><MenuButton className="app-menu-button" label="Application menu" items={appItems}><Icon name="OrcaSlicer" size={20}/><Caret className="app-menu-caret"/></MenuButton>
     <button type="button" className="menu-title projects-button" onClick={showProjects}>Projects</button>
     <Menu title="File" items={fileItems}/>
     </div>
@@ -178,9 +180,15 @@ export function TabBar() {
   const plates = useStore((s) => s.projectPlates.length > 1);
   const [sliceMode, setSliceMode] = useState('Slice plate');
   const [exportMode, setExportMode] = useState('plate');
-  const allSlice = plates && sliceMode === 'Slice all';
-  const allExport = plates && exportMode === 'all';
   const exportAllEnabled = useStore((s) => s.projectPlates.length > 1 && !busy && exportablePlates(s).length > 0);
+  const tier = useTier(), wide = tier === 'wide', folded = tier === 'narrow' || tier === 'phone';
+  const allSlice = wide && plates && sliceMode === 'Slice all';
+  const allExport = wide && plates && exportMode === 'all';
+  const more: MenuEntry[] = [
+    ...(folded ? [{label: exportLabel, action: download, disabled: !exportEnabled, tip: job.stale ? STALE_RESULT_TIP : 'Slice the plate first'}] : []),
+    ...(!wide && hasPrinters ? [{label: 'Send to printer', action: () => setState({appDialog: 'send'}), disabled: !exportEnabled}] : []),
+    ...(!wide && plates ? [{label: 'Slice all plates', action: () => void sliceAll(), disabled: !printer || busy}, {label: 'Export all plates', action: () => void exportAll(), disabled: !exportAllEnabled}] : []),
+  ];
   return (
     <div className="tabbar">
       <div className="seg slant-seg view-switch" role="group" aria-label="View">
@@ -199,25 +207,26 @@ export function TabBar() {
           <button className="btn-primary slant" disabled={!printer || busy} onClick={() => void sliceAll()}>Slice all</button>
         ) : (
           <button className="btn-primary slant" disabled={!hasObjects || !printer || busy || !!outside} onClick={() => void slice()}>
-            Slice plate
+            {tier === 'phone' ? 'Slice' : 'Slice plate'}
           </button>
         )}
-        {plates && <SideOptions options={['Slice all', 'Slice plate']} value={sliceMode} onChange={setSliceMode} />}
-        <span className="export-actions">{allExport ? (
+        {wide && plates && <SideOptions options={['Slice all', 'Slice plate']} value={sliceMode} onChange={setSliceMode} />}
+        {!folded && <span className="export-actions">{allExport ? (
           <button className="btn slant" disabled={!exportAllEnabled} onClick={() => void exportAll()}>Export all sliced file</button>
         ) : (
           <button className="btn slant" disabled={!exportEnabled} onClick={download}>
             {exportLabel}
           </button>
         )}
-        {plates && <SideOptions options={[exportLabel, 'Export all sliced file']} value={allExport ? 'Export all sliced file' : exportLabel}
+        {wide && plates && <SideOptions options={[exportLabel, 'Export all sliced file']} value={allExport ? 'Export all sliced file' : exportLabel}
           onChange={(v) => setExportMode(v === 'Export all sliced file' ? 'all' : 'plate')} />}
-        {hasPrinters && (
+        {wide && hasPrinters && (
           <button className="btn slant" disabled={!exportEnabled} onClick={() => setState({ appDialog: 'send' })}>
             Send
           </button>
         )}
-        </span><MenuButton className="btn slant output-overflow" label="Print output" items={[{label:'Slice plate',action:()=>void slice(),disabled:!hasObjects || !printer || busy || !!outside,tip:outside ?? 'Add a model before slicing'}, {label: exportLabel, action: download, disabled: !exportEnabled, tip: job.stale ? STALE_RESULT_TIP : 'Slice the plate first'}, ...(hasPrinters ? [{label: 'Send to printer', action: () => setState({appDialog: 'send'}), disabled: !exportEnabled}] : []), ...(plates ? [{label: 'Slice all plates', action: () => void sliceAll(), disabled: !printer || busy}, {label: 'Export all plates', action: () => void exportAll(), disabled: !exportAllEnabled}] : [])]}>Output</MenuButton>
+        </span>}
+        {more.length > 0 && <MenuButton className="btn slant output-overflow" label="More output actions" items={more}><Glyph name="more"/></MenuButton>}
       </div>
     </div>
   );

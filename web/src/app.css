@@ -166,6 +166,32 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .notification.warning { border-left-color: var(--warn); }
 :where(.orca-parity) .notification.done { border-left-color: var(--accent); }
 :where(.orca-parity) .notif-title { font-weight: 600; display: flex; gap: 6px; align-items: center; }
+:where(.orca-parity) .notification.done { display: flex; align-items: baseline; gap: var(--s-3); min-height: var(--h-compact); padding: var(--s-2) var(--s-7) var(--s-2) var(--s-3); white-space: nowrap; }
+:where(.orca-parity) .notification.done > .notif-title { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; display: block; }
+:where(.orca-parity) .notification.done > .notif-title img { vertical-align: -3px; margin-right: var(--s-2); }
+:where(.orca-parity) .notification.done > .notif-body { flex: none; max-width: 100%; margin: 0; padding: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+:where(.orca-parity) .notification.done > .notif-close { top: var(--s-1); right: var(--s-1); display: grid; place-items: center; width: 24px; height: 24px; min-width: 24px; min-height: 24px; padding: 0; }
+:where(.orca-parity) .notif-chip { flex: none; align-self: flex-start; display: inline-flex; align-items: center; gap: var(--s-2); height: var(--h-compact); padding: 0 var(--s-4);
+  background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--r-3); color: var(--ink); font: var(--t-small); font-weight: 600; cursor: pointer; }
+:where(.orca-parity) .notif-chip::after { content: ''; width: 5px; height: 5px; margin-left: var(--s-1); border: solid var(--ink-2); border-width: 0 1.5px 1.5px 0; transform: translateY(-2px) rotate(45deg); }
+:where(.orca-parity) .notif-chip[aria-expanded='true']::after { transform: translateY(1px) rotate(-135deg); }
+:where(.orca-parity) .notifications > .notification.done:nth-last-child(n + 3 of .notification.done) { display: none; }
+:where(.orca-parity) .notifications { container-type: inline-size; }
+@container (max-width: 359px) {
+  :where(.orca-parity) .notification.done { flex-wrap: wrap; row-gap: 0; white-space: normal; }
+  :where(.orca-parity) .notification.done > .notif-title { flex: 1 1 100%; white-space: nowrap; }
+  :where(.orca-parity) .notification.done > .notif-body { flex: 1 1 100%; white-space: normal; }
+}
+:where(.orca-parity) .canvas-area[data-viewport=preview] .notifications { top: var(--pv-top); bottom: auto; right: var(--pv-slider); left: auto; margin: 0;
+  width: min(440px, calc(100% - var(--pv-legend-w) - var(--pv-slider) - 2 * var(--pv-inset))); max-width: none; max-height: calc(50% - var(--pv-top)); }
+@container (max-width: 811px) {
+  :where(.orca-parity) .canvas-area[data-viewport=preview] .notifications { top: auto; bottom: calc(var(--pv-inset) + var(--pv-bar-h) + var(--s-3)); left: var(--pv-cube); right: var(--pv-slider); width: auto; max-height: 30%; }
+  :where(.orca-parity) .canvas-area[data-viewport=preview]:has(.tool-position) .notifications { bottom: calc(var(--pv-inset) + var(--pv-bar-h) + var(--s-3) + 64px); }
+}
+@media (min-width: 900px) { @container (max-width: 811px) {
+  :where(.orca-parity) .canvas-area[data-viewport=preview]:has(.preview > .legend:not(.closed)) .notifications { left: calc(var(--pv-legend-w) + 2 * var(--pv-inset)); }
+} }
+@media (max-width: 899px) { :where(.orca-parity) .canvas-area[data-viewport=preview] .notifications { top: auto; bottom: calc(var(--pv-inset) + var(--pv-bar-h) + var(--s-3)); left: var(--pv-inset); width: auto; max-height: 30%; } }
 :where(.orca-parity) .notif-body { white-space: pre-wrap; word-break: break-word; margin-top: 2px; padding-right: 16px; }
 :where(.orca-parity) .notif-close { position: absolute; top: 6px; right: 6px; }
 :where(.orca-parity) .notif-text { display: flex; gap: 8px; align-items: center; }
@@ -271,13 +297,10 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .bed-asset-buttons { display: flex; gap: 8px; margin-top: 8px; }
 :where(.orca-parity) label.side-btn { display: inline-flex; align-items: center; justify-content: center; }
 :where(.orca-parity) .bed-2d { width: 285px; background: var(--bg); border: 1px solid var(--line-ddd); }
-:where(.orca-parity) .bed-2d-plate { fill: #e3e4e4; stroke: #666; }
-:where(.orca-parity) .bed-2d-grid { stroke: #bbb; }
-:where(.orca-parity) .bed-2d-axes { stroke: #555; }
+:where(.orca-parity) .bed-2d-plate { fill: var(--surface); stroke: var(--line-strong); }
+:where(.orca-parity) .bed-2d-grid { stroke: var(--line); }
+:where(.orca-parity) .bed-2d-axes { stroke: var(--ink-3); }
 :where(.orca-parity) .bed-2d-label { fill: var(--text); }
-:root.orca-parity[data-theme='dark'] .bed-2d-plate { fill: #414148; stroke: #a2a2a6; }
-:root.orca-parity[data-theme='dark'] .bed-2d-grid { stroke: #6e6e76; }
-:root.orca-parity[data-theme='dark'] .bed-2d-axes { stroke: #c8c8cc; }
 :where(.orca-parity) .bed-dialog-buttons { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--line-ddd); }
 :where(.orca-parity) .menu-item[aria-checked] { position: relative; padding-left: 24px; }
 :where(.orca-parity) .menu-item[aria-checked="true"]::before { content: ''; position: absolute; left: 9px; top: 7px; width: 4px; height: 8px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
@@ -391,7 +414,7 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .np-dialog .np-table th, :where(.orca-parity) .np-dialog .np-table td { border: 1px solid var(--line-ddd, #ddd); padding: 2px 6px; text-align: left; vertical-align: top; }
 :where(.orca-parity) .np-dialog .np-table thead th { position: sticky; top: 0; background: var(--title-bg, #f1f1f1); z-index: 1; }
 :where(.orca-parity) .np-dialog .np-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
-:where(.orca-parity) .np-dialog .np-table .diff-new { color: var(--accent-text, #a78bfa); }
+:where(.orca-parity) .np-dialog .np-table .diff-new { color: var(--accent-text); }
 :where(.orca-parity) .np-dialog .np-table tr.group-row td { background: var(--bg-f6, #f6f6f6); font-weight: 600; }
 :where(.orca-parity) .head-plot .plot-grid { stroke: var(--line-aaa, #aaa); }
 :where(.orca-parity) .head-identity input.text { width: 260px; }
@@ -456,7 +479,7 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .copyable:hover { text-decoration: underline; text-decoration-color: var(--ink-3); text-underline-offset: 2px; }
 :where(.orca-parity) .object-info-error { color: var(--danger); white-space: pre-line; }
 :where(.orca-parity) .object-info-error .notif-link { margin-left: 6px; }
-:where(.orca-parity) .canvas-rect { position: absolute; z-index: 5; border: 1px solid var(--accent, #a78bfa); background: color-mix(in srgb, var(--accent, #a78bfa) 12%, transparent); pointer-events: none; }
+:where(.orca-parity) .canvas-rect { position: absolute; z-index: 5; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); pointer-events: none; }
 :where(.orca-parity) .orient-table { border-collapse: collapse; margin: 12px 16px 4px; }
 :where(.orca-parity) .orient-table th, :where(.orca-parity) .orient-table td { padding: 3px 14px 3px 0; text-align: left; }
 :where(.orca-parity) .orient-table th { font-weight: 600; }
@@ -525,8 +548,6 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) *:focus-visible { outline: 1px solid var(--focus); outline-offset: 1px; }
 :where(.orca-parity) .topbar .menu-title { padding: 4px 8px; border: 0; border-radius: 3px; color: var(--text); background: transparent; }
 :where(.orca-parity) .topbar .menu-title:hover, :where(.orca-parity) .topbar .menu-title[data-state=open] { background: var(--selected); }
-:root.orca-parity { --icon-filter: grayscale(1) brightness(1.15); }
-:root.orca-parity[data-theme='light'] { --icon-filter: grayscale(1); }
 :where(.orca-parity) .toolbar .icon, :where(.orca-parity) .canvas-toolbar .icon, :where(.orca-parity) .tb-tool .icon, :where(.orca-parity) .view-tab > img { filter: var(--icon-filter); }
 :where(.orca-parity) button:disabled, :where(.orca-parity) input:disabled, :where(.orca-parity) textarea:disabled, :where(.orca-parity) [data-disabled] { color: var(--label); opacity: 1; border-color: var(--border-control); }
 :where(.orca-parity) .side-btn:disabled, :where(.orca-parity) .text:disabled, :where(.orca-parity) .text:read-only { border-color: var(--border-control); color: var(--label); }
@@ -540,24 +561,16 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .pk-row.is-active .pk-check, :where(.orca-parity) .pk-row.is-active .pk-option { color: var(--selected-foreground); }
 :where(.orca-parity) .app { --workspace-rail-width: var(--user-rail-width, clamp(340px,28vw,440px)); }
 :where(.orca-parity) .compact-topbar { height: 40px; min-height: 40px; flex-wrap: nowrap; gap: 8px; padding: 0 8px; }
-:where(.orca-parity) .app-menu-button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 3px; background: transparent; flex: none; cursor: pointer; }
+:where(.orca-parity) .app-menu-button { display: grid; grid-auto-flow: column; place-items: center; gap: 2px; min-width: 28px; height: 28px; padding: 0; border: 0; border-radius: 3px; background: transparent; flex: none; cursor: pointer; }
+:where(.orca-parity) .app-menu-button > .app-menu-caret { display: none; }
 :where(.orca-parity) .topbar-project-context { display: flex; align-items: center; gap: 4px; flex: 0 1 calc(var(--workspace-rail-width) - 16px); min-width: 0; }
 :where(.orca-parity) .compact-topbar .tabbar { height: 32px; min-height: 0; border: 0; padding: 0; display: flex; flex: 1 1 auto; min-width: 0; gap: 8px; align-items: center; justify-content: flex-start; background: transparent; }
 :where(.orca-parity) .compact-topbar .tabbar-actions { flex: none; padding: 0; gap: 8px; margin-left: auto; }
 :where(.orca-parity) .export-actions { display: inline-flex; align-items: center; gap: 8px; }
-:where(.orca-parity) .output-overflow { display: none; }
-@media (max-width: 1000px) {
-  :where(.orca-parity) .app { --workspace-rail-width: var(--user-rail-width, 320px); }
-  :where(.orca-parity) .topbar-project-context { flex: none; }
-  :where(.orca-parity) .compact-topbar .export-actions { display: none; }
-  :where(.orca-parity) .output-overflow { display: inline-flex; align-items: center; min-width: 0; padding: 0 12px; }
-}
-@media (min-width: 761px) and (max-width: 900px) {
-  :where(.orca-parity) .view-tab > span { display: none; }
-}
+:where(.orca-parity) .output-overflow { min-width: var(--h-control); padding: 0 var(--s-3); }
+@media (max-width: 1199px) { :where(.orca-parity) .topbar-project-context { flex: none; } }
 :where(.orca-parity) .canvas-toolbar > .icon-btn, :where(.orca-parity) .canvas-toolbar > span > .icon-btn { width: 32px; height: 32px; }
 :where(.orca-parity) .canvas-more { padding: 0 8px; height: 32px; }
-:where(.orca-parity) .canvas-area[data-viewport=preview] .legend { max-width: min(316px, calc(72% - 128px)); }
 
 
 :where(.orca-parity) .saved-preferences-notice { display: flex; align-items: center; gap: var(--s-4); flex: none; min-height: var(--h-bar); padding: var(--s-2) var(--s-5); background: var(--danger-tint); border-bottom: 1px solid var(--line); color: var(--ink); font: var(--t-body); }
