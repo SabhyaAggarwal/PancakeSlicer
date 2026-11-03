@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Popover } from 'radix-ui';
 import { getState, toast, useStore } from '../state/store';
+import { inkOn } from '../components/SlotChip';
 import { findProfile } from './identity';
 import { changeFilamentColour, colourName, saveFilamentAsColour, slotColour, slotColourOverride, useProfileColour } from './filament-colour';
 
@@ -18,7 +19,7 @@ export function FilamentColourMenu({ slot }: { slot: number }) {
     try { await action(); setOpen(false); } catch (error) { toast(error instanceof Error ? error.message : String(error)); } finally { setBusy(false); }
   };
   return <Popover.Root open={open} onOpenChange={(next) => { setOpen(next); if (next) setDraft(colour); }}>
-    <Popover.Trigger asChild><button type="button" className="color-trigger" style={{ backgroundColor: colour }} data-modified={override ? true : undefined} aria-label={`Filament ${slot + 1} colour: ${colourName(colour)}${override ? ', changed in this project' : ''}`}/></Popover.Trigger>
+    <Popover.Trigger asChild><button type="button" className="color-trigger" style={{ backgroundColor: colour }} data-ink={inkOn(colour)} data-modified={override ? true : undefined} aria-label={`Filament ${slot + 1} colour: ${colourName(colour)}${override ? ', changed in this project' : ''}`}>{slot + 1}</button></Popover.Trigger>
     <Popover.Portal><Popover.Content className="orca-menu color-popover" aria-label={`Filament ${slot + 1} colour`} side="bottom" align="start" sideOffset={4} collisionPadding={12} onKeyDown={(e) => e.stopPropagation()}>
       <div className="color-heading"><span>{picked ? colourName(picked) : 'Colour'}</span><span className="color-preview" style={{ backgroundColor: picked ?? colour }}/></div>
       <div className="color-palette" role="group" aria-label="Palette">{PALETTE.map((c) => <button key={c} type="button" className="color-swatch" style={{ backgroundColor: c }} aria-label={colourName(c)} aria-pressed={picked === c} onClick={() => setDraft(c)}/>)}</div>

@@ -52,11 +52,11 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
   const editor: ProfileFields = useMemo(() => ({name, config: values, baseline, changes, set, reset, mode}), [name, values, baseline, changes, set, reset, mode]);
   const dirty = Object.keys(changes).length > 0 || applicabilityDirty || !!draft?.staged;
   const revert = () => {update(key, null); setError(null);};
-  const noPrinter = type !== 'machine' && !!source && worksWithNone(source, values, applicability);
-  const openOnWorksWith = useRef(noPrinter).current;
+  const noPrinter = applicabilityDirty && worksWithNone(type, applicability);
+  const openOnWorksWith = useRef(!!source && worksWithNone(type, source.applicability)).current;
   const save = async () => {
     if (inFlight.current || !dirty) return;
-    if (noPrinter) {setError('A profile must work with at least one printer. Choose one under Works with, or reset it to the template.'); return;}
+    if (noPrinter) {setError('Works with matches no printer.'); return;}
     const s = getState(), currentSource=findProfile(s,type,name);
     const submitted={...latest.current,values:structuredClone(latest.current.values),applicability:structuredClone(latest.current.applicability)};
     if (!s.api) {setError('Not connected. Your edits are kept.'); return;}

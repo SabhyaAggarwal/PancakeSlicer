@@ -34,8 +34,11 @@ export function buildProfileReferenceSource(s: State, projects: ProfileReference
   for (const type of ['machine', 'process', 'filament'] as const)
     for (const key of defaults[type]) add(type, key, { kind: 'default', label: type === 'machine' ? 'Default printer' : type === 'process' ? 'Default process' : 'Default filament' });
   for (const child of s.userPresets) {
-    if (child.applicability?.mode === 'only') for (const printerId of child.applicability.printerIds)
-      add('machine', printerId, {kind:'inheritance',label:`Works with: ${child.name}`,owner:profileKey(child)});
+    const rule = child.applicability, worksWith = {kind:'inheritance' as const,label:`Works with: ${child.name}`,owner:profileKey(child)};
+    if (rule?.printers && 'printerIds' in rule.printers) for (const id of rule.printers.printerIds) add('machine', id, worksWith);
+    for (const id of rule?.exclude ?? []) add('machine', id, worksWith);
+    for (const id of rule?.prints?.profileIds ?? []) add('process', id, worksWith);
+    if (rule?.filaments && 'profileIds' in rule.filaments) for (const id of rule.filaments.profileIds) add('filament', id, worksWith);
     if (child.masterId) add(child.type,child.masterId,{kind:'inheritance',label:child.name,owner:profileKey(child)});
     else if (child.kind !== 'master') {
       const masters = s.userPresets.filter(p => p.type === child.type && p.kind === 'master' && p.base?.name === child.base?.name && (!p.base?.vendor || p.base.vendor === child.base?.vendor));

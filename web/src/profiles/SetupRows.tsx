@@ -56,22 +56,10 @@ export function removeFilament() {
 }
 
 export function removeSlot(i: number) {
-  const s = getState();
-  const painted = s.objects.some((o) => o.paint?.color || o.volumes?.some((v) => v.paint?.color));
-  if (Object.keys(s.mixes).length || painted || i === s.filamentSlots.length - 1) return removeFilament();
-  const n = i + 1;
-  const remap = (e: number) => (e === n ? 1 : e > n ? e - 1 : e);
-  undoable('Remove filament', () => setState((st) => ({
-    filamentSlots: st.filamentSlots.filter((_, j) => j !== i),
-    slotColours: st.slotColours.filter((_, j) => j !== i),
-    objects: st.objects.map((o) => ({ ...o, extruder: remap(o.extruder), ...(o.volumes ? { volumes: o.volumes.map((v) => (v.extruder ? { ...v, extruder: remap(v.extruder) } : v)) } : {}) })),
-    events: st.events.filter((e) => e.type !== 'change' || Number(e.text) !== n)
-      .map((e) => (e.type === 'change' && Number(e.text) > n ? { ...e, text: String(Number(e.text) - 1) } : e)),
-    flush: { ...st.flush, matrix: null },
-    projectPresets: st.projectPresets && { ...st.projectPresets, filaments: st.projectPresets.filaments.filter((_, j) => j !== i) },
-    job: markStale(st.job),
-  })));
-  toast('Removed', { label: 'Undo', run: undo });
+  void import('../plater/mixed').then(({ removeSlotAt }) => {
+    const done = removeSlotAt(i + 1);
+    if (done) toast(done.moved ? `Removed filament ${i + 1}; ${done.moved} object${done.moved === 1 ? '' : 's'} moved to slot ${done.to}` : `Removed filament ${i + 1}`, { label: 'Undo', run: undo });
+  });
 }
 
 const usersOf = (s: State, n: number) => s.objects.filter((o) => o.extruder === n || o.volumes?.some((v) => v.extruder === n));

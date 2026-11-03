@@ -1,7 +1,6 @@
 import type { CompactCatalog } from './compact-catalog';
 import { normalizeCatalog } from './catalog';
 import { loadRuntimeOptions, nativePresetCatalog, type RuntimeOptions } from '../option-inventory';
-import { DEMO_MODELS, VENDORS, presetsUrl } from './catalog-scope';
 import optionsUrl from '../options.generated.json?url&no-inline';
 import type { OptionDef, TabDesc } from '../options';
 
@@ -59,17 +58,6 @@ async function runtimeOptions(url:string,mock=false) {
   return loaded;
 }
 
-const catalogKey = (vendor: string, models: string[]) => `${FORMAT}|${vendor}|${models.join(',')}`;
-const typesOf = (options: Record<string, OptionDef>) => JSON.stringify([nativePresetCatalog(), Object.entries(options).map(([key, def]) => [key, def.type])]);
-const warm = (async () => {
-  definitions ??= runtimeOptions(optionsUrl).catch((error) => { definitions = null; throw error; });
-  const types = typesOf((await definitions).options);
-  await Promise.all(VENDORS.map(async (vendor) => {
-    const r = await fetch(presetsUrl(vendor, DEMO_MODELS), { cache: 'no-cache' });
-    if (r.ok) remember({ key: catalogKey(vendor, DEMO_MODELS), etag: r.headers.get('ETag'), types, catalog: normalizeCatalog(await r.json(), vendor, nativePresetCatalog()) });
-  }));
-})().catch(() => {});
-
 self.onmessage = async (e: MessageEvent<CatalogIn>) => {
   const { id } = e.data;
   try {
@@ -96,16 +84,15 @@ self.onmessage = async (e: MessageEvent<CatalogIn>) => {
     }
     definitions ??= runtimeOptions(optionsUrl).catch((error) => { definitions = null; throw error; });
     const { vendor, models } = e.data;
-    const key = catalogKey(vendor, models);
-    await warm;
+    const key = `${FORMAT}|${vendor}|${models.join(',')}`;
     const entry = catalogs.get(key)?.entry;
-    const read = (etag?: string | null) => fetch(presetsUrl(vendor, models), {
+    const read = (etag?: string | null) => fetch(`/api/presets?${new URLSearchParams([['vendor', vendor], ...models.map((m) => ['model', m])])}`, {
       cache: 'no-cache',
       headers: etag ? { 'If-None-Match': etag } : {},
     });
     const early = entry ? undefined : read();
     const { options } = await definitions;
-    const types = typesOf(options);
+    const types = JSON.stringify([nativePresetCatalog(), Object.entries(options).map(([key, def]) => [key, def.type])]);
     const cached = entry?.types === types ? entry : undefined;
     if(cached)post({id,type:'catalog',catalog:cached.catalog,from:'cache'});
     const r = await (early ?? read(cached?.etag));

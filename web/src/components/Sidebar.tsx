@@ -43,10 +43,10 @@ function FilamentSection() {
   const max = capacity(machine);
   return <RailSection title="Filament" actions={<>
     {max > 1 && slots.length < max && <RailAction glyph="plus" label="Add filament slot" onClick={addFilament}/>}
-    {max > 1 && slots.length > 1 && <RailAction glyph="minus" label={`Remove filament slot ${slots.length}`} onClick={() => removeSlot(slots.length - 1)}/>}
     <RailAction glyph="edit" label="Edit filament" disabled={onlyError} onClick={() => edit('filament', only)}/>
   </>}>
-    {slots.map((_name, i) => <div key={i} className="rail-row"><span className="rail-index">{i + 1}</span><PresetCombo type="filament" slot={i}/></div>)}
+    {slots.map((_name, i) => <div key={i} className="rail-row rail-slot"><PresetCombo type="filament" slot={i}/>
+      {slots.length > 1 && <button type="button" className="icon-btn rail-slot-remove" aria-label={`Remove filament slot ${i + 1}`} onClick={() => removeSlot(i)}><Glyph name="close" size={14}/></button>}</div>)}
   </RailSection>;
 }
 const DETAIL = [['simple', 'Simple'], ['advanced', 'Advanced'], ['develop', 'Expert']] as const;

@@ -3,7 +3,7 @@ import { normalizeConfigValue } from '../config-values';
 import { resolveProfile } from './model';
 import { profileContext, type ContextProfile, type ProfileContextState } from './context';
 import { evaluateProfileCondition } from './condition';
-import { resolveApplicability } from './applicability';
+import { worksWithReason } from './applicability';
 export interface Compatibility { ok: boolean; reason: string; unknown?: boolean }
 const strings = (key: string, value: Config[string] | undefined): string[] => {
   if (value === undefined || value === '') return [];
@@ -50,6 +50,6 @@ export function selectNativeCompatibility(s: ProfileContextState, type: PresetTy
 export function selectCompatibility(s: ProfileContextState, type: PresetType, key: string, printer = s.printer, nozzle?: string | number): Compatibility {
   const native = selectNativeCompatibility(s,type,key,printer,nozzle);
   if (!native.ok || type === 'machine') return native;
-  const applicability = resolveApplicability(s,type,key,printer);
-  return applicability.effective;
+  const reason = worksWithReason(s,type,key,printer,nozzle);
+  return reason ? denied(reason) : native;
 }

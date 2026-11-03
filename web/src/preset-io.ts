@@ -4,7 +4,7 @@ import { normalizeConfigValue, unescapeConfigString } from './config-values';
 import { isHidden, OPTIONS } from './options';
 import { compatible, getState, listFor, PRESET_META, resolvePreset, type State } from './state/store';
 import { findProfile, profileKey } from './profiles/identity';
-import { validApplicability } from './profiles/applicability';
+import { validWorksWith } from './profiles/works-with';
 import { baseVersion, normalizeUserPreset, saveProfile, storedProfile } from './profiles/model';
 
 export const PRESET_VERSION = '02.08.01.55';
@@ -86,7 +86,7 @@ export function parsePresetJson(text: string, file: string): ParsedPreset {
       const p = app?.profile;
       if (app?.schema !== 1 || !p || p.type !== parsed.type || typeof p.name !== 'string' || !p.base || typeof p.base.name !== 'string'
         || typeof p.base.version !== 'string' || !p.overlay || typeof p.overlay !== 'object' || Array.isArray(p.overlay)
-        || p.applicability !== undefined && !validApplicability(p.applicability)) throw new Error('invalid app metadata');
+        || p.applicability !== undefined && !validWorksWith(p.applicability, p.type)) throw new Error('invalid app metadata');
       parsed.appProfile = normalizeUserPreset(p);
     } catch { return {...parsed,error:'The saved profile metadata is invalid. Repair or re-export the profile.'}; }
   }

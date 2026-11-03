@@ -589,12 +589,15 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .process-section > .rail-head { container-type: inline-size; }
 :where(.orca-parity) .rail-menus-folded { display: none; }
 @container (max-width: 340px) { :where(.orca-parity) .rail-menus { display: none; } :where(.orca-parity) .rail-menus-folded { display: inline-grid; } }
-:where(.orca-parity) .rail-row { display: grid; grid-template-columns: 16px 28px minmax(0, 1fr); column-gap: var(--s-3); align-items: center; min-height: var(--h-control); padding: 0 var(--space-section); }
+:where(.orca-parity) .rail-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) 24px; column-gap: var(--s-3); align-items: center; min-height: var(--h-control); padding: 0 var(--space-section); }
 :where(.orca-parity) .rail-row + .rail-row { margin-top: var(--s-2); }
 :where(.orca-parity) .rail-row-wide { grid-template-columns: minmax(0, 1fr); }
 :where(.orca-parity) .rail-row > .preset-combo, :where(.orca-parity) .rail-row .pk-slot, :where(.orca-parity) .rail-row .process-preset-picker { display: contents; }
-:where(.orca-parity) .rail-row .pk-trigger { grid-column: -2; width: 100%; min-width: 0; }
-:where(.orca-parity) .rail-row .color-trigger { grid-column: 2; justify-self: center; }
-:where(.orca-parity) .rail-index { grid-column: 1; justify-self: end; font: var(--t-small); color: var(--ink-2); }
-:where(.orca-parity) .rail-cover { grid-column: 1 / 3; justify-self: center; width: 40px; height: 40px; object-fit: contain; }
+:where(.orca-parity) .rail-row .pk-trigger { grid-column: 2; width: 100%; min-width: 0; }
+:where(.orca-parity) .rail-row-wide .pk-trigger { grid-column: 1; }
+:where(.orca-parity) .rail-row .color-trigger { grid-column: 1; justify-self: center; }
+:where(.orca-parity) .rail-slot-remove { grid-column: 3; width: 24px; height: 24px; min-width: 0; min-height: 0; color: var(--ink-3); opacity: 0; }
+:where(.orca-parity) .rail-slot:is(:hover, :focus-within) .rail-slot-remove { opacity: 1; }
+@media (pointer: coarse) { :where(.orca-parity) .rail-slot-remove { opacity: 1; } }
+:where(.orca-parity) .rail-cover { grid-column: 1; justify-self: center; width: 40px; height: 40px; object-fit: contain; }
 :where(.orca-parity) .sidebar :is(.pk-name, .pk-trigger .dropdown-value) { font-weight: 400; }

@@ -384,7 +384,7 @@ let nextId = 1;
 export const newId = () => nextId++;
 export const reserveIds = (max: number) => { nextId = Math.max(nextId, max + 1); };
 
-export { DEMO_MODELS } from '../api/catalog-scope';
+export const DEMO_MODELS = ['Bambu Lab A1 mini', 'Bambu Lab A1', 'Bambu Lab P1S', 'Prusa MINI', 'Prusa MINI IS', 'Prodcan3 5-axis BC table', 'Fairino FR3 cell'];
 export const DEFAULT_PRINTER = 'Bambu Lab A1 mini 0.4 nozzle';
 
 export function listFor(s: State, type: PresetType): SystemPreset[] {

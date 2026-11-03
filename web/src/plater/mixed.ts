@@ -4,6 +4,7 @@ import type { Config } from '../api/types';
 import { filamentColor } from './filamentColor';
 import { remapObject } from '../components/RemapFilaments';
 import { blend } from './mixColour';
+import type { PaintNode, Painting } from './paint';
 
 export const SLOTS_MAX = 32;
 export { blend };
@@ -59,6 +60,35 @@ export function deleteMixes(slots: number[], into?: number, name = 'Delete mixed
       mixes: Object.fromEntries(kept.flatMap((k, j) => (st.mixes[k] ? [[j, st.mixes[k]]] : []))),
     };
   }));
+}
+
+const paints = (p: Painting | undefined, n: number): boolean => {
+  const walk = (x: PaintNode): boolean => (Array.isArray(x) ? x.some(walk) : x === n);
+  return !!p && [...p.values()].some(walk);
+};
+const usesSlot = (o: PlateObject, n: number) => o.extruder === n || paints(o.paint?.color, n)
+  || !!o.volumes?.some((v) => v.type === 'part' && (v.extruder === n || paints(v.paint?.color, n)));
+
+export function removeSlotAt(n: number): { moved: number; to: number } | null {
+  const st0 = getState(), total = st0.filamentSlots.length, p = physicalCount(st0);
+  if (n < 1 || n > total || total < 2 || (n <= p && p < 2)) return null;
+  const target = n > 1 ? n - 1 : 2;
+  const renumber = (j: number) => (j > n ? j - 1 : j);
+  const to = renumber(target);
+  const map = Array.from({ length: total }, (_, k) => (k + 1 === n ? to : renumber(k + 1)));
+  const moved = st0.objects.filter((o) => usesSlot(o, n)).length;
+  undoable('Remove filament', () => setState((st) => {
+    const keep = (_: unknown, j: number) => j !== n - 1;
+    const mixes = Object.fromEntries(Object.entries(st.mixes).flatMap(([k, m]) => (Number(k) === n - 1 ? []
+      : [[renumber(Number(k) + 1) - 1, { ...m, components: m.components.map((c) => (c >= 1 && c <= total ? map[c - 1] : c)) }]])));
+    return {
+      ...remapAll(st, map),
+      filamentSlots: st.filamentSlots.filter(keep), slotColours: st.slotColours.filter(keep), mixes,
+      projectPresets: st.projectPresets && { ...st.projectPresets, filaments: st.projectPresets.filaments.filter(keep) },
+      flush: { ...st.flush, matrix: null },
+    };
+  }));
+  return { moved, to };
 }
 
 export function addPhysical(colour?: string) {

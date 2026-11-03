@@ -38,7 +38,9 @@
   :where(.orca-parity) .canvas-area .objects-outliner { top: 8px; right: max(8px,env(safe-area-inset-right)); width: min(270px,calc(100% - 120px)); }
   :where(.orca-parity) .outliner-heading { min-height: 44px; padding: 0 6px; }
   :where(.orca-parity) .outliner-body { max-height: min(260px,45dvh); }
-  :where(.orca-parity) .object-info { left: 8px; bottom: 66px; max-width: calc(100% - 16px); font-size: 12px; flex-wrap: wrap; }
+  :where(.orca-parity) .canvas-tools { left: auto; right: max(8px,env(safe-area-inset-right)); bottom: 60px; align-items: flex-end; z-index: 46; }
+  :where(.orca-parity) .canvas-tools .canvas-section-panel { left: auto; right: 40px; width: max-content; max-width: calc(100vw - 64px); flex-wrap: wrap; }
+  :where(.orca-parity) .canvas-area .object-info { left: 8px; bottom: 66px; max-width: calc(100% - 16px - 48px); font-size: 12px; flex-wrap: nowrap; white-space: nowrap; overflow: hidden; }
   :where(.orca-parity) .nav3d { display: none; }
   :where(.orca-parity) .nav-view-control { display: inline-grid; position: absolute; z-index: 7; top: 8px; left: calc(max(8px,env(safe-area-inset-left)) + var(--canvas-chip) + 4px); }
   :where(.orca-parity) .transform-anchor { left: max(8px,env(safe-area-inset-left)); }
@@ -46,7 +48,7 @@
   :where(.orca-parity) .rail-head { --rail-act: 40px; }
   :where(.orca-parity) .canvas-area .manip-panel { top: 60px; left: max(8px,env(safe-area-inset-left)); max-width: calc(100% - 16px); max-height: calc(100% - 60px - 72px); overflow: auto; z-index: 46; }
   :where(.orca-parity) .notification, :where(.orca-parity) .toast { max-width: calc(100vw - 16px); overflow-wrap: anywhere; }
-  :where(.orca-parity) .canvas-area .notifications { left: max(8px,env(safe-area-inset-left)); right: max(8px,env(safe-area-inset-right)); bottom: 60px; width: auto; max-width: 480px; margin-inline: auto; max-height: 40%; }
+  :where(.orca-parity) .canvas-area .notifications { left: max(8px,env(safe-area-inset-left)); right: calc(max(8px,env(safe-area-inset-right)) + 48px); bottom: 60px; width: auto; max-width: 480px; margin-inline: auto; max-height: 40%; }
   :where(.orca-parity) .canvas-area:has(.object-info) .notifications { bottom: 120px; }
   :where(.orca-parity) .saved-preferences-notice { padding: 4px max(8px,env(safe-area-inset-right)) 4px max(8px,env(safe-area-inset-left)); }
   :where(.orca-parity) .modal { max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
