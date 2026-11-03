@@ -1,17 +1,28 @@
-import { useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import { loadCatalog } from '../actions';
-import { setState, useStore } from '../state/store';
+import { useStore } from '../state/store';
+import { confirmDialog } from './Ask';
+import { resetProfiles, saveRecoveredProfiles, serviceRecoverySnapshot, subscribeServiceRecovery } from '../profiles/service-recovery';
 
-export function ProfileLibraryNotice({recoveryContext=false}:{recoveryContext?:boolean}) {
+export function ProfileLibraryNotice() {
   const load = useStore(s => s.profileLibraryLoad);
-  const [exportError,setExportError]=useState<string|null>(null);
-  const exportBrowser=async()=>{try{await(await import('../profiles/recovery-export')).exportBrowserRecovery();setExportError(null);}catch(error){setExportError(String(error));}};
-  if (load.state === 'ready') return null;
-  if (load.state === 'loading') return <div className="profile-library-notice" role="status">Loading saved profiles…</div>;
-  const recover=load.recovery==='adopt_service_profiles';
-  return <div className="profile-library-notice" role="alert">
-    <strong>{recover?'Review your saved profiles':'Saved profiles need attention'}</strong><span>{recover?'Earlier versions left original profile files. Review them once to enable Add and Save. Your current edits and original files are kept.':load.error}</span>
-    <div><button type="button" className="btn" onClick={()=>recover?void import('../profiles/service-recovery').then(m=>m.openSavedProfileRecovery()):void loadCatalog()}>{recover?'Review saved profiles':'Retry loading'}</button><button type="button" className="btn-ghost" onClick={() => setState({presetUx: {kind: 'presets', type: 'machine',add:true}})}>Browse templates</button></div>
-    {recoveryContext && !recover && <details><summary>Original-data recovery</summary><p>Current state is saved by the service. Earlier-version sources are retained read-only for lossless recovery.</p><button type="button" className="btn" onClick={()=>void exportBrowser()}>Export original recovery data</button></details>}{exportError && <span>{exportError}</span>}
+  const recovery = useSyncExternalStore(subscribeServiceRecovery, serviceRecoverySnapshot, serviceRecoverySnapshot);
+  if (load.state === 'failed') return <div className="profile-library-notice" role="alert">
+    <div><strong>Profiles didn't load</strong><button type="button" className="btn" onClick={() => void loadCatalog()}>Retry</button></div>
+  </div>;
+  if (recovery.state === 'idle') return null;
+  const busy = recovery.state === 'saving' || recovery.state === 'resetting';
+  const reset = async () => {
+    if (await confirmDialog('Reset profiles', 'Custom profiles and printer setups will be removed. Projects are kept.', ['Reset', 'Cancel'], true)) await resetProfiles();
+  };
+  const found = `${recovery.count} profile${recovery.count === 1 ? '' : 's'} found`;
+  const unreadable = recovery.state === 'available' && recovery.unreadable ? ` · ${recovery.unreadable} unreadable` : '';
+  return <div className="profile-library-notice" role={recovery.state === 'failed' ? 'alert' : 'status'} aria-busy={busy}>
+    <div>
+      <strong>{recovery.state === 'saving' ? 'Saving profiles…' : recovery.state === 'resetting' ? 'Resetting profiles…' : found + unreadable}</strong>
+      <button type="button" className="btn primary" disabled={busy} onClick={() => void saveRecoveredProfiles()}>Save profiles</button>
+      <button type="button" className="btn" disabled={busy} onClick={() => void reset()}>Reset and start fresh</button>
+    </div>
+    {recovery.state === 'failed' && <span>{recovery.error}</span>}
   </div>;
 }

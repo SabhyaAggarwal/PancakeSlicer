@@ -14,8 +14,8 @@ function MenuRows({ items }: { items: MenuEntry[] }) {
     if (it === 'sep') return <MenuSeparator key={i} />;
     if (it.header) return <MenuGroup key={i}>{it.label}</MenuGroup>;
     const content = <><span className="menu-check" aria-hidden>{it.checked ? '✓' : ''}</span><span className="orca-menu-label">{it.icon}{it.label}</span><span className="orca-menu-key">{it.sub ? '›' : it.shortcut}</span></>;
-    if (it.sub) return <Menu.Sub key={i}><Menu.SubTrigger className="menu-item" disabled={it.disabled} title={it.disabled || !it.action && !it.sub ? `${it.label}\n${it.tip ?? disabledCommandReason(it.label)}` : it.tip ?? it.label}>{content}</Menu.SubTrigger><Menu.Portal><Menu.SubContent className="orca-menu" data-menu-family="orca" collisionPadding={8} sideOffset={2}><MenuRows items={it.sub} /></Menu.SubContent></Menu.Portal></Menu.Sub>;
-    return <Menu.Item key={i} className="menu-item" disabled={it.disabled || !it.action} title={it.disabled || !it.action && !it.sub ? `${it.label}\n${it.tip ?? disabledCommandReason(it.label)}` : it.tip ?? it.label} onSelect={(e) => { if (it.keepOpen) e.preventDefault(); it.action?.(); }}>{content}</Menu.Item>;
+    if (it.sub) return <Menu.Sub key={i}><Menu.SubTrigger className="menu-item" disabled={it.disabled} aria-description={it.disabled || !it.action && !it.sub ? it.tip ?? disabledCommandReason(it.label) : it.tip}>{content}</Menu.SubTrigger><Menu.Portal><Menu.SubContent className="orca-menu" data-menu-family="orca" collisionPadding={8} sideOffset={2}><MenuRows items={it.sub} /></Menu.SubContent></Menu.Portal></Menu.Sub>;
+    return <Menu.Item key={i} className="menu-item" disabled={it.disabled || !it.action} aria-description={it.disabled || !it.action && !it.sub ? it.tip ?? disabledCommandReason(it.label) : it.tip} onSelect={(e) => { if (it.keepOpen) e.preventDefault(); it.action?.(); }}>{content}</Menu.Item>;
   });
 }
 export const MenuButton = forwardRef<HTMLButtonElement, Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & { label: string; items: MenuEntry[]; children?: ReactNode }>(function MenuButton({ label, items, children, ...props }, ref) {

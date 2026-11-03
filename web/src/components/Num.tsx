@@ -8,7 +8,6 @@ export function Num({ value, onCommit, step = 1, label }: { value?: number; onCo
     <input
       className="text num manip-num"
       aria-label={label}
-      title={value === undefined ? "Select an editable object on the plate to change this value" : label}
       inputMode="decimal"
       disabled={value === undefined}
       placeholder={value === undefined ? '—' : undefined}

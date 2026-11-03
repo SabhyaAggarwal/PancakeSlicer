@@ -24,9 +24,9 @@ function setRotation(objectId: number, instanceId: number, rot: [number, number,
 
 export function CoordToggle({ value, onChange, enabled }: { value: 'world' | 'object'; onChange: (v: 'world' | 'object') => void; enabled: boolean }) {
   return (
-    <span className="seg" role="radiogroup" aria-label="Coordinates" title="Coordinate system used for transform actions.">
+    <span className="seg" role="radiogroup" aria-label="Coordinates">
       {(['world', 'object'] as const).map((v) => (
-        <button key={v} type="button" role="radio" aria-checked={value === v} disabled={!enabled} title={!enabled ? "Choose the Move tool to change coordinates" : undefined} onClick={() => onChange(v)}>
+        <button key={v} type="button" role="radio" aria-checked={value === v} disabled={!enabled} onClick={() => onChange(v)}>
           {v === 'world' ? 'World' : 'Object'}
         </button>
       ))}
@@ -36,7 +36,7 @@ export function CoordToggle({ value, onChange, enabled }: { value: 'world' | 'ob
 
 function RowButton({ d, title, onClick, disabled, pressed }: { d: string; title: string; onClick: () => void; disabled?: boolean; pressed?: boolean }) {
   return (
-    <button type="button" className="xf-btn" title={disabled ? `${title}\nThe transform is already at its reset value.` : title} aria-label={title} aria-pressed={pressed} disabled={disabled} onClick={onClick}>
+    <button type="button" className="xf-btn" aria-label={title} aria-pressed={pressed} disabled={disabled} onClick={onClick}>
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d={d} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" /></svg>
     </button>
   );
@@ -122,7 +122,7 @@ export function TransformPanel() {
     <Popover.Portal><Popover.Content className="xf transform-floating" aria-label={`${title} ${v?.name ?? o.name}`} side="bottom" align="start" sideOffset={0} collisionPadding={12}
       onOpenAutoFocus={e => e.preventDefault()} onCloseAutoFocus={e => e.preventDefault()}
       onInteractOutside={e => e.preventDefault()} onEscapeKeyDown={e => { e.stopPropagation(); close(); }}>
-      <div className="xf-head"><span className="xf-label">{title}</span>{toggle}<button type="button" className="xf-fold" aria-label="Close transform" title="Close transform (Escape)" onClick={close}>×</button></div>
+      <div className="xf-head"><span className="xf-label">{title}</span>{toggle}<button type="button" className="xf-fold" aria-label="Close transform" onClick={close}>×</button></div>
       <div className="xf-selection">{v?.name ?? o.name}</div>
       <div className="xf-grid"><span/><span className="axis x">X</span><span className="axis y">Y</span><span className="axis z">Z</span><span/>{body}</div>
     </Popover.Content></Popover.Portal>

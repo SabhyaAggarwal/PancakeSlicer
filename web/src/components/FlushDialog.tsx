@@ -123,23 +123,19 @@ function FlushTable() {
               </tbody>
             </table>
           </div>
-          <div className="normal-text">Flushing volume (mm³) for each filament pair.</div>
-          <div className={outOfRange ? 'warning-text' : 'normal-text'}>
-            Suggestion: Flushing Volume in range [{minVol}, {TYPICAL_MAX_FLUSH_VOLUME}]
-          </div>
+          <div className={outOfRange ? 'warning-text' : 'normal-text'}>Volume (mm³), typical {minVol}–{TYPICAL_MAX_FLUSH_VOLUME}</div>
           <div className="flush-row">
             <label htmlFor="flush-mult">Multiplier</label>
             <input
               id="flush-mult"
               type="number"
               step="0.1"
+              min={MULTIPLIER_RANGE[0]}
+              max={MULTIPLIER_RANGE[1]}
               className={`text num multiplier-input ${mult !== 1 ? 'changed' : ''}`}
               value={multText}
               onChange={(e) => onMult(e.target.value)}
             />
-          </div>
-          <div className="hint-text">
-            The multiplier should be in range [{MULTIPLIER_RANGE[0].toFixed(2)}, {MULTIPLIER_RANGE[1].toFixed(2)}].
           </div>
         </div>
         <div className="modal-buttons center">

@@ -1,17 +1,26 @@
-:where(.orca-parity) .orca-menu { z-index: 1000; min-width: 200px; max-width: min(640px, calc(100vw - 16px)); max-height: min(560px, var(--radix-popper-available-height, calc(100vh - 16px))); overflow: auto; padding: 4px; background: var(--selector-bg); color: var(--text); border: 1px solid var(--border-control); border-radius: 4px; font: var(--t-body); box-shadow: 0 6px 18px #0006; }
-:where(.orca-parity) .orca-menu .menu-item { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 28px; padding: 4px 8px; border: 0; border-radius: 3px; background: transparent; color: var(--text); font: inherit; text-align: left; cursor: default; outline: none; white-space: normal; overflow-wrap: anywhere; }
-:where(.orca-parity) .orca-menu .menu-item[data-highlighted], :where(.orca-parity) .orca-menu .menu-item:hover:not([data-disabled]) { background: var(--selected); }
+:where(.orca-parity) .orca-menu { z-index: 1000; box-sizing: border-box; min-width: 180px; max-width: min(560px, calc(100vw - 16px)); max-height: min(560px, var(--radix-popper-available-height, calc(100dvh - 16px))); overflow: auto; overscroll-behavior: contain; padding: 4px; background: var(--selector-bg); color: var(--text); border: 1px solid var(--border-control); border-radius: 4px; font: var(--t-body); box-shadow: var(--shadow-pop); scrollbar-width: thin; }
+:where(.orca-parity) .orca-menu .menu-item { display: flex; align-items: center; gap: 8px; box-sizing: border-box; width: 100%; min-height: 28px; padding: 4px 8px; border: 0; border-radius: 3px; background: transparent; color: var(--text); font: inherit; text-align: left; cursor: default; outline: none; white-space: normal; overflow-wrap: break-word; }
+:where(.orca-parity) .orca-menu .menu-item[data-highlighted], :where(.orca-parity) .orca-menu .menu-item:hover:not([data-disabled]), :where(.orca-parity) .orca-menu .menu-item[aria-selected=true] { background: var(--selected); }
+:where(.orca-parity) .orca-menu .menu-item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 :where(.orca-parity) .orca-menu .menu-item[data-disabled] { color: var(--disabled); }
-:where(.orca-parity) .orca-menu-label { flex: 1; display: flex; align-items: center; gap: 8px; }
-:where(.orca-parity) .orca-menu-key { margin-left: auto; padding-left: 20px; color: var(--text-dim); white-space: normal; }
-:where(.orca-parity) .menu-check { width: 14px; flex: none; color: var(--accent); }
-:where(.orca-parity) .orca-menu .menu-sep { height: 1px; margin: 4px; background: var(--border); }
-:where(.orca-parity) .orca-menu-group { padding: 6px 8px 4px; font-weight: 600; color: var(--text-dim); }
+:where(.orca-parity) .orca-menu-label { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
+:where(.orca-parity) .orca-menu-key { flex: none; margin-left: auto; padding-left: 16px; color: var(--text-dim); white-space: nowrap; }
+:where(.orca-parity) .menu-check { width: 14px; flex: none; color: var(--accent-text); }
+:where(.orca-parity) .orca-menu .menu-sep { height: 1px; margin: 4px 0; background: var(--line); }
+:where(.orca-parity) .orca-menu-group { padding: 8px 8px 4px; font: var(--t-small); font-weight: 600; color: var(--text-dim); }
 :where(.orca-parity) .menu-position-anchor { width: 0; height: 0; padding: 0; border: 0; pointer-events: none; }
-:where(.orca-parity) .dropdown { display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; height: auto; min-width: 0; padding: 3px 8px; background: var(--selector-bg); color: var(--text); border: 1px solid var(--border-control); border-radius: 3px; text-align: left; font: inherit; }
-:where(.orca-parity) .dropdown-value { flex: 1; white-space: normal; overflow-wrap: anywhere; }
-:where(.orca-parity) .dropdown:focus-visible, :where(.orca-parity) .dropdown[data-state=open] { outline: 1px solid var(--focus); outline-offset: 1px; }
-:where(.orca-parity) .dropdown:disabled { opacity: .55; }
-:where(.orca-parity) .dropdown-list { min-width: var(--radix-select-trigger-width); }
 
-:where(.orca-parity) .dropdown-list .dropdown-viewport { max-height: min(480px,var(--radix-select-content-available-height,calc(100dvh - 24px))); overflow-y: auto; scrollbar-width: thin; }
+:where(.orca-parity) .dropdown { display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; box-sizing: border-box; min-height: var(--h-field); height: auto; min-width: 0; padding: 4px 8px; background: var(--selector-bg); color: var(--text); border: 1px solid var(--border-control); border-radius: 3px; text-align: left; font: inherit; cursor: pointer; }
+:where(.orca-parity) .dropdown:hover:not(:disabled) { border-color: var(--ink-3); }
+:where(.orca-parity) .dropdown-value { flex: 1; min-width: 0; white-space: normal; overflow-wrap: break-word; }
+:where(.orca-parity) .dropdown-caret { flex: none; color: var(--text-dim); line-height: 1; }
+:where(.orca-parity) .dropdown:focus-visible, :where(.orca-parity) .dropdown[data-state=open] { outline: 2px solid var(--focus); outline-offset: -1px; }
+:where(.orca-parity) .dropdown:disabled { cursor: default; }
+:where(.orca-parity) .dropdown-list { min-width: max(180px, var(--radix-select-trigger-width, 0px)); }
+:where(.orca-parity) .dropdown-list:has(> .dropdown-viewport) { display: flex; flex-direction: column; overflow: hidden; max-height: min(480px, var(--radix-select-content-available-height, calc(100dvh - 16px))); }
+:where(.orca-parity) .dropdown-list .dropdown-viewport { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+
+@media (pointer: coarse) {
+  :where(.orca-parity) .orca-menu .menu-item { min-height: 44px; }
+  :where(.orca-parity) .dropdown { min-height: 44px; }
+}

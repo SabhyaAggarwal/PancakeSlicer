@@ -5,14 +5,24 @@
   font: var(--t-body); cursor: pointer; transition: background var(--dur-1) var(--ease); }
 :where(.orca-parity) .btn:hover:not(:disabled) { background: var(--hover); }
 :where(.orca-parity) .btn:disabled { cursor: not-allowed; }
-:where(.orca-parity) .btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); height: auto; min-height: var(--h-control); padding: 0 var(--s-5); border: 0; border-radius: var(--r-2); background: var(--accent); color: var(--accent-ink);
+:where(.orca-parity) .btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); height: auto; min-height: var(--h-control); padding: 0 var(--s-5); border: 1px solid var(--accent); border-radius: var(--control-radius); background: var(--accent); color: var(--accent-ink);
   font: var(--t-body); font-weight: 600; cursor: pointer; transition: background var(--dur-1) var(--ease); }
-:where(.orca-parity) .btn-primary:hover:not(:disabled) { background: var(--accent-strong); }
-:where(.orca-parity) .btn-ghost { display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); height: auto; min-height: var(--h-control); padding: 0 var(--s-4); border: 0; border-radius: var(--r-2); background: none; color: var(--ink);
+:where(.orca-parity) .btn.primary { padding: 0 var(--s-5); border-color: var(--accent); background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+:where(.orca-parity) .btn-primary:hover:not(:disabled), :where(.orca-parity) .btn.primary:hover:not(:disabled) { border-color: var(--accent-strong); background: var(--accent-strong); }
+:where(.orca-parity) .btn-ghost { display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); height: auto; min-height: var(--h-control); padding: 0 var(--s-4); border: 1px solid transparent; border-radius: var(--control-radius); background: none; color: var(--ink);
   font: var(--t-body); cursor: pointer; transition: background var(--dur-1) var(--ease); }
 :where(.orca-parity) .btn-ghost:hover:not(:disabled) { background: var(--hover); }
+:where(.orca-parity) .btn-danger { display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); min-height: var(--h-control); padding: 0 var(--s-4); border: 1px solid var(--danger); border-radius: var(--control-radius); background: var(--danger-tint); color: var(--danger); font: var(--t-body); font-weight: 600; cursor: pointer; }
+:where(.orca-parity) .btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--danger-tint) 80%, var(--danger)); }
+:where(.orca-parity) .btn-danger:disabled { cursor: not-allowed; }
+:where(.orca-parity) .icon-btn { display: inline-grid; place-items: center; flex: none; min-width: var(--h-control); min-height: var(--h-control); padding: 0; border: 0; border-radius: var(--control-radius); background: none; color: var(--text); cursor: pointer; }
+:where(.orca-parity) .icon-btn:hover:not(:disabled) { background: var(--hover); }
+:where(.orca-parity) .icon-btn.active { background: var(--selected); }
+:where(.orca-parity) .icon-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+:where(.orca-parity) .icon-btn:disabled { opacity: 0.35; cursor: default; }
+:where(.orca-parity) .icon-btn img { filter: grayscale(1) brightness(1.15); }
 :where(.orca-parity) .btn-primary:disabled, :where(.orca-parity) .btn-ghost:disabled { color: var(--ink-3); cursor: not-allowed; }
-:where(.orca-parity) .btn-primary:disabled { background: var(--sunken); }
+:where(.orca-parity) .btn-primary:disabled, :where(.orca-parity) .btn.primary:disabled { border-color: var(--line); background: var(--sunken); color: var(--ink-3); font-weight: 400; }
 
 :where(.orca-parity) .seg { display: inline-flex; flex: none; gap: var(--s-1); padding: var(--s-1); background: var(--sunken); border: 0; border-radius: var(--r-2); font: var(--t-small); overflow: visible; }
 :where(.orca-parity) .seg > button { height: calc(var(--h-compact) - 2 * var(--s-1)); padding: 0 var(--s-3); border: 0; border-radius: var(--r-1); background: none; color: var(--ink-2);

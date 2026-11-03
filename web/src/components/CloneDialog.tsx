@@ -39,7 +39,7 @@ export default function CloneDialog({ close }: { close(): void }) {
         </label>
       </div>
       <div className="modal-buttons">
-        <button className="btn" title="Fill bed with copies" onClick={() => { fillBed(); close(); }}>Fill</button>
+        <button className="btn" onClick={() => { fillBed(); close(); }}>Fill</button>
         <span style={{ flex: 1 }} />
         <button className="btn primary" onClick={ok}>OK</button>
         <button className="btn" onClick={close}>Cancel</button>

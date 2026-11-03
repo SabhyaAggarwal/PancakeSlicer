@@ -44,7 +44,6 @@ export function LayerHeightPanel() {
   const [radius, setRadius] = useState(5);
   const [keepMin, setKeepMin] = useState(false);
   if (!o) return null;
-  const tips = 'Left mouse button: Add detail\nRight mouse button: Remove detail\nShift + Left mouse button: Reset to base\nShift + Right mouse button: Smoothing\nMouse wheel: Increase/decrease edit area';
   const adaptive = () => {
     const s = getState(), p = layerParams(s, o), g = o.geometry;
     undoable('Variable layer height - Adaptive', () => setProfile(o.id, adaptiveProfile(p, g.attributes.position.array, g.index?.array ?? null, instanceMatrix(o, o.instances[0]), quality)));
@@ -55,7 +54,7 @@ export function LayerHeightPanel() {
   };
   return (
     <div className="manip-panel">
-      <div className="manip-title" title={tips}>Variable layer height</div>
+      <div className="manip-title">Variable layer height</div>
       <div className="manip-grid" style={{ gridTemplateColumns: 'auto auto auto' }}>
         <button className="btn" style={{ gridColumn: '1 / -1', justifySelf: 'start' }} onClick={adaptive}>Adaptive</button>
         <span>Quality / Speed</span>

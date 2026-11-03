@@ -9,7 +9,7 @@
 :where(.orca-parity) .xf-grid .axis { font: var(--t-label); text-align: center; }
 :where(.orca-parity) .xf-key { font: var(--t-small); color: var(--ink-2); white-space: normal; }
 :where(.orca-parity) .xf-act { display: grid; place-items: center; }
-:where(.orca-parity) .xf-act .icon-btn { width: var(--h-compact); height: var(--h-compact); padding: 0; }
+:where(.orca-parity) .xf-act .icon-btn { width: var(--h-compact); height: var(--h-compact); min-width: 0; min-height: 0; padding: 0; }
 
 :where(.orca-parity) .manip-num { height: var(--h-compact); min-width: 0; width: 100%; font: var(--t-num); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
 :where(.orca-parity) .manip-num:disabled { background: var(--sunken); border-color: var(--line); color: var(--ink-3); }
@@ -28,7 +28,6 @@
 :where(.orca-parity) .tb-sep { background: var(--line); align-self: center; height: 20px; }
 :where(.orca-parity) .tb-more { flex: none; align-self: flex-start; width: 32px; height: 32px; padding: 0; border: 0; border-left: 1px solid var(--line); background: none; color: var(--ink-2); font: var(--t-title); letter-spacing: 1px; cursor: pointer; }
 :where(.orca-parity) .tb-more:hover, :where(.orca-parity) .canvas-toolbar.open .tb-more { color: var(--ink); background: var(--sunken); }
-:where(.orca-parity) .canvas-toolbar .icon-btn.active { background: var(--segment-active); box-shadow: none; }
 
 :where(.orca-parity) .nav3d-face { background: var(--panel); color: var(--ink-2); border: 1px solid var(--line-strong); font: var(--t-label); font-size: 9px; letter-spacing: var(--label-track); text-transform: none; }
 :where(.orca-parity) .nav3d-face:hover { color: var(--ink); background: var(--sunken); border-color: var(--ink-2); }
@@ -41,10 +40,21 @@
 :where(.orca-parity) .xf-btn:disabled { color: var(--ink-disabled); cursor: default; }
 :where(.orca-parity) .xf-grid:has(.manip-num:disabled) .xf-key, :where(.orca-parity) .xf-grid:has(.manip-num:disabled) .axis { color: var(--ink-3); }
 
-:where(.orca-parity) .canvas-toolbar .icon-btn:disabled { opacity: 0.3; }
-:where(.orca-parity) .canvas-toolbar .icon-btn:not(:disabled):hover { background: var(--sunken); }
-
 :where(.orca-parity) .transform-anchor { position: absolute; left: 12px; top: 56px; width: 0; height: 0; pointer-events: none; }
 :where(.orca-parity) .transform-floating { z-index: 30; width: min(380px, calc(100vw - 24px)); max-height: var(--radix-popover-content-available-height); overflow: auto; padding: 8px 12px 12px; border: 1px solid var(--line-strong); border-radius: 4px; background: var(--panel); box-shadow: var(--shadow-pop); }
 :where(.orca-parity) .transform-floating .xf-head { height: auto; min-height: 28px; }
 :where(.orca-parity) .xf-selection { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; padding: 2px 0 6px; }
+
+:where(.orca-parity) .canvas-area { container-type: inline-size; }
+:where(.orca-parity) .canvas-toolbar img, :where(.orca-parity) .toolbar img { filter: grayscale(1) brightness(1.15); }
+:where(.orca-parity) .objects-outliner { position: absolute; z-index: 6; top: 56px; right: var(--s-4); width: clamp(180px, 36%, 280px); border: 1px solid var(--line-strong); border-radius: var(--r-3); background: var(--panel); box-shadow: var(--shadow-pop); }
+:where(.orca-parity) .outliner-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-2); padding: var(--s-2) var(--s-3); }
+:where(.orca-parity) .outliner-toggle { display: flex; gap: var(--s-3); align-items: center; border: 0; background: transparent; padding: var(--s-2); font: var(--t-title); color: var(--ink); cursor: pointer; }
+:where(.orca-parity) .outliner-edit { min-height: var(--h-compact); padding: 0 var(--s-3); font: var(--t-small); }
+:where(.orca-parity) .outliner-body { max-height: min(240px, 34vh); overflow: auto; padding: 0 var(--s-2) var(--s-2); }
+:where(.orca-parity) .outliner-body .object-list { border: 0; min-height: 0; max-height: none; }
+:where(.orca-parity) .outliner-body .ol-row { border-radius: var(--r-1); }
+@container (max-width: 780px) {
+  :where(.orca-parity) .objects-outliner.transform-active .outliner-body, :where(.orca-parity) .objects-outliner.transform-active .outliner-edit { display: none; }
+  :where(.orca-parity) .transform-anchor { top: 112px; }
+}

@@ -185,7 +185,7 @@ export function Legend(props: {
     <div className={open ? 'legend' : 'legend closed'} aria-label="Legend">
       <div className="lg-head">
         <Dropdown aria-label="Color scheme" value={ui.view} onValueChange={(next) => setUi((u) => ({ ...u, view: next as ViewType }))} options={[...VIEW_TYPES.filter((v) => d.header?.extended || canExtend(d) || !EXTENDED_VIEWS.has(v.key)).map((v) => ({ value: v.key, label: v.label }))]} />
-        <button className="lg-collapse" onClick={() => setOpen(!open)} aria-expanded={open} title={open ? 'Hide legend' : 'Show legend'} aria-label={open ? 'Hide legend' : 'Show legend'}>
+        <button className="lg-collapse" onClick={() => setOpen(!open)} aria-expanded={open} aria-label={open ? 'Hide legend' : 'Show legend'}>
           <span aria-hidden="true" className={open ? 'lg-caret up' : 'lg-caret'} />
         </button>
       </div>
@@ -215,7 +215,7 @@ export function Legend(props: {
                 </label>
               </div>
               {stats && SHOW_STATS && (
-                <div className="lg-perf" title="Last frame: blocks drawn / culled / at level of detail, segments drawn, frame CPU and GPU time">
+                <div className="lg-perf">
                   {stats.blocks} blocks ({stats.lodBlocks} LOD, {stats.culled} culled) · {(stats.segments / 1e6).toFixed(2)} M seg · {stats.frameMs.toFixed(1)} ms
                   {Number.isFinite(stats.gpuMs) ? ` · GPU ${stats.gpuMs.toFixed(1)} ms` : ''}
                   {d.done ? ` · loaded in ${(d.loadMs / 1000).toFixed(2)} s` : ''}
@@ -272,7 +272,7 @@ function NonplanarKey({ d, ui, setUi, ranges }: { d: PreviewData; ui: PreviewUi;
         }}>
         {NONPLANAR_COLORS.map((c) => (
           <button key={c.key} type="button" role="radio" data-key={c.key} aria-checked={ui.nonplanar === c.key}
-            tabIndex={ui.nonplanar === c.key || (c.key === 'shell' && !NONPLANAR_COLORS.some((x) => x.key === ui.nonplanar)) ? 0 : -1} title={c.label}
+            tabIndex={ui.nonplanar === c.key || (c.key === 'shell' && !NONPLANAR_COLORS.some((x) => x.key === ui.nonplanar)) ? 0 : -1} aria-label={c.label}
             onClick={() => setUi((u) => ({ ...u, nonplanar: c.key }))}>
             {c.key === 'bead_height' ? 'Bead' : c.label}
           </button>

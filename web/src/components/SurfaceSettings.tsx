@@ -28,6 +28,6 @@ export function SurfaceSettings({config,system,availability,editor,dirty,readOnl
     {mode === 'curved_tops' && availability.allowedModes.includes(mode) && Object.keys(CURVED_DEFAULTS).map(key=>field(key))}
     {(availability.allowedWaveModes.length > 0 || wave !== 'off') && field('nonplanar_wave','Wave pattern',['off',...availability.allowedWaveModes])}
     {wave !== 'off' && availability.allowedWaveModes.includes(wave) && Object.keys(WAVE_DEFAULTS).map(key=>field(key))}
-    {problem && <div className="surface-why" role="alert">{problem.reason} Choose a supported method or update the printer and engine configuration.</div>}
+    {problem && <div className="surface-why" role="alert">{problem.reason}</div>}
   </section>;
 }

@@ -149,21 +149,21 @@ export function ObjectList() {
                         else if (e.key === 'Escape') setState({ renaming: null });
                       }} />
                   ) : (
-                    <span className="ol-text" title={o.project?.placeholder ? `${o.name} — reading the mesh from the project` : o.name}>
+                    <span className="ol-text">
                       {o.name}
                     </span>
                   )}
                   {style !== plateStyle && (
-                    <span className="ol-badge" title={`Print style of this object; the plate prints ${STYLE_NAMES[plateStyle]}`}>
+                    <span className="ol-badge">
                       {STYLE_NAMES[style]}
                     </span>
                   )}
                   {results.length > 1 && results.find((r) => r.objectId === o.id) && (() => {
                     const r = results.find((x) => x.objectId === o.id)!;
-                    return <span className="ol-meta" title={r.fact}>{r.pct}%</span>;
+                    return <span className="ol-meta">{r.pct}%</span>;
                   })()}
                   {o.project?.placeholder && (
-                    <span className="ol-badge" title={o.project.missing ? 'The project holds no mesh this browser can read for this object' : undefined}>
+                    <span className="ol-badge">
                       {o.project.missing ? 'no mesh' : 'loading'}
                     </span>
                   )}
@@ -178,12 +178,12 @@ export function ObjectList() {
                   onClick={(e) => e.stopPropagation()}
                   onValueChange={(next) => setFilament(o.id, Number(next))}
                   options={slots.map((_, i) => ({ value: i + 1, label: i + 1 }))} /></span>}
-                <span role="gridcell" className="ol-status">{sinking && <button className="ol-sinking" title="Click the icon to shift this object to the bed"
+                <span role="gridcell" className="ol-status">{sinking && <button className="ol-sinking" aria-label="Drop to bed"
                   onClick={(e) => { e.stopPropagation(); undoable('Drop to bed', () => o.instances.forEach((i) => updateInstance(o.id, i.id, { z: 0 }))); }} disabled={!!o.project?.placeholder}>
                   <Icon name="objlist_sinking" size={16} />
                 </button>}
                 {(meshErrors[o.id] ?? 0) > 0 && <button className="ol-sinking" disabled={!canFix || !!o.project || !!o.volumes?.length}
-                  title={`Remaining errors:\n\t${meshErrors[o.id]} non-manifold edge${meshErrors[o.id] === 1 ? '' : 's'}\n\nClick the icon to repair model object`}
+                  aria-label="Repair model"
                   onClick={(e) => { e.stopPropagation(); void import('../plater/meshOps').then((m) => m.fixModel(o.id)); }}>
                   <Icon name="obj_warning" size={16} />
                 </button>}</span>
@@ -194,7 +194,7 @@ export function ObjectList() {
                   className={`ol-row ol-child ${objSelected && getState().processScope === 'objects' ? 'selected' : ''}`}
                   {...rowKeys(() => setState({ selected: { object: o.id, instance: o.instances[0].id, allInstances: true }, processScope: 'objects' }), o.id)}
                   onClick={() => setState({ selected: { object: o.id, instance: o.instances[0].id, allInstances: true }, processScope: 'objects' })}
-                  title={Object.keys(o.settings).join(', ')}
+
                 >
                   <span role="gridcell" className="ol-name"><Icon name="cog" size={14} />
                   <span className="ol-text">
@@ -225,7 +225,7 @@ export function ObjectList() {
                               if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
                               else if (e.key === 'Escape') setState({ renaming: null });
                             }} />
-                        ) : <span className="ol-text" title={v.name}>{v.name}</span>}
+                        ) : <span className="ol-text">{v.name}</span>}
                       </span>
                       <span role="gridcell" className="ol-status" />
                       {!manyFilaments ? null : v.type === 'part' ? (
@@ -239,7 +239,7 @@ export function ObjectList() {
                     {nv > 0 && (
                       <div role="row"
                         className={`ol-row ol-child2 ${volSelected && getState().processScope === 'objects' ? 'selected' : ''}`}
-                        {...rowKeys(() => pick('objects'), o.id)} onClick={() => pick('objects')} title={Object.keys(v.settings).join(', ')}>
+                        {...rowKeys(() => pick('objects'), o.id)} onClick={() => pick('objects')}>
                         <span role="gridcell" className="ol-name"><Icon name="cog" size={14} />
                         <span className="ol-text">
                           Overrides
@@ -257,7 +257,7 @@ export function ObjectList() {
                     const pickRange = () => setState({ selected: { object: o.id, instance: o.instances[0].id, allInstances: true, range: r.id }, processScope: 'objects' });
                     return (
                       <div key={`r${r.id}`} role="row" className={`ol-row ol-child2 ${on ? 'selected' : ''}`} aria-selected={on} {...rowKeys(pickRange, o.id)} onClick={pickRange}
-                        title={Object.keys(r.settings).length ? Object.keys(r.settings).join(', ') : undefined}>
+                       >
                         <span role="gridcell" className="ol-name"><Icon name="height_range_layer" size={14} />
                         <span className="ol-text">{rangeLabel(r)}{Object.keys(r.settings).length ? ` · ${Object.keys(r.settings).length} settings` : ''}</span></span>
                       </div>
@@ -293,7 +293,7 @@ export function ObjectList() {
           <div className="ol-record">
             <div role="row" className="ol-row ol-group"><span role="gridcell">Sliced from {project.name}</span></div>
             {record.objects.map((r) => (
-              <div key={r.id} role="row" className="ol-row ol-child" title={r.instances?.map((i) => i.shift_mm?.map((v) => v.toFixed(1)).join(', ')).join(' · ')}>
+              <div key={r.id} role="row" className="ol-row ol-child">
                 <span role="gridcell" className="ol-name"><Icon name="obj_printable" size={14} />
                 <span className="ol-text">{r.name}</span></span>
                 <span role="gridcell" className="ol-meta">

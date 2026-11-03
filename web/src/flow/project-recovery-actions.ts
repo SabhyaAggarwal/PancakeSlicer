@@ -250,6 +250,14 @@ export async function deleteProject(runtime: RecoveryRuntime, id: string): Promi
   });
 }
 
+export async function restoreArchivedProject(runtime: RecoveryRuntime, id: string, expectedRevision?: number) {
+  const storage = runtime.storage();
+  if (!storage) throw new Error('Project storage is unavailable');
+  await storage.restore(id, expectedRevision);
+  removalOwners.get(runtime)?.delete(id); runtime.removed.delete(id);
+  runtime.publish('saved', id); runtime.refreshList();
+}
+
 export async function saveProjectSnapshot(runtime: RecoveryRuntime, capture: {
   id: string; document: Doc; gen: number; version: number; revision: number; storage: ProjectStore | null;
   receipt: { checkpoint: DraftCheckpoint; durable: Promise<ProjectDraft> };

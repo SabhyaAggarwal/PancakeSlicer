@@ -91,14 +91,14 @@ export function EventList({ onPick }: { onPick?(z: number): void }) {
       {events.map((e) => (
         <div key={`${e.z}-${e.type}`} className="events-row">
           <span className="events-dot" style={{ background: COLOR[e.type] }} />
-          <button className="link events-z" title="Go to this layer" onClick={() => onPick?.(e.z)}>
+          <button className="link events-z" onClick={() => onPick?.(e.z)}>
             {e.z.toFixed(2)} mm
           </button>
-          <span className="events-label" title={e.text}>
+          <span className="events-label">
             {eventLabel(e)}
             {e.type === 'custom' && e.text ? `: ${e.text.split('\n')[0]}` : ''}
           </span>
-          <button className="icon-btn" title="Delete" onClick={() => setEvents(getState().events.filter((x) => x !== e), 'Delete layer event')}>
+          <button className="icon-btn" aria-label="Delete layer event" onClick={() => setEvents(getState().events.filter((x) => x !== e), 'Delete layer event')}>
             ×
           </button>
         </div>

@@ -47,8 +47,6 @@ export const newKey = projectId;
 
 declare global {
   interface Window { orcaDesktop?: { version: number;
-    legacyProjects?: import('./desktop-legacy').LegacyDesktopProjects;
-    legacyRendererStorage?: import('./desktop-legacy').LegacyDesktopRenderer;
     onBeforeClose?(handler: () => Promise<void>): () => void; flushBeforeClose?(): Promise<void> } }
 }
 const storageListeners = new Set<() => void>();
@@ -63,7 +61,7 @@ function observableStore(backend: ProjectStore): ProjectStore {
     Object.assign(result, { [key]: async (...args: unknown[]) => {
       pendingReferenceWrites++;
       storageListeners.forEach((listener) => listener());
-      try { await (await import('./project-adoption')).ensureWorkspaceMutation(); return await Reflect.apply(operation, backend, args); }
+      try { await (await import('./service')).requireWorkspaceService(); return await Reflect.apply(operation, backend, args); }
       finally { pendingReferenceWrites--; storageListeners.forEach((listener) => listener()); }
     } });
   }

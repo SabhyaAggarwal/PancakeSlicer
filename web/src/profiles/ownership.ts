@@ -80,6 +80,7 @@ export interface ProfileRecovery {
 export interface ProfileLibraryDocument {
   schema: 1;
   revision: number;
+  epoch?: string;
   profiles: import('../api/types').ProfileOverlay[];
   catalog?: import('../api/types').SystemPreset[];
   printers: PrinterProfileLibrary;
@@ -88,26 +89,12 @@ export interface ProfileLibraryWrite {
   operationId: string;
   expectedRevision: number;
   document: ProfileLibraryDocument;
-  adoption?: ProfileLibraryAdoption;
   inventory?: {
     complete: true;
     libraryRevision: number;
     projectRevision?: string;
     references: Record<ProfileKey, readonly import('./identity').ProfileReference[]>;
   };
-}
-export interface ProfileLibraryAdoption {
-  scope: 'profile-library-and-working-setup';
-  sourceId: string;
-  digest: string;
-  source: string;
-  identityResolutions?: ServiceProfileIdentityResolution[];
-}
-export interface ServiceProfileIdentityResolution { path: string; sha256: string; profileId: ProfileKey }
-export interface ProfileLibraryAdoptionReceipt extends ProfileLibraryAdoption {
-  durable: true;
-  operationId: string;
-  revision: number;
 }
 export interface ProfileLibraryWriteResult { revision: number; operationId: string }
 

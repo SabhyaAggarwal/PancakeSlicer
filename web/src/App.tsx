@@ -98,7 +98,7 @@ export default function App() {
   const gizmo = useStore((s) => s.gizmo);
   const loading = useStore((s) => s.loading);
   const jobDone = useStore((s) => s.job.state === 'done');
-  const empty = useStore((s) => !s.objects.length && !s.project && !!s.printer && s.projectPlates.length < 2);
+  const empty = useStore((s) => !s.objects.length && !s.project && s.projectPlates.length < 2);
   const assemblyOn = useAssembly().on;
   const sidebarHidden = useSidebarHidden();
   const [dragOver, setDragOver] = useState(false);

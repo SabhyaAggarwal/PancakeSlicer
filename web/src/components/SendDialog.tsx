@@ -134,7 +134,7 @@ function SendView({ close, chosen, choose, edit }: { close: () => void; chosen: 
           <div className="send-options">
             <label className="prefs-row"><Check checked={leveling} disabled={busy} onCheckedChange={(next) => setLeveling(next)} />Bed Leveling</label>
             <label className="prefs-row"><Check checked={timelapse} disabled={busy} onCheckedChange={(next) => setTimelapse(next)} />Timelapse</label>
-            {!trays && single && <label className="prefs-row" title="Print filament 1 from AMS slot 1; off prints from the external spool"><Check checked={ams} disabled={busy} onCheckedChange={(next) => setAms(next)} />Use AMS (slot 1)</label>}
+            {!trays && single && <label className="prefs-row"><Check checked={ams} disabled={busy} onCheckedChange={(next) => setAms(next)} />Use AMS (slot 1)</label>}
           </div>
         )}
         {bambu && printers.length > 0 && (
@@ -145,7 +145,7 @@ function SendView({ close, chosen, choose, edit }: { close: () => void; chosen: 
                 <span>{i + 1} · {f.type || 'filament'}</span>
                 <Dropdown className="combo" value={mapping[i] ?? EXTERNAL} disabled={busy} aria-label={`Filament ${i + 1}`}
                   onValueChange={(next) => setMapping(mapping.map((m, k) => (k === i ? Number(next) : m)))} options={[...trays.map((t) => ({ value: t.id, label: trayLabel(t) }))]} />
-                {(() => { const t = trays.find((x) => x.id === mapping[i]); return t?.color ? <span className="ams-swatch" title={trayLabel(t)} style={{ background: t.color }} /> : null; })()}
+                {(() => { const t = trays.find((x) => x.id === mapping[i]); return t?.color ? <span className="ams-swatch" aria-label={trayLabel(t)} role="img" style={{ background: t.color }} /> : null; })()}
               </label>
             )) : <div className={amsError ? 'warning-text' : 'hint-text'}>{amsError ? `AMS not read: ${amsError}` : 'Reading the printer\'s AMS…'}</div>}
             {!trays && !single && amsError && <div className="hint-text">A job with several filaments needs the AMS mapping to send.</div>}

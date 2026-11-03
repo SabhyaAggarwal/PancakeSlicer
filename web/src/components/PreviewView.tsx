@@ -384,8 +384,8 @@ export function PreviewView() {
       {status && (
         <div className="preview-status" role="status">
           <span>{status}</span>
-          {status === 'Not sliced yet' && <button type="button" className="btn-primary" onClick={() => void slice()} title="Ctrl+R">Slice plate</button>}
-          {status === 'Plate is empty' && <button type="button" className="btn-ghost" onClick={() => { setState({ tab: 'prepare' }); openFileDialog(); }} title="Ctrl+I">Add model</button>}
+          {status === 'Not sliced yet' && <button type="button" className="btn-primary" onClick={() => void slice()}>Slice plate</button>}
+          {status === 'Plate is empty' && <button type="button" className="btn-ghost" onClick={() => { setState({ tab: 'prepare' }); openFileDialog(); }}>Add model</button>}
         </div>
       )}
       {data?.header && (

@@ -101,14 +101,14 @@ export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus, oneL
             key={`${t.layer}-${t.title}`}
             className="ls-tick"
             style={{ bottom: `${frac(t.layer) * 100}%`, background: t.color }}
-            title={t.title}
+
             onPointerDown={(e) => {
               e.stopPropagation();
               onChange(Math.min(lo, t.layer), t.layer);
             }}
           />
         ))}
-        <div className="ls-thumb hi" style={{ bottom: `${frac(hi) * 100}%` }} onPointerDown={drag('hi')} title="Upper layer (Up / Down keys)" {...aria('hi')}>
+        <div className="ls-thumb hi" style={{ bottom: `${frac(hi) * 100}%` }} onPointerDown={drag('hi')} {...aria('hi')}>
           <div className="ls-tip">{label(hi)}</div>
         </div>
         {onPlus && (
@@ -116,7 +116,7 @@ export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus, oneL
             type="button"
             className="ls-plus"
             style={{ bottom: `${frac(hi) * 100}%` }}
-            title={ticks.some((t) => t.layer === hi) ? 'Edit custom G-code of this layer' : 'Add pause, custom G-code or color change'}
+
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => onPlus((e.currentTarget as HTMLElement).getBoundingClientRect())}
           >
@@ -124,14 +124,14 @@ export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus, oneL
           </button>
         )}
         {!oneLayer && (
-          <div className="ls-thumb lo" style={{ bottom: `${frac(lo) * 100}%` }} onPointerDown={drag('lo')} title="Lower layer" {...aria('lo')}>
+          <div className="ls-thumb lo" style={{ bottom: `${frac(lo) * 100}%` }} onPointerDown={drag('lo')} {...aria('lo')}>
             <div className="ls-tip">{label(lo)}</div>
           </div>
         )}
       </div>
       <div className={`ls-label bottom${lo === 0 && !oneLayer ? ' hidden' : ''}`}>{label(0)}</div>
       {onOneLayer && (
-        <button type="button" className={`ls-one ${oneLayer ? 'active' : ''}`} aria-pressed={oneLayer} title="On/Off one layer mode of the vertical slider (L)" onClick={onOneLayer}>
+        <button type="button" className={`ls-one ${oneLayer ? 'active' : ''}`} aria-pressed={oneLayer} aria-label="One layer" onClick={onOneLayer}>
           <Icon name={oneLayer ? 'one_layer_on' : 'one_layer_off'} size={24} />
         </button>
       )}
@@ -161,7 +161,7 @@ export function MoveSlider({ count, pos, gcodeLine, onChange, gcodeOpen, onGcode
         <b>{pos}</b> / {count}
       </span>
       {onGcode ? (
-        <button type="button" className="ms-gcode" aria-pressed={!!gcodeOpen} onClick={onGcode} title="Show G-code window (C)">line {gcodeLine}</button>
+        <button type="button" className="ms-gcode" aria-pressed={!!gcodeOpen} onClick={onGcode}>line {gcodeLine}</button>
       ) : <span className="ms-line">line {gcodeLine}</span>}
     </div>
   );

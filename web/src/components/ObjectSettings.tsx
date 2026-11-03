@@ -108,7 +108,7 @@ export function ObjectSettings() {
   return (
     <div className="obj-settings">
       <div className="obj-settings-head">
-        <span className="override-context" title={`Settings for ${target.name}`}>{range ? 'Layer overrides' : volume ? 'Part overrides' : 'Object overrides'}</span>
+        <span className="override-context">{range ? 'Layer overrides' : volume ? 'Part overrides' : 'Object overrides'}</span>
         <span className="obj-settings-tools">
           <AddMenu
             open={menu}
@@ -117,7 +117,7 @@ export function ObjectSettings() {
             cats={cats}
             onCategory={(c) => setPick(c)}
           />
-          {Object.keys(target.settings).length > 0 && <button type="button" className="btn-ghost" title={`Clear overrides for ${target.name}`}
+          {Object.keys(target.settings).length > 0 && <button type="button" className="btn-ghost"
             onClick={() => target.remove(Object.keys(target.settings))}>Clear</button>}
         </span>
       </div>
@@ -197,7 +197,7 @@ function AddMenu(props: {
 }) {
   const ref = useRef<HTMLSpanElement>(null);
   return <span className="menu" ref={ref}>
-    <button type="button" className="btn" title="Add settings" aria-haspopup="menu" aria-expanded={props.open} onClick={() => props.setOpen(!props.open)}>Add settings</button>
+    <button type="button" className="btn" aria-haspopup="menu" aria-expanded={props.open} onClick={() => props.setOpen(!props.open)}>Add settings</button>
     {props.open && <ActionMenu label="Add settings" anchor={ref.current?.querySelector('button')} onClose={() => props.setOpen(false)} items={[
       { label: 'Quick groups', header: true },
       ...FREQ_BUNDLE.map(([cat, keys]) => ({ label: cat, action: () => props.onBundle(keys.filter((k) => OPTIONS[k] && !isHidden(k))) })),
@@ -220,7 +220,7 @@ function SelectSettings(props: { title: string; keys: string[]; current: Config;
         <ModalTitle title={`Select settings — ${props.title}`} onClose={props.onClose} />
         <div className="select-list">
           {props.keys.map((k) => (
-            <label key={k} className="select-row" title={OPTIONS[k]?.tooltip}>
+            <label key={k} className="select-row">
               <Check checked={checked.has(k)} onCheckedChange={() => toggle(k)} />
               <span>{labelOf(k)}</span>
             </label>

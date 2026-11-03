@@ -73,7 +73,7 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 
 :where(.orca-parity) .main { flex: 1; display: flex; min-height: 0; }
 
-:where(.orca-parity) .sidebar { width: var(--workspace-rail-width); min-width: 0; flex: 0 0 var(--workspace-rail-width); border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; overflow: hidden; background: var(--bg); }
+:where(.orca-parity) .sidebar { width: var(--workspace-rail-width); min-width: 0; flex: 0 0 var(--workspace-rail-width); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; overflow: hidden auto; background: var(--bg); }
 :where(.orca-parity) .sidebar { transition: width var(--dur-2) var(--ease), display var(--dur-2) allow-discrete; }
 :where(.orca-parity) .sidebar-hidden .sidebar { width: 0; flex-basis: 0; border-right-width: 0; display: none; }
 @media (prefers-reduced-motion: reduce) { :where(.orca-parity) .sidebar { transition: none; } }
@@ -149,16 +149,10 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .chk { width: 16px; height: 16px; accent-color: var(--accent-text); margin: 0; }
 :where(.orca-parity) .color { width: 44px; height: 24px; border: 1px solid var(--border); padding: 0 2px; background: var(--bg); }
 
-:where(.orca-parity) .icon-btn { border: 0; background: none; padding: 3px; border-radius: 3px; display: inline-grid; place-items: center; cursor: pointer; flex: none; }
-:where(.orca-parity) .icon-btn:hover:not(:disabled) { background: var(--hover); }
-:where(.orca-parity) .icon-btn.active { background: var(--selected); }
-:where(.orca-parity) .icon-btn:disabled { opacity: 0.35; cursor: default; }
-
 :where(.orca-parity) .canvas-area { flex: 1; position: relative; min-width: 0; background: var(--canvas); overflow: hidden; }
 :where(.orca-parity) .main.drag-over { position: relative; }
 :where(.orca-parity) .main.drag-over::after { content: 'Drop to import'; position: absolute; inset: var(--s-4); border: 2px solid var(--ink); display: grid; place-items: center; color: var(--ink); font: var(--t-title); background: color-mix(in srgb, var(--panel) 88%, transparent); pointer-events: none; z-index: 20; }
 :where(.orca-parity) .canvas-toolbar { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-3); padding: 3px 6px;  }
-:where(.orca-parity) .canvas-toolbar .icon-btn { padding: 4px; }
 :where(.orca-parity) .tb-sep { width: 1px; height: 22px; background: var(--line-d4); margin: 0 4px; }
 :where(.orca-parity) .manip-panel { position: absolute; top: 60px; left: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-3); padding: 8px 10px; font-size: 12px; }
 :where(.orca-parity) .manip-title { font-weight: 600; margin-bottom: 6px; }
@@ -204,8 +198,6 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .modal-title { height: 36px; flex: none; background: var(--topbar); color: var(--on-chrome); display: flex; align-items: center; justify-content: space-between; padding: 0 12px; font-size: 14px; }
 :where(.orca-parity) .modal-close { background: none; border: 0; color: var(--on-chrome); font-size: 20px; cursor: pointer; }
 
-:where(.orca-parity) .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
-:where(.orca-parity) .btn.primary:hover:not(:disabled) { background: var(--accent-hover); }
 :where(.orca-parity) .modal.small { width: min(460px, 94vw); height: fit-content; max-height: 86vh; max-height: 86dvh; }
 :where(.orca-parity) .modal-buttons { display: flex; gap: 8px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--line-eee); flex: none; }
 :where(.orca-parity) .modal-buttons.center { justify-content: center; }
@@ -271,19 +263,12 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .access-token-form .notif-body { width: 100%; }
 
 @media (max-width: 1599px), (max-height: 899px) {
-  :where(.orca-parity) .topbar-title { max-width: calc(100% - 600px); white-space: normal; overflow: hidden; }
-  :where(.orca-parity) .tabbar { overflow-x: auto; }
-  :where(.orca-parity) .tabbar-tabs, :where(.orca-parity) .tabbar-actions { flex: none; }
-  :where(.orca-parity) .sidebar { overflow-y: auto; }
   :where(.orca-parity) .filament-list { max-height: 160px; overflow-y: auto; }
-  :where(.orca-parity) .process-panel { min-height: 240px; flex-shrink: 0; }
   :where(.orca-parity) .settings-tab, :where(.orca-parity) .tab-preset-row { min-width: 0; }
   :where(.orca-parity) .tab-preset-row { flex: none; }
   :where(.orca-parity) .opt-line { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) 22px; }
   :where(.orca-parity) .compact .opt-line { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 22px; }
   :where(.orca-parity) .opt-line.full { grid-template-columns: minmax(0, 1fr) 22px; }
-  :where(.orca-parity) .canvas-toolbar { width: max-content; max-width: calc(100% - 24px); overflow-x: auto; }
-  :where(.orca-parity) .canvas-toolbar .tb-sep { flex: none; }
   :where(.orca-parity) .modal > .settings-tab, :where(.orca-parity) .flush-body, :where(.orca-parity) .select-list { min-height: 0; }
   :where(.orca-parity) .flush-scroll { flex: none; max-width: 100%; }
 }
@@ -359,7 +344,6 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .search-bar:focus-within { outline: 2px solid var(--focus); outline-offset: -2px; }
 
 @media (pointer: coarse) {
-  :where(.orca-parity) .icon-btn { min-width: 32px; min-height: 32px; }
   :where(.orca-parity) .menu-title { min-height: 30px; padding: 4px 12px; }
   :where(.orca-parity) .menu-item { padding: 10px 16px; }
   :where(.orca-parity) .main-tab { padding: 0 22px; }
@@ -545,7 +529,7 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .side-btn:disabled { border-color: var(--line); background: var(--sunken); color: var(--muted); }
 :where(.orca-parity) .tabbar-actions > .side-btn:first-child:not(:disabled) { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 :where(.orca-parity) .tabbar-actions > .side-btn:first-child:hover:not(:disabled) { background: var(--accent-strong); }
-:where(.orca-parity) .process-panel { flex: 1; min-height: 100px; }
+:where(.orca-parity) .process-panel { flex: 1; min-height: 240px; }
 :where(.orca-parity) .page-body { padding-bottom: 8px; }
 :where(.orca-parity) .modal-overlay { position: fixed; inset: 0; background: var(--scrim); z-index: 90; }
 :where(.orca-parity) .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 100; margin: 0; border: 1px solid var(--border); border-radius: 4px; }
@@ -563,10 +547,9 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .scope-use::after { content: '↶'; }
 :where(.orca-parity) * { scrollbar-width: thin; scrollbar-color: var(--line-strong) var(--panel); }
 :where(.orca-parity) *:focus-visible { outline: 1px solid var(--focus); outline-offset: 1px; }
-@media (max-width: 1000px) { :where(.orca-parity) .tabbar-actions { gap: 6px; } :where(.orca-parity) .side-btn { min-width: 92px; padding: 0 10px; } :where(.orca-parity) .topbar-title { font-size: 12px; } }
 :where(.orca-parity) .topbar .menu-title { padding: 4px 8px; border: 0; border-radius: 3px; color: var(--text); background: transparent; }
 :where(.orca-parity) .topbar .menu-title:hover, :where(.orca-parity) .topbar .menu-title[data-state=open] { background: var(--selected); }
-:where(.orca-parity) .toolbar .icon, :where(.orca-parity) .canvas-toolbar .icon, :where(.orca-parity) .tb-tool .icon, :where(.orca-parity) .fr-drop-icon { filter: grayscale(1) brightness(1.15); }
+:where(.orca-parity) .toolbar .icon, :where(.orca-parity) .canvas-toolbar .icon, :where(.orca-parity) .tb-tool .icon { filter: grayscale(1) brightness(1.15); }
 :where(.orca-parity) .topbar-title { color: var(--text); }
 :where(.orca-parity) button:disabled, :where(.orca-parity) input:disabled, :where(.orca-parity) textarea:disabled, :where(.orca-parity) [data-disabled] { color: var(--label); opacity: 1; border-color: var(--border-control); }
 :where(.orca-parity) .side-btn:disabled, :where(.orca-parity) .text:disabled, :where(.orca-parity) .text:read-only { border-color: var(--border-control); color: var(--label); }
@@ -579,37 +562,38 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .modal-overlay { background: #000a; }
 :root.orca-parity button:disabled, :root.orca-parity input:disabled, :root.orca-parity textarea:disabled, :root.orca-parity .btn:disabled, :root.orca-parity .dropdown:disabled, :root.orca-parity .orca-menu [data-disabled] { opacity: 1; color: var(--disabled-foreground); border-color: var(--border-control); }
 :where(.orca-parity) .pk-row.is-active .pk-check, :where(.orca-parity) .pk-row.is-active .pk-option { color: var(--selected-foreground); }
-:where(.orca-parity) .compact-topbar { height: 40px; min-height: 40px; flex-wrap: nowrap; gap: 6px; padding: 0 8px; }
+:where(.orca-parity) .app { --workspace-rail-width: var(--user-rail-width, clamp(340px,28vw,440px)); }
+:where(.orca-parity) .compact-topbar { height: 40px; min-height: 40px; flex-wrap: nowrap; gap: 8px; padding: 0 8px; }
 :where(.orca-parity) .app-menu-button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 3px; background: transparent; flex: none; cursor: pointer; }
-:where(.orca-parity) .compact-topbar .topbar-title { margin: 0; padding: 0 6px; min-width: 50px; max-width: 240px; flex: 1; }
-:where(.orca-parity) .title-name { padding: 3px; min-width: 0; max-width: 100%; overflow: auto; white-space: nowrap; border: 0; background: transparent; color: var(--text); font-weight: 600; scrollbar-width: none; cursor: text; }
+:where(.orca-parity) .topbar-project-context { display: flex; align-items: center; gap: 4px; flex: 0 1 calc(var(--workspace-rail-width) - 16px); min-width: 0; }
+:where(.orca-parity) .topbar-project-context .topbar-title { flex: 1 1 auto; min-width: 48px; max-width: none; margin: 0; padding: 0 4px; }
+:where(.orca-parity) .title-name { padding: 3px; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 0; background: transparent; color: var(--text); font-weight: 600; cursor: text; }
 :where(.orca-parity) .title-edit { min-width: 0; max-width: 100%; width: 100%; padding: 3px; border: 1px solid var(--focus); border-radius: 3px; }
-:where(.orca-parity) .compact-topbar .tabbar { height: 32px; min-height: 0; border: 0; padding: 0; display: flex; flex: 1 0 auto; gap: 12px; align-items: center; background: transparent; }
-:where(.orca-parity) .compact-topbar .tabbar-tabs { background: var(--sunken); border-radius: 4px; padding: 2px; }
+:where(.orca-parity) .compact-topbar .tabbar { height: 32px; min-height: 0; border: 0; padding: 0; display: flex; flex: 1 1 auto; min-width: 0; gap: 8px; align-items: center; justify-content: flex-start; background: transparent; }
+:where(.orca-parity) .compact-topbar .tabbar-tabs { flex: none; }
 :where(.orca-parity) .compact-topbar .main-tab { min-height: 28px; font-size: 12px; padding: 0 10px; border-radius: 3px; }
 :where(.orca-parity) .compact-topbar .main-tab .icon { width: 16px; height: 16px; }
-:where(.orca-parity) .compact-topbar .tabbar-actions { padding: 0; gap: 6px; margin-left: auto; }
-:where(.orca-parity) .export-actions { display: inline-flex; align-items: center; gap: 6px; }
-:where(.orca-parity) .compact-topbar .side-btn { min-width: 0; padding: 0 10px; font-size: 12px; }
-:where(.orca-parity) .output-overflow { display: none; }
-@media (max-width: 1000px) { :where(.orca-parity) .compact-topbar .export-actions { display: none; } :where(.orca-parity) .output-overflow { display: inline-flex; align-items: center; min-width: 0; padding: 2px 8px; } :where(.orca-parity) .compact-topbar .topbar-title { max-width: 180px; } }
-
 :where(.orca-parity) .compact-topbar .main-tab.active { background: var(--selected); color: var(--selected-foreground); }
+:where(.orca-parity) .compact-topbar .tabbar-actions { flex: none; padding: 0; gap: 8px; margin-left: auto; }
+:where(.orca-parity) .export-actions { display: inline-flex; align-items: center; gap: 8px; }
+:where(.orca-parity) .compact-topbar .side-btn { min-width: 0; padding: 0 12px; font-size: 12px; }
+:where(.orca-parity) .output-overflow { display: none; }
+@media (max-width: 1000px) {
+  :where(.orca-parity) .app { --workspace-rail-width: var(--user-rail-width, 320px); }
+  :where(.orca-parity) .topbar-project-context { flex-basis: auto; }
+  :where(.orca-parity) .compact-topbar .topbar-title { max-width: 180px; }
+  :where(.orca-parity) .compact-topbar .export-actions, :where(.orca-parity) .compact-topbar .visibility-label { display: none; }
+  :where(.orca-parity) .output-overflow { display: inline-flex; align-items: center; min-width: 0; padding: 0 12px; }
+  :where(.orca-parity) .compact-topbar .detail-option { padding-inline: 6px; }
+}
+@media (min-width: 761px) and (max-width: 900px) {
+  :where(.orca-parity) .compact-topbar .main-tab > span { display: none; }
+  :where(.orca-parity) .compact-topbar .main-tab { padding: 0 8px; }
+}
 :where(.orca-parity) .canvas-toolbar > .icon-btn, :where(.orca-parity) .canvas-toolbar > span > .icon-btn { width: 32px; height: 32px; }
 :where(.orca-parity) .canvas-more { padding: 0 8px; height: 32px; }
 :where(.orca-parity) .canvas-area[data-viewport=preview] .objects-outliner { right: 92px; top: 12px; width: clamp(140px, 28%, 260px); }
 :where(.orca-parity) .canvas-area[data-viewport=preview] .legend { max-width: min(316px, calc(72% - 128px)); }
-:where(.orca-parity) .outliner-heading { flex-wrap: wrap; }
-:where(.orca-parity) .compact-topbar .topbar-title { flex: 0 1 220px; }
-:where(.orca-parity) .compact-topbar .tabbar { flex: 1 1 auto; min-width: 0; }
-:where(.orca-parity) .compact-topbar .tabbar-tabs { flex: none; }
-
-:where(.orca-parity) .app { --workspace-rail-width: var(--user-rail-width, clamp(340px,28vw,440px)); }
-:where(.orca-parity) .topbar-project-context { display: flex; align-items: center; gap: 4px; flex: 0 0 calc(var(--workspace-rail-width) - 14px); min-width: 0; }
-:where(.orca-parity) .topbar-project-context .topbar-title { flex: 1; min-width: 0; }
-:where(.orca-parity) .compact-topbar .tabbar { justify-content: flex-start; gap: 8px; }
-:where(.orca-parity) .compact-topbar .tabbar-actions { margin-left: auto; }
-@media (max-width: 1000px) { :where(.orca-parity) .app { --workspace-rail-width: var(--user-rail-width, 340px); } :where(.orca-parity) .compact-topbar .visibility-label { display: none; } :where(.orca-parity) .compact-topbar .detail-option { padding-inline: 4px; } }
 
 :where(.orca-parity) .segmented-control { display: inline-flex; align-items: stretch; gap: 2px; padding: 2px; background: var(--sunken); border: 0; border-radius: 4px; }
 :where(.orca-parity) .segmented-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 28px; padding: 3px 10px; border: 0; border-radius: 3px; background: transparent; color: var(--label); font-size: 12px; line-height: 20px; }
@@ -618,6 +602,8 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 
 :where(.orca-parity) .saved-preferences-notice { display: flex; align-items: center; gap: var(--s-4); flex: none; min-height: var(--h-bar); padding: var(--s-2) var(--s-5); background: var(--danger-tint); border-bottom: 1px solid var(--line); color: var(--ink); font: var(--t-body); }
 :where(.orca-parity) .saved-preferences-notice > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
+:where(.orca-parity) .rail-printer-cover { width: 36px; height: 36px; object-fit: contain; }
 
 :where(.orca-parity) .rail-printer-empty { flex: none; background: var(--surface); }
 :where(.orca-parity) .rail-printer-empty-body { display: flex; flex-direction: column; padding: var(--s-4); }

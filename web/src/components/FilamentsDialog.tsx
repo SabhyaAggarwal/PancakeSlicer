@@ -48,7 +48,7 @@ export default function FilamentsDialog({ close }: { close(): void }) {
         <span>{count} of {all.length}</span>
         <span style={{ flex: 1 }} />
         <button type="button" className="btn" onClick={close}>Cancel</button>
-        <button type="button" className="btn primary" disabled={!count} title={count ? undefined : 'Select at least one filament'} onClick={ok}>OK</button>
+        <button type="button" className="btn primary" disabled={!count} onClick={ok}>OK</button>
       </div>
     </Modal>
   );

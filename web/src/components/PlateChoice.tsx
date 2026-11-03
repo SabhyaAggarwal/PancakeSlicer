@@ -9,7 +9,7 @@ export default function PlateChoice() {
   const preview = useStore((s) => s.tab === 'preview');
   return <div className={`plate-choice ${preview ? 'in-preview' : ''}`} role="group" aria-label="Project plates">
     {plates.map((plate) => <button key={plate.index} aria-pressed={plate.index === current} disabled={busy}
-      title={`Select plate ${plate.index}${plate.name ? `: ${plate.name}` : ''}`}
+
       onClick={() => selectPlate(plate.index)}
       onContextMenu={(e) => { e.preventDefault(); selectPlate(plate.index); setState({ contextMenu: { x: e.clientX, y: e.clientY } }); }}
       onDragOver={(e) => { if (meshPlates && plate.index !== current && e.dataTransfer.types.includes(OBJECT_DRAG)) e.preventDefault(); }}

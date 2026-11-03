@@ -1,8 +1,7 @@
 import { createServiceDocument, type JsonValue } from './service-document';
-import { ensureWorkspaceMutation } from './project-adoption';
 import { requireWorkspaceService } from './service';
 export type SavedPreferences = Record<string, JsonValue>;
-const preferences = createServiceDocument<SavedPreferences>('/api/preferences', 'PUT', ensureWorkspaceMutation);
+const preferences = createServiceDocument<SavedPreferences>('/api/preferences', 'PUT', requireWorkspaceService);
 export const servicePreferencesSnapshot = preferences.snapshot;
 export const subscribeServicePreferences = preferences.subscribe;
 export async function hydrateServicePreferences() { await requireWorkspaceService(); return preferences.hydrate(); }

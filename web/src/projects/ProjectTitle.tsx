@@ -25,7 +25,7 @@ export function ProjectTitle() {
           onFocus={(e) => e.currentTarget.select()} onBlur={(e) => commit(e.currentTarget.value)}
           onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter') commit(e.currentTarget.value); else if (e.key === 'Escape') setEditing(false); }} />
       ) : (
-        <button type="button" className="title-name" title={`${name} · ${saved} · click to rename`} onClick={() => setEditing(true)}
+        <button type="button" className="title-name" aria-description={`${saved} · rename`} onClick={() => setEditing(true)}
           onKeyDown={(e) => { if (e.key === 'F2') { e.preventDefault(); e.stopPropagation(); setEditing(true); } }}>{name}</button>
       )}
     </div>

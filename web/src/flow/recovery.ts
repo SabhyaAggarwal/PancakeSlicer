@@ -1,5 +1,4 @@
 import { loadServiceSession, patchServiceSession, sessionDocument } from '../persist/service-session';
-import { ensureWorkspaceMutation } from '../persist/project-adoption';
 import { requireWorkspaceService } from '../persist/service';
 export interface Recovery {
   version: 1;
@@ -20,7 +19,7 @@ export function readRecovery(): Recovery {
   } catch { return { version: 1 }; }
 }
 export function rememberRecovery(patch: Partial<Omit<Recovery, 'version'>>) {
-  void ensureWorkspaceMutation().then(() => patchServiceSession({ fsmRecovery: { ...readRecovery(), ...patch, version: 1 } })).catch(() => {});
+  void requireWorkspaceService().then(() => patchServiceSession({ fsmRecovery: { ...readRecovery(), ...patch, version: 1 } })).catch(() => {});
 }
 
 export function recoverySignature(signature: string): string {

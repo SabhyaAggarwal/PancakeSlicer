@@ -1,5 +1,6 @@
 import { arrangeAll, importFiles } from '../actions';
-import { toast } from '../state/store';
+import { getState, setState, toast } from '../state/store';
+import { documentGeneration } from '../state/history';
 
 export const HANDY: [label: string, files: string[], arrange?: boolean][] = [
   ['Orca Cube', ['OrcaCube_v2.drc', 'OrcaPlug_v2.drc'], true],
@@ -14,17 +15,28 @@ export const HANDY: [label: string, files: string[], arrange?: boolean][] = [
   ['Orca String Hell', ['Orca_stringhell.drc']],
 ];
 
-export async function addHandyModel(i: number) {
-  const [label, names, arrange] = HANDY[i];
+export async function importFetched(label: string, sources: [url: string, name: string][], arrange = false) {
+  const generation = documentGeneration(), loading = `Loading ${label}`;
+  setState({ loading });
   try {
-    const files = await Promise.all(names.map(async (name) => {
-      const r = await fetch(`/api/handy-models/${encodeURIComponent(name)}`);
+    const files = await Promise.all(sources.map(async ([url, name]) => {
+      const r = await fetch(url);
       if (!r.ok) throw new Error(`${label}: ${r.status} ${r.statusText}`);
       return new File([await r.blob()], name);
     }));
+    if (generation !== documentGeneration()) return;
     await importFiles(files, true);
-    if (arrange) arrangeAll(false);
+    if (arrange && generation === documentGeneration()) arrangeAll(false);
   } catch (e) {
     toast(e instanceof Error ? e.message : String(e));
+  } finally {
+    if (getState().loading === loading) setState({ loading: null });
   }
+}
+
+export const handyUrl = (name: string) => `/api/handy-models/${encodeURIComponent(name)}`;
+
+export function addHandyModel(i: number) {
+  const [label, names, arrange] = HANDY[i];
+  return importFetched(label, names.map((name) => [handyUrl(name), name]), arrange);
 }

@@ -30,7 +30,7 @@ async function acknowledge(request:FrozenWrite):Promise<Acknowledgement>{
   try{await persistProfileLibrary(request.write);}
   catch(error){
     const failure=error as {status?:number;code?:string};
-    if(failure.code==='revision_conflict' || [400,401,403,404,422].includes(failure.status ?? 0)){request.retryable=false;if(pending===request)pending=undefined;}
+    if(failure.code==='revision_conflict' || failure.code==='library_reset' || [400,401,403,404,422].includes(failure.status ?? 0)){request.retryable=false;if(pending===request)pending=undefined;}
     throw error;
   }
   const document=await readProfileLibrary(),records:UserPreset[]=[],changed=new Set<string>();

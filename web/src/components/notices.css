@@ -1,8 +1,8 @@
 :where(.orca-parity) .toast { position: fixed; left: 50%; bottom: var(--s-7); transform: translateX(-50%); z-index: 50; display: flex; align-items: flex-start; gap: var(--s-3);
   min-width: 260px; max-width: min(560px, calc(100vw - 2 * var(--s-5))); padding: var(--s-3) var(--s-3) var(--s-3) var(--s-4); background: var(--panel); color: var(--ink);
   font: var(--t-body); border: 1px solid var(--line-strong);  border-radius: var(--r-2); animation: notice-in var(--dur-2) var(--ease); }
-:where(.orca-parity) .toast-error { border-left-color: var(--danger); }
-:where(.orca-parity) .toast-success { border-left-color: var(--accent); }
+:where(.orca-parity) .toast-error { border-left: 3px solid var(--danger); }
+:where(.orca-parity) .toast-success { border-left: 3px solid var(--accent); }
 :where(.orca-parity) .toast-icon { flex: none; margin-top: 1px; }
 :where(.orca-parity) .toast-text { flex: 1; min-width: 0; overflow-wrap: anywhere; user-select: text; }
 :where(.orca-parity) .toast-step { color: var(--ink-2); }
@@ -16,7 +16,6 @@
 @keyframes notice-slide { from { opacity: 0; transform: translateY(var(--s-2)); } }
 :where(.orca-parity) .slice-failed .notif-title img { flex: none; }
 :where(.orca-parity) .slice-failed-actions { display: flex; align-items: flex-start; gap: var(--s-4); margin-top: var(--s-3); flex-wrap: wrap; }
-:where(.orca-parity) .slice-failed-actions .btn-primary { height: var(--h-compact); padding: 0 var(--s-4); }
 :where(.orca-parity) .slice-failed details { flex: 1; min-width: 120px; color: var(--ink-2); }
 :where(.orca-parity) .slice-failed summary { cursor: pointer; line-height: var(--h-compact); width: max-content; }
 :where(.orca-parity) .slice-failed-raw { margin: var(--s-2) 0; max-height: 120px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text;

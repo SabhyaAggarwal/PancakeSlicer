@@ -1,18 +1,16 @@
-import { catalogKey } from './catalog';
 import { profileColour } from './metadata';
 import { ColorPicker } from '../components/ColorPicker';
 import type { Config, PresetType } from '../api/types';
-import { filamentSwitchReason, getState, printerPreset, resolvePreset, setState, useStore } from '../state/store';
+import { filamentSwitchReason, getState, resolvePreset, setState, useStore } from '../state/store';
 import { Picker, type PickerAction, type PickerGroup, type PickerItem } from '../components/picker/Picker';
 import { requestPreset } from '../components/PresetCombo';
 import { filamentColor } from '../plater/filamentColor';
 import { addSlot, pickColour } from './SetupRows';
 import { createProfileFromBase, listCatalog, listProfiles, type PickerEntry } from './pickerSource';
-import { modelPreset, nozzleOf, printerModels } from './machines';
 
 const first = (v: unknown) => String([v].flat()[0] ?? '');
 const shortName = (name: string) => name.replace(/\s*@.*$/, '') || name;
-const presets = (type: PresetType, name?: string): PickerAction => ({ label: 'Edit / compare presets', run: () => setState({ presetUx: { kind: 'presets', type, name } }) });
+const presets = (type: PresetType, name?: string): PickerAction => ({ label: `Manage ${type === 'machine' ? 'printers' : type === 'filament' ? 'filaments' : 'print settings'}`, run: () => setState({ presetUx: { kind: 'presets', type, name } }) });
 
 function brandName(name: string, c: Config) {
   const brand = first(c.filament_vendor) || 'Generic', short = shortName(name);
@@ -70,7 +68,7 @@ export function FilamentPicker({ slot, onColour }: { slot: number; onColour(colo
         onPick={(id) => id !== name && requestPreset('filament', slot, id)} footer={[presets('filament', name)]}>
         <span className="pk-type">{first(c.filament_type) || '—'}</span>
         <span className="pk-brand">{b.brand}</span>
-        <span className="pk-name" title={resolved.error ?? label}>{label}</span>
+        <span className="pk-name">{label}</span>
       </Picker>
     </span>
   );
@@ -98,7 +96,6 @@ const vendorOf = (c: Config, fallback: string) => (first(c.printer_vendor) || fa
 
 export function PrinterPicker() {
   const printer = useStore((s) => s.printer);
-  const machine = useStore((s) => printerPreset(s));
   useStore((s) => s.machines);
   useStore((s) => s.userPresets);
   const profileGroups = (): PickerGroup[] => {
@@ -109,26 +106,10 @@ export function PrinterPicker() {
     }
     return byVendorRail(byVendor);
   };
-  const catalogGroups = (): PickerGroup[] => {
-    const s = getState(), d = machine ? nozzleOf(machine) : 0.4;
-    const byVendor = new Map<string, PickerItem[]>();
-    for (const [key, list] of printerModels({...s,userPresets:[]})) {
-      const m = modelPreset(list, printer, d), v = vendorOf(m.config, m.vendor);
-      byVendor.set(v, [...(byVendor.get(v) ?? []), { id: key, label: m.model || m.name, meta: size(m.config), search: list.map((p) => p.name).join(' ') }]);
-    }
-    return byVendorRail(byVendor);
-  };
-  const add = (key: string) => {
-    const s = getState(), list = printerModels({...s,userPresets:[]}).get(key);
-    if (!list) return;
-    const current = printerPreset(s);
-    return createProfileFromBase('machine', catalogKey(modelPreset(list, s.printer, current ? nozzleOf(current) : 0.4)));
-  };
   return (
     <Picker label="Printer" value={printer} memory="orca.web.picker.printers" groups={profileGroups} onPick={(name) => name !== printer && requestPreset('machine', 0, name)}
-      catalog={{ label: 'Add printer', groups: catalogGroups, onAdd: add }}
-      footer={[presets('machine', printer), { label: 'Create printer', run: () => setState({ appDialog: 'createPrinter' }) }]}>
-      <span className="pk-name" title={resolvePreset(getState(),'machine',printer).error ?? undefined}>{resolvePreset(getState(),'machine',printer).name ?? 'Choose printer'}</span>
+      footer={[{ label: 'Add printer', run: () => setState({ presetUx: { kind: 'presets', type: 'machine', add: true } }) }, presets('machine', printer)]}>
+      <span className="pk-name">{resolvePreset(getState(),'machine',printer).name ?? 'Choose printer'}</span>
     </Picker>
   );
 }

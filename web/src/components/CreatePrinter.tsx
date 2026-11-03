@@ -1,7 +1,7 @@
 import { Dropdown, EditableDropdown } from './Dropdown';
 import { useMemo, useState } from 'react';
 import type { Config } from '../api/types';
-import { effectiveConfig, getState, printerPreset, resolvePreset, toast, type State } from '../state/store';
+import { effectiveConfig, getState, printerPreset, resolvePreset, toast, useStore, type State } from '../state/store';
 import { saveProfile } from '../profiles/model';
 import { commitProfileRecords } from '../profiles/transactions';
 import { profileKey } from '../profiles/identity';
@@ -18,6 +18,7 @@ function rect(area: string) {
 
 export default function CreatePrinter({ close }: { close(): void }) {
   const s: State = getState();
+  const ready = useStore((st) => st.profileLibraryLoad.state === 'ready');
   const machines = useMemo(() => [...s.machines].sort((a, b) => (a.name < b.name ? -1 : 1)), [s.machines]);
   const vendors = useMemo(() => [...new Set(machines.map((m) => m.vendor))].sort(), [machines]);
   const current = printerPreset(s);
@@ -43,7 +44,7 @@ export default function CreatePrinter({ close }: { close(): void }) {
     : mode === 'printer' && (s.machines.some((m) => m.name === name) || s.userPresets.some((u) => u.type === 'machine' && u.name === name)) ? `A printer named "${name}" already exists` : '';
   const create = async () => {
     if (!base || missing) return;
-    if(getState().profileLibraryLoad.state!=='ready'){(await import('../profiles/service-recovery')).explainProfileWriteBlock();return;}
+    if (getState().profileLibraryLoad.state !== 'ready') return;
     const nd = base.config.nozzle_diameter;
     const overrides: Config = {
       printable_area: `${-ox}x${-oy},${w - ox}x${-oy},${w - ox}x${d - oy},${-ox}x${d - oy}`,
@@ -57,7 +58,7 @@ export default function CreatePrinter({ close }: { close(): void }) {
       toast(`Created printer ${name}`);
       close();
     } catch (e) {
-      if(!await(await import('../profiles/service-recovery')).handleProfileWriteError(e))toast(`Create printer failed: ${e instanceof Error ? e.message : String(e)}`);
+      toast(`Create printer failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
   const num = (label: string, v: number, set: (n: number) => void, min = -1000) => (
@@ -99,13 +100,13 @@ export default function CreatePrinter({ close }: { close(): void }) {
         <div className="prefs-row"><span>Size</span>{num('Size X', w, (n) => setSize([n, d]), 1)}{num('Size Y', d, (n) => setSize([w, n]), 1)}<span>mm</span></div>
         <div className="prefs-row"><span>Origin</span>{num('Origin X', ox, (n) => setOrigin([n, oy]))}{num('Origin Y', oy, (n) => setOrigin([ox, n]))}<span>mm</span></div>
         <div className="prefs-row"><span>Max Print Height</span>{num('Max Print Height', h, setHeight, 1)}<span>mm</span></div>
-        <div className="prefs-row"><span>Name</span><span title={name}>{name}</span></div>
+        <div className="prefs-row"><span>Name</span><span>{name}</span></div>
       </div>
       <div className="modal-buttons">
         {missing && <span className="brim-warning">{missing}</span>}
         <span style={{ flex: 1 }} />
         <button type="button" className="btn" onClick={close}>Cancel</button>
-        <button type="button" className="btn primary" disabled={!!missing || !s.api || s.api.mock} onClick={() => void create()}>Create</button>
+        <button type="button" className="btn primary" disabled={!!missing || !ready || !s.api || s.api.mock} onClick={() => void create()}>Create</button>
       </div>
     </Modal>
   );

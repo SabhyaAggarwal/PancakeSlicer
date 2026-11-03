@@ -5,6 +5,7 @@ import { lazy, Suspense, useState, useSyncExternalStore } from 'react';
 import { markStale, setState, useStore } from '../state/store';
 import { setThemePref, subscribeTheme, themePref, type ThemePref } from '../theme';
 import { cameraPrefsSnapshot, setCameraPrefs, subscribeCamera, type CameraPrefs } from '../camera';
+import { InfoTip } from './InfoTip';
 import { Modal, ModalTitle } from './Modal';
 
 const About = lazy(() => import('./About'));
@@ -55,27 +56,27 @@ function Preferences() {
         </fieldset>
         <fieldset className="prefs-group">
           <legend>Camera</legend>
-          <label className="prefs-row" title={'Select camera navigation style.\nDefault: LMB+move for rotation, RMB/MMB+move for panning.\nTouchpad: Alt+move for rotation, Shift+move for panning.'}>
-            Camera style
+          <label className="prefs-row">
+            <span>Camera style<InfoTip label="Camera style">{'Default: left drag rotates, right or middle drag pans.\nTouchpad: Alt+drag rotates, Shift+drag pans.'}</InfoTip></span>
             <Dropdown className="combo" value={camera.style} onValueChange={(next) => setCameraPrefs({ style: next as CameraPrefs['style'] })} options={[{ value: "default", label: 'Default' }, { value: "touchpad", label: 'Touchpad' }]} />
           </label>
-          <label className="prefs-row" title="Multiplies the orbit speed for finer or coarser camera movement.">
+          <label className="prefs-row">
             Orbit speed multiplier
             <input className="text num" type="number" min={0.05} max={2} step={0.05} value={camera.orbitMult}
               onChange={(e) => { const v = Number(e.target.value); if (v >= 0.05 && v <= 2) setCameraPrefs({ orbitMult: v }); }} />
           </label>
-          <label className="prefs-row" title="Zoom in towards the mouse pointer's position in the 3D view, rather than the 2D window center.">
+          <label className="prefs-row">
             <Check checked={camera.zoomToMouse} onCheckedChange={(next) => setCameraPrefs({ zoomToMouse: next })} />
             Zoom to mouse position
           </label>
-          <label className="prefs-row" title="If enabled, reverses the direction of zoom with mouse wheel.">
+          <label className="prefs-row">
             <Check checked={camera.reverseZoom} onCheckedChange={(next) => setCameraPrefs({ reverseZoom: next })} />
             Reverse mouse zoom
           </label>
         </fieldset>
         <fieldset className="prefs-group">
           <legend>Develop mode</legend>
-          <label className="prefs-row" title="Show the developer-only settings">
+          <label className="prefs-row">
             <Check checked={developerMode} onCheckedChange={(next) => setDeveloperMode(next)} />
             Develop mode
           </label>
@@ -83,7 +84,7 @@ function Preferences() {
         {canMix && (
           <fieldset className="prefs-group">
             <legend>Slicing</legend>
-            <label className="prefs-row" title="With this option enabled, you can print materials with a large temperature difference together.">
+            <label className="prefs-row">
               <Check checked={mixed} onCheckedChange={(next) => setMixedTemperatures(next)} />
               Remove mixed temperature restriction
             </label>

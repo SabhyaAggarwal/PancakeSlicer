@@ -2,6 +2,7 @@ import { saveProject } from '../actions';
 import { NoticeLog } from '../components/NoticeLog';
 import { keepProjectVersion, reloadProject, retryProject, showProjects, useProject } from '../flow/project';
 import { projectsHref } from '../flow/routes';
+import './projects.css';
 
 export function ProjectStatus() {
   return <><LifecycleStatus /><NoticeLog /></>;
@@ -10,26 +11,26 @@ export function ProjectStatus() {
 function LifecycleStatus() {
   const { value, context } = useProject();
   if (value === 'missing') return (
-    <div className="projects" role="status"><p>Project not found</p>
-      <a href={projectsHref()} onClick={(e) => { e.preventDefault(); showProjects(); }}>Back to projects</a>
+    <div className="pj-status" role="status"><span>Project not found</span>
+      <a className="btn" href={projectsHref()} onClick={(e) => { e.preventDefault(); showProjects(); }}>Projects</a>
     </div>
   );
-  if (value === 'opening') return <div className="projects" role="status">Opening project…</div>;
+  if (value === 'opening') return <div className="pj-status" role="status"><span>Opening…</span></div>;
   if (value !== 'failed' && !context.conflict) return null;
+  const conflict = context.conflict || /another tab/.test(context.error ?? '');
   return (
-    <div role="alert" className="notice">
-      <span>{context.error ?? 'This project changed in another tab. Reload its latest version or keep this version.'}</span>{' '}
-      {context.loadError ? <>
-        <button type="button" onClick={() => void retryProject()}>Retry</button>{' '}
-        <button type="button" onClick={showProjects}>Back to projects</button>
-      </> : context.conflict || /another tab/.test(context.error ?? '') ? <>
-        <button type="button" onClick={() => void reloadProject()}>Reload latest</button>{' '}
-        <button type="button" onClick={() => void keepProjectVersion()}>Keep this version</button>
+    <div role="alert" className="pj-status">
+      <span>{conflict ? 'Changed in another window' : context.error ?? 'Not saved'}</span>
+      <span className="pj-status-actions">{context.loadError ? <>
+        <button type="button" className="btn" onClick={() => void retryProject()}>Retry</button>
+        <button type="button" className="btn-ghost" onClick={showProjects}>Projects</button>
+      </> : conflict ? <>
+        <button type="button" className="btn" onClick={() => void reloadProject()}>Reload latest</button>
+        <button type="button" className="btn-ghost" onClick={() => void keepProjectVersion()}>Keep mine</button>
       </> : <>
-        <button type="button" onClick={showProjects}>Delete old projects</button>{' '}
-        <button type="button" onClick={() => void saveProject()}>Export</button>{' '}
-        <button type="button" onClick={() => void retryProject()}>Retry</button>
-      </>}
+        <button type="button" className="btn" onClick={() => void retryProject()}>Retry</button>
+        <button type="button" className="btn-ghost" onClick={() => void saveProject()}>Export</button>
+      </>}</span>
     </div>
   );
 }

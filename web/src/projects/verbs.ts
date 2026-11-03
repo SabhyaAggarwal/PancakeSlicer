@@ -1,4 +1,4 @@
-import { download, importFiles, openFileDialog, saveProject } from '../actions';
+import { download, importFiles, openFileDialog, pickModelFiles, saveProject } from '../actions';
 import { registerCommand } from '../commands/registry';
 import { whenFresh } from '../flow/slice';
 import { getState, setState } from '../state/store';
@@ -8,7 +8,7 @@ const api = () => import('./api');
 export const fileVerbs = {
   new: () => void api().then((m) => m.newProject()),
   projects: () => setState({ tab: 'projects' }),
-  import: () => { if (getState().tab === 'projects') setState({ tab: 'prepare' }); openFileDialog(); },
+  import: () => { if (getState().tab === 'projects') pickModelFiles((files) => newProjectFrom(files)); else openFileDialog(); },
   'export-gcode': () => whenFresh(download),
   'export-3mf': () => void saveProject(),
   undo: () => void import('../state/history').then((m) => m.undo()),

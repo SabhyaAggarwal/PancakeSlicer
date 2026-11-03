@@ -70,22 +70,8 @@
 :where(.orca-parity) .pf-flush.modified { font-weight: 600; }
 :where(.orca-parity) .setup-card .mixed-add { background: var(--panel); border-style: solid; border-color: var(--line-strong); color: var(--ink); }
 
-:where(.orca-parity) .pf-window { width: min(920px, 96vw); }
-:where(.orca-parity) .pf-window .np-dialog-body { gap: var(--s-4); }
-:where(.orca-parity) .pf-tabs { display: flex; align-items: flex-end; gap: 0; border-bottom: 1px solid var(--line-strong); }
-:where(.orca-parity) .pf-tabs [role='tab'] { height: var(--h-control); padding: 0 var(--s-5); border: 1px solid transparent; border-bottom: 0; margin-bottom: -1px; background: none; color: var(--ink-2); font: var(--t-body); cursor: pointer; }
-:where(.orca-parity) .pf-tabs [role='tab'].is-on { border-color: var(--line-strong); background: var(--panel); color: var(--ink); font-weight: 600; }
-:where(.orca-parity) .pf-tabs .btn { margin-bottom: var(--s-2); margin-left: var(--s-3); }
-:where(.orca-parity) .pf-split { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: var(--s-4); align-items: start; }
-:where(.orca-parity) .pf-list { max-height: 300px; }
-:where(.orca-parity) .pf-list tbody tr, :where(.orca-parity) .pf-diff tbody tr { cursor: default; }
 :where(.orca-parity) .pf-box { border: 1px solid var(--frame); border-radius: var(--r-section); margin: 0; padding: var(--s-3) var(--pad-panel) var(--pad-panel); min-width: 0; }
 :where(.orca-parity) .pf-box > legend { padding: 0 var(--s-2); font: var(--t-section); color: var(--ink-3); }
-:where(.orca-parity) .pf-kv { border-collapse: collapse; font: var(--t-small); margin-bottom: var(--s-3); }
-:where(.orca-parity) .pf-kv th { text-align: left; font-weight: 400; color: var(--ink-3); padding: 1px var(--s-4) 1px 0; }
-:where(.orca-parity) .pf-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-2); }
-:where(.orca-parity) .pf-actions .btn { min-width: 0; padding: 0 var(--s-3); }
-:where(.orca-parity) .pf-rename { display: flex; gap: var(--s-2); margin-bottom: var(--s-3); }
 :where(.orca-parity) .pf-compare-bar { display: flex; align-items: center; gap: var(--s-3); margin-bottom: var(--s-3); font: var(--t-body); }
 :where(.orca-parity) .pf-compare-bar .combo { max-width: 260px; }
 :where(.orca-parity) .pf-compare-bar .row { display: flex; align-items: center; gap: var(--s-2); }
@@ -96,10 +82,6 @@
 
 :where(.orca-parity) .settings-tab .option-row > .opt-label { padding-left: var(--s-4); }
 
-@media (max-width: 799px) {
-  :where(.orca-parity) .pf-split { grid-template-columns: minmax(0, 1fr); }
-  :where(.orca-parity) .pf-tabs, :where(.orca-parity) .pf-compare-bar { flex-wrap: wrap; }
-}
 
 :where(.orca-parity) .pf-reason { color: var(--warn); }
 
@@ -112,11 +94,3 @@
 :where(.orca-parity) .pf-conflict { display: flex; align-items: baseline; gap: var(--s-4); padding: var(--s-2) var(--s-5); font: var(--t-small); color: var(--ink-2); }
 :where(.orca-parity) .pf-conflict-text { flex: 1; min-width: 0; overflow: hidden; overflow-wrap: anywhere; white-space: normal; }
 :where(.orca-parity) .pf-conflict .pf-name { color: var(--accent-text); }
-
-:where(.orca-parity) .pf-item { display: flex; align-items: baseline; gap: var(--s-4); height: 28px; padding: 0 var(--s-4); font: var(--t-body); cursor: default; align-items: center; border-bottom: 1px solid var(--rule); }
-:where(.orca-parity) .pf-item:hover { background: var(--hover); }
-:where(.orca-parity) .pf-item.is-on { background: var(--sunken); font-weight: 600; }
-:where(.orca-parity) .pf-item-name { flex: 1 1 auto; min-width: 0; overflow: hidden; overflow-wrap: anywhere; white-space: normal; }
-:where(.orca-parity) .pf-item-note { flex: none; max-width: 40%; overflow: hidden; overflow-wrap: anywhere; white-space: normal; font-weight: 400; }
-:where(.orca-parity) .pf-mark-dot { flex: none; width: var(--s-2); height: var(--s-2); border-radius: 50%; background: var(--ink-2); }
-:where(.orca-parity) .pf-item.is-dim { opacity: .5; }

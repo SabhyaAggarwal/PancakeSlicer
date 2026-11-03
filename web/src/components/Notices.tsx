@@ -35,7 +35,7 @@ export function Toast() {
         {reload && !action && <button type="button" className="btn-ghost toast-action" onClick={() => location.reload()}>Reload</button>}
         {action && <button type="button" className="btn-ghost toast-action" onClick={() => { setState({ toast: null }); action.run(); }}>{action.label}</button>}
         {toast && (
-          <button type="button" className="toast-close icon-btn" title="Close" aria-label="Close" onClick={() => setState({ toast: null })}>
+          <button type="button" className="toast-close icon-btn" aria-label="Close" onClick={() => setState({ toast: null })}>
             <Icon name="notification_close" size={14} />
           </button>
         )}
@@ -50,7 +50,7 @@ export function SliceFailed({ error, onClose }: { error: string; onClose(): void
   const [copied, setCopied] = useState(false);
   return (
     <div className="notification failed slice-failed" role="alert">
-      <button className="notif-close icon-btn" title="Close" aria-label="Close" onClick={onClose}>
+      <button type="button" className="notif-close icon-btn" aria-label="Close" onClick={onClose}>
         <Icon name="notification_close" size={14} />
       </button>
       <div className="notif-title"><Icon name="error" size={16} /> {title}</div>

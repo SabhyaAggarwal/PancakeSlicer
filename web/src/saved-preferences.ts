@@ -1,11 +1,9 @@
 import { useSyncExternalStore } from 'react';
 import type { JsonValue } from './persist/service-document';
 type Controller = typeof import('./persist/preferences');
-type Adoption = typeof import('./persist/project-adoption');
-type Status = { state: 'loading' | 'ready' | 'pending' | 'failed'; error: string | null; hydrated: boolean; workspaceReady: boolean };
+type Status = { state: 'loading' | 'ready' | 'pending' | 'failed'; error: string | null; hydrated: boolean };
 let values: Record<string, JsonValue> = {}, queued: Record<string, JsonValue> = {};
-let status: Status = { state: 'loading', error: null, hydrated: false, workspaceReady: false }, controller: Controller | null = null;
-let adoption: Adoption | null = null;
+let status: Status = { state: 'loading', error: null, hydrated: false }, controller: Controller | null = null;
 let loading: Promise<void> | null = null;
 const listeners = new Set<() => void>();
 const keyListeners = new Map<string, Set<() => void>>();
@@ -36,10 +34,8 @@ export const savedPreferencesSnapshot = () => status;
 export const subscribeSavedPreferences = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 function sync(hydrated = status.hydrated) {
   if (!controller) return;
-  const snapshot = controller.servicePreferencesSnapshot(), recovery = adoption?.projectAdoptionSnapshot();
-  const workspaceReady = recovery?.state === 'ready' && recovery.coverage === 'complete';
-  publish(snapshot.document, { state: snapshot.state === 'ready' && !workspaceReady ? 'pending' : snapshot.state,
-    error: snapshot.error ?? recovery?.error ?? null, hydrated, workspaceReady });
+  const snapshot = controller.servicePreferencesSnapshot();
+  publish(snapshot.document, { state: snapshot.state, error: snapshot.error ?? null, hydrated });
 }
 export function savePreferences(patch: Record<string, JsonValue>) {
   const changed = Object.fromEntries(Object.entries(patch).filter(([key, value]) => !same(values[key], value)));
@@ -50,8 +46,6 @@ export function savePreferences(patch: Record<string, JsonValue>) {
 export function initialiseSavedPreferences(retry = false): Promise<void> {
   if (loading && !retry) return loading;
   loading = (async () => {
-    if (!adoption) { adoption = await import('./persist/project-adoption'); adoption.subscribeProjectAdoption(() => sync()); }
-    void adoption.ensureProjectAdoption(retry).catch(() => {});
     if (!controller) {
       const loaded = await import('./persist/preferences');
       const edits = queued; queued = {}; controller = loaded;

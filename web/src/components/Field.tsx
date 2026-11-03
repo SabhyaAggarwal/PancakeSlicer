@@ -7,6 +7,7 @@ import { normalizeConfigValue, toolValue } from '../config-values';
 import { OPTIONS, splitKey, type OptionDef } from '../options';
 import { effectiveConfig, getState, resetOption, setOption, useStore } from '../state/store';
 import { Icon } from './Icon';
+import { InfoTip } from './InfoTip';
 import { Switch } from './fields';
 import { displayLabel } from './fields/labels';
 import { ScopeMark } from '../profiles/Scope';
@@ -97,18 +98,19 @@ export const Field = memo(function Field(props: {
   const locked = !!props.disabled || !!def.readonly || (def.nullable && !checked);
   const disabledReason = def.readonly ? 'This value is read-only for the selected profile.' : props.disabled ? 'This setting is unavailable with the current printer and process options.' : def.nullable && !checked ? 'Enable the override to edit this value.' : undefined;
   const hint = CHOICE_HINTS[key]?.[asText(value)];
-  const tooltip = `${label !== fullLabel ? `${fullLabel}\n\n` : ''}${hint ? `${hint}\n\n` : ''}${props.tooltip || def.tooltip || fullLabel}\n\nparameter name: ${key}`.trim();
+  const help = props.tooltip || def.tooltip;
 
   return (
     <div className={`opt-line ${def.full_width || def.multiline ? 'full' : ''} ${isSwitch ? 'is-switch' : ''}`} data-opt={key} onClick={isSwitch && !locked ? (e) => {
       if (!(e.target as HTMLElement).closest('input, button')) commit(isOn ? '0' : '1');
     } : undefined}>
-      <span className={`opt-label ${modified ? 'modified' : ''} ${props.hideLabel ? 'field-label-hidden' : ''}`} title={tooltip} id={labelId}>
-        {def.nullable && <Check className="nullable-toggle" aria-label={`Override ${label}`} checked={checked} disabled={props.overrideDisabled} title={props.overrideDisabled ? "Enable the parent override first" : undefined}
+      <span className={`opt-label ${modified ? 'modified' : ''} ${props.hideLabel ? 'field-label-hidden' : ''}`} id={labelId}>
+        {def.nullable && <Check className="nullable-toggle" aria-label={`Override ${label}`} checked={checked} disabled={props.overrideDisabled}
         onCheckedChange={(next) => commit(next ? fallback : 'nil')} />}
         {label}
+        {!props.hideLabel && (help || hint) && <InfoTip label={fullLabel}>{label !== fullLabel && <strong>{fullLabel}</strong>}{hint && <p>{hint}</p>}{help && <p>{help}</p>}<code>{key}</code></InfoTip>}
       </span>
-      <fieldset className="opt-field" title={disabledReason ?? hint} aria-description={disabledReason} disabled={props.disabled || (def.nullable && !checked)} style={def.sidetext ? { '--side-ch': def.sidetext.length } as React.CSSProperties : undefined}>
+      <fieldset className="opt-field" aria-description={disabledReason} disabled={props.disabled || (def.nullable && !checked)} style={def.sidetext ? { '--side-ch': def.sidetext.length } as React.CSSProperties : undefined}>
         <LabelId.Provider value={labelId}>
           {props.widget ?? <Widget def={def} value={def.nullable && !checked ? fallback : value} onCommit={commit} />}
         </LabelId.Provider>
@@ -117,7 +119,7 @@ export const Field = memo(function Field(props: {
       <span className="opt-undo">
         {props.scope ? <ScopeMark type={props.type} slot={props.slot} optKey={key} target={props.scope.target} /> : <>
         {modified && (
-          <button type="button" className="icon-btn" title={props.resetTitle ?? 'Reset to the preset value'} aria-label={`${props.resetTitle ?? 'Reset to the preset value'}: ${label}`} onClick={() => reset(key)}>
+          <button type="button" className="icon-btn" aria-label={`${props.resetTitle ?? 'Reset to the preset value'}: ${label}`} onClick={() => reset(key)}>
             <Icon name="undo" size={14} />
           </button>
         )}

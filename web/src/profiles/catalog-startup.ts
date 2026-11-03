@@ -28,7 +28,6 @@ function mergeCatalog(vendor: string, cat: PresetCatalog) {
 
 let catalogLoadGeneration = 0;
 let catalogLibraryTail: Promise<void> = Promise.resolve();
-let pendingBrowserAdoption: import('./browser-inventory').BrowserProfileAdoptionPlan | null = null;
 export async function loadCatalog() {
   const generation = ++catalogLoadGeneration, initial = getState(), api = initial.api, documentAtStart=documentGeneration();
   if (!api) return;
@@ -43,58 +42,16 @@ export async function loadCatalog() {
     try {
       await settings;
       if(!current())return;
-      const [storage,{prepareProfileLibraryHydration},browser,{acceptHydratedPrinterSetups},{acknowledgePendingProfileWrite},workspace]=await Promise.all([
-        import('../persist/profile-library'),import('./library-hydration'),import('./browser-inventory'),import('./printer-setups'),import('./transactions'),import('../persist/project-adoption')]);
-      await acknowledgePendingProfileWrite();
+      const [storage,{prepareProfileLibraryHydration},{acceptHydratedPrinterSetups},{acknowledgePendingProfileWrite}]=await Promise.all([
+        import('../persist/profile-library'),import('./library-hydration'),import('./printer-setups'),import('./transactions')]);
+      await acknowledgePendingProfileWrite().catch(error=>{if((error as {code?:string}).code!=='library_reset')throw error;});
       if(!current())return;
-      let document=await storage.readProfileLibrary();
+      const document=await storage.readProfileLibrary();
+      void import('./service-recovery').then(m=>m.refreshProfileRecovery());
       const unchanged=()=>{const s=getState();return current() && documentGeneration()===documentAtStart && s.project===initial.project && s.profileSnapshots===initial.profileSnapshots && s.projectPresets===initial.projectPresets && s.dirty===initial.dirty && (s.userPresets===initial.userPresets || s.userPresets.length===initial.userPresets.length && s.userPresets.every((p,i)=>p===initial.userPresets[i])) && s.printer===initial.printer && s.process===initial.process && s.filamentSlots===initial.filamentSlots && s.slotColours===initial.slotColours && s.filamentEdits===initial.filamentEdits && s.mixes===initial.mixes && s.printerLibrary===initial.printerLibrary;};
       const restoreStartupPlaceholder=!initial.printer && !initial.process && !initial.filamentSlots.length && !initial.project && !initial.objects.length && !initial.profileSnapshots && !initial.projectPresets && !Object.keys(initial.dirty.machine).length && !Object.keys(initial.dirty.process).length && !Object.keys(initial.filamentEdits).length && !Object.keys(initial.printerLibrary.setups).length;
-      let adoptionError:string|null=null;
-      try{
-        const requireReceipt=async(plan:import('./browser-inventory').BrowserProfileAdoptionPlan)=>{
-          const receipt=await storage.readProfileLibraryAdoption(plan.adoption.digest);
-          if(!receipt || receipt.source!==plan.adoption.source || receipt.sourceId!==plan.adoption.sourceId || receipt.operationId!==plan.operationId)
-            throw new Error('Profile source adoption has not been durably acknowledged. Your original data and draft are kept; retry.');
-        };
-        if(pendingBrowserAdoption){
-          const prior=pendingBrowserAdoption,known=await storage.readProfileLibraryAdoption(prior.adoption.digest);
-          try{document=known ? await storage.readProfileLibrary() : await browser.adoptBrowserProfileInventory(prior);await requireReceipt(prior);}
-          catch(error){if((error as {status?:number}).status===409 && pendingBrowserAdoption===prior)pendingBrowserAdoption=null;throw error;}
-          if(pendingBrowserAdoption===prior)pendingBrowserAdoption=null;
-        }
-        const desktop=!!window.orcaDesktop;
-        const sources:{origin:string;inventory:import('./browser-inventory').BrowserProfileInventory}[]=[];
-        if(desktop){
-          await workspace.ensureProjectAdoption(generation>1);
-          const renderer=await workspace.desktopProfileInventory();
-          for(const origin of renderer.origins)sources.push({origin:origin.origin,inventory:browser.captureRendererProfileInventory(initial,origin)});
-        }else sources.push({origin:location.origin,inventory:await browser.captureBrowserProfileInventory(initial)});
-        let receipts=await storage.readProfileLibraryAdoptions();
-        for(const {origin,inventory} of sources){
-          if(!inventory.complete || inventory.issues.length)throw new Error(`Profile source inventory is incomplete: ${inventory.issues.join('; ')}`);
-          if(!unchanged())throw new Error('Your setup changed while loading; retry to keep the newer edits.');
-          if(!inventory.legacyDocument && Object.values(inventory.storage).every(value=>value===null)
-            && !receipts.some(receipt=>receipt.sourceId===`browser-profile-library:v1:${origin}`))continue;
-          const adoption=await browser.fingerprintBrowserProfileInventory(inventory,origin);
-          document=await storage.readProfileLibrary();
-          if(!unchanged())throw new Error('Your setup changed while loading; retry to keep the newer edits.');
-          const plan=browser.planBrowserProfileAdoption(document,inventory,adoption,receipts);
-          if(plan.conflicts.length)throw new Error(`Profile source needs recovery: ${plan.conflicts.join('; ')}. Both versions are kept.`);
-          if(desktop)await workspace.desktopProfileInventory();
-          if(!unchanged())throw new Error('Your setup changed while verifying the original source. Retry to keep the newer edits.');
-          if(!plan.alreadyAcknowledged){pendingBrowserAdoption=plan;document=await browser.adoptBrowserProfileInventory(plan);}
-          await requireReceipt(plan);
-          if(pendingBrowserAdoption===plan)pendingBrowserAdoption=null;
-          receipts=await storage.readProfileLibraryAdoptions();
-        }
-        await workspace.ensureProjectAdoption(generation>1);
-        if(desktop)await workspace.desktopProfileInventory();
-        document=await storage.readProfileLibrary();
-      }catch(error){if(error instanceof storage.LegacyProfilesPendingError)throw error;adoptionError=error instanceof Error?error.message:String(error);}
       if(!current())return;
-      if(!unchanged())throw new Error('Your profiles or setup changed during loading/adoption. Your newer work is kept; retry loading.');
-      if(adoptionError && !restoreStartupPlaceholder)throw new Error(adoptionError);
+      if(!unchanged())throw new Error('Your setup changed while profiles loaded. Your newer work is kept; reload profiles.');
       await ensureOwnedCatalogs(document,native,unchanged);
       if(!unchanged())throw new Error('Your setup changed while native profile bases loaded. Retry to preserve your newer work.');
       if(restoreStartupPlaceholder){
@@ -108,18 +65,13 @@ export async function loadCatalog() {
       if(restoreStartupPlaceholder && (!remembered || remembered.archived)){
         Object.assign(result.patch,{printer:remembered?.id ?? '',process:latest.process,filamentSlots:latest.filamentSlots,
           slotColours:latest.slotColours,filamentEdits:latest.filamentEdits,mixes:latest.mixes,
-          profileRecoveries:[{type:'machine',key:preferred ?? '',reason:remembered?.archived?'archived':'missing-profile'}]});
-        toast(preferred?'The remembered printer is unavailable or archived. Choose a saved printer or review Profiles.':'Choose a saved printer or add a printer template to continue.');
+          profileRecoveries:remembered?.archived?[{type:'machine',key:remembered.id,reason:'archived'}]:[]});
       }
-      const error=adoptionError ?? (result.requiresAdoption?'Browser printer setups differ from the saved library. Export and review browser data before restoring them. Your setup is kept.':null);
+      const error=result.requiresAdoption?'Your printer setup has unsaved changes that differ from the saved one. Save or discard them, then reload profiles.':null;
       setState({...result.patch,profileLibraryLoad:error ? {state:'failed',error} : {state:'ready'}});
       if(!error)acceptHydratedPrinterSetups();
     } catch (error) {
-      if(current()){
-        const pending=(error as {code?:string}).code==='legacy_profiles_pending';
-        if(pending){const {beginServiceRecovery}=await import('./service-recovery');if(current())await beginServiceRecovery(error as import('../persist/profile-library').LegacyProfilesPendingError);}
-        if(current())setState({profileLibraryLoad:{state:'failed',error:error instanceof Error?error.message:String(error),...(pending?{recovery:'adopt_service_profiles' as const}:{})}});
-      }
+      if(current())setState({profileLibraryLoad:{state:'failed',error:error instanceof Error?error.message:String(error)}});
     }
   });
   catalogLibraryTail=library;

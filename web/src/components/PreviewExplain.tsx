@@ -14,7 +14,6 @@ import { colorContext, jobColours, type PreviewUi } from './PreviewView';
 
 const TWO_SCENE_VERTICES = 8e6;
 const NOT_PART = new Set([12, 17, 18]);
-const UNCALIBRATED = 'Head sizes from drawings, not measured on this printer';
 
 function partBox(d: PreviewData): [THREE.Vector3, THREE.Vector3] | null {
   const min = new THREE.Vector3(Infinity, Infinity, Infinity), max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
@@ -109,14 +108,14 @@ export function ExplainLegend(props: {
       ) : <>
       {!compare && (
         <div className="np-stats">
-          {rows.filter(([label]) => label !== 'Time' && label !== 'Filament').map(([label, , b, , tip]) => (
-            <div key={label} title={label === 'Head hits' && v?.uncalibrated ? [tip, UNCALIBRATED].filter(Boolean).join('\n') : tip}>
+          {rows.filter(([label]) => label !== 'Time' && label !== 'Filament').map(([label, , b]) => (
+            <div key={label}>
               <span className="np-k">{label === 'Curved shells' ? 'Shells' : label === 'Curved overhangs' ? 'Overhangs' : label}</span>
               <span className="np-v">{b}{label === 'Head hits' && v?.uncalibrated && <Icon name="warning" size={12} />}</span>
             </div>
           ))}
           {s.flat.length > 0 && (
-            <div title={s.flat.map((f) => `${f.name} ${area(f.area)}: ${f.reason}`).join('\n')}>
+            <div>
               <span className="np-k">Kept flat</span>
               <span className="np-v">{area(s.flat.reduce((a, f) => a + f.area, 0))}</span>
             </div>
@@ -132,8 +131,8 @@ export function ExplainLegend(props: {
           </tr>
         </thead>
         <tbody>
-          {rows.map(([label, a, b, teal, tip]) => (
-            <tr key={label} title={tip}>
+          {rows.map(([label, a, b, teal]) => (
+            <tr key={label}>
               <td>{label}</td>
               {compare && <td>{a}</td>}
               <td className={teal ? 'np-good' : undefined}>{b}</td>
@@ -142,21 +141,21 @@ export function ExplainLegend(props: {
         </tbody>
       </table>}
       {compare && cmp.state === 'running' && (
-        <button className="lg-mode" onClick={() => setCompare(false)} title="Standard slices after your own slices">Cancel Standard</button>
+        <button className="lg-mode" onClick={() => setCompare(false)}>Cancel Standard</button>
       )}
       {compare && cmp.state === 'failed' && (
-        <button className="lg-mode" title={cmp.busy ? 'The slicing service is busy' : cmp.error} onClick={() => void startCompare()}>
+        <button className="lg-mode" onClick={() => void startCompare()}>
           {cmp.busy ? 'Service busy · Retry' : 'Standard failed · Retry'}
         </button>
       )}
       {compare && v?.uncalibrated && (
-        <div className="lg-row np-warn" title={UNCALIBRATED}><Icon name="warning" size={12} />Head model uncalibrated</div>
+        <div className="lg-row np-warn"><Icon name="warning" size={12} />Head model uncalibrated</div>
       )}
       {compare && s.flat.length > 0 && (
         <>
           <div className="lg-sec label-caps">Flat areas</div>
           {s.flat.map((f) => (
-            <div className="lg-row" key={f.name} title={f.reason}>
+            <div className="lg-row" key={f.name}>
               <span className="lg-swatch" style={{ background: `rgb(${NONPLANAR_PLANAR_COLOR.join(',')})` }} />
               {f.name} {area(f.area)}
             </div>

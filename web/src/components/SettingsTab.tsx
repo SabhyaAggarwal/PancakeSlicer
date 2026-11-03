@@ -12,6 +12,8 @@ import { condition, environment, fieldDefinition, optionState } from '../visibil
 import { lineMode, nativeSupportCapable, tabEnvironment } from '../settings-env';
 import { Field } from './Field';
 import { Icon } from './Icon';
+import { InfoTip } from './InfoTip';
+import './settings.css';
 import { SectionHeading } from './SectionHeading';
 
 const BedShapeDialog = lazy(() => import('./BedShapeDialog'));
@@ -35,15 +37,6 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
   const [bedDialog, setBedDialog] = useState(false);
   const [pageIdx, setPageIdx] = useState(0);
   const [auxiliaryOn,setAuxiliaryOn] = useState(false);
-  const categoryStrip = useRef<HTMLDivElement>(null);
-  const revealCategory = () => {
-    const strip=categoryStrip.current, tab=strip?.querySelector<HTMLElement>('[data-state=active]');
-    if(!strip || !tab)return;
-    const left=tab.offsetLeft-strip.offsetLeft, right=left+tab.offsetWidth;
-    if(left<strip.scrollLeft)strip.scrollLeft=left;
-    else if(right>strip.scrollLeft+strip.clientWidth)strip.scrollLeft=right-strip.clientWidth;
-  };
-  useEffect(revealCategory,[pageIdx,auxiliaryOn]);
   const machineConfig = useStore((s) => effectiveConfig(s, 'machine'));
   const processConfig = useStore((s) => effectiveConfig(s, 'process'));
   const features = useStore((s) => s.features);
@@ -115,7 +108,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
     <div className={`settings-tab ${compact ? 'compact' : ''}`}>
       {bedDialog && <Suspense fallback={<div role="status">Loading bed shape…</div>}><BedShapeDialog config={config} onSet={editor?.set} close={() => setBedDialog(false)} /></Suspense>}
       {!hidePreset && <PresetBar type={type} slot={slot} />}
-      <Tabs.Root className="settings-pages" value={auxiliaryOn ? 'auxiliary' : String(Math.min(pageIdx, pages.length - 1))} onValueChange={v => {setAuxiliaryOn(v === 'auxiliary'); if(v !== 'auxiliary') setPageIdx(Number(v));}}><Tabs.List ref={categoryStrip} onFocusCapture={e=>{const strip=e.currentTarget,tab=e.target as HTMLElement;if(tab.getAttribute('role') === 'tab'){const left=tab.offsetLeft-strip.offsetLeft;if(left<strip.scrollLeft)strip.scrollLeft=left;else if(left+tab.offsetWidth>strip.scrollLeft+strip.clientWidth)strip.scrollLeft=left+tab.offsetWidth-strip.clientWidth;}}} className="page-bar" aria-label={`${TYPE_NAME[type]} settings`}>
+      <Tabs.Root className="settings-pages" value={auxiliaryOn ? 'auxiliary' : String(Math.min(pageIdx, pages.length - 1))} onValueChange={v => {setAuxiliaryOn(v === 'auxiliary'); if(v !== 'auxiliary') setPageIdx(Number(v));}}><Tabs.List className="page-bar" aria-label={`${TYPE_NAME[type]} settings`}>
         {pages.map((p, i) => (
           <Tabs.Trigger key={p.title} value={String(i)} className={`page-tab ${p === page ? 'active' : ''} ${pageModified(p) ? 'modified' : ''}`} onClick={() => setPageIdx(i)}>
             {p.title}
@@ -127,7 +120,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
         {auxiliaryOn && auxiliary ? auxiliary.content : <>
         {type === 'machine' && !editor && <NozzleField />}
         {type === 'process' && pageIdx === 0 && <SurfaceSettings config={config} system={system} availability={availability} editor={editor} dirty={dirty} readOnly={readOnly}/>}
-        {!desc && <div className="settings-load" role={error || retryError ? 'alert' : 'status'}><span>{retryError || error ? `Settings failed to load: ${retryError ?? error}` : 'Loading settings…'}</span>{(error || retryError) && <button type="button" className="btn" disabled={retrying} title={retrying ? 'Waiting for the settings request' : 'Load these settings again'} onClick={retry}>{retrying ? 'Retrying…' : 'Retry'}</button>}</div>}
+        {!desc && <div className="settings-load" role={error || retryError ? 'alert' : 'status'}><span>{retryError || error ? `Settings failed to load: ${retryError ?? error}` : 'Loading settings…'}</span>{(error || retryError) && <button type="button" className="btn" disabled={retrying} onClick={retry}>{retrying ? 'Retrying…' : 'Retry'}</button>}</div>}
         {type === 'process' && page?.title === 'Multimaterial' && getState().filamentSlots.length > 1 && <section className="optgroup"><button type="button" className="btn" onClick={() => setState({flushDialog: true})}>Flush volumes</button></section>}
         {page?.groups.map((g) => (
           <section key={g.title} className="optgroup">
@@ -146,16 +139,17 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
                 keys = keys.flatMap((k) => (labels ?? ['']).map((_, i) => `${splitKey(k)[0]}#${i}`));
               }
               if (customRow(line)) return <div key={row} className="opt-line">
-                <span className="opt-label" title={line.tooltip}>{line.label}</span>
+                <span className="opt-label">{line.label}{line.tooltip && <InfoTip label={line.label ?? ''}><p>{line.tooltip}</p></InfoTip>}</span>
                 <span className="opt-field"><Suspense fallback={null}><HeadShapeButton head={String(config.nonplanar_head ?? '')} layerHeight={Number(effectiveConfig(getState(), 'process').layer_height) || 0.2} onSaved={editor ? id => editor.set('nonplanar_head', id) : undefined} /></Suspense></span>
               </div>;
               const shared = keys.length > 1;
               const tooltip = line.tooltip && OPTIONS[line.tooltip] ? OPTIONS[line.tooltip].tooltip : line.tooltip;
+              const sharedLabel = line.label ?? (OPTIONS[splitKey(keys[0])[0]]?.full_label || OPTIONS[splitKey(keys[0])[0]]?.label);
               return <div key={row} className={shared ? 'option-row' : undefined}>
-                {shared && <span className="opt-label" title={tooltip}>{line.label ?? (OPTIONS[splitKey(keys[0])[0]]?.full_label || OPTIONS[splitKey(keys[0])[0]]?.label)}</span>}
+                {shared && <span className="opt-label">{sharedLabel}{tooltip && <InfoTip label={sharedLabel ?? ''}><p>{tooltip}</p></InfoTip>}</span>}
                 {keys.map((k, i) => {
                   const key = splitKey(k)[0];
-                  return <Field widget={type === 'machine' && key === 'printable_area' ? <button className="side-btn" title="Set bed shape" onClick={() => setBedDialog(true)}>Set ...</button>
+                  return <Field widget={type === 'machine' && key === 'printable_area' ? <button type="button" className="btn" onClick={() => setBedDialog(true)}>Set bed shape</button>
                     : type === 'machine' && key === 'nonplanar_head' ? <Suspense fallback={null}><HeadPicker value={String(config[key] ?? '')} onCommit={(v) => editor ? editor.set(key, v) : v === String(system[key] ?? '') ? resetOption(type, key) : setOption(type, key, v)} /></Suspense>
                     : undefined} key={`${k}:${i}`} optKey={k} type={type} value={config[key]} systemValue={system[key]} dirty={key in dirty}
                     slot={slot} onSet={editor?.set} onReset={editor?.reset}

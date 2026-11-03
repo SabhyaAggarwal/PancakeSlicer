@@ -48,10 +48,10 @@ export default function ObjectInfo() {
   const size = instanceBox(o, inst).getSize(new THREE.Vector3());
   return (
     <div className="object-info" role="status" aria-label="Object info">
-      <span title="Size"><Copyable value={`${num(size.x)} × ${num(size.y)} × ${num(size.z)} mm`} /></span>
-      <span title="Volume"><Copyable value={`${num(st.volume)} mm³`} /></span>
+      <span><Copyable value={`${num(size.x)} × ${num(size.y)} × ${num(size.z)} mm`} /></span>
+      <span><Copyable value={`${num(st.volume)} mm³`} /></span>
       <span><Copyable value={`${st.triangles} triangles`} /></span>
-      {st.openEdges > 0 && <span className="object-info-error" title={'Use "Fix Model" to repair the mesh.'}>
+      {st.openEdges > 0 && <span className="object-info-error">
         {st.openEdges} non-manifold edge{st.openEdges === 1 ? '' : 's'}
         {fix && <button type="button" className="notif-link" onClick={() => void import('../plater/meshOps').then((m) => m.fixModel(o.id))}>Fix Model</button>}
       </span>}

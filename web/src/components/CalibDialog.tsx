@@ -221,7 +221,7 @@ export default function CalibDialog({ which }: { which: Exclude<CalibMenu, 'nonp
               <label key={f.key} className="prefs-row">
                 <span style={{ minWidth: 190 }}>{f.label}</span>
                 <input className={f.list ? 'text' : 'text num'} type={f.list ? 'text' : 'number'} step="any" value={v[f.key]}
-                  title={f.list ? `Comma-separated list of printing ${f.key}` : undefined} onChange={(e) => setV({ ...v, [f.key]: e.target.value })} />
+                  placeholder={f.list ? 'Comma-separated' : undefined} onChange={(e) => setV({ ...v, [f.key]: e.target.value })} />
                 {f.unit}
               </label>
             ))}
@@ -229,7 +229,7 @@ export default function CalibDialog({ which }: { which: Exclude<CalibMenu, 'nonp
           </fieldset>
         )}
         <div className="modal-buttons">
-          <a className="btn" href={`https://www.orcaslicer.com/wiki/${c.wiki}`} target="_blank" rel="noreferrer" title="Wiki Guide">Wiki Guide</a>
+          <a className="btn" href={`https://www.orcaslicer.com/wiki/${c.wiki}`} target="_blank" rel="noreferrer">Wiki Guide</a>
           <button type="submit" className="btn primary" data-autofocus>OK</button>
         </div>
       </form>

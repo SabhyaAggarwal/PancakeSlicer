@@ -2,7 +2,7 @@ import type { ProjectDraft, ProjectDraftStore, ProjectFailure } from '../persist
 import type { DraftCheckpoint, DraftCodec } from './project-recovery';
 import type { ProjectDraftInventory } from './project';
 import { flushServiceSession, loadServiceSession, patchServiceSession } from '../persist/service-session';
-import { ensureWorkspaceMutation } from '../persist/project-adoption';
+import { requireWorkspaceService } from '../persist/service';
 export async function draftSession(newOwner: string): Promise<{ owner: string; previousOwner: string | null; previousOwners: readonly string[] }> {
   const remote = await loadServiceSession(), lineage = remote.document.projectDraftOwners ?? [];
   if (!Array.isArray(lineage) || lineage.some((owner) => typeof owner !== 'string')) throw new Error('Invalid service draft lineage');
@@ -10,7 +10,7 @@ export async function draftSession(newOwner: string): Promise<{ owner: string; p
   return { owner: newOwner, previousOwner, previousOwners };
 }
 async function registerDraftOwner(owner: string): Promise<void> {
-  await ensureWorkspaceMutation();
+  await requireWorkspaceService();
   await flushServiceSession(true);
   const remote = await loadServiceSession(), lineage = remote.document.projectDraftOwners ?? [];
   if (!Array.isArray(lineage) || lineage.some(value => typeof value !== 'string')) throw new Error('Invalid service draft lineage');

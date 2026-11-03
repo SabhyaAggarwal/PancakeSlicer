@@ -378,6 +378,7 @@ export const discardProjectDraft = async (id: string) => (await recoveryActions(
 export const renameProject = async (id: string, name: string) => (await recoveryActions()).renameProject(recoveryRuntime, id, name);
 export const duplicateProject = async (id: string): Promise<ProjectMeta | null> => (await recoveryActions()).duplicateProject(recoveryRuntime, id);
 export const deleteProject = async (id: string): Promise<() => Promise<void>> => (await recoveryActions()).deleteProject(recoveryRuntime, id);
+export const restoreArchivedProject = async (id: string, expectedRevision?: number) => (await recoveryActions()).restoreArchivedProject(recoveryRuntime, id, expectedRevision);
 export const discardRejectedProjectCommand = async (operationId: string) => (await recoveryActions()).discardRejectedProjectCommand(recoveryRuntime, operationId);
 
 export type ProjectSnapshot = Snapshot<ProjectStateName, ProjectContext>;

@@ -94,16 +94,16 @@ export function OrderBar({ data, at, onSeek, gcodeOpen, onGcode }: {
   const total = e[e.length - 1] ?? 0;
   return (
     <div className="move-slider order-bar">
-      <button type="button" className="ob-btn" aria-label="Previous move" title="Previous move (Left)" onClick={() => step(-1)}>‹</button>
-      <button type="button" className="ob-btn ob-play" aria-label={playing ? 'Pause' : 'Play'} aria-pressed={playing} title="Space" onClick={() => playing ? pauseViewer() : playViewer()}>
+      <button type="button" className="ob-btn" aria-label="Previous move" onClick={() => step(-1)}>‹</button>
+      <button type="button" className="ob-btn ob-play" aria-label={playing ? 'Pause' : 'Play'} aria-pressed={playing} onClick={() => playing ? pauseViewer() : playViewer()}>
         {playing ? '❚❚' : '▶'}
       </button>
-      <button type="button" className="ob-btn" aria-label="Next move" title="Next move (Right)" onClick={() => step(1)}>›</button>
+      <button type="button" className="ob-btn" aria-label="Next move" onClick={() => step(1)}>›</button>
       <Range min={1} max={last} value={Math.min(at, last)} aria-label="Print order" onValueChange={seek} />
       <span className="ms-label ob-time">{shortTime(e[Math.min(at, e.length - 1)] ?? 0)} / {shortTime(total)}</span>
       <span className="ms-label ob-layer">Layer {k == null ? '–' : k + 1} / {data.layers.length}</span>
       <Dropdown className="ob-rate" aria-label="Speed" value={rate} onValueChange={(next) => playback.send({ type: 'RATE', rate: Number(next) })} options={[...RATES.map((r) => ({ value: r, label: <>{r}×</> }))]} />
-      <button type="button" className="ms-gcode" aria-pressed={gcodeOpen} onClick={onGcode} title="C">G-code</button>
+      <button type="button" className="ms-gcode" aria-pressed={gcodeOpen} onClick={onGcode}>G-code</button>
     </div>
   );
 }

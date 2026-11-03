@@ -22,8 +22,8 @@ function Order({ order, colours, onChange }: { order: number[]; colours: string[
       {order.map((f, i) => (
         <span key={f} className="plate-order-item">
           <span className="menu-swatch" style={{ background: colours[f - 1] }} />{f}
-          <button type="button" className="btn small" disabled={i === 0} title="Move up" onClick={() => move(i, -1)}>‹</button>
-          <button type="button" className="btn small" disabled={i === order.length - 1} title="Move down" onClick={() => move(i, 1)}>›</button>
+          <button type="button" className="btn small" disabled={i === 0} aria-label="Move up" onClick={() => move(i, -1)}>‹</button>
+          <button type="button" className="btn small" disabled={i === order.length - 1} aria-label="Move down" onClick={() => move(i, 1)}>›</button>
         </span>
       ))}
     </span>
@@ -90,7 +90,7 @@ export default function PlateSettings({ close }: { close(): void }) {
               <span>to</span>
               <input className="text num" type="number" min={r.from} value={r.to} onChange={(e) => setOthers(others.map((x, j) => (j === k ? { ...x, to: Math.max(x.from, Number(e.target.value)) } : x)))} />
               <Order order={r.order} colours={colours} onChange={(o) => setOthers(others.map((x, j) => (j === k ? { ...x, order: o } : x)))} />
-              <button type="button" className="btn small" title="Delete" onClick={() => setOthers(others.length > 1 ? others.filter((_, j) => j !== k) : null)}>−</button>
+              <button type="button" className="btn small" aria-label="Delete" onClick={() => setOthers(others.length > 1 ? others.filter((_, j) => j !== k) : null)}>−</button>
             </div>
           ))}
           {others && <button type="button" className="btn small" onClick={() => { const last = others[others.length - 1]; setOthers([...others, { from: last.to + 1, to: last.to + 1, order: natural }]); }}>+</button>}

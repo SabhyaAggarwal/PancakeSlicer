@@ -42,17 +42,17 @@ export function ImportDialog() {
 
   const count = rows?.filter((r) => r.checked && (r.preset || r.base)).length ?? 0;
   return (
-    <Modal className="np-dialog import-dialog" label="Import Configs" onClose={close}>
-      <ModalTitle title="Import Configs" onClose={close} />
+    <Modal className="np-dialog import-dialog" label="Import profiles" onClose={close}>
+      <ModalTitle title="Import profiles" onClose={close} />
       <div className={`np-dialog-body import-drop ${drag ? 'drag' : ''}`}
         onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
         onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setDrag(false); void read(e.dataTransfer.files); }}>
         <div className="row">
           <button type="button" className="btn primary" data-autofocus onClick={() => input.current?.click()} disabled={busy}>Choose files…</button>
-          <input ref={input} type="file" multiple hidden accept={ACCEPT} aria-label="Preset files" onChange={(e) => { if (e.target.files) void read(e.target.files); e.target.value = ''; }} />
+          <input ref={input} type="file" multiple hidden accept={ACCEPT} aria-label="Profile files" onChange={(e) => { if (e.target.files) void read(e.target.files); e.target.value = ''; }} />
         </div>
         {busy && <div role="status">{done ? 'Importing…' : 'Reading…'}</div>}
-        {rows && !rows.length && <div className="hint-text">No presets</div>}
+        {rows && !rows.length && <div className="hint-text">No profiles found</div>}
         {rows && rows.length > 0 && (
           <div className="diff-scroll">
             <table className="np-table">
@@ -60,7 +60,7 @@ export function ImportDialog() {
                 onCheckedChange={(next) => setRows(rows.map((r) => ({ ...r, checked: !!(r.preset || r.base) && next })))} /></th>
                 <th>Preset</th><th>Type</th><th>Parent</th><th>{done ? 'Result' : 'Action'}</th></tr></thead>
               <tbody>{rows.map((r, i) => (
-                <tr key={`${r.parsed.file}:${i}`} title={r.parsed.file}>
+                <tr key={`${r.parsed.file}:${i}`}>
                   <td><Check aria-label={`Import ${r.parsed.name}`} disabled={!(r.preset || r.base) || done} checked={r.checked}
                     onCheckedChange={(next) => setRows(rows.map((x, j) => (j === i ? { ...x, checked: next } : x)))} /></td>
                   <td>{r.parsed.name}</td>
@@ -85,8 +85,8 @@ export function ImportDialog() {
 }
 
 const KINDS: [ExportKind, string][] = [
-  ['printer_bundle', 'Printer config bundle(.orca_printer)'], ['filament_bundle', 'Filament bundle(.orca_filament)'],
-  ['machine', 'Printer presets(.zip)'], ['filament', 'Filament presets(.zip)'], ['process', 'Process presets(.zip)'],
+  ['printer_bundle', 'Printer bundle (.orca_printer)'], ['filament_bundle', 'Filament bundle (.orca_filament)'],
+  ['machine', 'Printers (.zip)'], ['filament', 'Filaments (.zip)'], ['process', 'Print settings (.zip)'],
 ];
 
 export function ExportDialog() {
@@ -118,8 +118,8 @@ export function ExportDialog() {
     close();
   };
   return (
-    <Modal className="np-dialog small export-dialog" label="Export Preset Bundle" onClose={close}>
-      <ModalTitle title="Export Preset Bundle" onClose={close} />
+    <Modal className="np-dialog small export-dialog" label="Export profiles" onClose={close}>
+      <ModalTitle title="Export profiles" onClose={close} />
       <div className="np-dialog-body">
         <fieldset className="export-kinds">
           {KINDS.map(([k, label]) => (
@@ -127,8 +127,8 @@ export function ExportDialog() {
               onChange={() => { setKind(k); setPicked(new Set()); }} />{label}</label>
           ))}
         </fieldset>
-        <div className="export-list" role="group" aria-label="Presets to export">
-          {choices.length === 0 && <div className="hint-text">No user presets</div>}
+        <div className="export-list" role="group" aria-label="Profiles to export">
+          {choices.length === 0 && <div className="hint-text">No custom profiles</div>}
           {choices.length > 0 && <label className="row"><Check checked={selected.length === choices.length}
             onCheckedChange={(next) => setPicked(new Set(next ? choices : []))} /><b>Select all</b></label>}
           {choices.map((c) => (

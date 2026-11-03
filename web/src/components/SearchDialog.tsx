@@ -181,7 +181,6 @@ export default function SearchDialog() {
             f.group && f.group !== results[i - 1]?.group && <li key={`group:${f.group}`} role="presentation" className="search-group">{f.group}</li>,
             <li key={`${f.entry.type}:${f.entry.key}`} id={`search-hit-${i}`} role="option" aria-selected={i === active} aria-description={f.group && f.via !== 'tooltip' ? `${f.group} setting` : undefined}
               className={`search-hit ${i === active ? 'active' : ''} ${f.reason || f.group ? 'dim' : ''}`}
-              title={`${f.entry.tooltip}\n\nparameter name: ${f.entry.key}`.trim()}
               onMouseMove={() => active !== i && setActive(i)} onClick={() => choose(f)}>
               <Icon name={TYPES.find(([t]) => t === f.entry.type)![3]} size={16} />
               <span className="search-path"><Marked text={f.entry.path} hits={f.hits} /></span>
