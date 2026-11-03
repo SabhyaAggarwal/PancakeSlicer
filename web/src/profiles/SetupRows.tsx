@@ -34,25 +34,15 @@ export function NozzleField() {
   );
 }
 
-export const NEW_COLOUR = () => NEXT_COLOURS[nextColour++ % NEXT_COLOURS.length];
 
 export function addFilament() {
   const s = getState();
-  if (Object.keys(s.mixes).length) return void import('../plater/mixed').then((m) => m.addPhysical(NEW_COLOUR()));
-  undoable('Add filament', () => setState((st) => {
-    const last = st.filamentSlots[st.filamentSlots.length - 1] ?? '';
-    const slotColours = [...st.slotColours];
-    slotColours[st.filamentSlots.length] = NEW_COLOUR();
-    return { filamentSlots: [...st.filamentSlots, last], slotColours };
-  }));
+  if (Object.keys(s.mixes).length) return void import('../plater/mixed').then((m) => m.addPhysical());
+  undoable('Add filament', () => setState((st) => ({ filamentSlots: [...st.filamentSlots, st.filamentSlots[st.filamentSlots.length - 1] ?? ''] })));
 }
 
-export function addSlot(name: string, colour?: string) {
-  undoable('Add filament', () => setState((st) => {
-    const slotColours = [...st.slotColours];
-    slotColours[st.filamentSlots.length] = colour && /^#[0-9a-f]{6}$/i.test(colour) ? colour.toUpperCase() : NEW_COLOUR();
-    return { filamentSlots: [...st.filamentSlots, name], slotColours, job: markStale(st.job) };
-  }));
+export function addSlot(name: string) {
+  undoable('Add filament', () => setState((st) => ({ filamentSlots: [...st.filamentSlots, name], job: markStale(st.job) })));
 }
 
 export function removeFilament() {
@@ -210,9 +200,6 @@ export function MaterialTools() {
 }
 
 
-const NEXT_COLOURS = ['#00C1AE', '#F4E2C1', '#ED1C24', '#00FF7F', '#F26722', '#FFEB31', '#7841CE', '#115877',
-  '#ED1E79', '#2EBDEF', '#345B2F', '#800080', '#FA8173', '#800000', '#F7B763', '#A4C41E'];
-let nextColour = 0;
 
 export function FilamentSlotsView({ slot, pick }: { slot: number; pick(i: number): void }) {
   const multi = useStore((st) => filamentSlots(printerPreset(st)) > 1 || st.filamentSlots.length > 1);

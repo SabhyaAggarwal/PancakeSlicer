@@ -9,19 +9,24 @@ export async function draftSession(newOwner: string): Promise<{ owner: string; p
   const previousOwners = [...new Set(lineage as string[])].slice(0, 32), previousOwner = previousOwners[0] ?? null;
   return { owner: newOwner, previousOwner, previousOwners };
 }
-async function registerDraftOwner(owner: string): Promise<void> {
+async function registerDraftOwner(owner: string, storage: () => Promise<ProjectDraftStore>): Promise<void> {
   await requireWorkspaceService();
   await flushServiceSession(true);
   const remote = await loadServiceSession(), lineage = remote.document.projectDraftOwners ?? [];
   if (!Array.isArray(lineage) || lineage.some(value => typeof value !== 'string')) throw new Error('Invalid service draft lineage');
   if (lineage.includes(owner)) return;
-  await patchServiceSession({ projectDraftOwners: [owner, ...new Set(lineage as string[])].slice(0, 32) });
+  const next = [owner, ...new Set(lineage as string[])];
+  if (next.length > 32) {
+    const holding = new Set((await (await storage()).list()).map((draft) => draft.owner));
+    for (let i = next.length - 1; i > 0 && next.length > 32; i--) if (!holding.has(next[i])) next.splice(i, 1);
+  }
+  await patchServiceSession({ projectDraftOwners: next.slice(0, 32) });
   await flushServiceSession();
 }
 export function createDraftJournal<D>(owner: string, storage: () => Promise<ProjectDraftStore>, codec: () => Promise<DraftCodec<D>>,
   beginMutation: (id: string) => (error?: unknown) => void = () => () => {}) {
   let serial = 0, tail = Promise.resolve(), registered: Promise<void> | null = null;
-  const register = () => registered ??= registerDraftOwner(owner).catch(error => { registered = null; throw error; });
+  const register = () => registered ??= registerDraftOwner(owner, storage).catch(error => { registered = null; throw error; });
   const failures = new Map<string, unknown>();
   type Capture = { checkpoint: DraftCheckpoint; baseRevision: number; document: D; failure: ProjectFailure | null };
   const pending = new Map<string, { latest: Capture; durable: Promise<ProjectDraft>; release(): void }>();

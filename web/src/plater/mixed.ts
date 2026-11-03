@@ -61,7 +61,7 @@ export function deleteMixes(slots: number[], into?: number, name = 'Delete mixed
   }));
 }
 
-export function addPhysical(colour: string) {
+export function addPhysical(colour?: string) {
   undoable('Add filament', () => setState((st) => {
     const p = physicalCount(st), n = st.filamentSlots.length;
     const filamentSlots = [...st.filamentSlots], slotColours = [...st.slotColours];

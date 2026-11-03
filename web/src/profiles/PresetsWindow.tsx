@@ -249,7 +249,8 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     return found;
   };
   const processRows=(rows:Item[],nozzleOf:(i:Item)=>string,usual:string|undefined)=>{
-    const shown=rows.map(i=>({i,title:processTitle(i.name,i.config,true),nozzle:nozzleOf(i)}));
+    const nozzles=new Set(rows.map(nozzleOf));
+    const shown=rows.map(i=>({i,title:processTitle(i.name,i.config,true),nozzle:nozzles.size > 1 ? nozzleOf(i) : ''}));
     return shown.map(r=>{
       const clash=shown.filter(q=>q.title === r.title).length > 1,exact=clash && shown.filter(q=>q.title === r.title && q.nozzle === r.nozzle).length > 1;
       const mode=processMode(r.i.config);
@@ -274,9 +275,10 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
       for(const [full,m] of found){const g=models.get(full) ?? {label:m.label,sub:m.sub,items:[]};g.items.push({i,nozzles:m.nozzles});models.set(full,g);}
     }
     return [...models].sort(([a],[b])=>byLabel(a,b)).map(([full,m])=>{
-      const mixed=new Set(m.items.flatMap(x=>[...x.nozzles])).size > 1,nozzle=new Map(m.items.map(x=>[x.i.key,mixed && x.nozzles.size === 1 ? `${[...x.nozzles][0]} mm` : '']));
+      const nozzle=new Map(m.items.map(x=>[x.i.key,x.nozzles.size === 1 ? `${[...x.nozzles][0]} mm` : '']));
       const children=bucket(m.items.map(x=>x.i),i=>heightLabel(i.config)).map(([label,list])=>({key:`${full}\0${label}`,label,rows:processRows(sortRows(list),i=>nozzle.get(i.key) ?? '',usual)}));
-      return {key:full,label:m.label,sub:m.sub,rows:unique(children.flatMap(c=>c.rows)),children};
+      const shared=[...models].some(([other,o])=>other !== full && o.label === m.label);
+      return {key:full,label:m.label,sub:shared ? m.sub : undefined,rows:unique(children.flatMap(c=>c.rows)),children};
     });
   },[matching,query,type,machines]);
   const visible=useMemo(()=>unique(groups.flatMap(g=>g.rows)),[groups]);
@@ -433,7 +435,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const renderGroup=(g:Group,depth:number):React.ReactNode=>{
     const open=isOpen(g);
     return <div key={g.key} role="rowgroup" className="pf-group" data-depth={depth}>
-      <div role="row"><span role="rowheader"><button type="button" className="pf-group-toggle" aria-expanded={open} onClick={()=>toggleGroup(g.key)}><Caret dir={open ? 'down' : 'right'}/><span className="pf-group-label">{g.label}</span>{g.sub && <span className="pf-dim">{g.sub}</span>}<span className="pf-dim">{count(g.rows.length,resultNoun)}</span></button></span></div>
+      <div role="row"><span role="rowheader"><button type="button" className="pf-group-toggle" aria-expanded={open} onClick={()=>toggleGroup(g.key)}><Caret dir={open ? 'down' : 'right'}/><span className="pf-group-label">{g.label}</span>{g.sub && <span className="pf-dim">{g.sub}</span>}</button></span></div>
       {open && (g.children ? g.children.map(c=>renderGroup(c,depth+1)) : g.rows.map(i => <ManagerProfileRow key={i.key} item={i} listId={id} selected={selectedSet.has(i.key)} focused={selection.focus === i.key} selectable={!adding} dispatch={dispatch}/>))}
     </div>;
   };

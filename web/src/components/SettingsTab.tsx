@@ -20,6 +20,8 @@ import './settings.css';
 const BedShapeDialog = lazy(() => import('./BedShapeDialog'));
 const HeadPicker = lazy(() => import('./HeadPicker'));
 const HeadShapeButton = lazy(() => import('./HeadPicker').then((m) => ({ default: m.HeadShapeButton })));
+const GcodeWorkbench = lazy(() => import('../gcode/GcodeWorkbench'));
+const isGcode = (key: string) => /_gcode$/.test(key) && (!!OPTIONS[key]?.multiline || OPTIONS[key]?.type === 'string' || OPTIONS[key]?.type === 'strings');
 
 const customRow = (line: TabLine) => line.label === 'Head shape' && !line.options.length;
 
@@ -78,6 +80,9 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
       .filter((g) => g.lines.length) }))
     .filter((p) => p.groups.length), [desc, env, states, uiMode, config, availability, type]);
   const page = pages[Math.min(pageIdx, pages.length - 1)];
+  const gcodeKeys = page ? page.groups.flatMap((g) => g.lines.flatMap((l) => l.options.map((k) => splitKey(k)[0]))).filter(isGcode) : [];
+  const gcodeLabels = Object.fromEntries((page?.groups ?? []).flatMap((g) => g.lines.flatMap((l) => l.options.map((k) => splitKey(k)[0]).filter(isGcode).map((k) => [k, (g.lines.length === 1 && g.title) || l.label || OPTIONS[k]?.label || k]))));
+  const groups = (page?.groups ?? []).map((g) => gcodeKeys.length ? { ...g, lines: g.lines.filter((l) => !l.options.every((k) => isGcode(splitKey(k)[0]))) } : g).filter((g) => g.lines.length);
   const definitionCache = useRef(new Map<string, Partial<OptionDef>>());
   const definition = (key: string, line: TabLine) => {
     const next = {...fieldDefinition(key, env), ...line.overrides?.[key]}, prior = definitionCache.current.get(key);
@@ -129,8 +134,8 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
         {type === 'process' && pageIdx === 0 && <SurfaceSettings config={config} system={system} availability={availability} editor={editor} dirty={dirty} readOnly={readOnly}/>}
         {!desc && <div className="settings-load" role={error || retryError ? 'alert' : 'status'}><span>{retryError || error ? `Settings failed to load: ${retryError ?? error}` : 'Loading settings…'}</span>{(error || retryError) && <button type="button" className="btn" disabled={retrying} onClick={retry}>{retrying ? 'Retrying…' : 'Retry'}</button>}</div>}
         {type === 'process' && page?.title === 'Multimaterial' && getState().filamentSlots.length > 1 && <section className="optgroup"><button type="button" className="btn" onClick={() => setState({flushDialog: true})}>Flush volumes</button></section>}
-        {page?.groups.map((g) => {
-          const single = page.groups.length === 1 && g.lines.length === 1 && g.lines[0].options.length === 1 && !!OPTIONS[splitKey(g.lines[0].options[0])[0]]?.multiline, id = groupId(page.title, g.title), open = !g.title || single || isGroupOpen(id);
+        {groups.map((g) => {
+          const single = groups.length === 1 && g.lines.length === 1 && g.lines[0].options.length === 1 && !!OPTIONS[splitKey(g.lines[0].options[0])[0]]?.multiline, id = groupId(page.title, g.title), open = !g.title || single || isGroupOpen(id);
           const modified = g.lines.some((l) => l.options.some((k) => splitKey(k)[0] in dirty));
           return <section key={g.title} className="optgroup" data-collapsed={open ? undefined : ''} data-single={single ? '' : undefined}>
             {g.title && !single && <GroupHead id={id} title={g.title} icon={g.icon} modified={modified} open={open} />}
@@ -169,6 +174,9 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
             })}
           </section>;
         })}
+        {gcodeKeys.length > 0 && <Suspense fallback={<div className={`gcode-bench ${groups.length ? '' : 'fill'}`} role="status" aria-label="Loading G-code editor" />}>
+          <GcodeWorkbench type={type} slot={slot} keys={gcodeKeys} labels={gcodeLabels} config={config} system={system} dirty={dirty} editor={editor} readOnly={readOnly} fill={!groups.length} />
+        </Suspense>}
         </>}
       </Tabs.Content></Tabs.Root>
     </div>

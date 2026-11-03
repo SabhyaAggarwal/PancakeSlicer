@@ -1,0 +1,77 @@
+import { useSyncExternalStore } from 'react';
+import { refreshProjects } from '../flow/project';
+import { projectId } from '../persist/identity';
+import { jsonWrite, serviceJson } from '../persist/service';
+
+export interface Folder { id: string; name: string; parentId?: string; revision: number; createdAt: number; updatedAt: number }
+export type FoldersSnapshot = { state: 'loading' | 'ready' | 'failed'; revision: number; folders: readonly Folder[]; error: string | null };
+
+let snapshot: FoldersSnapshot = { state: 'loading', revision: 0, folders: [], error: null };
+let loading: Promise<void> | null = null;
+const listeners = new Set<() => void>();
+const publish = (next: FoldersSnapshot) => { snapshot = next; listeners.forEach((listener) => listener()); };
+const message = (error: unknown) => error instanceof Error ? error.message : String(error);
+
+export function loadFolders(): Promise<void> {
+  loading ??= serviceJson<{ revision: number; folders: Folder[] }>('/api/folders').then((remote) => {
+    if (!remote || !Number.isSafeInteger(remote.revision) || !Array.isArray(remote.folders)) throw new Error('The folder list is invalid.');
+    publish({ state: 'ready', revision: remote.revision, folders: remote.folders, error: null });
+  }, (error: unknown) => {
+    publish({ ...snapshot, state: 'failed', error: message(error) });
+  }).finally(() => { loading = null; });
+  return loading;
+}
+
+export function useFolders(): FoldersSnapshot {
+  return useSyncExternalStore((listener) => {
+    listeners.add(listener);
+    if (snapshot.state === 'loading' && !loading) void loadFolders();
+    return () => { listeners.delete(listener); };
+  }, () => snapshot);
+}
+
+async function write(method: 'POST' | 'PATCH', path: string, body: Record<string, unknown>, projects = false): Promise<void> {
+  try {
+    for (let attempt = 0; ; attempt++) {
+      if (snapshot.state !== 'ready') await loadFolders();
+      if (snapshot.state !== 'ready') throw new Error(snapshot.error ?? 'Folders are unavailable.');
+      try {
+        await serviceJson(path, jsonWrite(method, { operationId: projectId(), expectedRevision: snapshot.revision, ...body }));
+        break;
+      } catch (error) {
+        if ((error as { code?: string }).code !== 'revision_conflict' || attempt > 0) throw error;
+        await loadFolders();
+      }
+    }
+  } finally {
+    await loadFolders();
+    if (projects) await refreshProjects();
+  }
+}
+
+export async function createFolder(name: string, parentId: string | null): Promise<string> {
+  const id = projectId();
+  await write('POST', '/api/folders', { id, name, parentId });
+  return id;
+}
+export const renameFolder = (id: string, name: string) => write('PATCH', `/api/folders/${encodeURIComponent(id)}`, { name });
+export const deleteFolder = (id: string) => write('POST', `/api/folders/${encodeURIComponent(id)}/delete`, {}, true);
+export const moveProjects = (projectIds: readonly string[], folderId: string | null) => write('POST', '/api/folders/move', { projectIds, folderId }, true);
+
+export const childFolders = (folders: readonly Folder[], parent: string | null) =>
+  folders.filter((f) => (f.parentId ?? null) === parent).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+
+export function folderPath(folders: readonly Folder[], id: string | null): Folder[] {
+  const byId = new Map(folders.map((f) => [f.id, f])), path: Folder[] = [];
+  for (let f = id ? byId.get(id) : undefined; f && path.length < 32; f = f.parentId ? byId.get(f.parentId) : undefined) path.unshift(f);
+  return path;
+}
+
+export function folderTree(folders: readonly Folder[]): { folder: Folder; depth: number }[] {
+  const out: { folder: Folder; depth: number }[] = [];
+  const visit = (parent: string | null, depth: number) => {
+    for (const folder of childFolders(folders, parent)) { out.push({ folder, depth }); if (depth < 16) visit(folder.id, depth + 1); }
+  };
+  visit(null, 0);
+  return out;
+}

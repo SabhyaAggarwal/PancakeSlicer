@@ -79,7 +79,7 @@ export function capturePrinterMaterials(s: MaterialLibraryState): PrinterProfile
   if (!printer) return library;
   const id = profileKey(printer), setup = library.setups[id] ?? emptyPrinterSetup(id);
   const slots = s.filamentSlots.map((key, index) => ({ ...setup.slots[index], id: setup.slots[index]?.id ?? `slot:${crypto.randomUUID()}`,
-    materialId: findProfile(s,'filament',key) ? profileKey(findProfile(s, 'filament', key)!) : key, colour: s.slotColours[index] }));
+    materialId: findProfile(s,'filament',key) ? profileKey(findProfile(s, 'filament', key)!) : key, colour: undefined }));
   const tuning = { ...setup.tuning, ...Object.fromEntries(Object.entries(s.filamentEdits).flatMap(([key, config]) => {
     const material = findProfile(s, 'filament', key); return material ? [[profileKey(material), clone(config)]] : [];
   })) };
@@ -114,7 +114,7 @@ export function planPrinterSwitch(s: MaterialLibraryState, printerKey: string): 
   const library = capturePrinterMaterials(s), printer = findProfile(s, 'machine', printerKey), id = printer && profileKey(printer);
   const setup = id && library.setups[id];
   const result: PrinterMaterialsPlan = { userPresets: s.userPresets, printerLibrary: library, printer: id ?? printerKey,
-    filamentSlots: setup ? setup.slots.map(slot => slot.materialId) : s.filamentSlots.length ? [...s.filamentSlots] : [''], slotColours: setup ? setup.slots.map(slot => slot.colour) : [...s.slotColours],
+    filamentSlots: setup ? setup.slots.map(slot => slot.materialId) : s.filamentSlots.length ? [...s.filamentSlots] : [''], slotColours: setup ? [] : [...s.slotColours],
     filamentEdits: setup ? clone(setup.tuning) : {}, mixes: setup ? clone(setup.mixes) : clone(s.mixes), referenceMap: {}, recoveries: [] };
   if (!id) result.recoveries.push({ type: 'machine', key: printerKey, reason: 'missing-owner' });
   if (setup) for (const key of setup.materialIds) if (!findProfile(s, 'filament', key))

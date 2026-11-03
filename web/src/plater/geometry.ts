@@ -251,25 +251,31 @@ export function objectSize(o: PlateObject): THREE.Vector3 {
 }
 
 export function bakeStl(o: PlateObject, matrix = objectMatrix(o)): Promise<Blob> {
-  const pos = o.geometry.attributes.position.array as Float32Array;
-  const index = (o.geometry.index?.array as Uint32Array | Uint16Array | undefined) ?? null;
-  return new Promise((resolve, reject) =>
-    request({ type: 'bake', positions: pos, index, matrix: matrix.elements }, (m) => {
-      if (m.type === 'blob') resolve(m.blob);
-      else if (m.type === 'error') reject(new Error(m.message));
-    }),
-  );
+  return bake(o.geometry, matrix);
 }
 
 function bakeVolume(o: PlateObject, v: Volume): Promise<Blob> {
-  const index = (v.geometry.index?.array as Uint32Array | Uint16Array | undefined) ?? null;
-  return new Promise((resolve, reject) =>
-    request({ type: 'bake', positions: v.geometry.attributes.position.array as Float32Array, index,
-      matrix: objectMatrix(o).multiply(new THREE.Matrix4().fromArray(v.matrix)).elements }, (m) => {
+  return bake(v.geometry, objectMatrix(o).multiply(new THREE.Matrix4().fromArray(v.matrix)));
+}
+
+const baked = new WeakMap<THREE.BufferGeometry, Map<string, Promise<Blob>>>();
+function bake(g: THREE.BufferGeometry, matrix: THREE.Matrix4): Promise<Blob> {
+  const key = `${matrix.elements.join(',')}|${(g.attributes.position as THREE.BufferAttribute).version}|${g.index?.version ?? -1}`;
+  const cache = baked.get(g) ?? new Map<string, Promise<Blob>>();
+  baked.set(g, cache);
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const index = (g.index?.array as Uint32Array | Uint16Array | undefined) ?? null;
+  const blob = new Promise<Blob>((resolve, reject) =>
+    request({ type: 'bake', positions: g.attributes.position.array as Float32Array, index, matrix: matrix.elements }, (m) => {
       if (m.type === 'blob') resolve(m.blob);
       else if (m.type === 'error') reject(new Error(m.message));
     }),
   );
+  if (cache.size >= 4) cache.delete(cache.keys().next().value!);
+  cache.set(key, blob);
+  blob.catch(() => cache.delete(key));
+  return blob;
 }
 
 type NativePlate = (o: PlateObject, settings: (c: PlateObject['settings']) => Record<string, string>, profile: () => number[] | undefined, prefix: string) =>

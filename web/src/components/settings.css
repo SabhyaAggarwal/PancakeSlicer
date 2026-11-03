@@ -16,12 +16,14 @@
 
 :where(.orca-parity) .page-body:has(> .optgroup[data-single] .text.multiline) { display: flex; flex-direction: column; }
 :where(.orca-parity) .optgroup[data-single]:has(.text.multiline) { flex: 1; display: flex; flex-direction: column; min-height: 0; padding-bottom: var(--space-section, var(--s-5)); }
+:where(.orca-parity) .optgroup[data-single]:has(.text.multiline) > div { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 :where(.orca-parity) .optgroup[data-single] .opt-line.full:has(.text.multiline) { flex: 1; grid-template-rows: auto minmax(0, 1fr); align-items: stretch; }
 :where(.orca-parity) .optgroup[data-single] .opt-line.full .opt-field:has(.text.multiline) { align-items: stretch; }
 :where(.orca-parity) .optgroup[data-single] .text.multiline { height: 100%; min-height: 240px; max-height: none; resize: none; }
 :where(.orca-parity) .pf-full-editor .page-body { padding-inline: var(--space-section, var(--s-5)); }
 :where(.orca-parity) .pf-full-editor .page-body > * { width: 100%; max-width: 840px; margin-inline: auto; }
 :where(.orca-parity) .pf-full-editor .page-bar { margin-bottom: 0; }
+@media (max-width: 760px) { :where(.orca-parity) .pf-full-editor .page-body { padding-inline: 0; } }
 :where(.orca-parity) .opt-line, :where(.orca-parity) .option-row { display: grid; grid-template-columns: minmax(0, 1fr) var(--ctl-w, clamp(112px, 46%, 220px)) var(--opt-end, 20px); align-items: center; column-gap: var(--s-3); min-height: var(--h-control); padding: calc(var(--space-row, var(--s-3)) / 2) var(--space-section, var(--s-5)); }
 :where(.orca-parity) .opt-line.full { grid-template-columns: minmax(0, 1fr) var(--opt-end, 20px); row-gap: var(--s-2); padding-block: var(--s-2); }
 :where(.orca-parity) .opt-line.full .opt-label { grid-column: 1 / -1; }

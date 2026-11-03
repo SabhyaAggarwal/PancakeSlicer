@@ -2,11 +2,12 @@ import { Component, useEffect, useMemo, useRef, useState, useSyncExternalStore, 
 import { ActionMenu, type MenuEntry } from '../components/Menu';
 import { Check } from '../components/Check';
 import { Dropdown } from '../components/Dropdown';
-import { confirmDialog } from '../components/Ask';
+import { confirmDialog, promptDialog } from '../components/Ask';
 import { toast } from '../state/store';
 import { projectListSnapshot, refreshProjects, subscribeProjectList, useProject } from '../flow/project';
 import { createSelection, reduceSelection, selectedVisible, type SelectionEvent } from '../profiles/selection';
-import { deleteProject, duplicateProject, listTrash, openProject, useProjects, type ProjectMeta } from './api';
+import { deleteProject, duplicateProject, listTrash, openProject, useProjects, type ListedProject } from './api';
+import { childFolders, createFolder, deleteFolder, folderPath, folderTree, moveProjects, renameFolder, useFolders, type Folder } from './folders';
 import { fileVerbs, newProjectFrom } from './verbs';
 import { setProjectsQuery, useProjectsQuery } from './query';
 import { projectStore, type ProjectCommandStatus, type ProjectStore } from '../persist/backend';
@@ -21,13 +22,16 @@ const projectUndos = new Map<string,ProjectUndo>();
 const trashRestores = new Map<string,number|undefined>();
 const commandVerb = {rename:'Rename',duplicate:'Duplicate',archive:'Delete',restore:'Restore'};
 
-type Filter = 'all'|'recent'|'favorites'|'trash';
+type ProjectMeta = ListedProject;
+type Place = {kind:'home'|'recent'|'favorites'|'unsorted'|'trash'} | {kind:'folder';id:string};
 type Sort = 'edited'|'name'|'objects';
 type View = 'grid'|'list';
-const FILTERS: {id:Filter;label:string}[] = [{id:'all',label:'All projects'},{id:'recent',label:'Recent'},{id:'favorites',label:'Favorites'},{id:'trash',label:'Trash'}];
+const PLACES = [{kind:'home',label:'Home'},{kind:'recent',label:'Recent'},{kind:'favorites',label:'Favorites'},{kind:'unsorted',label:'Unsorted'}] as const;
 const SORTS = [{value:'edited',label:'Last edited'},{value:'name',label:'Name'},{value:'objects',label:'Objects'}] as const;
-const RECENT_MS = 7 * 86400_000;
-let lastFilter: Filter = 'all';
+const RECENT_MS = 7 * 86400_000, HOME_RECENT = 6;
+const DRAG = 'application/x-orca-projects';
+let lastPlace: Place = {kind:'home'};
+const collapsed = new Set<string>();
 
 const ago = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto', style: 'short' });
 function edited(t: number) {
@@ -40,6 +44,7 @@ function edited(t: number) {
   return new Date(t).toLocaleDateString();
 }
 const objects = (n: number) => `${n} ${n===1?'object':'objects'}`;
+const count = (n: number, one: string, many: string) => `${n} ${n===1?one:many}`;
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 const names = (list: readonly {name:string}[]) => list.length <= 5 ? list.map(p=>p.name).join('\n') : `${list.slice(0,5).map(p=>p.name).join('\n')}\n+${list.length-5} more`;
 const sorters: Record<Sort,(a:ProjectMeta,b:ProjectMeta)=>number> = {
@@ -61,9 +66,9 @@ function Star({on}:{on:boolean}) {
   return <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden><path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5Z" fill={on?'currentColor':'none'} stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>;
 }
 
-function Item({p,view,trash,current,selected,selecting,focused,favorite,canFavorite,renaming,blocked,setRenaming,select,onMenu,onFavorite,onRestore}: {
-  p:ProjectMeta;view:View;trash:boolean;current:boolean;selected:boolean;selecting:boolean;focused:boolean;favorite:boolean;canFavorite:boolean;renaming:boolean;blocked:boolean;
-  setRenaming(on:boolean):void;select(event:SelectionEvent):void;onMenu(at:{x:number;y:number}):void;onFavorite():void;onRestore():void;
+function Item({p,view,trash,current,selected,selecting,focused,favorite,canFavorite,renaming,blocked,folder,setRenaming,select,onMenu,onFavorite,onRestore,onDrag}: {
+  p:ProjectMeta;view:View;trash:boolean;current:boolean;selected:boolean;selecting:boolean;focused:boolean;favorite:boolean;canFavorite:boolean;renaming:boolean;blocked:boolean;folder?:string;
+  setRenaming(on:boolean):void;select(event:SelectionEvent):void;onMenu(at:{x:number;y:number}):void;onFavorite():void;onRestore():void;onDrag(e:DragEvent):void;
 }) {
   const committed=useRef(false),[renameError,setRenameError]=useState<string|null>(null),[renameSaving,setRenameSaving]=useState(false);
   const commit=async(name:string)=>{if(committed.current)return;if(!name.trim()){setRenameError('Enter a name.');return;}if(name.trim()===p.name){setRenaming(false);return;}committed.current=true;setRenameSaving(true);try{await (await import('../flow/project')).renameProject(p.id,name.trim());setRenameError(null);setRenaming(false);}catch(error){setRenameError(message(error));committed.current=false;}finally{setRenameSaving(false);}};
@@ -86,16 +91,16 @@ function Item({p,view,trash,current,selected,selecting,focused,favorite,canFavor
       <button type="button" className={`icon-btn pj-icon pj-fav${favorite?' on':''}`} aria-label="Favorite" aria-pressed={favorite} disabled={!canFavorite} onClick={onFavorite}><Star on={favorite}/></button>
       <button type="button" className="icon-btn pj-icon" aria-label={`Actions for ${p.name}`} aria-haspopup="menu" onClick={more}><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden><circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="19" cy="12" r="1.8" fill="currentColor"/></svg></button>
     </>;
-  const info=<>{current && <span className="pj-badge">Open</span>}<span>{objects(p.objects)}</span></>;
+  const info=<>{current && <span className="pj-badge">Open</span>}<span>{objects(p.objects)}</span></>,where=folder!==undefined && <span className="pj-in">{folder}</span>;
   return <div className={`pj-item${trash?' trash':''}${current?' current':''}${selected?' selected':''}${selecting?' selecting':''}`} role="row" tabIndex={focused?0:-1} data-id={p.id} aria-label={p.name} aria-selected={trash?undefined:selected} aria-current={current || undefined}
-    onClick={click} onContextMenu={e=>{if(trash || renaming)return;e.preventDefault();if(!selected)select({type:'CLICK',key:p.id});onMenu({x:e.clientX,y:e.clientY});}}>
+    draggable={!trash && !renaming} onDragStart={onDrag} onClick={click} onContextMenu={e=>{if(trash || renaming)return;e.preventDefault();if(!selected)select({type:'CLICK',key:p.id});onMenu({x:e.clientX,y:e.clientY});}}>
     {view==='grid' ? <>
       <div className="pj-thumb" role="gridcell"><Thumb p={p}/>{check}<span className="pj-overlay" onClick={e=>e.stopPropagation()}>{actions}</span></div>
-      <div className="pj-meta" role="gridcell">{name}{renameError && <span className="pj-rename-error" role="alert">{renameError}</span>}
+      <div className="pj-meta" role="gridcell">{name}{renameError && <span className="pj-rename-error" role="alert">{renameError}</span>}{where}
         <span className="pj-sub">{info}<span aria-hidden>·</span><time dateTime={p.savedAt?new Date(p.savedAt).toISOString():undefined}>{edited(p.savedAt)}</time></span></div>
     </> : <>
       <div className="pj-cell pj-lead" role="gridcell">{check}<span className="pj-mini"><Thumb p={p}/></span></div>
-      <div className="pj-cell pj-title" role="gridcell">{name}{renameError && <span className="pj-rename-error" role="alert">{renameError}</span>}</div>
+      <div className="pj-cell pj-title" role="gridcell">{name}{renameError && <span className="pj-rename-error" role="alert">{renameError}</span>}{where}</div>
       <div className="pj-cell pj-col-objects" role="gridcell">{info}</div>
       <div className="pj-cell pj-col-edited" role="gridcell"><time dateTime={p.savedAt?new Date(p.savedAt).toISOString():undefined}>{edited(p.savedAt)}</time></div>
       <div className="pj-cell pj-row-actions" role="gridcell" onClick={e=>e.stopPropagation()}>{actions}</div>
@@ -122,19 +127,36 @@ function Projects() {
   const sortPref=preferenceText('projects.sort') ?? 'edited',sort:Sort=Object.hasOwn(sorters,sortPref)?sortPref as Sort:'edited';
   const prefsLoaded=useSyncExternalStore(subscribeSavedPreferences,savedPreferencesSnapshot).hydrated;
   const toggleFavorite=(id:string)=>{if(!prefsLoaded)return;const next=new Set(favorites);if(!next.delete(id))next.add(id);savePreferences({'projects.favorites':[...next]});};
-  const [filter,setFilterState]=useState<Filter>(lastFilter);
-  const setFilter=(next:Filter)=>{lastFilter=next;setFilterState(next);setRenaming(null);setMenu(null);};
+  const folderState=useFolders(),folders=folderState.folders;
+  const [place,setPlaceState]=useState<Place>(lastPlace);
+  const go=(next:Place)=>{lastPlace=next;setPlaceState(next);setRenaming(null);setMenu(null);setProjectsQuery('');};
+  const inTrash=place.kind==='trash',placeFolder=place.kind==='folder'?folders.find(f=>f.id===place.id):undefined;
+  useEffect(()=>{if(place.kind==='folder' && folderState.state==='ready' && !placeFolder)go({kind:'home'});},[place,folderState.state,placeFolder]);
+  const [,redraw]=useState(0);
   const [trash,setTrash]=useState<ProjectMeta[]|null>(null),[trashError,setTrashError]=useState<string|null>(null);
   const loadTrash=()=>listTrash().then(rows=>{setTrash(rows);setTrashError(null);},error=>setTrashError(message(error)));
   useEffect(()=>{void loadTrash();},[list]);
   const query=useProjectsQuery(),q=query.trim().toLocaleLowerCase();
-  const counts=useMemo(()=>{const now=Date.now(),all=list??[];return {all:all.length,recent:all.filter(p=>now-p.savedAt<RECENT_MS).length,favorites:all.filter(p=>favorites.has(p.id)).length,trash:trash?.length};},[list,trash,favoriteKey]);
-  const source=filter==='trash'?trash:list;
+  const known=useMemo(()=>new Set(folders.map(f=>f.id)),[folders]);
+  const folderOf=(p:ProjectMeta)=>p.folderId && known.has(p.folderId)?p.folderId:null;
+  const counts=useMemo(()=>{
+    const now=Date.now(),all=list??[],inFolder=new Map<string,number>();
+    for(const p of all){const f=folderOf(p);if(f)inFolder.set(f,(inFolder.get(f)??0)+1);}
+    return {recent:all.filter(p=>now-p.savedAt<RECENT_MS).length,favorites:all.filter(p=>favorites.has(p.id)).length,unsorted:all.filter(p=>!folderOf(p)).length,trash:trash?.length,inFolder} as const;
+  },[list,trash,favoriteKey,known]);
+  const searching=!!q && !inTrash;
   const shown=useMemo(()=>{
-    const now=Date.now();
-    return (source??[]).filter(p=>(filter!=='recent' || now-p.savedAt<RECENT_MS) && (filter!=='favorites' || favorites.has(p.id)) && (!q || p.name.toLocaleLowerCase().includes(q))).sort(sorters[sort]);
-  },[source,filter,q,sort,favoriteKey]);
-  const visible=useMemo(()=>filter==='trash'?[]:shown.map(p=>p.id),[shown,filter]);
+    const now=Date.now(),match=(p:ProjectMeta)=>!q || p.name.toLocaleLowerCase().includes(q);
+    if(inTrash)return (trash??[]).filter(match).sort(sorters[sort]);
+    const all=list??[];
+    if(searching)return all.filter(match).sort(sorters[sort]);
+    if(place.kind==='home')return [...all].sort(sorters.edited).slice(0,HOME_RECENT);
+    return all.filter(p=>place.kind==='recent'?now-p.savedAt<RECENT_MS:place.kind==='favorites'?favorites.has(p.id):place.kind==='unsorted'?!folderOf(p):place.kind==='folder' && folderOf(p)===place.id).sort(sorters[sort]);
+  },[list,trash,place,inTrash,searching,q,sort,favoriteKey,known]);
+  const homeFavorites=useMemo(()=>place.kind==='home' && !searching?(list??[]).filter(p=>favorites.has(p.id)).sort(sorters.edited):[],[list,place,searching,favoriteKey]);
+  const subfolders=searching?folders.filter(f=>f.name.toLocaleLowerCase().includes(q)):place.kind==='home'?childFolders(folders,null):placeFolder?childFolders(folders,placeFolder.id):[];
+  const folderName=(p:ProjectMeta)=>{const f=folderOf(p);return f?folders.find(x=>x.id===f)!.name:'Unsorted';};
+  const visible=useMemo(()=>inTrash?[]:shown.map(p=>p.id),[shown,inTrash]);
   const [raw,setSelection]=useState(()=>createSelection('projects',visible)),selection=useMemo(()=>reduceSelection(raw,{type:'SYNC',scope:'projects',visible}),[raw,visible]);
   const latest=useRef(selection);latest.current=selection;
   const selected=selectedVisible(selection),selectedSet=useMemo(()=>new Set(selected),[selection]);
@@ -142,7 +164,7 @@ function Projects() {
   const [undoBusy,setUndoBusy]=useState(false),[retrying,setRetrying]=useState<string|null>(null);
   const [menu,setMenu]=useState<{id:string;x:number;y:number}|null>(null),grid=useRef<HTMLDivElement>(null);
   const [trashFocus,setTrashFocus]=useState<string|null>(null);
-  const focusKey=filter==='trash'?(shown.some(p=>p.id===trashFocus)?trashFocus:shown[0]?.id):selection.focus??visible[0];
+  const focusKey=inTrash?(shown.some(p=>p.id===trashFocus)?trashFocus:shown[0]?.id):selection.focus??visible[0];
   const dispatch=(event:SelectionEvent,focus=false)=>{const next=reduceSelection(latest.current,event);latest.current=next;setSelection(next);if(focus && next.focus)requestAnimationFrame(()=>{const row=[...(grid.current?.querySelectorAll<HTMLElement>('[data-id]')??[])].find(el=>el.dataset.id===next.focus);row?.focus();row?.scrollIntoView({block:'nearest'});});};
   const restore=async(entries:readonly ProjectUndo[])=>{
     if(undoBusy)return;
@@ -205,7 +227,7 @@ function Projects() {
     const command=e.ctrlKey||e.metaKey,focus=(e.target as Element).closest<HTMLElement>('.pj-item[data-id]')?.dataset.id ?? focusKey;
     if((e.target as Element).closest('input,textarea,[contenteditable=true]') || busy)return;
     if((e.target as Element).closest('button') && !(command&&e.key.toLowerCase()==='a') && e.key!=='Escape')return;
-    if(filter==='trash'){
+    if(inTrash){
       if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(e.key)){
         const rows=[...(grid.current?.querySelectorAll<HTMLElement>('[data-id]')??[])],at=rows.findIndex(r=>r.dataset.id===focus);
         const next=e.key==='Home'?0:e.key==='End'?rows.length-1:Math.max(0,Math.min(rows.length-1,at+(['ArrowLeft','ArrowUp'].includes(e.key)?-1:1)));
@@ -227,40 +249,127 @@ function Projects() {
     else return;e.preventDefault();e.stopPropagation();
   };
   const onDrop=(e:DragEvent)=>{if(!e.dataTransfer.files.length)return;e.preventDefault();void newProjectFrom(e.dataTransfer.files);};
+  const dragIds=(id:string)=>selected.includes(id)?selected:[id];
+  const onDrag=(id:string)=>(e:DragEvent)=>{e.dataTransfer.setData(DRAG,JSON.stringify(dragIds(id)));e.dataTransfer.effectAllowed='move';};
+  const move=async(ids:readonly string[],folder:string|null)=>{
+    if(!ids.length)return;
+    const name=folder?folders.find(f=>f.id===folder)?.name ?? 'folder':'Unsorted';
+    try{await moveProjects(ids,folder);toast(`${ids.length===1?(list?.find(p=>p.id===ids[0])?.name ?? 'Project'):`${ids.length} projects`} moved to ${name}`);if(ids.length>1)dispatch({type:'CLEAR'});}
+    catch(error){setError(`Move failed: ${message(error)}`);}
+  };
+  const dropTarget=(folder:string|null)=>({
+    onDragOver:(e:DragEvent<HTMLElement>)=>{if(!e.dataTransfer.types.includes(DRAG))return;e.preventDefault();e.stopPropagation();e.dataTransfer.dropEffect='move';e.currentTarget.classList.add('drop');},
+    onDragLeave:(e:DragEvent<HTMLElement>)=>{if(!e.currentTarget.contains(e.relatedTarget as Node))e.currentTarget.classList.remove('drop');},
+    onDrop:(e:DragEvent<HTMLElement>)=>{
+      e.currentTarget.classList.remove('drop');const raw=e.dataTransfer.getData(DRAG);if(!raw)return;e.preventDefault();e.stopPropagation();
+      let ids:unknown;try{ids=JSON.parse(raw);}catch{return;}
+      if(Array.isArray(ids))void move(ids.filter((id):id is string=>typeof id==='string'),folder);
+    },
+  });
+  const newFolder=async(parent:string|null,then?:readonly string[])=>{
+    const siblings=new Set(childFolders(folders,parent).map(f=>f.name.toLocaleLowerCase()));
+    let suggestion='New folder';for(let n=2;siblings.has(suggestion.toLocaleLowerCase());n++)suggestion=`New folder ${n}`;
+    const name=await promptDialog('New folder',suggestion);if(!name)return;
+    try{const id=await createFolder(name,parent);if(parent)collapsed.delete(parent);if(then?.length)await move(then,id);}
+    catch(error){setError(`New folder failed: ${message(error)}`);}
+  };
+  const renameAt=async(f:Folder)=>{
+    const name=await promptDialog('Rename folder',f.name);if(!name || name===f.name)return;
+    try{await renameFolder(f.id,name);}catch(error){setError(`Rename failed: ${message(error)}`);}
+  };
+  const removeFolder=async(f:Folder)=>{
+    const n=counts.inFolder.get(f.id) ?? 0,inner=childFolders(folders,f.id).length;
+    const detail=[`${count(n,'project moves','projects move')} to Unsorted.`,inner?`${count(inner,'folder moves','folders move')} up a level.`:''].filter(Boolean).join(' ');
+    if(!await confirmDialog(`Delete “${f.name}”?`,detail,['Delete folder','Cancel'],true))return;
+    try{await deleteFolder(f.id);if(place.kind==='folder' && place.id===f.id)go(f.parentId?{kind:'folder',id:f.parentId}:{kind:'home'});toast(`${f.name} deleted`);}
+    catch(error){setError(`Delete failed: ${message(error)}`);}
+  };
+  const moveEntries=(ids:readonly string[]):MenuEntry[]=>{
+    const at=(id:string)=>{const p=list?.find(x=>x.id===id);return p?folderOf(p):null;};
+    return [
+      {label:'Unsorted',disabled:ids.every(id=>at(id)===null),action:()=>void move(ids,null)},
+      ...folderTree(folders).map(({folder,depth}):MenuEntry=>({label:`${' '.repeat(depth)}${folder.name}`,disabled:ids.every(id=>at(id)===folder.id),action:()=>void move(ids,folder.id)})),
+      'sep',
+      {label:'New folder…',action:()=>void newFolder(null,ids)},
+    ];
+  };
+  const [folderMenu,setFolderMenu]=useState<{id:string;x:number;y:number}|null>(null),[moveMenu,setMoveMenu]=useState<{ids:readonly string[];x:number;y:number}|null>(null);
+  const folderMenuAt=(f:Folder)=>(e:MouseEvent<HTMLElement>)=>{e.preventDefault();e.stopPropagation();const r=e.currentTarget.getBoundingClientRect();setFolderMenu({id:f.id,...(e.type==='contextmenu'?{x:e.clientX,y:e.clientY}:{x:r.left,y:r.bottom+2})});};
+  const folderItems=(f:Folder):MenuEntry[]=>[
+    {label:'Open',action:()=>go({kind:'folder',id:f.id})},
+    {label:'New folder inside…',action:()=>void newFolder(f.id)},
+    {label:'Rename…',action:()=>void renameAt(f)},
+    'sep',
+    {label:'Delete folder…',action:()=>void removeFolder(f)},
+  ];
   const menuProject=menu && list?.find(p=>p.id===menu.id);
   const menuItems=(p:ProjectMeta):MenuEntry[]=>[
     {label:'Open',action:()=>void openProject(p.id)},
     {label:'Rename',shortcut:'F2',disabled:blocked(p.id),action:()=>setRenaming(p.id)},
     {label:'Duplicate',disabled:blocked(p.id),action:()=>void duplicateProject(p.id)},
+    {label:'Move to',sub:moveEntries(dragIds(p.id))},
     {label:favorites.has(p.id)?'Remove from favorites':'Add to favorites',disabled:!prefsLoaded,action:()=>toggleFavorite(p.id)},
     {label:'Export 3MF…',action:()=>void exportProject(p)},
     'sep',
     {label:'Move to Trash',shortcut:'Del',disabled:busy || blocked(p.id),action:()=>void remove(selected.length>1 && selected.includes(p.id)?selected:[p.id])},
   ];
-  const title=FILTERS.find(f=>f.id===filter)!.label,loading=filter==='trash'?!trash && !trashError:!list;
-  const failed=filter==='trash'?trashError:status.state==='failed'?status.error:null;
-  const empty=filter==='trash'?'Trash is empty':filter==='favorites'?'No favorites':filter==='recent'?'Nothing edited this week':'No projects yet';
+  const crumbs=placeFolder?folderPath(folders,placeFolder.id):[];
+  const title=searching?'Search':placeFolder?placeFolder.name:inTrash?'Trash':PLACES.find(x=>x.kind===place.kind)?.label ?? 'Home';
+  const loading=inTrash?!trash && !trashError:!list;
+  const failed=inTrash?trashError:status.state==='failed'?status.error:folderState.state==='failed'?folderState.error:null;
+  const empty=inTrash?'Trash is empty':place.kind==='favorites'?'No favorites':place.kind==='recent'?'Nothing edited this week':place.kind==='unsorted'?'Nothing unsorted':placeFolder?'This folder is empty':'No projects yet';
+  const item=(p:ProjectMeta,grid:boolean)=><Item key={p.id} p={p} view={view} trash={inTrash} current={!inTrash && p.id===current} selected={grid && selectedSet.has(p.id)} selecting={grid && selected.length>0} focused={grid && p.id===focusKey} favorite={favorites.has(p.id)} canFavorite={prefsLoaded} renaming={renaming===p.id} blocked={blocked(p.id) || retrying===p.id}
+    folder={searching?folderName(p):undefined} setRenaming={on=>{if(!on || !blocked(p.id))setRenaming(on?p.id:null);}} select={event=>{if(grid)dispatch(event);else void openProject(p.id);}} onMenu={at=>setMenu({id:p.id,...at})} onFavorite={()=>toggleFavorite(p.id)} onRestore={()=>void restoreFromTrash(p)} onDrag={onDrag(p.id)}/>;
+  const head=view==='list' && <div className="pj-head" role="row"><span role="columnheader" className="pj-lead"/><span role="columnheader">Name</span><span role="columnheader" className="pj-col-objects">Objects</span><span role="columnheader" className="pj-col-edited">Edited</span><span role="columnheader" className="pj-row-actions"/></div>;
+  const railItem=(key:string,label:string,on:boolean,n:number|undefined,open:()=>void,drop?:string|null)=>
+    <button key={key} type="button" className={`pj-filter${on?' on':''}`} aria-current={on?'page':undefined} onClick={open} {...(drop!==undefined?dropTarget(drop):{})}>
+      <span>{label}</span>{n!==undefined && <span className="pj-n">{n}</span>}
+    </button>;
+  const tree=folderTree(folders).filter(({folder})=>!folderPath(folders,folder.parentId ?? null).some(a=>collapsed.has(a.id)));
+  const folderCards=!inTrash && subfolders.length>0 && <div className="pj-folders" role="list" aria-label="Folders">
+    {subfolders.map(f=><div key={f.id} role="listitem" className="pj-folder" {...dropTarget(f.id)} onContextMenu={folderMenuAt(f)}>
+      <button type="button" className="pj-folder-open" onClick={()=>go({kind:'folder',id:f.id})}>
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.6l2 2h8.4A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5v-11Z" fill="currentColor"/></svg>
+        <span className="pj-name">{f.name}</span><span className="pj-n">{counts.inFolder.get(f.id) ?? 0}</span>
+      </button>
+      <button type="button" className="icon-btn pj-icon" aria-label={`Actions for ${f.name}`} aria-haspopup="menu" onClick={folderMenuAt(f)}><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden><circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="19" cy="12" r="1.8" fill="currentColor"/></svg></button>
+    </div>)}
+  </div>;
+  const section=(label:string,more?:Place)=>place.kind==='home' && !searching && <div className="pj-section"><h2>{label}</h2>{more && <button type="button" className="btn-ghost" onClick={()=>go(more)}>Show all</button>}</div>;
   return <div className="projects" onDragOver={e=>e.preventDefault()} onDrop={onDrop}><div className="pj-layout">
-    <nav className="pj-side" aria-label="Project filters">
-      {FILTERS.map(f=><button key={f.id} type="button" className={`pj-filter${filter===f.id?' on':''}`} aria-current={filter===f.id?'page':undefined} onClick={()=>setFilter(f.id)}>
-        <span>{f.label}</span>{counts[f.id]!==undefined && <span className="pj-n">{counts[f.id]}</span>}
-      </button>)}
+    <nav className="pj-side" aria-label="Projects">
+      {PLACES.map(x=>railItem(x.kind,x.label,place.kind===x.kind && !searching,x.kind==='home'?undefined:counts[x.kind],()=>go({kind:x.kind}),x.kind==='unsorted'?null:undefined))}
+      <div className="pj-side-head"><span>Folders</span><button type="button" className="icon-btn pj-icon-add" aria-label="New folder" onClick={()=>void newFolder(null)}><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden><path d="M7 2h2v5h5v2H9v5H7V9H2V7h5z" fill="currentColor"/></svg></button></div>
+      <div className="pj-tree" role="tree" aria-label="Folders">
+        {tree.map(({folder:f,depth})=>{const has=childFolders(folders,f.id).length>0,open=!collapsed.has(f.id),on=place.kind==='folder' && place.id===f.id && !searching;
+          return <div key={f.id} className="pj-node" role="treeitem" aria-level={depth+1} aria-expanded={has?open:undefined} aria-selected={on} style={{paddingLeft:`${depth*12}px`}} {...dropTarget(f.id)} onContextMenu={folderMenuAt(f)}>
+            {has ? <button type="button" className={`pj-caret${open?' open':''}`} aria-label={open?`Collapse ${f.name}`:`Expand ${f.name}`} onClick={()=>{if(!collapsed.delete(f.id))collapsed.add(f.id);redraw(n=>n+1);}}><svg viewBox="0 0 16 16" width="12" height="12" aria-hidden><path d="m6 4 4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.6"/></svg></button> : <span className="pj-caret" aria-hidden/>}
+            <button type="button" className={`pj-filter${on?' on':''}`} aria-current={on?'page':undefined} onClick={()=>go({kind:'folder',id:f.id})}><span>{f.name}</span><span className="pj-n">{counts.inFolder.get(f.id) ?? 0}</span></button>
+          </div>;})}
+      </div>
+      <div className="pj-side-end">{railItem('trash','Trash',inTrash,counts.trash,()=>go({kind:'trash'}))}</div>
     </nav>
     <section className="pj-main" aria-label={title}>
       <header className="pj-bar">
-        <h1>{title}</h1>
-        <input className="text pj-search" type="search" placeholder="Search" aria-label="Search projects" value={query} onChange={e=>setProjectsQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Escape' && query){e.stopPropagation();setProjectsQuery('');}}}/>
+        {crumbs.length && !searching ? <nav className="pj-crumbs" aria-label="Folder path">
+          <button type="button" className="btn-ghost" onClick={()=>go({kind:'home'})}>Home</button>
+          {crumbs.map((f,i)=>i<crumbs.length-1
+            ? <span key={f.id}><span aria-hidden>›</span><button type="button" className="btn-ghost" onClick={()=>go({kind:'folder',id:f.id})}>{f.name}</button></span>
+            : <span key={f.id}><span aria-hidden>›</span><h1>{f.name}</h1></span>)}
+        </nav> : <h1>{title}</h1>}
+        <input className="text pj-search" type="search" placeholder="Search all projects" aria-label="Search all projects" value={query} onChange={e=>setProjectsQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Escape' && query){e.stopPropagation();setProjectsQuery('');}}}/>
         <div className="pj-tools">
           <Dropdown className="pj-sort" aria-label="Sort by" options={SORTS} value={sort} onValueChange={v=>savePreferences({'projects.sort':v})}/>
           <div className="seg pj-view" role="group" aria-label="View">
             <button type="button" aria-pressed={view==='grid'} aria-label="Grid" onClick={()=>savePreferences({'projects.view':'grid'})}><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden><path d="M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z" fill="currentColor"/></svg></button>
             <button type="button" aria-pressed={view==='list'} aria-label="List" onClick={()=>savePreferences({'projects.view':'list'})}><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden><path d="M2 3h12v2H2zM2 7h12v2H2zM2 11h12v2H2z" fill="currentColor"/></svg></button>
           </div>
+          {placeFolder && !searching && <button type="button" className="btn" onClick={()=>void newFolder(placeFolder.id)}>New folder</button>}
           <button type="button" className="btn" onClick={fileVerbs.import}>Import</button>
           <button type="button" className="btn-primary" onClick={fileVerbs.new}>New project</button>
         </div>
       </header>
-      {failed && !loading && <div className="pj-line" role="alert"><span>{failed}</span><button type="button" className="btn" onClick={()=>{if(filter==='trash')void loadTrash();else void refreshProjects();}}>Retry</button></div>}
+      {failed && !loading && <div className="pj-line" role="alert"><span>{failed}</span><button type="button" className="btn" onClick={()=>{if(inTrash)void loadTrash();else void refreshProjects();}}>Retry</button></div>}
       {error && <div className="pj-line" role="alert"><span>{error}</span><button type="button" className="btn-ghost" onClick={()=>setError(null)}>Dismiss</button></div>}
       {commands.map(command=>{
         const pending=command.state==='preparing' || command.state==='sending',name=list?.find(p=>p.id===command.id)?.name ?? trash?.find(p=>p.id===command.id)?.name ?? command.name ?? 'Project';
@@ -271,26 +380,32 @@ function Projects() {
           {command.state==='conflict' && <button type="button" className="btn-ghost" disabled={!!retrying || undoBusy} onClick={()=>void dismiss(command)}>Dismiss</button>}
         </div>;
       })}
-      {!!projectUndos.size && filter!=='trash' && <div className="pj-line"><span>{projectUndos.size} moved to Trash</span><button type="button" className="btn" disabled={undoBusy} onClick={()=>void restore([...projectUndos.values()])}>{undoBusy?'Restoring…':'Undo'}</button></div>}
-      {selected.length>0 && filter!=='trash' && <div className="pj-line pj-selection">
+      {!!projectUndos.size && !inTrash && <div className="pj-line"><span>{projectUndos.size} moved to Trash</span><button type="button" className="btn" disabled={undoBusy} onClick={()=>void restore([...projectUndos.values()])}>{undoBusy?'Restoring…':'Undo'}</button></div>}
+      {selected.length>0 && !inTrash && <div className="pj-line pj-selection">
         <strong>{selected.length} selected</strong>
         {selected.length===1 && <>
           <button type="button" className="btn-ghost" onClick={()=>void openProject(selected[0])}>Open</button>
           <button type="button" className="btn-ghost" disabled={blocked(selected[0])} onClick={()=>setRenaming(selected[0])}>Rename</button>
           <button type="button" className="btn-ghost" disabled={blocked(selected[0])} onClick={()=>void duplicateProject(selected[0])}>Duplicate</button>
         </>}
+        <button type="button" className="btn-ghost" aria-haspopup="menu" onClick={e=>{const r=e.currentTarget.getBoundingClientRect();setMoveMenu({ids:selected,x:r.left,y:r.bottom+2});}}>Move to…</button>
         <button type="button" className="btn-ghost" disabled={busy || selected.some(blocked)} onClick={()=>void remove(selected)}>Move to Trash</button>
         <button type="button" className="btn-ghost pj-clear" onClick={()=>dispatch({type:'CLEAR'})}>Clear</button>
       </div>}
       {loading ? <div className="pj-empty" role="status">Loading…</div>
-        : !shown.length ? <div className="pj-empty">{failed ? null : q ? <><strong>No matches</strong><button type="button" className="btn" onClick={()=>setProjectsQuery('')}>Clear search</button></>
-          : <><strong>{empty}</strong>{filter==='all' && <div className="pj-empty-actions"><button type="button" className="btn-primary" onClick={fileVerbs.new}>New project</button><button type="button" className="btn" onClick={fileVerbs.import}>Import model</button></div>}</>}</div>
-        : <div ref={grid} className={`pj-${view} scroll-fade`} role="grid" aria-label={title} aria-multiselectable={filter==='trash'?undefined:true} aria-busy={busy || status.state==='loading'} onKeyDown={onKey}>
-          {view==='list' && <div className="pj-head" role="row"><span role="columnheader" className="pj-lead"/><span role="columnheader">Name</span><span role="columnheader" className="pj-col-objects">Objects</span><span role="columnheader" className="pj-col-edited">Edited</span><span role="columnheader" className="pj-row-actions"/></div>}
-          {shown.map(p=><Item key={p.id} p={p} view={view} trash={filter==='trash'} current={filter!=='trash' && p.id===current} selected={selectedSet.has(p.id)} selecting={selected.length>0} focused={p.id===focusKey} favorite={favorites.has(p.id)} canFavorite={prefsLoaded} renaming={renaming===p.id} blocked={blocked(p.id) || retrying===p.id}
-            setRenaming={on=>{if(!on || !blocked(p.id))setRenaming(on?p.id:null);}} select={event=>dispatch(event)} onMenu={at=>setMenu({id:p.id,...at})} onFavorite={()=>toggleFavorite(p.id)} onRestore={()=>void restoreFromTrash(p)}/>)}
+        : <div className="pj-scroll scroll-fade">
+          {folderCards}
+          {section('Recent',{kind:'recent'})}
+          {!shown.length ? !(place.kind==='home' && subfolders.length) && <div className="pj-empty">{failed ? null : q ? <><strong>No matches</strong><button type="button" className="btn" onClick={()=>setProjectsQuery('')}>Clear search</button></>
+            : <><strong>{empty}</strong>{place.kind==='home' && <div className="pj-empty-actions"><button type="button" className="btn-primary" onClick={fileVerbs.new}>New project</button><button type="button" className="btn" onClick={fileVerbs.import}>Import model</button></div>}</>}</div>
+          : <div ref={grid} className={`pj-${view}`} role="grid" aria-label={title} aria-multiselectable={inTrash?undefined:true} aria-busy={busy || status.state==='loading'} onKeyDown={onKey}>
+            {head}{shown.map(p=>item(p,true))}
+          </div>}
+          {homeFavorites.length>0 && <>{section('Favorites',{kind:'favorites'})}<div className={`pj-${view}`} role="grid" aria-label="Favorites">{head}{homeFavorites.map(p=>item(p,false))}</div></>}
         </div>}
     </section></div>
     {menu && menuProject && <ActionMenu label="Project actions" at={menu} onClose={()=>setMenu(null)} items={menuItems(menuProject)}/>}
+    {folderMenu && folders.some(f=>f.id===folderMenu.id) && <ActionMenu label="Folder actions" at={folderMenu} onClose={()=>setFolderMenu(null)} items={folderItems(folders.find(f=>f.id===folderMenu.id)!)}/>}
+    {moveMenu && <ActionMenu label="Move to" at={moveMenu} onClose={()=>setMoveMenu(null)} items={moveEntries(moveMenu.ids)}/>}
   </div>;
 }

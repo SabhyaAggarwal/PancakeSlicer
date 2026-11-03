@@ -1,3 +1,4 @@
+import { readHealth } from '../api/health';
 import { assertNever, createMachine, useMachine } from './fsm';
 
 export type EngineState = 'unknown' | 'healthy' | 'degraded' | 'qualified' | 'unqualified';
@@ -31,11 +32,10 @@ let probe: Promise<void> | null = null;
 export function probeEngine(): Promise<void> {
   if (probe) return probe;
   engineHealth.send({ type: 'RETRY' });
-  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 5000);
-  probe = fetch('/api/healthz', { signal: ctl.signal }).then(async (r) => {
+  probe = readHealth(5000).then(async (r) => {
     if (!r.ok) throw new Error('Health unavailable');
     engineHealth.send({ type: 'HEALTH', health: await r.json() as EngineHealth });
-  }).catch(() => engineHealth.send({ type: 'FAIL' })).finally(() => { clearTimeout(timer); probe = null; });
+  }).catch(() => engineHealth.send({ type: 'FAIL' })).finally(() => { probe = null; });
   return probe;
 }
 export function enginePermission(): 'unknown' | 'preview' | 'print' | 'unavailable' {

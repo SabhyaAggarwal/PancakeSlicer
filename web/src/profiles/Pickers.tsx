@@ -5,12 +5,13 @@ import { filamentSwitchReason, getState, resolvePreset, setState, useStore } fro
 import { Picker, type PickerAction, type PickerGroup, type PickerItem } from '../components/picker/Picker';
 import { requestPreset } from '../components/PresetCombo';
 import { filamentColor } from '../plater/filamentColor';
+import { slotColour } from './filament-colour';
 import { addSlot, pickColour } from './SetupRows';
 import { createProfileFromBase, listCatalog, listProfiles, type PickerEntry } from './pickerSource';
 
 const first = (v: unknown) => String([v].flat()[0] ?? '');
 const shortName = (name: string) => name.replace(/\s*@.*$/, '') || name;
-const presets = (type: PresetType, name?: string): PickerAction => ({ label: `Manage ${type === 'machine' ? 'printers' : type === 'filament' ? 'filaments' : 'print settings'}`, run: () => setState({ presetUx: { kind: 'presets', type, name } }) });
+export const presets = (type: PresetType, name?: string): PickerAction => ({ label: `Manage ${type === 'machine' ? 'printers' : type === 'filament' ? 'filaments' : 'print settings'}`, run: () => setState({ presetUx: { kind: 'presets', type, name } }) });
 
 function brandName(name: string, c: Config) {
   const brand = first(c.filament_vendor) || 'Generic', short = shortName(name);
@@ -59,7 +60,7 @@ export function FilamentPicker({ slot, onColour }: { slot: number; onColour(colo
   const s = getState();
   const resolved = resolvePreset(s, 'filament', name), c = resolved.config, label = resolved.name ?? 'Unavailable filament';
   const b = brandName(label, c);
-  const colour=s.slotColours[slot] ?? (s.project ? s.projectMaterials?.colours[slot] : undefined) ?? profileColour(c) ?? '';
+  const colour=slotColour(s,slot);
   return (
     <span className="pk-slot">
       <ColorPicker label={`Filament ${slot + 1} color`} value={colour} onCommit={onColour}/>

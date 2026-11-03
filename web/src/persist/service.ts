@@ -1,5 +1,6 @@
 import { mutation, responseError } from '../api/access';
 import { documentText, parseDocument } from './wire';
+import { readHealth } from '../api/health';
 
 export async function serviceRequest(path: string, init: RequestInit = {}, missing = false): Promise<Response | null> {
   try {
@@ -28,7 +29,7 @@ export const routeKey = (key: string) => encodeURIComponent(key);
 
 let workspaceService: Promise<void> | null = null;
 export function requireWorkspaceService(): Promise<void> {
-  workspaceService ??= fetch('/api/healthz', { cache: 'no-store', signal: AbortSignal.timeout(15_000) }).then(async response => {
+  workspaceService ??= readHealth(15_000).then(async response => {
     if (!response.ok || (await response.json()).workspace_schema !== 1)
       throw new Error('The updated storage service is required. Your projects, drafts and preference changes are kept; retry after the service update.');
   }).catch(error => { workspaceService = null; throw error; });

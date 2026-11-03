@@ -6,25 +6,28 @@ import type { ProjectMeta } from '../flow/project';
 
 export { flushProject, storing, type ProjectMeta } from '../flow/project';
 
-export const clean = (p: Partial<ProjectMeta> | null | undefined): ProjectMeta | null => (!p || typeof p.id !== 'string' ? null : {
+export type ListedProject = ProjectMeta & { folderId: string | null };
+
+export const clean = (p: Partial<ProjectMeta> | null | undefined): ListedProject | null => (!p || typeof p.id !== 'string' ? null : {
   id: p.id,
   name: typeof p.name === 'string' && p.name.trim() ? p.name : 'Untitled',
   savedAt: Number.isFinite(p.savedAt) ? Number(p.savedAt) : 0,
   ...(Number.isSafeInteger(p.revision) ? { revision: p.revision } : {}),
   objects: Number.isFinite(p.objects) ? Number(p.objects) : 0,
-  thumbnail: typeof p.thumbnail === 'string' && p.thumbnail.startsWith('data:image/') ? p.thumbnail : null,
+  thumbnail: typeof p.thumbnail === 'string' && (p.thumbnail.startsWith('data:image/') || p.thumbnail.startsWith('/api/projects/')) ? p.thumbnail : null,
+  folderId: typeof (p as ListedProject).folderId === 'string' ? (p as ListedProject).folderId : null,
 });
 
-export function useProjects(): ProjectMeta[] | null {
+export function useProjects(): ListedProject[] | null {
   const list = project.useProjects();
-  return useMemo(() => (Array.isArray(list) ? list.map(clean).filter((p): p is ProjectMeta => !!p) : null), [list]);
+  return useMemo(() => (Array.isArray(list) ? list.map(clean).filter((p): p is ListedProject => !!p) : null), [list]);
 }
 
-export async function listTrash(): Promise<ProjectMeta[]> {
+export async function listTrash(): Promise<ListedProject[]> {
   const { projectJson } = await import('../persist/project-wire');
   const rows = await projectJson<Partial<ProjectMeta>[]>('/api/projects?archived=1');
   if (!Array.isArray(rows)) throw new Error('Trash could not be read.');
-  return rows.map(clean).filter((p): p is ProjectMeta => !!p);
+  return rows.map(clean).filter((p): p is ListedProject => !!p);
 }
 
 async function guard<T>(failed: string, f: () => Promise<T>, fallback: T): Promise<T> {

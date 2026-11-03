@@ -1,6 +1,7 @@
 import { submissionHeaders } from '../flow/submission';
 import { bootstrapAccessToken, mutation, responseError } from './access';
 import { attachFiles, postJob } from './blobs';
+import { readHealth } from './health';
 import { expandCatalog } from './compact-catalog';
 import { catalogWorker, onWorkerFailure, workerId } from './worker';
 import type { CatalogIn, CatalogOut } from './catalog.worker';
@@ -209,10 +210,7 @@ export async function connect(): Promise<Api> {
   toolFeatures = {};
   toolArtifactManifest = undefined;
   try {
-    const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), 1500);
-    const r = await fetch('/api/healthz', { signal: ctl.signal, method: 'GET' });
-    clearTimeout(t);
+    const r = await readHealth(1500);
     const type = r.headers.get('content-type') ?? '';
     if (r.ok && type.includes('json')) {
       const health = await r.json() as { tool_features?: Record<string, unknown>; artifact_manifest?: SurfaceArtifactManifest };

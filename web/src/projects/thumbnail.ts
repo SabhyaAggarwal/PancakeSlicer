@@ -1,6 +1,14 @@
 import * as THREE from 'three';
 import { instanceBox } from '../plater/geometry';
+import { filamentColor } from '../plater/filamentColor';
 import { getState } from '../state/store';
+
+const materials = new Map<string, THREE.MeshStandardMaterial>();
+const plain = (color: string) => {
+  let m = materials.get(color);
+  if (!m) materials.set(color, (m = new THREE.MeshStandardMaterial({ color, roughness: 0.65, metalness: 0.05 })));
+  return m;
+};
 
 const WIDTH = 320, HEIGHT = 240;
 
@@ -22,7 +30,22 @@ export function projectThumbnail(): string | null {
   cam.near = Math.max(0.1, dist - 4 * sphere.radius);
   cam.far = dist + 4 * sphere.radius;
   cam.updateProjectionMatrix();
-  p.renderer.render(p.scene, cam);
+  const byId = new Map(s.objects.map((o) => [o.id, o]));
+  const hidden: THREE.Object3D[] = [], swapped: [THREE.Mesh, THREE.Material | THREE.Material[]][] = [];
+  for (const child of p.scene.children) {
+    if ((child as THREE.Light).isLight || !child.visible) continue;
+    const { object, volume } = child.userData as { object?: number; volume?: number };
+    const o = object === undefined ? undefined : byId.get(object), v = volume === undefined ? undefined : o?.volumes?.find((x) => x.id === volume);
+    if (!o || !(child as THREE.Mesh).isMesh || (volume !== undefined && v?.type !== 'part')) { child.visible = false; hidden.push(child); continue; }
+    const mesh = child as THREE.Mesh;
+    swapped.push([mesh, mesh.material]);
+    mesh.material = plain(filamentColor(s, v?.extruder || o.extruder));
+  }
+  try { p.renderer.render(p.scene, cam); }
+  finally {
+    for (const child of hidden) child.visible = true;
+    for (const [mesh, material] of swapped) mesh.material = material;
+  }
   const h = Math.min(c.height, (c.width * HEIGHT) / WIDTH), w = (h * WIDTH) / HEIGHT;
   const t = document.createElement('canvas');
   t.width = WIDTH;

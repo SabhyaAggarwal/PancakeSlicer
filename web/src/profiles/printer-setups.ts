@@ -33,7 +33,7 @@ export async function hydratePrinterSetups(options:{restoreStartupPlaceholder?:b
   if(library.revision>0){
     const setup=planPrinterSwitch({...s,printerLibrary:library.printers},s.printer);
     setState({profileLibraryRevision:library.revision,printerLibrary:library.printers,
-      ...(selected?{filamentSlots:selected.slots.map(slot=>slot.materialId),slotColours:selected.slots.map(slot=>slot.colour),filamentEdits:selected.tuning,mixes:selected.mixes}:{}),
+      ...(selected?{filamentSlots:selected.slots.map(slot=>slot.materialId),slotColours:[],filamentEdits:selected.tuning,mixes:selected.mixes}:{}),
       profileRecoveries:setup.recoveries});
   }else setState({profileLibraryRevision:0});
   baseline=library.printers;hydrated=true;publish({state:'idle',error:null});watchPrinterSetups();

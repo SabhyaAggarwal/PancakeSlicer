@@ -21,7 +21,7 @@ export function captureProjectProfiles(s:ProfileContextState & Partial<Pick<Stat
       ...(source?{profile:storedProfile(source)}:{})};
   });
   const value:ProjectProfileReferences={schema:1,printer:records[0],process:records[1],filaments:records.slice(2),
-    ...(slots?{slots:slots.map((slot,i)=>({...slot,colour:s.slotColours?.[i] ?? slot.colour}))}:{})};
+    ...(slots?{slots:slots.map((slot,i)=>({...slot,colour:s.slotColours?.[i]}))}:{})};
   cache.set(s,value);shared.set(s.userPresets,{inputs,value});return value;
 }
 export { parseProjectProfiles } from './project-snapshot-codec';

@@ -1256,6 +1256,9 @@ export default function Plater3D() {
     });
     controls.addEventListener('end', () => (orbiting = false));
     renderer.domElement.addEventListener('pointermove', onHover);
+    const redraw = () => { if (!document.hidden) render(); };
+    renderer.domElement.addEventListener('webglcontextrestored', redraw);
+    document.addEventListener('visibilitychange', redraw);
     renderer.domElement.addEventListener('pointerleave', onLeave);
 
     const resize = () => {
@@ -1441,7 +1444,9 @@ export default function Plater3D() {
 
       selectionBounds.dispose();
       for (const edges of outlineCache.values()) edges.dispose();
+      document.removeEventListener('visibilitychange', redraw);
       renderer.dispose();
+      renderer.forceContextLoss();
       el.removeChild(renderer.domElement);
     };
   }, []);

@@ -1,0 +1,750 @@
+{
+ "source": "src/libslic3r/PrintConfig.cpp",
+ "groups": [
+  {
+   "title": "Slicing state (read only)",
+   "items": [
+    {
+     "key": "zhop",
+     "vector": false,
+     "label": "Current Z-hop",
+     "tooltip": "Contains Z-hop present at the beginning of the custom G-code block."
+    }
+   ]
+  },
+  {
+   "title": "Slicing state (read write)",
+   "items": [
+    {
+     "key": "position",
+     "vector": true,
+     "label": "Position",
+     "tooltip": "Position of the extruder at the beginning of the custom G-code block. If the custom G-code travels somewhere else, it should write to this variable so OrcaSlicer knows where it travels from when it gets control back."
+    },
+    {
+     "key": "e_retracted",
+     "vector": true,
+     "label": "Retraction",
+     "tooltip": "Retraction state at the beginning of the custom G-code block. If the custom G-code moves the extruder axis, it should write to this variable so OrcaSlicer de-retracts correctly when it gets control back."
+    },
+    {
+     "key": "e_restart_extra",
+     "vector": true,
+     "label": "Extra de-retraction",
+     "tooltip": "Currently planned extra extruder priming after de-retraction."
+    },
+    {
+     "key": "e_position",
+     "vector": true,
+     "label": "Absolute E position",
+     "tooltip": "Current position of the extruder axis. Only used with absolute extruder addressing."
+    }
+   ]
+  },
+  {
+   "title": "Slicing state",
+   "items": [
+    {
+     "key": "initial_no_support_extruder",
+     "vector": false,
+     "label": "Initial no support extruder",
+     "tooltip": "Zero-based index of the first extruder used for printing without support. Same as initial_no_support_tool."
+    },
+    {
+     "key": "in_head_wrap_detect_zone",
+     "vector": false,
+     "label": "In head wrap detect zone",
+     "tooltip": "Indicates if the first layer overlaps with the head wrap zone."
+    },
+    {
+     "key": "curr_bed_type",
+     "vector": false,
+     "label": "Current bed type",
+     "tooltip": "Name of the currently selected bed plate type (e.g. 'Textured PEI Plate', 'Smooth High Temp Plate')."
+    },
+    {
+     "key": "imex_mode",
+     "vector": false,
+     "label": "IDEX/IQEX active mode",
+     "tooltip": "Name of the active IDEX/IQEX parallel print mode for this plate (e.g. 'primary', 'mirror', 'copy'). Empty string if IDEX/IQEX is not enabled."
+    },
+    {
+     "key": "imex_mode_index",
+     "vector": false,
+     "label": "IDEX/IQEX active mode index",
+     "tooltip": "Zero-based index of the active IDEX/IQEX parallel print mode within imex_mode_names."
+    },
+    {
+     "key": "imex_mode_gcode",
+     "vector": false,
+     "label": "IDEX/IQEX active mode G-code",
+     "tooltip": "The raw mode G-code template for the active IDEX/IQEX parallel print mode, after placeholder evaluation. Globals defined here flow into machine_start_gcode."
+    },
+    {
+     "key": "current_extruder",
+     "vector": false,
+     "label": "Current extruder",
+     "tooltip": "Zero-based index of currently used extruder."
+    },
+    {
+     "key": "current_object_idx",
+     "vector": false,
+     "label": "Current object index",
+     "tooltip": "Specific for sequential printing. Zero-based index of currently printed object."
+    },
+    {
+     "key": "has_wipe_tower",
+     "vector": false,
+     "label": "Has wipe tower",
+     "tooltip": "Whether or not wipe tower is being generated in the print."
+    },
+    {
+     "key": "initial_extruder",
+     "vector": false,
+     "label": "Initial extruder",
+     "tooltip": "Zero-based index of the first extruder used in the print. Same as initial_tool."
+    },
+    {
+     "key": "initial_tool",
+     "vector": false,
+     "label": "Initial tool",
+     "tooltip": "Zero-based index of the first extruder used in the print. Same as initial_extruder."
+    },
+    {
+     "key": "is_extruder_used",
+     "vector": true,
+     "label": "Is extruder used?",
+     "tooltip": "Vector of booleans stating whether a given extruder is used in the print."
+    },
+    {
+     "key": "num_extruders",
+     "vector": false,
+     "label": "Number of extruders",
+     "tooltip": "Total number of extruders, regardless of whether they are used in the current print."
+    },
+    {
+     "key": "has_single_extruder_multi_material_priming",
+     "vector": false,
+     "label": "Has single extruder MM priming",
+     "tooltip": "Are the extra multi-material priming regions used in this print?"
+    }
+   ]
+  },
+  {
+   "title": "Print statistics",
+   "items": [
+    {
+     "key": "extruded_volume",
+     "vector": true,
+     "label": "Volume per extruder",
+     "tooltip": "Total filament volume extruded per extruder during the entire print."
+    },
+    {
+     "key": "total_toolchanges",
+     "vector": false,
+     "label": "Total tool changes",
+     "tooltip": "Number of tool changes during the print."
+    },
+    {
+     "key": "extruded_volume_total",
+     "vector": false,
+     "label": "Total volume",
+     "tooltip": "Total volume of filament used during the entire print."
+    },
+    {
+     "key": "extruded_weight",
+     "vector": true,
+     "label": "Weight per extruder",
+     "tooltip": "Weight per extruder extruded during the entire print. Calculated from filament_density value in Filament Settings."
+    },
+    {
+     "key": "extruded_weight_total",
+     "vector": false,
+     "label": "Total weight",
+     "tooltip": "Total weight of the print. Calculated from filament_density value in Filament Settings."
+    },
+    {
+     "key": "total_layer_count",
+     "vector": false,
+     "label": "Total layer count",
+     "tooltip": "Number of layers in the entire print."
+    },
+    {
+     "key": "normal_print_time",
+     "vector": false,
+     "label": "Print time (normal mode)",
+     "tooltip": "Estimated print time when printed in normal mode (i.e. not in silent mode). Same as print_time."
+    },
+    {
+     "key": "print_time",
+     "vector": false,
+     "label": "Print time (normal mode)",
+     "tooltip": "Estimated print time when printed in normal mode (i.e. not in silent mode). Same as normal_print_time."
+    },
+    {
+     "key": "silent_print_time",
+     "vector": false,
+     "label": "Print time (silent mode)",
+     "tooltip": "Estimated print time when printed in silent mode."
+    },
+    {
+     "key": "total_cost",
+     "vector": false,
+     "label": "Total cost",
+     "tooltip": "Total cost of all material used in the print. Calculated from filament_cost value in Filament Settings."
+    },
+    {
+     "key": "total_weight",
+     "vector": false,
+     "label": "Total weight",
+     "tooltip": "Total weight of the print. Calculated from filament_density value in Filament Settings."
+    },
+    {
+     "key": "total_wipe_tower_cost",
+     "vector": false,
+     "label": "Total wipe tower cost",
+     "tooltip": "Total cost of the material wasted on the wipe tower. Calculated from filament_cost value in Filament Settings."
+    },
+    {
+     "key": "total_wipe_tower_filament",
+     "vector": false,
+     "label": "Wipe tower volume",
+     "tooltip": "Total filament volume extruded on the wipe tower."
+    },
+    {
+     "key": "used_filament",
+     "vector": false,
+     "label": "Used filament",
+     "tooltip": "Total length of filament used in the print."
+    },
+    {
+     "key": "print_time_total_sec",
+     "vector": false,
+     "label": "Print time (total seconds)",
+     "tooltip": "Total estimated print time in seconds. Replaced with actual value during post-processing."
+    },
+    {
+     "key": "print_time_day",
+     "vector": false,
+     "label": "Print time (days component)",
+     "tooltip": "Estimated print time day component (normal mode). Replaced with actual value during post-processing."
+    },
+    {
+     "key": "print_time_hour",
+     "vector": false,
+     "label": "Print time (hours component)",
+     "tooltip": "Estimated print time hour component (normal mode). Replaced with actual value during post-processing."
+    },
+    {
+     "key": "print_time_minute",
+     "vector": false,
+     "label": "Print time (minutes component)",
+     "tooltip": "Estimated print time minute component (normal mode). Replaced with actual value during post-processing."
+    },
+    {
+     "key": "print_time_sec",
+     "vector": false,
+     "label": "Print time (seconds component)",
+     "tooltip": "Estimated print time second component (normal mode). Replaced with actual value during post-processing."
+    },
+    {
+     "key": "used_filament_length",
+     "vector": false,
+     "label": "Filament length (meters)",
+     "tooltip": "Total filament length used in meters. Replaced with actual value during post-processing."
+    }
+   ]
+  },
+  {
+   "title": "Objects info",
+   "items": [
+    {
+     "key": "input_filename",
+     "vector": false,
+     "label": "Full input filename",
+     "tooltip": "Source filename of the first object."
+    },
+    {
+     "key": "plate_name",
+     "vector": false,
+     "label": "Plate name",
+     "tooltip": "Name of the plate sliced."
+    },
+    {
+     "key": "num_objects",
+     "vector": false,
+     "label": "Number of objects",
+     "tooltip": "Total number of objects in the print."
+    },
+    {
+     "key": "num_instances",
+     "vector": false,
+     "label": "Number of instances",
+     "tooltip": "Total number of object instances in the print, summed over all objects."
+    },
+    {
+     "key": "scale",
+     "vector": true,
+     "label": "Scale per object",
+     "tooltip": "Contains a string with the information about what scaling was applied to the individual objects. Indexing of the objects is zero-based (first object has index 0).\nExample: 'x:100% y:50% z:100%'."
+    },
+    {
+     "key": "input_filename_base",
+     "vector": false,
+     "label": "Input filename without extension",
+     "tooltip": "Source filename of the first object, without extension."
+    }
+   ]
+  },
+  {
+   "title": "Dimensions",
+   "items": [
+    {
+     "key": "first_layer_height",
+     "vector": false,
+     "label": "First layer height",
+     "tooltip": "Height of the first layer."
+    },
+    {
+     "key": "first_layer_print_convex_hull",
+     "vector": true,
+     "label": "First layer convex hull",
+     "tooltip": "Vector of points of the first layer convex hull. Each element has the following format:'[x, y]' (x and y are floating-point numbers in mm)."
+    },
+    {
+     "key": "first_layer_print_min",
+     "vector": true,
+     "label": "Bottom-left corner of the first layer bounding box"
+    },
+    {
+     "key": "first_layer_print_max",
+     "vector": true,
+     "label": "Top-right corner of the first layer bounding box"
+    },
+    {
+     "key": "first_layer_print_size",
+     "vector": true,
+     "label": "Size of the first layer bounding box"
+    },
+    {
+     "key": "print_bed_min",
+     "vector": true,
+     "label": "Bottom-left corner of print bed bounding box"
+    },
+    {
+     "key": "print_bed_max",
+     "vector": true,
+     "label": "Top-right corner of print bed bounding box"
+    },
+    {
+     "key": "print_bed_size",
+     "vector": true,
+     "label": "Size of the print bed bounding box"
+    }
+   ]
+  },
+  {
+   "title": "Temperatures",
+   "items": [
+    {
+     "key": "bed_temperature",
+     "vector": true,
+     "label": "Bed temperature",
+     "tooltip": "Vector of bed temperatures for each extruder/filament."
+    },
+    {
+     "key": "bed_temperature_initial_layer",
+     "vector": true,
+     "label": "First layer bed temperature",
+     "tooltip": "Vector of first layer bed temperatures for each extruder/filament. Provides the same value as first_layer_bed_temperature."
+    },
+    {
+     "key": "bed_temperature_initial_layer_single",
+     "vector": false,
+     "label": "First layer bed temperature (initial extruder)",
+     "tooltip": "First layer bed temperature for the initial extruder. Same as bed_temperature_initial_layer[initial_extruder]"
+    },
+    {
+     "key": "chamber_temperature",
+     "vector": true,
+     "label": "Chamber temperature",
+     "tooltip": "Vector of chamber temperatures for each extruder/filament."
+    },
+    {
+     "key": "chamber_minimal_temperature",
+     "vector": true,
+     "label": "Chamber minimal temperature",
+     "tooltip": "Vector of minimal chamber temperatures for each extruder/filament."
+    },
+    {
+     "key": "overall_chamber_temperature",
+     "vector": false,
+     "label": "Overall chamber temperature",
+     "tooltip": "Overall chamber temperature. This value is the maximum chamber temperature of any extruder/filament used."
+    },
+    {
+     "key": "first_layer_bed_temperature",
+     "vector": true,
+     "label": "First layer bed temperature",
+     "tooltip": "Vector of first layer bed temperatures for each extruder/filament. Provides the same value as bed_temperature_initial_layer."
+    },
+    {
+     "key": "first_layer_temperature",
+     "vector": true,
+     "label": "First layer temperature",
+     "tooltip": "Vector of first layer temperatures for each extruder/filament."
+    }
+   ]
+  },
+  {
+   "title": "Timestamps",
+   "items": [
+    {
+     "key": "timestamp",
+     "vector": false,
+     "label": "Timestamp",
+     "tooltip": "String containing current time in yyyyMMdd-hhmmss format."
+    },
+    {
+     "key": "year",
+     "vector": false,
+     "label": "Year"
+    },
+    {
+     "key": "month",
+     "vector": false,
+     "label": "Month"
+    },
+    {
+     "key": "day",
+     "vector": false,
+     "label": "Day"
+    },
+    {
+     "key": "hour",
+     "vector": false,
+     "label": "Hour"
+    },
+    {
+     "key": "minute",
+     "vector": false,
+     "label": "Minute"
+    },
+    {
+     "key": "second",
+     "vector": false,
+     "label": "Second"
+    }
+   ]
+  },
+  {
+   "title": "Presets",
+   "items": [
+    {
+     "key": "print_preset",
+     "vector": false,
+     "label": "Print preset name",
+     "tooltip": "Name of the print preset used for slicing."
+    },
+    {
+     "key": "filament_preset",
+     "vector": false,
+     "label": "Filament preset name",
+     "tooltip": "Names of the filament presets used for slicing. The variable is a vector containing one name for each extruder."
+    },
+    {
+     "key": "printer_preset",
+     "vector": false,
+     "label": "Printer preset name",
+     "tooltip": "Name of the printer preset used for slicing."
+    },
+    {
+     "key": "physical_printer_preset",
+     "vector": false,
+     "label": "Physical printer name",
+     "tooltip": "Name of the physical printer used for slicing."
+    }
+   ]
+  },
+  {
+   "title": "Specific to this G-code",
+   "items": [
+    {
+     "key": "previous_extruder",
+     "vector": false,
+     "label": "Previous extruder",
+     "tooltip": "Index of the extruder that is being unloaded. The index is zero based (first extruder has index 0)."
+    },
+    {
+     "key": "next_extruder",
+     "vector": false,
+     "label": "Next extruder",
+     "tooltip": "Index of the extruder that is being loaded. The index is zero based (first extruder has index 0)."
+    },
+    {
+     "key": "relative_e_axis",
+     "vector": false,
+     "label": "Relative e-axis",
+     "tooltip": "Indicates if relative positioning is being used."
+    },
+    {
+     "key": "toolchange_count",
+     "vector": false,
+     "label": "Toolchange count",
+     "tooltip": "The number of toolchanges throught the print."
+    },
+    {
+     "key": "old_retract_length",
+     "vector": false,
+     "label": "Old retract length",
+     "tooltip": "The retraction length of the previous filament."
+    },
+    {
+     "key": "new_retract_length",
+     "vector": false,
+     "label": "New retract length",
+     "tooltip": "The retraction lenght of the new filament."
+    },
+    {
+     "key": "old_retract_length_toolchange",
+     "vector": false,
+     "label": "Old retract length toolchange",
+     "tooltip": "The toolchange retraction length of the previous filament."
+    },
+    {
+     "key": "new_retract_length_toolchange",
+     "vector": false,
+     "label": "New retract length toolchange",
+     "tooltip": "The toolchange retraction length of the new filament."
+    },
+    {
+     "key": "old_filament_temp",
+     "vector": false,
+     "label": "Old filament temp",
+     "tooltip": "The old filament temp."
+    },
+    {
+     "key": "new_filament_temp",
+     "vector": false,
+     "label": "New filament temp",
+     "tooltip": "The new filament temp."
+    },
+    {
+     "key": "x_after_toolchange",
+     "vector": false,
+     "label": "X after toolchange",
+     "tooltip": "The X pos after toolchange."
+    },
+    {
+     "key": "y_after_toolchange",
+     "vector": false,
+     "label": "Y after toolchange",
+     "tooltip": "The Y pos after toolchange."
+    },
+    {
+     "key": "z_after_toolchange",
+     "vector": false,
+     "label": "Z after toolchange",
+     "tooltip": "The Z pos after toolchange."
+    },
+    {
+     "key": "first_flush_volume",
+     "vector": false,
+     "label": "First flush volume",
+     "tooltip": "The first flush volume."
+    },
+    {
+     "key": "second_flush_volume",
+     "vector": false,
+     "label": "Second flush volume",
+     "tooltip": "The second flush volume."
+    },
+    {
+     "key": "old_filament_e_feedrate",
+     "vector": false,
+     "label": "Old filament e feedrate",
+     "tooltip": "The old filament extruder feedrate."
+    },
+    {
+     "key": "new_filament_e_feedrate",
+     "vector": false,
+     "label": "New filament e feedrate",
+     "tooltip": "The new filament extruder feedrate."
+    },
+    {
+     "key": "travel_point_1_x",
+     "vector": false,
+     "label": "Travel point 1 X",
+     "tooltip": "The travel point 1 X."
+    },
+    {
+     "key": "travel_point_1_y",
+     "vector": false,
+     "label": "Travel point 1 Y",
+     "tooltip": "The travel point 1 Y."
+    },
+    {
+     "key": "travel_point_2_x",
+     "vector": false,
+     "label": "Travel point 2 X",
+     "tooltip": "The travel point 2 X."
+    },
+    {
+     "key": "travel_point_2_y",
+     "vector": false,
+     "label": "Travel point 2 Y",
+     "tooltip": "The travel point 2 Y."
+    },
+    {
+     "key": "travel_point_3_x",
+     "vector": false,
+     "label": "Travel point 3 X",
+     "tooltip": "The travel point 3 X."
+    },
+    {
+     "key": "travel_point_3_y",
+     "vector": false,
+     "label": "Travel point 3 Y",
+     "tooltip": "The travel point 3 Y."
+    },
+    {
+     "key": "flush_length_1",
+     "vector": false,
+     "label": "Flush Length 1",
+     "tooltip": "The first flush length."
+    },
+    {
+     "key": "flush_length_2",
+     "vector": false,
+     "label": "Flush Length 2",
+     "tooltip": "The second flush length."
+    },
+    {
+     "key": "flush_length_3",
+     "vector": false,
+     "label": "Flush Length 3",
+     "tooltip": "The third flush length."
+    },
+    {
+     "key": "flush_length_4",
+     "vector": false,
+     "label": "Flush Length 4",
+     "tooltip": "The fourth flush length."
+    },
+    {
+     "key": "layer_num",
+     "vector": false,
+     "label": "Layer number",
+     "tooltip": "Index of the current layer. Zero-based (i.e. first layer is number 0), except in extrusion role change G-code, where it is one-based."
+    },
+    {
+     "key": "layer_z",
+     "vector": false,
+     "label": "Layer Z",
+     "tooltip": "Height of the current layer above the print bed, measured to the top of the layer."
+    },
+    {
+     "key": "max_layer_z",
+     "vector": false,
+     "label": "Maximal layer Z",
+     "tooltip": "Height of the last layer above the print bed."
+    },
+    {
+     "key": "filament_extruder_id",
+     "vector": false,
+     "label": "Filament extruder ID",
+     "tooltip": "The current extruder ID. The same as current_extruder."
+    }
+   ]
+  }
+ ],
+ "hooks": {
+  "file_start_gcode": [],
+  "machine_start_gcode": [],
+  "machine_end_gcode": [
+   "layer_num",
+   "layer_z",
+   "max_layer_z",
+   "filament_extruder_id"
+  ],
+  "before_layer_change_gcode": [
+   "layer_num",
+   "layer_z",
+   "max_layer_z"
+  ],
+  "layer_change_gcode": [
+   "layer_num",
+   "layer_z",
+   "max_layer_z"
+  ],
+  "timelapse_gcode": [
+   "layer_num",
+   "layer_z",
+   "max_layer_z"
+  ],
+  "change_filament_gcode": [
+   "layer_num",
+   "layer_z",
+   "max_layer_z",
+   "next_extruder",
+   "previous_extruder",
+   "fan_speed",
+   "first_flush_volume",
+   "flush_length_1",
+   "flush_length_2",
+   "flush_length_3",
+   "flush_length_4",
+   "new_filament_e_feedrate",
+   "new_filament_temp",
+   "new_retract_length",
+   "new_retract_length_toolchange",
+   "old_filament_e_feedrate",
+   "old_filament_temp",
+   "old_retract_length",
+   "old_retract_length_toolchange",
+   "relative_e_axis",
+   "second_flush_volume",
+   "toolchange_count",
+   "toolchange_z",
+   "travel_point_1_x",
+   "travel_point_1_y",
+   "travel_point_2_x",
+   "travel_point_2_y",
+   "travel_point_3_x",
+   "travel_point_3_y",
+   "x_after_toolchange",
+   "y_after_toolchange",
+   "z_after_toolchange"
+  ],
+  "change_extrusion_role_gcode": [
+   "layer_num",
+   "layer_z",
+   "extrusion_role",
+   "last_extrusion_role"
+  ],
+  "filament_change_extrusion_role_gcode": [
+   "layer_num",
+   "layer_z",
+   "extrusion_role",
+   "last_extrusion_role"
+  ],
+  "process_change_extrusion_role_gcode": [
+   "layer_num",
+   "layer_z",
+   "extrusion_role",
+   "last_extrusion_role"
+  ],
+  "printing_by_object_gcode": [],
+  "machine_pause_gcode": [],
+  "template_custom_gcode": [],
+  "filament_start_gcode": [
+   "filament_extruder_id"
+  ],
+  "filament_end_gcode": [
+   "layer_num",
+   "layer_z",
+   "max_layer_z",
+   "filament_extruder_id"
+  ]
+ }
+}

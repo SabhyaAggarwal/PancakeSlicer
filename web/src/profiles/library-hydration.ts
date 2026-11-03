@@ -33,12 +33,13 @@ export function prepareProfileLibraryHydration(s: State, document: ProfileLibrar
     return key;
   };
   next.printer=s.profileSnapshots ? s.printer : selected('machine',s.printer);
-  if(!next.printer || options.restoreStartupPlaceholder && !s.profileSnapshots && !findProfile(next,'machine',next.printer))next.printer=owned('machine')[0]?.id ?? '';
+  const printers=owned('machine');
+  if(!next.printer || options.restoreStartupPlaceholder && !s.profileSnapshots && !findProfile(next,'machine',next.printer))next.printer=printers.length===1 ? printers[0].id ?? '' : '';
   const setup=document.printers.setups[next.printer];
   next.process=s.profileSnapshots ? s.process : selected('process',s.process);
   next.filamentSlots=s.profileSnapshots ? s.filamentSlots : s.filamentSlots.map(key=>selected('filament',key));
   if(setup && !s.profileSnapshots){
-    next={...next,process:setup.processId ?? next.process,filamentSlots:setup.slots.map(slot=>slot.materialId),slotColours:setup.slots.map(slot=>slot.colour),filamentEdits:structuredClone(setup.tuning),mixes:structuredClone(setup.mixes)};
+    next={...next,process:setup.processId ?? next.process,filamentSlots:setup.slots.map(slot=>slot.materialId),slotColours:[],filamentEdits:structuredClone(setup.tuning),mixes:structuredClone(setup.mixes)};
   }else if(!s.profileSnapshots && (!s.printer || options.restoreStartupPlaceholder)){
     if(!findProfile(next,'process',next.process))next.process=owned('process').find(p=>selectCompatibility(next,'process',profileKey(p)).ok)?.id ?? '';
     if(!next.filamentSlots.length)next.filamentSlots=owned('filament').filter(p=>selectCompatibility(next,'filament',profileKey(p)).ok).slice(0,1).map(profileKey);

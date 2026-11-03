@@ -13,7 +13,7 @@ importing.machine.subscribe((s) => {
 import * as THREE from 'three';
 import type { Config, ConfigValue, JobRequest, PresetType } from './api/types';
 import { sliceProgress } from './api/progress';
-import { canEditProject, canLoadStep, connect, surfaceConfigBlocker, type Api } from './api/client';
+import { canEditProject, canLoadStep, connect, surfaceConfigBlocker, toolFeatures, type Api } from './api/client';
 import { validateProfileSubmission } from './profiles/submission';
 import { normalizeUserPreset } from './profiles/model';
 import { shortTime } from './preview/format';
@@ -35,11 +35,11 @@ export async function init() {
   app.send({ type: 'BOOT' });
   const api = await connect();
   setState({ api, loading: 'Loading presets' });
-  if (!api.mock) void fetch('/api/healthz').then((r) => r.json()).then((h) => {
-    setState({ features: h?.tool_features ?? {} });
-    if (h?.tool_features?.orient_scores === true) void import('./plater/orientPrompt').then((m) => m.startOrientPrompt());
-    if (h?.tool_features?.wipe_tower === true) void import('./plater/wipeTower').then((m) => m.startWipeTower());
-  }).catch(() => {});
+  if (!api.mock) {
+    setState({ features: toolFeatures });
+    if (toolFeatures.orient_scores === true) void import('./plater/orientPrompt').then((m) => m.startOrientPrompt());
+    if (toolFeatures.wipe_tower === true) void import('./plater/wipeTower').then((m) => m.startWipeTower());
+  }
   if (!api.mock) void loadPrinters();
   await loadCatalog();
 }
@@ -278,7 +278,7 @@ export async function openProject(file: File) {
         setState((st) => ({
           objects: objects.filter((o) => o.project?.plateIndex === materials.plates[0].index),
           projectPlates: materials.plates.map((p) => ({ ...p, objects: objects.filter((o) => o.project?.plateIndex === p.index) })),
-          plateIndex: materials.plates[0].index, project: file, projectName: file.name, projectMaterials: materials, slotColours: [], flush: { matrix: null, multiplier: null }, selected: null, processScope: 'global',
+          plateIndex: materials.plates[0].index, project: file, projectName: file.name, projectMaterials: materials, slotColours: materials.colours.map((c) => c || undefined), flush: { matrix: null, multiplier: null }, selected: null, processScope: 'global',
           filamentSlots: Array.from({ length: slots }, (_, i) => st.filamentSlots[i] ?? st.filamentSlots[0] ?? ''),
           job: markStale(st.job),
         }));
