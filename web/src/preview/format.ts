@@ -1,7 +1,9 @@
 export const MAGIC = 'ORCAMV01';
-export const TRANSFER_MAGIC = 'ORCAMT01';
+export const TRANSFER_MAGIC = 'ORCAMT02';
+export const TRANSFER_FORM = 'mt2';
 
 export const CHUNK = 16384;
+export const transferBlockSize = (k: number) => CHUNK >> Math.max(0, 4 - k);
 export const BLOCK = 16384;
 
 export const MoveType = {
