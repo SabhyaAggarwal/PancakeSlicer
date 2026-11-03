@@ -1,5 +1,6 @@
+import { beginBusy } from '../state/busy';
 import { arrangeAll, importFiles } from '../actions';
-import { getState, setState, toast } from '../state/store';
+import { toast } from '../state/store';
 import { documentGeneration } from '../state/history';
 
 export const HANDY: [label: string, files: string[], arrange?: boolean][] = [
@@ -16,8 +17,7 @@ export const HANDY: [label: string, files: string[], arrange?: boolean][] = [
 ];
 
 export async function importFetched(label: string, sources: [url: string, name: string][], arrange = false) {
-  const generation = documentGeneration(), loading = `Loading ${label}`;
-  setState({ loading });
+  const generation = documentGeneration(), busy = beginBusy(`Loading ${label}`);
   try {
     const files = await Promise.all(sources.map(async ([url, name]) => {
       const r = await fetch(url);
@@ -30,7 +30,7 @@ export async function importFetched(label: string, sources: [url: string, name: 
   } catch (e) {
     toast(e instanceof Error ? e.message : String(e));
   } finally {
-    if (getState().loading === loading) setState({ loading: null });
+    busy.end();
   }
 }
 

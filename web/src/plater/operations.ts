@@ -1,3 +1,4 @@
+import { beginBusy } from '../state/busy';
 import { Box3, Matrix4, Vector3, type BufferGeometry } from 'three';
 import { arrangeSettings } from './arrangeSettings';
 import { flushReady } from '../flush-state';
@@ -120,8 +121,9 @@ export async function run(operation: 'orient' | 'split' | 'split-parts', all: bo
   busy = true;
   const signature = plateSignature(s);
   const created: PlateObject[] = [];
+  const overlay = beginBusy(operation === 'orient' ? 'Orienting objects' : 'Splitting object');
   try {
-    setState({ toast: null, loading: operation === 'orient' ? 'Orienting objects' : 'Splitting object' });
+    setState({ toast: null });
     const replacements = new Map<number, PlateObject[]>();
     for (const o of objects) {
       const next = operation === 'orient' ? [await orient(o)] : operation === 'split' ? await splitObject(o) : await splitParts(o);
@@ -138,7 +140,7 @@ export async function run(operation: 'orient' | 'split' | 'split-parts', all: bo
     toast(error instanceof Error ? error.message : String(error));
   } finally {
     busy = false;
-    if (/^(Orienting objects|Splitting object)$/.test(getState().loading ?? '')) setState({ loading: null });
+    overlay.end();
   }
 }
 
@@ -163,7 +165,7 @@ export async function arrangeNative() {
   const s = getState();
   if (busy || !s.api || s.api.mock || s.project || !s.objects.length) return;
   busy = true;
-  setState({ loading: 'Arranging' });
+  const overlay = beginBusy('Arranging');
   try {
     const fd = await plateForm(s, 'arrange');
     const { distance, rotation, multiMaterials } = arrangeSettings();
@@ -203,6 +205,6 @@ export async function arrangeNative() {
     toast(`Arrange failed: ${e instanceof Error ? e.message : e}`);
   } finally {
     busy = false;
-    if (getState().loading === 'Arranging') setState({ loading: null });
+    overlay.end();
   }
 }

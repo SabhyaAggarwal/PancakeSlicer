@@ -1,3 +1,4 @@
+import { beginBusy } from '../state/busy';
 import * as THREE from 'three';
 import { getState, markStale, setState, toast, type PlateObject, type Volume } from '../state/store';
 import { undoable } from '../state/history';
@@ -27,7 +28,7 @@ function withMain(o: PlateObject, geometry: THREE.BufferGeometry, source: File, 
 export async function meshBoolean(objectId: number, op: BooleanOp, a: PartKey, b: PartKey, deleteInput: boolean) {
   const o = getState().objects.find((x) => x.id === objectId);
   if (!o || a === b) return;
-  setState({ loading: 'Mesh Boolean' });
+  const busy = beginBusy('Mesh Boolean');
   try {
     const { record, file, geometry } = await meshJob('boolean', { boolean_op: op }, [[await partStl(o, a), 'a.stl'], [await partStl(o, b), 'b.stl']], o.name);
     if (!geometry.attributes.position.count) throw new Error(BOOLEAN_WARNING);
@@ -51,6 +52,6 @@ export async function meshBoolean(objectId: number, op: BooleanOp, a: PartKey, b
   } catch (e) {
     toast(`${BOOLEAN_WARNING}: ${e instanceof Error ? e.message : String(e)}`);
   } finally {
-    if (getState().loading === 'Mesh Boolean') setState({ loading: null });
+    busy.end();
   }
 }

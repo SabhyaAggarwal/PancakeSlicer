@@ -1,3 +1,4 @@
+import { openingBusy } from '../state/busy';
 import { newKey, type ProjectMeta, type ProjectStore, type ProjectCommandStatus, type StoredDocBase } from '../persist/backend';
 import { changeForSave, savedVersionBase } from '../projects/versions';
 import type { ProjectDraft, ProjectDraftMeta, ProjectDraftStore } from '../persist/drafts';
@@ -52,7 +53,7 @@ export async function adoptProjectDraft(runtime: RecoveryRuntime, draft: Project
   const active = getState().printer;
   runtime.adopt(() => {
     leaveDocument(); clearPlateJobs();
-    setState({ ...fields, projectName: draft.name, tab: 'prepare', gizmo: 'none', dialog: null, loading: null,
+    setState({ ...fields, projectName: draft.name, tab: 'prepare', gizmo: 'none', dialog: null,
       job: { state: 'idle', pct: 0, stage: '' } });
     newDocument(false);
   });
@@ -136,7 +137,8 @@ export async function openProject(runtime: RecoveryRuntime, id: string, options:
   else { runtime.invalidateWrites(); await runtime.waitForWrites(); }
   if (!runtime.isCurrent(mine)) return;
   runtime.invalidateWrites();
-  project.send({ type: 'OPEN' }); setState({ loading: 'Opening', tab: 'prepare' });
+  project.send({ type: 'OPEN' }); setState({ tab: 'prepare' });
+  const busy = openingBusy.begin('Opening');
   if (options.history !== false) writeRoute(`/p/${encodeURIComponent(id)}`);
   try {
     let loadError: unknown;
@@ -154,19 +156,19 @@ export async function openProject(runtime: RecoveryRuntime, id: string, options:
       await (await runtime.drafts()).remove(draft.id, draft.sequence); void runtime.refreshDrafts();
     }
     if (loadError) throw loadError;
-    if (!rec || runtime.removed.has(rec.meta.id)) { project.send({ type: 'MISSING', id }); setState({ loading: null }); return; }
+    if (!rec || runtime.removed.has(rec.meta.id)) { project.send({ type: 'MISSING', id }); return; }
     const document = recoveryDocument(rec.doc) as StoredDoc;
     await runtime.ensureCatalogs(document, () => runtime.isCurrent(mine));
     if (!runtime.isCurrent(mine)) return;
     const fields = await (await codec()).decode(document, (k) => runtime.storage()!.getBlob(rec.meta.id, k));
     if (!runtime.isCurrent(mine)) return;
-    if (runtime.removed.has(rec.meta.id)) { project.send({ type: 'MISSING', id }); setState({ loading: null }); return; }
+    if (runtime.removed.has(rec.meta.id)) { project.send({ type: 'MISSING', id }); return; }
     for (const k of Object.keys(rec.doc.files ?? {})) runtime.known.add(`${rec.meta.id}/${k}`);
     runtime.previous(project.get().context.id);
     const active = getState().printer;
     runtime.adopt(() => {
       leaveDocument(); clearPlateJobs();
-      setState({ ...fields, projectName: rec.meta.name, tab: 'prepare', gizmo: 'none', dialog: null, loading: null,
+      setState({ ...fields, projectName: rec.meta.name, tab: 'prepare', gizmo: 'none', dialog: null,
         job: { state: 'idle', pct: 0, stage: '' } });
       newDocument(true);
     });
@@ -177,7 +179,9 @@ export async function openProject(runtime: RecoveryRuntime, id: string, options:
   } catch (error) {
     if (!runtime.isCurrent(mine)) return;
     const failure = projectFailure(error, id, project.get().context.revision, true);
-    setState({ loading: null }); project.send({ type: 'ERROR', error: failure.message, failure });
+    project.send({ type: 'ERROR', error: failure.message, failure });
+  } finally {
+    busy.end();
   }
 }
 export async function viewProjectVersion(runtime: RecoveryRuntime, id: string, record: { meta: ProjectMeta; doc: StoredDocBase }, enter: () => boolean) {
@@ -193,7 +197,7 @@ export async function viewProjectVersion(runtime: RecoveryRuntime, id: string, r
   runtime.invalidateWrites();
   runtime.adopt(() => {
     leaveDocument(); clearPlateJobs();
-    setState({ ...fields, projectName: record.meta.name, gizmo: 'none', dialog: null, loading: null, job: { state: 'idle', pct: 0, stage: '' } });
+    setState({ ...fields, projectName: record.meta.name, gizmo: 'none', dialog: null, job: { state: 'idle', pct: 0, stage: '' } });
     newDocument(true);
   });
   return true;

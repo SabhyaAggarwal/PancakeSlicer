@@ -1,3 +1,4 @@
+import { beginBusy, startupBusy } from '../state/busy';
 import type { PresetCatalog, PresetType, ProfileOverlay, SystemPreset, UserPreset } from '../api/types';
 import type { Api } from '../api/client';
 import type { StoredDoc } from '../persist/session';
@@ -43,7 +44,10 @@ export async function loadCatalog() {
   disarmRetry();
   const generation = ++catalogLoadGeneration, initial = getState(), api = initial.api, documentAtStart=documentGeneration();
   if (!api) return;
-  setState({ loading: 'Loading presets', profileLibraryLoad: {state: 'loading'} });
+  const busy = beginBusy('Loading presets');
+  startupBusy.end();
+  setState({ profileLibraryLoad: {state: 'loading'} });
+  try {
   let first = 'BBL';
   first = preferenceText('orca.vendor') || first;
   const current = () => generation === catalogLoadGeneration && getState().api === api;
@@ -66,7 +70,7 @@ export async function loadCatalog() {
       await ensureOwnedCatalogs(document,native,unchanged);
       if(!unchanged())throw new Error('Your setup changed while native profile bases loaded. Retry to preserve your newer work.');
       if(restoreStartupPlaceholder){
-        if(getState().loading==='Loading presets')setState({loading:null});
+        busy.end();
         await initialiseSavedPreferences();
       }
       if(!unchanged())throw new Error('Your setup changed while saved preferences loaded. Retry to preserve your newer work.');
@@ -97,9 +101,10 @@ export async function loadCatalog() {
   catalogLibraryTail=library;
   await library;
   if (!current()) return;
-  setState({loading: null});
+  busy.end();
   app.send({type: 'READY', hasObjects: getState().objects.length > 0, importing: importing.machine.get().value === 'running'});
   if(projectsSettled)void startUnrelatedCatalogs();
+  } finally { busy.end(); }
 }
 
 

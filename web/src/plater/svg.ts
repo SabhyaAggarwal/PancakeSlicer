@@ -1,3 +1,4 @@
+import { beginBusy } from '../state/busy';
 import * as THREE from 'three';
 import { getState, newId, setState, toast, type PlateObject, type State, type SvgSpec, type Volume, type VolumeType } from '../state/store';
 import { undoable } from '../state/history';
@@ -32,10 +33,10 @@ let busy = false;
 async function withService(work: () => Promise<void>) {
   if (busy) return;
   busy = true;
-  setState({ loading: 'Embossing SVG' });
+  const overlay = beginBusy('Embossing SVG');
   try { await work(); } catch (e) { toast(`SVG: ${e instanceof Error ? e.message : String(e)}`); } finally {
     busy = false;
-    if (getState().loading === 'Embossing SVG') setState({ loading: null });
+    overlay.end();
   }
 }
 

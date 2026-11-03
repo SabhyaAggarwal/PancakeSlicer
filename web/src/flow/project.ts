@@ -1,3 +1,4 @@
+import { openingBusy } from '../state/busy';
 import { useSyncExternalStore } from 'react';
 import { clearPlate } from '../actions';
 import { clearPlateJobs } from '../plater/plates';
@@ -268,7 +269,7 @@ async function route() {
       opening++; await flushProject().catch(() => {});
       if (mine !== routeVersion) return;
       if ((project.get().value === 'opening' || project.get().value === 'missing')) project.send({ type: 'BLANK' });
-      setState({ tab: 'projects', loading: null });
+      openingBusy.end(); setState({ tab: 'projects' });
     }
     else if (r.kind === 'project') await openProject(r.id, { history: false });
     else if (r.kind === 'blank') {

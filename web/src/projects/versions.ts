@@ -170,13 +170,13 @@ export function startVersionTracking() {
   });
 }
 
-const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 export function dayOf(t: number, now = Date.now()) {
   const d = new Date(t), today = new Date(now);
   const days = Math.round((new Date(today.toDateString()).getTime() - new Date(d.toDateString()).getTime()) / 86_400_000);
   return days === 0 ? 'Today' : days === 1 ? 'Yesterday' : d.toLocaleDateString([], { weekday: days < 7 ? 'long' : undefined, month: 'short', day: 'numeric', year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric' });
 }
-export const withSeconds = (t: number) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+export const withSeconds = (t: number) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
 export function rowTimes(versions: readonly ProjectVersion[], now = Date.now()): Map<number, string> {
   const base = versions.map((v) => {
     const age = now - v.until;
@@ -185,7 +185,7 @@ export function rowTimes(versions: readonly ProjectVersion[], now = Date.now()):
   return new Map(versions.map((v, i) => [v.id, base[i] === base[i - 1] || base[i] === base[i + 1] ? withSeconds(v.until) : base[i]]));
 }
 export const versionTime = (t: number) => dayOf(t) === 'Today' ? clock(t) : `${dayOf(t)} ${clock(t)}`;
-export const clockTime = (t: number) => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+export const clockTime = clock;
 export const shortDate = (t: number) => new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric', year: new Date(t).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
 
 export const changeLine = (c: VersionChange) => {

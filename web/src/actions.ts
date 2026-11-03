@@ -1,4 +1,5 @@
 import { savePreferences } from './saved-preferences';
+import { beginBusy, startupBusy, withBusy, type BusyToken } from './state/busy';
 import { findProfile } from './profiles/identity';
 import { beginSlicePreview, bindSlicePreview } from './flow/preview-navigation';
 import { project as projectFlow } from './flow/project';
@@ -8,7 +9,6 @@ import { output } from './flow/output';
 importing.machine.subscribe((s) => {
   if (s.value === 'running') app.send({ type: 'IMPORT' });
   else if (app.get().value !== 'booting') app.send({ type: 'SETTLED', hasObjects: getState().objects.length > 0 });
-  if (s.value === 'canceled' && /^(Loading |Opening )/.test(getState().loading ?? '')) setState({ loading: null });
 });
 import type * as THREE from 'three';
 import { T3 } from './three-runtime';
@@ -37,7 +37,7 @@ import { loadPreviewView } from './components/preview-loader';
 export async function init() {
   app.send({ type: 'BOOT' });
   const api = await connectService();
-  setState({ api, loading: 'Loading presets' });
+  setState({ api }); startupBusy.relabel('Loading presets');
   if (!api.mock) {
     setState({ features: toolFeatures });
     if (toolFeatures.orient_scores === true) void import('./plater/orientPrompt').then((m) => m.startOrientPrompt());
@@ -160,6 +160,7 @@ export async function importFiles(files: FileList | File[], geometryOnly = false
   const task = importing.begin('loading');
   const added: PlateObject[] = [];
   for (const f of list) {
+    let busy: BusyToken | undefined;
     try {
       if (/\.3mf$/i.test(f.name)) {
         added.push(...await load3mfGeometry(f));
@@ -167,9 +168,8 @@ export async function importFiles(files: FileList | File[], geometryOnly = false
         continue;
       }
       const { geometry, source } = step.test(f.name) ? await loadStep(f, task.signal)
-        : { geometry: await loadMesh(f, (pct) => { if (task.current()) { task.progress(pct, 'meshing'); setState({ loading: `Loading ${f.name} ${Math.round(pct)}%` }); } }), source: f };
+        : { geometry: await loadMesh(f, (pct) => { if (task.current()) { task.progress(pct, 'meshing'); const label = `Loading ${f.name} ${Math.round(pct)}%`; if (busy) busy.relabel(label); else busy = beginBusy(label, task.signal); } }), source: f };
       if (!task.current()) { geometry.dispose(); break; }
-      if (getState().loading?.startsWith('Loading ')) setState({ loading: null });
       added.push({
         id: newId(), name: f.name, geometry, simplification: geometry.userData.simplification, rotX: 0, rotY: 0, scale: [1, 1, 1], extruder: 1, source, settings: {},
         instances: [{ id: newId(), x: 0, y: 0, rotZ: 0 }],
@@ -177,8 +177,9 @@ export async function importFiles(files: FileList | File[], geometryOnly = false
     } catch (e) {
       if (!task.current()) break;
       task.fail(e);
-      if (getState().loading?.startsWith('Loading ')) setState({ loading: null });
       toast(String(e instanceof Error ? e.message : e));
+    } finally {
+      busy?.end();
     }
   }
   if (!task.current()) { for (const o of added) o.geometry.dispose(); return; }
@@ -214,7 +215,10 @@ async function load3mfGeometry(f: File): Promise<PlateObject[]> {
 async function loadStep(f: File, signal?: AbortSignal): Promise<{ geometry: THREE.BufferGeometry; source: File }> {
   const s = getState();
   if (!s.api || s.api.mock) throw new Error(`${f.name}: importing STEP requires the slicing service`);
-  setState({ loading: `Loading ${f.name}` });
+  return withBusy(`Loading ${f.name}`, () => meshStep(s, f, signal), signal);
+}
+async function meshStep(s: ReturnType<typeof getState>, f: File, signal?: AbortSignal): Promise<{ geometry: THREE.BufferGeometry; source: File }> {
+  if (!s.api) throw new Error(`${f.name}: importing STEP requires the slicing service`);
   const { vendor, printer, process, filaments } = jobFields(s, true);
   const id = await s.api.submit({ vendor, printer, process, filaments, overrides: {}, events: [], output: '3mf', files: [{ name: f.name, blob: f }] }, signal);
   if (signal?.aborted) { void s.api.cancel(id).catch(() => {}); throw new DOMException('Import canceled', 'AbortError'); }
@@ -249,7 +253,7 @@ export async function openProject(file: File) {
   clearPlateJobs();
   const task = importing.begin('loading');
   if (s.features.explode && s.api && !s.api.mock) {
-    setState({ loading: `Opening ${file.name}` });
+    const busy = beginBusy(`Opening ${file.name}`, task.signal);
     try {
       await (await import('./plater/explode')).openExplodedProject(file, adoptProject, task.current);
       if (!task.current()) return;
@@ -262,7 +266,7 @@ export async function openProject(file: File) {
       if (!task.current()) return;
       toast(`${file.name}: ${e instanceof Error ? e.message : e}; opened as a project instead`);
     } finally {
-      if (task.current()) setState({ loading: null });
+      busy.end();
     }
   }
   let objects: PlateObject[] = [];

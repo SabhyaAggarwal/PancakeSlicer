@@ -1,3 +1,4 @@
+import { beginBusy } from '../state/busy';
 import * as THREE from 'three';
 import { responseError } from '../api/access';
 import { getState, logNotice, markStale, printerPreset, resolvePreset, setState, toast, type PlateObject } from '../state/store';
@@ -56,7 +57,7 @@ function replace(o: PlateObject, file: File, geometry: THREE.BufferGeometry, nam
 export async function fixModel(objectId: number) {
   const o = getState().objects.find((x) => x.id === objectId);
   if (!o) return;
-  setState({ loading: 'Repairing model object' });
+  const busy = beginBusy('Repairing model object');
   try {
     const { record, file, geometry } = await run(o, 'repair');
     const counts = (record.repair_counts ?? {}) as Record<string, number>;
@@ -68,14 +69,14 @@ export async function fixModel(objectId: number) {
   } catch (e) {
     toast(`Fix Model failed: ${e instanceof Error ? e.message : String(e)}`);
   } finally {
-    if (getState().loading === 'Repairing model object') setState({ loading: null });
+    busy.end();
   }
 }
 
 export async function simplifyModel(objectId: number, triangles: number, maxError?: number) {
   const o = getState().objects.find((x) => x.id === objectId);
   if (!o) return;
-  setState({ loading: 'Simplifying model' });
+  const busy = beginBusy('Simplifying model');
   try {
     const { record, file, geometry } = await run(o, 'simplify', maxError ? { simplify_max_error: String(maxError) } : { simplify_triangles: String(Math.max(1, Math.round(triangles))) });
     replace(o, file, geometry, 'Simplify Model');
@@ -83,7 +84,7 @@ export async function simplifyModel(objectId: number, triangles: number, maxErro
   } catch (e) {
     toast(`Simplify Model: ${e instanceof Error ? e.message : String(e)}`);
   } finally {
-    if (getState().loading === 'Simplifying model') setState({ loading: null });
+    busy.end();
   }
 }
 

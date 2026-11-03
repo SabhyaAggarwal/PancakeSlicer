@@ -1,3 +1,4 @@
+import { beginBusy } from '../state/busy';
 import * as THREE from 'three';
 import { bedArea } from '../actions';
 import { responseError } from '../api/access';
@@ -20,9 +21,9 @@ export async function performCut() {
   const { o, inst } = t;
   busy = true;
   const signature = plateSignature(s);
-  const created: PlateObject[] = [];
+  const created: PlateObject[] = [], overlay = beginBusy('Cutting object');
   try {
-    setState({ toast: null, loading: 'Cutting object' });
+    setState({ toast: null });
     const toStl = instanceMatrix(o, inst).multiply(objectMatrix(o).invert()).invert();
     const p = cutPoint(s, c)!.applyMatrix4(toStl);
     const n = cutNormal(c).transformDirection(toStl);
@@ -101,7 +102,7 @@ export async function performCut() {
     toast(error instanceof Error ? error.message : String(error));
   } finally {
     busy = false;
-    if (getState().loading === 'Cutting object') setState({ loading: null });
+    overlay.end();
   }
 }
 
