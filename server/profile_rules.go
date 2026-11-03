@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"maps"
 	"math"
 	"slices"
 	"sort"
@@ -335,4 +336,116 @@ func (d *dynamicProfile) availableHeights(rule *worksWithRule, ctx dynamicContex
 	}
 	slices.Sort(heights)
 	return heights
+}
+
+const maxBaseChain = 4
+
+func baseChain(profiles map[string]map[string]json.RawMessage, id string) ([]map[string]json.RawMessage, string) {
+	anchor := func(p map[string]json.RawMessage) string {
+		var b struct{ Name, Vendor string }
+		json.Unmarshal(p["base"], &b)
+		return b.Vendor + "\n" + b.Name
+	}
+	var chain []map[string]json.RawMessage
+	seen := map[string]bool{}
+	for p := profiles[id]; p != nil; {
+		if seen[stringValue(p["id"])] {
+			return chain, "profile_base_cycle"
+		}
+		seen[stringValue(p["id"])] = true
+		chain = append(chain, p)
+		if len(chain) > maxBaseChain {
+			return chain, "profile_base_depth"
+		}
+		parentID := stringValue(p["parentId"])
+		if parentID == "" {
+			break
+		}
+		parent := profiles[parentID]
+		if parent == nil || stringValue(parent["type"]) != stringValue(p["type"]) || anchor(parent) != anchor(p) {
+			return chain, "profile_base_invalid"
+		}
+		p = parent
+	}
+	return chain, ""
+}
+
+func chainRule(chain []map[string]json.RawMessage, typ string) *worksWithRule {
+	for _, p := range chain {
+		if raw, ok := p["applicability"]; ok {
+			rule, _ := parseWorksWith(raw, typ)
+			return rule
+		}
+	}
+	return nil
+}
+
+func chainDynamic(chain []map[string]json.RawMessage, typ string) *dynamicProfile {
+	var merged *dynamicProfile
+	for i := len(chain) - 1; i >= 0; i-- {
+		raw, ok := chain[i]["dynamic"]
+		if !ok {
+			continue
+		}
+		d, err := parseDynamic(raw, typ)
+		if err != nil {
+			continue
+		}
+		if merged == nil {
+			merged = &dynamicProfile{Schema: 1}
+		}
+		merged.Reference = d.Reference
+		for _, l := range d.Layers {
+			at := slices.IndexFunc(merged.Layers, func(m dynamicLayer) bool { return sameWhen(m.When, l.When) })
+			if at < 0 {
+				merged.Layers = append(merged.Layers, dynamicLayer{ID: l.ID, When: l.When, Values: maps.Clone(l.Values)})
+				continue
+			}
+			for k, v := range l.Values {
+				merged.Layers[at].Values[k] = v
+			}
+		}
+	}
+	return merged
+}
+
+type chainLink struct {
+	Overlay map[string]json.RawMessage `json:"overlay"`
+	Dynamic *dynamicProfile            `json:"dynamic"`
+}
+
+func resolveChain(links []chainLink, typ string, ctx dynamicContext, below map[string]json.RawMessage) map[string]json.RawMessage {
+	out, nozzleSourced := map[string]json.RawMessage{}, map[string]bool{}
+	var reference *dynamicProfile
+	for _, link := range links {
+		for k, v := range link.Overlay {
+			out[k], nozzleSourced[k] = v, false
+		}
+		if link.Dynamic == nil {
+			continue
+		}
+		reference = link.Dynamic
+		layers := slices.Clone(link.Dynamic.Layers)
+		sort.SliceStable(layers, func(i, j int) bool { return rank(layers[i].When) < rank(layers[j].When) })
+		here := contextWhen(ctx, typ)
+		for _, l := range layers {
+			if covers(here, l.When) {
+				for k, v := range l.Values {
+					out[k], nozzleSourced[k] = v, l.When.Nozzle != nil
+				}
+			}
+		}
+	}
+	if reference == nil || typ != "process" {
+		return out
+	}
+	base := maps.Clone(below)
+	maps.Copy(base, out)
+	derived := (&dynamicProfile{Reference: reference.Reference}).resolve(typ, ctx, base)
+	for k, v := range derived {
+		if !nozzleSourced[k] {
+			out[k] = v
+		}
+	}
+	return out
 }

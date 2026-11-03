@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import type { Config } from '../api/types';
-import { availableHeights, dynamicConflicts, resolveDynamic, type DynamicRecord } from './dynamic.ts';
+import { availableHeights, chainRecord, dynamicConflicts, resolveChain, resolveDynamic, type DynamicRecord } from './dynamic.ts';
 import { matchesFilament, matchesPrint, matchesPrinter, validWorksWith } from './works-with.ts';
 
 const spec = JSON.parse(readFileSync(new URL('../../../server/profile_dynamic_spec.json', import.meta.url), 'utf8'));
@@ -22,6 +22,14 @@ for (const c of spec.rules) {
   for (const p of c.printers ?? []) check(matchesPrinter(c.rule, p) === p.match, `printer ${JSON.stringify(c.rule)} ${JSON.stringify(p)}`, !p.match);
   for (const f of c.filaments ?? []) check(matchesFilament(c.rule, f) === f.match, `filament ${JSON.stringify(f)}`, !f.match);
   for (const p of c.prints ?? []) check(matchesPrint(c.rule, p.id) === p.match, `print ${JSON.stringify(p)}`, !p.match);
+}
+for (const c of spec.chain.resolve) {
+  const got = resolveChain(spec.chain.links, c.ctx, spec.chain.below).config;
+  check(same(got, c.config), `chain resolve ${JSON.stringify(c.ctx)}`, got);
+}
+for (const c of spec.chain.heights) {
+  const got = availableHeights(chainRecord(spec.chain.links), c.ctx);
+  check(JSON.stringify(got) === JSON.stringify(c.heights), `chain heights ${JSON.stringify(c.ctx)}`, got);
 }
 for (const c of spec.valid) check(validWorksWith(c.rule, c.type) === c.valid, `valid ${c.type} ${JSON.stringify(c.rule)}`, !c.valid);
 console.log(failed ? `${failed} failed` : 'profile_dynamic_spec: all passed');

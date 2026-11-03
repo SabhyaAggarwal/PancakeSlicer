@@ -1,77 +1,622 @@
 {
-  "comment": "Shared by profile_rules_test.go and web/src/profiles/dynamic-spec.ts. Design: docs/HLSD/profile-library.md.",
-  "dynamic": {
-    "type": "process",
-    "applicability": {"schema": 2, "printers": {"models": ["Bambu Lab A1 mini", "Bambu Lab A1"]}},
-    "dynamic": {
-      "schema": 1,
-      "reference": {"nozzle": 0.4, "layerHeight": 0.2},
-      "layers": [
-        {"id": "layer:n02", "when": {"nozzle": 0.2}, "values": {"outer_wall_line_width": "0.22", "wall_loops": "3"}},
-        {"id": "layer:h008", "when": {"layerHeight": 0.08}, "values": {"outer_wall_line_width": "0.4", "top_shell_layers": "7"}},
-        {"id": "layer:h006", "when": {"layerHeight": 0.06}, "values": {"wall_loops": "4"}},
-        {"id": "layer:n02h006", "when": {"nozzle": 0.2, "layerHeight": 0.06}, "values": {"wall_loops": "5"}},
-        {"id": "layer:mini", "when": {"printerModel": "Bambu Lab A1 mini"}, "values": {"top_shell_layers": "5", "sparse_infill_density": "20%"}},
-        {"id": "layer:h012", "when": {"layerHeight": 0.12}, "values": {"sparse_infill_density": "10%"}},
-        {"id": "layer:n04h008", "when": {"nozzle": 0.4, "layerHeight": 0.08}, "values": {}},
-        {"id": "layer:n02h004", "when": {"nozzle": 0.2, "layerHeight": 0.04}, "values": {}}
-      ]
-    },
-    "below": {"line_width": "0.42", "outer_wall_line_width": "0.42", "inner_wall_line_width": "100%", "sparse_infill_line_width": "0", "layer_height": "0.2"}
+ "comment": "Shared by profile_rules_test.go and web/src/profiles/dynamic-spec.ts. Design: docs/HLSD/profile-library.md.",
+ "dynamic": {
+  "type": "process",
+  "applicability": {
+   "schema": 2,
+   "printers": {
+    "models": [
+     "Bambu Lab A1 mini",
+     "Bambu Lab A1"
+    ]
+   }
   },
+  "dynamic": {
+   "schema": 1,
+   "reference": {
+    "nozzle": 0.4,
+    "layerHeight": 0.2
+   },
+   "layers": [
+    {
+     "id": "layer:n02",
+     "when": {
+      "nozzle": 0.2
+     },
+     "values": {
+      "outer_wall_line_width": "0.22",
+      "wall_loops": "3"
+     }
+    },
+    {
+     "id": "layer:h008",
+     "when": {
+      "layerHeight": 0.08
+     },
+     "values": {
+      "outer_wall_line_width": "0.4",
+      "top_shell_layers": "7"
+     }
+    },
+    {
+     "id": "layer:h006",
+     "when": {
+      "layerHeight": 0.06
+     },
+     "values": {
+      "wall_loops": "4"
+     }
+    },
+    {
+     "id": "layer:n02h006",
+     "when": {
+      "nozzle": 0.2,
+      "layerHeight": 0.06
+     },
+     "values": {
+      "wall_loops": "5"
+     }
+    },
+    {
+     "id": "layer:mini",
+     "when": {
+      "printerModel": "Bambu Lab A1 mini"
+     },
+     "values": {
+      "top_shell_layers": "5",
+      "sparse_infill_density": "20%"
+     }
+    },
+    {
+     "id": "layer:h012",
+     "when": {
+      "layerHeight": 0.12
+     },
+     "values": {
+      "sparse_infill_density": "10%"
+     }
+    },
+    {
+     "id": "layer:n04h008",
+     "when": {
+      "nozzle": 0.4,
+      "layerHeight": 0.08
+     },
+     "values": {}
+    },
+    {
+     "id": "layer:n02h004",
+     "when": {
+      "nozzle": 0.2,
+      "layerHeight": 0.04
+     },
+     "values": {}
+    }
+   ]
+  },
+  "below": {
+   "line_width": "0.42",
+   "outer_wall_line_width": "0.42",
+   "inner_wall_line_width": "100%",
+   "sparse_infill_line_width": "0",
+   "layer_height": "0.2"
+  }
+ },
+ "resolve": [
+  {
+   "ctx": {
+    "printerModel": "Bambu Lab A1 mini",
+    "nozzle": 0.4,
+    "layerHeight": 0.2
+   },
+   "config": {
+    "top_shell_layers": "5",
+    "sparse_infill_density": "20%",
+    "layer_height": "0.2"
+   },
+   "conflicts": []
+  },
+  {
+   "ctx": {
+    "printerModel": "Bambu Lab A1",
+    "nozzle": 0.4,
+    "layerHeight": 0.08
+   },
+   "config": {
+    "outer_wall_line_width": "0.4",
+    "top_shell_layers": "7",
+    "layer_height": "0.08"
+   },
+   "conflicts": []
+  },
+  {
+   "ctx": {
+    "printerModel": "Bambu Lab A1 mini",
+    "nozzle": 0.2,
+    "layerHeight": 0.06
+   },
+   "config": {
+    "outer_wall_line_width": "0.22",
+    "wall_loops": "5",
+    "top_shell_layers": "5",
+    "sparse_infill_density": "20%",
+    "layer_height": "0.06",
+    "line_width": "0.21"
+   },
+   "conflicts": []
+  },
+  {
+   "ctx": {
+    "printerModel": "Bambu Lab A1",
+    "nozzle": 0.2,
+    "layerHeight": 0.08
+   },
+   "config": {
+    "outer_wall_line_width": "0.22",
+    "wall_loops": "3",
+    "top_shell_layers": "7",
+    "layer_height": "0.08",
+    "line_width": "0.21"
+   },
+   "conflicts": [
+    {
+     "key": "outer_wall_line_width",
+     "winner": "layer:n02",
+     "loser": "layer:h008"
+    }
+   ]
+  },
+  {
+   "ctx": {
+    "printerModel": "Bambu Lab A1 mini",
+    "nozzle": 0.4,
+    "layerHeight": 0.12
+   },
+   "config": {
+    "top_shell_layers": "5",
+    "sparse_infill_density": "10%",
+    "layer_height": "0.12"
+   },
+   "conflicts": [
+    {
+     "key": "sparse_infill_density",
+     "winner": "layer:h012",
+     "loser": "layer:mini"
+    }
+   ]
+  },
+  {
+   "ctx": {
+    "printerModel": "Bambu Lab A1",
+    "nozzle": 0.6,
+    "layerHeight": 0.2
+   },
+   "config": {
+    "layer_height": "0.2",
+    "line_width": "0.63",
+    "outer_wall_line_width": "0.63"
+   },
+   "conflicts": []
+  }
+ ],
+ "heights": [
+  {
+   "ctx": {
+    "printerModel": "Bambu Lab A1 mini",
+    "nozzle": 0.2
+   },
+   "heights": [
+    0.04,
+    0.06,
+    0.08,
+    0.12
+   ]
+  },
+  {
+   "ctx": {
+    "printerModel": "Bambu Lab A1",
+    "nozzle": 0.4
+   },
+   "heights": [
+    0.08,
+    0.12,
+    0.2
+   ]
+  },
+  {
+   "ctx": {
+    "printerModel": "Bambu Lab A1",
+    "nozzle": 0.6
+   },
+   "heights": [
+    0.2
+   ]
+  },
+  {
+   "ctx": {
+    "printerModel": "Bambu Lab X1 Carbon",
+    "nozzle": 0.4
+   },
+   "heights": []
+  }
+ ],
+ "rules": [
+  {
+   "type": "process",
+   "rule": {
+    "schema": 2,
+    "printers": {
+     "models": [
+      "Bambu Lab A1"
+     ]
+    },
+    "nozzle": {
+     "min": 0.3,
+     "max": 0.6
+    },
+    "exclude": [
+     "profile:p2"
+    ]
+   },
+   "printers": [
+    {
+     "id": "profile:p1",
+     "printerModel": "Bambu Lab A1",
+     "nozzle": 0.4,
+     "match": true
+    },
+    {
+     "id": "profile:p2",
+     "printerModel": "Bambu Lab A1",
+     "nozzle": 0.4,
+     "match": false
+    },
+    {
+     "id": "profile:p3",
+     "printerModel": "Bambu Lab A1",
+     "nozzle": 0.8,
+     "match": false
+    },
+    {
+     "id": "profile:p4",
+     "printerModel": "Bambu Lab A1 mini",
+     "nozzle": 0.4,
+     "match": false
+    }
+   ]
+  },
+  {
+   "type": "process",
+   "rule": {
+    "schema": 2,
+    "nozzle": {
+     "sizes": [
+      0.4,
+      0.6
+     ]
+    },
+    "filaments": {
+     "types": [
+      "PLA",
+      "PETG"
+     ]
+    }
+   },
+   "printers": [
+    {
+     "id": "profile:p1",
+     "printerModel": "Any",
+     "nozzle": 0.6,
+     "match": true
+    },
+    {
+     "id": "profile:p1",
+     "printerModel": "Any",
+     "nozzle": 0.2,
+     "match": false
+    }
+   ],
+   "filaments": [
+    {
+     "id": "profile:f1",
+     "type": "pla",
+     "match": true
+    },
+    {
+     "id": "profile:f2",
+     "type": "ABS",
+     "match": false
+    }
+   ]
+  },
+  {
+   "type": "filament",
+   "rule": {
+    "schema": 2,
+    "printers": {
+     "printerIds": [
+      "profile:p1"
+     ]
+    },
+    "prints": {
+     "profileIds": [
+      "profile:q1"
+     ]
+    }
+   },
+   "printers": [
+    {
+     "id": "profile:p1",
+     "printerModel": "Any",
+     "nozzle": 0.4,
+     "match": true
+    },
+    {
+     "id": "profile:p9",
+     "printerModel": "Any",
+     "nozzle": 0.4,
+     "match": false
+    }
+   ],
+   "prints": [
+    {
+     "id": "profile:q1",
+     "match": true
+    },
+    {
+     "id": "profile:q2",
+     "match": false
+    }
+   ]
+  }
+ ],
+ "valid": [
+  {
+   "type": "process",
+   "rule": {
+    "schema": 2
+   },
+   "valid": true
+  },
+  {
+   "type": "process",
+   "rule": {
+    "schema": 1,
+    "mode": "only",
+    "printerIds": []
+   },
+   "valid": false
+  },
+  {
+   "type": "process",
+   "rule": {
+    "schema": 2,
+    "printers": {
+     "models": []
+    }
+   },
+   "valid": false
+  },
+  {
+   "type": "process",
+   "rule": {
+    "schema": 2,
+    "printers": {
+     "models": [
+      "A"
+     ],
+     "printerIds": [
+      "profile:x"
+     ]
+    }
+   },
+   "valid": false
+  },
+  {
+   "type": "process",
+   "rule": {
+    "schema": 2,
+    "nozzle": {
+     "min": 0.6,
+     "max": 0.3
+    }
+   },
+   "valid": false
+  },
+  {
+   "type": "process",
+   "rule": {
+    "schema": 2,
+    "prints": {
+     "profileIds": [
+      "profile:q"
+     ]
+    }
+   },
+   "valid": false
+  },
+  {
+   "type": "filament",
+   "rule": {
+    "schema": 2,
+    "filaments": {
+     "types": [
+      "PLA"
+     ]
+    }
+   },
+   "valid": false
+  },
+  {
+   "type": "filament",
+   "rule": {
+    "schema": 2,
+    "prints": {
+     "profileIds": [
+      "profile:q"
+     ]
+    }
+   },
+   "valid": true
+  },
+  {
+   "type": "machine",
+   "rule": {
+    "schema": 2,
+    "filaments": {
+     "types": [
+      "PLA"
+     ]
+    }
+   },
+   "valid": true
+  },
+  {
+   "type": "machine",
+   "rule": {
+    "schema": 2,
+    "nozzle": {
+     "sizes": [
+      0.4
+     ]
+    }
+   },
+   "valid": false
+  }
+ ],
+ "chain": {
+  "below": {
+   "line_width": "0.42",
+   "outer_wall_line_width": "0.42",
+   "wall_loops": "2",
+   "layer_height": "0.2"
+  },
+  "links": [
+   {
+    "type": "process",
+    "overlay": {
+     "top_shell_layers": "4",
+     "wall_loops": "2"
+    },
+    "applicability": {
+     "schema": 2,
+     "printers": {
+      "models": [
+       "Bambu Lab A1"
+      ]
+     }
+    },
+    "dynamic": {
+     "schema": 1,
+     "reference": {
+      "nozzle": 0.4,
+      "layerHeight": 0.2
+     },
+     "layers": [
+      {
+       "id": "layer:b-n02",
+       "when": {
+        "nozzle": 0.2
+       },
+       "values": {
+        "wall_loops": "3",
+        "outer_wall_line_width": "0.22",
+        "top_shell_layers": "6"
+       }
+      }
+     ]
+    }
+   },
+   {
+    "type": "process",
+    "overlay": {
+     "wall_loops": "5"
+    },
+    "dynamic": {
+     "schema": 1,
+     "reference": {
+      "nozzle": 0.4,
+      "layerHeight": 0.2
+     },
+     "layers": [
+      {
+       "id": "layer:c-h012",
+       "when": {
+        "layerHeight": 0.12
+       },
+       "values": {
+        "sparse_infill_density": "15%"
+       }
+      },
+      {
+       "id": "layer:c-n02",
+       "when": {
+        "nozzle": 0.2
+       },
+       "values": {
+        "top_shell_layers": "7"
+       }
+      }
+     ]
+    }
+   }
+  ],
   "resolve": [
-    {"ctx": {"printerModel": "Bambu Lab A1 mini", "nozzle": 0.4, "layerHeight": 0.2},
-     "config": {"top_shell_layers": "5", "sparse_infill_density": "20%", "layer_height": "0.2"}, "conflicts": []},
-    {"ctx": {"printerModel": "Bambu Lab A1", "nozzle": 0.4, "layerHeight": 0.08},
-     "config": {"outer_wall_line_width": "0.4", "top_shell_layers": "7", "layer_height": "0.08"}, "conflicts": []},
-    {"ctx": {"printerModel": "Bambu Lab A1 mini", "nozzle": 0.2, "layerHeight": 0.06},
-     "config": {"outer_wall_line_width": "0.22", "wall_loops": "5", "top_shell_layers": "5", "sparse_infill_density": "20%", "layer_height": "0.06", "line_width": "0.21"},
-     "conflicts": []},
-    {"ctx": {"printerModel": "Bambu Lab A1", "nozzle": 0.2, "layerHeight": 0.08},
-     "config": {"outer_wall_line_width": "0.22", "wall_loops": "3", "top_shell_layers": "7", "layer_height": "0.08", "line_width": "0.21"},
-     "conflicts": [{"key": "outer_wall_line_width", "winner": "layer:n02", "loser": "layer:h008"}]},
-    {"ctx": {"printerModel": "Bambu Lab A1 mini", "nozzle": 0.4, "layerHeight": 0.12},
-     "config": {"top_shell_layers": "5", "sparse_infill_density": "10%", "layer_height": "0.12"},
-     "conflicts": [{"key": "sparse_infill_density", "winner": "layer:h012", "loser": "layer:mini"}]},
-    {"ctx": {"printerModel": "Bambu Lab A1", "nozzle": 0.6, "layerHeight": 0.2},
-     "config": {"layer_height": "0.2", "line_width": "0.63", "outer_wall_line_width": "0.63"}, "conflicts": []}
+   {
+    "ctx": {
+     "printerModel": "Bambu Lab A1",
+     "nozzle": 0.2,
+     "layerHeight": 0.12
+    },
+    "config": {
+     "top_shell_layers": "7",
+     "wall_loops": "5",
+     "outer_wall_line_width": "0.22",
+     "sparse_infill_density": "15%",
+     "layer_height": "0.12",
+     "line_width": "0.21"
+    }
+   },
+   {
+    "ctx": {
+     "printerModel": "Bambu Lab A1",
+     "nozzle": 0.4,
+     "layerHeight": 0.2
+    },
+    "config": {
+     "top_shell_layers": "4",
+     "wall_loops": "5",
+     "layer_height": "0.2"
+    }
+   }
   ],
   "heights": [
-    {"ctx": {"printerModel": "Bambu Lab A1 mini", "nozzle": 0.2}, "heights": [0.04, 0.06, 0.08, 0.12]},
-    {"ctx": {"printerModel": "Bambu Lab A1", "nozzle": 0.4}, "heights": [0.08, 0.12, 0.2]},
-    {"ctx": {"printerModel": "Bambu Lab A1", "nozzle": 0.6}, "heights": [0.2]},
-    {"ctx": {"printerModel": "Bambu Lab X1 Carbon", "nozzle": 0.4}, "heights": []}
-  ],
-  "rules": [
-    {"type": "process", "rule": {"schema": 2, "printers": {"models": ["Bambu Lab A1"]}, "nozzle": {"min": 0.3, "max": 0.6}, "exclude": ["profile:p2"]},
-     "printers": [
-       {"id": "profile:p1", "printerModel": "Bambu Lab A1", "nozzle": 0.4, "match": true},
-       {"id": "profile:p2", "printerModel": "Bambu Lab A1", "nozzle": 0.4, "match": false},
-       {"id": "profile:p3", "printerModel": "Bambu Lab A1", "nozzle": 0.8, "match": false},
-       {"id": "profile:p4", "printerModel": "Bambu Lab A1 mini", "nozzle": 0.4, "match": false}]},
-    {"type": "process", "rule": {"schema": 2, "nozzle": {"sizes": [0.4, 0.6]}, "filaments": {"types": ["PLA", "PETG"]}},
-     "printers": [
-       {"id": "profile:p1", "printerModel": "Any", "nozzle": 0.6, "match": true},
-       {"id": "profile:p1", "printerModel": "Any", "nozzle": 0.2, "match": false}],
-     "filaments": [
-       {"id": "profile:f1", "type": "pla", "match": true},
-       {"id": "profile:f2", "type": "ABS", "match": false}]},
-    {"type": "filament", "rule": {"schema": 2, "printers": {"printerIds": ["profile:p1"]}, "prints": {"profileIds": ["profile:q1"]}},
-     "printers": [
-       {"id": "profile:p1", "printerModel": "Any", "nozzle": 0.4, "match": true},
-       {"id": "profile:p9", "printerModel": "Any", "nozzle": 0.4, "match": false}],
-     "prints": [{"id": "profile:q1", "match": true}, {"id": "profile:q2", "match": false}]}
-  ],
-  "valid": [
-    {"type": "process", "rule": {"schema": 2}, "valid": true},
-    {"type": "process", "rule": {"schema": 1, "mode": "only", "printerIds": []}, "valid": false},
-    {"type": "process", "rule": {"schema": 2, "printers": {"models": []}}, "valid": false},
-    {"type": "process", "rule": {"schema": 2, "printers": {"models": ["A"], "printerIds": ["profile:x"]}}, "valid": false},
-    {"type": "process", "rule": {"schema": 2, "nozzle": {"min": 0.6, "max": 0.3}}, "valid": false},
-    {"type": "process", "rule": {"schema": 2, "prints": {"profileIds": ["profile:q"]}}, "valid": false},
-    {"type": "filament", "rule": {"schema": 2, "filaments": {"types": ["PLA"]}}, "valid": false},
-    {"type": "filament", "rule": {"schema": 2, "prints": {"profileIds": ["profile:q"]}}, "valid": true},
-    {"type": "machine", "rule": {"schema": 2, "filaments": {"types": ["PLA"]}}, "valid": true},
-    {"type": "machine", "rule": {"schema": 2, "nozzle": {"sizes": [0.4]}}, "valid": false}
+   {
+    "ctx": {
+     "printerModel": "Bambu Lab A1",
+     "nozzle": 0.2
+    },
+    "heights": [
+     0.12
+    ]
+   },
+   {
+    "ctx": {
+     "printerModel": "Bambu Lab A1",
+     "nozzle": 0.4
+    },
+    "heights": [
+     0.12,
+     0.2
+    ]
+   },
+   {
+    "ctx": {
+     "printerModel": "Bambu Lab A1 mini",
+     "nozzle": 0.4
+    },
+    "heights": []
+   }
   ]
+ }
 }

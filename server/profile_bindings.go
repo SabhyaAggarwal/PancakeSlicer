@@ -90,11 +90,11 @@ func (s *Server) validateProfileBindings(req *JobRequest) *profileProblem {
 		if anchor == "" || anchor != selected.native {
 			return problem("profile_anchor_mismatch", "repair_profile", "Repair the profile's native base before slicing; an owned ID or label cannot replace its engine profile name.", selected.kind, selected.native, selected.slot)
 		}
-		if raw, exists := p["applicability"]; exists {
-			rule, err := parseWorksWith(raw, selected.kind)
-			if err != nil {
-				return problem("profile_applicability_invalid", "repair_profile", "Repair this profile's Works with rule before slicing.", selected.kind, selected.native, selected.slot)
-			}
+		chain, chainCode := baseChain(profiles, selected.id)
+		if chainCode != "" {
+			return problem(chainCode, "edit_base", "Repair this profile's base before slicing.", selected.kind, selected.native, selected.slot)
+		}
+		if rule := chainRule(chain, selected.kind); rule != nil {
 			ok := selected.kind == "machine" || rule.matchesPrinter(printer)
 			if selected.kind == "filament" {
 				ok = ok && rule.matchesPrint(ids.Process)
@@ -107,22 +107,17 @@ func (s *Server) validateProfileBindings(req *JobRequest) *profileProblem {
 				return problem("profile_not_enabled", "edit_applicability", "This profile's Works with rule does not include this printer, nozzle or filament. Edit Works with or choose another profile.", selected.kind, selected.native, selected.slot)
 			}
 		}
-		if raw, exists := p["dynamic"]; exists && selected.kind != "machine" {
-			d, _ := parseDynamic(raw, selected.kind)
+		if d := chainDynamic(chain, selected.kind); d != nil && selected.kind != "machine" {
 			var variant *dynamicContext
 			if selected.kind == "process" {
 				variant = ids.Variants.Process
 			} else if selected.slot-1 < len(ids.Variants.Filaments) {
 				variant = ids.Variants.Filaments[selected.slot-1]
 			}
-			available := d != nil && variant != nil && variant.PrinterModel == printer.Model && sameMm(variant.Nozzle, printer.Nozzle)
+			available := variant != nil && variant.PrinterModel == printer.Model && sameMm(variant.Nozzle, printer.Nozzle)
 			if available && selected.kind == "process" {
-				var rule *worksWithRule
-				if raw, ok := p["applicability"]; ok {
-					rule, _ = parseWorksWith(raw, "process")
-				}
 				variant.PrinterID = ids.Printer
-				available = slices.ContainsFunc(d.availableHeights(rule, *variant), func(h float64) bool { return sameMm(h, variant.LayerHeight) })
+				available = slices.ContainsFunc(d.availableHeights(chainRule(chain, "process"), *variant), func(h float64) bool { return sameMm(h, variant.LayerHeight) })
 			}
 			if !available {
 				return problem("profile_variant_unavailable", "choose_layer_height", "This layer height or nozzle isn't available in this profile for the selected printer. Choose another layer height.", selected.kind, selected.native, selected.slot)

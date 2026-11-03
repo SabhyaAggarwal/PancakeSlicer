@@ -223,6 +223,12 @@ func libraryProfiles(doc profileLibraryDocument) (map[string]map[string]json.Raw
 				return nil, fmt.Errorf("%s: %w", name, err)
 			}
 		}
+		if raw, ok := p["parentId"]; ok && !strings.HasPrefix(stringValue(raw), "profile:") {
+			return nil, errors.New("parentId names a profile: ID")
+		}
+		if raw, ok := p["baseRole"]; ok && stringValue(raw) != "base" && stringValue(raw) != "base-only" {
+			return nil, errors.New("baseRole is base or base-only")
+		}
 		if raw, ok := p["mergedInto"]; ok && !strings.HasPrefix(stringValue(raw), "profile:") {
 			return nil, errors.New("mergedInto names the dynamic profile's ID")
 		}
@@ -351,6 +357,45 @@ func jsonEqual(a, b json.RawMessage) bool {
 	return json.Unmarshal(a, &x) == nil && json.Unmarshal(b, &y) == nil && fmt.Sprint(x) == fmt.Sprint(y)
 }
 
+func baseChainProblem(next, previous map[string]map[string]json.RawMessage) (int, string, string) {
+	live := func(p map[string]json.RawMessage) bool {
+		return p != nil && (len(p["archived"]) == 0 || string(p["archived"]) == "null")
+	}
+	moved := map[string]bool{}
+	for id, p := range next {
+		if old := previous[id]; old == nil || stringValue(old["parentId"]) != stringValue(p["parentId"]) {
+			moved[id] = true
+		}
+	}
+	messages := map[string]string{
+		"profile_base_cycle":   "A profile cannot be based on itself through its bases",
+		"profile_base_depth":   "A profile can be based on at most 4 of my profiles in a row",
+		"profile_base_invalid": "A profile can only be based on an existing profile of the same type and system preset",
+	}
+	for id := range next {
+		chain, code := baseChain(next, id)
+		if code == "" || !slices.ContainsFunc(chain, func(p map[string]json.RawMessage) bool { return moved[stringValue(p["id"])] }) {
+			continue
+		}
+		status := 422
+		if code == "profile_base_cycle" {
+			status = 409
+		}
+		return status, code, messages[code] + ": " + stringValue(next[id]["name"])
+	}
+	for id, old := range previous {
+		if !live(old) || live(next[id]) {
+			continue
+		}
+		for _, child := range next {
+			if live(child) && stringValue(child["parentId"]) == id {
+				return 409, "profile_base_children", "Re-parent the profiles based on " + stringValue(old["name"]) + " before removing it: " + stringValue(child["name"])
+			}
+		}
+	}
+	return 0, "", ""
+}
+
 func (s *Server) profileValue(p map[string]json.RawMessage, key string) json.RawMessage {
 	var overlay map[string]json.RawMessage
 	json.Unmarshal(p["overlay"], &overlay)
@@ -468,6 +513,13 @@ func (s *Server) putProfileLibrary(w http.ResponseWriter, r *http.Request) {
 		if _, merged := p["mergedInto"]; merged && old["mergedInto"] == nil {
 			convert = true
 		}
+		if stringValue(p["parentId"]) != stringValue(old["parentId"]) || stringValue(p["baseRole"]) != stringValue(old["baseRole"]) {
+			convert = true
+		}
+	}
+	if status, code, message := baseChainProblem(next, previous); code != "" {
+		libraryFailure(w, status, code, message, "edit_base", revision)
+		return
 	}
 	if name := s.worksWithNone(next, previous); name != "" {
 		libraryFailure(w, 422, "profile_works_with_none", "A profile must work with at least one printer: "+name, "edit_applicability", revision)

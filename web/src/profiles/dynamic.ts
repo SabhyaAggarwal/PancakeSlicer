@@ -251,3 +251,53 @@ export function splitToNormal<P extends DynamicRecord & { id?: string; name: str
       applicability: { ...(p.applicability ?? { schema: 2 }), nozzle: { sizes: [ctx.nozzle] } } } as unknown as P;
   });
 }
+
+export interface ChainLink extends DynamicRecord { id?: string; name?: string; overlay: Config }
+export interface ChainSource { link: number; layer?: DynamicLayer }
+
+export function resolveChain(links: ChainLink[], ctx: DynamicContext, below: Config = {}): { config: Config; sources: Record<string, ChainSource> } {
+  const config: Config = {}, sources: Record<string, ChainSource> = {};
+  let reference: DynamicProfile | undefined;
+  links.forEach((link, i) => {
+    for (const [key, value] of Object.entries(link.overlay)) { config[key] = value; sources[key] = { link: i }; }
+    if (!link.dynamic) return;
+    reference = link.dynamic;
+    for (const [key, layer] of Object.entries(layerSources(link, ctx))) { config[key] = layer.values[key]; sources[key] = { link: i, layer }; }
+  });
+  const type = links.at(-1)?.type;
+  if (reference && type === 'process') {
+    const derived = resolveDynamic({ type, dynamic: { ...reference, layers: [] } }, ctx, { ...below, ...config });
+    for (const [key, value] of Object.entries(derived)) if (sources[key]?.layer?.when.nozzle === undefined) config[key] = value;
+  }
+  return { config, sources };
+}
+
+export function chainRecord(links: ChainLink[]): DynamicRecord {
+  const type = links.at(-1)!.type;
+  let dynamic: DynamicProfile | undefined;
+  for (const link of links) if (link.dynamic) {
+    const layers = (dynamic?.layers ?? []).map((l) => ({ ...l, values: { ...l.values } }));
+    for (const l of link.dynamic.layers) {
+      const same = layers.find((m) => sameWhen(m.when, l.when));
+      if (same) Object.assign(same.values, l.values); else layers.push({ ...l, values: { ...l.values } });
+    }
+    dynamic = { schema: 1, reference: link.dynamic.reference, layers };
+  }
+  const applicability = [...links].reverse().find((l) => l.applicability)?.applicability;
+  return { type, ...(dynamic ? { dynamic } : {}), ...(applicability ? { applicability } : {}) };
+}
+
+export function foldBase<P extends ChainLink>(base: ChainLink, child: P): P {
+  const merged = chainRecord([base, child]);
+  return { ...child, overlay: { ...base.overlay, ...child.overlay }, ...(merged.dynamic ? { dynamic: merged.dynamic } : {}),
+    ...(child.applicability ?? base.applicability ? { applicability: child.applicability ?? base.applicability } : {}) };
+}
+
+export function resetToBase<P extends ChainLink>(p: P, key: string): P {
+  const overlay = { ...p.overlay };
+  delete overlay[key];
+  if (!p.dynamic) return { ...p, overlay };
+  let dynamic = p.dynamic;
+  for (const layer of p.dynamic.layers) if (key in layer.values) dynamic = withLayerValue(dynamic, layer.when, key, undefined);
+  return { ...p, overlay, dynamic };
+}
