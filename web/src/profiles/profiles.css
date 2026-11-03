@@ -7,8 +7,8 @@
 :where(.orca-parity) .pf-link:hover { color: var(--ink); }
 :where(.orca-parity) .pf-dim { color: var(--ink-3); font: var(--t-small); }
 
-:where(.orca-parity) .pf-changes-trigger { flex: none; font-weight: 600; white-space: nowrap; }
-:where(.orca-parity) .pf-changes-trigger[aria-expanded='true'] { background: var(--selected); color: var(--selected-foreground); }
+:where(.orca-parity) .pf-changes-trigger { flex: none; white-space: nowrap; }
+:where(.orca-parity) .pf-changes-trigger[aria-expanded='true'] { text-decoration: underline; text-underline-offset: 2px; }
 :where(.orca-parity) .orca-menu.pf-changes-pop { width: min(740px,calc(100vw - 24px)); min-width: 0; max-width: calc(100vw - 24px); max-height: min(560px,var(--radix-popover-content-available-height,calc(100dvh - 24px))); overflow: hidden; display: flex; flex-direction: column; padding: 0; background: var(--panel); }
 :where(.orca-parity) .pf-changes-title { flex: none; padding: 8px 12px; font-size: 15px; font-weight: 650; border-bottom: 1px solid var(--line); }
 :where(.orca-parity) .pf-change-scroll { min-height: 0; overflow: auto; }
@@ -37,7 +37,6 @@
 
 :where(.orca-parity) .pf-pop { position: fixed; z-index: 60; min-width: 260px; max-width: min(340px, calc(100vw - 32px)); padding: var(--s-4); background: var(--panel); border: 1px solid var(--frame); border-radius: var(--r-section); box-shadow: var(--shadow-pop); }
 :where(.orca-parity) .pf-pop-title { margin-bottom: 4px; font: var(--t-small); }
-:where(.orca-parity) .settings-tab { --opt-end: 92px; }
 :where(.orca-parity) .settings-tab .opt-undo { justify-content: flex-start; gap: 2px; }
 
 :where(.orca-parity) .pf-filaments { table-layout: fixed; }

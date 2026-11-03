@@ -1,16 +1,15 @@
 :where(.orca-parity) .pk-trigger { width: 100%; min-width: 0; justify-content: space-between; }
 :where(.orca-parity) .pk-name, :where(.orca-parity) .pk-label { flex: 1; min-width: 0; white-space: normal; overflow-wrap: break-word; text-align: left; }
 :where(.orca-parity) .pk-type, :where(.orca-parity) .pk-brand { display: none; }
-:where(.orca-parity) .pk-caret { flex: none; color: var(--text-dim); }
 :where(.orca-parity) .orca-menu.pk-pop { width: min(560px, calc(100vw - 16px)); padding: 0; overflow: hidden; display: flex; flex-direction: column; max-height: min(520px, var(--radix-popover-content-available-height, calc(100dvh - 16px))); }
 :where(.orca-parity) .pk-body { flex: 1 1 auto; display: grid; grid-template-columns: 144px minmax(0, 1fr); min-height: min(288px, calc(var(--radix-popover-content-available-height, 100dvh) - 64px)); overflow: hidden; }
 :where(.orca-parity) .pk-body.no-rail { grid-template-columns: minmax(0, 1fr); }
-:where(.orca-parity) .pk-rail { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; border-right: 1px solid var(--line); padding: 4px; background: var(--bg-soft); scrollbar-width: thin; }
-:where(.orca-parity) .pk-rail button { flex: none; background: transparent; border: 0; border-radius: 3px; color: var(--text); min-height: 28px; text-align: left; padding: 4px 8px; overflow-wrap: break-word; cursor: pointer; }
-:where(.orca-parity) .pk-rail button:hover { background: var(--hover); }
-:where(.orca-parity) .pk-rail button.active { background: var(--selected); color: var(--selected-foreground); font-weight: 600; }
-:where(.orca-parity) .pk-rail button:focus-visible, :where(.orca-parity) .pk-option:focus-visible, :where(.orca-parity) .pk-star:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
-:where(.orca-parity) .pk-list { min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px; scrollbar-width: thin; }
+:where(.orca-parity) .pk-rail { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; border-right: 1px solid var(--line); padding: 4px; background: var(--bg-soft); }
+:where(.orca-parity) .pk-rail > button { flex: none; min-height: var(--h-compact); padding: 4px var(--s-3); border: 0; border-radius: var(--r-1); background: transparent; color: var(--text); text-align: left; overflow-wrap: break-word; cursor: pointer; }
+:where(.orca-parity) .pk-rail > button:hover { background: var(--hover); }
+:where(.orca-parity) .pk-rail > button.active { background: var(--selected); color: var(--selected-foreground); font-weight: 500; }
+:where(.orca-parity) .pk-rail button:focus-visible, :where(.orca-parity) .pk-option:focus-visible, :where(.orca-parity) .pk-star:focus-visible { outline-offset: -1px; }
+:where(.orca-parity) .pk-list { min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px; }
 :where(.orca-parity) .pk-row { display: flex; align-items: stretch; min-height: 28px; border-radius: 3px; }
 :where(.orca-parity) .pk-row.is-active { background: var(--selected); }
 :where(.orca-parity) .pk-option { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; min-height: 28px; padding: 4px 8px; border: 0; border-radius: 3px; background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
@@ -28,6 +27,7 @@
   :where(.orca-parity) .orca-menu.pk-pop { width: calc(100vw - 16px); }
   :where(.orca-parity) .pk-body { display: flex; flex-direction: column; }
   :where(.orca-parity) .pk-rail { flex: none; flex-direction: row; flex-wrap: wrap; overflow: visible; border-right: 0; border-bottom: 1px solid var(--line); }
+  :where(.orca-parity) .pk-rail button[data-row-fill] { flex: 1 1 auto; text-align: center; }
   :where(.orca-parity) .pk-list { flex: 1 1 auto; }
   :where(.orca-parity) .pk-meta { display: none; }
 }

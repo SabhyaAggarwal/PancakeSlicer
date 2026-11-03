@@ -36,7 +36,7 @@
   --selected-foreground: #f6efff;
   --disabled-foreground: #bcbcca;
   --accent-ink: var(--on-accent);
-  --focus: #b68aff;
+  --focus: #a8a8bc;
   --s-1: 2px; --s-2: 4px; --s-3: 8px; --s-4: 12px; --s-5: 16px; --s-6: 24px; --s-7: 32px;
   --section-header: #43424f; --h-tool: 36px;
   --section-inset: 12px; --section-gap: 8px; --section-heading-gap: 4px;
@@ -46,6 +46,11 @@
   --control-bg: #474754; --selector-bg: #303039; --segment-active: #514663;
   --raised: #42424f; --hover: #484855; --label: #dedee8; --border-control: #777789; --frame: #555562; --rule: #555562; --muted: #cfcfde;
   --shadow-pop: 0 6px 18px #0006;
+  --space-section: var(--s-5); --space-head: var(--s-3); --space-row: var(--s-3); --space-group: var(--s-6); --control-pad-x: var(--s-4);
+  --slant-angle: 10deg; --slant-radius: 3px; --slant-border: var(--line-strong);
+  --slant-fill: var(--control-bg); --slant-fill-hover: var(--hover); --slant-fill-pressed: var(--sunken);
+  --slant-fill-selected: var(--segment-active); --slant-fill-primary: var(--accent); --slant-fill-primary-hover: var(--accent-strong);
+  --slant-fill-tab: color-mix(in srgb, var(--sunken) 45%, var(--panel));
   --dur-1: 80ms; --dur-2: 140ms; --dur-3: 180ms; --ease: ease;
 }
 :root.orca-parity[data-canvas='dark'] { --canvas: #34343b; }

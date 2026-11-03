@@ -7,7 +7,7 @@ import { subscribeTheme } from '../theme';
 import { pixelRatio, watchPixelRatio } from '../plater/pixelRatio';
 import { instanceBox, instanceMatrix, parsePoints } from '../plater/geometry';
 import type { PlateObject } from '../state/store';
-import { colorVertices, type ColorContext } from './colors';
+import { colorKey, colorVertices, type ColorContext } from './colors';
 import type { PreviewData } from './data';
 import { SegmentRenderer, type DrawState, type FrameStats } from './renderer';
 import { binOf, type SurfaceGrid } from './surface-grid';
@@ -50,6 +50,7 @@ export class PreviewScene {
   private draw: DrawState = { range: [0, 0], roleMask: -1, typeMask: 0, optionMask: 0 };
   private frame = 0;
   private colorCtx: ColorContext | null = null;
+  private colorKeyed: string | null = null;
   private timer: { ext: any; query: WebGLQuery | null; gpuMs: number } = { ext: null, query: null, gpuMs: NaN };
   lastFrame: FrameStats & { frameMs: number; gpuMs: number; scale: number } = { blocks: 0, culled: 0, lodBlocks: 0, segments: 0, cpuMs: 0, frameMs: 0, gpuMs: NaN, scale: 1 };
   onFrame: (() => void) | null = null;
@@ -144,6 +145,7 @@ export class PreviewScene {
   setData(d: PreviewData) {
     this.data = d;
     this.uploaded = 0;
+    this.colorKeyed = null;
     this.segments.reset(d);
     this.request();
   }
@@ -189,6 +191,7 @@ export class PreviewScene {
     this.data = b.data;
     this.uploaded = b.uploaded;
     this.colorCtx = b.colorCtx;
+    this.colorKeyed = null;
     this.back = null;
     this.request();
   }
@@ -279,9 +282,12 @@ export class PreviewScene {
   }
 
   setColors(ctx: ColorContext) {
+    const key = colorKey(ctx);
+    const same = key !== null && key === this.colorKeyed;
     this.colorCtx = ctx;
+    this.colorKeyed = key;
     const d = this.data;
-    if (!d) return;
+    if (!d || same) return;
     colorVertices(d, ctx, this.segments.colors, 0, d.loaded);
     this.segments.uploadColors(0, d.loaded);
     this.request();

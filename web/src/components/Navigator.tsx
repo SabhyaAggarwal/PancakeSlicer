@@ -4,6 +4,7 @@ import { cameraCommand, type CameraView } from '../camera';
 import { activeCamera } from '../plater/CameraViews';
 import { useViewOptions } from '../plater/viewOptions';
 import { MenuButton } from './Menu';
+import { Caret } from './Caret';
 
 const FACES: { view: CameraView; label: string; n: [number, number, number]; u: [number, number, number]; v: [number, number, number] }[] = [
   { view: 'top', label: 'Top', n: [0, 0, 1], u: [1, 0, 0], v: [0, -1, 0] },
@@ -52,6 +53,6 @@ export function Navigator() {
         <button key={f.view} type="button" tabIndex={-1} ref={(el) => { faces.current[k] = el; }} className="nav3d-face"
           onClick={() => cameraCommand(f.view)}>{f.label}</button>
       ))}
-    </div><MenuButton className="btn nav-view-control" label="Camera view" items={[{label:'Default view',action:()=>cameraCommand('plate')},...FACES.map(face=>({label:`${face.label} view`,action:()=>cameraCommand(face.view)}))]}>View <span aria-hidden>⌄</span></MenuButton></>
+    </div><MenuButton className="btn nav-view-control" label="Camera view" items={[{label:'Default view',action:()=>cameraCommand('plate')},...FACES.map(face=>({label:`${face.label} view`,action:()=>cameraCommand(face.view)}))]}>View <Caret/></MenuButton></>
   );
 }

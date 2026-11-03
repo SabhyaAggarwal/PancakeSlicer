@@ -6,7 +6,7 @@ import { setState, useStore } from '../state/store';
 const SAVED = { editing: 'Unsaved', saving: 'Saving…', opening: 'Opening…', failed: 'Not saved', missing: 'Not saved' } as const;
 
 export function ProjectTitle() {
-  const name = useStore((s) => (s.projectName ?? s.project?.name ?? s.objects[0]?.name)?.replace(/\.(stl|obj|3mf)$/i, '')) ?? 'Untitled';
+  const name = useStore((s) => (s.projectName ?? s.project?.name ?? s.objects[0]?.name)?.replace(/\.(stl|obj|3mf|drc)$/i, '')) ?? 'Untitled';
   const state = useProject((p) => p.value);
   const id = useProject((p) => p.context.id);
   const [editing, setEditing] = useState(false);

@@ -4,7 +4,7 @@ import { methodAvailability } from '../profiles/method-context';
 import { isMethodSettingSupported } from '../profiles/capabilities';
 import { NozzleField } from '../profiles/SetupRows';
 import { Tabs } from 'radix-ui';
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { Config, ConfigValue, PresetType } from '../api/types';
 import { isDeferred, isHidden, modeVisible, OPTIONS, splitKey, loadTab, useTab, type TabDesc, type TabLine, type OptionDef, type OptionMode } from '../options';
 import { effectiveConfig, effectiveMode, getState, presetEdits, resetOption, resolvePreset, setOption, setState, useStore } from '../state/store';
@@ -13,6 +13,8 @@ import { lineMode, nativeSupportCapable, tabEnvironment } from '../settings-env'
 import { Field } from './Field';
 import { Icon } from './Icon';
 import { InfoTip } from './InfoTip';
+import { useRowFill } from './tab-rows';
+import { preferenceJson, savedPreferencesSnapshot, savePreferences, subscribeSavedPreferences, usePreference } from '../saved-preferences';
 import './settings.css';
 import { SectionHeading } from './SectionHeading';
 
@@ -71,7 +73,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
   const pages = useMemo(() => (desc?.pages ?? []).filter((p) => !p.condition || condition(p.condition, env) !== false)
     .map((p) => ({ ...p, groups: p.groups.filter((g) => !g.condition || condition(g.condition, env) !== false)
       .map((g) => ({ ...g, lines: g.lines.filter((line) =>
-        !line.options.some((k) => states[splitKey(k)[0]]?.visible === false))
+        !line.options.some((k) => states[splitKey(k)[0]]?.visible === false) && !(line.options.length && line.options.every((k) => states[splitKey(k)[0]]?.enabled === false)))
         .map((line) => ({ ...line, options: line.options.filter((k) => fieldVisible(k, line)) }))
         .filter((line, _, all) => line.options.length || (customRow(line) && all.some((l) => l.options.includes('nonplanar_head')))) }))
       .filter((g) => g.lines.length) }))
@@ -86,6 +88,21 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
     if (same) return prior;
     definitionCache.current.set(key, next); return next;
   };
+  usePreference('settings.collapsed');
+  const prefsLoaded = useSyncExternalStore(subscribeSavedPreferences, savedPreferencesSnapshot).hydrated;
+  const collapsedIds = preferenceJson<unknown>('settings.collapsed', []);
+  const collapsed = new Set(Array.isArray(collapsedIds) ? collapsedIds.filter((id): id is string => typeof id === 'string') : []);
+  const [revealed, setRevealed] = useState<string | null>(null);
+  const groupId = (pageTitle: string, groupTitle: string) => `${TAB_OF[type]}/${pageTitle}/${groupTitle}`;
+  const toggleGroup = (id: string, open: boolean) => {
+    if (!prefsLoaded) return;
+    const next = new Set(collapsed);
+    if (open) next.delete(id); else next.add(id);
+    if (!open && revealed === id) setRevealed(null);
+    savePreferences({ 'settings.collapsed': [...next] });
+  };
+  const strip = useRef<HTMLDivElement>(null);
+  useRowFill(strip, `${pages.map((p) => p.title).join('|')}|${auxiliary?.label ?? ''}`);
   const pageModified = (p: TabDesc['pages'][number]) => p.groups.some((g) => g.lines.some((l) => l.options.some((k) => splitKey(k)[0] in dirty)));
   const focus = useStore((s) => (s.settingsFocus?.type === type ? s.settingsFocus : null));
   const body = useRef<HTMLDivElement>(null);
@@ -93,6 +110,8 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
     if (!focus || !desc) return;
     const i = pages.findIndex((p) => p.title === focus.page);
     if (i >= 0) setPageIdx(i);
+    const holder = pages[i]?.groups.find((g) => g.lines.some((l) => l.options.some((k) => splitKey(k)[0] === focus.key)));
+    if (holder) setRevealed(groupId(pages[i].title, holder.title));
     const timer = setTimeout(() => {
       const line = body.current?.querySelector<HTMLElement>(`[data-opt="${CSS.escape(focus.key)}"]`);
       if (!line) return;
@@ -108,7 +127,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
     <div className={`settings-tab ${compact ? 'compact' : ''}`}>
       {bedDialog && <Suspense fallback={<div role="status">Loading bed shape…</div>}><BedShapeDialog config={config} onSet={editor?.set} close={() => setBedDialog(false)} /></Suspense>}
       {!hidePreset && <PresetBar type={type} slot={slot} />}
-      <Tabs.Root className="settings-pages" value={auxiliaryOn ? 'auxiliary' : String(Math.min(pageIdx, pages.length - 1))} onValueChange={v => {setAuxiliaryOn(v === 'auxiliary'); if(v !== 'auxiliary') setPageIdx(Number(v));}}><Tabs.List className="page-bar" aria-label={`${TYPE_NAME[type]} settings`}>
+      <Tabs.Root className="settings-pages" value={auxiliaryOn ? 'auxiliary' : String(Math.min(pageIdx, pages.length - 1))} onValueChange={v => {setAuxiliaryOn(v === 'auxiliary'); if(v !== 'auxiliary') setPageIdx(Number(v));}}><Tabs.List ref={strip} className="page-bar" aria-label={`${TYPE_NAME[type]} settings`}>
         {pages.map((p, i) => (
           <Tabs.Trigger key={p.title} value={String(i)} className={`page-tab ${p === page ? 'active' : ''} ${pageModified(p) ? 'modified' : ''}`} onClick={() => setPageIdx(i)}>
             {p.title}
@@ -122,15 +141,21 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
         {type === 'process' && pageIdx === 0 && <SurfaceSettings config={config} system={system} availability={availability} editor={editor} dirty={dirty} readOnly={readOnly}/>}
         {!desc && <div className="settings-load" role={error || retryError ? 'alert' : 'status'}><span>{retryError || error ? `Settings failed to load: ${retryError ?? error}` : 'Loading settings…'}</span>{(error || retryError) && <button type="button" className="btn" disabled={retrying} onClick={retry}>{retrying ? 'Retrying…' : 'Retry'}</button>}</div>}
         {type === 'process' && page?.title === 'Multimaterial' && getState().filamentSlots.length > 1 && <section className="optgroup"><button type="button" className="btn" onClick={() => setState({flushDialog: true})}>Flush volumes</button></section>}
-        {page?.groups.map((g) => (
-          <section key={g.title} className="optgroup">
+        {page?.groups.map((g) => {
+          const id = groupId(page.title, g.title), open = !g.title || !collapsed.has(id) || revealed === id;
+          const modified = g.lines.some((l) => l.options.some((k) => splitKey(k)[0] in dirty));
+          return <section key={g.title} className="optgroup" data-collapsed={open ? undefined : ''}>
             {g.title && (
               <SectionHeading level="sub" className="optgroup-title">
-                {g.icon && <Icon name={g.icon} size={16} />}
-                <span>{g.title}</span>
+                <button type="button" className={`optgroup-head ${modified ? 'modified' : ''}`} aria-expanded={open} onClick={() => toggleGroup(id, !open)}>
+                  <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  {g.icon && <Icon name={g.icon} size={16} />}
+                  <span>{g.title}</span>
+                  {modified && <span className="optgroup-mark" aria-label="Modified" role="img" />}
+                </button>
               </SectionHeading>
             )}
-            {g.lines.map((line, row) => {
+            {open && g.lines.map((line, row) => {
               let keys = line.options;
               let labels = line.index_labels;
               if (labels) keys = keys.flatMap((k) => labels!.map((_, i) => `${splitKey(k)[0]}#${i}`));
@@ -163,8 +188,8 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
                 })}
               </div>;
             })}
-          </section>
-        ))}
+          </section>;
+        })}
         </>}
       </Tabs.Content></Tabs.Root>
     </div>

@@ -278,7 +278,7 @@ export async function saveProjectSnapshot(runtime: RecoveryRuntime, capture: {
     if (runtime.removed.has(id)) return;
     const meta = { name: nameOf(document), savedAt: Date.now(), objects: plateCount(document), revision };
     const committed: CheckpointDocument = { ...stored, recoveryCheckpoint: receipt.checkpoint };
-    const acknowledgement = await storage.save(id, meta, committed, runtime.activeWrite(id, gen, version) ? thumbnail() ?? undefined : undefined);
+    const acknowledgement = await storage.save(id, meta, committed, meta.objects === 0 ? null : runtime.activeWrite(id, gen, version) ? thumbnail() ?? undefined : undefined);
     if (runtime.activeWrite(id, gen, version)) project.send({ type: 'SAVED', id, ...meta, ...acknowledgement, checkpoint: receipt.checkpoint });
     if (!runtime.activeWrite(id, gen, version) || !project.get().context.conflict) {
       const drafts = await runtime.drafts().catch(() => null);

@@ -1,4 +1,5 @@
 import { Dropdown } from './Dropdown';
+import { Caret } from './Caret';
 import { useState } from 'react';
 import { useTab } from '../options';
 import { effectiveConfig, getState, isSelected, selectedObjectIds, selectionOf, setState, toggleSelection, updateInstance, updateVolume, togglePrintable, useStore } from '../state/store';
@@ -133,7 +134,7 @@ export function ObjectList() {
                         setOpen({ ...open, [o.id]: !open[o.id] });
                       }}
                     >
-                      {open[o.id] ? '▾' : '▸'}
+                      <Caret dir={open[o.id] ? 'down' : 'right'}/>
                     </button>
                   ) : (
                     <span className="ol-expand" />

@@ -9,6 +9,7 @@ import { effectiveConfig, getState, resetOption, setOption, useStore } from '../
 import { Icon } from './Icon';
 import { InfoTip } from './InfoTip';
 import { Switch } from './fields';
+import { Choice } from './kit';
 import { displayLabel } from './fields/labels';
 import { ScopeMark } from '../profiles/Scope';
 import type { ChangeTarget } from '../state/changes';
@@ -110,11 +111,11 @@ export const Field = memo(function Field(props: {
         {label}
         {!props.hideLabel && (help || hint) && <InfoTip label={fullLabel}>{label !== fullLabel && <strong>{fullLabel}</strong>}{hint && <p>{hint}</p>}{help && <p>{help}</p>}<code>{key}</code></InfoTip>}
       </span>
-      <fieldset className="opt-field" aria-description={disabledReason} disabled={props.disabled || (def.nullable && !checked)} style={def.sidetext ? { '--side-ch': def.sidetext.length } as React.CSSProperties : undefined}>
+      <fieldset className="opt-field" aria-description={disabledReason} disabled={props.disabled || (def.nullable && !checked)}>
         <LabelId.Provider value={labelId}>
           {props.widget ?? <Widget def={def} value={def.nullable && !checked ? fallback : value} onCommit={commit} />}
         </LabelId.Provider>
-        {def.sidetext && <span className="opt-side">{def.sidetext}</span>}
+        {def.sidetext && (props.widget || !NUMERIC.has(def.type)) && <span className="opt-side">{def.sidetext}</span>}
       </fieldset>
       <span className="opt-undo">
         {props.scope ? <ScopeMark type={props.type} slot={props.slot} optKey={key} target={props.scope.target} /> : <>
@@ -158,6 +159,9 @@ function Widget({ def, value, onCommit }: { def: OptionDef; value: ConfigValue |
   if ((base === 'enum' || def.enum_values) && def.enum_values?.length) {
     const v = asText(value);
     const known = def.enum_values.includes(v);
+    const labels = def.enum_values.map((ev, i) => def.enum_labels?.[i] ?? ev);
+    if (known && segmented(labels)) return <Choice label={def.full_label || def.label || def.key} value={v} disabled={def.readonly} onChange={onCommit}
+      options={def.enum_values.map((ev, i) => ({ id: ev, label: labels[i], disabled: def.enum_disabled?.includes(ev) }))} />;
     return (
       <Dropdown className="combo" {...named} value={v} disabled={def.readonly} onValueChange={onCommit} options={[...(!known ? [{ value: v, label: v }] : []), ...def.enum_values.map((ev, i) => (
           ({ value: ev, label: def.enum_labels?.[i] ?? ev, disabled: def.enum_disabled?.includes(ev) })
@@ -173,6 +177,11 @@ function Widget({ def, value, onCommit }: { def: OptionDef; value: ConfigValue |
   }
   return <TextBox value={asText(value)} numeric={NUMERIC.has(def.type)} spin={base === 'int'} def={def} onCommit={onCommit} readOnly={def.readonly} />;
 }
+
+const segmented = (labels: string[]) => labels.length >= 2 && labels.length <= 4 && labels.every((l) => l.trim())
+  && labels.reduce((w, l) => w + l.length * 7 + 16, 0) <= 150;
+
+const floatStep = (n: number) => (n ? 10 ** (Math.floor(Math.log10(Math.abs(n))) - 1) : 0.1);
 
 function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean; spin?: boolean; def?: OptionDef; readOnly?: boolean; list?: string; onCommit: (v: ConfigValue) => void }) {
   const named = useLabel();
@@ -194,35 +203,52 @@ function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean;
     }
     props.onCommit(text);
   };
+  const stepNumber = (direction: number, big = false) => {
+    if (props.readOnly || !props.def) return;
+    const raw = latest.current.trim(), pct = raw.endsWith('%'), n = Number(raw.replace('%', '')) || 0;
+    const step = (props.spin || props.def.type.startsWith('int') ? 1 : floatStep(n)) * (big ? 10 : 1);
+    const places = Math.max(0, -Math.floor(Math.log10(step)));
+    const next = Math.min(props.def.max ?? Infinity, Math.max(props.def.min ?? -Infinity, Number((n + direction * step).toFixed(places))));
+    const value = `${next}${pct ? '%' : ''}`;
+    latest.current = value; setText(value); setBad(false); props.onCommit(value);
+  };
+  const input = useRef<HTMLInputElement>(null), stepRef = useRef(stepNumber);
+  stepRef.current = stepNumber;
+  useEffect(() => {
+    const el = input.current;
+    if (!el || !props.numeric) return;
+    const wheel = (e: WheelEvent) => { if (document.activeElement !== el || !e.deltaY) return; e.preventDefault(); stepRef.current(e.deltaY < 0 ? 1 : -1, e.shiftKey); };
+    el.addEventListener('wheel', wheel, { passive: false });
+    return () => el.removeEventListener('wheel', wheel);
+  }, [props.numeric]);
   if (props.multiline)
     return <textarea className="text multiline" {...named} value={text} readOnly={props.readOnly} spellCheck={false} onChange={(e) => setText(e.target.value)} onBlur={commit} />;
-  const stepNumber = (direction: number) => {
-    if (props.readOnly || !props.def) return;
-    const next = Math.min(props.def.max ?? Infinity, Math.max(props.def.min ?? -Infinity, (Number(text) || 0) + direction));
-    setText(String(next)); setBad(false); props.onCommit(String(next));
-  };
-  const spin = props.spin && props.def ? {
-    type: 'number', step: 1, min: props.def.min, max: props.def.max,
-    onMouseUp: () => setTimeout(commit),
-    onKeyUp: (e: React.KeyboardEvent) => (e.key === 'ArrowUp' || e.key === 'ArrowDown') && commit(),
-  } : {};
+  if (!props.numeric) return (
+    <span className="control-text">
+      <input {...named} className="text" value={text} readOnly={props.readOnly} list={props.list}
+        onChange={(e) => { setText(e.target.value); setBad(false); }} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
+    </span>
+  );
+  const unit = props.def?.sidetext;
   return (
-    <span className={props.spin ? "control-number" : "control-text"}>
-    <input
-      {...spin}
-      {...named}
-      className={`text ${props.numeric ? 'num' : ''} ${props.spin ? 'spin' : ''} ${bad ? 'bad' : ''}`}
-      value={text}
-      readOnly={props.readOnly}
-      list={props.list}
-      onChange={(e) => {
-        setText(e.target.value);
-        setBad(false);
-      }}
-      onBlur={commit}
-      onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-    />
-    {props.spin && <span className="number-steps"><button type="button" tabIndex={-1} aria-label="Increase value" disabled={props.readOnly} onMouseDown={e => e.preventDefault()} onClick={() => stepNumber(1)}>+</button><button type="button" tabIndex={-1} aria-label="Decrease value" disabled={props.readOnly} onMouseDown={e => e.preventDefault()} onClick={() => stepNumber(-1)}>−</button></span>}
+    <span className="control-number" style={unit ? { '--unit-ch': unit.length } as React.CSSProperties : undefined}>
+      <input
+        {...named}
+        ref={input}
+        aria-description={unit}
+        inputMode={props.def?.min !== undefined && props.def.min >= 0 ? 'decimal' : undefined}
+        className={`text num ${unit ? 'has-unit' : ''} ${bad ? 'bad' : ''}`}
+        value={text}
+        readOnly={props.readOnly}
+        onChange={(e) => { setText(e.target.value); setBad(false); }}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); stepNumber(e.key === 'ArrowUp' ? 1 : -1, e.shiftKey); }
+        }}
+      />
+      {unit && <span className="control-unit" aria-hidden>{unit}</span>}
+      <span className="number-steps"><button type="button" tabIndex={-1} aria-label="Increase value" disabled={props.readOnly} onMouseDown={e => e.preventDefault()} onClick={(e) => stepNumber(1, e.shiftKey)}>+</button><button type="button" tabIndex={-1} aria-label="Decrease value" disabled={props.readOnly} onMouseDown={e => e.preventDefault()} onClick={(e) => stepNumber(-1, e.shiftKey)}>−</button></span>
     </span>
   );
 }

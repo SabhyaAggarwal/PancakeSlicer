@@ -1,8 +1,9 @@
 import * as THREE from 'three';
-import { mutation, responseError } from '../api/access';
+import { responseError } from '../api/access';
 import { effectiveConfig, getState, setState, subscribeStore, type State, type WipeTowerEstimate } from '../state/store';
 import { plateSignature } from '../slice-input';
 import { plateForm } from './operations';
+import { postJob } from '../api/blobs';
 
 function wanted(s: State): boolean {
   if (!s.features.wipe_tower || !s.api || s.api.mock || s.project || !s.objects.length) return false;
@@ -34,7 +35,7 @@ async function estimate() {
   try {
     const fd = await plateForm(s, 'wipe-tower');
     fd.append('priority', 'low');
-    const response = await mutation('/api/jobs', { method: 'POST', body: fd });
+    const response = await postJob(fd);
     if (!response.ok) throw await responseError(response);
     const { id } = await response.json() as { id: string };
     try {

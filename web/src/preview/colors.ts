@@ -261,6 +261,16 @@ export interface ColorContext {
   clearance?: { margin: number; floor: number };
 }
 
+export function colorKey(c: ColorContext): string | null {
+  const r = c.ranges;
+  if (c.view === 'layer_time' || c.view === 'layer_time_log' || c.view === 'filament' || (c.view === 'nonplanar' && c.nonplanar === 'slope')) return null;
+  const range: ColorRange | undefined = c.view === 'nonplanar'
+    ? (c.nonplanar === 'bead_height' ? r.beadHeight : r.shell)
+    : ({ height: r.height, width: r.width, speed: r.speed, actual_speed: r.actualSpeed, actual_flow: r.actualFlow, acceleration: r.acceleration,
+      jerk: r.jerk, fan: r.fan, temperature: r.temperature, pressure_advance: r.pa, flow: r.flow } as Partial<Record<ViewType, ColorRange>>)[c.view];
+  return JSON.stringify([c.view, c.nonplanar, range?.min, range?.max, c.clearance]);
+}
+
 export function clearanceColor(clearance: number, margin: number, floor: number): RGB {
   if (Number.isNaN(clearance)) return [128, 128, 128];
   const red: RGB = [220, 55, 45], amber: RGB = [245, 180, 45], green: RGB = [35, 175, 100];

@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { bedArea } from '../actions';
-import { mutation, responseError } from '../api/access';
+import { responseError } from '../api/access';
 import { plateSignature } from '../slice-input';
 import { undoable } from '../state/history';
 import { getState, newId, printerPreset, resolvePreset, setState, toast, type Instance, type PlateObject, type Volume } from '../state/store';
 import { bakeStl, centred, instanceBox, instanceMatrix, loadMesh, nearestFreeSpot, objectMatrix } from './geometry';
 import { canPerformCut, cutNormal, cutPoint, cutTarget } from './cut';
+import { attachFiles, postJob } from '../api/blobs';
 
 interface Piece { side: 'upper' | 'lower' | `dowel-${number}`; triangles: number; open_edges: number; volume_mm3: number }
 
@@ -33,12 +34,12 @@ export async function performCut() {
     fd.append('cut_keep', c.toParts || c.keepUpper && c.keepLower ? 'both' : c.keepUpper ? 'upper' : 'lower');
     if (c.placeLower && !c.toParts) fd.append('cut_place_lower', '1');
     for (const [k, v] of Object.entries(joints?.jointFields(s, c, toStl, p, n) ?? {})) fd.append(k, v);
-    fd.append('files[]', await bakeStl(o), 'cut.stl');
+    await attachFiles(fd, [{ name: 'cut.stl', blob: await bakeStl(o) }]);
     fd.append('vendor', printerPreset(s)?.vendor ?? 'BBL');
     fd.append('printer', resolvePreset(s, 'machine', s.printer).base?.name ?? s.printer);
     fd.append('process', resolvePreset(s, 'process', s.process).base?.name ?? s.process);
     for (const f of s.filamentSlots) fd.append('filament[]', resolvePreset(s, 'filament', f).base?.name ?? f);
-    const response = await mutation('/api/jobs', { method: 'POST', body: fd });
+    const response = await postJob(fd);
     if (!response.ok) throw await responseError(response);
     const { id } = await response.json() as { id: string };
     let files: { piece: Piece; file: File }[];

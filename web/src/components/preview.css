@@ -27,8 +27,6 @@
 :where(.orca-parity) .lg-collapse { flex: none; width: var(--h-control); height: var(--h-control); border: 0; border-radius: var(--r-2); background: none; color: var(--ink-2); cursor: pointer;
   display: grid; place-items: center; padding: 0; transition: background var(--dur-1) var(--ease); }
 :where(.orca-parity) .lg-collapse:hover { background: var(--sunken); color: var(--ink); }
-:where(.orca-parity) .lg-caret { width: 7px; height: 7px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: translateY(-2px) rotate(45deg); transition: transform var(--dur-2) var(--ease); }
-:where(.orca-parity) .lg-caret.up { transform: translateY(2px) rotate(-135deg); }
 
 :where(.orca-parity) .lg-totals { display: flex; gap: var(--s-6); padding: var(--s-3) var(--s-4) var(--s-4); border-top: 1px solid var(--line); user-select: text; }
 :where(.orca-parity) .lg-totals > div { display: grid; grid-template-columns: auto auto; column-gap: var(--s-2); align-items: baseline; }

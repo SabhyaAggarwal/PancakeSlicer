@@ -34,6 +34,7 @@ type Server struct {
 	library   *ProfileLibraryStore
 	workspace *workspaceStore
 	sends     *SendManager
+	blobs     *blobStore
 	fontsOnce sync.Once
 	fonts     []byte
 	fontsErr  error
@@ -48,6 +49,8 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, library *Profil
 	workspace := &workspaceStore{root: filepath.Join(c.DataDir, "workspace")}
 	workspace.register(mux)
 	s.workspace = workspace
+	s.blobs = &blobStore{root: filepath.Join(c.DataDir, "blobs"), limit: blobCacheBytes}
+	s.blobs.register(mux, c.MaxUploadSize)
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, r *http.Request) {
 		q, n := jobs.Counts()
 		health := healthProbe.snapshot(c.Tool)
@@ -502,7 +505,14 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	files := r.MultipartForm.File["files[]"]
+	var files []struct {
+		Name   string `json:"name"`
+		SHA256 string `json:"sha256"`
+	}
+	if raw := r.FormValue("files"); raw != "" && json.Unmarshal([]byte(raw), &files) != nil {
+		fail(w, 400, "files must be an array of {name, sha256}")
+		return
+	}
 	if kind := r.FormValue("calib"); kind != "" {
 		params := r.FormValue("calib_params")
 		switch {
@@ -531,38 +541,35 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(files) == 0 {
-		fail(w, 400, "files[] is required")
+		fail(w, 400, "files is required")
 		return
 	}
 	names := map[string]bool{}
+	var missing []string
 	for _, f := range files {
-		_, parameters, headerErr := mime.ParseMediaType(f.Header.Get("Content-Disposition"))
-		name := parameters["filename"]
+		name := f.Name
 		ext := strings.ToLower(filepath.Ext(name))
 		other := s.cfg.Features.Step && (ext == ".step" || ext == ".stp") || ext == ".drc" || req.MeshOp == "svg" && ext == ".svg"
-		if headerErr != nil || name == "" || len(name) > 240 || strings.IndexFunc(name, unicode.IsControl) >= 0 || strings.ContainsAny(name, "/\\") || name != filepath.Base(name) || (ext != ".stl" && ext != ".obj" && ext != ".3mf" && !other) || names[name] {
+		if name == "" || len(name) > 240 || strings.IndexFunc(name, unicode.IsControl) >= 0 || strings.ContainsAny(name, "/\\") || name != filepath.Base(name) || name == "." || name == ".." || (ext != ".stl" && ext != ".obj" && ext != ".3mf" && !other) || names[name] {
 			fail(w, 400, "uploads need unique STL, OBJ, STEP, DRC, SVG or 3MF basenames")
+			return
+		}
+		if !blobDigest.MatchString(f.SHA256) {
+			fail(w, 400, "each file needs its lowercase hex sha256")
 			return
 		}
 		names[name] = true
 		req.Files = append(req.Files, name)
-		in, err := f.Open()
-		if err != nil {
-			fail(w, 400, err.Error())
-			return
-		}
-		out, err := os.OpenFile(filepath.Join(j.Dir, "input", name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-		if err != nil {
-			in.Close()
+		if err := s.blobs.link(f.SHA256, filepath.Join(j.Dir, "input", name)); errors.Is(err, fs.ErrNotExist) {
+			missing = append(missing, f.SHA256)
+		} else if err != nil {
 			fail(w, 500, err.Error())
 			return
 		}
-		_, copyErr := io.Copy(out, in)
-		err = errors.Join(copyErr, in.Close(), out.Close())
-		if err != nil {
-			fail(w, 500, err.Error())
-			return
-		}
+	}
+	if len(missing) > 0 {
+		writeJSON(w, 409, map[string]any{"error": "Uploaded models expired on the service. Sending them again.", "code": "blob_missing", "missing": missing})
+		return
 	}
 	rawPlate := r.FormValue("plate")
 	if raw := rawPlate; raw != "" {

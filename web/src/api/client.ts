@@ -1,5 +1,6 @@
 import { submissionHeaders } from '../flow/submission';
 import { bootstrapAccessToken, mutation, responseError } from './access';
+import { attachFiles, postJob } from './blobs';
 import { expandCatalog } from './compact-catalog';
 import { catalogWorker, onWorkerFailure, workerId } from './worker';
 import type { CatalogIn, CatalogOut } from './catalog.worker';
@@ -61,7 +62,7 @@ const realApi: Api = {
 
   async submit(req, signal, onUpload) {
     const fd = new FormData();
-    for (const f of req.files) fd.append('files[]', f.blob, f.name);
+    await attachFiles(fd, req.files, signal, onUpload);
     if(req.profile_ids)fd.append('profile_ids',JSON.stringify(req.profile_ids));
     fd.append('vendor', req.vendor);
     fd.append('printer', req.printer);
@@ -82,7 +83,7 @@ const realApi: Api = {
     if (req.calib) { fd.append('calib', req.calib); fd.append('calib_params', req.calib_params ?? ''); if (req.calib_head) fd.append('calib_head', req.calib_head); }
     if (req.preview_budget !== undefined) fd.append('budget', String(req.preview_budget));
     const url = req.preview_budget !== undefined ? '/api/patch-preview' : '/api/jobs';
-    const j = await json<{ id: string }>(await mutation(url, { method: 'POST', headers: submissionHeaders(req), body: fd }, req.preview_budget === undefined, signal, onUpload, req.preview_budget !== undefined));
+    const j = await json<{ id: string }>(await postJob(fd, url, { headers: submissionHeaders(req), retry: req.preview_budget === undefined, signal, quiet: req.preview_budget !== undefined }));
     return j.id;
   },
   async status(id) {

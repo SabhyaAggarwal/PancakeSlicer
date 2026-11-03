@@ -841,7 +841,7 @@ export default function Plater3D() {
     window.addEventListener('pointerup', onTouchUp);
     window.addEventListener('pointercancel', onTouchUp);
     const onDown = (ev: PointerEvent) => {
-      if (ev.button === 2) rightAt = { x: ev.clientX, y: ev.clientY };
+      if (ev.button === 2) { rightAt = { x: ev.clientX, y: ev.clientY, moved: false }; rightTime = performance.now(); }
       if (ev.button !== 0 || touches.size > 1 || (tc.dragging || (tc as unknown as { axis: string | null }).axis)) return;
       if (ev.pointerType === 'touch') return;
       const k = pickPlane(ev);
@@ -1215,17 +1215,8 @@ export default function Plater3D() {
       if (measureState().hover) setMeasure({ ...measureState(), hover: undefined });
     };
 
-    let rightAt: { x: number; y: number } | null = null;
-    const onContextMenu = (ev: MouseEvent) => {
-      ev.preventDefault();
-      if (!rightAt) {
-        const r = renderer.domElement.getBoundingClientRect(), selected = getState().selected;
-        setState({ contextMenu: { x: ev.clientX || r.left + r.width / 2, y: ev.clientY || r.top + r.height / 2,
-          object: selected?.object, instance: selected?.instance, volume: selected?.volume } });
-        return;
-      }
-      if (Math.hypot(ev.clientX - rightAt.x, ev.clientY - rightAt.y) > 4) { rightAt = null; return; }
-      rightAt = null;
+    let rightAt: { x: number; y: number; moved: boolean } | null = null, rightTime = -Infinity;
+    const openMenu = (ev: MouseEvent) => {
       const hit = pick(ev);
       if (!hit) {
         const k = grid.plateAt(getState(), bedPoint());
@@ -1237,6 +1228,26 @@ export default function Plater3D() {
       const inSelection = isSelected(s.selected, object, instance);
       setState({ ...(inSelection ? {} : { selected: { object, instance } }), contextMenu: { x: ev.clientX, y: ev.clientY, object } });
     };
+    const onRightMove = (ev: PointerEvent) => {
+      if (rightAt && !rightAt.moved && Math.hypot(ev.clientX - rightAt.x, ev.clientY - rightAt.y) > 4) rightAt.moved = true;
+    };
+    const onRightUp = (ev: PointerEvent) => {
+      if (ev.button !== 2 || !rightAt) return;
+      const press = rightAt;
+      rightAt = null;
+      rightTime = performance.now();
+      if (press.moved || Math.hypot(ev.clientX - press.x, ev.clientY - press.y) > 4 || ev.target !== renderer.domElement) return;
+      openMenu(ev);
+    };
+    const onContextMenu = (ev: MouseEvent) => {
+      ev.preventDefault();
+      if (rightAt || performance.now() - rightTime < 400) return;
+      const r = renderer.domElement.getBoundingClientRect(), selected = getState().selected;
+      setState({ contextMenu: { x: ev.clientX || r.left + r.width / 2, y: ev.clientY || r.top + r.height / 2,
+        object: selected?.object, instance: selected?.instance, volume: selected?.volume } });
+    };
+    window.addEventListener('pointermove', onRightMove);
+    window.addEventListener('pointerup', onRightUp);
     renderer.domElement.dataset.customContext = 'orca';
     renderer.domElement.addEventListener('contextmenu', onContextMenu);
     controls.addEventListener('start', () => {
@@ -1417,6 +1428,8 @@ export default function Plater3D() {
       unsubPreview();
       unwatchRatio();
       window.removeEventListener('pointerup', onTouchUp);
+      window.removeEventListener('pointermove', onRightMove);
+      window.removeEventListener('pointerup', onRightUp);
       window.removeEventListener('pointercancel', onTouchUp);
       cancelAnimationFrame(hoverFrame);
       ro.disconnect();

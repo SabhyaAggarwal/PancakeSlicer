@@ -1,0 +1,5 @@
+:where(.orca-parity) .caret { display: inline-flex; flex: none; align-items: center; justify-content: center; align-self: center; width: 12px; height: 12px; line-height: 0; color: var(--text-dim); vertical-align: middle; }
+:where(.orca-parity) .caret svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; transition: transform 120ms ease; }
+:where(.orca-parity) .caret-right svg { transform: rotate(-90deg); }
+:where(.orca-parity) .caret-up svg { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { :where(.orca-parity) .caret svg { transition: none; } }

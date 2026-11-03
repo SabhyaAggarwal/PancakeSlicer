@@ -55,7 +55,7 @@ async function exportProject(p:ProjectMeta) {
 }
 
 function Thumb({p}:{p:ProjectMeta}) {
-  return p.thumbnail ? <img src={p.thumbnail} alt="" draggable={false} loading="lazy" decoding="async"/> : <svg className="pj-placeholder" viewBox="0 0 24 24" aria-hidden><path d="M12 3 4 7.5v9L12 21l8-4.5v-9L12 3Zm0 2.3 5.6 3.2L12 11.7 6.4 8.5 12 5.3ZM6 10.2l5 2.9v5.6l-5-2.8v-5.7Zm7 8.5v-5.6l5-2.9v5.7l-5 2.8Z" fill="currentColor"/></svg>;
+  return p.thumbnail && p.objects > 0 ? <img src={p.thumbnail} alt="" draggable={false} loading="lazy" decoding="async"/> : <svg className="pj-placeholder" viewBox="0 0 24 24" aria-hidden><path d="M12 3 4 7.5v9L12 21l8-4.5v-9L12 3Zm0 2.3 5.6 3.2L12 11.7 6.4 8.5 12 5.3ZM6 10.2l5 2.9v5.6l-5-2.8v-5.7Zm7 8.5v-5.6l5-2.9v5.7l-5 2.8Z" fill="currentColor"/></svg>;
 }
 function Star({on}:{on:boolean}) {
   return <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden><path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5Z" fill={on?'currentColor':'none'} stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>;
@@ -285,7 +285,7 @@ function Projects() {
       {loading ? <div className="pj-empty" role="status">Loading…</div>
         : !shown.length ? <div className="pj-empty">{failed ? null : q ? <><strong>No matches</strong><button type="button" className="btn" onClick={()=>setProjectsQuery('')}>Clear search</button></>
           : <><strong>{empty}</strong>{filter==='all' && <div className="pj-empty-actions"><button type="button" className="btn-primary" onClick={fileVerbs.new}>New project</button><button type="button" className="btn" onClick={fileVerbs.import}>Import model</button></div>}</>}</div>
-        : <div ref={grid} className={`pj-${view}`} role="grid" aria-label={title} aria-multiselectable={filter==='trash'?undefined:true} aria-busy={busy || status.state==='loading'} onKeyDown={onKey}>
+        : <div ref={grid} className={`pj-${view} scroll-fade`} role="grid" aria-label={title} aria-multiselectable={filter==='trash'?undefined:true} aria-busy={busy || status.state==='loading'} onKeyDown={onKey}>
           {view==='list' && <div className="pj-head" role="row"><span role="columnheader" className="pj-lead"/><span role="columnheader">Name</span><span role="columnheader" className="pj-col-objects">Objects</span><span role="columnheader" className="pj-col-edited">Edited</span><span role="columnheader" className="pj-row-actions"/></div>}
           {shown.map(p=><Item key={p.id} p={p} view={view} trash={filter==='trash'} current={filter!=='trash' && p.id===current} selected={selectedSet.has(p.id)} selecting={selected.length>0} focused={p.id===focusKey} favorite={favorites.has(p.id)} canFavorite={prefsLoaded} renaming={renaming===p.id} blocked={blocked(p.id) || retrying===p.id}
             setRenaming={on=>{if(!on || !blocked(p.id))setRenaming(on?p.id:null);}} select={event=>dispatch(event)} onMenu={at=>setMenu({id:p.id,...at})} onFavorite={()=>toggleFavorite(p.id)} onRestore={()=>void restoreFromTrash(p)}/>)}

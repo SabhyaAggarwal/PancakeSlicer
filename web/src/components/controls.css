@@ -1,12 +1,12 @@
 :where(.orca-parity) .control-check { display: inline-grid; place-items: center; width: 16px; height: 16px; padding: 0; flex: none; vertical-align: middle; border: 1px solid var(--border-control); border-radius: 3px; background: var(--selector-bg); color: var(--selected-foreground); cursor: pointer; }
-:where(.orca-parity) .control-check[data-state=checked], :where(.orca-parity) .control-check[data-state=indeterminate] { background: var(--selected); border-color: var(--focus); }
+:where(.orca-parity) .control-check[data-state=checked], :where(.orca-parity) .control-check[data-state=indeterminate] { background: var(--selected); border-color: var(--accent-text); }
 :where(.orca-parity) .control-check-mark { font-size: 12px; line-height: 1; }
 :where(.orca-parity) input[type=radio] { appearance: none; width: 16px; height: 16px; padding: 3px; border: 1px solid var(--border-control); border-radius: 50%; background: var(--selector-bg); background-clip: content-box; vertical-align: middle; flex: none; cursor: pointer; }
-:where(.orca-parity) input[type=radio]:checked { background-color: var(--accent-text); border-color: var(--focus); }
+:where(.orca-parity) input[type=radio]:checked { background-color: var(--accent-text); border-color: var(--accent-text); }
 :where(.orca-parity) input[type=number] { appearance: textfield; }
 :where(.orca-parity) input[type=number]::-webkit-inner-spin-button, :where(.orca-parity) input[type=number]::-webkit-outer-spin-button { appearance: none; margin: 0; }
 :where(.orca-parity) .color-trigger, :where(.orca-parity) .color-swatch { width: 24px; height: 24px; flex: none; padding: 0; border: 1px solid var(--border-control); border-radius: 3px; cursor: pointer; }
-:where(.orca-parity) :is(.color-trigger, .profile-color-swatch)[data-unknown=true] { background: transparent; border: 1px dashed var(--line-strong); }
+:where(.orca-parity) :is(.color-trigger, .profile-color-swatch)[data-unknown=true] { background: var(--control-bg); border: 1px solid var(--border-control); }
 :where(.orca-parity) .color-swatch[aria-pressed=true] { outline: 1px solid var(--text); outline-offset: 2px; }
 :where(.orca-parity) .color-popover { width: min(312px, calc(100vw - 24px)); padding: 12px; }
 :where(.orca-parity) .color-heading { display: flex; align-items: center; justify-content: space-between; font-weight: 600; padding-bottom: 12px; }
@@ -26,7 +26,6 @@
 :where(.orca-parity) .number-steps > button { flex: 1; min-height: 13px; padding: 0; border: 0; background: var(--control-bg); color: var(--label); font-size: 11px; line-height: 12px; }
 :where(.orca-parity) .number-steps > button:hover { background: var(--hover); }
 
-:where(.orca-parity) .text:focus-visible, :where(.orca-parity) .dropdown:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 :where(.orca-parity) .control-error { color: var(--danger); font-size: 12px; padding-top: 4px; }
 :where(.orca-parity) [aria-invalid=true], :where(.orca-parity) .text.bad { border-color: var(--danger); }
 :where(.orca-parity) .field-label-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -34,17 +33,16 @@
 :where(.orca-parity) .orca-radio { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 18px; height: 18px; min-width: 18px; min-height: 18px; padding: 0; margin: 1px 0 0; flex: 0 0 18px; border: 1px solid var(--border-control); border-radius: 50%; background: var(--sunken); color: var(--text); line-height: 1; box-shadow: none; }
 :where(.orca-parity) .orca-radio[data-state=checked] { border-color: var(--accent-text); }
 :where(.orca-parity) .orca-radio-indicator { display: block; width: 8px; height: 8px; border-radius: 50%; background: var(--selected-foreground); }
-:where(.orca-parity) .orca-radio:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 :where(.orca-parity) .orca-radio:disabled { cursor: default; border-color: var(--line); }
 
 :where(.orca-parity) .profile-color-swatch { display: inline-grid; place-items: center; box-sizing: border-box; flex: 0 0 22px; width: 22px; height: 22px; border: 1px solid var(--border-control); border-radius: 2px; margin-top: 1px; background: var(--sunken); color: var(--label); font-size: 12px; }
 :where(.orca-parity) .pf-editor-identity > .color-trigger { float: left; margin: 3px 10px 0 0; }
 
 :where(.orca-parity) .info-tip { display: inline-grid; place-items: center; width: 16px; height: 16px; margin-left: 6px; padding: 0; flex: none; vertical-align: -2px; border: 1px solid var(--line-strong); border-radius: 50%; background: none; color: var(--ink-3); font: 600 11px/1 var(--font-ui); cursor: pointer; }
-:where(.orca-parity) :is(.opt-line, .option-row) .info-tip { opacity: 0; }
+:where(.orca-parity) :is(.opt-line, .option-row) .info-tip { opacity: 0; margin-right: -20px; }
+@media (pointer: coarse) { :where(.orca-parity) :is(.opt-line, .option-row) .info-tip { margin-right: 0; } }
 :where(.orca-parity) :is(.opt-line, .option-row):hover .info-tip, :where(.orca-parity) .info-tip:focus-visible, :where(.orca-parity) .info-tip[data-state=open] { opacity: 1; }
-:where(.orca-parity) .info-tip:hover, :where(.orca-parity) .info-tip[data-state=open] { color: var(--text); border-color: var(--focus); }
-:where(.orca-parity) .info-tip:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+:where(.orca-parity) .info-tip:hover, :where(.orca-parity) .info-tip[data-state=open] { color: var(--text); border-color: var(--accent-text); }
 :where(.orca-parity) .info-pop { z-index: 1000; max-width: min(360px, calc(100vw - 16px)); max-height: min(360px, var(--radix-popover-content-available-height, 60dvh)); overflow: auto; padding: 8px 12px; background: var(--raised); color: var(--text); border: 1px solid var(--border-control); border-radius: 4px; font: var(--t-small); white-space: pre-line; overflow-wrap: break-word; box-shadow: var(--shadow-pop); }
 :where(.orca-parity) .info-pop > * { margin: 0; }
 :where(.orca-parity) .info-pop > * + * { margin-top: 8px; }
@@ -60,13 +58,11 @@
 }
 
 :where(.orca-parity) .seg.choice { flex-wrap: wrap; max-width: 100%; font: var(--t-body); }
-:where(.orca-parity) .seg.choice > button { height: auto; min-height: calc(var(--h-control) - 2 * var(--s-1)); padding: 0 var(--s-4); font-variant-numeric: tabular-nums; }
+:where(.orca-parity) .seg.choice > button { height: auto; min-height: var(--h-compact); padding: 0 var(--s-4); font-variant-numeric: tabular-nums; }
 @media (pointer: coarse) { :where(.orca-parity) .seg.choice > button { min-height: 40px; } }
 
-:where(.orca-parity) .more-toggle { align-self: flex-start; width: fit-content; min-height: var(--h-compact); margin: 0; padding: 0; border: 0; border-radius: 2px; background: none; color: var(--ink-3); font: var(--t-body); text-align: left; cursor: pointer; }
-:where(.orca-parity) .more-toggle:hover { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
-:where(.orca-parity) .more-toggle:focus { outline: 0; }
-:where(.orca-parity) .more-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+:where(.orca-parity) .more-toggle { align-self: flex-start; width: fit-content; min-height: var(--h-compact); margin: 0; padding: 0; border: 0; border-radius: 2px; background: none; color: var(--ink-3); font: var(--t-small); text-align: left; cursor: pointer; }
+:where(.orca-parity) .more-toggle:hover { color: var(--text); }
 @media (pointer: coarse) { :where(.orca-parity) .more-toggle { min-height: 44px; } }
 
 :where(.orca-parity) .form-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-4); width: 100%; min-height: var(--h-control); }
@@ -74,3 +70,28 @@
 :where(.orca-parity) .form-row > :last-child { flex: 1 1 12rem; min-width: 0; max-width: 20rem; }
 :where(.orca-parity) .form-row > .text { width: 100%; height: var(--h-field); }
 :where(.orca-parity) .form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); }
+
+:root.orca-parity[data-input=pointer] :focus-visible { outline: none !important; }
+
+
+:where(.orca-parity) * { scrollbar-width: none; }
+:where(.orca-parity) *::-webkit-scrollbar { display: none; }
+@property --fade-top { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@property --fade-bottom { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@keyframes scroll-fade { from { --fade-top: 0px; --fade-bottom: 20px; } 1% { --fade-top: 20px; } 99% { --fade-bottom: 20px; } to { --fade-top: 20px; --fade-bottom: 0px; } }
+@supports (animation-timeline: scroll()) {
+  :where(.orca-parity) :is(.scroll-fade, .page-body, .pk-list, .pk-rail, .dropdown-viewport, .facets) {
+    mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade-top), #000 calc(100% - var(--fade-bottom)), transparent 100%);
+    animation: scroll-fade linear both; animation-timeline: scroll(self); }
+}
+
+:where(.orca-parity) .facets { display: flex; flex-direction: column; gap: var(--s-5); min-width: 0; }
+:where(.orca-parity) .facets-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); min-height: var(--h-compact); color: var(--ink-3); font: var(--t-small); }
+:where(.orca-parity) .facet-group { display: flex; flex-direction: column; min-width: 0; }
+:where(.orca-parity) .facet-head { margin: 0 0 var(--s-2); color: var(--ink-3); font: 600 11px/16px var(--font-ui); letter-spacing: .04em; text-transform: uppercase; }
+:where(.orca-parity) .facet-group > .text { margin-bottom: var(--s-2); }
+:where(.orca-parity) .facet-row { display: flex; align-items: center; gap: var(--s-3); min-height: var(--h-compact); color: var(--text); font: var(--t-body); cursor: pointer; }
+:where(.orca-parity) .facet-row > span:not(.facet-count) { flex: 1; min-width: 0; overflow-wrap: break-word; }
+:where(.orca-parity) .facet-count, :where(.orca-parity) .facet-empty { color: var(--ink-3); font: var(--t-small); font-variant-numeric: tabular-nums; }
+:where(.orca-parity) .facet-group > .chips { padding-block: var(--s-1); }
+@media (pointer: coarse) { :where(.orca-parity) .facet-row { min-height: 44px; } :where(.orca-parity) .facet-group > .chips .chip { min-height: 40px; } }

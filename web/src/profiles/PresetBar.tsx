@@ -88,12 +88,12 @@ function ChangesPop({type,slot,list,project,state}: {type:PresetType;slot:number
   }, [type, slot]);
   useEffect(() => { if (!list.length && state !== 'saved') setOpen(false); }, [list.length, state]);
   if (!list.length && state !== 'saved') return null;
-  const label = state === 'saving' ? 'Saving…' : state === 'saved' && !list.length ? 'Saved to profile' : `Changes · ${list.length}`;
+  const label = state === 'saving' ? 'Saving…' : state === 'saved' && !list.length ? 'Saved to profile' : `${list.length} change${list.length === 1 ? '' : 's'}`;
   const resetAll = async () => {
     const {confirmDialog}=await import('../components/Ask');
     if(await confirmDialog('Revert all changes',`Reset all ${list.length} listed changes, including object and part overrides?`,['Revert all','Cancel'])) undoable('Revert all listed changes',()=>list.forEach(revert));
   };
-  return <Popover.Root open={open} onOpenChange={setOpen}><Popover.Trigger asChild><button type="button" className="btn pf-changes-trigger" aria-label={label} aria-expanded={open}>{label}</button></Popover.Trigger><Popover.Portal><Popover.Content className="orca-menu pf-changes-pop" role="dialog" aria-label="Project changes" collisionPadding={12} sideOffset={6} align="end">
+  return <Popover.Root open={open} onOpenChange={setOpen}><Popover.Trigger asChild><button type="button" className="link pf-changes-trigger" aria-expanded={open}>{label}</button></Popover.Trigger><Popover.Portal><Popover.Content className="orca-menu pf-changes-pop" role="dialog" aria-label="Project changes" collisionPadding={12} sideOffset={6} align="end">
     <div className="pf-changes-title">Project changes</div><Changes type={type} list={list}/>
     {!!list.length && <div className="pf-changes-foot"><button type="button" className="btn" onClick={()=>void import('../flow/project').then(m=>m.flushProject()).catch(error=>import('../state/store').then(m=>m.toast(`Project save failed: ${error instanceof Error ? error.message : String(error)}`)))}>Save project</button>
       {project > 0 && <button type="button" className="btn" onClick={()=>{try {reviewProjectProfileChanges(type,slot);setOpen(false);}catch(error){toast(error instanceof Error ? error.message : String(error));}}}>Review in profile editor…</button>}

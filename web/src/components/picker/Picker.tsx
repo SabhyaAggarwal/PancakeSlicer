@@ -2,8 +2,10 @@ import { preferenceJson, savePreferences, usePreference } from '../../saved-pref
 import { countRender } from '../../interaction-metrics';
 import { memo, useCallback, useId, useMemo, useRef, useState, type ComponentPropsWithRef, type ReactNode } from 'react';
 import { Popover } from 'radix-ui';
+import { useRowFill } from '../tab-rows';
 import '../menu.css';
 import './picker.css';
+import { Caret } from '../Caret';
 export interface PickerItem { id: string; label: string; sub?: string; swatch?: string | null; meta?: string; facet?: string; search?: string; disabled?: boolean | string }
 export interface PickerGroup { id: string; title: string; items: PickerItem[]; lead?: boolean }
 export interface PickerAction { label: string; run(): void; keep?: boolean }
@@ -28,13 +30,14 @@ export function Picker({ label, value, groups, onPick, memory = `orca.parity.${l
   const [open, setOpen] = useState(false), [adding, setAdding] = useState(false), [rail, setRail] = useState(''), [active, setActive] = useState(0);
   const savedPins = usePreference(`${memory}.pins`);
   const pins = useMemo(() => read(`${memory}.pins`), [memory,savedPins]);
-  const list = useRef<HTMLDivElement>(null), typed = useRef({text: '', at: 0});
+  const railRef = useRef<HTMLElement>(null), list = useRef<HTMLDivElement>(null), typed = useRef({text: '', at: 0});
   const id = useId();
   const source = useMemo(() => open ? (adding && catalog ? catalog.groups() : groups()).map(g => ({...g, items:g.items.filter(item => !item.disabled)})).filter((g) => g.items.length) : [], [open, adding, groups, catalog]);
   const ownRows = useMemo(() => open && adding && hasOwn(groups), [open, adding, groups]);
   const all = useMemo(() => [...new Map(source.flatMap((g) => g.items).map((item) => [item.id, item])).values()], [source]);
   const pinnedSet = useMemo(() => new Set(pins), [pins]);
   const rails = useMemo(() => [...(all.some(r => pinnedSet.has(r.id)) ? [{id:'pins',title:'Favorites'}] : []), {id:'all',title:adding ? 'All bases' : 'All profiles'}, ...source.map(({id,title}) => ({id,title}))], [adding, pinnedSet, all, source]);
+  useRowFill(railRef, open && rails.map(r => r.id).join('|'));
   const activeRail = rails.some(r => r.id === rail) ? rail : selectDefaultRail(source, pins);
   const rows = useMemo(() => activeRail === 'pins' ? all.filter(r => pinnedSet.has(r.id)) : activeRail === 'all' ? all : source.find(g => g.id === activeRail)?.items ?? [], [activeRail, all, pinnedSet, source]);
   const enabled = useMemo(() => rows.flatMap((r, i) => r.disabled ? [] : [i]), [rows]);
@@ -57,7 +60,7 @@ export function Picker({ label, value, groups, onPick, memory = `orca.parity.${l
     <Popover.Trigger asChild><button {...triggerProps} type="button" className={`pk-trigger dropdown ${className}`} data-menu-trigger="orca" aria-label={label} onKeyDown={e => {
       triggerProps?.onKeyDown?.(e);
       if (!e.defaultPrevented && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); e.stopPropagation(); resetType(); setAdding(!!catalog && !hasOwn(groups)); setRail(''); setOpen(true); }
-    }}>{children}<span aria-hidden className="pk-caret">⌄</span></button></Popover.Trigger>
+    }}>{children}<Caret className="pk-caret"/></button></Popover.Trigger>
     <Popover.Portal><Popover.Content className="orca-menu pk-pop" data-menu-family="orca" aria-label={adding ? catalog?.label : label} side="bottom" align="start" sideOffset={4} collisionPadding={8} onOpenAutoFocus={e => { e.preventDefault(); const selected = rows.findIndex(r => r.id === value && !r.disabled); move(selected >= 0 ? selected : enabled[0] ?? -1); }} onKeyDown={e => {
       if (e.key === 'Escape' || e.key === 'Tab') return;
       e.stopPropagation();
@@ -76,7 +79,7 @@ export function Picker({ label, value, groups, onPick, memory = `orca.parity.${l
         if (match !== undefined) move(match);
       }
     }}>
-      <div className={`pk-body ${rails.length > 1 ? '' : 'no-rail'}`}>{rails.length > 1 && <nav className="pk-rail" aria-label={`${label} groups`}>{rails.map(r => <button type="button" key={r.id} className={activeRail === r.id ? 'active' : ''} aria-pressed={activeRail === r.id} onClick={() => changeRail(r.id)}>{r.title}</button>)}</nav>}
+      <div className={`pk-body ${rails.length > 1 ? '' : 'no-rail'}`}>{rails.length > 1 && <nav ref={railRef} className="pk-rail" aria-label={`${label} groups`}>{rails.map(r => <button type="button" key={r.id} className={activeRail === r.id ? 'active' : ''} aria-pressed={activeRail === r.id} onClick={() => changeRail(r.id)}>{r.title}</button>)}</nav>}
         <div className="pk-list" role="listbox" aria-label={label} ref={list}>{rows.map((row, i) => <PickerRow key={row.id} row={row} index={i} id={id} active={active === i} selected={value === row.id} adding={adding} pinned={pinnedSet.has(row.id)} onActive={setActive} onPick={pick} onPin={pin} />)}{!rows.length && <div className="pk-empty">{catalog && !adding ? 'None yet' : 'No profiles'}</div>}</div>
       </div>
       <div className="pk-foot">{adding && ownRows && <button type="button" className="btn-ghost" onClick={() => changeCatalog(false)}>Back</button>}{catalog && !adding && <button type="button" className="btn" onClick={() => changeCatalog(true)}>{catalog.label}</button>}{footer.map(a => <button type="button" className="btn" key={a.label} onClick={() => { if (!a.keep) setOpen(false); a.run(); }}>{a.label}</button>)}</div>

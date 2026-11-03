@@ -94,13 +94,13 @@ export async function mutation(path: string, init: RequestInit, retry = false, s
   }
   if (!response.ok) {
     const error = await responseError(response);
-    if (error.code !== 'revision_conflict') accessNotice({ status: response.status, message: error.message });
+    if (error.code !== 'revision_conflict' && error.code !== 'draft_conflict' && error.code !== 'blob_missing') accessNotice({ status: response.status, message: error.message });
     throw error;
   }
   return response;
 }
 
-export interface ApiError extends Error { status:number; code?:string; recovery?:string; profile?:{kind:string;name:string;vendor:string;slot?:number}; revision?:number }
+export interface ApiError extends Error { status:number; code?:string; recovery?:string; profile?:{kind:string;name:string;vendor:string;slot?:number}; revision?:number; missing?:string[] }
 export async function responseError(response: Response): Promise<ApiError> {
   const text = await response.text();
   let message = `${response.status} ${response.statusText}: ${text.slice(0, 300)}`;
@@ -111,6 +111,7 @@ export async function responseError(response: Response): Promise<ApiError> {
     if(typeof j.code === 'string')details.code=j.code;
     if(typeof j.recovery === 'string')details.recovery=j.recovery;
     if(Number.isInteger(j.revision))details.revision=j.revision;
+    if(Array.isArray(j.missing))details.missing=j.missing;
     if(j.profile && typeof j.profile.kind === 'string' && typeof j.profile.name === 'string')details.profile=j.profile;
   } catch {  }
   return Object.assign(new Error(message), { status: response.status },details);

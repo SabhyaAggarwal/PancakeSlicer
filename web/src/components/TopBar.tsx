@@ -10,6 +10,7 @@ import { canPaste, copySelection, cutSelection, pasteClipboard, selectAll } from
 import { historyVersion, redo, redoName, redoNames, redoSteps, subscribeHistory, undo, undoName, undoNames, undoSteps } from '../state/history';
 import { CAMERA_VIEWS, VIEW_DIRECTIONS, cameraCommand, cameraSnapshot, subscribeCamera, perspective, autoPerspective } from '../camera';
 import { Icon } from './Icon';
+import { Caret } from './Caret';
 import { canAddPlate, duplicatePlate, exportAll, exportablePlates, sliceAll } from '../plater/plates';
 import { openGcode } from '../preview/jump';
 import { subscribeVisibleToolpaths, visibleToolpaths } from '../preview/visible';
@@ -51,7 +52,7 @@ export function TopBar() {
   const hasMeshes = useStore((s) => s.objects.some((o) => !o.project?.placeholder));
   const pasteEnabled = useStore(canPaste);
   const mock = useStore((s) => s.api?.mock);
-  const name = useStore((s) => (s.project?.name ?? s.objects[0]?.name)?.replace(/\.(stl|obj|3mf)$/i, ''));
+  const name = useStore((s) => (s.project?.name ?? s.objects[0]?.name)?.replace(/\.(stl|obj|3mf|drc)$/i, ''));
   const toolpaths = useSyncExternalStore(subscribeVisibleToolpaths, visibleToolpaths);
   const tab = useStore((st) => st.tab);
   const exportName = name;
@@ -162,7 +163,7 @@ export function TopBar() {
 }
 
 function SideOptions({ options, value, onChange }: { options: string[]; value: string; onChange(v: string): void }) {
-  return <span className="side-options"><MenuButton className="side-btn side-drop" label="Output options" items={options.map(o => ({label: o, checked: o === value, action: () => onChange(o)}))}>⌄</MenuButton></span>;
+  return <span className="side-options"><MenuButton className="btn side-drop" label="Output options" items={options.map(o => ({label: o, checked: o === value, action: () => onChange(o)}))}><Caret/></MenuButton></span>;
 }
 
 export function TabBar() {
@@ -197,24 +198,24 @@ export function TabBar() {
       {!profileManager && <SettingsDetail/>}
       <div className="tabbar-actions">
         {allSlice ? (
-          <button className="side-btn side-split" disabled={!printer || busy} onClick={() => void sliceAll()}>Slice all</button>
+          <button className="btn-primary slant" disabled={!printer || busy} onClick={() => void sliceAll()}>Slice all</button>
         ) : (
-          <button className={`side-btn ${plates ? 'side-split' : ''}`} disabled={!hasObjects || !printer || busy || !!outside} onClick={() => void slice()}>
+          <button className="btn-primary slant" disabled={!hasObjects || !printer || busy || !!outside} onClick={() => void slice()}>
             Slice plate
           </button>
         )}
         {plates && <SideOptions options={['Slice all', 'Slice plate']} value={sliceMode} onChange={setSliceMode} />}
         <span className="export-actions">{allExport ? (
-          <button className="side-btn side-split" disabled={!exportAllEnabled} onClick={() => void exportAll()}>Export all sliced file</button>
+          <button className="btn" disabled={!exportAllEnabled} onClick={() => void exportAll()}>Export all sliced file</button>
         ) : (
-          <button className={`side-btn ${plates ? 'side-split' : ''}`} disabled={!exportEnabled} onClick={download}>
+          <button className="btn" disabled={!exportEnabled} onClick={download}>
             {exportLabel}
           </button>
         )}
         {plates && <SideOptions options={[exportLabel, 'Export all sliced file']} value={allExport ? 'Export all sliced file' : exportLabel}
           onChange={(v) => setExportMode(v === 'Export all sliced file' ? 'all' : 'plate')} />}
         {hasPrinters && (
-          <button className="side-btn" disabled={!exportEnabled} onClick={() => setState({ appDialog: 'send' })}>
+          <button className="btn" disabled={!exportEnabled} onClick={() => setState({ appDialog: 'send' })}>
             Send
           </button>
         )}

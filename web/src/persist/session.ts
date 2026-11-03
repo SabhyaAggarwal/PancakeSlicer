@@ -20,7 +20,7 @@ const keyOf = (b: Blob) => blobKeys.get(b) ?? (blobKeys.set(b, newKey()), blobKe
 
 export const plateCount = (d: Pick<State, 'objects' | 'projectPlates' | 'plateIndex'>) =>
   d.objects.length + d.projectPlates.filter((p) => p.index !== d.plateIndex).reduce((n, p) => n + p.objects.length, 0);
-export const nameOf = (doc: Doc) => (doc.projectName ?? doc.project?.name ?? doc.objects[0]?.name ?? 'Untitled').replace(/\.(stl|obj|3mf|step|stp)$/i, '');
+export const nameOf = (doc: Doc) => (doc.projectName ?? doc.project?.name ?? doc.objects[0]?.name ?? 'Untitled').replace(/\.(stl|obj|3mf|drc|step|stp)$/i, '');
 
 export function encode(doc: Doc): { stored: StoredDoc; blobs: Map<string, Blob> } {
   const blobs = new Map<string, Blob>();

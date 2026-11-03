@@ -1,5 +1,6 @@
 import { Check } from './Check';
 import { Dropdown } from './Dropdown';
+import { Caret } from './Caret';
 import { useEffect, useState, type ReactNode } from 'react';
 import { effectiveConfig, getState } from '../state/store';
 import {
@@ -186,7 +187,7 @@ export function Legend(props: {
       <div className="lg-head">
         <Dropdown aria-label="Color scheme" value={ui.view} onValueChange={(next) => setUi((u) => ({ ...u, view: next as ViewType }))} options={[...VIEW_TYPES.filter((v) => d.header?.extended || canExtend(d) || !EXTENDED_VIEWS.has(v.key)).map((v) => ({ value: v.key, label: v.label }))]} />
         <button className="lg-collapse" onClick={() => setOpen(!open)} aria-expanded={open} aria-label={open ? 'Hide legend' : 'Show legend'}>
-          <span aria-hidden="true" className={open ? 'lg-caret up' : 'lg-caret'} />
+          <Caret dir={open ? 'up' : 'down'}/>
         </button>
       </div>
       {!props.explainOnly && (

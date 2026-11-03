@@ -15,9 +15,9 @@ import './settings.css';
 const ObjectSettings = lazy(() => import('./ObjectSettings').then(m => ({default: m.ObjectSettings})));
 const SettingsTab = lazy(() => import('./SettingsTab').then(m => ({default: m.SettingsTab})));
 
-function RailSection({title, actions, className = '', children}: {title: string; actions?: ReactNode; className?: string; children: ReactNode}) {
+function RailSection({title, meta, actions, className = '', children}: {title: string; meta?: ReactNode; actions?: ReactNode; className?: string; children: ReactNode}) {
   return <section className={`rail-section ${className}`} aria-label={title}>
-    <header className="rail-head"><h2 className="rail-title">{title}</h2>{actions && <div className="rail-actions">{actions}</div>}</header>
+    <header className="rail-head"><h2 className="rail-title">{title}</h2>{meta}{actions && <div className="rail-actions">{actions}</div>}</header>
     {children}
   </section>;
 }
@@ -38,8 +38,8 @@ function FilamentSection() {
   const onlyError = useStore(s => s.filamentSlots.length === 1 && !!resolvePreset(s, 'filament', s.filamentSlots[0]).error);
   const max = capacity(machine);
   return <RailSection title="Filament" actions={<>
-    {max > 1 && slots.length < max && <IconButton icon="add_filament" title="Add filament slot" onClick={addFilament}/>}
-    {max > 1 && slots.length > 1 && <IconButton icon="delete_filament" title={`Remove filament slot ${slots.length}`} onClick={() => removeSlot(slots.length - 1)}/>}
+    {max > 1 && slots.length < max && <button type="button" className="icon-btn rail-glyph" aria-label="Add filament slot" onClick={addFilament}>+</button>}
+    {max > 1 && slots.length > 1 && <button type="button" className="icon-btn rail-glyph" aria-label={`Remove filament slot ${slots.length}`} onClick={() => removeSlot(slots.length - 1)}>−</button>}
     <IconButton icon="edit" title="Edit filament" disabled={onlyError} onClick={() => edit('filament', only)}/>
   </>}>
     {slots.map((_name, i) => <div key={i} className="rail-row"><span className="rail-index">{i + 1}</span><PresetCombo type="filament" slot={i}/></div>)}
@@ -48,7 +48,7 @@ function FilamentSection() {
 function ProcessScope() {
   const scope = useStore(s => s.processScope), hasObjects = useStore(s => !!s.objects.length);
   return <div className="process-scope"><div className="scope-target"><span className="scope-caption">Apply to</span>
-    <Tabs.Root value={scope} onValueChange={v => setState(s => ({processScope: v as 'global' | 'objects', selected: v === 'objects' ? s.selected ?? (s.objects[0] ? {object: s.objects[0].id, instance: s.objects[0].instances[0].id} : null) : s.selected}))}><Tabs.List className="seg scope-tabs" aria-label="Settings scope"><Tabs.Trigger value="global">Project</Tabs.Trigger><Tabs.Trigger value="objects" disabled={!hasObjects}>Objects</Tabs.Trigger></Tabs.List></Tabs.Root>
+    <Tabs.Root value={scope} onValueChange={v => setState(s => ({processScope: v as 'global' | 'objects', selected: v === 'objects' ? s.selected ?? (s.objects[0] ? {object: s.objects[0].id, instance: s.objects[0].instances[0].id} : null) : s.selected}))}><Tabs.List className="seg slant-seg scope-tabs" aria-label="Settings scope"><Tabs.Trigger value="global">Project</Tabs.Trigger><Tabs.Trigger value="objects" disabled={!hasObjects}>Objects</Tabs.Trigger></Tabs.List></Tabs.Root>
     </div>
   </div>;
 }
@@ -59,13 +59,13 @@ function SliceSummary() {
 export function Sidebar() {
   const objects = useStore(s => s.processScope === 'objects' && !!s.objects.length);
   const ready = useStore(printerReady), process = useStore(s => s.process);
-  return <aside className="sidebar">
+  return <aside className="sidebar scroll-fade">
     <ProfileLibraryNotice/>
     <PrinterSection/>
     {ready && <>
       <FilamentSection/>
-      <RailSection title="Print settings" className="process-section" actions={<><ChangesMark type="process"/><IconButton icon="edit" title="Edit print settings" disabled={!process} onClick={() => edit('process', process)}/><PresetActions type="process"/></>}>
-        <div className="rail-row"><PresetCombo type="process"/></div>
+      <RailSection title="Print settings" className="process-section" meta={<ChangesMark type="process"/>} actions={<><IconButton icon="edit" title="Edit print settings" disabled={!process} onClick={() => edit('process', process)}/><PresetActions type="process"/></>}>
+        <div className="rail-row rail-row-wide"><PresetCombo type="process"/></div>
         {process && <ConflictLine type="process" name={process}/>}
         <ProcessScope/>
         <div className="process-panel"><Suspense fallback={<div className="settings-load" role="status">Loading settings…</div>}>{objects ? <ObjectSettings/> : <SettingsTab type="process" compact hidePreset/>}</Suspense></div>

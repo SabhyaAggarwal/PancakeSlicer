@@ -483,7 +483,7 @@ export async function jobRequest(s = getState(), saving = false): Promise<JobReq
 (window as unknown as { __job: unknown }).__job = async () => {
   const r = await jobRequest();
   return {
-    'files[]': r.files.map((f) => `${f.name} (${f.blob.size} bytes)`),
+    files: r.files.map((f) => `${f.name} (${f.blob.size} bytes)`),
     vendor: r.vendor, printer: r.printer, process: r.process, 'filament[]': r.filaments,
     overrides: JSON.stringify(r.overrides), plate: r.plate && JSON.stringify(r.plate), project_instances: r.project_instances,
     events: r.events.length ? JSON.stringify(r.events) : undefined, output: r.output,
@@ -619,7 +619,7 @@ export function cancelSlice() {
 }
 
 export function exportFilename(s = getState()): string {
-  const base = s.job.calib ?? (s.project?.name ?? s.objects[0]?.name)?.replace(/\.(stl|obj|3mf)$/i, '') ?? 'plate';
+  const base = s.job.calib ?? (s.project?.name ?? s.objects[0]?.name)?.replace(/\.(stl|obj|3mf|drc)$/i, '') ?? 'plate';
   const time = Number((s.job.status?.record as { text_summary?: Record<string, string> } | undefined)?.text_summary?.estimated_time_s);
   const firstTool = Math.max(0, Math.min(...s.objects.map((o) => o.extruder - 1)));
   const vars: Config = {

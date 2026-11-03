@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { unzip, strFromU8 } from 'fflate';
 import type { Config } from '../api/types';
-import { mutation, responseError } from '../api/access';
+import { responseError } from '../api/access';
 import { getState, newId, printerPreset, resolvePreset, setState, type Instance, type LayerEvent, type LayerRange, type NativeObject, type PlateObject, type SeamMode, type Volume, type VolumeType } from '../state/store';
 import type { PlateJson } from '../api/types';
 import { instanceBox, instanceMatrix, setNativePlate } from './geometry';
 import { archivePainting, paintJson, type PaintKind } from './paint';
+import { attachFiles, postJob } from '../api/blobs';
 
 type Json = Record<string, unknown>;
 type Rows = number[][];
@@ -114,12 +115,12 @@ export async function explodeProject(file: File): Promise<{ settings: Config; pl
   const s = getState();
   const fd = new FormData();
   fd.append('operation', 'explode');
-  fd.append('files[]', file, file.name);
+  await attachFiles(fd, [{ name: file.name, blob: file }]);
   fd.append('vendor', printerPreset(s)?.vendor ?? 'BBL');
   fd.append('printer', resolvePreset(s, 'machine', s.printer).base?.name ?? s.printer);
   fd.append('process', resolvePreset(s, 'process', s.process).base?.name ?? s.process);
   for (const f of s.filamentSlots) fd.append('filament[]', resolvePreset(s, 'filament', f).base?.name ?? f);
-  const response = await mutation('/api/jobs', { method: 'POST', body: fd });
+  const response = await postJob(fd);
   if (!response.ok) throw await responseError(response);
   const { id } = await response.json() as { id: string };
   try {

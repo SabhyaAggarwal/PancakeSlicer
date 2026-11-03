@@ -1,5 +1,6 @@
 import { Check } from './Check';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useRowFill } from './tab-rows';
 import { loadHead, loadHeadJson, maxSlope, saveUserHead, slopeMap, type Head, type HeadBox } from '../heads';
 import { toast } from '../state/store';
 import { Modal, ModalTitle } from './Modal';
@@ -100,6 +101,8 @@ export default function HeadDialog({ id, layerHeight, close, onSaved }: { id: st
   const [calibrated, setCalibrated] = useState(false);
   const [provenance, setProvenance] = useState('');
   const [page, setPage] = useState(0);
+  const strip = useRef<HTMLDivElement>(null);
+  useRowFill(strip, base);
   const [angles, setAngles] = useState<string[]>(Array(8).fill(''));
   useEffect(() => {
     const key = id || 'generic-conservative';
@@ -163,7 +166,7 @@ export default function HeadDialog({ id, layerHeight, close, onSaved }: { id: st
             <label htmlFor="head-id">New head ID</label><input id="head-id" className="text" value={fields.id} onChange={field('id')} />
             <label htmlFor="head-name">Name</label><input id="head-name" className="text" value={fields.name} onChange={field('name')} />
           </div>
-          <div className="page-bar" role="tablist">
+          <div ref={strip} className="page-bar" role="tablist">
             {['Head profile', 'Per-direction fit'].map((p, i) => <button key={p} role="tab" aria-selected={i === page} className={`page-tab ${i === page ? 'active' : ''}`} onClick={() => setPage(i)}>{p}</button>)}
           </div>
           {page === 0 && <>

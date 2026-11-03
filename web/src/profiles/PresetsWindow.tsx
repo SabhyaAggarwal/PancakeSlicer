@@ -4,7 +4,8 @@ import { useEffect, useId, useRef, useSyncExternalStore } from 'react';
 import { createSelection, reduceSelection, selectedVisible, type SelectionEvent } from './selection';
 import { serializeSelected } from './bulk';
 import { findProfile, matchesProfile, profileKey } from './identity';
-import { ProfileFilterGroup } from './ProfileFilters';
+import { FacetGroup, FacetsHead } from '../components/Facets';
+import { Caret } from '../components/Caret';
 import { selectCompatibility } from './compatibility';
 import { ManagerProfileRow } from './ManagerProfileRow';
 import { profileAccess, profileReferenceSnapshot, subscribeProfileReferences } from './references';
@@ -42,7 +43,8 @@ const coverOf = (vendor: string, model: string) => vendor && model ? `/profiles/
 type CopyRequest={source:UserPreset;name:string;creation:ProfileCreation;error?:string};
 let pendingCopy:CopyRequest|undefined;
 
-interface Item { base?:SystemPreset; key: string; name: string; mine: boolean; parent?: string; changed: number; slot?: number; user?: UserPreset; note: string; vendor: string; model:string; nozzle: string; material: string; family?: string; cover?: string|null; swatch?:string|null;reason?: string; config: Config; variants?: Item[] }
+interface Item { base?:SystemPreset; key: string; name: string; mine: boolean; parent?: string; changed: number; slot?: number; user?: UserPreset; note: string; vendor: string; model:string; nozzle: string; material: string; family?: string; cover?: string|null; swatch?:string|null;reason?: string; meta?: string; config: Config; variants?: Item[] }
+const COMMON_MATERIALS = ['PLA', 'PETG', 'ABS', 'ASA', 'TPU'];
 const NOUNS: Record<PresetType,[string,string]> = {machine:['printer','printers'],filament:['filament','filaments'],process:['print settings','print settings']};
 const count = (n:number,[one,many]:[string,string]) => `${n} ${n === 1 ? one : many}`;
 function groupOf(type: PresetType, i: Item) {
@@ -65,7 +67,7 @@ function families(type: PresetType, list: Item[]): Item[] {
     if(type === 'filament' && variants.length === 1) {out.push(variants[0]); continue;}
     variants.sort((a, b) => type === 'machine' ? Number(a.nozzle) - Number(b.nozzle) : a.name.localeCompare(b.name));
     const head = variants[0];
-    out.push({...head, key: `family:${type}:${id}`, name: type === 'machine' ? head.model : shortName(head.name), note: type === 'machine' ? `${variants.map(v => v.nozzle).filter(Boolean).join(' · ')} mm` : count(variants.length, ['variant', 'variants']), reason: variants.some(v => !v.reason) ? undefined : head.reason, variants});
+    out.push({...head, key: `family:${type}:${id}`, name: type === 'machine' ? head.model : shortName(head.name), note: '', meta: type === 'machine' ? `${variants.map(v => v.nozzle).filter(Boolean).join(' · ')} mm` : count(variants.length, ['variant', 'variants']), reason: variants.some(v => !v.reason) ? undefined : head.reason, variants});
   }
   return out;
 }
@@ -222,7 +224,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     const s = getState();
     return adding ? families(type,catalogItems(s,type)) : items(s,type);
   }, [adding,type,users,dirty,filamentEdits,machines,processes,filaments,printer,process,slots]);
-  useEffect(()=>{if(adding && type !== 'machine' && printerOptions.some(o=>o.value === printer))setPrinterFilter([printer]);},[adding,type]);
+  const [materialDefault,setMaterialDefault]=useState(false);
   const facets=useMemo(()=>{
     const flat=list.flatMap(i=>i.variants ?? [i]);
     const rows=flat.filter(i=>!vendorFilter.length || vendorFilter.includes(i.vendor));
@@ -235,8 +237,9 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     const state=getState();
     const hasContext=type !== 'machine' && (printerFilter.length || modelFilter.length || nozzleFilter.length);
     const contexts=hasContext ? printerFilter.length ? printerFilter : machines.filter(p=>(!modelFilter.length || modelFilter.includes(first(p.config.printer_model) || p.model || '')) && (!nozzleFilter.length || nozzleFilter.includes(first(p.config.nozzle_diameter)))).map(p=>p.name) : [];
-    return list.filter(i=>{const variants=i.variants ?? [i];return (!vendorFilter.length || vendorFilter.includes(i.vendor)) && (!materialFilter.length || materialFilter.includes(i.material)) && (type === 'machine' ? (!modelFilter.length || modelFilter.includes(i.model)) && (!nozzleFilter.length || variants.some(v=>nozzleFilter.includes(v.nozzle))) : !hasContext || variants.some(v=>contexts.some(key=>selectCompatibility(state,type,v.user ? v.key : v.name,key).ok)));});
-  },[list,type,vendorFilter,materialFilter,modelFilter,nozzleFilter,printerFilter,machines,users,printer,process,dirty,filamentEdits]);
+    const materials=search.trim() && materialDefault ? [] : materialFilter;
+    return list.filter(i=>{const variants=i.variants ?? [i];return (!vendorFilter.length || vendorFilter.includes(i.vendor)) && (!materials.length || materials.includes(i.material)) && (type === 'machine' ? (!modelFilter.length || modelFilter.includes(i.model)) && (!nozzleFilter.length || variants.some(v=>nozzleFilter.includes(v.nozzle))) : !hasContext || variants.some(v=>contexts.some(key=>selectCompatibility(state,type,v.user ? v.key : v.name,key).ok)));});
+  },[list,type,vendorFilter,materialFilter,materialDefault,search,modelFilter,nozzleFilter,printerFilter,machines,users,printer,process,dirty,filamentEdits]);
   const query=search.trim().toLocaleLowerCase();
   const groups=useMemo(()=>{
     const byGroup=new Map<string,Item[]>();
@@ -248,7 +251,17 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const visible=useMemo(()=>groups.flatMap(g=>g.rows),[groups]);
   const [collapsed,setCollapsed]=useState<ReadonlySet<string>>(new Set());
   const filtersActive=vendorFilter.length+modelFilter.length+nozzleFilter.length+materialFilter.length+printerFilter.length;
-  const clearFilters=()=>{setVendorFilter([]);setModelFilter([]);setNozzleFilter([]);setMaterialFilter([]);setPrinterFilter([]);};
+  const clearFilters=()=>{setVendorFilter([]);setModelFilter([]);setNozzleFilter([]);setMaterialFilter([]);setPrinterFilter([]);setMaterialDefault(false);};
+  const defaulted=useRef('');
+  useEffect(()=>{
+    if(!adding){defaulted.current='';return;}
+    const view=`${type}`;
+    if(defaulted.current === view || !list.length)return;
+    defaulted.current=view;
+    if(type !== 'machine' && printerOptions.some(o=>o.value === printer))setPrinterFilter([printer]);
+    const common=type === 'filament' ? COMMON_MATERIALS.filter(m=>facets.materials.includes(m)) : [];
+    if(common.length){setMaterialFilter(common);setMaterialDefault(true);}
+  },[adding,type,list,printerOptions,printer]);
   const scope = `profiles:${adding ? 'add' : 'owned'}:${type}`, groupKey = (label: string) => `${scope}:${label}`;
   const order = useMemo(() => groups.flatMap(g => !query && collapsed.has(groupKey(g.label)) ? [] : g.rows.map(i => i.key)), [groups, collapsed, query, scope]);
   const current = (t: PresetType) => (t === 'machine' ? printer : t === 'process' ? process : slots[0]) ?? '';
@@ -396,19 +409,19 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
       {!pendingCopy.creation.retryable && <button type="button" className="btn-ghost" disabled={busy} onClick={discardCopy}>Discard</button>}
     </div>}
     <div className="np-dialog-body">
-      <div className={`pf-split${filtersOpen ? ' filters-open' : ''}`} data-mobile-pane={mobilePane} style={{'--profile-list-width': `${renderedListWidth}px`} as React.CSSProperties} inert={busy}>
+      <div className={`pf-split${filtersOpen ? ' filters-open' : ''}`} data-library={adding ? 'master' : 'mine'} data-mobile-pane={mobilePane} style={{'--profile-list-width': `${renderedListWidth}px`} as React.CSSProperties} inert={busy}>
       <div className="pf-mobile-navigation"><button ref={mobileBack} type="button" className="btn" onClick={backToList}>Back</button><strong>{mobilePane==='filters'?'Filters':item?.name ?? ''}</strong></div>
-      <aside id={`${id}-filters`} className="pf-facets" aria-label="Library and filters">
+      <aside id={`${id}-filters`} className="pf-facets facets" aria-label="Library and filters">
         <nav className="pf-library" aria-label="Library">
           <button type="button" className="pf-library-item" aria-current={!adding ? 'page' : undefined} onClick={()=>showLibrary(false)}>My {nouns[1]}</button>
           <button type="button" className="pf-library-item" aria-current={adding ? 'page' : undefined} onClick={()=>showLibrary(true)}>Master presets</button>
         </nav>
-        <ProfileFilterGroup label="Brand" options={facets.vendors.map(value=>({value,label:value}))} value={vendorFilter} onChange={setVendorFilter}/>
-        {type !== 'filament' && <ProfileFilterGroup label="Printer model" options={facets.models.map(value=>({value,label:value}))} value={modelFilter} onChange={setModelFilter}/>}
-        {type !== 'filament' && <ProfileFilterGroup label="Nozzle" options={facets.nozzles.map(value=>({value,label:`${value} mm`}))} value={nozzleFilter} onChange={setNozzleFilter}/>}
-        {type === 'filament' && <ProfileFilterGroup label="Material" options={facets.materials.map(value=>({value,label:value}))} value={materialFilter} onChange={setMaterialFilter}/>}
-        {type !== 'machine' && <ProfileFilterGroup label={type === 'filament' ? 'Works with' : 'Printer'} options={printerOptions} value={printerFilter} onChange={setPrinterFilter}/>}
-        {filtersActive > 0 && <button type="button" className="more-toggle" onClick={clearFilters}>Clear filters</button>}
+        <FacetsHead active={filtersActive} onClear={clearFilters}/>
+        <FacetGroup label="Brand" options={facets.vendors.map(value=>({value,label:value}))} value={vendorFilter} onChange={setVendorFilter}/>
+        {type !== 'filament' && <FacetGroup label="Printer model" options={facets.models.map(value=>({value,label:value}))} value={modelFilter} onChange={setModelFilter}/>}
+        {type !== 'filament' && <FacetGroup label="Nozzle" options={facets.nozzles.map(value=>({value,label:`${value} mm`}))} value={nozzleFilter} onChange={setNozzleFilter}/>}
+        {type === 'filament' && <FacetGroup label="Material" options={[...facets.materials].sort((a,b)=>(COMMON_MATERIALS.includes(b) ? 1 : 0)-(COMMON_MATERIALS.includes(a) ? 1 : 0) || a.localeCompare(b)).map(value=>({value,label:value}))} value={materialFilter} onChange={next=>{setMaterialFilter(next);setMaterialDefault(false);}}/>}
+        {type !== 'machine' && <FacetGroup label={type === 'filament' ? 'Works with' : 'Printer'} options={printerOptions} value={printerFilter} onChange={setPrinterFilter}/>}
         <button type="button" className="btn pf-mobile-show-results" onClick={backToList}>Show {count(visible.length,resultNoun)}</button>
       </aside>
       <section className="pf-my-profiles" ref={resultsPane} aria-label={adding ? 'Master presets' : `My ${nouns[1]}`}>
@@ -433,7 +446,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
           {groups.map(g => {
             const open = !!query || !collapsed.has(groupKey(g.label));
             return <div key={g.label} role="rowgroup" className="pf-group">
-              <div role="row"><span role="rowheader"><button type="button" className="pf-group-toggle" aria-expanded={open} onClick={()=>toggleGroup(g.label)}><span>{g.label}</span><span className="pf-dim">{count(g.rows.length,resultNoun)}</span></button></span></div>
+              <div role="row"><span role="rowheader"><button type="button" className="pf-group-toggle" aria-expanded={open} onClick={()=>toggleGroup(g.label)}><Caret dir={open ? 'down' : 'right'}/><span className="pf-group-label">{g.label}</span><span className="pf-dim">{count(g.rows.length,resultNoun)}</span></button></span></div>
               {open && g.rows.map(i => <ManagerProfileRow key={i.key} item={i} listId={id} selected={selectedSet.has(i.key)} focused={selection.focus === i.key} selectable={!adding} dispatch={dispatch}/>)}
             </div>;
           })}

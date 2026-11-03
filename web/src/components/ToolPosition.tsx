@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { PreviewData } from '../preview/data';
 import type { ViewType } from '../preview/colors';
 import { MoveType, ROLE_NAMES } from '../preview/format';
+import { Caret } from './Caret';
 
 const TYPE_NAMES = ['Noop', 'Retract', 'Unretract', 'Seam', 'Tool change', 'Color change', 'Pause print', 'Custom G-code', 'Travel', 'Wipe', 'Extrude'];
 const NA = 'N/A';
@@ -82,7 +83,7 @@ export default function ToolPosition({ data, at, view }: { data: PreviewData; at
       )}
       <div className="tool-position-row">
         <button type="button" className="tool-fold" title={shown ? 'Hide properties' : 'Show properties'} aria-expanded={shown}
-          onClick={() => { shownDefault = !shown; setShown(!shown); }}>{shown ? '▾' : '▴'}</button>
+          onClick={() => { shownDefault = !shown; setShown(!shown); }}><Caret dir={shown ? 'down' : 'up'}/></button>
         <div>
           <div className="tool-axes">
             {(['x', 'y', 'z'] as const).map((a, k) => <span key={a}><span className={`axis ${a}`}>{a.toUpperCase()} </span>{p[k].toFixed(digits)}</span>)}

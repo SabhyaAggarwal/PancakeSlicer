@@ -1,8 +1,9 @@
 import * as THREE from 'three';
-import { mutation, responseError } from '../api/access';
+import { responseError } from '../api/access';
 import { getState, logNotice, markStale, printerPreset, resolvePreset, setState, toast, type PlateObject } from '../state/store';
 import { undoable } from '../state/history';
 import { bakeStl, instanceBox, instanceMatrix, loadMesh } from './geometry';
+import { attachFiles, postJob } from '../api/blobs';
 
 export async function toolJob(operation: string, fields: Record<string, string>, files: [Blob, string][]) {
   const s = getState();
@@ -14,8 +15,8 @@ export async function toolJob(operation: string, fields: Record<string, string>,
   fd.append('printer', resolvePreset(s, 'machine', s.printer).base?.name ?? s.printer);
   fd.append('process', resolvePreset(s, 'process', s.process).base?.name ?? s.process);
   for (const f of s.filamentSlots) fd.append('filament[]', resolvePreset(s, 'filament', f).base?.name ?? f);
-  for (const [blob, file] of files) fd.append('files[]', blob, file);
-  const response = await mutation('/api/jobs', { method: 'POST', body: fd });
+  await attachFiles(fd, files.map(([blob, name]) => ({ name, blob })));
+  const response = await postJob(fd);
   if (!response.ok) throw await responseError(response);
   const { id } = await response.json() as { id: string };
   try {

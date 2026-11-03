@@ -61,6 +61,7 @@ export function createServiceDocument<D extends ServiceDocument>(path: string, m
             if (same(theirs, base[key])) next[key] = mine;
             else if (same(theirs, mine)) unsaved.delete(key);
             else if (merge[key]) next[key] = merge[key](theirs, mine);
+            else if (retry) next[key] = mine;
             else throw error;
           }
           base = remote.document; operation = null; publish({ revision: remote.revision, document: next as D });
