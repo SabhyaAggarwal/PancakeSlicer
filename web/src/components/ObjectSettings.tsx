@@ -219,7 +219,7 @@ function SelectSettings(props: { title: string; keys: string[]; current: Config;
     setChecked(next);
   };
   return (
-    <Modal className="small" label={`Select settings — ${props.title}`} onClose={props.onClose} backdropClose returnFocus='.obj-settings-tools button[title="Add settings"]'>
+    <Modal size="m" label={`Select settings — ${props.title}`} onClose={props.onClose} backdropClose returnFocus='.obj-settings-tools button[title="Add settings"]'>
         <ModalTitle title={`Select settings — ${props.title}`} onClose={props.onClose} />
         <div className="select-list">
           {props.keys.map((k) => (

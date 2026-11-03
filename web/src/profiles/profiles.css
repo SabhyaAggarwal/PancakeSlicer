@@ -105,6 +105,8 @@
 :where(.orca-parity) .ww-chips .chip { min-height: 24px; cursor: pointer; background: none; }
 :where(.orca-parity) .ww-chips .chip[aria-pressed=true] { border-color: var(--accent); color: var(--ink); background: color-mix(in srgb, var(--accent) 22%, transparent); }
 :where(.orca-parity) .ww-chips .chip[aria-disabled=true] { cursor: default; }
+:where(.orca-parity) .ww-chip-group { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin-right: var(--s-4); }
+:where(.orca-parity) .ww-brand { color: var(--muted); font: var(--t-small); font-size: 11px; }
 :where(.orca-parity) .ww-count { min-height: var(--h-compact); display: flex; align-items: center; justify-content: flex-end; color: var(--muted); font: var(--t-small); white-space: nowrap; font-variant-numeric: tabular-nums; }
 :where(.orca-parity) .ww-range { display: flex; align-items: center; gap: var(--s-2); }
 :where(.orca-parity) .ww-range > .text { width: 72px; }

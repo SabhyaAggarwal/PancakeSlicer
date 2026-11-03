@@ -1,0 +1,35 @@
+:where(.orca-parity) .modal-overlay { position: fixed; inset: 0; z-index: 90; background: var(--scrim); }
+:where(.orca-parity) .modal { --modal-w: 960px; position: fixed; top: 50%; left: 50%; z-index: 100; transform: translate(-50%, -50%); display: flex; flex-direction: column; width: min(var(--modal-w), calc(100vw - 32px)); height: auto; max-height: calc(100dvh - 32px); margin: 0; padding: 0; overflow: hidden; border: 1px solid var(--border-control); border-radius: var(--r-3); background: var(--panel); color: var(--ink); box-shadow: var(--shadow-pop); font: var(--t-body); }
+:where(.orca-parity) .modal[data-size=s] { --modal-w: 400px; }
+:where(.orca-parity) .modal[data-size=m] { --modal-w: 520px; }
+:where(.orca-parity) .modal[data-size=l] { --modal-w: 720px; }
+:where(.orca-parity) .modal[data-size=xl] { --modal-w: 960px; }
+:where(.orca-parity) .modal[data-size=window] { height: min(760px, calc(100dvh - 32px)); }
+:where(.orca-parity) .modal:focus { outline: none; }
+
+:where(.orca-parity) .modal-title { flex: none; display: flex; align-items: center; gap: var(--s-3); min-height: 48px; padding: var(--s-3) var(--s-3) var(--s-3) var(--s-5); border-bottom: 1px solid var(--line); }
+:where(.orca-parity) .modal-title > h2 { flex: 1; min-width: 0; margin: 0; font: var(--t-title); color: var(--ink); overflow-wrap: anywhere; }
+:where(.orca-parity) .modal-close { flex: none; display: grid; place-items: center; width: var(--h-control); height: var(--h-control); padding: 0; border: 0; border-radius: var(--r-2); background: none; color: var(--ink-2); cursor: pointer; }
+:where(.orca-parity) .modal-close:hover { background: var(--hover); color: var(--ink); }
+
+:where(.orca-parity) .modal > form { display: contents; }
+:where(.orca-parity) .modal > *, :where(.orca-parity) .modal > form > * { flex: none; min-height: 0; }
+:where(.orca-parity) .modal-body, :where(.orca-parity) :is(.modal, .modal > form) > :nth-last-child(1 of :not(.modal-buttons)):not(.modal-title, form) { flex: 1 1 auto; min-height: 0; overflow: auto; }
+:where(.orca-parity) .modal-body { display: flex; flex-direction: column; gap: var(--s-4); padding: var(--s-5); }
+:where(.orca-parity) .modal-body > p { margin: 0; color: var(--ink-2); }
+
+:where(.orca-parity) .modal-buttons { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--s-3); padding: var(--s-4) var(--s-5); border-top: 1px solid var(--line); background: var(--panel); }
+:where(.orca-parity) .modal-lead { display: flex; align-items: center; gap: var(--s-3); min-width: 0; margin-right: auto; color: var(--ink-3); font: var(--t-small); }
+
+@media (pointer: coarse) {
+  :where(.orca-parity) .modal-close { width: 44px; height: 44px; }
+}
+@media (max-width: 599px) {
+  :where(.orca-parity) .modal[data-size=s] { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
+  :root.orca-parity .modal:not([data-size=s]) { top: 0; left: 0; transform: none; width: 100vw; height: 100dvh; max-width: 100vw; max-height: 100dvh; border: 0; border-radius: 0; padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+  :root.orca-parity .modal:not([data-size=s]) .modal-buttons { padding-bottom: max(var(--s-4), env(safe-area-inset-bottom)); }
+  :where(.orca-parity) .modal-buttons > .btn, :where(.orca-parity) .modal-buttons > button { min-height: 44px; }
+}
+
+:where(.orca-parity) .ask-message { white-space: pre-line; overflow-wrap: anywhere; }
+:where(.orca-parity) .ask-choices { display: grid; gap: var(--s-2); }

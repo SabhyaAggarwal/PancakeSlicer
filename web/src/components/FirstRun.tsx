@@ -83,7 +83,7 @@ export function SetupWizard({ close }: { close(): void }) {
   const start = useRef(count);
   useEffect(() => { if (count > start.current) close(); }, [count]);
   return (
-    <Modal label="Setup Wizard" onClose={close} className="small setup-wizard" returnFocus=".topbar .menu-title">
+    <Modal size="m" label="Setup Wizard" onClose={close} className="setup-wizard" returnFocus=".topbar .menu-title">
       <ModalTitle title="Setup Wizard" onClose={close} />
       <div className="setup-wizard-body">
         <PrinterChoice />

@@ -313,7 +313,7 @@ export default function App() {
         {appDialog && <AppDialog which={appDialog} />}
         {calibDialog === 'nonplanar' ? <NonplanarCalibDialog /> : calibDialog && <CalibDialog which={calibDialog} />}
         {contextMenu && <ContextMenu />}
-        {sessionDialog && <Modal label="Projects" onClose={() => setState({ sessionDialog: null })}><ModalTitle title="Projects" onClose={() => setState({ sessionDialog: null })} /><ProjectsView /></Modal>}
+        {sessionDialog && <Modal size="window" label="Projects" onClose={() => setState({ sessionDialog: null })}><ModalTitle title="Projects" onClose={() => setState({ sessionDialog: null })} /><ProjectsView /></Modal>}
         {palette !== null && <Palette />}
       </Suspense>
       <Suspense fallback={null}><ControlHints /></Suspense>

@@ -62,7 +62,7 @@ export default function PlateSettings({ close }: { close(): void }) {
     close();
   };
   return (
-    <Modal className="small" label="Plate Settings" onClose={close}>
+    <Modal size="m" label="Plate Settings" onClose={close}>
       <ModalTitle title="Plate Settings" onClose={close} />
       <div className="prefs-body plate-settings">
         <label className="prefs-row"><span>Plate name</span><input className="text" value={name} onChange={(e) => setName(e.target.value)} /></label>

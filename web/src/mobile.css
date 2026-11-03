@@ -51,17 +51,8 @@
   :where(.orca-parity) .canvas-area .notifications { left: max(8px,env(safe-area-inset-left)); right: calc(max(8px,env(safe-area-inset-right)) + 48px); bottom: 60px; width: auto; max-width: 480px; margin-inline: auto; max-height: 40%; }
   :where(.orca-parity) .canvas-area:has(.object-info) .notifications { bottom: 120px; }
   :where(.orca-parity) .saved-preferences-notice { padding: 4px max(8px,env(safe-area-inset-right)) 4px max(8px,env(safe-area-inset-left)); }
-  :where(.orca-parity) .modal { max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
 }
 @media (max-width: 599px) {
-  :root.orca-parity .modal:not(.ask, .orient-confirm, .palette) { top: 0; left: 0; transform: none; width: 100vw; height: 100dvh; max-width: 100vw; max-height: 100dvh; border: 0; border-radius: 0; outline: 0;
-    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
-  :root.orca-parity .modal:not(.ask, .orient-confirm, .palette, .pf-window) { overflow-y: auto; }
-  :root.orca-parity .modal:not(.ask, .orient-confirm, .palette, .pf-window) > :not(.modal-title, .modal-buttons) { flex: 0 0 auto; min-height: auto; max-height: none; overflow: visible; }
-  :root.orca-parity .modal:not(.ask, .orient-confirm, .palette, .pf-window) > .modal-title { position: sticky; top: 0; z-index: 2; }
-  :root.orca-parity .modal:not(.ask, .orient-confirm, .palette, .pf-window) > .modal-buttons { margin-top: auto; }
-  :where(.orca-parity) .modal .modal-buttons { position: sticky; bottom: 0; z-index: 1; flex-wrap: wrap; background: var(--panel); }
-  :where(.orca-parity) .modal-title { min-height: 48px; }
   [data-radix-popper-content-wrapper]:has(> .pk-pop) { position: fixed !important; inset: auto 0 0 0 !important; transform: none !important; min-width: 0 !important; }
   :root.orca-parity .orca-menu.pk-pop { width: 100vw; max-width: 100vw; height: calc(100dvh - 48px); max-height: calc(100dvh - 48px); border-radius: var(--r-3) var(--r-3) 0 0; padding-bottom: env(safe-area-inset-bottom); }
   :root.orca-parity .orca-menu.pk-pop > .pk-body { flex: 1 1 auto; min-height: 0; }

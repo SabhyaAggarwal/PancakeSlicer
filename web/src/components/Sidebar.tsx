@@ -14,6 +14,7 @@ import { savePreferences } from '../saved-preferences';
 import { printerCover } from '../profiles/metadata';
 import './settings.css';
 import { Glyph, type GlyphName } from './Glyph';
+import { LayerHeightChooser } from '../profiles/LayerHeightChooser';
 const ObjectSettings = lazy(() => import('./ObjectSettings').then(m => ({default: m.ObjectSettings})));
 const SettingsTab = lazy(() => import('./SettingsTab').then(m => ({default: m.SettingsTab})));
 
@@ -94,6 +95,7 @@ export function Sidebar() {
       <FilamentSection/>
       <RailSection title="Print settings" className="process-section" meta={<ChangesMark type="process"/>} actions={<><ViewChoices/><RailAction glyph="edit" label="Edit print settings" disabled={!process} onClick={() => edit('process', process)}/><PresetActions type="process"/></>}>
         <div className="rail-row rail-row-wide"><PresetCombo type="process"/></div>
+        <LayerHeightChooser/>
         {process && <ConflictLine type="process" name={process}/>}
         <div className="process-panel"><Suspense fallback={<div className="settings-load" role="status">Loading settings…</div>}>{objects ? <ObjectSettings/> : <SettingsTab type="process" compact hidePreset/>}</Suspense></div>
       </RailSection>

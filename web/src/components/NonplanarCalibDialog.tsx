@@ -186,7 +186,7 @@ export default function NonplanarCalibDialog() {
     'Runs the clearance check with the selected head over the sliced clearance plate. The first cone it finds the head touching should be the one after the last clean cone on your print. Generate the plate, slice it, then check.',
   ][page];
   return (
-    <Modal className="np-calib-dialog" label="Non-planar calibration" onClose={close}>
+    <Modal size="l" className="np-calib-dialog" label="Non-planar calibration" onClose={close}>
       <ModalTitle title="Non-planar calibration" onClose={close} />
       <div ref={strip} className="page-bar" role="tablist">
         {PAGES.map((p, i) => <button key={p} role="tab" aria-selected={i === page} className={`page-tab ${i === page ? 'active' : ''}`} onClick={() => setPage(i)}><span className="page-tab-label">{p}</span></button>)}

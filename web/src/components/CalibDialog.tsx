@@ -194,7 +194,7 @@ export default function CalibDialog({ which }: { which: Exclude<CalibMenu, 'nonp
     await runCalibration(result.kind, Object.entries(result.params).map(([k, x]) => `${k}=${x}`).join(','));
   };
   return (
-    <Modal className="small calib-dialog" label={c.title} onClose={close}>
+    <Modal size="m" className="calib-dialog" label={c.title} onClose={close}>
       <ModalTitle title={c.title} onClose={close} />
       <form className="prefs-body" onSubmit={(e) => { e.preventDefault(); void ok(); }}>
         {c.groups?.map((g) => (

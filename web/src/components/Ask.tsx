@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from 'react';
-import { Modal, ModalTitle } from './Modal';
+import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 
 type Ask = { title: string; message?: string; value?: string; range?: [number, number]; choices?: string[]; buttons?: [string, string | null]; danger?: boolean; resolve(v: string | null): void };
 let current: Ask | null = null;
@@ -15,7 +15,7 @@ const ask = (a: Omit<Ask, 'resolve'>) =>
   });
 
 export const confirmDialog = (title: string, message: string, buttons?: [string, string], danger?: boolean) => ask({ title, message, buttons, danger }).then((v) => v !== null);
-export const messageDialog = (title: string, message: string) => ask({ title, message, buttons: ['OK', null] }).then(() => undefined);
+export const messageDialog = (title: string, message: string) => ask({ title, message, buttons: ['Close', null] }).then(() => undefined);
 export const promptDialog = (title: string, value: string) => ask({ title, value }).then((v) => v?.trim() || null);
 export const numberDialog = (title: string, prompt: string, value: number, min: number, max: number) =>
   ask({ title, message: prompt, value: String(value), range: [min, max] }).then((v) => v === null || v.trim() === '' ? null : Math.min(max, Math.max(min, Math.round(Number(v)))))
@@ -30,25 +30,24 @@ function AskDialog({ a }: { a: Ask }) {
     show(null);
     a.resolve(v);
   };
+  const primary = a.buttons?.[0] ?? (a.range ? 'Apply' : a.value !== undefined && !a.choices ? 'Save' : 'Continue');
   return (
-    <Modal className="small ask" label={a.title} onClose={() => done(null)}>
+    <Modal size="s" alert label={a.title} onClose={() => done(null)}>
       <form method="dialog" onSubmit={(e) => { e.preventDefault(); done(a.value === undefined ? '' : text); }}>
         <ModalTitle title={a.title} onClose={() => done(null)} />
-        <div className="flush-body">
-          {a.range ? (
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>{a.message}
-              <input className="text num" type="number" min={a.range[0]} max={a.range[1]} step={1} value={text} data-autofocus onChange={(e) => setText(e.target.value)} />
-            </label>
-          ) : a.message && <div style={{ whiteSpace: 'pre-line' }}>{a.message}</div>}
-          {a.choices?.map((c, i) => (
+        <ModalBody>
+          {a.range ? <label className="form-row"><span>{a.message}</span>
+            <input className="text num" type="number" min={a.range[0]} max={a.range[1]} step={1} value={text} onChange={(e) => setText(e.target.value)} /></label>
+            : a.message && <p className="ask-message">{a.message}</p>}
+          {a.choices && <div className="ask-choices" role="radiogroup" aria-label={a.title}>{a.choices.map((c, i) => (
             <label key={c} className="select-row"><input type="radio" name="ask-choice" checked={text === String(i)} onChange={() => setText(String(i))} />{c}</label>
-          ))}
-          {a.value !== undefined && !a.range && !a.choices && <input className="text" aria-label={a.title} value={text} data-autofocus onChange={(e) => setText(e.target.value)} />}
-        </div>
-        <div className="modal-buttons center">
-          <button type="submit" className={a.danger ? 'btn-danger' : 'btn-primary'} data-autofocus={!a.danger && (a.value === undefined || a.choices) ? '' : undefined}>{a.buttons?.[0] ?? 'OK'}</button>
+          ))}</div>}
+          {a.value !== undefined && !a.range && !a.choices && <input className="text" aria-label={a.title} value={text} onChange={(e) => setText(e.target.value)} onFocus={(e) => e.currentTarget.select()} />}
+        </ModalBody>
+        <ModalFooter>
           {a.buttons?.[1] !== null && <button type="button" className="btn" onClick={() => done(null)}>{a.buttons?.[1] ?? 'Cancel'}</button>}
-        </div>
+          <button type="submit" className={a.danger ? 'btn-danger' : 'btn-primary'}>{primary}</button>
+        </ModalFooter>
       </form>
     </Modal>
   );

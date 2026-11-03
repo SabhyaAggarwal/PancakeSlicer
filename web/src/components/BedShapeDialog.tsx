@@ -52,7 +52,7 @@ export default function BedShapeDialog({ config, close, onSet = (key, value) => 
       } finally { geometry.dispose(); }
     } catch (e) { setError(e instanceof Error ? e.message : 'Error: invalid model'); }
   };
-  return <Modal className="bed-dialog" label="Bed Shape" onClose={close}>
+  return <Modal size="l" className="bed-dialog" label="Bed Shape" onClose={close}>
     <form onSubmit={(e) => { e.preventDefault(); if (!valid) return; onSet('printable_area', points.map(([x, y]) => `${Number(x.toFixed(6))}x${Number(y.toFixed(6))}`)); onSet('bed_custom_texture', texture); onSet('bed_custom_model', model); close(); }}>
       <ModalTitle title="Bed Shape" onClose={close} />
       <div className="bed-dialog-body"><div className="bed-dialog-fields"><fieldset><legend>Shape</legend>

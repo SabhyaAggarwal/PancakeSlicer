@@ -8,7 +8,7 @@ export function PresetDialog() {
   const title = dialog.type === 'machine' ? 'Printer settings' : 'Material settings';
   const close = () => setState({ dialog: null });
   return (
-    <Modal label={title} onClose={close} backdropClose>
+    <Modal size="window" label={title} onClose={close} backdropClose>
       <ModalTitle title={title} onClose={close} />
       <SettingsTab type={dialog.type} slot={dialog.slot} />
     </Modal>

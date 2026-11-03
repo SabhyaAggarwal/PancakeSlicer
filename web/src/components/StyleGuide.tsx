@@ -71,7 +71,7 @@ export default function StyleGuide({ close, target, objectId }: { close(): void;
   const [current, setCurrent] = useState(() => styleOf(target));
   const pick = (id: StyleId) => { applyStyle(id, objectId); setCurrent(id); };
   return (
-    <Modal label="Print styles" onClose={close} className="small psg" backdropClose>
+    <Modal size="m" label="Print styles" onClose={close} className="psg" backdropClose>
       <ModalTitle title="Print styles" onClose={close} />
       <div className="psg-body">
         <table className="psg-table">

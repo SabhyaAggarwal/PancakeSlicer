@@ -149,7 +149,7 @@ export default function Palette() {
   };
   let i = -1;
   return (
-    <Modal className="palette" label="Command palette" onClose={closePalette} backdropClose>
+    <Modal size="l" className="palette" label="Command palette" onClose={closePalette} backdropClose>
       <div className="pal-input-row">
         {scope && <span className="pal-scope">{SCOPES[scope]}</span>}
         <input className="pal-input" data-autofocus autoFocus spellCheck={false} autoComplete="off"

@@ -20,7 +20,7 @@ export default function WhatYouCanDo({ close }: { close(): void }) {
   const rail = useRef<HTMLOListElement>(null);
   useEffect(() => { if (rail.current?.contains(document.activeElement)) rail.current.querySelector<HTMLElement>('.active')?.focus(); }, [i]);
   return (
-    <Modal className="wycd-dialog" label="What you can do" onClose={close} backdropClose>
+    <Modal size="xl" className="wycd-dialog" label="What you can do" onClose={close} backdropClose>
       <ModalTitle title="What you can do" onClose={close} />
       <div className="wycd" onKeyDown={(e) => {
         if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); go(i + 1); }

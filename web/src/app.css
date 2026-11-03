@@ -204,20 +204,10 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .notif-link:hover { text-decoration: underline; }
 
 
-:where(.orca-parity) .modal { padding: 0; border: 0; color: var(--text); width: min(940px, 94vw); height: min(760px, 90vh); height: min(760px, 90dvh); max-width: 94vw; max-height: 94vh; max-height: 94dvh; background: var(--bg); border-radius: 6px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3); }
-
-
-:root.orca-parity[data-theme='dark'] .modal { outline: 1px solid var(--line-ccc); }
 :where(.orca-parity) .top-layer { display: contents; }
 :where(.orca-parity) .top-layer .notifications { position: fixed; }
 :where(.orca-parity) .notif-group { display: contents; }
 :where(.orca-parity) .top-layer > .notif-group { position: fixed; right: 16px; bottom: 16px; width: 340px; z-index: 45; display: flex; flex-direction: column; gap: 8px; }
-:where(.orca-parity) .modal-title { height: 36px; flex: none; background: var(--topbar); color: var(--on-chrome); display: flex; align-items: center; justify-content: space-between; padding: 0 12px; font-size: 13px; }
-:where(.orca-parity) .modal-close { background: none; border: 0; color: var(--on-chrome); font-size: 20px; cursor: pointer; }
-
-:where(.orca-parity) .modal.small { width: min(460px, 94vw); height: fit-content; max-height: 86vh; max-height: 86dvh; }
-:where(.orca-parity) .modal-buttons { display: flex; gap: 8px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--line-eee); flex: none; }
-:where(.orca-parity) .modal-buttons.center { justify-content: center; }
 
 :where(.orca-parity) .menu-label { display: inline-flex; align-items: center; gap: 8px; }
 :where(.orca-parity) .menu-caption { padding: 4px 14px; font-size: 12px; color: var(--text-dim); }
@@ -232,7 +222,6 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .flush-btn:hover { background: var(--accent-hover); }
 :where(.orca-parity) .flush-btn.modified { background: var(--bg); color: var(--text); border-color: var(--accent-text); }
 
-:where(.orca-parity) .modal.flush-dialog { width: auto; min-width: 420px; max-width: 94vw; height: fit-content; max-height: 90vh; }
 :where(.orca-parity) .flush-body { padding: 16px 20px 6px; display: flex; flex-direction: column; gap: 8px; overflow: auto; font-size: 12px; }
 :where(.orca-parity) .tip-panel { background: var(--panel-alt); padding: 10px; font-size: 12px; max-width: 560px; }
 :where(.orca-parity) .flush-row { display: flex; align-items: center; gap: 8px; }
@@ -282,7 +271,6 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
   :where(.orca-parity) .flush-scroll { flex: none; max-width: 100%; }
 }
 
-:where(.orca-parity) .modal.bed-dialog { border: 1px solid var(--line-aaa); border-radius: 5px; background: var(--dialog-bg); width: 680px; height: fit-content; overflow: auto; }
 :where(.orca-parity) .bed-dialog-body { display: flex; gap: 14px; padding: 14px; }
 :where(.orca-parity) .bed-dialog-fields { width: 335px; display: grid; gap: 10px; }
 :where(.orca-parity) .bed-dialog fieldset { border: 1px solid var(--line-ccc); padding: 10px; min-width: 0; }
@@ -315,7 +303,6 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .plate-choice button:hover:not(:disabled) { background: var(--hover); }
 :where(.orca-parity) .plate-choice button[aria-pressed="true"] { background: var(--segment-active); }
 
-:where(.orca-parity) .modal.about-dialog { border: 1px solid var(--line-aaa); border-radius: 5px; background: var(--dialog-bg); width: 500px; height: fit-content; overflow: auto; }
 :where(.orca-parity) .about-body { padding: 8px 20px; line-height: 1.5; }
 :where(.orca-parity) .about-body h2 { font-size: 14px; }
 :where(.orca-parity) .about-revision { font-size: 12px; overflow-wrap: anywhere; color: var(--text-666); }
@@ -325,7 +312,6 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .prefs-group legend { padding: 0 5px; font-weight: 600; }
 :where(.orca-parity) .prefs-row { display: flex; align-items: center; gap: 8px; min-height: 28px; cursor: pointer; }
 :where(.orca-parity) .prefs-row input { accent-color: var(--accent-text); margin: 0; }
-:where(.orca-parity) .modal.shortcuts-dialog { width: min(860px, 94vw); height: min(640px, 90vh); }
 :where(.orca-parity) .shortcuts-search { padding: var(--s-3) var(--s-5) 0; }
 :where(.orca-parity) .shortcuts-search input { width: 100%; box-sizing: border-box; }
 :where(.orca-parity) .shortcuts-body { overflow: auto; padding: 0 var(--s-5) var(--s-4); min-height: 0; flex: 1; columns: 2 340px; column-gap: var(--s-7); }
@@ -342,7 +328,7 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .shortcuts-none { padding: var(--s-5) 0; color: var(--ink-3); }
 :where(.orca-parity) kbd { font: inherit; font-size: 12px; background: var(--panel-alt); border: 1px solid var(--line-ccc); border-radius: 3px; padding: 0 5px; }
 
-:where(.orca-parity) .topbar :focus-visible, :where(.orca-parity) .tabbar :focus-visible, :where(.orca-parity) .modal-title :focus-visible { outline-color: var(--on-chrome); }
+:where(.orca-parity) .topbar :focus-visible, :where(.orca-parity) .tabbar :focus-visible { outline-color: var(--on-chrome); }
 :where(.orca-parity) .combo:focus-visible, :where(.orca-parity) .text:focus-visible, :where(.orca-parity) .table-input:focus-visible { outline: 2px solid var(--focus); outline-offset: -1px; }
 :where(.orca-parity) .menu-item:focus-visible, :where(.orca-parity) .ol-row:focus-visible { outline-offset: -2px; }
 :where(.orca-parity) .filament-swatch:focus-within { outline: 2px solid var(--focus); outline-offset: 1px; }
@@ -360,7 +346,6 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
   :where(.orca-parity) .combo, :where(.orca-parity) .text { height: 32px; }
   :where(.orca-parity) .chk { width: 24px; height: 24px; }
   :where(.orca-parity) .btn, :where(.orca-parity) .side-btn { min-height: 36px; }
-  :where(.orca-parity) .modal-close { min-width: 36px; min-height: 36px; }
   :where(.orca-parity) .notifications { right: 184px; bottom: 76px; max-width: calc(100% - 200px); }
   :where(.orca-parity) .flush-btn { height: 32px; }
   :where(.orca-parity) .table-input { height: 32px; }
@@ -389,9 +374,6 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .np-summary-explain { flex: none; width: 18px; height: 18px; border-radius: 2px; border: 1px solid var(--line-999, #999); background: var(--bg, #fff); color: var(--text); font-size: 11px; line-height: 1; cursor: pointer; padding: 0; }
 :where(.orca-parity) .head-combo { width: 100%; max-width: 330px; }
 
-:where(.orca-parity) .modal.np-dialog { width: min(880px, 94vw); height: fit-content; max-height: 90vh; }
-:where(.orca-parity) .modal.np-calib-dialog { width: min(680px, 94vw); height: fit-content; max-height: 90vh; max-height: 90dvh; }
-:where(.orca-parity) .modal.np-dialog.small { width: min(480px, 94vw); }
 :where(.orca-parity) .np-dialog-body { padding: 12px 16px; overflow: auto; min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 10px; }
 :where(.orca-parity) .np-buttons { justify-content: flex-end; }
 :where(.orca-parity) .np-buttons .spacer { flex: 1; }
@@ -451,12 +433,10 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .compare-pickers { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 :where(.orca-parity) .compare-pickers .combo { flex: 1; min-width: 160px; }
 :where(.orca-parity) .compare-pickers .combo:first-child { flex: none; min-width: 90px; }
-:where(.orca-parity) .modal.np-dialog.compare-dialog, :where(.orca-parity) .modal.np-dialog.unsaved-dialog, :where(.orca-parity) .modal.np-dialog.import-dialog { width: 900px; }
 :where(.orca-parity) .import-drop.drag { outline: 1px solid var(--focus); outline-offset: -6px; }
 :where(.orca-parity) .export-kinds { border: 0; padding: 0; margin: 0; display: grid; gap: 4px; }
 :where(.orca-parity) .export-list { display: grid; gap: 4px; max-height: 40vh; overflow: auto; border-top: 1px solid var(--line-eee, #eee); padding-top: 8px; }
 
-:where(.orca-parity) .modal.np-dialog.search-dialog { width: 640px; align-self: start; margin-top: 10vh; }
 :where(.orca-parity) .search-input { height: 32px; font-size: 13px; }
 :where(.orca-parity) .search-results { list-style: none; margin: 0; padding: 0; max-height: 60vh; overflow: auto; }
 :where(.orca-parity) .search-hit { display: flex; align-items: center; gap: var(--s-3); padding: 5px var(--s-3); border-radius: var(--r-1); cursor: pointer; }
@@ -519,10 +499,6 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .side-btn:disabled { border-color: var(--line); background: var(--sunken); color: var(--muted); }
 :where(.orca-parity) .process-panel { flex: 1; min-height: 240px; }
 :where(.orca-parity) .page-body { padding-bottom: 8px; }
-:where(.orca-parity) .modal-overlay { position: fixed; inset: 0; background: var(--scrim); z-index: 90; }
-:where(.orca-parity) .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 100; margin: 0; border: 1px solid var(--border); border-radius: 4px; }
-:where(.orca-parity) .modal-title { min-height: 36px; height: auto; padding-top: 4px; padding-bottom: 4px; gap: 12px; border-bottom: 1px solid var(--line); }
-:where(.orca-parity) .modal-title > span { overflow-wrap: anywhere; }
 :where(.orca-parity) .modal .page-body { min-height: 120px; }
 :where(.orca-parity) .toast, :where(.orca-parity) .toast-stack { z-index: 2000; }
 :where(.orca-parity) .filament-swatch input[type=color] { width: 100%; height: 100%; padding: 0; opacity: 0; cursor: pointer; }
@@ -544,7 +520,6 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .notif-link { color: var(--label); text-decoration: underline; }
 :where(.orca-parity) .menu-check { color: var(--text); }
 :where(.orca-parity) .pk-option[aria-disabled=true] { color: var(--label); }
-:where(.orca-parity) .modal-overlay { background: #000a; }
 :root.orca-parity button:disabled, :root.orca-parity input:disabled, :root.orca-parity textarea:disabled, :root.orca-parity .btn:disabled, :root.orca-parity .dropdown:disabled, :root.orca-parity .orca-menu [data-disabled] { opacity: 1; color: var(--disabled-foreground); border-color: var(--border-control); }
 :where(.orca-parity) .pk-row.is-active .pk-option { color: var(--selected-foreground); }
 :where(.orca-parity) .app { --workspace-rail-width: var(--user-rail-width, clamp(340px,28vw,440px)); }

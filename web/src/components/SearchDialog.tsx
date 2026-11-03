@@ -161,7 +161,7 @@ export default function SearchDialog() {
   const choose = (f: Found | undefined) => f && reveal(f.entry, mode);
 
   return (
-    <Modal className="np-dialog small search-dialog" label="Search settings" onClose={close} backdropClose>
+    <Modal size="l" className="search-dialog" label="Search settings" onClose={close} backdropClose>
       <ModalTitle title="Search settings" onClose={close} />
       <div className="np-dialog-body">
         <input className="text search-input" data-autofocus autoFocus placeholder="Search" aria-label="Search settings"

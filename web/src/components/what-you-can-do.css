@@ -1,4 +1,3 @@
-:where(.orca-parity) .modal.wycd-dialog { padding: 0; border: 0; color: var(--ink); width: min(1040px, 94vw); height: auto; }
 :where(.orca-parity) .wycd { display: grid; grid-template-columns: 220px 1fr; min-height: 0; height: min(600px, calc(100vh - 120px)); font: var(--t-body); }
 :where(.orca-parity) .wycd-steps { list-style: none; margin: 0; padding: var(--s-3); border-right: 1px solid var(--line); overflow: auto; }
 :where(.orca-parity) .wycd-steps button { display: flex; gap: var(--s-3); align-items: baseline; width: 100%; text-align: left; background: none; border: 0; border-radius: var(--r-2);

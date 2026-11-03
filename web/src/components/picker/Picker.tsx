@@ -12,7 +12,7 @@ import { edgeOf, type Edge } from '../anchor';
 import { SlotChip } from '../SlotChip';
 export interface PickerItem { id: string; label: string; sub?: string; swatch?: string | null; meta?: string; facet?: string; search?: string; disabled?: boolean | string;
   image?: string | null; status?: { label: string; tone: 'online' | 'printing' | 'offline' | 'error' }; slots?: { n: number; colour: string }[] }
-export interface PickerGroup { id: string; title: string; items: PickerItem[]; filter?: boolean }
+export interface PickerGroup { id: string; title: string; items: PickerItem[]; filter?: boolean; allOnly?: boolean }
 export interface PickerAction { label: string; run(): void; keep?: boolean }
 export interface PickerCatalog { label: string; groups(): PickerGroup[]; onAdd(id: string): void }
 export const selectDefaultRail = (source: readonly PickerGroup[], pins: readonly string[]) => source.some(g => g.items.some(item => !item.disabled && pins.includes(item.id))) ? 'pins' : source.find(g => g.items.some(item => !item.disabled))?.id ?? 'all';
@@ -93,7 +93,7 @@ export function Picker({ label, value, groups, sections = false, onPick, facetLa
   const home = useMemo(() => { if (!live) return undefined; for (const g of groups()) if (!g.filter) { const it = g.items.find(i => i.id === value); if (it) return {facet: it.facet, group: g.id}; } return undefined; }, [live, groups, value]);
   const facets = useMemo<RailTab[]>(() => {
     if (!sections || !facetLabel) return [];
-    const names = [...new Set(pool.filter(g => !g.filter).flatMap(g => g.items.flatMap(i => i.facet ? [i.facet] : [])))].sort((a, b) => a.localeCompare(b, undefined, {sensitivity: 'base'}));
+    const names = [...new Set(pool.filter(g => !g.filter && !g.allOnly).flatMap(g => g.items.flatMap(i => i.facet ? [i.facet] : [])))].sort((a, b) => a.localeCompare(b, undefined, {sensitivity: 'base'}));
     return names.length > 1 ? [{id: 'all', title: 'All'}, ...names.map(n => ({id: `f:${n}`, title: n}))] : [];
   }, [sections, facetLabel, pool]);
   const activeFacet = facets.some(f => f.id === facet) ? facet : facets.some(f => f.id === `f:${home?.facet}`) ? `f:${home?.facet}` : 'all';
@@ -101,8 +101,8 @@ export function Picker({ label, value, groups, sections = false, onPick, facetLa
   const ownRows = useMemo(() => open && adding && hasOwn(groups), [open, adding, groups]);
   const all = useMemo(() => [...new Map(source.filter(g => !g.filter).flatMap((g) => g.items).map((item) => [item.id, item])).values()], [source]);
   const pinnedSet = useMemo(() => new Set(pins), [pins]);
-  const allSections = useMemo(() => sections ? [{title: 'Favorites', items: all.filter(r => pinnedSet.has(r.id))}, ...source.filter(g => !g.filter).map(g => ({title: g.title, items: g.items.filter(r => !pinnedSet.has(r.id))}))].filter(g => g.items.length) : null, [sections, all, pinnedSet, source]);
-  const tabbed = source;
+  const allSections = useMemo(() => sections ? [{title: 'Favorites', items: all.filter(r => pinnedSet.has(r.id))}, ...[...source.filter(g => !g.filter && !g.allOnly), ...source.filter(g => g.allOnly)].map(g => ({title: g.title, items: g.items.filter(r => !pinnedSet.has(r.id))}))].filter(g => g.items.length) : null, [sections, all, pinnedSet, source]);
+  const tabbed = useMemo(() => source.filter(g => !g.allOnly), [source]);
   const rails = useMemo<RailTab[]>(() => sections ? (tabbed.length > 1 ? [{id: 'all', title: 'All'}, ...tabbed.map(g => ({id: g.id, title: g.title}))] : facets.length ? tabbed.map(g => ({id: g.id, title: g.title})) : []) : [...(all.some(r => pinnedSet.has(r.id)) ? [{id:'pins',title:'Favorites'}] : []), {id:'all',title:adding ? 'All bases' : 'All profiles'}, ...source.map(({id,title}) => ({id,title}))], [sections, adding, pinnedSet, all, source, facets.length]);
   const railed = rails.length > 1 || (!!facets.length && !!rails.length);
   useRowFill(railRef, open && rails.map(r => r.id).join('|'));

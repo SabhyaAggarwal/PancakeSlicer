@@ -11,8 +11,7 @@ export function printerFacts(s: ProfileContextState, key: string, nozzle?: strin
   return { id: resolved.key, name: resolved.name, printerModel: first(config.printer_model), nozzle: Number(nozzle ?? first(config.nozzle_diameter)) };
 }
 const filamentFacts = (resolved: ResolvedProfile): FilamentFacts => ({ id: resolved.key, type: first(resolved.config.filament_type) });
-const inherit1 = (v: unknown) => !!v && (v as { schema?: unknown; mode?: unknown }).schema === 1 && (v as { mode?: unknown }).mode === 'inherit';
-const ruleOf = (resolved: ResolvedProfile) => (inherit1(resolved.source?.applicability) ? undefined : resolved.source?.applicability as WorksWithRule | undefined);
+const ruleOf = (resolved: ResolvedProfile) => resolved.source?.applicability as WorksWithRule | undefined;
 
 export function worksWithReason(s: ProfileContextState, type: PresetType, key: string, printerKey = s.printer, nozzle?: string | number): string {
   const resolved = resolveProfile(s, type, key), rule = ruleOf(resolved);

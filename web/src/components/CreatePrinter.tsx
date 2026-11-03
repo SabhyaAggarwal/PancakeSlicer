@@ -65,7 +65,7 @@ export default function CreatePrinter({ close }: { close(): void }) {
     <input className="text num" type="number" step={1} min={min} value={v} aria-label={label} onChange={(e) => { const n = Number(e.target.value); if (Number.isFinite(n)) set(n); }} />
   );
   return (
-    <Modal label="Create Printer/Nozzle" onClose={close} className="small create-printer">
+    <Modal size="m" label="Create Printer/Nozzle" onClose={close} className="create-printer">
       <ModalTitle title="Create Printer/Nozzle" onClose={close} />
       <div className="prefs-body">
         <div className="prefs-row"><span>Create Type</span>

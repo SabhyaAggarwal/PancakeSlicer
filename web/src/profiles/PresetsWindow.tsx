@@ -282,24 +282,26 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     return list.filter(i=>!parentOf(i)).flatMap(parent=>[parent,...list.filter(i=>parentOf(i) === parent.key).map(i=>({...i,child:true}))]);
   };
   const groups=useMemo(():Group[]=>{
-    const rows=matching.filter(i=>!query || [i,...i.variants ?? []].some(v=>`${v.name} ${v.note}`.toLocaleLowerCase().includes(query)));
+    const found=matching.filter(i=>!query || [i,...i.variants ?? []].some(v=>`${v.name} ${v.note}`.toLocaleLowerCase().includes(query)));
+    const rows=found.filter(i=>!i.flag),stray=found.filter(i=>i.flag).map(i=>({...i,flag:undefined}));
+    const strayGroup:Group[]=stray.length ? [{key:'No printer',label:'No printer',rows:type === 'process' ? processRows([...stray].sort((a,b)=>(layerHeight(a.config) || Infinity)-(layerHeight(b.config) || Infinity) || a.name.localeCompare(b.name)),()=>'') : stray.map(i=>type === 'filament' ? filamentRow(i,i.material || 'Other') : i).sort((a,b)=>a.name.localeCompare(b.name))}] : [];
     const bucket=(list:Item[],labelOf:(i:Item)=>string)=>{const m=new Map<string,Item[]>();for(const i of list){const g=labelOf(i);m.set(g,[...m.get(g) ?? [],i]);}return [...m].sort(([a],[b])=>byLabel(a,b));};
     const sortRows=(list:Item[])=>list.sort((a,b)=>a.name.localeCompare(b.name));
-    if(type !== 'process')return bucket(rows,i=>type === 'machine' ? vendorLabel(i.config,i.vendor) : i.material || 'Other')
-      .map(([label,list])=>({key:label,label,rows:type === 'machine' ? sortRows(list.map(machineRow)) : type === 'filament' ? (adding ? sortRows(list.map(i=>filamentRow(i,label))) : colourFamilies(sortRows(list.map(i=>filamentRow(i,label))))) : sortRows(list)}));
+    if(type !== 'process')return [...bucket(rows,i=>type === 'machine' ? vendorLabel(i.config,i.vendor) : i.material || 'Other')
+      .map(([label,list])=>({key:label,label,rows:type === 'machine' ? sortRows(list.map(machineRow)) : type === 'filament' ? (adding ? sortRows(list.map(i=>filamentRow(i,label))) : colourFamilies(sortRows(list.map(i=>filamentRow(i,label))))) : sortRows(list)})),...strayGroup];
     const models=new Map<string,{label:string;sub:string;items:{i:Item;nozzles:Set<string>}[]}>();
     for(const i of rows){
       const found=compatibleModels(i);
       if(!found.size)found.set('Any printer',{label:'Any printer',sub:'',nozzles:new Set()});
       for(const [full,m] of found){const g=models.get(full) ?? {label:m.label,sub:m.sub,items:[]};g.items.push({i,nozzles:m.nozzles});models.set(full,g);}
     }
-    return [...models].sort(([a],[b])=>byLabel(a,b)).map(([full,m])=>{
+    return [...[...models].sort(([a],[b])=>byLabel(a,b)).map(([full,m])=>{
       const nozzle=new Map(m.items.map(x=>[x.i.key,x.nozzles.size === 1 ? `${[...x.nozzles][0]} mm` : '']));
       const size=(i:Item)=>parseFloat(nozzle.get(i.key) ?? '') || Infinity;
       const list=m.items.map(x=>x.i).sort((a,b)=>size(a)-size(b) || (layerHeight(a.config) || Infinity)-(layerHeight(b.config) || Infinity) || a.name.localeCompare(b.name));
       const shared=[...models].some(([other,o])=>other !== full && o.label === m.label);
       return {key:full,label:m.label,sub:shared ? m.sub : undefined,rows:processRows(list,i=>nozzle.get(i.key) ?? '')};
-    });
+    }),...strayGroup];
   },[matching,query,type,machines,printerFilter,printer]);
   const visible=useMemo(()=>unique(groups.flatMap(g=>g.rows)),[groups]);
   const [folds,setFolds]=useState<ReadonlyMap<string,boolean>>(()=>new Map(sessionFolds)),[searchFolds,setSearchFolds]=useState<ReadonlySet<string>>(new Set());

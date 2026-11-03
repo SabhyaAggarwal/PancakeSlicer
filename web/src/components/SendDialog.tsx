@@ -52,7 +52,7 @@ export default function SendDialog({ close }: { close: () => void }) {
   const [editing, setEditing] = useState(false);
   const title = 'Send to printer';
   return (
-    <Modal className="small send-dialog" label={title} onClose={close}>
+    <Modal size="m" className="send-dialog" label={title} onClose={close}>
       <ModalTitle title={title} onClose={close} />
       <div className="prefs-body send-body">
         <div className="send-target">

@@ -156,7 +156,7 @@ export default function HeadDialog({ id, layerHeight, close, onSaved }: { id: st
     }
   };
   return (
-    <Modal className="np-dialog head-dialog" label="Non-planar print head" onClose={close}>
+    <Modal size="xl" className="head-dialog" label="Non-planar print head" onClose={close}>
       <ModalTitle title="Non-planar print head" onClose={close} />
       <div className="np-dialog-body">
         {base === undefined && <div role="status">Loading head…</div>}

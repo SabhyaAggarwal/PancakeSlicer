@@ -26,7 +26,7 @@ export default function CloneDialog({ close }: { close(): void }) {
     close();
   };
   return (
-    <Modal className="small" label="Clone" onClose={close}>
+    <Modal size="m" label="Clone" onClose={close}>
       <ModalTitle title="Clone" onClose={close} />
       <div className="prefs-body">
         <label className="prefs-row"><span>Number of copies:</span>

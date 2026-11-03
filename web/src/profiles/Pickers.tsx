@@ -8,10 +8,22 @@ import { addSlot } from './SetupRows';
 import { FilamentColourMenu } from './FilamentColourMenu';
 import { createProfileFromBase, listCatalog, listProfiles, type PickerEntry } from './pickerSource';
 import { pickerStatus } from '../printers/connections';
+import { profileKey } from './identity';
+import { worksWithNone } from './WorksWith';
 
 const first = (v: unknown) => String([v].flat()[0] ?? '');
 const shortName = (name: string) => name.replace(/\s*@.*$/, '') || name;
 export const presets = (type: PresetType, name?: string): PickerAction => ({ label: `Manage ${type === 'machine' ? 'printers' : type === 'filament' ? 'filaments' : 'print settings'}`, run: () => setState({ presetUx: { kind: 'presets', type, name } }) });
+
+export function noPrinterGroup(type: 'filament' | 'process'): PickerGroup[] {
+  const items = getState().userPresets.filter((p) => p.type === type && !p.archived && (p.kind ?? 'profile') === 'profile' && worksWithNone(type, p.applicability))
+    .map((p): PickerItem => ({ id: profileKey(p), label: p.name, search: p.name })).sort((a, b) => a.label.localeCompare(b.label));
+  return items.length ? [{ id: 'none', title: 'No printer', items, allOnly: true }] : [];
+}
+export function pickOrOpen(type: 'filament' | 'process', id: string, pick: (id: string) => unknown) {
+  if (noPrinterGroup(type)[0]?.items.some((i) => i.id === id)) setState({ presetUx: { kind: 'presets', type, name: id } });
+  else pick(id);
+}
 
 function brandName(name: string, c: Config) {
   const brand = first(c.filament_vendor) || 'Generic', short = shortName(name);
@@ -71,7 +83,7 @@ function filamentGroups(slot: number | null, catalog = false): PickerGroup[] {
   if (loaded.length > 1) groups.push({ id: 'loaded', title: 'Loaded', items: [...loaded].sort((a, b) => a.slots![0].n - b.slots![0].n), filter: true });
   for (const type of [...types.keys()].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b)))
     groups.push({ id: `t:${type}`, title: type, items: types.get(type)!.sort((a, b) => a.facet!.localeCompare(b.facet!) || a.label.localeCompare(b.label)) });
-  return groups;
+  return catalog ? groups : [...groups, ...noPrinterGroup('filament')];
 }
 
 export function FilamentPicker({ slot }: { slot: number }) {
@@ -86,7 +98,7 @@ export function FilamentPicker({ slot }: { slot: number }) {
       <FilamentColourMenu slot={slot}/>
       <Picker label={`Filament ${slot + 1}`} value={name} sections memory="orca.web.picker.filament" facetLabel="Vendor" groups={sameStateGroups(`filament:${slot}`, () => filamentGroups(slot))}
         catalog={{ label: 'Add filament', groups: sameStateGroups(`filament-catalog:${slot}`, () => filamentGroups(slot, true)), onAdd: (id) => createProfileFromBase('filament', id, slot) }}
-        onPick={(id) => id !== name && requestPreset('filament', slot, id)} footer={[presets('filament', name)]}>
+        onPick={(id) => pickOrOpen('filament', id, (id) => id !== name && requestPreset('filament', slot, id))} footer={[presets('filament', name)]}>
         {pending ? <PickerSkeleton/> : <><span className="pk-type">{first(c.filament_type) || '—'}</span>
         <span className="pk-brand">{b.brand}</span>
         <span className="pk-name">{label}</span></>}
@@ -98,7 +110,7 @@ export function FilamentPicker({ slot }: { slot: number }) {
 export function AddFilamentPicker({ disabled }: { disabled?: boolean }) {
   if (disabled) return null;
   return (
-    <Picker label="Add filament" className="is-link" sections memory="orca.web.picker.filament" facetLabel="Vendor" groups={sameStateGroups('filament:add', () => filamentGroups(null))} catalog={{ label: 'Add filament', groups: sameStateGroups('filament-catalog:add', () => filamentGroups(null, true)), onAdd: (id) => createProfileFromBase('filament', id, 0, addSlot) }} onPick={(id) => addSlot(id)}
+    <Picker label="Add filament" className="is-link" sections memory="orca.web.picker.filament" facetLabel="Vendor" groups={sameStateGroups('filament:add', () => filamentGroups(null))} catalog={{ label: 'Add filament', groups: sameStateGroups('filament-catalog:add', () => filamentGroups(null, true)), onAdd: (id) => createProfileFromBase('filament', id, 0, addSlot) }} onPick={(id) => pickOrOpen('filament', id, addSlot)}
       footer={[presets('filament')]}>
       Add
     </Picker>

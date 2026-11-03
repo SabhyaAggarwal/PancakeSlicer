@@ -17,7 +17,7 @@ export default function SimplifyDialog({ close }: { close(): void }) {
   const total = triangleCount(o), wanted = Math.max(1, Math.round(total * (1 - ratio / 100)));
   const count = useCount || !levels;
   return (
-    <Modal className="small" label="Simplify" onClose={close}>
+    <Modal size="m" label="Simplify" onClose={close}>
       <ModalTitle title="Simplify" onClose={close} />
       <div className="prefs-body">
         <div className="prefs-row"><span>Mesh name</span><span>{o.name}</span></div>

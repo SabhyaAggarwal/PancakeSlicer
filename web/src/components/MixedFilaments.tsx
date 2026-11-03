@@ -98,7 +98,7 @@ function MixDialog({ slot, close }: { slot: number | null; close(): void }) {
   const ok = () => { if (slot === null) addMix(m); else editMix(slot, m); close(); };
   const recs = recommendations(s, three);
   return (
-    <Modal label={slot === null ? 'Add Mixed Filament' : 'Edit Mixed Filament'} onClose={close} className="small mixed-dialog">
+    <Modal size="m" label={slot === null ? 'Add Mixed Filament' : 'Edit Mixed Filament'} onClose={close} className="mixed-dialog">
       <ModalTitle title={slot === null ? 'Add Mixed Filament' : 'Edit Mixed Filament'} onClose={close} />
       <div className="prefs-body">
         <div className="mixed-section">Effect Preview</div>

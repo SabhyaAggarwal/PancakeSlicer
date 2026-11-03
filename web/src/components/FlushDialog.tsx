@@ -64,7 +64,7 @@ function FlushTable() {
   const outOfRange = raw.some((_, i) => Math.floor(i / n) !== i % n && (shown(i) < minVol || shown(i) > MAX_FLUSH_VOLUME));
 
   return (
-    <Modal className="flush-dialog" label="Flushing volumes for filament change" onClose={close} backdropClose>
+    <Modal size="l" className="flush-dialog" label="Flushing volumes for filament change" onClose={close} backdropClose>
         <ModalTitle title="Flushing volumes for filament change" onClose={close} />
         <div className="flush-body">
           <div className="tip-panel">

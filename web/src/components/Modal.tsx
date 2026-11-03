@@ -1,7 +1,36 @@
 import { type ReactNode } from 'react';
 import { Dialog } from 'radix-ui';
-export function Modal({ label, onClose, className = '', backdropClose = false, returnFocus, onEscapeKeyDown, children }: { label: string; onEscapeKeyDown?(event: KeyboardEvent): void; returnFocus?: string; onClose(): void; className?: string; backdropClose?: boolean; children: ReactNode }) {
-  return <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}><Dialog.Portal><Dialog.Overlay className="modal-overlay" /><Dialog.Content className={`modal ${className}`} aria-label={label} aria-describedby={undefined} onEscapeKeyDown={onEscapeKeyDown} onPointerDownOutside={(e) => { if (!backdropClose) e.preventDefault(); }} onCloseAutoFocus={(e) => { const back = returnFocus ? document.querySelector<HTMLElement>(returnFocus) : null; if (back) { e.preventDefault(); back.focus(); } }} onKeyDown={(e) => e.stopPropagation()}>{children}</Dialog.Content></Dialog.Portal></Dialog.Root>;
+import './dialog.css';
+
+export type ModalSize = 's' | 'm' | 'l' | 'xl' | 'window';
+const FIELD = 'input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not(:disabled), textarea:not(:disabled), select:not(:disabled)';
+function focusFirst(root: HTMLElement) {
+  const footer = root.querySelector('.modal-buttons');
+  const primary = footer?.querySelector<HTMLElement>('.btn-primary:not(:disabled), .btn-danger:not(:disabled)');
+  const target = root.querySelector<HTMLElement>('[data-autofocus]')
+    ?? [...root.querySelectorAll<HTMLElement>(FIELD)].find((el) => !el.closest('.modal-title, .modal-buttons') && el.offsetParent !== null)
+    ?? (primary?.classList.contains('btn-danger') ? footer?.querySelector<HTMLElement>('button:not(.btn-danger):not(:disabled)') : primary)
+    ?? root;
+  target.focus({ preventScroll: true });
 }
-export function ModalTitle({ title, onClose }: { title: ReactNode; onClose(): void }) { return <div className="modal-title"><Dialog.Title asChild><span>{title}</span></Dialog.Title><button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button></div>; }
+
+export function Modal({ label, onClose, className = '', size = 'window', alert = false, backdropClose = false, returnFocus, onEscapeKeyDown, children }: {
+  label: string; onClose(): void; className?: string; size?: ModalSize; alert?: boolean; backdropClose?: boolean; returnFocus?: string;
+  onEscapeKeyDown?(event: KeyboardEvent): void; children: ReactNode;
+}) {
+  return <Dialog.Root open onOpenChange={(open) => { if (!open) onClose(); }}><Dialog.Portal><Dialog.Overlay className="modal-overlay" />
+    <Dialog.Content className={`modal ${className}`} data-size={size} role={alert ? 'alertdialog' : 'dialog'} aria-label={label} aria-describedby={undefined}
+      onOpenAutoFocus={(e) => { e.preventDefault(); focusFirst(e.currentTarget as HTMLElement); }} onEscapeKeyDown={onEscapeKeyDown}
+      onPointerDownOutside={(e) => { if (!backdropClose) e.preventDefault(); }}
+      onCloseAutoFocus={(e) => { const back = returnFocus ? document.querySelector<HTMLElement>(returnFocus) : null; if (back) { e.preventDefault(); back.focus(); } }}
+      onKeyDown={(e) => e.stopPropagation()}>{children}</Dialog.Content></Dialog.Portal></Dialog.Root>;
+}
+const close = <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>;
+export function ModalTitle({ title, onClose }: { title: ReactNode; onClose(): void }) {
+  return <div className="modal-title"><Dialog.Title asChild><h2>{title}</h2></Dialog.Title><button type="button" className="modal-close" aria-label="Close" onClick={onClose}>{close}</button></div>;
+}
+export function ModalBody({ className = '', children }: { className?: string; children: ReactNode }) { return <div className={`modal-body ${className}`}>{children}</div>; }
+export function ModalFooter({ lead, children }: { lead?: ReactNode; children: ReactNode }) {
+  return <div className="modal-buttons">{lead && <div className="modal-lead">{lead}</div>}{children}</div>;
+}
 export function InTopLayer({ children }: { children: ReactNode }) { return <>{children}</>; }

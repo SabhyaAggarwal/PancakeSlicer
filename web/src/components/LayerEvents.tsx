@@ -45,7 +45,7 @@ export function EventMenu({ anchor, z, layer, onClose, onJump }: { anchor: DOMRe
   };
   if (custom !== null)
     return (
-      <Modal className="small" label="Custom G-code" onClose={onClose} returnFocus=".ls-plus">
+      <Modal size="m" label="Custom G-code" onClose={onClose} returnFocus=".ls-plus">
           <ModalTitle title="Custom G-code" onClose={onClose} />
           <div className="flush-body">
             <div>Enter Custom G-code used on current layer:</div>

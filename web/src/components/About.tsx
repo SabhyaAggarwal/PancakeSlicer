@@ -32,7 +32,7 @@ export default function About({ close }: { close: () => void }) {
     });
     return () => controller.abort();
   }, [attempt]);
-  return <Modal className="about-dialog" label="About OrcaSlicer" onClose={close}>
+  return <Modal size="m" className="about-dialog" label="About OrcaSlicer" onClose={close}>
     <ModalTitle title="About OrcaSlicer" onClose={close} />
     <div className="about-body">
       {about ? <AboutContent about={about} /> : error ? <p role="alert">Unable to load source information: {error}. <button className="side-btn" onClick={() => setAttempt(attempt + 1)}>Retry</button></p> : <p role="status">Loading version and source information…</p>}

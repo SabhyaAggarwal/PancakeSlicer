@@ -4,7 +4,7 @@ import { Choice } from '../components/kit';
 import { getState, useStore } from '../state/store';
 import { selectNativeCompatibility } from './compatibility';
 import { profileKey } from './identity';
-import { modelLabel } from './metadata';
+import { modelLabel, vendorLabel } from './metadata';
 import { findCatalogBase, resolveProfile } from './model';
 import { fromApplicability1, matchesFilament, matchesNozzle, matchesPrint, matchesPrinter, type PrinterFacts, type WorksWithRule } from './works-with';
 
@@ -24,13 +24,13 @@ export function applicabilityKey(value: unknown): string {
   return JSON.stringify([sorted(r.printers), sorted(r.nozzle), sorted(r.filaments), sorted(r.prints), r.exclude && [...r.exclude].sort()]);
 }
 
-type Printer = PrinterFacts & {id: string; name: string; model: string; label: string; detail: string};
+type Printer = PrinterFacts & {id: string; name: string; model: string; brand: string; label: string; detail: string};
 function libraryFacts() {
   const s = getState(), live = s.userPresets.filter((p) => !p.archived);
   const printers: Printer[] = live.filter((p) => p.type === 'machine').map((p) => {
     const id = profileKey(p), c = resolveProfile(s, 'machine', id).config, vendor = findCatalogBase(s, 'machine', p.base ?? p.inherits ?? '').base?.vendor ?? '';
     const model = modelLabel(c, vendor), nozzle = Number(first(c.nozzle_diameter));
-    return {id, name: p.name, printerModel: first(c.printer_model), model, nozzle, label: p.kind === 'master' ? model : p.name, detail: [p.kind === 'master' ? '' : model, nozzle > 0 ? mm(nozzle) : ''].filter(Boolean).join(' · ')};
+    return {id, name: p.name, printerModel: first(c.printer_model), model, brand: vendorLabel(c, vendor), nozzle, label: p.kind === 'master' ? [model, nozzle > 0 ? mm(nozzle) : ''].filter(Boolean).join(' · ') : p.name, detail: p.kind === 'master' ? '' : [model, nozzle > 0 ? mm(nozzle) : ''].filter(Boolean).join(' · ')};
   }).sort((a, b) => a.label.localeCompare(b.label));
   const named = (type: PresetType) => live.filter((p) => p.type === type && p.kind !== 'master').map((p) => ({id: profileKey(p), name: p.name, config: resolveProfile(s, type, profileKey(p)).config}))
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -44,12 +44,17 @@ export function worksWithNone(type: PresetType, value: unknown): boolean {
 }
 
 const without = <K extends keyof WorksWithRule>(rule: WorksWithRule, key: K) => {const next = {...rule}; delete next[key]; return next;};
-function Chips<T extends string | number>({label, options, value, onChange}: {label: string; options: {id: T; label: string}[]; value: T[]; onChange(next: T[]): void}) {
-  return <div className="chips ww-chips" role="group" aria-label={label}>{options.map((o) => {
+interface ChipOption<T> {id: T; label: string;  tip?: string;  group?: string}
+function Chips<T extends string | number>({label, options, value, onChange}: {label: string; options: ChipOption<T>[]; value: T[]; onChange(next: T[]): void}) {
+  const chip = (o: ChipOption<T>) => {
     const on = value.includes(o.id), last = on && value.length === 1;
-    return <button key={String(o.id)} type="button" className="chip" aria-pressed={on} aria-disabled={last || undefined}
+    return <button key={String(o.id)} type="button" className="chip" aria-pressed={on} aria-disabled={last || undefined} aria-description={o.tip}
+      {...(o.tip ? {'data-truncated': 'true', 'data-full-text': o.tip} : {})}
       onClick={() => {if (!last) onChange(on ? value.filter((v) => v !== o.id) : [...value, o.id]);}}>{o.label}</button>;
-  })}</div>;
+  };
+  const groups = [...new Set(options.map((o) => o.group ?? ''))];
+  return <div className="chips ww-chips" role="group" aria-label={label}>{groups.length < 2 ? options.map(chip)
+    : groups.map((g) => <span key={g} className="ww-chip-group"><span className="ww-brand">{g}</span>{options.filter((o) => (o.group ?? '') === g).map(chip)}</span>)}</div>;
 }
 function Condition({label, count, children}: {label: string; count: string; children: React.ReactNode}) {
   return <div className="ww-condition" role="group" aria-label={label}><span className="ww-label">{label}</span><div className="ww-choice">{children}</div><span className="ww-count">{count}</span></div>;
@@ -66,8 +71,12 @@ export function WorksWith({source, config, value, onChange}: {source: UserPreset
   }, [rule, facts, config, source, type, key]);
   if (type === 'machine') return null;
   const {printers, filaments, prints} = facts, here = printers.find((p) => p.id === facts.current) ?? printers[0];
-  const models = [...new Map(printers.filter((p) => p.printerModel).map((p) => [p.printerModel, p.model || p.printerModel])).entries()].map(([id, label]) => ({id, label}));
-  for (const m of rule?.printers && 'models' in rule.printers ? rule.printers.models : []) if (!models.some((o) => o.id === m)) models.push({id: m, label: m});
+  const system = getState().machines, nozzlesOf = (model: string) => [...new Set([...system.filter((m) => first(m.config.printer_model) === model).map((m) => Number(first(m.config.nozzle_diameter))), ...printers.filter((p) => p.printerModel === model).map((p) => p.nozzle)].filter((n) => n > 0))].sort((a, b) => a - b);
+  const models: ChipOption<string>[] = [...new Map(printers.filter((p) => p.printerModel).map((p) => [p.printerModel, p])).values()].map((p) => {
+    const mine = printers.filter((q) => q.printerModel === p.printerModel).length, n = nozzlesOf(p.printerModel);
+    return {id: p.printerModel, label: p.model || p.printerModel, group: p.brand, tip: [p.printerModel, n.length ? `nozzles ${n.join('/')}` : '', `${mine} of my printers`].filter(Boolean).join(' · ')};
+  }).sort((a, b) => a.group!.localeCompare(b.group!) || a.label.localeCompare(b.label));
+  for (const m of rule?.printers && 'models' in rule.printers ? rule.printers.models : []) if (!models.some((o) => o.id === m)) models.push({id: m, label: m, tip: m});
   const sizes = [...new Set([...NOZZLES, ...printers.map((p) => p.nozzle).filter((n) => n > 0), ...(rule?.nozzle && 'sizes' in rule.nozzle ? rule.nozzle.sizes : [])])].sort((a, b) => a - b);
   const types = [...new Set([...filaments.map((f) => f.type).filter(Boolean), ...(rule?.filaments && 'types' in rule.filaments ? rule.filaments.types : [])])].sort();
   const set = (next: WorksWithRule) => onChange(next);
@@ -88,7 +97,7 @@ export function WorksWith({source, config, value, onChange}: {source: UserPreset
         <Choice label="Printers" value={printerMode} options={[{id: 'all', label: 'All'}, {id: 'models', label: 'Models'}, {id: 'printers', label: 'My printers'}]}
           onChange={(id) => set(id === 'all' ? without(base, 'printers') : {...base, printers: id === 'models' ? {models: [here?.printerModel || models[0]?.id].filter(Boolean)} : {printerIds: here ? [here.id] : []}})}/>
         {printerMode === 'models' && <Chips label="Printer models" options={models} value={(rule.printers as {models: string[]}).models} onChange={(m) => set({...base, printers: {models: m}})}/>}
-        {printerMode === 'printers' && <Chips label="My printers" options={printers.map((p) => ({id: p.id, label: p.label}))} value={(rule.printers as {printerIds: string[]}).printerIds} onChange={(ids) => set({...base, printers: {printerIds: ids}})}/>}
+        {printerMode === 'printers' && <Chips label="My printers" options={printers.map((p) => ({id: p.id, label: p.label, group: p.brand, tip: [p.name, ...[p.printerModel, p.nozzle > 0 ? String(p.nozzle) : ''].filter((x) => x && !p.name.includes(x)).map((x) => x === String(p.nozzle) ? mm(p.nozzle) : x)].join(' · ')}))} value={(rule.printers as {printerIds: string[]}).printerIds} onChange={(ids) => set({...base, printers: {printerIds: ids}})}/>}
       </Condition>
       <Condition label="Nozzle" count={plural(printers.filter((p) => matchesNozzle(rule, p.nozzle)).length, 'printer')}>
         <Choice label="Nozzle" value={nozzleMode} options={[{id: 'any', label: 'Any'}, {id: 'sizes', label: 'Sizes'}, {id: 'range', label: 'Range'}]}

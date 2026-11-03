@@ -26,7 +26,7 @@ export function OrientConfirm() {
   const advice = more != null && more >= FLOAT_MARGIN_MM ? `Stood up, ${more.toFixed(0)} mm more road prints in the air: keep the original.`
     : slower && !(more != null && more <= -FLOAT_MARGIN_MM) ? 'Stood up, it prints slower: keep the original.' : null;
   return (
-    <Modal label="Stand this part up?" onClose={close} className="small orient-confirm">
+    <Modal size="m" label="Stand this part up?" onClose={close} className="orient-confirm">
       <ModalTitle title={`Stand ${name} up?`} onClose={close} />
       <table className="orient-table">
         <thead><tr><th /><th>As loaded</th><th>Stood up</th></tr></thead>

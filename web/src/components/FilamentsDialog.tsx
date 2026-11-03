@@ -25,7 +25,7 @@ export default function FilamentsDialog({ close }: { close(): void }) {
     close();
   };
   return (
-    <Modal label="Filaments" onClose={close} className="small filaments-dialog">
+    <Modal size="m" label="Filaments" onClose={close} className="filaments-dialog">
       <ModalTitle title="Filaments" onClose={close} />
       <div className="prefs-body">
         <label className="prefs-row"><span>Vendor</span>

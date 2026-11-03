@@ -1,7 +1,7 @@
 import { getState, resolvePreset, useStore } from '../state/store';
 import { requestPreset } from './PresetCombo';
 import { createProfileFromBase, listCatalog, listProfiles } from '../profiles/pickerSource';
-import { currentEntry, NOT_COMPATIBLE, PickerSkeleton, presets, sameStateGroups, usePickerPending } from '../profiles/Pickers';
+import { currentEntry, noPrinterGroup, NOT_COMPATIBLE, PickerSkeleton, pickOrOpen, presets, sameStateGroups, usePickerPending } from '../profiles/Pickers';
 import { Picker, type PickerGroup, type PickerItem } from './picker/Picker';
 import './process-settings.css';
 export function ProcessPresetPicker() {
@@ -17,8 +17,9 @@ export function ProcessPresetPicker() {
       byHeight.set(height, [...byHeight.get(height) ?? [], {id: p.key, label: p.name, meta: p === hidden ? NOT_COMPATIBLE : undefined, search: `${p.name} ${p.vendor}`, disabled: p.reason}]);
     }
     return [...byHeight].sort(([a], [b]) => (a || Infinity) - (b || Infinity))
-      .map(([height, items]) => ({id: `h:${height}`, title: height ? `${height.toFixed(2)} mm` : 'Other', items: items.sort((a, b) => a.label.localeCompare(b.label))}));
+      .map(([height, items]) => ({id: `h:${height}`, title: height ? `${height.toFixed(2)} mm` : 'Other', items: items.sort((a, b) => a.label.localeCompare(b.label))}) as PickerGroup)
+      .concat(catalog ? [] : noPrinterGroup('process'));
   };
   const sel = resolvePreset(getState(), 'process', process), pending = usePickerPending(!!sel.name);
-  return <div className="process-preset-picker"><Picker label="Print settings" value={process} sections groups={sameStateGroups('process', () => groups())} memory="orca.parity.process" onPick={name => requestPreset('process', 0, name)} catalog={{label: 'Add print settings', groups: sameStateGroups('process-catalog', () => groups(true)), onAdd: name => createProfileFromBase('process', name)}} footer={[presets('process', process)]}>{pending ? <PickerSkeleton/> : <span className="pk-name">{sel.name ?? 'Choose print settings'}</span>}</Picker></div>;
+  return <div className="process-preset-picker"><Picker label="Print settings" value={process} sections groups={sameStateGroups('process', () => groups())} memory="orca.parity.process" onPick={name => pickOrOpen('process', name, id => requestPreset('process', 0, id))} catalog={{label: 'Add print settings', groups: sameStateGroups('process-catalog', () => groups(true)), onAdd: name => createProfileFromBase('process', name)}} footer={[presets('process', process)]}>{pending ? <PickerSkeleton/> : <span className="pk-name">{sel.name ?? 'Choose print settings'}</span>}</Picker></div>;
 }

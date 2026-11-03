@@ -41,7 +41,7 @@ function Preferences() {
   const mixed = useStore((s) => s.mixedTemperatures);
   const canMix = useStore((s) => !!s.features.mixed_temperatures);
   return (
-    <Modal className="small prefs-dialog" label="Preferences" onClose={close}>
+    <Modal size="m" className="prefs-dialog" label="Preferences" onClose={close}>
       <ModalTitle title="Preferences" onClose={close} />
       <div className="prefs-body">
         <fieldset className="prefs-group">
@@ -146,7 +146,7 @@ function Shortcuts() {
     .map(([page, rows]) => [page, rows.filter(([k, what]) => !q || what.toLowerCase().includes(q) || k.toLowerCase().includes(q))] as const)
     .filter(([, rows]) => rows.length);
   return (
-    <Modal className="shortcuts-dialog" label="Keyboard Shortcuts" onClose={close} backdropClose>
+    <Modal size="xl" className="shortcuts-dialog" label="Keyboard Shortcuts" onClose={close} backdropClose>
       <ModalTitle title="Keyboard Shortcuts" onClose={close} />
       <div className="shortcuts-search">
         <input type="text" placeholder="Filter" aria-label="Filter shortcuts" value={query} data-autofocus onChange={(e) => setQuery(e.target.value)} />

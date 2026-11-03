@@ -25,6 +25,7 @@ export interface MachineDef<S extends string, E extends Ev, C> {
   initial: S;
   context: C;
   states: Record<S, StateNode<S, E, C>>;
+  strict?: boolean;
 }
 
 export interface Snapshot<S extends string, C> { value: S; context: C }
@@ -77,6 +78,7 @@ export function createMachine<S extends string, E extends Ev, C>(def: MachineDef
   let busy = false;
   const queue: E[] = [];
   const listeners = new Set<(s: Snapshot<S, C>) => void>();
+  const declared = new Set(Object.values<StateNode<S, E, C>>(def.states).flatMap((n) => Object.keys(n.on ?? {})));
 
   const run = (a: Action<C, E, S> | undefined, ev: E) => {
     const patch = a?.(snap.context, ev, m);
@@ -115,8 +117,10 @@ export function createMachine<S extends string, E extends Ev, C>(def: MachineDef
           const t = e.type === '@after' ? (after && (!after.guard || after.guard(snap.context, e)) ? after : undefined) : pick(e);
           const from = snap.value;
           const accepted = !!t && (t.target === undefined || Object.hasOwn(def.states, t.target));
+          const edge = Object.hasOwn(def.states[from].on ?? {}, e.type) || e.type === '@after';
           if (accepted) take(t!, e);
-          record(instance, def.id, from, Object.hasOwn(def.states[from].on ?? {}, e.type) || e.type === '@after' ? e.type : '@rejected', snap.value, accepted);
+          else if (def.strict && !edge) console.error(`[fsm] ${def.id}: ${declared.has(e.type) ? e.type : '@rejected'} is illegal in ${from}`);
+          record(instance, def.id, from, edge || declared.has(e.type) ? e.type : '@rejected', snap.value, accepted);
         }
       } finally {
         busy = false;

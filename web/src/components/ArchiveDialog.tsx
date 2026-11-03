@@ -32,7 +32,7 @@ export function importZipArchive(open: (files: File[]) => void) {
 export default function ArchiveDialog({ files, close }: { files: (File & { path?: string })[]; close(): void }) {
   const [checked, setChecked] = useState(() => files.map(() => true));
   return (
-    <Modal className="small" label="Archive preview" onClose={close}>
+    <Modal size="m" label="Archive preview" onClose={close}>
       <ModalTitle title="Archive preview" onClose={close} />
       <div className="prefs-body archive-list">
         {files.map((f, i) => (
