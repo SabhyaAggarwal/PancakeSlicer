@@ -446,7 +446,7 @@ func (s *Server) sendJob(w http.ResponseWriter, r *http.Request) {
 		}
 		filename = body.Filename
 	}
-	if j.State() != StateDone || j.Request.Orient || j.Request.Output == "3mf" {
+	if j.AwaitFinished(r.Context()) != StateDone || j.Request.Orient || j.Request.Output == "3mf" {
 		fail(w, 409, "only a finished sliced job can be sent")
 		return
 	}

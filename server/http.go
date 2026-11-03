@@ -841,7 +841,7 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 	if j == nil {
 		return
 	}
-	if j.State() != StateDone {
+	if j.AwaitFinished(r.Context()) != StateDone {
 		fail(w, 409, "job has no completed download")
 		return
 	}
@@ -924,7 +924,7 @@ func (s *Server) moves(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	f, err := os.Open(path)
-	if err != nil || j.State() != StateDone {
+	if err != nil || !j.Previewable() {
 		if f != nil {
 			f.Close()
 		}

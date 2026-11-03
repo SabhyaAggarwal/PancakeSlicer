@@ -125,6 +125,7 @@ type Job struct {
 	stage         string
 	progress      *float64
 	send          *Transfer
+	resultReady   bool
 }
 
 type JobView struct {
@@ -146,13 +147,15 @@ type JobView struct {
 	RetryOf        string          `json:"retry_of,omitempty"`
 	QueuePosition  int             `json:"queue_position"`
 	ETA            *float64        `json:"eta_seconds,omitempty"`
+	ResultReady    bool            `json:"result_ready,omitempty"`
 }
 
 func (j *Job) View() JobView {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	v := JobView{ID: j.ID, RetryOf: j.RetryOf, State: j.state.legacy(), LifecycleState: j.state, Created: j.Created, Error: j.errMsg, ExitCode: j.exitCode,
-		Stage: j.stage, Progress: j.progress, Request: j.Request, QueuePosition: j.queuePosition, ETA: j.eta, EventsURL: "/api/jobs/" + j.ID + "/events", Slice: j.slice}
+		Stage: j.stage, Progress: j.progress, Request: j.Request, QueuePosition: j.queuePosition, ETA: j.eta, EventsURL: "/api/jobs/" + j.ID + "/events", Slice: j.slice,
+		ResultReady: j.resultReady && !j.state.Finished()}
 	if !j.started.IsZero() {
 		t := j.started
 		v.Started = &t
@@ -172,6 +175,28 @@ func (j *Job) State() JobState {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	return j.state
+}
+
+func (j *Job) Previewable() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.state == StateDone || j.resultReady && !j.state.Finished()
+}
+
+func (j *Job) AwaitFinished(ctx context.Context) JobState {
+	for {
+		j.mu.Lock()
+		state, ready, changed := j.state, j.resultReady, j.changed
+		j.mu.Unlock()
+		if state.Finished() || !ready {
+			return state
+		}
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			return state
+		}
+	}
 }
 
 func (j *Job) notifyLocked() {
@@ -777,12 +802,19 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 	var pieces []map[string]any
 	var meshRecord []byte
 	var lastErr lastLines
-	var readers sync.WaitGroup
+	var readers, published sync.WaitGroup
 	readers.Add(2)
 	go func() {
 		defer readers.Done()
 		scanLines(stdout, func(l string) {
 			j.log("stdout", l)
+			if l == "progress json 100" && previewableRequest(j.Request) {
+				published.Add(1)
+				go func() {
+					defer published.Done()
+					m.publishResult(j)
+				}()
+			}
 			if j.Request.MeshOp != "" && strings.HasPrefix(l, "{") && json.Valid([]byte(l)) {
 				meshRecord = []byte(l)
 			}
@@ -826,6 +858,7 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 	stdoutWriter.Close()
 	stderrWriter.Close()
 	readers.Wait()
+	published.Wait()
 
 	code := cmd.ProcessState.ExitCode()
 	j.mu.Lock()
@@ -901,7 +934,10 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 			j.setState(StateFailed, "the slicer finished without writing "+filepath.Base(j.OutputPath(kind)))
 			return
 		}
-		if _, err := os.Stat(j.ExtendedMovesPath()); err == nil {
+		j.mu.Lock()
+		stripped := j.resultReady
+		j.mu.Unlock()
+		if _, err := os.Stat(j.ExtendedMovesPath()); err == nil && !stripped {
 			if err := stripExtendedMoves(j.ExtendedMovesPath(), j.MovesPath()); err != nil {
 				j.setState(StateFailed, "the preview stream could not be written: "+sanitizeToolError(err))
 				return
@@ -916,6 +952,31 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 		j.setState(StateDone, "")
 	}
 	log.Printf("job %s %s (exit %d)", j.ID, j.State(), code)
+}
+
+func previewableRequest(r JobRequest) bool {
+	return (r.Output == "gcode" || r.Output == "gcode.3mf") && !r.Orient && !r.OrientScores && !r.Explode && r.Cut == "" &&
+		r.MeshOp == "" && !r.Arrange && !r.WipeTower
+}
+
+func (m *JobManager) publishResult(j *Job) {
+	raw, err := os.ReadFile(j.OutputPath("json"))
+	if err != nil || !json.Valid(raw) {
+		return
+	}
+	if _, err := os.Stat(j.ExtendedMovesPath()); err == nil {
+		if stripExtendedMoves(j.ExtendedMovesPath(), j.MovesPath()) != nil {
+			return
+		}
+	}
+	raw = bindNativeRecord(raw, m.cfg, j)
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.state != StateSlicing {
+		return
+	}
+	j.slice, j.resultReady = raw, true
+	j.appendLocked(Event{Type: "result", State: j.state.legacy(), LifecycleState: j.state})
 }
 
 func scanLines(r io.Reader, fn func(string)) {
