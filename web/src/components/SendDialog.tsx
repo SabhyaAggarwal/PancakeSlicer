@@ -186,7 +186,7 @@ function SendView({ close, printer }: { close: () => void; printer: string }) {
       {kind === 'bambu-connect' ? (window.orcaDesktop?.bambuConnect
         ? <button type="button" className="btn primary" disabled={!!blocked || !!working} onClick={() => void handOff()}>Open in Bambu Connect</button>
         : <button type="button" className="btn primary" disabled={!!blocked} onClick={() => void download()}>Download .gcode.3mf</button>) : <>
-        <button type="button" className="btn primary" disabled={busy || !!blocked || needsMap} onClick={() => void send(true)}>Print</button>
+        <button type="button" className="btn primary" disabled={busy || !!blocked || needsMap || running} title={running ? 'The printer is printing' : undefined} onClick={() => void send(true)}>Print</button>
         <button type="button" className="btn" disabled={busy || !!blocked || needsMap} onClick={() => void send(false)}>Upload only</button>
       </>}
       <button type="button" className="btn" onClick={close}>Close</button>

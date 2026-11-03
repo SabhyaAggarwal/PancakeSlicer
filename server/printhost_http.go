@@ -106,7 +106,11 @@ func hostClient(ctx context.Context, p *PrinterConfig, base *url.URL) (*http.Cli
 		return nil, err
 	}
 	dial := func(ctx context.Context, network, _ string) (net.Conn, error) {
-		return dialer.DialContext(ctx, "tcp", target.String())
+		conn, err := dialer.DialContext(ctx, "tcp", target.String())
+		if err == nil {
+			limitSendBuffer(conn)
+		}
+		return conn, err
 	}
 	client := &http.Client{
 		Transport: &http.Transport{
@@ -120,6 +124,12 @@ func hostClient(ctx context.Context, p *PrinterConfig, base *url.URL) (*http.Cli
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	return client, nil
+}
+
+func limitSendBuffer(conn net.Conn) {
+	if tcp, ok := conn.(*net.TCPConn); ok {
+		tcp.SetWriteBuffer(128 << 10)
+	}
 }
 
 func multipartUpload(ctx context.Context, target string, u *upload, file io.Reader, fields [][2]string) (*http.Request, error) {

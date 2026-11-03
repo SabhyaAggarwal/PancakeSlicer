@@ -272,6 +272,7 @@ func ftpsUpload(ctx context.Context, host string, config *tls.Config, u *upload)
 		return err
 	}
 	defer raw.Close()
+	limitSendBuffer(raw)
 	step = "upload"
 	if _, err = c.cmd(150, 15*time.Second, "STOR %s", u.filename); err != nil {
 		return err
@@ -714,11 +715,16 @@ func (b *bambuReport) status() PrinterStatus {
 	if b.Bed != nil {
 		st.Bed = &Temp{*b.Bed, deref(b.BedSet)}
 	}
-	if b.Error != 0 {
+	switch {
+	case b.State == "FAILED" && b.Error == bambuCancelled:
+		st.State, st.Detail = "idle", "cancelled"
+	case b.Error != 0:
 		st.Detail = fmt.Sprintf("%s, error %08X", b.State, b.Error)
 	}
 	return st
 }
+
+const bambuCancelled = 0x0300400C
 
 func mergeReport(into, delta map[string]any) {
 	for k, v := range delta {
