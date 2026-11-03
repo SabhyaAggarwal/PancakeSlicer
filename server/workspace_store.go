@@ -320,6 +320,37 @@ func (st *workspaceStore) register(mux *http.ServeMux) {
 			writeJSON(w, 200, out)
 		})
 	})
+	mux.HandleFunc("GET /api/projects/references", func(w http.ResponseWriter, r *http.Request) {
+		st.view(w, func(d *workspaceData) {
+			type reference struct {
+				ID      string `json:"id"`
+				Name    string `json:"name"`
+				Trashed bool   `json:"trashed"`
+				Doc     struct {
+					Printer       json.RawMessage `json:"printer,omitempty"`
+					Process       json.RawMessage `json:"process,omitempty"`
+					FilamentSlots json.RawMessage `json:"filamentSlots,omitempty"`
+				} `json:"doc"`
+			}
+			documents := []reference{}
+			for id, p := range d.Projects {
+				if p.Record == nil {
+					continue
+				}
+				var record struct {
+					Meta struct {
+						Name string `json:"name"`
+					} `json:"meta"`
+					Doc json.RawMessage `json:"doc"`
+				}
+				json.Unmarshal(p.Record, &record)
+				ref := reference{ID: id, Name: record.Meta.Name, Trashed: p.Archived}
+				json.Unmarshal(record.Doc, &ref.Doc)
+				documents = append(documents, ref)
+			}
+			writeJSON(w, 200, map[string]any{"complete": true, "documents": documents})
+		})
+	})
 	mux.HandleFunc("GET /api/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
 		st.view(w, func(d *workspaceData) {
 			id, err := canonicalWorkspaceProject(d, r.PathValue("id"))
