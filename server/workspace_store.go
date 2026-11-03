@@ -226,14 +226,15 @@ func workspaceReplay(w http.ResponseWriter, d *workspaceData, op, digest string)
 	}
 	return false
 }
-func (st *workspaceStore) commit(w http.ResponseWriter, d *workspaceData, op, digest string, response any) {
+func (st *workspaceStore) commit(w http.ResponseWriter, d *workspaceData, op, digest string, response any) bool {
 	raw, _ := json.Marshal(response)
 	d.Operations[op] = workspaceReceipt{digest, raw}
 	if err := st.save(d); err != nil {
 		workspaceFailure(w, 507, "workspace_write_failed", "Saved work could not be committed. Your draft must be kept; free storage and retry the same operation.", "free_storage_and_retry", 0)
-		return
+		return false
 	}
 	writeJSON(w, 200, response)
+	return true
 }
 func projectRecord(raw json.RawMessage, id string, revision uint64) (json.RawMessage, error) {
 	var record map[string]json.RawMessage
@@ -257,6 +258,7 @@ func projectRecord(raw json.RawMessage, id string, revision uint64) (json.RawMes
 	meta["id"], _ = json.Marshal(id)
 	meta["revision"], _ = json.Marshal(revision)
 	delete(meta, "folderId")
+	delete(meta, "change")
 	record["meta"], _ = json.Marshal(meta)
 	return json.Marshal(record)
 }
@@ -474,7 +476,17 @@ func (st *workspaceStore) projectWrite(w http.ResponseWriter, r *http.Request, a
 		if action == "duplicate" {
 			response = json.RawMessage(projectMeta(next))
 		}
-		st.commit(w, d, in.OperationID, digest, response)
+		if !st.commit(w, d, in.OperationID, digest, response) {
+			return
+		}
+		switch action {
+		case "save":
+			st.recordVersion(id, next.Revision, next.Record, recordChange(in.Record), action)
+		case "rename":
+			st.recordVersion(id, next.Revision, next.Record, []versionChange{{Key: "name", Label: "Renamed to " + in.Name}}, action)
+		case "duplicate":
+			st.recordVersion(id, next.Revision, next.Record, []versionChange{{Label: "Copied"}}, action)
+		}
 	})
 }
 func (st *workspaceStore) putDraft(w http.ResponseWriter, r *http.Request) {

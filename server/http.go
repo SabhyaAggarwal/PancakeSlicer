@@ -49,6 +49,7 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, library *Profil
 	workspace := &workspaceStore{root: filepath.Join(c.DataDir, "workspace")}
 	workspace.register(mux)
 	s.workspace = workspace
+	s.versionRoutes(mux)
 	s.blobs = &blobStore{root: filepath.Join(c.DataDir, "blobs"), limit: blobCacheBytes}
 	s.blobs.register(mux, c.MaxUploadSize)
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, r *http.Request) {
