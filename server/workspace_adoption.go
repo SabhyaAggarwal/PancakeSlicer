@@ -288,21 +288,17 @@ func (st *workspaceStore) adopt(w http.ResponseWriter, r *http.Request) {
 		}
 
 		for alias := range d.Aliases {
-			current := alias
-			visited := map[string]bool{}
-			for d.Aliases[current] != "" {
-				if visited[current] {
-					conflict("A legacy alias cycle cannot be resolved.")
-					return
-				}
-				visited[current] = true
-				current = d.Aliases[current]
+			canonical, err := canonicalWorkspaceProject(d, alias)
+			if err != nil {
+				conflict(err.Error())
+				return
 			}
-			if _, ok := d.Projects[current]; !ok {
+			if _, ok := d.Projects[canonical]; !ok {
 				conflict("A legacy alias points to a missing project.")
 				return
 			}
 		}
+
 		for _, draft := range in.Drafts {
 			if !workspaceID(draft.ID) || len(draft.Document) == 0 {
 				conflict("A recovery draft is invalid.")

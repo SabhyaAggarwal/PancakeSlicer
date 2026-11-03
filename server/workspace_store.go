@@ -131,6 +131,33 @@ func (st *workspaceStore) save(d *workspaceData) error {
 func workspaceID(id string) bool {
 	return id != "" && len(id) <= 200 && strings.Trim(id, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-") == "" && id != "." && id != ".."
 }
+
+func canonicalWorkspaceProject(d *workspaceData, id string) (string, error) {
+	seen := map[string]bool{}
+	for {
+		next, alias := d.Aliases[id]
+		if !alias {
+			break
+		}
+		if seen[id] {
+			return "", errors.New("The project alias chain contains a cycle. Keep the original inventory and repair its aliases.")
+		}
+		seen[id] = true
+		if !workspaceID(next) {
+			return "", errors.New("The project alias points to an invalid identity. Keep the original inventory and repair its aliases.")
+		}
+		id = next
+	}
+	if !workspaceID(id) {
+		return "", errors.New("Invalid project identity.")
+	}
+	if len(seen) > 0 {
+		if _, exists := d.Projects[id]; !exists {
+			return "", errors.New("The project alias points to a missing project. Keep the original inventory and repair its aliases.")
+		}
+	}
+	return id, nil
+}
 func workspaceFailure(w http.ResponseWriter, status int, code, message, recovery string, revision uint64) {
 	name := "WorkspaceError"
 	if code == "revision_conflict" {
@@ -263,9 +290,10 @@ func (st *workspaceStore) register(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("GET /api/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
 		st.locked(w, func(d *workspaceData) {
-			id := r.PathValue("id")
-			if alias := d.Aliases[id]; alias != "" {
-				id = alias
+			id, err := canonicalWorkspaceProject(d, r.PathValue("id"))
+			if err != nil {
+				workspaceFailure(w, 409, "project_alias_invalid", err.Error(), "repair_aliases", 0)
+				return
 			}
 			p, ok := d.Projects[id]
 			if !ok {
@@ -339,13 +367,13 @@ func (st *workspaceStore) projectWrite(w http.ResponseWriter, r *http.Request, a
 	if !workspaceDecode(w, r, &in) {
 		return
 	}
-	id := r.PathValue("id")
-	if !workspaceID(id) {
-		workspaceFailure(w, 400, "invalid_id", "Invalid project ID.", "export_and_repair", 0)
-		return
-	}
-	digest := workspaceDigest([]any{action, id, in})
 	st.locked(w, func(d *workspaceData) {
+		id, aliasErr := canonicalWorkspaceProject(d, r.PathValue("id"))
+		if aliasErr != nil {
+			workspaceFailure(w, 409, "project_alias_invalid", aliasErr.Error(), "repair_aliases", 0)
+			return
+		}
+		digest := workspaceDigest([]any{action, id, in})
 		if workspaceReplay(w, d, in.OperationID, digest) {
 			return
 		}
@@ -389,6 +417,8 @@ func (st *workspaceStore) projectWrite(w http.ResponseWriter, r *http.Request, a
 					err = errors.New("a new stable project ID is required")
 				} else if _, ok := d.Projects[in.NewID]; ok {
 					err = errors.New("the duplicate ID already exists")
+				} else if _, alias := d.Aliases[in.NewID]; alias {
+					err = errors.New("the duplicate ID is reserved by a project alias")
 				} else {
 					id = in.NewID
 					next.Revision = 1
