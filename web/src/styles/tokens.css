@@ -1,107 +1,47 @@
-:root {
-  color-scheme: light;
-  --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'JetBrains Mono', Menlo, Consolas, 'Liberation Mono', monospace;
-
-  --t-label: 600 11px/16px var(--font-mono);
+:root.orca-parity {
+  color-scheme: dark;
+  --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: var(--font-ui);
+  --t-label: 600 13px/18px var(--font-ui);
   --t-small: 400 12px/16px var(--font-ui);
   --t-body: 400 13px/18px var(--font-ui);
-  --t-num: 400 13px/18px var(--font-mono);
+  --t-num: 500 13px/18px var(--font-ui);
   --t-title: 600 14px/20px var(--font-ui);
-  --t-readout: 400 15px/20px var(--font-mono);
-  --t-hero: 500 24px/30px var(--font-mono);
-  --label-track: 0.08em;
-
-  --chrome: #0b0b0b;
-  --chrome-raised: #1f1f1f;
-  --on-chrome: #ffffff;
-  --on-chrome-dim: #9a9a9a;
-  --panel: #ffffff;
-  --sunken: #f3f3f3;
-  --canvas: #e6e6e6;
-  --line: #e2e2e2;
-  --line-strong: #c8c8c8;
-  --ink: #111111;
-  --ink-2: #555555;
-  --ink-3: #6b6b6b;
-  --ink-disabled: #8c8c8c;
-  --danger: #c62828;
-  --danger-tint: #fdecec;
-  --warn: #8a5a00;
-  --scrim: rgba(0, 0, 0, 0.32);
-
-  --accent: #009688;
-  --accent-strong: #26a69a;
-  --on-accent: #0b0b0b;
-  --accent-text: #00796b;
-  --accent-tint: #e0f2f0;
+  --t-readout: 500 15px/20px var(--font-ui);
+  --t-hero: 600 24px/30px var(--font-ui);
+  --label-track: 0;
+  --chrome: #111114;
+  --chrome-raised: #1f1f25;
+  --on-chrome: #dedee5;
+  --on-chrome-dim: #9898a5;
+  --panel: #161619;
+  --surface: #161619;
+  --sunken: #1f1f25;
+  --canvas: #d3d3d7;
+  --line: #303038;
+  --line-strong: #74748a;
+  --ink: #dedee5;
+  --ink-2: #b4b4c0;
+  --ink-3: #b4b4c0;
+  --ink-disabled: #b4b4c0;
+  --danger: #ff878f;
+  --danger-tint: #392024;
+  --warn: #dedee5;
+  --scrim: #0008;
+  --accent: #a78bfa;
+  --accent-strong: #b79dff;
+  --on-accent: #111114;
+  --accent-text: #a78bfa;
+  --accent-tint: #48386b;
   --accent-ink: var(--on-accent);
-  --focus: var(--accent-text);
-
-  --s-1: 2px;
-  --s-2: 4px;
-  --s-3: 8px;
-  --s-4: 12px;
-  --s-5: 16px;
-  --s-6: 24px;
-  --s-7: 32px;
-  --h-compact: 24px;
-  --h-control: 28px;
-  --h-field: 26px;
-  --h-row: 28px;
-  --h-line: 30px;
-  --h-bar: 44px;
-  --r-1: 3px;
-  --r-2: 4px;
-  --r-3: 6px;
-
-  --dur-1: 90ms;
-  --dur-2: 160ms;
-  --dur-3: 220ms;
-  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --focus: #a78bfa;
+  --s-1: 2px; --s-2: 4px; --s-3: 8px; --s-4: 12px; --s-5: 16px; --s-6: 24px; --s-7: 32px;
+  --h-compact: 28px; --h-control: 28px; --h-field: 28px; --h-row: 30px; --h-line: 30px; --h-bar: 40px;
+  --r-1: 3px; --r-2: 4px; --r-3: 4px;
+  --control-height: 28px; --control-radius: 3px; --section-radius: 4px; --row-h: 30px;
+  --raised: #1f1f25; --hover: #28282f; --label: #b4b4c0; --border-control: #74748a; --frame: #303038; --rule: #303038; --muted: #b4b4c0;
+  --shadow-pop: 0 6px 18px #0006;
+  --dur-1: 80ms; --dur-2: 140ms; --dur-3: 180ms; --ease: ease;
 }
-
-:root[data-theme='dark'] {
-  color-scheme: dark;
-  --chrome: #0b0b0b;
-  --chrome-raised: #1a1a1a;
-  --on-chrome: #ededed;
-  --on-chrome-dim: #9a9a9a;
-  --panel: #141414;
-  --sunken: #1c1c1c;
-  --canvas: #262626;
-  --line: #262626;
-  --line-strong: #363636;
-  --ink: #ededed;
-  --ink-2: #a3a3a3;
-  --ink-3: #8a8a8a;
-  --ink-disabled: #6e6e6e;
-  --danger: #ff6b6b;
-  --danger-tint: #3a1d1f;
-  --warn: #e0a030;
-  --scrim: rgba(0, 0, 0, 0.55);
-  --accent: #26a69a;
-  --accent-strong: #2fb5a8;
-  --on-accent: #0b0b0b;
-  --accent-text: #2fb5a8;
-  --accent-tint: #13302d;
-}
-
-:root[data-accent='violet'] {
-  --accent: #5b3df5;
-  --accent-strong: #4a2de0;
-  --on-accent: #ffffff;
-  --accent-text: #5b3df5;
-  --accent-tint: #ece8fe;
-}
-:root[data-theme='dark'][data-accent='violet'] {
-  --accent: #8f7cff;
-  --accent-strong: #a796ff;
-  --on-accent: #0b0b0b;
-  --accent-text: #a796ff;
-  --accent-tint: #241f3d;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  :root { --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; }
-}
+:root.orca-parity[data-canvas='dark'] { --canvas: #28282e; }
+@media (prefers-reduced-motion: reduce) { :root.orca-parity { --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; } }

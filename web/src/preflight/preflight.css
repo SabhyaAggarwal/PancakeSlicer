@@ -1,0 +1,15 @@
+:where(.orca-parity) .issues { position: relative; display: inline-flex; }
+:where(.orca-parity) .issues-chip { display: inline-flex; align-items: center; gap: var(--s-2); height: var(--h-control); padding: 0 var(--s-2); border: 0;
+  background: none; color: var(--ink); font: var(--t-small); cursor: pointer; white-space: normal; }
+:where(.orca-parity) .issues-chip:hover, :where(.orca-parity) .issues-chip[aria-expanded='true'] { text-decoration: underline; }
+:where(.orca-parity) .issues-pop { position: fixed; z-index: 60; min-width: 380px; padding: var(--s-2) 0; background: var(--bg); color: var(--ink);
+  border: 1px solid var(--line-strong); border-radius: var(--r-section); box-shadow: var(--shadow-pop); }
+:where(.orca-parity) .issue-row { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-1) var(--s-2) var(--s-1) var(--s-4); }
+:where(.orca-parity) .issue-row:hover, :where(.orca-parity) .issue-row:focus-within { background: var(--sunken); }
+:where(.orca-parity) .issue-what { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; border: 0; background: none; padding: var(--s-2) 0; color: inherit; cursor: pointer; text-align: left; }
+:where(.orca-parity) .issue-title { font: var(--t-body); font-weight: 600; }
+:where(.orca-parity) .issue-name { font: var(--t-small); color: var(--ink-2); max-width: 200px; overflow: hidden; overflow-wrap: anywhere; white-space: normal; }
+:where(.orca-parity) .issue-cost { font: var(--t-small); color: var(--ink-2); white-space: normal; }
+:where(.orca-parity) .issue-fix { white-space: normal; border: 1px solid var(--line-strong); }
+:where(.orca-parity) .issue-dismiss { width: 24px; height: 24px; border: 0; background: none; color: var(--ink-3); border-radius: var(--r-1); cursor: pointer; font-size: 16px; }
+:where(.orca-parity) .issue-dismiss:hover { color: var(--ink); background: var(--bg); }

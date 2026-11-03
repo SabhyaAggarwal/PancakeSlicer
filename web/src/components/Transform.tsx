@@ -27,7 +27,7 @@ export function CoordToggle({ value, onChange, enabled }: { value: 'world' | 'ob
   return (
     <span className="seg" role="radiogroup" aria-label="Coordinates" title="Coordinate system used for transform actions.">
       {(['world', 'object'] as const).map((v) => (
-        <button key={v} type="button" role="radio" aria-checked={value === v} disabled={!enabled} onClick={() => onChange(v)}>
+        <button key={v} type="button" role="radio" aria-checked={value === v} disabled={!enabled} title={!enabled ? "Choose the Move tool to change coordinates" : undefined} onClick={() => onChange(v)}>
           {v === 'world' ? 'World' : 'Object'}
         </button>
       ))}
@@ -49,7 +49,7 @@ function Header({ title, folded, onFold, children }: { title: string; folded: bo
 
 function RowButton({ d, title, onClick, disabled, pressed }: { d: string; title: string; onClick: () => void; disabled?: boolean; pressed?: boolean }) {
   return (
-    <button type="button" className="xf-btn" title={title} aria-label={title} aria-pressed={pressed} disabled={disabled} onClick={onClick}>
+    <button type="button" className="xf-btn" title={disabled ? `${title}\nThe transform is already at its reset value.` : title} aria-label={title} aria-pressed={pressed} disabled={disabled} onClick={onClick}>
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d={d} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" /></svg>
     </button>
   );

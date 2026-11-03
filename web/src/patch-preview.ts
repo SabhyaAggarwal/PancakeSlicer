@@ -108,7 +108,8 @@ function read(raw: RawPreview, objects: PlateObject[], key: string): PatchPrevie
 }
 
 let current: PatchPreview | null = null;
-let shown = localStorage.getItem('orca.web.nonplanar_view') !== '0';
+let shown = true;
+try { shown = localStorage.getItem('orca.web.nonplanar_view') !== '0'; } catch {  }
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 const subscribe = (l: () => void) => (listeners.add(l), () => void listeners.delete(l));
@@ -119,7 +120,7 @@ export const useNonplanarView = () => useSyncExternalStore(subscribe, () => show
 export const nonplanarViewShown = () => shown;
 export function toggleNonplanarView() {
   shown = !shown;
-  localStorage.setItem('orca.web.nonplanar_view', shown ? '1' : '0');
+  try { localStorage.setItem('orca.web.nonplanar_view', shown ? '1' : '0'); } catch {  }
   emit();
 }
 

@@ -7,6 +7,7 @@ import { ownsKeys } from '../keys';
 
 const registry = new Set<CameraViews>();
 export const activeCamera = () => [...registry].find((v) => v.isActive())?.camera ?? null;
+let lastActive: CameraViews | null = null;
 
 export class CameraViews {
   camera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
@@ -15,6 +16,11 @@ export class CameraViews {
   private width = 1;
   private height = 1;
   private axisView = false;
+  private axisDirection = new THREE.Vector3();
+  private handedOff = false;
+  private focusRadius = 1;
+  private bounds = new THREE.Box3();
+  private adjusting = false;
   private unsubscribe: () => void;
   private unsubscribePrefs: () => void;
 
@@ -23,7 +29,11 @@ export class CameraViews {
     this.camera.up.set(0, 0, 1);
     this.controls = new OrbitControls(this.camera, host);
     this.controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
+    this.controls.minDistance = 2;
+    this.controls.minPolarAngle = THREE.MathUtils.degToRad(1);
+    this.controls.maxPolarAngle = Math.PI - this.controls.minPolarAngle;
     this.applyPrefs();
+    host.addEventListener('wheel', this.onWheel, { capture: true, passive: false });
     this.unsubscribePrefs = subscribeCamera(this.applyPrefs);
     host.addEventListener('pointermove', this.onTouchpadMove);
     this.controls.addEventListener('change', this.onOrbit);
@@ -31,9 +41,15 @@ export class CameraViews {
     window.addEventListener('camera-command', this.onCommand);
     window.addEventListener('keydown', this.onKey);
     let wasActive = this.active();
+    if (wasActive && lastActive) this.takePose(lastActive);
+    if (wasActive) lastActive = this;
     this.unsubscribe = subscribeStore(() => {
       const active = this.active();
-      if (active && !wasActive) cameraProjection(this.camera instanceof THREE.PerspectiveCamera);
+      if (active && !wasActive) {
+        if (lastActive && lastActive !== this) this.takePose(lastActive);
+        cameraProjection(this.camera instanceof THREE.PerspectiveCamera);
+      }
+      if (active) lastActive = this;
       wasActive = active;
     });
   }
@@ -44,19 +60,91 @@ export class CameraViews {
     this.controls.zoomSpeed = cameraPrefs.reverseZoom ? -1 : 1;
   };
   private onTouchpadMove = (event: PointerEvent) => {
-    if (cameraPrefs.style !== 'touchpad' || event.buttons || !this.active() || !(event.altKey || event.shiftKey)) return;
+    if (cameraPrefs.style !== 'touchpad' || !this.controls.enabled || event.pointerType === 'touch' ||
+        event.buttons || !this.active() || !(event.altKey || event.shiftKey)) return;
+    this.controls.dispatchEvent({ type: 'start' });
     const h = this.host.clientHeight || 1;
     if (event.altKey) {
       this.controls.rotateLeft(2 * Math.PI * event.movementX / h * cameraPrefs.orbitMult);
       this.controls.rotateUp(2 * Math.PI * event.movementY / h * cameraPrefs.orbitMult);
     } else this.controls.pan(event.movementX, event.movementY);
-    this.controls.update();
+    this.controls.dispatchEvent({ type: 'end' });
   };
 
+  private wheelTrackpad = false;
+  private wheelAt = -Infinity;
+  private onWheel = (e: WheelEvent) => {
+    if (!this.active() || !this.controls.enabled || !this.controls.enablePan || e.ctrlKey || e.metaKey) return;
+    if (e.timeStamp - this.wheelAt > 250) {
+      const legacy = (e as WheelEvent & { wheelDeltaY?: number }).wheelDeltaY;
+      this.wheelTrackpad = cameraPrefs.style === 'touchpad' || e.deltaX !== 0 ||
+        e.deltaMode === 0 && (legacy ? legacy === -3 * e.deltaY : Math.abs(e.deltaY) < 50);
+    }
+    this.wheelAt = e.timeStamp;
+    if (!this.wheelTrackpad) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    const k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1;
+    this.controls.dispatchEvent({ type: 'start' });
+    this.controls.pan(-e.deltaX * k, -e.deltaY * k);
+    this.controls.dispatchEvent({ type: 'end' });
+  };
+
+  private focus(center: THREE.Vector3, radius: number) {
+    this.focusRadius = radius;
+    this.controls.cursor.copy(center);
+    this.controls.maxTargetRadius = radius;
+    this.controls.maxDistance = radius * 12;
+    this.zoomLimits();
+  }
+
+  private zoomLimits() {
+    if (!(this.camera instanceof THREE.OrthographicCamera)) return;
+    this.controls.minZoom = this.camera.top / (this.focusRadius * 12);
+    this.controls.maxZoom = this.camera.top / 0.25;
+    this.camera.zoom = THREE.MathUtils.clamp(this.camera.zoom, this.controls.minZoom, this.controls.maxZoom);
+    this.camera.updateProjectionMatrix();
+  }
+
+  setBounds(box: THREE.Box3) {
+    if (this.bounds.equals(box)) return;
+    this.bounds.copy(box);
+    this.constrainZoom();
+  }
+
+  private constrainZoom() {
+    if (this.bounds.isEmpty()) { this.controls.minDistance = 2; return; }
+    const offset = this.camera.position.clone().sub(this.controls.target), distance = offset.length();
+    if (!distance) return;
+    const dir = offset.divideScalar(distance), { min, max } = this.bounds;
+    const front = new THREE.Vector3(dir.x >= 0 ? max.x : min.x, dir.y >= 0 ? max.y : min.y, dir.z >= 0 ? max.z : min.z);
+    const limit = Math.max(2, front.sub(this.controls.target).dot(dir) + 0.3 + this.camera.near);
+    this.controls.minDistance = limit;
+    this.controls.maxDistance = Math.max(this.controls.maxDistance, limit * 2);
+    if (this.camera instanceof THREE.PerspectiveCamera && distance < limit) {
+      this.camera.position.copy(this.controls.target).addScaledVector(dir, limit);
+      this.adjusting = true;
+      try { this.controls.update(); } finally { this.adjusting = false; }
+    }
+  }
+
+  private clip() {
+    const c = this.camera;
+    const d = c.position.distanceTo(this.controls.target);
+    const near = THREE.MathUtils.clamp(d / 200, 0.05, 5), far = Math.max(5000, d + this.focusRadius * 4);
+    if (near === c.near && far === c.far) return;
+    c.near = near;
+    c.far = far;
+    c.updateProjectionMatrix();
+  }
+
   private onOrbit = () => {
+    if (this.adjusting) return;
+    this.constrainZoom();
+    this.clip();
     if (this.axisView && autoPerspective) {
       const d = this.camera.position.clone().sub(this.controls.target).normalize();
-      if (Math.max(Math.abs(d.x), Math.abs(d.y), Math.abs(d.z)) < 0.99999) {
+      if (d.dot(this.axisDirection) < 0.99999) {
         this.axisView = false;
         this.projection(true);
       }
@@ -70,11 +158,16 @@ export class CameraViews {
     else if (this.active()) this.view(command);
   };
   private onKey = (event: KeyboardEvent) => {
-    if (!this.active() || event.altKey || event.shiftKey || ownsKeys(event) ||
+    if (!this.active() || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || ownsKeys(event) ||
         getState().dialog || getState().flushDialog || getState().appDialog || document.querySelector('dialog[open]')) return;
-    if (!event.ctrlKey && !event.metaKey && (event.key === 'i' || event.key === 'o')) {
+    if (event.key === 'i' || event.key === 'o') {
       event.preventDefault();
       this.zoom(event.key === 'i' ? 1.25 : 0.8);
+      return;
+    }
+    if (event.key.toLowerCase() === 'z') {
+      event.preventDefault();
+      window.dispatchEvent(new Event('camera-fit'));
       return;
     }
     const view = VIEW_DIRECTIONS[Number(event.key)];
@@ -83,10 +176,23 @@ export class CameraViews {
     this.view(view);
   };
 
-  setBed(area: THREE.Vector2[]) { this.area = area; this.view('plate'); }
+  setBed(area: THREE.Vector2[]) {
+    this.area = area;
+    if (this.handedOff) this.handedOff = false;
+    else this.view('plate');
+  }
+
+  private takePose(from: CameraViews) {
+    this.copy(from);
+    this.handedOff = true;
+  }
 
   fit(box: THREE.Box3) {
+    if (box.isEmpty() || ![...box.min.toArray(), ...box.max.toArray()].every(Number.isFinite)) return this.view('plate');
     const sphere = box.getBoundingSphere(new THREE.Sphere());
+    sphere.radius = Math.max(0.25, sphere.radius);
+    const { min, max } = bedBounds(this.area);
+    this.focus(sphere.center, Math.max(max.x - min.x, max.y - min.y, sphere.radius * 2, 1));
     const dir = this.camera.position.clone().sub(this.controls.target).normalize();
     this.controls.target.copy(sphere.center);
     if (this.camera instanceof THREE.OrthographicCamera) {
@@ -105,13 +211,14 @@ export class CameraViews {
     const d = new THREE.Vector3(dx, dy, 0);
     this.camera.position.add(d);
     this.controls.target.add(d);
+    this.controls.cursor.add(d);
     this.controls.update();
     this.changed();
   }
 
   zoom(factor: number) {
     if (this.camera instanceof THREE.OrthographicCamera) {
-      this.camera.zoom = Math.min(50, Math.max(0.05, this.camera.zoom * factor));
+      this.camera.zoom = THREE.MathUtils.clamp(this.camera.zoom * factor, this.controls.minZoom, this.controls.maxZoom);
       this.camera.updateProjectionMatrix();
     } else {
       const offset = this.camera.position.clone().sub(this.controls.target);
@@ -125,16 +232,26 @@ export class CameraViews {
     const { min, max, center } = bedBounds(this.area);
     const size = Math.max(max.x - min.x, max.y - min.y, 1);
     const distance = view === 'plate' ? size * 2.2 : Math.max(this.camera.position.distanceTo(this.controls.target), size * 1.5);
-    if (view === 'plate') this.controls.target.set(center.x, center.y, 0);
-    const offsets = { plate: [0, -Math.SQRT1_2, Math.SQRT1_2], top: [0, 0, 1], bottom: [0, 0, -1],
+    if (view === 'plate') {
+      this.controls.target.set(center.x, center.y, 0);
+      this.focus(this.controls.target, size);
+      this.camera.zoom = 1;
+      if (this.camera instanceof THREE.OrthographicCamera) {
+        this.camera.top = distance * Math.tan(THREE.MathUtils.degToRad(17.5));
+        this.camera.bottom = -this.camera.top;
+        this.resize(this.width, this.height);
+        this.zoomLimits();
+      }
+    }
+    const offsets = { plate: [0, -Math.SQRT1_2, Math.SQRT1_2], top: [0, -1e-4, 1], bottom: [0, -1e-4, -1],
       front: [0, -1, 0], rear: [0, 1, 0], left: [-1, 0, 0], right: [1, 0, 0] };
     this.axisView = false;
-    this.camera.up.set(0, view === 'top' ? 1 : view === 'bottom' ? -1 : 0, view === 'top' || view === 'bottom' ? 0 : 1);
-    if (view === 'plate') this.camera.up.set(0, Math.SQRT1_2, Math.SQRT1_2);
-    this.camera.position.copy(this.controls.target).add(new THREE.Vector3(...offsets[view] as [number, number, number]).multiplyScalar(distance));
-    this.controls.object = this.camera;
+    this.camera.up.set(0, 0, 1);
+    this.camera.position.copy(this.controls.target).add(new THREE.Vector3(...offsets[view] as [number, number, number]).normalize().multiplyScalar(distance));
     this.controls.update();
+    this.clip();
     this.axisView = view !== 'plate';
+    this.axisDirection.copy(this.camera.position).sub(this.controls.target).normalize();
     this.projection(autoPerspective ? view === 'plate' : perspective);
     this.changed();
   }
@@ -155,16 +272,39 @@ export class CameraViews {
     }
     this.camera = camera;
     this.controls.object = camera;
+    this.zoomLimits();
     this.controls.update();
+    this.clip();
     if (this.active()) cameraProjection(usePerspective);
     this.changed();
   }
 
+  copy(from: CameraViews) {
+    this.bounds.copy(from.bounds);
+    this.projection(from.camera instanceof THREE.PerspectiveCamera);
+    this.camera.position.copy(from.camera.position);
+    this.camera.quaternion.copy(from.camera.quaternion);
+    this.camera.up.copy(from.camera.up);
+    this.camera.zoom = from.camera.zoom;
+    if (this.camera instanceof THREE.OrthographicCamera && from.camera instanceof THREE.OrthographicCamera) {
+      this.camera.top = from.camera.top;
+      this.camera.bottom = from.camera.bottom;
+    }
+    this.axisView = from.axisView;
+    this.axisDirection.copy(from.axisDirection);
+    this.controls.target.copy(from.controls.target);
+    this.focus(from.controls.cursor, from.focusRadius);
+    this.resize(this.width, this.height);
+    this.controls.update();
+    this.clip();
+    this.changed();
+  }
+
   resize(width: number, height: number) {
-    this.width = width; this.height = Math.max(1, height);
-    if (this.camera instanceof THREE.PerspectiveCamera) this.camera.aspect = width / this.height;
+    this.width = Math.max(1, width); this.height = Math.max(1, height);
+    if (this.camera instanceof THREE.PerspectiveCamera) this.camera.aspect = this.width / this.height;
     else {
-      this.camera.right = this.camera.top * width / this.height;
+      this.camera.right = this.camera.top * this.width / this.height;
       this.camera.left = -this.camera.right;
     }
     this.camera.updateProjectionMatrix();
@@ -172,11 +312,13 @@ export class CameraViews {
   isActive() { return this.active(); }
   dispose() {
     registry.delete(this);
+    if (lastActive === this) lastActive = null;
     window.removeEventListener('camera-command', this.onCommand);
     window.removeEventListener('keydown', this.onKey);
     this.unsubscribe();
     this.unsubscribePrefs();
     this.host.removeEventListener('pointermove', this.onTouchpadMove);
+    this.host.removeEventListener('wheel', this.onWheel, { capture: true });
     this.controls.dispose();
   }
 }

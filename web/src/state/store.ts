@@ -1,13 +1,23 @@
+import { app } from '../flow/app';
+import { tools } from '../flow/tools';
 import { useSyncExternalStore } from 'react';
 import { plateSignature } from '../slice-input';
 import * as THREE from 'three';
 import type { Api } from '../api/client';
 import type { Config, ConfigValue, JobStatus, PresetType, SystemPreset, UserPreset } from '../api/types';
 import type { ProjectPlate } from '../plater/threemf';
-import { isHidden, OPTIONS, type OptionMode } from '../options';
+import { OPTIONS, type OptionMode } from '../options';
 import { undo, undoable } from './history';
+import { selectChanges } from './changes';
 import { canEditProject } from '../api/client';
 import type { PaintKind, Painting } from '../plater/paint';
+import { decideConflict, prepareProfile, preserveProfileParents, profileConflicts, resolveProfile, saveProfile } from '../profiles/model';
+import { rememberProfile, rememberProfileUpdate } from '../persist/profiles';
+import { noticeKind, shouldToast, type NoticeEntry, type NoticeKind } from '../notice-text';
+import { ensureDefaultProfiles } from '../profiles/catalog';
+export { PRESET_META } from '../profiles/model';
+import { isCompatible } from '../profiles/compatibility';
+export { isCompatible, selectCompatibility } from '../profiles/compatibility';
 
 
 export interface Instance {
@@ -83,6 +93,7 @@ export interface PlateObject {
   extruder: number;
   instances: Instance[];
   source: File;
+  simplification?: { trianglesBefore: number; trianglesAfter: number; maxErrorMm: number; kept: 'simplified' | 'original' };
   settings: Config;
   volumes?: Volume[];
   native?: NativeObject;
@@ -112,14 +123,13 @@ export interface HeadInfo {
 }
 
 export type PresetUx =
-  | { kind: 'search' }
-  | { kind: 'save'; type: PresetType; slot: number; then?: string }
-  | { kind: 'unsaved'; type: PresetType; slot: number; target: string }
+  | { kind: 'save'; type: PresetType; slot: number }
   | { kind: 'compare'; type: PresetType; left?: string; right?: string }
+  | { kind: 'presets'; type: PresetType; name?: string }
   | { kind: 'export' }
-  | { kind: 'import' };
+  | { kind: 'import'; back?: PresetUx };
 
-export type MainTab = 'prepare' | 'preview';
+export type MainTab = 'projects' | 'prepare' | 'preview';
 export type CalibMenu = 'temperature' | 'max-flowrate' | 'pressure-advance' | 'flow-ratio' | 'retraction' | 'cornering' | 'input-shaping-freq' | 'input-shaping-damp' | 'vfa' | 'nonplanar';
 export type Gizmo = 'none' | 'move' | 'rotate' | 'scale' | 'flatten' | 'cut' | 'measure' | 'layers' | 'brimears' | 'boolean' | 'text' | 'svg' | PaintKind;
 
@@ -204,7 +214,7 @@ export interface State {
   projectMaterials: { colours: string[]; matrix: number[] | null; multiplier: number | null; builds?: { object: number; instance: number }[] } | null;
   flush: { matrix: number[] | null; multiplier: number | null };
   flushDialog: boolean;
-  appDialog: 'about' | 'preferences' | 'shortcuts' | 'send' | 'setup' | 'what' | 'plate' | 'clone' | 'simplify' | 'filaments' | 'objectTable' | 'createPrinter' | null;
+  appDialog: 'about' | 'preferences' | 'shortcuts' | 'send' | 'setup' | 'plate' | 'clone' | 'simplify' | 'filaments' | 'objectTable' | 'createPrinter' | null;
   filamentsToUse: string[] | null;
   calibDialog: CalibMenu | null;
   printers: SendPrinter[];
@@ -216,6 +226,7 @@ export interface State {
   project: File | null;
   projectName: string | null;
   job: JobView;
+  noticeLog: NoticeEntry[];
   toast: string | null;
   toastSeq: number;
   toastAction: { label: string; run: () => void; msg?: string } | null;
@@ -305,6 +316,7 @@ let state: State = {
   project: null,
   projectName: null,
   job: { state: 'idle', pct: 0, stage: '' },
+  noticeLog: [],
   toast: null,
   toastSeq: 0,
   toastAction: null,
@@ -319,10 +331,36 @@ let state: State = {
 const listeners = new Set<() => void>();
 export const getState = () => state;
 export function setState(patch: Partial<State> | ((s: State) => Partial<State>)) {
-  const next = { ...state, ...(typeof patch === 'function' ? patch(state) : patch) };
+  let next = { ...state, ...(typeof patch === 'function' ? patch(state) : patch) };
+  if (next.userPresets !== state.userPresets) {
+    const repaired = preserveProfileParents(state, next);
+    repaired.forEach((p, i) => { if (p !== next.userPresets[i]) rememberProfileUpdate(p, next.api?.mock); });
+    next.userPresets = repaired;
+  }
+  if (next.machines !== state.machines || next.processes !== state.processes || next.filaments !== state.filaments || next.userPresets !== state.userPresets
+    || next.printer !== state.printer || next.process !== state.process || next.filamentSlots !== state.filamentSlots) next = ensureDefaultProfiles(next);
+  if (next.userPresets !== state.userPresets || next.machines !== state.machines || next.processes !== state.processes || next.filaments !== state.filaments) {
+    next.userPresets = next.userPresets.map((p) => {
+      if (p.base && p.overlay && p.baseline) return p;
+      const migrated = prepareProfile(next, p);
+      if (migrated.base) rememberProfile(migrated, p, next.api?.mock, true);
+      return migrated;
+    });
+  }
+  const selected = next.selected;
+  if (selected && !next.objects.some((o) => o.id === selected.object && o.instances.some((i) => i.id === selected.instance))) {
+    next.selected = null;
+    next.gizmo = 'none';
+  } else if (selected?.volume !== undefined && !next.objects.find((o) => o.id === selected.object)?.volumes?.some((v) => v.id === selected.volume)) {
+    next.selected = { ...selected, volume: undefined, allInstances: true };
+  }
+  if (next.selected !== tools.get().context.selected || next.gizmo !== tools.get().context.gizmo)
+    tools.send({ type: 'SYNC', selected: next.selected, gizmo: next.gizmo });
   if (next.job.plateSignature && !next.job.stale && next.job.plateSignature !== plateSignature(next))
     next.job = { ...next.job, stale: true };
   state = next;
+  if ((app.get().value === 'empty' && next.objects.length) || (app.get().value === 'ready' && !next.objects.length))
+    app.send({ type: 'DOCUMENT', hasObjects: next.objects.length > 0 });
   listeners.forEach((l) => l());
 }
 const subscribe = (l: () => void) => {
@@ -347,23 +385,50 @@ export function listFor(s: State, type: PresetType): SystemPreset[] {
   return type === 'machine' ? s.machines : type === 'process' ? s.processes : s.filaments;
 }
 
-export function resolvePreset(s: State, type: PresetType, name: string): { base?: SystemPreset; user?: UserPreset; config: Config } {
-  const user = s.userPresets.find((u) => u.type === type && u.name === name);
-  const base = listFor(s, type).find((p) => p.name === (user ? user.inherits : name));
-  return { base, user, config: { ...(base?.config ?? {}), ...(user?.overrides ?? {}) } };
+const resolvedCatalogs = new WeakMap<SystemPreset[], WeakMap<UserPreset[], Map<string, ReturnType<typeof resolveProfile>>>>();
+export function resolvePreset(s: Parameters<typeof resolveProfile>[0], type: PresetType, name: string) {
+  const catalog = type === 'machine' ? s.machines : type === 'process' ? s.processes : s.filaments;
+  let users = resolvedCatalogs.get(catalog);
+  if (!users) resolvedCatalogs.set(catalog, (users = new WeakMap()));
+  let values = users.get(s.userPresets);
+  if (!values) users.set(s.userPresets, (values = new Map()));
+  const key = `${type}:${name}`;
+  let result = values.get(key);
+  if (!result) values.set(key, (result = resolveProfile(s, type, name)));
+  return result;
 }
 
+const profileConflictRows = new WeakMap<State, Map<string, ReturnType<typeof profileConflicts>>>();
+export function selectProfileConflicts(s: State, type: PresetType, name?: string) {
+  let cache = profileConflictRows.get(s);
+  if (!cache) profileConflictRows.set(s, (cache = new Map()));
+  const selected = name ?? (type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[0] ?? '');
+  const key = `${type}\0${selected}`;
+  if (!cache.has(key)) cache.set(key, profileConflicts(s, type, selected));
+  return cache.get(key)!;
+}
+
+export async function resolveProfileConflict(type: PresetType, name: string, key: string, choice: 'mine' | 'theirs') {
+  const s = getState(), preset = decideConflict(s, type, name, key, choice);
+  if (!preset || !s.api) return;
+  await s.api.saveUserPreset(preset);
+  setState((st) => ({ userPresets: st.userPresets.map((p) => p.type === type && p.name === name ? preset : p), job: markStale(st.job) }));
+}
+
+const effectiveValues = new WeakMap<Config, Map<string, { project: Config | undefined; plate: Config | undefined; edits: Config; value: Config }>>();
 export function effectiveConfig(s: State, type: PresetType, slot = 0): Config {
   const name = type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot];
   const { config } = resolvePreset(s, type, name ?? '');
   const project = type === 'filament' ? s.projectPresets?.filaments[slot] : s.projectPresets?.[type];
   const plate = type === 'process' ? s.projectPlates.find((p) => p.index === s.plateIndex)?.settings : undefined;
-  return { ...config, ...project, ...plate, ...presetEdits(s, type, slot) };
-}
-
-export function isCompatible(p: SystemPreset, printer: string, process?: string): boolean {
-  if (!p.compatible_evaluated) return !p.compatible_printers?.length || p.compatible_printers.includes(printer);
-  return !!p.compatible_printers?.includes(printer) && (!process || !p.compatible_prints || p.compatible_prints.includes(process));
+  const edits = presetEdits(s, type, slot), key = `${type}:${slot}`;
+  let values = effectiveValues.get(config);
+  if (!values) effectiveValues.set(config, (values = new Map()));
+  const cached = values.get(key);
+  if (cached && cached.project === project && cached.plate === plate && cached.edits === edits) return cached.value;
+  const value = { ...config, ...project, ...plate, ...edits };
+  values.set(key, { project, plate, edits, value });
+  return value;
 }
 
 export function compatible(s: State, type: 'process' | 'filament', printer = s.printer, process = s.process): SystemPreset[] {
@@ -381,13 +446,32 @@ export function printerPreset(s: State): SystemPreset | undefined {
   return preset;
 }
 
+export function filamentVariant(s: State, name: string, printer = s.printer, process = s.process): string | undefined {
+  const { base } = resolvePreset(s, 'filament', name);
+  const machine = resolvePreset(s, 'machine', printer).base?.name ?? printer;
+  const print = resolvePreset(s, 'process', process).base?.name ?? process;
+  if (base && isCompatible(base, machine, print)) return name;
+  const identity = (n: string) => n.replace(/\s*@.*$/, '').trim();
+  const variants = compatible(s, 'filament', machine, process);
+  return (variants.find((p) => identity(p.name) === identity(base?.name ?? name))
+    ?? variants.find((p) => !!base?.filament_id && p.filament_id === base.filament_id
+      && String(p.config.filament_vendor) === String(base.config.filament_vendor)
+      && String(p.config.filament_type) === String(base.config.filament_type)))?.name;
+}
+
+export function filamentSwitchReason(s: State, slot: number): string | null {
+  const name = s.filamentSlots[slot];
+  return name && !filamentVariant(s, name) ? 'Unavailable for this machine' : null;
+}
+
 export function selectPrinter(name: string) {
   setState((s) => {
     const next = { ...s, printer: name };
     const base = resolvePreset(next, 'machine', name).base;
     const procs = compatible(next, 'process', base?.name ?? name);
     const defProcess = String(base?.config.default_print_profile ?? '');
-    const process = procs.some((p) => p.name === s.process)
+    const currentProcess = resolvePreset(s, 'process', s.process).base?.name ?? s.process;
+    const process = procs.some((p) => p.name === currentProcess)
       ? s.process
       : (procs.find((p) => p.name === defProcess)?.name ?? procs[0]?.name ?? '');
     const fils = compatible(next, 'filament', base?.name ?? name, process);
@@ -400,7 +484,7 @@ export function selectPrinter(name: string) {
       fils[0]?.name ??
       '';
     const filamentSlots = (s.filamentSlots.length ? s.filamentSlots : ['']).map((f) =>
-      fils.some((x) => x.name === f) ? f : preferred,
+      f ? filamentVariant(next, f, name, process) ?? f : preferred,
     );
     return {
       printer: name,
@@ -448,21 +532,16 @@ export function resetOption(type: PresetType, key: string, slot = 0) {
 }
 
 export function hasUnsavedEdits(s: State, type: PresetType, slot: number) {
-  if (!Object.keys(presetEdits(s, type, slot)).length) return false;
+  if (!selectChanges(s, type, slot).some((c) => c.scope === 'project' && c.owner.plate === undefined)) return false;
   return type !== 'filament' || !s.filamentSlots.some((f, i) => i !== slot && f === s.filamentSlots[slot]);
 }
 
-export const PRESET_META = /^(inherits|name|from|version|type|setting_id|base_id|filament_id|is_custom_defined|instantiation|\w+_settings_id)$/;
-
-export async function saveUserPreset(type: PresetType, name: string, slot = 0, detach = false) {
+export async function saveUserPreset(type: PresetType, name: string, slot = 0, _detach = false) {
   const s = getState();
   const current = type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot];
-  const { base, user } = resolvePreset(s, type, current);
   const project = type === 'filament' ? s.projectPresets?.filaments[slot] : s.projectPresets?.[type];
-  const overrides = { ...(user?.overrides ?? {}), ...project, ...presetEdits(s, type, slot) };
-  if (detach) for (const [key, value] of Object.entries(effectiveConfig(s, type, slot)))
-    if (OPTIONS[key] && !isHidden(key) && !PRESET_META.test(key) && !(key in overrides)) overrides[key] = value;
-  const preset: UserPreset = { name, type, inherits: base?.name ?? current, overrides };
+  const values = { ...resolvePreset(s, type, current).config, ...project, ...presetEdits(s, type, slot) };
+  const preset = saveProfile(s, type, name, current, values);
   await s.api!.saveUserPreset(preset);
   setState((st) => {
     const patch: Partial<State> = {
@@ -486,8 +565,14 @@ export async function saveUserPreset(type: PresetType, name: string, slot = 0, d
   });
 }
 
+export function logNotice(message: string, kind: NoticeKind = noticeKind(message)) {
+  setState((s) => ({ noticeLog: [...s.noticeLog.slice(-99), { id: (s.noticeLog.at(-1)?.id ?? 0) + 1, message, kind }] }));
+}
+
 export function toast(msg: string, action: State['toastAction'] = null, ms = action ? 8000 : null) {
-  setState({ toast: msg, toastSeq: getState().toastSeq + 1, toastAction: action && { ...action, msg }, toastMs: ms });
+  logNotice(msg);
+  if (shouldToast(msg, action))
+    setState({ toast: msg, toastSeq: getState().toastSeq + 1, toastAction: action && { ...action, msg }, toastMs: ms });
 }
 
 function editName(patch: object): string {

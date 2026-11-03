@@ -1,11 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { addInstance, arrangeAll, fillBed, openFileDialog, removeInstance, setInstanceCount, toolbarOperation } from '../actions';
 import { canDrop, canPaste, centreSelection, copySelection, dropSelection, mirrorSelection, pasteClipboard, selectAll, setFilament, startRename } from '../edit';
 import { canEditProject } from '../api/client';
 import { changeVolumeType, deleteAll, deleteVolume, effectiveConfig, getState, removeSelected, selectedObjectIds, setState, togglePrintable, updateObject, updateVolume, useStore, VOLUME_ORDER, type PlateObject, type State } from '../state/store';
 import { addPrimitive, addPrimitiveObject, loadVolume, SEAM_MODES, SHAPES, TYPE_LABEL, VOLUME_MENU } from '../plater/volumes';
-import { menuKeys } from '../keys';
-import { useSubmenuPlace } from './menuPlace';
+import { ActionMenu, type MenuEntry as Item } from './Menu';
 import { canAddPlate, deletePlate, editPlateName } from '../plater/plates';
 
 const HANDY = [['Orca Cube'], ['OrcaSliced Combo'], ['Orca Badge'], ['Orca Tolerance Test'], ['3DBenchy'], ['Cali Cat'], ['Autodesk FDM Test'], ['Voron Cube'],
@@ -14,67 +12,10 @@ const HANDY = [['Orca Cube'], ['OrcaSliced Combo'], ['Orca Badge'], ['Orca Toler
 const ops = () => import('../plater/objectOps');
 const exportStl = (selection: boolean, multi = false) => import('../exportStl').then((m) => m.exportStl(selection, multi));
 
-function useFit(ref: RefObject<HTMLDivElement | null>) {
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect(), over = r.bottom - (window.innerHeight - 8);
-    if (over > 0) el.style.top = `${parseFloat(getComputedStyle(el).top) - Math.min(over, r.top - 8)}px`;
-  });
-}
-
-function Sub({ items, close }: { items: Item[]; close: () => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useSubmenuPlace(ref);
-  return <div ref={ref} role="menu" className="menu-pop ctx-sub"><Items items={items} close={close} /></div>;
-}
-
-type Item = { label: string; shortcut?: string; action?: () => void; disabled?: boolean; checked?: boolean; tip?: string; sub?: Item[] } | 'sep';
-
-function Items({ items, close }: { items: Item[]; close: () => void }) {
-  const [open, setOpen] = useState<number | null>(null);
-  return (
-    <>
-      {items.map((it, k) =>
-        it === 'sep' ? <div key={k} className="menu-sep" /> : (
-          <div key={k} className="ctx-entry" onMouseEnter={() => setOpen(it.sub ? k : null)}>
-            <button className="menu-item" role={it.checked === undefined ? 'menuitem' : 'menuitemcheckbox'} aria-checked={it.checked}
-              aria-haspopup={it.sub ? 'menu' : undefined} aria-expanded={it.sub ? open === k : undefined}
-              disabled={it.disabled} title={it.tip}
-              onClick={() => { if (it.sub) setOpen(k); else { it.action?.(); close(); } }}>
-              <span>{it.label}</span><span>{it.sub ? '▸' : it.shortcut ?? ''}</span>
-            </button>
-            {it.sub && open === k && !it.disabled && (
-              <Sub items={it.sub} close={close} />
-            )}
-          </div>
-        ),
-      )}
-    </>
-  );
-}
-
 export default function ContextMenu() {
   const menu = useStore((s) => s.contextMenu);
   const s = useStore((st) => st);
-  const ref = useRef<HTMLDivElement>(null);
-  useFit(ref);
   const close = () => setState({ contextMenu: null });
-  const back = useRef<HTMLElement | null>(null);
-  useEffect(() => {
-    if (!menu) return;
-    back.current ??= document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
-    ref.current?.querySelector<HTMLElement>('.menu-item:not(:disabled)')?.focus();
-    return () => { if (!getState().contextMenu) { back.current?.focus(); back.current = null; } };
-  }, [!!menu]);
-  useEffect(() => {
-    const down = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) close(); };
-    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
-    window.addEventListener('mousedown', down);
-    window.addEventListener('keydown', key);
-    window.addEventListener('blur', close);
-    return () => { window.removeEventListener('mousedown', down); window.removeEventListener('keydown', key); window.removeEventListener('blur', close); };
-  }, []);
   if (!menu) return null;
   const o = s.objects.find((ob) => ob.id === menu.object);
   const all = !!s.selected?.all;
@@ -95,6 +36,8 @@ export default function ContextMenu() {
       ? [{ label: 'SVG', action: () => void import('../plater/svg').then((m) => m.addSvg(o.id, type)) }] : []),
   ] })), ...heightRanges, 'sep' as const] : heightRanges.length ? [...heightRanges, 'sep'] : [];
   const items: Item[] = o && volume ? [
+    { label: 'Settings', disabled: !!o.project || (volume.type !== 'part' && volume.type !== 'modifier'),
+      action: () => setState({ processScope: 'objects', selected: { object: o.id, instance: o.instances[0].id, allInstances: true, volume: volume.id } }) },
     ...(volume.text && s.features.emboss_text ? [{ label: 'Edit text', action: () => setState({ gizmo: 'text' }) }] : []),
     ...(volume.svg && s.features.emboss_svg ? [{ label: 'Edit SVG', action: () => setState({ gizmo: 'svg' }) }] : []),
     { label: 'Rename', action: () => setState({ renaming: volume.id }) },
@@ -142,6 +85,7 @@ export default function ContextMenu() {
           { label: 'Convert from meter', action: () => void ops().then((m) => m.convertUnits(o.id, 'meter')), disabled: !editable || !!o.project }]),
       ...(o.volumes?.some((v) => v.type === 'part') ? [{ label: 'Set as individual objects', action: () => void ops().then((m) => m.partsToObjects(o.id)), disabled: !editable || !!o.project,
         tip: 'Each part becomes an object' }] : []),
+      { label: 'Settings', action: () => setState({ processScope: 'objects', selected: { object: o.id, instance: o.instances[0].id, allInstances: true } }), disabled: !!o.project },
       { label: 'Copy Process Settings', action: () => void ops().then((m) => m.copySettings(o.id)), disabled: !!o.project, tip: 'Copy Process Settings' },
       { label: 'Paste Process Settings', action: () => void ops().then((m) => m.pasteSettings([{ object: o.id }])), disabled: s.settingsClipboard?.kind !== 'object' || !!o.project, tip: 'Paste Process Settings' },
       { label: 'Replace 3D file...', action: () => void ops().then((m) => m.replaceFile(o.id)), disabled: !editable || !!o.project, tip: 'Replace the object\'s mesh with another file' },
@@ -176,26 +120,7 @@ export default function ContextMenu() {
     ] : []),
     ...(canAddPlate(s) ? [{ label: 'Plate Settings...', action: () => setState({ appDialog: 'plate' }), tip: 'Customize current plate' }] : []),
   ];
-  return (
-    <div ref={ref} role="menu" className="menu-pop ctx-menu" style={{ left: Math.min(menu.x, window.innerWidth - 230), top: menu.y }}
-      onContextMenu={(e) => e.preventDefault()}
-      onKeyDown={(e) => {
-        const item = document.activeElement as HTMLElement;
-        if (e.key === 'ArrowRight' && item.getAttribute('aria-haspopup')) {
-          item.click();
-          requestAnimationFrame(() => item.parentElement?.querySelector<HTMLElement>('.ctx-sub .menu-item:not(:disabled)')?.focus());
-        } else if (e.key === 'ArrowLeft' && item.closest('.ctx-sub')) {
-          item.closest('.ctx-sub')!.parentElement!.querySelector<HTMLElement>(':scope > .menu-item')?.focus();
-        } else {
-          const sub = item.closest<HTMLElement>('.ctx-sub');
-          menuKeys(e, sub ?? ref.current, close);
-          return;
-        }
-        e.preventDefault();
-      }}>
-      <Items items={items} close={close} />
-    </div>
-  );
+  return <ActionMenu items={items} label="Context menu" at={{ x: menu.x, y: menu.y }} onClose={close} />;
 }
 
 const FLUSH: [string, string][] = [['flush_into_infill', "Flush into objects' infill"], ['flush_into_objects', 'Flush into this object'], ['flush_into_support', "Flush into objects' support"]];

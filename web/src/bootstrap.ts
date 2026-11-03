@@ -1,5 +1,6 @@
 import { checkBrowserSupport, showBrowserNotice, unsupportedBrowserMessage } from './browser-support';
 import './theme';
+document.documentElement.classList.add('orca-parity');
 import './styles/tokens.css';
 import './styles/primitives.css';
 import './app.css';

@@ -1,3 +1,4 @@
+import { Dropdown } from './Dropdown';
 import { lazy, Suspense, useState, useSyncExternalStore } from 'react';
 import { markStale, setState, useStore } from '../state/store';
 import { setThemePref, subscribeTheme, themePref, type ThemePref } from '../theme';
@@ -54,10 +55,7 @@ function Preferences() {
           <legend>Camera</legend>
           <label className="prefs-row" title={'Select camera navigation style.\nDefault: LMB+move for rotation, RMB/MMB+move for panning.\nTouchpad: Alt+move for rotation, Shift+move for panning.'}>
             Camera style
-            <select className="combo" value={camera.style} onChange={(e) => setCameraPrefs({ style: e.target.value as CameraPrefs['style'] })}>
-              <option value="default">Default</option>
-              <option value="touchpad">Touchpad</option>
-            </select>
+            <Dropdown className="combo" value={camera.style} onValueChange={(next) => setCameraPrefs({ style: next as CameraPrefs['style'] })} options={[{ value: "default", label: 'Default' }, { value: "touchpad", label: 'Touchpad' }]} />
           </label>
           <label className="prefs-row" title="Multiplies the orbit speed for finer or coarser camera movement.">
             Orbit speed multiplier

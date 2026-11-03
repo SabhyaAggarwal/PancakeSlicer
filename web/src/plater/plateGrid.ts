@@ -87,13 +87,13 @@ export class PlateGrid {
     const changed = PLATE_KEYS.some((k) => p.settings[k] !== undefined && p.settings[k] !== '');
     const slots: ([string, string, () => void, boolean] | null)[] = [
       editable && many ? ['plate_close', 'Remove current plate (if not last one)', () => deletePlate(p.index), idle] : null,
-      ['plate_orient', 'Auto orient objects on current plate', onPlate(() => void toolbarOperation('orient', true)), !s.project && !locked && p.objects.length > 0],
-      ['plate_arrange', 'Arrange objects on current plate', onPlate(() => arrangeAll(false)), !locked && p.objects.length > 0],
-      [locked ? 'plate_locked' : 'plate_unlocked', locked ? 'Unlock current plate' : 'Lock current plate', () => toggleLock(p.index), true],
+      many ? ['plate_orient', 'Auto orient objects on current plate', onPlate(() => void toolbarOperation('orient', true)), !s.project && !locked && p.objects.length > 0] : null,
+      many ? ['plate_arrange', 'Arrange objects on current plate', onPlate(() => arrangeAll(false)), !locked && p.objects.length > 0] : null,
+      many ? [locked ? 'plate_locked' : 'plate_unlocked', locked ? 'Unlock current plate' : 'Lock current plate', () => toggleLock(p.index), true] : null,
       editable ? [changed ? 'plate_settings_changed' : 'plate_settings', 'Customize current plate', onPlate(() => setState({ appDialog: 'plate' })), idle] : null,
       editable && many ? ['plate_move_front', 'Move plate to the front', () => movePlateToFront(p.index), idle && p.index > 1] : null,
     ];
-    slots.forEach((slot, i) => {
+    slots.filter(Boolean).forEach((slot, i) => {
       if (!slot) return;
       const [name, title, action, enabled] = slot;
       const b = document.createElement('button');
@@ -114,6 +114,7 @@ export class PlateGrid {
       this.anchors.push({ el: b, at: new THREE.Vector3(max.x + dx + GAP_LEFT * f + size / 2, top - size / 2 + dy, 0), size, kind: 'icon' });
       this.layer.append(b);
     });
+    if (!many) return;
     const n = document.createElement('div');
     n.className = `plate-number ${p.index === s.plateIndex ? 'selected' : ''}`;
     n.textContent = String(p.index);

@@ -240,10 +240,11 @@ function towers(config: Config, plates: number[]): Record<number, [number, numbe
   return Object.fromEntries(plates.flatMap((p, k) => (Number.isFinite(xs[k]) && Number.isFinite(ys[k]) ? [[p, [xs[k], ys[k]]]] : [])));
 }
 
-export async function openExplodedProject(file: File, adopt: (config: Config, slots: number, plateKeys: Set<string>) => void) {
+export async function openExplodedProject(file: File, adopt: (config: Config, slots: number, plateKeys: Set<string>) => void, current = () => true) {
   const { readProject } = await import('./threemf');
   const { items, materials } = await readProject(file);
   const { settings, plates } = await explodeProject(file);
+  if (!current()) { for (const p of plates) for (const o of p.objects) o.geometry.dispose(); return; }
   if (!plates.some((p) => p.objects.length)) throw new Error('the project has no printable objects');
   const slots = Math.max(1, materials.colours.length, ...items.map((i) => i.extruder));
   adopt(materials.config, slots, new Set(materials.plates.flatMap((p) => Object.keys(p.settings))));

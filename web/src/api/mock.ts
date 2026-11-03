@@ -1,11 +1,14 @@
 import type { Api } from './client';
-import type { Config, JobRequest, JobStatus, UserPreset } from './types';
-import { normalizeConfig } from '../config-values';
+import type { Config, JobRequest, JobStatus } from './types';
+import { localProfiles, rememberProfile, forgetProfile } from '../persist/profiles';
+import { prepareProfile } from '../profiles/model';
 
-const normalizeUserPreset = (preset: UserPreset): UserPreset => ({ ...preset, overrides: normalizeConfig(preset.overrides) });
-
-const USER_KEY = 'orca.userPresets';
 const mockJobs = new Map<string, { req: JobRequest; status: JobStatus; gcode?: string }>();
+const variant = (id: string) => {
+  const req = mockJobs.get(id)?.req;
+  const on = (v: unknown) => v === true || v === '1' || v === 'true';
+  return req && (on(req.overrides.enable_support) || req.plate?.objects.some((o) => on(o.settings?.enable_support))) ? '-support' : '';
+};
 
 const STAGES: [string, number][] = [
   ['load', 0], ['load', 100], ['slice', 0], ['slice', 15], ['slice', 25], ['slice', 35],
@@ -14,27 +17,40 @@ const STAGES: [string, number][] = [
   ['package', 0], ['package', 100], ['json', 0], ['json', 100],
 ];
 
+function withMockTotals(record: Record<string, unknown> | undefined, req: JobRequest): Record<string, unknown> {
+  const o = req.overrides, num = (v: unknown, d: number) => (Number.isFinite(parseFloat(String(v))) ? parseFloat(String(v)) : d);
+  const instances = req.plate?.objects.reduce((n, ob) => n + ob.instances.length, 0) ?? 1;
+  const bytes = req.files.reduce((n, f) => n + f.blob.size, 0) / Math.max(1, req.files.length);
+  const size = instances * Math.max(0.3, Math.cbrt(bytes / 2e5));
+  const layer = num(o.layer_height, num(/(\d\.\d+)mm/.exec(req.process)?.[1], 0.2));
+  const infill = num(o.sparse_infill_density, 15) / 100, walls = num(o.wall_loops, 2);
+  const support = o.enable_support === true || o.enable_support === 1 || o.enable_support === '1';
+  const grams = size * 9 * (0.55 + infill * 1.5) * Math.sqrt(walls / 2) + (support ? size * 1.8 : 0);
+  const timeS = size * 1500 * (0.2 / layer) * (0.7 + infill) * Math.sqrt(walls / 2) + (support ? size * 420 : 0);
+  return {
+    ...record,
+    totals: { ...(record?.totals as object), estimated_time_s: timeS, layer_count: Math.round(size * 20 / layer) },
+    statistics: { total_weight_g: grams, support_weight_g: support ? size * 1.8 : 0 },
+  };
+}
+
 export const mockApi: Api = {
   mock: true,
   async presets(vendor, models) {
     return (await import('./mock-catalog')).mockPresets(vendor, models);
   },
   async userPresets() {
-    try {
-      return (JSON.parse(localStorage.getItem(USER_KEY) ?? '[]') as UserPreset[]).map(normalizeUserPreset);
-    } catch {
-      return [];
-    }
+    return localProfiles();
   },
   async saveUserPreset(p) {
-    const list = (await mockApi.userPresets()).filter((u) => !(u.type === p.type && u.name === p.name));
-    localStorage.setItem(USER_KEY, JSON.stringify([...list, p]));
+    const { getState } = await import('../state/store');
+    rememberProfile(prepareProfile(getState(), p), p, true);
   },
   async deleteUserPreset(type, name) {
-    const list = (await mockApi.userPresets()).filter((u) => !(u.type === type && u.name === name));
-    localStorage.setItem(USER_KEY, JSON.stringify(list));
+    forgetProfile(type, name, true);
   },
   async submit(req) {
+    if (req.backend) throw new Error('External Smooth top needs the Orca-NP v0.1 service; it cannot run in mock mode.');
     const id = `mock-${Date.now().toString(36)}`;
     mockJobs.set(id, { req, status: { id, state: 'queued', progress: 0, output: req.output } });
     return id;
@@ -74,10 +90,10 @@ export const mockApi: Api = {
       ].join('\n');
       const base = j.req.plate?.objects[0]?.name ?? j.req.files[0]?.name.replace(/\.3mf$/i, '') ?? 'plate';
       Object.assign(j.status, { state: 'done', progress: 100, stage: 'done', filename: `${base}.${j.req.output}` });
-      fetch('/__moves/record')
+      fetch(`/__moves/record${variant(id)}`)
         .then((r) => (r.ok && (r.headers.get('content-type') ?? '').includes('json') ? r.json() : undefined))
         .catch(() => undefined)
-        .then((record) => on.done({ ...j.status, record: record ?? j.status.record }));
+        .then((record) => on.done({ ...j.status, record: withMockTotals(record ?? j.status.record, j.req) }));
     }, 280);
     return () => clearInterval(timer);
   },
@@ -87,5 +103,5 @@ export const mockApi: Api = {
     const j = mockJobs.get(id);
     return URL.createObjectURL(new Blob([j?.gcode ?? ''], { type: 'text/plain' }));
   },
-  movesUrl: () => '/__moves/sample',
+  movesUrl: (id) => `/__moves/sample${variant(id)}`,
 };

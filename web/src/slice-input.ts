@@ -28,7 +28,8 @@ export function overrides(s = getState()): Config {
     ...effectiveConfig(s, 'filament'),
   } : {};
   const add = (type: 'machine' | 'process' | 'filament', name: string, dirty: Config) => {
-    Object.assign(out, resolvePreset(s, type, name).user?.overrides ?? {}, dirty);
+    const { base, user } = resolvePreset(s, type, name);
+    Object.assign(out, base?.imported ? base.config : {}, user?.overrides ?? {}, dirty);
   };
   add('machine', s.printer, s.dirty.machine);
   add('process', s.process, s.dirty.process);
@@ -100,8 +101,12 @@ export function calibOverrides(s = getState(), kind = ''): Config {
 }
 
 export function jobFields(s: State, saving = false) {
-  const sys = (type: 'machine' | 'process' | 'filament', n: string) => resolvePreset(s, type, n).base?.name ?? n;
+  const sys = (type: 'machine' | 'process' | 'filament', n: string) => {
+    const base = resolvePreset(s, type, n).base;
+    return base?.engine_base ?? base?.name ?? n;
+  };
   return {
+    ...(!saving && effectiveConfig(s, 'process').web_slice_backend === 'orcanp-v01' ? { backend: 'orcanp-v01' as const } : {}),
     vendor: printerPreset(s)?.vendor ?? 'BBL',
     printer: sys('machine', s.printer),
     process: sys('process', s.process),

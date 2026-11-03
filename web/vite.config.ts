@@ -10,9 +10,12 @@ export default defineConfig({
   plugins: [react(), orcaAssets(), optionAssets(), mockAssets(), bundleReport(), licenceNotices()],
   worker: { format: 'es', plugins: () => [optionAssets(false), licenceNotices(false)] },
   server: {
-    port: 5173,
+    port: 20120,
+    strictPort: true,
+    host: '127.0.0.1',
+    allowedHosts: [],
     proxy: {
-      '/api': { target: process.env.ORCA_API ?? 'http://localhost:8080', changeOrigin: true },
+      '/api': { target: process.env.ORCA_API ?? 'http://127.0.0.1:20196', changeOrigin: true },
     },
   },
   build: {

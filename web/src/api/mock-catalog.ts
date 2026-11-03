@@ -1,6 +1,6 @@
 import url from 'virtual:mock-presets';
 import { normalizeConfig } from '../config-values';
-import { catalogWorker, workerId } from './worker';
+import { catalogWorker, onWorkerFailure, workerId } from './worker';
 import type { CatalogOut } from './catalog.worker';
 import { expandCatalog } from './compact-catalog';
 import { demoPresets } from './catalog';
@@ -13,9 +13,9 @@ function load(): Promise<PresetCatalog> {
     const id = workerId();
     const cleanup = () => {
       worker.removeEventListener('message', on);
-      worker.removeEventListener('error', fail);
+      unsubscribe();
     };
-    const fail = (e: ErrorEvent) => { cleanup(); reject(new Error(e.message)); };
+    const fail = (error: Error) => { cleanup(); reject(error); };
     const on = (e: MessageEvent<CatalogOut>) => {
       if (e.data.id !== id) return;
       if (e.data.type === 'catalog') {
@@ -26,8 +26,8 @@ function load(): Promise<PresetCatalog> {
         reject(new Error(e.data.message));
       }
     };
+    const unsubscribe = onWorkerFailure(fail);
     worker.addEventListener('message', on);
-    worker.addEventListener('error', fail);
     worker.postMessage({ id, type: 'mock', url: new URL(url, location.href).href });
   });
 }

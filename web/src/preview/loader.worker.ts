@@ -88,9 +88,10 @@ class Bytes {
   }
 }
 
-function allocChunk(start: number, count: number, extended: boolean): MoveChunk {
+function allocChunk(start: number, count: number, extended: boolean, oriented: boolean): MoveChunk {
   const ext = extended ? count : 0;
   return {
+    orientation: new Float32Array(oriented ? count * 3 : 0), inverseTime: new Float32Array(oriented ? count : 0),
     actual: new Float32Array(ext), clearance: new Float32Array(ext),
     start, count, pos: new Float32Array(count * 4), type: new Uint8Array(count), role: new Uint8Array(count),
     extruder: new Uint8Array(count), cp: new Uint8Array(count), de: new Float32Array(count), feed: new Float32Array(count),
@@ -141,7 +142,7 @@ function buildLod(c: MoveChunk, prev: [number, number, number]): { lod: Uint32Ar
       if ((t !== MoveType.Extrude && t !== MoveType.Travel && t !== MoveType.Wipe) || c.start + i === 1) { ++i; continue; }
       let j = i + 1;
       while (j < b1 && (c.type[j] & 0x7f) === t && c.role[j] === c.role[i] && c.extruder[j] === c.extruder[i] &&
-             c.cp[j] === c.cp[i] && c.layer[j] === c.layer[i] && c.state[j] === c.state[i] && c.feed[j] === c.feed[i] &&
+             c.cp[j] === c.cp[i] && (!c.orientation.length || [0, 1, 2].every((k) => Math.abs(c.orientation[j * 3 + k] - c.orientation[i * 3 + k]) <= 0.1)) && c.layer[j] === c.layer[i] && c.state[j] === c.state[i] && c.feed[j] === c.feed[i] &&
              near(c.width[j], c.width[i]) && near(c.height[j], c.height[i]) && near(c.mm3[j], c.mm3[i]) &&
              (!c.actual.length || near(c.actual[j], c.actual[i]) && sameClearance(c.clearance[j], c.clearance[i]))) ++j;
       const va = c.start + i - 1, vb = c.start + j - 1;
@@ -178,7 +179,7 @@ async function run(src: WorkerIn) {
   let prev: [number, number, number] = [0, 0, 0];
   let eof = false;
 
-  const flushMoves = (final: boolean) => {
+  const flushMoves = async (final: boolean) => {
     const h = header!;
     while (parsed < h.moveCount) {
       const n = Math.min(CHUNK, h.moveCount - parsed);
@@ -186,7 +187,7 @@ async function run(src: WorkerIn) {
         if (final) throw new Error('truncated move stream (moves)');
         return;
       }
-      const c = allocChunk(parsed, n, h.extended);
+      const c = allocChunk(parsed, n, h.extended, !!h.oriented);
       const dv = q.view(n * h.moveStride);
       for (let i = 0, o = 0; i < n; ++i, o += h.moveStride) {
         const v = parsed + i;
@@ -208,6 +209,11 @@ async function run(src: WorkerIn) {
         if (h.extended) {
           c.actual[i] = dv.getFloat32(o + 52, true);
           c.clearance[i] = dv.getFloat32(o + 56, true);
+        }
+        if (h.oriented) {
+          const at = o + h.moveStride - 16;
+          for (let k = 0; k < 3; ++k) c.orientation[i * 3 + k] = dv.getFloat32(at + k * 4, true);
+          c.inverseTime[i] = dv.getFloat32(at + 12, true);
         }
         const layerId = dv.getUint32(o + 44, true);
         let st = dv.getUint32(o + 48, true);
@@ -234,9 +240,11 @@ async function run(src: WorkerIn) {
       const { lod, blocks } = buildLod(c, prev);
       prev = [c.pos[(n - 1) * 4], c.pos[(n - 1) * 4 + 1], c.pos[(n - 1) * 4 + 2]];
       parsed += n;
-      const buffers = [c.pos, c.type, c.role, c.extruder, c.cp, c.de, c.actual, c.clearance, c.feed, c.width, c.height, c.mm3, c.time, c.state, c.gcode, c.layer, lod, blocks]
+      const buffers = [c.orientation, c.inverseTime, c.pos, c.type, c.role, c.extruder, c.cp, c.de, c.actual, c.clearance, c.feed, c.width, c.height, c.mm3, c.time, c.state, c.gcode, c.layer, lod, blocks]
         .map((a) => a.buffer as ArrayBuffer);
+      const ready = new Promise<void>((resolve) => { resume = resolve; });
       post({ kind: 'chunk', chunk: c, layers: layers.map((l) => ({ ...l })), lod, lodBlocks: blocks, bytes: received }, buffers);
+      await ready;
     }
   };
 
@@ -264,7 +272,7 @@ async function run(src: WorkerIn) {
       stage = 'moves';
     }
     if (stage === 'moves') {
-      flushMoves(eof);
+      await flushMoves(eof);
       if (parsed === header!.moveCount) stage = 'layers';
     }
     if (stage === 'layers' && q.avail >= header!.layerCount * header!.layerStride) {
@@ -302,6 +310,8 @@ async function run(src: WorkerIn) {
   post({ kind: 'done', layers: final, meta, ms: performance.now() - t0, bytes: received, layerTableMatches: matches });
 }
 
-self.onmessage = (e: MessageEvent<WorkerIn>) => {
+let resume: (() => void) | null = null;
+self.onmessage = (e: MessageEvent<WorkerIn | { kind: 'ready' }>) => {
+  if ('kind' in e.data) { const next = resume; resume = null; next?.(); return; }
   run(e.data).catch((err) => post({ kind: 'error', message: String(err?.message ?? err) }));
 };

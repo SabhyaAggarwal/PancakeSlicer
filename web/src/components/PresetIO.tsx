@@ -5,7 +5,7 @@ import { getState, setState, toast, useStore } from '../state/store';
 import { Modal, ModalTitle } from './Modal';
 
 const TYPE_NAME: Record<PresetType, string> = { machine: 'Printer', filament: 'Filament', process: 'Process' };
-const ACCEPT = '.json,.zip,.orca_printer,.orca_filament,.orca_bundle';
+const ACCEPT = '.json,.zip,.bbscfg,.orca_printer,.orca_filament,.orca_bundle';
 const close = () => setState({ presetUx: null });
 
 type Row = ImportPlan & { checked: boolean; result?: string; ok?: boolean };

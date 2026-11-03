@@ -1,3 +1,4 @@
+import { tools } from '../flow/tools';
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { CameraViews } from './CameraViews';
@@ -73,13 +74,23 @@ export default function Plater3D() {
     });
     const controls = views.controls;
     let frame = 0;
+    let moving = false;
+    let settle: ReturnType<typeof setTimeout> | undefined;
+    controls.addEventListener('start', () => { clearTimeout(settle); moving = true; });
+    controls.addEventListener('end', () => {
+      clearTimeout(settle);
+      settle = setTimeout(() => { moving = false; render(); }, 180);
+    });
     const frames: { at: number; ms: number }[] = [];
     const render = () => {
       if (frame || !el.clientWidth) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
         const t0 = performance.now();
-        if (uploads.length) uploadStep();
+        if (uploads.length && !moving) uploadStep();
+        const motion = moving && [...meshes.values(), ...volumeMeshes.values()].some((m) => m.geometry.userData.motionLod) && !isPaint(getState().gizmo);
+        const ratio = pixelRatio(el.clientWidth, el.clientHeight) * (motion ? 0.5 : 1);
+        if (renderer.getPixelRatio() !== ratio) renderer.setPixelRatio(ratio);
         showBedFor(bed, views.camera, viewOptions().gridlines);
         if (bed) bed.visible = !assembly().on;
         grid.group.visible = !assembly().on;
@@ -117,7 +128,7 @@ export default function Plater3D() {
     const stageScene = new THREE.Scene().add(stage);
     void renderer.compileAsync(stageScene, views.camera);
     const needsUpload = (geo: THREE.BufferGeometry) => {
-      if (uploaded.has(geo)) return false;
+      if (geo.userData.displayLod || uploaded.has(geo)) return false;
       const steps = [...Object.values(geo.attributes), ...(geo.index ? [geo.index] : [])];
       if (steps.reduce((n, a) => n + a.array.byteLength, 0) < STAGED_BYTES) return false;
       if (!uploads.some((u) => u.geo === geo)) uploads.push({ geo, steps });
@@ -140,7 +151,11 @@ export default function Plater3D() {
       }
       render();
     };
-    controls.addEventListener('change', render);
+    controls.addEventListener('change', () => {
+      clearTimeout(settle); moving = true;
+      settle = setTimeout(() => { moving = false; render(); }, 180);
+      render();
+    });
 
     let bed: THREE.Group | null = null;
     let bedKey = '';
@@ -320,6 +335,30 @@ export default function Plater3D() {
       }
     };
     const volumeMeshes = new Map<string, THREE.Mesh>();
+    const drawScene = renderer.render.bind(renderer);
+    let captureSize: { width: number; height: number; ratio: number } | null = null;
+    renderer.render = (target, camera) => {
+      if (target === scene) {
+        if (camera === views.camera && captureSize) {
+          renderer.setDrawingBufferSize(captureSize.width, captureSize.height, captureSize.ratio);
+          captureSize = null;
+        } else if (camera !== views.camera && !captureSize) {
+          const size = renderer.getSize(new THREE.Vector2());
+          captureSize = { width: size.x, height: size.y, ratio: renderer.getPixelRatio() };
+          renderer.setDrawingBufferSize(320, Math.max(1, Math.round(320 * size.y / size.x)), 1);
+        }
+      }
+      const reduced: [THREE.Mesh, THREE.BufferGeometry][] = [];
+      if (target === scene && !isPaint(getState().gizmo)) {
+        for (const mesh of [...meshes.values(), ...volumeMeshes.values()]) {
+          const lod = (moving ? mesh.geometry.userData.motionLod ?? mesh.geometry.userData.displayLod : mesh.geometry.userData.displayLod) as THREE.BufferGeometry | undefined;
+          if (lod) { reduced.push([mesh, mesh.geometry]); mesh.geometry = lod; }
+        }
+      }
+      try { drawScene(target, camera); }
+      finally { for (const [mesh, geometry] of reduced) mesh.geometry = geometry; }
+    };
+
     const volumeMaterial = (type: VolumeType, color: string, selected: boolean, seam?: SeamMode) => {
       if (type === 'part') return material(color, selected ? 'selected' : 'normal');
       const k = type + (seam ?? '') + selected;
@@ -358,6 +397,9 @@ export default function Plater3D() {
       return m.premultiply(new THREE.Matrix4().makeTranslation(...at.sub(c).multiplyScalar(ratio - 1).toArray()));
     };
     const syncObjects = (s: State) => {
+      const bounds = new THREE.Box3();
+      for (const o of s.objects) for (const i of o.instances) bounds.union(instanceBox(o, i));
+      views.setBounds(bounds);
       const seen = new Set<number>();
       outside = outsideBed(s.objects, area, height);
       for (const o of s.objects) {
@@ -367,7 +409,7 @@ export default function Plater3D() {
           if (!mesh || mesh.geometry !== o.geometry) {
             if (mesh) scene.remove(mesh);
             mesh = new THREE.Mesh(o.geometry);
-            mesh.visible = !needsUpload(o.geometry);
+            mesh.visible = !needsUpload(o.geometry) || !!o.geometry.userData.displayLod;
             mesh.matrixAutoUpdate = false;
             mesh.userData = { object: o.id, instance: inst.id };
             meshes.set(inst.id, mesh);
@@ -409,7 +451,7 @@ export default function Plater3D() {
           meshes.delete(id);
         }
       const live = new Set([...s.objects, ...s.projectPlates.flatMap((p) => p.objects)].flatMap((o) => [o.geometry, ...(o.volumes ?? []).map((v) => v.geometry)]));
-      for (const g of liveGeometries) if (!live.has(g)) g.dispose();
+      for (const g of liveGeometries) if (!live.has(g)) { g.dispose(); (g.userData.displayLod as THREE.BufferGeometry | undefined)?.dispose(); (g.userData.motionLod as THREE.BufferGeometry | undefined)?.dispose(); }
       liveGeometries = live;
       syncCut(s);
       syncGizmo(s);
@@ -537,6 +579,7 @@ export default function Plater3D() {
     tc.addEventListener('dragging-changed', (e) => {
       endStep?.();
       const dragging = (e as unknown as { value: boolean }).value;
+      tools.send({ type: dragging ? 'DRAG' : 'RELEASE' });
       controls.enabled = !dragging;
       const s = getState();
       if (s.gizmo === 'cut') {
@@ -771,6 +814,7 @@ export default function Plater3D() {
     const onDown = (ev: PointerEvent) => {
       if (ev.button === 2) rightAt = { x: ev.clientX, y: ev.clientY };
       if (ev.button !== 0 || touches.size > 1 || (tc.dragging || (tc as unknown as { axis: string | null }).axis)) return;
+      if (ev.pointerType === 'touch') return;
       const k = pickPlane(ev);
       if (k >= 0 && flatten) {
         const o = getState().objects.find((ob) => ob.id === flatten!.object);
@@ -803,7 +847,7 @@ export default function Plater3D() {
       const { object, instance } = hit.object.userData as { object: number; instance: number };
       if ((ev.ctrlKey || ev.metaKey || ev.shiftKey) && getState().gizmo !== 'measure') return toggleSelection(object, [instance]);
       const s0 = getState();
-      if (!(s0.selected?.all && isSelected(s0.selected, object, instance))) setState({ selected: { object, instance } });
+      if (!isSelected(s0.selected, object, instance) || s0.selected?.volume !== undefined) setState({ selected: { object, instance } });
       if (getState().gizmo === 'measure') return;
       const p = bedPoint();
       const s = getState(), o = s.objects.find((ob) => ob.id === object)!;
@@ -838,7 +882,12 @@ export default function Plater3D() {
       if (!drag.moved) endStep = beginStep('Move');
       drag.moved = true;
       const ddx = p.x + drag.dx - drag.x, ddy = p.y + drag.dy - drag.y;
-      for (const g of drag.group) updateInstance(g.object, g.instance, { x: g.x + ddx, y: g.y + ddy });
+      const positions = new Map(drag.group.map((g) => [g.instance, { x: g.x + ddx, y: g.y + ddy }]));
+      moving = true;
+      clearTimeout(settle);
+      setState((s) => ({ objects: s.objects.map((o) => o.instances.some((i) => positions.has(i.id)) ? { ...o,
+        instances: o.instances.map((i) => positions.has(i.id) ? { ...i, ...positions.get(i.id)! } : i),
+      } : o), job: markStale(s.job) }));
     };
     const onUp = (ev: PointerEvent) => {
       if (rect) {
@@ -865,6 +914,8 @@ export default function Plater3D() {
         else setState({ selected: null });
       }
       if (drag?.moved) {
+        moving = false;
+        render();
         endStep?.();
         endStep = null;
         const s = getState(), o = s.objects.find((ob) => ob.id === drag!.object), i = o?.instances.find((ii) => ii.id === drag!.instance);
@@ -1138,7 +1189,13 @@ export default function Plater3D() {
     let rightAt: { x: number; y: number } | null = null;
     const onContextMenu = (ev: MouseEvent) => {
       ev.preventDefault();
-      if (!rightAt || Math.hypot(ev.clientX - rightAt.x, ev.clientY - rightAt.y) > 4) return;
+      if (!rightAt) {
+        const r = renderer.domElement.getBoundingClientRect(), selected = getState().selected;
+        setState({ contextMenu: { x: ev.clientX || r.left + r.width / 2, y: ev.clientY || r.top + r.height / 2,
+          object: selected?.object, instance: selected?.instance, volume: selected?.volume } });
+        return;
+      }
+      if (Math.hypot(ev.clientX - rightAt.x, ev.clientY - rightAt.y) > 4) { rightAt = null; return; }
       rightAt = null;
       const hit = pick(ev);
       if (!hit) {
@@ -1151,6 +1208,7 @@ export default function Plater3D() {
       const inSelection = isSelected(s.selected, object, instance);
       setState({ ...(inSelection ? {} : { selected: { object, instance } }), contextMenu: { x: ev.clientX, y: ev.clientY, object } });
     };
+    renderer.domElement.dataset.customContext = 'orca';
     renderer.domElement.addEventListener('contextmenu', onContextMenu);
     controls.addEventListener('start', () => {
       orbiting = true;
@@ -1289,6 +1347,7 @@ export default function Plater3D() {
     const unsubAssembly = subscribeAssembly(() => { last = null; sync(); render(); });
     const onFit = () => {
       const s = getState(), box = new THREE.Box3();
+      if (s.tab !== 'prepare') return;
       for (const o of s.objects) for (const i of o.instances)
         if (!s.selected || isSelected(s.selected, o.id, i.id)) box.union(instanceBox(o, i));
       if (box.isEmpty()) views.view('plate');
@@ -1305,8 +1364,13 @@ export default function Plater3D() {
     buildOverlay();
     sync();
     resize();
+    let unmountMarks: (() => void) | null = null, disposed = false;
+    void import('../preflight/marks').then((m) => { if (!disposed) unmountMarks = m.mountMarks(scene, render); });
 
     return () => {
+      clearTimeout(settle);
+      disposed = true;
+      unmountMarks?.();
       unsub();
       unsubLayerCursor();
       unsubView();
@@ -1325,6 +1389,7 @@ export default function Plater3D() {
       window.removeEventListener('pointercancel', onTouchUp);
       cancelAnimationFrame(hoverFrame);
       ro.disconnect();
+      tools.send({ type: 'RELEASE' });
       views.dispose();
       tc.dispose();
       unsubMeasure();

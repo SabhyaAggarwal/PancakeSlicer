@@ -1,3 +1,4 @@
+import { Dropdown } from './Dropdown';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { headLabel, loadHeadIndex } from '../heads';
 import { setOption, useStore } from '../state/store';
@@ -11,9 +12,7 @@ export default function HeadPicker({ value, onCommit }: { value: string; onCommi
   const ids = heads?.map((h) => h.id) ?? [];
   if (!ids.includes(value)) ids.unshift(value);
   return (
-    <select className="combo head-combo" value={value} onChange={(e) => onCommit(e.target.value)} title={error ? 'The head library failed to load' : headLabel(value)}>
-      {ids.map((id) => <option key={id} value={id}>{headLabel(id)}</option>)}
-    </select>
+    <Dropdown aria-label="Print head" className="combo head-combo" value={value} onValueChange={onCommit} title={error ? 'The head library failed to load' : headLabel(value)} options={[...ids.map((id) => ({ value: id, label: headLabel(id) }))]} />
   );
 }
 

@@ -8,3 +8,5 @@ declare module 'virtual:mock-presets' {
   const url: string;
   export default url;
 }
+
+declare const __BUILD__: string;

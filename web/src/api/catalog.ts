@@ -27,6 +27,6 @@ export function demoPresets(cat: PresetCatalog, models: string[]): PresetCatalog
   return {
     machines,
     processes: cat.processes.filter(forDemo),
-    filaments: cat.filaments.filter(forDemo),
+    filaments: cat.filaments.filter((p) => forDemo(p) || !p.compatible_evaluated && !(p.compatible_printers?.length) && !p.config.compatible_printers_condition),
   };
 }

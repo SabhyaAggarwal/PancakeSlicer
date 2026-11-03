@@ -1,3 +1,4 @@
+import { Dropdown, EditableDropdown } from './Dropdown';
 import { useMemo, useState } from 'react';
 import type { Config } from '../api/types';
 import { effectiveConfig, getState, printerPreset, setState, toast, type State } from '../state/store';
@@ -79,20 +80,15 @@ export default function CreatePrinter({ close }: { close(): void }) {
           </div>
           {!fromCurrent && <>
             <label className="prefs-row"><span>Template vendor</span>
-              <select className="combo" value={templateVendor} aria-label="Template vendor" onChange={(e) => { setTemplateVendor(e.target.value); setTemplate(machines.find((m) => m.vendor === e.target.value)?.name ?? ''); setSize(null); setOrigin(null); setHeight(null); }}>
-                {vendors.map((v) => <option key={v}>{v}</option>)}
-              </select>
+              <Dropdown className="combo" value={templateVendor} aria-label="Template vendor" onValueChange={(next) => { setTemplateVendor(next); setTemplate(machines.find((m) => m.vendor === next)?.name ?? ''); setSize(null); setOrigin(null); setHeight(null); }} options={[...vendors.map((v) => ({ value: v, label: v }))]} />
             </label>
             <label className="prefs-row"><span>Template printer</span>
-              <select className="combo" value={template} aria-label="Template printer" onChange={(e) => { setTemplate(e.target.value); setSize(null); setOrigin(null); setHeight(null); }}>
-                {machines.filter((m) => m.vendor === templateVendor).map((m) => <option key={m.name}>{m.name}</option>)}
-              </select>
+              <Dropdown className="combo" value={template} aria-label="Template printer" onValueChange={(next) => { setTemplate(next); setSize(null); setOrigin(null); setHeight(null); }} options={[...machines.filter((m) => m.vendor === templateVendor).map((m) => ({ value: m.name, label: m.name }))]} />
             </label>
           </>}
         </> : <div className="prefs-row"><span>Printer</span><span>{s.printer}</span></div>}
         <label className="prefs-row"><span>Nozzle Diameter</span>
-          <input className="text num" list="nozzle-diameters" value={nozzle} aria-label="Nozzle Diameter" onChange={(e) => setNozzle(e.target.value)} /><span>mm</span>
-          <datalist id="nozzle-diameters">{NOZZLES.map((n) => <option key={n} value={n} />)}</datalist>
+          <EditableDropdown className="text num" value={nozzle} aria-label="Nozzle Diameter" onValueChange={setNozzle} onInputValueChange={setNozzle} options={NOZZLES.map(n => ({value: n, label: n}))} /><span>mm</span>
         </label>
         <div className="cut-joint-section">Printable Space</div>
         <div className="prefs-row"><span>Bed Shape</span><span>Rectangle</span></div>

@@ -1,9 +1,10 @@
 import { bootstrapAccessToken, mutation, responseError } from './access';
 import { expandCatalog } from './compact-catalog';
-import { normalizeConfig } from '../config-values';
-import { catalogWorker, workerId } from './worker';
+import { prepareProfile, resolveProfile } from '../profiles/model';
+import { restoreProfiles, rememberProfile, forgetProfile } from '../persist/profiles';
+import { catalogWorker, onWorkerFailure, workerId } from './worker';
 import type { CatalogIn, CatalogOut } from './catalog.worker';
-import type { JobRequest, JobStatus, PresetCatalog, PresetType, ProgressEvent, UserPreset } from './types';
+import type { Config, JobRequest, JobStatus, PresetCatalog, PresetType, ProgressEvent, UserPreset } from './types';
 
 export interface Api {
   mock: boolean;
@@ -36,8 +37,7 @@ export function parseProgress(data: string): ProgressEvent | null {
   return m && Number.isFinite(Number(m[2])) ? { stage: m[1], pct: Number(m[2]) } : null;
 }
 
-const normalizeUserPreset = (preset: UserPreset): UserPreset => ({ ...preset, overrides: normalizeConfig(preset.overrides) });
-
+let browserProfiles = false;
 const realApi: Api = {
   mock: false,
   presets(vendor, models, update) {
@@ -45,6 +45,8 @@ const realApi: Api = {
     const id = workerId();
     return new Promise((resolve, reject) => {
       let answered = false;
+      const cleanup = () => { worker.removeEventListener('message', on); unsubscribe(); };
+      const fail = (error: Error) => { cleanup(); if (!answered) reject(error); };
       const on = (e: MessageEvent<CatalogOut>) => {
         const m = e.data;
         if (m.id !== id) return;
@@ -53,31 +55,42 @@ const realApi: Api = {
           if (answered) update?.(catalog);
           else resolve(catalog);
           answered = true;
-        } else if (m.type === 'done' || m.type === 'error') {
-          worker.removeEventListener('message', on);
-          if (m.type === 'error' && !answered) reject(new Error(m.message));
-        }
+        } else if (m.type === 'done') cleanup();
+        else if (m.type === 'error') fail(new Error(m.message));
       };
+      const unsubscribe = onWorkerFailure(fail);
       worker.addEventListener('message', on);
       worker.postMessage({ id, vendor, models } satisfies CatalogIn);
     });
   },
   async userPresets() {
     const r = await fetch('/api/user-presets');
-    if (r.status === 404) return (await mock()).userPresets();
+    browserProfiles = r.status === 404;
+    if (browserProfiles) return restoreProfiles(await (await mock()).userPresets());
     const j = await json<any>(r);
-    return (Array.isArray(j) ? j : (j.presets ?? [])).map(normalizeUserPreset);
+    return restoreProfiles(Array.isArray(j) ? j : (j.presets ?? []));
   },
   async saveUserPreset(p) {
-    const r = await mutation('/api/user-presets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) });
+    if (browserProfiles) return (await mock()).saveUserPreset(p);
+    const { getState } = await import('../state/store');
+    const s = getState(), preset = prepareProfile(s, p);
+    const resolved = resolveProfile({ ...s, userPresets: [...s.userPresets.filter((u) => u.type !== p.type || u.name !== p.name), preset] }, p.type, p.name);
+    const wire = { name: p.name, type: p.type, inherits: preset.inherits, overrides: resolved.user?.overrides ?? preset.overrides };
+    const r = await mutation('/api/user-presets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(wire) });
     await json(r);
+    rememberProfile(preset, wire);
   },
   async deleteUserPreset(type, name) {
-    await mutation(`/api/user-presets/${type}/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    if (browserProfiles) { await (await mock()).deleteUserPreset(type, name); forgetProfile(type, name); return; }
+    const r = await mutation(`/api/user-presets/${type}/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    if (!r.ok) throw await responseError(r);
+    forgetProfile(type, name);
   },
   async submit(req, signal, onUpload) {
+    if (req.backend && toolFeatures.orcanp_v01 !== true) throw new Error('Orca-NP v0.1 is unavailable on this service. Choose Standard or connect the external engine.');
     const fd = new FormData();
     for (const f of req.files) fd.append('files[]', f.blob, f.name);
+    if (req.backend) fd.append('backend', req.backend);
     fd.append('vendor', req.vendor);
     fd.append('printer', req.printer);
     fd.append('process', req.process);
@@ -96,7 +109,7 @@ const realApi: Api = {
     if (req.allow_mixed_temperatures) fd.append('allow_mixed_temperatures', '1');
     if (req.calib) { fd.append('calib', req.calib); fd.append('calib_params', req.calib_params ?? ''); if (req.calib_head) fd.append('calib_head', req.calib_head); }
     if (req.preview_budget !== undefined) fd.append('budget', String(req.preview_budget));
-    const url = req.preview_budget !== undefined ? '/api/patch-preview' : '/api/jobs';
+    const url = req.backend ? '/api/backends/orcanp-v01/jobs' : req.preview_budget !== undefined ? '/api/patch-preview' : '/api/jobs';
     const j = await json<{ id: string }>(await mutation(url, { method: 'POST', body: fd }, req.preview_budget === undefined, signal, onUpload, req.preview_budget !== undefined));
     return j.id;
   },
@@ -171,6 +184,47 @@ const realApi: Api = {
 const mock = () => import('./mock').then((m) => m.mockApi);
 
 export let toolFeatures: Record<string, unknown> = {};
+export interface SurfaceArtifactManifest {
+  validated: boolean;
+  preview_ready?: boolean;
+  print_qualified?: boolean;
+  backend?: string;
+  source_sha?: string;
+  binary_sha256: string;
+  resources_sha256: string;
+  features: { curved_tops?: boolean; nonplanar_wave?: boolean };
+}
+export let toolArtifactManifest: SurfaceArtifactManifest | undefined;
+const validatedSurface = (feature: 'curved_tops' | 'nonplanar_wave') => toolFeatures[feature] === true
+  && (toolArtifactManifest?.preview_ready ?? toolArtifactManifest?.validated) === true
+  && /^[a-f0-9]{64}$/i.test(toolArtifactManifest?.binary_sha256 ?? '')
+  && /^[a-f0-9]{64}$/i.test(toolArtifactManifest?.resources_sha256 ?? '')
+  && toolArtifactManifest?.features?.[feature] === true;
+export const canCurvedTops = () => validatedSurface('curved_tops');
+export const canSurfaceWaves = () => validatedSurface('nonplanar_wave');
+
+export function surfaceConfigBlocker(config: Config): string | undefined {
+  if (String(config.nonplanar_mode) === 'curved_tops' && !canCurvedTops()) return 'Curved layers need a newer slicing engine';
+  const wave = String(config.nonplanar_wave ?? 'off');
+  if (wave !== 'off' && !canSurfaceWaves()) return 'Rippled top needs a newer slicing engine';
+}
+
+function guardedApi(api: Api): Api {
+  return { ...api, async submit(request, signal, onUpload) {
+    if (request.output !== '3mf' && !request.force_planar) {
+      const objects = [...request.plate?.objects ?? [], ...request.project_edits?.filter((e) => e.op === 'add_object') ?? []];
+      const configs: Config[] = [request.overrides, request.project_settings ?? {},
+        ...request.plate?.plates?.map((p) => p.settings) ?? [],
+        ...objects.flatMap((o) => [o.settings ?? {}, ...o.volumes?.map((v) => v.settings ?? {}) ?? [], ...o.ranges?.map((r) => r.settings) ?? []]),
+        ...request.project_edits?.flatMap((e) => 'settings' in e ? [e.settings ?? {}] : []) ?? []];
+      for (const config of configs) {
+        const reason = surfaceConfigBlocker(config);
+        if (reason) throw new Error(reason);
+      }
+    }
+    return api.submit(request, signal, onUpload);
+  } };
+}
 export const canLoadStep = () => toolFeatures.step === true;
 export const canEditProject = () => toolFeatures.edit === true;
 export const canForcePlanar = () => toolFeatures.force_planar === true;
@@ -179,7 +233,9 @@ export const canOneShot = () => toolFeatures.oneshot === true;
 
 export async function connect(): Promise<Api> {
   bootstrapAccessToken();
-  if (new URLSearchParams(location.search).has('mock')) return mock();
+  toolFeatures = {};
+  toolArtifactManifest = undefined;
+  if (new URLSearchParams(location.search).has('mock')) return guardedApi(await mock());
   try {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 1500);
@@ -187,10 +243,12 @@ export async function connect(): Promise<Api> {
     clearTimeout(t);
     const type = r.headers.get('content-type') ?? '';
     if (r.ok && type.includes('json')) {
-      toolFeatures = ((await r.json()) as { tool_features?: Record<string, unknown> }).tool_features ?? {};
-      return realApi;
+      const health = await r.json() as { tool_features?: Record<string, unknown>; artifact_manifest?: SurfaceArtifactManifest };
+      toolFeatures = health.tool_features ?? {};
+      toolArtifactManifest = health.artifact_manifest;
+      return guardedApi(realApi);
     }
   } catch {
   }
-  return mock();
+  return guardedApi(await mock());
 }

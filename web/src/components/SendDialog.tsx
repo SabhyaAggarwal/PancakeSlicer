@@ -1,3 +1,4 @@
+import { Dropdown } from './Dropdown';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { download, exportFilename, loadPrinters, outputKind } from '../actions';
 import { mutation, responseError } from '../api/access';
@@ -132,9 +133,7 @@ function SendView({ close, chosen, choose, edit }: { close: () => void; chosen: 
         {printers.length ? (
           <label className="prefs-row">
             <span>Printer</span>
-            <select className="combo" value={printer} disabled={busy} data-autofocus onChange={(e) => choose(e.target.value)}>
-              {printers.map((p) => <option key={p.name} value={p.name}>{p.model && p.model !== p.name ? `${p.name} (${p.model})` : p.name}</option>)}
-            </select>
+            <Dropdown className="combo" value={printer} disabled={busy} data-autofocus onValueChange={choose} options={[...printers.map((p) => ({ value: p.name, label: <>{p.model && p.model !== p.name ? `${p.name} (${p.model})` : p.name}</> }))]} />
             {current?.editable && <button type="button" className="btn" disabled={busy} onClick={() => edit(current)}>Edit</button>}
             {canAdd && <button type="button" className="btn" disabled={busy} onClick={() => edit(null)}>Add</button>}
           </label>
@@ -157,10 +156,8 @@ function SendView({ close, chosen, choose, edit }: { close: () => void; chosen: 
               <label key={i} className="prefs-row">
                 <span className="ams-swatch" style={{ background: f.color }} />
                 <span>{i + 1} · {f.type || 'filament'}</span>
-                <select className="combo" value={mapping[i] ?? EXTERNAL} disabled={busy} aria-label={`Filament ${i + 1}`}
-                  onChange={(e) => setMapping(mapping.map((m, k) => (k === i ? Number(e.target.value) : m)))}>
-                  {trays.map((t) => <option key={t.id} value={t.id}>{trayLabel(t)}</option>)}
-                </select>
+                <Dropdown className="combo" value={mapping[i] ?? EXTERNAL} disabled={busy} aria-label={`Filament ${i + 1}`}
+                  onValueChange={(next) => setMapping(mapping.map((m, k) => (k === i ? Number(next) : m)))} options={[...trays.map((t) => ({ value: t.id, label: trayLabel(t) }))]} />
                 {(() => { const t = trays.find((x) => x.id === mapping[i]); return t?.color ? <span className="ams-swatch" title={trayLabel(t)} style={{ background: t.color }} /> : null; })()}
               </label>
             )) : <div className={amsError ? 'warning-text' : 'hint-text'}>{amsError ? `AMS not read: ${amsError}` : 'Reading the printer\'s AMS…'}</div>}

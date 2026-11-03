@@ -1,16 +1,18 @@
 import * as THREE from 'three';
 import { CameraViews } from '../plater/CameraViews';
-import { getState } from '../state/store';
+import { getState, isSelected } from '../state/store';
 import type { SystemPreset } from '../api/types';
 import { bedKey, buildBed, sceneColors, showBedFor } from '../plater/Bed';
 import { subscribeTheme } from '../theme';
 import { pixelRatio, watchPixelRatio } from '../plater/pixelRatio';
-import { instanceMatrix, parsePoints } from '../plater/geometry';
+import { instanceBox, instanceMatrix, parsePoints } from '../plater/geometry';
 import type { PlateObject } from '../state/store';
 import { colorVertices, type ColorContext } from './colors';
 import type { PreviewData } from './data';
 import { SegmentRenderer, type DrawState, type FrameStats } from './renderer';
 import { binOf, type SurfaceGrid } from './surface-grid';
+import { toolAxis } from './pose';
+import { VOXEL_MM, voxelCentre } from './results';
 
 const SURFACE_LIFT_MM = 0.15;
 
@@ -24,6 +26,11 @@ export class PreviewScene {
   get camera() { return this.views.camera; }
   get controls() { return this.views.controls; }
   private segments: SegmentRenderer;
+  private back: { data: PreviewData; segments: SegmentRenderer; uploaded: number; colorCtx: ColorContext | null } | null = null;
+  private spare: SegmentRenderer | null = null;
+  private removed: { mesh: THREE.InstancedMesh; z: Float32Array } | null = null;
+  private overlay = new THREE.Group();
+  private diffVisible = false;
   private bed: THREE.Group | null = null;
   private bedKey = '';
   private machine: SystemPreset | undefined;
@@ -63,8 +70,10 @@ export class PreviewScene {
     sun.position.set(-0.4, -0.6, 1);
     this.scene.add(sun);
     this.scene.add(this.shells);
+    this.scene.add(this.overlay);
     this.views = new CameraViews(this.renderer.domElement, () => getState().tab === 'preview', () => this.request());
     this.controls.addEventListener('change', () => this.request());
+    window.addEventListener('camera-fit', this.onFit);
     this.controls.addEventListener('start', () => {
       clearTimeout(this.still);
       this.moving = true;
@@ -116,6 +125,9 @@ export class PreviewScene {
   }
 
   setShells(objects: PlateObject[], visible: boolean) {
+    const bounds = new THREE.Box3();
+    for (const o of objects) for (const i of o.instances) bounds.union(instanceBox(o, i));
+    this.views.setBounds(bounds);
     this.shells.clear();
     if (visible)
       for (const o of objects)
@@ -136,7 +148,113 @@ export class PreviewScene {
     this.request();
   }
 
+  setBackData(d: PreviewData) {
+    const segments = this.back?.segments ?? this.spare ?? new SegmentRenderer(this.renderer);
+    this.spare = null;
+    segments.lodEnabled = this.segments.lodEnabled;
+    segments.reset(d);
+    this.back = { data: d, segments, uploaded: 0, colorCtx: null };
+  }
+
+  syncBack(ctx: ColorContext | null) {
+    const b = this.back;
+    if (!b || b.data.loaded <= b.uploaded) return;
+    const start = b.uploaded, end = b.data.loaded;
+    b.segments.addChunk(start, end - start);
+    if (ctx) {
+      colorVertices(b.data, ctx, b.segments.colors, start, end);
+      b.segments.uploadColors(start, end);
+    }
+    b.colorCtx = ctx;
+    b.uploaded = end;
+  }
+
+  recolorBack(ctx: ColorContext, from: number, to: number) {
+    const b = this.back;
+    if (!b) return;
+    colorVertices(b.data, ctx, b.segments.colors, from, to);
+    b.segments.uploadColors(from, to);
+    b.colorCtx = ctx;
+  }
+
+  get backData() {
+    return this.back?.data ?? null;
+  }
+
+  promote() {
+    const b = this.back;
+    if (!b) return;
+    this.spare = this.segments;
+    this.segments = b.segments;
+    this.data = b.data;
+    this.uploaded = b.uploaded;
+    this.colorCtx = b.colorCtx;
+    this.back = null;
+    this.request();
+  }
+
+  dropBack() {
+    if (!this.back) return;
+    this.spare = this.back.segments;
+    this.back = null;
+  }
+
+  showDiff(color: [number, number, number] | null) {
+    this.draw = { ...this.draw, diffColor: color ?? undefined };
+    this.diffVisible = !!color;
+    this.request();
+  }
+
+  setDiffFlags(flags: Uint8Array | null) {
+    this.segments.setDiff(flags);
+    this.request();
+  }
+
+  setRemoved(keys: Iterable<number> | null, color?: string) {
+    if (this.removed) {
+      this.overlay.remove(this.removed.mesh);
+      this.removed.mesh.geometry.dispose();
+      (this.removed.mesh.material as THREE.Material).dispose();
+      this.removed.mesh.dispose();
+      this.removed = null;
+    }
+    const centres = keys ? [...keys].map(voxelCentre).sort((a, b) => a[2] - b[2]) : [];
+    if (centres.length) {
+      const box = new THREE.BoxGeometry(VOXEL_MM * 0.9, VOXEL_MM * 0.9, VOXEL_MM * 0.9);
+      const mat = new THREE.MeshBasicMaterial({ color: color ?? '#e07000', transparent: true, opacity: 0.45, depthWrite: false });
+      const mesh = new THREE.InstancedMesh(box, mat, centres.length);
+      const m = new THREE.Matrix4();
+      const z = new Float32Array(centres.length);
+      centres.forEach((c, i) => {
+        mesh.setMatrixAt(i, m.makeTranslation(c[0], c[1], c[2]));
+        z[i] = c[2];
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.frustumCulled = false;
+      mesh.renderOrder = 11;
+      this.overlay.add(mesh);
+      this.removed = { mesh, z };
+    }
+    this.request();
+  }
+
+  setRemovedTop(top: number) {
+    const r = this.removed;
+    if (!r) return;
+    let lo = 0, hi = r.z.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (r.z[mid] - VOXEL_MM / 2 <= top) lo = mid + 1;
+      else hi = mid;
+    }
+    if (r.mesh.count !== lo) {
+      r.mesh.count = lo;
+      this.request();
+    }
+  }
+
   clear() {
+    this.dropBack();
     this.data = null;
     this.uploaded = 0;
     this.tool.visible = false;
@@ -170,13 +288,34 @@ export class PreviewScene {
   }
 
   setDrawState(s: DrawState, toolAt: number | null) {
-    this.draw = { ...s, focusMask: this.draw.focusMask };
+    this.draw = { ...s, focusMask: this.draw.focusMask, diffColor: this.draw.diffColor };
     const d = this.data;
     if (d && toolAt != null && toolAt < d.loaded) {
-      this.tool.position.set(d.pos[toolAt * 4], d.pos[toolAt * 4 + 1], d.pos[toolAt * 4 + 2]);
-      this.tool.visible = true;
+      this.setToolPose(toolAt);
     } else this.tool.visible = false;
     this.request();
+  }
+
+  setToolPose(i: number, dir?: [number, number, number]) {
+    const d = this.data;
+    if (!d || i < 0 || i >= d.loaded) { this.tool.visible = false; return; }
+    this.tool.position.fromArray(d.pos, i * 4);
+    const axis = new THREE.Vector3(...(dir ?? toolAxis(d, i)));
+    if (axis.lengthSq() < 1e-12) axis.set(0, 0, 1);
+    this.tool.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), axis.normalize());
+    this.tool.visible = true;
+    this.request();
+  }
+
+  pick(clientX: number, clientY: number): number | null {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(2 * (clientX - rect.left) / rect.width - 1, 1 - 2 * (clientY - rect.top) / rect.height), this.camera);
+    const pixel = this.camera instanceof THREE.PerspectiveCamera
+      ? 2 * Math.tan(this.camera.fov * Math.PI / 360) * this.camera.position.distanceTo(this.controls.target) / rect.height
+      : (this.camera.top - this.camera.bottom) / this.camera.zoom / rect.height;
+    return this.segments.pick(ray.ray, this.draw, 6 * pixel);
   }
 
   setFocus(mask: number | null) {
@@ -186,33 +325,24 @@ export class PreviewScene {
   }
 
   copyCamera(from: PreviewScene) {
-    this.views.projection(from.camera instanceof THREE.PerspectiveCamera);
-    const c = this.camera, f = from.camera;
-    c.position.copy(f.position);
-    c.quaternion.copy(f.quaternion);
-    c.up.copy(f.up);
-    c.zoom = f.zoom;
-    if (c instanceof THREE.OrthographicCamera && f instanceof THREE.OrthographicCamera) (c.top = f.top), (c.bottom = f.bottom);
-    this.controls.target.copy(from.controls.target);
+    this.views.copy(from.views);
     this.views.resize(Math.max(1, this.host.clientWidth), Math.max(1, this.host.clientHeight));
     this.request();
   }
 
+  private onFit = () => {
+    const s = getState(), box = new THREE.Box3();
+    if (s.tab !== 'preview') return;
+    for (const o of s.objects) for (const i of o.instances)
+      if (!s.selected || isSelected(s.selected, o.id, i.id)) box.union(instanceBox(o, i));
+    if (box.isEmpty() && this.data) box.set(new THREE.Vector3(...this.data.bbox.min), new THREE.Vector3(...this.data.bbox.max));
+    if (box.isEmpty()) this.views.view('plate');
+    else this.fit(box.min, box.max);
+    this.request();
+  };
+
   fit(min: THREE.Vector3, max: THREE.Vector3) {
-    const centre = min.clone().add(max).multiplyScalar(0.5);
-    const radius = Math.max(1, min.distanceTo(max) / 2) * 1.4;
-    const c = this.camera;
-    const dir = c.position.clone().sub(this.controls.target).normalize();
-    this.controls.target.copy(centre);
-    if (c instanceof THREE.PerspectiveCamera) {
-      const half = THREE.MathUtils.degToRad(c.fov / 2);
-      c.position.copy(centre).addScaledVector(dir, radius / Math.sin(Math.min(half, Math.atan(Math.tan(half) * c.aspect))));
-    } else {
-      c.position.copy(centre).addScaledVector(dir, Math.max(radius * 4, c.position.distanceTo(centre)));
-      c.zoom = Math.min(c.top, c.right) / radius;
-    }
-    c.updateProjectionMatrix();
-    this.controls.update();
+    this.views.fit(new THREE.Box3(min, max));
     this.request();
   }
 
@@ -299,11 +429,14 @@ export class PreviewScene {
       gl.beginQuery(tq.ext.TIME_ELAPSED_EXT, tq.query!);
     }
     this.shells.visible = false;
+    this.overlay.visible = false;
     showBedFor(this.bed, this.camera);
     this.renderer.render(this.scene, this.camera);
     if (this.data) this.segments.render(this.camera, this.draw, Math.round(this.renderer.domElement.height * scale));
-    if (this.shells.children.length) {
+    const removed = !!this.removed && this.diffVisible;
+    if (this.shells.children.length || removed) {
       this.shells.visible = true;
+      this.overlay.visible = removed;
       const bedVisible = this.bed?.visible;
       if (this.bed) this.bed.visible = false;
       const tv = this.tool.visible;
@@ -410,6 +543,7 @@ void main() { frag = texture(tex, uv * scale); }`));
 
   dispose() {
     clearTimeout(this.still);
+    window.removeEventListener('camera-fit', this.onFit);
     if (this.upscale) {
       const gl = this.renderer.getContext() as WebGL2RenderingContext;
       gl.deleteProgram(this.upscale.prog);
@@ -420,6 +554,9 @@ void main() { frag = texture(tex, uv * scale); }`));
     this.unwatchRatio();
     cancelAnimationFrame(this.frame);
     this.segments.dispose();
+    this.back?.segments.dispose();
+    this.spare?.dispose();
+    this.setRemoved(null);
     this.views.dispose();
     this.renderer.dispose();
     this.host.removeChild(this.renderer.domElement);

@@ -1,3 +1,4 @@
+import { Dropdown } from './Dropdown';
 import { useState } from 'react';
 import { OPTIONS, useTab } from '../options';
 import { effectiveConfig, getState, isSelected, selectedObjectIds, selectionOf, setState, toggleSelection, updateInstance, updateVolume, togglePrintable, useStore } from '../state/store';
@@ -13,6 +14,7 @@ import { plateResults } from '../recommend';
 import { canAddPlate, OBJECT_DRAG } from '../plater/plates';
 import { rangeLabel } from '../plater/ranges';
 import { setHoverLink, useHoverLink } from '../plater/hoverLink';
+import './prepare.css';
 
 interface SliceRecord {
   objects?: { id: number; name: string; mode?: string; instances?: { id: number; shift_mm?: [number, number] }[] }[];
@@ -24,6 +26,7 @@ export function ObjectList() {
   const results = useStore(plateResults);
   const selected = useStore((s) => s.selected);
   const slots = useStore((s) => s.filamentSlots);
+  const manyFilaments = slots.length > 1;
   const project = useStore((s) => s.project);
   const record = useStore((s) => (s.job.state === 'done' && !s.job.stale ? (s.job.status?.record as SliceRecord | undefined) : undefined));
   const renaming = useStore((s) => s.renaming);
@@ -52,10 +55,9 @@ export function ObjectList() {
       contextMenu: { x: e.clientX, y: e.clientY, object, instance },
     });
   };
-  const printableButton = (object: number, printable: boolean, instance?: number) => (
+  const printableButton = (object: number, printable: boolean, instance?: number) => printable ? null : (
     <span role="gridcell" className="ol-cell">
     <button className="ol-printable" aria-label="Printable" aria-pressed={printable}
-      title="Click the icon to toggle printable properties of the object"
       onClick={(e) => { e.stopPropagation(); togglePrintable(object, instance); }}>
       <Icon name={printable ? 'check_on' : 'check_off_focused'} size={16} />
     </button>
@@ -94,16 +96,12 @@ export function ObjectList() {
 
   return (
     <div className="object-list">
-      <div className="search-bar">
-        <Icon name="search" size={16} />
-        <input placeholder="Search plate, object and part." value={query} onChange={(e) => setQuery(e.target.value)} />
-      </div>
-      <div className="ol-header" aria-hidden="true">
-        <span role="gridcell" className="ol-name">Name</span>
-        <span role="gridcell" className="ol-status" />
-        <span className="ol-fila">Fila.</span>
-        <span role="gridcell" className="ol-status" />
-      </div>
+      {objects.length > 8 && (
+        <div className="search-bar">
+          <Icon name="search" size={16} />
+          <input placeholder="Search" value={query} onChange={(e) => setQuery(e.target.value)} />
+        </div>
+      )}
       <div className="ol-body" role="grid" aria-label="Objects" aria-multiselectable="true">
         {shown.map((o) => {
           const objSelected = selected?.volume === undefined && o.instances.some((i) => isSelected(selected, o.id, i.id));
@@ -171,21 +169,15 @@ export function ObjectList() {
                   )}
                 </span>
                 {printableButton(o.id, o.instances.some((i) => i.printable !== false))}
-                <span role="gridcell" className="ol-cell"><select
+                {manyFilaments && <span role="gridcell" className="ol-cell"><Dropdown
                   className="ol-fila-select" aria-label="Filament"
                   disabled={!!o.project && !canEditProject()}
                   title={o.project && !canEditProject() ? 'Set in the 3MF project' : 'Filament'}
                   value={o.extruder}
                   style={{ borderLeftColor: filamentColor(s, o.extruder) }}
                   onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => setFilament(o.id, Number(e.target.value))}
-                >
-                  {slots.map((_, i) => (
-                    <option key={i} value={i + 1}>
-                      {i + 1}
-                    </option>
-                  ))}
-                </select></span>
+                  onValueChange={(next) => setFilament(o.id, Number(next))}
+                  options={slots.map((_, i) => ({ value: i + 1, label: i + 1 }))} /></span>}
                 <span role="gridcell" className="ol-status">{sinking && <button className="ol-sinking" title="Click the icon to shift this object to the bed"
                   onClick={(e) => { e.stopPropagation(); undoable('Drop to bed', () => o.instances.forEach((i) => updateInstance(o.id, i.id, { z: 0 }))); }} disabled={!!o.project?.placeholder}>
                   <Icon name="objlist_sinking" size={16} />
@@ -236,14 +228,11 @@ export function ObjectList() {
                         ) : <span className="ol-text" title={v.name}>{v.name}</span>}
                       </span>
                       <span role="gridcell" className="ol-status" />
-                      {v.type === 'part' ? (
-                        <span role="gridcell" className="ol-cell"><select className="ol-fila-select" aria-label="Filament" title="Filament" value={v.extruder}
+                      {!manyFilaments ? null : v.type === 'part' ? (
+                        <span role="gridcell" className="ol-cell"><Dropdown className="ol-fila-select" aria-label="Filament" title="Filament" value={v.extruder}
                           style={{ borderLeftColor: filamentColor(s, v.extruder || o.extruder) }}
                           onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => updateVolume(o.id, v.id, { extruder: Number(e.target.value) })}>
-                          <option value={0}>-</option>
-                          {slots.map((_, i) => <option key={i} value={i + 1}>{i + 1}</option>)}
-                        </select></span>
+                          onValueChange={(next) => updateVolume(o.id, v.id, { extruder: Number(next) })} options={[{ value: 0, label: '-' }, ...slots.map((_, i) => ({ value: i + 1, label: i + 1 }))]} /></span>
                       ) : <span role="gridcell" className="ol-fila" />}
                       <span role="gridcell" className="ol-status" />
                     </div>
@@ -292,7 +281,7 @@ export function ObjectList() {
                     >
                       <span role="gridcell" className="ol-name">Instance {k + 1}</span>
                       {printableButton(o.id, inst.printable !== false, inst.id)}
-                      <span role="gridcell" className="ol-fila" /><span role="gridcell" className="ol-status" />
+                      {manyFilaments && <span role="gridcell" className="ol-fila" />}<span role="gridcell" className="ol-status" />
                     </div>
                   ))}
                 </>

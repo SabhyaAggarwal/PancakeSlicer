@@ -1,33 +1,26 @@
-.num { font: var(--t-num); font-variant-numeric: tabular-nums; }
-.label-caps { font: var(--t-label); letter-spacing: var(--label-track); text-transform: uppercase; color: var(--ink-2); }
+:where(.orca-parity) .num { font: var(--t-num); font-variant-numeric: tabular-nums; }
+:where(.orca-parity) .label-caps { font: var(--t-label); letter-spacing: var(--label-track); text-transform: none; color: var(--ink-2); }
 
-.btn-primary { height: var(--h-control); padding: 0 var(--s-5); border: 0; border-radius: var(--r-2); background: var(--accent); color: var(--accent-ink);
+:where(.orca-parity) .btn-primary { height: var(--h-control); padding: 0 var(--s-5); border: 0; border-radius: var(--r-2); background: var(--accent); color: var(--accent-ink);
   font: var(--t-body); font-weight: 600; cursor: pointer; transition: background var(--dur-1) var(--ease); }
-.btn-primary:hover:not(:disabled) { background: var(--accent-strong); }
-.btn-ghost { height: var(--h-control); padding: 0 var(--s-4); border: 0; border-radius: var(--r-2); background: none; color: var(--ink);
+:where(.orca-parity) .btn-primary:hover:not(:disabled) { background: var(--accent-strong); }
+:where(.orca-parity) .btn-ghost { height: var(--h-control); padding: 0 var(--s-4); border: 0; border-radius: var(--r-2); background: none; color: var(--ink);
   font: var(--t-body); cursor: pointer; transition: background var(--dur-1) var(--ease); }
-.btn-ghost:hover:not(:disabled) { background: var(--sunken); }
-.btn-primary:disabled, .btn-ghost:disabled { color: var(--ink-3); cursor: not-allowed; }
-.btn-primary:disabled { background: var(--sunken); }
+:where(.orca-parity) .btn-ghost:hover:not(:disabled) { background: var(--sunken); }
+:where(.orca-parity) .btn-primary:disabled, :where(.orca-parity) .btn-ghost:disabled { color: var(--ink-3); cursor: not-allowed; }
+:where(.orca-parity) .btn-primary:disabled { background: var(--sunken); }
 
-.seg { display: inline-flex; flex: none; gap: var(--s-1); padding: var(--s-1); background: var(--sunken); border: 0; border-radius: var(--r-2); font: var(--t-small); overflow: visible; }
-.seg > button { height: calc(var(--h-compact) - 2 * var(--s-1)); padding: 0 var(--s-3); border: 0; border-radius: var(--r-1); background: none; color: var(--ink-2);
+:where(.orca-parity) .seg { display: inline-flex; flex: none; gap: var(--s-1); padding: var(--s-1); background: var(--sunken); border: 0; border-radius: var(--r-2); font: var(--t-small); overflow: visible; }
+:where(.orca-parity) .seg > button { height: calc(var(--h-compact) - 2 * var(--s-1)); padding: 0 var(--s-3); border: 0; border-radius: var(--r-1); background: none; color: var(--ink-2);
   font: inherit; cursor: pointer; transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease); }
-.seg > button + button { border-left: 0; }
-.seg > button:hover:not(:disabled):not([aria-checked='true']):not([aria-pressed='true']):not(.on) { color: var(--ink); background: var(--panel); }
-.seg > button[aria-checked='true'], .seg > button[aria-pressed='true'], .seg > button.on { background: var(--ink); color: var(--panel); font-weight: 500; }
-.seg > button:disabled { color: var(--ink-3); background: none; cursor: not-allowed; }
-.seg > button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
-.seg.num > button { font: var(--t-num); font-size: 12px; min-width: 34px; padding: 0 var(--s-2); }
-.seg-unit { font: var(--t-small); color: var(--ink-3); margin-left: var(--s-2); }
-.seg > button:disabled[aria-checked='true'], .seg > button:disabled[aria-pressed='true'], .seg > button:disabled.on { background: var(--line); color: var(--ink-2); }
+:where(.orca-parity) .seg > button + button { border-left: 0; }
+:where(.orca-parity) .seg > button:hover:not(:disabled):not([aria-checked='true']):not([aria-pressed='true']):not(.on) { color: var(--ink); background: var(--panel); }
+:where(.orca-parity) .seg > button[aria-checked='true'], :where(.orca-parity) .seg > button[aria-pressed='true'], :where(.orca-parity) .seg > button.on { background: var(--ink); color: var(--panel); font-weight: 500; }
+:where(.orca-parity) .seg > button:disabled { color: var(--ink-3); background: none; cursor: not-allowed; }
+:where(.orca-parity) .seg > button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+:where(.orca-parity) .seg.num > button { font: var(--t-num); font-size: 12px; min-width: 34px; padding: 0 var(--s-2); }
+:where(.orca-parity) .seg-unit { font: var(--t-small); color: var(--ink-3); margin-left: var(--s-2); }
+:where(.orca-parity) .seg > button:disabled[aria-checked='true'], :where(.orca-parity) .seg > button:disabled[aria-pressed='true'], :where(.orca-parity) .seg > button:disabled.on { background: var(--line); color: var(--ink-2); }
 
-.link { background: none; border: 0; padding: 0; font: inherit; color: var(--accent-text); cursor: pointer; text-decoration: none; }
-.link:hover { text-decoration: underline; text-underline-offset: 2px; }
-
-select.combo, select.text, .sidebar select, .modal select, .manip-panel select, .canvas-area select {
-  appearance: none; -webkit-appearance: none; padding-right: 22px; background-color: var(--panel);
-  background-image: linear-gradient(45deg, transparent 50%, var(--ink-2) 50%), linear-gradient(135deg, var(--ink-2) 50%, transparent 50%);
-  background-position: right 11px top 50%, right 7px top 50%; background-size: 4px 4px, 4px 4px; background-repeat: no-repeat; }
-select:disabled { color: var(--ink-3); cursor: not-allowed; }
-select:disabled, .text:disabled { background-color: var(--sunken); }
+:where(.orca-parity) .link { background: none; border: 0; padding: 0; font: inherit; color: var(--accent-text); cursor: pointer; text-decoration: none; }
+:where(.orca-parity) .link:hover { text-decoration: underline; text-underline-offset: 2px; }

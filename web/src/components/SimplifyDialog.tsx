@@ -1,3 +1,4 @@
+import { Dropdown } from './Dropdown';
 import { useState } from 'react';
 import { getState, useStore } from '../state/store';
 import { simplifyModel, triangleCount } from '../plater/meshOps';
@@ -22,9 +23,7 @@ export default function SimplifyDialog({ close }: { close(): void }) {
         <div className="prefs-row"><span>Triangles</span><span>{total.toLocaleString()}</span></div>
         {levels && (
           <label className="prefs-row"><span><input type="radio" name="simplify-mode" checked={!count} onChange={() => setUseCount(false)} /> Detail level</span>
-            <select className="combo" value={level} disabled={count} aria-label="Detail level" onChange={(e) => setLevel(Number(e.target.value))}>
-              {LEVELS.map(([label], i) => <option key={label} value={i}>{label}</option>)}
-            </select>
+            <Dropdown className="combo" value={level} disabled={count} aria-label="Detail level" onValueChange={(next) => setLevel(Number(next))} options={[...LEVELS.map(([label], i) => ({ value: i, label }))]} />
           </label>
         )}
         <label className="prefs-row"><span>{levels && <input type="radio" name="simplify-mode" checked={count} onChange={() => setUseCount(true)} />} Decimate ratio</span>

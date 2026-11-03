@@ -1,3 +1,4 @@
+import { Dropdown } from './Dropdown';
 import { useState } from 'react';
 import { OPTIONS } from '../options';
 import { getState, printerPreset, useStore } from '../state/store';
@@ -66,33 +67,21 @@ export default function PlateSettings({ close }: { close(): void }) {
       <div className="prefs-body plate-settings">
         <label className="prefs-row"><span>Plate name</span><input className="text" value={name} onChange={(e) => setName(e.target.value)} /></label>
         <label className="prefs-row"><span>Bed type</span>
-          <select className="combo" value={bed} disabled={!bedTypes} onChange={(e) => setBed(e.target.value)}>
-            <option value="">Same as Global Plate Type</option>
-            {beds.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
-          </select>
+          <Dropdown className="combo" value={bed} disabled={!bedTypes} onValueChange={setBed} options={[{ value: "", label: 'Same as Global Plate Type' }, ...beds.map(([v, label]) => ({ value: v, label }))]} />
         </label>
         <label className="prefs-row"><span>Print sequence</span>
-          <select className="combo" value={seq} onChange={(e) => setSeq(e.target.value)}>
-            <option value="">Same as Global Print Sequence</option>
-            {seqDef?.enum_values?.map((v, i) => <option key={v} value={v}>{seqDef.enum_labels?.[i] ?? v}</option>)}
-          </select>
+          <Dropdown className="combo" value={seq} onValueChange={setSeq} options={[{ value: "", label: 'Same as Global Print Sequence' }, ...(seqDef?.enum_values?.map((v, i) => ({ value: v, label: seqDef.enum_labels?.[i] ?? v })) ?? [])]} />
         </label>
         <label className="prefs-row"><span>Spiral vase</span>
-          <select className="combo" value={spiral} onChange={(e) => setSpiral(e.target.value)}>
-            <option value="">Same as Global</option><option value="1">Enable</option><option value="0">Disable</option>
-          </select>
+          <Dropdown className="combo" value={spiral} onValueChange={setSpiral} options={[{ value: "", label: 'Same as Global' }, { value: "1", label: 'Enable' }, { value: "0", label: 'Disable' }]} />
         </label>
         {n > 1 && <>
           <label className="prefs-row"><span>First layer filament sequence</span>
-            <select className="combo" value={first ? 'c' : 'a'} onChange={(e) => setFirst(e.target.value === 'c' ? natural : null)}>
-              <option value="a">Auto</option><option value="c">Customize</option>
-            </select>
+            <Dropdown className="combo" value={first ? 'c' : 'a'} onValueChange={(next) => setFirst(next === 'c' ? natural : null)} options={[{ value: "a", label: 'Auto' }, { value: "c", label: 'Customize' }]} />
           </label>
           {first && <Order order={first} colours={colours} onChange={setFirst} />}
           <label className="prefs-row"><span>Other layer filament sequence</span>
-            <select className="combo" value={others ? 'c' : 'a'} onChange={(e) => setOthers(e.target.value === 'c' ? [{ from: 2, to: 2, order: natural }] : null)}>
-              <option value="a">Auto</option><option value="c">Customize</option>
-            </select>
+            <Dropdown className="combo" value={others ? 'c' : 'a'} onValueChange={(next) => setOthers(next === 'c' ? [{ from: 2, to: 2, order: natural }] : null)} options={[{ value: "a", label: 'Auto' }, { value: "c", label: 'Customize' }]} />
           </label>
           {others?.map((r, k) => (
             <div key={k} className="prefs-row plate-range">

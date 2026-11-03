@@ -1,4 +1,5 @@
 export type NoticeKind = 'error' | 'success' | 'info';
+export interface NoticeEntry { id: number; message: string; kind: NoticeKind }
 
 const ERROR = /\b(fail(ed|s)?|could not|cannot|can't|unable|not supported|requires|is locked|is not a model|are supported|no (model|printable|compatible|more)|does not fit|do not fit|is full|paused|best effort|open edges|unknown or incompatible)\b/i;
 const SUCCESS = /\b(saved|exported|created|imported|repaired)\b|successfully/i;
@@ -7,6 +8,8 @@ export function noticeKind(msg: string): NoticeKind {
   if (ERROR.test(msg)) return 'error';
   return SUCCESS.test(msg) && !/…$/.test(msg) ? 'success' : 'info';
 }
+
+export const shouldToast = (msg: string, action?: { label: string } | null) => noticeKind(msg) === 'error' || action?.label === 'Undo';
 
 export const noticeMs = (msg: string) => (noticeKind(msg) === 'error' ? 8000 : 3500);
 

@@ -1,0 +1,206 @@
+{
+  "filament": {
+    "groups": [
+      {
+        "page": "Filament",
+        "group": "Basic information",
+        "keys": [
+          "filament_type"
+        ]
+      },
+      {
+        "page": "Filament",
+        "group": "Print temperature",
+        "keys": [
+          "nozzle_temperature_initial_layer",
+          "nozzle_temperature"
+        ]
+      },
+      {
+        "page": "Filament",
+        "group": "Bed temperature",
+        "keys": []
+      },
+      {
+        "page": "Filament",
+        "group": "Flow ratio and Pressure Advance",
+        "keys": [
+          "filament_flow_ratio"
+        ]
+      },
+      {
+        "page": "Cooling",
+        "group": "Cooling for specific layer",
+        "keys": [
+          "close_fan_the_first_x_layers"
+        ]
+      },
+      {
+        "page": "Cooling",
+        "group": "Part cooling fan",
+        "keys": [
+          "fan_min_speed",
+          "fan_max_speed",
+          "slow_down_for_layer_cooling",
+          "slow_down_layer_time"
+        ]
+      }
+    ]
+  },
+  "process": {
+    "groups": [
+      {
+        "page": "Quality",
+        "group": "Layer height",
+        "keys": [
+          "layer_height",
+          "initial_layer_print_height"
+        ]
+      },
+      {
+        "page": "Strength",
+        "group": "Walls",
+        "keys": [
+          "wall_loops"
+        ]
+      },
+      {
+        "page": "Strength",
+        "group": "Top/bottom shells",
+        "keys": [
+          "top_shell_layers",
+          "bottom_shell_layers",
+          "top_surface_pattern"
+        ]
+      },
+      {
+        "page": "Strength",
+        "group": "Infill",
+        "keys": [
+          "sparse_infill_density",
+          "sparse_infill_pattern"
+        ]
+      },
+      {
+        "page": "Quality",
+        "group": "Seam",
+        "keys": [
+          "seam_position"
+        ]
+      },
+      {
+        "page": "Speed",
+        "group": "First layer speed",
+        "keys": [
+          "initial_layer_speed"
+        ]
+      },
+      {
+        "page": "Speed",
+        "group": "Other layers speed",
+        "keys": [
+          "outer_wall_speed",
+          "inner_wall_speed",
+          "sparse_infill_speed",
+          "top_surface_speed",
+          "internal_solid_infill_speed"
+        ]
+      },
+      {
+        "page": "Support",
+        "group": "Support",
+        "keys": [
+          "enable_support",
+          "support_type",
+          "support_on_build_plate_only",
+          "support_threshold_angle"
+        ]
+      },
+      {
+        "page": "Others",
+        "group": "Brim",
+        "keys": [
+          "brim_type",
+          "brim_width"
+        ]
+      },
+      {
+        "page": "Quality",
+        "group": "Line width",
+        "keys": [
+          "line_width",
+          "initial_layer_line_width"
+        ]
+      },
+      {
+        "page": "Speed",
+        "group": "Travel speed",
+        "keys": [
+          "travel_speed"
+        ]
+      },
+      {
+        "page": "Others",
+        "group": "Skirt",
+        "keys": [
+          "skirt_loops"
+        ]
+      }
+    ]
+  },
+  "machine": {
+    "groups": [
+      {
+        "page": "Extruder",
+        "group": "Basic information",
+        "keys": [
+          "nozzle_diameter"
+        ]
+      },
+      {
+        "page": "Basic information",
+        "group": "Printable space",
+        "keys": [
+          "printable_area",
+          "printable_height"
+        ]
+      },
+      {
+        "page": "Basic information",
+        "group": "Advanced",
+        "keys": [
+          "gcode_flavor"
+        ]
+      },
+      {
+        "page": "Extruder",
+        "group": "Retraction",
+        "keys": [
+          "retraction_length",
+          "retraction_speed"
+        ]
+      },
+      {
+        "page": "Extruder",
+        "group": "Z-Hop",
+        "keys": [
+          "z_hop"
+        ]
+      }
+    ]
+  },
+  "plates": {
+    "Cool Plate": "cool_plate_temp",
+    "Engineering Plate": "eng_plate_temp",
+    "High Temp Plate": "hot_plate_temp",
+    "Textured PEI Plate": "textured_plate_temp",
+    "Textured Cool Plate": "textured_cool_plate_temp",
+    "Supertack Plate": "supertack_plate_temp"
+  },
+  "emptyRanges": [
+    "nozzle_temperature_range_low",
+    "nozzle_temperature_range_high",
+    "min_layer_height",
+    "max_layer_height"
+  ]
+}

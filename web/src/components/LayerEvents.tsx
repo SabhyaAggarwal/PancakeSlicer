@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import type { LayerRec } from '../preview/format';
 import { filamentColor } from '../plater/filamentColor';
 import { effectiveConfig, getState, setEvents, useStore, type LayerEvent } from '../state/store';
 import type { SliderTick } from './PreviewSliders';
 import { Modal, ModalTitle } from './Modal';
-import { menuKeys } from '../keys';
+import { ActionMenu, type MenuEntry } from './Menu';
 
 const COLOR: Record<LayerEvent['type'], string> = {
   pause: '#E67E22', custom: '#3A7BD5', template: '#8E44AD', colour: '#E53935', change: '#00AE42',
@@ -34,18 +34,7 @@ export function EventMenu({ anchor, z, layer, onClose, onJump }: { anchor: DOMRe
   const slots = useStore((s) => s.filamentSlots.length);
   const template = useStore((s) => String(effectiveConfig(s, 'machine').template_custom_gcode ?? ''));
   const [custom, setCustom] = useState<string | null>(null);
-  const ref = useRef<HTMLDivElement>(null);
   const here = events.filter((e) => sameZ(e.z, z));
-  useEffect(() => {
-    if (custom === null) ref.current?.querySelector<HTMLElement>('.menu-item')?.focus();
-  }, [custom]);
-  useEffect(() => {
-    if (custom !== null) return;
-    const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && onClose();
-    window.addEventListener('mousedown', close);
-    return () => window.removeEventListener('mousedown', close);
-  }, [custom]);
-
   const put = (e: LayerEvent) => {
     setEvents([...getState().events.filter((x) => !sameZ(x.z, z)), e], `Add ${eventLabel(e).toLowerCase()}`);
     onClose();
@@ -54,16 +43,6 @@ export function EventMenu({ anchor, z, layer, onClose, onJump }: { anchor: DOMRe
     setEvents(getState().events.filter((x) => !sameZ(x.z, z)), 'Delete layer event');
     onClose();
   };
-  const item = (label: string, fn: () => void, tip?: string, swatch?: string) => (
-    <button key={label} className="menu-item" title={tip} onClick={fn}>
-      <span className="menu-label">
-        {swatch && <span className="menu-swatch" style={{ background: swatch }} />}
-        {label}
-      </span>
-    </button>
-  );
-  const style = { right: window.innerWidth - anchor.left + 6, top: Math.min(anchor.top, window.innerHeight - 260) };
-
   if (custom !== null)
     return (
       <Modal className="small" label="Custom G-code" onClose={onClose} returnFocus=".ls-plus">
@@ -83,41 +62,24 @@ export function EventMenu({ anchor, z, layer, onClose, onJump }: { anchor: DOMRe
       </Modal>
     );
 
-  return (
-    <div className="menu-pop event-menu" ref={ref} style={style} role="menu" aria-label={`Layer ${layer + 1}`}
-      onKeyDown={(e) => menuKeys(e, ref.current, onClose, document.querySelector<HTMLElement>('.ls-plus'))}>
-      <div className="menu-caption">
-        Layer {layer + 1} · {z.toFixed(2)} mm
-      </div>
-      {here.length ? (
-        <>
-          {here[0].type === 'custom' && item('Edit Custom G-code', () => setCustom(here[0].text ?? ''))}
-          {here[0].type === 'change' && slots > 1 &&
-            Array.from({ length: slots }, (_, i) =>
-              item(`Filament ${i + 1}`, () => put({ z, type: 'change', text: String(i + 1) }), 'Change filament at the beginning of this layer.', filamentColor(getState(), i + 1)),
-            )}
-          {item(`Delete ${eventLabel(here[0]).replace(/ \d+$/, '')}`, del)}
-        </>
-      ) : (
-        <>
-          {slots === 1 && item('Add Color Change', () => put({ z, type: 'colour' }), 'Insert a filament change (M600) at the beginning of this layer.')}
-          {item('Add Pause', () => put({ z, type: 'pause' }), 'Insert a pause command at the beginning of this layer.')}
-          {item('Add Custom G-code', () => setCustom(''), 'Insert custom G-code at the beginning of this layer.')}
-          {template.trim() && item('Add Custom Template', () => put({ z, type: 'template' }), 'Insert template custom G-code at the beginning of this layer.')}
-          {onJump && item('Jump to layer', () => { onClose(); onJump(); })}
-          {slots > 1 && (
-            <>
-              <div className="menu-sep" />
-              <div className="menu-caption">Change Filament</div>
-              {Array.from({ length: slots }, (_, i) =>
-                item(`Filament ${i + 1}`, () => put({ z, type: 'change', text: String(i + 1) }), 'Change filament at the beginning of this layer.', filamentColor(getState(), i + 1)),
-              )}
-            </>
-          )}
-        </>
-      )}
-    </div>
-  );
+  const changeItems: MenuEntry[] = Array.from({ length: slots }, (_, i) => ({ label: `Filament ${i + 1}`,
+    icon: <span className="menu-swatch" style={{ background: filamentColor(getState(), i + 1) }} />,
+    action: () => put({ z, type: 'change', text: String(i + 1) }) }));
+  const items: MenuEntry[] = [{ label: `Layer ${layer + 1} · ${z.toFixed(2)} mm`, header: true }];
+  if (here.length) {
+    if (here[0].type === 'custom') items.push({ label: 'Edit Custom G-code', keepOpen: true, action: () => setCustom(here[0].text ?? '') });
+    if (here[0].type === 'change' && slots > 1) items.push(...changeItems);
+    items.push({ label: `Delete ${eventLabel(here[0]).replace(/ \d+$/, '')}`, action: del });
+  } else {
+    if (slots === 1) items.push({ label: 'Add Color Change', action: () => put({ z, type: 'colour' }) });
+    items.push({ label: 'Add Pause', action: () => put({ z, type: 'pause' }) },
+      { label: 'Add Custom G-code', keepOpen: true, action: () => setCustom('') });
+    if (template.trim()) items.push({ label: 'Add Custom Template', action: () => put({ z, type: 'template' }) });
+    if (onJump) items.push({ label: 'Jump to layer', action: onJump });
+    if (slots > 1) items.push({ label: 'Change Filament', header: true }, ...changeItems);
+  }
+  return <ActionMenu label={`Layer ${layer + 1}`} at={{ x: anchor.left, y: anchor.top }} items={items} onClose={onClose}
+    returnFocus={document.querySelector<HTMLElement>('.ls-plus')} />;
 }
 
 export function EventList({ onPick }: { onPick?(z: number): void }) {

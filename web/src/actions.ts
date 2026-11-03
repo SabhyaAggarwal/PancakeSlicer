@@ -1,8 +1,18 @@
+import { app } from './flow/app';
+import { importing } from './flow/import';
+import { output } from './flow/output';
+importing.machine.subscribe((s) => {
+  if (s.value === 'running') app.send({ type: 'IMPORT' });
+  else if (app.get().value !== 'booting') app.send({ type: 'SETTLED', hasObjects: getState().objects.length > 0 });
+  if (s.value === 'canceled' && /^(Loading |Opening )/.test(getState().loading ?? '')) setState({ loading: null });
+});
 import * as THREE from 'three';
 import type { Config, ConfigValue, JobRequest, PresetCatalog, PresetType, SystemPreset } from './api/types';
 import { sliceProgress } from './api/progress';
-import { canEditProject, canLoadStep, connect } from './api/client';
+import { canEditProject, canLoadStep, connect, surfaceConfigBlocker, type Api } from './api/client';
 import { normalizeConfig } from './config-values';
+import { saveProfile } from './profiles/model';
+import { rememberLocalProfile } from './persist/profiles';
 import { OPTIONS, isHidden, loadTab } from './options';
 import { shortTime } from './preview/format';
 import { flushReady } from './flush-state';
@@ -13,9 +23,9 @@ import { archivePainting } from './plater/paint';
 import { projectEdits } from './plater/projectTransforms';
 import { choiceDialog, confirmDialog, numberDialog, promptDialog } from './components/Ask';
 import {
-  DEFAULT_PRINTER, DEMO_MODELS, PRESET_META, effectiveConfig, getState, isCompatible, markStale, newId, presetEdits, printerPreset, resolvePreset, selectPrinter, setState, toast, type PlateObject, type State,
+  DEFAULT_PRINTER, DEMO_MODELS, PRESET_META, effectiveConfig, getState, isCompatible, markStale, newId, presetEdits, printerPreset, resolvePreset, selectPrinter, setState, toast, type JobView, type PlateObject, type State,
 } from './state/store';
-import { historyDepth, leaveDocument, markSaved, newDocument, undoable } from './state/history';
+import { documentGeneration, historyDepth, leaveDocument, markSaved, newDocument, undoable } from './state/history';
 import { clearPlateJobs, currentPlates } from './plater/plates';
 import { nativeSupportCapable } from './settings-env';
 
@@ -26,11 +36,12 @@ function mergeCatalog(vendor: string, cat: PresetCatalog) {
   setState((s) => ({
     machines: order([...s.machines.filter((p) => p.vendor !== vendor), ...cat.machines]),
     processes: order([...s.processes.filter((p) => p.vendor !== vendor), ...cat.processes]),
-    filaments: order([...s.filaments.filter((p) => p.vendor !== vendor), ...cat.filaments]),
+    filaments: [...new Map(order([...s.filaments.filter((p) => p.vendor !== vendor), ...cat.filaments]).map((p) => [p.name, p])).values()],
   }));
 }
 
 export async function init() {
+  app.send({ type: 'BOOT' });
   const api = await connect();
   setState({ api, loading: 'Loading presets' });
   if (!api.mock) void fetch('/api/healthz').then((r) => r.json()).then((h) => {
@@ -39,8 +50,14 @@ export async function init() {
     if (h?.tool_features?.wipe_tower === true) void import('./plater/wipeTower').then((m) => m.startWipeTower());
   }).catch(() => {});
   if (!api.mock) void loadPrinters();
-  const saved = localStorage.getItem('orca.printer');
-  const first = localStorage.getItem('orca.vendor') ?? 'BBL';
+  await loadCatalog();
+}
+
+export async function loadCatalog() {
+  const api = getState().api!;
+  setState({ loading: 'Loading presets' });
+  let saved: string | null = null, first = 'BBL';
+  try { saved = localStorage.getItem('orca.printer'); first = localStorage.getItem('orca.vendor') ?? first; } catch {  }
   const vendors = [first, ...VENDORS.filter((v) => v !== first)];
   try {
     const settings = loadTab('process');
@@ -53,6 +70,7 @@ export async function init() {
     const known = (n: string | null) => !!n && !!resolvePreset(getState(), 'machine', n).base;
     const printer = [saved, DEFAULT_PRINTER].find(known) ?? cat.machines[0]?.name;
     if (printer) selectPrinter(printer);
+    app.send({ type: 'READY', hasObjects: getState().objects.length > 0, importing: importing.machine.get().value === 'running' });
     for (const v of vendors.slice(1)) {
       mergeCatalog(v, await api.presets(v, DEMO_MODELS, (c) => mergeCatalog(v, c)));
       if (!printer && known(saved)) selectPrinter(saved!);
@@ -60,44 +78,82 @@ export async function init() {
     if (!getState().printer && getState().machines[0]) selectPrinter(getState().machines[0].name);
   } catch (e) {
     setState({ loading: null });
-    toast(`Presets failed to load: ${e}`);
+    if (!getState().printer) app.send({ type: 'FAIL', error: String(e) });
+    toast(`Presets failed to load: ${e}`, { label: 'Retry', run: () => void loadCatalog() });
   }
 }
 
 export function choosePrinter(name: string) {
   selectPrinter(name);
-  localStorage.setItem('orca.printer', name);
-  const vendor = resolvePreset(getState(), 'machine', name).base?.vendor;
-  if (vendor) localStorage.setItem('orca.vendor', vendor);
+  try {
+    localStorage.setItem('orca.printer', name);
+    const vendor = resolvePreset(getState(), 'machine', name).base?.vendor;
+    if (vendor) localStorage.setItem('orca.vendor', vendor);
+  } catch {  }
 }
 
-export function switchPreset(type: PresetType, slot: number, name: string, edits: 'discard' | 'transfer' = 'discard') {
-  undoable(type === 'machine' ? 'Change printer' : type === 'process' ? 'Change process preset' : 'Change filament preset',
+function switchingChanges(s: State, type: PresetType, slot = 0): Config {
+  const name = type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot];
+  const { config, user } = resolvePreset(s, type, name);
+  const project = type === 'filament' ? s.projectPresets?.filaments[slot] : s.projectPresets?.[type];
+  const text = (v: ConfigValue) => JSON.stringify(Array.isArray(v) ? v.map(String) : String(v));
+  const baseline = Object.fromEntries(Object.entries(project ?? {}).filter(([k, v]) =>
+    !PRESET_META.test(k) && (config[k] === undefined || text(v) !== text(config[k]))));
+  return { ...user?.overrides, ...baseline, ...presetEdits(s, type, slot) };
+}
+
+export function switchPreset(type: PresetType, slot: number, name: string, edits: 'discard' | 'transfer' = 'transfer') {
+  return undoable(type === 'machine' ? 'Change printer' : type === 'process' ? 'Change process preset' : 'Change filament preset',
     () => applyPresetSwitch(type, slot, name, edits));
 }
 
 function applyPresetSwitch(type: PresetType, slot: number, name: string, edits: 'discard' | 'transfer') {
-  const carried = { ...presetEdits(getState(), type, slot) };
+  const before = getState();
+  const current = type === 'machine' ? before.printer : type === 'process' ? before.process : before.filamentSlots[slot];
+  let kept = 0, dropped = 0;
+  if (name === current) return { kept, dropped };
+  const carry = (scope: PresetType, target: string, sourceSlot = 0) => {
+    if (edits === 'discard') return {};
+    const config = resolvePreset(getState(), scope, target).config;
+    return Object.fromEntries(Object.entries(switchingChanges(before, scope, sourceSlot)).filter(([key]) => {
+      if (PRESET_META.test(key)) return false;
+      if (key in config) { kept++; return true; }
+      dropped++;
+      return false;
+    }));
+  };
   if (type === 'machine') {
     choosePrinter(name);
-    if (edits === 'transfer') setState((s) => ({ dirty: { ...s.dirty, machine: carried } }));
-    return;
+    const next = getState();
+    const machine = carry('machine', name), process = carry('process', next.process);
+    const filaments = next.filamentSlots.map((f, i) => carry('filament', f, i));
+    if (edits === 'transfer') setState({
+      dirty: { machine, process },
+      projectPresets: { machine: {}, process: {}, filaments },
+      filamentEdits: {},
+    });
+    return { kept, dropped };
   }
+  const carried = carry(type, name, slot);
   setState((st) => {
-    const old = st.filamentSlots[slot];
     const filamentEdits = { ...st.filamentEdits };
-    if (type === 'filament' && !st.filamentSlots.some((f, i) => i !== slot && f === old)) delete filamentEdits[old];
-    if (type === 'filament' && edits === 'transfer') filamentEdits[name] = { ...filamentEdits[name], ...carried };
+    let projectPresets = st.projectPresets;
+    if (type === 'filament') {
+      const filaments = st.filamentSlots.map((f, i) => i === slot ? carried
+        : { ...st.projectPresets?.filaments[i], ...filamentEdits[f] });
+      st.filamentSlots.forEach((f) => delete filamentEdits[f]);
+      delete filamentEdits[name];
+      projectPresets = { machine: {}, process: {}, ...projectPresets, filaments };
+    } else if (projectPresets) projectPresets = { ...projectPresets, process: {} };
     return {
-      dirty: type === 'process' ? { ...st.dirty, process: edits === 'transfer' ? carried : {} } : st.dirty,
+      dirty: type === 'process' ? { ...st.dirty, process: carried } : st.dirty,
       filamentEdits,
-      projectPresets: st.projectPresets && (type === 'process'
-        ? { ...st.projectPresets, process: {} }
-        : { ...st.projectPresets, filaments: st.projectPresets.filaments.map((f, i) => i === slot ? {} : f) }),
+      projectPresets,
       ...(type === 'process' ? { process: name } : { filamentSlots: st.filamentSlots.map((f, i) => (i === slot ? name : f)) }),
       job: markStale(st.job),
     };
   });
+  return { kept, dropped };
 }
 
 export function bedArea() {
@@ -107,6 +163,7 @@ export function bedArea() {
 export async function importFiles(files: FileList | File[], geometryOnly = false) {
   let list = [...files];
   if (!list.length) return;
+  const choiceGeneration = documentGeneration();
   setState({ tab: 'prepare' });
   const projectFile = list.find((f) => /\.3mf$/i.test(f.name));
   const project = !!getState().project;
@@ -114,7 +171,7 @@ export async function importFiles(files: FileList | File[], geometryOnly = false
   const geometry = geometryOnly ? 1 : projectFile && (st.objects.length || st.projectPlates.some((p) => p.objects.length)) && (!project || canEditProject())
     ? await choiceDialog('Drop project file', `Please select an action\n${projectFile.name}`, ['Open as project', 'Import geometry only'])
     : 0;
-  if (geometry === null) return;
+  if (geometry === null || choiceGeneration !== documentGeneration()) return;
   if (projectFile && !geometry) {
     if (list.length > 1) toast(`${projectFile.name} opens as a project; the other files were not added`);
     await openProject(projectFile);
@@ -127,26 +184,34 @@ export async function importFiles(files: FileList | File[], geometryOnly = false
   const step = /\.(step|stp|drc)$/i;
   list = list.filter((f) => /\.(stl|obj|3mf)$/i.test(f.name) || step.test(f.name) && (canLoadStep() || /\.drc$/i.test(f.name)) ||
     (toast(`${f.name} is not a model file. Choose an STL, OBJ${canLoadStep() ? ', STEP' : ''} or 3MF file.`), false));
+  const task = importing.begin('loading');
   const added: PlateObject[] = [];
   for (const f of list) {
     try {
       if (/\.3mf$/i.test(f.name)) {
         added.push(...await load3mfGeometry(f));
+        if (!task.current()) break;
         continue;
       }
-      const { geometry, source } = step.test(f.name) ? await loadStep(f)
-        : { geometry: await loadMesh(f, (pct) => setState({ loading: `Loading ${f.name} ${Math.round(pct)}%` })), source: f };
+      const { geometry, source } = step.test(f.name) ? await loadStep(f, task.signal)
+        : { geometry: await loadMesh(f, (pct) => { if (task.current()) { task.progress(pct, 'meshing'); setState({ loading: `Loading ${f.name} ${Math.round(pct)}%` }); } }), source: f };
+      if (!task.current()) { geometry.dispose(); break; }
       if (getState().loading?.startsWith('Loading ')) setState({ loading: null });
       added.push({
-        id: newId(), name: f.name, geometry, rotX: 0, rotY: 0, scale: [1, 1, 1], extruder: 1, source, settings: {},
+        id: newId(), name: f.name, geometry, simplification: geometry.userData.simplification, rotX: 0, rotY: 0, scale: [1, 1, 1], extruder: 1, source, settings: {},
         instances: [{ id: newId(), x: 0, y: 0, rotZ: 0 }],
       });
     } catch (e) {
+      if (!task.current()) break;
+      task.fail(e);
       if (getState().loading?.startsWith('Loading ')) setState({ loading: null });
       toast(String(e instanceof Error ? e.message : e));
     }
   }
-  if (!added.length) return;
+  if (!task.current()) { for (const o of added) o.geometry.dispose(); return; }
+  if (!added.length) { task.done(); return; }
+  const simplified = added.flatMap((o) => o.simplification ? [o.simplification] : []);
+  if (simplified.length) void import('./simplify/ui').then((m) => m.noteSimplified(simplified));
   undoable(added.length > 1 ? 'Add objects' : 'Add object', () => setState((s) => {
     const objects = project ? added.reduce((list, o) => {
       const spot = nextFreeSpot(list, o, bedArea()) ?? bedBounds(bedArea()).center;
@@ -155,6 +220,7 @@ export async function importFiles(files: FileList | File[], geometryOnly = false
     const last = added[added.length - 1];
     return { objects, selected: { object: last.id, instance: last.instances[0].id, allInstances: true }, job: s.job.state === 'done' ? { ...s.job, stale: true } : s.job };
   }));
+  task.done();
 }
 
 async function load3mfGeometry(f: File): Promise<PlateObject[]> {
@@ -172,20 +238,24 @@ async function load3mfGeometry(f: File): Promise<PlateObject[]> {
   return out;
 }
 
-async function loadStep(f: File): Promise<{ geometry: THREE.BufferGeometry; source: File }> {
+async function loadStep(f: File, signal?: AbortSignal): Promise<{ geometry: THREE.BufferGeometry; source: File }> {
   const s = getState();
   if (!s.api || s.api.mock) throw new Error(`${f.name}: importing STEP requires the slicing service`);
   setState({ loading: `Loading ${f.name}` });
   const { vendor, printer, process, filaments } = jobFields(s, true);
-  const id = await s.api.submit({ vendor, printer, process, filaments, overrides: {}, events: [], output: '3mf', files: [{ name: f.name, blob: f }] });
+  const id = await s.api.submit({ vendor, printer, process, filaments, overrides: {}, events: [], output: '3mf', files: [{ name: f.name, blob: f }] }, signal);
+  if (signal?.aborted) { void s.api.cancel(id).catch(() => {}); throw new DOMException('Import canceled', 'AbortError'); }
   await new Promise<void>((resolve, reject) => {
-    const unsubscribe = s.api!.events(id, {
+    let unsubscribe = () => {};
+    const abort = () => { unsubscribe(); void s.api!.cancel(id).catch(() => {}); reject(new DOMException('Import canceled', 'AbortError')); };
+    signal?.addEventListener('abort', abort, { once: true });
+    unsubscribe = s.api!.events(id, {
       progress() {},
-      done() { unsubscribe(); resolve(); },
-      error(message) { unsubscribe(); reject(new Error(`${f.name}: ${message}`)); },
+      done() { unsubscribe(); signal?.removeEventListener('abort', abort); resolve(); },
+      error(message) { unsubscribe(); signal?.removeEventListener('abort', abort); reject(new Error(`${f.name}: ${message}`)); },
     });
   });
-  const response = await fetch(s.api.downloadUrl(id));
+  const response = await fetch(s.api.downloadUrl(id), { signal });
   if (!response.ok) throw new Error(`${f.name}: ${response.status} ${response.statusText}`);
   const stem = f.name.replace(/\.(step|stp|drc)$/i, '');
   let geometry: THREE.BufferGeometry | undefined;
@@ -193,6 +263,14 @@ async function loadStep(f: File): Promise<{ geometry: THREE.BufferGeometry; sour
   if (!geometry) throw new Error(`${f.name}: the STEP file has no shape`);
   const mesh = { geometry, rotX: 0, rotY: 0, scale: [1, 1, 1] } as PlateObject;
   return { geometry, source: new File([await bakeStl(mesh)], `${stem}.stl`) };
+}
+
+function projectPresets(s: State, type: 'machine' | 'process' | 'filament'): SystemPreset[] {
+  const system = type === 'machine' ? s.machines : type === 'process' ? s.processes : s.filaments;
+  return [...system, ...s.userPresets.filter((p) => p.type === type).flatMap((p) => {
+    const { base, config } = resolvePreset(s, type, p.name);
+    return base ? [{ ...base, name: p.name, config }] : [];
+  })];
 }
 
 function closestPreset(presets: SystemPreset[], config: Config, id: string): SystemPreset | undefined {
@@ -206,38 +284,55 @@ function closestPreset(presets: SystemPreset[], config: Config, id: string): Sys
   })[0];
 }
 
-function adoptProject(config: Config, slots: number, plateKeys: Set<string>) {
+export function adoptProject(config: Config, slots: number, plateKeys: Set<string>) {
   const s = getState();
   const saved = normalizeConfig(config);
   const id = String(saved.printer_settings_id ?? '');
   if (!id && saved.printer_model === undefined) return setState({ projectPresets: null, projectNotice: null, mixes: {} });
-  const sameModel = s.machines.filter((p) => String(p.config.printer_model) === String(saved.printer_model));
+  const machines = projectPresets(s, 'machine');
+  const sameModel = machines.filter((p) => String(p.config.printer_model) === String(saved.printer_model));
   const sameNozzle = sameModel.filter((p) => String(p.config.nozzle_diameter) === String(saved.nozzle_diameter));
-  const selected = s.machines.filter((p) => p.name === (resolvePreset(s, 'machine', s.printer).base?.name ?? s.printer));
-  const printer = closestPreset(sameNozzle.length ? sameNozzle : sameModel.length ? sameModel : selected.length ? selected : s.machines, saved, id);
-  if (!printer) throw new Error('No system printer is available for this project');
+  const selected = machines.filter((p) => p.name === (resolvePreset(s, 'machine', s.printer).base?.name ?? s.printer));
+  const printer = closestPreset(sameNozzle.length ? sameNozzle : sameModel.length ? sameModel : selected.length ? selected : machines, saved, id);
+  if (!printer) throw new Error('No printer is available for this project');
   selectPrinter(printer.name);
   const current = getState();
-  const forPrinter = (presets: SystemPreset[]) => presets.filter((p) => isCompatible(p, printer.name));
-  const process = closestPreset(forPrinter(current.processes), saved, String(saved.print_settings_id ?? ''));
+  const printerBase = resolvePreset(current, 'machine', printer.name).base?.name ?? printer.name;
+  const forPrinter = (presets: SystemPreset[]) => presets.filter((p) => isCompatible(p, printerBase));
+  const process = closestPreset(forPrinter(projectPresets(current, 'process')), saved, String(saved.print_settings_id ?? ''));
   const ids = saved.filament_settings_id;
   const filamentConfigs = Array.from({ length: slots }, (_, i) => Object.fromEntries(Object.entries(saved).map(([k, v]) =>
     [k, Array.isArray(v) && current.filaments.some((p) => k in p.config) ? [v[Math.min(i, v.length - 1)] ?? ''] : v])) as Config);
-  const filaments = filamentConfigs.map((c, i) => closestPreset(forPrinter(current.filaments), c, String(Array.isArray(ids) ? ids[i] ?? '' : ids ?? '')));
+  const filaments = filamentConfigs.map((c, i) => closestPreset(forPrinter(projectPresets(current, 'filament')), c, String(Array.isArray(ids) ? ids[i] ?? '' : ids ?? '')));
   const keys = (presets: SystemPreset[]) => new Set(presets.flatMap((p) => Object.keys(p.config)));
   const machineKeys = keys(current.machines), filamentKeys = keys(current.filaments);
   const take = (c: Config, accept: (k: string) => boolean) => Object.fromEntries(Object.entries(c).filter(([k]) => OPTIONS[k] && accept(k)));
-  const fallback = !sameNozzle.length || !!id && !current.machines.some((p) => p.name === id);
+  const fallback = !sameNozzle.length;
   const text = (v: ConfigValue) => JSON.stringify(Array.isArray(v) ? v.map(String) : String(v));
   const edits = (c: Config, preset?: SystemPreset) => Object.fromEntries(Object.entries(c).filter(([k, v]) =>
     !PRESET_META.test(k) && !isHidden(k) && !plateKeys.has(k) && !MIX_KEYS.includes(k) && (preset?.config[k] === undefined || text(v) !== text(preset.config[k]))));
   const machine = fallback ? {} : take(saved, (k) => machineKeys.has(k));
   const processValues = take(saved, (k) => !machineKeys.has(k) && !filamentKeys.has(k));
   const dirty = { machine: edits(machine, printer), process: edits(processValues, process) };
+  const profileName = (type: 'machine' | 'process' | 'filament', preset: SystemPreset | undefined, savedId: string, values: Config) => {
+    const st = getState();
+    if (!preset || !savedId || /\(modified\)\s*$/i.test(savedId) || resolvePreset(st, type, savedId).base) return preset?.name ?? '';
+    const base = resolvePreset(st, type, preset.name).base;
+    if (!base) return preset.name;
+    const profile = saveProfile(st, type, savedId, base.name, { ...base.config, ...values });
+    rememberLocalProfile(profile, st.api?.mock);
+    setState({ userPresets: [...st.userPresets, profile] });
+    return profile.name;
+  };
+  const printerName = fallback ? printer.name : profileName('machine', printer, id, machine);
+  const processName = profileName('process', process, String(saved.print_settings_id ?? ''), processValues);
+  const filamentNames = filaments.map((p, i) => profileName('filament', p,
+    String(Array.isArray(ids) ? ids[i] ?? '' : ids ?? ''), take(filamentConfigs[i], (k) => filamentKeys.has(k) && !machineKeys.has(k))));
   const rest = (c: Config, e: Config) => Object.fromEntries(Object.entries(c).filter(([k]) => !(k in e)));
   setState({
-    process: process?.name ?? current.process,
-    filamentSlots: filaments.map((p, i) => p?.name ?? current.filamentSlots[i] ?? current.filamentSlots[0]),
+    printer: printerName,
+    process: processName || current.process,
+    filamentSlots: filamentNames.map((name, i) => name || current.filamentSlots[i] || current.filamentSlots[0]),
     projectPresets: {
       machine: rest(machine, dirty.machine),
       process: rest(processValues, dirty.process),
@@ -271,22 +366,28 @@ function centreGeometryOnly() {
 }
 
 export async function openProject(file: File) {
+  const generation = documentGeneration();
   const s = getState();
   const offerUndo = await replacePlate('Open Project', 'Opening a project replaces the objects on the plate. Continue?');
-  if (!offerUndo) return;
+  if (!offerUndo || generation !== documentGeneration()) return;
   leaveDocument();
   clearPlateJobs();
+  const task = importing.begin('loading');
   if (s.features.explode && s.api && !s.api.mock) {
     setState({ loading: `Opening ${file.name}` });
     try {
-      await (await import('./plater/explode')).openExplodedProject(file, adoptProject);
+      await (await import('./plater/explode')).openExplodedProject(file, adoptProject, task.current);
+      if (!task.current()) return;
+      task.done();
       newDocument(true);
+      task.adoptGeneration();
       offerUndo();
       return;
     } catch (e) {
+      if (!task.current()) return;
       toast(`${file.name}: ${e instanceof Error ? e.message : e}; opened as a project instead`);
     } finally {
-      setState({ loading: null });
+      if (task.current()) setState({ loading: null });
     }
   }
   let objects: PlateObject[] = [];
@@ -302,6 +403,7 @@ export async function openProject(file: File) {
   try {
     await loadProject(file, {
       items(items: ProjectItem[], materials) {
+        if (!task.current()) return;
         listed = items;
         if (!items.length) return toast(`${file.name}: the project has no printable objects`);
         geometryOnly = !materials.hasConfig && materials.plates.length === 1;
@@ -323,39 +425,52 @@ export async function openProject(file: File) {
           filamentSlots: Array.from({ length: slots }, (_, i) => st.filamentSlots[i] ?? st.filamentSlots[0] ?? ''),
           job: markStale(st.job),
         }));
+        task.done();
         newDocument(true);
+        task.adoptGeneration();
         offerUndo();
       },
       mesh: (i, geometry, centre) => {
+        if (!task.current()) { geometry.dispose(); return; }
         const painting = listed[i]?.parts === 1 || listed[i]?.partTris ? archivePainting(listed[i].paint ?? {}) : null;
         patch(i, (o) => ({ ...o, geometry, ...(painting && Object.keys(painting).length ? { paint: painting } : {}),
           project: { ...o.project!, file: file.name, placeholder: false, origin: [centre.x, centre.y, centre.z], paintable: !!painting, ...(listed[i]?.paint ? { paint: listed[i].paint } : {}), ...(painting && listed[i]?.partTris ? { partTris: listed[i].partTris } : {}) }, instances: [{ ...o.instances[0], x: centre.x, y: centre.y, z: centre.z }, ...o.instances.slice(1)] }));
       },
       missing: (i) => patch(i, (o) => ({ ...o, project: { ...o.project!, file: file.name, placeholder: true, missing: true } })),
     });
+    if (!task.current()) return;
+    task.done();
     if (geometryOnly && getState().project === file) centreGeometryOnly();
     if (getState().project === file && !historyDepth().undo) markSaved();
   } catch (e) {
+    if (!task.current()) return;
+    task.fail(e);
     toast(`${file.name}: ${e instanceof Error ? e.message : e}`);
   }
+}
+
+export function clearPlate() {
+  clearPlateJobs();
+  setState((st) => ({ objects: [], selected: null, gizmo: 'none', project: null, projectPlates: [], plateIndex: 1, wipeTowerPos: {}, projectName: null, projectMaterials: null, projectPresets: null, projectNotice: null, events: [], flush: { matrix: null, multiplier: null }, processScope: 'global', job: markStale(st.job) }));
 }
 
 export async function newProject() {
   const offerUndo = await replacePlate('New Project', 'Start a new project? The objects on the plate are removed.');
   if (!offerUndo) return;
   leaveDocument();
-  clearPlateJobs();
-  setState((st) => ({ objects: [], selected: null, project: null, projectPlates: [], plateIndex: 1, wipeTowerPos: {}, projectName: null, projectMaterials: null, projectPresets: null, projectNotice: null, events: [], flush: { matrix: null, multiplier: null }, processScope: 'global', job: markStale(st.job) }));
+  clearPlate();
   newDocument(true);
   offerUndo();
 }
 
 async function replacePlate(title: string, question: string): Promise<(() => void) | null> {
   const s = getState();
+  const projects = await import('./flow/project');
+  if (projects.storing()) { try { await projects.flushProject(); } catch { return null; } }
   if (!s.objects.length && !s.projectPlates.some((p) => p.objects.length)) return () => {};
-  const session = await import('./persist/session');
-  if (!session.autosaving()) return (await confirmDialog(title, question)) ? () => {} : null;
-  return () => toast(title === 'New Project' ? 'New project' : 'Project opened', { label: 'Undo', run: () => void (session.previousSession && session.restore(session.previousSession)) });
+  if (!projects.storing()) return (await confirmDialog(title, question)) ? () => {} : null;
+  if (title === 'New Project') return () => {};
+  return () => toast('Opened', { label: 'Undo', run: () => { const id = projects.previousProject(); if (id) void projects.openProject(id); } });
 }
 
 export function openProjectDialog() {
@@ -462,6 +577,14 @@ export { confirmDialog, numberDialog, promptDialog };
 
 export async function jobRequest(s = getState(), saving = false): Promise<JobRequest> {
   await flushReady();
+  if (!saving) {
+    const configs = [effectiveConfig(s, 'process'), ...s.objects.flatMap((o) =>
+      [o.settings, ...o.volumes?.map((v) => v.settings) ?? [], ...o.ranges?.map((r) => r.settings) ?? []])];
+    for (const config of configs) {
+      const reason = surfaceConfigBlocker(config);
+      if (reason) throw new Error(reason);
+    }
+  }
   const fields = jobFields(s, saving);
 
   if (s.project) {
@@ -494,9 +617,7 @@ export async function jobRequest(s = getState(), saving = false): Promise<JobReq
   };
 };
 
-let unsubscribe: (() => void) | null = null;
 let sliceGeneration = 0;
-let pendingSubmission: AbortController | null = null;
 
 export function outsideVolumeWarning(s = getState()): string | null {
   const machine = printerPreset(s);
@@ -522,70 +643,100 @@ function recordWarnings(record: Record<string, unknown> | undefined, stderr: str
   return [...stderr, ...added];
 }
 
+export interface JobSink {
+  progress(p: { pct: number; stage: string; id?: string }): void;
+  done(job: JobView): void;
+  failed(error: string): void;
+}
+
+export function runJob(api: Api, request: JobRequest, signature: string, sink: JobSink, calib?: string): () => void {
+  let live = true, id: string | undefined, stop: (() => void) | undefined;
+  const submission = new AbortController();
+  void (async () => {
+    try {
+      id = await api.submit(request, submission.signal, (fraction) => live && sink.progress({ pct: Math.round(fraction * 100), stage: 'uploading' }));
+      if (!live) return void api.cancel(id).catch(() => undefined);
+      sink.progress({ id, pct: 0, stage: 'queued' });
+      const warnings: string[] = [], calibLog: string[] = [];
+      let pct = 0;
+      stop = api.events(id, {
+        progress: (e) => {
+          if (!live) return;
+          const progress = sliceProgress(e);
+          if (e.stage === 'verify' && e.pct >= 100 && request.output === 'gcode.3mf') progress.stage = 'Packaging sliced plate';
+          if (progress.pct >= pct) sink.progress(progress);
+          pct = Math.max(pct, progress.pct);
+        },
+        done: (status) => {
+          if (!live) return;
+          live = false;
+          sink.done({ id, state: 'done', pct: 100, stage: 'done', status, plateSignature: signature, warnings: recordWarnings(status.record, warnings), ...(calib ? { calib, calibLog } : {}) });
+        },
+        error: (msg) => {
+          if (!live) return;
+          live = false;
+          sink.failed(msg);
+        },
+        log: (stream, line) => {
+          if (stream === 'stdout' && line.startsWith('calib_')) calibLog.push(line);
+          if (stream !== 'stderr' || !line.trim()) return;
+          const m = /^warning:\s*(.*)$/i.exec(line);
+          if (m) warnings.push(m[1]);
+          else if (warnings.length && !/^error:/i.test(line)) warnings[warnings.length - 1] += `\n${line}`;
+        },
+      });
+    } catch (e) {
+      if (!live) return;
+      live = false;
+      sink.failed(String(e));
+    }
+  })();
+  return () => {
+    const wasLive = live;
+    live = false;
+    submission.abort();
+    stop?.();
+    if (wasLive && id) void api.cancel(id).catch(() => undefined);
+  };
+}
+
+export async function plateJob(s = getState(), ask = true): Promise<JobRequest | string | null> {
+  const outside = outsideVolumeWarning(s);
+  if (outside) return outside;
+  if (nativeSupportCapable(s) && (String(effectiveConfig(s, 'process').support_style) === 'native' || s.objects.some((o) => o.settings.support_style === 'native'))) {
+    const conflicts = (await import('./plater/nativeSupport')).nativeSupportConflicts(s);
+    if (conflicts && !ask) return conflicts;
+    if (conflicts && !(await confirmDialog('Native support', `${conflicts} Slice anyway?`))) return null;
+  }
+  return jobRequest(s);
+}
+
+let cancelJob: (() => void) | null = null;
+
 export async function slice(calib?: { kind: string; params: string; head?: string }) {
   await flushReady();
   const s = getState();
   if (!s.api || !s.objects.length && !calib || s.job.state === 'running' || s.job.state === 'submitting') return;
-  const outside = calib ? null : outsideVolumeWarning(s);
-  if (outside) {
-    setState({ job: { state: 'failed', pct: 0, stage: '', error: outside } });
-    return;
-  }
-  if (!calib && nativeSupportCapable(s) && (String(effectiveConfig(s, 'process').support_style) === 'native' || s.objects.some((o) => o.settings.support_style === 'native'))) {
-    const conflicts = (await import('./plater/nativeSupport')).nativeSupportConflicts(s);
-    if (conflicts && !(await confirmDialog('Native support', `${conflicts} Slice anyway?`))) return;
-  }
-  setState({ tab: 'preview' });
   const generation = ++sliceGeneration;
-  const submission = new AbortController();
-  pendingSubmission = submission;
   const signature = plateSignature(s);
-  setState({ job: { state: 'submitting', pct: 0, stage: 'uploading', plateSignature: signature, calib: calib?.kind } });
-  try {
-    const { vendor, printer, process, filaments, output } = jobFields(s);
-    const request: JobRequest = calib ? { vendor, printer, process, filaments, overrides: calibOverrides(s, calib.kind), output, events: [], files: [], calib: calib.kind, calib_params: calib.params, calib_head: calib.head }
-      : await jobRequest(s);
-    if (generation !== sliceGeneration) return;
-    const id = await s.api.submit(request, submission.signal, (fraction) => generation === sliceGeneration &&
-      setState((st) => (st.job.state === 'submitting' ? { job: { ...st.job, pct: Math.round(fraction * 100) } } : {})));
-    if (generation !== sliceGeneration) {
-      await s.api.cancel(id);
-      return;
-    }
-    setState((st) => ({ job: { ...st.job, id, state: 'running', pct: 0, stage: 'queued' } }));
-    unsubscribe?.();
-    const warnings: string[] = [], calibLog: string[] = [];
-    unsubscribe = s.api.events(id, {
-      progress: (e) => {
-        if (generation !== sliceGeneration) return;
-        const progress = sliceProgress(e);
-        if (e.stage === 'verify' && e.pct >= 100 && request.output === 'gcode.3mf') progress.stage = 'Packaging sliced plate';
-        setState((st) => progress.pct < st.job.pct ? {} : { job: { ...st.job, ...progress } });
-      },
-      done: (status) => generation === sliceGeneration && setState((st) => ({ job: { ...st.job, id, state: 'done', pct: 100, stage: 'done', status, warnings: recordWarnings(status.record, warnings), ...(calib ? { calibLog } : {}) } })),
-      error: (msg) => generation === sliceGeneration && setState((st) => ({ job: { ...st.job, state: 'failed', error: msg } })),
-      log: (stream, line) => {
-        if (stream === 'stdout' && line.startsWith('calib_')) calibLog.push(line);
-        if (stream !== 'stderr' || !line.trim()) return;
-        const m = /^warning:\s*(.*)$/i.exec(line);
-        if (m) warnings.push(m[1]);
-        else if (warnings.length && !/^error:/i.test(line)) warnings[warnings.length - 1] += `\n${line}`;
-      },
-    });
-  } catch (e) {
-    if (generation !== sliceGeneration) return;
-    setState({ job: { state: 'failed', pct: 0, stage: '', error: String(e) } });
-  }
+  const { vendor, printer, process, filaments, output } = jobFields(s);
+  const request = calib ? { vendor, printer, process, filaments, overrides: calibOverrides(s, calib.kind), output, events: [], files: [], calib: calib.kind, calib_params: calib.params, calib_head: calib.head }
+    : await plateJob(s).catch((e: unknown) => String(e));
+  if (generation !== sliceGeneration || request === null) return;
+  if (typeof request === 'string') return void setState({ job: { state: 'failed', pct: 0, stage: '', error: request } });
+  setState({ tab: 'preview', job: { state: 'submitting', pct: 0, stage: 'uploading', plateSignature: signature, calib: calib?.kind } });
+  cancelJob = runJob(s.api, request, signature, {
+    progress: ({ id, ...p }) => setState((st) => (id ? { job: { ...st.job, id, state: 'running', ...p } } : st.job.state === 'submitting' ? { job: { ...st.job, ...p } } : {})),
+    done: (job) => setState({ job }),
+    failed: (error) => setState((st) => ({ job: { ...st.job, state: 'failed', error } })),
+  }, calib?.kind);
 }
 
 export function cancelSlice() {
+  void import('./flow/slice').then((m) => m.cancelSlice());
   ++sliceGeneration;
-  pendingSubmission?.abort();
-  pendingSubmission = null;
-  const s = getState();
-  unsubscribe?.();
-  unsubscribe = null;
-  if (s.job.id) void s.api?.cancel(s.job.id).catch(() => undefined);
+  cancelJob?.();
+  cancelJob = null;
   setState({ job: { state: 'canceled', pct: 0, stage: '' } });
 }
 
@@ -645,16 +796,19 @@ function exportBlocker(s: State) {
 export async function download() {
   const s = getState();
   if (!s.api || !canExport(s) || !s.job.id) return void (s.api && toast(exportBlocker(s)));
+  const task = output.begin('exporting');
   let href: string;
   try {
-    const r = await fetch(s.api.downloadUrl(s.job.id));
+    const r = await fetch(s.api.downloadUrl(s.job.id), { signal: task.signal });
     if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
     href = URL.createObjectURL(await r.blob());
   } catch (e) {
+    if (!task.current()) return;
+    task.fail(e);
     toast(`Export failed: ${e instanceof Error ? e.message : e}`);
     return;
   }
-  if (getState().job.id !== s.job.id || !canExport()) {
+  if (!task.current() || getState().job.id !== s.job.id || !canExport()) {
     URL.revokeObjectURL(href);
     return;
   }
@@ -664,6 +818,7 @@ export async function download() {
   setState((st) => ({ job: { ...st.job, exported: a.download } }));
   document.body.appendChild(a);
   a.click();
+  task.done();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(href), 60000);
 }

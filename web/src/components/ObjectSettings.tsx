@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Modal, ModalTitle } from './Modal';
-import { menuKeys } from '../keys';
+import { ActionMenu } from './Menu';
 import type { Config, ConfigValue } from '../api/types';
 import { isHidden, OPTIONS, useTab } from '../options';
 import objectKeys from '../object_options.json';
@@ -10,10 +10,11 @@ import { undoable } from '../state/history';
 import { environment, fieldDefinition, optionState } from '../visibility';
 import { nativeSupportCapable } from '../settings-env';
 import { Field } from './Field';
-import { Icon, IconButton } from './Icon';
-import PrintStyle from './PrintStyle';
+import { Icon } from './Icon';
 import { addRangeAfter, canAddAfter, deleteRange, editRange, rangeLabel, removeRangeOptions, setRangeOption } from '../plater/ranges';
 import type { LayerRange } from '../state/store';
+import { settingValue } from '../state/changes';
+import { useChanges } from '../state/useChanges';
 
 const OBJECT_KEYS = [...objectKeys.region, ...objectKeys.object];
 
@@ -28,7 +29,6 @@ const FREQ_BUNDLE: [string, string[]][] = [
 ];
 
 const labelOf = (key: string) => OPTIONS[key]?.full_label || OPTIONS[key]?.label || key;
-const asText = (v: ConfigValue | undefined) => (v === undefined ? '' : Array.isArray(v) ? v.join(',') : String(v));
 
 function hierarchy(filaments: number, keys: string[]): [string, string[]][] {
   const cats = new Map<string, string[]>();
@@ -54,6 +54,7 @@ export function ObjectSettings() {
   useStore((s) => s.printer);
   const uiMode = useStore(effectiveMode);
   useStore((s) => s.process);
+  const changes = useChanges('process');
   const global = effectiveConfig(getState(), 'process');
   const [menu, setMenu] = useState(false);
   const [pick, setPick] = useState<[string, string[]] | null>(null);
@@ -61,7 +62,7 @@ export function ObjectSettings() {
 
   if (!desc) return <div role="status">{error ?? 'Loading settings…'}</div>;
   if (!object)
-    return <div className="obj-settings-empty">Select an object in the list or on the plate to edit its settings.</div>;
+    return <div className="obj-settings-empty">No selection</div>;
   if (object.project)
     return (
       <div className="obj-settings-empty">
@@ -84,8 +85,10 @@ export function ObjectSettings() {
     set: (k: string, v: ConfigValue) => setObjectOption(object.id, k, v),
     remove: (keys: string[]) => removeObjectOptions(object.id, keys),
   };
+  const inherited = (key: string) => settingValue(getState(), 'process', key, 0, volume || range ? { object: object.id } : {});
+  const changed = new Set(changes.filter((c) => c.owner.object === object.id && (range ? c.scope === 'range' && c.owner.range === range.id : volume ? c.scope === 'part' && c.owner.volume === volume.id : c.scope === 'object')).map((c) => c.key));
   const add = (keys: string[], remove: string[] = []) => undoable('Add Settings', () => {
-    for (const k of keys) if (!(k in target.settings) && (!target.region || objectKeys.region.includes(k))) target.set(k, global[k] ?? (OPTIONS[k]?.default as ConfigValue) ?? '');
+    for (const k of keys) if (!(k in target.settings) && (!target.region || objectKeys.region.includes(k))) target.set(k, inherited(k) ?? '');
     if (remove.length) target.remove(remove);
   });
   const state = getState();
@@ -117,18 +120,14 @@ export function ObjectSettings() {
             cats={cats}
             onCategory={(c) => setPick(c)}
           />
-          <IconButton
-            icon="delete"
-            title={range ? 'Delete all settings of this range' : volume ? 'Delete all settings of this part' : 'Delete all settings of this object'}
-            disabled={!Object.keys(target.settings).length}
-            onClick={() => target.remove(Object.keys(target.settings))}
-          />
+          <button type="button" className="btn" title="Clear settings" disabled={!Object.keys(target.settings).length}
+            onClick={() => target.remove(Object.keys(target.settings))}>Clear</button>
         </span>
       </div>
-      {!volume && !range && <PrintStyle />}
+      
       {range && <RangeEditor objectId={object.id} range={range} canAdd={canAddAfter(object, range.id)} />}
       {!Object.keys(target.settings).length && (
-        <div className="obj-settings-empty">{range ? 'This range uses its object\'s settings.' : volume ? 'This part uses its object\'s settings.' : 'This object uses the global process settings.'} Add settings with “+”.</div>
+        <div className="obj-settings-empty">{range || volume ? 'Uses the object values' : 'Uses the project values'}</div>
       )}
       <div className="page-body">
         {[...byCat.entries()].map(([cat, keys]) => (
@@ -144,16 +143,10 @@ export function ObjectSettings() {
                 disabled={states[k]?.enabled === false}
                 definition={fieldDefinition(k, env)}
                 value={target.settings[k]}
-                systemValue={global[k]}
-                dirty={asText(target.settings[k]) !== asText(global[k])}
+                systemValue={inherited(k)}
+                dirty={changed.has(k)}
                 onSet={(key, v) => target.set(key, v)}
-                onReset={(key) => target.set(key, global[key] ?? target.settings[key])}
-                resetTitle="Reset to the global process value"
-                extra={
-                  <button type="button" className="icon-btn opt-remove" title="Remove this setting from the object" onClick={() => target.remove([k])}>
-                    ×
-                  </button>
-                }
+                scope={{ target: { object: object.id, volume: volume?.id, range: range?.id } }}
               />
             ))}
           </section>
@@ -191,8 +184,8 @@ function RangeEditor({ objectId, range, canAdd }: { objectId: number; range: Lay
       {field('Max Z', range.z[1], (v) => editRange(objectId, range.id, { z: [range.z[0], v] }))}
       {field('Layer height', range.layer_height, (v) => editRange(objectId, range.id, { layer_height: v }))}
       <span className="range-tools">
-        <IconButton icon="add" title={canAdd ? 'Add a height range after this one' : 'No room for a range after this one'} disabled={!canAdd} onClick={() => addRangeAfter(objectId, range.id)} />
-        <IconButton icon="delete" title="Delete this height range" onClick={() => deleteRange(objectId, range.id)} />
+        <button type="button" className="btn" disabled={!canAdd} onClick={() => addRangeAfter(objectId, range.id)}>Add range</button>
+        <button type="button" className="btn" onClick={() => deleteRange(objectId, range.id)}>Delete range</button>
       </span>
     </div>
   );
@@ -206,42 +199,15 @@ function AddMenu(props: {
   onCategory(c: [string, string[]]): void;
 }) {
   const ref = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (!props.open) return;
-    const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && props.setOpen(false);
-    window.addEventListener('mousedown', close);
-    ref.current?.querySelector<HTMLElement>('.menu-pop .menu-item')?.focus();
-    return () => window.removeEventListener('mousedown', close);
-  }, [props.open]);
-  const item = (label: string, fn: () => void, icon?: string) => (
-    <button
-      key={label}
-      className="menu-item"
-      onClick={() => {
-        props.setOpen(false);
-        fn();
-      }}
-    >
-      <span className="menu-label">
-        {icon ? <Icon name={icon} size={14} /> : <span style={{ width: 14 }} />}
-        {label}
-      </span>
-    </button>
-  );
-  return (
-    <span className="menu" ref={ref}
-      onKeyDown={(e) => props.open && menuKeys(e, ref.current!.querySelector('.menu-pop'), () => props.setOpen(false), ref.current!.querySelector('button'))}>
-      <IconButton icon="add" title="Add settings" onClick={() => props.setOpen(!props.open)} />
-      {props.open && (
-        <div className="menu-pop menu-pop-right" role="menu" aria-label="Add settings">
-          {FREQ_BUNDLE.map(([cat, keys]) => item(cat, () => props.onBundle(keys.filter((k) => OPTIONS[k] && !isHidden(k))), cat === 'Support' ? 'support' : undefined))}
-          <div className="menu-sep" />
-          <div className="menu-caption">Add settings by category</div>
-          {props.cats.map((c) => item(`${c[0]}…`, () => props.onCategory(c), c[0] === 'Support' ? 'support' : undefined))}
-        </div>
-      )}
-    </span>
-  );
+  return <span className="menu" ref={ref}>
+    <button type="button" className="btn" title="Add settings" aria-haspopup="menu" aria-expanded={props.open} onClick={() => props.setOpen(!props.open)}>Add settings</button>
+    {props.open && <ActionMenu label="Add settings" anchor={ref.current?.querySelector('button')} onClose={() => props.setOpen(false)} items={[
+      { label: 'Quick groups', header: true },
+      ...FREQ_BUNDLE.map(([cat, keys]) => ({ label: cat, action: () => props.onBundle(keys.filter((k) => OPTIONS[k] && !isHidden(k))) })),
+      { label: 'Choose settings', header: true },
+      ...props.cats.map((c) => ({ label: c[0], action: () => props.onCategory(c) })),
+    ]} />}
+  </span>;
 }
 
 function SelectSettings(props: { title: string; keys: string[]; current: Config; onOk(keys: string[]): void; onClose(): void }) {

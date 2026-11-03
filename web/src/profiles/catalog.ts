@@ -1,0 +1,189 @@
+import type { Config, PresetType, SystemPreset, UserPreset } from '../api/types';
+import { DEFAULT_PRINTER, getState, selectPrinter, setState, type State } from '../state/store';
+import { baseVersion, changedKeys, profilesFor, resolveProfile } from './model';
+import { isCompatible, selectCompatibility } from './compatibility';
+import { defaultsInitialized, markDefaultsInitialized, rememberLocalProfile, importedBases } from '../persist/profiles';
+import { defaultProcesses } from '../intent/default-process-model';
+import { CURVED_DEFAULTS, surfaceValues } from '../intent/surface';
+
+export interface ProfileRow {
+  name: string;
+  base: string;
+  layerHeight?: number;
+  nozzle?: number;
+  material?: string;
+  vendor?: string;
+  mine: true;
+  changed: boolean;
+}
+export interface CatalogRow {
+  name: string;
+  vendor: string;
+  model?: string;
+  material?: string;
+  layerHeight?: number;
+  compatible: { ok: boolean; reason?: string };
+}
+export interface CatalogFilters {
+  vendor?: string;
+  model?: string;
+  material?: string;
+  printer?: string;
+  nozzle?: string | number;
+  search?: string;
+}
+
+const first = (value: Config[string] | undefined) => String(Array.isArray(value) ? value[0] ?? '' : value ?? '');
+const number = (value: Config[string] | undefined) => { const n = Number(first(value)); return first(value) !== '' && Number.isFinite(n) ? n : undefined; };
+const metadata = (config: Config) => ({ layerHeight: number(config.layer_height), nozzle: number(config.nozzle_diameter), material: first(config.filament_type) || undefined });
+
+const profileRows = new WeakMap<State, Map<PresetType, ProfileRow[]>>();
+const catalogRows = new WeakMap<State, Map<string, CatalogRow[]>>();
+
+export function listProfiles(s: State, type: PresetType): ProfileRow[] {
+  let cache = profileRows.get(s);
+  if (!cache) profileRows.set(s, (cache = new Map()));
+  if (cache.has(type)) return cache.get(type)!;
+  const rows: ProfileRow[] = s.userPresets.filter((p) => p.type === type).map((p) => {
+    const { config, base } = resolveProfile(s, type, p.name);
+    return { name: p.name, base: p.base?.name ?? p.inherits, ...metadata(config), vendor: base?.vendor,
+      mine: true, changed: Object.keys(p.overlay ?? p.overrides).length > 0 };
+  });
+  cache.set(type, rows);
+  return rows;
+}
+export function listCatalog(s: State, type: PresetType, filters: CatalogFilters = {}): CatalogRow[] {
+  let cache = catalogRows.get(s);
+  if (!cache) catalogRows.set(s, (cache = new Map()));
+  const key = JSON.stringify([type, filters.vendor, filters.model, filters.material, filters.printer, filters.nozzle, filters.search]);
+  if (cache.has(key)) return cache.get(key)!;
+  const rows = profilesFor(s, type).filter((p) => (!filters.vendor || p.vendor === filters.vendor)
+    && (!filters.model || (p.model ?? first(p.config.printer_model)) === filters.model)
+    && (!filters.material || first(p.config.filament_type) === filters.material)
+    && (!filters.search || `${p.name} ${p.vendor} ${p.model ?? ''}`.toLowerCase().includes(filters.search.toLowerCase())))
+    .map((p) => ({ name: p.name, vendor: p.vendor, model: (p.model ?? first(p.config.printer_model)) || undefined,
+      ...metadata(p.config), compatible: selectCompatibility(s, type, p.name, filters.printer ?? s.printer, filters.nozzle) }));
+  cache.set(key, rows);
+  return rows;
+}
+
+const displayName = (base: SystemPreset) => `My ${base.name.replace(/\s*@.*$/, '').replace(/\s+nozzle\b/i, '').trim()}`;
+function uniqueName(s: State, type: PresetType, desired: string): string {
+  let name = desired, n = 2;
+  while (s.userPresets.some((p) => p.type === type && p.name === name) || profilesFor(s, type).some((p) => p.name === name)) name = `${desired} (${n++})`;
+  return name;
+}
+function makeProfile(s: State, base: SystemPreset, name: string, values: Config = {}): UserPreset {
+  const overlay = changedKeys(values, base.config);
+  return { name: uniqueName(s, base.type, name), type: base.type, inherits: base.name, base: { name: base.name, version: baseVersion(base) },
+    overlay, overrides: overlay, baseline: Object.fromEntries(Object.keys(overlay).map((key) => [key, base.config[key] ?? null])) };
+}
+
+export function createProfileFromBase(type: PresetType, baseName: string, name?: string): string {
+  const s = getState(), base = profilesFor(s, type).find((p) => p.name === baseName);
+  if (!base) throw new Error('Base unavailable');
+  const profile = makeProfile(s, base, name?.trim() || displayName(base));
+  rememberLocalProfile(profile, s.api?.mock);
+  setState({ userPresets: [...s.userPresets, profile] });
+  if (type === 'machine') selectPrinter(profile.name);
+  else if (type === 'process') setState((st) => ({ process: profile.name, dirty: { ...st.dirty, process: {} },
+    projectPresets: st.projectPresets ? { ...st.projectPresets, process: {} } : null }));
+  else setState((st) => ({ filamentSlots: st.filamentSlots.length ? [profile.name, ...st.filamentSlots.slice(1)] : [profile.name],
+    projectPresets: st.projectPresets ? { ...st.projectPresets, filaments: [{}, ...st.projectPresets.filaments.slice(1)] } : null }));
+  return profile.name;
+}
+
+export function resetToBase(type: PresetType, name: string, key?: string): void {
+  const s = getState(), { base, user } = resolveProfile(s, type, name);
+  if (!base || !user) return;
+  const overlay = key ? { ...user.overlay ?? user.overrides } : {};
+  const baseline = key ? { ...user.baseline } : {};
+  if (key) {
+    const parent = user.parent ? resolveProfile(s, type, user.parent).config : base.config;
+    delete overlay[key]; delete baseline[key];
+    if (key in changedKeys({ [key]: base.config[key] }, parent) && base.config[key] !== undefined) {
+      overlay[key] = base.config[key]; baseline[key] = base.config[key];
+    }
+  }
+  const profile: UserPreset = { ...user, overlay, overrides: overlay, baseline, parent: key ? user.parent : undefined,
+    base: key ? user.base : { name: base.name, version: baseVersion(base) } };
+  rememberLocalProfile(profile, s.api?.mock);
+  const clear = (config: Config) => { const result = key ? { ...config } : {}; if (key) delete result[key]; return result; };
+  setState((st) => ({
+    userPresets: st.userPresets.map((p) => p.type === type && p.name === name ? profile : p),
+    ...(type === 'filament' ? { filamentEdits: { ...st.filamentEdits, [name]: clear(st.filamentEdits[name] ?? {}) } }
+      : (type === 'machine' ? st.printer : st.process) === name ? { dirty: { ...st.dirty, [type]: clear(st.dirty[type]) } } : {}),
+    projectPresets: !st.projectPresets ? null : type === 'filament'
+      ? { ...st.projectPresets, filaments: st.projectPresets.filaments.map((p, i) => st.filamentSlots[i] === name ? clear(p) : p) }
+      : (type === 'machine' ? st.printer : st.process) === name ? { ...st.projectPresets, [type]: clear(st.projectPresets[type]) } : st.projectPresets,
+  }));
+}
+
+export function restoreCatalog(s: State): State {
+  const bases = importedBases();
+  if (!bases.length) return s;
+  let result = s;
+  for (const type of ['machine', 'process', 'filament'] as const) {
+    const key = type === 'machine' ? 'machines' : type === 'process' ? 'processes' : 'filaments';
+    const list = [...s[key]];
+    let changed = false;
+    for (const base of bases.filter((p) => p.type === type)) {
+      const index = list.findIndex((p) => p.name === base.name);
+      const current = list[index];
+      if (current?.imported && baseVersion(current) === baseVersion(base)) continue;
+      const shipped = String(current?.version ?? current?.config.version ?? '').split('.').map(Number);
+      const installed = String(base.version ?? '').split('.').map(Number);
+      const difference = shipped.map((n, i) => n - (installed[i] ?? 0)).find((n) => n !== 0);
+      if (current && !current.imported && difference !== undefined && difference > 0) continue;
+      if (index < 0) list.push(base); else list[index] = base;
+      changed = true;
+    }
+    if (changed) result = { ...result, [key]: list };
+  }
+  return result;
+}
+
+export function ensureDefaultProfiles(s: State): State {
+  s = restoreCatalog(s);
+  if (!s.machines.length) return s;
+  let next = { ...s, userPresets: [...s.userPresets] };
+  const add = (base: SystemPreset, name = displayName(base), values: Config = {}) => {
+    const profile = makeProfile(next, base, name, values);
+    next.userPresets.push(profile);
+    rememberLocalProfile(profile, next.api?.mock);
+    return profile.name;
+  };
+  const own = (type: PresetType, name: string): string => {
+    if (next.userPresets.some((p) => p.type === type && p.name === name)) return name;
+    const selectedPrinter = resolveProfile(next, 'machine', next.printer).base?.name ?? next.printer;
+    const base = profilesFor(next, type).find((p) => p.name === name)
+      ?? profilesFor(next, type).find((p) => type === 'machine' || isCompatible(p, selectedPrinter));
+    if (!base) return name;
+    const existing = next.userPresets.find((p) => p.type === type && p.base?.name === base.name && !Object.keys(p.overlay ?? p.overrides).length && !p.parent);
+    return existing?.name ?? add(base);
+  };
+  let preferred = '';
+  try { preferred = localStorage.getItem('orca.printer') ?? ''; } catch {  }
+  const known = (name: string) => next.machines.some((p) => p.name === name) || next.userPresets.some((p) => p.type === 'machine' && p.name === name);
+  next.printer = own('machine', next.printer || (known(preferred) ? preferred : known(DEFAULT_PRINTER) ? DEFAULT_PRINTER : next.machines[0].name));
+  const printer = resolveProfile(next, 'machine', next.printer).base;
+  const processes = next.processes.filter((p) => isCompatible(p, printer?.name ?? next.printer));
+  const filaments = next.filaments.filter((p) => isCompatible(p, printer?.name ?? next.printer));
+  const firstFilament = filaments.find((p) => /Generic PLA/.test(p.name)) ?? filaments.find((p) => /PLA.*Basic/.test(p.name)) ?? filaments[0];
+  if (!defaultsInitialized() && processes.length && firstFilament) {
+    const choices = defaultProcesses(next);
+    const startingProcess = next.process;
+    for (const choice of choices) {
+      const base = next.processes.find((p) => p.name === choice.preset);
+      if (!base) continue;
+      const name = add(base, `My ${choice.label}`, { layer_height: String(choice.layer), ...surfaceValues(choice.surface),
+        ...(choice.surface === 'smooth' ? CURVED_DEFAULTS : {}) });
+      if (!next.process || choice.id === 'default:standard' && startingProcess === base.name) next.process = name;
+    }
+    markDefaultsInitialized();
+  }
+  if (!next.process && processes[0]) next.process = processes[0].name;
+  next.process = own('process', next.process);
+  next.filamentSlots = (next.filamentSlots.length ? next.filamentSlots : firstFilament ? [firstFilament.name] : []).map((name) => own('filament', name || firstFilament?.name || ''));
+  return next;
+}

@@ -1,0 +1,9 @@
+:where(.orca-parity) .process-preset-picker { flex: 1; min-width: 0; }
+:where(.orca-parity) .surface-notice, :where(.orca-parity) .surface-why { margin: 4px 8px; color: var(--ink-2); font: var(--t-small); }
+:where(.orca-parity) .surface-segments { display: flex; min-width: 0; }
+:where(.orca-parity) .surface-segments > button { padding: 0 8px; }
+:where(.orca-parity) .surface-result { padding: 8px; color: var(--ink); font: var(--t-small); }
+:where(.orca-parity) .surface-result-item + .surface-result-item { margin-top: 8px; }
+:where(.orca-parity) .surface-result-title { font-weight: 600; overflow-wrap: anywhere; }
+:where(.orca-parity) .surface-result-reason { margin: 4px 0 0; color: var(--ink-2); overflow-wrap: anywhere; }
+:where(.orca-parity) .surface-result-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }

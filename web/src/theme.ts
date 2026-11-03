@@ -3,7 +3,7 @@ export type ThemePref = 'system' | 'light' | 'dark';
 const KEY = 'orca.web.theme';
 const media = window.matchMedia('(prefers-color-scheme: dark)');
 const listeners = new Set<() => void>();
-let pref: ThemePref = 'system';
+let pref: ThemePref = 'dark';
 let dark = false;
 try {
   const stored = localStorage.getItem(KEY);

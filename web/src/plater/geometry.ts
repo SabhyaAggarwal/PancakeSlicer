@@ -6,7 +6,6 @@ import type { Instance, PlateObject, Volume } from '../state/store';
 import { fitProfile } from './layerProfile';
 import type { Bvh } from './bvh';
 import type { MeshData, MeshIn, MeshOut } from './mesh.worker';
-import type { ShellsIn, ShellsOut } from './shells.worker';
 import type { ProjectItem, ProjectMaterials } from './threemf';
 import { paintJson } from './paint';
 
@@ -16,15 +15,32 @@ const DEG = Math.PI / 180;
 let worker: Worker | null = null;
 let nextRequest = 1;
 const pending = new Map<number, (m: MeshOut) => void>();
+const importedShells = new Map<string, THREE.BufferGeometry>();
 
 export function request(msg: DistributiveOmit<MeshIn, 'id'>, on: (m: MeshOut) => void, transfer: Transferable[] = []) {
   if (!worker) {
     worker = new Worker(new URL('./mesh.worker.ts', import.meta.url), { type: 'module' });
     worker.onmessage = (e: MessageEvent<MeshOut>) => {
+      if (e.data.type === 'shells') {
+        const key = `${e.data.id}:${e.data.item ?? -1}`;
+        const geo = importedShells.get(key);
+        importedShells.delete(key);
+        if (geo) { geo.userData.printInPlaceGap = e.data.gap; shellsChecked?.(geo); }
+        return;
+      }
       const h = pending.get(e.data.id);
-      if (e.data.type === 'done' || e.data.type === 'error') pending.delete(e.data.id);
+      if (e.data.type === 'done' || e.data.type === 'error' || e.data.type === 'stats') pending.delete(e.data.id);
       h?.(e.data);
     };
+    const fail = (message: string) => {
+      worker?.terminate();
+      worker = null;
+      const all = [...pending];
+      pending.clear();
+      for (const [id, h] of all) h({ type: 'error', id, message });
+    };
+    worker.onerror = (e) => { e.preventDefault(); fail(e.message || 'Mesh worker failed'); };
+    worker.onmessageerror = () => fail('Mesh worker message failed');
   }
   const id = nextRequest++;
   pending.set(id, on);
@@ -32,48 +48,44 @@ export function request(msg: DistributiveOmit<MeshIn, 'id'>, on: (m: MeshOut) =>
 }
 type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never;
 
-function toGeometry(d: MeshData): THREE.BufferGeometry {
+function toGeometry(d: MeshData & { id: number; item?: number }): THREE.BufferGeometry {
   const geo = new THREE.BufferGeometry();
   geo.userData.sourceCentre = d.centre;
+  geo.userData.contentSignature = d.contentSignature;
+  geo.userData.simplification = d.simplification;
+  geo.userData.meshStats = d.stats;
   geo.setAttribute('position', new THREE.BufferAttribute(d.positions, 3));
   geo.setAttribute('normal', new THREE.BufferAttribute(d.normals, 3));
   geo.setIndex(new THREE.BufferAttribute(d.index, 1));
   geo.boundingBox = new THREE.Box3(new THREE.Vector3(...d.min), new THREE.Vector3(...d.max));
   geo.boundingSphere = new THREE.Sphere(geo.boundingBox.getCenter(new THREE.Vector3()), d.radius);
-  checkShells(geo);
+  importedShells.set(`${d.id}:${d.item ?? -1}`, geo);
+  for (const [key, arrays] of [['displayLod', d.display], ['motionLod', d.motion]] as const) {
+    if (!arrays) continue;
+    const display = new THREE.BufferGeometry();
+    display.setAttribute('position', new THREE.BufferAttribute(arrays.positions, 3));
+    display.setAttribute('normal', new THREE.BufferAttribute(arrays.normals, 3));
+    display.setIndex(new THREE.BufferAttribute(arrays.index, 1));
+    display.boundingBox = geo.boundingBox;
+    display.boundingSphere = geo.boundingSphere;
+    geo.userData[key] = display;
+  }
   return geo;
 }
 
-let shellsWorker: Worker | null = null;
-const shellsPending = new Map<number, THREE.BufferGeometry>();
 let shellsChecked: ((geo: THREE.BufferGeometry) => void) | null = null;
 export const onShellsChecked = (f: (geo: THREE.BufferGeometry) => void) => void (shellsChecked = f);
 
-function checkShells(geo: THREE.BufferGeometry) {
-  if (!shellsWorker) {
-    shellsWorker = new Worker(new URL('./shells.worker.ts', import.meta.url), { type: 'module' });
-    shellsWorker.onmessage = (e: MessageEvent<ShellsOut>) => {
-      const g = shellsPending.get(e.data.id);
-      shellsPending.delete(e.data.id);
-      if (!g) return;
-      g.userData.printInPlaceGap = e.data.gap;
-      shellsChecked?.(g);
-    };
-  }
-  const id = nextRequest++;
-  shellsPending.set(id, geo);
-  shellsWorker.postMessage({ id, positions: geo.attributes.position.array as Float32Array, index: geo.index!.array as Uint32Array } satisfies ShellsIn);
-}
 
 function setBvh(geo: THREE.BufferGeometry, m: { bvh: Bvh; ms: number }) {
   geo.userData.bvh = m.bvh;
   geo.userData.bvhMs = m.ms;
 }
 
-export function loadMesh(file: File, progress?: (pct: number) => void): Promise<THREE.BufferGeometry> {
+export function loadMesh(file: File, progress?: (pct: number) => void, simplify = true): Promise<THREE.BufferGeometry> {
   return new Promise((resolve, reject) => {
     let geo: THREE.BufferGeometry | null = null;
-    request({ type: 'mesh', file }, (m) => {
+    request({ type: 'mesh', file, simplify }, (m) => {
       if (m.type === 'progress') progress?.(m.pct);
       else if (m.type === 'mesh') resolve((geo = toGeometry(m)));
       else if (m.type === 'hull' && geo) geo.userData.hull = m.hull;
@@ -312,17 +324,8 @@ export async function plateJson(objects: PlateObject[], firstLayer?: number): Pr
   return { plate, files: [...files].map(([name, blob]) => ({ name, blob })) };
 }
 
-const meshContents = new WeakMap<THREE.BufferGeometry, string>();
 export function meshSignature(o: PlateObject): unknown[] {
-  let contents = meshContents.get(o.geometry);
-  if (contents === undefined) {
-    contents = JSON.stringify([
-      Array.from(o.geometry.attributes.position.array),
-      o.geometry.index && Array.from(o.geometry.index.array),
-    ]);
-    meshContents.set(o.geometry, contents);
-  }
-  return [contents, objectMatrix(o).elements, ...(o.volumes ?? []).map((v) => [meshSignature({ ...o, geometry: v.geometry, volumes: [] })[0], v.matrix])];
+  return [o.geometry.userData.contentSignature ?? o.geometry.uuid, objectMatrix(o).elements, ...(o.volumes ?? []).map((v) => [meshSignature({ ...o, geometry: v.geometry, volumes: [] })[0], v.matrix])];
 }
 
 const round = (v: number) => Math.round(v * 1000) / 1000;

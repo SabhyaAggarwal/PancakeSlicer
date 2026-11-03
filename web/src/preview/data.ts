@@ -1,4 +1,5 @@
 import { MoveType, ROLE_COUNT, readStatistics, type Header, type LayerRec, type MoveChunk, type States, type StreamMeta } from './format';
+import { updateCachedRanges } from './colors';
 import type { WorkerIn, WorkerOut } from './loader.worker';
 
 export const TEX_WIDTH = 4096;
@@ -27,6 +28,8 @@ export class PreviewData {
   extruder = new Uint8Array(0);
   cp = new Uint8Array(0);
   de = new Float32Array(0);
+  orientation = new Float32Array(0);
+  inverseTime = new Float32Array(0);
   actual = new Float32Array(0);
   clearance = new Float32Array(0);
   feed = new Float32Array(0);
@@ -34,6 +37,7 @@ export class PreviewData {
   height = new Float32Array(0);
   mm3 = new Float32Array(0);
   time = new Float32Array(0);
+  cumTime = new Float64Array(0);
   state = new Uint32Array(0);
   gcode = new Uint32Array(0);
   layer = new Uint32Array(0);
@@ -71,6 +75,8 @@ export class PreviewData {
     this.extruder = new Uint8Array(n);
     this.cp = new Uint8Array(n);
     this.de = new Float32Array(n);
+    this.orientation = new Float32Array(h.oriented ? n * 3 : 0);
+    this.inverseTime = new Float32Array(h.oriented ? n : 0);
     this.actual = new Float32Array(h.extended ? n : 0);
     this.clearance = new Float32Array(h.extended ? n : 0);
     this.feed = new Float32Array(n);
@@ -78,6 +84,7 @@ export class PreviewData {
     this.height = new Float32Array(n);
     this.mm3 = new Float32Array(n);
     this.time = new Float32Array(n);
+    this.cumTime = new Float64Array(n);
     this.state = new Uint32Array(n);
     this.gcode = new Uint32Array(n);
     this.layer = new Uint32Array(n);
@@ -91,6 +98,7 @@ export class PreviewData {
     this.extruder.set(c.extruder, s);
     this.cp.set(c.cp, s);
     this.de.set(c.de, s);
+    if (c.orientation.length) { this.orientation.set(c.orientation, s * 3); this.inverseTime.set(c.inverseTime, s); }
     if (c.actual.length) {
       this.actual.set(c.actual, s);
       this.clearance.set(c.clearance, s);
@@ -109,6 +117,7 @@ export class PreviewData {
     this.lodCount += lod.length / 2;
     this.setLayers(layers);
     for (let i = Math.max(1, s); i < this.loaded; ++i) {
+      this.cumTime[i] = this.cumTime[i - 1] + this.time[i];
       const t = this.type[i] & 0x7f;
       const lt = this.layer[i];
       this.layerTimes[lt] = (this.layerTimes[lt] ?? 0) + this.time[i];
@@ -132,6 +141,7 @@ export class PreviewData {
         if (t === MoveType.PausePrint || t === MoveType.CustomGCode) this.colorPrintOptionLayers.add(lt);
       }
     }
+    updateCachedRanges(this);
   }
 
   setLayers(layers: LayerRec[]) {
@@ -217,31 +227,52 @@ export function supportGrams(d: PreviewData | null, total: number | null): numbe
 export function loadMoves(src: WorkerIn, on: LoadHandlers, colours?: string[]): { data: PreviewData; cancel(): void } {
   const d = new PreviewData();
   d.sourceUrl = src.url?.split('?')[0];
-  const worker = new Worker(new URL('./loader.worker.ts', import.meta.url), { type: 'module' });
-  worker.onmessage = (e: MessageEvent<WorkerOut>) => {
-    const m = e.data;
-    if (m.kind === 'header') {
-      d.onHeader(m.header, m.states, m.bytesTotal);
-      on.header(d);
-    } else if (m.kind === 'chunk') {
-      d.onChunk(m.chunk, m.layers, m.lod, m.lodBlocks);
-      d.bytes = m.bytes;
-      on.chunk(d, m.chunk.start, m.chunk.count);
-    } else if (m.kind === 'done') {
-      d.meta = colours ? { ...m.meta, extruder_colors: colours } : m.meta;
-      d.setLayers(m.layers);
-      d.loadMs = m.ms;
-      d.bytes = m.bytes;
-      d.layerTableMatches = m.layerTableMatches;
-      d.done = true;
-      worker.terminate();
-      on.done(d);
-    } else {
-      d.error = m.message;
-      worker.terminate();
-      on.error(d, m.message);
-    }
+  let worker: Worker;
+  try {
+    worker = new Worker(new URL('./loader.worker.ts', import.meta.url), { type: 'module' });
+  } catch (err) {
+    d.error = String(err instanceof Error ? err.message : err);
+    queueMicrotask(() => on.error(d, d.error!));
+    return { data: d, cancel() {} };
+  }
+  const fail = (message: string) => {
+    if (d.error) return;
+    d.error = message;
+    worker.terminate();
+    on.error(d, message);
   };
-  worker.postMessage(src);
+  worker.onerror = (e) => { e.preventDefault(); fail(e.message || 'Preview worker stopped'); };
+  worker.onmessageerror = () => fail('Preview data could not be transferred');
+  worker.onmessage = (e: MessageEvent<WorkerOut>) => {
+    try {
+      const m = e.data;
+      if (m.kind === 'header') {
+        d.onHeader(m.header, m.states, m.bytesTotal);
+        on.header(d);
+      } else if (m.kind === 'chunk') {
+        d.onChunk(m.chunk, m.layers, m.lod, m.lodBlocks);
+        d.bytes = m.bytes;
+        on.chunk(d, m.chunk.start, m.chunk.count);
+        let ready = false;
+        const ack = () => { if (!ready) { ready = true; worker.postMessage({ kind: 'ready' }); } };
+        const timer = setTimeout(ack, 32);
+        requestAnimationFrame(() => { clearTimeout(timer); ack(); });
+      } else if (m.kind === 'done') {
+        d.meta = colours ? { ...m.meta, extruder_colors: colours } : m.meta;
+        d.setLayers(m.layers);
+        d.loadMs = m.ms;
+        d.bytes = m.bytes;
+        d.layerTableMatches = m.layerTableMatches;
+        d.done = true;
+        worker.terminate();
+        on.done(d);
+      } else {
+        fail(m.message);
+      }
+    } catch (err) { fail(String(err instanceof Error ? err.message : err)); }
+  };
+  try { worker.postMessage(src); } catch (err) {
+    queueMicrotask(() => fail(String(err instanceof Error ? err.message : err)));
+  }
   return { data: d, cancel: () => worker.terminate() };
 }

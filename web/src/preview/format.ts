@@ -1,6 +1,6 @@
 export const MAGIC = 'ORCAMV01';
 
-export const CHUNK = 65536;
+export const CHUNK = 16384;
 export const BLOCK = 16384;
 
 export const MoveType = {
@@ -62,6 +62,9 @@ export interface Header {
   layerStride: number;
   metaBytes: number;
   extended: boolean;
+  oriented?: boolean;
+  tableRotary?: boolean;
+  tableAC?: boolean;
 }
 
 export interface States {
@@ -86,6 +89,8 @@ export interface MoveChunk {
   extruder: Uint8Array;
   cp: Uint8Array;
   de: Float32Array;
+  orientation: Float32Array;
+  inverseTime: Float32Array;
   actual: Float32Array;
   clearance: Float32Array;
   feed: Float32Array;
@@ -124,8 +129,11 @@ export function readHeader(dv: DataView): Header {
     layerCount: dv.getUint32(44, true),
     metaBytes: u64(48),
     extended: (dv.getUint32(28, true) & 1) !== 0,
+    oriented: (dv.getUint32(28, true) & 0x10000) !== 0,
+    tableRotary: (dv.getUint32(28, true) & 0x20000) !== 0,
+    tableAC: (dv.getUint32(28, true) & 0x40000) !== 0,
   };
-  if (h.headerSize < 64 || h.moveStride < (h.extended ? 60 : 52) || h.stateStride < 32 || h.layerStride < 16) throw new Error('bad strides');
+  if (h.headerSize < 64 || h.moveStride < (h.extended ? 60 : 52) + (h.oriented ? 16 : 0) || h.stateStride < 32 || h.layerStride < 16) throw new Error('bad strides');
   return h;
 }
 

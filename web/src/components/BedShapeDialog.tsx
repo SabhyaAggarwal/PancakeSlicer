@@ -1,3 +1,4 @@
+import { Dropdown } from './Dropdown';
 import { useState } from 'react';
 import { Modal, ModalTitle } from './Modal';
 import type { Config } from '../api/types';
@@ -55,7 +56,7 @@ export default function BedShapeDialog({ config, close }: { config: Config; clos
     <form onSubmit={(e) => { e.preventDefault(); if (!valid) return; setOption('machine', 'printable_area', points.map(([x, y]) => `${Number(x.toFixed(6))}x${Number(y.toFixed(6))}`)); setOption('machine', 'bed_custom_texture', texture); setOption('machine', 'bed_custom_model', model); close(); }}>
       <ModalTitle title="Bed Shape" onClose={close} />
       <div className="bed-dialog-body"><div className="bed-dialog-fields"><fieldset><legend>Shape</legend>
-        <select className="combo" aria-label="Shape" value={shape} onChange={(e) => setShape(e.target.value)}>{['Rectangular', 'Circular', 'Custom'].map((name) => <option key={name}>{name}</option>)}</select>
+        <Dropdown className="combo" aria-label="Shape" value={shape} onValueChange={setShape} options={[...['Rectangular', 'Circular', 'Custom'].map((name) => ({ value: name, label: name }))]} />
         {shape === 'Rectangular' && <>{pair('Size', size, setSize, 0, 214700)}{pair('Origin', origin, setOrigin, -107350, 107350)}</>}
         {shape === 'Circular' && <label>Diameter <input className="text num" type="number" aria-label="Diameter" min="0.01" step="any" value={diameter} onChange={(e) => setDiameter(e.target.valueAsNumber)} /> mm</label>}
         {shape === 'Custom' && <><label className="side-btn">Load shape from STL...<input type="file" aria-label="Load shape from STL" hidden accept=".stl" onChange={(e) => { const file = e.target.files?.[0]; if (file) void loadShape(file); }} /></label>{error && <div role="alert">{error}</div>}</>}

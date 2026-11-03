@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mutation, responseError } from '../api/access';
-import { getState, markStale, printerPreset, resolvePreset, setState, toast, type PlateObject } from '../state/store';
+import { getState, logNotice, markStale, printerPreset, resolvePreset, setState, toast, type PlateObject } from '../state/store';
 import { undoable } from '../state/history';
 import { bakeStl, instanceBox, instanceMatrix, loadMesh } from './geometry';
 
@@ -63,9 +63,9 @@ export async function fixModel(objectId: number) {
     const closed = Number(record.boundary_edges_closed) || 0;
     if (closed) done.push(`${closed} boundary edges closed`);
     replace(o, file, geometry, 'Fix Model');
-    toast(done.length ? `${o.name}: repaired (${done.join(', ')})` : `${o.name}: no errors found`);
+    logNotice(done.length ? `${o.name}: repaired (${done.join(', ')})` : `${o.name}: no errors found`, 'success');
   } catch (e) {
-    toast(`Fix Model: ${e instanceof Error ? e.message : String(e)}`);
+    toast(`Fix Model failed: ${e instanceof Error ? e.message : String(e)}`);
   } finally {
     if (getState().loading === 'Repairing model object') setState({ loading: null });
   }

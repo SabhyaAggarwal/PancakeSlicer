@@ -1,3 +1,5 @@
+import { Modal, ModalTitle } from './components/Modal';
+import { openPalette } from './commands/registry';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { isPaint, paintKeyTool, setPaintTool, togglePaint, type PaintKind } from './plater/paint';
 import { toggleViewOption } from './plater/viewOptions';
@@ -34,7 +36,11 @@ const PresetDialog = lazy(() => import('./components/Dialogs').then((m) => ({ de
 const PresetUx = lazy(() => import('./components/PresetUx'));
 const FlushDialog = lazy(() => import('./components/FlushDialog').then((m) => ({ default: m.FlushDialog })));
 const PreviewView = lazy(() => import('./components/PreviewView').then((m) => ({ default: m.PreviewView })));
-const SessionDialog = lazy(() => import('./components/SessionDialog'));
+const ProjectsView = lazy(() => import('./projects/ProjectsView'));
+const Palette = lazy(() => import('./commands/Palette'));
+
+import { useSyncExternalStore } from 'react';
+import { paletteQuery, subscribePalette } from './commands/registry';
 const AppDialog = lazy(() => import('./components/AppDialogs'));
 const CalibDialog = lazy(() => import('./components/CalibDialog'));
 const NonplanarCalibDialog = lazy(() => import('./components/NonplanarCalibDialog'));
@@ -72,6 +78,8 @@ function focusSoon(find: () => HTMLElement | null | undefined, frames = 60) {
 }
 
 export default function App() {
+  const projects = useStore((s) => s.tab === 'projects');
+  const palette = useSyncExternalStore(subscribePalette, paletteQuery);
   const multiPlate = useStore((s) => s.projectPlates.length > 1);
   const dialog = useStore((s) => s.dialog);
   const flushDialog = useStore((s) => s.flushDialog);
@@ -96,7 +104,7 @@ export default function App() {
       if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'f') return;
       e.preventDefault();
       e.stopPropagation();
-      setState({ presetUx: { kind: 'search' } });
+      openPalette('/');
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
@@ -237,8 +245,9 @@ export default function App() {
   return (
     <div className="app">
       <TopBar />
-      <TabBar />
-      <div className={`main ${sidebarHidden ? 'sidebar-hidden' : ''} ${dragOver ? 'drag-over' : ''}`}>
+      {!projects && <TabBar />}
+      {projects && <Suspense fallback={null}><ProjectsView /></Suspense>}
+      <div style={{ display: projects ? 'none' : undefined }} className={`main ${sidebarHidden ? 'sidebar-hidden' : ''} ${dragOver ? 'drag-over' : ''}`}>
         <div style={{ display: tab === 'prepare' ? 'contents' : 'none' }}>
           <Sidebar />
         </div>
@@ -283,7 +292,8 @@ export default function App() {
         {appDialog && <AppDialog which={appDialog} />}
         {calibDialog === 'nonplanar' ? <NonplanarCalibDialog /> : calibDialog && <CalibDialog which={calibDialog} />}
         {contextMenu && <ContextMenu />}
-        {sessionDialog && <SessionDialog />}
+        {sessionDialog && <Modal label="Projects" onClose={() => setState({ sessionDialog: null })}><ModalTitle title="Projects" onClose={() => setState({ sessionDialog: null })} /><ProjectsView /></Modal>}
+        {palette !== null && <Palette />}
       </Suspense>
       <AskHost />
       <Toast />

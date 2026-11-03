@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { useSubmenuPlace } from './menuPlace';
+import { Dropdown } from './Dropdown';
+import { useEffect, useState } from 'react';
+import { ActionMenu } from './Menu';
 import { getState, useStore, type Mix, type State } from '../state/store';
 import { addMix, blend, broken, componentColour, deleteMixes, editMix, filamentType, physicalCount, recommendations, SLOTS_MAX, watchColours } from '../plater/mixed';
 import { filamentColor } from '../plater/filamentColor';
@@ -15,12 +16,6 @@ const ramp = (s: State, m: Mix) => {
 };
 const swatch = (s: State, m: Mix, i: number) => (m.gradient !== null && m.components.length === 2 ? ramp(s, m) : filamentColor(s, i + 1));
 
-function MergeSub({ children }: { children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useSubmenuPlace(ref);
-  return <div ref={ref} role="menu" className="menu-pop ctx-sub">{children}</div>;
-}
-
 export default function MixedFilaments() {
   const mixes = useStore((s) => s.mixes);
   useStore((s) => s.slotColours);
@@ -28,14 +23,7 @@ export default function MixedFilaments() {
   const s = getState();
   const [dialog, setDialog] = useState<{ slot: number | null } | null>(null);
   const [menu, setMenu] = useState<{ slot: number; x: number; y: number } | null>(null);
-  const [sub, setSub] = useState(false);
   useEffect(watchColours, []);
-  useEffect(() => {
-    if (!menu) return;
-    const close = (e: MouseEvent) => { if (!(e.target as Element).closest('.ctx-menu, .mixed-row .icon-btn')) setMenu(null); };
-    addEventListener('mousedown', close);
-    return () => removeEventListener('mousedown', close);
-  }, [menu]);
   const slots = Object.keys(mixes).map(Number).sort((a, b) => a - b);
   const full = s.filamentSlots.length >= SLOTS_MAX;
   const removeAll = () => void confirmDialog('Mixed Filament', `Remove all ${slots.length} mixed filaments?`).then((ok) => ok && deleteMixes(slots, undefined, 'Remove all mixed filaments'));
@@ -71,25 +59,14 @@ export default function MixedFilaments() {
           </div>
         </>
       )}
-      {menu && (
-        <div role="menu" className="menu-pop ctx-menu" style={{ left: menu.x, top: menu.y }} onMouseLeave={() => { setMenu(null); setSub(false); }}>
-          <div className="ctx-entry" onMouseEnter={() => setSub(false)}><button className="menu-item" onClick={() => { setMenu(null); setDialog({ slot: menu.slot }); }}><span>Edit</span><span /></button></div>
-          <div className="ctx-entry" onMouseEnter={() => setSub(true)}>
-            <button className="menu-item" aria-haspopup="menu" aria-expanded={sub} onClick={() => setSub(true)}><span>Merge with</span><span>▸</span></button>
-            {sub && (
-              <MergeSub>
-                {s.filamentSlots.map((_, j) => j !== menu.slot && (
-                  <div key={j} className="ctx-entry"><button className="menu-item" onClick={() => { setMenu(null); deleteMixes([menu.slot], j + 1, 'Merge filament'); }}>
-                    <span><i className="mixed-dot" style={{ background: filamentColor(s, j + 1) }} />Filament {j + 1}</span><span />
-                  </button></div>
-                ))}
-              </MergeSub>
-            )}
-          </div>
-          <div className="menu-sep" />
-          <div className="ctx-entry" onMouseEnter={() => setSub(false)}><button className="menu-item" onClick={() => { setMenu(null); deleteMixes([menu.slot]); }}><span>Delete</span><span /></button></div>
-        </div>
-      )}
+      {menu && <ActionMenu label={`Filament ${menu.slot + 1}`} at={menu} onClose={() => setMenu(null)} items={[
+        { label: 'Mixed filament', header: true },
+        { label: 'Edit', action: () => setDialog({ slot: menu.slot }) },
+        { label: 'Merge with', sub: s.filamentSlots.flatMap((_, j) => j === menu.slot ? [] : [{ label: `Filament ${j + 1}`,
+          icon: <i className="mixed-dot" style={{ background: filamentColor(s, j + 1) }} />,
+          action: () => deleteMixes([menu.slot], j + 1, 'Merge filament') }]) },
+        'sep', { label: 'Delete', action: () => deleteMixes([menu.slot]) },
+      ]} />}
       {dialog && <MixDialog slot={dialog.slot} close={() => setDialog(null)} />}
     </div>
   );
@@ -127,12 +104,9 @@ function MixDialog({ slot, close }: { slot: number | null; close(): void }) {
         <div className="mixed-section">Select Mixed Materials</div>
         {m.components.map((c, k) => (
           <label key={k} className="prefs-row"><span>Filament {k + 1}</span>
-            <select className="combo" value={c} onChange={(e) => setM({ ...m, components: m.components.map((x, j) => (j === k ? Number(e.target.value) : x)) })}>
-              {!c && <option value={0}>-- Select --</option>}
-              {Array.from({ length: n }, (_, j) => j + 1).filter((j) => j === c || !m.components.includes(j)).map((j) => (
-                <option key={j} value={j}>{j}: {s.filamentSlots[j - 1]}</option>
-              ))}
-            </select>
+            <Dropdown className="combo" value={c} onValueChange={(next) => setM({ ...m, components: m.components.map((x, j) => (j === k ? Number(next) : x)) })} options={[...(!c ? [{ value: 0, label: '-- Select --' }] : []), ...Array.from({ length: n }, (_, j) => j + 1).filter((j) => j === c || !m.components.includes(j)).map((j) => (
+                ({ value: j, label: <>{j}: {s.filamentSlots[j - 1]}</> })
+              ))]} />
           </label>
         ))}
         <div className="mixed-buttons">
@@ -159,10 +133,7 @@ function MixDialog({ slot, close }: { slot: number | null; close(): void }) {
           <label className="prefs-row"><span>Gradient Effect</span>
             <input type="checkbox" checked={m.gradient !== null} onChange={(e) => setM({ ...m, gradient: e.target.checked ? 0 : null, perPart: false })} />
             {m.gradient !== null && (
-              <select className="combo" value={m.gradient} aria-label="Gradient direction" onChange={(e) => setM({ ...m, gradient: Number(e.target.value) as 0 | 1 })}>
-                <option value={0}>{m.components[0]} → {m.components[1]}</option>
-                <option value={1}>{m.components[1]} → {m.components[0]}</option>
-              </select>
+              <Dropdown className="combo" value={m.gradient} aria-label="Gradient direction" onValueChange={(next) => setM({ ...m, gradient: Number(next) as 0 | 1 })} options={[({ value: 0, label: <>{m.components[0]} → {m.components[1]}</> }), ({ value: 1, label: <>{m.components[1]} → {m.components[0]}</> })]} />
             )}
           </label>
           {m.gradient !== null && (

@@ -1,5 +1,5 @@
 export const ownsKeys = (e: KeyboardEvent) =>
-  e.target instanceof Element && !!e.target.closest('input,select,textarea,[contenteditable="true"],[role="slider"],[role="menu"],dialog');
+  e.target instanceof Element && !!e.target.closest('input,select,textarea,[contenteditable="true"],[role="slider"],[role="menu"],[role="listbox"],[aria-haspopup="listbox"],[role="dialog"],dialog');
 
 export function menuKeys(e: { key: string; preventDefault(): void; stopPropagation(): void }, menu: HTMLElement | null, close: () => void, back?: HTMLElement | null): boolean {
   if (!menu) return false;

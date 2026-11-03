@@ -1,7 +1,7 @@
 // Minified chunks drop licence comments, but MIT-style licences require the notice in every copy.
 // Ship the licence of each npm package that reaches a main or worker chunk, plus the licence
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { Plugin } from 'vite';
 
 const bundled = new Map<string, { dir: string; files: Set<string> }>();
@@ -43,8 +43,12 @@ export function licenceNotices(emit = true): Plugin {
       for (const [, { dir }] of bundled) {
         const { dependencies = {} } = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { dependencies?: Record<string, string> };
         for (const name of Object.keys(dependencies)) {
-          const nested = join(dir, 'node_modules', name);
-          if (!bundled.has(name)) bundled.set(name, { dir: existsSync(nested) ? nested : join(dir, '..', name), files: new Set() });
+          if (bundled.has(name)) continue;
+          let parent = dir;
+          while (!existsSync(join(parent, 'node_modules', name, 'package.json')) && dirname(parent) !== parent) parent = dirname(parent);
+          const resolved = join(parent, 'node_modules', name);
+          if (!existsSync(join(resolved, 'package.json'))) this.error(`Cannot resolve bundled dependency ${name} from ${dir}`);
+          bundled.set(name, { dir: resolved, files: new Set() });
         }
       }
       const notices = [...bundled].sort(([a], [b]) => a.localeCompare(b)).map(([name, { dir, files }]) => {

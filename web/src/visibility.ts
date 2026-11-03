@@ -1,6 +1,24 @@
-import { OPTIONS, splitKey, type TabDesc, type OptionMode, type OptionDef } from './options';
-import type { Config } from './api/types';
+import { isHidden as permanentlyHidden, modeVisible, OPTIONS, splitKey, type TabDesc, type OptionMode, type OptionDef } from './options';
+import type { Config, PresetType } from './api/types';
 import { canOneShot } from './api/client';
+import { effectiveMode, type State } from './state/store';
+import { commonMode, hiddenReason } from './settings/common';
+
+export function isHidden(k: string, s?: State, type: PresetType = 'filament', native?: OptionMode, more = false, slot?: number): boolean {
+  const key = splitKey(k)[0];
+  if (permanentlyHidden(key)) return true;
+  if (!s) return false;
+  if (s.settingsFocus?.type === type && s.settingsFocus.key === key) return false;
+  const mode = effectiveMode(s), rank = native ?? OPTIONS[key]?.mode;
+  if (!rank) return true;
+  if (mode === 'develop' || mode === 'developer') return !modeVisible(rank, mode);
+  const reason = hiddenReason(k, s, type, slot);
+  if (reason && !(reason === 'other plate' && more)) return true;
+  return !modeVisible(commonMode(type, key, s, rank), more && mode === 'simple' ? 'advanced' : mode);
+}
+
+export const settingVisible = (type: PresetType, key: string, s: State, native?: OptionMode, more = false, slot?: number): boolean =>
+  !!OPTIONS[splitKey(key)[0]] && !isHidden(key, s, type, native, more, slot);
 
 type Scalar = string | number | boolean | null | undefined;
 export type Environment = Record<string, unknown>;
@@ -103,6 +121,7 @@ export function fieldDefinition(key: string, env: Environment): Partial<OptionDe
     const all = [...(def.enum_values ?? []).filter((v) => v !== 'oneshot'), ...(canOneShot() && (env.mode !== 'Simple' || env.nonplanar_mode === 'oneshot') ? ['oneshot'] : [])];
     const rotary = String(env.nonplanar_kinematics ?? 'none') !== 'none';
     return {
+      label: 'Slicing method',
       enum_values: all,
       enum_labels: all.map((v, i) => `${v === 'oneshot' ? 'One-shot' : def.enum_labels?.[i] ?? v}${!rotary && ['multiplanar', 'field'].includes(v) ? ' (needs rotary axes)' : ''}`),
     };

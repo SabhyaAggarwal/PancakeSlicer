@@ -1,3 +1,4 @@
+import { Dropdown } from './Dropdown';
 import { useEffect, useState, type ReactNode } from 'react';
 import { effectiveConfig, getState } from '../state/store';
 import {
@@ -22,10 +23,6 @@ function compactWeight(g: number): string {
   return `${g < 0 ? '-' : ''}${v.toFixed(2)}${unit}`;
 }
 
-function percent(time: number, total: number): string {
-  const p = total > 0 ? time / total : 0;
-  return p === 0 ? '0' : p > 0.001 ? (p * 100).toFixed(1) : '<0.1';
-}
 
 function Swatch({ c }: { c: RGB }) {
   return <span className="lg-swatch" style={{ background: css(c) }} />;
@@ -82,32 +79,22 @@ export function Legend(props: {
 }) {
   const { data: d, ui, setUi, ranges } = props;
   const [open, setOpen] = useState(() => !NARROW.matches);
-  const [details, setDetails] = useState(false);
   useEffect(() => {
     const fold = () => setOpen(!NARROW.matches);
     NARROW.addEventListener('change', fold);
     return () => NARROW.removeEventListener('change', fold);
   }, []);
-  const [mode, setMode] = useState(0);
-  const modes = (d.meta.estimated_times ?? []).filter((m) => typeof m?.time === 'number' && m.time > 0).length;
-  const total = d.totalTime(mode);
-  const prepare = d.meta.estimated_times?.[mode]?.prepare_time;
+  const total = d.totalTime(0);
   const state = getState();
   const record = d.sourceUrl && state.job.id && d.sourceUrl === state.api?.movesUrl(state.job.id)
     ? state.job.status?.record : undefined;
   const printStats = d.statistics(record);
-  const fallbackTip = 'Print statistics unavailable from this tool. Filament is estimated from preview moves; flushed filament may be missing.';
   const fil = filamentInfo(d, printStats);
   const totalsByExtruder = printStats
     ? [...printStats.per_extruder].sort((a, b) => a.extruder_id - b.extruder_id)
       .map((f) => ({ id: f.extruder_id, mm: f.used_filament_mm, grams: f.used_filament_g }))
     : fil.map((f, id) => ({ ...f, id }));
-  const filMm = fil.reduce((a, f) => a + f.mm, 0), filG = fil.reduce((a, f) => a + f.grams, 0);
-  const roleGrams = (role: number) => fil.reduce((sum, f, id) =>
-    sum + (f.mm > 0 ? (d.roleFilamentByExtruder[id]?.[role] ?? 0) * f.grams / f.mm : 0), 0);
-  const towerMm = d.roleFilament[17], towerG = roleGrams(17);
-  const supportMm = d.roleFilament[14] + d.roleFilament[15] + d.roleFilament[16];
-  const supportG = roleGrams(14) + roleGrams(15) + roleGrams(16);
+  const filG = fil.reduce((a, f) => a + f.grams, 0);
   const toggle = (k: keyof PreviewUi['vis']) => setUi((u) => ({ ...u, vis: { ...u.vis, [k]: !u.vis[k] } }));
   const toggleRole = (r: number) =>
     setUi((u) => {
@@ -126,19 +113,13 @@ export function Legend(props: {
       case 'feature':
         return (
           <table className="lg-table">
-            <thead>
-              <tr><th>Line Type</th><th>Time</th><th>%</th><th colSpan={2}>Usage</th></tr>
-            </thead>
             <tbody>
               {ROLE_NAMES.map((name, r) => (d.roleTime[r] > 0 || d.roleFilament[r] > 0) && (
-                <tr key={r} className={ui.vis.hiddenRoles.has(r) ? 'off' : ''} onClick={() => toggleRole(r)} title="Click to show or hide"
+                <tr key={r} className={ui.vis.hiddenRoles.has(r) ? 'off' : ''} onClick={() => toggleRole(r)}
                   onMouseEnter={() => focusRole(r)} onMouseLeave={() => focusRole(null)}>
                   <td><button type="button" className="lg-role" aria-pressed={!ui.vis.hiddenRoles.has(r)} onClick={(e) => { e.stopPropagation(); toggleRole(r); }}
                     onFocus={() => focusRole(r)} onBlur={() => focusRole(null)}><Swatch c={ROLE_COLORS[r]} />{name}</button></td>
                   <td>{d.roleTime[r] > 0 ? shortTime(d.roleTime[r]) : ''}</td>
-                  <td>{percent(d.roleTime[r], total)}</td>
-                  <td>{(d.roleFilament[r] / 1000).toFixed(2)}m</td>
-                  <td>{compactWeight(roleGrams(r))}</td>
                 </tr>
               ))}
             </tbody>
@@ -175,12 +156,11 @@ export function Legend(props: {
         const names = d.meta.filament_names?.length ? d.meta.filament_names : s.filamentSlots;
         return (
           <table className="lg-table">
-            <thead><tr><th>Filament</th><th>Total</th></tr></thead>
             <tbody>
               {totalsByExtruder.map((f) => (
-                <tr key={f.id} title={printStats ? undefined : fallbackTip}>
+                <tr key={f.id}>
                   <td><Swatch c={cols[f.id] ?? hexToRgb('#F2754E')} />{f.id + 1} {names[f.id] ?? ''}</td>
-                  <td>{(f.mm / 1000).toFixed(2)} m  {compactWeight(f.grams)}</td>
+                  <td>{compactWeight(f.grams)}</td>
                 </tr>
               ))}
             </tbody>
@@ -199,22 +179,19 @@ export function Legend(props: {
     ['seam', 'Seams', OPTION_COLORS.seam],
   ];
   const stats = props.scene?.lastFrame;
-  const totalMm = printStats?.total_used_filament_mm ?? filMm, totalG = printStats?.total_weight_g ?? filG;
+  const totalG = printStats?.total_weight_g ?? filG;
   return (
     <div className={open ? 'legend' : 'legend closed'} aria-label="Legend">
       <div className="lg-head">
-        <select aria-label="Color scheme" value={ui.view} onChange={(e) => setUi((u) => ({ ...u, view: e.target.value as ViewType }))}>
-          {VIEW_TYPES.filter((v) => d.header?.extended || canExtend(d) || !EXTENDED_VIEWS.has(v.key)).map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}
-        </select>
+        <Dropdown aria-label="Color scheme" value={ui.view} onValueChange={(next) => setUi((u) => ({ ...u, view: next as ViewType }))} options={[...VIEW_TYPES.filter((v) => d.header?.extended || canExtend(d) || !EXTENDED_VIEWS.has(v.key)).map((v) => ({ value: v.key, label: v.label }))]} />
         <button className="lg-collapse" onClick={() => setOpen(!open)} aria-expanded={open} title={open ? 'Hide legend' : 'Show legend'} aria-label={open ? 'Hide legend' : 'Show legend'}>
           <span aria-hidden="true" className={open ? 'lg-caret up' : 'lg-caret'} />
         </button>
       </div>
       {!props.explainOnly && (
-        <div className="lg-totals" title={printStats ? undefined : fallbackTip}>
+        <div className="lg-totals">
           <div><span className="lg-k label-caps">Time</span><span className="lg-v">{shortTime(total)}</span></div>
-          <div><span className="lg-k label-caps">Filament</span><span className="lg-v">{compactWeight(totalG)}</span><span className="lg-u">{(totalMm / 1000).toFixed(2)} m</span></div>
-          {printStats && printStats.total_cost > 0 && <div><span className="lg-k label-caps">Cost</span><span className="lg-v">{printStats.total_cost.toFixed(2)}</span></div>}
+          <div><span className="lg-k label-caps">Filament</span><span className="lg-v">{compactWeight(totalG)}</span></div>
         </div>
       )}
       {open && (
@@ -224,13 +201,11 @@ export function Legend(props: {
             <>
               <div className="lg-body">{body()}</div>
               {props.explain}
-              <div className="lg-sec label-caps">Options</div>
               <div className="lg-options">
                 {options.map(([k, label, c]) => (
                   <label key={k} className="lg-opt">
                     <input type="checkbox" checked={ui.vis[k] as boolean} onChange={() => toggle(k)} />
                     <Swatch c={c} />{label}
-                    {k === 'travel' && d.travelTime > 0 && <span className="lg-time">{shortTime(d.travelTime)}</span>}
                   </label>
                 ))}
                 <label className="lg-opt">
@@ -238,40 +213,6 @@ export function Legend(props: {
                   <span className="lg-swatch blank" />Shells
                 </label>
               </div>
-              <details className="lg-details" open={details} onToggle={(e) => setDetails(e.currentTarget.open)}>
-              <summary className="lg-sec label-caps">
-                {ui.view === 'feature' ? 'Total estimation' : 'Time Estimation'}
-                {modes > 1 && mode === 0 ? ' [Normal mode]' : ''}
-              </summary>
-              <table className="lg-summary">
-                <tbody>
-                  {ui.view === 'feature' && (
-                    <>
-                      <tr title={printStats ? 'Completed export totals, including flushed filament and wipe tower.' : fallbackTip}>
-                        <td>Total Filament:</td><td>{(totalMm / 1000).toFixed(2)} m  {compactWeight(totalG)}</td>
-                      </tr>
-                      {printStats && <>
-                        <tr title="Preview extrusion consumption excluding prime tower, support and internal speed samples.">
-                          <td>Model Filament:</td><td>{((filMm - towerMm - supportMm) / 1000).toFixed(2)} m  {compactWeight(filG - towerG - supportG)}</td>
-                        </tr>
-                        {towerMm > 0 && <tr><td>Prime tower:</td><td>{(towerMm / 1000).toFixed(2)} m  {compactWeight(towerG)}</td></tr>}
-                        {supportMm > 0 && <tr><td>Support:</td><td>{(supportMm / 1000).toFixed(2)} m  {compactWeight(supportG)}</td></tr>}
-                        <tr title="Export total minus all preview extrusion consumption, including prime tower and support. Weights use the export's per-filament weight per millimeter.">
-                          <td>Flushed filament:</td><td>{(Math.max(0, printStats.total_used_filament_mm - filMm) / 1000).toFixed(2)} m  {compactWeight(Math.max(0, printStats.total_weight_g - filG))}</td>
-                        </tr>
-                        <tr><td>Cost:</td><td>{printStats.total_cost.toFixed(2)}</td></tr>
-                        <tr><td>Tool changes:</td><td>{printStats.total_toolchanges}</td></tr>
-                      </>}
-                    </>
-                  )}
-                  {prepare ? <tr><td>Prepare time:</td><td>{shortTime(prepare)}</td></tr> : null}
-                  <tr><td>Model printing time:</td><td>{shortTime(total - (prepare ?? 0))}</td></tr>
-                </tbody>
-              </table>
-              {modes > 1 && (
-                <button className="lg-mode" onClick={() => setMode(1 - mode)}>{mode ? 'Show normal mode' : 'Show stealth mode'}</button>
-              )}
-              </details>
               {stats && SHOW_STATS && (
                 <div className="lg-perf" title="Last frame: blocks drawn / culled / at level of detail, segments drawn, frame CPU and GPU time">
                   {stats.blocks} blocks ({stats.lodBlocks} LOD, {stats.culled} culled) · {(stats.segments / 1e6).toFixed(2)} M seg · {stats.frameMs.toFixed(1)} ms

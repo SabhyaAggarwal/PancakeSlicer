@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { forgetCompare, setStandardData, startCompare, stopCompare, useCompare, useStandardData } from '../compare';
 import { computeRanges, drawMasks, NONPLANAR_PLANAR_COLOR, type Visibility } from '../preview/colors';
 import { loadMoves, supportGrams, type PreviewData } from '../preview/data';
-import { area, grams, microns, readRecord, supportText, type RecordSummary } from '../preview/explain-record';
+import { area, grams, microns, nativeSurfaceSummary, readRecord, supportText, type RecordSummary } from '../preview/explain-record';
 import { MoveType, shortTime } from '../preview/format';
 import { PreviewScene } from '../preview/PreviewScene';
 import { ERROR_BINS, surfaceGrid } from '../preview/surface-grid';
@@ -82,6 +82,7 @@ export function ExplainLegend(props: {
 
   return (
     <div className="np-legend">
+      {nativeSurfaceSummary(record) && <p role="status">{nativeSurfaceSummary(record)}</p>}
       <div className="np-toggles">
         <label className="lg-opt"><input type="checkbox" checked={compare} onChange={(e) => setCompare(e.target.checked)} />Compare with Standard</label>
         <label className="lg-opt">

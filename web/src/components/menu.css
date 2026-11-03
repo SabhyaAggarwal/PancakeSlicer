@@ -1,0 +1,16 @@
+:where(.orca-parity) .orca-menu { z-index: 1000; min-width: 200px; max-width: min(640px, calc(100vw - 16px)); max-height: min(560px, var(--radix-popper-available-height, calc(100vh - 16px))); overflow: auto; padding: 4px; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 4px; font: var(--t-body); box-shadow: 0 6px 18px #0006; }
+:where(.orca-parity) .orca-menu .menu-item { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 28px; padding: 4px 8px; border: 0; border-radius: 3px; background: transparent; color: var(--text); font: inherit; text-align: left; cursor: default; outline: none; white-space: normal; overflow-wrap: anywhere; }
+:where(.orca-parity) .orca-menu .menu-item[data-highlighted], :where(.orca-parity) .orca-menu .menu-item:hover:not([data-disabled]) { background: var(--selected); }
+:where(.orca-parity) .orca-menu .menu-item[data-disabled] { color: var(--disabled); }
+:where(.orca-parity) .orca-menu-label { flex: 1; display: flex; align-items: center; gap: 8px; }
+:where(.orca-parity) .orca-menu-key { margin-left: auto; padding-left: 20px; color: var(--text-dim); white-space: normal; }
+:where(.orca-parity) .menu-check { width: 14px; flex: none; color: var(--accent); }
+:where(.orca-parity) .orca-menu .menu-sep { height: 1px; margin: 4px; background: var(--border); }
+:where(.orca-parity) .orca-menu-group { padding: 6px 8px 4px; font-weight: 600; color: var(--text-dim); }
+:where(.orca-parity) .menu-position-anchor { width: 0; height: 0; padding: 0; border: 0; pointer-events: none; }
+:where(.orca-parity) .dropdown { display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; height: auto; min-width: 0; padding: 3px 8px; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 3px; text-align: left; font: inherit; }
+:where(.orca-parity) .dropdown-value { flex: 1; white-space: normal; overflow-wrap: anywhere; }
+:where(.orca-parity) .dropdown:focus-visible, :where(.orca-parity) .dropdown[data-state=open] { outline: 1px solid var(--accent); outline-offset: 1px; }
+:where(.orca-parity) .dropdown:disabled { opacity: .55; }
+:where(.orca-parity) .dropdown-list { min-width: var(--radix-select-trigger-width); }
+:where(.orca-parity) .menu-scroll { text-align: center; background: var(--panel); }

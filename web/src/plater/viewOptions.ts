@@ -11,6 +11,8 @@ export const subscribeViewOptions = (l: () => void) => (listeners.add(l), () => 
 export const useViewOptions = () => useSyncExternalStore(subscribeViewOptions, viewOptions);
 export function toggleViewOption(k: keyof ViewOptions) {
   options = { ...options, [k]: !options[k] };
-  localStorage.setItem(KEY, JSON.stringify({ gridlines: options.gridlines, outline: options.outline, axes: options.axes, com: options.com, navigator: options.navigator, gcodeWindow: options.gcodeWindow }));
+  try {
+    localStorage.setItem(KEY, JSON.stringify({ gridlines: options.gridlines, outline: options.outline, axes: options.axes, com: options.com, navigator: options.navigator, gcodeWindow: options.gcodeWindow }));
+  } catch {  }
   listeners.forEach((l) => l());
 }

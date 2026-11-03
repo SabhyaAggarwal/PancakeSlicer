@@ -1,3 +1,4 @@
+import { Dropdown } from './Dropdown';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { changeVolumeType, setState, useStore, type SvgSpec } from '../state/store';
 import { editedSvg, svgSurfaceOk, updateSvg } from '../plater/svg';
@@ -48,10 +49,8 @@ export default function SvgPanel() {
       {placing && <div className="cut-joint-hint">Click on the object's surface to place the SVG</div>}
       {v && (
         <label className="prefs-row cut-joint-row"><span>Operation</span>
-          <select className="combo" value={v.type} aria-label="Operation"
-            onChange={(e) => { changeVolumeType(objectId, v.id, e.target.value as typeof v.type); if (spec.surface) void updateSvg(spec); }}>
-            {OPERATIONS.map(([t, label]) => <option key={t} value={t} disabled={t === 'part' && !!spec.surface && !raises}>{label}</option>)}
-          </select>
+          <Dropdown className="combo" value={v.type} aria-label="Operation"
+            onValueChange={(next) => { changeVolumeType(objectId, v.id, next as typeof v.type); if (spec.surface) void updateSvg(spec); }} options={[...OPERATIONS.map(([t, label]) => ({ value: t, label, disabled: t === 'part' && !!spec.surface && !raises }))]} />
         </label>
       )}
       <div className="cut-joint-buttons"><span style={{ flex: 1 }} /><button type="button" className="btn primary" onClick={() => setState({ gizmo: 'none' })}>Done</button></div>

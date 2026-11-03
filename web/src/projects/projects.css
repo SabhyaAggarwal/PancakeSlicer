@@ -1,0 +1,35 @@
+:where(.orca-parity) .projects { --pj-r: var(--r-section); --pj-r-ctl: var(--r-1); --pj-card: 240px;
+  flex: 1; min-width: 0; container-type: inline-size; min-height: 0; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); overflow: hidden; }
+:where(.orca-parity) .pj-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); padding: var(--s-6) var(--s-7) var(--s-5); flex: none; }
+:where(.orca-parity) .pj-heading { font: var(--t-panel); margin: 0; }
+:where(.orca-parity) .pj-count { font: var(--t-small); color: var(--ink-3); font-variant-numeric: tabular-nums; margin-right: auto; }
+:where(.orca-parity) .pj-bar .btn-primary, :where(.orca-parity) .pj-bar .btn-ghost { height: 32px; border-radius: var(--pj-r-ctl); padding: 0 var(--s-5); }
+:where(.orca-parity) .pj-bar .btn-ghost { border: 1px solid var(--line-strong); }
+:where(.orca-parity) .pj-search { width: min(240px, 100%); height: var(--h-large); padding: 0 var(--s-4); border: 1px solid var(--line-strong); border-radius: var(--pj-r-ctl); font: var(--t-body); background: var(--panel); }
+:where(.orca-parity) .pj-grid { flex: 1; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(var(--pj-card), 100%), 1fr)); gap: var(--s-6);
+  padding: var(--s-3) var(--s-7) var(--s-7); align-content: start; }
+:where(.orca-parity) .pj-card { position: relative; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--pj-r); background: var(--panel);
+  cursor: pointer; overflow: hidden; outline: 0; }
+:where(.orca-parity) .pj-card:hover { border-color: var(--line-strong); }
+:where(.orca-parity) .pj-card.open { border-color: var(--accent); }
+:where(.orca-parity) .pj-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+:where(.orca-parity) .pj-thumb { aspect-ratio: 4 / 3; background: var(--surface); border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: center; }
+:where(.orca-parity) .pj-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+:where(.orca-parity) .pj-meta { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-4) var(--s-5) var(--s-5); min-width: 0; }
+:where(.orca-parity) .pj-name { font: var(--t-body); font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; padding-right: var(--s-6); }
+:where(.orca-parity) .pj-time { font: var(--t-small); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+:where(.orca-parity) .pj-rename { font: var(--t-body); font-weight: 600; height: 24px; padding: 0 var(--s-2); margin: 0 calc(-1 * var(--s-2)); border: 1px solid var(--focus); border-radius: var(--pj-r-ctl); }
+:where(.orca-parity) .pj-more { position: absolute; right: var(--s-3); bottom: var(--s-4); width: 28px; height: 28px; border: 0; border-radius: var(--pj-r-ctl); background: none; color: var(--ink-3);
+  font-size: 16px; line-height: 1; cursor: pointer; opacity: 0; }
+:where(.orca-parity) .pj-card:hover .pj-more, :where(.orca-parity) .pj-card:focus-within .pj-more, :where(.orca-parity) .pj-more[aria-expanded='true'] { opacity: 1; }
+:where(.orca-parity) .pj-more:hover { background: var(--surface); color: var(--ink); }
+:where(.orca-parity) .pj-menu { position: fixed; min-width: 180px; z-index: 50; border-radius: var(--pj-r); padding: var(--s-2); }
+:where(.orca-parity) .pj-menu .menu-item { border-radius: var(--pj-r-ctl); }
+:where(.orca-parity) .pj-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-5); color: var(--ink-3); font: var(--t-body); }
+:where(.orca-parity) .pj-drop { width: 480px; max-width: 80%; height: 200px; border: 1px solid var(--line-strong); border-radius: var(--pj-r); background: none; color: var(--ink-3); font: var(--t-body); cursor: pointer; }
+:where(.orca-parity) .pj-drop:hover, :where(.orca-parity) .drag-over .pj-drop { border-color: var(--accent); color: var(--ink); }
+@media (pointer: coarse) { :where(.orca-parity) .pj-more { opacity: 1; width: 32px; height: 32px; } }
+
+@container (max-width: 519px) { :where(.orca-parity) .pj-grid { grid-template-columns: minmax(0, 1fr); } }
+@container (min-width: 520px) and (max-width: 899px) { :where(.orca-parity) .pj-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+:where(.orca-parity) .pj-rename { width: 100%; box-sizing: border-box; }

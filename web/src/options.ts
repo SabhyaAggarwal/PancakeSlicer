@@ -6,7 +6,7 @@ import filamentUrl from './tabs/filament.json?url&no-inline';
 import printerUrl from './tabs/printer.json?url&no-inline';
 import { setOptionTypes } from './config-values';
 import { normalizeOptions } from './option-inventory';
-import { catalogWorker, workerId } from './api/worker';
+import { catalogWorker, onWorkerFailure, workerId } from './api/worker';
 import type { CatalogOut } from './api/catalog.worker';
 
 export type OptionMode = 'simple' | 'advanced' | 'develop' | 'developer';
@@ -78,9 +78,9 @@ export function loadTab(tab: TabDesc['tab']): Promise<void> {
     const id = workerId();
     const cleanup = () => {
       worker.removeEventListener('message', on);
-      worker.removeEventListener('error', fail);
+      unsubscribe();
     };
-    const fail = (e: ErrorEvent) => { cleanup(); reject(new Error(e.message)); };
+    const fail = (error: Error) => { cleanup(); reject(error); };
     const on = (e: MessageEvent<CatalogOut>) => {
       if (e.data.id !== id) return;
       if (e.data.type === 'settings') {
@@ -98,8 +98,8 @@ export function loadTab(tab: TabDesc['tab']): Promise<void> {
         reject(new Error(e.data.message));
       }
     };
+    const unsubscribe = onWorkerFailure(fail);
     worker.addEventListener('message', on);
-    worker.addEventListener('error', fail);
     worker.postMessage({ id, type: 'settings', mock: new URLSearchParams(location.search).has('mock'), optionsUrl: new URL(optionsUrl, location.href).href, tabUrl: new URL(URLs[tab], location.href).href });
   }).catch((error) => { pending.delete(tab); throw error; });
   pending.set(tab, promise);

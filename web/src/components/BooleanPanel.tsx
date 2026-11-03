@@ -1,3 +1,4 @@
+import { Dropdown } from './Dropdown';
 import { useState } from 'react';
 import { useStore } from '../state/store';
 import { meshBoolean, type BooleanOp, type PartKey } from '../plater/meshBoolean';
@@ -18,9 +19,7 @@ export default function BooleanPanel() {
   const second = has(b) && b !== first ? b : parts.find(([k]) => k !== first)?.[0];
   const pick = (label: string, value: PartKey, set: (k: PartKey) => void) => (
     <label className="prefs-row cut-joint-row"><span>{label}</span>
-      <select className="combo" value={String(value)} aria-label={label} onChange={(e) => set(e.target.value === 'main' ? 'main' : Number(e.target.value))}>
-        {parts.map(([k, name]) => <option key={String(k)} value={String(k)}>{name}</option>)}
-      </select>
+      <Dropdown className="combo" value={String(value)} aria-label={label} onValueChange={(next) => set(next === 'main' ? 'main' : Number(next))} options={[...parts.map(([k, name]) => ({ value: String(k), label: name }))]} />
     </label>
   );
   const ready = second !== undefined && !busy;

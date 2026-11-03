@@ -1,3 +1,4 @@
+import { Dropdown } from './Dropdown';
 import { useMemo, useState } from 'react';
 import { compatible, getState, setState } from '../state/store';
 import { Modal, ModalTitle } from './Modal';
@@ -26,10 +27,10 @@ export default function FilamentsDialog({ close }: { close(): void }) {
       <ModalTitle title="Filaments" onClose={close} />
       <div className="prefs-body">
         <label className="prefs-row"><span>Vendor</span>
-          <select className="combo" value={vendor} onChange={(e) => setVendor(e.target.value)}><option value="">All</option>{vendors.map((v) => <option key={v}>{v}</option>)}</select>
+          <Dropdown className="combo" value={vendor} onValueChange={setVendor} options={[{ value: "", label: 'All' }, ...vendors.map((v) => ({ value: v, label: v }))]} />
         </label>
         <label className="prefs-row"><span>Type</span>
-          <select className="combo" value={type} onChange={(e) => setType(e.target.value)}><option value="">All</option>{types.map((t) => <option key={t}>{t}</option>)}</select>
+          <Dropdown className="combo" value={type} onValueChange={setType} options={[{ value: "", label: 'All' }, ...types.map((t) => ({ value: t, label: t }))]} />
         </label>
         <div className="cut-joint-buttons">
           <button type="button" className="btn" onClick={() => mark(shown.map((p) => p.name), true)}>All</button>

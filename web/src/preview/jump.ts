@@ -5,8 +5,12 @@ let stream: { key: string; data: StreamLayers } | null = null;
 export const setLoadedStream = (s: typeof stream) => { stream = s; };
 
 export function layerOfMove(data: StreamLayers, move: number): number | null {
-  const i = data.layers.findIndex((l, k) => move >= l.first && move < data.layerEnd[k]);
-  return i < 0 ? null : i;
+  let lo = 0, hi = data.layers.length - 1, k = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (data.layers[mid].first <= move) { k = mid; lo = mid + 1; } else hi = mid - 1;
+  }
+  return k >= 0 && move < data.layerEnd[k] ? k : null;
 }
 
 export const streamLayerOf = (jobId: string | undefined, move: number) =>

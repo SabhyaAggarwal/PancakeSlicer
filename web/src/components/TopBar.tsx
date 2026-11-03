@@ -1,4 +1,7 @@
-import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { MenuButton, type MenuEntry } from './Menu';
+import { showProjects } from '../flow/project';
+import { openPalette } from '../commands/registry';
+import { lazy, Suspense, useState, useSyncExternalStore } from 'react';
 import { arrangeAll, canExport, fileUse, STALE_RESULT_TIP, download, newProject, openFileDialog, openProjectDialog, outputKind, outsideVolumeWarning, saveProject, slice } from '../actions';
 import { deleteAll, removeSelected, setState, useStore } from '../state/store';
 import { canPaste, copySelection, cutSelection, pasteClipboard, selectAll } from '../edit';
@@ -13,106 +16,8 @@ import { toggleNonplanarView, useNonplanarView } from '../patch-preview';
 import { canCalibrate, canLoadStep } from '../api/client';
 import { toggleSidebar, useSidebarHidden } from '../sidebar';
 
-type MenuItem = { label: string; shortcut?: string; action?: () => void; disabled?: boolean; tip?: string; checked?: boolean; role?: 'menuitemradio' | 'menuitemcheckbox'; sub?: MenuItem[] } | 'sep';
-
-const popItems = (pop: Element | null | undefined) =>
-  pop ? [...pop.querySelectorAll<HTMLButtonElement>(':scope > .menu-item:not(:disabled), :scope > .menu-subwrap > .menu-item:not(:disabled)')] : [];
-
-function Menu({ title, items }: { title: string; items: MenuItem[] }) {
-  const [open, setOpen] = useState(false);
-  const [sub, setSub] = useState<string | null>(null);
-  const ref = useRef<HTMLDivElement>(null);
-  const button = useRef<HTMLButtonElement>(null);
-  const focusItem = useRef<'first' | 'last' | null>(null);
-  useEffect(() => {
-    if (!open) return setSub(null);
-    const close = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
-    window.addEventListener('pointerdown', close);
-    const enabled = popItems(ref.current!.querySelector('.menu-pop'));
-    if (focusItem.current) (focusItem.current === 'first' ? enabled[0] : enabled[enabled.length - 1])?.focus();
-    focusItem.current = null;
-    return () => window.removeEventListener('pointerdown', close);
-  }, [open]);
-  const show = (where: 'first' | 'last' | null) => {
-    focusItem.current = where;
-    setOpen(true);
-  };
-  const onKey = (e: React.KeyboardEvent) => {
-    const active = document.activeElement as HTMLButtonElement;
-    const enabled = popItems(active.closest('.menu-pop') ?? ref.current!.querySelector('.menu-pop'));
-    const at = enabled.indexOf(document.activeElement as HTMLButtonElement);
-    const titles = [...document.querySelectorAll<HTMLButtonElement>('.topbar .menu-title')];
-    const neighbour = (d: number) => titles[(titles.indexOf(button.current!) + d + titles.length) % titles.length];
-    if (e.key === 'Escape' && open) {
-      setOpen(false);
-      button.current!.focus();
-    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      if (!open) show(e.key === 'ArrowDown' ? 'first' : 'last');
-      else enabled[(at + (e.key === 'ArrowDown' ? 1 : -1) + enabled.length) % enabled.length]?.focus();
-    } else if ((e.key === 'Home' || e.key === 'End') && open) enabled[e.key === 'Home' ? 0 : enabled.length - 1]?.focus();
-    else if (e.key === 'ArrowRight' && open && active.dataset.sub) {
-      setSub(active.dataset.sub);
-      requestAnimationFrame(() => popItems(active.nextElementSibling)[0]?.focus());
-    } else if (e.key === 'ArrowLeft' && open && active.closest('.menu-sub')) {
-      setSub(null);
-      (active.closest('.menu-subwrap')!.firstElementChild as HTMLButtonElement).focus();
-    } else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && open) {
-      setOpen(false);
-      const next = neighbour(e.key === 'ArrowRight' ? 1 : -1);
-      next.focus();
-      next.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-    } else if (e.key === 'Tab' && open) {
-      setOpen(false);
-      return;
-    } else return;
-    e.preventDefault();
-    e.stopPropagation();
-  };
-  return (
-    <div className="menu" ref={ref} onKeyDown={onKey}>
-      <button ref={button} className={`menu-title ${open ? 'open' : ''}`} aria-haspopup="menu" aria-expanded={open}
-        onClick={(e) => (open ? setOpen(false) : show(e.detail === 0 ? 'first' : null))}>
-        {title}
-      </button>
-      {open && (
-        <div className="menu-pop" role="menu" aria-label={title}>
-          {items.map(function item(it: MenuItem, i: number): React.ReactNode {
-            if (it === 'sep') return <div key={i} className="menu-sep" role="separator" />;
-            if (it.sub)
-              return (
-                <div key={`${it.label}-${i}`} className="menu-subwrap" onPointerEnter={() => setSub(it.label)}>
-                  <button className="menu-item" data-sub={it.label} aria-haspopup="menu" aria-expanded={sub === it.label} title={it.tip} onClick={() => setSub(it.label)}>
-                    <span>{it.label}</span>
-                    <span className="menu-key" aria-hidden="true">▸</span>
-                  </button>
-                  {sub === it.label && <div className="menu-pop menu-sub" role="menu" aria-label={it.label}>{it.sub.map(item)}</div>}
-                </div>
-              );
-            return (
-              <button
-                key={`${it.label}-${i}`}
-                className="menu-item"
-                role={it.role ?? 'menuitem'}
-                aria-checked={it.checked}
-                disabled={it.disabled || !it.action}
-                title={it.tip}
-                onPointerEnter={(e) => !e.currentTarget.closest('.menu-sub') && setSub(null)}
-                onClick={() => {
-                  setOpen(false);
-                  button.current!.focus();
-                  it.action?.();
-                }}
-              >
-                <span>{it.label}</span>
-                {it.shortcut && <span className="menu-key" aria-hidden="true">{it.shortcut}</span>}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
+type MenuItem = MenuEntry;
+function Menu({title, items}: {title: string; items: MenuItem[]}) { return <MenuButton label={title} items={items} className="menu-title" />; }
 
 const exportStl = (multi: boolean) => import('../exportStl').then((m) => m.exportStl(false, multi));
 
@@ -153,7 +58,7 @@ export function TopBar() {
   const hasPrinters = useStore((s) => s.printers.length > 0 || s.printerEdit || s.printerHosts);
   return (
     <div className="topbar">
-      <Icon name="OrcaSlicer" size={20} className="topbar-logo" />
+      <Icon name="OrcaSlicer" size={20} className="topbar-logo" /><button type="button" className="menu-title" onClick={showProjects}>Projects</button>
       {archive && <Suspense fallback={null}><ArchiveDialog files={archive} close={() => setArchive(null)} /></Suspense>}
       <Menu
         title="File"
@@ -162,7 +67,7 @@ export function TopBar() {
           { label: 'Save Project', shortcut: `${MOD}+S`, action: () => void saveProject(), disabled: !hasProjectObjects, tip: 'Save current project to file' },
           { label: 'Save Project as...', shortcut: `${MOD}+Shift+S`, action: () => void saveProject(true), disabled: !hasProjectObjects, tip: 'Save current project as' },
           { label: 'Open Project...', shortcut: `${MOD}+O`, action: openProjectDialog, tip: 'Open a project file' },
-          { label: 'Recent projects...', action: () => setState({ sessionDialog: 'recent' }) },
+          { label: 'Recent projects...', action: showProjects },
           'sep',
           { label: canLoadStep() ? 'Import 3MF/STL/STEP/OBJ...' : 'Import 3MF/STL/OBJ...', shortcut: `${MOD}+I`, action: openFileDialog, tip: 'Load a model' },
           { label: 'Import ZIP Archive...', action: () => void import('./ArchiveDialog').then((m) => m.importZipArchive(setArchive)), tip: 'Load models contained within a ZIP archive' },
@@ -206,7 +111,7 @@ export function TopBar() {
           'sep',
           { label: 'Arrange', shortcut: 'A', action: arrangeAll, disabled: !hasObjects },
           'sep',
-          { label: 'Search settings...', shortcut: `${MOD}+F`, action: () => setState({ presetUx: { kind: 'search' } }), tip: 'Search in all printer, filament and process settings' },
+          { label: 'Search settings...', shortcut: `${MOD}+F`, action: () => openPalette('/'), tip: 'Search in all printer, filament and process settings' },
           { label: 'Preferences', shortcut: `${MOD}+P`, action: () => setState({ appDialog: 'preferences' }) },
         ]}
       />
@@ -257,7 +162,7 @@ export function TopBar() {
       <Menu
         title="Help"
         items={[
-          { label: 'What you can do', action: () => setState({ appDialog: 'what' }), tip: 'What the web app does, with screenshots' },
+          { label: 'What you can do', action: () => setState({ appDialog: 'shortcuts' }), tip: 'What the web app does, with screenshots' },
           { label: 'Keyboard Shortcuts', shortcut: '?', action: () => setState({ appDialog: 'shortcuts' }), tip: 'Show the list of keyboard shortcuts' },
           { label: 'Setup Wizard', action: () => setState({ appDialog: 'setup' }), tip: 'Setup Wizard' },
           'sep',
@@ -279,22 +184,7 @@ export function TopBar() {
 }
 
 function SideOptions({ options, value, onChange }: { options: string[]; value: string; onChange(v: string): void }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
-    window.addEventListener('pointerdown', close);
-    return () => window.removeEventListener('pointerdown', close);
-  }, [open]);
-  return (
-    <span ref={ref} className="side-options">
-      <button className="side-btn side-drop" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}><Icon name="sidebutton_dropdown" size={14} /></button>
-      {open && <div role="menu" className="menu-pop menu-pop-right">
-        {options.map((o) => <button key={o} role="menuitemradio" aria-checked={o === value} className="menu-item" onClick={() => { onChange(o); setOpen(false); }}><span>{o}</span><span /></button>)}
-      </div>}
-    </span>
-  );
+  return <span className="side-options"><MenuButton className="side-btn side-drop" label="Output options" items={options.map(o => ({label: o, checked: o === value, action: () => onChange(o)}))}>⌄</MenuButton></span>;
 }
 
 export function TabBar() {

@@ -1,9 +1,14 @@
+import { Dropdown, EditableDropdown } from './Dropdown';
 import { createContext, memo, useContext, useEffect, useId, useRef, useState } from 'react';
 import type { ConfigValue, PresetType } from '../api/types';
 import { normalizeConfigValue, toolValue } from '../config-values';
 import { OPTIONS, splitKey, type OptionDef } from '../options';
 import { effectiveConfig, getState, resetOption, setOption, useStore } from '../state/store';
 import { Icon } from './Icon';
+import { Switch } from './fields';
+import { displayLabel } from './fields/labels';
+import { ScopeMark } from '../profiles/Scope';
+import type { ChangeTarget } from '../state/changes';
 
 const LabelId = createContext<string | undefined>(undefined);
 const useLabel = () => ({ 'aria-labelledby': useContext(LabelId) });
@@ -58,6 +63,7 @@ export const Field = memo(function Field(props: {
   onReset?: (key: string) => void;
   resetTitle?: string;
   extra?: React.ReactNode;
+  scope?: { target?: ChangeTarget };
   widget?: React.ReactNode;
 }) {
   const [key, idx] = splitKey(props.optKey);
@@ -77,34 +83,42 @@ export const Field = memo(function Field(props: {
     if (system !== undefined && toolValue(key, next) === toolValue(key, system) && !props.onSet) reset(key);
     else set(key, next);
   };
-  const label = props.label ?? (def.label || def.full_label || key);
+  const fullLabel = props.label ?? (def.label || def.full_label || key);
+  const label = props.label === undefined ? displayLabel(key, fullLabel) : fullLabel;
   const modified = props.dirty;
   const checked = !props.overrideDisabled && value != null && value !== 'nil' && value !== '';
   const inherited = props.inheritedValue ?? OPTIONS[key.replace(/^filament_/, '')]?.default;
   const fallback = elementOf(inherited as ConfigValue | undefined, idx, vector) ?? '0';
+  const isSwitch = def.type.replace(/s$/, '') === 'bool' && !FILAMENT_SLOT_KEYS.has(key);
+  const isOn = value === true || value === 'true' || value === '1' || value === 1;
+  const locked = !!props.disabled || !!def.readonly || (def.nullable && !checked);
+  const disabledReason = def.readonly ? 'This value is read-only for the selected profile.' : props.disabled ? 'This setting is unavailable with the current printer and process options.' : def.nullable && !checked ? 'Enable the override to edit this value.' : undefined;
   const hint = CHOICE_HINTS[key]?.[asText(value)];
-  const tooltip = `${hint ? `${hint}\n\n` : ''}${props.tooltip ?? def.tooltip ?? ''}\n\nparameter name: ${key}`.trim();
+  const tooltip = `${label !== fullLabel ? `${fullLabel}\n\n` : ''}${hint ? `${hint}\n\n` : ''}${props.tooltip || def.tooltip || fullLabel}\n\nparameter name: ${key}`.trim();
 
   return (
-    <div className={`opt-line ${def.full_width || def.multiline ? 'full' : ''}`} data-opt={key}>
+    <div className={`opt-line ${def.full_width || def.multiline ? 'full' : ''} ${isSwitch ? 'is-switch' : ''}`} data-opt={key} onClick={isSwitch && !locked ? (e) => {
+      if (!(e.target as HTMLElement).closest('input, button')) commit(isOn ? '0' : '1');
+    } : undefined}>
       <span className={`opt-label ${modified ? 'modified' : ''}`} title={tooltip} id={labelId}>
-        {def.nullable && <input className="nullable-toggle" type="checkbox" aria-label={`Override ${label}`} checked={checked} disabled={props.overrideDisabled}
+        {def.nullable && <input className="nullable-toggle" type="checkbox" aria-label={`Override ${label}`} checked={checked} disabled={props.overrideDisabled} title={props.overrideDisabled ? "Enable the parent override first" : undefined}
         onChange={(e) => commit(e.target.checked ? fallback : 'nil')} />}
         {label}
       </span>
-      <fieldset className="opt-field" title={hint} disabled={props.disabled || (def.nullable && !checked)}>
+      <fieldset className="opt-field" title={disabledReason ?? hint} aria-description={disabledReason} disabled={props.disabled || (def.nullable && !checked)} style={def.sidetext ? { '--side-ch': def.sidetext.length } as React.CSSProperties : undefined}>
         <LabelId.Provider value={labelId}>
           {props.widget ?? <Widget def={def} value={def.nullable && !checked ? fallback : value} onCommit={commit} />}
         </LabelId.Provider>
         {def.sidetext && <span className="opt-side">{def.sidetext}</span>}
       </fieldset>
       <span className="opt-undo">
+        {props.scope ? <ScopeMark type={props.type} slot={props.slot} optKey={key} target={props.scope.target} /> : <>
         {modified && (
           <button type="button" className="icon-btn" title={props.resetTitle ?? 'Reset to the preset value'} aria-label={`${props.resetTitle ?? 'Reset to the preset value'}: ${label}`} onClick={() => reset(key)}>
             <Icon name="undo" size={14} />
           </button>
         )}
-        {props.extra}
+        {props.extra}</>}
       </span>
     </div>
   );
@@ -119,11 +133,7 @@ function SlotChoice({ value, onCommit }: { value: string; onCommit: (v: ConfigVa
   const type = (i: number) => { const t = effectiveConfig(getState(), 'filament', i).filament_type; return String(Array.isArray(t) ? t[0] : t ?? ''); };
   const known = value === '0' || (Number(value) >= 1 && Number(value) <= slots.length);
   return (
-    <select className="combo" {...useLabel()} value={value} onChange={(e) => onCommit(e.target.value)}>
-      <option value="0">Default</option>
-      {slots.map((_, i) => <option key={i} value={String(i + 1)}>{i + 1}: {type(i)}</option>)}
-      {!known && <option value={value}>{value}</option>}
-    </select>
+    <Dropdown className="combo" {...useLabel()} value={value} onValueChange={onCommit} options={[{ value: "0", label: 'Default' }, ...slots.map((_, i) => ({ value: String(i + 1), label: <>{i + 1}: {type(i)}</> })), ...(!known ? [{ value, label: value }] : [])]} />
   );
 }
 
@@ -134,25 +144,19 @@ function Widget({ def, value, onCommit }: { def: OptionDef; value: ConfigValue |
   if (base === 'bool') {
     const on = value === true || value === 'true' || value === '1' || value === 1;
     return (
-      <input type="checkbox" className="chk" {...named} checked={on} disabled={def.readonly} onChange={(e) => onCommit(e.target.checked ? '1' : '0')} />
+      <Switch {...named} checked={on} disabled={def.readonly} onChange={(v) => onCommit(v ? '1' : '0')} />
     );
   }
   if (def.enum_values?.length && /^(select_open|[if]_enum_open)$/.test(def.gui_type ?? '')) {
-    return <><TextBox value={asText(value)} onCommit={onCommit} readOnly={def.readonly} list={`choices-${def.key}`} />
-      <datalist id={`choices-${def.key}`}>{def.enum_values.map((v, i) => <option key={v} value={v}>{def.enum_labels?.[i] ?? v}</option>)}</datalist></>;
+    return <EditableDropdown {...named} value={asText(value)} readOnly={def.readonly} onValueChange={onCommit} className="text" options={def.enum_values.map((v,i) => ({value: v, label: def.enum_labels?.[i] ?? v}))} />;
   }
   if ((base === 'enum' || def.enum_values) && def.enum_values?.length) {
     const v = asText(value);
     const known = def.enum_values.includes(v);
     return (
-      <select className="combo" {...named} value={v} disabled={def.readonly} onChange={(e) => onCommit(e.target.value)}>
-        {!known && <option value={v}>{v}</option>}
-        {def.enum_values.map((ev, i) => (
-          <option key={ev} value={ev} disabled={def.enum_disabled?.includes(ev)}>
-            {def.enum_labels?.[i] ?? ev}
-          </option>
-        ))}
-      </select>
+      <Dropdown className="combo" {...named} value={v} disabled={def.readonly} onValueChange={onCommit} options={[...(!known ? [{ value: v, label: v }] : []), ...def.enum_values.map((ev, i) => (
+          ({ value: ev, label: def.enum_labels?.[i] ?? ev, disabled: def.enum_disabled?.includes(ev) })
+        ))]} />
     );
   }
   if (def.gui_type === 'color' || /colou?r$/.test(def.key)) {

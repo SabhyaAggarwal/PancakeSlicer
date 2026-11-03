@@ -8,9 +8,7 @@ import { isDark } from '../theme';
 const canvasToken = () => parseInt(getComputedStyle(document.documentElement).getPropertyValue('--canvas').trim().slice(1), 16);
 export const sceneColors = () => {
   const background = canvasToken();
-  return isDark()
-    ? { background: Number.isNaN(background) ? 0x262626 : background, plate: 0x333333, texture: 0x2e2e2e, grid: 0x484848, outline: 0x8a8a8a, model: 0x1c1c1c, shell: 0x9a9a9a }
-    : { background: Number.isNaN(background) ? 0xe6e6e6 : background, plate: 0xbababa, texture: 0xdadada, grid: 0x8f8f8f, outline: 0x5f5f5f, model: 0x3c3c3c, shell: 0xc8c8c8 };
+  return { background: Number.isNaN(background) ? 0xd3d3d7 : background, plate: 0x333338, texture: 0x303036, grid: 0x62626b, outline: 0x9898a5, model: 0x28282e, shell: 0x9898a5 };
 };
 
 export const bedKey = (machine: SystemPreset | undefined) =>

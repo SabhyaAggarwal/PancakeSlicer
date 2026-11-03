@@ -1,3 +1,4 @@
+import { Dropdown } from './Dropdown';
 import { useState } from 'react';
 import { loadPrinters } from '../actions';
 import { mutation, responseError } from '../api/access';
@@ -56,17 +57,12 @@ export default function HostForm({ printer, close, done }: { printer: SendPrinte
       <div className="prefs-body send-body printer-form">
         <label className="prefs-row"><span>Name</span><input className="text" data-autofocus value={name} placeholder={label} onChange={(e) => setName(e.target.value)} /></label>
         <label className="prefs-row"><span>Host Type</span>
-          <select className="combo" value={kind} disabled={!!printer} onChange={(e) => changed(setKind)(e.target.value)}>
-            {HOST_TYPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-          </select>
+          <Dropdown className="combo" value={kind} disabled={!!printer} onValueChange={(next) => changed(setKind)(next)} options={[...HOST_TYPES.map(([k, l]) => ({ value: k, label: l }))]} />
         </label>
         <label className="prefs-row"><span>Hostname, IP or URL</span><input className="text" value={url} placeholder="192.168.1.70" spellCheck={false} onChange={(e) => changed(setUrl)(e.target.value)} /></label>
         {kind === 'prusalink' && (
           <label className="prefs-row"><span>Authorization Type</span>
-            <select className="combo" value={auth} onChange={(e) => changed(setAuth)(e.target.value)}>
-              <option value="apikey">API key</option>
-              <option value="digest">HTTP digest</option>
-            </select>
+            <Dropdown className="combo" value={auth} onValueChange={(next) => changed(setAuth)(next)} options={[{ value: "apikey", label: 'API key' }, { value: "digest", label: 'HTTP digest' }]} />
           </label>
         )}
         {digest && <label className="prefs-row"><span>User</span><input className="text" value={user} autoComplete="off" spellCheck={false} onChange={(e) => changed(setUser)(e.target.value)} /></label>}

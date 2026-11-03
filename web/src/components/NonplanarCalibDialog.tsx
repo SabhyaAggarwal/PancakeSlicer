@@ -1,3 +1,4 @@
+import { Dropdown } from './Dropdown';
 import { useEffect, useState } from 'react';
 import { effectiveConfig, getState, markStale, presetEdits, setOption, setState, toast, useStore } from '../state/store';
 import type { ConfigValue } from '../api/types';
@@ -98,9 +99,7 @@ function Choice({ label, items, value, onChange }: { label: string; items: strin
   return (
     <label className="prefs-row">
       <span style={{ minWidth: 170 }}>{label}</span>
-      <select className="combo" style={{ width: 300 }} value={value} onChange={(e) => onChange(Number(e.target.value))}>
-        {items.map((it, i) => <option key={i} value={i}>{it}</option>)}
-      </select>
+      <Dropdown className="combo" style={{ width: 300 }} value={value} onValueChange={(next) => onChange(Number(next))} options={[...items.map((it, i) => ({ value: i, label: it }))]} />
     </label>
   );
 }
@@ -218,9 +217,7 @@ export default function NonplanarCalibDialog() {
           <button className="btn" onClick={() => generate('verifier')}>Generate clearance plate</button>
           <label className="prefs-row">
             <span style={{ minWidth: 170 }}>Head</span>
-            <select className="combo" style={{ width: 300 }} value={verifyHead} onChange={(e) => setVerifyHead(e.target.value)}>
-              {(heads.includes(verifyHead) ? heads : [verifyHead, ...heads]).map((id) => <option key={id} value={id}>{id ? headLabel(id) : headLabel('')}</option>)}
-            </select>
+            <Dropdown className="combo" style={{ width: 300 }} value={verifyHead} onValueChange={setVerifyHead} options={[...(heads.includes(verifyHead) ? heads : [verifyHead, ...heads]).map((id) => ({ value: id, label: id ? headLabel(id) : headLabel('') }))]} />
           </label>
           <button className="btn" onClick={check}>Check sliced plate</button>
         </>}

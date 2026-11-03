@@ -6,6 +6,12 @@ export type Config = Record<string, ConfigValue>;
 
 export interface SystemPreset {
   name: string;
+  version?: string;
+  imported?: boolean;
+  engine_base?: string;
+  setting_id?: string;
+  base_id?: string;
+  inherits?: string[];
   native_support_capable?: boolean;
   vendor: string;
   type: PresetType;
@@ -23,11 +29,26 @@ export interface SystemPreset {
   default_materials?: string[];
 }
 
+export interface ProfileOverlay {
+  name: string;
+  type: PresetType;
+  base: { name: string; version: string };
+  parent?: string;
+  overlay: Config;
+  baseline?: Record<string, ConfigValue | null>;
+  metadata?: Config;
+}
+
 export interface UserPreset {
   name: string;
   type: PresetType;
   inherits: string;
   overrides: Config;
+  base?: ProfileOverlay['base'];
+  parent?: string;
+  overlay?: Config;
+  baseline?: ProfileOverlay['baseline'];
+  metadata?: Config;
 }
 
 export interface PresetCatalog {
@@ -73,6 +94,7 @@ export interface PlateJson {
 }
 
 export interface JobRequest {
+  backend?: 'orcanp-v01';
   files: { name: string; blob: Blob }[];
   vendor: string;
   printer: string;

@@ -1,0 +1,2 @@
+import { Switch as Primitive } from 'radix-ui';
+export function Switch({checked, onChange, disabled, ...props}: {checked: boolean; onChange(value: boolean): void; disabled?: boolean; 'aria-label'?: string; 'aria-labelledby'?: string; title?: string; className?: string}) { return <Primitive.Root {...props} checked={checked} disabled={disabled} onCheckedChange={onChange} className="orca-switch"><Primitive.Thumb className="orca-switch-thumb" /></Primitive.Root>; }

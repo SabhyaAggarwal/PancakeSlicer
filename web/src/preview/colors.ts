@@ -194,8 +194,20 @@ export interface Ranges {
   slope: ColorRange;
 }
 
+interface CachedRanges { ranges: Ranges; loaded: number; slope: Float32Array | null; vis: Visibility }
+const rangeCache = new WeakMap<PreviewData, Map<number, CachedRanges>>();
+
+export function updateCachedRanges(d: PreviewData) {
+  for (const entry of rangeCache.get(d)?.values() ?? []) computeRanges(d, entry.vis);
+}
+
 export function computeRanges(d: PreviewData, vis: Visibility): Ranges {
-  const r: Ranges = {
+  const key = Number(vis.travel) | Number(vis.wipe) << 1 | Number(vis.hiddenRoles.has(18)) << 2;
+  let cache = rangeCache.get(d);
+  if (!cache) rangeCache.set(d, cache = new Map());
+  let entry = cache.get(key);
+  if (entry && (entry.loaded > d.loaded || entry.slope !== d.slope)) entry = undefined;
+  const r: Ranges = entry?.ranges ?? {
     height: new ColorRange(), width: new ColorRange(), speed: new ColorRange(), actualSpeed: new ColorRange(), actualFlow: new ColorRange(), fan: new ColorRange(),
     temperature: new ColorRange(), flow: new ColorRange(), acceleration: new ColorRange(), jerk: new ColorRange(), pa: new ColorRange(),
     layerTime: new ColorRange(), layerTimeLog: new ColorRange(true), shell: new ColorRange(),
@@ -204,7 +216,7 @@ export function computeRanges(d: PreviewData, vis: Visibility): Ranges {
   const s = d.states!;
   const custom = !vis.hiddenRoles.has(18);
   const ext = d.actual.length > 0;
-  for (let i = 1; i < d.loaded; ++i) {
+  for (let i = Math.max(1, entry?.loaded ?? 1); i < d.loaded; ++i) {
     const t = d.type[i] & 0x7f;
     const st = d.state[i];
     if (t === MoveType.Extrude) {
@@ -230,10 +242,13 @@ export function computeRanges(d: PreviewData, vis: Visibility): Ranges {
       r.jerk.update(s.jerk[st]);
     }
   }
+  r.layerTime = new ColorRange();
+  r.layerTimeLog = new ColorRange(true);
   for (const lt of d.layerTimes) {
     r.layerTime.update(lt);
     r.layerTimeLog.update(lt);
   }
+  cache.set(key, { ranges: r, loaded: d.loaded, slope: d.slope, vis: { ...vis, hiddenRoles: new Set(vis.hiddenRoles) } });
   return r;
 }
 

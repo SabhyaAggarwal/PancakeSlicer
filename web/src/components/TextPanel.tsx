@@ -1,3 +1,4 @@
+import { Dropdown } from './Dropdown';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { changeVolumeType, setState, useStore, type TextSpec } from '../state/store';
 import { editedText, loadFonts, surfaceOk, updateText, type Font } from '../plater/text';
@@ -40,10 +41,7 @@ export default function TextPanel() {
       <textarea className="text" rows={3} value={spec.text} aria-label="Text" onChange={(e) => edit({ text: e.target.value })} />
       {!spec.text.trim() && <div className="brim-warning">Embossed text cannot contain only white spaces.</div>}
       <label className="prefs-row cut-joint-row"><span>Font</span>
-        <select className="combo" value={spec.font} aria-label="Font" onChange={(e) => edit({ font: e.target.value })}>
-          <option value="">Default</option>
-          {fonts.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-        </select>
+        <Dropdown className="combo" value={spec.font} aria-label="Font" onValueChange={(next) => edit({ font: next })} options={[{ value: "", label: 'Default' }, ...fonts.map((f) => ({ value: f.id, label: f.name }))]} />
       </label>
       {num('Height', 'size', 0.1, 1000, 0.1, 'mm')}
       {num('Depth', 'depth', 0.01, 1000, 0.1, 'mm')}
@@ -54,9 +52,7 @@ export default function TextPanel() {
         </span>
       </div>
       <label className="prefs-row cut-joint-row"><span>Alignment</span>
-        <select className="combo" value={spec.align} aria-label="Alignment" onChange={(e) => edit({ align: e.target.value as TextSpec['align'] })}>
-          <option value="left">Left</option><option value="center">Center</option><option value="right">Right</option>
-        </select>
+        <Dropdown className="combo" value={spec.align} aria-label="Alignment" onValueChange={(next) => edit({ align: next as TextSpec['align'] })} options={[{ value: "left", label: 'Left' }, { value: "center", label: 'Center' }, { value: "right", label: 'Right' }]} />
       </label>
       {num('Char gap', 'charGap', -100, 100, 1)}
       {num('Line gap', 'lineSpacing', 0.1, 10, 0.1)}
@@ -70,9 +66,7 @@ export default function TextPanel() {
       {placing && <div className="cut-joint-hint">Click on the object's surface to place the text</div>}
       {v && (
         <label className="prefs-row cut-joint-row"><span>Operation</span>
-          <select className="combo" value={v.type} aria-label="Operation" onChange={(e) => { changeVolumeType(objectId, v.id, e.target.value as typeof v.type); if (spec.surface) void updateText(spec);  }}>
-            {OPERATIONS.map(([t, label]) => <option key={t} value={t} disabled={t === 'part' && !!spec.surface && !raises}>{label}</option>)}
-          </select>
+          <Dropdown className="combo" value={v.type} aria-label="Operation" onValueChange={(next) => { changeVolumeType(objectId, v.id, next as typeof v.type); if (spec.surface) void updateText(spec);  }} options={[...OPERATIONS.map(([t, label]) => ({ value: t, label, disabled: t === 'part' && !!spec.surface && !raises }))]} />
         </label>
       )}
       <div className="cut-joint-buttons"><span style={{ flex: 1 }} /><button type="button" className="btn primary" onClick={() => setState({ gizmo: 'none' })}>Done</button></div>

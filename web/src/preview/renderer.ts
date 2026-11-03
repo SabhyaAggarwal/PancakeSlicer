@@ -24,6 +24,10 @@ uniform mat4 view_matrix;
 uniform mat4 projection_matrix;
 uniform vec3 camera_position;
 uniform sampler2D position_tex;   // x, y, z, 0
+uniform sampler2D orientation_tex;
+uniform bool oriented;
+uniform bool table_rotary;
+uniform bool table_ac;
 uniform sampler2D attr_tex;       // height, width, type + 16 * role, 0
 uniform sampler2D color_tex;      // rgba8
 uniform usampler2D lod_tex;       // merged segment: start vertex, end vertex
@@ -35,13 +39,26 @@ uniform int role_mask;            // visible extrusion roles
 uniform int type_mask;            // visible move types (travel, wipe, extrude)
 uniform vec2 radii;               // travel, wipe
 uniform int focus_mask;           // legend hover: roles drawn in full colour, the rest dimmed; -1 none
+uniform bool diff_on;             // result diff: flagged segments in diff_color, the rest dimmed
+uniform usampler2D diff_tex;      // r8ui: 1 where the segment is new since the compared result
+uniform vec3 diff_color;
 in float corner;
 out vec3 color;
 ivec2 tc(int id) { return ivec2(id % ${TEX_WIDTH}, id / ${TEX_WIDTH}); }
+vec3 nozzle_axis(int id) {
+  if (!oriented) return UP;
+  vec3 p = radians(texelFetch(orientation_tex, tc(id), 0).xyz);
+  float sa = sin(p.x), ca = cos(p.x), sb = sin(p.y), cb = cos(p.y), sc = sin(p.z), cc = cos(p.z);
+  if (table_ac) return vec3(sa * sc, sa * cc, ca);
+  if (table_rotary) return vec3(-sb * cc, sb * sc, cb);
+  return vec3(cc * sb * ca + sc * sa, sc * sb * ca - cc * sa, cb * ca);
+}
 // A hovered legend row isolates its role: everything else fades to a flat grey (SB-16).
-vec3 focused(vec3 c, int type, int role) {
+vec3 dimmed(vec3 c) { return mix(vec3(0.5), vec3(dot(c, vec3(0.299, 0.587, 0.114))), 0.35); }
+vec3 focused(vec3 c, int type, int role, int id) {
+  if (diff_on) return texelFetch(diff_tex, tc(id), 0).r == 1u ? diff_color : dimmed(c);
   if (focus_mask == -1 || (type == ${MoveType.Extrude} && ((focus_mask >> role) & 1) != 0)) return c;
-  return mix(vec3(0.5), vec3(dot(c, vec3(0.299, 0.587, 0.114))), 0.35);
+  return dimmed(c);
 }
 float direct_lighting(vec3 eye_position, vec3 eye_normal) {
   float top_diffuse = light_top_diffuse * max(dot(eye_normal, light_top_dir), 0.0);
@@ -71,12 +88,13 @@ void main() {
   vec3 pos_a = texelFetch(position_tex, tc(id_a), 0).xyz;
   vec3 pos_b = texelFetch(position_tex, tc(id_b), 0).xyz;
   // extrusion vertices sit half a bead below the nozzle; wipes are biased up against z-fighting
-  vec3 shift = type == ${MoveType.Extrude} ? vec3(0.0, 0.0, -0.5 * hw.x) : type == ${MoveType.Wipe} ? vec3(0.0, 0.0, 0.05) : vec3(0.0);
-  pos_a += shift; pos_b += shift;
+  vec3 up_a = nozzle_axis(id_a), up_b = nozzle_axis(id_b);
+  if (type == ${MoveType.Extrude}) { pos_a -= 0.5 * hw.x * up_a; pos_b -= 0.5 * hw.x * up_b; }
+  else if (type == ${MoveType.Wipe}) { pos_a += 0.05 * up_a; pos_b += 0.05 * up_b; }
   vec3 line = pos_b - pos_a;
   float line_len = length(line);
   vec3 line_dir = line_len < 1e-4 ? vec3(1.0, 0.0, 0.0) : line / line_len;
-  vec3 line_right_dir = abs(dot(line_dir, UP)) > 0.9 ? normalize(cross(vec3(1, 0, 0), line_dir)) : normalize(cross(line_dir, UP));
+  vec3 line_right_dir = abs(dot(line_dir, up_b)) > 0.9 ? normalize(cross(abs(line_dir.x) > 0.9 ? vec3(0, 1, 0) : vec3(1, 0, 0), line_dir)) : normalize(cross(line_dir, up_b));
   vec3 line_up_dir = normalize(cross(line_right_dir, line_dir));
   if (ribbon) {
     // A bead a pixel or two wide: a ribbon facing the eye, as wide as the bead's section seen from there, lit as
@@ -91,7 +109,7 @@ void main() {
     vec3 p = end_pos + s * half_extent * side;
     vec3 eye_p = (view_matrix * vec4(p, 1.0)).xyz;
     vec3 eye_n = mat3(view_matrix) * (s == 0.0 ? facing : s * side);
-    vec3 base = focused(texelFetch(color_tex, tc(id_b), 0).rgb, type, role);
+    vec3 base = focused(texelFetch(color_tex, tc(id_b), 0).rgb, type, role, id_b);
     color = base * (ambient + emission + direct_lighting(eye_p, eye_n));
     gl_Position = projection_matrix * vec4(eye_p, 1.0);
     return;
@@ -117,7 +135,7 @@ void main() {
     pos += (vertex_id == 2 ? -1.0 : 1.0) * line_dir * 0.5 * hw.y; // pointy caps
   vec3 eye_position = (view_matrix * vec4(pos, 1.0)).xyz;
   vec3 eye_normal = (view_matrix * vec4(normalize(pos - endpoint_pos), 0.0)).xyz;
-  vec3 color_base = texelFetch(color_tex, tc(id_b), 0).rgb;
+  vec3 color_base = focused(texelFetch(color_tex, tc(id_b), 0).rgb, type, role, id_b);
   color = color_base * (ambient + emission + direct_lighting(eye_position, eye_normal));
   gl_Position = projection_matrix * vec4(eye_position, 1.0);
 }`;
@@ -198,6 +216,7 @@ export interface DrawState {
   typeMask: number;
   optionMask: number;
   focusMask?: number;
+  diffColor?: [number, number, number];
 }
 
 export interface FrameStats {
@@ -225,10 +244,13 @@ export class SegmentRenderer {
   private u: Record<string, WebGLUniformLocation | null> = {};
   private ou: Record<string, WebGLUniformLocation | null> = {};
   private posTex: WebGLTexture;
+  private orientationTex: WebGLTexture;
   private attrTex: WebGLTexture;
   private colorTex: WebGLTexture;
   private lodTex: WebGLTexture;
   private optTex: WebGLTexture;
+  private diffTex: WebGLTexture;
+  private hasDiff = false;
   private rows = 0;
   private lodUploaded = 0;
   private lodArrays = 0;
@@ -247,7 +269,7 @@ export class SegmentRenderer {
     this.prog = compile(gl, SEGMENT_VS, FS);
     this.optProg = compile(gl, OPTION_VS, FS);
     for (const n of ['light_top_dir', 'view_matrix', 'projection_matrix', 'camera_position', 'position_tex', 'attr_tex', 'color_tex',
-      'lod_tex', 'first_instance', 'lod', 'ribbon', 'range', 'role_mask', 'type_mask', 'radii', 'focus_mask'])
+      'orientation_tex', 'oriented', 'table_rotary', 'table_ac', 'lod_tex', 'first_instance', 'lod', 'ribbon', 'range', 'role_mask', 'type_mask', 'radii', 'focus_mask', 'diff_on', 'diff_tex', 'diff_color'])
       this.u[n] = gl.getUniformLocation(this.prog, n);
     for (const n of ['light_top_dir', 'view_matrix', 'projection_matrix', 'position_tex', 'attr_tex', 'color_tex', 'option_tex', 'range', 'type_mask'])
       this.ou[n] = gl.getUniformLocation(this.optProg, n);
@@ -295,10 +317,12 @@ export class SegmentRenderer {
     gl.bindVertexArray(null);
 
     this.posTex = gl.createTexture()!;
+    this.orientationTex = gl.createTexture()!;
     this.attrTex = gl.createTexture()!;
     this.colorTex = gl.createTexture()!;
     this.lodTex = gl.createTexture()!;
     this.optTex = gl.createTexture()!;
+    this.diffTex = gl.createTexture()!;
     renderer.resetState();
   }
 
@@ -333,18 +357,23 @@ export class SegmentRenderer {
   reset(d: PreviewData) {
     const gl = this.gl;
     this.data = d;
-    for (const t of [this.posTex, this.attrTex, this.colorTex, this.lodTex, this.optTex]) gl.deleteTexture(t);
+    for (const t of [this.posTex, this.orientationTex, this.attrTex, this.colorTex, this.lodTex, this.optTex, this.diffTex]) gl.deleteTexture(t);
+    this.diffTex = gl.createTexture()!;
+    this.hasDiff = false;
     this.posTex = gl.createTexture()!;
+    this.orientationTex = gl.createTexture()!;
     this.attrTex = gl.createTexture()!;
     this.colorTex = gl.createTexture()!;
     this.lodTex = gl.createTexture()!;
     this.optTex = gl.createTexture()!;
     this.rows = d.rows;
     this.alloc(this.posTex, gl.RGBA32F, this.rows);
+    this.alloc(this.orientationTex, gl.RGB32F, d.orientation.length ? this.rows : 1);
     this.alloc(this.attrTex, gl.RGBA16F, this.rows);
     this.alloc(this.colorTex, gl.RGBA8, this.rows);
     this.alloc(this.lodTex, gl.RG32UI, this.rows);
     this.alloc(this.optTex, gl.R32UI, this.rows);
+    this.alloc(this.diffTex, gl.R8UI, this.rows);
     this.attr = new Uint16Array(d.n * 4);
     this.colors = new Uint8Array(d.n * 4);
     this.blocks = [];
@@ -365,6 +394,7 @@ export class SegmentRenderer {
       a[i * 4 + 2] = half((d.type[i] & 0x0f) + 16 * d.role[i]);
     }
     this.upload(this.posTex, gl.RGBA, gl.FLOAT, 4, d.pos, start, end);
+    if (d.orientation.length) this.upload(this.orientationTex, gl.RGB, gl.FLOAT, 3, d.orientation, start, end);
     this.upload(this.attrTex, gl.RGBA, gl.HALF_FLOAT, 4, a, start, end);
     for (let b = start; b < end; b += BLOCK) {
       const e = Math.min(end, b + BLOCK);
@@ -403,9 +433,45 @@ export class SegmentRenderer {
     this.upload(tex, format, type, comps, shifted, at, at + n);
   }
 
+  setDiff(flags: Uint8Array | null) {
+    const gl = this.gl;
+    this.hasDiff = !!flags && !!this.data;
+    if (!this.hasDiff) return;
+    this.upload(this.diffTex, gl.RED_INTEGER, gl.UNSIGNED_BYTE, 1, flags!, 0, Math.min(flags!.length, this.data!.n));
+    this.renderer.resetState();
+  }
+
   uploadColors(from: number, to: number) {
     this.upload(this.colorTex, this.gl.RGBA, this.gl.UNSIGNED_BYTE, 4, this.colors, from, to);
     this.renderer.resetState();
+  }
+
+  pick(ray: THREE.Ray, state: DrawState, tolerance: number): number | null {
+    const d = this.data;
+    if (!d) return null;
+    const point = new THREE.Vector3(), a = new THREE.Vector3(), b = new THREE.Vector3(), onRay = new THREE.Vector3();
+    const candidates: { block: Block; near: number }[] = [];
+    for (const block of this.blocks) {
+      if (block.end <= state.range[0] || block.first >= state.range[1]) continue;
+      const box = block.box.clone().expandByScalar(tolerance);
+      if (box.containsPoint(ray.origin)) candidates.push({ block, near: 0 });
+      else if (ray.intersectBox(box, point)) candidates.push({ block, near: point.distanceTo(ray.origin) });
+    }
+    candidates.sort((a, b) => a.near - b.near);
+    let best: number | null = null, depth = Infinity;
+    for (const { block, near } of candidates) {
+      if (near > depth + tolerance) break;
+      for (let i = Math.max(2, block.first, state.range[0]); i < Math.min(block.end, state.range[1], d.loaded); ++i) {
+        const type = d.type[i] & 0x7f;
+        if (!(state.typeMask & (1 << type)) || type === MoveType.Extrude && !(state.roleMask & (1 << d.role[i]))) continue;
+        a.fromArray(d.pos, (i - 1) * 4); b.fromArray(d.pos, i * 4);
+        const radius = tolerance + (type === MoveType.Extrude ? d.width[i] / 2 : TRAVEL_RADIUS);
+        if (ray.distanceSqToSegment(a, b, onRay, point) > radius * radius) continue;
+        const distance = onRay.distanceTo(ray.origin);
+        if (distance < depth) { best = i; depth = distance; }
+      }
+    }
+    return best;
   }
 
   render(camera: THREE.PerspectiveCamera | THREE.OrthographicCamera, state: DrawState, viewportHeight: number) {
@@ -430,6 +496,9 @@ export class SegmentRenderer {
     gl.uniform1i(u.type_mask, state.typeMask);
     gl.uniform2f(u.radii, TRAVEL_RADIUS, WIPE_RADIUS);
     gl.uniform1i(u.focus_mask, state.focusMask ?? -1);
+    const diff = this.hasDiff && !!state.diffColor;
+    gl.uniform1i(u.diff_on, diff ? 1 : 0);
+    if (diff) gl.uniform3f(u.diff_color, ...state.diffColor!);
     const bind = (unit: number, tex: WebGLTexture, loc: WebGLUniformLocation | null) => {
       gl.activeTexture(gl.TEXTURE0 + unit);
       gl.bindTexture(gl.TEXTURE_2D, tex);
@@ -439,6 +508,11 @@ export class SegmentRenderer {
     bind(1, this.attrTex, u.attr_tex);
     bind(2, this.colorTex, u.color_tex);
     bind(3, this.lodTex, u.lod_tex);
+    bind(6, this.orientationTex, u.orientation_tex);
+    gl.uniform1i(u.oriented, d.orientation.length ? 1 : 0);
+    gl.uniform1i(u.table_rotary, d.header?.tableRotary ? 1 : 0);
+    gl.uniform1i(u.table_ac, d.header?.tableAC ? 1 : 0);
+    bind(5, this.diffTex, u.diff_tex);
 
     const frustum = new THREE.Frustum().setFromProjectionMatrix(
       new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
@@ -500,12 +574,12 @@ export class SegmentRenderer {
   gpuBytes(): number {
     const d = this.data;
     if (!d) return 0;
-    return this.rows * TEX_WIDTH * (16 + 8 + 4 + 8 + 4);
+    return this.rows * TEX_WIDTH * (16 + 8 + 4 + 8 + 4 + (d.orientation.length ? 12 : 0));
   }
 
   dispose() {
     const gl = this.gl;
-    for (const t of [this.posTex, this.attrTex, this.colorTex, this.lodTex, this.optTex]) gl.deleteTexture(t);
+    for (const t of [this.posTex, this.orientationTex, this.attrTex, this.colorTex, this.lodTex, this.optTex, this.diffTex]) gl.deleteTexture(t);
     gl.deleteProgram(this.prog);
     gl.deleteProgram(this.optProg);
   }

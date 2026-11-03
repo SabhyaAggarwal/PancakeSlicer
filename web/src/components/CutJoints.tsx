@@ -1,3 +1,4 @@
+import { Dropdown } from './Dropdown';
 import { useState } from 'react';
 import { getState, useStore, type CutConnector, type CutConnectorAttribs, type CutGroove } from '../state/store';
 import { setCut } from '../plater/cut';
@@ -61,14 +62,10 @@ export default function CutJoints() {
           </span>
         </div>
         <label className="prefs-row cut-joint-row"><span>Style</span>
-          <select className="combo" value={a.type === 'plug' ? a.style : 'prism'} disabled={a.type !== 'plug'} onChange={(e) => setA({ style: e.target.value as CutConnectorAttribs['style'] })}>
-            <option value="prism">Prism</option><option value="frustum">Frustum</option>
-          </select>
+          <Dropdown className="combo" value={a.type === 'plug' ? a.style : 'prism'} disabled={a.type !== 'plug'} onValueChange={(next) => setA({ style: next as CutConnectorAttribs['style'] })} options={[{ value: "prism", label: 'Prism' }, { value: "frustum", label: 'Frustum' }]} />
         </label>
         <label className="prefs-row cut-joint-row"><span>Shape</span>
-          <select className="combo" value={a.type === 'snap' ? 'circle' : a.shape} disabled={a.type === 'snap'} onChange={(e) => setA({ shape: e.target.value as CutConnectorAttribs['shape'] })}>
-            {SHAPES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
-          </select>
+          <Dropdown className="combo" value={a.type === 'snap' ? 'circle' : a.shape} disabled={a.type === 'snap'} onValueChange={(next) => setA({ shape: next as CutConnectorAttribs['shape'] })} options={[...SHAPES.map(([v, label]) => ({ value: v, label }))]} />
         </label>
         <Pair label="Depth" value={a.depth} tolerance={a.depthTolerance} min={a.type === 'snap' ? a.size : 0.1} max={100}
           onValue={(depth) => setA({ depth })} onTolerance={(depthTolerance) => setA({ depthTolerance })} />
@@ -93,9 +90,7 @@ export default function CutJoints() {
   return (
     <div className="cut-joints">
       <label className="prefs-row cut-joint-row"><span>Mode</span>
-        <select className="combo" value={mode} onChange={(e) => setCut({ mode: e.target.value as 'planar' | 'dovetail', ...(e.target.value === 'dovetail' ? { keepUpper: true, keepLower: true, toParts: false } : {}) })}>
-          <option value="planar">Planar</option><option value="dovetail">Dovetail</option>
-        </select>
+        <Dropdown className="combo" value={mode} onValueChange={(next) => setCut({ mode: next as 'planar' | 'dovetail', ...(next === 'dovetail' ? { keepUpper: true, keepLower: true, toParts: false } : {}) })} options={[{ value: "planar", label: 'Planar' }, { value: "dovetail", label: 'Dovetail' }]} />
       </label>
       {mode === 'planar' ? (
         <button className="btn" disabled={!both} title={both ? undefined : 'Connectors need both parts kept as separate objects'}

@@ -281,3 +281,23 @@ export function readReport(record: Rec | undefined) {
     objects: out,
   };
 }
+
+export function nativeSurfaceSummary(record: Rec): string | null {
+  const report = record.nonplanar_report as { objects?: {
+    mode?: string; curved_top_area_fraction?: number; curved_top_area_denominator_mm2?: number;
+    curved_extrusion_length_mm?: number; planar_fallback_reason?: string;
+  }[] } | undefined;
+  const objects = report?.objects?.filter((o) => o.mode === 'curved_tops');
+  if (!objects?.length) return null;
+  const roads = objects.reduce((sum, o) => sum + (Number(o.curved_extrusion_length_mm) || 0), 0);
+  if (roads <= 0) return `Printed flat: ${objects.map((o) => o.planar_fallback_reason).find(Boolean) || 'No top surfaces could be curved with the current clearance limits'}`;
+  const valid = objects.every((o) => Number.isFinite(o.curved_top_area_fraction));
+  const area = objects.reduce((sum, o) => sum + (Number(o.curved_top_area_denominator_mm2) || 0), 0);
+  const fraction = !valid ? null : objects.length === 1 ? objects[0].curved_top_area_fraction!
+    : area > 0 && objects.every((o) => Number(o.curved_top_area_denominator_mm2) > 0)
+      ? objects.reduce((sum, o) => sum + o.curved_top_area_fraction! * o.curved_top_area_denominator_mm2!, 0) / area : null;
+  const coverage = fraction != null && fraction >= 0 && fraction <= 1 ? `${(fraction * 100).toFixed(1)}% of top area curved` : 'Curved top roads generated';
+  const qualification = record.print_qualification as { passed?: boolean; output_sha256?: string } | undefined;
+  const qualified = qualification?.passed === true && /^[a-f0-9]{64}$/i.test(qualification.output_sha256 ?? '');
+  return `${coverage} — ${qualified ? 'print-qualified' : 'not print-qualified yet'}`;
+}

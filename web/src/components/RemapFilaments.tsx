@@ -1,3 +1,4 @@
+import { Dropdown } from './Dropdown';
 import { useState } from 'react';
 import { markStale, setState, type PlateObject } from '../state/store';
 import { undoable } from '../state/history';
@@ -35,9 +36,7 @@ export default function RemapFilaments({ object, colours }: { object: PlateObjec
           <label key={i} className="remap-row" title={dst !== i + 1 ? `${i + 1} >> ${dst}` : undefined}>
             <span className="paint-filament" style={{ background: colours[i] }}>{i + 1}</span>
             <span>To:</span>
-            <select value={dst} aria-label={`Filament ${i + 1} to`} onChange={(e) => setMap(current.map((d, k) => (k === i ? Number(e.target.value) : d)))}>
-              {identity.map((f) => <option key={f} value={f}>{f}</option>)}
-            </select>
+            <Dropdown value={dst} aria-label={`Filament ${i + 1} to`} onValueChange={(next) => setMap(current.map((d, k) => (k === i ? Number(next) : d)))} options={[...identity.map((f) => ({ value: f, label: f }))]} />
             <span className="paint-filament" style={{ background: colours[dst - 1] }}>{dst}</span>
           </label>
         ))}
