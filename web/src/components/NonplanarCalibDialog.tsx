@@ -1,12 +1,11 @@
 import { Dropdown } from './Dropdown';
-import { useEffect, useRef, useState } from 'react';
-import { useTabFit } from './tab-rows';
+import { useEffect, useState } from 'react';
 import { effectiveConfig, getState, markStale, presetEdits, setOption, setState, toast, useStore } from '../state/store';
 import type { ConfigValue } from '../api/types';
 import { undoable } from '../state/history';
 import { headLabel, loadHead, loadHeadIndex, loadHeadJson, saveUserHead, slopeMap, type Head, type HeadBox } from '../heads';
 import { InfoTip } from './InfoTip';
-import { Modal, ModalTitle } from './Modal';
+import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 import { runCalibration } from './CalibDialog';
 
 type ClearanceStep = { slope: number; relief: number };
@@ -106,7 +105,7 @@ function Choice({ label, items, value, onChange }: { label: string; items: strin
   );
 }
 
-const PAGES = ['Head clearance', 'Tilted-bead flow', 'Curved-top quality', 'Check head model'];
+const PAGES = ['Clearance', 'Tilt flow', 'Curved top', 'Check head'];
 
 export default function NonplanarCalibDialog() {
   const s = useStore((st) => st);
@@ -114,8 +113,6 @@ export default function NonplanarCalibDialog() {
   const headId = String(machine.nonplanar_head ?? '');
   const layerHeight = Number(process.layer_height) || 0.2;
   const [page, setPage] = useState(memo.page);
-  const strip = useRef<HTMLDivElement>(null);
-  useTabFit(strip, 'pages');
   const [lastClean, setLastClean] = useState(memo.lastClean);
   const [tilt, setTilt] = useState(memo.tilt);
   const [speed, setSpeed] = useState(memo.speed);
@@ -186,49 +183,37 @@ export default function NonplanarCalibDialog() {
     'Runs the clearance check with the selected head over the sliced clearance plate. The first cone it finds the head touching should be the one after the last clean cone on your print. Generate the plate, slice it, then check.',
   ][page];
   return (
-    <Modal size="l" className="np-calib-dialog" label="Non-planar calibration" onClose={close}>
+    <Modal size="l" label="Non-planar calibration" onClose={close}>
       <ModalTitle title="Non-planar calibration" onClose={close} />
-      <div ref={strip} className="page-bar" role="tablist">
-        {PAGES.map((p, i) => <button key={p} role="tab" aria-selected={i === page} className={`page-tab ${i === page ? 'active' : ''}`} onClick={() => setPage(i)}><span className="page-tab-label">{p}</span></button>)}
-      </div>
-      <div className="prefs-body" role="tabpanel" aria-label={PAGES[page]} style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
+      <ModalBody className="modal-fields">
+        <span className="seg np-calib-tabs" role="tablist" aria-label="Calibration">
+          {PAGES.map((p, i) => <button key={p} type="button" role="tab" aria-selected={i === page} aria-checked={i === page} onClick={() => setPage(i)}>{p}</button>)}
+        </span>
+        <div className="form-row"><span>Test plate<InfoTip label={PAGES[page]}>{intro}</InfoTip></span>
+          <span><button type="button" className="btn" onClick={() => generate(page === 0 ? 'clearance' : page === 1 ? 'tilt-flow' : page === 2 ? 'curved-top' : 'verifier')}>Generate</button></span></div>
         {page === 0 && <>
-          <div className="form-actions"><button className="btn" onClick={() => generate('clearance')}>Generate clearance plate</button><InfoTip label={PAGES[page]}>{intro}</InfoTip></div>
-          <div style={{ whiteSpace: 'pre-line' }}>{steps}</div>
+          <p className="flush-note ask-message">{steps}</p>
           <Choice label="Last clean cone" items={STEPS.map((_, k) => stepText(k)).concat(stepText(STEPS.length))} value={lastClean} onChange={setLastClean} />
-          <label className="form-row">
-            <span>New head ID</span>
-            <input className="text" value={newId} onChange={(e) => setNewId(e.target.value)} />
-          </label>
-          <button className="btn" onClick={() => void writeHead()}>Write head</button>
+          <label className="form-row"><span>New head ID</span><input className="text" value={newId} onChange={(e) => setNewId(e.target.value)} /></label>
         </>}
-        {page === 1 && <>
-          <div className="form-actions"><button className="btn" onClick={() => generate('tilt-flow')}>Generate tilted-bead flow plate</button><InfoTip label={PAGES[page]}>{intro}</InfoTip></div>
-          {TILT_SLOPES.map((slope, i) => (
-            <Choice key={slope} label={`Best patch at ${slope}°`} items={TILT_MULTIPLIERS.map((m, j) => `Patch ${j + 1} (×${m.toFixed(2)})`)} value={tilt[i]}
-              onChange={(v) => setTilt(tilt.map((x, j) => (j === i ? v : x)))} />
-          ))}
-          <button className="btn" onClick={writeTilt}>Write tilt flow</button>
-        </>}
+        {page === 1 && TILT_SLOPES.map((slope, i) => (
+          <Choice key={slope} label={`Best patch at ${slope}°`} items={TILT_MULTIPLIERS.map((m, j) => `Patch ${j + 1} (×${m.toFixed(2)})`)} value={tilt[i]}
+            onChange={(v) => setTilt(tilt.map((x, j) => (j === i ? v : x)))} />
+        ))}
         {page === 2 && <>
-          <div className="form-actions"><button className="btn" onClick={() => generate('curved-top')}>Generate curved-top plate</button><InfoTip label={PAGES[page]}>{intro}</InfoTip></div>
           <Choice label="Best speed (front row)" items={TOP_SPEEDS.map((x) => `${x}% of top surface speed`)} value={speed} onChange={setSpeed} />
           <Choice label="Best fan (right column)" items={TOP_FANS.map((x) => `${x}% fan boost`)} value={fan} onChange={setFan} />
-          <button className="btn" onClick={writeTop}>Write curved-top settings</button>
         </>}
-        {page === 3 && <>
-          <div className="form-actions"><button className="btn" onClick={() => generate('verifier')}>Generate clearance plate</button><InfoTip label={PAGES[page]}>{intro}</InfoTip></div>
-          <label className="form-row">
-            <span>Head</span>
-            <Dropdown className="combo" value={verifyHead} onValueChange={setVerifyHead} options={[...(heads.includes(verifyHead) ? heads : [verifyHead, ...heads]).map((id) => ({ value: id, label: id ? headLabel(id) : headLabel('') }))]} />
-          </label>
-          <button className="btn" onClick={check}>Check sliced plate</button>
-        </>}
-        {result[page] && <div style={{ whiteSpace: 'pre-line' }}>{result[page]}</div>}
-      </div>
-      <div className="modal-buttons">
-        <button className="btn primary" data-autofocus onClick={close}>OK</button>
-      </div>
+        {page === 3 && <label className="form-row"><span>Head</span>
+          <Dropdown className="combo" value={verifyHead} onValueChange={setVerifyHead} options={[...(heads.includes(verifyHead) ? heads : [verifyHead, ...heads]).map((id) => ({ value: id, label: id ? headLabel(id) : headLabel('') }))]} />
+        </label>}
+        {result[page] && <p className="ask-message" role="status">{result[page]}</p>}
+      </ModalBody>
+      <ModalFooter>
+        <button type="button" className="btn" onClick={close}>Close</button>
+        <button type="button" className="btn-primary" onClick={() => (page === 0 ? void writeHead() : page === 1 ? writeTilt() : page === 2 ? writeTop() : check())}>
+          {['Write head', 'Write tilt flow', 'Write curved-top settings', 'Check sliced plate'][page]}</button>
+      </ModalFooter>
     </Modal>
   );
 }

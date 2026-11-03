@@ -105,5 +105,7 @@
 
 :where(.orca-parity) .gcode-input { width: 100%; min-height: 160px; resize: vertical; font-family: var(--font-mono, monospace); }
 
+:where(.orca-parity) .np-calib-tabs { display: grid; width: 100%; }
+
 :where(.orca-parity) .ask-message { white-space: pre-line; overflow-wrap: anywhere; }
 :where(.orca-parity) .ask-choices { display: grid; gap: var(--s-2); }
