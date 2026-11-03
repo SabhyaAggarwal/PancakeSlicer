@@ -1,0 +1,78 @@
+{
+  "name": "orca-desktop",
+  "productName": "OrcaSlicer Web",
+  "version": "0.2.0",
+  "private": true,
+  "description": "OrcaSlicer web app as a desktop app with a local slicing engine",
+  "author": "OrcaSlicer",
+  "license": "AGPL-3.0-only",
+  "main": "out/main.js",
+  "scripts": {
+    "compile": "tsc -p .",
+    "start": "tsc -p . && electron .",
+    "dist:linux": "tsc -p . && electron-builder --linux --x64 --publish never",
+    "dist:mac": "tsc -p . && electron-builder --mac --arm64 --publish never"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "electron": "^45.2.1",
+    "electron-builder": "^26.18.0",
+    "typescript": "^5.9.3"
+  },
+  "allowScripts": {
+    "electron@45.2.1": true
+  },
+  "build": {
+    "appId": "com.orcaslicer.web",
+    "productName": "OrcaSlicer Web",
+    "artifactName": "OrcaSlicer-Web-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/web",
+        "to": "web"
+      },
+      {
+        "from": "build/engine-${os}-${arch}",
+        "to": "engine"
+      }
+    ],
+    "asarUnpack": [],
+    "electronLanguages": [
+      "en-US"
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "tar.gz"
+      ],
+      "category": "Graphics",
+      "icon": "build/icon.png",
+      "executableName": "orcaslicer-web",
+      "syncDesktopName": true
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.graphics-design",
+      "icon": "build/icon.icns",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "writeUpdateInfo": false
+    },
+    "publish": null
+  },
+  "desktopName": "orcaslicer-web.desktop"
+}
