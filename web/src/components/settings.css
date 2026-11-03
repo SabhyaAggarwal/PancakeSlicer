@@ -23,14 +23,20 @@
 :where(.orca-parity) .optgroup-head.fixed { cursor: default; }
 :where(.orca-parity) .optgroup-chevron { flex: none; width: 12px; }
 :where(.orca-parity) .optgroup-head.modified > span { color: var(--changed); }
-:where(.orca-parity) .page-body:has(> .optgroup[data-single] .text.multiline) { display: flex; flex-direction: column; }
+:where(.orca-parity) .page-body:has(> .page-flow > .optgroup[data-single] .text.multiline) { display: flex; flex-direction: column; }
+:where(.orca-parity) .page-flow:has(> .optgroup[data-single] .text.multiline) { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 :where(.orca-parity) .optgroup[data-single]:has(.text.multiline) { flex: 1; display: flex; flex-direction: column; min-height: 0; padding-bottom: var(--space-section, var(--s-5)); }
 :where(.orca-parity) .optgroup[data-single]:has(.text.multiline) > div { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 :where(.orca-parity) .optgroup[data-single] .opt-line.full:has(.text.multiline) { flex: 1; grid-template-rows: auto minmax(0, 1fr); align-items: stretch; }
 :where(.orca-parity) .optgroup[data-single] .opt-line.full .opt-field:has(.text.multiline) { align-items: stretch; }
 :where(.orca-parity) .optgroup[data-single] .text.multiline { height: 100%; min-height: 240px; max-height: none; resize: none; }
 :where(.orca-parity) .pf-full-editor .page-body { padding-inline: var(--space-section, var(--s-5)); }
-:where(.orca-parity) .pf-full-editor .page-body > * { width: 100%; max-width: 600px; margin-inline: auto; }
+:where(.orca-parity) .pf-full-editor .page-body > * { width: 100%; }
+:where(.orca-parity) .pf-full-editor .page-flow { column-width: 340px; column-gap: var(--s-5); }
+:where(.orca-parity) .page-flow > * { break-inside: avoid; }
+:where(.orca-parity) .pf-full-editor .page-flow .opt-line:not(.full) { --ctl-w: 168px; grid-template-columns: minmax(0, var(--label-w, 240px)) var(--ctl-w) var(--opt-end, 20px); justify-content: start; }
+:where(.orca-parity) .pf-full-editor .page-flow .option-row { --ctl-w: 168px; grid-template-columns: minmax(0, calc(var(--label-w, 240px) - 72px - var(--s-3))) 72px var(--ctl-w) var(--opt-end, 20px); justify-content: start; }
+:where(.orca-parity) .pf-full-editor .page-flow .opt-field > .control-number { grid-template-columns: 96px var(--unit-w); justify-content: start; }
 :where(.orca-parity) .pf-full-editor .page-bar { margin-bottom: 0; }
 @media (max-width: 599px) { :where(.orca-parity) .pf-full-editor .page-body { padding-inline: 0; } }
 :where(.orca-parity) .opt-line, :where(.orca-parity) .option-row { display: grid; grid-template-columns: minmax(0, 1fr) var(--ctl-w, clamp(112px, 46%, 220px)) var(--opt-end, 20px); align-items: center; column-gap: var(--s-3); min-height: var(--h-control); padding: calc(var(--space-row, var(--s-3)) / 2) var(--space-section, var(--s-5)) calc(var(--space-row, var(--s-3)) / 2) var(--row-inset, var(--space-section, var(--s-5))); }

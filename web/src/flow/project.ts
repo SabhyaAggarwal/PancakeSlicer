@@ -107,6 +107,19 @@ export function writeProjectRoute(replace = false) {
   writeRoute('/', replace);
   if (hasUnsavedProject()) history.replaceState({ ...history.state, [UNSAVED]: id }, '');
 }
+let retryDelay = 1000, retries = 0, retryTimer: ReturnType<typeof setTimeout> | undefined;
+function retryUnavailable() {
+  const { value, context } = project.get();
+  if (value === 'saved') { retryDelay = 1000; retries = 0; }
+  if (value !== 'failed' || context.conflict || context.failure?.kind !== 'unavailable' || retryTimer || retries >= 30) return;
+  const again = () => {
+    clearTimeout(retryTimer); retryTimer = undefined; window.removeEventListener('online', again);
+    const now = project.get();
+    if (now.value === 'failed' && !now.context.conflict && now.context.failure?.kind === 'unavailable') { retries++; void retryProject(); }
+  };
+  retryTimer = setTimeout(again, retryDelay); window.addEventListener('online', again);
+  retryDelay = Math.min(retryDelay * 2, 10_000);
+}
 function routeSavedProject() {
   const c = project.get().context;
   if (c.savedAt && !routing && getState().tab !== 'projects' && currentRoute().kind === 'blank') writeRoute(`/p/${c.id}`, true);
@@ -276,8 +289,8 @@ async function start(ready: Promise<unknown>) {
   await ready.catch(() => {});
   const [recovery, drafts, { createDraftJournal }] = await modules;
   recoveryCore = recovery; draftActivity = drafts;
-  store = await listed;
-  try { if (store) Object.assign(session, await lineage); }
+  store = await listed ?? await projectStore(true);
+  try { if (store) Object.assign(session, await lineage.catch(() => journalTools().then((tools) => tools.draftSession(session.owner)))); }
   catch (error) { toast(errorText(error)); }
   journal = createDraftJournal<Doc>(session.owner, draftStorage, codec, (id) => draftActivity!.beginProjectDraftMutation(id));
   observed = snapshot();
@@ -303,6 +316,7 @@ async function start(ready: Promise<unknown>) {
     }
   });
   project.subscribe(routeSavedProject);
+  project.subscribe(retryUnavailable);
   onLeaveDocument(() => {
     if (versionView) return;
     if (hasUnsavedProject()) checkpointProject();

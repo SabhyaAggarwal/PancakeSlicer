@@ -14,6 +14,15 @@ export function createServiceDocument<D extends ServiceDocument>(path: string, m
   let base = {} as D;
   let operation: { operationId: string; expectedRevision: number; document: D; serial: number } | null = null;
   const listeners = new Set<() => void>();
+  let retryDelay = 1000, retryTimer: ReturnType<typeof setTimeout> | undefined;
+  const transient = (error: unknown) => { const status = (error as { status?: number }).status ?? 0;
+    return error instanceof TypeError || error instanceof DOMException || status === 408 || status === 429 || status >= 500; };
+  const retryLater = () => {
+    const again = () => { clearTimeout(retryTimer); window.removeEventListener('online', again);
+      if (current.state === 'failed') { publish({ state: 'pending', error: null }); void flush().catch(() => {}); } };
+    clearTimeout(retryTimer); retryTimer = setTimeout(again, retryDelay); window.addEventListener('online', again);
+    retryDelay = Math.min(retryDelay * 2, 10_000);
+  };
   const publish = (patch: Partial<DocumentSnapshot<D>>) => { current = { ...current, ...patch }; listeners.forEach((listener) => listener()); };
   const hydrate = () => {
     if (hydrated) return Promise.resolve(current);
@@ -73,9 +82,11 @@ export function createServiceDocument<D extends ServiceDocument>(path: string, m
         for (const [key, at] of unsaved) if (at <= captured.serial) unsaved.delete(key);
         base = captured.document; savedSerial = captured.serial; operation = null; publish({ revision: ack.revision });
       }
-      publish({ state: 'ready', error: null, conflict: false });
+      retryDelay = 1000; publish({ state: 'ready', error: null, conflict: false });
     })().catch((error: unknown) => {
-      publish({ state: 'failed', error: error instanceof Error ? error.message : String(error), conflict: error instanceof Error && error.name === 'ProjectConflictError' }); throw error;
+      publish({ state: 'failed', error: error instanceof Error ? error.message : String(error), conflict: error instanceof Error && error.name === 'ProjectConflictError' });
+      if (transient(error)) retryLater();
+      throw error;
     }).finally(() => { running = null; });
     return running;
   }

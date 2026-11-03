@@ -4,7 +4,7 @@ import { methodAvailability } from '../profiles/method-context';
 import { isMethodSettingSupported } from '../profiles/capabilities';
 import { NozzleField } from '../profiles/SetupRows';
 import { Tabs } from 'radix-ui';
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Config, ConfigValue, PresetType } from '../api/types';
 import { isDeferred, isHidden, modeVisible, OPTIONS, splitKey, loadTab, useTab, type TabDesc, type TabLine, type OptionDef, type OptionMode } from '../options';
 import { effectiveConfig, effectiveMode, getState, presetEdits, resetOption, resolvePreset, setOption, setState, useStore } from '../state/store';
@@ -96,13 +96,21 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
     if (same) return prior;
     definitionCache.current.set(key, next); return next;
   };
-  useSettingsGroups();
+  const groupsVersion = useSettingsGroups();
   const groupId = (pageTitle: string, groupTitle: string) => `${TAB_OF[type]}/${pageTitle}/${groupTitle}`;
   const pageModified = (p: TabDesc['pages'][number]) => p.groups.some((g) => g.lines.some((l) => l.options.some((k) => splitKey(k)[0] in dirty)));
   const focus = useStore((s) => (s.settingsFocus?.type === type ? s.settingsFocus : null));
   const strip = useRef<HTMLDivElement>(null);
   const breaks = useTabFit(strip, `${pages.map((p) => p.title).join('|')}|${auxiliary?.label ?? ''}`);
+  const openByDefault = !!editor && typeof window !== 'undefined' && window.innerWidth >= 1100;
   const body = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const flow = editor ? body.current?.querySelector<HTMLElement>('.page-flow') : null;
+    if (!flow) return;
+    const natural = (l: Element) => [...l.children].reduce((w, c) => w + (c as HTMLElement).scrollWidth, 0);
+    const widest = Math.max(0, ...[...flow.querySelectorAll('.opt-line:not(.full) > .opt-label')].map(natural), ...[...flow.querySelectorAll('.option-row > .opt-label')].map((l) => natural(l) + 80));
+    flow.style.setProperty('--label-w', `${Math.min(240, Math.ceil(widest) + 4)}px`);
+  }, [editor, pageIdx, auxiliaryOn, desc, uiMode, groupsVersion]);
   useEffect(() => {
     if (!focus || !desc) return;
     const i = pages.findIndex((p) => p.title === focus.page);
@@ -137,13 +145,13 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
         {auxiliary && <Tabs.Trigger value="auxiliary" className={`page-tab ${auxiliaryOn ? 'active' : ''} ${auxiliary.modified ? 'modified' : ''}`}>{auxiliary.icon && <Icon name={auxiliary.icon} size={16}/>}<span className="page-tab-label">{auxiliary.label}</span></Tabs.Trigger>}
       </Tabs.List>
       <Tabs.Content forceMount value={auxiliaryOn ? 'auxiliary' : String(Math.min(pageIdx,pages.length-1))} className="page-body" ref={body}>
-        {auxiliaryOn && auxiliary ? auxiliary.content : <>
+        {auxiliaryOn && auxiliary ? auxiliary.content : <><div className="page-flow">
         {type === 'machine' && !editor && <NozzleField />}
         {type === 'process' && pageIdx === 0 && <SurfaceSettings config={config} system={system} availability={availability} editor={editor} dirty={dirty} readOnly={readOnly}/>}
         {!desc && <div className="settings-load" role={error || retryError ? 'alert' : 'status'}><span>{retryError || error ? `Settings failed to load: ${retryError ?? error}` : 'Loading settings…'}</span>{(error || retryError) && <button type="button" className="btn" disabled={retrying} onClick={retry}>{retrying ? 'Retrying…' : 'Retry'}</button>}</div>}
         {type === 'process' && page?.title === 'Multimaterial' && getState().filamentSlots.length > 1 && <section className="optgroup"><button type="button" className="btn" onClick={() => setState({flushDialog: true})}>Flush volumes</button></section>}
         {groups.map((g) => {
-          const single = groups.length === 1 && g.lines.length === 1 && g.lines[0].options.length === 1 && !!OPTIONS[splitKey(g.lines[0].options[0])[0]]?.multiline, id = groupId(page.title, g.title), open = !g.title || single || isGroupOpen(id);
+          const single = groups.length === 1 && g.lines.length === 1 && g.lines[0].options.length === 1 && !!OPTIONS[splitKey(g.lines[0].options[0])[0]]?.multiline, id = groupId(page.title, g.title), open = !g.title || single || isGroupOpen(id, openByDefault);
           const modified = g.lines.some((l) => l.options.some((k) => splitKey(k)[0] in dirty));
           const field = (line: TabLine, keys: string[], k: string, i: number, labels: string[] | undefined, shared: boolean, tooltip: string | undefined, hide = false) => {
             const key = splitKey(k)[0];
@@ -184,7 +192,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
               </div>;
             })}
           </section>;
-        })}
+        })}</div>
         {gcodeKeys.length > 0 && <Suspense fallback={<div className={`gcode-bench ${groups.length ? '' : 'fill'}`} role="status" aria-label="Loading G-code editor" />}>
           <GcodeWorkbench type={type} slot={slot} keys={gcodeKeys} labels={gcodeLabels} config={config} system={system} dirty={dirty} editor={editor} readOnly={readOnly} fill={!groups.length} />
         </Suspense>}

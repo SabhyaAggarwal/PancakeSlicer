@@ -2,17 +2,17 @@ import { useSyncExternalStore, type ReactNode } from 'react';
 import { Icon } from './Icon';
 import { SectionHeading } from './SectionHeading';
 
-const expanded = new Set<string>(), listeners = new Set<() => void>();
+const expanded = new Set<string>(), folded = new Set<string>(), listeners = new Set<() => void>();
 let version = 0;
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 
 export function setGroupOpen(id: string, open: boolean) {
-  if (open === expanded.has(id)) return;
-  if (open) expanded.add(id); else expanded.delete(id);
+  if (open === expanded.has(id) && open !== folded.has(id)) return;
+  if (open) { expanded.add(id); folded.delete(id); } else { expanded.delete(id); folded.add(id); }
   version++;
   listeners.forEach((listener) => listener());
 }
-export const isGroupOpen = (id: string) => expanded.has(id);
+export const isGroupOpen = (id: string, byDefault = false) => expanded.has(id) || (byDefault && !folded.has(id));
 export const useSettingsGroups = () => useSyncExternalStore(subscribe, () => version);
 
 export function GroupHead({ id, title, icon, modified, open, aside, fixed = false }: { id: string; title: string; icon?: string; modified: boolean; open: boolean; aside?: ReactNode; fixed?: boolean }) {

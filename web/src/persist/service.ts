@@ -30,7 +30,8 @@ export const routeKey = (key: string) => encodeURIComponent(key);
 let workspaceService: Promise<void> | null = null;
 export function requireWorkspaceService(): Promise<void> {
   workspaceService ??= readHealth(15_000).then(async response => {
-    if (!response.ok || (await response.json()).workspace_schema !== 1)
+    if (!response.ok) throw Object.assign(new Error('The slicing service is unavailable.'), { status: response.status });
+    if ((await response.json()).workspace_schema !== 1)
       throw new Error('The updated storage service is required. Your projects, drafts and preference changes are kept; retry after the service update.');
   }).catch(error => { workspaceService = null; throw error; });
   return workspaceService;

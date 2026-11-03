@@ -4,7 +4,7 @@ type Controller = typeof import('./persist/preferences');
 type Status = { state: 'loading' | 'ready' | 'pending' | 'failed'; error: string | null; hydrated: boolean };
 let values: Record<string, JsonValue> = {}, queued: Record<string, JsonValue> = {};
 let status: Status = { state: 'loading', error: null, hydrated: false }, controller: Controller | null = null;
-let loading: Promise<void> | null = null;
+let loading: Promise<void> | null = null, retryDelay = 1000;
 const listeners = new Set<() => void>();
 const keyListeners = new Map<string, Set<() => void>>();
 const same = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
@@ -55,7 +55,14 @@ export function initialiseSavedPreferences(retry = false): Promise<void> {
     await controller.hydrateServicePreferences();
     sync(true); if (retry) await controller.flushServicePreferences(true);
   })().catch((error: unknown) => {
-    loading = null; publish(values, { ...status, state: 'failed', error: error instanceof Error ? error.message : String(error) }); throw error;
+    loading = null; publish(values, { ...status, state: 'failed', error: error instanceof Error ? error.message : String(error) });
+    const status_ = (error as { status?: number }).status ?? 0;
+    if (error instanceof TypeError || error instanceof DOMException || status_ === 408 || status_ === 429 || status_ >= 500) {
+      const again = () => { clearTimeout(timer); window.removeEventListener('online', again); void initialiseSavedPreferences(true).catch(() => {}); };
+      const timer = setTimeout(again, retryDelay); window.addEventListener('online', again);
+      retryDelay = Math.min(retryDelay * 2, 10_000);
+    }
+    throw error;
   });
   return loading;
 }
