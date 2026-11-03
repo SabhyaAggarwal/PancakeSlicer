@@ -3,7 +3,7 @@ import { Dialog } from 'radix-ui';
 import './dialog.css';
 
 export type ModalSize = 's' | 'm' | 'l' | 'xl' | 'window';
-const FIELD = 'input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not(:disabled), textarea:not(:disabled), select:not(:disabled)';
+const FIELD = ':is(input:not([type=hidden], [type=checkbox], [type=radio]), textarea, select):not(:disabled, [aria-hidden=true], [tabindex="-1"])';
 function focusFirst(root: HTMLElement) {
   const footer = root.querySelector('.modal-buttons');
   const primary = footer?.querySelector<HTMLElement>('.btn-primary:not(:disabled), .btn-danger:not(:disabled)');

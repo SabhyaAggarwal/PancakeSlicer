@@ -29,14 +29,18 @@ function mergeCatalog(vendor: string, cat: PresetCatalog) {
 
 let catalogLoadGeneration = 0;
 const transient = (error: unknown) => error instanceof TypeError || [408, 429].includes((error as {status?:number}).status ?? 0) || ((error as {status?:number}).status ?? 0) >= 500;
-let retryDelay = 1000;
+let retryDelay = 1000, armed: (() => void) | null = null;
+function disarmRetry() { armed?.(); armed = null; }
 function retryCatalog(generation: number) {
-  const again = () => { clearTimeout(timer); window.removeEventListener('online', again); if (generation === catalogLoadGeneration) void loadCatalog(); };
+  disarmRetry();
+  const again = () => { disarmRetry(); if (generation === catalogLoadGeneration) void loadCatalog(); };
   const timer = setTimeout(again, retryDelay); window.addEventListener('online', again);
+  armed = () => { clearTimeout(timer); window.removeEventListener('online', again); };
   retryDelay = Math.min(retryDelay * 2, 10_000);
 }
 let catalogLibraryTail: Promise<void> = Promise.resolve();
 export async function loadCatalog() {
+  disarmRetry();
   const generation = ++catalogLoadGeneration, initial = getState(), api = initial.api, documentAtStart=documentGeneration();
   if (!api) return;
   setState({ loading: 'Loading presets', profileLibraryLoad: {state: 'loading'} });

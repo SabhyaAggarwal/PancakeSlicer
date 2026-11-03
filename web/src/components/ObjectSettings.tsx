@@ -1,6 +1,6 @@
 import { Check } from './Check';
 import { useMemo, useRef, useState } from 'react';
-import { Modal, ModalTitle } from './Modal';
+import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 import { ActionMenu } from './Menu';
 import type { Config, ConfigValue } from '../api/types';
 import { isHidden, OPTIONS, useTab } from '../options';
@@ -219,28 +219,23 @@ function SelectSettings(props: { title: string; keys: string[]; current: Config;
     setChecked(next);
   };
   return (
-    <Modal size="m" label={`Select settings — ${props.title}`} onClose={props.onClose} backdropClose returnFocus='.obj-settings-tools button[title="Add settings"]'>
-        <ModalTitle title={`Select settings — ${props.title}`} onClose={props.onClose} />
-        <div className="select-list">
-          {props.keys.map((k) => (
-            <label key={k} className="select-row">
-              <Check checked={checked.has(k)} onCheckedChange={() => toggle(k)} />
-              <span>{labelOf(k)}</span>
-            </label>
-          ))}
-        </div>
-        <div className="modal-buttons">
-          <button className="btn" onClick={() => setChecked(new Set(checked.size === props.keys.length ? [] : props.keys))}>
-            {checked.size === props.keys.length ? 'Deselect all' : 'Select all'}
-          </button>
-          <span style={{ flex: 1 }} />
-          <button className="btn primary" onClick={() => props.onOk([...checked])}>
-            OK
-          </button>
-          <button className="btn" onClick={props.onClose}>
-            Cancel
-          </button>
-        </div>
+    <Modal size="m" label={`Add ${props.title} settings`} onClose={props.onClose} returnFocus='.obj-settings-tools button[title="Add settings"]'>
+        <ModalTitle title={`Add ${props.title} settings`} onClose={props.onClose} />
+        <ModalBody>
+          <div className="modal-pick">
+            <div className="modal-pick-head">
+              <button type="button" className="btn-ghost" onClick={() => setChecked(new Set(props.keys))}>Select all</button>
+              <button type="button" className="btn-ghost" onClick={() => setChecked(new Set())}>Clear</button>
+            </div>
+            <div className="modal-pick-list">{props.keys.map((k) => (
+              <label key={k} className="modal-check"><Check checked={checked.has(k)} onCheckedChange={() => toggle(k)} /><span>{labelOf(k)}</span></label>
+            ))}</div>
+          </div>
+        </ModalBody>
+        <ModalFooter lead={`${checked.size} of ${props.keys.length}`}>
+          <button type="button" className="btn" onClick={props.onClose}>Cancel</button>
+          <button type="button" className="btn-primary" onClick={() => props.onOk([...checked])}>Save</button>
+        </ModalFooter>
     </Modal>
   );
 }

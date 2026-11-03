@@ -10,7 +10,7 @@ export interface Transition<S extends string, C, E extends Ev> {
   guard?: (ctx: C, ev: E) => boolean;
   action?: Action<C, E, S>;
 }
-type To<S extends string, C, E extends Ev> = S | Transition<S, C, E> | Transition<S, C, E>[];
+type To<S extends string, C, E extends Ev> = S | Transition<S, C, E> | readonly Transition<S, C, E>[];
 
 export interface StateNode<S extends string, E extends Ev, C> {
   on?: { [T in E['type']]?: To<S, C, Of<E, T>> };
@@ -38,7 +38,7 @@ export interface Machine<S extends string, E extends Ev, C> {
   subscribe(l: (s: Snapshot<S, C>) => void): () => void;
 }
 
-const list = <T>(t: T | T[] | undefined): T[] => (t === undefined ? [] : Array.isArray(t) ? t : [t]);
+const list = <T>(t: T | readonly T[] | undefined): readonly T[] => (t === undefined ? [] : Array.isArray(t) ? t : [t as T]);
 const norm = <S extends string, C, E extends Ev>(t: S | Transition<S, C, E>): Transition<S, C, E> => (typeof t === 'string' ? { target: t } : t);
 
 export function assertNever(value: never): never {

@@ -16,8 +16,8 @@ function LifecycleStatus() {
     </div>
   );
   if (value === 'opening') return <div className="pj-status" role="status"><span>Opening…</span></div>;
-  if (value !== 'failed' && !context.conflict) return null;
-  const conflict = context.conflict || /another tab/.test(context.error ?? '');
+  if (value !== 'failed' && value !== 'conflict') return null;
+  const conflict = value === 'conflict' || /another tab/.test(context.error ?? '');
   return (
     <div role="alert" className="pj-status">
       <span>{conflict ? 'Changed in another window' : context.error ?? 'Not saved'}</span>

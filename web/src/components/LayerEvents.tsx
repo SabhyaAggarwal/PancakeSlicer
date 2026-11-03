@@ -3,7 +3,7 @@ import type { LayerRec } from '../preview/format';
 import { filamentColor } from '../plater/filamentColor';
 import { effectiveConfig, getState, setEvents, useStore, type LayerEvent } from '../state/store';
 import type { SliderTick } from './PreviewSliders';
-import { Modal, ModalTitle } from './Modal';
+import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 import { ActionMenu, type MenuEntry } from './Menu';
 
 const COLOR: Record<LayerEvent['type'], string> = {
@@ -46,19 +46,14 @@ export function EventMenu({ anchor, z, layer, onClose, onJump }: { anchor: DOMRe
   if (custom !== null)
     return (
       <Modal size="m" label="Custom G-code" onClose={onClose} returnFocus=".ls-plus">
-          <ModalTitle title="Custom G-code" onClose={onClose} />
-          <div className="flush-body">
-            <div>Enter Custom G-code used on current layer:</div>
-            <textarea className="text multiline gcode-input" data-autofocus value={custom} spellCheck={false} onChange={(e) => setCustom(e.target.value)} />
-          </div>
-          <div className="modal-buttons center">
-            <button className="btn primary" disabled={!custom.trim()} onClick={() => put({ z, type: 'custom', text: custom })}>
-              OK
-            </button>
-            <button className="btn" onClick={onClose}>
-              Cancel
-            </button>
-          </div>
+          <ModalTitle title={`Custom G-code at ${z.toFixed(2)} mm`} onClose={onClose} />
+          <ModalBody>
+            <textarea className="text multiline gcode-input" aria-label={`Custom G-code at ${z.toFixed(2)} mm`} value={custom} spellCheck={false} onChange={(e) => setCustom(e.target.value)} />
+          </ModalBody>
+          <ModalFooter>
+            <button type="button" className="btn" onClick={onClose}>Cancel</button>
+            <button type="button" className="btn-primary" disabled={!custom.trim()} onClick={() => put({ z, type: 'custom', text: custom })}>Save</button>
+          </ModalFooter>
       </Modal>
     );
 

@@ -1,63 +1,67 @@
-import { getState, setState, subscribeStore, type State } from '../state/store';
-import { readProfileLibrary } from '../persist/profile-library';
+import { getState, subscribeStore, type State } from '../state/store';
+import { createMachine } from '../flow/fsm';
 import { saveProfileRecords } from './transactions';
-import { capturePrinterMaterials, planPrinterSwitch } from './material-library';
 import { documentGeneration } from '../state/history';
 import type { PrinterProfileLibrary } from './ownership';
 export interface PrinterSetupPersistence {state:'idle'|'saving'|'error';error:string|null;recovery?:'adopt_browser_inventory'|'reload_profiles'}
 interface SetupIntent {snapshot:State;baseline:PrinterProfileLibrary;isCurrent():boolean}
-let status:PrinterSetupPersistence={state:'idle',error:null},tail:Promise<void>=Promise.resolve(),running=false,desired:SetupIntent|null=null,watching=false,generation=0,hydrated=false;
-let baseline:PrinterProfileLibrary|undefined;
+type SetupState='unhydrated'|'blocked'|'idle'|'saving'|'failed';
+type SetupEvent={type:'HYDRATED'}|{type:'CHANGE';intent:SetupIntent}|{type:'DONE';request:number}|{type:'FAIL';request:number;error:string;changed:boolean};
+interface SetupContext {request:number;desired:SetupIntent|null;writing:SetupIntent|null;error:string|null}
+let watching=false,generation=0,baseline:PrinterProfileLibrary|undefined;
+const mine=(c:SetupContext,e:{request:number})=>e.request===c.request;
+const late={};
+const hydratedEdge={target:'idle' as const,action:(c:SetupContext)=>({request:c.request+1,desired:null,writing:null,error:null})};
+const change={target:'saving' as const,action:(_:SetupContext,e:{intent:SetupIntent})=>({desired:e.intent,error:null})};
+const setups=createMachine<SetupState,SetupEvent,SetupContext>({
+  id:'printer-setups',initial:'unhydrated',strict:true,context:{request:0,desired:null,writing:null,error:null},
+  states:{
+    unhydrated:{on:{HYDRATED:hydratedEdge,CHANGE:{target:'blocked',action:()=>({error:'Restore or adopt the saved printer setups before saving this working setup.'})},DONE:late,FAIL:late}},
+    blocked:{on:{HYDRATED:hydratedEdge,CHANGE:{},DONE:late,FAIL:late}},
+    idle:{on:{HYDRATED:hydratedEdge,CHANGE:change,DONE:late,FAIL:late}},
+    saving:{
+      entry:(c)=>{const intent=c.desired!,request=c.request+1;void write(intent,request);return{request,desired:null,writing:intent};},
+      on:{HYDRATED:hydratedEdge,CHANGE:{action:(_,e)=>({desired:e.intent})},
+        DONE:[{target:'saving',guard:(c,e)=>mine(c,e) && !!c.desired},{target:'idle',guard:mine,action:()=>({writing:null})},late],
+        FAIL:[{target:'saving',guard:(c,e)=>mine(c,e) && e.changed && !!c.desired},
+          {target:'failed',guard:mine,action:(c,e)=>({error:e.error,desired:c.desired ?? c.writing,writing:null})},late]}},
+    failed:{on:{HYDRATED:hydratedEdge,CHANGE:change,DONE:late,FAIL:late}},
+  },
+});
+export const printerSetupsMachine=setups;
+async function write(intent:SetupIntent,request:number){
+  try{await saveProfileRecords(intent.snapshot,[],`printer-setup:${crypto.randomUUID()}`,intent.snapshot.printerLibrary,undefined,intent);setups.send({type:'DONE',request});}
+  catch(error){setups.send({type:'FAIL',request,error:error instanceof Error?error.message:String(error),changed:(error as {code?:string}).code==='setup_context_changed'});}
+}
+const view=():PrinterSetupPersistence=>{const {value,context}=setups.get();
+  return value==='saving'?{state:'saving',error:null}:value==='failed'?{state:'error',error:context.error}
+    :value==='blocked'?{state:'error',error:context.error,recovery:'adopt_browser_inventory'}:{state:'idle',error:null};};
+let status=view();
 const listeners=new Set<()=>void>();
-const publish=(next:PrinterSetupPersistence)=>{status=next;listeners.forEach(l=>l());};
+setups.subscribe(()=>{status=view();listeners.forEach(l=>l());});
 export const printerSetupPersistence=()=>status;
 export const subscribePrinterSetupPersistence=(listener:()=>void)=>{listeners.add(listener);return()=>{listeners.delete(listener);};};
-export function acceptHydratedPrinterSetups():void{baseline=getState().printerLibrary;generation++;hydrated=true;publish({state:'idle',error:null});watchPrinterSetups();}
-export async function hydratePrinterSetups(options:{restoreStartupPlaceholder?:boolean}={}):Promise<void>{
-  const initial=getState(),mine=++generation;
-  hydrated=false;
-  let library;
-  try{library=await readProfileLibrary(initial.api?.mock);if(!library)throw new Error('The required profile-library API is unavailable. Keep browser edits and update the service.');}
-  catch(error){if(mine===generation){hydrated=false;publish({state:'error',error:String(error),recovery:'reload_profiles'});}throw error;}
-  if(mine!==generation)return;
-  const s=getState();
-  const changed=s.api!==initial.api || s.userPresets!==initial.userPresets || s.printer!==initial.printer || s.printerLibrary!==initial.printerLibrary || s.filamentSlots!==initial.filamentSlots || s.slotColours!==initial.slotColours || s.filamentEdits!==initial.filamentEdits || s.mixes!==initial.mixes;
-  const local=capturePrinterMaterials(s),selected=library.printers.setups[s.printer];
-  const differs=(id:string)=>!library.printers.setups[id] || JSON.stringify(local.setups[id])!==JSON.stringify(library.printers.setups[id]);
-  const localOnly=Object.keys(local.setups).some(differs),inactiveLocal=Object.keys(local.setups).some(id=>id!==s.printer && differs(id));
-  if(changed || inactiveLocal || localOnly && !options.restoreStartupPlaceholder || !library.revision && s.userPresets.length){
-    hydrated=false;
-    publish({state:'error',error:'Browser printer slots, colours or tuning have not been adopted into the saved library. Export or explicitly adopt them before restoring saved setups.',recovery:'adopt_browser_inventory'});
-    return;
-  }
-  if(library.revision>0){
-    const setup=planPrinterSwitch({...s,printerLibrary:library.printers},s.printer);
-    setState({profileLibraryRevision:library.revision,printerLibrary:library.printers,
-      ...(selected?{filamentSlots:selected.slots.map(slot=>slot.materialId),slotColours:[],filamentEdits:selected.tuning,mixes:selected.mixes}:{}),
-      profileRecoveries:setup.recoveries});
-  }else setState({profileLibraryRevision:0});
-  baseline=library.printers;hydrated=true;publish({state:'idle',error:null});watchPrinterSetups();
-}
+export function acceptHydratedPrinterSetups():void{baseline=getState().printerLibrary;generation++;setups.send({type:'HYDRATED'});watchPrinterSetups();}
 function schedule(s:State){
-  if(!hydrated || !baseline){publish({state:'error',error:'Restore or adopt the saved printer setups before saving this working setup.',recovery:'adopt_browser_inventory'});return;}
-  const mine=generation,document=documentGeneration();
-  desired={snapshot:s,baseline,isCurrent:()=>{const now=getState();return mine===generation && document===documentGeneration() && now.api===s.api
+  const at=generation,document=documentGeneration();
+  setups.send({type:'CHANGE',intent:{snapshot:s,baseline:baseline!,isCurrent:()=>{const now=getState();return at===generation && document===documentGeneration() && now.api===s.api
     && now.printer===s.printer && now.process===s.process && now.printerLibrary===s.printerLibrary && now.filamentSlots===s.filamentSlots
-    && now.slotColours===s.slotColours && now.filamentEdits===s.filamentEdits && now.mixes===s.mixes;}};
-  if(running)return;running=true;
-  tail=(async()=>{
-    publish({state:'saving',error:null});
-    while(desired){const intent=desired;desired=null;try{await saveProfileRecords(intent.snapshot,[],`printer-setup:${crypto.randomUUID()}`,intent.snapshot.printerLibrary,undefined,intent);}
-      catch(error){if(desired && (error as {code?:string}).code==='setup_context_changed')continue;
-        desired ??= intent;publish({state:'error',error:error instanceof Error?error.message:String(error)});throw error;}}
-    publish({state:'idle',error:null});
-  })().finally(()=>{running=false;});
-  void tail.catch(()=>{});
+    && now.slotColours===s.slotColours && now.filamentEdits===s.filamentEdits && now.mixes===s.mixes;}}});
 }
 export function watchPrinterSetups():void{
   if(watching)return;watching=true;let previous=getState();
   subscribeStore(()=>{const current=getState(),before=previous;previous=current;
     if(current.profileLibraryLoad.state==='ready' && before.profileLibraryLoad.state==='ready' && current.printerLibrary!==before.printerLibrary)schedule(current);});
 }
-export const flushPrinterSetups=():Promise<void>=>status.state==='error'?Promise.reject(new Error(status.error ?? 'Printer setups need recovery.')):tail;
-export function retryPrinterSetups():Promise<void>{schedule(getState());return tail;}
+export function flushPrinterSetups():Promise<void>{
+  return new Promise((resolve,reject)=>{
+    let done=false,stop:(()=>void)|undefined;
+    const settle=()=>{
+      const {value,context}=setups.get();
+      if(done || value==='saving')return;
+      done=true;stop?.();
+      if(value==='failed' || value==='blocked')reject(new Error(context.error ?? 'Printer setups need recovery.'));else resolve();
+    };
+    settle();if(!done)stop=setups.subscribe(settle);
+  });
+}

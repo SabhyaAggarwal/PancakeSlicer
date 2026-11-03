@@ -11,7 +11,7 @@ import { ManagerProfileRow } from './ManagerProfileRow';
 import { profileAccess, profileReferenceSnapshot, subscribeProfileReferences } from './references';
 import { changedKeys } from './model';
 import { applicabilityKey, worksWithNone } from './WorksWith';
-import { archiveProfiles, profileCopyCreation, restoreProfiles, type ProfileCreation } from './transactions';
+import { archiveProfiles, profileCopyCreation, restoreProfiles } from './transactions';
 import { documentGeneration } from '../state/history';
 import { MasterPresetDetail, ProfileEditor, type ProfileDraft } from './ProfileEditor';
 import { modelLabel, nozzleField, printerLine, processMode, processTitle, profileColour, profileSummary, rowDetail, vendorField, vendorLabel } from './metadata';
@@ -29,6 +29,8 @@ import { accessSnapshot } from '../api/access';
 import { OPTIONS } from '../options';
 import { getState, resolvePreset, setState, toast, useStore, type State } from '../state/store';
 import { Modal } from '../components/Modal';
+import { useMachine } from '../flow/fsm';
+import { windowOps, type CopyRequest, type WindowOp } from '../flow/profiles-window-ops';
 import { SettingsDetail } from '../components/VisibilityControl';
 import { Dialog } from 'radix-ui';
 import type { ProjectProfileChanges } from './project-draft';
@@ -44,8 +46,6 @@ const TYPES: [PresetType, string][] = [['machine', 'Printers'], ['filament', 'Fi
 const shortName = presetLabel;
 const first = (value: unknown) => String(Array.isArray(value) ? value[0] ?? '' : value ?? '');
 const coverOf = (vendor: string, model: string) => vendor && model ? `/profiles/${encodeURIComponent(vendor)}/${encodeURIComponent(model)}_cover.png` : undefined;
-type CopyRequest={source:UserPreset;name:string;creation:ProfileCreation;error?:string};
-let pendingCopy:CopyRequest|undefined;
 
 interface Item { base?:SystemPreset; key: string; name: string; mine: boolean; flag?: string; parent?: string; changed: number; slot?: number; user?: UserPreset; note: string; vendor: string; model:string; nozzle: string; material: string; family?: string; cover?: string|null; swatch?:string|null;reason?: string; meta?: string; fullName?: string; child?: boolean; config: Config; variants?: Item[] }
 const COMMON_MATERIALS = ['PLA', 'PETG', 'ABS', 'ASA', 'TPU'];
@@ -361,7 +361,17 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const selectionRevision=useRef(0);
   const id = useId();
   void edit;
-  const [compareHidden, setCompareHidden] = useState<string | null>(null), [busy, setBusy] = useState(false);
+  const [compareHidden, setCompareHidden] = useState<string | null>(null);
+  const ops = useMachine(windowOps), busy = ops.value !== 'idle', pendingCopy = ops.context.copy;
+  const run = async (op: WindowOp, task: () => Promise<void>) => {
+    if(!windowOps.can({type: 'BEGIN', op})) return;
+    windowOps.send({type: 'BEGIN', op});
+    try {await task();} finally {windowOps.send({type: 'END', op});}
+  };
+  const editorSaving = useCallback((saving: boolean) => {
+    if(saving) {if(windowOps.can({type: 'BEGIN', op: 'editor-saving'})) windowOps.send({type: 'BEGIN', op: 'editor-saving'});}
+    else if(windowOps.get().value === 'editor-saving') windowOps.send({type: 'END', op: 'editor-saving'});
+  }, []);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [contextMenu,setContextMenu] = useState<{x:number;y:number;anchor:HTMLElement}|null>(null);
   const references = useSyncExternalStore(subscribeProfileReferences, profileReferenceSnapshot);
@@ -408,7 +418,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const added = (n: string,targetType=type) => {setType(targetType); setAdding(false); setMobilePane('detail');setSearch(''); setVendorFilter([]); setNozzleFilter([]); setMaterialFilter([]); const p = findProfile(getState(), targetType, n); if(p) {const key = profileKey(p); const initial = createSelection(`profiles:owned:${targetType}`, [key]); setSelection(reduceSelection(initial,{type: 'CLICK',key}));}};
   const consumeCopy=async(captured:CopyRequest,owns:()=>boolean)=>{
     const key=await captured.creation.commit();
-    if(pendingCopy===captured)pendingCopy=undefined;
+    if(windowOps.get().context.copy===captured)windowOps.send({type:'COPY_DONE'});
     if(owns())added(key,captured.source.type);else toast(`Added ${captured.name}`);
   };
   const owner=()=>{
@@ -418,7 +428,8 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   };
   const addVariant = async (variant:Item,colour?:string) => {
     if(getState().profileLibraryLoad.state!=='ready')return;
-    setBusy(true);setBulkError(null);
+    await run('adding', async () => {
+    setBulkError(null);
     const owns=owner();
     try {
       const recolour=colour && variant.base && colour !== configColour(variant.config) ? colour : undefined;
@@ -428,41 +439,39 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
       if(pickerAdd.current === type){pickerAdd.current=null;requestPreset(type,0,key);}
     }
     catch(error) {if(mounted.current)setBulkError(error instanceof Error?error.message:String(error));}
-    finally {if(mounted.current)setBusy(false);}
+    });
   };
   const retryCopy=async()=>{
-    const copy=pendingCopy;if(!copy || busy || !libraryReady)return;
-    setBusy(true);copy.error=undefined;
-    try{await consumeCopy(copy,owner());}
-    catch(error){copy.error=error instanceof Error?error.message:String(error);}
-    finally{if(mounted.current)setBusy(false);}
+    const copy=windowOps.get().context.copy;if(!copy || !libraryReady)return;
+    await run('copying', async () => {
+      try{await consumeCopy(copy,owner());}
+      catch(error){windowOps.send({type:'COPY_FAILED',error:error instanceof Error?error.message:String(error)});}
+    });
   };
   const duplicate=async(source:UserPreset)=>{
     if(busy || !libraryReady)return;
     if(pendingCopy){if(pendingCopy.source.id===source.id)await retryCopy();else setBulkError(`Finish or discard the copy of ${pendingCopy.source.name} first.`);return;}
     const copyName=await promptDialog(`Duplicate ${NOUNS[type][0]}`,`${source.name} copy`);
-    if(!copyName || pendingCopy)return;
+    if(!copyName || windowOps.get().context.copy)return;
     if(getState().userPresets.some(p=>p.type === source.type && !p.archived && p.name === copyName)){setBulkError(`${copyName} already exists.`);return;}
-    pendingCopy={source,name:copyName,creation:profileCopyCreation(source,copyName)};
+    windowOps.send({type:'COPY',source,name:copyName,creation:profileCopyCreation(source,copyName)});
     await retryCopy();
   };
-  const [,refresh]=useState(0);
-  const discardCopy=()=>{if(pendingCopy && !pendingCopy.creation.retryable && !busy){pendingCopy=undefined;refresh(n=>n+1);}};
-  const exportSelected = async () => {
-    setBusy(true); setBulkError(null);
+  const discardCopy=()=>{if(windowOps.can({type:'DISCARD'}))windowOps.send({type:'DISCARD'});};
+  const exportSelected = () => run('exporting', async () => {
+    setBulkError(null);
     try {
       const state = getState(), {presetJsonText, downloadArchive} = await import('../preset-io'), {strToU8, zipSync} = await import('fflate');
       const result = serializeSelected(latestSelection.current, {label: access.label, serialize: key => {const p = findProfile(state, type, key); if(!p) throw new Error('Profile unavailable'); return presetJsonText(p, state);}});
       if(result.files.length) downloadArchive({name: 'selected-profiles.zip', data: zipSync(Object.fromEntries(result.files.map(f => [f.filename, strToU8(f.text)])))});
       if(result.failed.length) setBulkError(result.failed.map(f => `${f.name}: ${f.error}`).join('\n'));
-    } catch(e) {setBulkError(e instanceof Error ? e.message : String(e));} finally {setBusy(false);}
-  };
-  const deleteSelected = async (keys?:string[]) => {
-    setBusy(true); setBulkError(null);
+    } catch(e) {setBulkError(e instanceof Error ? e.message : String(e));}
+  });
+  const deleteSelected = (keys?:string[]) => run('deleting', async () => {
+    setBulkError(null);
     try {await archiveRecords(type,keys ?? selectedVisible(latestSelection.current));}
     catch(error) {setBulkError(error instanceof Error ? error.message : String(error));}
-    finally {setBusy(false);}
-  };
+  });
   const staged=useRef<string|null>(null);
   useEffect(()=>{
     if(!stage || staged.current === stage.id)return;
@@ -491,7 +500,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   };
   const handlers=useRef({close,addVariant,deleteSelected,duplicate});handlers.current={close,addVariant,deleteSelected,duplicate};
   const editKey=!adding && item?.user ? item.key : undefined,editUser=editKey ? item?.user : undefined,draft=editKey ? drafts[JSON.stringify([type,editKey])] : undefined;
-  const editor=useMemo(()=>editKey && editUser && <ProfileEditor key={editKey} type={type} name={editKey} draft={draft} update={updateDraft} onSavingChange={setBusy} onBack={()=>handlers.current.close()} onRemove={() => void handlers.current.deleteSelected([editKey])} onDuplicate={editUser.kind === 'master' ? undefined : () => void handlers.current.duplicate(editUser)} foldActions={drill} renameRequest={renameRequest}/>,[editKey,editUser,type,draft,drill,updateDraft,renameRequest]);
+  const editor=useMemo(()=>editKey && editUser && <ProfileEditor key={editKey} type={type} name={editKey} draft={draft} update={updateDraft} onSavingChange={editorSaving} onBack={()=>handlers.current.close()} onRemove={() => void handlers.current.deleteSelected([editKey])} onDuplicate={editUser.kind === 'master' ? undefined : () => void handlers.current.duplicate(editUser)} foldActions={drill} renameRequest={renameRequest}/>,[editKey,editUser,type,draft,drill,updateDraft,renameRequest]);
   const addDetails=useMemo(()=>adding && item ? <AddDetails key={item.key} type={type} item={item} busy={busy} onAdd={(variant,colour)=>void handlers.current.addVariant(variant,colour)}/> : null,[adding,item,type,busy]);
   const bulk=selected.length > 1 && !adding, selectionKey=selected.join('\n');
   const canCompare=bulk && selected.length <= 4 && selectedItems.length === selected.length, comparing=canCompare && compareHidden !== selectionKey;

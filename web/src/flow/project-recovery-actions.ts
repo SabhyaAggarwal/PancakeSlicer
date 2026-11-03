@@ -321,7 +321,7 @@ export async function saveProjectSnapshot(runtime: RecoveryRuntime, capture: {
     if (revision > 0) await receipt.durable.catch(() => null);
     if (!storage) throw new Error('Project storage is unavailable');
     if (runtime.removed.has(id)) return;
-    if (runtime.activeWrite(id, gen, version) && project.get().context.conflict) throw failureError(project.get().context.failure ?? conflictFailure(id, revision));
+    if (runtime.activeWrite(id, gen, version) && project.get().value === 'conflict') throw failureError(project.get().context.failure ?? conflictFailure(id, revision));
     const { encode, nameOf, plateCount, thumbnail } = await codec();
     const { stored, blobs } = encode(document);
     for (const [k, b] of blobs) {
@@ -335,7 +335,7 @@ export async function saveProjectSnapshot(runtime: RecoveryRuntime, capture: {
     const acknowledgement = await storage.save(id, meta, committed, meta.objects === 0 ? null : runtime.activeWrite(id, gen, version) ? thumbnail() ?? undefined : undefined);
     savedVersionBase(id, document);
     if (runtime.activeWrite(id, gen, version)) project.send({ type: 'SAVED', id, ...meta, ...acknowledgement, checkpoint: receipt.checkpoint });
-    if (!runtime.activeWrite(id, gen, version) || !project.get().context.conflict) {
+    if (!runtime.activeWrite(id, gen, version) || project.get().value !== 'conflict') {
       await receipt.durable.catch(() => null);
       const drafts = await runtime.drafts().catch(() => null);
       await drafts?.remove(receipt.checkpoint.id, receipt.checkpoint.sequence).catch(() => {});

@@ -14,7 +14,7 @@ import { versionShown, versionView, versionWanted } from './version-view';
 
 export type { ProjectMeta } from '../persist/backend';
 export { newProject } from '../actions';
-export type ProjectStateName = 'blank' | 'opening' | 'editing' | 'saving' | 'saved' | 'failed' | 'deleted' | 'missing';
+export type ProjectStateName = 'blank' | 'opening' | 'editing' | 'saving' | 'saved' | 'failed' | 'conflict' | 'deleted' | 'missing';
 export interface ProjectContext {
   id: string;
   name: string;
@@ -22,7 +22,6 @@ export interface ProjectContext {
   revision: number;
   error: string | null;
   dirty: boolean;
-  conflict: boolean;
   loadError: boolean;
   origin: 'new' | 'loaded' | 'saved';
   failure: ProjectFailure | null;
@@ -35,7 +34,7 @@ export type ProjectEvent =
   | { type: 'DRAFT'; id: string; durability: Exclude<DraftDurability, { state: 'none' }> }
   | { type: 'RECOVERED'; meta: ProjectMeta; draft: ProjectDraftMeta; failure: ProjectFailure }
   | { type: 'OPENED'; meta: ProjectMeta } | { type: 'MISSING'; id: string } | { type: 'DELETED' }
-  | { type: 'REBASE'; revision: number } | { type: 'REMOTE' } | { type: 'ACKNOWLEDGE' };
+  | { type: 'REBASE'; revision: number } | { type: 'REMOTE' };
 let recoveryCore: typeof import('./project-recovery');
 const projectFailure = (...args: Parameters<typeof recoveryCore.projectFailure>) => recoveryCore.projectFailure(...args);
 const conflictFailure = (...args: Parameters<typeof recoveryCore.conflictFailure>) => recoveryCore.conflictFailure(...args);
@@ -57,7 +56,7 @@ let previous: string | null = null;
 let leaving = false;
 const sameDoc = (a: Doc | null, b: Doc) => !!a && (Object.keys(b) as (keyof Doc)[]).every((k) => k === 'selected' || a[k] === b[k]);
 const errorText = (e: unknown) => e instanceof Error ? e.message : String(e);
-const blank = (): ProjectContext => ({ id: newKey(), name: 'Untitled', savedAt: 0, revision: 0, error: null, dirty: false, conflict: false, loadError: false, origin: 'new', failure: null, draft: { state: 'none' } });
+const blank = (): ProjectContext => ({ id: newKey(), name: 'Untitled', savedAt: 0, revision: 0, error: null, dirty: false, loadError: false, origin: 'new', failure: null, draft: { state: 'none' } });
 const activeWrite = (id: string, gen: number, version: number) =>
   id === project.get().context.id && gen === documentGeneration() && version === epoch;
 
@@ -113,11 +112,11 @@ let retryDelay = 1000, retries = 0, retryTimer: ReturnType<typeof setTimeout> | 
 function retryUnavailable() {
   const { value, context } = project.get();
   if (value === 'saved') { retryDelay = 1000; retries = 0; }
-  if (value !== 'failed' || context.conflict || context.failure?.kind !== 'unavailable' || retryTimer || retries >= 30) return;
+  if (value !== 'failed' || context.failure?.kind !== 'unavailable' || retryTimer || retries >= 30) return;
   const again = () => {
     clearTimeout(retryTimer); retryTimer = undefined; window.removeEventListener('online', again);
     const now = project.get();
-    if (now.value === 'failed' && !now.context.conflict && now.context.failure?.kind === 'unavailable') { retries++; void retryProject(); }
+    if (now.value === 'failed' && now.context.failure?.kind === 'unavailable') { retries++; void retryProject(); }
   };
   retryTimer = setTimeout(again, retryDelay); window.addEventListener('online', again);
   retryDelay = Math.min(retryDelay * 2, 10_000);
@@ -128,7 +127,7 @@ function routeSavedProject() {
 }
 function hasUnsavedProject() {
   const { value, context } = project.get();
-  return value === 'editing' || value === 'saving' || value === 'failed' && !context.loadError || context.conflict;
+  return value === 'editing' || value === 'saving' || value === 'conflict' || value === 'failed' && !context.loadError;
 }
 async function preserveProjectSnapshot() {
   if (!hasUnsavedProject()) return;
@@ -151,26 +150,27 @@ function save(id: string, m: Machine<ProjectStateName, ProjectEvent, ProjectCont
   });
 }
 
-const failed = { target: 'failed', action: (c: ProjectContext, e: { error: string; failure?: ProjectFailure }) => {
-  const failure = c.conflict && c.failure ? c.failure : e.failure ?? projectFailure(e.error, c.id, c.revision);
-  return { error: failure.message, failure, conflict: failure.kind === 'conflict', dirty: true };
-} } as const;
+const failureOf = (c: ProjectContext, e: { error: string; failure?: ProjectFailure }) => e.failure ?? projectFailure(e.error, c.id, c.revision);
+const failedWith = (c: ProjectContext, e: { error: string; failure?: ProjectFailure }) => { const failure = failureOf(c, e); return { error: failure.message, failure, dirty: true }; };
+const failed = [
+  { target: 'conflict', guard: (c: ProjectContext, e: { error: string; failure?: ProjectFailure }) => failureOf(c, e).kind === 'conflict', action: failedWith },
+  { target: 'failed', action: failedWith },
+] as const;
 const draftUpdate = { guard: (c: ProjectContext, e: Extract<ProjectEvent, { type: 'DRAFT' }>) => c.id === e.id &&
   (c.draft.state === 'none' || c.draft.checkpoint.sequence <= e.durability.checkpoint.sequence),
   action: (_: ProjectContext, e: Extract<ProjectEvent, { type: 'DRAFT' }>) => ({ draft: e.durability }) };
-const recovered = { target: 'failed', action: (_: ProjectContext, e: Extract<ProjectEvent, { type: 'RECOVERED' }>): Partial<ProjectContext> => ({
-  ...e.meta, revision: e.draft.baseRevision, origin: 'loaded', error: e.failure.message, failure: e.failure,
-  conflict: e.failure.kind === 'conflict', dirty: true, loadError: false,
+const recoveredWith = (_: ProjectContext, e: Extract<ProjectEvent, { type: 'RECOVERED' }>): Partial<ProjectContext> => ({
+  ...e.meta, revision: e.draft.baseRevision, origin: 'loaded', error: e.failure.message, failure: e.failure, dirty: true, loadError: false,
   draft: { state: 'durable', checkpoint: { id: e.draft.id, sequence: e.draft.sequence }, updatedAt: e.draft.updatedAt },
-}) } as const;
+});
+const recovered = [
+  { target: 'conflict', guard: (_: ProjectContext, e: Extract<ProjectEvent, { type: 'RECOVERED' }>) => e.failure.kind === 'conflict', action: recoveredWith },
+  { target: 'failed', action: recoveredWith },
+] as const;
 const leave = { ERROR: failed, DRAFT: draftUpdate, RECOVERED: recovered, BLANK: 'blank', OPEN: 'opening', DELETED: 'deleted',
   MISSING: { target: 'missing', action: (_: ProjectContext, e: { id: string }) => ({ id: e.id, dirty: false }) } } as const;
-const writable = (c: ProjectContext) => !c.conflict && !blocksAutosave(c.failure);
-const notices = {
-  REMOTE: { action: (c: ProjectContext) => ({ conflict: true, failure: conflictFailure(c.id, c.revision) }) },
-  ACKNOWLEDGE: { guard: (c: ProjectContext) => !c.conflict, action: () => ({ conflict: false }) },
-  REBASE: { target: 'editing', action: (_: ProjectContext, e: { revision: number }) => ({ revision: e.revision, conflict: false, error: null, failure: null }) },
-} as const;
+const writable = (c: ProjectContext) => !blocksAutosave(c.failure);
+const notices = (unsaved: boolean) => ({ REMOTE: { target: 'conflict', action: (c: ProjectContext) => ({ failure: conflictFailure(c.id, c.revision), dirty: unsaved || c.dirty }) } }) as const;
 const savedPatch = (c: ProjectContext, e: Extract<ProjectEvent, { type: 'SAVED' }>): Partial<ProjectContext> => ({
   name: e.name, savedAt: e.savedAt, revision: e.revision, origin: 'saved', dirty: false, error: null, failure: null,
   ...(e.checkpoint && c.draft.state !== 'none' && c.draft.checkpoint.sequence <= e.checkpoint.sequence ? { draft: { state: 'none' } } : {}),
@@ -180,28 +180,34 @@ export const project = createMachine<ProjectStateName, ProjectEvent, ProjectCont
   id: 'project', initial: 'blank', context: blank(),
   states: {
     blank: { entry: blank,
-      on: { ...leave, ...notices, EDIT: 'saving' } },
+      on: { ...leave, EDIT: 'saving' } },
     opening: { on: { ...leave,
-      OPENED: { target: 'saved', action: (_, e) => ({ ...e.meta, revision: e.meta.revision ?? 0, origin: 'loaded', error: null, failure: null, draft: { state: 'none' }, dirty: false, conflict: false, loadError: false }) },
+      OPENED: { target: 'saved', action: (_, e) => ({ ...e.meta, revision: e.meta.revision ?? 0, origin: 'loaded', error: null, failure: null, draft: { state: 'none' }, dirty: false, loadError: false }) },
       ERROR: { target: 'failed', action: (c, e) => ({ error: e.error, failure: e.failure ?? projectFailure(e.error, c.id, c.revision, true), loadError: true }) },
     } },
     editing: {
       after: { ms: AUTOSAVE_MS, target: 'saving', guard: writable },
-      on: { ...leave, ...notices, EDIT: 'editing', FLUSH: { target: 'saving', guard: writable } } },
+      on: { ...leave, ...notices(true), EDIT: 'editing', FLUSH: { target: 'saving', guard: writable } } },
     saving: { entry: (ctx, _e, m) => { save(ctx.id, m); return { dirty: false }; },
-      on: { ...leave, ...notices, EDIT: { action: () => ({ dirty: true }) },
+      on: { ...leave, ...notices(false), EDIT: { action: () => ({ dirty: true }) },
         SAVED: [
-          { target: 'failed', guard: (ctx, e) => ctx.id === e.id && ctx.conflict,
-            action: (c, e) => ({ ...savedPatch(c, e), conflict: true, dirty: true, failure: c.failure ?? conflictFailure(c.id, e.revision), error: (c.failure ?? conflictFailure(c.id, e.revision)).message }) },
           { target: 'editing', guard: (ctx, e) => ctx.id === e.id && ctx.dirty, action: savedPatch },
           { target: 'saved', guard: (ctx, e) => ctx.id === e.id, action: savedPatch },
         ],
         ERROR: failed,
       } },
-    saved: { on: { ...leave, ...notices, EDIT: 'editing' } },
+    saved: { on: { ...leave, ...notices(false), EDIT: 'editing' } },
     failed: {
-      on: { ...leave, ...notices, EDIT: { action: () => ({ dirty: true }) },
-        RETRY: { target: 'saving', guard: (c) => !c.conflict && c.failure?.kind !== 'deleted', action: () => ({ failure: null, error: null }) } } },
+      on: { ...leave, ...notices(true), EDIT: { action: () => ({ dirty: true }) },
+        RETRY: { target: 'saving', guard: (c) => c.failure?.kind !== 'deleted', action: () => ({ failure: null, error: null }) } } },
+    conflict: {
+      on: { ...leave, REMOTE: {}, EDIT: { action: () => ({ dirty: true }) },
+        ERROR: { action: (c, e) => { const failure = c.failure ?? failureOf(c, e); return { error: failure.message, failure, dirty: true }; } },
+        SAVED: { guard: (c, e) => c.id === e.id, action: (c, e) => {
+          const failure = c.failure ?? conflictFailure(c.id, e.revision);
+          return { ...savedPatch(c, e), dirty: true, failure, error: failure.message };
+        } },
+        REBASE: { target: 'editing', action: (_, e) => ({ revision: e.revision, error: null, failure: null }) } } },
     deleted: { entry: blank, on: { ...leave, EDIT: 'editing' } },
     missing: { on: leave },
   },
@@ -348,7 +354,7 @@ async function start(ready: Promise<unknown>) {
   window.addEventListener('beforeunload', (e) => {
     if (window.orcaDesktop) return;
     const v = project.get().value;
-    if (project.get().context.loadError || (v !== 'editing' && v !== 'saving' && v !== 'failed')) return;
+    if (project.get().context.loadError || (v !== 'editing' && v !== 'saving' && v !== 'failed' && !(v === 'conflict' && project.get().context.dirty))) return;
     flush(); e.preventDefault(); e.returnValue = '';
   });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
@@ -376,7 +382,7 @@ export async function flushProjectDraft(): Promise<void> {
 }
 export async function flushProject(): Promise<void> {
   const initial = project.get();
-  if (initial.context.conflict || initial.value === 'failed') {
+  if (initial.value === 'conflict' || initial.value === 'failed') {
     if (hasUnsavedProject()) await checkpointProject().durable.catch(() => {});
     throw failureError(initial.context.failure ?? projectFailure(initial.context.error ?? 'Project not saved', initial.context.id, initial.context.revision));
   }
@@ -385,7 +391,7 @@ export async function flushProject(): Promise<void> {
     project.send({ type: 'FLUSH' });
     await queue;
     if (project.get().context.id !== id) return;
-    if (project.get().value === 'failed' || project.get().context.conflict) throw failureError(project.get().context.failure ?? projectFailure(project.get().context.error ?? 'Project not saved', id, project.get().context.revision));
+    if (project.get().value === 'failed' || project.get().value === 'conflict') throw failureError(project.get().context.failure ?? projectFailure(project.get().context.error ?? 'Project not saved', id, project.get().context.revision));
   } while (project.get().value === 'editing' || project.get().value === 'saving');
 }
 export async function retryProject() {
@@ -473,8 +479,8 @@ export type ProjectLifecycle = { value: 'new' | 'loading' | 'ready' | 'dirty' | 
   | { value: 'missing'; id: string } | { value: 'failed'; id: string; error: string; failure: ProjectFailure };
 export function projectLifecycle(): ProjectLifecycle {
   const { value, context: c } = project.get();
-  if (c.conflict) return { value: 'conflict', id: c.id, dirty: c.dirty || value === 'editing', failure: c.failure ?? conflictFailure(c.id, c.revision) };
   switch (value) {
+    case 'conflict': return { value, id: c.id, dirty: c.dirty, failure: c.failure ?? conflictFailure(c.id, c.revision) };
     case 'blank': case 'deleted': return { value: 'new', id: c.id };
     case 'opening': return { value: 'loading', id: c.id };
     case 'editing': return { value: 'dirty', id: c.id };

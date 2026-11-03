@@ -37,6 +37,7 @@
 
 :where(.orca-parity) .modal-split { flex-direction: row; align-items: flex-start; gap: var(--s-6); }
 :where(.orca-parity) .modal-fields { flex: 1; min-width: 0; display: grid; gap: var(--s-3); align-content: start; }
+:where(.orca-parity) .modal-fields .form-row > .dropdown { flex: 1 1 12rem; min-width: 0; max-width: 20rem; }
 :where(.orca-parity) .modal-unit { display: inline-flex; align-items: center; gap: var(--s-3); }
 :where(.orca-parity) .modal-unit > .text { flex: 1; min-width: 0; height: var(--h-field); }
 :where(.orca-parity) .modal-unit > span { color: var(--ink-3); }
@@ -92,15 +93,17 @@
 @media (max-width: 599px) { :where(.orca-parity) .plate-order { margin-left: 0; } }
 
 :where(.orca-parity) .filament-filters { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3); }
-:where(.orca-parity) .filament-pick { display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--line); border-radius: var(--r-2); }
-:where(.orca-parity) .filament-pick-head { display: flex; gap: var(--s-2); padding: var(--s-2); border-bottom: 1px solid var(--line); }
-:where(.orca-parity) .filament-pick-list { max-height: 320px; overflow: auto; padding: var(--s-2) var(--s-4); }
-:where(.orca-parity) .filament-pick-list > .modal-check > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:where(.orca-parity) .modal-pick { display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--line); border-radius: var(--r-2); }
+:where(.orca-parity) .modal-pick-head { display: flex; gap: var(--s-2); padding: var(--s-2); border-bottom: 1px solid var(--line); }
+:where(.orca-parity) .modal-pick-list { max-height: 320px; overflow: auto; padding: var(--s-2) var(--s-4); }
+:where(.orca-parity) .modal-pick-list > .modal-check > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 :where(.orca-parity) .orient-table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
 :where(.orca-parity) .orient-table :is(th, td) { padding: var(--s-2) var(--s-6) var(--s-2) 0; text-align: left; }
 :where(.orca-parity) .orient-table th { font: var(--t-label); }
 :where(.orca-parity) .orient-table td:first-child { color: var(--ink-3); }
+
+:where(.orca-parity) .gcode-input { width: 100%; min-height: 160px; resize: vertical; font-family: var(--font-mono, monospace); }
 
 :where(.orca-parity) .ask-message { white-space: pre-line; overflow-wrap: anywhere; }
 :where(.orca-parity) .ask-choices { display: grid; gap: var(--s-2); }

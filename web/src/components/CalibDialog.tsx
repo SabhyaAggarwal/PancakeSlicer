@@ -2,7 +2,8 @@ import { Check } from './Check';
 import { useState } from 'react';
 import { newProject, slice } from '../actions';
 import { effectiveConfig, getState, setState, toast, type CalibMenu } from '../state/store';
-import { Modal, ModalTitle } from './Modal';
+import { Dropdown } from './Dropdown';
+import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 
 type Values = Record<string, string>;
 type Field =
@@ -194,44 +195,34 @@ export default function CalibDialog({ which }: { which: Exclude<CalibMenu, 'nonp
     await runCalibration(result.kind, Object.entries(result.params).map(([k, x]) => `${k}=${x}`).join(','));
   };
   return (
-    <Modal size="m" className="calib-dialog" label={c.title} onClose={close}>
+    <Modal size="m" label={c.title} onClose={close}>
       <ModalTitle title={c.title} onClose={close} />
-      <form className="prefs-body" onSubmit={(e) => { e.preventDefault(); void ok(); }}>
-        {c.groups?.map((g) => (
-          <fieldset key={g.key} className="prefs-group">
-            <legend>{g.legend}</legend>
-            {g.options.map(([value, label]) => (
-              <label key={value} className="prefs-row">
-                <input type="radio" name={g.key} checked={v[g.key] === value} onChange={() => setV({ ...v, [g.key]: value, ...g.preset?.(value, v) })} />
-                {label}
-              </label>
-            ))}
-            {g.key === 'shaper' && <div className="hint-text">{firmwareNote(p.flavor)}</div>}
-          </fieldset>
-        ))}
-        {c.fields.length > 0 && (
-          <fieldset className="prefs-group">
-            <legend>{c.settings}</legend>
-            {c.fields.filter((f) => !f.show || f.show(v)).map((f) => 'check' in f ? (
-              <label key={f.key} className="prefs-row">
-                <Check checked={v[f.key] === '1'} onCheckedChange={(next) => setV({ ...v, [f.key]: next ? '1' : '0' })} />
-                {f.label}
-              </label>
-            ) : (
-              <label key={f.key} className="prefs-row">
-                <span style={{ minWidth: 190 }}>{f.label}</span>
-                <input className={f.list ? 'text' : 'text num'} type={f.list ? 'text' : 'number'} step="any" value={v[f.key]}
-                  placeholder={f.list ? 'Comma-separated' : undefined} onChange={(e) => setV({ ...v, [f.key]: e.target.value })} />
-                {f.unit}
-              </label>
-            ))}
-            {c.note && <div className="hint-text">{c.note}</div>}
-          </fieldset>
-        )}
-        <div className="modal-buttons">
-          <a className="btn" href={`https://www.orcaslicer.com/wiki/${c.wiki}`} target="_blank" rel="noreferrer">Wiki Guide</a>
-          <button type="submit" className="btn primary" data-autofocus>OK</button>
-        </div>
+      <form onSubmit={(e) => { e.preventDefault(); void ok(); }}>
+        <ModalBody className="modal-fields">
+          {c.groups?.map((g) => {
+            const pick = (value: string) => setV({ ...v, [g.key]: value, ...g.preset?.(value, v) });
+            return <div key={g.key} className="modal-fields">
+              <div className="form-row"><span>{g.legend.replace(/:\s*$/, '')}</span>{g.options.length <= 3
+                ? <span className="seg" role="radiogroup" aria-label={g.legend}>{g.options.map(([value, label]) =>
+                  <button key={value} type="button" role="radio" aria-checked={v[g.key] === value} onClick={() => pick(value)}>{label}</button>)}</span>
+                : <Dropdown className="combo" aria-label={g.legend} value={v[g.key]} onValueChange={pick} options={g.options.map(([value, label]) => ({ value, label }))} />}</div>
+              {g.key === 'shaper' && <p className="flush-note">{firmwareNote(p.flavor)}</p>}
+            </div>;
+          })}
+          {c.fields.filter((f) => !f.show || f.show(v)).map((f) => 'check' in f ? (
+            <label key={f.key} className="modal-check"><Check checked={v[f.key] === '1'} onCheckedChange={(next) => setV({ ...v, [f.key]: next ? '1' : '0' })} />{f.label.replace(/:\s*$/, '')}</label>
+          ) : (
+            <label key={f.key} className="form-row"><span>{f.label.replace(/:\s*$/, '')}</span>
+              <span className="modal-unit"><input className={f.list ? 'text' : 'text num'} type={f.list ? 'text' : 'number'} step="any" value={v[f.key]}
+                placeholder={f.list ? 'Comma-separated' : undefined} onChange={(e) => setV({ ...v, [f.key]: e.target.value })} />{f.unit && <span>{f.unit}</span>}</span>
+            </label>
+          ))}
+          {c.note && <p className="flush-note">{c.note}</p>}
+        </ModalBody>
+        <ModalFooter lead={<a className="btn-ghost" href={`https://www.orcaslicer.com/wiki/${c.wiki}`} target="_blank" rel="noreferrer">Guide</a>}>
+          <button type="button" className="btn" onClick={close}>Cancel</button>
+          <button type="submit" className="btn-primary">Create test</button>
+        </ModalFooter>
       </form>
     </Modal>
   );

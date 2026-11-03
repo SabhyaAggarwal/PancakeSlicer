@@ -2,24 +2,22 @@ import type { PresetType } from '../api/types';
 import { profileConflicts, type ProfileConflict } from '../profiles/model';
 import { getState, presetEdits, subscribeStore } from '../state/store';
 import { createMachine, type Machine } from './fsm';
-type ProfileState = 'clean' | 'overlay-dirty' | 'saving' | 'reset' | 'conflict';
-type ProfileEvent = { type: 'SYNC'; dirty: boolean; conflicts: ProfileConflict[] } | { type: 'SAVE' }
-  | { type: 'RESET' } | { type: 'RETRY' } | { type: 'FAIL'; error: string };
-interface ProfileContext { conflicts: ProfileConflict[]; dirty: boolean; error: string | null }
+type ProfileState = 'clean' | 'overlay-dirty' | 'reset' | 'conflict';
+type ProfileEvent = { type: 'SYNC'; dirty: boolean; conflicts: ProfileConflict[] } | { type: 'RESET' };
+interface ProfileContext { conflicts: ProfileConflict[]; dirty: boolean }
 const sync = [
   { target: 'conflict', guard: (_: ProfileContext, e: Extract<ProfileEvent, { type: 'SYNC' }>) => e.conflicts.length > 0,
     action: (_: ProfileContext, e: Extract<ProfileEvent, { type: 'SYNC' }>) => ({ conflicts: e.conflicts, dirty: e.dirty }) },
   { target: 'overlay-dirty', guard: (_: ProfileContext, e: Extract<ProfileEvent, { type: 'SYNC' }>) => e.dirty,
     action: () => ({ conflicts: [], dirty: true }) },
-  { target: 'clean', action: () => ({ conflicts: [], dirty: false, error: null }) },
+  { target: 'clean', action: () => ({ conflicts: [], dirty: false }) },
 ] as const;
 const common = { SYNC: [...sync], RESET: { target: 'reset' as const } };
 export const createProfileEdit = () => createMachine<ProfileState, ProfileEvent, ProfileContext>({
-  id: 'profile-edit', initial: 'clean', context: { conflicts: [], dirty: false, error: null },
+  id: 'profile-edit', initial: 'clean', context: { conflicts: [], dirty: false },
   states: {
     clean: { on: common },
-    'overlay-dirty': { on: { ...common, SAVE: 'saving', RETRY: 'saving' } },
-    saving: { on: { ...common, FAIL: { target: 'overlay-dirty', action: (_, e) => ({ error: e.error }) } } },
+    'overlay-dirty': { on: common },
     reset: { on: common },
     conflict: { note: 'resolve with profiles/model.ts before saving', on: common },
   },

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import type { Config, ConfigValue, PresetType, UserPreset } from '../api/types';
 import { SettingsTab, type ProfileFields } from '../components/SettingsTab';
 import { effectiveMode, getState, resolvePreset, toast, useStore } from '../state/store';
@@ -15,6 +15,8 @@ import { requestPreset } from '../components/PresetCombo';
 import { sameValue } from '../state/value-equality';
 import { renameOwnedProfile } from './material-library';
 import { Glyph } from '../components/Glyph';
+import { useMachine } from '../flow/fsm';
+import { createProfileSave } from '../flow/profile-save';
 const ConnectionEditor = lazy(() => import('../printers/ConnectionEditor').then(m => ({default: m.ConnectionEditor})));
 export interface ProfileDraft {values: Config; baseline: Config; origin: UserPreset | undefined; printer: string; applicability?: ProfileApplicability; baselineApplicability?: ProfileApplicability;staged?:ProjectProfileChanges}
 export function acknowledgedProfileDraft(current:ProfileDraft,submitted:ProfileDraft,origin:UserPreset,baseline:Config):ProfileDraft|null {
@@ -42,10 +44,11 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
   const changes = useMemo(() => changedKeys(values, baseline), [values, baseline]);
   const mode=useStore(effectiveMode);
   const connections=useStore(s=>s.printerConnections.enabled);
-  const [saveState, setSaveState] = useState<{value: 'idle' | 'saving'} | {value: 'failed'; message: string}>({value: 'idle'});
-  const saving = saveState.value === 'saving', error = saveState.value === 'failed' ? saveState.message : null;
-  const setError = (message: string | null) => setSaveState(message ? {value: 'failed', message} : {value: 'idle'});
-  const inFlight = useRef(false);
+  const m = useMemo(createProfileSave, []), snap = useMachine(m);
+  const saving = snap.value === 'saving' || snap.value === 'renaming', error = snap.value === 'failed' ? snap.context.error : null;
+  const setError = (message: string | null) => m.send(message ? {type: 'REJECT', error: message} : {type: 'DISMISS'});
+  useEffect(() => {onSavingChange?.(saving);}, [saving]);
+  useEffect(() => () => {if (m.get().value === 'saving' || m.get().value === 'renaming') onSavingChange?.(false);}, []);
   const latest = useRef({values, baseline, origin: draft?.origin ?? source, printer: draft?.printer ?? ownerPrinter, applicability, baselineApplicability,staged:draft?.staged}); latest.current = {values, baseline, origin: draft?.origin ?? source, printer: draft?.printer ?? ownerPrinter, applicability, baselineApplicability,staged:draft?.staged};
   const set = useCallback((k: string, value: ConfigValue) => { const current = latest.current; update(key, {...current, values: {...current.values, [k]: value}}); }, [key, update]);
   const reset = useCallback((k: string) => { const current = latest.current; const next = {...current.values}; if (current.baseline[k] === undefined) delete next[k]; else next[k] = current.baseline[k]; update(key, {...current, values: next}); }, [key, update]);
@@ -55,50 +58,56 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
   const noPrinter = applicabilityDirty && worksWithNone(type, applicability);
   const openOnWorksWith = useRef(!!source && worksWithNone(type, source.applicability)).current;
   const save = async () => {
-    if (inFlight.current || !dirty) return;
+    if (!m.can({type: 'SAVE'}) || !dirty) return;
     if (noPrinter) {setError('Works with matches no printer.'); return;}
     const s = getState(), currentSource=findProfile(s,type,name);
     const submitted={...latest.current,values:structuredClone(latest.current.values),applicability:structuredClone(latest.current.applicability)};
     if (!s.api) {setError('Not connected. Your edits are kept.'); return;}
     if (!source || resolved.error || !resolved.base) {setError(resolved.error ?? 'This profile is unavailable. Your edits are kept.'); return;}
     if (!profileOriginIsCurrent(currentSource,submitted.origin)) { setError('This profile changed elsewhere. Cancel edits to load the saved version.'); return; }
-    inFlight.current = true; setSaveState({value: 'saving'}); onSavingChange?.(true);
+    m.send({type: 'SAVE'});
+    const request = m.get().context.request;
     try {
       const p = {...saveProfile(s, type, currentSource!.name, profileKey(currentSource!), submitted.values), id: profileKey(currentSource!), applicability:submitted.applicability};
       await commitProfileRecords([p],{apply:submitted.staged ? state=>acknowledgeProjectProfileChanges(state,submitted.staged!,submitted.values) : undefined});
       const saved=getState(),origin=findProfile(saved,type,profileKey(p)),acknowledged=resolvePreset(saved,type,profileKey(p));
       if(!origin || acknowledged.error || !profileOriginIsCurrent(origin,submitted.origin))throw new Error('The profile changed again while saving. Your edits are kept.');
       const next=acknowledgedProfileDraft(latest.current,submitted,origin,acknowledged.config);
-      update(key,next); setSaveState({value: 'idle'}); toast(`Saved ${profileName}`);
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-    finally { inFlight.current = false; onSavingChange?.(false); }
+      update(key,next); m.send({type: 'SAVED', request}); toast(`Saved ${profileName}`);
+    } catch (e) { m.send({type: 'FAIL', request, error: e instanceof Error ? e.message : String(e)}); }
   };
   const renamable = !!source && source.kind !== 'master';
-  const [naming, setNaming] = useState<string | null>(null), [nameError, setNameError] = useState<string | null>(null);
+  const naming = snap.value === 'naming' || snap.value === 'renaming' ? snap.context.name : null, nameError = naming === null ? null : snap.context.nameError;
   const nameInput = useRef<HTMLInputElement>(null);
-  const startRename = () => {if (!renamable || saving) return; setNaming(profileName); setNameError(null);};
+  const startRename = () => {if (renamable && m.can({type: 'RENAME', name: profileName})) m.send({type: 'RENAME', name: profileName});};
   useEffect(() => {if (renameRequest?.key === name && Date.now() - renameRequest.at < 2000) startRename();}, [renameRequest]);
-  const renameTo = async (raw: string): Promise<boolean> => {
-    const next = raw.trim(), s = getState(), current = findProfile(s, type, name);
-    if (!current) return false;
-    if (next === current.name) return true;
-    if (!next) {setNameError('Enter a name'); return false;}
-    if (s.userPresets.some((p) => p.type === type && !p.archived && profileKey(p) !== profileKey(current) && p.name.toLocaleLowerCase() === next.toLocaleLowerCase())) {setNameError(`“${next}” is already taken`); return false;}
+  const writeName = async (next: string) => {
+    const current = findProfile(getState(), type, name);
+    if (!current) throw new Error('This profile is unavailable.');
     const prior = current.name;
-    try {
-      await commitProfileRecords([renameOwnedProfile(current, next)]);
-      const renamed = findProfile(getState(), type, name);
-      if (draft && renamed) update(key, {...latest.current, origin: renamed});
-      toast(`Renamed to ${next}`, {label: 'Undo', run: () => void renameTo(prior)});
-      return true;
-    } catch (e) {setError(e instanceof Error ? e.message : String(e)); return false;}
+    await commitProfileRecords([renameOwnedProfile(current, next)]);
+    const renamed = findProfile(getState(), type, name);
+    if (draft && renamed) update(key, {...latest.current, origin: renamed});
+    toast(`Renamed to ${next}`, {label: 'Undo', run: () => void writeName(prior).catch((e) => toast(e instanceof Error ? e.message : String(e)))});
   };
-  const commitName = async () => {if (naming === null) return; const value = naming; if (await renameTo(value)) {setNaming(null); setNameError(null);}};
+  const commitName = async () => {
+    const v = m.get().value;
+    if (v === 'renaming') {m.send({type: 'COMMIT', value: '', current: '', taken: false}); return;}
+    if (v !== 'naming') return;
+    const s = getState(), current = findProfile(s, type, name), value = m.get().context.name, next = value.trim();
+    if (!current) return;
+    const taken = s.userPresets.some((p) => p.type === type && !p.archived && profileKey(p) !== profileKey(current) && p.name.toLocaleLowerCase() === next.toLocaleLowerCase());
+    m.send({type: 'COMMIT', value, current: current.name, taken});
+    if (m.get().value !== 'renaming') return;
+    const request = m.get().context.request;
+    try {await writeName(next); m.send({type: 'RENAMED', request});}
+    catch (e) {m.send({type: 'RENAME_FAIL', request, error: e instanceof Error ? e.message : String(e)});}
+  };
   if (!resolved.user || !resolved.base || resolved.error) return <section className="pf-full-editor"><div className="pf-editor-error" role="alert"><strong>{resolved.user?.name ?? 'Profile unavailable'}</strong><p>{resolved.error ?? 'This profile could not be loaded.'}</p><button type="button" className="btn" onClick={() => void (async () => {try {const {loadCatalog}=await import('../actions');await loadCatalog();const s=getState();if(s.profileLibraryLoad.state==='failed')throw new Error(s.profileLibraryLoad.error);if(!findProfile(s,type,name))throw new Error('Profile is still unavailable.');} catch(e) {setError(e instanceof Error ? e.message : String(e));}})()}>Retry</button>{error && <p>{error}</p>}</div><button type="button" className="btn-ghost" onClick={onBack}>Close profiles</button></section>;
   return <DetailPane label={`Edit ${profileName}`} error={error}
     identity={<>{type === 'filament' && <ColorPicker value={profileColour(values) ?? ''} label="Default filament color" disabled={saving} onCommit={colour=>set('filament_colour',Array.isArray(values.filament_colour) ? [colour] : colour)}/>}{naming !== null ? <input ref={nameInput} autoFocus onFocus={e => e.currentTarget.select()} className="pf-name-input" aria-label="Profile name" aria-invalid={!!nameError} aria-describedby={nameError ? `${key}-name-error` : undefined} value={naming} autoComplete="off" spellCheck={false}
-        onChange={e => {setNaming(e.target.value); setNameError(null);}} onBlur={() => void commitName()}
-        onKeyDown={e => {if (e.key === 'Enter') {e.preventDefault(); void commitName();} else if (e.key === 'Escape') {e.preventDefault(); e.stopPropagation(); setNaming(null); setNameError(null);}}}/>
+        readOnly={snap.value === 'renaming'} onChange={e => m.send({type: 'TYPE', value: e.target.value})} onBlur={() => void commitName()}
+        onKeyDown={e => {if (e.key === 'Enter') {e.preventDefault(); void commitName();} else if (e.key === 'Escape' && snap.value === 'naming') {e.preventDefault(); e.stopPropagation(); m.send({type: 'CANCEL'});}}}/>
         : <span className="pf-editor-name"><strong onClick={renamable ? startRename : undefined} data-renamable={renamable || undefined}>{profileName}</strong>{renamable && <button type="button" className="reset-icon pf-rename" aria-label="Rename" disabled={saving} onClick={startRename}><Glyph name="edit" size={14}/></button>}</span>}</>}
     summary={nameError ? <div className="pf-editor-summary pf-name-error" id={`${key}-name-error`} role="alert">{nameError}</div> : <div className="pf-editor-summary">{profileSummary(type, values)}{draft?.staged ? ' · Includes project changes' : ''}</div>}
     controls={<><button type="button" className={`btn pf-editor-save${dirty ? ' primary' : ''}`} disabled={saving || !dirty || !ready} onClick={() => void save()}>{saving ? 'Saving…' : 'Save'}</button>

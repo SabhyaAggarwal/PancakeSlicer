@@ -67,7 +67,7 @@ function SaveState() {
   );
   const historyButton = (icon: ReactNode, label: string) => status('quiet', icon, label, { onClick: toggleHistory, expanded: history.open, hint: 'Version history' });
   let shown: ReactNode = null;
-  if (context.conflict) shown = status('danger', warning, 'Conflict', { onClick: () => setState({ tab: 'prepare' }), hint: 'Choose Reload latest or Keep mine' });
+  if (value === 'conflict') shown = status('danger', warning, 'Conflict', { onClick: () => setState({ tab: 'prepare' }), hint: 'Choose Reload latest or Keep mine' });
   else if (history.viewing) shown = status('accent', clock, `Viewing ${versionTime(history.viewing.until)}`, { onClick: toggleHistory, expanded: history.open });
   else if (value === 'failed') shown = status('danger', warning, 'Retry', { onClick: () => void retryProject(), hint: context.error ?? 'The project was not saved' });
   else if (value === 'saving') shown = historyButton(<span className="pt-saving" aria-hidden="true">{spinner}{clock}</span>, LABEL.saving);

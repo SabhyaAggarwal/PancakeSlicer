@@ -32,12 +32,12 @@ export default function FilamentsDialog({ close }: { close(): void }) {
           <Dropdown className="combo" aria-label="Vendor" value={vendor} onValueChange={setVendor} options={[{ value: "", label: 'All vendors' }, ...vendors.map((v) => ({ value: v, label: v }))]} />
           <Dropdown className="combo" aria-label="Type" value={type} onValueChange={setType} options={[{ value: "", label: 'All types' }, ...types.map((t) => ({ value: t, label: t }))]} />
         </div>
-        <div className="filament-pick">
-          <div className="filament-pick-head">
+        <div className="modal-pick">
+          <div className="modal-pick-head">
             <button type="button" className="btn-ghost" onClick={() => mark(shown.map((p) => p.name), true)}>Select all</button>
             <button type="button" className="btn-ghost" onClick={() => mark(shown.map((p) => p.name), false)}>Clear</button>
           </div>
-          <div className="filament-pick-list">{shown.map((p) => (
+          <div className="modal-pick-list">{shown.map((p) => (
             <label key={p.name} className="modal-check"><Check checked={chosen.has(p.name)} onCheckedChange={(next) => mark([p.name], next)} /><span data-full-text={p.name}>{p.name}</span></label>
           ))}</div>
         </div>

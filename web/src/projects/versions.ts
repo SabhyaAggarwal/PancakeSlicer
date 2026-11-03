@@ -122,7 +122,7 @@ export async function restoreVersion() {
 async function sealCurrent(signature: string): Promise<{ id: string; revision: number; version: number } | null> {
   await flushProject();
   const { value, context } = project.get();
-  if (state.viewing || value !== 'saved' || context.conflict || plateSignature(getState()) !== signature) return null;
+  if (state.viewing || value !== 'saved' || plateSignature(getState()) !== signature) return null;
   const sealed = await post<ProjectVersion>(`${path(context.id)}/seal`, { revision: context.revision });
   return { id: context.id, revision: context.revision, version: sealed.id };
 }

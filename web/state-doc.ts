@@ -8,8 +8,8 @@ const MACHINES: [string, string, unknown[]?][] = [
   ['/src/flow/slice.ts', 'slice'], ['/src/flow/job.ts', 'job'], ['/src/flow/import.ts', 'importing'],
   ['/src/flow/output.ts', 'output'], ['/src/flow/transfer.ts', 'createTransfer', []], ['/src/flow/modal.ts', 'modals'],
   ['/src/flow/ask.ts', 'asking'], ['/src/flow/tools.ts', 'tools'], ['/src/flow/playback.ts', 'playback'],
-  ['/src/flow/viewer.ts', 'viewer'], ['/src/flow/profile-edit.ts', 'createProfileEdit', []],
-  ['/src/flow/engine-health.ts', 'engineHealth'], ['/src/flow/version-view.ts', 'versionView'], ['/src/saved-preferences.ts', 'savedPreferencesMachine'], ['/src/compare.ts', 'compareMachine'], ['/src/persist/service-document.ts', 'createServiceDocument', ['/api/preferences', 'PUT']], ['/src/profiles/editing.ts', 'editing', ['process', 0]],
+  ['/src/flow/viewer.ts', 'viewer'], ['/src/flow/profile-edit.ts', 'createProfileEdit', []], ['/src/flow/profile-save.ts', 'createProfileSave', []], ['/src/flow/profiles-window-ops.ts', 'windowOps'],
+  ['/src/flow/engine-health.ts', 'engineHealth'], ['/src/flow/version-view.ts', 'versionView'], ['/src/saved-preferences.ts', 'savedPreferencesMachine'], ['/src/compare.ts', 'compareMachine'], ['/src/profiles/printer-setups.ts', 'printerSetupsMachine'], ['/src/persist/service-document.ts', 'createServiceDocument', ['/api/preferences', 'PUT']], ['/src/profiles/editing.ts', 'editing', ['process', 0]],
 ];
 
 const target = new EventTarget();
