@@ -108,7 +108,7 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .slot-pick { display: inline-grid; place-items: center; width: 28px; height: 28px; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: var(--control-radius); background: none; cursor: pointer; }
 :where(.orca-parity) button.slot-pick:hover:not(:disabled), :where(.orca-parity) .slot-pick[data-state=open] { background: var(--hover); }
 :where(.orca-parity) button.slot-pick:disabled { cursor: default; }
-:where(.orca-parity) .slot-pick[data-follows] .slot-chip { opacity: 0.55; }
+:where(.orca-parity) .slot-pick[data-follows] .slot-chip { outline: 1px dashed var(--ink-3); outline-offset: 1px; }
 :where(.orca-parity) .slot-menu .menu-item[data-current] { background: var(--selected); }
 :where(.orca-parity) .ol-child { padding-left: 40px; color: var(--text-dim); }
 :where(.orca-parity) .ol-child2 { padding-left: 56px; justify-content: flex-start; }

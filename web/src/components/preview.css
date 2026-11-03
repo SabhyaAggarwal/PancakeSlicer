@@ -1,6 +1,6 @@
 :where(.orca-parity) .canvas-area[data-viewport=preview] { --pv-inset: var(--s-5); --pv-top: var(--pv-inset); --pv-legend-w: 288px; --pv-cube: 88px; --pv-slider: 168px;
-  --pv-bar-h: 56px; --pv-floor: calc(var(--pv-inset) + var(--pv-bar-h) + var(--s-4)); }
-@media (pointer: coarse) { :where(.orca-parity) .canvas-area[data-viewport=preview] { --pv-slider: 184px; --pv-bar-h: 60px; --pv-cube: 76px; } }
+  --pv-bar-h: 40px; --pv-floor: calc(var(--pv-inset) + var(--pv-bar-h) + var(--s-4)); }
+@media (pointer: coarse) { :where(.orca-parity) .canvas-area[data-viewport=preview] { --pv-slider: 184px; --pv-bar-h: 48px; --pv-cube: 76px; } }
 @media (max-width: 899px) { :where(.orca-parity) .canvas-area[data-viewport=preview] { --pv-inset: var(--s-3); --pv-top: 60px; --pv-cube: var(--pv-inset); } }
 :where(.orca-parity) .preview { position: absolute; inset: 0; background: var(--canvas); }
 :where(.orca-parity) .preview-canvas { position: absolute; inset: 0; }
@@ -109,8 +109,8 @@
 :where(.orca-parity) .layer-slider:is(:hover, :focus-within) .ls-plus, :where(.orca-parity) .ls-plus:focus-visible { opacity: 1; }
 :where(.orca-parity) .ls-plus:hover { background: var(--overlay); color: var(--ink); }
 
-:where(.orca-parity) .order-bar { position: absolute; left: var(--pv-cube); right: var(--pv-inset); bottom: var(--pv-inset); min-height: var(--pv-bar-h); display: flex; flex-wrap: wrap; align-items: center;
-  gap: var(--s-2) var(--s-5); padding: var(--s-3) var(--s-4); container-type: inline-size; }
+:where(.orca-parity) .order-bar { position: absolute; left: var(--pv-cube); right: var(--pv-inset); bottom: var(--pv-inset); width: fit-content; max-width: calc(100% - var(--pv-cube) - var(--pv-inset)); margin-inline: auto;
+  min-height: var(--pv-bar-h); display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-4); padding: var(--s-2) var(--s-3); }
 :where(.orca-parity) .ob-transport { flex: none; display: flex; align-items: center; gap: var(--s-3); }
 :where(.orca-parity) .ob-btn { flex: none; display: grid; place-items: center; width: 32px; height: 32px; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: var(--r-2);
   background: none; color: var(--ink-2); cursor: pointer; }
@@ -118,10 +118,10 @@
 :where(.orca-parity) .ob-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 :where(.orca-parity) .ob-btn[aria-pressed='true']:not(.ob-play) { color: var(--accent-text); background: var(--accent-tint); }
 :where(.orca-parity) .ob-play { color: var(--ink); }
-:where(.orca-parity) .order-bar .orca-range { flex: 1 1 200px; min-width: 160px; }
-:where(.orca-parity) .ob-info { flex: none; display: flex; align-items: center; gap: var(--s-5); margin-left: auto; color: var(--ink-3); font: var(--t-body); font-variant-numeric: tabular-nums; white-space: nowrap; }
+:where(.orca-parity) .order-bar .orca-range { flex: 1 1 auto; width: 240px; min-width: 160px; }
+:where(.orca-parity) .ob-info { flex: none; display: flex; align-items: center; gap: var(--s-4); margin-left: auto; color: var(--ink-3); font: var(--t-body); font-variant-numeric: tabular-nums; white-space: nowrap; }
 :where(.orca-parity) .ob-group { display: inline-flex; align-items: baseline; gap: var(--s-1); }
-:where(.orca-parity) .ob-group + .ob-group, :where(.orca-parity) .ob-info > .ob-rate { padding-left: var(--s-5); border-left: 1px solid var(--line); }
+:where(.orca-parity) .ob-group + .ob-group, :where(.orca-parity) .ob-info > .ob-rate { padding-left: var(--s-4); border-left: 1px solid var(--line); }
 :where(.orca-parity) .ob-k { color: var(--ink-3); }
 :where(.orca-parity) .ob-v { color: var(--ink); }
 :where(.orca-parity) .order-bar .ob-rate { flex: none; width: auto; height: 32px; min-height: 0; padding: 0 var(--s-3); border-color: transparent; border-radius: 0; background: none; color: var(--ink-2); font: var(--t-body); }
