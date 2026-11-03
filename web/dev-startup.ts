@@ -12,6 +12,8 @@ const STARTUP_MODULES = [
   '/src/persist/wire-worker.ts', '/src/flow/boot.ts',
 ];
 
+const LATE_STARTUP = new Set(['src/plater/Plater3D.tsx', 'src/components/Navigator.tsx']);
+
 const TIMESTAMP = /([?&])t=\d+&?/;
 const IMPORT = /([?&])import&?/;
 const strip = (url: string, re: RegExp) => url.replace(re, '$1').replace(/[?&]$/, '');
@@ -118,18 +120,22 @@ export function buildStartup(): Plugin {
         const startup = new Set(STARTUP_MODULES.map((url) => path.join(root, url)));
         const chunks = new Map(Object.values(bundle).flatMap((c) => c.type === 'chunk' ? [[c.fileName, c] as const] : []));
         const seen = new Set([entry?.fileName, ...(entry?.imports ?? [])]);
-        const files: string[] = [], styles = new Set<string>();
-        const visit = (name: string) => {
+        const files: string[] = [], late = new Set<string>(), styles = new Set<string>();
+        const visit = (name: string, low: boolean) => {
           const c = chunks.get(name);
           if (!c || seen.has(name)) return;
           seen.add(name);
           files.push(name);
+          if (low) late.add(name);
           c.viteMetadata?.importedCss.forEach((css) => styles.add(css));
-          c.imports.forEach(visit);
+          c.imports.forEach((i) => visit(i, low));
         };
-        for (const c of chunks.values()) if (c.facadeModuleId && startup.has(c.facadeModuleId)) visit(c.fileName);
+        const startupChunks = [...chunks.values()].filter((c) => c.facadeModuleId && startup.has(c.facadeModuleId));
+        const deferred = (c: { facadeModuleId: string | null }) => LATE_STARTUP.has(path.relative(root, c.facadeModuleId!).replaceAll(path.sep, '/'));
+        for (const c of startupChunks) if (!deferred(c)) visit(c.fileName, false);
+        for (const c of startupChunks) if (deferred(c)) visit(c.fileName, true);
         return [
-          ...files.map((file): HtmlTagDescriptor => ({ tag: 'link', attrs: { rel: 'modulepreload', crossorigin: true, href: base + file }, injectTo: 'head' })),
+          ...files.map((file): HtmlTagDescriptor => ({ tag: 'link', attrs: { rel: 'modulepreload', crossorigin: true, href: base + file, ...(late.has(file) ? { fetchpriority: 'low' } : {}) }, injectTo: 'head' })),
           ...[...styles].map((file): HtmlTagDescriptor => ({ tag: 'link', attrs: { rel: 'preload', as: 'style', crossorigin: true, href: base + file }, injectTo: 'head' })),
         ];
       },
