@@ -1,6 +1,6 @@
 import { Modal, ModalTitle } from './components/Modal';
 import { openPalette } from './commands/registry';
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type ComponentType } from 'react';
 import { isPaint, paintKeyTool, setPaintTool, togglePaint, type PaintKind } from './plater/paint';
 import { toggleViewOption } from './plater/viewOptions';
 import { addInstance, arrangeAll, download, importFiles, newProject, openFileDialog, openProjectDialog, removeInstance, slice, toolbarOperation, saveProject, toggleBoolean, toggleText } from './actions';
@@ -38,11 +38,12 @@ import { dropLastFeature, setMeasure } from './plater/measureState';
 import { redo, undo, undoable } from './state/history';
 import { assembly, setAssembly, useAssembly } from './plater/assembly';
 import { toggleSidebar, useSidebarHidden } from './sidebar';
+import { loadedPreviewView, loadPreviewView } from './components/preview-loader';
 
 const PresetDialog = lazy(() => import('./components/Dialogs').then((m) => ({ default: m.PresetDialog })));
 const PresetUx = lazy(() => import('./components/PresetUx'));
 const FlushDialog = lazy(() => import('./components/FlushDialog').then((m) => ({ default: m.FlushDialog })));
-const PreviewView = lazy(() => import('./components/PreviewView').then((m) => ({ default: m.PreviewView })));
+const PreviewView = lazy(() => loadPreviewView().then((viewer) => ({ default: viewer })));
 const ProjectsView = lazy(() => import('./projects/ProjectsView'));
 const Palette = lazy(() => import('./commands/Palette'));
 
@@ -108,6 +109,9 @@ export default function App() {
   const [dragOver, setDragOver] = useState(false);
   const previewOpened = useRef(false);
   if (tab === 'preview' || jobDone) previewOpened.current = true;
+  const previewViewer = useRef<ComponentType>(undefined);
+  if (previewOpened.current) previewViewer.current ??= loadedPreviewView() ?? PreviewView;
+  const Viewer = previewViewer.current ?? PreviewView;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -286,7 +290,7 @@ export default function App() {
           {previewOpened.current && (
             <div style={{ display: tab === 'preview' ? 'contents' : 'none' }}>
               {graphics.webgl2 ? <Suspense fallback={<div role="status">Loading preview…</div>}>
-                <PreviewView />
+                <Viewer />
               </Suspense> : <NoGraphics />}
             </div>
           )}

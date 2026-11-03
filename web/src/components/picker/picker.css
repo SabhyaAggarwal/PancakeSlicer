@@ -1,4 +1,8 @@
 :where(.orca-parity) .pk-trigger { width: 100%; min-width: 0; justify-content: space-between; }
+:where(.orca-parity) .pk-trigger:has(> .pk-sub) { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; align-content: center; align-items: center; column-gap: var(--s-3); row-gap: 2px; height: auto; min-height: 44px; padding-block: var(--s-3); }
+:where(.orca-parity) .pk-trigger:has(> .pk-sub) > .pk-name { grid-area: 1 / 1; min-width: 0; line-height: 1.2; text-align: left; }
+:where(.orca-parity) .pk-trigger > .pk-sub { grid-area: 2 / 1; min-width: 0; overflow: hidden; color: var(--ink-3); font: 400 12px/1.2 var(--font-ui); white-space: nowrap; text-overflow: ellipsis; text-align: left; }
+:where(.orca-parity) .pk-trigger:has(> .pk-sub) > .pk-caret { grid-area: 1 / 2 / 3 / 3; }
 :where(.orca-parity) .pk-name { flex: 1; min-width: 0; white-space: normal; overflow-wrap: break-word; text-align: left; }
 :where(.orca-parity) .pk-text { flex: 0 1 auto; min-width: 0; display: flex; flex-direction: column; text-align: left; }
 :where(.orca-parity) .pk-label { display: flex; min-width: 0; white-space: nowrap; }
@@ -6,7 +10,8 @@
 :where(.orca-parity) .pk-tail { flex: none; white-space: pre; }
 :where(.orca-parity) .pk-type, :where(.orca-parity) .pk-brand { display: none; }
 :where(.orca-parity) .orca-menu.pk-pop { width: min(560px, calc(100vw - 16px)); padding: 0; overflow: hidden; display: flex; flex-direction: column; max-height: min(520px, var(--radix-popover-content-available-height, calc(100dvh - 16px))); }
-:where(.orca-parity) .pk-body { flex: 0 1 auto; display: grid; grid-template-columns: 144px minmax(0, 1fr); min-height: min(var(--pk-fit, 0px), calc(min(520px, var(--radix-popover-content-available-height, 100dvh)) - 64px)); overflow: hidden; }
+:where(.orca-parity) .pk-pop[data-state=closed], [data-radix-popper-content-wrapper]:has(> .orca-parity.pk-pop[data-state=closed], > .pk-pop[data-state=closed]) { visibility: hidden; pointer-events: none; }
+:where(.orca-parity) .pk-body { flex: 0 1 auto; display: grid; grid-template-columns: 144px minmax(0, 1fr); min-height: 0; overflow: hidden; }
 :where(.orca-parity) .pk-body.no-rail { grid-template-columns: minmax(0, 1fr); }
 :where(.orca-parity) .pk-rail { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; border-right: 1px solid var(--line); padding: 4px; background: var(--bg-soft); }
 :where(.orca-parity) .pk-rail > button { display: flex; align-items: baseline; gap: var(--s-3); flex: none; min-height: var(--h-compact); padding: 4px var(--s-3); border: 0; border-radius: var(--r-1); background: transparent; color: var(--text); text-align: left; overflow-wrap: break-word; cursor: pointer; }
@@ -16,7 +21,9 @@
 :where(.orca-parity) .pk-rail > button.active .pk-count { color: inherit; }
 :where(.orca-parity) .pk-rail > button.active { background: var(--selected); color: var(--selected-foreground); font-weight: 500; }
 :where(.orca-parity) .pk-rail button:focus-visible, :where(.orca-parity) .pk-option:focus-visible, :where(.orca-parity) .pk-star:focus-visible { outline-offset: -1px; }
-:where(.orca-parity) .pk-list { min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px; }
+:where(.orca-parity) .pk-list { display: grid; align-content: start; min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px; }
+:where(.orca-parity) .pk-tab { grid-area: 1 / 1; min-width: 0; }
+:where(.orca-parity) .pk-tab[data-off] { visibility: hidden; }
 :where(.orca-parity) .pk-row { display: flex; align-items: stretch; min-height: 28px; border-radius: 3px; }
 :where(.orca-parity) .pk-row.is-active { background: var(--selected); }
 :where(.orca-parity) .pk-option { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; min-height: 28px; padding: 4px 8px; border: 0; border-radius: 3px; background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; }

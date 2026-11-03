@@ -1,5 +1,5 @@
 import type { StoredDocBase } from '../persist/backend';
-import type { ProjectDraft, ProjectFailure } from '../persist/drafts';
+import type { ProjectDraftMeta, ProjectFailure } from '../persist/drafts';
 export type { ProjectFailure } from '../persist/drafts';
 export interface DraftCheckpoint { id: string; sequence: number }
 export type CheckpointDocument = StoredDocBase & { recoveryCheckpoint?: DraftCheckpoint };
@@ -24,7 +24,7 @@ export function failureError(failure: ProjectFailure): Error & { failure: Projec
   return Object.assign(new Error(failure.message), { name: failure.name, failure });
 }
 export const blocksAutosave = (failure: ProjectFailure | null) => failure?.kind === 'conflict' || failure?.kind === 'deleted' || failure?.kind === 'interrupted';
-export function checkpointCommitted(draft: ProjectDraft, doc: CheckpointDocument): boolean {
+export function checkpointCommitted(draft: Pick<ProjectDraftMeta, 'id' | 'sequence'>, doc: CheckpointDocument): boolean {
   return doc.recoveryCheckpoint?.id === draft.id && doc.recoveryCheckpoint.sequence >= draft.sequence;
 }
 export function recoveryDocument(doc: CheckpointDocument): StoredDocBase {

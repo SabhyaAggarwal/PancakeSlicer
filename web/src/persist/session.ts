@@ -17,6 +17,9 @@ export type StoredDoc = Omit<Doc, 'objects' | 'projectPlates' | 'project'> & Sto
 
 const blobKeys = new WeakMap<Blob, string>();
 const keyOf = (b: Blob) => blobKeys.get(b) ?? (blobKeys.set(b, newKey()), blobKeys.get(b)!);
+export function assignBlobKey(blob: Blob, key: string) {
+  if (!blobKeys.has(blob)) blobKeys.set(blob, key);
+}
 
 export const plateCount = (d: Pick<State, 'objects' | 'projectPlates' | 'plateIndex'>) =>
   d.objects.length + d.projectPlates.filter((p) => p.index !== d.plateIndex).reduce((n, p) => n + p.objects.length, 0);

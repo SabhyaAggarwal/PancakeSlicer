@@ -40,9 +40,7 @@
 :where(.orca-parity) .pf-editor-identity > .color-trigger { float: left; margin: 3px 10px 0 0; }
 
 :where(.orca-parity) .info-tip { display: inline-grid; place-items: center; width: 16px; height: 16px; margin-left: 6px; padding: 0; flex: none; vertical-align: -2px; border: 1px solid var(--line-strong); border-radius: 50%; background: none; color: var(--ink-3); font: 600 11px/1 var(--font-ui); cursor: pointer; }
-:where(.orca-parity) :is(.opt-line, .option-row) .info-tip { opacity: 0; margin-right: -20px; }
-@media (pointer: coarse) { :where(.orca-parity) :is(.opt-line, .option-row) .info-tip { margin-right: 0; } }
-:where(.orca-parity) :is(.opt-line, .option-row):hover .info-tip, :where(.orca-parity) .info-tip:focus-visible, :where(.orca-parity) .info-tip[data-state=open] { opacity: 1; }
+:where(.orca-parity) .opt-label > .info-tip { margin-left: var(--s-2); }
 :where(.orca-parity) .info-tip:hover, :where(.orca-parity) .info-tip[data-state=open] { color: var(--text); border-color: var(--accent-text); }
 :where(.orca-parity) .info-pop { z-index: 1000; max-width: min(360px, calc(100vw - 16px)); max-height: min(360px, var(--radix-popover-content-available-height, 60dvh)); overflow: auto; padding: 8px 12px; background: var(--raised); color: var(--text); border: 1px solid var(--border-control); border-radius: 4px; font: var(--t-small); white-space: pre-line; overflow-wrap: break-word; box-shadow: var(--shadow-pop); }
 :where(.orca-parity) .info-pop > * { margin: 0; }

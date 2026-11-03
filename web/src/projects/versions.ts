@@ -2,10 +2,9 @@ import { useSyncExternalStore } from 'react';
 import type { StoredDocBase } from '../persist/backend';
 import { plateSignature } from '../slice-input';
 import type { Doc } from '../state/history';
-import { getState, setState, toast, type JobView } from '../state/store';
+import { getState, setState, subscribeStore, toast, type JobView } from '../state/store';
 import type { JobStatus } from '../api/types';
 import { project, flushProject, leaveProjectVersion, restoreProjectVersion, viewProjectVersion, type ProjectMeta } from '../flow/project';
-import { slice } from '../flow/slice';
 import { describeChange, type VersionChange } from './version-change';
 
 export interface ProjectVersion {
@@ -108,8 +107,9 @@ export async function restoreVersion() {
   ++viewToken;
   set({ viewing: null, loading: null });
   try {
+    await post(`${path(id)}/seal`, { revision: project.get().context.revision }).catch(() => null);
     await restoreProjectVersion();
-    await attachSlice(slice.get().context.result);
+    await attachSlice(finishedJob());
   } catch (e) {
     toast(errorText(e));
   }
@@ -124,12 +124,14 @@ async function sealCurrent(signature: string): Promise<{ id: string; revision: n
   return { id: context.id, revision: context.revision, version: sealed.id };
 }
 let sealing: { signature: string; done: ReturnType<typeof sealCurrent> } | null = null;
-async function attachSlice(result: ReturnType<typeof slice.get>['context']['result']) {
-  if (!result?.job.id || state.viewing) return;
-  const seal = sealing?.signature === result.signature ? await sealing.done.catch(() => null) : null;
-  const target = seal ?? await sealCurrent(result.signature);
-  if (!target || plateSignature(getState()) !== result.signature) return;
-  await post(`${path(target.id)}/${target.version}/slice`, { revision: target.revision, jobId: result.job.id });
+const finishedJob = (job: JobView = getState().job) =>
+  job.state === 'done' && job.id && !job.stale && !job.calib && job.plateSignature && job.plateSignature === plateSignature(getState()) ? job : null;
+async function attachSlice(job: JobView | null) {
+  if (!job?.id || !job.plateSignature || state.viewing) return;
+  const seal = sealing?.signature === job.plateSignature ? await sealing.done.catch(() => null) : null;
+  const target = seal && seal.revision === project.get().context.revision ? seal : await sealCurrent(job.plateSignature);
+  if (!target || plateSignature(getState()) !== job.plateSignature) return;
+  await post(`${path(target.id)}/${target.version}/slice`, { revision: target.revision, jobId: job.id });
   if (state.open && state.projectId === target.id) void refreshHistory(target.id);
 }
 
@@ -137,19 +139,20 @@ let tracking = false;
 export function startVersionTracking() {
   if (tracking) return;
   tracking = true;
-  let target: string | null = null, attached: string | undefined;
-  slice.subscribe((snap) => {
-    if (state.viewing) return;
-    if (snap.value === 'slicing' && snap.context.target && snap.context.target !== target) {
-      target = snap.context.target;
-      const done = sealCurrent(target);
+  let started: string | undefined, attached: string | undefined;
+  subscribeStore(() => {
+    const job = getState().job;
+    if (state.viewing || job.calib || !job.plateSignature) return;
+    if ((job.state === 'submitting' || job.state === 'running') && job.plateSignature !== started) {
+      started = job.plateSignature;
+      const done = sealCurrent(started);
       done.catch(() => {});
-      sealing = { signature: target, done };
+      sealing = { signature: started, done };
     }
-    const result = snap.context.result;
-    if (snap.value === 'sliced' && result?.job.id && result.job.id !== attached) {
-      attached = result.job.id;
-      void attachSlice(result).catch((e: unknown) => console.warn('Version slice not kept', e));
+    const finished = finishedJob(job);
+    if (finished && finished.id !== attached) {
+      attached = finished.id;
+      void attachSlice(finished).catch((e: unknown) => console.warn('Version slice not kept', e));
     }
   });
   let revision = project.get().context.revision, id = project.get().context.id;
@@ -170,5 +173,12 @@ export function dayOf(t: number, now = Date.now()) {
   const days = Math.round((new Date(today.toDateString()).getTime() - new Date(d.toDateString()).getTime()) / 86_400_000);
   return days === 0 ? 'Today' : days === 1 ? 'Yesterday' : d.toLocaleDateString([], { weekday: days < 7 ? 'long' : undefined, month: 'short', day: 'numeric', year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric' });
 }
-export const versionClock = clock;
+const withSeconds = (t: number) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+export function rowTimes(versions: readonly ProjectVersion[], now = Date.now()): Map<number, string> {
+  const base = versions.map((v) => {
+    const age = now - v.until;
+    return age < 60_000 ? 'Just now' : age < 3_600_000 ? `${Math.floor(age / 60_000)} min ago` : clock(v.until);
+  });
+  return new Map(versions.map((v, i) => [v.id, base[i] === base[i - 1] || base[i] === base[i + 1] ? withSeconds(v.until) : base[i]]));
+}
 export const versionTime = (t: number) => dayOf(t) === 'Today' ? clock(t) : `${dayOf(t)} ${clock(t)}`;

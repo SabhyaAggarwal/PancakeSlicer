@@ -23,4 +23,4 @@
 :where(.orca-parity) .vh-what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); font: var(--t-small); }
 :where(.orca-parity) .vh-stats { font: var(--t-small); color: var(--ink-3); }
 :where(.orca-parity) .vh-viewing { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--s-4); border-top: 1px solid var(--line); }
-:where(.orca-parity) .vh-viewing-name { flex: 1; min-width: 0; font: var(--t-label); color: var(--accent-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:where(.orca-parity) .vh-viewing-name { flex: 1 0 max-content; font: var(--t-label); color: var(--accent-text); white-space: nowrap; }

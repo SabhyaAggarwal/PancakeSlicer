@@ -102,7 +102,7 @@ export default function HeadDialog({ id, layerHeight, close, onSaved }: { id: st
   const [provenance, setProvenance] = useState('');
   const [page, setPage] = useState(0);
   const strip = useRef<HTMLDivElement>(null);
-  useTabFit(strip, `${base}|${page}`);
+  useTabFit(strip, base);
   const [angles, setAngles] = useState<string[]>(Array(8).fill(''));
   useEffect(() => {
     const key = id || 'generic-conservative';

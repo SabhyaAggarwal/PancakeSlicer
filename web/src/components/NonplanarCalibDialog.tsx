@@ -115,7 +115,7 @@ export default function NonplanarCalibDialog() {
   const layerHeight = Number(process.layer_height) || 0.2;
   const [page, setPage] = useState(memo.page);
   const strip = useRef<HTMLDivElement>(null);
-  useTabFit(strip, page);
+  useTabFit(strip, 'pages');
   const [lastClean, setLastClean] = useState(memo.lastClean);
   const [tilt, setTilt] = useState(memo.tilt);
   const [speed, setSpeed] = useState(memo.speed);

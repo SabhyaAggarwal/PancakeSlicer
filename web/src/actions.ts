@@ -11,7 +11,7 @@ importing.machine.subscribe((s) => {
   if (s.value === 'canceled' && /^(Loading |Opening )/.test(getState().loading ?? '')) setState({ loading: null });
 });
 import * as THREE from 'three';
-import type { Config, ConfigValue, JobRequest, PresetType } from './api/types';
+import type { Config, ConfigValue, JobRequest, JobStatus, PresetType } from './api/types';
 import { sliceProgress } from './api/progress';
 import { canEditProject, canLoadStep, connect, surfaceConfigBlocker, toolFeatures, type Api } from './api/client';
 import { validateProfileSubmission } from './profiles/submission';
@@ -30,6 +30,7 @@ import {
 import { captureUndo, documentGeneration, historyDepth, historyVersion, leaveDocument, markSaved, newDocument, undoable } from './state/history';
 import { clearPlateJobs, currentPlates } from './plater/plates';
 import { nativeSupportCapable } from './settings-env';
+import { loadPreviewView } from './components/preview-loader';
 
 export async function init() {
   app.send({ type: 'BOOT' });
@@ -118,6 +119,8 @@ export function bedArea() {
 export async function importFiles(files: FileList | File[], geometryOnly = false) {
   let list = [...files];
   if (!list.length) return;
+  for (const f of list) void Promise.all([import('./api/blobs'), import('./persist/session')])
+    .then(([{ blobDigest }, { assignBlobKey }]) => blobDigest(f).then((sum) => assignBlobKey(f, `sha256-${sum}`))).catch(() => {});
   const choiceGeneration = documentGeneration();
   setState({ tab: 'prepare' });
   const projectFile = list.find((f) => /\.3mf$/i.test(f.name));
@@ -531,19 +534,25 @@ export function runJob(api: Api, request: JobRequest, signature: string, sink: J
       if (!live) return void api.cancel(id).catch(() => undefined);
       sink.progress({ id, pct: 0, stage: 'queued' });
       const warnings: string[] = [], calibLog: string[] = [];
-      let pct = 0;
+      let pct = 0, resulted = false;
+      const complete = (status: JobStatus) => sink.done({ id: id!, state: 'done', pct: 100, stage: 'done', status, plateSignature: signature, warnings: recordWarnings(status.record, warnings), ...(calib ? { calib, calibLog } : {}) });
       stop = api.events(id, {
         progress: (e) => {
-          if (!live) return;
+          if (!live || resulted) return;
           const progress = sliceProgress(e);
           if (e.stage === 'verify' && e.pct >= 100 && request.output === 'gcode.3mf') progress.stage = 'Packaging sliced plate';
           if (progress.pct >= pct) sink.progress(progress);
           pct = Math.max(pct, progress.pct);
         },
+        result: (status) => {
+          if (!live || resulted) return;
+          resulted = true;
+          complete(status);
+        },
         done: (status) => {
           if (!live) return;
           live = false;
-          sink.done({ id, state: 'done', pct: 100, stage: 'done', status, plateSignature: signature, warnings: recordWarnings(status.record, warnings), ...(calib ? { calib, calibLog } : {}) });
+          complete(status);
         },
         error: (msg) => {
           if (!live) return;
@@ -602,7 +611,7 @@ export async function slice(calib?: { kind: string; params: string; head?: strin
   if (!current() || request === null) return;
   if (typeof request === 'string') return void setState({ job: { state: 'failed', pct: 0, stage: '', error: request } });
   const navigation = beginSlicePreview(signature);
-  void import('./components/PreviewView');
+  void loadPreviewView();
   setState({ tab: 'prepare', job: { state: 'submitting', pct: 0, stage: 'uploading', plateSignature: signature, calib: calib?.kind } });
   cancelJob = runJob(s.api, request, signature, {
     progress: ({ id, ...p }) => { if (!current()) return; bindSlicePreview(navigation, id); setState(st => id ? {job: {...st.job, id, state: 'running', ...p}} : st.job.state === 'submitting' ? {job: {...st.job, ...p}} : {}); },

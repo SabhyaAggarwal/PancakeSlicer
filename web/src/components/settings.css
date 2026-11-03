@@ -131,17 +131,19 @@
 :where(.orca-parity) .detail-menu { color: var(--accent-text); }
 
 :where(.orca-parity) .settings-tab, :where(.orca-parity) .settings-pages { min-width: 0; min-height: 0; display: flex; flex-direction: column; flex: 1; gap: 0; }
-:where(.orca-parity) .page-bar { --tab-h: 32px; --tab-run: calc(var(--tab-h) * tan(var(--slant-angle))); display: flex; flex: none; flex-wrap: nowrap; margin: 0; padding: var(--s-3) calc(var(--space-section) + var(--tab-run) / 2) 0; min-width: 0; overflow: visible; border: 0; background: none; box-shadow: inset 0 -1px var(--slant-border); }
-:where(.orca-parity) .page-tab { flex: 1 1 auto; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); box-sizing: border-box; height: var(--tab-h); min-height: var(--tab-h); margin: 0 calc(-0.5 * var(--tab-run)); padding: 0 calc(var(--s-3) + var(--tab-run)); border: 0; border-radius: 0; background: none; box-shadow: none; color: var(--ink-3); font: 500 13px/18px var(--font-ui); white-space: nowrap; text-align: center; }
+:where(.orca-parity) .page-bar { --tab-h: 28px; --tab-run: calc(var(--tab-h) * tan(var(--slant-angle))); display: flex; flex: none; flex-wrap: nowrap; row-gap: var(--s-2); margin: 0; padding: var(--s-3) calc(var(--space-section) + var(--tab-run) / 2) 0; min-width: 0; overflow: visible; border: 0; background: none; box-shadow: inset 0 -1px var(--slant-border); }
+:where(.orca-parity) .page-tab { flex: none; max-width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); box-sizing: border-box; height: var(--tab-h); min-height: var(--tab-h); margin: 0 calc(-0.5 * var(--tab-run)); padding: 0 calc(var(--s-3) + var(--tab-run)); border: 0; border-radius: 0; background: none; box-shadow: none; color: var(--ink-3); font: 500 13px/18px var(--font-ui); white-space: nowrap; text-align: center; }
 :where(.orca-parity) .page-tab > img { flex: none; }
 :where(.orca-parity) .page-tab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-:where(.orca-parity) .page-bar[data-measure] .page-tab { flex: none; }
-:where(.orca-parity) .page-bar[data-compact] .page-tab.active { flex: none; }
-:where(.orca-parity) .page-bar[data-compact] .page-tab:has(> img):not(.active) { flex: 1 1 0; padding: 0 calc(var(--s-2) + var(--tab-run)); }
-:where(.orca-parity) .page-bar[data-compact] .page-tab:has(> img):not(.active) > .page-tab-label { display: none; }
-:where(.orca-parity) .page-bar[data-compact=icons] .page-tab:has(> img) { flex: 1 1 0; padding: 0 calc(var(--s-2) + var(--tab-run)); }
-:where(.orca-parity) .page-bar[data-compact=icons] .page-tab:has(> img) > .page-tab-label { display: none; }
-:where(.orca-parity) .page-tab.modified:not(.active) { color: var(--modified); }
+:where(.orca-parity) .page-bar[data-fit] .page-tab > img { display: none; }
+:where(.orca-parity) .page-bar[data-fit=wrap] { flex-wrap: wrap; row-gap: 0; }
+:where(.orca-parity) .page-bar[data-fit] .page-tab { padding: 0 calc(5px + var(--tab-run)); }
+:where(.orca-parity) .tab-break { flex: 0 0 100%; height: var(--s-2); }
+:where(.orca-parity) .page-bar[data-fit=wrap] .page-tab[data-row-fill] { flex: var(--tab-grow, 1) 1 auto; }
+:where(.orca-parity) .page-bar:not([data-fit=wrap]) .tab-break { display: none; }
+:where(.orca-parity) .page-bar[data-measure] { width: max-content; max-width: none; flex-wrap: nowrap; }
+:where(.orca-parity) .page-tab.modified .page-tab-label::after { content: ''; display: inline-block; width: 6px; height: 6px; margin-left: 5px; border-radius: 50%; background: var(--modified); vertical-align: 2px; }
+:where(.orca-parity) .page-tab.active.modified .page-tab-label::after { background: currentColor; }
 :where(.orca-parity) .page-tab:disabled { color: var(--label); cursor: default; }
 @media (pointer: coarse), (max-width: 599px) { :where(.orca-parity) .page-bar { --tab-h: 44px; } :where(.orca-parity) .page-tab { --slant-inset: 8px; padding: 0 calc(var(--s-3) + var(--tab-run)); } }
 :where(.orca-parity) .page-body { flex: 1; min-width: 0; min-height: 0; margin: 0; padding: 0 0 8px; border: 0; background: var(--panel); overflow: auto; }

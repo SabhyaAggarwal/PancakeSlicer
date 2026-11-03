@@ -23,15 +23,19 @@ export function ControlHints() {
     const keyInput = (event: KeyboardEvent) => { if (NAV_KEYS.has(event.key) && !event.metaKey && !event.ctrlKey) root.dataset.input = 'keyboard'; };
     document.addEventListener('pointerdown', pointerInput, true); document.addEventListener('keydown', keyInput, true);
     sweep(document.body); titles.observe(document.body, {subtree: true, childList: true, attributes: true, attributeFilter: ['title']});
-    let hiddenAt = 0, press: ReturnType<typeof setTimeout> | undefined;
-    const clear = () => { clearTimeout(timer); clearTimeout(press); if (target) hiddenAt = Date.now(); setHint(null); target = null; };
+    let hiddenAt = 0, shown = false, press: ReturnType<typeof setTimeout> | undefined;
+    const clear = () => { clearTimeout(timer); clearTimeout(press); if (shown) hiddenAt = Date.now(); shown = false; setHint(null); target = null; };
     const open = (node: HTMLElement | null, delay: number) => {
       if (node === target) return;
       clear();
-      const text = node ? (node.matches(FULL) ? cutText(node) : nameOf(node)) : undefined;
-      if (!node || !text) return;
+      if (!node) return;
       target = node;
-      timer = setTimeout(() => { if (target !== node || !node.isConnected) return; const r = node.getBoundingClientRect(); setHint({text, x: r.left + r.width / 2, y: r.bottom}); }, Date.now() - hiddenAt < SKIP ? 0 : delay);
+      timer = setTimeout(() => {
+        if (target !== node || !node.isConnected) return;
+        const text = node.matches(FULL) ? cutText(node) : nameOf(node);
+        if (!text) return;
+        const r = node.getBoundingClientRect(); shown = true; setHint({text, x: r.left + r.width / 2, y: r.bottom});
+      }, Date.now() - hiddenAt < SKIP ? 0 : delay);
     };
     const control = (event: Event) => event.target instanceof Element ? event.target.closest<HTMLElement>(FULL) ?? event.target.closest<HTMLElement>(CONTROL) : null;
     const show = (event: PointerEvent) => { if (event.pointerType === 'mouse') open(control(event), DELAY); };

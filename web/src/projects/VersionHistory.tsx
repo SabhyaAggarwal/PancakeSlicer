@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { changeText } from './version-change';
-import { backToLatest, closeHistory, dayOf, restoreVersion, useHistory, versionClock, versionTime, viewVersion, type ProjectVersion } from './versions';
+import { backToLatest, closeHistory, dayOf, restoreVersion, rowTimes, useHistory, versionTime, viewVersion, type ProjectVersion } from './versions';
 
 const hours = (s: number) => { const m = Math.round(s / 60); return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`; };
 
@@ -22,6 +22,9 @@ function Panel() {
   const h = useHistory(), list = h.versions;
   const shown = h.loading ?? h.viewing?.id ?? list?.[0]?.id;
   const body = useRef<HTMLUListElement>(null);
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(timer); }, []);
+  const times = useMemo(() => rowTimes(list ?? [], now), [list, now]);
   const days = useMemo(() => {
     const out: [string, ProjectVersion[]][] = [];
     for (const v of list ?? []) {
@@ -61,7 +64,7 @@ function Panel() {
               <button type="button" role="option" className="vh-row" data-version={v.id} aria-selected={v.id === shown}
                 aria-busy={h.loading === v.id || undefined} onClick={() => void viewVersion(v)}>
                 <span className="vh-line">
-                  <time dateTime={new Date(v.until).toISOString()}>{versionClock(v.until)}</time>
+                  <time dateTime={new Date(v.until).toISOString()}>{times.get(v.id)}</time>
                   {v.id === list[0].id && <span className="vh-tag">Current</span>}
                   {v.slice && <span className="vh-tag vh-sliced">Sliced</span>}
                 </span>

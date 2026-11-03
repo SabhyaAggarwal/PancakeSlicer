@@ -11,8 +11,8 @@ import { effectiveConfig, effectiveMode, getState, presetEdits, resetOption, res
 import { condition, environment, fieldDefinition, optionState } from '../visibility';
 import { lineMode, nativeSupportCapable, tabEnvironment } from '../settings-env';
 import { Field } from './Field';
-import { InfoTip } from './InfoTip';
 import { useTabFit } from './tab-rows';
+import { InfoTip } from './InfoTip';
 import { Icon } from './Icon';
 import { GroupHead, isGroupOpen, setGroupOpen, useSettingsGroups } from './SettingsGroup';
 import './settings.css';
@@ -97,10 +97,10 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
   };
   useSettingsGroups();
   const groupId = (pageTitle: string, groupTitle: string) => `${TAB_OF[type]}/${pageTitle}/${groupTitle}`;
-  const strip = useRef<HTMLDivElement>(null);
-  useTabFit(strip, `${pages.map((p) => p.title).join('|')}|${auxiliary?.label ?? ''}|${pageIdx}|${auxiliaryOn}`);
   const pageModified = (p: TabDesc['pages'][number]) => p.groups.some((g) => g.lines.some((l) => l.options.some((k) => splitKey(k)[0] in dirty)));
   const focus = useStore((s) => (s.settingsFocus?.type === type ? s.settingsFocus : null));
+  const strip = useRef<HTMLDivElement>(null);
+  const breaks = useTabFit(strip, `${pages.map((p) => p.title).join('|')}|${auxiliary?.label ?? ''}`);
   const body = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!focus || !desc) return;
@@ -124,11 +124,12 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
       {bedDialog && <Suspense fallback={<div role="status">Loading bed shape…</div>}><BedShapeDialog config={config} onSet={editor?.set} close={() => setBedDialog(false)} /></Suspense>}
       {!hidePreset && <PresetBar type={type} slot={slot} />}
       <Tabs.Root className="settings-pages" value={auxiliaryOn ? 'auxiliary' : String(Math.min(pageIdx, pages.length - 1))} onValueChange={v => {setAuxiliaryOn(v === 'auxiliary'); if(v !== 'auxiliary') setPageIdx(Number(v));}}><Tabs.List ref={strip} className="page-bar" aria-label={`${TYPE_NAME[type]} settings`}>
-        {pages.map((p, i) => (
+        {pages.map((p, i) => [breaks.includes(i) && <span key={`break-${i}`} className="tab-break" aria-hidden />, (
           <Tabs.Trigger key={p.title} value={String(i)} aria-label={p.title} className={`page-tab ${p === page ? 'active' : ''} ${pageModified(p) ? 'modified' : ''}`} onClick={() => setPageIdx(i)}>
             {p.icon && <Icon name={p.icon} size={16}/>}<span className="page-tab-label">{p.title}</span>
           </Tabs.Trigger>
-        ))}
+        )])}
+        {auxiliary && breaks.includes(pages.length) && <span className="tab-break" aria-hidden />}
         {auxiliary && <Tabs.Trigger value="auxiliary" className={`page-tab ${auxiliaryOn ? 'active' : ''} ${auxiliary.modified ? 'modified' : ''}`}>{auxiliary.icon && <Icon name={auxiliary.icon} size={16}/>}<span className="page-tab-label">{auxiliary.label}</span></Tabs.Trigger>}
       </Tabs.List>
       <Tabs.Content forceMount value={auxiliaryOn ? 'auxiliary' : String(Math.min(pageIdx,pages.length-1))} className="page-body" ref={body}>
@@ -167,14 +168,14 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, readO
                 keys = keys.flatMap((k) => (labels ?? ['']).map((_, i) => `${splitKey(k)[0]}#${i}`));
               }
               if (customRow(line)) return <div key={row} className="opt-line">
-                <span className="opt-label">{line.label}{line.tooltip && <InfoTip label={line.label ?? ''}><p>{line.tooltip}</p></InfoTip>}</span>
+                <span className="opt-label"><span className="opt-label-text" data-full-text={line.label}>{line.label}</span>{line.tooltip && <InfoTip label={line.label ?? ''}><p>{line.tooltip}</p></InfoTip>}</span>
                 <span className="opt-field"><Suspense fallback={null}><HeadShapeButton head={String(config.nonplanar_head ?? '')} layerHeight={Number(effectiveConfig(getState(), 'process').layer_height) || 0.2} onSaved={editor ? id => editor.set('nonplanar_head', id) : undefined} /></Suspense></span>
               </div>;
               const shared = keys.length > 1;
               const tooltip = line.tooltip && OPTIONS[line.tooltip] ? OPTIONS[line.tooltip].tooltip : line.tooltip;
               const sharedLabel = line.label ?? (OPTIONS[splitKey(keys[0])[0]]?.full_label || OPTIONS[splitKey(keys[0])[0]]?.label);
               return <div key={row} className={shared ? 'option-row' : undefined}>
-                {shared && <span className="opt-label">{sharedLabel}{tooltip && <InfoTip label={sharedLabel ?? ''}><p>{tooltip}</p></InfoTip>}</span>}
+                {shared && <span className="opt-label"><span className="opt-label-text" data-full-text={sharedLabel}>{sharedLabel}</span>{tooltip && <InfoTip label={sharedLabel ?? ''}><p>{tooltip}</p></InfoTip>}</span>}
                 {keys.map((k, i) => field(line, keys, k, i, labels, shared, tooltip))}
               </div>;
             })}

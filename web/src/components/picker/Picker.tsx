@@ -1,6 +1,7 @@
 import { preferenceJson, savePreferences, usePreference } from '../../saved-preferences';
 import { countRender } from '../../interaction-metrics';
-import { Fragment, memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentPropsWithRef, type CSSProperties, type ReactNode, type RefObject } from 'react';
+import { Fragment, memo, useCallback, useEffect, useId, useMemo, useRef, useState, type ComponentPropsWithRef, type ReactNode, type RefObject } from 'react';
+import { flushSync } from 'react-dom';
 import { Popover } from 'radix-ui';
 import { useRowFill } from '../tab-rows';
 import '../menu.css';
@@ -22,9 +23,9 @@ const splitTail = (label: string): [string, string] => {
   return [label, ''];
 };
 interface RailTab { id: string; title: string; count?: number }
-const HOVER_DELAY = 100, AIM_DELAY = 80;
+const AIM_DELAY = 80;
 function PickerRail({ tabs, active, hover, label, list, railRef, onChange }: { tabs: RailTab[]; active: string; hover: boolean; label: string; list: RefObject<HTMLElement | null>; railRef: RefObject<HTMLElement | null>; onChange(id: string): void }) {
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined), trail = useRef<{ x: number; y: number; t: number }[]>([]);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined), trail = useRef<{ x: number; y: number; t: number }[]>([]), under = useRef('');
   useEffect(() => () => clearTimeout(timer.current), []);
   const aiming = () => {
     const box = list.current?.getBoundingClientRect(), pts = trail.current, from = pts[0], at = pts[pts.length - 1];
@@ -33,22 +34,25 @@ function PickerRail({ tabs, active, hover, label, list, railRef, onChange }: { t
     const top = { x: box.left, y: box.top - 24 }, bottom = { x: box.left, y: box.bottom + 24 };
     return slope(at, top) < slope(from, top) && slope(at, bottom) > slope(from, bottom);
   };
-  const intend = (id: string, el: HTMLElement) => {
-    clearTimeout(timer.current);
-    const check = () => { if (aiming()) timer.current = setTimeout(check, AIM_DELAY); else { onChange(id); el.focus({ preventScroll: true }); } };
-    timer.current = setTimeout(check, HOVER_DELAY);
+  const intend = (id: string) => {
+    clearTimeout(timer.current); under.current = id;
+    const check = () => { if (under.current !== id) return; if (aiming()) timer.current = setTimeout(check, AIM_DELAY); else flushSync(() => onChange(id)); };
+    check();
   };
-  return <nav ref={railRef} className="pk-rail" aria-label={label} onPointerMove={hover ? (e) => { if (e.pointerType === 'mouse') trail.current = [...trail.current.slice(-3), { x: e.clientX, y: e.clientY, t: e.timeStamp }]; } : undefined} onPointerLeave={() => clearTimeout(timer.current)}>
+  return <nav ref={railRef} className="pk-rail" aria-label={label} onPointerMove={hover ? (e) => { if (e.pointerType === 'mouse') trail.current = [...trail.current.slice(-3), { x: e.clientX, y: e.clientY, t: e.timeStamp }]; } : undefined} onPointerLeave={() => { clearTimeout(timer.current); under.current = ''; }}>
     {tabs.map((r) => <button type="button" key={r.id} data-rail={r.id} className={active === r.id ? 'active' : ''} aria-pressed={active === r.id}
       onClick={() => { clearTimeout(timer.current); onChange(r.id); }}
-      onPointerEnter={hover ? (e) => { if (e.pointerType !== 'mouse') return; if (r.id === active) clearTimeout(timer.current); else intend(r.id, e.currentTarget); } : undefined}>
+      onPointerEnter={hover ? (e) => { if (e.pointerType !== 'mouse') return; if (r.id === active) { clearTimeout(timer.current); under.current = r.id; } else intend(r.id); } : undefined}>
       <span className="pk-rail-title">{r.title}</span>{r.count !== undefined && <span className="pk-count">{r.count}</span>}
     </button>)}
   </nav>;
 }
+const decoded = new Map<string, HTMLImageElement>();
+const decodeAhead = (src: string) => { if (decoded.has(src)) return; const img = new Image(); img.src = src; decoded.set(src, img); img.decode().catch(() => {}); };
+const idle = (run: () => void) => typeof requestIdleCallback === 'function' ? requestIdleCallback(run, { timeout: 3000 }) : setTimeout(run, 1500);
 function PickerArt({ src }: { src: string | null }) {
   const [failed, setFailed] = useState<string>();
-  return <span className="pk-art" aria-hidden>{src && failed !== src ? <img src={src} alt="" loading="lazy" draggable={false} onError={() => setFailed(src)}/> : <Glyph name="printer" size={40}/>}</span>;
+  return <span className="pk-art" aria-hidden>{src && failed !== src ? <img src={src} alt="" draggable={false} onError={() => setFailed(src)}/> : <Glyph name="printer" size={40}/>}</span>;
 }
 const PickerRow = memo(function PickerRow({ row, index, id, active, selected, adding, pinned, onActive, onPick, onPin }: {
   row: PickerItem; index: number; id: string; active: boolean; selected: boolean; adding: boolean; pinned: boolean;
@@ -65,14 +69,22 @@ const PickerRow = memo(function PickerRow({ row, index, id, active, selected, ad
     {!adding && <button type="button" className="pk-star" aria-label={`Favorite ${row.label}`} aria-pressed={pinned} onClick={() => onPin(row)}>{pinned ? '★' : '☆'}</button>}
   </div>;
 });
+type TabRows = { tab: string; rows: PickerItem[]; heads: Map<number, string> };
+const PickerTab = memo(function PickerTab({ t, on, active, id, value, adding, pinned, empty, onActive, onPick, onPin }: {
+  t: TabRows; on: boolean; active: number; id: string; value?: string; adding: boolean; pinned: Set<string>; empty: string;
+  onActive(index: number): void; onPick(row: PickerItem): void; onPin(row: PickerItem): void;
+}) {
+  return <div className="pk-tab" data-off={on ? undefined : ''}>{t.rows.map((row, i) => <Fragment key={`${i}:${row.id}`}>{t.heads.has(i) && <div className="pk-group" role="presentation">{t.heads.get(i)}</div>}<PickerRow row={row} index={i} id={`${id}-${t.tab}`} active={on && active === i} selected={value === row.id} adding={adding} pinned={pinned.has(row.id)} onActive={onActive} onPick={onPick} onPin={onPin} /></Fragment>)}{!t.rows.length && <div className="pk-empty">{empty}</div>}</div>;
+});
 export function Picker({ label, value, groups, sections = false, onPick, memory = `orca.parity.${label}`, footer = [], catalog, className = '', triggerProps, children }: Props) {
   countRender('picker');
-  const [open, setOpen] = useState(false), [adding, setAdding] = useState(false), [rail, setRail] = useState(''), [active, setActive] = useState(0);
+  const [open, setOpen] = useState(false), [primed, setPrimed] = useState(false), [adding, setAdding] = useState(false), [rail, setRail] = useState(''), [active, setActive] = useState(0);
   const savedPins = usePreference(`${memory}.pins`);
   const pins = useMemo(() => read(`${memory}.pins`), [memory,savedPins]);
   const railRef = useRef<HTMLElement>(null), list = useRef<HTMLDivElement>(null), typed = useRef({text: '', at: 0});
   const id = useId();
-  const source = useMemo(() => open ? (adding && catalog ? catalog.groups() : groups()).map(g => ({...g, items:g.items.filter(item => !item.disabled)})).filter((g) => g.items.length) : [], [open, adding, groups, catalog]);
+  const live = open || primed;
+  const source = useMemo(() => live ? (adding && catalog ? catalog.groups() : groups()).map(g => ({...g, items:g.items.filter(item => !item.disabled)})).filter((g) => g.items.length) : [], [live, adding, groups, catalog]);
   const ownRows = useMemo(() => open && adding && hasOwn(groups), [open, adding, groups]);
   const all = useMemo(() => [...new Map(source.flatMap((g) => g.items).map((item) => [item.id, item])).values()], [source]);
   const pinnedSet = useMemo(() => new Set(pins), [pins]);
@@ -87,28 +99,31 @@ export function Picker({ label, value, groups, sections = false, onPick, memory 
   }, [allSections, rails.length, activeRail, tabbed, pinnedSet]);
   const rows = useMemo(() => sectioned ? sectioned.flatMap(g => g.items) : activeRail === 'pins' ? all.filter(r => pinnedSet.has(r.id)) : activeRail === 'all' ? all : source.find(g => g.id === activeRail)?.items ?? [], [sectioned, activeRail, all, pinnedSet, source]);
   const heads = useMemo(() => { const at = new Map<number, string>(); let i = 0; if (activeRail === 'all' || (sectioned?.length ?? 0) > 1) for (const g of sectioned ?? []) { at.set(i, g.title); i += g.items.length; } return at; }, [sectioned, activeRail]);
-  const [fit, setFit] = useState(0);
-  useLayoutEffect(() => {
-    if (!open || !rails.length || !allSections) { setFit(0); return; }
-    let frame = 0;
-    const measure = () => {
-      const el = list.current, row = el?.querySelector<HTMLElement>('.pk-row');
-      if (!el || !row) { frame = requestAnimationFrame(measure); return; }
-      const headH = [...el.querySelectorAll<HTMLElement>('.pk-group')].pop()?.offsetHeight ?? 32, pad = parseFloat(getComputedStyle(el).paddingTop) * 2;
-      setFit(f => Math.max(f, allSections.reduce((h, g) => h + headH + g.items.length * row.offsetHeight, pad - 8)));
-    };
-    measure();
-    return () => cancelAnimationFrame(frame);
-  }, [open, rails.length, allSections]);
+  const railTabs = useMemo<TabRows[] | null>(() => !allSections || !rails.length ? null : rails.map(r => {
+    const g = r.id === 'all' ? undefined : tabbed.find(t => t.id === r.id);
+    const secs = g ? [{title: 'Favorites', items: g.items.filter(x => pinnedSet.has(x.id))}, {title: g.title, items: g.items.filter(x => !pinnedSet.has(x.id))}].filter(x => x.items.length) : allSections ?? [];
+    const at = new Map<number, string>(); let i = 0;
+    if (!g || secs.length > 1) for (const sec of secs) { at.set(i, sec.title); i += sec.items.length; }
+    return {tab: r.id, rows: secs.flatMap(sec => sec.items), heads: at};
+  }), [rails, tabbed, pinnedSet, allSections]);
+  const tabs = useMemo<TabRows[]>(() => railTabs ?? [{tab: activeRail, rows, heads}], [railTabs, activeRail, rows, heads]);
+  const groupsRef = useRef(groups); groupsRef.current = groups;
+  const warm = useCallback(() => { for (const g of groupsRef.current()) for (const item of g.items) if (item.image) decodeAhead(item.image); }, []);
+  useEffect(() => { const handle = idle(warm); return () => { if (typeof cancelIdleCallback === 'function' && typeof handle === 'number') cancelIdleCallback(handle); else clearTimeout(handle as ReturnType<typeof setTimeout>); }; }, [warm]);
   const enabled = useMemo(() => rows.flatMap((r, i) => r.disabled ? [] : [i]), [rows]);
   const resetType = () => { typed.current = {text: '', at: 0}; };
   const move = (index: number) => {
     if (index < 0 || !rows[index] || rows[index].disabled) return;
     setActive(index);
-    const el = list.current?.querySelector<HTMLButtonElement>(`[data-index="${index}"] .pk-option`);
+    const el = list.current?.querySelector<HTMLButtonElement>(`.pk-tab:not([data-off]) [data-index="${index}"] .pk-option`);
     el?.focus({preventScroll: true}); el?.scrollIntoView({ block: 'nearest' });
   };
-  const changeRail = (next: string) => { setRail(next); setActive(0); resetType(); };
+  const focusChoice = () => { const selected = rows.findIndex(r => r.id === value && !r.disabled); move(selected >= 0 ? selected : enabled[0] ?? -1); };
+  const focusOnOpen = useRef(focusChoice); focusOnOpen.current = focusChoice;
+  useEffect(() => { if (open && list.current) focusOnOpen.current(); }, [open]);
+  const prime = () => { warm(); setPrimed(true); };
+  const unprime = () => { if (!open) setPrimed(false); };
+  const changeRail = (next: string) => { setRail(next); setActive(0); resetType(); if (list.current) list.current.scrollTop = 0; };
   const railTab = (tab: string) => railRef.current?.querySelector<HTMLButtonElement>(`[data-rail="${CSS.escape(tab)}"]`);
   const changeCatalog = (next: boolean) => { setAdding(next); changeRail(''); };
   const pick = useCallback((row: PickerItem) => {
@@ -117,12 +132,12 @@ export function Picker({ label, value, groups, sections = false, onPick, memory 
     setOpen(false); resetType();
   }, [adding, catalog, onPick]);
   const pin = useCallback((row: PickerItem) => { const next = pins.includes(row.id) ? pins.filter((id) => id !== row.id) : [...pins, row.id]; write(`${memory}.pins`, next); }, [pins, memory]);
-  return <Popover.Root open={open} onOpenChange={next => { setOpen(next); resetType(); setFit(0); if (next) { setAdding(!!catalog && !hasOwn(groups)); setRail(''); setActive(0); } }}>
-    <Popover.Trigger asChild><button {...triggerProps} type="button" className={`pk-trigger dropdown ${className}`} data-menu-trigger="orca" aria-label={label} onKeyDown={e => {
+  return <Popover.Root open={open} onOpenChange={next => { setOpen(next); resetType(); if (!next) setPrimed(false); if (next) { setAdding(!!catalog && !hasOwn(groups)); setRail(''); setActive(0); } }}>
+    <Popover.Trigger asChild><button {...triggerProps} type="button" className={`pk-trigger dropdown ${className}`} data-menu-trigger="orca" aria-label={label} onPointerEnter={prime} onFocus={warm} onPointerLeave={unprime} onKeyDown={e => {
       triggerProps?.onKeyDown?.(e);
       if (!e.defaultPrevented && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); e.stopPropagation(); resetType(); setAdding(!!catalog && !hasOwn(groups)); setRail(''); setOpen(true); }
     }}>{children}<Caret className="pk-caret"/></button></Popover.Trigger>
-    <Popover.Portal><Popover.Content className={`orca-menu pk-pop ${rows.some(r => r.image !== undefined) ? 'pk-media' : ''}`} data-menu-family="orca" aria-label={adding ? catalog?.label : label} side="bottom" align="start" sideOffset={4} collisionPadding={8} onOpenAutoFocus={e => { e.preventDefault(); const selected = rows.findIndex(r => r.id === value && !r.disabled); move(selected >= 0 ? selected : enabled[0] ?? -1); }} onKeyDown={e => {
+    <Popover.Portal forceMount={primed || undefined}><Popover.Content forceMount={primed || undefined} className={`orca-menu pk-pop ${rows.some(r => r.image !== undefined) ? 'pk-media' : ''}`} data-menu-family="orca" aria-label={adding ? catalog?.label : label} side="bottom" align="start" sideOffset={4} collisionPadding={8} onOpenAutoFocus={e => { e.preventDefault(); if (open) focusChoice(); }} onKeyDown={e => {
       if (e.key === 'Escape' || e.key === 'Tab') return;
       e.stopPropagation();
       const at = enabled.indexOf(active), inRail = e.target instanceof Element && !!e.target.closest('.pk-rail');
@@ -149,8 +164,8 @@ export function Picker({ label, value, groups, sections = false, onPick, memory 
         if (match !== undefined) move(match);
       }
     }}>
-      <div className={`pk-body ${rails.length > 1 ? '' : 'no-rail'}`} style={fit ? {'--pk-fit': `${fit}px`} as CSSProperties : undefined}>{rails.length > 1 && <PickerRail tabs={rails} active={activeRail} hover={sections} label={`${label} groups`} list={list} railRef={railRef} onChange={changeRail} />}
-        <div className="pk-list" role="listbox" aria-label={label} ref={list}>{rows.map((row, i) => <Fragment key={`${i}:${row.id}`}>{heads.has(i) && <div className="pk-group" role="presentation">{heads.get(i)}</div>}<PickerRow row={row} index={i} id={id} active={active === i} selected={value === row.id} adding={adding} pinned={pinnedSet.has(row.id)} onActive={setActive} onPick={pick} onPin={pin} /></Fragment>)}{!rows.length && <div className="pk-empty">{catalog && !adding ? 'None yet' : 'No profiles'}</div>}</div>
+      <div className={`pk-body ${rails.length > 1 ? '' : 'no-rail'}`}>{rails.length > 1 && <PickerRail tabs={rails} active={activeRail} hover={sections} label={`${label} groups`} list={list} railRef={railRef} onChange={changeRail} />}
+        <div className="pk-list" role="listbox" aria-label={label} ref={list}>{tabs.map(t => <PickerTab key={t.tab} t={t} on={t.tab === activeRail} active={t.tab === activeRail ? active : -1} id={id} value={value} adding={adding} pinned={pinnedSet} empty={catalog && !adding ? 'None yet' : 'No profiles'} onActive={setActive} onPick={pick} onPin={pin} />)}</div>
       </div>
       <div className="pk-foot">{adding && ownRows && <button type="button" className="btn-ghost" onClick={() => changeCatalog(false)}>Back</button>}{catalog && !adding && <button type="button" className="btn" onClick={() => changeCatalog(true)}>{catalog.label}</button>}{footer.map(a => <button type="button" className="btn" key={a.label} onClick={() => { if (!a.keep) setOpen(false); a.run(); }}>{a.label}</button>)}</div>
     </Popover.Content></Popover.Portal>

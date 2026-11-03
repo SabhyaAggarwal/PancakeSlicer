@@ -27,7 +27,8 @@ export async function adoptProjectDraft(runtime: RecoveryRuntime, draft: Project
   const document = recoveryDocument(draft.doc) as StoredDoc;
   await runtime.ensureCatalogs(document, () => runtime.isCurrent(mine));
   if (!runtime.isCurrent(mine)) return;
-  const fields = await (await codec()).decode(document, async (key) => draft.blobs[key] ?? null);
+  const storage = await runtime.drafts();
+  const fields = await (await codec()).decode(document, async (key) => draft.blobs[key] ?? await storage.asset(key));
   if (!runtime.isCurrent(mine)) return;
   const meta: ProjectMeta = canonical ?? { id: draft.projectId, name: draft.name, revision: draft.baseRevision,
     savedAt: 0, objects: draft.objects, thumbnail: null };
@@ -50,13 +51,14 @@ export async function adoptProjectDraft(runtime: RecoveryRuntime, draft: Project
 export async function resumeUnsavedProject(runtime: RecoveryRuntime, id: string): Promise<boolean> {
   const mine = runtime.beginOpen();
   const [rec, drafts] = await Promise.all([runtime.storage()?.load(id) ?? null,
-    runtime.drafts().then((storage) => storage.list(id)).catch(() => [] as ProjectDraft[])]);
+    runtime.drafts().then((storage) => storage.listMetadata(id)).catch(() => [] as ProjectDraftMeta[])]);
   if (!runtime.isCurrent(mine)) return true;
   if (rec) { await openProject(runtime, id, { history: false }); return true; }
   const owners = [runtime.session.owner, ...runtime.session.previousOwners];
-  const draft = drafts.filter((d) => d.kind === 'dirty' && d.baseRevision === 0 && owners.includes(d.owner))
+  const newest = drafts.filter((d) => d.kind === 'dirty' && d.baseRevision === 0 && owners.includes(d.owner))
     .sort((a, b) => b.updatedAt - a.updatedAt)[0];
-  if (!draft) return false;
+  const draft = newest && await (await runtime.drafts()).load(newest.id);
+  if (!draft || !runtime.isCurrent(mine)) return !!draft;
   project.send({ type: 'OPEN' });
   await adoptProjectDraft(runtime, draft, null, mine);
   if (runtime.isCurrent(mine) && project.get().context.id === id) project.send({ type: 'RETRY' });
@@ -126,11 +128,13 @@ export async function openProject(runtime: RecoveryRuntime, id: string, options:
     let loadError: unknown;
     let rec: Awaited<ReturnType<ProjectStore['load']>> = null;
     try { const store = runtime.storage(); if (!store) throw new Error('Project storage is unavailable'); rec = await store.load(id); } catch (error) { loadError = error; }
-    const drafts = await runtime.drafts().then((storage) => storage.list(rec?.meta.id ?? id)).catch(() => [] as ProjectDraft[]);
+    const drafts = await runtime.drafts().then((storage) => storage.listMetadata(rec?.meta.id ?? id)).catch(() => [] as ProjectDraftMeta[]);
     if (!runtime.isCurrent(mine)) return;
     const draft = !options.reload ? drafts.find((d) => d.kind === 'dirty' && (runtime.session.previousOwners.includes(d.owner) || d.owner === runtime.session.owner)) : undefined;
     if (draft && (!rec || !checkpointCommitted(draft, rec.doc))) {
-      await adoptProjectDraft(runtime, draft, rec?.meta ?? null, mine); return;
+      const restored = await (await runtime.drafts()).load(draft.id);
+      if (!runtime.isCurrent(mine)) return;
+      if (restored) { await adoptProjectDraft(runtime, restored, rec?.meta ?? null, mine); return; }
     }
     if (draft && rec && checkpointCommitted(draft, rec.doc)) {
       await (await runtime.drafts()).remove(draft.id, draft.sequence); void runtime.refreshDrafts();

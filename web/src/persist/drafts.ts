@@ -15,6 +15,7 @@ export interface ProjectDraftStore {
   list(projectId?: string): Promise<ProjectDraft[]>;
   listMetadata(projectId?: string): Promise<ProjectDraftMeta[]>;
   load(id: string): Promise<ProjectDraft | null>;
+  asset(key: string): Promise<Blob | null>;
   put(draft: ProjectDraft): Promise<void>;
   remove(id: string, throughSequence: number): Promise<void>;
 }
@@ -100,13 +101,12 @@ const serviceDraftStore: ProjectDraftStore = {
     if (!record) return null;
     const document = record.document;
     if (!document || !validMetadata(document) || !document.doc || document.id !== id || document.sequence !== record.sequence) throw new Error('Invalid service recovery document');
-    const blobs: Record<string, Blob> = {};
-    for (const key of Object.keys(document.doc.files ?? {})) {
-      const response = await serviceRequest(assetPath(key), undefined, true);
-      if (!response) throw new Error(`Recovery model asset is missing: ${key}`);
-      blobs[key] = await response.blob();
-    }
-    return { ...document, blobs };
+    return { ...document, blobs: {} };
+  },
+  async asset(key) {
+    const response = await serviceRequest(assetPath(key), undefined, true);
+    if (!response) throw new Error(`Recovery model asset is missing: ${key}`);
+    return response.blob();
   },
   put: (draft) => mutate(draft.id, async () => {
     const { blobs: _blobs, ...document } = draft;
