@@ -1,3 +1,4 @@
+import { preferenceJson, savePreferences, usePreference } from '../../saved-preferences';
 import { countRender } from '../../interaction-metrics';
 import { memo, useCallback, useId, useMemo, useRef, useState, type ComponentPropsWithRef, type ReactNode } from 'react';
 import { Popover } from 'radix-ui';
@@ -9,8 +10,8 @@ export interface PickerAction { label: string; run(): void; keep?: boolean }
 export interface PickerCatalog { label: string; groups(): PickerGroup[]; onAdd(id: string): void }
 export const selectDefaultRail = (source: readonly PickerGroup[], pins: readonly string[]) => source.some(g => g.items.some(item => !item.disabled && pins.includes(item.id))) ? 'pins' : source.find(g => g.items.some(item => !item.disabled))?.id ?? 'all';
 interface Props { label: string; value?: string; groups(): PickerGroup[]; onPick(id: string): void; facetLabel?: string; memory?: string; footer?: PickerAction[]; catalog?: PickerCatalog; className?: string; triggerProps?: ComponentPropsWithRef<'button'> & { 'data-autofocus'?: boolean | string }; children: ReactNode }
-const read = (key: string): string[] => { try { const v = JSON.parse(localStorage.getItem(key) ?? '[]'); return Array.isArray(v) ? v.filter((s) => typeof s === 'string') : []; } catch { return []; } };
-const write = (key: string, value: string[]) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch {  } };
+const read = (key: string): string[] => { const v = preferenceJson<unknown>(key, []); return Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : []; };
+const write = (key: string, value: string[]) => savePreferences({[key]:value});
 const PickerRow = memo(function PickerRow({ row, index, id, active, selected, adding, pinned, onActive, onPick, onPin }: {
   row: PickerItem; index: number; id: string; active: boolean; selected: boolean; adding: boolean; pinned: boolean;
   onActive(index: number): void; onPick(row: PickerItem): void; onPin(row: PickerItem): void;
@@ -24,7 +25,8 @@ const PickerRow = memo(function PickerRow({ row, index, id, active, selected, ad
 export function Picker({ label, value, groups, onPick, memory = `orca.parity.${label}`, footer = [], catalog, className = '', triggerProps, children }: Props) {
   countRender('picker');
   const [open, setOpen] = useState(false), [adding, setAdding] = useState(false), [rail, setRail] = useState(''), [active, setActive] = useState(0);
-  const [pins, setPins] = useState(() => read(`${memory}.pins`));
+  const savedPins = usePreference(`${memory}.pins`);
+  const pins = useMemo(() => read(`${memory}.pins`), [memory,savedPins]);
   const list = useRef<HTMLDivElement>(null), typed = useRef({text: '', at: 0});
   const id = useId();
   const source = useMemo(() => open ? (adding && catalog ? catalog.groups() : groups()).map(g => ({...g, items:g.items.filter(item => !item.disabled)})).filter((g) => g.items.length) : [], [open, adding, groups, catalog]);
@@ -48,7 +50,7 @@ export function Picker({ label, value, groups, onPick, memory = `orca.parity.${l
     if (adding && catalog) catalog.onAdd(row.id); else onPick(row.id);
     setOpen(false); resetType();
   }, [adding, catalog, onPick]);
-  const pin = useCallback((row: PickerItem) => { const next = pins.includes(row.id) ? pins.filter((id) => id !== row.id) : [...pins, row.id]; setPins(next); write(`${memory}.pins`, next); }, [pins, memory]);
+  const pin = useCallback((row: PickerItem) => { const next = pins.includes(row.id) ? pins.filter((id) => id !== row.id) : [...pins, row.id]; write(`${memory}.pins`, next); }, [pins, memory]);
   return <Popover.Root open={open} onOpenChange={next => { setOpen(next); resetType(); if (next) { setAdding(false); setRail(''); setActive(0); } }}>
     <Popover.Trigger asChild><button {...triggerProps} type="button" className={`pk-trigger dropdown ${className}`} data-menu-trigger="orca" aria-label={label} title={triggerProps?.disabled ? `${label}\n${triggerProps.title ?? 'Choose a compatible printer profile first.'}` : triggerProps?.title ?? label} onKeyDown={e => {
       triggerProps?.onKeyDown?.(e);

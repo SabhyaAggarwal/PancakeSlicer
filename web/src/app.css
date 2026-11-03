@@ -629,3 +629,5 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .segmented-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 28px; padding: 3px 10px; border: 0; border-radius: 3px; background: transparent; color: var(--label); font-size: 12px; line-height: 20px; }
 :where(.orca-parity) .segmented-button:hover { background: var(--hover); }
 :where(.orca-parity) .compact-topbar .main-tab.active::after { display: none; }
+
+.saved-preferences-notice{display:flex;align-items:center;gap:12px;flex:none;padding:8px 16px;background:var(--bg-elevated,#36313b);border-bottom:1px solid var(--border,#69616f);color:var(--text,#f4f1f7);font-size:14px}.saved-preferences-notice>span{flex:1;min-width:0}

@@ -1,3 +1,4 @@
+import { observePreference, preferenceJson, preferenceText } from '../saved-preferences';
 import { timeInteraction } from '../interaction-metrics';
 import { app } from '../flow/app';
 import { tools } from '../flow/tools';
@@ -301,10 +302,10 @@ let state: State = {
   projectPresets: null,
   projectNotice: null,
   bedType: '',
-  uiMode: (()=>{try {const mode=localStorage.getItem('orca.settings_detail');return mode === 'advanced' || mode === 'develop' ? mode : 'simple';}catch {return 'simple';}})(),
-  developerMode: (() => { try { return localStorage.getItem('orca.developer_mode') === '1'; } catch { return false; } })(),
-  filamentsToUse: (() => { try { return JSON.parse(localStorage.getItem('orca.web.filamentsToUse') ?? 'null'); } catch { return null; } })(),
-  mixedTemperatures: (() => { try { return localStorage.getItem('orca.enable_high_low_temp_mixed_printing') === '1'; } catch { return false; } })(),
+  uiMode: 'simple',
+  developerMode: false,
+  filamentsToUse: null,
+  mixedTemperatures: false,
   tab: 'prepare',
   dialog: null,
   objects: [],
@@ -691,3 +692,8 @@ export function removeVolumeOptions(objectId: number, volumeId: number, keys: st
     job: markStale(s.job),
   })));
 }
+
+observePreference('orca.settings_detail', () => { const mode = preferenceText('orca.settings_detail'); setState({uiMode: mode === 'advanced' || mode === 'develop' ? mode : 'simple'}); });
+observePreference('orca.developer_mode', () => setState({developerMode: preferenceText('orca.developer_mode') === '1'}));
+observePreference('orca.web.filamentsToUse', () => { const value = preferenceJson<unknown>('orca.web.filamentsToUse', null); setState({filamentsToUse: Array.isArray(value) ? value.filter((key): key is string=>typeof key === 'string') : null}); });
+observePreference('orca.enable_high_low_temp_mixed_printing', () => { const next = preferenceText('orca.enable_high_low_temp_mixed_printing') === '1'; if (next !== getState().mixedTemperatures) setState(s=>({mixedTemperatures:next,job:markStale(s.job)})); });

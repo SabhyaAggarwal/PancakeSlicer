@@ -1,3 +1,4 @@
+import { preferenceText, savedPreferencesSnapshot, subscribeSavedPreferences } from '../saved-preferences';
 import { projectDraftStore, projectDraftMutationSnapshot, subscribeProjectDraftMutations } from '../persist/drafts';
 import type { PresetType } from '../api/types';
 import { projectStore, projectReferenceWritePending, subscribeProjectStorageChanges, type ProfileReferenceDocuments, type StoredDocBase } from '../persist/backend';
@@ -69,8 +70,7 @@ export function buildProfileReferenceSource(s: State, projects: ProfileReference
 }
 
 function readDefaults(): ProfileReferenceDefaults {
-  try { return { complete: true, machine: [localStorage.getItem('orca.printer') ?? ''], process: [], filament: [] }; }
-  catch { return { complete: false, machine: [], process: [], filament: [] }; }
+  return {complete:savedPreferencesSnapshot().state === 'ready', machine:[preferenceText('orca.printer') ?? ''],process:[],filament:[]};
 }
 const listeners = new Set<() => void>();
 let snapshot: ProfileReferenceSnapshot = { status: 'loading', referencesComplete: false, references: new Map(), error: null };
@@ -135,6 +135,7 @@ function start() {
       || s.projectName !== prior.projectName || s.project !== prior.project) publish(s, snapshot.status, snapshot.error);
     prior = s;
   });
+  subscribeSavedPreferences(() => { defaults = readDefaults(); publish(getState(),snapshot.status,snapshot.error); });
   subscribeProjectStorageChanges(() => { void refreshProfileReferences(); });
   subscribeProjectDraftMutations(() => {
     ++generation; documents = { ...documents, complete: false }; publish(getState(), 'incomplete');

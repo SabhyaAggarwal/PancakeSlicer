@@ -11,7 +11,7 @@ export function projectFailure(error: unknown, projectId: string, expectedRevisi
   if (source.failure?.projectId === projectId) return { ...source.failure };
   const name = typeof source.name === 'string' ? source.name : 'Error';
   const kind = name === 'ProjectConflictError' ? 'conflict' : name === 'ProjectDeletedError' ? 'deleted'
-    : name === 'QuotaExceededError' ? 'quota' : loading ? 'decode' : 'unavailable';
+    : name === 'QuotaExceededError' ? 'quota' : name === 'ProjectServiceError' ? 'unavailable' : loading ? 'decode' : 'unavailable';
   const message = kind === 'quota' ? 'Storage is full. Keep this window open, export the project, or free space and retry.'
     : typeof source.message === 'string' ? source.message : String(error);
   return { kind, name, message, projectId, expectedRevision };

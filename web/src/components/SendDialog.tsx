@@ -1,3 +1,4 @@
+import { preferenceText, savePreferences, usePreference } from '../saved-preferences';
 import { Check } from './Check';
 import { printerSend, usePrinterSend, type Transfer } from '../flow/transfer';
 import { Dropdown } from './Dropdown';
@@ -44,7 +45,9 @@ function statusText(t: Transfer) {
 
 export default function SendDialog({ close }: { close: () => void }) {
   const [editing, setEditing] = useState<SendPrinter | null | undefined>(undefined);
-  const [chosen, setChosen] = useState(() => { try { return localStorage.getItem(LAST) ?? ''; } catch { return ''; } });
+  usePreference(LAST);
+  const [choice, setChosen] = useState<string | null>(null);
+  const chosen = choice ?? preferenceText(LAST) ?? '';
   const bambu = useStore(outputKind) === 'gcode.3mf';
   if (editing !== undefined) {
     const done = (name?: string) => { if (name !== undefined) setChosen(name); setEditing(undefined); };
@@ -101,7 +104,7 @@ function SendView({ close, chosen, choose, edit }: { close: () => void; chosen: 
 
   const send = async (start: boolean) => {
     if (!jobId || !printer) return;
-    try { localStorage.setItem(LAST, printer); } catch {  }
+    savePreferences({[LAST]: printer});
     const options = !bambu ? {} : trays && mapping.length === filaments.length ? { bed_leveling: leveling, timelapse, ams_mapping: mapping }
       : { bed_leveling: leveling, timelapse, use_ams: single && ams };
     await printerSend.submit(printer, jobId, {start, filename: exportFilename(), ...options});

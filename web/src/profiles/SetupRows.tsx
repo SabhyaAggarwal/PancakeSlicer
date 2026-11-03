@@ -1,3 +1,4 @@
+import { preferenceText } from '../saved-preferences';
 import { lazy, Suspense, useState } from 'react';
 import { OPTIONS } from '../options';
 import { filamentSwitchReason, getState, markStale, printerPreset, selectionOf, setOption, setState, toast, useStore, type State } from '../state/store';
@@ -91,7 +92,7 @@ export function removeSlot(i: number) {
   toast('Removed', { label: 'Undo', run: undo });
 }
 
-const lastSendPrinter = () => { try { return localStorage.getItem('orca.web.sendPrinter'); } catch { return null; } };
+const lastSendPrinter = () => preferenceText('orca.web.sendPrinter') ?? null;
 
 const usersOf = (s: State, n: number) => s.objects.filter((o) => o.extruder === n || o.volumes?.some((v) => v.extruder === n));
 

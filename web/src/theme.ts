@@ -1,3 +1,4 @@
+import { observePreference, preferenceText, savePreferences } from './saved-preferences';
 export type ThemePref = 'system' | 'light' | 'dark';
 
 const KEY = 'orca.web.theme';
@@ -5,10 +6,7 @@ const media = window.matchMedia('(prefers-color-scheme: dark)');
 const listeners = new Set<() => void>();
 let pref: ThemePref = 'dark';
 let dark = false;
-try {
-  const stored = localStorage.getItem(KEY);
-  if (stored === 'light' || stored === 'dark') pref = stored;
-} catch {  }
+
 
 function apply(changed = false) {
   const next = pref === 'dark' || (pref === 'system' && media.matches);
@@ -26,10 +24,7 @@ export const isDark = () => dark;
 
 export function setThemePref(p: ThemePref) {
   pref = p;
-  try {
-    if (p === 'system') localStorage.removeItem(KEY);
-    else localStorage.setItem(KEY, p);
-  } catch {  }
+  savePreferences({[KEY]: p});
   apply(true);
 }
 
@@ -37,3 +32,5 @@ export function subscribeTheme(l: () => void) {
   listeners.add(l);
   return () => void listeners.delete(l);
 }
+
+observePreference(KEY, () => { const saved = preferenceText(KEY); pref = saved === 'system' || saved === 'light' ? saved : 'dark'; apply(true); });

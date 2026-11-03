@@ -1,3 +1,4 @@
+import SavedPreferencesNotice from './components/SavedPreferencesNotice';
 import { Modal, ModalTitle } from './components/Modal';
 import { openPalette } from './commands/registry';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
@@ -249,6 +250,7 @@ export default function App() {
   return (
     <div className="app">
       <TopBar />
+      <SavedPreferencesNotice />
       {projects && <Suspense fallback={null}><ProjectsView /></Suspense>}
       <div style={{ display: projects ? 'none' : undefined }} className={`main ${sidebarHidden ? 'sidebar-hidden' : ''} ${dragOver ? 'drag-over' : ''}`}>
         <Sidebar />

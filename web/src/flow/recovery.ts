@@ -1,14 +1,16 @@
+import { loadServiceSession, patchServiceSession, sessionDocument } from '../persist/service-session';
+import { ensureProjectAdoption } from '../persist/project-adoption';
 export interface Recovery {
   version: 1;
   projectId?: string;
   job?: { id: string; stage: string; seq: number; signature: string; projectId: string };
   send?: { jobId: string; target: string };
 }
-const KEY = 'orca.fsm.recovery.v1';
 const identifier = (s: unknown): s is string => typeof s === 'string' && /^[A-Za-z0-9._-]{1,160}$/.test(s);
+export async function initialiseRecovery(): Promise<void> { await ensureProjectAdoption(); await loadServiceSession(); }
 export function readRecovery(): Recovery {
   try {
-    const r = JSON.parse(sessionStorage.getItem(KEY) ?? 'null');
+    const r = sessionDocument().fsmRecovery as Recovery | undefined;
     if (r?.version !== 1) return { version: 1 };
     return { version: 1, ...(identifier(r.projectId) ? { projectId: r.projectId } : {}),
       ...(identifier(r.job?.id) && identifier(r.job?.projectId) && typeof r.job.signature === 'string' && r.job.signature.length <= 32
@@ -17,8 +19,7 @@ export function readRecovery(): Recovery {
   } catch { return { version: 1 }; }
 }
 export function rememberRecovery(patch: Partial<Omit<Recovery, 'version'>>) {
-  try { sessionStorage.setItem(KEY, JSON.stringify({ ...readRecovery(), ...patch, version: 1 })); }
-  catch {  }
+  void ensureProjectAdoption().then(() => patchServiceSession({ fsmRecovery: { ...readRecovery(), ...patch, version: 1 } })).catch(() => {});
 }
 
 export function recoverySignature(signature: string): string {

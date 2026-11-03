@@ -3,7 +3,7 @@ import type { Config, ConfigValue, PresetType, UserPreset } from '../api/types';
 import { SettingsTab, type ProfileFields } from '../components/SettingsTab';
 import { effectiveMode, getState, resolvePreset, toast, useStore } from '../state/store';
 import { changedKeys, saveProfile } from './model';
-import { commitProfileRecords } from './transactions';
+import { commitProfileRecords, profileOriginIsCurrent } from './transactions';
 import { linkedProfiles } from './library-actions';
 import { findProfile, profileKey } from './identity';
 import { ColorPicker } from '../components/ColorPicker';
@@ -13,7 +13,18 @@ import { WorksWith, applicabilityKey } from './WorksWith';
 import type { ProfileApplicability } from './applicability';
 import { acknowledgeProjectProfileChanges,type ProjectProfileChanges } from './project-draft';
 import { requestPreset } from '../components/PresetCombo';
+import { sameValue } from '../state/value-equality';
 export interface ProfileDraft {values: Config; baseline: Config; origin: UserPreset | undefined; printer: string; applicability?: ProfileApplicability; baselineApplicability?: ProfileApplicability;staged?:ProjectProfileChanges}
+export function acknowledgedProfileDraft(current:ProfileDraft,submitted:ProfileDraft,origin:UserPreset,baseline:Config):ProfileDraft|null {
+  const keys=new Set([...Object.keys(current.values),...Object.keys(submitted.values)]);
+  const unchanged=[...keys].every(key=>sameValue(key,current.values[key],submitted.values[key]));
+  if(unchanged && applicabilityKey(current.applicability)===applicabilityKey(submitted.applicability) && current.staged===submitted.staged && current.printer===submitted.printer)return null;
+  const values={...baseline};
+  for(const key of keys)if(!sameValue(key,current.values[key],submitted.values[key])){
+    if(current.values[key]===undefined)delete values[key];else values[key]=current.values[key];
+  }
+  return {...current,values,baseline,origin,baselineApplicability:origin.applicability};
+}
 export function ProfileEditor({type, name, draft, update, onBack, onSavingChange, onRemove}: {type: PresetType; name: string; draft?: ProfileDraft; update(key: string, draft: ProfileDraft | null): void; onBack(): void; onRemove(): void; onSavingChange?(saving: boolean): void}) {
   const users = useStore(s => s.userPresets);
   const machines = useStore(s => s.machines), filaments = useStore(s => s.filaments), processes = useStore(s => s.processes);
@@ -35,19 +46,23 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
   const set = useCallback((k: string, value: ConfigValue) => { const current = latest.current; update(key, {...current, values: {...current.values, [k]: value}}); }, [key, update]);
   const reset = useCallback((k: string) => { const current = latest.current; const next = {...current.values}; if (current.baseline[k] === undefined) delete next[k]; else next[k] = current.baseline[k]; update(key, {...current, values: next}); }, [key, update]);
   const editor: ProfileFields = useMemo(() => ({name, config: values, baseline, changes, set, reset, mode}), [name, values, baseline, changes, set, reset, mode]);
-  const dirty = Object.keys(changes).length > 0 || applicabilityDirty;
+  const dirty = Object.keys(changes).length > 0 || applicabilityDirty || !!draft?.staged;
   const links=source?.kind === 'master' ? linkedProfiles(getState(),type,profileKey(source)) : [];
   const save = async () => {
     if (inFlight.current || !dirty) return;
-    const s = getState();
+    const s = getState(), currentSource=findProfile(s,type,name);
+    const submitted={...latest.current,values:structuredClone(latest.current.values),applicability:structuredClone(latest.current.applicability)};
     if (!s.api) {setError('The profile service is unavailable. Your edits have been kept. Reconnect and try Save again.'); return;}
     if (!source || resolved.error || !resolved.base) {setError(resolved.error ?? 'This profile is unavailable. Your edits have been kept. Retry or repair the profile before saving.'); return;}
-    if (findProfile(s, type, name) !== latest.current.origin) { setError('This profile changed elsewhere. Your edits have been kept. Cancel edits to reload the saved version.'); return; }
+    if (!profileOriginIsCurrent(currentSource,submitted.origin)) { setError('This profile changed elsewhere. Your edits have been kept. Cancel edits to reload the saved version.'); return; }
     inFlight.current = true; setSaveState({value: 'saving'}); onSavingChange?.(true);
     try {
-      const p = {...saveProfile(s, type, source.name, profileKey(source), latest.current.values), id: profileKey(source), applicability:latest.current.applicability};
-      await commitProfileRecords([p],{apply:draft?.staged ? state=>acknowledgeProjectProfileChanges(state,draft.staged!,latest.current.values) : undefined});
-      update(key, null); setSaveState({value: 'idle'}); toast(`Saved ${profileName}`);
+      const p = {...saveProfile(s, type, currentSource!.name, profileKey(currentSource!), submitted.values), id: profileKey(currentSource!), applicability:submitted.applicability};
+      await commitProfileRecords([p],{apply:submitted.staged ? state=>acknowledgeProjectProfileChanges(state,submitted.staged!,submitted.values) : undefined});
+      const saved=getState(),origin=findProfile(saved,type,profileKey(p)),acknowledged=resolvePreset(saved,type,profileKey(p));
+      if(!origin || acknowledged.error || !profileOriginIsCurrent(origin,submitted.origin))throw new Error('The saved profile changed again. Your draft has been kept for comparison.');
+      const next=acknowledgedProfileDraft(latest.current,submitted,origin,acknowledged.config);
+      update(key,next); setSaveState({value: 'idle'}); toast(next ? `Saved ${profileName}; newer edits kept` : `Saved ${profileName}`);
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { inFlight.current = false; onSavingChange?.(false); }
   };

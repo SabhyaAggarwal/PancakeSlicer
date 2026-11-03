@@ -1,3 +1,4 @@
+import { observePreference, preferenceText, savePreferences } from './saved-preferences';
 import { useSyncExternalStore } from 'react';
 import * as THREE from 'three';
 import { jobRequest } from './actions';
@@ -109,7 +110,7 @@ function read(raw: RawPreview, objects: PlateObject[], key: string): PatchPrevie
 
 let current: PatchPreview | null = null;
 let shown = true;
-try { shown = localStorage.getItem('orca.web.nonplanar_view') !== '0'; } catch {  }
+
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 const subscribe = (l: () => void) => (listeners.add(l), () => void listeners.delete(l));
@@ -120,9 +121,11 @@ export const useNonplanarView = () => useSyncExternalStore(subscribe, () => show
 export const nonplanarViewShown = () => shown;
 export function toggleNonplanarView() {
   shown = !shown;
-  try { localStorage.setItem('orca.web.nonplanar_view', shown ? '1' : '0'); } catch {  }
+  savePreferences({'orca.web.nonplanar_view':shown ? '1' : '0'});
   emit();
 }
+
+observePreference('orca.web.nonplanar_view', () => { shown = preferenceText('orca.web.nonplanar_view') !== '0'; emit(); });
 
 export const overlayFits = (ov: InstanceOverlay, o: PlateObject) => ov.shape === shapeKey(o);
 

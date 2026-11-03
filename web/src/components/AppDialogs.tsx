@@ -1,3 +1,4 @@
+import { savePreferences } from '../saved-preferences';
 import { Check } from './Check';
 import { Dropdown } from './Dropdown';
 import { lazy, Suspense, useState, useSyncExternalStore } from 'react';
@@ -23,12 +24,12 @@ const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? 'Cmd' : 'Ctrl';
 const THEMES: [ThemePref, string][] = [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']];
 
 function setDeveloperMode(developerMode: boolean) {
-  try { localStorage.setItem('orca.developer_mode', developerMode ? '1' : '0'); } catch {  }
+  savePreferences({'orca.developer_mode':developerMode ? '1' : '0'});
   setState({ developerMode });
 }
 
 function setMixedTemperatures(on: boolean) {
-  try { localStorage.setItem('orca.enable_high_low_temp_mixed_printing', on ? '1' : '0'); } catch {  }
+  savePreferences({'orca.enable_high_low_temp_mixed_printing':on ? '1' : '0'});
   setState((s) => ({ mixedTemperatures: on, job: markStale(s.job) }));
 }
 

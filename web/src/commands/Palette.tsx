@@ -1,3 +1,4 @@
+import { observePreference, preferenceJson, savePreferences } from '../saved-preferences';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { getState, setState, useStore } from '../state/store';
 import { requestPreset } from '../components/PresetCombo';
@@ -11,10 +12,10 @@ registerCore();
 
 const RECENT_KEY = 'orca.web.palette.recent';
 let recent: string[] = [];
-try { recent = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]'); } catch {  }
+observePreference(RECENT_KEY, () => { const value = preferenceJson<unknown>(RECENT_KEY, []); recent = Array.isArray(value) ? value.filter((v):v is string=>typeof v === 'string') : []; });
 function remember(id: string) {
   recent = [id, ...recent.filter((r) => r !== id)].slice(0, 20);
-  try { localStorage.setItem(RECENT_KEY, JSON.stringify(recent)); } catch {  }
+  savePreferences({[RECENT_KEY]:recent});
 }
 
 registerProvider('presets', (q) => {

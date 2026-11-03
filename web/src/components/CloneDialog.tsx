@@ -1,3 +1,4 @@
+import { preferenceText, savePreferences, usePreference } from '../saved-preferences';
 import { Check } from './Check';
 import { useState } from 'react';
 import { arrangeAll, fillBed } from '../actions';
@@ -9,9 +10,11 @@ const KEY = 'orca.web.cloneArrange';
 
 export default function CloneDialog({ close }: { close(): void }) {
   const [count, setCount] = useState(1);
-  const [arrange, setArrange] = useState(localStorage.getItem(KEY) === 'true');
+  usePreference(KEY);
+  const [choice, setArrange] = useState<boolean | null>(null);
+  const arrange = choice ?? (preferenceText(KEY) === 'true');
   const ok = () => {
-    localStorage.setItem(KEY, String(arrange));
+    savePreferences({[KEY]: String(arrange)});
     const end = beginStep('Selection-clone');
     try {
       copySelection();

@@ -4,9 +4,11 @@ import App from './App';
 import { init } from './actions';
 import { startProjects } from './flow/project';
 import { loadTab } from './options';
+import { initialiseSavedPreferences } from './saved-preferences';
+void initialiseSavedPreferences().catch(() => {});
 
 void loadTab('process').catch(() => {});
-void startProjects(init()).catch(() => {});
+void startProjects(init()).catch(() => {}).finally(() => { void import('./profiles/catalog-startup').then(m=>m.startUnrelatedCatalogs()).catch(()=>{}); });
 
 
 createRoot(document.getElementById('root')!).render(
@@ -14,3 +16,4 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 );
+window.addEventListener('pagehide', () => { void import('./saved-preferences').then(m=>m.flushSavedPreferences()).catch(()=>{}); });

@@ -1,16 +1,13 @@
 import type { ProjectDraft, ProjectDraftStore, ProjectFailure } from '../persist/drafts';
 import type { DraftCheckpoint, DraftCodec } from './project-recovery';
 import type { ProjectDraftInventory } from './project';
-export function draftSession(newOwner: string): { owner: string; previousOwner: string | null; previousOwners: readonly string[] } {
-  let previousOwner: string | null = null, previousOwners: string[] = [];
-  try {
-    previousOwner = sessionStorage.getItem('orca.project-draft-owner');
-    const lineage: unknown = JSON.parse(sessionStorage.getItem('orca.project-draft-lineage') ?? '[]');
-    previousOwners = [...new Set([...(previousOwner ? [previousOwner] : []), ...(Array.isArray(lineage) ? lineage.filter((id): id is string => typeof id === 'string') : [])])].slice(0, 32);
-    sessionStorage.setItem('orca.project-draft-owner', newOwner);
-    sessionStorage.setItem('orca.project-draft-lineage', JSON.stringify(previousOwners));
-  }
-  catch {  }
+import { flushServiceSession, loadServiceSession, patchServiceSession } from '../persist/service-session';
+export async function draftSession(newOwner: string): Promise<{ owner: string; previousOwner: string | null; previousOwners: readonly string[] }> {
+  const remote = await loadServiceSession(), lineage = remote.document.projectDraftOwners ?? [];
+  if (!Array.isArray(lineage) || lineage.some((owner) => typeof owner !== 'string')) throw new Error('Invalid service draft lineage');
+  const previousOwners = [...new Set(lineage as string[])].slice(0, 32), previousOwner = previousOwners[0] ?? null;
+  patchServiceSession({ projectDraftOwners: [newOwner, ...previousOwners].slice(0, 32) });
+  await flushServiceSession();
   return { owner: newOwner, previousOwner, previousOwners };
 }
 export function createDraftJournal<D>(owner: string, storage: () => Promise<ProjectDraftStore>, codec: () => Promise<DraftCodec<D>>,

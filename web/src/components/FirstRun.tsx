@@ -1,3 +1,4 @@
+import { preferenceText, savePreferences } from '../saved-preferences';
 import { useEffect, useRef, useState } from 'react';
 import penUrl from '../../../docs/nonplanar/corpus/everyday/pen_holder.stl?url';
 import knobUrl from '../../../tests/data/nonplanar/corpus/w_knob_knurled.stl?url';
@@ -63,14 +64,14 @@ function afterFirstVisit() {
   const check = () => {
     const s = getState();
     if (s.job.state !== 'idle') { delete root.dataset.nudge; stop(); return; }
-    if (s.objects.length) { localStorage.setItem(SETUP_KEY, '1'); root.dataset.nudge = 'slice'; } else delete root.dataset.nudge;
+    if (s.objects.length) { savePreferences({[SETUP_KEY]:'1'}); root.dataset.nudge = 'slice'; } else delete root.dataset.nudge;
   };
   const stop = subscribeStore(check);
   check();
 }
 
 export default function EmptyPlate() {
-  const [firstVisit] = useState(() => !localStorage.getItem(SETUP_KEY) && !localStorage.getItem('orca.printer'));
+  const [firstVisit] = useState(() => !preferenceText(SETUP_KEY) && !preferenceText('orca.printer'));
   useEffect(() => () => { if (firstVisit) afterFirstVisit(); }, []);
   return (
     <div className="empty-plate">

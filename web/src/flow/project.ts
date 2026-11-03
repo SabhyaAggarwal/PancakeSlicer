@@ -201,7 +201,6 @@ let channel: BroadcastChannel | null = null;
 function publish(type: 'saved' | 'deleted', id: string) {
   const message = { type, id, sender, at: Date.now() };
   channel?.postMessage(message);
-  try { localStorage.setItem('orca.project-change', JSON.stringify(message)); } catch {  }
 }
 function remote(message: { type?: string; id?: string; sender?: string }) {
   if (!message || typeof message !== 'object' || message.sender === sender || !message.id) return;
@@ -245,7 +244,7 @@ let started: Promise<void> | null = null;
 export function startProjects(ready: Promise<unknown> = Promise.resolve()): Promise<void> {
   if (started) return started;
   started = start(ready);
-  window.orcaDesktop?.onBeforeClose?.(async () => { await started; await flushProject(); });
+  window.orcaDesktop?.onBeforeClose?.(async () => { await started; await flushProject(); await (await import('../saved-preferences')).flushSavedPreferences(); });
   return started;
 }
 async function start(ready: Promise<unknown>) {
@@ -253,9 +252,10 @@ async function start(ready: Promise<unknown>) {
   recoveryCore = await import('./project-recovery');
   draftActivity = await import('../persist/drafts');
   const { createDraftJournal, draftSession } = await journalTools();
-  Object.assign(session, draftSession(session.owner));
-  journal = createDraftJournal<Doc>(session.owner, draftStorage, codec, (id) => draftActivity!.beginProjectDraftMutation(id));
   store = await projectStore();
+  try { if (store) Object.assign(session, await draftSession(session.owner)); }
+  catch (error) { toast(errorText(error)); }
+  journal = createDraftJournal<Doc>(session.owner, draftStorage, codec, (id) => draftActivity!.beginProjectDraftMutation(id));
   observed = snapshot();
   subscribeStore(() => {
     if (adopting) return;
@@ -309,10 +309,6 @@ async function start(ready: Promise<unknown>) {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
   window.addEventListener('popstate', () => void route());
   window.addEventListener('hashchange', () => void route());
-  window.addEventListener('storage', (e) => {
-    if (e.key !== 'orca.project-change' || !e.newValue) return;
-    try { remote(JSON.parse(e.newValue)); } catch {  }
-  });
   if (typeof BroadcastChannel !== 'undefined') {
     channel = new BroadcastChannel('orca.projects'); channel.onmessage = (e) => remote(e.data);
   }
@@ -351,8 +347,11 @@ export async function retryProject() {
     if (!store) store = await projectStore(true);
     if (!store) throw new Error(projectStorageError());
     const r = currentRoute();
-    if (project.get().context.loadError && r.kind === 'project') return await openProject(r.id, { reload: true });
+    if (project.get().context.loadError && r.kind === 'project') {
+      await openProject(r.id, { reload: true }); void (await import('./boot')).startFlows(); return;
+    }
     known.clear(); project.send({ type: 'RETRY' }); await flushProject();
+    void (await import('./boot')).startFlows();
   } catch (e) {
     const c = project.get().context, failure = projectFailure(e, c.id, c.revision);
     project.send({ type: 'ERROR', error: failure.message, failure });
@@ -363,6 +362,7 @@ export const openProject = async (id: string, options: { history?: boolean; relo
 
 const recoveryActions = () => import('./project-recovery-actions');
 const recoveryRuntime: import('./project-recovery-actions').RecoveryRuntime = {
+  ensureCatalogs: async (doc,current) => (await import('../profiles/catalog-startup')).ensureProjectCatalogs(doc,current),
   storage: () => store, removed, checkpoint: () => checkpointProject(), preserveSnapshot: preserveProjectSnapshot,
   hasUnsaved: hasUnsavedProject, waitForWrites: () => queue, beginOpen: () => ++opening,
   invalidateWrites: () => { epoch++; }, isCurrent: (mine) => mine === opening, adopt,

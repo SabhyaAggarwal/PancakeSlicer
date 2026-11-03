@@ -1,3 +1,4 @@
+import { savePreferences, usePreference } from '../saved-preferences';
 import { ProfileLibraryNotice } from '../components/ProfileLibraryNotice';
 import { useEffect, useId, useRef, useSyncExternalStore } from 'react';
 import { createSelection, reduceSelection, selectedVisible, type SelectionEvent } from './selection';
@@ -157,15 +158,16 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const [vendorFilter,setVendorFilter] = useState<string[]>([]), [nozzleFilter,setNozzleFilter] = useState<string[]>([]), [materialFilter,setMaterialFilter] = useState<string[]>([]), [modelFilter,setModelFilter]=useState<string[]>([]), [printerFilter,setPrinterFilter]=useState<string[]>([]);
   const [filtersOpen,setFiltersOpen]=useState(false);
   const split = useRef<HTMLDivElement>(null);
-  const [listWidth, setListWidth] = useState(() => {try {return Math.max(260, Math.min(480, Number(localStorage.getItem('orca.profileListWidth')) || 340));} catch {return 340;}});
+  const savedListWidth = usePreference('orca.profileListWidth');
+  const listWidth = Math.max(260,Math.min(480,Number(savedListWidth) || 340));
   const resizeList = (width: number, commit: boolean) => {
     const available = split.current?.clientWidth ?? 1000;
     const next = Math.round(Math.max(240, Math.min(480, available - 420, width)));
     split.current?.style.setProperty('--profile-list-width', `${next}px`);
-    if(commit) {setListWidth(next); try {localStorage.setItem('orca.profileListWidth',String(next));} catch { }}
+    if(commit) savePreferences({'orca.profileListWidth':next});
   };
   const [drafts, setDrafts] = useState<Record<string, ProfileDraft>>({});
-  const updateDraft = useCallback((key: string, draft: ProfileDraft | null) => setDrafts(prior => {const next = {...prior}; if(draft && Object.keys(changedKeys(draft.values, draft.baseline)).length || draft && applicabilityKey(draft.applicability) !== applicabilityKey(draft.baselineApplicability)) next[key] = draft; else delete next[key]; return next;}), []);
+  const updateDraft = useCallback((key: string, draft: ProfileDraft | null) => setDrafts(prior => {const next = {...prior}; if(draft && (Object.keys(changedKeys(draft.values, draft.baseline)).length || applicabilityKey(draft.applicability) !== applicabilityKey(draft.baselineApplicability) || draft.staged)) next[key] = draft; else delete next[key]; return next;}), []);
   const users = useStore(st => st.userPresets), dirty = useStore(st => st.dirty), filamentEdits = useStore(st => st.filamentEdits);
   const machines = useStore(st => st.machines), processes = useStore(st => st.processes), filaments = useStore(st => st.filaments);
   const printer = useStore(st => st.printer), process = useStore(st => st.process), slots = useStore(st => st.filamentSlots);
@@ -273,9 +275,9 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
       if(result.failed.length) setBulkError(result.failed.map(f => `${f.name}: ${f.error}`).join('\n'));
     } catch(e) {setBulkError(e instanceof Error ? e.message : String(e));} finally {setBusy(false);}
   };
-  const deleteSelected = async () => {
+  const deleteSelected = async (keys?:string[]) => {
     setBusy(true); setBulkError(null);
-    try {await archiveRecords(type,selectedVisible(latestSelection.current));}
+    try {await archiveRecords(type,keys ?? selectedVisible(latestSelection.current));}
     catch(error) {setBulkError(error instanceof Error ? error.message : String(error));}
     finally {setBusy(false);}
   };
@@ -325,9 +327,9 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
       </aside>
       <section className="pf-my-profiles" aria-label="Profile results">
         <div className="pf-results-heading"><strong>{adding ? 'Add '+(type === 'machine' ? 'printer' : type === 'filament' ? 'filament' : 'print settings') : masters ? 'Master profiles' : 'My profiles'}</strong><span>{visible.length} results</span></div>
-        <div className="pf-results-tools"><input className="text pf-profile-search" aria-label="Search profiles" placeholder="Search profiles" value={search} onChange={e=>setSearch(e.target.value)}/><button type="button" className="btn" onClick={()=>{setAdding(!adding);setAddSource('template');setSearch('');}}> {adding ? 'Back' : 'Add'}</button><MenuButton label="Collection actions" className="btn-ghost" items={[{label:'Import Orca / Bambu',action:()=>void leave(()=>setState({presetUx:{kind:'import',back:{kind:'presets',type,name:item?.key}}}))},{label:'Export profiles',action:()=>void leave(()=>setState({presetUx:{kind:'export'}}))}]}>More</MenuButton></div>
+        <div className="pf-results-tools"><input className="text pf-profile-search" aria-label="Search profiles" placeholder="Search profiles" value={search} onChange={e=>setSearch(e.target.value)}/><button type="button" className="btn" onClick={()=>{setAdding(!adding);setAddSource('template');setSearch('');}}> {adding ? 'Back' : type === 'machine' ? 'Add printer' : type === 'filament' ? 'Add filament' : 'Add print settings'}</button><MenuButton label="Collection actions" className="btn-ghost" items={[{label:'Import Orca / Bambu',action:()=>void leave(()=>setState({presetUx:{kind:'import',back:{kind:'presets',type,name:item?.key}}}))},{label:'Export profiles',action:()=>void leave(()=>setState({presetUx:{kind:'export'}}))}]}>More</MenuButton></div>
         {adding && <><Segmented label="Add profile from" value={addSource} options={[{id:'template',label:'Catalog template'},{id:'copy',label:'Copy existing'}]} onChange={v=>{setAddSource(v);setSearch('');}}/>{type === 'machine' && <button type="button" className="btn-ghost" onClick={()=>setState({appDialog:'createPrinter'})}>New printer…</button>}</>}
-        <div className="pf-selection-bar"><span>{selected.length > 1 ? `${selected.length} selected` : ''}</span>{selected.length > 1 && <button type="button" className="btn-ghost" onClick={() => dispatch({type: 'CLEAR'})}>Clear</button>}</div>
+        {selected.length > 1 && <div className="pf-selection-bar"><span>{selected.length} selected</span><button type="button" className="btn-ghost" onClick={() => dispatch({type: 'CLEAR'})}>Clear</button></div>}
         {!adding && !editingKey && selected.length > 1 && <div className="pf-bulk-actions"><button type="button" className="btn" disabled={!selected.length || busy} title={!selected.length ? 'Select visible profiles to export' : 'Export selected profiles'} onClick={() => void exportSelected()}>Export selected</button><button type="button" className="btn" disabled={!!compareReason || busy} title={compareReason ?? 'Compare selected profiles'} onClick={() => {setAdding(false); setComparing(true);}}>Compare</button><button type="button" className="btn-ghost pf-delete" disabled={!!deleteReason || busy} title={deleteReason ?? 'Delete selected profiles'} onClick={() => void deleteSelected()}>Delete selected</button></div>}
         <div className="pf-scroll pf-list" role="grid" aria-label="Profiles" aria-multiselectable="true" onContextMenu={e=>{const row=(e.target as Element).closest<HTMLElement>('[data-profile-key]');if(!row || adding) return;e.preventDefault();const key=row.dataset.profileKey!;if(!selectedSet.has(key)) dispatch({type:'CLICK',key});setContextMenu({x:e.clientX,y:e.clientY,anchor:row});}} tabIndex={visible.length ? -1 : 0} onKeyDown={e => {
           if(e.target instanceof Element && e.target.closest('input,textarea,[contenteditable=true]')) return;
@@ -346,7 +348,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
         onPointerUp={e => {if(e.currentTarget.hasPointerCapture(e.pointerId)) {resizeList(e.clientX - (split.current?.getBoundingClientRect().left ?? 0), true); e.currentTarget.releasePointerCapture(e.pointerId);}}}
         onKeyDown={e => {if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) {e.preventDefault(); resizeList(e.key === 'Home' ? 240 : e.key === 'End' ? 480 : listWidth + (e.key === 'ArrowRight' ? 16 : -16), true);}}}/><div className="pf-detail-pane">{filteredDraft && <div className="pf-filtered-draft" role="status">Editing {filteredDraft.name} outside these filters<button type="button" className="btn-ghost" onClick={()=>{clearFilters();setSearch('');}}>Clear filters</button></div>}{adding ? item ? <AddProfileDetails key={item.key} type={type} item={item} copy={addSource === 'copy'} busy={busy} onAdd={name=>void addSelected(item,name)}/> : <section className="pf-bulk-summary"><strong>Select a catalog template</strong></section>
         : comparing && selectedItems.length === 2 ? <Compare type={type} left={selectedItems[0].key} right={selectedItems[1].key} names={selectedItems.map(i => i.key)} setRight={() => {}} close={() => setComparing(false)}/>
-         : item?.user ? <ProfileEditor key={item.key} type={type} name={item.key} draft={drafts[JSON.stringify([type,item.key])]} update={updateDraft} onSavingChange={setBusy} onBack={close} onRemove={() => void deleteSelected()}/>
+         : item?.user ? <ProfileEditor key={item.key} type={type} name={item.key} draft={drafts[JSON.stringify([type,item.key])]} update={updateDraft} onSavingChange={setBusy} onBack={close} onRemove={() => void deleteSelected([item.key])}/>
 
         : item && masters ? <section className="pf-bulk-summary" role={masterLoad?.error ? 'alert' : 'status'}><strong>{item.name}</strong><p>{masterLoad?.error ?? 'Opening editable master…'}</p>{masterLoad?.error && <button type="button" className="btn" onClick={()=>void openMaster(item.name)}>Retry</button>}</section>
         : <section className="pf-bulk-summary"><strong>{selected.length ? `${selected.length} profiles selected` : 'Select a profile'}</strong>{selectedItems.map(i => <div key={i.key} className="pf-bulk-name">{i.name}</div>)}</section>}

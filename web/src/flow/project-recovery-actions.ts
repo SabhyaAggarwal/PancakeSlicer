@@ -9,6 +9,7 @@ import { project, projectList, flushProject, type ProjectDraftInventory } from '
 import { writeRoute } from './routes';
 import { checkpointCommitted, conflictFailure, failureError, projectFailure, recoveryDocument, type DraftCheckpoint, type ProjectFailure, type CheckpointDocument } from './project-recovery';
 export interface RecoveryRuntime {
+  ensureCatalogs(document: StoredDoc, isCurrent: () => boolean): Promise<void>;
   storage(): ProjectStore | null; removed: Set<string>;
   checkpoint(): { checkpoint: DraftCheckpoint; durable: Promise<ProjectDraft> };
   preserveSnapshot(): Promise<void>; hasUnsaved(): boolean; waitForWrites(): Promise<void>;
@@ -22,7 +23,10 @@ export interface RecoveryRuntime {
 }
 const codec = () => import('../persist/session');
 export async function adoptProjectDraft(runtime: RecoveryRuntime, draft: ProjectDraft, canonical: ProjectMeta | null, mine: number) {
-  const fields = await (await codec()).decode(recoveryDocument(draft.doc) as StoredDoc, async (key) => draft.blobs[key] ?? null);
+  const document = recoveryDocument(draft.doc) as StoredDoc;
+  await runtime.ensureCatalogs(document, () => runtime.isCurrent(mine));
+  if (!runtime.isCurrent(mine)) return;
+  const fields = await (await codec()).decode(document, async (key) => draft.blobs[key] ?? null);
   if (!runtime.isCurrent(mine)) return;
   const meta: ProjectMeta = canonical ?? { id: draft.projectId, name: draft.name, revision: draft.baseRevision,
     savedAt: 0, objects: draft.objects, thumbnail: null };
@@ -117,7 +121,10 @@ export async function openProject(runtime: RecoveryRuntime, id: string, options:
     }
     if (loadError) throw loadError;
     if (!rec || runtime.removed.has(rec.meta.id)) { project.send({ type: 'MISSING', id }); setState({ loading: null }); return; }
-    const fields = await (await codec()).decode(recoveryDocument(rec.doc) as StoredDoc, (k) => runtime.storage()!.getBlob(rec.meta.id, k));
+    const document = recoveryDocument(rec.doc) as StoredDoc;
+    await runtime.ensureCatalogs(document, () => runtime.isCurrent(mine));
+    if (!runtime.isCurrent(mine)) return;
+    const fields = await (await codec()).decode(document, (k) => runtime.storage()!.getBlob(rec.meta.id, k));
     if (!runtime.isCurrent(mine)) return;
     if (runtime.removed.has(rec.meta.id)) { project.send({ type: 'MISSING', id }); setState({ loading: null }); return; }
     for (const k of Object.keys(rec.doc.files ?? {})) runtime.known.add(`${rec.meta.id}/${k}`);
@@ -186,8 +193,8 @@ export async function saveProjectSnapshot(runtime: RecoveryRuntime, capture: {
     if (runtime.removed.has(id)) return;
     const meta = { name: nameOf(document), savedAt: Date.now(), objects: plateCount(document), revision };
     const committed: CheckpointDocument = { ...stored, recoveryCheckpoint: receipt.checkpoint };
-    await storage.save(id, meta, committed, runtime.activeWrite(id, gen, version) ? thumbnail() ?? undefined : undefined);
-    if (runtime.activeWrite(id, gen, version)) project.send({ type: 'SAVED', id, ...meta, revision: revision + 1, checkpoint: receipt.checkpoint });
+    const acknowledgement = await storage.save(id, meta, committed, runtime.activeWrite(id, gen, version) ? thumbnail() ?? undefined : undefined);
+    if (runtime.activeWrite(id, gen, version)) project.send({ type: 'SAVED', id, ...meta, ...acknowledgement, checkpoint: receipt.checkpoint });
     if (!runtime.activeWrite(id, gen, version) || !project.get().context.conflict) {
       const drafts = await runtime.drafts().catch(() => null);
       await drafts?.remove(receipt.checkpoint.id, receipt.checkpoint.sequence).catch(() => {});

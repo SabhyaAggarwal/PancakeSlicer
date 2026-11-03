@@ -1,3 +1,4 @@
+import { savePreferences } from '../saved-preferences';
 import { addInstance, arrangeAll, canBoolean, canExport, cancelSlice, download, fillBed, openFileDialog, outputKind,
   removeInstance, setInstanceCount, slice, STALE_RESULT_TIP, toggleBoolean, toggleSvg, toggleText, toolbarOperation, outsideVolumeWarning } from '../actions';
 import { canDrop, canPaste, centreSelection, copySelection, cutSelection, dropSelection, mirrorSelection, pasteClipboard, selectAll, startRename } from '../edit';
@@ -134,7 +135,7 @@ export const CORE: Command[] = [
 
   { id: 'help.palette', title: 'Command palette', group: 'Help', keys: 'Mod+K', run: () => void import('./registry').then((m) => m.openPalette('')) },
   { id: 'help.shortcuts', title: 'Keyboard shortcuts', group: 'Help', keys: '?', run: app('shortcuts') },
-  { id: 'help.develop', title: 'Develop mode', group: 'Help', keywords: 'developer expert debug', get detail() { return s().developerMode ? 'On' : 'Off'; }, run: () => { const on = !s().developerMode; try { localStorage.setItem('orca.developer_mode', on ? '1' : '0'); } catch {  } setState({ developerMode: on }); } },
+  { id: 'help.develop', title: 'Develop mode', group: 'Help', keywords: 'developer expert debug', get detail() { return s().developerMode ? 'On' : 'Off'; }, run: () => { const on = !s().developerMode; savePreferences({'orca.developer_mode': on ? '1' : '0'}); setState({ developerMode: on }); } },
   { id: 'help.setup', title: 'Setup wizard', group: 'Help', run: app('setup') },
   { id: 'help.about', title: 'About OrcaSlicer', group: 'Help', keywords: 'version licence', run: app('about') },
   { id: 'help.calibguide', title: 'Calibration guide', group: 'Help', run: () => void window.open('https://www.orcaslicer.com/wiki/calibration_guide', '_blank', 'noopener') },

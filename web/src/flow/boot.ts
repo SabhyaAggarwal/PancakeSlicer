@@ -5,7 +5,7 @@ import { followJob, job, jobTerminal, type TrackedJob } from './job';
 import { project } from './project';
 import { probeEngine } from './engine-health';
 import { startProfileEdits } from './profile-edit';
-import { readRecovery, recoverySignature, rememberRecovery } from './recovery';
+import { initialiseRecovery, readRecovery, recoverySignature, rememberRecovery } from './recovery';
 import { restorePrinterSend, printerSend } from './transfer';
 import { loadSource } from './viewer';
 
@@ -17,9 +17,10 @@ export async function retryTrackedJob() {
 export async function cancelTrackedJob() {
   try { await active?.cancel(); } catch (e) { toast(e instanceof Error ? e.message : 'Cancel failed'); }
 }
-export function startFlows() {
+export async function startFlows() {
   if (started) return;
   started = true;
+  try { await initialiseRecovery(); } catch (error) { started = false; toast(error instanceof Error ? error.message : 'Recovery references could not be loaded'); return; }
   const recovery = readRecovery();
   let seenId: string | undefined, generation = documentGeneration();
   const watch = (tracked: TrackedJob, seq = -1, restoring = false) => {

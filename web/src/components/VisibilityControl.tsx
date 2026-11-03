@@ -1,3 +1,4 @@
+import { savePreferences } from '../saved-preferences';
 import { RadioGroup } from 'radix-ui';
 import type { OptionMode } from '../options';
 import { effectiveMode, setState, useStore } from '../state/store';
@@ -8,7 +9,7 @@ export function VisibilityControl({value,onChange,disabled=false}: {value:Option
 export function SettingsDetail() {
   const value=useStore(effectiveMode);
   return <VisibilityControl value={value} onChange={mode=>{
-    try {localStorage.setItem('orca.settings_detail',mode);localStorage.setItem('orca.developer_mode','0');}catch { }
+    savePreferences({'orca.settings_detail':mode,'orca.developer_mode':'0'});
     setState({uiMode:mode,developerMode:false});
   }}/>;
 }

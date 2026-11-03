@@ -1,8 +1,9 @@
 import type { Config, PresetType, SystemPreset, UserPreset } from '../api/types';
 import { getState, type State } from '../state/store';
-import { catalogAnchor, changedKeys, profilesFor, resolveProfile } from './model';
+import { catalogAnchor, changedKeys, findCatalogBase, profilesFor, resolveProfile } from './model';
 import { selectCompatibility } from './compatibility';
-import { profileKey } from './identity';
+import { findProfile, profileKey } from './identity';
+import type { ProfileCreation } from './transactions';
 
 export interface ProfileRow {
   key: string;
@@ -79,10 +80,38 @@ function makeProfile(s: State, base: SystemPreset, name: string, values: Config 
     overlay, overrides: overlay, baseline: Object.fromEntries(Object.keys(overlay).map((key) => [key, base.config[key] ?? null])) };
 }
 
+const pendingCreations=new Map<string,{creation:ProfileCreation;flight?:Promise<string>}>();
+const baseIdentity=(base:SystemPreset)=>JSON.stringify([base.type,base.vendor,base.setting_id ?? base.base_id ?? base.name,base.name]);
 export async function createProfileFromBase(type:PresetType,baseName:string,name?:string):Promise<string> {
-  const s=getState(),base=profilesFor(s,type).find(p=>p.name === baseName);
+  const base=findCatalogBase(getState(),type,baseName).base;
   if(!base)throw new Error('Base unavailable');
-  const profile=makeProfile(s,base,name?.trim() || displayName(base));
-  const {commitProfileRecords}=await import('./transactions');
-  await commitProfileRecords([profile]);return profileKey(profile);
+  const identity=baseIdentity(base),anchor=catalogAnchor(base),explicit=name?.trim();
+  const {profileCreation}=await import('./transactions');
+  let entry=explicit?undefined:pendingCreations.get(identity);
+  if(!entry){
+    entry={creation:profileCreation(s=>{
+      const current=findCatalogBase(s,type,anchor).base;
+      if(!current || baseIdentity(current)!==identity)throw new Error('The catalog source changed. Reopen Add and choose it again.');
+      if(!explicit){
+        const selected=type==='machine'?[s.printer]:type==='process'?[s.process]:s.filamentSlots;
+        const active=new Set(selected.flatMap(key=>{const p=findProfile(s,type,key);return p?[profileKey(p)]:[];}));
+        const owned=s.userPresets.filter(p=>{
+          if(p.type!==type || p.archived || p.kind==='master')return false;
+          const bound=findCatalogBase(s,type,p.base ?? p.inherits).base;
+          return !!bound && baseIdentity(bound)===identity && selectCompatibility(s,type,profileKey(p)).ok;
+        });
+        const reuse=owned.find(p=>active.has(profileKey(p))) ?? owned.sort((a,b)=>profileKey(a).localeCompare(profileKey(b)))[0];
+        if(reuse)return profileKey(reuse);
+      }
+      return makeProfile(s,current,explicit || displayName(current));
+    })};
+    if(!explicit)pendingCreations.set(identity,entry);
+  }
+  if(!entry.flight){
+    const own=entry;
+    own.flight=own.creation.commit().then(key=>{if(pendingCreations.get(identity)===own)pendingCreations.delete(identity);return key;},error=>{
+      own.flight=undefined;if(!own.creation.retryable && pendingCreations.get(identity)===own)pendingCreations.delete(identity);throw error;
+    });
+  }
+  return entry.flight!;
 }

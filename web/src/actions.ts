@@ -1,3 +1,4 @@
+import { savePreferences } from './saved-preferences';
 import { findProfile } from './profiles/identity';
 import { beginSlicePreview, bindSlicePreview } from './flow/preview-navigation';
 import { project as projectFlow } from './flow/project';
@@ -10,13 +11,11 @@ importing.machine.subscribe((s) => {
   if (s.value === 'canceled' && /^(Loading |Opening )/.test(getState().loading ?? '')) setState({ loading: null });
 });
 import * as THREE from 'three';
-import type { Config, ConfigValue, JobRequest, PresetCatalog, PresetType } from './api/types';
+import type { Config, ConfigValue, JobRequest, PresetType } from './api/types';
 import { sliceProgress } from './api/progress';
 import { canEditProject, canLoadStep, connect, surfaceConfigBlocker, type Api } from './api/client';
-import { prepareProjectProfileImport } from './profiles/project-import';
 import { validateProfileSubmission } from './profiles/submission';
 import { normalizeUserPreset } from './profiles/model';
-import { loadTab } from './options';
 import { shortTime } from './preview/format';
 import { flushReady } from './flush-state';
 import { calibOverrides, firstLayer, jobFields, outputKind, overrides, plateSignature } from './slice-input';
@@ -26,22 +25,11 @@ import { archivePainting } from './plater/paint';
 import { projectEdits } from './plater/projectTransforms';
 import { choiceDialog, confirmDialog, numberDialog, promptDialog } from './components/Ask';
 import {
-  DEMO_MODELS, PRESET_META, effectiveConfig, getState, markStale, newId, presetEdits, printerPreset, resolvePreset, selectPrinter, setState, toast, type JobView, type PlateObject, type State,
+  PRESET_META, effectiveConfig, getState, markStale, newId, presetEdits, printerPreset, resolvePreset, selectPrinter, setState, toast, type JobView, type PlateObject, type State,
 } from './state/store';
 import { captureUndo, documentGeneration, historyDepth, historyVersion, leaveDocument, markSaved, newDocument, undoable } from './state/history';
 import { clearPlateJobs, currentPlates } from './plater/plates';
 import { nativeSupportCapable } from './settings-env';
-
-const VENDORS = ['BBL', 'Prusa', 'Custom'];
-
-function mergeCatalog(vendor: string, cat: PresetCatalog) {
-  const order = <T extends { vendor: string }>(l: T[]) => [...l].sort((a, b) => VENDORS.indexOf(a.vendor) - VENDORS.indexOf(b.vendor));
-  setState((s) => ({
-    machines: order([...s.machines.filter((p) => p.vendor !== vendor), ...cat.machines]),
-    processes: order([...s.processes.filter((p) => p.vendor !== vendor), ...cat.processes]),
-    filaments: [...new Map(order([...s.filaments.filter((p) => p.vendor !== vendor), ...cat.filaments]).map((p) => [p.name, p])).values()],
-  }));
-}
 
 export async function init() {
   app.send({ type: 'BOOT' });
@@ -56,76 +44,7 @@ export async function init() {
   await loadCatalog();
 }
 
-let catalogLoadGeneration = 0;
-let catalogLibraryTail: Promise<void> = Promise.resolve();
-let pendingBrowserAdoption: import('./profiles/browser-inventory').BrowserProfileAdoptionPlan | null = null;
-export async function loadCatalog() {
-  const generation = ++catalogLoadGeneration, initial = getState(), api = initial.api, documentAtStart=documentGeneration();
-  if (!api) return;
-  setState({ loading: 'Loading presets', profileLibraryLoad: {state: 'loading'} });
-  let first = 'BBL';
-  try { first = localStorage.getItem('orca.vendor') ?? first; } catch {  }
-  const current = () => generation === catalogLoadGeneration;
-  const settings = loadTab('process');
-  const library = catalogLibraryTail.then(async () => {
-    try {
-      await settings;
-      if(!current())return;
-      const [storage,{prepareProfileLibraryHydration},browser,{acceptHydratedPrinterSetups}]=await Promise.all([
-        import('./persist/profile-library'),import('./profiles/library-hydration'),import('./profiles/browser-inventory'),import('./profiles/printer-setups')]);
-      let document=await storage.readProfileLibrary();
-      const unchanged=()=>{const s=getState();return current() && documentGeneration()===documentAtStart && s.projectPresets===initial.projectPresets && s.dirty===initial.dirty && (s.userPresets===initial.userPresets || s.userPresets.length===initial.userPresets.length && s.userPresets.every((p,i)=>p===initial.userPresets[i])) && s.printer===initial.printer && s.filamentSlots===initial.filamentSlots && s.slotColours===initial.slotColours && s.filamentEdits===initial.filamentEdits && s.printerLibrary===initial.printerLibrary;};
-      const restoreStartupPlaceholder=!initial.printer && !initial.process && !initial.filamentSlots.length && !initial.project && !initial.objects.length && !initial.profileSnapshots && !initial.projectPresets && !Object.keys(initial.dirty.machine).length && !Object.keys(initial.dirty.process).length && !Object.keys(initial.filamentEdits).length && !Object.keys(initial.printerLibrary.setups).length;
-      let inventory:import('./profiles/browser-inventory').BrowserProfileInventory|null=null,adoptionError:string|null=null;
-      try{
-        inventory=await browser.captureBrowserProfileInventory(initial);
-        const response=await fetch('/api/healthz',{cache:'no-store'});if(!response.ok)throw new Error('The service capabilities could not be read.');
-        const health=await response.json();
-        if(health.profile_adoption_schema!==1)throw new Error('Saved profiles are available for browsing. The updated service is required to acknowledge browser data before saving.');
-        if(!unchanged())throw new Error('Your setup changed while loading; retry to keep the newer edits.');
-        if(pendingBrowserAdoption){
-          const prior=pendingBrowserAdoption,known=await storage.readProfileLibraryAdoption(prior.adoption.digest);
-          try{document=known ? await storage.readProfileLibrary() : await browser.adoptBrowserProfileInventory(prior);}
-          catch(error){if((error as {status?:number}).status===409 && pendingBrowserAdoption===prior)pendingBrowserAdoption=null;throw error;}
-          if(pendingBrowserAdoption===prior)pendingBrowserAdoption=null;
-        }
-        const adoption=await browser.fingerprintBrowserProfileInventory(inventory,location.origin),receipts=await storage.readProfileLibraryAdoptions();
-        document=await storage.readProfileLibrary();
-        if(!unchanged())throw new Error('Your setup changed while loading; retry to keep the newer edits.');
-        const plan=browser.planBrowserProfileAdoption(document,inventory,adoption,receipts);
-        if(plan.conflicts.length)throw new Error(`Browser data needs recovery: ${plan.conflicts.join('; ')}. Both versions are kept.`);
-        if(!plan.alreadyAcknowledged){pendingBrowserAdoption=plan;document=await browser.adoptBrowserProfileInventory(plan);}
-        const receipt=await storage.readProfileLibraryAdoption(adoption.digest);
-        if(!receipt || receipt.source!==adoption.source || receipt.sourceId!==adoption.sourceId || receipt.operationId!==plan.operationId)throw new Error('Browser source adoption has not been durably acknowledged. Your original data and draft are kept; retry.');
-        if(pendingBrowserAdoption===plan)pendingBrowserAdoption=null;
-      }catch(error){adoptionError=error instanceof Error?error.message:String(error);}
-      if(!current())return;
-      if(!unchanged())throw new Error('Your profiles or setup changed during loading/adoption. Your newer work is kept; retry loading.');
-      if(adoptionError && !restoreStartupPlaceholder)throw new Error(adoptionError);
-      const latest=getState(),preferred=restoreStartupPlaceholder ? inventory?.storage['orca.printer'] : null;
-      const result=prepareProfileLibraryHydration(preferred ? {...latest,printer:preferred} : latest,document,{restoreStartupPlaceholder});
-      const error=adoptionError ?? (result.requiresAdoption?'Browser printer setups differ from the saved library. Export and review browser data before restoring them. Your setup is kept.':null);
-      setState({...result.patch,profileLibraryLoad:error ? {state:'failed',error} : {state:'ready'}});
-      if(!error)acceptHydratedPrinterSetups();
-    } catch (error) {
-      if (current()) setState({profileLibraryLoad: {state: 'failed', error: error instanceof Error ? error.message : String(error)}});
-    }
-  });
-  catalogLibraryTail=library;
-  const failures: string[] = [];
-  for (const vendor of [first, ...VENDORS.filter(v => v !== first)]) {
-    try {
-      const cat = await api.presets(vendor, DEMO_MODELS, c => { if (current()) mergeCatalog(vendor,c); });
-      if (!current()) return;
-      mergeCatalog(vendor,cat);
-    } catch (error) { failures.push(`${vendor}: ${error instanceof Error ? error.message : String(error)}`); }
-  }
-  await library;
-  if (!current()) return;
-  setState({loading: null});
-  app.send({type: 'READY', hasObjects: getState().objects.length > 0, importing: importing.machine.get().value === 'running'});
-  if (failures.length) toast(`Catalog could not fully load: ${failures.join('; ')}`, {label: 'Retry', run: () => void loadCatalog()});
-}
+export async function loadCatalog() { await (await import('./profiles/catalog-startup')).loadCatalog(); }
 
 function switchingChanges(s: State, type: PresetType, slot = 0): Config {
   const name = type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot];
@@ -166,6 +85,8 @@ function applyPresetSwitch(type: PresetType, slot: number, name: string, edits: 
   };
   if (type === 'machine') {
     selectPrinter(name);
+    const selected = getState();
+    if (selected.printer === name && selected.printer !== before.printer) savePreferences({'orca.printer':name,'orca.vendor':resolvePreset(selected,'machine',name).base?.vendor ?? ''});
     return {kept,dropped};
   }
   const carried = carry(type, name, slot);
@@ -299,32 +220,10 @@ async function loadStep(f: File, signal?: AbortSignal): Promise<{ geometry: THRE
   return { geometry, source: new File([await bakeStl(mesh)], `${stem}.stl`) };
 }
 
-export function adoptProject(config:Config,slots:number,plateKeys:Set<string>) {
-  setState(prepareProjectProfileImport(getState(),config,slots,plateKeys));
-  const captured=getState().profileSnapshots,generation=documentGeneration();
-  if([config.filament_is_mixed].flat().some(v=>['1','true'].includes(String(v))))
-    void import('./plater/mixed').then(m=>{if(generation===documentGeneration() && getState().profileSnapshots===captured)setState({mixes:m.readMixes(config)});});
-}
-
-function centreGeometryOnly() {
-  const box = new THREE.Box3();
-  for (const o of getState().objects) {
-    o.geometry.computeBoundingBox();
-    for (const i of o.instances) box.union(o.geometry.boundingBox!.clone().translate(new THREE.Vector3(i.x, i.y, i.z)));
-  }
-  const bed = bedArea(), xs = bed.map((p) => p.x), ys = bed.map((p) => p.y);
-  if (box.isEmpty() || !bed.length) return;
-  const dx = (Math.min(...xs) + Math.max(...xs) - box.min.x - box.max.x) / 2, dy = (Math.min(...ys) + Math.max(...ys) - box.min.y - box.max.y) / 2;
-  const shift = (o: PlateObject): PlateObject => {
-    const p = o.project!, [px, py] = p.plateOrigin ?? [0, 0];
-    return { ...o, instances: o.instances.map((i) => ({ ...i, x: i.x + dx, y: i.y + dy })),
-      project: { ...p, plateOrigin: [px - dx, py - dy], ...(p.origin ? { origin: [p.origin[0] + dx, p.origin[1] + dy, p.origin[2]] as [number, number, number] } : {}) } };
-  };
-  setState((st) => ({ objects: st.objects.map(shift), projectPlates: st.projectPlates.map((p) => ({ ...p, objects: p.objects.map(shift) })) }));
-}
-
 export async function openProject(file: File) {
   const generation = documentGeneration();
+  const { adoptProject, centreGeometryOnly } = await import('./plater/import-project');
+  if (generation !== documentGeneration()) return;
   const s = getState();
   const offerUndo = await replacePlate('Open Project', 'Opening a project replaces the objects on the plate. Continue?');
   if (!offerUndo || generation !== documentGeneration()) return;
@@ -398,7 +297,7 @@ export async function openProject(file: File) {
     });
     if (!task.current()) return;
     task.done();
-    if (geometryOnly && getState().project === file) centreGeometryOnly();
+    if (geometryOnly && getState().project === file) centreGeometryOnly(bedArea());
     if (getState().project === file && !historyDepth().undo) markSaved();
   } catch (e) {
     if (!task.current()) return;

@@ -1,5 +1,8 @@
 import type { StoredDocBase } from './backend';
 import { projectId } from './identity';
+import { jsonWrite, routeKey, serviceJson, serviceRequest } from './service';
+import { ensureProjectAdoption } from './project-adoption';
+import { documentText, sha256 } from './wire';
 export interface ProjectFailure {
   kind: 'conflict' | 'deleted' | 'quota' | 'unavailable' | 'interrupted' | 'decode';
   name: string; message: string; projectId: string; expectedRevision: number;
@@ -39,11 +42,7 @@ if (typeof window !== 'undefined') {
   if (typeof BroadcastChannel !== 'undefined') {
     mutationChannel = new BroadcastChannel('orca.project-drafts');
     mutationChannel.onmessage = (event) => { if (event.data?.writer !== writer) receiveMutation(event.data); };
-  } else window.addEventListener('storage', (event) => {
-    if (event.key === 'orca.project-draft-mutation' && event.newValue) {
-      try { const message = JSON.parse(event.newValue) as MutationMessage; if (message.writer !== writer) receiveMutation(message); } catch {  }
-    }
-  });
+  }
 }
 export const projectDraftMutationSnapshot = (): ProjectDraftMutationSnapshot => mutationSnapshot;
 export const subscribeProjectDraftMutations = (listener: () => void) => { mutationListeners.add(listener); return () => { mutationListeners.delete(listener); }; };
@@ -52,9 +51,6 @@ export function beginProjectDraftMutation(id: string): (error?: unknown) => void
   const announce = (message: MutationMessage) => {
     receiveMutation(message);
     if (mutationChannel) mutationChannel.postMessage(message);
-    else if (typeof window !== 'undefined') {
-      try { localStorage.setItem('orca.project-draft-mutation', JSON.stringify(message)); } catch {  }
-    }
   };
   announce({ writer, token, id, phase: 'begin' });
   let ended = false;
@@ -68,67 +64,79 @@ async function mutate<T>(id: string, operation: () => Promise<T>): Promise<T> {
   try { const result = await operation(); finish(); return result; }
   catch (error) { finish(error); throw error; }
 }
-let opening: Promise<ProjectDraftStore> | null = null;
-export function projectDraftStore(): Promise<ProjectDraftStore> {
-  if (opening) return opening;
-  opening = openDraftStore().catch((error) => { opening = null; throw error; });
-  return opening;
+interface ServiceDraft { id: string; sequence: number; document: Omit<ProjectDraft, 'blobs'> | null; metadata?: ProjectDraftMeta; updatedAt: number }
+function validMetadata(meta: ProjectDraftMeta | undefined): meta is ProjectDraftMeta {
+  return !!meta && typeof meta.id === 'string' && typeof meta.projectId === 'string' && typeof meta.owner === 'string' &&
+    typeof meta.name === 'string' && Number.isSafeInteger(meta.sequence) && meta.sequence >= 0 &&
+    Number.isSafeInteger(meta.baseRevision) && meta.baseRevision >= 0 && Number.isFinite(meta.updatedAt) &&
+    Number.isSafeInteger(meta.objects) && meta.objects >= 0 && (meta.kind === 'dirty' || meta.kind === 'snapshot') &&
+    (meta.failure === null || !!meta.failure && ['conflict', 'deleted', 'quota', 'unavailable', 'interrupted', 'decode'].includes(meta.failure.kind) &&
+      typeof meta.failure.name === 'string' && typeof meta.failure.message === 'string' && meta.failure.projectId === meta.projectId && Number.isSafeInteger(meta.failure.expectedRevision));
 }
-async function openDraftStore(): Promise<ProjectDraftStore> {
-  if (typeof indexedDB === 'undefined') throw new Error('Draft storage is unavailable. Keep this window open and export the project.');
-  const request = indexedDB.open('orca-web-drafts', 2);
-  request.onupgradeneeded = (event) => {
-    if (event.oldVersion < 1) request.result.createObjectStore('drafts', { keyPath: 'id' }).createIndex('projectId', 'projectId');
-    if (event.oldVersion < 2) {
-      const metadata = request.result.createObjectStore('metadata', { keyPath: 'id' });
-      metadata.createIndex('projectId', 'projectId');
-      const read = request.transaction!.objectStore('drafts').openCursor();
-      read.onsuccess = () => { if (read.result) { metadata.put(draftMetadata(read.result.value as ProjectDraft)); read.result.continue(); } };
+const assetPath = (key: string) => `/api/assets/${routeKey(key)}`;
+const draftPath = (key: string) => `/api/drafts/${routeKey(key)}`;
+const uploaded = new WeakMap<Blob, Set<string>>();
+const pendingDrafts = new Map<string, RequestInit>();
+const serviceDraftStore: ProjectDraftStore = {
+  async list(projectId) {
+    const metadata = await this.listMetadata(projectId);
+    const drafts: ProjectDraft[] = [];
+    for (const meta of metadata) {
+      const draft = await this.load(meta.id);
+      if (!draft) throw new Error('A recovery draft changed while reading inventory. Refresh before mutation.');
+      drafts.push(draft);
     }
-  };
-  const db = await new Promise<IDBDatabase>((resolve, reject) => {
-    let abandoned = false;
-    request.onsuccess = () => { if (abandoned) request.result.close(); else resolve(request.result); };
-    request.onerror = () => reject(request.error);
-    request.onblocked = () => { abandoned = true; reject(new Error('Draft storage upgrade is blocked by another Orca window.')); };
-  });
-  db.onversionchange = () => { db.close(); opening = null; };
-  const transaction = <T>(mode: IDBTransactionMode, run: (records: IDBObjectStore, result: (value: T) => void, metadata: IDBObjectStore) => void) =>
-    new Promise<T>((resolve, reject) => {
-      const tx = db.transaction(['drafts', 'metadata'], mode);
-      let value: T, failure: unknown;
-      tx.oncomplete = () => resolve(value);
-      tx.onerror = tx.onabort = () => reject(failure ?? tx.error ?? new Error('Draft transaction failed'));
-      try { run(tx.objectStore('drafts'), (v) => { value = v; }, tx.objectStore('metadata')); }
-      catch (error) { failure = error; tx.abort(); }
-    });
-  return {
-    list: (projectId) => transaction('readonly', (records, result) => {
-      const read = projectId === undefined ? records.getAll() : records.index('projectId').getAll(projectId);
-      read.onsuccess = () => result((read.result as ProjectDraft[]).sort((a, b) => b.updatedAt - a.updatedAt));
-    }),
-    listMetadata: (projectId) => transaction('readonly', (_records, result, metadata) => {
-      const read = projectId === undefined ? metadata.getAll() : metadata.index('projectId').getAll(projectId);
-      read.onsuccess = () => result((read.result as ProjectDraftMeta[]).sort((a, b) => b.updatedAt - a.updatedAt));
-    }),
-    load: (id) => transaction('readonly', (records, result) => {
-      const read = records.get(id); read.onsuccess = () => result((read.result as ProjectDraft | undefined) ?? null);
-    }),
-    put: (draft) => mutate(draft.id, () => {
-      for (const key of Object.keys(draft.doc.files ?? {}))
-        if (!(draft.blobs[key] instanceof Blob)) return Promise.reject(new Error(`Draft model file is missing: ${key}`));
-      return transaction<void>('readwrite', (records, _result, metadata) => {
-        const read = metadata.get(draft.id);
-        read.onsuccess = () => {
-          const previous = read.result as ProjectDraft | undefined;
-          if (!previous || previous.sequence <= draft.sequence) { records.put(draft); metadata.put(draftMetadata(draft)); }
-        };
-      });
-    }),
-    remove: (id, throughSequence) => mutate(id, () => transaction<void>('readwrite', (records, _result, metadata) => {
-      const read = metadata.get(id);
-      read.onsuccess = () => { if (read.result && (read.result as ProjectDraftMeta).sequence <= throughSequence) { records.delete(id); metadata.delete(id); } };
-    })),
-  };
+    return drafts;
+  },
+  async listMetadata(projectId) {
+    const records = await serviceJson<ServiceDraft[]>('/api/drafts');
+    if (!Array.isArray(records)) throw new Error('Invalid service draft inventory');
+    return records.map((record) => {
+      if (!validMetadata(record.metadata) || record.metadata.id !== record.id || record.metadata.sequence !== record.sequence) throw new Error('Incomplete service draft metadata');
+      return record.metadata;
+    }).filter((meta) => projectId === undefined || meta.projectId === projectId).sort((a,b) => b.updatedAt - a.updatedAt);
+  },
+  async load(id) {
+    const record = await serviceJson<ServiceDraft>(draftPath(id), undefined, true);
+    if (!record) return null;
+    const document = record.document;
+    if (!document || !validMetadata(document) || !document.doc || document.id !== id || document.sequence !== record.sequence) throw new Error('Invalid service recovery document');
+    const blobs: Record<string, Blob> = {};
+    for (const key of Object.keys(document.doc.files ?? {})) {
+      const response = await serviceRequest(assetPath(key), undefined, true);
+      if (!response) throw new Error(`Recovery model asset is missing: ${key}`);
+      blobs[key] = await response.blob();
+    }
+    return { ...document, blobs };
+  },
+  put: (draft) => mutate(draft.id, async () => {
+    const { blobs: _blobs, ...document } = draft;
+    const payload = { sequence: draft.sequence, document, metadata: draftMetadata(draft) };
+    const key = `${draft.id}/${draft.sequence}/${await sha256(new TextEncoder().encode(documentText(payload)))}`;
+    let request = pendingDrafts.get(key);
+    if (!request) { request = jsonWrite('PUT', { operationId: projectId(), ...payload }); pendingDrafts.set(key, request); }
+    for (const key of Object.keys(draft.doc.files ?? {})) {
+      const blob = draft.blobs[key];
+      if (!(blob instanceof Blob)) throw new Error(`Draft model file is missing: ${key}`);
+      if (!uploaded.get(blob)?.has(key)) {
+        await serviceRequest(assetPath(key), { method: 'PUT', body: blob });
+        const keys = uploaded.get(blob) ?? new Set<string>(); keys.add(key); uploaded.set(blob, keys);
+      }
+    }
+    const ack = await serviceJson<{sequence:number}>(draftPath(draft.id), request);
+    if (!ack || ack.sequence !== draft.sequence) throw new Error('Invalid draft acknowledgement');
+    pendingDrafts.delete(key);
+  }),
+  remove: (id, throughSequence) => mutate(id, async () => {
+    try { await serviceRequest(`${draftPath(id)}?throughSequence=${throughSequence}`, { method: 'DELETE' }, true); }
+    catch (error) {
+      if ((error as {status?:number}).status === 409) return;
+      throw error;
+    }
+  }),
+};
+export async function projectDraftStore(): Promise<ProjectDraftStore> {
+  await ensureProjectAdoption();
+  return serviceDraftStore;
 }
 export const draftMetadata = ({ doc: _doc, blobs: _blobs, ...meta }: ProjectDraft): ProjectDraftMeta => meta;
