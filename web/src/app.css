@@ -552,7 +552,6 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 }
 :where(.orca-parity) .canvas-toolbar > .icon-btn, :where(.orca-parity) .canvas-toolbar > span > .icon-btn { width: 32px; height: 32px; }
 :where(.orca-parity) .canvas-more { padding: 0 8px; height: 32px; }
-:where(.orca-parity) .canvas-area[data-viewport=preview] .objects-outliner { right: 92px; top: 12px; width: clamp(140px, 28%, 260px); }
 :where(.orca-parity) .canvas-area[data-viewport=preview] .legend { max-width: min(316px, calc(72% - 128px)); }
 
 

@@ -102,11 +102,6 @@
 :where(.orca-parity) .pk-trigger { font-size: 14px; }
 
 :where(.orca-parity) .works-with { display: flex; flex-direction: column; gap: 4px; padding: 12px 8px; }
-:where(.orca-parity) .works-with-mode { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: var(--label); margin-bottom: 8px; }
-:where(.orca-parity) .works-with-row { display: flex; align-items: flex-start; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--line); }
-:where(.orca-parity) .works-with-row > span { display: flex; flex-direction: column; min-width: 0; }
-:where(.orca-parity) .works-with-row strong { font-size: 15px; color: var(--text); font-weight: 600; }
-:where(.orca-parity) .works-with-reason { font-size: 12px; color: var(--muted); margin-top: 4px; }
 
 :where(.orca-parity) .tab-preset-row { padding: 6px 8px; gap: 6px; flex: none; display: flex; flex-direction: column; align-items: stretch; }
 :where(.orca-parity) .profile-choice-row { display: flex; min-width: 0; }

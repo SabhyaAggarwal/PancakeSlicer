@@ -47,7 +47,7 @@
   :where(.orca-parity) .compact-topbar .view-tab > span { display: inline; }
 }
 @media (pointer: coarse), (max-width: 760px) {
-  :where(.orca-parity) button:not(.check, .pf-radio, .orca-switch, .control-check, .orca-radio, .info-tip, .color-swatch, .color-trigger), :where(.orca-parity) .dropdown, :where(.orca-parity) .text, :where(.orca-parity) [role=menuitem] { min-height: 44px; }
+  :where(.orca-parity) button:not(.check, .pf-radio, .orca-switch, .control-check, .orca-radio, .info-tip, .color-swatch, .color-trigger, .ls-plus), :where(.orca-parity) .dropdown, :where(.orca-parity) .text, :where(.orca-parity) [role=menuitem] { min-height: 44px; }
   :where(.orca-parity) .icon-btn, :where(.orca-parity) .app-menu-button, :where(.orca-parity) .pk-star, :where(.orca-parity) .opt-undo { min-width: 44px; }
   :where(.orca-parity) .text, :where(.orca-parity) input, :where(.orca-parity) textarea, :where(.orca-parity) select { font-size: 16px; }
   :where(.orca-parity) .pf-facet-choice, :where(.orca-parity) .select-row { min-height: 44px; align-items: center; }

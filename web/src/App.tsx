@@ -261,7 +261,7 @@ export default function App() {
       <div style={{ display: projects ? 'none' : undefined }} className={`main ${sidebarHidden ? 'sidebar-hidden' : ''} ${dragOver ? 'drag-over' : ''}`}>
         <Suspense fallback={null}><WorkspaceRail><Sidebar /></WorkspaceRail></Suspense>
         <div className="canvas-area" data-viewport={tab}>
-          {!empty && <Suspense fallback={null}><ObjectsOutliner/></Suspense>}
+          {!empty && tab === 'prepare' && <Suspense fallback={null}><ObjectsOutliner/></Suspense>}
           {sidebarHidden && (
             <button type="button" className="btn sidebar-reveal" aria-expanded={false} onClick={() => toggleSidebar(false)}>Settings</button>
           )}
