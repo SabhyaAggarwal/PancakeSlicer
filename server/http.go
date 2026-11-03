@@ -819,10 +819,16 @@ func (s *Server) job(w http.ResponseWriter, r *http.Request) *Job {
 func (s *Server) getJob(w http.ResponseWriter, r *http.Request) {
 	if j := s.job(w, r); j != nil {
 		if r.URL.Query().Get("request") == "0" {
+			v := j.View()
+			var record map[string]json.RawMessage
+			if json.Unmarshal(v.Slice, &record) == nil && record["submission"] != nil {
+				delete(record, "submission")
+				v.Slice, _ = json.Marshal(record)
+			}
 			writeJSON(w, 200, struct {
 				JobView
 				Request *struct{} `json:"request,omitempty"`
-			}{JobView: j.View()})
+			}{JobView: v})
 			return
 		}
 		writeJSON(w, 200, j.View())
