@@ -58,3 +58,12 @@
   :where(.orca-parity) .objects-outliner.transform-active .outliner-body, :where(.orca-parity) .objects-outliner.transform-active .outliner-edit { display: none; }
   :where(.orca-parity) .transform-anchor { top: 112px; }
 }
+
+:where(.orca-parity) .canvas-toolbar .tb-tool-btn { width: 32px; height: 32px; min-width: 0; min-height: 0; border-radius: var(--control-radius); cursor: pointer; }
+:where(.orca-parity) .canvas-toolbar .tb-tool-btn:hover:not([aria-disabled=true]):not(.active) { background: var(--hover); }
+:where(.orca-parity) .canvas-toolbar .tb-tool-btn.active { background: var(--accent); }
+:where(.orca-parity) .canvas-toolbar .tb-tool-btn.active:hover { background: var(--accent-strong); }
+:where(.orca-parity) .canvas-toolbar .tb-tool-btn.active img { filter: brightness(0) invert(1); }
+:where(.orca-parity) .canvas-toolbar .tb-tool-btn[aria-disabled=true], :where(.orca-parity) .canvas-toolbar .tb-tool-btn[aria-disabled=true]:hover { background: none; cursor: not-allowed; }
+:where(.orca-parity) .canvas-toolbar .tb-tool-btn[aria-disabled=true] img { opacity: 0.4; }
+:where(.orca-parity) .canvas-more { display: inline-flex; align-items: center; gap: var(--s-2); }

@@ -12,6 +12,7 @@ import { applyRecommended, pendingRecommendations, plateResults, type PlateResul
 import { STYLE_NAMES } from '../style-names';
 import { effectiveConfig, getState, mapPaint, printerPreset, setState, useStore, type Gizmo } from '../state/store';
 import { Icon, IconButton } from './Icon';
+import { Caret } from './Caret';
 import { canPerformCut, cutBlocked, initialCut, setCut, toggleCut } from '../plater/cut';
 import { InTopLayer } from './Modal';
 import { useTier } from '../breakpoints';
@@ -84,17 +85,25 @@ export function CanvasToolbar() {
     ...(svg ? [{label: 'SVG', action: toggleSvg, disabled: !!sel?.all || !!placeholder || !!native} as MenuEntry] : []),
     ...(preview ? [{label: 'Non-planar surfaces', action: toggleNonplanarView, checked: nonplanarView} as MenuEntry] : []),
   ];
+  const needSelection = !hasObjects ? 'add an object' : sel?.all ? 'select one object' : 'select an object';
   return <div className="canvas-toolbar">
-    <IconButton size={24} icon="toolbar_move" title="Move (M)" active={gizmo === 'move'} onClick={() => toggle('move')} disabled={!edit}/>
-    <IconButton size={24} icon="toolbar_rotate" title="Rotate (R)" active={gizmo === 'rotate'} onClick={() => toggle('rotate')} disabled={!edit}/>
-    <IconButton size={24} icon="toolbar_scale" title="Scale (S)" active={gizmo === 'scale'} onClick={() => toggle('scale')} disabled={!edit}/>
+    <ToolButton icon="toolbar_move" name="Move" keys="M" active={gizmo === 'move'} unavailable={!edit && needSelection} onClick={() => toggle('move')}/>
+    <ToolButton icon="toolbar_rotate" name="Rotate" keys="R" active={gizmo === 'rotate'} unavailable={!edit && needSelection} onClick={() => toggle('rotate')}/>
+    <ToolButton icon="toolbar_scale" name="Scale" keys="S" active={gizmo === 'scale'} unavailable={!edit && needSelection} onClick={() => toggle('scale')}/>
     <span className="tb-sep"/>
-    <span ref={arrangeAt} style={{display: 'inline-flex'}}><IconButton size={24} icon="toolbar_arrange" title="Arrange (A)" active={arranging} onClick={() => setArranging(!arranging)} disabled={!hasObjects && !arranging}/></span>
+    <span ref={arrangeAt} style={{display: 'inline-flex'}}><ToolButton icon="toolbar_arrange" name="Arrange" keys="A" active={arranging} unavailable={!hasObjects && !arranging && 'add an object'} onClick={() => setArranging(!arranging)}/></span>
     {arranging && <ArrangeOptions at={arrangeAt.current}/>}
-    <IconButton size={24} icon="toolbar_orient" title="Auto orient (Q / Shift+Q)" onClick={e => toolbarOperation('orient', e.shiftKey)} disabled={!hasObjects || project}/>
-    <IconButton size={24} icon="toolbar_open" title={`Add model (${MOD}+I)`} onClick={openFileDialog}/>
-    <MenuButton className="btn-ghost canvas-more" label="Model tools" items={rare}>Tools</MenuButton>
+    <ToolButton icon="toolbar_orient" name="Auto orient" keys="Q" unavailable={!hasObjects ? 'add an object' : project && 'not in an opened 3MF project'} onClick={e => toolbarOperation('orient', e.shiftKey)}/>
+    <ToolButton icon="toolbar_open" name="Add model" keys={`${MOD}+I`} onClick={openFileDialog}/>
+    <MenuButton className="btn-ghost canvas-more" label="Model tools" items={rare}>Tools<Caret/></MenuButton>
   </div>;
+}
+
+function ToolButton({ icon, name, keys, active = false, unavailable, onClick }: { icon: string; name: string; keys: string; active?: boolean; unavailable?: string | false; onClick(e: React.MouseEvent<HTMLButtonElement>): void }) {
+  return <button type="button" className={`icon-btn tb-tool-btn${active ? ' active' : ''}`} aria-label={`${name} · ${keys}${unavailable ? ` (${unavailable})` : ''}`}
+    aria-pressed={active} aria-disabled={unavailable ? true : undefined} onClick={(e) => { if (!unavailable) onClick(e); }}>
+    <Icon name={icon} size={24} />
+  </button>;
 }
 
 function ArrangeOptions({ at }: { at: HTMLElement | null }) {

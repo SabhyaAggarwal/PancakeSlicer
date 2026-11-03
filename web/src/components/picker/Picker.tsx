@@ -10,8 +10,8 @@ import { Caret } from '../Caret';
 import { Glyph } from '../Glyph';
 import { edgeOf, type Edge } from '../anchor';
 export interface PickerItem { id: string; label: string; sub?: string; swatch?: string | null; meta?: string; facet?: string; search?: string; disabled?: boolean | string;
-  image?: string | null; status?: { label: string; tone: 'online' | 'printing' | 'offline' | 'error' } }
-export interface PickerGroup { id: string; title: string; items: PickerItem[]; lead?: boolean }
+  image?: string | null; status?: { label: string; tone: 'online' | 'printing' | 'offline' | 'error' }; slots?: { n: number; colour: string }[] }
+export interface PickerGroup { id: string; title: string; items: PickerItem[]; filter?: boolean }
 export interface PickerAction { label: string; run(): void; keep?: boolean }
 export interface PickerCatalog { label: string; groups(): PickerGroup[]; onAdd(id: string): void }
 export const selectDefaultRail = (source: readonly PickerGroup[], pins: readonly string[]) => source.some(g => g.items.some(item => !item.disabled && pins.includes(item.id))) ? 'pins' : source.find(g => g.items.some(item => !item.disabled))?.id ?? 'all';
@@ -52,6 +52,7 @@ function PickerRail({ tabs, active, hover, label, level, list, railRef, onChange
 const decoded = new Map<string, HTMLImageElement>();
 const decodeAhead = (src: string) => { if (decoded.has(src)) return; const img = new Image(); img.src = src; decoded.set(src, img); img.decode().catch(() => {}); };
 const idle = (run: () => void) => typeof requestIdleCallback === 'function' ? requestIdleCallback(run, { timeout: 3000 }) : setTimeout(run, 1500);
+const inkOn = (hex: string) => { const m = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})/i.exec(hex); return m && (0.2126 * parseInt(m[1], 16) + 0.7152 * parseInt(m[2], 16) + 0.0722 * parseInt(m[3], 16)) > 150 ? 'dark' : 'light'; };
 function PickerArt({ src }: { src: string | null }) {
   const [failed, setFailed] = useState<string>();
   return <span className="pk-art" aria-hidden>{src && failed !== src ? <img src={src} alt="" draggable={false} onError={() => setFailed(src)}/> : <Glyph name="printer" size={40}/>}</span>;
@@ -64,9 +65,10 @@ const PickerRow = memo(function PickerRow({ row, index, id, active, selected, ad
   const media = row.image !== undefined, [head, tail] = splitTail(row.label);
   return <div className={`pk-row ${active ? 'is-active' : ''}`} data-index={index}>
     <button id={`${id}-${index}`} type="button" role="option" tabIndex={active ? 0 : -1} aria-selected={selected} aria-disabled={!!row.disabled} className="pk-option" onFocus={() => onActive(index)} onPointerMove={(e) => { if (e.pointerType === 'mouse') onActive(index); }} data-full-text={[row.label, row.sub, row.meta].filter(Boolean).join(' · ')} onClick={() => onPick(row)}>
-      <span className="pk-check" aria-hidden>{selected ? '✓' : ''}</span>{media && <PickerArt src={row.image ?? null}/>}{row.swatch !== undefined && <span className="profile-color-swatch" data-unknown={!row.swatch} style={{backgroundColor:row.swatch ?? undefined}}/>}
+      {media && <PickerArt src={row.image ?? null}/>}{row.swatch !== undefined && <span className="profile-color-swatch" data-unknown={!row.swatch} style={{backgroundColor:row.swatch ?? undefined}}/>}
       <span className="pk-text"><span className="pk-label"><span className="pk-head">{head}</span>{tail && <span className="pk-tail">{tail}</span>}</span>{row.sub && <span className="pk-sub">{row.sub}</span>}{media && row.meta && <span className="pk-sub">{row.meta}</span>}{row.status && <span className="pk-status" data-tone={row.status.tone}>{row.status.label}</span>}</span>
       {!media && row.meta && <span className="pk-meta">{row.meta}</span>}
+      {!!row.slots?.length && <span className="pk-slots">{row.slots.map(c => <span key={c.n} className="slot-chip" role="img" aria-label={`Also in slot ${c.n}`} data-ink={inkOn(c.colour)} style={{backgroundColor: c.colour}}>{c.n}</span>)}</span>}
     </button>
     {!adding && <button type="button" className="pk-star" aria-label={`Favorite ${row.label}`} aria-pressed={pinned} onClick={() => onPin(row)}>{pinned ? '★' : '☆'}</button>}
   </div>;
@@ -88,24 +90,24 @@ export function Picker({ label, value, groups, sections = false, onPick, facetLa
   const id = useId();
   const live = open || primed;
   const pool = useMemo(() => live ? (adding && catalog ? catalog.groups() : groups()).map(g => ({...g, items:g.items.filter(item => !item.disabled)})).filter((g) => g.items.length) : [], [live, adding, groups, catalog]);
-  const home = useMemo(() => { if (!live) return undefined; for (const g of groups()) if (!g.lead) { const it = g.items.find(i => i.id === value); if (it) return {facet: it.facet, group: g.id}; } return undefined; }, [live, groups, value]);
+  const home = useMemo(() => { if (!live) return undefined; for (const g of groups()) if (!g.filter) { const it = g.items.find(i => i.id === value); if (it) return {facet: it.facet, group: g.id}; } return undefined; }, [live, groups, value]);
   const facets = useMemo<RailTab[]>(() => {
     if (!sections || !facetLabel) return [];
-    const names = [...new Set(pool.filter(g => !g.lead).flatMap(g => g.items.flatMap(i => i.facet ? [i.facet] : [])))].sort((a, b) => a.localeCompare(b, undefined, {sensitivity: 'base'}));
+    const names = [...new Set(pool.filter(g => !g.filter).flatMap(g => g.items.flatMap(i => i.facet ? [i.facet] : [])))].sort((a, b) => a.localeCompare(b, undefined, {sensitivity: 'base'}));
     return names.length > 1 ? [{id: 'all', title: 'All'}, ...names.map(n => ({id: `f:${n}`, title: n}))] : [];
   }, [sections, facetLabel, pool]);
   const activeFacet = facets.some(f => f.id === facet) ? facet : facets.some(f => f.id === `f:${home?.facet}`) ? `f:${home?.facet}` : 'all';
   const source = useMemo(() => activeFacet === 'all' ? pool : pool.map(g => ({...g, items: g.items.flatMap(i => `f:${i.facet}` !== activeFacet ? [] : i.sub === i.facet ? [{...i, sub: undefined}] : [i])})).filter(g => g.items.length), [pool, activeFacet]);
   const ownRows = useMemo(() => open && adding && hasOwn(groups), [open, adding, groups]);
-  const all = useMemo(() => [...new Map(source.flatMap((g) => g.items).map((item) => [item.id, item])).values()], [source]);
+  const all = useMemo(() => [...new Map(source.filter(g => !g.filter).flatMap((g) => g.items).map((item) => [item.id, item])).values()], [source]);
   const pinnedSet = useMemo(() => new Set(pins), [pins]);
-  const allSections = useMemo(() => sections ? [{title: 'Favorites', items: all.filter(r => pinnedSet.has(r.id))}, ...source.map(g => ({title: g.title, items: g.items.filter(r => !pinnedSet.has(r.id))}))].filter(g => g.items.length) : null, [sections, all, pinnedSet, source]);
-  const tabbed = useMemo(() => source.filter(g => !g.lead), [source]);
+  const allSections = useMemo(() => sections ? [{title: 'Favorites', items: all.filter(r => pinnedSet.has(r.id))}, ...source.filter(g => !g.filter).map(g => ({title: g.title, items: g.items.filter(r => !pinnedSet.has(r.id))}))].filter(g => g.items.length) : null, [sections, all, pinnedSet, source]);
+  const tabbed = source;
   const rails = useMemo<RailTab[]>(() => sections ? (tabbed.length > 1 ? [{id: 'all', title: 'All'}, ...tabbed.map(g => ({id: g.id, title: g.title}))] : facets.length ? tabbed.map(g => ({id: g.id, title: g.title})) : []) : [...(all.some(r => pinnedSet.has(r.id)) ? [{id:'pins',title:'Favorites'}] : []), {id:'all',title:adding ? 'All bases' : 'All profiles'}, ...source.map(({id,title}) => ({id,title}))], [sections, adding, pinnedSet, all, source, facets.length]);
   const railed = rails.length > 1 || (!!facets.length && !!rails.length);
   useRowFill(railRef, open && rails.map(r => r.id).join('|'));
   useRowFill(facetRef, open && facets.map(r => r.id).join('|'));
-  const activeRail = rails.some(r => r.id === rail) ? rail : sections ? tabbed.find(g => g.items.some(i => i.id === value))?.id ?? (rails.some(r => r.id === home?.group) ? home!.group : rails.some(r => r.id === 'all') ? 'all' : rails[0]?.id ?? 'all') : selectDefaultRail(source, pins);
+  const activeRail = rails.some(r => r.id === rail) ? rail : sections ? tabbed.find(g => !g.filter && g.items.some(i => i.id === value))?.id ?? (rails.some(r => r.id === home?.group) ? home!.group : rails.some(r => r.id === 'all') ? 'all' : rails[0]?.id ?? 'all') : selectDefaultRail(source, pins);
   const sectioned = useMemo(() => {
     const g = allSections && rails.length && activeRail !== 'all' ? tabbed.find(t => t.id === activeRail) : undefined;
     return g ? [{title: 'Favorites', items: g.items.filter(r => pinnedSet.has(r.id))}, {title: g.title, items: g.items.filter(r => !pinnedSet.has(r.id))}].filter(x => x.items.length) : allSections;

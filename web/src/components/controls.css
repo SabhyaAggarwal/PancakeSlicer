@@ -6,6 +6,8 @@
 :where(.orca-parity) input[type=number] { appearance: textfield; }
 :where(.orca-parity) input[type=number]::-webkit-inner-spin-button, :where(.orca-parity) input[type=number]::-webkit-outer-spin-button { appearance: none; margin: 0; }
 :where(.orca-parity) .color-trigger, :where(.orca-parity) .color-swatch { width: 24px; height: 24px; flex: none; padding: 0; border: 1px solid var(--border-control); border-radius: 3px; cursor: pointer; }
+:where(.orca-parity) .slot-chip { display: inline-grid; place-items: center; box-sizing: border-box; width: 18px; height: 18px; border: 1px solid var(--border-control); border-radius: 50%; color: #fff; font: 600 11px/1 var(--font-ui); font-variant-numeric: tabular-nums; }
+:where(.orca-parity) .slot-chip[data-ink=dark] { color: #1a1a1a; }
 :where(.orca-parity) :is(.color-trigger, .profile-color-swatch, .pk-swatch) { border-radius: 50%; }
 :where(.orca-parity) :is(.color-trigger, .profile-color-swatch, .pk-swatch)[data-unknown=true] { border: 1px solid var(--line-strong); background: linear-gradient(135deg, transparent calc(50% - .75px), var(--ink-3) calc(50% - .75px), var(--ink-3) calc(50% + .75px), transparent calc(50% + .75px)); }
 :where(.orca-parity) .color-swatch[aria-pressed=true] { outline: 1px solid var(--text); outline-offset: 2px; }
@@ -36,7 +38,7 @@
 :where(.orca-parity) .orca-radio-indicator { display: block; width: 8px; height: 8px; border-radius: 50%; background: var(--selected-foreground); }
 :where(.orca-parity) .orca-radio:disabled { cursor: default; border-color: var(--line); }
 
-:where(.orca-parity) .profile-color-swatch { display: inline-grid; place-items: center; box-sizing: border-box; flex: 0 0 22px; width: 22px; height: 22px; border: 1px solid var(--border-control); border-radius: 2px; margin-top: 1px; background: var(--sunken); color: var(--label); font-size: 12px; }
+:where(.orca-parity) .profile-color-swatch { display: inline-grid; place-items: center; box-sizing: border-box; flex: 0 0 22px; width: 22px; height: 22px; border: 1px solid var(--border-control); margin-top: 1px; background: var(--sunken); color: var(--label); font-size: 12px; }
 :where(.orca-parity) .pf-editor-identity > .color-trigger { float: left; margin: 3px 10px 0 0; }
 
 :where(.orca-parity) .info-tip { display: inline-grid; place-items: center; width: 16px; height: 16px; margin-left: 6px; padding: 0; flex: none; vertical-align: -2px; border: 1px solid var(--line-strong); border-radius: 50%; background: none; color: var(--ink-3); font: 600 11px/1 var(--font-ui); cursor: pointer; }

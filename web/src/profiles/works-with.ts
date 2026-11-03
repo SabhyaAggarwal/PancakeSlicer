@@ -25,7 +25,8 @@ export function validWorksWith(value: unknown, type: PresetType): value is Works
       (o) => keys(o, 'min', 'max') && typeof o.min === 'number' && typeof o.max === 'number' && o.min > 0 && o.min <= o.max)
     && (type === 'filament' ? r.filaments === undefined : one(r.filaments, (o) => keys(o, 'types') && strings(o.types), (o) => keys(o, 'profileIds') && strings(o.profileIds)))
     && (type === 'filament' ? one(r.prints, (o) => keys(o, 'profileIds') && strings(o.profileIds)) : r.prints === undefined)
-    && (r.exclude === undefined || strings(r.exclude));
+    && (r.exclude === undefined || strings(r.exclude))
+    && (type !== 'machine' || r.printers === undefined && r.nozzle === undefined && r.exclude === undefined);
 }
 
 const near = (a: number, b: number) => Math.abs(a - b) < 0.0005;

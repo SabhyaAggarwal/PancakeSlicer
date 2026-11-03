@@ -1,6 +1,6 @@
 import { modelLabel, nozzleField, printerCover, profileColour, rowDetail, vendorField, vendorLabel } from './metadata';
 import type { Config, PresetType } from '../api/types';
-import { filamentSwitchReason, getState, resolvePreset, setState, useStore } from '../state/store';
+import { getState, resolvePreset, setState, useStore } from '../state/store';
 import { Picker, type PickerAction, type PickerGroup, type PickerItem } from '../components/picker/Picker';
 import { requestPreset } from '../components/PresetCombo';
 import { filamentColor } from '../plater/filamentColor';
@@ -47,29 +47,27 @@ function filamentGroups(slot: number | null, catalog = false): PickerGroup[] {
   let entries = catalog ? listCatalog('filament') : listProfiles('filament');
   const hidden = catalog || slot === null ? undefined : currentEntry('filament', s.filamentSlots[slot], entries);
   if (hidden) entries = [...entries, hidden];
-  const item = (e: PickerEntry, swatch?: string | null, sub?: string): PickerItem => {
+  const others = new Map<string, { n: number; colour: string }[]>();
+  if (!catalog) s.filamentSlots.forEach((name, i) => { if (i !== slot && name) others.set(name, [...(others.get(name) ?? []), { n: i + 1, colour: filamentColor(s, i + 1) }]); });
+  const item = (e: PickerEntry): PickerItem => {
     const brand = first(e.config.filament_vendor) || e.vendor || 'Generic', b = brandName(e.name, e.config);
     const label = e.mine ? e.name : b.name;
-    return { id: e.key, label, sub: sub ?? (rowDetail(label, [vendorField(brand)]) || undefined), facet: brand, swatch:swatch ?? profileColour(e.config), disabled: e.reason ?? false, search: `${brand} ${first(e.config.filament_type)} ${e.name}` };
+    return { id: e.key, label, sub: rowDetail(label, [vendorField(brand)]) || undefined, facet: brand, swatch: profileColour(e.config), disabled: e.reason ?? false, search: `${brand} ${first(e.config.filament_type)} ${e.name}`, slots: others.get(e.key) };
   };
-  const loaded = catalog ? [] : s.filamentSlots.flatMap((name, i) => {
-    const reason = filamentSwitchReason(s, i), e = entries.find((x) => x.key === name);
-    if ((i === slot && !reason) || !e) return [];
-    return [{ ...item(e, filamentColor(s, i + 1), `Slot ${i + 1}`), disabled: reason ?? false }];
-  }).filter((it, i, all) => all.findIndex((x) => x.id === it.id) === i);
   const seen = new Map<string, number>();
   for (const e of entries) { const k = item(e).label + first(e.config.filament_vendor); seen.set(k, (seen.get(k) ?? 0) + 1); }
-  const types = new Map<string, PickerItem[]>();
+  const types = new Map<string, PickerItem[]>(), loaded: PickerItem[] = [];
   for (const e of entries) {
     const it = item(e), at = e.name.match(/@\s*(.+)$/)?.[1];
     if (e === hidden) it.meta = NOT_COMPATIBLE;
     if (!e.mine && at && !/system/i.test(at) && seen.get(it.label + first(e.config.filament_vendor))! > 1) it.label += ` · ${at.replace(/^BBL\s+/, '')}`;
     const type = material(first(e.config.filament_type));
     types.set(type, [...(types.get(type) ?? []), it]);
+    if (it.slots) loaded.push(it);
   }
   const rank = (t: string) => { const i = MATERIALS.indexOf(t); return i >= 0 ? i : RARE.test(t) ? 99 : 50; };
   const groups: PickerGroup[] = [];
-  if (loaded.length) groups.push({ id: 'loaded', title: 'Loaded', items: loaded, lead: true });
+  if (loaded.length > 1) groups.push({ id: 'loaded', title: 'Loaded', items: [...loaded].sort((a, b) => a.slots![0].n - b.slots![0].n), filter: true });
   for (const type of [...types.keys()].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b)))
     groups.push({ id: `t:${type}`, title: type, items: types.get(type)!.sort((a, b) => a.facet!.localeCompare(b.facet!) || a.label.localeCompare(b.label)) });
   return groups;

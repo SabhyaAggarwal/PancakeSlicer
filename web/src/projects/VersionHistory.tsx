@@ -121,7 +121,7 @@ function Panel() {
             {rows.map((v) => {
               const current = v.id === list[0].id, open = card?.id === v.id, time = current ? 'Current' : times.get(v.id);
               const print = v.slice?.timeS != null ? short(v.slice.timeS) : v.slice ? 'Sliced' : '';
-              return <Popover.Root key={v.id} open={open} onOpenChange={(next) => !next && setCard(null)}><Popover.Anchor asChild><li role="presentation" className="vh-item"
+              return <Popover.Root key={v.id} open={open} onOpenChange={(next) => !next && setCard(null)}><li role="presentation" className="vh-item"
                 onPointerEnter={() => h.projectId && prefetchSetup(h.projectId, v)} onFocus={() => h.projectId && prefetchSetup(h.projectId, v)}>
                 <button type="button" role="option" className="vh-row" data-version={v.id} data-current={current || undefined} aria-selected={v.id === shown}
                   aria-busy={h.loading === v.id || undefined} aria-label={print ? `${time}. Sliced, ${print}` : time} onClick={() => void viewVersion(v)}>
@@ -134,8 +134,8 @@ function Panel() {
                     onBlur={() => !card?.pinned && setCard(null)}
                     onClick={(e) => { e.preventDefault(); clearTimeout(timer.current); setCard(open && card?.pinned ? null : { id: v.id, pinned: true }); }}>{info}</button>
                 </Popover.Trigger>
-                </li></Popover.Anchor>
-                <Popover.Portal><Popover.Content className="vh-card" side={narrow ? 'bottom' : 'left'} align="start" sideOffset={narrow ? 4 : 16} collisionPadding={8}
+                </li>
+                <Popover.Portal><Popover.Content className="vh-card" side={narrow ? 'bottom' : 'left'} align={narrow ? 'end' : 'start'} sideOffset={narrow ? 4 : 8} collisionPadding={8}
                   onOpenAutoFocus={(e) => e.preventDefault()} onCloseAutoFocus={(e) => e.preventDefault()} onPointerEnter={hover(v.id)} onPointerLeave={hover(null)}>
                   {h.projectId && <Card projectId={h.projectId} v={v} current={current} close={() => setCard(null)} />}
                 </Popover.Content></Popover.Portal>
