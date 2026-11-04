@@ -1,3 +1,5 @@
+import { FilamentNozzleAssignment, NozzleFlowFields, VariantSelector } from '../multinozzle/NozzleControls';
+import { optionIndex, type ExtruderSelection } from '../multinozzle/config';
 import { PresetBar } from '../profiles/PresetBar';
 import { methodModes, SurfaceSettings, TOP_METHOD_KEYS } from './SurfaceSettings';
 import { methodAvailability } from '../profiles/method-context';
@@ -47,6 +49,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
   };
   const [bedDialog, setBedDialog] = useState(false);
   const [pageIdx, setPageIdx] = useState(0);
+  const [extruderSelection, setExtruderSelection] = useState<ExtruderSelection>({ extruder: 0, variant: 0 });
   const auxes = auxiliary ? [auxiliary].flat() : [];
   const [auxIdx, setAuxIdx] = useState<number | null>(() => { const i = auxes.findIndex((a) => a.initial); return i < 0 ? null : i; });
   const aux = auxIdx !== null ? auxes[auxIdx] : undefined, auxiliaryOn = !!aux;
@@ -169,7 +172,10 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
       </Tabs.List>
       <Tabs.Content forceMount value={auxiliaryOn ? `aux:${auxIdx}` : String(Math.min(pageIdx,pages.length-1))} className="page-body" ref={body}>
         {aux ? aux.content : <><div className="page-flow">
+        {!overrides && <VariantSelector type={type} config={config} machine={type === 'machine' ? config : machineConfig} selection={extruderSelection} onChange={setExtruderSelection} />}
         {type === 'machine' && !editor && <><NozzleField /><PlateTypeField /></>}
+        {type === 'machine' && !overrides && <NozzleFlowFields config={config} onSet={editor?.set} disabled={readOnly} />}
+        {type === 'filament' && !fields && <FilamentNozzleAssignment slot={slot} disabled={readOnly} />}
         {type === 'process' && pageIdx === 0 && !overrides && <SurfaceSettings config={config} system={system} availability={availability} editor={editor} dirty={dirty} readOnly={readOnly}/>}
         {!desc && <div className="settings-load" role={error || retryError ? 'alert' : 'status'}><span>{retryError || error ? `Settings failed to load: ${retryError ?? error}` : 'Loading settings…'}</span>{(error || retryError) && <button type="button" className="btn" disabled={retrying} onClick={retry}>{retrying ? 'Retrying…' : 'Retry'}</button>}</div>}
         {type === 'process' && !overrides && page?.title === 'Multimaterial' && getState().filamentSlots.length > 1 && <section className="optgroup"><button type="button" className="btn" onClick={() => setState({flushDialog: true})}>Flush volumes</button></section>}
@@ -177,11 +183,13 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
           const single = groups.length === 1 && g.lines.length === 1 && g.lines[0].options.length === 1 && !!OPTIONS[splitKey(g.lines[0].options[0])[0]]?.multiline, id = groupId(page.title, g.title), open = !g.title || single || isGroupOpen(id, openByDefault);
           const modified = g.lines.some((l) => l.options.some((k) => splitKey(k)[0] in dirty));
           const field = (line: TabLine, keys: string[], k: string, i: number, labels: string[] | undefined, shared: boolean, tooltip: string | undefined, hide = false) => {
-            const key = splitKey(k)[0];
+            const [key, column] = splitKey(k);
+            const index = !overrides && !line.index_labels ? optionIndex(key, type, config, extruderSelection, column) : null;
+            const indexedKey = index === null ? k : `${key}#${index}`;
             const source = editor?.sources?.[key];
             return <Field widget={type === 'machine' && key === 'printable_area' ? <button type="button" className="btn" onClick={() => setBedDialog(true)}>Set bed shape</button>
               : type === 'machine' && key === 'nonplanar_head' ? <Suspense fallback={null}><HeadPicker value={String(config[key] ?? '')} onCommit={(v) => editor ? editor.set(key, v) : v === String(system[key] ?? '') ? resetOption(type, key) : setOption(type, key, v)} /></Suspense>
-              : undefined} key={`${k}:${i}`} optKey={k} type={type} value={config[key]} systemValue={system[key]} dirty={key in dirty}
+              : undefined} key={`${k}:${i}`} optKey={indexedKey} type={type} value={config[key]} systemValue={system[key]} dirty={key in dirty}
               slot={slot} onSet={fields?.set} onReset={fields?.reset} mixed={overrides?.mixed[key]} resetTitle={overrides ? 'Reset to project' : undefined}
               source={source} sourceText={editor?.sourceText?.[key]} onResetToBase={source === 'set' && !readOnly ? editor?.resetToBase : undefined}
               disabled={readOnly || isDeferred(key) || states[key]?.enabled === false}

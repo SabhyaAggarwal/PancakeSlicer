@@ -1,3 +1,5 @@
+import { filamentVectors } from './multinozzle/config';
+import { nozzleAssignments } from './multinozzle/assignments';
 import type { Config, ConfigValue } from './api/types';
 import { currentFlush } from './flush-state';
 import { OPTIONS, jobValue } from './options';
@@ -39,14 +41,10 @@ export function overrides(s = getState()): Config {
   add('machine', s.printer, s.dirty.machine);
   add('process', s.process, s.dirty.process);
   const configs = s.filamentSlots.map((_, i) => effectiveConfig(s, 'filament', i));
-  for (const k of new Set(configs.flatMap((c) => Object.keys(c)))) {
-    if (!OPTIONS[k]) continue;
-    const values = configs.map((c) => c[k] ?? OPTIONS[k].default);
-    if (values.every((v) => v === undefined || Array.isArray(v) && !v.length)) continue;
-    out[k] = values.some(Array.isArray)
-      ? values.map((v) => Array.isArray(v) ? v[0] ?? '' : v ?? '') as ConfigValue
-      : values[0] as ConfigValue;
-  }
+  Object.assign(out, filamentVectors(configs, Object.fromEntries(Object.entries(OPTIONS).flatMap(([key, def]) => def.default === undefined ? [] : [[key, def.default as ConfigValue]]))));
+  Object.assign(out, nozzleAssignments(s));
+  const machine = effectiveConfig(s, 'machine');
+  if (machine.nozzle_volume_type ?? machine.default_nozzle_volume_type) out.nozzle_volume_type = machine.nozzle_volume_type ?? machine.default_nozzle_volume_type;
   for (const k of Object.keys(out)) if (!OPTIONS[k]) delete out[k];
   if (s.projectMaterials && s.project) {
     out.filament_colour = s.filamentSlots.map((_, i) => filamentColor(s, i + 1));

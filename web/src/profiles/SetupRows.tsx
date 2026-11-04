@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { OPTIONS } from '../options';
-import { getState, markStale, printerPreset, setOption, setState, toast, useStore } from '../state/store';
+import { getState, markStale, printerPreset, setState, toast, useStore } from '../state/store';
 import { undo, undoable } from '../state/history';
 import { flushModified } from '../flush-state';
 import { Dropdown } from '../components/Dropdown';
@@ -8,6 +8,7 @@ import { Glyph } from '../components/Glyph';
 import { MenuButton, type MenuEntry } from '../components/Menu';
 import './profiles.css';
 import { modelKey, nozzleOf, printerModels } from './machines';
+import { NozzleSizeFields } from '../multinozzle/NozzleControls';
 
 export function NozzleField() {
   const machine = useStore((s) => printerPreset(s));
@@ -16,18 +17,7 @@ export function NozzleField() {
   const variants = machine ? printerModels(getState()).get(modelKey(machine)) ?? [] : [];
   const sizes = [...new Set(variants.map(nozzleOf).filter((d) => Number.isFinite(d) && d > 0))].sort((a, b) => a - b);
   if (sizes.length < 2 || !machine) return null;
-  return (
-    <div className="opt-line">
-      <span className="opt-label">Nozzle</span>
-      <span className="opt-field">
-        <Dropdown className="combo" aria-label="Nozzle" value={String(nozzleOf(machine))}
-          options={sizes.map((d) => ({ value: String(d), label: `${d} mm` }))}
-          onValueChange={(v) => {
-            setOption('machine','nozzle_diameter',[v]);
-          }} />
-      </span>
-    </div>
-  );
+  return <NozzleSizeFields config={machine.config} sizes={sizes} />;
 }
 
 export function PlateTypeField() {
