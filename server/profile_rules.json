@@ -21,10 +21,9 @@
     { "key": "initial_layer_line_width", "basis": "nozzle", "factor": 1.25 },
     { "key": "initial_layer_print_height", "basis": "nozzle", "factor": 0.5 },
     { "key": "support_top_z_distance", "basis": "layer", "factor": 1 },
-    { "key": "support_bottom_z_distance", "basis": "layer", "factor": 1 },
-    { "key": "top_shell_layers", "basis": "perLayer", "factor": 1 },
-    { "key": "bottom_shell_layers", "basis": "perLayer", "factor": 0.6 }
+    { "key": "support_bottom_z_distance", "basis": "layer", "factor": 1 }
   ],
+  "notScalable": ["top_shell_layers", "bottom_shell_layers"],
   "printDefaultKeys": [
     "outer_wall_speed", "inner_wall_speed", "sparse_infill_speed", "internal_solid_infill_speed", "top_surface_speed",
     "initial_layer_speed", "initial_layer_infill_speed", "travel_speed",

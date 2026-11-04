@@ -61,15 +61,16 @@ var starterProfiles = []struct {
 	intent   map[string]string
 	auto     autoProfile
 }{
-	{"everyday", "Everyday", map[string]string{"nonplanar_mode": "curved_tops"}, autoProfile{Schema: 3, Scales: defaultScales}},
-	{"strong", "Strong", map[string]string{"nonplanar_mode": "curved_tops", "wall_loops": "4", "sparse_infill_density": "25%"}, autoProfile{Schema: 3, Scales: defaultScales}},
-	{"fine-detail", "Fine detail", map[string]string{"nonplanar_mode": "curved_tops", "outer_wall_speed": "120", "inner_wall_speed": "200", "top_surface_speed": "150"},
+	{"everyday", "Everyday", map[string]string{"nonplanar_mode": "curved_tops", "top_shell_layers": "4", "bottom_shell_layers": "3"}, autoProfile{Schema: 3, Scales: defaultScales}},
+	{"strong", "Strong", map[string]string{"nonplanar_mode": "curved_tops", "wall_loops": "4", "sparse_infill_density": "25%", "top_shell_layers": "6", "bottom_shell_layers": "5"}, autoProfile{Schema: 3, Scales: defaultScales}},
+	{"fine-detail", "Fine detail", map[string]string{"nonplanar_mode": "curved_tops", "top_shell_layers": "5", "bottom_shell_layers": "4", "outer_wall_speed": "120", "inner_wall_speed": "200", "top_surface_speed": "150"},
 		autoProfile{Schema: 3, Scales: defaultScales, PreferredHeight: ptr(0.12)}},
-	{"draft", "Draft", map[string]string{"nonplanar_mode": "off", "sparse_infill_density": "10%", "outer_wall_speed": "250", "inner_wall_speed": "350", "sparse_infill_speed": "350", "internal_solid_infill_speed": "300"},
+	{"draft", "Draft", map[string]string{"nonplanar_mode": "off", "top_shell_layers": "3", "bottom_shell_layers": "3", "sparse_infill_density": "10%", "outer_wall_speed": "250", "inner_wall_speed": "350", "sparse_infill_speed": "350", "internal_solid_infill_speed": "300"},
 		autoProfile{Schema: 3, Scales: defaultScales, PreferredHeight: ptr(0.28)}},
 }
 
 var starterIntent = map[string]string{"wall_loops": "2", "sparse_infill_density": "15%", "sparse_infill_pattern": "grid",
+	"top_shell_thickness": "0.8", "bottom_shell_thickness": "0.6",
 	"seam_position": "aligned", "support_type": "tree(auto)", "support_style": "default"}
 
 func init() {

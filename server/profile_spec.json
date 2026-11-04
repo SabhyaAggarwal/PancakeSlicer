@@ -16,9 +16,7 @@
     "initial_layer_line_width": "0.5",
     "initial_layer_print_height": "0.2",
     "support_top_z_distance": "0.2",
-    "support_bottom_z_distance": "0.2",
-    "top_shell_layers": "5",
-    "bottom_shell_layers": "3"
+    "support_bottom_z_distance": "0.2"
    }
   },
   {
@@ -36,9 +34,7 @@
     "initial_layer_line_width": "0.5",
     "initial_layer_print_height": "0.2",
     "support_top_z_distance": "0.08",
-    "support_bottom_z_distance": "0.08",
-    "top_shell_layers": "13",
-    "bottom_shell_layers": "8"
+    "support_bottom_z_distance": "0.08"
    }
   },
   {
@@ -56,9 +52,7 @@
     "initial_layer_line_width": "0.5",
     "initial_layer_print_height": "0.2",
     "support_top_z_distance": "0.28",
-    "support_bottom_z_distance": "0.28",
-    "top_shell_layers": "4",
-    "bottom_shell_layers": "3"
+    "support_bottom_z_distance": "0.28"
    }
   },
   {
@@ -76,9 +70,7 @@
     "initial_layer_line_width": "0.25",
     "initial_layer_print_height": "0.1",
     "support_top_z_distance": "0.06",
-    "support_bottom_z_distance": "0.06",
-    "top_shell_layers": "17",
-    "bottom_shell_layers": "10"
+    "support_bottom_z_distance": "0.06"
    }
   },
   {
@@ -96,9 +88,7 @@
     "initial_layer_line_width": "0.25",
     "initial_layer_print_height": "0.1",
     "support_top_z_distance": "0.15",
-    "support_bottom_z_distance": "0.15",
-    "top_shell_layers": "7",
-    "bottom_shell_layers": "4"
+    "support_bottom_z_distance": "0.15"
    }
   },
   {
@@ -116,9 +106,7 @@
     "initial_layer_line_width": "0.75",
     "initial_layer_print_height": "0.3",
     "support_top_z_distance": "0.3",
-    "support_bottom_z_distance": "0.3",
-    "top_shell_layers": "4",
-    "bottom_shell_layers": "2"
+    "support_bottom_z_distance": "0.3"
    }
   },
   {
@@ -136,9 +124,7 @@
     "initial_layer_line_width": "1",
     "initial_layer_print_height": "0.4",
     "support_top_z_distance": "0.48",
-    "support_bottom_z_distance": "0.48",
-    "top_shell_layers": "3",
-    "bottom_shell_layers": "2"
+    "support_bottom_z_distance": "0.48"
    }
   },
   {
@@ -156,9 +142,7 @@
     "initial_layer_line_width": "1",
     "initial_layer_print_height": "0.4",
     "support_top_z_distance": "0.6",
-    "support_bottom_z_distance": "0.6",
-    "top_shell_layers": "2",
-    "bottom_shell_layers": "1"
+    "support_bottom_z_distance": "0.6"
    }
   },
   {
@@ -176,9 +160,7 @@
     "initial_layer_line_width": "0.313",
     "initial_layer_print_height": "0.125",
     "support_top_z_distance": "0.12",
-    "support_bottom_z_distance": "0.12",
-    "top_shell_layers": "9",
-    "bottom_shell_layers": "5"
+    "support_bottom_z_distance": "0.12"
    }
   },
   {
@@ -196,9 +178,7 @@
     "initial_layer_line_width": "1.25",
     "initial_layer_print_height": "0.5",
     "support_top_z_distance": "0.5",
-    "support_bottom_z_distance": "0.5",
-    "top_shell_layers": "2",
-    "bottom_shell_layers": "2"
+    "support_bottom_z_distance": "0.5"
    }
   }
  ],

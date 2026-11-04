@@ -18,6 +18,7 @@ var profileRules = func() (r struct {
 	DefaultScales     []autoScale `json:"defaultScales"`
 	PrintDefaultKeys  []string    `json:"printDefaultKeys"`
 	SourceOrder       []string    `json:"sourceOrder"`
+	NotScalable       []string    `json:"notScalable"`
 	Heights           struct {
 		Step, MinOfNozzle, MinFloor, MaxOfNozzle float64
 	} `json:"heights"`

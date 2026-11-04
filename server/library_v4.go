@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -155,7 +156,32 @@ func (l *libraryStore) read() (*libraryV4Envelope, error) {
 	if err == nil && (e.Document == nil || e.Operations == nil) {
 		err = errors.New("invalid stored library")
 	}
+	if err == nil {
+		dropUnscalableRows(e.Document)
+	}
 	return &e, err
+}
+
+func dropUnscalableRows(doc map[string]json.RawMessage) {
+	var profiles []map[string]json.RawMessage
+	if json.Unmarshal(doc["profiles"], &profiles) != nil {
+		return
+	}
+	changed := false
+	for _, p := range profiles {
+		var rows []autoScale
+		if stringValue(p["type"]) != "print" || json.Unmarshal(p["scales"], &rows) != nil {
+			continue
+		}
+		kept := slices.DeleteFunc(slices.Clone(rows), func(r autoScale) bool { return slices.Contains(profileRules.NotScalable, r.Key) })
+		if len(kept) != len(rows) {
+			p["scales"], _ = json.Marshal(kept)
+			changed = true
+		}
+	}
+	if changed {
+		doc["profiles"], _ = json.Marshal(profiles)
+	}
 }
 func (l *libraryStore) write(e *libraryV4Envelope) error {
 	raw, err := json.Marshal(e)
@@ -219,6 +245,7 @@ func (s *Server) libraryRoutes(mux *http.ServeMux) {
 			libraryFailure(w, 409, "revision_conflict", "The library changed. Reload it and reapply this change.", "reload", revision)
 			return
 		}
+		dropUnscalableRows(in.Document)
 		next, err := v4Profiles(in.Document)
 		if err != nil {
 			libraryFailure(w, 400, "library_invalid", err.Error(), "repair_profiles", revision)
