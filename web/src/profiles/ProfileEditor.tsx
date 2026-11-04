@@ -19,7 +19,7 @@ import { Glyph } from '../components/Glyph';
 import { useMachine } from '../flow/fsm';
 import { createProfileSave } from '../flow/profile-save';
 import { settingSources } from './bases';
-import { DEFAULT_SCALES, scaledValue, scaleValues, type ScaleRow } from './auto-rules';
+import { DEFAULT_SCALES, effectiveShells, scaledValue, scaleValues, type ScaleRow } from './auto-rules';
 import { confirmDialog } from '../components/Ask';
 import { autoOf } from './save-to-profile';
 import { DynamicTab } from './DynamicTab';
@@ -86,7 +86,11 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
   const printerName = printer?.name ?? '';
   const shown0 = useMemo(() => scales.length ? {...values, ...Object.fromEntries(scales.map((r) => [r.key, scaledValue(r, {nozzle, layerHeight: height})]))} : values, [values, scales, nozzle, height]);
   const shown = useMemo(() => { const own = (source as {overlay?: Config} | undefined)?.overlay ?? {}, out = {...shown0}; for (const [k, v] of Object.entries(fromPrinter)) if (!(k in own) && !(k in changes)) out[k] = v; return out; }, [shown0, fromPrinter, source, changes]);
-  const sourceText = useMemo(() => ({...Object.fromEntries(scales.map((r) => [r.key, r.basis === 'nozzle' ? `${r.factor} × nozzle ${nozzle}` : r.basis === 'layer' ? `${r.factor} × layer height ${height}` : `⌈ ${r.factor} mm ÷ layer height ${height} ⌉`])), ...Object.fromEntries(Object.keys(fromPrinter).map((k) => [k, `Set by ${printerName}`]))}), [scales, nozzle, height, fromPrinter, printerName]);
+  const lifted = useMemo(() => type !== 'process' ? {} : Object.fromEntries((['top', 'bottom'] as const).flatMap((side) => {
+    const e = effectiveShells(shown, side, height);
+    return e.lifted ? [[`${side}_shell_layers`, `${e.effective} at ${height} mm to keep ≥ ${e.thickness} mm`]] : [];
+  })), [type, shown, height]);
+  const sourceText = useMemo(() => ({...Object.fromEntries(scales.map((r) => [r.key, r.basis === 'nozzle' ? `${r.factor} × nozzle ${nozzle}` : r.basis === 'layer' ? `${r.factor} × layer height ${height}` : `⌈ ${r.factor} mm ÷ layer height ${height} ⌉`])), ...Object.fromEntries(Object.keys(fromPrinter).map((k) => [k, `Set by ${printerName}`])), ...lifted}), [scales, nozzle, height, fromPrinter, printerName, lifted]);
   const sources = useMemo(() => {
     const base = settingSources(getState(), type, name);
     if (type !== 'process') return base;
@@ -96,8 +100,9 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
     for (const k of Object.keys(changes)) if (!scales.some((r) => r.key === k)) out[k] = 'set';
     const own = (source as {overlay?: Config} | undefined)?.overlay ?? {};
     for (const k of Object.keys(fromPrinter)) if (!(k in own) && !(k in changes)) out[k] = 'printer';
+    for (const k of Object.keys(lifted)) if (!(k in changes)) out[k] = 'auto';
     return out;
-  }, [type, name, users, scales, changes, fromPrinter, source]);
+  }, [type, name, users, scales, changes, fromPrinter, source, lifted]);
   const setOrUnlink = useCallback((k: string, value: ConfigValue) => { const current = latest.current, rows = current.scales ?? savedScales; update(key, {...current, values: {...current.values, [k]: value}, ...(rows.some((r) => r.key === k) ? {scales: rows.filter((r) => r.key !== k)} : {})}); }, [key, update, savedScales]);
   const relink = useCallback((k: string): void => {
     const row = savedScales.find((r) => r.key === k) ?? DEFAULT_SCALES.find((r) => r.key === k);
@@ -169,7 +174,7 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
         {dirty && !foldActions && <button type="button" className="btn" disabled={saving} onClick={revert}>Revert</button>}
         {onDuplicate && !foldActions && <button type="button" className="btn" disabled={saving || dirty || !ready} onClick={onDuplicate}>Duplicate</button>}
         <MenuButton label="Profile actions" className="icon-btn" items={[...(renamable ? [{label: 'Rename', disabled: saving, action: startRename}] : []), ...(type === 'process' && source ? [scales.length ? {label: 'Make regular', disabled: saving, action: () => void makeRegular()} : {label: 'Make dynamic', disabled: saving, action: makeDynamic}] : []), ...(foldActions && dirty ? [{label: 'Revert', disabled: saving, action: revert}] : []), ...(foldActions && onDuplicate ? [{label: 'Duplicate', disabled: saving || dirty || !ready, action: onDuplicate}] : []), {label: type === 'filament' ? 'Use in slot 1' : 'Use in project', disabled:saving || dirty, action:()=>requestPreset(type,0,key && profileKey(source!))}, {label:'Export',action:()=>void import('../preset-io').then(m=>m.exportPresetJson(source!))}, {label: 'Reset to base settings', disabled: saving || !resolved.base, action: () => {if(resolved.base) update(key, {...latest.current, values: resolved.base.config});}}, 'sep', {label:'Delete',disabled:saving,action:onRemove}]}>⋯</MenuButton></>}>
-    <fieldset className="pf-editor-fields" disabled={saving} aria-busy={saving}><SettingsTab type={type} hidePreset editor={editor} auxiliary={!source ? undefined : type === 'process' ? (scales.length ? {label: '✦ Dynamic', modified: scalesDirty, content: <DynamicTab rows={scales} nozzle={nozzle} height={height} minHeight={minHeight} maxHeight={maxHeight} readOnly={saving} onChange={setScales} fromPrinter={{name: printerName, values: fromPrinter}}/>} : undefined) : type === 'filament' ? {label:'Fits',icon:'param_dependencies_printers',modified:applicabilityDirty,content:<Fits value={applicability} readOnly={saving} onChange={next=>update(key,{...latest.current,applicability:next})}/>}
+    <fieldset className="pf-editor-fields" disabled={saving} aria-busy={saving}><SettingsTab type={type} hidePreset editor={editor} auxiliary={!source ? undefined : type === 'process' ? (scales.length ? {label: '✦ Dynamic', modified: scalesDirty, content: <DynamicTab config={shown} rows={scales} nozzle={nozzle} height={height} minHeight={minHeight} maxHeight={maxHeight} readOnly={saving} onChange={setScales} fromPrinter={{name: printerName, values: fromPrinter}}/>} : undefined) : type === 'filament' ? {label:'Fits',icon:'param_dependencies_printers',modified:applicabilityDirty,content:<Fits value={applicability} readOnly={saving} onChange={next=>update(key,{...latest.current,applicability:next})}/>}
       : [{label: 'Print overrides', icon: 'param_speed', modified: overridesDirty, content: <PrintOverrides value={overrides} readOnly={saving} onChange={setOverrides}/>}, ...(connections ? [{label:'Connection',icon:'printer_in_lan',content:<Suspense fallback={null}><ConnectionEditor printer={profileKey(source)} name={profileName}/></Suspense>}] : [])]}/></fieldset>
   </DetailPane>;
 }

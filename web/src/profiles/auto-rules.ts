@@ -25,7 +25,9 @@ export function scaleValues(scales: readonly ScaleRow[], ctx: ScaleContext): Con
 export function effectiveShells(config: Config, side: 'top' | 'bottom', layerHeight: number): { layers: number; effective: number; thickness: number; lifted: boolean } {
   const num = (v: Config[string] | undefined) => { const x = Number(Array.isArray(v) ? v[0] : v); return Number.isFinite(x) ? x : 0; };
   const layers = Math.max(0, Math.round(num(config[`${side}_shell_layers`]))), thickness = num(config[`${side}_shell_thickness`]);
-  const minimum = thickness > 0 && layerHeight > 0 && layers > 0 ? Math.ceil(thickness / layerHeight - 1e-6) : 0;
+  const first = side === 'bottom' ? num(config.initial_layer_print_height) : 0;
+  const minimum = !(thickness > 0 && layerHeight > 0 && layers > 0) ? 0
+    : first > 0 ? (thickness <= first + 1e-6 ? 1 : 1 + Math.ceil((thickness - first) / layerHeight - 1e-6)) : Math.ceil(thickness / layerHeight - 1e-6);
   return { layers, effective: Math.max(layers, minimum), thickness, lifted: minimum > layers };
 }
 export const scalesOf = (record: unknown): ScaleRow[] => {

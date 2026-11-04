@@ -3,7 +3,8 @@ import { Choice } from '../components/kit';
 import { OPTIONS, splitKey, TABS } from '../options';
 import { useTabLoaded } from '../components/PresetDialogs';
 import { Glyph } from '../components/Glyph';
-import { heightsFor, scaledValue, type ScaleBasis, type ScaleRow } from './auto-rules';
+import { effectiveShells, heightsFor, scaledValue, type ScaleBasis, type ScaleRow } from './auto-rules';
+import type { Config } from '../api/types';
 import { labelOf } from './PrintOverrides';
 
 const GROUPS: { name: string; basis: ScaleBasis; keys: string[] }[] = [
@@ -72,8 +73,9 @@ function FormulaLine({ f, readOnly, onFactor, onRemove }: { f: Formula; readOnly
   </li>;
 }
 
-export function DynamicTab({ rows, nozzle, height, minHeight, maxHeight, readOnly, onChange, fromPrinter }: {
+export function DynamicTab({ rows, nozzle, height, minHeight, maxHeight, readOnly, onChange, fromPrinter, config = {} }: {
   rows: ScaleRow[]; nozzle: number; height: number; minHeight?: number; maxHeight?: number; readOnly?: boolean; onChange(rows: ScaleRow[]): void;
+   config?: Config;
    fromPrinter?: { name: string; values: Record<string, unknown> };
 }) {
   const [split, setSplit] = useState<ReadonlySet<string>>(() => new Set());
@@ -97,6 +99,9 @@ export function DynamicTab({ rows, nozzle, height, minHeight, maxHeight, readOnl
     const why = isWidth(row.key) ? 'Kept within 90–150 % of the nozzle' : 'Kept within 75 % of the nozzle';
     return <td key={f.keys.join()} className="n" {...(clamped ? { 'data-clamped': true, 'data-truncated': 'true', 'data-full-text': why } : {})}>{f.basis === 'perLayer' ? v : mm(v)}</td>;
   };
+  const shells = (n: number, h: number) => { const row = rows.find((r) => r.key === 'top_shell_layers');
+    const e = effectiveShells(row ? { ...config, top_shell_layers: String(scaledValue(row, { nozzle: n, layerHeight: h })) } : config, 'top', h);
+    return <td className="n" {...(e.lifted ? { 'data-clamped': true, 'data-truncated': 'true', 'data-full-text': `${e.layers} raised to keep ≥ ${e.thickness} mm` } : {})}>{e.effective}</td>; };
   return <section className="dyn-tab" aria-label="Dynamic">
     <div className="dyn-rows"><ul className="dyn-formulas">
       {formulas.map((f) => <FormulaLine key={f.keys.join(',')} f={f} readOnly={readOnly} onFactor={(v) => setFactor(f.keys, v)} onRemove={() => remove(f.keys)}/>)}
@@ -112,13 +117,13 @@ export function DynamicTab({ rows, nozzle, height, minHeight, maxHeight, readOnl
       {Object.entries(fromPrinter.values).map(([k, v]) => <li key={k} className="dyn-formula"><span className="dyn-name">{labelOf(k)}</span><span className="dyn-eq">=</span><span className="dyn-expr"><span className="dyn-ceil" data-hidden>⌈</span>{String(Array.isArray(v) ? v[0] : v)}{OPTIONS[k]?.sidetext ? ` ${OPTIONS[k]?.sidetext}` : ''}</span></li>)}
     </ul>}</div>
     <div className="dyn-table-scroll"><table className="dyn-table">
-      <thead><tr><th>Layer</th>{formulas.map((f) => <th key={f.keys.join()} className="n">{f.name}</th>)}</tr></thead>
+      <thead><tr><th>Layer</th>{formulas.map((f) => <th key={f.keys.join()} className="n">{f.name}</th>)}<th className="n">Top shells</th></tr></thead>
       {NOZZLES.map((n) => {
         const own = Math.abs(n - nozzle) < 1e-6, heights = heightsFor(n, own ? minHeight : Math.ceil(n * 0.25 / 0.04 - 1e-6) * 0.04, own ? maxHeight : undefined).filter((h) => h <= n * 0.75 + 1e-6), open = !folded.has(n);
         return <tbody key={n}>
-          <tr className="dyn-nozzle"><th colSpan={formulas.length + 1}><button type="button" aria-expanded={open} onClick={() => setFolded(open ? new Set([...folded, n]) : new Set([...folded].filter((x) => x !== n)))}>{n} mm nozzle</button></th></tr>
+          <tr className="dyn-nozzle"><th colSpan={formulas.length + 2}><button type="button" aria-expanded={open} onClick={() => setFolded(open ? new Set([...folded, n]) : new Set([...folded].filter((x) => x !== n)))}>{n} mm nozzle</button></th></tr>
           {open && heights.map((h) => <tr key={h} className={Math.abs(n - nozzle) < 1e-6 && Math.abs(h - height) < 1e-6 ? 'is-current' : undefined}>
-            <td className="n">{h.toFixed(2)}</td>{formulas.map((f) => cell(f, n, h))}
+            <td className="n">{h.toFixed(2)}</td>{formulas.map((f) => cell(f, n, h))}{shells(n, h)}
           </tr>)}
         </tbody>;
       })}
