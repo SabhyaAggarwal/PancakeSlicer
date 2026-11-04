@@ -89,7 +89,7 @@ async function toV4(p: ProfileOverlay): Promise<V4Record> {
 }
 
 export async function readProfileLibrary(_mock = false): Promise<ProfileLibraryDocument> {
-  const response = await fetch('/api/library', { cache: 'no-cache' });
+  const response = await fetch('/api/library');
   if (!response.ok) throw await responseError(response);
   const doc = await response.json() as V4Document;
   if (!doc || doc.schema !== 4 || !Number.isInteger(doc.revision) || !Array.isArray(doc.profiles)) throw new Error('The profile library is invalid.');

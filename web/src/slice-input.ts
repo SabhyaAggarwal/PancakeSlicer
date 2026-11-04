@@ -7,7 +7,8 @@ import { filamentColor } from './plater/filamentColor';
 import { meshSignature, plateDescription } from './plater/geometry';
 import { projectEdits, projectInstances } from './plater/projectTransforms';
 import { canEditProject } from './api/client';
-import { effectiveLayerHeight, originsOf, printerOverrides } from './profiles/context';
+import { effectiveLayerHeight } from './profiles/context';
+import { canonicalModeConfig } from './nonplanar-mode';
 import { autoEnginePreset } from './profiles/model';
 import { effectiveConfig, getState, presetEdits, printerPreset, resolvePreset, type LayerEvent, type Mix, type State } from './state/store';
 
@@ -27,20 +28,14 @@ export const MIX_KEYS = ['filament_is_mixed', 'filament_mixed_components', 'fila
   'filament_mixed_gradient_range', 'filament_mixed_gradient_curve', 'filament_mixed_gradient_per_part'];
 
 export function overrides(s = getState()): Config {
-  const out: Config = s.project ? {
-    ...effectiveConfig(s, 'machine'), ...effectiveConfig(s, 'process'),
-    ...effectiveConfig(s, 'filament'),
-  } : {};
-  const add = (type: 'machine' | 'process' | 'filament', name: string, dirty: Config) => {
-    const { base, user } = resolvePreset(s, type, name);
-    const scaled = type === 'process' ? Object.keys(originsOf(user)).filter((k) => originsOf(user)[k] === 'auto') : [];
-    const auto = type === 'process' ? Object.fromEntries([...scaled, 'layer_height', 'nonplanar_mode', 'nonplanar_wave'].flatMap((k) => { const v = effectiveConfig(s, 'process')[k]; return v === undefined ? [] : [[k, v]]; })) : {};
-    Object.assign(out, base?.imported ? base.config : {}, user?.overrides ?? {}, auto, type === 'process' ? printerOverrides(s) : {}, dirty);
-  };
-  add('machine', s.printer, s.dirty.machine);
-  add('process', s.process, s.dirty.process);
-  const configs = s.filamentSlots.map((_, i) => effectiveConfig(s, 'filament', i));
-  Object.assign(out, filamentVectors(configs, Object.fromEntries(Object.entries(OPTIONS).flatMap(([key, def]) => def.default === undefined ? [] : [[key, def.default as ConfigValue]]))));
+  const out: Config = { ...s.projectPresets?.machine, ...s.dirty.machine, ...s.projectPresets?.process, ...s.dirty.process };
+  const slots = s.filamentSlots.map((key, i) => ({ ...s.projectPresets?.filaments[i], ...s.filamentEdits[key] }));
+  const edited = new Set(slots.flatMap((c) => Object.keys(c)));
+  if (edited.size) {
+    const configs = s.filamentSlots.map((_, i) => { const c = effectiveConfig(s, 'filament', i); return Object.fromEntries([...edited].flatMap((k) => c[k] === undefined ? [] : [[k, c[k]]])); });
+    Object.assign(out, filamentVectors(configs, Object.fromEntries([...edited].flatMap((key) => OPTIONS[key]?.default === undefined ? [] : [[key, OPTIONS[key].default as ConfigValue]]))));
+  }
+  delete out.layer_height;
   Object.assign(out, nozzleAssignments(s));
   const machine = effectiveConfig(s, 'machine');
   if (machine.nozzle_volume_type ?? machine.default_nozzle_volume_type) out.nozzle_volume_type = machine.nozzle_volume_type ?? machine.default_nozzle_volume_type;
@@ -116,6 +111,14 @@ export function jobLibrary(s: State): JobLibrary {
   return { printer: id('machine', s.printer), print: id('process', s.process), filaments: s.filamentSlots.map((f) => id('filament', f)), layerHeight: effectiveLayerHeight(s) };
 }
 
+export function appendLibrary(fd: FormData, s: State, settings: Config = {}) {
+  const library = jobLibrary(s);
+  if (!library.printer) throw new Error('Choose a printer first.');
+  if (!library.print) throw new Error('Choose print settings first.');
+  if (!library.filaments.length || library.filaments.some((f) => !f)) throw new Error('Choose a filament for every slot first.');
+  fd.append('library', JSON.stringify({ ...library, project: canonicalModeConfig({ ...overrides(s), ...settings }) }));
+}
+
 export function jobFields(s: State, saving = false) {
   return {
     library: jobLibrary(s),
@@ -134,6 +137,7 @@ export const firstLayer = (s: State) => Number(effectiveConfig(s, 'process').ini
 export function plateSignature(s: State): string {
   return JSON.stringify({
     ...jobFields(s),
+    resolved: [effectiveConfig(s, 'machine'), effectiveConfig(s, 'process'), ...s.filamentSlots.map((_, i) => effectiveConfig(s, 'filament', i))],
     plate: s.project ? undefined : plateDescription(s.objects, firstLayer(s)),
     files: s.project ? [fileId(s.project), ...projectEdits(s).added.map(meshSignature), ...projectEdits(s).volumes.map(({ o }) => meshSignature(o))] : s.objects.map(meshSignature),
   }, (key, value) => key === 'transform' && Array.isArray(value) ? value.map((v: number) => Math.round(v * 1e6) / 1e6)
