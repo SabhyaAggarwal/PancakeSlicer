@@ -3,8 +3,15 @@ import { documentGeneration, onLeaveDocument } from '../state/history';
 import { getState, setState, subscribeStore } from '../state/store';
 import { project } from './project';
 interface SliceNavigation { token: number; project: string; generation: number; plate: number; signature: string; job?: string }
-let serial = 0, pending: SliceNavigation | null = null;
+let serial = 0, pending: SliceNavigation | null = null, watching = false;
+function watch() {
+  if (watching) return;
+  watching = true;
+  subscribeStore(() => { const s = getState(); if (s.tab !== 'prepare' || s.job.state === 'failed' || s.job.state === 'canceled') pending = null; });
+  onLeaveDocument(() => { pending = null; });
+}
 export function beginSlicePreview(signature: string): number {
+  watch();
   const s = getState();
   pending = {token: ++serial, project: project.get().context.id, generation: documentGeneration(), plate: s.plateIndex, signature};
   return serial;
@@ -19,5 +26,3 @@ export function finishSlicePreview(source: string, moves: number) {
       s.job.plateSignature !== intent.signature || plateSignature(s) !== intent.signature) return;
   setState({tab: 'preview'});
 }
-subscribeStore(() => { const s = getState(); if (s.tab !== 'prepare' || s.job.state === 'failed' || s.job.state === 'canceled') pending = null; });
-onLeaveDocument(() => { pending = null; });
