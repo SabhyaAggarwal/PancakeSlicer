@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"regexp"
 )
 
@@ -110,4 +111,60 @@ func init() {
 	if _, err := libraryProfiles(seededLibrary("")); err != nil {
 		panic(fmt.Sprint("starter profiles: ", err))
 	}
+}
+
+func upgradeAutos(doc profileLibraryDocument) int {
+	var profiles []map[string]json.RawMessage
+	if json.Unmarshal(doc["profiles"], &profiles) != nil {
+		return 0
+	}
+	changed := 0
+	for _, p := range profiles {
+		raw, ok := p["auto"]
+		if !ok || stringValue(p["type"]) != "process" {
+			continue
+		}
+		var old struct {
+			Schema          int      `json:"schema"`
+			Dynamic         *bool    `json:"dynamic"`
+			PreferredHeight *float64 `json:"preferredHeight"`
+		}
+		if json.Unmarshal(raw, &old) != nil || old.Schema == 3 {
+			continue
+		}
+		changed++
+		if old.Schema == 2 && old.Dynamic != nil && !*old.Dynamic {
+			delete(p, "auto")
+			continue
+		}
+		next := autoProfile{Schema: 3, Scales: defaultScales}
+		if h := old.PreferredHeight; h != nil && *h >= 0.04 && *h <= 1.2 {
+			next.PreferredHeight = h
+		}
+		p["auto"], _ = json.Marshal(next)
+	}
+	if changed > 0 {
+		doc["profiles"], _ = json.Marshal(profiles)
+	}
+	return changed
+}
+
+func (s *ProfileLibraryStore) upgradeStoredAutos() error {
+	envelope, err := s.readLibrary()
+	if err != nil {
+		return err
+	}
+	n := upgradeAutos(envelope.Document)
+	if n == 0 {
+		return nil
+	}
+	envelope.Document["revision"] = json.RawMessage(fmt.Sprint(libraryRevision(envelope.Document) + 1))
+	encoded, err := json.Marshal(envelope)
+	if err == nil {
+		err = s.writeLibrary(encoded)
+	}
+	if err == nil {
+		log.Printf("profile library: rewrote %d print profiles' auto as schema 3", n)
+	}
+	return err
 }

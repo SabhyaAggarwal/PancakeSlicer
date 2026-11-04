@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -31,7 +32,7 @@ func NewProfileLibraryStore(dir string) (*ProfileLibraryStore, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
-	return s, nil
+	return s, s.upgradeStoredAutos()
 }
 
 func validProfileType(t string) bool { return t == "machine" || t == "process" || t == "filament" }
@@ -439,6 +440,9 @@ func (s *Server) putProfileLibrary(w http.ResponseWriter, r *http.Request) {
 	if request.ExpectedRevision != revision || libraryRevision(request.Document) != revision {
 		libraryFailure(w, 409, "revision_conflict", "The profile library changed. Reload it and reapply this draft.", "reload_reapply", revision)
 		return
+	}
+	if n := upgradeAutos(request.Document); n > 0 {
+		log.Printf("profile library: upgraded %d print profiles' auto in operation %s", n, request.OperationID)
 	}
 	next, err := libraryProfiles(request.Document)
 	if err != nil {
