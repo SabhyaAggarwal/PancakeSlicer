@@ -161,6 +161,9 @@ func libraryProfiles(doc profileLibraryDocument) (map[string]map[string]json.Raw
 		if err := validateAuto(p, typ); err != nil {
 			return nil, fmt.Errorf("%s: %w", name, err)
 		}
+		if err := validatePrintOverrides(p, typ); err != nil {
+			return nil, fmt.Errorf("%s: %w", name, err)
+		}
 		var profileRevision uint64
 		var anchor struct {
 			Name    string `json:"name"`

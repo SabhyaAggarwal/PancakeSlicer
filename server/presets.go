@@ -29,6 +29,7 @@ type Preset struct {
 	DefaultMaterials     []string                   `json:"default_materials,omitempty"`
 	NativeSupportCapable bool                       `json:"native_support_capable,omitempty"`
 	Internal             bool                       `json:"internal,omitempty"`
+	PrintDefaults        map[string]json.RawMessage `json:"print_defaults,omitempty"`
 }
 type VendorPresets struct {
 	Vendor                         string   `json:"vendor"`
@@ -147,6 +148,12 @@ func (p *PresetIndex) vendor(name string) (*VendorPresets, error) {
 			v.presets.machines = presetMap(v.presets.Machines)
 			v.presets.processes = presetMap(v.presets.Processes)
 			v.presets.filaments = presetMap(v.presets.Filaments)
+			dictionary := optionData
+			if p.tool != nil && p.tool.Options != nil {
+				dictionary = p.tool.Options.plain
+			}
+			noteProcessKeys(v.presets)
+			setPrintDefaults(v.presets, optionDefaults(dictionary))
 			v.response, v.err = cacheJSON(compactPresets(v.presets))
 		}
 	})
