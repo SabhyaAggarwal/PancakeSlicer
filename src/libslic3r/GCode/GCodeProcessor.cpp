@@ -6654,6 +6654,9 @@ void GCodeProcessor::set_print(Print* print)
         return object->config().nonplanar_mode.value != NonplanarMode::Off;
     });
     m_marlin_junctions = print != nullptr && (Nonplanar::requests_conformal_shells(*print) ||
+                                              std::any_of(print->objects().begin(), print->objects().end(), [](const PrintObject *object) {
+                                                  return object->config().nonplanar_mode.value == NonplanarMode::CurvedTops;
+                                              }) ||
                                               print->config().nonplanar_kinematics.value != RotaryLayout::None);
 }
 

@@ -10622,7 +10622,8 @@ std::string GCode::_extrude(const ExtrusionPath &path, const std::string &path_d
     }
     if (path.nonplanar_source)
         gcode += ";_NONPLANAR_BEGIN patch=" + std::to_string(path.source_surface_id) + " shell=" +
-                 std::to_string(int(std::lround(path.distance_to_top / std::max(0.01f, path.height)))) + "\n";
+                 std::to_string(int(std::lround(path.distance_to_top / std::max(0.01f, path.height)))) +
+                 " rate=" + std::to_string(std::lround(this->conformal_segment_rate())) + "\n";
 
 
     const ExtrusionPathSloped* sloped = dynamic_cast<const ExtrusionPathSloped*>(&path);
@@ -11638,6 +11639,15 @@ std::string GCode::_encode_label_ids_to_base64(std::vector<size_t> ids)
 
 std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string comment, double z )
 {
+    const bool native_curved = m_config.nonplanar_mode.value == NonplanarMode::CurvedTops && this->layer() != nullptr;
+    auto native_travel_speed = [this](const Vec3d &to, double limit) {
+        const auto printed = [](const Vec3d &p) {
+            return Vec3d(GCodeFormatter::quantize_xyzf(p.x()), GCodeFormatter::quantize_xyzf(p.y()), GCodeFormatter::quantize_xyzf(p.z()));
+        };
+        const double length = (printed(to) - printed(m_writer.get_position())).norm();
+        const double rate = this->conformal_segment_rate();
+        return length > EPSILON && rate > 0. ? std::min(limit, 0.99 * rate * length) : limit;
+    };
     bool nonplanar_travel = m_nonplanar_ceiling > 0.;
     Polyline travel { this->last_pos(), point };
 
@@ -11647,14 +11657,17 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
     const double target_z      = z == DBL_MAX ? m_nominal_z : z;
     bool         nonplanar_lift = false;
     bool         nonplanar_continuation = false;
-    if ((m_config.nonplanar_mode.value == NonplanarMode::CurvedTops) && this->layer() != nullptr) {
+    if (native_curved) {
         const double layer_z      = m_nominal_z;
         const bool   below_layer  = (m_writer.get_position().z() < layer_z - 0.0005 || target_z < layer_z - 0.0005) &&
             travel.length() > scale_(0.05);
         nonplanar_continuation = travel.length() <= scale_(0.05) &&
             std::abs(target_z - m_writer.get_position().z()) <= 0.0005;
-        nonplanar_lift = (this->needs_zmove(travel, target_z) || m_force_safe_travel || below_layer) && ! nonplanar_continuation;
+        nonplanar_lift = (this->needs_zmove(travel, target_z) || m_force_safe_travel || below_layer || nonplanar_travel) &&
+            !nonplanar_continuation;
     }
+    if (native_curved)
+        nonplanar_travel = false;
     bool could_be_wipe_disabled       = false;
     const bool used_external_mp_once  = m_avoid_crossing_perimeters.used_external_mp_once();
     std::string gcode;
@@ -11717,6 +11730,10 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
         needs_retraction = this->needs_retraction(travel, role, lift_type);
     }
 
+    if (native_curved && m_nonplanar_ceiling > 0. &&
+        travel.length() >= scale_(FILAMENT_CONFIG(retraction_minimum_travel)))
+        needs_retraction = true;
+
     m_avoid_crossing_perimeters.reset_once_modifiers();
 
     const bool travel_clear = nonplanar_travel &&
@@ -11749,20 +11766,31 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
         for (size_t i = 0; i < m_config.z_hop.size(); ++i) hop = std::max(hop, m_config.z_hop.get_at(i));
         std::vector<Vec2d> xy;
         for (const Point &p : travel.points) xy.emplace_back(this->point_to_gcode(p));
-        const double safe = m_nonplanar_heights.travel_height(xy, m_nonplanar_clearance,
-            std::max(m_writer.get_position().z(), target_z) + hop);
+        const double base = std::max(m_writer.get_position().z(), target_z);
+        double safe = m_nonplanar_heights.travel_height(xy, m_nonplanar_clearance, base);
+        if (safe > base + EPSILON || m_force_safe_travel)
+            safe = m_nonplanar_heights.travel_height(xy, m_nonplanar_clearance,
+                base + (needs_retraction || m_force_safe_travel ? hop : 0.));
         m_writer.cancel_lazy_lift();
-        gcode += m_writer.travel_to_z(safe, "lift over curved tops", true, this->conformal_max_speed_z());
-        for (size_t i = 1; i < travel.size(); ++i)
-            gcode += m_writer.travel_to_xy(this->point_to_gcode(travel.points[i]), comment);
-        gcode += m_writer.travel_to_z(target_z, "descend onto curved tops", true, this->conformal_max_speed_z());
+        if (safe > m_writer.get_position().z() + EPSILON || m_need_change_layer_lift_z || !m_writer.is_current_position_clear())
+            gcode += m_writer.travel_to_z(safe, "lift over curved tops", true,
+                native_travel_speed(Vec3d(m_writer.get_position().x(), m_writer.get_position().y(), safe), this->conformal_max_speed_z()));
+        for (size_t i = 1; i < travel.size(); ++i) {
+            const Vec2d xy_to = this->point_to_gcode(travel.points[i]);
+            const Vec3d to(xy_to.x(), xy_to.y(), safe);
+            gcode += m_writer.travel_to_xyz(to, comment, true, this->conformal_max_speed_z(),
+                native_travel_speed(to, NOZZLE_CONFIG(travel_speed)));
+        }
+        if (std::abs(target_z - m_writer.get_position().z()) > EPSILON)
+            gcode += m_writer.travel_to_z(target_z, "descend onto curved tops", true,
+                native_travel_speed(Vec3d(m_writer.get_position().x(), m_writer.get_position().y(), target_z), this->conformal_max_speed_z()));
         m_need_change_layer_lift_z = false;
         this->set_last_pos(travel.points.back());
         if (m_force_safe_travel_once) m_force_safe_travel = m_force_safe_travel_once = false;
         return gcode;
     }
 
-    if (travel.size() >= 2 && !travel_clear && this->below_conformal_material()) {
+    if (!native_curved && travel.size() >= 2 && !travel_clear && this->below_conformal_material()) {
         const Vec2d from = this->point_to_gcode(travel.points.front()), to = this->point_to_gcode(travel.points.back());
         const double z_to = z == DBL_MAX ? m_nominal_z : z;
         if (const double safe = this->nonplanar_travel_z(&from, &to); safe > z_to + EPSILON) {
@@ -11778,23 +11806,7 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
         }
     }
 
-    if (travel.size() >= 2 && nonplanar_lift) {
-        float max_z_hop = 0.f;
-        for (int i = 0; i < m_config.z_hop.size(); i++)
-            max_z_hop = std::max(max_z_hop, (float)m_config.z_hop.get_at(i));
-        std::vector<Vec2d> path_xy;
-        for (const Point &p : travel.points)
-            path_xy.emplace_back(this->point_to_gcode(p));
-        const double move_z = m_nonplanar_heights.travel_height(path_xy, m_nonplanar_clearance,
-            std::max(m_writer.get_position().z(), target_z) + double(max_z_hop));
-        m_writer.cancel_lazy_lift();
-        gcode += m_writer.travel_to_z(move_z, "Move up for non planar extrusion", true);
-        for (size_t i = 1; i < travel.size(); ++ i)
-            gcode += m_writer.travel_to_xy(this->point_to_gcode(travel.points[i]), comment);
-        gcode += m_writer.travel_to_z(target_z, "Move down for non planar extrusion", true);
-        m_need_change_layer_lift_z = false;
-        this->set_last_pos(travel.points.back());
-    } else if (travel.size() >= 2) {
+    if (travel.size() >= 2) {
         if (nonplanar_travel) {
             gcode += this->travel_above_nonplanar(travel, comment, z);
         } else if (false ) {
@@ -11808,7 +11820,9 @@ std::string GCode::travel_to(const Point& point, ExtrusionRole role, std::string
                 if (!needs_retraction && z != DBL_MAX && z < m_writer.get_position().z() - EPSILON &&
                     Nonplanar::requests_conformal_shells(*m_print))
                     gcode += m_writer.travel_to_xy(dest2d, comment);
-                gcode += m_writer.travel_to_xyz(dest3d, comment, m_need_change_layer_lift_z);
+                gcode += native_curved ? m_writer.travel_to_xyz(dest3d, comment, true, this->conformal_max_speed_z(),
+                    native_travel_speed(dest3d, NOZZLE_CONFIG(travel_speed))) :
+                    m_writer.travel_to_xyz(dest3d, comment, m_need_change_layer_lift_z);
                 m_need_change_layer_lift_z = false;
             } else {
                 for (size_t i = 1; i < travel.size(); ++i) {
