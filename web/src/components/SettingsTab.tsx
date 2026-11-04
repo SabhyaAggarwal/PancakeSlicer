@@ -34,7 +34,7 @@ const TAB_OF: Record<PresetType, TabDesc['tab']> = { process: 'process', filamen
 const TYPE_NAME: Record<PresetType, string> = { process: 'Process', filament: 'Filament', machine: 'Printer' };
 
 export interface ProfileFields { name: string; config: Config; baseline: Config; changes: Config; mode?: OptionMode; set(key: string, value: ConfigValue): void; reset(key: string): void;
-  sources?: Record<string, SettingSource>; resetToBase?(key: string): void }
+  sources?: Record<string, SettingSource>; autoReasons?: Record<string, string>; resetToBase?(key: string): void }
 export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overrides, readOnly = false, auxiliary }: { type: PresetType; slot?: number; compact?: boolean; hidePreset?: boolean; editor?: ProfileFields;
   overrides?: ObjectOverrides | null; readOnly?: boolean; auxiliary?: {label:string; icon?:string; content:React.ReactNode; modified?:boolean;  initial?:boolean} }) {
   const { desc, error } = useTab(TAB_OF[type]);
@@ -171,8 +171,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
               : type === 'machine' && key === 'nonplanar_head' ? <Suspense fallback={null}><HeadPicker value={String(config[key] ?? '')} onCommit={(v) => editor ? editor.set(key, v) : v === String(system[key] ?? '') ? resetOption(type, key) : setOption(type, key, v)} /></Suspense>
               : undefined} key={`${k}:${i}`} optKey={k} type={type} value={config[key]} systemValue={system[key]} dirty={key in dirty}
               slot={slot} onSet={fields?.set} onReset={fields?.reset} mixed={overrides?.mixed[key]} resetTitle={overrides ? 'Reset to project' : undefined}
-              source={source?.label} onResetToBase={source?.own && source.base && !readOnly ? editor?.resetToBase : undefined}
-              sourceState={key in dirty ? 'edited' : Object.keys(dirty).length ? 'busy' : undefined}
+              source={source} autoReason={editor?.autoReasons?.[key]} onResetToBase={source === 'set' && !readOnly ? editor?.resetToBase : undefined}
               disabled={readOnly || isDeferred(key) || states[key]?.enabled === false}
               definition={definition(key, line)}
               inheritedValue={env[key.replace(/^filament_/, '')] as ConfigValue}

@@ -8,6 +8,7 @@ import { deleteAll, removeSelected, setState, useStore } from '../state/store';
 import { canPaste, copySelection, cutSelection, pasteClipboard, selectAll } from '../edit';
 import { historyVersion, redo, redoName, redoNames, redoSteps, subscribeHistory, undo, undoName, undoNames, undoSteps } from '../state/history';
 import { CAMERA_VIEWS, VIEW_DIRECTIONS, cameraCommand, cameraSnapshot, subscribeCamera, perspective, autoPerspective } from '../camera';
+import { startOver, useDevReset } from '../dev-reset';
 import { Icon } from './Icon';
 import { Caret } from './Caret';
 import { canAddPlate, duplicatePlate, exportAll, exportablePlates, sliceAll } from '../plater/plates';
@@ -84,7 +85,8 @@ export function TopBar() {
             action: () => void import('../preview/objExport').then((m) => m.exportToolpathsObj(exportName || 'toolpaths')) },
           { label: 'Export Preset Bundle...', action: () => setState({ presetUx: { kind: 'export' } }), tip: 'Export current configuration to files' },
         ];
-  const appItems: MenuItem[] = [{label:'Add model…',action:openFileDialog},{label:'File',sub:fileItems},{label:'Settings',action:showSettings},{label:'Projects',action:showProjects},{label:'Profiles',action:()=>setState({presetUx:{kind:'presets',type:'machine'}})},'sep',{label: 'Edit', sub: [
+  const devReset = useDevReset();
+  const appItems: MenuItem[] = [{label:'Add model…',action:openFileDialog},{label:'File',sub:fileItems},{label:'Settings',action:showSettings},{label:'Projects',action:showProjects},{label:'Profiles',action:()=>setState({presetUx:{kind:'presets',type:'machine'}})},'sep',...(devReset ? [{label:'Start over',action:()=>void startOver().catch(()=>{})} as MenuItem,'sep' as const] : []),{label: 'Edit', sub: [
           { label: undoLabel ? `Undo ${undoLabel}` : 'Undo', shortcut: `${MOD}+Z`, action: undo, disabled: !undoLabel },
           { label: redoLabel ? `Redo ${redoLabel}` : 'Redo', shortcut: `${MOD}+Y`, action: redo, disabled: !redoLabel },
           ...(undoLabel || redoLabel ? [{ label: 'History', sub: [

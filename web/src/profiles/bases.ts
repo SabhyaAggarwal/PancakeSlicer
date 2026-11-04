@@ -3,8 +3,8 @@ import { getState, resolvePreset, type State } from '../state/store';
 import { OPTIONS } from '../options';
 import { findProfile, profileKey } from './identity';
 import { resolveProfile, PRESET_META } from './model';
-import { effectiveLayerHeight, printContext, profileChain } from './context';
-import { foldBase, resetToBase, resolveChain, type ChainLink, type DynamicWhen } from './dynamic';
+import { originsOf, profileChain, type SettingOrigin } from './context';
+import { foldBase, resetToBase, type ChainLink } from './chain';
 
 export type BaseRole = 'base' | 'base-only';
 export const baseRoleOf = (p: UserPreset | undefined) => (p as { baseRole?: BaseRole } | undefined)?.baseRole;
@@ -99,25 +99,15 @@ export async function detachFromBase(type: PresetType, key: string) {
   await commit([next]);
 }
 
-const whenLabel = (w: DynamicWhen) => [w.printerModel, w.nozzle !== undefined ? `${w.nozzle} nozzle` : '', w.layerHeight !== undefined ? `${w.layerHeight.toFixed(2)} layer` : '']
-  .filter(Boolean).join(' × ');
-export interface SettingSource { label: string; own: boolean; base: boolean }
-const sourceCache = new WeakMap<State, Map<string, Record<string, SettingSource>>>();
-export function settingSources(s: State, type: PresetType, key: string): Record<string, SettingSource> {
+export type { SettingOrigin };
+export type SettingSource = SettingOrigin;
+const sourceCache = new WeakMap<State, Map<string, Record<string, SettingOrigin>>>();
+export function settingSources(s: State, type: PresetType, key: string): Record<string, SettingOrigin> {
   let byProfile = sourceCache.get(s);
   if (!byProfile) sourceCache.set(s, (byProfile = new Map()));
   const id = `${type}:${key}`, hit = byProfile.get(id);
   if (hit) return hit;
-  const links = profileChain(s, type, resolveProfile(s, type, key)), out: Record<string, SettingSource> = {};
-  const based = links.length > 1, dynamic = links.some((l) => l.dynamic);
-  const source = (i: number, when?: DynamicWhen): SettingSource => {
-    const own = i === links.length - 1, layer = when ? whenLabel(when) : '';
-    return { label: own ? layer || 'This profile' : `Base "${links[i].name}"${layer ? ` · ${layer}` : ''}`, own, base: based };
-  };
-  if (dynamic) {
-    const { printerModel, nozzle } = printContext(s);
-    for (const [k, src] of Object.entries(resolveChain(links, { printerModel, nozzle, layerHeight: effectiveLayerHeight(s) ?? 0 }, {}).sources)) if (based || src.layer) out[k] = source(src.link, src.layer?.when);
-  } else if (based) links.forEach((l, i) => { for (const k of Object.keys(l.overlay)) out[k] = source(i); });
+  const out = type === 'process' ? originsOf(profileChain(s, type, resolveProfile(s, type, key))) : {};
   byProfile.set(id, out);
   return out;
 }

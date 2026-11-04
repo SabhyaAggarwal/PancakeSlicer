@@ -14,7 +14,7 @@ import { preferenceText, savePreferences, usePreference } from '../saved-prefere
 import { printerCover } from '../profiles/metadata';
 import './settings.css';
 import { Glyph, type GlyphName } from './Glyph';
-import { LayerHeightChooser } from '../profiles/LayerHeightChooser';
+import { AutoInputs } from '../profiles/AutoInputs';
 import { PrinterLive } from '../printers/PrinterLive';
 const ObjectScope = lazy(() => import('./ObjectOverrides'));
 const SettingsTab = lazy(() => import('./SettingsTab').then(m => ({default: m.SettingsTab})));
@@ -100,7 +100,7 @@ export function Sidebar() {
       <RailSection title="Print settings" className="process-section" meta={!objects && <ChangesMark type="process"/>} actions={<><ViewChoices/>{!objects && <><RailAction glyph="edit" label="Edit print settings" disabled={!process} onClick={() => edit('process', process)}/><PresetActions type="process"/></>}</>}>
         {objects ? <Suspense fallback={<div className="settings-load" role="status">Loading settings…</div>}><ObjectScope/></Suspense> : <>
           <div className="rail-row rail-row-wide"><PresetCombo type="process"/></div>
-          <LayerHeightChooser/>
+          <AutoInputs/>
           {process && <ConflictLine type="process" name={process}/>}
           <div className="process-panel"><Suspense fallback={<div className="settings-load" role="status">Loading settings…</div>}><SettingsTab type="process" compact hidePreset/></Suspense></div>
         </>}

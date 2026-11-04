@@ -21,7 +21,8 @@ import { capturePrinterMaterials,planPrinterSwitch,reconcilePrinterSelection,typ
 import { findProfile,profileKey } from '../profiles/identity';
 import type { PrinterConnections } from '../printers/connections';
 export { PRESET_META } from '../profiles/model';
-import { effectiveProfileValues, resolvedWithDynamic } from '../profiles/context';
+import { effectiveProfileValues, resolvedWithAuto } from '../profiles/context';
+import type { Speed } from '../profiles/auto-rules';
 import { selectCompatibility } from '../profiles/compatibility';
 export { isCompatible, selectCompatibility } from '../profiles/compatibility';
 
@@ -223,6 +224,7 @@ export interface State {
   slotColours: (string | undefined)[];
   mixes: Record<number, Mix>;
   processVariant: { layerHeight: number } | null;
+  speed: Speed;
   projectMaterials: { colours: string[]; matrix: number[] | null; multiplier: number | null; builds?: { object: number; instance: number }[] } | null;
   flush: { matrix: number[] | null; multiplier: number | null };
   flushDialog: boolean;
@@ -321,6 +323,7 @@ let state: State = {
   slotColours: [],
   mixes: {},
   processVariant: null,
+  speed: 'balanced',
   projectMaterials: null,
   flush: { matrix: null, multiplier: null },
   flushDialog: false,
@@ -401,7 +404,7 @@ export function resolvePreset(s: Parameters<typeof resolveProfile>[0], type: Pre
   const key = `${type}:${name}`;
   let result = values.get(key);
   if (!result) values.set(key, (result = resolveProfile(s, type, name)));
-  return 'printer' in s ? resolvedWithDynamic(s as State, type, result) : result;
+  return 'printer' in s ? resolvedWithAuto(s as State, type, result) : result;
 }
 
 const profileConflictRows = new WeakMap<State, Map<string, ReturnType<typeof profileConflicts>>>();
@@ -488,6 +491,9 @@ export function setOption(type: PresetType, key: string, value: ConfigValue, slo
 
 export function setLayerHeight(layerHeight: number) {
   undoable('Layer height', () => setState((s) => ({ processVariant: { layerHeight }, job: markStale(s.job) })), 'process:layer_height');
+}
+export function setSpeed(speed: Speed) {
+  undoable('Speed', () => setState((s) => ({ speed, job: markStale(s.job) })), 'process:speed');
 }
 
 export function resetOption(type: PresetType, key: string, slot = 0) {

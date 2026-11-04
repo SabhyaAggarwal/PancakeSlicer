@@ -1,33 +1,12 @@
-import type { Config, PresetType, UserPreset } from '../api/types';
+import type { PresetType } from '../api/types';
 import { switchPreset } from '../actions';
 import { selectChanges } from '../state/changes';
 import { getState, presetEdits, resolvePreset, setState, toast, type State } from '../state/store';
 import { createProfileFromBase } from './catalog';
-import { printContext } from './context';
-import { availableHeights, defaultScope, nearestHeight, scopeWhen, withLayerValue, type DynamicContext, type DynamicProfile, type DynamicRecord, type DynamicScope } from './dynamic';
 import { findProfile, profileKey } from './identity';
-import { changedKeys, saveProfile } from './model';
+import { saveProfile } from './model';
 import { acknowledgeProjectProfileChanges, captureProjectProfileChanges } from './project-draft';
 import { archiveProfiles, commitProfileRecords } from './transactions';
-
-type Dynamic = UserPreset & DynamicRecord & { dynamic: DynamicProfile };
-
-export function dynamicContext(p: DynamicRecord & { dynamic: DynamicProfile }, variant: { layerHeight: number } | null): DynamicContext {
-  const pc = printContext(getState()), want = variant?.layerHeight ?? p.dynamic.reference.layerHeight;
-  const heights = p.type === 'process' ? availableHeights(p, pc) : [];
-  return { printerModel: pc.printerModel, nozzle: pc.nozzle, layerHeight: heights.length ? nearestHeight(heights, want) : p.dynamic.reference.layerHeight };
-}
-
-export function scopedSave(p: Dynamic, draft: { values: Config; baseline: Config; applyTo?: DynamicScope }, ctx: DynamicContext): UserPreset {
-  const overlay: Config = { ...(p.overlay ?? p.overrides ?? {}) };
-  let dynamic = p.dynamic;
-  for (const k of Object.keys(changedKeys(draft.values, draft.baseline))) {
-    const value = draft.values[k], scope = draft.applyTo ?? defaultScope(p, k, ctx);
-    if (scope === 'all') { if (value === undefined) delete overlay[k]; else overlay[k] = value; }
-    else dynamic = withLayerValue(dynamic, scopeWhen(scope, ctx)!, k, value);
-  }
-  return { ...p, id: profileKey(p), overlay, overrides: overlay, dynamic } as UserPreset;
-}
 
 const selectedKey = (s: State, type: PresetType, slot: number) => (type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot]) ?? '';
 const message = (e: unknown) => e instanceof Error ? e.message : String(e);
@@ -56,9 +35,7 @@ export async function saveToProfile(type: PresetType, slot = 0): Promise<void> {
   if (!source || !resolved.base || resolved.error) throw new Error(resolved.error ?? 'This profile is unavailable. Your changes are kept.');
   const before = changesOf(s, type, slot), prior = structuredClone(source);
   const values = { ...resolved.config, ...stage.deltas };
-  const record = (source as Partial<Dynamic>).dynamic
-    ? scopedSave(source as Dynamic, { values, baseline: resolved.config }, dynamicContext(source as Dynamic, s.processVariant ?? null))
-    : { ...saveProfile(s, type, source.name, profileKey(source), values), id: profileKey(source), applicability: source.applicability };
+  const record = { ...saveProfile(s, type, source.name, profileKey(source), values), id: profileKey(source), applicability: source.applicability };
   await commitProfileRecords([record], { apply: (st) => acknowledgeProjectProfileChanges(st, stage, values) });
   toast(`Saved to ${source.name}`, { label: 'Undo', run: () => void commitProfileRecords([{ ...prior, revision: findProfile(getState(), type, stage.key)?.revision }])
     .then(() => restoreChanges(type, slot, stage.key, before), (e) => toast(message(e))) });

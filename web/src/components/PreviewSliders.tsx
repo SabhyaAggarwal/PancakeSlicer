@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import type { LayerRec } from '../preview/format';
 import { Glyph } from './Glyph';
 
@@ -18,6 +18,7 @@ export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus, oneL
   oneLayer?: boolean;
 }) {
   const track = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState<'lo' | 'hi'>('hi');
   const n = layers.length;
   const frac = (i: number) => (n > 1 ? i / (n - 1) : 0);
   const at = (clientY: number) => {
@@ -28,6 +29,7 @@ export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus, oneL
   const follow = (which: 'lo' | 'hi', e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    setActive(which);
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
     const move = (ev: PointerEvent) => {
@@ -81,6 +83,17 @@ export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus, oneL
         onChange(lo, Math.max(lo, Math.min(n - 1, hi + d)));
       }}
     >
+      {onPlus && (
+          <button
+            type="button"
+            className="ls-plus icon-btn"
+            aria-label={ticks.some((t) => t.layer === hi) ? `Edit the pause or G-code at layer ${hi + 1}` : `Add a pause, colour change or G-code at layer ${hi + 1}`}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => onPlus((e.currentTarget as HTMLElement).getBoundingClientRect())}
+          >
+            <Glyph name={ticks.some((t) => t.layer === hi) ? 'edit' : 'plus'} size={16} />
+          </button>
+      )}
       <div
         className="ls-track"
         ref={track}
@@ -105,24 +118,12 @@ export function LayerSlider({ layers, lo, hi, onChange, ticks = [], onPlus, oneL
             }}
           />
         ))}
-        <div className="ls-thumb hi" style={{ bottom: `${frac(hi) * 100}%` }} onPointerDown={drag('hi')} {...aria('hi')}>
-          <div className="ls-tip">{label(hi)}</div>
+        <div className="ls-thumb hi" style={{ bottom: `${frac(hi) * 100}%` }} onPointerDown={drag('hi')} onFocus={() => setActive('hi')} {...aria('hi')}>
+          {active === 'hi' && <div className="ls-tip">{label(hi)}</div>}
         </div>
-        {onPlus && (
-          <button
-            type="button"
-            className="ls-plus icon-btn"
-            style={{ bottom: `${frac(hi) * 100}%` }}
-            aria-label={ticks.some((t) => t.layer === hi) ? `Edit the pause or G-code at layer ${hi + 1}` : `Add a pause, colour change or G-code at layer ${hi + 1}`}
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => onPlus((e.currentTarget as HTMLElement).getBoundingClientRect())}
-          >
-            <Glyph name={ticks.some((t) => t.layer === hi) ? 'edit' : 'plus'} size={14} />
-          </button>
-        )}
         {!oneLayer && (
-          <div className="ls-thumb lo" style={{ bottom: `${frac(lo) * 100}%` }} onPointerDown={drag('lo')} {...aria('lo')}>
-            <div className="ls-tip">{label(lo)}</div>
+          <div className="ls-thumb lo" style={{ bottom: `${frac(lo) * 100}%` }} onPointerDown={drag('lo')} onFocus={() => setActive('lo')} {...aria('lo')}>
+            {active === 'lo' && <div className="ls-tip">{label(lo)}</div>}
           </div>
         )}
       </div>

@@ -32,6 +32,8 @@ import { captureUndo, documentGeneration, historyDepth, historyVersion, leaveDoc
 import { clearPlateJobs, currentPlates } from './plater/plates';
 import { nativeSupportCapable } from './settings-env';
 import { selectionNotice } from './profiles/material-library';
+import { chainAuto, profileChain } from './profiles/context';
+import { resolveProfile } from './profiles/model';
 import { loadPreviewView } from './components/preview-loader';
 
 export async function init() {
@@ -105,6 +107,7 @@ function applyPresetSwitch(type: PresetType, slot: number, name: string, edits: 
     return {kept,dropped};
   }
   const carried = carry(type, name, slot);
+  const preferred = type === 'process' ? chainAuto(profileChain(before, 'process', resolveProfile(before, 'process', name))) : undefined;
   setState((st) => {
     const filamentEdits = { ...st.filamentEdits };
     let projectPresets = st.projectPresets;
@@ -119,7 +122,8 @@ function applyPresetSwitch(type: PresetType, slot: number, name: string, edits: 
       dirty: type === 'process' ? { ...st.dirty, process: carried } : st.dirty,
       filamentEdits,
       projectPresets,
-      ...(type === 'process' ? { process: name } : { filamentSlots: st.filamentSlots.map((f, i) => (i === slot ? name : f)),
+      ...(type === 'process' ? { process: name, ...(preferred?.preferredHeight ? { processVariant: { layerHeight: preferred.preferredHeight } } : {}),
+        ...(preferred?.preferredSpeed ? { speed: preferred.preferredSpeed } : {}) } : { filamentSlots: st.filamentSlots.map((f, i) => (i === slot ? name : f)),
         slotColours: st.mixes[slot] ? st.slotColours : st.slotColours.map((c, i) => (i === slot ? undefined : c)) }),
       job: markStale(st.job),
     };

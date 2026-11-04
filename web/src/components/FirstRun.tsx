@@ -5,7 +5,10 @@ import hookUrl from '../samples/shelf_hook.stl?url';
 import { openFileDialog, openProjectDialog } from '../actions';
 import { handyUrl, importFetched } from '../plater/handy';
 import { getState, subscribeStore, useStore } from '../state/store';
-import { PrinterPicker } from '../profiles/Pickers';
+import { FilamentPicker, PrinterPicker } from '../profiles/Pickers';
+import { startOver, useDevReset } from '../dev-reset';
+import { printerReady } from '../workspace-sheet';
+import { useState } from 'react';
 import { documentGeneration, onLeaveDocument } from '../state/history';
 import './first-run.css';
 import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
@@ -64,6 +67,26 @@ function afterFirstVisit() {
   firstVisitObserver=stop;
 }
 
+function Onboarding() {
+  const [step, setStep] = useState<0 | 1>(0);
+  const ready = useStore(printerReady);
+  return (
+    <div className="fr-onboard">
+      <div className="fr-steps" aria-label={`Step ${step + 1} of 2`}><span className="on" /><span className={step ? 'on' : ''} /></div>
+      {step === 0 ? <PrinterChoice /> : <div className="fr-printer"><label className="fr-label">Filament</label><FilamentPicker slot={0} /></div>}
+      <div className="fr-onboard-foot">
+        {step === 1 && <button type="button" className="btn-ghost" onClick={() => setStep(0)}>Back</button>}
+        <button type="button" className="btn-primary" disabled={!ready} onClick={() => step === 0 ? setStep(1) : savePreferences({ [SETUP_KEY]: '1' })}>{step === 0 ? 'Next' : 'Start printing'}</button>
+      </div>
+    </div>
+  );
+}
+
+export function StartOver({ className = 'btn' }: { className?: string }) {
+  if (!useDevReset()) return null;
+  return <button type="button" className={`fr-startover ${className}`} onClick={() => void startOver().catch(() => {})}>Start over</button>;
+}
+
 export default function EmptyPlate() {
   const preferences=useSyncExternalStore(subscribeSavedPreferences,savedPreferencesSnapshot);
   const setup=usePreference(SETUP_KEY),printer=usePreference('orca.printer');
@@ -72,8 +95,8 @@ export default function EmptyPlate() {
   useEffect(()=>{if(firstVisit)afterFirstVisit();},[firstVisit]);
   return (
     <div className="empty-plate">
-      {firstVisit && <PrinterChoice />}
-      <DropZone />
+      <div className="fr-card">{firstVisit ? <Onboarding /> : <DropZone />}</div>
+      {!firstVisit && <StartOver />}
     </div>
   );
 }

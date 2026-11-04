@@ -1,12 +1,12 @@
-import type { Config, ConfigValue, JobProfileIds, JobVariant } from './api/types';
+import type { Config, ConfigValue } from './api/types';
 import { currentFlush } from './flush-state';
 import { OPTIONS, jobValue } from './options';
 import { filamentColor } from './plater/filamentColor';
 import { meshSignature, plateDescription } from './plater/geometry';
 import { projectEdits, projectInstances } from './plater/projectTransforms';
 import { canEditProject } from './api/client';
-import { effectiveLayerHeight, printContext, profileContext } from './profiles/context';
-import type { DynamicRecord } from './profiles/dynamic';
+import { profileContext } from './profiles/context';
+import { AUTO_KEYS } from './profiles/auto-rules';
 import { effectiveConfig, getState, presetEdits, printerPreset, resolvePreset, type LayerEvent, type Mix, type State } from './state/store';
 
 function eventArg(e: LayerEvent): string {
@@ -31,7 +31,8 @@ export function overrides(s = getState()): Config {
   } : {};
   const add = (type: 'machine' | 'process' | 'filament', name: string, dirty: Config) => {
     const { base, user } = resolvePreset(s, type, name);
-    Object.assign(out, base?.imported ? base.config : {}, user?.overrides ?? {}, dirty);
+    const auto = type === 'process' ? Object.fromEntries(AUTO_KEYS.flatMap((k) => { const v = effectiveConfig(s, 'process')[k]; return v === undefined ? [] : [[k, v]]; })) : {};
+    Object.assign(out, base?.imported ? base.config : {}, auto, user?.overrides ?? {}, dirty);
   };
   add('machine', s.printer, s.dirty.machine);
   add('process', s.process, s.dirty.process);
@@ -102,21 +103,12 @@ export function calibOverrides(s = getState(), kind = ''): Config {
   return out;
 }
 
-function dynamicVariants(s: State, context: ReturnType<typeof profileContext>): Pick<JobProfileIds, 'variants'> {
-  const isDynamic = (p: { user?: unknown }) => !!(p.user as DynamicRecord | undefined)?.dynamic;
-  const { printerModel, nozzle } = printContext(s), layerHeight = effectiveLayerHeight(s);
-  const variant = (height: number | null): JobVariant => ({ printerModel, nozzle, layerHeight: height ?? Number([effectiveConfig(s, 'process').layer_height].flat()[0]) });
-  const process = isDynamic(context.process) && layerHeight !== null ? variant(layerHeight) : undefined;
-  const filaments = context.filaments.map((p) => (isDynamic(p) ? variant(layerHeight) : null));
-  return process || filaments.some(Boolean) ? { variants: { ...(process ? { process } : {}), ...(filaments.some(Boolean) ? { filaments } : {}) } } : {};
-}
-
 export function jobFields(s: State, saving = false) {
   const sys = (type: 'machine' | 'process' | 'filament', n: string) => {
     return resolvePreset(s,type,n).engineName ?? '';
   };
   const context=profileContext(s);
-  const profile_ids=context.printer.id && context.process.id && context.filaments.every(p=>!!p.id) ? {schema:1 as const,printer:context.printer.id,process:context.process.id,filaments:context.filaments.map(p=>p.id!),revisions:{printer:context.printer.revision,process:context.process.revision,filaments:context.filaments.map(p=>p.revision)},...dynamicVariants(s,context)} : undefined;
+  const profile_ids=context.printer.id && context.process.id && context.filaments.every(p=>!!p.id) ? {schema:1 as const,printer:context.printer.id,process:context.process.id,filaments:context.filaments.map(p=>p.id!),revisions:{printer:context.printer.revision,process:context.process.revision,filaments:context.filaments.map(p=>p.revision)}} : undefined;
   return {
     ...(profile_ids ? {profile_ids} : {}),
     vendor: printerPreset(s)?.vendor ?? 'BBL',

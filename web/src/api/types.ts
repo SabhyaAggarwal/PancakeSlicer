@@ -107,9 +107,7 @@ export interface JobProfileIds {
   process: string;
   filaments: string[];
   revisions: {printer: number; process: number; filaments: number[]};
-  variants?: {process?: JobVariant; filaments?: (JobVariant | null)[]};
 }
-export interface JobVariant {printerModel: string; nozzle: number; layerHeight: number}
 export interface JobRequest {
   profile_ids?: JobProfileIds;
   files: { name: string; blob: Blob }[];

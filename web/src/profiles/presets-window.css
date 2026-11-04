@@ -89,8 +89,6 @@
 :where(.orca-parity) .pf-row-method + .pf-row-used { margin-left: var(--s-3); }
 :where(.orca-parity) .pf-row-flag { flex: none; margin-left: auto; font: var(--t-small); color: var(--muted); white-space: nowrap; }
 :where(.orca-parity) .pf-row-flag ~ :is(.pf-row-method, .pf-row-used) { margin-left: var(--s-3); }
-:where(.orca-parity) .pf-group-rows:has([data-range]) .pf-row-lead { min-width: 72px; }
-:where(.orca-parity) .pf-row-lead[data-range] { box-sizing: border-box; padding: 0 var(--s-2); text-align: center; border: 1px solid color-mix(in srgb, var(--accent-text) 45%, transparent); border-radius: var(--r-1); color: var(--accent-text); line-height: 16px; }
 :where(.orca-parity) .pf-item.is-on :is(.pf-row-lead, .pf-row-method) { color: inherit; }
 @media (pointer: coarse) { :where(.orca-parity) .pf-list { --pf-row: 44px; } }
 :where(.orca-parity) .pf-profile-empty { display: flex; flex-direction: column; align-items: center; gap: var(--s-3); padding: var(--s-7) var(--s-4); color: var(--muted); text-align: center; }
@@ -132,8 +130,6 @@
 :where(.orca-parity) .pf-full-editor .settings-tab { flex: 1; min-height: 0; }
 :where(.orca-parity) .pf-full-editor { --ctl-w: clamp(160px, 50%, 280px); --opt-end: 24px; }
 :where(.orca-parity) .pf-full-editor .opt-field .num { max-width: none; }
-:where(.orca-parity) .pf-full-editor .field-source { align-self: center; padding: 0 var(--s-2); border: 1px solid var(--line); border-radius: var(--r-1); line-height: 18px; }
-:where(.orca-parity) .pf-full-editor .field-source:has(> .link) { border-color: transparent; background: var(--accent-tint); color: var(--accent-text); }
 :where(.orca-parity) .pf-full-editor .text.multiline { min-height: 96px; height: clamp(96px, 18vh, 200px); max-height: 360px; resize: vertical; }
 :where(.orca-parity) .pf-editor-error { margin: var(--s-3) 0; padding: var(--s-3) var(--s-4); color: var(--danger); background: var(--danger-tint); border-radius: var(--r-1); overflow-wrap: anywhere; white-space: pre-line; }
 :where(.orca-parity) .pf-window .np-dialog-body > .pf-editor-error { position: absolute; inset: auto var(--s-5) var(--s-5) auto; z-index: 13; max-width: min(480px, calc(100% - 32px)); }

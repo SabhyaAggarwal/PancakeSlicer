@@ -11,7 +11,7 @@ export function watchForNewBuild(): void {
   const apply = () => {
     if (!newer) return;
     if (safe()) location.reload();
-    else toast('Update ready', { label: 'Reload', run: () => location.reload() }, 20_000);
+    else toast('Update ready', { label: 'Reload', run: () => location.reload() }, 20_000, 'warning');
   };
   const check = async () => {
     if (document.visibilityState !== 'visible' || Date.now() - last < MIN_GAP_MS) return;

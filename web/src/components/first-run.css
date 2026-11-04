@@ -1,5 +1,5 @@
-:where(.orca-parity) .empty-plate { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 5; width: min(500px, calc(100% - 2 * var(--s-5)));
-  max-height: calc(100% - 80px); overflow: auto; display: flex; flex-direction: column; background: var(--panel); color: var(--ink);
+:where(.orca-parity) .empty-plate { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 5; width: min(500px, calc(100% - 2 * var(--s-5))); max-height: calc(100% - 80px); display: flex; flex-direction: column; gap: var(--s-4); }
+:where(.orca-parity) .fr-card { min-height: 0; overflow: auto; display: flex; flex-direction: column; background: var(--panel); color: var(--ink);
   border: 1px solid var(--line-strong); border-radius: var(--r-3); font: var(--t-body); animation: fr-in var(--dur-3) var(--ease); }
 @keyframes fr-in { from { opacity: 0; } }
 
@@ -24,7 +24,7 @@
   text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
 :where(.orca-parity) .fr-sample:hover { background: var(--sunken); text-decoration-color: currentColor; }
 
-:where(.orca-parity) .canvas-area.drag-over .empty-plate { border-color: var(--accent-text); }
+:where(.orca-parity) .canvas-area.drag-over .fr-card { border-color: var(--accent-text); }
 :where(.orca-parity) .canvas-area.drag-over .fr-drop { background: var(--accent-tint); }
 
 :where(.orca-parity) .setup-wizard-body { display: grid; padding: 0; overflow: auto; }
@@ -35,3 +35,10 @@
   :where(.orca-parity) .empty-plate { animation: none; }
   :root.orca-parity[data-nudge='slice'] .tabbar-actions > button:first-child:not(:disabled) { animation: none; outline: 2px solid var(--accent); outline-offset: 2px; }
 }
+
+:where(.orca-parity) .fr-onboard { display: flex; flex-direction: column; }
+:where(.orca-parity) .fr-steps { display: flex; gap: var(--s-2); padding: var(--s-4) var(--s-4) 0; }
+:where(.orca-parity) .fr-steps > span { flex: 1; height: 3px; border-radius: 2px; background: var(--line-strong); }
+:where(.orca-parity) .fr-steps > span.on { background: var(--accent); }
+:where(.orca-parity) .fr-onboard-foot { display: flex; justify-content: flex-end; gap: var(--s-3); padding: var(--s-4); }
+:where(.orca-parity) .fr-startover { flex: none; height: 44px; width: 100%; font: var(--t-label); }
