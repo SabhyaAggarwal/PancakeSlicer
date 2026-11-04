@@ -101,6 +101,7 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, library *Profil
 	mux.HandleFunc("POST /api/printer-connections/{printer}/control", s.controlConnection)
 	mux.HandleFunc("GET /api/printer-sends", s.listSends)
 	mux.HandleFunc("GET /api/presets", s.listPresets)
+	s.printerCatalogRoutes(mux)
 	options := c.Options
 	if options == nil {
 		options = cacheResponse(optionData)
