@@ -5,7 +5,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -54,12 +53,9 @@ func stringList(raw json.RawMessage) []string {
 }
 
 type vendorCache struct {
-	once     sync.Once
-	presets  *VendorPresets
-	response *cachedResponse
-	err      error
-	mu       sync.Mutex
-	byModels map[string]*cachedResponse
+	once    sync.Once
+	presets *VendorPresets
+	err     error
 }
 type PresetIndex struct {
 	root           string
@@ -70,9 +66,6 @@ type PresetIndex struct {
 	known          map[string]map[string]map[string]bool
 	tool           *Config
 	cache          sync.Map
-	allOnce        sync.Once
-	allResponse    *cachedResponse
-	allError       error
 }
 
 func NewPresetIndex(root string) *PresetIndex { return &PresetIndex{root: root} }
@@ -160,7 +153,6 @@ func (p *PresetIndex) vendor(name string) (*VendorPresets, error) {
 					v.presets.Machines[i].StandardProcess = p.Name
 				}
 			}
-			v.response, v.err = cacheJSON(compactPresets(v.presets))
 		}
 	})
 	return v.presets, v.err
@@ -168,21 +160,6 @@ func (p *PresetIndex) vendor(name string) (*VendorPresets, error) {
 func (p *PresetIndex) Vendor(name string) (*VendorPresets, bool) {
 	v, err := p.vendor(name)
 	return v, err == nil
-}
-func (p *PresetIndex) Vendors() ([]VendorPresets, error) {
-	names, err := p.names()
-	if err != nil {
-		return nil, err
-	}
-	vs := []VendorPresets{}
-	for _, name := range names {
-		v, err := p.vendor(name)
-		if err != nil {
-			return nil, err
-		}
-		vs = append(vs, *v)
-	}
-	return vs, nil
 }
 func (p *PresetIndex) VendorOfPrinter(printer string) string {
 	if _, err := p.names(); err != nil {
@@ -317,81 +294,6 @@ func (p *PresetIndex) loadVendor(vendor string) (*VendorPresets, error) {
 		m.DefaultMaterials = stringList(model["default_materials"])
 	}
 	return v, nil
-}
-
-func (p *PresetIndex) response(name string) (*cachedResponse, error) {
-	if _, err := p.vendor(name); err != nil {
-		return nil, err
-	}
-	entry, _ := p.cache.Load(name)
-	return entry.(*vendorCache).response, nil
-}
-
-func (p *PresetIndex) modelsResponse(name string, models []string) (*cachedResponse, error) {
-	v, err := p.vendor(name)
-	if err != nil {
-		return nil, err
-	}
-	models = slices.Clone(models)
-	slices.Sort(models)
-	key := strings.Join(models, "\x00")
-	entry, _ := p.cache.Load(name)
-	c := entry.(*vendorCache)
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if r := c.byModels[key]; r != nil {
-		return r, nil
-	}
-	narrowed := VendorPresets{Vendor: v.Vendor, Machines: []Preset{}, Processes: []Preset{}, Filaments: []Preset{}}
-	machines := map[string]bool{}
-	for _, m := range v.Machines {
-		model := m.Model
-		if model == "" {
-			model = stringValue(m.Config["printer_model"])
-		}
-		if slices.Contains(models, model) {
-			narrowed.Machines = append(narrowed.Machines, m)
-			machines[m.Name] = true
-		}
-	}
-	listed := func(p Preset) bool {
-		return slices.ContainsFunc(p.CompatiblePrinters, func(n string) bool { return machines[n] })
-	}
-	for _, p := range v.Processes {
-		if listed(p) {
-			narrowed.Processes = append(narrowed.Processes, p)
-		}
-	}
-	for _, f := range v.Filaments {
-		if listed(f) || !f.Evaluated && len(f.CompatiblePrinters) == 0 && stringValue(f.Config["compatible_printers_condition"]) == "" {
-			narrowed.Filaments = append(narrowed.Filaments, f)
-		}
-	}
-	r, err := cacheJSON(compactPresets(&narrowed))
-	if err != nil {
-		return nil, err
-	}
-	if c.byModels == nil || len(c.byModels) >= 8 {
-		c.byModels = map[string]*cachedResponse{}
-	}
-	c.byModels[key] = r
-	return r, nil
-}
-
-func (p *PresetIndex) allResponseJSON() (*cachedResponse, error) {
-	p.allOnce.Do(func() {
-		vs, err := p.Vendors()
-		if err != nil {
-			p.allError = err
-			return
-		}
-		all := make([]compactVendor, len(vs))
-		for i := range vs {
-			all[i] = compactPresets(&vs[i])
-		}
-		p.allResponse, p.allError = cacheJSON(all)
-	})
-	return p.allResponse, p.allError
 }
 
 func (p *PresetIndex) namesResponse(vendor string, names []string) (*cachedResponse, error) {

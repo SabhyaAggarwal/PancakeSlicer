@@ -137,31 +137,22 @@ func fail(w http.ResponseWriter, status int, message string) {
 }
 
 func (s *Server) listPresets(w http.ResponseWriter, r *http.Request) {
-	if name := r.URL.Query().Get("vendor"); name != "" {
-		v, err := s.presets.response(name)
-		if models := r.URL.Query()["model"]; len(models) > 0 {
-			v, err = s.presets.modelsResponse(name, models)
-		}
-		if names := r.URL.Query()["name"]; len(names) > 0 && err == nil {
-			v, err = s.presets.namesResponse(name, names)
-		}
-		if errors.Is(err, os.ErrNotExist) {
-			fail(w, 404, "unknown vendor")
-			return
-		}
-		if err != nil {
-			fail(w, 500, err.Error())
-			return
-		}
-		v.serve(w, r, "presets.json", "application/json", catalogCache, time.Time{})
+	q := r.URL.Query()
+	vendor, names := q.Get("vendor"), q["name"]
+	if vendor == "" || len(names) == 0 {
+		fail(w, 400, "presets are read by vendor and name=…")
 		return
 	}
-	vs, err := s.presets.allResponseJSON()
+	v, err := s.presets.namesResponse(vendor, names)
+	if errors.Is(err, os.ErrNotExist) {
+		fail(w, 404, "unknown vendor")
+		return
+	}
 	if err != nil {
 		fail(w, 500, err.Error())
 		return
 	}
-	vs.serve(w, r, "presets.json", "application/json", catalogCache, time.Time{})
+	v.serve(w, r, "presets.json", "application/json", catalogCache, time.Time{})
 }
 
 func presetDisplayName(name string) string {
