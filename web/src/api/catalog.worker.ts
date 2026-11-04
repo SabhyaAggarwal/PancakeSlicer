@@ -10,6 +10,7 @@ export type CatalogIn = { id: number; type: 'mock'; url: string } | { id: number
   id: number;
   vendor: string;
   models: string[];
+  names?: string[];
   engine: EngineCapabilities;
 }
 
@@ -92,10 +93,10 @@ self.onmessage = async (e: MessageEvent<CatalogIn>) => {
       return;
     }
     const loading = loadDefinitions(optionsUrl, e.data.engine);
-    const { vendor, models } = e.data;
-    const key = `${FORMAT}|${vendor}|${models.join(',')}`;
+    const { vendor, models, names } = e.data;
+    const key = `${FORMAT}|${vendor}|${names ? `names:${JSON.stringify(names)}` : models.join(',')}`;
     const entry = catalogs.get(key)?.entry;
-    const read = (etag?: string | null) => fetch(`/api/presets?${new URLSearchParams([['vendor', vendor], ...models.map((m) => ['model', m])])}`, {
+    const read = (etag?: string | null) => fetch(`/api/presets?${new URLSearchParams([['vendor', vendor], ...names ? names.map((n) => ['name', n]) : models.map((m) => ['model', m])])}`, {
       cache: 'no-cache',
       headers: etag ? { 'If-None-Match': etag } : {},
     });

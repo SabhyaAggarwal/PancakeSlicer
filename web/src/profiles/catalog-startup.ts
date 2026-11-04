@@ -15,11 +15,11 @@ import { ensureCompatibleSelection } from './material-library';
 import { planCatalogReadiness, loadRequiredCatalogs, loadBackgroundCatalogs, type CatalogBaseDependency, type CatalogDependencySource } from './catalog-readiness';
 const VENDORS = ['BBL', 'Prusa', 'Custom'];
 
-function mergeCatalog(vendor: string, cat: PresetCatalog) {
+function mergeCatalog(_vendor: string, cat: PresetCatalog) {
   const order = <T extends { vendor: string }>(l: T[]) => [...l].sort((a, b) => VENDORS.indexOf(a.vendor) - VENDORS.indexOf(b.vendor));
   const merge=(current:SystemPreset[],incoming:SystemPreset[])=>{
     const keys=new Set(incoming.map(catalogKey));
-    return order([...current.filter(p=>(p.imported || p.vendor!==vendor) && !keys.has(catalogKey(p))),...incoming]);
+    return order([...current.filter(p=>!keys.has(catalogKey(p))),...incoming]);
   };
   setState(s=>({
     machines:merge(s.machines,cat.machines),
@@ -52,7 +52,7 @@ export async function loadCatalog() {
   first = preferenceText('orca.vendor') || first;
   const current = () => generation === catalogLoadGeneration && getState().api === api;
   const native=session=createSession(api,current);
-  void native.load(first).catch(error=>{if(current())toast(`Catalog ${first} could not load: ${error instanceof Error?error.message:String(error)}`);});
+  if(!native.vendors.includes(first))native.vendors.unshift(first);
   const settings = loadTab('process');
   const library = catalogLibraryTail.then(async () => {
     try {
@@ -112,6 +112,7 @@ interface CatalogSession {
   reads: Map<string, Promise<void>>;
   loaded: Set<string>;
   load(vendor: string): Promise<void>;
+  loadNames(vendor: string, names: string[]): Promise<void>;
 }
 let session: CatalogSession | null = null;
 let projectsSettled = false;
@@ -123,6 +124,13 @@ function createSession(api: Api, current: () => boolean): CatalogSession {
       if(current()){mergeCatalog(vendor,cat);captured.loaded.add(vendor);}
     })().catch(error=>{captured.reads.delete(vendor);throw error;});
     captured.reads.set(vendor,read);return read;
+  },loadNames(vendor,names) {
+    const key=`${vendor}\n${[...names].sort().join('\n')}`,previous=captured.reads.get(key);if(previous)return previous;
+    const read=(async()=>{
+      const cat=await api.presets(vendor,[],value=>{if(current())mergeCatalog(vendor,value);},names);
+      if(current())mergeCatalog(vendor,cat);
+    })().catch(error=>{captured.reads.delete(key);throw error;});
+    captured.reads.set(key,read);return read;
   }};
   return captured;
 }
@@ -168,9 +176,24 @@ async function ensure(source:CatalogDependencySource,captured:CatalogSession,isC
   if(!isCurrent())return;
   if(!captured.current())throw new Error('The catalog source changed. Retry restoring this project.');
   for(const {base} of source.bases)if(base.vendor && !captured.vendors.includes(base.vendor))captured.vendors.push(base.vendor);
-  const catalog=withImportedCatalog(document);
-  const plan=planCatalogReadiness(captured.vendors,[source],dependency=>!!findCatalogBase(catalog,dependency.type,dependency.base).base);
-  const completed=await loadRequiredCatalogs(plan,()=>captured.current() && isCurrent(),vendor=>captured.load(vendor));
+  const bases=source.bases.filter(d=>!(d.type==='process' && d.base.name==='Auto'));
+  const available=(d:CatalogBaseDependency)=>!!findCatalogBase(withImportedCatalog(document),d.type,d.base).base;
+  const missing=bases.filter(d=>!available(d));
+  let completed:boolean;
+  if(source.complete && missing.every(d=>d.base.vendor)){
+    const byVendor=(list:{vendor:string;name:string}[])=>{const m=new Map<string,Set<string>>();for(const {vendor,name} of list)m.set(vendor,(m.get(vendor) ?? new Set()).add(name));return m;};
+    const read=(m:Map<string,Set<string>>)=>Promise.all([...m].map(([vendor,names])=>captured.loadNames(vendor,[...names])));
+    await read(byVendor(missing.map(d=>({vendor:d.base.vendor!,name:d.base.name}))));
+    const catalog=withImportedCatalog(document),standards=bases.flatMap(d=>{
+      const machine=d.type==='machine' ? findCatalogBase(catalog,'machine',d.base).base as (SystemPreset & {standard_process?:string}) | undefined : undefined;
+      return machine?.standard_process && !catalog.processes.some(p=>p.name===machine.standard_process) ? [{vendor:machine.vendor,name:machine.standard_process}] : [];
+    });
+    await read(byVendor(standards));
+    completed=captured.current() && isCurrent();
+  }else{
+    const plan=planCatalogReadiness(captured.vendors,[{...source,bases}],available);
+    completed=await loadRequiredCatalogs(plan,()=>captured.current() && isCurrent(),vendor=>captured.load(vendor));
+  }
   if(isCurrent() && (!completed || !captured.current()))throw new Error('The catalog source changed. Retry restoring this project.');
 }
 async function ensureOwnedCatalogs(document:ProfileLibraryDocument,captured:CatalogSession,isCurrent:()=>boolean) {

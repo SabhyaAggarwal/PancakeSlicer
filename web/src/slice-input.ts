@@ -30,7 +30,7 @@ export const MIX_KEYS = ['filament_is_mixed', 'filament_mixed_components', 'fila
 export function overrides(s = getState()): Config {
   const out: Config = { ...s.projectPresets?.machine, ...s.dirty.machine, ...s.projectPresets?.process, ...s.dirty.process };
   const slots = s.filamentSlots.map((key, i) => ({ ...s.projectPresets?.filaments[i], ...s.filamentEdits[key] }));
-  const edited = new Set(slots.flatMap((c) => Object.keys(c)));
+  const edited = new Set(s.filamentSlots.length > 1 ? s.filamentSlots.flatMap((_, i) => Object.keys(effectiveConfig(s, 'filament', i))) : slots.flatMap((c) => Object.keys(c)));
   if (edited.size) {
     const configs = s.filamentSlots.map((_, i) => { const c = effectiveConfig(s, 'filament', i); return Object.fromEntries([...edited].flatMap((k) => c[k] === undefined ? [] : [[k, c[k]]])); });
     Object.assign(out, filamentVectors(configs, Object.fromEntries([...edited].flatMap((key) => OPTIONS[key]?.default === undefined ? [] : [[key, OPTIONS[key].default as ConfigValue]]))));

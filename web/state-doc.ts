@@ -9,7 +9,7 @@ const MACHINES: [string, string, unknown[]?][] = [
   ['/src/flow/output.ts', 'output'], ['/src/flow/transfer.ts', 'createTransfer', []], ['/src/flow/modal.ts', 'modals'],
   ['/src/flow/ask.ts', 'asking'], ['/src/flow/tools.ts', 'tools'], ['/src/flow/playback.ts', 'playback'],
   ['/src/flow/viewer.ts', 'viewer'], ['/src/flow/profile-edit.ts', 'createProfileEdit', []], ['/src/flow/profile-save.ts', 'createProfileSave', []], ['/src/flow/profiles-window-ops.ts', 'windowOps'],
-  ['/src/flow/engine-health.ts', 'engineHealth'], ['/src/flow/version-view.ts', 'versionView'], ['/src/saved-preferences.ts', 'savedPreferencesMachine'], ['/src/compare.ts', 'compareMachine'], ['/src/profiles/printer-setups.ts', 'printerSetupsMachine'], ['/src/persist/service-document.ts', 'createServiceDocument', ['/api/preferences', 'PUT']], ['/src/profiles/editing.ts', 'editing', ['process', 0]],
+  ['/src/flow/engine-health.ts', 'engineHealth'], ['/src/flow/version-view.ts', 'versionView'], ['/src/saved-preferences.ts', 'savedPreferencesMachine'], ['/src/compare.ts', 'compareMachine'], ['/src/profiles/printer-setups.ts', 'printerSetupsMachine'], ['/src/flow/projects-ops.ts', 'projectsOps'], ['/src/persist/service-document.ts', 'createServiceDocument', ['/api/preferences', 'PUT']], ['/src/profiles/editing.ts', 'editing', ['process', 0]],
 ];
 
 const target = new EventTarget();
@@ -21,6 +21,8 @@ Object.assign(globalThis, {
   localStorage: storage,
 });
 
+process.on('unhandledRejection', (error) => console.warn(`ignored while loading machines: ${String(error).split('\n')[0]}`));
+process.on('uncaughtException', (error) => console.warn(`ignored while loading machines: ${String(error).split('\n')[0]}`));
 const server = await createServer({ root: new URL('.', import.meta.url).pathname, logLevel: 'error', server: { middlewareMode: true, hmr: false } });
 try {
   const { machineDiagram, machineTable } = await server.ssrLoadModule('/src/flow/mermaid.ts');

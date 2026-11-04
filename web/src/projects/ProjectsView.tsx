@@ -5,6 +5,8 @@ import { Dropdown } from '../components/Dropdown';
 import { confirmDialog } from '../components/Ask';
 import { toast } from '../state/store';
 import { projectListSnapshot, refreshProjects, subscribeProjectList, useProject } from '../flow/project';
+import { useMachine } from '../flow/fsm';
+import { projectsOps, runProjectsOp } from '../flow/projects-ops';
 import { createSelection, reduceSelection, selectedVisible, type SelectionEvent } from '../profiles/selection';
 import { deleteProject, duplicateProject, listTrash, openProject, useProjects, type ListedProject } from './api';
 import { childFolders, createFolder, deleteFolder, folderPath, folderTree, moveFolder, moveProjects, renameFolder, useFolders, type Folder } from './folders';
@@ -173,49 +175,51 @@ function Projects() {
   const [raw,setSelection]=useState(()=>createSelection('projects',visible)),selection=useMemo(()=>reduceSelection(raw,{type:'SYNC',scope:'projects',visible}),[raw,visible]);
   const latest=useRef(selection);latest.current=selection;
   const selected=selectedVisible(selection),selectedSet=useMemo(()=>new Set(selected),[selection]);
-  const [renaming,setRenaming]=useState<string|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState<string|null>(null);
-  const [undoBusy,setUndoBusy]=useState(false),[retrying,setRetrying]=useState<string|null>(null);
+  const [renaming,setRenaming]=useState<string|null>(null),[error,setError]=useState<string|null>(null);
+  const ops=useMachine(projectsOps),busy=ops.value==='deleting',retrying=ops.value==='retrying'?ops.context.id:null,writing=ops.value!=='idle';
   const [menu,setMenu]=useState<{id:string;x:number;y:number}|null>(null),grid=useRef<HTMLDivElement>(null);
   const [trashFocus,setTrashFocus]=useState<string|null>(null);
   const focusKey=inTrash?(shown.some(p=>p.id===trashFocus)?trashFocus:shown[0]?.id):selection.focus??visible[0];
   const dispatch=(event:SelectionEvent,focus=false)=>{const next=reduceSelection(latest.current,event);latest.current=next;setSelection(next);if(focus && next.focus)requestAnimationFrame(()=>{const row=[...(grid.current?.querySelectorAll<HTMLElement>('[data-id]')??[])].find(el=>el.dataset.id===next.focus);row?.focus();row?.scrollIntoView({block:'nearest'});});};
-  const restore=async(entries:readonly ProjectUndo[])=>{
-    if(undoBusy)return;
-    setUndoBusy(true);let restored=0;const failed:string[]=[];
+  const restoreEntries=async(entries:readonly ProjectUndo[])=>{
+    let restored=0;const failed:string[]=[];
     try{
-      for(const entry of entries)try{await entry.run();if(projectUndos.get(entry.id)===entry)projectUndos.delete(entry.id);restored++;}
-      catch(error){failed.push(`${entry.name}: ${message(error)}`);}
+      for(const entry of entries){
+        if(projectUndos.get(entry.id)!==entry)continue;
+        try{await entry.run();if(projectUndos.get(entry.id)===entry)projectUndos.delete(entry.id);restored++;}
+        catch(error){failed.push(`${entry.name}: ${message(error)}`);}
+      }
       setError(failed.length?`${restored} restored, ${failed.length} not confirmed (${failed.join('; ')}). Undo stays available.`:null);
       if(restored)toast(`${restored} ${restored===1?'project':'projects'} restored`);
-    }finally{setUndoBusy(false);void loadTrash();}
+    }finally{void loadTrash();}
   };
+  const restore=(entries:readonly ProjectUndo[])=>runProjectsOp('restoring',()=>restoreEntries(entries));
   const restoreFromTrash=async(p:ProjectMeta)=>{
     const undo=projectUndos.get(p.id);
-    if(undo)return restore([undo]);
-    if(retrying)return;
-    if(!trashRestores.has(p.id))trashRestores.set(p.id,p.revision);
-    setRetrying(p.id);setError(null);
-    try{await (await import('../flow/project')).restoreArchivedProject(p.id,trashRestores.get(p.id));trashRestores.delete(p.id);toast(`${p.name} restored`);}
-    catch(error){setError(`Restore not confirmed: ${message(error)}`);}
-    finally{setRetrying(null);void loadTrash();}
+    if(undo){await restore([undo]);return;}
+    await runProjectsOp('retrying',async()=>{
+      if(!trashRestores.has(p.id))trashRestores.set(p.id,p.revision);
+      setError(null);
+      try{await (await import('../flow/project')).restoreArchivedProject(p.id,trashRestores.get(p.id));trashRestores.delete(p.id);toast(`${p.name} restored`);}
+      catch(error){setError(`Restore not confirmed: ${message(error)}`);}
+      finally{void loadTrash();}
+    },p.id);
   };
-  const retry=async(command:Readonly<ProjectCommandStatus>)=>{
-    if(retrying)return;setRetrying(command.operationId);setError(null);
+  const retry=(command:Readonly<ProjectCommandStatus>)=>runProjectsOp('retrying',async()=>{
+    setError(null);
     try{
       const flow=await import('../flow/project');
       if(command.kind==='rename'){await flow.renameProject(command.id,command.name!);setRenaming(id=>id===command.id?null:id);}
       else if(command.kind==='duplicate')await flow.duplicateProject(command.id);
       else if(command.kind==='archive'){
         const run=await flow.deleteProject(command.id);projectUndos.set(command.id,{id:command.id,name:list?.find(p=>p.id===command.id)?.name ?? command.id,run});
-      }else if(projectUndos.has(command.id))await restore([projectUndos.get(command.id)!]);
+      }else if(projectUndos.has(command.id))await restoreEntries([projectUndos.get(command.id)!]);
       else if(trashRestores.has(command.id)){await flow.restoreArchivedProject(command.id,trashRestores.get(command.id));trashRestores.delete(command.id);}
       else throw new Error('Retry from the original Undo.');
     }catch(error){setError(message(error));}
-    finally{setRetrying(null);void loadTrash();}
-  };
-  const dismiss=async(command:Readonly<ProjectCommandStatus>)=>{
-    if(retrying)return;
-    setRetrying(command.operationId);
+    finally{void loadTrash();}
+  },command.operationId);
+  const dismiss=(command:Readonly<ProjectCommandStatus>)=>runProjectsOp('retrying',async()=>{
     const undo=projectUndos.get(command.id);
     try{
       await (await import('../flow/project')).discardRejectedProjectCommand(command.operationId);
@@ -224,17 +228,17 @@ function Projects() {
       setError(null);
       await refreshProjects();
     }catch(error){setError(message(error));}
-    finally{setRetrying(null);}
-  };
+  },command.operationId);
   const remove=async(ids:readonly string[],ask=true)=>{
-    const targets=(list??[]).filter(p=>ids.includes(p.id));if(busy || !targets.length || targets.some(p=>blocked(p.id)))return;
+    const targets=(list??[]).filter(p=>ids.includes(p.id));if(projectsOps.get().value!=='idle' || !targets.length || targets.some(p=>blocked(p.id)))return;
     if(ask && !await confirmDialog(targets.length===1?'Move to Trash?':`Move ${targets.length} projects to Trash?`,names(targets),['Move to Trash','Cancel'],true))return;
-    setBusy(true);setError(null);const undo:ProjectUndo[]=[],failed:string[]=[];
-    try{for(const p of targets){const run=await deleteProject(p.id);if(run){const entry={id:p.id,name:p.name,run};undo.push(entry);projectUndos.set(p.id,entry);}else failed.push(p.name);}
+    await runProjectsOp('deleting',async()=>{
+    setError(null);const undo:ProjectUndo[]=[],failed:string[]=[];
+    for(const p of targets){const run=await deleteProject(p.id);if(run){const entry={id:p.id,name:p.name,run};undo.push(entry);projectUndos.set(p.id,entry);}else failed.push(p.name);}
       setSelection(s=>reduceSelection(s,{type:'SYNC',scope:'projects',visible:visible.filter(id=>!undo.some(p=>p.id===id))}));
       if(failed.length)setError(`${undo.length} moved to Trash, ${failed.length} not confirmed: ${failed.join(', ')}.`);
       if(undo.length)toast(`${undo.length===1?undo[0].name:`${undo.length} projects`} moved to Trash`,{label:'Undo',run:()=>void restore(undo)},10000);
-    }finally{setBusy(false);}
+    });
   };
   const onKey=(e:KeyboardEvent)=>{
     const command=e.ctrlKey||e.metaKey,focus=(e.target as Element).closest<HTMLElement>('.pj-item[data-id]')?.dataset.id ?? focusKey;
@@ -418,11 +422,11 @@ function Projects() {
         const state=pending?'Saving…':command.state==='acknowledged'?'Saved':command.state==='conflict'?`Changed elsewhere: ${command.error}`:`Not saved: ${command.error}`;
         return <div className={`pj-line${command.state==='failed'||command.state==='conflict'?' bad':''}`} key={command.operationId} aria-busy={pending} role="status">
           <span><strong>{commandVerb[command.kind]} {name}</strong> · {state}</span>
-          {!pending && (command.kind!=='restore' || projectUndos.has(command.id) || trashRestores.has(command.id)) && <button type="button" className="btn" disabled={!!retrying || undoBusy} onClick={()=>void retry(command)}>{command.state==='acknowledged'?'Finish':'Retry'}</button>}
-          {command.state==='conflict' && <button type="button" className="btn-ghost" disabled={!!retrying || undoBusy} onClick={()=>void dismiss(command)}>Dismiss</button>}
+          {!pending && (command.kind!=='restore' || projectUndos.has(command.id) || trashRestores.has(command.id)) && <button type="button" className="btn" disabled={writing} onClick={()=>void retry(command)}>{command.state==='acknowledged'?'Finish':'Retry'}</button>}
+          {command.state==='conflict' && <button type="button" className="btn-ghost" disabled={writing} onClick={()=>void dismiss(command)}>Dismiss</button>}
         </div>;
       })}
-      {!!projectUndos.size && !inTrash && <div className="pj-line"><span>{projectUndos.size} moved to Trash</span><button type="button" className="btn" disabled={undoBusy} onClick={()=>void restore([...projectUndos.values()])}>{undoBusy?'Restoring…':'Undo'}</button></div>}
+      {!!projectUndos.size && !inTrash && <div className="pj-line"><span>{projectUndos.size} moved to Trash</span><button type="button" className="btn" disabled={writing} onClick={()=>void restore([...projectUndos.values()])}>{ops.value==='restoring'?'Restoring…':'Undo'}</button></div>}
       {selected.length>0 && !inTrash && <div className="pj-line pj-selection">
         <strong>{selected.length} selected</strong>
         <button type="button" className="btn-ghost" disabled={busy || selected.some(blocked)} onClick={()=>void remove(selected)}>Move to Trash</button>

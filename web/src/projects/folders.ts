@@ -12,14 +12,17 @@ const listeners = new Set<() => void>();
 const publish = (next: FoldersSnapshot) => { snapshot = next; listeners.forEach((listener) => listener()); };
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 
-export function loadFolders(): Promise<void> {
-  loading ??= serviceJson<{ revision: number; folders: Folder[] }>('/api/folders').then((remote) => {
+let reads = 0;
+export function loadFolders(fresh = false): Promise<void> {
+  if (loading && !fresh) return loading;
+  const mine = ++reads;
+  const read: Promise<void> = serviceJson<{ revision: number; folders: Folder[] }>('/api/folders').then((remote) => {
     if (!remote || !Number.isSafeInteger(remote.revision) || !Array.isArray(remote.folders)) throw new Error('The folder list is invalid.');
-    publish({ state: 'ready', revision: remote.revision, folders: remote.folders, error: null });
-  }, (error: unknown) => {
-    publish({ ...snapshot, state: 'failed', error: message(error) });
-  }).finally(() => { loading = null; });
-  return loading;
+    if (mine === reads) publish({ state: 'ready', revision: remote.revision, folders: remote.folders, error: null });
+  }).catch((error: unknown) => {
+    if (mine === reads) publish({ ...snapshot, state: 'failed', error: message(error) });
+  }).finally(() => { if (loading === read) loading = null; });
+  return (loading = read);
 }
 
 export function useFolders(): FoldersSnapshot {
@@ -30,7 +33,13 @@ export function useFolders(): FoldersSnapshot {
   }, () => snapshot);
 }
 
-async function write(method: 'POST' | 'PATCH', path: string, body: Record<string, unknown>, projects = false): Promise<void> {
+let writes: Promise<unknown> = Promise.resolve();
+function write(method: 'POST' | 'PATCH', path: string, body: Record<string, unknown>, projects = false): Promise<void> {
+  const run = writes.then(() => writeOnce(method, path, body, projects));
+  writes = run.catch(() => {});
+  return run;
+}
+async function writeOnce(method: 'POST' | 'PATCH', path: string, body: Record<string, unknown>, projects: boolean): Promise<void> {
   try {
     for (let attempt = 0; ; attempt++) {
       if (snapshot.state !== 'ready') await loadFolders();
@@ -40,11 +49,11 @@ async function write(method: 'POST' | 'PATCH', path: string, body: Record<string
         break;
       } catch (error) {
         if ((error as { code?: string }).code !== 'revision_conflict' || attempt > 0) throw error;
-        await loadFolders();
+        await loadFolders(true);
       }
     }
   } finally {
-    await loadFolders();
+    await loadFolders(true);
     if (projects) await refreshProjects();
   }
 }

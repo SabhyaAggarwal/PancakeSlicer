@@ -11,7 +11,7 @@ import { canonicalModeConfig } from '../nonplanar-mode';
 
 export interface Api {
   mock: boolean;
-  presets(vendor: string, models: string[], update?: (c: PresetCatalog) => void): Promise<PresetCatalog>;
+  presets(vendor: string, models: string[], update?: (c: PresetCatalog) => void, names?: string[]): Promise<PresetCatalog>;
   submit(req: JobRequest, signal?: AbortSignal, onUpload?: (fraction: number) => void): Promise<string>;
   status(id: string): Promise<JobStatus>;
   events(id: string, on: { progress(e: ProgressEvent): void; done(s: JobStatus): void; error(msg: string): void; log?(stream: string, line: string): void; result?(s: JobStatus): void }): () => void;
@@ -41,7 +41,7 @@ const statusRequests = new Map<string, Promise<JobStatus>>();
 
 const realApi: Api = {
   mock: false,
-  presets(vendor, models, update) {
+  presets(vendor, models, update, names) {
     const worker = catalogWorker();
     const id = workerId();
     return new Promise((resolve, reject) => {
@@ -61,7 +61,7 @@ const realApi: Api = {
       };
       const unsubscribe = onWorkerFailure(fail);
       worker.addEventListener('message', on);
-      worker.postMessage({ id, vendor, models, engine: { options: toolFeatures.dump_options === true, presets: toolFeatures.dump_presets === true } } satisfies CatalogIn);
+      worker.postMessage({ id, vendor, models, ...(names ? { names } : {}), engine: { options: toolFeatures.dump_options === true, presets: toolFeatures.dump_presets === true } } satisfies CatalogIn);
     });
   },
 

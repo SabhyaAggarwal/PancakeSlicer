@@ -26,7 +26,7 @@ export default function VersionHistory() {
 
 function Card({ projectId, v, current, close }: { projectId: string; v: ProjectVersion; current: boolean; close: () => void }) {
   const [setup, setSetup] = useState<VersionSetup | null>(null);
-  useEffect(() => { let live = true; versionSetup(projectId, v).then((s) => live && setSetup(s), () => live && setSetup({ printer: '', process: '', filaments: [] })); return () => { live = false; }; }, [projectId, v]);
+  useEffect(() => { let live = true; setSetup(null); versionSetup(projectId, v).then((s) => live && setSetup(s), () => live && setSetup({ printer: '', process: '', filaments: [] })); return () => { live = false; }; }, [projectId, v]);
   const s = v.slice;
   const stats = s ? ([[s.timeS != null && long(s.timeS), 'Time'], [s.grams != null && `${s.grams.toFixed(1)} g`, 'Weight'],
     [s.mm != null && `${(s.mm / 1000).toFixed(2)} m`, 'Filament']] as const).filter(([value]) => value) : [];
