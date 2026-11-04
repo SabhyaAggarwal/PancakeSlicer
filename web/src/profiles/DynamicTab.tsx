@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Choice } from '../components/kit';
-import { Dropdown } from '../components/Dropdown';
-import { OPTIONS } from '../options';
+import { OPTIONS, splitKey, TABS } from '../options';
+import { useTabLoaded } from '../components/PresetDialogs';
 import { Glyph } from '../components/Glyph';
 import { heightsFor, scaledValue, type ScaleBasis, type ScaleRow } from './auto-rules';
 import { labelOf } from './PrintOverrides';
@@ -23,6 +23,30 @@ const mm = (v: number) => String(Math.round(v * 1000) / 1000);
 const isWidth = (key: string) => key === 'line_width' || key.endsWith('_line_width');
 
 interface Formula { name: string; keys: string[]; basis: ScaleBasis; factor: number }
+const SCALAR = new Set(['float', 'int', 'percent', 'float_or_percent']);
+interface Section { title: string; keys: string[] }
+function numericSections(): Section[] {
+  return (TABS.process?.pages ?? []).flatMap((page) => page.groups.map((g) => ({ title: `${page.title} · ${g.title}`,
+    keys: [...new Set(g.lines.flatMap((l) => l.options.map((k) => splitKey(k)[0])))].filter((k) => k !== 'layer_height' && OPTIONS[k]?.label && SCALAR.has(OPTIONS[k].type)) })))
+    .filter((sec) => sec.keys.length);
+}
+
+function SettingFinder({ exclude, onPick, onCancel }: { exclude: ReadonlySet<string>; onPick(key: string): void; onCancel(): void }) {
+  const loaded = useTabLoaded('process'), [query, setQuery] = useState('');
+  const sections = useMemo(() => (loaded ? numericSections() : []), [loaded]);
+  const q = query.trim().toLowerCase();
+  const shown = sections.map((sec) => ({ ...sec, keys: sec.keys.filter((k) => !exclude.has(k) && (!q || `${nameOf(k)} ${sec.title} ${k}`.toLowerCase().includes(q))) })).filter((sec) => sec.keys.length);
+  return <div className="dyn-finder">
+    <input className="text" type="search" autoFocus aria-label="Find a setting" placeholder="Find a setting" value={query} onChange={(e) => setQuery(e.target.value)}
+      onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onCancel(); } else if (e.key === 'Enter' && shown[0]) onPick(shown[0].keys[0]); }}/>
+    <div className="dyn-finder-list" role="listbox" aria-label="Settings">
+      {!loaded ? <span className="dyn-finder-empty">Loading…</span> : !shown.length ? <span className="dyn-finder-empty">No setting matches</span>
+        : shown.map((sec) => <div key={sec.title} role="group" aria-label={sec.title}><div className="dyn-finder-group">{sec.title}</div>
+          {sec.keys.map((k) => <button key={k} type="button" role="option" aria-selected={false} className="dyn-finder-item" onClick={() => onPick(k)}>{nameOf(k)}</button>)}</div>)}
+    </div>
+    <button type="button" className="btn-ghost" onClick={onCancel}>Cancel</button>
+  </div>;
+}
 function formulasOf(rows: ScaleRow[], split: ReadonlySet<string>): Formula[] {
   const out: Formula[] = [], used = new Set<string>(), named = new Set<string>();
   for (const row of rows) {
@@ -63,10 +87,10 @@ export function DynamicTab({ rows, nozzle, height, minHeight, maxHeight, readOnl
     const existing = rows.find((r) => r.key === adding.key);
     setSplit(new Set([...split, adding.key]));
     if (!existing) onChange([...rows, { key: adding.key, basis: adding.basis, factor: 1 }]);
+    else if (existing.basis !== adding.basis) onChange(rows.map((r) => (r.key === adding.key ? { ...r, basis: adding.basis, factor: 1 } : r)));
     setAdding(null);
   };
-  const candidates = Object.values(OPTIONS).filter((o) => o.label && ['Float', 'FloatOrPercent', 'Int'].includes(o.type) && !formulas.some((f) => f.keys.length === 1 && f.keys[0] === o.key))
-    .sort((a, b) => nameOf(a.key).localeCompare(nameOf(b.key)));
+  const own = new Set(formulas.filter((f) => f.keys.length === 1).map((f) => f.keys[0]));
   const cell = (f: Formula, n: number, h: number) => {
     const row: ScaleRow = { key: f.keys[0], basis: f.basis, factor: f.factor }, v = scaledValue(row, { nozzle: n, layerHeight: h });
     const raw = f.basis === 'nozzle' ? f.factor * n : f.basis === 'layer' ? f.factor * h : v, clamped = f.basis !== 'perLayer' && Math.abs(raw - v) > 1e-6;
@@ -77,9 +101,10 @@ export function DynamicTab({ rows, nozzle, height, minHeight, maxHeight, readOnl
     <div className="dyn-rows"><ul className="dyn-formulas">
       {formulas.map((f) => <FormulaLine key={f.keys.join(',')} f={f} readOnly={readOnly} onFactor={(v) => setFactor(f.keys, v)} onRemove={() => remove(f.keys)}/>)}
       {!readOnly && <li className="dyn-formula dyn-add">{adding
-        ? <><Dropdown className="combo" aria-label="Setting" value={adding.key} onValueChange={(key) => setAdding({ ...adding, key })} options={candidates.map((o) => ({ value: o.key, label: nameOf(o.key) }))}/>
+        ? !adding.key ? <SettingFinder exclude={own} onPick={(key) => setAdding({ key, basis: rows.find((r) => r.key === key)?.basis ?? (isWidth(key) ? 'nozzle' : 'layer') })} onCancel={() => setAdding(null)}/>
+          : <><span className="dyn-name">{nameOf(adding.key)}</span>
           <Choice label="Basis" value={adding.basis} options={BASES} onChange={(basis) => setAdding({ ...adding, basis: basis as ScaleBasis })}/>
-          <button type="button" className="btn" disabled={!adding.key} onClick={add}>Add</button><button type="button" className="btn-ghost" onClick={() => setAdding(null)}>Cancel</button></>
+          <button type="button" className="btn" onClick={add}>Add</button><button type="button" className="btn-ghost" onClick={() => setAdding(null)}>Cancel</button></>
         : <button type="button" className="btn-ghost" onClick={() => setAdding({ key: '', basis: 'nozzle' })}>+ Add formula</button>}</li>}
     </ul>
     {fromPrinter && Object.keys(fromPrinter.values).length > 0 && <ul className="dyn-formulas dyn-printer" aria-label={`From ${fromPrinter.name}`}>

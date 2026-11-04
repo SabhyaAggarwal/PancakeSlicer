@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import type { SystemPreset } from '../api/types';
 import { requestPreset } from '../components/PresetCombo';
 import { Glyph } from '../components/Glyph';
@@ -73,32 +73,29 @@ function Welcome() {
     <div className="setup-hero"><img src="/logo-256.png" width={112} height={112} alt="" /><h1>Welcome to PancakeSlicer</h1></div>
   </Frame>;
 }
-interface TourFacts { 'curved-flat'?: { time?: string }; 'curved-tops'?: { time?: string } }
-let tourFacts: Promise<TourFacts> | null = null;
-const Shot = ({ src, caption }: { src: string; caption: string }) => (
-  <figure className="setup-shot"><img src={src} alt={caption} /><figcaption>{caption}</figcaption></figure>);
-type Point = string | [label: string, text: string];
-const TOUR: { title: string; points: Point[]; art: (f: TourFacts) => ReactNode }[] = [
+function Shot({ src, caption }: { src: string; caption: string }) {
+  const [ratio, setRatio] = useState<number>();
+  return <figure className="setup-shot">
+    <div className="setup-shot-frame"><img src={src} alt={caption} style={ratio ? { '--ar': ratio } as CSSProperties : undefined}
+      onLoad={(e) => setRatio(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight)} /></div>
+    <figcaption>{caption}</figcaption>
+  </figure>;
+}
+const TOUR: { title: string; points: string[]; art: ReactNode }[] = [
+  { title: 'One profile for every setup', points: [],
+    art: <Shot src="/tour/dynamic.webp" caption="Everyday: formulas worked out for the nozzle and layer height" /> },
   { title: 'Curved tops', points: [],
-    art: (f) => <><Shot src="/tour/curved-flat.webp" caption={`Flat layers${f['curved-flat']?.time ? ` · ${f['curved-flat'].time}` : ''}`} />
-      <Shot src="/tour/curved-tops.webp" caption={`Curved tops${f['curved-tops']?.time ? ` · ${f['curved-tops'].time}` : ''}`} /></> },
-  { title: 'Tune what matters. The rest is automatic.', points: [
-    ['You tune', 'walls, infill, supports, ironing, how the top looks.'],
-    ['Automatic', 'anything that follows from your nozzle and layer height (line widths, layer counts, support gaps), and anything your printer needs (speeds, accelerations, elephant-foot), because each printer carries its own values.'],
-    ['One set of profiles', 'the same Everyday works on every nozzle, layer height and printer, with no copies to keep in sync. Values worked out for you show ✦; type over any of them. Prefer the classic way? Normal profiles still work.']],
-    art: () => <Shot src="/tour/dynamic.webp" caption="Everyday: formulas worked out for the nozzle and layer height" /> },
+    art: <><Shot src="/tour/roof-flat.webp" caption="Flat layers · 0.20 mm" /><Shot src="/tour/roof-curved.webp" caption="Curved tops · 0.20 mm" /></> },
   { title: 'Your workflow', points: [],
-    art: () => <div className="setup-stack"><Shot src="/tour/take-control.webp" caption="Open in another tab" /><Shot src="/tour/projects.webp" caption="Projects, on any device" /></div> },
+    art: <Shot src="/tour/workflow.webp" caption="Projects, on any device" /> },
 ];
 function Tour({ page }: { page: number }) {
   const t = TOUR[page];
-  const [facts, setFacts] = useState<TourFacts>({});
-  useEffect(() => { void (tourFacts ??= fetch('/tour/tour.json').then((r) => r.ok ? r.json() : {}).catch(() => ({}))).then(setFacts); }, []);
   return <Frame step="tour" foot={<><Back /><button type="button" className="btn-ghost" onClick={() => send({ type: 'SKIP' })}>Skip</button><span className="setup-grow" />
     <span className="setup-count">{page + 1}/{TOUR_PAGES}</span><Next /></>}>
     <div className="setup-tour">
-      <div className="setup-tour-art">{t.art(facts)}</div>
-      <div className="setup-tour-text"><h2>{t.title}</h2>{t.points.map((x) => typeof x === 'string' ? <p key={x}>{x}</p> : <p key={x[0]}><b>{x[0]}:</b> {x[1]}</p>)}</div>
+      <div className="setup-tour-art">{t.art}</div>
+      <div className="setup-tour-text"><h2>{t.title}</h2>{t.points.map((x) => <p key={x}>{x}</p>)}</div>
     </div>
   </Frame>;
 }

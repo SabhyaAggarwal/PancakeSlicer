@@ -130,6 +130,14 @@
 :where(.orca-parity) .dyn-factor { width: 72px; text-align: right; color: var(--ink); }
 :where(.orca-parity) .dyn-formula.dyn-add { display: flex; flex-wrap: wrap; gap: var(--s-3); }
 :where(.orca-parity) .dyn-group { grid-column: 1 / -1; }
+:where(.orca-parity) .dyn-finder { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s-2) var(--s-3); width: min(100%, 480px); }
+:where(.orca-parity) .dyn-finder > .text { height: 26px; }
+:where(.orca-parity) .dyn-finder-list { grid-column: 1 / -1; grid-row: 2; max-height: 280px; overflow: auto; border: 1px solid var(--line); border-radius: var(--control-radius); background: var(--selector-bg); }
+:where(.orca-parity) .dyn-finder-group { position: sticky; top: 0; padding: var(--s-2) var(--s-3); background: var(--selector-bg); font: var(--t-small); font-weight: 600; color: var(--ink-3); }
+:where(.orca-parity) .dyn-finder-item { display: block; width: 100%; min-height: 28px; padding: 0 var(--s-3) 0 var(--s-5); border: 0; background: none; color: var(--ink); font: var(--t-body); text-align: left; cursor: pointer; }
+:where(.orca-parity) .dyn-finder-item:is(:hover, :focus-visible) { background: var(--hover); }
+:where(.orca-parity) .dyn-finder-empty { display: block; padding: var(--s-3); color: var(--muted); font: var(--t-body); }
+@media (pointer: coarse) { :where(.orca-parity) .dyn-finder-item { min-height: 40px; } }
 :where(.orca-parity) .dyn-table-scroll { min-height: 0; max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: var(--r-1); }
 :where(.orca-parity) .dyn-table { width: 100%; border-collapse: collapse; font: var(--t-body); font-variant-numeric: tabular-nums; }
 :where(.orca-parity) .dyn-table thead th { position: sticky; top: 0; z-index: 1; background: var(--panel); font: var(--t-small); font-weight: 600; color: var(--ink-3); white-space: normal; line-height: 14px; vertical-align: bottom; padding-block: var(--s-2); }
