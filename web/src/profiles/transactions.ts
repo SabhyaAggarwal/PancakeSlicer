@@ -10,7 +10,12 @@ const serialize = <T>(action:()=>Promise<T>):Promise<T> => {const result=tail.th
 export const serializeProfileWrite=serialize;
 const ordered=(value:unknown):unknown=>Array.isArray(value)?value.map(ordered):value && typeof value==='object'?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).filter(([,v])=>v!==undefined).map(([k,v])=>[k,ordered(v)])):value;
 const equal=(a:unknown,b:unknown)=>JSON.stringify(ordered(a))===JSON.stringify(ordered(b));
-const stored=(p:UserPreset)=>storedProfile(normalizeUserPreset(p));
+const sameSetups=(a:PrinterProfileLibrary|undefined,b:PrinterProfileLibrary|undefined)=>equal(a?.setups ?? {},b?.setups ?? {});
+const stored=(p:UserPreset)=>{
+  const {snapshot:_s,baseline:_b,kind:_k,aliases:_a,provenance:_p,masterId:_m,printerId:_pr,parentId:_pi,parent:_pa,metadata,base,name,...rest}=storedProfile(normalizeUserPreset(p)) as ReturnType<typeof storedProfile>&Record<string,unknown>;
+  const family=(metadata as Record<string,unknown>|undefined)?.family;
+  return {...rest,name:String(name).replace(/\s+@.*$/,'').trim() || name,base:{name:base?.name,vendor:base?.vendor},...(family ? {family} : {})};
+};
 const conflict=(message:string)=>Object.assign(new Error(message),{code:'revision_conflict',recovery:'reload_profiles'});
 interface FrozenWrite {write:ProfileLibraryWrite;records:UserPreset[];origins:Map<string,UserPreset|undefined>;signature:string;retryable:boolean;acknowledged?:boolean;setupBaseline?:PrinterProfileLibrary}
 interface Acknowledgement {request:FrozenWrite;document:import('./ownership').ProfileLibraryDocument;records:UserPreset[];changed:Set<string>;setupsChanged?:boolean}
@@ -43,7 +48,7 @@ async function acknowledge(request:FrozenWrite):Promise<Acknowledgement>{
     if(!sent || !equal(stored(record),stored(sent as UserPreset)))changed.add(profileKey(submitted));
     else {const origin=request.origins.get(profileKey(submitted));if(origin)ownAcknowledgements.set(origin,record);}
   }
-  const setupsChanged=!!request.setupBaseline && !equal(document.printers,request.write.document.printers);
+  const setupsChanged=!!request.setupBaseline && !sameSetups(document.printers,request.write.document.printers);
   if(request.setupBaseline && !setupsChanged)ownSetupAcknowledgements.set(request.setupBaseline,document.printers);
   request.acknowledged=true;request.retryable=false;if(pending===request)pending=undefined;
   return {request,document,records,changed,setupsChanged};
@@ -131,8 +136,8 @@ async function performSave(s:State,records:UserPreset[],operationId?:string,prin
     if(actual)prepared={...prepared,revision:Math.max(prepared.revision ?? 0,(actual.revision ?? 0)+1)};
     profiles.set(id,storedProfile(prepared));submitted.push(prepared);
   }
-  if(printers && (setup ? !equal(remote.printers,ownSetupAcknowledgements.get(setup.baseline) ?? setup.baseline)
-    : s.profileLibraryRevision>0 && remote.revision!==s.profileLibraryRevision && !(priorAck && equal(remote.printers,priorAck.request.write.document.printers))))throw conflict('The saved printer setups changed. Reload before replacing them; your working setup is kept.');
+  if(printers && (setup ? !sameSetups(remote.printers,ownSetupAcknowledgements.get(setup.baseline) ?? setup.baseline)
+    : !sameSetups(remote.printers,s.printerLibrary) && !(priorAck && sameSetups(remote.printers,priorAck.request.write.document.printers))))throw conflict('The saved printer setups changed. Reload before replacing them; your working setup is kept.');
   const catalogKeys=new Set(catalog?.map(catalogKey));
   const document={...remote,profiles:[...profiles.values()],...(catalog?.length?{catalog:[...(remote.catalog ?? []).filter(p=>!catalogKeys.has(catalogKey(p))),...catalog]}:{}),printers:printers ?? remote.printers ?? s.printerLibrary ?? emptyPrinterLibrary()};
   if(equal(document,remote))return {request:freezeWrite(s,{operationId:operationId ?? '',expectedRevision:remote.revision,document},submitted,requestSignature),document:remote,records:submitted,changed:new Set()};

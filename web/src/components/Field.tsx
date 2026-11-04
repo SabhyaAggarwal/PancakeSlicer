@@ -102,6 +102,8 @@ export const Field = memo(function Field(props: {
   const fullLabel = props.label ?? (def.label || def.full_label || key);
   const label = props.label === undefined ? displayLabel(key, fullLabel) : fullLabel;
   const modified = props.dirty || props.source === 'set';
+  const sourced = props.source === 'auto' || props.source === 'printer', glyph = <SourceGlyph text={props.sourceText}/>;
+  const glyphInUnit = sourced && !props.widget && NUMERIC.has(def.type) && !def.multiline && !(props.mixed && !unmixed);
   const checked = !props.overrideDisabled && value != null && value !== 'nil' && value !== '';
   const inherited = props.inheritedValue ?? OPTIONS[key.replace(/^filament_/, '')]?.default;
   const fallback = elementOf(inherited as ConfigValue | undefined, idx, vector) ?? '0';
@@ -130,12 +132,12 @@ export const Field = memo(function Field(props: {
             ? <button type="button" className="field-mixed" aria-label={`${label}: mixed values ${props.mixed}; set one value`}
               onClick={() => { setUnmixed(true); requestAnimationFrame(() => fieldRef.current?.querySelector<HTMLElement>('input, button, [role=combobox]')?.focus()); }}>
               <span>Mixed</span><span className="field-mixed-values">{props.mixed}</span></button>
-            : <Widget def={def} value={def.nullable && !checked ? fallback : value} onCommit={commit} />)}
+            : <Widget def={def} value={def.nullable && !checked ? fallback : value} onCommit={commit} glyph={glyphInUnit ? glyph : undefined} />)}
         </LabelId.Provider>
         {def.sidetext && (props.widget || !NUMERIC.has(def.type)) && <span className="opt-side">{def.sidetext}</span>}
       </fieldset>
       <span className="opt-undo">
-        {(props.source === 'auto' || props.source === 'printer') && <SourceGlyph text={props.sourceText}/>}
+        {sourced && !glyphInUnit && glyph}
         {props.scope ? <ScopeMark type={props.type} slot={props.slot} optKey={key} target={props.scope.target} /> : <>
         {modified && (
           <button type="button" className="reset-icon" aria-label={`${props.resetTitle ?? 'Reset to the preset value'}: ${label}`} onClick={() => props.dirty || !props.onResetToBase ? reset(key) : props.onResetToBase(key)}>
@@ -161,7 +163,7 @@ function SlotChoice({ value, onCommit }: { value: string; onCommit: (v: ConfigVa
   );
 }
 
-function Widget({ def, value, onCommit }: { def: OptionDef; value: ConfigValue | undefined; onCommit: (v: ConfigValue) => void }) {
+function Widget({ def, value, onCommit, glyph }: { def: OptionDef; value: ConfigValue | undefined; onCommit: (v: ConfigValue) => void; glyph?: React.ReactNode }) {
   const named = useLabel();
   const base = def.type.replace(/s$/, '');
   if (FILAMENT_SLOT_KEYS.has(def.key)) return <SlotChoice value={asText(value) || '0'} onCommit={onCommit} />;
@@ -193,7 +195,7 @@ function Widget({ def, value, onCommit }: { def: OptionDef; value: ConfigValue |
   if (def.multiline || (base === 'string' && /gcode|notes|post_process/.test(def.key))) {
     return <TextBox value={asText(value)} multiline onCommit={onCommit} readOnly={def.readonly} />;
   }
-  return <TextBox value={asText(value)} numeric={NUMERIC.has(def.type)} spin={base === 'int'} def={def} onCommit={onCommit} readOnly={def.readonly} />;
+  return <TextBox value={asText(value)} numeric={NUMERIC.has(def.type)} spin={base === 'int'} def={def} onCommit={onCommit} readOnly={def.readonly} glyph={glyph} />;
 }
 
 const segmented = (labels: string[]) => labels.length >= 2 && labels.length <= 4 && labels.every((l) => l.trim())
@@ -206,7 +208,7 @@ const flushCommit = () => { const run = pendingCommit; pendingCommit = null; run
 if (typeof window !== 'undefined') for (const type of ['pointerdown', 'keydown', 'pagehide'] as const) window.addEventListener(type, flushCommit, true);
 const afterPaint = (run: () => void) => { flushCommit(); pendingCommit = run; requestAnimationFrame(() => setTimeout(flushCommit, 0)); };
 
-function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean; spin?: boolean; def?: OptionDef; readOnly?: boolean; list?: string; onCommit: (v: ConfigValue) => void }) {
+function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean; spin?: boolean; def?: OptionDef; readOnly?: boolean; list?: string; glyph?: React.ReactNode; onCommit: (v: ConfigValue) => void }) {
   const named = useLabel();
   const percentOnly = !!props.numeric && /^percents?$/.test(props.def?.type ?? '') && props.def?.sidetext?.trim() === '%';
   const shown = (v: string) => percentOnly ? v.replace(/\s*%\s*$/, '') : v;
@@ -276,7 +278,7 @@ function TextBox(props: { value: string; multiline?: boolean; numeric?: boolean;
           else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); stepNumber(e.key === 'ArrowUp' ? 1 : -1, e.shiftKey, true); }
         }}
       />
-      {unit && <span className="control-unit" aria-hidden>{unit}</span>}
+      {(unit || props.glyph) && <span className="control-unit"><span aria-hidden>{unit}</span>{props.glyph}</span>}
       <span className="number-steps"><button type="button" tabIndex={-1} aria-label="Increase value" disabled={props.readOnly} onMouseDown={e => e.preventDefault()} onClick={(e) => stepNumber(1, e.shiftKey)}>+</button><button type="button" tabIndex={-1} aria-label="Decrease value" disabled={props.readOnly} onMouseDown={e => e.preventDefault()} onClick={(e) => stepNumber(-1, e.shiftKey)}>−</button></span>
     </span>
   );

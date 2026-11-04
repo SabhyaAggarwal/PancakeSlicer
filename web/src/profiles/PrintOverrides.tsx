@@ -10,7 +10,9 @@ const printKeys = () => [...new Set((TABS.process?.pages ?? []).flatMap((p) => p
 export const labelOf = (key: string) => {
   const group = TABS.process?.pages.flatMap((p) => p.groups).find((g) => g.lines.some((l) => l.options.some((k) => splitKey(k)[0] === key)))?.title;
   const own = OPTIONS[key]?.label || key;
-  return group && !own.toLowerCase().includes(group.toLowerCase()) ? `${group} · ${own}` : own;
+  if (!group) return own;
+  const g = group.toLowerCase(), o = own.toLowerCase();
+  return o.includes(g) ? own : g.includes(o) ? group : `${group} · ${own}`;
 };
 
 export function PrintOverrides({ value, readOnly, onChange }: { value: Config; readOnly?: boolean; onChange(next: Config): void }) {

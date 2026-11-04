@@ -78,7 +78,7 @@ function ViewChoices() {
   </>;
 }
 function SliceSummary() {
-  const summary = useStore(s => s.job.state === 'done' && !s.job.stale && s.job.status?.record ? nativeSurfaceSummary(s.job.status.record) : null);
+  const summary = useStore(s => s.tab !== 'preview' && s.job.state === 'done' && !s.job.stale && s.job.status?.record ? nativeSurfaceSummary(s.job.status.record) : null);
   return summary ? <div className="engine-line" role="status">{summary}</div> : null;
 }
 function RailSkeleton() {

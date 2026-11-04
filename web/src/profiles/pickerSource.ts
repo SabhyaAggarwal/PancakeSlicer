@@ -23,12 +23,6 @@ export function listProfiles(type: PresetType): PickerEntry[] {
   });
 }
 
-export function listCatalog(type: PresetType): PickerEntry[] {
-  const s = getState();
-  return catalog.listCatalog(s,type).filter(row => row.compatible.ok).map(row => ({key:row.key,name:row.name,
-    config:catalog.resolveCatalogEntry(s,type,row.key).base.config,vendor:row.vendor,mine:false}));
-}
-
 const callbacks=new WeakMap<(key:string)=>void,number>();let nextCallback=0;
 type Intent={owner:ReturnType<typeof selectionOwner>;flight:Promise<void>};
 const intents=new Map<string,Intent>();

@@ -36,7 +36,7 @@
 :where(.orca-parity) .vh-card-plate > .skel-block { width: 100%; height: 100%; }
 :where(.orca-parity) .vh-card-grid .skel-line { flex: 1; max-width: 60%; height: 12px; }
 :where(.orca-parity) .vh-card-plate > img { display: block; width: 100%; height: 100%; object-fit: contain; }
-:where(.orca-parity) .vh-card-changes { margin: var(--s-4) var(--s-4) 0; padding: 0; list-style: none; display: grid; grid-template-columns: fit-content(40%) minmax(0, 1fr) auto minmax(0, 1fr); column-gap: var(--s-3); }
+:where(.orca-parity) .vh-card-changes { margin: var(--s-4) var(--s-4) 0; padding: 0; list-style: none; display: grid; justify-content: start; grid-template-columns: fit-content(40%) minmax(0, max-content) auto minmax(0, 1fr); column-gap: var(--s-3); }
 :where(.orca-parity) .vh-card-change { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: baseline; min-height: 20px; white-space: nowrap; }
 :where(.orca-parity) .vh-card-change > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 :where(.orca-parity) .vh-card-change > .vh-card-name:only-child { grid-column: 1 / -1; }

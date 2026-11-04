@@ -90,6 +90,7 @@
 :where(.orca-parity) .setup-results { min-height: 0; display: flex; flex-direction: column; gap: var(--s-3); }
 :where(.orca-parity) .setup-results-tools { display: flex; gap: var(--s-3); }
 :where(.orca-parity) .setup-results .setup-grid { min-height: 0; overflow: auto; }
+:where(.orca-parity) .setup-sub { grid-column: 1 / -1; margin: var(--s-3) 0 0; font-size: inherit; font-weight: 600; color: var(--ink-2); }
 :where(.orca-parity) .setup-all { border-bottom: 1px solid var(--line); border-radius: 0; font-weight: 600; }
 @media (max-width: 599px) {
   :where(.orca-parity) .setup-filaments { grid-template-columns: minmax(0, 1fr); position: relative; }

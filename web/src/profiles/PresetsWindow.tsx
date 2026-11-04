@@ -14,11 +14,11 @@ import { changedKeys } from './model';
 import { applicabilityKey, worksWithNone } from './WorksWith';
 import { archiveProfiles, profileCopyCreation, restoreProfiles } from './transactions';
 import { documentGeneration } from '../state/history';
-import { MasterPresetDetail, ProfileEditor, type ProfileDraft } from './ProfileEditor';
+import { DetailPane, ProfileEditor, type ProfileDraft } from './ProfileEditor';
+import { addCatalogFamily, addCatalogPrinter, useCatalog, type CatalogFamily, type CatalogModel, type CatalogRead } from './catalog-add';
 import { materialRank } from './Pickers';
 import { modelLabel, nozzleField, printerLine, profileColour, profileSummary, rowDetail, vendorField, vendorLabel } from './metadata';
 import { Check } from '../components/Check';
-import { Dropdown } from '../components/Dropdown';
 import { requestPreset } from '../components/PresetCombo';
 import { ActionMenu, MenuButton } from '../components/Menu';
 import { Choice, Segmented } from '../components/kit';
@@ -38,18 +38,16 @@ import { Dialog } from 'radix-ui';
 import type { ProjectProfileChanges } from './project-draft';
 import { confirmDialog, promptDialog } from '../components/Ask';
 import { diffRows, useTabLoaded } from '../components/PresetDialogs';
-import { display, presetLabel } from './format';
+import { display } from './format';
 import { changeCount, takeValue } from './stack';
-import { createProfileFromBase, displayName, listCatalog, resolveCatalogEntry } from './catalog';
-import { colourName, configColour } from './filament-colour';
+import { colourName } from './filament-colour';
 import { ColorPicker } from '../components/ColorPicker';
 
 const TYPES: [PresetType, string][] = [['machine', 'Printers'], ['filament', 'Filaments'], ['process', 'Print settings']];
-const shortName = presetLabel;
 const first = (value: unknown) => String(Array.isArray(value) ? value[0] ?? '' : value ?? '');
 const coverOf = (vendor: string, model: string) => vendor && model ? `/profiles/${encodeURIComponent(vendor)}/${encodeURIComponent(model)}_cover.png` : undefined;
 
-interface Item { base?:SystemPreset; key: string; name: string; mine: boolean; flag?: string; parent?: string; changed: number; slot?: number; user?: UserPreset; note: string; vendor: string; model:string; nozzle: string; material: string; family?: string; cover?: string|null; swatch?:string|null;reason?: string; meta?: string; fullName?: string; child?: boolean; config: Config; variants?: Item[] }
+interface Item { base?:SystemPreset; key: string; name: string; mine: boolean; flag?: string; parent?: string; changed: number; slot?: number; user?: UserPreset; note: string; vendor: string; model:string; nozzle: string; material: string; family?: string; cover?: string|null; swatch?:string|null;reason?: string; meta?: string; fullName?: string; child?: boolean; config: Config; variants?: Item[]; catalog?: CatalogModel | CatalogFamily; fits?: string[] }
 const COMMON_MATERIALS = ['PLA', 'PETG', 'ABS', 'ASA', 'TPU'];
 const NOUNS: Record<PresetType,[string,string]> = {machine:['printer','printers'],filament:['filament','filaments'],process:['print setting','print settings']};
 const count = (n:number,[one,many]:[string,string]) => `${n} ${n === 1 ? one : many}`;
@@ -59,28 +57,6 @@ const groupHas = (g: Group, match: (i: Item) => boolean): boolean => g.children 
 const byLabel = (a: string, b: string) => a === 'Other' || a === 'Any printer' ? 1 : b === 'Other' || b === 'Any printer' ? -1 : parseFloat(a) - parseFloat(b) || a.localeCompare(b);
 const sessionFolds = new Map<string, boolean>();
 const unique = (rows: Item[]) => [...new Map(rows.map(r => [r.key, r])).values()];
-function families(type: PresetType, list: Item[]): Item[] {
-  if(type === 'process') return list;
-  const byFamily = new Map<string, Item[]>(), out: Item[] = [];
-  for(const i of list) {
-    const id = type === 'machine' ? i.model && `${i.vendor}\0${i.model}` : i.family && `${i.family}\0${shortName(i.name)}`;
-    if(!id) {out.push(i); continue;}
-    if(!byFamily.has(id)) byFamily.set(id, []);
-    byFamily.get(id)!.push(i);
-  }
-  for(const [id, variants] of byFamily) {
-    if(type === 'filament' && variants.length === 1) {out.push(variants[0]); continue;}
-    variants.sort((a, b) => type === 'machine' ? Number(a.nozzle) - Number(b.nozzle) : a.name.localeCompare(b.name));
-    const head = variants[0];
-    out.push({...head, key: `family:${type}:${id}`, name: type === 'machine' ? head.model : shortName(head.name), note: '', meta: type === 'machine' ? `${variants.map(v => v.nozzle).filter(Boolean).join(' · ')} mm` : count(variants.length, ['variant', 'variants']), reason: variants.some(v => !v.reason) ? undefined : head.reason, variants});
-  }
-  return out;
-}
-function defaultVariant(type: PresetType, variants: Item[]) {
-  if(type === 'machine') return [...variants].sort((a, b) => Math.abs(Number(a.nozzle) - 0.4) - Math.abs(Number(b.nozzle) - 0.4))[0];
-  return variants.find(v => !v.reason) ?? variants[0];
-}
-
 const slotsOf = (s: State, type: PresetType, name: string) => {
   const profile = findProfile(s, type, name), matches = (key: string) => profile ? matchesProfile(profile, key) : key === name;
   return type === 'machine' ? (matches(s.printer) ? [0] : []) : type === 'process' ? (matches(s.process) ? [0] : []) : s.filamentSlots.flatMap((f,i) => matches(f) ? [i] : []);
@@ -120,26 +96,33 @@ async function archiveRecords(type: PresetType, keys: string[]) {
 }
 export async function removePreset(type: PresetType, profile: UserPreset) {try {await archiveRecords(type,[profileKey(profile)]);} catch(error) {failed('Remove',error);}}
 
-function catalogItems(s: State, type: PresetType): Item[] {
-  return listCatalog(s,type,{browseAll:true}).map(entry => {
-    const {base}=resolveCatalogEntry(s,type,entry.key), config=base.config;
-    return {key:entry.key,base,name:entry.name,mine:false,changed:0,note:profileSummary(type,config),vendor:type === 'filament' ? first(config.filament_vendor) || entry.vendor : entry.vendor,model:first(config.printer_model) || base?.model || '',nozzle:first(config.nozzle_diameter),material:first(config.filament_type),family:type === 'filament' ? base.filament_id || base.inherits?.[0] || undefined : undefined,cover:type === 'machine' ? coverOf(entry.vendor,first(config.printer_model) || base?.model || '') ?? null : undefined,swatch:type === 'filament' ? profileColour(config) : undefined,reason:entry.compatible.ok ? undefined : entry.compatible.reason,config};
-  });
+function catalogRows(data: CatalogRead | undefined): Item[] {
+  const row = { mine: false, changed: 0, note: '', model: '', nozzle: '', material: '', config: {} };
+  if (!data) return [];
+  if ('vendors' in data) return data.vendors.flatMap((v) => v.models.map((m): Item => {
+    const head = { ...row, key: `catalog:machine:${v.id}/${m.id}`, name: m.name, vendor: v.id, model: m.name, cover: m.cover ?? null, catalog: m };
+    return { ...head, name: modelLabel({}, v.id, m.name), fullName: m.name, meta: `${m.nozzles.join(' · ')} mm`, variants: m.nozzles.map((n) => ({ ...head, key: `${head.key}@${n}`, nozzle: n })) };
+  }));
+  return data.families.map((f): Item => ({ ...row, key: `catalog:filament:${f.id}`, name: f.name, vendor: f.brand ?? '', material: f.material || 'Other',
+    swatch: f.colour || undefined, note: f.brand ?? '', catalog: f, fits: f.models }));
 }
-function AddDetails({type,item,busy,onAdd}: {type:PresetType;item:Item;busy:boolean;onAdd(variant:Item,colour?:string):void}) {
+function AddDetails({type,item,busy,onAdd}: {type:PresetType;item:Item;busy:boolean;onAdd(item:Item,nozzle?:string,colour?:string):void}) {
   const load=useStore(s=>s.profileLibraryLoad.state);
-  const variants=item.variants ?? [item];
-  const [choice,setChoice]=useState(()=>defaultVariant(type,variants).key),[colour,setColour]=useState<string>();
-  const variant=variants.find(v=>v.key === choice) ?? variants[0];
-  const label=busy ? 'Adding…' : load === 'loading' ? 'Loading…' : `Add ${type === 'process' ? NOUNS[type][1] : NOUNS[type][0]}`;
-  return <MasterPresetDetail key={variant.key} type={type} preset={variant.key} name={variant.fullName ?? variant.name} config={variant.config}
-    identity={type === 'filament' && <ColorPicker value={colour ?? configColour(variant.config) ?? ''} label="Colour" onCommit={setColour}/>}
+  const nozzles=(item.variants ?? []).map(v=>v.nozzle);
+  const [nozzle,setNozzle]=useState(()=>[...nozzles].sort((a,b)=>Math.abs(Number(a)-0.4)-Math.abs(Number(b)-0.4))[0]),[colour,setColour]=useState<string>();
+  const family=type === 'filament' ? item.catalog as CatalogFamily : undefined;
+  const label=busy ? 'Adding…' : load === 'loading' ? 'Loading…' : `Add ${NOUNS[type][0]}`;
+  return <DetailPane label={item.fullName ?? item.name} identity={<>{family && <ColorPicker value={colour ?? family.colour ?? ''} label="Colour" onCommit={setColour}/>}<span className="pf-editor-name"><strong>{item.fullName ?? item.name}</strong></span></>}
+    summary={<div className="pf-editor-summary">{family ? [family.material, family.brand].filter(Boolean).join(' · ') : vendorLabel({},item.vendor)}</div>}
     controls={<>
-      {variants.length > 1 && (type === 'machine'
-        ? <Choice label="Nozzle" value={variant.key} options={variants.map(v=>({id:v.key,label:`${v.nozzle} mm`}))} onChange={setChoice}/>
-        : <Dropdown className="combo" aria-label="Variant" value={variant.key} onValueChange={setChoice} options={variants.map(v=>({value:v.key,label:v.name}))}/>)}
-      <button type="button" className="btn primary" disabled={busy || load !== 'ready'} onClick={()=>onAdd(variant,colour)}>{label}</button>
-    </>}/>;
+      {nozzles.length > 1 && <Choice label="Nozzle" value={nozzle} options={nozzles.map(n=>({id:n,label:`${n} mm`}))} onChange={setNozzle}/>}
+      <button type="button" className="btn primary" disabled={busy || load !== 'ready'} onClick={()=>onAdd(item,nozzle,colour)}>{label}</button>
+    </>}>
+    <div className="pf-add-body">
+      {item.cover && <img className="pf-add-cover" src={item.cover} alt="" width={240} height={240}/>}
+      {family && family.models.length > 0 && <div className="fits"><div className="fits-row"><span>Fits</span><span>{family.models.join(', ')}</span></div></div>}
+    </div>
+  </DetailPane>;
 }
 
 function configOf(s: State, type: PresetType, name: string) {
@@ -225,10 +208,8 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const printer = useStore(st => st.printer), process = useStore(st => st.process), slots = useStore(st => st.filamentSlots);
   const printerOptions=useMemo(()=>users.filter(p=>p.type === 'machine' && !p.archived && p.kind !== 'master').map(p=>({value:profileKey(p),label:p.name})),[users]);
   const [reveal,setReveal]=useState<{key?:string}>({});
-  const list = useMemo(() => {
-    const s = getState();
-    return adding ? families(type,catalogItems(s,type)) : items(s,type);
-  }, [adding,type,users,dirty,filamentEdits,machines,processes,filaments,printer,process,slots]);
+  const catalog = useCatalog(type, resolvePreset(getState(),'machine',printer).base?.vendor ?? 'BBL', adding);
+  const list = useMemo(() => adding ? catalogRows(catalog.data) : items(getState(),type), [adding,catalog.data,type,users,dirty,filamentEdits,machines,processes,filaments,printer,process,slots]);
   const [materialDefault,setMaterialDefault]=useState(false);
   const facets=useMemo(()=>{
     const flat=list.flatMap(i=>i.variants ?? [i]);
@@ -243,7 +224,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     const hasContext=type !== 'machine' && (printerFilter.length || modelFilter.length || nozzleFilter.length);
     const contexts=hasContext ? printerFilter.length ? printerFilter : machines.filter(p=>(!modelFilter.length || modelFilter.includes(first(p.config.printer_model) || p.model || '')) && (!nozzleFilter.length || nozzleFilter.includes(first(p.config.nozzle_diameter)))).map(p=>p.name) : [];
     const materials=search.trim() && materialDefault ? [] : materialFilter;
-    const out=list.filter(i=>{const variants=i.variants ?? [i];return (type !== 'process' || !kindFilter.length || kindFilter.includes(isDynamic(i.user) ? 'dynamic' : 'fixed')) && (!vendorFilter.length || vendorFilter.includes(i.vendor)) && (!materials.length || materials.includes(i.material)) && (type === 'machine' ? (!modelFilter.length || modelFilter.includes(i.model)) && (!nozzleFilter.length || variants.some(v=>nozzleFilter.includes(v.nozzle))) : !hasContext || variants.some(v=>contexts.some(key=>selectCompatibility(state,type,v.user ? v.key : v.name,key).ok)));});
+    const out=list.filter(i=>{const variants=i.variants ?? [i];return (type !== 'process' || !kindFilter.length || kindFilter.includes(isDynamic(i.user) ? 'dynamic' : 'fixed')) && (!vendorFilter.length || vendorFilter.includes(i.vendor)) && (!materials.length || materials.includes(i.material)) && (type === 'machine' ? (!modelFilter.length || modelFilter.includes(i.model)) && (!nozzleFilter.length || variants.some(v=>nozzleFilter.includes(v.nozzle))) : !hasContext || (i.fits ? !i.fits.length || contexts.some(key=>i.fits!.includes(first(resolvePreset(state,'machine',key).config.printer_model))) : variants.some(v=>contexts.some(key=>selectCompatibility(state,type,v.user ? v.key : v.name,key).ok))));});
     const pinned=reveal.key && !out.some(i=>i.key === reveal.key) ? list.find(i=>i.key === reveal.key) : undefined;
     return pinned ? [...out,pinned] : out;
   },[list,type,kindFilter,vendorFilter,materialFilter,materialDefault,search,modelFilter,nozzleFilter,printerFilter,machines,users,printer,process,dirty,filamentEdits,reveal.key]);
@@ -280,7 +261,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     const bucket=(list:Item[],labelOf:(i:Item)=>string)=>{const m=new Map<string,Item[]>();for(const i of list){const g=labelOf(i);m.set(g,[...m.get(g) ?? [],i]);}return [...m].sort(([a],[b])=>byLabel(a,b));};
     const sortRows=(list:Item[])=>list.sort((a,b)=>a.name.localeCompare(b.name));
     if(type !== 'process')return [...bucket(rows,i=>type === 'machine' ? vendorLabel(i.config,i.vendor) : i.material || 'Other').sort(([a],[b])=>type === 'filament' ? materialRank(a)-materialRank(b) || byLabel(a,b) : 0)
-      .map(([label,list])=>({key:label,label,rows:type === 'machine' ? sortRows(list.map(machineRow)) : type === 'filament' ? (adding ? sortRows(list.map(i=>filamentRow(i,label))) : colourFamilies(sortRows(list.map(i=>filamentRow(i,label))))) : sortRows(list)})),...strayGroup];
+      .map(([label,list])=>({key:label,label,rows:adding ? sortRows(list) : type === 'machine' ? sortRows(list.map(machineRow)) : type === 'filament' ? (adding ? sortRows(list.map(i=>filamentRow(i,label))) : colourFamilies(sortRows(list.map(i=>filamentRow(i,label))))) : sortRows(list)})),...strayGroup];
     const mine=rows.filter(i=>i.user && i.user.kind !== 'master').map(i=>({...i,fullName:i.name,note:'',meta:undefined,dynamic:isDynamic(i.user)}));
     return [{key:'mine',label:'My profiles',rows:sortBy === 'kind' ? mine.sort((a,b)=>Number(!!b.dynamic)-Number(!!a.dynamic) || a.name.localeCompare(b.name)) : sortRows(mine)}];
   },[matching,query,type,machines,printerFilter,printer,sortBy]);
@@ -302,7 +283,8 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   },[adding,type,list,printerOptions,printer]);
   const scope = `profiles:${adding ? 'add' : 'owned'}:${type}`, groupKey = (key: string) => `${scope}:${key}`;
   const printerModel=useMemo(()=>first(resolvePreset(getState(),'machine',printer).config.printer_model),[printer,machines,users]);
-  const foldOpen = (g: Group) => folds.get(groupKey(g.key)) ?? (type === 'process' ? adding && (g.key === printerModel || groups.length === 1) : !adding || groupHas(g, r => r.slot !== undefined || r.key === name));
+  const addOpen = (g: Group) => type === 'filament' || g.label === vendorLabel({}, resolvePreset(getState(),'machine',printer).base?.vendor ?? '');
+  const foldOpen = (g: Group) => folds.get(groupKey(g.key)) ?? (type === 'process' ? adding && (g.key === printerModel || groups.length === 1) : adding ? addOpen(g) : !adding || groupHas(g, r => r.slot !== undefined || r.key === name));
   const isOpen = (g: Group) => query ? !searchFolds.has(groupKey(g.key)) : foldOpen(g);
   const order = useMemo(() => {
     const keys: string[] = [], walk = (list: Group[]) => {for(const g of list)if(isOpen(g)){if(g.children)walk(g.children);else keys.push(...g.rows.map(i => i.key));}};
@@ -391,7 +373,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const close=()=>{if(!busy)void leave(()=>setState({presetUx:null}));};
   const pickType = (t: PresetType, target?: string) => {
     selectionRevision.current++;
-    setType(t); setSearch(''); setVendorFilter([]); setNozzleFilter([]); setMaterialFilter([]); setBulkError(null);
+    setType(t); setSearch(''); setVendorFilter([]); setNozzleFilter([]); setMaterialFilter([]); setModelFilter([]); setPrinterFilter([]); setBulkError(null);
     const rows = adding ? [] : items(getState(), t), nextScope = `profiles:${adding ? 'add' : 'owned'}:${t}`;
     let next = createSelection(nextScope, rows.map(i => i.key));
     const row = rows.find(i => i.key === target || i.name === target);
@@ -409,15 +391,15 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     return ()=>mounted.current && documentGeneration()===document && getState().api===before.api && selectionRevision.current===revision
       && getState().printer===before.printer && getState().process===before.process && getState().filamentSlots===before.filamentSlots;
   };
-  const addVariant = async (variant:Item,colour?:string) => {
-    if(getState().profileLibraryLoad.state!=='ready')return;
+  const addFromCatalog = async (row:Item,nozzle?:string,colour?:string) => {
+    if(getState().profileLibraryLoad.state!=='ready' || !row.catalog)return;
     await run('adding', async () => {
     setBulkError(null);
     const owns=owner();
     try {
-      const recolour=colour && variant.base && colour !== configColour(variant.config) ? colour : undefined;
-      const key=recolour ? await createProfileFromBase(type,variant.key,`${displayName(variant.base!)} ${colourName(recolour)}`,{filament_colour:[recolour]}) : await createProfileFromBase(type,variant.key);
-      if(!owns()){toast(`Added ${variant.name}`);return;}
+      const family=row.catalog as CatalogFamily,recolour=type === 'filament' && colour && colour !== family.colour ? colour : undefined;
+      const key=type === 'machine' ? await addCatalogPrinter(row.vendor,row.catalog as CatalogModel,nozzle ?? '') : await addCatalogFamily(family,recolour,recolour && `${family.name} ${colourName(recolour)}`);
+      if(!owns()){toast(`Added ${row.name}`);return;}
       added(key);
       if(pickerAdd.current === type){pickerAdd.current=null;requestPreset(type,0,key);}
     }
@@ -471,20 +453,20 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   },[initialType,name]);
   const backToList=()=>{setMobilePane('list');setFiltersOpen(false);requestAnimationFrame(()=>document.getElementById(`${id}:${latestSelection.current.focus}`)?.focus());};
   const nouns=NOUNS[type], typeLabel=type === 'process' ? nouns[1] : nouns[0];
-  const resultNoun:[string,string]=adding && type === 'machine' ? ['model','models'] : adding ? ['preset','presets'] : nouns;
+  const resultNoun:[string,string]=adding && type === 'machine' ? ['model','models'] : nouns;
   const toggleGroup=(g:Group)=>{const k=groupKey(g.key);if(query)setSearchFolds(prior=>{const next=new Set(prior);if(!next.delete(k))next.add(k);return next;});else setFold(k,!isOpen(g));};
   useEffect(()=>{const key=selection.focus;if(query && key && revealPath(key))revealed.current=`${scope}:${key}`;},[selection.focus]);
   const renderGroup=(g:Group,depth:number):React.ReactNode=>{
-    const open=isOpen(g);
-    return <div key={g.key} role="rowgroup" className="pf-group" data-depth={depth}>
-      <div role="row" className="pf-group-head"><span role="rowheader"><button type="button" className="pf-group-toggle" aria-expanded={open} onClick={()=>toggleGroup(g)}><Caret dir={open ? 'down' : 'right'}/><span className="pf-group-label">{g.label}</span>{g.sub && <span className="pf-dim">{g.sub}</span>}</button></span></div>
+    const flat=type === 'process',open=flat || isOpen(g);
+    return <div key={g.key} role="rowgroup" className="pf-group" data-depth={depth} data-flat={flat || undefined}>
+      {!flat && <div role="row" className="pf-group-head"><span role="rowheader"><button type="button" className="pf-group-toggle" aria-expanded={open} onClick={()=>toggleGroup(g)}><Caret dir={open ? 'down' : 'right'}/><span className="pf-group-label">{g.label}</span>{g.sub && <span className="pf-dim">{g.sub}</span>}</button></span></div>}
       {open && (g.children ? g.children.map(c=>renderGroup(c,depth+1)) : <div role="presentation" className="pf-group-rows" onClickCapture={()=>{clickedIn.current=g.key;setOpenIn(g.key);}}>{g.rows.map(i => <ManagerProfileRow key={i.key} item={i} listId={id} selected={selectedSet.has(i.key)} open={i.key === openKey && (!openIn || openIn === g.key || !groups.some(o=>o.key === openIn && groupHas(o,r=>r.key === i.key)))} focused={selection.focus === i.key} selectable={!adding} dispatch={dispatch}/>)}</div>)}
     </div>;
   };
-  const handlers=useRef({close,addVariant,deleteSelected,duplicate});handlers.current={close,addVariant,deleteSelected,duplicate};
+  const handlers=useRef({close,addFromCatalog,deleteSelected,duplicate});handlers.current={close,addFromCatalog,deleteSelected,duplicate};
   const editKey=!adding && item?.user ? item.key : undefined,editUser=editKey ? item?.user : undefined,draft=editKey ? drafts[JSON.stringify([type,editKey])] : undefined;
   const editor=useMemo(()=>editKey && editUser && <ProfileEditor key={editKey} type={type} name={editKey} draft={draft} update={updateDraft} onSavingChange={editorSaving} onBack={()=>handlers.current.close()} onRemove={() => void handlers.current.deleteSelected([editKey])} onDuplicate={editUser.kind === 'master' ? undefined : () => void handlers.current.duplicate(editUser)} foldActions={drill} renameRequest={renameRequest}/>,[editKey,editUser,type,draft,drill,updateDraft,renameRequest]);
-  const addDetails=useMemo(()=>adding && item ? <AddDetails key={item.key} type={type} item={item} busy={busy} onAdd={(variant,colour)=>void handlers.current.addVariant(variant,colour)}/> : null,[adding,item,type,busy]);
+  const addDetails=useMemo(()=>adding && item ? <AddDetails key={item.key} type={type} item={item} busy={busy} onAdd={(row,nozzle,colour)=>void handlers.current.addFromCatalog(row,nozzle,colour)}/> : null,[adding,item,type,busy]);
   const bulk=selected.length > 1 && !adding, selectionKey=selected.join('\n');
   const canCompare=bulk && selected.length <= 4 && selectedItems.length === selected.length, comparing=canCompare && compareHidden !== selectionKey;
   const openKey=comparing ? undefined : item?.key;
@@ -512,19 +494,19 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
       <aside id={`${id}-filters`} className="pf-facets facets" aria-label="Library and filters">
         {type !== 'process' && <nav className="pf-library" aria-label="Library">
           <button type="button" className="pf-library-item" aria-current={!adding ? 'page' : undefined} onClick={()=>showLibrary(false)}>My {nouns[1]}</button>
-          <button type="button" className="pf-library-item" aria-current={adding ? 'page' : undefined} onClick={()=>showLibrary(true)}>Master presets</button>
+          <button type="button" className="pf-library-item" aria-current={adding ? 'page' : undefined} onClick={()=>showLibrary(true)}>Add {typeLabel}</button>
         </nav>}
         <FacetsHead active={filtersActive} onClear={clearFilters}/>
         {type === 'process' && <><FacetGroup label="Kind" options={[{value:'dynamic',label:'Dynamic'},{value:'fixed',label:'Regular'}]} value={kindFilter} onChange={setKindFilter}/>
           <div className="facet-group" role="group" aria-label="Sort"><div className="facet-head">Sort</div><Segmented label="Sort" value={sortBy} options={[{id:'name',label:'Name'},{id:'kind',label:'Dynamic first'}]} onChange={v=>setSortBy(v as 'name'|'kind')}/></div></>}
         {type === 'filament' && <FacetGroup label="Material" options={[...facets.materials].sort((a,b)=>materialRank(a)-materialRank(b) || a.localeCompare(b)).map(value=>({value,label:value}))} value={materialFilter} onChange={next=>{setMaterialFilter(next);setMaterialDefault(false);}}/>}
         {type !== 'process' && <FacetGroup label="Brand" options={facets.vendors.map(value=>({value,label:type === 'filament' ? value : vendorLabel({},value)}))} value={vendorFilter} onChange={setVendorFilter}/>}
-        {type === 'machine' && <FacetGroup label="Printer model" options={facets.models.map(value=>({value,label:value}))} value={modelFilter} onChange={setModelFilter}/>}
+        {type === 'machine' && !adding && <FacetGroup label="Printer model" options={facets.models.map(value=>({value,label:value}))} value={modelFilter} onChange={setModelFilter}/>}
         {type === 'machine' && <FacetGroup label="Nozzle" options={facets.nozzles.map(value=>({value,label:`${value} mm`}))} value={nozzleFilter} onChange={setNozzleFilter}/>}
         {type === 'filament' && <FacetGroup label="Works with" options={printerOptions} value={printerFilter} onChange={setPrinterFilter}/>}
         <button type="button" className="btn pf-mobile-show-results" onClick={backToList}>Show {count(visible.length,resultNoun)}</button>
       </aside>
-      <section className="pf-my-profiles" ref={resultsPane} aria-label={adding ? 'Master presets' : `My ${nouns[1]}`}>
+      <section className="pf-my-profiles" ref={resultsPane} aria-label={adding ? `Add ${typeLabel}` : `My ${nouns[1]}`}>
         <div className="pf-list-head"><div className="pf-results-heading" data-selection={bulk || undefined}>{bulk ? <><strong>{selected.length} selected</strong>{bulkActions}</>
           : <><strong>{count(visible.length,resultNoun)}</strong>
           {adding ? <button type="button" className="btn" onClick={()=>showLibrary(false)}>Cancel</button>
@@ -533,10 +515,10 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
         </div>
         <div className="pf-results-tools"><input className="text pf-profile-search" type="search" aria-label="Search" placeholder="Search" value={search} onChange={e=>setSearch(e.target.value)}/>
           <button type="button" hidden={type === 'process'} className="icon-btn pf-filter-toggle" aria-label={filtersActive ? `Filters, ${filtersActive} active` : 'Filters'} aria-expanded={filtersOpen || mobilePane==='filters'} aria-controls={`${id}-filters`} onClick={()=>{setFiltersOpen(!filtersOpen);setMobilePane(mobilePane==='filters'?'list':'filters');}}><Glyph name="filter"/>{filtersActive ? <span className="pf-filter-count" aria-hidden>{filtersActive}</span> : null}</button>
-          {adding ? type === 'machine' && <button type="button" className="btn-ghost" onClick={()=>setState({appDialog:'createPrinter'})}>Custom printer</button>
+          {adding ? type === 'machine' && <MenuButton label="More ways to add" className="icon-btn" items={[{label:'Custom printer',action:()=>setState({appDialog:'createPrinter'})}]}><Glyph name="more"/></MenuButton>
             : <MenuButton label="Import, export or reset profiles" className="icon-btn" items={['sep',{label:'Import',action:()=>void leave(()=>setState({presetUx:{kind:'import',back:{kind:'presets',type,name:item?.key}}}))},{label:'Export',action:()=>void leave(()=>setState({presetUx:{kind:'export'}}))}]}><Glyph name="more"/></MenuButton>}
         </div></div>
-        <div className="pf-scroll pf-list" data-kind={type} data-multi={bulk || undefined} role="grid" aria-label={adding ? 'Master presets' : `My ${nouns[1]}`} aria-multiselectable={!adding} onDoubleClick={e=>{const row=(e.target as Element).closest<HTMLElement>('[data-profile-key]');if(row && (e.target as Element).closest('.pf-item-name'))requestRename(row.dataset.profileKey!);}} onContextMenu={e=>{const row=(e.target as Element).closest<HTMLElement>('[data-profile-key]');if(!row || adding) return;e.preventDefault();const key=row.dataset.profileKey!;if(!selectedSet.has(key)) dispatch({type:'CLICK',key});setContextMenu({x:e.clientX,y:e.clientY,anchor:row});}} tabIndex={visible.length ? -1 : 0} onKeyDown={e => {
+        <div className="pf-scroll pf-list" data-kind={type} data-multi={bulk || undefined} role="grid" aria-label={adding ? `Add ${typeLabel}` : `My ${nouns[1]}`} aria-multiselectable={!adding} onDoubleClick={e=>{const row=(e.target as Element).closest<HTMLElement>('[data-profile-key]');if(row && (e.target as Element).closest('.pf-item-name'))requestRename(row.dataset.profileKey!);}} onContextMenu={e=>{const row=(e.target as Element).closest<HTMLElement>('[data-profile-key]');if(!row || adding) return;e.preventDefault();const key=row.dataset.profileKey!;if(!selectedSet.has(key)) dispatch({type:'CLICK',key});setContextMenu({x:e.clientX,y:e.clientY,anchor:row});}} tabIndex={visible.length ? -1 : 0} onKeyDown={e => {
           if(e.target instanceof Element && e.target.closest('input,textarea,[contenteditable=true]')) return;
           const command = e.ctrlKey || e.metaKey;
           if(command && e.key.toLocaleLowerCase() === 'a' && !adding) {e.preventDefault(); e.stopPropagation(); dispatch({type: 'SELECT_ALL'});}
@@ -547,7 +529,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
         }}>
           {groups.map(g => renderGroup(g, 0))}
           {!visible.length && <div className="pf-profile-empty">{search || filtersActive ? <><span>No {resultNoun[1]} match</span><button type="button" className="btn-ghost" onClick={()=>{clearFilters();setSearch('');}}>Clear filters</button></>
-            : adding ? <span>No master presets</span> : <><span>No {nouns[1]} yet</span>{type !== 'process' && <button type="button" className="btn" onClick={()=>showLibrary(true)}>Add {typeLabel}</button>}</>}</div>}
+            : adding ? <span>{catalog.error ?? (catalog.data ? 'Nothing to add' : 'Loading…')}</span> : <><span>No {nouns[1]} yet</span>{type !== 'process' && <button type="button" className="btn" onClick={()=>showLibrary(true)}>Add {typeLabel}</button>}</>}</div>}
         </div>
       </section><div className="pf-resizer" role="separator" aria-label="Resize profile list" aria-orientation="vertical" aria-valuemin={minListWidth} aria-valuemax={maxListWidth} aria-valuenow={shownListWidth} tabIndex={0}
         onPointerDown={e => {if(e.button!==0 || !resultsPane.current)return;e.preventDefault();drag.current={id:e.pointerId,x:e.clientX,width:resultsPane.current.getBoundingClientRect().width};e.currentTarget.setPointerCapture(e.pointerId);}}

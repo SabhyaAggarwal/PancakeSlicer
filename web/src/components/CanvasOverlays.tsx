@@ -227,7 +227,7 @@ export function SliceNotification() {
   const factsKey = `np:${facts.map((f) => `${f.objectId}:${f.curved}`).join(',')}`;
   const exportLink = (label: string) => <button type="button" className="notif-link" onClick={download}>{label}</button>;
   const canSend = useStore((s) => s.printerConnections.enabled);
-  const sendLink = canSend && <>{' · '}<button type="button" className="notif-link" onClick={() => setState({ appDialog: 'send' })}>Send</button></>;
+  const sendLink = canSend && <>{'\u00a0· '}<button type="button" className="notif-link" onClick={() => setState({ appDialog: 'send' })}>Send</button></>;
   const [held, setHeld] = useState(false);
   const transient = [exported, done && (results.length ? `${done}:r` : done), facts.length ? factsKey : null,
     ...Object.keys(orientPrompts).map((id) => `orient${id}`)].filter((k): k is string => !!k && !expired.has(k));
@@ -249,7 +249,7 @@ export function SliceNotification() {
             <Glyph name="close" size={14} />
           </button>
           <div className="notif-title">{o.name}</div>
-          <div className="notif-body">Stand this part up: less support · <button type="button" className="notif-link" onClick={() => void import('../plater/orientPrompt').then((m) => m.confirmOrientPrompt(o.id))}>Apply</button></div>
+          <div className="notif-body">Stand this part up: less support{'\u00a0· '}<button type="button" className="notif-link" onClick={() => void import('../plater/orientPrompt').then((m) => m.confirmOrientPrompt(o.id))}>Apply</button></div>
         </div>
       );
     }),
@@ -278,8 +278,8 @@ export function SliceNotification() {
         <div className="notif-title">{results.length === 1 ? `${results[0].label}: ${results[0].style}` : results.every((r) => r.style === results[0].style) ? results[0].style : 'Auto'}</div>
         <div className="notif-body">
           {plateFact(results)}
-          {results.some((r) => r.curved) && <> · {compareLink}</>}
-          {' · '}{exportLink('Export')}{sendLink}
+          {results.some((r) => r.curved) && <>{'\u00a0· '}{compareLink}</>}
+          {'\u00a0· '}{exportLink('Export')}{sendLink}
         </div>
       </div>
     ),
@@ -314,7 +314,7 @@ export function SliceNotification() {
         <div className="notification warning">
           {close(`pip${suggestIds}`)}
           <div className="notif-title">{suggest.length === 1 ? suggest[0].name : `${suggest.length} objects`}: Standard suggested</div>
-          <div className="notif-body">Print-in-place gaps · <button type="button" className="notif-link" onClick={() => applyRecommended(suggest)}>Use Standard</button></div>
+          <div className="notif-body">Print-in-place gaps{'\u00a0· '}<button type="button" className="notif-link" onClick={() => applyRecommended(suggest)}>Use Standard</button></div>
         </div>
       )}
       {orientConfirm && <Suspense fallback={null}><OrientConfirm /></Suspense>}

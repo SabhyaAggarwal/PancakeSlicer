@@ -20,7 +20,6 @@
 :where(.orca-parity) .pf-change-line > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 :where(.orca-parity) .pf-change-name { padding-right: var(--s-3); }
 :where(.orca-parity) :is(.pf-change-was, .pf-change-to, .pf-change-scope) { color: var(--ink-3); }
-:where(.orca-parity) .pf-change-to { font: var(--t-small); }
 :where(.orca-parity) .pf-change > .reset-icon { margin: 0 var(--s-1); opacity: 0; }
 :where(.orca-parity) .pf-change:is(:hover, :focus-within) > .reset-icon { opacity: 1; }
 @media (pointer: coarse), (hover: none) { :where(.orca-parity) .pf-change > .reset-icon { opacity: 1; } }
@@ -121,12 +120,16 @@
 :where(.orca-parity) .pk-skel-name { width: 9em; max-width: 100%; height: 12px; }
 :where(.orca-parity) .pk-skel-sub { width: 6em; max-width: 70%; height: 10px; margin-top: var(--s-2); }
 :where(.orca-parity) .dyn-tab { display: flex; flex-direction: column; gap: var(--s-5); min-height: 0; padding: var(--s-4) 0; }
-:where(.orca-parity) .dyn-formulas { display: grid; gap: var(--s-2); margin: 0; padding: 0; list-style: none; }
-:where(.orca-parity) .dyn-formula { display: grid; grid-template-columns: 160px auto max-content 1fr auto; align-items: center; column-gap: var(--s-3); min-height: 32px; font: var(--t-body); }
+:where(.orca-parity) .dyn-rows { display: grid; grid-template-columns: minmax(0, max-content) auto max-content 1fr auto; column-gap: var(--s-3); row-gap: var(--s-5); }
+:where(.orca-parity) .dyn-formulas { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; row-gap: var(--s-2); margin: 0; padding: 0; list-style: none; }
+:where(.orca-parity) .dyn-formula { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; min-height: var(--row-h); font: var(--t-body); }
+:where(.orca-parity) :is(.dyn-factor, .print-overrides .text.num) { height: 26px; min-height: 26px; background: var(--selector-bg); font: var(--t-num); font-variant-numeric: tabular-nums; }
+:where(.orca-parity) .dyn-ceil[data-hidden] { visibility: hidden; }
 :where(.orca-parity) .dyn-eq { color: var(--muted); }
 :where(.orca-parity) .dyn-expr { display: flex; align-items: center; gap: var(--s-2); color: var(--muted); white-space: nowrap; }
 :where(.orca-parity) .dyn-factor { width: 72px; text-align: right; color: var(--ink); }
-:where(.orca-parity) .dyn-add { display: flex; flex-wrap: wrap; gap: var(--s-3); }
+:where(.orca-parity) .dyn-formula.dyn-add { display: flex; flex-wrap: wrap; gap: var(--s-3); }
+:where(.orca-parity) .dyn-group { grid-column: 1 / -1; }
 :where(.orca-parity) .dyn-table-scroll { min-height: 0; max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: var(--r-1); }
 :where(.orca-parity) .dyn-table { width: 100%; border-collapse: collapse; font: var(--t-body); font-variant-numeric: tabular-nums; }
 :where(.orca-parity) .dyn-table thead th { position: sticky; top: 0; z-index: 1; background: var(--panel); font: var(--t-small); font-weight: 600; color: var(--ink-3); white-space: normal; line-height: 14px; vertical-align: bottom; padding-block: var(--s-2); }
@@ -136,21 +139,25 @@
 :where(.orca-parity) .dyn-nozzle button { padding: 0; border: 0; background: none; color: var(--ink); font: var(--t-label); cursor: pointer; }
 :where(.orca-parity) .dyn-table tr.is-current td { background: var(--selected); color: var(--selected-foreground); }
 :where(.orca-parity) .dyn-table td[data-clamped] { color: var(--changed); }
-@media (max-width: 599px) { :where(.orca-parity) .dyn-formula { grid-template-columns: 1fr auto; } :where(.orca-parity) .dyn-expr { grid-column: 1 / -1; } }
 :where(.orca-parity) .dyn-group { font: var(--t-small); font-weight: 600; color: var(--ink-3); }
 :where(.orca-parity) .dyn-printer .dyn-expr { color: var(--ink); }
-:where(.orca-parity) .dyn-printer .dyn-formula { grid-template-columns: 260px auto max-content; }
-:where(.orca-parity) .print-overrides { display: grid; gap: var(--s-4); max-width: 640px; padding: var(--s-4) 0; }
-:where(.orca-parity) .print-overrides table { width: 100%; border-collapse: collapse; font: var(--t-body); }
-:where(.orca-parity) .print-overrides td { height: 32px; padding: 0 var(--s-3); border-bottom: 1px solid var(--line); }
+:where(.orca-parity) .print-overrides { display: grid; justify-items: start; gap: var(--s-4); padding: var(--s-4) 0; }
+:where(.orca-parity) .print-overrides table { border-collapse: collapse; font: var(--t-body); }
+:where(.orca-parity) .print-overrides td { height: var(--row-h); padding: 0 var(--s-3) 0 0; border-bottom: 1px solid var(--line); }
+:where(.orca-parity) .print-overrides td:first-child { padding-right: var(--s-5); white-space: nowrap; }
 :where(.orca-parity) .print-overrides .text.num { width: 96px; text-align: right; }
-:where(.orca-parity) .print-overrides .po-unit { margin-left: var(--s-2); font: var(--t-small); color: var(--muted); }
+:where(.orca-parity) .print-overrides .po-unit { display: inline-block; min-width: 44px; margin-left: var(--s-2); font: var(--t-small); color: var(--muted); }
 :where(.orca-parity) .print-overrides .combo { justify-self: start; min-width: 220px; }
 :where(.orca-parity) :is(.dyn-formula, .print-overrides tr) .row-remove { opacity: 0; }
 :where(.orca-parity) :is(.dyn-formula, .print-overrides tr):is(:hover, :focus-within) .row-remove { opacity: 1; }
 @media (pointer: coarse), (hover: none) { :where(.orca-parity) :is(.dyn-formula, .print-overrides tr) .row-remove { opacity: 1; } }
 :where(.orca-parity) .print-overrides .po-remove { width: 1%; text-align: right; }
 
-.fits {display: grid; gap: 12px; padding: 12px 0;}
-.fits-row {display: grid; grid-template-columns: 160px 1fr; align-items: center; gap: 12px;}
-.fits .chips {display: flex; flex-wrap: wrap; gap: 6px;}
+:where(.orca-parity) .fits { display: grid; grid-template-columns: max-content minmax(0, 336px); gap: var(--s-2) var(--s-5); padding: var(--s-4) 0; }
+:where(.orca-parity) .fits-row { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: baseline; min-height: var(--row-h); font: var(--t-body); }
+:where(.orca-parity) .fits .combo { height: 26px; min-height: 26px; }
+:where(.orca-parity) .fits .chips { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+:where(.orca-parity) .fits .chip { min-height: 26px; }
+
+:where(.orca-parity) .pf-add-body { padding: 0 16px; }
+:where(.orca-parity) .pf-add-cover { display: block; width: 240px; height: 240px; object-fit: contain; margin: var(--s-4) 0; }

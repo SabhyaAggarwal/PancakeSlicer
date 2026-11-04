@@ -1,6 +1,6 @@
 import { Check } from './Check';
 import { useRef, useState } from 'react';
-import type { PresetType,UserPreset } from '../api/types';
+import type { PresetType } from '../api/types';
 import { applyImportPlans, downloadArchive, filamentAlias, filamentBundle, planImport, presetZip, printerBundle, readPresetFile, type ExportKind, type ImportPlan } from '../preset-io';
 import { getState, setState, toast, useStore } from '../state/store';
 import { Dropdown } from './Dropdown';
@@ -117,26 +117,17 @@ const KINDS: [ExportKind, string][] = [
 
 export function ExportDialog() {
   const userPresets = useStore((s) => s.userPresets);
-  const machines = useStore((s) => s.machines);
   const [kind, setKind] = useState<ExportKind>('printer_bundle');
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const s = getState();
-  const asPreset = (name: string): UserPreset => userPresets.find((u) => u.type === 'machine' && u.name === name)
-    ?? { name, type: 'machine', inherits: name, overrides: {} };
   const choices: string[] = kind === 'printer_bundle'
-    ? [...userPresets.filter((u) => u.type === 'machine').map((u) => u.name),
-      ...machines.filter((m) => userPresets.some((u) => u.type !== 'machine' && printerHas(m.name, u))).map((m) => m.name)]
+    ? userPresets.filter((u) => u.type === 'machine' && !u.archived).map((u) => u.name)
     : kind === 'filament_bundle' ? [...new Set(userPresets.filter((u) => u.type === 'filament').map((u) => filamentAlias(u.name)))]
       : userPresets.filter((u) => u.type === kind).map((u) => u.name);
-  function printerHas(printer: string, u: UserPreset) {
-    return getState()[u.type === 'process' ? 'processes' : 'filaments'].some((p) => p.name === u.inherits && (!p.compatible_printers?.length || p.compatible_printers.includes(printer)));
-  }
   const selected = choices.filter((c) => picked.has(c));
   const run = () => {
-    if (kind === 'printer_bundle') for (const name of selected) {
-      const printer = asPreset(name);
+    if (kind === 'printer_bundle') for (const printer of userPresets.filter((u) => u.type === 'machine' && !u.archived && picked.has(u.name)))
       downloadArchive(printerBundle(s, printer));
-    }
     else if (kind === 'filament_bundle') for (const name of selected)
       downloadArchive(filamentBundle(s, name, userPresets.filter((u) => u.type === 'filament' && filamentAlias(u.name) === name)));
     else downloadArchive(presetZip(userPresets.filter((u) => u.type === kind && picked.has(u.name)), kind));

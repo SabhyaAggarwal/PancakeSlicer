@@ -167,21 +167,11 @@ export function ProfileEditor({type, name, draft, update, onBack, onSavingChange
   </DetailPane>;
 }
 
-function DetailPane({label, identity, summary, controls, error, children}: {label: string; identity: ReactNode; summary: ReactNode; controls: ReactNode; error?: string | null; children: ReactNode}) {
+export function DetailPane({label, identity, summary, controls, error, children}: {label: string; identity: ReactNode; summary: ReactNode; controls: ReactNode; error?: string | null; children: ReactNode}) {
   return <section className="pf-full-editor" aria-label={label}>
     <div className="pf-editor-heading"><div className="pf-editor-identity">{identity}{summary}</div><div className="pf-editor-controls">{controls}</div></div>
     {error && <div className="pf-editor-error" role="alert">{error}</div>}
     {children}
   </section>;
 }
-const noop = () => {};
 const autoPreferences = (p?: UserPreset) => { const h = (p as {auto?: {preferredHeight?: number}} | undefined)?.auto?.preferredHeight; return h ? `Prefers ${h.toFixed(2)} mm` : ''; };
-export function MasterPresetDetail({type, preset, name, config, identity, controls}: {type: PresetType; preset: string; name: string; config: Config; identity?: ReactNode; controls: ReactNode}) {
-  const mode = useStore(effectiveMode);
-  const editor: ProfileFields = useMemo(() => ({name: preset, config, baseline: config, changes: {}, set: noop, reset: noop, mode}), [preset, config, mode]);
-  return <DetailPane label={name} identity={<>{identity}<span className="pf-editor-name"><strong>{name}</strong></span></>}
-    summary={<div className="pf-editor-summary">{profileSummary(type, config)}</div>} controls={controls}>
-    <fieldset className="pf-editor-fields"><SettingsTab type={type} hidePreset readOnly editor={editor}
-/></fieldset>
-  </DetailPane>;
-}

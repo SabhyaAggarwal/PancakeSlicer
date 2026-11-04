@@ -103,7 +103,7 @@ html.orca-parity, :where(.orca-parity) body, :where(.orca-parity) #root { margin
 :where(.orca-parity) .ol-row:hover { background: var(--hover); }
 :where(.orca-parity) .ol-row.selected { background: var(--accent-tint); }
 :where(.orca-parity) .ol-name { display: flex; align-items: center; gap: 4px; min-width: 0; flex: 1; }
-:where(.orca-parity) .ol-text { overflow: hidden; overflow-wrap: anywhere; white-space: normal; }
+:where(.orca-parity) .ol-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :where(.orca-parity) .ol-expand { width: 16px; border: 0; background: none; padding: 0; cursor: pointer; color: var(--ink-3); display: inline-block; }
 :where(.orca-parity) .ol-fila { flex: none; display: inline-grid; place-items: center; width: 28px; }
 :where(.orca-parity) .slot-pick { display: inline-grid; place-items: center; width: 28px; height: 28px; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: var(--control-radius); background: none; cursor: pointer; }

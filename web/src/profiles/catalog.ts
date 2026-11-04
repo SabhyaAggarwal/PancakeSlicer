@@ -17,31 +17,12 @@ export interface ProfileRow {
   mine: true;
   changed: boolean;
 }
-export interface CatalogRow {
-  key: string;
-  name: string;
-  vendor: string;
-  model?: string;
-  material?: string;
-  layerHeight?: number;
-  compatible: { ok: boolean; reason?: string };
-}
-export interface CatalogFilters {
-  vendor?: string;
-  model?: string;
-  material?: string;
-  printer?: string;
-  nozzle?: string | number;
-  search?: string;
-  browseAll?: boolean;
-}
 
 const first = (value: Config[string] | undefined) => String(Array.isArray(value) ? value[0] ?? '' : value ?? '');
 const number = (value: Config[string] | undefined) => { const n = Number(first(value)); return first(value) !== '' && Number.isFinite(n) ? n : undefined; };
 const metadata = (config: Config) => ({ layerHeight: number(config.layer_height), nozzle: number(config.nozzle_diameter), material: first(config.filament_type) || undefined });
 
 const profileRows = new WeakMap<State, Map<PresetType, ProfileRow[]>>();
-const catalogRows = new WeakMap<State, Map<string, CatalogRow[]>>();
 
 export function listProfiles(s: State, type: PresetType, filters: {browseAll?: boolean} = {}): ProfileRow[] {
   let cache = profileRows.get(s);
@@ -55,31 +36,16 @@ export function listProfiles(s: State, type: PresetType, filters: {browseAll?: b
   if (!filters.browseAll) cache.set(type, rows);
   return rows;
 }
-export function listCatalog(s: State, type: PresetType, filters: CatalogFilters = {}): CatalogRow[] {
-  let cache = catalogRows.get(s);
-  if (!cache) catalogRows.set(s, (cache = new Map()));
-  const key = JSON.stringify([type, filters.vendor, filters.model, filters.material, filters.printer, filters.nozzle, filters.search, filters.browseAll]);
-  if (cache.has(key)) return cache.get(key)!;
-  const rows = profilesFor(s, type).filter((p) => (!filters.vendor || p.vendor === filters.vendor)
-    && (!filters.model || (p.model ?? first(p.config.printer_model)) === filters.model)
-    && (!filters.material || first(p.config.filament_type) === filters.material)
-    && (!filters.search || `${p.name} ${p.vendor} ${p.model ?? ''}`.toLowerCase().includes(filters.search.toLowerCase())))
-    .map((p) => ({ key: catalogKey(p), name: p.name, vendor: p.vendor, model: (p.model ?? first(p.config.printer_model)) || undefined,
-      ...metadata(p.config), compatible: selectCompatibility(s, type, catalogKey(p), filters.printer ?? s.printer, filters.nozzle) })).filter(row => filters.browseAll || row.compatible.ok);
-  cache.set(key, rows);
-  return rows;
-}
-
 export function resolveCatalogEntry(s: State, type: PresetType, key: string) {
   const found = findCatalogBase(s,type,key);
   if (!found.base) throw new Error(found.ambiguous ? 'This catalog name is ambiguous. Choose its exact source again.' : 'This catalog source is unavailable. Reopen Add and choose it again.');
   return {key: catalogKey(found.base), base: found.base, anchor: catalogAnchor(found.base)};
 }
 
-export const displayName = (base: SystemPreset) => `My ${base.name.replace(/\s*@.*$/, '').replace(/\s+nozzle\b/i, '').trim()}`;
+export const displayName = (base: SystemPreset) => base.name.replace(/\s*@.*$/, '').replace(/\s+0\.4 nozzle$/i, '').trim();
 export function uniqueName(s: State, type: PresetType, desired: string): string {
   let name = desired, n = 2;
-  while (s.userPresets.some((p) => p.type === type && p.name === name) || profilesFor(s, type).some((p) => p.name === name)) name = `${desired} (${n++})`;
+  while (s.userPresets.some((p) => p.type === type && !p.archived && p.name === name) || profilesFor(s, type).some((p) => p.name === name)) name = `${desired} (${n++})`;
   return name;
 }
 export function makeProfile(s: State, base: SystemPreset, name: string, values: Config = {}): UserPreset {

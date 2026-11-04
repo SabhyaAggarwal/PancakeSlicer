@@ -55,8 +55,22 @@ for (const [name, mode] of [['curved-flat', 'off'], ['curved-tops', 'curved_tops
   await page.waitForTimeout(300);
   const canvas = page.locator('.preview-canvas canvas').first();
   const box = (await canvas.boundingBox())!;
-  const side = Math.min(box.width, box.height) * 0.7;
-  await save(name, (file) => page.screenshot({ path: file, clip: { x: box.x + (box.width - side) / 2, y: box.y + (box.height - side) / 2, width: side, height: side } }));
+  const png = (await page.screenshot({ clip: box })).toString('base64');
+  const part = await page.evaluate(async (data) => {
+    const bitmap = await createImageBitmap(await (await fetch(`data:image/png;base64,${data}`)).blob());
+    const c = new OffscreenCanvas(bitmap.width, bitmap.height), g = c.getContext('2d')!;
+    g.drawImage(bitmap, 0, 0);
+    const { data: px, width, height } = g.getImageData(0, 0, bitmap.width, bitmap.height);
+    let x0 = width, y0 = height, x1 = -1, y1 = -1;
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4, r = px[i], gg = px[i + 1], b = px[i + 2];
+      if (Math.max(r, gg, b) - Math.min(r, gg, b) > 60) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    }
+    return { x0, y0, x1, y1, scale: bitmap.width };
+  }, png);
+  const k = box.width / part.scale, cx = box.x + (part.x0 + part.x1) / 2 * k, cy = box.y + (part.y0 + part.y1) / 2 * k;
+  const side = Math.max(part.x1 - part.x0, part.y1 - part.y0) * k * 1.2;
+  await save(name, (file) => page.screenshot({ path: file, clip: { x: cx - side / 2, y: cy - side / 2, width: side, height: side } }));
 }
 
 await page.evaluate(() => (window as any).__plater.setState({ tab: 'prepare', presetUx: { kind: 'presets', type: 'process', name: 'profile:starter-everyday', edit: true } }));
@@ -64,7 +78,7 @@ await page.getByRole('tab', { name: /Dynamic$/ }).first().click({ timeout: 30_00
 await page.locator('.dyn-tab').first().waitFor();
 await page.waitForTimeout(600);
 const dyn = (await page.locator('.dyn-tab').first().boundingBox())!;
-await save('dynamic', (file) => page.screenshot({ path: file, clip: { x: dyn.x, y: dyn.y, width: dyn.width, height: Math.min(dyn.height, 700) } }));
+await save('dynamic', (file) => page.screenshot({ path: file, clip: { x: dyn.x, y: dyn.y, width: dyn.width, height: Math.min(dyn.height, 440) } }));
 
 for (const tab of await page.getByRole('tab').all()) {
   if (/Dynamic/.test(await tab.innerText())) continue;
@@ -77,7 +91,7 @@ await glyph.hover();
 await page.waitForTimeout(800);
 const row = (await glyph.evaluateHandle((el) => { let n: Element | null = el; while (n && n.getBoundingClientRect().width < 240) n = n.parentElement; return n ?? el; })).asElement()!;
 const r = (await row.boundingBox())!;
-await save('printer-values', (file) => page.screenshot({ path: file, clip: { x: Math.max(0, r.x - 12), y: Math.max(0, r.y - 12), width: Math.min(560, r.width + 24), height: r.height + 72 } }));
+await save('printer-values', (file) => page.screenshot({ path: file, clip: { x: Math.max(0, r.x - 12), y: r.y, width: Math.min(560, r.width + 24), height: r.height + 56 } }));
 await page.keyboard.press('Escape');
 
 await context.route(/\/api\/project-leases\/[^/]+$/, (route) => route.fulfill({ status: 409, json: { code: 'lease_held', holder: { label: 'Safari on iPad', since: Date.now(), lastSeen: Date.now() } } }));
@@ -86,9 +100,18 @@ await ready();
 await page.locator('.lease-bar').waitFor({ timeout: 30_000 });
 await save('take-control', (file) => page.locator('.lease-bar').screenshot({ path: file }));
 await context.unroute(/\/api\/project-leases\/[^/]+$/);
+await page.reload({ waitUntil: 'load' });
+await ready();
+for (const example of ['Benchy', 'Shelf hook']) {
+  await page.getByRole('button', { name: 'Projects', exact: true }).first().click();
+  await page.getByRole('button', { name: 'New project', exact: true }).first().click();
+  await page.getByRole('button', { name: example, exact: true }).click({ timeout: 30_000 });
+  await page.waitForFunction(() => (window as any).__plater.getState().objects.length === 1 && !(window as any).__plater.getState().loading, null, { timeout: 60_000 });
+  await page.waitForTimeout(2500);
+}
 await page.getByRole('button', { name: 'Projects', exact: true }).first().click();
 await page.waitForTimeout(1500);
-await save('projects', (file) => page.screenshot({ path: file, clip: { x: 0, y: 40, width: 1100, height: 560 } }));
+await save('projects', (file) => page.screenshot({ path: file, clip: { x: 0, y: 40, width: 1440, height: 300 } }));
 
 writeFileSync(path.join(out, 'tour.json'), `${JSON.stringify(facts, null, 2)}\n`);
 rmSync(tmp, { recursive: true, force: true });

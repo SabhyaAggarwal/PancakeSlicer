@@ -15,6 +15,7 @@ import { lineMode, nativeSupportCapable, tabEnvironment } from '../settings-env'
 import { Field } from './Field';
 import { useTabFit } from './tab-rows';
 import { LabelTip } from './InfoTip';
+import { displayLabel } from './fields/labels';
 import { Icon } from './Icon';
 import { GroupHead, isGroupOpen, setGroupOpen, useSettingsGroups } from './SettingsGroup';
 import type { SettingSource } from '../profiles/bases';
@@ -226,7 +227,7 @@ export function SettingsTab({ type, slot = 0, compact, hidePreset, editor, overr
               const tooltip = line.tooltip && OPTIONS[line.tooltip] ? OPTIONS[line.tooltip].tooltip : line.tooltip;
               const sharedLabel = line.label ?? (OPTIONS[splitKey(keys[0])[0]]?.full_label || OPTIONS[splitKey(keys[0])[0]]?.label);
               return <div key={row} className={shared ? 'option-row' : undefined}>
-                {shared && <span className="opt-label"><LabelTip label={sharedLabel} full={sharedLabel}><strong>{sharedLabel}</strong>{tooltip && <p>{tooltip}</p>}</LabelTip></span>}
+                {shared && <span className="opt-label"><LabelTip label={sharedLabel && displayLabel(splitKey(keys[0])[0], sharedLabel)} full={sharedLabel}><strong>{sharedLabel}</strong>{tooltip && <p>{tooltip}</p>}</LabelTip></span>}
                 {keys.map((k, i) => field(line, keys, k, i, labels, shared, tooltip))}
               </div>;
             })}

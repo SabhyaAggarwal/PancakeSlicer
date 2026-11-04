@@ -53,6 +53,7 @@
 :where(.orca-parity) .pf-group[data-depth='0'] > .pf-group-head .pf-group-toggle { min-height: 32px; padding: 0 var(--s-4); border-radius: 0; color: var(--ink); font: var(--t-label); }
 :where(.orca-parity) .pf-group[data-depth]:not([data-depth='0']) > [role=row] .pf-group-toggle { color: var(--ink-3); font: var(--t-label); }
 :where(.orca-parity) .pf-list .pf-group > .pf-group-rows { display: flex; flex-direction: column; margin: 0 0 var(--s-2) calc(var(--s-4) + 6px); border-left: 1px solid var(--line); }
+:where(.orca-parity) .pf-list .pf-group[data-flat] > .pf-group-rows { margin: 0; border-left: 0; }
 :where(.orca-parity) .pf-window .pf-group-rows > .pf-item { padding: 0 var(--s-4) 0 calc(12px + var(--s-2) - 7px); border-radius: 0 var(--r-1) var(--r-1) 0; }
 :where(.orca-parity) .pf-group-toggle .caret { color: var(--ink-3); }
 :where(.orca-parity) .pf-group-toggle > .pf-dim { flex: none; }

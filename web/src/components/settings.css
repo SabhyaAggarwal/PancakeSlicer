@@ -170,6 +170,8 @@
 :where(.orca-parity) .surface-settings .surface-why { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-3); margin: 0; padding: 0 var(--space-section, var(--s-5)) var(--s-2); color: var(--warn); font: var(--t-small); }
 :where(.orca-parity) .opt-line[data-source=set] .opt-label-text { color: var(--changed); }
 :where(.orca-parity) .opt-undo:has(> .source-glyph) { justify-content: flex-start; overflow: visible; }
+:where(.orca-parity) .opt-field .control-number > .control-unit:has(> .source-glyph) { overflow: visible; white-space: nowrap; display: flex; align-items: center; gap: 4px; }
+:where(.orca-parity) .control-unit > .source-glyph { flex: none; }
 :where(.orca-parity) .source-glyph { display: inline-grid; place-items: center; width: 16px; height: 16px; color: var(--ink-3); font-size: 13px; line-height: 1; cursor: default; }
 :where(.orca-parity) .source-glyph:hover { color: var(--accent-text); }
 
@@ -178,3 +180,5 @@
 @media (pointer: coarse), (hover: none) {
   :where(.orca-parity) .label-tip { display: flex; align-items: center; min-height: 44px; }
 }
+
+:where(.orca-parity) .sidebar :is(.opt-line, .option-row) { --ctl-w: clamp(104px, 32%, 140px); }

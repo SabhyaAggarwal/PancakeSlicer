@@ -13,6 +13,7 @@ import { promptDialog } from './Ask';
 import { openSetup } from '../onboarding/setup-flow';
 import { renameProject } from '../projects/api';
 import { useProject } from '../flow/project';
+import { toggleHistory } from '../projects/versions';
 import { Icon } from './Icon';
 import { Caret } from './Caret';
 import { canAddPlate, duplicatePlate, exportAll, exportablePlates, sliceAll } from '../plater/plates';
@@ -190,6 +191,7 @@ export function TabBar() {
   const printer = useStore(printerReady);
   const hasPrinters = useStore((s) => s.printerConnections.enabled);
   const plates = useStore((s) => s.projectPlates.length > 1);
+  const saved = useProject((p) => p.value === 'editing' || p.value === 'saved' || p.value === 'saving');
   const [sliceMode, setSliceMode] = useState('Slice plate');
   const [exportMode, setExportMode] = useState('plate');
   const exportAllEnabled = useStore((s) => s.projectPlates.length > 1 && !busy && exportablePlates(s).length > 0);
@@ -202,6 +204,7 @@ export function TabBar() {
   const more: MenuEntry[] = [
     ...(folded ? [{label: exportLabel, action: download, disabled: !exportEnabled, tip: job.stale ? STALE_RESULT_TIP : 'Slice the plate first'}] : []),
     ...(!wide && hasPrinters ? [{label: 'Send to printer', action: () => setState({appDialog: 'send'}), disabled: !exportEnabled}] : []),
+    ...(tier === 'phone' && saved ? [{label: 'Version history', action: toggleHistory} satisfies MenuEntry] : []),
     ...(!wide && plates ? [{label: 'Slice all plates', action: () => void sliceAll(), disabled: !printer || busy}, {label: 'Export all plates', action: () => void exportAll(), disabled: !exportAllEnabled}] : []),
   ];
   return (

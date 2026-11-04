@@ -11,7 +11,7 @@ export const SHORT_LABELS: Record<string, string> = {
 };
 
 const SWAPS: [RegExp, string][] = [
-  [/^(Enable|Use|Activate) /, ''], [/ \(beta\)$/, ''], [/\btemperature\b/, 'temp'], [/\binitial layer\b/, '1st layer'], [/\bfirst layer\b/, '1st layer'],
+  [/^Recommended nozzle temperature$/, 'Nozzle temp. range'], [/^(Enable|Use|Activate) /, ''], [/ \(beta\)$/, ''], [/\btemperature\b/, 'temp'], [/\binitial layer\b/, '1st layer'], [/\bfirst layer\b/, '1st layer'],
   [/\bMaximum\b/, 'Max'], [/\bMinimum\b/, 'Min'], [/\bmaximum\b/, 'max'], [/\bminimum\b/, 'min'], [/\bthreshold\b/, 'limit'], [/\bcompensation\b/, 'comp.'],
   [/\b[Aa]cceleration\b/, 'accel.'], [/\bperimeters?\b/, 'wall'], [/\bdiameter\b/, 'dia.'], [/\bexternal\b/, 'ext.'], [/\binternal\b/, 'int.'], [/\bfilament\b/, 'filament'],
 ];

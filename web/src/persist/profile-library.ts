@@ -35,6 +35,7 @@ const familiesOf = (vendor: string) => {
   return read;
 };
 const nozzleKey = (n: number) => String(n);
+const writtenFilaments = new Map<string, { family: string; base: ProfileOverlay['base']; metadata?: Config }>();
 const machineName = async (vendor: string, model: string, nozzle: number) =>
   (await vendors()).find((v) => v.id === vendor)?.models.find((m) => m.id === model)?.machines?.[nozzleKey(nozzle)];
 
@@ -51,15 +52,17 @@ async function fromV4(doc: V4Document): Promise<ProfileLibraryDocument> {
     }
     if (r.type === 'filament') {
       const vendor = (r.family ?? '').split('/')[0], family = (await familiesOf(vendor).catch(() => [])).find((f) => f.id === r.family);
-      const name = (home && family?.variants?.[machines.get(home.id)!]) ?? family?.fallback ?? Object.values(family?.variants ?? {})[0] ?? r.family ?? '';
+      const written = writtenFilaments.get(r.id)?.family === r.family ? writtenFilaments.get(r.id) : undefined;
+      const name = written?.base.name ?? (home && family?.variants?.[machines.get(home.id)!]) ?? family?.fallback ?? Object.values(family?.variants ?? {})[0] ?? r.family ?? '';
       const overlay = { ...r.settings, ...(r.colour ? { filament_colour: [r.colour] } : {}) };
       const applicability = r.fits ? { schema: 2, ...(r.fits.models?.length ? { printers: { models: r.fits.models } } : {}), ...(r.fits.nozzles?.length ? { nozzle: { sizes: r.fits.nozzles } } : {}) } : undefined;
-      return { ...common, base: { name, engineName: name, version: '', vendor }, overlay, ...(applicability ? { applicability } : {}), metadata: { family: r.family ?? '' } } as ProfileOverlay;
+      return { ...common, base: written?.base ?? { name, engineName: name, version: '', vendor }, overlay, ...(applicability ? { applicability } : {}),
+        ...(written ? (written.metadata ? { metadata: written.metadata } : {}) : { metadata: { family: r.family ?? '' } }) } as ProfileOverlay;
     }
     const auto = r.scales?.length || r.preferredHeight ? { auto: { schema: 3, scales: r.scales ?? [], ...(r.preferredHeight ? { preferredHeight: r.preferredHeight } : {}) } } : {};
     return { ...common, base: AUTO, overlay: { ...r.intent }, ...auto } as ProfileOverlay;
   }));
-  return { schema: 1, revision: doc.revision, ...(doc.epoch ? { epoch: doc.epoch } : {}), profiles, printers: { schema: 1, revision: doc.revision, setups: doc.setups ?? {} } };
+  return { schema: 1, revision: doc.revision, ...(doc.epoch ? { epoch: doc.epoch } : {}), profiles, printers: { schema: 1, revision: 0, setups: doc.setups ?? {} } };
 }
 
 async function toV4(p: ProfileOverlay): Promise<V4Record> {
@@ -77,6 +80,7 @@ async function toV4(p: ProfileOverlay): Promise<V4Record> {
   if (type === 'filament') {
     const vendor = p.base.vendor ?? 'BBL', list = await familiesOf(vendor).catch(() => []);
     const family = String(p.metadata?.family ?? '') || list.find((f) => f.fallback === p.base.name || Object.values(f.variants ?? {}).includes(p.base.name))?.id || `${vendor}/${p.base.name.replace(/\s+@.*$/, '')}`;
+    writtenFilaments.set(p.id!, { family, base: p.base, ...(p.metadata ? { metadata: p.metadata } : {}) });
     const known = list.find((f) => f.id === family), colour = first(overlay.filament_colour);
     delete overlay.filament_colour;
     const rule = (p as { applicability?: { printers?: { models?: string[] }; nozzle?: { sizes?: number[] } } }).applicability;

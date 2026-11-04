@@ -140,7 +140,7 @@ const ObjectRows = memo(function ObjectRows({ o, selected, linkedInstance, expan
                 else if (e.key === 'Escape') setState({ renaming: null });
               }} />
           ) : (
-            <span className="ol-text">
+            <span className="ol-text" title={o.name}>
               {o.name}
             </span>
           )}
@@ -193,7 +193,7 @@ const ObjectRows = memo(function ObjectRows({ o, selected, linkedInstance, expan
                       if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
                       else if (e.key === 'Escape') setState({ renaming: null });
                     }} />
-                ) : <span className="ol-text">{v.name}</span>}
+                ) : <span className="ol-text" title={v.name}>{v.name}</span>}
               </span>
               {v.type === 'part' || v.type === 'modifier' ? settingsCell(nv, v.name, () => pick('objects')) : <span role="gridcell" className="ol-set" />}
               {v.type === 'part' ? (
