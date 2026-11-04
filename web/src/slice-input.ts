@@ -6,7 +6,7 @@ import { meshSignature, plateDescription } from './plater/geometry';
 import { projectEdits, projectInstances } from './plater/projectTransforms';
 import { canEditProject } from './api/client';
 import { profileContext } from './profiles/context';
-import { originsOf } from './profiles/context';
+import { originsOf, printerOverrides } from './profiles/context';
 import { autoEnginePreset } from './profiles/model';
 import { effectiveConfig, getState, presetEdits, printerPreset, resolvePreset, type LayerEvent, type Mix, type State } from './state/store';
 
@@ -34,7 +34,7 @@ export function overrides(s = getState()): Config {
     const { base, user } = resolvePreset(s, type, name);
     const scaled = type === 'process' ? Object.keys(originsOf(user)).filter((k) => originsOf(user)[k] === 'auto') : [];
     const auto = type === 'process' ? Object.fromEntries([...scaled, 'layer_height', 'nonplanar_mode', 'nonplanar_wave'].flatMap((k) => { const v = effectiveConfig(s, 'process')[k]; return v === undefined ? [] : [[k, v]]; })) : {};
-    Object.assign(out, base?.imported ? base.config : {}, user?.overrides ?? {}, auto, dirty);
+    Object.assign(out, base?.imported ? base.config : {}, user?.overrides ?? {}, auto, type === 'process' ? printerOverrides(s) : {}, dirty);
   };
   add('machine', s.printer, s.dirty.machine);
   add('process', s.process, s.dirty.process);

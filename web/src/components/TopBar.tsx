@@ -10,6 +10,7 @@ import { historyVersion, redo, redoName, redoNames, redoSteps, subscribeHistory,
 import { CAMERA_VIEWS, VIEW_DIRECTIONS, cameraCommand, cameraSnapshot, subscribeCamera, perspective, autoPerspective } from '../camera';
 import { startOver, useDevReset } from '../dev-reset';
 import { promptDialog } from './Ask';
+import { openSetup } from '../onboarding/setup-flow';
 import { renameProject } from '../projects/api';
 import { useProject } from '../flow/project';
 import { Icon } from './Icon';
@@ -95,7 +96,7 @@ export function TopBar() {
     if (!next || next === name) return;
     if (projectId && projectState !== 'blank') void renameProject(projectId, next); else setState({ projectName: next });
   };
-  const appItems: MenuItem[] = [{label:'Add model…',action:openFileDialog},{label:'File',sub:fileItems},{label:'Settings',action:showSettings},{label:'Projects',action:showProjects},{label:'Rename project…',action:()=>void renameHere()},{label:'Profiles',action:()=>setState({presetUx:{kind:'presets',type:'machine'}})},'sep',...(devReset ? [{label:'Start over',action:()=>void startOver().catch(()=>{})} as MenuItem,'sep' as const] : []),{label: 'Edit', sub: [
+  const appItems: MenuItem[] = [{label:'Add model…',action:openFileDialog},{label:'File',sub:fileItems},{label:'Settings',action:showSettings},{label:'Projects',action:showProjects},{label:'Rename project…',action:()=>void renameHere()},{label:'Setup',action:openSetup},{label:'Profiles',action:()=>setState({presetUx:{kind:'presets',type:'machine'}})},'sep',...(devReset ? [{label:'Start over',action:()=>void startOver().catch(()=>{})} as MenuItem,'sep' as const] : []),{label: 'Edit', sub: [
           { label: undoLabel ? `Undo ${undoLabel}` : 'Undo', shortcut: `${MOD}+Z`, action: undo, disabled: !undoLabel },
           { label: redoLabel ? `Redo ${redoLabel}` : 'Redo', shortcut: `${MOD}+Y`, action: redo, disabled: !redoLabel },
           ...(undoLabel || redoLabel ? [{ label: 'History', sub: [
@@ -159,7 +160,7 @@ export function TopBar() {
         ]} as MenuItem] : []), {label: 'Help', sub: [
           { label: 'What you can do', action: () => setState({ appDialog: 'shortcuts' }), tip: 'What the web app does, with screenshots' },
           { label: 'Keyboard Shortcuts', shortcut: '?', action: () => setState({ appDialog: 'shortcuts' }), tip: 'Show the list of keyboard shortcuts' },
-          { label: 'Setup Wizard', action: () => setState({ appDialog: 'setup' }), tip: 'Setup Wizard' },
+          { label: 'Setup', action: openSetup, tip: 'Printer, profiles, connection and filaments' },
           'sep',
           { label: 'About PancakeSlicer', action: () => setState({ appDialog: 'about' }), tip: 'Version, licence and Corresponding Source' },
         ]}];

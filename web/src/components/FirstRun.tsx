@@ -1,17 +1,14 @@
 import { preferenceText, savePreferences, savedPreferencesSnapshot, subscribeSavedPreferences, usePreference } from '../saved-preferences';
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import knobUrl from '../../../tests/data/nonplanar/corpus/w_knob_knurled.stl?url';
 import hookUrl from '../samples/shelf_hook.stl?url';
 import { openFileDialog, openProjectDialog } from '../actions';
 import { handyUrl, importFetched } from '../plater/handy';
 import { getState, resolvePreset, subscribeStore, useStore } from '../state/store';
-import { FilamentPicker, PrinterPicker } from '../profiles/Pickers';
 import { startOver, useDevReset } from '../dev-reset';
-import { printerReady } from '../workspace-sheet';
-import { useState } from 'react';
+import { openSetup } from '../onboarding/setup-flow';
 import { documentGeneration, onLeaveDocument } from '../state/history';
 import './first-run.css';
-import { Modal, ModalBody, ModalFooter, ModalTitle } from './Modal';
 
 const SETUP_KEY = 'orca.setup';
 const SAMPLES = [
@@ -20,9 +17,6 @@ const SAMPLES = [
   { url: hookUrl, file: 'shelf_hook.stl', label: 'Shelf hook' },
 ];
 
-function PrinterChoice() {
-  return <div className="fr-printer"><label className="fr-label">Printer</label><PrinterPicker/></div>;
-}
 
 const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';
 
@@ -69,27 +63,12 @@ function afterFirstVisit() {
 
 const hasFilament = (s: ReturnType<typeof getState>) => !!s.filamentSlots[0] && (() => { const r = resolvePreset(s, 'filament', s.filamentSlots[0]); return !!r.name && !r.error; })();
 
-function Onboarding({ done }: { done(): void }) {
-  const ready = useStore(printerReady);
-  const filament = useStore(hasFilament);
-  const [step, setStep] = useState<0 | 1>(ready ? 1 : 0);
-  return (
-    <div className="fr-onboard">
-      <div className="fr-steps" aria-label={`Step ${step + 1} of 2`}><span className="on" /><span className={step ? 'on' : ''} /></div>
-      {step === 0 ? <PrinterChoice /> : <div className="fr-printer"><label className="fr-label">Filament</label><FilamentPicker slot={0} /></div>}
-      <div className="fr-onboard-foot">
-        {step === 1 && <button type="button" className="btn-ghost" onClick={() => setStep(0)}>Back</button>}
-        <button type="button" className="btn-primary" disabled={step === 0 ? !ready : !filament} onClick={() => { if (step === 0) setStep(1); else { savePreferences({ [SETUP_KEY]: '1' }); done(); } }}>{step === 0 ? 'Next' : 'Start printing'}</button>
-      </div>
-    </div>
-  );
-}
-
 export function StartOver({ className = 'btn' }: { className?: string }) {
   if (!useDevReset()) return null;
   return <button type="button" className={`fr-startover ${className}`} onClick={() => void startOver().catch(() => {})}>Start over</button>;
 }
 
+let setupOffered = false;
 export default function EmptyPlate() {
   const preferences=useSyncExternalStore(subscribeSavedPreferences,savedPreferencesSnapshot);
   const setup=usePreference(SETUP_KEY),printer=usePreference('orca.printer');
@@ -97,29 +76,16 @@ export default function EmptyPlate() {
   const filament=useStore(hasFilament);
   const firstVisit=preferences.hydrated && library==='ready' && preferences.state!=='failed' && !setup && (!printer || !filament);
   useEffect(()=>{if(firstVisit)afterFirstVisit();},[firstVisit]);
-  const [onboarding,setOnboarding]=useState(false);
-  useEffect(()=>{if(firstVisit)setOnboarding(true);},[firstVisit]);
-  const walking=firstVisit||onboarding;
+  useEffect(()=>{if(firstVisit && !setupOffered){setupOffered=true;openSetup();}},[firstVisit]);
   return (
     <div className="empty-plate">
-      <div className="fr-card">{walking ? <Onboarding done={() => setOnboarding(false)} /> : <DropZone />}</div>
-      {!walking && <StartOver />}
+      <div className="fr-card"><DropZone /></div>
+      <StartOver />
     </div>
   );
 }
 
 export function SetupWizard({ close }: { close(): void }) {
-  const count = useStore((s) => s.objects.length);
-  const start = useRef(count);
-  useEffect(() => { if (count > start.current) close(); }, [count]);
-  return (
-    <Modal size="m" label="Get started" onClose={close} returnFocus=".topbar .menu-title">
-      <ModalTitle title="Get started" onClose={close} />
-      <ModalBody className="setup-wizard-body">
-        <PrinterChoice />
-        <DropZone />
-      </ModalBody>
-      <ModalFooter><button type="button" className="btn" onClick={close}>Done</button></ModalFooter>
-    </Modal>
-  );
+  useEffect(() => { openSetup(); close(); }, []);
+  return null;
 }

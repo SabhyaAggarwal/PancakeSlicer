@@ -36,9 +36,4 @@
   :root.orca-parity[data-nudge='slice'] .tabbar-actions > button:first-child:not(:disabled) { animation: none; outline: 2px solid var(--accent); outline-offset: 2px; }
 }
 
-:where(.orca-parity) .fr-onboard { display: flex; flex-direction: column; }
-:where(.orca-parity) .fr-steps { display: flex; gap: var(--s-2); padding: var(--s-4) var(--s-4) 0; }
-:where(.orca-parity) .fr-steps > span { flex: 1; height: 3px; border-radius: 2px; background: var(--line-strong); }
-:where(.orca-parity) .fr-steps > span.on { background: var(--accent); }
-:where(.orca-parity) .fr-onboard-foot { display: flex; justify-content: flex-end; gap: var(--s-3); padding: var(--s-4); }
 :where(.orca-parity) .fr-startover { flex: none; height: 44px; width: 100%; font: var(--t-label); }

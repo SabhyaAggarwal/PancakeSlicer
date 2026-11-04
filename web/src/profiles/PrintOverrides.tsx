@@ -6,7 +6,7 @@ import type { Config, ConfigValue } from '../api/types';
 const first = (v: ConfigValue | undefined) => String(Array.isArray(v) ? v[0] ?? '' : v ?? '');
 const printKeys = () => [...new Set((TABS.process?.pages ?? []).flatMap((p) => p.groups.flatMap((g) => g.lines.flatMap((l) => l.options.map((k) => splitKey(k)[0])))))]
   .filter((k) => OPTIONS[k]?.label && k !== 'layer_height');
-const labelOf = (key: string) => {
+export const labelOf = (key: string) => {
   const group = TABS.process?.pages.flatMap((p) => p.groups).find((g) => g.lines.some((l) => l.options.some((k) => splitKey(k)[0] === key)))?.title;
   const own = OPTIONS[key]?.label || key;
   return group && !own.toLowerCase().includes(group.toLowerCase()) ? `${group} · ${own}` : own;

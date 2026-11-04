@@ -3,6 +3,7 @@ import { Choice } from '../components/kit';
 import { Dropdown } from '../components/Dropdown';
 import { OPTIONS } from '../options';
 import { heightsFor, scaledValue, type ScaleBasis, type ScaleRow } from './auto-rules';
+import { labelOf } from './PrintOverrides';
 
 const GROUPS: { name: string; basis: ScaleBasis; keys: string[] }[] = [
   { name: 'Line width', basis: 'nozzle', keys: ['line_width', 'inner_wall_line_width', 'sparse_infill_line_width', 'internal_solid_infill_line_width', 'top_surface_line_width', 'support_line_width'] },
@@ -80,7 +81,7 @@ export function DynamicTab({ rows, nozzle, height, minHeight, maxHeight, readOnl
     </ul>
     {fromPrinter && Object.keys(fromPrinter.values).length > 0 && <ul className="dyn-formulas dyn-printer" aria-label={`From ${fromPrinter.name}`}>
       <li className="dyn-group">From {fromPrinter.name}</li>
-      {Object.entries(fromPrinter.values).map(([k, v]) => <li key={k} className="dyn-formula"><span className="dyn-name">{nameOf(k)}</span><span className="dyn-eq">=</span><span className="dyn-expr">{String(Array.isArray(v) ? v[0] : v)}{OPTIONS[k]?.sidetext ? ` ${OPTIONS[k]?.sidetext}` : ''}</span></li>)}
+      {Object.entries(fromPrinter.values).map(([k, v]) => <li key={k} className="dyn-formula"><span className="dyn-name">{labelOf(k)}</span><span className="dyn-eq">=</span><span className="dyn-expr">{String(Array.isArray(v) ? v[0] : v)}{OPTIONS[k]?.sidetext ? ` ${OPTIONS[k]?.sidetext}` : ''}</span></li>)}
     </ul>}
     <div className="dyn-table-scroll"><table className="dyn-table">
       <thead><tr><th>Layer</th>{formulas.map((f) => <th key={f.name} className="n">{f.name}</th>)}</tr></thead>

@@ -3,7 +3,7 @@ import { getState, resolvePreset, type State } from '../state/store';
 import { OPTIONS } from '../options';
 import { findProfile, profileKey } from './identity';
 import { resolveProfile, PRESET_META } from './model';
-import { originsOf, profileChain, type SettingOrigin } from './context';
+import { originsOf, printerOverrides, profileChain, type SettingOrigin } from './context';
 import { foldBase, resetToBase, type ChainLink } from './chain';
 
 export type BaseRole = 'base' | 'base-only';
@@ -107,7 +107,11 @@ export function settingSources(s: State, type: PresetType, key: string): Record<
   if (!byProfile) sourceCache.set(s, (byProfile = new Map()));
   const id = `${type}:${key}`, hit = byProfile.get(id);
   if (hit) return hit;
-  const out = type === 'process' ? originsOf(resolveProfile(s, type, key).user) : {};
+  const out = type === 'process' ? { ...originsOf(resolveProfile(s, type, key).user) } : {};
+  if (type === 'process' && key === s.process) {
+    const project = s.projectPresets?.process ?? {}, plate = s.projectPlates?.find((p) => p.index === s.plateIndex)?.settings ?? {};
+    for (const k of Object.keys(printerOverrides(s))) if (!(k in project) && !(k in plate) && !(k in s.dirty.process)) out[k] = 'printer';
+  }
   byProfile.set(id, out);
   return out;
 }

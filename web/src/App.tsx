@@ -28,6 +28,7 @@ const PlateChoice = lazy(() => import('./components/PlateChoice'));
 const EmptyPlate = lazy(() => import('./components/FirstRun'));
 const SavedPreferencesNotice = lazy(() => import('./components/SavedPreferencesNotice'));
 const LeaseBar = lazy(() => import('./components/LeaseBar'));
+const Setup = lazy(() => import('./onboarding/Setup'));
 const ProjectStatus = lazy(() => import('./projects/ProjectStatus').then((m) => ({ default: m.ProjectStatus })));
 const Plater3D = lazy(() => Promise.all([import('./plater/Plater3D'), threeReady]).then(([m]) => m));
 import { deleteAll, getState, isSelected, removeSelected, setState, subscribeStore, togglePrintable, updateInstance, useStore } from './state/store';
@@ -51,6 +52,9 @@ const Palette = lazy(() => import('./commands/Palette'));
 import { useSyncExternalStore } from 'react';
 import { paletteQuery, subscribePalette } from './commands/registry';
 import { preloadable, whenIdle } from './preloadable';
+import { useMachine } from './flow/fsm';
+import { setup as setupFlow } from './onboarding/setup-flow';
+const useSetup = <T,>(sel: (s: ReturnType<typeof setupFlow.get>) => T) => useMachine(setupFlow, sel);
 import { threeReady } from './three-runtime';
 const AppDialog = lazy(() => import('./components/AppDialogs'));
 const CalibDialog = lazy(() => import('./components/CalibDialog'));
@@ -92,6 +96,7 @@ function focusSoon(find: () => HTMLElement | null | undefined, frames = 60) {
 }
 
 export default function App() {
+  const setupOpen = useSetup((s) => s.value !== 'closed');
   const projects = useStore((s) => s.tab === 'projects');
   const palette = useSyncExternalStore(subscribePalette, paletteQuery);
   const multiPlate = useStore((s) => s.projectPlates.length > 1);
@@ -269,6 +274,7 @@ export default function App() {
       <TopBar />
       <Suspense fallback={null}><SavedPreferencesNotice /></Suspense>
       <Suspense fallback={null}><LeaseBar /></Suspense>
+      {setupOpen && <Suspense fallback={null}><Setup /></Suspense>}
       {projects && <Suspense fallback={null}><ProjectsView /></Suspense>}
       <div style={{ display: projects ? 'none' : undefined }} className={`main ${sidebarHidden ? 'sidebar-hidden' : ''} ${dragOver ? 'drag-over' : ''}`}>
         <Suspense fallback={null}><WorkspaceRail><Sidebar /></WorkspaceRail></Suspense>

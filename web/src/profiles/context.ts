@@ -44,13 +44,27 @@ export function availableHeights(s: ProfileContextState): number[] {
   const machine = effectiveProfileValues(s, 'machine', s.printer);
   return heightsFor(number(machine.nozzle_diameter), number(machine.min_layer_height), number(machine.max_layer_height));
 }
-export type SettingOrigin = 'set' | 'auto';
+export type SettingOrigin = 'set' | 'auto' | 'printer';
 export function originsOf(profile: { overlay?: Config; overrides?: Config } | undefined): Record<string, SettingOrigin> {
   const out: Record<string, SettingOrigin> = {};
   for (const k of Object.keys(profile?.overlay ?? profile?.overrides ?? {})) out[k] = 'set';
   for (const row of scalesOf(profile)) out[row.key] = 'auto';
   return out;
 }
+const noOverrides: Config = Object.freeze({}) as Config;
+const overridesOf = new WeakMap<object, Config>();
+export function printerOverrides(s: ProfileContextState): Config {
+  const record = resolveProfile(s, 'machine', s.printer).user as ({ printOverrides?: Config } & object) | undefined;
+  if (!record?.printOverrides) return noOverrides;
+  let value = overridesOf.get(record);
+  if (!value) {
+    const { layer_height: _h, ...rest } = record.printOverrides;
+    overridesOf.set(record, (value = Object.freeze(rest) as Config));
+  }
+  return value;
+}
+export const printerName = (s: ProfileContextState) => resolveProfile(s, 'machine', s.printer).name ?? '';
+const withPrinter = new WeakMap<Config, WeakMap<Config, Config>>();
 const autoCache = new WeakMap<Config, Map<string, Config>>();
 function withAuto(s: ProfileContextState, type: PresetType, resolved: ResolvedProfile, config: Config): Config {
   if (type !== 'process') return config;
@@ -89,7 +103,10 @@ export function effectiveProfileValues(s: ProfileContextState, type: PresetType,
   if (previous) return previous;
   const resolved=resolveProfile(s,type,key), captured=type==='machine'?s.profileSnapshots?.printer:type==='process'?s.profileSnapshots?.process:s.profileSnapshots?.filaments[slot];
   const pinned=!!captured && (captured.id===key || captured.id===resolved.key) && type !== 'process';
-  const config=pinned ? captured!.config : withAuto(s, type, resolved, resolved.config), project = type === 'filament' ? s.projectPresets?.filaments[slot] : s.projectPresets?.[type];
+  const own=pinned ? captured!.config : withAuto(s, type, resolved, resolved.config), po=type === 'process' ? printerOverrides(s) : noOverrides;
+  let byPrinter = withPrinter.get(own); if (po !== noOverrides && !byPrinter) withPrinter.set(own, (byPrinter = new WeakMap()));
+  let config = po === noOverrides ? own : byPrinter!.get(po); if (!config) byPrinter!.set(po, (config = {...own, ...po}));
+  const project = type === 'filament' ? s.projectPresets?.filaments[slot] : s.projectPresets?.[type];
   const plate = type === 'process' ? s.projectPlates?.find(p => p.index === s.plateIndex)?.settings : undefined;
   const edits = (type === 'filament' ? s.filamentEdits?.[key] : s.dirty?.[type]) ?? empty;
   let projects = effective.get(config); if (!projects) effective.set(config, (projects = new WeakMap()));
