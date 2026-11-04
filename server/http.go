@@ -32,6 +32,7 @@ type Server struct {
 	jobs      *JobManager
 	presets   *PresetIndex
 	library   *ProfileLibraryStore
+	libraryV4 *libraryStore
 	workspace *workspaceStore
 	sends     *SendManager
 	blobs     *blobStore
@@ -41,7 +42,7 @@ type Server struct {
 }
 
 func NewServer(c Config, jobs *JobManager, presets *PresetIndex, library *ProfileLibraryStore) http.Handler {
-	s := &Server{cfg: c, jobs: jobs, presets: presets, library: library, sends: NewSendManager(c.PrinterStore)}
+	s := &Server{cfg: c, jobs: jobs, presets: presets, library: library, libraryV4: &libraryStore{dir: c.DataDir}, sends: NewSendManager(c.PrinterStore)}
 	desktopReadyNonce := os.Getenv("ORCA_DESKTOP_READY_NONCE")
 	healthProbe := newEngineHealth(c)
 	jobs.cfg.NativeHealth = healthProbe
@@ -103,6 +104,8 @@ func NewServer(c Config, jobs *JobManager, presets *PresetIndex, library *Profil
 	mux.HandleFunc("GET /api/presets", s.listPresets)
 	s.printerCatalogRoutes(mux)
 	mux.HandleFunc("GET /api/filament-catalog", s.filamentCatalog)
+	s.libraryRoutes(mux)
+	mux.HandleFunc("POST /api/resolve", s.postResolve)
 	options := c.Options
 	if options == nil {
 		options = cacheResponse(optionData)
@@ -260,6 +263,22 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req := JobRequest{Orient: r.FormValue("operation") == "orient" || r.FormValue("operation") == "orient-scores", Vendor: r.FormValue("vendor"), Printer: r.FormValue("printer"), Process: r.FormValue("process"), Filaments: r.MultipartForm.Value["filament[]"], Output: r.FormValue("output"), Filename: r.FormValue("filename")}
+	var resolved *sliceConfig
+	if raw := r.FormValue("library"); raw != "" {
+		var in resolveRequest
+		profiles, err := s.libraryV4Profiles()
+		if err == nil {
+			err = json.Unmarshal([]byte(raw), &in)
+		}
+		if err == nil {
+			resolved, err = s.resolveProfiles(profiles, in)
+		}
+		if err != nil {
+			libraryFailure(w, 422, "resolve_failed", err.Error(), "choose_profiles", 0)
+			return
+		}
+		req.Vendor, req.Printer, req.Process, req.Filaments = resolved.Engine.Vendor, resolved.Engine.Printer, resolved.Engine.Process, resolved.Engine.Filaments
+	}
 	if raw := r.FormValue("profile_ids"); raw != "" {
 		req.ProfileIDs = &jobProfileIDs{}
 		if json.Unmarshal([]byte(raw), req.ProfileIDs) != nil {
@@ -488,7 +507,19 @@ func (s *Server) createJob(w http.ResponseWriter, r *http.Request) {
 		problem.write(w)
 		return
 	}
-	if raw := r.FormValue("overrides"); raw != "" {
+	if raw := r.FormValue("overrides"); resolved != nil {
+		values := map[string]json.RawMessage{}
+		for k, v := range resolved.Config {
+			if resolved.Sources[k] != "catalog" && !hiddenSetting.MatchString(k) {
+				values[k] = v
+			}
+		}
+		encoded, _ := json.Marshal(values)
+		if req.Overrides, err = overrides(string(encoded)); err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+	} else if raw != "" {
 		req.Overrides, err = overrides(raw)
 		if err != nil {
 			fail(w, 400, err.Error())

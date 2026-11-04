@@ -97,6 +97,9 @@ func (s *Server) resetAll(epoch string) error {
 			return err
 		}
 	}
+	if err := s.libraryV4.reset(epoch); err != nil {
+		return err
+	}
 	l := s.library
 	l.mu.Lock()
 	defer l.mu.Unlock()
