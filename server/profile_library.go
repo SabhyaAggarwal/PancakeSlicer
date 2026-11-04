@@ -158,7 +158,7 @@ func libraryProfiles(doc profileLibraryDocument) (map[string]map[string]json.Raw
 		if p["dynamic"] != nil || p["mergedInto"] != nil {
 			return nil, fmt.Errorf("%s: dynamic layers and merges no longer exist", name)
 		}
-		if err := validateAuto(p, typ, stringValue(p["kind"])); err != nil {
+		if err := validateAuto(p, typ); err != nil {
 			return nil, fmt.Errorf("%s: %w", name, err)
 		}
 		var profileRevision uint64
@@ -171,7 +171,7 @@ func libraryProfiles(doc profileLibraryDocument) (map[string]map[string]json.Raw
 			return nil, errors.New("every profile needs revision, base name/version and an overlay object in the canonical schema")
 		}
 		if _, ok := p["applicability"]; ok && typ == "process" {
-			return nil, fmt.Errorf("%s: an auto print profile applies to any printer and has no Works with rule", name)
+			return nil, fmt.Errorf("%s: a print profile applies to any printer and has no Works with rule", name)
 		}
 		if raw, ok := p["applicability"]; ok {
 			if _, err := parseWorksWith(raw, typ); err != nil {

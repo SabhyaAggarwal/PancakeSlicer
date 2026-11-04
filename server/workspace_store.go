@@ -27,6 +27,7 @@ type workspaceStore struct {
 	cached *workspaceData
 	stamp  [2]int64
 	views  map[string]any
+	leases map[string]*projectLease
 }
 type workspaceProject struct {
 	Record   json.RawMessage `json:"record"`
@@ -409,6 +410,7 @@ func projectMeta(p workspaceProject) json.RawMessage {
 }
 func (st *workspaceStore) register(mux *http.ServeMux) {
 	st.adoptionRoutes(mux)
+	st.leaseRoutes(mux)
 	st.folderRoutes(mux)
 	st.thumbnailRoutes(mux)
 	mux.HandleFunc("GET /api/projects", func(w http.ResponseWriter, r *http.Request) {
@@ -591,6 +593,9 @@ func (st *workspaceStore) projectWrite(w http.ResponseWriter, r *http.Request, a
 			return
 		}
 		p, exists := d.Projects[id]
+		if action != "duplicate" && st.leaseConflict(w, id, r.Header.Get(sessionHeader), p.Revision) {
+			return
+		}
 		if p.Revision != in.ExpectedRevision {
 			workspaceFailure(w, 409, "revision_conflict", "Another writer changed this project. Reload or keep a separate copy.", "reload_and_reapply", p.Revision)
 			return
