@@ -62,6 +62,8 @@ export const lease = createMachine<LeaseState, LeaseEvent, LeaseContext>({
 });
 
 export const leaseWritable = () => lease.get().value === 'editing' || lease.get().value === 'idle';
+export const leaseSettled = (): Promise<void> => lease.get().value !== 'requesting' ? Promise.resolve()
+  : new Promise((resolve) => { const stop = lease.subscribe((s) => { if (s.value !== 'requesting') { stop(); resolve(); } }); });
 export const takeControl = () => lease.send({ type: 'TAKE' });
 export const useProjectLease = () => useMachine(lease);
 export function leaseRefused(error: unknown, id: string): boolean {

@@ -665,6 +665,9 @@ func (st *workspaceStore) projectWrite(w http.ResponseWriter, r *http.Request, a
 		if !st.commit(w, d, in.OperationID, digest, response) {
 			return
 		}
+		if action == "save" {
+			st.claimLease(id, r.Header.Get(sessionHeader))
+		}
 		switch action {
 		case "save":
 			st.recordVersion(id, next.Revision, next.Record, recordChange(in.Record), action)

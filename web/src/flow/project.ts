@@ -13,7 +13,7 @@ import type { createDraftJournal } from './project-journal';
 import { importing } from './import';
 import { writesDiscarded } from '../api/access';
 import { versionShown, versionView, versionWanted } from './version-view';
-import { followProjectLease, leaseRefused, leaseWritable } from './project-lease';
+import { followProjectLease, leaseRefused, leaseSettled, leaseWritable } from './project-lease';
 
 export type { ProjectMeta } from '../persist/backend';
 export { newProject } from '../actions';
@@ -367,7 +367,7 @@ async function start(ready: Promise<unknown>) {
   if (typeof BroadcastChannel !== 'undefined') {
     channel = new BroadcastChannel('orca.projects'); channel.onmessage = (e) => remote(e.data);
   }
-  followProjectLease(() => project.get().context.id || null, (f) => project.subscribe(f),
+  followProjectLease(() => project.get().context.revision > 0 ? project.get().context.id || null : null, (f) => project.subscribe(f),
     (from, id) => from === 'viewing' && !hasUnsavedProject() ? void openProject(id, { reload: true }) : project.send({ type: 'FLUSH' }));
   refreshList(); void refreshProjectDrafts();
   const unsaved: unknown = currentRoute().kind === 'blank' ? history.state?.[UNSAVED] : null;
@@ -394,6 +394,8 @@ export async function flushProject(): Promise<void> {
   }
   const id = project.get().context.id;
   do {
+    await leaseSettled();
+    if (!leaseWritable()) throw failureError(projectFailure('This project is open in another tab or device. Take control to save.', id, project.get().context.revision));
     project.send({ type: 'FLUSH' });
     await queue;
     if (project.get().context.id !== id) return;

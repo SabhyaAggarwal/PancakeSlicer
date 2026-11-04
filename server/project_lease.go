@@ -83,6 +83,18 @@ func leaseFailure(w http.ResponseWriter, l *projectLease, session string, revisi
 	writeJSON(w, 409, body)
 }
 
+func (st *workspaceStore) claimLease(id, session string) {
+	if !validSession(session) {
+		return
+	}
+	now, leases := time.Now(), st.leaseTable()
+	if l := leases[id]; l.live(now) {
+		return
+	}
+	leases[id] = &projectLease{Session: session, Since: now.UnixMilli(), LastSeen: now.UnixMilli()}
+	st.saveLeases()
+}
+
 func (st *workspaceStore) leaseRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/project-leases/{id}", func(w http.ResponseWriter, r *http.Request) {
 		st.locked(w, func(d *workspaceData) {
