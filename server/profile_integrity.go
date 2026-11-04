@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 )
 
 type profileProblem struct {
@@ -114,7 +115,15 @@ func (s *Server) resolveJobProfiles(req *JobRequest) (*VendorPresets, *profilePr
 		if preset == nil {
 			return nil, profileSelectionProblem("profile_unknown", "filament", name, req.Vendor, i+1)
 		}
-		if !profileCompatible(preset, req.Printer, req.Process, true) {
+		if profileCompatible(preset, req.Printer, req.Process, false) {
+			continue
+		}
+		if variant := filamentVariant(vendor, name, req.Printer, req.Process); variant != "" {
+			if req.SubmittedFilaments == nil {
+				req.SubmittedFilaments = slices.Clone(req.Filaments)
+			}
+			req.Filaments[i] = variant
+		} else if req.ProfileIDs == nil {
 			return nil, incompatible("filament", name, i+1)
 		}
 	}
@@ -174,4 +183,15 @@ func (s *Server) captureSubmission(j *Job, req *JobRequest, vendor *VendorPreset
 	snapshot.ConfigSHA256 = hex.EncodeToString(digest[:])
 	req.Submission = snapshot
 	return nil
+}
+
+func filamentVariant(vendor *VendorPresets, name, printer, process string) string {
+	family, _, _ := strings.Cut(name, " @")
+	best := ""
+	for _, f := range vendor.Filaments {
+		if other, _, _ := strings.Cut(f.Name, " @"); other == family && f.Name != name && profileCompatible(&f, printer, process, false) && (best == "" || f.Name < best) {
+			best = f.Name
+		}
+	}
+	return best
 }

@@ -1,0 +1,36 @@
+{
+  "comment": "Profile rules shared by the service (profile_resolve.go) and the client resolver (web/src/profiles). One source: edit here only. Spec: profile_spec.json.",
+  "schema": 1,
+  "bases": {
+    "nozzle": "factor x nozzle diameter",
+    "layer": "factor x layer height",
+    "perLayer": "ceil(factor / layer height - 1e-6), a layer count from a thickness in mm"
+  },
+  "round": 1000,
+  "maxLayerOfNozzle": 0.75,
+  "lineWidthOfNozzle": [0.9, 1.5],
+  "heights": { "step": 0.04, "minOfNozzle": 0.2, "minFloor": 0.04, "maxOfNozzle": 0.7 },
+  "defaultScales": [
+    { "key": "line_width", "basis": "nozzle", "factor": 1.125 },
+    { "key": "outer_wall_line_width", "basis": "nozzle", "factor": 1 },
+    { "key": "inner_wall_line_width", "basis": "nozzle", "factor": 1.125 },
+    { "key": "sparse_infill_line_width", "basis": "nozzle", "factor": 1.125 },
+    { "key": "internal_solid_infill_line_width", "basis": "nozzle", "factor": 1.125 },
+    { "key": "top_surface_line_width", "basis": "nozzle", "factor": 1 },
+    { "key": "support_line_width", "basis": "nozzle", "factor": 1 },
+    { "key": "initial_layer_line_width", "basis": "nozzle", "factor": 1.25 },
+    { "key": "initial_layer_print_height", "basis": "nozzle", "factor": 0.5 },
+    { "key": "support_top_z_distance", "basis": "layer", "factor": 1 },
+    { "key": "support_bottom_z_distance", "basis": "layer", "factor": 1 },
+    { "key": "top_shell_layers", "basis": "perLayer", "factor": 1 },
+    { "key": "bottom_shell_layers", "basis": "perLayer", "factor": 0.6 }
+  ],
+  "printDefaultKeys": [
+    "outer_wall_speed", "inner_wall_speed", "sparse_infill_speed", "internal_solid_infill_speed", "top_surface_speed",
+    "initial_layer_speed", "initial_layer_infill_speed", "travel_speed",
+    "default_acceleration", "outer_wall_acceleration", "inner_wall_acceleration", "top_surface_acceleration", "travel_acceleration", "initial_layer_acceleration",
+    "elefant_foot_compensation", "enable_arc_fitting", "ironing_flow",
+    "prime_tower_width", "prime_tower_brim_width", "z_direction_outwall_speed_continuous", "monotonic_travel_into_wall"
+  ],
+  "sourceOrder": ["catalog", "printer", "print", "scale", "printer override", "filament", "project"]
+}

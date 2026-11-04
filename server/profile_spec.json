@@ -1,0 +1,359 @@
+{
+ "comment": "Shared by the service (profile_spec_test.go) and the client resolver. Generated from the client implementation, checked by both.",
+ "scales": [
+  {
+   "nozzle": 0.4,
+   "layerHeight": 0.2,
+   "clamped": 0.2,
+   "values": {
+    "line_width": "0.45",
+    "outer_wall_line_width": "0.4",
+    "inner_wall_line_width": "0.45",
+    "sparse_infill_line_width": "0.45",
+    "internal_solid_infill_line_width": "0.45",
+    "top_surface_line_width": "0.4",
+    "support_line_width": "0.4",
+    "initial_layer_line_width": "0.5",
+    "initial_layer_print_height": "0.2",
+    "support_top_z_distance": "0.2",
+    "support_bottom_z_distance": "0.2",
+    "top_shell_layers": "5",
+    "bottom_shell_layers": "3"
+   }
+  },
+  {
+   "nozzle": 0.4,
+   "layerHeight": 0.08,
+   "clamped": 0.08,
+   "values": {
+    "line_width": "0.45",
+    "outer_wall_line_width": "0.4",
+    "inner_wall_line_width": "0.45",
+    "sparse_infill_line_width": "0.45",
+    "internal_solid_infill_line_width": "0.45",
+    "top_surface_line_width": "0.4",
+    "support_line_width": "0.4",
+    "initial_layer_line_width": "0.5",
+    "initial_layer_print_height": "0.2",
+    "support_top_z_distance": "0.08",
+    "support_bottom_z_distance": "0.08",
+    "top_shell_layers": "13",
+    "bottom_shell_layers": "8"
+   }
+  },
+  {
+   "nozzle": 0.4,
+   "layerHeight": 0.28,
+   "clamped": 0.28,
+   "values": {
+    "line_width": "0.45",
+    "outer_wall_line_width": "0.4",
+    "inner_wall_line_width": "0.45",
+    "sparse_infill_line_width": "0.45",
+    "internal_solid_infill_line_width": "0.45",
+    "top_surface_line_width": "0.4",
+    "support_line_width": "0.4",
+    "initial_layer_line_width": "0.5",
+    "initial_layer_print_height": "0.2",
+    "support_top_z_distance": "0.28",
+    "support_bottom_z_distance": "0.28",
+    "top_shell_layers": "4",
+    "bottom_shell_layers": "3"
+   }
+  },
+  {
+   "nozzle": 0.2,
+   "layerHeight": 0.06,
+   "clamped": 0.06,
+   "values": {
+    "line_width": "0.225",
+    "outer_wall_line_width": "0.2",
+    "inner_wall_line_width": "0.225",
+    "sparse_infill_line_width": "0.225",
+    "internal_solid_infill_line_width": "0.225",
+    "top_surface_line_width": "0.2",
+    "support_line_width": "0.2",
+    "initial_layer_line_width": "0.25",
+    "initial_layer_print_height": "0.1",
+    "support_top_z_distance": "0.06",
+    "support_bottom_z_distance": "0.06",
+    "top_shell_layers": "17",
+    "bottom_shell_layers": "10"
+   }
+  },
+  {
+   "nozzle": 0.2,
+   "layerHeight": 0.2,
+   "clamped": 0.15,
+   "values": {
+    "line_width": "0.225",
+    "outer_wall_line_width": "0.2",
+    "inner_wall_line_width": "0.225",
+    "sparse_infill_line_width": "0.225",
+    "internal_solid_infill_line_width": "0.225",
+    "top_surface_line_width": "0.2",
+    "support_line_width": "0.2",
+    "initial_layer_line_width": "0.25",
+    "initial_layer_print_height": "0.1",
+    "support_top_z_distance": "0.15",
+    "support_bottom_z_distance": "0.15",
+    "top_shell_layers": "7",
+    "bottom_shell_layers": "4"
+   }
+  },
+  {
+   "nozzle": 0.6,
+   "layerHeight": 0.3,
+   "clamped": 0.3,
+   "values": {
+    "line_width": "0.675",
+    "outer_wall_line_width": "0.6",
+    "inner_wall_line_width": "0.675",
+    "sparse_infill_line_width": "0.675",
+    "internal_solid_infill_line_width": "0.675",
+    "top_surface_line_width": "0.6",
+    "support_line_width": "0.6",
+    "initial_layer_line_width": "0.75",
+    "initial_layer_print_height": "0.3",
+    "support_top_z_distance": "0.3",
+    "support_bottom_z_distance": "0.3",
+    "top_shell_layers": "4",
+    "bottom_shell_layers": "2"
+   }
+  },
+  {
+   "nozzle": 0.8,
+   "layerHeight": 0.48,
+   "clamped": 0.48,
+   "values": {
+    "line_width": "0.9",
+    "outer_wall_line_width": "0.8",
+    "inner_wall_line_width": "0.9",
+    "sparse_infill_line_width": "0.9",
+    "internal_solid_infill_line_width": "0.9",
+    "top_surface_line_width": "0.8",
+    "support_line_width": "0.8",
+    "initial_layer_line_width": "1",
+    "initial_layer_print_height": "0.4",
+    "support_top_z_distance": "0.48",
+    "support_bottom_z_distance": "0.48",
+    "top_shell_layers": "3",
+    "bottom_shell_layers": "2"
+   }
+  },
+  {
+   "nozzle": 0.8,
+   "layerHeight": 0.7,
+   "clamped": 0.6,
+   "values": {
+    "line_width": "0.9",
+    "outer_wall_line_width": "0.8",
+    "inner_wall_line_width": "0.9",
+    "sparse_infill_line_width": "0.9",
+    "internal_solid_infill_line_width": "0.9",
+    "top_surface_line_width": "0.8",
+    "support_line_width": "0.8",
+    "initial_layer_line_width": "1",
+    "initial_layer_print_height": "0.4",
+    "support_top_z_distance": "0.6",
+    "support_bottom_z_distance": "0.6",
+    "top_shell_layers": "2",
+    "bottom_shell_layers": "1"
+   }
+  },
+  {
+   "nozzle": 0.25,
+   "layerHeight": 0.12,
+   "clamped": 0.12,
+   "values": {
+    "line_width": "0.281",
+    "outer_wall_line_width": "0.25",
+    "inner_wall_line_width": "0.281",
+    "sparse_infill_line_width": "0.281",
+    "internal_solid_infill_line_width": "0.281",
+    "top_surface_line_width": "0.25",
+    "support_line_width": "0.25",
+    "initial_layer_line_width": "0.313",
+    "initial_layer_print_height": "0.125",
+    "support_top_z_distance": "0.12",
+    "support_bottom_z_distance": "0.12",
+    "top_shell_layers": "9",
+    "bottom_shell_layers": "5"
+   }
+  },
+  {
+   "nozzle": 1,
+   "layerHeight": 0.5,
+   "clamped": 0.5,
+   "values": {
+    "line_width": "1.125",
+    "outer_wall_line_width": "1",
+    "inner_wall_line_width": "1.125",
+    "sparse_infill_line_width": "1.125",
+    "internal_solid_infill_line_width": "1.125",
+    "top_surface_line_width": "1",
+    "support_line_width": "1",
+    "initial_layer_line_width": "1.25",
+    "initial_layer_print_height": "0.5",
+    "support_top_z_distance": "0.5",
+    "support_bottom_z_distance": "0.5",
+    "top_shell_layers": "2",
+    "bottom_shell_layers": "2"
+   }
+  }
+ ],
+ "scaleRows": [
+  {
+   "nozzle": 0.4,
+   "layerHeight": 0.2,
+   "rows": [
+    {
+     "key": "outer_wall_line_width",
+     "basis": "layer",
+     "factor": 3
+    },
+    {
+     "key": "wall_loops",
+     "basis": "perLayer",
+     "factor": 0.42
+    },
+    {
+     "key": "line_width",
+     "basis": "nozzle",
+     "factor": 2
+    }
+   ],
+   "values": {
+    "outer_wall_line_width": "0.6",
+    "wall_loops": "3",
+    "line_width": "0.6"
+   }
+  },
+  {
+   "nozzle": 0.4,
+   "layerHeight": 0.12,
+   "rows": [
+    {
+     "key": "outer_wall_line_width",
+     "basis": "layer",
+     "factor": 3
+    },
+    {
+     "key": "wall_loops",
+     "basis": "perLayer",
+     "factor": 0.42
+    },
+    {
+     "key": "line_width",
+     "basis": "nozzle",
+     "factor": 2
+    }
+   ],
+   "values": {
+    "outer_wall_line_width": "0.36",
+    "wall_loops": "4",
+    "line_width": "0.6"
+   }
+  }
+ ],
+ "heights": [
+  {
+   "nozzle": 0.2,
+   "min": 0,
+   "max": 0,
+   "heights": [
+    0.04,
+    0.08,
+    0.12
+   ]
+  },
+  {
+   "nozzle": 0.25,
+   "min": 0,
+   "max": 0,
+   "heights": [
+    0.05,
+    0.09,
+    0.13,
+    0.17
+   ]
+  },
+  {
+   "nozzle": 0.4,
+   "min": 0,
+   "max": 0,
+   "heights": [
+    0.08,
+    0.12,
+    0.16,
+    0.2,
+    0.24,
+    0.28
+   ]
+  },
+  {
+   "nozzle": 0.6,
+   "min": 0,
+   "max": 0,
+   "heights": [
+    0.12,
+    0.16,
+    0.2,
+    0.24,
+    0.28,
+    0.32,
+    0.36,
+    0.4
+   ]
+  },
+  {
+   "nozzle": 0.8,
+   "min": 0,
+   "max": 0,
+   "heights": [
+    0.16,
+    0.2,
+    0.24,
+    0.28,
+    0.32,
+    0.36,
+    0.4,
+    0.44,
+    0.48,
+    0.52,
+    0.56
+   ]
+  },
+  {
+   "nozzle": 0.4,
+   "min": 0.1,
+   "max": 0.24,
+   "heights": [
+    0.1,
+    0.14,
+    0.18,
+    0.22
+   ]
+  },
+  {
+   "nozzle": 1,
+   "min": 0,
+   "max": 0,
+   "heights": [
+    0.2,
+    0.24,
+    0.28,
+    0.32,
+    0.36,
+    0.4,
+    0.44,
+    0.48,
+    0.52,
+    0.56,
+    0.6,
+    0.64,
+    0.68
+   ]
+  }
+ ]
+}

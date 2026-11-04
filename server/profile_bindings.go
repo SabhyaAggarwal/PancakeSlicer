@@ -48,7 +48,11 @@ func (s *Server) validateProfileBindings(req *JobRequest) *profileProblem {
 	}
 	selections := []selection{{ids.Printer, "machine", req.Printer, ids.Revisions.Printer, 0}, {ids.Process, "process", req.Process, ids.Revisions.Process, 0}}
 	for i, id := range ids.Filaments {
-		selections = append(selections, selection{id, "filament", req.Filaments[i], ids.Revisions.Filaments[i], i + 1})
+		native := req.Filaments[i]
+		if i < len(req.SubmittedFilaments) {
+			native = req.SubmittedFilaments[i]
+		}
+		selections = append(selections, selection{id, "filament", native, ids.Revisions.Filaments[i], i + 1})
 	}
 	snapshots := map[string]map[string]json.RawMessage{}
 	var printer printerFacts

@@ -60,15 +60,7 @@ func isDynamic(p map[string]json.RawMessage) bool {
 	return json.Unmarshal(p["auto"], &a) == nil && len(a.Scales) > 0
 }
 
-var defaultScales = func() []autoScale {
-	rows := []autoScale{{"outer_wall_line_width", "nozzle", 1}}
-	for _, key := range []string{"line_width", "inner_wall_line_width", "top_surface_line_width", "sparse_infill_line_width", "internal_solid_infill_line_width", "support_line_width"} {
-		rows = append(rows, autoScale{key, "nozzle", 1.125})
-	}
-	return append(rows, autoScale{"initial_layer_line_width", "nozzle", 1.25}, autoScale{"initial_layer_print_height", "nozzle", 0.5},
-		autoScale{"support_top_z_distance", "layer", 1}, autoScale{"support_bottom_z_distance", "layer", 1},
-		autoScale{"top_shell_layers", "perLayer", 1}, autoScale{"bottom_shell_layers", "perLayer", 0.6})
-}()
+var defaultScales = profileRules.DefaultScales
 
 var starterProfiles = []struct {
 	id, name string

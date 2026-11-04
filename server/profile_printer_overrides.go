@@ -11,13 +11,7 @@ import (
 	"sync"
 )
 
-var printDefaultKeys = []string{
-	"outer_wall_speed", "inner_wall_speed", "sparse_infill_speed", "internal_solid_infill_speed", "top_surface_speed",
-	"initial_layer_speed", "initial_layer_infill_speed", "travel_speed",
-	"default_acceleration", "outer_wall_acceleration", "inner_wall_acceleration", "top_surface_acceleration", "travel_acceleration", "initial_layer_acceleration",
-	"elefant_foot_compensation", "enable_arc_fitting", "ironing_flow",
-	"prime_tower_width", "prime_tower_brim_width", "z_direction_outwall_speed_continuous", "monotonic_travel_into_wall",
-}
+var printDefaultKeys = profileRules.PrintDefaultKeys
 
 var processKeys = struct {
 	sync.RWMutex

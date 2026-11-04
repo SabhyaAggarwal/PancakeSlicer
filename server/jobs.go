@@ -25,6 +25,7 @@ import (
 type JobRequest struct {
 	ProfileIDs             *jobProfileIDs                        `json:"profile_ids,omitempty"`
 	ProfileSnapshot        map[string]map[string]json.RawMessage `json:"profile_snapshot,omitempty"`
+	SubmittedFilaments     []string                              `json:"submitted_filaments,omitempty"`
 	Submission             *submittedConfig                      `json:"submission,omitempty"`
 	SourcePlates           []projectPlate                        `json:"source_plates,omitempty"`
 	PlateIndex             int                                   `json:"plate_index,omitempty"`
