@@ -125,7 +125,7 @@ func (st *workspaceStore) writeVersion(id string, revision uint64, record json.R
 	sha := hex.EncodeToString(sum[:])
 	path := filepath.Join(dir, "records", sha+".json")
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		if err := atomicJobFile(path, record); err != nil {
+		if err := durableWrite(path, record); err != nil {
 			return err
 		}
 	}
@@ -418,7 +418,7 @@ func (s *Server) versionRoutes(mux *http.ServeMux) {
 				if pending == "" {
 					err = errors.New("no staged copy")
 				} else {
-					err = errors.Join(os.MkdirAll(filepath.Dir(target), 0700), os.Rename(pending, target))
+					err = errors.Join(os.MkdirAll(filepath.Dir(target), 0700), os.Rename(pending, target), syncWorkspaceDirectory(filepath.Dir(target)))
 				}
 				if err != nil {
 					workspaceFailure(w, 507, "slice_copy_failed", "The slice could not be kept with this version.", "retry_storage", 0)
