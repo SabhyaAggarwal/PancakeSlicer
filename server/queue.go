@@ -88,7 +88,7 @@ func (m *JobManager) queueOrderLocked() {
 		j.mu.Lock()
 		st := j.state
 		j.mu.Unlock()
-		if st == StatePreparing || st == StateSlicing || st == StateCanceling {
+		if st == StatePreparing || st == StateSlicing || st == StateStoring || st == StateCanceling {
 			running[key(j)]++
 		}
 	}

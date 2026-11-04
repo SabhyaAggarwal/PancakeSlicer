@@ -1,7 +1,7 @@
 import type { ProgressEvent } from './types';
 
 const STATUS: Record<string, string> = {
-  uploading: 'Uploading', queued: 'Queued', load: 'Loading model', loading: 'Loading model',
+  uploading: 'Uploading', queued: 'Queued', storing: 'Saving the result', load: 'Loading model', loading: 'Loading model',
   perimeters: 'Generating perimeters', infill: 'Infilling layers', support: 'Generating support material',
   skirt: 'Generating skirt & brim', export: 'Exporting G-code', gcode: 'Exporting G-code',
   verify: 'Checking toolpath clearance', json: 'Writing slice record', package: 'Packaging sliced plate',

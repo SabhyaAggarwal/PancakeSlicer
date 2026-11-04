@@ -543,7 +543,7 @@ func (m *JobManager) Counts() (queued, running int) {
 		switch j.State() {
 		case StateQueued:
 			queued++
-		case StatePreparing, StateSlicing, StateCanceling:
+		case StatePreparing, StateSlicing, StateStoring, StateCanceling:
 			running++
 		}
 	}
@@ -973,6 +973,9 @@ func (m *JobManager) run(ctx context.Context, j *Job) {
 		}
 		if _, err := os.Stat(j.OutputPath(kind)); !j.Request.Orient && !j.Request.Explode && j.Request.Cut == "" && err != nil {
 			j.setState(StateFailed, "the slicer finished without writing "+filepath.Base(j.OutputPath(kind)))
+			return
+		}
+		if !j.setState(StateStoring, "") {
 			return
 		}
 		j.mu.Lock()

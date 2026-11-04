@@ -24,6 +24,7 @@ const (
 	StatePreparing   JobState = "preparing"
 	StateSlicing     JobState = "slicing"
 	StateRunning              = StateSlicing
+	StateStoring     JobState = "storing"
 	StateCanceling   JobState = "canceling"
 	StateDone        JobState = "done"
 	StateFailed      JobState = "failed"
@@ -35,8 +36,9 @@ const (
 var jobTransitions = map[JobState]map[JobState]bool{
 	StateIdle:        {StateQueued: true, StateInterrupted: true},
 	StateQueued:      {StatePreparing: true, StateCanceling: true, StateInterrupted: true},
-	StatePreparing:   {StateSlicing: true, StateDone: true, StateFailed: true, StateCanceling: true, StateInterrupted: true},
-	StateSlicing:     {StateDone: true, StateFailed: true, StateCanceling: true, StateInterrupted: true},
+	StatePreparing:   {StateSlicing: true, StateStoring: true, StateDone: true, StateFailed: true, StateCanceling: true, StateInterrupted: true},
+	StateSlicing:     {StateStoring: true, StateDone: true, StateFailed: true, StateCanceling: true, StateInterrupted: true},
+	StateStoring:     {StateDone: true, StateFailed: true, StateCanceling: true, StateInterrupted: true},
 	StateCanceling:   {StateCancelled: true, StateInterrupted: true},
 	StateDone:        {StateStale: true},
 	StateFailed:      {},
@@ -53,7 +55,7 @@ func (s JobState) legacy() JobState {
 	switch s {
 	case StateIdle:
 		return StateQueued
-	case StatePreparing, StateSlicing, StateCanceling:
+	case StatePreparing, StateSlicing, StateStoring, StateCanceling:
 		return "running"
 	case StateCancelled:
 		return "canceled"

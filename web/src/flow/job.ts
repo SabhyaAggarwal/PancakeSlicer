@@ -44,7 +44,7 @@ export function waitForJob(api: Api, id: string, signal?: AbortSignal, progress?
   });
 }
 
-export type JobLifecycle = 'idle' | 'queued' | 'preparing' | 'slicing' | 'progress' | 'done' | 'failed'
+export type JobLifecycle = 'idle' | 'queued' | 'preparing' | 'slicing' | 'progress' | 'storing' | 'done' | 'failed'
   | 'canceling' | 'cancelled' | 'interrupted' | 'stale';
 export type CanonicalJobStatus = JobStatus & { lifecycle_state?: Exclude<JobLifecycle, 'progress'>; seq?: number };
 export function jobLifecycle(status: CanonicalJobStatus): Exclude<JobLifecycle, 'progress'> {
@@ -82,10 +82,11 @@ const active = { TRACK: track, RESET: reset, CANCEL: cancel, DISCONNECT: disconn
 const settled = { TRACK: track, RESET: reset, RETRY: { action: (_: JobContext, _e: JobEvent, m: object) => jobEffects.get(m)?.retry() } };
 const jobStates: Record<JobLifecycle, StateNode<JobLifecycle, JobEvent, JobContext>> = {
   idle: { on: { TRACK: track, RESET: reset } },
-  queued: { on: { ...active, STATUS: statusEdges(['queued', 'preparing', 'slicing', 'done', 'failed', 'canceling', 'cancelled', 'interrupted', 'stale']), PROGRESS: progress } },
-  preparing: { on: { ...active, STATUS: statusEdges(['preparing', 'slicing', 'done', 'failed', 'canceling', 'cancelled', 'interrupted', 'stale']), PROGRESS: progress } },
-  slicing: { on: { ...active, STATUS: statusEdges(['slicing', 'done', 'failed', 'canceling', 'cancelled', 'interrupted', 'stale']), PROGRESS: progress } },
-  progress: { on: { ...active, STATUS: statusEdges(['slicing', 'done', 'failed', 'canceling', 'cancelled', 'interrupted', 'stale']), PROGRESS: progress } },
+  queued: { on: { ...active, STATUS: statusEdges(['queued', 'preparing', 'slicing', 'storing', 'done', 'failed', 'canceling', 'cancelled', 'interrupted', 'stale']), PROGRESS: progress } },
+  preparing: { on: { ...active, STATUS: statusEdges(['preparing', 'slicing', 'storing', 'done', 'failed', 'canceling', 'cancelled', 'interrupted', 'stale']), PROGRESS: progress } },
+  slicing: { on: { ...active, STATUS: statusEdges(['slicing', 'storing', 'done', 'failed', 'canceling', 'cancelled', 'interrupted', 'stale']), PROGRESS: progress } },
+  progress: { on: { ...active, STATUS: statusEdges(['slicing', 'storing', 'done', 'failed', 'canceling', 'cancelled', 'interrupted', 'stale']), PROGRESS: progress } },
+  storing: { on: { ...active, STATUS: statusEdges(['storing', 'done', 'failed', 'canceling', 'cancelled', 'interrupted', 'stale']) } },
   canceling: { on: { RESET: reset, TRACK: track, CANCEL: {}, DISCONNECT: disconnect, STATUS: statusEdges(['canceling', 'cancelled', 'interrupted']),
     CANCEL_ACK: statusEdges(['canceling', 'cancelled', 'interrupted', 'done', 'failed', 'stale']) } },
   done: { on: { RESET: reset, TRACK: track, STATUS: statusEdges(['stale']) } },

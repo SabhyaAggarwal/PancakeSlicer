@@ -414,7 +414,7 @@ func storeJobResult(m *JobManager, j *Job, _ []string, raw []byte) {
 		return
 	}
 	j.mu.Lock()
-	cancelled := j.stopReason != "" || j.state != StateSlicing
+	cancelled := j.stopReason != "" || j.state != StateStoring
 	j.mu.Unlock()
 	if cancelled {
 		return
