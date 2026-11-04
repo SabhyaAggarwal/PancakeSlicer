@@ -34,8 +34,10 @@ function save(s: DemoState) {
   catch { hooks.notice?.('Demo session storage is full. Keep this tab open to retain your edits.'); }
 }
 export async function resetDemo() {
-  const next = initial(await seed()); next.library.profiles = next.library.profiles.filter((p: Row) => p.type === 'print'); next.library.setups = {};
-  next.preferences = { revision: 0, document: {} }; next.session = { revision: 0, document: {} }; stateRead = Promise.resolve(next); save(next);
+  const next = initial(await seed());
+  next.preferences = { revision: 0, document: {} };
+  next.session = { revision: 0, document: { demoOnboarding: true } };
+  stateRead = Promise.resolve(next); save(next);
 }
 async function body(request: Request): Promise<Row> {
   if (!request.body) return {};
@@ -173,7 +175,15 @@ async function handle(request: Request): Promise<Response> {
     if (!v) return json({ revision: s.projects[id]?.meta.revision ?? 0, versions: [...list].reverse().map(({ project: _, ...row }) => row) });
     const found = list.find(row => row.id === Number(v)); if (!found) return missing();
     if (action === 'summary') return json(found.project);
-    if (action === 'slice') { const input = await body(request); found.jobId = input.jobId; found.slice = { at: Date.now() }; save(s); return json(found); }
+    if (action === 'slice') {
+      const input = await body(request), job = s.jobs[input.jobId];
+      if (!job) return missing();
+      const { record } = await fixtureStatus(job.fixture), stats = record.statistics;
+      found.jobId = input.jobId;
+      found.slice = { at: Date.now(), timeS: record.totals.estimated_time_s, grams: stats.total_weight_g,
+        mm: stats.total_used_filament_mm, layers: job.fixture.endsWith('012') ? 399 : 240 };
+      save(s); return json(found);
+    }
     if (action === 'open-slice' && found.jobId) return json(await snapshot(s.jobs[found.jobId]));
     return json(found.project);
   }
@@ -230,7 +240,7 @@ export function installDemoTransport() {
     navigator.sendBeacon = (url, data) => String(url).startsWith('/api/') || beacon(url, data);
     if (!location.hash) void state().then(s => {
       const id = s.session.document.demoProject ?? Object.keys(s.projects)[0];
-      if (id && s.library.profiles.some((p: Row) => p.type === 'printer')) history.replaceState(null, '', `${location.pathname}#/p/${id}`);
+      if (id && !s.session.document.demoOnboarding && s.library.profiles.some((p: Row) => p.type === 'printer')) history.replaceState(null, '', `${location.pathname}#/p/${id}`);
     });
   }
 }

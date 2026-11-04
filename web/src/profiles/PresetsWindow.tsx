@@ -34,7 +34,8 @@ import { Modal } from '../components/Modal';
 import { useMachine } from '../flow/fsm';
 import { windowOps, type CopyRequest, type WindowOp } from '../flow/profiles-window-ops';
 import { SettingsDetail } from '../components/VisibilityControl';
-import { Dialog } from 'radix-ui';
+import { Dialog, Popover } from 'radix-ui';
+import { createPrintProfile } from './save-to-profile';
 import type { ProjectProfileChanges } from './project-draft';
 import { confirmDialog, promptDialog } from '../components/Ask';
 import { diffRows, useTabLoaded } from '../components/PresetDialogs';
@@ -176,6 +177,18 @@ function Compare({ type, names, titles, close }: { type: PresetType; names: stri
   );
 }
 
+const NEW_KINDS: { id: 'dynamic' | 'regular'; title: string; line: string }[] = [
+  { id: 'dynamic', title: '✦ Dynamic', line: 'Everyday’s formulas: values follow nozzle and layer height' },
+  { id: 'regular', title: 'Regular', line: 'Fixed values from the printer’s standard settings' },
+];
+function NewProfileChooser({ open, onOpenChange, disabled, onPick }: { open: boolean; onOpenChange(open: boolean): void; disabled?: boolean; onPick(kind: 'dynamic' | 'regular'): void }) {
+  return <Popover.Root open={open} onOpenChange={onOpenChange}><Popover.Trigger asChild><button type="button" className="btn" disabled={disabled}>New profile</button></Popover.Trigger>
+    <Popover.Portal><Popover.Content className="orca-menu pf-new-kind" role="dialog" aria-label="New profile" side="bottom" align="end" sideOffset={4} collisionPadding={12}
+      onFocusOutside={(e) => e.preventDefault()}>
+      {NEW_KINDS.map((k) => <button key={k.id} type="button" className="pf-new-kind-item" onClick={() => onPick(k.id)}><strong>{k.title}</strong><span>{k.line}</span></button>)}
+    </Popover.Content></Popover.Portal></Popover.Root>;
+}
+
 export default function PresetsWindow({ type: initialType, name, compare, edit = false,add = false,stage,request }: { type: PresetType; name?: string; compare?: string; edit?: boolean;add?:boolean;stage?:ProjectProfileChanges;request?:object }) {
   const libraryReady=useStore(s=>s.profileLibraryLoad.state==='ready');
   const [mobilePane,setMobilePane]=useState<'list'|'detail'|'filters'>(edit || stage || compare!==undefined?'detail':'list');
@@ -183,9 +196,9 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   const [paneTier,body]=useContainerTier(),drill=paneTier==='narrow' || paneTier==='phone';
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
   const pickerAdd=useRef<PresetType|null>(add ? initialType : null);
-  useEffect(()=>{if(!request)return;setAdding(!!add);pickerAdd.current=add ? initialType : null;},[request]);
+  useEffect(()=>{if(!request)return;setAdding(!!add && initialType !== 'process');setChoosing(!!add && initialType === 'process');pickerAdd.current=add ? initialType : null;},[request]);
   useEffect(()=>{if(drill && mobilePane!=='list')mobileBack.current?.focus();},[mobilePane]);
-  const [type, setType] = useState(initialType), [search, setSearch] = useState(''), [adding, setAdding] = useState(add);
+  const [type, setType] = useState(initialType), [search, setSearch] = useState(''), [adding, setAdding] = useState(add && initialType !== 'process'), [choosing, setChoosing] = useState(add && initialType === 'process');
   const [kindFilter,setKindFilter] = useState<string[]>([]), [sortBy,setSortBy] = useState<'name'|'kind'>('name'), [vendorFilter,setVendorFilter] = useState<string[]>([]), [nozzleFilter,setNozzleFilter] = useState<string[]>([]), [materialFilter,setMaterialFilter] = useState<string[]>([]), [modelFilter,setModelFilter]=useState<string[]>([]), [printerFilter,setPrinterFilter]=useState<string[]>([]);
   const [filtersOpen,setFiltersOpen]=useState(false);
   const resultsPane = useRef<HTMLElement>(null);
@@ -422,6 +435,16 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
     windowOps.send({type:'COPY',source,name:copyName,creation:profileCopyCreation(source,copyName)});
     await retryCopy();
   };
+  const newPrintProfile=async(kind:'dynamic'|'regular')=>{
+    setChoosing(false);
+    const name=await promptDialog(kind === 'dynamic' ? 'New dynamic profile' : 'New regular profile',kind === 'dynamic' ? 'My dynamic profile' : 'My regular profile');
+    if(!name?.trim())return;
+    if(getState().userPresets.some(p=>p.type === 'process' && !p.archived && p.name === name.trim())){setBulkError(`${name.trim()} already exists.`);return;}
+    await run('adding',async()=>{
+      try{const key=await createPrintProfile(kind,name);added(key,'process');if(pickerAdd.current === 'process'){pickerAdd.current=null;requestPreset('process',0,key);}}
+      catch(error){if(mounted.current)setBulkError(error instanceof Error?error.message:String(error));}
+    });
+  };
   const discardCopy=()=>{if(windowOps.can({type:'DISCARD'}))windowOps.send({type:'DISCARD'});};
   const exportSelected = () => run('exporting', async () => {
     setBulkError(null);
@@ -449,7 +472,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
   useEffect(()=>{
     const prior=targetRequest.current;targetRequest.current={type:initialType,name};
     if(prior.type === initialType && prior.name === name || initialType === type && (name === item?.key || name === item?.name))return;
-    setAdding(!!add);pickType(initialType,name);
+    setAdding(!!add && initialType !== 'process');setChoosing(!!add && initialType === 'process');pickType(initialType,name);
   },[initialType,name]);
   const backToList=()=>{setMobilePane('list');setFiltersOpen(false);requestAnimationFrame(()=>document.getElementById(`${id}:${latestSelection.current.focus}`)?.focus());};
   const nouns=NOUNS[type], typeLabel=type === 'process' ? nouns[1] : nouns[0];
@@ -510,7 +533,7 @@ export default function PresetsWindow({ type: initialType, name, compare, edit =
         <div className="pf-list-head"><div className="pf-results-heading" data-selection={bulk || undefined}>{bulk ? <><strong>{selected.length} selected</strong>{bulkActions}</>
           : <><strong>{count(visible.length,resultNoun)}</strong>
           {adding ? <button type="button" className="btn" onClick={()=>showLibrary(false)}>Cancel</button>
-            : type === 'process' ? <button type="button" className="btn" disabled={!item?.user || !libraryReady} onClick={()=>item?.user && void duplicate(item.user)}>New profile</button>
+            : type === 'process' ? <NewProfileChooser open={choosing} onOpenChange={setChoosing} disabled={!libraryReady || busy} onPick={kind=>void newPrintProfile(kind)}/>
             : <button type="button" className="btn" onClick={()=>showLibrary(true)}>Add {typeLabel}</button>}</>}
         </div>
         <div className="pf-results-tools"><input className="text pf-profile-search" type="search" aria-label="Search" placeholder="Search" value={search} onChange={e=>setSearch(e.target.value)}/>

@@ -22,6 +22,12 @@ export function scaleValues(scales: readonly ScaleRow[], ctx: ScaleContext): Con
   if (!(ctx.nozzle > 0) || !(ctx.layerHeight > 0)) return {};
   return Object.fromEntries(scales.map((row) => [row.key, String(scaledValue(row, ctx))]));
 }
+export function effectiveShells(config: Config, side: 'top' | 'bottom', layerHeight: number): { layers: number; effective: number; thickness: number; lifted: boolean } {
+  const num = (v: Config[string] | undefined) => { const x = Number(Array.isArray(v) ? v[0] : v); return Number.isFinite(x) ? x : 0; };
+  const layers = Math.max(0, Math.round(num(config[`${side}_shell_layers`]))), thickness = num(config[`${side}_shell_thickness`]);
+  const minimum = thickness > 0 && layerHeight > 0 && layers > 0 ? Math.ceil(thickness / layerHeight - 1e-6) : 0;
+  return { layers, effective: Math.max(layers, minimum), thickness, lifted: minimum > layers };
+}
 export const scalesOf = (record: unknown): ScaleRow[] => {
   const scales = (record as { auto?: { scales?: unknown } } | undefined)?.auto?.scales;
   return Array.isArray(scales) ? scales.filter((r): r is ScaleRow => !!r && typeof r.key === 'string' && Number.isFinite(r.factor) && ['nozzle', 'layer', 'perLayer'].includes(r.basis)) : [];

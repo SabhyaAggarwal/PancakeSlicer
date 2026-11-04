@@ -2,7 +2,8 @@ import { findProfile } from './identity';
 import { profileEdit } from '../flow/profile-edit';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PresetType } from '../api/types';
-import { MenuButton } from '../components/Menu';
+import { MenuButton, type MenuEntry } from '../components/Menu';
+import { Caret } from '../components/Caret';
 import { Popover } from 'radix-ui';
 import { modeVisible, OPTIONS, splitKey, TABS, type OptionMode } from '../options';
 import { effectiveMode, getState, presetEdits, resolvePreset, setState, useStore, type State } from '../state/store';
@@ -22,7 +23,9 @@ import { reviewProjectProfileChanges } from './project-draft';
 import { toast } from '../state/store';
 import { editing } from './editing';
 import { createProfileSave } from '../flow/profile-save';
-import { autoKeysOf, newProfileName, newProfileNameError, saveAsNewProfile, saveToProfile, savesInPlace } from './save-to-profile';
+import { defaultChoice, formulaText, newProfileName, newProfileNameError, saveAsNewProfile, saveToProfile, savesInPlace, scaleContext, solveFactor, valueSources, type NewKind, type ValueChoice, type ValueSource } from './save-to-profile';
+import { scalesOf } from './auto-rules';
+import { labelOf } from './PrintOverrides';
 
 async function exportCurrent(type: PresetType, slot: number) {
   const s = getState();
@@ -45,7 +48,7 @@ const TAB_OF = { process: 'process', filament: 'filament', machine: 'printer' } 
 
 const where = (c: Change) => c.scope === 'project' ? c.owner.name : `${c.scope === 'object' ? 'Object' : c.scope === 'part' ? 'Part' : 'Range'}: ${c.owner.name}`;
 
-const label = (c: Change) => c.key === 'nonplanar_mode' ? 'Slicing method' : OPTIONS[c.key]?.label || c.key;
+const label = (c: Change) => c.key === 'nonplanar_mode' ? 'Slicing method' : OPTIONS[c.key] && TABS.process?.pages.some((p) => p.groups.some((g) => g.lines.some((l) => l.options.some((k) => splitKey(k)[0] === c.key)))) ? labelOf(c.key) : OPTIONS[c.key]?.label || c.key;
 const locate = (type: PresetType, key: string) => {
   const pages = TABS[TAB_OF[type]]?.pages ?? [];
   for (const [pi, page] of pages.entries()) for (const [gi, group] of page.groups.entries())
@@ -54,7 +57,18 @@ const locate = (type: PresetType, key: string) => {
 };
 const MODE_NAME: Partial<Record<OptionMode, string>> = { advanced: 'Advanced', develop: 'Expert', developer: 'Developer' };
 
-function Changes({ type, list, onJump }: { type: PresetType; list: Change[]; onJump(): void }) {
+function ValueChoices({ c, src, choice, becomes, onChoose }: { c: Change; src: ValueSource; choice: ValueChoice; becomes: string; onChoose(next: ValueChoice): void }) {
+  const now = display(c.key, c.now);
+  const options: [ValueChoice, string][] = src.source === 'formula'
+    ? [['formula', 'Update formula'], ['fix', `Fix at ${now}`], ['project', 'Only this project']]
+    : [['printer', `Save to ${src.printer}`], ['project', 'Only this project']];
+  const text = choice === 'formula' ? (becomes ? `updates formula to ${becomes}` : 'updates formula') : choice === 'fix' ? `fixed at ${now}` : choice === 'printer' ? `saves to ${src.printer}` : 'only this project';
+  return <MenuButton className="pf-change-choice" label={`Save ${label(c)}: ${text}`} items={options.map(([id, t]) => ({ label: t, checked: choice === id, role: 'menuitemradio', action: () => onChoose(id) }))}>
+    <span aria-hidden>↳</span> {text} <Caret dir="down"/></MenuButton>;
+}
+
+function Changes({ type, list, onJump, sources = {}, choices = {}, onChoose }: { type: PresetType; list: Change[]; onJump(): void; sources?: Record<string, ValueSource>; choices?: Record<string, ValueChoice>; onChoose?(key: string, next: ValueChoice): void }) {
+  const ctxKey = useStore((s) => { const c = scaleContext(s); return `${c.nozzle},${c.layerHeight}`; }), [nozzle, layerHeight] = ctxKey.split(',').map(Number), ctx = { nozzle, layerHeight };
   const focus = (c: Change) => {
     onJump();
     const s = getState();
@@ -76,19 +90,20 @@ function Changes({ type, list, onJump }: { type: PresetType; list: Change[]; onJ
     if (Object.keys(patch).length) { setState(patch); setTimeout(reveal, 50); } else reveal();
   };
   const rows = list.map((c) => ({ c, at: locate(type, c.key) })).sort((x, y) => x.at.pi - y.at.pi || x.at.gi - y.at.gi);
-  const scoped = new Set(list.map(where)).size > 1, nested = list.length > 1;
-  let page = '', group = '';
-  return <div className="pf-change-scroll" role="list" data-nested={nested || undefined}>{rows.flatMap(({ c, at }) => {
+  const scoped = new Set(list.map(where)).size > 1;
+  return <div className="pf-change-scroll" role="list">{rows.flatMap(({ c }) => {
     const out = [];
-    if (nested && at.page !== page) { page = at.page; group = ''; out.push(<div key={`p:${page}`} className="pf-change-group" role="presentation">{page}</div>); }
-    if (nested && at.group && at.group !== group) { group = at.group; out.push(<div key={`g:${page}:${group}`} className="pf-change-sub" role="presentation">{group}</div>); }
     const name = label(c), was = display(c.key, c.was), now = display(c.key, c.now), scope = scoped ? where(c) : '';
+    const src = c.scope === 'project' ? sources[c.key] : undefined, choice = src && (choices[c.key] ?? defaultChoice(src));
+    const factor = src?.row && choice === 'formula' ? solveFactor(src.row, c.now, ctx) : undefined;
+    const becomes = src?.row && factor !== undefined ? formulaText({ ...src.row, factor }) : '';
     out.push(<div key={`${c.scope}:${c.owner.object ?? ''}:${c.owner.volume ?? ''}:${c.owner.range ?? ''}:${c.key}`} className="pf-change" role="listitem">
       <button type="button" className="pf-change-line" aria-label={`${name}${scope ? `, ${scope}` : ''}: ${was} to ${now}`} data-full-text={`${name}${scope ? ` (${scope})` : ''}: ${was} → ${now}`} onClick={() => focus(c)}>
         <span className="pf-change-name">{name}</span><span className="pf-change-was">{was}</span><span className="pf-change-to" aria-hidden>→</span><span className="pf-change-now">{now}{scope && <span className="pf-change-scope"> · {scope}</span>}</span>
       </button>
       <button type="button" className="reset-icon" aria-label={`Reset ${name}`} onClick={() => revert(c)}><Glyph name="undo" size={14}/></button>
     </div>);
+    if (src && choice && onChoose) out.push(<ValueChoices key={`choice:${c.key}`} c={c} src={src} choice={choice} becomes={becomes} onChoose={(next) => onChoose(c.key, next)}/>);
     return out;
   })}</div>;
 }
@@ -107,7 +122,7 @@ export function reviewChanges(type: PresetType, slot = 0) {
   window.dispatchEvent(new CustomEvent(REVIEW, { detail: { type, slot } }));
 }
 
-function ChangesPop({type,slot,list,project,save}: {type:PresetType;slot:number;list:Change[];project:number;save():void}) {
+function ChangesPop({type,slot,list,project}: {type:PresetType;slot:number;list:Change[];project:number}) {
   const [open, setOpen] = useState(false);
   const jumped = useRef(false);
   useEffect(() => {
@@ -120,42 +135,59 @@ function ChangesPop({type,slot,list,project,save}: {type:PresetType;slot:number;
     return () => window.removeEventListener(REVIEW, on);
   }, [type, slot]);
   useEffect(() => { if (!list.length) setOpen(false); }, [list.length]);
+  const sources = useStore((s) => JSON.stringify(valueSources(s, type, slot)));
+  const sourced = useMemo(() => JSON.parse(sources) as Record<string, ValueSource>, [sources]);
+  const [choices, setChoices] = useState<Record<string, ValueChoice>>({});
   if (!list.length) return null;
   const label = `${list.length} change${list.length === 1 ? '' : 's'}`;
-  return <Popover.Root open={open} onOpenChange={setOpen}><Popover.Trigger asChild><button type="button" className="link pf-changes-trigger" aria-expanded={open}>{label}</button></Popover.Trigger><Popover.Portal><Popover.Content className="orca-menu pf-changes-pop" role="dialog" aria-label="Changes" collisionPadding={12} side="bottom" sideOffset={4} align="start" onCloseAutoFocus={(e) => {if (jumped.current) {jumped.current = false; e.preventDefault();}}}>
-    <Changes type={type} list={list} onJump={() => {jumped.current = true; setOpen(false);}}/>
-    <SaveChanges type={type} slot={slot} project={project} list={list} review={() => {setOpen(false);save();}} revertAll={() => undoable('Revert all changes', () => list.forEach(revert))}/>
+  return <Popover.Root open={open} onOpenChange={setOpen}><Popover.Trigger asChild><button type="button" className="link pf-changes-trigger" aria-expanded={open}>{label}</button></Popover.Trigger><Popover.Portal><Popover.Content className="orca-menu pf-changes-pop" role="dialog" aria-label="Changes" collisionPadding={12} side="bottom" sideOffset={4} align="start" onCloseAutoFocus={(e) => {if (jumped.current) {jumped.current = false; e.preventDefault();}}}
+    onFocusOutside={(e) => {if ((e.target as Element | null)?.closest?.('[role=menu]')) e.preventDefault();}}
+    onPointerDownOutside={(e) => {if ((e.target as Element | null)?.closest?.('[role=menu]')) e.preventDefault();}}>
+    <Changes type={type} list={list} onJump={() => {jumped.current = true; setOpen(false);}} sources={sourced} choices={choices} onChoose={(k, v) => setChoices((c) => ({...c, [k]: v}))}/>
+    <SaveChanges type={type} slot={slot} project={project} list={list} sources={sourced} choices={choices} revertAll={() => undoable('Revert all changes', () => list.forEach(revert))}/>
   </Popover.Content></Popover.Portal></Popover.Root>;
 
 }
 
-function SaveChanges({type, slot, project, list, review, revertAll}: {type: PresetType; slot: number; project: number; list: Change[]; review(): void; revertAll(): void}) {
+function SaveChanges({type, slot, project, list, sources, choices, revertAll}: {type: PresetType; slot: number; project: number; list: Change[]; sources: Record<string, ValueSource>; choices: Record<string, ValueChoice>; revertAll(): void}) {
   const m = useMemo(createProfileSave, []), snap = useMachine(m);
-  const auto = useStore((s) => [...autoKeysOf(s, type, slot)].join(',')), autoSet = new Set(auto ? auto.split(',') : []);
   const projectList = list.filter((c) => c.scope === 'project' && c.owner.plate === undefined);
-  const plain = projectList.filter((c) => !autoSet.has(c.key)).length, scaled = projectList.length - plain;
-  const owned = useStore((s) => savesInPlace(s, type, slot)), inPlace = owned && plain > 0;
+  const savable = projectList.some((c) => !sources[c.key] || (choices[c.key] ?? defaultChoice(sources[c.key])) !== 'project');
+  const owned = useStore((s) => savesInPlace(s, type, slot)), inPlace = owned && savable;
+  const target = useStore((s) => findProfile(s, type, (type === 'machine' ? s.printer : type === 'process' ? s.process : s.filamentSlots[slot]) ?? '')?.name ?? 'profile');
+  const dynamic = useStore((s) => type === 'process' && scalesOf(findProfile(s, type, s.process)).length > 0);
   const suggested = useStore((s) => newProfileName(s, type, slot));
   const [name, setName] = useState(suggested);
   useEffect(() => setName(suggested), [suggested]);
   const nameError = useStore((s) => newProfileNameError(s, type, name));
   const saving = snap.value === 'saving', error = snap.value === 'failed' ? snap.context.error : null;
-  const asNew = !owned || scaled > 0;
-  const run = (inPlace: boolean) => {
+  const [last, setLast] = useState<NewKind | 'in-place'>('in-place');
+  const run = (how: NewKind | 'in-place') => {
     if (!m.can({type: 'SAVE'})) return;
+    setLast(how);
     m.send({type: 'SAVE'});
     const request = m.get().context.request;
-    (inPlace ? saveToProfile(type, slot) : saveAsNewProfile(type, slot, name))
+    (how === 'in-place' ? saveToProfile(type, slot, choices) : saveAsNewProfile(type, slot, name, how, choices))
       .then(() => m.send({type: 'SAVED', request}), (e) => m.send({type: 'FAIL', request, error: e instanceof Error ? e.message : String(e)}));
   };
+  const [naming, setNaming] = useState<NewKind | null>(null);
+  const kinds: MenuEntry[] = [{label: 'Dynamic profile', action: () => setNaming('dynamic')}, {label: 'Regular profile', action: () => setNaming('regular')}];
+  const busy = (how: NewKind | 'in-place') => saving && last === how && <span className="pf-spin" aria-hidden/>;
+  const retry = (how: NewKind | 'in-place', text: string) => error && last === how ? 'Retry' : text;
   return <>
-    {project > 0 && asNew && <label className="pf-save-name"><span>Name</span><input className="text" value={name} disabled={saving} aria-invalid={!!nameError}
-      onChange={(e) => {setName(e.target.value); if (error) m.send({type: 'DISMISS'});}} onKeyDown={(e) => {if (e.key === 'Enter' && !nameError) run(false);}}/></label>}
     {error && <p className="pf-save-error" role="alert">{error}</p>}
-    <div className="pf-changes-foot"><button type="button" className="btn-ghost" disabled={saving} onClick={revertAll}>Revert all</button>
-      {project > 0 && <><button type="button" className="link pf-review" disabled={saving} onClick={review}>Open in Profiles</button>
-        {asNew && <button type="button" className={inPlace ? 'btn' : 'btn primary'} disabled={saving || !!nameError} aria-busy={saving} onClick={() => run(false)}>{saving && !inPlace && <span className="pf-spin" aria-hidden/>}{error && !inPlace ? 'Retry' : 'Save as new profile'}</button>}
-        {inPlace && <button type="button" className="btn primary" disabled={saving} aria-busy={saving} onClick={() => run(true)}>{saving && <span className="pf-spin" aria-hidden/>}{error ? 'Retry' : 'Save to profile'}</button>}</>}</div>
+    {project > 0 && naming && <label className="pf-save-name"><span>{naming === 'dynamic' ? 'New dynamic profile' : naming === 'regular' ? 'New regular profile' : 'New profile'}</span>
+      <input className="text" autoFocus value={name} disabled={saving} aria-invalid={!!nameError}
+        onChange={(e) => {setName(e.target.value); if (error) m.send({type: 'DISMISS'});}} onKeyDown={(e) => {if (e.key === 'Enter' && !nameError) run(naming); else if (e.key === 'Escape') {e.stopPropagation(); setNaming(null);}}}/></label>}
+    <div className="pf-changes-foot"><button type="button" className="link pf-revert-all" disabled={saving} onClick={revertAll}>Revert all</button>
+      {project > 0 && (naming ? <>
+        <button type="button" className="btn-ghost" disabled={saving} onClick={() => setNaming(null)}>Cancel</button>
+        <button type="button" className="btn primary" disabled={saving || !!nameError} aria-busy={saving} onClick={() => run(naming)}>{busy(naming)}{retry(naming, 'Create')}</button>
+      </> : <>
+        {inPlace && <button type="button" className="btn primary" disabled={saving} aria-busy={saving} onClick={() => run('in-place')}>{busy('in-place')}{retry('in-place', `Save to ${target}`)}</button>}
+        {dynamic ? <MenuButton className={inPlace ? 'btn' : 'btn primary'} label="Save as new" disabled={saving} items={kinds}>Save as new… <Caret dir="down"/></MenuButton>
+          : <button type="button" className={inPlace ? 'btn' : 'btn primary'} disabled={saving} onClick={() => setNaming('same')}>Save as new…</button>}
+      </>)}</div>
   </>;
 }
 
@@ -192,8 +224,8 @@ export function PresetActions({ type, slot = 0 }: { type: PresetType; slot?: num
 }
 
 export function ChangesMark({ type, slot = 0 }: { type: PresetType; slot?: number }) {
-  const {list,project,save}=usePresetActions(type,slot);
-  return <ChangesPop type={type} slot={slot} list={list} project={project} save={save}/>;
+  const {list,project}=usePresetActions(type,slot);
+  return <ChangesPop type={type} slot={slot} list={list} project={project}/>;
 }
 
 const EMPTY: ProfileConflict[] = [];

@@ -1,4 +1,4 @@
-import { getState, resolvePreset, useStore } from '../state/store';
+import { getState, resolvePreset, setState, useStore } from '../state/store';
 import { requestPreset } from './PresetCombo';
 import { listProfiles } from '../profiles/pickerSource';
 import { profileKey } from '../profiles/identity';
@@ -23,5 +23,5 @@ export function ProcessPresetPicker() {
   };
   const pick = (id: string) => pickOrOpen('process', id, k => requestPreset('process', 0, k));
   const sel = resolvePreset(getState(), 'process', process), pending = usePickerPending(!!sel.name);
-  return <div className="process-preset-picker"><Picker label="Print settings" value={process} sections groups={sameStateGroups('process', groups)} memory="orca.parity.process" onPick={pick} footer={[presets('process', process)]}>{pending ? <PickerSkeleton/> : <span className="pk-name">{sel.name ?? 'Choose print settings'}</span>}</Picker></div>;
+  return <div className="process-preset-picker"><Picker label="Print settings" value={process} sections groups={sameStateGroups('process', groups)} memory="orca.parity.process" onPick={pick} footer={[{ label: 'New profile', run: () => setState({ presetUx: { kind: 'presets', type: 'process', add: true } }) }, presets('process', process)]}>{pending ? <PickerSkeleton/> : <span className="pk-name">{sel.name ?? 'Choose print settings'}</span>}</Picker></div>;
 }

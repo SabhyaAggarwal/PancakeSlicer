@@ -12,7 +12,9 @@ export const labelOf = (key: string) => {
   const own = OPTIONS[key]?.label || key;
   if (!group) return own;
   const g = group.toLowerCase(), o = own.toLowerCase();
-  return o.includes(g) ? own : g.includes(o) ? group : `${group} · ${own}`;
+  const words = (t: string) => new Set(t.split(/[^a-z]+/).filter((w) => w.length > 2).map((w) => w.replace(/s$/, '')));
+  const shared = [...words(o)].some((w) => words(g).has(w));
+  return o.includes(g) || shared && !g.includes(o) ? own : g.includes(o) ? group : `${group} · ${own}`;
 };
 
 export function PrintOverrides({ value, readOnly, onChange }: { value: Config; readOnly?: boolean; onChange(next: Config): void }) {
