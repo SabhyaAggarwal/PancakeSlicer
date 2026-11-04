@@ -56,3 +56,15 @@ __pycache__/
 /.test/
 docs/superpowers/
 ctest_results.xml
+
+# Agent tooling and instructions stay local, never committed
+.claude/
+.agents
+.agents/
+.codex/
+.cursor/
+CLAUDE.md
+AGENTS.md
+GEMINI.md
+**/CLAUDE.md
+**/AGENTS.md
