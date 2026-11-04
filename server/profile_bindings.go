@@ -80,8 +80,7 @@ func (s *Server) validateProfileBindings(req *JobRequest) *profileProblem {
 		if anchor == "" {
 			anchor = stringValue(p["inherits"])
 		}
-		_, auto := p["auto"]
-		if anchor == "" || anchor != selected.native && !auto {
+		if anchor == "" || anchor != selected.native && !isDynamic(p) {
 			return problem("profile_anchor_mismatch", "repair_profile", "Repair the profile's native base before slicing; an owned ID or label cannot replace its engine profile name.", selected.kind, selected.native, selected.slot)
 		}
 		chain, chainCode := baseChain(profiles, selected.id)
