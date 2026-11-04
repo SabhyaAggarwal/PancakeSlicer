@@ -1110,7 +1110,7 @@ void place_wipe_tower(DynamicPrintConfig &config, const Model &model, size_t fil
     const double       margin = WIPE_TOWER_AUTO_MARGIN + fp.brim_width;
     x = std::clamp(x, bed.min.x() + margin, std::max(bed.min.x() + margin, bed.max.x() - fp.width - margin));
     y = std::clamp(y, bed.min.y() + margin, std::max(bed.min.y() + margin, bed.max.y() - fp.depth - margin));
-    Polygons outline{ Polygon::new_scale(config.opt<ConfigOptionPoints>("printable_area")->values) };
+    Polygons outline{ Slic3r::Polygon::new_scale(config.opt<ConfigOptionPoints>("printable_area")->values) };
     const Vec2f move = WipeTower::move_box_inside_polygon(BoundingBox(Point::new_scale(x, y), Point::new_scale(x + fp.width, y + fp.depth)),
                                                           outline, scaled<coord_t>(margin));
     config.option<ConfigOptionFloats>("wipe_tower_x", true)->values = { x + move.x() };
@@ -2503,7 +2503,7 @@ arrangement::ArrangePolygon model_wipe_tower_polygon(const DynamicPrintConfig &c
     }
     position = Vec2d(x, y);
     arrangement::ArrangePolygon tower;
-    tower.poly.contour = Polygon({Point::new_scale(x - brim, y - brim), Point::new_scale(x + fp.width + brim, y - brim),
+    tower.poly.contour = Slic3r::Polygon({Point::new_scale(x - brim, y - brim), Point::new_scale(x + fp.width + brim, y - brim),
                                   Point::new_scale(x + fp.width + brim, y + fp.depth + brim), Point::new_scale(x - brim, y + fp.depth + brim)});
     tower.bed_idx = int(plate_index);
     tower.name = "WipeTower";
@@ -2590,7 +2590,7 @@ void arrange_only(const Args &args, Model &model, const DynamicPrintConfig &conf
         for (size_t k = i; k < i + 4; ++k)
             box.merge(exclude[k]);
         arrangement::ArrangePolygon region;
-        region.poly.contour = Polygon({ { scaled(box.min.x()), scaled(box.min.y()) }, { scaled(box.max.x()), scaled(box.min.y()) },
+        region.poly.contour = Slic3r::Polygon({ { scaled(box.min.x()), scaled(box.min.y()) }, { scaled(box.max.x()), scaled(box.min.y()) },
                                         { scaled(box.max.x()), scaled(box.max.y()) }, { scaled(box.min.x()), scaled(box.max.y()) } });
         region.is_virt_object = true;
         region.bed_idx        = 0;

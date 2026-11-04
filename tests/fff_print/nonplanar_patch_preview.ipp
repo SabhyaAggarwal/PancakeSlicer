@@ -37,7 +37,7 @@ namespace {
 
 nlohmann::json preview_footprint(const ExPolygons &expolys, const Point &shift)
 {
-    auto ring = [&shift](const Polygon &polygon) {
+    auto ring = [&shift](const Slic3r::Polygon &polygon) {
         nlohmann::json points = nlohmann::json::array();
         for (const Point &p : polygon.points)
             points.push_back({ unscale<double>(p.x() + shift.x()), unscale<double>(p.y() + shift.y()) });
@@ -46,7 +46,7 @@ nlohmann::json preview_footprint(const ExPolygons &expolys, const Point &shift)
     nlohmann::json out = nlohmann::json::array();
     for (const ExPolygon &expoly : expolys) {
         nlohmann::json holes = nlohmann::json::array();
-        for (const Polygon &hole : expoly.holes)
+        for (const Slic3r::Polygon &hole : expoly.holes)
             holes.push_back(ring(hole));
         out.push_back({ { "contour", ring(expoly.contour) }, { "holes", std::move(holes) } });
     }
@@ -58,7 +58,7 @@ std::vector<float> preview_patch_lines(const Nonplanar::ConformalPatch &patch, c
     constexpr double hatch_spacing = 1.5;
     std::vector<float> out;
     const Vec2d bed = unscale(shift);
-    auto add = [&](const Polyline &polyline) {
+    auto add = [&](const Slic3r::Polyline &polyline) {
         bool  open = false;
         Vec3f last;
         for (size_t i = 0; i + 1 < polyline.points.size(); ++i) {
@@ -80,7 +80,7 @@ std::vector<float> preview_patch_lines(const Nonplanar::ConformalPatch &patch, c
         }
     };
     for (const ExPolygon &expoly : patch.footprint)
-        for (const Polygon &poly : to_polygons(expoly))
+        for (const Slic3r::Polygon &poly : to_polygons(expoly))
             add(poly.split_at_first_point());
     ExPolygons turned = patch.footprint;
     for (ExPolygon &expoly : turned)
@@ -89,8 +89,8 @@ std::vector<float> preview_patch_lines(const Nonplanar::ConformalPatch &patch, c
     const coord_t     step = scale_(hatch_spacing);
     Polylines         lines;
     for (coord_t y = bb.min.y() + step / 2; y < bb.max.y(); y += step)
-        lines.emplace_back(Polyline(Point(bb.min.x() - step, y), Point(bb.max.x() + step, y)));
-    for (Polyline &line : intersection_pl(lines, turned)) {
+        lines.emplace_back(Slic3r::Polyline(Point(bb.min.x() - step, y), Point(bb.max.x() + step, y)));
+    for (Slic3r::Polyline &line : intersection_pl(lines, turned)) {
         line.rotate(0.25 * PI);
         add(line);
     }
