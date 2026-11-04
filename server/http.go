@@ -140,6 +140,9 @@ func (s *Server) listPresets(w http.ResponseWriter, r *http.Request) {
 		if models := r.URL.Query()["model"]; len(models) > 0 {
 			v, err = s.presets.modelsResponse(name, models)
 		}
+		if names := r.URL.Query()["name"]; len(names) > 0 && err == nil {
+			v, err = s.presets.namesResponse(name, names)
+		}
 		if errors.Is(err, os.ErrNotExist) {
 			fail(w, 404, "unknown vendor")
 			return

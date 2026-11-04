@@ -393,3 +393,24 @@ func (p *PresetIndex) allResponseJSON() (*cachedResponse, error) {
 	})
 	return p.allResponse, p.allError
 }
+
+func (p *PresetIndex) namesResponse(vendor string, names []string) (*cachedResponse, error) {
+	v, err := p.vendor(vendor)
+	if err != nil {
+		return nil, err
+	}
+	want := map[string]bool{}
+	for _, n := range names {
+		want[n] = true
+	}
+	pick := func(list []Preset) []Preset {
+		out := []Preset{}
+		for _, preset := range list {
+			if want[preset.Name] {
+				out = append(out, preset)
+			}
+		}
+		return out
+	}
+	return cacheJSON(compactPresets(&VendorPresets{Vendor: v.Vendor, Machines: pick(v.Machines), Processes: pick(v.Processes), Filaments: pick(v.Filaments)}))
+}
